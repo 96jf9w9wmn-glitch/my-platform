@@ -158,9 +158,9 @@ function AddVariantModal({ tutorId, onClose, onAdd }) {
             <div>
               <label className="text-sm text-gray-500 mb-1 block">Ответы к части 1 - введи все 19 через пробел</label>
               <textarea
-                value={answers.join(" ")}
+                value={answers.filter(Boolean).join(" ")}
                 onChange={(e) => {
-                  const vals = e.target.value.split(/\s+/).slice(0, 19)
+                  const vals = e.target.value.trim().split(/\s+/).filter(Boolean).slice(0, 19)
                   const padded = [...vals, ...Array(19).fill("")].slice(0, 19)
                   setAnswers(padded)
                 }}
