@@ -1,20 +1,851 @@
 @import "tailwindcss";
+
+/* Without this, Tailwind's dark: variant defaults to @media (prefers-color-scheme),
+   ignoring the .dark class this app's ThemeToggle actually applies to <html>. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  button, a {
+    outline: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button:focus, button:focus-visible,
+  a:focus, a:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+}
+
+/* ── SF Pro / iOS typography ── */
+:root {
+  --font-sans: "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont,
+    "Helvetica Neue", system-ui, sans-serif;
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-bg-strong: rgba(255, 255, 255, 0.98);
+  --glass-border: rgba(255, 255, 255, 0.55);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), 0 1px 0 rgba(255, 255, 255, 0.6) inset;
+  --glass-blur: blur(24px) saturate(180%);
+  --accent: #007aff;
+  --accent-light: rgba(0, 122, 255, 0.15);
+}
+
+.dark {
+  --glass-bg: rgba(28, 28, 30, 0.72);
+  --glass-bg-strong: rgba(28, 28, 30, 0.88);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255, 255, 255, 0.06) inset;
+  color-scheme: dark;
+
+  /* ── Tailwind v4 color variables — ALL utilities using these adapt automatically ── */
+  --color-gray-50:  #111113;
+  --color-gray-100: #2c2c2e;
+  --color-gray-200: #3a3a3c;
+  --color-gray-300: #52525a;
+  --color-gray-400: #98989f;
+  --color-gray-500: #98989f;
+  --color-gray-600: #ebebf0;
+  --color-gray-700: #ebebf0;
+  --color-gray-800: #f2f2f7;
+  --color-gray-900: #ffffff;
+
+  --color-blue-50:  rgba(0, 122, 255, 0.15);
+  --color-blue-100: rgba(0, 122, 255, 0.22);
+  --color-blue-200: rgba(0, 122, 255, 0.35);
+  --color-blue-300: rgba(0, 122, 255, 0.5);
+  --color-blue-400: #5ac8fa;
+  --color-blue-500: #5ac8fa;
+  --color-blue-600: #0a84ff;
+  --color-blue-700: #0071e3;
+  --color-blue-800: #5ac8fa;
+
+  --color-green-50:  rgba(52, 199, 89, 0.12);
+  --color-green-100: rgba(52, 199, 89, 0.22);
+  --color-green-200: rgba(52, 199, 89, 0.35);
+  --color-green-500: #30d158;
+  --color-green-600: #30d158;
+  --color-green-700: #28b84a;
+
+  --color-red-50:  rgba(255, 59, 48, 0.12);
+  --color-red-100: rgba(255, 59, 48, 0.22);
+  --color-red-200: rgba(255, 59, 48, 0.35);
+  --color-red-400: #ff6961;
+  --color-red-500: #ff453a;
+  --color-red-600: #ff453a;
+  --color-red-700: #ff453a;
+
+  --color-amber-50:  rgba(255, 159, 10, 0.12);
+  --color-amber-100: rgba(255, 159, 10, 0.22);
+  --color-amber-200: rgba(255, 159, 10, 0.35);
+  --color-amber-400: #ff9f0a;
+  --color-amber-500: #ff9f0a;
+  --color-amber-600: #ff9f0a;
+  --color-amber-700: #ff9f0a;
+
+  --color-purple-50:  rgba(175, 82, 222, 0.12);
+  --color-purple-100: rgba(175, 82, 222, 0.22);
+  --color-purple-200: rgba(175, 82, 222, 0.35);
+  --color-purple-400: #bf5af2;
+  --color-purple-500: #bf5af2;
+  --color-purple-600: #bf5af2;
+  --color-purple-700: #bf5af2;
+}
+
+* { box-sizing: border-box; }
+
+html {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* нативные контролы (date-пикер, select) в цвет темы */
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+/* iOS: у date-инпута свой intrinsic-размер (вылезает за границы) и нулевая
+   высота контента, пока значение пустое — приводим к виду остальных полей */
+input[type="date"] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+  min-height: 2.5rem;
+  text-align: left;
+}
+input[type="date"]::-webkit-date-and-time-value {
+  text-align: left;
+}
+
+/* select: убираем нативную стрелку (жмётся к самому краю рамки) и рисуем аккуратный
+   шеврон с отступом от края; padding-right — !important, чтобы перебить utility px-3 */
+select {
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' stroke='%238e8e93' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.85rem center;
+  padding-right: 2.25rem !important;
+}
+
+/* Математика в тексте задания (condition рендерится как HTML) --------------- */
+/* Дробь столбиком с чертой. inline-block + block-дети (НЕ inline-flex: html2canvas
+   в PDF рисует flex-столбик неверно — черта дроби оказывается поверх числителя). */
+.tmath-frac {
+  display: inline-block;
+  text-align: center;
+  vertical-align: middle;   /* центр дроби на матоси — вровень с минусом и скобками */
+  line-height: 1.05;
+  margin: 0 0.15em;
+  font-size: 0.84em;
+}
+.tmath-num { display: block; border-bottom: 1.2px solid currentColor; padding: 0 0.3em; }
+.tmath-den { display: block; padding: 0 0.3em; }
+/* Символ нуклида ⟦iso⟧: массовое число над зарядовым, стопкой, прижаты вправо и стоят
+   слева от символа элемента (¹⁴₇N). Без черты — это не дробь. */
+.tmath-iso { white-space: nowrap; }
+.tmath-iso-nums {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  vertical-align: -0.35em;
+  font-size: 0.62em;
+  line-height: 1.05;
+  margin-right: 0.05em;
+  text-align: right;
+}
+/* Радикал — инлайновый SVG (знак √ и черта единым path). display:inline-block
+   обязателен — Tailwind preflight ставит svg{display:block}, иначе корень падает на
+   свою строку. Текст под корнем наследует шрифт; vertical-align сажает на базовую линию. */
+.tmath-radical { display: inline-block; vertical-align: -0.34em; }
+.tmath-radical text { font-family: inherit; }
+/* Корень НАД дробью: знак √ (SVG-галочка) тянется по высоте подкоренной строки, а
+   верхняя черта — border-top тела; вместе накрывают всё выражение (как ⟦r⟧, но с дробью). */
+.tmath-rootfrac { display: inline-block; vertical-align: middle; margin: 0 0.1em; }
+.tmath-rootfrac text { font-family: inherit; }
+/* Система (кусочно-заданная функция): фигурная скобка тянется по высоте ветвей.
+   Скобка — SVG в АБСОЛЮТЕ (height:100% контейнера, чью высоту задаёт столбец ветвей),
+   поэтому не раздувает раскладку и точно совпадает с высотой текста; preserveAspect
+   ="none" + non-scaling-stroke дают тонкую линию при любой высоте. */
+/* Код-блок (напр. примеры КуМира в №15): моноширинный, с подложкой и сохранением отступов. */
+.tmath-code {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin: 8px 0;
+  font-size: 0.92em;
+  line-height: 1.5;
+  color: #1f2937;
+}
+.dark .tmath-code { background: #1f2937; border-color: #374151; color: #e5e7eb; }
+.tmath-cases { position: relative; display: inline-flex; align-items: center; vertical-align: middle; padding-left: 0.8em; }
+.tmath-brace { position: absolute; left: 0.1em; top: 0; height: 100%; width: 0.55em; overflow: visible; }
+.tmath-lines { display: inline-flex; flex-direction: column; gap: 0.15em; text-align: left; line-height: 1.3; }
+
+/* Задание «на соответствие»: два столбца стоят РЯДОМ (таблица), а не стопкой друг под
+   другом — так ученику проще соотносить левый пункт с правым. Ниже — сетка для ответа. */
+.tmath-match {
+  border-collapse: collapse;
+  width: 100%;
+  max-width: 620px;
+  margin: 10px 0;
+  font-size: 0.95em;
+  line-height: 1.35;
+}
+.tmath-match th, .tmath-match td {
+  border: 1px solid #e5e7eb;
+  padding: 7px 11px;
+  text-align: left;
+  vertical-align: top;
+}
+.tmath-match thead th {
+  background: #f5f5f7;
+  font-weight: 600;
+  font-size: 0.8em;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+.tmath-key { color: #007AFF; font-weight: 600; margin-right: 0.1em; }
+/* Сетка для ответа: буквы сверху, пустые клетки под ними. */
+.tmath-answer { border-collapse: collapse; margin: 2px 0 10px; }
+.tmath-answer th, .tmath-answer td {
+  border: 1px solid #d1d5db;
+  min-width: 40px;
+  height: 34px;
+  text-align: center;
+  vertical-align: middle;
+  padding: 2px 6px;
+}
+.tmath-answer thead th { background: #f5f5f7; font-weight: 600; color: #374151; }
+/* Нумерованный список вариантов (последовательность / вставьте элементы): номер и текст
+   в одну строку, плотные строки, висячий отступ для переносов длинных пунктов. */
+.tmath-list { list-style: none; margin: 8px 0; padding: 0; }
+.tmath-list li { margin: 3px 0; padding-left: 1.7em; text-indent: -1.7em; line-height: 1.4; }
+.dark .tmath-match th, .dark .tmath-match td { border-color: rgba(255,255,255,0.12); }
+.dark .tmath-match thead th { background: rgba(255,255,255,0.06); color: #9ca3af; }
+.dark .tmath-key { color: #4a9eff; }
+.dark .tmath-answer th, .dark .tmath-answer td { border-color: rgba(255,255,255,0.2); }
+.dark .tmath-answer thead th { background: rgba(255,255,255,0.06); color: #e5e7eb; }
+
+body {
+  font-family: var(--font-sans);
+  background: #eef0f8;
+  color: #1c1c1e;
+  /* именно dvh: 100vh на iOS — «большой» вьюпорт, body получается выше экрана,
+     документ прокручивается на ~100pt и приложение уезжает вверх */
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.dark body {
+  background: #000000;
+  color: #ffffff;
+}
+
+/* Animated liquid gradient background */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse 80% 60% at 15% 10%, rgba(0, 122, 255, 0.18) 0%, transparent 55%),
+    radial-gradient(ellipse 70% 50% at 85% 85%, rgba(175, 82, 222, 0.14) 0%, transparent 55%),
+    radial-gradient(ellipse 60% 40% at 55% 5%, rgba(52, 199, 89, 0.1) 0%, transparent 45%),
+    radial-gradient(ellipse 50% 40% at 90% 20%, rgba(255, 149, 0, 0.08) 0%, transparent 40%),
+    linear-gradient(160deg, #eef0f8 0%, #e8ecf4 40%, #f0eef8 100%);
+  animation: liquid-shift 18s ease-in-out infinite alternate;
+}
+
+.dark body::before {
+  background:
+    radial-gradient(ellipse 80% 60% at 15% 10%, rgba(0, 122, 255, 0.22) 0%, transparent 55%),
+    radial-gradient(ellipse 70% 50% at 85% 85%, rgba(175, 82, 222, 0.18) 0%, transparent 55%),
+    radial-gradient(ellipse 60% 40% at 55% 5%, rgba(52, 199, 89, 0.12) 0%, transparent 45%),
+    linear-gradient(160deg, #0a0a0c 0%, #111118 50%, #0d0d12 100%);
+}
+
+@keyframes liquid-shift {
+  0%   { filter: hue-rotate(0deg); }
+  100% { filter: hue-rotate(12deg); }
+}
+
+/* ── Loading screen ── */
+@keyframes spin-ring {
+  to { transform: rotate(360deg); }
+}
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulse-label {
+  0%, 100% { opacity: 0.35; }
+  50%       { opacity: 0.75; }
+}
+
+.loader-wrap {
+  animation: fade-in-up 0.5s ease-out both;
+}
+.loader-ring {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 122, 255, 0.18);
+  border-top-color: #007aff;
+  animation: spin-ring 0.75s linear infinite;
+}
+.loader-label {
+  letter-spacing: 0.18em;
+  animation: pulse-label 2.4s ease-in-out infinite;
+}
+
+/* ── Icon micro-animations ── */
+
+/* Bell ring — pendulum from top */
+@keyframes bell-ring {
+  0%   { transform: rotate(0deg); }
+  10%  { transform: rotate(18deg); }
+  28%  { transform: rotate(-15deg); }
+  44%  { transform: rotate(11deg); }
+  58%  { transform: rotate(-7deg); }
+  70%  { transform: rotate(4deg); }
+  80%  { transform: rotate(-2deg); }
+  90%  { transform: rotate(1deg); }
+  100% { transform: rotate(0deg); }
+}
+.bell-ringing {
+  display: inline-flex;
+  transform-origin: top center;
+  animation: bell-ring 0.6s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+
+/* Sun — spins in from rotation */
+@keyframes sun-enter {
+  from { transform: rotate(-120deg) scale(0.4); opacity: 0; }
+  to   { transform: rotate(0deg) scale(1); opacity: 1; }
+}
+.icon-sun-enter {
+  display: inline-flex;
+  animation: sun-enter 0.4s cubic-bezier(0.34, 1.5, 0.64, 1) both;
+}
+
+/* Moon — swings in from the side */
+@keyframes moon-enter {
+  from { transform: rotate(40deg) scale(0.4); opacity: 0; }
+  to   { transform: rotate(0deg) scale(1); opacity: 1; }
+}
+.icon-moon-enter {
+  display: inline-flex;
+  animation: moon-enter 0.35s cubic-bezier(0.34, 1.4, 0.64, 1) both;
+}
+
+/* Popup bubble — spring pop from top-right corner */
+@keyframes popup-bubble {
+  0%   { opacity: 0; transform: scale(0.82) translateY(-10px); }
+  55%  { opacity: 1; transform: scale(1.03) translateY(2px); }
+  80%  { transform: scale(0.985) translateY(0); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+.popup-bubble {
+  transform-origin: top right;
+  animation: popup-bubble 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Popup bubble close */
+@keyframes popup-bubble-out {
+  0%   { opacity: 1; transform: scale(1) translateY(0); }
+  40%  { transform: scale(1.01) translateY(1px); }
+  100% { opacity: 0; transform: scale(0.84) translateY(-10px); }
+}
+.popup-bubble-out {
+  transform-origin: top right;
+  animation: popup-bubble-out 0.2s cubic-bezier(0.4, 0, 1, 1) both;
+  pointer-events: none;
+}
+
+/* ── Animations ── */
+
+/* Page enter — plays when switching tabs */
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+.page-active {
+  animation: page-enter 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+/* Modal entrance — spring feel */
+@keyframes modal-enter {
+  from { opacity: 0; transform: scale(0.94) translateY(12px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes overlay-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.glass-modal {
+  animation: modal-enter 0.28s cubic-bezier(0.34, 1.4, 0.64, 1) both;
+}
+.glass-overlay {
+  animation: overlay-fade 0.2s ease both;
+}
+
+/* Slide up — for bottom sheets on mobile */
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.slide-up {
+  animation: slide-up 0.24s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+/* List stagger — items enter sequentially */
+@keyframes item-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.stagger > * {
+  animation: item-enter 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+.stagger > *:nth-child(1)  { animation-delay:   0ms; }
+.stagger > *:nth-child(2)  { animation-delay:  35ms; }
+.stagger > *:nth-child(3)  { animation-delay:  70ms; }
+.stagger > *:nth-child(4)  { animation-delay: 105ms; }
+.stagger > *:nth-child(5)  { animation-delay: 140ms; }
+.stagger > *:nth-child(6)  { animation-delay: 175ms; }
+.stagger > *:nth-child(7)  { animation-delay: 210ms; }
+.stagger > *:nth-child(8)  { animation-delay: 245ms; }
+
+/* Global button press — tactile scale feedback */
+button:not([disabled]):not(.no-press):active {
+  transform: scale(0.96);
+  transition: transform 0.08s ease-out;
+}
+
+/* Stat card hover lift */
+.stat-card {
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.stat-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.11), 0 1px 0 rgba(255, 255, 255, 0.6) inset;
+}
+
+/* ── Glass surfaces ── */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  border-radius: 20px;
+}
+
+.glass-sm {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  border-radius: 14px;
+}
+
+.glass-modal {
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(40px) saturate(200%);
+  -webkit-backdrop-filter: blur(40px) saturate(200%);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.18), 0 1px 0 rgba(255, 255, 255, 0.5) inset;
+  border-radius: 20px;
+}
+
+/* Модалка-шторка: на мобильном прилипает к нижнему краю (скруглён только верх),
+   на десктопе — обычное центрированное окно со всеми скруглёнными углами.
+   Объявлена после .glass-modal, чтобы переопределить его border-radius. */
+.sheet-modal { border-radius: 24px 24px 0 0; }
+@media (min-width: 768px) { .sheet-modal { border-radius: 24px; } }
+
+.glass-overlay {
+  background: rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+/* Sidebar */
+.sidebar-glass {
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  border-right: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.04);
+}
+
+.dark .sidebar-glass {
+  background: rgba(18, 18, 20, 0.65);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.3);
+}
+
+/* Topbar */
+.topbar-glass {
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+.dark .topbar-glass {
+  background: rgba(18, 18, 20, 0.65);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Nav items */
+.nav-item {
+  transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+  border-radius: 12px;
+  border: 1px solid transparent;
+}
+
+.nav-item:hover {
+  background: rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(8px);
+}
+
+.dark .nav-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.nav-active {
+  background: rgba(0, 122, 255, 0.14) !important;
+  color: #007aff !important;
+  border: 1px solid rgba(0, 122, 255, 0.22) !important;
+  font-weight: 500;
+  box-shadow: 0 0 12px rgba(0, 122, 255, 0.18), 0 2px 8px rgba(0, 122, 255, 0.12);
+}
+
+.dark .nav-active {
+  background: rgba(0, 122, 255, 0.22) !important;
+  border: 1px solid rgba(0, 122, 255, 0.35) !important;
+  box-shadow: 0 0 12px rgba(0, 122, 255, 0.25), 0 2px 8px rgba(0, 122, 255, 0.12) !important;
+}
+
+/* Stat cards */
+.stat-card {
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+}
+
+/* ── Schedule page ── */
+@keyframes cal-day-enter {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes sched-view-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.sched-view-enter {
+  animation: sched-view-enter 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+.cal-day {
+  animation: cal-day-enter 0.18s ease both;
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s ease, color 0.2s ease;
+}
+.cal-day:hover {
+  transform: scale(1.1);
+}
+.week-lesson {
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.15s ease;
+}
+.week-lesson:hover {
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 6px 16px rgba(0, 122, 255, 0.25);
+  z-index: 2;
+}
+
+/* Notification badge pulse */
+@keyframes badge-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
+  50%       { transform: scale(1.15); box-shadow: 0 0 0 5px rgba(239, 68, 68, 0); }
+}
+.badge-pulse {
+  animation: badge-pulse 2s ease-in-out infinite;
+}
+
+/* Onboarding wizard: step slides in from the direction of travel */
+@keyframes step-enter-forward {
+  from { opacity: 0; transform: translateX(28px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes step-enter-back {
+  from { opacity: 0; transform: translateX(-28px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.step-enter-forward { animation: step-enter-forward 0.32s cubic-bezier(0.25, 0.8, 0.25, 1) both; }
+.step-enter-back { animation: step-enter-back 0.32s cubic-bezier(0.25, 0.8, 0.25, 1) both; }
+
+@keyframes pill-pop {
+  from { opacity: 0; transform: translateY(6px) scale(0.94); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.pill-pop { animation: pill-pop 0.26s cubic-bezier(0.25, 0.8, 0.25, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .step-enter-forward, .step-enter-back, .pill-pop { animation: none; }
+}
+
+.dark .stat-card {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Next-lesson hero: keep the vivid gradient in light mode. In dark mode,
+   pair frosted glass (same white-overlay language as .glass/.stat-card)
+   with a soft ambient blue glow instead of a flat saturated fill. */
+.dark .next-lesson-card {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(0, 122, 255, 0.14));
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(0, 122, 255, 0.22);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.45),
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 0 40px rgba(0, 122, 255, 0.16);
+}
+
+/* Tinted glass panels */
+.glass-tint-blue {
+  background: rgba(0, 122, 255, 0.1);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid rgba(0, 122, 255, 0.2);
+  border-radius: 16px;
+}
+
+.glass-tint-amber {
+  background: rgba(255, 159, 10, 0.1);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid rgba(255, 159, 10, 0.25);
+  border-radius: 16px;
+}
+
+.glass-tint-green {
+  background: rgba(52, 199, 89, 0.1);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid rgba(52, 199, 89, 0.25);
+  border-radius: 16px;
+}
+
+.glass-tint-purple {
+  background: rgba(175, 82, 222, 0.1);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid rgba(175, 82, 222, 0.2);
+  border-radius: 16px;
+}
+
+.glass-tint-red {
+  background: rgba(255, 59, 48, 0.08);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid rgba(255, 59, 48, 0.2);
+  border-radius: 12px;
+}
+
+/* Table header row */
+.glass-table-header {
+  background: rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.dark .glass-table-header {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Buttons */
+.btn-primary {
+  background: #007aff;
+  color: white;
+  border-radius: 12px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+}
+
+.btn-primary:hover {
+  background: #0066d6;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0, 122, 255, 0.4);
+}
+
+.btn-primary:active { transform: translateY(0); }
+
+.btn-glass {
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 10px;
+  transition: background 0.2s;
+}
+
+.btn-glass:hover {
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.dark .btn-glass {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.dark .btn-glass:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+/* Inputs */
+.input-glass {
+  background: #ffffff;
+  border: 1px solid rgba(60, 60, 67, 0.22);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 14px;
+  outline: none;
+  transition: all 0.2s;
+  width: 100%;
+  font-family: var(--font-sans);
+  color: #1c1c1e;
+}
+
+.input-glass:focus {
+  border-color: rgba(0, 122, 255, 0.6);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.12);
+}
+
+.dark .input-glass {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: white;
+}
+
+.dark .input-glass:focus {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(0, 122, 255, 0.6);
+}
+
+/* Badges */
+.badge-green { background: rgba(52, 199, 89, 0.15); color: #34c759; border-radius: 8px; padding: 2px 8px; font-size: 12px; font-weight: 500; }
+.badge-amber { background: rgba(255, 159, 10, 0.15); color: #ff9f0a; border-radius: 8px; padding: 2px 8px; font-size: 12px; font-weight: 500; }
+.badge-red   { background: rgba(255, 59, 48, 0.15); color: #ff3b30; border-radius: 8px; padding: 2px 8px; font-size: 12px; font-weight: 500; }
+.badge-blue  { background: rgba(0, 122, 255, 0.15); color: #007aff; border-radius: 8px; padding: 2px 8px; font-size: 12px; font-weight: 500; }
+
+/* ── Dark mode: only what CSS variables cannot cover ── */
+
+/* bg-white has no variable override (opacity variants need white base for glass effects) */
+.dark .bg-white { background: rgba(28, 28, 30, 0.75) !important; backdrop-filter: blur(20px); }
+
+/* Shadow — not a color variable */
+.dark .shadow-sm { box-shadow: 0 2px 8px rgba(0,0,0,0.4) !important; }
+
+/* Borders — override variable default (dark gray) with glass-style subtle white lines */
+.dark .border-gray-100 { border-color: rgba(255,255,255,0.06) !important; }
+.dark .border-gray-200 { border-color: rgba(255,255,255,0.1) !important; }
+.dark .border-gray-300 { border-color: rgba(255,255,255,0.15) !important; }
+.dark .border-blue-100  { border-color: rgba(0, 122, 255, 0.2) !important; }
+.dark .border-blue-200  { border-color: rgba(0, 122, 255, 0.3) !important; }
+.dark .border-amber-100 { border-color: rgba(255, 159, 10, 0.2) !important; }
+.dark .border-amber-200 { border-color: rgba(255, 159, 10, 0.3) !important; }
+.dark .border-purple-100 { border-color: rgba(175, 82, 222, 0.2) !important; }
+.dark .border-green-100 { border-color: rgba(52, 199, 89, 0.2) !important; }
+.dark .border-green-200 { border-color: rgba(52, 199, 89, 0.3) !important; }
+.dark .border-white\/40 { border-color: rgba(255, 255, 255, 0.08) !important; }
+
+/* bg-white/N — keep as glass-effect white (not dark like overridden white base) */
+.dark .bg-white\/10 { background: rgba(255,255,255,0.03) !important; }
+.dark .bg-white\/20 { background: rgba(255,255,255,0.04) !important; }
+.dark .bg-white\/30 { background: rgba(255,255,255,0.04) !important; }
+.dark .bg-white\/40 { background: rgba(255,255,255,0.05) !important; }
+.dark .bg-white\/50 { background: rgba(255,255,255,0.06) !important; }
+.dark .bg-white\/60 { background: rgba(255,255,255,0.08) !important; }
+.dark .hover\:bg-white\/30:hover { background: rgba(255,255,255,0.05) !important; }
+.dark .hover\:bg-white\/40:hover { background: rgba(255,255,255,0.08) !important; }
+
+/* Schedule view switcher — active tab sits inside bg-gray-100 container */
+.dark .bg-gray-100 > .bg-white {
+  background: rgba(255,255,255,0.14) !important;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4) !important;
+}
+
+/* ── Dark mode: native form elements ── */
+.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(.input-glass),
+.dark textarea:not(.input-glass) {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #ffffff !important;
+}
+.dark select {
+  background-color: rgba(38, 38, 40, 0.98) !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' stroke='%23aeaeb2' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #ffffff !important;
+  color-scheme: dark;
+}
+.dark select option { background: #2c2c2e; color: #ffffff; }
+.dark input[type="date"] { color-scheme: dark; }
+.dark input[type="number"] { color-scheme: dark; }
+.dark input[type="range"] { accent-color: #007aff; }
+.dark .input-glass { color: #ffffff !important; }
+
+/* Mobile bottom navigation */
+.mobile-nav-glass {
+  background: rgba(242, 242, 247, 0.9);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  border-top: 1px solid rgba(255, 255, 255, 0.6);
+}
+.dark .mobile-nav-glass {
+  background: rgba(18, 18, 20, 0.88);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Phone input */
 .phone-input-wrapper .PhoneInput {
   display: flex;
   align-items: center;
+  background: white;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   padding: 0 12px;
   gap: 8px;
 }
 
+.phone-input-wrapper .PhoneInput:focus-within {
+  border-color: #60a5fa;
+}
+
 .phone-input-wrapper .PhoneInputInput {
   border: none;
   outline: none;
   font-size: 14px;
-  padding: 8px 0;
-  width: 100%;
+  padding: 10px 0;
   background: transparent;
+  width: 100%;
+  font-family: var(--font-sans);
 }
 
 .phone-input-wrapper .PhoneInputCountrySelect {
@@ -23,46 +854,98 @@
   background: transparent;
   font-size: 14px;
   cursor: pointer;
-}
-.dark {
-  color-scheme: dark;
+  font-family: var(--font-sans);
 }
 
-.dark body {
-  background-color: #0f172a;
-  color: #f1f5f9;
+.dark .phone-input-wrapper .PhoneInput {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
-.dark .bg-white { background-color: #1e293b !important; }
-.dark .bg-gray-50 { background-color: #0f172a !important; }
-.dark .bg-gray-100 { background-color: #1e293b !important; }
-.dark .bg-gray-200 { background-color: #334155 !important; }
-.dark .border-gray-100 { border-color: #334155 !important; }
-.dark .border-gray-200 { border-color: #334155 !important; }
-.dark .text-gray-400 { color: #94a3b8 !important; }
-.dark .text-gray-500 { color: #94a3b8 !important; }
-.dark .text-gray-600 { color: #cbd5e1 !important; }
-.dark .text-gray-700 { color: #e2e8f0 !important; }
-.dark .text-gray-900 { color: #f1f5f9 !important; }
-.dark .hover\:bg-gray-50:hover { background-color: #1e293b !important; }
-.dark .hover\:bg-gray-200:hover { background-color: #334155 !important; }
-.dark .shadow-sm { box-shadow: 0 1px 3px rgba(0,0,0,0.5) !important; }
+.dark .phone-input-wrapper .PhoneInputInput { color: white; }
 
-.dark .bg-blue-50 { background-color: #1e3a5f !important; }
-.dark .bg-purple-50 { background-color: #2d1b69 !important; }
-.dark .bg-amber-50 { background-color: #451a03 !important; }
-.dark .bg-green-50 { background-color: #052e16 !important; }
-.dark .bg-red-50 { background-color: #450a0a !important; }
-.dark .text-blue-500 { color: #93c5fd !important; }
-.dark .text-blue-600 { color: #93c5fd !important; }
-.dark .text-purple-500 { color: #c4b5fd !important; }
-.dark .text-purple-600 { color: #c4b5fd !important; }
-.dark .text-amber-600 { color: #fcd34d !important; }
-.dark .text-green-600 { color: #86efac !important; }
-.dark .border-blue-100 { border-color: #1e3a5f !important; }
-.dark .border-amber-100 { border-color: #451a03 !important; }
-.dark .border-amber-200 { border-color: #78350f !important; }
+/* ── Chat message animations (Telegram-style) ── */
+@keyframes chatBubbleRight {
+  from { opacity: 0; transform: scale(0.5) translateY(5px); }
+  to   { opacity: 1; transform: scale(1)   translateY(0);   }
+}
+@keyframes chatBubbleLeft {
+  from { opacity: 0; transform: scale(0.5) translateY(5px); }
+  to   { opacity: 1; transform: scale(1)   translateY(0);   }
+}
+.chat-msg-right {
+  animation: chatBubbleRight 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+  transform-origin: bottom right;
+}
+.chat-msg-left {
+  animation: chatBubbleLeft 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+  transform-origin: bottom left;
+}
+.chat-send-btn { transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.chat-send-btn:active { transform: scale(0.82); }
 
-.dark .border-purple-100 { border-color: #2d1b69 !important; }
-.dark .bg-purple-50.border { border-color: #2d1b69 !important; }
-.dark .border-purple-100 { border-color: #3b1d8a !important; }
+/* Универсальный отклик на нажатие для кликабельных не-кнопок:
+   полупрозрачный оверлей на всю площадь. Размер не меняется — поэтому нет
+   пустот по краям (в отличие от scale на широких элементах). border-radius
+   наследуется, чтобы совпадать со скруглением карточки/строки. */
+.press-tap { position: relative; }
+.press-tap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(0, 0, 0, 0);
+  transition: background 0.18s ease;
+  pointer-events: none;
+}
+.press-tap:active::after { background: rgba(0, 0, 0, 0.08); transition-duration: 0.04s; }
+.dark .press-tap:active::after { background: rgba(255, 255, 255, 0.08); }
+
+/* Chat background */
+.chat-bg {
+  background-color: #f0f4f8;
+}
+.dark .chat-bg {
+  background-color: #0d1117;
+}
+
+/* Входящий пузырь чата — заданным классом, чтобы глобальный
+   `.dark .bg-white { … !important }` не перебивал тёмный фон, а ремап
+   серых токенов (gray-100 → тёмный) не гасил текст. */
+.chat-bubble-in {
+  background: #ffffff;
+  color: #1c1c1e;
+  border: 1px solid rgba(60, 60, 67, 0.14);
+}
+.dark .chat-bubble-in {
+  background: #253545;
+  color: #f2f2f7;
+  border-color: transparent;
+}
+
+/* Разделитель дня по центру (как «4 июля» в Telegram). Отдельный класс,
+   чтобы ремап серых токенов в .dark не гасил фон/текст. */
+.chat-date {
+  background: rgba(0, 0, 0, 0.06);
+  color: #3c3c43;
+}
+.dark .chat-date {
+  background: rgba(255, 255, 255, 0.14);
+  color: #f2f2f7;
+  backdrop-filter: blur(2px);
+}
+
+/* Высота приложения: --app-h обновляется из visualViewport (см. main.jsx),
+   чтобы поле ввода оставалось видимым при открытой клавиатуре; фолбэк — 100dvh */
+.app-shell {
+  height: 100dvh;
+  height: var(--app-h, 100dvh);
+}
+
+/* iOS автоматически зумит страницу при фокусе на поле со шрифтом < 16px
+   и не отзумливает обратно — на мобильном держим шрифт полей не меньше 16px */
+@media (max-width: 767px) {
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+}
