@@ -1113,6 +1113,95 @@ function t12TrapezoidFormula() {
 }
 
 // =====================================================================================
+// №09 — Задачи на квадратной решётке (клетка 1×1). Фигура рисуется в SVG, площадь/длина
+// считаются по тем же вершинам (гарантированно совпадают с картинкой). Навык ОГЭ-сетки.
+// =====================================================================================
+
+// Площадь простого многоугольника по формуле Гаусса (шнуровки).
+function shoelace(pts) {
+  let s = 0
+  for (let i = 0; i < pts.length; i++) {
+    const [x1, y1] = pts[i], [x2, y2] = pts[(i + 1) % pts.length]
+    s += x1 * y2 - x2 * y1
+  }
+  return Math.abs(s) / 2
+}
+
+// SVG клетчатой бумаги с многоугольником (вершины — целые точки).
+function gridSvg(poly) {
+  const maxX = Math.max(...poly.map((p) => p[0])) + 1, maxY = Math.max(...poly.map((p) => p[1])) + 1
+  const cell = 34, pad = 14
+  const W = maxX * cell + 2 * pad, H = maxY * cell + 2 * pad
+  const X = (x) => pad + x * cell, Y = (y) => H - pad - y * cell
+  let g = ""
+  for (let i = 0; i <= maxX; i++) g += `<line x1="${X(i)}" y1="${Y(0)}" x2="${X(i)}" y2="${Y(maxY)}" stroke="#cfd4da" stroke-width="1"/>`
+  for (let j = 0; j <= maxY; j++) g += `<line x1="${X(0)}" y1="${Y(j)}" x2="${X(maxX)}" y2="${Y(j)}" stroke="#cfd4da" stroke-width="1"/>`
+  g += `<polygon points="${poly.map(([x, y]) => `${X(x)},${Y(y)}`).join(" ")}" fill="#2b6cff22" stroke="#2b6cff" stroke-width="2.2"/>`
+  poly.forEach(([x, y]) => (g += `<circle cx="${X(x)}" cy="${Y(y)}" r="3.5" fill="#2b6cff"/>`))
+  return `<svg xmlns="http://www.w3.org/2000/svg" font-family="Arial, sans-serif" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${g}</svg>`
+}
+
+// Упорядочить точки по углу вокруг центроида → простой (несамопересекающийся) многоугольник.
+function orderByAngle(pts) {
+  const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length
+  const cy = pts.reduce((s, p) => s + p[1], 0) / pts.length
+  return pts.slice().sort((a, b) => Math.atan2(a[1] - cy, a[0] - cx) - Math.atan2(b[1] - cy, b[0] - cx))
+}
+
+const uniqPts = (pts) => pts.length === new Set(pts.map((p) => p.join(","))).size
+
+// №9 — площадь треугольника на решётке.
+function t09TriangleArea() {
+  for (let t = 0; t < 300; t++) {
+    const box = randInt(4, 6)
+    const poly = [[randInt(0, box), randInt(0, box)], [randInt(0, box), randInt(0, box)], [randInt(0, box), randInt(0, box)]]
+    if (!uniqPts(poly)) continue
+    const area = shoelace(poly)
+    if (area < 3 || !Number.isInteger(area * 2)) continue
+    return {
+      condition_text: `Найдите площадь треугольника, изображённого на клетчатой бумаге с размером ` +
+        `клетки 1 см × 1 см. Ответ дайте в квадратных сантиметрах.`,
+      image_url: svgUrl(gridSvg(poly)),
+      answer: ru(area),
+    }
+  }
+  return t09QuadArea()
+}
+
+// №9 — площадь четырёхугольника на решётке.
+function t09QuadArea() {
+  for (let t = 0; t < 400; t++) {
+    const box = randInt(4, 6)
+    const raw = Array.from({ length: 4 }, () => [randInt(0, box), randInt(0, box)])
+    if (!uniqPts(raw)) continue
+    const poly = orderByAngle(raw)
+    const area = shoelace(poly)
+    if (area < 5 || !Number.isInteger(area * 2)) continue
+    return {
+      condition_text: `Найдите площадь четырёхугольника, изображённого на клетчатой бумаге с ` +
+        `размером клетки 1 см × 1 см. Ответ дайте в квадратных сантиметрах.`,
+      image_url: svgUrl(gridSvg(poly)),
+      answer: ru(area),
+    }
+  }
+  return t09TriangleArea()
+}
+
+// №9 — длина отрезка на решётке (целая: пифагорова пара dx,dy).
+function t09Length() {
+  const tri = pick([[3, 4, 5], [6, 8, 10], [5, 12, 13], [8, 6, 10], [4, 3, 5]])
+  const [dx, dy, d] = tri
+  const x0 = randInt(0, 1), y0 = randInt(0, 1)
+  const poly = [[x0, y0], [x0 + dx, y0 + dy]]  // отрезок как «многоугольник» из 2 точек
+  return {
+    condition_text: `На клетчатой бумаге с размером клетки 1 см × 1 см изображён отрезок. Найдите ` +
+      `его длину. Ответ дайте в сантиметрах.`,
+    image_url: svgUrl(gridSvg(poly)),
+    answer: ru(d),
+  }
+}
+
+// =====================================================================================
 // №13 — Стереометрия (словесные задачи, целые ответы).
 // =====================================================================================
 
@@ -1570,6 +1659,7 @@ export const GENERATORS_EGE_BASE = {
   6: [t06Tariff, t06Material],
   7: [t07Range, t07FallDays],
   8: [t08Ordering],
+  9: [t09TriangleArea, t09QuadArea, t09Length],
   10: [t10Spokes, t10Fence, t10Tiles, t10Slide],
   11: [t11Ball, t11OpenCube, t11Cone],
   12: [t12RhombusBisector, t12RhombusPerimeter, t12ParallelogramPerp, t12RectangleSide,
@@ -1640,6 +1730,11 @@ export const GEN_META_EGE_BASE = {
     ["fall-days", "Сколько дней понижалось", t07FallDays],
   ]]],
   8: [["Логика утверждений", [["ordering", "Упорядочивание (возраст/рост)", t08Ordering]]]],
+  9: [["Квадратная решётка", [
+    ["tri-area", "Площадь треугольника", t09TriangleArea],
+    ["quad-area", "Площадь четырёхугольника", t09QuadArea],
+    ["length", "Длина отрезка", t09Length],
+  ]]],
   10: [["Прикладная геометрия", [
     ["spokes", "Спицы колеса (угол)", t10Spokes],
     ["fence", "Забор с трёх сторон", t10Fence],
