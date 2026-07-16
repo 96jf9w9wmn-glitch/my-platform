@@ -8,6 +8,8 @@
 //   { condition_text, answer }  — как у остальных предметов (см. taskGenerators.js).
 // Мат-токены дробей ⟦f:n:d⟧, корней ⟦r:x⟧ и индексов ⟦b:x⟧ разворачивает renderTaskMath().
 
+import { matchBlock } from "../utils.js"
+
 const randInt = (min, max) => min + Math.floor(Math.random() * (max - min + 1))
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)]
 const shuffle = (arr) => { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = randInt(0, i);[a[i], a[j]] = [a[j], a[i]] } return a }
@@ -960,6 +962,38 @@ function t01Feet() {
 }
 
 // =====================================================================================
+// №02 — Размеры и единицы измерения (соответствие «величина ↔ значение»).
+// Величины берём из РАЗНЫХ размерностей → каждое значение подходит ровно одной величине
+// (соответствие однозначно по построению, без риска двусмысленности).
+// =====================================================================================
+
+const UNIT_BANK = {
+  mass: [{ q: "Масса взрослого человека", v: "70 кг" }, { q: "Масса легкового автомобиля", v: "1 200 кг" }, { q: "Масса гружёного самосвала", v: "30 т" }],
+  length: [{ q: "Длина карандаша", v: "15 см" }, { q: "Высота одноэтажного дома", v: "3 м" }, { q: "Расстояние от Москвы до Твери", v: "170 км" }],
+  volume: [{ q: "Объём стакана", v: "200 мл" }, { q: "Объём ведра", v: "10 л" }, { q: "Объём бака легкового автомобиля", v: "50 л" }],
+  time: [{ q: "Продолжительность школьного урока", v: "45 мин" }, { q: "Продолжительность футбольного матча", v: "90 мин" }],
+  speed: [{ q: "Скорость пешехода", v: "5 км/ч" }, { q: "Скорость автомобиля по трассе", v: "90 км/ч" }],
+  area: [{ q: "Площадь классной доски", v: "3 м²" }, { q: "Площадь двухкомнатной квартиры", v: "60 м²" }],
+  temp: [{ q: "Температура кипения воды", v: "100 °C" }, { q: "Температура тела здорового человека", v: "36,6 °C" }],
+}
+
+function t02Units() {
+  const dims = shuffle(Object.keys(UNIT_BANK)).slice(0, 3)
+  const chosen = dims.map((d) => pick(UNIT_BANK[d]))
+  const left = chosen.map((c) => c.q)
+  const order = shuffle([0, 1, 2])
+  const right = order.map((i) => chosen[i].v)
+  // позиция значения величины left[li] в перемешанном правом столбце (1-based)
+  const answer = left.map((_, li) => order.indexOf(li) + 1).join("")
+  return {
+    condition_text: `Установите соответствие между величинами и их возможными значениями: ` +
+      `к каждому элементу первого столбца подберите соответствующий элемент из второго столбца.\n` +
+      matchBlock({ leftHdr: "ВЕЛИЧИНЫ", rightHdr: "ВОЗМОЖНЫЕ ЗНАЧЕНИЯ", left, right }),
+    answer,
+  }
+}
+
+// =====================================================================================
 // №08 — Анализ утверждений. Истинность утверждения = «верно при указанных условиях»,
 // т.е. следует из условий (истинно во ВСЕХ согласованных с условиями порядках), а не в
 // одном тайном. Поэтому перебираем все перестановки рангов и проверяем следование.
@@ -1029,6 +1063,7 @@ function t08Ordering() {
 export const GENERATORS_EGE_BASE = {
   1: [t01Transport, t01Tents, t01TeaPacks, t01Printer, t01Bouquet, t01PassSavings, t01AvgSpeedKmh, t01Paint, t01Paper, t01Feet],
   4: [t04Current, t04Steps, t04Fahrenheit, t04Centripetal, t04InRadius, t04GeoMean, t04Divisors, t04LawSines],
+  2: [t02Units],
   5: [t05Tickets, t05Defective, t05CoinTwice, t05Ratio, t05TwoDevices],
   8: [t08Ordering],
   14: [t14FracChain, t14DivBracket, t14MixDecFrac, t14Decimals],
@@ -1072,6 +1107,7 @@ export const GEN_META_EGE_BASE = {
       ["geo-mean", "Среднее геометрическое", t04GeoMean],
       ["divisors", "Сумма делителей", t04Divisors],
     ]]],
+  2: [["Соответствие", [["units", "Величины и значения", t02Units]]]],
   5: [["Классическая вероятность", [
     ["tickets", "Выученные билеты", t05Tickets],
     ["defective", "Доля брака", t05Defective],
