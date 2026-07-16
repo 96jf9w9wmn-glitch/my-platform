@@ -1001,6 +1001,118 @@ function t07FallDays() {
 }
 
 // =====================================================================================
+// №12 — Планиметрия. Незакартиночные задачи банка поставлены словесно (без чертежа) и
+// решаются точно: диагонали ромба/прямоугольника через пифагоровы тройки, площадь
+// трапеции, внешний угол прямоугольного треугольника. Ответы — целые.
+// =====================================================================================
+
+// Пифагоровы тройки (a<b — катеты/полудиагонали, c — гипотенуза/сторона), масштаб ×k.
+const PYTHAG = [[3, 4, 5], [5, 12, 13], [8, 15, 17], [7, 24, 25], [20, 21, 29], [9, 40, 41], [12, 35, 37], [11, 60, 61]]
+function scaledTriple(maxK = 4) {
+  const [a, b, c] = pick(PYTHAG), k = randInt(1, maxK)
+  return [a * k, b * k, c * k]
+}
+
+// Параллелограмм, диагонали — биссектрисы углов (⇒ ромб): сторона + одна диагональ → другая.
+function t12RhombusBisector() {
+  const [a, b, c] = scaledTriple()          // полудиагонали a,b; сторона c
+  const givenHalf = pick([a, b]), otherHalf = givenHalf === a ? b : a
+  return {
+    condition_text: `В параллелограмме ABCD диагонали являются биссектрисами его углов, ` +
+      `AB=${c}, AC=${2 * givenHalf}. Найдите BD.`,
+    answer: ru(2 * otherHalf),
+  }
+}
+
+// Ромб (диагонали — биссектрисы) по двум диагоналям → периметр.
+function t12RhombusPerimeter() {
+  const [a, b, c] = scaledTriple()
+  return {
+    condition_text: `В параллелограмме диагонали являются биссектрисами его углов и равны ` +
+      `${2 * a} и ${2 * b}. Найдите периметр параллелограмма.`,
+    answer: ru(4 * c),
+  }
+}
+
+// Параллелограмм с перпендикулярными диагоналями (⇒ ромб), ∠A+∠C=120° ⇒ ∠A=60° ⇒ BD=AB.
+function t12ParallelogramPerp() {
+  const ab = randInt(7, 50)
+  return {
+    condition_text: `В параллелограмме ABCD диагонали перпендикулярны. Сумма углов A и C ` +
+      `равна 120°, AB=${ab}. Найдите BD.`,
+    answer: ru(ab),
+  }
+}
+
+// Обе диагонали равны (⇒ прямоугольник): диагональ + сторона → другая сторона.
+function t12RectangleSide() {
+  const [a, b, c] = scaledTriple()
+  const givenSide = pick([a, b]), other = givenSide === a ? b : a
+  return {
+    condition_text: `Обе диагонали параллелограмма равны ${c}. Одна из сторон параллелограмма ` +
+      `равна ${givenSide}. Найдите другую сторону параллелограмма.`,
+    answer: ru(other),
+  }
+}
+
+// Прямоугольник (равные диагонали): сторона + диагональ → площадь.
+function t12RectangleArea() {
+  const [a, b, c] = scaledTriple()
+  return {
+    condition_text: `В параллелограмме ABCD известно, что AB=${a}, AC=BD=${c}. Найдите площадь ` +
+      `параллелограмма.`,
+    answer: ru(a * b),
+  }
+}
+
+// Ромб: сумма двух углов 240° ⇒ углы 120° и 60°; меньшая диагональ = сторона = P/4.
+function t12RhombusSmallDiag() {
+  const s = randInt(3, 20)
+  return {
+    condition_text: `Сумма двух углов ромба равна 240°, а его периметр равен ${4 * s}. ` +
+      `Найдите длину меньшей диагонали ромба.`,
+    answer: ru(s),
+  }
+}
+
+// Прямоугольный треугольник, внешний угол при A =150° ⇒ ∠A=30° ⇒ BC=AB·sin30=AB/2.
+function t12RightTriangleExt() {
+  const bc = randInt(4, 35), ab = 2 * bc
+  return {
+    condition_text: `В прямоугольном треугольнике ABC внешний угол при вершине A равен 150°. ` +
+      `Гипотенуза AB=${ab}. Найдите длину катета BC.`,
+    answer: ru(bc),
+  }
+}
+
+// Трапеция: основания + боковая под углом 150° (h = l·sin30 = l/2) → площадь.
+function t12TrapezoidLateral() {
+  for (let t = 0; t < 200; t++) {
+    const l = 2 * randInt(2, 12), h = l / 2
+    const a = randInt(3, 12), b = a + 2 * randInt(1, 6)
+    const area = ((a + b) * h) / 2
+    if (!Number.isInteger(area)) continue
+    return {
+      condition_text: `Основания трапеции равны ${a} и ${b}, боковая сторона, равная ${l}, ` +
+        `образует с одним из оснований трапеции угол 150°. Найдите площадь трапеции.`,
+      answer: ru(area),
+    }
+  }
+  return { condition_text: `Основания трапеции равны 5 и 13, боковая сторона, равная 10, образует с одним из оснований трапеции угол 150°. Найдите площадь трапеции.`, answer: "45" }
+}
+
+// Площадь трапеции по формуле S=(a+b)/2·h (подстановка).
+function t12TrapezoidFormula() {
+  const a = randInt(3, 15), b = randInt(3, 15), h = 2 * randInt(2, 12)
+  return {
+    condition_text: `Площадь трапеции вычисляется по формуле S = ${FF("a + b", "2")}·h, где a и b — ` +
+      `длины оснований трапеции, h — её высота. Пользуясь этой формулой, найдите площадь ` +
+      `трапеции, у которой основания равны ${a} и ${b}, а высота равна ${h}.`,
+    answer: ru(((a + b) * h) / 2),
+  }
+}
+
+// =====================================================================================
 // №01 — Простейшие текстовые задачи (округление вверх/вниз, сравнение, скорость).
 // =====================================================================================
 
@@ -1286,6 +1398,8 @@ export const GENERATORS_EGE_BASE = {
   6: [t06Tariff, t06Material],
   7: [t07Range, t07FallDays],
   8: [t08Ordering],
+  12: [t12RhombusBisector, t12RhombusPerimeter, t12ParallelogramPerp, t12RectangleSide,
+    t12RectangleArea, t12RhombusSmallDiag, t12RightTriangleExt, t12TrapezoidLateral, t12TrapezoidFormula],
   14: [t14FracChain, t14DivBracket, t14MixDecFrac, t14Decimals],
   15: [t15Discount, t15PercentChange, t15PercentOfWhole, t15Tax, t15Interest, t15Markup, t15MaxCount],
   16: [t16PowerQuotient, t16PowerNested, t16RootProduct, t16RootQuotient, t16Conjugate,
@@ -1351,6 +1465,21 @@ export const GEN_META_EGE_BASE = {
     ["fall-days", "Сколько дней понижалось", t07FallDays],
   ]]],
   8: [["Логика утверждений", [["ordering", "Упорядочивание (возраст/рост)", t08Ordering]]]],
+  12: [["Параллелограмм и ромб", [
+    ["rhomb-bisector", "Диагонали-биссектрисы → диагональ", t12RhombusBisector],
+    ["rhomb-perimeter", "Диагонали-биссектрисы → периметр", t12RhombusPerimeter],
+    ["para-perp", "⊥ диагонали, ∠A+∠C=120°", t12ParallelogramPerp],
+    ["rhomb-small-diag", "Сумма углов 240° → меньшая диагональ", t12RhombusSmallDiag],
+  ]],
+    ["Прямоугольник", [
+      ["rect-side", "Равные диагонали → сторона", t12RectangleSide],
+      ["rect-area", "Равные диагонали → площадь", t12RectangleArea],
+    ]],
+    ["Треугольник и трапеция", [
+      ["right-ext", "Внешний угол 150° → катет", t12RightTriangleExt],
+      ["trap-lateral", "Боковая под 150° → площадь", t12TrapezoidLateral],
+      ["trap-formula", "Площадь по формуле", t12TrapezoidFormula],
+    ]]],
   14: [["Обыкновенные дроби", [
     ["frac-chain", "Цепочка дробей", t14FracChain],
     ["div-bracket", "Деление на скобку", t14DivBracket],
