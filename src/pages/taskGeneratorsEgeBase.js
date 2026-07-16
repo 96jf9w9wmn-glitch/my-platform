@@ -1113,6 +1113,85 @@ function t12TrapezoidFormula() {
 }
 
 // =====================================================================================
+// №13 — Стереометрия (словесные задачи, целые ответы).
+// =====================================================================================
+
+// Площадь поверхности прямоугольного параллелепипеда S = 2(ab+ac+bc).
+function t13BoxSurface() {
+  const a = randInt(2, 12), b = randInt(2, 12), c = randInt(2, 12)
+  return {
+    condition_text: `Площадь поверхности прямоугольного параллелепипеда с рёбрами a, b и c ` +
+      `вычисляется по формуле S = 2(ab + ac + bc). Найдите площадь поверхности параллелепипеда, ` +
+      `рёбра которого равны ${a}, ${b} и ${c}.`,
+    answer: ru(2 * (a * b + a * c + b * c)),
+  }
+}
+
+// Два шара: во сколько раз площадь поверхности больше = (R/r)².
+function t13SphereRatio() {
+  const r = randInt(2, 6), m = randInt(2, 5), R = r * m
+  return {
+    condition_text: `Даны два шара с радиусами ${R} и ${r}. Во сколько раз площадь поверхности ` +
+      `большего шара больше площади поверхности меньшего шара?`,
+    answer: ru(m * m),
+  }
+}
+
+// Прямая призма, в основании прямоугольный треугольник (катет + гипотенуза), высота → объём.
+function t13PrismVolume() {
+  for (let t = 0; t < 200; t++) {
+    const l1 = randInt(2, 8), l2 = randInt(2, 12)
+    if (l1 >= l2) continue
+    const H = l1 * l1 + l2 * l2              // гипотенуза = √H
+    if (Number.isInteger(Math.sqrt(H))) continue  // хотим √ иррациональной (как в банке)
+    const ht = randInt(3, 12)
+    const V = (l1 * l2 * ht) / 2
+    if (!Number.isInteger(V)) continue
+    return {
+      condition_text: `В основании прямой призмы лежит прямоугольный треугольник, один из ` +
+        `катетов которого равен ${l1}, а гипотенуза равна ${rT(H)}. Высота призмы равна ${ht}. ` +
+        `Найдите объём призмы.`,
+      answer: ru(V),
+    }
+  }
+  return { condition_text: `В основании прямой призмы лежит прямоугольный треугольник, один из катетов которого равен 2, а гипотенуза равна ${rT(40)}. Высота призмы равна 5. Найдите объём призмы.`, answer: "30" }
+}
+
+// Правильная шестиугольная пирамида: сторона a, боковое ребро b → S_бок = 3·a·апофема грани.
+function t13HexPyramidLateral() {
+  const [leg1, leg2, hyp] = pick(PYTHAG)      // a/2 = leg1, апофема = leg2, ребро = hyp
+  const a = 2 * leg1, edge = hyp, slant = leg2
+  return {
+    condition_text: `Сторона основания правильной шестиугольной пирамиды равна ${a}, боковое ребро ` +
+      `равно ${edge}. Найдите площадь боковой поверхности этой пирамиды.`,
+    answer: ru(3 * a * slant),
+  }
+}
+
+// Четырёхугольная пирамида, основание — прямоугольник a×b, объём V → высота = 3V/(ab).
+function t13RectPyramidHeight() {
+  const a = randInt(3, 12), b = randInt(3, 12), h = randInt(2, 12)
+  const V = (a * b * h) / 3 * 1   // может быть дробным
+  if (!Number.isInteger(V)) return t13RectPyramidHeight()
+  return {
+    condition_text: `Основанием четырёхугольной пирамиды является прямоугольник со сторонами ` +
+      `${a} и ${b}. Найдите высоту этой пирамиды, если её объём равен ${V}.`,
+    answer: ru(h),
+  }
+}
+
+// Правильная треугольная пирамида: сторона a, высота k√3 → V = a²·k/4.
+function t13TriPyramidVolume() {
+  const a = 2 * randInt(1, 5), k = randInt(2, 9)   // a чётное → a²·k/4 целое
+  const V = (a * a * k) / 4
+  return {
+    condition_text: `Сторона основания правильной треугольной пирамиды равна ${a}, а высота ` +
+      `пирамиды равна ${k}${rT(3)}. Найдите объём этой пирамиды.`,
+    answer: ru(V),
+  }
+}
+
+// =====================================================================================
 // №10 — Прикладная геометрия (словесные задачи, целые ответы).
 // =====================================================================================
 
@@ -1495,6 +1574,7 @@ export const GENERATORS_EGE_BASE = {
   11: [t11Ball, t11OpenCube, t11Cone],
   12: [t12RhombusBisector, t12RhombusPerimeter, t12ParallelogramPerp, t12RectangleSide,
     t12RectangleArea, t12RhombusSmallDiag, t12RightTriangleExt, t12TrapezoidLateral, t12TrapezoidFormula],
+  13: [t13BoxSurface, t13SphereRatio, t13PrismVolume, t13HexPyramidLateral, t13RectPyramidHeight, t13TriPyramidVolume],
   14: [t14FracChain, t14DivBracket, t14MixDecFrac, t14Decimals],
   15: [t15Discount, t15PercentChange, t15PercentOfWhole, t15Tax, t15Interest, t15Markup, t15MaxCount],
   16: [t16PowerQuotient, t16PowerNested, t16RootProduct, t16RootQuotient, t16Conjugate,
@@ -1586,6 +1666,14 @@ export const GEN_META_EGE_BASE = {
       ["trap-lateral", "Боковая под 150° → площадь", t12TrapezoidLateral],
       ["trap-formula", "Площадь по формуле", t12TrapezoidFormula],
     ]]],
+  13: [["Многогранники", [
+    ["box-surface", "Поверхность параллелепипеда", t13BoxSurface],
+    ["prism-volume", "Объём призмы (прям. треуг.)", t13PrismVolume],
+    ["rect-pyr-height", "Высота пирамиды по объёму", t13RectPyramidHeight],
+    ["hex-pyr-lateral", "Боковая пов-сть 6-уг. пирамиды", t13HexPyramidLateral],
+    ["tri-pyr-volume", "Объём треуг. пирамиды", t13TriPyramidVolume],
+  ]],
+    ["Тела вращения", [["sphere-ratio", "Отношение площадей шаров", t13SphereRatio]]]],
   14: [["Обыкновенные дроби", [
     ["frac-chain", "Цепочка дробей", t14FracChain],
     ["div-bracket", "Деление на скобку", t14DivBracket],
