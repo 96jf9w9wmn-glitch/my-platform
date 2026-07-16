@@ -694,9 +694,9 @@ function Payment({ students, setStudents, tutorId }) {
             </div>
           )}
 
-          {expenses.length === 0 && (
+          {EXPENSE_SUGGESTIONS.some((name) => !expenses.some((e) => e.name === name)) && (
             <div className="flex flex-wrap gap-2 mb-3">
-              {EXPENSE_SUGGESTIONS.map((name) => (
+              {EXPENSE_SUGGESTIONS.filter((name) => !expenses.some((e) => e.name === name)).map((name) => (
                 <button key={name} onClick={() => setNewExpName(name)}
                   className="text-xs font-medium text-gray-500 bg-black/[0.04] dark:bg-white/[0.08] ring-1 ring-inset ring-black/[0.05] dark:ring-white/[0.1] px-2.5 py-1.5 rounded-full hover:bg-black/[0.07] dark:hover:bg-white/[0.12] transition active:scale-95">
                   + {name}
