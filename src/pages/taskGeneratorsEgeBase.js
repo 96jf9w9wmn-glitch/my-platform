@@ -20,6 +20,7 @@ const clean = (x) => Math.round(x * 1e9) / 1e9   // гасит float-шум
 const fT = (n, d) => `⟦f:${n}:${d}⟧`
 const rT = (x) => `⟦r:${x}⟧`
 const sub = (x) => `⟦b:${x}⟧`
+const supT = (x) => `⟦sup:${x}⟧`   // надстрочник с переменным показателем (2^(1−4x))
 const SUP = { 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹", "-": "⁻" }
 const sup = (n) => String(n).split("").map((c) => SUP[c] ?? c).join("")
 
@@ -361,6 +362,30 @@ function t17Logarithm() {
     }
   }
   return { condition_text: `Найдите корень уравнения log${sub(5)}(4x + 7) = 2.`, answer: "4,5" }
+}
+
+// Показательное: b^(px+q) = value (value — степень b). При основании 1/b — база дробью.
+function t17Exponential() {
+  for (let t = 0; t < 200; t++) {
+    const b = pick([2, 3, 4, 5, 6, 7])
+    const x0 = randInt(-4, 5), p = pick([1, -1, 2, -2, 3, 4]), q = randInt(-6, 6)
+    const E0 = p * x0 + q                 // показатель при решении x0
+    if (E0 < -3 || E0 > 6) continue
+    const recip = Math.random() < 0.4     // основание 1/b
+    const effExp = recip ? -E0 : E0       // value = b^effExp
+    if (effExp < -3 || effExp > 8) continue
+    // линейный показатель px+q
+    const px = p === 1 ? "x" : p === -1 ? "−x" : `${ru(p)}x`
+    const lin = `${px}${q === 0 ? "" : q < 0 ? ` − ${-q}` : ` + ${q}`}`
+    const base = recip ? FF("1", String(b)) : String(b)
+    // правая часть: целое или дробь 1/b^k
+    const val = effExp >= 0 ? String(b ** effExp) : FF("1", String(b ** (-effExp)))
+    return {
+      condition_text: `Найдите корень уравнения ${base}${supT(lin)} = ${val}.`,
+      answer: ru(x0),
+    }
+  }
+  return { condition_text: `Найдите корень уравнения 2${supT("1 − 4x")} = 32.`, answer: "−1" }
 }
 
 // Квадратный корень: √(px + q) = r → px + q = r².
@@ -1070,7 +1095,7 @@ export const GENERATORS_EGE_BASE = {
   15: [t15Discount, t15PercentChange, t15PercentOfWhole, t15Tax, t15Interest, t15Markup, t15MaxCount],
   16: [t16PowerQuotient, t16PowerNested, t16RootProduct, t16RootQuotient, t16Conjugate,
     t16StandardForm, t16PlaceValue, t16LogDiff, t16TrigProduct, t16TrigReduction, t16TrigPythag],
-  17: [t17Linear, t17Quadratic, t17Logarithm, t17SquareRoot],
+  17: [t17Linear, t17Quadratic, t17Exponential, t17Logarithm, t17SquareRoot],
   19: [t19Divisible, t19RangeDigitSum],
   20: [t20MixSolutions, t20AddWater, t20WorkTogether, t20AvgThirds, t20AvgThereBack, t20Meeting],
   21: [t21Snail, t21Well, t21AvgFifth],
@@ -1158,6 +1183,7 @@ export const GEN_META_EGE_BASE = {
     ["linear", "Линейное со скобкой", t17Linear],
     ["quadratic", "Квадратное (больший/меньший корень)", t17Quadratic],
   ]],
+    ["Показательные", [["exponential", "b^(px+q)=value", t17Exponential]]],
     ["Логарифм и корень", [
       ["logarithm", "Логарифмическое", t17Logarithm],
       ["sqrt", "С квадратным корнем", t17SquareRoot],

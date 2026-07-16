@@ -111,6 +111,8 @@ export function renderTaskMath(text) {
       (_, n, d) => `<span class="tmath-frac"><span class="tmath-num">${rootIn(n)}</span><span class="tmath-den">${rootIn(d)}</span></span>`)
     .replace(/⟦r:([^⟧]+)⟧/g, (_, x) => rootMarkup(x))
     .replace(/⟦b:([^⟧]+)⟧/g, (_, x) => `<sub>${x}</sub>`)
+    // ⟦sup:x⟧ — надстрочник (степень с переменным показателем, напр. 2^(1−4x))
+    .replace(/⟦sup:([^⟧]+)⟧/g, (_, x) => `<sup>${x}</sup>`)
     // ⟦iso:A:Z:Sym⟧ — символ нуклида: массовое число A над зарядовым Z (стопкой),
     // прижаты вправо и стоят слева от символа элемента (¹⁴₇N).
     .replace(/⟦iso:([^:⟧]+):([^:⟧]+):([^⟧]+)⟧/g, (_, a, z, s) =>
@@ -141,6 +143,7 @@ export function plainTaskMath(text) {
     .replace(/⟦f:([^:⟧]+):([^:⟧]+)⟧/g, "$1/$2")
     .replace(/⟦r:([^⟧]+)⟧/g, "√$1")
     .replace(/⟦b:([^⟧]+)⟧/g, "$1")
+    .replace(/⟦sup:([^⟧]+)⟧/g, "^($1)")
     .replace(/⟦iso:([^:⟧]+):([^:⟧]+):([^⟧]+)⟧/g, (_, a, z, s) =>
       a.replace(/\d/g, (d) => "⁰¹²³⁴⁵⁶⁷⁸⁹"[+d]) + z.replace(/\d/g, (d) => "₀₁₂₃₄₅₆₇₈₉"[+d]) + s)
     .replace(/⟦cases:([^⟧]+)⟧/g, (_, b) => b.split("⁞").join("; "))
@@ -156,6 +159,7 @@ export function expandSvgMathTokens(svg) {
     .replace(/⟦f:([^:⟧]+):([^:⟧]+)⟧/g, "$1/$2")
     .replace(/⟦r:([^⟧]+)⟧/g, (_, x) => `√<tspan text-decoration="overline">${x}</tspan>`)
     .replace(/⟦b:([^⟧]+)⟧/g, (_, x) => `<tspan baseline-shift="sub" font-size="0.75em">${x}</tspan>`)
+    .replace(/⟦sup:([^⟧]+)⟧/g, (_, x) => `<tspan baseline-shift="super" font-size="0.75em">${x}</tspan>`)
     .replace(/⟦iso:([^:⟧]+):([^:⟧]+):([^⟧]+)⟧/g, (_, a, z, s) =>
       `<tspan baseline-shift="super" font-size="0.7em">${a}</tspan><tspan baseline-shift="sub" font-size="0.7em">${z}</tspan>${s}`)
 }
