@@ -1561,6 +1561,60 @@ function t03CountAbove() {
   return t03Extreme()
 }
 
+// Столбчатая диаграмма: значения по категориям (месяцы). SVG со столбцами.
+function barChartSvg(vals, labels, ytitle) {
+  const { ymin, ymax, ystep } = niceAxis(Math.min(0, ...vals), Math.max(...vals))
+  const W = 600, H = 360, ml = 44, mr = 14, mt = 16, mb = 46
+  const pw = W - ml - mr, ph = H - mt - mb, n = vals.length
+  const bw = (pw / n) * 0.6, gap = (pw / n) * 0.4
+  const Y = (v) => mt + ph * (1 - (v - ymin) / (ymax - ymin))
+  let g = ""
+  for (let v = ymin; v <= ymax + 1e-9; v += ystep) {
+    const y = Y(v)
+    g += `<line x1="${ml}" y1="${y}" x2="${W - mr}" y2="${y}" stroke="#e2e5ea" stroke-width="1"/>`
+    g += `<text x="${ml - 6}" y="${y + 4}" font-size="12" fill="#555" text-anchor="end">${v}</text>`
+  }
+  vals.forEach((v, i) => {
+    const x = ml + i * (bw + gap) + gap / 2
+    g += `<rect x="${x}" y="${Y(v)}" width="${bw}" height="${Y(ymin) - Y(v)}" fill="#5b8def" stroke="#2b6cff" stroke-width="1"/>`
+    g += `<text x="${x + bw / 2}" y="${H - mb + 16}" font-size="10" fill="#555" text-anchor="middle">${labels[i]}</text>`
+  })
+  g += `<line x1="${ml}" y1="${mt}" x2="${ml}" y2="${H - mb}" stroke="#888" stroke-width="1.2"/>`
+  g += `<line x1="${ml}" y1="${H - mb}" x2="${W - mr}" y2="${H - mb}" stroke="#888" stroke-width="1.2"/>`
+  g += `<text x="12" y="${mt + ph / 2}" font-size="11" fill="#333" text-anchor="middle" transform="rotate(-90 12 ${mt + ph / 2})">${ytitle}</text>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" font-family="Arial, sans-serif" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${g}</svg>`
+}
+const MONTHS = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"]
+const MONTHS_FULL = ["январе", "феврале", "марте", "апреле", "мае", "июне", "июле", "августе", "сентябре", "октябре", "ноябре", "декабре"]
+function t03Diagram() {
+  const ctx = pick([
+    { verb: "показана", noun: "среднемесячная температура воздуха в городе N", unit: "°C", ytitle: "t, °C", lo: -14, hi: 24, vdesc: "температура (в градусах Цельсия)" },
+    { verb: "показано", noun: "количество осадков по месяцам", unit: "мм", ytitle: "мм", lo: 10, hi: 90, vdesc: "количество осадков (в миллиметрах)" },
+  ])
+  const n = 12
+  let vals
+  for (let t = 0; t < 200; t++) {
+    vals = Array.from({ length: n }, () => randInt(ctx.lo, ctx.hi))
+    const mx = Math.max(...vals), mn = Math.min(...vals)
+    if (vals.filter((v) => v === mx).length === 1 && vals.filter((v) => v === mn).length === 1) break
+  }
+  const image_url = svgUrl(barChartSvg(vals, MONTHS, ctx.ytitle))
+  const q = pick(["max", "min", "value", "count"])
+  if (q === "value") {
+    const idx = randInt(0, n - 1)
+    return { condition_text: `На диаграмме ${ctx.verb} ${ctx.noun} за каждый месяц. По горизонтали — месяцы, по вертикали — ${ctx.vdesc}. Определите по диаграмме значение за ${MONTHS_FULL[idx]}. Ответ дайте в ${ctx.unit === "°C" ? "градусах Цельсия" : "миллиметрах"}.`, image_url, answer: ru(vals[idx]) }
+  }
+  if (q === "count") {
+    const mn = Math.min(...vals), mx = Math.max(...vals), thr = randInt(mn + 1, mx - 1)
+    return { condition_text: `На диаграмме ${ctx.verb} ${ctx.noun} за каждый месяц. По горизонтали — месяцы, по вертикали — ${ctx.vdesc}. Определите, сколько месяцев значение превышало ${thr} ${ctx.unit}.`, image_url, answer: ru(vals.filter((v) => v > thr).length) }
+  }
+  const hi = q === "max"
+  return {
+    condition_text: `На диаграмме ${ctx.verb} ${ctx.noun} за каждый месяц. По горизонтали — месяцы, по вертикали — ${ctx.vdesc}. Определите по диаграмме ${hi ? "наибольшее" : "наименьшее"} значение. Ответ дайте в ${ctx.unit === "°C" ? "градусах Цельсия" : "миллиметрах"}.`,
+    image_url, answer: ru(hi ? Math.max(...vals) : Math.min(...vals)),
+  }
+}
+
 // №7 — разность между наибольшим и наименьшим значениями.
 function t07Range() {
   const ctx = chartContext(), { arr, dayStart, image_url } = makeChart(ctx)
@@ -1570,6 +1624,56 @@ function t07Range() {
       `Ответ дайте в ${ctx.unit === "°C" ? "градусах Цельсия" : "рублях"}.`,
     image_url,
     answer: ru(Math.max(...arr) - Math.min(...arr)),
+  }
+}
+
+// 4-панельный SVG: графики прямых y=kx+b с подписями А,Б,В,Г.
+function linesPanelsSvg(lines) {
+  const S = 150, pad = 8, R = 4          // диапазон [-R,R] в каждой панели
+  const H = S + 26
+  const W = S * lines.length
+  const letters = ["А", "Б", "В", "Г"]
+  let g = ""
+  lines.forEach((ln, i) => {
+    const ox = i * S, cx = ox + S / 2, cy = pad + (S - 2 * pad) / 2
+    const sc = (S - 2 * pad) / (2 * R)
+    const X = (x) => cx + x * sc, Y = (y) => cy - y * sc
+    g += `<rect x="${ox + 1}" y="1" width="${S - 2}" height="${S - 2}" fill="#fff" stroke="#d0d4da"/>`
+    g += `<clipPath id="cp${i}"><rect x="${ox + 1}" y="1" width="${S - 2}" height="${S - 2}"/></clipPath>`
+    // сетка
+    for (let t = -R; t <= R; t++) {
+      g += `<line x1="${X(t)}" y1="${Y(-R)}" x2="${X(t)}" y2="${Y(R)}" stroke="#eef0f3"/>`
+      g += `<line x1="${X(-R)}" y1="${Y(t)}" x2="${X(R)}" y2="${Y(t)}" stroke="#eef0f3"/>`
+    }
+    // оси
+    g += `<line x1="${X(-R)}" y1="${Y(0)}" x2="${X(R)}" y2="${Y(0)}" stroke="#888"/>`
+    g += `<line x1="${X(0)}" y1="${Y(-R)}" x2="${X(0)}" y2="${Y(R)}" stroke="#888"/>`
+    // прямая y=kx+b, клип по панели
+    const x1 = -R, x2 = R, y1 = ln.k * x1 + ln.b, y2 = ln.k * x2 + ln.b
+    g += `<line x1="${X(x1)}" y1="${Y(y1)}" x2="${X(x2)}" y2="${Y(y2)}" stroke="#2b6cff" stroke-width="2" clip-path="url(#cp${i})"/>`
+    g += `<text x="${ox + S / 2}" y="${S + 18}" font-size="15" font-weight="bold" fill="#333" text-anchor="middle">${letters[i]})</text>`
+  })
+  return `<svg xmlns="http://www.w3.org/2000/svg" font-family="Arial, sans-serif" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${g}</svg>`
+}
+
+// №7 — соответствие графиков y=kx+b и угловых коэффициентов (= производной в x=1).
+function t07SlopeMatch() {
+  // 4 различных целых угловых коэффициента (в т.ч. отрицательные)
+  const ks = shuffle([-2, -1, 1, 2, 3, -3].filter(() => true)).slice(0, 4)
+  const lines = ks.map((k) => ({ k, b: randInt(-2, 2) }))
+  const image_url = svgUrl(linesPanelsSvg(lines))
+  const askDeriv = Math.random() < 0.5
+  // правый столбец — значения k в перемешанном порядке
+  const order = shuffle([0, 1, 2, 3])
+  const right = order.map((i) => ru(ks[i]))
+  const left = ["график А", "график Б", "график В", "график Г"]
+  const answer = ks.map((_, li) => order.indexOf(li) + 1).join("")
+  return {
+    condition_text: `На рисунках изображены графики функций вида y = kx + b. Установите ` +
+      `соответствие между графиками и ${askDeriv ? "значениями производной функции в точке x = 1" : "угловыми коэффициентами прямых"}.\n` +
+      matchBlock({ leftHdr: "ГРАФИКИ", rightHdr: askDeriv ? "ПРОИЗВОДНАЯ В x=1" : "УГЛОВЫЕ КОЭФФИЦИЕНТЫ", left, right }),
+    image_url,
+    answer,
   }
 }
 
@@ -2265,11 +2369,11 @@ function t08Ordering() {
 export const GENERATORS_EGE_BASE = {
   1: [t01Transport, t01Tents, t01TeaPacks, t01Printer, t01Bouquet, t01PassSavings, t01AvgSpeedKmh, t01Paint, t01Paper, t01Feet],
   2: [t02Units],
-  3: [t03Extreme, t03ValueOnDay, t03CountAbove],
+  3: [t03Extreme, t03ValueOnDay, t03CountAbove, t03Diagram],
   4: [t04Current, t04Steps, t04Fahrenheit, t04Centripetal, t04InRadius, t04GeoMean, t04Divisors, t04LawSines],
   5: [t05Tickets, t05Defective, t05CoinTwice, t05Ratio, t05TwoDevices],
   6: [t06Tariff, t06Material],
-  7: [t07Range, t07FallDays],
+  7: [t07Range, t07FallDays, t07SlopeMatch],
   8: [t08Ordering],
   9: [t09TriangleArea, t09QuadArea, t09Length],
   10: [t10Spokes, t10Fence, t10Tiles, t10Slide],
@@ -2330,7 +2434,8 @@ export const GEN_META_EGE_BASE = {
     ["extreme", "Наибольшее/наименьшее значение", t03Extreme],
     ["value-day", "Значение в заданный день", t03ValueOnDay],
     ["count-above", "Сколько дней выше порога", t03CountAbove],
-  ]]],
+  ]],
+    ["Чтение диаграммы", [["diagram", "Столбчатая диаграмма", t03Diagram]]]],
   5: [["Классическая вероятность", [
     ["tickets", "Выученные билеты", t05Tickets],
     ["defective", "Доля брака", t05Defective],
@@ -2347,7 +2452,8 @@ export const GEN_META_EGE_BASE = {
   7: [["Анализ графика", [
     ["range", "Разность max − min", t07Range],
     ["fall-days", "Сколько дней понижалось", t07FallDays],
-  ]]],
+  ]],
+    ["Анализ графиков функций", [["slope-match", "y=kx+b ↔ угловой коэффициент", t07SlopeMatch]]]],
   8: [["Логика утверждений", [["ordering", "Упорядочивание (возраст/рост)", t08Ordering]]]],
   9: [["Квадратная решётка", [
     ["tri-area", "Площадь треугольника", t09TriangleArea],
