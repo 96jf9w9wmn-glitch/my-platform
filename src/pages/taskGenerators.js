@@ -20,6 +20,7 @@ import { GENERATORS_HIST, GEN_META_HIST } from "./taskGeneratorsHist.js"
 import { GENERATORS_BIO, GEN_META_BIO } from "./taskGeneratorsBio.js"
 import { GENERATORS_LIT, GEN_META_LIT } from "./taskGeneratorsLit.js"
 import { GENERATORS_GEO, GEN_META_GEO } from "./taskGeneratorsGeo.js"
+import { GENERATORS_EGE_BASE, GEN_META_EGE_BASE } from "./taskGeneratorsEgeBase.js"
 
 const randInt = (min, max) => min + Math.floor(Math.random() * (max - min + 1))
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)]
@@ -4910,6 +4911,8 @@ GENERATORS["ОГЭ Биология"] = GENERATORS_BIO
 GENERATORS["ОГЭ Литература"] = GENERATORS_LIT
 // ОГЭ по географии — отдельный предмет (генераторы в taskGeneratorsGeo.js).
 GENERATORS["ОГЭ География"] = GENERATORS_GEO
+// ЕГЭ математика (базовый уровень) — отдельный предмет (taskGeneratorsEgeBase.js).
+GENERATORS["ЕГЭ"] = GENERATORS_EGE_BASE
 
 export function hasGenerators(examType, number) {
   return !!GENERATORS[examType]?.[number]?.length
@@ -4987,6 +4990,7 @@ GEN_META["ОГЭ История"] = GEN_META_HIST
 GEN_META["ОГЭ Биология"] = GEN_META_BIO
 GEN_META["ОГЭ Литература"] = GEN_META_LIT
 GEN_META["ОГЭ География"] = GEN_META_GEO
+GEN_META["ЕГЭ"] = GEN_META_EGE_BASE
 
 // Темы номера для UI: [{ theme, items: [{ key, label }] }] (без ссылок на функции).
 export function taskThemes(examType, number) {
