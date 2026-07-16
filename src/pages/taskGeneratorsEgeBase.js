@@ -300,9 +300,314 @@ function t16TrigPythag() {
   }
 }
 
+// --- Недостающие типажи №16 (сверка с эталоном ФИПИ, 2026-07-17) ---------------
+const SUBD = { 0: "₀", 1: "₁", 2: "₂", 3: "₃", 4: "₄", 5: "₅", 6: "₆", 7: "₇", 8: "₈", 9: "₉" }
+const subUni = (n) => String(n).split("").map((c) => SUBD[c] ?? c).join("")
+const divisorsOf = (n) => { const d = []; for (let i = 2; i < n; i++) if (n % i === 0) d.push(i); return d }
+
+// Сумма логарифмов: log_a x + log_a y = log_a(xy), xy = a^k → ответ k.
+// Иногда один аргумент — десятичная дробь (log_7 0,5 + log_7 98 = log_7 49 = 2).
+function t16LogSum() {
+  const a = pick([2, 3, 5, 6, 7]), k = randInt(2, 4), total = a ** k
+  if (Math.random() < 0.4) {                 // десятичный аргумент
+    for (let t = 0; t < 60; t++) {
+      const y = randInt(2, total * 4), x = fr(total, y)
+      if (isTerminating(x) && x[0] / x[1] < 1 && x[0] / x[1] > 0.05) {
+        return { condition_text: `Найдите значение выражения log${sub(a)} ${ru(x[0] / x[1])} + log${sub(a)} ${y}.`, answer: ru(k) }
+      }
+    }
+  }
+  const divs = divisorsOf(total)
+  if (!divs.length) return t16LogSum()
+  const x = pick(divs), y = total / x
+  return { condition_text: `Найдите значение выражения log${sub(a)} ${x} + log${sub(a)} ${y}.`, answer: ru(k) }
+}
+
+// (p/q)·√A·√B, где A·B — точный квадрат S², S кратно q → ответ p·S/q.
+function t16CoefRootProduct() {
+  const q = pick([2, 3, 4, 5]), t2 = randInt(1, 4), S = q * t2, total = S * S
+  const divs = divisorsOf(total)
+  if (!divs.length) return t16CoefRootProduct()
+  const A = pick(divs), B = total / A, p = randInt(2, 9)
+  return { condition_text: `Найдите значение выражения ${FF(String(p), String(q))}${rT(A)} ⋅ ${rT(B)}.`, answer: ru(p * t2) }
+}
+
+// Сумма степенных слагаемых: c₁·b^m + c₂·b^k (+ c₃·b^j). Основание (−1)/(−2) или
+// положительное с ОТРИЦАТЕЛЬНЫМ показателем (c·b^−e, b∈{2,5,10} → конечная десятичная).
+function t16PowerTermsSum() {
+  const neg = Math.random() < 0.4                      // отрицательные показатели
+  const b = neg ? pick([2, 5, 10]) : pick([2, 3, -1, -2])
+  const n = pick([2, 3])
+  let sum = 0, parts = []
+  const bStr = b < 0 ? `(${ru(b)})` : String(b)
+  for (let i = 0; i < n; i++) {
+    const c = neg ? pick([randInt(2, 9), randInt(11, 40) / 10]) : randInt(2, 7)
+    const e = neg ? -randInt(1, 3) : randInt(1, b < 0 ? 6 : 5)
+    sum += c * b ** e
+    parts.push(`${dec(c)} ⋅ ${bStr}${sup(e)}`)
+  }
+  if (neg && !isTerminating(decFr(sum, 4))) return t16PowerTermsSum()
+  return { condition_text: `Найдите значение выражения ${parts.join(" + ")}.`, answer: ru(clean(sum)) }
+}
+
+// Логарифм в показателе: a^(m·log_a b)=b^m  и  a^(k+log_a b)=a^k·b.
+function t16LogInExp() {
+  const a = pick([2, 3, 5, 6])
+  if (Math.random() < 0.5) {
+    const m = 2, b = randInt(2, 7)
+    return { condition_text: `Найдите значение выражения ${a}${supT(`${m} log${subUni(a)} ${b}`)}.`, answer: ru(b ** m) }
+  }
+  const k = randInt(1, 2), b = randInt(2, 8)
+  return { condition_text: `Найдите значение выражения ${a}${supT(`${k} + log${subUni(a)} ${b}`)}.`, answer: ru(a ** k * b) }
+}
+
+// Сопряжённые с коэффициентами: (p√a ± q√b)(p√a ∓ q√b) = p²a − q²b.
+function t16ConjugateCoef() {
+  for (let t = 0; t < 100; t++) {
+    const a = pick([2, 3, 5, 7, 11, 13]), b = pick([2, 3, 5]), p = randInt(2, 4), q = randInt(1, 3)
+    const ans = p * p * a - q * q * b
+    if (ans <= 0) continue
+    const left = q === 1 ? `${p}${rT(a)} − ${rT(b)}` : `${p}${rT(a)} − ${q}${rT(b)}`
+    const right = q === 1 ? `${p}${rT(a)} + ${rT(b)}` : `${p}${rT(a)} + ${q}${rT(b)}`
+    return { condition_text: `Найдите значение выражения (${left})(${right}).`, answer: ru(ans) }
+  }
+  return { condition_text: `Найдите значение выражения (2${rT(5)} − ${rT(3)})(2${rT(5)} + ${rT(3)}).`, answer: "17" }
+}
+
+// Корень из произведения степеней: √(a^m·b^k), m,k чётные → a^(m/2)·b^(k/2).
+function t16RootOfPowerProduct() {
+  const a = pick([2, 3, 5])
+  const bb = pick([3, 5, 7].filter((x) => x !== a))
+  const m = 2 * randInt(1, 3), k = 2 * randInt(1, 2)
+  return {
+    condition_text: `Найдите значение выражения ${rT(`${a}${sup(m)} ⋅ ${bb}${sup(k)}`)}.`,
+    answer: ru(a ** (m / 2) * bb ** (k / 2)),
+  }
+}
+
+// Раскрытие: (√A − √B)·√c = √(Ac) − √(Bc), A=c·s₁², B=c·s₂² → c(s₁−s₂).
+function t16DistributeRoot() {
+  const c = pick([2, 3, 5, 6, 7]), s1 = randInt(2, 4), s2 = randInt(1, s1 - 1)
+  const A = c * s1 * s1, B = c * s2 * s2
+  return {
+    condition_text: `Найдите значение выражения (${rT(A)} − ${rT(B)}) ⋅ ${rT(c)}.`,
+    answer: ru(c * (s1 - s2)),
+  }
+}
+
+// Квадрат коэффициента-корня: ((k√a)²)/N = k²a/N (может быть …,5).
+function t16SquareCoefRoot() {
+  for (let t = 0; t < 200; t++) {
+    const k = randInt(2, 7), a = pick([2, 3, 5, 6, 7]), val = k * k * a
+    const N = pick([...divisorsOf(val), ...divisorsOf(2 * val).map((d) => d)])
+    if (!N) continue
+    const res = fr(val, N)
+    if (!isTerminating(res) || res[0] / res[1] < 1) continue
+    return {
+      condition_text: `Найдите значение выражения ${FF(`(${k}√{${a}})${sup(2)}`, String(N))}.`,
+      answer: fracToAnswer(res),
+    }
+  }
+  return { condition_text: `Найдите значение выражения ${FF(`(6√{5})${sup(2)}`, "24")}.`, answer: "7,5" }
+}
+
+// Вложенный логарифм: log_a(log_b c), c=b^(a^w) → ответ w.
+function t16NestedLog() {
+  const a = pick([2, 3]), w = randInt(1, 2), v = a ** w, c = a ** v
+  return { condition_text: `Найдите значение выражения log${sub(a)}(log${sub(a)} ${c}).`, answer: ru(w) }
+}
+
+// Логарифм по основанию корня: log_(√a)(a^k) = 2k.
+function t16LogBaseSqrt() {
+  const a = pick([2, 3, 5]), k = randInt(2, 4)
+  return { condition_text: `Найдите значение выражения log${sub(`√(${a})`)}(${a}${sup(k)}).`, answer: ru(2 * k) }
+}
+
+// Приведение тригонометрии со значением: коэффициент × функция(угол) с «красивым» значением.
+function t16TrigValue() {
+  const combos = [
+    { f: "sin", ang: 30, v: [1, 2] }, { f: "sin", ang: 150, v: [1, 2] }, { f: "sin", ang: 90, v: [1, 1] },
+    { f: "sin", ang: 270, v: [-1, 1] }, { f: "cos", ang: 60, v: [1, 2] }, { f: "cos", ang: 120, v: [-1, 2] },
+    { f: "cos", ang: 180, v: [-1, 1] }, { f: "cos", ang: 0, v: [1, 1] }, { f: "tg", ang: 45, v: [1, 1] },
+    { f: "tg", ang: 135, v: [-1, 1] }, { f: "tg", ang: 180, v: [0, 1] },
+  ]
+  const c = pick(combos), turns = randInt(0, 3) * 360, ang = c.ang + turns
+  // коэффициент кратен знаменателю значения → целый ответ
+  const kmag = c.v[1] * randInt(1, 8), sgn = pick([1, -1]), k = sgn * kmag
+  const ans = (k * c.v[0]) / c.v[1]
+  const kStr = k === 1 ? "" : k === -1 ? "−" : ru(k) + " "
+  return {
+    condition_text: `Найдите значение выражения ${kStr}${c.f} ${ang}°.`,
+    answer: ru(ans),
+  }
+}
+
+// tg по данному sin/cos и четверти: sin α = a/√b, b=a²+leg² → tg = ±a/leg.
+function t16TrigPythagTg() {
+  // [a, leg] с b=a²+leg² НЕ полным квадратом (√b иррационально, как у ФИПИ)
+  const trip = pick([[1, 2], [2, 3], [2, 5], [3, 5], [4, 5], [1, 3], [3, 7], [1, 4], [2, 7]])
+  const [a, leg] = trip, b = a * a + leg * leg
+  const known = pick(["sin", "cos"])
+  // если дано sin=a/√b → cos=leg/√b, tg=a/leg; если дано cos=a/√b → tg=leg/a
+  const tgMag = known === "sin" ? fr(a, leg) : fr(leg, a)
+  const givenNum = a
+  const qName = pick(Object.keys(QUARTER)), q = QUARTER[qName]
+  const knownSign = q[known] < 0 ? "− " : ""
+  // tg знак = sin·cos знаки
+  const tgSign = q.sin * q.cos < 0 ? "−" : ""
+  const knownStr = `${knownSign}${FF(String(givenNum), rIn(b))}`
+  const mag = tgMag[1] === 1 ? String(tgMag[0]) : ru(tgMag[0] / tgMag[1])
+  if (!isTerminating(tgMag)) return t16TrigPythagTg()
+  return {
+    condition_text: `Найдите tg α, если ${known} α = ${knownStr} и ${qName}.`,
+    answer: tgSign + mag,
+  }
+}
+
+// Обобщённое частное/произведение степеней одного основания (много форм → одна степень).
+function t16PowerExpr() {
+  const a = pick([2, 3, 5, 7])
+  const P = (e) => sup(e)                              // показатель (в т.ч. отрицательный)
+  const posOnly = Math.random() < 0.4                  // иногда только положительные показатели
+  const E = () => posOnly ? pick([2, 3, 4, 5, 6, 7, 8]) : pick([-9, -8, -7, -6, -4, -3, -2, 2, 3, 4, 5, 6])
+  const shapes = [
+    () => { const p = E(), q = E(), r = E(); return { s: FF(`${a}${P(p)} ⋅ ${a}${P(q)}`, `${a}${P(r)}`), net: p + q - r } },
+    () => { const p = E(), q = E(), r = E(); return { s: FF(`${a}${P(p)}`, `${a}${P(q)} ⋅ ${a}${P(r)}`), net: p - q - r } },
+    () => { const p = E(), q = E(), r = E(); return { s: `${FF(`${a}${P(p)}`, `${a}${P(q)}`)} : ${a}${P(r)}`, net: p - q - r } },
+    () => { const p = E(), q = E(), r = E(); return { s: `${a}${P(p)} ⋅ ${FF(`${a}${P(q)}`, `${a}${P(r)}`)}`, net: p + q - r } },
+    () => { const p = E(), q = E(); return { s: FF(`${a}${P(-Math.abs(p))}`, `(${a}${P(q)})${P(-1)}`), net: -Math.abs(p) + q } },
+    () => { const p = E(), q = E(); return { s: `${a}${P(p)} ⋅ ${a}${P(q)} : ${a}${P(E())}`, net: 0 } },
+  ]
+  for (let t = 0; t < 80; t++) {
+    const sh = shapes[randInt(0, shapes.length - 2)]()   // последняя форма — только как основа
+    if (sh.net >= 1 && sh.net <= 6) return { condition_text: `Найдите значение выражения ${sh.s}.`, answer: ru(a ** sh.net) }
+  }
+  return t16PowerQuotient()
+}
+
+// Обобщённые сопряжённые: (c₁√a ± c₂√b)(c₁√a ∓ c₂√b) и (c√a ± m)(c√a ∓ m).
+function t16ConjugateGen() {
+  for (let t = 0; t < 100; t++) {
+    const withRoot = Math.random() < 0.6
+    const a = pick([2, 3, 5, 7, 11, 13]), c1 = pick([1, 2, 3])
+    if (withRoot) {
+      const b = pick([2, 3, 5]), c2 = pick([1, 2, 3])
+      const ans = c1 * c1 * a - c2 * c2 * b
+      if (ans <= 0) continue
+      const t1 = c1 === 1 ? rT(a) : `${c1}${rT(a)}`, t2 = c2 === 1 ? rT(b) : `${c2}${rT(b)}`
+      const [f, g] = Math.random() < 0.5 ? [`${t1} − ${t2}`, `${t1} + ${t2}`] : [`${t1} + ${t2}`, `${t1} − ${t2}`]
+      return { condition_text: `Найдите значение выражения (${f})(${g}).`, answer: ru(ans) }
+    }
+    const m = randInt(2, 9), ans = c1 * c1 * a - m * m
+    if (ans <= 0) continue
+    const t1 = c1 === 1 ? rT(a) : `${c1}${rT(a)}`
+    const [f, g] = Math.random() < 0.5 ? [`${t1} − ${m}`, `${t1} + ${m}`] : [`${t1} + ${m}`, `${t1} − ${m}`]
+    return { condition_text: `Найдите значение выражения (${f})(${g}).`, answer: ru(ans) }
+  }
+  return { condition_text: `Найдите значение выражения (${rT(5)} − 2)(${rT(5)} + 2).`, answer: "1" }
+}
+
+// Обобщённое частное корней: √a/(k√b), √(a·b)/√(c·d), с коэффициентами.
+function t16RootQuotientGen() {
+  for (let t = 0; t < 100; t++) {
+    const q = randInt(2, 8), b = pick([2, 3, 5, 7]), a = q * q * b
+    const shape = pick(["denCoef", "prodInside", "numCoef"])
+    if (shape === "denCoef") {                        // √(k²·a)/(k√a) = 1 … делаем √A/(k√B)=q/k целым при k|q
+      const k = pick([2, 3, 4]); if (q % k) continue
+      return { condition_text: `Найдите значение выражения ${FF(rIn(a), `${k}${rIn(b)}`)}.`, answer: ru(q / k) }
+    }
+    if (shape === "prodInside") {                     // √(x·y)/√(u·v) = q
+      const x = randInt(2, 9), y = a / x
+      if (!Number.isInteger(y)) continue
+      const u = randInt(2, 6), v = b / u
+      if (!Number.isInteger(v) || v < 1) continue
+      return { condition_text: `Найдите значение выражения ${FF(`√{${x} ⋅ ${y}}`, `√{${u} ⋅ ${v}}`)}.`, answer: ru(q) }
+    }
+    const k = randInt(2, 5)                            // (k√A)/√B
+    return { condition_text: `Найдите значение выражения ${FF(`${k}${rIn(a)}`, rIn(b))}.`, answer: ru(k * q) }
+  }
+  return t16RootQuotient()
+}
+
+// Произведение корней с десятичным операндом: √a · √(d) = √(целый квадрат).
+function t16RootProductDec() {
+  for (let t = 0; t < 100; t++) {
+    const r = randInt(3, 9), sq = r * r
+    // sq = a · d, где d — «красивая» десятичная (×0,5)
+    const half = pick([0.5, 1.5, 2.5, 3.5])
+    const a = sq / half
+    if (!Number.isInteger(a)) continue
+    const [f1, f2] = Math.random() < 0.5 ? [rT(a), rT(ru(half))] : [rT(ru(half)), rT(a)]
+    return { condition_text: `Найдите значение выражения ${f1} ⋅ ${f2}.`, answer: ru(r) }
+  }
+  return { condition_text: `Найдите значение выражения ${rT(14)} ⋅ ${rT("3,5")}.`, answer: "7" }
+}
+
+// Число, делённое на квадрат коэф.-корня: N/((k√a)^m). Часто m=2 → N/(k²·a).
+function t16PowerOverRoot() {
+  for (let t = 0; t < 100; t++) {
+    const k = randInt(2, 5), a = pick([2, 3, 5]), denom = k * k * a
+    const ans = randInt(2, 12), N = ans * denom
+    if (N > 4000) continue
+    return { condition_text: `Найдите значение выражения ${FF(String(N), `(${k}√{${a}})${sup(2)}`)}.`, answer: ru(ans) }
+  }
+  return { condition_text: `Найдите значение выражения ${FF("120", `(2√{5})${sup(2)}`)}.`, answer: "6" }
+}
+
+// (log_a b^k)/(m·log_a b) = k/m.
+function t16LogPowerRatio() {
+  const a = pick([2, 3, 5, 7]), b = randInt(2, 8), m = randInt(2, 4), k = m * randInt(1, 3)
+  return {
+    condition_text: `Найдите значение выражения ${FF(`log${subUni(a)}(${b}${sup(k)})`, `${m} log${subUni(a)} ${b}`)}.`,
+    answer: ru(k / m),
+  }
+}
+
+// a^(log_a b) − c = b − c.
+function t16PowLogMinus() {
+  const a = pick([2, 3, 5, 7]), b = randInt(3, 20), c = randInt(1, b - 1)
+  return {
+    condition_text: `Найдите значение выражения ${a}${supT(`log${subUni(a)} ${b}`)} − ${c}.`,
+    answer: ru(b - c),
+  }
+}
+
+// Тригонометрия с √-коэффициентом: k√p · f(θ), где f(θ) содержит √p → рационально.
+function t16TrigSqrtCoef() {
+  const combos = [
+    { f: "sin", ang: 60, p: 3, val: [1, 2] }, { f: "sin", ang: 120, p: 3, val: [1, 2] },
+    { f: "cos", ang: 30, p: 3, val: [1, 2] }, { f: "cos", ang: 150, p: 3, val: [-1, 2] },
+    { f: "tg", ang: 30, p: 3, val: [1, 3] }, { f: "tg", ang: 60, p: 3, val: [1, 1] },
+    { f: "sin", ang: 45, p: 2, val: [1, 2] }, { f: "cos", ang: 45, p: 2, val: [1, 2] },
+  ]
+  const c = pick(combos), turns = randInt(0, 3) * 360
+  // множитель k·√p; значение f = (val0/val1)·√p → k·√p·(val0/val1)·√p = k·val0·p/val1
+  const kmag = c.val[1] * randInt(1, 6), sgn = pick([1, -1]), k = sgn * kmag
+  const ans = (k * c.val[0] * c.p) / c.val[1]
+  const kStr = kmag === 1 ? "" : `${kmag} `
+  return {
+    condition_text: `Найдите значение выражения ${sgn < 0 ? "−" : ""}${kStr}${rT(c.p)} ${c.f} ${c.ang + turns}°.`,
+    answer: ru(ans),
+  }
+}
+
+// Логарифм по основанию √a: log_(√a) N = 2·log_a N (берём N — степень a).
+function t16LogBaseSqrtN() {
+  const a = pick([2, 3, 5]), k = randInt(1, 4), N = a ** k
+  return { condition_text: `Найдите значение выражения log${sub(`√(${a})`)} ${N}.`, answer: ru(2 * k) }
+}
+
+// Сумма степеней отрицательного основания без коэффициента: (−k)^m + (−k)^n + …
+function t16NegPowerSum() {
+  const b = pick([-1, -2, -3])
+  const n = pick([2, 3])
+  let sum = 0, parts = []
+  for (let i = 0; i < n; i++) { const e = randInt(1, 6); sum += b ** e; parts.push(`(${ru(b)})${sup(e)}`) }
+  return { condition_text: `Найдите значение выражения ${parts.join(" + ")}.`, answer: ru(sum) }
+}
+
 // =====================================================================================
-// №17 — Простейшие уравнения. Экспоненциальные (переменная в показателе) отложены:
-// нужен токен надстрочника (renderTaskMath его пока не умеет).
+// №17 — Простейшие уравнения.
 // =====================================================================================
 
 // Линейное со скобкой: A(x − B) + C = D·x + E, целый корень x0.
@@ -1694,7 +1999,11 @@ export const GENERATORS_EGE_BASE = {
   14: [t14FracChain, t14DivBracket, t14MixDecFrac, t14Decimals],
   15: [t15Discount, t15PercentChange, t15PercentOfWhole, t15Tax, t15Interest, t15Markup, t15MaxCount],
   16: [t16PowerQuotient, t16PowerNested, t16RootProduct, t16RootQuotient, t16Conjugate,
-    t16StandardForm, t16PlaceValue, t16LogDiff, t16TrigProduct, t16TrigReduction, t16TrigPythag],
+    t16StandardForm, t16PlaceValue, t16LogDiff, t16TrigProduct, t16TrigReduction, t16TrigPythag,
+    t16LogSum, t16CoefRootProduct, t16PowerTermsSum, t16LogInExp, t16ConjugateCoef,
+    t16RootOfPowerProduct, t16DistributeRoot, t16SquareCoefRoot, t16NestedLog, t16LogBaseSqrt, t16TrigValue,
+    t16PowerExpr, t16ConjugateGen, t16RootQuotientGen, t16RootProductDec, t16PowerOverRoot,
+    t16LogPowerRatio, t16PowLogMinus, t16TrigSqrtCoef, t16LogBaseSqrtN, t16NegPowerSum, t16TrigPythagTg],
   17: [t17Linear, t17Quadratic, t17Exponential, t17Logarithm, t17SquareRoot],
   18: [t18Matching],
   19: [t19Divisible, t19RangeDigitSum],
@@ -1824,12 +2133,27 @@ export const GEN_META_EGE_BASE = {
       ["std-form", "Действия со степенями 10", t16StandardForm],
       ["place-value", "Разложение по разрядам", t16PlaceValue],
     ]],
+    ["Корни (продолжение)", [
+      ["coef-root-prod", "(p/q)√A·√B", t16CoefRootProduct],
+      ["conj-coef", "Сопряжённые с коэффициентами", t16ConjugateCoef],
+      ["root-pow-prod", "√ произведения степеней", t16RootOfPowerProduct],
+      ["distribute-root", "(√A−√B)·√c", t16DistributeRoot],
+      ["sq-coef-root", "((k√a)²)/N", t16SquareCoefRoot],
+    ]],
+    ["Степени (продолжение)", [
+      ["power-terms-sum", "Сумма c·b^m", t16PowerTermsSum],
+    ]],
     ["Логарифмы", [
       ["log-diff", "Разность логарифмов", t16LogDiff],
+      ["log-sum", "Сумма логарифмов", t16LogSum],
+      ["log-in-exp", "Логарифм в показателе", t16LogInExp],
+      ["nested-log", "Вложенный логарифм", t16NestedLog],
+      ["log-base-sqrt", "Логарифм по основанию √a", t16LogBaseSqrt],
     ]],
     ["Тригонометрия", [
       ["trig-prod", "tg·ctg", t16TrigProduct],
-      ["trig-reduction", "Приведение углов", t16TrigReduction],
+      ["trig-reduction", "Приведение углов (tg 45)", t16TrigReduction],
+      ["trig-value", "Приведение со значением", t16TrigValue],
       ["trig-pythag", "sin ↔ cos по четверти", t16TrigPythag],
     ]]],
   17: [["Линейные и квадратные", [
