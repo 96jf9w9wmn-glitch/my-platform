@@ -960,6 +960,69 @@ function t01Feet() {
 }
 
 // =====================================================================================
+// №08 — Анализ утверждений. Истинность утверждения = «верно при указанных условиях»,
+// т.е. следует из условий (истинно во ВСЕХ согласованных с условиями порядках), а не в
+// одном тайном. Поэтому перебираем все перестановки рангов и проверяем следование.
+// =====================================================================================
+
+function permute4(a) {
+  if (a.length <= 1) return [a]
+  const out = []
+  a.forEach((x, i) => { for (const p of permute4([...a.slice(0, i), ...a.slice(i + 1)])) out.push([x, ...p]) })
+  return out
+}
+
+// Упорядочивание по возрасту/росту: цепочка из трёх + четвёртый по «не старше» (ambiguity).
+function t08Ordering() {
+  const dim = pick([
+    { verbHi: "старше", verbLo: "младше", top: "самый старший", bot: "самый младший", intro: "по возрасту" },
+    { verbHi: "выше", verbLo: "ниже", top: "самый высокий", bot: "самый низкий", intro: "по росту" },
+  ])
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const names = shuffle(["Виктор", "Денис", "Егор", "Андрей", "Борис", "Глеб", "Игорь", "Павел"]).slice(0, 4)
+    // тайный порядок (для вывода истинных условий), asc = от меньшего к большему
+    const secret = shuffle([0, 1, 2, 3])
+    const sr = {}; names.forEach((n, i) => (sr[n] = secret[i]))
+    const asc = [...names].sort((a, b) => sr[a] - sr[b])
+    const [s, p, q, rr] = asc   // s — «свободный» младший, p<q<rr — цепочка
+    // условия (истинны при secret, оставляют неоднозначность позиции s относительно p)
+    const conds = [
+      { text: `${q} ${dim.verbHi}, чем ${p}, но ${dim.verbLo}, чем ${rr}.`, ok: (o) => o[q] > o[p] && o[q] < o[rr] },
+      { text: `${s} не ${dim.verbHi}, чем ${q}.`, ok: (o) => o[s] < o[q] },
+    ]
+    // все согласованные с условиями назначения рангов
+    const worlds = permute4([0, 1, 2, 3])
+      .map((perm) => { const o = {}; names.forEach((n, i) => (o[n] = perm[i])); return o })
+      .filter((o) => conds.every((c) => c.ok(o)))
+    if (worlds.length < 2) continue   // нужна неоднозначность, иначе задача тривиальна
+    // пул кандидатов-утверждений
+    const cand = []
+    for (const X of names) {
+      cand.push({ text: `${X} — ${dim.top} из всех четверых.`, ok: (o) => o[X] === 3 })
+      cand.push({ text: `${X} — ${dim.bot} из всех четверых.`, ok: (o) => o[X] === 0 })
+      for (const Y of names) if (X !== Y) cand.push({ text: `${X} ${dim.verbHi}, чем ${Y}.`, ok: (o) => o[X] > o[Y] })
+    }
+    // следование: истинно во ВСЕХ мирах; «ложно» = существует мир-опровержение
+    for (const c of cand) c.entailed = worlds.every((o) => c.ok(o))
+    const yes = shuffle(cand.filter((c) => c.entailed))
+    const no = shuffle(cand.filter((c) => !c.entailed))
+    if (yes.length < 1 || no.length < 1) continue
+    // берём 4 утверждения: 1–2 верных + остальные неверные, вперемешку
+    const nYes = Math.min(yes.length, randInt(1, 2))
+    const chosen = shuffle([...yes.slice(0, nYes), ...no.slice(0, 4 - nYes)])
+    if (chosen.length < 4) continue
+    const answer = chosen.map((c, i) => (c.entailed ? i + 1 : null)).filter(Boolean).join("")
+    const list = chosen.map((c, i) => `${i + 1}) ${c.text}`).join("\n")
+    return {
+      condition_text: `Известно, что ${conds.map((c) => c.text).join(" ")} Выберите все утверждения, ` +
+        `которые верны при указанных условиях, и запишите в ответе их номера.\n${list}`,
+      answer,
+    }
+  }
+  return { condition_text: `Известно, что Егор старше, чем Денис, но младше, чем Виктор. Андрей не старше, чем Егор. Выберите все утверждения, которые верны при указанных условиях, и запишите в ответе их номера.\n1) Виктор — самый старший из всех четверых.\n2) Андрей — самый младший из всех четверых.\n3) Егор старше, чем Денис.`, answer: "13" }
+}
+
+// =====================================================================================
 // Реестр и мета-темы
 // =====================================================================================
 
@@ -967,6 +1030,7 @@ export const GENERATORS_EGE_BASE = {
   1: [t01Transport, t01Tents, t01TeaPacks, t01Printer, t01Bouquet, t01PassSavings, t01AvgSpeedKmh, t01Paint, t01Paper, t01Feet],
   4: [t04Current, t04Steps, t04Fahrenheit, t04Centripetal, t04InRadius, t04GeoMean, t04Divisors, t04LawSines],
   5: [t05Tickets, t05Defective, t05CoinTwice, t05Ratio, t05TwoDevices],
+  8: [t08Ordering],
   14: [t14FracChain, t14DivBracket, t14MixDecFrac, t14Decimals],
   15: [t15Discount, t15PercentChange, t15PercentOfWhole, t15Tax, t15Interest, t15Markup, t15MaxCount],
   16: [t16PowerQuotient, t16PowerNested, t16RootProduct, t16RootQuotient, t16Conjugate,
@@ -1017,6 +1081,7 @@ export const GEN_META_EGE_BASE = {
       ["coin-twice", "Монета дважды", t05CoinTwice],
       ["two-devices", "Два независимых прибора", t05TwoDevices],
     ]]],
+  8: [["Логика утверждений", [["ordering", "Упорядочивание (возраст/рост)", t08Ordering]]]],
   14: [["Обыкновенные дроби", [
     ["frac-chain", "Цепочка дробей", t14FracChain],
     ["div-bracket", "Деление на скобку", t14DivBracket],
