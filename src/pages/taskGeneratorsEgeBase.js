@@ -74,6 +74,55 @@ const rIn = (x) => `√{${x}}`
 // №14 — Вычисления (арифметика дробей и десятичных). Ответ всегда конечная десятичная.
 // =====================================================================================
 
+// Обобщённое арифметическое выражение (дроби/смешанные/десятичные + операции + скобки).
+// Это единый типаж №14 «вычисление выражения»: дерево операндов, точное вычисление Frac,
+// расстановка скобок по приоритету (⋅: выше +−; правый операнд − и : скобками). Итог —
+// конечная десятичная. Внешнее деление даём стопкой (a)/(b), внутренние — как «:».
+const T14OP = { "+": { p: 1, f: fAdd, a: 1 }, "−": { p: 1, f: fSub, a: 0 }, "⋅": { p: 2, f: fMul, a: 1 }, ":": { p: 2, f: fDiv, a: 0 } }
+function t14operand(kinds) {
+  const k = pick(kinds || ["frac", "frac", "mixed", "dec", "dec", "int"])
+  if (k === "frac") { const d = pick([3, 4, 5, 6, 9, 12, 20, 25, 45]), n = randInt(1, d - 1); return { leaf: 1, v: fr(n, d), s: fT(n, d) } }
+  if (k === "mixed") { const d = pick([3, 5, 6, 9, 12, 20]), n = randInt(1, d - 1), w = randInt(1, 4); return { leaf: 1, v: fr(w * d + n, d), s: `${w}${fT(n, d)}` } }
+  if (k === "dec") { const p = pick([1, 1, 2]), k2 = randInt(1, 95), val = k2 / 10 ** p; return { leaf: 1, v: decFr(val, p), s: ru(val) } }
+  const n = randInt(1, 9); return { leaf: 1, v: fr(n, 1), s: String(n) }
+}
+const t14bin = (l, op, r) => ({ op, l, r, v: T14OP[op].f(l.v, r.v) })
+const t14fline = (num, den) => ({ fline: 1, num, den, v: fDiv(num.v, den.v) })
+function t14render(node, pp = 0) {
+  if (node.leaf) return node.s
+  if (node.fline) return `(${t14render(node.num)})/(${t14render(node.den)})`
+  const o = T14OP[node.op]
+  const inner = `${t14render(node.l, o.p)} ${node.op} ${t14render(node.r, o.p + (o.a ? 0 : 1))}`
+  return o.p < pp ? `(${inner})` : inner
+}
+const t14neg = (o) => ({ leaf: 1, v: fSub(fr(0, 1), o.v), s: `(−${o.s})` })
+function t14Arith() {
+  const pm = () => pick(["+", "−"]), md = () => pick(["⋅", ":"])
+  const templates = [
+    () => t14bin(t14operand(), pick(["+", "−", "⋅", ":"]), t14operand()),
+    () => t14bin(t14operand(), pm(), t14bin(t14operand(), md(), t14operand())),   // A ± B∘C
+    () => t14bin(t14bin(t14operand(), md(), t14operand()), pm(), t14operand()),   // A∘B ± C
+    () => t14bin(t14bin(t14operand(), pm(), t14operand()), md(), t14operand()),   // (A±B)∘C
+    () => t14bin(t14operand(), md(), t14bin(t14operand(), pm(), t14operand())),   // A∘(B±C)
+    () => t14bin(t14bin(t14operand(), pm(), t14operand()), pm(), t14operand()),   // A ± B ± C (цепочка)
+    () => t14bin(t14bin(t14operand(), md(), t14operand()), md(), t14operand()),   // A ∘ B ∘ C (цепочка)
+    () => t14bin(t14operand(["int"]), "⋅", t14bin(t14bin(t14operand(["frac"]), pm(), t14operand(["frac"])), pm(), t14operand(["frac"]))), // n⋅(a±b±c)
+    () => t14bin(t14bin(t14operand(), md(), t14neg(t14operand())), pm(), t14operand()),  // A∘(−B) ± C
+    () => t14fline(t14operand(["frac", "dec", "mixed", "int"]), t14bin(t14operand(), pm(), t14operand())), // A/(B±C)
+    () => t14fline(t14bin(t14operand(), pm(), t14operand()), t14operand(["frac", "dec", "int"])),  // (A±B)/C
+    () => t14fline(t14operand(["dec", "int"]), t14bin(t14operand(["int"]), "+", t14operand(["frac"]))),  // A/(n + p/q)
+  ]
+  for (let t = 0; t < 400; t++) {
+    const tree = pick(templates)()
+    const v = tree.v
+    if (v[1] === 0) continue
+    const val = v[0] / v[1]
+    if (!isTerminating(v) || Math.abs(val) > 1000 || Math.abs(val) < 0.001) continue
+    return { condition_text: `Найдите значение выражения ${t14render(tree)}.`, answer: fracToAnswer(v) }
+  }
+  return t14MixDecFrac()
+}
+
 // (a/b ± c/b) : e/g — цепочка обыкновенных дробей.
 function t14FracChain() {
   for (let t = 0; t < 300; t++) {
@@ -1996,7 +2045,7 @@ export const GENERATORS_EGE_BASE = {
   12: [t12RhombusBisector, t12RhombusPerimeter, t12ParallelogramPerp, t12RectangleSide,
     t12RectangleArea, t12RhombusSmallDiag, t12RightTriangleExt, t12TrapezoidLateral, t12TrapezoidFormula],
   13: [t13BoxSurface, t13SphereRatio, t13PrismVolume, t13HexPyramidLateral, t13RectPyramidHeight, t13TriPyramidVolume],
-  14: [t14FracChain, t14DivBracket, t14MixDecFrac, t14Decimals],
+  14: [t14Arith, t14FracChain, t14DivBracket, t14MixDecFrac, t14Decimals],
   15: [t15Discount, t15PercentChange, t15PercentOfWhole, t15Tax, t15Interest, t15Markup, t15MaxCount],
   16: [t16PowerQuotient, t16PowerNested, t16RootProduct, t16RootQuotient, t16Conjugate,
     t16StandardForm, t16PlaceValue, t16LogDiff, t16TrigProduct, t16TrigReduction, t16TrigPythag,
