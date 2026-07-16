@@ -855,6 +855,152 @@ function t21AvgFifth() {
 }
 
 // =====================================================================================
+// №03 / №07 — Чтение и анализ графиков. SVG-график строится кодом, ответ считается по
+// тем же данным (гарантированно совпадает с картинкой).
+// =====================================================================================
+
+const svgUrl = (svg) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+
+// «Красивые» границы и шаг оси Y (5–8 линий сетки).
+function niceAxis(min, max) {
+  const range = Math.max(max - min, 1)
+  const raw = range / 6
+  const step = [1, 2, 5, 10, 20, 25, 50, 100].find((s) => s >= raw) || 200
+  return { ymin: Math.floor(min / step) * step, ymax: Math.ceil(max / step) * step, ystep: step }
+}
+
+// Точечный график по дням: значения arr[i] при x = dayStart+i, точки соединены линией.
+function lineChartSvg(arr, dayStart, ytitle) {
+  const { ymin, ymax, ystep } = niceAxis(Math.min(...arr), Math.max(...arr))
+  const W = 580, H = 360, ml = 46, mr = 14, mt = 16, mb = 34
+  const pw = W - ml - mr, ph = H - mt - mb, n = arr.length
+  const X = (i) => ml + (pw * i) / (n - 1)
+  const Y = (v) => mt + ph * (1 - (v - ymin) / (ymax - ymin))
+  let g = ""
+  for (let v = ymin; v <= ymax + 1e-9; v += ystep) {
+    const y = Y(v)
+    g += `<line x1="${ml}" y1="${y}" x2="${W - mr}" y2="${y}" stroke="#e2e5ea" stroke-width="1"/>`
+    g += `<text x="${ml - 6}" y="${y + 4}" font-size="12" fill="#555" text-anchor="end">${v}</text>`
+  }
+  for (let i = 0; i < n; i++) {
+    const x = X(i)
+    g += `<line x1="${x}" y1="${mt}" x2="${x}" y2="${H - mb}" stroke="#eef0f3" stroke-width="1"/>`
+    g += `<text x="${x}" y="${H - mb + 16}" font-size="11" fill="#555" text-anchor="middle">${dayStart + i}</text>`
+  }
+  g += `<line x1="${ml}" y1="${mt}" x2="${ml}" y2="${H - mb}" stroke="#888" stroke-width="1.2"/>`
+  g += `<line x1="${ml}" y1="${H - mb}" x2="${W - mr}" y2="${H - mb}" stroke="#888" stroke-width="1.2"/>`
+  g += `<polyline points="${arr.map((v, i) => `${X(i)},${Y(v)}`).join(" ")}" fill="none" stroke="#2b6cff" stroke-width="1.6"/>`
+  arr.forEach((v, i) => (g += `<circle cx="${X(i)}" cy="${Y(v)}" r="3" fill="#2b6cff"/>`))
+  g += `<text x="12" y="${mt + ph / 2}" font-size="11" fill="#333" text-anchor="middle" transform="rotate(-90 12 ${mt + ph / 2})">${ytitle}</text>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" font-family="Arial, sans-serif" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${g}</svg>`
+}
+
+// Ряд значений с УНИКАЛЬНЫМИ максимумом и минимумом (для однозначных вопросов).
+function chartSeries(lo, hi, spread) {
+  for (let t = 0; t < 500; t++) {
+    const n = randInt(11, 14)
+    const arr = [randInt(lo, hi)]
+    for (let i = 1; i < n; i++) arr.push(Math.max(lo - 2, Math.min(hi + 2, arr[i - 1] + randInt(-spread, spread))))
+    const mx = Math.max(...arr), mn = Math.min(...arr)
+    if (arr.filter((v) => v === mx).length === 1 && arr.filter((v) => v === mn).length === 1 && mx - mn >= 6)
+      return arr
+  }
+  return [1, 5, 3, 8, 2, 9, 4, 7, 6, 10, 0]
+}
+
+// Контекст графика (что показано): температура / цена акции.
+function chartContext() {
+  return pick([
+    { noun: "среднесуточная температура воздуха", city: pick(["Москве", "Казани", "Самаре", "Перми"]),
+      unit: "°C", ytitle: "t, °C", xdesc: "числа месяца", vdesc: "температура (в градусах Цельсия)",
+      lo: -12, hi: 22, spread: 5, sup: "наибольшую", sub: "наименьшую", what: "температуру", whatWas: "температура" },
+    { noun: "цена одной акции компании на момент закрытия торгов", city: null,
+      unit: "руб.", ytitle: "цена, руб.", xdesc: "числа месяца", vdesc: "цена акции (в рублях)",
+      lo: 40, hi: 120, spread: 8, sup: "наибольшую", sub: "наименьшую", what: "цену акции", whatWas: "цена акции" },
+  ])
+}
+
+function chartIntro(ctx, dayStart, n) {
+  const place = ctx.city ? ` в ${ctx.city}` : ""
+  return `На рисунке жирными точками показана ${ctx.noun}${place} в течение ${n} дней. ` +
+    `По горизонтали указаны ${ctx.xdesc}, по вертикали — ${ctx.vdesc}. Для наглядности точки ` +
+    `соединены линией. `
+}
+
+function makeChart(ctx) {
+  const arr = chartSeries(ctx.lo, ctx.hi, ctx.spread)
+  const dayStart = randInt(1, 16)
+  return { arr, dayStart, image_url: svgUrl(lineChartSvg(arr, dayStart, ctx.ytitle)) }
+}
+
+// №3 — наибольшее / наименьшее значение по графику.
+function t03Extreme() {
+  const ctx = chartContext(), { arr, dayStart, image_url } = makeChart(ctx)
+  const hi = Math.random() < 0.5
+  return {
+    condition_text: chartIntro(ctx, dayStart, arr.length) +
+      `Определите по рисунку ${hi ? ctx.sup : ctx.sub} ${ctx.what}. Ответ дайте в ${ctx.unit === "°C" ? "градусах Цельсия" : "рублях"}.`,
+    image_url,
+    answer: ru(hi ? Math.max(...arr) : Math.min(...arr)),
+  }
+}
+
+// №3 — значение в конкретный день.
+function t03ValueOnDay() {
+  const ctx = chartContext(), { arr, dayStart, image_url } = makeChart(ctx)
+  const idx = randInt(0, arr.length - 1), day = dayStart + idx
+  return {
+    condition_text: chartIntro(ctx, dayStart, arr.length) +
+      `Определите по рисунку, какова была ${ctx.whatWas} ${day}-го числа. Ответ дайте в ${ctx.unit === "°C" ? "градусах Цельсия" : "рублях"}.`,
+    image_url,
+    answer: ru(arr[idx]),
+  }
+}
+
+// №3 — сколько дней значение было выше порога.
+function t03CountAbove() {
+  for (let t = 0; t < 100; t++) {
+    const ctx = chartContext(), { arr, dayStart, image_url } = makeChart(ctx)
+    const mn = Math.min(...arr), mx = Math.max(...arr)
+    const thr = randInt(mn + 1, mx - 1)
+    const cnt = arr.filter((v) => v > thr).length
+    if (cnt < 2 || cnt > arr.length - 2) continue
+    return {
+      condition_text: chartIntro(ctx, dayStart, arr.length) +
+        `Определите по рисунку, сколько дней ${ctx.whatWas} была выше ${thr} ${ctx.unit}.`,
+      image_url,
+      answer: ru(cnt),
+    }
+  }
+  return t03Extreme()
+}
+
+// №7 — разность между наибольшим и наименьшим значениями.
+function t07Range() {
+  const ctx = chartContext(), { arr, dayStart, image_url } = makeChart(ctx)
+  return {
+    condition_text: chartIntro(ctx, dayStart, arr.length) +
+      `Определите по рисунку разность между наибольшим и наименьшим значениями ${ctx.what === "температуру" ? "температуры" : "цены акции"}. ` +
+      `Ответ дайте в ${ctx.unit === "°C" ? "градусах Цельсия" : "рублях"}.`,
+    image_url,
+    answer: ru(Math.max(...arr) - Math.min(...arr)),
+  }
+}
+
+// №7 — сколько дней значение понижалось относительно предыдущего.
+function t07FallDays() {
+  const ctx = chartContext(), { arr, dayStart, image_url } = makeChart(ctx)
+  let cnt = 0
+  for (let i = 1; i < arr.length; i++) if (arr[i] < arr[i - 1]) cnt++
+  return {
+    condition_text: chartIntro(ctx, dayStart, arr.length) +
+      `Определите по рисунку, в течение скольких дней ${ctx.whatWas} была ниже, чем в предыдущий день.`,
+    image_url,
+    answer: ru(cnt),
+  }
+}
+
+// =====================================================================================
 // №01 — Простейшие текстовые задачи (округление вверх/вниз, сравнение, скорость).
 // =====================================================================================
 
@@ -1133,10 +1279,12 @@ function t08Ordering() {
 
 export const GENERATORS_EGE_BASE = {
   1: [t01Transport, t01Tents, t01TeaPacks, t01Printer, t01Bouquet, t01PassSavings, t01AvgSpeedKmh, t01Paint, t01Paper, t01Feet],
-  4: [t04Current, t04Steps, t04Fahrenheit, t04Centripetal, t04InRadius, t04GeoMean, t04Divisors, t04LawSines],
   2: [t02Units],
+  3: [t03Extreme, t03ValueOnDay, t03CountAbove],
+  4: [t04Current, t04Steps, t04Fahrenheit, t04Centripetal, t04InRadius, t04GeoMean, t04Divisors, t04LawSines],
   5: [t05Tickets, t05Defective, t05CoinTwice, t05Ratio, t05TwoDevices],
   6: [t06Tariff, t06Material],
+  7: [t07Range, t07FallDays],
   8: [t08Ordering],
   14: [t14FracChain, t14DivBracket, t14MixDecFrac, t14Decimals],
   15: [t15Discount, t15PercentChange, t15PercentOfWhole, t15Tax, t15Interest, t15Markup, t15MaxCount],
@@ -1180,6 +1328,11 @@ export const GEN_META_EGE_BASE = {
       ["divisors", "Сумма делителей", t04Divisors],
     ]]],
   2: [["Соответствие", [["units", "Величины и значения", t02Units]]]],
+  3: [["Чтение графика", [
+    ["extreme", "Наибольшее/наименьшее значение", t03Extreme],
+    ["value-day", "Значение в заданный день", t03ValueOnDay],
+    ["count-above", "Сколько дней выше порога", t03CountAbove],
+  ]]],
   5: [["Классическая вероятность", [
     ["tickets", "Выученные билеты", t05Tickets],
     ["defective", "Доля брака", t05Defective],
@@ -1192,6 +1345,10 @@ export const GEN_META_EGE_BASE = {
   6: [["Оптимальный выбор", [
     ["tariff", "Тарифные планы", t06Tariff],
     ["material", "Закупка материала", t06Material],
+  ]]],
+  7: [["Анализ графика", [
+    ["range", "Разность max − min", t07Range],
+    ["fall-days", "Сколько дней понижалось", t07FallDays],
   ]]],
   8: [["Логика утверждений", [["ordering", "Упорядочивание (возраст/рост)", t08Ordering]]]],
   14: [["Обыкновенные дроби", [
