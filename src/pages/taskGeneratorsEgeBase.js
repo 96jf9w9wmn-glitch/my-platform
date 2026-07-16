@@ -1506,6 +1506,32 @@ function t01Feet() {
 }
 
 // =====================================================================================
+// №18 — Неравенства (соответствие «неравенство ↔ решение»). Решения известны точно
+// по построению; каждое проверяется численной подстановкой в тесте.
+// =====================================================================================
+
+function t18Matching() {
+  const p = randInt(2, 5), q = p + randInt(1, 3)      // 2 ≤ p < q
+  const aq = 2 ** q                                    // показательное с основанием 2
+  const items = [
+    { ineq: `${FF(`x − ${p}`, `x − ${q}`)} < 0`, sol: `${p} < x < ${q}` },
+    { ineq: `(x − ${p})(x − ${q}) > 0`, sol: `x < ${p} или x > ${q}` },
+    { ineq: `2${supT("x")} > ${aq}`, sol: `x > ${q}` },
+    { ineq: `log${sub(2)} x < 0`, sol: `0 < x < 1` },
+  ]
+  const order = shuffle([0, 1, 2, 3])
+  const left = items.map((it) => it.ineq)
+  const right = order.map((i) => items[i].sol)
+  const answer = left.map((_, li) => order.indexOf(li) + 1).join("")
+  return {
+    condition_text: `Каждому неравенству соответствует его решение. Установите соответствие между ` +
+      `неравенствами в левом столбце и их решениями в правом.\n` +
+      matchBlock({ leftHdr: "НЕРАВЕНСТВА", rightHdr: "РЕШЕНИЯ", left, right }),
+    answer,
+  }
+}
+
+// =====================================================================================
 // №02 — Размеры и единицы измерения (соответствие «величина ↔ значение»).
 // Величины берём из РАЗНЫХ размерностей → каждое значение подходит ровно одной величине
 // (соответствие однозначно по построению, без риска двусмысленности).
@@ -1670,6 +1696,7 @@ export const GENERATORS_EGE_BASE = {
   16: [t16PowerQuotient, t16PowerNested, t16RootProduct, t16RootQuotient, t16Conjugate,
     t16StandardForm, t16PlaceValue, t16LogDiff, t16TrigProduct, t16TrigReduction, t16TrigPythag],
   17: [t17Linear, t17Quadratic, t17Exponential, t17Logarithm, t17SquareRoot],
+  18: [t18Matching],
   19: [t19Divisible, t19RangeDigitSum],
   20: [t20MixSolutions, t20AddWater, t20WorkTogether, t20AvgThirds, t20AvgThereBack, t20Meeting],
   21: [t21Snail, t21Well, t21AvgFifth],
@@ -1814,6 +1841,7 @@ export const GEN_META_EGE_BASE = {
       ["logarithm", "Логарифмическое", t17Logarithm],
       ["sqrt", "С квадратным корнем", t17SquareRoot],
     ]]],
+  18: [["Соответствие", [["matching", "Неравенство ↔ решение", t18Matching]]]],
   19: [["Делимость", [
     ["divisible", "Наиб./наим. кратное", t19Divisible],
     ["range-digitsum", "В интервале, сумма цифр", t19RangeDigitSum],
