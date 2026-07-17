@@ -110,7 +110,7 @@ export function renderTaskMath(text) {
     .replace(/⟦f:([^:⟧]+):([^:⟧]+)⟧/g,
       (_, n, d) => `<span class="tmath-frac"><span class="tmath-num">${rootIn(n)}</span><span class="tmath-den">${rootIn(d)}</span></span>`)
     .replace(/⟦r:([^⟧]+)⟧/g, (_, x) => rootMarkup(x))
-    .replace(/⟦b:([^⟧]+)⟧/g, (_, x) => `<sub>${x}</sub>`)
+    .replace(/⟦b:([^⟧]+)⟧/g, (_, x) => `<sub class="tmath-sub">${x}</sub>`)
     // ⟦sup:x⟧ — надстрочник (степень с переменным показателем, напр. 2^(1−4x))
     .replace(/⟦sup:([^⟧]+)⟧/g, (_, x) => `<sup>${x}</sup>`)
     // ⟦iso:A:Z:Sym⟧ — символ нуклида: массовое число A над зарядовым Z (стопкой),

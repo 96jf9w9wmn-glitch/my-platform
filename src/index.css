@@ -159,6 +159,11 @@ select {
    свою строку. Текст под корнем наследует шрифт; vertical-align сажает на базовую линию. */
 .tmath-radical { display: inline-block; vertical-align: -0.34em; }
 .tmath-radical text { font-family: inherit; }
+/* Нижний индекс (основание логарифма log₂, индексы V₁ и т.п.): браузерный дефолт
+   <sub> (font-size:smaller + слабый vertical-align:sub) поднимает основание почти на
+   уровень строки и делает его крупным — «log» и аргумент выглядят на разных уровнях.
+   Явно: мельче и ниже базовой линии, line-height:0 чтобы не растягивать строку. */
+.tmath-sub { font-size: 0.68em; line-height: 0; vertical-align: -0.28em; }
 /* Корень НАД дробью: знак √ (SVG-галочка) тянется по высоте подкоренной строки, а
    верхняя черта — border-top тела; вместе накрывают всё выражение (как ⟦r⟧, но с дробью). */
 .tmath-rootfrac { display: inline-block; vertical-align: middle; margin: 0 0.1em; }
