@@ -7,7 +7,7 @@ import { normalizeTaskImage } from "../utils"
 // виден сырой «4⟦r:2⟧»). Идемпотентно для новых строк без токенов.
 const healImages = (rows) => (rows || []).map((t) => t?.image_url ? { ...t, image_url: normalizeTaskImage(t.image_url) } : t)
 
-const NUMBERS_BY_TYPE = { "ОГЭ": 19, "ЕГЭ": 12 }
+const NUMBERS_BY_TYPE = { "ОГЭ": 19, "ЕГЭ": 12, "ЕГЭ Профиль": 12 }
 const MODULE_COUNT = 5   // задания 1–5 — связанный практический модуль (общий текст + рисунок)
 
 // Номер входит в практический модуль №1–5 (когда для типа экзамена есть модули).

@@ -38,3 +38,5 @@ status-dashboard.html
 
 # Внутренние заметки, не публиковать
 CLAUDE.md
+.vercel
+.env*
