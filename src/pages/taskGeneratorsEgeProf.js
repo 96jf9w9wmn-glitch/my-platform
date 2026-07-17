@@ -495,8 +495,11 @@ function t06CubeRoot() {
   const c = randInt(2, 4)
   const b = randInt(-6, 6)
   const x0 = c ** 3 - b
+  // Индекс степени 3 надстрочником + SVG-радикал (rT) с чертой над подкоренным —
+  // единый вид с квадратным корнем; сырой юникод ∛ рвёт согласованность и не тянет черту.
+  const inner = `x${signed(b)}`.replace("+0", "").replace("−0", "")
   return {
-    condition_text: `Найдите корень уравнения ∛(x${signed(b)})=${c}.`.replace("(x+0)", "(x)"),
+    condition_text: `Найдите корень уравнения ${sup(3)}${rT(inner)}=${c}.`,
     answer: ru(x0),
   }
 }
