@@ -1047,7 +1047,7 @@ function t07SqCoefRoot() {
   do { k = randInt(2, 6); A = pick([2, 3, 5, 6, 7, 8, 10]); D = randInt(2, 12) } while ((k * k * A) % D !== 0 && ++g < 300)
   if ((k * k * A) % D !== 0) { k = 5; A = 6; D = 10 }
   return {
-    condition_text: `Найдите значение выражения ${fT(`(${k}√${A})${sup(2)}`, D)}.`,
+    condition_text: `Найдите значение выражения ${fT(`(${k}√{${A}})${sup(2)}`, D)}.`,
     answer: ru(k * k * A / D),
   }
 }
