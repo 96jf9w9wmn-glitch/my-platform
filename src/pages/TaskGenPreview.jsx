@@ -10,7 +10,39 @@ import Icon from "../components/Icon"
 // Временный раздел: быстрый предпросмотр сгенерированных заданий (проверить вид/опечатки).
 // Работает целиком на клиентских генераторах (taskGenerators.js), без Supabase.
 
-const EXAM_TYPES = ["ОГЭ", "ЕГЭ", "ЕГЭ Профиль", "ОГЭ Информатика", "ОГЭ Английский", "ОГЭ Русский", "ОГЭ Химия", "ОГЭ Обществознание", "ОГЭ История", "ОГЭ Физика", "ОГЭ Биология", "ОГЭ Литература", "ОГЭ География"]
+// Двухуровневая навигация: уровень экзамена (ЕГЭ / ОГЭ) → предмет внутри уровня.
+// type — ключ генераторов (не менять), label — короткая подпись, dot — цвет акцента.
+const EXAM_GROUPS = [
+  {
+    key: "ЕГЭ",
+    subjects: [
+      { type: "ЕГЭ", label: "Математика база", dot: "bg-blue-500" },
+      { type: "ЕГЭ Профиль", label: "Математика профиль", dot: "bg-indigo-500" },
+    ],
+  },
+  {
+    key: "ОГЭ",
+    subjects: [
+      { type: "ОГЭ", label: "Математика", dot: "bg-blue-500" },
+      { type: "ОГЭ Русский", label: "Русский", dot: "bg-rose-500" },
+      { type: "ОГЭ Английский", label: "Английский", dot: "bg-red-500" },
+      { type: "ОГЭ Информатика", label: "Информатика", dot: "bg-cyan-500" },
+      { type: "ОГЭ Физика", label: "Физика", dot: "bg-violet-500" },
+      { type: "ОГЭ Химия", label: "Химия", dot: "bg-emerald-500" },
+      { type: "ОГЭ Биология", label: "Биология", dot: "bg-green-500" },
+      { type: "ОГЭ Обществознание", label: "Обществознание", dot: "bg-amber-500" },
+      { type: "ОГЭ История", label: "История", dot: "bg-orange-500" },
+      { type: "ОГЭ Литература", label: "Литература", dot: "bg-fuchsia-500" },
+      { type: "ОГЭ География", label: "География", dot: "bg-teal-500" },
+    ],
+  },
+]
+
+// Уровень (ЕГЭ / ОГЭ), к которому относится предмет.
+function levelOf(type) {
+  const g = EXAM_GROUPS.find((grp) => grp.subjects.some((s) => s.type === type))
+  return g ? g.key : "ОГЭ"
+}
 const MAX_NUMBER = 38   // англ. идёт до №38 (устная часть); фильтр numbersWithGen отсекает пустые
 const BATCH = 8   // сколько вариантов одного номера показывать за раз
 const MOD_BATCH = 3   // модули №1–5 крупнее — показываем меньше за раз
@@ -365,6 +397,8 @@ export default function TaskGenPreview() {
   const [reading, setReading] = useState(null)      // {matching, module} для блока чтения №12–19
 
   const numbers = numbersWithGen(examType)
+  const level = levelOf(examType)
+  const currentGroup = EXAM_GROUPS.find((g) => g.key === level) || EXAM_GROUPS[1]
   const hasReading = examType === "ОГЭ Английский"
   const isReading = focus === "read12" || focus === "read13"
   const rerollReading = () => setReading({ matching: genMatchingModule(), module: genReadingModule() })
@@ -372,6 +406,13 @@ export default function TaskGenPreview() {
   // Генерация запускается явно при выборе (эффект тут не нужен — набор случайный, а не
   // производный от стейта, и setState-в-эффекте вызывает каскадные рендеры).
   function selectExam(t) { setExamType(t); setFocus(null); setTasks(buildTasks(t, null)) }
+  // Переключение уровня (ЕГЭ / ОГЭ) → берём первый доступный предмет группы.
+  function selectLevel(key) {
+    if (key === level) return
+    const group = EXAM_GROUPS.find((g) => g.key === key)
+    const first = group.subjects.find((s) => numbersWithGen(s.type).length > 0) || group.subjects[0]
+    selectExam(first.type)
+  }
   function selectFocus(f) {
     setFocus(f)
     if (f === "read12" || f === "read13") rerollReading()
@@ -402,18 +443,42 @@ export default function TaskGenPreview() {
         Быстрый просмотр сгенерированных заданий — проверить вид и опечатки. Временный раздел.
       </p>
 
-      {/* тип экзамена */}
-      <div className="flex flex-wrap gap-2 mb-3">
-        {EXAM_TYPES.map((t) => {
-          const has = numbersWithGen(t).length > 0
+      {/* уровень экзамена — сегмент-контрол ЕГЭ / ОГЭ */}
+      <div className="inline-flex p-1 mb-4 rounded-2xl bg-gray-100 border border-gray-200/70">
+        {EXAM_GROUPS.map((g) => {
+          const active = level === g.key
           return (
             <button
-              key={t}
-              disabled={!has}
-              onClick={() => selectExam(t)}
-              className={chip(examType === t, !has)}
+              key={g.key}
+              onClick={() => selectLevel(g.key)}
+              className={`px-7 py-1.5 rounded-xl text-sm font-semibold transition-all active:scale-95 ${
+                active ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+              }`}
             >
-              {t}{!has && " (нет)"}
+              {g.key}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* предметы выбранного уровня */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        {currentGroup.subjects.map((s) => {
+          const has = numbersWithGen(s.type).length > 0
+          const active = examType === s.type
+          return (
+            <button
+              key={s.type}
+              disabled={!has}
+              onClick={() => selectExam(s.type)}
+              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm border transition-all active:scale-95 ${
+                active
+                  ? "bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-600/20"
+                  : "bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50"
+              } ${!has ? "opacity-40 cursor-not-allowed" : ""}`}
+            >
+              <span className={`w-2 h-2 rounded-full ${active ? "bg-white/90" : s.dot}`} />
+              {s.label}{!has && " (нет)"}
             </button>
           )
         })}
