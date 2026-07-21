@@ -98,6 +98,88 @@ function t02DotOfCombos() {
   }
 }
 
+// ── Чертёж векторов на координатной сетке (типаж «прочитать координаты с рисунка») ──
+const svgUrl = (svg) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+
+// Стрелка-вектор: линия + треугольный наконечник (пиксельные координаты, y — вниз).
+function vecArrow(x1, y1, x2, y2, color, width = 2.2) {
+  const ang = Math.atan2(y2 - y1, x2 - x1)
+  const h = 10, w = 4.6
+  const bx = x2 - h * Math.cos(ang), by = y2 - h * Math.sin(ang)
+  const p1 = `${clean(bx - w * Math.sin(ang))},${clean(by + w * Math.cos(ang))}`
+  const p2 = `${clean(bx + w * Math.sin(ang))},${clean(by - w * Math.cos(ang))}`
+  return `<line x1="${clean(x1)}" y1="${clean(y1)}" x2="${clean(bx)}" y2="${clean(by)}" stroke="${color}" stroke-width="${width}"/>` +
+    `<polygon points="${clean(x2)},${clean(y2)} ${p1} ${p2}" fill="${color}"/>`
+}
+
+// Подпись вектора (буква + стрелка над ней) у середины, сдвинута по нормали.
+function vecLabel(letter, mx, my, vx, vy) {
+  const L = Math.hypot(vx, vy) || 1
+  const off = 15
+  const lx = clean(mx - (vy / L) * off), ly = clean(my - (vx / L) * off)
+  return `<text x="${lx}" y="${ly}" font-size="17" font-style="italic" font-weight="bold" fill="#1c1c1e" text-anchor="middle">${letter}</text>` +
+    `<line x1="${lx - 5}" y1="${ly - 15}" x2="${lx + 6}" y2="${ly - 15}" stroke="#1c1c1e" stroke-width="1.3"/>` +
+    `<polygon points="${lx + 7},${ly - 15} ${lx + 2},${ly - 17.4} ${lx + 2},${ly - 12.6}" fill="#1c1c1e"/>`
+}
+
+// Координатная сетка с двумя векторами a и b (целочисленные компоненты).
+function vecGridSvg({ ax, ay, bx, by, atx, aty, btx, bty, gx0, gx1, gy0, gy1 }) {
+  const cell = 28, ml = 14, mt = 14, mr = 14, mb = 14
+  const W = ml + mr + (gx1 - gx0) * cell, H = mt + mb + (gy1 - gy0) * cell
+  const X = (u) => ml + (u - gx0) * cell
+  const Y = (v) => H - mb - (v - gy0) * cell
+  let g = ""
+  for (let i = gx0; i <= gx1; i++) g += `<line x1="${X(i)}" y1="${Y(gy0)}" x2="${X(i)}" y2="${Y(gy1)}" stroke="#d7dbe0" stroke-width="1"/>`
+  for (let j = gy0; j <= gy1; j++) g += `<line x1="${X(gx0)}" y1="${Y(j)}" x2="${X(gx1)}" y2="${Y(j)}" stroke="#d7dbe0" stroke-width="1"/>`
+  // оси через (0,0) со стрелками и подписями x, y
+  g += vecArrow(X(gx0), Y(0), X(gx1), Y(0), "#1c1c1e", 1.4)
+  g += vecArrow(X(0), Y(gy0), X(0), Y(gy1), "#1c1c1e", 1.4)
+  g += `<text x="${X(gx1) - 3}" y="${Y(0) + 17}" font-size="15" font-style="italic" font-weight="bold" fill="#1c1c1e" text-anchor="end">x</text>`
+  g += `<text x="${X(0) + 7}" y="${Y(gy1) + 13}" font-size="15" font-style="italic" font-weight="bold" fill="#1c1c1e">y</text>`
+  g += `<text x="${X(0) - 5}" y="${Y(0) + 16}" font-size="13" font-weight="bold" fill="#1c1c1e" text-anchor="end">0</text>`
+  g += `<text x="${X(1)}" y="${Y(0) + 16}" font-size="12" fill="#1c1c1e" text-anchor="middle">1</text>`
+  g += `<text x="${X(0) - 6}" y="${Y(1) + 4}" font-size="12" fill="#1c1c1e" text-anchor="end">1</text>`
+  // векторы
+  g += vecArrow(X(atx), Y(aty), X(atx + ax), Y(aty + ay), "#1c1c1e")
+  g += vecArrow(X(btx), Y(bty), X(btx + bx), Y(bty + by), "#1c1c1e")
+  g += vecLabel("a", (X(atx) + X(atx + ax)) / 2, (Y(aty) + Y(aty + ay)) / 2, ax, ay)
+  g += vecLabel("b", (X(btx) + X(btx + bx)) / 2, (Y(bty) + Y(bty + by)) / 2, bx, by)
+  return `<svg xmlns="http://www.w3.org/2000/svg" font-family="Arial, sans-serif" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${g}</svg>`
+}
+
+// Векторы нарисованы на сетке — прочитать целые координаты и найти длину m·a+n·b.
+const VEC_COMBOS = [
+  [1, 4, "a+4b"], [1, -4, "a−4b"], [1, 2, "a+2b"], [1, -2, "a−2b"],
+  [1, 3, "a+3b"], [1, -3, "a−3b"], [2, 1, "2a+b"], [2, -1, "2a−b"],
+]
+function t02GraphLenCombo() {
+  let m = 1, n = 4, op = "a+4b", ax = 0, ay = 3, bx = 1, by = 0, len = 5
+  for (let tries = 0; tries < 3000; tries++) {
+    [m, n, op] = pick(VEC_COMBOS)
+    ax = randInt(-4, 4); ay = randInt(-4, 4)
+    bx = randInt(-3, 3); by = randInt(-3, 3)
+    if ((ax === 0 && ay === 0) || (bx === 0 && by === 0)) continue
+    if (ax * by - ay * bx === 0) continue                 // не коллинеарны
+    if (Math.hypot(ax, ay) < 2 || Math.hypot(bx, by) < 1.4) continue
+    const rx = m * ax + n * bx, ry = m * ay + n * by
+    if (rx === 0 && ry === 0) continue
+    const L2 = rx * rx + ry * ry, L = Math.round(Math.sqrt(L2))
+    if (L * L === L2 && L >= 4 && L <= 60) { len = L; break }
+  }
+  // хвосты: a в нижне-левой части, b правее — стрелки не накладываются; всё в положительной зоне
+  const atx = 1 + Math.max(0, -ax), aty = 1 + Math.max(0, -ay)
+  const btx = atx + Math.max(0, ax) + 1 + Math.max(0, -bx), bty = 1 + Math.max(0, -by)
+  const xs = [0, atx, atx + ax, btx, btx + bx], ys = [0, aty, aty + ay, bty, bty + by]
+  const gx0 = Math.min(...xs) - 1, gx1 = Math.max(...xs) + 1
+  const gy0 = Math.min(...ys) - 1, gy1 = Math.max(...ys) + 1
+  const svg = vecGridSvg({ ax, ay, bx, by, atx, aty, btx, bty, gx0, gx1, gy0, gy1 })
+  return {
+    condition_text: `На координатной плоскости изображены векторы a и b, координатами которых являются целые числа. Найдите длину вектора ${op}.`,
+    image_url: svgUrl(svg),
+    answer: ru(len),
+  }
+}
+
 // ============================================================================
 // №4 — ВЕРОЯТНОСТЬ (простейшие задачи)
 // ============================================================================
@@ -1108,7 +1190,7 @@ function t07TrigDouble() {
 // ============================================================================
 
 export const GENERATORS_EGE_PROF = {
-  2: [t02DotCoord, t02DotLenAngle, t02LenCombo, t02DotOfCombos],
+  2: [t02DotCoord, t02DotLenAngle, t02LenCombo, t02DotOfCombos, t02GraphLenCombo],
   4: [t04ShotPut, t04Gymnastics, t04Diving, t04Tickets, t04Markers, t04Defect, t04Lottery, t04CoinTwice, t04Rooms, t04FootballCoin],
   5: [t05Lamps, t05Between, t05Shooter4, t05Coffee, t05Battery, t05ShooterN, t05DiceCond, t05TwoThemes, t05Exact],
   6: [t06ExpReduce, t06ExpBothSides, t06LogEqLog, t06LogEqNum, t06Rational, t06Cube, t06Sqrt, t06CubeRoot],
@@ -1127,7 +1209,10 @@ export const GEN_META_EGE_PROF = {
     ["dot-angle", "По длинам и углу 60°", t02DotLenAngle],
     ["dot-combos", "Двух комбинаций", t02DotOfCombos],
   ]],
-    ["Длина вектора", [["len-combo", "Длина a±kb", t02LenCombo]]]],
+    ["Длина вектора", [
+      ["len-combo", "Длина a±kb (координаты в тексте)", t02LenCombo],
+      ["len-graph", "Длина m·a+n·b (по чертежу)", t02GraphLenCombo],
+    ]]],
   4: [["Жребий / порядок", [
     ["shot-put", "Толкание ядра (4 страны)", t04ShotPut],
     ["gymnastics", "Гимнастика («остальные»)", t04Gymnastics],
