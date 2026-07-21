@@ -2027,8 +2027,10 @@ function t8tangentSlope() {
   const rats = [[1, 2], [1, 4], [2, 5], [3, 2], [1, 1], [2, 1], [3, 1], [3, 4], [4, 5]]  // только конечные десятичные
   const [p0, q] = pick(rats)
   const k = clean(p0 / q * pick([1, -1]))
+  // y0 ≥ 2 (точка касания заметно выше оси): касательная, кривая и штриховая линия
+  // к точке идут ВВЕРХ от оси, поэтому подпись x₀ под осью ничем не перечёркивается.
   let x0, y0, tries = 0
-  do { x0 = randInt(-2, 2); y0 = randInt(-1, 3) } while ((Math.abs(x0 + q) > gx1 || Math.abs(y0 + k * q) > gy1) && ++tries < 30)
+  do { x0 = randInt(-2, 2); y0 = randInt(2, 4) } while ((Math.abs(x0 + q) > gx1 || Math.abs(y0 + k * q) > gy1) && ++tries < 30)
   const A = 0.2, w = 1
   const fn = (x) => { const u = x - x0; return y0 + k * u + A * (u - Math.sin(w * u) / w) }
   return {
