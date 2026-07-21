@@ -1612,17 +1612,26 @@ function wave8Svg({ gx0, gx1, gy0, gy1, fn, xa, xb, label = null, marks = [], ma
 }
 
 // Место для подписи «y = f(x)»: угол с максимальным вертикальным зазором до кривой.
+// Центр подписи держим на halfW+margin от оси y (x=0), чтобы текст не наезжал на
+// вертикальную ось и её стрелку; по горизонтали подпись целиком внутри поля.
 function label8(fn, gx0, gx1, gy0, gy1, text) {
-  const dx = (gx1 - gx0) * 0.24
-  const cand = [
-    { x: gx0 + dx, y: gy1 - 0.5 }, { x: gx1 - dx, y: gy1 - 0.5 },
-    { x: gx0 + dx, y: gy0 + 0.7 }, { x: gx1 - dx, y: gy0 + 0.7 },
-  ]
-  let best = cand[0], bs = -1
-  for (const c of cand) {
+  const halfW = 1.25, gap = 0.4
+  // допустимые центры слева/справа от оси y (пусто, если ось у самого края)
+  const cxs = []
+  const loL = gx0 + halfW + 0.3, hiL = -gap - halfW
+  if (loL <= hiL) cxs.push((loL + hiL) / 2)
+  const loR = gap + halfW, hiR = gx1 - halfW - 0.3
+  if (loR <= hiR) cxs.push((loR + hiR) / 2)
+  if (!cxs.length) cxs.push((gx0 + gx1) / 2)         // страховка: узкое поле
+  const ys = [gy1 - 0.6, gy0 + 0.7]
+  let best = { x: cxs[0], y: ys[0] }, bs = -1
+  for (const cx of cxs) for (const cy of ys) {
     let clr = Infinity
-    for (let x = c.x - 1.7; x <= c.x + 1.7; x += 0.1) { const y = fn(x); if (isFinite(y)) clr = Math.min(clr, Math.abs(y - c.y)) }
-    if (clr > bs) { bs = clr; best = c }
+    for (let x = cx - halfW; x <= cx + halfW; x += 0.1) {
+      const xx = Math.min(gx1, Math.max(gx0, x)), y = fn(xx)
+      if (isFinite(y)) clr = Math.min(clr, Math.abs(y - cy))
+    }
+    if (clr > bs) { bs = clr; best = { x: cx, y: cy } }
   }
   return { ...best, text, anchor: "middle" }
 }
@@ -2349,8 +2358,19 @@ function stCubeCut() {
   g += stEdge(P, Q, 0); g += stEdge(Q, T, 0); g += stEdge(T, P, 0)
   return stWrap(280, 225, g)
 }
+// Скошенный (аффинный) эллипс: P(θ)=центр + cosθ·(ax,ay) + sinθ·(bx,by).
+// (ax,ay),(bx,by) — сопряжённые полуоси; путём, чтобы толщина штриха не искажалась.
+function stShearEllipse(cx, cy, ax, ay, bx, by, dash) {
+  let dd = ""
+  for (let i = 0; i <= 72; i++) {
+    const t = i / 72 * 2 * Math.PI
+    const x = cx + Math.cos(t) * ax + Math.sin(t) * bx, y = cy + Math.cos(t) * ay + Math.sin(t) * by
+    dd += (i ? "L" : "M") + clean(x) + " " + clean(y) + " "
+  }
+  return `<path d="${dd}Z" fill="none" stroke="${ST_HI}" stroke-width="1.7"${dash ? ' stroke-dasharray="6 5"' : ""}/>`
+}
 function stCylInPar() {
-  const W = 120, H = 120, d = [46, -30], rx = W / 2, ry = 15
+  const W = 120, H = 120, d = [46, -30]
   const A = [55, 195], B = [A[0] + W, A[1]], A1 = [A[0], A[1] - H], B1 = [B[0], B[1] - H]
   const D = [A[0] + d[0], A[1] + d[1]], C = [B[0] + d[0], B[1] + d[1]]
   const D1 = [A1[0] + d[0], A1[1] + d[1]], C1 = [B1[0] + d[0], B1[1] + d[1]]
@@ -2361,8 +2381,14 @@ function stCylInPar() {
   ["A1", "B1", 0], ["B1", "C1", 0], ["C1", "D1", 0], ["D1", "A1", 0],
   ["A", "A1", 0], ["B", "B1", 0], ["C", "C1", 0], ["D", "D1", 1]]
   for (const [p, q, hid] of E) g += stEdge(V[p], V[q], hid)
-  g += `<line x1="${cb[0] - rx}" y1="${cb[1]}" x2="${ct[0] - rx}" y2="${ct[1]}" stroke="${ST_HI}" stroke-width="1.7"/><line x1="${cb[0] + rx}" y1="${cb[1]}" x2="${ct[0] + rx}" y2="${ct[1]}" stroke="${ST_HI}" stroke-width="1.7"/>`
-  g += `<ellipse cx="${ct[0]}" cy="${ct[1]}" rx="${rx}" ry="${ry}" fill="none" stroke="${ST_HI}" stroke-width="1.7"/><ellipse cx="${cb[0]}" cy="${cb[1]}" rx="${rx}" ry="${ry}" fill="none" stroke="${ST_HI}" stroke-width="1.7" stroke-dasharray="5 4"/>`
+  // вписанный эллипс грани = эллипс Штейнера: полуоси = половины сторон параллелограмма
+  const ax = W / 2, ay = 0, bx = d[0] / 2, by = d[1] / 2
+  const amp = Math.hypot(ax, bx), yo = (ay * ax + by * bx) / amp   // точка силуэта (крайняя по x)
+  // образующие — по силуэтным точкам оснований
+  g += `<line x1="${clean(cb[0] + amp)}" y1="${clean(cb[1] + yo)}" x2="${clean(ct[0] + amp)}" y2="${clean(ct[1] + yo)}" stroke="${ST_HI}" stroke-width="1.7"/>`
+  g += `<line x1="${clean(cb[0] - amp)}" y1="${clean(cb[1] - yo)}" x2="${clean(ct[0] - amp)}" y2="${clean(ct[1] - yo)}" stroke="${ST_HI}" stroke-width="1.7"/>`
+  g += stShearEllipse(ct[0], ct[1], ax, ay, bx, by, false)
+  g += stShearEllipse(cb[0], cb[1], ax, ay, bx, by, true)
   return stWrap(280, 235, g)
 }
 // Многогранник из единичных кубов (изометрия). cells: [[x,y,z],...].
