@@ -117,7 +117,7 @@ function vecLabel(letter, mx, my, vx, vy) {
   const L = Math.hypot(vx, vy) || 1
   const off = 15
   const lx = clean(mx - (vy / L) * off), ly = clean(my - (vx / L) * off)
-  return `<text x="${lx}" y="${ly}" font-size="17" font-style="italic" font-weight="bold" fill="#1c1c1e" text-anchor="middle">${letter}</text>` +
+  return `<text x="${lx}" y="${ly}" ${HALO} font-size="17" font-style="italic" font-weight="bold" fill="#1c1c1e" text-anchor="middle">${letter}</text>` +
     `<line x1="${lx - 5}" y1="${ly - 15}" x2="${lx + 6}" y2="${ly - 15}" stroke="#1c1c1e" stroke-width="1.3"/>` +
     `<polygon points="${lx + 7},${ly - 15} ${lx + 2},${ly - 17.4} ${lx + 2},${ly - 12.6}" fill="#1c1c1e"/>`
 }
@@ -134,11 +134,11 @@ function vecGridSvg({ ax, ay, bx, by, atx, aty, btx, bty, gx0, gx1, gy0, gy1 }) 
   // оси через (0,0) со стрелками и подписями x, y
   g += vecArrow(X(gx0), Y(0), X(gx1), Y(0), "#1c1c1e", 1.4)
   g += vecArrow(X(0), Y(gy0), X(0), Y(gy1), "#1c1c1e", 1.4)
-  g += `<text x="${X(gx1) - 3}" y="${Y(0) + 17}" font-size="15" font-style="italic" font-weight="bold" fill="#1c1c1e" text-anchor="end">x</text>`
-  g += `<text x="${X(0) + 7}" y="${Y(gy1) + 13}" font-size="15" font-style="italic" font-weight="bold" fill="#1c1c1e">y</text>`
-  g += `<text x="${X(0) - 5}" y="${Y(0) + 16}" font-size="13" font-weight="bold" fill="#1c1c1e" text-anchor="end">0</text>`
-  g += `<text x="${X(1)}" y="${Y(0) + 16}" font-size="12" fill="#1c1c1e" text-anchor="middle">1</text>`
-  g += `<text x="${X(0) - 6}" y="${Y(1) + 4}" font-size="12" fill="#1c1c1e" text-anchor="end">1</text>`
+  g += `<text x="${X(gx1) - 3}" y="${Y(0) + 17}" ${HALO} font-size="15" font-style="italic" font-weight="bold" fill="#1c1c1e" text-anchor="end">x</text>`
+  g += `<text x="${X(0) + 7}" y="${Y(gy1) + 13}" ${HALO} font-size="15" font-style="italic" font-weight="bold" fill="#1c1c1e">y</text>`
+  g += `<text x="${X(0) - 5}" y="${Y(0) + 16}" ${HALO} font-size="13" font-weight="bold" fill="#1c1c1e" text-anchor="end">0</text>`
+  g += `<text x="${X(1)}" y="${Y(0) + 16}" ${HALO} font-size="12" fill="#1c1c1e" text-anchor="middle">1</text>`
+  g += `<text x="${X(0) - 6}" y="${Y(1) + 4}" ${HALO} font-size="12" fill="#1c1c1e" text-anchor="end">1</text>`
   // векторы
   g += vecArrow(X(atx), Y(aty), X(atx + ax), Y(aty + ay), "#1c1c1e")
   g += vecArrow(X(btx), Y(bty), X(btx + bx), Y(bty + by), "#1c1c1e")
@@ -1591,19 +1591,20 @@ function wave8Svg({ gx0, gx1, gy0, gy1, fn, xa, xb, label = null, marks = [], ma
   g += `<path d="${fnPath(fn, xa, xb, X, Y, gy0, gy1, (xb - xa) / 600)}" fill="none" stroke="${G_CURVE}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`
   g += vecArrow(X(gx0), Y(0), X(gx1), Y(0), G_AX, 1.4)
   g += vecArrow(X(0), Y(gy0), X(0), Y(gy1), G_AX, 1.4)
-  g += `<text x="${X(gx1) - 3}" y="${Y(0) + 17}" font-size="15" font-style="italic" font-weight="bold" fill="${G_AX}" text-anchor="end">x</text>`
-  g += `<text x="${X(0) + 7}" y="${Y(gy1) + 13}" font-size="15" font-style="italic" font-weight="bold" fill="${G_AX}">y</text>`
-  g += `<text x="${X(0) - 5}" y="${Y(0) + 16}" font-size="12" font-weight="bold" fill="${G_AX}" text-anchor="end">0</text>`
-  if (showUnit && gy0 <= 1 && gy1 >= 1) g += `<text x="${X(0) - 6}" y="${Y(1) + 4}" font-size="12" fill="${G_AX}" text-anchor="end">1</text>`
-  if (showUnit && !tickXvals && gx0 <= 1 && gx1 >= 1) g += `<text x="${X(1)}" y="${Y(0) + 16}" font-size="12" fill="${G_AX}" text-anchor="middle">1</text>`
-  if (tickXvals) for (const t of tickXvals) if (t.x >= gx0 && t.x <= gx1 && t.x !== 0) g += `<text x="${X(t.x)}" y="${Y(0) + 16}" font-size="12" fill="${G_AX}" text-anchor="middle">${t.text}</text>`
+  // «x» — над осью у стрелки, чтобы не сталкиваться с подписью крайнего деления снизу
+  g += `<text x="${X(gx1) - 4}" y="${Y(0) - 6}" ${HALO} font-size="15" font-style="italic" font-weight="bold" fill="${G_AX}" text-anchor="end">x</text>`
+  g += `<text x="${X(0) + 7}" y="${Y(gy1) + 13}" ${HALO} font-size="15" font-style="italic" font-weight="bold" fill="${G_AX}">y</text>`
+  g += `<text x="${X(0) - 5}" y="${Y(0) + 16}" ${HALO} font-size="12" font-weight="bold" fill="${G_AX}" text-anchor="end">0</text>`
+  if (showUnit && gy0 <= 1 && gy1 >= 1) g += `<text x="${X(0) - 6}" y="${Y(1) + 4}" ${HALO} font-size="12" fill="${G_AX}" text-anchor="end">1</text>`
+  if (showUnit && !tickXvals && gx0 <= 1 && gx1 >= 1) g += `<text x="${X(1)}" y="${Y(0) + 16}" ${HALO} font-size="12" fill="${G_AX}" text-anchor="middle">1</text>`
+  if (tickXvals) for (const t of tickXvals) if (t.x >= gx0 && t.x <= gx1 && t.x !== 0) g += `<text x="${X(t.x)}" y="${Y(0) + 16}" ${HALO} font-size="12" fill="${G_AX}" text-anchor="middle">${t.text}</text>`
   if (openEnds) for (const xe of [xa, xb]) { const ye = fn(xe); if (ye >= gy0 - 0.4 && ye <= gy1 + 0.4) g += `<circle cx="${X(xe)}" cy="${clean(Y(ye))}" r="3" fill="#fff" stroke="${G_CURVE}" stroke-width="1.6"/>` }
   for (const [x, y] of dots) g += `<circle cx="${X(x)}" cy="${clean(Y(y))}" r="3" fill="${G_AX}"/>`
   for (const mk of marks) {
     g += `<line x1="${X(mk.x)}" y1="${Y(0) - 4}" x2="${X(mk.x)}" y2="${Y(0) + 4}" stroke="${G_AX}" stroke-width="1.4"/>`
-    g += `<text x="${X(mk.x)}" y="${markBelow ? Y(0) + 16 : Y(0) - 8}" font-size="12" font-style="italic" fill="${G_AX}" text-anchor="middle">${mk.label}</text>`
+    g += `<text x="${X(mk.x)}" y="${markBelow ? Y(0) + 16 : Y(0) - 8}" ${HALO} font-size="12" font-style="italic" fill="${G_AX}" text-anchor="middle">${mk.label}</text>`
   }
-  if (label) g += `<text x="${X(label.x)}" y="${Y(label.y)}" font-size="13" font-style="italic" fill="${G_AX}" text-anchor="${label.anchor || "middle"}">${label.text}</text>`
+  if (label) g += `<text x="${X(label.x)}" y="${Y(label.y)}" ${HALO} font-size="13" font-style="italic" fill="${G_AX}" text-anchor="${label.anchor || "middle"}">${label.text}</text>`
   return svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" font-family="Arial, sans-serif" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${g}</svg>`)
 }
 
@@ -2165,8 +2166,10 @@ function t8areaGivenF() {
   } while ((!isTerm(Ln * d * d * d, Ld * 6) || peak > 6.5) && ++tries < 200)
   const L = Ls * Ln / Ld, s = r1 + r2, pr = r1 * r2
   const fn = (x) => L * (x - r1) * (x - r2)
-  // F = L·x³/3 − L·s·x²/2 + L·pr·x — рациональные коэффициенты, дроби стоячими
-  const Fstr = coefTerm(Ls * Ln, Ld * 3, "x³", true) + coefTerm(-Ls * Ln * s, Ld * 2, "x²", false) + coefTerm(Ls * Ln * pr, Ld, "x", false)
+  // F = L·x³/3 − L·s·x²/2 + L·pr·x (+C) — рациональные коэффициенты, дроби стоячими.
+  // Свободный член C произволен (любая первообразная), на площадь F(r₂)−F(r₁) не влияет.
+  const C = randInt(-15, 15)
+  const Fstr = coefTerm(Ls * Ln, Ld * 3, "x³", true) + coefTerm(-Ls * Ln * s, Ld * 2, "x²", false) + coefTerm(Ls * Ln * pr, Ld, "x", false) + coefTerm(C, 1, "", false)
   const above = L < 0                                  // арка выше оси, если L<0
   const gx0 = r1 - 1, gx1 = r2 + 1
   const gy1 = above ? Math.ceil(peak) + 1 : 2, gy0 = above ? -2 : -(Math.ceil(peak) + 1)
