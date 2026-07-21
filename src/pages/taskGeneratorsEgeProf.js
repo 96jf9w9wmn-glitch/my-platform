@@ -2270,13 +2270,13 @@ function stPrism3({ highlight = [], midline = false } = {}) {
 
 // ── Цилиндр / конус / шар и комбинации ──────────────────────────────────────
 function stCone() {
-  const rx = 55, ry = 18, cx = 90, apexY = 35, cyb = 170
+  const rx = 55, ry = 13, cx = 90, apexY = 35, cyb = 170
   let g = `<line x1="${cx - rx}" y1="${cyb}" x2="${cx}" y2="${apexY}" stroke="${ST_INK}" stroke-width="1.7"/><line x1="${cx + rx}" y1="${cyb}" x2="${cx}" y2="${apexY}" stroke="${ST_INK}" stroke-width="1.7"/>`
   g += `<path d="M${cx - rx} ${cyb} A${rx} ${ry} 0 0 0 ${cx + rx} ${cyb}" fill="none" stroke="${ST_INK}" stroke-width="1.7" stroke-dasharray="5 4"/><path d="M${cx - rx} ${cyb} A${rx} ${ry} 0 0 1 ${cx + rx} ${cyb}" fill="none" stroke="${ST_INK}" stroke-width="1.7"/>`
   return stWrap(180, 200, g)
 }
 function stCylCone() {
-  const rx = 55, ry = 18, cx = 95, cyt = 45, cyb = 165
+  const rx = 55, ry = 13, cx = 95, cyt = 45, cyb = 165
   let g = `<line x1="${cx - rx}" y1="${cyt}" x2="${cx - rx}" y2="${cyb}" stroke="${ST_INK}" stroke-width="1.7"/><line x1="${cx + rx}" y1="${cyt}" x2="${cx + rx}" y2="${cyb}" stroke="${ST_INK}" stroke-width="1.7"/>`
   g += `<path d="M${cx - rx} ${cyb} A${rx} ${ry} 0 0 0 ${cx + rx} ${cyb}" fill="none" stroke="${ST_INK}" stroke-width="1.7" stroke-dasharray="5 4"/><path d="M${cx - rx} ${cyb} A${rx} ${ry} 0 0 1 ${cx + rx} ${cyb}" fill="none" stroke="${ST_INK}" stroke-width="1.7"/>`
   g += `<ellipse cx="${cx}" cy="${cyt}" rx="${rx}" ry="${ry}" fill="none" stroke="${ST_INK}" stroke-width="1.7"/>`
@@ -2308,11 +2308,13 @@ function stSphere({ section = false } = {}) {
   return stWrap(180, 184, g)
 }
 function stSphereInCyl() {
-  const R = 52, rx = R, ry = 16, cx = 95, cyt = 40, cyb = cyt + 2 * R, cyc = cyt + R
+  // Пропорции как у ФИПИ: почти квадратный силуэт, плоские эллипсы (ФИПИ-вид).
+  const R = 56, rx = R, ry = 11, cx = 95, cyt = 26, cyb = cyt + 2 * R, cyc = cyt + R
   let g = `<line x1="${cx - rx}" y1="${cyt}" x2="${cx - rx}" y2="${cyb}" stroke="${ST_INK}" stroke-width="1.7"/><line x1="${cx + rx}" y1="${cyt}" x2="${cx + rx}" y2="${cyb}" stroke="${ST_INK}" stroke-width="1.7"/>`
   g += `<path d="M${cx - rx} ${cyb} A${rx} ${ry} 0 0 0 ${cx + rx} ${cyb}" fill="none" stroke="${ST_INK}" stroke-width="1.7" stroke-dasharray="5 4"/><path d="M${cx - rx} ${cyb} A${rx} ${ry} 0 0 1 ${cx + rx} ${cyb}" fill="none" stroke="${ST_INK}" stroke-width="1.7"/><ellipse cx="${cx}" cy="${cyt}" rx="${rx}" ry="${ry}" fill="none" stroke="${ST_INK}" stroke-width="1.7"/>`
   g += `<circle cx="${cx}" cy="${cyc}" r="${R}" fill="none" stroke="${ST_HI}" stroke-width="1.8"/><ellipse cx="${cx}" cy="${cyc}" rx="${R}" ry="${ry}" fill="none" stroke="${ST_HI}" stroke-width="1.2" stroke-dasharray="4 3"/>`
-  return stWrap(190, cyb + 25, g)
+  g += `<circle cx="${cx}" cy="${cyc}" r="2.2" fill="${ST_INK}"/>`
+  return stWrap(190, cyb + ry + 12, g)
 }
 function stConeInSphere() {
   const R = 64, cx = 90, cy = 92
