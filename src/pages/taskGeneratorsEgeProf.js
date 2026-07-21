@@ -1493,10 +1493,13 @@ function t11TwoLines(findY) {
 }
 
 // I-b. Парабола + прямая через 0 (#46): f=ax²+bx+c, g=kx. Ответ — абсцисса B.
+// B НЕ должна быть очевидной: xB берём ПОЛУцелым (её нельзя «считать» с узла сетки,
+// находят решением ax²+bx+c=kx). Ведущий коэффициент чётный (±2) ⇒ b и c целые,
+// так что параболу по-прежнему читают как ax²+bx+c. A остаётся в целом узле.
 function t11ParabLineK() {
   for (; ;) {
-    const k = pick([1, 2, 3, -1, -2, -3]), Af = pick([1, 2, -1, -2])
-    const xA = randInt(-3, 3); let xB = randInt(-3, 4); if (xA === xB) continue
+    const k = pick([1, 2, 3, -1, -2, -3]), Af = pick([2, -2])
+    const xA = randInt(-3, 3), xB = pick([-2.5, -1.5, -0.5, 0.5, 1.5, 2.5, 3.5])
     const fF = (x) => Af * x * x + (k - Af * (xA + xB)) * x + Af * xA * xB
     const gF = (x) => k * x
     const yA = k * xA, yB = k * xB
@@ -1508,17 +1511,21 @@ function t11ParabLineK() {
 }
 
 // J. Гипербола + прямая (#49/#50): f=k/x, g=ax+b. A,B на разных ветвях.
+// B НЕ должна быть очевидной: A ставим в целый узел (делитель k, читается), а xB —
+// ПОЛУцелым на другой ветви, поэтому абсциссу B нельзя «считать» с сетки, её находят
+// решением k/x=ax+b. Берём только комбинации, где a и b целые (прямая g читается).
 function t11HypLine(findY) {
   for (; ;) {
-    const k = pick([-8, -6, -4, 4, 6, 8, 12, -12])
+    const k = pick([-12, -10, -8, -6, -4, 4, 6, 8, 10, 12])
     const divs = []; for (let d = -Math.abs(k); d <= Math.abs(k); d++) if (d !== 0 && k % d === 0) divs.push(d)
-    const pos = divs.filter((d) => d > 0), neg = divs.filter((d) => d < 0)
-    if (!pos.length || !neg.length) continue
-    const xA = pick(pos), xB = pick(neg)
-    const yA = k / xA, yB = k / xB
-    if (Math.abs(yA) > 8 || Math.abs(yB) > 8) continue
+    const xA = pick(divs), yA = k / xA
+    if (Math.abs(yA) > 8) continue
+    const halves = [-3.5, -2.5, -1.5, -0.5, 0.5, 1.5, 2.5, 3.5].filter((h) => (h > 0) !== (xA > 0))
+    const xB = pick(halves), yB = k / xB
+    if (Math.abs(yB) > 9) continue
     const a = (yB - yA) / (xB - xA), b = yA - a * xA
-    if (!Number.isFinite(a) || Math.abs(a) > 6 || Math.abs(b) > 7) continue
+    if (!Number.isInteger(a) || !Number.isInteger(b) || a === 0) continue
+    if (Math.abs(a) > 6 || Math.abs(b) > 7) continue
     const fF = (x) => k / x, gF = (x) => a * x + b
     const W = pairWin([[xA, yA], [xB, yB]]); if (W.gx1 - W.gx0 > 14 || W.gy1 - W.gy0 > 16) continue
     const svg = fnGridSvg({ ...W, plots: [{ fn: fF, xa: W.gx0, xb: -0.28 }, { fn: fF, xa: 0.28, xb: W.gx1 }, { fn: gF, xa: W.gx0, xb: W.gx1 }], dots: [[xA, yA]], labels: [markLabel(xA, yA, "A")] })
@@ -1527,14 +1534,647 @@ function t11HypLine(findY) {
 }
 
 // K-a. Корень + прямая через 0 (#51): f=a√x, g=kx. A=(0,0), B=((a/k)²,…).
+// B НЕ должна быть очевидной: берём только комбинации, где xB=(a/k)² НЕцелое, —
+// тогда абсциссу нельзя «считать» с узла сетки, её находят решением a√x=kx.
+// (Целые xB=4/9/16 убраны как читаемые с графика.) Ответы 2,25/6,25 валидны для ФИПИ.
 function t11RootLineK() {
-  const combos = [[2, 1, 4], [3, 1, 9], [4, 2, 4], [5, 2, 6.25], [3, 2, 2.25], [6, 2, 9], [4, 1, 16]]
+  const combos = [[3, 2, 2.25], [5, 2, 6.25], [6, 4, 2.25]]
   const [a, k, xB] = pick(combos)
   const fF = (x) => (x < 0 ? NaN : a * Math.sqrt(x)), gF = (x) => k * x
   const yB = k * xB
   const gx1 = Math.max(4, Math.ceil(xB) + 1), gy1 = Math.max(3, Math.ceil(yB) + 1)
   const svg = fnGridSvg({ gx0: -1, gx1, gy0: -1, gy1, plots: [{ fn: fF, xa: 0, xb: gx1 }, { fn: gF, xa: 0, xb: gx1 }], dots: [[0, 0]], labels: [markLabel(0, 0, "A")] })
   return { condition_text: `На рисунке изображены графики функций видов f(x) = a${rT("x")} и g(x) = kx, пересекающихся в точках A и B. Найдите абсциссу точки B.`, image_url: svgUrl(svg), answer: ru(xB) }
+}
+
+// ============================================================================
+// №8 — ПРОИЗВОДНАЯ И ПЕРВООБРАЗНАЯ (чтение графиков, физ. смысл, касательная)
+// ============================================================================
+// Эталон — открытый банк ФИПИ. В банк взяты ТОЛЬКО типажи, встречавшиеся на
+// реальных экзаменах (досрочная / основная / резервная волна); чисто «MATHEGE»-
+// и «пробные» варианты (сумма точек экстремума, длина промежутка возрастания,
+// подбор коэффициента параболы по касательной) исключены как не входящие в КИМ.
+//
+// Кривые строятся так, что знак производной, нули и экстремумы читаются
+// однозначно, а ответ вычисляется кодом по построению — гарантированно верен.
+
+const NUMW = { 1: "одна", 2: "две", 3: "три", 4: "четыре", 5: "пять", 6: "шесть", 7: "семь", 8: "восемь", 9: "девять", 10: "десять", 11: "одиннадцать" }
+const ptsWord = (n) => `${NUMW[n]} точек`
+
+// ── Рендер волнистого графика на координатной сетке ─────────────────────────
+// fn — кривая; marks — [{x,label}] штрихи-точки на оси; tangent — {k,x0,y0};
+// shade — {a,b} закрасить между кривой и осью; tickXvals — подписи делений оси x.
+function wave8Svg({ gx0, gx1, gy0, gy1, fn, xa, xb, label = null, marks = [], markBelow = true,
+  dashX = [], shade = null, tangent = null, dots = [], openEnds = true, showUnit = true, tickXvals = null }) {
+  const cell = 22, m = 16
+  const W = 2 * m + (gx1 - gx0) * cell, H = 2 * m + (gy1 - gy0) * cell
+  const X = (u) => m + (u - gx0) * cell
+  const Y = (v) => H - m - (v - gy0) * cell
+  let g = ""
+  for (let i = gx0; i <= gx1; i++) g += `<line x1="${X(i)}" y1="${Y(gy0)}" x2="${X(i)}" y2="${Y(gy1)}" stroke="${G_GRID}" stroke-width="1"/>`
+  for (let j = gy0; j <= gy1; j++) g += `<line x1="${X(gx0)}" y1="${Y(j)}" x2="${X(gx1)}" y2="${Y(j)}" stroke="${G_GRID}" stroke-width="1"/>`
+  if (shade) {
+    let d = `M ${clean(X(shade.a))} ${clean(Y(0))} `
+    const st = (shade.b - shade.a) / 160
+    for (let x = shade.a; x <= shade.b + 1e-9; x += st) d += `L ${clean(X(x))} ${clean(Y(fn(x)))} `
+    d += `L ${clean(X(shade.b))} ${clean(Y(0))} Z`
+    g += `<path d="${d}" fill="#c9ced6" stroke="none"/>`
+  }
+  for (const x of dashX) g += `<line x1="${X(x)}" y1="${Y(0)}" x2="${X(x)}" y2="${clean(Y(fn(x)))}" stroke="${G_DASH}" stroke-width="1.2" stroke-dasharray="4 3"/>`
+  if (tangent) {
+    const { k, x0, y0 } = tangent
+    const ln = (x) => k * (x - x0) + y0
+    let xl = null, xr = null
+    for (let x = gx0; x <= gx1 + 1e-9; x += 0.02) { const y = ln(x); if (y >= gy0 && y <= gy1) { if (xl === null) xl = x; xr = x } }
+    if (xl !== null) g += `<line x1="${clean(X(xl))}" y1="${clean(Y(ln(xl)))}" x2="${clean(X(xr))}" y2="${clean(Y(ln(xr)))}" stroke="${G_AX}" stroke-width="1.7"/>`
+  }
+  g += `<path d="${fnPath(fn, xa, xb, X, Y, gy0, gy1, (xb - xa) / 600)}" fill="none" stroke="${G_CURVE}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`
+  g += vecArrow(X(gx0), Y(0), X(gx1), Y(0), G_AX, 1.4)
+  g += vecArrow(X(0), Y(gy0), X(0), Y(gy1), G_AX, 1.4)
+  g += `<text x="${X(gx1) - 3}" y="${Y(0) + 17}" font-size="15" font-style="italic" font-weight="bold" fill="${G_AX}" text-anchor="end">x</text>`
+  g += `<text x="${X(0) + 7}" y="${Y(gy1) + 13}" font-size="15" font-style="italic" font-weight="bold" fill="${G_AX}">y</text>`
+  g += `<text x="${X(0) - 5}" y="${Y(0) + 16}" font-size="12" font-weight="bold" fill="${G_AX}" text-anchor="end">0</text>`
+  if (showUnit && gy0 <= 1 && gy1 >= 1) g += `<text x="${X(0) - 6}" y="${Y(1) + 4}" font-size="12" fill="${G_AX}" text-anchor="end">1</text>`
+  if (showUnit && !tickXvals && gx0 <= 1 && gx1 >= 1) g += `<text x="${X(1)}" y="${Y(0) + 16}" font-size="12" fill="${G_AX}" text-anchor="middle">1</text>`
+  if (tickXvals) for (const t of tickXvals) if (t.x >= gx0 && t.x <= gx1 && t.x !== 0) g += `<text x="${X(t.x)}" y="${Y(0) + 16}" font-size="12" fill="${G_AX}" text-anchor="middle">${t.text}</text>`
+  if (openEnds) for (const xe of [xa, xb]) { const ye = fn(xe); if (ye >= gy0 - 0.4 && ye <= gy1 + 0.4) g += `<circle cx="${X(xe)}" cy="${clean(Y(ye))}" r="3" fill="#fff" stroke="${G_CURVE}" stroke-width="1.6"/>` }
+  for (const [x, y] of dots) g += `<circle cx="${X(x)}" cy="${clean(Y(y))}" r="3" fill="${G_AX}"/>`
+  for (const mk of marks) {
+    g += `<line x1="${X(mk.x)}" y1="${Y(0) - 4}" x2="${X(mk.x)}" y2="${Y(0) + 4}" stroke="${G_AX}" stroke-width="1.4"/>`
+    g += `<text x="${X(mk.x)}" y="${markBelow ? Y(0) + 16 : Y(0) - 8}" font-size="12" font-style="italic" fill="${G_AX}" text-anchor="middle">${mk.label}</text>`
+  }
+  if (label) g += `<text x="${X(label.x)}" y="${Y(label.y)}" font-size="13" font-style="italic" fill="${G_AX}" text-anchor="${label.anchor || "middle"}">${label.text}</text>`
+  return svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" font-family="Arial, sans-serif" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${g}</svg>`)
+}
+
+// Место для подписи «y = f(x)»: угол с максимальным вертикальным зазором до кривой.
+function label8(fn, gx0, gx1, gy0, gy1, text) {
+  const dx = (gx1 - gx0) * 0.24
+  const cand = [
+    { x: gx0 + dx, y: gy1 - 0.5 }, { x: gx1 - dx, y: gy1 - 0.5 },
+    { x: gx0 + dx, y: gy0 + 0.7 }, { x: gx1 - dx, y: gy0 + 0.7 },
+  ]
+  let best = cand[0], bs = -1
+  for (const c of cand) {
+    let clr = Infinity
+    for (let x = c.x - 1.7; x <= c.x + 1.7; x += 0.1) { const y = fn(x); if (isFinite(y)) clr = Math.min(clr, Math.abs(y - c.y)) }
+    if (clr > bs) { bs = clr; best = c }
+  }
+  return { ...best, text, anchor: "middle" }
+}
+
+// ── Движок 1: кривая-экстремумы (рисуемая кривая = f) ───────────────────────
+// anchors=[[x,y]…] — точки с горизонтальной касательной; между ними косинусное
+// сглаживание (монотонно). Внутренние якоря — экстремумы f.
+function mkWaveExtrema(anchors) {
+  const xs = anchors.map((a) => a[0]), ys = anchors.map((a) => a[1])
+  const fn = (x) => {
+    if (x <= xs[0]) return ys[0]
+    if (x >= xs[xs.length - 1]) return ys[ys.length - 1]
+    let i = 0; while (i < xs.length - 1 && x > xs[i + 1]) i++
+    const t = (x - xs[i]) / (xs[i + 1] - xs[i])
+    return ys[i] + (ys[i + 1] - ys[i]) * (1 - Math.cos(Math.PI * t)) / 2
+  }
+  const ext = []
+  for (let i = 1; i < anchors.length - 1; i++) ext.push({ x: xs[i], type: ys[i] > ys[i - 1] ? "max" : "min" })
+  return { fn, ext, xs, ys }
+}
+
+// Собрать кривую-экстремумы по заданным абсциссам внутренних экстремумов.
+// Крайние якоря вынесены за окно (концы кривой наклонные, как в ФИПИ).
+function buildExtremaWaveAt(gx0, gx1, gy0, gy1, interiorXs, startDir) {
+  const px = [gx0 - 1, ...interiorXs, gx1 + 1]
+  const hi = gy1 - 0.7, lo = gy0 + 0.7
+  let level = startDir > 0 ? "lo" : "hi"
+  const anchors = px.map((x) => {
+    const y = level === "lo" ? clean(lo + Math.random() * 0.8) : clean(hi - Math.random() * 0.8)
+    level = level === "lo" ? "hi" : "lo"
+    return [x, y]
+  })
+  return mkWaveExtrema(anchors)
+}
+
+// Случайные абсциссы внутренних экстремумов (не целые, разнесены по окну).
+function buildExtremaWave(gx0, gx1, gy0, gy1, nInt, startDir) {
+  const xs = []
+  for (let t = 0; t < nInt; t++) xs.push(clean(gx0 + (gx1 - gx0) * (t + 1) / (nInt + 1) + (Math.random() - 0.5) * 0.7))
+  return buildExtremaWaveAt(gx0, gx1, gy0, gy1, xs, startDir)
+}
+
+// Знак f′ в точке x для кривой-экстремумы (по направлению своего сегмента).
+function dfSignExtrema(w, x) {
+  let i = 0; while (i < w.xs.length - 1 && x > w.xs[i + 1]) i++
+  if (i >= w.xs.length - 1) i = w.xs.length - 2
+  return Math.sign(w.ys[i + 1] - w.ys[i])
+}
+
+// Отмеченные точки в интерьере монотонных участков (вдали от якорей).
+function pickMarksExtrema(w, gx0, gx1, N) {
+  const near = (x) => w.xs.some((a) => Math.abs(a - x) < 0.5)
+  const cands = []
+  for (let x = gx0 + 0.7; x <= gx1 - 0.7; x += 0.25) if (!near(x) && Math.abs(x) > 0.4) cands.push(clean(x))
+  const chosen = []
+  for (let k = 0; k < N && cands.length; k++) chosen.push(cands[Math.round((k + 0.5) / N * (cands.length - 1))])
+  const uniq = []
+  for (const x of chosen) if (!uniq.some((u) => Math.abs(u - x) < 0.7)) uniq.push(x)
+  uniq.sort((a, b) => a - b)
+  return uniq.map((x, i) => ({ x, label: "x" + subU(i + 1) }))
+}
+
+// ── Движок 2: кривая-производная (рисуемая кривая = f′), нули в целых roots ──
+// Гладкая волна из полусинусов, меняющая знак в каждом корне; знак на интервале i
+// = firstSign·(−1)^i; amps[i] — высота горба. Вне [roots0,rootsN] — хвосты того же
+// интервала (без лишних нулей, если окно не выходит за один горб).
+function mkDeriv(roots, amps, firstSign) {
+  const n = roots.length
+  const sgn = (i) => firstSign * (i % 2 === 0 ? 1 : -1)
+  const fn = (x) => {
+    let i
+    if (x <= roots[0]) i = 0
+    else if (x >= roots[n - 1]) i = n - 2
+    else { i = 0; while (i < n - 1 && x > roots[i + 1]) i++ }
+    const rL = roots[i], w = roots[i + 1] - roots[i]
+    return sgn(i) * amps[i] * Math.sin(Math.PI * (x - rL) / w)
+  }
+  const typeAt = (r) => (fn(r - 0.05) > 0 ? "max" : "min") // f′: +→− ⇒ максимум f
+  return { fn, roots, amps, firstSign, sgn, typeAt }
+}
+
+// Собрать f′ с корнями в целых точках. rootXs заданы; amps подобраны в окно.
+function buildDeriv(gx0, gx1, gy1, rootXs, firstSign) {
+  const amps = []
+  for (let i = 0; i < rootXs.length - 1; i++) amps.push(clean(pick([1.6, 1.9, 2.2, 2.5, 2.8]).valueOf()))
+  const b = mkDeriv(rootXs, amps, firstSign)
+  return b
+}
+
+// Численный интеграл f′ от gx0 до x (для f = первообразной).
+function integ(fn, x0, x1) { let s = 0; const K = 400, h = (x1 - x0) / K; for (let i = 0; i < K; i++) { const a = x0 + i * h; s += (fn(a) + fn(a + h)) / 2 * h } return s }
+
+// Отмеченные точки на кривой-производной, где |f′|≥0.55 и вдали от корней.
+function pickMarksDeriv(b, gx0, gx1, N) {
+  const near = (x) => b.roots.some((r) => Math.abs(r - x) < 0.6)
+  const cands = []
+  for (let x = gx0 + 0.7; x <= gx1 - 0.7; x += 0.25) if (!near(x) && Math.abs(x) > 0.4 && Math.abs(b.fn(x)) >= 0.55) cands.push(clean(x))
+  const chosen = []
+  for (let k = 0; k < N && cands.length; k++) chosen.push(cands[Math.round((k + 0.5) / N * (cands.length - 1))])
+  const uniq = []
+  for (const x of chosen) if (!uniq.some((u) => Math.abs(u - x) < 0.7)) uniq.push(x)
+  uniq.sort((a, b2) => a - b2)
+  return uniq.map((x, i) => ({ x, label: "x" + subU(i + 1) }))
+}
+
+// ── Движок 3: сплайн Catmull–Rom через узлы (монотонные S-кривые) ────────────
+function mkSpline(pts) {
+  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1])
+  return (x) => {
+    if (x <= xs[0]) return ys[0]
+    if (x >= xs[xs.length - 1]) return ys[ys.length - 1]
+    let i = 0; while (i < xs.length - 1 && x > xs[i + 1]) i++
+    const t = (x - xs[i]) / (xs[i + 1] - xs[i])
+    const y0 = ys[i], y1 = ys[i + 1]
+    const yp = i > 0 ? ys[i - 1] : y0 - (y1 - y0)
+    const yn = i + 2 < ys.length ? ys[i + 2] : y1 + (y1 - y0)
+    const m0 = (y1 - yp) / 2, m1 = (yn - y0) / 2, t2 = t * t, t3 = t2 * t
+    return (2 * t3 - 3 * t2 + 1) * y0 + (t3 - 2 * t2 + t) * m0 + (-2 * t3 + 3 * t2) * y1 + (t3 - t2) * m1
+  }
+}
+
+// ============================================================================
+// Группа A — дан график y=f(x), спрашивают про f′
+// ============================================================================
+
+// #1/#2 — сколько из отмеченных точек производная f′ положительна / отрицательна.
+function t8fSignCount(positive) {
+  const gx0 = -8, gx1 = 8, gy0 = -5, gy1 = 5
+  let w, marks, want, tries = 0
+  do {
+    w = buildExtremaWave(gx0, gx1, gy0, gy1, randInt(3, 5), pick([1, -1]))
+    marks = pickMarksExtrema(w, gx0, gx1, randInt(6, 8))
+    want = marks.filter((m) => (dfSignExtrema(w, m.x) > 0) === positive).length
+  } while ((marks.length < 6 || want < 1 || want > marks.length - 1) && ++tries < 60)
+  return {
+    condition_text: `На рисунке изображён график функции y = f(x). На оси абсцисс отмечены ${ptsWord(marks.length)}: ${marks.map((m) => m.label).join(", ")}. В скольких из этих точек производная функции f(x) ${positive ? "положительна" : "отрицательна"}?`,
+    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn: w.fn, xa: gx0, xb: gx1, marks, showUnit: false, label: label8(w.fn, gx0, gx1, gy0, gy1, "y = f(x)") }),
+    answer: ru(want),
+  }
+}
+
+// #3 — количество точек, в которых f′(x)=0 (= число экстремумов f).
+function t8fZeroCountAll() {
+  const gx0 = -9, gx1 = 5, gy0 = -4, gy1 = 4
+  const nInt = randInt(3, 6)
+  const w = buildExtremaWave(gx0, gx1, gy0, gy1, nInt, pick([1, -1]))
+  const cnt = w.ext.filter((e) => e.x > gx0 && e.x < gx1).length
+  return {
+    condition_text: `На рисунке изображён график функции y = f(x), определённой на интервале (${ru(gx0)}; ${ru(gx1)}). Найдите количество точек, в которых производная функции f(x) равна 0.`,
+    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn: w.fn, xa: gx0, xb: gx1, tickXvals: [{ x: gx0, text: ru(gx0) }, { x: gx1, text: ru(gx1) }], label: label8(w.fn, gx0, gx1, gy0, gy1, "y = f(x)") }),
+    answer: ru(cnt),
+  }
+}
+
+// #4 — точка из отрезка [a;b], в которой f′(x)=0 (ровно один экстремум в отрезке).
+function t8fZeroPointSeg() {
+  const gx0 = -3, gx1 = 8, gy0 = -4, gy1 = 4
+  // внутренние экстремумы — в ЦЕЛЫХ точках, чтобы ответ был точным.
+  let exs, tries = 0
+  do {
+    exs = []
+    let x = gx0 + randInt(2, 3)
+    while (x <= gx1 - 2) { exs.push(x); x += randInt(2, 3) }
+  } while (exs.length < 2 && ++tries < 20)
+  const w = buildExtremaWaveAt(gx0, gx1, gy0, gy1, exs, pick([1, -1]))
+  // отрезок [a;b] ровно с одним экстремумом
+  const target = pick(exs)
+  let a = Math.max(target - randInt(1, 2), gx0 + 1), b = Math.min(target + randInt(1, 2), gx1 - 1)
+  // сузить, если попал ещё один экстремум
+  while (exs.some((e) => e !== target && e >= a && e <= b)) { if (exs.some((e) => e !== target && e <= target && e >= a)) a++; else b-- }
+  return {
+    condition_text: `На рисунке изображён график дифференцируемой функции y = f(x), определённой на интервале (${ru(gx0)}; ${ru(gx1)}). Найдите точку из отрезка [${ru(a)}; ${ru(b)}], в которой производная функции f(x) равна 0.`,
+    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn: w.fn, xa: gx0, xb: gx1, dashX: [target], tickXvals: [{ x: gx0, text: ru(gx0) }, { x: gx1, text: ru(gx1) }], label: label8(w.fn, gx0, gx1, gy0, gy1, "y = f(x)") }),
+    answer: ru(target),
+  }
+}
+
+// #5 — количество решений уравнения f′(x)=0 на отрезке [a;b].
+function t8fZeroCountSeg() {
+  const gx0 = -6, gx1 = 6, gy0 = -4, gy1 = 5
+  const w = buildExtremaWave(gx0, gx1, gy0, gy1, randInt(4, 6), pick([1, -1]))
+  const exs = w.ext.map((e) => e.x).filter((x) => x > gx0 && x < gx1)
+  const a = -4.5, b = 2.5
+  const cnt = exs.filter((x) => x >= a && x <= b).length
+  return {
+    condition_text: `На рисунке изображён график функции y = f(x), определённой на интервале (${ru(gx0)}; ${ru(gx1)}). Найдите количество решений уравнения f′(x) = 0 на отрезке [${ru(a)}; ${ru(b)}].`,
+    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn: w.fn, xa: gx0, xb: gx1, tickXvals: [{ x: gx0, text: ru(gx0) }, { x: gx1, text: ru(gx1) }], label: label8(w.fn, gx0, gx1, gy0, gy1, "y = f(x)") }),
+    answer: ru(cnt),
+  }
+}
+
+// #6 — количество целых точек, в которых f′ положительна / отрицательна.
+function t8fIntSign(positive) {
+  const gx0 = -7, gx1 = 7, gy0 = -4, gy1 = 4
+  let w, cnt, tries = 0
+  do {
+    // экстремумы в ПОЛУцелых точках ⇒ на всех целых x производная заведомо ≠ 0.
+    const nInt = randInt(3, 5), xs = []
+    for (let t = 0; t < nInt; t++) { const p = Math.round(gx0 + (gx1 - gx0) * (t + 1) / (nInt + 1) - 0.5) + 0.5; if (!xs.includes(p)) xs.push(p) }
+    w = buildExtremaWaveAt(gx0, gx1, gy0, gy1, xs, pick([1, -1]))
+    cnt = 0
+    for (let x = gx0 + 1; x <= gx1 - 1; x++) if ((dfSignExtrema(w, x) > 0) === positive) cnt++
+  } while ((cnt < 2 || cnt > (gx1 - gx0 - 3)) && ++tries < 60)
+  return {
+    condition_text: `На рисунке изображён график функции y = f(x), определённой на интервале (${ru(gx0)}; ${ru(gx1)}). Определите количество целых точек, в которых производная функции ${positive ? "положительна" : "отрицательна"}.`,
+    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn: w.fn, xa: gx0, xb: gx1, tickXvals: [{ x: gx0, text: ru(gx0) }, { x: gx1, text: ru(gx1) }], label: label8(w.fn, gx0, gx1, gy0, gy1, "y = f(x)") }),
+    answer: ru(cnt),
+  }
+}
+
+// #28/#29 — в какой из отмеченных точек значение f′ наибольшее / наименьшее.
+function t8fDerivExtreme(greatest) {
+  const gx0 = -2, gx1 = 5, gy0 = -3, gy1 = 4
+  const marksX = [-1, 1, 2, 3, 4].filter((x) => x > gx0 && x < gx1)
+  let w, best, tries = 0
+  do {
+    w = buildExtremaWave(gx0, gx1, gy0, gy1, randInt(2, 3), pick([1, -1]))
+    const vals = marksX.map((x) => ({ x, d: (w.fn(x + 0.03) - w.fn(x - 0.03)) / 0.06 }))
+    vals.sort((p, q) => greatest ? q.d - p.d : p.d - q.d)
+    best = (Math.abs(vals[0].d - vals[1].d) > 0.4) ? vals[0].x : null
+  } while (best === null && ++tries < 80)
+  return {
+    condition_text: `На рисунке изображён график функции y = f(x). На оси абсцисс отмечены точки ${marksX.map(ru).join(", ")}. В какой из этих точек значение производной функции ${greatest ? "наибольшее" : "наименьшее"}? В ответе укажите эту точку.`,
+    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn: w.fn, xa: gx0, xb: gx1, marks: marksX.map((x) => ({ x, label: ru(x) })), showUnit: true, label: label8(w.fn, gx0, gx1, gy0, gy1, "y = f(x)") }),
+    answer: ru(best),
+  }
+}
+
+// #30 — количество точек, где касательная параллельна горизонтали (= экстремумы f).
+function t8fHorizTangent() {
+  const gx0 = -4, gx1 = 13, gy0 = -7, gy1 = 3
+  const nInt = randInt(4, 6)
+  const w = buildExtremaWave(gx0, gx1, gy0, gy1, nInt, pick([1, -1]))
+  const cnt = w.ext.filter((e) => e.x > gx0 && e.x < gx1).length
+  return {
+    condition_text: `На рисунке изображён график функции y = f(x), определённой на интервале (${ru(gx0)}; ${ru(gx1)}). Определите количество точек, в которых касательная к графику функции y = f(x) параллельна прямой y = ${ru(randInt(6, 20))}.`,
+    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn: w.fn, xa: gx0, xb: gx1, tickXvals: [{ x: gx0, text: ru(gx0) }, { x: gx1, text: ru(gx1) }], label: label8(w.fn, gx0, gx1, gy0, gy1, "y = f(x)") }),
+    answer: ru(cnt),
+  }
+}
+
+// ============================================================================
+// Группа B — дан график y=f′(x), спрашивают про f
+// ============================================================================
+
+// #8/#9 — сколько из отмеченных точек лежат на промежутках возрастания / убывания f.
+function t8dIncDec(increasing) {
+  const gx0 = -9, gx1 = 8, gy1 = 4, gy0 = -4
+  let b, marks, want = 0, tries = 0
+  do {
+    const nr = randInt(3, 5)
+    const roots = []
+    let x = gx0 + randInt(1, 2)
+    for (let i = 0; i < nr; i++) { roots.push(x); x += randInt(2, 3) }
+    if (roots[roots.length - 1] >= gx1 - 1) { tries++; continue }
+    b = buildDeriv(gx0, gx1, gy1, roots, pick([1, -1]))
+    marks = pickMarksDeriv(b, gx0, gx1, randInt(6, 8))
+    want = marks.filter((m) => (b.fn(m.x) > 0) === increasing).length
+  } while ((!marks || marks.length < 6 || want < 1 || want > marks.length - 1) && ++tries < 80)
+  return {
+    condition_text: `На рисунке изображён график y = f′(x) — производной функции f(x). На оси абсцисс отмечены ${ptsWord(marks.length)}: ${marks.map((m) => m.label).join(", ")}. Сколько из этих точек лежат на промежутках ${increasing ? "возрастания" : "убывания"} функции f(x)?`,
+    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn: b.fn, xa: gx0, xb: gx1, marks, showUnit: false, label: label8(b.fn, gx0, gx1, gy0, gy1, "y = f′(x)") }),
+    answer: ru(want),
+  }
+}
+
+// Собрать f′ с целыми корнями внутри окна; вернуть {b, roots}.
+function makeDerivRoots(gx0, gx1, gy1, nr, firstSign) {
+  const roots = []
+  let x = gx0 + randInt(1, 2)
+  for (let i = 0; i < nr; i++) { roots.push(x); x += randInt(2, 3) }
+  if (roots[roots.length - 1] > gx1 - 1) return null
+  return buildDeriv(gx0, gx1, gy1, roots, firstSign)
+}
+
+// #10/#14/#15 — количество точек экстремума / максимума / минимума f на отрезке [a;b].
+function t8dExtremaCount(kind) {
+  const gx0 = -9, gx1 = 8, gy0 = -4, gy1 = 4
+  let b, tries = 0
+  do { b = makeDerivRoots(gx0, gx1, gy1, randInt(4, 6), pick([1, -1])) } while (!b && ++tries < 40)
+  const a = gx0 + 2, bb = gx1 - 1
+  const inseg = b.roots.filter((r) => r >= a && r <= bb)
+  const cnt = kind === "any" ? inseg.length : inseg.filter((r) => b.typeAt(r) === kind).length
+  const word = kind === "any" ? "экстремума" : kind === "max" ? "максимума" : "минимума"
+  return {
+    condition_text: `На рисунке изображён график y = f′(x) — производной функции f(x), определённой на интервале (${ru(gx0)}; ${ru(gx1)}). Найдите количество точек ${word} функции f(x), принадлежащих отрезку [${ru(a)}; ${ru(bb)}].`,
+    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn: b.fn, xa: gx0, xb: gx1, tickXvals: [{ x: gx0, text: ru(gx0) }, { x: gx1, text: ru(gx1) }], label: label8(b.fn, gx0, gx1, gy0, gy1, "y = f′(x)") }),
+    answer: ru(cnt),
+  }
+}
+
+// #11 — точка экстремума f на отрезке [a;b] (ровно один корень f′ в отрезке).
+function t8dExtremumPoint() {
+  const gx0 = -9, gx1 = 8, gy0 = -4, gy1 = 4
+  let b, a, bb, inseg, tries = 0
+  do {
+    b = makeDerivRoots(gx0, gx1, gy1, randInt(3, 5), pick([1, -1]))
+    if (!b) continue
+    const r = pick(b.roots)
+    a = r - randInt(1, 2); bb = r + randInt(1, 2)
+    a = Math.max(a, gx0 + 1); bb = Math.min(bb, gx1 - 1)
+    inseg = b.roots.filter((x) => x >= a && x <= bb)
+  } while ((!b || inseg.length !== 1) && ++tries < 80)
+  return {
+    condition_text: `На рисунке изображён график y = f′(x) — производной функции f(x), определённой на интервале (${ru(gx0)}; ${ru(gx1)}). Найдите точку экстремума функции f(x) на отрезке [${ru(a)}; ${ru(bb)}].`,
+    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn: b.fn, xa: gx0, xb: gx1, dashX: [inseg[0]], tickXvals: [{ x: gx0, text: ru(gx0) }, { x: gx1, text: ru(gx1) }], label: label8(b.fn, gx0, gx1, gy0, gy1, "y = f′(x)") }),
+    answer: ru(inseg[0]),
+  }
+}
+
+// #12/#13 — точка максимума / минимума f (ровно одна нужного типа во всём окне).
+function t8dOptPoint(kind) {
+  const gx0 = -3, gx1 = 8, gy0 = -4, gy1 = 4
+  let b, want, tries = 0
+  do {
+    b = makeDerivRoots(gx0, gx1, gy1, randInt(2, 4), pick([1, -1]))
+    if (!b) continue
+    want = b.roots.filter((r) => b.typeAt(r) === kind)
+  } while ((!b || want.length !== 1) && ++tries < 100)
+  return {
+    condition_text: `На рисунке изображён график функции y = f′(x) — производной функции f(x), определённой на интервале (${ru(gx0)}; ${ru(gx1)}). Найдите точку ${kind === "max" ? "максимума" : "минимума"} функции f(x).`,
+    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn: b.fn, xa: gx0, xb: gx1, dashX: [want[0]], tickXvals: [{ x: gx0, text: ru(gx0) }, { x: gx1, text: ru(gx1) }], label: label8(b.fn, gx0, gx1, gy0, gy1, "y = f′(x)") }),
+    answer: ru(want[0]),
+  }
+}
+
+// #18–#21 — точка отрезка [a;b], в которой f принимает наиб. / наим. значение.
+function t8dArgOpt(greatest) {
+  const gx0 = -9, gx1 = 6, gy0 = -4, gy1 = 4
+  let b, a, bb, best, tries = 0
+  do {
+    b = makeDerivRoots(gx0, gx1, gy1, randInt(3, 5), pick([1, -1]))
+    if (!b) continue
+    a = gx0 + randInt(1, 2); bb = a + randInt(3, 5); bb = Math.min(bb, gx1 - 1)
+    const cand = [a, bb, ...b.roots.filter((r) => r > a && r < bb)]
+    const Fv = cand.map((x) => ({ x, F: integ(b.fn, gx0, x) }))
+    Fv.sort((p, q) => greatest ? q.F - p.F : p.F - q.F)
+    best = (Math.abs(Fv[0].F - Fv[1].F) > 0.25) ? Fv[0].x : null
+  } while ((best === null) && ++tries < 100)
+  return {
+    condition_text: `На рисунке изображён график y = f′(x) — производной функции f(x), определённой на интервале (${ru(gx0)}; ${ru(gx1)}). В какой точке отрезка [${ru(a)}; ${ru(bb)}] функция f(x) принимает ${greatest ? "наибольшее" : "наименьшее"} значение?`,
+    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn: b.fn, xa: gx0, xb: gx1, tickXvals: [{ x: gx0, text: ru(gx0) }, { x: gx1, text: ru(gx1) }], label: label8(b.fn, gx0, gx1, gy0, gy1, "y = f′(x)") }),
+    answer: ru(best),
+  }
+}
+
+// #31/#33 — абсцисса точки, где касательная к f параллельна y=kx (f′=k), единственная.
+// k=0 ⇒ параллельна оси абсцисс (#33). Строим монотонную S-кривую f′ через узел (x0,k).
+function t8dDerivEqPoint(k) {
+  const gx0 = -4, gx1 = 6, gy0 = -4, gy1 = 4
+  const lo = gy0 + 0.5, hi = gy1 - 0.5
+  // возрастающая последовательность из cnt случайных положительных шагов: from→to.
+  const ramp = (from, to, cnt) => {
+    if (cnt <= 0) return [from]
+    const inc = []; let acc = 0
+    for (let i = 0; i < cnt; i++) { const v = 0.5 + Math.random(); inc.push(v); acc += v }
+    const sc = (to - from) / acc, out = [from]
+    for (let i = 0; i < cnt; i++) out.push(clean(out[i] + inc[i] * sc))
+    return out
+  }
+  let fn, x0, tries = 0
+  do {
+    x0 = randInt(gx0 + 2, gx1 - 2)
+    // две возрастающие ветви: lo→k слева, k→hi справа; узел x0 = ровно k
+    const left = ramp(lo, k, x0 - gx0), right = ramp(k, hi, gx1 - x0)
+    const nodes = [...left.slice(0, left.length - 1), ...right].map((y, i) => [gx0 + i, y])
+    fn = mkSpline(nodes)
+    let mono = true; for (let x = gx0; x < gx1 - 0.05; x += 0.1) if (fn(x + 0.1) <= fn(x)) { mono = false; break }
+    let cr = 0; for (let x = gx0 + 0.017; x < gx1; x += 0.05) if ((fn(x) - k) * (fn(x + 0.05) - k) < 0) cr++
+    if (mono && cr === 1) break
+  } while (++tries < 150)
+  const cond = k === 0
+    ? `На рисунке изображён график y = f′(x) — производной функции f(x), определённой на интервале (${ru(gx0)}; ${ru(gx1)}). Найдите абсциссу точки, в которой касательная к графику функции y = f(x) параллельна оси абсцисс или совпадает с ней.`
+    : `На рисунке изображён график y = f′(x) — производной функции f(x), определённой на интервале (${ru(gx0)}; ${ru(gx1)}). Найдите абсциссу точки, в которой касательная к графику функции y = f(x) параллельна прямой y = ${ru(k)}x или совпадает с ней.`
+  return {
+    condition_text: cond,
+    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn, xa: gx0, xb: gx1, dashX: [x0], tickXvals: [{ x: gx0, text: ru(gx0) }, { x: gx1, text: ru(gx1) }], label: label8(fn, gx0, gx1, gy0, gy1, "y = f′(x)") }),
+    answer: ru(x0),
+  }
+}
+
+// #32 — количество точек, где касательная к f параллельна прямой y=kx+b (f′=k).
+function t8dDerivEqCount() {
+  const gx0 = -4, gx1 = 13, gy0 = -6, gy1 = 3
+  const k = pick([-2, -1, 1, 2])
+  let w, cnt, tries = 0
+  do {
+    w = buildExtremaWave(gx0, gx1, gy0, gy1, randInt(4, 6), pick([1, -1]))
+    cnt = 0
+    for (let x = gx0 + 0.517; x < gx1 - 0.5; x += 0.05) if ((w.fn(x) - k) * (w.fn(x + 0.05) - k) < 0) cnt++
+  } while ((cnt < 2 || cnt > 6) && ++tries < 60)
+  const b0 = randInt(3, 12) * (k < 0 ? 1 : -1)
+  return {
+    condition_text: `На рисунке изображён график y = f′(x) — производной функции f(x), определённой на интервале (${ru(gx0)}; ${ru(gx1)}). Найдите количество точек, в которых касательная к графику функции y = f(x) параллельна прямой y = ${k === 1 ? "" : k === -1 ? "−" : ru(k)}x ${signed(b0)} или совпадает с ней.`,
+    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn: w.fn, xa: gx0, xb: gx1, tickXvals: [{ x: gx0, text: ru(gx0) }, { x: gx1, text: ru(gx1) }], label: label8(w.fn, gx0, gx1, gy0, gy1, "y = f′(x)") }),
+    answer: ru(cnt),
+  }
+}
+
+// ============================================================================
+// Группа C — касательная на графике f(x): значение f′(x₀) = угловой коэффициент
+// ============================================================================
+function t8tangentSlope() {
+  const gx0 = -6, gx1 = 6, gy0 = -6, gy1 = 8
+  const rats = [[1, 2], [1, 4], [2, 5], [3, 2], [1, 1], [2, 1], [3, 1], [3, 4], [4, 5]]  // только конечные десятичные
+  const [p0, q] = pick(rats)
+  const k = clean(p0 / q * pick([1, -1]))
+  let x0, y0, tries = 0
+  do { x0 = randInt(-2, 2); y0 = randInt(-1, 3) } while ((Math.abs(x0 + q) > gx1 || Math.abs(y0 + k * q) > gy1) && ++tries < 30)
+  const A = 0.2, w = 1
+  const fn = (x) => { const u = x - x0; return y0 + k * u + A * (u - Math.sin(w * u) / w) }
+  return {
+    condition_text: `На рисунке изображены график функции y = f(x) и касательная к нему в точке с абсциссой x₀. Найдите значение производной функции f(x) в точке x₀.`,
+    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn, xa: gx0, xb: gx1, tangent: { k, x0, y0 }, dashX: [x0], dots: [[x0, y0]], marks: [{ x: x0, label: "x" + subU(0) }], openEnds: false, showUnit: true, label: label8(fn, gx0, gx1, gy0, gy1, "y = f(x)") }),
+    answer: ru(k),
+  }
+}
+
+// ============================================================================
+// Группа D — физический смысл производной (прямолинейное движение)
+// ============================================================================
+
+// #26 — x(t)=a·t²+b·t+c, найти скорость v(t₀)=2a·t₀+b.
+function t8kinVelocityAt() {
+  const [an, ad] = pick([[1, 2], [1, 6], [1, 4], [1, 3], [1, 1]])
+  let b, c, t0, tries = 0
+  do { b = randInt(2, 9); c = randInt(5, 40); t0 = ad === 1 ? randInt(2, 9) : randInt(1, 4) * ad } while (!Number.isInteger(2 * an / ad * t0) && ++tries < 40)
+  const v = clean(2 * an / ad * t0 + b)
+  const aStr = an === ad ? "t²" : `${fT(an, ad)}t²`
+  return {
+    condition_text: `Материальная точка движется прямолинейно по закону x(t) = ${aStr} ${signed(b)}t ${signed(c)}, где x — расстояние от точки отсчёта в метрах, t — время в секундах, измеренное с момента начала движения. Найдите её скорость (в метрах в секунду) в момент времени t = ${ru(t0)} с.`,
+    answer: ru(v),
+  }
+}
+
+// #27 — x(t)=⅙t³+b·t²+c·t+d, найти момент, когда скорость v=V. v=½t²+2b·t+c.
+function t8kinTimeForVelocity() {
+  let b, c, d, T, V, tries = 0
+  do {
+    T = pick([4, 6, 8, 10, 12, 14, 16, 18])   // чётное T ⇒ V целое
+    b = pick([-4, -3, -2, -1, 1, 2]); c = randInt(-9, 9); d = randInt(100, 300)
+    V = clean(T * T / 2 + 2 * b * T + c)
+  } while ((V <= 0 || !Number.isInteger(V) || (c - V) >= 0) && ++tries < 80)
+  // v=½t²+2b·t+c=V ⇒ ½t²+2b·t+(c−V)=0; произведение корней 2(c−V)<0 ⇒ ровно один t>0=T
+  const bStr = `${signed(b)}t²`
+  const cStr = `${signed(c)}t`
+  return {
+    condition_text: `Материальная точка движется прямолинейно по закону x(t) = ${fT(1, 6)}t³ ${bStr} ${cStr} ${signed(d)}, где x — расстояние от точки отсчёта в метрах, t — время в секундах, измеренное с момента начала движения. В какой момент времени (в секундах) её скорость была равна ${ru(V)} м/с?`,
+    answer: ru(T),
+  }
+}
+
+// ============================================================================
+// Группа E — касательная (аналитически): прямая касается параболы, найти c
+// ============================================================================
+function t8tangentParabC() {
+  const a = pick([1, 4])
+  // касание: y=kx+b ∥ y=a·x²+p·x+c ⇒ a·x²+(p−k)x+(c−b)=0, D=0 ⇒ c=b+(p−k)²/(4a).
+  // Берём p−k=δ, кратное 2a ⇒ δ²/(4a) — целое ⇒ c целый. Всегда корректно.
+  const delta = a === 1 ? pick([2, -2, 4, -4]) : pick([8, -8])
+  let k, p, tries = 0
+  do { k = randInt(-8, 8); p = k + delta } while (Math.abs(p) > 8 && ++tries < 40)
+  if (Math.abs(p) > 8) { k = delta > 0 ? -8 : 8; p = k + delta }
+  const b = randInt(-9, 9), c = b + delta * delta / (4 * a)
+  const aStr = a === 1 ? "" : ru(a)
+  return {
+    condition_text: `Прямая y = ${k === 1 ? "" : k === -1 ? "−" : ru(k)}x ${signed(b)} является касательной к графику функции y = ${aStr}x² ${signed(p)}x + c. Найдите c.`,
+    answer: ru(c),
+  }
+}
+
+// ============================================================================
+// Группа F — график первообразной F(x) и площадь
+// ============================================================================
+
+// #39/#40 — сколько из отмеченных точек функция f=F′ положительна / отрицательна
+// (F возрастает ⇔ f>0).
+function t8Fsign(positive) {
+  const gx0 = -8, gx1 = 8, gy0 = -4, gy1 = 4
+  let w, marks, want, tries = 0
+  do {
+    w = buildExtremaWave(gx0, gx1, gy0, gy1, randInt(3, 5), pick([1, -1]))
+    marks = pickMarksExtrema(w, gx0, gx1, randInt(7, 9))
+    want = marks.filter((m) => (dfSignExtrema(w, m.x) > 0) === positive).length
+  } while ((marks.length < 7 || want < 1 || want > marks.length - 1) && ++tries < 60)
+  return {
+    condition_text: `На рисунке изображён график y = F(x) одной из первообразных некоторой функции f(x) и отмечены ${ptsWord(marks.length)} на оси абсцисс: ${marks.map((m) => m.label).join(", ")}. В скольких из этих точек функция f(x) ${positive ? "положительна" : "отрицательна"}?`,
+    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn: w.fn, xa: gx0, xb: gx1, marks, showUnit: false, label: label8(w.fn, gx0, gx1, gy0, gy1, "y = F(x)") }),
+    answer: ru(want),
+  }
+}
+
+// #41 — количество решений f(x)=0 на отрезке [a;b] (= экстремумы первообразной F).
+function t8FzeroCountSeg() {
+  const gx0 = -7, gx1 = 5, gy0 = -4, gy1 = 4
+  const w = buildExtremaWave(gx0, gx1, gy0, gy1, randInt(3, 5), pick([1, -1]))
+  const a = -5, b = 2
+  const cnt = w.ext.filter((e) => e.x >= a && e.x <= b).length
+  return {
+    condition_text: `На рисунке изображён график y = F(x) одной из первообразных некоторой функции f(x), определённой на интервале (${ru(gx0)}; ${ru(gx1)}). Пользуясь рисунком, определите количество решений уравнения f(x) = 0 на отрезке [${ru(a)}; ${ru(b)}].`,
+    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn: w.fn, xa: gx0, xb: gx1, tickXvals: [{ x: gx0, text: ru(gx0) }, { x: gx1, text: ru(gx1) }], label: label8(w.fn, gx0, gx1, gy0, gy1, "y = F(x)") }),
+    answer: ru(cnt),
+  }
+}
+
+// #42 — f(x) — два луча (ломаная); вычислить F(β)−F(α)=∫f (площадь со знаком).
+function t8integralTwoRays() {
+  const xv = randInt(-5, -2)                 // абсцисса вершины
+  const yv = randInt(1, 4)                     // значение в вершине
+  const mL = pick([1, 2])                       // наклон левого луча
+  const fn = (x) => x <= xv ? yv + mL * (x - xv) : yv
+  const a = xv - pick([2, 4]), b = pick([-1, 0])  // pick([2,4]) ⇒ целый ответ
+  // ∫_a^b f = ∫_a^xv (yv+mL(x−xv)) + ∫_xv^b yv
+  const i1 = yv * (xv - a) + mL * (-(a - xv) * (a - xv)) / 2
+  const i2 = yv * (b - xv)
+  const val = clean(i1 + i2)
+  const gx0 = a - 1, gx1 = 2, gy0 = -4, gy1 = 5
+  return {
+    condition_text: `На рисунке изображён график некоторой функции y = f(x) (два луча с общей начальной точкой). Пользуясь рисунком, вычислите F(${ru(b)}) − F(${ru(a)}), где F(x) — одна из первообразных функции f(x).`,
+    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn, xa: gx0, xb: gx1, tickXvals: [{ x: a, text: ru(a) }, { x: xv, text: ru(xv) }], openEnds: false, label: label8(fn, gx0, gx1, gy0, gy1, "y = f(x)") }),
+    answer: ru(val),
+  }
+}
+
+// Рендер знакового члена многочлена по рациональному коэффициенту numer/denom.
+function coefTerm(numer, denom, tail, first) {
+  const g = gcd(numer, denom) || 1; let n = numer / g, d = denom / g
+  if (d < 0) { d = -d; n = -n }
+  if (n === 0) return ""
+  const neg = n < 0; n = Math.abs(n)
+  const sign = neg ? (first ? "−" : " − ") : (first ? "" : " + ")
+  const mag = d === 1 ? (n === 1 && tail ? "" : ru(n)) : fT(n, d)
+  return sign + mag + tail
+}
+
+// #43/#44 — f(x)=L(x−r₁)(x−r₂) (арка на [r₁;r₂]), дана первообразная F; площадь=|F(r₂)−F(r₁)|.
+function t8areaGivenF() {
+  let r1, r2, d, Ln, Ld, Ls, area, peak, tries = 0
+  do {
+    r1 = randInt(-9, 2); d = pick([3, 4, 5, 6]); r2 = r1 + d
+    ;[Ln, Ld] = pick([[1, 2], [1, 1], [3, 2], [2, 1]]); Ls = pick([1, -1])
+    area = clean(Ln * d * d * d / (Ld * 6))
+    peak = Ln / Ld * d * d / 4
+  } while ((!isTerm(Ln * d * d * d, Ld * 6) || peak > 6.5) && ++tries < 200)
+  const L = Ls * Ln / Ld, s = r1 + r2, pr = r1 * r2
+  const fn = (x) => L * (x - r1) * (x - r2)
+  // F = L·x³/3 − L·s·x²/2 + L·pr·x — рациональные коэффициенты, дроби стоячими
+  const Fstr = coefTerm(Ls * Ln, Ld * 3, "x³", true) + coefTerm(-Ls * Ln * s, Ld * 2, "x²", false) + coefTerm(Ls * Ln * pr, Ld, "x", false)
+  const above = L < 0                                  // арка выше оси, если L<0
+  const gx0 = r1 - 1, gx1 = r2 + 1
+  const gy1 = above ? Math.ceil(peak) + 1 : 2, gy0 = above ? -2 : -(Math.ceil(peak) + 1)
+  return {
+    condition_text: `На рисунке изображён график некоторой функции y = f(x). Функция F(x) = ${Fstr} — одна из первообразных функции f(x). Найдите площадь закрашенной фигуры.`,
+    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn, xa: gx0, xb: gx1, shade: { a: r1, b: r2 }, tickXvals: [{ x: r1, text: ru(r1) }, { x: r2, text: ru(r2) }], openEnds: false, label: label8(fn, gx0, gx1, gy0, gy1, "y = f(x)") }),
+    answer: ru(area),
+  }
 }
 
 // ============================================================================
@@ -1547,6 +2187,18 @@ export const GENERATORS_EGE_PROF = {
   5: [t05Lamps, t05Between, t05Shooter4, t05Coffee, t05Battery, t05ShooterN, t05DiceCond, t05TwoThemes, t05Exact],
   6: [t06ExpReduce, t06ExpBothSides, t06LogEqLog, t06LogEqNum, t06Rational, t06Cube, t06Sqrt, t06CubeRoot],
   7: [t07PowPowDiv, t07PowFracExp, t07SqCoefRoot, t07DistribRoot, t07LogSum, t07LogDiff, t07LogRatio, t07TrigDouble],
+  8: [
+    () => t8fSignCount(true), () => t8fSignCount(false), () => t8fIntSign(true), () => t8fIntSign(false),
+    () => t8fDerivExtreme(true), () => t8fDerivExtreme(false),
+    t8fZeroCountAll, t8fZeroPointSeg, t8fZeroCountSeg, t8fHorizTangent,
+    () => t8dIncDec(true), () => t8dIncDec(false),
+    () => t8dExtremaCount("any"), () => t8dExtremaCount("max"), () => t8dExtremaCount("min"),
+    t8dExtremumPoint, () => t8dOptPoint("max"), () => t8dOptPoint("min"),
+    () => t8dArgOpt(true), () => t8dArgOpt(false),
+    () => t8dDerivEqPoint(0), () => t8dDerivEqPoint(3), t8dDerivEqCount,
+    t8tangentSlope, t8kinVelocityAt, t8kinTimeForVelocity, t8tangentParabC,
+    () => t8Fsign(true), () => t8Fsign(false), t8FzeroCountSeg, t8integralTwoRays, t8areaGivenF,
+  ],
   9: [t09MotoAccel, t09CarDist, t09CarAcc, t09Horizon, t09Decay, t09Winding, t09Ball, t09Heater,
     t09Ohm, t09Parallel, t09EMF, t09Doppler, t09DiverWork, t09Collision],
   10: [t10SteamboatSpeed, t10SteamboatCurrent, t10SteamboatDist, t10AvgTime, t10AvgDist, t10TwoCyclists,
@@ -1625,6 +2277,60 @@ export const GEN_META_EGE_PROF = {
       ["log-ratio", "Отношение логарифмов", t07LogRatio],
     ]],
     ["Тригонометрия", [["trig-double", "Двойной угол cos2α", t07TrigDouble]]]],
+  8: [["График f(x): знак производной", [
+    ["f-pos", "Сколько точек f′>0", () => t8fSignCount(true)],
+    ["f-neg", "Сколько точек f′<0", () => t8fSignCount(false)],
+    ["f-int-pos", "Целые точки f′>0", () => t8fIntSign(true)],
+    ["f-int-neg", "Целые точки f′<0", () => t8fIntSign(false)],
+    ["f-dmax", "Где f′ наибольшее", () => t8fDerivExtreme(true)],
+    ["f-dmin", "Где f′ наименьшее", () => t8fDerivExtreme(false)],
+  ]],
+    ["График f(x): нули f′ / экстремумы", [
+      ["f-zero-all", "Количество точек f′=0", t8fZeroCountAll],
+      ["f-zero-pt", "Точка f′=0 на отрезке", t8fZeroPointSeg],
+      ["f-zero-seg", "Число решений f′=0 на отрезке", t8fZeroCountSeg],
+      ["f-horiz", "Касательная ∥ горизонтали", t8fHorizTangent],
+    ]],
+    ["График f′(x): возрастание / убывание f", [
+      ["d-inc", "Точки на возрастании f", () => t8dIncDec(true)],
+      ["d-dec", "Точки на убывании f", () => t8dIncDec(false)],
+    ]],
+    ["График f′(x): экстремумы f", [
+      ["d-ext-cnt", "Число экстремумов на отрезке", () => t8dExtremaCount("any")],
+      ["d-max-cnt", "Число максимумов на отрезке", () => t8dExtremaCount("max")],
+      ["d-min-cnt", "Число минимумов на отрезке", () => t8dExtremaCount("min")],
+      ["d-ext-pt", "Точка экстремума на отрезке", t8dExtremumPoint],
+      ["d-max-pt", "Точка максимума f", () => t8dOptPoint("max")],
+      ["d-min-pt", "Точка минимума f", () => t8dOptPoint("min")],
+    ]],
+    ["График f′(x): наиб./наим. значение f", [
+      ["d-argmax", "Точка наиб. значения f", () => t8dArgOpt(true)],
+      ["d-argmin", "Точка наим. значения f", () => t8dArgOpt(false)],
+    ]],
+    ["График f′(x): касательная ∥ прямой", [
+      ["d-eq0", "f′=0: абсцисса", () => t8dDerivEqPoint(0)],
+      ["d-eqk", "f′=k: абсцисса", () => t8dDerivEqPoint(3)],
+      ["d-eqk-cnt", "f′=k: количество точек", t8dDerivEqCount],
+    ]],
+    ["Касательная на графике f(x)", [
+      ["tan-slope", "Значение f′(x₀) по касательной", t8tangentSlope],
+    ]],
+    ["Физический смысл производной", [
+      ["kin-v", "Скорость v(t₀)", t8kinVelocityAt],
+      ["kin-t", "Момент, когда v=V", t8kinTimeForVelocity],
+    ]],
+    ["Касательная (аналитически)", [
+      ["tan-parab", "Прямая касается параболы: найти c", t8tangentParabC],
+    ]],
+    ["График первообразной F(x)", [
+      ["F-pos", "Сколько точек f>0", () => t8Fsign(true)],
+      ["F-neg", "Сколько точек f<0", () => t8Fsign(false)],
+      ["F-zero", "Число решений f=0 на отрезке", t8FzeroCountSeg],
+    ]],
+    ["Первообразная и площадь", [
+      ["rays", "F(β)−F(α) по ломаной", t8integralTwoRays],
+      ["area", "Площадь по первообразной", t8areaGivenF],
+    ]]],
   9: [["Кинематика", [
     ["moto", "Разгон мотоциклиста (t)", t09MotoAccel],
     ["car-dist", "Разгон авто: путь", t09CarDist],
