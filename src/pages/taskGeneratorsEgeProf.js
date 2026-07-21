@@ -153,8 +153,8 @@ const VEC_COMBOS = [
   [1, 3, "a+3b"], [1, -3, "a−3b"], [2, 1, "2a+b"], [2, -1, "2a−b"],
 ]
 function t02GraphLenCombo() {
-  let m = 1, n = 4, op = "a+4b", ax = 0, ay = 3, bx = 1, by = 0, len = 5
-  for (let tries = 0; tries < 3000; tries++) {
+  let m, n, op, ax, ay, bx, by, len, solved = false
+  for (let tries = 0; tries < 3000 && !solved; tries++) {
     [m, n, op] = pick(VEC_COMBOS)
     ax = randInt(-4, 4); ay = randInt(-4, 4)
     bx = randInt(-3, 3); by = randInt(-3, 3)
@@ -164,8 +164,10 @@ function t02GraphLenCombo() {
     const rx = m * ax + n * bx, ry = m * ay + n * by
     if (rx === 0 && ry === 0) continue
     const L2 = rx * rx + ry * ry, L = Math.round(Math.sqrt(L2))
-    if (L * L === L2 && L >= 4 && L <= 60) { len = L; break }
+    if (L * L === L2 && L >= 4 && L <= 60) { len = L; solved = true }
   }
+  // страховка: гарантированно согласованный случай (a+4b, r=(4;3), |r|=5)
+  if (!solved) { op = "a+4b"; ax = 0; ay = 3; bx = 1; by = 0; len = 5 }
   // хвосты: a в нижне-левой части, b правее — стрелки не накладываются; всё в положительной зоне
   const atx = 1 + Math.max(0, -ax), aty = 1 + Math.max(0, -ay)
   const btx = atx + Math.max(0, ax) + 1 + Math.max(0, -bx), bty = 1 + Math.max(0, -by)

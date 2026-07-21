@@ -465,10 +465,6 @@ function App() {
     setStudentsLoaded(false)
   }
 
-  if (typeof window !== "undefined" && window.location.search.includes("preview=taskgen")) {
-    return <TaskGenPreview />
-  }
-
   if (loadingAuth) {
     return (
       <div className="min-h-screen flex items-center justify-center">
