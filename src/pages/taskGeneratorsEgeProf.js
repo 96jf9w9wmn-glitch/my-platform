@@ -2319,8 +2319,10 @@ function stSphereInCyl() {
 function stConeInSphere() {
   const R = 64, cx = 90, cy = 92
   let g = `<circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="${ST_INK}" stroke-width="1.7"/>`
-  g += `<line x1="${cx - R}" y1="${cy}" x2="${cx}" y2="${cy - R}" stroke="${ST_HI}" stroke-width="1.8"/><line x1="${cx + R}" y1="${cy}" x2="${cx}" y2="${cy - R}" stroke="${ST_HI}" stroke-width="1.8"/>`
-  g += `<ellipse cx="${cx}" cy="${cy}" rx="${R}" ry="${R * 0.28}" fill="none" stroke="${ST_HI}" stroke-width="1.5" stroke-dasharray="4 3"/>`
+  // конус целиком внутри шара → образующие и основание скрыты (пунктир, ФИПИ-вид)
+  g += `<line x1="${cx - R}" y1="${cy}" x2="${cx}" y2="${cy - R}" stroke="${ST_HI}" stroke-width="1.8" stroke-dasharray="5 4"/><line x1="${cx + R}" y1="${cy}" x2="${cx}" y2="${cy - R}" stroke="${ST_HI}" stroke-width="1.8" stroke-dasharray="5 4"/>`
+  g += `<ellipse cx="${cx}" cy="${cy}" rx="${R}" ry="${R * 0.28}" fill="none" stroke="${ST_HI}" stroke-width="1.5" stroke-dasharray="5 4"/>`
+  g += `<circle cx="${cx}" cy="${cy}" r="2.2" fill="${ST_INK}"/><circle cx="${cx}" cy="${cy - R}" r="2.2" fill="${ST_INK}"/>`
   return stWrap(180, 184, g)
 }
 function stConeCircumSphere() {
