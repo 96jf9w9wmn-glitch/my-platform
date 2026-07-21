@@ -556,7 +556,10 @@ function t16Condition() {
     }
   }
   if (kind === "modLast") {
-    const K = pick([3, 4, 6]), D = pick([0, 2, 4, 5, 6, 8])
+    // ВАЖНО: при чётном K кратное K всегда чётно → оканчиваться на 5 не может (условие
+    // было бы невыполнимым и вешало цикл подбора в t16Example). Для K∈{4,6} берём только
+    // чётные последние цифры; для K=3 годится любая (15, 45, 75 — кратны 3 и на 5).
+    const K = pick([3, 4, 6]), D = pick(K % 2 === 0 ? [0, 2, 4, 6, 8] : [0, 2, 4, 5, 6, 8])
     return { clause: `которые кратны ${K} и оканчиваются на ${D}`, js: (x) => x % K === 0 && x % 10 === D, py: `x % ${K} == 0 and x % 10 == ${D}`, pas: `(x mod ${K} = 0) and (x mod 10 = ${D})`, cpp: `x % ${K} == 0 && x % 10 == ${D}` }
   }
   const [K1, K2] = shuffle([3, 4, 6, 7, 9]).slice(0, 2)
@@ -602,14 +605,20 @@ const t16Cpp = (agg, c) => {
 // Небольшой разобранный пример: гарантируем ≥1 подходящий элемент, считаем ответ на JS.
 function t16Example(agg, c, styleA) {
   const seq = Array.from({ length: randInt(6, 9) }, () => randInt(1, 200))
-  if (!seq.some(c.js)) { let q = 1; while (!c.js(q)) q++; seq[randInt(0, seq.length - 1)] = q }
+  // Гарантируем ≥1 подходящий элемент. Поиск с ПРЕДОХРАНИТЕЛЕМ: любое реальное условие
+  // выполнимо на малых q (порог baseThree ≤ B³ = 4096), поэтому 100000 — заведомо запас;
+  // если подходящего нет (невыполнимое условие) — не зависаем, просто не подставляем.
+  if (!seq.some(c.js)) {
+    let q = 1; while (q <= 100000 && !c.js(q)) q++
+    if (q <= 100000) seq[randInt(0, seq.length - 1)] = q
+  }
   const hit = seq.filter(c.js)
   let out
   if (agg === "count") out = String(hit.length)
   else if (agg === "sum") out = String(hit.reduce((a, b) => a + b, 0))
   else if (agg === "avg") out = hit.length ? (hit.reduce((a, b) => a + b, 0) / hit.length).toFixed(2) : "NO"
-  else if (agg === "max") out = String(Math.max(...hit))
-  else out = String(Math.min(...hit))
+  else if (agg === "max") out = hit.length ? String(Math.max(...hit)) : "NO"
+  else out = hit.length ? String(Math.min(...hit)) : "NO"
   const inp = styleA ? `${seq.length}, затем ${seq.join(", ")}` : `${seq.join(", ")}, 0`
   return `Пример. Ввод: ${inp} → вывод программы: ${out}`
 }
