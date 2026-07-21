@@ -1479,13 +1479,17 @@ function pairWin(pts) {
 function markLabel(x, y, t) { return { x: x + 0.35, y: y + 0.9, text: t, italic: true, size: 14 } }
 
 // H. Две прямые (#40–#43).
+// Точку A берём ПОЛУцелой (обе координаты вида n+0,5) — её нельзя «считать» с узла
+// сетки, ответ находят решением системы k1x+b1=k2x+b2. При нечётных наклонах
+// (разность чётна) свободные члены b1,b2 остаются целыми ⇒ каждую прямую по-прежнему
+// читают по её узлам, но пересечение лежит МЕЖДУ линиями сетки.
 function t11TwoLines(findY) {
   let px, py, k1, b1, k2, b2
   for (; ;) {
-    px = randInt(-3, 3); py = randInt(-3, 4)
-    const ks = shuffle([-3, -2, -1, 1, 2, 3]); k1 = ks[0]; k2 = ks[1]
+    px = randInt(-2, 2) + 0.5; py = randInt(-3, 3) + 0.5
+    const ks = shuffle([-3, -1, 1, 3]); k1 = ks[0]; k2 = ks[1]
     b1 = py - k1 * px; b2 = py - k2 * px
-    if (Math.abs(b1) <= 6 && Math.abs(b2) <= 6) break
+    if (Number.isInteger(b1) && Number.isInteger(b2) && Math.abs(b1) <= 6 && Math.abs(b2) <= 6) break
   }
   const f1 = (x) => k1 * x + b1, f2 = (x) => k2 * x + b2
   const gx0 = -5, gx1 = 5, gy0 = -6, gy1 = 6
