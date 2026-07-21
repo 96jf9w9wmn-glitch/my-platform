@@ -4,8 +4,9 @@
 // воспроизводит реальный тип задания банка (та же формулировка, свои числа); правильный
 // ответ считается кодом (или РЕШАЕТСЯ из показанных чисел), поэтому гарантированно верен.
 //
-// Этап 1 — только задания БЕЗ чертежей/схем (короткий ответ, номера 2,4,5,6,7,9,10,12).
-// №1 планиметрия и №3 стереометрия без чертежа не бывают → в этот этап не входят.
+// Этап 1 — задания без чертежей (номера 2,4,5,6,7,9,10,12) + №3 стереометрия
+// со СВОИМИ SVG-чертежами тел (эталон — 49 задач банка ФИПИ, Задание 3).
+// №1 планиметрия без чертежа не бывает → пока не входит.
 // Формат объекта генератора: { condition_text, answer }.
 // Мат-токены: дробь ⟦f:n:d⟧, корень ⟦r:x⟧, индекс ⟦b:x⟧, надстрочник ⟦sup:x⟧ — разворачивает
 // renderTaskMath(). Юникод-степени ² ³ — через sup().
@@ -118,8 +119,8 @@ function vecLabel(letter, mx, my, vx, vy) {
   const off = 15
   const lx = clean(mx - (vy / L) * off), ly = clean(my - (vx / L) * off)
   return `<text x="${lx}" y="${ly}" ${HALO} font-size="17" font-style="italic" font-weight="bold" fill="#1c1c1e" text-anchor="middle">${letter}</text>` +
-    `<line x1="${lx - 5}" y1="${ly - 15}" x2="${lx + 6}" y2="${ly - 15}" stroke="#1c1c1e" stroke-width="1.3"/>` +
-    `<polygon points="${lx + 7},${ly - 15} ${lx + 2},${ly - 17.4} ${lx + 2},${ly - 12.6}" fill="#1c1c1e"/>`
+    `<line x1="${lx - 5}" y1="${ly - 19}" x2="${lx + 6}" y2="${ly - 19}" stroke="#1c1c1e" stroke-width="1.3"/>` +
+    `<polygon points="${lx + 7},${ly - 19} ${lx + 2},${ly - 21.4} ${lx + 2},${ly - 16.6}" fill="#1c1c1e"/>`
 }
 
 // Координатная сетка с двумя векторами a и b (целочисленные компоненты).
@@ -1601,8 +1602,10 @@ function wave8Svg({ gx0, gx1, gy0, gy1, fn, xa, xb, label = null, marks = [], ma
   if (openEnds) for (const xe of [xa, xb]) { const ye = fn(xe); if (ye >= gy0 - 0.4 && ye <= gy1 + 0.4) g += `<circle cx="${X(xe)}" cy="${clean(Y(ye))}" r="3" fill="#fff" stroke="${G_CURVE}" stroke-width="1.6"/>` }
   for (const [x, y] of dots) g += `<circle cx="${X(x)}" cy="${clean(Y(y))}" r="3" fill="${G_AX}"/>`
   for (const mk of marks) {
+    // подпись — на той стороне оси, где рядом нет кривой (иначе чёрная кривая перечёркивает xᵢ)
+    const below = mk.below !== undefined ? mk.below : (fn ? fn(mk.x) >= 0 : markBelow)
     g += `<line x1="${X(mk.x)}" y1="${Y(0) - 4}" x2="${X(mk.x)}" y2="${Y(0) + 4}" stroke="${G_AX}" stroke-width="1.4"/>`
-    g += `<text x="${X(mk.x)}" y="${markBelow ? Y(0) + 16 : Y(0) - 8}" ${HALO} font-size="12" font-style="italic" fill="${G_AX}" text-anchor="middle">${mk.label}</text>`
+    g += `<text x="${X(mk.x)}" y="${below ? Y(0) + 16 : Y(0) - 8}" ${HALO} font-size="12" font-style="italic" fill="${G_AX}" text-anchor="middle">${mk.label}</text>`
   }
   if (label) g += `<text x="${X(label.x)}" y="${Y(label.y)}" ${HALO} font-size="13" font-style="italic" fill="${G_AX}" text-anchor="${label.anchor || "middle"}">${label.text}</text>`
   return svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" font-family="Arial, sans-serif" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${g}</svg>`)
@@ -1673,7 +1676,8 @@ function dfSignExtrema(w, x) {
 function pickMarksExtrema(w, gx0, gx1, N) {
   const near = (x) => w.xs.some((a) => Math.abs(a - x) < 0.5)
   const cands = []
-  for (let x = gx0 + 0.7; x <= gx1 - 0.7; x += 0.25) if (!near(x) && Math.abs(x) > 0.4) cands.push(clean(x))
+  // |f|≥0.45 — точка не на пересечении с осью, чтобы кривая не наезжала на подпись xᵢ
+  for (let x = gx0 + 0.7; x <= gx1 - 0.7; x += 0.25) if (!near(x) && Math.abs(x) > 0.4 && Math.abs(w.fn(x)) >= 0.45) cands.push(clean(x))
   const chosen = []
   for (let k = 0; k < N && cands.length; k++) chosen.push(cands[Math.round((k + 0.5) / N * (cands.length - 1))])
   const uniq = []
@@ -2183,11 +2187,496 @@ function t8areaGivenF() {
 }
 
 // ============================================================================
+// №3 — СТЕРЕОМЕТРИЯ (объёмы и площади; чертёж обязателен)
+// Эталон — 49 задач открытого банка ФИПИ (ЕГЭ Профиль, Задание 3) + классический
+// реальный тип «многогранник из единичных кубов». Ответ считается кодом.
+// ============================================================================
+
+const ST_INK = "#1c1c1e", ST_HI = "#007AFF", ST_FILL = "rgba(0,122,255,0.14)"
+const VSUB = { A: "A", B: "B", C: "C", D: "D", A1: "A₁", B1: "B₁", C1: "C₁", D1: "D₁" }
+const BOXNAME = "ABCDA₁B₁C₁D₁", PRISMNAME = "ABCA₁B₁C₁"
+const R2 = rT(2)  // √2
+
+function stWrap(W, H, body) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" font-family="Arial, sans-serif" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${body}</svg>`
+}
+function stEdge(p, q, dash) {
+  return `<line x1="${clean(p[0])}" y1="${clean(p[1])}" x2="${clean(q[0])}" y2="${clean(q[1])}" stroke="${ST_INK}" stroke-width="1.7"${dash ? ' stroke-dasharray="5 4"' : ""}/>`
+}
+function stPoly(pts, fill) {
+  return `<polygon points="${pts.map(p => clean(p[0]) + "," + clean(p[1])).join(" ")}" fill="${fill}" stroke="${ST_HI}" stroke-width="2" stroke-linejoin="round"/>`
+}
+// Подпись у точки/ребра, отодвинутая от центроида фигуры наружу.
+function stLabelOut(p, cen, text, off, big) {
+  const dx = p[0] - cen[0], dy = p[1] - cen[1], L = Math.hypot(dx, dy) || 1
+  const x = p[0] + dx / L * off, y = p[1] + dy / L * off + (big ? 5 : 4)
+  return `<text x="${clean(x)}" y="${clean(y)}" ${HALO} font-size="${big ? 15 : 13}"${big ? ' font-style="italic" font-weight="bold"' : ""} fill="${ST_INK}" text-anchor="middle">${text}</text>`
+}
+
+// ── Прямоугольный параллелепипед / куб ──────────────────────────────────────
+// highlight: массив граней (имён вершин); edgeLabels: {AB:"7",...}; cube: квадрат.
+function stBox({ highlight = [], edgeLabels = {}, cube = false } = {}) {
+  const W = 120, H = cube ? 120 : 95, d = [46, -30]
+  const A = [58, cube ? 190 : 195], B = [A[0] + W, A[1]], A1 = [A[0], A[1] - H], B1 = [B[0], B[1] - H]
+  const D = [A[0] + d[0], A[1] + d[1]], C = [B[0] + d[0], B[1] + d[1]]
+  const D1 = [A1[0] + d[0], A1[1] + d[1]], C1 = [B1[0] + d[0], B1[1] + d[1]]
+  const V = { A, B, C, D, A1, B1, C1, D1 }
+  const names = Object.keys(V)
+  const cen = [names.reduce((s, n) => s + V[n][0], 0) / 8, names.reduce((s, n) => s + V[n][1], 0) / 8]
+  let g = ""
+  for (const face of highlight) g += stPoly(face.map(n => V[n]), ST_FILL)
+  const E = [["A", "B", 0], ["B", "C", 0], ["C", "D", 1], ["D", "A", 1],
+  ["A1", "B1", 0], ["B1", "C1", 0], ["C1", "D1", 0], ["D1", "A1", 0],
+  ["A", "A1", 0], ["B", "B1", 0], ["C", "C1", 0], ["D", "D1", 1]]
+  for (const [p, q, hid] of E) g += stEdge(V[p], V[q], hid)
+  for (const [k, t] of Object.entries(edgeLabels)) {
+    const m = k.match(/^([A-D]1?)([A-D]1?)$/)
+    if (m) { const mid = [(V[m[1]][0] + V[m[2]][0]) / 2, (V[m[1]][1] + V[m[2]][1]) / 2]; g += stLabelOut(mid, cen, t, 13, false) }
+  }
+  for (const n of names) g += stLabelOut(V[n], cen, VSUB[n], 12, true)
+  return stWrap(290, cube ? 230 : 230, g)
+}
+// грани пирамиды: основание ABCD + боковые треугольники к вершине apex
+function stPyrFaces(apex) {
+  const base = ["A", "B", "C", "D"]
+  const f = [base.slice()]
+  for (let i = 0; i < 4; i++) f.push([base[i], base[(i + 1) % 4], apex])
+  return f
+}
+
+// ── Правильная треугольная призма ABCA₁B₁C₁ ─────────────────────────────────
+function stPrism3({ highlight = [], midline = false } = {}) {
+  const hgt = 105
+  const A = [55, 205], B = [178, 190], C = [120, 156]
+  const A1 = [A[0], A[1] - hgt], B1 = [B[0], B[1] - hgt], C1 = [C[0], C[1] - hgt]
+  const V = { A, B, C, A1, B1, C1 }
+  const names = Object.keys(V)
+  const cen = [names.reduce((s, n) => s + V[n][0], 0) / 6, names.reduce((s, n) => s + V[n][1], 0) / 6]
+  let g = ""
+  for (const face of highlight) g += stPoly(face.map(n => V[n]), ST_FILL)
+  if (midline) {
+    const M = [(A[0] + C[0]) / 2, (A[1] + C[1]) / 2], N = [(B[0] + C[0]) / 2, (B[1] + C[1]) / 2]
+    const M1 = [M[0], M[1] - hgt], N1 = [N[0], N[1] - hgt]
+    g += stPoly([M1, N1, [C[0], C[1] - hgt]], ST_FILL)
+    g += stEdge(M, N, 0); g += stEdge(M1, N1, 0); g += stEdge(M, M1, 0); g += stEdge(N, N1, 0)
+  }
+  const E = [["A", "B", 0], ["B", "C", 0], ["C", "A", 1],
+  ["A1", "B1", 0], ["B1", "C1", 0], ["C1", "A1", 0],
+  ["A", "A1", 0], ["B", "B1", 0], ["C", "C1", 0]]
+  for (const [p, q, hid] of E) g += stEdge(V[p], V[q], hid)
+  for (const n of names) g += stLabelOut(V[n], cen, VSUB[n], 12, true)
+  return stWrap(250, 235, g)
+}
+
+// ── Цилиндр / конус / шар и комбинации ──────────────────────────────────────
+function stCone() {
+  const rx = 55, ry = 18, cx = 90, apexY = 35, cyb = 170
+  let g = `<line x1="${cx - rx}" y1="${cyb}" x2="${cx}" y2="${apexY}" stroke="${ST_INK}" stroke-width="1.7"/><line x1="${cx + rx}" y1="${cyb}" x2="${cx}" y2="${apexY}" stroke="${ST_INK}" stroke-width="1.7"/>`
+  g += `<path d="M${cx - rx} ${cyb} A${rx} ${ry} 0 0 0 ${cx + rx} ${cyb}" fill="none" stroke="${ST_INK}" stroke-width="1.7" stroke-dasharray="5 4"/><path d="M${cx - rx} ${cyb} A${rx} ${ry} 0 0 1 ${cx + rx} ${cyb}" fill="none" stroke="${ST_INK}" stroke-width="1.7"/>`
+  return stWrap(180, 200, g)
+}
+function stCylCone() {
+  const rx = 55, ry = 18, cx = 95, cyt = 45, cyb = 165
+  let g = `<line x1="${cx - rx}" y1="${cyt}" x2="${cx - rx}" y2="${cyb}" stroke="${ST_INK}" stroke-width="1.7"/><line x1="${cx + rx}" y1="${cyt}" x2="${cx + rx}" y2="${cyb}" stroke="${ST_INK}" stroke-width="1.7"/>`
+  g += `<path d="M${cx - rx} ${cyb} A${rx} ${ry} 0 0 0 ${cx + rx} ${cyb}" fill="none" stroke="${ST_INK}" stroke-width="1.7" stroke-dasharray="5 4"/><path d="M${cx - rx} ${cyb} A${rx} ${ry} 0 0 1 ${cx + rx} ${cyb}" fill="none" stroke="${ST_INK}" stroke-width="1.7"/>`
+  g += `<ellipse cx="${cx}" cy="${cyt}" rx="${rx}" ry="${ry}" fill="none" stroke="${ST_INK}" stroke-width="1.7"/>`
+  g += `<line x1="${cx - rx}" y1="${cyb}" x2="${cx}" y2="${cyt}" stroke="${ST_HI}" stroke-width="1.7"/><line x1="${cx + rx}" y1="${cyb}" x2="${cx}" y2="${cyt}" stroke="${ST_HI}" stroke-width="1.7"/>`
+  g += `<circle cx="${cx}" cy="${cyt}" r="2.6" fill="${ST_INK}"/>`
+  return stWrap(190, 195, g)
+}
+function stTwoCyl() {
+  const c1 = `<g>` + (() => {
+    const rx = 38, ry = 12, cx = 60, cyt = 45, cyb = 165
+    let g = `<line x1="${cx - rx}" y1="${cyt}" x2="${cx - rx}" y2="${cyb}" stroke="${ST_INK}" stroke-width="1.7"/><line x1="${cx + rx}" y1="${cyt}" x2="${cx + rx}" y2="${cyb}" stroke="${ST_INK}" stroke-width="1.7"/>`
+    g += `<path d="M${cx - rx} ${cyb} A${rx} ${ry} 0 0 0 ${cx + rx} ${cyb}" fill="none" stroke="${ST_INK}" stroke-width="1.7" stroke-dasharray="5 4"/><path d="M${cx - rx} ${cyb} A${rx} ${ry} 0 0 1 ${cx + rx} ${cyb}" fill="none" stroke="${ST_INK}" stroke-width="1.7"/><ellipse cx="${cx}" cy="${cyt}" rx="${rx}" ry="${ry}" fill="none" stroke="${ST_INK}" stroke-width="1.7"/>`
+    g += `<text x="${cx}" y="185" ${HALO} font-size="13" fill="${ST_INK}" text-anchor="middle">1</text>`
+    return g
+  })() + `</g>`
+  const c2 = (() => {
+    const rx = 58, ry = 16, cx = 195, cyt = 125, cyb = 165
+    let g = `<line x1="${cx - rx}" y1="${cyt}" x2="${cx - rx}" y2="${cyb}" stroke="${ST_HI}" stroke-width="1.7"/><line x1="${cx + rx}" y1="${cyt}" x2="${cx + rx}" y2="${cyb}" stroke="${ST_HI}" stroke-width="1.7"/>`
+    g += `<path d="M${cx - rx} ${cyb} A${rx} ${ry} 0 0 0 ${cx + rx} ${cyb}" fill="none" stroke="${ST_HI}" stroke-width="1.7" stroke-dasharray="5 4"/><path d="M${cx - rx} ${cyb} A${rx} ${ry} 0 0 1 ${cx + rx} ${cyb}" fill="none" stroke="${ST_HI}" stroke-width="1.7"/><ellipse cx="${cx}" cy="${cyt}" rx="${rx}" ry="${ry}" fill="none" stroke="${ST_HI}" stroke-width="1.7"/>`
+    g += `<text x="${cx}" y="185" ${HALO} font-size="13" fill="${ST_INK}" text-anchor="middle">2</text>`
+    return g
+  })()
+  return stWrap(275, 200, c1 + c2)
+}
+function stSphere({ section = false } = {}) {
+  const R = 70, cx = 90, cy = 92
+  let g = `<circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="${ST_INK}" stroke-width="1.7"/>`
+  g += `<ellipse cx="${cx}" cy="${cy}" rx="${R}" ry="${R * 0.28}" fill="${section ? ST_FILL : "none"}" stroke="${section ? ST_HI : ST_INK}" stroke-width="${section ? 1.9 : 1.3}"${section ? "" : ' stroke-dasharray="5 4"'}/>`
+  return stWrap(180, 184, g)
+}
+function stSphereInCyl() {
+  const R = 52, rx = R, ry = 16, cx = 95, cyt = 40, cyb = cyt + 2 * R, cyc = cyt + R
+  let g = `<line x1="${cx - rx}" y1="${cyt}" x2="${cx - rx}" y2="${cyb}" stroke="${ST_INK}" stroke-width="1.7"/><line x1="${cx + rx}" y1="${cyt}" x2="${cx + rx}" y2="${cyb}" stroke="${ST_INK}" stroke-width="1.7"/>`
+  g += `<path d="M${cx - rx} ${cyb} A${rx} ${ry} 0 0 0 ${cx + rx} ${cyb}" fill="none" stroke="${ST_INK}" stroke-width="1.7" stroke-dasharray="5 4"/><path d="M${cx - rx} ${cyb} A${rx} ${ry} 0 0 1 ${cx + rx} ${cyb}" fill="none" stroke="${ST_INK}" stroke-width="1.7"/><ellipse cx="${cx}" cy="${cyt}" rx="${rx}" ry="${ry}" fill="none" stroke="${ST_INK}" stroke-width="1.7"/>`
+  g += `<circle cx="${cx}" cy="${cyc}" r="${R}" fill="none" stroke="${ST_HI}" stroke-width="1.8"/><ellipse cx="${cx}" cy="${cyc}" rx="${R}" ry="${ry}" fill="none" stroke="${ST_HI}" stroke-width="1.2" stroke-dasharray="4 3"/>`
+  return stWrap(190, cyb + 25, g)
+}
+function stConeInSphere() {
+  const R = 64, cx = 90, cy = 92
+  let g = `<circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="${ST_INK}" stroke-width="1.7"/>`
+  g += `<line x1="${cx - R}" y1="${cy}" x2="${cx}" y2="${cy - R}" stroke="${ST_HI}" stroke-width="1.8"/><line x1="${cx + R}" y1="${cy}" x2="${cx}" y2="${cy - R}" stroke="${ST_HI}" stroke-width="1.8"/>`
+  g += `<ellipse cx="${cx}" cy="${cy}" rx="${R}" ry="${R * 0.28}" fill="none" stroke="${ST_HI}" stroke-width="1.5" stroke-dasharray="4 3"/>`
+  return stWrap(180, 184, g)
+}
+function stConeCircumSphere() {
+  const R = 60, cx = 95, cy = 105, ry = R * 0.28
+  let g = `<circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="${ST_INK}" stroke-width="1.3"/>`
+  g += `<line x1="${cx - R}" y1="${cy}" x2="${cx}" y2="${cy - R}" stroke="${ST_HI}" stroke-width="1.8"/><line x1="${cx + R}" y1="${cy}" x2="${cx}" y2="${cy - R}" stroke="${ST_HI}" stroke-width="1.8"/>`
+  g += `<path d="M${cx - R} ${cy} A${R} ${ry} 0 0 0 ${cx + R} ${cy}" fill="none" stroke="${ST_HI}" stroke-width="1.8" stroke-dasharray="4 3"/><path d="M${cx - R} ${cy} A${R} ${ry} 0 0 1 ${cx + R} ${cy}" fill="none" stroke="${ST_HI}" stroke-width="1.8"/>`
+  g += `<circle cx="${cx}" cy="${cy}" r="2.6" fill="${ST_INK}"/>`
+  return stWrap(190, 190, g)
+}
+function stCubeCut() {
+  const W = 118, H = 118, d = [44, -30]
+  const A = [55, 188], B = [A[0] + W, A[1]], A1 = [A[0], A[1] - H], B1 = [B[0], B[1] - H]
+  const D = [A[0] + d[0], A[1] + d[1]], C = [B[0] + d[0], B[1] + d[1]]
+  const D1 = [A1[0] + d[0], A1[1] + d[1]], C1 = [B1[0] + d[0], B1[1] + d[1]]
+  const V = { A, B, C, D, A1, B1, C1, D1 }
+  const mid = (p, q) => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2]
+  const P = mid(A, B), Q = mid(B, C), T = mid(B, B1)
+  let g = stPoly([P, Q, T], ST_FILL)
+  const E = [["A", "B", 0], ["B", "C", 0], ["C", "D", 1], ["D", "A", 1],
+  ["A1", "B1", 0], ["B1", "C1", 0], ["C1", "D1", 0], ["D1", "A1", 0],
+  ["A", "A1", 0], ["B", "B1", 0], ["C", "C1", 0], ["D", "D1", 1]]
+  for (const [p, q, hid] of E) g += stEdge(V[p], V[q], hid)
+  g += stEdge(P, Q, 0); g += stEdge(Q, T, 0); g += stEdge(T, P, 0)
+  return stWrap(280, 225, g)
+}
+function stCylInPar() {
+  const W = 120, H = 120, d = [46, -30], rx = W / 2, ry = 15
+  const A = [55, 195], B = [A[0] + W, A[1]], A1 = [A[0], A[1] - H], B1 = [B[0], B[1] - H]
+  const D = [A[0] + d[0], A[1] + d[1]], C = [B[0] + d[0], B[1] + d[1]]
+  const D1 = [A1[0] + d[0], A1[1] + d[1]], C1 = [B1[0] + d[0], B1[1] + d[1]]
+  const V = { A, B, C, D, A1, B1, C1, D1 }
+  const ct = [(A1[0] + C1[0]) / 2, (A1[1] + C1[1]) / 2], cb = [(A[0] + C[0]) / 2, (A[1] + C[1]) / 2]
+  let g = ""
+  const E = [["A", "B", 0], ["B", "C", 0], ["C", "D", 1], ["D", "A", 1],
+  ["A1", "B1", 0], ["B1", "C1", 0], ["C1", "D1", 0], ["D1", "A1", 0],
+  ["A", "A1", 0], ["B", "B1", 0], ["C", "C1", 0], ["D", "D1", 1]]
+  for (const [p, q, hid] of E) g += stEdge(V[p], V[q], hid)
+  g += `<line x1="${cb[0] - rx}" y1="${cb[1]}" x2="${ct[0] - rx}" y2="${ct[1]}" stroke="${ST_HI}" stroke-width="1.7"/><line x1="${cb[0] + rx}" y1="${cb[1]}" x2="${ct[0] + rx}" y2="${ct[1]}" stroke="${ST_HI}" stroke-width="1.7"/>`
+  g += `<ellipse cx="${ct[0]}" cy="${ct[1]}" rx="${rx}" ry="${ry}" fill="none" stroke="${ST_HI}" stroke-width="1.7"/><ellipse cx="${cb[0]}" cy="${cb[1]}" rx="${rx}" ry="${ry}" fill="none" stroke="${ST_HI}" stroke-width="1.7" stroke-dasharray="5 4"/>`
+  return stWrap(280, 235, g)
+}
+// Многогранник из единичных кубов (изометрия). cells: [[x,y,z],...].
+function stCubes(cells) {
+  const s = 24
+  const ux = [s * 0.92, s * 0.5], uy = [-s * 0.92, s * 0.5], uz = [0, -s]
+  const P = (x, y, z) => [x * ux[0] + y * uy[0] + z * uz[0], x * ux[1] + y * uy[1] + z * uz[1]]
+  const occ = new Set(cells.map(c => c.join(",")))
+  const has = (x, y, z) => occ.has([x, y, z].join(","))
+  let minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9
+  for (const [x, y, z] of cells) for (const dx of [0, 1]) for (const dy of [0, 1]) for (const dz of [0, 1]) {
+    const p = P(x + dx, y + dy, z + dz)
+    minX = Math.min(minX, p[0]); maxX = Math.max(maxX, p[0]); minY = Math.min(minY, p[1]); maxY = Math.max(maxY, p[1])
+  }
+  const ox = 16 - minX, oy = 16 - minY
+  const pt = (x, y, z) => { const p = P(x, y, z); return [clean(p[0] + ox), clean(p[1] + oy)] }
+  const face = (pts, shade) => `<polygon points="${pts.map(p => p[0] + "," + p[1]).join(" ")}" fill="${shade}" stroke="${ST_INK}" stroke-width="1.3" stroke-linejoin="round"/>`
+  const order = cells.slice().sort((a, b) => (a[0] + a[1] + a[2]) - (b[0] + b[1] + b[2]))
+  let g = ""
+  for (const [x, y, z] of order) {
+    if (!has(x, y, z + 1)) g += face([pt(x, y, z + 1), pt(x + 1, y, z + 1), pt(x + 1, y + 1, z + 1), pt(x, y + 1, z + 1)], "#f2f4f7")
+    if (!has(x, y + 1, z)) g += face([pt(x, y + 1, z), pt(x + 1, y + 1, z), pt(x + 1, y + 1, z + 1), pt(x, y + 1, z + 1)], "#dfe3e8")
+    if (!has(x + 1, y, z)) g += face([pt(x + 1, y, z), pt(x + 1, y + 1, z), pt(x + 1, y + 1, z + 1), pt(x + 1, y, z + 1)], "#cbd1d9")
+  }
+  return stWrap(clean(maxX - minX + 32), clean(maxY - minY + 32), g)
+}
+
+// целые a,b,c (2..9) с произведением, кратным k
+function stTriple(k) {
+  let a, b, c
+  do { a = randInt(2, 9); b = randInt(2, 9); c = randInt(2, 9) } while ((a * b * c) % k !== 0)
+  return [a, b, c]
+}
+
+// ── ГЕНЕРАТОРЫ ──────────────────────────────────────────────────────────────
+
+// Тетраэдр в углу параллелепипеда (A,B,C,B₁): V = abc/6.
+function t03BoxTetra() {
+  const [a, b, c] = stTriple(6)
+  return {
+    condition_text: `В прямоугольном параллелепипеде ${BOXNAME} известно, что AB = ${a}, BC = ${b}, AA₁ = ${c}. Найдите объём многогранника, вершинами которого являются точки A, B, C, B₁.`,
+    image_url: svgUrl(stBox({ highlight: [["A", "B", "C"], ["A", "B", "B1"], ["B", "C", "B1"], ["A", "C", "B1"]], edgeLabels: { AB: ru(a), BC: ru(b), AA1: ru(c) } })),
+    answer: ru(a * b * c / 6),
+  }
+}
+// Пирамида: основание ABCD + верхняя вершина: V = abc/3.
+function t03BoxPyr() {
+  const [a, b, c] = stTriple(3)
+  const apex = pick(["A1", "B1", "C1", "D1"])
+  const el = { A1: { e1: "AB", e2: "AD", v: "AA₁" }, B1: { e1: "AB", e2: "BC", v: "BB₁" }, C1: { e1: "BC", e2: "CD", v: "CC₁" }, D1: { e1: "AD", e2: "CD", v: "DD₁" } }[apex]
+  const eff = {}; eff[el.e1] = el.e1 === "AB" || el.e1 === "CD" ? ru(a) : ru(b); eff[el.e2] = el.e2 === "AB" || el.e2 === "CD" ? ru(a) : ru(b); eff[el.v.replace("₁", "1")] = ru(c)
+  return {
+    condition_text: `В прямоугольном параллелепипеде ${BOXNAME} известно, что ${el.e1[0]}${el.e1[1]} = ${el.e1 === "AB" || el.e1 === "CD" ? a : b}, ${el.e2[0]}${el.e2[1]} = ${el.e2 === "AB" || el.e2 === "CD" ? a : b}, ${el.v} = ${c}. Найдите объём многогранника, вершинами которого являются точки A, B, C, D, ${VSUB[apex]}.`,
+    image_url: svgUrl(stBox({ highlight: stPyrFaces(apex), edgeLabels: eff })),
+    answer: ru(a * b * c / 3),
+  }
+}
+// Половина параллелепипеда (6 вершин, призма): V = abc/2.
+function t03BoxHalf() {
+  const [a, b, c] = stTriple(2)
+  const variant = pick([
+    { verts: "A, B, C, D, A₁, B₁", hl: [["A", "B", "B1", "A1"], ["A", "B", "C", "D"], ["A", "D", "A1"], ["B", "C", "B1"]] },
+    { verts: "A, B, C, A₁, B₁, C₁", hl: [["A", "B", "B1", "A1"], ["A", "B", "C"], ["A1", "B1", "C1"], ["B", "C", "C1", "B1"], ["A", "C", "C1", "A1"]] },
+  ])
+  return {
+    condition_text: `В прямоугольном параллелепипеде ${BOXNAME} известно, что AB = ${a}, BC = ${b}, AA₁ = ${c}. Найдите объём многогранника, вершинами которого являются точки ${variant.verts}.`,
+    image_url: svgUrl(stBox({ highlight: variant.hl, edgeLabels: { AB: ru(a), BC: ru(b), AA1: ru(c) } })),
+    answer: ru(a * b * c / 2),
+  }
+}
+// Правильная треугольная призма: тетраэдр «основание + верхняя вершина»: V = S·L/3.
+function t03PrismTetra() {
+  let S, L; do { S = randInt(2, 12); L = randInt(3, 12) } while ((S * L) % 3 !== 0)
+  const apex = pick(["A1", "B1", "C1"])
+  const base = ["A", "B", "C"]
+  return {
+    condition_text: `Найдите объём многогранника, вершинами которого являются вершины A, B, C, ${VSUB[apex]} правильной треугольной призмы ${PRISMNAME}, площадь основания которой равна ${S}, а боковое ребро равно ${L}.`,
+    image_url: svgUrl(stPrism3({ highlight: [base, [base[0], base[2], apex], [base[1], base[2], apex], [base[0], base[1], apex]] })),
+    answer: ru(S * L / 3),
+  }
+}
+// Правильная треугольная призма: 5-вершинный кусок (призма минус тетраэдр): V = 2·S·L/3.
+function t03PrismBig() {
+  let S, L; do { S = randInt(2, 12); L = randInt(3, 12) } while ((S * L) % 3 !== 0)
+  // убираем тетраэдр с вершиной в одной нижней точке; берём A → часть B,C,A₁,B₁,C₁
+  const drop = pick([["A", "B, C, A₁, B₁, C₁", [["B", "C", "C1", "B1"], ["A1", "B1", "C1"], ["B", "C", "A1"]]],
+  ["B", "A, C, A₁, B₁, C₁", [["A", "C", "C1", "A1"], ["A1", "B1", "C1"], ["A", "C", "B1"]]]])
+  return {
+    condition_text: `Дана правильная треугольная призма ${PRISMNAME}, площадь основания которой равна ${S}, а боковое ребро равно ${L}. Найдите объём многогранника, вершинами которого являются точки ${drop[1]}.`,
+    image_url: svgUrl(stPrism3({ highlight: drop[2] })),
+    answer: ru(2 * S * L / 3),
+  }
+}
+// Средняя линия основания призмы: объём отсечённой = ¼ исходной.
+function t03MidVolCut() {
+  const reg = pick(["", "правильной "])
+  const V = randInt(2, 25) * 4
+  return {
+    condition_text: `Через среднюю линию основания ${reg}треугольной призмы, объём которой равен ${V}, проведена плоскость, параллельная боковому ребру. Найдите объём отсечённой треугольной призмы.`,
+    image_url: svgUrl(stPrism3({ midline: true })),
+    answer: ru(V / 4),
+  }
+}
+function t03MidVolWhole() {
+  const W = randInt(3, 30)
+  return {
+    condition_text: `Через среднюю линию основания треугольной призмы проведена плоскость, параллельная боковому ребру. Найдите объём этой призмы, если объём отсечённой треугольной призмы равен ${W}.`,
+    image_url: svgUrl(stPrism3({ midline: true })),
+    answer: ru(4 * W),
+  }
+}
+// Средняя линия: площадь боковой поверхности отсечённой = ½ исходной.
+function t03MidLatCut() {
+  const S = randInt(4, 30) * 2
+  return {
+    condition_text: `Площадь боковой поверхности треугольной призмы равна ${S}. Через среднюю линию основания призмы проведена плоскость, параллельная боковому ребру. Найдите площадь боковой поверхности отсечённой треугольной призмы.`,
+    image_url: svgUrl(stPrism3({ midline: true })),
+    answer: ru(S / 2),
+  }
+}
+function t03MidLatWhole() {
+  const S = randInt(4, 40)
+  return {
+    condition_text: `Через среднюю линию основания треугольной призмы проведена плоскость, параллельная боковому ребру. Площадь боковой поверхности отсечённой треугольной призмы равна ${S}. Найдите площадь боковой поверхности исходной призмы.`,
+    image_url: svgUrl(stPrism3({ midline: true })),
+    answer: ru(2 * S),
+  }
+}
+// Цилиндр и конус: общие основание и высота. V_конуса = V_цил/3.
+function t03CylConeVolCone() {
+  const V = randInt(2, 30) * 3
+  return {
+    condition_text: `Цилиндр и конус имеют общие основание и высоту. Объём цилиндра равен ${V}. Найдите объём конуса.`,
+    image_url: svgUrl(stCylCone()),
+    answer: ru(V / 3),
+  }
+}
+function t03CylConeVolCyl() {
+  const V = randInt(2, 40)
+  return {
+    condition_text: `Цилиндр и конус имеют общие основание и высоту. Объём конуса равен ${V}. Найдите объём цилиндра.`,
+    image_url: svgUrl(stCylCone()),
+    answer: ru(3 * V),
+  }
+}
+// Цилиндр/конус, h = R: S_бок цил = √2 · S_бок конуса.
+function t03CylConeLatCyl() {
+  const k = randInt(2, 12)
+  return {
+    condition_text: `Цилиндр и конус имеют общие основание и высоту. Высота цилиндра равна радиусу основания. Площадь боковой поверхности конуса равна ${k}${R2}. Найдите площадь боковой поверхности цилиндра.`,
+    image_url: svgUrl(stCylCone()),
+    answer: ru(2 * k),
+  }
+}
+function t03CylConeLatCone() {
+  const k = randInt(2, 12)
+  return {
+    condition_text: `Цилиндр и конус имеют общие основание и высоту. Высота цилиндра равна радиусу основания. Площадь боковой поверхности цилиндра равна ${k}${R2}. Найдите площадь боковой поверхности конуса.`,
+    image_url: svgUrl(stCylCone()),
+    answer: ru(k),
+  }
+}
+// Конус вписан в шар, R_осн = R_шара: V_шара = 4·V_конуса.
+function t03ConeInSphereBig() {
+  const V = randInt(2, 30)
+  return {
+    condition_text: `Конус вписан в шар. Радиус основания конуса равен радиусу шара. Объём конуса равен ${V}. Найдите объём шара.`,
+    image_url: svgUrl(stConeInSphere()),
+    answer: ru(4 * V),
+  }
+}
+function t03ConeInSphereSmall() {
+  const V = randInt(2, 25) * 4
+  return {
+    condition_text: `Конус вписан в шар. Радиус основания конуса равен радиусу шара. Объём шара равен ${V}. Найдите объём конуса.`,
+    image_url: svgUrl(stConeInSphere()),
+    answer: ru(V / 4),
+  }
+}
+// Шар вписан в цилиндр: S_шара = ⅔·S_полн цилиндра.
+function t03SphereInCylSurf() {
+  const S = randInt(2, 20) * 3
+  return {
+    condition_text: `Шар вписан в цилиндр. Площадь полной поверхности цилиндра равна ${S}. Найдите площадь поверхности шара.`,
+    image_url: svgUrl(stSphereInCyl()),
+    answer: ru(2 * S / 3),
+  }
+}
+// Шар вписан в цилиндр (объёмы): V_цил = 1,5·V_шара; и «цилиндр описан около шара».
+function t03SphereCylVolFromSphere() {
+  const V = randInt(2, 30) * 2
+  return {
+    condition_text: `Шар, объём которого равен ${V}, вписан в цилиндр. Найдите объём цилиндра.`,
+    image_url: svgUrl(stSphereInCyl()),
+    answer: ru(3 * V / 2),
+  }
+}
+function t03SphereCylVolFromCyl() {
+  const V = randInt(2, 20) * 3
+  return {
+    condition_text: `Цилиндр, объём которого равен ${V}, описан около шара. Найдите объём шара.`,
+    image_url: svgUrl(stSphereInCyl()),
+    answer: ru(2 * V / 3),
+  }
+}
+// Во сколько раз изменится объём конуса при изменении радиуса/высоты.
+function t03ConeScale() {
+  const n = randInt(2, 12)
+  if (Math.random() < 0.5) {
+    return { condition_text: `Во сколько раз увеличится объём конуса, если радиус его основания увеличится в ${n} раз, а высота останется прежней?`, image_url: svgUrl(stCone()), answer: ru(n * n) }
+  }
+  return { condition_text: `Во сколько раз уменьшится объём конуса, если его высота уменьшится в ${n} раз, а радиус основания останется прежним?`, image_url: svgUrl(stCone()), answer: ru(n) }
+}
+// Два цилиндра: V₂ = V₁ · q²/p (высота в p раз меньше, радиус в q раз больше).
+function t03TwoCyl() {
+  const p = pick([2, 3, 4]), q = pick([2, 3])
+  const base = randInt(2, 12), V1 = base * p // делится на p
+  const V2 = V1 * q * q / p
+  return {
+    condition_text: `Даны два цилиндра. Объём первого цилиндра равен ${V1}. У второго цилиндра высота в ${p} раза меньше, а радиус основания в ${q} раза больше, чем у первого. Найдите объём второго цилиндра.`,
+    image_url: svgUrl(stTwoCyl()),
+    answer: ru(V2),
+  }
+}
+// Сфера описана около конуса, центр в центре основания: l = R·√2.
+function t03ConeCircumR() {
+  const k = randInt(2, 20)
+  return {
+    condition_text: `Около конуса описана сфера (сфера содержит окружность основания конуса и его вершину). Центр сферы находится в центре основания конуса. Образующая конуса равна ${k}${R2}. Найдите радиус сферы.`,
+    image_url: svgUrl(stConeCircumSphere()),
+    answer: ru(k),
+  }
+}
+function t03ConeCircumL() {
+  const k = randInt(2, 90)
+  return {
+    condition_text: `Около конуса описана сфера (сфера содержит окружность основания конуса и его вершину). Центр сферы находится в центре основания конуса. Радиус сферы равен ${k}${R2}. Найдите длину образующей конуса.`,
+    image_url: svgUrl(stConeCircumSphere()),
+    answer: ru(2 * k),
+  }
+}
+// Цилиндр вписан в прямоугольный параллелепипед: V = 4·r²·h (при r = h).
+function t03CylInPar() {
+  const r = randInt(2, 9)
+  return {
+    condition_text: `Цилиндр вписан в прямоугольный параллелепипед. Радиус основания и высота цилиндра равны ${r}. Найдите объём параллелепипеда.`,
+    image_url: svgUrl(stCylInPar()),
+    answer: ru(4 * r * r * r),
+  }
+}
+// Куб: отсечённая угловая треугольная призма: V = V_куба/8.
+function t03CubeCut() {
+  const V = randInt(2, 30) * 8
+  return {
+    condition_text: `Объём куба равен ${V}. Найдите объём треугольной призмы, отсекаемой от куба плоскостью, проходящей через середины двух рёбер, выходящих из одной вершины, и параллельной третьему ребру, выходящему из этой же вершины.`,
+    image_url: svgUrl(stCubeCut()),
+    answer: ru(V / 8),
+  }
+}
+// Сечение шара через центр: S_шара = 4·S_сечения.
+function t03SphereSection() {
+  const S = randInt(2, 40)
+  return {
+    condition_text: `Площадь сечения шара плоскостью, проходящей через центр шара, равна ${S}. Найдите площадь поверхности шара.`,
+    image_url: svgUrl(stSphere({ section: true })),
+    answer: ru(4 * S),
+  }
+}
+// Случайный связный поликуб (5..9 кубиков) для типажей «объём/площадь из кубиков».
+function stRandPolycube() {
+  const cells = [[0, 0, 0]]
+  const key = (c) => c.join(",")
+  const set = new Set([key([0, 0, 0])])
+  const n = randInt(5, 9)
+  const dirs = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
+  let guard = 0
+  while (cells.length < n && guard++ < 400) {
+    const base = pick(cells), d = pick(dirs)
+    const nc = [base[0] + d[0], base[1] + d[1], base[2] + d[2]]
+    if (nc[2] < 0) continue
+    if (!set.has(key(nc))) { set.add(key(nc)); cells.push(nc) }
+  }
+  return cells
+}
+function t03CubesVolume() {
+  const cells = stRandPolycube()
+  return {
+    condition_text: `На рисунке изображён многогранник, составленный из одинаковых кубов с ребром 1. Найдите его объём.`,
+    image_url: svgUrl(stCubes(cells)),
+    answer: ru(cells.length),
+  }
+}
+function t03CubesSurface() {
+  const cells = stRandPolycube()
+  const set = new Set(cells.map(c => c.join(",")))
+  const dirs = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
+  let faces = 0
+  for (const c of cells) for (const d of dirs) if (!set.has([c[0] + d[0], c[1] + d[1], c[2] + d[2]].join(","))) faces++
+  return {
+    condition_text: `На рисунке изображён многогранник, составленный из одинаковых кубов с ребром 1. Найдите площадь его поверхности.`,
+    image_url: svgUrl(stCubes(cells)),
+    answer: ru(faces),
+  }
+}
+
+// ============================================================================
 // Реестр и мета-темы
 // ============================================================================
 
 export const GENERATORS_EGE_PROF = {
   2: [t02DotCoord, t02DotLenAngle, t02LenCombo, t02DotOfCombos, t02GraphLenCombo],
+  3: [t03BoxTetra, t03BoxPyr, t03BoxHalf, t03PrismTetra, t03PrismBig,
+    t03MidVolCut, t03MidVolWhole, t03MidLatCut, t03MidLatWhole,
+    t03CylConeVolCone, t03CylConeVolCyl, t03CylConeLatCyl, t03CylConeLatCone,
+    t03ConeInSphereBig, t03ConeInSphereSmall, t03SphereInCylSurf,
+    t03SphereCylVolFromSphere, t03SphereCylVolFromCyl, t03ConeScale, t03TwoCyl,
+    t03ConeCircumR, t03ConeCircumL, t03CylInPar, t03CubeCut, t03SphereSection,
+    t03CubesVolume, t03CubesSurface],
   4: [t04ShotPut, t04Gymnastics, t04Diving, t04Tickets, t04Markers, t04Defect, t04Lottery, t04CoinTwice, t04Rooms, t04FootballCoin],
   5: [t05Lamps, t05Between, t05Shooter4, t05Coffee, t05Battery, t05ShooterN, t05DiceCond, t05TwoThemes, t05Exact],
   6: [t06ExpReduce, t06ExpBothSides, t06LogEqLog, t06LogEqNum, t06Rational, t06Cube, t06Sqrt, t06CubeRoot],
@@ -2224,6 +2713,47 @@ export const GEN_META_EGE_PROF = {
     ["Длина вектора", [
       ["len-combo", "Длина a±kb (координаты в тексте)", t02LenCombo],
       ["len-graph", "Длина m·a+n·b (по чертежу)", t02GraphLenCombo],
+    ]]],
+  3: [["Параллелепипед: объём части", [
+    ["box-tetra", "Тетраэдр A,B,C,B₁ (÷6)", t03BoxTetra],
+    ["box-pyr", "Пирамида на основании ABCD (÷3)", t03BoxPyr],
+    ["box-half", "Половина параллелепипеда (÷2)", t03BoxHalf],
+  ]],
+    ["Правильная треугольная призма: объём части", [
+      ["prism-tetra", "Тетраэдр A,B,C,C₁ (S·L/3)", t03PrismTetra],
+      ["prism-big", "5 вершин (2·S·L/3)", t03PrismBig],
+    ]],
+    ["Средняя линия призмы", [
+      ["mid-vol-cut", "Объём отсечённой (÷4)", t03MidVolCut],
+      ["mid-vol-whole", "Объём исходной (×4)", t03MidVolWhole],
+      ["mid-lat-cut", "Бок. пов. отсечённой (÷2)", t03MidLatCut],
+      ["mid-lat-whole", "Бок. пов. исходной (×2)", t03MidLatWhole],
+    ]],
+    ["Цилиндр и конус (общие осн. и высота)", [
+      ["cc-vol-cone", "Объём конуса (÷3)", t03CylConeVolCone],
+      ["cc-vol-cyl", "Объём цилиндра (×3)", t03CylConeVolCyl],
+      ["cc-lat-cyl", "Бок. пов. цилиндра (h=R)", t03CylConeLatCyl],
+      ["cc-lat-cone", "Бок. пов. конуса (h=R)", t03CylConeLatCone],
+    ]],
+    ["Тела вращения: вписанные", [
+      ["cone-sph-big", "Конус в шаре → объём шара (×4)", t03ConeInSphereBig],
+      ["cone-sph-small", "Конус в шаре → объём конуса (÷4)", t03ConeInSphereSmall],
+      ["sph-cyl-surf", "Шар в цилиндре → пов. шара (⅔)", t03SphereInCylSurf],
+      ["sph-cyl-vol-s", "Шар в цилиндре → объём цил. (×1,5)", t03SphereCylVolFromSphere],
+      ["sph-cyl-vol-c", "Цил. около шара → объём шара (⅔)", t03SphereCylVolFromCyl],
+    ]],
+    ["Тела вращения: прочее", [
+      ["cone-scale", "Во сколько раз изменится объём конуса", t03ConeScale],
+      ["two-cyl", "Два цилиндра (q²/p)", t03TwoCyl],
+      ["cone-circ-r", "Сфера около конуса → радиус", t03ConeCircumR],
+      ["cone-circ-l", "Сфера около конуса → образующая", t03ConeCircumL],
+      ["cyl-in-par", "Цилиндр в параллелепипеде", t03CylInPar],
+      ["sph-section", "Сечение шара через центр (×4)", t03SphereSection],
+    ]],
+    ["Куб и многогранники из кубиков", [
+      ["cube-cut", "Отсечённая призма от куба (÷8)", t03CubeCut],
+      ["cubes-vol", "Объём фигуры из кубиков", t03CubesVolume],
+      ["cubes-surf", "Площадь поверхности из кубиков", t03CubesSurface],
     ]]],
   4: [["Жребий / порядок", [
     ["shot-put", "Толкание ядра (4 страны)", t04ShotPut],
