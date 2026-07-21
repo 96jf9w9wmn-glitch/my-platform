@@ -1244,23 +1244,31 @@ function fnGridSvg({ gx0, gx1, gy0, gy1, plots = [], vdash = [], hdash = [], dot
   return `<svg xmlns="http://www.w3.org/2000/svg" font-family="Arial, sans-serif" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${g}</svg>`
 }
 
-// Подпись графика «y = f(x)»: точка на кривой подальше от осей, асимптот и краёв.
+// Подпись графика «y = f(x)»: выбираем место с максимальным ЗНАКОВЫМ зазором от
+// кривой (бокс подписи асимметричен — глифы идут вверх от базовой линии). Никогда
+// не налезает на график: если кривая всюду близко, берём наименее занятое место.
 function fLabelAt(fn, gx0, gx1, gy0, gy1, opts = {}) {
   const { preferRight = true, avoidX = [0], avoidY = [0] } = opts
-  let best = null, bestScore = -Infinity
-  for (let x = gx0 + 0.6; x <= gx1 - 0.6; x += 0.5) {
-    const y = fn(x)
-    if (!isFinite(y) || y < gy0 + 0.9 || y > gy1 - 0.9) continue
-    const ly = y + 0.8
-    if (ly > gy1 - 0.6) continue
-    let s = Math.min(x - gx0, gx1 - x, ly - gy0, gy1 - ly) // запас до краёв
-    for (const ax of avoidX) if (Math.abs(x - ax) < 1.3) s = -1
-    for (const ay of avoidY) if (Math.abs(ly - ay) < 1.1) s = -1
-    s += (preferRight ? 1 : -1) * x * 0.12
-    if (s > bestScore) { bestScore = s; best = { x: clean(x), y: clean(ly) } }
+  const hw = 1.5, hUp = 0.62, hDn = 0.18 // полу-бокс (клетки): «y = f(x)», вверх больше
+  const pts = []
+  for (let x = gx0; x <= gx1; x += 0.06) { const y = fn(x); if (isFinite(y) && y >= gy0 - 1 && y <= gy1 + 1) pts.push([x, y]) }
+  let best = { x: (gx0 + gx1) / 2, y: gy1 - hUp - 0.3 }, bestScore = -Infinity
+  for (let cx = gx0 + hw + 0.2; cx <= gx1 - hw - 0.2; cx += 0.4) {
+    for (let cy = gy0 + hDn + 0.3; cy <= gy1 - hUp - 0.3; cy += 0.4) {
+      let clr = Infinity
+      for (const [px, py] of pts) {
+        const ox = Math.abs(px - cx) - hw
+        const oy = Math.max(py - (cy + hUp), (cy - hDn) - py)
+        clr = Math.min(clr, ox <= 0 && oy <= 0 ? Math.max(ox, oy) : Math.hypot(Math.max(0, ox), Math.max(0, oy)))
+        if (clr <= -hUp) break
+      }
+      let s = clr + Math.min(cx - gx0, gx1 - cx, cy - gy0, gy1 - cy) * 0.12 + (preferRight ? 1 : -1) * cx * 0.03
+      for (const ax of avoidX) s -= Math.max(0, 1.0 - Math.abs(cx - ax)) * 0.7
+      for (const ay of avoidY) s -= Math.max(0, 0.8 - Math.abs(cy - ay)) * 0.7
+      if (s > bestScore) { bestScore = s; best = { x: clean(cx), y: clean(cy) } }
+    }
   }
-  if (!best) best = { x: preferRight ? gx1 - 1 : gx0 + 1, y: gy1 - 1 }
-  return { x: best.x, y: best.y, text: "y = f(x)", italic: true, size: 12, anchor: best.x > (gx0 + gx1) / 2 ? "end" : "start" }
+  return { x: best.x, y: best.y, text: "y = f(x)", italic: true, size: 12, anchor: "middle" }
 }
 
 // ---- A. Линейная f(x)=kx+b ------------------------------------------------
