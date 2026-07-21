@@ -1188,6 +1188,609 @@ function t07TrigDouble() {
 }
 
 // ============================================================================
+// №11 — ГРАФИКИ ФУНКЦИЙ (чтение графика элементарной функции, короткий ответ)
+// ============================================================================
+// Каждый график рисуется на координатной сетке (как в ФИПИ): кривая проходит
+// через читаемые узлы решётки, чтобы по картинке однозначно восстанавливались
+// параметры (k, b, a, c …). Ответ считается кодом — гарантированно верен.
+
+const G_AX = "#1c1c1e", G_GRID = "#d7dbe0", G_CURVE = "#1c1c1e", G_DASH = "#8a9099"
+
+// Путь кривой: сэмплирует fn на [xa,xb], рвёт линию на разрывах и выходе за окно.
+function fnPath(fn, xa, xb, X, Y, ylo, yhi, step) {
+  step = step || (xb - xa) / 500
+  let d = "", pen = false, prevY = null
+  for (let x = xa; x <= xb + 1e-9; x += step) {
+    const y = fn(x)
+    if (!isFinite(y) || y < ylo - 0.7 || y > yhi + 0.7) { pen = false; prevY = null; continue }
+    // разрыв через асимптоту: резкий скачок знака/величины
+    if (prevY !== null && Math.abs(y - prevY) > (yhi - ylo)) { pen = false }
+    d += (pen ? "L" : "M") + clean(X(x)) + " " + clean(Y(y)) + " "
+    pen = true; prevY = y
+  }
+  return d
+}
+
+// Координатная сетка с графиком(-ами) функции. Возвращает SVG-строку.
+// plots: [{fn, xa, xb, dash?}]; vdash/hdash — пунктирные асимптоты (x= / y=);
+// dots: [[x,y]] — жирные точки; labels: [{x,y,text,anchor?,italic?,size?}];
+// unitX — подпись деления по x («1» по умолч.); xticks — свои подписи оси x
+// (напр. [{x:4,text:"π"}]) вместо «1» (для тригонометрии, где клетка = π/4).
+function fnGridSvg({ gx0, gx1, gy0, gy1, plots = [], vdash = [], hdash = [], dots = [], labels = [], unitX = "1", xticks = null }) {
+  const cell = 24, m = 15
+  const W = 2 * m + (gx1 - gx0) * cell, H = 2 * m + (gy1 - gy0) * cell
+  const X = (u) => m + (u - gx0) * cell
+  const Y = (v) => H - m - (v - gy0) * cell
+  let g = ""
+  for (let i = gx0; i <= gx1; i++) g += `<line x1="${X(i)}" y1="${Y(gy0)}" x2="${X(i)}" y2="${Y(gy1)}" stroke="${G_GRID}" stroke-width="1"/>`
+  for (let j = gy0; j <= gy1; j++) g += `<line x1="${X(gx0)}" y1="${Y(j)}" x2="${X(gx1)}" y2="${Y(j)}" stroke="${G_GRID}" stroke-width="1"/>`
+  for (const x of vdash) g += `<line x1="${X(x)}" y1="${Y(gy0)}" x2="${X(x)}" y2="${Y(gy1)}" stroke="${G_DASH}" stroke-width="1.3" stroke-dasharray="5 4"/>`
+  for (const y of hdash) g += `<line x1="${X(gx0)}" y1="${Y(y)}" x2="${X(gx1)}" y2="${Y(y)}" stroke="${G_DASH}" stroke-width="1.3" stroke-dasharray="5 4"/>`
+  // кривые
+  for (const p of plots) g += `<path d="${fnPath(p.fn, p.xa, p.xb, X, Y, gy0, gy1, p.step)}" fill="none" stroke="${G_CURVE}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"${p.dash ? ` stroke-dasharray="${p.dash}"` : ""}/>`
+  // оси со стрелками
+  g += vecArrow(X(gx0), Y(0), X(gx1), Y(0), G_AX, 1.4)
+  g += vecArrow(X(0), Y(gy0), X(0), Y(gy1), G_AX, 1.4)
+  g += `<text x="${X(gx1) - 3}" y="${Y(0) + 17}" font-size="15" font-style="italic" font-weight="bold" fill="${G_AX}" text-anchor="end">x</text>`
+  g += `<text x="${X(0) + 7}" y="${Y(gy1) + 13}" font-size="15" font-style="italic" font-weight="bold" fill="${G_AX}">y</text>`
+  g += `<text x="${X(0) - 5}" y="${Y(0) + 16}" font-size="13" font-weight="bold" fill="${G_AX}" text-anchor="end">0</text>`
+  if (xticks) { for (const t of xticks) if (t.x >= gx0 && t.x <= gx1 && t.x !== 0) g += `<text x="${X(t.x)}" y="${Y(0) + 16}" font-size="12" fill="${G_AX}" text-anchor="middle">${t.text}</text>` }
+  else if (gx0 <= 1 && gx1 >= 1) g += `<text x="${X(1)}" y="${Y(0) + 16}" font-size="12" fill="${G_AX}" text-anchor="middle">${unitX}</text>`
+  if (gy0 <= 1 && gy1 >= 1) g += `<text x="${X(0) - 6}" y="${Y(1) + 4}" font-size="12" fill="${G_AX}" text-anchor="end">1</text>`
+  // жирные точки
+  for (const [x, y] of dots) g += `<circle cx="${X(x)}" cy="${Y(y)}" r="2.8" fill="${G_AX}"/>`
+  // произвольные подписи
+  for (const L of labels) g += `<text x="${X(L.x)}" y="${Y(L.y)}" font-size="${L.size || 13}" ${L.italic ? 'font-style="italic" ' : ""}fill="${G_AX}" text-anchor="${L.anchor || "start"}">${L.text}</text>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" font-family="Arial, sans-serif" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${g}</svg>`
+}
+
+// Подпись графика «y = f(x)»: точка на кривой подальше от осей, асимптот и краёв.
+function fLabelAt(fn, gx0, gx1, gy0, gy1, opts = {}) {
+  const { preferRight = true, avoidX = [0], avoidY = [0] } = opts
+  let best = null, bestScore = -Infinity
+  for (let x = gx0 + 0.6; x <= gx1 - 0.6; x += 0.5) {
+    const y = fn(x)
+    if (!isFinite(y) || y < gy0 + 0.9 || y > gy1 - 0.9) continue
+    const ly = y + 0.8
+    if (ly > gy1 - 0.6) continue
+    let s = Math.min(x - gx0, gx1 - x, ly - gy0, gy1 - ly) // запас до краёв
+    for (const ax of avoidX) if (Math.abs(x - ax) < 1.3) s = -1
+    for (const ay of avoidY) if (Math.abs(ly - ay) < 1.1) s = -1
+    s += (preferRight ? 1 : -1) * x * 0.12
+    if (s > bestScore) { bestScore = s; best = { x: clean(x), y: clean(ly) } }
+  }
+  if (!best) best = { x: preferRight ? gx1 - 1 : gx0 + 1, y: gy1 - 1 }
+  return { x: best.x, y: best.y, text: "y = f(x)", italic: true, size: 12, anchor: best.x > (gx0 + gx1) / 2 ? "end" : "start" }
+}
+
+// ---- A. Линейная f(x)=kx+b ------------------------------------------------
+
+// Подобрать прямую (целое или полуцелое k, целое b) с ≥3 читаемыми узлами в окне.
+function pickLine(kset) {
+  const gx0 = -5, gx1 = 5, gy0 = -6, gy1 = 6
+  for (let t = 0; t < 400; t++) {
+    const k = pick(kset), b = randInt(-4, 4)
+    let nodes = 0
+    for (let x = gx0; x <= gx1; x++) { const y = k * x + b; if (Number.isInteger(y) && y >= gy0 && y <= gy1) nodes++ }
+    if (nodes >= 3) return { k, b, gx0, gx1, gy0, gy1 }
+  }
+  return { k: 2, b: 1, gx0, gx1, gy0, gy1 }
+}
+
+function t11LinValue() {
+  const { k, b, gx0, gx1, gy0, gy1 } = pickLine([1, 2, 3, -1, -2, -3])
+  let x0
+  do { x0 = pick([-9, -8, -7, -6, 6, 7, 8, 9]) } while (Math.abs(k * x0 + b) > 40)
+  const fn = (x) => k * x + b
+  const svg = fnGridSvg({ gx0, gx1, gy0, gy1, plots: [{ fn, xa: gx0, xb: gx1 }], labels: [fLabelAt(fn, gx0, gx1, gy0, gy1, { preferRight: k > 0 })] })
+  return {
+    condition_text: `На рисунке изображён график функции вида f(x) = kx + b. Найдите значение f(${ru(x0)}).`,
+    image_url: svgUrl(svg),
+    answer: ru(k * x0 + b),
+  }
+}
+
+function t11LinArg() {
+  const { k, b, gx0, gx1, gy0, gy1 } = pickLine([0.5, 1.5, -0.5, -1.5, 1, 2, -1, -2])
+  let xa
+  do { xa = pick([-9, -8, -7, -6, 6, 7, 8, 9]) } while (Math.abs(k * xa + b) > 40)
+  const y0 = k * xa + b
+  const fn = (x) => k * x + b
+  const svg = fnGridSvg({ gx0, gx1, gy0, gy1, plots: [{ fn, xa: gx0, xb: gx1 }], labels: [fLabelAt(fn, gx0, gx1, gy0, gy1, { preferRight: k > 0 })] })
+  return {
+    condition_text: `На рисунке изображён график функции f(x) = kx + b. Найдите значение x, при котором f(x) = ${ru(y0)}.`,
+    image_url: svgUrl(svg),
+    answer: ru(xa),
+  }
+}
+
+// ---- B. Парабола f(x)=ax²+bx+c ---------------------------------------------
+// Инвариант: a, b, c — ЦЕЛЫЕ, поэтому f(целое)=целое и кривая проходит через
+// узлы решётки (параметры однозначно читаются). Вершина может быть вне узла.
+
+function makeParab(a, b, c) {
+  const fn = (x) => a * x * x + b * x + c
+  const h = -b / (2 * a), vy = c - (b * b) / (4 * a)
+  let gy0, gy1
+  if (a > 0) { gy0 = Math.floor(Math.min(vy, 0)) - 1; gy1 = gy0 + 11 }
+  else { gy1 = Math.ceil(Math.max(vy, 0)) + 1; gy0 = gy1 - 11 }
+  let gx0 = Math.min(Math.floor(h) - 4, -1), gx1 = Math.max(Math.ceil(h) + 4, 1)
+  if (gx1 - gx0 > 12) { gx0 = Math.max(gx0, Math.round(h) - 6); gx1 = Math.min(gx1, Math.round(h) + 6) }
+  return { a, b, c, fn, h, vy, gx0, gx1, gy0, gy1 }
+}
+
+// Подобрать целую параболу под ограничения ({a},{b},{c} — фиксировать коэффициент).
+function pickQuad({ a: aFix, b: bFix, c: cFix } = {}) {
+  for (let t = 0; t < 900; t++) {
+    const a = aFix != null ? aFix : pick([1, -1, 2, -2])
+    const b = bFix != null ? bFix : randInt(-8, 8)
+    const h = -b / (2 * a)
+    if (Math.abs(h) > 3.5) continue
+    let c
+    if (cFix != null) c = cFix
+    else { const vyT = a > 0 ? randInt(-4, -1) : randInt(1, 4); c = Math.round(vyT + (b * b) / (4 * a)) }
+    const vy = c - (b * b) / (4 * a)
+    if (a > 0 ? !(vy >= -6 && vy <= 0.5) : !(vy <= 6 && vy >= -0.5)) continue
+    const P = makeParab(a, b, c)
+    if (P.gx1 - P.gx0 > 12) continue
+    let nodes = 0
+    for (let x = P.gx0; x <= P.gx1; x++) { const y = P.fn(x); if (y >= P.gy0 && y <= P.gy1) nodes++ }
+    if (nodes < 3) continue
+    if (cFix != null && (P.fn(0) < P.gy0 + 0.5 || P.fn(0) > P.gy1 - 0.5)) continue // c=f(0) виден
+    return P
+  }
+  return makeParab(aFix ?? 1, bFix ?? -2, cFix ?? -3)
+}
+
+function parabSvg(P) {
+  return svgUrl(fnGridSvg({
+    gx0: P.gx0, gx1: P.gx1, gy0: P.gy0, gy1: P.gy1,
+    plots: [{ fn: P.fn, xa: P.gx0, xb: P.gx1 }],
+    labels: [fLabelAt(P.fn, P.gx0, P.gx1, P.gy0, P.gy1, { preferRight: false })],
+  }))
+}
+
+// Читаемый узел внутри окна (для «прочитай f(x0)»), не вершина, не 0.
+function inWindowNode(P) {
+  const cands = []
+  for (let x = P.gx0 + 1; x <= P.gx1 - 1; x++) { const y = P.fn(x); if (y >= P.gy0 + 0.5 && y <= P.gy1 - 0.5 && x !== 0) cands.push(x) }
+  return cands.length ? pick(cands) : P.gx0 + 1
+}
+// Точка вне окна (для «восстанови коэффициенты и посчитай f(x0)»).
+function farNode(P, cap = 260) {
+  let x0
+  do { x0 = pick([-12, -11, -10, -9, -8, -7, -6, 6, 7, 8, 9, 10, 11, 12]) } while ((x0 >= P.gx0 && x0 <= P.gx1) || Math.abs(P.fn(x0)) > cap)
+  return x0
+}
+
+// #3/#4 — общая парабола, прочитать f(x0) в окне.
+function t11QuadRead(intForm) {
+  const P = pickQuad(), x0 = inWindowNode(P)
+  const cond = intForm
+    ? `На рисунке изображён график функции f(x) = ax² + bx + c, где числа a, b и c — целые. Найдите f(${ru(x0)}).`
+    : `На рисунке изображён график функции вида f(x) = ax² + bx + c. Найдите значение f(${ru(x0)}).`
+  return { condition_text: cond, image_url: parabSvg(P), answer: ru(P.fn(x0)) }
+}
+
+// #5 — целые a,b,c, значение вдалеке.
+function t11QuadFar() {
+  const P = pickQuad(), x0 = farNode(P)
+  return {
+    condition_text: `На рисунке изображён график функции вида f(x) = ax² + bx + c, где числа a, b и c — целые. Найдите значение f(${ru(x0)}).`,
+    image_url: parabSvg(P), answer: ru(P.fn(x0)),
+  }
+}
+
+// #6–#11 — один коэффициент задан в формуле, f(x0) вдалеке.
+function t11QuadFixed(spec, formula) {
+  const P = pickQuad(spec), x0 = farNode(P)
+  return { condition_text: `На рисунке изображён график функции f(x) = ${formula}. Найдите f(${ru(x0)}).`, image_url: parabSvg(P), answer: ru(P.fn(x0)) }
+}
+
+const t11QuadA2neg = () => t11QuadFixed({ a: -2 }, "−2x² + bx + c")
+const t11QuadA2pos = () => t11QuadFixed({ a: 2 }, "2x² + bx + c")
+const t11QuadBm4 = () => t11QuadFixed({ b: -4 }, "ax² − 4x + c")
+const t11QuadBm3 = () => t11QuadFixed({ b: -3 }, "ax² − 3x + c")
+const t11QuadCm3 = () => t11QuadFixed({ c: -3 }, "ax² + bx − 3")
+const t11QuadCm6 = () => t11QuadFixed({ c: -6 }, "ax² + bx − 6")
+
+// ---- C. Гипербола f(x)=K/(x−p)+q -------------------------------------------
+// Вертикальная асимптота x=p (пунктир при p≠0), горизонтальная y=q (пунктир при
+// q≠0). Целые K,p,q ⇒ узлы решётки при (x−p) | K, параметры однозначно читаются.
+
+function makeHyp(K, p, q) {
+  const fn = (x) => K / (x - p) + q
+  const gx0 = Math.min(-1, Math.round(p) - 5), gx1 = Math.max(1, Math.round(p) + 5)
+  const gy0 = Math.min(-1, Math.round(q) - 5), gy1 = Math.max(1, Math.round(q) + 5)
+  return { K, p, q, fn, gx0, gx1, gy0, gy1, vdash: p !== 0 ? [p] : [], hdash: q !== 0 ? [q] : [] }
+}
+function hypNodes(H) { let n = 0; for (let x = H.gx0; x <= H.gx1; x++) { if (x === H.p) continue; const y = H.fn(x); if (Number.isInteger(y) && y >= H.gy0 && y <= H.gy1) n++ } return n }
+function hypSvg(H) {
+  const eps = 0.28
+  return svgUrl(fnGridSvg({
+    gx0: H.gx0, gx1: H.gx1, gy0: H.gy0, gy1: H.gy1,
+    plots: [{ fn: H.fn, xa: H.gx0, xb: H.p - eps }, { fn: H.fn, xa: H.p + eps, xb: H.gx1 }],
+    vdash: H.vdash, hdash: H.hdash,
+    labels: [fLabelAt(H.fn, H.gx0, H.gx1, H.gy0, H.gy1, { preferRight: true, avoidX: [0, ...H.vdash], avoidY: [0, ...H.hdash] })],
+  }))
+}
+const HYP_K = [2, 3, 4, 6, 8, -2, -3, -4, -6, -8]
+const NICE_D = [1, -1, 2, -2, 4, -4, 5, -5, 10, -10, 20, -20]
+
+// Подобрать гиперболу с ≥4 читаемыми узлами (и заданными p,q при сдвигах).
+function pickHyp(p, q, Kset = HYP_K) {
+  for (let t = 0; t < 300; t++) { const K = pick(Kset); const H = makeHyp(K, p, q); if (hypNodes(H) >= 4) return H }
+  return makeHyp(pick(Kset), p, q)
+}
+// x0 вне узла p, где (x0−p) делит K терминально; предпочтительно вне окна (нужно вычислить).
+function hypX0(H) {
+  const cand = NICE_D.map((d) => H.p + d).filter((x) => x !== H.p && isTerm(H.K, x - H.p))
+  const far = cand.filter((x) => x < H.gx0 || x > H.gx1)
+  return pick(far.length ? far : cand)
+}
+
+// #12/#13 — f(x)=k/x, найти f(x0).
+function t11HypBasic() {
+  const H = pickHyp(0, 0)
+  const x0 = hypX0(H)
+  return { condition_text: `На рисунке изображён график функции вида f(x) = ⟦f:k:x⟧. Найдите значение f(${ru(x0)}).`, image_url: hypSvg(H), answer: ru(clean(H.fn(x0))) }
+}
+// #14 — f(x)=k/x+a, найти f(x0).
+function t11HypShiftVValue() {
+  const a = pick([1, 2, 3, -1, -2, -3])
+  const H = pickHyp(0, a)
+  const x0 = hypX0(H)
+  return { condition_text: `На рисунке изображён график функции f(x) = ⟦f:k:x⟧ + a. Найдите f(${ru(x0)}).`, image_url: hypSvg(H), answer: ru(clean(H.fn(x0))) }
+}
+// #15 — f(x)=k/x+a, найти x при f(x)=V.
+function t11HypShiftVArg() {
+  const a = pick([1, 2, 3, -1, -2, -3])
+  const H = pickHyp(0, a)
+  const cand = NICE_D.filter((d) => isTerm(H.K, d)).map((d) => d)
+  const d = pick(cand); const xAns = d; const V = clean(H.fn(xAns))
+  return { condition_text: `На рисунке изображён график функции f(x) = ⟦f:k:x⟧ + a. Найдите значение x, при котором f(x) = ${ru(V)}.`, image_url: hypSvg(H), answer: ru(xAns) }
+}
+// #16 — f(x)=k/(x+a), найти f(x0).  (p=−a, q=0)
+function t11HypShiftHValue() {
+  const a = pick([1, 2, 3, -1, -2, -3])
+  const H = pickHyp(-a, 0)
+  const x0 = hypX0(H)
+  return { condition_text: `На рисунке изображён график функции f(x) = ⟦f:k:x${signed(a)}⟧. Найдите f(${ru(x0)}).`, image_url: hypSvg(H), answer: ru(clean(H.fn(x0))) }
+}
+// #17 — f(x)=k/(x+a), найти x при f(x)=V.
+function t11HypShiftHArg() {
+  const a = pick([1, 2, 3, -1, -2, -3])
+  const H = pickHyp(-a, 0)
+  const d = pick(NICE_D.filter((dd) => isTerm(H.K, dd)))
+  const xAns = H.p + d; const V = clean(H.fn(xAns))
+  return { condition_text: `На рисунке изображён график функции вида f(x) = ⟦f:k:x${signed(a)}⟧. Найдите значение x, при котором f(x) = ${ru(V)}.`, image_url: hypSvg(H), answer: ru(xAns) }
+}
+// #18/#19 — f(x)=(kx+a)/(x+b): вертик. x=−b, гориз. y=k, K=a−kb.  Найти a или k.
+function pickBilinear() {
+  for (let t = 0; t < 400; t++) {
+    const k = pick([1, 2, 3, -1, -2, -3]), b = pick([1, 2, 3, -1, -2, -3])
+    const K = pick(HYP_K.filter((x) => x !== 0))
+    const a = K + k * b // из K=a−kb
+    const H = makeHyp(K, -b, k)
+    if (hypNodes(H) >= 4) return { H, k, a, b }
+  }
+  const k = 2, b = 1, K = 3, a = K + k * b
+  return { H: makeHyp(K, -b, k), k, a, b }
+}
+function t11BilinearA() {
+  const { H, a } = pickBilinear()
+  return { condition_text: `На рисунке изображён график функции f(x) = ⟦f:kx+a:x+b⟧. Найдите a.`, image_url: hypSvg(H), answer: ru(a) }
+}
+function t11BilinearK() {
+  const { H, k } = pickBilinear()
+  return { condition_text: `На рисунке изображён график функции f(x) = ⟦f:kx+a:x+b⟧. Найдите k.`, image_url: hypSvg(H), answer: ru(k) }
+}
+
+// ---- D. Корень f(x)=k√x ----------------------------------------------------
+function makeRoot(k) {
+  const fn = (x) => (x < 0 ? NaN : k * Math.sqrt(x))
+  return { k, fn, gx0: -1, gx1: 9, gy0: k > 0 ? -1 : -8, gy1: k > 0 ? 8 : 1 }
+}
+function rootSvg(R) {
+  return svgUrl(fnGridSvg({
+    gx0: R.gx0, gx1: R.gx1, gy0: R.gy0, gy1: R.gy1,
+    plots: [{ fn: R.fn, xa: 0, xb: R.gx1 }],
+    labels: [fLabelAt(R.fn, R.gx0, R.gx1, R.gy0, R.gy1, { preferRight: true })],
+  }))
+}
+const ROOT_DEC = [1.2, 1.4, 1.6, 1.8, 2.2, 2.4, 2.6, 2.8, 3.2, 3.4] // √x0 — красивые десятичные
+// #20 — f(x)=k√x, найти f(x0) (x0=r²).
+function t11RootValue() {
+  const k = pick([1, 2, 3, -1, -2, -3]), R = makeRoot(k)
+  const r = pick(ROOT_DEC), x0 = clean(r * r)
+  return { condition_text: `На рисунке изображён график функции f(x) = k${rT("x")}. Найдите f(${ru(x0)}).`, image_url: rootSvg(R), answer: ru(clean(k * r)) }
+}
+// #21 — f(x)=k√x, найти x при f(x)=V.
+function t11RootArg() {
+  const k = pick([1, 2, 3, -1, -2, -3]), R = makeRoot(k)
+  const root = pick([2, 3, 4, 5, 6, 7]), xAns = root * root, V = k * root
+  return { condition_text: `На рисунке изображён график функции f(x) = k${rT("x")}. Найдите значение x, при котором f(x) = ${ru(V)}.`, image_url: rootSvg(R), answer: ru(xAns) }
+}
+
+// ---- E. Показательная f(x)=a^(x+s)+q ---------------------------------------
+// Основание a=B^dir, B∈{2,3}, dir=±1 (a>1 возр., a<1 убыв.). Ответы — целые/терм.
+function powRat(B, dir, e) {
+  const ex = dir * e
+  let n = 1, d = 1
+  if (ex >= 0) n = B ** ex; else d = B ** (-ex)
+  let dd = d; while (dd % 2 === 0) dd /= 2; while (dd % 5 === 0) dd /= 5
+  return dd === 1 ? n / d : null // терминальная десятичная?
+}
+function makeExp(a, s, q) {
+  const fn = (x) => Math.pow(a, x + s) + q
+  const gx0 = -3, gx1 = 3
+  const gy0 = Math.min(-1, Math.floor(q) - 1), gy1 = Math.min(Math.max(2, Math.ceil(q) + 6), Math.ceil(q) + 8)
+  return { a, s, q, fn, gx0, gx1, gy0, gy1, hdash: q !== 0 ? [q] : [] }
+}
+function expSvg(E) {
+  return svgUrl(fnGridSvg({
+    gx0: E.gx0, gx1: E.gx1, gy0: E.gy0, gy1: E.gy1,
+    plots: [{ fn: E.fn, xa: E.gx0, xb: E.gx1 }], hdash: E.hdash,
+    labels: [fLabelAt(E.fn, E.gx0, E.gx1, E.gy0, E.gy1, { preferRight: E.a < 1, avoidY: [0, ...E.hdash] })],
+  }))
+}
+function pickExpBase() { const B = pick([2, 3]), dir = pick([1, -1]); return { B, dir, a: dir > 0 ? B : 1 / B } }
+// целый x0 на «целой» стороне (dir·x0≥1) → степень целая
+function expIntX0(B, dir) { const m = pick([2, 3, dir > 0 && B === 2 ? 4 : 3]); return dir > 0 ? m : -m }
+
+// #22/#23 — f(x)=aˣ, найти f(x0).
+function t11ExpValue() {
+  const { B, dir, a } = pickExpBase(), s = 0, q = 0
+  const x0 = expIntX0(B, dir), E = makeExp(a, s, q)
+  return { condition_text: `На рисунке изображён график функции вида f(x) = a${supT("x")}. Найдите значение f(${ru(x0)}).`, image_url: expSvg(E), answer: ru(powRat(B, dir, x0)) }
+}
+// #24 — f(x)=aˣ+b, найти f(x0).
+function t11ExpShiftValue() {
+  const { B, dir, a } = pickExpBase(), q = pick([1, 2, 3, -1, -2, -3])
+  const x0 = expIntX0(B, dir), E = makeExp(a, 0, q)
+  return { condition_text: `На рисунке изображён график функции f(x) = a${supT("x")} + b. Найдите f(${ru(x0)}).`, image_url: expSvg(E), answer: ru(clean(powRat(B, dir, x0) + q)) }
+}
+// #25 — f(x)=aˣ+b, найти x при f(x)=V.
+function t11ExpShiftArg() {
+  const { B, dir, a } = pickExpBase(), q = pick([1, 2, 3, -1, -2, -3])
+  const xAns = expIntX0(B, dir), E = makeExp(a, 0, q)
+  const V = clean(powRat(B, dir, xAns) + q)
+  return { condition_text: `На рисунке изображён график функции f(x) = a${supT("x")} + b. Найдите значение x, при котором f(x) = ${ru(V)}.`, image_url: expSvg(E), answer: ru(xAns) }
+}
+// #26 — f(x)=a^(x+b), найти f(x0).
+function t11ExpHShiftValue() {
+  const { B, dir, a } = pickExpBase(), s = pick([1, 2, -1, -2])
+  let x0; do { x0 = randInt(-3, 3) } while (powRat(B, dir, x0 + s) == null || !Number.isInteger(powRat(B, dir, x0 + s)))
+  const E = makeExp(a, s, 0)
+  return { condition_text: `На рисунке изображён график функции f(x) = a${supT("x + b")}. Найдите f(${ru(x0)}).`, image_url: expSvg(E), answer: ru(powRat(B, dir, x0 + s)) }
+}
+// #27 — f(x)=a^(x+b), найти x при f(x)=V.
+function t11ExpHShiftArg() {
+  const { B, dir, a } = pickExpBase(), s = pick([1, 2, -1, -2])
+  let xAns, V
+  do { xAns = randInt(-4, 4); V = powRat(B, dir, xAns + s) } while (V == null)
+  const E = makeExp(a, s, 0)
+  return { condition_text: `На рисунке изображён график функции f(x) = a${supT("x + b")}. Найдите значение x, при котором f(x) = ${ru(clean(V))}.`, image_url: expSvg(E), answer: ru(xAns) }
+}
+
+// ---- F. Логарифм f(x)=q+log_a(x+s) -----------------------------------------
+function makeLog(B, s, q) {
+  const fn = (x) => (x + s <= 0 ? NaN : q + Math.log(x + s) / Math.log(B))
+  const gx0 = Math.min(-1, Math.round(-s) - 1)
+  let gx1 = Math.max(9, Math.round(-s) + 9); if (gx1 - gx0 > 13) gx1 = gx0 + 13
+  const gy0 = Math.min(-1, q - 3), gy1 = Math.max(2, q + 3)
+  return { B, s, q, fn, gx0, gx1, gy0, gy1, vdash: s !== 0 ? [-s] : [] }
+}
+function logSvg(L) {
+  return svgUrl(fnGridSvg({
+    gx0: L.gx0, gx1: L.gx1, gy0: L.gy0, gy1: L.gy1,
+    plots: [{ fn: L.fn, xa: -L.s + 0.02, xb: L.gx1 }], vdash: L.vdash,
+    labels: [fLabelAt(L.fn, L.gx0, L.gx1, L.gy0, L.gy1, { preferRight: true, avoidX: [0, ...L.vdash] })],
+  }))
+}
+// x0=B^n − s (целый log = n), n≥1 ⇒ x0 целое; отсекаем слишком большие.
+function logPow(B, s) { const ns = []; for (let n = 1; n <= 6; n++) { const x0 = B ** n - s; if (x0 <= 100) ns.push({ x0, n }) } return ns }
+
+// #28/#29 — f(x)=log_a x, найти f(x0).
+function t11LogValue() {
+  const B = pick([2, 3, 4]), L = makeLog(B, 0, 0)
+  const o = pick(logPow(B, 0))
+  return { condition_text: `На рисунке изображён график функции вида f(x) = log${subB("a")}x. Найдите значение f(${ru(o.x0)}).`, image_url: logSvg(L), answer: ru(o.n) }
+}
+// #30 — f(x)=b+log_a x, найти f(x0).
+function t11LogShiftValue() {
+  const B = pick([2, 3, 4]), q = pick([1, 2, 3, -1, -2, -3]), L = makeLog(B, 0, q)
+  const o = pick(logPow(B, 0))
+  return { condition_text: `На рисунке изображён график функции f(x) = b + log${subB("a")}x. Найдите значение f(${ru(o.x0)}).`, image_url: logSvg(L), answer: ru(o.n + q) }
+}
+// #31 — f(x)=b+log_a x, найти x при f(x)=V. (дробный x — только при основании 2)
+function t11LogShiftArg() {
+  const B = pick([2, 3, 4]), q = pick([1, 2, 3, -1, -2, -3]), L = makeLog(B, 0, q)
+  const n = pick(B === 2 ? [-2, -1, 1, 2, 3] : [1, 2, 3]), xAns = clean(B ** n), V = n + q
+  return { condition_text: `На рисунке изображён график функции f(x) = b + log${subB("a")}x. Найдите значение x, при котором f(x) = ${ru(V)}.`, image_url: logSvg(L), answer: ru(xAns) }
+}
+// #32 — f(x)=log_a(x+b), найти f(x0).
+function t11LogHShiftValue() {
+  const B = pick([2, 3, 4]), s = pick([1, 2, 3, -1, -2]), L = makeLog(B, s, 0)
+  const o = pick(logPow(B, s))
+  return { condition_text: `На рисунке изображён график функции f(x) = log${subB("a")}(x${signed(s)}). Найдите значение f(${ru(o.x0)}).`, image_url: logSvg(L), answer: ru(o.n) }
+}
+// #33 — f(x)=log_a(x+b), найти x при f(x)=V.
+function t11LogHShiftArg() {
+  const B = pick([2, 3, 4]), s = pick([1, 2, 3, -1, -2]), L = makeLog(B, s, 0)
+  const n = pick([1, 2, 3]), xAns = B ** n - s, V = n
+  return { condition_text: `На рисунке изображён график функции f(x) = log${subB("a")}(x${signed(s)}). Найдите значение x, при котором f(x) = ${ru(V)}.`, image_url: logSvg(L), answer: ru(xAns) }
+}
+
+// ---- G. Тригонометрия f(x)=a·sinx+b / a·cosx+b / a·tgx+b -------------------
+// Строим в «u-координатах»: клетка = π/4, x_рад = u·π/4; ось x подписываем π (u=4),
+// 2π (u=8). Целые a,b ⇒ max/min/центр лежат на узлах решётки (читаются точно).
+const TRIG_TICKS = [{ x: 4, text: "π" }, { x: 8, text: "2π" }]
+const RAD = (u) => (u * Math.PI) / 4
+function trigSvg(gU, a, b, kind) {
+  const gx0 = -1, gx1 = 9, amp = Math.abs(a)
+  let gy0, gy1, vdash = []
+  if (kind === "tg") { gy0 = Math.min(-1, b - 4); gy1 = Math.max(1, b + 4); vdash = [2, 6] }
+  else { gy0 = Math.min(-1, b - amp - 1); gy1 = Math.max(1, b + amp + 1) }
+  return svgUrl(fnGridSvg({
+    gx0, gx1, gy0, gy1, plots: [{ fn: gU, xa: gx0, xb: gx1, step: (gx1 - gx0) / 700 }],
+    vdash, xticks: TRIG_TICKS,
+    labels: [fLabelAt(gU, gx0, gx1, gy0, gy1, { preferRight: true, avoidX: [0, ...vdash] })],
+  }))
+}
+function t11TrigSin(findA) {
+  const a = pick([2, 3, 4, -2, -3, -4]), b = randInt(-2, 3)
+  const gU = (u) => a * Math.sin(RAD(u)) + b
+  return { condition_text: `На рисунке изображён график функции f(x) = a sin x + b. Найдите ${findA ? "a" : "b"}.`, image_url: trigSvg(gU, a, b, "sin"), answer: ru(findA ? a : b) }
+}
+function t11TrigCos(findA) {
+  const a = pick([2, 3, 4, -2, -3, -4]), b = randInt(-2, 3)
+  const gU = (u) => a * Math.cos(RAD(u)) + b
+  return { condition_text: `На рисунке изображён график функции f(x) = a cos x + b. Найдите ${findA ? "a" : "b"}.`, image_url: trigSvg(gU, a, b, "cos"), answer: ru(findA ? a : b) }
+}
+function t11TrigTan(findA) {
+  const a = pick([1, 2, 3, -1, -2, -3]), b = randInt(-3, 3)
+  const gU = (u) => a * Math.tan(RAD(u)) + b
+  return { condition_text: `На рисунке изображён график функции f(x) = a tg x + b. Найдите ${findA ? "a" : "b"}.`, image_url: trigSvg(gU, a, b, "tg"), answer: ru(findA ? a : b) }
+}
+
+// ---- H/I/J/K. Пересечения графиков (#40–#53) -------------------------------
+// Строим «назад»: выбираем узлы пересечения A,B, обе кривые проходят через них
+// точно ⇒ ответ (абсцисса/ордината) гарантированно верен.
+
+// Формат явного многочлена/прямой в условии.
+function polyStr(A, B, C) {
+  let s = A === 1 ? "x²" : A === -1 ? "−x²" : `${ru(A)}x²`
+  if (B !== 0) s += ` ${B < 0 ? "−" : "+"} ${Math.abs(B) === 1 ? "" : Math.abs(B)}x`
+  if (C !== 0) s += ` ${C < 0 ? "−" : "+"} ${Math.abs(C)}`
+  return s
+}
+function lineStr(m, d) { let s = m === 1 ? "x" : m === -1 ? "−x" : `${ru(m)}x`; if (d !== 0) s += ` ${d < 0 ? "−" : "+"} ${Math.abs(d)}`; return s }
+// Окно, охватывающее ключевые точки и начало координат; выравниваем до почти
+// квадратного (иначе близкие к 0 точки дают узкое-высокое окно).
+function pairWin(pts) {
+  const xs = pts.map((p) => p[0]).concat(0), ys = pts.map((p) => p[1]).concat(0)
+  let x0 = Math.floor(Math.min(...xs)) - 1, x1 = Math.ceil(Math.max(...xs)) + 1
+  let y0 = Math.floor(Math.min(...ys)) - 1, y1 = Math.ceil(Math.max(...ys)) + 1
+  const side = Math.min(Math.max(x1 - x0, y1 - y0, 8), 14)
+  let gL = 0
+  while (x1 - x0 < side) { (gL++ % 2 ? x0-- : x1++) }
+  while (y1 - y0 < side) { (gL++ % 2 ? y0-- : y1++) }
+  if (x0 > 0) x0 = -1; if (x1 < 0) x1 = 1; if (y0 > 0) y0 = -1; if (y1 < 0) y1 = 1
+  return { gx0: x0, gx1: x1, gy0: y0, gy1: y1 }
+}
+function markLabel(x, y, t) { return { x: x + 0.35, y: y + 0.9, text: t, italic: true, size: 14 } }
+
+// H. Две прямые (#40–#43).
+function t11TwoLines(findY) {
+  let px, py, k1, b1, k2, b2
+  for (; ;) {
+    px = randInt(-3, 3); py = randInt(-3, 4)
+    const ks = shuffle([-3, -2, -1, 1, 2, 3]); k1 = ks[0]; k2 = ks[1]
+    b1 = py - k1 * px; b2 = py - k2 * px
+    if (Math.abs(b1) <= 6 && Math.abs(b2) <= 6) break
+  }
+  const f1 = (x) => k1 * x + b1, f2 = (x) => k2 * x + b2
+  const gx0 = -5, gx1 = 5, gy0 = -6, gy1 = 6
+  const svg = fnGridSvg({ gx0, gx1, gy0, gy1, plots: [{ fn: f1, xa: gx0, xb: gx1 }, { fn: f2, xa: gx0, xb: gx1 }], dots: [[px, py]], labels: [markLabel(px, py, "A")] })
+  return { condition_text: `На рисунке изображены графики двух линейных функций, пересекающихся в точке A. Найдите ${findY ? "ординату" : "абсциссу"} точки A.`, image_url: svgUrl(svg), answer: ru(findY ? py : px) }
+}
+
+// I-a. Парабола + парабола (#44/#45): f задана явно, g=ax²+bx+c. Ответ по точке B.
+function t11ParabParab(findY) {
+  for (; ;) {
+    const Af = pick([1, 2, -1, -2]), Bf = randInt(-6, 6), Cf = randInt(-4, 5)
+    const xA = randInt(-3, 3); let xB = randInt(-3, 4); if (xA === xB) continue
+    const Ad = pick([1, 2, 3, -1, -2, -3]); if (Af - Ad === 0 || Math.abs(Af - Ad) > 3) continue
+    const fF = (x) => Af * x * x + Bf * x + Cf
+    const yA = fF(xA), yB = fF(xB)
+    if (Math.abs(yA) > 8 || Math.abs(yB) > 8) continue
+    const ga = Af - Ad, gb = Bf + Ad * (xA + xB), gc = Cf - Ad * xA * xB
+    const gF = (x) => ga * x * x + gb * x + gc
+    const W = pairWin([[xA, yA], [xB, yB], [0, Cf]]); if (W.gx1 - W.gx0 > 13 || W.gy1 - W.gy0 > 15) continue
+    const svg = fnGridSvg({ ...W, plots: [{ fn: fF, xa: W.gx0, xb: W.gx1 }, { fn: gF, xa: W.gx0, xb: W.gx1 }], dots: [[xA, yA]], labels: [markLabel(xA, yA, "A")] })
+    return { condition_text: `На рисунке изображены графики функций f(x) = ${polyStr(Af, Bf, Cf)} и g(x) = ax² + bx + c, которые пересекаются в точках A и B. Найдите ${findY ? "ординату" : "абсциссу"} точки B.`, image_url: svgUrl(svg), answer: ru(findY ? yB : xB) }
+  }
+}
+
+// I-b. Парабола + прямая через 0 (#46): f=ax²+bx+c, g=kx. Ответ — абсцисса B.
+function t11ParabLineK() {
+  for (; ;) {
+    const k = pick([1, 2, 3, -1, -2, -3]), Af = pick([1, 2, -1, -2])
+    const xA = randInt(-3, 3); let xB = randInt(-3, 4); if (xA === xB) continue
+    const fF = (x) => Af * x * x + (k - Af * (xA + xB)) * x + Af * xA * xB
+    const gF = (x) => k * x
+    const yA = k * xA, yB = k * xB
+    if (Math.abs(yA) > 8 || Math.abs(yB) > 8 || Math.abs(fF(0)) > 8) continue
+    const W = pairWin([[xA, yA], [xB, yB], [0, 0]]); if (W.gx1 - W.gx0 > 13 || W.gy1 - W.gy0 > 15) continue
+    const svg = fnGridSvg({ ...W, plots: [{ fn: fF, xa: W.gx0, xb: W.gx1 }, { fn: gF, xa: W.gx0, xb: W.gx1 }], dots: [[xA, yA]], labels: [markLabel(xA, yA, "A")] })
+    return { condition_text: `На рисунке изображены графики функций видов f(x) = ax² + bx + c и g(x) = kx, пересекающихся в точках A и B. Найдите абсциссу точки B.`, image_url: svgUrl(svg), answer: ru(xB) }
+  }
+}
+
+// I-c. Прямая (явно) + парабола (#47/#48): f=mx+d, g=ax²+bx+c. Ответ по точке B.
+function t11LineParab(findY) {
+  for (; ;) {
+    const m = pick([2, 3, 4, 5, -2, -3, -4]), d = randInt(-3, 9)
+    const xA = randInt(-3, 3); let xB = randInt(-3, 4); if (xA === xB) continue
+    const Ag = pick([1, 2, -1, -2])
+    const fF = (x) => m * x + d
+    const ga = Ag, gb = m - Ag * (xA + xB), gc = d + Ag * xA * xB
+    const gF = (x) => ga * x * x + gb * x + gc
+    const yA = fF(xA), yB = fF(xB)
+    if (Math.abs(yA) > 9 || Math.abs(yB) > 9 || Math.abs(gc) > 9) continue
+    const W = pairWin([[xA, yA], [xB, yB], [0, d], [0, gc]]); if (W.gx1 - W.gx0 > 13 || W.gy1 - W.gy0 > 15) continue
+    const svg = fnGridSvg({ ...W, plots: [{ fn: fF, xa: W.gx0, xb: W.gx1 }, { fn: gF, xa: W.gx0, xb: W.gx1 }], dots: [[xA, yA]], labels: [markLabel(xA, yA, "A")] })
+    return { condition_text: `На рисунке изображены графики функций f(x) = ${lineStr(m, d)} и g(x) = ax² + bx + c, которые пересекаются в точках A и B. Найдите ${findY ? "ординату" : "абсциссу"} точки B.`, image_url: svgUrl(svg), answer: ru(findY ? yB : xB) }
+  }
+}
+
+// J. Гипербола + прямая (#49/#50): f=k/x, g=ax+b. A,B на разных ветвях.
+function t11HypLine(findY) {
+  for (; ;) {
+    const k = pick([-8, -6, -4, 4, 6, 8, 12, -12])
+    const divs = []; for (let d = -Math.abs(k); d <= Math.abs(k); d++) if (d !== 0 && k % d === 0) divs.push(d)
+    const pos = divs.filter((d) => d > 0), neg = divs.filter((d) => d < 0)
+    if (!pos.length || !neg.length) continue
+    const xA = pick(pos), xB = pick(neg)
+    const yA = k / xA, yB = k / xB
+    if (Math.abs(yA) > 8 || Math.abs(yB) > 8) continue
+    const a = (yB - yA) / (xB - xA), b = yA - a * xA
+    if (!Number.isFinite(a) || Math.abs(a) > 6 || Math.abs(b) > 7) continue
+    const fF = (x) => k / x, gF = (x) => a * x + b
+    const W = pairWin([[xA, yA], [xB, yB]]); if (W.gx1 - W.gx0 > 14 || W.gy1 - W.gy0 > 16) continue
+    const svg = fnGridSvg({ ...W, plots: [{ fn: fF, xa: W.gx0, xb: -0.28 }, { fn: fF, xa: 0.28, xb: W.gx1 }, { fn: gF, xa: W.gx0, xb: W.gx1 }], dots: [[xA, yA]], labels: [markLabel(xA, yA, "A")] })
+    return { condition_text: `На рисунке изображены графики функций видов f(x) = ⟦f:k:x⟧ и g(x) = ax + b, пересекающихся в точках A и B. Найдите ${findY ? "ординату" : "абсциссу"} точки B.`, image_url: svgUrl(svg), answer: ru(findY ? yB : xB) }
+  }
+}
+
+// K-a. Корень + прямая через 0 (#51): f=a√x, g=kx. A=(0,0), B=((a/k)²,…).
+function t11RootLineK() {
+  const combos = [[2, 1, 4], [3, 1, 9], [4, 2, 4], [5, 2, 6.25], [3, 2, 2.25], [6, 2, 9], [4, 1, 16]]
+  const [a, k, xB] = pick(combos)
+  const fF = (x) => (x < 0 ? NaN : a * Math.sqrt(x)), gF = (x) => k * x
+  const yB = k * xB
+  const gx1 = Math.max(4, Math.ceil(xB) + 1), gy1 = Math.max(3, Math.ceil(yB) + 1)
+  const svg = fnGridSvg({ gx0: -1, gx1, gy0: -1, gy1, plots: [{ fn: fF, xa: 0, xb: gx1 }, { fn: gF, xa: 0, xb: gx1 }], dots: [[0, 0]], labels: [markLabel(0, 0, "A")] })
+  return { condition_text: `На рисунке изображены графики функций видов f(x) = a${rT("x")} и g(x) = kx, пересекающихся в точках A и B. Найдите абсциссу точки B.`, image_url: svgUrl(svg), answer: ru(xB) }
+}
+
+// K-b. Корень + прямая (#52/#53): f=a√x, g=kx+b, пересечение в точке A (узел).
+function t11RootLineB(findY) {
+  let a, root, xA, yA, k, b
+  for (; ;) {
+    a = pick([1, 2, -1, -2]); root = pick([1, 2, 3]); xA = root * root; yA = a * root
+    k = pick([1, -1, 2, -2]); b = yA - k * xA
+    if (Math.abs(b) <= 8) break
+  }
+  const fF = (x) => (x < 0 ? NaN : a * Math.sqrt(x)), gF = (x) => k * x + b
+  const pts = [[xA, yA], [0, b], [0, 0]]
+  const W = pairWin(pts)
+  const svg = fnGridSvg({ ...W, plots: [{ fn: fF, xa: 0, xb: W.gx1 }, { fn: gF, xa: W.gx0, xb: W.gx1 }], dots: [[xA, yA]], labels: [markLabel(xA, yA, "A")] })
+  return { condition_text: `На рисунке изображены графики функций f(x) = a${rT("x")} и g(x) = kx + b, которые пересекаются в точке A. Найдите ${findY ? "ординату" : "абсциссу"} точки A.`, image_url: svgUrl(svg), answer: ru(findY ? yA : xA) }
+}
+
+// ============================================================================
 // Реестр и мета-темы
 // ============================================================================
 
@@ -1202,6 +1805,17 @@ export const GENERATORS_EGE_PROF = {
   10: [t10SteamboatSpeed, t10SteamboatCurrent, t10SteamboatDist, t10AvgTime, t10AvgDist, t10TwoCyclists,
     t10Barge, t10BoatCurrent, t10BoatSpeed, t10Meeting, t10TwoBoats, t10Alloy, t10Workers, t10Pipes,
     t10JointWork, t10Weed, t10TrainLength],
+  11: [t11LinValue, t11LinArg,
+    () => t11QuadRead(false), () => t11QuadRead(true), t11QuadFar,
+    t11QuadA2neg, t11QuadA2pos, t11QuadBm4, t11QuadBm3, t11QuadCm3, t11QuadCm6,
+    t11HypBasic, t11HypShiftVValue, t11HypShiftVArg, t11HypShiftHValue, t11HypShiftHArg, t11BilinearA, t11BilinearK,
+    t11RootValue, t11RootArg,
+    t11ExpValue, t11ExpShiftValue, t11ExpShiftArg, t11ExpHShiftValue, t11ExpHShiftArg,
+    t11LogValue, t11LogShiftValue, t11LogShiftArg, t11LogHShiftValue, t11LogHShiftArg,
+    () => t11TrigSin(true), () => t11TrigSin(false), () => t11TrigCos(true), () => t11TrigCos(false), () => t11TrigTan(true), () => t11TrigTan(false),
+    () => t11TwoLines(false), () => t11TwoLines(true),
+    () => t11ParabParab(false), () => t11ParabParab(true), t11ParabLineK, () => t11LineParab(false), () => t11LineParab(true),
+    () => t11HypLine(false), () => t11HypLine(true), t11RootLineK, () => t11RootLineB(false), () => t11RootLineB(true)],
   12: [t12CubicPoint, t12LnPoint, t12X32Point, t12QuadLnPoint, t12LnMaxValue, t12X32MinValue],
 }
 
@@ -1314,6 +1928,70 @@ export const GEN_META_EGE_PROF = {
       ["pipes", "Трубы (резервуар)", t10Pipes],
       ["joint", "Совместная работа", t10JointWork],
       ["weed", "Прополка грядки", t10Weed],
+    ]]],
+  11: [["Линейная", [
+    ["lin-val", "f(x)=kx+b: найти f(x₀)", t11LinValue],
+    ["lin-arg", "f(x)=kx+b: найти x", t11LinArg],
+  ]],
+    ["Парабола", [
+      ["quad-read", "ax²+bx+c: прочитать f(x₀)", () => t11QuadRead(false)],
+      ["quad-int", "целые a,b,c: f(x₀)", () => t11QuadRead(true)],
+      ["quad-far", "целые a,b,c: далёкое f(x₀)", t11QuadFar],
+      ["quad-a-2", "−2x²+bx+c", t11QuadA2neg],
+      ["quad-a2", "2x²+bx+c", t11QuadA2pos],
+      ["quad-b-4", "ax²−4x+c", t11QuadBm4],
+      ["quad-b-3", "ax²−3x+c", t11QuadBm3],
+      ["quad-c-3", "ax²+bx−3", t11QuadCm3],
+      ["quad-c-6", "ax²+bx−6", t11QuadCm6],
+    ]],
+    ["Гипербола", [
+      ["hyp-basic", "k/x: найти f(x₀)", t11HypBasic],
+      ["hyp-v-val", "k/x+a: найти f(x₀)", t11HypShiftVValue],
+      ["hyp-v-arg", "k/x+a: найти x", t11HypShiftVArg],
+      ["hyp-h-val", "k/(x+a): найти f(x₀)", t11HypShiftHValue],
+      ["hyp-h-arg", "k/(x+a): найти x", t11HypShiftHArg],
+      ["bilin-a", "(kx+a)/(x+b): найти a", t11BilinearA],
+      ["bilin-k", "(kx+a)/(x+b): найти k", t11BilinearK],
+    ]],
+    ["Корень", [
+      ["root-val", "k√x: найти f(x₀)", t11RootValue],
+      ["root-arg", "k√x: найти x", t11RootArg],
+    ]],
+    ["Показательная", [
+      ["exp-val", "aˣ: найти f(x₀)", t11ExpValue],
+      ["exp-b-val", "aˣ+b: найти f(x₀)", t11ExpShiftValue],
+      ["exp-b-arg", "aˣ+b: найти x", t11ExpShiftArg],
+      ["exp-hb-val", "a^(x+b): найти f(x₀)", t11ExpHShiftValue],
+      ["exp-hb-arg", "a^(x+b): найти x", t11ExpHShiftArg],
+    ]],
+    ["Логарифм", [
+      ["log-val", "logₐx: найти f(x₀)", t11LogValue],
+      ["log-b-val", "b+logₐx: найти f(x₀)", t11LogShiftValue],
+      ["log-b-arg", "b+logₐx: найти x", t11LogShiftArg],
+      ["log-hb-val", "logₐ(x+b): найти f(x₀)", t11LogHShiftValue],
+      ["log-hb-arg", "logₐ(x+b): найти x", t11LogHShiftArg],
+    ]],
+    ["Тригонометрия", [
+      ["sin-a", "a sin x+b: найти a", () => t11TrigSin(true)],
+      ["sin-b", "a sin x+b: найти b", () => t11TrigSin(false)],
+      ["cos-a", "a cos x+b: найти a", () => t11TrigCos(true)],
+      ["cos-b", "a cos x+b: найти b", () => t11TrigCos(false)],
+      ["tg-a", "a tg x+b: найти a", () => t11TrigTan(true)],
+      ["tg-b", "a tg x+b: найти b", () => t11TrigTan(false)],
+    ]],
+    ["Пересечения графиков", [
+      ["2lines-x", "Две прямые: абсцисса", () => t11TwoLines(false)],
+      ["2lines-y", "Две прямые: ордината", () => t11TwoLines(true)],
+      ["par-par-x", "Парабола+парабола: абсцисса B", () => t11ParabParab(false)],
+      ["par-par-y", "Парабола+парабола: ордината B", () => t11ParabParab(true)],
+      ["par-kx", "Парабола+kx: абсцисса B", t11ParabLineK],
+      ["line-par-x", "Прямая+парабола: абсцисса B", () => t11LineParab(false)],
+      ["line-par-y", "Прямая+парабола: ордината B", () => t11LineParab(true)],
+      ["hyp-line-x", "Гипербола+прямая: абсцисса B", () => t11HypLine(false)],
+      ["hyp-line-y", "Гипербола+прямая: ордината B", () => t11HypLine(true)],
+      ["root-kx", "Корень+kx: абсцисса B", t11RootLineK],
+      ["root-line-x", "Корень+прямая: абсцисса A", () => t11RootLineB(false)],
+      ["root-line-y", "Корень+прямая: ордината A", () => t11RootLineB(true)],
     ]]],
   12: [["Точка экстремума", [
     ["cubic", "Кубическая", t12CubicPoint],
