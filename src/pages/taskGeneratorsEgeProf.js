@@ -1195,6 +1195,8 @@ function t07TrigDouble() {
 // параметры (k, b, a, c …). Ответ считается кодом — гарантированно верен.
 
 const G_AX = "#1c1c1e", G_GRID = "#d7dbe0", G_CURVE = "#1c1c1e", G_DASH = "#8a9099"
+// Белый ореол за подписями — цифры осей и метки читаются, даже если сквозь них идёт кривая.
+const HALO = 'paint-order="stroke" stroke="#fff" stroke-width="3.4" stroke-linejoin="round"'
 
 // Путь кривой: сэмплирует fn на [xa,xb], рвёт линию на разрывах и выходе за окно.
 function fnPath(fn, xa, xb, X, Y, ylo, yhi, step) {
@@ -1231,16 +1233,16 @@ function fnGridSvg({ gx0, gx1, gy0, gy1, plots = [], vdash = [], hdash = [], dot
   // оси со стрелками
   g += vecArrow(X(gx0), Y(0), X(gx1), Y(0), G_AX, 1.4)
   g += vecArrow(X(0), Y(gy0), X(0), Y(gy1), G_AX, 1.4)
-  g += `<text x="${X(gx1) - 3}" y="${Y(0) + 17}" font-size="15" font-style="italic" font-weight="bold" fill="${G_AX}" text-anchor="end">x</text>`
-  g += `<text x="${X(0) + 7}" y="${Y(gy1) + 13}" font-size="15" font-style="italic" font-weight="bold" fill="${G_AX}">y</text>`
-  g += `<text x="${X(0) - 5}" y="${Y(0) + 16}" font-size="13" font-weight="bold" fill="${G_AX}" text-anchor="end">0</text>`
-  if (xticks) { for (const t of xticks) if (t.x >= gx0 && t.x <= gx1 && t.x !== 0) g += `<text x="${X(t.x)}" y="${Y(0) + 16}" font-size="12" fill="${G_AX}" text-anchor="middle">${t.text}</text>` }
-  else if (gx0 <= 1 && gx1 >= 1) g += `<text x="${X(1)}" y="${Y(0) + 16}" font-size="12" fill="${G_AX}" text-anchor="middle">${unitX}</text>`
-  if (gy0 <= 1 && gy1 >= 1) g += `<text x="${X(0) - 6}" y="${Y(1) + 4}" font-size="12" fill="${G_AX}" text-anchor="end">1</text>`
+  g += `<text x="${X(gx1) - 3}" y="${Y(0) + 17}" ${HALO} font-size="15" font-style="italic" font-weight="bold" fill="${G_AX}" text-anchor="end">x</text>`
+  g += `<text x="${X(0) + 7}" y="${Y(gy1) + 13}" ${HALO} font-size="15" font-style="italic" font-weight="bold" fill="${G_AX}">y</text>`
+  g += `<text x="${X(0) - 5}" y="${Y(0) + 16}" ${HALO} font-size="13" font-weight="bold" fill="${G_AX}" text-anchor="end">0</text>`
+  if (xticks) { for (const t of xticks) if (t.x >= gx0 && t.x <= gx1 && t.x !== 0) g += `<text x="${X(t.x)}" y="${Y(0) + 16}" ${HALO} font-size="12" fill="${G_AX}" text-anchor="middle">${t.text}</text>` }
+  else if (gx0 <= 1 && gx1 >= 1) g += `<text x="${X(1)}" y="${Y(0) + 16}" ${HALO} font-size="12" fill="${G_AX}" text-anchor="middle">${unitX}</text>`
+  if (gy0 <= 1 && gy1 >= 1) g += `<text x="${X(0) - 6}" y="${Y(1) + 4}" ${HALO} font-size="12" fill="${G_AX}" text-anchor="end">1</text>`
   // жирные точки
   for (const [x, y] of dots) g += `<circle cx="${X(x)}" cy="${Y(y)}" r="2.8" fill="${G_AX}"/>`
   // произвольные подписи
-  for (const L of labels) g += `<text x="${X(L.x)}" y="${Y(L.y)}" font-size="${L.size || 13}" ${L.italic ? 'font-style="italic" ' : ""}fill="${G_AX}" text-anchor="${L.anchor || "start"}">${L.text}</text>`
+  for (const L of labels) g += `<text x="${X(L.x)}" y="${Y(L.y)}" ${HALO} font-size="${L.size || 13}" ${L.italic ? 'font-style="italic" ' : ""}fill="${G_AX}" text-anchor="${L.anchor || "start"}">${L.text}</text>`
   return `<svg xmlns="http://www.w3.org/2000/svg" font-family="Arial, sans-serif" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${g}</svg>`
 }
 
