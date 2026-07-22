@@ -38,6 +38,31 @@ function Auth({ onLogin }) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }))
   }
 
+  // Телефон храним в каноничном виде "+7XXXXXXXXXX", а показываем маской
+  // "+7 (XXX) XXX-XX-XX" — RPC/база не меняются.
+  function normalizePhone(input) {
+    let d = (input || "").replace(/\D/g, "")
+    if (d.startsWith("8")) d = "7" + d.slice(1)
+    if (!d.startsWith("7")) d = "7" + d
+    return "+" + d.slice(0, 11)
+  }
+
+  function formatPhone(raw) {
+    const rest = (raw || "").replace(/\D/g, "").slice(1) // цифры после кода 7
+    let out = "+7"
+    if (rest.length > 0) out += " (" + rest.slice(0, 3)
+    if (rest.length >= 3) out += ")"
+    if (rest.length > 3) out += " " + rest.slice(3, 6)
+    if (rest.length > 6) out += "-" + rest.slice(6, 8)
+    if (rest.length > 8) out += "-" + rest.slice(8, 10)
+    return out
+  }
+
+  function handlePhoneChange(e) {
+    const phone = normalizePhone(e.target.value)
+    setForm((prev) => ({ ...prev, phone }))
+  }
+
   async function handleResetPassword() {
     setError("")
     setLoading(true)
@@ -278,14 +303,9 @@ function Auth({ onLogin }) {
                 <input
                   name="phone"
                   type="tel"
-                  value={form.phone}
-                  onChange={(e) => {
-                    let val = e.target.value.replace(/[^\d+]/g, "")
-                    if (!val.startsWith("+7")) val = "+7"
-                    if (val.length > 12) val = val.slice(0, 12)
-                    setForm((prev) => ({ ...prev, phone: val }))
-                  }}
-                  placeholder="+79001234567"
+                  value={formatPhone(form.phone)}
+                  onChange={handlePhoneChange}
+                  placeholder="+7 (900) 123-45-67"
                   className="input-glass"
                 />
               </div>
@@ -350,14 +370,9 @@ function Auth({ onLogin }) {
               <input
                 name="phone"
                 type="tel"
-                value={form.phone}
-                onChange={(e) => {
-                  let val = e.target.value.replace(/[^\d+]/g, "")
-                  if (!val.startsWith("+7")) val = "+7"
-                  if (val.length > 12) val = val.slice(0, 12)
-                  setForm((prev) => ({ ...prev, phone: val }))
-                }}
-                placeholder="+79001234567"
+                value={formatPhone(form.phone)}
+                onChange={handlePhoneChange}
+                placeholder="+7 (900) 123-45-67"
                 className="input-glass"
               />
             </div>
