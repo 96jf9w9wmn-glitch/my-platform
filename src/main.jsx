@@ -39,3 +39,13 @@ createRoot(document.getElementById('root')).render(
     <App />
   </StrictMode>,
 )
+
+// PWA: регистрируем service worker (офлайн + установка на домашний экран).
+// Только в проде — в dev SW мешает hot-reload.
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch((err) => {
+      console.warn("SW registration failed:", err)
+    })
+  })
+}
