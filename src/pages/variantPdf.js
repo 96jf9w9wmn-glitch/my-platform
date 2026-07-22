@@ -39,7 +39,7 @@ function fracSvg(num0, den0) {
 // translate компенсирует сдвиг базовой линии от scale, чтобы скобка осталась по центру дроби.
 function pfracSvg(num0, den0) {
   const num = rootInPdf(num0), den = rootInPdf(den0)
-  const fs = FS * 0.95, pfs = 21, sy = 1.6, pb = 25, pw = 8
+  const fs = FS * 0.95, pfs = 21, sy = 1.35, pb = 25.6, pw = 8
   const pt = `translate(0,${(-(sy - 1) * pb).toFixed(2)}) scale(1,${sy})`
   const w = Math.max(chW(stripRootMarker(num0)), chW(stripRootMarker(den0))) * fs + 8
   const inner = Math.ceil(w + 6), H = 34
