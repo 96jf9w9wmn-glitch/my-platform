@@ -141,9 +141,9 @@ select {
 }
 .tmath-num { display: block; border-bottom: 1.2px solid currentColor; padding: 0 0.3em; }
 .tmath-den { display: block; padding: 0 0.3em; }
-/* Скобки вокруг дроби-основания степени ((1/4)^x): растянуты по высоте дроби, а не
-   строчной высоты — иначе «скобка маленькая». line-height:0 чтобы не раздувать строку. */
-.tmath-paren { display: inline-block; font-size: 1.85em; line-height: 0; vertical-align: middle; font-weight: 300; }
+/* Скобки вокруг дроби-основания степени ((1/4)^x): растянуты по высоте дроби (scaleY —
+   тянет ввысь, НЕ утолщая штрих), тоньше (font-weight 300). line-height:0 — не раздувать строку. */
+.tmath-paren { display: inline-block; font-size: 1.5em; line-height: 0; vertical-align: middle; transform: scaleY(1.6); font-weight: 300; }
 /* Символ нуклида ⟦iso⟧: массовое число над зарядовым, стопкой, прижаты вправо и стоят
    слева от символа элемента (¹⁴₇N). Без черты — это не дробь. */
 .tmath-iso { white-space: nowrap; }
