@@ -8,6 +8,8 @@
 //  3) дать юристу вычитать.
 // Источник правды для юриста — файлы в /legal/*.md.
 
+import Icon from "../components/Icon"
+
 const OPERATOR = "【ОПЕРАТОР: ФИО / ИП / ООО】"
 const INN = "【ИНН】"
 const EMAIL = "【EMAIL】"
@@ -336,9 +338,12 @@ export default function Legal({ path }) {
 
         <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm ring-1 ring-gray-100 dark:ring-gray-800 p-7 sm:p-10">
           {DRAFT && (
-            <div className="mb-6 rounded-2xl bg-amber-50 dark:bg-amber-900/30 ring-1 ring-amber-200 dark:ring-amber-800 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
-              ⚠️ Проект документа. Реквизиты оператора не заполнены, документ не
-              вступил в силу и требует проверки юристом.
+            <div className="mb-6 rounded-2xl bg-amber-50 dark:bg-amber-900/30 ring-1 ring-amber-200 dark:ring-amber-800 px-4 py-3 flex items-start gap-2.5 text-sm text-amber-800 dark:text-amber-200">
+              <Icon name="warning" size={16} className="shrink-0 mt-0.5 text-amber-500 dark:text-amber-400" />
+              <span>
+                Проект документа. Реквизиты оператора не заполнены, документ не
+                вступил в силу и требует проверки юристом.
+              </span>
             </div>
           )}
 
