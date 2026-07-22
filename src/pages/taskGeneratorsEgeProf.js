@@ -473,7 +473,7 @@ function t06ExpReduce() {
   const expr = c === 1
     ? `x${signed(q)}`.replace("+0", "").replace("−0", "")
     : `${ru(q)}−x`                                // c=−1 → «q−x» (вид ФИПИ: 2−x, −4−x)
-  const baseStr = frac ? fT(1, b) : String(b)
+  const baseStr = frac ? `(${fT(1, b)})` : String(b)   // дробь-основание в степени — в скобках
   const rhs = bexp > 0 ? String(b ** bexp) : fT(1, b ** -bexp)
   return {
     condition_text: `Найдите корень уравнения ${baseStr}${supT(expr)}=${rhs}.`,
@@ -495,7 +495,7 @@ function t06ExpBothSides() {
     guard++
   } while ((!Number.isInteger(x0) || Math.abs(x0) > 8 || x0 === 0) && guard < 300)
   if (!Number.isInteger(x0)) return t06ExpBothSides()
-  const leftBase = sL === -1 ? fT(1, b) : String(b)
+  const leftBase = sL === -1 ? `(${fT(1, b)})` : String(b)   // дробь-основание в степени — в скобках
   const leftExpr = `x${signed(qL)}`.replace("+0", "").replace("−0", "")
   const rightBaseNum = b ** sR
   const rightExpr = cR === 1 ? "x" : `${cR}x`

@@ -126,7 +126,7 @@ export async function renderTaskMathPdf(text) {
   const esc = escapeHtml(String(text ?? ""))
     .replace(/⟦match⟧([\s\S]*?)⟦endmatch⟧/g, (_, body) => matchTablePdf(body))
     .replace(/⟦list⟧([\s\S]*?)⟦endlist⟧/g, (_, body) => orderedListPdf(body))
-  const re = /⟦rf:([^⟧]*)⟧|⟦f:([^:⟧]+):([^:⟧]+)⟧|⟦r:([^⟧]+)⟧|⟦b:([^⟧]+)⟧|⟦iso:([^:⟧]+):([^:⟧]+):([^⟧]+)⟧/g
+  const re = /⟦rf:([^⟧]*)⟧|⟦f:([^:⟧]+):([^:⟧]+)⟧|⟦r:([^⟧]+)⟧|⟦b:([^⟧]+)⟧|⟦iso:([^:⟧]+):([^:⟧]+):([^⟧]+)⟧|⟦sup:([^⟧]+)⟧/g
   let out = "", last = 0, m
   while ((m = re.exec(esc)) !== null) {
     out += esc.slice(last, m.index)
@@ -134,6 +134,7 @@ export async function renderTaskMathPdf(text) {
     else if (m[4] !== undefined) out += await svgToInlineImg(rootSvg(m[4]), ROOT_VALIGN)
     else if (m[5] !== undefined) out += `<sub>${m[5]}</sub>`
     else if (m[6] !== undefined) out += `<span style="white-space:nowrap;"><span style="display:inline-flex; flex-direction:column; align-items:flex-end; text-align:right; vertical-align:-0.35em; font-size:0.62em; line-height:1.05; margin-right:0.05em;"><span>${m[6]}</span><span>${m[7]}</span></span>${m[8]}</span>`
+    else if (m[9] !== undefined) out += `<sup style="font-size:0.72em; line-height:0; vertical-align:0.55em;">${m[9]}</sup>`
     else out += await svgToInlineImg(fracSvg(m[2], m[3]), FRAC_VALIGN)
     last = m.index + m[0].length
   }

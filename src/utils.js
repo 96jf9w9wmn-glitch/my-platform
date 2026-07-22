@@ -112,7 +112,7 @@ export function renderTaskMath(text) {
     .replace(/⟦r:([^⟧]+)⟧/g, (_, x) => rootMarkup(x))
     .replace(/⟦b:([^⟧]+)⟧/g, (_, x) => `<sub class="tmath-sub">${x}</sub>`)
     // ⟦sup:x⟧ — надстрочник (степень с переменным показателем, напр. 2^(1−4x))
-    .replace(/⟦sup:([^⟧]+)⟧/g, (_, x) => `<sup>${x}</sup>`)
+    .replace(/⟦sup:([^⟧]+)⟧/g, (_, x) => `<sup class="tmath-sup">${x}</sup>`)
     // ⟦iso:A:Z:Sym⟧ — символ нуклида: массовое число A над зарядовым Z (стопкой),
     // прижаты вправо и стоят слева от символа элемента (¹⁴₇N).
     .replace(/⟦iso:([^:⟧]+):([^:⟧]+):([^⟧]+)⟧/g, (_, a, z, s) =>
