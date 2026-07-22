@@ -33,6 +33,22 @@ function fracSvg(num0, den0) {
     `<text x="${cx}" y="30" font-size="${fs}" font-family="Arial, sans-serif" text-anchor="middle" fill="#1c1c1e">${den}</text></svg>` }
 }
 
+// Дробь в скобках по её высоте ((1/4)^x) — единым SVG, чтобы скобки точно совпали с
+// дробью (в PDF дробь — растровая картинка, отдельные текст-скобки рядом не выровнять).
+function pfracSvg(num0, den0) {
+  const num = rootInPdf(num0), den = rootInPdf(den0)
+  const fs = FS * 0.95, pfs = 30, pw = 9
+  const w = Math.max(chW(stripRootMarker(num0)), chW(stripRootMarker(den0))) * fs + 8
+  const inner = Math.ceil(w + 6), H = 34
+  const fx = pw + 2, cx = fx + inner / 2, W = fx + inner + pw + 2
+  return { W, H, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">` +
+    `<text x="1" y="25" font-size="${pfs}" font-family="Arial, sans-serif" fill="#1c1c1e">(</text>` +
+    `<text x="${cx}" y="13" font-size="${fs}" font-family="Arial, sans-serif" text-anchor="middle" fill="#1c1c1e">${num}</text>` +
+    `<line x1="${cx - w / 2 - 2}" y1="16.5" x2="${cx + w / 2 + 2}" y2="16.5" stroke="#1c1c1e" stroke-width="1.3"/>` +
+    `<text x="${cx}" y="30" font-size="${fs}" font-family="Arial, sans-serif" text-anchor="middle" fill="#1c1c1e">${den}</text>` +
+    `<text x="${fx + inner + 1}" y="25" font-size="${pfs}" font-family="Arial, sans-serif" fill="#1c1c1e">)</text></svg>` }
+}
+
 function rootSvg(content, index = "") {
   const tw = chW(content) * FS
   const idxFS = 10
@@ -130,7 +146,7 @@ export async function renderTaskMathPdf(text) {
   const esc = escapeHtml(String(text ?? ""))
     .replace(/⟦match⟧([\s\S]*?)⟦endmatch⟧/g, (_, body) => matchTablePdf(body))
     .replace(/⟦list⟧([\s\S]*?)⟦endlist⟧/g, (_, body) => orderedListPdf(body))
-  const re = /⟦rf:([^⟧]*)⟧|⟦f:([^:⟧]+):([^:⟧]+)⟧|⟦r:([^⟧]+)⟧|⟦b:([^⟧]+)⟧|⟦iso:([^:⟧]+):([^:⟧]+):([^⟧]+)⟧|⟦sup:([^⟧]+)⟧|⟦rn:([^:⟧]+):([^⟧]+)⟧/g
+  const re = /⟦rf:([^⟧]*)⟧|⟦f:([^:⟧]+):([^:⟧]+)⟧|⟦r:([^⟧]+)⟧|⟦b:([^⟧]+)⟧|⟦iso:([^:⟧]+):([^:⟧]+):([^⟧]+)⟧|⟦sup:([^⟧]+)⟧|⟦rn:([^:⟧]+):([^⟧]+)⟧|⟦pf:([^:⟧]+):([^:⟧]+)⟧/g
   let out = "", last = 0, m
   while ((m = re.exec(esc)) !== null) {
     out += esc.slice(last, m.index)
@@ -140,6 +156,7 @@ export async function renderTaskMathPdf(text) {
     else if (m[6] !== undefined) out += `<span style="white-space:nowrap;"><span style="display:inline-flex; flex-direction:column; align-items:flex-end; text-align:right; vertical-align:-0.35em; font-size:0.62em; line-height:1.05; margin-right:0.05em;"><span>${m[6]}</span><span>${m[7]}</span></span>${m[8]}</span>`
     else if (m[9] !== undefined) out += `<sup style="font-size:0.72em; line-height:0; vertical-align:0.55em;">${m[9]}</sup>`
     else if (m[10] !== undefined) out += await svgToInlineImg(rootSvg(m[11], m[10]), ROOT_VALIGN)
+    else if (m[12] !== undefined) out += await svgToInlineImg(pfracSvg(m[12], m[13]), FRAC_VALIGN)
     else out += await svgToInlineImg(fracSvg(m[2], m[3]), FRAC_VALIGN)
     last = m.index + m[0].length
   }

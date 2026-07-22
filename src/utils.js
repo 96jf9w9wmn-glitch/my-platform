@@ -115,6 +115,10 @@ export function renderTaskMath(text) {
       const [pre, num, den, post] = b.split("¦")
       return rootFracMarkup(pre || "", num || "", den || "", post || "")
     })
+    // ⟦pf:n:d⟧ — дробь в скобках, растянутых по её высоте (основание степени: (1/4)^x).
+    // Скобки — отдельные глиф-спаны крупнее строки; раскрываем ДО ⟦f⟧, т.к. содержат ⟦f⟧ внутри.
+    .replace(/⟦pf:([^:⟧]+):([^:⟧]+)⟧/g,
+      (_, n, d) => `<span class="tmath-paren">(</span><span class="tmath-frac"><span class="tmath-num">${rootIn(n)}</span><span class="tmath-den">${rootIn(d)}</span></span><span class="tmath-paren">)</span>`)
     // числитель/знаменатель — любой текст без «:» (числа, степени вида 7⁴), уже экранированный
     .replace(/⟦f:([^:⟧]+):([^:⟧]+)⟧/g,
       (_, n, d) => `<span class="tmath-frac"><span class="tmath-num">${rootIn(n)}</span><span class="tmath-den">${rootIn(d)}</span></span>`)
@@ -151,6 +155,7 @@ export function plainTaskMath(text) {
       body.split("⁞").map((t, i) => `${i + 1}) ${t}`).join("; "))
     .replace(/⟦rf:([^⟧]*)⟧/g, (_, b) => { const [pre, n, d, post] = b.split("¦"); return `√(${pre || ""}${n}/${d}${post || ""})` })
     .replace(/√\{([^}]+)\}/g, "√$1")
+    .replace(/⟦pf:([^:⟧]+):([^:⟧]+)⟧/g, "($1/$2)")
     .replace(/⟦f:([^:⟧]+):([^:⟧]+)⟧/g, "$1/$2")
     .replace(/⟦rn:([^:⟧]+):([^⟧]+)⟧/g, (_, i, x) => `${i}√(${x})`)
     .replace(/⟦r:([^⟧]+)⟧/g, "√$1")
@@ -168,6 +173,7 @@ export function expandSvgMathTokens(svg) {
   return String(svg)
     .replace(/⟦rf:([^⟧]*)⟧/g, (_, b) => { const [pre, n, d, post] = b.split("¦"); return `√(${pre || ""}${n}/${d}${post || ""})` })
     .replace(/√\{([^}]+)\}/g, (_, x) => `√<tspan text-decoration="overline">${x}</tspan>`)
+    .replace(/⟦pf:([^:⟧]+):([^:⟧]+)⟧/g, "($1/$2)")
     .replace(/⟦f:([^:⟧]+):([^:⟧]+)⟧/g, "$1/$2")
     .replace(/⟦r:([^⟧]+)⟧/g, (_, x) => `√<tspan text-decoration="overline">${x}</tspan>`)
     .replace(/⟦b:([^⟧]+)⟧/g, (_, x) => `<tspan baseline-shift="sub" font-size="0.75em">${x}</tspan>`)
