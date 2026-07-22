@@ -376,7 +376,6 @@ function Auth({ onLogin }) {
                 maxLength={6}
                 autoComplete="off"
               />
-              <p className="text-xs text-gray-400 mt-1 text-center">Код выдаётся репетитором</p>
             </div>
           )}
 
@@ -458,18 +457,22 @@ function Auth({ onLogin }) {
           )}
         </div>
 
-        {mode === "login" && role !== "parent" && (
+        {mode === "login" && (
           <div className="text-center mt-3">
-            <button
-              onClick={() => { setMode("reset"); setError(""); setResetSent(false); setNewPassword("") }}
-              className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 hover:opacity-70 transition-opacity"
-            >
-              Забыли пароль?
-            </button>
+            {role === "parent" ? (
+              <span className="text-xs text-gray-400 dark:text-gray-500">Код выдаётся репетитором</span>
+            ) : (
+              <button
+                onClick={() => { setMode("reset"); setError(""); setResetSent(false); setNewPassword("") }}
+                className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 hover:opacity-70 transition-opacity"
+              >
+                Забыли пароль?
+              </button>
+            )}
           </div>
         )}
 
-        {role !== "parent" && (
+        {role !== "parent" ? (
           <div className="text-center mt-4">
             <button
               onClick={() => {
@@ -485,6 +488,10 @@ function Auth({ onLogin }) {
                 ? "Нет аккаунта? Зарегистрироваться"
                 : "Уже есть аккаунт? Войти"}
             </button>
+          </div>
+        ) : (
+          <div className="text-center mt-4" aria-hidden="true">
+            <span className="text-sm invisible select-none">Нет аккаунта?</span>
           </div>
         )}
         </div> {/* p-6 */}
