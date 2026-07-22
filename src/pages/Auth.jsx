@@ -356,7 +356,7 @@ function Auth({ onLogin }) {
                 value={form.code}
                 onChange={(e) => setForm((p) => ({ ...p, code: e.target.value.toUpperCase() }))}
                 placeholder="Например: ABC123"
-                className="input-glass tracking-widest text-center text-lg font-mono caret-transparent"
+                className="input-glass tracking-widest text-left text-lg font-mono"
                 maxLength={6}
                 autoComplete="off"
               />

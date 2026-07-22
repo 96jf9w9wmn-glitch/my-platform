@@ -172,7 +172,7 @@ function StudentOnboardingModal({ studentId, onComplete, demo = false }) {
                 onChange={(e) => setTarget(e.target.value)}
                 placeholder={isScore ? "например, 85" : "например, 5"}
                 autoFocus
-                className="input-glass max-w-[180px] text-center text-lg" />
+                className="input-glass max-w-[180px] text-left text-lg" />
               <p className="text-xs text-gray-400">{isScore ? "Тестовый балл (0–100)" : "Желаемая оценка (2–5)"}</p>
               <button onClick={() => goTo(step + 1, "forward")} className="btn-primary px-6 py-2 active:scale-95 transition-transform">
                 Далее
