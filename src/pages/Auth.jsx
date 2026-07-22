@@ -199,9 +199,9 @@ function Auth({ onLogin }) {
   }
 
   const roleConfig = {
-    tutor:   { icon: "user-teacher", label: "Репетитор", desc: "Управляй учениками",   grad: "from-blue-500 to-blue-600",   soft: "bg-blue-50 dark:bg-blue-900/30",   text: "text-blue-600 dark:text-blue-400",   border: "border-blue-200 dark:border-blue-700" },
-    student: { icon: "book",         label: "Ученик",     desc: "Готовься к экзамену",  grad: "from-emerald-500 to-teal-600", soft: "bg-emerald-50 dark:bg-emerald-900/30", text: "text-emerald-600 dark:text-emerald-400", border: "border-emerald-200 dark:border-emerald-700" },
-    parent:  { icon: "users",        label: "Родитель",   desc: "Следи за успехами",    grad: "from-amber-500 to-orange-500", soft: "bg-amber-50 dark:bg-amber-900/30",   text: "text-amber-600 dark:text-amber-400",   border: "border-amber-200 dark:border-amber-700" },
+    tutor:   { icon: "user-teacher", label: "Репетитор", desc: "Управляй учениками",   grad: "from-blue-500 to-blue-600",   soft: "bg-blue-50 dark:bg-blue-900/30",   text: "text-blue-600 dark:text-blue-400",   border: "border-blue-200 dark:border-blue-700",   glow: "shadow-blue-500/40" },
+    student: { icon: "book",         label: "Ученик",     desc: "Готовься к экзамену",  grad: "from-emerald-500 to-teal-600", soft: "bg-emerald-50 dark:bg-emerald-900/30", text: "text-emerald-600 dark:text-emerald-400", border: "border-emerald-200 dark:border-emerald-700", glow: "shadow-emerald-500/40" },
+    parent:  { icon: "users",        label: "Родитель",   desc: "Следи за успехами",    grad: "from-amber-500 to-orange-500", soft: "bg-amber-50 dark:bg-amber-900/30",   text: "text-amber-600 dark:text-amber-400",   border: "border-amber-200 dark:border-amber-700",   glow: "shadow-amber-500/40" },
   }
 
   return (
@@ -260,7 +260,7 @@ function Auth({ onLogin }) {
                   onClick={() => { setRole(r); setError("") }}
                   className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-2xl border-2 transition-all duration-200 ${
                     active
-                      ? `bg-gradient-to-br ${cfg.grad} text-white border-transparent shadow-md`
+                      ? `bg-gradient-to-br ${cfg.grad} text-white border-transparent shadow-lg ${cfg.glow}`
                       : `bg-white dark:bg-gray-800 ${cfg.text} ${cfg.border}`
                   }`}
                 >
