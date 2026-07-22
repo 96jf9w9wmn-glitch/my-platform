@@ -12,7 +12,7 @@ function rootMarkup(content, index = "") {
   const FS = 14
   const idxFS = 10
   const ox = index ? Math.ceil(glyphW(String(index)) * idxFS) + 1 : 0
-  const W = Math.ceil(13 + glyphW(content) * FS + 5) + ox, H = 22
+  const W = Math.ceil(13 + glyphW(content) * FS + 2.5) + ox, H = 22
   const d = `M${1.5 + ox},13 L${4 + ox},11.5 L${7.5 + ox},19 L${11.5 + ox},2.8 L${W - 1.5},2.8`
   const idx = index
     ? `<text x="${ox - 1}" y="10.5" font-size="${idxFS}" text-anchor="middle" fill="currentColor">${index}</text>`

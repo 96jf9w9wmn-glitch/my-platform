@@ -113,14 +113,22 @@ function vecArrow(x1, y1, x2, y2, color, width = 2.2) {
     `<polygon points="${clean(x2)},${clean(y2)} ${p1} ${p2}" fill="${color}"/>`
 }
 
-// Подпись вектора (буква + стрелка над ней) у середины, сдвинута по нормали.
-function vecLabel(letter, mx, my, vx, vy) {
-  const L = Math.hypot(vx, vy) || 1
-  const off = 15
-  const lx = clean(mx - (vy / L) * off), ly = clean(my - (vx / L) * off)
+// Подпись вектора (буква + стрелка над ней) у середины, сдвинута ПЕРПЕНДИКУЛЯРНО линии.
+// dx,dy — пиксельные дельты вектора (y вниз). Нормаль берём в пиксельных координатах
+// (раньше считалась не-перпендикулярно из грид-компонент y-вверх — подпись со своей
+// стрелкой ложилась на сам вектор). Прижимаем подпись выше линии (ny<0), тогда стрелка
+// над буквой уходит ОТ вектора, а не пересекает его.
+function vecLabel(letter, mx, my, dx, dy) {
+  const L = Math.hypot(dx, dy) || 1
+  const ux = dx / L, uy = dy / L
+  let nx = -uy, ny = ux
+  if (ny > 1e-6) { nx = -nx; ny = -ny }
+  else if (Math.abs(ny) < 1e-6) { nx = -Math.abs(nx) }   // вертикальный вектор — подпись слева
+  const off = 17
+  const lx = clean(mx + nx * off), ly = clean(my + ny * off), ay = clean(ly - 15)
   return `<text x="${lx}" y="${ly}" ${HALO} font-size="17" font-style="italic" font-weight="bold" fill="#1c1c1e" text-anchor="middle">${letter}</text>` +
-    `<line x1="${lx - 5}" y1="${ly - 19}" x2="${lx + 6}" y2="${ly - 19}" stroke="#1c1c1e" stroke-width="1.3"/>` +
-    `<polygon points="${lx + 7},${ly - 19} ${lx + 2},${ly - 21.4} ${lx + 2},${ly - 16.6}" fill="#1c1c1e"/>`
+    `<line x1="${lx - 5}" y1="${ay}" x2="${lx + 6}" y2="${ay}" stroke="#1c1c1e" stroke-width="1.3"/>` +
+    `<polygon points="${lx + 7},${ay} ${lx + 2},${ay - 2.4} ${lx + 2},${ay + 2.4}" fill="#1c1c1e"/>`
 }
 
 // Координатная сетка с двумя векторами a и b (целочисленные компоненты).
@@ -143,8 +151,8 @@ function vecGridSvg({ ax, ay, bx, by, atx, aty, btx, bty, gx0, gx1, gy0, gy1 }) 
   // векторы
   g += vecArrow(X(atx), Y(aty), X(atx + ax), Y(aty + ay), "#1c1c1e")
   g += vecArrow(X(btx), Y(bty), X(btx + bx), Y(bty + by), "#1c1c1e")
-  g += vecLabel("a", (X(atx) + X(atx + ax)) / 2, (Y(aty) + Y(aty + ay)) / 2, ax, ay)
-  g += vecLabel("b", (X(btx) + X(btx + bx)) / 2, (Y(bty) + Y(bty + by)) / 2, bx, by)
+  g += vecLabel("a", (X(atx) + X(atx + ax)) / 2, (Y(aty) + Y(aty + ay)) / 2, X(atx + ax) - X(atx), Y(aty + ay) - Y(aty))
+  g += vecLabel("b", (X(btx) + X(btx + bx)) / 2, (Y(bty) + Y(bty + by)) / 2, X(btx + bx) - X(btx), Y(bty + by) - Y(bty))
   return `<svg xmlns="http://www.w3.org/2000/svg" font-family="Arial, sans-serif" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${g}</svg>`
 }
 
@@ -1110,7 +1118,7 @@ function t07PowPowDiv() {
   } while ((diff < 1 || diff > 5 || p ** diff > 3000) && g < 600)
   const rhs = nested ? `(${base2}${sup(c)})${sup(d)}` : `${base2}${sup(e)}`
   return {
-    condition_text: `Найдите значение выражения (${base1}${sup(a)})${sup(b)}:${rhs}.`,
+    condition_text: `Найдите значение выражения ${fT(`(${base1}${sup(a)})${sup(b)}`, rhs)}.`,
     answer: ru(p ** diff),
   }
 }

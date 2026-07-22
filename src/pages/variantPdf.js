@@ -56,7 +56,7 @@ function rootSvg(content, index = "") {
   const tw = chW(content) * FS
   const idxFS = 10
   const ox = index ? Math.ceil(chW(String(index)) * idxFS) + 1 : 0
-  const W = Math.ceil(13 + tw + 5) + ox, H = 22
+  const W = Math.ceil(13 + tw + 2.5) + ox, H = 22
   const d = `M${1.5 + ox},13 L${4 + ox},11.5 L${7.5 + ox},19 L${11.5 + ox},2.8 L${W - 1.5},2.8`
   const idx = index ? `<text x="${ox - 1}" y="10.5" font-size="${idxFS}" font-family="Arial, sans-serif" text-anchor="middle" fill="#1c1c1e">${index}</text>` : ""
   return { W, H, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">` +
