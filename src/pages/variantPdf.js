@@ -33,13 +33,17 @@ function fracSvg(num0, den0) {
     `<text x="${cx}" y="30" font-size="${fs}" font-family="Arial, sans-serif" text-anchor="middle" fill="#1c1c1e">${den}</text></svg>` }
 }
 
-function rootSvg(content) {
+function rootSvg(content, index = "") {
   const tw = chW(content) * FS
-  const W = Math.ceil(13 + tw + 5), H = 22
-  const d = `M1.5,13 L4,11.5 L7.5,19 L11.5,2.8 L${W - 1.5},2.8`
+  const idxFS = 10
+  const ox = index ? Math.ceil(chW(String(index)) * idxFS) + 1 : 0
+  const W = Math.ceil(13 + tw + 5) + ox, H = 22
+  const d = `M${1.5 + ox},13 L${4 + ox},11.5 L${7.5 + ox},19 L${11.5 + ox},2.8 L${W - 1.5},2.8`
+  const idx = index ? `<text x="${ox - 1}" y="10.5" font-size="${idxFS}" font-family="Arial, sans-serif" text-anchor="middle" fill="#1c1c1e">${index}</text>` : ""
   return { W, H, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">` +
     `<path d="${d}" fill="none" stroke="#1c1c1e" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>` +
-    `<text x="13" y="17" font-size="${FS}" font-family="Arial, sans-serif" fill="#1c1c1e">${content}</text></svg>` }
+    idx +
+    `<text x="${13 + ox}" y="17" font-size="${FS}" font-family="Arial, sans-serif" fill="#1c1c1e">${content}</text></svg>` }
 }
 
 // Корень НАД дробью (√ с чертой на всю дробь) — единый SVG: знак √, черта сверху,
@@ -126,7 +130,7 @@ export async function renderTaskMathPdf(text) {
   const esc = escapeHtml(String(text ?? ""))
     .replace(/⟦match⟧([\s\S]*?)⟦endmatch⟧/g, (_, body) => matchTablePdf(body))
     .replace(/⟦list⟧([\s\S]*?)⟦endlist⟧/g, (_, body) => orderedListPdf(body))
-  const re = /⟦rf:([^⟧]*)⟧|⟦f:([^:⟧]+):([^:⟧]+)⟧|⟦r:([^⟧]+)⟧|⟦b:([^⟧]+)⟧|⟦iso:([^:⟧]+):([^:⟧]+):([^⟧]+)⟧|⟦sup:([^⟧]+)⟧/g
+  const re = /⟦rf:([^⟧]*)⟧|⟦f:([^:⟧]+):([^:⟧]+)⟧|⟦r:([^⟧]+)⟧|⟦b:([^⟧]+)⟧|⟦iso:([^:⟧]+):([^:⟧]+):([^⟧]+)⟧|⟦sup:([^⟧]+)⟧|⟦rn:([^:⟧]+):([^⟧]+)⟧/g
   let out = "", last = 0, m
   while ((m = re.exec(esc)) !== null) {
     out += esc.slice(last, m.index)
@@ -135,6 +139,7 @@ export async function renderTaskMathPdf(text) {
     else if (m[5] !== undefined) out += `<sub>${m[5]}</sub>`
     else if (m[6] !== undefined) out += `<span style="white-space:nowrap;"><span style="display:inline-flex; flex-direction:column; align-items:flex-end; text-align:right; vertical-align:-0.35em; font-size:0.62em; line-height:1.05; margin-right:0.05em;"><span>${m[6]}</span><span>${m[7]}</span></span>${m[8]}</span>`
     else if (m[9] !== undefined) out += `<sup style="font-size:0.72em; line-height:0; vertical-align:0.55em;">${m[9]}</sup>`
+    else if (m[10] !== undefined) out += await svgToInlineImg(rootSvg(m[11], m[10]), ROOT_VALIGN)
     else out += await svgToInlineImg(fracSvg(m[2], m[3]), FRAC_VALIGN)
     last = m.index + m[0].length
   }

@@ -5,13 +5,22 @@ const glyphW = (s) => { let w = 0; for (const ch of s) w += /[⁰¹²³⁴⁵⁶
 // по построению). Инлайновый SVG (не <img>): stroke/fill = currentColor → адаптируется к
 // тёмной теме; размер в em → масштабируется вместе со шрифтом. Геометрия совпадает с
 // rootSvg в variantPdf.js (там <img> с жёстким цветом — в PDF фон всегда светлый).
-function rootMarkup(content) {
+// index — показатель степени корня (∛ → index="3"): цифра сидит В КРЮЧКЕ радикала
+// (как у ФИПИ), а не висит высоким надстрочником слева. Радикал сдвигается вправо на ox,
+// освобождая слева место под индекс.
+function rootMarkup(content, index = "") {
   const FS = 14
-  const W = Math.ceil(13 + glyphW(content) * FS + 5), H = 22
-  const d = `M1.5,13 L4,11.5 L7.5,19 L11.5,2.8 L${W - 1.5},2.8`
+  const idxFS = 10
+  const ox = index ? Math.ceil(glyphW(String(index)) * idxFS) + 1 : 0
+  const W = Math.ceil(13 + glyphW(content) * FS + 5) + ox, H = 22
+  const d = `M${1.5 + ox},13 L${4 + ox},11.5 L${7.5 + ox},19 L${11.5 + ox},2.8 L${W - 1.5},2.8`
+  const idx = index
+    ? `<text x="${ox - 1}" y="10.5" font-size="${idxFS}" text-anchor="middle" fill="currentColor">${index}</text>`
+    : ""
   return `<svg class="tmath-radical" viewBox="0 0 ${W} ${H}" width="${(W / FS).toFixed(3)}em" height="${(H / FS).toFixed(3)}em" xmlns="http://www.w3.org/2000/svg">` +
     `<path d="${d}" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round"/>` +
-    `<text x="13" y="17" font-size="${FS}" fill="currentColor">${content}</text></svg>`
+    idx +
+    `<text x="${13 + ox}" y="17" font-size="${FS}" fill="currentColor">${content}</text></svg>`
 }
 
 // Корень НАД дробью одним SVG: знак √, верхняя черта и черта дроби — единый stroke-width
@@ -109,6 +118,8 @@ export function renderTaskMath(text) {
     // числитель/знаменатель — любой текст без «:» (числа, степени вида 7⁴), уже экранированный
     .replace(/⟦f:([^:⟧]+):([^:⟧]+)⟧/g,
       (_, n, d) => `<span class="tmath-frac"><span class="tmath-num">${rootIn(n)}</span><span class="tmath-den">${rootIn(d)}</span></span>`)
+    // ⟦rn:i:x⟧ — корень степени i (∛ → i=3): индекс сидит в крючке радикала
+    .replace(/⟦rn:([^:⟧]+):([^⟧]+)⟧/g, (_, i, x) => rootMarkup(x, i))
     .replace(/⟦r:([^⟧]+)⟧/g, (_, x) => rootMarkup(x))
     .replace(/⟦b:([^⟧]+)⟧/g, (_, x) => `<sub class="tmath-sub">${x}</sub>`)
     // ⟦sup:x⟧ — надстрочник (степень с переменным показателем, напр. 2^(1−4x))
@@ -141,6 +152,7 @@ export function plainTaskMath(text) {
     .replace(/⟦rf:([^⟧]*)⟧/g, (_, b) => { const [pre, n, d, post] = b.split("¦"); return `√(${pre || ""}${n}/${d}${post || ""})` })
     .replace(/√\{([^}]+)\}/g, "√$1")
     .replace(/⟦f:([^:⟧]+):([^:⟧]+)⟧/g, "$1/$2")
+    .replace(/⟦rn:([^:⟧]+):([^⟧]+)⟧/g, (_, i, x) => `${i}√(${x})`)
     .replace(/⟦r:([^⟧]+)⟧/g, "√$1")
     .replace(/⟦b:([^⟧]+)⟧/g, "$1")
     .replace(/⟦sup:([^⟧]+)⟧/g, "^($1)")
