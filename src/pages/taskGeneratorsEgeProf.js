@@ -1698,7 +1698,8 @@ function pickMarksExtrema(w, gx0, gx1, N) {
   const near = (x) => w.xs.some((a) => Math.abs(a - x) < 0.5)
   const cands = []
   // |f|≥0.45 — точка не на пересечении с осью, чтобы кривая не наезжала на подпись xᵢ
-  for (let x = gx0 + 0.7; x <= gx1 - 0.7; x += 0.25) if (!near(x) && Math.abs(x) > 0.4 && Math.abs(w.fn(x)) >= 0.45) cands.push(clean(x))
+  // |x|>0.9 — подпись xᵢ не наезжает на «0» у начала координат (нуль сидит слева-снизу оси)
+  for (let x = gx0 + 0.7; x <= gx1 - 0.7; x += 0.25) if (!near(x) && Math.abs(x) > 0.9 && Math.abs(w.fn(x)) >= 0.45) cands.push(clean(x))
   const chosen = []
   for (let k = 0; k < N && cands.length; k++) chosen.push(cands[Math.round((k + 0.5) / N * (cands.length - 1))])
   const uniq = []
@@ -1741,7 +1742,8 @@ function integ(fn, x0, x1) { let s = 0; const K = 400, h = (x1 - x0) / K; for (l
 function pickMarksDeriv(b, gx0, gx1, N) {
   const near = (x) => b.roots.some((r) => Math.abs(r - x) < 0.6)
   const cands = []
-  for (let x = gx0 + 0.7; x <= gx1 - 0.7; x += 0.25) if (!near(x) && Math.abs(x) > 0.4 && Math.abs(b.fn(x)) >= 0.55) cands.push(clean(x))
+  // |x|>0.9 — подпись xᵢ не наезжает на «0» у начала координат (нуль сидит слева-снизу оси)
+  for (let x = gx0 + 0.7; x <= gx1 - 0.7; x += 0.25) if (!near(x) && Math.abs(x) > 0.9 && Math.abs(b.fn(x)) >= 0.55) cands.push(clean(x))
   const chosen = []
   for (let k = 0; k < N && cands.length; k++) chosen.push(cands[Math.round((k + 0.5) / N * (cands.length - 1))])
   const uniq = []
