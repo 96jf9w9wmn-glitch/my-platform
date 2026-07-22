@@ -109,7 +109,7 @@ function Auth({ onLogin }) {
           .eq("parent_code", code)
         if (fetchError) throw fetchError
         if (!found || found.length === 0) throw new Error("Ученик с таким кодом не найден")
-        const sessionData = { role: "parent", student: found[0] }
+        const sessionData = { role: "parent", parentName: form.name.trim() || null, student: found[0] }
         localStorage.setItem("parent_session", JSON.stringify(sessionData))
         onLogin(sessionData)
 
@@ -344,6 +344,22 @@ function Auth({ onLogin }) {
                 onChange={handleChange}
                 placeholder="Иван Иванов"
                 className="input-glass"
+              />
+            </div>
+          )}
+
+          {role === "parent" && (
+            <div>
+              <label className="text-sm text-gray-500 mb-1 block">
+                Имя и фамилия <span className="text-gray-400 font-normal">— необязательно</span>
+              </label>
+              <input
+                name="name"
+                value={form.name}
+                onChange={handleChange}
+                placeholder="Иван Иванов"
+                className="input-glass"
+                autoComplete="name"
               />
             </div>
           )}
