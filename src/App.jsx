@@ -16,6 +16,7 @@ import Schedule from "./pages/Schedule"
 import ParentDashboard from "./pages/ParentDashboard"
 import Chat from "./pages/Chat"
 import TaskGenPreview from "./pages/TaskGenPreview"
+import Legal from "./pages/Legal"
 import TutorOnboardingModal from "./components/TutorOnboardingModal"
 // Excalidraw тяжёлый (mermaid/katex) — грузим доску только при открытии
 const Board = lazy(() => import("./components/Board"))
@@ -463,6 +464,13 @@ function App() {
     // (studentsLoaded === true блокирует повторную загрузку).
     setStudents([])
     setStudentsLoaded(false)
+  }
+
+  // Публичные юр-страницы — доступны без авторизации и до загрузки сессии
+  // (152-ФЗ требует свободного доступа к Политике обработки ПДн).
+  const legalPath = typeof window !== "undefined" ? window.location.pathname : "/"
+  if (legalPath === "/privacy" || legalPath === "/consent" || legalPath === "/cookie") {
+    return <Legal path={legalPath} />
   }
 
   if (loadingAuth) {

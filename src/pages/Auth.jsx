@@ -336,7 +336,7 @@ function Auth({ onLogin }) {
                 value={form.code}
                 onChange={(e) => setForm((p) => ({ ...p, code: e.target.value.toUpperCase() }))}
                 placeholder="Например: ABC123"
-                className="input-glass tracking-widest text-center text-lg font-mono"
+                className="input-glass tracking-widest text-center text-lg font-mono caret-transparent"
                 maxLength={6}
                 autoComplete="off"
               />
@@ -457,6 +457,11 @@ function Auth({ onLogin }) {
           </div>
         )}
         </div> {/* p-6 */}
+        <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 pb-5 -mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+          <a href="/privacy" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Политика конфиденциальности</a>
+          <a href="/consent" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Согласие на обработку ПДн</a>
+          <a href="/cookie" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Cookie</a>
+        </div>
       </div>
     </div>
   )
