@@ -2809,10 +2809,6 @@ function pCircle(O, R, o = {}) { const c = o.hi ? P_HI : o.red ? P_RED : P_INK; 
 function pDot(p, r = 2.4) { return `<circle cx="${clean(p[0])}" cy="${clean(p[1])}" r="${r}" fill="${P_INK}"/>` }
 const VDIR = { tl: [-11, -5], tr: [12, -5], bl: [-12, 15], br: [12, 15], t: [0, -11], b: [0, 18], l: [-14, 5], r: [14, 5] }
 function pV(p, dir, t) { const o = VDIR[dir] || [0, 0]; return `<text x="${clean(p[0] + o[0])}" y="${clean(p[1] + o[1])}" ${HALO} font-size="15" font-style="italic" font-weight="bold" fill="${P_INK}" text-anchor="middle">${t}</text>` }
-// подпись длины ребра у его середины, отодвинутая по нормали (side=±1 — сторона)
-function pEV(a, b, t, side = 1) { const m = mid(a, b), u = unit(a, b), px = -u[1] * 14 * side, py = u[0] * 14 * side; return `<text x="${clean(m[0] + px)}" y="${clean(m[1] + py + 4)}" ${HALO} font-size="13" fill="${P_INK}" text-anchor="middle">${t}</text>` }
-// подпись значения угла у вершины v (по направлению биссектрисы угла a-v-b)
-function pAV(v, a, b, t, r = 27) { const u = unit(v, a), w = unit(v, b); let bx = u[0] + w[0], by = u[1] + w[1]; const L = Math.hypot(bx, by) || 1; return `<text x="${clean(v[0] + bx / L * r)}" y="${clean(v[1] + by / L * r + 4)}" ${HALO} font-size="12.5" fill="${P_INK}" text-anchor="middle">${t}</text>` }
 // дуга-метка угла a-v-b радиуса r (double — двойная дуга для «равных» углов)
 function pArc(v, a, b, r, o = {}) {
   const an = p => Math.atan2(p[1] - v[1], p[0] - v[0]); let a1 = an(a), a2 = an(b)
@@ -2833,10 +2829,11 @@ const deg = (n) => `${ru(n)}°`
 function figIso({ topLbl = "C", blLbl = "A", brLbl = "B", angTop, angBl, angBr, ext } = {}) {
   const A = [45, 172], B = [205, 172], C = [125, 48]
   let g = pPolygon([A, B, C]) + pTick(C, A, 2) + pTick(C, B, 2)
-  if (ext) { const D = [B[0] + (B[0] - A[0]) * 0.28, B[1]]; g += pSeg(B, D, { d: true }); g += pArc(B, C, D, 15); g += pAV(B, C, D, ext, 26); g += pV(D, "br", "D") }
-  if (angTop) { g += pArc(C, A, B, 15); g += pAV(C, A, B, angTop, 24) }
-  if (angBl) { g += pArc(A, B, C, 15); g += pAV(A, B, C, angBl, 24) }
-  if (angBr && !ext) { g += pArc(B, A, C, 15); g += pAV(B, A, C, angBr, 24) }
+  // числа углов на чертёж НЕ пишем (они в условии) — только дуга-метка у нужного угла
+  if (ext) { const D = [B[0] + (B[0] - A[0]) * 0.28, B[1]]; g += pSeg(B, D, { d: true }); g += pArc(B, C, D, 15); g += pV(D, "br", "D") }
+  if (angTop) g += pArc(C, A, B, 15)
+  if (angBl) g += pArc(A, B, C, 15)
+  if (angBr && !ext) g += pArc(B, A, C, 15)
   g += pV(A, "bl", blLbl) + pV(B, ext ? "b" : "br", brLbl) + pV(C, "t", topLbl)
   return stWrap(270, 200, g)
 }
@@ -2863,24 +2860,24 @@ function t01IsoExt() {
     return { condition_text: `В треугольнике ABC AC = BC. Внешний угол при вершине B равен ${deg(ext)}. Найдите угол C. Ответ дайте в градусах.`, image_url: svgUrl(figIso({ ext: deg(ext) })), answer: ru(180 - 2 * base) }
   }
   const base = randInt(20, 80), ext = 180 - base      // AB=BC (вершина B), внешний при вершине B → угол C(основания)
-  return { condition_text: `В треугольнике ABC AB = BC. Внешний угол при вершине B равен ${deg(180 - base * 2 > 0 ? ext : ext)}. Найдите угол C. Ответ дайте в градусах.`, image_url: svgUrl(figIsoApexB(deg(ext))), answer: ru(base) }
+  return { condition_text: `В треугольнике ABC AB = BC. Внешний угол при вершине B равен ${deg(ext)}. Найдите угол C. Ответ дайте в градусах.`, image_url: svgUrl(figIsoApexB()), answer: ru(base) }
 }
 // равнобедр. с вершиной B (AB=BC), внешний угол при B
-function figIsoApexB(ext) {
+function figIsoApexB() {
   const A = [45, 172], C = [205, 172], B = [125, 48]
   let g = pPolygon([A, C, B]) + pTick(B, A, 2) + pTick(B, C, 2)
-  const D = [B[0] + 42, B[1] - 6]; g += pSeg(B, D, { d: true }) + pArc(B, C, D, 15) + pAV(B, C, D, ext, 24) + pV(D, "tr", "D")
+  const D = [B[0] + 42, B[1] - 6]; g += pSeg(B, D, { d: true }) + pArc(B, C, D, 15) + pV(D, "tr", "D")
   g += pV(A, "bl", "A") + pV(C, "br", "C") + pV(B, "t", "B")
   return stWrap(270, 200, g)
 }
 
 // Биссектриса AD (D на BC): дан угол C и угол CAD (=½A). Найти B или ADB.
-function figBisector(angC, angCAD) {
+function figBisector() {
   const A = [40, 176], B = [242, 176], C = [120, 46], D = mid(B, C)
   let g = pPolygon([A, B, C]) + pSeg(A, D)
+  // числа углов не пишем — двойная дуга показывает равенство половин угла A, дуга у C
   g += pArc(A, C, D, 20) + pArc(A, D, B, 26, { double: true })
-  g += pAV(A, C, D, angCAD, 40)
-  g += pArc(C, A, B, 15) + pAV(C, A, B, angC, 22)
+  g += pArc(C, A, B, 15)
   g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "t", "C") + pV(D, "r", "D")
   return stWrap(270, 205, g)
 }
@@ -2888,9 +2885,9 @@ function t01Bisector() {
   const C = randInt(40, 110), half = randInt(15, Math.floor((178 - C) / 2))
   const A = 2 * half, B = 180 - C - A
   if (Math.random() < 0.5)
-    return { condition_text: `В треугольнике ABC AD — биссектриса, угол C равен ${deg(C)}, угол CAD равен ${deg(half)}. Найдите угол B. Ответ дайте в градусах.`, image_url: svgUrl(figBisector(deg(C), deg(half))), answer: ru(B) }
+    return { condition_text: `В треугольнике ABC AD — биссектриса, угол C равен ${deg(C)}, угол CAD равен ${deg(half)}. Найдите угол B. Ответ дайте в градусах.`, image_url: svgUrl(figBisector()), answer: ru(B) }
   const ADB = 180 - half - B
-  return { condition_text: `В треугольнике ABC AD — биссектриса, угол C равен ${deg(C)}, угол BAD равен ${deg(half)}. Найдите угол ADB. Ответ дайте в градусах.`, image_url: svgUrl(figBisector(deg(C), deg(half))), answer: ru(ADB) }
+  return { condition_text: `В треугольнике ABC AD — биссектриса, угол C равен ${deg(C)}, угол BAD равен ${deg(half)}. Найдите угол ADB. Ответ дайте в градусах.`, image_url: svgUrl(figBisector()), answer: ru(ADB) }
 }
 
 // Две высоты BD, CE пересекаются в O: угол DOE = 180 − A.
@@ -2906,7 +2903,6 @@ function t01TwoAltitudes() {
   let g = pPolygon([Aa, Bb, P]) + pSeg(Bb, Dh) + pSeg(P, Eh)
   g += pRight(Dh, Aa, Bb, 8) + pRight(Eh, Aa, Bb, 8)
   g += pArc(O, Dh, Eh, 13) + pDot(O)
-  g += pAV(Aa, Bb, P, deg(A), 30)
   g += pV(Aa, "bl", "A") + pV(Bb, "br", "B") + pV(P, "t", "C") + pV(Dh, "r", "D") + pV(Eh, "l", "E") + pV(O, "b", "O")
   return { condition_text: `В треугольнике ABC угол A равен ${deg(A)}, углы B и C острые, высоты BD и CE пересекаются в точке O. Найдите угол DOE. Ответ дайте в градусах.`, image_url: svgUrl(stWrap(270, 205, g)), answer: ru(180 - A) }
 }
@@ -2924,15 +2920,16 @@ function t01SineTheorem() {
   if (v.ang === 30 || v.ang === 150) { const a = randInt(3, 18); sideTxt = ru(a); R = a }
   else { sideTxt = `${k}${v.k}`; R = k }
   const A = [55, 150], B = [215, 150], C = [150, 55], O = [135, 118]
+  // значение стороны на чертёж не наносим (оно в условии; иначе в SVG протёк бы сырой токен ⟦r⟧)
   let g = pCircle(O, 78) + pPolygon([A, B, C], { w: 1.8 })
-  g += pEV(A, B, sideTxt, 1) + pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "t", "C")
+  g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "t", "C")
   return { condition_text: `В треугольнике ABC сторона AB равна ${sideTxt}, угол C равен ${deg(v.ang)}. Найдите радиус описанной около этого треугольника окружности.`, image_url: svgUrl(stWrap(280, 215, g)), answer: ru(R) }
 }
 
 // ── Прямоугольный треугольник: медиана/высота/биссектриса из прямого угла ────
 // база «прямой угол C сверху, гипотенуза AB снизу» (точка C — на окружности Фалеса)
 const RT_A = [40, 182], RT_B = [250, 182]
-function figRightCevians(feet, marks, angAt) {
+function figRightCevians(feet) {
   const C = [96, 78]                                  // ≈ на окружности Фалеса над AB
   let g = pPolygon([RT_A, RT_B, C]) + pRight(C, RT_A, RT_B, 11)
   const M = mid(RT_A, RT_B)                            // середина (медиана)
@@ -2942,7 +2939,7 @@ function figRightCevians(feet, marks, angAt) {
   for (const f of feet) g += pSeg(C, pts[f])
   if (feet.includes("H")) g += pRight(H, C, RT_A, 8)
   const lo = pts[feet[0]], hi = pts[feet[1]]
-  if (feet.length === 2) { g += pArc(C, lo, hi, 15); if (angAt) g += pAV(C, lo, hi, angAt, 26) }
+  if (feet.length === 2) g += pArc(C, lo, hi, 15)   // дуга между чевианами; число угла — в условии
   g += pV(RT_A, "bl", "A") + pV(RT_B, "br", "B") + pV(C, "t", "C")
   for (const f of feet) g += pV(pts[f], "b", f)
   return stWrap(280, 210, g)
@@ -2952,7 +2949,7 @@ function t01RightMedian() {
   const B = randInt(4, 80)
   const C = [96, 78], M = mid(RT_A, RT_B)
   let g = pPolygon([RT_A, RT_B, C]) + pRight(C, RT_A, RT_B, 11) + pSeg(C, M)
-  g += pArc(C, RT_A, M, 16) + pAV(C, RT_A, M, "?", 24) + pAV(RT_B, RT_A, C, deg(B), 26) + pArc(RT_B, RT_A, C, 15)
+  g += pArc(C, RT_A, M, 16) + pArc(RT_B, RT_A, C, 15)
   g += pV(RT_A, "bl", "A") + pV(RT_B, "br", "B") + pV(C, "t", "C") + pV(M, "b", "D")
   return { condition_text: `В треугольнике ABC CD — медиана, угол C равен 90°, угол B равен ${deg(B)}. Найдите угол ACD. Ответ дайте в градусах.`, image_url: svgUrl(stWrap(280, 210, g)), answer: ru(90 - B) }
 }
@@ -2967,13 +2964,13 @@ function t01RightCevians() {
   if (!reverse) {
     let B = randInt(50, 80), A = 90 - B                 // острый угол B (больший)
     const ans = p.between(A, B)
-    return { condition_text: `Острый угол B прямоугольного треугольника ABC равен ${deg(B)}. Найдите величину угла между ${p.t1} и ${p.t2}, проведёнными из вершины прямого угла C. Ответ дайте в градусах.`, image_url: svgUrl(figRightCevians(p.feet, null, "?")), answer: ru(ans) }
+    return { condition_text: `Острый угол B прямоугольного треугольника ABC равен ${deg(B)}. Найдите величину угла между ${p.t1} и ${p.t2}, проведёнными из вершины прямого угла C. Ответ дайте в градусах.`, image_url: svgUrl(figRightCevians(p.feet)), answer: ru(ans) }
   }
   // обратная: дан угол между чевианами → меньший острый угол
   const half = p.feet.includes("M") && p.feet.includes("H")
-  if (half) { const d = randInt(6, 40) * 2; return { condition_text: `Угол между высотой и медианой прямоугольного треугольника, проведёнными из вершины прямого угла, равен ${deg(d)}. Найдите меньший угол прямоугольного треугольника. Ответ дайте в градусах.`, image_url: svgUrl(figRightCevians(["H", "M"], null, deg(d))), answer: ru((90 - d) / 2) } }
+  if (half) { const d = randInt(6, 40) * 2; return { condition_text: `Угол между высотой и медианой прямоугольного треугольника, проведёнными из вершины прямого угла, равен ${deg(d)}. Найдите меньший угол прямоугольного треугольника. Ответ дайте в градусах.`, image_url: svgUrl(figRightCevians(["H", "M"])), answer: ru((90 - d) / 2) } }
   const d = randInt(3, 40)
-  return { condition_text: `Угол между ${p.feet.includes("H") ? "высотой и биссектрисой" : "биссектрисой и медианой"} прямоугольного треугольника, проведёнными из вершины прямого угла, равен ${deg(d)}. Найдите меньший угол прямоугольного треугольника. Ответ дайте в градусах.`, image_url: svgUrl(figRightCevians(p.feet, null, deg(d))), answer: ru(45 - d) }
+  return { condition_text: `Угол между ${p.feet.includes("H") ? "высотой и биссектрисой" : "биссектрисой и медианой"} прямоугольного треугольника, проведёнными из вершины прямого угла, равен ${deg(d)}. Найдите меньший угол прямоугольного треугольника. Ответ дайте в градусах.`, image_url: svgUrl(figRightCevians(p.feet)), answer: ru(45 - d) }
 }
 
 // ── Треугольник: две стороны и высоты (S постоянна) ─────────────────────────
