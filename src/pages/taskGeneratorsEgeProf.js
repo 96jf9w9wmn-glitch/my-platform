@@ -3372,8 +3372,9 @@ function figIsoApexB() {
 function figBisector() {
   const A = [40, 176], B = [242, 176], C = [120, 46], D = mid(B, C)
   let g = pPolygon([A, B, C]) + pSeg(A, D)
-  // числа углов не пишем — двойная дуга показывает равенство половин угла A, дуга у C
-  g += pArc(A, C, D, 20) + pArc(A, D, B, 26, { double: true })
+  // числа углов не пишем — обе половины угла A помечены ОДИНАКОВО (равные углы ⇒
+  // равное число дуг и равный радиус), одиночная дуга у C — другой угол
+  g += pArc(A, C, D, 22, { double: true }) + pArc(A, D, B, 22, { double: true })
   g += pArc(C, A, B, 15)
   g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "t", "C") + pV(D, "r", "D")
   return stWrap(270, 205, g)
@@ -3446,7 +3447,9 @@ function t01RightMedian() {
   const B = randInt(4, 80)
   const C = [96, 78], M = mid(RT_A, RT_B)
   let g = pPolygon([RT_A, RT_B, C]) + pRight(C, RT_A, RT_B, 11) + pSeg(C, M)
-  g += pArc(C, RT_A, M, 16) + pArc(RT_B, RT_A, C, 15)
+  // дугой помечаем ТОЛЬКО искомый ∠ACD; ∠B не дублируем одиночной дугой —
+  // иначе разные углы (ACD≠B) выглядели бы равными (равное число дуг = равные углы)
+  g += pArc(C, RT_A, M, 16)
   g += pV(RT_A, "bl", "A") + pV(RT_B, "br", "B") + pV(C, "t", "C") + pV(M, "b", "D")
   return { condition_text: `В треугольнике ABC CD — медиана, угол C равен 90°, угол B равен ${deg(B)}. Найдите угол ACD. Ответ дайте в градусах.`, image_url: svgUrl(stWrap(280, 210, g)), answer: ru(90 - B) }
 }
@@ -3613,7 +3616,8 @@ function t01InscribedArc() {
 // центральный угол на N больше острого вписанного на ту же дугу → x=N
 function figCentralInsc(showC = true) {
   const A = onC(CO, CR, 205), B = onC(CO, CR, 335), C = onC(CO, CR, 75)
-  let g = pCircle(CO, CR) + pSeg(CO, A) + pSeg(CO, B) + pArc(CO, A, B, 16)
+  // центральный ∠AOB = 2·вписанного ∠ACB — НЕ равны: центральный двойной дугой, вписанный одной
+  let g = pCircle(CO, CR) + pSeg(CO, A) + pSeg(CO, B) + pArc(CO, A, B, 16, { double: true })
   if (showC) g += pSeg(C, A) + pSeg(C, B) + pArc(C, A, B, 14) + pV(C, "t", "")
   g += pDot(CO) + pV(A, "bl", "A") + pV(B, "br", "B")
   return stWrap(280, 220, g)
@@ -3628,7 +3632,8 @@ function t01CentralTri() {
   const a = randInt(20, 75)
   const A = onC(CO, CR, 90), B = onC(CO, CR, 200), C = onC(CO, CR, 340)
   let g = pCircle(CO, CR) + pPolygon([A, B, C]) + pSeg(CO, B) + pSeg(CO, C)
-  g += pArc(A, B, C, 15) + pArc(CO, B, C, 16) + pDot(CO)
+  // ∠BOC = 2·∠BAC — углы НЕ равны: вписанный одной дугой, центральный двойной
+  g += pArc(A, B, C, 15) + pArc(CO, B, C, 16, { double: true }) + pDot(CO)
   g += pV(A, "t", "A") + pV(B, "bl", "B") + pV(C, "br", "C") + pV(CO, "l", "O")
   return { condition_text: `Треугольник ABC вписан в окружность с центром O. Угол BAC равен ${deg(a)}. Найдите угол BOC. Ответ дайте в градусах.`, image_url: svgUrl(stWrap(280, 220, g)), answer: ru(2 * a) }
 }
