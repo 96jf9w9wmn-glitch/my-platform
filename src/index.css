@@ -110,6 +110,26 @@ html.dark {
   background: #000000;
 }
 
+/* Запрет выделения и копирования текста во всём приложении.
+   -webkit-touch-callout: none убирает iOS-меню «Скопировать» по долгому нажатию.
+   Поля ввода — исключение, иначе в них нельзя печатать/редактировать. */
+* {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+input,
+textarea,
+select,
+[contenteditable="true"],
+[contenteditable=""] {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
 /* iOS: у date-инпута свой intrinsic-размер (вылезает за границы) и нулевая
    высота контента, пока значение пустое — приводим к виду остальных полей */
 input[type="date"] {
