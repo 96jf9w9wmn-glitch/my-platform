@@ -82,50 +82,84 @@ function getMonthForecast(students) {
 
 const fmt = (n) => Math.round(n || 0).toLocaleString("ru-RU").replace(/\s/g, " ")
 
-// Доход по месяцам — горизонтальные полосы. Подпись месяца, полоса и сумма
-// каждая на своей строке крупным текстом: читается даже при малом объёме
-// данных, в отличие от тесного столбчатого графика.
-function IncomeBars({ buckets, forecast, mounted }) {
+// Доход по месяцам в стиле аналитики Т-Банка: крупная сумма выбранного месяца
+// сверху, под ней ряд высоких скруглённых столбцов. Тап по столбцу выбирает
+// месяц — сумма и подпись обновляются. Читается за счёт большого числа и
+// высоких столбцов, а не мелких подписей на каждом.
+function IncomeChart({ buckets, forecast, mounted }) {
   const lastIdx = buckets.length - 1
+  const [sel, setSel] = useState(lastIdx)
   const projectedLast = buckets[lastIdx].total + forecast
   const maxVal = Math.max(...buckets.map((b) => b.total), projectedLast, 1)
+  const AREA = 132 // высота зоны столбцов, px
+
+  const cur = buckets[sel]
+  const isCurrentMonth = sel === lastIdx
+  const received = cur.total
+  const prevTotal = sel > 0 ? buckets[sel - 1].total : 0
+  const deltaPct = prevTotal > 0 ? Math.round((received - prevTotal) / prevTotal * 100) : null
+
+  const dt = new Date(cur.year, cur.month, 1)
+  const rawFull = dt.toLocaleDateString("ru-RU", { month: "long", year: "numeric" })
+  const fullLabel = rawFull.charAt(0).toUpperCase() + rawFull.slice(1)
+
   return (
-    <div className="flex flex-col gap-2.5">
-      {buckets.map((b, i) => {
-        const isLast = i === lastIdx
-        const fc = isLast ? forecast : 0
-        // Минимум 4% ширины, чтобы ненулевой месяц был виден полоской.
-        const solidPct = b.total > 0 ? Math.max((b.total / maxVal) * 100, 4) : 0
-        const fcPct = (fc / maxVal) * 100
-        const projected = b.total + fc
-        const delay = i * 80
-        return (
-          <div key={i} className="flex items-center gap-3">
-            <div className={`w-9 shrink-0 text-sm ${isLast ? "font-semibold text-gray-700 dark:text-gray-200" : "text-gray-400"}`}>
-              {b.label}
-            </div>
-            <div className="relative flex-1 h-7 rounded-lg overflow-hidden bg-black/[0.05] dark:bg-white/[0.07]">
-              {/* полученное — сплошная заливка */}
-              <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-[#5AC8FA] to-[#007AFF]"
-                style={{ width: mounted ? `${solidPct}%` : "0%", transition: `width .8s cubic-bezier(.22,1,.36,1) ${delay}ms` }} />
-              {/* прогноз до конца месяца — штриховка того же цвета */}
-              {fcPct > 0 && (
-                <div className="absolute inset-y-0"
-                  style={{
-                    left: mounted ? `${solidPct}%` : "0%",
-                    width: mounted ? `${fcPct}%` : "0%",
-                    background: "repeating-linear-gradient(45deg,rgba(0,122,255,0.5),rgba(0,122,255,0.5) 3px,transparent 3px,transparent 6px)",
-                    transition: `left .8s cubic-bezier(.22,1,.36,1) ${delay}ms, width .8s cubic-bezier(.22,1,.36,1) ${delay + 120}ms`,
-                  }} />
-              )}
-            </div>
-            <div className={`shrink-0 text-right tabular-nums text-sm ${isLast ? "font-semibold text-gray-900 dark:text-white" : "text-gray-400"}`}
-              style={{ minWidth: 66 }}>
-              {projected > 0 ? `${fmt(projected)} ₽` : "—"}
-            </div>
+    <div>
+      <div className="flex items-center gap-2 mb-1">
+        <div className="text-sm text-gray-500">{fullLabel}</div>
+        {deltaPct !== null && (
+          <div className={`flex items-center gap-0.5 text-xs font-medium px-2 py-0.5 rounded-full ${
+            deltaPct >= 0
+              ? "bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300"
+              : "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300"
+          }`}>
+            <Icon name={deltaPct >= 0 ? "trending-up" : "trending-down"} size={13} />
+            {deltaPct >= 0 ? "+" : ""}{deltaPct}%
           </div>
-        )
-      })}
+        )}
+      </div>
+      <div className="text-4xl md:text-5xl font-semibold leading-none bg-gradient-to-r from-[#007AFF] to-[#5856D6] bg-clip-text text-transparent">
+        {fmt(received)} ₽
+      </div>
+      <div className="text-xs text-gray-400 mt-1.5 h-4">
+        {isCurrentMonth && forecast > 0
+          ? <>прогноз <span className="text-blue-500 font-medium">+{fmt(forecast)} ₽</span> → {fmt(received + forecast)} ₽</>
+          : isCurrentMonth ? "получено в этом месяце" : "получено за месяц"}
+      </div>
+
+      {/* Столбцы по месяцам — тап переключает выбранный месяц */}
+      <div className="mt-5 flex items-end justify-between gap-1.5">
+        {buckets.map((b, i) => {
+          const isCur = i === lastIdx
+          const isSel = i === sel
+          const fc = isCur ? forecast : 0
+          const solidPx = b.total > 0 ? Math.max((b.total / maxVal) * AREA, 10) : 0
+          const fcPx = (fc / maxVal) * AREA
+          const delay = i * 70
+          return (
+            <button key={i} type="button" onClick={() => setSel(i)}
+              className="flex-1 flex flex-col items-center gap-2 focus:outline-none active:scale-[0.96] transition-transform">
+              <div className="w-full flex flex-col justify-end items-center" style={{ height: AREA }}>
+                {solidPx + fcPx === 0 ? (
+                  <div className="w-full max-w-[44px] h-2 rounded-full bg-black/[0.08] dark:bg-white/[0.12]" />
+                ) : (
+                  <div className="w-full max-w-[44px] flex flex-col justify-end rounded-lg overflow-hidden"
+                    style={{ height: mounted ? solidPx + fcPx : 0, transition: `height .7s cubic-bezier(.22,1,.36,1) ${delay}ms` }}>
+                    {fcPx > 0 && (
+                      <div style={{ height: fcPx, background: "repeating-linear-gradient(45deg,rgba(0,122,255,0.55),rgba(0,122,255,0.55) 3px,transparent 3px,transparent 6px)" }} />
+                    )}
+                    <div style={{ height: solidPx }}
+                      className={isSel ? "bg-gradient-to-b from-[#5AC8FA] to-[#007AFF]" : "bg-gray-300 dark:bg-white/20"} />
+                  </div>
+                )}
+              </div>
+              <span className={`text-sm ${isSel ? "font-semibold text-gray-800 dark:text-gray-100" : "text-gray-400"}`}>
+                {b.label}
+              </span>
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -377,8 +411,6 @@ function Payment({ students, setStudents, tutorId }) {
   const filteredPayments = period === "week" ? weekPayments : period === "month" ? monthPayments : allPayments
 
   const buckets = getMonthlyIncome(allPayments, 6)
-  const lastMonthTotal = buckets.length >= 2 ? buckets[buckets.length - 2].total : 0
-  const deltaPct = lastMonthTotal > 0 ? Math.round((monthTotal - lastMonthTotal) / lastMonthTotal * 100) : null
   const forecast = getMonthForecast(students)
   const projected = monthTotal + forecast
   const avgCheck = allPayments.length > 0 ? allTotal / allPayments.length : 0
@@ -387,9 +419,6 @@ function Payment({ students, setStudents, tutorId }) {
   const totalDebt = debtors.reduce((sum, s) => sum + getStudentDebt(s), 0)
   const paid = students.filter((s) => hasConductedLessons(s) && getStudentDebt(s) <= 0)
   const noLessons = students.filter((s) => !hasConductedLessons(s))
-
-  const rawMonth = new Date().toLocaleDateString("ru-RU", { month: "long", year: "numeric" })
-  const monthLabel = rawMonth.charAt(0).toUpperCase() + rawMonth.slice(1)
 
   // Расходы / налог / чистая прибыль за текущий месяц.
   // НПД и УСН «Доходы» считают налог от дохода (расходы базу не уменьшают).
@@ -402,46 +431,9 @@ function Payment({ students, setStudents, tutorId }) {
     <div className="p-4 sm:p-6">
       <h1 className="text-xl font-medium mb-4 sm:mb-6">Финансы</h1>
 
-      {/* HERO — финансовый поток */}
+      {/* HERO — доход по месяцам (стиль аналитики Т-Банка) */}
       <div className="glass p-4 sm:p-5 md:p-6 mb-4 overflow-hidden relative">
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(240px,300px)_1fr] gap-4 lg:gap-6 items-center">
-          <div>
-            <div className="text-sm text-gray-500 mb-1">{monthLabel}</div>
-            <div className="flex items-end gap-3 flex-wrap">
-              <div className="text-4xl md:text-5xl font-semibold leading-none bg-gradient-to-r from-[#007AFF] to-[#5856D6] bg-clip-text text-transparent">
-                {fmt(monthTotal)} ₽
-              </div>
-              {deltaPct !== null && (
-                <div className={`flex items-center gap-0.5 text-xs font-medium px-2 py-1 rounded-full mb-0.5 ${
-                  deltaPct >= 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-                }`}>
-                  <Icon name={deltaPct >= 0 ? "trending-up" : "trending-down"} size={13} />
-                  {deltaPct >= 0 ? "+" : ""}{deltaPct}%
-                </div>
-              )}
-            </div>
-            <div className="text-xs text-gray-400 mt-1">
-              {deltaPct !== null ? "к прошлому месяцу" : "получено в этом месяце"}
-            </div>
-
-            {forecast > 0 && (
-              <div className="mt-4 pt-4 border-t border-gray-100 dark:border-white/10">
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: "repeating-linear-gradient(45deg,rgba(0,122,255,0.5),rgba(0,122,255,0.5) 2px,transparent 2px,transparent 4px)", border: "1px solid rgba(0,122,255,0.4)" }} />
-                  <span className="text-gray-500">Прогноз до конца месяца</span>
-                </div>
-                <div className="mt-1 text-lg font-medium">
-                  <span className="text-blue-600">+{fmt(forecast)} ₽</span>
-                  <span className="text-gray-400 text-sm font-normal"> → {fmt(projected)} ₽</span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div>
-            <IncomeBars buckets={buckets} forecast={forecast} mounted={mounted} />
-          </div>
-        </div>
+        <IncomeChart buckets={buckets} forecast={forecast} mounted={mounted} />
       </div>
 
       {/* KPI-полоса */}
