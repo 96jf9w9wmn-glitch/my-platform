@@ -1579,14 +1579,14 @@ const ptsWord = (n) => `${NUMW[n]} точек`
 // shade — {a,b} закрасить между кривой и осью; tickXvals — подписи делений оси x.
 function wave8Svg({ gx0, gx1, gy0, gy1, fn, xa, xb, label = null, marks = [], markBelow = true,
   dashX = [], shade = null, tangent = null, dots = [], openEnds = true, showUnit = true, tickXvals = null }) {
-  const cell = 27, m = 16, axOv = 13 // axOv — вынос оси x за крайние точки (px): стрелка и открытые концы не впритык
-  const padX = m + axOv
+  const cell = 22, m = 16, axOv = 13 // axOv — вынос оси x за крайние точки (px): стрелка и открытые концы не впритык
+  const padX = m + cell              // +1 клетка-поле слева/справа: сетка обрамляет вынос оси, а не пустое поле
   const W = 2 * padX + (gx1 - gx0) * cell, H = 2 * m + (gy1 - gy0) * cell
   const X = (u) => padX + (u - gx0) * cell
   const Y = (v) => H - m - (v - gy0) * cell
   let g = ""
-  for (let i = gx0; i <= gx1; i++) g += `<line x1="${X(i)}" y1="${Y(gy0)}" x2="${X(i)}" y2="${Y(gy1)}" stroke="${G_GRID}" stroke-width="1"/>`
-  for (let j = gy0; j <= gy1; j++) g += `<line x1="${X(gx0)}" y1="${Y(j)}" x2="${X(gx1)}" y2="${Y(j)}" stroke="${G_GRID}" stroke-width="1"/>`
+  for (let i = gx0 - 1; i <= gx1 + 1; i++) g += `<line x1="${X(i)}" y1="${Y(gy0)}" x2="${X(i)}" y2="${Y(gy1)}" stroke="${G_GRID}" stroke-width="1"/>`
+  for (let j = gy0; j <= gy1; j++) g += `<line x1="${X(gx0 - 1)}" y1="${Y(j)}" x2="${X(gx1 + 1)}" y2="${Y(j)}" stroke="${G_GRID}" stroke-width="1"/>`
   if (shade) {
     let d = `M ${clean(X(shade.a))} ${clean(Y(0))} `
     const st = (shade.b - shade.a) / 160
