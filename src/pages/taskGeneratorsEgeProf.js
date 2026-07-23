@@ -1041,7 +1041,7 @@ function t12X32Point() {
   if (!Number.isInteger(p)) return t12X32Point()
   const x0 = k * k
   const d = randInt(1, 25)
-  const xterm = q === 1 ? "x√x" : `${q}x√x`   // x^(3/2)=x√x
+  const xterm = q === 1 ? "x⟦r:x⟧" : `${q}x⟦r:x⟧`   // x^(3/2)=x√x
   const body = maxPt ? `${d}+${p}x−${xterm}` : `${xterm}−${p}x+${d}`
   return {
     condition_text: `Найдите точку ${maxPt ? "максимума" : "минимума"} функции y=${body}.`,
@@ -1091,7 +1091,7 @@ function t12X32MinValue() {
   const minVal = k * k * k - p * x0 + c          // x0√x0 − p·x0 + c = k³ − p·k² + c
   const hi = x0 + randInt(2, 20)
   return {
-    condition_text: `Найдите наименьшее значение функции y=x√x−${p % 1 ? ru(p) : p}x+${c} на отрезке [1; ${hi}].`,
+    condition_text: `Найдите наименьшее значение функции y=x⟦r:x⟧−${p % 1 ? ru(p) : p}x+${c} на отрезке [1; ${hi}].`,
     answer: ru(minVal),
   }
 }
@@ -2216,7 +2216,9 @@ function t8areaGivenF() {
 // реальный тип «многогранник из единичных кубов». Ответ считается кодом.
 // ============================================================================
 
-const ST_INK = "#1c1c1e", ST_HI = "#007AFF", ST_FILL = "rgba(0,122,255,0.14)"
+// Чертежи 1-в-1 с ФИПИ: всё чёрное, выделенное тело — жирным чёрным (без заливки/синего),
+// скрытые рёбра — штрихом, размеры на фигуру НЕ наносятся (они в тексте).
+const ST_INK = "#000", ST_HI = "#000", ST_FILL = "none"
 const VSUB = { A: "A", B: "B", C: "C", D: "D", A1: "A₁", B1: "B₁", C1: "C₁", D1: "D₁" }
 const BOXNAME = "ABCDA₁B₁C₁D₁", PRISMNAME = "ABCA₁B₁C₁"
 const R2 = rT(2)  // √2
@@ -2225,10 +2227,11 @@ function stWrap(W, H, body) {
   return `<svg xmlns="http://www.w3.org/2000/svg" font-family="Arial, sans-serif" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${body}</svg>`
 }
 function stEdge(p, q, dash) {
-  return `<line x1="${clean(p[0])}" y1="${clean(p[1])}" x2="${clean(q[0])}" y2="${clean(q[1])}" stroke="${ST_INK}" stroke-width="1.7"${dash ? ' stroke-dasharray="5 4"' : ""}/>`
+  return `<line x1="${clean(p[0])}" y1="${clean(p[1])}" x2="${clean(q[0])}" y2="${clean(q[1])}" stroke="${ST_INK}" stroke-width="1.4"${dash ? ' stroke-dasharray="5 4"' : ""}/>`
 }
-function stPoly(pts, fill) {
-  return `<polygon points="${pts.map(p => clean(p[0]) + "," + clean(p[1])).join(" ")}" fill="${fill}" stroke="${ST_HI}" stroke-width="2" stroke-linejoin="round"/>`
+// Выделенное тело: жирные чёрные рёбра (без заливки), ФИПИ-вид. dash=true → скрытые рёбра штрихом.
+function stPoly(pts, _fill, dash) {
+  return `<polygon points="${pts.map(p => clean(p[0]) + "," + clean(p[1])).join(" ")}" fill="none" stroke="${ST_INK}" stroke-width="2.6" stroke-linejoin="round"${dash ? ' stroke-dasharray="6 4"' : ""}/>`
 }
 // Подпись у точки/ребра, отодвинутая от центроида фигуры наружу.
 function stLabelOut(p, cen, text, off, big) {
@@ -2248,23 +2251,22 @@ function stBox({ highlight = [], edgeLabels = {}, cube = false } = {}) {
   const names = Object.keys(V)
   const cen = [names.reduce((s, n) => s + V[n][0], 0) / 8, names.reduce((s, n) => s + V[n][1], 0) / 8]
   let g = ""
-  for (const face of highlight) g += stPoly(face.map(n => V[n]), ST_FILL)
+  for (const face of highlight) { const f = Array.isArray(face) ? face : face.f; g += stPoly(f.map(n => V[n]), ST_FILL, Array.isArray(face) ? false : face.dash) }
   const E = [["A", "B", 0], ["B", "C", 0], ["C", "D", 1], ["D", "A", 1],
   ["A1", "B1", 0], ["B1", "C1", 0], ["C1", "D1", 0], ["D1", "A1", 0],
   ["A", "A1", 0], ["B", "B1", 0], ["C", "C1", 0], ["D", "D1", 1]]
   for (const [p, q, hid] of E) g += stEdge(V[p], V[q], hid)
-  for (const [k, t] of Object.entries(edgeLabels)) {
-    const m = k.match(/^([A-D]1?)([A-D]1?)$/)
-    if (m) { const mid = [(V[m[1]][0] + V[m[2]][0]) / 2, (V[m[1]][1] + V[m[2]][1]) / 2]; g += stLabelOut(mid, cen, t, 13, false) }
-  }
+  // Размеры на фигуру банка НЕ наносим (в чистых чертежах ФИПИ их нет — они в тексте).
+  void edgeLabels
   for (const n of names) g += stLabelOut(V[n], cen, VSUB[n], 12, true)
   return stWrap(290, cube ? 230 : 230, g)
 }
 // грани пирамиды: основание ABCD + боковые треугольники к вершине apex
 function stPyrFaces(apex) {
   const base = ["A", "B", "C", "D"]
+  // основание ABCD — сплошным; боковые рёбра к вершине — штрихом (ФИПИ-вид).
   const f = [base.slice()]
-  for (let i = 0; i < 4; i++) f.push([base[i], base[(i + 1) % 4], apex])
+  for (let i = 0; i < 4; i++) f.push({ f: [base[i], base[(i + 1) % 4], apex], dash: true })
   return f
 }
 
@@ -2709,11 +2711,710 @@ function t03CubesSurface() {
   }
 }
 
+// ── Ступенчатый многогранник (все двугранные углы прямые) ───────────────────
+// Профиль (плоскость глубина×высота) выдавливается по ширине W (ФИПИ-вид, чёрный).
+// profile: [[z,y],...] прямоугольный многоугольник CCW. labels: [{p:[x,y,z],t,off}].
+// Объём = площадь(profile)·W;  Площадь пов. = 2·площадь(profile) + периметр(profile)·W.
+const STEP_SX = 52, STEP_SY = 50, STEP_DZ = [33, 21]
+function stExtrude(profile, W, labels = []) {
+  const boxW = 330, boxH = 270
+  const pr = (x, y, z) => [x * STEP_SX + z * STEP_DZ[0], -y * STEP_SY - z * STEP_DZ[1]]
+  const key = (p) => p.map(v => v.toFixed(2)).join(",")
+  const faces = []
+  faces.push({ pts: profile.map(([z, y]) => [0, y, z]), vis: false })
+  faces.push({ pts: profile.map(([z, y]) => [W, y, z]), vis: true })
+  for (let i = 0; i < profile.length; i++) {
+    const [z0, y0] = profile[i], [z1, y1] = profile[(i + 1) % profile.length]
+    const dz = z1 - z0, dy = y1 - y0
+    const nz = dy, ny = -dz // внешняя нормаль (z,y) для CCW
+    const vis = (nz < 0) || (ny > 0) // видно: перёд(-z) или верх(+y); правый торец — cap
+    faces.push({ pts: [[0, y0, z0], [W, y0, z0], [W, y1, z1], [0, y1, z1]], vis })
+  }
+  const edges = new Map()
+  for (const f of faces) for (let i = 0; i < f.pts.length; i++) {
+    const a = f.pts[i], b = f.pts[(i + 1) % f.pts.length]
+    const k = [key(a), key(b)].sort().join("|")
+    const e = edges.get(k) || { a, b, vis: false }; e.vis = e.vis || f.vis; edges.set(k, e)
+  }
+  let pts = []; for (const f of faces) for (const p of f.pts) pts.push(pr(...p))
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1])
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys)
+  const ox = (boxW - (maxX - minX)) / 2 - minX, oy = (boxH - (maxY - minY)) / 2 - minY
+  const P = (x, y, z) => { const p = pr(x, y, z); return [clean(p[0] + ox), clean(p[1] + oy)] }
+  let g = ""
+  for (const f of faces) g += `<polygon points="${f.pts.map(p => P(...p).join(",")).join(" ")}" fill="#fff" stroke="none"/>`
+  for (const e of edges.values()) if (!e.vis) { const a = P(...e.a), b = P(...e.b); g += `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="#000" stroke-width="1.6" stroke-dasharray="6 5"/>` }
+  for (const e of edges.values()) if (e.vis) { const a = P(...e.a), b = P(...e.b); g += `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="#000" stroke-width="2.4"/>` }
+  for (const L of labels) { const p = P(...L.p); g += `<text x="${clean(+p[0] + (L.off?.[0] || 0))}" y="${clean(+p[1] + (L.off?.[1] || 0))}" font-size="17" font-style="italic" font-weight="bold" fill="#000" text-anchor="middle" ${HALO}>${L.t}</text>` }
+  return stWrap(boxW, boxH, g)
+}
+// площадь и периметр прямоугольного профиля
+function profAreaPerim(profile) {
+  let A = 0, Per = 0
+  for (let i = 0; i < profile.length; i++) {
+    const [z0, y0] = profile[i], [z1, y1] = profile[(i + 1) % profile.length]
+    A += z0 * y1 - z1 * y0
+    Per += Math.abs(z1 - z0) + Math.abs(y1 - y0)
+  }
+  return { area: Math.abs(A) / 2, perim: Per }
+}
+// Одноступенчатый брус (как Доп.1): низ W×D×h1 + сверху сзади W×d2×h2.
+function stepSingle() {
+  const W = randInt(3, 5), D = randInt(2, 3), H = randInt(3, 4)
+  const h2 = randInt(1, H - 2), d1 = randInt(1, D - 1) // низ ≥2 по высоте, ступень видна
+  const h1 = H - h2
+  const profile = [[0, 0], [D, 0], [D, H], [d1, H], [d1, h1], [0, h1]]
+  const labels = [
+    { p: [W / 2, 0, 0], t: ru(W), off: [0, 20] },
+    { p: [W, 0, D / 2], t: ru(D), off: [16, 10] },
+    { p: [W, H / 2, D], t: ru(H), off: [18, 0] },
+    { p: [0, h1 + h2 / 2, d1], t: ru(h2), off: [-13, -3] },
+    { p: [0, h1, d1 / 2], t: ru(d1), off: [-14, 13] },
+  ]
+  return { profile, W, image: stExtrude(profile, W, labels) }
+}
+function t03StepVol() {
+  const s = stepSingle()
+  const { area } = profAreaPerim(s.profile)
+  return {
+    condition_text: `Найдите объём многогранника, изображённого на рисунке (все двугранные углы — прямые).`,
+    image_url: svgUrl(s.image),
+    answer: ru(area * s.W),
+  }
+}
+function t03StepSurf() {
+  const s = stepSingle()
+  const { area, perim } = profAreaPerim(s.profile)
+  return {
+    condition_text: `Найдите площадь поверхности многогранника, изображённого на рисунке (все двугранные углы — прямые).`,
+    image_url: svgUrl(s.image),
+    answer: ru(2 * area + perim * s.W),
+  }
+}
+
+// ============================================================================
+// №1 — ПЛАНИМЕТРИЯ (КЭС 7.1; чертёж обязателен). Эталон — 50 задач банка ФИПИ +
+// 110 «Доп.» (реальные экзамены/демо/пробники). Ответ считается кодом. Чертежи —
+// свои SVG, схематичные «как ФИПИ» (не в масштабе): меняются числа и подписи.
+// Инвентарь типажей — fipi_bank_ege_prof/typages_task01_planimetria.md.
+// ============================================================================
+
+const P_INK = "#1c1c1e", P_HI = "#007AFF", P_FILL = "rgba(0,122,255,0.14)", P_RED = "#d0021b"
+const unit = (a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1; return [dx / L, dy / L] }
+const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
+const onC = (O, R, deg) => { const t = deg * Math.PI / 180; return [O[0] + R * Math.cos(t), O[1] - R * Math.sin(t)] }
+function pSeg(a, b, o = {}) { const c = o.red ? P_RED : o.hi ? P_HI : P_INK; return `<line x1="${clean(a[0])}" y1="${clean(a[1])}" x2="${clean(b[0])}" y2="${clean(b[1])}" stroke="${c}" stroke-width="${o.w || 1.7}"${o.d ? ' stroke-dasharray="5 4"' : ""}/>` }
+function pPolygon(pts, o = {}) { const c = o.hi ? P_HI : P_INK; return `<polygon points="${pts.map(p => clean(p[0]) + "," + clean(p[1])).join(" ")}" fill="${o.fill || "none"}" stroke="${c}" stroke-width="${o.w || 1.7}" stroke-linejoin="round"/>` }
+function pCircle(O, R, o = {}) { const c = o.hi ? P_HI : o.red ? P_RED : P_INK; return `<circle cx="${clean(O[0])}" cy="${clean(O[1])}" r="${clean(R)}" fill="${o.fill || "none"}" stroke="${c}" stroke-width="${o.w || 1.6}"${o.d ? ' stroke-dasharray="5 4"' : ""}/>` }
+function pDot(p, r = 2.4) { return `<circle cx="${clean(p[0])}" cy="${clean(p[1])}" r="${r}" fill="${P_INK}"/>` }
+const VDIR = { tl: [-11, -5], tr: [12, -5], bl: [-12, 15], br: [12, 15], t: [0, -11], b: [0, 18], l: [-14, 5], r: [14, 5] }
+function pV(p, dir, t) { const o = VDIR[dir] || [0, 0]; return `<text x="${clean(p[0] + o[0])}" y="${clean(p[1] + o[1])}" ${HALO} font-size="15" font-style="italic" font-weight="bold" fill="${P_INK}" text-anchor="middle">${t}</text>` }
+// подпись длины ребра у его середины, отодвинутая по нормали (side=±1 — сторона)
+function pEV(a, b, t, side = 1) { const m = mid(a, b), u = unit(a, b), px = -u[1] * 14 * side, py = u[0] * 14 * side; return `<text x="${clean(m[0] + px)}" y="${clean(m[1] + py + 4)}" ${HALO} font-size="13" fill="${P_INK}" text-anchor="middle">${t}</text>` }
+// подпись значения угла у вершины v (по направлению биссектрисы угла a-v-b)
+function pAV(v, a, b, t, r = 27) { const u = unit(v, a), w = unit(v, b); let bx = u[0] + w[0], by = u[1] + w[1]; const L = Math.hypot(bx, by) || 1; return `<text x="${clean(v[0] + bx / L * r)}" y="${clean(v[1] + by / L * r + 4)}" ${HALO} font-size="12.5" fill="${P_INK}" text-anchor="middle">${t}</text>` }
+// дуга-метка угла a-v-b радиуса r (double — двойная дуга для «равных» углов)
+function pArc(v, a, b, r, o = {}) {
+  const an = p => Math.atan2(p[1] - v[1], p[0] - v[0]); let a1 = an(a), a2 = an(b)
+  let df = a2 - a1; while (df <= -Math.PI) df += 2 * Math.PI; while (df > Math.PI) df -= 2 * Math.PI
+  const sw = df > 0 ? 1 : 0, P = (ang, rr) => [v[0] + rr * Math.cos(ang), v[1] + rr * Math.sin(ang)], c = o.hi ? P_HI : P_INK
+  let g = `<path d="M${clean(P(a1, r)[0])} ${clean(P(a1, r)[1])} A${r} ${r} 0 0 ${sw} ${clean(P(a2, r)[0])} ${clean(P(a2, r)[1])}" fill="none" stroke="${c}" stroke-width="1.4"/>`
+  if (o.double) { const r2 = r + 3.6; g += `<path d="M${clean(P(a1, r2)[0])} ${clean(P(a1, r2)[1])} A${r2} ${r2} 0 0 ${sw} ${clean(P(a2, r2)[0])} ${clean(P(a2, r2)[1])}" fill="none" stroke="${c}" stroke-width="1.4"/>` }
+  return g
+}
+// прямой угол в вершине v (маленький квадрат к сторонам a,b)
+function pRight(v, a, b, s = 10) { const u = unit(v, a), w = unit(v, b), p1 = [v[0] + u[0] * s, v[1] + u[1] * s], p3 = [v[0] + w[0] * s, v[1] + w[1] * s], p2 = [v[0] + (u[0] + w[0]) * s, v[1] + (u[1] + w[1]) * s]; return `<polyline points="${clean(p1[0])},${clean(p1[1])} ${clean(p2[0])},${clean(p2[1])} ${clean(p3[0])},${clean(p3[1])}" fill="none" stroke="${P_INK}" stroke-width="1.3"/>` }
+// n штрихов «равные отрезки» на середине ab
+function pTick(a, b, n = 1) { const m = mid(a, b), u = unit(a, b), pp = [-u[1], u[0]]; let g = ""; for (let i = 0; i < n; i++) { const off = (i - (n - 1) / 2) * 4.2, c = [m[0] + u[0] * off, m[1] + u[1] * off]; g += `<line x1="${clean(c[0] - pp[0] * 5)}" y1="${clean(c[1] - pp[1] * 5)}" x2="${clean(c[0] + pp[0] * 5)}" y2="${clean(c[1] + pp[1] * 5)}" stroke="${P_INK}" stroke-width="1.4"/>` } return g }
+const deg = (n) => `${ru(n)}°`
+
+// ── Треугольник — углы ──────────────────────────────────────────────────────
+// Равнобедренный: apex C сверху, база AB, равные боковые CA=CB (тик-метки).
+function figIso({ topLbl = "C", blLbl = "A", brLbl = "B", angTop, angBl, angBr, ext } = {}) {
+  const A = [45, 172], B = [205, 172], C = [125, 48]
+  let g = pPolygon([A, B, C]) + pTick(C, A, 2) + pTick(C, B, 2)
+  if (ext) { const D = [B[0] + (B[0] - A[0]) * 0.28, B[1]]; g += pSeg(B, D, { d: true }); g += pArc(B, C, D, 15); g += pAV(B, C, D, ext, 26); g += pV(D, "br", "D") }
+  if (angTop) { g += pArc(C, A, B, 15); g += pAV(C, A, B, angTop, 24) }
+  if (angBl) { g += pArc(A, B, C, 15); g += pAV(A, B, C, angBl, 24) }
+  if (angBr && !ext) { g += pArc(B, A, C, 15); g += pAV(B, A, C, angBr, 24) }
+  g += pV(A, "bl", blLbl) + pV(B, ext ? "b" : "br", brLbl) + pV(C, "t", topLbl)
+  return stWrap(270, 200, g)
+}
+
+// Равнобедр. AC=BC: дан один угол, найти другой. base A=B=(180−C)/2.
+function t01IsoAngle() {
+  if (Math.random() < 0.5) {                       // дан угол при вершине C → угол при основании
+    const C = randInt(10, 80) * 2                   // чётный, чтобы (180−C)/2 целое
+    return { condition_text: `В треугольнике ABC AC = BC, угол C равен ${deg(C)}. Найдите угол A. Ответ дайте в градусах.`, image_url: svgUrl(figIso({ angTop: deg(C) })), answer: ru((180 - C) / 2) }
+  }
+  const A = randInt(15, 80)                          // дан угол при основании → угол при вершине
+  return { condition_text: `В треугольнике ABC AC = BC, угол A равен ${deg(A)}. Найдите угол C. Ответ дайте в градусах.`, image_url: svgUrl(figIso({ angBl: deg(A) })), answer: ru(180 - 2 * A) }
+}
+
+// Равнобедр., внешний угол. Варианты: внешний при основании / при вершине.
+function t01IsoExt() {
+  const v = pick(["baseFromApex", "apexFromExt", "baseFromExtApex"])
+  if (v === "baseFromApex") {                        // дан угол при вершине C → внешний при основании B
+    const C = randInt(10, 80) * 2, base = (180 - C) / 2
+    return { condition_text: `В треугольнике ABC AC = BC, угол C равен ${deg(C)}, угол ABD внешний. Найдите величину угла ABD. Ответ дайте в градусах.`, image_url: svgUrl(figIso({ angTop: deg(C), ext: "?" })), answer: ru(180 - base) }
+  }
+  if (v === "apexFromExt") {                          // дан внешний при основании B → угол C
+    const base = randInt(46, 87), ext = 180 - base
+    return { condition_text: `В треугольнике ABC AC = BC. Внешний угол при вершине B равен ${deg(ext)}. Найдите угол C. Ответ дайте в градусах.`, image_url: svgUrl(figIso({ ext: deg(ext) })), answer: ru(180 - 2 * base) }
+  }
+  const base = randInt(20, 80), ext = 180 - base      // AB=BC (вершина B), внешний при вершине B → угол C(основания)
+  return { condition_text: `В треугольнике ABC AB = BC. Внешний угол при вершине B равен ${deg(180 - base * 2 > 0 ? ext : ext)}. Найдите угол C. Ответ дайте в градусах.`, image_url: svgUrl(figIsoApexB(deg(ext))), answer: ru(base) }
+}
+// равнобедр. с вершиной B (AB=BC), внешний угол при B
+function figIsoApexB(ext) {
+  const A = [45, 172], C = [205, 172], B = [125, 48]
+  let g = pPolygon([A, C, B]) + pTick(B, A, 2) + pTick(B, C, 2)
+  const D = [B[0] + 42, B[1] - 6]; g += pSeg(B, D, { d: true }) + pArc(B, C, D, 15) + pAV(B, C, D, ext, 24) + pV(D, "tr", "D")
+  g += pV(A, "bl", "A") + pV(C, "br", "C") + pV(B, "t", "B")
+  return stWrap(270, 200, g)
+}
+
+// Биссектриса AD (D на BC): дан угол C и угол CAD (=½A). Найти B или ADB.
+function figBisector(angC, angCAD) {
+  const A = [40, 176], B = [242, 176], C = [120, 46], D = mid(B, C)
+  let g = pPolygon([A, B, C]) + pSeg(A, D)
+  g += pArc(A, C, D, 20) + pArc(A, D, B, 26, { double: true })
+  g += pAV(A, C, D, angCAD, 40)
+  g += pArc(C, A, B, 15) + pAV(C, A, B, angC, 22)
+  g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "t", "C") + pV(D, "r", "D")
+  return stWrap(270, 205, g)
+}
+function t01Bisector() {
+  const C = randInt(40, 110), half = randInt(15, Math.floor((178 - C) / 2))
+  const A = 2 * half, B = 180 - C - A
+  if (Math.random() < 0.5)
+    return { condition_text: `В треугольнике ABC AD — биссектриса, угол C равен ${deg(C)}, угол CAD равен ${deg(half)}. Найдите угол B. Ответ дайте в градусах.`, image_url: svgUrl(figBisector(deg(C), deg(half))), answer: ru(B) }
+  const ADB = 180 - half - B
+  return { condition_text: `В треугольнике ABC AD — биссектриса, угол C равен ${deg(C)}, угол BAD равен ${deg(half)}. Найдите угол ADB. Ответ дайте в градусах.`, image_url: svgUrl(figBisector(deg(C), deg(half))), answer: ru(ADB) }
+}
+
+// Две высоты BD, CE пересекаются в O: угол DOE = 180 − A.
+function t01TwoAltitudes() {
+  const A = randInt(35, 80)
+  const P = [128, 40], Aa = [40, 178], Bb = [232, 178]  // C=P(top), A,B основание
+  // ноги высот строим как проекции — чтобы картинка была корректной
+  const foot = (X, Y, Z) => { const dx = Z[0] - Y[0], dy = Z[1] - Y[1], t = ((X[0] - Y[0]) * dx + (X[1] - Y[1]) * dy) / (dx * dx + dy * dy); return [Y[0] + t * dx, Y[1] + t * dy] }
+  const Dh = foot(Bb, Aa, P), Eh = foot(P, Aa, Bb)
+  // ортоцентр
+  const inter = (p1, p2, p3, p4) => { const a1 = p2[1] - p1[1], b1 = p1[0] - p2[0], c1 = a1 * p1[0] + b1 * p1[1], a2 = p4[1] - p3[1], b2 = p3[0] - p4[0], c2 = a2 * p3[0] + b2 * p3[1], d = a1 * b2 - a2 * b1; return [(b2 * c1 - b1 * c2) / d, (a1 * c2 - a2 * c1) / d] }
+  const O = inter(Bb, Dh, P, Eh)
+  let g = pPolygon([Aa, Bb, P]) + pSeg(Bb, Dh) + pSeg(P, Eh)
+  g += pRight(Dh, Aa, Bb, 8) + pRight(Eh, Aa, Bb, 8)
+  g += pArc(O, Dh, Eh, 13) + pDot(O)
+  g += pAV(Aa, Bb, P, deg(A), 30)
+  g += pV(Aa, "bl", "A") + pV(Bb, "br", "B") + pV(P, "t", "C") + pV(Dh, "r", "D") + pV(Eh, "l", "E") + pV(O, "b", "O")
+  return { condition_text: `В треугольнике ABC угол A равен ${deg(A)}, углы B и C острые, высоты BD и CE пересекаются в точке O. Найдите угол DOE. Ответ дайте в градусах.`, image_url: svgUrl(stWrap(270, 205, g)), answer: ru(180 - A) }
+}
+
+// Теорема синусов: R = a/(2 sin α). Углы с «хорошим» синусом.
+function t01SineTheorem() {
+  const variants = [
+    { ang: 30, k: 1 }, { ang: 150, k: 1 },            // sin=1/2 → R = a
+    { ang: 45, k: rT(2) }, { ang: 135, k: rT(2) },    // sin=√2/2 → a = k√2, R = k
+    { ang: 60, k: rT(3) }, { ang: 120, k: rT(3) },    // sin=√3/2 → a = k√3, R = k
+  ]
+  const v = pick(variants), k = randInt(2, 9)
+  // сторона a: при 30/150 → a=число, R=a/... = a? нет: R=a/(2·0.5)=a. при 45→ a=k√2, R=k. при 60→ a=k√3, R=k.
+  let sideTxt, R
+  if (v.ang === 30 || v.ang === 150) { const a = randInt(3, 18); sideTxt = ru(a); R = a }
+  else { sideTxt = `${k}${v.k}`; R = k }
+  const A = [55, 150], B = [215, 150], C = [150, 55], O = [135, 118]
+  let g = pCircle(O, 78) + pPolygon([A, B, C], { w: 1.8 })
+  g += pEV(A, B, sideTxt, 1) + pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "t", "C")
+  return { condition_text: `В треугольнике ABC сторона AB равна ${sideTxt}, угол C равен ${deg(v.ang)}. Найдите радиус описанной около этого треугольника окружности.`, image_url: svgUrl(stWrap(280, 215, g)), answer: ru(R) }
+}
+
+// ── Прямоугольный треугольник: медиана/высота/биссектриса из прямого угла ────
+// база «прямой угол C сверху, гипотенуза AB снизу» (точка C — на окружности Фалеса)
+const RT_A = [40, 182], RT_B = [250, 182]
+function figRightCevians(feet, marks, angAt) {
+  const C = [96, 78]                                  // ≈ на окружности Фалеса над AB
+  let g = pPolygon([RT_A, RT_B, C]) + pRight(C, RT_A, RT_B, 11)
+  const M = mid(RT_A, RT_B)                            // середина (медиана)
+  const H = (() => { const dx = RT_B[0] - RT_A[0], dy = RT_B[1] - RT_A[1], t = ((C[0] - RT_A[0]) * dx + (C[1] - RT_A[1]) * dy) / (dx * dx + dy * dy); return [RT_A[0] + t * dx, RT_A[1] + t * dy] })()
+  const D = mid(H, M)                                  // биссектриса — между H и M (схематично)
+  const pts = { H, M, D }
+  for (const f of feet) g += pSeg(C, pts[f])
+  if (feet.includes("H")) g += pRight(H, C, RT_A, 8)
+  const lo = pts[feet[0]], hi = pts[feet[1]]
+  if (feet.length === 2) { g += pArc(C, lo, hi, 15); if (angAt) g += pAV(C, lo, hi, angAt, 26) }
+  g += pV(RT_A, "bl", "A") + pV(RT_B, "br", "B") + pV(C, "t", "C")
+  for (const f of feet) g += pV(pts[f], "b", f)
+  return stWrap(280, 210, g)
+}
+// медиана CD из прямого угла: угол B → ACD = 90 − B
+function t01RightMedian() {
+  const B = randInt(4, 80)
+  const C = [96, 78], M = mid(RT_A, RT_B)
+  let g = pPolygon([RT_A, RT_B, C]) + pRight(C, RT_A, RT_B, 11) + pSeg(C, M)
+  g += pArc(C, RT_A, M, 16) + pAV(C, RT_A, M, "?", 24) + pAV(RT_B, RT_A, C, deg(B), 26) + pArc(RT_B, RT_A, C, 15)
+  g += pV(RT_A, "bl", "A") + pV(RT_B, "br", "B") + pV(C, "t", "C") + pV(M, "b", "D")
+  return { condition_text: `В треугольнике ABC CD — медиана, угол C равен 90°, угол B равен ${deg(B)}. Найдите угол ACD. Ответ дайте в градусах.`, image_url: svgUrl(stWrap(280, 210, g)), answer: ru(90 - B) }
+}
+// угол между двумя чевианами из прямого угла (высота/медиана/биссектриса)
+function t01RightCevians() {
+  const pairs = [
+    { feet: ["H", "M"], t1: "высотой CH", t2: "медианой CM", between: (a, b) => Math.abs(a - b) },
+    { feet: ["H", "D"], t1: "высотой CH", t2: "биссектрисой CD", between: (a, b) => Math.abs(a - b) / 2 },
+    { feet: ["D", "M"], t1: "биссектрисой CD", t2: "медианой CM", between: (a, b) => Math.abs(a - b) / 2 },
+  ]
+  const p = pick(pairs), reverse = Math.random() < 0.45
+  if (!reverse) {
+    let B = randInt(50, 80), A = 90 - B                 // острый угол B (больший)
+    const ans = p.between(A, B)
+    return { condition_text: `Острый угол B прямоугольного треугольника ABC равен ${deg(B)}. Найдите величину угла между ${p.t1} и ${p.t2}, проведёнными из вершины прямого угла C. Ответ дайте в градусах.`, image_url: svgUrl(figRightCevians(p.feet, null, "?")), answer: ru(ans) }
+  }
+  // обратная: дан угол между чевианами → меньший острый угол
+  const half = p.feet.includes("M") && p.feet.includes("H")
+  if (half) { const d = randInt(6, 40) * 2; return { condition_text: `Угол между высотой и медианой прямоугольного треугольника, проведёнными из вершины прямого угла, равен ${deg(d)}. Найдите меньший угол прямоугольного треугольника. Ответ дайте в градусах.`, image_url: svgUrl(figRightCevians(["H", "M"], null, deg(d))), answer: ru((90 - d) / 2) } }
+  const d = randInt(3, 40)
+  return { condition_text: `Угол между ${p.feet.includes("H") ? "высотой и биссектрисой" : "биссектрисой и медианой"} прямоугольного треугольника, проведёнными из вершины прямого угла, равен ${deg(d)}. Найдите меньший угол прямоугольного треугольника. Ответ дайте в градусах.`, image_url: svgUrl(figRightCevians(p.feet, null, deg(d))), answer: ru(45 - d) }
+}
+
+// ── Треугольник: две стороны и высоты (S постоянна) ─────────────────────────
+function figTriHeight() {
+  const A = [40, 178], B = [250, 178], C = [130, 48]
+  const H = (() => { const dx = B[0] - A[0], dy = B[1] - A[1], t = ((C[0] - A[0]) * dx + (C[1] - A[1]) * dy) / (dx * dx + dy * dy); return [A[0] + t * dx, A[1] + t * dy] })()
+  let g = pPolygon([A, B, C]) + pSeg(C, H, { d: false }) + pRight(H, A, C, 8)
+  g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "t", "C")
+  return stWrap(280, 205, g)
+}
+function t01TwoSidesHeight() {
+  // h_small = s_big·h_big / s_small — целое при (s_small/gcd) | h_big
+  let sSmall, sBig, hBig, hSmall
+  for (let g = 0; g < 300; g++) {
+    let a = randInt(6, 24), b = randInt(6, 24); if (a === b) continue
+    sSmall = Math.min(a, b); sBig = Math.max(a, b)
+    const need = sSmall / gcd(sSmall, sBig); if (need > 18) continue
+    hBig = need * randInt(1, Math.floor(18 / need))
+    hSmall = sBig * hBig / sSmall
+    if (hSmall <= 40) break
+  }
+  return { condition_text: `Две стороны треугольника равны ${sSmall} и ${sBig}. Высота, опущенная на бо́льшую из этих сторон, равна ${hBig}. Найдите высоту, опущенную на меньшую из этих сторон треугольника.`, image_url: svgUrl(figTriHeight()), answer: ru(hSmall) }
+}
+
+// ── Средняя линия треугольника: S(CDE)=¼S(ABC); трапеция=¾S ─────────────────
+function figMidline(fill) {
+  const A = [40, 178], B = [235, 178], C = [150, 44], D = mid(A, C), E = mid(B, C)
+  let g = ""
+  if (fill === "cde") g += pPolygon([C, D, E], { fill: P_FILL })
+  if (fill === "trap") g += pPolygon([A, B, E, D], { fill: P_FILL })
+  g += pPolygon([A, B, C]) + pSeg(D, E)
+  g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "t", "C") + pV(D, "l", "D") + pV(E, "r", "E")
+  return stWrap(280, 205, g)
+}
+function t01Midline() {
+  const mode = pick(["cde-from-abc", "abc-from-cde", "trap-from-abc"])
+  if (mode === "cde-from-abc") { const S = randInt(2, 30) * 4; return { condition_text: `В треугольнике ABC DE — средняя линия, параллельная стороне AB. Площадь треугольника ABC равна ${S}. Найдите площадь треугольника CDE.`, image_url: svgUrl(figMidline("cde")), answer: ru(S / 4) } }
+  if (mode === "abc-from-cde") { const s = randInt(2, 40); return { condition_text: `В треугольнике ABC DE — средняя линия. Площадь треугольника CDE равна ${s}. Найдите площадь треугольника ABC.`, image_url: svgUrl(figMidline("cde")), answer: ru(4 * s) } }
+  const S = randInt(2, 40) * 4; return { condition_text: `Площадь треугольника ABC равна ${S}, DE — средняя линия, параллельная стороне AB. Найдите площадь трапеции ABED.`, image_url: svgUrl(figMidline("trap")), answer: ru(3 * S / 4) }
+}
+
+// ── Равнобедренный: угол при вершине + боковая → площадь (½L²sin v) ──────────
+function t01IsoApexArea() {
+  const v = pick([30, 150]), L = randInt(2, 14)
+  return { condition_text: `Угол при вершине, противолежащей основанию равнобедренного треугольника, равен ${deg(v)}. Боковая сторона треугольника равна ${L}. Найдите площадь этого треугольника.`, image_url: svgUrl(figIso({ angTop: deg(v) })), answer: ru(clean(L * L * 0.5 / 2)) }
+}
+
+// ── Равносторонний: высота k√3 → сторона 2k ─────────────────────────────────
+function t01EquilHeight() {
+  const k = randInt(3, 60)
+  const A = [55, 180], B = [225, 180], C = [140, 40], H = mid(A, B)
+  let g = pPolygon([A, B, C]) + pSeg(C, H) + pRight(H, A, C, 8) + pTick(A, C, 2) + pTick(B, C, 2) + pTick(A, B, 2)
+  g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "t", "C") + pV(H, "b", "H")
+  return { condition_text: `В равностороннем треугольнике ABC высота CH равна ${k}${rT(3)}. Найдите AB.`, image_url: svgUrl(stWrap(280, 205, g)), answer: ru(2 * k) }
+}
+
+// ── Прямоугольный треугольник: тригонометрия (C = 90°) ──────────────────────
+// база: прямой угол C — левый-нижний; A сверху, B справа-снизу (как ФИПИ Д39/Д40)
+function figRightTrig(labels, showRight = true) {
+  const C = [55, 182], A = [55, 55], B = [252, 182]
+  let g = pPolygon([C, A, B])
+  if (showRight) g += pRight(C, A, B, 11)
+  g += pV(A, "tl", labels.A || "A") + pV(B, "br", labels.B || "B") + pV(C, "bl", labels.C || "C")
+  return stWrap(285, 210, g)
+}
+const RT_TRIP = [[3, 4, 5], [6, 8, 10], [9, 12, 15], [12, 16, 20], [15, 20, 25]]  // ноги a,b гип c → ratios .6/.8
+function t01RightTrig() {
+  const mode = pick(["legHypToTrig", "cosFindHyp", "tgFindHyp", "sinAToSinB", "sqrtLeg"])
+  const fig = svgUrl(figRightTrig({}))
+  if (mode === "legHypToTrig") {                       // даны катет и гипотенуза → sin/cos
+    const [a, b, c] = pick(RT_TRIP)                     // a=BC, b=AC, c=AB
+    if (Math.random() < 0.5) return { condition_text: `В треугольнике ABC угол C равен 90°, BC = ${a}, AB = ${c}. Найдите sin A.`, image_url: fig, answer: ru(clean(b / c)) }
+    return { condition_text: `В треугольнике ABC угол C равен 90°, AC = ${b}, AB = ${c}. Найдите cos A.`, image_url: fig, answer: ru(clean(b / c)) }
+  }
+  if (mode === "cosFindHyp") {                          // катет + cos B → гипотенуза
+    const [a, , c] = pick([[3, 4, 5], [4, 3, 5]]), k = randInt(2, 6)
+    const BC = a * k, AB = c * k
+    return { condition_text: `В треугольнике ABC угол C равен 90°, BC = ${BC}, cos B = ${fT(a, c)}. Найдите AB.`, image_url: fig, answer: ru(AB) }
+  }
+  if (mode === "tgFindHyp") {                           // катет AC + tg A → гипотенуза AB
+    const [a, b, c] = pick(RT_TRIP), AC = b, tg = fT(a, b)
+    return { condition_text: `В треугольнике ABC угол C равен 90°, AC = ${AC}, tg A = ${tg}. Найдите AB.`, image_url: fig, answer: ru(c) }
+  }
+  if (mode === "sinAToSinB") {                          // sin A → sin B (= cos A)
+    const [a, b, c] = pick(RT_TRIP)
+    return { condition_text: `В треугольнике ABC угол C равен 90°, sin A = ${ru(clean(a / c))}. Найдите sin B.`, image_url: fig, answer: ru(clean(b / c)) }
+  }
+  // sqrtLeg: гип c и катет BC=√(c²−m²) → AC=m, cos A = AC/AB = m/c (c=5,10 → терминир. дробь)
+  const c = pick([5, 10]), m = randInt(2, c - 1), other = c * c - m * m
+  const o = Math.sqrt(other), bcTxt = Number.isInteger(o) ? ru(o) : rT(other)
+  return { condition_text: `В треугольнике ABC угол C равен 90°, AB = ${c}, BC = ${bcTxt}. Найдите cos A.`, image_url: fig, answer: ru(clean(m / c)) }
+}
+
+// ── Равнобедренный + высота → sin/cos угла или сторона ───────────────────────
+function figIsoBase(baseLbl, apexLbl, showAlt) {
+  const A = [50, 172], B = [220, 172], C = [135, 50], H = mid(A, B)
+  let g = pPolygon([A, B, C]) + pTick(C, A, 2) + pTick(C, B, 2)
+  if (showAlt) g += pSeg(C, H) + pRight(H, A, C, 8)
+  g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "t", "C")
+  if (showAlt) g += pV(H, "b", "H")
+  return stWrap(280, 200, g)
+}
+function t01IsoHeightTrig() {
+  const mode = pick(["cosFromSides", "sinACB", "sinBAC", "cosBAC", "acFromCos"])
+  if (mode === "cosFromSides") {                        // AC=BC=L, AB=2m → cos A = m/L
+    const L = randInt(10, 30), m = randInt(3, L - 2), base = 2 * m
+    return { condition_text: `В треугольнике ABC AC = BC = ${L}, AB = ${base}. Найдите cos A.`, image_url: svgUrl(figIsoBase()), answer: ru(clean(m / L)) }
+  }
+  if (mode === "sinACB") {                              // AB=BC, AC=b, высота CH=h → sin ACB = h/b
+    const b = randInt(8, 24), h = randInt(2, b - 1)
+    return { condition_text: `В треугольнике ABC AB = BC, AC = ${b}, высота CH равна ${h}. Найдите синус угла ACB.`, image_url: svgUrl(figIsoBase()), answer: ru(clean(h / b)) }
+  }
+  if (mode === "sinBAC") {                              // AC=BC, AB=c, высота AH=h → sin BAC = h/c
+    const c = randInt(8, 24), h = randInt(2, c - 1)
+    return { condition_text: `В треугольнике ABC AC = BC, AB = ${c}, высота AH равна ${h}. Найдите синус угла BAC.`, image_url: svgUrl(figIsoBase()), answer: ru(clean(h / c)) }
+  }
+  if (mode === "cosBAC") {                              // AC=BC, AB=c, BH=x → cos BAC = x/c
+    const c = randInt(8, 24), x = randInt(2, c - 1)
+    return { condition_text: `В треугольнике ABC AC = BC, AB = ${c}, AH — высота, BH = ${x}. Найдите косинус угла BAC.`, image_url: svgUrl(figIsoBase()), answer: ru(clean(x / c)) }
+  }
+  // acFromCos: AC=BC, высота CH=h, cos A=cosT → AC = h/sin A
+  const trip = pick([[3, 4, 5], [4, 3, 5], [7, 24, 25], [24, 7, 25], [8, 15, 17]])  // [cosNum, sinNum, den]
+  const cosN = trip[0], sinN = trip[1], den = trip[2], AC = randInt(2, 6) * den, CH = AC * sinN / den
+  return { condition_text: `В треугольнике ABC AC = BC, высота CH равна ${ru(clean(CH))}, cos A = ${fT(cosN, den)}. Найдите AC.`, image_url: svgUrl(figIsoBase("", "", true)), answer: ru(AC) }
+}
+
+// ── Окружность: вписанные / центральные углы, дуги ───────────────────────────
+const CO = [140, 108], CR = 82                          // центр и радиус для круговых фигур
+// вписанный угол при вершине C, опирающийся на дугу AB (снизу)
+function figInscribed() {
+  const A = onC(CO, CR, 210), B = onC(CO, CR, 330), C = onC(CO, CR, 80)
+  let g = pCircle(CO, CR) + pSeg(C, A) + pSeg(C, B) + pArc(C, A, B, 15)
+  g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "t", "C")
+  return stWrap(280, 220, g)
+}
+// вписанный угол = ½ дуги; дуга задана долей окружности
+function t01InscribedArc() {
+  const fracs = [[1, 5], [7, 18], [1, 4], [1, 6], [1, 3], [2, 9], [5, 18], [1, 10], [1, 12], [1, 9]]
+  const [p, q] = pick(fracs.filter(([p, q]) => (360 * p / q) % 1 === 0))
+  const arc = 360 * p / q
+  return { condition_text: `Найдите вписанный угол, опирающийся на дугу, равную ${fT(p, q)} окружности. Ответ дайте в градусах.`, image_url: svgUrl(figInscribed()), answer: ru(arc / 2) }
+}
+// центральный угол на N больше острого вписанного на ту же дугу → x=N
+function figCentralInsc(showC = true) {
+  const A = onC(CO, CR, 205), B = onC(CO, CR, 335), C = onC(CO, CR, 75)
+  let g = pCircle(CO, CR) + pSeg(CO, A) + pSeg(CO, B) + pArc(CO, A, B, 16)
+  if (showC) g += pSeg(C, A) + pSeg(C, B) + pArc(C, A, B, 14) + pV(C, "t", "")
+  g += pDot(CO) + pV(A, "bl", "A") + pV(B, "br", "B")
+  return stWrap(280, 220, g)
+}
+function t01CentralVsInscribed() {
+  const N = randInt(10, 60)
+  if (Math.random() < 0.5) return { condition_text: `Найдите центральный угол, если он на ${deg(N)} больше острого вписанного угла, опирающегося на ту же дугу. Ответ дайте в градусах.`, image_url: svgUrl(figCentralInsc()), answer: ru(2 * N) }
+  return { condition_text: `Центральный угол на ${deg(N)} больше острого вписанного угла, опирающегося на ту же дугу окружности. Найдите вписанный угол. Ответ дайте в градусах.`, image_url: svgUrl(figCentralInsc()), answer: ru(N) }
+}
+// треугольник вписан, центр O: BOC = 2·BAC
+function t01CentralTri() {
+  const a = randInt(20, 75)
+  const A = onC(CO, CR, 90), B = onC(CO, CR, 200), C = onC(CO, CR, 340)
+  let g = pCircle(CO, CR) + pPolygon([A, B, C]) + pSeg(CO, B) + pSeg(CO, C)
+  g += pArc(A, B, C, 15) + pArc(CO, B, C, 16) + pDot(CO)
+  g += pV(A, "t", "A") + pV(B, "bl", "B") + pV(C, "br", "C") + pV(CO, "l", "O")
+  return { condition_text: `Треугольник ABC вписан в окружность с центром O. Угол BAC равен ${deg(a)}. Найдите угол BOC. Ответ дайте в градусах.`, image_url: svgUrl(stWrap(280, 220, g)), answer: ru(2 * a) }
+}
+// даны дуги AC и BC → вписанный ACB = ½(360 − AC − BC)
+function t01ArcsToACB() {
+  let ac, bc; do { ac = randInt(60, 240); bc = randInt(40, 160) } while (360 - ac - bc < 20 || (360 - ac - bc) % 2 !== 0)
+  const A = onC(CO, CR, 250), B = onC(CO, CR, 310), C = onC(CO, CR, 70)
+  let g = pCircle(CO, CR) + pSeg(A, C) + pSeg(B, C) + pArc(C, A, B, 14)
+  g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "t", "C")
+  return { condition_text: `На окружности отмечены точки A, B и C. Дуга окружности AC, не содержащая точку B, составляет ${deg(ac)}. Дуга окружности BC, не содержащая точку A, составляет ${deg(bc)}. Найдите вписанный угол ACB. Ответ дайте в градусах.`, image_url: svgUrl(stWrap(280, 220, g)), answer: ru((360 - ac - bc) / 2) }
+}
+
+// ── Вписанный четырёхугольник ───────────────────────────────────────────────
+// ABCD на окружности (по часовой), опц. диагонали
+function figCircleQuad(diags = []) {
+  const A = onC(CO, CR, 172), B = onC(CO, CR, 92), C = onC(CO, CR, 18), D = onC(CO, CR, 290)
+  const P = { A, B, C, D }
+  let g = pCircle(CO, CR) + pPolygon([A, B, C, D])
+  for (const [x, y] of diags) g += pSeg(P[x], P[y])
+  g += pV(A, "l", "A") + pV(B, "t", "B") + pV(C, "r", "C") + pV(D, "b", "D")
+  return stWrap(280, 220, g)
+}
+// противоположные углы вписанного ⬜ = 180
+function t01InscQuadOpp() {
+  if (Math.random() < 0.5) { const bad = randInt(40, 140); return { condition_text: `Четырёхугольник ABCD вписан в окружность. Угол BAD равен ${deg(bad)}. Найдите угол BCD. Ответ дайте в градусах.`, image_url: svgUrl(figCircleQuad()), answer: ru(180 - bad) } }
+  let x = randInt(40, 130), y = randInt(40, 130)
+  const bigger = Math.random() < 0.5
+  const rem = [180 - x, 180 - y]
+  return { condition_text: `Два угла вписанного в окружность четырёхугольника равны ${deg(x)} и ${deg(y)}. Найдите ${bigger ? "бо́льший" : "меньший"} из оставшихся углов. Ответ дайте в градусах.`, image_url: svgUrl(figCircleQuad()), answer: ru(bigger ? Math.max(...rem) : Math.min(...rem)) }
+}
+// вписанный ⬜: углы через дуги (ABD, CAD → ABC / CAD / ABD)
+function t01InscQuadArc() {
+  const abd = randInt(30, 65), cad = randInt(25, 55)
+  const mode = pick(["abc", "cad", "abd"])
+  if (mode === "abc") return { condition_text: `Четырёхугольник ABCD вписан в окружность. Угол ABD равен ${deg(abd)}, угол CAD равен ${deg(cad)}. Найдите угол ABC. Ответ дайте в градусах.`, image_url: svgUrl(figCircleQuad([["B", "D"], ["A", "C"]])), answer: ru(abd + cad) }
+  const abc = randInt(80, 140)
+  if (mode === "cad") return { condition_text: `Четырёхугольник ABCD вписан в окружность. Угол ABC равен ${deg(abc)}, угол ABD равен ${deg(abd)}. Найдите угол CAD. Ответ дайте в градусах.`, image_url: svgUrl(figCircleQuad([["B", "D"], ["A", "C"]])), answer: ru(abc - abd) }
+  return { condition_text: `Четырёхугольник ABCD вписан в окружность. Угол ABC равен ${deg(abc)}, угол CAD равен ${deg(cad)}. Найдите угол ABD. Ответ дайте в градусах.`, image_url: svgUrl(figCircleQuad([["B", "D"], ["A", "C"]])), answer: ru(abc - cad) }
+}
+// два вписанных угла ABD и BCA → BCD = ABD + BCA
+function t01InscTriTwo() {
+  const abd = randInt(30, 70), bca = randInt(25, 55)
+  return { condition_text: `Угол ABD равен ${deg(abd)}. Угол BCA равен ${deg(bca)}. Найдите вписанный угол BCD. Ответ дайте в градусах.`, image_url: svgUrl(figCircleQuad([["A", "D"], ["B", "D"], ["A", "C"]])), answer: ru(abd + bca) }
+}
+// диаметры AC, BD: ACB ↔ AOD (AOD = 180 − 2·ACB)
+function figDiameters() {
+  const A = onC(CO, CR, 200), C = onC(CO, CR, 20), B = onC(CO, CR, 140), D = onC(CO, CR, 320)
+  let g = pCircle(CO, CR) + pSeg(A, C) + pSeg(B, D) + pSeg(A, B) + pSeg(B, C)
+  g += pArc(C, A, B, 16) + pArc(CO, A, D, 16) + pDot(CO)
+  g += pV(A, "bl", "A") + pV(B, "tl", "B") + pV(C, "tr", "C") + pV(D, "br", "D") + pV(CO, "r", "O")
+  return stWrap(280, 220, g)
+}
+function t01Diameters() {
+  if (Math.random() < 0.5) { const acb = randInt(20, 75); return { condition_text: `Отрезки AC и BD — диаметры окружности с центром O. Угол ACB равен ${deg(acb)}. Найдите угол AOD. Ответ дайте в градусах.`, image_url: svgUrl(figDiameters()), answer: ru(180 - 2 * acb) }
+  }
+  const aod = randInt(20, 150) * 1; const aodv = aod % 2 === 0 ? aod : aod + 1
+  return { condition_text: `Отрезки AC и BD — диаметры окружности с центром O. Угол AOD равен ${deg(aodv)}. Найдите вписанный угол ACB. Ответ дайте в градусах.`, image_url: svgUrl(figDiameters()), answer: ru((180 - aodv) / 2) }
+}
+
+// ── Касательные и секущие ───────────────────────────────────────────────────
+// CA касается в A; CO — секущая через B (и, опц., через центр в D)
+function figTangentRadius(throughCenter = false) {
+  const O = [110, 120], R = 62, C = [252, 150]
+  const A = onC(O, R, 55)                              // точка касания сверху-справа
+  let g = pCircle(O, R) + pSeg(C, A) + pSeg(C, O, {})  // касательная и секущая
+  g += pSeg(O, A) + pRight(A, O, C, 8) + pDot(O)
+  // точка B — пересечение отрезка CO с окружностью (ближняя к C, на стороне C)
+  const dOC = unit(O, C), B = [O[0] + dOC[0] * R, O[1] + dOC[1] * R]
+  g += pV(B, "br", "B")
+  if (throughCenter) { const D = [O[0] - dOC[0] * R, O[1] - dOC[1] * R]; g += pV(D, "bl", "D") }
+  g += pArc(C, A, O, 15) + pV(A, "t", "A") + pV(C, "r", "C") + pV(O, "bl", "O")
+  return stWrap(285, 210, g)
+}
+// CA касается, CO секущая через B: дуга AB = 90 − ACO
+function t01TangentRadius() {
+  if (Math.random() < 0.5) { const arc = randInt(10, 80); return { condition_text: `Найдите угол ACO, если его сторона CA касается окружности с центром O, отрезок CO пересекает окружность в точке B (см. рис.), а дуга AB окружности, заключённая внутри этого угла, равна ${deg(arc)}. Ответ дайте в градусах.`, image_url: svgUrl(figTangentRadius()), answer: ru(90 - arc) }
+  }
+  const aco = randInt(10, 80)
+  return { condition_text: `Угол ACO равен ${deg(aco)}. Его сторона CA касается окружности с центром в точке O. Отрезок CO пересекает окружность в точке B (см. рис.). Найдите градусную меру дуги AB окружности, заключённой внутри этого угла. Ответ дайте в градусах.`, image_url: svgUrl(figTangentRadius()), answer: ru(90 - aco) }
+}
+// CA касается, CO через центр (B ближняя, D дальняя): дуга AD = 90 + ACO
+function t01TangentSecantDiam() {
+  const aco = randInt(20, 60)
+  return { condition_text: `Угол ACO равен ${deg(aco)}. Его сторона CA касается окружности с центром в точке O. Сторона CO пересекает окружность в точках B и D (см. рис.). Найдите градусную меру дуги AD окружности, заключённой внутри этого угла. Ответ дайте в градусах.`, image_url: svgUrl(figTangentRadius(true)), answer: ru(90 + aco) }
+}
+// две касательные из C (точки касания A, B): угол ACB = 180 − дуга(мин)
+function figTwoTangents() {
+  const O = [105, 115], R = 60, C = [255, 115]
+  const A = onC(O, R, 40), B = onC(O, R, -40)
+  let g = pCircle(O, R) + pSeg(C, A) + pSeg(C, B) + pArc(C, A, B, 16) + pDot(O)
+  g += pV(A, "tr", "A") + pV(B, "br", "B") + pV(C, "r", "C") + pV(O, "l", "O")
+  return stWrap(285, 205, g)
+}
+function t01TwoTangents() {
+  const arc = randInt(30, 120)
+  return { condition_text: `Через концы A и B дуги окружности с центром O проведены касательные AC и BC. Меньшая дуга AB равна ${deg(arc)}. Найдите угол ACB. Ответ дайте в градусах.`, image_url: svgUrl(figTwoTangents()), answer: ru(180 - arc) }
+}
+// две секущие из C: ACB + дуга AB(большая) → DAE = ½(дуга AB − 2·ACB)
+function figTwoSecants() {
+  const O = [150, 115], R = 68, C = [285, 115]
+  const B = onC(O, R, 150), D = onC(O, R, 120), A = onC(O, R, 215), E = onC(O, R, 245)
+  let g = pCircle(O, R) + pSeg(C, B) + pSeg(C, A) + pSeg(A, D) + pSeg(A, E)
+  g += pV(A, "bl", "A") + pV(B, "tl", "B") + pV(C, "r", "C") + pV(D, "tr", "D") + pV(E, "b", "E")
+  return stWrap(320, 205, g)
+}
+function t01TwoSecants() {
+  let acb, arcAB; do { acb = randInt(40, 60); arcAB = randInt(120, 160) } while ((arcAB - 2 * acb) % 2 !== 0 || arcAB - 2 * acb < 10)
+  return { condition_text: `Угол ACB равен ${deg(acb)}. Градусная мера дуги AB окружности, не содержащей точек D и E, равна ${deg(arcAB)}. Найдите угол DAE. Ответ дайте в градусах.`, image_url: svgUrl(figTwoSecants()), answer: ru((arcAB - 2 * acb) / 2) }
+}
+// касательная + хорда: угол = ½ дуги
+function figTangentChord() {
+  const O = [120, 130], R = 78
+  const B = onC(O, R, 90), A = onC(O, R, 330)
+  const tang = [B[0] + 95, B[1]]
+  let g = pCircle(O, R) + pSeg([B[0] - 80, B[1]], tang) + pSeg(B, A) + pArc(B, tang, A, 16) + pDot(O)
+  g += pV(B, "tl", "B") + pV(tang, "tr", "C") + pV(A, "r", "A") + pV(O, "l", "O")
+  return stWrap(250, 230, g)
+}
+function t01TangentChord() {
+  const arc = randInt(20, 140)
+  return { condition_text: `Хорда AB стягивает дугу окружности в ${deg(arc)}. Найдите угол ABC между этой хордой и касательной к окружности, проведённой через точку B. Ответ дайте в градусах.`, image_url: svgUrl(figTangentChord()), answer: ru(arc / 2) }
+}
+
+// ── Вписанная / описанная окружность в многоугольник ────────────────────────
+// четырёхугольник с вписанной окружностью (Pitot: AB+CD=BC+AD)
+function figTangentialQuad() {
+  const A = [55, 178], B = [212, 168], C = [238, 78], D = [92, 52], O = [148, 118]
+  let g = pPolygon([A, B, C, D]) + pCircle(O, 46) + pDot(O)
+  g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "tr", "C") + pV(D, "tl", "D")
+  return stWrap(285, 205, g)
+}
+function t01TangentialQuad() {
+  const mode = pick(["fourth", "perimeter"])
+  if (mode === "perimeter") { const ab = randInt(10, 40), cd = randInt(10, 80); return { condition_text: `В четырёхугольник ABCD вписана окружность, AB = ${ab}, CD = ${cd}. Найдите периметр четырёхугольника ABCD.`, image_url: svgUrl(figTangentialQuad()), answer: ru(2 * (ab + cd)) } }
+  // 4-я сторона: AB+CD=BC+AD
+  if (Math.random() < 0.5) { const ab = randInt(8, 20), bc = randInt(5, 15), ad = randInt(5, 15); const cd = bc + ad - ab; if (cd < 1) return t01TangentialQuad(); return { condition_text: `В четырёхугольник ABCD вписана окружность, AB = ${ab}, BC = ${bc} и AD = ${ad}. Найдите четвёртую сторону четырёхугольника.`, image_url: svgUrl(figTangentialQuad()), answer: ru(cd) } }
+  const ab = randInt(15, 30), bc = randInt(5, 12), cd = randInt(3, 10); const ad = ab + cd - bc
+  return { condition_text: `В четырёхугольник ABCD вписана окружность, AB = ${ab}, BC = ${bc} и CD = ${cd}. Найдите четвёртую сторону четырёхугольника.`, image_url: svgUrl(figTangentialQuad()), answer: ru(ad) }
+}
+// трапеция, описанная около окружности: средняя линия = (сумма боковых)/2
+function figTangentialTrap() {
+  const A = [50, 178], B = [242, 178], C = [198, 62], D = [96, 62], O = [146, 120]
+  let g = pPolygon([A, B, C, D]) + pCircle(O, 57) + pDot(O)
+  g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "tr", "C") + pV(D, "tl", "D")
+  return stWrap(290, 205, g)
+}
+function t01TangTrapMidline() {
+  const c = randInt(5, 30), d = randInt(5, 30)
+  return { condition_text: `Боковые стороны трапеции, описанной около окружности, равны ${c} и ${d}. Найдите среднюю линию трапеции.`, image_url: svgUrl(figTangentialTrap()), answer: ru(clean((c + d) / 2)) }
+}
+// прямоугольная трапеция, описанная около окружности: r = (P/2 − больш.бок)/2
+function figRightTrap() {
+  const A = [58, 182], B = [232, 182], C = [232, 92], D = [58, 62], O = [104, 138]
+  let g = pPolygon([A, B, C, D]) + pCircle(O, 44) + pRight(A, D, B, 10) + pRight(D, A, C, 10) + pDot(O)
+  g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "tr", "C") + pV(D, "tl", "D")
+  return stWrap(285, 210, g)
+}
+function t01RightTrapInradius() {
+  // сумма боковых = P/2; меньшая боковая (высота) = 2r; P/2 = L + 2r → P = 2(L + 2r)
+  const L = randInt(6, 15), r = randInt(3, 9), smaller = 2 * r, perimeter = 2 * (L + smaller)
+  return { condition_text: `Периметр прямоугольной трапеции, описанной около окружности, равен ${perimeter}, её большая боковая сторона равна ${L}. Найдите радиус окружности.`, image_url: svgUrl(figRightTrap()), answer: ru(r) }
+}
+// равнобедренный треугольник: боковые + основание → радиус вписанной r = S/p
+function figIncircleIso() {
+  const A = [48, 182], B = [222, 182], C = [135, 44], O = [135, 138]
+  let g = pPolygon([A, B, C]) + pCircle(O, 40) + pTick(C, A, 2) + pTick(C, B, 2) + pDot(O)
+  g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "t", "C")
+  return stWrap(280, 210, g)
+}
+const PYTH = [[3, 4, 5], [8, 15, 17], [7, 24, 25], [20, 21, 29], [5, 12, 13], [9, 40, 41]]
+function t01IncircleIsoRadius() {
+  const [p, q, k] = pick(PYTH), t = pick([1, 2, 3])
+  const half = p * t, height = q * t, L = k * t, base = 2 * half
+  const S = half * height, per = (2 * L + base) / 2, r = S / per
+  return { condition_text: `Боковые стороны равнобедренного треугольника равны ${L}, основание равно ${base}. Найдите радиус вписанной окружности.`, image_url: svgUrl(figIncircleIso()), answer: ru(clean(r)) }
+}
+// вписанная делит боковую: отрезки от вершины (a) и от основания (b) → периметр = 2a + 4b
+function t01IncircleIsoPerimeter() {
+  const a = randInt(5, 15), b = randInt(1, 8)
+  return { condition_text: `Окружность, вписанная в равнобедренный треугольник, делит в точке касания одну из боковых сторон на два отрезка, длины которых равны ${a} и ${b}, считая от вершины, противолежащей основанию. Найдите периметр треугольника.`, image_url: svgUrl(figIncircleIso()), answer: ru(2 * a + 4 * b) }
+}
+// прямоугольный треугольник: r = (a + b − c)/2
+function figIncircleRight() {
+  const A = [48, 182], C = [220, 182], B = [220, 66], O = [190, 152]
+  let g = pPolygon([A, C, B]) + pCircle(O, 28) + pRight(C, A, B, 11) + pDot(O)
+  g += pV(A, "bl", "A") + pV(B, "tr", "B") + pV(C, "br", "C")
+  return stWrap(285, 210, g)
+}
+function t01IncircleRight() {
+  const [p, q, k] = pick(PYTH), t = pick([0.5, 1, 1.5, 2, 2.5])
+  const a = clean(p * t), b = clean(q * t), c = clean(k * t), r = clean((a + b - c) / 2)
+  return { condition_text: `В треугольнике ABC AC = ${ru(b)}, BC = ${ru(a)}, угол C равен 90°. Найдите радиус вписанной окружности.`, image_url: svgUrl(figIncircleRight()), answer: ru(r) }
+}
+
+// ── Параллелограмм / ромб / трапеция ────────────────────────────────────────
+// параллелограмм ABCD (+ опц. точка E — середина AD, диагональ/заливка)
+function figParallelogram({ eMid = false, shade } = {}) {
+  const A = [55, 180], B = [215, 180], C = [262, 68], D = [102, 68]
+  const E = mid(A, D)
+  let g = ""
+  if (shade === "abe") g += pPolygon([A, B, E], { fill: P_FILL })
+  if (shade === "bcde") g += pPolygon([B, C, D, E], { fill: P_FILL })
+  g += pPolygon([A, B, C, D])
+  if (eMid) g += pSeg(B, E) + pV(E, "l", "E")
+  g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "tr", "C") + pV(D, "tl", "D")
+  return stWrap(290, 205, g)
+}
+function t01ParMidpoint() {
+  const S = randInt(2, 40) * 4
+  if (Math.random() < 0.5) return { condition_text: `Площадь параллелограмма ABCD равна ${S}. Точка E — середина стороны AD. Найдите площадь треугольника ABE.`, image_url: svgUrl(figParallelogram({ eMid: true, shade: "abe" })), answer: ru(S / 4) }
+  return { condition_text: `Площадь параллелограмма ABCD равна ${S}. Точка E — середина стороны AD. Найдите площадь трапеции BCDE.`, image_url: svgUrl(figParallelogram({ eMid: true, shade: "bcde" })), answer: ru(3 * S / 4) }
+}
+// один угол параллелограмма больше другого на d
+function t01ParAngle() {
+  const d = randInt(10, 80) * 2                          // чётный → целые
+  if (Math.random() < 0.5) return { condition_text: `Один угол параллелограмма больше другого на ${deg(d)}. Найдите меньший угол. Ответ дайте в градусах.`, image_url: svgUrl(figParallelogram()), answer: ru((180 - d) / 2) }
+  return { condition_text: `Один угол параллелограмма больше другого на ${deg(d)}. Найдите больший угол. Ответ дайте в градусах.`, image_url: svgUrl(figParallelogram()), answer: ru((180 + d) / 2) }
+}
+// стороны a<b + высота на одну → высота на другую (S = a·hₐ = b·h_b)
+function t01ParHeights() {
+  // h_big = s_small·h_small / s_big — целое при (s_big/gcd) | h_small
+  let sSmall, sBig, hSmall, hBig
+  for (let g = 0; g < 300; g++) {
+    let a = randInt(5, 25), b = randInt(5, 25); if (a === b) continue
+    sSmall = Math.min(a, b); sBig = Math.max(a, b)
+    const need = sBig / gcd(sSmall, sBig); if (need > 18) continue
+    hSmall = need * randInt(1, Math.floor(18 / need))
+    hBig = sSmall * hSmall / sBig
+    if (hBig >= 1) break
+  }
+  return { condition_text: `Стороны параллелограмма равны ${sSmall} и ${sBig}. Высота, опущенная на меньшую из этих сторон, равна ${hSmall}. Найдите высоту, опущенную на бо́льшую сторону параллелограмма.`, image_url: svgUrl(figParallelogram()), answer: ru(clean(hBig)) }
+}
+// ромб (+ диагональ)
+function figRhombus(diag) {
+  const B = [70, 60], C = [220, 60], D = [255, 172], A = [105, 172]
+  const P = { A, B, C, D }
+  let g = pPolygon([B, C, D, A])
+  if (diag) g += pSeg(P[diag[0]], P[diag[1]])
+  g += pV(B, "tl", "B") + pV(C, "tr", "C") + pV(D, "br", "D") + pV(A, "bl", "A")
+  return stWrap(290, 205, g)
+}
+// угол между стороной и диагональю ромба → острый угол = 180 − 2φ
+function t01RhombusSideDiag() {
+  const phi = randInt(46, 75)
+  return { condition_text: `Угол между стороной и диагональю ромба равен ${deg(phi)}. Найдите острый угол ромба. Ответ дайте в градусах.`, image_url: svgUrl(figRhombus(["A", "C"])), answer: ru(180 - 2 * phi) }
+}
+// ромб: угол → ACB / BDC (диагональ делит угол пополам)
+function t01RhombusAngle() {
+  if (Math.random() < 0.5) { const cda = randInt(15, 75) * 2; return { condition_text: `В ромбе ABCD угол CDA равен ${deg(cda)}. Найдите угол ACB. Ответ дайте в градусах.`, image_url: svgUrl(figRhombus(["A", "C"])), answer: ru((180 - cda) / 2) } }
+  const dab = randInt(15, 80) * 2
+  return { condition_text: `В ромбе ABCD угол DAB равен ${deg(dab)}. Найдите угол BDC. Ответ дайте в градусах.`, image_url: svgUrl(figRhombus(["B", "D"])), answer: ru((180 - dab) / 2) }
+}
+// трапеция: основания → больший отрезок средней линии, отсекаемый диагональю = max/2
+function figTrapDiag() {
+  const A = [40, 176], B = [252, 176], C = [200, 62], D = [92, 62]
+  const E = mid(A, D), F = mid(B, C)
+  let g = pPolygon([A, B, C, D]) + pSeg(E, F) + pSeg(D, B)
+  g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "tr", "C") + pV(D, "tl", "D") + pV(E, "l", "E") + pV(F, "r", "F")
+  return stWrap(290, 205, g)
+}
+function t01TrapMidDiag() {
+  let a, b; do { a = randInt(2, 12), b = randInt(2, 12) } while (a === b)
+  return { condition_text: `Основания трапеции равны ${a} и ${b}. Найдите больший из отрезков, на которые делит среднюю линию этой трапеции одна из её диагоналей.`, image_url: svgUrl(figTrapDiag()), answer: ru(clean(Math.max(a, b) / 2)) }
+}
+
 // ============================================================================
 // Реестр и мета-темы
 // ============================================================================
 
 export const GENERATORS_EGE_PROF = {
+  1: [t01IsoAngle, t01IsoExt, t01Bisector, t01TwoAltitudes, t01SineTheorem,
+    t01RightMedian, t01RightCevians, t01TwoSidesHeight, t01Midline, t01IsoApexArea,
+    t01EquilHeight, t01RightTrig, t01IsoHeightTrig,
+    t01InscribedArc, t01CentralVsInscribed, t01CentralTri, t01ArcsToACB,
+    t01InscQuadOpp, t01InscQuadArc, t01InscTriTwo, t01Diameters,
+    t01TangentRadius, t01TangentSecantDiam, t01TwoTangents, t01TwoSecants, t01TangentChord,
+    t01TangentialQuad, t01TangTrapMidline, t01RightTrapInradius,
+    t01IncircleIsoRadius, t01IncircleIsoPerimeter, t01IncircleRight,
+    t01ParMidpoint, t01ParAngle, t01ParHeights,
+    t01RhombusSideDiag, t01RhombusAngle, t01TrapMidDiag],
   2: [t02DotCoord, t02DotLenAngle, t02LenCombo, t02DotOfCombos, t02GraphLenCombo],
   3: [t03BoxTetra, t03BoxPyr, t03BoxHalf, t03PrismTetra, t03PrismBig,
     t03MidVolCut, t03MidVolWhole, t03MidLatCut, t03MidLatWhole,
@@ -2721,7 +3422,7 @@ export const GENERATORS_EGE_PROF = {
     t03ConeInSphereBig, t03ConeInSphereSmall, t03SphereInCylSurf,
     t03SphereCylVolFromSphere, t03SphereCylVolFromCyl, t03ConeScale, t03TwoCyl,
     t03ConeCircumR, t03ConeCircumL, t03CylInPar, t03CubeCut, t03SphereSection,
-    t03CubesVolume, t03CubesSurface],
+    t03CubesVolume, t03CubesSurface, t03StepVol, t03StepSurf],
   4: [t04ShotPut, t04Gymnastics, t04Diving, t04Tickets, t04Markers, t04Defect, t04Lottery, t04CoinTwice, t04Rooms, t04FootballCoin],
   5: [t05Lamps, t05Between, t05Shooter4, t05Coffee, t05Battery, t05ShooterN, t05DiceCond, t05TwoThemes, t05Exact],
   6: [t06ExpReduce, t06ExpBothSides, t06LogEqLog, t06LogEqNum, t06Rational, t06Cube, t06Sqrt, t06CubeRoot],
@@ -2750,6 +3451,58 @@ export const GENERATORS_EGE_PROF = {
 }
 
 export const GEN_META_EGE_PROF = {
+  1: [["Треугольник: углы", [
+    ["iso-angle", "Равнобедр.: дан угол → другой", t01IsoAngle],
+    ["iso-ext", "Равнобедр.: внешний угол", t01IsoExt],
+    ["bisector", "Биссектриса: C и CAD → B/ADB", t01Bisector],
+    ["two-alt", "Две высоты → угол DOE", t01TwoAltitudes],
+    ["sine-th", "Теорема синусов → R описанной", t01SineTheorem],
+  ]],
+    ["Прямоугольный: чевианы из прямого угла", [
+      ["right-median", "Медиана CD → ACD", t01RightMedian],
+      ["right-cevians", "Угол между высотой/бисс./медианой", t01RightCevians],
+    ]],
+    ["Треугольник: площади, высоты, стороны", [
+      ["two-heights", "2 стороны + высота → высота", t01TwoSidesHeight],
+      ["midline", "Средняя линия: S(CDE)/трапеции", t01Midline],
+      ["iso-apex-area", "Равнобедр.: угол+боковая → площадь", t01IsoApexArea],
+      ["equil-height", "Равносторонний: высота → сторона", t01EquilHeight],
+      ["right-trig", "Прямоуг.: сторона+триг → сторона/триг", t01RightTrig],
+      ["iso-h-trig", "Равнобедр.+высота → sin/cos/сторона", t01IsoHeightTrig],
+    ]],
+    ["Окружность: вписанные и центральные углы", [
+      ["insc-arc", "Вписанный угол по дуге", t01InscribedArc],
+      ["central-vs-insc", "Центр. на N больше вписанного", t01CentralVsInscribed],
+      ["central-tri", "Центр. BOC = 2·BAC", t01CentralTri],
+      ["arcs-acb", "Дуги AC,BC → ACB", t01ArcsToACB],
+      ["insc-quad-opp", "Вписанный ⬜: противоп. углы", t01InscQuadOpp],
+      ["insc-quad-arc", "Вписанный ⬜: ABD,CAD → ABC", t01InscQuadArc],
+      ["insc-tri-two", "Два вписанных угла → BCD", t01InscTriTwo],
+      ["diameters", "Диаметры AC,BD: ACB ↔ AOD", t01Diameters],
+    ]],
+    ["Окружность: касательные и секущие", [
+      ["tan-radius", "Касательная+секущая: ACO ↔ дуга", t01TangentRadius],
+      ["tan-sec-diam", "Секущая через центр → дуга AD", t01TangentSecantDiam],
+      ["two-tan", "Две касательные → угол ACB", t01TwoTangents],
+      ["two-sec", "Две секущие → угол DAE", t01TwoSecants],
+      ["tan-chord", "Касательная+хорда → угол", t01TangentChord],
+    ]],
+    ["Вписанная / описанная окружность", [
+      ["tang-quad", "⬜ с вписанной: сторона/периметр", t01TangentialQuad],
+      ["tang-trap", "Трапеция описанная: средняя линия", t01TangTrapMidline],
+      ["right-trap-r", "Прямоуг. трапеция описанная → r", t01RightTrapInradius],
+      ["inc-iso-r", "Равнобедр. → радиус вписанной", t01IncircleIsoRadius],
+      ["inc-iso-p", "Отрезки касания → периметр", t01IncircleIsoPerimeter],
+      ["inc-right", "Прямоуг.: катеты → r", t01IncircleRight],
+    ]],
+    ["Параллелограмм / ромб / трапеция", [
+      ["par-mid", "Параллелограмм: середина → площадь", t01ParMidpoint],
+      ["par-angle", "Параллелограмм: разность углов", t01ParAngle],
+      ["par-heights", "Параллелограмм: 2 стороны+высота", t01ParHeights],
+      ["rhomb-sidediag", "Ромб: сторона+диагональ → угол", t01RhombusSideDiag],
+      ["rhomb-angle", "Ромб: угол → ACB/BDC", t01RhombusAngle],
+      ["trap-mid-diag", "Трапеция: диагональ и средняя линия", t01TrapMidDiag],
+    ]]],
   2: [["Скалярное произведение", [
     ["dot-coord", "По координатам", t02DotCoord],
     ["dot-angle", "По длинам и углу 60°", t02DotLenAngle],
@@ -2799,6 +3552,10 @@ export const GEN_META_EGE_PROF = {
       ["cube-cut", "Отсечённая призма от куба (÷8)", t03CubeCut],
       ["cubes-vol", "Объём фигуры из кубиков", t03CubesVolume],
       ["cubes-surf", "Площадь поверхности из кубиков", t03CubesSurface],
+    ]],
+    ["Ступенчатый многогранник (все углы прямые)", [
+      ["step-vol", "Объём ступенчатого тела", t03StepVol],
+      ["step-surf", "Площадь поверхности ступенчатого тела", t03StepSurf],
     ]]],
   4: [["Жребий / порядок", [
     ["shot-put", "Толкание ядра (4 страны)", t04ShotPut],
