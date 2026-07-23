@@ -82,107 +82,51 @@ function getMonthForecast(students) {
 
 const fmt = (n) => Math.round(n || 0).toLocaleString("ru-RU").replace(/\s/g, " ")
 
-// Столбец с округлённой верхушкой (низ плоский — стоит на базовой линии).
-function barPath(x, yTop, w, yBase, r) {
-  r = Math.max(0, Math.min(r, w / 2, yBase - yTop))
-  return `M${x},${yBase} L${x},${yTop + r} Q${x},${yTop} ${x + r},${yTop} ` +
-    `L${x + w - r},${yTop} Q${x + w},${yTop} ${x + w},${yTop + r} L${x + w},${yBase} Z`
-}
-
-function IncomeChart({ buckets, forecast, mounted }) {
-  const W = 760, H = 200
-  const padX = 14, top = 30, bottom = H - 30
-  const chartH = bottom - top
-  const n = buckets.length
-  const slot = (W - padX * 2) / n
-  const barW = Math.min(slot * 0.58, 50)
-  const lastIdx = n - 1
+// Доход по месяцам — горизонтальные полосы. Подпись месяца, полоса и сумма
+// каждая на своей строке крупным текстом: читается даже при малом объёме
+// данных, в отличие от тесного столбчатого графика.
+function IncomeBars({ buckets, forecast, mounted }) {
+  const lastIdx = buckets.length - 1
   const projectedLast = buckets[lastIdx].total + forecast
-  const maxVal = Math.max(...buckets.map((b) => b.total), projectedLast, 1) * 1.15
-  const y = (v) => bottom - (v / maxVal) * chartH
-  const r = Math.min(barW / 2, 9)
-
+  const maxVal = Math.max(...buckets.map((b) => b.total), projectedLast, 1)
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" style={{ overflow: "visible" }}>
-      <defs>
-        <linearGradient id="incomeBar" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#5AC8FA" />
-          <stop offset="55%" stopColor="#007AFF" />
-          <stop offset="100%" stopColor="#5856D6" />
-        </linearGradient>
-      </defs>
-
-      {/* базовая линия */}
-      <line x1={padX} y1={bottom + 0.5} x2={W - padX} y2={bottom + 0.5}
-        stroke="currentColor" strokeOpacity="0.12" strokeWidth="1" />
-
+    <div className="flex flex-col gap-2.5">
       {buckets.map((b, i) => {
-        const x = padX + slot * i + (slot - barW) / 2
-        const cx = x + barW / 2
         const isLast = i === lastIdx
         const fc = isLast ? forecast : 0
-        const total = b.total
-        const projected = total + fc
-        const solidTopY = y(total)
-        const fullTopY = y(projected)
-        const solidH = bottom - solidTopY
-        const delay = i * 70
+        // Минимум 4% ширины, чтобы ненулевой месяц был виден полоской.
+        const solidPct = b.total > 0 ? Math.max((b.total / maxVal) * 100, 4) : 0
+        const fcPct = (fc / maxVal) * 100
+        const projected = b.total + fc
+        const delay = i * 80
         return (
-          <g key={i}>
-            <g style={{
-              transformBox: "fill-box", transformOrigin: "bottom",
-              transform: mounted ? "scaleY(1)" : "scaleY(0)",
-              transition: `transform .7s cubic-bezier(.22,1,.36,1) ${delay}ms`,
-            }}>
-              {fc > 0 ? (
-                <>
-                  {/* прогноз — полупрозрачная надстройка того же цвета, пунктирный контур */}
-                  <path d={barPath(x, fullTopY, barW, solidTopY, r)}
-                    fill="url(#incomeBar)" fillOpacity="0.18"
-                    stroke="#007AFF" strokeOpacity="0.6" strokeWidth="1.3" strokeDasharray="4 3" />
-                  {/* уже полученное — сплошной низ */}
-                  <rect x={x} y={solidTopY} width={barW} height={solidH} fill="url(#incomeBar)" />
-                  {/* граница «получено / прогноз» */}
-                  <line x1={x} y1={solidTopY} x2={x + barW} y2={solidTopY}
-                    stroke="#fff" strokeOpacity="0.85" strokeWidth="1.5" />
-                </>
-              ) : total > 0 ? (
-                <path d={barPath(x, solidTopY, barW, bottom, r)}
-                  fill="url(#incomeBar)" opacity={isLast ? 1 : 0.85} />
-              ) : (
-                /* месяц без дохода — едва заметная отметка на оси */
-                <rect x={x} y={bottom - 4} width={barW} height={4} rx={2}
-                  fill="currentColor" fillOpacity="0.09" />
-              )}
-            </g>
-
-            {/* число над столбцом: прогнозный итог для текущего месяца, иначе — доход */}
-            {projected > 0 && (
-              <text x={cx} y={fullTopY - 8} textAnchor="middle"
-                fontSize="12" fontWeight="600" fill="currentColor"
-                fillOpacity={isLast ? "0.9" : "0.5"}
-                style={{ opacity: mounted ? 1 : 0, transition: `opacity .45s ${delay + 240}ms` }}>
-                {fmt(projected)}
-              </text>
-            )}
-            {/* полученная часть — белым внутри сплошного столбца */}
-            {fc > 0 && solidH > 30 && (
-              <text x={cx} y={solidTopY + 17} textAnchor="middle"
-                fontSize="11" fontWeight="600" fill="#fff"
-                style={{ opacity: mounted ? 1 : 0, transition: `opacity .45s ${delay + 320}ms` }}>
-                {fmt(total)}
-              </text>
-            )}
-            {/* подпись месяца */}
-            <text x={cx} y={bottom + 18} textAnchor="middle"
-              fontSize="12" fontWeight={isLast ? "600" : "400"} fill="currentColor"
-              fillOpacity={isLast ? "0.9" : "0.45"}>
+          <div key={i} className="flex items-center gap-3">
+            <div className={`w-9 shrink-0 text-sm ${isLast ? "font-semibold text-gray-700 dark:text-gray-200" : "text-gray-400"}`}>
               {b.label}
-            </text>
-          </g>
+            </div>
+            <div className="relative flex-1 h-7 rounded-lg overflow-hidden bg-black/[0.05] dark:bg-white/[0.07]">
+              {/* полученное — сплошная заливка */}
+              <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-[#5AC8FA] to-[#007AFF]"
+                style={{ width: mounted ? `${solidPct}%` : "0%", transition: `width .8s cubic-bezier(.22,1,.36,1) ${delay}ms` }} />
+              {/* прогноз до конца месяца — штриховка того же цвета */}
+              {fcPct > 0 && (
+                <div className="absolute inset-y-0"
+                  style={{
+                    left: mounted ? `${solidPct}%` : "0%",
+                    width: mounted ? `${fcPct}%` : "0%",
+                    background: "repeating-linear-gradient(45deg,rgba(0,122,255,0.5),rgba(0,122,255,0.5) 3px,transparent 3px,transparent 6px)",
+                    transition: `left .8s cubic-bezier(.22,1,.36,1) ${delay}ms, width .8s cubic-bezier(.22,1,.36,1) ${delay + 120}ms`,
+                  }} />
+              )}
+            </div>
+            <div className={`shrink-0 text-right tabular-nums text-sm ${isLast ? "font-semibold text-gray-900 dark:text-white" : "text-gray-400"}`}
+              style={{ minWidth: 66 }}>
+              {projected > 0 ? `${fmt(projected)} ₽` : "—"}
+            </div>
+          </div>
         )
       })}
-    </svg>
+    </div>
   )
 }
 
@@ -494,8 +438,8 @@ function Payment({ students, setStudents, tutorId }) {
             )}
           </div>
 
-          <div className="text-gray-800">
-            <IncomeChart buckets={buckets} forecast={forecast} mounted={mounted} />
+          <div>
+            <IncomeBars buckets={buckets} forecast={forecast} mounted={mounted} />
           </div>
         </div>
       </div>
