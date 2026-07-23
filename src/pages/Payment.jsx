@@ -148,8 +148,15 @@ function IncomeChart({ buckets, forecast, mounted }) {
                     {fcPx > 0 && (
                       <div style={{ height: fcPx, background: "repeating-linear-gradient(45deg,rgba(0,122,255,0.55),rgba(0,122,255,0.55) 3px,transparent 3px,transparent 6px)" }} />
                     )}
-                    <div style={{ height: solidPx }}
-                      className={isSel ? "bg-gradient-to-b from-[#5AC8FA] to-[#007AFF]" : "bg-gray-300 dark:bg-white/20"} />
+                    {/* Инлайновый градиент, а не Tailwind-класс: произвольные bg-gradient
+                        с hex-стопами в тёмной теме давали прозрачную заливку (столбец
+                        сливался с карточкой). Цвет невыбранного задан явно для обеих тем. */}
+                    <div style={{
+                      height: solidPx,
+                      background: isSel
+                        ? "linear-gradient(180deg,#5AC8FA,#007AFF)"
+                        : "rgba(142,142,147,0.5)",
+                    }} />
                   </div>
                 )}
               </div>
