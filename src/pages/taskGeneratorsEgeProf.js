@@ -3760,8 +3760,21 @@ function t01TangentChord() {
 // ── Вписанная / описанная окружность в многоугольник ────────────────────────
 // четырёхугольник с вписанной окружностью (Pitot: AB+CD=BC+AD)
 function figTangentialQuad() {
-  const A = [55, 178], B = [212, 168], C = [238, 78], D = [92, 52], O = [148, 118]
-  let g = pPolygon([A, B, C, D]) + pCircle(O, 46) + pDot(O)
+  // Строим от окружности: вершины = пересечения касательных в 4 точках касания,
+  // поэтому каждая сторона реально касается окружности (описанный четырёхугольник).
+  const O = [148, 118], r = 46
+  // углы точек касания (SVG y-вниз): низ, право, верх, лево — слегка несимметрично
+  const aBot = 95 * Math.PI / 180, aRt = 352 * Math.PI / 180
+  const aTop = 272 * Math.PI / 180, aLf = 205 * Math.PI / 180
+  // вершина = пересечение касательных в углах t1, t2: u_i·X = r + u_i·O
+  const vtx = (t1, t2) => {
+    const u1 = [Math.cos(t1), Math.sin(t1)], u2 = [Math.cos(t2), Math.sin(t2)]
+    const c1 = r + u1[0] * O[0] + u1[1] * O[1], c2 = r + u2[0] * O[0] + u2[1] * O[1]
+    const det = u1[0] * u2[1] - u1[1] * u2[0]
+    return [(c1 * u2[1] - c2 * u1[1]) / det, (u1[0] * c2 - u2[0] * c1) / det]
+  }
+  const A = vtx(aLf, aBot), B = vtx(aBot, aRt), C = vtx(aRt, aTop), D = vtx(aTop, aLf)
+  let g = pPolygon([A, B, C, D]) + pCircle(O, r) + pDot(O)
   g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "tr", "C") + pV(D, "tl", "D")
   return stWrap(285, 205, g)
 }
