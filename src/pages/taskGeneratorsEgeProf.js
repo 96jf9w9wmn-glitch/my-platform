@@ -3293,10 +3293,18 @@ function t03StepSurf() {
 // Инвентарь типажей — fipi_bank_ege_prof/typages_task01_planimetria.md.
 // ============================================================================
 
-const P_INK = "#1c1c1e", P_HI = "#007AFF", P_FILL = "rgba(0,122,255,0.14)", P_RED = "#d0021b"
+const P_INK = "#1c1c1e", P_HI = "#007AFF", P_RED = "#d0021b"
 const unit = (a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1; return [dx / L, dy / L] }
 const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
 const onC = (O, R, deg) => { const t = deg * Math.PI / 180; return [O[0] + R * Math.cos(t), O[1] - R * Math.sin(t)] }
+// истинная точка касания касательной из внешней точки C к окружности (O,R):
+// угол точки касания = направление O→C ± arccos(R/|OC|). side=+1 верхняя, −1 нижняя.
+const tangPt = (O, R, C, side) => {
+  const d = Math.hypot(C[0] - O[0], C[1] - O[1])
+  const base = Math.atan2(-(C[1] - O[1]), C[0] - O[0]) * 180 / Math.PI
+  const off = Math.acos(Math.max(-1, Math.min(1, R / d))) * 180 / Math.PI
+  return onC(O, R, base + side * off)
+}
 function pSeg(a, b, o = {}) { const c = o.red ? P_RED : o.hi ? P_HI : P_INK; return `<line x1="${clean(a[0])}" y1="${clean(a[1])}" x2="${clean(b[0])}" y2="${clean(b[1])}" stroke="${c}" stroke-width="${o.w || 1.7}"${o.d ? ' stroke-dasharray="5 4"' : ""}/>` }
 function pPolygon(pts, o = {}) { const c = o.hi ? P_HI : P_INK; return `<polygon points="${pts.map(p => clean(p[0]) + "," + clean(p[1])).join(" ")}" fill="${o.fill || "none"}" stroke="${c}" stroke-width="${o.w || 1.7}" stroke-linejoin="round"/>` }
 function pCircle(O, R, o = {}) { const c = o.hi ? P_HI : o.red ? P_RED : P_INK; return `<circle cx="${clean(O[0])}" cy="${clean(O[1])}" r="${clean(R)}" fill="${o.fill || "none"}" stroke="${c}" stroke-width="${o.w || 1.6}"${o.d ? ' stroke-dasharray="5 4"' : ""}/>` }
@@ -3320,14 +3328,13 @@ const deg = (n) => `${ru(n)}°`
 
 // ── Треугольник — углы ──────────────────────────────────────────────────────
 // Равнобедренный: apex C сверху, база AB, равные боковые CA=CB (тик-метки).
-function figIso({ topLbl = "C", blLbl = "A", brLbl = "B", angTop, angBl, angBr, ext } = {}) {
+function figIso({ topLbl = "C", blLbl = "A", brLbl = "B", ext } = {}) {
   const A = [45, 172], B = [205, 172], C = [125, 48]
   let g = pPolygon([A, B, C]) + pTick(C, A, 2) + pTick(C, B, 2)
-  // числа углов на чертёж НЕ пишем (они в условии) — только дуга-метка у нужного угла
+  // равные/заданные УГЛЫ дугами НЕ помечаем — минимум подсказок: значения в условии,
+  // равенство углов при основании ученик выводит сам. Дуга остаётся только у ВНЕШНЕГО
+  // угла (ext), т.к. без неё непонятно, какой именно угол (внешний, а не внутренний).
   if (ext) { const D = [B[0] + (B[0] - A[0]) * 0.28, B[1]]; g += pSeg(B, D, { d: true }); g += pArc(B, C, D, 15); g += pV(D, "br", "D") }
-  if (angTop) g += pArc(C, A, B, 15)
-  if (angBl) g += pArc(A, B, C, 15)
-  if (angBr && !ext) g += pArc(B, A, C, 15)
   g += pV(A, "bl", blLbl) + pV(B, ext ? "b" : "br", brLbl) + pV(C, "t", topLbl)
   return stWrap(270, 200, g)
 }
@@ -3372,10 +3379,8 @@ function figIsoApexB() {
 function figBisector() {
   const A = [40, 176], B = [242, 176], C = [120, 46], D = mid(B, C)
   let g = pPolygon([A, B, C]) + pSeg(A, D)
-  // числа углов не пишем — обе половины угла A помечены ОДИНАКОВО (равные углы ⇒
-  // равное число дуг и равный радиус), одиночная дуга у C — другой угол
-  g += pArc(A, C, D, 22, { double: true }) + pArc(A, D, B, 22, { double: true })
-  g += pArc(C, A, B, 15)
+  // без дуг: равные половины биссектрисы и заданный ∠C не помечаем — это в условии,
+  // ученик выводит сам (минимум подсказок на чертеже)
   g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "t", "C") + pV(D, "r", "D")
   return stWrap(270, 205, g)
 }
@@ -3399,7 +3404,7 @@ function t01TwoAltitudes() {
   const inter = (p1, p2, p3, p4) => { const a1 = p2[1] - p1[1], b1 = p1[0] - p2[0], c1 = a1 * p1[0] + b1 * p1[1], a2 = p4[1] - p3[1], b2 = p3[0] - p4[0], c2 = a2 * p3[0] + b2 * p3[1], d = a1 * b2 - a2 * b1; return [(b2 * c1 - b1 * c2) / d, (a1 * c2 - a2 * c1) / d] }
   const O = inter(Bb, Dh, P, Eh)
   let g = pPolygon([Aa, Bb, P]) + pSeg(Bb, Dh) + pSeg(P, Eh)
-  g += pRight(Dh, Aa, Bb, 8) + pRight(Eh, Aa, Bb, 8)
+  g += pRight(Dh, Aa, Bb, 8) + pRight(Eh, P, Bb, 8)   // прямой угол у E — между высотой EC и основанием (а не вдоль основания)
   g += pArc(O, Dh, Eh, 13) + pDot(O)
   g += pV(Aa, "bl", "A") + pV(Bb, "br", "B") + pV(P, "t", "C") + pV(Dh, "r", "D") + pV(Eh, "l", "E") + pV(O, "b", "O")
   return { condition_text: `В треугольнике ABC угол A равен ${deg(A)}, углы B и C острые, высоты BD и CE пересекаются в точке O. Найдите угол DOE. Ответ дайте в градусах.`, image_url: svgUrl(stWrap(270, 205, g)), answer: ru(180 - A) }
@@ -3417,9 +3422,15 @@ function t01SineTheorem() {
   let sideTxt, R
   if (v.ang === 30 || v.ang === 150) { const a = randInt(3, 18); sideTxt = ru(a); R = a }
   else { sideTxt = `${k}${v.k}`; R = k }
-  const A = [55, 150], B = [215, 150], C = [150, 55], O = [135, 118]
+  // Вершины строим РЕАЛЬНО на окружности; угол C задаёт дугу AB (не содержащую C) = 2·C:
+  // C — сверху, A,B симметричны. При тупом C (120/135/150) A,B уходят вверх к C, а центр
+  // оказывается ВНЕ треугольника — как и должно быть у тупоугольного (иначе картинка врала).
+  const cx = 140, cy = 108, Rf = 78, rad = v.ang * Math.PI / 180
+  const C = [cx, cy - Rf]
+  const A = [cx - Rf * Math.sin(rad), cy + Rf * Math.cos(rad)]
+  const B = [cx + Rf * Math.sin(rad), cy + Rf * Math.cos(rad)]
   // значение стороны на чертёж не наносим (оно в условии; иначе в SVG протёк бы сырой токен ⟦r⟧)
-  let g = pCircle(O, 78) + pPolygon([A, B, C], { w: 1.8 })
+  let g = pCircle([cx, cy], Rf) + pPolygon([A, B, C], { w: 1.8 })
   g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "t", "C")
   return { condition_text: `В треугольнике ABC сторона AB равна ${sideTxt}, угол C равен ${deg(v.ang)}. Найдите радиус описанной около этого треугольника окружности.`, image_url: svgUrl(stWrap(280, 215, g)), answer: ru(R) }
 }
@@ -3437,7 +3448,7 @@ function figRightCevians(feet) {
   for (const f of feet) g += pSeg(C, pts[f])
   if (feet.includes("H")) g += pRight(H, C, RT_A, 8)
   const lo = pts[feet[0]], hi = pts[feet[1]]
-  if (feet.length === 2) g += pArc(C, lo, hi, 15)   // дуга между чевианами; число угла — в условии
+  if (feet.length === 2) g += pArc(C, lo, hi, 22)   // радиус больше квадратика прямого угла (11) — дуга ниже, не перекрывает его; число — в условии
   g += pV(RT_A, "bl", "A") + pV(RT_B, "br", "B") + pV(C, "t", "C")
   for (const f of feet) g += pV(pts[f], "b", f)
   return stWrap(280, 210, g)
@@ -3496,12 +3507,10 @@ function t01TwoSidesHeight() {
 }
 
 // ── Средняя линия треугольника: S(CDE)=¼S(ABC); трапеция=¾S ─────────────────
-function figMidline(fill) {
+function figMidline() {
   const A = [40, 178], B = [235, 178], C = [150, 44], D = mid(A, C), E = mid(B, C)
-  let g = ""
-  if (fill === "cde") g += pPolygon([C, D, E], { fill: P_FILL })
-  if (fill === "trap") g += pPolygon([A, B, E, D], { fill: P_FILL })
-  g += pPolygon([A, B, C]) + pSeg(D, E)
+  // без заливки: искомая область (CDE / трапеция ABED) названа в условии и видна по подписям вершин
+  let g = pPolygon([A, B, C]) + pSeg(D, E)
   g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "t", "C") + pV(D, "l", "D") + pV(E, "r", "E")
   return stWrap(280, 205, g)
 }
@@ -3522,7 +3531,7 @@ function t01IsoApexArea() {
 function t01EquilHeight() {
   const k = randInt(3, 60)
   const A = [55, 180], B = [225, 180], C = [140, 40], H = mid(A, B)
-  let g = pPolygon([A, B, C]) + pSeg(C, H) + pRight(H, A, C, 8) + pTick(A, C, 2) + pTick(B, C, 2) + pTick(A, B, 2)
+  let g = pPolygon([A, B, C]) + pSeg(C, H) + pRight(H, A, C, 8)   // без штрихов равных сторон: «равносторонний» — в условии, а штрихи на AB налезали на высоту
   g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "t", "C") + pV(H, "b", "H")
   return { condition_text: `В равностороннем треугольнике ABC высота CH равна ${k}${rT(3)}. Найдите AB.`, image_url: svgUrl(stWrap(280, 205, g)), answer: ru(2 * k) }
 }
@@ -3697,7 +3706,7 @@ function t01Diameters() {
 // CA касается в A; CO — секущая через B (и, опц., через центр в D)
 function figTangentRadius(throughCenter = false) {
   const O = [110, 120], R = 62, C = [252, 150]
-  const A = onC(O, R, 55)                              // точка касания сверху-справа
+  const A = tangPt(O, R, C, 1)                         // истинная точка касания (CA ⟂ OA)
   let g = pCircle(O, R) + pSeg(C, A) + pSeg(C, O, {})  // касательная и секущая
   g += pSeg(O, A) + pRight(A, O, C, 8) + pDot(O)
   // точка B — пересечение отрезка CO с окружностью (ближняя к C, на стороне C)
@@ -3722,7 +3731,7 @@ function t01TangentSecantDiam() {
 // две касательные из C (точки касания A, B): угол ACB = 180 − дуга(мин)
 function figTwoTangents() {
   const O = [105, 115], R = 60, C = [255, 115]
-  const A = onC(O, R, 40), B = onC(O, R, -40)
+  const A = tangPt(O, R, C, 1), B = tangPt(O, R, C, -1)   // ИСТИННЫЕ точки касания: CA и CB реально касаются окружности
   let g = pCircle(O, R) + pSeg(C, A) + pSeg(C, B) + pArc(C, A, B, 16) + pDot(O)
   g += pV(A, "tr", "A") + pV(B, "br", "B") + pV(C, "r", "C") + pV(O, "l", "O")
   return stWrap(285, 205, g)
@@ -3759,21 +3768,21 @@ function t01TangentChord() {
 
 // ── Вписанная / описанная окружность в многоугольник ────────────────────────
 // четырёхугольник с вписанной окружностью (Pitot: AB+CD=BC+AD)
+// Вершина описанного многоугольника = пересечение касательных к окружности
+// (центр O, радиус r) в точках касания под углами d1, d2 (градусы, SVG y-вниз).
+// Гарантирует, что построенные стороны реально касаются окружности.
+function tangVertex(O, r, d1, d2) {
+  const t1 = d1 * Math.PI / 180, t2 = d2 * Math.PI / 180
+  const u1 = [Math.cos(t1), Math.sin(t1)], u2 = [Math.cos(t2), Math.sin(t2)]
+  const c1 = r + u1[0] * O[0] + u1[1] * O[1], c2 = r + u2[0] * O[0] + u2[1] * O[1]
+  const det = u1[0] * u2[1] - u1[1] * u2[0]
+  return [(c1 * u2[1] - c2 * u1[1]) / det, (u1[0] * c2 - u2[0] * c1) / det]
+}
 function figTangentialQuad() {
-  // Строим от окружности: вершины = пересечения касательных в 4 точках касания,
-  // поэтому каждая сторона реально касается окружности (описанный четырёхугольник).
+  // Строим от окружности: углы точек касания (низ, право, верх, лево) → описанный ABCD.
   const O = [148, 118], r = 46
-  // углы точек касания (SVG y-вниз): низ, право, верх, лево — слегка несимметрично
-  const aBot = 95 * Math.PI / 180, aRt = 352 * Math.PI / 180
-  const aTop = 272 * Math.PI / 180, aLf = 205 * Math.PI / 180
-  // вершина = пересечение касательных в углах t1, t2: u_i·X = r + u_i·O
-  const vtx = (t1, t2) => {
-    const u1 = [Math.cos(t1), Math.sin(t1)], u2 = [Math.cos(t2), Math.sin(t2)]
-    const c1 = r + u1[0] * O[0] + u1[1] * O[1], c2 = r + u2[0] * O[0] + u2[1] * O[1]
-    const det = u1[0] * u2[1] - u1[1] * u2[0]
-    return [(c1 * u2[1] - c2 * u1[1]) / det, (u1[0] * c2 - u2[0] * c1) / det]
-  }
-  const A = vtx(aLf, aBot), B = vtx(aBot, aRt), C = vtx(aRt, aTop), D = vtx(aTop, aLf)
+  const A = tangVertex(O, r, 205, 95), B = tangVertex(O, r, 95, 352)
+  const C = tangVertex(O, r, 352, 272), D = tangVertex(O, r, 272, 205)
   let g = pPolygon([A, B, C, D]) + pCircle(O, r) + pDot(O)
   g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "tr", "C") + pV(D, "tl", "D")
   return stWrap(285, 205, g)
@@ -3788,8 +3797,11 @@ function t01TangentialQuad() {
 }
 // трапеция, описанная около окружности: средняя линия = (сумма боковых)/2
 function figTangentialTrap() {
-  const A = [50, 178], B = [242, 178], C = [198, 62], D = [96, 62], O = [146, 120]
-  let g = pPolygon([A, B, C, D]) + pCircle(O, 57) + pDot(O)
+  // Основания горизонтальны (касание сверху/снизу), боковые — симметричные касательные.
+  const O = [146, 120], r = 56
+  const A = tangVertex(O, r, 205, 90), B = tangVertex(O, r, 90, 335)
+  const C = tangVertex(O, r, 335, 270), D = tangVertex(O, r, 270, 205)
+  let g = pPolygon([A, B, C, D]) + pCircle(O, r) + pDot(O)
   g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "tr", "C") + pV(D, "tl", "D")
   return stWrap(290, 205, g)
 }
@@ -3799,8 +3811,11 @@ function t01TangTrapMidline() {
 }
 // прямоугольная трапеция, описанная около окружности: r = (P/2 − больш.бок)/2
 function figRightTrap() {
-  const A = [58, 182], B = [232, 182], C = [232, 92], D = [58, 62], O = [104, 138]
-  let g = pPolygon([A, B, C, D]) + pCircle(O, 44) + pRight(A, D, B, 10) + pRight(D, A, C, 10) + pDot(O)
+  // AD (лево) вертикальна, AB (низ) горизонтальна → прямые углы при A и D; DC (верх) наклонена.
+  const O = [128, 124], r = 48
+  const A = tangVertex(O, r, 180, 90), B = tangVertex(O, r, 90, 0)
+  const C = tangVertex(O, r, 0, 258), D = tangVertex(O, r, 258, 180)
+  let g = pPolygon([A, B, C, D]) + pCircle(O, r) + pRight(A, D, B, 10) + pRight(D, A, C, 10) + pDot(O)
   g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "tr", "C") + pV(D, "tl", "D")
   return stWrap(285, 210, g)
 }
@@ -3811,8 +3826,10 @@ function t01RightTrapInradius() {
 }
 // равнобедренный треугольник: боковые + основание → радиус вписанной r = S/p
 function figIncircleIso() {
-  const A = [48, 182], B = [222, 182], C = [135, 44], O = [135, 138]
-  let g = pPolygon([A, B, C]) + pCircle(O, 40) + pTick(C, A, 2) + pTick(C, B, 2) + pDot(O)
+  // Основание горизонтально, боковые — симметричные касательные, вершина сверху.
+  const O = [135, 135], r = 45
+  const A = tangVertex(O, r, 208, 90), B = tangVertex(O, r, 90, 332), C = tangVertex(O, r, 332, 208)
+  let g = pPolygon([A, B, C]) + pCircle(O, r) + pTick(C, A, 2) + pTick(C, B, 2) + pDot(O)
   g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "t", "C")
   return stWrap(280, 210, g)
 }
@@ -3843,13 +3860,11 @@ function t01IncircleRight() {
 
 // ── Параллелограмм / ромб / трапеция ────────────────────────────────────────
 // параллелограмм ABCD (+ опц. точка E — середина AD, диагональ/заливка)
-function figParallelogram({ eMid = false, shade } = {}) {
+function figParallelogram({ eMid = false } = {}) {
   const A = [55, 180], B = [215, 180], C = [262, 68], D = [102, 68]
   const E = mid(A, D)
-  let g = ""
-  if (shade === "abe") g += pPolygon([A, B, E], { fill: P_FILL })
-  if (shade === "bcde") g += pPolygon([B, C, D, E], { fill: P_FILL })
-  g += pPolygon([A, B, C, D])
+  // без заливки: область названа в условии
+  let g = pPolygon([A, B, C, D])
   if (eMid) g += pSeg(B, E) + pV(E, "l", "E")
   g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "tr", "C") + pV(D, "tl", "D")
   return stWrap(290, 205, g)
