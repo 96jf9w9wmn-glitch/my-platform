@@ -1021,7 +1021,7 @@ function t12LnPoint() {
   } while (!nice(x0) && g < 300)
   const kInside = Math.random() < 0.35 && B > 1   // ln(x+s)^B вместо B·ln(x+s)
   const arg = `x${signed(s)}`.replace("+0", "")
-  const lnPart = kInside ? `ln(${arg})${sup(B)}` : `${B === 1 ? "" : B}·ln(${arg})`
+  const lnPart = kInside ? `ln(${arg})${sup(B)}` : `${B === 1 ? "" : B + "·"}ln(${arg})`
   const linPart = `${c === 1 ? "" : c}x`
   const d = randInt(1, 20), sd = pick([1, -1])
   const body = maxPt
@@ -1077,7 +1077,7 @@ function t12LnMaxValue() {
   const maxVal = B * (a - 1) + sc        // B·ln(1)−B·x0+sc = B(a−1)+sc
   const lo = x0 - 0.5, hi = 0            // область определения: x>−a, а lo=0,5−a>−a
   return {
-    condition_text: `Найдите наибольшее значение функции y=${B === 1 ? "" : B}·ln(x+${a})−${B === 1 ? "" : B}x${sc > 0 ? "+" : "−"}${Math.abs(sc)} на отрезке [${ru(clean(lo))}; ${hi}].`,
+    condition_text: `Найдите наибольшее значение функции y=${B === 1 ? "" : B + "·"}ln(x+${a})−${B === 1 ? "" : B}x${sc > 0 ? "+" : "−"}${Math.abs(sc)} на отрезке [${ru(clean(lo))}; ${hi}].`,
     answer: ru(maxVal),
   }
 }
@@ -1093,6 +1093,500 @@ function t12X32MinValue() {
   return {
     condition_text: `Найдите наименьшее значение функции y=x⟦r:x⟧−${p % 1 ? ru(p) : p}x+${c} на отрезке [1; ${hi}].`,
     answer: ru(minVal),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// №12 — РАСШИРЕНИЕ: недостающие типажи из эталона ФИПИ (+ раздел «Доп. задания»).
+// Общий принцип: ответ считается численно в ТОЧНЫХ кандидатных точках (концы отрезка
+// + внутренние критические точки), берётся max/min и принимается ТОЛЬКО если он целый
+// (или красивая десятичная) — иначе набор чисел перегенерируется. Это гарантирует, что
+// показанная функция и ответ согласованы, независимо от ручного вывода.
+// ---------------------------------------------------------------------------
+// Экстремум на множестве кандидатных x; null — если результат не «красивый».
+function extPick(f, xs, wantMax, allowHalf = false) {
+  const vals = xs.map(f)
+  if (vals.some((v) => !isFinite(v))) return null
+  const v = wantMax ? Math.max(...vals) : Math.min(...vals)
+  const unit = allowHalf ? 2 : 1
+  const r = Math.round(v * unit) / unit
+  return Math.abs(v - r) < 1e-6 ? r : null
+}
+// Многочлен «в строчку», убывающие степени: terms=[[coef,"x³"],…]; 0-коэф. пропускаем.
+function polyStr(terms) {
+  let s = ""
+  for (const [c, v] of terms) {
+    if (c === 0) continue
+    const a = Math.abs(c)
+    const body = v === "" ? String(a) : `${a === 1 ? "" : a}${v}`
+    s += s === "" ? `${c < 0 ? "−" : ""}${body}` : `${c < 0 ? "−" : "+"}${body}`
+  }
+  return s || "0"
+}
+const X3 = "x" + sup(3), X2 = "x" + sup(2), X5 = "x" + sup(5)
+// Строка кратного π в долях: (num·π)/den, упрощённая. Знак — снаружи.
+function piStr(num, den) {
+  const g = gcd(num, den); num /= g; den /= g
+  const n = num === 1 ? "π" : `${num}π`
+  return den === 1 ? n : `⟦f:${n}:${den}⟧`
+}
+
+// [2] Кубическая — наибольшее/наименьшее на отрезке. y=lead·x³+bx²+cx+d, корни y′ целые.
+function t12CubicSegment() {
+  for (let g = 0; g < 400; g++) {
+    const wantMax = Math.random() < 0.5
+    const lead = pick([1, -1])
+    let r1 = randInt(-6, 3), r2 = r1 + randInt(2, 6)
+    if ((r1 + r2) % 2 !== 0) r2 += 1
+    // y′=3·lead·x²+2b·x+c с корнями r1,r2
+    const b = lead === 1 ? -3 * (r1 + r2) / 2 : 3 * (r1 + r2) / 2
+    const c = lead === 1 ? 3 * r1 * r2 : -3 * r1 * r2
+    const d = randInt(1, 20)
+    const f = (x) => lead * x ** 3 + b * x * x + c * x + d
+    // отрезок целочисленный, содержит хотя бы одну критическую точку
+    const p = r1 - randInt(0, 2), q = r2 + randInt(0, 2)
+    if (q - p < 2) continue
+    const crits = [r1, r2].filter((r) => r > p && r < q)
+    if (!crits.length) continue
+    const ans = extPick(f, [p, q, ...crits], wantMax)
+    if (ans === null) continue
+    const body = polyStr([[lead, X3], [b, X2], [c, "x"], [d, ""]])
+    return {
+      condition_text: `Найдите ${wantMax ? "наибольшее" : "наименьшее"} значение функции y=${body} на отрезке [${ru(p)}; ${ru(q)}].`,
+      answer: ru(ans),
+    }
+  }
+  return t12CubicSegment()
+}
+
+// [3] Пятой степени x⁵ на отрезке. y=x⁵+B·x³+C·x+e, y′=5(x²−1)(x²+t) → крит. x=±1.
+function t12QuinticSegment() {
+  for (let g = 0; g < 200; g++) {
+    const wantMax = Math.random() < 0.5
+    const t = pick([4, 7, 10, 13])            // t≡1 (mod3) → B целое
+    const B = 5 * (t - 1) / 3, C = -5 * t, e = randInt(1, 15)
+    const f = (x) => x ** 5 + B * x ** 3 + C * x + e
+    const crit = pick([-1, 1])
+    const p = crit === 1 ? 0 : -randInt(2, 4)
+    const q = crit === 1 ? randInt(2, 4) : 0
+    const ans = extPick(f, [p, q, crit], wantMax)
+    if (ans === null) continue
+    const body = polyStr([[1, X5], [B, X3], [C, "x"], [e, ""]])
+    return {
+      condition_text: `Найдите ${wantMax ? "наибольшее" : "наименьшее"} значение функции y=${body} на отрезке [${ru(p)}; ${ru(q)}].`,
+      answer: ru(ans),
+    }
+  }
+  return t12QuinticSegment()
+}
+
+// [4] (x+a)²·x + e на отрезке. y′=(3x+a)(x+a); локальный max при x=−a (значение e).
+function t12ProductLinSegment() {
+  for (let g = 0; g < 200; g++) {
+    const wantMax = Math.random() < 0.5
+    const a = randInt(5, 12), e = randInt(1, 9) * pick([1, -1])
+    const f = (x) => (x + a) ** 2 * x + e
+    const kmax = Math.floor((2 * a) / 3 - 0.01)     // держим −a/3 вне отрезка
+    if (kmax < 2) continue
+    const p = -a - randInt(1, 2), q = -a + randInt(2, kmax)
+    const ans = extPick(f, [p, q, -a], wantMax)
+    if (ans === null) continue
+    return {
+      condition_text: `Найдите ${wantMax ? "наибольшее" : "наименьшее"} значение функции y=(x+${a})${sup(2)}x${signed(e)} на отрезке [${ru(p)}; ${ru(q)}].`,
+      answer: ru(ans),
+    }
+  }
+  return t12ProductLinSegment()
+}
+
+// [5,6] (x+m)²(x+n) — точка экстремума ИЛИ наиб/наим на отрезке. y′=(x+m)(3x+m+2n).
+function t12ProductTwoRoots() {
+  for (let g = 0; g < 300; g++) {
+    const segMode = Math.random() < 0.5
+    const wantMax = Math.random() < 0.5
+    const m = randInt(-9, 9), n = randInt(-9, 9)
+    if ((m + 2 * n) % 3 !== 0) continue
+    const c1 = -m, c2 = -(m + 2 * n) / 3          // критические точки
+    if (c1 === c2) continue
+    const e = randInt(1, 15) * pick([1, -1])
+    const f = (x) => (x + m) ** 2 * (x + n) + e
+    const fac = (k) => `(x${signed(k)})`
+    const sq = m === 0 ? `x${sup(2)}` : `${fac(m)}${sup(2)}`   // m=0 → x², не (x)²
+    const body = `${sq}${fac(n).replace("(x+0)", "(x)")}${signed(e)}`
+    if (segMode) {
+      const lo = Math.min(c1, c2), hi = Math.max(c1, c2)
+      const p = lo - randInt(0, 2), q = hi + randInt(0, 2)
+      if (q - p < 2) continue
+      const crits = [c1, c2].filter((r) => r > p && r < q)
+      if (!crits.length) continue
+      const ans = extPick(f, [p, q, ...crits], wantMax)
+      if (ans === null) continue
+      return {
+        condition_text: `Найдите ${wantMax ? "наибольшее" : "наименьшее"} значение функции y=${body} на отрезке [${ru(p)}; ${ru(q)}].`,
+        answer: ru(ans),
+      }
+    }
+    // точка экстремума: max — меньшая критическая, min — большая (лидер +x³)
+    const maxPt = Math.min(c1, c2), minPt = Math.max(c1, c2)
+    const isMax = Math.random() < 0.5
+    return {
+      condition_text: `Найдите точку ${isMax ? "максимума" : "минимума"} функции y=${body}.`,
+      answer: ru(isMax ? maxPt : minPt),
+    }
+  }
+  return t12ProductTwoRoots()
+}
+
+// [9] Степенная A·x√x+B·x+c на отрезке (наиб/наим, коэф. ¾, ⅔ и целые). Крит. √x=−2B/(3A).
+function t12PowSegment() {
+  for (let g = 0; g < 300; g++) {
+    const wantMax = Math.random() < 0.5
+    const A = wantMax ? pick([-1, -2, -4]) : pick([1, 2, { f: 2, d: 3 }])
+    const Aval = typeof A === "object" ? A.f / A.d : A
+    const k = randInt(2, 7)                       // √x в критической точке
+    if (typeof A === "object" && k % 3 !== 0) continue
+    const B = -3 * Aval * k / 2
+    if (!Number.isInteger(B)) continue
+    const x0 = k * k, c = randInt(1, 20) * pick([1, -1])
+    const f = (x) => Aval * x ** 1.5 + B * x + c
+    const p = Math.max(1, x0 - randInt(2, 8)), q = x0 + randInt(2, 8)
+    if (!(p < x0 && x0 < q)) continue
+    const ans = extPick(f, [p, q, x0], wantMax)
+    if (ans === null) continue
+    const Astr = typeof A === "object" ? `⟦f:${A.f}:${A.d}⟧x⟦r:x⟧`
+      : A === 1 ? "x⟦r:x⟧" : A === -1 ? "−x⟦r:x⟧" : `${A < 0 ? "−" : ""}${Math.abs(A)}x⟦r:x⟧`
+    const body = `${Astr}${signed(B)}x${signed(c)}`.replace("+0x", "").replace("−0x", "")
+    return {
+      condition_text: `Найдите ${wantMax ? "наибольшее" : "наименьшее"} значение функции y=${body} на отрезке [${ru(p)}; ${ru(q)}].`,
+      answer: ru(ans),
+    }
+  }
+  return t12PowSegment()
+}
+
+// [13] ln(kx)−kx на отрезке. Крит. x=1/k∈[1/(2k);5/(2k)]. Значение целое.
+function t12LnKxSegment() {
+  const maxForm = Math.random() < 0.5
+  const k = randInt(3, 20), c = randInt(1, 15)
+  const x0 = 1 / k
+  const f = maxForm ? (x) => Math.log(k * x) - k * x + c : (x) => k * x - Math.log(k * x) + c
+  const den = 2 * k
+  const lnPart = `ln(${k}x)`, linPart = `${k}x`
+  const body = maxForm ? `${lnPart}−${linPart}${signed(c)}` : `${linPart}−${lnPart}${signed(c)}`
+  const num5 = 5, g5 = gcd(num5, den)
+  return {
+    condition_text: `Найдите ${maxForm ? "наибольшее" : "наименьшее"} значение функции y=${body} на отрезке [⟦f:1:${den}⟧; ⟦f:${num5 / g5}:${den / g5}⟧].`,
+    answer: ru(clean(f(x0))),
+  }
+}
+
+// [14] ln(x+a)ⁿ−n·x на отрезке. Крит. x=1−a. Значение целое.
+function t12LnPowSegment() {
+  const maxForm = Math.random() < 0.5
+  const n = randInt(3, 9), a = randInt(3, 11), c = randInt(1, 15) * pick([1, -1])
+  const x0 = 1 - a
+  const f = maxForm
+    ? (x) => n * Math.log(x + a) - n * x + c
+    : (x) => n * x - n * Math.log(x + a) + c
+  const lnPart = `ln(x+${a})${sup(n)}`, linPart = `${n}x`
+  const body = maxForm ? `${lnPart}−${linPart}${signed(c)}` : `${linPart}−${lnPart}${signed(c)}`
+  const lo = x0 - 0.5
+  return {
+    condition_text: `Найдите ${maxForm ? "наибольшее" : "наименьшее"} значение функции y=${body} на отрезке [${ru(lo)}; 0].`,
+    answer: ru(clean(f(x0))),
+  }
+}
+
+// [16] A·x²+b·x+c·lnx на отрезке (крит. x=1). Значение A+b+e целое.
+function t12QuadLnSegment() {
+  for (let g = 0; g < 300; g++) {
+    const A = pick([1, 2, 3, 0.5, 1.5])
+    const b = randInt(-12, -2)
+    const c = -2 * A - b                          // крит. x=1: 2A+b+c=0
+    if (!Number.isInteger(c) || c === 0) continue
+    const e = randInt(1, 40) * pick([1, -1])
+    const f = (x) => A * x * x + b * x + c * Math.log(x) + e
+    const isMin = 2 * A - c > 0                    // y″(1)=2A−c
+    const M = randInt(6, 14)
+    const p = (M - 1) / M, q = (M + 1) / M
+    const ans = extPick(f, [p, q, 1], !isMin)
+    if (ans === null || ans !== A + b + e) continue
+    const Astr = A === 1 ? X2 : A === 0.5 ? "0,5" + X2 : A === 1.5 ? "1,5" + X2 : `${A}${X2}`
+    const cPart = c === 1 ? "+lnx" : c === -1 ? "−lnx" : `${c < 0 ? "−" : "+"}${Math.abs(c)}lnx`
+    const body = `${Astr}${signed(b)}x${cPart}${signed(e)}`
+    return {
+      condition_text: `Найдите ${isMin ? "наименьшее" : "наибольшее"} значение функции y=${body} на отрезке [⟦f:${M - 1}:${M}⟧; ⟦f:${M + 1}:${M}⟧].`,
+      answer: ru(ans),
+    }
+  }
+  return t12QuadLnSegment()
+}
+
+// [17,18] a·cos x+b·x+c или a·sin x+b·x+c на отрезке, монотонная (|b|>a) → экстремум в x=0.
+function t12TrigLinSegment() {
+  const isCos = Math.random() < 0.5
+  const a = randInt(2, 14), c = randInt(1, 20) * pick([1, -1])
+  const b = (a + randInt(1, 9)) * pick([1, -1])     // |b|>a → монотонна
+  const inc = b > 0                                 // возрастает
+  // экстремум в x=0: cos → a+c, sin → c
+  const val0 = isCos ? a + c : c
+  const leftAng = pick([[1, 2], [1, 1], [3, 2], [2, 1]])   // −π/2,−π,−3π/2,−2π
+  const trig = isCos ? "cos" : "sin"
+  const aStr = a === 1 ? `${trig}x` : `${a}${trig}x`
+  const bStr = `${b < 0 ? "−" : "+"}${Math.abs(b) === 1 ? "" : Math.abs(b)}x`
+  const body = `${aStr}${bStr}${signed(c)}`
+  return {
+    condition_text: `Найдите ${inc ? "наибольшее" : "наименьшее"} значение функции y=${body} на отрезке [−${piStr(leftAng[0], leftAng[1])}; 0].`,
+    answer: ru(val0),
+  }
+}
+
+// [19] cos/sin с коэффициентом x/π на отрезке. Линейная часть гасится на «красивом» конце.
+function t12TrigPiSegment() {
+  // конфигурации: {trig, endpoint θ0=−p/q·π, sin/cos(θ0) даёт целое при чётном a}
+  const CFG = [
+    { trig: "sin", ep: [5, 6], val: -0.5, mMul: 6 },  // sin(−5π/6)=−1/2
+    { trig: "sin", ep: [1, 6], val: -0.5, mMul: 6 },  // sin(−π/6)=−1/2
+    { trig: "cos", ep: [2, 3], val: -0.5, mMul: 3 },  // cos(−2π/3)=−1/2
+    { trig: "cos", ep: [1, 3], val: 0.5, mMul: 3 },   // cos(−π/3)=1/2
+  ]
+  const cfg = pick(CFG)
+  const a = 2 * randInt(2, 6)                        // чётное → a·(±1/2) целое
+  const m = cfg.mMul * randInt(Math.ceil((a * 3.15) / cfg.mMul), Math.ceil((a * 3.15) / cfg.mMul) + 3)
+  const c = randInt(1, 15) * pick([1, -1])
+  const [pn, pd] = cfg.ep
+  // f(x)=a·trig(x) − (m/π)x + c ; знак линейного делает функцию монотонной
+  const tf = cfg.trig === "sin" ? Math.sin : Math.cos
+  const f = (x) => a * tf(x) - (m / Math.PI) * x + c
+  const θ0 = -Math.PI * pn / pd
+  // значения на концах; монотонна (m/π>a) → экстремумы на концах
+  const vL = f(θ0), vR = f(0)
+  // «красивый» конец — θ0 (там линейная часть = m·pn/pd целое, trig целое)
+  const ansMax = Math.max(vL, vR), ansMin = Math.min(vL, vR)
+  // спрашиваем наибольшее, если max достигается в θ0 (целое); иначе наименьшее
+  const maxAtθ0 = Math.abs(vL - ansMax) < 1e-9
+  const wantMax = maxAtθ0
+  const ansRaw = wantMax ? ansMax : ansMin
+  const ans = Math.round(ansRaw)
+  if (Math.abs(ansRaw - ans) > 1e-6) return t12TrigPiSegment()
+  const trig = cfg.trig
+  const aStr = `${a}${trig}x`
+  const linTok = `⟦f:${m}x:π⟧`
+  const body = `${aStr}−${linTok}${signed(c)}`
+  return {
+    condition_text: `Найдите ${wantMax ? "наибольшее" : "наименьшее"} значение функции y=${body} на отрезке [−${piStr(pn, pd)}; 0].`,
+    answer: ru(ans),
+  }
+}
+
+// [20] a√2·cos x+a·x−(a·π/4)+c на [0;π/2]. Крит. x=π/4, значение a+c (√2 и π сокращаются).
+function t12TrigRootSegment() {
+  const a = randInt(2, 12), c = randInt(1, 15) * pick([1, -1])
+  const val = a + c
+  const cosCoef = a === 1 ? "√2·" : `${a}√2·`
+  const linCoef = a === 1 ? "" : a
+  const body = `${cosCoef}cosx+${linCoef}x−${piStr(a, 4)}${signed(c)}`
+  return {
+    condition_text: `Найдите наибольшее значение функции y=${body} на отрезке [0; ⟦f:π:2⟧].`,
+    answer: ru(val),
+  }
+}
+
+// [21] a·tg x+b·x(+π-константа) на отрезке. Два вида: убыв. (наиб=c в 0) и возр. (наиб=k+e в π/4).
+function t12TanSegment() {
+  if (Math.random() < 0.5) {
+    // y=k·x−k·tgx+c, убывает на [0;π/4], наибольшее в x=0 → c
+    const k = randInt(3, 40), c = randInt(1, 40) * pick([1, -1])
+    const body = `${k}x−${k}tgx${signed(c)}`
+    return {
+      condition_text: `Найдите наибольшее значение функции y=${body} на отрезке [0; ⟦f:π:4⟧].`,
+      answer: ru(c),
+    }
+  }
+  // y=k·tgx−k·x+(k/4)π+e, возрастает на [−π/4;π/4]; наибольшее в π/4 = k+e (k·π/4 гасит −k·π/4)
+  const k = 4 * randInt(1, 10), e = randInt(1, 20) * pick([1, -1])
+  const body = `${k}tgx−${k}x+${piStr(k, 4)}${signed(e)}`
+  return {
+    condition_text: `Найдите наибольшее значение функции y=${body} на отрезке [−⟦f:π:4⟧; ⟦f:π:4⟧].`,
+    answer: ru(k + e),
+  }
+}
+
+// [22] (a·x+b)cos x+c·sin x (c=−a) — точка экстремума на (0;π/2). Крит. x=−b/a.
+function t12TrigProductPoint() {
+  for (let g = 0; g < 200; g++) {
+    const x0 = pick([[1, 2], [1, 3], [1, 4], [3, 4], [1, 1], [5, 4], [3, 2], [2, 3]])
+    const x0v = x0[0] / x0[1]
+    if (!(x0v > 0 && x0v < Math.PI / 2)) continue
+    const a = pick([-4, -2, -1, 1, 2, 4])
+    const b = -a * x0v
+    if (!Number.isInteger(b)) continue
+    const c = -a
+    const d = randInt(1, 20) * pick([1, -1])
+    const isMax = a > 0                             // y′=−(ax+b)sinx → max при a>0
+    // линейная скобка: при a<0 записываем (b + a·x) как «(b−|a|x)»
+    const lin = a < 0
+      ? `(${b}${a === -1 ? "−" : `−${Math.abs(a)}`}x)`
+      : `(${a === 1 ? "" : a}x${signed(b)})`
+    const sinPart = c === -1 ? "−sinx" : c === 1 ? "+sinx" : `${c < 0 ? "−" : "+"}${Math.abs(c)}sinx`
+    const body = `${lin}cosx${sinPart}${signed(d)}`
+    const ansStr = x0[1] === 1 ? ru(x0v) : ru(clean(x0v))
+    return {
+      condition_text: `Найдите точку ${isMax ? "максимума" : "минимума"} функции y=${body}, принадлежащую промежутку (0; ⟦f:π:2⟧).`,
+      answer: ansStr,
+    }
+  }
+  return t12TrigProductPoint()
+}
+
+// [23] e^{2x}−k·e^x+c на отрезке (k чётное). Минимум в x=ln(k/2), значение c−k²/4.
+function t12ExpQuadInEx() {
+  const k = 2 * randInt(1, 6), c = randInt(1, 15) * pick([1, -1])
+  const x0 = Math.log(k / 2)
+  const minVal = c - (k * k) / 4
+  const p = Math.floor(x0) - randInt(1, 3), q = Math.ceil(x0) + randInt(1, 3)
+  const body = `e⟦sup:2x⟧−${k}e⟦sup:x⟧${signed(c)}`
+  return {
+    condition_text: `Найдите наименьшее значение функции y=${body} на отрезке [${ru(p)}; ${ru(q)}].`,
+    answer: ru(minVal),
+  }
+}
+
+// Общее ядро (quad·e^{s·x+t}): даёт корни производной-квадрата r1<r2 при заданных A,s.
+function quadExpDeriv(A, s, r1, r2) {
+  const B = -A * (r1 + r2) - 2 * A * s
+  const C = A * (r1 * r2 + s * (r1 + r2) + 2)
+  return { B, C }
+}
+function quadStr(A, B, C) {
+  const Astr = A === 1 ? X2 : `${A}${X2}`
+  const bx = B === 0 ? "" : B === 1 ? "+x" : B === -1 ? "−x" : `${B < 0 ? "−" : "+"}${Math.abs(B)}x`
+  const cc = C === 0 ? "" : signed(C)
+  return `(${Astr}${bx}${cc})`
+}
+// Показатель s·x+t в «читаемом» виде ФИПИ (переменная первой, минус U+2212).
+function expStr(s, t) {
+  let ex
+  if (s === -1 && t > 0) ex = `${t}−x`             // e^{7−x}
+  else {
+    const xt = s === 1 ? "x" : s === -1 ? "−x" : `${s < 0 ? "−" : ""}${Math.abs(s)}x`
+    ex = t === 0 ? xt : `${xt}${t < 0 ? "−" : "+"}${Math.abs(t)}`
+  }
+  return `e⟦sup:${ex}⟧`
+}
+
+// [24,25,26] (квадрат)·e^{±x+t} — точка экстремума. Ответ = целый корень производной.
+function t12QuadExpPoint() {
+  for (let g = 0; g < 200; g++) {
+    const s = pick([1, -1])
+    const A = pick([1, 1, 2, 3])
+    const r1 = randInt(-7, 6), r2 = r1 + randInt(1, 7)
+    const { B, C } = quadExpDeriv(A, s, r1, r2)
+    // t выберем так, чтобы показатель был «читаемым» целым
+    const t = pick([0, randInt(-8, 8)])
+    const sA = s * A
+    const maxPt = sA > 0 ? r1 : r2                  // sA>0: max в меньшем корне
+    const minPt = sA > 0 ? r2 : r1
+    const isMax = Math.random() < 0.5
+    // перфект-квадрат вид, если C=(B/2)² и B чётное
+    let disp = quadStr(A, B, C)
+    if (A === 1 && B % 2 === 0 && (B / 2) ** 2 === C) {
+      const h = B / 2
+      disp = h === 0 ? `x${sup(2)}` : `(x${signed(h)})${sup(2)}`
+    }
+    const body = `${disp}·${expStr(s, t)}`
+    return {
+      condition_text: `Найдите точку ${isMax ? "максимума" : "минимума"} функции y=${body}.`,
+      answer: ru(isMax ? maxPt : minPt),
+    }
+  }
+  return t12QuadExpPoint()
+}
+
+// [27] (квадрат)·e^{s·x+t} на отрезке. t=−s·r*, где r* — крит. внутри → значение = quad(r*) целое.
+function t12QuadExpSegment() {
+  for (let g = 0; g < 300; g++) {
+    const s = pick([1, -1])
+    const A = pick([1, 1, 2, 3])
+    const r1 = randInt(-6, 5), r2 = r1 + randInt(1, 6)
+    const { B, C } = quadExpDeriv(A, s, r1, r2)
+    const sA = s * A
+    const minPt = sA > 0 ? r2 : r1, maxPt = sA > 0 ? r1 : r2
+    const wantMax = Math.random() < 0.5
+    const star = wantMax ? maxPt : minPt
+    const t = -s * star                              // показатель = 0 в r* → значение целое
+    const f = (x) => (A * x * x + B * x + C) * Math.exp(s * x + t)
+    const p = Math.min(r1, r2) - randInt(0, 2), q = Math.max(r1, r2) + randInt(0, 2)
+    if (!(star > p && star < q)) continue
+    const crits = [r1, r2].filter((r) => r > p && r < q)
+    const ans = extPick(f, [p, q, ...crits], wantMax)
+    const valStar = A * star * star + B * star + C
+    if (ans === null || ans !== valStar) continue    // r* должен быть глобальным экстремумом
+    const body = `${quadStr(A, B, C)}·${expStr(s, t)}`
+    return {
+      condition_text: `Найдите ${wantMax ? "наибольшее" : "наименьшее"} значение функции y=${body} на отрезке [${ru(p)}; ${ru(q)}].`,
+      answer: ru(ans),
+    }
+  }
+  return t12QuadExpSegment()
+}
+
+// [28] (a·x+b)·e^{s·x+t} на отрезке. a=s·g, b=−g(s·x0+1), t=−s·x0 → значение в x0 = −g.
+function t12LinExpSegment() {
+  for (let g0 = 0; g0 < 300; g0++) {
+    const s = pick([1, -1, 2, -2, -4])
+    const gg = pick([-3, -2, -1, 1, 2, 3])
+    const x0 = randInt(-9, 9)
+    const a = s * gg, b = -gg * (s * x0 + 1)
+    if (a === 0) continue
+    const val = -gg
+    const t = -s * x0
+    const f = (x) => (a * x + b) * Math.exp(s * x + t)
+    const wantMax = gg < 0                            // g<0 → максимум в x0
+    const p = x0 - randInt(1, 4), q = x0 + randInt(1, 4)
+    const ans = extPick(f, [p, q, x0], wantMax)
+    if (ans === null || ans !== val) continue
+    const aStr = a === 1 ? "" : a === -1 ? "−" : `${a < 0 ? "−" : ""}${Math.abs(a)}`
+    const lin = `(${aStr}x${b === 0 ? "" : signed(b)})`
+    const body = `${lin}·${expStr(s, t)}`
+    return {
+      condition_text: `Найдите ${wantMax ? "наибольшее" : "наименьшее"} значение функции y=${body} на отрезке [${ru(p)}; ${ru(q)}].`,
+      answer: ru(ans),
+    }
+  }
+  return t12LinExpSegment()
+}
+
+// [29] y=−(x²+a)/x — точка экстремума. a=k² → max при x=k, min при x=−k.
+function t12RationalNegPoint() {
+  const k = randInt(2, 15), a = k * k
+  const isMax = Math.random() < 0.5
+  return {
+    condition_text: `Найдите точку ${isMax ? "максимума" : "минимума"} функции y=−⟦f:${X2}+${a}:x⟧.`,
+    answer: ru(isMax ? k : -k),
+  }
+}
+
+// [30] y=−x/(x²+a) — точка экстремума. a=k² → min при x=k, max при x=−k.
+function t12RationalRecipPoint() {
+  const k = randInt(2, 15), a = k * k
+  const isMax = Math.random() < 0.5
+  return {
+    condition_text: `Найдите точку ${isMax ? "максимума" : "минимума"} функции y=−⟦f:x:${X2}+${a}⟧.`,
+    answer: ru(isMax ? -k : k),
+  }
+}
+
+// [31] y=(x²+a)/x на отрезке. a=k²: полож. отрезок → min=2k (x=k); отриц. → max=−2k (x=−k).
+function t12RationalSegment() {
+  const k = randInt(2, 20), a = k * k
+  const positive = Math.random() < 0.5
+  const val = positive ? 2 * k : -2 * k
+  const p = positive ? randInt(1, k - 1) : -k - randInt(1, 8)
+  const q = positive ? k + randInt(1, 8) : -randInt(1, k - 1)
+  return {
+    condition_text: `Найдите ${positive ? "наименьшее" : "наибольшее"} значение функции y=⟦f:${X2}+${a}:x⟧ на отрезке [${ru(p)}; ${ru(q)}].`,
+    answer: ru(val),
   }
 }
 
@@ -3444,7 +3938,11 @@ export const GENERATORS_EGE_PROF = {
   // Только задания с источником ФИПИ (старый банк). Прочие (MATHEGE/Демо) исключены.
   11: [t11LinValue, t11QuadRead, t11HypBasic, t11ExpValue, t11LogValue,
     () => t11TwoLines(false), t11ParabLineK, () => t11HypLine(false), t11RootLineK],
-  12: [t12CubicPoint, t12LnPoint, t12X32Point, t12QuadLnPoint, t12LnMaxValue, t12X32MinValue],
+  12: [t12CubicPoint, t12LnPoint, t12X32Point, t12QuadLnPoint, t12LnMaxValue, t12X32MinValue,
+    t12CubicSegment, t12QuinticSegment, t12ProductLinSegment, t12ProductTwoRoots, t12PowSegment,
+    t12LnKxSegment, t12LnPowSegment, t12QuadLnSegment, t12TrigLinSegment, t12TrigPiSegment,
+    t12TrigRootSegment, t12TanSegment, t12TrigProductPoint, t12ExpQuadInEx, t12QuadExpPoint,
+    t12QuadExpSegment, t12LinExpSegment, t12RationalNegPoint, t12RationalRecipPoint, t12RationalSegment],
 }
 
 export const GEN_META_EGE_PROF = {
@@ -3727,9 +4225,29 @@ export const GEN_META_EGE_PROF = {
     ["ln-point", "Логарифм со сдвигом", t12LnPoint],
     ["x32-point", "Степенная x√x", t12X32Point],
     ["quad-ln", "Квадрат + логарифм", t12QuadLnPoint],
+    ["prod-2roots", "Произведение (x+m)²(x+n)", t12ProductTwoRoots],
+    ["trig-prod", "(ax+b)cosx+c·sinx", t12TrigProductPoint],
+    ["quad-exp", "Квадрат × eˣ", t12QuadExpPoint],
+    ["rat-neg", "−(x²+a)/x", t12RationalNegPoint],
+    ["rat-recip", "−x/(x²+a)", t12RationalRecipPoint],
   ]],
     ["Наибольшее / наименьшее значение", [
       ["ln-max", "Логарифм (наибольшее)", t12LnMaxValue],
       ["x32-min", "Степенная (наименьшее)", t12X32MinValue],
+      ["cubic-seg", "Кубическая на отрезке", t12CubicSegment],
+      ["quintic-seg", "Пятой степени x⁵", t12QuinticSegment],
+      ["prod-lin-seg", "(x+a)²·x на отрезке", t12ProductLinSegment],
+      ["pow-seg", "Степенная x√x на отрезке", t12PowSegment],
+      ["ln-kx-seg", "ln(kx)−kx на отрезке", t12LnKxSegment],
+      ["ln-pow-seg", "ln(x+a)ⁿ на отрезке", t12LnPowSegment],
+      ["quad-ln-seg", "Квадрат+lnx на отрезке", t12QuadLnSegment],
+      ["trig-lin-seg", "cos/sin + линейная", t12TrigLinSegment],
+      ["trig-pi-seg", "cos/sin с коэф. x/π", t12TrigPiSegment],
+      ["trig-root-seg", "cos с √-коэффициентом", t12TrigRootSegment],
+      ["tan-seg", "Тангенс a·tgx+bx", t12TanSegment],
+      ["exp-quad-ex", "e²ˣ−k·eˣ на отрезке", t12ExpQuadInEx],
+      ["quad-exp-seg", "Квадрат × eˣ на отрезке", t12QuadExpSegment],
+      ["lin-exp-seg", "Линейная × eˣ на отрезке", t12LinExpSegment],
+      ["rat-seg", "(x²+a)/x на отрезке", t12RationalSegment],
     ]]],
 }
