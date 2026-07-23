@@ -95,10 +95,10 @@ function IncomeChart({ buckets, forecast, mounted }) {
   const chartH = bottom - top
   const n = buckets.length
   const slot = (W - padX * 2) / n
-  const barW = Math.min(slot * 0.52, 46)
+  const barW = Math.min(slot * 0.58, 50)
   const lastIdx = n - 1
   const projectedLast = buckets[lastIdx].total + forecast
-  const maxVal = Math.max(...buckets.map((b) => b.total), projectedLast, 1) * 1.2
+  const maxVal = Math.max(...buckets.map((b) => b.total), projectedLast, 1) * 1.15
   const y = (v) => bottom - (v / maxVal) * chartH
   const r = Math.min(barW / 2, 9)
 
@@ -199,24 +199,42 @@ function GoalRing({ value, projected, goal, onSetGoal }) {
     setEditing(false)
   }
 
-  if (editing || !goal) {
+  // Пустая цель — аккуратная подсказка, а не сырое поле в узкой карточке.
+  if (!goal && !editing) {
+    return (
+      <button
+        onClick={() => { setDraft(""); setEditing(true) }}
+        className="stat-card flex items-center gap-3 text-left transition active:scale-[0.98]"
+      >
+        <div className="w-11 h-11 rounded-full flex items-center justify-center shrink-0 text-blue-500 bg-blue-500/10 border border-dashed border-blue-500/45">
+          <Icon name="target" size={20} />
+        </div>
+        <div className="min-w-0">
+          <div className="text-sm text-gray-500">Цель месяца</div>
+          <div className="text-sm font-medium text-blue-600 dark:text-blue-300">Поставить цель</div>
+        </div>
+      </button>
+    )
+  }
+
+  if (editing) {
     return (
       <div className="stat-card flex flex-col justify-center">
         <div className="text-sm text-gray-500 mb-2">Цель месяца</div>
         <div className="flex items-center gap-2">
-          <div className="relative flex-1">
+          <div className="relative flex-1 min-w-0">
             <input
               type="text" inputMode="numeric" autoFocus
               value={draft}
               onChange={(e) => setDraft(e.target.value.replace(/\D/g, ""))}
-              onKeyDown={(e) => e.key === "Enter" && save()}
-              placeholder="Напр. 60000"
+              onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") setEditing(false) }}
+              placeholder="60 000"
               className="input-glass pr-7 w-full"
             />
             <span className="absolute right-3 top-1.5 text-sm text-gray-400">₽</span>
           </div>
           <button onClick={save}
-            className="bg-blue-600 text-white w-8 h-8 flex items-center justify-center rounded-lg hover:bg-blue-700 transition active:scale-95">
+            className="bg-blue-600 text-white w-9 h-9 flex items-center justify-center rounded-lg shrink-0 hover:bg-blue-700 transition active:scale-95">
             <Icon name="check" size={16} />
           </button>
         </div>
@@ -437,12 +455,12 @@ function Payment({ students, setStudents, tutorId }) {
   const netProfit = monthTotal - expenseTotal - taxAmount
 
   return (
-    <div className="p-6">
-      <h1 className="text-xl font-medium mb-6">Финансы</h1>
+    <div className="p-4 sm:p-6">
+      <h1 className="text-xl font-medium mb-4 sm:mb-6">Финансы</h1>
 
       {/* HERO — финансовый поток */}
-      <div className="glass p-5 md:p-6 mb-4 overflow-hidden relative">
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(240px,300px)_1fr] gap-6 items-center">
+      <div className="glass p-4 sm:p-5 md:p-6 mb-4 overflow-hidden relative">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(240px,300px)_1fr] gap-4 lg:gap-6 items-center">
           <div>
             <div className="text-sm text-gray-500 mb-1">{monthLabel}</div>
             <div className="flex items-end gap-3 flex-wrap">
