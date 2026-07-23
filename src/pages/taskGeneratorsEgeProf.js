@@ -3345,23 +3345,26 @@ function t01IsoAngle() {
 // Равнобедр., внешний угол. Варианты: внешний при основании / при вершине.
 function t01IsoExt() {
   const v = pick(["baseFromApex", "apexFromExt", "baseFromExtApex"])
-  if (v === "baseFromApex") {                        // дан угол при вершине C → внешний при основании B
-    const C = randInt(10, 80) * 2, base = (180 - C) / 2
-    return { condition_text: `В треугольнике ABC AC = BC, угол C равен ${deg(C)}, угол ABD внешний. Найдите величину угла ABD. Ответ дайте в градусах.`, image_url: svgUrl(figIso({ angTop: deg(C), ext: "?" })), answer: ru(180 - base) }
+  if (v === "baseFromApex") {                        // дан угол при вершине C → внешний CBD при основании B
+    const C = randInt(10, 80) * 2, base = (180 - C) / 2  // base = внутр. угол B
+    return { condition_text: `В треугольнике ABC AC = BC, угол C равен ${deg(C)}, угол CBD внешний. Найдите величину угла CBD. Ответ дайте в градусах.`, image_url: svgUrl(figIso({ angTop: deg(C), ext: "?" })), answer: ru(180 - base) }
   }
-  if (v === "apexFromExt") {                          // дан внешний при основании B → угол C
-    const base = randInt(46, 87), ext = 180 - base
+  if (v === "apexFromExt") {                          // дан внешний при основании B → угол C(вершина)
+    const base = randInt(46, 87), ext = 180 - base    // base = внутр. угол B; C = 180−2·B
     return { condition_text: `В треугольнике ABC AC = BC. Внешний угол при вершине B равен ${deg(ext)}. Найдите угол C. Ответ дайте в градусах.`, image_url: svgUrl(figIso({ ext: deg(ext) })), answer: ru(180 - 2 * base) }
   }
-  const base = randInt(20, 80), ext = 180 - base      // AB=BC (вершина B), внешний при вершине B → угол C(основания)
-  return { condition_text: `В треугольнике ABC AB = BC. Внешний угол при вершине B равен ${deg(ext)}. Найдите угол C. Ответ дайте в градусах.`, image_url: svgUrl(figIsoApexB()), answer: ru(base) }
+  // AB=BC (вершина B): внешний при вершине B = сумма углов при основании = 2·C → C = внеш/2
+  const C = randInt(20, 85), ext = 2 * C
+  return { condition_text: `В треугольнике ABC AB = BC. Внешний угол при вершине B равен ${deg(ext)}. Найдите угол C. Ответ дайте в градусах.`, image_url: svgUrl(figIsoApexB()), answer: ru(C) }
 }
-// равнобедр. с вершиной B (AB=BC), внешний угол при B
+// равнобедр. с вершиной B (AB=BC): внешний угол при B — луч BD есть ПРОДОЛЖЕНИЕ AB за B
+// (A–B–D на одной прямой), поэтому ∠DBC смежен с внутренним ∠ABC.
 function figIsoApexB() {
-  const A = [45, 172], C = [205, 172], B = [125, 48]
+  const A = [45, 178], C = [205, 178], B = [125, 60]
   let g = pPolygon([A, C, B]) + pTick(B, A, 2) + pTick(B, C, 2)
-  const D = [B[0] + 42, B[1] - 6]; g += pSeg(B, D, { d: true }) + pArc(B, C, D, 15) + pV(D, "tr", "D")
-  g += pV(A, "bl", "A") + pV(C, "br", "C") + pV(B, "t", "B")
+  const u = unit(A, B), D = [B[0] + u[0] * 54, B[1] + u[1] * 54]
+  g += pSeg(B, D, { d: true }) + pArc(B, C, D, 15) + pV(D, "tr", "D")
+  g += pV(A, "bl", "A") + pV(C, "br", "C") + pV(B, "tl", "B")
   return stWrap(270, 200, g)
 }
 
