@@ -1579,7 +1579,7 @@ const ptsWord = (n) => `${NUMW[n]} точек`
 // shade — {a,b} закрасить между кривой и осью; tickXvals — подписи делений оси x.
 function wave8Svg({ gx0, gx1, gy0, gy1, fn, xa, xb, label = null, marks = [], markBelow = true,
   dashX = [], shade = null, tangent = null, dots = [], openEnds = true, showUnit = true, tickXvals = null }) {
-  const cell = 22, m = 16, axOv = 13 // axOv — вынос оси x за крайние точки (px): стрелка и открытые концы не впритык
+  const cell = 27, m = 16, axOv = 13 // axOv — вынос оси x за крайние точки (px): стрелка и открытые концы не впритык
   const padX = m + axOv
   const W = 2 * padX + (gx1 - gx0) * cell, H = 2 * m + (gy1 - gy0) * cell
   const X = (u) => padX + (u - gx0) * cell
