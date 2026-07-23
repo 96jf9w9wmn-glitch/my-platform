@@ -1899,7 +1899,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
         </div>
 
         <div className="mobile-nav-glass md:hidden fixed bottom-0 left-0 right-0 z-50">
-          <div className="flex justify-around items-center px-1 pt-2 pb-6">
+          <div className="flex justify-around items-center px-1 pt-2 pb-2">
             {navItems.map((item) => {
               const badge = item.id === "chat" ? chatUnread : 0
               return (

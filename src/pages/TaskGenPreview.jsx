@@ -119,7 +119,7 @@ function CodeBlock({ name, code, wide }) {
     } else if (copyText(code)) { done() }
   }
   return (
-    <div className={`rounded-lg border border-gray-200 bg-white overflow-hidden ${wide ? "sm:col-span-2" : ""}`}>
+    <div className={`rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1c1c1e] overflow-hidden ${wide ? "sm:col-span-2" : ""}`}>
       <div className="flex items-center justify-between px-3 py-1.5 bg-gray-100 border-b border-gray-200">
         <span className="text-xs font-semibold text-gray-600">{name}</span>
         <button onClick={copy} title="Скопировать код"
@@ -170,7 +170,7 @@ function SpreadsheetButton({ spreadsheet }) {
 
 function TaskCard({ task, showAnswer }) {
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm flex flex-col gap-2">
+    <div className="bg-white dark:bg-[#1c1c1e] rounded-2xl border border-gray-100 dark:border-white/10 p-4 shadow-sm flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold text-gray-500">Задание {task.number}</span>
         {task.generated && <span className="text-[10px] text-gray-300 uppercase tracking-wide">генератор</span>}
@@ -228,13 +228,13 @@ function TaskCard({ task, showAnswer }) {
 function ModuleCard({ module, showAnswer }) {
   if (module.error) {
     return (
-      <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm md:col-span-2">
+      <div className="bg-white dark:bg-[#1c1c1e] rounded-2xl border border-gray-100 dark:border-white/10 p-4 shadow-sm md:col-span-2">
         <div className="text-sm text-red-500">Ошибка модуля: {module.error}</div>
       </div>
     )
   }
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm flex flex-col gap-3 md:col-span-2">
+    <div className="bg-white dark:bg-[#1c1c1e] rounded-2xl border border-gray-100 dark:border-white/10 p-4 shadow-sm flex flex-col gap-3 md:col-span-2">
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold text-gray-500">Задания 1–5 · {SCEN_LABEL[module.scenario] || "практический модуль"}</span>
         <span className="text-[10px] text-gray-300 uppercase tracking-wide">генератор</span>
@@ -314,7 +314,7 @@ function Expandable({ label, children }) {
 // Отдельное задание, не связано с №13–19.
 function MatchingCard({ matching, showAnswer }) {
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm flex flex-col gap-2">
+    <div className="bg-white dark:bg-[#1c1c1e] rounded-2xl border border-gray-100 dark:border-white/10 p-4 shadow-sm flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold text-gray-500">Задание 12 · Понимание основного содержания</span>
         <span className="text-[10px] text-gray-300 uppercase tracking-wide">чтение</span>
@@ -349,7 +349,7 @@ function MatchingCard({ matching, showAnswer }) {
 // True/False/Not stated. По задумке: сначала вопрос, рядом кнопка «Развернуть текст».
 function ReadingStatementsCard({ module, showAnswer }) {
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm flex flex-col gap-2">
+    <div className="bg-white dark:bg-[#1c1c1e] rounded-2xl border border-gray-100 dark:border-white/10 p-4 shadow-sm flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold text-gray-500">Задания 13–19 · один текст «{module.title}»</span>
         <span className="text-[10px] text-gray-300 uppercase tracking-wide">чтение</span>

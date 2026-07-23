@@ -143,13 +143,13 @@ function Schedule({ students, setStudents }) {
         <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
           <button
             onClick={() => setView("month")}
-            className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${view === "month" ? "bg-white text-blue-600 dark:text-blue-400 shadow-sm" : "text-gray-500"}`}
+            className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${view === "month" ? "bg-white dark:bg-white/15 text-blue-600 dark:text-blue-400 shadow-sm" : "text-gray-500"}`}
           >
             Месяц
           </button>
           <button
             onClick={() => setView("week")}
-            className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${view === "week" ? "bg-white text-blue-600 dark:text-blue-400 shadow-sm" : "text-gray-500"}`}
+            className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${view === "week" ? "bg-white dark:bg-white/15 text-blue-600 dark:text-blue-400 shadow-sm" : "text-gray-500"}`}
           >
             Неделя
           </button>
@@ -239,14 +239,14 @@ function Schedule({ students, setStudents }) {
                           <div className="flex items-center gap-2">
                             {stu?.boardUrl && (
                               <a href={stu.boardUrl} target="_blank" rel="noreferrer"
-                                className="flex items-center text-blue-600 dark:text-blue-400 border border-blue-200 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors bg-white"
+                                className="flex items-center text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-400/30 px-2 py-1 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-400/10 transition-colors bg-white dark:bg-white/5"
                                 title="Доска">
                                 <Icon name="clipboard" size={14} />
                               </a>
                             )}
                             {stu?.callUrl && (
                               <a href={stu.callUrl} target="_blank" rel="noreferrer"
-                                className="flex items-center text-green-600 dark:text-green-400 border border-green-200 px-2 py-1 rounded-lg hover:bg-green-50 transition-colors bg-white"
+                                className="flex items-center text-green-600 dark:text-green-400 border border-green-200 dark:border-green-400/30 px-2 py-1 rounded-lg hover:bg-green-50 dark:hover:bg-green-400/10 transition-colors bg-white dark:bg-white/5"
                                 title="Звонок">
                                 <Icon name="video" size={14} />
                               </a>

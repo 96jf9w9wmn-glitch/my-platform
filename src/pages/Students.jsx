@@ -156,7 +156,7 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
               <div className="flex gap-2">
                 {debtors.map((s) => (
                   <button key={s.id} onClick={() => setSelectedStudent(s.id)}
-                    className="no-press flex items-center gap-1.5 bg-white/60 hover:bg-white/90 transition-colors rounded-lg px-2.5 py-1 text-xs font-medium text-gray-800 flex-shrink-0">
+                    className="no-press flex items-center gap-1.5 bg-white/60 hover:bg-white/90 dark:bg-white/10 dark:hover:bg-white/20 transition-colors rounded-lg px-2.5 py-1 text-xs font-medium text-gray-800 dark:text-gray-100 flex-shrink-0">
                     <span>{s.name.split(" ")[0]}</span>
                     <span className="text-amber-600 font-semibold">−{getPaymentStatus(s).label}</span>
                   </button>
@@ -173,7 +173,7 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
                   const days = getDaysUntilExam(s)
                   return (
                     <button key={s.id} onClick={() => setSelectedStudent(s.id)}
-                      className="no-press flex items-center gap-1.5 bg-white/60 hover:bg-white/90 transition-colors rounded-lg px-2.5 py-1 text-xs font-medium text-gray-800 flex-shrink-0">
+                      className="no-press flex items-center gap-1.5 bg-white/60 hover:bg-white/90 dark:bg-white/10 dark:hover:bg-white/20 transition-colors rounded-lg px-2.5 py-1 text-xs font-medium text-gray-800 dark:text-gray-100 flex-shrink-0">
                       <span>{s.name.split(" ")[0]}</span>
                       <span className={days <= 7 ? "text-red-600 font-semibold" : "text-blue-600"}>
                         {days === 0 ? "сегодня" : `через ${days} дн.`}

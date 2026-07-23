@@ -98,10 +98,16 @@ html {
   -moz-osx-font-smoothing: grayscale;
   /* нативные контролы (date-пикер, select) в цвет темы */
   color-scheme: light;
+  /* Фон самого html: body ограничен высотой вьюпорта и не заходит в области
+     safe-area (под статус-баром/индикатором «домой» на iPhone). Без фона там
+     просвечивает белый дефолт html — те самые белые полосы сверху и снизу.
+     Красим html в цвет темы, чтобы safe-area сливалась с приложением. */
+  background: #eef0f8;
 }
 
 html.dark {
   color-scheme: dark;
+  background: #000000;
 }
 
 /* iOS: у date-инпута свой intrinsic-размер (вылезает за границы) и нулевая
@@ -511,6 +517,9 @@ button:not([disabled]):not(.no-press):active {
   backdrop-filter: blur(40px) saturate(180%);
   -webkit-backdrop-filter: blur(40px) saturate(180%);
   border-bottom: 1px solid rgba(255, 255, 255, 0.6);
+  /* viewport-fit=cover пускает контент под статус-бар/чёлку — отбиваем шапку
+     на высоту выреза (0.75rem = базовый py-3). На десктопе env=0. */
+  padding-top: calc(env(safe-area-inset-top) + 0.75rem);
 }
 
 .dark .topbar-glass {
@@ -831,6 +840,8 @@ button:not([disabled]):not(.no-press):active {
   backdrop-filter: blur(30px);
   -webkit-backdrop-filter: blur(30px);
   border-top: 1px solid rgba(255, 255, 255, 0.6);
+  /* Фон бара заходит в зону индикатора «домой», кнопки — над ней. */
+  padding-bottom: env(safe-area-inset-bottom);
 }
 .dark .mobile-nav-glass {
   background: rgba(18, 18, 20, 0.88);

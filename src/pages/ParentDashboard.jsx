@@ -139,7 +139,7 @@ function ParentDashboard({ user, onLogout }) {
   const remarks = [...(student.remarks || [])].reverse()
 
   return (
-    <div className="min-h-screen p-4">
+    <div className="min-h-screen p-4 pt-[calc(env(safe-area-inset-top)+1rem)]">
       <div className="max-w-lg mx-auto">
 
         {/* Шапка */}

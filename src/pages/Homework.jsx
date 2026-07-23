@@ -1,9 +1,11 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, lazy, Suspense } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import Icon from "../components/Icon"
-import Variants from "./Variants"
 import { parseLocalDate } from "../utils"
+// Лениво: Variants тянет весь банк заданий (генераторы на 34k строк) + jspdf.
+// Нужен только во вкладке «варианты», незачем держать его в стартовом бандле.
+const Variants = lazy(() => import("./Variants"))
 
 const STATUS_LABELS = {
   assigned: { label: "Выдано", cls: "bg-gray-100 text-gray-600" },
@@ -545,7 +547,11 @@ function Homework({ user, students, embedded = false }) {
         )}
       </div>
 
-      {tab === "variants" && <Variants user={user} embedded addOpen={showAddVariant} onAddOpenChange={setShowAddVariant} />}
+      {tab === "variants" && (
+        <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="loader-ring" /></div>}>
+          <Variants user={user} embedded addOpen={showAddVariant} onAddOpenChange={setShowAddVariant} />
+        </Suspense>
+      )}
 
       {tab === "homework" && (
         <>

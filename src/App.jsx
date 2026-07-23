@@ -7,19 +7,21 @@ import Icon from "./components/Icon"
 import Students from "./pages/Students"
 import Payment from "./pages/Payment"
 import Auth from "./pages/Auth"
-import StudentDashboard from "./pages/StudentDashboard"
 import Results from "./pages/Results"
-import Variants from "./pages/Variants"
 import Dashboard from "./pages/Dashboard"
 import Homework from "./pages/Homework"
 import Schedule from "./pages/Schedule"
 import ParentDashboard from "./pages/ParentDashboard"
 import Chat from "./pages/Chat"
-import TaskGenPreview from "./pages/TaskGenPreview"
 import Legal from "./pages/Legal"
 import TutorOnboardingModal from "./components/TutorOnboardingModal"
 // Excalidraw тяжёлый (mermaid/katex) — грузим доску только при открытии
 const Board = lazy(() => import("./components/Board"))
+// Тяжёлые экраны — грузим лениво, чтобы их код (генераторы заданий на 34k строк,
+// jspdf/html2canvas/recharts) не сидел в стартовом бандле. Рендерятся только при заходе.
+const StudentDashboard = lazy(() => import("./pages/StudentDashboard"))
+const Variants = lazy(() => import("./pages/Variants"))
+const TaskGenPreview = lazy(() => import("./pages/TaskGenPreview"))
 
 function readStoredSession(key) {
   try {
@@ -176,7 +178,7 @@ function NotificationBell({ userId }) {
 
       {open && createPortal(
         <div
-          className={`fixed w-80 bg-white border border-gray-200 rounded-xl shadow-xl ${isClosing ? "popup-bubble-out" : "popup-bubble"}`}
+          className={`fixed w-80 bg-white dark:bg-[#1c1c1e] border border-gray-200 dark:border-white/10 rounded-xl shadow-xl ${isClosing ? "popup-bubble-out" : "popup-bubble"}`}
           style={{ top: pos.top, right: pos.right, zIndex: 99999 }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -497,6 +499,7 @@ function App() {
 
   if (user.role === "student") {
     return (
+      <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center bg-white dark:bg-[#1c1c1e]"><div className="loader-ring" /></div>}>
       <StudentDashboard
         user={user}
         students={students}
@@ -515,6 +518,7 @@ function App() {
           }
         }}
       />
+      </Suspense>
     )
   }
 
@@ -572,6 +576,7 @@ function App() {
         </div>
 
         <div className={`flex-1 min-h-0 overflow-x-hidden ${activePage === "chat" ? "flex flex-col overflow-hidden" : "overflow-y-auto pb-20 md:pb-0"}`}>
+          <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="loader-ring" /></div>}>
           <div className={activePage !== "dashboard" ? "hidden" : "page-active"}>{visitedPages.has("dashboard") && <Dashboard students={students} setActivePage={navigateTo} onOpenBoard={openBoard} />}</div>
           <div className={activePage !== "students" ? "hidden" : "page-active"}>{visitedPages.has("students") && <Students students={students} setStudents={handleSetStudents} tutorId={user.id} onOpenBoard={openBoard} />}</div>
 <div className={activePage !== "payment" ? "hidden" : "page-active"}>{visitedPages.has("payment") && <Payment students={students} setStudents={handleSetStudents} tutorId={user.id} />}</div>
@@ -592,10 +597,11 @@ function App() {
               }}
             />
           )}</div>
+          </Suspense>
         </div>
 
         <div className="mobile-nav-glass md:hidden fixed bottom-0 left-0 right-0 z-50">
-          <div className="flex justify-around items-center px-1 pt-2 pb-6">
+          <div className="flex justify-around items-center px-1 pt-2 pb-2">
             {mobileNav.map((item) => {
               const badge = item.id === "chat" ? chatUnread : 0
               return (
