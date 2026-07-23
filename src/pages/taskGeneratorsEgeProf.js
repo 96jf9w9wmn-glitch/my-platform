@@ -1579,9 +1579,10 @@ const ptsWord = (n) => `${NUMW[n]} точек`
 // shade — {a,b} закрасить между кривой и осью; tickXvals — подписи делений оси x.
 function wave8Svg({ gx0, gx1, gy0, gy1, fn, xa, xb, label = null, marks = [], markBelow = true,
   dashX = [], shade = null, tangent = null, dots = [], openEnds = true, showUnit = true, tickXvals = null }) {
-  const cell = 22, m = 16
-  const W = 2 * m + (gx1 - gx0) * cell, H = 2 * m + (gy1 - gy0) * cell
-  const X = (u) => m + (u - gx0) * cell
+  const cell = 22, m = 16, axOv = 13 // axOv — вынос оси x за крайние точки (px): стрелка и открытые концы не впритык
+  const padX = m + axOv
+  const W = 2 * padX + (gx1 - gx0) * cell, H = 2 * m + (gy1 - gy0) * cell
+  const X = (u) => padX + (u - gx0) * cell
   const Y = (v) => H - m - (v - gy0) * cell
   let g = ""
   for (let i = gx0; i <= gx1; i++) g += `<line x1="${X(i)}" y1="${Y(gy0)}" x2="${X(i)}" y2="${Y(gy1)}" stroke="${G_GRID}" stroke-width="1"/>`
@@ -1602,10 +1603,10 @@ function wave8Svg({ gx0, gx1, gy0, gy1, fn, xa, xb, label = null, marks = [], ma
     if (xl !== null) g += `<line x1="${clean(X(xl))}" y1="${clean(Y(ln(xl)))}" x2="${clean(X(xr))}" y2="${clean(Y(ln(xr)))}" stroke="${G_AX}" stroke-width="1.7"/>`
   }
   g += `<path d="${fnPath(fn, xa, xb, X, Y, gy0, gy1, (xb - xa) / 600)}" fill="none" stroke="${G_CURVE}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`
-  g += vecArrow(X(gx0), Y(0), X(gx1), Y(0), G_AX, 1.4)
+  g += vecArrow(X(gx0) - axOv, Y(0), X(gx1) + axOv, Y(0), G_AX, 1.4)
   g += vecArrow(X(0), Y(gy0), X(0), Y(gy1), G_AX, 1.4)
   // «x» — над осью у стрелки, чтобы не сталкиваться с подписью крайнего деления снизу
-  g += `<text x="${X(gx1) - 4}" y="${Y(0) - 6}" ${HALO} font-size="15" font-style="italic" font-weight="bold" fill="${G_AX}" text-anchor="end">x</text>`
+  g += `<text x="${X(gx1) + axOv - 4}" y="${Y(0) - 6}" ${HALO} font-size="15" font-style="italic" font-weight="bold" fill="${G_AX}" text-anchor="end">x</text>`
   g += `<text x="${X(0) + 7}" y="${Y(gy1) + 13}" ${HALO} font-size="15" font-style="italic" font-weight="bold" fill="${G_AX}">y</text>`
   g += `<text x="${X(0) - 5}" y="${Y(0) + 16}" ${HALO} font-size="12" font-weight="bold" fill="${G_AX}" text-anchor="end">0</text>`
   if (showUnit && gy0 <= 1 && gy1 >= 1) g += `<text x="${X(0) - 6}" y="${Y(1) + 4}" ${HALO} font-size="12" fill="${G_AX}" text-anchor="end">1</text>`
