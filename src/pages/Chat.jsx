@@ -415,12 +415,10 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
       }`}>
         {!activeContact ? (
           <div className="relative flex-1 flex flex-col items-center justify-center gap-4 overflow-hidden">
-            {/* Базовый тон. bg-gray-50 сам remap-ается в тёмный под .dark (см. index.css) —
+            {/* Базовый тон — РОВНЫЙ, без цветных пятен (решено: мягкий однотонный фон).
+                bg-gray-50 сам remap-ается в тёмный под .dark (см. index.css) —
                 светлая тема = светло-серый, тёмная = почти чёрный. dark:-override НЕ нужен. */}
             <div className="pointer-events-none absolute inset-0 bg-gray-50" />
-            {/* Мягкое свечение ПО ЦЕНТРУ за иконкой (не в углу — чтобы не было стыка с сайдбаром).
-                Синие токены под .dark не инвертируются, поэтому цвет одинаков в обеих темах. */}
-            <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[460px] h-[460px] max-w-[80%] rounded-full bg-blue-400/10 dark:bg-blue-500/15 blur-3xl" />
             {/* Еле заметные точки для текстуры */}
             <div
               className="pointer-events-none absolute inset-0 opacity-[0.5] dark:opacity-[0.15]"
