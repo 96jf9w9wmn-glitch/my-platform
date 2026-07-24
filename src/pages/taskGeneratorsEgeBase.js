@@ -395,8 +395,12 @@ function t16PowerTermsSum() {
     sum += c * b ** e
     parts.push(`${dec(c)} ⋅ ${bStr}${sup(e)}`)
   }
-  if (neg && !isTerminating(decFr(sum, 4))) return t16PowerTermsSum()
-  return { condition_text: `Найдите значение выражения ${parts.join(" + ")}.`, answer: ru(clean(sum)) }
+  const ans = ru(clean(sum))
+  const frac = String(ans).split(",")[1] || ""
+  // Отбрасываем бесконечные и визуально-периодические ответы (0,2222 похоже на 2/9,
+  // хотя формально конечно) — в части 1 таких быть не должно.
+  if (neg && (!isTerminating(decFr(sum, 4)) || /(\d)\1\1/.test(frac))) return t16PowerTermsSum()
+  return { condition_text: `Найдите значение выражения ${parts.join(" + ")}.`, answer: ans }
 }
 
 // Логарифм в показателе: a^(m·log_a b)=b^m  и  a^(k+log_a b)=a^k·b.

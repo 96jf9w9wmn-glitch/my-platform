@@ -38,6 +38,9 @@ function ru(x) {
 const prob = (fav, total) => ru(clean(fav / total))
 // Терминальная десятичная (знаменатель = 2^a·5^b)?
 function isTerm(n, d) { d = Math.abs(d / gcd(n, d)); while (d % 2 === 0) d /= 2; while (d % 5 === 0) d /= 5; return d === 1 }
+// Число знаков после запятой у дроби n/d (Infinity, если бесконечная). Ответ части 1
+// не должен быть длинным хвостом вроде 0,454545455 или 0,234375.
+function decLen(n, d) { const g = gcd(n, d); d = Math.abs(d / g); let a = 0, b = 0; while (d % 2 === 0) { d /= 2; a++ } while (d % 5 === 0) { d /= 5; b++ } return d === 1 ? Math.max(a, b) : Infinity }
 // Знак «+n» / «−n» для константы в выражении (n со своим знаком).
 const signed = (n) => (n < 0 ? `−${Math.abs(n)}` : `+${n}`)
 // ============================================================================
@@ -204,8 +207,8 @@ function t04ShotPut() {
   do {
     n = [randInt(3, 11), randInt(3, 11), randInt(3, 11), randInt(3, 11)]
     total = n[0] + n[1] + n[2] + n[3]
-  } while (![0, 1, 2, 3].some((j) => isTerm(n[j], total)))
-  const i = pick([0, 1, 2, 3].filter((j) => isTerm(n[j], total)))
+  } while (![0, 1, 2, 3].some((j) => decLen(n[j], total) <= 4))
+  const i = pick([0, 1, 2, 3].filter((j) => decLen(n[j], total) <= 4))
   return {
     condition_text: `В соревнованиях по толканию ядра участвуют спортсмены из четырёх стран: ${n[0]} из ${cs[0]}, ${n[1]} из ${cs[1]}, ${n[2]} из ${cs[2]} и ${n[3]} из ${cs[3]}. Порядок, в котором выступают спортсмены, определяется жребием. Найдите вероятность того, что спортсмен, выступающий первым, окажется из ${cs[i]}.`,
     answer: prob(n[i], total),
@@ -218,7 +221,7 @@ function t04Gymnastics() {
   let total, a, b, rest
   do {
     total = randInt(20, 55); a = randInt(5, 20); b = randInt(5, 20); rest = total - a - b
-  } while (rest < 3 || !isTerm(rest, total))
+  } while (rest < 3 || decLen(rest, total) > 4)
   return {
     condition_text: `В чемпионате по гимнастике участвуют ${total} спортсменок: ${a} из ${cs[0]}, ${b} из ${cs[1]}, остальные — из ${cs[2]}. Порядок, в котором выступают гимнастки, определяется жребием. Найдите вероятность того, что спортсменка, выступающая первой, окажется из ${cs[2]}.`,
     answer: prob(rest, total),
@@ -230,7 +233,7 @@ function t04Diving() {
   const cs = shuffle(COUNTRIES).slice(0, 2)
   const ords = ["четвёртым", "одиннадцатым", "тринадцатым", "двенадцатым", "седьмым", "десятым"]
   let total, c1, c2
-  do { total = randInt(20, 75); c1 = randInt(3, 24); c2 = randInt(3, 24) } while (c1 + c2 >= total || !isTerm(c1, total))
+  do { total = randInt(20, 75); c1 = randInt(3, 24); c2 = randInt(3, 24) } while (c1 + c2 >= total || decLen(c1, total) > 3)
   const ord = pick(ords)
   return {
     condition_text: `На чемпионате по прыжкам в воду выступают ${total} спортсменов, среди них ${c1} спортсменов из ${cs[0]} и ${c2} спортсменов из ${cs[1]}. Порядок выступлений определяется жеребьёвкой. Найдите вероятность того, что ${ord} будет выступать спортсмен из ${cs[0]}.`,
@@ -242,7 +245,7 @@ function t04Diving() {
 const TICKET_THEMES = [["математике", "«Логарифмы»"], ["химии", "«Щёлочи»"], ["географии", "«Страны Африки»"], ["истории", "«Великая Отечественная война»"], ["географии", "«Ресурсообеспеченность»"]]
 function t04Tickets() {
   const [subj, theme] = pick(TICKET_THEMES)
-  let n, k; do { n = randInt(20, 60); k = randInt(3, n - 3) } while (!isTerm(k, n))
+  let n, k; do { n = randInt(20, 60); k = randInt(3, n - 3) } while (decLen(k, n) > 4)
   const not = Math.random() < 0.5
   const fav = not ? n - k : k
   return {
@@ -3585,19 +3588,19 @@ function figIsoBase(baseLbl, apexLbl, showAlt) {
 function t01IsoHeightTrig() {
   const mode = pick(["cosFromSides", "sinACB", "sinBAC", "cosBAC", "acFromCos"])
   if (mode === "cosFromSides") {                        // AC=BC=L, AB=2m → cos A = m/L
-    const L = randInt(10, 30), m = randInt(3, L - 2), base = 2 * m
-    return { condition_text: `В треугольнике ABC AC = BC = ${L}, AB = ${base}. Найдите cos A.`, image_url: svgUrl(figIsoBase()), answer: ru(clean(m / L)) }
+    let L, m; do { L = randInt(10, 30); m = randInt(3, L - 2) } while (decLen(m, L) > 2)
+    return { condition_text: `В треугольнике ABC AC = BC = ${L}, AB = ${2 * m}. Найдите cos A.`, image_url: svgUrl(figIsoBase()), answer: ru(clean(m / L)) }
   }
   if (mode === "sinACB") {                              // AB=BC, AC=b, высота CH=h → sin ACB = h/b
-    const b = randInt(8, 24), h = randInt(2, b - 1)
+    let b, h; do { b = randInt(8, 24); h = randInt(2, b - 1) } while (decLen(h, b) > 2)
     return { condition_text: `В треугольнике ABC AB = BC, AC = ${b}, высота CH равна ${h}. Найдите синус угла ACB.`, image_url: svgUrl(figIsoBase()), answer: ru(clean(h / b)) }
   }
   if (mode === "sinBAC") {                              // AC=BC, AB=c, высота AH=h → sin BAC = h/c
-    const c = randInt(8, 24), h = randInt(2, c - 1)
+    let c, h; do { c = randInt(8, 24); h = randInt(2, c - 1) } while (decLen(h, c) > 2)
     return { condition_text: `В треугольнике ABC AC = BC, AB = ${c}, высота AH равна ${h}. Найдите синус угла BAC.`, image_url: svgUrl(figIsoBase()), answer: ru(clean(h / c)) }
   }
   if (mode === "cosBAC") {                              // AC=BC, AB=c, BH=x → cos BAC = x/c
-    const c = randInt(8, 24), x = randInt(2, c - 1)
+    let c, x; do { c = randInt(8, 24); x = randInt(2, c - 1) } while (decLen(x, c) > 2)
     return { condition_text: `В треугольнике ABC AC = BC, AB = ${c}, AH — высота, BH = ${x}. Найдите косинус угла BAC.`, image_url: svgUrl(figIsoBase()), answer: ru(clean(x / c)) }
   }
   // acFromCos: AC=BC, высота CH=h, cos A=cosT → AC = h/sin A
@@ -3846,7 +3849,10 @@ function figIncircleIso() {
 }
 const PYTH = [[3, 4, 5], [8, 15, 17], [7, 24, 25], [20, 21, 29], [5, 12, 13], [9, 40, 41]]
 function t01IncircleIsoRadius() {
-  const [p, q, k] = pick(PYTH), t = pick([1, 2, 3])
+  // r = p·q·t / (k+p): для части троек/t это бесконечная дробь (60t/7, 10t/3 → 25,714…).
+  // Перебираем, пока радиус не станет короткой конечной десятичной.
+  let p, q, k, t
+  do { [p, q, k] = pick(PYTH); t = pick([1, 2, 3]) } while (decLen(p * q * t, k + p) > 2)
   const half = p * t, height = q * t, L = k * t, base = 2 * half
   const S = half * height, per = (2 * L + base) / 2, r = S / per
   return { condition_text: `Боковые стороны равнобедренного треугольника равны ${L}, основание равно ${base}. Найдите радиус вписанной окружности.`, image_url: svgUrl(figIncircleIso()), answer: ru(clean(r)) }

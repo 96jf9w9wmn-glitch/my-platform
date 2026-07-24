@@ -265,7 +265,9 @@ const rAdd = ([n1, d1], [n2, d2]) => reduceFr(n1 * d2 + n2 * d1, d1 * d2)
 const rSub = ([n1, d1], [n2, d2]) => reduceFr(n1 * d2 - n2 * d1, d1 * d2)
 const rMul = ([n1, d1], [n2, d2]) => reduceFr(n1 * n2, d1 * d2)
 const rDiv = ([n1, d1], [n2, d2]) => reduceFr(n1 * d2, d1 * n2)
-function terminating(d) { d = Math.abs(d); while (d % 2 === 0) d /= 2; while (d % 5 === 0) d /= 5; return d === 1 }
+// Число знаков после запятой у конечной дроби [n,d] (Infinity, если бесконечная).
+// Часть 1 не терпит длинных «хвостов» вроде 0,859375 — держим ответы короткими.
+function decDigits([n, d]) { d = Math.abs(reduceFr(n, d)[1]); let a = 0, b = 0; while (d % 2 === 0) { d /= 2; a++ } while (d % 5 === 0) { d /= 5; b++ } return d === 1 ? Math.max(a, b) : Infinity }
 
 // Точное десятичное представление конечной дроби через запятую (без float-ошибок).
 function decStr([n, d]) {
@@ -307,16 +309,17 @@ function tFracAddSub() {
 }
 
 function tFracMul() {
-  const a = randFrac(), b = randFrac()
+  let a, b, res
+  do { a = randFrac(); b = randFrac(); res = rMul(a, b) } while (decDigits(res) > 3)
   return {
     condition_text: `Найдите значение выражения ${fFrac(a)} · ${fFrac(b)}.`,
-    answer: decStr(rMul(a, b)).replace(".", ","),
+    answer: decStr(res).replace(".", ","),
   }
 }
 
 function tFracDiv() {
   let a, b, res
-  do { a = randFrac(); b = randFrac(); res = rDiv(a, b) } while (!terminating(res[1]))
+  do { a = randFrac(); b = randFrac(); res = rDiv(a, b) } while (decDigits(res) > 3)
   return {
     condition_text: `Найдите значение выражения ${fFrac(a)} : ${fFrac(b)}.`,
     answer: decStr(res).replace(".", ","),
@@ -355,7 +358,7 @@ function tDecDiv() {
 // №6. Вложенная обратная величина 1/(1/a + 1/b) = ab/(a+b). Банк: 1/(1/30+1/42)=17,5. (КЭС 1.2)
 function t6Reciprocal() {
   let a, b, res
-  do { a = randInt(2, 60); b = randInt(2, 60); res = rDiv([1, 1], rAdd([1, a], [1, b])) } while (a === b || !terminating(res[1]))
+  do { a = randInt(2, 60); b = randInt(2, 60); res = rDiv([1, 1], rAdd([1, a], [1, b])) } while (a === b || decDigits(res) > 3)
   return {
     condition_text: `Найдите значение выражения 1 : (${fT(1, a)} + ${fT(1, b)}).`,
     answer: decStr(res).replace(".", ","),
@@ -797,7 +800,8 @@ function t9Quad() {
 // №9. Квадратное со старшим коэффициентом: (ax − s)(x − t) = ax² − (at+s)x + st = 0.
 // Корни t и s/a рациональны. Банк: 2x²−3x+1=0 → x=1, x=0,5. (КЭС 3.1)
 function t9QuadLead() {
-  const a = pick([2, 3])
+  // a ∈ {2,4,5}: дробный корень s/a всегда конечная десятичная (нет /3 → нет 1,666…).
+  const a = pick([2, 4, 5])
   let s, t, root2
   do { s = randInt(-6, 6); t = randInt(-6, 6); root2 = s / a } while (s === 0 || root2 === t || Number.isInteger(root2))
   const b = -(a * t + s), c = s * t
@@ -3034,7 +3038,10 @@ function t17TrapDiagLat() {
 }
 // 28. площадь параллелограмма, две стороны → большая высота = площадь/меньшую сторону
 function t17ParaHeight() {
-  const s1 = randInt(4, 12), s2 = s1 + randInt(1, 10), area = s2 * randInt(2, 8)
+  // Бо́льшая высота = площадь / меньшая сторона (s1). Берём площадь кратной s1,
+  // чтобы бо́льшая высота была целой (а не 28/9 = 3,111…). h ≤ s2 — геом. допустимо.
+  const s1 = randInt(4, 12), s2 = s1 + randInt(1, 10)
+  const h = randInt(2, Math.min(8, s2)), area = s1 * h
   const P = paraPts([128, 92], 132, 80, 24), cen = cen4(P)
   const g = cPoly(P) + labelABCD(P, cen)
   return { condition_text: `Площадь параллелограмма равна ${area}, а две его стороны равны ${s1} и ${s2}. Найдите его высоты. В ответе укажите большую высоту.`, answer: decOut(area / s1), image_url: q17(g) }
@@ -3812,9 +3819,9 @@ function g22Frac(p, q) {
   if (q < 0) { p = -p; q = -q }
   const g = g22Gcd(p, q); p /= g; q /= g
   if (q === 1) return g22Num(p)
-  let t = q; while (t % 2 === 0) t /= 2; while (t % 5 === 0) t /= 5
-  if (t === 1) return g22Num(p / q)                       // десятичная конечна
-  return `${g22Num(p)}/${q}`
+  let t = q, a = 0, b = 0; while (t % 2 === 0) { t /= 2; a++ } while (t % 5 === 0) { t /= 5; b++ }
+  if (t === 1 && Math.max(a, b) <= 2) return g22Num(p / q) // короткая конечная десятичная (≤2 знаков)
+  return `${g22Num(p)}/${q}`                               // иначе — обыкновенной дробью (не 0,765625)
 }
 
 // ── рендер координатной плоскости с графиком ─────────────────────────────
@@ -4415,7 +4422,9 @@ function t24RadicalPerp() {
 function fmtRat(n, d) {
   const [rn, rd] = reduceFr(n, d)
   if (rd === 1) return String(rn)
-  return terminating(rd) ? decStr([rn, rd]) : `${rn}/${rd}`
+  // Короткую конечную десятичную (≤2 знаков) — через запятую; длинную (22,96875)
+  // или бесконечную — обыкновенной дробью, чтобы ответ выглядел как в ФИПИ.
+  return decDigits([rn, rd]) <= 2 ? decStr([rn, rd]) : `${rn}/${rd}`
 }
 const q23 = q24   // тот же размерный враппер SVG
 
