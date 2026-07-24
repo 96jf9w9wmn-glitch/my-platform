@@ -335,6 +335,131 @@ const GRADE_COLORS = {
   2: "bg-red-100 text-red-700",
 }
 
+// Вид карточки ДЗ у ученика по статусу: цвет плитки-иконки (аватар) и чипа.
+// Тинты на opacity → одинаково ок в светлой и тёмной теме.
+const HW_STATUS = {
+  assigned:  { label: "Выдано",      icon: "clipboard", tile: "from-blue-400/25 to-blue-500/10 text-blue-600 dark:text-blue-300",     chip: "bg-blue-500/10 text-blue-600 dark:text-blue-300 ring-1 ring-blue-500/20" },
+  submitted: { label: "На проверке", icon: "clock",     tile: "from-indigo-400/25 to-indigo-500/10 text-indigo-600 dark:text-indigo-300", chip: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 ring-1 ring-indigo-500/20" },
+  revision:  { label: "Доработать",  icon: "repeat",    tile: "from-amber-400/25 to-amber-500/10 text-amber-600 dark:text-amber-300",   chip: "bg-amber-500/10 text-amber-600 dark:text-amber-300 ring-1 ring-amber-500/20" },
+  done:      { label: "Выполнено",   icon: "check",     tile: "from-green-400/25 to-green-500/10 text-green-600 dark:text-green-300",   chip: "bg-green-500/10 text-green-600 dark:text-green-300 ring-1 ring-green-500/20" },
+}
+
+// Плоский короткий текст описания для превью в карточке (без LaTeX-разметки).
+function hwPreview(text) {
+  if (!text) return ""
+  return text
+    .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, "$1/$2")
+    .replace(/\\sqrt(?:\[[^\]]*\])?\{([^{}]+)\}/g, "√$1")
+    .replace(/\\[a-zA-Z]+/g, "").replace(/[{}$^]/g, "").replace(/\\[()[\]]/g, "")
+    .replace(/\s+/g, " ").trim()
+}
+
+// Дедлайн со срочностью: просрочено/сегодня/завтра — цветом, иначе дата.
+function deadlineInfo(hw) {
+  if (!hw.deadline) return null
+  const d = parseLocalDate(hw.deadline)
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const days = Math.round((d - today) / 86400000)
+  const dateStr = d.toLocaleDateString("ru-RU", { day: "numeric", month: "long" })
+  if (hw.status === "done" || hw.status === "submitted") return { text: dateStr, cls: "text-gray-400", icon: "calendar" }
+  if (days < 0) return { text: "Просрочено", cls: "text-red-500", icon: "alert-triangle" }
+  if (days === 0) return { text: "Сегодня", cls: "text-amber-600", icon: "clock" }
+  if (days === 1) return { text: "Завтра", cls: "text-amber-600", icon: "clock" }
+  if (days <= 3) return { text: `Через ${days} дн.`, cls: "text-amber-600", icon: "clock" }
+  return { text: dateStr, cls: "text-gray-400", icon: "calendar" }
+}
+
+function StudentHomeworkCard({ hw, index, onSelect }) {
+  const meta = HW_STATUS[hw.status] || HW_STATUS.assigned
+  const dl = deadlineInfo(hw)
+  const isDone = hw.status === "done"
+  const typeLabel = hw.hw_type === "test" ? `Тест · ${hw.question_count || 0} вопр.`
+    : hw.hw_type === "combined" ? "Тест + письменное" : "Письменное"
+  const preview = hw.hw_type !== "test" ? hwPreview(hw.description) : ""
+  const icon = isDone ? "check" : hw.hw_type === "test" ? "clipboard" : hw.hw_type === "combined" ? "file-text" : "edit"
+  return (
+    <button
+      onClick={() => onSelect(hw)}
+      style={{ animationDelay: `${Math.min(index, 8) * 45}ms` }}
+      className="item-enter press-tap text-left w-full glass rounded-2xl p-3.5 flex items-center gap-3 active:scale-[0.99] transition-transform"
+    >
+      <div className={`shrink-0 w-11 h-11 rounded-2xl flex items-center justify-center bg-gradient-to-br ${meta.tile}`}>
+        <Icon name={icon} size={18} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <div className="font-medium text-sm truncate flex-1">{hw.title}</div>
+          {isDone && hw.grade ? (
+            <span className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${GRADE_COLORS[hw.grade]}`}>{hw.grade}</span>
+          ) : (
+            <span className={`shrink-0 text-[11px] px-2 py-0.5 rounded-full font-medium ${meta.chip}`}>{meta.label}</span>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 mt-1 text-[11px]">
+          <span className="text-gray-400 shrink-0">{typeLabel}</span>
+          {dl && (
+            <span className={`inline-flex items-center gap-1 shrink-0 ${dl.cls}`}>
+              <span className="text-gray-300">•</span>
+              {dl.icon && <Icon name={dl.icon} size={10} />}
+              {dl.text}
+            </span>
+          )}
+        </div>
+        {preview && <div className="text-[11px] text-gray-400 mt-1 line-clamp-1">{preview}</div>}
+      </div>
+      <Icon name="chevron-right" size={16} className="shrink-0 text-gray-300" />
+    </button>
+  )
+}
+
+function StudentHomeworkList({ homework, onSelect }) {
+  const [filter, setFilter] = useState("all")
+  const match = {
+    all: () => true,
+    active: (h) => h.status === "assigned" || h.status === "revision",
+    submitted: (h) => h.status === "submitted",
+    done: (h) => h.status === "done",
+  }
+  const FILTERS = [
+    { key: "all", label: "Все" },
+    { key: "active", label: "Активные" },
+    { key: "submitted", label: "Проверка" },
+    { key: "done", label: "Готово" },
+  ]
+  const counts = Object.fromEntries(FILTERS.map((f) => [f.key, homework.filter(match[f.key]).length]))
+  const list = homework.filter(match[filter])
+  return (
+    <div>
+      <div className="flex flex-wrap gap-2 mb-4">
+        {FILTERS.map((f) => {
+          const on = filter === f.key
+          return (
+            <button
+              key={f.key}
+              onClick={() => setFilter(f.key)}
+              className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all active:scale-[0.96] ${
+                on ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-sm" : "glass-sm text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {f.label}
+              <span className={`inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full text-[10px] ${on ? "bg-white/25" : "bg-black/5 dark:bg-white/10"}`}>{counts[f.key]}</span>
+            </button>
+          )
+        })}
+      </div>
+      {list.length === 0 ? (
+        <div className="text-sm text-gray-400 text-center py-10 border border-dashed border-white/50 glass-sm">
+          {filter === "all" ? "Заданий пока нет" : "В этой категории пусто"}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2.5">
+          {list.map((hw, i) => <StudentHomeworkCard key={hw.id} hw={hw} index={i} onSelect={onSelect} />)}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
   const [uploading, setUploading] = useState(false)
   const [testAnswers, setTestAnswers] = useState(Array(hw.question_count || 0).fill(""))
@@ -1529,41 +1654,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
             ) : (
               <div>
                 <h2 className="text-base font-medium mb-4">Мои задания</h2>
-                {homework.length === 0 ? (
-                  <div className="text-sm text-gray-400 text-center py-8 border border-dashed border-white/50 glass-sm">
-                    Заданий пока нет
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-3">
-                    {homework.map((hw) => (
-                      <button
-                        key={hw.id}
-                        onClick={() => setSelectedHomework(hw)}
-                        className="text-left glass p-4 hover:bg-white/80 transition-colors w-full"
-                      >
-                        <div className="flex justify-between items-center">
-                          <div className="font-medium text-sm">{hw.title}</div>
-                          <span className={`text-xs px-2 py-1 rounded-full ${
-                            hw.status === "done" ? "bg-green-100 text-green-700" :
-                            hw.status === "submitted" ? "bg-blue-100 text-blue-700" :
-                            hw.status === "revision" ? "bg-amber-100 text-amber-700" :
-                            "bg-gray-100 text-gray-600"
-                          }`}>
-                            {hw.status === "done" ? "Выполнено" :
-                             hw.status === "submitted" ? "На проверке" :
-                             hw.status === "revision" ? "На доработку" :
-                             "Выдано"}
-                          </span>
-                        </div>
-                        {hw.deadline && (
-                          <div className="text-xs text-gray-400 mt-1">
-                            Дедлайн: {parseLocalDate(hw.deadline).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}
-                          </div>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                <StudentHomeworkList homework={homework} onSelect={setSelectedHomework} />
               </div>
             )}
           </div>
