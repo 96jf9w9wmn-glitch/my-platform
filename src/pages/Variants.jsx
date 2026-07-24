@@ -3,7 +3,6 @@ import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import { plural, getInitials, defaultExamType, renderTaskMath, plainTaskMath } from "../utils"
 import Icon from "../components/Icon"
-import { TaskBankModal } from "./TaskBank"
 import { assembleFromBank, rerollTask, rerollModule, isModuleNumber } from "./taskBankApi"
 import { generateVariantPdf } from "./variantPdf"
 
@@ -569,7 +568,6 @@ function Variants({ user, students = [], embedded = false, addOpen, onAddOpenCha
   const [selectedSubmission, setSelectedSubmission] = useState(null)
   const [loading, setLoading] = useState(true)
   const [previewFile, setPreviewFile] = useState(null)
-  const [showBank, setShowBank] = useState(false)
 
   useEffect(() => { loadData() }, [])
 
@@ -630,12 +628,6 @@ function Variants({ user, students = [], embedded = false, addOpen, onAddOpenCha
         </div>
       )}
 
-      <div className="flex justify-end">
-        <button onClick={() => setShowBank(true)} className="text-sm text-blue-600 hover:opacity-70 transition-opacity flex items-center gap-1.5">
-          <Icon name="book" size={14} />Банк заданий
-        </button>
-      </div>
-
       <div className="grid grid-cols-3 gap-3">
         <div className="glass p-4">
           <div className="text-xs text-gray-400 mb-1">Всего вариантов</div>
@@ -651,7 +643,6 @@ function Variants({ user, students = [], embedded = false, addOpen, onAddOpenCha
         </div>
       </div>
 
-      {showBank && <TaskBankModal initialExamType={defaultExamType(user.profile?.exam_focus)} onClose={() => setShowBank(false)} />}
 
       {loading ? (
         <div className="text-sm text-gray-400 text-center py-8">Загрузка...</div>

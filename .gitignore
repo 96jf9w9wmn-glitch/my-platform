@@ -36,6 +36,13 @@ fipi_bank_*/
 _seed.mjs
 status-dashboard.html
 
+# Нативная обёртка Capacitor (iOS) — локальный проект, в публичный репо не нужен
+/ios/
+/assets/
+capacitor.config.json
+# Xcode DerivedData от сборки Capacitor — мусор, не коммитить
+/build/
+
 # Внутренние заметки, не публиковать
 CLAUDE.md
 .vercel

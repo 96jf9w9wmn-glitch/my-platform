@@ -160,7 +160,7 @@ function IncomeChart({ buckets, forecast, mounted }) {
                   </div>
                 )}
               </div>
-              <span className={`text-sm ${isSel ? "font-semibold text-gray-800 dark:text-gray-100" : "text-gray-400"}`}>
+              <span className={`text-sm ${isSel ? "font-semibold text-gray-800" : "text-gray-400"}`}>
                 {b.label}
               </span>
             </button>
@@ -253,7 +253,8 @@ function GoalRing({ value, projected, goal, onSetGoal }) {
           </defs>
         </svg>
         <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-base font-semibold">{Math.round(pct * 100)}%</span>
+          <span className="font-semibold tracking-tight tabular-nums"
+            style={{ fontSize: pct >= 1 ? 13 : 15 }}>{Math.round(pct * 100)}%</span>
         </div>
       </div>
       <div className="min-w-0">
@@ -262,8 +263,10 @@ function GoalRing({ value, projected, goal, onSetGoal }) {
           <Icon name="edit" size={11} className="opacity-0 group-hover:opacity-40 transition-opacity" />
         </div>
         <div className="text-base font-medium">{fmt(goal)} ₽</div>
-        <div className="text-xs text-gray-400 mt-0.5">
-          {remaining > 0 ? `осталось ${fmt(remaining)} ₽` : "цель достигнута 🎉"}
+        <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
+          {remaining > 0
+            ? `осталось ${fmt(remaining)} ₽`
+            : <>цель достигнута <Icon name="party" size={12} className="text-blue-500 shrink-0" /></>}
         </div>
       </div>
     </button>
