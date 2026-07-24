@@ -3448,7 +3448,7 @@ function figRightCevians(feet) {
   for (const f of feet) g += pSeg(C, pts[f])
   if (feet.includes("H")) g += pRight(H, C, RT_A, 8)
   const lo = pts[feet[0]], hi = pts[feet[1]]
-  if (feet.length === 2) g += pArc(C, lo, hi, 22)   // радиус больше квадратика прямого угла (11) — дуга ниже, не перекрывает его; число — в условии
+  if (feet.length === 2) g += pArc(C, lo, hi, 30)   // радиус заметно больше квадратика прямого угла (11) — дуга сидит ниже и не налезает на него; число — в условии
   g += pV(RT_A, "bl", "A") + pV(RT_B, "br", "B") + pV(C, "t", "C")
   for (const f of feet) g += pV(pts[f], "b", f)
   return stWrap(280, 210, g)
@@ -3639,11 +3639,12 @@ function t01CentralVsInscribed() {
 // треугольник вписан, центр O: BOC = 2·BAC
 function t01CentralTri() {
   const a = randInt(20, 75)
-  const A = onC(CO, CR, 90), B = onC(CO, CR, 200), C = onC(CO, CR, 340)
+  // B, C опущены ближе к низу, чтобы центр O не оказывался на хорде BC
+  const A = onC(CO, CR, 90), B = onC(CO, CR, 210), C = onC(CO, CR, 330)
   let g = pCircle(CO, CR) + pPolygon([A, B, C]) + pSeg(CO, B) + pSeg(CO, C)
   // ∠BOC = 2·∠BAC — углы НЕ равны: вписанный одной дугой, центральный двойной
   g += pArc(A, B, C, 15) + pArc(CO, B, C, 16, { double: true }) + pDot(CO)
-  g += pV(A, "t", "A") + pV(B, "bl", "B") + pV(C, "br", "C") + pV(CO, "l", "O")
+  g += pV(A, "t", "A") + pV(B, "bl", "B") + pV(C, "br", "C") + pV(CO, "tl", "O")
   return { condition_text: `Треугольник ABC вписан в окружность с центром O. Угол BAC равен ${deg(a)}. Найдите угол BOC. Ответ дайте в градусах.`, image_url: svgUrl(stWrap(280, 220, g)), answer: ru(2 * a) }
 }
 // даны дуги AC и BC → вписанный ACB = ½(360 − AC − BC)
@@ -3691,7 +3692,8 @@ function t01InscTriTwo() {
 function figDiameters() {
   const A = onC(CO, CR, 200), C = onC(CO, CR, 20), B = onC(CO, CR, 140), D = onC(CO, CR, 320)
   let g = pCircle(CO, CR) + pSeg(A, C) + pSeg(B, D) + pSeg(A, B) + pSeg(B, C)
-  g += pArc(C, A, B, 16) + pArc(CO, A, D, 16) + pDot(CO)
+  // ∠AOD (центральный) ≠ ∠ACB (вписанный): AOD = 180 − 2·ACB — помечаем разным числом дуг
+  g += pArc(C, A, B, 16) + pArc(CO, A, D, 16, { double: true }) + pDot(CO)
   g += pV(A, "bl", "A") + pV(B, "tl", "B") + pV(C, "tr", "C") + pV(D, "br", "D") + pV(CO, "r", "O")
   return stWrap(280, 220, g)
 }
@@ -3811,10 +3813,11 @@ function t01TangTrapMidline() {
 }
 // прямоугольная трапеция, описанная около окружности: r = (P/2 − больш.бок)/2
 function figRightTrap() {
-  // AD (лево) вертикальна, AB (низ) горизонтальна → прямые углы при A и D; DC (верх) наклонена.
-  const O = [128, 124], r = 48
-  const A = tangVertex(O, r, 180, 90), B = tangVertex(O, r, 90, 0)
-  const C = tangVertex(O, r, 0, 258), D = tangVertex(O, r, 258, 180)
+  // Основания AB (низ) и DC (верх) горизонтальны и параллельны; левая AD вертикальна
+  // (высота = 2r) → прямые углы при A и D; правая BC — наклонная (большая боковая).
+  const O = [122, 120], r = 46
+  const A = tangVertex(O, r, 180, 90), B = tangVertex(O, r, 90, 345)
+  const C = tangVertex(O, r, 345, 270), D = tangVertex(O, r, 270, 180)
   let g = pPolygon([A, B, C, D]) + pCircle(O, r) + pRight(A, D, B, 10) + pRight(D, A, C, 10) + pDot(O)
   g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "tr", "C") + pV(D, "tl", "D")
   return stWrap(285, 210, g)
