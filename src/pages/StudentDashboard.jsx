@@ -516,6 +516,8 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
   const hasTest = hw.hw_type === "test" || hw.hw_type === "combined"
   const hasWritten = hw.hw_type === "written" || hw.hw_type === "combined"
   const testDone = hw.test_score != null
+  // Интерактивный тест: к каждому вопросу приложены варианты ответа для выбора.
+  const isMcq = Array.isArray(hw.test_options) && hw.test_options.length > 0
   const requireSolution = !!hw.require_solution && hasTest
 
   async function handleFileChange(e) {
@@ -577,7 +579,7 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
 
         {intro && <div className="text-sm text-gray-600 mt-4" dangerouslySetInnerHTML={{ __html: renderHomeworkMath(intro) }} />}
 
-        {tasks.length > 0 && (
+        {tasks.length > 0 && !(isMcq && !testDone) && (
           <div className="flex flex-col gap-2 mt-3">
             {tasks.map((t, i) => (
               <div
@@ -619,30 +621,65 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
               <span className="flex items-start gap-1"><Icon name="message" size={12} className="mt-0.5 flex-shrink-0" />Комментарий репетитора: {hw.comment}</span>
             </div>
           )}
-          <h3 className="text-base font-medium mb-4">Тест — введи ответы</h3>
-          <div
-            className="grid gap-2 mb-4"
-            style={{
-              gridTemplateRows: `repeat(${Math.ceil(testAnswers.length / 3)}, auto)`,
-              gridAutoFlow: "column",
-            }}
-          >
-            {testAnswers.map((a, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <span className="text-xs text-gray-400 w-5">{i + 1}</span>
-                <input
-                  value={a}
-                  onChange={(e) => {
-                    const updated = [...testAnswers]
-                    updated[i] = e.target.value
-                    setTestAnswers(updated)
-                  }}
-                  placeholder="Ответ"
-                  className="input-glass flex-1 px-2 py-1.5"
-                />
-              </div>
-            ))}
-          </div>
+          <h3 className="text-base font-medium mb-4">{isMcq ? "Тест — выбери ответ" : "Тест — введи ответы"}</h3>
+          {isMcq ? (
+            <div className="flex flex-col gap-4 mb-4">
+              {testAnswers.map((a, i) => (
+                <div key={i}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="shrink-0 w-6 h-6 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-300 text-xs font-semibold flex items-center justify-center">{i + 1}</span>
+                    {tasks[i]?.text && (
+                      <div className="text-sm text-gray-700 dark:text-gray-200 min-w-0 flex-1" dangerouslySetInnerHTML={{ __html: renderHomeworkMath(tasks[i].text) }} />
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(hw.test_options[i] || []).map((o, j) => {
+                      const sel = a === o
+                      return (
+                        <button
+                          key={j}
+                          type="button"
+                          onClick={() => {
+                            const updated = [...testAnswers]
+                            updated[i] = sel ? "" : o
+                            setTestAnswers(updated)
+                          }}
+                          className={`rounded-xl px-3 py-2.5 text-sm border text-center transition-all active:scale-[0.96] ${
+                            sel ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5"
+                          }`}
+                          dangerouslySetInnerHTML={{ __html: renderHomeworkMath(o) }}
+                        />
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div
+              className="grid gap-2 mb-4"
+              style={{
+                gridTemplateRows: `repeat(${Math.ceil(testAnswers.length / 3)}, auto)`,
+                gridAutoFlow: "column",
+              }}
+            >
+              {testAnswers.map((a, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="text-xs text-gray-400 w-5">{i + 1}</span>
+                  <input
+                    value={a}
+                    onChange={(e) => {
+                      const updated = [...testAnswers]
+                      updated[i] = e.target.value
+                      setTestAnswers(updated)
+                    }}
+                    placeholder="Ответ"
+                    className="input-glass flex-1 px-2 py-1.5"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
           {requireSolution && (
             <div className="mb-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
               <div className="text-sm font-medium mb-1">Прикрепи решение</div>

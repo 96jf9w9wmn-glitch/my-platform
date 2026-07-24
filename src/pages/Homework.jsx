@@ -51,6 +51,12 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
   const [hwType, setHwType] = useState(editingHw?.hw_type || "written")
   const [requireSolution, setRequireSolution] = useState(editingHw?.require_solution || false)
   const [answersInput, setAnswersInput] = useState(editingHw?.correct_answers?.join(" ") || "")
+  // Интерактивный тест с выбором ответа: варианты по вопросам + правильный на каждый.
+  // null — обычный тест со свободным вводом ответа.
+  const [testOptions, setTestOptions] = useState(editingHw?.test_options || null)
+  const [mcqCorrect, setMcqCorrect] = useState(
+    editingHw?.test_options ? editingHw?.correct_answers || [] : []
+  )
   const fileRef = useRef()
 
   // --- Генерация ДЗ по теме через DeepSeek (серверный прокси /api/generate-hw) ---
@@ -59,9 +65,10 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
   const [genSubject, setGenSubject] = useState("")
   const [genLevel, setGenLevel] = useState("средний")
   const [genCount, setGenCount] = useState(5)
+  const [genAsTest, setGenAsTest] = useState(true) // тест с выбором ответа
   const [generating, setGenerating] = useState(false)
   const [genError, setGenError] = useState("")
-  const [preview, setPreview] = useState(null) // {title, description, tasks:[{question,answer}]}
+  const [preview, setPreview] = useState(null) // {title, description, tasks:[{question,answer,options}]}
 
   async function handleGenerate() {
     if (!genTopic.trim()) {
@@ -74,7 +81,13 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
       const res = await fetch("/api/generate-hw", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic: genTopic, subject: genSubject, level: genLevel, count: genCount }),
+        body: JSON.stringify({
+          topic: genTopic,
+          subject: genSubject,
+          level: genLevel,
+          count: genCount,
+          format: genAsTest ? "test" : "open",
+        }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -84,7 +97,11 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
       setPreview({
         title: data.title || genTopic,
         description: data.description || "",
-        tasks: (data.tasks || []).map((t) => ({ question: t.question || "", answer: t.answer || "" })),
+        tasks: (data.tasks || []).map((t) => ({
+          question: t.question || "",
+          answer: t.answer || "",
+          options: Array.isArray(t.options) ? t.options.map((o) => String(o)) : [],
+        })),
       })
     } catch (e) {
       setGenError("Сеть недоступна: " + String(e))
@@ -104,31 +121,73 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
     setPreview((p) => ({ ...p, tasks: p.tasks.filter((_, i) => i !== idx) }))
   }
 
+  // Правка текста варианта; если правим тот, что был помечен правильным — двигаем и answer.
+  function updatePreviewOption(taskIdx, optIdx, value) {
+    setPreview((p) => ({
+      ...p,
+      tasks: p.tasks.map((t, i) => {
+        if (i !== taskIdx) return t
+        const wasCorrect = t.options[optIdx] === t.answer
+        const options = t.options.map((o, j) => (j === optIdx ? value : o))
+        return { ...t, options, answer: wasCorrect ? value : t.answer }
+      }),
+    }))
+  }
+
+  function setPreviewCorrect(taskIdx, optValue) {
+    setPreview((p) => ({
+      ...p,
+      tasks: p.tasks.map((t, i) => (i === taskIdx ? { ...t, answer: optValue } : t)),
+    }))
+  }
+
   function applyPreview() {
     const tasks = preview.tasks.filter((t) => t.question.trim())
     setTitle(preview.title.trim() || genTopic)
     const body = tasks.map((t, i) => `${i + 1}. ${t.question.trim()}`).join("\n")
     setDescription([preview.description.trim(), body].filter(Boolean).join("\n\n"))
-    const answers = tasks.map((t) => t.answer.trim())
-    // Режим «Тест» с автопроверкой годится только если у КАЖДОГО задания ответ —
-    // одно короткое значение без пробелов и запятых (тест-поле делит по пробелам,
-    // поэтому «x₁ = 2, x₂ = 0.5» превратилось бы в кучу обрывков). Иначе —
-    // «Письменное», ответы в тест-поле не пишем.
-    const allTestable =
-      answers.length > 0 &&
-      answers.every((a) => a.length > 0 && !/[\s,\\{}]/.test(a))
-    if (allTestable) {
+
+    // Интерактивный тест: у КАЖДОГО вопроса ≥2 непустых варианта и выбран правильный
+    // среди них. Тогда ученик выбирает ответ, репетитору ответы проставляются сами.
+    const cleanOpts = (t) => (t.options || []).map((o) => o.trim()).filter(Boolean)
+    const mcqOk =
+      tasks.length > 0 &&
+      tasks.every((t) => {
+        const opts = cleanOpts(t)
+        return opts.length >= 2 && opts.includes(t.answer.trim())
+      })
+
+    if (mcqOk) {
       setHwType("test")
-      setAnswersInput(answers.join(" "))
+      setTestOptions(tasks.map((t) => cleanOpts(t)))
+      setMcqCorrect(tasks.map((t) => t.answer.trim()))
+      setAnswersInput("")
+    } else {
+      // Фолбэк: свободный ввод ответа (как раньше), варианты не используем.
+      setTestOptions(null)
+      setMcqCorrect([])
+      const answers = tasks.map((t) => t.answer.trim())
+      // Режим «Тест» со свободным вводом годится только если у КАЖДОГО задания ответ —
+      // одно короткое значение без пробелов и запятых (тест-поле делит по пробелам,
+      // поэтому «x₁ = 2, x₂ = 0.5» превратилось бы в кучу обрывков). Иначе — «Письменное».
+      const allTestable =
+        answers.length > 0 &&
+        answers.every((a) => a.length > 0 && !/[\s,\\{}]/.test(a))
+      if (allTestable) {
+        setHwType("test")
+        setAnswersInput(answers.join(" "))
+      }
     }
     setPreview(null)
     setShowGen(false)
   }
 
-  const correctAnswers = answersInput
+  const isMcq = Array.isArray(testOptions) && testOptions.length > 0
+  const freeAnswers = answersInput
     .trim()
     .split(/\s+/)
     .filter((a) => a.length > 0)
+  const correctAnswers = isMcq ? mcqCorrect : freeAnswers
   const questionCount = correctAnswers.length
 
   async function handleSubmit() {
@@ -165,6 +224,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
       hw_type: hwType,
       question_count: hwType === "written" ? null : questionCount,
       correct_answers: hwType === "written" ? null : correctAnswers,
+      test_options: hwType !== "written" && isMcq ? testOptions : null,
       require_solution: hwType !== "written" ? requireSolution : false,
     }
 
@@ -279,6 +339,20 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
                   </select>
                 </div>
 
+                <button
+                  type="button"
+                  onClick={() => setGenAsTest((v) => !v)}
+                  className="flex items-center gap-2.5 text-left active:scale-[0.99] transition-transform"
+                >
+                  <div className={`w-10 h-6 rounded-full transition-colors relative flex-shrink-0 ${genAsTest ? "bg-blue-600" : "bg-gray-200"}`}>
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${genAsTest ? "left-5" : "left-1"}`} />
+                  </div>
+                  <div>
+                    <div className="text-sm text-gray-700">Тест с выбором ответа</div>
+                    <div className="text-xs text-gray-400">Ученик выбирает вариант, проверка автоматическая</div>
+                  </div>
+                </button>
+
                 {genError && <div className="text-xs text-red-500">{genError}</div>}
 
                 <button
@@ -316,18 +390,53 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
                             <Icon name="x" size={14} />
                           </button>
                         </div>
-                        <div className="flex items-center gap-2 pl-6">
-                          <span className="text-xs text-gray-400 flex-shrink-0">Ответ:</span>
-                          <input
-                            value={t.answer}
-                            onChange={(e) => updatePreviewTask(i, "answer", e.target.value)}
-                            className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2 py-1 text-sm outline-none focus:border-blue-400"
-                          />
-                        </div>
+                        {t.options && t.options.length > 0 ? (
+                          <div className="pl-6 flex flex-col gap-1">
+                            <span className="text-xs text-gray-400">Варианты (нажми на правильный):</span>
+                            <div className="grid grid-cols-2 gap-1.5">
+                              {t.options.map((o, j) => {
+                                const correct = o === t.answer
+                                return (
+                                  <div
+                                    key={j}
+                                    className={`flex items-center gap-1 rounded-lg border px-1.5 py-1 transition-colors ${
+                                      correct ? "border-green-500 bg-green-50" : "border-gray-200"
+                                    }`}
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={() => setPreviewCorrect(i, o)}
+                                      title="Правильный ответ"
+                                      className={`w-4 h-4 rounded-full border flex-shrink-0 flex items-center justify-center ${
+                                        correct ? "border-green-500 bg-green-500 text-white" : "border-gray-300"
+                                      }`}
+                                    >
+                                      {correct && <Icon name="check" size={10} />}
+                                    </button>
+                                    <input
+                                      value={o}
+                                      onChange={(e) => updatePreviewOption(i, j, e.target.value)}
+                                      className="flex-1 min-w-0 bg-transparent text-sm outline-none"
+                                    />
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 pl-6">
+                            <span className="text-xs text-gray-400 flex-shrink-0">Ответ:</span>
+                            <input
+                              value={t.answer}
+                              onChange={(e) => updatePreviewTask(i, "answer", e.target.value)}
+                              className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2 py-1 text-sm outline-none focus:border-blue-400"
+                            />
+                          </div>
+                        )}
                       </div>
                     ))}
                     <div className="text-[11px] text-gray-400 leading-snug">
-                      Проверь задания и ответы — ИИ может ошибаться. При применении задания уйдут в описание, а ответы (если есть у всех) оформятся как тест.
+                      Проверь вопросы и ответы — ИИ может ошибаться. При применении вопросы уйдут в описание, а варианты и правильные ответы оформятся как интерактивный тест с автопроверкой.
                     </div>
                     <div className="flex gap-2">
                       <button
@@ -400,7 +509,49 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
             </label>
           )}
 
-          {(hwType === "test" || hwType === "combined") && (
+          {(hwType === "test" || hwType === "combined") && isMcq && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-sm text-gray-500 block">
+                  Тест с выбором ответа — {questionCount} вопр.
+                </label>
+                <button
+                  type="button"
+                  onClick={() => { setTestOptions(null); setMcqCorrect([]) }}
+                  className="text-xs text-gray-400 hover:text-gray-600"
+                >
+                  Ввести ответы вручную
+                </button>
+              </div>
+              <div className="text-xs text-gray-400 mb-2">Правильные ответы уже отмечены — тест проверится автоматически. Можно поменять.</div>
+              <div className="flex flex-col gap-2.5">
+                {testOptions.map((opts, i) => (
+                  <div key={i} className="rounded-lg bg-gray-50 p-2">
+                    <div className="text-xs text-gray-400 mb-1.5">Вопрос {i + 1}</div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {opts.map((o, j) => {
+                        const sel = mcqCorrect[i] === o
+                        return (
+                          <button
+                            key={j}
+                            type="button"
+                            onClick={() => setMcqCorrect((prev) => prev.map((c, k) => (k === i ? o : c)))}
+                            className={`rounded-lg px-2 py-1.5 text-sm border text-center transition-all active:scale-[0.96] ${
+                              sel ? "bg-green-600 text-white border-green-600" : "border-gray-200 text-gray-700 hover:bg-gray-50"
+                            }`}
+                          >
+                            {o}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(hwType === "test" || hwType === "combined") && !isMcq && (
             <div>
               <label className="text-sm text-gray-500 mb-1 block">
                 Ответы к тесту — введи все через пробел
