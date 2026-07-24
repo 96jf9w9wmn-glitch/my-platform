@@ -57,8 +57,20 @@ function ThemeToggle() {
   )
 }
 
-function NotificationItem({ notification: n, onDelete, onRead }) {
+// По заголовку уведомления понимаем, на какую вкладку тьютора вести при клике,
+// чтобы можно было сразу открыть детали (сданный вариант, ДЗ, заявку, чат).
+function tutorNotifTarget(title) {
+  const t = (title || "").toLowerCase()
+  if (t.startsWith("сообщение от")) return "chat"
+  if (t.includes("заявк")) return "students"
+  if (t.includes("вариант") || t.includes("часть 1")) return "variants"
+  if (t.includes("дз") || t.includes("домашн") || t.includes("тест")) return "homework"
+  return null
+}
+
+function NotificationItem({ notification: n, onDelete, onRead, onNavigate }) {
   const [deleting, setDeleting] = useState(false)
+  const target = tutorNotifTarget(n.title)
 
   async function handleDelete(e) {
     e.stopPropagation()
@@ -68,9 +80,11 @@ function NotificationItem({ notification: n, onDelete, onRead }) {
   }
 
   async function handleRead() {
-    if (n.read) return
-    await supabase.from("notifications").update({ read: true }).eq("id", n.id)
-    onRead(n.id)
+    if (!n.read) {
+      await supabase.from("notifications").update({ read: true }).eq("id", n.id)
+      onRead(n.id)
+    }
+    if (target) onNavigate(target)
   }
 
   return (
@@ -86,19 +100,22 @@ function NotificationItem({ notification: n, onDelete, onRead }) {
             {new Date(n.created_at).toLocaleDateString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
           </div>
         </div>
-        <button
-          onClick={handleDelete}
-          disabled={deleting}
-          className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500 flex-shrink-0 mt-0.5"
-        >
-          <Icon name="x" size={14} />
-        </button>
+        <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
+          {target && <Icon name="chevron-right" size={14} className="text-gray-300 group-hover:text-gray-400 transition-colors" />}
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500"
+          >
+            <Icon name="x" size={14} />
+          </button>
+        </div>
       </div>
     </div>
   )
 }
 
-function NotificationBell({ userId }) {
+function NotificationBell({ userId, onNavigate }) {
   const [notifications, setNotifications] = useState([])
   const [open, setOpen] = useState(false)
   const [isClosing, setIsClosing] = useState(false)
@@ -211,6 +228,7 @@ function NotificationBell({ userId }) {
                 notification={n}
                 onDelete={(id) => setNotifications((prev) => prev.filter((x) => x.id !== id))}
                 onRead={(id) => setNotifications((prev) => prev.map((x) => x.id === id ? { ...x, read: true } : x))}
+                onNavigate={(page) => { closePanel(); onNavigate?.(page) }}
               />
             ))}
           </div>
@@ -569,7 +587,7 @@ function App() {
               </div>
             )}
             <ThemeToggle />
-            <NotificationBell userId={user.id} />
+            <NotificationBell userId={user.id} onNavigate={navigateTo} />
             <span className="hidden md:block text-sm text-gray-600">{user.profile?.name || user.email}</span>
             <button onClick={handleLogout} className="text-sm text-gray-400 hover:text-gray-600">Выйти</button>
           </div>
