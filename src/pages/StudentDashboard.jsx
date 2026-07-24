@@ -1464,7 +1464,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
               />
             </div>
           ) : (
-            <div key={activeTab} className={`page-active p-4 md:p-6 ${activeTab === "schedule" ? "max-w-5xl" : (activeTab === "variants" && selectedVariant) ? "max-w-none" : "max-w-2xl"} mx-auto`}>
+            <div key={activeTab} className={`page-active p-4 md:p-6 ${activeTab === "schedule" ? "max-w-5xl" : (activeTab === "homework" || (activeTab === "variants" && selectedVariant)) ? "max-w-none" : "max-w-2xl"} mx-auto`}>
         {activeTab === "schedule" && (
           <>
             {!student ? (
