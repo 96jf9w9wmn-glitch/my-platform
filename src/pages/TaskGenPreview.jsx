@@ -197,7 +197,7 @@ function TaskCard({ task, showAnswer }) {
             <img
               src={task.image_url}
               alt={`Задание ${task.number}`}
-              className="w-full max-w-md self-start rounded-lg border border-gray-100 bg-white mt-1"
+              className="w-full max-w-[260px] self-start rounded-lg border border-gray-100 bg-white mt-1"
             />
           )}
           {task.condition_tail && (
@@ -277,7 +277,7 @@ function ModuleCard({ module, showAnswer }) {
               <span dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_text) }} />
             </div>
             {t.image_url && (
-              <img src={t.image_url} alt={`К заданию ${t.number}`} className="w-full max-w-md self-start rounded-lg border border-gray-100 bg-white mt-1" />
+              <img src={t.image_url} alt={`К заданию ${t.number}`} className="w-full max-w-[260px] self-start rounded-lg border border-gray-100 bg-white mt-1" />
             )}
             {showAnswer && (
               <div className="text-xs text-gray-400 mt-1">Ответ: <span className="font-mono text-gray-600">{String(t.answer)}</span></div>
