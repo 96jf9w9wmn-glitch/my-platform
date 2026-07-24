@@ -41,9 +41,12 @@ function timeUntil(dateStr, timeStr) {
   if (diff <= 0) return "Сейчас"
   const mins = Math.floor(diff / 60000)
   if (mins < 60) return `через ${mins} мин`
-  const hrs = Math.floor(mins / 60)
+  const totalHrs = Math.floor(mins / 60)
   const rem = mins % 60
-  return rem === 0 ? `через ${hrs} ч` : `через ${hrs} ч ${rem} мин`
+  if (totalHrs < 24) return rem === 0 ? `через ${totalHrs} ч` : `через ${totalHrs} ч ${rem} мин`
+  const days = Math.floor(totalHrs / 24)
+  const hrs = totalHrs % 24
+  return hrs === 0 ? `через ${days} дн` : `через ${days} дн ${hrs} ч`
 }
 
 function Dashboard({ students, setActivePage, onOpenBoard }) {
