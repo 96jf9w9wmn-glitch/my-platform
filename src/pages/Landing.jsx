@@ -33,6 +33,41 @@ const ROLES = {
     ],
     cta: { label: "Создать аккаунт репетитора", mode: "register" },
     note: "Бесплатно на старте · без привязки карты",
+    deep: [
+      {
+        icon: "file-text",
+        kicker: "Банк заданий",
+        title: "Тренировочные варианты по образцу ФИПИ",
+        desc: "Собирайте варианты за минуту: собственные аналоги заданий с чертежами, графиками и ответами. Выгрузка в PDF — готово к печати и раздаче.",
+        bullets: ["Свои аналоги, а не чужой скрап", "Чертежи и графики в задании", "Экспорт варианта в PDF"],
+        grad: "from-blue-500 to-blue-600", soft: "bg-blue-50 dark:bg-blue-900/30", text: "text-blue-600 dark:text-blue-400",
+        visual: "variant",
+      },
+      {
+        icon: "edit",
+        kicker: "Совместная работа",
+        title: "Доска, чат и домашки — в реальном времени",
+        desc: "Разбирайте задачи на бесконечной онлайн-доске вместе с учеником, переписывайтесь в чате и выдавайте ДЗ — в том числе собранные ИИ по теме.",
+        bullets: ["Общая доска с синхронизацией", "Встроенный чат", "ДЗ с помощью ИИ"],
+        grad: "from-purple-500 to-purple-600", soft: "bg-purple-50 dark:bg-purple-900/30", text: "text-purple-600 dark:text-purple-400",
+        visual: "board",
+      },
+      {
+        icon: "dollar",
+        kicker: "Деньги и время",
+        title: "Расписание, оплаты и прогресс под контролем",
+        desc: "Уроки и напоминания, учёт оплат и расходов с чистой прибылью, наглядный прогресс каждого ученика — без табличек и калькулятора.",
+        bullets: ["Оплаты, расходы, чистая прибыль", "Расписание с напоминаниями", "Прогресс по темам"],
+        grad: "from-emerald-500 to-teal-600", soft: "bg-emerald-50 dark:bg-emerald-900/30", text: "text-emerald-600 dark:text-emerald-400",
+        visual: "finance",
+      },
+    ],
+    final: {
+      title: "Готовьте к экзаменам умнее",
+      sub: "Заведите аккаунт за минуту и соберите первый вариант уже сегодня.",
+      primary: { label: "Создать аккаунт репетитора", icon: "user-teacher", role: "tutor", mode: "register" },
+      secondary: { label: "Я ученик", icon: "book", role: "student", mode: "register" },
+    },
   },
   student: {
     icon: "book",
@@ -60,6 +95,41 @@ const ROLES = {
     ],
     cta: { label: "Создать аккаунт ученика", mode: "register" },
     note: "Бесплатно · регистрация по номеру телефона",
+    deep: [
+      {
+        icon: "target",
+        kicker: "Тренировка",
+        title: "Варианты — как на настоящем экзамене",
+        desc: "Решайте тренировочные варианты по образцу ФИПИ: те же формулировки, чертежи и бланки ответов. На экзамене не будет сюрпризов.",
+        bullets: ["Задания как на ОГЭ и ЕГЭ", "Чертежи и графики как в настоящих КИМах", "Сразу видно результат и ошибки"],
+        grad: "from-emerald-500 to-teal-600", soft: "bg-emerald-50 dark:bg-emerald-900/30", text: "text-emerald-600 dark:text-emerald-400",
+        visual: "variant",
+      },
+      {
+        icon: "edit",
+        kicker: "Занятия",
+        title: "Доска и чат с репетитором",
+        desc: "Разбирайте задачи на общей онлайн-доске в реальном времени, а вопросы задавайте в чате — не нужно ждать следующего урока.",
+        bullets: ["Разбор задач в реальном времени", "Вопрос репетитору — в любой момент", "ДЗ приходят прямо в приложение"],
+        grad: "from-purple-500 to-purple-600", soft: "bg-purple-50 dark:bg-purple-900/30", text: "text-purple-600 dark:text-purple-400",
+        visual: "board",
+      },
+      {
+        icon: "trending-up",
+        kicker: "Мотивация",
+        title: "Виден каждый шаг к цели",
+        desc: "Готовность к экзамену в процентах, сильные и слабые темы, история результатов — понятно, что уже получается и что подтянуть.",
+        bullets: ["Готовность к экзамену в процентах", "Сильные и слабые темы", "История результатов"],
+        grad: "from-blue-500 to-blue-600", soft: "bg-blue-50 dark:bg-blue-900/30", text: "text-blue-600 dark:text-blue-400",
+        visual: "progress",
+      },
+    ],
+    final: {
+      title: "Начните готовиться уже сегодня",
+      sub: "Аккаунт за минуту — и все задания, варианты и прогресс всегда в кармане.",
+      primary: { label: "Создать аккаунт ученика", icon: "book", role: "student", mode: "register" },
+      secondary: { label: "Я репетитор", icon: "user-teacher", role: "tutor", mode: "register" },
+    },
   },
   parent: {
     icon: "users",
@@ -85,6 +155,41 @@ const ROLES = {
     ],
     cta: { label: "Войти по коду ученика", mode: "login" },
     note: "Код выдаёт репетитор ученика",
+    deep: [
+      {
+        icon: "bar-chart",
+        kicker: "Спокойствие",
+        title: "Прогресс ребёнка — на виду",
+        desc: "Готовность к экзамену в процентах и результаты по темам. Видно динамику от занятия к занятию — без расспросов и догадок.",
+        bullets: ["Готовность к экзамену в процентах", "Результаты по темам", "Динамика от месяца к месяцу"],
+        grad: "from-amber-500 to-orange-500", soft: "bg-amber-50 dark:bg-amber-900/30", text: "text-amber-600 dark:text-amber-400",
+        visual: "progress",
+      },
+      {
+        icon: "dollar",
+        kicker: "Прозрачность",
+        title: "Оплаты без вопросов",
+        desc: "Каждое занятие и его оплата — в одной истории. Всегда понятно, за что и когда заплачено, без пересчётов вручную.",
+        bullets: ["Каждое занятие и его оплата", "История платежей в одном месте", "Никаких пересчётов вручную"],
+        grad: "from-emerald-500 to-teal-600", soft: "bg-emerald-50 dark:bg-emerald-900/30", text: "text-emerald-600 dark:text-emerald-400",
+        visual: "finance",
+      },
+      {
+        icon: "calendar",
+        kicker: "Порядок",
+        title: "Расписание и домашние задания",
+        desc: "Календарь занятий и статус домашних заданий: что задано, что сдано, что ждёт. Без переписок с репетитором и уточнений у ребёнка.",
+        bullets: ["Календарь занятий недели", "Что задано и что сдано", "Всё видно по коду от репетитора"],
+        grad: "from-blue-500 to-blue-600", soft: "bg-blue-50 dark:bg-blue-900/30", text: "text-blue-600 dark:text-blue-400",
+        visual: "schedule",
+      },
+    ],
+    final: {
+      title: "Будьте в курсе успехов ребёнка",
+      sub: "Возьмите код у репетитора и войдите — отдельная регистрация не нужна.",
+      primary: { label: "Войти по коду ученика", icon: "users", role: "parent", mode: "login" },
+      secondary: null,
+    },
   },
 }
 
@@ -110,37 +215,6 @@ const STATS = [
   { n: "Сотни", l: "типов заданий" },
   { n: "по ФИПИ", l: "варианты по образцу" },
   { n: "3-в-1", l: "репетитор, ученик, родитель" },
-]
-
-// Разборы ключевых возможностей платформы — свой фикс-акцент для разнообразия.
-const DEEP = [
-  {
-    icon: "file-text",
-    kicker: "Банк заданий",
-    title: "Тренировочные варианты по образцу ФИПИ",
-    desc: "Собирайте варианты за минуту: собственные аналоги заданий с чертежами, графиками и ответами. Выгрузка в PDF — готово к печати и раздаче.",
-    bullets: ["Свои аналоги, а не чужой скрап", "Чертежи и графики в задании", "Экспорт варианта в PDF"],
-    grad: "from-blue-500 to-blue-600", soft: "bg-blue-50 dark:bg-blue-900/30", text: "text-blue-600 dark:text-blue-400",
-    visual: "variant",
-  },
-  {
-    icon: "edit",
-    kicker: "Совместная работа",
-    title: "Доска, чат и домашки — в реальном времени",
-    desc: "Разбирайте задачи на бесконечной онлайн-доске вместе с учеником, переписывайтесь в чате и выдавайте ДЗ — в том числе собранные ИИ по теме.",
-    bullets: ["Общая доска с синхронизацией", "Встроенный чат", "ДЗ с помощью ИИ"],
-    grad: "from-purple-500 to-purple-600", soft: "bg-purple-50 dark:bg-purple-900/30", text: "text-purple-600 dark:text-purple-400",
-    visual: "board",
-  },
-  {
-    icon: "dollar",
-    kicker: "Деньги и время",
-    title: "Расписание, оплаты и прогресс под контролем",
-    desc: "Уроки и напоминания, учёт оплат и расходов с чистой прибылью, наглядный прогресс каждого ученика — без табличек и калькулятора.",
-    bullets: ["Оплаты, расходы, чистая прибыль", "Расписание с напоминаниями", "Прогресс по темам"],
-    grad: "from-emerald-500 to-teal-600", soft: "bg-emerald-50 dark:bg-emerald-900/30", text: "text-emerald-600 dark:text-emerald-400",
-    visual: "finance",
-  },
 ]
 
 // ── Мини-визуалы (декоративные макеты продукта) ──
@@ -224,6 +298,61 @@ function MiniScheduleCard() {
 
 function DeepVisual({ kind, accent }) {
   if (kind === "variant") return <MiniVariantCard cfg={accent} />
+  if (kind === "progress") {
+    const topics = [["Алгебра", 82], ["Геометрия", 64], ["Функции", 71]]
+    return (
+      <div className="glass rounded-2xl p-4 w-full">
+        <div className="flex items-center gap-2 mb-3 text-gray-900">
+          <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${accent.soft} ${accent.text}`}><Icon name="trending-up" size={14} /></div>
+          <span className="text-sm font-semibold">Прогресс</span>
+          <span className={`ml-auto text-[11px] font-bold px-2 py-0.5 rounded-md ${accent.soft} ${accent.text}`}>78% к экзамену</span>
+        </div>
+        <div className="space-y-2.5">
+          {topics.map(([t, p]) => (
+            <div key={t}>
+              <div className="flex justify-between text-[11px] mb-1">
+                <span className="text-gray-500 dark:text-gray-400">{t}</span>
+                <span className="font-semibold text-gray-900">{p}%</span>
+              </div>
+              <div className="h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                <div className={`h-full rounded-full bg-gradient-to-r ${accent.grad}`} style={{ width: `${p}%` }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+  if (kind === "schedule") {
+    const lessons = [["Пн 17:00", "Математика"], ["Ср 18:30", "Физика"]]
+    const hw = [["Уравнения", true], ["Теорема Пифагора", true], ["Вариант №4", false]]
+    return (
+      <div className="glass rounded-2xl p-4 w-full">
+        <div className="flex items-center gap-2 mb-2.5 text-gray-900">
+          <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${accent.soft} ${accent.text}`}><Icon name="calendar" size={14} /></div>
+          <span className="text-sm font-semibold">Неделя ребёнка</span>
+        </div>
+        <div className="space-y-1.5 mb-3">
+          {lessons.map(([t, s]) => (
+            <div key={t} className="flex items-center justify-between text-[11px]">
+              <span className="font-semibold text-gray-900">{t}</span>
+              <span className="text-gray-500 dark:text-gray-400">{s}</span>
+            </div>
+          ))}
+        </div>
+        <div className="border-t border-gray-200 dark:border-gray-700 pt-2.5 space-y-1.5">
+          {hw.map(([t, done]) => (
+            <div key={t} className="flex items-center gap-2 text-[11px]">
+              <span className={`w-4 h-4 shrink-0 rounded-full flex items-center justify-center ${done ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400" : "bg-gray-200 dark:bg-gray-700 text-gray-400"}`}>
+                {done ? <Icon name="check" size={10} /> : <Icon name="clock" size={10} />}
+              </span>
+              <span className={done ? "text-gray-500 dark:text-gray-400 line-through" : "font-medium text-gray-900"}>{t}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
   if (kind === "board") {
     return (
       <div className="glass rounded-2xl p-4 w-full">
@@ -494,16 +623,22 @@ function Landing({ onStart }) {
             {SUBJECTS.map((s) => (
               <div key={s.name} className="glass-sm rounded-xl px-3.5 py-2 flex items-center gap-2">
                 <span className={`w-1.5 h-1.5 rounded-full ${s.exam === "ЕГЭ" ? "bg-purple-500" : "bg-blue-500"}`} />
-                <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{s.name}</span>
+                {/* gray-токены в .dark инвертируются сами — dark:-override не нужен */}
+                <span className="text-sm font-medium text-gray-800">{s.name}</span>
                 <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500">{s.exam}</span>
               </div>
             ))}
           </div>
         </section>
 
-        {/* ── Разборы возможностей ── */}
-        <section className="max-w-6xl mx-auto w-full px-4 py-6 space-y-6">
-          {DEEP.map((d, i) => (
+        {/* ── Разборы возможностей выбранной роли ── */}
+        <section key={`deep-${role}`} className="max-w-6xl mx-auto w-full px-4 py-6 space-y-6 slide-up">
+          <div className="text-center">
+            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900">
+              {role === "tutor" ? "Что получает репетитор" : role === "student" ? "Что получает ученик" : "Что видит родитель"}
+            </h2>
+          </div>
+          {cfg.deep.map((d, i) => (
             <div key={d.title} className="glass rounded-3xl p-6 sm:p-8">
               <div className={`grid lg:grid-cols-2 gap-8 items-center ${i % 2 === 1 ? "lg:[&>*:first-child]:order-2" : ""}`}>
                 <div>
@@ -515,7 +650,7 @@ function Landing({ onStart }) {
                   <p className="mt-3 text-gray-500 dark:text-gray-400">{d.desc}</p>
                   <ul className="mt-4 space-y-2">
                     {d.bullets.map((b) => (
-                      <li key={b} className="flex items-center gap-2.5 text-sm text-gray-700 dark:text-gray-200">
+                      <li key={b} className="flex items-center gap-2.5 text-sm text-gray-700">
                         <span className={`w-5 h-5 shrink-0 rounded-full flex items-center justify-center ${d.soft} ${d.text}`}>
                           <Icon name="check" size={12} />
                         </span>
@@ -530,30 +665,30 @@ function Landing({ onStart }) {
           ))}
         </section>
 
-        {/* ── Финальный призыв ── */}
+        {/* ── Финальный призыв выбранной роли ── */}
         <section className="max-w-6xl mx-auto w-full px-4 py-10">
           <div className={`relative overflow-hidden rounded-3xl bg-gradient-to-br ${cfg.grad} px-6 sm:px-12 py-12 text-center text-white shadow-xl ${cfg.glow}`}>
             <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "radial-gradient(circle at 20% 30%, white 0%, transparent 45%), radial-gradient(circle at 85% 70%, white 0%, transparent 40%)" }} />
-            <div className="relative">
-              <h2 className="text-2xl sm:text-4xl font-bold tracking-tight">Готовьте к экзаменам умнее</h2>
-              <p className="mt-3 text-white/80 max-w-xl mx-auto">
-                Заведите аккаунт за минуту и соберите первый вариант уже сегодня.
-              </p>
+            <div key={`final-${role}`} className="relative slide-up">
+              <h2 className="text-2xl sm:text-4xl font-bold tracking-tight">{cfg.final.title}</h2>
+              <p className="mt-3 text-white/80 max-w-xl mx-auto">{cfg.final.sub}</p>
               <div className="mt-7 flex flex-col sm:flex-row gap-3 justify-center">
                 <button
-                  onClick={() => onStart("tutor", "register")}
+                  onClick={() => onStart(cfg.final.primary.role, cfg.final.primary.mode)}
                   className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-2xl font-semibold bg-white text-gray-900 shadow-lg hover:opacity-90 transition-opacity"
                 >
-                  <Icon name="user-teacher" size={17} />
-                  Начать как репетитор
+                  <Icon name={cfg.final.primary.icon} size={17} />
+                  {cfg.final.primary.label}
                 </button>
-                <button
-                  onClick={() => onStart("student", "register")}
-                  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-2xl font-semibold bg-white/15 text-white ring-1 ring-white/40 backdrop-blur-sm hover:bg-white/25 transition-colors"
-                >
-                  <Icon name="book" size={17} />
-                  Начать как ученик
-                </button>
+                {cfg.final.secondary && (
+                  <button
+                    onClick={() => onStart(cfg.final.secondary.role, cfg.final.secondary.mode)}
+                    className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-2xl font-semibold bg-white/15 text-white ring-1 ring-white/40 backdrop-blur-sm hover:bg-white/25 transition-colors"
+                  >
+                    <Icon name={cfg.final.secondary.icon} size={17} />
+                    {cfg.final.secondary.label}
+                  </button>
+                )}
               </div>
             </div>
           </div>
