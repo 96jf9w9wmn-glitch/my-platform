@@ -170,8 +170,8 @@ function NotificationBell({ userId }) {
           <Icon name="bell" size={16} />
         </span>
         {unread > 0 && (
-          <span className="badge-pulse absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-            {unread}
+          <span className="badge-pulse absolute -top-1.5 -right-1.5 min-w-[16px] h-[16px] px-1 bg-red-500 text-white text-[10px] font-semibold leading-none rounded-full flex items-center justify-center">
+            {unread > 99 ? "99+" : unread}
           </span>
         )}
       </button>

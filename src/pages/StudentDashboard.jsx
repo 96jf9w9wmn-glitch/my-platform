@@ -1642,7 +1642,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                 {!isGeneratedVariant && selectedVariant.file_url && (
                   <div className="mb-4 glass-sm overflow-hidden">
                     {selectedVariant.file_url.match(/\.(jpg|jpeg|png|gif|webp)/i) ? (
-                      <img src={selectedVariant.file_url} alt="вариант" className="w-full object-contain bg-gray-50" />
+                      <img src={selectedVariant.file_url} alt="вариант" className="w-full max-w-2xl object-contain bg-gray-50" />
                     ) : (
                       <iframe src={selectedVariant.file_url} className="w-full h-96 bg-white" title="вариант" />
                     )}
@@ -1661,7 +1661,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       <div key={t.number} className="glass-sm p-3">
                         <div className="text-xs font-medium text-blue-600 mb-1">Задание {t.number}</div>
                         {t.condition_text && <div className="text-sm whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_text) }} />}
-                        {t.image_url && <img src={t.image_url} alt={`Задание ${t.number}`} className="w-full object-contain rounded-lg mt-2 bg-gray-50" />}
+                        {t.image_url && <img src={t.image_url} alt={`Задание ${t.number}`} className="w-full max-w-xl object-contain rounded-lg mt-2 bg-gray-50" />}
                       </div>
                     ))}
                   </div>
@@ -1676,7 +1676,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                         <div key={t.number} className="border border-gray-100 rounded-xl p-3">
                           <div className="text-xs font-medium text-blue-600 mb-1">Задание {t.number}</div>
                           {t.condition_text && <div className="text-sm whitespace-pre-wrap mb-2" dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_text) }} />}
-                          {t.image_url && <img src={t.image_url} alt={`Задание ${t.number}`} className="w-full object-contain rounded-lg mb-2 bg-gray-50" />}
+                          {t.image_url && <img src={t.image_url} alt={`Задание ${t.number}`} className="w-full max-w-xl object-contain rounded-lg mb-2 bg-gray-50" />}
                           <input
                             value={part1Answers[t.number - 1] || ""}
                             onChange={(e) => { const u = [...part1Answers]; u[t.number - 1] = e.target.value; setPart1Answers(u) }}

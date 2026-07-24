@@ -606,6 +606,7 @@ button:not([disabled]):not(.no-press):active {
 }
 .cal-day:hover {
   transform: scale(1.1);
+  z-index: 2;
 }
 .week-lesson {
   transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.15s ease;

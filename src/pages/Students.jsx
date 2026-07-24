@@ -3,7 +3,7 @@ import AddStudentModal from "../components/AddStudentModal"
 import Icon from "../components/Icon"
 import StudentProfile from "./StudentProfile"
 import { supabase } from "../supabase"
-import { isLessonConducted, getInitials, plural } from "../utils"
+import { isLessonConducted, getInitials, plural, formatPhone } from "../utils"
 
 function formatDate(date) {
   return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`
@@ -134,7 +134,7 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
               <div key={req.id} className="glass-tint-blue px-4 py-3 flex items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-medium">{req.name}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">{req.phone}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">{formatPhone(req.phone)}</div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button onClick={() => setAcceptingRequest(req)} className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 font-medium">Принять</button>
@@ -221,7 +221,7 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
                       <span className="font-medium text-sm">{student.name}</span>
                       {goal && <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-medium ${goal.cls}`}>{goal.label}</span>}
                     </div>
-                    <div className="text-xs text-gray-400">{student.phone}</div>
+                    <div className="text-xs text-gray-400">{formatPhone(student.phone)}</div>
                   </div>
                   <button onClick={(e) => handleDelete(student.id, e)} className="text-gray-300 hover:text-red-500 px-1">
                     <Icon name="x" size={14} />
@@ -302,7 +302,7 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
                         </span>
                       )}
                     </div>
-                    <div className="text-xs text-gray-400">{student.phone}</div>
+                    <div className="text-xs text-gray-400">{formatPhone(student.phone)}</div>
                   </div>
                 </div>
 

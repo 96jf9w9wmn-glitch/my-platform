@@ -2,7 +2,7 @@ import { useState, useEffect } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import Icon from "../components/Icon"
-import { parseLocalDate, isLessonConducted, getInitials } from "../utils"
+import { parseLocalDate, isLessonConducted, getInitials, formatPhone } from "../utils"
 
 const MESSENGER_LABELS = {
   telegram: "Telegram",
@@ -394,7 +394,7 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
         <div className="border-t border-gray-100 pt-3 flex flex-col gap-2.5">
           <div className="flex items-start gap-2">
             <span className="text-gray-400 text-xs w-20 flex-shrink-0 pt-0.5">Телефон</span>
-            <a href={`tel:${student.phone}`} className="text-sm text-blue-600 hover:opacity-70 transition-opacity">{student.phone}</a>
+            <a href={`tel:${student.phone}`} className="text-sm text-blue-600 hover:opacity-70 transition-opacity">{formatPhone(student.phone)}</a>
           </div>
 
           {(student.contacts || []).map((c, i) => (
