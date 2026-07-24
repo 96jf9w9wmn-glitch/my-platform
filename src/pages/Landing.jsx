@@ -123,7 +123,7 @@ function Landing({ onStart }) {
         <section className="text-center pt-10 sm:pt-14 pb-8">
           <div className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full ring-1 ${cfg.ring} ${cfg.soft} ${cfg.text} mb-5`}>
             <Icon name="sparkles" size={13} />
-            Платформа подготовки к ОГЭ и ЕГЭ
+            Платформа для репетиторов и их учеников
           </div>
           <h1 className="text-3xl sm:text-5xl font-bold tracking-tight text-gray-900 leading-tight">
             Всё для подготовки —{" "}
