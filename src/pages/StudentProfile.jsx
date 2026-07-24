@@ -353,7 +353,7 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
   const initials = getInitials(student.name)
 
   return (
-    <div className="p-4 md:p-6">
+    <div className="p-4 md:p-6 page-active">
       <button onClick={onBack} className="text-sm text-gray-500 hover:text-gray-700 mb-4 flex items-center gap-1">
         ← Назад к ученикам
       </button>
