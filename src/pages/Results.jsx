@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { supabase } from "../supabase"
 import Icon from "../components/Icon"
+import Collapse from "../components/Collapse"
 import { plural, getInitials } from "../utils"
 
 function getOgeGrade(total, geomScore) {
@@ -66,7 +67,7 @@ function VariantRow({ variant: v }) {
         onClick={() => setExpanded(!expanded)}
       >
         <span className="col-span-2 text-gray-700 truncate flex items-center gap-2">
-          <span className="text-gray-400 text-xs">{expanded ? "▼" : "▶"}</span>
+          <span className={`text-gray-400 text-xs inline-block transition-transform duration-300 ${expanded ? "rotate-90" : ""}`}>▶</span>
           {v.title}
         </span>
         <span>{v.part1} / {isEge ? 12 : 19}</span>
@@ -87,7 +88,7 @@ function VariantRow({ variant: v }) {
         )}
       </div>
 
-      {expanded && (
+      <Collapse open={expanded}>
         <div className="px-4 pb-4 glass-table-header border-t border-white/30">
           <div className="mb-3 mt-3">
             <div className="text-xs font-medium text-blue-600 mb-2 bg-blue-50 px-2 py-1 rounded inline-block">
@@ -165,7 +166,7 @@ function VariantRow({ variant: v }) {
             </div>
           </div>
         </div>
-      )}
+      </Collapse>
     </div>
   )
 }

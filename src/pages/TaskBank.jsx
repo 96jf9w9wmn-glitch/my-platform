@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import Icon from "../components/Icon"
+import Collapse from "../components/Collapse"
 import { TASK_NUMBERS_BY_TYPE } from "./taskBankApi"
 import { plainTaskMath, normalizeTaskImage } from "../utils"
 
@@ -178,7 +179,7 @@ export function TaskBankModal({ initialExamType = "ОГЭ", onClose }) {
                         {items.length} шт.
                       </span>
                     </button>
-                    {isOpen && (
+                    <Collapse open={isOpen}>
                       <div className="border-t border-gray-100 divide-y divide-gray-50">
                         {items.length === 0 && (
                           <div className="px-3 py-2 text-xs text-gray-400">Заданий пока нет</div>
@@ -205,7 +206,7 @@ export function TaskBankModal({ initialExamType = "ОГЭ", onClose }) {
                           </div>
                         ))}
                       </div>
-                    )}
+                    </Collapse>
                   </div>
                 )
               })}

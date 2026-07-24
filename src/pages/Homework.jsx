@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, lazy, Suspense } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import Icon from "../components/Icon"
+import Collapse from "../components/Collapse"
 import { parseLocalDate, renderHomeworkMath } from "../utils"
 // Лениво: Variants тянет весь банк заданий (генераторы на 34k строк) + jspdf.
 // Нужен только во вкладке «варианты», незачем держать его в стартовом бандле.
@@ -653,7 +654,7 @@ function StudentHomeworkGroup({ studentName, studentPhone, studentAccountId, ite
         className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/30 transition-colors"
       >
         <div className="flex items-center gap-3">
-          <span className={`text-gray-400 transition-transform ${expanded ? "rotate-90" : ""}`}>›</span>
+          <span className={`text-gray-400 transition-transform duration-300 ${expanded ? "rotate-90" : ""}`}>›</span>
           <span className="text-sm font-medium">{studentName}</span>
           <span className="text-xs text-gray-400">{items.length} {items.length === 1 ? "задание" : "заданий"}</span>
         </div>
@@ -667,13 +668,13 @@ function StudentHomeworkGroup({ studentName, studentPhone, studentAccountId, ite
         </div>
       </button>
 
-      {expanded && (
+      <Collapse open={expanded}>
         <div className="px-4 pb-4 pt-1 flex flex-col gap-3 border-t border-white/40">
           {items.map((hw) => (
             <HomeworkCard key={hw.id} hw={hw} studentName={studentName} studentPhone={studentPhone} studentAccountId={studentAccountId} onUpdate={onUpdate} onEdit={onEdit} />
           ))}
         </div>
-      )}
+      </Collapse>
     </div>
   )
 }
