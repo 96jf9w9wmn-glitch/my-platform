@@ -354,6 +354,24 @@ function hwPreview(text) {
     .replace(/\s+/g, " ").trim()
 }
 
+// Разбивает описание ДЗ на вступление и отдельные пронумерованные задания
+// («1. …», «2. …»), чтобы показать каждое своей карточкой, а не сплошным абзацем.
+function parseHomeworkTasks(desc) {
+  if (!desc) return { intro: "", tasks: [] }
+  const tasks = []
+  const intro = []
+  let cur = null
+  for (const raw of desc.split("\n")) {
+    const line = raw.trim()
+    const m = line.match(/^(\d+)[.)]\s+(.*)$/)
+    if (m) { if (cur) tasks.push(cur); cur = { n: m[1], text: m[2] } }
+    else if (cur) { if (line) cur.text += "\n" + line }
+    else if (line) intro.push(line)
+  }
+  if (cur) tasks.push(cur)
+  return { intro: intro.join("\n"), tasks }
+}
+
 // Дедлайн со срочностью: просрочено/сегодня/завтра — цветом, иначе дата.
 function deadlineInfo(hw) {
   if (!hw.deadline) return null
@@ -499,22 +517,57 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
 
   const showWrittenUpload = hasWritten && (hw.status === "assigned" || hw.status === "revision") && (!hasTest || testDone)
 
+  const meta = HW_STATUS[hw.status] || HW_STATUS.assigned
+  const dl = deadlineInfo(hw)
+  const typeLabel = hw.hw_type === "test" ? `Тест · ${hw.question_count || 0} вопр.`
+    : hw.hw_type === "combined" ? "Тест + письменное" : "Письменное"
+  const headerIcon = hw.status === "done" ? "check" : hw.hw_type === "test" ? "clipboard" : hw.hw_type === "combined" ? "file-text" : "edit"
+  const { intro, tasks } = parseHomeworkTasks(hw.description)
+
   return (
     <div>
-      <button onClick={onBack} className="text-sm text-gray-500 hover:text-gray-700 mb-4 flex items-center gap-1">
+      <button onClick={onBack} className="text-sm text-gray-500 hover:text-gray-700 mb-4 flex items-center gap-1 active:scale-[0.97] transition-transform">
         ← Назад
       </button>
 
       <div className="glass p-5 mb-4">
-        <h2 className="text-lg font-medium mb-2">{hw.title}</h2>
-        {hw.description && <div className="text-sm text-gray-600 mb-3" dangerouslySetInnerHTML={{ __html: renderHomeworkMath(hw.description) }} />}
-        {hw.deadline && (
-          <div className="text-xs text-gray-400">
-            Дедлайн: {parseLocalDate(hw.deadline).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}
+        <div className="flex items-start gap-3">
+          <div className={`shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center bg-gradient-to-br ${meta.tile}`}>
+            <Icon name={headerIcon} size={22} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-lg font-medium leading-snug">{hw.title}</h2>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1.5 text-[11px]">
+              <span className={`px-2 py-0.5 rounded-full font-medium ${meta.chip}`}>{meta.label}</span>
+              <span className="text-gray-400">{typeLabel}</span>
+              {dl && (
+                <span className={`inline-flex items-center gap-1 ${dl.cls}`}>
+                  {dl.icon && <Icon name={dl.icon} size={10} />}{dl.text}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {intro && <div className="text-sm text-gray-600 mt-4" dangerouslySetInnerHTML={{ __html: renderHomeworkMath(intro) }} />}
+
+        {tasks.length > 0 && (
+          <div className="flex flex-col gap-2 mt-3">
+            {tasks.map((t, i) => (
+              <div
+                key={i}
+                style={{ animationDelay: `${Math.min(i, 8) * 45}ms` }}
+                className="item-enter glass-sm rounded-2xl px-3 py-2.5 flex items-start gap-2.5"
+              >
+                <span className="shrink-0 w-6 h-6 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-300 text-xs font-semibold flex items-center justify-center mt-0.5">{t.n}</span>
+                <div className="text-sm text-gray-700 dark:text-gray-200 min-w-0 flex-1 pt-0.5" dangerouslySetInnerHTML={{ __html: renderHomeworkMath(t.text) }} />
+              </div>
+            ))}
           </div>
         )}
+
         {hw.file_url && (
-          <a href={hw.file_url} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:opacity-70 transition-opacity mt-3 inline-block">
+          <a href={hw.file_url} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:opacity-70 transition-opacity mt-4 inline-block">
             <span className="flex items-center gap-1"><Icon name="paperclip" size={12} />Открыть файл задания</span>
           </a>
         )}
@@ -705,7 +758,17 @@ function CopyCodeBlock({ code }) {
   )
 }
 
-function StudentNotificationBell({ userId }) {
+// По заголовку уведомления понимаем, на какую вкладку ученика вести при клике,
+// чтобы сразу открыть детали (проверенный вариант, ДЗ, сообщение в чате).
+function studentNotifTarget(title) {
+  const t = (title || "").toLowerCase()
+  if (t.startsWith("сообщение от")) return "chat"
+  if (t.includes("вариант")) return "variants"
+  if (t.includes("задани") || t.includes("дз")) return "homework"
+  return null
+}
+
+function StudentNotificationBell({ userId, onNavigate }) {
   const [notifications, setNotifications] = useState([])
   const [open, setOpen] = useState(false)
   const [isClosing, setIsClosing] = useState(false)
@@ -754,6 +817,12 @@ function StudentNotificationBell({ userId }) {
   async function markRead(id) {
     await supabase.from("notifications").update({ read: true }).eq("id", id)
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
+  }
+
+  function handleNotifClick(n) {
+    if (!n.read) markRead(n.id)
+    const target = studentNotifTarget(n.title)
+    if (target) { closePanel(); onNavigate?.(target) }
   }
 
   async function deleteNotification(id) {
@@ -805,7 +874,7 @@ function StudentNotificationBell({ userId }) {
             ) : notifications.map(n => (
               <div
                 key={n.id}
-                onClick={() => markRead(n.id)}
+                onClick={() => handleNotifClick(n)}
                 className={`group px-4 py-3 border-b border-gray-50 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${!n.read ? "bg-blue-50 dark:bg-blue-900/20" : ""}`}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -816,12 +885,15 @@ function StudentNotificationBell({ userId }) {
                       {new Date(n.created_at).toLocaleDateString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                     </div>
                   </div>
-                  <button
-                    onClick={e => { e.stopPropagation(); deleteNotification(n.id) }}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500 flex-shrink-0 mt-0.5"
-                  >
-                    <Icon name="x" size={14} />
-                  </button>
+                  <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
+                    {studentNotifTarget(n.title) && <Icon name="chevron-right" size={14} className="text-gray-300 group-hover:text-gray-400 transition-colors" />}
+                    <button
+                      onClick={e => { e.stopPropagation(); deleteNotification(n.id) }}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500"
+                    >
+                      <Icon name="x" size={14} />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -1372,7 +1444,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                 {dark ? <Icon name="sun" size={16} /> : <Icon name="moon" size={16} />}
               </span>
             </button>
-            <StudentNotificationBell userId={user.id} />
+            <StudentNotificationBell userId={user.id} onNavigate={goTab} />
             <button onClick={onLogout} className="text-sm text-gray-400 hover:text-gray-600">Выйти</button>
           </div>
         </div>
