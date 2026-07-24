@@ -51,6 +51,7 @@ const GOAL_STYLE = {
 function Students({ students, setStudents, tutorId, onOpenBoard }) {
   const [showModal, setShowModal] = useState(false)
   const [selectedStudent, setSelectedStudent] = useState(null)
+  const [returning, setReturning] = useState(false)
   const [search, setSearch] = useState("")
   const [pending, setPending] = useState([])
   const [acceptingRequest, setAcceptingRequest] = useState(null)
@@ -97,7 +98,7 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
     return (
       <StudentProfile
         student={student}
-        onBack={() => setSelectedStudent(null)}
+        onBack={() => { setSelectedStudent(null); setReturning(true) }}
         onUpdate={(id, data) => setStudents((prev) => prev.map((s) => s.id === id ? { ...s, ...data } : s))}
         onOpenBoard={onOpenBoard}
       />
@@ -116,7 +117,10 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
     : students
 
   return (
-    <div className="p-4 md:p-6">
+    <div
+      className={"p-4 md:p-6" + (returning ? " view-back" : "")}
+      onAnimationEnd={(e) => { if (e.animationName === "view-back") setReturning(false) }}
+    >
       <div className="flex justify-between items-center mb-4">
         <div>
           <h1 className="text-xl font-medium">Ученики</h1>

@@ -1862,9 +1862,9 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
         {activeTab === "variants" && (
           <div>
             {selectedVariant ? (
-              <div>
+              <div className="page-active">
                 <button
-                  onClick={() => { setSelectedVariant(null); setPart1Answers(Array(19).fill("")) }}
+                  onClick={() => { setSelectedVariant(null); setPart1Answers(Array(19).fill("")); setReturning(true) }}
                   className="text-sm text-gray-500 hover:text-gray-700 mb-4 flex items-center gap-1"
                 >
                   ← Назад
@@ -2098,7 +2098,10 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                 )}
               </div>
             ) : (
-              <div>
+              <div
+                className={returning ? "view-back" : ""}
+                onAnimationEnd={(e) => { if (e.animationName === "view-back") setReturning(false) }}
+              >
                 <h2 className="text-base font-medium mb-4">Мои варианты</h2>
                 {variants.length === 0 ? (
                   <div className="text-sm text-gray-400 text-center py-8 border border-dashed border-white/50 glass-sm">

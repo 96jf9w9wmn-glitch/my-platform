@@ -428,6 +428,18 @@ body::before {
   animation: page-enter 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
 }
 
+/* Возврат к списку — плавный въезд слева (ощущение «назад») */
+@keyframes view-back {
+  from { opacity: 0; transform: translateX(-18px); }
+  to   { opacity: 1; transform: none; }
+}
+.view-back {
+  animation: view-back 0.24s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .view-back { animation: none; }
+}
+
 /* Modal entrance — spring feel */
 @keyframes modal-enter {
   from { opacity: 0; transform: scale(0.94) translateY(12px); }
