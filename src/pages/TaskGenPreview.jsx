@@ -172,7 +172,7 @@ function TaskCard({ task, showAnswer }) {
   return (
     <div className="bg-white dark:bg-[#1c1c1e] rounded-2xl border border-gray-100 dark:border-white/10 p-4 shadow-sm flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-gray-500">Задание {task.number}</span>
+        <span className="text-sm font-semibold text-gray-500">Задание {task.number}</span>
         {task.generated && <span className="text-[10px] text-gray-300 uppercase tracking-wide">генератор</span>}
       </div>
       {task.error ? (
@@ -181,7 +181,7 @@ function TaskCard({ task, showAnswer }) {
         <>
           {task.condition_text && (
             <div
-              className="text-sm text-gray-700 leading-relaxed break-words"
+              className="text-base text-gray-700 leading-relaxed break-words"
               dangerouslySetInnerHTML={{ __html: renderTaskMath(task.condition_text) }}
             />
           )}
@@ -197,12 +197,12 @@ function TaskCard({ task, showAnswer }) {
             <img
               src={task.image_url}
               alt={`Задание ${task.number}`}
-              className="w-full max-w-[260px] self-start rounded-lg border border-gray-100 bg-white mt-1"
+              className="w-full max-w-[340px] self-start rounded-lg border border-gray-100 bg-white mt-1"
             />
           )}
           {task.condition_tail && (
             <div
-              className="text-sm text-gray-700 leading-relaxed break-words"
+              className="text-base text-gray-700 leading-relaxed break-words"
               dangerouslySetInnerHTML={{ __html: renderTaskMath(task.condition_tail) }}
             />
           )}
@@ -244,7 +244,7 @@ function ModuleCard({ module, showAnswer }) {
       {module.scenario === "tariff" && module.image_url && (
         <img src={module.image_url} alt={SCEN_LABEL[module.scenario] || "иллюстрация"} className="w-full max-w-md self-start rounded-lg border border-gray-100 bg-white" />
       )}
-      <div className="text-sm text-gray-700 leading-relaxed break-words whitespace-pre-line">{module.intro}</div>
+      <div className="text-base text-gray-700 leading-relaxed break-words whitespace-pre-line">{module.intro}</div>
       {module.scenario === "tires" ? (
         <>
           <div className="flex flex-wrap gap-6 items-end justify-center self-stretch">
@@ -256,7 +256,7 @@ function ModuleCard({ module, showAnswer }) {
             ))}
           </div>
           {module.introRest && (
-            <div className="text-sm text-gray-700 leading-relaxed break-words whitespace-pre-line">{module.introRest}</div>
+            <div className="text-base text-gray-700 leading-relaxed break-words whitespace-pre-line">{module.introRest}</div>
           )}
         </>
       ) : (
@@ -272,12 +272,12 @@ function ModuleCard({ module, showAnswer }) {
       <div className="flex flex-col gap-2">
         {module.tasks.map((t) => (
           <div key={t.number} className="border-t border-gray-50 pt-2">
-            <div className="text-sm text-gray-700 leading-relaxed break-words">
+            <div className="text-base text-gray-700 leading-relaxed break-words">
               <span className="font-semibold text-gray-500 mr-1">{t.number}.</span>
               <span dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_text) }} />
             </div>
             {t.image_url && (
-              <img src={t.image_url} alt={`К заданию ${t.number}`} className="w-full max-w-[260px] self-start rounded-lg border border-gray-100 bg-white mt-1" />
+              <img src={t.image_url} alt={`К заданию ${t.number}`} className="w-full max-w-[340px] self-start rounded-lg border border-gray-100 bg-white mt-1" />
             )}
             {showAnswer && (
               <div className="text-xs text-gray-400 mt-1">Ответ: <span className="font-mono text-gray-600">{String(t.answer)}</span></div>
