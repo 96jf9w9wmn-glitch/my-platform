@@ -155,7 +155,7 @@ function ParentDashboard({ user, onLogout }) {
             <div>
               <div className="flex items-center gap-1.5">
                 <img src="/logo.webp" alt="" className="w-5 h-5 rounded-md object-cover" />
-                <div className="font-semibold text-gray-800 dark:text-gray-100">{student.name}</div>
+                <div className="font-semibold text-gray-800">{student.name}</div>
               </div>
               <div className="text-xs text-gray-400 mt-0.5">Кабинет родителя</div>
             </div>
@@ -243,12 +243,12 @@ function ParentDashboard({ user, onLogout }) {
           <div className="glass p-4 mb-3 rounded-2xl border border-amber-200 dark:border-amber-800">
             <div className="flex items-center gap-2 mb-3">
               <span className="text-amber-500"><SvgIcon d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" size={18}/></span>
-              <div className="text-sm font-semibold text-gray-700 dark:text-gray-200">Замечания репетитора</div>
+              <div className="text-sm font-semibold text-gray-700">Замечания репетитора</div>
             </div>
             <div className="flex flex-col gap-2">
               {remarks.map((r) => (
                 <div key={r.id} className="bg-amber-50 dark:bg-amber-900/30 rounded-xl px-3 py-2.5">
-                  <div className="text-sm text-gray-700 dark:text-gray-200">{r.text}</div>
+                  <div className="text-sm text-gray-700">{r.text}</div>
                   <div className="text-xs text-gray-400 mt-1">{r.date}</div>
                 </div>
               ))}
@@ -258,7 +258,7 @@ function ParentDashboard({ user, onLogout }) {
 
         {/* Расписание */}
         <div className="glass p-4 mb-3 rounded-2xl">
-          <div className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Ближайшие занятия</div>
+          <div className="text-sm font-semibold text-gray-700 mb-3">Ближайшие занятия</div>
           {upcoming.length === 0 ? (
             <div className="text-sm text-gray-400 text-center py-3">Нет запланированных занятий</div>
           ) : (
@@ -266,7 +266,7 @@ function ParentDashboard({ user, onLogout }) {
               {upcoming.map((l, i) => (
                 <div key={i} className="flex items-center justify-between py-2.5 first:pt-0 last:pb-0">
                   <div>
-                    <div className="text-sm font-medium text-gray-700 dark:text-gray-200">{fmt(l.date)}</div>
+                    <div className="text-sm font-medium text-gray-700">{fmt(l.date)}</div>
                     <div className="text-xs text-gray-400">{l.time} · {l.duration || 60} мин</div>
                   </div>
                   {l.extra && (
@@ -280,22 +280,22 @@ function ParentDashboard({ user, onLogout }) {
 
         {/* Оплата */}
         <div className="glass p-4 mb-3 rounded-2xl">
-          <div className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Оплата</div>
+          <div className="text-sm font-semibold text-gray-700 mb-3">Оплата</div>
           <div className="flex flex-col gap-2">
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Проведено занятий</span>
-              <span className="font-medium dark:text-gray-200">{conducted.length}</span>
+              <span className="font-medium">{conducted.length}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Стоимость занятия</span>
-              <span className="font-medium dark:text-gray-200">{(student.lessonPrice || student.lesson_price || 0).toLocaleString("ru-RU")} ₽</span>
+              <span className="font-medium">{(student.lessonPrice || student.lesson_price || 0).toLocaleString("ru-RU")} ₽</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Оплачено</span>
               <span className="font-medium text-green-600">{totalPaid.toLocaleString("ru-RU")} ₽</span>
             </div>
             <div className="flex justify-between text-sm font-semibold border-t border-gray-100 dark:border-gray-700 pt-2 mt-0.5">
-              <span className="dark:text-gray-200">Задолженность</span>
+              <span className="">Задолженность</span>
               <span className={debt > 0 ? "text-amber-500" : "text-green-600"}>
                 {debt > 0 ? debt.toLocaleString("ru-RU") + " ₽" : "Нет"}
               </span>
@@ -306,7 +306,7 @@ function ParentDashboard({ user, onLogout }) {
         {/* Домашние задания */}
         <div className="glass p-4 mb-3 rounded-2xl">
           <div className="flex items-center justify-between mb-3">
-            <div className="text-sm font-semibold text-gray-700 dark:text-gray-200">Домашние задания</div>
+            <div className="text-sm font-semibold text-gray-700">Домашние задания</div>
             {homework.length > 0 && (
               <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
                 <button
@@ -339,7 +339,7 @@ function ParentDashboard({ user, onLogout }) {
                 {homework.slice(0, 10).map((hw) => (
                   <div key={hw.id} className="flex items-center justify-between py-2.5 first:pt-0 last:pb-0">
                     <div className="min-w-0 flex-1 mr-3">
-                      <div className="text-sm text-gray-700 dark:text-gray-200 truncate">{hw.title}</div>
+                      <div className="text-sm text-gray-700 truncate">{hw.title}</div>
                       <div className="text-xs text-gray-400">
                         {hw.hw_type === "test" ? "Тест" : hw.hw_type === "written" ? "Письменное" : "Комбинированное"}
                       </div>
@@ -411,12 +411,12 @@ function ParentDashboard({ user, onLogout }) {
         {/* Цель */}
         {(student.examDate || student.exam_date || student.targetScore || student.target_score) && (
           <div className="glass p-4 rounded-2xl">
-            <div className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Цель</div>
+            <div className="text-sm font-semibold text-gray-700 mb-3">Цель</div>
             <div className="flex flex-col gap-2">
               {(student.examDate || student.exam_date) && (
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Дата экзамена</span>
-                  <span className="font-medium dark:text-gray-200">
+                  <span className="font-medium">
                     {new Date((student.examDate || student.exam_date) + "T00:00:00")
                       .toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}
                   </span>

@@ -393,13 +393,13 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
                         {t.options && t.options.length > 0 ? (
                           <div className="pl-6 flex flex-col gap-1">
                             <span className="text-xs text-gray-400">Варианты (нажми на правильный):</span>
-                            <div className="grid grid-cols-2 gap-1.5">
+                            <div className="flex flex-col gap-1.5">
                               {t.options.map((o, j) => {
                                 const correct = o === t.answer
                                 return (
                                   <div
                                     key={j}
-                                    className={`flex items-center gap-1 rounded-lg border px-1.5 py-1 transition-colors ${
+                                    className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 transition-colors ${
                                       correct ? "border-green-500 bg-green-50" : "border-gray-200"
                                     }`}
                                   >
@@ -528,7 +528,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
                 {testOptions.map((opts, i) => (
                   <div key={i} className="rounded-lg bg-gray-50 p-2">
                     <div className="text-xs text-gray-400 mb-1.5">Вопрос {i + 1}</div>
-                    <div className="grid grid-cols-2 gap-1.5">
+                    <div className="flex flex-col items-start gap-1.5">
                       {opts.map((o, j) => {
                         const sel = mcqCorrect[i] === o
                         return (
@@ -536,7 +536,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
                             key={j}
                             type="button"
                             onClick={() => setMcqCorrect((prev) => prev.map((c, k) => (k === i ? o : c)))}
-                            className={`rounded-lg px-2 py-1.5 text-sm border text-center transition-all active:scale-[0.96] ${
+                            className={`rounded-lg px-3 py-1.5 text-sm border text-left transition-all active:scale-[0.96] ${
                               sel ? "bg-green-600 text-white border-green-600" : "border-gray-200 text-gray-700 hover:bg-gray-50"
                             }`}
                           >
