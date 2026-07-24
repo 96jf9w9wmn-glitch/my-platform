@@ -841,16 +841,16 @@ function SubmitResultDialog({ score, max, onClose }) {
   // Мотивационное сообщение по доле верных ответов — от «идеально» до «не сдавайся».
   const tone =
     score === max
-      ? { ring: "#34c759", text: "text-green-600", emoji: "🏆", title: "Идеально!", msg: "Все ответы верные — так держать!" }
+      ? { ring: "#34c759", text: "text-green-600", icon: "party", title: "Идеально!", msg: "Все ответы верные — так держать!" }
     : ratio >= 0.8
-      ? { ring: "#34c759", text: "text-green-600", emoji: "🎉", title: "Отличный результат!", msg: "Ты почти у цели — совсем немного до максимума." }
+      ? { ring: "#34c759", text: "text-green-600", icon: "sparkles", title: "Отличный результат!", msg: "Ты почти у цели — совсем немного до максимума." }
     : ratio >= 0.6
-      ? { ring: "#007AFF", text: "text-blue-600", emoji: "👍", title: "Хорошая работа!", msg: "Крепкий результат. Разбери спорные задания — и будет ещё лучше." }
+      ? { ring: "#007AFF", text: "text-blue-600", icon: "check", title: "Хорошая работа!", msg: "Крепкий результат. Разбери спорные задания — и будет ещё лучше." }
     : ratio >= 0.4
-      ? { ring: "#007AFF", text: "text-blue-600", emoji: "📚", title: "Неплохо!", msg: "Ты на верном пути. Повтори темы, где ошибся, — прогресс близко." }
+      ? { ring: "#007AFF", text: "text-blue-600", icon: "book", title: "Неплохо!", msg: "Ты на верном пути. Повтори темы, где ошибся, — прогресс близко." }
     : score > 0
-      ? { ring: "#ff9500", text: "text-amber-600", emoji: "💪", title: "Есть над чем поработать", msg: "Каждая ошибка — это тема для роста. Разбери их с репетитором." }
-      : { ring: "#ff9500", text: "text-amber-600", emoji: "🌱", title: "Не сдавайся!", msg: "Начало положено. Разбери решения — в следующий раз будет лучше." }
+      ? { ring: "#ff9500", text: "text-amber-600", icon: "target", title: "Есть над чем поработать", msg: "Каждая ошибка — это тема для роста. Разбери их с репетитором." }
+      : { ring: "#ff9500", text: "text-amber-600", icon: "leaf", title: "Не сдавайся!", msg: "Начало положено. Разбери решения — в следующий раз будет лучше." }
   const R = 42, C = 2 * Math.PI * R
   return createPortal(
     <div
@@ -876,7 +876,12 @@ function SubmitResultDialog({ score, max, onClose }) {
             <span className="text-[11px] text-gray-400">{pct}%</span>
           </div>
         </div>
-        <div className="mt-4 text-3xl">{tone.emoji}</div>
+        <div
+          className="mt-4 w-12 h-12 rounded-full flex items-center justify-center"
+          style={{ color: tone.ring, backgroundColor: tone.ring + "1f" }}
+        >
+          <Icon name={tone.icon} size={24} />
+        </div>
         <h3 className="mt-1 text-base font-semibold text-gray-800 dark:text-gray-100">{tone.title}</h3>
         <p className="mt-1 text-sm text-gray-500 leading-snug">{tone.msg}</p>
         <p className="mt-2 text-xs text-gray-400">Часть 1 · {score} из {max} баллов</p>
