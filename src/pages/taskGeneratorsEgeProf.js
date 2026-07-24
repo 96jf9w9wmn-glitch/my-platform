@@ -3742,13 +3742,21 @@ function t01TwoTangents() {
   const arc = randInt(30, 120)
   return { condition_text: `Через концы A и B дуги окружности с центром O проведены касательные AC и BC. Меньшая дуга AB равна ${deg(arc)}. Найдите угол ACB. Ответ дайте в градусах.`, image_url: svgUrl(figTwoTangents()), answer: ru(180 - arc) }
 }
-// две секущие из C: ACB + дуга AB(большая) → DAE = ½(дуга AB − 2·ACB)
+// две секущие из внешней точки C: C–D–B и C–E–A (D,E — ближние к C, B,A — дальние)
+// угол DAE = ½ дуги DE = ½(дуга AB − 2·ACB)
 function figTwoSecants() {
-  const O = [150, 115], R = 68, C = [285, 115]
-  const B = onC(O, R, 150), D = onC(O, R, 120), A = onC(O, R, 215), E = onC(O, R, 245)
-  let g = pCircle(O, R) + pSeg(C, B) + pSeg(C, A) + pSeg(A, D) + pSeg(A, E)
-  g += pV(A, "bl", "A") + pV(B, "tl", "B") + pV(C, "r", "C") + pV(D, "tr", "D") + pV(E, "b", "E")
-  return stWrap(320, 205, g)
+  const O = [140, 120], R = 72, C = [294, 120]
+  const B = onC(O, R, 154), A = onC(O, R, 232)          // дальние точки — левая часть окружности
+  const nearHit = (P) => {                              // ближнее к C пересечение прямой C–P с окружностью
+    const d = [P[0] - C[0], P[1] - C[1]], f = [C[0] - O[0], C[1] - O[1]]
+    const dd = d[0] * d[0] + d[1] * d[1], fd = f[0] * d[0] + f[1] * d[1], ff = f[0] * f[0] + f[1] * f[1] - R * R
+    const t = (-fd - Math.sqrt(Math.max(0, fd * fd - dd * ff))) / dd   // меньший корень = ближе к C
+    return [C[0] + t * d[0], C[1] + t * d[1]]
+  }
+  const D = nearHit(B), E = nearHit(A)                  // ближние точки на правой части, рядом с C
+  let g = pCircle(O, R) + pSeg(C, B) + pSeg(C, A) + pSeg(A, D) + pArc(A, D, E, 20)
+  g += pV(A, "bl", "A") + pV(B, "tl", "B") + pV(C, "r", "C") + pV(D, "t", "D") + pV(E, "br", "E")
+  return stWrap(330, 210, g)
 }
 function t01TwoSecants() {
   let acb, arcAB; do { acb = randInt(40, 60); arcAB = randInt(120, 160) } while ((arcAB - 2 * acb) % 2 !== 0 || arcAB - 2 * acb < 10)
