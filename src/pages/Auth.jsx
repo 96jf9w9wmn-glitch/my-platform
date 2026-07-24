@@ -3,9 +3,9 @@ import { supabase } from "../supabase"
 import Icon from "../components/Icon"
 import StudentOnboardingModal from "../components/StudentOnboardingModal" // ВРЕМЕННО: демо-кнопка опросника
 
-function Auth({ onLogin }) {
-  const [mode, setMode] = useState("login")
-  const [role, setRole] = useState("tutor")
+function Auth({ onLogin, initialRole = "tutor", initialMode = "login", onBack }) {
+  const [mode, setMode] = useState(initialMode)
+  const [role, setRole] = useState(initialRole)
   const [form, setForm] = useState({ name: "", email: "", phone: "+7", password: "", code: "" })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -217,6 +217,15 @@ function Auth({ onLogin }) {
         <StudentOnboardingModal demo studentId="demo" token="demo" onComplete={() => setShowOnbDemo(false)} />
       )}
 
+      {onBack && (
+        <button
+          onClick={onBack}
+          className="fixed top-4 left-4 flex items-center gap-1 p-2 pr-3 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg text-sm z-50"
+        >
+          <Icon name="chevron-left" size={16} />
+          Обзор
+        </button>
+      )}
       <button
         onClick={() => setDark(!dark)}
         className="fixed top-4 right-4 p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg text-sm z-50"

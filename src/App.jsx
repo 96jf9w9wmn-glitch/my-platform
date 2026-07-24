@@ -7,6 +7,7 @@ import Icon from "./components/Icon"
 import Students from "./pages/Students"
 import Payment from "./pages/Payment"
 import Auth from "./pages/Auth"
+import Landing from "./pages/Landing"
 import Results from "./pages/Results"
 import Dashboard from "./pages/Dashboard"
 import Homework from "./pages/Homework"
@@ -250,6 +251,9 @@ function App() {
   const [visitedPages, setVisitedPages] = useState(() => new Set(["dashboard"]))
   const [chatUnread, setChatUnread] = useState(0)
   const [board, setBoard] = useState(null) // { roomId, title } — открытая доска ученика
+  // Лендинг показывается первым для неавторизованного гостя; из него уходим
+  // в Auth с предвыбранной ролью/режимом. null → показываем лендинг.
+  const [authIntent, setAuthIntent] = useState(null)
 
   function openBoard(studentId, title) {
     if (studentId) setBoard({ roomId: studentId, title })
@@ -508,7 +512,17 @@ function App() {
   }
 
   if (!user) {
-    return <Auth onLogin={setUser} />
+    if (!authIntent) {
+      return <Landing onStart={(role, mode) => setAuthIntent({ role, mode })} />
+    }
+    return (
+      <Auth
+        onLogin={setUser}
+        initialRole={authIntent.role}
+        initialMode={authIntent.mode}
+        onBack={() => setAuthIntent(null)}
+      />
+    )
   }
 
   if (user.role === "parent") {
