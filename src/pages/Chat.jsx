@@ -415,8 +415,9 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
       }`}>
         {!activeContact ? (
           <div className="relative flex-1 flex flex-col items-center justify-center gap-4 overflow-hidden">
-            {/* Мягкий равномерный фон — без резкого пятна, чтобы сайдбар не выбивался */}
-            <div className="pointer-events-none absolute inset-0 bg-gray-50/70 dark:bg-gray-900" />
+            {/* Мягкий равномерный фон — без резкого пятна, чтобы сайдбар не выбивался.
+                bg-gray-50 сам remap-ается в тёмный тон под .dark (см. index.css), dark:-override не нужен. */}
+            <div className="pointer-events-none absolute inset-0 bg-gray-50" />
             <div
               className="pointer-events-none absolute inset-0 opacity-[0.5] dark:opacity-[0.12]"
               style={{
