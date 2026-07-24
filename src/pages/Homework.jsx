@@ -52,6 +52,72 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
   const [answersInput, setAnswersInput] = useState(editingHw?.correct_answers?.join(" ") || "")
   const fileRef = useRef()
 
+  // --- Генерация ДЗ по теме через DeepSeek (серверный прокси /api/generate-hw) ---
+  const [showGen, setShowGen] = useState(false)
+  const [genTopic, setGenTopic] = useState("")
+  const [genSubject, setGenSubject] = useState("")
+  const [genLevel, setGenLevel] = useState("средний")
+  const [genCount, setGenCount] = useState(5)
+  const [generating, setGenerating] = useState(false)
+  const [genError, setGenError] = useState("")
+  const [preview, setPreview] = useState(null) // {title, description, tasks:[{question,answer}]}
+
+  async function handleGenerate() {
+    if (!genTopic.trim()) {
+      setGenError("Введи тему")
+      return
+    }
+    setGenError("")
+    setGenerating(true)
+    try {
+      const res = await fetch("/api/generate-hw", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topic: genTopic, subject: genSubject, level: genLevel, count: genCount }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setGenError(data.error || "Ошибка генерации")
+        return
+      }
+      setPreview({
+        title: data.title || genTopic,
+        description: data.description || "",
+        tasks: (data.tasks || []).map((t) => ({ question: t.question || "", answer: t.answer || "" })),
+      })
+    } catch (e) {
+      setGenError("Сеть недоступна: " + String(e))
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  function updatePreviewTask(idx, field, value) {
+    setPreview((p) => ({
+      ...p,
+      tasks: p.tasks.map((t, i) => (i === idx ? { ...t, [field]: value } : t)),
+    }))
+  }
+
+  function removePreviewTask(idx) {
+    setPreview((p) => ({ ...p, tasks: p.tasks.filter((_, i) => i !== idx) }))
+  }
+
+  function applyPreview() {
+    const tasks = preview.tasks.filter((t) => t.question.trim())
+    setTitle(preview.title.trim() || genTopic)
+    const body = tasks.map((t, i) => `${i + 1}. ${t.question.trim()}`).join("\n")
+    setDescription([preview.description.trim(), body].filter(Boolean).join("\n\n"))
+    const answers = tasks.map((t) => t.answer.trim()).filter(Boolean)
+    if (answers.length === tasks.length && answers.length > 0) {
+      // у каждого задания есть ответ — можно оформить как тест с автопроверкой
+      setHwType("test")
+      setAnswersInput(answers.join(" "))
+    }
+    setPreview(null)
+    setShowGen(false)
+  }
+
   const correctAnswers = answersInput
     .trim()
     .split(/\s+/)
@@ -159,6 +225,123 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Генерация ДЗ по теме через ИИ */}
+          <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-3">
+            <button
+              type="button"
+              onClick={() => setShowGen((v) => !v)}
+              className="w-full flex items-center justify-between text-sm font-medium text-blue-700 active:scale-[0.99] transition-transform"
+            >
+              <span className="flex items-center gap-1.5"><Icon name="sparkles" size={15} />Сгенерировать по теме</span>
+              <Icon name={showGen ? "chevron-up" : "chevron-down"} size={16} />
+            </button>
+
+            {showGen && (
+              <div className="mt-3 flex flex-col gap-2.5">
+                <input
+                  value={genTopic}
+                  onChange={(e) => setGenTopic(e.target.value)}
+                  placeholder="Тема, например: Квадратные уравнения"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400"
+                />
+                <div className="flex gap-2">
+                  <input
+                    value={genSubject}
+                    onChange={(e) => setGenSubject(e.target.value)}
+                    placeholder="Предмет (необяз.)"
+                    className="flex-1 min-w-0 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400"
+                  />
+                  <select
+                    value={genLevel}
+                    onChange={(e) => setGenLevel(e.target.value)}
+                    className="border border-gray-200 rounded-lg px-2 py-2 text-sm outline-none focus:border-blue-400"
+                  >
+                    <option value="лёгкий">Лёгкий</option>
+                    <option value="средний">Средний</option>
+                    <option value="сложный">Сложный</option>
+                  </select>
+                  <select
+                    value={genCount}
+                    onChange={(e) => setGenCount(Number(e.target.value))}
+                    className="border border-gray-200 rounded-lg px-2 py-2 text-sm outline-none focus:border-blue-400"
+                    title="Количество заданий"
+                  >
+                    {[3, 5, 8, 10, 15].map((n) => <option key={n} value={n}>{n} зад.</option>)}
+                  </select>
+                </div>
+
+                {genError && <div className="text-xs text-red-500">{genError}</div>}
+
+                <button
+                  type="button"
+                  onClick={handleGenerate}
+                  disabled={generating}
+                  className="bg-blue-600 text-white rounded-lg py-2 text-sm hover:bg-blue-700 disabled:opacity-50 active:scale-[0.99] transition-transform flex items-center justify-center gap-1.5"
+                >
+                  {generating ? "Генерирую…" : <><Icon name="sparkles" size={14} />Сгенерировать</>}
+                </button>
+
+                {preview && (
+                  <div className="mt-1 rounded-xl border border-blue-200 bg-white p-3 flex flex-col gap-2.5 max-h-[45dvh] overflow-y-auto">
+                    <input
+                      value={preview.title}
+                      onChange={(e) => setPreview((p) => ({ ...p, title: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-medium outline-none focus:border-blue-400"
+                    />
+                    {preview.tasks.map((t, i) => (
+                      <div key={i} className="rounded-lg bg-gray-50 p-2 flex flex-col gap-1.5">
+                        <div className="flex items-start gap-2">
+                          <span className="text-xs text-gray-400 pt-2 w-4 flex-shrink-0">{i + 1}.</span>
+                          <textarea
+                            value={t.question}
+                            onChange={(e) => updatePreviewTask(i, "question", e.target.value)}
+                            rows={2}
+                            className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2 py-1.5 text-sm outline-none focus:border-blue-400 resize-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removePreviewTask(i)}
+                            className="text-gray-300 hover:text-red-500 pt-1.5"
+                            title="Удалить задание"
+                          >
+                            <Icon name="x" size={14} />
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-2 pl-6">
+                          <span className="text-xs text-gray-400 flex-shrink-0">Ответ:</span>
+                          <input
+                            value={t.answer}
+                            onChange={(e) => updatePreviewTask(i, "answer", e.target.value)}
+                            className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2 py-1 text-sm outline-none focus:border-blue-400"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                    <div className="text-[11px] text-gray-400 leading-snug">
+                      Проверь задания и ответы — ИИ может ошибаться. При применении задания уйдут в описание, а ответы (если есть у всех) оформятся как тест.
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPreview(null)}
+                        className="flex-1 border border-gray-200 rounded-lg py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+                      >
+                        Отклонить
+                      </button>
+                      <button
+                        type="button"
+                        onClick={applyPreview}
+                        className="flex-1 bg-green-600 text-white rounded-lg py-1.5 text-sm hover:bg-green-700 active:scale-[0.99] transition-transform"
+                      >
+                        Применить
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div>
