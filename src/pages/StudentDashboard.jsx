@@ -708,6 +708,65 @@ function StudentNotificationBell({ userId }) {
   )
 }
 
+// Результат сдачи части 1 — вместо системного alert() показываем модалку в стиле
+// приложения: кольцо-прогресс с долей верных, ободряющая подпись, кнопка закрытия.
+function SubmitResultDialog({ score, max, onClose }) {
+  const ratio = max > 0 ? score / max : 0
+  const pct = Math.round(ratio * 100)
+  // Мотивационное сообщение по доле верных ответов — от «идеально» до «не сдавайся».
+  const tone =
+    score === max
+      ? { ring: "#34c759", text: "text-green-600", emoji: "🏆", title: "Идеально!", msg: "Все ответы верные — так держать!" }
+    : ratio >= 0.8
+      ? { ring: "#34c759", text: "text-green-600", emoji: "🎉", title: "Отличный результат!", msg: "Ты почти у цели — совсем немного до максимума." }
+    : ratio >= 0.6
+      ? { ring: "#007AFF", text: "text-blue-600", emoji: "👍", title: "Хорошая работа!", msg: "Крепкий результат. Разбери спорные задания — и будет ещё лучше." }
+    : ratio >= 0.4
+      ? { ring: "#007AFF", text: "text-blue-600", emoji: "📚", title: "Неплохо!", msg: "Ты на верном пути. Повтори темы, где ошибся, — прогресс близко." }
+    : score > 0
+      ? { ring: "#ff9500", text: "text-amber-600", emoji: "💪", title: "Есть над чем поработать", msg: "Каждая ошибка — это тема для роста. Разбери их с репетитором." }
+      : { ring: "#ff9500", text: "text-amber-600", emoji: "🌱", title: "Не сдавайся!", msg: "Начало положено. Разбери решения — в следующий раз будет лучше." }
+  const R = 42, C = 2 * Math.PI * R
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100000] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm dialog-fade"
+      onClick={onClose}
+    >
+      <div
+        className="glass-modal rounded-3xl shadow-2xl w-full max-w-xs p-6 flex flex-col items-center text-center popup-bubble"
+        style={{ transformOrigin: "center" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="relative w-28 h-28">
+          <svg viewBox="0 0 100 100" className="w-28 h-28 -rotate-90">
+            <circle cx="50" cy="50" r={R} fill="none" stroke="currentColor" strokeWidth="8" className="text-gray-200/70 dark:text-white/10" />
+            <circle
+              cx="50" cy="50" r={R} fill="none" stroke={tone.ring} strokeWidth="8" strokeLinecap="round"
+              strokeDasharray={C} strokeDashoffset={C * (1 - ratio)}
+              style={{ transition: "stroke-dashoffset 0.9s cubic-bezier(0.34,1.56,0.64,1)" }}
+            />
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className={`text-2xl font-semibold ${tone.text}`}>{score}<span className="text-gray-400 text-lg">/{max}</span></span>
+            <span className="text-[11px] text-gray-400">{pct}%</span>
+          </div>
+        </div>
+        <div className="mt-4 text-3xl">{tone.emoji}</div>
+        <h3 className="mt-1 text-base font-semibold text-gray-800 dark:text-gray-100">{tone.title}</h3>
+        <p className="mt-1 text-sm text-gray-500 leading-snug">{tone.msg}</p>
+        <p className="mt-2 text-xs text-gray-400">Часть 1 · {score} из {max} баллов</p>
+        <button
+          onClick={onClose}
+          className="mt-5 w-full py-2.5 rounded-xl bg-gradient-to-b from-[#0a84ff] to-[#0060df] text-white text-sm font-medium shadow-sm hover:opacity-95 active:scale-[0.98] transition"
+        >
+          Готово
+        </button>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
 function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadStudents }) {
   const [activeTab, setActiveTab] = useState("schedule")
   const variantsCacheKey = `variants_cache_${user.id}`
@@ -717,6 +776,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   const [selectedVariant, setSelectedVariant] = useState(null)
   const [part1Answers, setPart1Answers] = useState(Array(19).fill(""))
   const [submitting, setSubmitting] = useState(false)
+  const [resultDialog, setResultDialog] = useState(null)
   const [tutorCode, setTutorCode] = useState("")
   const [tutorLinking, setTutorLinking] = useState(false)
   const [tutorLinkError, setTutorLinkError] = useState("")
@@ -1122,7 +1182,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     setSubmitting(false)
     setSelectedVariant(null)
     loadVariants()
-    alert("Ответы отправлены! Часть 1: " + score + " / " + maxCount + " баллов")
+    setResultDialog({ score, max: maxCount })
   }
 
   const navItems = [
@@ -1141,6 +1201,13 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
 
   return (
     <div className="flex app-shell overflow-clip">
+      {resultDialog && (
+        <SubmitResultDialog
+          score={resultDialog.score}
+          max={resultDialog.max}
+          onClose={() => setResultDialog(null)}
+        />
+      )}
       {boardOpen && student?.id && (
         <Suspense fallback={<div className="fixed inset-0 z-[100000] bg-white dark:bg-[#1c1c1e] flex items-center justify-center"><div className="loader-ring" /></div>}>
           <Board
