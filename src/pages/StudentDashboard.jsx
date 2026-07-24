@@ -741,19 +741,16 @@ function CopyCodeBlock({ code }) {
     setTimeout(() => setCopied(false), 2000)
   }
   return (
-    <div className="pt-2 mt-1 border-t border-gray-100 dark:border-gray-700">
-      <div className="text-xs text-gray-400 mb-1.5">Код для родителей</div>
-      <div className="flex items-center gap-2">
-        <code className="text-sm font-mono bg-gray-100 dark:bg-gray-700 px-2.5 py-1 rounded-lg tracking-widest text-gray-700 dark:text-gray-300 flex-1 text-center">
-          {code}
-        </code>
-        <button
-          onClick={copy}
-          className={`text-xs flex-shrink-0 transition-colors ${copied ? "text-green-500" : "text-blue-500 hover:text-blue-700"}`}
-        >
-          {copied ? "Скопировано!" : "Копировать"}
-        </button>
-      </div>
+    <div className="flex items-center gap-2">
+      <code className="text-sm font-mono bg-gray-100 dark:bg-gray-700 px-2.5 py-1 rounded-lg tracking-widest text-gray-700 dark:text-gray-300 flex-1 text-center">
+        {code}
+      </code>
+      <button
+        onClick={copy}
+        className={`text-xs flex-shrink-0 transition-colors ${copied ? "text-green-500" : "text-blue-500 hover:text-blue-700"}`}
+      >
+        {copied ? "Скопировано!" : "Копировать"}
+      </button>
     </div>
   )
 }
@@ -1665,10 +1662,10 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                           <span className="text-sm text-gray-700">{student.lessonPrice.toLocaleString("ru-RU")} ₽/занятие</span>
                         </div>
                       )}
-                      {student.parent_code && (
+                      {student.parent_code?.trim() && (
                         <div className="mt-1 pt-3 border-t border-white/30">
                           <div className="text-xs text-gray-400 font-medium mb-2">Код для родителей</div>
-                          <CopyCodeBlock code={student.parent_code} />
+                          <CopyCodeBlock code={student.parent_code.trim()} />
                         </div>
                       )}
                     </div>
