@@ -27,7 +27,7 @@ function GradeBar({ label, count, max, color }) {
   return (
     <div className="flex items-center gap-2">
       <div className={`w-5 text-xs font-semibold text-center ${color}`}>{label}</div>
-      <div className="flex-1 h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+      <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
         <div className={`h-full rounded-full transition-all ${color.replace("text-", "bg-")}`} style={{ width: pct + "%" }} />
       </div>
       <div className="text-xs text-gray-500 w-6 text-right">{count}</div>
@@ -182,7 +182,7 @@ function ParentDashboard({ user, onLogout }) {
         </div>
 
         {/* Навигация */}
-        <div className="flex gap-1 mb-4 bg-gray-100 dark:bg-gray-800 rounded-2xl p-1">
+        <div className="flex gap-1 mb-4 bg-gray-100 rounded-2xl p-1">
           {[{ id: "home", label: "Кабинет" }, { id: "chat", label: "Чат", badge: chatUnread }].map(tab => (
             <button
               key={tab.id}
@@ -308,7 +308,7 @@ function ParentDashboard({ user, onLogout }) {
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm font-semibold text-gray-700 dark:text-gray-200">Домашние задания</div>
             {homework.length > 0 && (
-              <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5">
+              <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
                 <button
                   onClick={() => setHwTab("list")}
                   className={`text-xs px-2.5 py-1 rounded-md transition-colors ${hwTab === "list" ? "bg-white dark:bg-gray-600 text-gray-700 dark:text-gray-200 shadow-sm" : "text-gray-500"}`}
@@ -375,7 +375,7 @@ function ParentDashboard({ user, onLogout }) {
               {/* Прогресс */}
               <div className="border-t border-gray-100 dark:border-gray-700 pt-3">
                 <div className="text-xs text-gray-400 mb-2">Выполнение ({doneCount} / {homework.length})</div>
-                <div className="h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                   <div
                     className="h-full bg-blue-500 rounded-full transition-all"
                     style={{ width: homework.length > 0 ? Math.round((doneCount / homework.length) * 100) + "%" : "0%" }}

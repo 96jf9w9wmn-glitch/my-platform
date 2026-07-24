@@ -440,7 +440,7 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
             <div className="flex items-center gap-2">
               {student.parent_code ? (
                 <>
-                  <code className="text-xs font-mono bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded tracking-wider text-gray-700 dark:text-gray-300">
+                  <code className="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded tracking-wider text-gray-700">
                     {student.parent_code}
                   </code>
                   <button

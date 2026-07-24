@@ -742,7 +742,7 @@ function CopyCodeBlock({ code }) {
   }
   return (
     <div className="flex items-center gap-2">
-      <code className="text-sm font-mono bg-gray-100 dark:bg-gray-700 px-2.5 py-1 rounded-lg tracking-widest text-gray-700 dark:text-gray-300 flex-1 text-center">
+      <code className="text-sm font-mono bg-gray-100 px-2.5 py-1 rounded-lg tracking-widest text-gray-700 flex-1 text-center">
         {code}
       </code>
       <button
