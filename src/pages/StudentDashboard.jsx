@@ -251,7 +251,7 @@ function StreakBadge({ homework }) {
   if (best === 0) return null
 
   return (
-    <div className="glass-tint-amber px-4 py-3 mb-3 flex items-center justify-between">
+    <div className="glass-tint-amber px-4 py-3 flex items-center justify-between">
       <div className="flex items-center gap-2">
         <span className="text-2xl">🔥</span>
         <div>
@@ -285,7 +285,7 @@ function ProgressChart({ variants, targetScore, maxScore }) {
   }))
 
   return (
-    <div className="glass p-5 mb-4">
+    <div className="glass p-5">
       <h2 className="text-base font-medium mb-4">Динамика баллов</h2>
       <ResponsiveContainer width="100%" height={200}>
         <LineChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
@@ -525,7 +525,7 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
   const { intro, tasks } = parseHomeworkTasks(hw.description)
 
   return (
-    <div>
+    <div className="page-active">
       <button onClick={onBack} className="text-sm text-gray-500 hover:text-gray-700 mb-4 flex items-center gap-1 active:scale-[0.97] transition-transform">
         ← Назад
       </button>
@@ -976,6 +976,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     try { return JSON.parse(localStorage.getItem(`variants_cache_${user.id}`)) || [] } catch { return [] }
   })
   const [selectedVariant, setSelectedVariant] = useState(null)
+  const [returning, setReturning] = useState(false)
   const [part1Answers, setPart1Answers] = useState(Array(19).fill(""))
   const [submitting, setSubmitting] = useState(false)
   const [resultDialog, setResultDialog] = useState(null)
@@ -1506,7 +1507,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
               <div className="flex flex-col md:flex-row gap-4 items-start">
 
                 {/* LEFT: avatar + info */}
-                <div className="w-full md:w-52 flex-shrink-0 flex flex-col gap-3">
+                <div className="w-full md:w-60 flex-shrink-0 flex flex-col gap-4">
 
                   {/* Avatar card */}
                   <div className="glass p-5 flex flex-col items-center text-center">
@@ -1530,8 +1531,8 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                         </button>
                         {student.callUrl && (
                           <a href={student.callUrl} target="_blank" rel="noreferrer"
-                            className="flex-1 btn-glass py-2 text-xs text-center">
-                            <span className="flex items-center gap-1"><Icon name="video" size={12} />Звонок</span>
+                            className="press-tap flex-1 btn-glass py-2 text-xs text-center">
+                            <span className="flex items-center justify-center gap-1"><Icon name="video" size={12} />Звонок</span>
                           </a>
                         )}
                       </div>
@@ -1584,11 +1585,12 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
 
                 </div>
 
-                {/* RIGHT: main content */}
-                <div className="flex-1 flex flex-col gap-4 min-w-0">
+                {/* RIGHT: main content — бенто-сетка: узкие карточки тайлятся по 2 в ряд
+                    (одинаковая высота внутри ряда), широкие блоки на всю ширину */}
+                <div className="flex-1 min-w-0 grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch content-start">
 
                   {/* Name header */}
-                  <div className="glass p-5">
+                  <div className="glass p-5 lg:col-span-2">
                     <div className="text-2xl font-semibold mb-0.5">{user.profile?.name}</div>
                     <div className="text-sm text-gray-500">Ученик</div>
                     {student.goal && (
@@ -1607,7 +1609,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                   </div>
 
                   {/* Мои занятия */}
-                  <div className="glass p-5">
+                  <div className="glass p-5 lg:col-span-2">
                     <div className="text-base font-medium mb-4">Мои занятия</div>
                     <div className="text-xs text-gray-400 mb-2">Ближайшие</div>
                     {upcoming.length === 0 ? (
@@ -1703,15 +1705,18 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                     </div>
                   </div>
 
-                  <StreakBadge homework={homework} />
+                  {/* Широкие блоки — на всю ширину сетки, единый вертикальный ритм */}
+                  <div className="lg:col-span-2 flex flex-col gap-4">
+                    <StreakBadge homework={homework} />
 
-                  <ProgressChart
-                    variants={variants}
-                    targetScore={student.targetScore}
-                    maxScore={student.goal === "ЕГЭ" ? 100 : 32}
-                  />
+                    <ProgressChart
+                      variants={variants}
+                      targetScore={student.targetScore}
+                      maxScore={student.goal === "ЕГЭ" ? 100 : 32}
+                    />
 
-                  <StudentScheduleCalendar student={student} onOpenBoard={() => setBoardOpen(true)} />
+                    <StudentScheduleCalendar student={student} onOpenBoard={() => setBoardOpen(true)} />
+                  </div>
 
                 </div>
               </div>
@@ -1724,12 +1729,15 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
             {selectedHomework ? (
               <HomeworkDetail
                 hw={selectedHomework}
-                onBack={() => setSelectedHomework(null)}
+                onBack={() => { setSelectedHomework(null); setReturning(true) }}
                 onUpload={uploadHomeworkSubmission}
                 onSubmitTest={submitHomeworkTest}
               />
             ) : (
-              <div>
+              <div
+                className={returning ? "view-back" : ""}
+                onAnimationEnd={(e) => { if (e.animationName === "view-back") setReturning(false) }}
+              >
                 <h2 className="text-base font-medium mb-4">Мои задания</h2>
                 <StudentHomeworkList homework={homework} onSelect={setSelectedHomework} />
               </div>
