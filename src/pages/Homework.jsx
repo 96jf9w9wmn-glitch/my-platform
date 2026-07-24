@@ -115,7 +115,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
     // «Письменное», ответы в тест-поле не пишем.
     const allTestable =
       answers.length > 0 &&
-      answers.every((a) => a.length > 0 && !/[\s,]/.test(a))
+      answers.every((a) => a.length > 0 && !/[\s,\\{}]/.test(a))
     if (allTestable) {
       setHwType("test")
       setAnswersInput(answers.join(" "))

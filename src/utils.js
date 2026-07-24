@@ -276,6 +276,8 @@ export function renderHomeworkMath(text) {
     .replace(/\^\{([^{}]*)\}/g, (_, x) => `<sup class="tmath-sup">${x}</sup>`)
     .replace(/_\{([^{}]*)\}/g, (_, x) => `<sub class="tmath-sub">${x}</sub>`)
     .replace(/_([0-9A-Za-zА-Яа-я])/g, (_, x) => `<sub class="tmath-sub">${x}</sub>`)
+    // инлайн-разделители формул \( \) \[ \] (модель иногда оборачивает ими математику)
+    .replace(/\\[()[\]]/g, "")
     // операторы LaTeX → символы
     .replace(/\\left|\\right/g, "")
     .replace(/\\cdot/g, "·").replace(/\\times/g, "×").replace(/\\div/g, "÷")
