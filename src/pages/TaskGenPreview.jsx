@@ -197,7 +197,7 @@ function TaskCard({ task, showAnswer }) {
             <img
               src={task.image_url}
               alt={`Задание ${task.number}`}
-              className="max-w-full self-start rounded-lg border border-gray-100 bg-white mt-1"
+              className="w-full max-w-md self-start rounded-lg border border-gray-100 bg-white mt-1"
             />
           )}
           {task.condition_tail && (
@@ -242,7 +242,7 @@ function ModuleCard({ module, showAnswer }) {
       {/* Тарифы: график сверху, затем текст, затем таблица под текстом. Шины: текст → Рис. 1 и
           Рис. 2 бок о бок с подписями → продолжение текста. Прочие: текст → иллюстрация. */}
       {module.scenario === "tariff" && module.image_url && (
-        <img src={module.image_url} alt={SCEN_LABEL[module.scenario] || "иллюстрация"} className="max-w-full self-start rounded-lg border border-gray-100 bg-white" />
+        <img src={module.image_url} alt={SCEN_LABEL[module.scenario] || "иллюстрация"} className="w-full max-w-md self-start rounded-lg border border-gray-100 bg-white" />
       )}
       <div className="text-sm text-gray-700 leading-relaxed break-words whitespace-pre-line">{module.intro}</div>
       {module.scenario === "tires" ? (
@@ -262,10 +262,10 @@ function ModuleCard({ module, showAnswer }) {
       ) : (
         <>
           {module.scenario !== "tariff" && module.image_url && (
-            <img src={module.image_url} alt={SCEN_LABEL[module.scenario] || "иллюстрация"} className="max-w-full self-start rounded-lg border border-gray-100 bg-white" />
+            <img src={module.image_url} alt={SCEN_LABEL[module.scenario] || "иллюстрация"} className="w-full max-w-md self-start rounded-lg border border-gray-100 bg-white" />
           )}
           {module.image_url2 && (
-            <img src={module.image_url2} alt={SCEN_LABEL[module.scenario] || "иллюстрация"} className="max-w-full self-start rounded-lg border border-gray-100 bg-white" />
+            <img src={module.image_url2} alt={SCEN_LABEL[module.scenario] || "иллюстрация"} className="w-full max-w-md self-start rounded-lg border border-gray-100 bg-white" />
           )}
         </>
       )}
@@ -277,7 +277,7 @@ function ModuleCard({ module, showAnswer }) {
               <span dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_text) }} />
             </div>
             {t.image_url && (
-              <img src={t.image_url} alt={`К заданию ${t.number}`} className="max-w-full self-start rounded-lg border border-gray-100 bg-white mt-1" />
+              <img src={t.image_url} alt={`К заданию ${t.number}`} className="w-full max-w-md self-start rounded-lg border border-gray-100 bg-white mt-1" />
             )}
             {showAnswer && (
               <div className="text-xs text-gray-400 mt-1">Ответ: <span className="font-mono text-gray-600">{String(t.answer)}</span></div>

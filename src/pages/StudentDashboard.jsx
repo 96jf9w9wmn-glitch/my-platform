@@ -1661,7 +1661,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       <div key={t.number} className="glass-sm p-3">
                         <div className="text-xs font-medium text-blue-600 mb-1">Задание {t.number}</div>
                         {t.condition_text && <div className="text-sm whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_text) }} />}
-                        {t.image_url && <img src={t.image_url} alt={`Задание ${t.number}`} className="w-full max-w-xl object-contain rounded-lg mt-2 bg-gray-50" />}
+                        {t.image_url && <img src={t.image_url} alt={`Задание ${t.number}`} className="w-full max-w-md object-contain rounded-lg mt-2 bg-gray-50" />}
                       </div>
                     ))}
                   </div>
@@ -1676,7 +1676,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                         <div key={t.number} className="border border-gray-100 rounded-xl p-3">
                           <div className="text-xs font-medium text-blue-600 mb-1">Задание {t.number}</div>
                           {t.condition_text && <div className="text-sm whitespace-pre-wrap mb-2" dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_text) }} />}
-                          {t.image_url && <img src={t.image_url} alt={`Задание ${t.number}`} className="w-full max-w-xl object-contain rounded-lg mb-2 bg-gray-50" />}
+                          {t.image_url && <img src={t.image_url} alt={`Задание ${t.number}`} className="w-full max-w-md object-contain rounded-lg mb-2 bg-gray-50" />}
                           <input
                             value={part1Answers[t.number - 1] || ""}
                             onChange={(e) => { const u = [...part1Answers]; u[t.number - 1] = e.target.value; setPart1Answers(u) }}
