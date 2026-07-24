@@ -678,18 +678,19 @@ button:not([disabled]):not(.no-press):active {
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-/* Next-lesson hero: keep the vivid gradient in light mode. In dark mode,
-   pair frosted glass (same white-overlay language as .glass/.stat-card)
-   with a soft ambient blue glow instead of a flat saturated fill. */
+/* Next-lesson hero: keep the vivid gradient in light mode. In dark mode —
+   layered elevated surface (не плоская синяя заливка): тёмная слоистая база,
+   волосяная граница, верхний блик; амбиентные блобы рисует сама карточка
+   (см. Dashboard.jsx), поэтому фон здесь спокойный. */
 .dark .next-lesson-card {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(0, 122, 255, 0.14));
+  background: linear-gradient(165deg, #171922 0%, #101218 55%, #0e1120 100%);
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid rgba(0, 122, 255, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.45),
-    0 1px 0 rgba(255, 255, 255, 0.08) inset,
-    0 0 40px rgba(0, 122, 255, 0.16);
+    0 1px 0 rgba(255, 255, 255, 0.1) inset,
+    0 16px 40px rgba(0, 0, 0, 0.5),
+    0 0 60px rgba(0, 122, 255, 0.08);
 }
 
 /* Tinted glass panels */
@@ -844,15 +845,17 @@ button:not([disabled]):not(.no-press):active {
 .dark .border-green-200 { border-color: rgba(52, 199, 89, 0.3) !important; }
 .dark .border-white\/40 { border-color: rgba(255, 255, 255, 0.08) !important; }
 
-/* bg-white/N — keep as glass-effect white (not dark like overridden white base) */
-.dark .bg-white\/10 { background: rgba(255,255,255,0.03) !important; }
-.dark .bg-white\/20 { background: rgba(255,255,255,0.04) !important; }
-.dark .bg-white\/30 { background: rgba(255,255,255,0.04) !important; }
-.dark .bg-white\/40 { background: rgba(255,255,255,0.05) !important; }
-.dark .bg-white\/50 { background: rgba(255,255,255,0.06) !important; }
-.dark .bg-white\/60 { background: rgba(255,255,255,0.08) !important; }
-.dark .hover\:bg-white\/30:hover { background: rgba(255,255,255,0.05) !important; }
-.dark .hover\:bg-white\/40:hover { background: rgba(255,255,255,0.08) !important; }
+/* bg-white/N — keep as glass-effect white (not dark like overridden white base).
+   ВАЖНО: background-color, НЕ шорткат background — шорткат затирал
+   background-image (градиенты dark:bg-gradient-* переставали работать). */
+.dark .bg-white\/10 { background-color: rgba(255,255,255,0.03) !important; }
+.dark .bg-white\/20 { background-color: rgba(255,255,255,0.04) !important; }
+.dark .bg-white\/30 { background-color: rgba(255,255,255,0.04) !important; }
+.dark .bg-white\/40 { background-color: rgba(255,255,255,0.05) !important; }
+.dark .bg-white\/50 { background-color: rgba(255,255,255,0.06) !important; }
+.dark .bg-white\/60 { background-color: rgba(255,255,255,0.08) !important; }
+.dark .hover\:bg-white\/30:hover { background-color: rgba(255,255,255,0.05) !important; }
+.dark .hover\:bg-white\/40:hover { background-color: rgba(255,255,255,0.08) !important; }
 
 /* Schedule view switcher — active tab sits inside bg-gray-100 container */
 .dark .bg-gray-100 > .bg-white {

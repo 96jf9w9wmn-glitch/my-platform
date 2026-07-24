@@ -207,35 +207,48 @@ function Dashboard({ students, setActivePage, onOpenBoard }) {
 
           {/* Next lesson hero */}
           {nextLesson ? (
-            <div className="next-lesson-card rounded-2xl p-5 bg-gradient-to-br from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/25">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <div className="text-xs font-medium opacity-70 uppercase tracking-wide mb-1">
-                    {nextLesson.isToday ? "Следующее занятие" : `Следующее занятие · ${nextLessonDate}`}
+            <div className="next-lesson-card relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/25">
+              {/* Амбиентный свет внутри карточки — только в тёмной теме (в светлой градиент и так живой).
+                  blue-600 = #0a84ff под .dark (blue-500 ремапится в циановый #5ac8fa — мутнит). */}
+              <div className="pointer-events-none absolute -top-20 -right-12 w-64 h-64 rounded-full bg-blue-600/25 blur-3xl hidden dark:block" />
+              <div className="pointer-events-none absolute -bottom-24 -left-14 w-56 h-56 rounded-full bg-purple-500/20 blur-3xl hidden dark:block" />
+              <div className="relative flex items-start justify-between mb-4">
+                <div className="flex items-center gap-3.5 min-w-0">
+                  {/* bg-[rgba(...)] вместо bg-white/20: классы bg-white/N глобально переопределяются
+                      под .dark (index.css) и задавили бы dark:bg-* */}
+                  <div className="w-12 h-12 rounded-full flex-shrink-0 overflow-hidden flex items-center justify-center text-base font-semibold bg-[rgba(255,255,255,0.2)] ring-2 ring-white/30 dark:bg-blue-600/20 dark:ring-white/15 dark:text-blue-400 backdrop-blur-sm">
+                    {nextLesson.avatar
+                      ? <img src={nextLesson.avatar} alt={nextLesson.studentName} className="w-full h-full object-cover" />
+                      : getInitials(nextLesson.studentName)}
                   </div>
-                  <div className="text-2xl font-semibold">{nextLesson.studentName}</div>
-                  <div className="text-sm opacity-80 mt-0.5">{nextLesson.time} · {nextLesson.duration} мин</div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-medium opacity-70 uppercase tracking-wide mb-0.5 truncate">
+                      {nextLesson.isToday ? "Следующее занятие" : `Следующее занятие · ${nextLessonDate}`}
+                    </div>
+                    <div className="text-2xl font-semibold leading-tight truncate">{nextLesson.studentName}</div>
+                    <div className="text-sm opacity-80 mt-0.5">{nextLesson.time} · {nextLesson.duration} мин</div>
+                  </div>
                 </div>
                 <div className="text-right flex-shrink-0 ml-3">
-                  <div className="text-sm font-medium bg-white/20 rounded-xl px-3 py-1.5 backdrop-blur-sm">
+                  <div className="text-sm font-medium tabular-nums bg-[rgba(255,255,255,0.2)] dark:bg-blue-600/20 dark:ring-1 dark:ring-blue-600/40 dark:text-blue-400 rounded-xl px-3 py-1.5 backdrop-blur-sm">
                     {tick >= 0 && timeUntil(nextLesson.date, nextLesson.time)}
                   </div>
                 </div>
               </div>
-              <div className="flex gap-2">
+              <div className="relative flex gap-2">
                   <button onClick={() => onOpenBoard?.(nextLesson.studentId, nextLesson.studentName)}
-                    className="press-tap flex items-center gap-1.5 bg-white/20 hover:bg-white/30 transition-colors rounded-xl px-3 py-1.5 text-sm font-medium backdrop-blur-sm">
+                    className="press-tap flex items-center gap-1.5 bg-[rgba(255,255,255,0.2)] hover:bg-[rgba(255,255,255,0.3)] dark:bg-gradient-to-r dark:from-blue-500 dark:to-blue-600 dark:hover:opacity-90 dark:shadow-lg dark:shadow-blue-500/30 transition-all rounded-xl px-3.5 py-1.5 text-sm font-medium backdrop-blur-sm">
                     <Icon name="clipboard" size={14} />Доска
                   </button>
                   {nextLesson.boardUrl && (
                     <a href={nextLesson.boardUrl} target="_blank" rel="noreferrer"
-                      className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 transition-colors rounded-xl px-3 py-1.5 text-sm font-medium backdrop-blur-sm">
+                      className="press-tap flex items-center gap-1.5 bg-[rgba(255,255,255,0.2)] hover:bg-[rgba(255,255,255,0.3)] dark:bg-white/8 dark:hover:bg-white/15 dark:ring-1 dark:ring-white/10 transition-all rounded-xl px-3.5 py-1.5 text-sm font-medium backdrop-blur-sm">
                       <Icon name="link" size={14} />Внешняя
                     </a>
                   )}
                   {nextLesson.callUrl && (
                     <a href={nextLesson.callUrl} target="_blank" rel="noreferrer"
-                      className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 transition-colors rounded-xl px-3 py-1.5 text-sm font-medium backdrop-blur-sm">
+                      className="press-tap flex items-center gap-1.5 bg-[rgba(255,255,255,0.2)] hover:bg-[rgba(255,255,255,0.3)] dark:bg-white/8 dark:hover:bg-white/15 dark:ring-1 dark:ring-white/10 transition-all rounded-xl px-3.5 py-1.5 text-sm font-medium backdrop-blur-sm">
                       <Icon name="video" size={14} />Звонок
                     </a>
                   )}
