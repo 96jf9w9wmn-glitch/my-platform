@@ -1504,113 +1504,86 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                 </div>
               )
             ) : (
-              <div className="flex flex-col md:flex-row gap-4 items-start">
+              <div className="flex flex-col gap-4">
 
-                {/* LEFT: avatar + info */}
-                <div className="w-full md:w-60 flex-shrink-0 flex flex-col gap-4">
-
-                  {/* Avatar card */}
-                  <div className="glass p-5 flex flex-col items-center text-center">
-                    <div className="relative mb-3 cursor-pointer active:scale-95 transition-transform" onClick={() => studentAvatarRef.current.click()}>
-                      {(avatarOverride || student.avatar) ? (
-                        <img src={avatarOverride || student.avatar} alt="" className="w-24 h-24 rounded-full object-cover" />
-                      ) : (
-                        <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-3xl font-semibold text-white">
-                          {initials}
-                        </div>
-                      )}
-                      <div className="absolute -bottom-1 -right-1 w-7 h-7 bg-blue-600 rounded-full flex items-center justify-center shadow-md pointer-events-none">
-                        <Icon name="camera" size={13} className="text-white" />
+                {/* HERO — аватар + имя + цель + телефон + действия, на всю ширину */}
+                <div className="glass p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-5">
+                  <div className="relative flex-shrink-0 self-center sm:self-auto cursor-pointer active:scale-95 transition-transform" onClick={() => studentAvatarRef.current.click()}>
+                    {(avatarOverride || student.avatar) ? (
+                      <img src={avatarOverride || student.avatar} alt="" className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover" />
+                    ) : (
+                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-3xl font-semibold text-white">
+                        {initials}
                       </div>
-                    </div>
-                    <input ref={studentAvatarRef} type="file" accept="image/*" className="hidden" onChange={handleStudentAvatarChange} />
-                    <div className="flex gap-2 w-full mt-1">
-                        <button onClick={() => setBoardOpen(true)}
-                          className="press-tap flex-1 btn-glass py-2 text-xs text-center">
-                          <span className="flex items-center justify-center gap-1"><Icon name="clipboard" size={12} />Доска</span>
-                        </button>
-                        {student.callUrl && (
-                          <a href={student.callUrl} target="_blank" rel="noreferrer"
-                            className="press-tap flex-1 btn-glass py-2 text-xs text-center">
-                            <span className="flex items-center justify-center gap-1"><Icon name="video" size={12} />Звонок</span>
-                          </a>
-                        )}
-                      </div>
-                  </div>
-
-                  {/* Репетитор */}
-                  <div className="glass p-4">
-                    <div className="text-xs text-gray-400 font-medium mb-3">Репетитор</div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center text-xs font-medium text-purple-600 flex-shrink-0">Р</div>
-                      <div className="text-sm text-gray-700 leading-tight">Ваш репетитор</div>
+                    )}
+                    <div className="absolute -bottom-1 -right-1 w-7 h-7 bg-blue-600 rounded-full flex items-center justify-center shadow-md pointer-events-none">
+                      <Icon name="camera" size={13} className="text-white" />
                     </div>
                   </div>
+                  <input ref={studentAvatarRef} type="file" accept="image/*" className="hidden" onChange={handleStudentAvatarChange} />
 
-                  {/* Информация */}
-                  <div className="glass p-4">
-                    <div className="text-xs text-gray-400 font-medium mb-3">Информация</div>
-                    <div className="flex flex-col gap-2">
-                      {user.profile?.phone && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-400 flex-shrink-0"><Icon name="phone" size={14} /></span>
-                          <span className="text-sm text-gray-700">{formatPhone(user.profile.phone)}</span>
-                        </div>
-                      )}
-                      {student.goal && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-400 flex-shrink-0"><Icon name="target" size={14} /></span>
-                          <span className="text-sm text-gray-700">{student.goal}</span>
-                        </div>
-                      )}
-                      {student.examDate && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-400 flex-shrink-0"><Icon name="calendar" size={14} /></span>
-                          <span className="text-sm text-gray-700">
-                            {parseLocalDate(student.examDate).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" })}
-                          </span>
-                        </div>
-                      )}
-                      {student.lessonPrice > 0 && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-400 flex-shrink-0"><Icon name="dollar" size={14} /></span>
-                          <span className="text-sm text-gray-700">{student.lessonPrice.toLocaleString("ru-RU")} ₽/занятие</span>
-                        </div>
-                      )}
-                      {student.parent_code && (
-                        <CopyCodeBlock code={student.parent_code} />
-                      )}
-                    </div>
+                  <div className="flex-1 min-w-0 text-center sm:text-left">
+                    <div className="text-2xl font-semibold">{user.profile?.name}</div>
+                    <div className="text-sm text-gray-500">Ученик{student.goal ? ` · Готовлюсь к ${student.goal}` : ""}</div>
+                    {user.profile?.phone && (
+                      <div className="text-sm text-gray-400 mt-1">{formatPhone(user.profile.phone)}</div>
+                    )}
                   </div>
 
+                  <div className="flex gap-2 flex-shrink-0 justify-center">
+                    <button onClick={() => setBoardOpen(true)} className="press-tap btn-glass px-4 py-2 text-sm">
+                      <span className="flex items-center gap-1.5"><Icon name="clipboard" size={14} />Доска</span>
+                    </button>
+                    {student.callUrl && (
+                      <a href={student.callUrl} target="_blank" rel="noreferrer" className="press-tap btn-glass px-4 py-2 text-sm">
+                        <span className="flex items-center gap-1.5"><Icon name="video" size={14} />Звонок</span>
+                      </a>
+                    )}
+                  </div>
                 </div>
 
-                {/* RIGHT: main content — бенто-сетка: узкие карточки тайлятся по 2 в ряд
-                    (одинаковая высота внутри ряда), широкие блоки на всю ширину */}
-                <div className="flex-1 min-w-0 grid grid-cols-1 lg:grid-cols-2 gap-4 items-start content-start">
-
-                  {/* Name header */}
-                  <div className="glass p-5 lg:col-span-2">
-                    <div className="text-2xl font-semibold mb-0.5">{user.profile?.name}</div>
-                    <div className="text-sm text-gray-500">Ученик</div>
-                    {student.goal && (
-                      <div className="text-sm text-gray-400 mt-0.5">Готовлюсь к {student.goal}</div>
-                    )}
-                    {user.profile?.phone && (
-                      <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-white/30">
-                        <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl border border-white/40 bg-white/20">
-                          <div>
-                            <div className="text-sm font-medium text-gray-700">{formatPhone(user.profile.phone)}</div>
-                            <div className="text-xs text-gray-400">Телефон</div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
+                {/* KPI-ряд — успеваемость плитками, всегда 4 плитки (нет данных → «—»), без пустот */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="glass p-4 flex flex-col gap-1">
+                    <div className="text-xs text-gray-400">Средняя оценка ДЗ</div>
+                    {hwAvg != null ? (
+                      <>
+                        <div className={`text-2xl font-semibold ${hwAvg >= 4.5 ? "text-green-600" : hwAvg >= 3.5 ? "text-blue-600" : hwAvg >= 2.5 ? "text-amber-600" : "text-red-600"}`}>{hwAvg}<span className="text-sm font-normal text-gray-400"> / 5</span></div>
+                        <div className="text-xs text-gray-400">{gradedHw.length} оценок</div>
+                      </>
+                    ) : <div className="text-2xl font-semibold text-gray-300">—</div>}
                   </div>
+                  <div className="glass p-4 flex flex-col gap-1">
+                    <div className="text-xs text-gray-400">Средний балл вариантов</div>
+                    {variantAvg != null ? (
+                      <>
+                        <div className={`text-2xl font-semibold ${variantAvg >= 24 ? "text-green-600" : variantAvg >= 18 ? "text-blue-600" : "text-amber-600"}`}>{variantAvg}</div>
+                        <div className="text-xs text-gray-400">{gradedVariants.length} вар.</div>
+                      </>
+                    ) : <div className="text-2xl font-semibold text-gray-300">—</div>}
+                  </div>
+                  <div className="glass p-4 flex flex-col gap-1">
+                    <div className="text-xs text-gray-400">Проведено занятий</div>
+                    <div className="text-2xl font-semibold text-gray-700">{past.length}<span className="text-sm font-normal text-gray-400"> из {(student.lessons || []).length}</span></div>
+                  </div>
+                  <div className="glass p-4 flex flex-col gap-1 justify-between">
+                    <div className="text-xs text-gray-400">Оплата</div>
+                    {(() => {
+                      const conducted = (student.lessons || []).filter((l) => isLessonConducted(l))
+                      const debt = conducted.length * (student.lessonPrice || 0) - (student.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
+                      if (conducted.length === 0) return <div className="text-lg font-semibold text-gray-400">Нет занятий</div>
+                      if (debt <= 0) return <div className="text-lg font-semibold text-green-600">Оплачено</div>
+                      return <div className="text-lg font-semibold text-amber-600">Долг {debt.toLocaleString("ru-RU")} ₽</div>
+                    })()}
+                  </div>
+                </div>
 
-                  {/* Мои занятия */}
-                  <div className="glass p-5 lg:col-span-2">
-                    <div className="text-base font-medium mb-4">Мои занятия</div>
+                {/* Занятия+расписание и Информация — два плотных блока в ряд */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+
+                  {/* Занятия + расписание */}
+                  <div className="glass p-5">
+                    <div className="text-base font-medium mb-4">Занятия</div>
                     <div className="text-xs text-gray-400 mb-2">Ближайшие</div>
                     {upcoming.length === 0 ? (
                       <div className="text-sm text-gray-400">Занятий не запланировано</div>
@@ -1627,98 +1600,93 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                         })}
                       </div>
                     )}
-                  </div>
-
-                  {/* Расписание / Экзамен */}
-                  <div className="glass p-5">
-                    <div className="text-base font-medium mb-4">Расписание</div>
-                    {student.schedule && (
-                      <div className="flex items-start gap-3 mb-3">
-                        <span className="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-full flex-shrink-0 font-medium">Регулярные</span>
-                        <div className="text-sm text-gray-600 pt-0.5">{student.schedule}</div>
-                      </div>
-                    )}
-                    {student.examDate && (
-                      <div className="flex items-start gap-3">
-                        <span className={`text-xs px-3 py-1.5 rounded-full flex-shrink-0 font-medium ${
-                          student.goal === "ЕГЭ" ? "bg-red-50 text-red-600" : "bg-amber-50 text-amber-600"
-                        }`}>{student.goal || "Экзамен"}</span>
-                        <div>
-                          <div className="text-sm text-gray-700">
-                            {parseLocalDate(student.examDate).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}
+                    {(student.schedule || student.examDate) && (
+                      <div className="mt-4 pt-4 border-t border-white/30 flex flex-col gap-3">
+                        {student.schedule && (
+                          <div className="flex items-start gap-3">
+                            <span className="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-full flex-shrink-0 font-medium">Регулярные</span>
+                            <div className="text-sm text-gray-600 pt-0.5">{student.schedule}</div>
                           </div>
-                          {(() => {
-                            const today = new Date(); today.setHours(0,0,0,0)
-                            const examDate = parseLocalDate(student.examDate)
-                            const daysLeft = Math.ceil((examDate - today) / (1000*60*60*24))
-                            if (daysLeft <= 0) return null
-                            return <div className="text-xs text-gray-400 mt-0.5">{daysLeft} {daysLeft === 1 ? "день" : daysLeft >= 2 && daysLeft <= 4 ? "дня" : "дней"} до экзамена</div>
-                          })()}
-                          {student.targetScore && (
-                            <div className="text-xs text-gray-400 mt-0.5">
-                              Цель: {student.targetScore} {student.goal === "ЕГЭ" ? "/ 100" : "/ 32"} баллов
+                        )}
+                        {student.examDate && (
+                          <div className="flex items-start gap-3">
+                            <span className={`text-xs px-3 py-1.5 rounded-full flex-shrink-0 font-medium ${
+                              student.goal === "ЕГЭ" ? "bg-red-50 text-red-600" : "bg-amber-50 text-amber-600"
+                            }`}>{student.goal || "Экзамен"}</span>
+                            <div>
+                              <div className="text-sm text-gray-700">
+                                {parseLocalDate(student.examDate).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}
+                              </div>
+                              {(() => {
+                                const today = new Date(); today.setHours(0,0,0,0)
+                                const examDate = parseLocalDate(student.examDate)
+                                const daysLeft = Math.ceil((examDate - today) / (1000*60*60*24))
+                                if (daysLeft <= 0) return null
+                                return <div className="text-xs text-gray-400 mt-0.5">{daysLeft} {daysLeft === 1 ? "день" : daysLeft >= 2 && daysLeft <= 4 ? "дня" : "дней"} до экзамена</div>
+                              })()}
+                              {student.targetScore && (
+                                <div className="text-xs text-gray-400 mt-0.5">
+                                  Цель: {student.targetScore} {student.goal === "ЕГЭ" ? "/ 100" : "/ 32"} баллов
+                                </div>
+                              )}
                             </div>
-                          )}
-                        </div>
+                          </div>
+                        )}
                       </div>
                     )}
-                    {!student.schedule && !student.examDate && (
-                      <div className="text-sm text-gray-400">Расписание не задано</div>
-                    )}
-
                   </div>
 
-                  {/* Успеваемость */}
+                  {/* Информация — репетитор + контакты + код родителя */}
                   <div className="glass p-5">
-                    <div className="text-base font-medium mb-4">Успеваемость</div>
-                    <div className="flex flex-col gap-3">
-                      <div className="flex items-center justify-between py-2 border-b border-white/30">
-                        <span className="text-sm text-gray-500">Средняя оценка ДЗ</span>
-                        {hwAvg != null ? (
-                          <span className={`text-sm font-semibold ${hwAvg >= 4.5 ? "text-green-600" : hwAvg >= 3.5 ? "text-blue-600" : hwAvg >= 2.5 ? "text-amber-600" : "text-red-600"}`}>
-                            {hwAvg} / 5 <span className="text-xs font-normal text-gray-400">({gradedHw.length} оценок)</span>
-                          </span>
-                        ) : <span className="text-sm text-gray-300">—</span>}
+                    <div className="text-base font-medium mb-4">Информация</div>
+                    <div className="flex items-center gap-2 pb-3 mb-3 border-b border-white/30">
+                      <div className="w-9 h-9 rounded-full bg-purple-100 flex items-center justify-center text-sm font-medium text-purple-600 flex-shrink-0">Р</div>
+                      <div>
+                        <div className="text-xs text-gray-400">Репетитор</div>
+                        <div className="text-sm text-gray-700 leading-tight">Ваш репетитор</div>
                       </div>
-                      {variantAvg != null && (
-                        <div className="flex items-center justify-between py-2 border-b border-white/30">
-                          <span className="text-sm text-gray-500">Средний балл вариантов</span>
-                          <span className={`text-sm font-semibold ${variantAvg >= 24 ? "text-green-600" : variantAvg >= 18 ? "text-blue-600" : "text-amber-600"}`}>
-                            {variantAvg} <span className="text-xs font-normal text-gray-400">({gradedVariants.length} вар.)</span>
-                          </span>
+                    </div>
+                    <div className="flex flex-col gap-2.5">
+                      {user.profile?.phone && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-400 flex-shrink-0"><Icon name="phone" size={14} /></span>
+                          <span className="text-sm text-gray-700">{formatPhone(user.profile.phone)}</span>
                         </div>
                       )}
-                      <div className="flex items-center justify-between py-2 border-b border-white/30">
-                        <span className="text-sm text-gray-500">Проведено занятий</span>
-                        <span className="text-sm font-semibold text-gray-700">{past.length} <span className="text-xs font-normal text-gray-400">из {(student.lessons || []).length}</span></span>
-                      </div>
-                      <div className="flex items-center justify-between py-2">
-                        <span className="text-sm text-gray-500">Оплата</span>
-                        {(() => {
-                          const conducted = (student.lessons || []).filter((l) => isLessonConducted(l))
-                          const debt = conducted.length * (student.lessonPrice || 0) - (student.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
-                          if (conducted.length === 0) return <span className="text-xs px-2.5 py-1 rounded-full bg-gray-100 text-gray-500 font-medium">Нет занятий</span>
-                          if (debt <= 0) return <span className="text-xs px-2.5 py-1 rounded-full bg-green-100 text-green-700 font-medium">Оплачено</span>
-                          return <span className="text-xs px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 font-medium">Долг {debt.toLocaleString("ru-RU")} ₽</span>
-                        })()}
-                      </div>
+                      {student.goal && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-400 flex-shrink-0"><Icon name="target" size={14} /></span>
+                          <span className="text-sm text-gray-700">{student.goal}</span>
+                        </div>
+                      )}
+                      {student.lessonPrice > 0 && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-400 flex-shrink-0"><Icon name="dollar" size={14} /></span>
+                          <span className="text-sm text-gray-700">{student.lessonPrice.toLocaleString("ru-RU")} ₽/занятие</span>
+                        </div>
+                      )}
+                      {student.parent_code && (
+                        <div className="mt-1 pt-3 border-t border-white/30">
+                          <div className="text-xs text-gray-400 font-medium mb-2">Код для родителей</div>
+                          <CopyCodeBlock code={student.parent_code} />
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  {/* Широкие блоки — на всю ширину сетки, единый вертикальный ритм */}
-                  <div className="lg:col-span-2 flex flex-col gap-4">
-                    <StreakBadge homework={homework} />
-
-                    <ProgressChart
-                      variants={variants}
-                      targetScore={student.targetScore}
-                      maxScore={student.goal === "ЕГЭ" ? 100 : 32}
-                    />
-
-                    <StudentScheduleCalendar student={student} onOpenBoard={() => setBoardOpen(true)} />
-                  </div>
-
                 </div>
+
+                {/* Широкие блоки — на всю ширину, заполняют пространство горизонтально */}
+                <StreakBadge homework={homework} />
+
+                <ProgressChart
+                  variants={variants}
+                  targetScore={student.targetScore}
+                  maxScore={student.goal === "ЕГЭ" ? 100 : 32}
+                />
+
+                <StudentScheduleCalendar student={student} onOpenBoard={() => setBoardOpen(true)} />
+
               </div>
             )}
           </>
