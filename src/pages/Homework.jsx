@@ -108,9 +108,15 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
     setTitle(preview.title.trim() || genTopic)
     const body = tasks.map((t, i) => `${i + 1}. ${t.question.trim()}`).join("\n")
     setDescription([preview.description.trim(), body].filter(Boolean).join("\n\n"))
-    const answers = tasks.map((t) => t.answer.trim()).filter(Boolean)
-    if (answers.length === tasks.length && answers.length > 0) {
-      // у каждого задания есть ответ — можно оформить как тест с автопроверкой
+    const answers = tasks.map((t) => t.answer.trim())
+    // Режим «Тест» с автопроверкой годится только если у КАЖДОГО задания ответ —
+    // одно короткое значение без пробелов и запятых (тест-поле делит по пробелам,
+    // поэтому «x₁ = 2, x₂ = 0.5» превратилось бы в кучу обрывков). Иначе —
+    // «Письменное», ответы в тест-поле не пишем.
+    const allTestable =
+      answers.length > 0 &&
+      answers.every((a) => a.length > 0 && !/[\s,]/.test(a))
+    if (allTestable) {
       setHwType("test")
       setAnswersInput(answers.join(" "))
     }
