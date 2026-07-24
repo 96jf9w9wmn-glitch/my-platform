@@ -107,7 +107,8 @@ html {
 
 html.dark {
   color-scheme: dark;
-  background: #000000;
+  /* В тон базы тёмного градиента body::before, чтобы safe-area не отличалась */
+  background: #0a0a0c;
 }
 
 /* Запрет выделения и копирования текста во всём приложении.
@@ -274,7 +275,10 @@ select {
 
 body {
   font-family: var(--font-sans);
-  background: #eef0f8;
+  /* Фон НЕ красим: его рисует body::before (жидкий градиент). Раз у html есть
+     свой фон (safe-area), непрозрачный фон body рисовался бы ПОВЕРХ ::before
+     с z-index:-1 — градиент превращался в сплошную заливку. */
+  background: transparent;
   color: #1c1c1e;
   /* именно dvh: 100vh на iOS — «большой» вьюпорт, body получается выше экрана,
      документ прокручивается на ~100pt и приложение уезжает вверх */
@@ -283,7 +287,7 @@ body {
 }
 
 .dark body {
-  background: #000000;
+  background: transparent;
   color: #ffffff;
 }
 
