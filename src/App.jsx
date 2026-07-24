@@ -471,7 +471,7 @@ function App() {
   // Публичные юр-страницы — доступны без авторизации и до загрузки сессии
   // (152-ФЗ требует свободного доступа к Политике обработки ПДн).
   const legalPath = typeof window !== "undefined" ? window.location.pathname : "/"
-  if (legalPath === "/privacy" || legalPath === "/consent" || legalPath === "/cookie") {
+  if (legalPath === "/privacy" || legalPath === "/consent" || legalPath === "/cookie" || legalPath === "/rules") {
     return <Legal path={legalPath} />
   }
 
