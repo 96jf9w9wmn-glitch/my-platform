@@ -1578,8 +1578,8 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                   </div>
                 </div>
 
-                {/* Занятия+расписание и Информация — два плотных блока в ряд */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                {/* Занятия+расписание и Информация — два плотных блока в ряд, равной высоты */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
 
                   {/* Занятия + расписание */}
                   <div className="glass p-5">
