@@ -3758,7 +3758,7 @@ function figTwoSecants() {
   }
   const D = nearHit(B), E = nearHit(A)                  // ближние точки на правой части, рядом с C
   let g = pCircle(O, R) + pSeg(C, B) + pSeg(C, A) + pSeg(A, D) + pArc(A, D, E, 20)
-  g += pV(A, "bl", "A") + pV(B, "tl", "B") + pV(C, "r", "C") + pV(D, "t", "D") + pV(E, "br", "E")
+  g += pV(A, "bl", "A") + pV(B, "tl", "B") + pV(C, "r", "C") + pV(D, "tr", "D") + pV(E, "br", "E")
   return stWrap(330, 210, g)
 }
 function t01TwoSecants() {
@@ -3864,8 +3864,10 @@ function t01IncircleIsoPerimeter() {
 }
 // прямоугольный треугольник: r = (a + b − c)/2
 function figIncircleRight() {
-  const A = [48, 182], C = [220, 182], B = [220, 66], O = [190, 152]
-  let g = pPolygon([A, C, B]) + pCircle(O, 28) + pRight(C, A, B, 11) + pDot(O)
+  const A = [48, 182], C = [220, 182], B = [220, 66]
+  const ac = C[0] - A[0], bc = C[1] - B[1], r = (ac + bc - Math.hypot(ac, bc)) / 2
+  const O = [C[0] - r, C[1] - r]                       // центр вписанной: на r от обоих катетов
+  let g = pPolygon([A, C, B]) + pCircle(O, r) + pRight(C, A, B, 11) + pDot(O)
   g += pV(A, "bl", "A") + pV(B, "tr", "B") + pV(C, "br", "C")
   return stWrap(285, 210, g)
 }
