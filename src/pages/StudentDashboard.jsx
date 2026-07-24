@@ -8,7 +8,7 @@ import StudentSidebar from "../components/StudentSidebar"
 import Chat from "./Chat"
 import StudentOnboardingModal from "../components/StudentOnboardingModal"
 const Board = lazy(() => import("../components/Board"))
-import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, superscriptPowers } from "../utils"
+import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, formatPhone } from "../utils"
 
 function Part2Upload({ taskNum, submissionId, existingUrl, onUpload }) {
   const [uploading, setUploading] = useState(false)
@@ -382,7 +382,7 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
 
       <div className="glass p-5 mb-4">
         <h2 className="text-lg font-medium mb-2">{hw.title}</h2>
-        {hw.description && <p className="text-sm text-gray-600 mb-3 whitespace-pre-wrap">{superscriptPowers(hw.description)}</p>}
+        {hw.description && <div className="text-sm text-gray-600 mb-3" dangerouslySetInnerHTML={{ __html: renderHomeworkMath(hw.description) }} />}
         {hw.deadline && (
           <div className="text-xs text-gray-400">
             Дедлайн: {parseLocalDate(hw.deadline).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}
@@ -654,8 +654,8 @@ function StudentNotificationBell({ userId }) {
           <Icon name="bell" size={16} />
         </span>
         {unread > 0 && (
-          <span className="badge-pulse absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-            {unread}
+          <span className="badge-pulse absolute -top-1.5 -right-1.5 min-w-[16px] h-[16px] px-1 bg-red-500 text-white text-[10px] font-semibold leading-none rounded-full flex items-center justify-center">
+            {unread > 99 ? "99+" : unread}
           </span>
         )}
       </button>
@@ -1195,7 +1195,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
               />
             </div>
           ) : (
-            <div key={activeTab} className={`page-active p-4 md:p-6 ${activeTab === "schedule" ? "max-w-5xl" : "max-w-2xl"} mx-auto`}>
+            <div key={activeTab} className={`page-active p-4 md:p-6 ${activeTab === "schedule" ? "max-w-5xl" : (activeTab === "variants" && selectedVariant) ? "max-w-none" : "max-w-2xl"} mx-auto`}>
         {activeTab === "schedule" && (
           <>
             {!student ? (
@@ -1284,7 +1284,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       {user.profile?.phone && (
                         <div className="flex items-center gap-2">
                           <span className="text-gray-400 flex-shrink-0"><Icon name="phone" size={14} /></span>
-                          <span className="text-sm text-gray-700">{user.profile.phone}</span>
+                          <span className="text-sm text-gray-700">{formatPhone(user.profile.phone)}</span>
                         </div>
                       )}
                       {student.goal && (
@@ -1329,7 +1329,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-white/30">
                         <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl border border-white/40 bg-white/20">
                           <div>
-                            <div className="text-sm font-medium text-gray-700">{user.profile.phone}</div>
+                            <div className="text-sm font-medium text-gray-700">{formatPhone(user.profile.phone)}</div>
                             <div className="text-xs text-gray-400">Телефон</div>
                           </div>
                         </div>
@@ -1605,7 +1605,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-gray-400 w-20">Телефон</span>
-                  <span className="text-sm">{user.profile?.phone}</span>
+                  <span className="text-sm">{formatPhone(user.profile?.phone)}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-gray-400 w-20">Код</span>

@@ -222,6 +222,72 @@ export function superscriptPowers(text) {
     .replace(/\^(-?[0-9]+|[nix])/g, (_, g) => toSup(g))
 }
 
+// Читает сбалансированную группу {...}, начиная с позиции i (s[i] === "{").
+function takeBrace(s, i) {
+  if (s[i] !== "{") return null
+  let depth = 0
+  for (let j = i; j < s.length; j++) {
+    if (s[j] === "{") depth++
+    else if (s[j] === "}") { depth--; if (depth === 0) return { content: s.slice(i + 1, j), next: j + 1 } }
+  }
+  return null
+}
+
+// \frac{a}{b} → стоячая дробь, \sqrt{x} / \sqrt[3]{x} → радикал. Скобки считаются
+// сбалансированно, поэтому \frac{\sqrt{2}}{2} тоже разбирается. Вход уже экранирован.
+function convFracRoot(s) {
+  let out = ""
+  for (let i = 0; i < s.length;) {
+    if (s.startsWith("\\frac", i) || s.startsWith("\\dfrac", i)) {
+      const start = i + (s.startsWith("\\dfrac", i) ? 6 : 5)
+      const a = takeBrace(s, start)
+      const b = a && takeBrace(s, a.next)
+      if (a && b) {
+        out += `<span class="tmath-frac"><span class="tmath-num">${convFracRoot(a.content)}</span><span class="tmath-den">${convFracRoot(b.content)}</span></span>`
+        i = b.next
+        continue
+      }
+    }
+    if (s.startsWith("\\sqrt", i)) {
+      let j = i + 5, idx = ""
+      if (s[j] === "[") { const e = s.indexOf("]", j); if (e !== -1) { idx = s.slice(j + 1, e); j = e + 1 } }
+      const a = takeBrace(s, j)
+      if (a) { out += rootMarkup(superscriptPowers(a.content), idx); i = a.next; continue }
+    }
+    out += s[i]
+    i++
+  }
+  return out
+}
+
+// Красивый рендер описания ДЗ (в т.ч. сгенерированного ИИ): дроби столбиком, корни с
+// чертой, степени/индексы, базовые операторы LaTeX. Текст сначала ЭКРАНИРУЕТСЯ, затем
+// разворачивается в разметку — вставляется через dangerouslySetInnerHTML безопасно.
+export function renderHomeworkMath(text) {
+  if (!text) return ""
+  let s = String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  s = convFracRoot(s)
+  s = s
+    // корни без \ (юникод от модели): √{x}, √(x), √2, √x
+    .replace(/√\{([^{}]+)\}/g, (_, x) => rootMarkup(superscriptPowers(x)))
+    .replace(/√\(([^()]+)\)/g, (_, x) => rootMarkup(superscriptPowers(x)))
+    .replace(/√\s*(-?\d+(?:[.,]\d+)?|[A-Za-zА-Яа-я])/g, (_, x) => rootMarkup(x))
+    // степени/индексы с фигурными скобками (переменный показатель)
+    .replace(/\^\{([^{}]*)\}/g, (_, x) => `<sup class="tmath-sup">${x}</sup>`)
+    .replace(/_\{([^{}]*)\}/g, (_, x) => `<sub class="tmath-sub">${x}</sub>`)
+    .replace(/_([0-9A-Za-zА-Яа-я])/g, (_, x) => `<sub class="tmath-sub">${x}</sub>`)
+    // операторы LaTeX → символы
+    .replace(/\\left|\\right/g, "")
+    .replace(/\\cdot/g, "·").replace(/\\times/g, "×").replace(/\\div/g, "÷")
+    .replace(/\\pm/g, "±").replace(/\\mp/g, "∓")
+    .replace(/\\leq\b|\\le\b/g, "≤").replace(/\\geq\b|\\ge\b/g, "≥")
+    .replace(/\\neq\b/g, "≠").replace(/\\approx\b/g, "≈")
+    .replace(/\\,|\\;|\\!|\\quad/g, " ")
+    .replace(/\$/g, "")
+  s = superscriptPowers(s)          // оставшиеся ^2, ^n → ², ⁿ
+  return s.replace(/\n/g, "<br>")
+}
+
 // new Date("YYYY-MM-DD") parses as UTC midnight, which shifts a day back in
 // timezones behind UTC — this constructs the date from local components instead.
 export function parseLocalDate(dateStr) {
@@ -240,6 +306,18 @@ export function isLessonConducted(lesson, now = new Date()) {
 export function getInitials(name) {
   if (!name) return "?"
   return name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()
+}
+
+// Единый формат телефона для показа во всём приложении: "+7 (XXX) XXX-XX-XX".
+// В базе номер хранится каноничным "+7XXXXXXXXXX" — форматируем только при выводе.
+// Если строка не похожа на российский номер (11 цифр с 7/8) — возвращаем как есть.
+export function formatPhone(raw) {
+  const d = String(raw || "").replace(/\D/g, "")
+  const body = d.length === 11 && (d[0] === "7" || d[0] === "8") ? d.slice(1)
+    : d.length === 10 ? d
+    : null
+  if (!body) return raw || ""
+  return `+7 (${body.slice(0, 3)}) ${body.slice(3, 6)}-${body.slice(6, 8)}-${body.slice(8, 10)}`
 }
 
 // Tutor's onboarding answer (exam_focus) suggests which exam type to
