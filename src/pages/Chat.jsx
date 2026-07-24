@@ -415,20 +415,18 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
       }`}>
         {!activeContact ? (
           <div className="relative flex-1 flex flex-col items-center justify-center gap-4 overflow-hidden">
-            {/* Декоративный фон */}
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-blue-50/60 via-white to-indigo-50/50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-950" />
-            <div className="pointer-events-none absolute -top-24 -right-16 w-80 h-80 rounded-full bg-blue-400/20 dark:bg-blue-500/10 blur-3xl" />
-            <div className="pointer-events-none absolute -bottom-24 -left-10 w-72 h-72 rounded-full bg-indigo-400/15 dark:bg-indigo-500/10 blur-3xl" />
+            {/* Мягкий равномерный фон — без резкого пятна, чтобы сайдбар не выбивался */}
+            <div className="pointer-events-none absolute inset-0 bg-gray-50/70 dark:bg-gray-900" />
             <div
-              className="pointer-events-none absolute inset-0 opacity-[0.4] dark:opacity-[0.15]"
+              className="pointer-events-none absolute inset-0 opacity-[0.5] dark:opacity-[0.12]"
               style={{
                 backgroundImage:
-                  "radial-gradient(circle, rgba(0,122,255,0.12) 1px, transparent 1px)",
+                  "radial-gradient(circle, rgba(100,116,139,0.10) 1px, transparent 1px)",
                 backgroundSize: "22px 22px",
               }}
             />
             {/* Контент */}
-            <div className="relative w-20 h-20 rounded-3xl flex items-center justify-center bg-white/70 dark:bg-white/5 backdrop-blur-xl ring-1 ring-black/5 dark:ring-white/10 shadow-lg shadow-blue-500/10 text-blue-500/80 dark:text-blue-400/80">
+            <div className="relative w-20 h-20 rounded-3xl flex items-center justify-center bg-white/80 dark:bg-white/5 backdrop-blur-xl ring-1 ring-black/5 dark:ring-white/10 shadow-lg shadow-blue-500/10 text-blue-500/80 dark:text-blue-400/80">
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
               </svg>
