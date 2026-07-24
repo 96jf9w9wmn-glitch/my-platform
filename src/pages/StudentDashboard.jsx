@@ -1587,7 +1587,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
 
                 {/* RIGHT: main content — бенто-сетка: узкие карточки тайлятся по 2 в ряд
                     (одинаковая высота внутри ряда), широкие блоки на всю ширину */}
-                <div className="flex-1 min-w-0 grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch content-start">
+                <div className="flex-1 min-w-0 grid grid-cols-1 lg:grid-cols-2 gap-4 items-start content-start">
 
                   {/* Name header */}
                   <div className="glass p-5 lg:col-span-2">
