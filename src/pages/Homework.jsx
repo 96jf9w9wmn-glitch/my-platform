@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, lazy, Suspense } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import Icon from "../components/Icon"
-import { parseLocalDate } from "../utils"
+import { parseLocalDate, superscriptPowers } from "../utils"
 // Лениво: Variants тянет весь банк заданий (генераторы на 34k строк) + jspdf.
 // Нужен только во вкладке «варианты», незачем держать его в стартовом бандле.
 const Variants = lazy(() => import("./Variants"))
@@ -519,7 +519,7 @@ function HomeworkCard({ hw, studentName, studentPhone, studentAccountId, onUpdat
       </div>
 
       {hw.description && (
-        <div className="text-xs text-gray-600 mt-2">{hw.description}</div>
+        <div className="text-xs text-gray-600 mt-2 whitespace-pre-wrap">{superscriptPowers(hw.description)}</div>
       )}
 
       {hw.deadline && (

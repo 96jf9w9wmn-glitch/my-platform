@@ -204,6 +204,24 @@ export function plural(n, one, few, many) {
   return many
 }
 
+// Превращает «плоские» степени из свободного текста (в т.ч. от ИИ-генерации ДЗ)
+// в надстрочные символы Юникода: x^2 → x², a^{10} → a¹⁰, x^n → xⁿ.
+// Работает над обычным текстом (не над токенами банка заданий).
+const SUPERSCRIPT_MAP = {
+  "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵",
+  "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹", "+": "⁺", "-": "⁻",
+  "=": "⁼", "(": "⁽", ")": "⁾", "n": "ⁿ", "i": "ⁱ",
+}
+function toSup(str) {
+  return Array.from(str).map((c) => SUPERSCRIPT_MAP[c] || c).join("")
+}
+export function superscriptPowers(text) {
+  if (!text) return text
+  return text
+    .replace(/\^\{([^}]*)\}/g, (_, g) => toSup(g))
+    .replace(/\^(-?[0-9]+|[nix])/g, (_, g) => toSup(g))
+}
+
 // new Date("YYYY-MM-DD") parses as UTC midnight, which shifts a day back in
 // timezones behind UTC — this constructs the date from local components instead.
 export function parseLocalDate(dateStr) {

@@ -8,7 +8,7 @@ import StudentSidebar from "../components/StudentSidebar"
 import Chat from "./Chat"
 import StudentOnboardingModal from "../components/StudentOnboardingModal"
 const Board = lazy(() => import("../components/Board"))
-import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath } from "../utils"
+import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, superscriptPowers } from "../utils"
 
 function Part2Upload({ taskNum, submissionId, existingUrl, onUpload }) {
   const [uploading, setUploading] = useState(false)
@@ -382,7 +382,7 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
 
       <div className="glass p-5 mb-4">
         <h2 className="text-lg font-medium mb-2">{hw.title}</h2>
-        {hw.description && <p className="text-sm text-gray-600 mb-3">{hw.description}</p>}
+        {hw.description && <p className="text-sm text-gray-600 mb-3 whitespace-pre-wrap">{superscriptPowers(hw.description)}</p>}
         {hw.deadline && (
           <div className="text-xs text-gray-400">
             Дедлайн: {parseLocalDate(hw.deadline).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}
