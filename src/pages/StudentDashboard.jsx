@@ -1347,7 +1347,10 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
       .from("variant_submissions")
       .select("*, variants(*)")
       .eq("student_id", user.id)
-    const mapped = (subs || []).map((s) => ({ ...s.variants, submission: s }))
+      .order("created_at", { ascending: false })
+    const mapped = (subs || [])
+      .map((s) => ({ ...s.variants, submission: s }))
+      .sort((a, b) => String(b.submission?.created_at || "").localeCompare(String(a.submission?.created_at || "")))
     setVariants(mapped)
     try { localStorage.setItem(variantsCacheKey, JSON.stringify(mapped)) } catch { /* переполнение localStorage — кэш не критичен */ }
   }
