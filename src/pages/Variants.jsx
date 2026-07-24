@@ -3,12 +3,13 @@ import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import { plural, getInitials, defaultExamType, renderTaskMath, plainTaskMath } from "../utils"
 import Icon from "../components/Icon"
-import { assembleFromBank, rerollTask, rerollModule, isModuleNumber } from "./taskBankApi"
+import { assembleFromBank, rerollTask, rerollModule, isModuleNumber, PART2_NUMBERS, makeAnswerChoices } from "./taskBankApi"
 import { generateVariantPdf } from "./variantPdf"
 
 const OGE_PART1_GEOMETRY = [15,16,17,18,19]
 const OGE_PART2_TASKS = [20, 21, 22, 23, 24, 25]
-const OGE_PART2_MAX = { 20: 2, 21: 2, 22: 3, 23: 2, 24: 2, 25: 3 }
+// По спецификации ФИПИ все задания части 2 ОГЭ оцениваются в 2 балла (максимум 12).
+const OGE_PART2_MAX = { 20: 2, 21: 2, 22: 2, 23: 2, 24: 2, 25: 2 }
 const OGE_PART2_ALGEBRA = [20, 21, 22]
 const OGE_PART2_GEOMETRY = [23, 24, 25]
 
@@ -24,6 +25,10 @@ function getOgeGrade(total, geomScore) {
 function getEgeTestScore(primary) {
   return EGE_SCORES[Math.min(primary, EGE_SCORES.length - 1)] || 0
 }
+
+// Имя файла в Storage: непредсказуемая часть пути — метка времени (вне компонента,
+// чтобы react-hooks/purity не считал Date.now() вызовом в рендере)
+const storageFileName = (tutorId, ext) => `${tutorId}/${Date.now()}.${ext}`
 
 function getGeomScore(part1Answers, correctAnswers, part2ScoreDetail) {
   let geom = 0
@@ -41,6 +46,8 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
   const [title, setTitle] = useState("")
   const [examType, setExamType] = useState(() => defaultExamType(examFocus))
   const [answers, setAnswers] = useState(() => Array(defaultExamType(examFocus) === "ОГЭ" ? 19 : 12).fill(""))
+  // Ответы части 2 (ОГЭ: 20–25) — объект { номер: ответ }; при сборке из банка заполняется сам
+  const [part2Answers, setPart2Answers] = useState({})
   const [loading, setLoading] = useState(false)
   const [variantFile, setVariantFile] = useState(null)
   const [uploading, setUploading] = useState(false)
@@ -67,6 +74,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
   }
 
   const answerCount = examType === "ОГЭ" ? 19 : 12
+  const part2Numbers = PART2_NUMBERS[examType] || []
 
   function handleFileUpload(e) {
     const file = e.target.files[0]
@@ -87,8 +95,13 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
     setBankPicked(picked)
     setBankMissing(missing)
     const filled = Array(count).fill("")
-    picked.forEach((t) => { filled[t.number - 1] = t.answer })
+    const p2 = {}
+    picked.forEach((t) => {
+      if (t.number <= count) filled[t.number - 1] = t.answer
+      else p2[t.number] = t.answer
+    })
     setAnswers(filled)
+    setPart2Answers(p2)
     setAssembling(false)
   }
 
@@ -106,7 +119,8 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
     const next = await rerollTask(examType, number, current?.id)
     if (!next) return
     setBankPicked((prev) => prev.map((t) => (t.number === number ? next : t)))
-    setAnswers((prev) => { const upd = [...prev]; upd[number - 1] = next.answer; return upd })
+    if (number > answerCount) setPart2Answers((prev) => ({ ...prev, [number]: next.answer }))
+    else setAnswers((prev) => { const upd = [...prev]; upd[number - 1] = next.answer; return upd })
   }
 
   async function handleSubmit() {
@@ -118,8 +132,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
     let fileUrl = null
     if (source === "file" && variantFile) {
       setUploading(true)
-      const ext = variantFile.name.split(".").pop()
-      const fileName = tutorId + "/" + Date.now() + "." + ext
+      const fileName = storageFileName(tutorId, variantFile.name.split(".").pop())
       const { error: uploadError } = await supabase.storage.from("variants").upload(fileName, variantFile, { upsert: true })
       if (!uploadError) {
         const { data: urlData } = supabase.storage.from("variants").getPublicUrl(fileName)
@@ -132,12 +145,21 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
       ? bankPicked.map((t) => ({ number: t.number, condition_text: t.condition_text, image_url: t.image_url }))
       : null
 
+    // Варианты ответа части 2 (ученик выбирает один из четырёх): у собранного из банка
+    // берутся у сгенерированных заданий, у своего файла строятся из введённых ответов.
+    const part2Choices = {}
+    for (const n of part2Numbers) {
+      const fromBank = source === "bank" ? bankPicked.find((t) => t.number === n)?.choices : null
+      const choices = fromBank || makeAnswerChoices(part2Answers[n])
+      if (choices) part2Choices[n] = choices
+    }
+
     // Ученику вариант из банка отправляется тем же файловым PDF-просмотром, что и обычный
     // загруженный вариант — генерируем PDF из собранных условий прямо в браузере
     if (source === "bank") {
       setUploading(true)
       const pdfBlob = await generateVariantPdf({ title, examType, tasks: bankPicked })
-      const fileName = tutorId + "/" + Date.now() + ".pdf"
+      const fileName = storageFileName(tutorId, "pdf")
       const { error: uploadError } = await supabase.storage.from("variants").upload(fileName, pdfBlob, { contentType: "application/pdf" })
       if (!uploadError) {
         const { data: urlData } = supabase.storage.from("variants").getPublicUrl(fileName)
@@ -147,7 +169,9 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
     }
 
     const { data, error } = await supabase.from("variants").insert({
-      tutor_id: tutorId, title, type: examType, answers: { part1: answers }, file_url: fileUrl, tasks_snapshot: tasksSnapshot,
+      tutor_id: tutorId, title, type: examType,
+      answers: { part1: answers, part2: part2Answers, part2_choices: part2Choices },
+      file_url: fileUrl, tasks_snapshot: tasksSnapshot,
     }).select().single()
 
     if (error) { alert(error.message); setLoading(false); return }
@@ -194,7 +218,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
               <div className="flex gap-2">
                 {["ОГЭ", "ЕГЭ"].map((t) => (
                   <button key={t} type="button"
-                    onClick={() => { setExamType(t); setAnswers(Array(t === "ОГЭ" ? 19 : 12).fill("")); setBankPicked([]); setBankMissing([]) }}
+                    onClick={() => { setExamType(t); setAnswers(Array(t === "ОГЭ" ? 19 : 12).fill("")); setPart2Answers({}); setBankPicked([]); setBankMissing([]) }}
                     className={`flex-1 py-2 rounded-xl text-sm border transition-colors ${examType === t ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
                     <span className="flex items-center justify-center gap-1"><Icon name={t === "ОГЭ" ? "file-text" : "book"} size={14} />{t}</span>
                   </button>
@@ -249,7 +273,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
                   {bankPicked.length > 0 && (
                     <div className="text-xs mb-1">
                       Собрано заданий: <span className={bankMissing.length === 0 ? "text-green-600 font-medium" : "text-amber-600 font-medium"}>
-                        {bankPicked.length} / {answerCount}
+                        {bankPicked.length} / {answerCount + part2Numbers.length}
                       </span>
                       {bankMissing.length > 0 && (
                         <span className="text-amber-600"> · нет в банке: {bankMissing.join(", ")}</span>
@@ -298,6 +322,28 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
               <div className="text-xs text-gray-400 mt-1">Введено: {answers.filter((a) => a).length} / {answerCount}</div>
             </div>
 
+            {part2Numbers.length > 0 && (
+              <div>
+                <label className="text-sm text-gray-500 mb-1 block">Ответы к части 2 (20–25)</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {part2Numbers.map((n) => (
+                    <div key={n} className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400 w-5 flex-shrink-0">{n}</span>
+                      <input
+                        value={part2Answers[n] || ""}
+                        onChange={(e) => setPart2Answers((prev) => ({ ...prev, [n]: e.target.value }))}
+                        placeholder={n === 24 ? "Доказано." : "Ответ"}
+                        className="input-glass flex-1 px-2 py-1.5 text-sm min-w-0"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="text-xs text-gray-400 mt-1">
+                  Ученик выберет ответ из четырёх вариантов; для доказательства (№24) — только фото решения
+                </div>
+              </div>
+            )}
+
             {answers.some((a) => a) && (
               <div>
                 {examType === "ОГЭ" ? (
@@ -318,6 +364,18 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
                         </div>
                       ))}
                     </div>
+                    {part2Numbers.some((n) => part2Answers[n]) && (
+                      <>
+                        <div className="text-xs font-medium text-green-600 mb-1 mt-2 bg-green-50 px-2 py-1 rounded">Часть 2 · 20–25</div>
+                        <div className="grid grid-cols-3 gap-1">
+                          {part2Numbers.map((n) => (
+                            <div key={n} className={part2Answers[n] ? "text-center rounded-lg py-1 text-xs bg-green-100 text-green-700 font-medium" : "text-center rounded-lg py-1 text-xs bg-gray-100 text-gray-400"}>
+                              <div style={{fontSize:"10px"}}>{n}</div><div className="truncate px-1">{part2Answers[n]||"-"}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
                   </>
                 ) : (
                   <>
@@ -336,7 +394,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
 
             <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700">
               {examType === "ОГЭ"
-                ? "Часть 2 (задания 20–25) проверяется вручную после загрузки решений учеником"
+                ? "Часть 2 (20–25): ученик выбирает ответ из четырёх и прикрепляет фото решения. Баллы начисляются только после твоей проверки."
                 : "Часть 2 (задания 13–19) проверяется вручную после загрузки решений учеником"}
             </div>
           </div>
@@ -453,6 +511,34 @@ function SubmissionReview({ submission, variant, onClose, onSave }) {
   const [scores, setScores] = useState(OGE_PART2_TASKS.reduce((acc, n) => ({ ...acc, [n]: submission.part2_score_detail?.[n] ?? "" }), {}))
   const [loading, setLoading] = useState(false)
 
+  // Строка задания части 2: выбранный учеником ответ против верного, наличие фото решения
+  // и поле балла. Балл ставит только репетитор — совпадение ответа лишь подсказка.
+  const renderPart2Row = (n) => {
+    const chosen = submission.part2_choices?.[n]
+    const correct = variant.answers?.part2?.[n]
+    const hasFile = !!submission.part2_files?.[n]
+    const match = chosen != null && correct != null && String(chosen).trim() === String(correct).trim()
+    return (
+      <div key={n} className="flex items-center gap-3">
+        <span className="text-sm text-gray-600 w-24 flex-shrink-0">Задание {n}</span>
+        <div className="flex-1 min-w-0 text-xs leading-snug">
+          {chosen != null ? (
+            <div className={match ? "text-green-600" : "text-red-500"}>
+              выбран: {chosen} {match ? "✓" : correct ? `· верный: ${correct}` : ""}
+            </div>
+          ) : (
+            <div className="text-gray-400">ответ не выбран</div>
+          )}
+          {!hasFile && <div className="text-amber-600">нет фото решения</div>}
+        </div>
+        <span className="text-xs text-gray-400 flex-shrink-0">макс. {OGE_PART2_MAX[n]}</span>
+        <input type="number" min="0" max={OGE_PART2_MAX[n]} value={scores[n]}
+          onChange={(e) => setScores((prev) => ({ ...prev, [n]: e.target.value }))}
+          className="w-16 border border-gray-200 rounded-lg px-2 py-1 text-sm outline-none focus:border-blue-400 flex-shrink-0" />
+      </div>
+    )
+  }
+
   const part1Score = submission.part1_score ?? 0
   const part2Total = Object.values(scores).reduce((s, v) => s + (Number(v) || 0), 0)
   const total = part1Score + part2Total
@@ -501,29 +587,13 @@ function SubmissionReview({ submission, variant, onClose, onSave }) {
             <div className="mb-3">
               <div className="text-xs font-medium text-blue-600 mb-2 bg-blue-50 px-2 py-1 rounded">Алгебра 20–22</div>
               <div className="flex flex-col gap-2">
-                {OGE_PART2_ALGEBRA.map((n) => (
-                  <div key={n} className="flex items-center gap-3">
-                    <span className="text-sm text-gray-600 w-24">Задание {n}</span>
-                    <span className="text-xs text-gray-400">макс. {OGE_PART2_MAX[n]}</span>
-                    <input type="number" min="0" max={OGE_PART2_MAX[n]} value={scores[n]}
-                      onChange={(e) => setScores((prev) => ({ ...prev, [n]: e.target.value }))}
-                      className="w-16 border border-gray-200 rounded-lg px-2 py-1 text-sm outline-none focus:border-blue-400" />
-                  </div>
-                ))}
+                {OGE_PART2_ALGEBRA.map(renderPart2Row)}
               </div>
             </div>
             <div>
               <div className="text-xs font-medium text-purple-600 mb-2 bg-purple-50 px-2 py-1 rounded">Геометрия 23–25</div>
               <div className="flex flex-col gap-2">
-                {OGE_PART2_GEOMETRY.map((n) => (
-                  <div key={n} className="flex items-center gap-3">
-                    <span className="text-sm text-gray-600 w-24">Задание {n}</span>
-                    <span className="text-xs text-gray-400">макс. {OGE_PART2_MAX[n]}</span>
-                    <input type="number" min="0" max={OGE_PART2_MAX[n]} value={scores[n]}
-                      onChange={(e) => setScores((prev) => ({ ...prev, [n]: e.target.value }))}
-                      className="w-16 border border-gray-200 rounded-lg px-2 py-1 text-sm outline-none focus:border-blue-400" />
-                  </div>
-                ))}
+                {OGE_PART2_GEOMETRY.map(renderPart2Row)}
               </div>
             </div>
           </div>

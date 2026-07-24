@@ -220,6 +220,10 @@ async function renderBlock(innerHtml) {
 // НИКОГДА не разрывалось разворотом страниц — если блок не влезает в остаток текущей страницы,
 // он целиком переносится на следующую.
 export async function generateVariantPdf({ title, examType, tasks }) {
+  // Вариант ОГЭ теперь включает часть 2 (20–25) — PDF делится на разделы «Часть 1»/«Часть 2».
+  const part2From = examType === "ОГЭ" ? 20 : null
+  const hasPart2 = part2From != null && tasks.some((t) => t.number >= part2From)
+
   const images = await Promise.all(
     tasks.map((t) => t.image_url ? svgUrlToPng(t.image_url) : Promise.resolve(null))
   )
@@ -227,12 +231,26 @@ export async function generateVariantPdf({ title, examType, tasks }) {
   const headerCanvas = await renderBlock(
     `<div style="padding:40px 40px 18px;">
       <div style="font-size:22px; font-weight:600; margin-bottom:4px;">${escapeHtml(title)}</div>
-      <div style="font-size:14px; color:#666;">${escapeHtml(examType)}, часть 1</div>
+      <div style="font-size:14px; color:#666;">${escapeHtml(examType)}${hasPart2 ? "" : ", часть 1"}</div>
+    </div>`
+  )
+  const sectionBlock = (name, note) => renderBlock(
+    `<div style="padding:18px 40px 4px;">
+      <div style="font-size:17px; font-weight:600; border-bottom:2px solid #1c1c1e; padding-bottom:6px;">${escapeHtml(name)}</div>
+      ${note ? `<div style="font-size:12px; color:#666; margin-top:6px;">${escapeHtml(note)}</div>` : ""}
     </div>`
   )
   const taskCanvases = []
+  let part2Inserted = false
   for (let i = 0; i < tasks.length; i++) {
     const t = tasks[i]
+    if (hasPart2 && !part2Inserted && t.number >= part2From) {
+      taskCanvases.push(await sectionBlock("Часть 2",
+        "Запишите полное решение на отдельном листе. Ответ выберите в личном кабинете и прикрепите фото решения."))
+      part2Inserted = true
+    } else if (hasPart2 && i === 0) {
+      taskCanvases.push(await sectionBlock("Часть 1"))
+    }
     taskCanvases.push(await renderBlock(
       `<div style="padding:16px 40px;">
         <div style="font-weight:600; font-size:15px; margin-bottom:6px;">Задание ${t.number}</div>

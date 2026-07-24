@@ -10,7 +10,7 @@ import StudentOnboardingModal from "../components/StudentOnboardingModal"
 const Board = lazy(() => import("../components/Board"))
 import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, formatPhone } from "../utils"
 
-function Part2Upload({ taskNum, submissionId, existingUrl, onUpload }) {
+function Part2Upload({ taskNum, submissionId, existingUrl, chosen, onUpload }) {
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef(null)
 
@@ -40,7 +40,10 @@ function Part2Upload({ taskNum, submissionId, existingUrl, onUpload }) {
 
   return (
     <div className="flex items-center gap-3">
-      <span className="text-sm text-gray-600 w-24">Задание {taskNum}</span>
+      <div className="w-24 flex-shrink-0">
+        <div className="text-sm text-gray-600">Задание {taskNum}</div>
+        {chosen != null && <div className="text-xs text-gray-400 truncate">ответ: {chosen}</div>}
+      </div>
       <input ref={fileRef} type="file" accept="image/*,.pdf" className="hidden" onChange={handleUpload} />
       {existingUrl ? (
         <div className="flex items-center gap-2 flex-1">
@@ -63,6 +66,29 @@ function Part2Upload({ taskNum, submissionId, existingUrl, onUpload }) {
     </div>
   )
 }
+// Выбор ответа части 2 из четырёх вариантов. Повторное нажатие снимает выбор.
+function ChoiceChips({ choices, value, onSelect }) {
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {choices.map((c) => {
+        const sel = value === c
+        return (
+          <button
+            key={c}
+            type="button"
+            onClick={() => onSelect(sel ? null : c)}
+            className={`rounded-xl px-3 py-2 text-sm border text-center transition-all active:scale-[0.96] ${
+              sel ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "border-gray-200 text-gray-700 hover:bg-gray-50"
+            }`}
+          >
+            {c}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 const MONTH_NAMES = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"]
 
 function getDaysInMonth(year, month) {
@@ -975,6 +1001,8 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   const [selectedVariant, setSelectedVariant] = useState(null)
   const [returning, setReturning] = useState(false)
   const [part1Answers, setPart1Answers] = useState(Array(19).fill(""))
+  // Часть 2 (ОГЭ 20–25): выбранный вариант ответа по номеру задания { 20: "…", … }
+  const [part2Choices, setPart2Choices] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const [resultDialog, setResultDialog] = useState(null)
   const [tutorCode, setTutorCode] = useState("")
@@ -1086,6 +1114,11 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   // Сгенерированный вариант (собран из банка) несёт tasks_snapshot — его решаем прямо на
   // сайте; свой файл репетитора (tasks_snapshot нет) по-прежнему показываем как файл.
   const isGeneratedVariant = (selectedVariant?.tasks_snapshot?.length || 0) > 0
+  // Часть 2 у варианта: номера заданий и 4 варианта ответа на каждый (см. Variants.jsx).
+  // У №24 (доказательство) вариантов нет — только фото решения.
+  const part1Count = selectedVariant?.type === "ЕГЭ" ? 12 : 19
+  const variantChoices = selectedVariant?.answers?.part2_choices || {}
+  const part2TaskNums = selectedVariant?.type === "ЕГЭ" ? [13, 14, 15, 16, 17, 18, 19] : [20, 21, 22, 23, 24, 25]
   // ?download → Supabase отдаёт файл с Content-Disposition: attachment (скачивание, а не открытие)
   const variantDownloadUrl = selectedVariant?.file_url
     ? selectedVariant.file_url + (selectedVariant.file_url.includes("?") ? "&" : "?") + "download"
@@ -1370,11 +1403,21 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
       if (ans.trim().toLowerCase() === correctAnswers[i]?.trim().toLowerCase()) score++
     })
 
-    await supabase.from("variant_submissions").update({
+    const base = {
       part1_answers: part1Answers,
       part1_score: score,
       status: "submitted",
-    }).eq("id", variant.submission.id)
+    }
+    const hasChoices = Object.keys(part2Choices).length > 0
+    let { error } = await supabase.from("variant_submissions")
+      .update(hasChoices ? { ...base, part2_choices: part2Choices } : base)
+      .eq("id", variant.submission.id)
+    // Колонка part2_choices появляется миграцией supabase/variant_part2.sql — если её ещё
+    // нет, не роняем сдачу целиком, сохраняем хотя бы часть 1.
+    if (error && hasChoices) {
+      ({ error } = await supabase.from("variant_submissions").update(base).eq("id", variant.submission.id))
+    }
+    if (error) { alert("Не получилось отправить: " + error.message); setSubmitting(false); return }
 
     await supabase.from("notifications").insert({
       user_id: variant.tutor_id,
@@ -1384,6 +1427,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
 
     setSubmitting(false)
     setSelectedVariant(null)
+    setPart2Choices({})
     loadVariants()
     setResultDialog({ score, max: maxCount })
   }
@@ -1832,7 +1876,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
             {selectedVariant ? (
               <div className="page-active">
                 <button
-                  onClick={() => { setSelectedVariant(null); setPart1Answers(Array(19).fill("")); setReturning(true) }}
+                  onClick={() => { setSelectedVariant(null); setPart1Answers(Array(19).fill("")); setPart2Choices({}); setReturning(true) }}
                   className="text-sm text-gray-500 hover:text-gray-700 mb-4 flex items-center gap-1"
                 >
                   ← Назад
@@ -1881,31 +1925,51 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                 {selectedVariant.submission.status === "pending" && isGeneratedVariant && (
                   <div className="glass p-5">
                     <h3 className="text-base font-medium mb-1">Реши вариант</h3>
-                    <p className="text-xs text-gray-500 mb-4">Впиши ответ под каждым заданием части 1. Часть 2 загрузишь фото после отправки.</p>
+                    <p className="text-xs text-gray-500 mb-4">В части 1 впиши ответ, в части 2 выбери один из четырёх. Фото решений части 2 загрузишь после отправки.</p>
                     <div className="flex flex-col gap-3">
-                      {selectedVariant.tasks_snapshot.map((t) => (
-                        <div key={t.number} className="border border-gray-100 rounded-xl p-3">
-                          <div className="text-sm font-medium text-blue-600 mb-1">Задание {t.number}</div>
-                          {t.condition_text && <div className="text-base whitespace-pre-wrap mb-2" dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_text) }} />}
-                          {t.image_url && <img src={t.image_url} alt={`Задание ${t.number}`} className="max-w-full h-auto object-contain rounded-lg mb-2 bg-gray-50" />}
-                          <input
-                            value={part1Answers[t.number - 1] || ""}
-                            onChange={(e) => { const u = [...part1Answers]; u[t.number - 1] = e.target.value; setPart1Answers(u) }}
-                            placeholder="Твой ответ"
-                            className="input-glass w-full px-3 py-2"
-                          />
-                        </div>
-                      ))}
+                      {selectedVariant.tasks_snapshot.map((t) => {
+                        const isPart2 = t.number > part1Count
+                        const choices = isPart2 ? variantChoices[t.number] : null
+                        return (
+                          <div key={t.number} className="border border-gray-100 rounded-xl p-3">
+                            <div className="text-sm font-medium text-blue-600 mb-1">
+                              Задание {t.number}{isPart2 ? " · часть 2" : ""}
+                            </div>
+                            {t.condition_text && <div className="text-base whitespace-pre-wrap mb-2" dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_text) }} />}
+                            {t.image_url && <img src={t.image_url} alt={`Задание ${t.number}`} className="max-w-full h-auto object-contain rounded-lg mb-2 bg-gray-50" />}
+                            {!isPart2 && (
+                              <input
+                                value={part1Answers[t.number - 1] || ""}
+                                onChange={(e) => { const u = [...part1Answers]; u[t.number - 1] = e.target.value; setPart1Answers(u) }}
+                                placeholder="Твой ответ"
+                                className="input-glass w-full px-3 py-2"
+                              />
+                            )}
+                            {isPart2 && choices?.length > 0 && (
+                              <ChoiceChips
+                                choices={choices}
+                                value={part2Choices[t.number]}
+                                onSelect={(c) => setPart2Choices((prev) => ({ ...prev, [t.number]: c ?? undefined }))}
+                              />
+                            )}
+                            {isPart2 && !choices?.length && (
+                              <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
+                                Задание с развёрнутым решением — запиши его на листе, фото прикрепишь после отправки
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
                     </div>
                     <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700 my-4">
-                      <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />Часть 2 сдаётся отдельно — загрузи фото решений после отправки части 1</span>
+                      <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />После отправки обязательно прикрепи фото решений части 2 — без них репетитор не начислит баллы. Балл за часть 2 появится после его проверки.</span>
                     </div>
                     <button
                       onClick={submitPart1}
                       disabled={submitting}
                       className="w-full bg-blue-600 text-white rounded-lg py-2.5 text-sm hover:bg-blue-700 disabled:opacity-50 active:scale-[0.99] transition-transform"
                     >
-                      {submitting ? "Отправляем..." : "Отправить ответы части 1"}
+                      {submitting ? "Отправляем..." : "Отправить ответы"}
                     </button>
                   </div>
                 )}
@@ -1953,15 +2017,32 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                         ))}
                       </div>
                     </div>
+                    {Object.keys(variantChoices).length > 0 && (
+                      <div className="mb-4">
+                        <div className="text-xs font-medium text-green-600 mb-2 bg-green-50 px-2 py-1 rounded">Часть 2 — выбери ответ</div>
+                        <div className="flex flex-col gap-3">
+                          {part2TaskNums.filter((n) => variantChoices[n]?.length).map((n) => (
+                            <div key={n}>
+                              <div className="text-xs text-gray-500 mb-1">Задание {n}</div>
+                              <ChoiceChips
+                                choices={variantChoices[n]}
+                                value={part2Choices[n]}
+                                onSelect={(c) => setPart2Choices((prev) => ({ ...prev, [n]: c ?? undefined }))}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700 mb-4">
-                      <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />Часть 2 сдаётся отдельно — загрузи фото решений после отправки части 1</span>
+                      <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />После отправки обязательно прикрепи фото решений части 2 — без них репетитор не начислит баллы</span>
                     </div>
                     <button
                       onClick={submitPart1}
                       disabled={submitting}
                       className="w-full bg-blue-600 text-white rounded-lg py-2.5 text-sm hover:bg-blue-700 disabled:opacity-50"
                     >
-                      {submitting ? "Отправляем..." : "Отправить ответы части 1"}
+                      {submitting ? "Отправляем..." : "Отправить ответы"}
                     </button>
                   </div>
                 )}
@@ -1970,7 +2051,8 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                   <div className="flex flex-col gap-4">
                     <div className="glass-tint-blue p-4">
                       <div className="text-sm font-medium text-blue-700 flex items-center gap-1"><Icon name="check" size={14} />Часть 1 сдана</div>
-                      <div className="text-sm text-blue-600 mt-1">Балл: {selectedVariant.submission.part1_score} / 19</div>
+                      <div className="text-sm text-blue-600 mt-1">Балл: {selectedVariant.submission.part1_score} / {part1Count}</div>
+                      <div className="text-xs text-blue-500 mt-1">Балл за часть 2 появится после проверки репетитором</div>
                     </div>
 
                     {selectedVariant.submission.part1_answers && selectedVariant.answers?.part1 && (
@@ -2005,14 +2087,17 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                     )}
                     <div className="glass p-5">
                       <h3 className="text-base font-medium mb-3">Часть 2 — загрузи решения</h3>
-                      <div className="text-xs text-gray-500 mb-4">Загрузи фото или файл решения для каждого задания (20–25)</div>
+                      <div className="text-xs text-gray-500 mb-4">
+                        Обязательно прикрепи фото или файл решения каждого задания ({part2TaskNums[0]}–{part2TaskNums[part2TaskNums.length - 1]}) — без него балл не начисляется
+                      </div>
                       <div className="flex flex-col gap-3">
-                        {[20, 21, 22, 23, 24, 25].map((taskNum) => (
+                        {part2TaskNums.map((taskNum) => (
                           <Part2Upload
                             key={taskNum}
                             taskNum={taskNum}
                             submissionId={selectedVariant.submission.id}
                             existingUrl={selectedVariant.submission.part2_files?.[taskNum]}
+                            chosen={selectedVariant.submission.part2_choices?.[taskNum]}
                             onUpload={loadVariants}
                           />
                         ))}
@@ -2028,7 +2113,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       <div className="text-sm font-medium text-green-700">Вариант проверен!</div>
                       <div className="text-3xl font-medium text-green-600 mt-2">{selectedVariant.submission.total_score} баллов</div>
                       <div className="text-sm text-green-500 mt-1">
-                        Часть 1: {selectedVariant.submission.part1_score} / 19 · Часть 2: {selectedVariant.submission.part2_score} / 12
+                        Часть 1: {selectedVariant.submission.part1_score} / {part1Count} · Часть 2: {selectedVariant.submission.part2_score} / {selectedVariant.type === "ЕГЭ" ? 20 : 12}
                       </div>
                     </div>
 
@@ -2062,6 +2147,32 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                         </div>
                       </div>
                     )}
+
+                    {(selectedVariant.answers?.part2 || selectedVariant.submission.part2_score_detail) && (
+                      <div className="glass p-5">
+                        <h3 className="text-sm font-medium mb-3">Разбор части 2</h3>
+                        <div className="flex flex-col gap-1">
+                          {part2TaskNums.map((n) => {
+                            const chosen = selectedVariant.submission.part2_choices?.[n]
+                            const correct = selectedVariant.answers?.part2?.[n]
+                            const score = Number(selectedVariant.submission.part2_score_detail?.[n] || 0)
+                            const max = selectedVariant.type === "ЕГЭ" ? ({ 13: 2, 14: 3, 15: 2, 16: 2, 17: 3, 18: 4, 19: 4 })[n] : 2
+                            return (
+                              <div key={n} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${score >= max ? "bg-green-50" : score > 0 ? "bg-amber-50" : "bg-red-50"}`}>
+                                <span className="text-gray-500 w-6 flex-shrink-0">{n}</span>
+                                <span className="flex-1 min-w-0 truncate text-gray-700">{chosen ?? "—"}</span>
+                                {correct != null && String(chosen ?? "").trim() !== String(correct).trim() && (
+                                  <span className="text-gray-400 text-xs flex-shrink-0">
+                                    правильно: <span className="text-gray-700 font-medium">{correct}</span>
+                                  </span>
+                                )}
+                                <span className={`text-xs font-medium flex-shrink-0 ${score >= max ? "text-green-600" : score > 0 ? "text-amber-600" : "text-red-500"}`}>{score} / {max}</span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -2080,7 +2191,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                     {variants.map((v) => (
                       <button
                         key={v.id}
-                        onClick={() => { setSelectedVariant(v); setPart1Answers(Array(v.type === "ЕГЭ" ? 12 : 19).fill("")) }}
+                        onClick={() => { setSelectedVariant(v); setPart1Answers(Array(v.type === "ЕГЭ" ? 12 : 19).fill("")); setPart2Choices({}) }}
                         className="text-left glass p-4 hover:bg-white/80 transition-colors w-full no-press press-tap"
                       >
                         <div className="flex justify-between items-center">
