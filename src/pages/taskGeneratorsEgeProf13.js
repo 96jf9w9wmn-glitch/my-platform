@@ -1963,11 +1963,13 @@ function t13HalfAngleOnce() {
   terms.push({ ...bTerm, mag: Math.abs(Bn) * (Br === 1 ? 1 : Math.sqrt(Br)), val: (x) => Ff(x / 2) })
   // ФИПИ-показ: член с полууглом переносим вправо («5 − 2cos x = 5√2 sin(x/2)»),
   // если после переноса он положителен
-  let lhs = terms, rhs = []
+  let lhs = terms.slice(), rhs = []
   const hi = terms.findIndex((t) => t.str.includes(half))
   if (terms[hi].neg && Math.random() < 0.85) {
     lhs = terms.filter((_, j) => j !== hi); rhs = [{ ...terms[hi], neg: false }]
   }
+  const pi = lhs.findIndex((t) => !t.neg)
+  if (pi > 0) lhs.unshift(lhs.splice(pi, 1)[0])
   ;[lhs, rhs] = normalizeSides(lhs, rhs)
   const eq = `${sumStr(lhs)} = ${rhs.length ? sumStr(rhs) : "0"}`
   const contrib = (list) => (x) => list.reduce((s, t) => s + (t.neg ? -1 : 1) * t.mag * t.val(x), 0)
