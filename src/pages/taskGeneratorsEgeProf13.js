@@ -1079,6 +1079,47 @@ function t13Rational() {
   return null
 }
 
+// ============================================================================
+// СЕМЕЙСТВО «ГРУППИРОВКА» — A·sin2x + B·sinx + C·cosx + D = 0
+// = (2A·cosx + B)(sinx + C/(2A)),  D = BC/(2A) → cosx = −B/(2A), sinx = −C/(2A).
+// Цели рациональные и √3/2, √2/2 (коэф. с √3/√2 через ⟦r:⟧).
+// ============================================================================
+
+const radOf = (k) => k.includes("r3") ? 3 : k.includes("r2") ? 2 : 1
+// слагаемое n·(√rad)·func со знаком; func="" → константа
+function radTerm(n, rad, func, first) {
+  const sign = first ? (n < 0 ? MINUS : "") : (n < 0 ? ` ${MINUS} ` : " + ")
+  const mag = Math.abs(n)
+  const body = rad === 1
+    ? ((mag === 1 && func) ? func : `${mag}${func}`)
+    : `${mag === 1 ? "" : mag}⟦r:${rad}⟧${func ? " " + func : ""}`
+  return sign + body
+}
+const GROUP_V = ["half", "neghalf", "one", "negone", "r3half", "negr3half", "r2half", "negr2half"]
+function t13Grouping() {
+  for (let tries = 0; tries < 60; tries++) {
+    const vcK = pick(GROUP_V), vsK = pick(GROUP_V)
+    const rvc = radOf(vcK), rvs = radOf(vsK)
+    if (rvc !== 1 && rvs !== 1 && rvc !== rvs) continue      // избегаем √6 в D
+    const radD = rvc === 1 ? rvs : rvs === 1 ? rvc : 1        // оба одинаковых √ → рационально
+    const vc = VAL_TO_NUM[vcK], vs = VAL_TO_NUM[vsK]
+    for (const A of [1, 2, 3, 4]) {
+      const nB = -2 * A * vc / (rvc === 1 ? 1 : Math.sqrt(rvc))
+      const nC = -2 * A * vs / (rvs === 1 ? 1 : Math.sqrt(rvs))
+      const nD = 2 * A * vc * vs / (radD === 1 ? 1 : Math.sqrt(radD))
+      const int = (v) => Math.abs(v - Math.round(v)) < 1e-9
+      if (!int(nB) || !int(nC) || !int(nD)) continue
+      const bN = Math.round(nB), cN = Math.round(nC), dN = Math.round(nD)
+      if (bN === 0 || cN === 0 || dN === 0) continue
+      const eq = radTerm(A, 1, "sin 2x", true) + radTerm(bN, rvc, "sin x", false) +
+        radTerm(cN, rvs, "cos x", false) + radTerm(dN, radD, "", false) + " = 0"
+      const residual = (x) => A * Math.sin(2 * x) + (-2 * A * vc) * Math.sin(x) + (-2 * A * vs) * Math.cos(x) + 2 * A * vc * vs
+      return finishTrig(eq, [{ fn: "cos", key: vcK }, { fn: "sin", key: vsK }], residual)
+    }
+  }
+  return null
+}
+
 // ── реестр ──────────────────────────────────────────────────────────────────
 export const GEN13 = [
   t13SinQuad, t13CosQuad, t13CosSqSinLin, t13SinSqCosLin,
@@ -1092,6 +1133,7 @@ export const GEN13 = [
   t13LogTrigProd, t13LogTrigQuad,
   t13BiquadSin, t13BiquadCos, t13BiquadCtgSin, t13BiquadTgCos,
   t13Rational,
+  t13Grouping,
 ]
 
 export const META13 = [
@@ -1146,6 +1188,9 @@ export const META13 = [
   ]],
   ["Рациональные (симметричная подстановка)", [
     ["rational", "(x+m)²/D+M/(x+m)²=P(…)+Q → 4 целых корня", t13Rational],
+  ]],
+  ["Группировка", [
+    ["grouping", "A·sin2x+B·sinx+C·cosx+D=0 → cos=vc∪sin=vs", t13Grouping],
   ]],
 ]
 
