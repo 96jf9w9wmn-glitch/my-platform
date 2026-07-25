@@ -584,12 +584,12 @@ function finish(eq, allRoots, residual, iv, domainOK = null) {
 // положительный отрезок (концы целые/√целое), ровно один корень
 function pickPosInterval(rootsNum) {
   const cand = []
-  for (let i = 1; i <= 40; i++) cand.push({ num: i, text: intT(i) })
-  for (let k = 2; k <= 200; k++) { const s = Math.sqrt(k); if (Math.abs(s - Math.round(s)) > 1e-9) cand.push({ num: s, text: `√${k}` }) }
+  for (let i = 1; i <= 70; i++) cand.push({ num: i, text: intT(i) })
+  for (let k = 2; k <= 300; k++) { const s = Math.sqrt(k); if (Math.abs(s - Math.round(s)) > 1e-9) cand.push({ num: s, text: `√${k}` }) }
   const opts = []
   for (const L of cand) for (const Rr of cand) {
     const w = Rr.num - L.num
-    if (w < 0.5 || w > 12) continue
+    if (w < 0.5 || w > 22) continue
     if (rootsNum.filter((x) => x >= L.num - 1e-9 && x <= Rr.num + 1e-9).length === 1)
       opts.push({ L, R: Rr, w, isSqrt: /√/.test(L.text) || /√/.test(Rr.text) })
   }
@@ -825,6 +825,97 @@ function irrTrigGen(kind) {
 function t13IrrSin() { return irrTrigGen("sin") }
 function t13IrrCos() { return irrTrigGen("cos") }
 
+// ============================================================================
+// СЕМЕЙСТВО «ПОКАЗАТЕЛЬНЫЕ × ТРИГОНОМЕТРИЯ» — сводятся к триг-уравнению (без ОДЗ)
+// ============================================================================
+
+// Общий финишер для триг-решения (targets = [{fn,key}]); residual — фактическое уравнение.
+function finishTrig(eq, targets, residual, domainOK = null) {
+  const series = targets.flatMap((t) => seriesFor(t.fn, t.key))
+  const refined = domainOK ? refineSeries(series, domainOK) : series
+  const iv = chooseInterval(refined, domainOK)
+  if (!iv) return null
+  const { L, R: Rr, roots } = iv
+  const genText = domainOK ? refined.map(seriesText).join(",  ") : targets.map((t) => textFor(t.fn, t.key)).join(",  ")
+  return {
+    condition_text: `а) Решите уравнение\n${eq}`,
+    condition_tail: `б) Найдите корни, принадлежащие отрезку [${fmtPiCond(L)}; ${fmtPiCond(Rr)}].`,
+    answer: `а) ${genText}, n ∈ ℤ\nб) ${roots.map(fmtPi).join(";  ")}`,
+    _verify: { residual, realResidual: residual, domainOK, roots: roots.map(Rnum), L: Rnum(L), R: Rnum(Rr) },
+  }
+}
+
+// ET1 — произведение степеней: (ab)^E = a^E · b^F → E=F (на базе b) → tg x = ±1.
+function t13ExpTrigProduct() {
+  const [a, b] = pick([[3, 5], [2, 5], [2, 3], [3, 7]])
+  const E = pick(["cos", "sin"]), other = E === "cos" ? "sin" : "cos"
+  const sgn = pick([1, -1])                                   // F = sgn·other
+  const tgOne = sgn === 1 ? "one" : "negone"                  // E=sgn·other → tg x = sgn (cos=±sin ⟺ tg=±1)
+  const Estr = E === "cos" ? "cos x" : "sin x"
+  const Fstr = `${sgn < 0 ? MINUS : ""}${other === "cos" ? "cos x" : "sin x"}`
+  const eq = `${a * b}⟦sup:${Estr}⟧ = ${a}⟦sup:${Estr}⟧ · ${b}⟦sup:${Fstr}⟧`
+  const Ef = E === "cos" ? Math.cos : Math.sin, Of = other === "cos" ? Math.cos : Math.sin
+  const residual = (x) => (a * b) ** Ef(x) - (a ** Ef(x)) * (b ** (sgn * Of(x)))
+  return finishTrig(eq, [{ fn: "tan", key: tgOne }], residual)
+}
+
+// ET2 — симметричное p^T + p^{−T} = k. Дробное основание k=2 → T=0; квадратное p, k=(p+1)/√p → T=±1/2.
+function t13ExpTrigSym() {
+  const T = pick(["sin", "cos"]), Tstr = T === "sin" ? "sin x" : "cos x"
+  const Tf = T === "sin" ? Math.sin : Math.cos
+  if (Math.random() < 0.4) {                                  // T=0, дробное основание
+    const [n, d] = pick([[4, 5], [2, 5], [2, 3], [3, 4]])
+    const eq = `⟦pf:${n}:${d}⟧⟦sup:${Tstr}⟧ + ⟦pf:${d}:${n}⟧⟦sup:${Tstr}⟧ = 2`
+    const residual = (x) => (n / d) ** Tf(x) + (d / n) ** Tf(x) - 2
+    return finishTrig(eq, [{ fn: T, key: "zero" }], residual)
+  }
+  const p = pick([4, 9, 16, 25]), rt = Math.sqrt(p)          // p^{1/2}=rt (целое)
+  const kN = rt * rt + 1, kD = rt                            // k=(p+1)/√p
+  const eq = `${p}⟦sup:${Tstr}⟧ + ${p}⟦sup:${MINUS}${Tstr}⟧ = ⟦f:${kN}:${kD}⟧`
+  const residual = (x) => p ** Tf(x) + p ** (-Tf(x)) - kN / kD
+  return finishTrig(eq, [{ fn: T, key: "half" }, { fn: T, key: "neghalf" }], residual)
+}
+
+// ET3 — квадрат по t=p^T: a·(p²)^T + b·p^T + c = 0 → p^T=p^{v} → T=v (v∈{0,±1/2,±1}).
+const ET3_V = [
+  { key: "half", tv: (p) => R(Math.round(Math.sqrt(p)), 1) }, { key: "neghalf", tv: (p) => R(1, Math.round(Math.sqrt(p))) },
+  { key: "one", tv: (p) => R(p, 1) }, { key: "negone", tv: (p) => R(1, p) },
+  { key: "zero", tv: () => R(1, 1) },
+]
+function t13ExpTrigQuad() {
+  const T = pick(["sin", "cos"]), Tstr = T === "sin" ? "sin x" : "cos x"
+  const p = pick([4, 9, 16, 25])
+  const opts = shuffleA(ET3_V.slice()).slice(0, 2)
+  const t1 = opts[0].tv(p), t2 = opts[1].tv(p)
+  if (t1.p * t2.q === t2.p * t1.q) return null                // совпали
+  const q = buildQuadFromRoots([t1, t2])
+  const powHi = `${p * p}⟦sup:${Tstr}⟧`, powLo = `${p}⟦sup:${Tstr}⟧`
+  let s = q.a === 1 ? powHi : `${q.a}·${powHi}`
+  if (q.b) s += ` ${q.b < 0 ? MINUS : "+"} ${Math.abs(q.b) === 1 ? "" : Math.abs(q.b) + "·"}${powLo}`
+  if (q.c) s += ` ${q.c < 0 ? MINUS : "+"} ${Math.abs(q.c)}`
+  const eq = `${s} = 0`
+  const Tf = T === "sin" ? Math.sin : Math.cos
+  const residual = (x) => { const u = p ** Tf(x); return q.a * u * u + q.b * u + q.c }
+  return finishTrig(eq, opts.map((o) => ({ fn: T, key: o.key })), residual)
+}
+const shuffleA = (arr) => { for (let i = arr.length - 1; i > 0; i--) { const j = randInt(0, i);[arr[i], arr[j]] = [arr[j], arr[i]] } return arr }
+
+// ET4 — степенная башня: ((q²)^{sin x})^{cos x} = q^{r·sin x} → sin x·(2cos x − r)=0 →
+// sin x=0 или cos x = r/2 (r=±1,±√2,±√3 → cos=±1/2,±√2/2,±√3/2).
+const ET4_R = [
+  { r: "", rn: 1 }, { r: `${MINUS}`, rn: -1 }, { r: "√2 ", rn: Math.sqrt(2) }, { r: `${MINUS}√2 `, rn: -Math.sqrt(2) },
+  { r: "√3 ", rn: Math.sqrt(3) }, { r: `${MINUS}√3 `, rn: -Math.sqrt(3) },
+]
+function t13ExpTrigTower() {
+  const q = pick([2, 3, 5, 7])
+  const opt = pick(ET4_R)
+  const cosKey = numToTrigKey(opt.rn / 2)
+  if (!cosKey) return null
+  const eq = `(${q * q}⟦sup:sin x⟧)⟦sup:cos x⟧ = ${q}⟦sup:${opt.r}sin x⟧`
+  const residual = (x) => (q * q) ** (Math.sin(x) * Math.cos(x)) - q ** (opt.rn * Math.sin(x))
+  return finishTrig(eq, [{ fn: "sin", key: "zero" }, { fn: "cos", key: cosKey }], residual)
+}
+
 // ── реестр ──────────────────────────────────────────────────────────────────
 export const GEN13 = [
   t13SinQuad, t13CosQuad, t13CosSqSinLin, t13SinSqCosLin,
@@ -834,6 +925,7 @@ export const GEN13 = [
   t13LogQuad, t13LogDiff,
   t13ProductAlgTrig, t13ProductSqrt,
   t13IrrSin, t13IrrCos,
+  t13ExpTrigProduct, t13ExpTrigSym, t13ExpTrigQuad, t13ExpTrigTower,
 ]
 
 export const META13 = [
@@ -869,6 +961,12 @@ export const META13 = [
   ["Иррациональные (тригонометрия под корнем)", [
     ["irr-sin", "sinx+√(C(1−cosx))=0 (ОДЗ sinx≤0)", t13IrrSin],
     ["irr-cos", "cosx+√(C(sinx+1))=0 (ОДЗ cosx≤0)", t13IrrCos],
+  ]],
+  ["Показательные × тригонометрия", [
+    ["et-product", "(ab)^E=a^E·b^F → tgx=±1", t13ExpTrigProduct],
+    ["et-sym", "p^T+p^{−T}=k → trig=±v / 0", t13ExpTrigSym],
+    ["et-quad", "a·(p²)^T+b·p^T+c=0 → trig=значения", t13ExpTrigQuad],
+    ["et-tower", "((q²)^sinx)^cosx=q^{r·sinx} → sinx=0∪cos=r/2", t13ExpTrigTower],
   ]],
 ]
 
