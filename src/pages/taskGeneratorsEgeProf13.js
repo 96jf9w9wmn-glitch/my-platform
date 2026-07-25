@@ -555,12 +555,113 @@ function t13ExpHomogQuad() {
   return assembleReal(eq, roots, residual, null)
 }
 
+// ============================================================================
+// СЕМЕЙСТВО «ЛОГАРИФМИЧЕСКИЕ» — алгебраический под-движок
+// ============================================================================
+
+// многочлен Ax²+bx+c как строка условия
+function qPoly(A, b, c) {
+  let s = A === 1 ? "x²" : `${A}x²`
+  if (b) s += ` ${b < 0 ? MINUS : "+"} ${Math.abs(b) === 1 ? "" : Math.abs(b)}x`
+  if (c) s += ` ${c < 0 ? MINUS : "+"} ${Math.abs(c)}`
+  return s
+}
+// финишер: собрать объект по готовому интервалу iv={L,R} (концы {num,text}).
+function finish(eq, allRoots, residual, iv, domainOK = null) {
+  const sorted = allRoots.slice().sort((p, q) => p.num - q.num)
+  const inside = sorted.filter((r) => r.num >= iv.L.num - 1e-9 && r.num <= iv.R.num + 1e-9)
+  return {
+    condition_text: `а) Решите уравнение\n${eq}`,
+    condition_tail: `б) Найдите корни, принадлежащие отрезку [${iv.L.text}; ${iv.R.text}].`,
+    answer: `а) ${sorted.map((r) => "x = " + r.text).join(";  ")}\nб) ${inside.map((r) => r.text).join(";  ")}`,
+    _verify: {
+      residual, realResidual: residual, domainOK, roots: inside.map((r) => r.num),
+      L: iv.L.num, R: iv.R.num, allRoots: sorted.map((r) => r.num),
+    },
+  }
+}
+// положительный отрезок (концы целые/√целое), ровно один корень
+function pickPosInterval(rootsNum) {
+  const cand = []
+  for (let i = 1; i <= 40; i++) cand.push({ num: i, text: intT(i) })
+  for (let k = 2; k <= 200; k++) { const s = Math.sqrt(k); if (Math.abs(s - Math.round(s)) > 1e-9) cand.push({ num: s, text: `√${k}` }) }
+  const opts = []
+  for (const L of cand) for (const Rr of cand) {
+    const w = Rr.num - L.num
+    if (w < 0.5 || w > 12) continue
+    if (rootsNum.filter((x) => x >= L.num - 1e-9 && x <= Rr.num + 1e-9).length === 1)
+      opts.push({ L, R: Rr, w, isSqrt: /√/.test(L.text) || /√/.test(Rr.text) })
+  }
+  if (!opts.length) return null
+  opts.sort((x, y) => (x.isSqrt - y.isSqrt) || (x.w - y.w))
+  return { L: opts[0].L, R: opts[0].R }
+}
+// целочисленный отрезок, ровно один корень
+function pickIntInterval(rootsNum) {
+  const cand = []
+  for (let i = -10; i <= 10; i++) cand.push({ num: i, text: intT(i) })
+  const opts = []
+  for (const L of cand) for (const Rr of cand) {
+    const w = Rr.num - L.num
+    if (w < 0.5 || w > 12) continue
+    if (rootsNum.filter((x) => x >= L.num - 1e-9 && x <= Rr.num + 1e-9).length === 1)
+      opts.push({ L, R: Rr, w })
+  }
+  if (!opts.length) return null
+  opts.sort((x, y) => x.w - y.w)
+  return { L: opts[0].L, R: opts[0].R }
+}
+
+// L1 — квадрат по t=log_a(x): A·log²_a x + B·log_a x + C = 0. Корни x=a^n (n целое >0).
+function t13LogQuad() {
+  const a = pick([2, 3, 5])
+  const pool = a === 5 ? [1, 2] : [1, 2, 3]
+  let n1 = pick(pool), n2 = pick(pool), g = 0
+  while (n2 === n1 && g++ < 10) n2 = pick(pool)
+  let A = 1, B = -(n1 + n2), C = n1 * n2
+  const gg = gcd(gcd(A, B), C) || 1; A /= gg; B /= gg; C /= gg
+  const eq = fmtQuad(A, B, C, `log²${subU(a)}x`, `log${subU(a)}x`)
+  const roots = [{ num: a ** n1, text: intT(a ** n1) }, { num: a ** n2, text: intT(a ** n2) }]
+  const residual = (x) => { const t = Math.log(x) / Math.log(a); return A * t * t + B * t + C }
+  const iv = pickPosInterval(roots.map((r) => r.num))
+  if (!iv) return null
+  return finish(eq, roots, residual, iv)
+}
+
+// L2 — log_a f = log_a g, f,g — квадратные многочлены (g положительно определён, f=g+T).
+// Уравнение ⟺ f=g ⟺ T=x²−Sx+P=0 → x=r1,r2. ОДЗ: f>0 и g>0 (в корнях выполнено, f=g>0).
+const BASE_INV = { 2: "0,5", 4: "0,25", 5: "0,2" }
+function t13LogDiff() {
+  const a = pick([2, 3, 4, 5])
+  let r1 = randInt(-5, 5), r2 = randInt(-5, 5), g = 0
+  while (r2 === r1 && g++ < 10) r2 = randInt(-5, 5)
+  const S = r1 + r2, P = r1 * r2
+  const beta = randInt(-4, 4)
+  const gamma = Math.floor(beta * beta / 4) + pick([1, 2, 3, 4])   // g положительно определён
+  const fB = beta - S, fC = gamma + P
+  const gStr = qPoly(1, beta, gamma), fStr = qPoly(2, fB, fC)
+  const lg = `log${subU(a)}`
+  const useSum = BASE_INV[a] && Math.random() < 0.5
+  const eq = useSum
+    ? `${lg}(${fStr}) + log${subU(BASE_INV[a])}(${gStr}) = 0`
+    : `${lg}(${fStr}) = ${lg}(${gStr})`
+  const gf = (x) => x * x + beta * x + gamma
+  const ff = (x) => 2 * x * x + fB * x + fC
+  const domainOK = (x) => ff(x) > 0 && gf(x) > 0
+  const residual = (x) => domainOK(x) ? Math.log(ff(x)) / Math.log(a) - Math.log(gf(x)) / Math.log(a) : NaN
+  const roots = [{ num: r1, text: intT(r1) }, { num: r2, text: intT(r2) }]
+  const iv = pickIntInterval(roots.map((r) => r.num))
+  if (!iv) return null
+  return finish(eq, roots, residual, iv, domainOK)
+}
+
 // ── реестр ──────────────────────────────────────────────────────────────────
 export const GEN13 = [
   t13SinQuad, t13CosQuad, t13CosSqSinLin, t13SinSqCosLin,
   t13Cos2xSin, t13Cos2xCos, t13CosSqMinusCos2x,
   t13FactorTgSin2x, t13FactorCtgSin2x, t13FactorSinMinusCos, t13FactorSinPlusCos, t13FactorCosTimesEq1,
   t13ExpSumPow, t13ExpQuadInAx, t13ExpHomogQuad,
+  t13LogQuad, t13LogDiff,
 ]
 
 export const META13 = [
@@ -584,6 +685,10 @@ export const META13 = [
     ["exp-sumpow", "a^(u+k)+a^u=N, u=x²+px (корни h±√M)", t13ExpSumPow],
     ["exp-quad-ax", "b^x−a^(x+s)+C=0 (t=aˣ → n и logₐ)", t13ExpQuadInAx],
     ["exp-homog", "P·(a²)^u+Q·(ab)^u+R·(b²)^u=0 (однородное)", t13ExpHomogQuad],
+  ]],
+  ["Логарифмические", [
+    ["log-quad", "A·log²ₐx+B·logₐx+C=0 (корни aⁿ)", t13LogQuad],
+    ["log-diff", "logₐf=logₐg, f,g квадратные (ОДЗ f,g>0)", t13LogDiff],
   ]],
 ]
 
