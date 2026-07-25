@@ -10,6 +10,11 @@
 // Формат объекта генератора: { condition_text, answer }.
 // Мат-токены: дробь ⟦f:n:d⟧, корень ⟦r:x⟧, индекс ⟦b:x⟧, надстрочник ⟦sup:x⟧ — разворачивает
 // renderTaskMath(). Юникод-степени ² ³ — через sup().
+//
+// №13 (развёрнутое, часть 2: а) решить уравнение, б) корни на отрезке) — в отдельном модуле
+// taskGeneratorsEgeProf13.js (свой решатель тригонометрии + численная самопроверка).
+
+import { GEN13, META13 } from "./taskGeneratorsEgeProf13"
 
 const randInt = (min, max) => min + Math.floor(Math.random() * (max - min + 1))
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)]
@@ -3998,6 +4003,7 @@ export const GENERATORS_EGE_PROF = {
     t12LnKxSegment, t12LnPowSegment, t12QuadLnSegment, t12TrigLinSegment, t12TrigPiSegment,
     t12TrigRootSegment, t12TanSegment, t12TrigProductPoint, t12ExpQuadInEx, t12QuadExpPoint,
     t12QuadExpSegment, t12LinExpSegment, t12RationalNegPoint, t12RationalRecipPoint, t12RationalSegment],
+  13: GEN13,
 }
 
 export const GEN_META_EGE_PROF = {
@@ -4305,4 +4311,5 @@ export const GEN_META_EGE_PROF = {
       ["lin-exp-seg", "Линейная × eˣ на отрезке", t12LinExpSegment],
       ["rat-seg", "(x²+a)/x на отрезке", t12RationalSegment],
     ]]],
+  13: META13,
 }
