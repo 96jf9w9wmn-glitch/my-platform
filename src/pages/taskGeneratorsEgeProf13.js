@@ -1214,15 +1214,17 @@ function makeArcSeries(fn, aR) {
     { arc: 1, basePi: R(0), sign: -1, alpha: ac, alphaText: `arccos(${aStr})`, Tpi: TWO_PI, genText: "" },
   ]
 }
-// перечислить арк-корни на [Ln;Rn] (численно) → [{num,text}]
-function enumArc(arcSeries, Ln, Rn) {
+// перечислить арк-корни на [Ln;Rn] (численно) → [{num,text}]; domainOK фильтрует
+function enumArc(arcSeries, Ln, Rn, domainOK = null) {
   const out = []
   for (const s of arcSeries) {
     const T = Rnum(s.Tpi), base = Rnum(s.basePi) + s.sign * s.alpha
     for (let n = Math.ceil((Ln - base) / T - 1e-9); n <= Math.floor((Rn - base) / T + 1e-9); n++) {
+      const num = base + T * n
+      if (domainOK && !domainOK(num)) continue
       const piPart = Radd(s.basePi, Rmuln(s.Tpi, n))
       const text = piPart.p === 0 ? `${s.sign > 0 ? "" : MINUS}${s.alphaText}` : `${fmtPi(piPart)} ${s.sign > 0 ? "+" : MINUS} ${s.alphaText}`
-      out.push({ num: base + T * n, text })
+      out.push({ num, text })
     }
   }
   return out
@@ -1237,7 +1239,7 @@ function finishArc(eq, rSeries, arcSeries, genParts, residual, domainOK = null) 
   for (let tries = 0; tries < 500; tries++) {
     const len = pick([2, 3, 4]), k = randInt(-10, 8)
     const L = R(k, 2), Rr = R(k + len, 2), Ln = Rnum(L), Rn = Rnum(Rr)
-    const rr = [...rootsInInterval(rSeries, L, Rr, domainOK).map((r) => ({ num: Rnum(r), text: fmtPi(r) })), ...enumArc(arcSeries, Ln, Rn)]
+    const rr = [...rootsInInterval(rSeries, L, Rr, domainOK).map((r) => ({ num: Rnum(r), text: fmtPi(r) })), ...enumArc(arcSeries, Ln, Rn, domainOK)]
     const ded = dedupSort(rr)
     if (ded.length >= 1 && ded.length <= 3) {
       return {
@@ -1291,6 +1293,36 @@ function t13ArcTan() {
   return finishArc(eq, [], arcS, genParts, makeResidualTan(q0.a, q0.b, q0.c), (x) => Math.abs(Math.cos(x)) > 1e-9)
 }
 
+// ============================================================================
+// СЕМЕЙСТВО «АРКИ В ОДНИХ ТОЧКАХ» — (триг)/(триг) = 0: знаменатель обнуляется ровно
+// на ОДНОЙ арк-ветви числителя (пифагорова тройка) → её исключаем.
+// ============================================================================
+
+const PYTH13 = [[3, 4, 5], [5, 12, 13], [8, 15, 17], [7, 24, 25], [20, 21, 29]]
+// (c·cosx − a)/(a·tgx + b) = 0 → cosx=a/c; ветвь −arccos (sinx=−b/c, tgx=−b/a) даёт знам.=0 → искл.
+function t13FracArcCosTg() {
+  let [a, b, c] = pick(PYTH13); if (Math.random() < 0.5)[a, b] = [b, a]   // любой катет — «cos»
+  const aR = R(a, c), ac = Math.acos(a / c), aStr = fracA(aR)
+  const eq = `⟦f:${c}cos x ${MINUS} ${a}:${a}tg x + ${b}⟧ = 0`
+  const arcS = [{ arc: 1, basePi: R(0), sign: 1, alpha: ac, alphaText: `arccos(${aStr})`, Tpi: TWO_PI, genText: `x = arccos(${aStr}) + 2πn` }]
+  const residual = (x) => c * Math.cos(x) - a
+  // порог знаменателя 0,05 (не 1e−9): исключённая ветвь −arccos совпадает с нулём знаменателя,
+  // и сетка полноты не попадает в него точно; легальные корни имеют |знам.| ≫ 0,05.
+  const domainOK = (x) => Math.abs(Math.cos(x)) > 1e-9 && Math.abs(a * Math.tan(x) + b) > 0.05
+  return finishArc(eq, [], arcS, [arcS[0].genText], residual, domainOK)
+}
+// (c·sin²x − a·sinx)/(c·cosx + b) = 0 → sinx=0 ∪ sinx=a/c; ветвь π−arcsin (cosx=−b/c) → знам.=0, искл.
+function t13FracArcSinCos() {
+  let [a, b, c] = pick(PYTH13); if (Math.random() < 0.5)[a, b] = [b, a]
+  const aR = R(a, c), asn = Math.asin(a / c), aStr = fracA(aR)
+  const eq = `⟦f:${c}sin²x ${MINUS} ${a}sin x:${c}cos x + ${b}⟧ = 0`
+  const arcS = [{ arc: 1, basePi: R(0), sign: 1, alpha: asn, alphaText: `arcsin(${aStr})`, Tpi: TWO_PI, genText: `x = arcsin(${aStr}) + 2πn` }]
+  const rSeries = seriesFor("sin", "zero")
+  const residual = (x) => Math.sin(x) * (c * Math.sin(x) - a)
+  const domainOK = (x) => Math.abs(c * Math.cos(x) + b) > 0.05   // см. пояснение в t13FracArcCosTg
+  return finishArc(eq, rSeries, arcS, ["x = πn", arcS[0].genText], residual, domainOK)
+}
+
 // ── реестр ──────────────────────────────────────────────────────────────────
 export const GEN13 = [
   t13SinQuad, t13CosQuad, t13CosSqSinLin, t13SinSqCosLin,
@@ -1307,6 +1339,7 @@ export const GEN13 = [
   t13Grouping,
   t13SumDiff,
   t13ArcSin, t13ArcCos, t13ArcTan,
+  t13FracArcCosTg, t13FracArcSinCos,
 ]
 
 export const META13 = [
@@ -1372,6 +1405,10 @@ export const META13 = [
     ["arcsin", "a·sin²x+b·sinx+c=0 → arcsin(«некруглое»)", t13ArcSin],
     ["arccos", "a·cos²x+b·cosx+c=0 → arccos(«некруглое»)", t13ArcCos],
     ["arctg", "a·tg²x+b·tgx+c=0 → arctg(«некруглое»)", t13ArcTan],
+  ]],
+  ["Арки в одних точках (дробь = 0)", [
+    ["frac-cos-tg", "(c·cosx−a)/(a·tgx+b)=0 → одна ветвь arccos", t13FracArcCosTg],
+    ["frac-sin-cos", "(c·sin²x−a·sinx)/(c·cosx+b)=0 → sinx=0∪одна ветвь arcsin", t13FracArcSinCos],
   ]],
 ]
 
