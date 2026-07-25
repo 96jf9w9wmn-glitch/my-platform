@@ -14,6 +14,8 @@ const OGE_PART2_ALGEBRA = [20, 21, 22]
 const OGE_PART2_GEOMETRY = [23, 24, 25]
 
 const EGE_SCORES = [0,6,11,17,22,27,34,40,46,52,58,64,70,72,74,76,78,80,82,84,86,88,90,92,94,95,96,97,98,99,100,100,100]
+// Профиль и базовый ЕГЭ используют единый поток части 2 (13–19, шкала EGE_SCORES); ОГЭ — свой.
+const isEgeType = (t) => t === "ЕГЭ" || t === "ЕГЭ Профиль"
 
 function getOgeGrade(total, geomScore) {
   if (total < 8 || geomScore < 2) return 2
@@ -142,7 +144,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
     }
 
     const tasksSnapshot = source === "bank"
-      ? bankPicked.map((t) => ({ number: t.number, condition_text: t.condition_text, image_url: t.image_url }))
+      ? bankPicked.map((t) => ({ number: t.number, condition_text: t.condition_text, condition_tail: t.condition_tail, image_url: t.image_url }))
       : null
 
     // Варианты ответа части 2 (ученик выбирает один из четырёх): у собранного из банка
@@ -413,8 +415,10 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
 }
 
 function EgeReview({ submission, variant, onClose, onSave }) {
-  const EGE_PART2_TASKS = [13,14,15,16,17,18,19]
   const EGE_PART2_MAX_SCORES = { 13:2, 14:3, 15:2, 16:2, 17:3, 18:4, 19:4 }
+  // задания части 2, реально вошедшие в вариант (в профильном ЕГЭ пока только №13)
+  const snap = [...new Set((variant?.tasks_snapshot || []).map((t) => t.number).filter((n) => EGE_PART2_MAX_SCORES[n]))].sort((a, b) => a - b)
+  const EGE_PART2_TASKS = snap.length ? snap : [13, 14, 15, 16, 17, 18, 19]
   const [scores, setScores] = useState(EGE_PART2_TASKS.reduce((acc, n) => ({ ...acc, [n]: submission.part2_score_detail?.[n] ?? "" }), {}))
   const [loading, setLoading] = useState(false)
 
@@ -469,7 +473,7 @@ function EgeReview({ submission, variant, onClose, onSave }) {
             </div>
           )}
           <div className="mb-4">
-            <label className="text-sm text-gray-500 mb-2 block">Баллы за задания 13–19</label>
+            <label className="text-sm text-gray-500 mb-2 block">Баллы за задания {EGE_PART2_TASKS.length === 1 ? `№${EGE_PART2_TASKS[0]}` : `${EGE_PART2_TASKS[0]}–${EGE_PART2_TASKS[EGE_PART2_TASKS.length - 1]}`}</label>
             <div className="flex flex-col gap-2">
               {EGE_PART2_TASKS.map((n) => (
                 <div key={n} className="flex items-center gap-3">
@@ -681,7 +685,7 @@ function Variants({ user, students = [], embedded = false, addOpen, onAddOpenCha
   function renderScore(sub) {
     if (sub.status === "pending") return "Ещё не выполнял"
     if (sub.status === "submitted") return "Часть 1 сдана · ждёт проверки"
-    if (selectedVariant?.type === "ЕГЭ") {
+    if (isEgeType(selectedVariant?.type)) {
       return "Первичный: " + sub.total_score + " · тестовый: " + getEgeTestScore(sub.total_score)
     }
     return "Итого: " + sub.total_score + " баллов · оценка " + getOgeGrade(sub.total_score, sub.geom_score || 0)
@@ -735,7 +739,7 @@ function Variants({ user, students = [], embedded = false, addOpen, onAddOpenCha
                   <button onClick={() => setSelectedVariant(v)} className="w-full text-left p-4">
                     <div className="flex items-center justify-between mb-1">
                       <div className="font-medium text-sm">{v.title}</div>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${v.type === "ЕГЭ" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}`}>{v.type}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isEgeType(v.type) ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}`}>{v.type}</span>
                     </div>
                     <div className="text-xs text-gray-400 mb-3">
                       {new Date(v.created_at).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}
@@ -783,7 +787,7 @@ function Variants({ user, students = [], embedded = false, addOpen, onAddOpenCha
                   <div className="flex items-center gap-2">
                     <button onClick={() => setSelectedVariant(null)} className="md:hidden text-blue-600 text-sm mr-1">← Назад</button>
                     <span className="font-medium text-base">{selectedVariant.title}</span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${selectedVariant.type === "ЕГЭ" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}`}>{selectedVariant.type}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isEgeType(selectedVariant.type) ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}`}>{selectedVariant.type}</span>
                   </div>
                   <span className="text-xs text-gray-400">{variantSubmissions.length} {plural(variantSubmissions.length, "ученик", "ученика", "учеников")}</span>
                 </div>
@@ -854,7 +858,7 @@ function Variants({ user, students = [], embedded = false, addOpen, onAddOpenCha
                           )}
                           {sub.status === "graded" && (
                             <span className="text-xs px-3 py-1 rounded-full bg-green-100 text-green-700 font-medium">
-                              {selectedVariant.type === "ЕГЭ"
+                              {isEgeType(selectedVariant.type)
                                 ? getEgeTestScore(sub.total_score) + " б"
                                 : "Оценка " + getOgeGrade(sub.total_score, sub.geom_score || 0)}
                             </span>
@@ -873,11 +877,11 @@ function Variants({ user, students = [], embedded = false, addOpen, onAddOpenCha
         <AddVariantModal tutorId={user.id} students={students} examFocus={user.profile?.exam_focus} onClose={() => setShowAdd(false)} onAdd={(v) => { setVariants((prev) => [v, ...prev]); setShowAdd(false) }} />
       )}
 
-      {selectedSubmission && selectedVariant?.type === "ЕГЭ" && (
+      {selectedSubmission && isEgeType(selectedVariant?.type) && (
         <EgeReview submission={selectedSubmission} variant={selectedVariant} onClose={() => setSelectedSubmission(null)} onSave={loadData} />
       )}
 
-      {selectedSubmission && selectedVariant?.type !== "ЕГЭ" && (
+      {selectedSubmission && !isEgeType(selectedVariant?.type) && (
         <SubmissionReview submission={selectedSubmission} variant={selectedVariant} onClose={() => setSelectedSubmission(null)} onSave={loadData} />
       )}
 

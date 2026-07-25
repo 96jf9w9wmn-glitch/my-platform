@@ -8,8 +8,10 @@ import { normalizeTaskImage } from "../utils"
 const healImages = (rows) => (rows || []).map((t) => t?.image_url ? { ...t, image_url: normalizeTaskImage(t.image_url) } : t)
 
 const NUMBERS_BY_TYPE = { "ОГЭ": 19, "ЕГЭ": 12, "ЕГЭ Профиль": 12 }
-// Номера части 2, входящие в собранный вариант (у ЕГЭ в приложении части 2 пока нет).
-const PART2_NUMBERS_BY_TYPE = { "ОГЭ": [20, 21, 22, 23, 24, 25] }
+// Номера части 2, входящие в собранный вариант. У ЕГЭ Профиль часть 2 начинается с №13
+// (развёрнутое: решение + фото, балл ставит репетитор); остальные 14–19 подключатся по мере
+// появления генераторов этих номеров.
+const PART2_NUMBERS_BY_TYPE = { "ОГЭ": [20, 21, 22, 23, 24, 25], "ЕГЭ Профиль": [13] }
 const MODULE_COUNT = 5   // задания 1–5 — связанный практический модуль (общий текст + рисунок)
 
 const shuffle = (arr) => {
@@ -83,9 +85,10 @@ export function makeAnswerChoices(answer) {
   return shuffle([src, ...shuffle(cands).slice(0, 3)])
 }
 
-// Заданию части 2 добавляются варианты ответа (ученик выбирает один из четырёх в кабинете).
+// Заданию части 2 ОГЭ добавляются варианты ответа (ученик выбирает один из четырёх).
+// У ЕГЭ Профиль часть 2 — развёрнутое решение (фото + балл репетитора), выбора ответа нет.
 const withChoices = (examType, t) =>
-  t && PART2_NUMBERS_BY_TYPE[examType]?.includes(t.number) && !t.choices
+  t && examType === "ОГЭ" && PART2_NUMBERS_BY_TYPE[examType]?.includes(t.number) && !t.choices
     ? { ...t, choices: makeAnswerChoices(t.answer) }
     : t
 

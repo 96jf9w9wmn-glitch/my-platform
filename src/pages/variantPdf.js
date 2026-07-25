@@ -256,6 +256,7 @@ export async function generateVariantPdf({ title, examType, tasks }) {
         <div style="font-weight:600; font-size:15px; margin-bottom:6px;">Задание ${t.number}</div>
         ${t.condition_text ? `<div style="font-size:14px; white-space:pre-wrap; line-height:1.5;">${await renderTaskMathPdf(t.condition_text)}</div>` : ""}
         ${images[i] ? `<img src="${images[i].dataUrl}" style="width:${images[i].width}px; display:block; margin-top:10px;" />` : ""}
+        ${t.condition_tail ? `<div style="font-size:14px; white-space:pre-wrap; line-height:1.5; margin-top:8px;">${await renderTaskMathPdf(t.condition_tail)}</div>` : ""}
       </div>`
     ))
   }

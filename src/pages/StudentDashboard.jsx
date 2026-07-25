@@ -9,6 +9,8 @@ import Chat from "./Chat"
 import StudentOnboardingModal from "../components/StudentOnboardingModal"
 const Board = lazy(() => import("../components/Board"))
 import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, formatPhone } from "../utils"
+// ЕГЭ (профиль и база) — единый поток части 2 (13–19); ОГЭ — свой (20–25).
+const isEgeType = (t) => t === "ЕГЭ" || t === "ЕГЭ Профиль"
 
 function Part2Upload({ taskNum, submissionId, existingUrl, chosen, onUpload }) {
   const [uploading, setUploading] = useState(false)
@@ -1153,9 +1155,15 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   const isGeneratedVariant = (selectedVariant?.tasks_snapshot?.length || 0) > 0
   // Часть 2 у варианта: номера заданий и 4 варианта ответа на каждый (см. Variants.jsx).
   // У №24 (доказательство) вариантов нет — только фото решения.
-  const part1Count = selectedVariant?.type === "ЕГЭ" ? 12 : 19
+  const part1Count = isEgeType(selectedVariant?.type) ? 12 : 19
   const variantChoices = selectedVariant?.answers?.part2_choices || {}
-  const part2TaskNums = selectedVariant?.type === "ЕГЭ" ? [13, 14, 15, 16, 17, 18, 19] : [20, 21, 22, 23, 24, 25]
+  // Номера части 2 берём из фактического состава варианта (в профильном ЕГЭ пока входит
+  // только №13); fallback на полный список — для старых вариантов без tasks_snapshot.
+  const part2FromSnapshot = [...new Set((selectedVariant?.tasks_snapshot || [])
+    .map((t) => t.number).filter((n) => n > part1Count))].sort((a, b) => a - b)
+  const part2TaskNums = part2FromSnapshot.length
+    ? part2FromSnapshot
+    : (isEgeType(selectedVariant?.type) ? [13, 14, 15, 16, 17, 18, 19] : [20, 21, 22, 23, 24, 25])
   // ?download → Supabase отдаёт файл с Content-Disposition: attachment (скачивание, а не открытие)
   const variantDownloadUrl = selectedVariant?.file_url
     ? selectedVariant.file_url + (selectedVariant.file_url.includes("?") ? "&" : "?") + "download"
@@ -1433,7 +1441,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     setSubmitting(true)
 
     const variant = selectedVariant
-    const maxCount = variant.type === "ЕГЭ" ? 12 : 19
+    const maxCount = isEgeType(variant.type) ? 12 : 19
     const correctAnswers = variant.answers?.part1 || []
     let score = 0
     part1Answers.forEach((ans, i) => {
@@ -1962,7 +1970,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                 {selectedVariant.submission.status === "pending" && isGeneratedVariant && (
                   <div className="glass p-5">
                     <h3 className="text-base font-medium mb-1">Реши вариант</h3>
-                    <p className="text-xs text-gray-500 mb-4">В части 1 впиши ответ, в части 2 выбери один из четырёх. Фото решений части 2 загрузишь после отправки.</p>
+                    <p className="text-xs text-gray-500 mb-4">{isEgeType(selectedVariant?.type) ? "В части 1 впиши ответ. Часть 2 реши на листе — фото решений загрузишь после отправки." : "В части 1 впиши ответ, в части 2 выбери один из четырёх. Фото решений части 2 загрузишь после отправки."}</p>
                     <div className="flex flex-col gap-3">
                       {selectedVariant.tasks_snapshot.map((t) => {
                         const isPart2 = t.number > part1Count
@@ -1974,6 +1982,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                             </div>
                             {t.condition_text && <div className="text-base whitespace-pre-wrap mb-2" dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_text) }} />}
                             {t.image_url && <img src={t.image_url} alt={`Задание ${t.number}`} className="max-w-full h-auto object-contain rounded-lg mb-2 bg-gray-50" />}
+                            {t.condition_tail && <div className="text-base whitespace-pre-wrap mb-2" dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_tail) }} />}
                             {!isPart2 && (
                               <input
                                 value={part1Answers[t.number - 1] || ""}
@@ -2125,7 +2134,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                     <div className="glass p-5">
                       <h3 className="text-base font-medium mb-3">Часть 2 — загрузи решения</h3>
                       <div className="text-xs text-gray-500 mb-4">
-                        Обязательно прикрепи фото или файл решения каждого задания ({part2TaskNums[0]}–{part2TaskNums[part2TaskNums.length - 1]}) — без него балл не начисляется
+                        Обязательно прикрепи фото или файл решения каждого задания ({part2TaskNums.length === 1 ? `№${part2TaskNums[0]}` : `${part2TaskNums[0]}–${part2TaskNums[part2TaskNums.length - 1]}`}) — без него балл не начисляется
                       </div>
                       <div className="flex flex-col gap-3">
                         {part2TaskNums.map((taskNum) => (
@@ -2150,7 +2159,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       <div className="text-sm font-medium text-green-700">Вариант проверен!</div>
                       <div className="text-3xl font-medium text-green-600 mt-2">{selectedVariant.submission.total_score} баллов</div>
                       <div className="text-sm text-green-500 mt-1">
-                        Часть 1: {selectedVariant.submission.part1_score} / {part1Count} · Часть 2: {selectedVariant.submission.part2_score} / {selectedVariant.type === "ЕГЭ" ? 20 : 12}
+                        Часть 1: {selectedVariant.submission.part1_score} / {part1Count} · Часть 2: {selectedVariant.submission.part2_score} / {isEgeType(selectedVariant.type) ? 20 : 12}
                       </div>
                     </div>
 
@@ -2193,7 +2202,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                             const chosen = selectedVariant.submission.part2_choices?.[n]
                             const correct = selectedVariant.answers?.part2?.[n]
                             const score = Number(selectedVariant.submission.part2_score_detail?.[n] || 0)
-                            const max = selectedVariant.type === "ЕГЭ" ? ({ 13: 2, 14: 3, 15: 2, 16: 2, 17: 3, 18: 4, 19: 4 })[n] : 2
+                            const max = isEgeType(selectedVariant.type) ? ({ 13: 2, 14: 3, 15: 2, 16: 2, 17: 3, 18: 4, 19: 4 })[n] : 2
                             return (
                               <div key={n} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${score >= max ? "bg-green-50" : score > 0 ? "bg-amber-50" : "bg-red-50"}`}>
                                 <span className="text-gray-500 w-6 flex-shrink-0">{n}</span>
@@ -2228,7 +2237,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                     {variants.map((v) => (
                       <button
                         key={v.id}
-                        onClick={() => { setSelectedVariant(v); setPart1Answers(Array(v.type === "ЕГЭ" ? 12 : 19).fill("")); setPart2Choices({}) }}
+                        onClick={() => { setSelectedVariant(v); setPart1Answers(Array(isEgeType(v.type) ? 12 : 19).fill("")); setPart2Choices({}) }}
                         className="text-left glass p-4 hover:bg-white/80 transition-colors w-full no-press press-tap"
                       >
                         <div className="flex justify-between items-center">
