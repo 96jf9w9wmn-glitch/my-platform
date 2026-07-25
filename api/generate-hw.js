@@ -6,8 +6,14 @@
 // добавить DEEPSEEK_API_KEY (значение — ключ из platform.deepseek.com).
 
 const DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
+// Актуальные имена моделей DeepSeek — deepseek-v4-pro / deepseek-v4-flash
+// (старое deepseek-chat отключено и отдаёт 400).
+const DEEPSEEK_MODEL = "deepseek-v4-pro"
 const MAX_COUNT = 20
 const MAX_TOPIC_LEN = 200
+
+// Генерация одного ДЗ укладывается в минуту; без этого функция режется дефолтным лимитом.
+export const config = { maxDuration: 60 }
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -75,19 +81,22 @@ export default async function handler(req, res) {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "deepseek-chat",
+        model: DEEPSEEK_MODEL,
         messages: [
           { role: "system", content: system },
           { role: "user", content: user },
         ],
         temperature: 0.7,
-        max_tokens: 2500,
+        // Без «размышлений»: с ними ответ идёт минуты и упирается в лимит функции.
+        thinking: { type: "disabled" },
+        max_tokens: 8000,
         response_format: { type: "json_object" },
       }),
     })
 
     if (!upstream.ok) {
       const text = await upstream.text()
+      console.error("DeepSeek error", upstream.status, text.slice(0, 500))
       res.status(502).json({ error: `DeepSeek: ${upstream.status}`, detail: text.slice(0, 300) })
       return
     }
