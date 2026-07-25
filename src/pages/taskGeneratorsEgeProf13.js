@@ -1184,6 +1184,113 @@ function t13SumDiff() {
   return finishSeries(eq, series, residual)
 }
 
+// ============================================================================
+// СЕМЕЙСТВО «АРКСИНУСЫ / АРККОСИНУСЫ / АРКТАНГЕНСЫ» — «некруглые» значения.
+// Квадрат по sin/cos/tg → корень = arcsin(a)/arccos(a)/arctg(a). Арк-серии несут
+// символьный угол; перечисление корней на отрезке — численно.
+// ============================================================================
+
+// «некруглая» дробь: |p/q|<1, q∈{3..7}, взаимно проста (не ½,0,±1)
+function makeUglyFrac() {
+  const q = pick([3, 4, 5, 6, 7]); let p = randInt(1, q - 1) * pick([1, -1]), g = 0
+  while (gcd(Math.abs(p), q) !== 1 && g++ < 20) p = randInt(1, q - 1) * pick([1, -1])
+  return R(p, q)
+}
+const fracA = (aR) => aR.q === 1 ? intT(aR.p) : `${aR.p < 0 ? MINUS : ""}${Math.abs(aR.p)}/${aR.q}`
+// арк-серии для fn=sin/cos/tg = aR (aR — R). Возвращают {basePi,sign,alpha,alphaText,Tpi,genText}.
+function makeArcSeries(fn, aR) {
+  const a = aR.p / aR.q, aStr = fracA(aR)
+  if (fn === "tg") return [{ arc: 1, basePi: R(0), sign: 1, alpha: Math.atan(a), alphaText: `arctg(${aStr})`, Tpi: PI, genText: `x = arctg(${aStr}) + πn` }]
+  if (fn === "sin") {
+    const al = Math.asin(a)
+    return [
+      { arc: 1, basePi: R(0), sign: 1, alpha: al, alphaText: `arcsin(${aStr})`, Tpi: TWO_PI, genText: `x = arcsin(${aStr}) + 2πn` },
+      { arc: 1, basePi: PI, sign: -1, alpha: al, alphaText: `arcsin(${aStr})`, Tpi: TWO_PI, genText: `x = π ${MINUS} arcsin(${aStr}) + 2πn` },
+    ]
+  }
+  const ac = Math.acos(a)                                    // cos
+  return [
+    { arc: 1, basePi: R(0), sign: 1, alpha: ac, alphaText: `arccos(${aStr})`, Tpi: TWO_PI, genText: `x = ±arccos(${aStr}) + 2πn` },
+    { arc: 1, basePi: R(0), sign: -1, alpha: ac, alphaText: `arccos(${aStr})`, Tpi: TWO_PI, genText: "" },
+  ]
+}
+// перечислить арк-корни на [Ln;Rn] (численно) → [{num,text}]
+function enumArc(arcSeries, Ln, Rn) {
+  const out = []
+  for (const s of arcSeries) {
+    const T = Rnum(s.Tpi), base = Rnum(s.basePi) + s.sign * s.alpha
+    for (let n = Math.ceil((Ln - base) / T - 1e-9); n <= Math.floor((Rn - base) / T + 1e-9); n++) {
+      const piPart = Radd(s.basePi, Rmuln(s.Tpi, n))
+      const text = piPart.p === 0 ? `${s.sign > 0 ? "" : MINUS}${s.alphaText}` : `${fmtPi(piPart)} ${s.sign > 0 ? "+" : MINUS} ${s.alphaText}`
+      out.push({ num: base + T * n, text })
+    }
+  }
+  return out
+}
+const dedupSort = (arr) => {
+  const m = new Map()
+  for (const r of arr) { const k = Math.round(r.num * 1e6); if (!m.has(k)) m.set(k, r) }
+  return [...m.values()].sort((a, b) => a.num - b.num)
+}
+// сборка: rSeries (рациональные π-серии), arcSeries; genParts — тексты общего решения.
+function finishArc(eq, rSeries, arcSeries, genParts, residual, domainOK = null) {
+  for (let tries = 0; tries < 500; tries++) {
+    const len = pick([2, 3, 4]), k = randInt(-10, 8)
+    const L = R(k, 2), Rr = R(k + len, 2), Ln = Rnum(L), Rn = Rnum(Rr)
+    const rr = [...rootsInInterval(rSeries, L, Rr, domainOK).map((r) => ({ num: Rnum(r), text: fmtPi(r) })), ...enumArc(arcSeries, Ln, Rn)]
+    const ded = dedupSort(rr)
+    if (ded.length >= 1 && ded.length <= 3) {
+      return {
+        condition_text: `а) Решите уравнение\n${eq}`,
+        condition_tail: `б) Найдите корни, принадлежащие отрезку [${fmtPiCond(L)}; ${fmtPiCond(Rr)}].`,
+        answer: `а) ${genParts.join(",  ")}, n ∈ ℤ\nб) ${ded.map((r) => r.text).join(";  ")}`,
+        _verify: { residual, realResidual: residual, domainOK, roots: ded.map((r) => r.num), L: Ln, R: Rn },
+      }
+    }
+  }
+  return null
+}
+// приведённая (без полюсов) форма для tg-квадрата: a·sin²+b·sin·cos+c·cos² (нули = tg=корни)
+function makeResidualTan(a, b, c) {
+  return (x) => { const s = Math.sin(x), co = Math.cos(x); return a * s * s + b * s * co + c * co * co }
+}
+
+function t13ArcSin() {
+  const uR = makeUglyFrac()
+  const nice = Math.random() < 0.5
+  const v2key = nice ? pick(["half", "neghalf", "one", "negone"]) : null
+  const v2R = nice ? AS_R[v2key] : pick(EXTRAN)
+  const q0 = buildQuadFromRoots([uR, v2R])
+  const eq = fmtQuad(q0.a, q0.b, q0.c, "sin²x", "sin x")
+  const arcS = makeArcSeries("sin", uR)
+  const rSeries = nice ? seriesFor("sin", v2key) : []
+  const genParts = [...arcS.filter((s) => s.genText).map((s) => s.genText), ...(nice ? [textFor("sin", v2key)] : [])]
+  return finishArc(eq, rSeries, arcS, genParts, makeResidual("sin", q0.a, q0.b, q0.c))
+}
+function t13ArcCos() {
+  const uR = makeUglyFrac()
+  const nice = Math.random() < 0.5
+  const v2key = nice ? pick(["half", "neghalf", "one", "negone"]) : null
+  const v2R = nice ? AS_R[v2key] : pick(EXTRAN)
+  const q0 = buildQuadFromRoots([uR, v2R])
+  const eq = fmtQuad(q0.a, q0.b, q0.c, "cos²x", "cos x")
+  const arcS = makeArcSeries("cos", uR)
+  const rSeries = nice ? seriesFor("cos", v2key) : []
+  const genParts = [...arcS.filter((s) => s.genText).map((s) => s.genText), ...(nice ? [textFor("cos", v2key)] : [])]
+  return finishArc(eq, rSeries, arcS, genParts, makeResidual("cos", q0.a, q0.b, q0.c))
+}
+const TAN_UGLY = [R(2), R(3), R(-2), R(-3), R(1, 3), R(-1, 3), R(2, 3), R(3, 2), R(-3, 2)]
+function t13ArcTan() {
+  const u1 = pick(TAN_UGLY)
+  let u2 = pick(TAN_UGLY), g = 0
+  while ((u2.p * u1.q === u1.p * u2.q) && g++ < 20) u2 = pick(TAN_UGLY)
+  const q0 = buildQuadFromRoots([u1, u2])
+  const eq = fmtQuad(q0.a, q0.b, q0.c, "tg²x", "tg x")
+  const arcS = [...makeArcSeries("tg", u1), ...makeArcSeries("tg", u2)]
+  const genParts = arcS.map((s) => s.genText)
+  return finishArc(eq, [], arcS, genParts, makeResidualTan(q0.a, q0.b, q0.c), (x) => Math.abs(Math.cos(x)) > 1e-9)
+}
+
 // ── реестр ──────────────────────────────────────────────────────────────────
 export const GEN13 = [
   t13SinQuad, t13CosQuad, t13CosSqSinLin, t13SinSqCosLin,
@@ -1199,6 +1306,7 @@ export const GEN13 = [
   t13Rational,
   t13Grouping,
   t13SumDiff,
+  t13ArcSin, t13ArcCos, t13ArcTan,
 ]
 
 export const META13 = [
@@ -1259,6 +1367,11 @@ export const META13 = [
   ]],
   ["Сумма / разность sin, cos", [
     ["sum-diff", "sin px ± sin qx = 0 → произведение", t13SumDiff],
+  ]],
+  ["Арксинусы / арккосинусы / арктангенсы", [
+    ["arcsin", "a·sin²x+b·sinx+c=0 → arcsin(«некруглое»)", t13ArcSin],
+    ["arccos", "a·cos²x+b·cosx+c=0 → arccos(«некруглое»)", t13ArcCos],
+    ["arctg", "a·tg²x+b·tgx+c=0 → arctg(«некруглое»)", t13ArcTan],
   ]],
 ]
 
