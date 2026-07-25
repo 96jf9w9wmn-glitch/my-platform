@@ -4,9 +4,8 @@
 // воспроизводит реальный тип задания банка (та же формулировка, свои числа); правильный
 // ответ считается кодом (или РЕШАЕТСЯ из показанных чисел), поэтому гарантированно верен.
 //
-// Этап 1 — задания без чертежей (номера 2,4,5,6,7,9,10,12) + №3 стереометрия
-// со СВОИМИ SVG-чертежами тел (эталон — 49 задач банка ФИПИ, Задание 3).
-// №1 планиметрия без чертежа не бывает → пока не входит.
+// Этап 1 — задания без чертежей (номера 2,4,5,6,7,9,10,12).
+// №1 планиметрия — со своими SVG-чертежами.
 // Формат объекта генератора: { condition_text, answer }.
 // Мат-токены: дробь ⟦f:n:d⟧, корень ⟦r:x⟧, индекс ⟦b:x⟧, надстрочник ⟦sup:x⟧ — разворачивает
 // renderTaskMath(). Юникод-степени ² ³ — через sup().
@@ -2712,586 +2711,9 @@ function t8areaGivenF() {
   }
 }
 
-// ============================================================================
-// №3 — СТЕРЕОМЕТРИЯ (объёмы и площади; чертёж обязателен)
-// Эталон — 49 задач открытого банка ФИПИ (ЕГЭ Профиль, Задание 3) + классический
-// реальный тип «многогранник из единичных кубов». Ответ считается кодом.
-// ============================================================================
-
-// Чертежи 1-в-1 с ФИПИ: всё чёрное, выделенное тело — жирным чёрным (без заливки/синего),
-// скрытые рёбра — штрихом, размеры на фигуру НЕ наносятся (они в тексте).
-const ST_INK = "#000", ST_HI = "#000", ST_FILL = "none"
-const VSUB = { A: "A", B: "B", C: "C", D: "D", A1: "A₁", B1: "B₁", C1: "C₁", D1: "D₁" }
-const BOXNAME = "ABCDA₁B₁C₁D₁", PRISMNAME = "ABCA₁B₁C₁"
-const R2 = rT(2)  // √2
-
+// SVG-обёртка (используется чертежами планиметрии №1)
 function stWrap(W, H, body) {
   return `<svg xmlns="http://www.w3.org/2000/svg" font-family="Arial, sans-serif" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${body}</svg>`
-}
-function stEdge(p, q, dash) {
-  return `<line x1="${clean(p[0])}" y1="${clean(p[1])}" x2="${clean(q[0])}" y2="${clean(q[1])}" stroke="${ST_INK}" stroke-width="1.4"${dash ? ' stroke-dasharray="5 4"' : ""}/>`
-}
-// Выделенное тело: жирные чёрные рёбра (без заливки), ФИПИ-вид. dash=true → скрытые рёбра штрихом.
-function stPoly(pts, _fill, dash) {
-  return `<polygon points="${pts.map(p => clean(p[0]) + "," + clean(p[1])).join(" ")}" fill="none" stroke="${ST_INK}" stroke-width="2.6" stroke-linejoin="round"${dash ? ' stroke-dasharray="6 4"' : ""}/>`
-}
-// Подпись у точки/ребра, отодвинутая от центроида фигуры наружу.
-function stLabelOut(p, cen, text, off, big) {
-  const dx = p[0] - cen[0], dy = p[1] - cen[1], L = Math.hypot(dx, dy) || 1
-  const x = p[0] + dx / L * off, y = p[1] + dy / L * off + (big ? 5 : 4)
-  return `<text x="${clean(x)}" y="${clean(y)}" ${HALO} font-size="${big ? 15 : 13}"${big ? ' font-style="italic" font-weight="bold"' : ""} fill="${ST_INK}" text-anchor="middle">${text}</text>`
-}
-
-// ── Прямоугольный параллелепипед / куб ──────────────────────────────────────
-// highlight: массив граней (имён вершин); edgeLabels: {AB:"7",...}; cube: квадрат.
-function stBox({ highlight = [], edgeLabels = {}, cube = false } = {}) {
-  const W = 120, H = cube ? 120 : 95, d = [46, -30]
-  const A = [58, cube ? 190 : 195], B = [A[0] + W, A[1]], A1 = [A[0], A[1] - H], B1 = [B[0], B[1] - H]
-  const D = [A[0] + d[0], A[1] + d[1]], C = [B[0] + d[0], B[1] + d[1]]
-  const D1 = [A1[0] + d[0], A1[1] + d[1]], C1 = [B1[0] + d[0], B1[1] + d[1]]
-  const V = { A, B, C, D, A1, B1, C1, D1 }
-  const names = Object.keys(V)
-  const cen = [names.reduce((s, n) => s + V[n][0], 0) / 8, names.reduce((s, n) => s + V[n][1], 0) / 8]
-  let g = ""
-  for (const face of highlight) { const f = Array.isArray(face) ? face : face.f; g += stPoly(f.map(n => V[n]), ST_FILL, Array.isArray(face) ? false : face.dash) }
-  const E = [["A", "B", 0], ["B", "C", 0], ["C", "D", 1], ["D", "A", 1],
-  ["A1", "B1", 0], ["B1", "C1", 0], ["C1", "D1", 0], ["D1", "A1", 0],
-  ["A", "A1", 0], ["B", "B1", 0], ["C", "C1", 0], ["D", "D1", 1]]
-  for (const [p, q, hid] of E) g += stEdge(V[p], V[q], hid)
-  // Размеры на фигуру банка НЕ наносим (в чистых чертежах ФИПИ их нет — они в тексте).
-  void edgeLabels
-  for (const n of names) g += stLabelOut(V[n], cen, VSUB[n], 12, true)
-  return stWrap(290, cube ? 230 : 230, g)
-}
-// грани пирамиды: основание ABCD + боковые треугольники к вершине apex
-function stPyrFaces(apex) {
-  const base = ["A", "B", "C", "D"]
-  // основание ABCD — сплошным; боковые рёбра к вершине — штрихом (ФИПИ-вид).
-  const f = [base.slice()]
-  for (let i = 0; i < 4; i++) f.push({ f: [base[i], base[(i + 1) % 4], apex], dash: true })
-  return f
-}
-
-// ── Правильная треугольная призма ABCA₁B₁C₁ ─────────────────────────────────
-function stPrism3({ highlight = [], midline = false } = {}) {
-  const hgt = 105
-  const A = [55, 205], B = [178, 190], C = [120, 156]
-  const A1 = [A[0], A[1] - hgt], B1 = [B[0], B[1] - hgt], C1 = [C[0], C[1] - hgt]
-  const V = { A, B, C, A1, B1, C1 }
-  const names = Object.keys(V)
-  const cen = [names.reduce((s, n) => s + V[n][0], 0) / 6, names.reduce((s, n) => s + V[n][1], 0) / 6]
-  let g = ""
-  for (const face of highlight) g += stPoly(face.map(n => V[n]), ST_FILL)
-  if (midline) {
-    const M = [(A[0] + C[0]) / 2, (A[1] + C[1]) / 2], N = [(B[0] + C[0]) / 2, (B[1] + C[1]) / 2]
-    const M1 = [M[0], M[1] - hgt], N1 = [N[0], N[1] - hgt]
-    g += stPoly([M1, N1, [C[0], C[1] - hgt]], ST_FILL)
-    g += stEdge(M, N, 0); g += stEdge(M1, N1, 0); g += stEdge(M, M1, 0); g += stEdge(N, N1, 0)
-  }
-  const E = [["A", "B", 0], ["B", "C", 0], ["C", "A", 1],
-  ["A1", "B1", 0], ["B1", "C1", 0], ["C1", "A1", 0],
-  ["A", "A1", 0], ["B", "B1", 0], ["C", "C1", 0]]
-  for (const [p, q, hid] of E) g += stEdge(V[p], V[q], hid)
-  for (const n of names) g += stLabelOut(V[n], cen, VSUB[n], 12, true)
-  return stWrap(250, 235, g)
-}
-
-// ── Цилиндр / конус / шар и комбинации ──────────────────────────────────────
-function stCone() {
-  const rx = 55, ry = 13, cx = 90, apexY = 35, cyb = 170
-  let g = `<line x1="${cx - rx}" y1="${cyb}" x2="${cx}" y2="${apexY}" stroke="${ST_INK}" stroke-width="1.7"/><line x1="${cx + rx}" y1="${cyb}" x2="${cx}" y2="${apexY}" stroke="${ST_INK}" stroke-width="1.7"/>`
-  g += `<path d="M${cx - rx} ${cyb} A${rx} ${ry} 0 0 0 ${cx + rx} ${cyb}" fill="none" stroke="${ST_INK}" stroke-width="1.7" stroke-dasharray="5 4"/><path d="M${cx - rx} ${cyb} A${rx} ${ry} 0 0 1 ${cx + rx} ${cyb}" fill="none" stroke="${ST_INK}" stroke-width="1.7"/>`
-  return stWrap(180, 200, g)
-}
-function stCylCone() {
-  const rx = 55, ry = 13, cx = 95, cyt = 45, cyb = 165
-  let g = `<line x1="${cx - rx}" y1="${cyt}" x2="${cx - rx}" y2="${cyb}" stroke="${ST_INK}" stroke-width="1.7"/><line x1="${cx + rx}" y1="${cyt}" x2="${cx + rx}" y2="${cyb}" stroke="${ST_INK}" stroke-width="1.7"/>`
-  g += `<path d="M${cx - rx} ${cyb} A${rx} ${ry} 0 0 0 ${cx + rx} ${cyb}" fill="none" stroke="${ST_INK}" stroke-width="1.7" stroke-dasharray="5 4"/><path d="M${cx - rx} ${cyb} A${rx} ${ry} 0 0 1 ${cx + rx} ${cyb}" fill="none" stroke="${ST_INK}" stroke-width="1.7"/>`
-  g += `<ellipse cx="${cx}" cy="${cyt}" rx="${rx}" ry="${ry}" fill="none" stroke="${ST_INK}" stroke-width="1.7"/>`
-  g += `<line x1="${cx - rx}" y1="${cyb}" x2="${cx}" y2="${cyt}" stroke="${ST_HI}" stroke-width="1.7"/><line x1="${cx + rx}" y1="${cyb}" x2="${cx}" y2="${cyt}" stroke="${ST_HI}" stroke-width="1.7"/>`
-  g += `<circle cx="${cx}" cy="${cyt}" r="2.6" fill="${ST_INK}"/>`
-  return stWrap(190, 195, g)
-}
-function stTwoCyl() {
-  const c1 = `<g>` + (() => {
-    const rx = 38, ry = 12, cx = 60, cyt = 45, cyb = 165
-    let g = `<line x1="${cx - rx}" y1="${cyt}" x2="${cx - rx}" y2="${cyb}" stroke="${ST_INK}" stroke-width="1.7"/><line x1="${cx + rx}" y1="${cyt}" x2="${cx + rx}" y2="${cyb}" stroke="${ST_INK}" stroke-width="1.7"/>`
-    g += `<path d="M${cx - rx} ${cyb} A${rx} ${ry} 0 0 0 ${cx + rx} ${cyb}" fill="none" stroke="${ST_INK}" stroke-width="1.7" stroke-dasharray="5 4"/><path d="M${cx - rx} ${cyb} A${rx} ${ry} 0 0 1 ${cx + rx} ${cyb}" fill="none" stroke="${ST_INK}" stroke-width="1.7"/><ellipse cx="${cx}" cy="${cyt}" rx="${rx}" ry="${ry}" fill="none" stroke="${ST_INK}" stroke-width="1.7"/>`
-    g += `<text x="${cx}" y="185" ${HALO} font-size="13" fill="${ST_INK}" text-anchor="middle">1</text>`
-    return g
-  })() + `</g>`
-  const c2 = (() => {
-    const rx = 58, ry = 16, cx = 195, cyt = 125, cyb = 165
-    let g = `<line x1="${cx - rx}" y1="${cyt}" x2="${cx - rx}" y2="${cyb}" stroke="${ST_HI}" stroke-width="1.7"/><line x1="${cx + rx}" y1="${cyt}" x2="${cx + rx}" y2="${cyb}" stroke="${ST_HI}" stroke-width="1.7"/>`
-    g += `<path d="M${cx - rx} ${cyb} A${rx} ${ry} 0 0 0 ${cx + rx} ${cyb}" fill="none" stroke="${ST_HI}" stroke-width="1.7" stroke-dasharray="5 4"/><path d="M${cx - rx} ${cyb} A${rx} ${ry} 0 0 1 ${cx + rx} ${cyb}" fill="none" stroke="${ST_HI}" stroke-width="1.7"/><ellipse cx="${cx}" cy="${cyt}" rx="${rx}" ry="${ry}" fill="none" stroke="${ST_HI}" stroke-width="1.7"/>`
-    g += `<text x="${cx}" y="185" ${HALO} font-size="13" fill="${ST_INK}" text-anchor="middle">2</text>`
-    return g
-  })()
-  return stWrap(275, 200, c1 + c2)
-}
-function stSphere({ section = false } = {}) {
-  const R = 70, cx = 90, cy = 92
-  let g = `<circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="${ST_INK}" stroke-width="1.7"/>`
-  g += `<ellipse cx="${cx}" cy="${cy}" rx="${R}" ry="${R * 0.28}" fill="${section ? ST_FILL : "none"}" stroke="${section ? ST_HI : ST_INK}" stroke-width="${section ? 1.9 : 1.3}"${section ? "" : ' stroke-dasharray="5 4"'}/>`
-  return stWrap(180, 184, g)
-}
-function stSphereInCyl() {
-  // Пропорции как у ФИПИ: почти квадратный силуэт, плоские эллипсы (ФИПИ-вид).
-  const R = 56, rx = R, ry = 11, cx = 95, cyt = 26, cyb = cyt + 2 * R, cyc = cyt + R
-  let g = `<line x1="${cx - rx}" y1="${cyt}" x2="${cx - rx}" y2="${cyb}" stroke="${ST_INK}" stroke-width="1.7"/><line x1="${cx + rx}" y1="${cyt}" x2="${cx + rx}" y2="${cyb}" stroke="${ST_INK}" stroke-width="1.7"/>`
-  g += `<path d="M${cx - rx} ${cyb} A${rx} ${ry} 0 0 0 ${cx + rx} ${cyb}" fill="none" stroke="${ST_INK}" stroke-width="1.7" stroke-dasharray="5 4"/><path d="M${cx - rx} ${cyb} A${rx} ${ry} 0 0 1 ${cx + rx} ${cyb}" fill="none" stroke="${ST_INK}" stroke-width="1.7"/><ellipse cx="${cx}" cy="${cyt}" rx="${rx}" ry="${ry}" fill="none" stroke="${ST_INK}" stroke-width="1.7"/>`
-  g += `<circle cx="${cx}" cy="${cyc}" r="${R}" fill="none" stroke="${ST_HI}" stroke-width="1.8"/><ellipse cx="${cx}" cy="${cyc}" rx="${R}" ry="${ry}" fill="none" stroke="${ST_HI}" stroke-width="1.2" stroke-dasharray="4 3"/>`
-  g += `<circle cx="${cx}" cy="${cyc}" r="2.2" fill="${ST_INK}"/>`
-  return stWrap(190, cyb + ry + 12, g)
-}
-function stConeInSphere() {
-  const R = 64, cx = 90, cy = 92
-  let g = `<circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="${ST_INK}" stroke-width="1.7"/>`
-  // конус целиком внутри шара → образующие и основание скрыты (пунктир, ФИПИ-вид)
-  g += `<line x1="${cx - R}" y1="${cy}" x2="${cx}" y2="${cy - R}" stroke="${ST_HI}" stroke-width="1.8" stroke-dasharray="5 4"/><line x1="${cx + R}" y1="${cy}" x2="${cx}" y2="${cy - R}" stroke="${ST_HI}" stroke-width="1.8" stroke-dasharray="5 4"/>`
-  g += `<ellipse cx="${cx}" cy="${cy}" rx="${R}" ry="${R * 0.28}" fill="none" stroke="${ST_HI}" stroke-width="1.5" stroke-dasharray="5 4"/>`
-  g += `<circle cx="${cx}" cy="${cy}" r="2.2" fill="${ST_INK}"/><circle cx="${cx}" cy="${cy - R}" r="2.2" fill="${ST_INK}"/>`
-  return stWrap(180, 184, g)
-}
-function stConeCircumSphere() {
-  const R = 60, cx = 95, cy = 105, ry = R * 0.28
-  let g = `<circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="${ST_INK}" stroke-width="1.3"/>`
-  g += `<line x1="${cx - R}" y1="${cy}" x2="${cx}" y2="${cy - R}" stroke="${ST_HI}" stroke-width="1.8"/><line x1="${cx + R}" y1="${cy}" x2="${cx}" y2="${cy - R}" stroke="${ST_HI}" stroke-width="1.8"/>`
-  g += `<path d="M${cx - R} ${cy} A${R} ${ry} 0 0 0 ${cx + R} ${cy}" fill="none" stroke="${ST_HI}" stroke-width="1.8" stroke-dasharray="4 3"/><path d="M${cx - R} ${cy} A${R} ${ry} 0 0 1 ${cx + R} ${cy}" fill="none" stroke="${ST_HI}" stroke-width="1.8"/>`
-  g += `<circle cx="${cx}" cy="${cy}" r="2.6" fill="${ST_INK}"/>`
-  return stWrap(190, 190, g)
-}
-function stCubeCut() {
-  const W = 118, H = 118, d = [44, -30]
-  const A = [55, 188], B = [A[0] + W, A[1]], A1 = [A[0], A[1] - H], B1 = [B[0], B[1] - H]
-  const D = [A[0] + d[0], A[1] + d[1]], C = [B[0] + d[0], B[1] + d[1]]
-  const D1 = [A1[0] + d[0], A1[1] + d[1]], C1 = [B1[0] + d[0], B1[1] + d[1]]
-  const V = { A, B, C, D, A1, B1, C1, D1 }
-  const mid = (p, q) => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2]
-  const P = mid(A, B), Q = mid(B, C), T = mid(B, B1)
-  let g = stPoly([P, Q, T], ST_FILL)
-  const E = [["A", "B", 0], ["B", "C", 0], ["C", "D", 1], ["D", "A", 1],
-  ["A1", "B1", 0], ["B1", "C1", 0], ["C1", "D1", 0], ["D1", "A1", 0],
-  ["A", "A1", 0], ["B", "B1", 0], ["C", "C1", 0], ["D", "D1", 1]]
-  for (const [p, q, hid] of E) g += stEdge(V[p], V[q], hid)
-  g += stEdge(P, Q, 0); g += stEdge(Q, T, 0); g += stEdge(T, P, 0)
-  return stWrap(280, 225, g)
-}
-// Скошенный (аффинный) эллипс: P(θ)=центр + cosθ·(ax,ay) + sinθ·(bx,by).
-// (ax,ay),(bx,by) — сопряжённые полуоси; путём, чтобы толщина штриха не искажалась.
-function stShearEllipse(cx, cy, ax, ay, bx, by, dash) {
-  let dd = ""
-  for (let i = 0; i <= 72; i++) {
-    const t = i / 72 * 2 * Math.PI
-    const x = cx + Math.cos(t) * ax + Math.sin(t) * bx, y = cy + Math.cos(t) * ay + Math.sin(t) * by
-    dd += (i ? "L" : "M") + clean(x) + " " + clean(y) + " "
-  }
-  return `<path d="${dd}Z" fill="none" stroke="${ST_HI}" stroke-width="1.7"${dash ? ' stroke-dasharray="6 5"' : ""}/>`
-}
-function stCylInPar() {
-  const W = 120, H = 120, d = [46, -30]
-  const A = [55, 195], B = [A[0] + W, A[1]], A1 = [A[0], A[1] - H], B1 = [B[0], B[1] - H]
-  const D = [A[0] + d[0], A[1] + d[1]], C = [B[0] + d[0], B[1] + d[1]]
-  const D1 = [A1[0] + d[0], A1[1] + d[1]], C1 = [B1[0] + d[0], B1[1] + d[1]]
-  const V = { A, B, C, D, A1, B1, C1, D1 }
-  const ct = [(A1[0] + C1[0]) / 2, (A1[1] + C1[1]) / 2], cb = [(A[0] + C[0]) / 2, (A[1] + C[1]) / 2]
-  let g = ""
-  const E = [["A", "B", 0], ["B", "C", 0], ["C", "D", 1], ["D", "A", 1],
-  ["A1", "B1", 0], ["B1", "C1", 0], ["C1", "D1", 0], ["D1", "A1", 0],
-  ["A", "A1", 0], ["B", "B1", 0], ["C", "C1", 0], ["D", "D1", 1]]
-  for (const [p, q, hid] of E) g += stEdge(V[p], V[q], hid)
-  // вписанный эллипс грани = эллипс Штейнера: полуоси = половины сторон параллелограмма
-  const ax = W / 2, ay = 0, bx = d[0] / 2, by = d[1] / 2
-  const amp = Math.hypot(ax, bx), yo = (ay * ax + by * bx) / amp   // точка силуэта (крайняя по x)
-  // образующие — по силуэтным точкам оснований
-  g += `<line x1="${clean(cb[0] + amp)}" y1="${clean(cb[1] + yo)}" x2="${clean(ct[0] + amp)}" y2="${clean(ct[1] + yo)}" stroke="${ST_HI}" stroke-width="1.7"/>`
-  g += `<line x1="${clean(cb[0] - amp)}" y1="${clean(cb[1] - yo)}" x2="${clean(ct[0] - amp)}" y2="${clean(ct[1] - yo)}" stroke="${ST_HI}" stroke-width="1.7"/>`
-  g += stShearEllipse(ct[0], ct[1], ax, ay, bx, by, false)
-  g += stShearEllipse(cb[0], cb[1], ax, ay, bx, by, true)
-  return stWrap(280, 235, g)
-}
-// Многогранник из единичных кубов (изометрия). cells: [[x,y,z],...].
-function stCubes(cells) {
-  const s = 24
-  const ux = [s * 0.92, s * 0.5], uy = [-s * 0.92, s * 0.5], uz = [0, -s]
-  const P = (x, y, z) => [x * ux[0] + y * uy[0] + z * uz[0], x * ux[1] + y * uy[1] + z * uz[1]]
-  const occ = new Set(cells.map(c => c.join(",")))
-  const has = (x, y, z) => occ.has([x, y, z].join(","))
-  let minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9
-  for (const [x, y, z] of cells) for (const dx of [0, 1]) for (const dy of [0, 1]) for (const dz of [0, 1]) {
-    const p = P(x + dx, y + dy, z + dz)
-    minX = Math.min(minX, p[0]); maxX = Math.max(maxX, p[0]); minY = Math.min(minY, p[1]); maxY = Math.max(maxY, p[1])
-  }
-  const ox = 16 - minX, oy = 16 - minY
-  const pt = (x, y, z) => { const p = P(x, y, z); return [clean(p[0] + ox), clean(p[1] + oy)] }
-  const face = (pts, shade) => `<polygon points="${pts.map(p => p[0] + "," + p[1]).join(" ")}" fill="${shade}" stroke="${ST_INK}" stroke-width="1.3" stroke-linejoin="round"/>`
-  const order = cells.slice().sort((a, b) => (a[0] + a[1] + a[2]) - (b[0] + b[1] + b[2]))
-  let g = ""
-  for (const [x, y, z] of order) {
-    if (!has(x, y, z + 1)) g += face([pt(x, y, z + 1), pt(x + 1, y, z + 1), pt(x + 1, y + 1, z + 1), pt(x, y + 1, z + 1)], "#f2f4f7")
-    if (!has(x, y + 1, z)) g += face([pt(x, y + 1, z), pt(x + 1, y + 1, z), pt(x + 1, y + 1, z + 1), pt(x, y + 1, z + 1)], "#dfe3e8")
-    if (!has(x + 1, y, z)) g += face([pt(x + 1, y, z), pt(x + 1, y + 1, z), pt(x + 1, y + 1, z + 1), pt(x + 1, y, z + 1)], "#cbd1d9")
-  }
-  return stWrap(clean(maxX - minX + 32), clean(maxY - minY + 32), g)
-}
-
-// целые a,b,c (2..9) с произведением, кратным k
-function stTriple(k) {
-  let a, b, c
-  do { a = randInt(2, 9); b = randInt(2, 9); c = randInt(2, 9) } while ((a * b * c) % k !== 0)
-  return [a, b, c]
-}
-
-// ── ГЕНЕРАТОРЫ ──────────────────────────────────────────────────────────────
-
-// Тетраэдр в углу параллелепипеда (A,B,C,B₁): V = abc/6.
-function t03BoxTetra() {
-  const [a, b, c] = stTriple(6)
-  return {
-    condition_text: `В прямоугольном параллелепипеде ${BOXNAME} известно, что AB = ${a}, BC = ${b}, AA₁ = ${c}. Найдите объём многогранника, вершинами которого являются точки A, B, C, B₁.`,
-    image_url: svgUrl(stBox({ highlight: [["A", "B", "C"], ["A", "B", "B1"], ["B", "C", "B1"], ["A", "C", "B1"]], edgeLabels: { AB: ru(a), BC: ru(b), AA1: ru(c) } })),
-    answer: ru(a * b * c / 6),
-  }
-}
-// Пирамида: основание ABCD + верхняя вершина: V = abc/3.
-function t03BoxPyr() {
-  const [a, b, c] = stTriple(3)
-  const apex = pick(["A1", "B1", "C1", "D1"])
-  const el = { A1: { e1: "AB", e2: "AD", v: "AA₁" }, B1: { e1: "AB", e2: "BC", v: "BB₁" }, C1: { e1: "BC", e2: "CD", v: "CC₁" }, D1: { e1: "AD", e2: "CD", v: "DD₁" } }[apex]
-  const eff = {}; eff[el.e1] = el.e1 === "AB" || el.e1 === "CD" ? ru(a) : ru(b); eff[el.e2] = el.e2 === "AB" || el.e2 === "CD" ? ru(a) : ru(b); eff[el.v.replace("₁", "1")] = ru(c)
-  return {
-    condition_text: `В прямоугольном параллелепипеде ${BOXNAME} известно, что ${el.e1[0]}${el.e1[1]} = ${el.e1 === "AB" || el.e1 === "CD" ? a : b}, ${el.e2[0]}${el.e2[1]} = ${el.e2 === "AB" || el.e2 === "CD" ? a : b}, ${el.v} = ${c}. Найдите объём многогранника, вершинами которого являются точки A, B, C, D, ${VSUB[apex]}.`,
-    image_url: svgUrl(stBox({ highlight: stPyrFaces(apex), edgeLabels: eff })),
-    answer: ru(a * b * c / 3),
-  }
-}
-// Половина параллелепипеда (6 вершин, призма): V = abc/2.
-function t03BoxHalf() {
-  const [a, b, c] = stTriple(2)
-  const variant = pick([
-    { verts: "A, B, C, D, A₁, B₁", hl: [["A", "B", "B1", "A1"], ["A", "B", "C", "D"], ["A", "D", "A1"], ["B", "C", "B1"]] },
-    { verts: "A, B, C, A₁, B₁, C₁", hl: [["A", "B", "B1", "A1"], ["A", "B", "C"], ["A1", "B1", "C1"], ["B", "C", "C1", "B1"], ["A", "C", "C1", "A1"]] },
-  ])
-  return {
-    condition_text: `В прямоугольном параллелепипеде ${BOXNAME} известно, что AB = ${a}, BC = ${b}, AA₁ = ${c}. Найдите объём многогранника, вершинами которого являются точки ${variant.verts}.`,
-    image_url: svgUrl(stBox({ highlight: variant.hl, edgeLabels: { AB: ru(a), BC: ru(b), AA1: ru(c) } })),
-    answer: ru(a * b * c / 2),
-  }
-}
-// Правильная треугольная призма: тетраэдр «основание + верхняя вершина»: V = S·L/3.
-function t03PrismTetra() {
-  let S, L; do { S = randInt(2, 12); L = randInt(3, 12) } while ((S * L) % 3 !== 0)
-  const apex = pick(["A1", "B1", "C1"])
-  const base = ["A", "B", "C"]
-  return {
-    condition_text: `Найдите объём многогранника, вершинами которого являются вершины A, B, C, ${VSUB[apex]} правильной треугольной призмы ${PRISMNAME}, площадь основания которой равна ${S}, а боковое ребро равно ${L}.`,
-    image_url: svgUrl(stPrism3({ highlight: [base, [base[0], base[2], apex], [base[1], base[2], apex], [base[0], base[1], apex]] })),
-    answer: ru(S * L / 3),
-  }
-}
-// Правильная треугольная призма: 5-вершинный кусок (призма минус тетраэдр): V = 2·S·L/3.
-function t03PrismBig() {
-  let S, L; do { S = randInt(2, 12); L = randInt(3, 12) } while ((S * L) % 3 !== 0)
-  // убираем тетраэдр с вершиной в одной нижней точке; берём A → часть B,C,A₁,B₁,C₁
-  const drop = pick([["A", "B, C, A₁, B₁, C₁", [["B", "C", "C1", "B1"], ["A1", "B1", "C1"], ["B", "C", "A1"]]],
-  ["B", "A, C, A₁, B₁, C₁", [["A", "C", "C1", "A1"], ["A1", "B1", "C1"], ["A", "C", "B1"]]]])
-  return {
-    condition_text: `Дана правильная треугольная призма ${PRISMNAME}, площадь основания которой равна ${S}, а боковое ребро равно ${L}. Найдите объём многогранника, вершинами которого являются точки ${drop[1]}.`,
-    image_url: svgUrl(stPrism3({ highlight: drop[2] })),
-    answer: ru(2 * S * L / 3),
-  }
-}
-// Средняя линия основания призмы: объём отсечённой = ¼ исходной.
-function t03MidVolCut() {
-  const reg = pick(["", "правильной "])
-  const V = randInt(2, 25) * 4
-  return {
-    condition_text: `Через среднюю линию основания ${reg}треугольной призмы, объём которой равен ${V}, проведена плоскость, параллельная боковому ребру. Найдите объём отсечённой треугольной призмы.`,
-    image_url: svgUrl(stPrism3({ midline: true })),
-    answer: ru(V / 4),
-  }
-}
-function t03MidVolWhole() {
-  const W = randInt(3, 30)
-  return {
-    condition_text: `Через среднюю линию основания треугольной призмы проведена плоскость, параллельная боковому ребру. Найдите объём этой призмы, если объём отсечённой треугольной призмы равен ${W}.`,
-    image_url: svgUrl(stPrism3({ midline: true })),
-    answer: ru(4 * W),
-  }
-}
-// Средняя линия: площадь боковой поверхности отсечённой = ½ исходной.
-function t03MidLatCut() {
-  const S = randInt(4, 30) * 2
-  return {
-    condition_text: `Площадь боковой поверхности треугольной призмы равна ${S}. Через среднюю линию основания призмы проведена плоскость, параллельная боковому ребру. Найдите площадь боковой поверхности отсечённой треугольной призмы.`,
-    image_url: svgUrl(stPrism3({ midline: true })),
-    answer: ru(S / 2),
-  }
-}
-function t03MidLatWhole() {
-  const S = randInt(4, 40)
-  return {
-    condition_text: `Через среднюю линию основания треугольной призмы проведена плоскость, параллельная боковому ребру. Площадь боковой поверхности отсечённой треугольной призмы равна ${S}. Найдите площадь боковой поверхности исходной призмы.`,
-    image_url: svgUrl(stPrism3({ midline: true })),
-    answer: ru(2 * S),
-  }
-}
-// Цилиндр и конус: общие основание и высота. V_конуса = V_цил/3.
-function t03CylConeVolCone() {
-  const V = randInt(2, 30) * 3
-  return {
-    condition_text: `Цилиндр и конус имеют общие основание и высоту. Объём цилиндра равен ${V}. Найдите объём конуса.`,
-    image_url: svgUrl(stCylCone()),
-    answer: ru(V / 3),
-  }
-}
-function t03CylConeVolCyl() {
-  const V = randInt(2, 40)
-  return {
-    condition_text: `Цилиндр и конус имеют общие основание и высоту. Объём конуса равен ${V}. Найдите объём цилиндра.`,
-    image_url: svgUrl(stCylCone()),
-    answer: ru(3 * V),
-  }
-}
-// Цилиндр/конус, h = R: S_бок цил = √2 · S_бок конуса.
-function t03CylConeLatCyl() {
-  const k = randInt(2, 12)
-  return {
-    condition_text: `Цилиндр и конус имеют общие основание и высоту. Высота цилиндра равна радиусу основания. Площадь боковой поверхности конуса равна ${k}${R2}. Найдите площадь боковой поверхности цилиндра.`,
-    image_url: svgUrl(stCylCone()),
-    answer: ru(2 * k),
-  }
-}
-function t03CylConeLatCone() {
-  const k = randInt(2, 12)
-  return {
-    condition_text: `Цилиндр и конус имеют общие основание и высоту. Высота цилиндра равна радиусу основания. Площадь боковой поверхности цилиндра равна ${k}${R2}. Найдите площадь боковой поверхности конуса.`,
-    image_url: svgUrl(stCylCone()),
-    answer: ru(k),
-  }
-}
-// Конус вписан в шар, R_осн = R_шара: V_шара = 4·V_конуса.
-function t03ConeInSphereBig() {
-  const V = randInt(2, 30)
-  return {
-    condition_text: `Конус вписан в шар. Радиус основания конуса равен радиусу шара. Объём конуса равен ${V}. Найдите объём шара.`,
-    image_url: svgUrl(stConeInSphere()),
-    answer: ru(4 * V),
-  }
-}
-function t03ConeInSphereSmall() {
-  const V = randInt(2, 25) * 4
-  return {
-    condition_text: `Конус вписан в шар. Радиус основания конуса равен радиусу шара. Объём шара равен ${V}. Найдите объём конуса.`,
-    image_url: svgUrl(stConeInSphere()),
-    answer: ru(V / 4),
-  }
-}
-// Шар вписан в цилиндр: S_шара = ⅔·S_полн цилиндра.
-function t03SphereInCylSurf() {
-  const S = randInt(2, 20) * 3
-  return {
-    condition_text: `Шар вписан в цилиндр. Площадь полной поверхности цилиндра равна ${S}. Найдите площадь поверхности шара.`,
-    image_url: svgUrl(stSphereInCyl()),
-    answer: ru(2 * S / 3),
-  }
-}
-// Шар вписан в цилиндр (объёмы): V_цил = 1,5·V_шара; и «цилиндр описан около шара».
-function t03SphereCylVolFromSphere() {
-  const V = randInt(2, 30) * 2
-  return {
-    condition_text: `Шар, объём которого равен ${V}, вписан в цилиндр. Найдите объём цилиндра.`,
-    image_url: svgUrl(stSphereInCyl()),
-    answer: ru(3 * V / 2),
-  }
-}
-function t03SphereCylVolFromCyl() {
-  const V = randInt(2, 20) * 3
-  return {
-    condition_text: `Цилиндр, объём которого равен ${V}, описан около шара. Найдите объём шара.`,
-    image_url: svgUrl(stSphereInCyl()),
-    answer: ru(2 * V / 3),
-  }
-}
-// Во сколько раз изменится объём конуса при изменении радиуса/высоты.
-function t03ConeScale() {
-  const n = randInt(2, 12)
-  if (Math.random() < 0.5) {
-    return { condition_text: `Во сколько раз увеличится объём конуса, если радиус его основания увеличится в ${n} раз, а высота останется прежней?`, image_url: svgUrl(stCone()), answer: ru(n * n) }
-  }
-  return { condition_text: `Во сколько раз уменьшится объём конуса, если его высота уменьшится в ${n} раз, а радиус основания останется прежним?`, image_url: svgUrl(stCone()), answer: ru(n) }
-}
-// Два цилиндра: V₂ = V₁ · q²/p (высота в p раз меньше, радиус в q раз больше).
-function t03TwoCyl() {
-  const p = pick([2, 3, 4]), q = pick([2, 3])
-  const base = randInt(2, 12), V1 = base * p // делится на p
-  const V2 = V1 * q * q / p
-  return {
-    condition_text: `Даны два цилиндра. Объём первого цилиндра равен ${V1}. У второго цилиндра высота в ${p} раза меньше, а радиус основания в ${q} раза больше, чем у первого. Найдите объём второго цилиндра.`,
-    image_url: svgUrl(stTwoCyl()),
-    answer: ru(V2),
-  }
-}
-// Сфера описана около конуса, центр в центре основания: l = R·√2.
-function t03ConeCircumR() {
-  const k = randInt(2, 20)
-  return {
-    condition_text: `Около конуса описана сфера (сфера содержит окружность основания конуса и его вершину). Центр сферы находится в центре основания конуса. Образующая конуса равна ${k}${R2}. Найдите радиус сферы.`,
-    image_url: svgUrl(stConeCircumSphere()),
-    answer: ru(k),
-  }
-}
-function t03ConeCircumL() {
-  const k = randInt(2, 90)
-  return {
-    condition_text: `Около конуса описана сфера (сфера содержит окружность основания конуса и его вершину). Центр сферы находится в центре основания конуса. Радиус сферы равен ${k}${R2}. Найдите длину образующей конуса.`,
-    image_url: svgUrl(stConeCircumSphere()),
-    answer: ru(2 * k),
-  }
-}
-// Цилиндр вписан в прямоугольный параллелепипед: V = 4·r²·h (при r = h).
-function t03CylInPar() {
-  const r = randInt(2, 9)
-  return {
-    condition_text: `Цилиндр вписан в прямоугольный параллелепипед. Радиус основания и высота цилиндра равны ${r}. Найдите объём параллелепипеда.`,
-    image_url: svgUrl(stCylInPar()),
-    answer: ru(4 * r * r * r),
-  }
-}
-// Куб: отсечённая угловая треугольная призма: V = V_куба/8.
-function t03CubeCut() {
-  const V = randInt(2, 30) * 8
-  return {
-    condition_text: `Объём куба равен ${V}. Найдите объём треугольной призмы, отсекаемой от куба плоскостью, проходящей через середины двух рёбер, выходящих из одной вершины, и параллельной третьему ребру, выходящему из этой же вершины.`,
-    image_url: svgUrl(stCubeCut()),
-    answer: ru(V / 8),
-  }
-}
-// Сечение шара через центр: S_шара = 4·S_сечения.
-function t03SphereSection() {
-  const S = randInt(2, 40)
-  return {
-    condition_text: `Площадь сечения шара плоскостью, проходящей через центр шара, равна ${S}. Найдите площадь поверхности шара.`,
-    image_url: svgUrl(stSphere({ section: true })),
-    answer: ru(4 * S),
-  }
-}
-// Случайный связный поликуб (5..9 кубиков) для типажей «объём/площадь из кубиков».
-function stRandPolycube() {
-  const cells = [[0, 0, 0]]
-  const key = (c) => c.join(",")
-  const set = new Set([key([0, 0, 0])])
-  const n = randInt(5, 9)
-  const dirs = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
-  let guard = 0
-  while (cells.length < n && guard++ < 400) {
-    const base = pick(cells), d = pick(dirs)
-    const nc = [base[0] + d[0], base[1] + d[1], base[2] + d[2]]
-    if (nc[2] < 0) continue
-    if (!set.has(key(nc))) { set.add(key(nc)); cells.push(nc) }
-  }
-  return cells
-}
-function t03CubesVolume() {
-  const cells = stRandPolycube()
-  return {
-    condition_text: `На рисунке изображён многогранник, составленный из одинаковых кубов с ребром 1. Найдите его объём.`,
-    image_url: svgUrl(stCubes(cells)),
-    answer: ru(cells.length),
-  }
-}
-function t03CubesSurface() {
-  const cells = stRandPolycube()
-  const set = new Set(cells.map(c => c.join(",")))
-  const dirs = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
-  let faces = 0
-  for (const c of cells) for (const d of dirs) if (!set.has([c[0] + d[0], c[1] + d[1], c[2] + d[2]].join(","))) faces++
-  return {
-    condition_text: `На рисунке изображён многогранник, составленный из одинаковых кубов с ребром 1. Найдите площадь его поверхности.`,
-    image_url: svgUrl(stCubes(cells)),
-    answer: ru(faces),
-  }
-}
-
-// ── Ступенчатый многогранник (все двугранные углы прямые) ───────────────────
-// Профиль (плоскость глубина×высота) выдавливается по ширине W (ФИПИ-вид, чёрный).
-// profile: [[z,y],...] прямоугольный многоугольник CCW. labels: [{p:[x,y,z],t,off}].
-// Объём = площадь(profile)·W;  Площадь пов. = 2·площадь(profile) + периметр(profile)·W.
-const STEP_SX = 52, STEP_SY = 50, STEP_DZ = [33, 21]
-function stExtrude(profile, W, labels = []) {
-  const boxW = 330, boxH = 270
-  const pr = (x, y, z) => [x * STEP_SX + z * STEP_DZ[0], -y * STEP_SY - z * STEP_DZ[1]]
-  const key = (p) => p.map(v => v.toFixed(2)).join(",")
-  const faces = []
-  faces.push({ pts: profile.map(([z, y]) => [0, y, z]), vis: false })
-  faces.push({ pts: profile.map(([z, y]) => [W, y, z]), vis: true })
-  for (let i = 0; i < profile.length; i++) {
-    const [z0, y0] = profile[i], [z1, y1] = profile[(i + 1) % profile.length]
-    const dz = z1 - z0, dy = y1 - y0
-    const nz = dy, ny = -dz // внешняя нормаль (z,y) для CCW
-    const vis = (nz < 0) || (ny > 0) // видно: перёд(-z) или верх(+y); правый торец — cap
-    faces.push({ pts: [[0, y0, z0], [W, y0, z0], [W, y1, z1], [0, y1, z1]], vis })
-  }
-  const edges = new Map()
-  for (const f of faces) for (let i = 0; i < f.pts.length; i++) {
-    const a = f.pts[i], b = f.pts[(i + 1) % f.pts.length]
-    const k = [key(a), key(b)].sort().join("|")
-    const e = edges.get(k) || { a, b, vis: false }; e.vis = e.vis || f.vis; edges.set(k, e)
-  }
-  let pts = []; for (const f of faces) for (const p of f.pts) pts.push(pr(...p))
-  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1])
-  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys)
-  const ox = (boxW - (maxX - minX)) / 2 - minX, oy = (boxH - (maxY - minY)) / 2 - minY
-  const P = (x, y, z) => { const p = pr(x, y, z); return [clean(p[0] + ox), clean(p[1] + oy)] }
-  let g = ""
-  for (const f of faces) g += `<polygon points="${f.pts.map(p => P(...p).join(",")).join(" ")}" fill="#fff" stroke="none"/>`
-  for (const e of edges.values()) if (!e.vis) { const a = P(...e.a), b = P(...e.b); g += `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="#000" stroke-width="1.6" stroke-dasharray="6 5"/>` }
-  for (const e of edges.values()) if (e.vis) { const a = P(...e.a), b = P(...e.b); g += `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="#000" stroke-width="2.4"/>` }
-  for (const L of labels) { const p = P(...L.p); g += `<text x="${clean(+p[0] + (L.off?.[0] || 0))}" y="${clean(+p[1] + (L.off?.[1] || 0))}" font-size="17" font-style="italic" font-weight="bold" fill="#000" text-anchor="middle" ${HALO}>${L.t}</text>` }
-  return stWrap(boxW, boxH, g)
-}
-// площадь и периметр прямоугольного профиля
-function profAreaPerim(profile) {
-  let A = 0, Per = 0
-  for (let i = 0; i < profile.length; i++) {
-    const [z0, y0] = profile[i], [z1, y1] = profile[(i + 1) % profile.length]
-    A += z0 * y1 - z1 * y0
-    Per += Math.abs(z1 - z0) + Math.abs(y1 - y0)
-  }
-  return { area: Math.abs(A) / 2, perim: Per }
-}
-// Одноступенчатый брус (как Доп.1): низ W×D×h1 + сверху сзади W×d2×h2.
-function stepSingle() {
-  const W = randInt(3, 5), D = randInt(2, 3), H = randInt(3, 4)
-  const h2 = randInt(1, H - 2), d1 = randInt(1, D - 1) // низ ≥2 по высоте, ступень видна
-  const h1 = H - h2
-  const profile = [[0, 0], [D, 0], [D, H], [d1, H], [d1, h1], [0, h1]]
-  const labels = [
-    { p: [W / 2, 0, 0], t: ru(W), off: [0, 20] },
-    { p: [W, 0, D / 2], t: ru(D), off: [16, 10] },
-    { p: [W, H / 2, D], t: ru(H), off: [18, 0] },
-    { p: [0, h1 + h2 / 2, d1], t: ru(h2), off: [-13, -3] },
-    { p: [0, h1, d1 / 2], t: ru(d1), off: [-14, 13] },
-  ]
-  return { profile, W, image: stExtrude(profile, W, labels) }
-}
-function t03StepVol() {
-  const s = stepSingle()
-  const { area } = profAreaPerim(s.profile)
-  return {
-    condition_text: `Найдите объём многогранника, изображённого на рисунке (все двугранные углы — прямые).`,
-    image_url: svgUrl(s.image),
-    answer: ru(area * s.W),
-  }
-}
-function t03StepSurf() {
-  const s = stepSingle()
-  const { area, perim } = profAreaPerim(s.profile)
-  return {
-    condition_text: `Найдите площадь поверхности многогранника, изображённого на рисунке (все двугранные углы — прямые).`,
-    image_url: svgUrl(s.image),
-    answer: ru(2 * area + perim * s.W),
-  }
 }
 
 // ============================================================================
@@ -3952,6 +3374,1203 @@ function t01TrapMidDiag() {
 }
 
 // ============================================================================
+// №3 — СТЕРЕОМЕТРИЯ (КЭС 7.3 Многогранники). Чертёж обязателен, схематичный
+// «как ФИПИ» (не в масштабе): меняются только числа в условии, размеры на
+// рисунок не наносятся. Ответ считается кодом.
+// ============================================================================
+
+// Прямоугольный параллелепипед ABCDA₁B₁C₁D₁ с выделенным тетраэдром A, B, C, B₁.
+function boxTetraSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 360" width="460" height="360" font-family="Arial, sans-serif">` +
+    `<rect width="460" height="360" fill="#fff"/>` +
+    // скрытые рёбра (вершина D в глубине)
+    `<line x1="70" y1="250" x2="220" y2="200" stroke="#000" stroke-width="1.2" stroke-dasharray="5 4"/>` +
+    `<line x1="220" y1="200" x2="395" y2="250" stroke="#000" stroke-width="1.2" stroke-dasharray="5 4"/>` +
+    `<line x1="220" y1="200" x2="220" y2="50" stroke="#000" stroke-width="1.2" stroke-dasharray="5 4"/>` +
+    // рёбра параллелепипеда
+    `<line x1="70" y1="250" x2="70" y2="100" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="395" y1="250" x2="395" y2="100" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="70" y1="100" x2="245" y2="150" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="245" y1="150" x2="395" y2="100" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="395" y1="100" x2="220" y2="50" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="220" y1="50" x2="70" y2="100" stroke="#000" stroke-width="1.3"/>` +
+    // тетраэдр A,B,C,B₁ (жирные рёбра)
+    `<line x1="70" y1="250" x2="245" y2="300" stroke="#000" stroke-width="2.7"/>` +
+    `<line x1="245" y1="300" x2="395" y2="250" stroke="#000" stroke-width="2.7"/>` +
+    `<line x1="245" y1="300" x2="245" y2="150" stroke="#000" stroke-width="2.7"/>` +
+    `<line x1="70" y1="250" x2="245" y2="150" stroke="#000" stroke-width="2.7"/>` +
+    `<line x1="395" y1="250" x2="245" y2="150" stroke="#000" stroke-width="2.7"/>` +
+    `<line x1="70" y1="250" x2="395" y2="250" stroke="#000" stroke-width="2.2" stroke-dasharray="6 4"/>` +
+    // вершины
+    `<g font-size="17" font-style="italic" fill="#000" text-anchor="middle">` +
+    `<text x="63" y="270">A</text>` +
+    `<text x="245" y="322">B</text>` +
+    `<text x="405" y="268">C</text>` +
+    `<text x="205" y="216">D</text>` +
+    `<text x="55" y="98">A₁</text>` +
+    `<text x="232" y="142">B₁</text>` +
+    `<text x="410" y="98">C₁</text>` +
+    `<text x="214" y="40">D₁</text>` +
+    `</g></svg>`
+}
+
+function t03BoxTetra() {
+  let a, b, c
+  do { a = randInt(3, 9); b = randInt(3, 9); c = randInt(3, 9) } while ((a * b * c) % 6 !== 0)
+  return {
+    condition_text: `В прямоугольном параллелепипеде ABCDA₁B₁C₁D₁ известно, что AB = ${a}, BC = ${b}, AA₁ = ${c}. Найдите объём многогранника, вершинами которого являются точки A, B, C, B₁.`,
+    image_url: svgUrl(boxTetraSvg()),
+    answer: ru(a * b * c / 6),
+  }
+}
+
+// Стоящая наклонённая треугольная призма; секущая плоскость через среднюю линию
+// основания у левой вершины (параллельно боковому ребру) отсекает малый «нос».
+function prismMidlineSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 310 330" width="310" height="330" font-family="Arial, sans-serif">` +
+    `<rect width="310" height="330" fill="#fff"/>` +
+    // скрытые рёбра: задняя нижняя вершина и заднее боковое ребро
+    `<line x1="55" y1="285" x2="135" y2="235" stroke="#000" stroke-width="1.4" stroke-dasharray="5 4"/>` +
+    `<line x1="215" y1="285" x2="135" y2="235" stroke="#000" stroke-width="1.4" stroke-dasharray="5 4"/>` +
+    `<line x1="135" y1="235" x2="170" y2="40" stroke="#000" stroke-width="1.4" stroke-dasharray="5 4"/>` +
+    // рёбра призмы
+    `<line x1="55" y1="285" x2="215" y2="285" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="55" y1="285" x2="90" y2="90" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="215" y1="285" x2="250" y2="90" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="90" y1="90" x2="250" y2="90" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="90" y1="90" x2="170" y2="40" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="250" y1="90" x2="170" y2="40" stroke="#000" stroke-width="1.7"/>` +
+    // секущая плоскость через среднюю линию у левой вершины
+    `<line x1="135" y1="285" x2="170" y2="90" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="170" y1="90" x2="130" y2="65" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="135" y1="285" x2="95" y2="260" stroke="#000" stroke-width="1.4" stroke-dasharray="5 4"/>` +
+    `<line x1="95" y1="260" x2="130" y2="65" stroke="#000" stroke-width="1.4" stroke-dasharray="5 4"/>` +
+    `</svg>`
+}
+
+function t03PrismMidline() {
+  const v0 = randInt(2, 40)
+  return {
+    condition_text: `Через среднюю линию основания треугольной призмы проведена плоскость, параллельная боковому ребру. Найдите объём этой призмы, если объём отсечённой треугольной призмы равен ${v0}.`,
+    image_url: svgUrl(prismMidlineSvg()),
+    answer: ru(4 * v0),
+  }
+}
+
+// Прямая правильная треугольная призма (вертикальные боковые рёбра) с сечением
+// через среднюю линию основания у левой вершины.
+function prismUprightSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 420" width="340" height="420" font-family="Arial, sans-serif">` +
+    `<rect width="340" height="420" fill="#fff"/>` +
+    // скрытые рёбра (задняя вершина)
+    `<line x1="90" y1="360" x2="200" y2="300" stroke="#000" stroke-width="1.4" stroke-dasharray="5 4"/>` +
+    `<line x1="250" y1="360" x2="200" y2="300" stroke="#000" stroke-width="1.4" stroke-dasharray="5 4"/>` +
+    `<line x1="200" y1="300" x2="200" y2="70" stroke="#000" stroke-width="1.4" stroke-dasharray="5 4"/>` +
+    // рёбра призмы
+    `<line x1="90" y1="360" x2="250" y2="360" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="90" y1="360" x2="90" y2="130" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="250" y1="360" x2="250" y2="130" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="90" y1="130" x2="250" y2="130" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="90" y1="130" x2="200" y2="70" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="250" y1="130" x2="200" y2="70" stroke="#000" stroke-width="1.7"/>` +
+    // секущая плоскость через среднюю линию основания
+    `<line x1="170" y1="360" x2="170" y2="130" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="170" y1="130" x2="145" y2="100" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="170" y1="360" x2="145" y2="330" stroke="#000" stroke-width="1.4" stroke-dasharray="5 4"/>` +
+    `<line x1="145" y1="330" x2="145" y2="100" stroke="#000" stroke-width="1.4" stroke-dasharray="5 4"/>` +
+    `</svg>`
+}
+
+// То же, что t03PrismCut, но призма правильная (и чертёж прямостоящий).
+function t03PrismCutRegular() {
+  const v = 4 * randInt(2, 40)
+  return {
+    condition_text: `Через среднюю линию основания правильной треугольной призмы, объём которой равен ${v}, проведена плоскость, параллельная боковому ребру. Найдите объём отсечённой треугольной призмы.`,
+    image_url: svgUrl(prismUprightSvg()),
+    answer: ru(v / 4),
+  }
+}
+
+// Обратная задача: дан объём призмы → отсечённая = ¼ (все стороны малого треуг. ×½).
+function t03PrismCut() {
+  const v = 4 * randInt(2, 40)
+  return {
+    condition_text: `Через среднюю линию основания треугольной призмы, объём которой равен ${v}, проведена плоскость, параллельная боковому ребру. Найдите объём отсечённой треугольной призмы.`,
+    image_url: svgUrl(prismMidlineSvg()),
+    answer: ru(v / 4),
+  }
+}
+
+// Правильная треугольная призма ABCA₁B₁C₁; выделен тетраэдр A, B, C, C₁.
+function prismTetraC1Svg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 360" width="380" height="360" font-family="Arial, sans-serif">` +
+    `<rect width="380" height="360" fill="#fff"/>` +
+    // рёбра призмы (тонкие)
+    `<line x1="110" y1="110" x2="310" y2="110" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="310" y1="110" x2="215" y2="58" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="215" y1="58" x2="110" y2="110" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="310" y1="300" x2="310" y2="110" stroke="#000" stroke-width="1.3"/>` +
+    // скрытое заднее боковое ребро B–B₁
+    `<line x1="215" y1="248" x2="215" y2="58" stroke="#000" stroke-width="1.2" stroke-dasharray="5 4"/>` +
+    // тетраэдр A,B,C,C₁: видимые рёбра жирные
+    `<line x1="110" y1="300" x2="310" y2="300" stroke="#000" stroke-width="2.7"/>` +
+    `<line x1="110" y1="300" x2="110" y2="110" stroke="#000" stroke-width="2.7"/>` +
+    `<line x1="110" y1="110" x2="310" y2="300" stroke="#000" stroke-width="2.7"/>` +
+    // тетраэдр: скрытые рёбра к вершине B
+    `<line x1="110" y1="300" x2="215" y2="248" stroke="#000" stroke-width="1.4" stroke-dasharray="5 4"/>` +
+    `<line x1="310" y1="300" x2="215" y2="248" stroke="#000" stroke-width="1.4" stroke-dasharray="5 4"/>` +
+    `<line x1="110" y1="110" x2="215" y2="248" stroke="#000" stroke-width="1.4" stroke-dasharray="5 4"/>` +
+    // подписи
+    `<g font-size="17" font-style="italic" fill="#000" text-anchor="middle">` +
+    `<text x="98" y="320">C</text><text x="322" y="320">A</text><text x="204" y="242">B</text>` +
+    `<text x="92" y="108">C₁</text><text x="324" y="106">A₁</text><text x="215" y="48">B₁</text>` +
+    `</g></svg>`
+}
+
+function t03PrismTetraC1() {
+  let s, l
+  do { s = randInt(3, 12); l = randInt(3, 12) } while ((s * l) % 3 !== 0)
+  return {
+    condition_text: `Найдите объём многогранника, вершинами которого являются вершины A, B, C, C₁ правильной треугольной призмы ABCA₁B₁C₁, площадь основания которой равна ${s}, а боковое ребро равно ${l}.`,
+    image_url: svgUrl(prismTetraC1Svg()),
+    answer: ru(s * l / 3),
+  }
+}
+
+// Прямоугольный параллелепипед в три четверти; выделена пирамида A, B, C, D, B₁
+// (основание ABCD — нижняя грань, апекс B₁). Боковые рёбра к B₁ — внутренние (штрих).
+function boxPyramidSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 470 420" width="470" height="420" font-family="Arial, sans-serif">` +
+    `<rect width="470" height="420" fill="#fff"/>` +
+    // верхняя грань
+    `<line x1="405" y1="145" x2="195" y2="95" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="195" y1="95" x2="120" y2="145" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="120" y1="145" x2="330" y2="195" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="330" y1="195" x2="405" y2="145" stroke="#000" stroke-width="1.3"/>` +
+    // вертикальные рёбра
+    `<line x1="330" y1="380" x2="330" y2="195" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="120" y1="330" x2="120" y2="145" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="405" y1="330" x2="405" y2="145" stroke="#000" stroke-width="1.3"/>` +
+    // скрытое заднее вертикальное ребро B–B₁
+    `<line x1="195" y1="280" x2="195" y2="95" stroke="#000" stroke-width="1.3" stroke-dasharray="5 4"/>` +
+    // основание ABCD: передние рёбра
+    `<line x1="120" y1="330" x2="330" y2="380" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="330" y1="380" x2="405" y2="330" stroke="#000" stroke-width="1.3"/>` +
+    // задние рёбра основания
+    `<line x1="405" y1="330" x2="195" y2="280" stroke="#000" stroke-width="1.3" stroke-dasharray="5 4"/>` +
+    `<line x1="195" y1="280" x2="120" y2="330" stroke="#000" stroke-width="1.3" stroke-dasharray="5 4"/>` +
+    // боковые рёбра пирамиды к апексу B₁
+    `<line x1="195" y1="95" x2="405" y2="330" stroke="#000" stroke-width="1.3" stroke-dasharray="5 4"/>` +
+    `<line x1="195" y1="95" x2="120" y2="330" stroke="#000" stroke-width="1.3" stroke-dasharray="5 4"/>` +
+    `<line x1="195" y1="95" x2="330" y2="380" stroke="#000" stroke-width="1.3" stroke-dasharray="5 4"/>` +
+    // подписи
+    `<g font-size="17" font-style="italic" fill="#000" text-anchor="middle">` +
+    `<text x="421" y="332">A</text><text x="180" y="276">B</text><text x="104" y="332">C</text><text x="332" y="400">D</text>` +
+    `<text x="421" y="146">A₁</text><text x="195" y="82">B₁</text><text x="104" y="143">C₁</text><text x="346" y="196">D₁</text>` +
+    `</g></svg>`
+}
+
+function t03BoxPyramid() {
+  let a, b, c
+  do { a = randInt(3, 12); b = randInt(2, 9); c = randInt(3, 12) } while ((a * b * c) % 3 !== 0)
+  return {
+    condition_text: `Найдите объём многогранника, вершинами которого являются вершины A, B, C, D, B₁ прямоугольного параллелепипеда ABCDA₁B₁C₁D₁, у которого AB = ${a}, BC = ${b}, BB₁ = ${c}.`,
+    image_url: svgUrl(boxPyramidSvg()),
+    answer: ru(a * b * c / 3),
+  }
+}
+
+// Прямоугольный параллелепипед; выделена пирамида A, B, C, D, C₁ (основание ABCD,
+// апекс C₁ над задней вершиной C). Боковые рёбра к C₁ — внутренние (штрих).
+function boxPyramidC1Svg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 420" width="460" height="420" font-family="Arial, sans-serif">` +
+    `<rect width="460" height="420" fill="#fff"/>` +
+    // верхняя грань
+    `<line x1="200" y1="185" x2="400" y2="145" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="400" y1="145" x2="295" y2="90" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="295" y1="90" x2="95" y2="130" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="95" y1="130" x2="200" y2="185" stroke="#000" stroke-width="1.3"/>` +
+    // вертикальные рёбра
+    `<line x1="200" y1="375" x2="200" y2="185" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="400" y1="335" x2="400" y2="145" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="95" y1="320" x2="95" y2="130" stroke="#000" stroke-width="1.3"/>` +
+    // скрытое заднее вертикальное ребро C–C₁
+    `<line x1="295" y1="280" x2="295" y2="90" stroke="#000" stroke-width="1.3" stroke-dasharray="5 4"/>` +
+    // основание ABCD: передние рёбра
+    `<line x1="200" y1="375" x2="400" y2="335" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="200" y1="375" x2="95" y2="320" stroke="#000" stroke-width="1.3"/>` +
+    // задние рёбра основания
+    `<line x1="400" y1="335" x2="295" y2="280" stroke="#000" stroke-width="1.3" stroke-dasharray="5 4"/>` +
+    `<line x1="295" y1="280" x2="95" y2="320" stroke="#000" stroke-width="1.3" stroke-dasharray="5 4"/>` +
+    // боковые рёбра пирамиды к апексу C₁
+    `<line x1="295" y1="90" x2="200" y2="375" stroke="#000" stroke-width="1.3" stroke-dasharray="5 4"/>` +
+    `<line x1="295" y1="90" x2="400" y2="335" stroke="#000" stroke-width="1.3" stroke-dasharray="5 4"/>` +
+    `<line x1="295" y1="90" x2="95" y2="320" stroke="#000" stroke-width="1.3" stroke-dasharray="5 4"/>` +
+    // подписи
+    `<g font-size="17" font-style="italic" fill="#000" text-anchor="middle">` +
+    `<text x="200" y="396">A</text><text x="416" y="338">B</text><text x="280" y="282">C</text><text x="79" y="324">D</text>` +
+    `<text x="216" y="192">A₁</text><text x="416" y="140">B₁</text><text x="295" y="78">C₁</text><text x="79" y="128">D₁</text>` +
+    `</g></svg>`
+}
+
+function t03BoxPyramidC1() {
+  let a, b, c
+  do { a = randInt(3, 12); b = randInt(2, 9); c = randInt(3, 12) } while ((a * b * c) % 3 !== 0)
+  return {
+    condition_text: `В прямоугольном параллелепипеде ABCDA₁B₁C₁D₁ известно, что BC = ${a}, CD = ${b}, CC₁ = ${c}. Найдите объём многогранника, вершинами которого являются точки A, B, C, D, C₁.`,
+    image_url: svgUrl(boxPyramidC1Svg()),
+    answer: ru(a * b * c / 3),
+  }
+}
+
+// Правильная треугольная призма; выделен многогранник B, C, A₁, B₁, C₁
+// (призма минус тетраэдр A,A₁,B,C). Рёбра тела к скрытой C — жирный пунктир.
+function prismPentaSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 470 470" width="470" height="470" font-family="Arial, sans-serif">` +
+    `<rect width="470" height="470" fill="#fff"/>` +
+    // отсекаемый тетраэдр (рёбра к вершине A) — тонкие
+    `<line x1="235" y1="430" x2="220" y2="195" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="235" y1="430" x2="425" y2="360" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="235" y1="430" x2="300" y2="300" stroke="#000" stroke-width="1.3" stroke-dasharray="5 4"/>` +
+    // тело B,C,A₁,B₁,C₁: видимые рёбра жирные
+    `<line x1="220" y1="195" x2="410" y2="125" stroke="#000" stroke-width="2.4"/>` +
+    `<line x1="410" y1="125" x2="285" y2="65" stroke="#000" stroke-width="2.4"/>` +
+    `<line x1="285" y1="65" x2="220" y2="195" stroke="#000" stroke-width="2.4"/>` +
+    `<line x1="220" y1="195" x2="425" y2="360" stroke="#000" stroke-width="2.4"/>` +
+    `<line x1="425" y1="360" x2="410" y2="125" stroke="#000" stroke-width="2.4"/>` +
+    // тело: скрытые рёбра (вершина C) — жирный пунктир
+    `<line x1="425" y1="360" x2="300" y2="300" stroke="#000" stroke-width="2.4" stroke-dasharray="7 5"/>` +
+    `<line x1="300" y1="300" x2="285" y2="65" stroke="#000" stroke-width="2.4" stroke-dasharray="7 5"/>` +
+    `<line x1="220" y1="195" x2="300" y2="300" stroke="#000" stroke-width="2.4" stroke-dasharray="7 5"/>` +
+    // подписи
+    `<g font-size="17" font-style="italic" fill="#000" text-anchor="middle">` +
+    `<text x="227" y="450">A</text><text x="441" y="364">B</text><text x="318" y="298">C</text>` +
+    `<text x="202" y="196">A₁</text><text x="426" y="122">B₁</text><text x="277" y="53">C₁</text>` +
+    `</g></svg>`
+}
+
+function t03PrismPenta() {
+  let s, l
+  do { s = randInt(2, 12); l = randInt(3, 12) } while ((s * l) % 3 !== 0)
+  return {
+    condition_text: `Дана правильная треугольная призма ABCA₁B₁C₁, площадь основания которой равна ${s}, а боковое ребро равно ${l}. Найдите объём многогранника, вершинами которого являются точки B, C, A₁, B₁, C₁.`,
+    image_url: svgUrl(prismPentaSvg()),
+    answer: ru(2 * s * l / 3),
+  }
+}
+
+// Чистый параллелепипед ABCDA₁B₁C₁D₁ (тело A,B,C,D,A₁,B₁ ученик достраивает сам).
+function boxPlainSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 470 360" width="470" height="360" font-family="Arial, sans-serif">` +
+    `<rect width="470" height="360" fill="#fff"/>` +
+    // видимые рёбра
+    `<line x1="70" y1="250" x2="245" y2="300" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="245" y1="300" x2="395" y2="250" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="70" y1="250" x2="70" y2="100" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="245" y1="300" x2="245" y2="150" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="395" y1="250" x2="395" y2="100" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="70" y1="100" x2="245" y2="150" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="245" y1="150" x2="395" y2="100" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="70" y1="100" x2="220" y2="50" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="220" y1="50" x2="395" y2="100" stroke="#000" stroke-width="1.5"/>` +
+    // скрытые рёбра (вершина D)
+    `<line x1="70" y1="250" x2="220" y2="200" stroke="#000" stroke-width="1.3" stroke-dasharray="5 4"/>` +
+    `<line x1="395" y1="250" x2="220" y2="200" stroke="#000" stroke-width="1.3" stroke-dasharray="5 4"/>` +
+    `<line x1="220" y1="200" x2="220" y2="50" stroke="#000" stroke-width="1.3" stroke-dasharray="5 4"/>` +
+    // подписи (без белой обводки)
+    `<g font-size="17" font-style="italic" fill="#000" text-anchor="middle">` +
+    `<text x="60" y="270">A</text><text x="240" y="320">B</text><text x="407" y="268">C</text><text x="205" y="216">D</text>` +
+    `<text x="55" y="98">A₁</text><text x="266" y="140">B₁</text><text x="410" y="98">C₁</text><text x="214" y="40">D₁</text>` +
+    `</g></svg>`
+}
+
+// ── КЭС 7.4 Тела вращения ────────────────────────────────────────────────────
+// Цилиндр с вписанным конусом (общие основание и высота, h = R).
+function cylConeSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 380" width="500" height="380" font-family="Arial, sans-serif">` +
+    `<rect width="500" height="380" fill="#fff"/>` +
+    `<ellipse cx="250" cy="110" rx="145" ry="40" fill="none" stroke="#000" stroke-width="2.2"/>` +
+    `<line x1="105" y1="110" x2="105" y2="280" stroke="#000" stroke-width="2.2"/>` +
+    `<line x1="395" y1="110" x2="395" y2="280" stroke="#000" stroke-width="2.2"/>` +
+    `<path d="M105,280 A145,40 0 0,0 395,280" fill="none" stroke="#000" stroke-width="2.2"/>` +
+    `<path d="M105,280 A145,40 0 0,1 395,280" fill="none" stroke="#000" stroke-width="1.5" stroke-dasharray="7 5"/>` +
+    // конус: образующие, высота, радиус
+    `<line x1="250" y1="110" x2="105" y2="280" stroke="#000" stroke-width="1.5" stroke-dasharray="7 5"/>` +
+    `<line x1="250" y1="110" x2="395" y2="280" stroke="#000" stroke-width="1.5" stroke-dasharray="7 5"/>` +
+    `<line x1="250" y1="110" x2="250" y2="280" stroke="#000" stroke-width="1.5" stroke-dasharray="7 5"/>` +
+    `<line x1="250" y1="280" x2="395" y2="280" stroke="#000" stroke-width="1.5" stroke-dasharray="7 5"/>` +
+    `<polyline points="250,266 264,266 264,280" fill="none" stroke="#000" stroke-width="1.4"/>` +
+    `</svg>`
+}
+
+// h=R → l=R√2; S_кон=πRl=πR²√2=k√2 ⟹ πR²=k; S_цил=2πRh=2πR²=2k.
+function t03CylConeLateral() {
+  const k = randInt(2, 30)
+  return {
+    condition_text: `Цилиндр и конус имеют общие основание и высоту. Высота цилиндра равна радиусу основания. Площадь боковой поверхности конуса равна ${k}${rT(2)}. Найдите площадь боковой поверхности цилиндра.`,
+    image_url: svgUrl(cylConeSvg()),
+    answer: ru(2 * k),
+  }
+}
+
+// Конус, вписанный в шар: радиус основания конуса равен радиусу шара
+// (основание — большой круг, высота = R). Образующие идут на заднюю дугу.
+function coneInSphereSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="500" height="500" font-family="Arial, sans-serif">` +
+    `<rect width="500" height="500" fill="#fff"/>` +
+    `<circle cx="250" cy="290" r="170" fill="none" stroke="#000" stroke-width="1.8"/>` +
+    `<path d="M80,290 A170,62 0 0,0 420,290" fill="none" stroke="#000" stroke-width="1.8"/>` +
+    `<path d="M80,290 A170,62 0 0,1 420,290" fill="none" stroke="#000" stroke-width="1.4" stroke-dasharray="8 6" pathLength="386"/>` +
+    `<line x1="250" y1="120" x2="85" y2="274" stroke="#000" stroke-width="1.4" stroke-dasharray="8 6" pathLength="230"/>` +
+    `<line x1="250" y1="120" x2="415" y2="274" stroke="#000" stroke-width="1.4" stroke-dasharray="8 6" pathLength="230"/>` +
+    `<line x1="250" y1="290" x2="250" y2="120" stroke="#000" stroke-width="1.4" stroke-dasharray="8 6" pathLength="182"/>` +
+    `<line x1="250" y1="290" x2="366" y2="333" stroke="#000" stroke-width="1.4" stroke-dasharray="8 6" pathLength="126"/>` +
+    `</svg>`
+}
+
+// V_кон = πR³/3, V_шара = 4πR³/3 = 4·V_кон.
+function t03ConeInSphere() {
+  const v = randInt(2, 40)
+  return {
+    condition_text: `Конус вписан в шар. Радиус основания конуса равен радиусу шара. Объём конуса равен ${v}. Найдите объём шара.`,
+    image_url: svgUrl(coneInSphereSvg()),
+    answer: ru(4 * v),
+  }
+}
+
+// Цилиндр и конус с общими основанием и высотой; образующие конуса — сплошные.
+function cylConeVolSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 540" width="500" height="540" font-family="Arial, sans-serif">` +
+    `<rect width="500" height="540" fill="#fff"/>` +
+    `<ellipse cx="250" cy="110" rx="150" ry="28" fill="none" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="100" y1="110" x2="100" y2="430" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="400" y1="110" x2="400" y2="430" stroke="#000" stroke-width="1.5"/>` +
+    `<path d="M100,430 A150,28 0 0,0 400,430" fill="none" stroke="#000" stroke-width="2"/>` +
+    `<path d="M100,430 A150,28 0 0,1 400,430" fill="none" stroke="#000" stroke-width="1.4" stroke-dasharray="8 6" pathLength="316"/>` +
+    // конус
+    `<line x1="250" y1="110" x2="100" y2="430" stroke="#000" stroke-width="2"/>` +
+    `<line x1="250" y1="110" x2="400" y2="430" stroke="#000" stroke-width="2"/>` +
+    `<line x1="250" y1="110" x2="250" y2="430" stroke="#000" stroke-width="1.4" stroke-dasharray="8 6" pathLength="316"/>` +
+    `<line x1="250" y1="430" x2="400" y2="430" stroke="#000" stroke-width="1.4" stroke-dasharray="8 6" pathLength="148"/>` +
+    `<polyline points="250,414 266,414 266,430" fill="none" stroke="#000" stroke-width="1.4"/>` +
+    `</svg>`
+}
+
+// Общие основание и высота → V_конуса = V_цилиндра/3.
+function t03CylConeVolume() {
+  const v = 3 * randInt(2, 30)
+  return {
+    condition_text: `Цилиндр и конус имеют общие основание и высоту. Объём цилиндра равен ${v}. Найдите объём конуса.`,
+    image_url: svgUrl(cylConeVolSvg()),
+    answer: ru(v / 3),
+  }
+}
+
+// Цилиндр и конус, h = R; образующие конуса сплошные, высота/радиус пунктиром.
+function cylConeEqSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 400" width="500" height="400" font-family="Arial, sans-serif">` +
+    `<rect width="500" height="400" fill="#fff"/>` +
+    `<ellipse cx="250" cy="110" rx="150" ry="30" fill="none" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="100" y1="110" x2="100" y2="290" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="400" y1="110" x2="400" y2="290" stroke="#000" stroke-width="1.5"/>` +
+    `<path d="M100,290 A150,30 0 0,0 400,290" fill="none" stroke="#000" stroke-width="2"/>` +
+    `<path d="M100,290 A150,30 0 0,1 400,290" fill="none" stroke="#000" stroke-width="1.4" stroke-dasharray="8 6" pathLength="316"/>` +
+    `<line x1="250" y1="110" x2="100" y2="290" stroke="#000" stroke-width="2"/>` +
+    `<line x1="250" y1="110" x2="400" y2="290" stroke="#000" stroke-width="2"/>` +
+    `<line x1="250" y1="110" x2="250" y2="290" stroke="#000" stroke-width="1.4" stroke-dasharray="8 6" pathLength="176"/>` +
+    `<line x1="250" y1="290" x2="400" y2="290" stroke="#000" stroke-width="1.4" stroke-dasharray="8 6" pathLength="148"/>` +
+    `<polyline points="250,274 266,274 266,290" fill="none" stroke="#000" stroke-width="1.4"/>` +
+    `</svg>`
+}
+
+// Обратная к t03CylConeLateral: S_цил=2πR²=k√2 ⟹ S_кон=πR²√2 = k.
+function t03CylConeLatInverse() {
+  const k = randInt(2, 30)
+  return {
+    condition_text: `Цилиндр и конус имеют общие основание и высоту. Высота цилиндра равна радиусу основания. Площадь боковой поверхности цилиндра равна ${k}${rT(2)}. Найдите площадь боковой поверхности конуса.`,
+    image_url: svgUrl(cylConeEqSvg()),
+    answer: ru(k),
+  }
+}
+
+// «в 2 раза», но «в 5 раз» / «в 12 раз».
+const razWord = (n) => {
+  const t = n % 100, u = n % 10
+  return t >= 11 && t <= 14 ? "раз" : u >= 2 && u <= 4 ? "раза" : "раз"
+}
+
+// V = ⅓πR²h: радиус ×k → объём ×k² (высота не меняется).
+function t03ConeScale() {
+  const k = randInt(2, 15)
+  return {
+    condition_text: `Во сколько раз увеличится объём конуса, если радиус его основания увеличится в ${k} ${razWord(k)}, а высота останется прежней?`,
+    answer: ru(k * k),
+  }
+}
+
+// Шар, вписанный в цилиндр (R общий, высота цилиндра = 2R).
+function sphereInCylSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="500" height="500" font-family="Arial, sans-serif">` +
+    `<rect width="500" height="500" fill="#fff"/>` +
+    `<ellipse cx="250" cy="110" rx="150" ry="24" fill="none" stroke="#000" stroke-width="1.6"/>` +
+    `<line x1="100" y1="110" x2="100" y2="410" stroke="#000" stroke-width="1.6"/>` +
+    `<line x1="400" y1="110" x2="400" y2="410" stroke="#000" stroke-width="1.6"/>` +
+    `<path d="M100,410 A150,24 0 0,0 400,410" fill="none" stroke="#000" stroke-width="1.6"/>` +
+    `<path d="M100,410 A150,24 0 0,1 400,410" fill="none" stroke="#000" stroke-width="1.4" stroke-dasharray="8 6" pathLength="316"/>` +
+    `<circle cx="250" cy="260" r="150" fill="none" stroke="#000" stroke-width="2"/>` +
+    `<path d="M100,260 A150,24 0 0,0 400,260" fill="none" stroke="#000" stroke-width="1.6"/>` +
+    `<path d="M100,260 A150,24 0 0,1 400,260" fill="none" stroke="#000" stroke-width="1.4" stroke-dasharray="8 6" pathLength="316"/>` +
+    `<circle cx="250" cy="260" r="2.6" fill="#000"/>` +
+    `</svg>`
+}
+
+// S_цил.полн = 2πR²+2πR·2R = 6πR², S_шара = 4πR² = ⅔·S_цил.
+function t03SphereInCyl() {
+  const s = 3 * randInt(2, 30)
+  return {
+    condition_text: `Шар вписан в цилиндр. Площадь полной поверхности цилиндра равна ${s}. Найдите площадь поверхности шара.`,
+    image_url: svgUrl(sphereInCylSvg()),
+    answer: ru(2 * s / 3),
+  }
+}
+
+// Ступенчатый многогранник (все двугранные углы прямые). Размеры наносятся на
+// чертёж: ширина w, глубина d, полная высота H, уступ h2 (высота) × dd (глубина).
+// V = w·(d·H − dd·h2).
+function stepSolidSvg(w, d, H, h2, dd) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 450 440" width="450" height="440" font-family="Arial, sans-serif">` +
+    `<rect width="450" height="440" fill="#fff"/>` +
+    // скрытые рёбра
+    `<line x1="123" y1="300" x2="10" y2="385" stroke="#000" stroke-width="1.4" stroke-dasharray="7 5" pathLength="138"/>` +
+    `<line x1="123" y1="300" x2="387" y2="300" stroke="#000" stroke-width="1.4" stroke-dasharray="7 5" pathLength="267"/>` +
+    `<line x1="123" y1="300" x2="123" y2="42" stroke="#000" stroke-width="1.4" stroke-dasharray="7 5" pathLength="257"/>` +
+    // нижний блок
+    `<line x1="10" y1="385" x2="274" y2="385" stroke="#000" stroke-width="2"/>` +
+    `<line x1="10" y1="385" x2="10" y2="213" stroke="#000" stroke-width="2"/>` +
+    `<line x1="274" y1="385" x2="274" y2="213" stroke="#000" stroke-width="2"/>` +
+    `<line x1="10" y1="213" x2="274" y2="213" stroke="#000" stroke-width="2"/>` +
+    `<line x1="274" y1="385" x2="387" y2="300" stroke="#000" stroke-width="2"/>` +
+    `<line x1="274" y1="213" x2="330.5" y2="170.5" stroke="#000" stroke-width="2"/>` +
+    // уступ
+    `<line x1="10" y1="213" x2="66.5" y2="170.5" stroke="#000" stroke-width="2"/>` +
+    `<line x1="66.5" y1="170.5" x2="330.5" y2="170.5" stroke="#000" stroke-width="2"/>` +
+    `<line x1="66.5" y1="170.5" x2="66.5" y2="84.5" stroke="#000" stroke-width="2"/>` +
+    `<line x1="330.5" y1="170.5" x2="330.5" y2="84.5" stroke="#000" stroke-width="2"/>` +
+    `<line x1="66.5" y1="84.5" x2="330.5" y2="84.5" stroke="#000" stroke-width="2"/>` +
+    // верхняя задняя площадка
+    `<line x1="66.5" y1="84.5" x2="123" y2="42" stroke="#000" stroke-width="2"/>` +
+    `<line x1="123" y1="42" x2="387" y2="42" stroke="#000" stroke-width="2"/>` +
+    `<line x1="330.5" y1="84.5" x2="387" y2="42" stroke="#000" stroke-width="2"/>` +
+    `<line x1="387" y1="42" x2="387" y2="300" stroke="#000" stroke-width="2"/>` +
+    // размеры
+    `<g font-size="21" fill="#000" stroke="none" text-anchor="middle">` +
+    `<text x="142" y="416">${w}</text><text x="352" y="362">${d}</text><text x="412" y="178">${H}</text>` +
+    `<text x="44" y="132">${h2}</text><text x="18" y="188">${dd}</text>` +
+    `</g></svg>`
+}
+
+function t03StepSolid() {
+  const w = randInt(2, 6), d = randInt(2, 5), H = randInt(3, 6)
+  const h2 = randInt(1, H - 1), dd = randInt(1, d - 1)
+  return {
+    condition_text: `Найдите объём многогранника, изображённого на рисунке (все двугранные углы — прямые).`,
+    image_url: svgUrl(stepSolidSvg(w, d, H, h2, dd)),
+    answer: ru(w * (d * H - dd * h2)),
+  }
+}
+
+// Прямоугольный параллелепипед с диагональю AC₁ (ребро AD и диагональ разведены
+// по направлению, чтобы не сливались).
+function boxDiagonalSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-10 10 450 350" width="450" height="350" font-family="Arial, sans-serif">` +
+    `<rect x="-10" y="10" width="450" height="350" fill="#fff"/>` +
+    // скрытые рёбра
+    `<line x1="30" y1="300" x2="90" y2="215" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="104"/>` +
+    `<line x1="370" y1="215" x2="90" y2="215" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="280"/>` +
+    `<line x1="90" y1="215" x2="90" y2="45" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="172"/>` +
+    // видимые рёбра
+    `<line x1="30" y1="300" x2="310" y2="300" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="310" y1="300" x2="370" y2="215" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="30" y1="300" x2="30" y2="130" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="310" y1="300" x2="310" y2="130" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="370" y1="215" x2="370" y2="45" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="30" y1="130" x2="310" y2="130" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="310" y1="130" x2="370" y2="45" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="30" y1="130" x2="90" y2="45" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="90" y1="45" x2="370" y2="45" stroke="#000" stroke-width="1.7"/>` +
+    // диагональ
+    `<line x1="30" y1="300" x2="370" y2="45" stroke="#000" stroke-width="1.9" stroke-dasharray="8 6" pathLength="421"/>` +
+    // подписи
+    `<g font-size="17" font-style="italic" fill="#000" stroke="none" text-anchor="middle">` +
+    `<text x="22" y="326">A</text><text x="312" y="326">B</text><text x="392" y="235">C</text><text x="70" y="205">D</text>` +
+    `<text x="12" y="120">A₁</text><text x="332" y="152">B₁</text><text x="68" y="35">D₁</text><text x="392" y="37">C₁</text>` +
+    `</g></svg>`
+}
+
+// Тот же параллелепипед без диагонали (прямые ученик достраивает сам).
+function boxPlainLabeledSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-10 10 450 350" width="450" height="350" font-family="Arial, sans-serif">` +
+    `<rect x="-10" y="10" width="450" height="350" fill="#fff"/>` +
+    `<line x1="30" y1="300" x2="90" y2="215" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="104"/>` +
+    `<line x1="370" y1="215" x2="90" y2="215" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="280"/>` +
+    `<line x1="90" y1="215" x2="90" y2="45" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="172"/>` +
+    `<line x1="30" y1="300" x2="310" y2="300" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="310" y1="300" x2="370" y2="215" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="30" y1="300" x2="30" y2="130" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="310" y1="300" x2="310" y2="130" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="370" y1="215" x2="370" y2="45" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="30" y1="130" x2="310" y2="130" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="310" y1="130" x2="370" y2="45" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="30" y1="130" x2="90" y2="45" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="90" y1="45" x2="370" y2="45" stroke="#000" stroke-width="1.7"/>` +
+    `<g font-size="17" font-style="italic" fill="#000" stroke="none" text-anchor="middle">` +
+    `<text x="22" y="326">A</text><text x="312" y="326">B</text><text x="392" y="235">C</text><text x="70" y="205">D</text>` +
+    `<text x="12" y="120">A₁</text><text x="332" y="152">B₁</text><text x="68" y="35">D₁</text><text x="392" y="37">C₁</text>` +
+    `</g></svg>`
+}
+
+// Тот же параллелепипед с сечением ABC₁D₁ (плоскость через A, B, C₁).
+function boxSectionSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-10 10 450 350" width="450" height="350" font-family="Arial, sans-serif">` +
+    `<rect x="-10" y="10" width="450" height="350" fill="#fff"/>` +
+    // скрытые рёбра
+    `<line x1="30" y1="300" x2="90" y2="215" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="104"/>` +
+    `<line x1="370" y1="215" x2="90" y2="215" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="280"/>` +
+    `<line x1="90" y1="215" x2="90" y2="45" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="172"/>` +
+    // рёбра параллелепипеда
+    `<line x1="310" y1="300" x2="370" y2="215" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="30" y1="300" x2="30" y2="130" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="310" y1="300" x2="310" y2="130" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="370" y1="215" x2="370" y2="45" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="30" y1="130" x2="310" y2="130" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="310" y1="130" x2="370" y2="45" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="30" y1="130" x2="90" y2="45" stroke="#000" stroke-width="1.5"/>` +
+    // сечение ABC₁D₁
+    `<line x1="30" y1="300" x2="310" y2="300" stroke="#000" stroke-width="2.6"/>` +
+    `<line x1="310" y1="300" x2="370" y2="45" stroke="#000" stroke-width="2.6"/>` +
+    `<line x1="90" y1="45" x2="370" y2="45" stroke="#000" stroke-width="2.6"/>` +
+    `<line x1="30" y1="300" x2="90" y2="45" stroke="#000" stroke-width="2.6" stroke-dasharray="9 6" pathLength="264"/>` +
+    // подписи
+    `<g font-size="17" font-style="italic" fill="#000" stroke="none" text-anchor="middle">` +
+    `<text x="22" y="326">A</text><text x="312" y="326">B</text><text x="392" y="235">C</text><text x="70" y="205">D</text>` +
+    `<text x="12" y="120">A₁</text><text x="332" y="152">B₁</text><text x="68" y="35">D₁</text><text x="392" y="37">C₁</text>` +
+    `</g></svg>`
+}
+
+// Сечение через A, B, C₁ — прямоугольник ABC₁D₁: S = AB·√(AD²+AA₁²).
+function t03BoxSection() {
+  const [b, c, h] = pick(SIN_TRIPLES)
+  const a = randInt(2, 30)
+  return {
+    condition_text: `В прямоугольном параллелепипеде ABCDA₁B₁C₁D₁ известны длины рёбер: AB = ${a}, AD = ${b}, AA₁ = ${c}. Найдите площадь сечения параллелепипеда плоскостью, проходящей через точки A, B и C₁.`,
+    image_url: svgUrl(boxSectionSvg()),
+    answer: ru(a * h),
+  }
+}
+
+// Сечение через B, B₁, D — прямоугольник BDD₁B₁: S = AA₁·√(AB²+AD²).
+function t03BoxDiagSection() {
+  const [a, b, h] = pick(SIN_TRIPLES)
+  const c = randInt(2, 30)
+  return {
+    condition_text: `В прямоугольном параллелепипеде ABCDA₁B₁C₁D₁ известны длины рёбер: AB = ${a}, AD = ${b}, AA₁ = ${c}. Найдите площадь сечения, проходящего через вершины B, B₁ и D.`,
+    image_url: svgUrl(boxPlainLabeledSvg()),
+    answer: ru(c * h),
+  }
+}
+
+// DD₁=(0,0,c), B₁C=(0,b,−c) ⟹ cos = c/√(b²+c²), sin = b/√(b²+c²).
+// (b,c,h) — пифагоровы тройки, чтобы синус был коротким числом.
+const SIN_TRIPLES = [
+  [3, 4, 5], [4, 3, 5], [6, 8, 10], [8, 6, 10], [9, 12, 15], [12, 9, 15],
+  [16, 12, 20], [12, 16, 20], [15, 20, 25], [20, 15, 25], [7, 24, 25], [24, 7, 25],
+]
+
+function t03BoxLineSin() {
+  const [b, c, h] = pick(SIN_TRIPLES)
+  const a = randInt(2, 30)
+  return {
+    condition_text: `В прямоугольном параллелепипеде ABCDA₁B₁C₁D₁ известны длины рёбер: AB = ${a}, AD = ${b}, AA₁ = ${c}. Найдите синус угла между прямыми DD₁ и B₁C.`,
+    image_url: svgUrl(boxPlainLabeledSvg()),
+    answer: ru(clean(b / h)),
+  }
+}
+
+// Тройки (a,b,c), у которых a²+b²+c² — полный квадрат (целая диагональ).
+const BOX_DIAG_TRIPLES = [
+  [1, 2, 2], [1, 4, 8], [1, 12, 12], [2, 3, 6], [2, 4, 4], [2, 5, 14], [2, 6, 9],
+  [2, 8, 16], [2, 10, 11], [3, 4, 12], [3, 6, 6], [4, 4, 7], [4, 8, 19], [4, 13, 16],
+  [5, 6, 30], [6, 6, 7], [6, 10, 15], [8, 9, 12], [9, 12, 20], [12, 15, 16],
+]
+
+function t03BoxDiagonal() {
+  const [x, y, z] = pick(BOX_DIAG_TRIPLES)
+  const [a, b] = Math.random() < 0.5 ? [x, y] : [y, x]
+  return {
+    condition_text: `В прямоугольном параллелепипеде ABCDA₁B₁C₁D₁ известно, что BB₁ = ${z}, A₁B₁ = ${a}, A₁D₁ = ${b}. Найдите длину диагонали AC₁.`,
+    image_url: svgUrl(boxDiagonalSvg()),
+    answer: ru(Math.sqrt(a * a + b * b + z * z)),
+  }
+}
+
+// Куб ABCDA₁B₁C₁D₁ для задач на угол между прямыми (D — скрытая вершина).
+function cubeAngleSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 380" width="390" height="380" font-family="Arial, sans-serif">` +
+    `<rect width="390" height="380" fill="#fff"/>` +
+    // скрытые рёбра
+    `<line x1="50" y1="275" x2="173" y2="196" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="146"/>` +
+    `<line x1="331" y1="258" x2="173" y2="196" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="170"/>` +
+    `<line x1="173" y1="196" x2="173" y2="23" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="173"/>` +
+    // видимые рёбра
+    `<line x1="50" y1="275" x2="208" y2="337" stroke="#000" stroke-width="1.6"/>` +
+    `<line x1="208" y1="337" x2="331" y2="258" stroke="#000" stroke-width="1.6"/>` +
+    `<line x1="50" y1="275" x2="50" y2="102" stroke="#000" stroke-width="1.6"/>` +
+    `<line x1="208" y1="337" x2="208" y2="163" stroke="#000" stroke-width="1.6"/>` +
+    `<line x1="331" y1="258" x2="331" y2="85" stroke="#000" stroke-width="1.6"/>` +
+    `<line x1="50" y1="102" x2="208" y2="163" stroke="#000" stroke-width="1.6"/>` +
+    `<line x1="208" y1="163" x2="331" y2="85" stroke="#000" stroke-width="1.6"/>` +
+    `<line x1="50" y1="102" x2="173" y2="23" stroke="#000" stroke-width="1.6"/>` +
+    `<line x1="173" y1="23" x2="331" y2="85" stroke="#000" stroke-width="1.6"/>` +
+    // подписи
+    `<g font-size="17" font-style="italic" fill="#000" stroke="none" text-anchor="middle">` +
+    `<text x="36" y="296">A</text><text x="208" y="360">B</text><text x="349" y="276">C</text><text x="156" y="190">D</text>` +
+    `<text x="32" y="98">A₁</text><text x="228" y="183">B₁</text><text x="157" y="14">D₁</text><text x="349" y="80">C₁</text>` +
+    `</g></svg>`
+}
+
+// Координаты вершин единичного куба — угол считается кодом, не таблицей.
+const CUBE_V = {
+  A: [0, 0, 0], B: [1, 0, 0], C: [1, 1, 0], D: [0, 1, 0],
+  A1: [0, 0, 1], B1: [1, 0, 1], C1: [1, 1, 1], D1: [0, 1, 1],
+}
+// Имя вершины в тексте: A1 → A₁.
+const cubeName = (v) => v.replace("1", "₁")
+
+function cubeAngleDeg(p, q, r, s) {
+  const sub = (u, v) => [u[0] - v[0], u[1] - v[1], u[2] - v[2]]
+  const dot = (u, v) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2]
+  const len = (u) => Math.sqrt(dot(u, u))
+  const u = sub(CUBE_V[q], CUBE_V[p]), v = sub(CUBE_V[s], CUBE_V[r])
+  const c = Math.abs(dot(u, v)) / (len(u) * len(v))
+  return Math.round(Math.acos(Math.min(1, c)) * 180 / Math.PI)
+}
+
+// Пары прямых из открытого банка ФИПИ.
+const CUBE_ANGLE_PAIRS = [
+  ["A", "C", "B", "B1"], ["B", "A1", "D1", "C1"], ["A1", "D", "B1", "D1"], ["C", "D1", "A", "D"],
+  ["A", "B1", "B", "C1"], ["A", "C", "B1", "D1"], ["A", "D1", "B1", "C"], ["A1", "B", "C1", "D"],
+]
+
+function t03CubeAngle() {
+  const [p, q, r, s] = pick(CUBE_ANGLE_PAIRS)
+  return {
+    condition_text: `В кубе ABCDA₁B₁C₁D₁ найдите угол между прямыми ${cubeName(p)}${cubeName(q)} и ${cubeName(r)}${cubeName(s)}. Ответ дайте в градусах.`,
+    image_url: svgUrl(cubeAngleSvg()),
+    answer: ru(cubeAngleDeg(p, q, r, s)),
+  }
+}
+
+// Куб с пространственной диагональю (d = a√3).
+function cubeDiagSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 330" width="340" height="330" font-family="Arial, sans-serif">` +
+    `<rect width="340" height="330" fill="#fff"/>` +
+    // скрытые рёбра
+    `<line x1="120" y1="248" x2="40" y2="290" stroke="#000" stroke-width="1.2" stroke-dasharray="6 5" pathLength="89"/>` +
+    `<line x1="120" y1="248" x2="300" y2="248" stroke="#000" stroke-width="1.2" stroke-dasharray="6 5" pathLength="181"/>` +
+    `<line x1="120" y1="248" x2="120" y2="68" stroke="#000" stroke-width="1.2" stroke-dasharray="6 5" pathLength="180"/>` +
+    // передняя грань
+    `<line x1="40" y1="290" x2="220" y2="290" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="220" y1="290" x2="220" y2="110" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="220" y1="110" x2="40" y2="110" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="40" y1="110" x2="40" y2="290" stroke="#000" stroke-width="1.5"/>` +
+    // глубина и задняя грань
+    `<line x1="220" y1="290" x2="300" y2="248" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="220" y1="110" x2="300" y2="68" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="40" y1="110" x2="120" y2="68" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="300" y1="248" x2="300" y2="68" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="120" y1="68" x2="300" y2="68" stroke="#000" stroke-width="1.5"/>` +
+    // диагональ
+    `<line x1="40" y1="290" x2="300" y2="68" stroke="#000" stroke-width="2.2" stroke-dasharray="9 6" pathLength="345"/>` +
+    `</svg>`
+}
+
+// Диагональ куба d = a√3 ⟹ дано d = √(3a²), объём a³.
+function t03CubeDiagonal() {
+  const a = randInt(2, 9)
+  return {
+    condition_text: `Диагональ куба равна ${rT(3 * a * a)}. Найдите его объём.`,
+    image_url: svgUrl(cubeDiagSvg()),
+    answer: ru(a * a * a),
+  }
+}
+
+// Т-образный многогранник: нижний блок W×D×H1 + верхний блок a×a×H2 по центру.
+// S = 2WD + 2H1(W+D) + 4aH2 (площадки склейки взаимно сокращаются).
+function tSolidSvg(W, D, H1, a, H2) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 40 580 430" width="580" height="430" font-family="Arial, sans-serif">` +
+    `<rect x="0" y="40" width="580" height="430" fill="#fff"/>` +
+    // скрытые рёбра плиты
+    `<line x1="115" y1="330" x2="10" y2="415" stroke="#000" stroke-width="1.4" stroke-dasharray="7 5" pathLength="134"/>` +
+    `<line x1="115" y1="330" x2="520" y2="330" stroke="#000" stroke-width="1.4" stroke-dasharray="7 5" pathLength="404"/>` +
+    `<line x1="115" y1="330" x2="115" y2="210" stroke="#000" stroke-width="1.4" stroke-dasharray="7 5" pathLength="120"/>` +
+    // задняя левая вертикаль блока, ребро KN, скрытая часть HN
+    `<line x1="250" y1="210" x2="250" y2="90" stroke="#000" stroke-width="1.4" stroke-dasharray="7 5" pathLength="120"/>` +
+    `<line x1="145" y1="295" x2="250" y2="210" stroke="#000" stroke-width="1.4" stroke-dasharray="7 5" pathLength="134"/>` +
+    `<line x1="145" y1="210" x2="250" y2="210" stroke="#000" stroke-width="1.4" stroke-dasharray="7 5" pathLength="106"/>` +
+    // плита
+    `<line x1="10" y1="415" x2="415" y2="415" stroke="#000" stroke-width="2"/>` +
+    `<line x1="415" y1="415" x2="520" y2="330" stroke="#000" stroke-width="2"/>` +
+    `<line x1="10" y1="415" x2="10" y2="295" stroke="#000" stroke-width="2"/>` +
+    `<line x1="415" y1="415" x2="415" y2="295" stroke="#000" stroke-width="2"/>` +
+    `<line x1="520" y1="330" x2="520" y2="210" stroke="#000" stroke-width="2"/>` +
+    `<line x1="415" y1="295" x2="520" y2="210" stroke="#000" stroke-width="2"/>` +
+    `<line x1="10" y1="295" x2="115" y2="210" stroke="#000" stroke-width="2"/>` +
+    `<line x1="10" y1="295" x2="145" y2="295" stroke="#000" stroke-width="2"/>` +
+    `<line x1="280" y1="295" x2="415" y2="295" stroke="#000" stroke-width="2"/>` +
+    `<line x1="115" y1="210" x2="145" y2="210" stroke="#000" stroke-width="2"/>` +
+    `<line x1="385" y1="210" x2="520" y2="210" stroke="#000" stroke-width="2"/>` +
+    // блок (сросся с плитой спереди и сзади)
+    `<line x1="145" y1="295" x2="145" y2="175" stroke="#000" stroke-width="2"/>` +
+    `<line x1="280" y1="295" x2="280" y2="175" stroke="#000" stroke-width="2"/>` +
+    `<line x1="385" y1="210" x2="385" y2="90" stroke="#000" stroke-width="2"/>` +
+    `<line x1="280" y1="295" x2="385" y2="210" stroke="#000" stroke-width="2"/>` +
+    `<line x1="145" y1="175" x2="280" y2="175" stroke="#000" stroke-width="2"/>` +
+    `<line x1="280" y1="175" x2="385" y2="90" stroke="#000" stroke-width="2"/>` +
+    `<line x1="385" y1="90" x2="250" y2="90" stroke="#000" stroke-width="2"/>` +
+    `<line x1="250" y1="90" x2="145" y2="175" stroke="#000" stroke-width="2"/>` +
+    // размеры
+    `<g font-size="22" fill="#000" stroke="none" text-anchor="middle">` +
+    `<text x="212" y="445">${W}</text><text x="492" y="398">${D}</text><text x="548" y="278">${H1}</text>` +
+    `<text x="317" y="72">${a}</text><text x="410" y="158">${H2}</text>` +
+    `</g></svg>`
+}
+
+// Блок a×D×H2 стоит на плите W×D×H1 и сросся с ней спереди и сзади.
+// S = 2WD + 2H1(W+D) + 2H2(a+D).
+function t03TSolidSurface() {
+  const W = randInt(4, 8), D = randInt(2, 6), H1 = randInt(1, 4)
+  const a = randInt(1, W - 2), H2 = randInt(1, 4)
+  return {
+    condition_text: `Найдите площадь поверхности многогранника, изображённого на рисунке (все двугранные углы — прямые).`,
+    image_url: svgUrl(tSolidSvg(W, D, H1, a, H2)),
+    answer: ru(2 * W * D + 2 * H1 * (W + D) + 2 * H2 * (a + D)),
+  }
+}
+
+// Обратная к t03CubeCut: V_куба = 8·V_призмы.
+function t03CubeCutInverse() {
+  const vc = 4 * randInt(1, 25)
+  return {
+    condition_text: `Объём треугольной призмы, отсекаемой от куба плоскостью, проходящей через середины двух рёбер, выходящих из одной вершины, и параллельной третьему ребру, выходящему из этой же вершины, равен ${ru(vc / 8)}. Найдите объём куба.`,
+    image_url: svgUrl(cubeCutSvg()),
+    answer: ru(vc),
+  }
+}
+
+// Г-образный многогранник: передняя грань — прямоугольник w×H с вырезом
+// (ширина wc, высота H−h2) в правом верхнем углу; глубина d. V = (w·H − wc·(H−h2))·d.
+function lSolidSvg(w, H, d, wc, h2) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 440" width="420" height="440" font-family="Arial, sans-serif">` +
+    `<rect width="420" height="440" fill="#fff"/>` +
+    // скрытые рёбра
+    `<line x1="130" y1="340" x2="85" y2="375" stroke="#000" stroke-width="1.4" stroke-dasharray="7 5" pathLength="57"/>` +
+    `<line x1="130" y1="340" x2="335" y2="340" stroke="#000" stroke-width="1.4" stroke-dasharray="7 5" pathLength="204"/>` +
+    `<line x1="130" y1="340" x2="130" y2="25" stroke="#000" stroke-width="1.4" stroke-dasharray="7 5" pathLength="315"/>` +
+    // передняя Г-образная грань
+    `<line x1="85" y1="375" x2="290" y2="375" stroke="#000" stroke-width="2"/>` +
+    `<line x1="290" y1="375" x2="290" y2="249" stroke="#000" stroke-width="2"/>` +
+    `<line x1="290" y1="249" x2="222" y2="249" stroke="#000" stroke-width="2"/>` +
+    `<line x1="222" y1="249" x2="222" y2="60" stroke="#000" stroke-width="2"/>` +
+    `<line x1="222" y1="60" x2="85" y2="60" stroke="#000" stroke-width="2"/>` +
+    `<line x1="85" y1="60" x2="85" y2="375" stroke="#000" stroke-width="2"/>` +
+    // рёбра глубины
+    `<line x1="290" y1="375" x2="335" y2="340" stroke="#000" stroke-width="2"/>` +
+    `<line x1="290" y1="249" x2="335" y2="214" stroke="#000" stroke-width="2"/>` +
+    `<line x1="222" y1="249" x2="267" y2="214" stroke="#000" stroke-width="2"/>` +
+    `<line x1="222" y1="60" x2="267" y2="25" stroke="#000" stroke-width="2"/>` +
+    `<line x1="85" y1="60" x2="130" y2="25" stroke="#000" stroke-width="2"/>` +
+    // задний контур
+    `<line x1="335" y1="340" x2="335" y2="214" stroke="#000" stroke-width="2"/>` +
+    `<line x1="335" y1="214" x2="267" y2="214" stroke="#000" stroke-width="2"/>` +
+    `<line x1="267" y1="214" x2="267" y2="25" stroke="#000" stroke-width="2"/>` +
+    `<line x1="267" y1="25" x2="130" y2="25" stroke="#000" stroke-width="2"/>` +
+    // размеры
+    `<g font-size="21" fill="#000" stroke="none" text-anchor="middle">` +
+    `<text x="58" y="225">${H}</text><text x="187" y="406">${w}</text><text x="327" y="384">${d}</text>` +
+    `<text x="360" y="287">${h2}</text><text x="301" y="196">${wc}</text>` +
+    `</g></svg>`
+}
+
+function t03LSolid() {
+  const w = randInt(3, 7), H = randInt(3, 7), d = randInt(1, 4)
+  const wc = randInt(1, w - 1), h2 = randInt(1, H - 1)
+  return {
+    condition_text: `Найдите объём многогранника, изображённого на рисунке (все двугранные углы многогранника — прямые).`,
+    image_url: svgUrl(lSolidSvg(w, H, d, wc, h2)),
+    answer: ru((w * H - wc * (H - h2)) * d),
+  }
+}
+
+// Куб с отсекаемой треугольной призмой: сечение через середины двух рёбер,
+// выходящих из вершины, параллельно третьему ребру ⟹ V = a³/8 = V_куба/8.
+function cubeCutSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 360" width="380" height="360" font-family="Arial, sans-serif">` +
+    `<rect width="380" height="360" fill="#fff"/>` +
+    // скрытые рёбра куба
+    `<line x1="50" y1="300" x2="120" y2="240" stroke="#000" stroke-width="1.2" stroke-dasharray="6 5" pathLength="89"/>` +
+    `<line x1="120" y1="240" x2="320" y2="240" stroke="#000" stroke-width="1.2" stroke-dasharray="6 5" pathLength="203"/>` +
+    `<line x1="120" y1="240" x2="120" y2="80" stroke="#000" stroke-width="1.2" stroke-dasharray="6 5" pathLength="160"/>` +
+    // видимые рёбра куба
+    `<line x1="50" y1="300" x2="250" y2="300" stroke="#000" stroke-width="1.4"/>` +
+    `<line x1="50" y1="300" x2="50" y2="140" stroke="#000" stroke-width="1.4"/>` +
+    `<line x1="250" y1="300" x2="250" y2="140" stroke="#000" stroke-width="1.4"/>` +
+    `<line x1="50" y1="140" x2="250" y2="140" stroke="#000" stroke-width="1.4"/>` +
+    `<line x1="50" y1="140" x2="120" y2="80" stroke="#000" stroke-width="1.4"/>` +
+    `<line x1="120" y1="80" x2="320" y2="80" stroke="#000" stroke-width="1.4"/>` +
+    `<line x1="250" y1="140" x2="320" y2="80" stroke="#000" stroke-width="1.4"/>` +
+    `<line x1="320" y1="80" x2="320" y2="240" stroke="#000" stroke-width="1.4"/>` +
+    `<line x1="250" y1="300" x2="320" y2="240" stroke="#000" stroke-width="1.4"/>` +
+    // отсекаемая призма
+    `<line x1="320" y1="80" x2="285" y2="110" stroke="#000" stroke-width="2.4"/>` +
+    `<line x1="320" y1="80" x2="220" y2="80" stroke="#000" stroke-width="2.4"/>` +
+    `<line x1="285" y1="110" x2="220" y2="80" stroke="#000" stroke-width="2.4"/>` +
+    `<line x1="320" y1="80" x2="320" y2="240" stroke="#000" stroke-width="2.4"/>` +
+    `<line x1="285" y1="110" x2="285" y2="270" stroke="#000" stroke-width="2.4"/>` +
+    `<line x1="220" y1="80" x2="220" y2="240" stroke="#000" stroke-width="2.4" stroke-dasharray="8 6" pathLength="162"/>` +
+    `<line x1="320" y1="240" x2="285" y2="270" stroke="#000" stroke-width="2.4"/>` +
+    `<line x1="320" y1="240" x2="220" y2="240" stroke="#000" stroke-width="2.4" stroke-dasharray="8 6" pathLength="106"/>` +
+    `<line x1="285" y1="270" x2="220" y2="240" stroke="#000" stroke-width="2.4" stroke-dasharray="8 6" pathLength="76"/>` +
+    `</svg>`
+}
+
+function t03CubeCut() {
+  const v = 8 * randInt(2, 25)
+  return {
+    condition_text: `Объём куба равен ${v}. Найдите объём треугольной призмы, отсекаемой от куба плоскостью, проходящей через середины двух рёбер, выходящих из одной вершины, и параллельной третьему ребру, выходящему из этой же вершины.`,
+    image_url: svgUrl(cubeCutSvg()),
+    answer: ru(v / 8),
+  }
+}
+
+// Одиночный конус (высота, радиус, прямой угол — пунктиром).
+function coneSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 340" width="300" height="340" font-family="Arial, sans-serif">` +
+    `<rect width="300" height="340" fill="#fff"/>` +
+    `<line x1="150" y1="40" x2="40" y2="270" stroke="#000" stroke-width="1.6"/>` +
+    `<line x1="150" y1="40" x2="260" y2="270" stroke="#000" stroke-width="1.6"/>` +
+    `<path d="M40,270 A110,30 0 0,0 260,270" fill="none" stroke="#000" stroke-width="1.6"/>` +
+    `<path d="M40,270 A110,30 0 0,1 260,270" fill="none" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="232"/>` +
+    `<line x1="150" y1="40" x2="150" y2="270" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="235"/>` +
+    `<line x1="150" y1="270" x2="260" y2="270" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="115"/>` +
+    `<polyline points="150,256 164,256 164,270" fill="none" stroke="#000" stroke-width="1.3"/>` +
+    `</svg>`
+}
+
+// V = ⅓πR²h линейно по h: высота ÷k ⟹ объём ÷k.
+function t03ConeHeightScale() {
+  const k = randInt(2, 15)
+  return {
+    condition_text: `Во сколько раз уменьшится объём конуса, если его высота уменьшится в ${k} ${razWord(k)}, а радиус основания останется прежним?`,
+    image_url: svgUrl(coneSvg()),
+    answer: ru(k),
+  }
+}
+
+// Шар с сечением через центр (большой круг).
+function sphereSectionSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" width="320" height="320" font-family="Arial, sans-serif">` +
+    `<rect width="320" height="320" fill="#fff"/>` +
+    `<circle cx="160" cy="160" r="130" fill="none" stroke="#000" stroke-width="2"/>` +
+    `<path d="M30,160 A130,32 0 0,0 290,160" fill="none" stroke="#000" stroke-width="1.6"/>` +
+    `<path d="M30,160 A130,32 0 0,1 290,160" fill="none" stroke="#000" stroke-width="1.4" stroke-dasharray="7 5" pathLength="283"/>` +
+    `<circle cx="160" cy="160" r="2.6" fill="#000"/>` +
+    `</svg>`
+}
+
+// Сечение через центр — большой круг πR² = S; поверхность шара 4πR² = 4S.
+function t03SphereSection() {
+  const s = randInt(2, 40)
+  return {
+    condition_text: `Площадь сечения шара плоскостью, проходящей через центр шара, равна ${s}. Найдите площадь поверхности шара.`,
+    image_url: svgUrl(sphereSectionSvg()),
+    answer: ru(4 * s),
+  }
+}
+
+// Сфера описана около конуса, центр — в центре основания ⟹ R_осн = h = R_сф,
+// образующая l = R√2. Чертёж — та же конфигурация, что «конус в шаре».
+function t03ConeSphereRadius() {
+  const k = randInt(2, 30)
+  return {
+    condition_text: `Около конуса описана сфера (сфера содержит окружность основания конуса и его вершину). Центр сферы находится в центре основания конуса. Образующая конуса равна ${k}${rT(2)}. Найдите радиус сферы.`,
+    image_url: svgUrl(coneInSphereSvg()),
+    answer: ru(k),
+  }
+}
+
+// Обратная: R_сф = k√2 ⟹ l = R√2 = 2k.
+function t03ConeSphereSlant() {
+  const k = randInt(2, 90)
+  return {
+    condition_text: `Около конуса описана сфера (сфера содержит окружность основания конуса и его вершину). Центр сферы находится в центре основания конуса. Радиус сферы равен ${k}${rT(2)}. Найдите длину образующей конуса.`,
+    image_url: svgUrl(coneInSphereSvg()),
+    answer: ru(2 * k),
+  }
+}
+
+// Правильная треугольная призма (наклонённая, как в ФИПИ); тетраэдр A, B, C, B₁.
+function prismTetraB1Svg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="95 30 240 300" width="288" height="360" font-family="Arial, sans-serif">` +
+    `<rect x="95" y="30" width="240" height="300" fill="#fff"/>` +
+    // рёбра призмы
+    `<line x1="150" y1="60" x2="130" y2="135" stroke="#000" stroke-width="1.2"/>` +
+    `<line x1="150" y1="60" x2="290" y2="105" stroke="#000" stroke-width="1.2"/>` +
+    `<line x1="130" y1="135" x2="290" y2="105" stroke="#000" stroke-width="1.2"/>` +
+    `<line x1="290" y1="105" x2="290" y2="255" stroke="#000" stroke-width="1.2"/>` +
+    `<line x1="150" y1="60" x2="150" y2="210" stroke="#000" stroke-width="1.2"/>` +
+    // тетраэдр: видимые рёбра
+    `<line x1="130" y1="135" x2="130" y2="285" stroke="#000" stroke-width="2.6"/>` +
+    `<line x1="130" y1="285" x2="290" y2="255" stroke="#000" stroke-width="2.6"/>` +
+    `<line x1="130" y1="135" x2="290" y2="255" stroke="#000" stroke-width="2.6"/>` +
+    // тетраэдр: скрытые рёбра к A — жирный пунктир
+    `<line x1="130" y1="285" x2="150" y2="210" stroke="#000" stroke-width="2.6" stroke-dasharray="7 5" pathLength="79"/>` +
+    `<line x1="290" y1="255" x2="150" y2="210" stroke="#000" stroke-width="2.6" stroke-dasharray="7 5" pathLength="151"/>` +
+    `<line x1="130" y1="135" x2="150" y2="210" stroke="#000" stroke-width="2.6" stroke-dasharray="7 5" pathLength="79"/>` +
+    // подписи
+    `<g font-size="16" font-style="italic" fill="#000" text-anchor="middle">` +
+    `<text x="150" y="48">A₁</text><text x="309" y="100">C₁</text><text x="112" y="133">B₁</text>` +
+    `<text x="165" y="205">A</text><text x="307" y="262">C</text><text x="120" y="303">B</text>` +
+    `</g></svg>`
+}
+
+function t03PrismTetraB1() {
+  let s, l
+  do { s = randInt(3, 12); l = randInt(3, 12) } while ((s * l) % 3 !== 0)
+  return {
+    condition_text: `Найдите объём многогранника, вершинами которого являются вершины A, B, C, B₁ правильной треугольной призмы ABCA₁B₁C₁, площадь основания которой равна ${s}, а боковое ребро равно ${l}.`,
+    image_url: svgUrl(prismTetraB1Svg()),
+    answer: ru(s * l / 3),
+  }
+}
+
+// Цилиндр, вписанный в прямоугольный параллелепипед: основания-эллипсы касаются
+// всех четырёх боковых граней в серединах сторон; образующие — по силуэту.
+const CYL_BOX_BACK = "M568.8,428.5 L568.0,425.2 L565.6,422.0 L561.7,419.0 L556.2,416.1 L549.2,413.4 L540.8,410.9 L531.0,408.6 L520.0,406.6 L507.6,404.8 L494.2,403.3 L479.8,402.0 L464.4,401.1 L448.2,400.4 L431.4,400.1 L414.0,400.0 L396.3,400.3 L378.2,400.8 L360.0,401.7 L341.8,402.8 L323.7,404.3 L306.0,406.0 L288.6,407.9 L271.8,410.1 L255.6,412.6 L240.2,415.2 L225.8,418.0 L212.4,421.0 L200.0,424.2 L189.0,427.4 L179.2,430.8 L170.8,434.2 L163.8,437.7 L158.3,441.2 L154.4,444.7 L152.0,448.1 L151.2,451.5"
+const CYL_BOX_FRONT = "M151.2,451.5 L152.0,454.8 L154.4,458.0 L158.3,461.0 L163.8,463.9 L170.8,466.6 L179.2,469.1 L189.0,471.4 L200.0,473.4 L212.4,475.2 L225.8,476.7 L240.2,478.0 L255.6,478.9 L271.8,479.6 L288.6,479.9 L306.0,480.0 L323.7,479.7 L341.8,479.2 L360.0,478.3 L378.2,477.2 L396.3,475.7 L414.0,474.0 L431.4,472.1 L448.2,469.9 L464.4,467.4 L479.8,464.8 L494.2,462.0 L507.6,459.0 L520.0,455.8 L531.0,452.6 L540.8,449.2 L549.2,445.8 L556.2,442.3 L561.7,438.8 L565.6,435.3 L568.0,431.9 L568.8,428.5"
+const CYL_BOX_TOP = "M568.8,288.5 L565.6,282.0 L556.2,276.1 L540.8,270.9 L520.0,266.6 L494.2,263.3 L464.4,261.1 L431.4,260.1 L396.3,260.3 L360.0,261.7 L323.7,264.3 L288.6,267.9 L255.6,272.6 L225.8,278.0 L200.0,284.2 L179.2,290.8 L163.8,297.7 L154.4,304.7 L151.2,311.5 L154.4,318.0 L163.8,323.9 L179.2,329.1 L200.0,333.4 L225.8,336.7 L255.6,338.9 L288.6,339.9 L323.7,339.7 L360.0,338.3 L396.3,335.7 L431.4,332.1 L464.4,327.4 L494.2,322.0 L520.0,315.8 L540.8,309.2 L556.2,302.3 L565.6,295.3 L568.8,288.5"
+
+function cylInBoxSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="60 220 600 300" width="600" height="300" font-family="Arial, sans-serif">` +
+    `<rect x="60" y="220" width="600" height="300" fill="#fff"/>` +
+    // скрытые рёбра параллелепипеда
+    `<line x1="220" y1="400" x2="100" y2="480" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="145"/>` +
+    `<line x1="220" y1="400" x2="620" y2="400" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="404"/>` +
+    `<line x1="220" y1="400" x2="220" y2="260" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="141"/>` +
+    // цилиндр
+    `<path d="${CYL_BOX_BACK}" fill="none" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="443"/>` +
+    `<path d="${CYL_BOX_FRONT}" fill="none" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="151.2" y1="451.5" x2="151.2" y2="311.5" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="568.8" y1="428.5" x2="568.8" y2="288.5" stroke="#000" stroke-width="1.5"/>` +
+    `<path d="${CYL_BOX_TOP}" fill="none" stroke="#000" stroke-width="1.5"/>` +
+    // видимые рёбра параллелепипеда
+    `<line x1="100" y1="480" x2="500" y2="480" stroke="#000" stroke-width="1.9"/>` +
+    `<line x1="500" y1="480" x2="620" y2="400" stroke="#000" stroke-width="1.9"/>` +
+    `<line x1="100" y1="480" x2="100" y2="340" stroke="#000" stroke-width="1.9"/>` +
+    `<line x1="500" y1="480" x2="500" y2="340" stroke="#000" stroke-width="1.9"/>` +
+    `<line x1="620" y1="400" x2="620" y2="260" stroke="#000" stroke-width="1.9"/>` +
+    `<line x1="100" y1="340" x2="500" y2="340" stroke="#000" stroke-width="1.9"/>` +
+    `<line x1="500" y1="340" x2="620" y2="260" stroke="#000" stroke-width="1.9"/>` +
+    `<line x1="620" y1="260" x2="220" y2="260" stroke="#000" stroke-width="1.9"/>` +
+    `<line x1="220" y1="260" x2="100" y2="340" stroke="#000" stroke-width="1.9"/>` +
+    `</svg>`
+}
+
+// Основание параллелепипеда — квадрат со стороной 2R, высота = h ⟹ V = 4R²h.
+function t03CylInBox() {
+  const r = randInt(1, 9), h = randInt(1, 9)
+  return {
+    condition_text: `Цилиндр вписан в прямоугольный параллелепипед. Радиус основания и высота цилиндра равны ${r === h ? r : `${r} и ${h}`}. Найдите объём параллелепипеда.`,
+    image_url: svgUrl(cylInBoxSvg()),
+    answer: ru(4 * r * r * h),
+  }
+}
+
+// Цилиндр и конус: конус выделен жирным пунктиром (обратная постановка).
+function cylConeDashSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 540" width="500" height="540" font-family="Arial, sans-serif">` +
+    `<rect width="500" height="540" fill="#fff"/>` +
+    `<ellipse cx="250" cy="110" rx="150" ry="28" fill="none" stroke="#000" stroke-width="1.4"/>` +
+    `<line x1="100" y1="110" x2="100" y2="430" stroke="#000" stroke-width="1.4"/>` +
+    `<line x1="400" y1="110" x2="400" y2="430" stroke="#000" stroke-width="1.4"/>` +
+    `<path d="M100,430 A150,28 0 0,0 400,430" fill="none" stroke="#000" stroke-width="2.6"/>` +
+    `<path d="M100,430 A150,28 0 0,1 400,430" fill="none" stroke="#000" stroke-width="2.6" stroke-dasharray="10 7" pathLength="316"/>` +
+    `<line x1="250" y1="110" x2="100" y2="430" stroke="#000" stroke-width="2.6" stroke-dasharray="10 7" pathLength="316"/>` +
+    `<line x1="250" y1="110" x2="400" y2="430" stroke="#000" stroke-width="2.6" stroke-dasharray="10 7" pathLength="316"/>` +
+    `<line x1="250" y1="110" x2="250" y2="430" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="319"/>` +
+    `<line x1="250" y1="430" x2="400" y2="430" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="151"/>` +
+    `<polyline points="250,414 266,414 266,430" fill="none" stroke="#000" stroke-width="1.3"/>` +
+    `</svg>`
+}
+
+// Обратная к t03CylConeVolume: V_цил = 3·V_кон.
+function t03CylConeVolInverse() {
+  const v = randInt(2, 40)
+  return {
+    condition_text: `Цилиндр и конус имеют общие основание и высоту. Объём конуса равен ${v}. Найдите объём цилиндра.`,
+    image_url: svgUrl(cylConeDashSvg()),
+    answer: ru(3 * v),
+  }
+}
+
+// Пирамида A,B,C,D,A₁: апекс над «дальней» (скрытой) вершиной A.
+function boxPyramidA1Svg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 470 420" width="470" height="420" font-family="Arial, sans-serif">` +
+    `<rect width="470" height="420" fill="#fff"/>` +
+    // верхняя грань
+    `<line x1="295" y1="90" x2="95" y2="130" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="95" y1="130" x2="200" y2="185" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="200" y1="185" x2="400" y2="145" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="400" y1="145" x2="295" y2="90" stroke="#000" stroke-width="1.3"/>` +
+    // вертикальные рёбра
+    `<line x1="95" y1="320" x2="95" y2="130" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="200" y1="375" x2="200" y2="185" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="400" y1="335" x2="400" y2="145" stroke="#000" stroke-width="1.3"/>` +
+    // скрытое ребро A–A₁
+    `<line x1="295" y1="280" x2="295" y2="90" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="189"/>` +
+    // нижняя грань
+    `<line x1="95" y1="320" x2="200" y2="375" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="200" y1="375" x2="400" y2="335" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="295" y1="280" x2="95" y2="320" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="200"/>` +
+    `<line x1="295" y1="280" x2="400" y2="335" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="112"/>` +
+    // рёбра пирамиды к A₁
+    `<line x1="295" y1="90" x2="95" y2="320" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="299"/>` +
+    `<line x1="295" y1="90" x2="200" y2="375" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="299"/>` +
+    `<line x1="295" y1="90" x2="400" y2="335" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="266"/>` +
+    // подписи
+    `<g font-size="17" font-style="italic" fill="#000" text-anchor="middle">` +
+    `<text x="313" y="278">A</text><text x="79" y="336">B</text><text x="200" y="396">C</text><text x="416" y="338">D</text>` +
+    `<text x="295" y="78">A₁</text><text x="79" y="128">B₁</text><text x="216" y="192">C₁</text><text x="416" y="142">D₁</text>` +
+    `</g></svg>`
+}
+
+function t03BoxPyramidA1() {
+  let a, b, c
+  do { a = randInt(2, 9); b = randInt(3, 12); c = randInt(3, 12) } while ((a * b * c) % 3 !== 0)
+  return {
+    condition_text: `Найдите объём многогранника, вершинами которого являются вершины A, B, C, D, A₁ прямоугольного параллелепипеда ABCDA₁B₁C₁D₁, у которого AB = ${a}, AD = ${b}, AA₁ = ${c}.`,
+    image_url: svgUrl(boxPyramidA1Svg()),
+    answer: ru(a * b * c / 3),
+  }
+}
+
+// Обратная к t03ConeInSphere: V_кон = V_шара/4.
+function t03ConeInSphereInv() {
+  const v = 4 * randInt(2, 30)
+  return {
+    condition_text: `Конус вписан в шар. Радиус основания конуса равен радиусу шара. Объём шара равен ${v}. Найдите объём конуса.`,
+    image_url: svgUrl(coneInSphereSvg()),
+    answer: ru(v / 4),
+  }
+}
+
+// Два цилиндра: первый выше и уже, второй ниже и шире.
+function twoCylSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 520" width="700" height="520" font-family="Arial, sans-serif">` +
+    `<rect width="700" height="520" fill="#fff"/>` +
+    `<ellipse cx="180" cy="120" rx="110" ry="30" fill="none" stroke="#000" stroke-width="1.6"/>` +
+    `<line x1="70" y1="120" x2="70" y2="450" stroke="#000" stroke-width="1.6"/>` +
+    `<line x1="290" y1="120" x2="290" y2="450" stroke="#000" stroke-width="1.6"/>` +
+    `<path d="M70,450 A110,30 0 0,0 290,450" fill="none" stroke="#000" stroke-width="1.6"/>` +
+    `<path d="M70,450 A110,30 0 0,1 290,450" fill="none" stroke="#000" stroke-width="1.4" stroke-dasharray="8 6" pathLength="232"/>` +
+    `<ellipse cx="490" cy="290" rx="160" ry="43" fill="none" stroke="#000" stroke-width="1.6"/>` +
+    `<line x1="330" y1="290" x2="330" y2="450" stroke="#000" stroke-width="1.6"/>` +
+    `<line x1="650" y1="290" x2="650" y2="450" stroke="#000" stroke-width="1.6"/>` +
+    `<path d="M330,450 A160,43 0 0,0 650,450" fill="none" stroke="#000" stroke-width="1.6"/>` +
+    `<path d="M330,450 A160,43 0 0,1 650,450" fill="none" stroke="#000" stroke-width="1.4" stroke-dasharray="8 6" pathLength="344"/>` +
+    `</svg>`
+}
+
+// V = πR²h: высота ÷a, радиус ×b ⟹ V₂ = V₁·b²/a.
+function t03TwoCylinders() {
+  const a = randInt(2, 4), b = randInt(2, 4)
+  const v1 = a * randInt(2, 15)
+  return {
+    condition_text: `Дано два цилиндра. Объём первого цилиндра равен ${v1}. У второго цилиндра высота в ${a} ${razWord(a)} меньше, а радиус основания в ${b} ${razWord(b)} больше, чем у первого. Найдите объём второго цилиндра.`,
+    image_url: svgUrl(twoCylSvg()),
+    answer: ru(v1 / a * b * b),
+  }
+}
+
+// V_шара = 4πR³/3, V_цил = 2πR³ ⟹ V_цил = 1,5·V_шара.
+function t03SphereInCylVol() {
+  const v = 2 * randInt(2, 30)
+  return {
+    condition_text: `Шар, объём которого равен ${v}, вписан в цилиндр. Найдите объём цилиндра.`,
+    image_url: svgUrl(sphereInCylSvg()),
+    answer: ru(3 * v / 2),
+  }
+}
+
+// Тот же параллелепипед + диагонали сечения AC и A₁C₁ (тело A,B,C,A₁,B₁,C₁).
+function boxDiagSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 470 360" width="470" height="360" font-family="Arial, sans-serif">` +
+    `<rect width="470" height="360" fill="#fff"/>` +
+    // видимые рёбра
+    `<line x1="70" y1="250" x2="245" y2="300" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="245" y1="300" x2="395" y2="250" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="70" y1="250" x2="70" y2="100" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="245" y1="300" x2="245" y2="150" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="395" y1="250" x2="395" y2="100" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="70" y1="100" x2="245" y2="150" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="245" y1="150" x2="395" y2="100" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="70" y1="100" x2="220" y2="50" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="220" y1="50" x2="395" y2="100" stroke="#000" stroke-width="1.5"/>` +
+    // скрытые рёбра (вершина D)
+    `<line x1="70" y1="250" x2="220" y2="200" stroke="#000" stroke-width="1.3" stroke-dasharray="5 4"/>` +
+    `<line x1="395" y1="250" x2="220" y2="200" stroke="#000" stroke-width="1.3" stroke-dasharray="5 4"/>` +
+    `<line x1="220" y1="200" x2="220" y2="50" stroke="#000" stroke-width="1.3" stroke-dasharray="5 4"/>` +
+    // диагонали сечения
+    `<line x1="70" y1="100" x2="395" y2="100" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="70" y1="250" x2="395" y2="250" stroke="#000" stroke-width="1.3" stroke-dasharray="5 4"/>` +
+    // подписи
+    `<g font-size="17" font-style="italic" fill="#000" text-anchor="middle">` +
+    `<text x="60" y="270">A</text><text x="240" y="320">B</text><text x="407" y="268">C</text><text x="205" y="216">D</text>` +
+    `<text x="55" y="98">A₁</text><text x="245" y="140">B₁</text><text x="410" y="98">C₁</text><text x="214" y="40">D₁</text>` +
+    `</g></svg>`
+}
+
+function t03BoxTriPrism() {
+  let a, b, c
+  do { a = randInt(3, 12); b = randInt(2, 9); c = randInt(3, 12) } while ((a * b * c) % 2 !== 0)
+  return {
+    condition_text: `В прямоугольном параллелепипеде ABCDA₁B₁C₁D₁ известно, что AB = ${a}, BC = ${b}, AA₁ = ${c}. Найдите объём многогранника, вершинами которого являются точки A, B, C, A₁, B₁, C₁.`,
+    image_url: svgUrl(boxDiagSvg()),
+    answer: ru(a * b * c / 2),
+  }
+}
+
+function t03BoxPrism() {
+  let a, b, c
+  do { a = randInt(3, 12); b = randInt(2, 9); c = randInt(3, 12) } while ((a * b * c) % 2 !== 0)
+  return {
+    condition_text: `В прямоугольном параллелепипеде ABCDA₁B₁C₁D₁ известно, что AB = ${a}, BC = ${b}, AA₁ = ${c}. Найдите объём многогранника, вершинами которого являются точки A, B, C, D, A₁, B₁.`,
+    image_url: svgUrl(boxPlainSvg()),
+    answer: ru(a * b * c / 2),
+  }
+}
+
+// Площадь боковой поверхности: сечение через среднюю линию делит периметр
+// основания пополам (все стороны ×½), высота та же → S_бок отсечённой = S/2.
+function t03PrismLateral() {
+  const s = 2 * randInt(3, 40)
+  return {
+    condition_text: `Площадь боковой поверхности треугольной призмы равна ${s}. Через среднюю линию основания призмы проведена плоскость, параллельная боковому ребру. Найдите площадь боковой поверхности отсечённой треугольной призмы.`,
+    image_url: svgUrl(prismMidlineSvg()),
+    answer: ru(s / 2),
+  }
+}
+
+// ============================================================================
 // Реестр и мета-темы
 // ============================================================================
 
@@ -3967,13 +4586,7 @@ export const GENERATORS_EGE_PROF = {
     t01ParMidpoint, t01ParAngle, t01ParHeights,
     t01RhombusSideDiag, t01RhombusAngle, t01TrapMidDiag],
   2: [t02DotCoord, t02DotLenAngle, t02LenCombo, t02DotOfCombos, t02GraphLenCombo],
-  3: [t03BoxTetra, t03BoxPyr, t03BoxHalf, t03PrismTetra, t03PrismBig,
-    t03MidVolCut, t03MidVolWhole, t03MidLatCut, t03MidLatWhole,
-    t03CylConeVolCone, t03CylConeVolCyl, t03CylConeLatCyl, t03CylConeLatCone,
-    t03ConeInSphereBig, t03ConeInSphereSmall, t03SphereInCylSurf,
-    t03SphereCylVolFromSphere, t03SphereCylVolFromCyl, t03ConeScale, t03TwoCyl,
-    t03ConeCircumR, t03ConeCircumL, t03CylInPar, t03CubeCut, t03SphereSection,
-    t03CubesVolume, t03CubesSurface, t03StepVol, t03StepSurf],
+  3: [t03BoxTetra, t03BoxPyramid, t03BoxPyramidC1, t03BoxPyramidA1, t03BoxPrism, t03BoxTriPrism, t03PrismTetraC1, t03PrismTetraB1, t03PrismPenta, t03PrismMidline, t03PrismCut, t03PrismCutRegular, t03PrismLateral, t03CylConeLateral, t03CylConeLatInverse, t03CylConeVolume, t03CylConeVolInverse, t03ConeInSphere, t03ConeInSphereInv, t03ConeSphereRadius, t03ConeSphereSlant, t03SphereInCyl, t03SphereInCylVol, t03TwoCylinders, t03CylInBox, t03CubeCut, t03CubeCutInverse, t03CubeDiagonal, t03CubeAngle, t03BoxDiagonal, t03BoxLineSin, t03BoxSection, t03BoxDiagSection, t03StepSolid, t03LSolid, t03TSolidSurface, t03SphereSection, t03ConeScale, t03ConeHeightScale],
   4: [t04ShotPut, t04Gymnastics, t04Diving, t04Tickets, t04Markers, t04Defect, t04Lottery, t04CoinTwice, t04Rooms, t04FootballCoin],
   5: [t05Lamps, t05Between, t05Shooter4, t05Coffee, t05Battery, t05ShooterN, t05DiceCond, t05TwoThemes, t05Exact],
   6: [t06ExpReduce, t06ExpBothSides, t06LogEqLog, t06LogEqNum, t06Rational, t06Cube, t06Sqrt, t06CubeRoot],
@@ -4070,48 +4683,56 @@ export const GEN_META_EGE_PROF = {
     ]]],
   3: [["Параллелепипед: объём части", [
     ["box-tetra", "Тетраэдр A,B,C,B₁ (÷6)", t03BoxTetra],
-    ["box-pyr", "Пирамида на основании ABCD (÷3)", t03BoxPyr],
-    ["box-half", "Половина параллелепипеда (÷2)", t03BoxHalf],
+    ["box-pyramid", "Пирамида A,B,C,D,B₁ (S·h/3)", t03BoxPyramid],
+    ["box-pyramid-c1", "Пирамида A,B,C,D,C₁ (S·h/3)", t03BoxPyramidC1],
+    ["box-pyramid-a1", "Пирамида A,B,C,D,A₁ (S·h/3)", t03BoxPyramidA1],
+    ["box-prism", "Призма A,B,C,D,A₁,B₁ (÷2)", t03BoxPrism],
+    ["box-tri-prism", "Призма A,B,C,A₁,B₁,C₁ (÷2)", t03BoxTriPrism],
   ]],
-    ["Правильная треугольная призма: объём части", [
-      ["prism-tetra", "Тетраэдр A,B,C,C₁ (S·L/3)", t03PrismTetra],
-      ["prism-big", "5 вершин (2·S·L/3)", t03PrismBig],
+    ["Правильная призма: объём части", [
+      ["prism-tetra-c1", "Тетраэдр A,B,C,C₁ (S·L/3)", t03PrismTetraC1],
+      ["prism-tetra-b1", "Тетраэдр A,B,C,B₁ (S·L/3)", t03PrismTetraB1],
+      ["prism-penta", "Тело B,C,A₁,B₁,C₁ (2S·L/3)", t03PrismPenta],
     ]],
-    ["Средняя линия призмы", [
-      ["mid-vol-cut", "Объём отсечённой (÷4)", t03MidVolCut],
-      ["mid-vol-whole", "Объём исходной (×4)", t03MidVolWhole],
-      ["mid-lat-cut", "Бок. пов. отсечённой (÷2)", t03MidLatCut],
-      ["mid-lat-whole", "Бок. пов. исходной (×2)", t03MidLatWhole],
+    ["Треугольная призма: сечение", [
+      ["prism-midline", "Средняя линия основания → объём (×4)", t03PrismMidline],
+      ["prism-cut", "Средняя линия основания → отсечённая (÷4)", t03PrismCut],
+      ["prism-cut-reg", "Правильная призма: отсечённая (÷4)", t03PrismCutRegular],
+      ["prism-lateral", "Средняя линия основания → S бок. (÷2)", t03PrismLateral],
     ]],
-    ["Цилиндр и конус (общие осн. и высота)", [
-      ["cc-vol-cone", "Объём конуса (÷3)", t03CylConeVolCone],
-      ["cc-vol-cyl", "Объём цилиндра (×3)", t03CylConeVolCyl],
-      ["cc-lat-cyl", "Бок. пов. цилиндра (h=R)", t03CylConeLatCyl],
-      ["cc-lat-cone", "Бок. пов. конуса (h=R)", t03CylConeLatCone],
+    ["Тела вращения", [
+      ["cyl-cone-lat", "Цилиндр и конус (h=R): S бок. цилиндра (×2)", t03CylConeLateral],
+      ["cyl-cone-lat-inv", "Цилиндр и конус (h=R): S бок. конуса", t03CylConeLatInverse],
+      ["cyl-cone-vol", "Цилиндр и конус: объём конуса (÷3)", t03CylConeVolume],
+      ["cyl-cone-vol-inv", "Цилиндр и конус: объём цилиндра (×3)", t03CylConeVolInverse],
+      ["cone-in-sphere", "Конус в шаре: объём шара (×4)", t03ConeInSphere],
+      ["cone-in-sphere-inv", "Конус в шаре: объём конуса (÷4)", t03ConeInSphereInv],
+      ["cone-sph-radius", "Сфера около конуса: радиус сферы", t03ConeSphereRadius],
+      ["cone-sph-slant", "Сфера около конуса: образующая", t03ConeSphereSlant],
+      ["sphere-in-cyl", "Шар в цилиндре: S поверхности (⅔)", t03SphereInCyl],
+      ["sphere-in-cyl-vol", "Шар в цилиндре: объём цилиндра (×1,5)", t03SphereInCylVol],
+      ["sph-section", "Сечение шара через центр: S пов. (×4)", t03SphereSection],
+      ["two-cyl", "Два цилиндра: объём второго (b²/a)", t03TwoCylinders],
+      ["cyl-in-box", "Цилиндр в параллелепипеде (4R²h)", t03CylInBox],
+      ["cone-scale", "Радиус конуса ×k → объём ×k²", t03ConeScale],
+      ["cone-h-scale", "Высота конуса ÷k → объём ÷k", t03ConeHeightScale],
     ]],
-    ["Тела вращения: вписанные", [
-      ["cone-sph-big", "Конус в шаре → объём шара (×4)", t03ConeInSphereBig],
-      ["cone-sph-small", "Конус в шаре → объём конуса (÷4)", t03ConeInSphereSmall],
-      ["sph-cyl-surf", "Шар в цилиндре → пов. шара (⅔)", t03SphereInCylSurf],
-      ["sph-cyl-vol-s", "Шар в цилиндре → объём цил. (×1,5)", t03SphereCylVolFromSphere],
-      ["sph-cyl-vol-c", "Цил. около шара → объём шара (⅔)", t03SphereCylVolFromCyl],
+    ["Куб: объём, сечения, углы", [
+      ["cube-cut", "Призма, отсечённая от куба (÷8)", t03CubeCut],
+      ["cube-cut-inv", "Отсечённая призма → объём куба (×8)", t03CubeCutInverse],
+      ["cube-diag", "Диагональ куба → объём", t03CubeDiagonal],
+      ["cube-angle", "Угол между прямыми в кубе", t03CubeAngle],
     ]],
-    ["Тела вращения: прочее", [
-      ["cone-scale", "Во сколько раз изменится объём конуса", t03ConeScale],
-      ["two-cyl", "Два цилиндра (q²/p)", t03TwoCyl],
-      ["cone-circ-r", "Сфера около конуса → радиус", t03ConeCircumR],
-      ["cone-circ-l", "Сфера около конуса → образующая", t03ConeCircumL],
-      ["cyl-in-par", "Цилиндр в параллелепипеде", t03CylInPar],
-      ["sph-section", "Сечение шара через центр (×4)", t03SphereSection],
+    ["Параллелепипед: диагонали, углы, сечения", [
+      ["box-diag", "Диагональ параллелепипеда AC₁", t03BoxDiagonal],
+      ["box-line-sin", "Синус угла между DD₁ и B₁C", t03BoxLineSin],
+      ["box-section", "Сечение через A, B, C₁ (AB·√(AD²+AA₁²))", t03BoxSection],
+      ["box-diag-section", "Сечение через B, B₁, D (AA₁·√(AB²+AD²))", t03BoxDiagSection],
     ]],
-    ["Куб и многогранники из кубиков", [
-      ["cube-cut", "Отсечённая призма от куба (÷8)", t03CubeCut],
-      ["cubes-vol", "Объём фигуры из кубиков", t03CubesVolume],
-      ["cubes-surf", "Площадь поверхности из кубиков", t03CubesSurface],
-    ]],
-    ["Ступенчатый многогранник (все углы прямые)", [
-      ["step-vol", "Объём ступенчатого тела", t03StepVol],
-      ["step-surf", "Площадь поверхности ступенчатого тела", t03StepSurf],
+    ["Составные многогранники (углы прямые)", [
+      ["step-solid", "Ступенчатый: объём", t03StepSolid],
+      ["l-solid", "Г-образный: объём", t03LSolid],
+      ["t-solid-surf", "Т-образный: площадь поверхности", t03TSolidSurface],
     ]]],
   4: [["Жребий / порядок", [
     ["shot-put", "Толкание ядра (4 страны)", t04ShotPut],
