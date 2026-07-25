@@ -16,6 +16,9 @@ const pick = (arr) => arr[Math.floor(Math.random() * arr.length)]
 const gcd = (a, b) => { a = Math.abs(a); b = Math.abs(b); while (b) {[a, b] = [b, a % b] } return a || 1 }
 const lcm = (a, b) => Math.abs(a * b) / gcd(a, b)
 const MINUS = "−" // U+2212
+// Юникод-подстрочные цифры — для основания логарифма (log₂, log₃…).
+const SUBD = { 0: "₀", 1: "₁", 2: "₂", 3: "₃", 4: "₄", 5: "₅", 6: "₆", 7: "₇", 8: "₈", 9: "₉" }
+const subU = (n) => String(n).split("").map((c) => SUBD[c] ?? c).join("")
 
 // ── рациональная π-арифметика: значение = p·π/q, всегда q>0, дробь сокращена ──
 function R(p, q = 1) { if (q < 0) { p = -p; q = -q } const g = gcd(p, q) || 1; return { p: p / g, q: q / g } }
@@ -423,11 +426,141 @@ function t13FactorCosTimesEq1() {
   })
 }
 
+// ============================================================================
+// СЕМЕЙСТВО «ПОКАЗАТЕЛЬНЫЕ» — алгебраический под-движок (без тригонометрии)
+// Строим уравнение из известных корней (t = a^…): ответ верен по построению.
+// Корни — целые, log_a(v) или h±√M; интервал в вещественных числах.
+// ============================================================================
+
+const supE = (s) => `⟦sup:${s}⟧`                    // показатель степени в условии
+const powE = (base, exp) => `${base}${supE(exp)}`   // base^exp
+const intT = (n) => (n < 0 ? MINUS + Math.abs(n) : String(n))
+const logNumV = (a, v) => Math.log(v) / Math.log(a)
+const logT = (a, v, neg = false) => `${neg ? MINUS : ""}log${subU(a)}${v}`
+// квадратичный показатель x²+px+q как строка условия
+function quadExp(p, q) {
+  let s = "x²"
+  if (p) s += ` ${p < 0 ? MINUS : "+"} ${Math.abs(p) === 1 ? "" : Math.abs(p)}x`
+  if (q) s += ` ${q < 0 ? MINUS : "+"} ${Math.abs(q)}`
+  return s
+}
+const isPow = (v, a) => { const l = Math.log(v) / Math.log(a); return Math.abs(l - Math.round(l)) < 1e-9 }
+
+// Отрезок [L;R] с РОВНО одним корнем; концы — целые или log_a(целое) (если задан aBase).
+function pickRealInterval(rootsNum, aBase = null) {
+  const cand = []
+  for (let i = -6; i <= 6; i++) cand.push({ num: i, text: intT(i) })
+  if (aBase) for (let m = 2; m <= 40; m++) if (!isPow(m, aBase)) cand.push({ num: logNumV(aBase, m), text: logT(aBase, m) })
+  const opts = []
+  for (const L of cand) for (const Rr of cand) {
+    const w = Rr.num - L.num
+    if (w < 0.2 || w > 4.5) continue
+    const inside = rootsNum.filter((x) => x >= L.num - 1e-9 && x <= Rr.num + 1e-9)
+    if (inside.length === 1) opts.push({ L, R: Rr, w, isLog: /log/.test(L.text) || /log/.test(Rr.text) })
+  }
+  if (!opts.length) return null
+  opts.sort((x, y) => (x.isLog - y.isLog) || (x.w - y.w))
+  const best = opts[0]
+  return { L: best.L, R: best.R }
+}
+
+// Сборка показательного/алгебраического задания. allRoots: [{num,text}] (все корни, часть а);
+// residual(x) — фактическое уравнение LHS−RHS (без полюсов).
+function assembleReal(eq, allRoots, residual, aBase = null) {
+  const sorted = allRoots.slice().sort((r1, r2) => r1.num - r2.num)
+  const iv = pickRealInterval(sorted.map((r) => r.num), aBase)
+  if (!iv) return null
+  const inside = sorted.filter((r) => r.num >= iv.L.num - 1e-9 && r.num <= iv.R.num + 1e-9)
+  return {
+    condition_text: `а) Решите уравнение\n${eq}`,
+    condition_tail: `б) Найдите корни, принадлежащие отрезку [${iv.L.text}; ${iv.R.text}].`,
+    answer: `а) ${sorted.map((r) => "x = " + r.text).join(";  ")}\nб) ${inside.map((r) => r.text).join(";  ")}`,
+    _verify: {
+      residual, realResidual: residual, roots: inside.map((r) => r.num),
+      L: iv.L.num, R: iv.R.num, allRoots: sorted.map((r) => r.num),
+    },
+  }
+}
+
+// A — сумма двух степеней с квадратичным показателем: a^(u+k1)+a^(u+k2)=N, u=x²+px+q.
+// a^u·(a^k1+a^k2)=N → a^u=a^m → u=m → x²+px+(q−m)=0 → корни h±√M.
+function t13ExpSumPow() {
+  const a = pick([2, 3, 5, 6])
+  const k1 = 1, k2 = 0
+  const F = a ** k1 + a ** k2
+  const m = pick([0, 1, 2])
+  const N = F * a ** m
+  const h = pick([1, 2, 3])
+  const M = pick([2, 3, 5, 6, 7, 8, 10, 11, 12].filter((x) => Math.abs(Math.sqrt(x) - Math.round(Math.sqrt(x))) > 1e-9))
+  const p = -2 * h
+  const q = m + (h * h - M)            // q−m = h²−M
+  const e1 = quadExp(p, q + k1), e2 = quadExp(p, q + k2)
+  const eq = `${powE(a, e1)} + ${powE(a, e2)} = ${N}`
+  const rt = Math.sqrt(M)
+  const roots = [
+    { num: h - rt, text: `${h} ${MINUS} √${M}` },
+    { num: h + rt, text: `${h} + √${M}` },
+  ]
+  const u = (x) => x * x + p * x + q
+  const residual = (x) => a ** (u(x) + k1) + a ** (u(x) + k2) - N
+  return assembleReal(eq, roots, residual, null)
+}
+
+// B — квадрат по t=a^x: b^x − a^(x+s) + C = 0, b=a², t1+t2=a^s. Корни: n (целое) и log_a(t2).
+function t13ExpQuadInAx() {
+  const a = pick([2, 3, 5])
+  const b = a * a
+  const combos = []
+  for (let s = 2; s <= 3; s++) {
+    const ps = a ** s
+    for (let n = 1; a ** n < ps; n++) {
+      const t1 = a ** n, t2 = ps - t1
+      if (t2 <= 1 || t2 === t1 || isPow(t2, a)) continue
+      combos.push({ s, n, t1, t2 })
+    }
+  }
+  if (!combos.length) return null
+  const { s, n, t1, t2 } = pick(combos)
+  const C = t1 * t2
+  const eq = `${powE(b, "x")} ${MINUS} ${powE(a, `x+${s}`)} + ${C} = 0`
+  const roots = [
+    { num: n, text: intT(n) },
+    { num: logNumV(a, t2), text: logT(a, t2) },
+  ]
+  const residual = (x) => b ** x - a ** (x + s) + C
+  return assembleReal(eq, roots, residual, a)
+}
+
+// D — однородное с квадратичным показателем: P·(a²)^u + Q·(ab)^u + R·(b²)^u = 0, u=x²+px.
+// s=(a/b)^u, корни s: 1 (→u=0→x=0,−p) и отрицательный (отсекается).
+function t13ExpHomogQuad() {
+  const [a, b] = pick([[3, 2], [5, 2], [5, 3]])
+  const k = pick([2, 3, 4])
+  const c = pick([1, 2, 3])
+  // s²+(k−1)s−k=(s−1)(s+k): (P,Q,R)=(1,k−1,−k)·c
+  const P = c, Q = c * (k - 1), Rc = -c * k
+  const h = pick([2, 3, 4, 6])
+  const p = -h                          // u=x²−hx → корни 0 и h
+  const uStr = quadExp(p, 0)
+  // слагаемое coef·base^u со знаком; first — ведущее (без ведущего «+»); «·» между коэф. и степенью
+  const term = (coef, base, first) => {
+    const sign = coef < 0 ? ` ${MINUS} ` : first ? "" : " + "
+    const mag = Math.abs(coef)
+    return sign + (mag === 1 ? powE(base, uStr) : `${mag}·${powE(base, uStr)}`)
+  }
+  const eq = `${term(P, a * a, true)}${term(Q, a * b, false)}${term(Rc, b * b, false)} = 0`
+  const u = (x) => x * x + p * x
+  const residual = (x) => P * (a * a) ** u(x) + Q * (a * b) ** u(x) + Rc * (b * b) ** u(x)
+  const roots = [{ num: 0, text: "0" }, { num: h, text: intT(h) }]
+  return assembleReal(eq, roots, residual, null)
+}
+
 // ── реестр ──────────────────────────────────────────────────────────────────
 export const GEN13 = [
   t13SinQuad, t13CosQuad, t13CosSqSinLin, t13SinSqCosLin,
   t13Cos2xSin, t13Cos2xCos, t13CosSqMinusCos2x,
   t13FactorTgSin2x, t13FactorCtgSin2x, t13FactorSinMinusCos, t13FactorSinPlusCos, t13FactorCosTimesEq1,
+  t13ExpSumPow, t13ExpQuadInAx, t13ExpHomogQuad,
 ]
 
 export const META13 = [
@@ -446,6 +579,11 @@ export const META13 = [
     ["sinmcos-tg", "2(sinx−cosx)=tgx−1", t13FactorSinMinusCos],
     ["sinpcos-ctg", "2(sinx+cosx)=ctgx+1", t13FactorSinPlusCos],
     ["cos-times-eq1", "cosx(2cosx+tgx)=1 (отсев по ОДЗ)", t13FactorCosTimesEq1],
+  ]],
+  ["Показательные", [
+    ["exp-sumpow", "a^(u+k)+a^u=N, u=x²+px (корни h±√M)", t13ExpSumPow],
+    ["exp-quad-ax", "b^x−a^(x+s)+C=0 (t=aˣ → n и logₐ)", t13ExpQuadInAx],
+    ["exp-homog", "P·(a²)^u+Q·(ab)^u+R·(b²)^u=0 (однородное)", t13ExpHomogQuad],
   ]],
 ]
 
