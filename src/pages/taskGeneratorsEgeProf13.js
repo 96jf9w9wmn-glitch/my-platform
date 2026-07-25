@@ -1120,6 +1120,70 @@ function t13Grouping() {
   return null
 }
 
+// ============================================================================
+// СЕМЕЙСТВО «СУММА/РАЗНОСТЬ SIN·COS» — sin px ± sin qx = 0 (→ произведение)
+// sin p ± sin q, cos p ± cos q → 2·factor(s·x)·factor(d·x)=0, s=(p+q)/2, d=(p−q)/2.
+// Каждый множитель → серия с периодом π/m; вложенные серии дедуплицируются.
+// ============================================================================
+
+// текст периода T·n: T = a·π/b → «2πn», «πn», «πn/2», «πn/3»…
+function periodText(T) {
+  const a = Math.abs(T.p), b = T.q, num = a === 1 ? "π" : `${a}π`
+  return b === 1 ? `${num}n` : `${num}n/${b}`
+}
+function seriesTextGen(s) {
+  return s.base.p === 0 ? `x = ${periodText(s.T)}` : `x = ${fmtPi(s.base)} + ${periodText(s.T)}`
+}
+// серия s1 ⊆ s2 ? (T1 кратно T2 и base1−base2 кратно T2)
+function seriesSubset(s1, s2) {
+  const ratio = Rdiv(s1.T, s2.T)
+  if (ratio.q !== 1 || ratio.p <= 0) return false
+  return Rdiv(Rsub(s1.base, s2.base), s2.T).q === 1
+}
+// отрезок для плотных серий (период π/m): 1–4 корня
+function chooseIntervalSD(series) {
+  for (let tries = 0; tries < 600; tries++) {
+    const len = pick([1, 2, 2, 3]), k = randInt(-8, 6)
+    const L = R(k, 2), Rr = R(k + len, 2)
+    const roots = rootsInInterval(series, L, Rr)
+    if (roots.length >= 1 && roots.length <= 4) return { L, R: Rr, roots }
+  }
+  for (let k = -8; k <= 8; k++) { const L = R(k, 2), Rr = R(k + 2, 2); const roots = rootsInInterval(series, L, Rr); if (roots.length) return { L, R: Rr, roots } }
+  return null
+}
+function finishSeries(eq, seriesList, residual) {
+  const kept = seriesList.filter((si, i) =>
+    !seriesList.some((sj, j) => j !== i && seriesSubset(si, sj) && (!seriesSubset(sj, si) || j < i)))
+  const iv = chooseIntervalSD(kept)
+  if (!iv) return null
+  const { L, R: Rr, roots } = iv
+  return {
+    condition_text: `а) Решите уравнение\n${eq}`,
+    condition_tail: `б) Найдите корни, принадлежащие отрезку [${fmtPiCond(L)}; ${fmtPiCond(Rr)}].`,
+    answer: `а) ${kept.map(seriesTextGen).join(",  ")}, n ∈ ℤ\nб) ${roots.map(fmtPi).join(";  ")}`,
+    _verify: { residual, realResidual: residual, roots: roots.map(Rnum), L: Rnum(L), R: Rnum(Rr) },
+  }
+}
+function t13SumDiff() {
+  const [p, q] = pick([[3, 1], [5, 1], [5, 3]])
+  const s = (p + q) / 2, d = (p - q) / 2
+  const type = pick(["sinsum", "sindiff", "cossum", "cosdiff"])
+  const zSin = (m) => ({ base: R(0), T: R(1, m) })           // sin(mx)=0 → x=πk/m
+  const zCos = (m) => ({ base: R(1, 2 * m), T: R(1, m) })    // cos(mx)=0 → x=π/(2m)+πk/m
+  const pStr = `${p}x`, qStr = q === 1 ? "x" : `${q}x`
+  let eq, series
+  if (type === "sinsum") { eq = `sin ${pStr} + sin ${qStr} = 0`; series = [zSin(s), zCos(d)] }
+  else if (type === "sindiff") { eq = `sin ${pStr} ${MINUS} sin ${qStr} = 0`; series = [zCos(s), zSin(d)] }
+  else if (type === "cossum") { eq = `cos ${pStr} + cos ${qStr} = 0`; series = [zCos(s), zCos(d)] }
+  else { eq = `cos ${pStr} ${MINUS} cos ${qStr} = 0`; series = [zSin(s), zSin(d)] }
+  const residual = (x) => {
+    const P = type[0] === "s" ? Math.sin(p * x) : Math.cos(p * x)
+    const Q = type[0] === "s" ? Math.sin(q * x) : Math.cos(q * x)
+    return type.endsWith("sum") ? P + Q : P - Q
+  }
+  return finishSeries(eq, series, residual)
+}
+
 // ── реестр ──────────────────────────────────────────────────────────────────
 export const GEN13 = [
   t13SinQuad, t13CosQuad, t13CosSqSinLin, t13SinSqCosLin,
@@ -1134,6 +1198,7 @@ export const GEN13 = [
   t13BiquadSin, t13BiquadCos, t13BiquadCtgSin, t13BiquadTgCos,
   t13Rational,
   t13Grouping,
+  t13SumDiff,
 ]
 
 export const META13 = [
@@ -1191,6 +1256,9 @@ export const META13 = [
   ]],
   ["Группировка", [
     ["grouping", "A·sin2x+B·sinx+C·cosx+D=0 → cos=vc∪sin=vs", t13Grouping],
+  ]],
+  ["Сумма / разность sin, cos", [
+    ["sum-diff", "sin px ± sin qx = 0 → произведение", t13SumDiff],
   ]],
 ]
 
