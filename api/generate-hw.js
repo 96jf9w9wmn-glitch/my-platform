@@ -8,7 +8,7 @@
 const DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
 // Актуальные имена моделей DeepSeek — deepseek-v4-pro / deepseek-v4-flash
 // (старое deepseek-chat отключено и отдаёт 400).
-const DEEPSEEK_MODEL = "deepseek-v4-pro"
+const DEEPSEEK_MODEL = "deepseek-v4-flash"
 const MAX_COUNT = 20
 const MAX_TOPIC_LEN = 200
 

@@ -460,6 +460,22 @@ body::before {
   animation: overlay-fade 0.2s ease both;
 }
 
+/* Скрытый скроллбар — прокрутка остаётся, но системная полоса не портит
+   стеклянные модалки и внутренние области. iOS и так прячет её overlay-ем,
+   а на desktop/Android она выглядела инородно (см. «странный ползунок справа»). */
+.no-scrollbar {
+  scrollbar-width: none;         /* Firefox */
+  -ms-overflow-style: none;      /* старый Edge/IE */
+}
+.no-scrollbar::-webkit-scrollbar { /* WebKit/Blink */
+  width: 0;
+  height: 0;
+  display: none;
+}
+/* Все стеклянные модалки скроллятся без видимой полосы */
+.glass-modal { scrollbar-width: none; -ms-overflow-style: none; }
+.glass-modal::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
 /* Slide up — for bottom sheets on mobile */
 @keyframes slide-up {
   from { opacity: 0; transform: translateY(20px); }

@@ -295,7 +295,7 @@ function ParentDashboard({ user, onLogout }) {
               <span className="font-medium text-green-600">{totalPaid.toLocaleString("ru-RU")} ₽</span>
             </div>
             <div className="flex justify-between text-sm font-semibold border-t border-gray-100 dark:border-gray-700 pt-2 mt-0.5">
-              <span className="">Задолженность</span>
+              <span>Задолженность</span>
               <span className={debt > 0 ? "text-amber-500" : "text-green-600"}>
                 {debt > 0 ? debt.toLocaleString("ru-RU") + " ₽" : "Нет"}
               </span>

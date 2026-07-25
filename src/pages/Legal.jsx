@@ -20,9 +20,9 @@ function Section({ title, children }) {
   return (
     <section className="mb-7">
       {title && (
-        <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">{title}</h2>
+        <h2 className="text-lg font-semibold text-gray-800 mb-2">{title}</h2>
       )}
-      <div className="space-y-2 text-[15px] leading-relaxed text-gray-600 dark:text-gray-300">
+      <div className="space-y-2 text-[15px] leading-relaxed text-gray-600">
         {children}
       </div>
     </section>

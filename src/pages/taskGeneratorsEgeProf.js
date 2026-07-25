@@ -3426,25 +3426,30 @@ function t03BoxTetra() {
 
 // Стоящая наклонённая треугольная призма; секущая плоскость через среднюю линию
 // основания у левой вершины (параллельно боковому ребру) отсекает малый «нос».
+// Прямая треугольная призма с секущей плоскостью через среднюю линию основания
+// (параллельна боковому ребру). Сечение — прямоугольник: верхняя средняя линия и
+// передняя вертикаль сплошные, задняя вертикаль и нижняя средняя линия штрихом.
 function prismMidlineSvg() {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 310 330" width="310" height="330" font-family="Arial, sans-serif">` +
-    `<rect width="310" height="330" fill="#fff"/>` +
-    // скрытые рёбра: задняя нижняя вершина и заднее боковое ребро
-    `<line x1="55" y1="285" x2="135" y2="235" stroke="#000" stroke-width="1.4" stroke-dasharray="5 4"/>` +
-    `<line x1="215" y1="285" x2="135" y2="235" stroke="#000" stroke-width="1.4" stroke-dasharray="5 4"/>` +
-    `<line x1="135" y1="235" x2="170" y2="40" stroke="#000" stroke-width="1.4" stroke-dasharray="5 4"/>` +
-    // рёбра призмы
-    `<line x1="55" y1="285" x2="215" y2="285" stroke="#000" stroke-width="1.7"/>` +
-    `<line x1="55" y1="285" x2="90" y2="90" stroke="#000" stroke-width="1.7"/>` +
-    `<line x1="215" y1="285" x2="250" y2="90" stroke="#000" stroke-width="1.7"/>` +
-    `<line x1="90" y1="90" x2="250" y2="90" stroke="#000" stroke-width="1.7"/>` +
-    `<line x1="90" y1="90" x2="170" y2="40" stroke="#000" stroke-width="1.7"/>` +
-    `<line x1="250" y1="90" x2="170" y2="40" stroke="#000" stroke-width="1.7"/>` +
-    // секущая плоскость через среднюю линию у левой вершины
-    `<line x1="135" y1="285" x2="170" y2="90" stroke="#000" stroke-width="1.7"/>` +
-    `<line x1="170" y1="90" x2="130" y2="65" stroke="#000" stroke-width="1.7"/>` +
-    `<line x1="135" y1="285" x2="95" y2="260" stroke="#000" stroke-width="1.4" stroke-dasharray="5 4"/>` +
-    `<line x1="95" y1="260" x2="130" y2="65" stroke="#000" stroke-width="1.4" stroke-dasharray="5 4"/>` +
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 265 330" width="265" height="330" font-family="Arial, sans-serif">` +
+    `<rect width="265" height="330" fill="#fff"/>` +
+    // скрытые: заднее нижнее ребро и задняя часть сечения
+    `<line x1="40" y1="225" x2="225" y2="253" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="187"/>` +
+    `<line x1="132.5" y1="59" x2="132.5" y2="239" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="180"/>` +
+    `<line x1="132.5" y1="239" x2="151" y2="269" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="35"/>` +
+    // верхнее основание
+    `<line x1="40" y1="45" x2="225" y2="73" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="40" y1="45" x2="77" y2="105" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="77" y1="105" x2="225" y2="73" stroke="#000" stroke-width="1.5"/>` +
+    // нижнее основание
+    `<line x1="40" y1="225" x2="77" y2="285" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="77" y1="285" x2="225" y2="253" stroke="#000" stroke-width="1.5"/>` +
+    // боковые рёбра
+    `<line x1="40" y1="45" x2="40" y2="225" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="77" y1="105" x2="77" y2="285" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="225" y1="73" x2="225" y2="253" stroke="#000" stroke-width="1.5"/>` +
+    // сечение (видимая часть)
+    `<line x1="132.5" y1="59" x2="151" y2="89" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="151" y1="89" x2="151" y2="269" stroke="#000" stroke-width="1.5"/>` +
     `</svg>`
 }
 
@@ -3660,27 +3665,29 @@ function t03PrismPenta() {
 }
 
 // Чистый параллелепипед ABCDA₁B₁C₁D₁ (тело A,B,C,D,A₁,B₁ ученик достраивает сам).
+// Приземистый параллелепипед в ориентации ФИПИ (image6): передняя грань ABB₁A₁ —
+// прямоугольник, задняя смещена вверх-вправо; скрытая вершина — задняя нижняя D.
 function boxPlainSvg() {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 470 360" width="470" height="360" font-family="Arial, sans-serif">` +
-    `<rect width="470" height="360" fill="#fff"/>` +
-    // видимые рёбра
-    `<line x1="70" y1="250" x2="245" y2="300" stroke="#000" stroke-width="1.5"/>` +
-    `<line x1="245" y1="300" x2="395" y2="250" stroke="#000" stroke-width="1.5"/>` +
-    `<line x1="70" y1="250" x2="70" y2="100" stroke="#000" stroke-width="1.5"/>` +
-    `<line x1="245" y1="300" x2="245" y2="150" stroke="#000" stroke-width="1.5"/>` +
-    `<line x1="395" y1="250" x2="395" y2="100" stroke="#000" stroke-width="1.5"/>` +
-    `<line x1="70" y1="100" x2="245" y2="150" stroke="#000" stroke-width="1.5"/>` +
-    `<line x1="245" y1="150" x2="395" y2="100" stroke="#000" stroke-width="1.5"/>` +
-    `<line x1="70" y1="100" x2="220" y2="50" stroke="#000" stroke-width="1.5"/>` +
-    `<line x1="220" y1="50" x2="395" y2="100" stroke="#000" stroke-width="1.5"/>` +
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 350 310" width="350" height="310" font-family="Arial, sans-serif">` +
+    `<rect width="350" height="310" fill="#fff"/>` +
     // скрытые рёбра (вершина D)
-    `<line x1="70" y1="250" x2="220" y2="200" stroke="#000" stroke-width="1.3" stroke-dasharray="5 4"/>` +
-    `<line x1="395" y1="250" x2="220" y2="200" stroke="#000" stroke-width="1.3" stroke-dasharray="5 4"/>` +
-    `<line x1="220" y1="200" x2="220" y2="50" stroke="#000" stroke-width="1.3" stroke-dasharray="5 4"/>` +
-    // подписи (без белой обводки)
-    `<g font-size="17" font-style="italic" fill="#000" text-anchor="middle">` +
-    `<text x="60" y="270">A</text><text x="240" y="320">B</text><text x="407" y="268">C</text><text x="205" y="216">D</text>` +
-    `<text x="55" y="98">A₁</text><text x="266" y="140">B₁</text><text x="410" y="98">C₁</text><text x="214" y="40">D₁</text>` +
+    `<line x1="105" y1="230" x2="45" y2="275" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="75"/>` +
+    `<line x1="105" y1="230" x2="305" y2="230" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="200"/>` +
+    `<line x1="105" y1="230" x2="105" y2="135" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="95"/>` +
+    // видимые рёбра
+    `<line x1="45" y1="275" x2="245" y2="275" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="245" y1="275" x2="305" y2="230" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="45" y1="275" x2="45" y2="180" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="245" y1="275" x2="245" y2="180" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="305" y1="230" x2="305" y2="135" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="45" y1="180" x2="245" y2="180" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="245" y1="180" x2="305" y2="135" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="45" y1="180" x2="105" y2="135" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="105" y1="135" x2="305" y2="135" stroke="#000" stroke-width="1.5"/>` +
+    // подписи (B₁ — внутри верхней грани, чтобы не легла на ребро B₁C₁)
+    `<g font-size="17" font-style="italic" fill="#000" stroke="none" text-anchor="middle">` +
+    `<text x="34" y="297">A</text><text x="248" y="297">B</text><text x="318" y="251">C</text><text x="118" y="248">D</text>` +
+    `<text x="29" y="172">A₁</text><text x="227" y="167">B₁</text><text x="103" y="126">D₁</text><text x="320" y="127">C₁</text>` +
     `</g></svg>`
 }
 
@@ -4044,16 +4051,7 @@ const CUBE_V = {
   A1: [0, 0, 1], B1: [1, 0, 1], C1: [1, 1, 1], D1: [0, 1, 1],
 }
 // Имя вершины в тексте: A1 → A₁.
-const cubeName = (v) => v.replace("1", "₁")
-
-function cubeAngleDeg(p, q, r, s) {
-  const sub = (u, v) => [u[0] - v[0], u[1] - v[1], u[2] - v[2]]
-  const dot = (u, v) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2]
-  const len = (u) => Math.sqrt(dot(u, u))
-  const u = sub(CUBE_V[q], CUBE_V[p]), v = sub(CUBE_V[s], CUBE_V[r])
-  const c = Math.abs(dot(u, v)) / (len(u) * len(v))
-  return Math.round(Math.acos(Math.min(1, c)) * 180 / Math.PI)
-}
+const vertName = (v) => v.replace("1", "₁")
 
 // Пары прямых из открытого банка ФИПИ.
 const CUBE_ANGLE_PAIRS = [
@@ -4064,9 +4062,9 @@ const CUBE_ANGLE_PAIRS = [
 function t03CubeAngle() {
   const [p, q, r, s] = pick(CUBE_ANGLE_PAIRS)
   return {
-    condition_text: `В кубе ABCDA₁B₁C₁D₁ найдите угол между прямыми ${cubeName(p)}${cubeName(q)} и ${cubeName(r)}${cubeName(s)}. Ответ дайте в градусах.`,
+    condition_text: `В кубе ABCDA₁B₁C₁D₁ найдите угол между прямыми ${vertName(p)}${vertName(q)} и ${vertName(r)}${vertName(s)}. Ответ дайте в градусах.`,
     image_url: svgUrl(cubeAngleSvg()),
-    answer: ru(cubeAngleDeg(p, q, r, s)),
+    answer: ru(linesAngleDeg(CUBE_V, p, q, r, s)),
   }
 }
 
@@ -4559,6 +4557,194 @@ function t03BoxPrism() {
   }
 }
 
+// Высокий параллелепипед без выделения искомого тела (как в оригинале ФИПИ):
+// скрытая вершина — задняя нижняя D (штрих: DA, DC, DD₁).
+function boxTallSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 400" width="260" height="400" font-family="Arial, sans-serif">` +
+    `<rect width="260" height="400" fill="#fff"/>` +
+    // скрытые рёбра
+    `<line x1="40" y1="350" x2="95" y2="320" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="63"/>` +
+    `<line x1="95" y1="320" x2="215" y2="320" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="120"/>` +
+    `<line x1="95" y1="320" x2="95" y2="80" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="240"/>` +
+    // видимые рёбра
+    `<line x1="40" y1="350" x2="160" y2="350" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="160" y1="350" x2="215" y2="320" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="40" y1="350" x2="40" y2="110" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="160" y1="350" x2="160" y2="110" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="215" y1="320" x2="215" y2="80" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="40" y1="110" x2="160" y2="110" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="160" y1="110" x2="215" y2="80" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="40" y1="110" x2="95" y2="80" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="95" y1="80" x2="215" y2="80" stroke="#000" stroke-width="1.5"/>` +
+    // подписи
+    `<g font-size="16" font-style="italic" fill="#000" stroke="none" text-anchor="middle">` +
+    `<text x="31" y="372">A</text><text x="163" y="372">B</text><text x="226" y="340">C</text><text x="107" y="337">D</text>` +
+    `<text x="23" y="101">A₁</text><text x="176" y="102">B₁</text><text x="84" y="71">D₁</text><text x="227" y="71">C₁</text>` +
+    `</g></svg>`
+}
+
+// Прямая треугольная призма, в основаниях — прямоугольные треугольники
+// (прямые углы отмечены квадратиками), заднее нижнее ребро скрыто.
+function prismRightSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 265 330" width="265" height="330" font-family="Arial, sans-serif">` +
+    `<rect width="265" height="330" fill="#fff"/>` +
+    // скрытое ребро нижнего основания
+    `<line x1="40" y1="225" x2="225" y2="253" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="187"/>` +
+    // верхнее основание
+    `<line x1="40" y1="45" x2="225" y2="73" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="40" y1="45" x2="77" y2="105" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="77" y1="105" x2="225" y2="73" stroke="#000" stroke-width="1.5"/>` +
+    // нижнее основание
+    `<line x1="40" y1="225" x2="77" y2="285" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="77" y1="285" x2="225" y2="253" stroke="#000" stroke-width="1.5"/>` +
+    // боковые рёбра
+    `<line x1="40" y1="45" x2="40" y2="225" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="77" y1="105" x2="77" y2="285" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="225" y1="73" x2="225" y2="253" stroke="#000" stroke-width="1.5"/>` +
+    // прямые углы
+    `<polyline points="68.1,90.5 84.7,86.9 93.6,101.4" fill="none" stroke="#000" stroke-width="1.3"/>` +
+    `<polyline points="68.1,270.5 84.7,266.9 93.6,281.4" fill="none" stroke="#000" stroke-width="1.3"/>` +
+    `</svg>`
+}
+
+// V = (катет·катет/2)·боковое ребро.
+function t03PrismRightVol() {
+  let a, b
+  do { a = randInt(2, 12); b = randInt(2, 12) } while (a === b || (a * b) % 2 !== 0)
+  const h = randInt(2, 12)
+  return {
+    condition_text: `Основанием прямой треугольной призмы является прямоугольный треугольник с катетами ${a} и ${b}, боковое ребро призмы равно ${h}. Найдите объём призмы.`,
+    image_url: svgUrl(prismRightSvg()),
+    answer: ru(a * b * h / 2),
+  }
+}
+
+// Обратная: по объёму и катетам — боковое ребро h = 2V/(a·b).
+function t03PrismRightEdge() {
+  let a, b
+  do { a = randInt(2, 12); b = randInt(2, 12) } while (a === b || (a * b) % 2 !== 0)
+  const h = randInt(2, 12)
+  return {
+    condition_text: `Основанием прямой треугольной призмы служит прямоугольный треугольник с катетами ${a} и ${b}, объём призмы равен ${ru(a * b * h / 2)}. Найдите боковое ребро призмы.`,
+    image_url: svgUrl(prismRightSvg()),
+    answer: ru(h),
+  }
+}
+
+// Правильная 4-угольная призма с двумя диагоналями DB₁ и CA₁ (жирный штрих —
+// как в оригинале ФИПИ); рёбра при скрытой вершине D — тонкие сплошные,
+// чтобы не спутать их с диагоналями.
+function sqPrismDiagSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 330" width="390" height="330" font-family="Arial, sans-serif">` +
+    `<rect width="390" height="330" fill="#fff"/>` +
+    // рёбра при вершине D
+    `<line x1="45" y1="285" x2="153" y2="229" stroke="#000" stroke-width="1.1"/>` +
+    `<line x1="153" y1="229" x2="353" y2="229" stroke="#000" stroke-width="1.1"/>` +
+    `<line x1="153" y1="229" x2="153" y2="79" stroke="#000" stroke-width="1.1"/>` +
+    // остальные рёбра
+    `<line x1="45" y1="285" x2="245" y2="285" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="245" y1="285" x2="353" y2="229" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="45" y1="285" x2="45" y2="135" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="245" y1="285" x2="245" y2="135" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="353" y1="229" x2="353" y2="79" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="45" y1="135" x2="245" y2="135" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="245" y1="135" x2="353" y2="79" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="45" y1="135" x2="153" y2="79" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="153" y1="79" x2="353" y2="79" stroke="#000" stroke-width="1.5"/>` +
+    // диагонали CA₁ и DB₁
+    `<line x1="353" y1="229" x2="45" y2="135" stroke="#000" stroke-width="2.2" stroke-dasharray="8 6" pathLength="322"/>` +
+    `<line x1="153" y1="229" x2="245" y2="135" stroke="#000" stroke-width="2.2" stroke-dasharray="8 6" pathLength="132"/>` +
+    // подписи
+    `<g font-size="17" font-style="italic" fill="#000" stroke="none" text-anchor="middle">` +
+    `<text x="34" y="308">A</text><text x="248" y="310">B</text><text x="368" y="252">C</text><text x="145" y="258">D</text>` +
+    `<text x="27" y="127">A₁</text><text x="223" y="125">B₁</text><text x="146" y="67">D₁</text><text x="371" y="72">C₁</text>` +
+    `</g></svg>`
+}
+
+// Угол между диагоналями DB₁ и CA₁ считается по координатам: сторона основания 1,
+// высота h из условия «диагональ призмы = 2·ребро основания» ⟹ 2 + h² = 4.
+function sqPrismDiagAngleDeg(h) {
+  const u = [1, -1, h]   // DB₁ = B₁ − D
+  const v = [-1, -1, h]  // CA₁ = A₁ − C
+  const dot = u[0] * v[0] + u[1] * v[1] + u[2] * v[2]
+  const len = (w) => Math.sqrt(w[0] * w[0] + w[1] * w[1] + w[2] * w[2])
+  return Math.round(Math.acos(Math.min(1, Math.abs(dot) / (len(u) * len(v)))) * 180 / Math.PI)
+}
+
+function t03SqPrismAngle() {
+  const diag = pick(["BD₁", "D₁B"]), edge = pick(["AD", "AB", "BC", "CD"])
+  return {
+    condition_text: `В правильной четырёхугольной призме ABCDA₁B₁C₁D₁ известно, что ${diag} = 2${edge}. Найдите угол между диагоналями DB₁ и CA₁. Ответ дайте в градусах.`,
+    image_url: svgUrl(sqPrismDiagSvg()),
+    answer: ru(sqPrismDiagAngleDeg(Math.SQRT2)),
+  }
+}
+
+// Правильная треугольная призма ABCA₁B₁C₁ «домиком» (как в ФИПИ): передняя грань
+// ABB₁A₁ — прямоугольник, задняя вершина C/C₁ смещена вправо-вверх, рёбра при ней
+// штрихом.
+function triPrismSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 340" width="300" height="340" font-family="Arial, sans-serif">` +
+    `<rect width="300" height="340" fill="#fff"/>` +
+    // скрытые рёбра при задней вершине C
+    `<line x1="50" y1="300" x2="208" y2="260" stroke="#000" stroke-width="1.6" stroke-dasharray="7 5" pathLength="163"/>` +
+    `<line x1="208" y1="260" x2="250" y2="300" stroke="#000" stroke-width="1.6" stroke-dasharray="7 5" pathLength="58"/>` +
+    `<line x1="208" y1="260" x2="208" y2="55" stroke="#000" stroke-width="1.6" stroke-dasharray="7 5" pathLength="205"/>` +
+    // видимые рёбра
+    `<line x1="50" y1="300" x2="250" y2="300" stroke="#000" stroke-width="1.8"/>` +
+    `<line x1="50" y1="300" x2="50" y2="95" stroke="#000" stroke-width="1.8"/>` +
+    `<line x1="250" y1="300" x2="250" y2="95" stroke="#000" stroke-width="1.8"/>` +
+    `<line x1="50" y1="95" x2="250" y2="95" stroke="#000" stroke-width="1.8"/>` +
+    `<line x1="50" y1="95" x2="208" y2="55" stroke="#000" stroke-width="1.8"/>` +
+    `<line x1="208" y1="55" x2="250" y2="95" stroke="#000" stroke-width="1.8"/>` +
+    // подписи
+    `<g font-size="17" font-style="italic" fill="#000" stroke="none" text-anchor="middle">` +
+    `<text x="42" y="324">A</text><text x="256" y="324">B</text><text x="188" y="254">C</text>` +
+    `<text x="33" y="84">A₁</text><text x="272" y="86">B₁</text><text x="203" y="44">C₁</text>` +
+    `</g></svg>`
+}
+
+// Координаты правильной треугольной призмы с ребром 1 (основание — равносторонний
+// треугольник, глубина по y, высота по z). Угол считается кодом.
+const TRIPRISM_V = {
+  A: [0, 0, 0], B: [1, 0, 0], C: [0.5, Math.sqrt(3) / 2, 0],
+  A1: [0, 0, 1], B1: [1, 0, 1], C1: [0.5, Math.sqrt(3) / 2, 1],
+}
+function linesAngleDeg(V, p, q, r, s) {
+  const sub = (u, v) => [u[0] - v[0], u[1] - v[1], u[2] - v[2]]
+  const dot = (u, v) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2]
+  const len = (u) => Math.sqrt(dot(u, u))
+  const u = sub(V[q], V[p]), w = sub(V[s], V[r])
+  return Math.round(Math.acos(Math.min(1, Math.abs(dot(u, w)) / (len(u) * len(w)))) * 180 / Math.PI)
+}
+// Боковое ребро и диагональ боковой грани (пары из открытого банка + их
+// переобозначения по симметрии призмы).
+const TRIPRISM_ANGLE_PAIRS = [
+  ["A", "A1", "B", "C1"], ["A", "A1", "C", "B1"], ["B", "B1", "A", "C1"],
+  ["B", "B1", "C", "A1"], ["C", "C1", "A", "B1"], ["C", "C1", "B", "A1"],
+]
+
+function t03TriPrismAngle() {
+  const [p, q, r, s] = pick(TRIPRISM_ANGLE_PAIRS), a = randInt(1, 6)
+  return {
+    condition_text: `В правильной треугольной призме ABCA₁B₁C₁, все рёбра которой равны ${a}, найдите угол между прямыми ${vertName(p)}${vertName(q)} и ${vertName(r)}${vertName(s)}. Ответ дайте в градусах.`,
+    image_url: svgUrl(triPrismSvg()),
+    answer: ru(linesAngleDeg(TRIPRISM_V, p, q, r, s)),
+  }
+}
+
+// Призма с основаниями ADA₁ и BCB₁ (треугольник ADA₁ ⟂ ребру AB):
+// V = (AD·AA₁/2)·AB = AB·AD·AA₁/2.
+function t03BoxPrismADA1() {
+  let a, b, c
+  do { a = randInt(2, 9); b = randInt(2, 9); c = randInt(2, 9) } while ((a * b * c) % 2 !== 0)
+  return {
+    condition_text: `Найдите объём многогранника, вершинами которого являются точки A, D, A₁, B, C, B₁ прямоугольного параллелепипеда ABCDA₁B₁C₁D₁, у которого AB = ${a}, AD = ${b}, AA₁ = ${c}.`,
+    image_url: svgUrl(boxTallSvg()),
+    answer: ru(a * b * c / 2),
+  }
+}
+
 // Площадь боковой поверхности: сечение через среднюю линию делит периметр
 // основания пополам (все стороны ×½), высота та же → S_бок отсечённой = S/2.
 function t03PrismLateral() {
@@ -4586,7 +4772,7 @@ export const GENERATORS_EGE_PROF = {
     t01ParMidpoint, t01ParAngle, t01ParHeights,
     t01RhombusSideDiag, t01RhombusAngle, t01TrapMidDiag],
   2: [t02DotCoord, t02DotLenAngle, t02LenCombo, t02DotOfCombos, t02GraphLenCombo],
-  3: [t03BoxTetra, t03BoxPyramid, t03BoxPyramidC1, t03BoxPyramidA1, t03BoxPrism, t03BoxTriPrism, t03PrismTetraC1, t03PrismTetraB1, t03PrismPenta, t03PrismMidline, t03PrismCut, t03PrismCutRegular, t03PrismLateral, t03CylConeLateral, t03CylConeLatInverse, t03CylConeVolume, t03CylConeVolInverse, t03ConeInSphere, t03ConeInSphereInv, t03ConeSphereRadius, t03ConeSphereSlant, t03SphereInCyl, t03SphereInCylVol, t03TwoCylinders, t03CylInBox, t03CubeCut, t03CubeCutInverse, t03CubeDiagonal, t03CubeAngle, t03BoxDiagonal, t03BoxLineSin, t03BoxSection, t03BoxDiagSection, t03StepSolid, t03LSolid, t03TSolidSurface, t03SphereSection, t03ConeScale, t03ConeHeightScale],
+  3: [t03BoxTetra, t03BoxPyramid, t03BoxPyramidC1, t03BoxPyramidA1, t03BoxPrism, t03BoxTriPrism, t03BoxPrismADA1, t03PrismRightVol, t03PrismRightEdge, t03SqPrismAngle, t03TriPrismAngle, t03PrismTetraC1, t03PrismTetraB1, t03PrismPenta, t03PrismMidline, t03PrismCut, t03PrismCutRegular, t03PrismLateral, t03CylConeLateral, t03CylConeLatInverse, t03CylConeVolume, t03CylConeVolInverse, t03ConeInSphere, t03ConeInSphereInv, t03ConeSphereRadius, t03ConeSphereSlant, t03SphereInCyl, t03SphereInCylVol, t03TwoCylinders, t03CylInBox, t03CubeCut, t03CubeCutInverse, t03CubeDiagonal, t03CubeAngle, t03BoxDiagonal, t03BoxLineSin, t03BoxSection, t03BoxDiagSection, t03StepSolid, t03LSolid, t03TSolidSurface, t03SphereSection, t03ConeScale, t03ConeHeightScale],
   4: [t04ShotPut, t04Gymnastics, t04Diving, t04Tickets, t04Markers, t04Defect, t04Lottery, t04CoinTwice, t04Rooms, t04FootballCoin],
   5: [t05Lamps, t05Between, t05Shooter4, t05Coffee, t05Battery, t05ShooterN, t05DiceCond, t05TwoThemes, t05Exact],
   6: [t06ExpReduce, t06ExpBothSides, t06LogEqLog, t06LogEqNum, t06Rational, t06Cube, t06Sqrt, t06CubeRoot],
@@ -4688,11 +4874,20 @@ export const GEN_META_EGE_PROF = {
     ["box-pyramid-a1", "Пирамида A,B,C,D,A₁ (S·h/3)", t03BoxPyramidA1],
     ["box-prism", "Призма A,B,C,D,A₁,B₁ (÷2)", t03BoxPrism],
     ["box-tri-prism", "Призма A,B,C,A₁,B₁,C₁ (÷2)", t03BoxTriPrism],
+    ["box-prism-ada1", "Призма A,D,A₁,B,C,B₁ (÷2)", t03BoxPrismADA1],
   ]],
     ["Правильная призма: объём части", [
       ["prism-tetra-c1", "Тетраэдр A,B,C,C₁ (S·L/3)", t03PrismTetraC1],
       ["prism-tetra-b1", "Тетраэдр A,B,C,B₁ (S·L/3)", t03PrismTetraB1],
       ["prism-penta", "Тело B,C,A₁,B₁,C₁ (2S·L/3)", t03PrismPenta],
+    ]],
+    ["Прямая призма: прямоугольный треугольник", [
+      ["prism-rt-vol", "Катеты + боковое ребро → объём", t03PrismRightVol],
+      ["prism-rt-edge", "Катеты + объём → боковое ребро", t03PrismRightEdge],
+    ]],
+    ["Правильная призма: углы", [
+      ["sqprism-angle", "4-угольная: угол между диагоналями (60°)", t03SqPrismAngle],
+      ["triprism-angle", "Треугольная: ребро и диагональ грани (45°)", t03TriPrismAngle],
     ]],
     ["Треугольная призма: сечение", [
       ["prism-midline", "Средняя линия основания → объём (×4)", t03PrismMidline],

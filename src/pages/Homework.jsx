@@ -365,7 +365,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
                 </button>
 
                 {preview && (
-                  <div className="mt-1 rounded-xl border border-blue-200 bg-white p-3 flex flex-col gap-2.5 max-h-[45dvh] overflow-y-auto">
+                  <div className="mt-1 rounded-xl border border-blue-200 bg-white p-3 flex flex-col gap-2.5 max-h-[45dvh] overflow-y-auto no-scrollbar">
                     <input
                       value={preview.title}
                       onChange={(e) => setPreview((p) => ({ ...p, title: e.target.value }))}

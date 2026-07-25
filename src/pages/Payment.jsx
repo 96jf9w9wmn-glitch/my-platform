@@ -646,7 +646,7 @@ function Payment({ students, setStudents, tutorId }) {
                     <div className="text-sm font-medium truncate">{e.name}</div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <div className="text-sm font-semibold tabular-nums text-gray-600 dark:text-gray-300">{fmt(e.amount)} ₽</div>
+                    <div className="text-sm font-semibold tabular-nums text-gray-600">{fmt(e.amount)} ₽</div>
                     <button onClick={() => removeExpense(e.id)}
                       className="w-7 h-7 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-500/10 transition active:scale-90 md:opacity-0 md:group-hover:opacity-100"
                       title="Удалить расход">
@@ -716,7 +716,7 @@ function Payment({ students, setStudents, tutorId }) {
                 className={`text-xs font-medium py-2 rounded-lg transition active:scale-[0.97] ${
                   taxMode === key
                     ? "bg-white dark:bg-white/15 shadow-sm text-gray-900 dark:text-white"
-                    : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                    : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
                 }`}>
                 {m.label}
               </button>
@@ -725,7 +725,7 @@ function Payment({ students, setStudents, tutorId }) {
 
           {taxMode === "npd" && (
             <div className="flex items-center gap-2 mb-4 -mt-1">
-              <span className="text-xs text-gray-400">Ставка НПД:</span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">Ставка НПД:</span>
               {[4, 6].map((r) => (
                 <button key={r} onClick={() => saveTaxSettings("npd", r)}
                   className={`text-xs font-medium px-2.5 py-1 rounded-full transition active:scale-95 ${
@@ -741,16 +741,16 @@ function Payment({ students, setStudents, tutorId }) {
 
           <div className="flex flex-col gap-2 text-sm mt-auto">
             <div className="flex justify-between items-center">
-              <span className="text-gray-500">Доход за месяц</span>
-              <span className="font-medium tabular-nums text-green-600">+{fmt(monthTotal)} ₽</span>
+              <span className="text-gray-500 dark:text-gray-400">Доход за месяц</span>
+              <span className="font-medium tabular-nums text-green-600 dark:text-green-400">+{fmt(monthTotal)} ₽</span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-gray-500">Расходы</span>
-              <span className="font-medium tabular-nums text-gray-500">−{fmt(expenseTotal)} ₽</span>
+              <span className="text-gray-500 dark:text-gray-400">Расходы</span>
+              <span className="font-medium tabular-nums text-gray-500 dark:text-gray-400">−{fmt(expenseTotal)} ₽</span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-gray-500">Налог {effRate > 0 ? `(${effRate}%)` : ""}</span>
-              <span className="font-medium tabular-nums text-amber-600">−{fmt(taxAmount)} ₽</span>
+              <span className="text-gray-500 dark:text-gray-400">Налог {effRate > 0 ? `(${effRate}%)` : ""}</span>
+              <span className="font-medium tabular-nums text-amber-600 dark:text-amber-400">−{fmt(taxAmount)} ₽</span>
             </div>
             <div className="flex justify-between items-center pt-3 mt-1 border-t border-black/[0.07] dark:border-white/[0.1]">
               <span className="font-medium">Чистыми</span>
@@ -768,7 +768,7 @@ function Payment({ students, setStudents, tutorId }) {
           <div className="flex gap-1">
             {[{ id: "all", label: "Все" }, { id: "month", label: "Месяц" }, { id: "week", label: "Неделя" }].map((p) => (
               <button key={p.id} onClick={() => setPeriod(p.id)}
-                className={p.id === period ? "px-3 py-1 rounded-lg text-xs border bg-blue-600 text-white border-blue-600 transition active:scale-95" : "px-3 py-1 rounded-lg text-xs border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition active:scale-95"}>
+                className={p.id === period ? "px-3 py-1 rounded-lg text-xs border bg-blue-600 text-white border-blue-600 transition active:scale-95" : "px-3 py-1 rounded-lg text-xs border border-gray-200 dark:border-white/10 text-gray-600 hover:bg-gray-50 dark:hover:bg-white/5 transition active:scale-95"}>
                 {p.label}
               </button>
             ))}
