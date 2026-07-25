@@ -23,6 +23,12 @@ function formatDayLabel(iso) {
     : { day: "numeric", month: "long", year: "numeric" })
 }
 
+// Роль по префиксу id контакта: p → родитель, s → ученик, t → репетитор
+function roleLabel(id) {
+  const prefix = (id || "").split(":")[0]
+  return prefix === "p" ? "Родитель" : prefix === "s" ? "Ученик" : prefix === "t" ? "Репетитор" : null
+}
+
 export default function Chat({ myId, myName, initialContacts = [], canAddByCode = false, onUnreadChange }) {
   const initialContactIds = initialContacts.map(c => c.id).join(",")
 
@@ -66,6 +72,24 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
 
   useEffect(() => { activeIdRef.current = activeId }, [activeId])
 
+  // Добавляет собеседников, которые нам написали, но которых нет в списке
+  // (напр. родитель p:<ученик> — репетитору его никто не заводит в контакты).
+  // Иначе непрочитанное «светится», а открыть переписку нельзя.
+  function mergeContacts(prev, incoming) {
+    const seen = new Set(prev.map(c => c.id))
+    const additions = []
+    for (const c of incoming) {
+      if (!c.id || c.id === myId || seen.has(c.id)) continue
+      seen.add(c.id)
+      additions.push({ ...c, role: c.role || roleLabel(c.id) })
+    }
+    if (additions.length === 0) return prev
+    const updated = [...prev, ...additions]
+    const extras = updated.filter(c => !initialContacts.find(ic => ic.id === c.id))
+    localStorage.setItem(`chat_contacts_${myId}`, JSON.stringify(extras))
+    return updated
+  }
+
   const activeContact = contacts.find(c => c.id === activeId)
   const convId = activeContact ? [myId, activeId].sort().join("|") : null
 
@@ -94,6 +118,12 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
         table: "chat_messages",
         filter: `recipient_id=eq.${myId}`,
       }, ({ new: msg }) => {
+        // Гарантируем, что отправитель есть в списке контактов (иначе открыть нечем)
+        setContacts(prev => mergeContacts(prev, [{
+          id: msg.sender_id,
+          name: msg.sender_name || roleLabel(msg.sender_id) || "Контакт",
+          avatar: null,
+        }]))
         if (msg.sender_id !== activeIdRef.current) {
           setUnreadByContact(prev => ({
             ...prev,
@@ -112,7 +142,7 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
     if (!myId) return
     supabase
       .from("chat_messages")
-      .select("sender_id")
+      .select("sender_id, sender_name")
       .eq("recipient_id", myId)
       .eq("read", false)
       .then(({ data, error }) => {
@@ -121,6 +151,12 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
         const counts = {}
         data.forEach(m => { counts[m.sender_id] = (counts[m.sender_id] || 0) + 1 })
         setUnreadByContact(counts)
+        // Заводим контакты для непрочитанных отправителей, которых нет в списке
+        setContacts(prev => mergeContacts(prev, data.map(m => ({
+          id: m.sender_id,
+          name: m.sender_name || roleLabel(m.sender_id) || "Контакт",
+          avatar: null,
+        }))))
         if (onUnreadChange && data.length > 0) onUnreadChange(data.length, true)
       })
   }, [myId])
