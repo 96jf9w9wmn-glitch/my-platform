@@ -951,6 +951,79 @@ function t13LogTrigQuad() {
   return finishTrig(eq, opts.map((o) => ({ fn: g, key: o.key })), residual, domainOK)
 }
 
+// ============================================================================
+// СЕМЕЙСТВО «БИКВАДРАТНЫЕ» — дробно-квадратные по 1/sinx или 1/cosx (ОДЗ f≠0)
+// A/f² + B/f + C = 0 ⟺ (×f²) C·f² + B·f + A = 0 → f=нужное значение (не 0).
+// Приведённая (без полюсов) форма для полноты + фактическая для per-root.
+// ============================================================================
+
+// два различных валидных ненулевых значения (для дисгизов 1/tg², tg² → коэф. 1)
+function pickTwoValid() {
+  const pool = ["half", "neghalf", "one", "negone"]
+  const v1 = pick(pool); let v2 = pick(pool), g = 0
+  while (v2 === v1 && g++ < 10) v2 = pick(pool)
+  return { vals: [v1, v2], roots: [AS_R[v1], AS_R[v2]] }
+}
+// A/sqDen + B/linDen + C = 0 (дроби ⟦f⟧)
+function recipEq(A, B, C, sqDen, linDen) {
+  let s = (A < 0 ? MINUS : "") + `⟦f:${Math.abs(A)}:${sqDen}⟧`
+  if (B) s += ` ${B < 0 ? MINUS : "+"} ⟦f:${Math.abs(B)}:${linDen}⟧`
+  if (C) s += ` ${C < 0 ? MINUS : "+"} ${Math.abs(C)}`
+  return s + " = 0"
+}
+// сборка биквадратного: reduced (pole-free) для полноты, real для per-root.
+function bqAssemble(fn, dispA, dispB, dispC, q0, vals, eqStr) {
+  const ff = fn === "sin" ? Math.sin : Math.cos
+  const reduced = makeResidual(fn, q0.a, q0.b, q0.c)         // q0.a·f²+q0.b·f+q0.c (нули = целевые f)
+  const real = (x) => { const f = ff(x); return Math.abs(f) < 1e-9 ? NaN : dispA / (f * f) + dispB / f + dispC }
+  const domainOK = (x) => Math.abs(ff(x)) > 1e-9
+  const series = vals.flatMap((v) => seriesFor(fn, v))
+  const iv = chooseInterval(series, domainOK)
+  if (!iv) return null
+  const { L, R: Rr, roots } = iv
+  return {
+    condition_text: `а) Решите уравнение\n${eqStr}`,
+    condition_tail: `б) Найдите корни, принадлежащие отрезку [${fmtPiCond(L)}; ${fmtPiCond(Rr)}].`,
+    answer: `а) ${vals.map((v) => textFor(fn, v)).join(",  ")}, n ∈ ℤ\nб) ${roots.map(fmtPi).join(";  ")}`,
+    _verify: { residual: reduced, realResidual: real, domainOK, roots: roots.map(Rnum), L: Rnum(L), R: Rnum(Rr) },
+  }
+}
+// приведённая recip-тройка (A/f²+B/f+C) из валидных целей + нормировка A>0
+function recipCoeffs(roots) {
+  const q0 = buildQuadFromRoots(roots)                       // s-поли: q0.a f²+q0.b f+q0.c, нули = цели
+  let A = q0.c, B = q0.b, C = q0.a
+  if (A < 0) { A = -A; B = -B; C = -C }
+  return { A, B, C, q0 }
+}
+
+function t13BiquadSin() {
+  const { vals, roots } = pickTargets()
+  const { A, B, C, q0 } = recipCoeffs(roots)
+  return bqAssemble("sin", A, B, C, q0, vals, recipEq(A, B, C, "sin²x", "sin x"))
+}
+function t13BiquadCos() {
+  const { vals, roots } = pickTargets()
+  const { A, B, C, q0 } = recipCoeffs(roots)
+  return bqAssemble("cos", A, B, C, q0, vals, recipEq(A, B, C, "cos²x", "cos x"))
+}
+// 1/tg²x + B/sinx + C = 0  (1/tg²x = 1/sin²−1 → приведённая sin: A=1, конст = C−1).
+function t13BiquadCtgSin() {
+  const { vals, roots } = pickTwoValid()                     // A=1
+  const { A, B, C, q0 } = recipCoeffs(roots)
+  const eqStr = recipEq(A, B, C + A, "tg²x", "sin x")        // A/tg²x + B/sinx + (C+A)
+  return bqAssemble("sin", A, B, C, q0, vals, eqStr)
+}
+// A·tg²x + B/cosx + C = 0  (tg²x = 1/cos²−1 → приведённая cos: конст = C−A).
+function t13BiquadTgCos() {
+  const { vals, roots } = pickTwoValid()                     // A=1
+  const { A, B, C, q0 } = recipCoeffs(roots)
+  let s = A === 1 ? "tg²x" : `${A}tg²x`
+  if (B) s += ` ${B < 0 ? MINUS : "+"} ⟦f:${Math.abs(B)}:cos x⟧`
+  const C2 = C + A
+  if (C2) s += ` ${C2 < 0 ? MINUS : "+"} ${Math.abs(C2)}`
+  return bqAssemble("cos", A, B, C, q0, vals, s + " = 0")
+}
+
 // ── реестр ──────────────────────────────────────────────────────────────────
 export const GEN13 = [
   t13SinQuad, t13CosQuad, t13CosSqSinLin, t13SinSqCosLin,
@@ -962,6 +1035,7 @@ export const GEN13 = [
   t13IrrSin, t13IrrCos,
   t13ExpTrigProduct, t13ExpTrigSym, t13ExpTrigQuad, t13ExpTrigTower,
   t13LogTrigProd, t13LogTrigQuad,
+  t13BiquadSin, t13BiquadCos, t13BiquadCtgSin, t13BiquadTgCos,
 ]
 
 export const META13 = [
@@ -1007,6 +1081,12 @@ export const META13 = [
   ["Логарифмические × тригонометрия", [
     ["lt-prod", "logₐ(T±sin2x+aᵏ)=k → T=0∪other=∓1/2", t13LogTrigProd],
     ["lt-quad", "A·log²₂(2·триг)+B·log₂(2·триг)+C=0", t13LogTrigQuad],
+  ]],
+  ["Биквадратные (дробно-квадратные по 1/sin, 1/cos)", [
+    ["bq-sin", "A/sin²x+B/sinx+C=0 (ОДЗ sinx≠0)", t13BiquadSin],
+    ["bq-cos", "A/cos²x+B/cosx+C=0 (ОДЗ cosx≠0)", t13BiquadCos],
+    ["bq-ctg-sin", "1/tg²x+B/sinx+C=0", t13BiquadCtgSin],
+    ["bq-tg-cos", "tg²x+B/cosx+C=0", t13BiquadTgCos],
   ]],
 ]
 
