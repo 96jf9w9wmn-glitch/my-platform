@@ -251,7 +251,7 @@ function assembleMulti(equationText, opts) {
 }
 
 // ── форматирование квадратного трёхчлена a·SQ + b·LIN + c = 0 ────────────────
-function fmtQuad(a, b, c, sq, lin) {
+function fmtQuadExpr(a, b, c, sq, lin) {
   let s = ""
   s += a === 1 ? sq : a === -1 ? `${MINUS}${sq}` : `${a < 0 ? MINUS : ""}${Math.abs(a)}${sq}`
   if (b !== 0) {
@@ -259,8 +259,9 @@ function fmtQuad(a, b, c, sq, lin) {
     s += `${bs}${Math.abs(b) === 1 ? "" : Math.abs(b)}${lin}`
   }
   if (c !== 0) s += `${c < 0 ? ` ${MINUS} ` : " + "}${Math.abs(c)}`
-  return `${s} = 0`
+  return s
 }
+function fmtQuad(a, b, c, sq, lin) { return `${fmtQuadExpr(a, b, c, sq, lin)} = 0` }
 
 // выбрать валидные цели: 1 валидная (+лишний корень) ЛИБО 2 валидные.
 function pickTargets() {
@@ -655,6 +656,121 @@ function t13LogDiff() {
   return finish(eq, roots, residual, iv, domainOK)
 }
 
+// ============================================================================
+// СЕМЕЙСТВО «ПРОИЗВЕДЕНИЕ / ДРОБЬ = 0» — множители-нули под знаковой ОДЗ
+// ============================================================================
+
+// Текст серии {base,T} → «x = base + Tn».
+function seriesText(s) {
+  const Ttext = (s.T.p === 1 && s.T.q === 1) ? "πn" : (s.T.p === 2 && s.T.q === 1) ? "2πn" : `${fmtPi(s.T)}n`
+  return s.base.p === 0 ? `x = ${Ttext}` : `x = ${fmtPi(s.base)} + ${Ttext}`
+}
+// Отфильтровать серии по знаковой ОДЗ: 2π-серия (постоянный знак) целиком; π-серия при
+// необходимости расщепляется на две 2π-серии (в base и base+π), выживают удовлетворяющие.
+function refineSeries(series, domainOK) {
+  const out = [], seen = new Set()
+  const push = (base, T) => { const k = Rkey(base) + "|" + Rkey(T); if (!seen.has(k)) { seen.add(k); out.push({ base, T }) } }
+  for (const { base, T } of series) {
+    if (T.p === 1 && T.q === 1) {                       // период π
+      const b2 = Radd(base, PI)
+      const s1 = domainOK(Rnum(base)), s2 = domainOK(Rnum(b2))
+      if (s1 && s2) push(base, PI)
+      else if (s1) push(base, TWO_PI)
+      else if (s2) push(b2, TWO_PI)
+    } else {                                            // 2π или π/2 — знак постоянен на серии
+      if (domainOK(Rnum(base))) push(base, T)
+    }
+  }
+  return out
+}
+
+// P1 — (алгебраический квадрат)·(линейный тригонометрический) = 0. Смешанные корни:
+// десятичные (алгебра) + π-кратные (триг). ОДЗ нет (оба множителя определены везде).
+const DEC = (p, q) => { const v = p / q; return Number.isInteger(v) ? intT(v) : ru2(v) }
+function ru2(v) { return (v < 0 ? MINUS : "") + Math.abs(v).toString().replace(".", ",") }
+const TRIG_LIN = [
+  { str: "2cos x + 1", fn: "cos", val: "neghalf" }, { str: "2cos x − 1", fn: "cos", val: "half" },
+  { str: "2sin x − 1", fn: "sin", val: "half" }, { str: "2sin x + 1", fn: "sin", val: "neghalf" },
+]
+function t13ProductAlgTrig() {
+  // алгебраические корни: два рациональных (знаменатель 1 или 2)
+  const mkRoot = () => pick([1, 1, 2]) === 2 ? { p: 2 * randInt(-3, 3) + 1, q: 2 } : { p: randInt(-6, 6), q: 1 }
+  let a1 = mkRoot(), a2 = mkRoot(), g = 0
+  while (a1.p * a2.q === a2.p * a1.q && g++ < 10) a2 = mkRoot()
+  // многочлен (q1 x − p1)(q2 x − p2) = q1q2 x² − (q1p2+q2p1) x + p1p2
+  const A = a1.q * a2.q, B = -(a1.q * a2.p + a2.q * a1.p), C = a1.p * a2.p
+  const gg = gcd(gcd(A, B), C) || 1
+  const algStr = qPoly(A / gg, B / gg, C / gg)
+  const tr = pick(TRIG_LIN)
+  const eq = `(${algStr})(${tr.str}) = 0`
+  const trigSeries = seriesFor(tr.fn, tr.val)
+  // численно
+  const trFn = tr.fn === "sin" ? Math.sin : Math.cos
+  const trTarget = VAL_TO_NUM[tr.val]
+  const residual = (x) => ((A / gg) * x * x + (B / gg) * x + (C / gg)) * (trFn(x) - trTarget)
+  const iv = chooseIntervalMixed(trigSeries, [a1, a2])
+  if (!iv) return null
+  const { L, R, roots } = iv
+  const algText = [a1, a2].sort((p, q) => p.p / p.q - q.p / q.q).map((r) => "x = " + DEC(r.p, r.q)).join(";  ")
+  const trigTextAll = trigSeries.map(seriesText).join(",  ")
+  return {
+    condition_text: `а) Решите уравнение\n${eq}`,
+    condition_tail: `б) Найдите корни, принадлежащие отрезку [${fmtPiCond(L)}; ${fmtPiCond(R)}].`,
+    answer: `а) ${algText};  ${trigTextAll}, n ∈ ℤ\nб) ${roots.map((r) => r.text).join(";  ")}`,
+    _verify: { residual, realResidual: residual, roots: roots.map((r) => r.num), L: Rnum(L), R: Rnum(R) },
+  }
+}
+// Значение цели по ключу (для residual линейного триг-множителя).
+const VAL_TO_NUM = {
+  half: 0.5, neghalf: -0.5, one: 1, negone: -1, zero: 0,
+  r3half: Math.sqrt(3) / 2, negr3half: -Math.sqrt(3) / 2, r2half: Math.sqrt(2) / 2, negr2half: -Math.sqrt(2) / 2,
+}
+// Отрезок с π-концами: перечисляем и триг π-корни, и алгебраические (десятичные) корни.
+function chooseIntervalMixed(trigSeries, algRoots) {
+  const algNum = algRoots.map((r) => ({ num: r.p / r.q, text: DEC(r.p, r.q) }))
+  for (let tries = 0; tries < 500; tries++) {
+    const len = pick([2, 3, 4])
+    const k = randInt(-8, 6)
+    const L = R(k, 2), Rr = R(k + len, 2)
+    const Ln = Rnum(L), Rn = Rnum(Rr)
+    const trigRoots = rootsInInterval(trigSeries, L, Rr).map((rr) => ({ num: Rnum(rr), text: fmtPi(rr) }))
+    const inAlg = algNum.filter((r) => r.num >= Ln - 1e-9 && r.num <= Rn + 1e-9)
+    const all = [...trigRoots, ...inAlg].sort((p, q) => p.num - q.num)
+    if (all.length >= 1 && all.length <= 3) return { L, R: Rr, roots: all }
+  }
+  return null
+}
+
+// P2 — P(триг)·√(k·триг) = 0. ОДЗ: k·(подкоренная функция) ≥ 0. Корни: нули P (в ОДЗ) и
+// нуль подкоренной функции (√=0). P — квадрат по cos ИЛИ sin; √ — по ДРУГОЙ функции.
+function t13ProductSqrt() {
+  const fP = pick(["cos", "sin"])
+  const fS = fP === "cos" ? "sin" : "cos"
+  const { vals, roots } = pickTargets()               // цели для P (в fP)
+  const q = buildQuadFromRoots(roots)
+  const Pexpr = fmtQuadExpr(q.a, q.b, q.c, fP === "cos" ? "cos²x" : "sin²x", fP === "cos" ? "cos x" : "sin x")
+  const kPos = Math.random() < 0.7
+  const k = kPos ? pick([5, 7, 11, 13]) : -1
+  const fSstr = fS === "cos" ? "cos x" : "sin x"
+  const kInner = k === -1 ? `${MINUS}${fSstr}` : `${k} ${fSstr}`
+  const eq = `(${Pexpr})·⟦r:${kInner}⟧ = 0`
+  const fSfn = fS === "sin" ? Math.sin : Math.cos
+  const domainOK = (x) => k * fSfn(x) >= -1e-9
+  const allSeries = [...vals.flatMap((v) => seriesFor(fP, v)), ...seriesFor(fS, "zero")]
+  const refined = refineSeries(allSeries, domainOK)
+  const iv = chooseInterval(refined)
+  if (!iv) return null
+  const { L, R: Rr, roots: rr } = iv
+  const residualP = makeResidual(fP, q.a, q.b, q.c)
+  const residual = (x) => { const inside = k * fSfn(x); return inside < -1e-12 ? NaN : residualP(x) * Math.sqrt(Math.max(inside, 0)) }
+  return {
+    condition_text: `а) Решите уравнение\n${eq}`,
+    condition_tail: `б) Найдите корни, принадлежащие отрезку [${fmtPiCond(L)}; ${fmtPiCond(Rr)}].`,
+    answer: `а) ${refined.map(seriesText).join(",  ")}, n ∈ ℤ\nб) ${rr.map(fmtPi).join(";  ")}`,
+    _verify: { residual, realResidual: residual, domainOK, roots: rr.map(Rnum), L: Rnum(L), R: Rnum(Rr) },
+  }
+}
+
 // ── реестр ──────────────────────────────────────────────────────────────────
 export const GEN13 = [
   t13SinQuad, t13CosQuad, t13CosSqSinLin, t13SinSqCosLin,
@@ -662,6 +778,7 @@ export const GEN13 = [
   t13FactorTgSin2x, t13FactorCtgSin2x, t13FactorSinMinusCos, t13FactorSinPlusCos, t13FactorCosTimesEq1,
   t13ExpSumPow, t13ExpQuadInAx, t13ExpHomogQuad,
   t13LogQuad, t13LogDiff,
+  t13ProductAlgTrig, t13ProductSqrt,
 ]
 
 export const META13 = [
@@ -690,6 +807,10 @@ export const META13 = [
     ["log-quad", "A·log²ₐx+B·logₐx+C=0 (корни aⁿ)", t13LogQuad],
     ["log-diff", "logₐf=logₐg, f,g квадратные (ОДЗ f,g>0)", t13LogDiff],
   ]],
+  ["Произведение / дробь = 0", [
+    ["prod-alg-trig", "(алгебр. квадрат)(2cosx±1)=0 (десятич.+π)", t13ProductAlgTrig],
+    ["prod-sqrt", "P(триг)·√(k·триг)=0 (знаковая ОДЗ, √=0)", t13ProductSqrt],
+  ]],
 ]
 
 // ── самопроверка (для смоук-теста node) ─────────────────────────────────────
@@ -699,11 +820,13 @@ export function verify13(item) {
   const { residual, realResidual, domainOK, roots, L, R: Rr } = item._verify
   const EPS = 1e-7
   const okDom = domainOK || (() => true)
+  // порог 1e−5: √-множитель усиливает float-шум у √=0-корней (√(k·1e−15)); реальная
+  // ошибка даёт residual ~O(1), поэтому не маскируется.
   for (const x of roots) {
     // приведённая форма (без полюсов) = 0
-    if (Math.abs(residual(x)) > 1e-6) return { ok: false, err: `residual(${x})=${residual(x)}` }
+    if (Math.abs(residual(x)) > 1e-5) return { ok: false, err: `residual(${x})=${residual(x)}` }
     // фактическое уравнение = 0 (связь приведённой формы с показанным уравнением)
-    if (realResidual && Math.abs(realResidual(x)) > 1e-6) return { ok: false, err: `realResidual(${x})=${realResidual(x)}` }
+    if (realResidual && Math.abs(realResidual(x)) > 1e-5) return { ok: false, err: `realResidual(${x})=${realResidual(x)}` }
     // ОДЗ и попадание в отрезок
     if (!okDom(x)) return { ok: false, err: `корень ${x} вне ОДЗ` }
     if (x < L - EPS || x > Rr + EPS) return { ok: false, err: `корень ${x} вне [${L};${Rr}]` }
