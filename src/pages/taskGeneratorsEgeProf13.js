@@ -832,7 +832,7 @@ function t13IrrCos() { return irrTrigGen("cos") }
 // ============================================================================
 
 // Общий финишер для триг-решения (targets = [{fn,key}]); residual — фактическое уравнение.
-function finishTrig(eq, targets, residual, domainOK = null) {
+function finishTrig(eq, targets, residual, domainOK = null, realResidual = null) {
   const series = targets.flatMap((t) => seriesFor(t.fn, t.key))
   const refined = domainOK ? refineSeries(series, domainOK) : series
   const iv = chooseInterval(refined, domainOK)
@@ -843,7 +843,7 @@ function finishTrig(eq, targets, residual, domainOK = null) {
     condition_text: `а) Решите уравнение\n${eq}`,
     condition_tail: `б) Найдите корни, принадлежащие отрезку [${fmtPiCond(L)}; ${fmtPiCond(Rr)}].`,
     answer: `а) ${genText}, n ∈ ℤ\nб) ${roots.map(fmtPi).join(";  ")}`,
-    _verify: { residual, realResidual: residual, domainOK, roots: roots.map(Rnum), L: Rnum(L), R: Rnum(Rr) },
+    _verify: { residual, realResidual: realResidual || residual, domainOK, roots: roots.map(Rnum), L: Rnum(L), R: Rnum(Rr) },
   }
 }
 
@@ -1323,6 +1323,56 @@ function t13FracArcSinCos() {
   return finishArc(eq, rSeries, arcS, ["x = πn", arcS[0].genText], residual, domainOK)
 }
 
+// ============================================================================
+// СЕМЕЙСТВО «ФОРМУЛЫ ПРИВЕДЕНИЯ (составные аргументы)» — tg(π+x), cos(2x−π/2)…
+// Верификация — по БУКВАЛЬНОМУ выражению (Math.tan(π+x) и т.п.), чтобы поймать
+// ошибку в тождестве приведения (не только в производной).
+// ============================================================================
+
+// [строка, численный вычислитель, знак относительно tg x / sin 2x]
+const RED_LEFT = [
+  ["tg(π + x)", (x) => Math.tan(Math.PI + x), 1], ["tg(x − π)", (x) => Math.tan(x - Math.PI), 1],
+  ["tg(2π − x)", (x) => Math.tan(2 * Math.PI - x), -1], ["tg(π − x)", (x) => Math.tan(Math.PI - x), -1],
+]
+const RED_MID = [
+  ["cos(2x − ⟦f:π:2⟧)", (x) => Math.cos(2 * x - Math.PI / 2), 1], ["cos(⟦f:3π:2⟧ + 2x)", (x) => Math.cos(3 * Math.PI / 2 + 2 * x), 1],
+  ["cos(⟦f:π:2⟧ − 2x)", (x) => Math.cos(Math.PI / 2 - 2 * x), 1], ["cos(⟦f:π:2⟧ + 2x)", (x) => Math.cos(Math.PI / 2 + 2 * x), -1],
+]
+const RED_RHS = { "0.5": ["cos(−⟦f:π:3⟧)", "sin(⟦f:π:6⟧)"], "-0.5": ["cos(⟦f:2π:3⟧)", "sin(−⟦f:π:6⟧)"], "1": ["sin(⟦f:π:2⟧)"], "-1": ["sin(−⟦f:π:2⟧)", "cos(π)"] }
+// A — tg(shift x)·cos(shift 2x) = const → σ·tgx·sin2x = C → σ·2sin²x = C → sin²=|C|/2.
+function t13ReductProd() {
+  const s2 = pick([{ v: 0.25, keys: ["half", "neghalf"] }, { v: 0.5, keys: ["r2half", "negr2half"] }])
+  const sigma = pick([1, -1])
+  const C = sigma * 2 * s2.v                                 // ∈ {±0.5, ±1}
+  // подобрать left,mid так, чтобы sL·sM = sigma
+  const L = pick(RED_LEFT), M = pick(RED_MID.filter((m) => m[2] * L[2] === sigma))
+  if (!M) return null
+  const rhs = pick(RED_RHS[String(C)])
+  const eq = `${L[0]}·${M[0]} = ${rhs}`
+  const residual = (x) => sigma * 2 * Math.sin(x) ** 2 - C   // приведённая (без полюсов)
+  const real = (x) => L[1](x) * M[1](x) - C                  // буквальная (с полюсами tg)
+  const domainOK = (x) => Math.abs(Math.cos(x)) > 1e-9
+  return finishTrig(eq, s2.keys.map((key) => ({ fn: "sin", key })), residual, domainOK, real)
+}
+// B — [tg/ctg x] + cos(shift 2x) = 0, где cos(shift)=−sin2x → факторизация.
+const RED_MIDB = [["cos(⟦f:π:2⟧ + 2x)", (x) => Math.cos(Math.PI / 2 + 2 * x)], ["cos(⟦f:3π:2⟧ − 2x)", (x) => Math.cos(3 * Math.PI / 2 - 2 * x)]]
+function t13ReductFactor() {
+  const isTg = Math.random() < 0.5
+  const M = pick(RED_MIDB)
+  if (isTg) {
+    const eq = `tg x + ${M[0]} = 0`                          // tgx − sin2x=0 → sinx=0 ∪ cos²=½
+    const residual = (x) => Math.sin(x) * (1 - 2 * Math.cos(x) ** 2)   // = −sinx·cos2x
+    const real = (x) => Math.tan(x) + M[1](x)
+    const domainOK = (x) => Math.abs(Math.cos(x)) > 1e-9
+    return finishTrig(eq, [{ fn: "sin", key: "zero" }, { fn: "cos", key: "r2half" }, { fn: "cos", key: "negr2half" }], residual, domainOK, real)
+  }
+  const eq = `ctg x + ${M[0]} = 0`                           // ctgx − sin2x=0 → cosx=0 ∪ sin²=½
+  const residual = (x) => Math.cos(x) * (1 - 2 * Math.sin(x) ** 2)
+  const real = (x) => Math.cos(x) / Math.sin(x) + M[1](x)
+  const domainOK = (x) => Math.abs(Math.sin(x)) > 1e-9
+  return finishTrig(eq, [{ fn: "cos", key: "zero" }, { fn: "sin", key: "r2half" }, { fn: "sin", key: "negr2half" }], residual, domainOK, real)
+}
+
 // ── реестр ──────────────────────────────────────────────────────────────────
 export const GEN13 = [
   t13SinQuad, t13CosQuad, t13CosSqSinLin, t13SinSqCosLin,
@@ -1340,6 +1390,7 @@ export const GEN13 = [
   t13SumDiff,
   t13ArcSin, t13ArcCos, t13ArcTan,
   t13FracArcCosTg, t13FracArcSinCos,
+  t13ReductProd, t13ReductFactor,
 ]
 
 export const META13 = [
@@ -1409,6 +1460,10 @@ export const META13 = [
   ["Арки в одних точках (дробь = 0)", [
     ["frac-cos-tg", "(c·cosx−a)/(a·tgx+b)=0 → одна ветвь arccos", t13FracArcCosTg],
     ["frac-sin-cos", "(c·sin²x−a·sinx)/(c·cosx+b)=0 → sinx=0∪одна ветвь arcsin", t13FracArcSinCos],
+  ]],
+  ["Формулы приведения (составные аргументы)", [
+    ["red-prod", "tg(π+x)·cos(2x−π/2)=cos(−π/3) → sin=±v", t13ReductProd],
+    ["red-factor", "tg/ctg x + cos(π/2+2x)=0 → факторизация", t13ReductFactor],
   ]],
 ]
 
