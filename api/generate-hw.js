@@ -87,8 +87,7 @@ export default async function handler(req, res) {
           { role: "user", content: user },
         ],
         temperature: 0.7,
-        // Без «размышлений»: с ними ответ идёт минуты и упирается в лимит функции.
-        thinking: { type: "disabled" },
+        thinking: { type: "enabled" },
         max_tokens: 8000,
         response_format: { type: "json_object" },
       }),
