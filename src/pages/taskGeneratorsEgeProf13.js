@@ -771,6 +771,60 @@ function t13ProductSqrt() {
   }
 }
 
+// ============================================================================
+// СЕМЕЙСТВО «ИРРАЦИОНАЛЬНЫЕ» — тригонометрия под радикалом
+// T1(x) + √(C·(1∓T2)) = 0 → √=−T1 (ОДЗ T1≤0), возводим в квадрат → T2=значение + граница.
+// Радиканд C·(1∓·)≥0 всегда, поэтому residual определён везде (нет NaN).
+// ============================================================================
+
+const S3H = Math.sqrt(3) / 2, S2H = Math.sqrt(2) / 2
+function numToTrigKey(v) {
+  const n = (b) => Math.abs(v - b) < 1e-9
+  if (n(1)) return "one"; if (n(-1)) return "negone"; if (n(0)) return "zero"
+  if (n(0.5)) return "half"; if (n(-0.5)) return "neghalf"
+  if (n(S3H)) return "r3half"; if (n(-S3H)) return "negr3half"
+  if (n(S2H)) return "r2half"; if (n(-S2H)) return "negr2half"
+  return null
+}
+const IRR_C = [
+  { Cnum: 0.5, num: "1", den: "2" }, { Cnum: 1, num: null }, { Cnum: 1.5, num: "3", den: "2" },
+  { Cnum: (2 - Math.sqrt(3)) / 2, num: "2 − √3", den: "2" }, { Cnum: (2 + Math.sqrt(3)) / 2, num: "2 + √3", den: "2" },
+  { Cnum: (2 - Math.sqrt(2)) / 2, num: "2 − √2", den: "2" }, { Cnum: (2 + Math.sqrt(2)) / 2, num: "2 + √2", den: "2" },
+]
+// kind: 'sin' → sin x + √(C(1−cos x))=0 (ОДЗ sinx≤0, cos=C−1 или cos=1);
+//       'cos' → cos x + √(C(sin x+1))=0 (ОДЗ cosx≤0, sin=1−C или sin=−1).
+function irrTrigGen(kind) {
+  const C = pick(IRR_C)
+  const targetVal = kind === "sin" ? C.Cnum - 1 : 1 - C.Cnum
+  const tkey = numToTrigKey(targetVal)
+  if (!tkey) return null
+  const innerFn = kind === "sin" ? "cos" : "sin"
+  const boundaryKey = kind === "sin" ? "one" : "negone"     // cos=1 / sin=−1
+  const outerStr = kind === "sin" ? "sin x" : "cos x"
+  const radInner = kind === "sin" ? "1 − cos x" : "sin x + 1"
+  const radTok = C.num === null ? `⟦r:${radInner}⟧` : `⟦rf:¦${C.num}¦${C.den}¦·(${radInner})⟧`
+  const eq = `${outerStr} + ${radTok} = 0`
+  const outerFn = kind === "sin" ? Math.sin : Math.cos
+  const domainOK = (x) => outerFn(x) <= 1e-9
+  const allSeries = [...seriesFor(innerFn, boundaryKey), ...seriesFor(innerFn, tkey)]
+  const refined = refineSeries(allSeries, domainOK)
+  const iv = chooseInterval(refined)
+  if (!iv) return null
+  const { L, R: Rr, roots } = iv
+  const Cn = C.Cnum
+  const residual = kind === "sin"
+    ? (x) => Math.sin(x) + Math.sqrt(Cn * (1 - Math.cos(x)))
+    : (x) => Math.cos(x) + Math.sqrt(Cn * (1 + Math.sin(x)))
+  return {
+    condition_text: `а) Решите уравнение\n${eq}`,
+    condition_tail: `б) Найдите корни, принадлежащие отрезку [${fmtPiCond(L)}; ${fmtPiCond(Rr)}].`,
+    answer: `а) ${refined.map(seriesText).join(",  ")}, n ∈ ℤ\nб) ${roots.map(fmtPi).join(";  ")}`,
+    _verify: { residual, realResidual: residual, domainOK, roots: roots.map(Rnum), L: Rnum(L), R: Rnum(Rr) },
+  }
+}
+function t13IrrSin() { return irrTrigGen("sin") }
+function t13IrrCos() { return irrTrigGen("cos") }
+
 // ── реестр ──────────────────────────────────────────────────────────────────
 export const GEN13 = [
   t13SinQuad, t13CosQuad, t13CosSqSinLin, t13SinSqCosLin,
@@ -779,6 +833,7 @@ export const GEN13 = [
   t13ExpSumPow, t13ExpQuadInAx, t13ExpHomogQuad,
   t13LogQuad, t13LogDiff,
   t13ProductAlgTrig, t13ProductSqrt,
+  t13IrrSin, t13IrrCos,
 ]
 
 export const META13 = [
@@ -810,6 +865,10 @@ export const META13 = [
   ["Произведение / дробь = 0", [
     ["prod-alg-trig", "(алгебр. квадрат)(2cosx±1)=0 (десятич.+π)", t13ProductAlgTrig],
     ["prod-sqrt", "P(триг)·√(k·триг)=0 (знаковая ОДЗ, √=0)", t13ProductSqrt],
+  ]],
+  ["Иррациональные (тригонометрия под корнем)", [
+    ["irr-sin", "sinx+√(C(1−cosx))=0 (ОДЗ sinx≤0)", t13IrrSin],
+    ["irr-cos", "cosx+√(C(sinx+1))=0 (ОДЗ cosx≤0)", t13IrrCos],
   ]],
 ]
 
