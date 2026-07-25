@@ -916,6 +916,41 @@ function t13ExpTrigTower() {
   return finishTrig(eq, [{ fn: "sin", key: "zero" }, { fn: "cos", key: cosKey }], residual)
 }
 
+// ============================================================================
+// СЕМЕЙСТВО «ЛОГАРИФМИЧЕСКИЕ × ТРИГОНОМЕТРИЯ» — log(триг)=число / квадрат по log(триг)
+// ============================================================================
+
+// LT1 — log_a(T1 ± sin2x + a^k) = k → T1 ± sin2x = 0 → T1=0 ∪ other=∓1/2 (T1·(1±2·other)).
+function t13LogTrigProd() {
+  const [a, k] = pick([[2, 2], [2, 3], [2, 4], [3, 2]])
+  const Ak = a ** k
+  const outer = pick(["cos", "sin"]), other = outer === "cos" ? "sin" : "cos"
+  const sg = pick([1, -1])
+  const otherKey = sg === 1 ? "neghalf" : "half"             // 1+2·other=0→−1/2 ; 1−2·other=0→+1/2
+  const outerStr = outer === "cos" ? "cos x" : "sin x"
+  const eq = `log${subU(a)}(${outerStr} ${sg < 0 ? MINUS : "+"} sin 2x + ${Ak}) = ${k}`
+  const of = outer === "cos" ? Math.cos : Math.sin
+  const EXPR = (x) => of(x) + sg * Math.sin(2 * x) + Ak
+  const domainOK = (x) => EXPR(x) > 1e-12
+  const residual = (x) => domainOK(x) ? Math.log(EXPR(x)) / Math.log(a) - k : NaN
+  return finishTrig(eq, [{ fn: outer, key: "zero" }, { fn: other, key: otherKey }], residual, domainOK)
+}
+
+// LT2 — A·log²_a(g) + B·log_a(g) + C = 0, g=2sin x или 2cos x, t=log₂(g) → g=2^t → trig=2^{t−1}.
+const LT2_T = [{ t: 0, key: "half" }, { t: 1, key: "one" }, { t: 0.5, key: "r2half" }]
+function t13LogTrigQuad() {
+  const g = pick(["sin", "cos"]), gStr = g === "sin" ? "2sin x" : "2cos x", a = 2
+  const opts = shuffleA(LT2_T.slice()).slice(0, 2)
+  const t1 = opts[0].t, t2 = opts[1].t
+  const mul = (t1 === 0.5 || t2 === 0.5) ? 2 : 1
+  const A = mul, B = -mul * (t1 + t2), C = mul * t1 * t2
+  const eq = fmtQuad(A, B, C, `log²${subU(a)}(${gStr})`, `log${subU(a)}(${gStr})`)
+  const gf = (x) => g === "sin" ? 2 * Math.sin(x) : 2 * Math.cos(x)
+  const domainOK = (x) => gf(x) > 1e-12
+  const residual = (x) => { if (!domainOK(x)) return NaN; const t = Math.log(gf(x)) / Math.log(a); return A * t * t + B * t + C }
+  return finishTrig(eq, opts.map((o) => ({ fn: g, key: o.key })), residual, domainOK)
+}
+
 // ── реестр ──────────────────────────────────────────────────────────────────
 export const GEN13 = [
   t13SinQuad, t13CosQuad, t13CosSqSinLin, t13SinSqCosLin,
@@ -926,6 +961,7 @@ export const GEN13 = [
   t13ProductAlgTrig, t13ProductSqrt,
   t13IrrSin, t13IrrCos,
   t13ExpTrigProduct, t13ExpTrigSym, t13ExpTrigQuad, t13ExpTrigTower,
+  t13LogTrigProd, t13LogTrigQuad,
 ]
 
 export const META13 = [
@@ -967,6 +1003,10 @@ export const META13 = [
     ["et-sym", "p^T+p^{−T}=k → trig=±v / 0", t13ExpTrigSym],
     ["et-quad", "a·(p²)^T+b·p^T+c=0 → trig=значения", t13ExpTrigQuad],
     ["et-tower", "((q²)^sinx)^cosx=q^{r·sinx} → sinx=0∪cos=r/2", t13ExpTrigTower],
+  ]],
+  ["Логарифмические × тригонометрия", [
+    ["lt-prod", "logₐ(T±sin2x+aᵏ)=k → T=0∪other=∓1/2", t13LogTrigProd],
+    ["lt-quad", "A·log²₂(2·триг)+B·log₂(2·триг)+C=0", t13LogTrigQuad],
   ]],
 ]
 
