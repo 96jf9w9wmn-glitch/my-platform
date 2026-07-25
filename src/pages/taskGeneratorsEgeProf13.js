@@ -615,18 +615,20 @@ function pickIntInterval(rootsNum) {
 
 // L1 — квадрат по t=log_a(x): A·log²_a x + B·log_a x + C = 0. Корни x=a^n (n целое >0).
 function t13LogQuad() {
-  const a = pick([2, 3, 5])
-  const pool = a === 5 ? [1, 2] : [1, 2, 3]
-  let n1 = pick(pool), n2 = pick(pool), g = 0
-  while (n2 === n1 && g++ < 10) n2 = pick(pool)
-  let A = 1, B = -(n1 + n2), C = n1 * n2
-  const gg = gcd(gcd(A, B), C) || 1; A /= gg; B /= gg; C /= gg
-  const eq = fmtQuad(A, B, C, `log²${subU(a)}x`, `log${subU(a)}x`)
-  const roots = [{ num: a ** n1, text: intT(a ** n1) }, { num: a ** n2, text: intT(a ** n2) }]
-  const residual = (x) => { const t = Math.log(x) / Math.log(a); return A * t * t + B * t + C }
-  const iv = pickPosInterval(roots.map((r) => r.num))
-  if (!iv) return null
-  return finish(eq, roots, residual, iv)
+  for (let tries = 0; tries < 12; tries++) {
+    const a = pick([2, 3, 5])
+    const pool = a === 5 ? [1, 2] : [1, 2, 3]
+    let n1 = pick(pool), n2 = pick(pool), g = 0
+    while (n2 === n1 && g++ < 10) n2 = pick(pool)
+    let A = 1, B = -(n1 + n2), C = n1 * n2
+    const gg = gcd(gcd(A, B), C) || 1; A /= gg; B /= gg; C /= gg
+    const eq = fmtQuad(A, B, C, `log²${subU(a)}x`, `log${subU(a)}x`)
+    const roots = [{ num: a ** n1, text: intT(a ** n1) }, { num: a ** n2, text: intT(a ** n2) }]
+    const residual = (x) => { const t = Math.log(x) / Math.log(a); return A * t * t + B * t + C }
+    const iv = pickPosInterval(roots.map((r) => r.num))
+    if (iv) return finish(eq, roots, residual, iv)
+  }
+  return null
 }
 
 // L2 — log_a f = log_a g, f,g — квадратные многочлены (g положительно определён, f=g+T).
@@ -1024,6 +1026,59 @@ function t13BiquadTgCos() {
   return bqAssemble("cos", A, B, C, q0, vals, s + " = 0")
 }
 
+// ============================================================================
+// СЕМЕЙСТВО «РАЦИОНАЛЬНЫЕ» — симметричная подстановка t = y/b − c/y (y = x+m)
+// (x+m)²/D + M/(x+m)² = P·((x+m)/b − c/(x+m)) + Q, M=K·c², D=b²/K.
+// LHS = K·t² + 2Kc/b, RHS = P·t + Q → K·t² − P·t + (2Kc/b−Q)=0 → t₁,t₂ → y²−b·t·y−bc=0.
+// Обе факторизации −bc дают ЦЕЛЫЕ y-корни → все 4 корня x целые.
+// ============================================================================
+
+// целый отрезок, 1–2 корня из списка, концы не в полюсе `avoid`
+function pickIntIntervalMulti(rootsNum, avoid) {
+  const opts = []
+  for (let L = -12; L <= 12; L++) for (let Rr = L + 1; Rr <= 12; Rr++) {
+    if (Rr - L > 10 || L === avoid || Rr === avoid) continue
+    const inside = rootsNum.filter((x) => x >= L - 1e-9 && x <= Rr + 1e-9)
+    if (inside.length >= 1 && inside.length <= 2) opts.push({ L, R: Rr, w: Rr - L, cnt: inside.length })
+  }
+  if (!opts.length) return null
+  opts.sort((a, b) => a.cnt - b.cnt || a.w - b.w)
+  return pick(opts.slice(0, Math.min(10, opts.length)))
+}
+function t13Rational() {
+  for (let tries = 0; tries < 400; tries++) {
+    const b = pick([3, 4, 5, 6]), c = pick([2, 3, 4]), b2 = b * b
+    const Ks = []; for (let K = 1; K <= b2; K++) if (b2 % K === 0 && b2 / K >= 2) Ks.push(K)
+    const K = pick(Ks), D = b2 / K, M = K * c * c, N = b * c
+    const pairs = []; for (let d = 1; d <= N; d++) if (N % d === 0) { pairs.push([d, -N / d]); pairs.push([-d, N / d]) }
+    const sh = pick([-2, -1, 1, 2, 3])
+    const shuf = shuffleA(pairs.slice())
+    for (let i = 0; i < shuf.length; i++) for (let j = i + 1; j < shuf.length; j++) {
+      const [y1, y2] = shuf[i], [y3, y4] = shuf[j], ys = [y1, y2, y3, y4]
+      if (new Set(ys).size < 4) continue
+      const s1 = y1 + y2, s2 = y3 + y4; if (s1 === s2) continue
+      const P = K * (s1 + s2) / b, Q = 2 * K * c / b - K * s1 * s2 / b2
+      if (!Number.isInteger(P) || !Number.isInteger(Q) || P === 0) continue
+      const xr = ys.map((y) => y - sh)
+      const iv = pickIntIntervalMulti(xr, -sh)
+      if (!iv) continue
+      const shTxt = sh > 0 ? `x + ${sh}` : `x ${MINUS} ${-sh}`
+      const eq = `⟦f:(${shTxt})²:${D}⟧ + ⟦f:${M}:(${shTxt})²⟧ = ${P < 0 ? MINUS : ""}${Math.abs(P)}(⟦f:${shTxt}:${b}⟧ ${MINUS} ⟦f:${c}:${shTxt}⟧) ${Q < 0 ? MINUS : "+"} ${Math.abs(Q)}`
+      const residual = (x) => { const y = x + sh; if (Math.abs(y) < 1e-6) return NaN; return y * y / D + M / (y * y) - (P * (y / b - c / y) + Q) }
+      const domainOK = (x) => Math.abs(x + sh) > 1e-6
+      const sorted = xr.slice().sort((a, z) => a - z)
+      const inside = sorted.filter((x) => x >= iv.L - 1e-9 && x <= iv.R + 1e-9)
+      return {
+        condition_text: `а) Решите уравнение\n${eq}`,
+        condition_tail: `б) Найдите корни, принадлежащие отрезку [${intT(iv.L)}; ${intT(iv.R)}].`,
+        answer: `а) ${sorted.map((x) => "x = " + intT(x)).join(";  ")}\nб) ${inside.map(intT).join(";  ")}`,
+        _verify: { residual, realResidual: residual, domainOK, roots: inside, L: iv.L, R: iv.R, allRoots: sorted },
+      }
+    }
+  }
+  return null
+}
+
 // ── реестр ──────────────────────────────────────────────────────────────────
 export const GEN13 = [
   t13SinQuad, t13CosQuad, t13CosSqSinLin, t13SinSqCosLin,
@@ -1036,6 +1091,7 @@ export const GEN13 = [
   t13ExpTrigProduct, t13ExpTrigSym, t13ExpTrigQuad, t13ExpTrigTower,
   t13LogTrigProd, t13LogTrigQuad,
   t13BiquadSin, t13BiquadCos, t13BiquadCtgSin, t13BiquadTgCos,
+  t13Rational,
 ]
 
 export const META13 = [
@@ -1087,6 +1143,9 @@ export const META13 = [
     ["bq-cos", "A/cos²x+B/cosx+C=0 (ОДЗ cosx≠0)", t13BiquadCos],
     ["bq-ctg-sin", "1/tg²x+B/sinx+C=0", t13BiquadCtgSin],
     ["bq-tg-cos", "tg²x+B/cosx+C=0", t13BiquadTgCos],
+  ]],
+  ["Рациональные (симметричная подстановка)", [
+    ["rational", "(x+m)²/D+M/(x+m)²=P(…)+Q → 4 целых корня", t13Rational],
   ]],
 ]
 
