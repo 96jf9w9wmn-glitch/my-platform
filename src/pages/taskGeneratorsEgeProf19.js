@@ -42,6 +42,17 @@ function plural(n, one, few, many) {
   return many
 }
 const nums = (n) => `${n} ${plural(n, "число", "числа", "чисел")}`
+const stones = (n) => `${n} ${plural(n, "камень", "камня", "камней")}`
+// Компактная запись длинной суммы одинаковых слагаемых: «11 + … + 11 (9 слагаемых)».
+function compactSum(parts) {
+  const groups = []
+  for (const v of parts) {
+    const g = groups[groups.length - 1]
+    if (g && g.v === v) g.c++
+    else groups.push({ v, c: 1 })
+  }
+  return groups.map(({ v, c }) => (c <= 3 ? Array(c).fill(v).join(" + ") : `${v} + … + ${v} (${c} ${plural(c, "слагаемое", "слагаемых", "слагаемых")})`)).join(" + ")
+}
 // Согласование числительного с «различных натуральных чисел» / «чётных чисел».
 const distNat = (n) => `${n} ${plural(n, "различное натуральное число", "различных натуральных числа", "различных натуральных чисел")}`
 const evenNums = (n) => `${n} ${plural(n, "чётное число", "чётных числа", "чётных чисел")}`
@@ -698,6 +709,10 @@ export function t19BoardDistinctSum() {
 
 // ── реестр ─────────────────────────────────────────────────────────────────
 export const META19 = [
+  ["Игры и операции с инвариантом", [
+    ["boxes-three", "Три коробки: ход −1, −1, +1 → наибольшее в третьей", t19BoxesThree],
+    ["ones-and-plus", "n единиц и знаки «+» → для скольких n сумма достижима", t19OnesAndPlus],
+  ]],
   ["Прогрессии", [
     ["ap-ends-sum", "АП из натуральных: сумма крайних и наибольшее число членов", t19APEndsSum],
     ["ap-count-by-sum", "n различных натуральных в АП: наибольшее n и все n", t19APCountBySum],
@@ -2525,6 +2540,196 @@ export function t19ProdGPSubset() {
       mustMention: [P],
       extra: [],
       phrases: ["пять различных натуральных чисел", "геометрическую прогрессию"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 13. Игры и операции с инвариантом (#24, #29)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// #24. Три коробки; за ход берут по камню из двух коробок и кладут в оставшуюся.
+// Инварианты: (1) чётность всех попарных разностей сохраняется — ход меняет разность
+// либо на 0, либо на ±2; (2) общее число камней убывает ровно на 1 за ход, а число
+// камней в целевой коробке и число ходов имеют одинаковую чётность, откуда
+// a + b ≡ S₀ (mod 2) и c ≤ ⌊S₀/2⌋.
+export function t19BoxesThree() {
+  const A = randInt(20, 45), B = randInt(20, 45)
+  if (A === B) return null
+  const S0 = A + B
+  // Инвариант: суммы a + c и b + c НЕ ВОЗРАСТАЮТ (ход «в третью» их сохраняет,
+  // два других уменьшают на 2), поэтому c ≤ min(A, B), и это достигается.
+  const cMax = Math.min(A, B)
+  // а) — «нет» по чётности попарных разностей.
+  const t = randInt(5, 25)
+  const a1 = A - t, b1 = B - t - 1, c1 = S0 - a1 - b1 - randInt(1, 5)
+  if (a1 < 0 || b1 < 0 || c1 < 0) return null
+  const parityOK = ((a1 - b1) - (A - B)) % 2 === 0 && ((a1 - c1) - (A - 0)) % 2 === 0
+  if (parityOK) return null                    // нужен именно «нет» по чётности
+  // б) — «нет» по оценке: столько камней в третьей коробке уже не помещается.
+  const K = cMax + randInt(1, 30)
+  const exC = [A - cMax, B - cMax, cMax]
+
+  const params = { A, B, S0, a1, b1, c1, K, cMax }
+  const reach = (P) => {
+    // Полный перебор ДОСТИЖИМЫХ состояний: обход в ширину от (A, B, 0).
+    // Пространство явно ограничено: a + b + c ≤ A + B, все координаты неотрицательны.
+    const seen = new Set([`${P.A},${P.B},0`])
+    const q = [[P.A, P.B, 0]]
+    while (q.length) {
+      const [x, y, z] = q.pop()
+      const moves = [[x - 1, y - 1, z + 1], [x - 1, y + 1, z - 1], [x + 1, y - 1, z - 1]]
+      for (const m of moves) {
+        if (m.some((v) => v < 0)) continue
+        const k = m.join(",")
+        if (seen.has(k)) continue
+        seen.add(k); q.push(m)
+      }
+    }
+    return seen
+  }
+  const check = (st, part) => {
+    if (!Array.isArray(st) || st.length !== 3) return "не тройка коробок"
+    for (const x of st) if (!Number.isInteger(x) || x < 0) return `${x} — не число камней`
+    if (part === "a" && (st[0] !== a1 || st[1] !== b1 || st[2] !== c1)) return `состояние ${st} не то, о котором спрашивают`
+    if (part === "b" && st[2] !== K) return `в третьей коробке ${st[2]}, а не ${K}`
+    if (part === "c" && st[2] !== cMax) return `в третьей коробке ${st[2]}, а не ${cMax}`
+    return null
+  }
+  const solve = (P) => {
+    const seen = reach(P)
+    let best = -1, hitK = false
+    for (const k of seen) {
+      const z = +k.split(",")[2]
+      if (z > best) best = z
+      if (z === P.K) hitK = true
+    }
+    let over = false
+    for (const k of seen) if (+k.split(",")[2] === best + 1) { over = true; break }
+    return { a: seen.has(`${P.a1},${P.b1},${P.c1}`), b: hitK, c: best, c_next: over }
+  }
+
+  return item({
+    preamble: `Есть три коробки: в первой коробке ${A} камней, во второй — ${B}, в третьей пусто. За один ход разрешается взять по камню из двух коробок и положить в оставшуюся.`,
+    qa: `Могло ли в первой коробке оказаться ${stones(a1)}, во второй — ${b1}, а в третьей — ${c1}?`,
+    qb: `Могло ли в третьей коробке оказаться ${stones(K)}?`,
+    qc: `Какое наибольшее число камней могло оказаться в третьей коробке?`,
+    ansA: `нет: за ход две коробки теряют по камню, а одна получает камень, поэтому каждая попарная разность либо не меняется, либо меняется на 2 — чётности всех попарных разностей сохраняются; у начального набора (${A}; ${B}; 0) и у набора (${a1}; ${b1}; ${c1}) эти чётности разные`,
+    ansB: `нет: суммы (первая + третья) и (вторая + третья) при каждом ходе либо не меняются, либо уменьшаются на 2, поэтому в третьей коробке не может оказаться больше min(${A}; ${B}) = ${cMax}, а ${K} больше`,
+    ansC: `${cMax}; достигается за ${cMax} ходов, каждый из которых берёт камень из первой и второй коробок: получится (${exC.join("; ")}); больше нельзя — сумма (первая + третья) не возрастает и в начале равна ${A}, а сумма (вторая + третья) не возрастает и в начале равна ${B}, поэтому c ≤ min(${A}; ${B}) = ${cMax}`,
+    solution: `Обозначим через x, y, z количество ходов, кладущих камень в первую, вторую и третью коробки, t = x + y + z.\nХод «положить в третью коробку» сохраняет обе суммы a + c и b + c, а два других хода уменьшают одну из них на 2. Значит обе суммы не возрастают: a + c ≤ ${A} и b + c ≤ ${B}.\nОтсюда c ≤ min(${A}; ${B}) = ${cMax}, и это достигается за ${cMax} ходов подряд «из первой и второй в третью».\nКроме того, за ход каждая попарная разность меняется на 0 или на ±2, поэтому чётности попарных разностей — инвариант; он и запрещает набор (${a1}; ${b1}; ${c1}).`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: false, reason: "parity", target: a1 },
+        b: { type: "yesno", yes: false, reason: "bound", target: K },
+        c: { type: "extremum", mode: "max", value: cMax, example: exC },
+      },
+      mustMention: [A, B, a1, b1, c1, K],
+      extra: [],
+      phrases: ["три коробки", "взять по камню из двух коробок и положить в оставшуюся"],
+    },
+  })
+}
+
+// #29. На доске n единиц подряд; между некоторыми ставят «+» и считают сумму.
+// Слагаемые — репьюниты 1, 11, 111, …, а R_L ≡ L (mod 9), поэтому сумма сравнима
+// с n по модулю 9 — это и есть инвариант для пункта б).
+const ONES_TABLE = (() => {
+  const map = new Map()
+  for (const T of [120, 132, 150, 165, 180, 198, 210, 231, 240, 264]) {
+    const rep = []
+    for (let L = 1; (10 ** L - 1) / 9 <= T; L++) rep.push({ L, v: (10 ** L - 1) / 9 })
+    // reach[s][n] — можно ли получить сумму s из единиц общей длины n
+    const reach = Array.from({ length: T + 1 }, () => new Uint8Array(T + 1))
+    reach[0][0] = 1
+    for (let s = 0; s <= T; s++) for (let n = 0; n <= T; n++) {
+      if (!reach[s][n]) continue
+      for (const { L, v } of rep) if (s + v <= T && n + L <= T) reach[s + v][n + L] = 1
+    }
+    const ns = []
+    for (let n = 1; n <= T; n++) if (reach[T][n]) ns.push(n)
+    map.set(T, ns)
+  }
+  return map
+})()
+export function t19OnesAndPlus() {
+  const T = pick([...ONES_TABLE.keys()])
+  const ns = ONES_TABLE.get(T)
+  if (ns.length < 3) return null
+  const nYes = pick(ns.filter((n) => n > 20))
+  let nNo = 0
+  for (let g = 0; g < 100 && !nNo; g++) { const c = randInt(20, T); if ((c - T) % 9 !== 0) nNo = c }
+  if (!nNo) return null
+  const count = ns.length
+  // явное разбиение для примера: жадно набираем репьюниты нужной длины
+  // Явная формула вместо перебора: из T = k + 11a + 111b и n = k + 2a + 3b следует
+  // (T − n)/9 = a + 12b, поэтому b перебирается по нескольким значениям, а k и a
+  // считаются напрямую.
+  const buildParts = (n) => {
+    if ((T - n) % 9 !== 0) return null
+    const q = (T - n) / 9
+    for (let b = 0; b <= Math.floor(q / 12); b++) {
+      const a = q - 12 * b
+      const k = T - 11 * a - 111 * b
+      if (k < 0) continue
+      if (k + 2 * a + 3 * b !== n) continue
+      return [...Array(b).fill(111), ...Array(a).fill(11), ...Array(k).fill(1)]
+    }
+    return null
+  }
+  const partsYes = buildParts(nYes)
+  if (!partsYes) return null
+
+  const params = { T, nYes, nNo, count }
+  const check = (parts, part) => {
+    if (!Array.isArray(parts) || !parts.length) return "пустая сумма"
+    let len = 0
+    for (const v of parts) {
+      if (!Number.isInteger(v) || v < 1) return `${v} не натуральное`
+      if (!/^1+$/.test(String(v))) return `${v} записано не одними единицами`
+      len += String(v).length
+    }
+    if (sum(parts) !== T) return `сумма ${sum(parts)}, а не ${T}`
+    const need = part === "a" ? nYes : nNo
+    if (part !== "c" && len !== need) return `использовано ${len} единиц вместо ${need}`
+    return null
+  }
+  const solve = (P) => {
+    // Пространство перебора: все разбиения на репьюниты с суммой P.T; динамика
+    // по паре (текущая сумма ≤ P.T, использованное число единиц ≤ P.T).
+    const rep = []
+    for (let L = 1; (10 ** L - 1) / 9 <= P.T; L++) rep.push({ L, v: (10 ** L - 1) / 9 })
+    const reach = Array.from({ length: P.T + 1 }, () => new Uint8Array(P.T + 1))
+    reach[0][0] = 1
+    for (let s = 0; s <= P.T; s++) for (let n = 0; n <= P.T; n++) {
+      if (!reach[s][n]) continue
+      for (const { L, v } of rep) if (s + v <= P.T && n + L <= P.T) reach[s + v][n + L] = 1
+    }
+    let c = 0
+    for (let n = 1; n <= P.T; n++) if (reach[P.T][n]) c++
+    return { a: !!reach[P.T][P.nYes], b: !!reach[P.T][P.nNo], c }
+  }
+
+  return item({
+    preamble: `На доске написано n единиц подряд. Между некоторыми из них расставляют знаки «+» и считают получившуюся сумму. Например, если было написано 12 единиц, то можно получить сумму 147: 1+11+11+111+11+1+1+1.`,
+    qa: `Можно ли получить сумму ${T}, если n = ${nYes}?`,
+    qb: `Можно ли получить сумму ${T}, если n = ${nNo}?`,
+    qc: `Для скольких значений n можно получить сумму ${T}?`,
+    ansA: `да, например ${compactSum(partsYes)} = ${T}`,
+    ansB: `нет: каждое слагаемое состоит из единиц, а число из L единиц даёт при делении на 9 такой же остаток, как L; поэтому сумма сравнима с n по модулю 9, а ${T} и ${nNo} дают разные остатки (${T % 9} и ${nNo % 9})`,
+    ansC: `${count}`,
+    solution: `Слагаемые — это числа вида 1, 11, 111, …; число из L единиц равно (10^L − 1)/9 и даёт при делении на 9 тот же остаток, что и L. Значит вся сумма сравнима с общим количеством единиц n по модулю 9 — это сразу отвечает на пункт б).\nДалее, если использовано k слагаемых-единиц, a слагаемых «11» и b слагаемых «111», то ${T} = k + 11a + 111b, а n = k + 2a + 3b. Перебирая b и a, получаем все подходящие n; их оказывается ${count}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: partsYes, target: nYes },
+        b: { type: "yesno", yes: false, reason: "mod9", target: nNo },
+        c: { type: "count", value: count },
+      },
+      mustMention: [T, nYes, nNo, 12, 147],
+      extra: [1, 11, 111],
+      phrases: ["единиц подряд", "расставляют знаки «+»"],
     },
   })
 }
