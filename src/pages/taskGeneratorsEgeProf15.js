@@ -203,13 +203,15 @@ const mkReduced = (lead, crit) => (x) => {
   return r
 }
 
+const CMP_FLIP = { "≥": "≤", "≤": "≥", ">": "<", "<": ">" }
+
 // ── сборка объекта задания ───────────────────────────────────────────────────
 // opts: text, lhs, rhs, cmp, crit, lead, domainOK?, domain? (промежуток ОДЗ),
 //       puncture? (точки, выколотые ОДЗ), extraX? (доп. особые точки для сетки)
 function build(opts) {
   const crit = opts.crit.slice().sort((a, b) => a.ep.v - b.ep.v)
   for (let i = 1; i < crit.length; i++) if (Math.abs(crit[i].ep.v - crit[i - 1].ep.v) < 1e-9) return null
-  let ans = solveSign(crit, opts.lead, opts.cmp)
+  let ans = solveSign(crit, opts.lead, opts.flip ? CMP_FLIP[opts.cmp] : opts.cmp)
   if (opts.domain) ans = intersectSet(ans, opts.domain)
   for (const ep of opts.puncture || []) ans = punctureSet(ans, ep)
   ans = normalizeSet(ans)
@@ -227,7 +229,10 @@ function build(opts) {
     _verify: {
       lhs: opts.lhs, rhs: opts.rhs, cmp: opts.cmp,
       domainOK: opts.domainOK || (() => true),
-      ans, crit: xs, range: [lo, hi], reduced: opts.reduced || mkReduced(opts.lead, crit),
+      ans, crit: xs, range: [lo, hi],
+      reduced: opts.reduced || (opts.flip
+        ? (x) => -mkReduced(opts.lead, crit)(x)
+        : mkReduced(opts.lead, crit)),
     },
   }
 }
@@ -1404,6 +1409,420 @@ export function t15ExpCubicFrac() {
   return null
 }
 
+
+// [23] Смешанное: x и b^x вместе. Знаменатель = (x−p)(b^x−q) в раскрытом виде,
+//      после сокращения остаётся (a^x−A)/(x−p), а ОДЗ ВЫКАЛЫВАЕТ точку x = log_b q.
+//      (PDF пок.16: (6ˣ−4·3ˣ)/(x·2ˣ−5·2ˣ−4x+20) ≤ 1/(x−5))
+export function t15ExpMixedX() {
+  for (let it = 0; it < 800; it++) {
+    const a = pick([3, 5, 7]), b = pick([2, 3])
+    if (a === b) continue
+    const jq = randInt(1, 3), q = Math.round(Math.pow(b, jq))
+    const p = randInt(-6, 6)
+    const iA = randInt(0, 2), A = Math.round(Math.pow(a, iA))
+    if (Math.abs(jq - p) < 1e-9 || iA === p) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const den = `x·${pw(b, "x", true)} ${p < 0 ? "+" : MINUS} ${Math.abs(p)}·${pw(b, "x", true)} ${MINUS} ${q}x ${p * q < 0 ? MINUS : "+"} ${Math.abs(p * q)}`
+    const num = `${pw(a * b, "x", true)} ${MINUS} ${q === 1 ? "" : q + "·"}${pw(a, "x", true)}`
+    const text = `${fT(num, den)} ${cmp} ${fT(A, linStr(-p))}`
+    const F = (x) => (Math.pow(a * b, x) - q * Math.pow(a, x)) / ((x - p) * (Math.pow(b, x) - q))
+    const G = (x) => A / (x - p)
+    const res = build({
+      text, cmp, lhs: F, rhs: G,
+      domainOK: (x) => Math.abs(x - p) > 1e-12 && Math.abs(Math.pow(b, x) - q) > 1e-12,
+      lead: 1,
+      crit: [{ ep: epQ(iA), mult: 1, pole: false }, { ep: epQ(p), mult: 1, pole: true }],
+      puncture: [epQ(jq)],
+      extraX: [jq],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [24] Модуль в показателе + корень в знаменателе: (k^{|x|}−q)(n^{|x|}−p) над c^{√(x+w)}+1
+//      (PDF пок.25: (35^{|x|}−5^{|x|}−5·7^{|x|}+5)/(2^{√(x+2)}+1) ≥ 0)
+export function t15ExpAbsSqrt() {
+  for (let it = 0; it < 600; it++) {
+    const [k, n] = pick([[5, 7], [3, 5], [2, 3], [3, 7], [2, 5]])
+    const i = randInt(1, 2), j = randInt(0, 2)
+    if (i === j) continue
+    const q = Math.round(Math.pow(k, i)), P = Math.round(Math.pow(n, j))
+    const w = randInt(0, 3), c = pick([2, 3])
+    const holeStyle = Math.random() < 0.45      // знаменатель c^{√(x+w)} − c^s (появляется полюс)
+    const sPow = randInt(1, 2)
+    const xPole = sPow * sPow - w
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const rootArg = w === 0 ? "x" : linStr(w)
+    // внутри дроби степени — токеном ⁅…⁆ (⟦sup⟧ содержит «⟧» и рвёт захват ⟦f⟧)
+    const den = holeStyle
+      ? `${c}⁅√{${rootArg}}⁆ ${MINUS} ${Math.round(Math.pow(c, sPow))}`
+      : `${c}⁅√{${rootArg}}⁆ + 1`
+    const absX = "|x|"
+    const num = `${pw(k * n, absX, true)} ${MINUS} ${P === 1 ? "" : P + "·"}${pw(k, absX, true)} ${MINUS} ${q === 1 ? "" : q + "·"}${pw(n, absX, true)} + ${P * q}`
+    const text = `${fT(num, den)} ${cmp} 0`
+    const NUM = (x) => Math.pow(k * n, Math.abs(x)) - P * Math.pow(k, Math.abs(x)) - q * Math.pow(n, Math.abs(x)) + P * q
+    const DEN = (x) => holeStyle ? Math.pow(c, Math.sqrt(x + w)) - Math.pow(c, sPow) : Math.pow(c, Math.sqrt(x + w)) + 1
+    if (holeStyle && xPole <= -w) continue
+    const crit = []
+    for (const [lvl, mult] of [[i, 1], [j, 1]]) {
+      if (lvl === 0) crit.push({ ep: epQ(0), mult: 2, pole: false })
+      else crit.push({ ep: epQ(-lvl), mult, pole: false }, { ep: epQ(lvl), mult, pole: false })
+    }
+    if (holeStyle) crit.push({ ep: epQ(xPole), mult: 1, pole: true })
+    if (crit.some((c1) => crit.filter((c2) => Math.abs(c1.ep.v - c2.ep.v) < 1e-9).length > 1)) continue
+    const res = build({
+      text, cmp, lhs: (x) => NUM(x) / DEN(x), rhs: () => 0, lead: 1,
+      domainOK: (x) => x + w >= 0 && Math.abs(DEN(x)) > 1e-12,
+      domain: { a: epQ(-w), b: POS_INF, ai: true, bi: false },
+      crit: crit.filter((cc) => cc.ep.v >= -w),
+      extraX: [-w],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [25] Сумма двух дробей с квадратными числителями ⋛ 2b^x − S
+//      (PDF пок.28: (25ˣ−5^{x+2}+26)/(5ˣ−1) + (25ˣ−7·5ˣ+1)/(5ˣ−7) ≤ 2·5ˣ−24)
+//      Вариант показа: коэффициент, не являющийся степенью b, пишется как b^{x+log_b k} (PDF пок.29).
+export function t15ExpTwoSum() {
+  for (let it = 0; it < 4000; it++) {
+    const b = pick([3, 5]), B = b * b
+    const p = Math.round(Math.pow(b, randInt(0, 2))), q = randInt(2, 30)
+    if (p === q) continue
+    const be1 = -randInt(2, 30), be2 = -randInt(2, 30)
+    const S = randInt(2, 30)
+    const L = be1 + be2 + p + q + S
+    if (L === 0 || Math.abs(L) > 6) continue
+    const r1 = powQ(b, randInt(0, 2)), r2 = Q(randInt(2, 20))
+    if (Math.abs(Qnum(r1) - Qnum(r2)) < 1e-9) continue
+    const U = -L * (Qnum(r1) + Qnum(r2)) + be1 * q + be2 * p + 2 * p * q + S * (p + q)
+    const W = S * p * q - L * Qnum(r1) * Qnum(r2)
+    if ((W - p * U) % (q - p) !== 0) continue
+    const g1 = (W - p * U) / (q - p), g2 = U - g1
+    if (!Number.isInteger(g1) || !Number.isInteger(g2)) continue
+    if (Math.abs(g1) > 300 || Math.abs(g2) > 300 || g1 === 0 || g2 === 0) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const kTerm = (kk) => { // −25·5ˣ  либо  5^{x+2}
+      const A = Math.abs(kk)
+      const lg = Math.round(Math.log(A) / Math.log(b))
+      if (Math.abs(Math.pow(b, lg) - A) < 1e-9 && lg >= 1) return pw(b, expPoly([{ c: 1, k: 1 }, { c: lg, k: 0 }]), true)
+      return `${A === 1 ? "" : A + "·"}${pw(b, "x", true)}`
+    }
+    const numOf = (be, g) => `${pw(B, "x", true)} ${be < 0 ? MINUS : "+"} ${kTerm(be)} ${g < 0 ? MINUS : "+"} ${Math.abs(g)}`
+    const text = `${fT(numOf(be1, g1), `${pw(b, "x", true)} ${MINUS} ${p}`)} + ${fT(numOf(be2, g2), `${pw(b, "x", true)} ${MINUS} ${q}`)} ${cmp} 2·${pw(b, "x")} ${MINUS} ${S}`
+    const F = (x) => { const t = Math.pow(b, x); return (t * t + be1 * t + g1) / (t - p) + (t * t + be2 * t + g2) / (t - q) }
+    const G = (x) => 2 * Math.pow(b, x) - S
+    const res = buildExpo({
+      text, cmp, base: b, dir: 1, leadT: L > 0 ? 1 : -1,
+      lhs: F, rhs: G,
+      domainOK: (x) => { const t = Math.pow(b, x); return Math.abs(t - p) > 1e-12 && Math.abs(t - q) > 1e-12 },
+      tCrit: [
+        { t: r1, mult: 1, pole: false }, { t: r2, mult: 1, pole: false },
+        { t: Q(p), mult: 1, pole: true }, { t: Q(q), mult: 1, pole: true },
+      ],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [26] Однородная дробь по двум базам: (P·(a²)ˣ − Q·(ab)ˣ + R·(b²)ˣ)/(α·(a²)ˣ − β·(ab)ˣ) ⋛ 1
+//      Числитель и знаменатель имеют ОБЩИЙ множитель (αz−β): он сокращается, а ОДЗ
+//      выкалывает точку. (PDF пок.34)
+export function t15ExpHomogFrac() {
+  for (let it = 0; it < 800; it++) {
+    const [a, b] = pick([[3, 2], [5, 2], [5, 3], [4, 3], [5, 4]])
+    const al = randInt(2, 4), be = randInt(1, al - 1)
+    if (gcd(al, be) !== 1) continue
+    const gm = 1, de = Math.round(Math.pow(a / b, randInt(0, 1)) * 1) // δ/γ — нуль ответа
+    const dl = randInt(1, 3)
+    const P = al + al * gm, Qc = be + al * dl + be * gm, R = be * dl
+    if (P > 40 || Qc > 60 || R > 40) continue
+    const zHole = Q(be, al), zRoot = Q(dl, gm)
+    if (Math.abs(Qnum(zHole) - Qnum(zRoot)) < 1e-9) continue
+    void de
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const num = `${P === 1 ? "" : P + "·"}${pw(a * a, "x", true)} ${MINUS} ${Qc === 1 ? "" : Qc + "·"}${pw(a * b, "x", true)} + ${R === 1 ? "" : R + "·"}${pw(b * b, "x", true)}`
+    const den = `${al === 1 ? "" : al + "·"}${pw(a * a, "x", true)} ${MINUS} ${be === 1 ? "" : be + "·"}${pw(a * b, "x", true)}`
+    const text = `${fT(num, den)} ${cmp} 1`
+    const F = (x) => (P * Math.pow(a * a, x) - Qc * Math.pow(a * b, x) + R * Math.pow(b * b, x)) /
+      (al * Math.pow(a * a, x) - be * Math.pow(a * b, x))
+    const res = buildExpo({
+      text, cmp, base: a / b, baseStr: `${a}/${b}`, dir: 1, leadT: 1,
+      lhs: F, rhs: () => 1,
+      // ОДЗ проверяем по РАССТОЯНИЮ до известной точки: |α·(a²)ˣ − β·(ab)ˣ| при x→−∞
+      // само стремится к нулю, и абсолютный порог ложно объявлял бы точки вне ОДЗ.
+      domainOK: (x) => Math.abs(x - Math.log(Qnum(zHole)) / Math.log(a / b)) > 1e-9,
+      // после сокращения: (γz−δ)/z, z>0 ⟹ знак равен знаку (γz−δ)
+      tCrit: [{ t: zRoot, mult: 1, pole: false }],
+      puncture: [epLog(a / b, zHole, 1, `${a}/${b}`)],
+      extraX: [Math.log(Qnum(zHole)) / Math.log(a / b)],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [27] Разные базы по обе стороны: Σσ·a^{x+i} ⋛ Σ τ·b^{x/k+j}
+//      (PDF пок.31: 5^{x+3}−5^{x+2}−5ˣ < 6^{x/2+3}−6^{x/2+2}+3·6^{x/2+1})
+export function t15ExpTwoSides() {
+  for (let it = 0; it < 800; it++) {
+    const a = pick([5, 7, 3]), b = pick([6, 2, 3, 5]), kk = pick([2, 3])
+    const sg = [1, pick([-1, 1]), -1], tg = [1, pick([-1, 1]), pick([1, 3])]
+    const A = sg[0] * Math.pow(a, 3) + sg[1] * Math.pow(a, 2) + sg[2] * 1
+    const Bv = tg[0] * Math.pow(b, 3) + tg[1] * Math.pow(b, 2) + tg[2] * b
+    if (A <= 0 || Bv <= 0) continue
+    const baseVal = a / Math.pow(b, 1 / kk)
+    if (baseVal <= 1.15) continue
+    const t0 = Q(Bv, A)
+    if (Math.abs(Qnum(t0) - 1) < 1e-9) continue
+    const cmp = pick([">", "<"])
+    const rootSym = kk === 2 ? "√" : "∛"
+    const lt = (i) => pw(a, expPoly([{ c: 1, k: 1 }, { c: i, k: 0 }]))
+    const uexp = (j) => `${fT("x", kk)} + ${j}`   // показатель x/k + j (дробь стоячей, как в ФИПИ)
+    const rt = (j, coef) => `${coef === 1 ? "" : coef + "·"}${pw(b, uexp(j))}`
+    const left = `${lt(3)} ${sg[1] < 0 ? MINUS : "+"} ${lt(2)} ${MINUS} ${pw(a, "x")}`
+    const right = `${rt(3, 1)} ${tg[1] < 0 ? MINUS : "+"} ${rt(2, 1)} + ${rt(1, tg[2])}`
+    const text = `${left} ${cmp} ${right}`
+    const F = (x) => sg[0] * Math.pow(a, x + 3) + sg[1] * Math.pow(a, x + 2) + sg[2] * Math.pow(a, x)
+    const G = (x) => tg[0] * Math.pow(b, x / kk + 3) + tg[1] * Math.pow(b, x / kk + 2) + tg[2] * Math.pow(b, x / kk + 1)
+    const res = buildExpo({
+      text, cmp, base: baseVal, baseStr: `${a}/${rootSym}${b}`, dir: 1, leadT: 1,
+      lhs: F, rhs: G,
+      tCrit: [{ t: t0, mult: 1, pole: false }],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [28] Частное степеней с дробным показателем: после деления остаётся 2^{g(x)} ⋛ 1,
+//      т.е. рациональное неравенство; ОДЗ x ≠ 0 (из x^{−2}).
+//      (PDF пок.32: 0,5^{−(x−2)/(2x+4)}·10ˣ·x^{−2} ≤ (32^{−(x−2)/(2x+4)}·40ˣ)/(16x²))
+export function t15ExpQuotFracExp() {
+  for (let it = 0; it < 800; it++) {
+    const pPow = pick([3, 4, 5]), w = pick([1, 2]), al = randInt(1, 3)
+    const m = pick([1, 2]), be = randInt(1, 6)
+    const M = pick([5, 10, 3, 6]), N = M * Math.round(Math.pow(2, w))
+    const K = Math.round(Math.pow(2, w * al))
+    if (K > 1024 || N > 200) continue
+    const x1 = Q((pPow + 1) - w * be, w * m)      // нуль второго множителя
+    const xp = Q(-be, m)                          // полюс
+    if (Math.abs(Qnum(x1) - al) < 1e-9 || Math.abs(Qnum(x1) - Qnum(xp)) < 1e-9) continue
+    if (Math.abs(Qnum(xp) - al) < 1e-9) continue
+    if ([al, Qnum(x1), Qnum(xp)].some((v) => Math.abs(v) < 1e-9)) continue
+    if (x1.q > 6) continue
+    const cmp = pick(["≤", "<"])
+    const u = fT(expPoly([{ c: 1, k: 1 }, { c: -al, k: 0 }]), expPoly([{ c: m, k: 1 }, { c: be, k: 0 }]))
+    const uSup = `${MINUS}${u}`
+    const left = `0,5⟦sup:${uSup}⟧·${pw(M, "x")}·${pw("x", MINUS + "2")}`
+    const right = `${Math.round(Math.pow(2, pPow))}⟦sup:${uSup}⟧·${fT(pw(N, "x", true), `${K}x${SUPD[2]}`)}`
+    const text = `${left} ${cmp} ${right}`
+    const U = (x) => (x - al) / (m * x + be)
+    const F = (x) => Math.pow(0.5, -U(x)) * Math.pow(M, x) * Math.pow(x, -2)
+    const G = (x) => Math.pow(Math.pow(2, pPow), -U(x)) * Math.pow(N, x) / (K * x * x)
+    const res = build({
+      text, cmp, flip: true,   // печатаем «≤», а приведённая форма при этом «≥ 0»
+      lhs: F, rhs: G,
+      domainOK: (x) => Math.abs(x) > 1e-9 && Math.abs(m * x + be) > 1e-12,
+      lead: 1,
+      crit: [
+        { ep: epQ(al), mult: 1, pole: false }, { ep: epQ(x1), mult: 1, pole: false },
+        { ep: epQ(xp), mult: 1, pole: true },
+      ],
+      puncture: [epQ(0)],
+      extraX: [0],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [29] Сокращение общего множителя + ОДЗ выкалывает точку
+//      (PDF пок.30: (4ˣ−2^{x+3}+7)/(4ˣ−5·2ˣ+4) ≤ (2ˣ−9)/(2ˣ−4) + 1/(2ˣ−6))
+export function t15ExpFracCancelHole() {
+  for (let it = 0; it < 1500; it++) {
+    const b = pick([2, 3, 5]), B = b * b
+    const u = Math.round(Math.pow(b, randInt(0, 2)))          // сокращаемый корень
+    const p = randInt(2, 20), d = randInt(2, 25), r = randInt(2, 20)
+    const c = r + 2                                            // c − r = 2
+    const t0 = 2 * d - p                                       // нуль после приведения
+    const vals = [u, p, d, r, t0]
+    if (new Set(vals).size < 5) continue
+    if (t0 <= 0 || p === d) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const sumUR = u + r, sumUP = u + p
+    const powTerm = (v) => {
+      const lg = Math.round(Math.log(v) / Math.log(b))
+      return Math.abs(Math.pow(b, lg) - v) < 1e-9 && lg >= 1
+        ? pw(b, expPoly([{ c: 1, k: 1 }, { c: lg, k: 0 }]), true)
+        : `${v === 1 ? "" : v + "·"}${pw(b, "x", true)}`
+    }
+    const left = fT(`${pw(B, "x", true)} ${MINUS} ${powTerm(sumUR)} + ${u * r}`,
+      `${pw(B, "x", true)} ${MINUS} ${powTerm(sumUP)} + ${u * p}`)
+    const right = `${fT(`${pw(b, "x", true)} ${MINUS} ${c}`, `${pw(b, "x", true)} ${MINUS} ${p}`)} + ${fT(1, `${pw(b, "x", true)} ${MINUS} ${d}`)}`
+    const text = `${left} ${cmp} ${right}`
+    const F = (x) => { const t = Math.pow(b, x); return (t * t - sumUR * t + u * r) / (t * t - sumUP * t + u * p) }
+    const G = (x) => { const t = Math.pow(b, x); return (t - c) / (t - p) + 1 / (t - d) }
+    const res = buildExpo({
+      text, cmp, base: b, dir: 1, leadT: 1,
+      lhs: F, rhs: G,
+      domainOK: (x) => { const t = Math.pow(b, x); return Math.abs(t - u) > 1e-12 && Math.abs(t - p) > 1e-12 && Math.abs(t - d) > 1e-12 },
+      tCrit: [
+        { t: Q(t0), mult: 1, pole: false },
+        { t: Q(p), mult: 1, pole: true }, { t: Q(d), mult: 1, pole: true },
+      ],
+      puncture: [epLog(b, Q(u), 1)],
+      extraX: [Math.log(u) / Math.log(b)],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [30] Дробь с показателем-сдвигом слева: (μ·c^{x−1})/(μ·c^{x−1}−1) ⋛ A/(c^x−p) + B/(c^{2x}−(p+q)c^x+pq)
+//      (PDF пок.27: (2·8^{x−1})/(2·8^{x−1}−1) ≥ 3/(8ˣ−1) + 8/(64ˣ−5·8ˣ+4)) — двойной корень.
+export function t15ExpFracShiftFirst() {
+  for (let it = 0; it < 800; it++) {
+    const c = pick([4, 8, 9, 16, 25]), qd = pick([2, 4])
+    if (c % qd !== 0) continue
+    const mu = c / qd
+    const q = qd, p = Math.round(Math.pow(c, randInt(0, 1)))
+    if (p === q) continue
+    const u = randInt(1, 5)
+    const A = 2 * u - p, Bc = (2 * u - p) * q - u * u
+    if (A <= 0 || Bc === 0 || A > 60 || Math.abs(Bc) > 400) continue
+    if ([p, q].includes(u)) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const first = `${mu === 1 ? "" : mu + "·"}${pw(c, expPoly([{ c: 1, k: 1 }, { c: -1, k: 0 }]), true)}`
+    const left = fT(first, `${first} ${MINUS} 1`)
+    const right = `${fT(A, `${pw(c, "x", true)} ${MINUS} ${p}`)} ${Bc < 0 ? MINUS : "+"} ${fT(Math.abs(Bc), `${pw(c * c, "x", true)} ${MINUS} ${p + q}·${pw(c, "x", true)} + ${p * q}`)}`
+    const text = `${left} ${cmp} ${right}`
+    const E = (x) => mu * Math.pow(c, x - 1)
+    const F = (x) => E(x) / (E(x) - 1)
+    const G = (x) => { const t = Math.pow(c, x); return A / (t - p) + Bc / ((t - p) * (t - q)) }
+    const res = buildExpo({
+      text, cmp, base: c, dir: 1, leadT: 1,
+      lhs: F, rhs: G,
+      domainOK: (x) => { const t = Math.pow(c, x); return Math.abs(t - p) > 1e-12 && Math.abs(t - q) > 1e-12 },
+      tCrit: [
+        { t: Q(u), mult: 2, pole: false },
+        { t: Q(p), mult: 1, pole: true }, { t: Q(q), mult: 1, pole: true },
+      ],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [31] 1/(b^x−a) + (B^{x+1/2} − b^{x+e} + γ)/(b^x−p) ⋛ b^{x+1}
+//      Квадратичная часть сокращается с правой частью, остаётся сумма двух дробей.
+//      (PDF пок.26: 1/(3ˣ−1) + (9^{x+1/2}−3^{x+3}+3)/(3ˣ−9) ≥ 3^{x+1})
+export function t15ExpFracCancelLin() {
+  for (let it = 0; it < 800; it++) {
+    const b = pick([3, 5]), B = b * b
+    const ip = randInt(1, 3), p = Math.round(Math.pow(b, ip))
+    const ia = randInt(0, 2), a = Math.round(Math.pow(b, ia))
+    if (a === p) continue
+    const gm = randInt(1, 6)
+    const t0 = Q(p + gm * a, 1 + gm)
+    if (t0.q !== 1 || Qnum(t0) <= 0) continue
+    if ([a, p].includes(Qnum(t0))) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    // показатель x+1/2 внутри дроби — десятичной записью: ⟦f⟧ третьего уровня рендер не тянет
+    const num = `${pw(B, polyStr([{ c: 1, k: 1 }, { c: Q(1, 2), k: 0 }], "x", true), true)} ${MINUS} ${pw(b, expPoly([{ c: 1, k: 1 }, { c: 1 + ip, k: 0 }]), true)} + ${gm}`
+    const text = `${fT(1, `${pw(b, "x", true)} ${MINUS} ${a}`)} + ${fT(num, `${pw(b, "x", true)} ${MINUS} ${p}`)} ${cmp} ${pw(b, expPoly([{ c: 1, k: 1 }, { c: 1, k: 0 }]))}`
+    const F = (x) => { const t = Math.pow(b, x); return 1 / (t - a) + (b * t * t - b * p * t + gm) / (t - p) }
+    const G = (x) => Math.pow(b, x + 1)
+    const res = buildExpo({
+      text, cmp, base: b, dir: 1, leadT: 1,
+      lhs: F, rhs: G,
+      domainOK: (x) => { const t = Math.pow(b, x); return Math.abs(t - a) > 1e-12 && Math.abs(t - p) > 1e-12 },
+      tCrit: [
+        { t: t0, mult: 1, pole: false },
+        { t: Q(a), mult: 1, pole: true }, { t: Q(p), mult: 1, pole: true },
+      ],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+
+// [32] Однородное по b^{x²} и b^{x}: B^{x²−x} − (u+v)·b^{x²} + uv·b^{2x+e} ⋛ 0
+//      Делим на b^{2x}: (b^{x²} − u·b^{2x})(b^{x²} − v·b^{2x}) — корни из x² = 2x + logᵦu.
+//      (PDF пок.37: 9^{x²−x} − 12·3^{x²} + 3^{2x+3} ≥ 0)
+export function t15ExpHomogX2() {
+  for (let it = 0; it < 400; it++) {
+    const b = pick([2, 3]), B = b * b
+    let i = randInt(0, 3), j = randInt(0, 3)
+    if (i === j) continue
+    if (i > j) [i, j] = [j, i]
+    const u = Math.round(Math.pow(b, i)), v = Math.round(Math.pow(b, j))
+    const e = i + j
+    if (u + v > 200) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const text = `${pw(B, expPoly([{ c: 1, k: 2 }, { c: -1, k: 1 }]))} ${MINUS} ${u + v === 1 ? "" : (u + v) + "·"}${pw(b, "x" + SUPD[2])} + ${pw(b, expPoly([{ c: 2, k: 1 }, { c: e, k: 0 }]))} ${cmp} 0`
+    const F = (x) => Math.pow(B, x * x - x) - (u + v) * Math.pow(b, x * x) + Math.pow(b, 2 * x + e)
+    // b^{x²} = u·b^{2x} ⟺ x² − 2x − i = 0 ⟺ x = 1 ± √(1+i)
+    const crit = []
+    for (const lvl of [i, j]) {
+      const D = 1 + lvl
+      crit.push({ ep: epSurd(1, D, -1), mult: 1, pole: false }, { ep: epSurd(1, D, +1), mult: 1, pole: false })
+    }
+    const res = build({ text, cmp, lhs: F, rhs: () => 0, lead: 1, crit })
+    if (res) return res
+  }
+  return null
+}
+
+// [33] Куб по t над квадратом ⋛ t + две дроби: множитель (b·t−1) сокращается (ОДЗ
+//      выкалывает x = −1). (PDF пок.36)
+export function t15ExpCubeOverQuad() {
+  for (let it = 0; it < 3000; it++) {
+    const b = pick([3, 5]), B = b * b, C3 = b * b * b, m = b
+    const p = Math.round(Math.pow(b, randInt(0, 2))), q = randInt(2, 12)
+    if (p === q || p * m === 1) continue
+    const be = -(m * p + 1)                       // гасит квадратичную часть
+    const gm = randInt(-12, 12), de = randInt(-12, 12)
+    if (de === 0) continue
+    const A = (gm - p) - m - 1
+    const Bq = -q * (gm - p) + de + (m * p + 1) + (p + q)
+    const Cq = -q * de - p - p * q
+    if (A === 0 || A % m !== 0) continue
+    const kap = A / m, lam = -Cq
+    if (Bq !== m * lam - kap) continue
+    if (kap === 0) continue
+    const t0 = Q(-lam, kap)
+    if (Qnum(t0) <= 0 || t0.q !== 1) continue
+    const hole = Q(1, m)
+    if ([p, q, Qnum(hole)].some((z) => Math.abs(z - Qnum(t0)) < 1e-9)) continue
+    if (Math.abs(be) > 90 || Math.abs(gm) > 90 || Math.abs(de) > 90) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const num = `${b}·${pw(C3, "x", true)} ${be < 0 ? MINUS : "+"} ${Math.abs(be)}·${pw(B, "x", true)} ${gm < 0 ? MINUS : "+"} ${Math.abs(gm) === 1 ? "" : Math.abs(gm) + "·"}${pw(b, "x", true)} ${de < 0 ? MINUS : "+"} ${Math.abs(de)}`
+    const den = `${b}·${pw(B, "x", true)} ${MINUS} ${m * p + 1}·${pw(b, "x", true)} + ${p}`
+    const right = `${pw(b, "x")} + ${fT(1, `${pw(b, "x", true)} ${MINUS} ${q}`)} + ${fT(1, `${pw(b, expPoly([{ c: 1, k: 1 }, { c: 1, k: 0 }]), true)} ${MINUS} 1`)}`
+    const text = `${fT(num, den)} ${cmp} ${right}`
+    const F = (x) => { const t = Math.pow(b, x); return (b * t * t * t + be * t * t + gm * t + de) / (b * t * t - (m * p + 1) * t + p) }
+    const G = (x) => { const t = Math.pow(b, x); return t + 1 / (t - q) + 1 / (m * t - 1) }
+    const res = buildExpo({
+      text, cmp, base: b, dir: 1, leadT: kap > 0 ? 1 : -1,
+      lhs: F, rhs: G,
+      domainOK: (x) => { const t = Math.pow(b, x); return Math.abs(t - p) > 1e-12 && Math.abs(t - q) > 1e-12 && Math.abs(m * t - 1) > 1e-12 },
+      tCrit: [
+        { t: t0, mult: 1, pole: false },
+        { t: Q(p), mult: 1, pole: true }, { t: Q(q), mult: 1, pole: true },
+      ],
+      puncture: [epLog(b, hole, 1)],
+      extraX: [Math.log(Qnum(hole)) / Math.log(b)],
+    })
+    if (res) return res
+  }
+  return null
+}
+
 // ── реестры ─────────────────────────────────────────────────────────────────
 export const META15 = [
   ["Рациональные неравенства", [
@@ -1442,6 +1861,17 @@ export const META15 = [
     ["exp-frac-neg", "(C−B^{−x})/(D−b^{−x}) ⋛ k", t15ExpFracNeg],
     ["exp-frac-three", "три дроби: t/(t−p) + (t+1)/(t−q) + A/((t−p)(t−q))", t15ExpFracThree],
     ["exp-cubic-frac", "b^{3x} + a·B^x + (k·B^x−D)/(b^x−p) ⋛ E", t15ExpCubicFrac],
+    ["exp-mixed-x", "x и b^x вместе: сокращение, ОДЗ выкалывает точку", t15ExpMixedX],
+    ["exp-abs-sqrt", "модуль в показателе + корень в знаменателе", t15ExpAbsSqrt],
+    ["exp-two-sum", "сумма двух дробей с квадратными числителями ⋛ 2b^x − S", t15ExpTwoSum],
+    ["exp-homog-frac", "однородная дробь по двум базам, общий множитель сокращается", t15ExpHomogFrac],
+    ["exp-two-sides", "разные базы по обе стороны: a^x и b^{x/k}", t15ExpTwoSides],
+    ["exp-quot-frac", "частное степеней с дробным показателем (ОДЗ x≠0)", t15ExpQuotFracExp],
+    ["exp-cancel-hole", "сокращение общего множителя + выколотая точка", t15ExpFracCancelHole],
+    ["exp-shift-first", "(μc^{x−1})/(μc^{x−1}−1) ⋛ A/(c^x−p) + B/((c^x−p)(c^x−q))", t15ExpFracShiftFirst],
+    ["exp-cancel-lin", "1/(b^x−a) + (B^{x+1/2}−b^{x+e}+γ)/(b^x−p) ⋛ b^{x+1}", t15ExpFracCancelLin],
+    ["exp-homog-x2", "однородное по b^{x²} и b^x: B^{x²−x} − (u+v)b^{x²} + uv·b^{2x+e}", t15ExpHomogX2],
+    ["exp-cube-quad", "куб/квадрат ⋛ t + две дроби: множитель сокращается", t15ExpCubeOverQuad],
   ]],
 ]
 
