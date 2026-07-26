@@ -1,5 +1,6 @@
 import jsPDF from "jspdf"
 import html2canvas from "html2canvas"
+import { noBreakMath } from "../utils"
 
 function escapeHtml(s) {
   const div = document.createElement("div")
@@ -193,7 +194,8 @@ export async function renderTaskMathPdf(text) {
     else out += await svgToInlineImg(fracSvg(m[2], m[3]), FRAC_VALIGN)
     last = m.index + m[0].length
   }
-  return out + esc.slice(last)
+  // формула не должна рваться переносом строки и в PDF (см. noBreakMath в utils.js)
+  return noBreakMath(out + esc.slice(last))
 }
 
 // html2canvas ненадёжно рисует живые <img src="*.svg"> (известное ограничение библиотеки,

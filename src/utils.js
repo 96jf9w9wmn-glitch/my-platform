@@ -103,12 +103,117 @@ function matchTableHtml(body) {
     `<table class="tmath-answer"><thead><tr>${ansHead}</tr></thead><tbody><tr>${ansBlank}</tr></tbody></table>`
 }
 
+// ── Формула НИКОГДА не переносится на следующую строку ───────────────────────
+// Дробь, корень, скобки, стопка индексов — атомарные inline-block-боксы, а браузер
+// по умолчанию разрешает перенос строки ВОКРУГ такого бокса даже там, где пробела
+// нет. Из-за этого «S=v₀t−» оставалось на одной строке, а дробь at²/2 уезжала на
+// следующую — формула рвалась пополам. Поэтому после разворота токенов:
+//   1) каждый «кусок без пробелов», в котором есть формульная разметка, заворачивается
+//      в <span class="tmath-nb"> (white-space:nowrap) — перенос внутри запрещён;
+//   2) соседние ЧИСТО математические куски (без кириллицы) сшиваются через пробел,
+//      если между ними стоит знак операции («x = ⟦f⟧», «⟦f⟧ + 1»), — тогда и формула
+//      с пробелами вокруг «=» остаётся целиком на одной строке.
+// Ограничение длины (NB_MAX_LEN) — страховка от переполнения узкой карточки на
+// телефоне: слишком длинную формулу лучше перенести, чем выпустить за край экрана.
+const NB_MAX_LEN = 38
+const NB_VOID = /^(br|img|hr|input|col|path|line|circle|rect|ellipse|polyline|polygon|use|stop|source)$/i
+// блочные (и «широкие» формульные) элементы разрывают склейку: таблица соответствия,
+// список, код, система ⟦cases⟧ — сами по себе занимают строку целиком.
+const NB_BLOCK = /^(table|thead|tbody|tr|td|th|div|ol|ul|li|p|br|code|pre|h[1-6])$/i
+const NB_WIDE = /class="tmath-(cases|code|match|answer|table|tblwrap|list)/
+// формульная разметка: SVG-радикал, PNG-формула в PDF, индексы/степени, .tmath-* и
+// inline-flex-стопки (в PDF классов нет — только инлайновые стили)
+const NB_MATH = /^<(?:svg|img|sub|sup)\b|class="tmath-|inline-flex/
+const NB_OP_END = /[=+\-−–—±·⋅×÷*/^<>≤≥≠≈]$/
+const NB_OP_START = /^[=+\-−–—±·⋅×÷*/^<>≤≥≠≈]/
+const NB_CYR = /[А-Яа-яЁё]/
+
+// Разбор HTML на узлы ВЕРХНЕГО уровня (текст / целиком элемент со всем содержимым).
+// Атрибуты нашей разметки «>» не содержат (в тексте он уже экранирован в &gt;).
+function nbTopLevel(html) {
+  const out = []
+  const tagRe = /<(\/?)([a-zA-Z0-9]+)([^>]*)>/g
+  let depth = 0, pos = 0, elStart = 0, elTag = "", m
+  while ((m = tagRe.exec(html)) !== null) {
+    const closing = m[1] === "/"
+    const selfClosed = /\/$/.test(m[3]) || NB_VOID.test(m[2])
+    if (depth === 0) {
+      if (closing) continue                                  // непарный </…> — уйдёт в текст
+      if (m.index > pos) out.push({ t: "text", s: html.slice(pos, m.index) })
+      pos = tagRe.lastIndex
+      if (selfClosed) { out.push({ t: "el", tag: m[2], s: m[0] }); continue }
+      elStart = m.index; elTag = m[2]; depth = 1
+      continue
+    }
+    if (selfClosed) continue
+    depth += closing ? -1 : 1
+    if (depth === 0) {
+      out.push({ t: "el", tag: elTag, s: html.slice(elStart, tagRe.lastIndex) })
+      pos = tagRe.lastIndex
+    }
+  }
+  if (pos < html.length) out.push({ t: "text", s: html.slice(pos) })
+  return out
+}
+
+// Приблизительная «видимая» длина куска (для NB_MAX_LEN): теги выброшены, сущности — 1 символ.
+const nbPlain = (s) => s.replace(/<[^>]*>/g, "").replace(/&[a-z]+;/g, "x")
+
+export function noBreakMath(html) {
+  if (!html || html.indexOf("<") < 0) return html
+  // 1) режем на куски: chunk (без пробелов внутри) / пробелы / блочный элемент
+  const items = []
+  let cur = null
+  const closeChunk = () => { if (cur) { items.push(cur); cur = null } }
+  const addText = (s) => { if (!cur) cur = { t: "chunk", s: "", math: false }; cur.s += s }
+  for (const n of nbTopLevel(html)) {
+    if (n.t === "text") {
+      for (const part of n.s.split(/(\s+)/)) {
+        if (!part) continue
+        if (/^\s+$/.test(part)) { closeChunk(); items.push({ t: "sp", s: part }) }
+        else addText(part)
+      }
+    } else if (NB_BLOCK.test(n.tag) || NB_WIDE.test(n.s)) {
+      closeChunk(); items.push({ t: "raw", s: n.s })
+    } else {
+      addText(n.s)
+      if (NB_MATH.test(n.s)) cur.math = true
+    }
+  }
+  closeChunk()
+  // 2) сшиваем соседние математические куски через пробел (перенос по знаку операции)
+  for (let i = 0; i + 2 < items.length; i++) {
+    const a = items[i], sp = items[i + 1], b = items[i + 2]
+    if (!a || a.t !== "chunk" || sp.t !== "sp" || sp.s !== " " || b.t !== "chunk") continue
+    if (!a.math && !b.math) continue
+    const pa = nbPlain(a.s), pb = nbPlain(b.s)
+    if (NB_CYR.test(pa) || NB_CYR.test(pb)) continue
+    if (!NB_OP_END.test(pa) && !NB_OP_START.test(pb)) continue
+    if (pa.length + pb.length + 1 > NB_MAX_LEN) continue
+    a.s += "&nbsp;" + b.s
+    a.math = a.math || b.math
+    items.splice(i + 1, 2)
+    i = Math.max(-1, i - 3)         // назад: к куску слева мог приклеиться теперь и он («S = ⟦f⟧»)
+  }
+  // 3) неразрывными делаем только куски с формулой; если кусок всё же длиннее строки —
+  //    отдаём его как есть (и возвращаем обычные пробелы), перенос лучше вылезания за край
+  return items.map((it) =>
+    it.t === "chunk" && it.math && nbPlain(it.s).length <= NB_MAX_LEN
+      // инлайновый style обязателен для PDF: html2canvas не подхватывает классы
+      ? `<span class="tmath-nb" style="white-space:nowrap;">${it.s}</span>`
+      : it.s.replace(/&nbsp;/g, " ")
+  ).join("")
+}
+
 // Условие задания рендерится как HTML, чтобы дроби были СТОЛБИКОМ (не «в строчку»),
 // а корень — с верхней чертой над подкоренным. Генераторы вставляют токены
 // ⟦f:n:d⟧ (дробь) и ⟦r:x⟧ (корень); здесь текст сначала ЭКРАНИРУЕТСЯ (защита от XSS
 // в задачах, введённых репетитором), и только потом токены разворачиваются в разметку.
 export function renderTaskMath(text) {
   if (!text) return ""
+  return noBreakMath(renderTaskMathRaw(text))
+}
+function renderTaskMathRaw(text) {
   const esc = String(text)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
   // корень внутри числителя/знаменателя дроби записывается маркером √{X} (не токеном ⟦r⟧,
@@ -390,7 +495,7 @@ export function renderHomeworkMath(text) {
     // одиночный индекс без скобок: x_1 (групповые ^{…}/_{…} уже развёрнуты выше)
     .replace(/_([0-9A-Za-zА-Яа-я])/g, (_, x) => `<sub class="tmath-sub">${x}</sub>`)
   s = superscriptPowers(s)          // оставшиеся ^2, ^n → ², ⁿ
-  return s.replace(/\n/g, "<br>")
+  return noBreakMath(s.replace(/\n/g, "<br>"))
 }
 
 // new Date("YYYY-MM-DD") parses as UTC midnight, which shifts a day back in

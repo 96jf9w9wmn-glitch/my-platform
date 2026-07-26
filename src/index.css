@@ -255,6 +255,11 @@ select {
   color: #1f2937;
 }
 .dark .tmath-code { background: #1f2937; border-color: #374151; color: #e5e7eb; }
+/* Неразрывный кусок формулы (собирает noBreakMath в utils.js): дробь/корень — атомарные
+   inline-block-боксы, и браузер по умолчанию переносит строку вокруг них даже без пробела,
+   отрывая «S=v₀t−» от дроби at²/2. Здесь перенос внутри куска запрещён целиком. */
+.tmath-nb { white-space: nowrap; }
+.tmath-nb .tmath-code { white-space: pre-wrap; }   /* код-блок внутри всё равно переносится */
 .tmath-cases { position: relative; display: inline-flex; align-items: center; vertical-align: middle; padding-left: 0.8em; }
 .tmath-brace { position: absolute; left: 0.1em; top: 0; height: 100%; width: 0.55em; overflow: visible; }
 .tmath-lines { display: inline-flex; flex-direction: column; gap: 0.15em; text-align: left; line-height: 1.3; }
