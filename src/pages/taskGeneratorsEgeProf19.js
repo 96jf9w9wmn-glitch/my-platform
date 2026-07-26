@@ -47,7 +47,6 @@ const distNat = (n) => `${n} ${plural(n, "различное натуральн�
 const evenNums = (n) => `${n} ${plural(n, "чётное число", "чётных числа", "чётных чисел")}`
 const distEven = (n) => `${n} ${plural(n, "различное чётное число", "различных чётных числа", "различных чётных чисел")}`
 const distNums = (n) => `${n} ${plural(n, "различное число", "различных числа", "различных чисел")}`
-const smallest = (n) => `${n} ${plural(n, "наименьшее число", "наименьших числа", "наименьших чисел")}`
 // «Может ли …» для единственного числа, «Могут ли …» для остальных.
 const canBe = (n) => (plural(n, 1, 0, 0) ? "Может ли" : "Могут ли")
 
@@ -1024,14 +1023,14 @@ const PRIMES = (() => {
 // #19/#21 (max) и #20 (min). Дано трёхзначное число A, сумма цифр которого равна S.
 function asFamily(mode) {
   const K3 = randInt(1500, 24000)
-  let answer = null, exC = null
+  let answer = null
   if (mode === "max") {
     for (let i = AS_SORTED.length - 1; i >= 0; i--) if (AS_SORTED[i] < K3) { answer = AS_SORTED[i]; break }
   } else {
     for (let i = 0; i < AS_SORTED.length; i++) if (AS_SORTED[i] > K3) { answer = AS_SORTED[i]; break }
   }
   if (answer === null) return null
-  exC = AS_PRODUCTS.get(answer)
+  const exC = AS_PRODUCTS.get(answer)
   // а) — «да» (достижимое произведение) или «нет» по оценке A·S ≤ 999·27.
   const yesA = Math.random() < 0.5
   const K1 = yesA ? pick(AS_SORTED) : randInt(AS_MAX + 1, 40000)
