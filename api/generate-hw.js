@@ -6,22 +6,52 @@
 // добавить DEEPSEEK_API_KEY (значение — ключ из platform.deepseek.com).
 
 const DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
-// Актуальные имена моделей DeepSeek — deepseek-v4-pro / deepseek-v4-flash
-// (старое deepseek-chat отключено и отдаёт 400).
-const DEEPSEEK_MODEL = "deepseek-v4-flash"
+const DEEPSEEK_MODELS_URL = "https://api.deepseek.com/models"
+// DeepSeek УЖЕ ломал нас переименованием: `deepseek-chat` сняли, и генерация встала
+// с 400. Поэтому имя модели не одно, а список по предпочтению, и при ошибке «нет
+// такой модели» функция сама спрашивает /models и берёт живую (см. resolveModel).
+const MODEL_PREFERENCE = ["deepseek-v4-flash", "deepseek-v4-pro"]
 const MAX_COUNT = 20
 const MAX_TOPIC_LEN = 200
+
+// Имя модели, которое сработало последним, — переиспользуем в тёплом инстансе,
+// чтобы не платить лишним запросом к /models на каждую генерацию.
+let cachedModel = null
 
 // С включёнными «размышлениями» генерация занимает 10–60 с; дефолтного лимита не хватает.
 export const config = { maxDuration: 120 }
 
 export default async function handler(req, res) {
+  const apiKey = process.env.DEEPSEEK_API_KEY
+
+  // GET — health-check без генерации (дёшево, токенов не тратит): показывает, какие
+  // модели реально доступны и не разошлось ли это с нашим списком. Дёргается
+  // ежедневной задачей статуса, чтобы поломку заметили мы, а не репетитор.
+  if (req.method === "GET") {
+    if (!apiKey) {
+      res.status(500).json({ ok: false, error: "DEEPSEEK_API_KEY не задан на сервере" })
+      return
+    }
+    try {
+      const models = await listModels(apiKey)
+      const usable = MODEL_PREFERENCE.filter((m) => models.includes(m))
+      res.status(usable.length ? 200 : 503).json({
+        ok: usable.length > 0,
+        model: usable[0] || null,
+        preference: MODEL_PREFERENCE,
+        available: models,
+      })
+    } catch (e) {
+      res.status(502).json({ ok: false, error: "DeepSeek /models недоступен", detail: String(e).slice(0, 200) })
+    }
+    return
+  }
+
   if (req.method !== "POST") {
     res.status(405).json({ error: "Method not allowed" })
     return
   }
 
-  const apiKey = process.env.DEEPSEEK_API_KEY
   if (!apiKey) {
     res.status(500).json({ error: "DEEPSEEK_API_KEY не задан на сервере" })
     return
@@ -73,25 +103,31 @@ export default async function handler(req, res) {
     `(не ссылается на «предыдущее»). Обязательно укажи правильный ответ к каждому.` +
     (asTest ? ` У каждого вопроса ровно 4 варианта ответа, ровно один верный, answer дословно равен одному из options.` : "")
 
+  const messages = [
+    { role: "system", content: system },
+    { role: "user", content: user },
+  ]
+
   try {
-    const upstream = await fetch(DEEPSEEK_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: DEEPSEEK_MODEL,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-        temperature: 0.7,
-        thinking: { type: "enabled" },
-        max_tokens: 8000,
-        response_format: { type: "json_object" },
-      }),
-    })
+    let upstream = await chatCompletion(apiKey, cachedModel || MODEL_PREFERENCE[0], messages)
+
+    // 400 про модель — значит имя устарело (так и было с deepseek-chat). Спрашиваем
+    // живой список и пробуем ещё раз, а не отдаём репетитору «DeepSeek: 400».
+    if (upstream.status === 400) {
+      const text = await upstream.text()
+      if (/model/i.test(text)) {
+        const fallback = await resolveModel(apiKey)
+        console.error("DeepSeek: модель устарела, беру", fallback, "—", text.slice(0, 200))
+        if (fallback) {
+          upstream = await chatCompletion(apiKey, fallback, messages)
+          if (upstream.ok) cachedModel = fallback
+        }
+      } else {
+        console.error("DeepSeek error 400", text.slice(0, 500))
+        res.status(502).json({ error: "DeepSeek: 400", detail: text.slice(0, 300) })
+        return
+      }
+    }
 
     if (!upstream.ok) {
       const text = await upstream.text()
@@ -138,6 +174,40 @@ export default async function handler(req, res) {
     })
   } catch (e) {
     res.status(500).json({ error: "Сбой запроса к DeepSeek", detail: String(e).slice(0, 300) })
+  }
+}
+
+function chatCompletion(apiKey, model, messages) {
+  return fetch(DEEPSEEK_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model,
+      messages,
+      temperature: 0.7,
+      thinking: { type: "enabled" },
+      max_tokens: 8000,
+      response_format: { type: "json_object" },
+    }),
+  })
+}
+
+async function listModels(apiKey) {
+  const r = await fetch(DEEPSEEK_MODELS_URL, { headers: { Authorization: `Bearer ${apiKey}` } })
+  if (!r.ok) throw new Error(`models ${r.status}`)
+  const j = await r.json()
+  return (j?.data || []).map((m) => String(m.id)).filter(Boolean)
+}
+
+// Живая модель: сначала наш порядок предпочтения, иначе — любая, что отдал DeepSeek
+// (лучше сгенерировать неоптимальной моделью, чем показать ошибку).
+async function resolveModel(apiKey) {
+  try {
+    const models = await listModels(apiKey)
+    return MODEL_PREFERENCE.find((m) => models.includes(m)) || models[0] || null
+  } catch (e) {
+    console.error("DeepSeek /models недоступен", String(e).slice(0, 200))
+    return MODEL_PREFERENCE.find((m) => m !== MODEL_PREFERENCE[0]) || null
   }
 }
 
