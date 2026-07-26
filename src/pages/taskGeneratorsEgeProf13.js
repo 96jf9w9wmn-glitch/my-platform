@@ -642,7 +642,7 @@ function t13LogQuad() {
     while (n2 === n1 && g++ < 10) n2 = pick(pool)
     let A = 1, B = -(n1 + n2), C = n1 * n2
     const gg = gcd(gcd(A, B), C) || 1; A /= gg; B /= gg; C /= gg
-    const eq = fmtQuad(A, B, C, `log²${subU(a)}x`, `log${subU(a)}x`)
+    const eq = fmtQuad(A, B, C, `log⦅2¦${a}⦆x`, `log⦉${a}⦊x`)
     const roots = [{ num: a ** n1, text: intT(a ** n1) }, { num: a ** n2, text: intT(a ** n2) }]
     const residual = (x) => { const t = Math.log(x) / Math.log(a); return A * t * t + B * t + C }
     const iv = pickPosInterval(roots.map((r) => r.num))
@@ -1032,7 +1032,7 @@ function t13LogTrigQuadOnce() {
     A = mul; B = -mul * (t1 + t2); C = mul * t1 * t2
     keys = opts.map((o) => o.key)
   }
-  const eq = fmtQuad(A, B, C, `log²${subU(a)}(${gStr})`, `log${subU(a)}(${gStr})`)
+  const eq = fmtQuad(A, B, C, `log⦅2¦${a}⦆(${gStr})`, `log⦉${a}⦊(${gStr})`)
   const domainOK = (x) => gf(x) > 1e-12
   const residual = (x) => { if (!domainOK(x)) return NaN; const t = Math.log(gf(x)) / Math.log(a); return A * t * t + B * t + C }
   return finishTrig(eq, keys.map((key) => ({ fn: g, key })), residual, domainOK)
@@ -3329,7 +3329,7 @@ function t13LogNestedOnce() {
   const c = pick([2, 3, 4, 8]), k = pick([1, 2])
   const q = c ** k + m
   const pStr = `⟦f:1:${den}⟧`
-  const eq = `log${subU(c)}(log${subU(b)}(log²${subU(a)}(x + ⟦f:1:x⟧) ${pv > 0 ? MINUS : "+"} ${pStr}) + ${q}) = ${k}`
+  const eq = `log⦉${c}⦊(log⦉${b}⦊(log⦅2¦${a}⦆(x + ⟦f:1:x⟧) ${pv > 0 ? MINUS : "+"} ${pStr}) + ${q}) = ${k}`
   const rt = Math.sqrt(a)
   const residual = (x) => x * x - rt * x + 1          // x + 1/x = √a
   const chain = (x) => {

@@ -698,6 +698,12 @@ export function t19BoardDistinctSum() {
 
 // ── реестр ─────────────────────────────────────────────────────────────────
 export const META19 = [
+  ["Алгебраическая теория чисел", [
+    ["quadratic-nat-roots", "x² + px + q = 0 с двумя натуральными корнями", t19QuadraticNatRoots],
+    ["discriminant-nat", "Дискриминант при натуральных m, n → наименьший", t19DiscriminantNat],
+    ["unit-fractions", "Единичные дроби; все пары 1/m + 1/n = 1/N", t19UnitFractions],
+    ["sqrt2-approximation", "Приближение √2 двузначными дробями", t19Sqrt2Approximation],
+  ]],
   ["Доска: ограничение на попарные произведения", [
     ["prodwin-min-sum", "Произведение любых двух в (lo; hi) → наим. сумма четырёх", t19ProdWindowMinSum],
     ["prodwin-max-sum", "Произведение любых двух в (lo; hi) → наиб. сумма четырёх", t19ProdWindowMaxSum],
@@ -1793,3 +1799,334 @@ function prodWindowFamily(mode) {
 }
 export function t19ProdWindowMinSum() { return prodWindowFamily("min") }
 export function t19ProdWindowMaxSum() { return prodWindowFamily("max") }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 21. Алгебраическая теория чисел (#53, #56, #104, #118)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const divisors = (n) => { const d = []; for (let i = 1; i * i <= n; i++) if (n % i === 0) { d.push(i); if (i !== n / i) d.push(n / i) } return d.sort((a, b) => a - b) }
+
+// #53. x² + px + q = 0 с двумя различными натуральными корнями u < v:
+//      по теореме Виета p = −(u + v), q = uv. Все три пункта решаются разложениями:
+//      q = Q — делители Q; p + q = T — из uv − u − v = T следует (u−1)(v−1) = T + 1;
+//      q² − p² = D — таблица пар (u, v), построенная при импорте.
+const VIETA_D = (() => {
+  const map = new Map()
+  // Граница 400 совпадает с границей перебора в solve() и полна: при u ≥ 2 и v > 400
+  // уже (uv)² − (u+v)² > 90000, а при u = 1 разность отрицательна.
+  for (let u = 1; u <= 400; u++) for (let v = u + 1; v <= 400; v++) {
+    const D = (u * v) ** 2 - (u + v) ** 2
+    if (D <= 0 || D >= 90000) continue
+    if (!map.has(D)) map.set(D, [])
+    map.get(D).push([u, v])
+  }
+  return map
+})()
+export function t19QuadraticNatRoots() {
+  // а) q = Q: пары делителей Q
+  const Q = pick([12, 18, 20, 24, 30, 34, 36, 40, 42, 48, 54, 60, 72])
+  const pairsA = divisors(Q).filter((d) => d * d < Q).map((d) => [d, Q / d])
+  if (!pairsA.length) return null
+  const valuesA = [...new Set(pairsA.map(([u, v]) => -(u + v)))].sort((x, y) => x - y)
+  const exA = Object.fromEntries(valuesA.map((p) => [p, pairsA.find(([u, v]) => -(u + v) === p)]))
+  // б) p + q = T: (u−1)(v−1) = T + 1
+  const T = pick([14, 19, 22, 26, 29, 34, 39, 44, 49, 54])
+  const pairsB = divisors(T + 1).filter((d) => d * d < T + 1).map((d) => [d + 1, (T + 1) / d + 1])
+  if (!pairsB.length) return null
+  const valuesB = [...new Set(pairsB.map(([u, v]) => u * v))].sort((x, y) => x - y)
+  const exB = Object.fromEntries(valuesB.map((q) => [q, pairsB.find(([u, v]) => u * v === q)]))
+  // в) q² − p² = D
+  const dKeys = [...VIETA_D.keys()].filter((D) => VIETA_D.get(D).length <= 2 && D < 90000)
+  const D = pick(dKeys)
+  const pairsC = VIETA_D.get(D)
+  const valuesC = [...new Set(pairsC.flat())].sort((x, y) => x - y)
+  const exC = Object.fromEntries(valuesC.map((r) => [r, pairsC.find((pr) => pr.includes(r))]))
+
+  const params = { Q, T, D }
+  const check = (pair, part) => {
+    if (!Array.isArray(pair) || pair.length !== 2) return "не пара корней"
+    const [u, v] = pair
+    if (!Number.isInteger(u) || !Number.isInteger(v) || u < 1 || v < 1) return `${u}, ${v} — не натуральные`
+    if (u === v) return "корни не различны"
+    const p = -(u + v), q = u * v
+    if (part === "a" && q !== Q) return `q = ${q}, а не ${Q}`
+    if (part === "b" && p + q !== T) return `p + q = ${p + q}, а не ${T}`
+    if (part === "c" && q * q - p * p !== D) return `q² − p² = ${q * q - p * p}, а не ${D}`
+    return null
+  }
+  const solve = (P) => {
+    // Пространство перебора: все пары различных натуральных корней u < v ≤ 100000
+    // для а)/б) (там корни делят Q или T+1) и u < v ≤ 400 для в) (уже (uv)² > D).
+    const a = [], b = [], c = new Set()
+    for (let u = 1; u <= P.Q; u++) for (let v = u + 1; v <= P.Q; v++) if (u * v === P.Q) a.push(-(u + v))
+    for (let u = 1; u <= P.T + 2; u++) for (let v = u + 1; v <= P.T + 2; v++) if (u * v - u - v === P.T) b.push(u * v)
+    for (let u = 1; u <= 400; u++) for (let v = u + 1; v <= 400; v++) {
+      if ((u * v) ** 2 - (u + v) ** 2 === P.D) { c.add(u); c.add(v) }
+    }
+    return { a: [...new Set(a)].sort((x, y) => x - y), b: [...new Set(b)].sort((x, y) => x - y), c: [...c].sort((x, y) => x - y) }
+  }
+
+  const MIN = "−"
+  return item({
+    preamble: `Квадратное уравнение x² + px + q = 0 имеет два различных натуральных корня.`,
+    qa: `Пусть q = ${Q}. Найдите все возможные значения p.`,
+    qb: `Пусть p + q = ${T}. Найдите все возможные значения q.`,
+    qc: `Пусть q² − p² = ${D}. Найдите все возможные корни исходного уравнения.`,
+    ansA: `${joinRu(valuesA.map((p) => String(p).replace("-", MIN)))} — им отвечают корни ${pairsA.map(([u, v]) => `${u} и ${v}`).join("; ")} соответственно`,
+    ansB: `${joinRu(valuesB)} — им отвечают корни ${pairsB.map(([u, v]) => `${u} и ${v}`).join("; ")} соответственно`,
+    ansC: `${joinRu(valuesC)}; подходит ${pairsC.map(([u, v]) => `уравнение с корнями ${u} и ${v}`).join("; ")}`,
+    solution: `По теореме Виета корни u < v связаны с коэффициентами так: p = ${MIN}(u + v), q = uv.\nа) Из q = ${Q} следует uv = ${Q}, то есть u и v — пара взаимно дополняющих делителей числа ${Q}: ${joinRu(pairsA.map(([u, v]) => `${u}·${v}`))}. Значит p принимает значения ${joinRu(valuesA.map((p) => String(p).replace("-", MIN)))}.\nб) Из p + q = ${T} следует uv ${MIN} u ${MIN} v = ${T}, то есть (u ${MIN} 1)(v ${MIN} 1) = ${T + 1}. Разложения числа ${T + 1} дают корни ${joinRu(pairsB.map(([u, v]) => `${u} и ${v}`))}, откуда q равно ${joinRu(valuesB)}.\nв) Из q² ${MIN} p² = ${D} следует (uv)² ${MIN} (u + v)² = ${D}; так как (uv)² > ${D}, произведение uv ограничено, и перебор даёт корни ${joinRu(valuesC)}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "all", values: valuesA, examples: exA },
+        b: { type: "all", values: valuesB, examples: exB },
+        c: { type: "all", values: valuesC, examples: exC },
+      },
+      mustMention: [Q, T, D],
+      extra: [2, 0],
+      phrases: ["x² + px + q = 0", "два различных натуральных корня"],
+    },
+  })
+}
+
+// #56. Дискриминант квадратного трёхчлена при натуральных коэффициентах.
+// Инвариант: D = m² − 4n ≡ m² (mod 4), а квадрат сравним с 0 или 1 по модулю 4,
+// поэтому дискриминант никогда не даёт остатков 2 и 3 при делении на 4.
+const DISC_MIN = (() => {                       // минимум D = (km+n)² − 4(kn+m) при натуральных m, n
+  const map = new Map()
+  for (let k = 2; k <= 5; k++) {
+    let best = null
+    for (let m = 1; m <= 300; m++) for (let n = 1; n <= 300; n++) {
+      const D = (k * m + n) ** 2 - 4 * (k * n + m)
+      if (D >= 1 && (best === null || D < best.D)) best = { D, m, n }
+    }
+    map.set(k, best)
+  }
+  return map
+})()
+export function t19DiscriminantNat() {
+  const k = randInt(2, 5)
+  const best = DISC_MIN.get(k)
+  if (!best) return null
+  // а) — «да»: любое D ≡ 0 или 1 (mod 4) достижимо; берём наименьшее подходящее m.
+  const D1 = 4 * randInt(2, 30) + pick([0, 1])   // остаток 0 или 1 по модулю 4 — достижим
+  let m1 = (D1 % 4 === 0) ? 2 : 1
+  while (m1 * m1 - D1 < 4) m1 += 2
+  const n1 = (m1 * m1 - D1) / 4
+  // б) — «нет»: остаток 2 или 3 по модулю 4.
+  const D2 = 4 * randInt(2, 40) + pick([2, 3])
+  if (D1 === D2) return null
+
+  const params = { D1, D2, k, best: best.D }
+  const check = (mn, part) => {
+    if (!Array.isArray(mn) || mn.length !== 2) return "не пара (m, n)"
+    const [m, n] = mn
+    if (!Number.isInteger(m) || !Number.isInteger(n) || m < 1 || n < 1) return `${m}, ${n} — не натуральные`
+    if (part === "c") {
+      const D = (k * m + n) ** 2 - 4 * (k * n + m)
+      if (D !== best.D) return `дискриминант ${D}, а не ${best.D}`
+      if (D < 1) return `дискриминант ${D} не натуральный`
+    } else {
+      const D = m * m - 4 * n
+      const target = part === "a" ? D1 : D2
+      if (D !== target) return `дискриминант ${D}, а не ${target}`
+    }
+    return null
+  }
+  const solve = (P) => {
+    // Пространство перебора: m, n от 1 до 400 (при больших m дискриминант m² − 4n
+    // растёт быстрее любой из целей, а для пункта в) минимум достигается при малых m).
+    const has = (D) => { for (let m = 1; m <= 400; m++) { const t = m * m - D; if (t > 0 && t % 4 === 0) return true } return false }
+    let bestD = null
+    for (let m = 1; m <= 400; m++) for (let n = 1; n <= 400; n++) {
+      const D = (P.k * m + n) ** 2 - 4 * (P.k * n + m)
+      if (D >= 1 && (bestD === null || D < bestD)) bestD = D
+    }
+    return { a: has(P.D1), b: has(P.D2), c: bestD, c_next: false }
+  }
+
+  return item({
+    preamble: `Рассматриваются квадратные трёхчлены с натуральными коэффициентами.`,
+    qa: `Существуют ли натуральные числа m и n, такие, что дискриминант квадратного трёхчлена x² + mx + n равен ${D1}?`,
+    qb: `Существуют ли натуральные числа m и n, такие, что дискриминант квадратного трёхчлена x² + mx + n равен ${D2}?`,
+    qc: `Какое наименьшее значение принимает дискриминант D квадратного трёхчлена x² + (${k}m + n)x + (${k}n + m), если известно, что числа m, n и D — натуральные?`,
+    ansA: `да: например m = ${m1}, n = ${n1}, тогда ${m1}² − 4·${n1} = ${D1}`,
+    ansB: `нет: дискриминант равен m² − 4n, поэтому он сравним с m² по модулю 4; квадрат целого числа даёт при делении на 4 остаток 0 или 1, а ${D2} даёт остаток ${D2 % 4}`,
+    ansC: `${best.D}; достигается при m = ${best.m}, n = ${best.n}; меньше нельзя — при m = 1 дискриминант равен (n − ${k})² − 4, и чтобы он был натуральным, нужно (n − ${k})² ≥ 5, то есть |n − ${k}| ≥ 3 и D ≥ 5; при m ≥ 2 дискриминант ещё больше`,
+    solution: `Дискриминант трёхчлена x² + mx + n равен m² − 4n, поэтому он сравним с m² по модулю 4. Квадраты дают остатки 0 и 1, значит остатки 2 и 3 недостижимы — это ответ на пункт б). Наоборот, для любого D с остатком 0 или 1 подойдёт достаточно большое m нужной чётности и n = (m² − D)/4.\nВ пункте в) D = (${k}m + n)² − 4(${k}n + m). При m = 1 это (${k} + n)² − 4(${k}n + 1) = (n − ${k})² − 4, и натуральность требует (n − ${k})² ≥ 5, откуда D ≥ 5. При m ≥ 2 первое слагаемое растёт быстрее вычитаемого, и дискриминант только увеличивается.\nМинимум D = ${best.D} достигается при m = ${best.m}, n = ${best.n}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: [m1, n1], target: D1 },
+        b: { type: "yesno", yes: false, reason: "mod4", target: D2 },
+        c: { type: "extremum", mode: "min", value: best.D, example: [best.m, best.n] },
+      },
+      mustMention: [D1, D2, k],
+      extra: [2, 4],
+      phrases: ["дискриминант квадратного трёхчлена", "натуральные"],
+    },
+  })
+}
+
+// #104. Единичные дроби. а)/б) — представить дробь суммой дробей 1/d с попарно
+// различными натуральными знаменателями; в) — все пары m ≤ n с 1/m + 1/n = 1/N,
+// что равносильно (m − N)(n − N) = N² и решается делителями числа N².
+export function t19UnitFractions() {
+  // а)/б) строим ОТ ОТВЕТА: берём попарно различные знаменатели и складываем.
+  const makeTarget = (cnt) => {
+    const ds = []
+    while (ds.length < cnt) { const d = randInt(2, 30); if (!ds.includes(d)) ds.push(d) }
+    ds.sort((a, b) => a - b)
+    let f = fr(0)
+    for (const d of ds) f = frAdd(f, fr(1, d))
+    return { ds, f }
+  }
+  const A = makeTarget(randInt(2, 3))
+  const B = makeTarget(randInt(3, 4))
+  if (A.f.d === 1 || B.f.d === 1 || frVal(A.f) === frVal(B.f)) return null
+  if (A.f.n > 999 || A.f.d > 9999 || B.f.n > 999 || B.f.d > 9999) return null
+  // в) 1/m + 1/n = 1/N
+  const N = randInt(6, 30)
+  const pairsC = divisors(N * N).filter((d) => d * d <= N * N).map((d) => [N + d, N + N * N / d])
+  const valuesC = pairsC.map(([m]) => m).sort((x, y) => x - y)
+  const exC = Object.fromEntries(pairsC.map(([m, n]) => [m, [m, n]]))
+
+  const params = { A: { n: A.f.n, d: A.f.d }, B: { n: B.f.n, d: B.f.d }, N }
+  const check = (val, part) => {
+    if (part === "c") {
+      if (!Array.isArray(val) || val.length !== 2) return "не пара (m, n)"
+      const [m, n] = val
+      if (!Number.isInteger(m) || !Number.isInteger(n) || m < 1 || n < 1) return `${m}, ${n} — не натуральные`
+      if (m > n) return `${m} > ${n}, нарушено условие m ≤ n`
+      const s = frAdd(fr(1, m), fr(1, n))
+      if (s.n !== 1 || s.d !== N) return `1/${m} + 1/${n} = ${s.n}/${s.d}, а не 1/${N}`
+      return null
+    }
+    if (!Array.isArray(val) || val.length < 2) return "нужно несколько дробей"
+    if (uniq(val).length !== val.length) return "знаменатели не попарно различны"
+    let s = fr(0)
+    for (const d of val) { if (!Number.isInteger(d) || d < 1) return `${d} не натуральное`; s = frAdd(s, fr(1, d)) }
+    const t = part === "a" ? A.f : B.f
+    if (s.n !== t.n || s.d !== t.d) return `сумма ${s.n}/${s.d}, а не ${t.n}/${t.d}`
+    return null
+  }
+  const solve = (P) => {
+    // Пространство перебора: разложения на не более чем 4 единичные дроби со
+    // знаменателями до 4000 (жадный шаг гарантирует, что знаменатели растут).
+    const search = (num, den, minD, depth) => {
+      if (num === 0) return true
+      if (depth === 0) return false
+      const start = Math.max(minD, Math.ceil(den / num))
+      for (let d = start; d <= 4000 && d <= den * depth / num; d++) {
+        const nn = num * d - den, dd = den * d
+        if (nn < 0) continue
+        const g = gcdI(nn, dd) || 1
+        if (search(nn / g, dd / g, d + 1, depth - 1)) return true
+      }
+      return false
+    }
+    const cPairs = []
+    for (let m = P.N + 1; m <= 2 * P.N; m++) {
+      const den = m - P.N
+      if ((P.N * P.N) % den !== 0) continue
+      cPairs.push(m)
+    }
+    return {
+      a: search(P.A.n, P.A.d, 2, 4),
+      b: search(P.B.n, P.B.d, 2, 5),
+      c: cPairs.sort((x, y) => x - y),
+    }
+  }
+
+  return item({
+    preamble: `Рассматриваются суммы дробей, у которых все числители равны единице, а знаменатели — попарно различные натуральные числа.`,
+    qa: `Представьте число ⟦f:${A.f.n}:${A.f.d}⟧ в виде суммы нескольких дробей, все числители которых — единица, а знаменатели — попарно различные натуральные числа.`,
+    qb: `Представьте число ⟦f:${B.f.n}:${B.f.d}⟧ в виде суммы нескольких дробей, все числители которых — единица, а знаменатели — попарно различные натуральные числа.`,
+    qc: `Найдите все возможные пары натуральных чисел m и n, для которых m ≤ n и 1/m + 1/n = 1/${N}.`,
+    ansA: `${A.ds.map((d) => `1/${d}`).join(" + ")} = ${A.f.n}/${A.f.d}`,
+    ansB: `${B.ds.map((d) => `1/${d}`).join(" + ")} = ${B.f.n}/${B.f.d}`,
+    ansC: `${pairsC.map(([m, n]) => `(${m}; ${n})`).join(", ")}`,
+    solution: `а) и б) Достаточно предъявить разложение: ${A.ds.map((d) => `1/${d}`).join(" + ")} = ${A.f.n}/${A.f.d} и ${B.ds.map((d) => `1/${d}`).join(" + ")} = ${B.f.n}/${B.f.d}. Знаменатели попарно различны, числители равны единице.\nв) Из 1/m + 1/n = 1/${N} следует ${N}(m + n) = mn, то есть mn − ${N}m − ${N}n = 0 и (m − ${N})(n − ${N}) = ${N * N}.\nЗначит m − ${N} и n − ${N} — пара взаимно дополняющих делителей числа ${N * N} = ${N}², причём m ≤ n. Перебирая делители, получаем пары ${pairsC.map(([m, n]) => `(${m}; ${n})`).join(", ")}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: A.ds, target: frVal(A.f) },
+        b: { type: "yesno", yes: true, example: B.ds, target: frVal(B.f) },
+        c: { type: "all", values: valuesC, examples: exC },
+      },
+      mustMention: [N],
+      extra: [A.f.n, A.f.d, B.f.n, B.f.d, 1],
+      phrases: ["все числители которых — единица", "знаменатели — попарно различные натуральные числа"],
+    },
+  })
+}
+
+// #118. Приближение √2 дробями. Ключ: |m² − 2n²| ≥ 1 для натуральных m, n
+// (равенство нулю означало бы рациональность √2), поэтому |m²/n² − 2| ≥ 1/n²,
+// и при двузначном n это не меньше 1/9801.
+export function t19Sqrt2Approximation() {
+  const E1 = randInt(50, 5000)                  // |m/n − √2| ≤ 1/E1 — достижимо (99/70)
+  const E2 = randInt(9802, 99999)               // |m²/n² − 2| ≤ 1/E2 — недостижимо
+  const K = randInt(2, 20)                      // выражение |(n + K)/n − √2|
+  // Минимум |K/n − (√2 − 1)| по натуральным n: n ≈ K(√2 + 1); проверяем соседей.
+  const target = K * (Math.SQRT2 + 1)
+  const cands = [Math.floor(target) - 1, Math.floor(target), Math.floor(target) + 1, Math.floor(target) + 2].filter((x) => x >= 1)
+  const dev = (n) => Math.abs((n + K) / n - Math.SQRT2)
+  const bestVal = Math.min(...cands.map(dev))
+  const bestNs = cands.filter((n) => Math.abs(dev(n) - bestVal) < 1e-15).sort((a, b) => a - b)
+  const exA = [99, 70]
+  if (Math.abs(99 / 70 - Math.SQRT2) > 1 / E1) return null
+
+  const params = { E1, E2, K, bestNs }
+  const check = (val, part) => {
+    if (part === "c") {
+      if (!Number.isInteger(val) || val < 1) return `${val} не натуральное`
+      if (Math.abs(dev(val) - bestVal) > 1e-15) return `при n = ${val} значение выражения не наименьшее`
+      return null
+    }
+    if (!Array.isArray(val) || val.length !== 2) return "не пара (m, n)"
+    const [m, n] = val
+    if (!Number.isInteger(m) || !Number.isInteger(n) || m < 10 || m > 99 || n < 10 || n > 99) return `${m}, ${n} — не двузначные`
+    if (part === "a" && Math.abs(m / n - Math.SQRT2) > 1 / E1) return `|${m}/${n} − √2| больше 1/${E1}`
+    if (part === "b" && Math.abs((m * m) / (n * n) - 2) > 1 / E2) return `|${m}²/${n}² − 2| больше 1/${E2}`
+    return null
+  }
+  const solve = (P) => {
+    // Пространство перебора: все пары двузначных m, n (10…99) для а) и б);
+    // все натуральные n до 100000 для в) — дальше выражение монотонно стремится
+    // к |1 − √2| ≈ 0,414 и минимума дать не может.
+    let a = false, b = false
+    for (let m = 10; m <= 99; m++) for (let n = 10; n <= 99; n++) {
+      if (Math.abs(m / n - Math.SQRT2) <= 1 / P.E1) a = true
+      if (Math.abs((m * m) / (n * n) - 2) <= 1 / P.E2) b = true
+    }
+    let bv = Infinity
+    for (let n = 1; n <= 100000; n++) bv = Math.min(bv, Math.abs((n + P.K) / n - Math.SQRT2))
+    const ns = []
+    for (let n = 1; n <= 100000; n++) if (Math.abs(Math.abs((n + P.K) / n - Math.SQRT2) - bv) < 1e-15) ns.push(n)
+    return { a, b, c: ns }
+  }
+
+  return item({
+    preamble: `Рассматриваются приближения числа √2 обыкновенными дробями.`,
+    qa: `Существуют ли двузначные натуральные числа m и n такие, что |m/n − √2| ≤ ⟦f:1:${E1}⟧?`,
+    qb: `Существуют ли двузначные натуральные числа m и n такие, что |m²/n² − 2| ≤ ⟦f:1:${E2}⟧?`,
+    qc: `Найдите все возможные значения натурального числа n, при каждом из которых значение выражения |(n + ${K})/n − √2| будет наименьшим.`,
+    ansA: `да: m = 99, n = 70, так как |99/70 − √2| ≈ 0,00007 ≤ 1/${E1}`,
+    ansB: `нет: число m² − 2n² целое и не равно нулю (иначе √2 = m/n было бы рациональным), поэтому |m²/n² − 2| = |m² − 2n²|/n² ≥ 1/n² ≥ 1/99² = 1/9801 > 1/${E2}`,
+    ansC: `${joinRu(bestNs)}`,
+    solution: `а) Достаточно предъявить пару: 99/70 = 1,4142857…, а √2 = 1,4142135…, поэтому |99/70 − √2| < 0,0001 ≤ 1/${E1}.\nб) Для натуральных m и n число m² − 2n² целое; оно не равно нулю, иначе √2 = m/n было бы рациональным. Значит |m² − 2n²| ≥ 1 и |m²/n² − 2| ≥ 1/n². У двузначного n имеем n ≤ 99, поэтому 1/n² ≥ 1/9801 > 1/${E2} — требуемое неравенство невозможно.\nв) |(n + ${K})/n − √2| = |${K}/n − (√2 − 1)|. Функция ${K}/n убывает, поэтому минимум достигается при n, ближайшем к ${K}/(√2 − 1) = ${K}(√2 + 1) ≈ ${target.toFixed(3)}. Проверка соседних целых даёт n = ${joinRu(bestNs)}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: E1 },
+        b: { type: "yesno", yes: false, reason: "irrational", target: E2 },
+        c: { type: "all", values: bestNs, examples: Object.fromEntries(bestNs.map((n) => [n, n])) },
+      },
+      mustMention: [E1, E2, K],
+      extra: [1, 2],
+      phrases: ["двузначные натуральные числа", "√2"],
+    },
+  })
+}

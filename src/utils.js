@@ -220,7 +220,9 @@ export function expandSvgMathTokens(svg) {
     .replace(/⟦sup:([^⟧]+)⟧/g, (_, x) => `<tspan baseline-shift="super" font-size="0.75em">${x}</tspan>`)
     .replace(/⁅([^⁆]*)⁆/g, (_, x) => `<tspan baseline-shift="super" font-size="0.75em">${x}</tspan>`)
     .replace(/⦃([^¦⦄]*)¦([^⦄]*)⦄/g, "$1/$2")
-    .replace(/⦉([^⦊]*)⦊/g, "$1")
+    .replace(/⦉([^⦊]*)⦊/g, (_, x) => `<tspan baseline-shift="sub" font-size="0.75em">${x}</tspan>`)
+    .replace(/⦅([^¦⦆]*)¦([^⦆]*)⦆/g, (_, a, b) =>
+      `<tspan baseline-shift="super" font-size="0.7em">${a}</tspan><tspan baseline-shift="sub" font-size="0.7em">${b}</tspan>`)
     .replace(/⟦iso:([^:⟧]+):([^:⟧]+):([^⟧]+)⟧/g, (_, a, z, s) =>
       `<tspan baseline-shift="super" font-size="0.7em">${a}</tspan><tspan baseline-shift="sub" font-size="0.7em">${z}</tspan>${s}`)
 }
