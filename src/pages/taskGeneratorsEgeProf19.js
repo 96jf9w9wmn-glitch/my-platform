@@ -750,6 +750,9 @@ export const META19 = [
     ["swap-digits-max", "Перестановка цифр двузначных → наибольшая новая сумма", t19SwapDigitsMax],
     ["swap-digits-min", "Перестановка цифр двузначных → наименьшая новая сумма", t19SwapDigitsMin],
   ]],
+  ["Сюжетные задачи с перебором", [
+    ["test-bonus-min", "Тест с добавкой баллов: наим. число участников", t19TestBonusMin],
+  ]],
   ["Вася и Петя решают сборник", [
     ["vasya-petya-days", "Оба решили сборник: за сколько дней и наим. число задач", t19VasyaPetyaDays],
     ["vasya-petya-diff1", "Первые дни отличаются на задачу: наим. число задач", t19VasyaPetyaDiffOne],
@@ -6524,6 +6527,162 @@ export function t19VasyaPetyaCount() {
       mustMention: [Na, Nb, dV, cap],
       extra: [],
       phrases: ["на одну задачу больше", "на две задачи больше", "хотя бы одну задачу"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 17. Сюжетные задачи с целочисленным перебором (#12)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Тест: сдавшим считается набравший не менее T баллов, всем добавили по d баллов.
+// «Перешедшие» — это в точности те, у кого было от T − d до T − 1 баллов.
+// Пусть до добавления было s сдавших со средним A и n не сдавших со средним B,
+// общий средний M, перешло m человек с суммой Σ, а после добавления средние стали
+// A' и B'. Тогда
+//   s(A − M) = n(M − B),
+//   Σ = s(A' − A − d) + m(A' − d)      (из среднего сдавших после),
+//   Σ = n(B + d − B') + m(B' − d)      (из среднего не сдавших после),
+// откуда s(A' − A − d) − n(B + d − B') = m(B' − A'). Эти равенства однозначно задают
+// пропорцию s : n : m, а условие T − d ≤ Σ/m ≤ T − 1 проверяет её осуществимость.
+const TEST_BONUS_CFG = (() => {
+  const rows = []
+  for (const T of [85, 90]) {
+    for (const d of [7, 8, 10]) {
+      for (const A of [T + 10, T + 12, T + 15]) {
+        for (const B of [T - 15, T - 12, T - 10]) {
+          for (const A2 of [A + 5, A + 6]) {
+            for (const B2 of [B + 2, B + 3]) {
+              // s : n = (M − B) : (A − M) при M = T
+              const M = T
+              const g1 = gcdI(M - B, A - M)
+              const sU = (M - B) / g1, nU = (A - M) / g1
+              const lhs = sU * (A2 - A - d) - nU * (B + d - B2)
+              const den = B2 - A2
+              if (den === 0) continue
+              // m/t = lhs/den — дробь; масштабируем пропорцию так, чтобы m стало целым
+              const t = Math.abs(den) / gcdI(Math.abs(lhs), Math.abs(den))
+              const mU = lhs * t / den
+              const sT = sU * t, nT = nU * t
+              if (mU <= 0 || mU >= nT || !Number.isInteger(mU)) continue
+              const total = sT + nT
+              const sigma = nT * (B + d - B2) + mU * (B2 - d)
+              if (sigma <= 0) continue
+              const avgMoved = sigma / mU
+              if (avgMoved < T - d || avgMoved > T - 1) continue
+              // остальные не сдавшие: (nU − mU) человек с суммой B·nU − Σ, каждый < T − d
+              const restSum = B * nT - sigma
+              const restCnt = nT - mU
+              if (restCnt <= 0 || restSum < 0 || restSum > restCnt * (T - d - 1)) continue
+              if (total > 150) continue                     // иначе ответ вида «279 участников» — не для варианта
+              rows.push({ T, d, A, B, A2, B2, s: sT, n: nT, m: mU, total, sigma })
+            }
+          }
+        }
+      }
+    }
+  }
+  return rows
+})()
+
+export function t19TestBonusMin() {
+  if (!TEST_BONUS_CFG.length) return null
+  const c = pick(TEST_BONUS_CFG)
+  const { T, d, A, B, A2, B2, s, n, m, total, sigma } = c
+  // примеры для а) и б): достаточно двух-трёх участников
+  const exA = [0, T - 1]                                   // не сдавшие: 0 и T−1
+  const exB = [4 * T, T - d, 0]                            // сильный сдавший, перешедший и слабый
+  // пример на минимальное число участников
+  const moved = spreadCap(sigma, m, T - 1)
+  const rest = spreadCap(B * n - sigma, n - m, T - d - 1)
+  const passed = Array(s).fill(A)
+  if (!moved || !rest || moved.some((x) => x < T - d)) return null
+  const exC = [...passed, ...moved, ...rest]
+
+  const params = { T, d, A, B, A2, B2 }
+  const mean = (arr) => sum(arr) / arr.length
+  const check = (cfg, part) => {
+    if (!Array.isArray(cfg) || !cfg.length) return "нет набора результатов"
+    for (const x of cfg) if (!Number.isInteger(x) || x < 0) return `${x} — не целое неотрицательное число баллов`
+    const passBefore = cfg.filter((x) => x >= T), failBefore = cfg.filter((x) => x < T)
+    const passAfter = cfg.filter((x) => x + d >= T), failAfter = cfg.filter((x) => x + d < T)
+    if (passAfter.length <= passBefore.length) return "количество сдавших не увеличилось"
+    if (part === "a") {
+      if (!failBefore.length || !failAfter.length) return "нужны не сдавшие и до, и после"
+      return mean(failAfter) + d < mean(failBefore) ? null : `средний балл не сдавших был ${mean(failBefore)}, стал ${mean(failAfter) + d}`
+    }
+    if (part === "b") {
+      if (!failBefore.length || !failAfter.length || !passBefore.length) return "нужны обе группы"
+      if (mean(passAfter) + d >= mean(passBefore)) return `средний балл сдавших не понизился`
+      if (mean(failAfter) + d >= mean(failBefore)) return `средний балл не сдавших не понизился`
+      return null
+    }
+    if (cfg.length !== total) return `участников ${cfg.length}, а заявлено ${total}`
+    if (mean(cfg) !== T) return `первоначальный средний балл ${mean(cfg)}, а не ${T}`
+    if (mean(passBefore) !== A) return `средний балл сдавших ${mean(passBefore)}, а не ${A}`
+    if (mean(failBefore) !== B) return `средний балл не сдавших ${mean(failBefore)}, а не ${B}`
+    if (mean(passAfter) + d !== A2) return `после добавления средний балл сдавших ${mean(passAfter) + d}, а не ${A2}`
+    if (mean(failAfter) + d !== B2) return `после добавления средний балл не сдавших ${mean(failAfter) + d}, а не ${B2}`
+    return null
+  }
+  // Независимый перебор: по числу сдавших s и не сдавших n (пропорция вытекает из
+  // равенства средних), затем по числу перешедших m; сумма перешедших определяется
+  // однозначно, остаётся проверить, что она набирается баллами из [T−d; T−1],
+  // а прочие не сдавшие укладываются в [0; T−d−1].
+  const solve = (P) => {
+    let best = 0
+    for (let ss = 1; ss <= 400 && !best; ss++) {
+      for (let nn = 1; ss + nn <= 400; nn++) {
+        if (ss * (P.A - P.T) !== nn * (P.T - P.B)) continue
+        for (let mm = 1; mm < nn; mm++) {
+          const sig = nn * (P.B + P.d - P.B2) + mm * (P.B2 - P.d)
+          const sig2 = ss * (P.A2 - P.A - P.d) + mm * (P.A2 - P.d)
+          if (sig !== sig2 || sig <= 0) continue
+          if (sig < mm * (P.T - P.d) || sig > mm * (P.T - 1)) continue
+          const restSum = P.B * nn - sig, restCnt = nn - mm
+          if (restCnt <= 0 || restSum < 0 || restSum > restCnt * (P.T - P.d - 1)) continue
+          best = ss + nn
+          break
+        }
+        if (best) break
+      }
+    }
+    // а) и б): существование примеров проверяется прямым построением
+    const meanOf = (arr) => sum(arr) / arr.length
+    const aOk = (() => {
+      const set = [0, P.T - 1]
+      const fb = set.filter((x) => x < P.T), fa = set.filter((x) => x + P.d < P.T)
+      return fa.length > 0 && meanOf(fa) + P.d < meanOf(fb)
+    })()
+    const bOk = (() => {
+      const set = [4 * P.T, P.T - P.d, 0]
+      const pb = set.filter((x) => x >= P.T), pa = set.filter((x) => x + P.d >= P.T)
+      const fb = set.filter((x) => x < P.T), fa = set.filter((x) => x + P.d < P.T)
+      return pa.length > pb.length && fa.length > 0 &&
+        meanOf(pa) + P.d < meanOf(pb) && meanOf(fa) + P.d < meanOf(fb)
+    })()
+    return { a: aOk, b: bOk, c: best, c_next: false }
+  }
+
+  return item({
+    preamble: `Ученики одной школы писали тест. Результатом каждого ученика является целое неотрицательное число баллов. Ученик считается сдавшим тест, если набрал не менее ${T} баллов. Из-за того, что задания оказались слишком трудными, было принято решение всем участникам теста добавить по ${d} баллов, благодаря чему количество сдавших тест увеличилось.`,
+    qa: `Могло ли оказаться так, что после этого средний балл участников, не сдавших тест, понизился?`,
+    qb: `Могло ли оказаться так, что после этого средний балл участников, сдавших тест, понизился, и средний балл участников, не сдавших тест, тоже понизился?`,
+    qc: `Известно, что первоначально средний балл участников теста составил ${T}, средний балл участников, сдавших тест, составил ${A}, а средний балл участников, не сдавших тест, составил ${B}. После добавления баллов средний балл участников, сдавших тест, стал равен ${A2}, а не сдавших тест — ${B2}. При каком наименьшем числе участников теста возможна такая ситуация?`,
+    ansA: `да, например результаты ${exA.join(" и ")}: сначала оба не сдали, средний балл не сдавших равен ${ru2(mean(exA))}; после добавления ${d} баллов участник с ${T - 1} ${plural(T - 1, "баллом", "баллами", "баллами")} сдал тест, и средний балл не сдавших стал ${d}`,
+    ansB: `да, например результаты ${exB.join(", ")}: средний балл сдавших был ${4 * T}, стал ${ru2((4 * T + d + T) / 2)}, а средний балл не сдавших был ${ru2((T - d) / 2)} и стал ${d}`,
+    ansC: `${total}`,
+    solution: `Пусть до добавления баллов было s сдавших со средним баллом ${A} и n не сдавших со средним ${B}, а перешли в число сдавших m человек с суммой баллов Σ (у каждого из них было от ${T - d} до ${T - 1} баллов).\nИз общего среднего: ${A}s + ${B}n = ${T}(s + n), то есть s·${A - T} = n·${T - B}.\nИз среднего сдавших после: Σ = s·${A2 - A - d} + m·${A2 - d}. Из среднего не сдавших после: Σ = n·${B + d - B2} + m·${B2 - d}.\nСовместное решение даёт пропорцию s : n : m = ${s} : ${n} : ${m}, поэтому участников не меньше ${total}.\nПри этом Σ = ${sigma}, то есть средний балл перешедших равен ${ru2(sigma / m)} — он лежит между ${T - d} и ${T - 1}, значит такая ситуация возможна: ${s} ${plural(s, "участник", "участника", "участников")} по ${A} ${plural(A, "баллу", "балла", "баллов")}, ${m} с баллами ${moved.join(", ")} и ${n - m} с баллами ${rest.join(", ")}.\nОтвет: ${total}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: "fail-mean-down" },
+        b: { type: "yesno", yes: true, example: exB, target: "both-means-down" },
+        c: { type: "extremum", mode: "min", value: total, example: exC },
+      },
+      mustMention: [T, d, A, B, A2, B2],
+      extra: [],
+      phrases: ["целое неотрицательное число баллов", "количество сдавших тест увеличилось"],
     },
   })
 }
