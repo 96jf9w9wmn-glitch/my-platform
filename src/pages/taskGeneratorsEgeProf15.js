@@ -28,7 +28,6 @@ const gcd = (a, b) => { a = Math.abs(a); b = Math.abs(b); while (b) { [a, b] = [
 const MINUS = "−" // U+2212
 const SUPD = { 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹" }
 const SUBD = { 0: "₀", 1: "₁", 2: "₂", 3: "₃", 4: "₄", 5: "₅", 6: "₆", 7: "₇", 8: "₈", 9: "₉" }
-// eslint-disable-next-line no-unused-vars -- нужен в разделах с логарифмами (log₂, log₅)
 const subU = (n) => String(n).split("").map((c) => SUBD[c] ?? c).join("")
 const fT = (n, d) => `⟦f:${n}:${d}⟧`
 
@@ -252,8 +251,17 @@ export function verify15(item) {
     const L = lhs(x), R = rhs(x)
     if (!Number.isFinite(L) || !Number.isFinite(R)) return null
     const d = L - R
-    const tol = 1e-9 * Math.max(1, Math.abs(L), Math.abs(R))
-    return Math.abs(d) <= tol ? 0 : d
+    // Масштаб: у показательных/логарифмических выражений слагаемые огромны, а их разность
+    // около корня — почти ноль, поэтому относительный допуск берём по ЛОКАЛЬНОЙ величине
+    // функции (значения чуть в стороне), иначе float-шум сокращения читается как «не ноль».
+    const h = 1e-4 * Math.max(1, Math.abs(x))
+    let scale = Math.max(1, Math.abs(L), Math.abs(R))
+    for (const y of [x - h, x + h]) {
+      const l2 = lhs(y), r2 = rhs(y)
+      if (Number.isFinite(l2)) scale = Math.max(scale, Math.abs(l2))
+      if (Number.isFinite(r2)) scale = Math.max(scale, Math.abs(r2))
+    }
+    return Math.abs(d) <= 1e-9 * scale ? 0 : d
   }
   const cmpTo = (d) => (cmp === "≥" ? d >= 0 : cmp === ">" ? d > 0 : cmp === "≤" ? d <= 0 : d < 0)
   const near = (x) => crit.some((c) => Math.abs(x - c) < 1e-6)
@@ -663,6 +671,739 @@ export function t15RatSumSquare() {
   return null
 }
 
+
+// ════════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 2. ПОКАЗАТЕЛЬНЫЕ НЕРАВЕНСТВА
+// Общая схема: замена t = b^{±x} (монотонная), неравенство собирается из НУЛЕЙ по t,
+// обратный переход x = ±log_b t. Полюс t=0 недостижим, поэтому в x его нет.
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── показатели степени ──────────────────────────────────────────────────────
+// Степень: вне дроби — ⟦sup⟧; ВНУТРИ дроби/скобок — ⁅…⁆ (тот же надстрочник, но без
+// «:» и «⟧», иначе рвётся захват ⟦f⟧). Оба токена разворачивает renderTaskMath.
+function pw(base, exp, inFrac = false) {
+  const e = String(exp)
+  if (e === "1") return String(base)
+  return inFrac ? `${base}⁅${e}⁆` : `${base}⟦sup:${e}⟧`
+}
+// Показатель как многочлен: «x», «x + 3», «2x − 1», «−x», «x + 1/9»
+const expPoly = (terms) => polyStr(terms)
+
+// ── концы: x = dir·log_b(t) ─────────────────────────────────────────────────
+function powQ(b, k) { return k >= 0 ? Q(Math.round(Math.pow(b, k))) : Q(1, Math.round(Math.pow(b, -k))) }
+// bStr — как печатать основание («2», «5/4», «5/√6»); bVal — численное значение
+function epLog(bVal, t, dir = 1, bStr = null) {
+  const T = toQ(t)
+  const v = dir * Math.log(Qnum(T)) / Math.log(bVal)
+  if (!bStr) {
+    for (let k = -9; k <= 9; k++) { const P = powQ(bVal, k); if (P.p === T.p && P.q === T.q) return epQ(Q(dir * k)) }
+  }
+  const bs = bStr || String(bVal)
+  const arg = T.q === 1 ? String(T.p) : `(${T.p}/${T.q})`
+  const body = bs.length === 1 ? `log${subU(bs)}${arg}` : `log_{${bs}}${arg}`
+  return EP(v, dir > 0 ? body : MINUS + body)
+}
+
+// tCrit: [{t, mult, pole}] — нули/полюса по t (учитываются только t>0: остальные
+// недостижимы); leadT — знак приведённой формы при t→+∞; dir=±1 — t = b^{dir·x}.
+function buildExpo(o) {
+  const pos = o.tCrit.filter((c) => Qnum(toQ(c.t)) > 0)
+  if (!pos.length) return null
+  const parity = pos.reduce((a, c) => a + c.mult, 0) % 2
+  const lead = o.dir > 0 ? o.leadT : (parity ? -o.leadT : o.leadT)
+  const crit = pos.map((c) => ({ ep: epLog(o.base, toQ(c.t), o.dir, o.baseStr), mult: c.mult, pole: c.pole }))
+  return build({ ...o, crit, lead })
+}
+
+// [1] Квадратный трёхчлен по t = b^x: A·B^{x+m} − k·b^{x+q} + c ⋛ 0, B = b²
+//     (PDF пок.1: 4ˣ − 3·2^{x+2} + 32 ≥ 0; пок.12: 4^{x−3} − 71·2^{x−6} + 7 ≤ 0)
+export function t15ExpQuad() {
+  for (let it = 0; it < 2000; it++) {
+    const b = pick([2, 3, 5, 7]), B = b * b
+    const m = randInt(-3, 1), A = pick([1, 1, 1, 2, 3, 4])
+    const a = Qmul(Q(A), powQ(b, 2 * m))                 // коэффициент при t²
+    const i1 = randInt(-2, 4), i2 = randInt(-2, 4)
+    const useInt = Math.random() < 0.4
+    const t1 = powQ(b, i1)
+    const t2 = useInt ? Q(randInt(2, 60)) : powQ(b, i2)
+    if (Math.abs(Qnum(t1) - Qnum(t2)) < 1e-9) continue
+    const sum = Qadd(t1, t2), prod = Qmul(t1, t2)
+    const c = Qmul(a, prod)
+    if (c.q !== 1 || c.p > 4000) continue
+    const q = randInt(0, 3)
+    const kq = Qmul(Qmul(a, sum), Q(1, Math.round(Math.pow(b, q))))
+    if (kq.q !== 1 || kq.p > 400) continue
+    const k = kq.p
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const sqTerm = (A === 1 ? "" : `${A}·`) + pw(B, expPoly([{ c: 1, k: 1 }, { c: m, k: 0 }]))
+    const linTerm = (k === 1 ? "" : `${k}·`) + pw(b, expPoly([{ c: 1, k: 1 }, { c: q, k: 0 }]))
+    const text = `${sqTerm} ${MINUS} ${linTerm} + ${c.p} ${cmp} 0`
+    const F = (x) => A * Math.pow(B, x + m) - k * Math.pow(b, x + q) + c.p
+    const res = buildExpo({
+      text, cmp, base: b, dir: 1, leadT: 1,
+      lhs: F, rhs: () => 0,
+      tCrit: [{ t: t1, mult: 1, pole: false }, { t: t2, mult: 1, pole: false }],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [2] Тот же трёхчлен, но с ОТРИЦАТЕЛЬНЫМ показателем: t = b^{−x} (порядок концов
+//     переворачивается) — PDF пок.4: 2·16^{−x} − 17·4^{−x} + 8 ≤ 0
+export function t15ExpQuadNeg() {
+  for (let it = 0; it < 2000; it++) {
+    const b = pick([2, 3, 4, 5]), B = b * b
+    const A = pick([1, 2, 3])
+    const i1 = randInt(-2, 3), i2 = randInt(-2, 3)
+    const t1 = powQ(b, i1), t2 = Math.random() < 0.4 ? Q(randInt(2, 40)) : powQ(b, i2)
+    if (Math.abs(Qnum(t1) - Qnum(t2)) < 1e-9) continue
+    const a = Q(A)
+    const c = Qmul(a, Qmul(t1, t2)), kk = Qmul(a, Qadd(t1, t2))
+    if (c.q !== 1 || kk.q !== 1 || c.p > 2000 || kk.p > 300) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const negX = expPoly([{ c: -1, k: 1 }])
+    const sqTerm = (A === 1 ? "" : `${A}·`) + pw(B, negX)
+    const linTerm = (kk.p === 1 ? "" : `${kk.p}·`) + pw(b, negX)
+    const text = `${sqTerm} ${MINUS} ${linTerm} + ${c.p} ${cmp} 0`
+    const F = (x) => A * Math.pow(B, -x) - kk.p * Math.pow(b, -x) + c.p
+    const res = buildExpo({
+      text, cmp, base: b, dir: -1, leadT: 1,
+      lhs: F, rhs: () => 0,
+      tCrit: [{ t: t1, mult: 1, pole: false }, { t: t2, mult: 1, pole: false }],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [3] Дробный сдвиг в показателе: u = b^{x+f} (PDF пок.11: 9^{x+1/9} − 4·3^{x+10/9} + 27 ≥ 0)
+//     Ловушка: замена обязана «съесть» дробь, иначе коэффициенты не сойдутся.
+export function t15ExpQuadFracShift() {
+  for (let it = 0; it < 1500; it++) {
+    const b = pick([2, 3, 5]), B = b * b
+    const den = pick([3, 4, 5, 6, 7, 8, 9]), nume = randInt(1, den - 1)
+    if (gcd(nume, den) !== 1) continue
+    const f = Q(nume, den)
+    const i1 = randInt(0, 3), i2 = randInt(0, 4)
+    if (i1 === i2) continue
+    const t1 = powQ(b, i1), t2 = powQ(b, i2)
+    const sum = Qadd(t1, t2), prod = Qmul(t1, t2)
+    const kq = Qmul(sum, Q(1, b))
+    if (kq.q !== 1 || prod.q !== 1) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const e0 = [{ c: 1, k: 1 }, { c: f, k: 0 }]
+    const e1 = [{ c: 1, k: 1 }, { c: Qadd(f, Q(1)), k: 0 }]
+    const text = `${pw(B, expPoly(e0))} ${MINUS} ${kq.p === 1 ? "" : `${kq.p}·`}${pw(b, expPoly(e1))} + ${prod.p} ${cmp} 0`
+    const fv = Qnum(f)
+    const F = (x) => Math.pow(B, x + fv) - kq.p * Math.pow(b, x + fv + 1) + prod.p
+    // u = b^{x+f} = t ⟺ x = log_b t − f
+    const crit = [t1, t2].map((t) => {
+      const e = epLog(b, t, 1)
+      return { ep: epQ(Qadd(Q(Math.round(e.v)), Q(-f.p, f.q))), mult: 1, pole: false }
+    })
+    const res = build({ text, cmp, lhs: F, rhs: () => 0, lead: 1, crit })
+    if (res) return res
+  }
+  return null
+}
+
+// [4] Составной показатель φ(x) = ε(x−h)² + d  (PDF пок.15: 9^{4x−x²−1} − 36·3^{4x−x²−1} + 243 ≥ 0)
+//     При e = d вершина даёт ИЗОЛИРОВАННУЮ точку ответа.
+export function t15ExpQuadComposite() {
+  for (let it = 0; it < 1500; it++) {
+    const b = pick([2, 3, 5]), B = b * b
+    const eps = pick([1, -1]), h = randInt(-3, 3), d = randInt(-4, 4)
+    let e1 = randInt(-3, 4), e2 = randInt(-3, 4)
+    if (e1 === e2) continue
+    if (e1 > e2) [e1, e2] = [e2, e1]
+    const t1 = powQ(b, e1), t2 = powQ(b, e2)
+    const sum = Qadd(t1, t2), prod = Qmul(t1, t2)
+    if (sum.q !== 1 || prod.q !== 1 || prod.p > 3000) continue
+    // x-нули: φ(x) = e ⟺ (x−h)² = ε(e−d)
+    const crit = []
+    let anyReal = false
+    for (const e of [e1, e2]) {
+      const D = eps * (e - d)
+      if (D < 0) continue
+      anyReal = true
+      if (D === 0) crit.push({ ep: epQ(Q(h)), mult: 2, pole: false })
+      else { crit.push({ ep: epSurd(h, D, -1), mult: 1, pole: false }, { ep: epSurd(h, D, +1), mult: 1, pole: false }) }
+    }
+    if (!anyReal || crit.length < 2) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    // показ φ: εx² − 2εh·x + (εh² + d)
+    const phiTerms = [{ c: eps, k: 2 }, { c: -2 * eps * h, k: 1 }, { c: eps * h * h + d, k: 0 }]
+    const phi = expPoly(phiTerms)
+    const text = `${pw(B, phi)} ${MINUS} ${sum.p === 1 ? "" : `${sum.p}·`}${pw(b, phi)} + ${prod.p} ${cmp} 0`
+    const PHI = (x) => eps * (x - h) * (x - h) + d
+    const F = (x) => Math.pow(B, PHI(x)) - sum.p * Math.pow(b, PHI(x)) + prod.p
+    // знак при x→+∞: φ→ε·∞ ⟹ t→+∞ (ε=+1) либо t→0+ (ε=−1); в обоих случаях (t−t1)(t−t2)>0
+    const res = build({ text, cmp, lhs: F, rhs: () => 0, lead: 1, crit })
+    if (res) return res
+  }
+  return null
+}
+
+// [5] Двойная замена: w = B^x − 2·b^x, затем квадрат по w
+//     (PDF пок.14: (9ˣ−2·3ˣ)² − 62(9ˣ−2·3ˣ) − 63 ≥ 0) — минимум w = −1 даёт изолированную точку.
+export function t15ExpNestedQuad() {
+  for (let it = 0; it < 600; it++) {
+    const b = pick([2, 3, 5]), B = b * b
+    const j = randInt(2, 4)
+    const t2 = Math.round(Math.pow(b, j))            // второй нуль: t = b^j > 2
+    const w2 = t2 * t2 - 2 * t2                       // внешний корень
+    if (w2 <= 0 || w2 > 5000) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const w = `(${pw(B, "x")} ${MINUS} 2·${pw(b, "x")})`
+    const text = `${w}${SUPD[2]} ${MINUS} ${w2 - 1}${w} ${MINUS} ${w2} ${cmp} 0`
+    const W = (x) => Math.pow(B, x) - 2 * Math.pow(b, x)
+    const F = (x) => W(x) * W(x) - (w2 - 1) * W(x) - w2
+    // F = (w+1)(w−w2); w+1 = (t−1)² ⟹ x=0 кратности 2; w−w2 = (t−t2)(t+t2−2) ⟹ x=j
+    const res = build({
+      text, cmp, lhs: F, rhs: () => 0, lead: 1,
+      crit: [{ ep: epQ(0), mult: 2, pole: false }, { ep: epQ(j), mult: 1, pole: false }],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [6] A·b^{x+m} + B·b^{n−x} ⋛ C  (PDF пок.2: 2ˣ + 3·2^{−x} ≤ 4; пок.7: 2^{x+1} + 0,5^{x−3} ≥ 17)
+//     Полюса t=0 нет: t>0, поэтому знак равен знаку квадратного числителя.
+export function t15ExpRecip() {
+  for (let it = 0; it < 2000; it++) {
+    const b = pick([2, 3, 5, 7]), m = randInt(0, 1)
+    const i1 = randInt(-1, 3), i2 = randInt(-1, 3)
+    if (i1 === i2) continue
+    const t1 = powQ(b, i1), t2 = Math.random() < 0.35 ? Q(randInt(2, 30)) : powQ(b, i2)
+    if (Math.abs(Qnum(t1) - Qnum(t2)) < 1e-9) continue
+    const a = Qmul(Q(1), powQ(b, m))                 // коэффициент при t
+    const C = Qmul(a, Qadd(t1, t2))                  // A·b^m·(t1+t2)
+    const Bc = Qmul(a, Qmul(t1, t2))                 // свободный член: B·b^n
+    if (C.q !== 1 || Bc.q !== 1 || C.p > 400 || Bc.p > 400) continue
+    // второй член: Bc/t = Bc·b^{−x}; показываем как b^{n−x} при Bc = b^n, иначе с коэффициентом
+    const n = Math.round(Math.log(Bc.p) / Math.log(b))
+    const exact = Math.abs(Math.pow(b, n) - Bc.p) < 1e-9
+    const invStyle = exact && Math.random() < 0.5 && [2, 4, 5].includes(b)
+    const DEC = { 2: "0,5", 4: "0,25", 5: "0,2" }
+    const t1Term = pw(b, expPoly([{ c: 1, k: 1 }, { c: m, k: 0 }]))
+    const t2Term = invStyle
+      ? pw(DEC[b], expPoly([{ c: 1, k: 1 }, { c: -n, k: 0 }]))          // 0,5^{x−3}
+      : (exact ? pw(b, expPoly([{ c: -1, k: 1 }, { c: n, k: 0 }]))      // 2^{3−x}
+        : `${Bc.p}·${pw(b, expPoly([{ c: -1, k: 1 }]))}`)               // 3·2^{−x}
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const text = `${t1Term} + ${t2Term} ${cmp} ${C.p}`
+    const F = (x) => Math.pow(b, x + m) + Bc.p * Math.pow(b, -x)
+    const res = buildExpo({
+      text, cmp, base: b, dir: 1, leadT: 1,
+      lhs: F, rhs: () => C.p,
+      tCrit: [{ t: t1, mult: 1, pole: false }, { t: t2, mult: 1, pole: false }],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [7] Симметричное: B^x + k·b^{x+s} + k·b^{s−x} + 1/B^x ⋛ C   (PDF пок.33: 9ˣ+3^{x+1}+3^{1−x}+1/9ˣ ≤ 8)
+//     y = t + 1/t ≥ 2: ответ — отрезок [−j; j] (при q=1 — одна точка {0}).
+export function t15ExpSymmetric() {
+  for (let it = 0; it < 400; it++) {
+    const b = pick([2, 3, 5]), B = b * b
+    const s = randInt(0, 1), k = Math.round(Math.pow(b, s))
+    const j = randInt(0, 2)
+    const qq = Qadd(powQ(b, j), powQ(b, -j))          // y₂ = q + 1/q
+    const C = Qadd(Qadd(Qmul(qq, qq), Qmul(Q(k), qq)), Q(-2))
+    if (C.q !== 1 || C.p > 3000) continue
+    const cmp = pick(["≤", "≥", "<", ">"])
+    const text = `${pw(B, "x")} + ${pw(b, expPoly([{ c: 1, k: 1 }, { c: s, k: 0 }]))}` +
+      ` + ${pw(b, expPoly([{ c: -1, k: 1 }, { c: s, k: 0 }]))} + ${fT(1, pw(B, "x", true))} ${cmp} ${C.p}`
+    const F = (x) => Math.pow(B, x) + Math.pow(b, x + s) + Math.pow(b, s - x) + 1 / Math.pow(B, x)
+    const crit = j === 0
+      ? [{ ep: epQ(0), mult: 2, pole: false }]
+      : [{ ep: epQ(-j), mult: 1, pole: false }, { ep: epQ(j), mult: 1, pole: false }]
+    const res = build({ text, cmp, lhs: F, rhs: () => C.p, lead: 1, crit })
+    if (res) return res
+  }
+  return null
+}
+
+// [8] Разложение на множители по двум базам: (aˣ−p)(bˣ−q) ⋛ 0 в раскрытом виде
+//     (PDF пок.5: 15ˣ − 9·5ˣ − 3ˣ + 9 ≤ 0)
+export function t15ExpFactorTwo() {
+  for (let it = 0; it < 600; it++) {
+    const [a, b] = pick([[5, 3], [3, 2], [7, 2], [5, 2], [3, 5], [2, 3]])
+    if (a === b) continue
+    const i = randInt(-1, 2), j = randInt(-1, 2)
+    const P = powQ(a, i), Qq = powQ(b, j)             // aˣ = P ⟺ x = i;  bˣ = Q ⟺ x = j
+    if (i === j) continue
+    if (P.q !== 1 || Qq.q !== 1) continue
+    const prod = P.p * Qq.p
+    if (prod > 2000) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const c1 = Qq.p === 1 ? "" : `${Qq.p}·`, c2 = P.p === 1 ? "" : `${P.p}·`
+    const text = `${pw(a * b, "x")} ${MINUS} ${c1}${pw(a, "x")} ${MINUS} ${c2}${pw(b, "x")} + ${prod} ${cmp} 0`
+    const F = (x) => Math.pow(a * b, x) - Qq.p * Math.pow(a, x) - P.p * Math.pow(b, x) + prod
+    const res = build({
+      text, cmp, lhs: F, rhs: () => 0, lead: 1,
+      crit: [{ ep: epQ(i), mult: 1, pole: false }, { ep: epQ(j), mult: 1, pole: false }],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [9] Однородное: A·(a²)ˣ − B·(ab)ˣ − C·(b²)ˣ ⋛ 0 → делим на (b²)ˣ, z = (a/b)ˣ
+//     (PDF пок.13: 25ˣ − 20ˣ − 2·16ˣ ≤ 0)
+export function t15ExpHomogQuad() {
+  for (let it = 0; it < 600; it++) {
+    const [a, b] = pick([[5, 4], [3, 2], [5, 2], [5, 3], [4, 3], [7, 2]])
+    const A = pick([1, 1, 2, 3])
+    const z1 = randInt(1, 6)                          // положительный корень z
+    const z2 = -randInt(1, 4)                         // отрицательный (недостижим)
+    const Bc = A * (z1 + z2), Cc = -A * z1 * z2       // A z² − B z − C
+    if (Bc <= 0 || Cc <= 0 || Bc > 60 || Cc > 200) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const text = `${A === 1 ? "" : `${A}·`}${pw(a * a, "x")} ${MINUS} ${Bc === 1 ? "" : `${Bc}·`}${pw(a * b, "x")} ${MINUS} ${Cc === 1 ? "" : `${Cc}·`}${pw(b * b, "x")} ${cmp} 0`
+    const F = (x) => A * Math.pow(a * a, x) - Bc * Math.pow(a * b, x) - Cc * Math.pow(b * b, x)
+    const res = buildExpo({
+      text, cmp, base: a / b, baseStr: `${a}/${b}`, dir: 1, leadT: 1,
+      lhs: F, rhs: () => 0,
+      tCrit: [{ t: Q(z1), mult: 1, pole: false }],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [10] Вынос общего множителя из суммы степеней (PDF пок.3: 9^{x−3} − 9^{x−2} + 9^{x−1} > 511)
+export function t15ExpGeomSum() {
+  for (let it = 0; it < 600; it++) {
+    const b = pick([2, 3, 5, 9]), k = randInt(1, 3)
+    const sgn = [1, pick([-1, 1]), 1]
+    const S = sgn[0] + sgn[1] * b + sgn[2] * b * b
+    if (S <= 0) continue
+    const mQ = Math.random() < 0.5 ? Q(randInt(2, 30)) : powQ(b, randInt(1, 3))
+    const C = Qmul(Q(S), mQ)
+    if (C.q !== 1 || C.p > 200000) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const term = (i) => pw(b, expPoly([{ c: 1, k: 1 }, { c: -k + i, k: 0 }]))
+    const text = `${term(0)} ${sgn[1] < 0 ? MINUS : "+"} ${term(1)} + ${term(2)} ${cmp} ${C.p}`
+    const F = (x) => Math.pow(b, x - k) + sgn[1] * Math.pow(b, x - k + 1) + Math.pow(b, x - k + 2)
+    // S·b^{x−k} ⋛ C ⟺ b^{x−k} ⋛ m
+    const e = epLog(b, mQ, 1)
+    const res = build({
+      text, cmp, lhs: F, rhs: () => C.p, lead: 1,
+      crit: [{ ep: EP(e.v + k, e.s === String(Math.round(e.v)) ? qAns(Q(Math.round(e.v) + k)) : `${k} + ${e.s}`), mult: 1, pole: false }],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [11] Разные основания и x² в показателе: a^{x²}·b^{x−1} ⋛ a  (PDF пок.24: 3^{x²}·5^{x−1} ≥ 3)
+//      Логарифмируем: (x−1)((x+1)·ln a + ln b) ⋛ 0 — второй корень иррациональный.
+export function t15ExpMixedQuad() {
+  for (let it = 0; it < 200; it++) {
+    const a = pick([2, 3, 5]), b = pick([2, 3, 5, 7])
+    if (a === b) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const text = `${pw(a, "x" + SUPD[2])}·${pw(b, expPoly([{ c: 1, k: 1 }, { c: -1, k: 0 }]))} ${cmp} ${a}`
+    const F = (x) => Math.pow(a, x * x) * Math.pow(b, x - 1)
+    const r2 = -1 - Math.log(b) / Math.log(a)
+    const res = build({
+      text, cmp, lhs: F, rhs: () => a, lead: 1,
+      crit: [
+        { ep: EP(r2, `${MINUS}1 ${MINUS} log${subU(a)}${b}`), mult: 1, pole: false },
+        { ep: epQ(1), mult: 1, pole: false },
+      ],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [12] Корни от степеней: ⁿ√(A^{px+q}) ⋛ (B^{(rx+s)/x})^{1/2} — сводится к рациональному
+//      неравенству с полюсом x=0 (PDF пок.10: ⁵√(32^{4x−3}) < √(16^{(2x+1)/x}))
+export function t15ExpRootPower() {
+  for (let it = 0; it < 2000; it++) {
+    const n = pick([3, 5]), base = 2
+    const A = Math.round(Math.pow(base, n))            // 32 = 2⁵, 8 = 2³
+    const p = randInt(2, 5), q = randInt(-5, 5)        // левый показатель: (px+q), после корня — px+q
+    const mBase = pick([4, 16]), mm = Math.round(Math.log(mBase) / Math.log(base)) // 16 = 2⁴
+    const r = randInt(1, 3), sN = randInt(-4, 4)
+    // левая часть: 2^{px+q}; правая: 2^{(mm/2)·(rx+s)/x}
+    const w = Q(mm, 2)
+    // p·x + q ⋛ w·(r x + s)/x  ⟺ (p x² + (q − w r)x − w s)/x ⋛ 0
+    const c2 = Q(p), c1 = Qadd(Q(q), Qmul(Q(-1), Qmul(w, Q(r)))), c0 = Qmul(Q(-1), Qmul(w, Q(sN)))
+    const disc = Qadd(Qmul(c1, c1), Qmul(Q(-4), Qmul(c2, c0)))
+    if (Qnum(disc) <= 0) continue
+    const Dnum = Qnum(disc)
+    const sq = Math.round(Math.sqrt(Dnum))
+    if (Math.abs(sq * sq - Dnum) > 1e-9) continue      // корни рациональные
+    const x1 = Q(-c1.p * 2 * c2.q - sq * c1.q * 2 * c2.q, 0) // (заглушка не нужна)
+    void x1
+    const r1 = Q(Math.round((-Qnum(c1) - sq) * 1e6), Math.round(2 * Qnum(c2) * 1e6))
+    const r2 = Q(Math.round((-Qnum(c1) + sq) * 1e6), Math.round(2 * Qnum(c2) * 1e6))
+    if (Math.abs(Qnum(r1)) < 1e-9 || Math.abs(Qnum(r2)) < 1e-9) continue
+    if (Math.abs(Qnum(r1) - Qnum(r2)) < 1e-9) continue
+    if (Math.abs(r1.q) > 12 || Math.abs(r2.q) > 12) continue
+    const cmp = pick([">", "<"])
+    const left = `${SUPD[n]}√(${pw(A, expPoly([{ c: p, k: 1 }, { c: q, k: 0 }]), true)})`
+    const right = `√(${mBase}⟦sup:${fT(expPoly([{ c: r, k: 1 }, { c: sN, k: 0 }]), "x")}⟧)`
+    const text = `${left} ${cmp} ${right}`
+    const F = (x) => Math.pow(A, (p * x + q) / n)
+    const G = (x) => Math.sqrt(Math.pow(mBase, (r * x + sN) / x))
+    const res = build({
+      text, cmp, lhs: F, rhs: G,
+      domainOK: (x) => Math.abs(x) > 1e-12,
+      lead: 1,
+      crit: [
+        { ep: epQ(r1), mult: 1, pole: false },
+        { ep: epQ(r2), mult: 1, pole: false },
+        { ep: epQ(0), mult: 1, pole: true },
+      ],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+
+// ── дробно-рациональные по t = b^x ──────────────────────────────────────────
+// Степени ВНУТРИ дроби печатаем юникод-надстрочником (pw(..., true)).
+
+// [13] (B^x + βb^x + γ)/(b^x − p) ⋛ C   (PDF пок.8: (9ˣ+2·3ˣ−117)/(3ˣ−27) ≤ 1)
+export function t15ExpFracQuadLin() {
+  for (let it = 0; it < 1500; it++) {
+    const b = pick([2, 3, 5]), B = b * b
+    const ip = randInt(1, 4), p = Math.round(Math.pow(b, ip))
+    const r1 = powQ(b, randInt(0, 3))                       // достижимый нуль
+    const r2 = Q(pick([-1, 1]) * randInt(2, 30))            // второй (часто отрицательный)
+    if (Math.abs(Qnum(r1) - Qnum(r2)) < 1e-9 || Math.abs(Qnum(r1) - p) < 1e-9) continue
+    if (Math.abs(Qnum(r2) - p) < 1e-9) continue
+    const C = randInt(-3, 3)
+    const beta = Qadd(Qmul(Q(-1), Qadd(r1, r2)), Q(C))
+    const gam = Qadd(Qmul(r1, r2), Q(-C * p))
+    if (beta.q !== 1 || gam.q !== 1 || beta.p === 0 || gam.p === 0) continue
+    if (Math.abs(beta.p) > 60 || Math.abs(gam.p) > 900) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const num = `${pw(B, "x", true)} ${beta.p < 0 ? MINUS : "+"} ${Math.abs(beta.p) === 1 ? "" : Math.abs(beta.p) + "·"}${pw(b, "x", true)} ${gam.p < 0 ? MINUS : "+"} ${Math.abs(gam.p)}`
+    const den = `${pw(b, "x", true)} ${MINUS} ${p}`
+    const text = `${fT(num, den)} ${cmp} ${qAns(Q(C))}`
+    const F = (x) => (Math.pow(B, x) + beta.p * Math.pow(b, x) + gam.p) / (Math.pow(b, x) - p)
+    const res = buildExpo({
+      text, cmp, base: b, dir: 1, leadT: 1,
+      lhs: F, rhs: () => C,
+      domainOK: (x) => Math.abs(Math.pow(b, x) - p) > 1e-12,
+      tCrit: [
+        { t: r1, mult: 1, pole: false }, { t: r2, mult: 1, pole: false },
+        { t: Q(p), mult: 1, pole: true },
+      ],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [14] (A − k·b^x)/(B^x + βb^x + γ) ⋛ C   (PDF пок.18: (13−5·3ˣ)/(9ˣ−12·3ˣ+27) ≥ 0,5)
+//      Числитель приведения — ПОЛНЫЙ КВАДРАТ −C(t−u)²: знак не меняется.
+export function t15ExpFracLinQuad() {
+  for (let it = 0; it < 1500; it++) {
+    const b = pick([2, 3, 5]), B = b * b
+    const p1 = Math.round(Math.pow(b, randInt(1, 3))), p2 = Math.round(Math.pow(b, randInt(1, 3)))
+    if (p1 === p2) continue
+    const C = pick([Q(1, 2), Q(1), Q(2)])
+    const dbl = Math.random() < 0.6
+    const u1 = powQ(b, randInt(0, 2)), u2 = dbl ? u1 : powQ(b, randInt(0, 3))
+    if (Qnum(u1) === p1 || Qnum(u1) === p2 || Qnum(u2) === p1 || Qnum(u2) === p2) continue
+    const k = Qmul(C, Qadd(Q(p1 + p2), Qmul(Q(-1), Qadd(u1, u2))))
+    const A = Qmul(C, Qadd(Q(p1 * p2), Qmul(Q(-1), Qmul(u1, u2))))
+    if (k.q !== 1 || A.q !== 1 || k.p <= 0 || A.p === 0) continue
+    if (Math.abs(A.p) > 400 || k.p > 90) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const num = `${A.p} ${MINUS} ${k.p === 1 ? "" : k.p + "·"}${pw(b, "x", true)}`
+    const beta = -(p1 + p2), gam = p1 * p2
+    const den = `${pw(B, "x", true)} ${MINUS} ${Math.abs(beta)}·${pw(b, "x", true)} + ${gam}`
+    const text = `${fT(num, den)} ${cmp} ${qDec(C)}`
+    const F = (x) => (A.p - k.p * Math.pow(b, x)) / (Math.pow(B, x) + beta * Math.pow(b, x) + gam)
+    const tC = [{ t: Q(p1), mult: 1, pole: true }, { t: Q(p2), mult: 1, pole: true }]
+    if (dbl) tC.push({ t: u1, mult: 2, pole: false })
+    else tC.push({ t: u1, mult: 1, pole: false }, { t: u2, mult: 1, pole: false })
+    const res = buildExpo({
+      text, cmp, base: b, dir: 1, leadT: -1,   // ведущий коэффициент числителя = −C < 0
+      lhs: F, rhs: () => Qnum(C),
+      domainOK: (x) => Math.abs(Math.pow(b, x) - p1) > 1e-12 && Math.abs(Math.pow(b, x) - p2) > 1e-12,
+      tCrit: tC,
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [15] A/(b^x − p) ⋛ B/(b^x − q)   (PDF пок.9: 2/(7ˣ−7) ≥ 5/(7ˣ−4))
+export function t15ExpFracTwo() {
+  for (let it = 0; it < 1500; it++) {
+    const b = pick([2, 3, 5, 7])
+    const p = Math.round(Math.pow(b, randInt(1, 3))), q = randInt(2, 40)
+    if (p === q) continue
+    const A = randInt(1, 9), Bc = randInt(1, 9)
+    if (A === Bc) continue
+    const t0 = Q(A * q - Bc * p, A - Bc)
+    if (Qnum(t0) <= 0) continue
+    if (Math.abs(Qnum(t0) - p) < 1e-9 || Math.abs(Qnum(t0) - q) < 1e-9) continue
+    if (t0.q !== 1 || Math.abs(t0.p) > 400) continue   // ответ вида log_b(целое)
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const text = `${fT(A, `${pw(b, "x", true)} ${MINUS} ${p}`)} ${cmp} ${fT(Bc, `${pw(b, "x", true)} ${MINUS} ${q}`)}`
+    const F = (x) => A / (Math.pow(b, x) - p), G = (x) => Bc / (Math.pow(b, x) - q)
+    const res = buildExpo({
+      text, cmp, base: b, dir: 1, leadT: A - Bc > 0 ? 1 : -1,
+      lhs: F, rhs: G,
+      domainOK: (x) => Math.abs(Math.pow(b, x) - p) > 1e-12 && Math.abs(Math.pow(b, x) - q) > 1e-12,
+      tCrit: [
+        { t: t0, mult: 1, pole: false },
+        { t: Q(p), mult: 1, pole: true }, { t: Q(q), mult: 1, pole: true },
+      ],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [16] (b^x − a)/(b^x − c) ⋛ 1 + 1/(b^x − d)   (PDF пок.6: (3ˣ−1)/(3ˣ−3) ≤ 1 + 1/(3ˣ−2))
+export function t15ExpFracShiftOne() {
+  for (let it = 0; it < 1500; it++) {
+    const b = pick([2, 3, 5])
+    const a = Math.round(Math.pow(b, randInt(0, 2)))
+    const c = Math.round(Math.pow(b, randInt(0, 3))), d = randInt(2, 25)
+    if (a === c || c === d || a === d) continue
+    const L = c - a - 1
+    if (L === 0) continue
+    const t0 = Q((c - a) * d - c, L)
+    if (Qnum(t0) <= 0 || t0.q !== 1 || Math.abs(t0.p) > 300) continue
+    if ([c, d].some((v) => Math.abs(Qnum(t0) - v) < 1e-9)) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const text = `${fT(`${pw(b, "x", true)} ${MINUS} ${a}`, `${pw(b, "x", true)} ${MINUS} ${c}`)} ${cmp} 1 + ${fT(1, `${pw(b, "x", true)} ${MINUS} ${d}`)}`
+    const F = (x) => (Math.pow(b, x) - a) / (Math.pow(b, x) - c)
+    const G = (x) => 1 + 1 / (Math.pow(b, x) - d)
+    const res = buildExpo({
+      text, cmp, base: b, dir: 1, leadT: L > 0 ? 1 : -1,
+      lhs: F, rhs: G,
+      domainOK: (x) => Math.abs(Math.pow(b, x) - c) > 1e-12 && Math.abs(Math.pow(b, x) - d) > 1e-12,
+      tCrit: [
+        { t: t0, mult: 1, pole: false },
+        { t: Q(c), mult: 1, pole: true }, { t: Q(d), mult: 1, pole: true },
+      ],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [17] 1 + A/(b^x − p) + Bc/(B^x − 2p·b^x + p²) ⋛ 0  — знаменатель второй дроби = (b^x−p)²
+//      (PDF пок.17: 1 + 11/(2ˣ−8) + 28/(4ˣ−2^{x+4}+64) ≥ 0)
+export function t15ExpFracSqDen() {
+  for (let it = 0; it < 1500; it++) {
+    const b = pick([2, 3, 5]), B = b * b
+    const ip = randInt(1, 4), p = Math.round(Math.pow(b, ip))
+    const u1 = -randInt(1, p - 1), u2 = -randInt(1, p - 1)
+    if (u1 === u2) continue
+    const t1 = p + u1, t2 = p + u2
+    if (t1 <= 0 || t2 <= 0) continue
+    const A = -(u1 + u2), Bc = u1 * u2
+    if (A === 0 || Bc === 0 || A > 200 || Bc > 900) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const twoP = 2 * p
+    const lg = Math.round(Math.log(twoP) / Math.log(b))
+    const midTerm = Math.abs(Math.pow(b, lg) - twoP) < 1e-9
+      ? pw(b, expPoly([{ c: 1, k: 1 }, { c: lg, k: 0 }]), true)
+      : `${twoP}·${pw(b, "x", true)}`
+    const den2 = `${pw(B, "x", true)} ${MINUS} ${midTerm} + ${p * p}`
+    const text = `1 + ${fT(A, `${pw(b, "x", true)} ${MINUS} ${p}`)} + ${fT(Bc, den2)} ${cmp} 0`
+    const F = (x) => 1 + A / (Math.pow(b, x) - p) + Bc / Math.pow(Math.pow(b, x) - p, 2)
+    const res = buildExpo({
+      text, cmp, base: b, dir: 1, leadT: 1,
+      lhs: F, rhs: () => 0,
+      domainOK: (x) => Math.abs(Math.pow(b, x) - p) > 1e-12,
+      tCrit: [
+        { t: Q(t1), mult: 1, pole: false }, { t: Q(t2), mult: 1, pole: false },
+        { t: Q(p), mult: 2, pole: true },
+      ],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [18] A/(b^{φ}−1)² − Bc/(b^{φ}−1) + 1 ⋛ 0 при φ = d − x² (составной показатель)
+//      (PDF пок.22: 3/(2^{2−x²}−1)² − 4/(2^{2−x²}−1) + 1 ≥ 0)
+export function t15ExpFracRecipComp() {
+  for (let it = 0; it < 1500; it++) {
+    const b = pick([2, 3, 4]), d = randInt(1, 4)
+    let e1 = randInt(1, d), e2 = randInt(1, d)
+    if (e1 === e2) continue
+    if (e1 > e2) [e1, e2] = [e2, e1]
+    const u1 = Math.round(Math.pow(b, e1)) - 1, u2 = Math.round(Math.pow(b, e2)) - 1
+    if (u1 <= 0 || u2 <= 0) continue
+    const Bc = u1 + u2, A = u1 * u2
+    if (A > 900 || Bc > 200) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const phi = expPoly([{ c: d, k: 0 }, { c: -1, k: 2 }])   // как в ФИПИ: «2 − x²»
+    const base1 = `${pw(b, phi, true)} ${MINUS} 1`
+    const text = `${fT(A, `(${base1})${SUPD[2]}`)} ${MINUS} ${fT(Bc, base1)} + 1 ${cmp} 0`
+    const PHI = (x) => d - x * x
+    const T = (x) => Math.pow(b, PHI(x)) - 1
+    const F = (x) => A / (T(x) * T(x)) - Bc / T(x) + 1
+    // нули: φ = e_i ⟺ x² = d − e_i ; полюс: φ = 0 ⟺ x = ±√d
+    const crit = []
+    for (const e of [e1, e2]) {
+      const D = d - e
+      if (D < 0) continue
+      if (D === 0) crit.push({ ep: epQ(0), mult: 2, pole: false })
+      else crit.push({ ep: epSurd(0, D, -1), mult: 1, pole: false }, { ep: epSurd(0, D, +1), mult: 1, pole: false })
+    }
+    if (crit.length < 2) continue
+    // знаменатель — u², поэтому полюс ДВОЙНОЙ: знак в нём не меняется
+    crit.push({ ep: epSurd(0, d, -1), mult: 2, pole: true }, { ep: epSurd(0, d, +1), mult: 2, pole: true })
+    // при x→+∞: φ→−∞ ⟹ t→0+ ⟹ u = t−1 → −1 ⟹ F → (A + Bc + 1) > 0
+    const res = build({
+      text, cmp, lhs: F, rhs: () => 0, lead: 1,
+      domainOK: (x) => Math.abs(T(x)) > 1e-12,
+      crit,
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [19] (b^x+a)/(b^x−a) + (b^x−a)/(b^x+a) ⋛ (k·b^{x+s} + c)/(B^x − a²)
+//      (PDF пок.19: (3ˣ+9)/(3ˣ−9) + (3ˣ−9)/(3ˣ+9) ≥ (4·3^{x+1}+144)/(9ˣ−81))
+export function t15ExpFracConj() {
+  for (let it = 0; it < 1500; it++) {
+    const b = pick([2, 3, 5]), B = b * b
+    const ia = randInt(1, 3), a = Math.round(Math.pow(b, ia))
+    const dbl = Math.random() < 0.6
+    const u1 = powQ(b, randInt(0, 3)), u2 = dbl ? u1 : powQ(b, randInt(0, 3))
+    if (Qnum(u1) === a || Qnum(u2) === a) continue
+    const k = Qmul(Q(2), Qadd(u1, u2))                       // коэффициент при t
+    const c = Qadd(Q(2 * a * a), Qmul(Q(-2), Qmul(u1, u2)))
+    if (k.q !== 1 || c.q !== 1 || k.p <= 0 || c.p === 0) continue
+    if (k.p > 300 || Math.abs(c.p) > 3000) continue
+    // k·t показываем как K·b^{x+s}
+    let s = 0, K = k.p
+    while (K % b === 0 && s < 3) { K /= b; s++ }
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const left = `${fT(`${pw(b, "x", true)} + ${a}`, `${pw(b, "x", true)} ${MINUS} ${a}`)} + ${fT(`${pw(b, "x", true)} ${MINUS} ${a}`, `${pw(b, "x", true)} + ${a}`)}`
+    const kTerm = s === 0 ? `${K === 1 ? "" : K + "·"}${pw(b, "x", true)}`
+      : `${K === 1 ? "" : K + "·"}${pw(b, expPoly([{ c: 1, k: 1 }, { c: s, k: 0 }]), true)}`
+    const right = fT(`${kTerm} ${c.p < 0 ? MINUS : "+"} ${Math.abs(c.p)}`, `${pw(B, "x", true)} ${MINUS} ${a * a}`)
+    const text = `${left} ${cmp} ${right}`
+    const F = (x) => { const t = Math.pow(b, x); return (t + a) / (t - a) + (t - a) / (t + a) }
+    const G = (x) => { const t = Math.pow(b, x); return (k.p * t + c.p) / (t * t - a * a) }
+    const tC = [{ t: Q(a), mult: 1, pole: true }]
+    if (dbl) tC.push({ t: u1, mult: 2, pole: false })
+    else tC.push({ t: u1, mult: 1, pole: false }, { t: u2, mult: 1, pole: false })
+    const res = buildExpo({
+      text, cmp, base: b, dir: 1, leadT: 1,
+      lhs: F, rhs: G,
+      domainOK: (x) => Math.abs(Math.pow(b, x) - a) > 1e-12,
+      tCrit: tC,
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [20] (C − B^{−x})/(D − b^{−x}) ⋛ k   (PDF пок.20: (567−9^{−x})/(81−3^{−x}) ≥ 7)
+export function t15ExpFracNeg() {
+  for (let it = 0; it < 1500; it++) {
+    const b = pick([2, 3, 5]), B = b * b
+    const D = Math.round(Math.pow(b, randInt(2, 4)))
+    const r1 = 0, r2 = Math.random() < 0.5 ? Math.round(Math.pow(b, randInt(1, 3))) : randInt(2, 30)
+    const k = r1 + r2
+    const C = k * D - r1 * r2
+    if (k <= 0 || C <= 0 || C > 100000 || r2 === D) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const negX = expPoly([{ c: -1, k: 1 }])
+    const text = `${fT(`${C} ${MINUS} ${pw(B, negX, true)}`, `${D} ${MINUS} ${pw(b, negX, true)}`)} ${cmp} ${k}`
+    const F = (x) => (C - Math.pow(B, -x)) / (D - Math.pow(b, -x))
+    const res = buildExpo({
+      // после сокращения на положительный множитель t: (t−r₂)/(t−D) ⟹ при t→+∞ знак «+»
+      text, cmp, base: b, dir: -1, leadT: 1,
+      lhs: F, rhs: () => k,
+      domainOK: (x) => Math.abs(D - Math.pow(b, -x)) > 1e-12,
+      tCrit: [
+        { t: Q(r2), mult: 1, pole: false },
+        { t: Q(D), mult: 1, pole: true },
+      ],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [21] b^x/(b^x−p) + (b^x+1)/(b^x−q) + A/(B^x −(p+q)b^x + pq) ⋛ 0
+//      (PDF пок.21: 2ˣ/(2ˣ−3) + (2ˣ+1)/(2ˣ−2) + 5/(4ˣ−5·2ˣ+6) ≤ 0) — числитель 2(t−u)².
+export function t15ExpFracThree() {
+  for (let it = 0; it < 1500; it++) {
+    const b = pick([2, 3, 5]), B = b * b
+    const u = Math.round(Math.pow(b, randInt(0, 2)))
+    const p = randInt(2, 4 * u + 1 - 2)
+    const q = 4 * u + 1 - p
+    if (q <= 1 || p === q || p === u || q === u) continue
+    const A = 2 * u * u + p
+    if (A > 400) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const t1 = `${fT(pw(b, "x", true), `${pw(b, "x", true)} ${MINUS} ${p}`)}`
+    const t2 = `${fT(`${pw(b, "x", true)} + 1`, `${pw(b, "x", true)} ${MINUS} ${q}`)}`
+    const t3 = fT(A, `${pw(B, "x", true)} ${MINUS} ${p + q}·${pw(b, "x", true)} + ${p * q}`)
+    const text = `${t1} + ${t2} + ${t3} ${cmp} 0`
+    const F = (x) => { const t = Math.pow(b, x); return t / (t - p) + (t + 1) / (t - q) + A / ((t - p) * (t - q)) }
+    const res = buildExpo({
+      text, cmp, base: b, dir: 1, leadT: 1,
+      lhs: F, rhs: () => 0,
+      domainOK: (x) => { const t = Math.pow(b, x); return Math.abs(t - p) > 1e-12 && Math.abs(t - q) > 1e-12 },
+      tCrit: [
+        { t: Q(u), mult: 2, pole: false },
+        { t: Q(p), mult: 1, pole: true }, { t: Q(q), mult: 1, pole: true },
+      ],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [22] b^{3x} + a·B^x + (k·B^x − D)/(b^x − p) ⋛ E   (PDF пок.35: 8ˣ−3·4ˣ+(9·4ˣ−288)/(2ˣ−9) ≤ 32)
+export function t15ExpCubicFrac() {
+  for (let it = 0; it < 1500; it++) {
+    const b = pick([2, 3]), B = b * b
+    const p = randInt(2, 30)
+    const u = Math.round(Math.pow(b, randInt(0, 2)))
+    const v = Math.round(Math.pow(b, randInt(1, 3)))
+    if (u === v || u === p || v === p) continue
+    // корни приведённого числителя: 0, u, u, v  (t=0 недостижим)
+    const n3 = -(2 * u + v), n2 = u * u + 2 * u * v, n1 = -(u * u * v), n0 = 0
+    const a = n3 + p, k = n2 + a * p, E = -n1, D = -p * n1 - n0
+    if (a === 0 || k <= 0 || Math.abs(a) > 40 || k > 300 || Math.abs(D) > 9000 || Math.abs(E) > 900) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const head = `${pw(b, expPoly([{ c: 3, k: 1 }]))} ${a < 0 ? MINUS : "+"} ${Math.abs(a) === 1 ? "" : Math.abs(a) + "·"}${pw(B, "x")}`
+    const frac = fT(`${k === 1 ? "" : k + "·"}${pw(B, "x", true)} ${D < 0 ? "+" : MINUS} ${Math.abs(D)}`, `${pw(b, "x", true)} ${MINUS} ${p}`)
+    const text = `${head} + ${frac} ${cmp} ${E}`
+    const F = (x) => { const t = Math.pow(b, x); return t * t * t + a * t * t + (k * t * t - D) / (t - p) }
+    const res = buildExpo({
+      text, cmp, base: b, dir: 1, leadT: 1,
+      lhs: F, rhs: () => E,
+      domainOK: (x) => Math.abs(Math.pow(b, x) - p) > 1e-12,
+      tCrit: [
+        { t: Q(u), mult: 2, pole: false }, { t: Q(v), mult: 1, pole: false },
+        { t: Q(p), mult: 1, pole: true },
+      ],
+    })
+    if (res) return res
+  }
+  return null
+}
+
 // ── реестры ─────────────────────────────────────────────────────────────────
 export const META15 = [
   ["Рациональные неравенства", [
@@ -675,6 +1416,32 @@ export const META15 = [
     ["rat-common-den", "куб − дробь ⋛ дробь: общий знаменатель", t15RatCommonDen],
     ["rat-subst-sq", "замена u=x²+2σx, знаменатель — полный квадрат (ОДЗ режет ответ)", t15RatSubstSquare],
     ["rat-sum-sq", "(A/(x−p) + (x−p)/A)² ⋛ C²", t15RatSumSquare],
+  ]],
+  ["Показательные: замена t = b^x", [
+    ["exp-quad", "A·B^{x+m} − k·b^{x+q} + c ⋛ 0 (B = b²)", t15ExpQuad],
+    ["exp-quad-neg", "тот же трёхчлен с показателем −x", t15ExpQuadNeg],
+    ["exp-quad-fshift", "дробный сдвиг: u = b^{x+f}", t15ExpQuadFracShift],
+    ["exp-quad-comp", "составной показатель φ(x) = ε(x−h)²+d", t15ExpQuadComposite],
+    ["exp-nested", "двойная замена w = B^x − 2b^x", t15ExpNestedQuad],
+    ["exp-recip", "A·b^{x+m} + B·b^{n−x} ⋛ C", t15ExpRecip],
+    ["exp-symm", "B^x + k·b^{x+s} + k·b^{s−x} + 1/B^x ⋛ C (y = t+1/t)", t15ExpSymmetric],
+    ["exp-factor2", "(aˣ−p)(bˣ−q) в раскрытом виде", t15ExpFactorTwo],
+    ["exp-homog", "однородное A(a²)ˣ − B(ab)ˣ − C(b²)ˣ ⋛ 0", t15ExpHomogQuad],
+    ["exp-geom", "вынос общего множителя из суммы степеней", t15ExpGeomSum],
+    ["exp-mixed-quad", "a^{x²}·b^{x−1} ⋛ a", t15ExpMixedQuad],
+    ["exp-root-pow", "корни от степеней → рациональное с полюсом x=0", t15ExpRootPower],
+  ]],
+  ["Показательные: дробно-рациональные по t", [
+    ["exp-frac-quad-lin", "(B^x+βb^x+γ)/(b^x−p) ⋛ C", t15ExpFracQuadLin],
+    ["exp-frac-lin-quad", "(A−k·b^x)/(B^x+βb^x+γ) ⋛ C (полный квадрат сверху)", t15ExpFracLinQuad],
+    ["exp-frac-two", "A/(b^x−p) ⋛ B/(b^x−q)", t15ExpFracTwo],
+    ["exp-frac-one", "(b^x−a)/(b^x−c) ⋛ 1 + 1/(b^x−d)", t15ExpFracShiftOne],
+    ["exp-frac-sqden", "1 + A/(b^x−p) + B/(b^x−p)² (знаменатель раскрыт)", t15ExpFracSqDen],
+    ["exp-frac-recip-comp", "A/(b^φ−1)² − B/(b^φ−1) + 1, φ = d−x²", t15ExpFracRecipComp],
+    ["exp-frac-conj", "(t+a)/(t−a) + (t−a)/(t+a) ⋛ (kt+c)/(t²−a²)", t15ExpFracConj],
+    ["exp-frac-neg", "(C−B^{−x})/(D−b^{−x}) ⋛ k", t15ExpFracNeg],
+    ["exp-frac-three", "три дроби: t/(t−p) + (t+1)/(t−q) + A/((t−p)(t−q))", t15ExpFracThree],
+    ["exp-cubic-frac", "b^{3x} + a·B^x + (k·B^x−D)/(b^x−p) ⋛ E", t15ExpCubicFrac],
   ]],
 ]
 

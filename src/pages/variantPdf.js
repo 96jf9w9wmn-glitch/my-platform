@@ -22,8 +22,10 @@ const chW = (s) => { let w = 0; for (const ch of s) w += /[⁰¹²³⁴⁵⁶⁷
 // корень внутри дроби (маркер √{X}) → √ с чертой над подкоренным; ширину считаем по «√X».
 const rootInPdf = (s) => s.replace(/√\{([^}]+)\}/g, (_, x) => `√<tspan text-decoration="overline">${x}</tspan>`)
 const stripRootMarker = (s) => s.replace(/√\{([^}]+)\}/g, "√$1")
+// ⁅x⁆ внутри числителя/знаменателя дроби (степень: 2ˣ, 4ˣ⁻³) — SVG-надстрочник.
+const supInSvg = (s) => String(s).replace(/⁅([^⁆]*)⁆/g, (_, x) => `<tspan baseline-shift="super" font-size="0.72em">${x}</tspan>`)
 function fracSvg(num0, den0) {
-  const num = rootInPdf(num0), den = rootInPdf(den0)
+  const num = supInSvg(rootInPdf(num0)), den = supInSvg(rootInPdf(den0))
   const fs = FS * 0.95
   const w = Math.max(chW(stripRootMarker(num0)), chW(stripRootMarker(den0))) * fs + 8
   const W = Math.ceil(w + 6), H = 34, cx = W / 2
@@ -161,7 +163,7 @@ export async function renderTaskMathPdf(text) {
     .replace(/⟦match⟧([\s\S]*?)⟦endmatch⟧/g, (_, body) => matchTablePdf(body))
     .replace(/⟦tbl⟧([\s\S]*?)⟦endtbl⟧/g, (_, body) => dataTablePdf(body))
     .replace(/⟦list⟧([\s\S]*?)⟦endlist⟧/g, (_, body) => orderedListPdf(body))
-  const re = /⟦rf:([^⟧]*)⟧|⟦f:([^:⟧]+):([^:⟧]+)⟧|⟦r:([^⟧]+)⟧|⟦b:([^⟧]+)⟧|⟦iso:([^:⟧]+):([^:⟧]+):([^⟧]+)⟧|⟦sup:([^⟧]+)⟧|⟦rn:([^:⟧]+):([^⟧]+)⟧|⟦pf:([^:⟧]+):([^:⟧]+)⟧/g
+  const re = /⟦rf:([^⟧]*)⟧|⟦f:([^:⟧]+):([^:⟧]+)⟧|⟦r:([^⟧]+)⟧|⟦b:([^⟧]+)⟧|⟦iso:([^:⟧]+):([^:⟧]+):([^⟧]+)⟧|⟦sup:([^⟧]+)⟧|⟦rn:([^:⟧]+):([^⟧]+)⟧|⟦pf:([^:⟧]+):([^:⟧]+)⟧|⁅([^⁆]*)⁆/g
   let out = "", last = 0, m
   while ((m = re.exec(esc)) !== null) {
     out += esc.slice(last, m.index)
@@ -172,6 +174,7 @@ export async function renderTaskMathPdf(text) {
     else if (m[9] !== undefined) out += `<sup style="font-size:0.72em; line-height:0; vertical-align:0.55em;">${m[9]}</sup>`
     else if (m[10] !== undefined) out += await svgToInlineImg(rootSvg(m[11], m[10]), ROOT_VALIGN)
     else if (m[12] !== undefined) out += await svgToInlineImg(pfracSvg(m[12], m[13]), FRAC_VALIGN)
+    else if (m[14] !== undefined) out += `<sup style="font-size:0.72em; line-height:0; vertical-align:0.55em;">${m[14]}</sup>`
     else out += await svgToInlineImg(fracSvg(m[2], m[3]), FRAC_VALIGN)
     last = m.index + m[0].length
   }
