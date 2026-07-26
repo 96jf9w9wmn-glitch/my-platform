@@ -148,6 +148,9 @@ export function renderTaskMath(text) {
     // ⁅x⁆ — тот же надстрочник, но БЕЗ «:» и «⟧» внутри токена, поэтому его можно класть
     // ВНУТРЬ дроби/корня (⟦f⟧/⟦r⟧ ловят содержимое до первого «⟧» и ломаются на ⟦sup⟧).
     .replace(/⁅([^⁆]*)⁆/g, (_, x) => `<sup class="tmath-sup">${x}</sup>`)
+    // ⦉x⦊ — нижний индекс без «:» и «⟧» (основание логарифма: log с корнем/дробью/x
+    // в индексе). Разворачивается ПОСЛЕ ⟦r⟧/⟦rn⟧/⟦f⟧, поэтому внутрь можно вложить их.
+    .replace(/⦉([^⦊]*)⦊/g, (_, x) => `<sub class="tmath-sub">${x}</sub>`)
     // ⦃n¦d⦄ — ВЛОЖЕННАЯ дробь: те же ⟦f⟧-стили, но без «:» и «⟧», поэтому её можно
     // положить внутрь другой дроби (log₅(x/25) в знаменателе большой дроби).
     .replace(/⦃([^¦⦄]*)¦([^⦄]*)⦄/g, (_, n, d) =>
@@ -192,6 +195,7 @@ export function plainTaskMath(text) {
     .replace(/⟦sup:([^⟧]+)⟧/g, "^($1)")
     .replace(/⁅([^⁆]*)⁆/g, "^($1)")
     .replace(/⦃([^¦⦄]*)¦([^⦄]*)⦄/g, "$1/$2")
+    .replace(/⦉([^⦊]*)⦊/g, "$1")
     .replace(/⟦iso:([^:⟧]+):([^:⟧]+):([^⟧]+)⟧/g, (_, a, z, s) =>
       a.replace(/\d/g, (d) => "⁰¹²³⁴⁵⁶⁷⁸⁹"[+d]) + z.replace(/\d/g, (d) => "₀₁₂₃₄₅₆₇₈₉"[+d]) + s)
     .replace(/⟦cases:([^⟧]+)⟧/g, (_, b) => b.split("⁞").join("; "))
@@ -211,6 +215,7 @@ export function expandSvgMathTokens(svg) {
     .replace(/⟦sup:([^⟧]+)⟧/g, (_, x) => `<tspan baseline-shift="super" font-size="0.75em">${x}</tspan>`)
     .replace(/⁅([^⁆]*)⁆/g, (_, x) => `<tspan baseline-shift="super" font-size="0.75em">${x}</tspan>`)
     .replace(/⦃([^¦⦄]*)¦([^⦄]*)⦄/g, "$1/$2")
+    .replace(/⦉([^⦊]*)⦊/g, "$1")
     .replace(/⟦iso:([^:⟧]+):([^:⟧]+):([^⟧]+)⟧/g, (_, a, z, s) =>
       `<tspan baseline-shift="super" font-size="0.7em">${a}</tspan><tspan baseline-shift="sub" font-size="0.7em">${z}</tspan>${s}`)
 }
