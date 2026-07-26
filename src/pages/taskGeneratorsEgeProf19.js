@@ -753,6 +753,8 @@ export const META19 = [
   ["Вася и Петя решают сборник", [
     ["vasya-petya-days", "Оба решили сборник: за сколько дней и наим. число задач", t19VasyaPetyaDays],
     ["vasya-petya-diff1", "Первые дни отличаются на задачу: наим. число задач", t19VasyaPetyaDiffOne],
+    ["vasya-petya-same-first", "Одинаковые первые дни: за сколько дней Петя", t19VasyaPetyaSameFirst],
+    ["vasya-petya-count", "Сколько задач в сборнике и дней у Пети", t19VasyaPetyaCount],
   ]],
   ["Две школы, средний балл", [
     ["schools-drop-min", "Средние упали на 10 % → наим. исходный средний в №2", t19SchoolsDropMin],
@@ -6319,6 +6321,207 @@ export function t19VasyaPetyaDiffOne() {
         c: { type: "extremum", mode: "min", value: best.N, example: best },
       },
       mustMention: [dYes, dNo, L],
+      extra: [],
+      phrases: ["на одну задачу больше", "на две задачи больше", "хотя бы одну задачу"],
+    },
+  })
+}
+
+// #80. Те же Вася и Петя, но в пунктах а) и б) первые дни РАВНЫ (v = p), а число дней
+// Пети задано. Тогда ap + a(a−1)/2 = dp + d(d−1) — линейное уравнение по p, у которого
+// при a ≠ d ровно один корень; перебор по a конечен, потому что при a(a−1)/2 > N
+// решений уже нет.
+export function t19VasyaPetyaSameFirst() {
+  const d1 = pick([5, 7, 9]), d2 = pick([10, 12, 14])
+  const L = pick([5, 6, 7]), W = L + 1
+  const findSame = (d) => {
+    for (let p = 1; p <= 400; p++) {
+      const N = vpP(d, p)
+      for (let a = 1; a <= 400; a++) {
+        if (a * (a - 1) / 2 > N) break
+        if (vpV(a, p) === N && a !== d) return { a, v: p, b: d, p }
+      }
+    }
+    return null
+  }
+  const exA = findSame(d1), exB = findSame(d2)
+  if (!exA || !exB) return null
+  let best = null
+  for (let N = 1; N <= 600 && !best; N++) {
+    for (let a = L + 1; a <= 60 && !best; a++) {
+      const num = N - a * (a - 1) / 2
+      if (num <= 0 || num % a) continue
+      const v = num / a
+      for (let b = L + 1; b <= 60; b++) {
+        const num2 = N - b * (b - 1)
+        if (num2 <= 0 || num2 % b) continue
+        const p = num2 / b
+        if (v > p && vpP(W, p) > vpV(W, v)) { best = { N, a, v, b, p }; break }
+      }
+    }
+  }
+  if (!best) return null
+
+  const params = { d1, d2, L, W }
+  const check = (cfg, part) => {
+    if (!cfg || !Number.isInteger(cfg.a) || !Number.isInteger(cfg.v) || !Number.isInteger(cfg.b) || !Number.isInteger(cfg.p)) return "нет конфигурации"
+    if (cfg.a < 1 || cfg.b < 1 || cfg.v < 1 || cfg.p < 1) return "в первый день каждый решил хотя бы одну задачу"
+    const nV = vpV(cfg.a, cfg.v), nP = vpP(cfg.b, cfg.p)
+    if (nV !== nP) return `Вася решил ${nV} задач, а Петя ${nP} — сборник один и тот же`
+    if (part === "a" || part === "b") {
+      if (cfg.v !== cfg.p) return "в первый день оба должны решить одинаковое число задач"
+      const need = part === "a" ? d1 : d2
+      if (cfg.b !== need) return `Петя должен решить весь сборник за ${need} дней`
+    }
+    if (part === "c") {
+      if (cfg.a <= L || cfg.b <= L) return `каждый должен решать более ${L} дней`
+      if (cfg.v <= cfg.p) return "в первый день Вася должен решить больше Пети"
+      if (vpP(W, cfg.p) <= vpV(W, cfg.v)) return `за ${W} дней Петя должен решить больше Васи`
+      if (nV !== best.N) return `в сборнике ${nV} задач, а заявлено ${best.N}`
+    }
+    return null
+  }
+  const solve = (P) => {
+    const same = (d) => {
+      for (let p = 1; p <= 400; p++) {
+        const N = vpP(d, p)
+        for (let a = 1; a <= 400; a++) {
+          if (a * (a - 1) / 2 > N) break
+          if (vpV(a, p) === N && a !== d) return true
+        }
+      }
+      return false
+    }
+    let bestN = 0
+    for (let N = 1; N <= 600 && !bestN; N++) {
+      for (let a = P.L + 1; a <= 60 && !bestN; a++) {
+        const num = N - a * (a - 1) / 2
+        if (num <= 0 || num % a) continue
+        const v = num / a
+        for (let b = P.L + 1; b <= 60; b++) {
+          const num2 = N - b * (b - 1)
+          if (num2 <= 0 || num2 % b) continue
+          const p = num2 / b
+          if (v > p && vpP(P.W, p) > vpV(P.W, v)) { bestN = N; break }
+        }
+      }
+    }
+    return { a: same(P.d1), b: same(P.d2), c: bestN, c_next: false }
+  }
+
+  const run = (start, step, days) => Array.from({ length: Math.min(days, 5) }, (_, i) => start + step * i).join(", ") + (days > 5 ? ", …" : "")
+  return item({
+    preamble: `Вася и Петя решали задачи из сборника, и они оба решили все задачи этого сборника. Каждый день Вася решал на одну задачу больше, чем в предыдущий день, а Петя решал на две задачи больше, чем в предыдущий день. Они начали решать задачи в один день, при этом в первый день каждый из них решил хотя бы одну задачу.`,
+    qa: `Могло ли получиться так, что в первый день они решили одинаковое число задач, при этом Петя прорешал весь сборник за ${d1} дней?`,
+    qb: `Могло ли получиться так, что в первый день они решили одинаковое число задач, при этом Петя прорешал весь сборник за ${d2} дней?`,
+    qc: `Какое наименьшее количество задач могло быть в сборнике, если каждый из ребят решал задачи более ${L} дней, причём в первый день Вася решил больше задач, чем Петя, а через ${W} дней Петя решил задач больше, чем Вася?`,
+    ansA: `да, например оба начали с ${exA.p} ${plural(exA.p, "задачи", "задач", "задач")}: Петя решал ${d1} дней по ${run(exA.p, 2, d1)}, Вася — ${exA.a} ${plural(exA.a, "день", "дня", "дней")} по ${run(exA.v, 1, exA.a)}; всего ${vpP(d1, exA.p)} ${plural(vpP(d1, exA.p), "задача", "задачи", "задач")}`,
+    ansB: `да, например оба начали с ${exB.p} ${plural(exB.p, "задачи", "задач", "задач")}: Петя решал ${d2} дней, Вася — ${exB.a} ${plural(exB.a, "день", "дня", "дней")}; всего ${vpP(d2, exB.p)} ${plural(vpP(d2, exB.p), "задача", "задачи", "задач")}`,
+    ansC: `${best.N}; например Вася решал ${best.a} ${plural(best.a, "день", "дня", "дней")} по ${run(best.v, 1, best.a)} задач, а Петя — ${best.b} ${plural(best.b, "день", "дня", "дней")} по ${run(best.p, 2, best.b)}`,
+    solution: `Пусть Вася решал a дней, начав с v задач, Петя — b дней, начав с p. Тогда N = av + a(a − 1)/2 = bp + b(b − 1).\nа) При v = p и b = ${d1} уравнение ap + a(a − 1)/2 = ${d1}p + ${d1 * (d1 - 1)} линейно по p: подходит a = ${exA.a}, p = ${exA.p}, всего ${vpP(d1, exA.p)} ${plural(vpP(d1, exA.p), "задача", "задачи", "задач")}.\nб) Так же при b = ${d2}: подходит a = ${exB.a}, p = ${exB.p}, всего ${vpP(d2, exB.p)} ${plural(vpP(d2, exB.p), "задача", "задачи", "задач")}.\nв) Перебор по числу задач и числам дней даёт наименьшее N = ${best.N} (Вася ${best.a} ${plural(best.a, "день", "дня", "дней")} с ${best.v}, Петя ${best.b} ${plural(best.b, "день", "дня", "дней")} с ${best.p}).\nОтвет: ${best.N}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: `same-${d1}` },
+        b: { type: "yesno", yes: true, example: exB, target: `same-${d2}` },
+        c: { type: "extremum", mode: "min", value: best.N, example: best },
+      },
+      mustMention: [d1, d2, L, W],
+      extra: [],
+      phrases: ["на одну задачу больше", "на две задачи больше", "одинаковое число задач"],
+    },
+  })
+}
+
+// #81. Ключ — представление суммы Пети: N = bp + b(b−1) = b(p + b − 1), то есть ЧИСЛО
+// ДНЕЙ ПЕТИ ДЕЛИТ N, причём p = N/b − b + 1 ≥ 1 даёт b ≤ √N. Поэтому наибольшее число
+// дней Пети — это наибольший делитель N, не превосходящий √N, а если у N нет делителей
+// в нужном диапазоне, то Петя не мог решать столько дней.
+export function t19VasyaPetyaCount() {
+  const dV = pick([14, 16, 18])                            // Вася решил сборник за dV дней
+  const cap = pick([300, 400])                             // задач меньше cap
+  const Na = pick([85, 91, 115, 121])                      // «могло ли быть Na задач» — да
+  // б) число задач, у которого нет делителей от Lb+1 до √N (и у Васи тоже нет разбиения)
+  const Lb = 3
+  const petyaDays = (N) => {
+    const res = []
+    for (let b = 1; b * b <= N; b++) if (N % b === 0 && N / b - b + 1 >= 1) res.push(b)
+    return res
+  }
+  const vasyaDays = (N) => {
+    const res = []
+    for (let a = 1; a * (a - 1) / 2 < N; a++) {
+      const num = N - a * (a - 1) / 2
+      if (num % a === 0 && num / a >= 1) res.push(a)
+    }
+    return res
+  }
+  let Nb = 0
+  for (const cand of [213, 219, 217, 209, 201]) {
+    if (!petyaDays(cand).some((b) => b > Lb)) { Nb = cand; break }
+  }
+  if (!Nb) return null
+  // в) наибольшее число дней Пети при N = dV·v + dV(dV−1)/2 < cap
+  let bestDays = 0, bestN = 0, bestV = 0, bestP = 0
+  for (let v = 1; ; v++) {
+    const N = vpV(dV, v)
+    if (N >= cap) break
+    for (const b of petyaDays(N)) {
+      if (b > bestDays) { bestDays = b; bestN = N; bestV = v; bestP = N / b - b + 1 }
+    }
+  }
+  if (!bestDays) return null
+
+  const params = { dV, cap, Na, Nb, Lb }
+  const check = (cfg, part) => {
+    if (!cfg || !Number.isInteger(cfg.a) || !Number.isInteger(cfg.v) || !Number.isInteger(cfg.b) || !Number.isInteger(cfg.p)) return "нет конфигурации"
+    if (cfg.a < 1 || cfg.b < 1 || cfg.v < 1 || cfg.p < 1) return "в первый день каждый решил хотя бы одну задачу"
+    const nV = vpV(cfg.a, cfg.v), nP = vpP(cfg.b, cfg.p)
+    if (nV !== nP) return `Вася решил ${nV} задач, а Петя ${nP} — сборник один и тот же`
+    if (part === "a" && nV !== Na) return `в сборнике ${nV} задач, а нужно ${Na}`
+    if (part === "c") {
+      if (cfg.a !== dV) return `Вася должен решить сборник за ${dV} дней`
+      if (nV >= cap) return `задач ${nV}, а должно быть меньше ${cap}`
+      if (cfg.b !== bestDays) return `Петя решал ${cfg.b} дней, а заявлено ${bestDays}`
+    }
+    return null
+  }
+  // Независимый перебор: числа дней Пети — делители N, не превосходящие √N; числа дней
+  // Васи — те a, при которых (N − a(a−1)/2) делится на a и частное натурально.
+  const solve = (P) => {
+    const both = (N) => petyaDays(N).length > 0 && vasyaDays(N).length > 0
+    const bothOver = (N, L) => petyaDays(N).some((b) => b > L) && vasyaDays(N).some((a) => a > L)
+    let top = 0
+    for (let v = 1; ; v++) {
+      const N = vpV(P.dV, v)
+      if (N >= P.cap) break
+      for (const b of petyaDays(N)) if (b > top) top = b
+    }
+    return { a: both(P.Na), b: bothOver(P.Nb, P.Lb), c: top, c_next: false }
+  }
+
+  const exA = (() => {
+    const b = petyaDays(Na)[petyaDays(Na).length - 1], a = vasyaDays(Na)[vasyaDays(Na).length - 1]
+    return { a, v: (Na - a * (a - 1) / 2) / a, b, p: Na / b - b + 1 }
+  })()
+  const exC = { a: dV, v: bestV, b: bestDays, p: bestP }
+  return item({
+    preamble: `Вася и Петя решали задачи из сборника, и они оба решили все задачи этого сборника. Каждый день Вася решал на одну задачу больше, чем в предыдущий день, а Петя решал на две задачи больше, чем в предыдущий день. Они начали решать задачи в один день, при этом в первый день каждый из них решил хотя бы одну задачу.`,
+    qa: `Могло ли быть в сборнике ${Na} ${plural(Na, "задача", "задачи", "задач")}?`,
+    qb: `Могло ли быть в сборнике ${Nb} ${plural(Nb, "задача", "задачи", "задач")}, если каждый из мальчиков решал их более ${["одного", "двух", "трёх", "четырёх"][Lb - 1]} дней?`,
+    qc: `Какое наибольшее количество дней мог решать задачи Петя, если Вася решил весь сборник за ${dV} дней, а количество задач в сборнике меньше ${cap}?`,
+    ansA: `да, например Вася решал ${exA.a} ${plural(exA.a, "день", "дня", "дней")}, начав с ${exA.v} ${plural(exA.v, "задачи", "задач", "задач")}, а Петя — ${exA.b} ${plural(exA.b, "день", "дня", "дней")}, начав с ${exA.p}`,
+    ansB: `нет: сумма задач Пети равна bp + b(b − 1) = b(p + b − 1), поэтому число дней Пети b делит ${Nb}. Разложение ${Nb} = ${(() => { const f = []; let x = Nb; for (let q = 2; q * q <= x; q++) while (x % q === 0) { f.push(q); x /= q } if (x > 1) f.push(x); return f.join(" · ") })()} показывает, что делителей, больших ${Lb} и не превосходящих ⌊√${Nb}⌋ = ${Math.floor(Math.sqrt(Nb))}, у него нет, а из p ≥ 1 следует b ≤ √${Nb}`,
+    ansC: `${bestDays}; например в сборнике ${bestN} ${plural(bestN, "задача", "задачи", "задач")}: Вася решал ${dV} дней, начав с ${bestV}, а Петя — ${bestDays} ${plural(bestDays, "день", "дня", "дней")}, начав с ${bestP}`,
+    solution: `Сумма задач Пети равна bp + b(b − 1) = b(p + b − 1), поэтому число его дней b — делитель N, причём из p ≥ 1 следует b ≤ √N. Сумма задач Васи равна av + a(a − 1)/2.\nа) Для N = ${Na} подходит, например, Вася — ${exA.a} ${plural(exA.a, "день", "дня", "дней")} с ${exA.v}, Петя — ${exA.b} ${plural(exA.b, "день", "дня", "дней")} с ${exA.p}.\nб) Для N = ${Nb} делителей, больших ${Lb} и не превосходящих ${Math.floor(Math.sqrt(Nb))}, нет, поэтому Петя не мог решать более ${Lb} дней.\nв) Если Вася решил сборник за ${dV} дней, то N = ${dV}v + ${dV * (dV - 1) / 2}. Перебирая v при N < ${cap} и беря наибольший делитель N, не превосходящий √N, получаем ${bestDays} дней (N = ${bestN}, v = ${bestV}, p = ${bestP}).\nОтвет: ${bestDays}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: `total-${Na}` },
+        b: { type: "yesno", yes: false, reason: "divisor-bound", target: `total-${Nb}` },
+        c: { type: "extremum", mode: "max", value: bestDays, example: exC },
+      },
+      mustMention: [Na, Nb, dV, cap],
       extra: [],
       phrases: ["на одну задачу больше", "на две задачи больше", "хотя бы одну задачу"],
     },
