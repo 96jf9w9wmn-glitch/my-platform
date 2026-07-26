@@ -777,6 +777,8 @@ export const META19 = [
     ["board-100-sum", "N различных, сумма S → наим. кол-во кратных d", t19BoardDistinctSum],
     ["board-sum-divisible", "Сумма любых двух делится на одно из остальных", t19BoardSumDivisible],
     ["board-diff-coprime", "Разности: ничего не делится на b−a и не делит b−a", t19BoardDiffCoprime],
+    ["board-pair-lt-triple", "Сумма двух меньше суммы трёх → наим. сумма набора", t19PairLtTriple],
+    ["board-within-3x", "Любые два отличаются не более чем втрое", t19BoardWithin3x],
   ]],
 ]
 
@@ -1175,6 +1177,9 @@ function frCond(a) {
 }
 const frNums = (a) => (a.d === 1 ? [a.n] : [Math.floor(a.n / a.d), a.n - Math.floor(a.n / a.d) * a.d, a.d].filter((x) => x))
 const digitsOf = (n) => String(n).split("").map(Number)
+// «a₁₀» — переменная с нижним индексом (в условиях и ответах вместо a_{10}).
+const SUB_DIG = { 0: "₀", 1: "₁", 2: "₂", 3: "₃", 4: "₄", 5: "₅", 6: "₆", 7: "₇", 8: "₈", 9: "₉" }
+const aIdx = (n) => "a" + String(n).split("").map((c) => SUB_DIG[c]).join("")
 // Числитель, взаимно простой со знаменателем: иначе дробь сократится и довод про НОК падает.
 const coprimeTo = (q) => { const c = []; for (let r = 1; r < q; r++) if (gcdI(r, q) === 1) c.push(r); return pick(c) }
 
@@ -2643,7 +2648,9 @@ export function t19BoxesThree() {
     verify: {
       params, check, solve,
       claims: {
-        a: { type: "yesno", yes: false, reason: "parity", target: a1 },
+        // target пункта а) — всё распределение целиком: иначе оно случайно совпадало
+        // бы с числом из пункта б), и проверка невырожденности ложно срабатывала
+        a: { type: "yesno", yes: false, reason: "parity", target: `state-${a1}-${b1}-${c1}` },
         b: { type: "yesno", yes: false, reason: "bound", target: K },
         c: { type: "extremum", mode: "max", value: cMax, example: exC },
       },
@@ -3863,6 +3870,210 @@ export function t19BoardDiffCoprime() {
       mustMention: [L, q, Nb, x, x + 1, x + 2],
       extra: [],
       phrases: ["различных натуральных чисел", "не является делителем"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 1 (продолжение). Набор с ограничением на суммы и на отношение (#43, #42)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// #43. N различных натуральных чисел a₁ < … < a_N; сумма любых двух меньше суммы
+// любых трёх. Это в точности одно неравенство: a_{N−1} + a_N < a₁ + a₂ + a₃.
+// Так как a_{N−1} ≥ a₃ + (N − 4) и a_N ≥ a₃ + (N − 3), получаем
+//   2a₃ + 2N − 7 < a₁ + a₂ + a₃, то есть a₃ + 2N − 7 < a₁ + a₂ ≤ 2a₃ − 3,
+// откуда a₃ ≥ 2N − 3 и a₁ ≥ 2N − 5. Набор из N подряд идущих чисел, начиная с 2N − 5,
+// условию удовлетворяет, поэтому наименьшая сумма равна N(2N − 5) + N(N − 1)/2.
+export function t19PairLtTriple() {
+  const N = randInt(9, 13)
+  const lo = 2 * N - 5                                     // наименьшее допустимое число
+  const minSum = N * lo + N * (N - 1) / 2
+  const Xa = 100 * randInt(5, 40)                          // большое число — пункт а)
+  const Xb = randInt(Math.max(2, lo - 6), lo - 1)          // маленькое число — пункт б)
+  const exA = Array.from({ length: N }, (_, i) => Xa + i)  // Xa — наименьшее в наборе
+  const exC = Array.from({ length: N }, (_, i) => lo + i)
+
+  const params = { N, Xa, Xb, lo }
+  const check = (cfg, part) => {
+    if (!Array.isArray(cfg) || cfg.length !== N) return `в наборе должно быть ${N} чисел`
+    for (const v of cfg) if (!Number.isInteger(v) || v < 1) return `${v} — не натуральное число`
+    if (uniq(cfg).length !== cfg.length) return "числа набора обязаны быть различными"
+    const s = cfg.slice().sort((a, b) => a - b)
+    if (s[N - 2] + s[N - 1] >= s[0] + s[1] + s[2]) {
+      return `сумма двух наибольших ${s[N - 2]} + ${s[N - 1]} не меньше суммы трёх наименьших ${s[0]} + ${s[1]} + ${s[2]}`
+    }
+    if (part === "a" && !cfg.includes(Xa)) return `в наборе нет числа ${Xa}`
+    if (part === "c" && sum(cfg) !== minSum) return `сумма набора ${sum(cfg)}, а заявлено ${minSum}`
+    return null
+  }
+  // Независимый перебор по тройкам наименьших чисел. Увеличение любого элемента,
+  // кроме трёх наименьших, только увеличивает сумму двух наибольших и не меняет сумму
+  // трёх наименьших, поэтому достаточно дополнять тройку подряд идущими числами
+  // a₃+1, …, a₃+N−3 — это наилучшее возможное завершение. Окно перебора: a₂ и a₃
+  // в пределах 3N от предыдущего числа; дальше неравенство только ужесточается
+  // (при a₃ = a₂ + 1 условие превращается в a₁ ≥ 2N − 5 и от a₂ не зависит).
+  const solve = (P) => {
+    const feasible = (a1) => {
+      for (let a2 = a1 + 1; a2 <= a1 + 3 * P.N; a2++) {
+        for (let a3 = a2 + 1; a3 <= a2 + 3 * P.N; a3++) {
+          const last2 = (a3 + P.N - 4) + (a3 + P.N - 3)
+          if (last2 < a1 + a2 + a3) return true
+        }
+      }
+      return false
+    }
+    let best = -1
+    for (let a1 = 1; a1 <= P.Xa; a1++) if (feasible(a1)) { best = a1; break }
+    const minTotal = best < 0 ? -1 : P.N * best + P.N * (P.N - 1) / 2
+    return { a: feasible(P.Xa), b: feasible(P.Xb), c: minTotal, c_next: false }
+  }
+
+  return item({
+    preamble: `Про некоторый набор, состоящий из ${N} различных натуральных чисел, известно, что сумма любых двух различных чисел этого набора меньше суммы любых трёх различных чисел этого набора.`,
+    qa: `Может ли одним из этих чисел быть число ${Xa}?`,
+    qb: `Может ли одним из этих чисел быть число ${Xb}?`,
+    qc: `Какое наименьшее возможное значение может принимать сумма чисел такого набора?`,
+    ansA: `да, например ${Xa}, ${Xa + 1}, …, ${Xa + N - 1}: сумма двух наибольших равна ${exA[N - 2] + exA[N - 1]}, а сумма трёх наименьших — ${exA[0] + exA[1] + exA[2]}`,
+    ansB: `нет: для упорядоченного набора a₁ < a₂ < … < ${aIdx(N)} условие равносильно неравенству ${aIdx(N - 1)} + ${aIdx(N)} < a₁ + a₂ + a₃. Так как ${aIdx(N - 1)} ≥ a₃ + ${N - 4} и ${aIdx(N)} ≥ a₃ + ${N - 3}, получаем a₃ + ${2 * N - 7} < a₁ + a₂; но a₁ + a₂ ≤ (a₃ − 2) + (a₃ − 1), откуда a₃ ≥ ${2 * N - 3} и a₁ ≥ ${lo}. Значит число ${Xb} < ${lo} в наборе стоять не может`,
+    ansC: `${minSum}; например ${lo}, ${lo + 1}, …, ${lo + N - 1}`,
+    solution: `Пусть числа набора упорядочены: a₁ < a₂ < … < ${aIdx(N)}. Наибольшая сумма двух чисел — это ${aIdx(N - 1)} + ${aIdx(N)}, наименьшая сумма трёх — это a₁ + a₂ + a₃, поэтому условие равносильно неравенству ${aIdx(N - 1)} + ${aIdx(N)} < a₁ + a₂ + a₃.\nа) Возьмём ${N} подряд идущих чисел ${Xa}, ${Xa + 1}, …, ${Xa + N - 1}: ${exA[N - 2]} + ${exA[N - 1]} = ${exA[N - 2] + exA[N - 1]} < ${exA[0] + exA[1] + exA[2]} = ${exA[0]} + ${exA[1]} + ${exA[2]}.\nб) Числа различны, поэтому ${aIdx(N - 1)} ≥ a₃ + ${N - 4} и ${aIdx(N)} ≥ a₃ + ${N - 3}. Подставляя, получаем 2a₃ + ${2 * N - 7} < a₁ + a₂ + a₃, то есть a₃ + ${2 * N - 7} < a₁ + a₂. С другой стороны a₁ + a₂ ≤ (a₃ − 2) + (a₃ − 1) = 2a₃ − 3, откуда a₃ > ${2 * N - 4}, а тогда a₁ > a₃ + ${2 * N - 7} − a₂ ≥ ${2 * N - 6}. Итак все числа набора не меньше ${lo}, и число ${Xb} в наборе быть не может.\nв) Из a₁ ≥ ${lo} и различности чисел сумма не меньше ${lo} + ${lo + 1} + … + ${lo + N - 1} = ${minSum}. Это значение достигается на самом наборе ${lo}, ${lo + 1}, …, ${lo + N - 1}.\nОтвет: ${minSum}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: Xa },
+        b: { type: "yesno", yes: false, reason: "min-element-bound", target: Xb },
+        c: { type: "extremum", mode: "min", value: minSum, example: exC },
+      },
+      mustMention: [N, Xa, Xb],
+      extra: [],
+      phrases: ["различных натуральных чисел", "меньше суммы любых трёх"],
+    },
+  })
+}
+
+// #42. Несколько (более одного) различных натуральных чисел, любые два отличаются
+// не более чем в r раз, то есть max ≤ r·min. Если наименьшее число равно m, то все
+// числа лежат в [m; rm], поэтому n различных чисел существуют лишь при rm − m + 1 ≥ n,
+// а их сумма лежит между nm + n(n−1)/2 и n·rm − n(n−1)/2, причём каждое промежуточное
+// значение достижимо (соседние наборы отличаются сдвигом одного числа на 1).
+// Отсюда «нет» в пункте б): наименьшая возможная сумма n чисел равна
+//   min_m (nm + n(n−1)/2) при m ≥ ⌈(n−1)/(r−1)⌉,
+// и достаточно взять сумму на единицу меньше.
+const PRODUCT_TASK = [8000, 27000, 64000, 3375, 4000]
+
+export function t19BoardWithin3x() {
+  const r = 3
+  const nb = randInt(8, 12)                                  // пункт б): столько чисел
+  const mMin = Math.ceil((nb - 1) / (r - 1))                 // иначе n различных не помещаются в [m; rm]
+  const Sb = nb * mMin + nb * (nb - 1) / 2 - 1               // на 1 меньше минимально возможной суммы
+  const na = randInt(4, 6)                                   // пункт а): столько чисел
+  // сумма для а) берётся заведомо достижимой: середина отрезка [minSum; maxSum] при m
+  const ma = Math.max(Math.ceil((na - 1) / (r - 1)), 4)
+  const loA = na * ma + na * (na - 1) / 2
+  const hiA = na * r * ma - na * (na - 1) / 2
+  const Sa = randInt(loA, Math.min(hiA, loA + 3 * na))
+  // набор для а): начинаем с m, m+1, …, m+na−1 и поднимаем старшие числа до r·m
+  const exA = Array.from({ length: na }, (_, i) => ma + i)
+  // излишек суммы раздаём сверху вниз: каждое число поднимаем максимум до соседа − 1
+  // (самое большое — до r·m), поэтому числа остаются различными и не выходят из окна
+  let extra = Sa - loA
+  for (let i = na - 1; i >= 0 && extra > 0; i--) {
+    const cap = (i === na - 1 ? r * ma : exA[i + 1] - 1) - exA[i]
+    const add = Math.min(extra, cap)
+    exA[i] += add
+    extra -= add
+  }
+  if (extra !== 0) return null
+  const P = pick(PRODUCT_TASK)
+
+  // Все количества чисел, произведение которых равно P (перебор по наименьшему числу
+  // набора и подмножествам делителей, попавших в окно [m; rm]).
+  const divs = []
+  for (let i = 1; i * i <= P; i++) if (P % i === 0) { divs.push(i); if (i !== P / i) divs.push(P / i) }
+  divs.sort((a, b) => a - b)
+  const byCount = new Map()
+  for (const m of divs) {
+    const rest = divs.filter((v) => v > m && v <= r * m)
+    for (let mask = 0; mask < (1 << rest.length); mask++) {
+      let prod = m, set = [m]
+      for (let i = 0; i < rest.length; i++) if (mask & (1 << i)) { prod *= rest[i]; set.push(rest[i]) }
+      if (prod === P && set.length >= 2 && !byCount.has(set.length)) byCount.set(set.length, set)
+    }
+  }
+  const counts = [...byCount.keys()].sort((a, b) => a - b)
+  if (!counts.length) return null
+  const examples = {}
+  for (const c of counts) examples[c] = byCount.get(c)
+
+  const params = { r, na, Sa, nb, Sb, P }
+  const check = (cfg, part) => {
+    if (!Array.isArray(cfg) || cfg.length < 2) return "на доске должно быть более одного числа"
+    for (const v of cfg) if (!Number.isInteger(v) || v < 1) return `${v} — не натуральное число`
+    if (uniq(cfg).length !== cfg.length) return "числа обязаны быть различными"
+    const mn = Math.min(...cfg), mx = Math.max(...cfg)
+    if (mx > r * mn) return `числа ${mn} и ${mx} отличаются больше чем в ${r} раза`
+    if (part === "a") {
+      if (cfg.length !== na) return `чисел ${cfg.length}, а нужно ${na}`
+      if (sum(cfg) !== Sa) return `сумма ${sum(cfg)}, а нужно ${Sa}`
+      return null
+    }
+    if (cfg.reduce((p, v) => p * v, 1) !== P) return `произведение ${cfg.reduce((p, v) => p * v, 1)}, а нужно ${P}`
+    return null
+  }
+  // Независимые проходы: для а)/б) — динамика по количеству и сумме (какие суммы
+  // вообще достижимы n различными числами из окна [m; rm]); для в) — рекурсивный
+  // подбор делителей по возрастанию с отсечением по верхней границе окна.
+  const solve = (Pm) => {
+    const reachable = (n, S) => {
+      for (let m = 1; m * n <= S; m++) {
+        const hi = Pm.r * m
+        if (hi - m + 1 < n) continue
+        const items = []
+        for (let v = m; v <= hi && v <= S; v++) items.push(v)
+        const rows = knap(items, n, S)
+        if (rows[n] && rows[n][S]) return true
+      }
+      return false
+    }
+    // в): рекурсивный подбор делителей по возрастанию. Множители обязаны делить P
+    // (иначе произведение не сойдётся) и лежать в окне [m; r·m], где m — первый
+    // выбранный (он же наименьший) множитель, поэтому цикл обрывается за границей окна.
+    const sizes = new Set()
+    const dv = []
+    for (let v = 1; v <= Pm.P; v++) if (Pm.P % v === 0) dv.push(v)
+    const dfs = (i, prod, cnt, mn) => {
+      if (prod === Pm.P && cnt >= 2) sizes.add(cnt)
+      for (let j = i; j < dv.length; j++) {
+        const v = dv[j]
+        const nmn = mn || v
+        if (v > Pm.r * nmn) break
+        if ((Pm.P / prod) % v) continue
+        dfs(j + 1, prod * v, cnt + 1, nmn)
+      }
+    }
+    dfs(0, 1, 0, 0)
+    return { a: reachable(Pm.na, Pm.Sa), b: reachable(Pm.nb, Pm.Sb), c: [...sizes].sort((x, y) => x - y) }
+  }
+
+  return item({
+    preamble: `На доске написано несколько (более одного) различных натуральных чисел, причём любые два из них отличаются не более чем в три раза.`,
+    qa: `Может ли на доске быть ${na} ${plural(na, "число", "числа", "чисел")}, сумма которых равна ${Sa}?`,
+    qb: `Может ли на доске быть ${nb} ${plural(nb, "число", "числа", "чисел")}, сумма которых равна ${Sb}?`,
+    qc: `Сколько может быть чисел на доске, если их произведение равно ${P}?`,
+    ansA: `да, например ${exA.slice().sort((a, b) => a - b).join(", ")}`,
+    ansB: `нет: если наименьшее из написанных чисел равно m, то все числа лежат между m и ${r}m, поэтому ${nb} различных чисел найдётся лишь при ${r}m − m + 1 ≥ ${nb}, то есть при m ≥ ${mMin}. Тогда сумма не меньше ${nb}m + ${nb * (nb - 1) / 2} ≥ ${Sb + 1} > ${Sb}`,
+    ansC: `${joinRu(counts)}; например ${counts.map((c) => `${c}: ${examples[c].join(" · ")}`).join("; ")}`,
+    solution: `Пусть наименьшее из написанных чисел равно m. Тогда все числа лежат в промежутке от m до ${r}m.\nа) Пример: ${exA.slice().sort((a, b) => a - b).join(", ")} — все числа различны, наибольшее не больше ${r}m, сумма равна ${Sa}.\nб) Чтобы на доске поместилось ${nb} различных чисел, нужно ${r}m − m + 1 ≥ ${nb}, то есть m ≥ ${mMin}. Наименьшая возможная сумма ${nb} различных чисел, не меньших m, равна ${nb}m + ${nb * (nb - 1) / 2} и при m ≥ ${mMin} не меньше ${Sb + 1}. Значит сумма ${Sb} невозможна.\nв) Разложим ${P} на различные множители, лежащие в промежутке от m до ${r}m. Возможные количества: ${joinRu(counts)}${counts.map((c) => `\n   ${c}: ${examples[c].join(" · ")} = ${P}`).join("")}.\nОтвет: ${joinRu(counts)}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: Sa },
+        b: { type: "yesno", yes: false, reason: "min-sum-bound", target: Sb },
+        c: { type: "all", values: counts, examples },
+      },
+      mustMention: [na, Sa, nb, Sb, P],
+      extra: [],
+      phrases: ["различных натуральных чисел", "не более чем в три раза"],
     },
   })
 }
