@@ -4649,35 +4649,27 @@ function t03PrismTetraB1() {
   }
 }
 
-// Цилиндр, вписанный в прямоугольный параллелепипед: основания-эллипсы касаются
-// всех четырёх боковых граней в серединах сторон; образующие — по силуэту.
-const CYL_BOX_BACK = "M568.8,428.5 L568.0,425.2 L565.6,422.0 L561.7,419.0 L556.2,416.1 L549.2,413.4 L540.8,410.9 L531.0,408.6 L520.0,406.6 L507.6,404.8 L494.2,403.3 L479.8,402.0 L464.4,401.1 L448.2,400.4 L431.4,400.1 L414.0,400.0 L396.3,400.3 L378.2,400.8 L360.0,401.7 L341.8,402.8 L323.7,404.3 L306.0,406.0 L288.6,407.9 L271.8,410.1 L255.6,412.6 L240.2,415.2 L225.8,418.0 L212.4,421.0 L200.0,424.2 L189.0,427.4 L179.2,430.8 L170.8,434.2 L163.8,437.7 L158.3,441.2 L154.4,444.7 L152.0,448.1 L151.2,451.5"
-const CYL_BOX_FRONT = "M151.2,451.5 L152.0,454.8 L154.4,458.0 L158.3,461.0 L163.8,463.9 L170.8,466.6 L179.2,469.1 L189.0,471.4 L200.0,473.4 L212.4,475.2 L225.8,476.7 L240.2,478.0 L255.6,478.9 L271.8,479.6 L288.6,479.9 L306.0,480.0 L323.7,479.7 L341.8,479.2 L360.0,478.3 L378.2,477.2 L396.3,475.7 L414.0,474.0 L431.4,472.1 L448.2,469.9 L464.4,467.4 L479.8,464.8 L494.2,462.0 L507.6,459.0 L520.0,455.8 L531.0,452.6 L540.8,449.2 L549.2,445.8 L556.2,442.3 L561.7,438.8 L565.6,435.3 L568.0,431.9 L568.8,428.5"
-const CYL_BOX_TOP = "M568.8,288.5 L565.6,282.0 L556.2,276.1 L540.8,270.9 L520.0,266.6 L494.2,263.3 L464.4,261.1 L431.4,260.1 L396.3,260.3 L360.0,261.7 L323.7,264.3 L288.6,267.9 L255.6,272.6 L225.8,278.0 L200.0,284.2 L179.2,290.8 L163.8,297.7 L154.4,304.7 L151.2,311.5 L154.4,318.0 L163.8,323.9 L179.2,329.1 L200.0,333.4 L225.8,336.7 L255.6,338.9 L288.6,339.9 L323.7,339.7 L360.0,338.3 L396.3,335.7 L431.4,332.1 L464.4,327.4 L494.2,322.0 L520.0,315.8 L540.8,309.2 L556.2,302.3 L565.6,295.3 L568.8,288.5"
-
 function cylInBoxSvg() {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="60 220 600 300" width="600" height="300" font-family="Arial, sans-serif">` +
-    `<rect x="60" y="220" width="600" height="300" fill="#fff"/>` +
-    // скрытые рёбра параллелепипеда
-    `<line x1="220" y1="400" x2="100" y2="480" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="145"/>` +
-    `<line x1="220" y1="400" x2="620" y2="400" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="404"/>` +
-    `<line x1="220" y1="400" x2="220" y2="260" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="141"/>` +
-    // цилиндр
-    `<path d="${CYL_BOX_BACK}" fill="none" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="443"/>` +
-    `<path d="${CYL_BOX_FRONT}" fill="none" stroke="#000" stroke-width="1.5"/>` +
-    `<line x1="151.2" y1="451.5" x2="151.2" y2="311.5" stroke="#000" stroke-width="1.5"/>` +
-    `<line x1="568.8" y1="428.5" x2="568.8" y2="288.5" stroke="#000" stroke-width="1.5"/>` +
-    `<path d="${CYL_BOX_TOP}" fill="none" stroke="#000" stroke-width="1.5"/>` +
-    // видимые рёбра параллелепипеда
-    `<line x1="100" y1="480" x2="500" y2="480" stroke="#000" stroke-width="1.9"/>` +
-    `<line x1="500" y1="480" x2="620" y2="400" stroke="#000" stroke-width="1.9"/>` +
-    `<line x1="100" y1="480" x2="100" y2="340" stroke="#000" stroke-width="1.9"/>` +
-    `<line x1="500" y1="480" x2="500" y2="340" stroke="#000" stroke-width="1.9"/>` +
-    `<line x1="620" y1="400" x2="620" y2="260" stroke="#000" stroke-width="1.9"/>` +
-    `<line x1="100" y1="340" x2="500" y2="340" stroke="#000" stroke-width="1.9"/>` +
-    `<line x1="500" y1="340" x2="620" y2="260" stroke="#000" stroke-width="1.9"/>` +
-    `<line x1="620" y1="260" x2="220" y2="260" stroke="#000" stroke-width="1.9"/>` +
-    `<line x1="220" y1="260" x2="100" y2="340" stroke="#000" stroke-width="1.9"/>` +
+  // Эллипс вписан в верхнюю грань строго: rx = √(w² − dx²)/2 — из условия касания
+  // наклонных рёбер (w = 200 — ширина грани, dx = 60 — сдвиг по глубине).
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 300" width="340" height="300" font-family="Arial, sans-serif">` +
+    `<rect width="340" height="300" fill="#fff"/>` +
+    `<line x1="115" y1="204" x2="55" y2="250" stroke="#000" stroke-width="1.2" stroke-dasharray="6 5" pathLength="76"/>` +
+    `<line x1="115" y1="204" x2="315" y2="204" stroke="#000" stroke-width="1.2" stroke-dasharray="6 5" pathLength="200"/>` +
+    `<line x1="115" y1="204" x2="115" y2="84" stroke="#000" stroke-width="1.2" stroke-dasharray="6 5" pathLength="120"/>` +
+    `<ellipse cx="185" cy="227" rx="95.4" ry="23" fill="none" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="380"/>` +
+    `<line x1="55" y1="250" x2="255" y2="250" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="255" y1="250" x2="315" y2="204" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="55" y1="250" x2="55" y2="130" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="255" y1="250" x2="255" y2="130" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="315" y1="204" x2="315" y2="84" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="55" y1="130" x2="255" y2="130" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="255" y1="130" x2="315" y2="84" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="55" y1="130" x2="115" y2="84" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="115" y1="84" x2="315" y2="84" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="89.6" y1="107" x2="89.6" y2="227" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="280.4" y1="107" x2="280.4" y2="227" stroke="#000" stroke-width="1.5"/>` +
+    `<ellipse cx="185" cy="107" rx="95.4" ry="23" fill="none" stroke="#000" stroke-width="1.6"/>` +
     `</svg>`
 }
 
@@ -4685,7 +4677,9 @@ function cylInBoxSvg() {
 function t03CylInBox() {
   const r = randInt(1, 9), h = randInt(1, 9)
   return {
-    condition_text: `Цилиндр вписан в прямоугольный параллелепипед. Радиус основания и высота цилиндра равны ${r === h ? r : `${r} и ${h}`}. Найдите объём параллелепипеда.`,
+    condition_text: Math.random() < 0.5
+      ? `Цилиндр вписан в прямоугольный параллелепипед. Радиус основания и высота цилиндра равны ${r === h ? r : `${r} и ${h}`}. Найдите объём параллелепипеда.`
+      : `Прямоугольный параллелепипед описан около цилиндра, радиус основания и высота которого равны ${r === h ? r : `${r} и ${h}`}. Найдите объём параллелепипеда.`,
     image_url: svgUrl(cylInBoxSvg()),
     answer: ru(4 * r * r * h),
   }
@@ -5232,6 +5226,52 @@ function t03SphereInCylSurfInv() {
   }
 }
 
+// Обратная к «цилиндр в параллелепипеде»: V = (2R)²·h ⟹ h = V/(4R²).
+function t03BoxCylHeight() {
+  const r = randInt(1, 9), h = randInt(1, 12)
+  return {
+    condition_text: `Прямоугольный параллелепипед описан около цилиндра, радиус основания которого равен ${r}. Объём параллелепипеда равен ${4 * r * r * h}. Найдите высоту цилиндра.`,
+    image_url: svgUrl(cylInBoxSvg()),
+    answer: ru(h),
+  }
+}
+
+// Цилиндр, описанный около прямой призмы с прямоугольным треугольником в основании:
+// гипотенуза — диаметр ⟹ R² = (a²+b²)/4, боковое ребро k/π ⟹ V = k·(a²+b²)/4.
+function cylCircumPrismSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 350" width="300" height="350" font-family="Arial, sans-serif">` +
+    `<rect width="300" height="350" fill="#fff"/>` +
+    `<path d="M55,260 A95,26 0 0,1 245,260" fill="none" stroke="#000" stroke-width="1.3" stroke-dasharray="8 6" pathLength="198"/>` +
+    `<line x1="55" y1="80" x2="245" y2="80" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="190"/>` +
+    `<line x1="55" y1="80" x2="182.5" y2="104.4" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="130"/>` +
+    `<line x1="182.5" y1="104.4" x2="245" y2="80" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="67"/>` +
+    `<line x1="55" y1="260" x2="245" y2="260" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="190"/>` +
+    `<line x1="55" y1="260" x2="182.5" y2="284.4" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="130"/>` +
+    `<line x1="182.5" y1="284.4" x2="245" y2="260" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="67"/>` +
+    `<line x1="182.5" y1="104.4" x2="182.5" y2="284.4" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="180"/>` +
+    `<line x1="55" y1="80" x2="55" y2="260" stroke="#000" stroke-width="1.6"/>` +
+    `<line x1="245" y1="80" x2="245" y2="260" stroke="#000" stroke-width="1.6"/>` +
+    `<path d="M55,260 A95,26 0 0,0 245,260" fill="none" stroke="#000" stroke-width="1.6"/>` +
+    `<ellipse cx="150" cy="80" rx="95" ry="26" fill="none" stroke="#000" stroke-width="1.7"/>` +
+    // прямые углы в обоих основаниях (вершина опирается на диаметр)
+    `<polyline points="169.7,102.0 181.8,97.2 194.6,99.7" fill="none" stroke="#000" stroke-width="1.2"/>` +
+    `<polyline points="169.7,282.0 181.8,277.2 194.6,279.7" fill="none" stroke="#000" stroke-width="1.2"/>` +
+    `</svg>`
+}
+
+function t03CylCircumPrism() {
+  let a, b, k, v
+  do {
+    a = randInt(2, 12); b = randInt(2, 12); k = randInt(1, 8)
+    v = k * (a * a + b * b) / 4
+  } while (a === b || Math.round(v * 100) !== v * 100)
+  return {
+    condition_text: `В основании прямой призмы лежит прямоугольный треугольник с катетами ${a} и ${b}. Боковые рёбра призмы равны ${fT(k, "π")}. Найдите объём цилиндра, описанного около этой призмы.`,
+    image_url: svgUrl(cylCircumPrismSvg()),
+    answer: ru(clean(v)),
+  }
+}
+
 // Два шара разного радиуса (у каждого экватор: передняя дуга сплошная, задняя штрихом).
 function twoSpheresSvg() {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 270" width="300" height="270" font-family="Arial, sans-serif">` +
@@ -5738,7 +5778,7 @@ export const GENERATORS_EGE_PROF = {
     t01ParMidpoint, t01ParAngle, t01ParHeights,
     t01RhombusSideDiag, t01RhombusAngle, t01TrapMidDiag],
   2: [t02DotCoord, t02DotLenAngle, t02LenCombo, t02DotOfCombos, t02GraphLenCombo],
-  3: [t03BoxTetra, t03BoxPyramid, t03BoxPyramidC1, t03BoxPyramidA1, t03BoxPrism, t03BoxTriPrism, t03BoxPrismADA1, t03PrismRightVol, t03PrismRightEdge, t03SqPrismAngle, t03TriPrismAngle, t03HexPrismAngle, t03HexPrismTri, t03HexPrismTrap, t03CylLatHeight, t03CylLatDiameter, t03MugRatio, t03TwoCylindersTaller, t03LiquidWider, t03LiquidNarrower, t03Submerge, t03SubmergeAbs, t03ConeHeight, t03ConeDiameter, t03ConeAxialFromBase, t03ConeAxialFromSlant, t03ConeLatScale, t03ConeLatScaleDown, t03ConeParSect, t03ConeFullSurfSect, t03ConeVessel, t03PrismTetraTop, t03PyrMidEdge, t03PyrSqDiagBD, t03PyrSqDiagSO, t03PyrSqVol, t03PyrSqHeight, t03PyrSqVolHL, t03PyrTriHeight, t03PyrMidSect, t03PyrMidlineCut, t03SqPrismPoly, t03PrismTetra4, t03HexPrismPyr, t03HexPrismTetra, t03PyrHexHeight, t03SphereGreatCircle, t03TwoSpheresSurf, t03TwoSpheresVol, t03SphereSumSurf, t03CubeInSphere, t03CubeInSphereVol, t03CubeInSphereVolPi, t03BoxInSphere, t03SphereInCylSurfInv, t03PrismTetraC1, t03PrismTetraB1, t03PrismPenta, t03PrismMidline, t03PrismCut, t03PrismCutRegular, t03PrismLateral, t03PrismLateralInv, t03CylConeLateral, t03CylConeLatInverse, t03CylConeVolume, t03CylConeVolInverse, t03ConeInSphere, t03ConeInSphereInv, t03ConeSphereRadius, t03ConeSphereSlant, t03SphereInCyl, t03SphereInCylVol, t03TwoCylinders, t03CylInBox, t03CubeCut, t03CubeCutInverse, t03CubeDiagonal, t03CubeAngle, t03BoxDiagonal, t03BoxLineSin, t03BoxSection, t03BoxDiagSection, t03StepSolid, t03LSolid, t03TSolidSurface, t03SphereSection, t03ConeScale, t03ConeHeightScale],
+  3: [t03BoxTetra, t03BoxPyramid, t03BoxPyramidC1, t03BoxPyramidA1, t03BoxPrism, t03BoxTriPrism, t03BoxPrismADA1, t03PrismRightVol, t03PrismRightEdge, t03SqPrismAngle, t03TriPrismAngle, t03HexPrismAngle, t03HexPrismTri, t03HexPrismTrap, t03CylLatHeight, t03CylLatDiameter, t03MugRatio, t03TwoCylindersTaller, t03LiquidWider, t03LiquidNarrower, t03Submerge, t03SubmergeAbs, t03ConeHeight, t03ConeDiameter, t03ConeAxialFromBase, t03ConeAxialFromSlant, t03ConeLatScale, t03ConeLatScaleDown, t03ConeParSect, t03ConeFullSurfSect, t03ConeVessel, t03PrismTetraTop, t03PyrMidEdge, t03PyrSqDiagBD, t03PyrSqDiagSO, t03PyrSqVol, t03PyrSqHeight, t03PyrSqVolHL, t03PyrTriHeight, t03PyrMidSect, t03PyrMidlineCut, t03SqPrismPoly, t03PrismTetra4, t03HexPrismPyr, t03HexPrismTetra, t03PyrHexHeight, t03SphereGreatCircle, t03TwoSpheresSurf, t03TwoSpheresVol, t03SphereSumSurf, t03CubeInSphere, t03CubeInSphereVol, t03CubeInSphereVolPi, t03BoxInSphere, t03SphereInCylSurfInv, t03BoxCylHeight, t03CylCircumPrism, t03PrismTetraC1, t03PrismTetraB1, t03PrismPenta, t03PrismMidline, t03PrismCut, t03PrismCutRegular, t03PrismLateral, t03PrismLateralInv, t03CylConeLateral, t03CylConeLatInverse, t03CylConeVolume, t03CylConeVolInverse, t03ConeInSphere, t03ConeInSphereInv, t03ConeSphereRadius, t03ConeSphereSlant, t03SphereInCyl, t03SphereInCylVol, t03TwoCylinders, t03CylInBox, t03CubeCut, t03CubeCutInverse, t03CubeDiagonal, t03CubeAngle, t03BoxDiagonal, t03BoxLineSin, t03BoxSection, t03BoxDiagSection, t03StepSolid, t03LSolid, t03TSolidSurface, t03SphereSection, t03ConeScale, t03ConeHeightScale],
   4: [t04ShotPut, t04Gymnastics, t04Diving, t04Tickets, t04Markers, t04Defect, t04Lottery, t04CoinTwice, t04Rooms, t04FootballCoin],
   5: [t05Lamps, t05Between, t05Shooter4, t05Coffee, t05Battery, t05ShooterN, t05DiceCond, t05TwoThemes, t05Exact],
   6: [t06ExpReduce, t06ExpBothSides, t06LogEqLog, t06LogEqNum, t06Rational, t06Cube, t06Sqrt, t06CubeRoot],
@@ -5912,6 +5952,8 @@ export const GEN_META_EGE_PROF = {
       ["two-cyl", "Два цилиндра: объём второго (b²/a)", t03TwoCylinders],
       ["two-cyl-taller", "Два цилиндра: выше и уже (a/b²)", t03TwoCylindersTaller],
       ["cyl-in-box", "Цилиндр в параллелепипеде (4R²h)", t03CylInBox],
+      ["box-cyl-height", "Объём параллелепипеда + радиус → высота", t03BoxCylHeight],
+      ["cyl-circum-prism", "Цилиндр около прямой призмы (k(a²+b²)/4)", t03CylCircumPrism],
       ["cyl-lat-h", "S бок. + диаметр → высота цилиндра", t03CylLatHeight],
       ["cyl-lat-d", "S бок. + высота → диаметр основания", t03CylLatDiameter],
       ["mug-ratio", "Две кружки: отношение объёмов (k²/2)", t03MugRatio],
