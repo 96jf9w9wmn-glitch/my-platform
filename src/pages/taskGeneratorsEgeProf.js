@@ -4808,11 +4808,11 @@ function t03TwoCylindersTaller() {
 // V_шара = 4πR³/3, V_цил = 2πR³ ⟹ V_цил = 1,5·V_шара.
 function t03SphereInCylVol() {
   const v = 2 * randInt(2, 30)
-  return {
-    condition_text: `Шар, объём которого равен ${v}, вписан в цилиндр. Найдите объём цилиндра.`,
-    image_url: svgUrl(sphereInCylSvg()),
-    answer: ru(3 * v / 2),
-  }
+  // две формулировки банка: «шар вписан в цилиндр» и «цилиндр описан около шара»
+  const text = Math.random() < 0.5
+    ? `Шар, объём которого равен ${v}, вписан в цилиндр. Найдите объём цилиндра.`
+    : `Цилиндр описан около шара. Объём шара равен ${v}. Найдите объём цилиндра.`
+  return { condition_text: text, image_url: svgUrl(sphereInCylSvg()), answer: ru(3 * v / 2) }
 }
 
 // Тот же параллелепипед + диагонали сечения AC и A₁C₁ (тело A,B,C,A₁,B₁,C₁).
@@ -5184,6 +5184,45 @@ function t03PyrHexHeight() {
     condition_text: `В правильной шестиугольной пирамиде боковое ребро равно ${ru(clean(r * t))}, а сторона основания равна ${ru(clean(a))}. Найдите высоту пирамиды.`,
     image_url: svgUrl(pyrHexSvg()),
     answer: ru(clean(h)),
+  }
+}
+
+// Шар вписан в куб: V_шара = kπ ⟹ R³ = 3k/4, ребро 2R ⟹ V_куба = 8R³ = 6k.
+function t03CubeInSphereVol() {
+  const k = randInt(2, 40)
+  return {
+    condition_text: `Шар, объём которого равен ${k}π, вписан в куб. Найдите объём куба.`,
+    image_url: svgUrl(cubeInSphereSvg()),
+    answer: ru(6 * k),
+  }
+}
+
+// Шар вписан в куб с ребром a ⟹ V_шара/π = (4/3)(a/2)³ = a³/6 (в банке — без чертежа).
+function t03CubeInSphereVolPi() {
+  const a = 3 * randInt(1, 5)
+  return {
+    condition_text: `В куб с ребром ${a} вписан шар. Найдите объём этого шара, делённый на π.`,
+    answer: ru(clean(a * a * a / 6)),
+  }
+}
+
+// Прямоугольный параллелепипед, описанный около сферы, — куб с ребром 2R ⟹ V = 8R³.
+function t03BoxInSphere() {
+  const r = clean(randInt(2, 40) / 2)
+  return {
+    condition_text: `Прямоугольный параллелепипед описан около сферы радиуса ${ru(r)}. Найдите его объём.`,
+    image_url: svgUrl(cubeInSphereSvg()),
+    answer: ru(clean(8 * r * r * r)),
+  }
+}
+
+// S_шара = 4πR², S_цил.полн = 6πR² ⟹ S_цил = 1,5·S_шара.
+function t03SphereInCylSurfInv() {
+  const s = 2 * randInt(2, 40)
+  return {
+    condition_text: `Шар вписан в цилиндр. Площадь поверхности шара равна ${s}. Найдите площадь полной поверхности цилиндра.`,
+    image_url: svgUrl(sphereInCylSvg()),
+    answer: ru(3 * s / 2),
   }
 }
 
@@ -5693,7 +5732,7 @@ export const GENERATORS_EGE_PROF = {
     t01ParMidpoint, t01ParAngle, t01ParHeights,
     t01RhombusSideDiag, t01RhombusAngle, t01TrapMidDiag],
   2: [t02DotCoord, t02DotLenAngle, t02LenCombo, t02DotOfCombos, t02GraphLenCombo],
-  3: [t03BoxTetra, t03BoxPyramid, t03BoxPyramidC1, t03BoxPyramidA1, t03BoxPrism, t03BoxTriPrism, t03BoxPrismADA1, t03PrismRightVol, t03PrismRightEdge, t03SqPrismAngle, t03TriPrismAngle, t03HexPrismAngle, t03HexPrismTri, t03HexPrismTrap, t03CylLatHeight, t03CylLatDiameter, t03MugRatio, t03TwoCylindersTaller, t03LiquidWider, t03LiquidNarrower, t03Submerge, t03SubmergeAbs, t03ConeHeight, t03ConeDiameter, t03ConeAxialFromBase, t03ConeAxialFromSlant, t03ConeLatScale, t03ConeLatScaleDown, t03ConeParSect, t03ConeFullSurfSect, t03ConeVessel, t03PrismTetraTop, t03PyrMidEdge, t03PyrSqDiagBD, t03PyrSqDiagSO, t03PyrSqVol, t03PyrSqHeight, t03PyrSqVolHL, t03PyrTriHeight, t03PyrMidSect, t03PyrMidlineCut, t03SqPrismPoly, t03PrismTetra4, t03HexPrismPyr, t03HexPrismTetra, t03PyrHexHeight, t03SphereGreatCircle, t03TwoSpheresSurf, t03TwoSpheresVol, t03SphereSumSurf, t03CubeInSphere, t03PrismTetraC1, t03PrismTetraB1, t03PrismPenta, t03PrismMidline, t03PrismCut, t03PrismCutRegular, t03PrismLateral, t03PrismLateralInv, t03CylConeLateral, t03CylConeLatInverse, t03CylConeVolume, t03CylConeVolInverse, t03ConeInSphere, t03ConeInSphereInv, t03ConeSphereRadius, t03ConeSphereSlant, t03SphereInCyl, t03SphereInCylVol, t03TwoCylinders, t03CylInBox, t03CubeCut, t03CubeCutInverse, t03CubeDiagonal, t03CubeAngle, t03BoxDiagonal, t03BoxLineSin, t03BoxSection, t03BoxDiagSection, t03StepSolid, t03LSolid, t03TSolidSurface, t03SphereSection, t03ConeScale, t03ConeHeightScale],
+  3: [t03BoxTetra, t03BoxPyramid, t03BoxPyramidC1, t03BoxPyramidA1, t03BoxPrism, t03BoxTriPrism, t03BoxPrismADA1, t03PrismRightVol, t03PrismRightEdge, t03SqPrismAngle, t03TriPrismAngle, t03HexPrismAngle, t03HexPrismTri, t03HexPrismTrap, t03CylLatHeight, t03CylLatDiameter, t03MugRatio, t03TwoCylindersTaller, t03LiquidWider, t03LiquidNarrower, t03Submerge, t03SubmergeAbs, t03ConeHeight, t03ConeDiameter, t03ConeAxialFromBase, t03ConeAxialFromSlant, t03ConeLatScale, t03ConeLatScaleDown, t03ConeParSect, t03ConeFullSurfSect, t03ConeVessel, t03PrismTetraTop, t03PyrMidEdge, t03PyrSqDiagBD, t03PyrSqDiagSO, t03PyrSqVol, t03PyrSqHeight, t03PyrSqVolHL, t03PyrTriHeight, t03PyrMidSect, t03PyrMidlineCut, t03SqPrismPoly, t03PrismTetra4, t03HexPrismPyr, t03HexPrismTetra, t03PyrHexHeight, t03SphereGreatCircle, t03TwoSpheresSurf, t03TwoSpheresVol, t03SphereSumSurf, t03CubeInSphere, t03CubeInSphereVol, t03CubeInSphereVolPi, t03BoxInSphere, t03SphereInCylSurfInv, t03PrismTetraC1, t03PrismTetraB1, t03PrismPenta, t03PrismMidline, t03PrismCut, t03PrismCutRegular, t03PrismLateral, t03PrismLateralInv, t03CylConeLateral, t03CylConeLatInverse, t03CylConeVolume, t03CylConeVolInverse, t03ConeInSphere, t03ConeInSphereInv, t03ConeSphereRadius, t03ConeSphereSlant, t03SphereInCyl, t03SphereInCylVol, t03TwoCylinders, t03CylInBox, t03CubeCut, t03CubeCutInverse, t03CubeDiagonal, t03CubeAngle, t03BoxDiagonal, t03BoxLineSin, t03BoxSection, t03BoxDiagSection, t03StepSolid, t03LSolid, t03TSolidSurface, t03SphereSection, t03ConeScale, t03ConeHeightScale],
   4: [t04ShotPut, t04Gymnastics, t04Diving, t04Tickets, t04Markers, t04Defect, t04Lottery, t04CoinTwice, t04Rooms, t04FootballCoin],
   5: [t05Lamps, t05Between, t05Shooter4, t05Coffee, t05Battery, t05ShooterN, t05DiceCond, t05TwoThemes, t05Exact],
   6: [t06ExpReduce, t06ExpBothSides, t06LogEqLog, t06LogEqNum, t06Rational, t06Cube, t06Sqrt, t06CubeRoot],
@@ -5854,12 +5893,16 @@ export const GEN_META_EGE_PROF = {
       ["cone-sph-slant", "Сфера около конуса: образующая", t03ConeSphereSlant],
       ["sphere-in-cyl", "Шар в цилиндре: S поверхности (⅔)", t03SphereInCyl],
       ["sphere-in-cyl-vol", "Шар в цилиндре: объём цилиндра (×1,5)", t03SphereInCylVol],
+      ["sphere-in-cyl-surf-inv", "S шара → S полн. цилиндра (×1,5)", t03SphereInCylSurfInv],
       ["sph-section", "Сечение шара через центр: S пов. (×4)", t03SphereSection],
       ["sph-great-circle", "S поверхности → большой круг (÷4)", t03SphereGreatCircle],
       ["two-sph-surf", "Два шара: во сколько раз S больше (k²)", t03TwoSpheresSurf],
       ["two-sph-vol", "Два шара: во сколько раз V больше (k³)", t03TwoSpheresVol],
       ["sph-sum-surf", "Радиус шара с суммарной поверхностью (√)", t03SphereSumSurf],
       ["cube-insphere", "Куб около сферы радиуса R (8R³)", t03CubeInSphere],
+      ["cube-insphere-vol", "Шар объёма kπ в кубе → объём куба (6k)", t03CubeInSphereVol],
+      ["cube-insphere-volpi", "Куб с ребром a → объём шара ÷π (a³/6)", t03CubeInSphereVolPi],
+      ["box-insphere", "Параллелепипед около сферы (8R³)", t03BoxInSphere],
       ["two-cyl", "Два цилиндра: объём второго (b²/a)", t03TwoCylinders],
       ["two-cyl-taller", "Два цилиндра: выше и уже (a/b²)", t03TwoCylindersTaller],
       ["cyl-in-box", "Цилиндр в параллелепипеде (4R²h)", t03CylInBox],
