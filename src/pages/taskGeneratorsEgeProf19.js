@@ -731,6 +731,7 @@ export const META19 = [
     ["means-pos-neg", "Целые числа: средние всех / положительных / отрицательных", t19MeansPosNeg],
     ["means-12-overlap", "12 чисел: средние семи наименьших и семи наибольших", t19Means12Overlap],
     ["means-11-overlap", "11 чисел: наибольшее значение S − B", t19MeansHalvesOverlap],
+    ["means-three-groups", "Деление на три группы: наим. наибольшее среднее", t19MeansThreeGroups],
   ]],
   ["Операции над записью числа", [
     ["swap-digits-max", "Перестановка цифр двузначных → наибольшая новая сумма", t19SwapDigitsMax],
@@ -4625,6 +4626,118 @@ export function t19MeansHalvesOverlap() {
       mustMention: [N, u, v, Xa, Sb],
       extra: [],
       phrases: ["различных натуральных чисел", "наибольшее значение выражения"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 10 (продолжение). Деление набора на три группы (#57)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Числа 1, 2, …, 9 и ещё одно большое число X делят на три непустые группы и считают
+// среднее в каждой. Пространство разбиений конечно (3¹⁰ = 59049 масок), поэтому все
+// три пункта решаются полным перебором — здесь он и есть эталон истины.
+// Таблица ответов считается один раз на каждое X (лениво) перебором по маскам,
+// а solve перебирает те же разбиения рекурсивно — два независимых прохода.
+const THREE_GROUPS_CACHE = new Map()
+function threeGroupsFacts(X) {
+  if (THREE_GROUPS_CACHE.has(X)) return THREE_GROUPS_CACHE.get(X)
+  const nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, X]
+  const n = nums.length
+  let allEqual = false, best = Infinity, bestSplit = null, exA = null
+  for (let mask = 0; mask < 3 ** n; mask++) {
+    const g = [[], [], []]
+    let m = mask
+    for (let i = 0; i < n; i++) { g[m % 3].push(nums[i]); m = (m - m % 3) / 3 }
+    if (g.some((x) => !x.length)) continue
+    const av = g.map((x) => sum(x) / x.length)
+    const mx = Math.max(...av)
+    if (mx < best) { best = mx; bestSplit = g.map((x) => [...x]) }
+    if (av[0] === av[1] && av[1] === av[2]) allEqual = true
+    if (!exA) {
+      for (const [i, j] of [[0, 1], [0, 2], [1, 2]]) {
+        if (av[i] === av[j] && g[i].length !== g[j].length) { exA = g.map((x) => [...x]); break }
+      }
+    }
+  }
+  const facts = { allEqual, best, bestSplit, exA }
+  THREE_GROUPS_CACHE.set(X, facts)
+  return facts
+}
+
+export function t19MeansThreeGroups() {
+  const X = pick([12, 14, 16, 18])                         // при этих X все три средних совпасть не могут
+  const f = threeGroupsFacts(X)
+  if (!f.exA || f.allEqual) return null
+  const nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, X]
+  const bestFr = fr(sum(f.bestSplit.reduce((a, g) => (sum(g) / g.length === f.best ? g : a), f.bestSplit[0])),
+    f.bestSplit.reduce((a, g) => (sum(g) / g.length === f.best ? g.length : a), 1))
+
+  const params = { X }
+  const check = (cfg, part) => {
+    if (!Array.isArray(cfg) || cfg.length !== 3) return "нужно три группы"
+    for (const g of cfg) if (!Array.isArray(g) || !g.length) return "в каждой группе должно быть хотя бы одно число"
+    const flat = cfg.flat().slice().sort((a, b) => a - b)
+    if (flat.join(",") !== nums.slice().sort((a, b) => a - b).join(",")) return "группы должны в точности разбивать исходный набор"
+    const av = cfg.map((g) => sum(g) / g.length)
+    if (part === "a") {
+      let ok = false
+      for (const [i, j] of [[0, 1], [0, 2], [1, 2]]) if (av[i] === av[j] && cfg[i].length !== cfg[j].length) ok = true
+      if (!ok) return "нет двух групп разного размера с равными средними"
+      return null
+    }
+    if (part === "c" && Math.abs(Math.max(...av) - f.best) > 1e-9) return `наибольшее среднее ${Math.max(...av)}, а заявлено ${f.best}`
+    return null
+  }
+  // Независимый проход: рекурсивное распределение чисел по трём группам. Суммы и
+  // размеры групп ведутся инкрементально, а новая (пустая) группа открывается только
+  // одна — иначе каждое разбиение на неупорядоченные группы перебиралось бы шестикратно.
+  const solve = (P) => {
+    const ns = [1, 2, 3, 4, 5, 6, 7, 8, 9, P.X]
+    const sums = [0, 0, 0], cnts = [0, 0, 0]
+    let aYes = false, bYes = false, mn = Infinity
+    const rec = (i, opened) => {
+      if (i === ns.length) {
+        if (opened < 3) return
+        const a0 = sums[0] / cnts[0], a1 = sums[1] / cnts[1], a2 = sums[2] / cnts[2]
+        const mx = Math.max(a0, a1, a2)
+        if (mx < mn) mn = mx
+        if (a0 === a1 && a1 === a2) bYes = true
+        if ((a0 === a1 && cnts[0] !== cnts[1]) || (a0 === a2 && cnts[0] !== cnts[2]) || (a1 === a2 && cnts[1] !== cnts[2])) aYes = true
+        return
+      }
+      const lim = Math.min(3, opened + 1)
+      for (let t = 0; t < lim; t++) {
+        const fresh = cnts[t] === 0
+        sums[t] += ns[i]; cnts[t]++
+        rec(i + 1, fresh ? opened + 1 : opened)
+        sums[t] -= ns[i]; cnts[t]--
+      }
+    }
+    rec(0, 0)
+    return { a: aYes, b: bYes, c: mn }
+  }
+
+  const showSplit = (sp) => sp.map((g) => `{${g.join(", ")}} — среднее ${frPlain(fr(sum(g), g.length))}`).join("; ")
+  return item({
+    preamble: `Числа ${nums.join(", ")} произвольно делят на три группы так, чтобы в каждой группе было хотя бы одно число. Затем вычисляют значение среднего арифметического чисел в каждой из групп (для группы из единственного числа среднее арифметическое равно этому числу).`,
+    qa: `Могут ли быть одинаковыми два из этих трёх значений средних арифметических в группах из разного количества чисел?`,
+    qb: `Могут ли быть одинаковыми все три значения средних арифметических?`,
+    qc: `Найдите наименьшее возможное значение наибольшего из получаемых трёх средних арифметических.`,
+    ansA: `да, например ${showSplit(f.exA)}`,
+    ansB: `нет: если все три средних равны m, то сумма чисел каждой группы равна m·(число элементов), а сумма всех чисел равна ${sum(nums)}, поэтому 10m = ${sum(nums)} и m = ${ru2(sum(nums) / 10)}. Но тогда сумма группы из k чисел равна ${ru2(sum(nums) / 10)}k и обязана быть целой, что при k < 10 невозможно, а групп три и в каждой меньше 10 чисел`,
+    ansC: `${frPlain(bestFr)}; например ${showSplit(f.bestSplit)}`,
+    solution: `а) Пример: ${showSplit(f.exA)}.\nб) Пусть все три средних равны m. Тогда сумма чисел в группе из k элементов равна mk, а сумма всех десяти чисел равна ${sum(nums)}, откуда 10m = ${sum(nums)} и m = ${ru2(sum(nums) / 10)}. Сумма каждой группы целая, поэтому ${ru2(sum(nums) / 10)}k должно быть целым, то есть k кратно 10. Но в каждой из трёх непустых групп меньше десяти чисел — противоречие.\nв) Перебор разбиений показывает, что наименьшее возможное значение наибольшего среднего равно ${frPlain(bestFr)}; оно достигается на разбиении ${showSplit(f.bestSplit)}.\nОтвет: ${frPlain(bestFr)}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: f.exA, target: "two-equal" },
+        b: { type: "yesno", yes: false, reason: "sum-not-divisible", target: "all-equal" },
+        c: { type: "value", value: f.best, example: f.bestSplit },
+      },
+      mustMention: nums,
+      extra: [],
+      phrases: ["на три группы", "хотя бы одно число"],
     },
   })
 }
