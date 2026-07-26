@@ -163,7 +163,7 @@ export function verify16(it) {
     if (!v.allowed.some((x) => near(x, got))) return { ok: false, err: `лишнее число в условии: ${got}` }
   }
   for (const bad of v.forbid) {
-    if (inText.some((x) => near(x, bad))) return { ok: false, err: `ответ ${bad} раскрыт в условии` }
+    if (v.mustMention.some((x) => near(x, bad))) return { ok: false, err: `ответ ${bad} раскрыт в условии` }
   }
 
   // 2) симуляция «период за периодом» и её согласие с ответом
@@ -1772,7 +1772,10 @@ export function t16DiffTotalPct() {
 }
 
 // Подбор помесячного дифференцированного кредита с ЦЕЛЫМИ платежами.
+const DIFF_CACHE = new Map()
 function diffMonthlyCandidates(rates = [1, 1.5, 2, 2.5, 3], nList = null) {
+  const key = rates.join(",") + "|" + (nList || []).join(",")
+  if (DIFF_CACHE.has(key)) return DIFF_CACHE.get(key)
   const out = []
   const ns = nList || [12, 15, 16, 18, 20, 21, 24, 25, 30, 36]
   for (const n of ns) {
@@ -1785,6 +1788,7 @@ function diffMonthlyCandidates(rates = [1, 1.5, 2, 2.5, 3], nList = null) {
       }
     }
   }
+  DIFF_CACHE.set(key, out)
   return out
 }
 
@@ -1978,7 +1982,7 @@ export function t16DiffRateByBounds() {
 }
 
 // Годовые дифференцированные кандидаты (суммы в млн, платежи — целые рубли).
-function diffYearCandidates() {
+const diffYearCandidates = once(() => {
   const out = []
   for (const r of [10, 12, 15, 20, 25]) {
     for (let n = 4; n <= 20; n++) {
@@ -1990,7 +1994,7 @@ function diffYearCandidates() {
     }
   }
   return out
-}
+})
 
 // ── 8. Общая сумма по НАИБОЛЬШЕМУ годовому платежу (эталон 6.8) ────────────
 export function t16DiffTotalByMax() {
@@ -2001,7 +2005,9 @@ export function t16DiffTotalByMax() {
     if (Math.abs(A * 100 - Math.round(A * 100)) > 1e-9) continue
     if (Math.abs(T * 100 - Math.round(T * 100)) > 1e-9) continue
     if (A < 0.5 || A > 20 || T > 200) continue
-    cand.push({ ...b, A: Math.round(A * 100) / 100, T: Math.round(T * 100) / 100 })
+    const Tr = Math.round(T * 100) / 100, Ar = Math.round(A * 100) / 100
+    if (Tr === b.S || Tr === b.r || Tr === Ar) continue    // ответ не должен стоять в условии
+    cand.push({ ...b, A: Ar, T: Tr })
   }
   if (!cand.length) return null
   const c = pick(cand)
@@ -2039,7 +2045,9 @@ export function t16DiffTotalByMin() {
     if (Math.abs(B * 100 - Math.round(B * 100)) > 1e-9) continue
     if (Math.abs(T * 100 - Math.round(T * 100)) > 1e-9) continue
     if (B < 0.2 || B > 10 || T > 200) continue
-    cand.push({ ...b, B: Math.round(B * 100) / 100, T: Math.round(T * 100) / 100 })
+    const Tr = Math.round(T * 100) / 100, Br = Math.round(B * 100) / 100
+    if (Tr === b.S || Tr === b.r || Tr === Br) continue    // ответ не должен стоять в условии
+    cand.push({ ...b, B: Br, T: Tr })
   }
   if (!cand.length) return null
   const c = pick(cand)
@@ -2173,6 +2181,346 @@ export function t16DiffSecondYear() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+//  РАЗДЕЛ 7. ДИФФ. ПЛАТЕЖИ С ДОПОЛНИТЕЛЬНЫМ УСЛОВИЕМ
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Схема: n месяцев долг падает на одинаковый шаг d = (S − R)/n, на 15-е число
+// n-го месяца долг равен R, а к 15-му числу (n+1)-го месяца гасится ХВОСТОВЫМ
+// платежом R·(1+x). Итого n+1 выплат.
+//   pₖ = d + x·Dₖ₋₁ (k = 1…n),   p₍ₙ₊₁₎ = R·(1 + x),
+//   общая сумма = S + x·[n·S − (S − R)(n−1)/2 + R].
+
+function tailPayments(S, ratePct, n, R) {
+  const d = (S - R) / n, x = ratePct / 100
+  const pays = []
+  for (let k = 1; k <= n; k++) pays.push(d + x * (S - (k - 1) * d))
+  pays.push(R * (1 + x))
+  return pays
+}
+const tailTotal = (S, ratePct, n, R) =>
+  S + (ratePct / 100) * (n * S - (S - R) * (n - 1) / 2 + R)
+
+const tailModel = (S, ratePct, n, R) => ({
+  type: "credit", S, ratePct, payments: tailPayments(S, ratePct, n, R), periodUnit: "month",
+})
+
+// Тяжёлые переборы кандидатов считаем один раз на модуль.
+function once(fn) { let v; return () => (v === undefined ? (v = fn()) : v) }
+
+const tailCandidates = once(() => {
+  const out = []
+  for (const r of [1, 1.5, 2, 2.5, 3]) {
+    for (let n = 10; n <= 30; n++) {
+      for (let sk = 3; sk <= 30; sk++) {
+        const S = sk * 100_000
+        for (let rk = 1; rk <= 8; rk++) {
+          const R = rk * 100_000
+          if (R >= S * 0.6) continue
+          if ((S - R) % n !== 0) continue
+          const pays = tailPayments(S, r, n, R)
+          if (!pays.every(isMoney)) continue
+          const T = tailTotal(S, r, n, R)
+          if (!isMoney(T)) continue
+          out.push({ r, n, S, R, T: Math.round(T * 100) / 100, d: (S - R) / n, pays })
+        }
+      }
+    }
+  }
+  return out
+})
+
+// Преамбула схемы «равный шаг + хвостовой платёж» (формулировка эталона, раздел 7).
+function tailPreamble(startMonth, n, sizeText, rateText, stepText, tailText) {
+  return `15-го ${MONTH_NAMES[startMonth - 1]} в банке был взят кредит${sizeText} на ${months(n + 1)}. ` +
+    `Условия его возврата таковы:\n` +
+    `— 1-го числа каждого месяца долг возрастает на ${rateText} по сравнению с концом ` +
+    `предыдущего месяца;\n` +
+    `— со 2-го по 14-е число каждого месяца необходимо выплатить часть долга;\n` +
+    `— 15-го числа каждого месяца с 1-го по ${n}-й долг должен быть ${stepText} меньше долга ` +
+    `на 15-е число предыдущего месяца;\n${tailText}` +
+    `— к 15-му числу ${n + 1}-го месяца кредит должен быть полностью погашен.\n`
+}
+const tailRemainderLine = (n, R) =>
+  `— 15-го числа ${n}-го месяца долг составит ${rub(R)};\n`
+
+// ── 1. Сумма кредита по общей сумме выплат (эталон 7.1, 7.5) ───────────────
+export function t16TailPrincipal() {
+  const pool = tailCandidates().filter((c) => c.T % 1000 === 0 && c.T !== c.S)
+  if (!pool.length) return null
+  const c = pick(pool)
+  const model = tailModel(c.S, c.r, c.n, c.R)
+  const startM = randInt(1, 12)
+  // шаг задан либо числом (как в эталоне 7.1), либо словами «на одну и ту же сумму» (7.5)
+  const stepByValue = Math.random() < 0.5
+  const stepText = stepByValue ? `на ${rub(c.d)}` : "на одну и ту же сумму"
+  const tailText = stepByValue ? "" : tailRemainderLine(c.n, c.R)
+  return item({
+    text: tailPreamble(startM, c.n, "", pct(c.r), stepText, tailText) +
+      `Какую сумму планируется взять в кредит, если общая сумма выплат после его погашения ` +
+      `составила ${rub(c.T)}?`,
+    answer: `${money(c.S)} рублей`,
+    answerNum: c.S,
+    model,
+    mustMention: [c.r, c.T, ...(stepByValue ? [c.d] : [c.R])],
+    extra: [...MONTH_EXTRA, c.n, c.n + 1],
+    forbid: [c.S],
+    checks: [
+      () => (Math.abs(simulateCredit(model).total - c.T) < 0.005 ? null : "симуляция ≠ данной сумме"),
+      () => (Math.abs(tailTotal(c.S + 1000, c.r, c.n, c.R) - c.T) > 1 ? null : "соседняя сумма тоже подходит"),
+    ],
+  })
+}
+
+// ── 2. Ставка по общей сумме выплат (эталон 7.2, 7.3) ──────────────────────
+export function t16TailRate() {
+  const pool = tailCandidates().filter((c) => c.T % 1000 === 0 && c.S % 100_000 === 0 && c.r !== c.n)
+  if (!pool.length) return null
+  const c = pick(pool)
+  const model = tailModel(c.S, c.r, c.n, c.R)
+  const startM = randInt(1, 12)
+  const stepByValue = Math.random() < 0.5
+  const stepText = stepByValue ? `на ${rub(c.d)}` : "на одну и ту же сумму"
+  const totalFor = (r) => tailTotal(c.S, r, c.n, c.R)
+  return item({
+    text: tailPreamble(startM, c.n, ` на ${rub(c.S)}`, "r %", stepText, tailRemainderLine(c.n, c.R)) +
+      `Найдите r, если общая сумма выплат после его погашения составила ${rub(c.T)}.`,
+    answer: `${pct(c.r)}`,
+    answerNum: c.r,
+    model,
+    mustMention: [c.S, c.R, c.T, ...(stepByValue ? [c.d] : [])],
+    extra: [...MONTH_EXTRA, c.n, c.n + 1],
+    forbid: [c.r],
+    checks: [
+      () => {
+        for (let r = 0.5; r <= 40.0001; r += 0.5) {
+          if (Math.abs(r - c.r) < 1e-9) continue
+          if (Math.abs(totalFor(r) - c.T) < 0.5) return `ставка ${r} тоже подходит`
+        }
+        return Math.abs(totalFor(c.r) - c.T) < 0.005 ? null : "общая сумма не сходится"
+      },
+    ],
+  })
+}
+
+// ── 3. Число месяцев n по общей сумме выплат (эталон 7.4) ──────────────────
+export function t16TailMonths() {
+  const pool = tailCandidates().filter((c) =>
+    c.T % 1000 === 0 && c.S % 100_000 === 0 && c.n !== c.r && Math.abs(c.n - c.R) > 1e-9)
+  if (!pool.length) return null
+  const c = pick(pool)
+  const model = tailModel(c.S, c.r, c.n, c.R)
+  const startM = randInt(1, 12)
+  const totalFor = (n) => tailTotal(c.S, c.r, n, c.R)
+  return item({
+    text: `15-го ${MONTH_NAMES[startM - 1]} в банке был взят кредит на ${rub(c.S)} на (n + 1) месяц. ` +
+      `Условия его возврата таковы:\n` +
+      `— 1-го числа каждого месяца долг возрастает на ${pct(c.r)} по сравнению с концом ` +
+      `предыдущего месяца;\n` +
+      `— со 2-го по 14-е число каждого месяца необходимо выплатить часть долга;\n` +
+      `— 15-го числа каждого месяца с 1-го по n-й долг должен быть на одну и ту же сумму меньше ` +
+      `долга на 15-е число предыдущего месяца;\n` +
+      `— 15-го числа n-го месяца долг составит ${rub(c.R)};\n` +
+      `— к 15-му числу (n + 1)-го месяца кредит должен быть полностью погашен.\n` +
+      `Найдите n, если общая сумма выплат после погашения кредита составила ${rub(c.T)}.`,
+    answer: `${months(c.n)}`,
+    answerNum: c.n,
+    model,
+    mustMention: [c.S, c.r, c.R, c.T],
+    extra: [...MONTH_EXTRA],
+    forbid: [c.n],
+    checks: [
+      () => (Math.abs(totalFor(c.n) - c.T) < 0.005 ? null : "n не даёт заявленную сумму"),
+      () => {
+        for (let n = 2; n <= 60; n++) {
+          if (n === c.n) continue
+          if (Math.abs(totalFor(n) - c.T) < 0.5) return `n = ${n} тоже подходит`
+        }
+        return null
+      },
+    ],
+  })
+}
+
+// ── 4. На сколько общая сумма превысит кредит (эталон 7.6) ─────────────────
+export function t16TailOverpay() {
+  const pool = tailCandidates().filter((c) => {
+    const over = c.T - c.S
+    return over > 0 && isMoney(over) && over % 1000 === 0 && c.S % 100_000 === 0
+      && over !== c.R && over !== c.S && over !== c.T
+  })
+  if (!pool.length) return null
+  const c = pick(pool)
+  const over = Math.round((c.T - c.S) * 100) / 100
+  const model = tailModel(c.S, c.r, c.n, c.R)
+  const startM = randInt(1, 12)
+  return item({
+    text: tailPreamble(startM, c.n, ` на ${rub(c.S)}`, pct(c.r), "на одну и ту же сумму",
+      tailRemainderLine(c.n, c.R)) +
+      `На сколько рублей общая сумма выплат превысит сумму, взятую в кредит?`,
+    answer: `${money(over)} рублей`,
+    answerNum: over,
+    model,
+    mustMention: [c.S, c.r, c.R],
+    extra: [...MONTH_EXTRA, c.n, c.n + 1],
+    forbid: [over],
+    checks: [
+      () => (Math.abs(simulateCredit(model).total - c.S - over) < 0.005 ? null : "переплата ≠ ответу"),
+    ],
+  })
+}
+
+// ── 5. Размер k-го платежа по общей сумме (эталон 7.7) ─────────────────────
+export function t16TailKthPayment() {
+  const pool = tailCandidates().filter((c) => c.T % 1000 === 0 && c.n >= 14 && c.S % 100_000 === 0)
+  if (!pool.length) return null
+  const c = pick(pool)
+  const k = randInt(5, c.n - 2)
+  const V = c.pays[k - 1]
+  if (!isMoney(V) || V % 100 !== 0 || V === c.R || V === c.S) return null
+  const model = tailModel(c.S, c.r, c.n, c.R)
+  const startM = randInt(1, 12)
+  return item({
+    text: tailPreamble(startM, c.n, ` на ${rub(c.S)}`, pct(c.r), "на одну и ту же сумму", "") +
+      `Найдите размер ${k}-го платежа по кредиту, если общая сумма выплат равна ${rub(c.T)}.`,
+    answer: `${money(V)} рублей`,
+    answerNum: V,
+    model,
+    mustMention: [c.S, c.r, c.T, k],
+    extra: [...MONTH_EXTRA, c.n, c.n + 1],
+    forbid: [V],
+    checks: [
+      () => (Math.abs(simulateCredit(model).steps[k - 1].payment - V) < 0.005 ? null : "k-й платёж ≠ ответу"),
+      () => (Math.abs(simulateCredit(model).total - c.T) < 0.005 ? null : "общая сумма ≠ данной"),
+      // остаток R (а с ним и шаг) восстанавливается по общей сумме однозначно
+      () => {
+        for (let rk = 0; rk <= 20; rk++) {
+          const R2 = rk * 50_000
+          if (Math.abs(R2 - c.R) < 1e-9) continue
+          if (Math.abs(tailTotal(c.S, c.r, c.n, R2) - c.T) < 0.5) return `остаток ${R2} тоже подходит`
+        }
+        return null
+      },
+    ],
+  })
+}
+
+// ── 6. Величина ПОСЛЕДНЕЙ выплаты по общей сумме (эталон 7.8) ──────────────
+export function t16TailLastPayment() {
+  const pool = tailCandidates().filter((c) => {
+    const last = c.R * (1 + c.r / 100)
+    return c.T % 1000 === 0 && c.S % 100_000 === 0 && isMoney(last) && last % 100 === 0 && last !== c.S
+  })
+  if (!pool.length) return null
+  const c = pick(pool)
+  const last = Math.round(c.R * (1 + c.r / 100) * 100) / 100
+  const model = tailModel(c.S, c.r, c.n, c.R)
+  const startM = randInt(1, 12)
+  return item({
+    text: tailPreamble(startM, c.n, ` на ${rub(c.S)}`, pct(c.r), "на одну и ту же сумму", "") +
+      `Найдите величину последней выплаты, если общая сумма выплат составила ${rub(c.T)}.`,
+    answer: `${money(last)} рублей`,
+    answerNum: last,
+    model,
+    mustMention: [c.S, c.r, c.T],
+    extra: [...MONTH_EXTRA, c.n, c.n + 1],
+    forbid: [last],
+    checks: [
+      () => (Math.abs(simulateCredit(model).steps[c.n].payment - last) < 0.005 ? null : "последняя выплата ≠ ответу"),
+      () => (Math.abs(simulateCredit(model).total - c.T) < 0.005 ? null : "общая сумма ≠ данной"),
+      () => {
+        for (let rk = 0; rk <= 20; rk++) {
+          const R2 = rk * 50_000
+          if (Math.abs(R2 - c.R) < 1e-9) continue
+          if (Math.abs(tailTotal(c.S, c.r, c.n, R2) - c.T) < 0.5) return `остаток ${R2} тоже подходит`
+        }
+        return null
+      },
+    ],
+  })
+}
+
+// ── 7. Таблица с нерегулярным началом и равномерным хвостом (эталон 7.9) ───
+// Долг задан таблицей: S, S−a₁, …, S−a_L (нерегулярно), далее равномерно вниз с шагом h
+// до нуля. Общая сумма = S + x·(Σ голова + Σ хвост), где Σ хвост = T(T+h)/(2h), T = S−a_L.
+// Уравнение на S КВАДРАТНОЕ — ответ находим перебором допустимой сетки, а не формулой.
+export function t16TailTableQuadratic() {
+  const HEADS = [
+    [0, 0.3, 0.5, 1, 1.4, 1.7, 1.8],
+    [0, 0.2, 0.5, 0.9, 1.2, 1.5],
+    [0, 0.4, 0.6, 1, 1.5, 1.9, 2],
+    [0, 0.3, 0.7, 1, 1.3],
+  ]
+  const cand = []
+  for (const head of HEADS) {
+    for (const p of [10, 20, 25]) {
+      const x = p / 100, h = 0.1
+      const L = head[head.length - 1]
+      const totalFor = (S) => {
+        const T = S - L
+        if (T <= 0) return NaN
+        const sumHead = sum(head.slice(0, -1).map((a) => S - a))
+        return S + x * (sumHead + T * (T + h) / (2 * h))
+      }
+      const maxS = L + (30 - head.length) * h        // весь график должен уложиться в 30 лет
+      for (let sk = Math.round((L + 0.3) * 10); sk <= Math.round(maxS * 10); sk++) {
+        const S = sk / 10
+        const T = totalFor(S)
+        if (!Number.isFinite(T) || T > 30) continue
+        if (Math.abs(T * 100 - Math.round(T * 100)) > 1e-9) continue
+        cand.push({ head, p, h, S, T: Math.round(T * 100) / 100, totalFor })
+      }
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const L = c.head[c.head.length - 1]
+  const y0 = randInt(2015, 2020)
+  const yrs = c.head.map((_, i) => y0 + i)
+  const debts = c.head.map((a) => (a === 0 ? "S" : `S ${MINUS} ${dec(a)}`))
+  const tbl = tableBlock([
+    ["Год", ...yrs, "…", "…", "…"],
+    ["Долг (млн руб.)", ...debts, "…", dec(c.h), "0"],
+  ])
+  // полный график долга для симуляции: голова + равномерный хвост до нуля
+  const debtsNum = c.head.map((a) => Math.round((c.S - a) / c.h))   // в целых шагах h
+  for (let v = debtsNum[debtsNum.length - 1] - 1; v >= 0; v--) debtsNum.push(v)
+  const debtsMln = debtsNum.map((v) => Math.round(v * c.h * 100) / 100)
+  const model = {
+    type: "credit", S: c.S, ratePct: c.p, unit: "mln", periodUnit: "year",
+    payments: debtsMln.slice(1).map((v, i) => debtsMln[i] + debtsMln[i] * c.p / 100 - v),
+  }
+  const pr = pick(NAME_ALL)
+  return item({
+    text: `${pr.n} ${took(pr)} кредит 1 марта ${y0} года на сумму S млн рублей. Условия возврата таковы:\n` +
+      `— 15 апреля каждого года долг увеличивается на ${pct(c.p)} по сравнению с началом года;\n` +
+      `— с 1 июня по 1 июля необходимо выплатить часть долга;\n` +
+      `— 1 апреля каждого года долг должен составлять часть кредита в соответствии со следующей ` +
+      `таблицей:\n${tbl}\n` +
+      `Начиная с ${yrs[yrs.length - 1]} года долг равномерно уменьшается на ${rub(c.h * 1e6)} в год. ` +
+      `Определите сумму кредита, если сумма выплат равна ${dec(c.T)} млн рублей.`,
+    answer: `${dec(c.S)} млн рублей`,
+    answerNum: c.S,
+    model,
+    sim: () => simulateCredit(model),
+    mustMention: [c.p, c.T],
+    extra: [1, 15, y0, ...yrs, ...c.head.filter((a) => a > 0), c.h, c.h * 1e6, 0, 6, 7, 4],
+    forbid: [c.S],
+    checks: [
+      () => (Math.abs(simulateCredit(model).total - c.T) < 1e-6 ? null : "симуляция ≠ заявленной сумме"),
+      // единственность: перебираем ВСЮ допустимую сетку значений S (шаг 0,1 млн)
+      () => {
+        for (let sk = Math.round((L + 0.1) * 10); sk <= 600; sk++) {
+          const S2 = sk / 10
+          if (Math.abs(S2 - c.S) < 1e-9) continue
+          if (Math.abs(c.totalFor(S2) - c.T) < 1e-6) return `S = ${S2} тоже подходит`
+        }
+        return null
+      },
+    ],
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 //  РЕЕСТР
 // ═══════════════════════════════════════════════════════════════════════════
 export const GEN16 = [
@@ -2188,6 +2536,8 @@ export const GEN16 = [
   t16DiffPrincipalByFirst, t16DiffPrincipalByLast, t16DiffRateByBounds,
   t16DiffTotalByMax, t16DiffTotalByMin, t16DiffTermByTotal,
   t16DiffPrincipalByTotal, t16DiffSecondYear,
+  t16TailPrincipal, t16TailRate, t16TailMonths, t16TailOverpay,
+  t16TailKthPayment, t16TailLastPayment, t16TailTableQuadratic,
 ]
 
 export const META16 = [
@@ -2240,5 +2590,14 @@ export const META16 = [
     ["dif-term-by-total", "Срок по общей сумме выплат", t16DiffTermByTotal],
     ["dif-s-by-total", "Кредит по общей сумме выплат", t16DiffPrincipalByTotal],
     ["dif-second-year", "Сумма за второй год по сумме за первый", t16DiffSecondYear],
+  ]],
+  ["Дифференцированные платежи с дополнительным условием", [
+    ["dtl-principal", "Кредит по общей сумме (шаг + хвостовой платёж)", t16TailPrincipal],
+    ["dtl-rate", "Ставка по общей сумме (шаг + хвост)", t16TailRate],
+    ["dtl-months", "Число месяцев n по общей сумме", t16TailMonths],
+    ["dtl-overpay", "На сколько общая сумма превысит кредит", t16TailOverpay],
+    ["dtl-kth", "Размер k-го платежа по общей сумме", t16TailKthPayment],
+    ["dtl-last", "Величина последней выплаты по общей сумме", t16TailLastPayment],
+    ["dtl-table", "Таблица: нерегулярное начало + равномерный хвост → S", t16TailTableQuadratic],
   ]],
 ]
