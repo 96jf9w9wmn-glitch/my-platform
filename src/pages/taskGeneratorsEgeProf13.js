@@ -2822,6 +2822,178 @@ function t13IrrHalfSumOnce() {
   return finishGen(eq, refined, residual, { realResidual: real, domainOK, text: seriesListText(refined) })
 }
 
+// ============================================================================
+// ОДЗ — остальные типажи PDF
+// ============================================================================
+
+// sin x·(A·sin x − B·ctg x) = B  ⟺  A·sin²x − B·cos x − B = 0.
+// Корень cos x = −1 всегда есть и всегда отсекается (sin x ≠ 0); второй — (A−B)/A.
+function t13SinTimesEq() { return retryGen(t13SinTimesEqOnce) }
+function t13SinTimesEqOnce() {
+  const A = pick([2, 4, 5]), B = pick([1, 2, 3, 4, 5, 6, 7])
+  const v = (A - B) / A                                       // второй корень по cos
+  if (Math.abs(v) >= 1 - 1e-9) return null                    // ±1 отсеклись бы тоже
+  const eq = `sin x(${A}sin x ${MINUS} ${B === 1 ? "" : B}ctg x) = ${B}`
+  const residual = (x) => A * Math.sin(x) ** 2 - B * Math.cos(x) - B
+  const real = (x) => Math.sin(x) * (A * Math.sin(x) - B * Math.cos(x) / Math.sin(x)) - B
+  const domainOK = (x) => Math.abs(Math.sin(x)) > 1e-6
+  const sol = trigSolution("cos", R(A - B, A))
+  if (!sol) return null
+  return finishArc(eq, sol.rSeries, sol.arcSeries, sol.genParts, residual, domainOK, real)
+}
+
+// sin x / f²(x/2) = 4·g²(x/2)  ⟺ (×f²)  sin x − sin²x = 0  →  sin x = 0 ∪ sin x = 1,
+// причём из sin x = 0 выживает половина серии (ОДЗ f(x/2) ≠ 0).
+function t13HalfAngleFrac() { return retryGen(t13HalfAngleFracOnce) }
+function t13HalfAngleFracOnce() {
+  const den = pick(["sin", "cos"]), num = den === "sin" ? "cos" : "sin"
+  const eq = `⟦f:sin x:${den}²(x/2)⟧ = 4${num}²(x/2)`
+  const Df = den === "sin" ? Math.sin : Math.cos
+  const Nf = num === "sin" ? Math.sin : Math.cos
+  const residual = (x) => Math.sin(x) - Math.sin(x) ** 2
+  const domainOK = (x) => Math.abs(Df(x / 2)) > 1e-6
+  const real = (x) => Math.sin(x) / Df(x / 2) ** 2 - 4 * Nf(x / 2) ** 2
+  // sin x = 0 → x = πn (выживает половина по ОДЗ);  sin x = 1 → x = π/2 + 2πn
+  const refined = refineSeries([...seriesFor("sin", "zero"), ...seriesFor("sin", "one")], domainOK)
+  if (!refined.length) return null
+  return finishGen(eq, refined, residual, { realResidual: real, domainOK, text: seriesListText(refined) })
+}
+
+// (2v·cos²x − 2cos x·cos 2x − v) / √(k·g x) = 0
+//   числитель = −(2cos x − v)(2cos²x − 1) → cos x = v/2 ∪ cos x = ±√2/2;  ОДЗ: k·g x > 0
+const CC2_V = [{ n: 1, r: 1 }, { n: -1, r: 1 }, { n: 1, r: 3 }, { n: -1, r: 3 }]
+function t13CosCos2xSqrt() { return retryGen(t13CosCos2xSqrtOnce) }
+function t13CosCos2xSqrtOnce() {
+  const V = pick(CC2_V)
+  const vNum = V.n * (V.r === 1 ? 1 : Math.sqrt(V.r))
+  const key = numToTrigKey(vNum / 2)
+  if (!key) return null
+  const g = pick(["sin", "cos"]), k = pick([5, 7, 11, 13]), sg = pick([1, -1])
+  const Gf = g === "sin" ? Math.sin : Math.cos
+  const av = Math.abs(V.n)
+  const vStr = V.r === 1 ? String(av) : `${av === 1 ? "" : av}√{${V.r}}`
+  const sqStr = V.r === 1 ? String(2 * av) : `${2 * av}√{${V.r}}`
+  // показ (как в ФИПИ): 2|v|·cos²x ∓ 2cos x·cos 2x − |v| (знак середины — по знаку v)
+  const numStr = sumStr([
+    { neg: false, str: `${sqStr}cos²x` },
+    { neg: V.n > 0, str: "2cos x·cos 2x" },
+    { neg: true, str: vStr },
+  ])
+  const eq = `⟦f:${numStr}:√{${sg > 0 ? k : MINUS + k}${g} x}⟧ = 0`
+  // показанное выражение = sgn(v)·(2v·cos²x − 2cos x·cos 2x − v); нули те же
+  const sgv = V.n > 0 ? 1 : -1
+  const numEv = (x) => sgv * (2 * vNum * Math.cos(x) ** 2 - 2 * Math.cos(x) * Math.cos(2 * x) - vNum)
+  const domainOK = (x) => sg * k * Gf(x) > 1e-6
+  const real = (x) => { const d = sg * k * Gf(x); return d <= 0 ? NaN : numEv(x) / Math.sqrt(d) }
+  const refined = refineSeries([...seriesFor("cos", key), ...seriesFor("cos", "r2half"), ...seriesFor("cos", "negr2half")], domainOK)
+  if (!refined.length) return null
+  return finishGen(eq, refined, numEv, { realResidual: real, domainOK, text: seriesListText(refined) })
+}
+
+// (A′/2)·ctg x·sin 2x + D·sin²x = −E·cos x − F   (ctg x·sin 2x = 2cos²x)
+//   ⟺ A·cos²x + B·cos x + C = 0 с корнями cos x = u₁ («некруглый») и ±1 (отсев по ОДЗ).
+//   tg-вариант: tg x·sin 2x = 2sin²x → те же роли у sin.
+const UGLY_PYTH = [R(3, 5), R(4, 5), R(-3, 5), R(-4, 5), R(5, 13), R(12, 13), R(-5, 13), R(-12, 13), R(2, 3), R(-2, 3), R(1, 3), R(-1, 3)]
+function t13CtgSin2xQuad() { return retryGen(t13CtgSin2xQuadOnce) }
+function t13CtgSin2xQuadOnce() {
+  const isCtg = Math.random() < 0.5
+  const main = isCtg ? "cos" : "sin"                          // функция квадрата
+  const co = isCtg ? "sin" : "cos"                            // ОДЗ: co ≠ 0
+  const u1 = pick(UGLY_PYTH), u2 = pick([1, -1])
+  const q = u1.q, pn = u1.p
+  const A = q, B = -(pn + q * u2), C = pn * u2                // A·t² + B·t + C, корни u1 и u2
+  const D = pick([-3, -2, -1, 1, 2, 3])
+  const A2 = A + D                                            // коэффициент при (·/2)·ctg·sin2x
+  if (A2 <= 0 || A2 > 8) return null
+  const F = C - D, E = B
+  const halfStr = A2 % 2 === 0 ? `${A2 / 2 === 1 ? "" : A2 / 2}` : `⟦f:${A2}:2⟧·`
+  const prodStr = `${halfStr}${isCtg ? "ctg" : "tg"} x·sin 2x`
+  const lhs = [{ neg: false, str: prodStr, mag: 1, val: (x) => (A2 / 2) * (isCtg ? Math.cos(x) / Math.sin(x) : Math.sin(x) / Math.cos(x)) * Math.sin(2 * x) }]
+  const dTerm = radTermRC(D, 1, `${co}²x`)
+  lhs.push({ ...dTerm, mag: Math.abs(D), val: (x) => (co === "sin" ? Math.sin(x) : Math.cos(x)) ** 2 })
+  const rhs = []
+  const eTerm = radTermRC(-E, 1, `${main} x`)
+  if (eTerm) rhs.push({ ...eTerm, mag: Math.abs(E), val: (x) => (main === "sin" ? Math.sin(x) : Math.cos(x)) })
+  if (F !== 0) rhs.push({ neg: F > 0, str: String(Math.abs(F)), mag: Math.abs(F), val: () => 1 })
+  if (!rhs.length) return null
+  let rSide = rhs
+  if (rhs.every((t) => t.neg)) {                              // «= −8cosx − 2» → всё влево
+    for (const t of rhs) lhs.push({ ...t, neg: false })
+    rSide = []
+  } else {
+    const pr = rSide.findIndex((t) => !t.neg)
+    if (pr > 0) rSide.unshift(rSide.splice(pr, 1)[0])
+  }
+  const eq = `${sumStr(lhs)} = ${rSide.length ? sumStr(rSide) : "0"}`
+  const Mf = main === "sin" ? Math.sin : Math.cos
+  const residual = (x) => { const t = Mf(x); return A * t * t + B * t + C }
+  const contrib = (list) => (x) => list.reduce((s, t) => s + (t.neg ? -1 : 1) * t.mag * t.val(x), 0)
+  const lf = contrib(lhs), rf = contrib(rSide)
+  const domainOK = (x) => Math.abs((co === "sin" ? Math.sin(x) : Math.cos(x))) > 1e-6
+  const sol = trigSolution(main, u1)
+  if (!sol) return null
+  return finishArc(eq, sol.rSeries, sol.arcSeries, sol.genParts, residual, domainOK, (x) => lf(x) - rf(x))
+}
+
+// sin(kπx) / (1 + c·ctg πx) = 0 — аргумент πx, отрезок в обычных числах.
+// Нули числителя x = n/k (или 1/(2k)+n/k для косинуса); отсев: sin πx = 0 и знаменатель = 0.
+const PIX_DEN = [
+  { str: "1 + ctg πx", ev: (x) => 1 + Math.cos(Math.PI * x) / Math.sin(Math.PI * x) },
+  { str: "1 + ⟦r:3⟧ ctg πx", ev: (x) => 1 + Math.sqrt(3) * Math.cos(Math.PI * x) / Math.sin(Math.PI * x) },
+  { str: "⟦r:3⟧ + ctg πx", ev: (x) => Math.sqrt(3) + Math.cos(Math.PI * x) / Math.sin(Math.PI * x) },
+]
+const fmtRat = (p, q) => q === 1 ? intT(p) : `${p < 0 ? MINUS : ""}${Math.abs(p)}/${q}`
+function t13FracPiArg() { return retryGen(t13FracPiArgOnce, 80) }
+function t13FracPiArgOnce() {
+  const isSin = Math.random() < 0.6
+  const k = pick(isSin ? [2, 3, 4] : [1, 2, 3])
+  const D = pick(PIX_DEN)
+  const numStr = isSin ? `sin ${k === 1 ? "" : k}πx` : `cos ${2 * k}πx`
+  const numEv = isSin ? (x) => Math.sin(k * Math.PI * x) : (x) => Math.cos(2 * k * Math.PI * x)
+  const eq = `⟦f:${numStr.replace("⟦r:3⟧", "√{3}")}:${D.str.replace("⟦r:3⟧", "√{3}")}⟧ = 0`
+  const domainOK = (x) => Math.abs(Math.sin(Math.PI * x)) > 1e-6 && Math.abs(D.ev(x)) > 0.05
+  // нули числителя по модулю 1: sin → j/k ; cos → (2j+1)/(4k)... приводим к общему шагу
+  const step = isSin ? R(1, k) : R(1, 2 * k)
+  const base0 = isSin ? R(0) : R(1, 4 * k)
+  const kept = []
+  const N = isSin ? k : 2 * k
+  for (let j = 0; j < N; j++) {
+    const b = Radd(base0, Rmuln(step, j))
+    if (domainOK(b.p / b.q)) kept.push(R(b.p % b.q + (b.p % b.q < 0 ? b.q : 0), b.q))
+  }
+  if (!kept.length || kept.length === N) return null           // нужен хотя бы один отсев
+  // отрезок с «обычными» (десятичными) концами: целые, ½, ¼, ⅕, ⅖…
+  const cand = []
+  for (let n = -3; n <= 3; n++) for (const [p, q] of [[0, 1], [1, 2], [1, 5], [2, 5], [3, 5], [4, 5], [1, 4], [3, 4]]) {
+    const v = Radd(R(n), R(p, q))
+    cand.push({ num: v.p / v.q, text: v.q === 1 ? intT(v.p) : ru2(v.p / v.q) })
+  }
+  const opts = []
+  for (const L of cand) for (const Rr of cand) {
+    const w = Rr.num - L.num
+    if (w < 1.2 || w > 4.2) continue
+    const inside = []
+    for (const b of kept) {
+      const lo = Math.ceil(L.num - b.p / b.q - 1e-9), hi = Math.floor(Rr.num - b.p / b.q + 1e-9)
+      for (let n = lo; n <= hi; n++) inside.push(Radd(b, R(n)))
+    }
+    if (inside.length >= 2 && inside.length <= 4) opts.push({ L, R: Rr, inside })
+  }
+  if (!opts.length) return null
+  const o = pick(opts)
+  const sorted = o.inside.sort((p1, p2) => p1.p / p1.q - p2.p / p2.q)
+  const genText = kept.map((b) => `x = ${fmtRat(b.p, b.q)} + n`).join(",  ")
+  return {
+    condition_text: `а) Решите уравнение\n${eq}`,
+    condition_tail: `б) Найдите корни, принадлежащие отрезку [${o.L.text}; ${o.R.text}].`,
+    answer: `а) ${genText}, n ∈ ℤ\nб) ${sorted.map((b) => fmtRat(b.p, b.q)).join(";  ")}`,
+    _verify: {
+      residual: numEv, realResidual: (x) => numEv(x) / D.ev(x), domainOK,
+      roots: sorted.map((b) => b.p / b.q), L: o.L.num, R: o.R.num,
+    },
+  }
+}
+
 // ── реестр ──────────────────────────────────────────────────────────────────
 export const GEN13 = [
   t13SinQuad, t13CosQuad, t13CosSqSinLin, t13SinSqCosLin,
@@ -2844,6 +3016,7 @@ export const GEN13 = [
   t13ArcSin, t13ArcCos, t13ArcTan, t13Homogeneous, t13ReciprocalTg,
   t13GroupAlgTrig,
   t13FracTgOverLin, t13FracSqrtDen, t13TgSqIdentity, t13FracSin2x, t13SinTgFactor, t13ProdLog,
+  t13SinTimesEq, t13HalfAngleFrac, t13CosCos2xSqrt, t13CtgSin2xQuad, t13FracPiArg,
   t13FracArcCosTg, t13FracArcSinCos,
   t13ReductProd, t13ReductFactor,
 ]
@@ -2956,6 +3129,11 @@ export const META13 = [
     ["frac-sin2x", "sin2x/[приведение]=C → 2·другая=±C", t13FracSin2x],
     ["sin-tg-factor", "A·sinx=B·tgx и A·sin²x=B·tgx", t13SinTgFactor],
     ["prod-log", "P(триг)·logₐ(g)=0 и P/logₐ(g)=0", t13ProdLog],
+    ["sin-times-eq", "sinx(A·sinx−B·ctgx)=B (cos=−1 отсекается)", t13SinTimesEq],
+    ["half-frac", "sinx/f²(x/2)=4g²(x/2) (ОДЗ f(x/2)≠0)", t13HalfAngleFrac],
+    ["cos-cos2x-sqrt", "(2v·cos²x−2cosx·cos2x−v)/√(k·g x)=0", t13CosCos2xSqrt],
+    ["ctg-sin2x-quad", "(A′/2)ctgx·sin2x+D·sin²x=−E·cosx−F → arccos, ±1 отсев", t13CtgSin2xQuad],
+    ["frac-pix", "sin(kπx)/(1+c·ctgπx)=0 — аргумент πx, отрезок в числах", t13FracPiArg],
   ]],
   ["Арки в одних точках (дробь = 0)", [
     ["frac-cos-tg", "(c·cosx−a)/(a·tgx+b)=0 → одна ветвь arccos", t13FracArcCosTg],
