@@ -698,6 +698,11 @@ export function t19BoardDistinctSum() {
 
 // ── реестр ─────────────────────────────────────────────────────────────────
 export const META19 = [
+  ["Четыре последовательных числа, делённые на цифру", [
+    ["four-consec-last-digit", "Делят на последнюю цифру → наибольшее целое S", t19FourConsecLastDigit],
+    ["four-consec-first-digit", "Делят на первую цифру → наибольшее целое S на отрезке", t19FourConsecFirstDigit],
+    ["four-consec-any-digit", "Делят на любую ненулевую цифру → наибольшая целая сумма", t19FourConsecAnyDigit],
+  ]],
   ["Трёхзначное число и сумма его цифр", [
     ["three-quot-max", "Не кратное 100 → наибольшее частное A : S(A)", t19ThreeQuotMax],
     ["three-quot-min", "Трёхзначное → наименьшее частное A : S(A)", t19ThreeQuotMin],
@@ -1089,3 +1094,325 @@ function asFamily(mode) {
 }
 export function t19ThreeASMax() { return asFamily("max") }
 export function t19ThreeASMin() { return asFamily("min") }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 7. Четыре последовательных числа, делённые на цифру (#70, #71, #72)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Точная дробная арифметика (числа маленькие, переполнения нет).
+const gcdI = (a, b) => { a = Math.abs(a); b = Math.abs(b); while (b) {[a, b] = [b, a % b] } return a || 1 }
+const fr = (n, d = 1) => { const g = gcdI(n, d); return { n: n / g, d: d / g } }
+const frAdd = (a, b) => fr(a.n * b.d + b.n * a.d, a.d * b.d)
+const frVal = (a) => a.n / a.d
+// «16 5/6» для ответа (plain) и «16 ⟦f:5:6⟧» для условия (дробь стоячей).
+function frPlain(a) {
+  if (a.d === 1) return String(a.n)
+  const w = Math.floor(a.n / a.d), r = a.n - w * a.d
+  return w ? `${w} ${r}/${a.d}` : `${r}/${a.d}`
+}
+function frCond(a) {
+  if (a.d === 1) return String(a.n)
+  const w = Math.floor(a.n / a.d), r = a.n - w * a.d
+  return w ? `${w} ⟦f:${r}:${a.d}⟧` : `⟦f:${r}:${a.d}⟧`
+}
+const frNums = (a) => (a.d === 1 ? [a.n] : [Math.floor(a.n / a.d), a.n - Math.floor(a.n / a.d) * a.d, a.d].filter((x) => x))
+const digitsOf = (n) => String(n).split("").map(Number)
+// Числитель, взаимно простой со знаменателем: иначе дробь сократится и довод про НОК падает.
+const coprimeTo = (q) => { const c = []; for (let r = 1; r < q; r++) if (gcdI(r, q) === 1) c.push(r); return pick(c) }
+
+// #71. Четыре последовательных числа с ненулевыми последними цифрами делят на последнюю цифру.
+// Ключ: если n = 10m + d, то (n + i)/(d + i) = 10m/(d + i) + 1, поэтому
+//   S = 4 + 10m·H,  H = 1/d + 1/(d+1) + 1/(d+2) + 1/(d+3),
+// то есть S линейно растёт по m, а целость S — чисто арифметическое условие на m.
+const LCM4 = [...new Set([1, 2, 3, 4, 5, 6].map((d) => [d, d + 1, d + 2, d + 3].reduce((L, x) => L * x / gcdI(L, x), 1)))].sort((a, b) => a - b)
+const H4 = [1, 2, 3, 4, 5, 6].map((d) => [0, 1, 2, 3].reduce((a, i) => frAdd(a, fr(1, d + i)), fr(0)))
+export function t19FourConsecLastDigit() {
+  // а) — «да»: берём конкретную четвёрку и считаем её сумму.
+  const dA = randInt(1, 6), mA = randInt(10, 99)
+  const nA = 10 * mA + dA
+  const SA = frAdd(fr(4), fr(10 * mA * H4[dA - 1].n, H4[dA - 1].d))
+  // б) — «нет»: знаменатель несократимой дроби S делит НОК четырёх подряд идущих цифр,
+  // то есть одно из чисел LCM4; берём знаменатель, не делящий ни одного из них.
+  const badQ = pick([11, 13, 16, 17, 19, 23, 25, 27, 29, 31, 32].filter((q) => LCM4.every((L) => L % q !== 0)))
+  const SB = fr(randInt(20, 400) * badQ + coprimeTo(badQ), badQ)
+  if (frVal(SA) === frVal(SB)) return null
+  // в) — наибольшее целое S для трёхзначных чисел: m ∈ [10; (996 − d)/10],
+  // 10m·H целое ⟺ m кратно q/НОД(q,10), где H = p/q.
+  let best = null
+  for (let d = 1; d <= 6; d++) {
+    const H = H4[d - 1]
+    const M = H.d / gcdI(H.d, 10)
+    const mMax = Math.floor((996 - d) / 10)
+    const mStar = Math.floor(mMax / M) * M
+    if (mStar < 10) continue
+    const S = 4 + 10 * mStar * H.n / H.d
+    if (!best || S > best.S) best = { S, d, m: mStar, n: 10 * mStar + d, M }
+  }
+  if (!best) return null
+
+  const params = { SA: frVal(SA), SB: frVal(SB), best: best.S }
+  const check = (n, part) => {
+    if (!Number.isInteger(n) || n < 1) return `${n} не натуральное`
+    let s = fr(0)
+    for (let i = 0; i < 4; i++) {
+      const last = (n + i) % 10
+      if (last === 0) return `последняя цифра числа ${n + i} равна нулю`
+      s = frAdd(s, fr(n + i, last))
+    }
+    if (part === "c") {
+      for (let i = 0; i < 4; i++) if (n + i < 100 || n + i > 999) return `${n + i} не трёхзначное`
+      if (s.d !== 1) return `сумма ${frPlain(s)} не целая`
+      if (s.n !== best.S) return `сумма ${s.n}, а не ${best.S}`
+    } else {
+      const target = part === "a" ? SA : SB
+      if (s.n * target.d !== target.n * s.d) return `сумма ${frPlain(s)}, а не ${frPlain(target)}`
+    }
+    return null
+  }
+  const solve = (P) => {
+    // Пространство перебора для а)/б): S = 4 + 10m·H ≥ 4 + 10m/9·4, поэтому
+    // m ≤ 9·S/4; перебираем все m до этой границы и все последние цифры 1…6.
+    const sumFor = (n) => { let s = fr(0); for (let i = 0; i < 4; i++) { const L = (n + i) % 10; if (!L) return null; s = frAdd(s, fr(n + i, L)) } return s }
+    const reach = (v) => {
+      const nMax = Math.ceil(9 * v / 4) + 12
+      for (let n = 1; n <= nMax; n++) { const s = sumFor(n); if (s && Math.abs(frVal(s) - v) < 1e-9) return true }
+      return false
+    }
+    // в): все трёхзначные четвёрки 100…996
+    let bestS = null
+    for (let n = 100; n <= 996; n++) {
+      if (n + 3 > 999) break
+      const s = sumFor(n)
+      if (!s || s.d !== 1) continue
+      if (bestS === null || s.n > bestS) bestS = s.n
+    }
+    return { a: reach(P.SA), b: reach(P.SB), c: bestS }
+  }
+
+  return item({
+    preamble: `Каждое из четырёх последовательных натуральных чисел, последние цифры которых не равны нулю, поделили на его последнюю цифру. Сумма получившихся чисел равна S.`,
+    qa: `Может ли S быть равной ${frCond(SA)}?`,
+    qb: `Может ли S быть равной ${frCond(SB)}?`,
+    qc: `Найдите наибольшее целое значение S, если каждое из исходных чисел было трёхзначным.`,
+    ansA: `да, например для чисел ${nA}, ${nA + 1}, ${nA + 2}, ${nA + 3}: сумма равна ${frPlain(SA)}`,
+    ansB: `нет: если первое число равно 10m + d, то S = 4 + 10m·(1/d + 1/(d+1) + 1/(d+2) + 1/(d+3)), поэтому знаменатель несократимой дроби S делит НОК четырёх подряд идущих цифр — одно из чисел ${joinRu(LCM4)}; число ${badQ} не делит ни одно из них`,
+    ansC: `${best.S}; достигается на числах ${best.n}, ${best.n + 1}, ${best.n + 2}, ${best.n + 3}; больше нельзя — S = 4 + 10m·H растёт с m, целость требует, чтобы m делилось на ${best.M}, а наибольшее такое m для трёхзначных чисел равно ${best.m}`,
+    solution: `Пусть первое число равно n = 10m + d, где d — его последняя цифра (d ≠ 0, и d + 3 ≤ 9, иначе одно из чисел оканчивается нулём, поэтому d ≤ 6).\nТогда (n + i) : (d + i) = (10m + d + i) : (d + i) = 10m/(d + i) + 1, и S = 4 + 10m·H, где H = 1/d + 1/(d+1) + 1/(d+2) + 1/(d+3).\nОтсюда сразу два следствия: знаменатель S делит НОК(d, d+1, d+2, d+3) — одно из чисел ${joinRu(LCM4)}; и S строго растёт с m.\nДля трёхзначных чисел m ≤ ${best.m + best.M - 1}, а из целости S следует, что m кратно ${best.M}. Наибольшее подходящее m равно ${best.m}, что даёт S = ${best.S} на числах ${best.n}—${best.n + 3}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: nA, target: frVal(SA) },
+        b: { type: "yesno", yes: false, reason: "denominator", target: frVal(SB) },
+        c: { type: "value", value: best.S, example: best.n },
+      },
+      mustMention: [],
+      extra: [...frNums(SA), ...frNums(SB)],
+      phrases: ["четырёх последовательных натуральных чисел", "последние цифры которых не равны нулю", "поделили на его последнюю цифру"],
+    },
+  })
+}
+
+// #72. Четыре последовательных числа делят на свою ПЕРВУЮ цифру.
+// Внутри «сотни» первая цифра a одна и та же, поэтому S = (4n + 6)/a; при переходе
+// через границу сотни часть слагаемых делится на большую цифру, и сумма только падает.
+const FIRST_TABLE = (() => {
+  const arr = new Array(1000).fill(null)
+  for (let n = 100; n + 3 <= 999; n++) {
+    let s = fr(0)
+    for (let i = 0; i < 4; i++) s = frAdd(s, fr(n + i, digitsOf(n + i)[0]))
+    arr[n] = s
+  }
+  return arr
+})()
+export function t19FourConsecFirstDigit() {
+  const L = 100 * randInt(1, 5), R = 100 * randInt(6, 9) + 99
+  // а) — «да»: конкретная четвёрка внутри отрезка.
+  const nA = randInt(L, R - 3)
+  const SA = FIRST_TABLE[nA]
+  // б) — «нет»: знаменатель не делит НОК(1…9) = 2520 (первая цифра — от 1 до 9).
+  const badQ = pick([11, 13, 16, 17, 19, 23, 25, 27, 29, 31, 32].filter((q) => 2520 % q !== 0))
+  const SB = fr(randInt(20, 500) * badQ + coprimeTo(badQ), badQ)
+  if (!SA || frVal(SA) === frVal(SB)) return null
+  // в) — наибольшее целое S на отрезке: внутри сотни S = (4n + 6)/a растёт по n,
+  // поэтому достаточно для каждой первой цифры взять наибольшее подходящее n.
+  let best = null
+  for (let a = 1; a <= 9; a++) {
+    const lo = Math.max(L, 100 * a), hi = Math.min(R - 3, 100 * a + 96)
+    if (lo > hi) continue
+    for (let n = hi; n >= lo; n--) {
+      if ((4 * n + 6) % a !== 0) continue
+      const S = (4 * n + 6) / a
+      if (!best || S > best.S) best = { S, n, a }
+      break
+    }
+  }
+  if (!best) return null
+
+  const params = { SA: frVal(SA), SB: frVal(SB), L, R, best: best.S }
+  const check = (n, part) => {
+    if (!Number.isInteger(n) || n < 1) return `${n} не натуральное`
+    let s = fr(0)
+    for (let i = 0; i < 4; i++) s = frAdd(s, fr(n + i, digitsOf(n + i)[0]))
+    if (part === "c") {
+      for (let i = 0; i < 4; i++) if (n + i < L || n + i > R) return `${n + i} вне отрезка [${L}; ${R}]`
+      if (s.d !== 1) return `сумма ${frPlain(s)} не целая`
+      if (s.n !== best.S) return `сумма ${s.n}, а не ${best.S}`
+    } else {
+      const target = part === "a" ? SA : SB
+      if (s.n * target.d !== target.n * s.d) return `сумма ${frPlain(s)}, а не ${frPlain(target)}`
+    }
+    return null
+  }
+  const solve = (P) => {
+    // Пространство: для а)/б) — все n, при которых сумма не превосходит цели
+    // (S ≥ (4n + 6)/9 ⇒ n ≤ 9S/4); для в) — все четвёрки внутри [L; R].
+    const sumFor = (n) => { let s = fr(0); for (let i = 0; i < 4; i++) s = frAdd(s, fr(n + i, digitsOf(n + i)[0])); return s }
+    const reach = (v) => {
+      const nMax = Math.ceil(9 * v / 4) + 12
+      for (let n = 1; n <= nMax; n++) if (Math.abs(frVal(sumFor(n)) - v) < 1e-9) return true
+      return false
+    }
+    let bestS = null
+    for (let n = P.L; n + 3 <= P.R; n++) {
+      const s = sumFor(n)
+      if (s.d !== 1) continue
+      if (bestS === null || s.n > bestS) bestS = s.n
+    }
+    return { a: reach(P.SA), b: reach(P.SB), c: bestS }
+  }
+
+  return item({
+    preamble: `Каждое из четырёх последовательных натуральных чисел разделили на свою первую цифру. Пусть S — сумма четырёх получившихся чисел.`,
+    qa: `Может ли S быть равной ${frCond(SA)}?`,
+    qb: `Может ли S быть равной ${frCond(SB)}?`,
+    qc: `Какое наибольшее целое значение может принимать S, если известно, что 4 исходных числа не меньше ${L} и не больше ${R}?`,
+    ansA: `да, например для чисел ${nA}, ${nA + 1}, ${nA + 2}, ${nA + 3}: сумма равна ${frPlain(SA)}`,
+    ansB: `нет: каждое слагаемое имеет знаменателем первую цифру, то есть одно из чисел 1…9, поэтому знаменатель несократимой дроби S делит НОК(1, 2, …, 9) = 2520; число ${badQ} его не делит`,
+    ansC: `${best.S}; достигается на числах ${best.n}, ${best.n + 1}, ${best.n + 2}, ${best.n + 3}; больше нельзя — внутри одной сотни S = (4n + 6)/a растёт с n и убывает с ростом первой цифры a, а переход через границу сотни только уменьшает сумму`,
+    solution: `Если все четыре числа начинаются с одной цифры a, то S = (n + (n+1) + (n+2) + (n+3))/a = (4n + 6)/a. При переходе через границу сотни часть чисел делится на бо́льшую первую цифру, поэтому сумма только уменьшается.\nВнутри сотни S растёт вместе с n, а целость S равносильна делимости 4n + 6 на a. Перебирая первые цифры на отрезке [${L}; ${R}] и беря наибольшее подходящее n для каждой, получаем максимум S = ${best.S} при n = ${best.n} (первая цифра ${best.a}).\nЗнаменатель S всегда делит НОК(1, …, 9) = 2520 — это сразу отсекает «неправильные» дроби.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: nA, target: frVal(SA) },
+        b: { type: "yesno", yes: false, reason: "denominator", target: frVal(SB) },
+        c: { type: "value", value: best.S, example: best.n },
+      },
+      mustMention: [L, R],
+      extra: [...frNums(SA), ...frNums(SB), 4],
+      phrases: ["четырёх последовательных натуральных чисел", "разделили на свою первую цифру"],
+    },
+  })
+}
+
+// #70. Каждое из четырёх последовательных чисел делят на ОДНУ ИЗ его ненулевых цифр
+//      (цифру выбирают для каждого числа свою), результаты складывают.
+// Таблица «наибольшая ЦЕЛАЯ сумма для четвёрки, начинающейся с n» считается один раз
+// при импорте перебором вариантов выбора цифр; в проде — только чтение таблицы.
+const ANYDIG_BEST_INT = (() => {
+  const arr = new Int32Array(1000).fill(-1)
+  for (let n = 100; n + 3 <= 999; n++) {
+    const opts = []
+    for (let i = 0; i < 4; i++) opts.push([...new Set(digitsOf(n + i).filter((x) => x))])
+    let best = -1
+    for (const a of opts[0]) for (const b of opts[1]) for (const c of opts[2]) for (const d of opts[3]) {
+      let s = fr(0)
+      s = frAdd(s, fr(n, a)); s = frAdd(s, fr(n + 1, b)); s = frAdd(s, fr(n + 2, c)); s = frAdd(s, fr(n + 3, d))
+      if (s.d === 1 && s.n > best) best = s.n
+    }
+    arr[n] = best
+  }
+  return arr
+})()
+// Префиксные максимумы по фиксированным отрезкам — чтобы в проде не было цикла.
+const ANYDIG_RANGES = (() => {
+  const map = new Map()
+  for (const L of [100, 200, 300, 400, 500, 600]) {
+    for (const R of [399, 499, 599, 699, 799, 899, 999]) {
+      if (R - 3 < L) continue
+      let best = -1, at = -1
+      for (let n = L; n + 3 <= R; n++) if (ANYDIG_BEST_INT[n] > best) { best = ANYDIG_BEST_INT[n]; at = n }
+      map.set(L + ":" + R, { best, at })
+    }
+  }
+  return map
+})()
+export function t19FourConsecAnyDigit() {
+  const L = pick([100, 200, 300, 400, 500, 600])
+  const R = pick([399, 499, 599, 699, 799, 899, 999].filter((r) => r - 3 >= L))
+  const rng = ANYDIG_RANGES.get(L + ":" + R)
+  if (!rng || rng.best < 0) return null
+  // а) — «да»: четвёрка, у каждого числа которой есть цифра 1, тогда сумма равна 4n + 6.
+  const nA = 100 * randInt(1, 9) + 10 + randInt(0, 6)
+  const v1 = 4 * nA + 6
+  // б) — «нет»: знаменатель несократимой дроби делит НОК(1…9) = 2520.
+  const badQ = pick([11, 13, 16, 17, 19, 23, 25, 27, 29, 31, 32].filter((q) => 2520 % q !== 0))
+  const SB = fr(randInt(5, 200) * badQ + coprimeTo(badQ), badQ)
+
+  const params = { v1, SB: frVal(SB), L, R, best: rng.best }
+  const check = (n, part) => {
+    if (!Number.isInteger(n) || n < 1) return `${n} не натуральное`
+    // сумма зависит от выбора цифр — проверяем, что НУЖНОЕ значение достижимо
+    const opts = []
+    for (let i = 0; i < 4; i++) {
+      const ds = [...new Set(digitsOf(n + i).filter((x) => x))]
+      if (!ds.length) return `у числа ${n + i} нет ненулевых цифр`
+      opts.push(ds)
+    }
+    const target = part === "a" ? fr(v1) : part === "b" ? SB : fr(rng.best)
+    if (part === "c") for (let i = 0; i < 4; i++) if (n + i < L || n + i > R) return `${n + i} вне отрезка [${L}; ${R}]`
+    for (const a of opts[0]) for (const b of opts[1]) for (const c of opts[2]) for (const d of opts[3]) {
+      let s = fr(0)
+      s = frAdd(s, fr(n, a)); s = frAdd(s, fr(n + 1, b)); s = frAdd(s, fr(n + 2, c)); s = frAdd(s, fr(n + 3, d))
+      if (s.n * target.d === target.n * s.d) return null
+    }
+    return `для четвёрки ${n}…${n + 3} сумма ${frPlain(target)} не получается ни при каком выборе цифр`
+  }
+  const solve = (P) => {
+    // Пространство: сумма не меньше (4n + 6)/9, поэтому для значения v достаточно
+    // проверить n ≤ 9v/4; для каждого n перебираем все выборы цифр.
+    const hits = (n, v) => {
+      const opts = []
+      for (let i = 0; i < 4; i++) { const ds = [...new Set(digitsOf(n + i).filter((x) => x))]; if (!ds.length) return false; opts.push(ds) }
+      for (const a of opts[0]) for (const b of opts[1]) for (const c of opts[2]) for (const d of opts[3]) {
+        let s = fr(0)
+        s = frAdd(s, fr(n, a)); s = frAdd(s, fr(n + 1, b)); s = frAdd(s, fr(n + 2, c)); s = frAdd(s, fr(n + 3, d))
+        if (Math.abs(frVal(s) - v) < 1e-9) return true
+      }
+      return false
+    }
+    const reach = (v) => { const nMax = Math.ceil(9 * v / 4) + 12; for (let n = 1; n <= nMax; n++) if (hits(n, v)) return true; return false }
+    let bestS = -1
+    for (let n = P.L; n + 3 <= P.R; n++) {
+      const opts = []
+      for (let i = 0; i < 4; i++) opts.push([...new Set(digitsOf(n + i).filter((x) => x))])
+      for (const a of opts[0]) for (const b of opts[1]) for (const c of opts[2]) for (const d of opts[3]) {
+        let s = fr(0)
+        s = frAdd(s, fr(n, a)); s = frAdd(s, fr(n + 1, b)); s = frAdd(s, fr(n + 2, c)); s = frAdd(s, fr(n + 3, d))
+        if (s.d === 1 && s.n > bestS) bestS = s.n
+      }
+    }
+    return { a: reach(P.v1), b: reach(P.SB), c: bestS }
+  }
+
+  return item({
+    preamble: `Даны четыре последовательных натуральных числа. Каждое из чисел поделили на одну из его цифр, не равную нулю, а затем четыре полученных результата сложили.`,
+    qa: `Может ли полученная сумма равняться ${v1}?`,
+    qb: `Может ли полученная сумма равняться ${frCond(SB)}?`,
+    qc: `Какое наибольшее целое значение может принимать полученная сумма, если известно, что каждое из исходных чисел не меньше ${L} и не больше ${R}?`,
+    ansA: `да, например для чисел ${nA}, ${nA + 1}, ${nA + 2}, ${nA + 3}: каждое из них содержит цифру 1, поэтому все четыре можно поделить на 1, и сумма равна ${nA} + ${nA + 1} + ${nA + 2} + ${nA + 3} = ${v1}`,
+    ansB: `нет: каждое слагаемое — дробь со знаменателем от 1 до 9, поэтому знаменатель несократимой дроби суммы делит НОК(1, 2, …, 9) = 2520; число ${badQ} его не делит`,
+    ansC: `${rng.best}; достигается на числах ${rng.at}, ${rng.at + 1}, ${rng.at + 2}, ${rng.at + 3}; больше нельзя — каждое слагаемое не превосходит самого числа (делитель не меньше 1), а сумма четырёх чисел отрезка [${L}; ${R}] максимальна у наибольшей четвёрки, каждое число которой можно делить на 1`,
+    solution: `Каждое слагаемое равно (n + i) : d, где d — ненулевая цифра числа n + i, поэтому слагаемое не превосходит самого числа, а равенство достигается ровно тогда, когда среди цифр есть 1.\nОтсюда сумма не превосходит 4n + 6, и максимум набирается на самой правой четвёрке отрезка, у каждого числа которой есть цифра 1; если такой четвёрки нет, приходится делить хотя бы одно число на цифру ≥ 2, что заметно уменьшает сумму. Перебор по отрезку [${L}; ${R}] даёт максимум ${rng.best} при числах ${rng.at}—${rng.at + 3}.\nЗнаменатель суммы всегда делит НОК(1, …, 9) = 2520 — это отсекает «неправильные» дробные значения.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: nA, target: v1 },
+        b: { type: "yesno", yes: false, reason: "denominator", target: frVal(SB) },
+        c: { type: "value", value: rng.best, example: rng.at },
+      },
+      mustMention: [L, R, v1],
+      extra: [...frNums(SB)],
+      phrases: ["четыре последовательных натуральных числа", "поделили на одну из его цифр, не равную нулю"],
+    },
+  })
+}
