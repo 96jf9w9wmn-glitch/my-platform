@@ -779,6 +779,8 @@ export const META19 = [
     ["board-diff-coprime", "Разности: ничего не делится на b−a и не делит b−a", t19BoardDiffCoprime],
     ["board-pair-lt-triple", "Сумма двух меньше суммы трёх → наим. сумма набора", t19PairLtTriple],
     ["board-within-3x", "Любые два отличаются не более чем втрое", t19BoardWithin3x],
+    ["board-coprime-6", "Попарно взаимно простые: наименьшая сумма", t19BoardCoprimeSix],
+    ["board-red-green", "Красные кратны 7, зелёные кратны 5 → наим. кол-во красных", t19BoardRedGreen],
   ]],
 ]
 
@@ -4074,6 +4076,237 @@ export function t19BoardWithin3x() {
       mustMention: [na, Sa, nb, Sb, P],
       extra: [],
       phrases: ["различных натуральных чисел", "не более чем в три раза"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 1 (продолжение). Попарно взаимно простые числа (#55)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// n различных натуральных чисел, никакие два не имеют общего делителя, большего 1.
+// Чётным может быть не более одного числа (два чётных делятся на 2), поэтому
+// количество нечётных равно n или n − 1, и сумма сравнима с n или с n − 1 по модулю 2.
+// Если S ≡ n (mod 2), то чётных чисел нет вовсе, и сумма не меньше минимальной суммы
+// n попарно взаимно простых НЕЧЁТНЫХ чисел — она заметно больше общего минимума.
+// Минимумы считаются один раз при импорте полным поиском с отсечением по сумме.
+const COPRIME_MIN = (() => {
+  const g = (a, b) => { while (b) { [a, b] = [b, a % b] } return a }
+  const best = (n, oddOnly) => {
+    let bs = Infinity, set = null
+    const dfs = (start, cur, s) => {
+      if (s >= bs) return
+      if (cur.length === n) { bs = s; set = [...cur]; return }
+      for (let v = start; v <= 60; v++) {
+        if (oddOnly && v % 2 === 0) continue
+        if (cur.every((u) => g(u, v) === 1)) { cur.push(v); dfs(v + 1, cur, s + v); cur.pop() }
+      }
+    }
+    dfs(1, [], 0)
+    return { sum: bs, set }
+  }
+  const map = new Map()
+  for (const n of [5, 6, 7]) map.set(n, { all: best(n, false), odd: best(n, true) })
+  return map
+})()
+
+export function t19BoardCoprimeSix() {
+  const n = pick([5, 6, 7])
+  const NUM_WORD = { 5: "Пять", 6: "Шесть", 7: "Семь" }
+  const { all, odd } = COPRIME_MIN.get(n)
+  // а) строим ОТ ОТВЕТА: 1, 2, 3, 5 и два простых числа
+  const base = [1, 2, 3, 5, 7, 11].slice(0, n - 2)          // n − 2 числа основы
+  const PR = [7, 11, 13, 17, 19, 23, 29, 31].filter((v) => !base.includes(v))
+  const i1 = randInt(0, PR.length - 2), i2 = randInt(i1 + 1, PR.length - 1)
+  const exA = [...base, PR[i1], PR[i2]]
+  const Sa = sum(exA)
+  // б) «нет»: сумма той же чётности, что n, лежащая строго между двумя минимумами
+  const cand = []
+  for (let S = all.sum + 1; S < odd.sum; S++) if ((S - n) % 2 === 0) cand.push(S)
+  if (!cand.length) return null
+  const Sb = pick(cand)
+
+  const params = { n, Sa, Sb }
+  const check = (cfg, part) => {
+    if (!Array.isArray(cfg) || cfg.length !== n) return `чисел должно быть ${n}`
+    for (const v of cfg) if (!Number.isInteger(v) || v < 1) return `${v} — не натуральное число`
+    if (uniq(cfg).length !== cfg.length) return "числа обязаны быть различными"
+    for (let i = 0; i < cfg.length; i++) {
+      for (let j = i + 1; j < cfg.length; j++) {
+        const d = gcdI(cfg[i], cfg[j])
+        if (d > 1) return `${cfg[i]} и ${cfg[j]} имеют общий делитель ${d}`
+      }
+    }
+    const need = part === "a" ? Sa : part === "b" ? Sb : all.sum
+    if (sum(cfg) !== need) return `сумма ${sum(cfg)}, а нужно ${need}`
+    return null
+  }
+  // Независимый перебор: DFS по возрастанию с отсечением «сумма уже больше нужной».
+  // Пространство конечно: каждое число не превосходит требуемой суммы.
+  const solve = (P) => {
+    const exists = (S) => {
+      let ok = false
+      const dfs = (start, cur, s) => {
+        if (ok) return
+        if (cur.length === P.n) { if (s === S) ok = true; return }
+        for (let v = start; s + v <= S; v++) {
+          if (cur.every((u) => gcdI(u, v) === 1)) { cur.push(v); dfs(v + 1, cur, s + v); cur.pop() }
+          if (ok) return
+        }
+      }
+      dfs(1, [], 0)
+      return ok
+    }
+    let mn = Infinity
+    const dfsMin = (start, cur, s) => {
+      if (s >= mn) return
+      if (cur.length === P.n) { mn = s; return }
+      for (let v = start; v <= 60; v++) {
+        if (cur.every((u) => gcdI(u, v) === 1)) { cur.push(v); dfsMin(v + 1, cur, s + v); cur.pop() }
+      }
+    }
+    dfsMin(1, [], 0)
+    return { a: exists(P.Sa), b: exists(P.Sb), c: mn, c_next: false }
+  }
+
+  return item({
+    preamble: `${NUM_WORD[n]} различных натуральных чисел таковы, что никакие два из них не имеют общего делителя, большего 1.`,
+    qa: `Может ли сумма этих чисел быть равной ${Sa}?`,
+    qb: `Может ли сумма этих чисел быть равной ${Sb}?`,
+    qc: `Какова их минимальная сумма?`,
+    ansA: `да, например ${exA.join(", ")}`,
+    ansB: `нет: среди попарно взаимно простых чисел не более одного чётного, поэтому нечётных чисел либо ${n}, либо ${n - 1}, и сумма сравнима с ${n} или с ${n - 1} по модулю 2. Число ${Sb} сравнимо с ${n}, значит все ${n} чисел нечётны, а наименьшая сумма ${n} попарно взаимно простых нечётных чисел равна ${odd.sum} (набор ${odd.set.join(", ")}) — больше, чем ${Sb}`,
+    ansC: `${all.sum}; например ${all.set.join(", ")}`,
+    solution: `Никакие два числа не имеют общего делителя, большего 1, поэтому среди них не более одного чётного.\nа) Пример: ${exA.join(", ")} — числа попарно взаимно просты, их сумма равна ${Sa}.\nб) Если чётного числа нет, то все ${n} слагаемых нечётны и сумма сравнима с ${n} по модулю 2; если чётное число одно, то сумма сравнима с ${n - 1}. Число ${Sb} сравнимо с ${n} по модулю 2, поэтому все числа обязаны быть нечётными. Но наименьшая сумма ${n} различных попарно взаимно простых нечётных чисел равна ${odd.sum} (это набор ${odd.set.join(", ")}), а ${Sb} < ${odd.sum}.\nв) Наименьшая сумма достигается на наборе ${all.set.join(", ")} и равна ${all.sum}: единица взаимно проста со всеми, а остальные числа — различные простые, и заменить любое из них меньшим числом нельзя.\nОтвет: ${all.sum}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: Sa },
+        b: { type: "yesno", yes: false, reason: "parity-and-odd-min", target: Sb },
+        c: { type: "extremum", mode: "min", value: all.sum, example: all.set },
+      },
+      mustMention: [Sa, Sb, 1],
+      extra: [],
+      phrases: ["различных натуральных чисел", "не имеют общего делителя, большего 1"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 1 (продолжение). Красные и зелёные числа на доске (#46)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// На доске N натуральных чисел: красные кратны p, зелёные кратны q. Красные попарно
+// различны, зелёные попарно различны, но красное может совпадать с зелёным.
+// Если красных r, то их сумма равна p·A, где A — сумма r РАЗЛИЧНЫХ натуральных чисел,
+// то есть A ≥ r(r+1)/2; аналогично зелёных N − r и сумма q·B с B ≥ (N−r)(N−r+1)/2.
+// Обратно, любые такие A и B достижимы (наибольшее слагаемое увеличивается на 1),
+// поэтому сумма S возможна ⟺ S = pA + qB при A ≥ Amin(r), B ≥ Bmin(r) для какого-то r.
+// Пункт а): если ВСЕ числа кратны q, то красные кратны pq, и уже одно такое красное
+// освобождает место в ряду зелёных, снижая минимальную сумму ниже q·N(N+1)/2.
+export function t19BoardRedGreen() {
+  const N = pick([24, 26, 28, 30])
+  const p = 7, q = 5
+  const T = q * N * (N + 1) / 2                            // сумма, если все числа зелёные и разные
+  // а) минимальная сумма при r красных, кратных pq, и N − r зелёных
+  const minAllMult5 = (r) => p * q * r * (r + 1) / 2 + q * (N - r) * (N - r + 1) / 2
+  let rA = -1
+  for (let r = 1; r <= N; r++) if (minAllMult5(r) < T) { rA = r; break }
+  if (rA < 0) return null
+  const exA = {
+    red: Array.from({ length: rA }, (_, i) => p * q * (i + 1)),
+    green: Array.from({ length: N - rA }, (_, i) => q * (i + 1)),
+  }
+  // Наименьшая сумма при r красных (красные кратны p, зелёные кратны q)
+  const minSum = (r) => p * r * (r + 1) / 2 + q * (N - r) * (N - r + 1) / 2
+  // S подбираем так, чтобы ответ в) был «круглым»: берём целевое число красных и
+  // сумму чуть больше минимальной для него, но меньше минимальной для r − 1.
+  const rC = randInt(8, 12)
+  const lo = minSum(rC), hi = minSum(rC - 1)
+  if (!(lo < hi)) return null
+  const fit = (S, r) => {                                   // достижима ли сумма S при r красных
+    for (let A = r * (r + 1) / 2; p * A <= S; A++) {
+      const rest = S - p * A
+      if (rest % q) continue
+      if (rest / q >= (N - r) * (N - r + 1) / 2) return { A, B: rest / q }
+    }
+    return null
+  }
+  let S = 0, fitC = null
+  for (let cand = lo; cand < hi; cand++) {
+    const f = fit(cand, rC)
+    if (f) { S = cand; fitC = f; break }
+  }
+  if (!S) return null
+  // набор для в): базовые ряды 1…r и 1…N−r, излишек добавляем к наибольшим числам
+  const exC = {
+    red: Array.from({ length: rC }, (_, i) => p * (i + 1)),
+    green: Array.from({ length: N - rC }, (_, i) => q * (i + 1)),
+  }
+  exC.red[rC - 1] += p * (fitC.A - rC * (rC + 1) / 2)
+  exC.green[N - rC - 1] += q * (fitC.B - (N - rC) * (N - rC + 1) / 2)
+
+  const params = { N, p, q, T, S, rC }
+  const check = (cfg, part) => {
+    if (!cfg || !Array.isArray(cfg.red) || !Array.isArray(cfg.green)) return "нет набора"
+    const all = [...cfg.red, ...cfg.green]
+    if (all.length !== N) return `чисел ${all.length} вместо ${N}`
+    for (const v of all) if (!Number.isInteger(v) || v < 1) return `${v} — не натуральное число`
+    for (const v of cfg.red) if (v % p) return `красное число ${v} не кратно ${p}`
+    for (const v of cfg.green) if (v % q) return `зелёное число ${v} не кратно ${q}`
+    if (uniq(cfg.red).length !== cfg.red.length) return "красные числа обязаны различаться"
+    if (uniq(cfg.green).length !== cfg.green.length) return "зелёные числа обязаны различаться"
+    const total = sum(all)
+    if (part === "a") {
+      for (const v of all) if (v % q) return `число ${v} не кратно ${q}, хотя в пункте а) все числа кратны ${q}`
+      if (total >= T) return `сумма ${total} не меньше ${T}`
+      return null
+    }
+    if (total !== S) return `сумма ${total}, а нужно ${S}`
+    if (part === "c" && cfg.red.length !== rC) return `красных чисел ${cfg.red.length}, а заявлено ${rC}`
+    return null
+  }
+  // Независимый перебор: по числу красных r и по сумме коэффициентов A (сумме тех
+  // натуральных чисел, на которые умножается p). Оба диапазона конечны: A ≥ r(r+1)/2
+  // и pA ≤ S, остальное однозначно определяется как B = (S − pA)/q.
+  const solve = (P) => {
+    const okAt = (r, S) => {
+      for (let A = r * (r + 1) / 2; P.p * A <= S; A++) {
+        const rest = S - P.p * A
+        if (rest % P.q === 0 && rest / P.q >= (P.N - r) * (P.N - r + 1) / 2) return true
+      }
+      return false
+    }
+    let aYes = false
+    for (let r = 0; r <= P.N; r++) {
+      const mn = P.p * P.q * r * (r + 1) / 2 + P.q * (P.N - r) * (P.N - r + 1) / 2
+      if (mn < P.T) aYes = true
+    }
+    let rMin = -1
+    for (let r = 0; r <= P.N; r++) if (okAt(r, P.S)) { rMin = r; break }
+    return { a: aYes, b: okAt(1, P.S), c: rMin, c_next: false }
+  }
+
+  const listRed = exC.red.join(", "), listGreen = exC.green.slice(0, 4).join(", ")
+  return item({
+    preamble: `На доске написано ${N} натуральных чисел. Какие-то из них красные, а какие-то зелёные. Красные числа кратны ${p}, а зелёные числа кратны ${q}. Все красные числа отличаются друг от друга, как и все зелёные. Но между красными и зелёными могут быть одинаковые.`,
+    qa: `Может ли сумма всех чисел, записанных на доске, быть меньше ${T}, если на доске написаны только кратные ${q} числа?`,
+    qb: `Может ли сумма чисел быть ${S}, если только одно число красное?`,
+    qc: `Найдите наименьшее количество красных чисел, которое может быть при сумме ${S}.`,
+    ansA: `да, например ${rA} ${plural(rA, "красное число", "красных числа", "красных чисел")} ${exA.red.join(", ")} и ${N - rA} ${plural(N - rA, "зелёное число", "зелёных числа", "зелёных чисел")} ${q}, ${2 * q}, …, ${q * (N - rA)}: сумма равна ${sum([...exA.red, ...exA.green])} < ${T}`,
+    ansB: `нет: если красное число одно, то зелёных ${N - 1}, они различны и кратны ${q}, поэтому их сумма не меньше ${q}·(1 + 2 + … + ${N - 1}) = ${q * (N - 1) * N / 2} > ${S}`,
+    ansC: `${rC}; например красные ${listRed} и зелёные ${listGreen}, …`,
+    solution: `Пусть красных чисел r, тогда зелёных ${N} − r. Красные различны и кратны ${p}, поэтому их сумма равна ${p}A, где A — сумма r различных натуральных чисел, то есть A ≥ r(r + 1)/2. Аналогично сумма зелёных равна ${q}B, где B ≥ (${N} − r)(${N} − r + 1)/2.\nа) Если все числа кратны ${q}, то красные кратны ${p * q}. При r = ${rA} наименьшая сумма равна ${p * q}·(1 + … + ${rA}) + ${q}·(1 + … + ${N - rA}) = ${sum([...exA.red, ...exA.green])}, что меньше ${T}.\nб) При r = 1 сумма зелёных не меньше ${q}·(1 + 2 + … + ${N - 1}) = ${q * (N - 1) * N / 2}, а это уже больше ${S}.\nв) Наименьшая сумма при r красных равна ${p}·r(r + 1)/2 + ${q}·(${N} − r)(${N} − r + 1)/2. При r = ${rC - 1} она равна ${hi} > ${S}, поэтому красных не меньше ${rC}. При r = ${rC} сумма ${S} достигается: красные ${listRed}, зелёные ${exC.green.join(", ")}.\nОтвет: ${rC}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: T },
+        b: { type: "yesno", yes: false, reason: "green-min-sum", target: S },
+        c: { type: "extremum", mode: "min", value: rC, example: exC },
+      },
+      mustMention: [N, p, q, T, S],
+      extra: [],
+      phrases: ["Все красные числа отличаются друг от друга", "между красными и зелёными могут быть одинаковые"],
     },
   })
 }
