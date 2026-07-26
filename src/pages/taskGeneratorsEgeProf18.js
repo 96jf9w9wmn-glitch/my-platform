@@ -61,23 +61,13 @@ function Rstr(a) {
   const n = a.n < 0n ? -a.n : a.n
   return a.d === 1n ? s + n.toString() : `${s}${n}/${a.d}`
 }
-// Печать рационального числа в УСЛОВИИ: дробь стоячей (⟦f⟧).
-// eslint-disable-next-line no-unused-vars -- нужна разделам с дробными коэффициентами условия
-function Rcond(a) {
-  const s = a.n < 0n ? MINUS : ""
-  const n = a.n < 0n ? -a.n : a.n
-  return a.d === 1n ? s + n.toString() : s + fT(n.toString(), a.d.toString())
-}
-
 // ── многочлены над Q: массив коэффициентов, индекс = степень ─────────────────
 const pTrim = (p) => { const q = p.slice(); while (q.length && Rzero(q[q.length - 1])) q.pop(); return q }
 const pDeg = (p) => p.length - 1                    // нулевой многочлен → −1
 const pLead = (p) => p[p.length - 1]
 const pNeg = (p) => p.map(Rneg)
-// eslint-disable-next-line no-unused-vars -- нужны разделам, где многочлен собирается по частям
 function pAdd(a, b) { const n = Math.max(a.length, b.length), r = []; for (let i = 0; i < n; i++) r.push(Radd(a[i] || R0, b[i] || R0)); return pTrim(r) }
 function pSub(a, b) { const n = Math.max(a.length, b.length), r = []; for (let i = 0; i < n; i++) r.push(Rsub(a[i] || R0, b[i] || R0)); return pTrim(r) }
-// eslint-disable-next-line no-unused-vars -- нужны разделам, где многочлен собирается по частям
 function pMul(a, b) {
   if (!a.length || !b.length) return []
   const r = new Array(a.length + b.length - 1).fill(R0)
@@ -359,7 +349,6 @@ function twoRootsSet(n1, n0, d1, d0) {
   return { set: minusPoints(dom, roots), dom, excl: roots }
 }
 // «Круглый» ли ответ: все границы — целые или простые дроби, промежутков немного.
-// eslint-disable-next-line no-unused-vars -- критерий отбора при разовом переборе таблиц (T5–T10)
 function niceSet(set, maxDen = 8n, maxNum = 60n, minIv = 3, maxIv = 6) {
   const b = setBounds(set)
   if (!b.length || set.intervals.length < minIv || set.intervals.length > maxIv) return false
@@ -426,6 +415,8 @@ function ivEmpty(I) {
 // (при шаге 1/100 это ≥ 2400 узлов — требование verify18).
 function spanRange(set, pad = 6) {
   const b = setBounds(set).map(Rnum)
+  // защита от вырожденного набора параметров: пустой ответ ловим сразу, а не зависаем на сетке
+  if (!b.length) throw new Error("spanRange: у множества нет границ (пустой или полный ответ)")
   let lo = Math.floor(Math.min(...b)) - pad, hi = Math.ceil(Math.max(...b)) + pad
   while (hi - lo < 24) { lo -= 1; hi += 1 }
   return [lo, hi]
@@ -553,7 +544,10 @@ export function verify18(o, opts = {}) {
           const v = F(x)
           if (v === null || !Number.isFinite(v)) { prev = null; continue }
           if (prev !== null && Math.sign(v) !== Math.sign(prev) && v !== 0 && prev !== 0) {
-            if (!sols.some((r) => r >= Math.min(prevX, x) - 1e-9 && r <= Math.max(prevX, x) + 1e-9)) {
+            // через полюс (например, тангенс) знак меняется без корня — такие «скачки» пропускаем
+            const poles = raw.poles ? raw.poles(Rnum(a)) : []
+            const overPole = poles.some((pp) => pp > Math.min(prevX, x) - 1e-9 && pp < Math.max(prevX, x) + 1e-9)
+            if (!overPole && !sols.some((r) => r >= Math.min(prevX, x) - 1e-9 && r <= Math.max(prevX, x) + 1e-9)) {
               return { ok: false, err: `a=${Rstr(a)}: смена знака на (${prevX.toFixed(4)}; ${x.toFixed(4)}) не покрыта ни одним корнем` }
             }
           }
@@ -1897,6 +1891,557 @@ export function t18SqEqSqrtBoth() {
 }
 
 // =============================================================================
+// РАЗДЕЛ D. f·ln g = f·ln h — «ровно один корень» (эталон #17, #18, #25–#27, #29–#32)
+// =============================================================================
+// Общий приём: уравнение равносильно f(x)·(ln g − ln h) = 0 при ОДЗ, где ВСЕ участвующие
+// выражения определены. Кандидаты — нуль множителя f и решение g = h; каждый проверяется
+// на ОДЗ и попадание в отрезок. Все кандидаты рациональны, поэтому счёт точный.
+const ONE_ROOT_SEG_T = (L, R) => `имеет ровно один корень на отрезке [${nS(L)}; ${nS(R)}].`
+
+// #17. (kx − c)·ln(x + a) = (kx − c)·ln(px − a). ОДЗ: x + a > 0 и px − a > 0.
+// Кандидаты: x = c/k (нуль множителя) и x + a = px − a, то есть x = 2a/(p − 1).
+function build17({ k, c, p, L, R: Rr }) {
+  const inSeg = (x) => Rcmp(x, R(L)) >= 0 && Rcmp(x, R(Rr)) <= 0
+  const odz = (a, x) => Rsign(Radd(x, a)) > 0 && Rsign(Rsub(Rmul(R(p), x), a)) > 0
+  const solve = (a) => {
+    const good = []
+    const x1 = R(c, k), x2 = Rdiv(Rmul(R(2), a), R(p - 1))
+    for (const x of [x1, x2]) if (inSeg(x) && odz(a, x) && !good.some((y) => Rcmp(y, x) === 0)) good.push(x)
+    return good.length
+  }
+  const crit = [R(-c, k), R(p * c, k), R(L * (p - 1), 2), R(Rr * (p - 1), 2), R0, R(c * (p - 1), 2 * k)]
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+const T17 = [[5, 2, 2, 0, 1], [3, 1, 2, 0, 1], [4, 3, 3, 0, 2], [5, 2, 3, 0, 1], [2, 1, 2, 0, 2], [6, 3, 2, 0, 1], [4, 1, 3, 0, 1], [3, 2, 4, 0, 2]]
+  .map(([k, c, p, L, R]) => ({ k, c, p, L, R }))
+export function t18LogFactorLin() {
+  const par = pick(T17), { k, c, p, L, R: Rr } = par
+  const { set, solve } = build17(par)
+  const f = `(${k}x ${MINUS} ${c})`
+  return item({
+    text: `${HEAD_A}\n\n${f} · ln(x + a) = ${f} · ln(${p}x ${MINUS} a)\n\n${ONE_ROOT_SEG_T(L, Rr)}`,
+    set,
+    solution: `ОДЗ: x + a > 0 и ${p}x ${MINUS} a > 0. Уравнение равносильно ${f}(ln(x + a) ${MINUS} ln(${p}x ${MINUS} a)) = 0.\n`
+      + `Первый множитель даёт x = ${Rstr(R(c, k))}, второй — равенство аргументов x + a = ${p}x ${MINUS} a, то есть x = ${Rstr(R(2, p - 1))}a.\n`
+      + `Каждый кандидат годится, только если попадает на отрезок [${nS(L)}; ${Rr}] и удовлетворяет ОДЗ; при a = ${Rstr(R(c * (p - 1), 2 * k))} они совпадают.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    raw: {
+      seg: [L, Rr],
+      F: (a) => (x) => (x + a > 0 && p * x - a > 0 ? (k * x - c) * (Math.log(x + a) - Math.log(p * x - a)) : null),
+      sols: (a) => [c / k, (2 * a) / (p - 1)]
+        .filter((x, i, arr) => arr.findIndex((y) => Math.abs(y - x) < 1e-9) === i)
+        .filter((x) => x >= L - 1e-12 && x <= Rr + 1e-12 && x + a > 1e-12 && p * x - a > 1e-12),
+    },
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: () => c / k, label: `x = ${Rstr(R(c, k))}` },
+        { f: (a) => (2 * a) / (p - 1), label: `x = ${Rstr(R(2, p - 1))}a` },
+        { f: (a) => -a, dash: true, label: "границы ОДЗ" }, { f: (a) => a / p, dash: true },
+        { f: () => L, dash: true }, { f: () => Rr, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: L - 3, xMax: Rr + 3, aMin: Rnum(setBounds(set)[0]) - 3,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #18. ln(qa − x)·ln(2x + ra − r) = ln(qa − x)·ln(x − a). ОДЗ: все три аргумента положительны.
+// Кандидаты: qa − x = 1 (нуль первого логарифма) и 2x + ra − r = x − a, то есть x = r − (r+1)a.
+function build18({ q, r, L, R: Rr }) {
+  const inSeg = (x) => Rcmp(x, R(L)) >= 0 && Rcmp(x, R(Rr)) <= 0
+  const A = (a, x) => Rsub(Rmul(R(q), a), x)
+  const B = (a, x) => Rsub(Radd(Rmul(R(2), x), Rmul(R(r), a)), R(r))
+  const C = (a, x) => Rsub(x, a)
+  const okAll = (a, x) => Rsign(A(a, x)) > 0 && Rsign(B(a, x)) > 0 && Rsign(C(a, x)) > 0
+  const solve = (a) => {
+    const good = []
+    const x1 = Rsub(Rmul(R(q), a), R1)                 // ln(qa − x) = 0
+    const x2 = Rsub(R(r), Rmul(R(r + 1), a))           // 2x + ra − r = x − a
+    for (const x of [x1, x2]) if (inSeg(x) && okAll(a, x) && !good.some((y) => Rcmp(y, x) === 0)) good.push(x)
+    return good.length
+  }
+  // критические значения: концы отрезка для обоих кандидатов, коэффициенты обращения ОДЗ
+  // в нуль для каждого кандидата (B и C при x₁, A, B и C при x₂) и совпадение кандидатов
+  const crit = [
+    R(L + 1, q), R(Rr + 1, q),                 // x₁ = qa − 1 на концах отрезка
+    R(r - Rr, r + 1), R(r - L, r + 1),         // x₂ = r − (r+1)a на концах отрезка
+    R(2 + r, 2 * q + r), R(1, q - 1),          // ОДЗ при x₁: B > 0 и C > 0
+    R(r, q + r + 1), R(r, r + 2),              // ОДЗ при x₂: A > 0 и B = C > 0
+    R(r + 1, q + r + 1),                       // x₁ = x₂
+  ]
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+const T18 = [[6, 2, 0, 1], [4, 2, 0, 1], [6, 1, 0, 1], [5, 2, 0, 2], [8, 3, 0, 1], [6, 3, 0, 2], [4, 1, 0, 1], [10, 2, 0, 2]]
+  .map(([q, r, L, R]) => ({ q, r, L, R }))
+export function t18LogFactorLog() {
+  const par = pick(T18), { q, r, L, R: Rr } = par
+  const { set, solve } = build18(par)
+  const f = `ln(${q}a ${MINUS} x)`
+  return item({
+    text: `${HEAD_A}\n\n${f}·ln(2x + ${r === 1 ? "" : r}a ${MINUS} ${r}) = ${f}·ln(x ${MINUS} a)\n\n${ONE_ROOT_SEG_T(L, Rr)}`,
+    set,
+    solution: `ОДЗ: ${q}a ${MINUS} x > 0, 2x + ${r === 1 ? "" : r}a ${MINUS} ${r} > 0 и x ${MINUS} a > 0.\n`
+      + `Уравнение равносильно ${f}·(ln(2x + ${r === 1 ? "" : r}a ${MINUS} ${r}) ${MINUS} ln(x ${MINUS} a)) = 0.\n`
+      + `Первый множитель обнуляется при ${q}a ${MINUS} x = 1, то есть x = ${q}a ${MINUS} 1; второй — при равенстве аргументов, то есть x = ${r} ${MINUS} ${r + 1}a.\n`
+      + `Считаем, сколько кандидатов одновременно лежат на отрезке [${nS(L)}; ${Rr}] и удовлетворяют ОДЗ.\nОтвет: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    raw: {
+      seg: [L, Rr],
+      F: (a) => (x) => {
+        const A1 = q * a - x, B1 = 2 * x + r * a - r, C1 = x - a
+        if (A1 <= 0 || B1 <= 0 || C1 <= 0) return null
+        return Math.log(A1) * (Math.log(B1) - Math.log(C1))
+      },
+      sols: (a) => [q * a - 1, r - (r + 1) * a]
+        .filter((x, i, arr) => arr.findIndex((y) => Math.abs(y - x) < 1e-9) === i)
+        .filter((x) => x >= L - 1e-12 && x <= Rr + 1e-12 && q * a - x > 1e-12 && 2 * x + r * a - r > 1e-12 && x - a > 1e-12),
+    },
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => q * a - 1, label: `x = ${q}a ${MINUS} 1` },
+        { f: (a) => r - (r + 1) * a, label: `x = ${r} ${MINUS} ${r + 1}a` },
+        { f: (a) => a, dash: true, label: "ОДЗ: x > a" },
+        { f: () => L, dash: true }, { f: () => Rr, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: L - 3, xMax: Rr + 3, aMin: Rnum(setBounds(set)[0]) - 3,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #26. √(kx − c)·ln(px − a) = √(kx − c)·ln(qx + a). ОДЗ: kx − c ≥ 0, px − a > 0, qx + a > 0.
+// Кандидаты: x = c/k (нуль корня) и px − a = qx + a, то есть x = 2a/(p − q).
+function build26({ k, c, p, q, L, R: Rr }) {
+  const inSeg = (x) => Rcmp(x, R(L)) >= 0 && Rcmp(x, R(Rr)) <= 0
+  const okLogs = (a, x) => Rsign(Rsub(Rmul(R(p), x), a)) > 0 && Rsign(Radd(Rmul(R(q), x), a)) > 0
+  const okRoot = (a, x) => Rsign(Rsub(Rmul(R(k), x), R(c))) >= 0
+  const solve = (aa) => {
+    const good = []
+    const x1 = R(c, k), x2 = Rdiv(Rmul(R(2), aa), R(p - q))
+    for (const x of [x1, x2]) if (inSeg(x) && okRoot(aa, x) && okLogs(aa, x) && !good.some((y) => Rcmp(y, x) === 0)) good.push(x)
+    return good.length
+  }
+  const crit = [R(p * c, k), R(-q * c, k), R(L * (p - q), 2), R(Rr * (p - q), 2), R(c * (p - q), 2 * k),
+    R(0), R(c * (p - q), 2 * k)]
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+const T26 = [[2, 1, 4, 5, 0, 1], [2, 1, 5, 4, 0, 1], [3, 1, 4, 2, 0, 1], [2, 1, 3, 5, 0, 2], [4, 1, 5, 3, 0, 1], [2, 3, 4, 2, 0, 3], [3, 2, 5, 3, 0, 2], [2, 1, 6, 4, 0, 1]]
+  .map(([k, c, p, q, L, R]) => ({ k, c, p, q, L, R }))
+export function t18LogFactorSqrt() {
+  const par = pick(T26), { k, c, p, q, L, R: Rr } = par
+  const { set, solve } = build26(par)
+  const f = `⟦r:${k === 1 ? "" : k}x ${MINUS} ${c}⟧`
+  return item({
+    text: `${HEAD_A}\n\n${f} · ln(${p}x ${MINUS} a) = ${f} · ln(${q}x + a)\n\n${ONE_ROOT_SEG_T(L, Rr)}`,
+    set,
+    solution: `ОДЗ: ${k === 1 ? "" : k}x ${MINUS} ${c} ≥ 0, ${p}x ${MINUS} a > 0 и ${q}x + a > 0.\n`
+      + `Уравнение равносильно √(${k === 1 ? "" : k}x ${MINUS} ${c})·(ln(${p}x ${MINUS} a) ${MINUS} ln(${q}x + a)) = 0.\n`
+      + `Корень обнуляется при x = ${Rstr(R(c, k))} (там оба логарифма обязаны быть определены), равенство аргументов даёт x = ${Rstr(R(2, p - q))}a.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    raw: {
+      seg: [L, Rr],
+      F: (a) => (x) => {
+        const r0 = k * x - c, u = p * x - a, v = q * x + a
+        if (r0 < -EPS || u <= 0 || v <= 0) return null
+        return sqrtSafe(r0) * (Math.log(u) - Math.log(v))
+      },
+      sols: (a) => [c / k, (2 * a) / (p - q)]
+        .filter((x, i, arr) => arr.findIndex((y) => Math.abs(y - x) < 1e-9) === i)
+        .filter((x) => x >= L - 1e-12 && x <= Rr + 1e-12 && k * x - c >= -1e-12 && p * x - a > 1e-12 && q * x + a > 1e-12),
+    },
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: () => c / k, label: `x = ${Rstr(R(c, k))}` },
+        { f: (a) => (2 * a) / (p - q), label: `x = ${Rstr(R(2, p - q))}a` },
+        { f: (a) => a / p, dash: true, label: "границы ОДЗ" }, { f: (a) => -a / q, dash: true },
+        { f: () => Rr, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: L - 3, xMax: Rr + 3, aMin: Rnum(setBounds(set)[0]) - 3,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #25 / #29. √(c − kx)·ln(m²x² − a²) = √(c − kx)·ln(mx + a).
+// ln((mx−a)(mx+a)) = ln(mx+a) при mx + a > 0 даёт mx − a = 1. Кандидаты: x = c/k и x = (a+1)/m.
+// #25 — без ограничения на отрезок, #29 — тот же типаж с отрезком.
+function build25({ c, k, m, seg }) {
+  const inSeg = (x) => !seg || (Rcmp(x, R(seg[0])) >= 0 && Rcmp(x, R(seg[1])) <= 0)
+  const okAll = (a, x) => Rsign(Rsub(R(c), Rmul(R(k), x))) >= 0
+    && Rsign(Rsub(Rmul(Rmul(R(m), x), Rmul(R(m), x)), Rmul(a, a))) > 0
+    && Rsign(Radd(Rmul(R(m), x), a)) > 0
+  const solve = (a) => {
+    const good = []
+    for (const x of [R(c, k), Rdiv(Radd(a, R1), R(m))]) {
+      if (inSeg(x) && okAll(a, x) && !good.some((y) => Rcmp(y, x) === 0)) good.push(x)
+    }
+    return good.length
+  }
+  const crit = [R(m * c, k), R(-m * c, k), R(-1, 2), R(m * c - k, k)]
+  if (seg) crit.push(R(m * seg[0] - 1), R(m * seg[1] - 1))
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+function item25(par, seg) {
+  const { c, k, m } = par
+  const { set, solve } = build25({ ...par, seg })
+  const f = `⟦r:${c} ${MINUS} ${k === 1 ? "" : k}x⟧`
+  const tail = seg ? `\n\n${ONE_ROOT_SEG_T(seg[0], seg[1])}` : "\n\nимеет ровно один корень."
+  return item({
+    text: `${HEAD_A}\n\n${f}·ln(${m * m}x${SUP[2]} ${MINUS} a${SUP[2]}) = ${f}·ln(${m}x + a)${tail}`,
+    set,
+    solution: `ОДЗ: ${c} ${MINUS} ${k === 1 ? "" : k}x ≥ 0, ${m * m}x${SUP[2]} ${MINUS} a${SUP[2]} > 0 и ${m}x + a > 0.\n`
+      + `Так как ${m * m}x${SUP[2]} ${MINUS} a${SUP[2]} = (${m}x ${MINUS} a)(${m}x + a), равенство логарифмов при ${m}x + a > 0 равносильно ${m}x ${MINUS} a = 1, то есть x = ${Rstr(R(1, m))}(a + 1).\n`
+      + `Второй кандидат — нуль корня x = ${Rstr(R(c, k))}, он годится, когда оба логарифма там определены.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    raw: {
+      seg: seg || [-6, c / k],
+      F: (a) => (x) => {
+        const r0 = c - k * x, u = m * m * x * x - a * a, v = m * x + a
+        if (r0 < -EPS || u <= 0 || v <= 0) return null
+        return sqrtSafe(r0) * (Math.log(u) - Math.log(v))
+      },
+      sols: (a) => [c / k, (a + 1) / m]
+        .filter((x, i, arr) => arr.findIndex((y) => Math.abs(y - x) < 1e-9) === i)
+        .filter((x) => (!seg || (x >= seg[0] - 1e-12 && x <= seg[1] + 1e-12))
+          && c - k * x >= -1e-12 && m * m * x * x - a * a > 1e-12 && m * x + a > 1e-12),
+    },
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: () => c / k, label: `x = ${Rstr(R(c, k))}` },
+        { f: (a) => (a + 1) / m, label: `x = (a + 1)/${m}` },
+        { f: (a) => -a / m, dash: true, label: "границы ОДЗ" }, { f: (a) => a / m, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -3, xMax: c / k + 4, aMin: Rnum(setBounds(set)[0]) - 3,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+const T25 = [[2, 3, 4], [3, 2, 4], [5, 2, 3], [4, 1, 2], [3, 1, 3], [6, 4, 2], [5, 3, 4], [4, 3, 5]]
+  .map(([c, k, m]) => ({ c, k, m }))
+export function t18LogSqrtNoSeg() { return item25(pick(T25), null) }
+export function t18LogSqrtSeg() { return item25(pick(T25), [0, 1]) }
+
+// #30. √(kx − c)·ln((x − m)² + 1 − a²) = 0 — произведение корня и логарифма равно нулю.
+// Кандидаты: x = c/k (нужно, чтобы аргумент логарифма был положителен) и (x − m)² = a², то есть x = m ± a.
+function build30({ k, c, m, L, R: Rr, v }) {
+  const inSeg = (x) => Rcmp(x, R(L)) >= 0 && Rcmp(x, R(Rr)) <= 0
+  const arg = (a, x) => Radd(Rsub(Rmul(Rsub(x, R(m)), Rsub(x, R(m))), Rmul(a, a)), R1)
+  const solve = (a) => {
+    const good = []
+    const x0 = R(c, k)
+    if (inSeg(x0) && Rsign(arg(a, x0)) > 0) good.push(x0)
+    for (const x of [Radd(R(m), a), Rsub(R(m), a)]) {
+      if (inSeg(x) && Rsign(Rsub(Rmul(R(k), x), R(c))) >= 0 && !good.some((y) => Rcmp(y, x) === 0)) good.push(x)
+    }
+    return good.length
+  }
+  const crit = [v, Rneg(v), R0, R(L - m), R(Rr - m), R(m - L), R(m - Rr),
+    Rsub(R(c, k), R(m)), Rsub(R(m), R(c, k))]
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+// (c/k − m)² + 1 должно быть точным квадратом рационального: берём c/k = m − u из пар (u, v)
+const UV30 = [[R(3, 4), R(5, 4)], [R(4, 3), R(5, 3)], [R(5, 12), R(13, 12)], [R(12, 5), R(13, 5)], [R(8, 15), R(17, 15)]]
+const T30 = []
+for (const [u, v] of UV30) for (const m of [1, 2, 3]) for (const [L, Rr] of [[0, 1], [0, 2], [0, 3], [0, 4]]) {
+  const ck = Rsub(R(m), u)                                  // c/k
+  if (ck.n <= 0n || ck.d > 12n) continue
+  const par = { k: Number(ck.d), c: Number(ck.n), m, L, R: Rr, v }
+  const res = build30(par)                                 // отбрасываем вырожденные наборы
+  if (!setBounds(res.set).length || !niceSet(res.set, 12n, 40n, 1, 5)) continue
+  T30.push(par)
+}
+export function t18SqrtTimesLog() {
+  const par = pick(T30), { k, c, m, L, R: Rr } = par
+  const { set, solve } = build30(par)
+  return item({
+    text: `${HEAD_A}\n\n⟦r:${k === 1 ? "" : k}x ${MINUS} ${c}⟧·ln(x${SUP[2]} ${MINUS} ${2 * m === 1 ? "" : 2 * m}x + ${m * m + 1} ${MINUS} a${SUP[2]}) = 0\n\n${ONE_ROOT_SEG_T(L, Rr)}`,
+    set,
+    solution: `Аргумент логарифма равен (x ${MINUS} ${m})${SUP[2]} + 1 ${MINUS} a${SUP[2]}.\n`
+      + `Произведение равно нулю, если ${k === 1 ? "" : k}x ${MINUS} ${c} = 0, то есть x = ${Rstr(R(c, k))} (логарифм там должен быть определён), `
+      + `либо логарифм равен нулю: (x ${MINUS} ${m})${SUP[2]} + 1 ${MINUS} a${SUP[2]} = 1 ⟺ x = ${m} ± a (и тогда нужно ${k === 1 ? "" : k}x ${MINUS} ${c} ≥ 0).\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    raw: {
+      seg: [L, Rr],
+      F: (a) => (x) => {
+        const r0 = k * x - c, u = (x - m) * (x - m) + 1 - a * a
+        if (r0 < -EPS || u <= 0) return null
+        return sqrtSafe(r0) * Math.log(u)
+      },
+      sols: (a) => {
+        const out = []
+        const x0 = c / k
+        if (x0 >= L - 1e-12 && x0 <= Rr + 1e-12 && (x0 - m) * (x0 - m) + 1 - a * a > 1e-12) out.push(x0)
+        for (const x of [m + a, m - a]) {
+          if (x >= L - 1e-12 && x <= Rr + 1e-12 && k * x - c >= -1e-12 && !out.some((y) => Math.abs(y - x) < 1e-9)) out.push(x)
+        }
+        return out
+      },
+    },
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: () => c / k, label: `x = ${Rstr(R(c, k))}` },
+        { f: (a) => m + a, label: `x = ${m} + a` }, { f: (a) => m - a, label: `x = ${m} ${MINUS} a` },
+        { f: () => Rr, dash: true, label: "отрезок" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: L - 3, xMax: Rr + 3, aMin: Rnum(setBounds(set)[0]) - 3,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #31. √(x − a)·sin x = √(x − a)·cos x на [0; Qπ] — считаем В ЕДИНИЦАХ π.
+// Кандидаты: x = a (нуль корня, если попал на отрезок) и tg x = 1, то есть x = π/4 + πn при x ≥ a.
+function build31({ Q }) {
+  const roots = []
+  for (let n = 0; R(1 + 4 * n, 4).n <= BigInt(4 * Q); n++) roots.push(R(1 + 4 * n, 4))   // π/4 + πn ≤ Qπ
+  const solve = (u) => {
+    let cnt = 0
+    if (Rsign(u) >= 0 && Rcmp(u, R(Q)) <= 0) cnt++                    // x = a
+    for (const s of roots) if (Rcmp(s, u) >= 0 && Rcmp(s, u) !== 0) cnt++
+    for (const s of roots) if (Rcmp(s, u) === 0) cnt++                // совпал с x = a — считаем один раз
+    return cnt
+  }
+  const crit = [R0, R(Q), ...roots]
+  return { set: assembleSet((u) => solve(u) === 1, crit), solve, roots }
+}
+const T31 = [[1], [2], [3]].map(([Q]) => ({ Q }))
+export function t18SqrtTrigFactor() {
+  const par = pick(T31), { Q } = par
+  const { set, solve } = build31(par)
+  const right = Q === 1 ? "π" : `${Q}π`
+  return item({
+    text: `${HEAD_A}\n\n⟦r:x ${MINUS} a⟧·sin x = ⟦r:x ${MINUS} a⟧·cos x\n\nимеет ровно один корень на отрезке [0; ${right}].`,
+    set,
+    unit: "pi",
+    solution: `ОДЗ: x ≥ a. Уравнение равносильно √(x ${MINUS} a)(sin x ${MINUS} cos x) = 0.\n`
+      + `Первый множитель даёт x = a — он годится, если a ∈ [0; ${right}].\n`
+      + `Второй: tg x = 1, то есть x = π/4 + πn; на [0; ${right}] это ${roots31(Q)} — каждый годится при x ≥ a.\n`
+      + `Ответ: ${setToString(set, "pi")}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (u) => solve(u),
+    raw: {
+      seg: [0, Q * Math.PI],
+      F: (u) => (x) => (x - u * Math.PI < -EPS ? null : sqrtSafe(x - u * Math.PI) * (Math.sin(x) - Math.cos(x))),
+      sols: (u) => {
+        const a = u * Math.PI, out = []
+        if (a >= -1e-12 && a <= Q * Math.PI + 1e-12) out.push(a)
+        for (let n = 0; Math.PI / 4 + Math.PI * n <= Q * Math.PI + 1e-12; n++) {
+          const x = Math.PI / 4 + Math.PI * n
+          if (x >= a - 1e-12 && !out.some((y) => Math.abs(y - x) < 1e-9)) out.push(x)
+        }
+        return out
+      },
+    },
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (u) => u, label: "x = a (в единицах π)" },
+        { f: () => 0.25, dash: true, label: "tg x = 1" }, { f: () => 1.25, dash: true },
+        { f: () => Q, dash: true, label: "правый конец" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -1, xMax: Q + 1, aMin: Rnum(setBounds(set)[0]) - 1.5,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 1.5,
+    },
+  })
+}
+const roots31 = (Q) => {
+  const out = []
+  for (let n = 0; 1 / 4 + n <= Q; n++) out.push(n === 0 ? "π/4" : `${4 * n + 1}π/4`)
+  return out.join(", ")
+}
+
+// #32. tg(πx)·ln(x + a) = ln(x + a) ⟺ ln(x + a)(tg(πx) − 1) = 0.
+// Кандидаты: x = 1 − a (нуль логарифма; в точках x = 1/2 + n тангенс не определён)
+// и x = 1/4 + n (tg(πx) = 1) при ОДЗ x + a > 0. Здесь x рационален, единицы π не нужны.
+function build32({ L, R: Rr }) {
+  const tanRoots = []
+  for (let n = Math.ceil(L - 1); n <= Rr + 1; n++) { const x = R(4 * n + 1, 4); if (Rcmp(x, R(L)) >= 0 && Rcmp(x, R(Rr)) <= 0) tanRoots.push(x) }
+  const undef = (x) => { const t = Rsub(Rmul(x, R(2)), R1); return t.d === 2n ? false : (Rmul(Rsub(x, R(1, 2)), R1).d === 1n) }
+  const solve = (a) => {
+    const good = []
+    const x1 = Rsub(R1, a)
+    if (Rcmp(x1, R(L)) >= 0 && Rcmp(x1, R(Rr)) <= 0 && !undef(x1)) good.push(x1)
+    for (const x of tanRoots) if (Rsign(Radd(x, a)) > 0 && !good.some((y) => Rcmp(y, x) === 0)) good.push(x)
+    return good.length
+  }
+  const crit = [R(1 - L), R(1 - Rr)]
+  for (const x of tanRoots) { crit.push(Rneg(x)); crit.push(Rsub(R1, x)) }
+  for (let n = Math.ceil(L - 2); n <= Rr + 2; n++) crit.push(Rsub(R1, R(2 * n + 1, 2)))   // 1 − a = 1/2 + n
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+const T32 = [[0, 1], [0, 2], [-1, 1], [0, 3], [-1, 2]].map(([L, R]) => ({ L, R }))
+export function t18TanTimesLog() {
+  const par = pick(T32), { L, R: Rr } = par
+  const { set, solve } = build32(par)
+  return item({
+    text: `${HEAD_A}\n\ntg(πx)·ln(x + a) = ln(x + a)\n\n${ONE_ROOT_SEG_T(L, Rr)}`,
+    set,
+    solution: `Перенесём всё влево: ln(x + a)(tg(πx) ${MINUS} 1) = 0. ОДЗ: x + a > 0 и x ≠ ${Rstr(R(1, 2))} + n (там тангенс не определён).\n`
+      + `Логарифм равен нулю при x + a = 1, то есть x = 1 ${MINUS} a; тангенс равен 1 при πx = π/4 + πn, то есть x = ${Rstr(R(1, 4))} + n.\n`
+      + `Считаем, сколько таких x лежит на отрезке [${nS(L)}; ${Rr}] с учётом ОДЗ.\nОтвет: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    raw: {
+      seg: [L, Rr],
+      F: (a) => (x) => {
+        if (x + a <= 0) return null
+        const d = x - Math.floor(x)
+        if (Math.abs(d - 0.5) < 1e-12) return null      // полюс тангенса — точка вне ОДЗ
+        return Math.log(x + a) * (Math.tan(Math.PI * x) - 1)
+      },
+      poles: () => { const out = []; for (let n = -6; n <= 8; n++) out.push(0.5 + n); return out },
+      sols: (a) => {
+        const out = []
+        const x1 = 1 - a
+        const frac = x1 - Math.floor(x1)
+        if (x1 >= L - 1e-12 && x1 <= Rr + 1e-12 && Math.abs(frac - 0.5) > 1e-9) out.push(x1)
+        for (let n = Math.ceil(L - 1); n <= Rr + 1; n++) {
+          const x = 0.25 + n
+          if (x >= L - 1e-12 && x <= Rr + 1e-12 && x + a > 1e-12 && !out.some((y) => Math.abs(y - x) < 1e-9)) out.push(x)
+        }
+        return out
+      },
+    },
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => 1 - a, label: `x = 1 ${MINUS} a` },
+        { f: () => 0.25, dash: true, label: "tg(πx) = 1" }, { f: () => 1.25, dash: true },
+        { f: (a) => -a, dash: true, label: "ОДЗ: x > −a" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: L - 2, xMax: Rr + 2, aMin: Rnum(setBounds(set)[0]) - 3,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #27. √(x + ca)·ln(x − a) = (x − p)·ln(x − a) ⟺ ln(x − a)·(√(x + ca) − (x − p)) = 0.
+// ОДЗ: x − a > 0 и x + ca ≥ 0. Кандидаты: x = a + 1 (нуль логарифма) и решения
+// √(x + ca) = x − p, то есть x ≥ p и x² − (2p+1)x + p² − ca = 0.
+function build27({ c, p, L, R: Rr }) {
+  const quad = (a) => [Rsub(R(p * p), Rmul(R(c), a)), R(-(2 * p + 1)), R1]
+  const solve = (a) => {
+    let n = 0
+    // ветвь 2: корни квадратного уравнения при x ≥ p и x > a на отрезке
+    const I = ivCut(ivCut({ lo: R(p), hi: "+inf", incLo: true, incHi: false },
+      { lo: a, hi: "+inf", incLo: false, incHi: false }), { lo: R(L), hi: R(Rr), incLo: true, incHi: true })
+    if (!ivEmpty(I)) n += countRoots(quad(a), I.lo, I.hi, I.incLo, I.incHi)
+    // ветвь 1: x = a + 1 (логарифм равен нулю) — при ОДЗ корня и попадании на отрезок
+    const x1 = Radd(a, R1)
+    if (Rcmp(x1, R(L)) >= 0 && Rcmp(x1, R(Rr)) <= 0 && Rsign(Radd(x1, Rmul(R(c), a))) >= 0) {
+      const alsoBranch2 = Rzero(pEval(quad(a), x1)) && Rcmp(x1, R(p)) >= 0
+      if (!alsoBranch2) n++
+    }
+    return n
+  }
+  const crit = [R(-1, c + 1), R(L - 1), R(Rr - 1), R(-p, c), R(-(4 * p + 1), 4 * c),
+    R(L * L - (2 * p + 1) * L + p * p, c), R(Rr * Rr - (2 * p + 1) * Rr + p * p, c)]
+  // корень ветви 2 попал на границу ОДЗ (x = a) и совпадение ветвей (x = a + 1):
+  // берём рациональные корни; иррациональные (если они вообще влияют) отсеются проверкой сетки
+  for (const E of [[R(p * p), R(-(2 * p + 1 + c)), R1], [R(p * p - 2 * p), R(1 - 2 * p - c), R1]]) {
+    crit.push(...ratRoots(E).roots)
+  }
+  const set = assembleSet((a) => solve(a) === 1, crit)
+  return { set, solve }
+}
+// Быстрая сеточная сверка при ОТБОРЕ наборов: набор берём в банк только если множество,
+// собранное по критическим значениям, совпадает с предикатом на сетке (шаг 1/24).
+// eslint-disable-next-line no-unused-vars -- используется при разовом отборе наборов (см. T27)
+function gridOk(set, solve, want = 1) {
+  const b = setBounds(set).map(Rnum)
+  if (!b.length) return false
+  const lo = Math.floor(Math.min(...b)) - 4, hi = Math.ceil(Math.max(...b)) + 4
+  for (let k = lo * 24; k <= hi * 24; k++) {
+    const a = R(k, 24)
+    if (inSet(set, a) !== (solve(a) === want)) return false
+  }
+  return true
+}
+// Наборы (c, p, L, R) отобраны разовым перебором: ответ круглый И совпал с предикатом на
+// сетке (шаг 1/24) — то есть список критических значений полон. Зафиксированы литералом,
+// чтобы импорт модуля оставался мгновенным; verify18 в смоуке проверяет каждый набор заново.
+const T27 = [
+  [1, 1, 0, 1], [1, 1, 0, 2], [1, 1, 0, 3], [1, 1, 1, 3], [1, 2, 0, 1], [1, 2, 0, 2], [1, 2, 0, 3], [1, 2, 1, 3], [1, 2, 0, 4],
+  [1, 3, 0, 1], [1, 3, 0, 2], [1, 3, 0, 3], [1, 3, 1, 3], [1, 3, 0, 4], [1, 4, 0, 1], [1, 4, 0, 2], [1, 4, 0, 3], [1, 4, 1, 3],
+  [1, 4, 0, 4], [1, 5, 0, 1], [1, 5, 0, 2], [1, 5, 0, 3], [1, 5, 1, 3], [1, 5, 0, 4], [2, 1, 0, 1], [2, 1, 0, 2], [2, 1, 0, 3],
+  [2, 1, 1, 3], [2, 1, 0, 4], [2, 2, 0, 1], [2, 2, 0, 2], [2, 2, 0, 3], [2, 2, 1, 3], [2, 2, 0, 4], [2, 3, 0, 1], [2, 3, 0, 2],
+  [2, 3, 0, 3], [2, 3, 1, 3], [2, 3, 0, 4], [2, 4, 0, 1], [2, 4, 0, 2], [2, 4, 0, 3], [2, 4, 1, 3], [2, 4, 0, 4], [2, 5, 0, 1],
+  [2, 5, 0, 2], [2, 5, 0, 3], [2, 5, 1, 3], [2, 5, 0, 4], [3, 1, 0, 1], [3, 1, 0, 2], [3, 1, 0, 3], [3, 1, 1, 3], [3, 1, 0, 4],
+  [3, 2, 0, 1], [3, 2, 0, 2], [3, 2, 0, 3], [3, 2, 1, 3], [3, 2, 0, 4], [3, 3, 0, 1], [3, 3, 0, 2], [3, 3, 0, 3], [3, 3, 1, 3],
+  [3, 3, 0, 4], [3, 4, 0, 1], [3, 4, 0, 2], [3, 4, 0, 3], [3, 4, 1, 3], [3, 4, 0, 4], [3, 5, 0, 1], [3, 5, 0, 2], [3, 5, 0, 3],
+  [3, 5, 1, 3], [3, 5, 0, 4], [4, 1, 0, 1], [4, 2, 0, 1], [4, 2, 0, 2], [4, 3, 0, 1], [4, 3, 0, 2], [4, 3, 0, 3], [4, 3, 1, 3],
+  [4, 4, 0, 1], [4, 4, 0, 2], [4, 4, 0, 3], [4, 4, 1, 3], [4, 4, 0, 4], [4, 5, 0, 1], [4, 5, 0, 2], [4, 5, 0, 3], [4, 5, 1, 3],
+  [4, 5, 0, 4], [6, 1, 0, 1], [6, 2, 0, 1], [6, 2, 0, 2], [6, 2, 0, 3], [6, 2, 1, 3], [6, 2, 0, 4], [6, 3, 0, 1], [6, 3, 0, 2],
+  [6, 3, 0, 3], [6, 3, 1, 3], [6, 4, 0, 1], [6, 4, 0, 2], [6, 4, 0, 3], [6, 4, 1, 3], [6, 4, 0, 4], [6, 5, 0, 1], [6, 5, 0, 2],
+  [6, 5, 0, 3], [6, 5, 1, 3], [6, 5, 0, 4]
+].map(([c, p, L, R]) => ({ c, p, L, R }))
+export function t18LogSqrtVsLin() {
+  const par = pick(T27), { c, p, L, R: Rr } = par
+  const { set, solve } = build27(par)
+  return item({
+    text: `${HEAD_A}\n\n⟦r:x + ${c === 1 ? "" : c}a⟧·ln(x ${MINUS} a) = (x ${MINUS} ${p})·ln(x ${MINUS} a)\n\n${ONE_ROOT_SEG_T(L, Rr)}`,
+    set,
+    solution: `ОДЗ: x ${MINUS} a > 0 и x + ${c === 1 ? "" : c}a ≥ 0. Перенесём всё влево: ln(x ${MINUS} a)·(√(x + ${c === 1 ? "" : c}a) ${MINUS} (x ${MINUS} ${p})) = 0.\n`
+      + `Логарифм равен нулю при x ${MINUS} a = 1, то есть x = a + 1 (нужно, чтобы корень там был определён).\n`
+      + `Второй множитель: √(x + ${c === 1 ? "" : c}a) = x ${MINUS} ${p}; это возможно лишь при x ≥ ${p}, и тогда x${SUP[2]} ${MINUS} ${2 * p + 1}x + ${p * p} ${MINUS} ${c === 1 ? "" : c}a = 0.\n`
+      + `Считаем, сколько таких x лежит на отрезке [${nS(L)}; ${Rr}].\nОтвет: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    raw: {
+      seg: [L, Rr],
+      F: (a) => (x) => {
+        if (x - a <= 0 || x + c * a < -EPS) return null
+        return Math.log(x - a) * (sqrtSafe(x + c * a) - (x - p))
+      },
+      sols: (a) => {
+        const out = []
+        const D = (2 * p + 1) * (2 * p + 1) - 4 * (p * p - c * a)
+        if (D >= 0) for (const x of [(2 * p + 1 - Math.sqrt(D)) / 2, (2 * p + 1 + Math.sqrt(D)) / 2]) {
+          if (x >= p - 1e-12 && x > a + 1e-12 && x >= L - 1e-12 && x <= Rr + 1e-12
+            && !out.some((y) => Math.abs(y - x) < 1e-9)) out.push(x)
+        }
+        const x1 = a + 1
+        if (x1 >= L - 1e-12 && x1 <= Rr + 1e-12 && x1 + c * a >= -1e-12
+          && !out.some((y) => Math.abs(y - x1) < 1e-9)) out.push(x1)
+        return out
+      },
+    },
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => a + 1, label: "x = a + 1" },
+        { f: (a) => { const D = (2 * p + 1) * (2 * p + 1) - 4 * (p * p - c * a); return D >= 0 ? (2 * p + 1 + Math.sqrt(D)) / 2 : null }, label: "√(x+ca) = x−p" },
+        { f: (a) => a, dash: true, label: "ОДЗ: x > a" }, { f: () => p, dash: true, label: `x ≥ ${p}` },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: L - 2, xMax: Rr + 3, aMin: Rnum(setBounds(set)[0]) - 3,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
     ["rat-quad-lin", "(k²x²−a²)/(px−q−ra) = 0 — линейный знаменатель", t18RatQuadLin],
@@ -1926,6 +2471,17 @@ export const META18 = [
     ["sq-eq-sqrt", "(x²−t²+√(kx−a))² = (x²−t²)²+kx−a", t18SqEqSqrt],
     ["sq-eq-tan", "(kx+a+1+tg x)² = (kx+a−1−tg x)² — ответ в π", t18SqEqTan],
     ["sq-eq-sqrt-both", "(x²+√(a−x))² = (px+q+√(a−x))² — корень с обеих сторон", t18SqEqSqrtBoth],
+  ]],
+  ["Произведение с логарифмом: f·ln g = f·ln h", [
+    ["log-factor-lin", "(kx−c)·ln(x+a) = (kx−c)·ln(px−a)", t18LogFactorLin],
+    ["log-factor-log", "ln(qa−x)·ln(2x+ra−r) = ln(qa−x)·ln(x−a)", t18LogFactorLog],
+    ["log-factor-sqrt", "√(kx−c)·ln(px−a) = √(kx−c)·ln(qx+a)", t18LogFactorSqrt],
+    ["log-sqrt-noseg", "√(c−kx)·ln(m²x²−a²) = √(c−kx)·ln(mx+a) — без отрезка", t18LogSqrtNoSeg],
+    ["log-sqrt-seg", "тот же типаж с отрезком [0; 1]", t18LogSqrtSeg],
+    ["sqrt-times-log", "√(kx−c)·ln((x−m)²+1−a²) = 0", t18SqrtTimesLog],
+    ["sqrt-trig", "√(x−a)·sin x = √(x−a)·cos x на [0; Qπ]", t18SqrtTrigFactor],
+    ["tan-times-log", "tg(πx)·ln(x+a) = ln(x+a)", t18TanTimesLog],
+    ["log-sqrt-vs-lin", "√(x+ca)·ln(x−a) = (x−p)·ln(x−a)", t18LogSqrtVsLin],
   ]],
 ]
 
