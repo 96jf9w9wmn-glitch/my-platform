@@ -2660,10 +2660,166 @@ function t13LogTrigGroupOnce() {
 // решение f(x) = значение: «круглое» → π-серии, иначе арк-серии
 function trigSolution(fn, vR) {
   const v = vR.p / vR.q
-  const key = numToTrigKey(v)
+  const key = fn === "tan" ? TAN_KEY(v) : numToTrigKey(v)   // у tg свой набор «круглых» значений
   if (key) return { rSeries: seriesFor(fn, key), arcSeries: [], genParts: [textFor(fn, key)] }
-  const arcS = makeArcSeries(fn, vR)
+  const arcS = makeArcSeries(fn === "tan" ? "tg" : fn, vR)   // makeArcSeries знает «tg», не «tan»
   return { rSeries: [], arcSeries: arcS, genParts: arcS.map((s) => s.genText).filter(Boolean) }
+}
+
+// ============================================================================
+// ПОКАЗАТЕЛЬНЫЕ × ТРИГОНОМЕТРИЯ — оставшиеся типажи PDF
+// ============================================================================
+
+// ET5 — a^(sin²x) + a^(cos²x) = k.  u=a^(sin²x) ⟹ u + a/u = k.
+//   k=a+1 → u=1,a → sin²x=0 ∪ 1 → x=πn/2 ;  k=2√a → u=√a (двойной) → sin²x=½ → x=π/4+πn/2
+function t13ExpTrigSumSq() { return retryGen(t13ExpTrigSumSqOnce) }
+function t13ExpTrigSumSqOnce() {
+  const sqBase = pick([4, 9, 16, 25])
+  const dbl = Math.random() < 0.4
+  const a = dbl ? sqBase : pick([2, 3, 5, 6, 7])
+  const k = dbl ? 2 * Math.sqrt(a) : a + 1
+  const first = pick(["sin", "cos"]), second = first === "sin" ? "cos" : "sin"
+  const eq = `${a}⟦sup:${first}²x⟧ + ${a}⟦sup:${second}²x⟧ = ${k}`
+  const Ff = first === "sin" ? Math.sin : Math.cos
+  const residual = (x) => { const u = a ** (Ff(x) ** 2); return u + a / u - k }
+  const series = dbl ? [{ base: R(1, 4), T: R(1, 2) }] : [{ base: R(0), T: R(1, 2) }]
+  return finishGen(eq, series, residual, { maxRoots: 4, lens: [1, 2, 2, 3] })
+}
+
+// ET6 — (aᴬ)^(f²x) = (1/aᴮ)^(sin 2x)·aᶜ  (С=±A) ⟹ множитель выносится: f=0 ∪ tg x = A/(2B)
+function t13ExpTrigTgRatio() { return retryGen(t13ExpTrigTgRatioOnce) }
+function t13ExpTrigTgRatioOnce() {
+  const p = pick([2, 3, 5, 6])
+  const cap = (n) => p ** n <= 100                       // основания вида 1/1296 не показываем
+  const As = [1, 2, 3, 4].filter(cap), Bs = [1, 2, 3].filter(cap)
+  if (!As.length || !Bs.length) return null
+  const A = pick(As), B = pick(Bs)
+  const useSin = Math.random() < 0.5
+  const powA = p ** A, powB = p ** B
+  // sin-вариант:  (p^A)^{sin²x} = (1/p^B)^{sin2x} · p^A  ⟹ cos x=0 ∪ tg x = A/(2B)
+  // cos-вариант:  (1/p^A)^{cos²x} = (p^B)^{sin2x} · (1/p^A) ⟹ sin x=0 ∪ tg x = 2B/A
+  const eq = useSin
+    ? `${powA}⟦sup:sin²x⟧ = ⟦pf:1:${powB}⟧⟦sup:sin 2x⟧ · ${powA}`
+    : `⟦pf:1:${powA}⟧⟦sup:cos²x⟧ = ${powB}⟦sup:sin 2x⟧ · ⟦pf:1:${powA}⟧`
+  const tgR = useSin ? R(A, 2 * B) : R(2 * B, A)
+  const zeroFn = useSin ? "cos" : "sin"
+  const residual = useSin
+    ? (x) => Math.cos(x) * (A * Math.cos(x) - 2 * B * Math.sin(x))
+    : (x) => Math.sin(x) * (A * Math.sin(x) - 2 * B * Math.cos(x))
+  const real = useSin
+    ? (x) => powA ** (Math.sin(x) ** 2) - (1 / powB) ** Math.sin(2 * x) * powA
+    : (x) => (1 / powA) ** (Math.cos(x) ** 2) - powB ** Math.sin(2 * x) / powA
+  const sol = trigSolution("tan", tgR)
+  if (!sol) return null
+  return finishArc(eq, [...seriesFor(zeroFn, "zero"), ...sol.rSeries], sol.arcSeries,
+    [textFor(zeroFn, "zero"), ...sol.genParts], residual, null, real)
+}
+
+// ET7 — P^(sin x) + c·P^(приведение к −sin x) = k.  u=P^(sin x) ⟹ u² − k·u + c = 0.
+//   корни u=P^{t₁}, P^{t₂} (t ∈ {0, ±½, ±1}) → sin x = t
+const ET7_T = [1, -1, 0.5, -0.5, 0]
+function t13ExpTrigSym2() { return retryGen(t13ExpTrigSym2Once) }
+function t13ExpTrigSym2Once() {
+  const P = pick([4, 9, 16, 25, 36])
+  const t1 = pick(ET7_T), t2 = pick(ET7_T)
+  if (t1 === t2 || t1 + t2 < 0) return null
+  const k1 = numToTrigKey(t1), k2 = numToTrigKey(t2)
+  if (!k1 || !k2) return null
+  const c = Math.round(P ** (t1 + t2))
+  if (!Number.isInteger(c) || Math.abs(P ** (t1 + t2) - c) > 1e-9) return null
+  const kv = P ** t1 + P ** t2
+  // k как целое либо стоячая дробь
+  let kStr
+  if (Math.abs(kv - Math.round(kv)) < 1e-9) kStr = String(Math.round(kv))
+  else {
+    const den = Math.round(Math.sqrt(P)) ** 2 === P ? Math.round(1 / (P ** Math.min(t1, t2))) : 0
+    if (!den || Math.abs(kv * den - Math.round(kv * den)) > 1e-9) return null
+    kStr = `⟦f:${Math.round(kv * den)}:${den}⟧`
+  }
+  const [redStr, redEv] = redLin("sin", -1)
+  const eq = `${P}⟦sup:sin x⟧ + ${c === 1 ? "" : c + "·"}${P}⟦sup:${redStr}⟧ = ${kStr}`
+  const residual = (x) => { const u = P ** Math.sin(x); return u * u - kv * u + c }
+  const real = (x) => P ** Math.sin(x) + c * P ** redEv(x) - kv
+  const series = [...seriesFor("sin", k1), ...seriesFor("sin", k2)]
+  return finishGen(eq, series, residual, {
+    realResidual: real, text: `${sinText(k1)},  ${sinText(k2)}`,
+  })
+}
+
+// ============================================================================
+// ИРРАЦИОНАЛЬНЫЕ — оставшиеся типажи PDF
+// ============================================================================
+
+// I1 — √(x³+Ax²+Bx+C) = b − x.  Радиканд = (b−x)² + (x−r₁)(x−r₂)(x−r₃):
+//   уравнение ⟺ произведение = 0 И b−x ≥ 0 (один корень отсекается).
+function t13IrrCubic() { return retryGen(t13IrrCubicOnce, 80) }
+function t13IrrCubicOnce() {
+  const b = pick([2, 3, 4, 5])
+  const rs = []
+  while (rs.length < 3) { const r = randInt(-4, 6); if (!rs.includes(r)) rs.push(r) }
+  const kept = rs.filter((r) => r <= b).sort((p, q) => p - q)
+  if (kept.length !== 2) return null                       // ровно один отсекается по ОДЗ
+  const [r1, r2, r3] = rs
+  const A0 = -(r1 + r2 + r3), B0 = r1 * r2 + r1 * r3 + r2 * r3, C0 = -r1 * r2 * r3
+  const A = A0 + 1, B = B0 - 2 * b, C = C0 + b * b
+  const prod = (x) => (x - r1) * (x - r2) * (x - r3)
+  const rad = (x) => x ** 3 + A * x * x + B * x + C
+  const radStr = `x³${A ? ` ${A < 0 ? MINUS : "+"} ${Math.abs(A) === 1 ? "" : Math.abs(A)}x²` : ""}` +
+    `${B ? ` ${B < 0 ? MINUS : "+"} ${Math.abs(B) === 1 ? "" : Math.abs(B)}x` : ""}` +
+    `${C ? ` ${C < 0 ? MINUS : "+"} ${Math.abs(C)}` : ""}`
+  const eq = `⟦r:${radStr}⟧ = ${b} ${MINUS} x`
+  const domainOK = (x) => b - x >= -1e-9 && rad(x) >= -1e-9
+  const real = (x) => (rad(x) < 0 ? NaN : Math.sqrt(rad(x)) - (b - x))
+  const roots = kept.map((r) => ({ num: r, text: intT(r) }))
+  const iv = pickIntInterval(roots.map((r) => r.num))
+  if (!iv) return null
+  const o = finish(eq, roots, prod, iv, domainOK)
+  if (o) o._verify.realResidual = real
+  return o
+}
+
+// I2 — √(C + sin²x + cos 2x) = k ⟺ cos²x = k² − C  (sin²x+cos2x = cos²x)
+//   и √(C + cos²x − cos 2x) = k ⟺ sin²x = k² − C
+function t13IrrConstTrig() { return retryGen(t13IrrConstTrigOnce) }
+function t13IrrConstTrigOnce() {
+  const k = pick([2, 3])
+  const e = pick(SQ_T.filter((t) => Rkey(t.u) !== Rkey(R(1))))   // u ∈ {¼, ½, ¾}
+  const u = e.u.p / e.u.q
+  const C = k * k - u
+  const plus = Math.random() < 0.5                              // sin²+cos2x = cos²x
+  const fn = plus ? "cos" : "sin"
+  const inner = plus ? `sin²x + cos 2x` : `cos²x ${MINUS} cos 2x`
+  const order = Math.random() < 0.5
+  const radStr = order ? `${ru2(C)} + ${inner}` : `${inner} + ${ru2(C)}`
+  const eq = `⟦r:${radStr}⟧ = ${k}`
+  const Ff = fn === "cos" ? Math.cos : Math.sin
+  const residual = (x) => Ff(x) ** 2 - u
+  const innerEv = plus
+    ? (x) => Math.sin(x) ** 2 + Math.cos(2 * x)
+    : (x) => Math.cos(x) ** 2 - Math.cos(2 * x)
+  const real = (x) => Math.sqrt(C + innerEv(x)) - k
+  const sol = sqSolution(fn, e, 1)
+  return finishGen(eq, sol.series, residual, { realResidual: real, text: sol.text })
+}
+
+// I3 — f x = √((1 ± g x)/2).  Возводим в квадрат → квадрат по g; ОДЗ: f x ≥ 0.
+function t13IrrHalfSum() { return retryGen(t13IrrHalfSumOnce) }
+function t13IrrHalfSumOnce() {
+  const f = pick(["cos", "sin"]), g = f === "cos" ? "sin" : "cos"
+  const sg = pick([1, -1])
+  const Ff = f === "cos" ? Math.cos : Math.sin
+  const Gf = g === "cos" ? Math.cos : Math.sin
+  // f² = (1+sg·g)/2 ⟺ 1−g² = (1+sg·g)/2 ⟺ 2g² + sg·g − 1 = 0 → g = sg·½ ... −sg
+  const v1 = sg * 0.5, v2 = -sg
+  const k1 = numToTrigKey(v1), k2 = numToTrigKey(v2)
+  if (!k1 || !k2) return null
+  const eq = `${f} x = ⟦rf:¦1 ${sg < 0 ? MINUS : "+"} ${g} x¦2¦⟧`
+  const residual = (x) => 2 * Gf(x) ** 2 + sg * Gf(x) - 1
+  const domainOK = (x) => Ff(x) >= -1e-9
+  const real = (x) => Ff(x) - Math.sqrt(Math.max((1 + sg * Gf(x)) / 2, 0))
+  const refined = refineSeries([...seriesFor(g, k1), ...seriesFor(g, k2)], domainOK)
+  if (!refined.length) return null
+  return finishGen(eq, refined, residual, { realResidual: real, domainOK, text: seriesListText(refined) })
 }
 
 // ── реестр ──────────────────────────────────────────────────────────────────
@@ -2677,8 +2833,9 @@ export const GEN13 = [
   t13ExpCubicGroup, t13ExpHalfPow, t13ExpNegPow, t13ExpHomogLin, t13ExpAbs,
   t13LogQuad, t13LogDiff, t13LogTwoBases, t13LogVarBase, t13LogSqrtBase,
   t13ProductAlgTrig, t13ProductSqrt,
-  t13IrrSin, t13IrrCos,
+  t13IrrSin, t13IrrCos, t13IrrCubic, t13IrrConstTrig, t13IrrHalfSum,
   t13ExpTrigProduct, t13ExpTrigSym, t13ExpTrigQuad, t13ExpTrigTower,
+  t13ExpTrigSumSq, t13ExpTrigTgRatio, t13ExpTrigSym2,
   t13LogTrigProd, t13LogTrigQuad, t13LogTrigQuadIn, t13LogTrigGroup,
   t13BiquadSin, t13BiquadCos, t13BiquadCtgSin, t13BiquadTgCos,
   t13Rational,
@@ -2744,12 +2901,18 @@ export const META13 = [
   ["Иррациональные (тригонометрия под корнем)", [
     ["irr-sin", "sinx+√(C(1−cosx))=0 (ОДЗ sinx≤0)", t13IrrSin],
     ["irr-cos", "cosx+√(C(sinx+1))=0 (ОДЗ cosx≤0)", t13IrrCos],
+    ["irr-cubic", "√(x³+Ax²+Bx+C)=b−x (отсев по ОДЗ b−x≥0)", t13IrrCubic],
+    ["irr-const", "√(C+sin²x+cos2x)=k → cos²x=k²−C", t13IrrConstTrig],
+    ["irr-half", "f x=√((1±g x)/2) (ОДЗ f x≥0)", t13IrrHalfSum],
   ]],
   ["Показательные × тригонометрия", [
     ["et-product", "(ab)^E=a^E·b^F → tgx=±1", t13ExpTrigProduct],
     ["et-sym", "p^T+p^{−T}=k → trig=±v / 0", t13ExpTrigSym],
     ["et-quad", "a·(p²)^T+b·p^T+c=0 → trig=значения", t13ExpTrigQuad],
     ["et-tower", "((q²)^sinx)^cosx=q^{r·sinx} → sinx=0∪cos=r/2", t13ExpTrigTower],
+    ["et-sumsq", "a^(sin²x)+a^(cos²x)=k → x=πn/2 либо π/4+πn/2", t13ExpTrigSumSq],
+    ["et-tg-ratio", "(aᴬ)^(f²x)=(1/aᴮ)^(sin2x)·aᴬ → f=0 ∪ tgx=A/(2B)", t13ExpTrigTgRatio],
+    ["et-sym2", "P^sinx+c·P^(приведение к −sinx)=k", t13ExpTrigSym2],
   ]],
   ["Логарифмические × тригонометрия", [
     ["lt-prod", "logₐ(T±sin2x+aᵏ)=k → T=0∪other=∓1/2", t13LogTrigProd],
