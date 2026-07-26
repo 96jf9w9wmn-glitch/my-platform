@@ -736,6 +736,7 @@ export const META19 = [
     ["means-two-groups-543", "Три сорта чисел в две группы: наиб. (A+B)/2", t19MeansTwoGroups543],
     ["means-odd-median", "Нечётные числа: наибольшее B − A", t19MeansOddMedian],
     ["means-erase-half", "Уменьшили вдвое и стёрли малые: наиб. среднее", t19MeansEraseHalf],
+    ["means-iterated-5", "Последовательные усреднения: наиб. целое отношение", t19MeansIterated5],
   ]],
   ["Операции над записью числа", [
     ["swap-digits-max", "Перестановка цифр двузначных → наибольшая новая сумма", t19SwapDigitsMax],
@@ -5112,6 +5113,117 @@ export function t19MeansEraseHalf() {
       mustMention: [N, M, u, Xa, gap, gap + 1, 1],
       extra: [2],
       phrases: ["в два раза меньшее первоначального", "оказались меньше 1"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 10 (окончание). Последовательные усреднения пяти чисел (#32)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Берут n различных натуральных чисел и последовательно усредняют: сначала первые два,
+// потом результат с третьим и так далее. Итог — взвешенная сумма
+//   A = a₁/2ⁿ⁻¹ + a₂/2ⁿ⁻¹ + a₃/2ⁿ⁻² + … + aₙ/2,
+// где все веса не больше 1/2 и в сумме дают 1. Отсюда A ≤ (a₁ + … + aₙ)/2, причём
+// неравенство строгое (веса первых чисел строго меньше 1/2), поэтому
+//   A/M = n·A/(a₁ + … + aₙ) < n/2.
+// Значит «в n раз больше» невозможно, а наибольшее целое отношение равно ⌈n/2⌉ − 1.
+export function t19MeansIterated5() {
+  const n = pick([5, 6, 7])
+  const W = Array.from({ length: n }, (_, i) => (i === 0 ? 1 / 2 ** (n - 1) : 1 / 2 ** (n - i)))
+  const den = 2 ** (n - 1)
+  const wInt = W.map((w) => w * den)                       // целые веса при общем знаменателе
+  const kMax = Math.ceil(n / 2) - 1
+  const Xb = n                                             // «в n раз» — заведомо нельзя
+  // Поиск примеров: перебираем первые n−1 чисел, последнее вычисляем из уравнения
+  // n·Σwᵢaᵢ = k·Σaᵢ. Диапазон первых чисел мал: их рост только уменьшает отношение.
+  const findEx = (k) => {
+    const heads = []
+    const rec = (i, cur) => {
+      if (heads.length) return
+      if (i === n - 1) {
+        // n·(Σ_{i<n} wᵢaᵢ + wₙ·x) = k·(Σ_{i<n} aᵢ + x)
+        const c1 = cur.reduce((s, v, idx) => s + wInt[idx] * v, 0)
+        const c2 = sum(cur)
+        const numr = k * c2 * den - n * c1
+        const denr = n * wInt[n - 1] - k * den
+        if (denr === 0 || numr % denr) return
+        const x = numr / denr
+        if (Number.isInteger(x) && x >= 1 && !cur.includes(x)) heads.push([...cur, x])
+        return
+      }
+      for (let v = 1; v <= 12; v++) { if (cur.includes(v)) continue; cur.push(v); rec(i + 1, cur); cur.pop() }
+    }
+    rec(0, [])
+    return heads[0] || null
+  }
+  const exA = findEx(1)
+  const exC = findEx(kMax)
+  if (!exA || !exC) return null
+
+  const params = { n, kMax, Xb, den, wInt }
+  const check = (cfg, part) => {
+    if (!Array.isArray(cfg) || cfg.length !== n) return `нужно ${n} чисел`
+    for (const v of cfg) if (!Number.isInteger(v) || v < 1) return `${v} — не натуральное число`
+    if (uniq(cfg).length !== cfg.length) return "числа обязаны быть различными"
+    let A = (cfg[0] + cfg[1]) / 2
+    for (let i = 2; i < n; i++) A = (A + cfg[i]) / 2
+    const M = sum(cfg) / n
+    const want = part === "a" ? 1 : kMax
+    if (Math.abs(A - want * M) > 1e-9) return `A = ${A}, а среднее ${M}: отношение ${A / M}, а нужно ${want}`
+    return null
+  }
+  // Независимый перебор: первые n−1 чисел из окна 1…12, последнее вычисляется из
+  // требуемого отношения. Окно обосновано тем, что рост первых чисел только уменьшает
+  // отношение A/M (их веса меньше 1/n), а «нет» опирается на оценку A/M < n/2.
+  const solve = (P) => {
+    const reach = (k) => {
+      let ok = false
+      const rec = (i, cur) => {
+        if (ok) return
+        if (i === P.n - 1) {
+          const c1 = cur.reduce((s, v, idx) => s + P.wInt[idx] * v, 0)
+          const numr = k * sum(cur) * P.den - P.n * c1
+          const denr = P.n * P.wInt[P.n - 1] - k * P.den
+          if (denr === 0 || numr % denr) return
+          const x = numr / denr
+          if (Number.isInteger(x) && x >= 1 && !cur.includes(x)) ok = true
+          return
+        }
+        for (let v = 1; v <= 12; v++) { if (cur.includes(v)) continue; cur.push(v); rec(i + 1, cur); cur.pop() }
+      }
+      rec(0, [])
+      return ok
+    }
+    let best = 0
+    for (let k = 1; k < P.n; k++) if (reach(k)) best = k
+    return { a: reach(1), b: reach(P.Xb), c: best, c_next: false }
+  }
+
+  const NUMW = { 5: "пять", 6: "шесть", 7: "семь" }
+  const NUMG = { 5: "пяти", 6: "шести", 7: "семи" }   // родительный падеж
+  const ORDW = ["первых двух", "третьего", "четвёртого", "пятого", "шестого", "седьмого"]
+  const steps = []
+  for (let i = 2; i < n; i++) steps.push(`затем среднее арифметическое полученного результата и ${ORDW[i - 1]} числа`)
+  return item({
+    preamble: `Саша берёт ${NUMW[n]} различных натуральных чисел и проделывает с ними следующие операции: сначала вычисляет среднее арифметическое первых двух чисел, ${steps.join(", ")}. Полученное в конце число обозначено A.`,
+    qa: `Может ли число A равняться среднему арифметическому начальных ${NUMG[n]} чисел?`,
+    qb: `Может ли число A быть больше среднего арифметического начальных ${NUMG[n]} чисел в ${NUMW[Xb] || Xb} раз?`,
+    qc: `В какое наибольшее целое число раз число A может быть больше среднего арифметического начальных ${NUMG[n]} чисел?`,
+    ansA: `да, например ${exA.join(", ")}`,
+    ansB: `нет: A = ${wInt.map((w, i) => `${w === 1 ? "" : w}${aIdx(i + 1)}`).join(" + ")}, делённое на ${den}, то есть A — взвешенная сумма чисел с весами, не превосходящими ${frPlain(fr(1, 2))}, поэтому A < (a₁ + … + ${aIdx(n)})/2 и A/M < ${frPlain(fr(n, 2))} < ${Xb}`,
+    ansC: `${kMax}; например ${exC.join(", ")}`,
+    solution: `Раскроем операции: A = (${wInt.map((w, i) => `${w === 1 ? "" : w}${aIdx(i + 1)}`).join(" + ")})/${den}. Все веса не больше ${frPlain(fr(1, 2))}, а их сумма равна 1.\nа) Пример, когда A равно среднему M: ${exA.join(", ")}.\nб) Так как каждый вес не больше ${frPlain(fr(1, 2))}, то A ≤ (a₁ + … + ${aIdx(n)})/2, причём равенство невозможно (у первых чисел веса строго меньше). Значит\nA/M = ${n}A/(a₁ + … + ${aIdx(n)}) < ${frPlain(fr(n, 2))},\nи A не может быть больше M в ${Xb} раз.\nв) Из той же оценки целое отношение не превосходит ${kMax}, и оно достигается: ${exC.join(", ")}.\nОтвет: ${kMax}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: "equal-mean" },
+        b: { type: "yesno", yes: false, reason: "weights-bound", target: `times-${Xb}` },
+        c: { type: "extremum", mode: "max", value: kMax, example: exC },
+      },
+      mustMention: [],
+      extra: [],
+      phrases: ["различных натуральных чисел", "среднее арифметическое первых двух чисел"],
     },
   })
 }
