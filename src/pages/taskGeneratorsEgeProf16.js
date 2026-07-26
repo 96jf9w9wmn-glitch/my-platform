@@ -83,6 +83,14 @@ const NAMES_M = ["Андрей", "Руслан", "Родион", "Влад", "К
   "Тимофей", "Игнат", "Никита", "Пётр", "Семён", "Фёдор", "Матвей", "Аркадий"]
 const NAMES_F = ["Анна", "Мария", "Ольга", "Дарья", "Полина", "Ксения", "Вера", "Алиса"]
 const NAME_ALL = [...NAMES_M.map((n) => ({ n, f: false })), ...NAMES_F.map((n) => ({ n, f: true }))]
+// Дательный падеж имени: «Владимиру нужно производить…» (формулировка эталона).
+function dative(name) {
+  if (name === "Пётр") return "Петру"
+  if (name.endsWith("ия")) return name.slice(0, -1) + "и"
+  if (name.endsWith("й")) return name.slice(0, -1) + "ю"
+  if (name.endsWith("а") || name.endsWith("я")) return name.slice(0, -1) + "е"
+  return name + "у"
+}
 const took = (p) => (p.f ? "взяла" : "взял")
 const paid = (p) => (p.f ? "выплатила" : "выплатил")
 
@@ -2520,6 +2528,605 @@ export function t16TailTableQuadratic() {
   })
 }
 
+// Ответ не должен совпадать ни с одним числом-данным условия — иначе решение
+// «угадывается» из текста и verify16 (forbid) справедливо это забракует.
+const noClash = (ans, data) => !data.some((x) => Math.abs(x - ans) < 1e-9)
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  РАЗДЕЛ 8. ОПТИМИЗАЦИЯ (файл «Задачи № 16 (Оптимизация).docx»)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Здесь нет периодов, поэтому вместо симуляции долга «вторая реализация» — ПОЛНЫЙ
+// перебор допустимой сетки: verify16 требует, чтобы максимум/минимум достигался
+// ровно в заявленной точке и больше нигде.
+
+// ── 1. Два завода, разные технологии, одна ставка → МИНИМУМ затрат ─────────
+// Завод i: t² часов → aᵢ·t единиц ⇒ на xᵢ единиц нужно xᵢ²/aᵢ² часов.
+// min w(x₁²/a² + x₂²/b²) при x₁+x₂ = N достигается при xᵢ ∝ aᵢ², минимум = w·N²/(a²+b²).
+// При N = k(a²+b²) оптимум x₁ = k·a², x₂ = k·b², часы k·a и k·b — всё целое.
+export function t16OptTwoPlantsMinCost() {
+  const PAIRS = [[2, 5], [3, 4], [2, 3], [1, 2], [3, 5], [4, 5], [2, 7], [1, 3]]
+  const cand = []
+  for (const [a, b] of PAIRS) {
+    const s2 = a * a + b * b
+    for (const w of [200, 250, 300, 400, 500]) {
+      for (let k = 2; k <= 40; k++) {
+        const N = k * s2, cost = w * k * k * s2
+        if (N < 30 || N > 3000 || cost > 60_000_000) continue
+        if (!noClash(cost, [a, b, w, N])) continue
+        cand.push({ a, b, w, k, N, cost })
+      }
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const pr = pick(NAME_ALL)
+  const costOf = (x1) => c.w * (x1 * x1 / (c.a * c.a) + (c.N - x1) * (c.N - x1) / (c.b * c.b))
+  return item({
+    text: `${pr.n} является ${pr.f ? "владелицей" : "владельцем"} двух заводов в разных городах. ` +
+      `На заводах производятся абсолютно одинаковые товары, но на заводе, расположенном во втором ` +
+      `городе, используется более совершенное оборудование. В результате, если рабочие на заводе, ` +
+      `расположенном в первом городе, трудятся суммарно t² часов в неделю, то за эту неделю они ` +
+      `производят ${c.a === 1 ? "" : c.a}t единиц товара; если рабочие на заводе, расположенном во втором городе, ` +
+      `трудятся суммарно t² часов в неделю, то за эту неделю они производят ${c.b}t единиц товара. ` +
+      `За каждый час работы (на каждом из заводов) ${pr.n} платит рабочему ${rub(c.w)}. ` +
+      `${dative(pr.n)} нужно каждую неделю производить ${c.N} единиц товара. Какую наименьшую сумму придётся ` +
+      `тратить еженедельно на оплату труда рабочих?`,
+    answer: `${money(c.cost)} рублей`,
+    answerNum: c.cost,
+    model: { type: "optimize", a: c.a, b: c.b, w: c.w, N: c.N },
+    sim: () => ({ steps: [], value: c.cost }),
+    // при коэффициенте 1 в тексте стоит просто «t» — единица становится служебным числом
+    mustMention: [c.w, c.N, ...(c.a === 1 ? [] : [c.a]), ...(c.b === 1 ? [] : [c.b])],
+    extra: [1],
+    forbid: [c.cost],
+    checks: [
+      // перебор ВСЕЙ допустимой сетки: минимум достигается только в заявленной точке
+      () => {
+        const opt = c.k * c.a * c.a
+        for (let x1 = 0; x1 <= c.N; x1++) {
+          if (x1 === opt) continue
+          if (costOf(x1) < c.cost - 1e-6) return `дешевле при x₁ = ${x1}: ${costOf(x1)}`
+        }
+        return Math.abs(costOf(opt) - c.cost) < 1e-6 ? null : "минимум ≠ ответу"
+      },
+    ],
+  })
+}
+
+// ── 2. Два завода, одинаковая технология, разные ставки → МИНИМУМ затрат ───
+// На x единиц нужно x² часов. min(w₁x₁² + w₂x₂²) при x₁+x₂ = N равен N²·w₁w₂/(w₁+w₂).
+export function t16OptTwoRatesMinCost() {
+  const cand = []
+  const WS = [[500, 200], [250, 200], [300, 200], [400, 100], [600, 300], [500, 300], [800, 200]]
+  for (const [w1, w2] of WS) {
+    const W = w1 + w2
+    for (let N = 20; N <= 400; N += 10) {
+      const x1 = N * w2 / W, x2 = N * w1 / W
+      if (!Number.isInteger(x1) || !Number.isInteger(x2)) continue
+      const cost = w1 * x1 * x1 + w2 * x2 * x2
+      if (!Number.isInteger(cost) || cost > 60_000_000 || cost < 100_000) continue
+      if (!noClash(cost, [w1, w2, N])) continue
+      cand.push({ w1, w2, N, x1, cost })
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const pr = pick(NAME_ALL)
+  const costOf = (x1) => c.w1 * x1 * x1 + c.w2 * (c.N - x1) * (c.N - x1)
+  return item({
+    text: `${pr.n} является ${pr.f ? "владелицей" : "владельцем"} двух заводов в разных городах. ` +
+      `На заводах производятся абсолютно одинаковые товары при использовании одинаковых технологий. ` +
+      `Если рабочие на одном из заводов трудятся суммарно t² часов в неделю, то за эту неделю они ` +
+      `производят t единиц товара. За каждый час работы на заводе, расположенном в первом городе, ` +
+      `${pr.n} платит рабочему ${rub(c.w1)}, а на заводе, расположенном во втором городе, — ` +
+      `${rub(c.w2)}. ${pr.n} нужно каждую неделю производить ${c.N} единиц товара. Какую наименьшую ` +
+      `сумму придётся тратить еженедельно на оплату труда рабочих?`,
+    answer: `${money(c.cost)} рублей`,
+    answerNum: c.cost,
+    model: { type: "optimize", w1: c.w1, w2: c.w2, N: c.N },
+    sim: () => ({ steps: [], value: c.cost }),
+    mustMention: [c.w1, c.w2, c.N],
+    extra: [],
+    forbid: [c.cost],
+    checks: [
+      () => {
+        for (let x1 = 0; x1 <= c.N; x1++) {
+          if (x1 === c.x1) continue
+          if (costOf(x1) < c.cost - 1e-6) return `дешевле при x₁ = ${x1}`
+        }
+        return Math.abs(costOf(c.x1) - c.cost) < 1e-6 ? null : "минимум ≠ ответу"
+      },
+    ],
+  })
+}
+
+// ── 3. Два завода, разные технологии, бюджет → МАКСИМУМ выпуска ────────────
+// Часов всего H = B/w; max(x₁+x₂) при x₁²/a² + x₂²/b² = H равен √((a²+b²)H).
+// При H = (a²+b²)k² оптимум x₁ = a²k, x₂ = b²k, ответ (a²+b²)k — всё целое.
+export function t16OptTwoPlantsMaxOutput() {
+  const PAIRS = [[2, 5], [3, 4], [2, 3], [1, 2], [3, 5], [4, 5], [1, 3]]
+  const cand = []
+  for (const [a, b] of PAIRS) {
+    const s2 = a * a + b * b
+    for (const w of [200, 250, 300, 400, 500]) {
+      for (let k = 2; k <= 40; k++) {
+        const B = w * s2 * k * k, out = s2 * k
+        if (B < 200_000 || B > 60_000_000 || B % 10_000 !== 0) continue
+        if (out < 30 || out > 3000) continue
+        if (!noClash(out, [a, b, w, B])) continue
+        cand.push({ a, b, w, k, B, out })
+      }
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const pr = pick(NAME_ALL)
+  const hours = c.B / c.w
+  const feasible = (x1, x2) => x1 * x1 / (c.a * c.a) + x2 * x2 / (c.b * c.b) <= hours + 1e-9
+  return item({
+    text: `${pr.n} является ${pr.f ? "владелицей" : "владельцем"} двух заводов в разных городах. ` +
+      `На заводах производятся абсолютно одинаковые товары, но на заводе, расположенном во втором ` +
+      `городе, используется более совершенное оборудование. В результате, если рабочие на заводе, ` +
+      `расположенном в первом городе, трудятся суммарно t² часов в неделю, то за эту неделю они ` +
+      `производят ${c.a === 1 ? "" : c.a}t единиц товара; если рабочие на заводе, расположенном во втором городе, ` +
+      `трудятся суммарно t² часов в неделю, то за эту неделю они производят ${c.b}t единиц товара. ` +
+      `За каждый час работы (на каждом из заводов) ${pr.n} платит рабочему ${rub(c.w)}. ` +
+      `${pr.n} ${pr.f ? "готова" : "готов"} выделять ${rub(c.B)} в неделю на оплату труда рабочих. ` +
+      `Какое наибольшее количество единиц товара можно произвести за неделю на этих двух заводах?`,
+    answer: `${money(c.out)} единиц товара`,
+    answerNum: c.out,
+    model: { type: "optimize", a: c.a, b: c.b, w: c.w, B: c.B },
+    sim: () => ({ steps: [], value: c.out }),
+    mustMention: [c.w, c.B, ...(c.a === 1 ? [] : [c.a]), ...(c.b === 1 ? [] : [c.b])],
+    extra: [1],
+    forbid: [c.out],
+    checks: [
+      // ответ достижим и превзойти его нельзя ни при каком целом делении выпуска
+      () => (feasible(c.a * c.a * c.k, c.b * c.b * c.k) ? null : "заявленный выпуск недостижим"),
+      () => {
+        for (let x1 = 0; x1 <= c.out + 1; x1++) {
+          const x2 = c.out + 1 - x1
+          if (x2 < 0) break
+          if (feasible(x1, x2)) return `достижим выпуск ${c.out + 1} при x₁ = ${x1}`
+        }
+        return null
+      },
+    ],
+  })
+}
+
+// ── 4. Одинаковая технология, разные ставки, бюджет → МАКСИМУМ выпуска ─────
+// w₁x₁² + w₂x₂² = B; оптимум x₁ = w₂t, x₂ = w₁t, где t = √(B/(w₁w₂(w₁+w₂))).
+export function t16OptTwoRatesMaxOutput() {
+  const cand = []
+  const WS = [[250, 200], [500, 200], [300, 200], [400, 100], [600, 300], [500, 300]]
+  for (const [w1, w2] of WS) {
+    const W = w1 + w2
+    for (let d = 1; d <= 50; d++) {
+      const t = d / 10
+      const x1 = w2 * t, x2 = w1 * t
+      if (!Number.isInteger(x1) || !Number.isInteger(x2)) continue
+      const B = w1 * x1 * x1 + w2 * x2 * x2
+      if (!Number.isInteger(B) || B < 100_000 || B > 60_000_000 || B % 10_000 !== 0) continue
+      const out = Math.round(W * t)
+      if (out < 20 || out > 2000) continue
+      if (!noClash(out, [w1, w2, B])) continue
+      cand.push({ w1, w2, B, out, x1 })
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const pr = pick(NAME_ALL)
+  const feasible = (x1, x2) => c.w1 * x1 * x1 + c.w2 * x2 * x2 <= c.B + 1e-9
+  return item({
+    text: `${pr.n} является ${pr.f ? "владелицей" : "владельцем"} двух заводов в разных городах. ` +
+      `На заводах производятся абсолютно одинаковые товары при использовании одинаковых технологий. ` +
+      `Если рабочие на одном из заводов трудятся суммарно t² часов в неделю, то за эту неделю они ` +
+      `производят t единиц товара. За каждый час работы на заводе, расположенном в первом городе, ` +
+      `${pr.n} платит рабочему ${rub(c.w1)}, а на заводе, расположенном во втором городе, — ` +
+      `${rub(c.w2)}. ${pr.n} ${pr.f ? "готова" : "готов"} выделять ${rub(c.B)} в неделю на оплату ` +
+      `труда рабочих. Какое наибольшее количество единиц товара можно произвести за неделю ` +
+      `на этих двух заводах?`,
+    answer: `${money(c.out)} единиц товара`,
+    answerNum: c.out,
+    model: { type: "optimize", w1: c.w1, w2: c.w2, B: c.B },
+    sim: () => ({ steps: [], value: c.out }),
+    mustMention: [c.w1, c.w2, c.B],
+    extra: [],
+    forbid: [c.out],
+    checks: [
+      () => (feasible(c.x1, c.out - c.x1) ? null : "заявленный выпуск недостижим"),
+      () => {
+        for (let x1 = 0; x1 <= c.out + 1; x1++) {
+          const x2 = c.out + 1 - x1
+          if (x2 < 0) break
+          if (feasible(x1, x2)) return `достижим выпуск ${c.out + 1} при x₁ = ${x1}`
+        }
+        return null
+      },
+    ],
+  })
+}
+
+// ── 5. Наименьшая цена p, при которой завод окупится за Y лет ──────────────
+// Прибыль за год = px − (0,5x² + bx + c); максимум по x равен (p−b)²/2 − c.
+// Условие Y·[(p−b)²/2 − c] ≥ C ⇒ наименьшее целое p.
+export function t16OptFactoryMinPrice() {
+  const cand = []
+  for (let b = 1; b <= 4; b++) {
+    for (let cc = 4; cc <= 12; cc++) {
+      for (const Y of [3, 4, 5, 6]) {
+        for (let p = b + 4; p <= b + 20; p++) {
+          const lo = Y * (Math.pow(p - 1 - b, 2) / 2 - cc)
+          const hi = Y * (Math.pow(p - b, 2) / 2 - cc)
+          if (lo <= 0) continue
+          for (let C = Math.ceil(lo); C <= Math.floor(hi); C++) {
+            if (C - lo < 0.4 || hi - C < 0.4) continue
+            if (C < 20 || C > 400) continue
+            if (!noClash(p, [C, b, cc, Y, 0.5])) continue
+            cand.push({ b, c: cc, Y, p, C })
+          }
+        }
+      }
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const profit = (p) => Math.pow(p - c.b, 2) / 2 - c.c
+  const bTerm = c.b === 1 ? "x" : `${c.b}x`
+  return item({
+    text: `Строительство нового завода стоит ${c.C} млн рублей. Затраты на производство x тыс. единиц ` +
+      `продукции на таком заводе равны 0,5x² + ${bTerm} + ${c.c} млн рублей в год. Если продукцию ` +
+      `завода продать по цене p тыс. рублей за единицу, то прибыль фирмы (в млн рублей) за один год ` +
+      `составит px − (0,5x² + ${bTerm} + ${c.c}). Когда завод будет построен, фирма будет выпускать ` +
+      `продукцию в таком количестве, чтобы прибыль была наибольшей. При каком наименьшем значении p ` +
+      `строительство завода окупится не более чем за ${years(c.Y)}?`,
+    answer: `${c.p} тыс. рублей за единицу`,
+    answerNum: c.p,
+    model: { type: "optimize", C: c.C, b: c.b, c: c.c, Y: c.Y },
+    sim: () => ({ steps: [], value: c.p }),
+    mustMention: [c.C, c.c, c.Y, ...(c.b === 1 ? [] : [c.b])],
+    extra: [0.5, ...(c.b === 1 ? [1] : [])],
+    forbid: [c.p],
+    checks: [
+      () => (c.Y * profit(c.p) >= c.C ? null : `p = ${c.p} не окупает завод`),
+      () => (c.Y * profit(c.p - 1) < c.C ? null : `p = ${c.p - 1} тоже подходит`),
+      // максимум годовой прибыли действительно равен (p−b)²/2 − c — проверяем сеткой по x
+      () => {
+        const best = profit(c.p)
+        for (let x = 0; x <= 400; x += 0.05) {
+          const v = c.p * x - (0.5 * x * x + c.b * x + c.c)
+          if (v > best + 1e-6) return `при x = ${x} прибыль больше максимума`
+        }
+        return null
+      },
+    ],
+  })
+}
+
+// ── 6. За сколько лет окупится при растущей цене ───────────────────────────
+// Цена в год j равна p₀ + (j−1); годовая прибыль (p−b)²/2 − c; ищем наименьшее k.
+export function t16OptFactoryPaybackYears() {
+  const cand = []
+  for (let b = 1; b <= 4; b++) {
+    for (let cc = 4; cc <= 12; cc++) {
+      for (let p0 = b + 5; p0 <= b + 14; p0++) {
+        let acc = 0
+        for (let k = 1; k <= 8; k++) {
+          acc += Math.pow(p0 + k - 1 - b, 2) / 2 - cc
+          if (k < 3) continue
+          if (Math.abs(acc * 2 - Math.round(acc * 2)) > 1e-9) continue
+          const C = Math.round(acc * 2) / 2
+          if (C < 40 || C > 500 || !Number.isInteger(C)) continue
+          if (!noClash(k, [C, b, cc, p0, 0.5, 1])) continue
+          cand.push({ b, c: cc, p0, k, C })
+        }
+      }
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const cum = (k) => {
+    let s = 0
+    for (let j = 0; j < k; j++) s += Math.pow(c.p0 + j - c.b, 2) / 2 - c.c
+    return s
+  }
+  const bTerm = c.b === 1 ? "x" : `${c.b}x`
+  return item({
+    text: `Строительство нового завода стоит ${c.C} млн рублей. Затраты на производство x тыс. единиц ` +
+      `продукции на таком заводе равны 0,5x² + ${bTerm} + ${c.c} млн рублей в год. Если продукцию ` +
+      `завода продать по цене p тыс. рублей за единицу, то прибыль фирмы (в млн рублей) за один год ` +
+      `составит px − (0,5x² + ${bTerm} + ${c.c}). Когда завод будет построен, фирма будет выпускать ` +
+      `продукцию в таком количестве, чтобы прибыль была наибольшей. При этом в первый год p = ${c.p0}, ` +
+      `а далее каждый год возрастает на 1. За сколько лет окупится строительство?`,
+    answer: `${years(c.k)}`,
+    answerNum: c.k,
+    model: { type: "optimize", C: c.C, b: c.b, c: c.c, p0: c.p0 },
+    sim: () => ({ steps: [], value: c.k }),
+    mustMention: [c.C, c.c, c.p0, ...(c.b === 1 ? [] : [c.b])],
+    extra: [0.5, 1],
+    forbid: [c.k],
+    checks: [
+      () => (cum(c.k) >= c.C - 1e-9 ? null : `за ${c.k} лет не окупается`),
+      () => (cum(c.k - 1) < c.C - 1e-9 ? null : `окупается уже за ${c.k - 1} лет`),
+    ],
+  })
+}
+
+// ── 7. Цену снизили, прибыль не изменилась → на сколько % поднять цену ─────
+// Прибыль (P−c)(Qmax−P) − F симметрична относительно P* = (c+Qmax)/2. Если P и (1−d)P
+// дают равную прибыль, то P(2−d) = c + Qmax, и ответ d/(2(1−d)) — не зависит от F.
+export function t16OptPriceRaise() {
+  const cand = []
+  for (const d of [0.2, 0.5, 0.6]) {
+    const ans = 100 * d / (2 * (1 - d))
+    if (Math.abs(ans * 10 - Math.round(ans * 10)) > 1e-9) continue
+    for (const Qmax of [10_000, 12_000, 15_000, 18_000, 20_000, 24_000]) {
+      for (const cost of [2000, 2400, 3000, 3600, 4000, 5000, 6000]) {
+        const P = (cost + Qmax) / (2 - d)
+        if (!Number.isInteger(P) || P % 100 !== 0) continue
+        if (P >= Qmax || P <= cost) continue
+        const Pmin = Math.round(Qmax / 15 / 100) * 100
+        if (P * (1 - d) <= Pmin) continue
+        const ansR = Math.round(ans * 10) / 10
+        if (!noClash(ansR, [Qmax, cost, Pmin, d * 100])) continue
+        for (const F of [4_000_000, 5_000_000, 6_000_000, 8_000_000]) {
+          cand.push({ d, Qmax, cost, F, P, Pmin, ans: ansR })
+        }
+      }
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const profit = (P) => P * (c.Qmax - P) - c.cost * (c.Qmax - P) - c.F
+  const opt = (c.cost + c.Qmax) / 2
+  return item({
+    text: `Зависимость объёма Q (в шт.) купленного у фирмы товара от цены P (в руб. за шт.) ` +
+      `выражается формулой Q = ${money(c.Qmax)} − P, где ${money(c.Pmin)} ≤ P ≤ ${money(c.Qmax)}. ` +
+      `Доход от продажи товара составляет PQ рублей. Затраты на производство Q единиц товара ` +
+      `составляют ${money(c.cost)}Q + ${money(c.F)} рублей. Прибыль равна разности дохода от продажи ` +
+      `товара и затрат на его производство. Стремясь привлечь внимание покупателей, фирма уменьшила ` +
+      `цену товара на ${pct(c.d * 100)}, однако её прибыль не изменилась. На сколько процентов следует ` +
+      `увеличить сниженную цену, чтобы добиться наибольшей прибыли?`,
+    answer: `${pct(c.ans)}`,
+    answerNum: c.ans,
+    model: { type: "optimize", Qmax: c.Qmax, cost: c.cost, F: c.F, P: c.P },
+    sim: () => ({ steps: [], value: c.ans }),
+    mustMention: [c.Qmax, c.Pmin, c.cost, c.F, c.d * 100],
+    extra: [],
+    forbid: [c.ans],
+    checks: [
+      () => (Math.abs(profit(c.P) - profit(c.P * (1 - c.d))) < 1e-6 ? null : "прибыль изменилась после скидки"),
+      // максимум прибыли — перебор всей допустимой сетки цен
+      () => {
+        let best = -Infinity, arg = null
+        for (let P = c.Pmin; P <= c.Qmax; P++) {
+          const v = profit(P)
+          if (v > best + 1e-9) { best = v; arg = P }
+        }
+        if (arg !== opt) return `максимум прибыли при P = ${arg}, а не ${opt}`
+        const raise = 100 * (opt - c.P * (1 - c.d)) / (c.P * (1 - c.d))
+        return Math.abs(raise - c.ans) < 1e-6 ? null : `подъём цены ${raise} ≠ ответу`
+      },
+    ],
+  })
+}
+
+// ── 8. При каком налоге t сборы государства максимальны ────────────────────
+// Прибыль (P − cost − t)(Qmax − P) − F ⇒ Q* = (Qmax − cost − t)/2;
+// сборы t·Q* максимальны при t = (Qmax − cost)/2.
+export function t16OptTaxMax() {
+  const cand = []
+  for (const Qmax of [16_000, 18_000, 20_000, 24_000, 30_000]) {
+    for (const cost of [4000, 5000, 6000, 8000, 10_000]) {
+      if (cost >= Qmax) continue
+      const t = (Qmax - cost) / 2
+      if (!Number.isInteger(t) || t % 500 !== 0) continue
+      const cap = Math.ceil((t + 1000) / 1000) * 1000
+      if (cap <= t) continue
+      if (!noClash(t, [Qmax, cost, cap, 0])) continue
+      for (const F of [3_000_000, 4_000_000, 5_000_000]) cand.push({ Qmax, cost, F, t, cap })
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const taxes = (t) => t * Math.max(0, (c.Qmax - c.cost - t) / 2)
+  return item({
+    text: `Зависимость количества Q (в шт., 0 ≤ Q ≤ ${money(c.Qmax)}) купленного у фирмы товара ` +
+      `от цены P (в руб. за шт.) выражается формулой Q = ${money(c.Qmax)} − P. Затраты на производство ` +
+      `Q единиц товара составляют ${money(c.cost)}Q + ${money(c.F)} рублей. Кроме затрат на ` +
+      `производство, фирма должна платить налог t рублей (0 < t < ${money(c.cap)}) с каждой ` +
+      `произведённой единицы товара. Таким образом, прибыль фирмы составляет ` +
+      `PQ − ${money(c.cost)}Q − ${money(c.F)} − tQ рублей, а общая сумма налогов, собранных ` +
+      `государством, равна tQ рублей. Фирма производит такое количество товара, при котором её ` +
+      `прибыль максимальна. При каком значении t общая сумма налогов, собранных государством, ` +
+      `будет максимальной?`,
+    answer: `${money(c.t)} рублей`,
+    answerNum: c.t,
+    model: { type: "optimize", Qmax: c.Qmax, cost: c.cost, F: c.F },
+    sim: () => ({ steps: [], value: c.t }),
+    mustMention: [c.Qmax, c.cost, c.F, c.cap, 0],
+    extra: [],
+    forbid: [c.t],
+    checks: [
+      () => {
+        let best = -Infinity, arg = null
+        for (let t = 1; t < c.cap; t++) {
+          const v = taxes(t)
+          if (v > best + 1e-9) { best = v; arg = t }
+        }
+        return arg === c.t ? null : `максимум налогов при t = ${arg}, а не ${c.t}`
+      },
+    ],
+  })
+}
+
+// ── 9. Два региона: доходы на душу сравнялись → найти k ────────────────────
+// D₁(1+p)³ = D₂·((1+q)/(1+k))³. Строим от ответа: D₁ = D₂·m³, тогда
+// (1+q)/(1+k) = m(1+p), и k подбирается вместе с q так, чтобы оба были целыми %.
+export function t16OptRegionsGrowth() {
+  const cand = []
+  for (const m of [0.8, 0.9, 1.1, 1.2, 0.75, 1.25]) {
+    for (const D2 of [40_000, 50_000, 60_000, 80_000, 100_000]) {
+      const D1 = D2 * m * m * m
+      if (!Number.isInteger(D1) || D1 < 10_000) continue
+      for (let p = 10; p <= 30; p++) {
+        for (let k = 2; k <= 12; k++) {
+          const q = (1 + k / 100) * m * (1 + p / 100) - 1
+          const qp = q * 100
+          if (Math.abs(qp - Math.round(qp)) > 1e-9) continue
+          if (qp < 5 || qp > 40 || Math.round(qp) === p || Math.round(qp) === k) continue
+          cand.push({ D1, D2, p, k, q: Math.round(qp) })
+        }
+      }
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const y0 = randInt(2012, 2020)
+  const perCap1 = c.D1 * Math.pow(1 + c.p / 100, 3)
+  const perCap2 = (k) => c.D2 * Math.pow((1 + c.q / 100) / (1 + k / 100), 3)
+  return item({
+    text: `В первом регионе среднемесячный доход на душу населения в ${y0} г. составлял ${rub(c.D1)} ` +
+      `и ежегодно увеличивался на ${pct(c.p)}. Во втором регионе среднемесячный доход на душу ` +
+      `населения в ${y0} г. составлял ${rub(c.D2)}. В течение трёх лет суммарный доход жителей ` +
+      `второго региона увеличивался на ${pct(c.q)} ежегодно, а население увеличивалось на k % ` +
+      `ежегодно. В ${y0 + 3} г. среднемесячные доходы на душу населения в первом и втором регионах ` +
+      `сравнялись. Найдите k.`,
+    answer: `${pct(c.k)}`,
+    answerNum: c.k,
+    model: { type: "optimize", D1: c.D1, D2: c.D2, p: c.p, q: c.q },
+    sim: () => ({ steps: [], value: c.k }),
+    mustMention: [c.D1, c.D2, c.p, c.q],
+    extra: [y0, y0 + 3],
+    forbid: [c.k],
+    checks: [
+      () => (Math.abs(perCap1 - perCap2(c.k)) < 1e-6 ? null : "доходы не сравнялись"),
+      () => {
+        for (let k = 1; k <= 60; k++) {
+          if (k === c.k) continue
+          if (Math.abs(perCap1 - perCap2(k)) < 1e-4) return `k = ${k} тоже подходит`
+        }
+        return null
+      },
+    ],
+  })
+}
+
+// ── 10–11. Пенсионный фонд: при каких r продавать надо ровно в конце года t₀ ──
+// Сумма к концу года T равна f(t)·(1+r)^(T−t); максимум ровно в t₀ ⟺
+//   f(t₀)/f(t₀−1) > 1+r > f(t₀+1)/f(t₀)   (отношение f(t+1)/f(t) убывает ⇒ унимодальность).
+// Ответ — ПРОМЕЖУТОК; границы выписываем точными дробями, как в эталоне.
+function t16FundRate(kind) {
+  const T = randInt(18, 25)
+  const t0 = randInt(kind === "sq" ? 9 : 5, T - 2)
+  const f = kind === "sq" ? (t) => t * t : (t) => 10 * t
+  const lowNum = kind === "sq" ? 2 * t0 + 1 : 1               // f(t₀+1)/f(t₀) − 1
+  const lowDen = kind === "sq" ? t0 * t0 : t0
+  const hiNum = kind === "sq" ? 2 * t0 - 1 : 1                // f(t₀)/f(t₀−1) − 1
+  const hiDen = kind === "sq" ? (t0 - 1) * (t0 - 1) : t0 - 1
+  const gL = gcd(lowNum, lowDen), gH = gcd(hiNum, hiDen)
+  const lo = lowNum / lowDen, hi = hiNum / hiDen
+  if (!(lo < hi) || hi > 0.25 || lo < 0.02) return null       // ставка должна быть реалистичной
+  const priceText = kind === "sq" ? "t² тыс. рублей" : "10t тыс. рублей"
+  const ordT = `${T}-го`, ordT0 = `${t0}-го`
+  const frac = (n, d, g) => (d / g === 1 ? String(n / g) : `${n / g}/${d / g}`)
+  return item({
+    text: `Пенсионный фонд владеет ценными бумагами, которые стоят ${priceText} в конце года t ` +
+      `(t = 1; 2; …). В конце любого года пенсионный фонд может продать ценные бумаги и положить ` +
+      `деньги на счёт в банке, при этом в конце каждого следующего года сумма на счёте будет ` +
+      `увеличиваться в 1 + r раз. Пенсионный фонд хочет продать ценные бумаги в конце такого года, ` +
+      `чтобы в конце ${ordT} года сумма на его счёте была наибольшей. Расчёты показали, что для этого ` +
+      `ценные бумаги нужно продавать строго в конце ${ordT0} года. При каких положительных значениях r ` +
+      `это возможно?`,
+    answer: `${frac(lowNum, lowDen, gL)} < r < ${frac(hiNum, hiDen, gH)}`,
+    // ответ здесь — ПРОМЕЖУТОК (как в эталоне); числом для универсальных проверок
+    // служит год продажи, а сам промежуток проверяют checks ниже.
+    answerNum: t0,
+    model: { type: "optimize", kind, t0, T },
+    sim: () => ({ steps: [], value: lo }),
+    mustMention: [1, 2],
+    extra: [t0, T, 10],
+    forbid: [],
+    checks: [
+      // внутри промежутка максимум ровно в t₀, вне — нет: перебор всей сетки лет
+      () => {
+        for (const r of [lo + (hi - lo) * 0.1, (lo + hi) / 2, hi - (hi - lo) * 0.1]) {
+          let best = -Infinity, arg = null
+          for (let t = 1; t <= T; t++) {
+            const v = f(t) * Math.pow(1 + r, T - t)
+            if (v > best * (1 + 1e-12)) { best = v; arg = t }
+          }
+          if (arg !== t0) return `при r = ${r} максимум в ${arg}, а не в ${t0}`
+        }
+        return null
+      },
+      () => {
+        for (const r of [lo - 1e-4, hi + 1e-4]) {
+          if (r <= 0) continue
+          let best = -Infinity, arg = null
+          for (let t = 1; t <= T; t++) {
+            const v = f(t) * Math.pow(1 + r, T - t)
+            if (v > best * (1 + 1e-12)) { best = v; arg = t }
+          }
+          if (arg === t0) return `вне промежутка (r = ${r}) максимум всё ещё в ${t0}`
+        }
+        return null
+      },
+    ],
+  })
+}
+export const t16FundRateSquare = () => t16FundRate("sq")
+export const t16FundRateLinear = () => t16FundRate("lin")
+
+// ── 12–13. Пенсионный фонд: в конце какого года продавать при известном r ──
+function t16FundYear(kind) {
+  const r = pick(kind === "sq" ? [5, 8, 10, 12, 15] : [12, 15, 18, 24, 30])
+  const f = kind === "sq" ? (t) => t * t : (t) => 10 * t
+  const q = 1 + r / 100
+  // argmax f(t)·q^(T−t) не зависит от T (пока t ≤ T), поэтому оптимум ищем один раз
+  // на широком горизонте, а горизонт задачи выбираем ЗАВЕДОМО правее оптимума.
+  let best = -Infinity, arg = null, ties = 0
+  for (let t = 1; t <= 200; t++) {
+    const v = f(t) * Math.pow(q, -t)
+    if (v > best * (1 + 1e-12)) { best = v; arg = t; ties = 0 }
+    else if (Math.abs(v - best) <= Math.abs(best) * 1e-12) ties++
+  }
+  if (ties || arg === 1 || arg > 40) return null
+  const T = arg + randInt(1, 4)
+  best = f(arg) * Math.pow(q, T - arg)
+  const priceText = kind === "sq" ? "t² тыс. рублей" : "10t тыс. рублей"
+  const ordT = `${T}-го`
+  return item({
+    text: `Пенсионный фонд владеет ценными бумагами, которые стоят ${priceText} в конце года t ` +
+      `(t = 1; 2; …). В конце любого года пенсионный фонд может продать ценные бумаги и положить ` +
+      `деньги на счёт в банке, при этом в конце каждого следующего года сумма на счёте будет ` +
+      `увеличиваться на ${pct(r)}. В конце какого года пенсионному фонду следует продать ценные ` +
+      `бумаги, чтобы в конце ${ordT} года сумма на его счёте была наибольшей?`,
+    answer: `в конце ${arg}-го года`,
+    answerNum: arg,
+    model: { type: "optimize", kind, r, T },
+    sim: () => ({ steps: [], value: arg }),
+    mustMention: [r, 1, 2],
+    extra: [T, 10],
+    forbid: [],
+    checks: [
+      // перебор ВСЕЙ сетки лет: максимум единственный и достигается в arg
+      () => {
+        for (let t = 1; t <= T; t++) {
+          if (t === arg) continue
+          const v = f(t) * Math.pow(q, T - t)
+          if (v >= best * (1 - 1e-12)) return `год ${t} даёт не меньшую сумму`
+        }
+        return null
+      },
+    ],
+  })
+}
+export const t16FundYearSquare = () => t16FundYear("sq")
+export const t16FundYearLinear = () => t16FundYear("lin")
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  РЕЕСТР
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2538,6 +3145,9 @@ export const GEN16 = [
   t16DiffPrincipalByTotal, t16DiffSecondYear,
   t16TailPrincipal, t16TailRate, t16TailMonths, t16TailOverpay,
   t16TailKthPayment, t16TailLastPayment, t16TailTableQuadratic,
+  t16OptTwoPlantsMinCost, t16OptTwoRatesMinCost, t16OptTwoPlantsMaxOutput, t16OptTwoRatesMaxOutput,
+  t16OptFactoryMinPrice, t16OptFactoryPaybackYears, t16OptPriceRaise, t16OptTaxMax,
+  t16OptRegionsGrowth, t16FundRateSquare, t16FundRateLinear, t16FundYearSquare, t16FundYearLinear,
 ]
 
 export const META16 = [
@@ -2599,5 +3209,20 @@ export const META16 = [
     ["dtl-kth", "Размер k-го платежа по общей сумме", t16TailKthPayment],
     ["dtl-last", "Величина последней выплаты по общей сумме", t16TailLastPayment],
     ["dtl-table", "Таблица: нерегулярное начало + равномерный хвост → S", t16TailTableQuadratic],
+  ]],
+  ["Оптимизация", [
+    ["opt-plants-cost", "Два завода (разные технологии) → минимум затрат", t16OptTwoPlantsMinCost],
+    ["opt-rates-cost", "Два завода (разные ставки) → минимум затрат", t16OptTwoRatesMinCost],
+    ["opt-plants-out", "Два завода (разные технологии) → максимум выпуска", t16OptTwoPlantsMaxOutput],
+    ["opt-rates-out", "Два завода (разные ставки) → максимум выпуска", t16OptTwoRatesMaxOutput],
+    ["opt-min-price", "Наименьшая цена p для окупаемости за Y лет", t16OptFactoryMinPrice],
+    ["opt-payback", "За сколько лет окупится при растущей цене", t16OptFactoryPaybackYears],
+    ["opt-price-raise", "Цену снизили, прибыль та же → на сколько % поднять", t16OptPriceRaise],
+    ["opt-tax", "При каком налоге t сборы максимальны", t16OptTaxMax],
+    ["opt-regions", "Два региона: доходы сравнялись → найти k", t16OptRegionsGrowth],
+    ["opt-fund-rate-sq", "Фонд, бумаги t²: при каких r продавать в конце t₀", t16FundRateSquare],
+    ["opt-fund-rate-lin", "Фонд, бумаги 10t: при каких r продавать в конце t₀", t16FundRateLinear],
+    ["opt-fund-year-sq", "Фонд, бумаги t², ставка дана → год продажи", t16FundYearSquare],
+    ["opt-fund-year-lin", "Фонд, бумаги 10t, ставка дана → год продажи", t16FundYearLinear],
   ]],
 ]
