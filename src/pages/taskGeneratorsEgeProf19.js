@@ -163,7 +163,9 @@ export function verify19(o) {
   const allowed = new Set([...V.mustMention, ...(V.extra || [])])
   for (const n of found) {
     if (!allowed.has(n)) return { ok: false, err: `лишнее число ${n} в условии` }
-    if (n > 99999) return { ok: false, err: `число ${n} длиннее 5 знаков` }
+    // по умолчанию числа условия «человеческие» (до 5 знаков); скин может поднять
+    // порог явно — например задача про премии оперирует суммой 600 000 рублей
+    if (n > (V.maxNumber ?? 99999)) return { ok: false, err: `число ${n} длиннее допустимого (${V.maxNumber ?? 99999})` }
   }
   // 6. ограничения названы в тексте
   for (const p of V.phrases) {
@@ -753,6 +755,7 @@ export const META19 = [
   ["Сюжетные задачи с перебором", [
     ["test-bonus-min", "Тест с добавкой баллов: наим. число участников", t19TestBonusMin],
     ["stones-trucks", "Каменные глыбы: наим. число грузовиков", t19StonesTrucks],
+    ["bonus-notes", "Премии купюрами: наиб. число сотрудников", t19BonusNotes],
   ]],
   ["Вася и Петя решают сборник", [
     ["vasya-petya-days", "Оба решили сборник: за сколько дней и наим. число задач", t19VasyaPetyaDays],
@@ -6850,6 +6853,151 @@ export function t19StonesTrucks() {
       mustMention: [...counts, ...weights, Ka, lower, ...String(tons(W)).split(",").map(Number)],
       extra: [],
       phrases: ["раскалывать глыбы нельзя", "одновременно"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 17 (продолжение). Премии купюрами без сдачи и размена (#36)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Премии (в тысячах) выдаются купюрами двух номиналов: n1 штук по 1 и n5 штук по 5,
+// причём n1 + 5·n5 = S — ровно вся сумма. Значит потратить придётся ВСЕ купюры.
+// Премию p можно собрать, взяв m купюр по 1, где m ≡ p (mod 5) и 0 ≤ m ≤ p;
+// суммарно нужно ровно n1 таких купюр. Наименьшее возможное m для премии p равно
+// p mod 5, а увеличивать его можно шагами по 5, поэтому задание выполнимо тогда и
+// только тогда, когда
+//   Σ (pᵢ mod 5) ≤ n1
+// (сравнение по модулю 5 выполняется автоматически: Σpᵢ = S = n1 + 5n5).
+// Отсюда и наибольшее число сотрудников: при N премиях сумма остатков не превосходит
+// 4N, но обязана быть сравнима с S по модулю 5.
+export function t19BonusNotes() {
+  const n1 = 100, n5 = 100, S = n1 + 5 * n5              // 600 тысяч рублей
+  const step = 1000
+  const rem = (p) => p % 5
+  const feasible = (arr) => sum(arr.map(rem)) <= n1
+  // а) все получают поровну — подбираем N, при котором получается
+  const okEven = []
+  for (let N = 2; N <= S; N++) {
+    if (S % N) continue
+    if (feasible(Array(N).fill(S / N))) okEven.push(N)
+  }
+  const Na = pick(okEven.filter((N) => N >= 20 && N <= 60))
+  if (!Na) return null
+  // б) один получает Q, остальные Nb поровну — подбираем так, чтобы НЕ получилось
+  let Q = 0, Nb = 0
+  for (const q of [40, 45, 50, 55, 60]) {
+    for (const nb of [70, 65, 60, 56, 55]) {
+      if ((S - q) % nb) continue
+      const arr = [q, ...Array(nb).fill((S - q) / nb)]
+      if (!feasible(arr)) { Q = q; Nb = nb; break }
+    }
+    if (Q) break
+  }
+  if (!Q) return null
+  // в) наибольшее N, при котором выполнимо ЛЮБОЕ распределение
+  const worst = (N) => {                                    // наибольшая возможная сумма остатков
+    let m = 4 * N
+    while (m % 5 !== S % 5) m--
+    return Math.min(m, S)                                   // сумма остатков не больше самой суммы
+  }
+  let Nmax = 0
+  for (let N = 1; N <= S; N++) if (worst(N) <= n1) Nmax = N
+  const badN = Nmax + 1
+
+  const params = { n1, n5, S, Na, Q, Nb, Nmax }
+  const check = (cfg, part) => {
+    if (!Array.isArray(cfg) || !cfg.length) return "нет распределения премий"
+    for (const p of cfg) if (!Number.isInteger(p) || p < 1) return `${p * step} — не натуральная премия, кратная ${step}`
+    if (sum(cfg) !== S) return `общая сумма ${sum(cfg) * step}, а нужно ${S * step}`
+    if (part === "a" && (cfg.length !== Na || uniq(cfg).length !== 1)) return `нужно ${Na} равных премий`
+    if (part === "c" && cfg.length !== badN) return `нужно ${badN} премий`
+    const need = sum(cfg.map(rem))
+    if (part === "c") return need > n1 ? null : `распределение выполнимо: нужно ${need} купюр по ${step} при ${n1} имеющихся`
+    return need <= n1 ? null : `не хватает купюр по ${step}: нужно ${need}, есть ${n1}`
+  }
+  // Независимый перебор: по числу премий и по остаткам. Для «любого распределения»
+  // ищется наихудшее — максимальная сумма остатков при данном числе премий.
+  const solve = (P) => {
+    const worstFor = (N) => {
+      let bestSum = -1
+      for (let cnt4 = N; cnt4 >= 0; cnt4--) {               // сколько премий дают остаток 4
+        for (let r = 0; r <= 4; r++) {
+          const total = cnt4 * 4 + (N - cnt4 > 0 ? r : 0)
+          if (total > P.S) continue
+          if ((total - P.S) % 5) continue
+          if (total > bestSum) bestSum = total
+        }
+      }
+      return bestSum
+    }
+    let top = 0
+    for (let N = 1; N <= P.S; N++) if (worstFor(N) <= P.n1) top = N
+    const evenOk = P.S % P.Na === 0 && P.Na * ((P.S / P.Na) % 5) <= P.n1
+    const leadOk = ((P.S - P.Q) % P.Nb === 0) && (P.Q % 5) + P.Nb * (((P.S - P.Q) / P.Nb) % 5) <= P.n1
+    return { a: evenOk, b: leadOk, c: top, c_next: false }
+  }
+
+  const exA = Array(Na).fill(S / Na)
+  // Раскладка премий по купюрам: у каждой премии берём p mod 5 тысячных, затем
+  // добавляем пятёрками, пока не израсходуем ровно n1 купюр по 1000
+  const noteSplit = (arr) => {
+    const m = arr.map(rem)
+    let left = n1 - sum(m)
+    for (let i = 0; i < arr.length && left > 0; i++) {
+      const room = Math.floor((arr[i] - m[i]) / 5) * 5
+      const add = Math.min(left, room)
+      m[i] += add; left -= add
+    }
+    return left === 0 ? m : null
+  }
+  const splitA = noteSplit(exA)
+  if (!splitA) return null
+  const splitText = (arr, m) => {
+    const g = new Map()
+    for (let i = 0; i < arr.length; i++) {
+      const key = `${m[i]}|${(arr[i] - m[i]) / 5}`
+      g.set(key, (g.get(key) || 0) + 1)
+    }
+    return [...g.entries()].map(([key, cnt]) => {
+      const [ones, fives] = key.split("|").map(Number)
+      const parts = []
+      if (fives) parts.push(`${fives} ${plural(fives, "купюра", "купюры", "купюр")} по ${5 * step}`)
+      if (ones) parts.push(`${ones} ${plural(ones, "купюра", "купюры", "купюр")} по ${step}`)
+      return `${cnt} ${plural(cnt, "премия", "премии", "премий")} — ${parts.join(" и ")}`
+    }).join("; ")
+  }
+  // плохое распределение для badN: как можно больше премий с остатком 4
+  const exC = (() => {
+    const arr = Array(badN).fill(4)
+    let restSum = S - sum(arr)
+    if (restSum < 0) return null
+    arr[badN - 1] += restSum                                // добираем сумму последней премией
+    return sum(arr.map(rem)) > n1 ? arr : null
+  })()
+  if (!exC) return null
+
+  const money = (x) => `${x * step} ${plural(x * step, "рубль", "рубля", "рублей")}`
+  return item({
+    preamble: `В одном из заданий на конкурсе бухгалтеров требуется выдать премии сотрудникам некоторого отдела на общую сумму ${S * step} рублей (размер премии каждого сотрудника — целое число, кратное ${step}). Бухгалтеру дают распределение премий, и он должен их выдать без сдачи и размена, имея ${n1} купюр по ${step} рублей и ${n5} купюр по ${5 * step} рублей.`,
+    qa: `Удастся ли выполнить задание, если в отделе ${Na} ${plural(Na, "сотрудник", "сотрудника", "сотрудников")} и все должны получить поровну?`,
+    qb: `Удастся ли выполнить задание, если ведущему специалисту надо выдать ${money(Q)}, а остальное поделить поровну на ${Nb} ${plural(Nb, "сотрудника", "сотрудников", "сотрудников")}?`,
+    qc: `При каком наибольшем количестве сотрудников в отделе задание удастся выполнить при любом распределении размеров премий?`,
+    ansA: `да: каждый получает по ${money(S / Na)}, и все купюры расходуются — ${splitText(exA, splitA)}`,
+    ansB: `нет: премия в ${money((S - Q) / Nb)} требует не менее ${((S - Q) / Nb) % 5} ${plural(((S - Q) / Nb) % 5, "купюры", "купюр", "купюр")} по ${step} рублей, поэтому на ${Nb} таких премий нужно не менее ${Nb * (((S - Q) / Nb) % 5)} купюр по ${step} рублей — больше, чем есть (${n1})`,
+    ansC: `${Nmax}`,
+    solution: `Так как ${n1}·${step} + ${n5}·${5 * step} = ${S * step} рублей, бухгалтер обязан израсходовать все купюры. Премию в p тысяч можно выдать, взяв m купюр по ${step}, где m ≡ p (mod 5); наименьшее такое m равно остатку p при делении на 5. Значит задание выполнимо тогда и только тогда, когда сумма остатков всех премий (при делении на 5) не превосходит ${n1}.\nа) Каждая премия равна ${S / Na} тыс., её остаток при делении на 5 равен ${(S / Na) % 5}, поэтому сумма остатков ${sum(exA.map(rem))} ≤ ${n1} и задание выполнимо: ${splitText(exA, splitA)}.\nб) Премия ${(S - Q) / Nb} тыс. имеет остаток ${((S - Q) / Nb) % 5}, поэтому сумма остатков не меньше ${Nb * (((S - Q) / Nb) % 5)} > ${n1} — выполнить нельзя.\nв) При N премиях сумма остатков не превосходит 4N и сравнима с ${S} по модулю 5. При N = ${Nmax} она не больше ${worst(Nmax)} ≤ ${n1}, а при N = ${badN} существует распределение с суммой остатков ${sum(exC.map(rem))} > ${n1} (например ${badN - 1} ${plural(badN - 1, "премия", "премии", "премий")} по ${money(4)} и одна в ${money(exC[badN - 1])}).\nОтвет: ${Nmax}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: `even-${Na}` },
+        b: { type: "yesno", yes: false, reason: "not-enough-small-notes", target: `lead-${Q}` },
+        c: { type: "extremum", mode: "max", value: Nmax, example: exC },
+      },
+      mustMention: [S * step, n1, step, n5, 5 * step, Na, Q * step, Nb],
+      extra: [],
+      maxNumber: 999999,                                    // сумма премий — шестизначная
+      phrases: ["без сдачи и размена", "кратное"],
     },
   })
 }
