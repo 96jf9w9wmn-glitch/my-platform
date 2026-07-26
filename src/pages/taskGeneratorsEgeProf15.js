@@ -243,7 +243,7 @@ function build(opts) {
       // корень кубического уравнения и т.п.), точный ответ выписать нельзя — отбрасываем выборку.
       const lo2 = !isFinite(A) ? Bv - 8 : A, hi2 = !isFinite(Bv) ? A + 8 : Bv
       const want = okf(mid)
-      for (let j = 1; j < 60; j++) if (okf(lo2 + (hi2 - lo2) * j / 60) !== want) return null
+      for (let j = 1; j < 240; j++) if (okf(lo2 + (hi2 - lo2) * j / 240) !== want) return null
       if (!want) continue
       const eps = crit.map((c) => c.ep).concat(opts.extraEP || [])
       const findEP = (v) => eps.find((e) => Math.abs(e.v - v) < 1e-12)
@@ -2694,6 +2694,331 @@ export function t15LogXProdSame() {
   return null
 }
 
+
+// [60] x·log_{x+c}(ax+b) ⋛ 0  → x(x+c−1)(ax+b−1); точка x = 1−c (основание = 1) выколота
+export function t15LogXMult() {
+  for (let it = 0; it < 600; it++) {
+    const c = randInt(2, 6), a = randInt(2, 4), bq = randInt(3, 15)
+    const r2 = 1 - c, r3 = Q(1 - bq, a)
+    if (Math.abs(Qnum(r3) - r2) < 1e-9 || r2 === 0 || Math.abs(Qnum(r3)) < 1e-9) continue
+    const lo = Math.max(-bq / a, -c)
+    if (r2 <= lo + 1e-9) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const text = `x·log⦉${linStr(c)}⦊(${polyStr([{ c: a, k: 1 }, { c: bq, k: 0 }])}) ${cmp} 0`
+    const F = (x) => x * Math.log(a * x + bq) / Math.log(x + c)
+    const res = build({
+      text, cmp, lhs: F, rhs: () => 0,
+      domainOK: (x) => a * x + bq > 0 && x + c > 0 && Math.abs(x + c - 1) > 1e-12,
+      lead: 1,
+      crit: [{ ep: epQ(0), mult: 1, pole: false }, { ep: epQ(r2), mult: 1, pole: false },
+        { ep: epQ(r3), mult: 1, pole: false }],
+      autoDomain: true, extraX: [-c, -bq / a, r2],
+      extraEP: [epQ(-c), epQ(Q(-bq, a)), epQ(r2)],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [61] log_{kx}(x² − 2px + p²) ⋛ 0  → (kx−1)((x−p)²−1) (PDF логx-рац.2)
+export function t15LogXQuadZero() {
+  for (let it = 0; it < 600; it++) {
+    const kden = pick([5, 4, 2]), p = randInt(2, 7)
+    const kx = Q(1, kden)                              // основание k·x, k = 1/kden ⟹ x = kden
+    const roots = [kden, p - 1, p + 1]
+    if (p === 0 || roots.includes(0)) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const kStr = kden === 5 ? "0,2x" : kden === 4 ? "0,25x" : "0,5x"
+    const text = `log⦉${kStr}⦊(${polyStr([{ c: 1, k: 2 }, { c: -2 * p, k: 1 }, { c: p * p, k: 0 }])}) ${cmp} 0`
+    const kk = Qnum(kx)
+    const F = (x) => Math.log(Math.pow(x - p, 2)) / Math.log(kk * x)
+    const cnt = {}
+    for (const r of roots) cnt[r] = (cnt[r] || 0) + 1
+    const res = build({
+      text, cmp, lhs: F, rhs: () => 0,
+      domainOK: (x) => x > 0 && Math.abs(x - p) > 1e-12 && Math.abs(kk * x - 1) > 1e-12,
+      lead: 1,
+      crit: Object.keys(cnt).map((k2) => ({ ep: epQ(Number(k2)), mult: cnt[k2], pole: false })),
+      autoDomain: true, extraX: [0, p], extraEP: [epQ(0), epQ(p)],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [62] log_x(x−a)·log_x(x+a) ⋛ 0  → (x−1)²(x−a−1)(x+a−1)  (PDF логx-рац.3)
+export function t15LogXProdPair() {
+  for (let it = 0; it < 400; it++) {
+    const a = randInt(1, 5), shift = randInt(0, 3)
+    const base = shift === 0 ? "x" : linStr(shift)
+    const r1 = 1 + a - shift, r2 = 1 - a - shift, rb = 1 - shift
+    if (new Set([r1, r2, rb]).size < 3) continue
+    const cmp = pick(["≤", "≥", "<", ">"])
+    const text = `log⦉${base}⦊(${linStr(-a + shift)})·log⦉${base}⦊(${linStr(a + shift)}) ${cmp} 0`
+    const F = (x) => Math.log(x + shift - a) / Math.log(x + shift) * (Math.log(x + shift + a) / Math.log(x + shift))
+    const res = build({
+      text, cmp, lhs: F, rhs: () => 0,
+      domainOK: (x) => x + shift - a > 0 && x + shift + a > 0 && x + shift > 0 && Math.abs(x + shift - 1) > 1e-12,
+      lead: 1,
+      crit: [{ ep: epQ(rb), mult: 2, pole: false },
+        { ep: epQ(Math.min(r1, r2)), mult: 1, pole: false },
+        { ep: epQ(Math.max(r1, r2)), mult: 1, pole: false }],
+      autoDomain: true, extraX: [a - shift, -shift, rb],
+      extraEP: [epQ(a - shift), epQ(-shift), epQ(rb)],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [63] log_{0,25x²}((x+k)/4) ⋛ 1  → (x²−4)(x+k−x²)  (PDF логx-рац.4)
+export function t15LogXQuarterSq() {
+  for (let it = 0; it < 400; it++) {
+    const k = randInt(6, 16)
+    const D = 1 + 4 * k
+    const sq = Math.round(Math.sqrt(D))
+    if (sq * sq !== D) continue
+    const u1 = (1 - sq) / 2, u2 = (1 + sq) / 2       // корни x² − x − k
+    if ([u1, u2].some((v) => Math.abs(Math.abs(v) - 2) < 1e-9)) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const text = `log⦉0,25x${SUPD[2]}⦊(${fT2(linStr(k), 4)}) ${cmp} 1`
+    const F = (x) => Math.log((x + k) / 4) / Math.log(0.25 * x * x)
+    const res = build({
+      text, cmp, lhs: F, rhs: () => 1,
+      domainOK: (x) => (x + k) / 4 > 0 && Math.abs(x) > 1e-12 && Math.abs(0.25 * x * x - 1) > 1e-12,
+      lead: -1,     // (x²−4)·(−(x²−x−k)) ⟹ старший коэффициент −1
+      crit: [
+        { ep: epQ(-2), mult: 1, pole: false }, { ep: epQ(2), mult: 1, pole: false },
+        { ep: epQ(u1), mult: 1, pole: false }, { ep: epQ(u2), mult: 1, pole: false },
+      ],
+      autoDomain: true, extraX: [-k, 0, -2, 2],
+      extraEP: [epQ(-k), epQ(0), epQ(-2), epQ(2)],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [64] log_{ax²+bx+c}(dx−e) ⋛ 0  → (ax²+bx+c−1)(dx−e−1)  (PDF логx-рац.5)
+export function t15LogXQuadBase() {
+  for (let it = 0; it < 800; it++) {
+    const a = pick([8, 2, 3]), d = pick([2, 3]), e = randInt(1, 6)
+    const z1 = randInt(1, 4), z2 = Q(randInt(1, 9), pick([1, 2, 4, 8]))
+    // основание − 1 = a(x−z1)(x−z2)
+    const bq = -a * (z1 + Qnum(z2)), cq = a * z1 * Qnum(z2) + 1
+    if (!Number.isInteger(bq) || !Number.isInteger(cq)) continue
+    const r3 = Q(e + 1, d)
+    const roots = [z1, Qnum(z2), Qnum(r3)]
+    if (new Set(roots).size < 3) continue
+    if (Math.abs(bq) > 40 || Math.abs(cq) > 60) continue
+    // Нули основания (границы ОДЗ) обязаны быть рациональными или отсутствовать —
+    // иначе конец ответа не выписать точно.
+    const dsc = bq * bq - 4 * a * cq
+    let bRoots = []
+    if (dsc >= 0) {
+      const sd = Math.round(Math.sqrt(dsc))
+      if (sd * sd !== dsc) continue
+      bRoots = [Q(-bq - sd, 2 * a), Q(-bq + sd, 2 * a)]
+    }
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const baseT = polyStr([{ c: a, k: 2 }, { c: bq, k: 1 }, { c: cq, k: 0 }])
+    const text = `log⦉${baseT}⦊(${polyStr([{ c: d, k: 1 }, { c: -e, k: 0 }])}) ${cmp} 0`
+    const BS = (x) => (a * x + bq) * x + cq
+    const F = (x) => Math.log(d * x - e) / Math.log(BS(x))
+    const res = build({
+      text, cmp, lhs: F, rhs: () => 0,
+      domainOK: (x) => d * x - e > 0 && BS(x) > 0 && Math.abs(BS(x) - 1) > 1e-12,
+      lead: 1,
+      crit: [Q(z1), z2, r3].sort((u, v) => Qnum(u) - Qnum(v)).map((r) => ({ ep: epQ(r), mult: 1, pole: false })),
+      autoDomain: true, requireDomainOnAns: true,
+      extraX: [e / d, z1, Qnum(z2), ...bRoots.map(Qnum)],
+      extraEP: [epQ(Q(e, d)), epQ(z1), epQ(z2), ...bRoots.map(epQ)],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [65] 1/log_{x−c}(x/d) ⋛ −1  (PDF логx-рац.6)
+export function t15LogXRecip() {
+  for (let it = 0; it < 400; it++) {
+    const c = randInt(1, 4), d = randInt(4, 12)
+    // (1+L)/L: знак(1+L) = (x−c−1)((x−c)x/d − 1); знак(L) = (x−c−1)(x/d − 1)
+    const D = c * c + 4 * d
+    const sq = Math.round(Math.sqrt(D))
+    if (sq * sq !== D) continue
+    const z1 = (c - sq) / 2, z2 = (c + sq) / 2       // корни x²−cx−d
+    if ([z1, z2, d].some((v) => Math.abs(v - (c + 1)) < 1e-9)) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const text = `${fT(1, `log⦉${linStr(-c)}⦊${fT2("x", d)}`)} ${cmp} ${MINUS}1`
+    const F = (x) => 1 / (Math.log(x / d) / Math.log(x - c))
+    const res = build({
+      text, cmp, lhs: F, rhs: () => -1,
+      domainOK: (x) => x - c > 0 && Math.abs(x - c - 1) > 1e-12 && x / d > 0 && Math.abs(x / d - 1) > 1e-12,
+      lead: 1,      // (x−z1)(x−z2)/(x−d)
+      crit: [
+        { ep: epQ(z1), mult: 1, pole: false }, { ep: epQ(z2), mult: 1, pole: false },
+        { ep: epQ(d), mult: 1, pole: true },
+      ],
+      autoDomain: true, extraX: [c, c + 1, d],
+      extraEP: [epQ(c), epQ(c + 1), epQ(d)],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [66] log_{p−x}((x+a)/(x−p)⁴) ⋛ −4  → (p−1−x)(x+a−1)  (PDF логx-рац.7)
+export function t15LogXNegPow() {
+  for (let it = 0; it < 400; it++) {
+    const p = randInt(3, 8), a = randInt(1, 6)
+    const r1 = 1 - a, r2 = p - 1
+    if (Math.abs(r1 - r2) < 1e-9 || r1 <= -a) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const text = `log⦉${polyStr([{ c: p, k: 0 }, { c: -1, k: 1 }])}⦊${fT2(linStr(a), `(${linStr(-p)})${SUPD[4]}`)} ${cmp} ${MINUS}4`
+    const F = (x) => Math.log((x + a) / Math.pow(x - p, 4)) / Math.log(p - x)
+    const res = build({
+      text, cmp, lhs: F, rhs: () => -4,
+      domainOK: (x) => p - x > 0 && Math.abs(p - x - 1) > 1e-12 && x + a > 0,
+      lead: -1,     // (p−1−x)(x+1−a) — старший коэффициент −1
+      crit: [
+        { ep: epQ(Math.min(r1, r2)), mult: 1, pole: false },
+        { ep: epQ(Math.max(r1, r2)), mult: 1, pole: false },
+      ],
+      autoDomain: true, extraX: [-a, p, p - 1],
+      extraEP: [epQ(-a), epQ(p), epQ(p - 1)],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [67] log_{(c²−x²)/m}((k+2x−x²)/n) > 1  — и основание, и аргумент с x (PDF логx-рац.8)
+export function t15LogXFracBase() {
+  for (let it = 0; it < 800; it++) {
+    const c = 5, m = 16, n = 14, k = 24
+    // основание−1 = (c²−m−x²)/m = (9−x²)/16 ; f−основание = (−x²+16x+17)/112
+    const A1 = 3, u1 = -1, u2 = 17
+    const cmp = pick([">", "<", "≥", "≤"])
+    const baseT = fT2(`${c * c} ${MINUS} x${SUPD[2]}`, m)
+    const argT = fT2(`${k} + 2x ${MINUS} x${SUPD[2]}`, n)
+    const text = `log⦉${baseT}⦊${argT} ${cmp} 1`
+    const BS = (x) => (c * c - x * x) / m, AR = (x) => (k + 2 * x - x * x) / n
+    const F = (x) => Math.log(AR(x)) / Math.log(BS(x))
+    const res = build({
+      text, cmp, lhs: F, rhs: () => 1,
+      domainOK: (x) => BS(x) > 0 && Math.abs(BS(x) - 1) > 1e-12 && AR(x) > 0,
+      lead: 1,     // (9−x²)·(−(x−17)(x+1)) ⟹ (x²−9)(x−17)(x+1), старший +
+      crit: [
+        { ep: epQ(u1), mult: 1, pole: false },
+        { ep: epQ(-A1), mult: 1, pole: false }, { ep: epQ(A1), mult: 1, pole: false },
+        { ep: epQ(u2), mult: 1, pole: false },
+      ],
+      autoDomain: true, extraX: [-c, c, -4, 6, -A1, A1],
+      extraEP: [epQ(-c), epQ(c), epQ(-4), epQ(6), epQ(-A1), epQ(A1)],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [68] log_A(f) ⋛ log_A(g), A = (ax−b)/(x+c) — переменное дробное основание (PDF логx-рац.9)
+export function t15LogXTwoArgs() {
+  for (let it = 0; it < 600; it++) {
+    const a = randInt(2, 4), bq = randInt(1, 4), c = randInt(1, 4)
+    const u = randInt(1, 3), kq = randInt(2, 5)
+    // A−1 = ((a−1)x − b − c)/(x+c);  f−g = k(x−u)²
+    const rA = Q(bq + c, a - 1)
+    if (a === 1) continue
+    if (Math.abs(Qnum(rA) - u) < 1e-9 || Math.abs(Qnum(rA) + c) < 1e-9) continue
+    // f = k x² + ... ; g = f − k(x−u)²  — берём f = k x² + px + q, g = f − k(x−u)²
+    const pq = randInt(-6, 6), qq = randInt(-6, 6)
+    const gp = pq + 2 * kq * u, gq = qq - kq * u * u
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const baseT = fT2(polyStr([{ c: a, k: 1 }, { c: -bq, k: 0 }]), linStr(c))
+    const fT_ = polyStr([{ c: kq, k: 2 }, { c: pq, k: 1 }, { c: qq, k: 0 }])
+    const gT = polyStr([{ c: gp, k: 1 }, { c: gq, k: 0 }])
+    const text = `log⦉${baseT}⦊(${fT_}) ${cmp} log⦉${baseT}⦊(${gT})`
+    const AA = (x) => (a * x - bq) / (x + c)
+    const FF = (x) => (kq * x + pq) * x + qq, GG = (x) => gp * x + gq
+    const F = (x) => Math.log(FF(x)) / Math.log(AA(x))
+    const G = (x) => Math.log(GG(x)) / Math.log(AA(x))
+    const res = build({
+      text, cmp, lhs: F, rhs: G,
+      domainOK: (x) => AA(x) > 0 && Math.abs(AA(x) - 1) > 1e-12 && FF(x) > 0 && GG(x) > 0,
+      lead: 1,     // ((a−1)x − b − c)(x−u)²/(x+c)
+      crit: [
+        { ep: epQ(u), mult: 2, pole: false },
+        { ep: epQ(rA), mult: 1, pole: false },
+        { ep: epQ(-c), mult: 1, pole: true },
+      ],
+      autoDomain: true, requireDomainOnAns: true,
+      extraX: [Qnum(rA), -c, bq / a, u],
+      extraEP: [epQ(rA), epQ(-c), epQ(Q(bq, a)), epQ(u)],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [69] 2log_{A²}(f) ⋛ log_A(g), A = (x−h)²+1 > 1  ⟹ f ⋛ g  (PDF логx-рац.10)
+export function t15LogXSqBase() {
+  for (let it = 0; it < 400; it++) {
+    const h = randInt(1, 4), kf = randInt(2, 5), kg = kf - 1
+    const pg = randInt(1, 6), qf = randInt(1, 5), qg = qf
+    // f − g = (kf−kg)x² − pg·x = x(x − pg) при kf−kg = 1
+    const r1 = 0, r2 = pg
+    if (Math.abs(r1 - h) < 1e-9 || Math.abs(r2 - h) < 1e-9) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const A = polyStr([{ c: 1, k: 2 }, { c: -2 * h, k: 1 }, { c: h * h + 1, k: 0 }])
+    const text = `2log⦉(${A})${SUPD[2]}⦊(${polyStr([{ c: kf, k: 2 }, { c: qf, k: 0 }])}) ${cmp} log⦉${A}⦊(${polyStr([{ c: kg, k: 2 }, { c: pg, k: 1 }, { c: qg, k: 0 }])})`
+    const AA = (x) => x * x - 2 * h * x + h * h + 1
+    const FF = (x) => kf * x * x + qf, GG = (x) => kg * x * x + pg * x + qg
+    const F = (x) => 2 * Math.log(FF(x)) / Math.log(AA(x) * AA(x))
+    const G = (x) => Math.log(GG(x)) / Math.log(AA(x))
+    const res = build({
+      text, cmp, lhs: F, rhs: G,
+      domainOK: (x) => GG(x) > 0 && Math.abs(x - h) > 1e-12,
+      lead: 1,
+      crit: [{ ep: epQ(Math.min(r1, r2)), mult: 1, pole: false }, { ep: epQ(Math.max(r1, r2)), mult: 1, pole: false }],
+      puncture: [epQ(h)],
+      autoDomain: true, requireDomainOnAns: true,
+      extraX: [h], extraEP: [epQ(h)],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [70] log_x(x−p)/(log_{x²}(q−x) − 1) ⋛ 0  (PDF логx-рац.11)
+export function t15LogXQuotBase() {
+  for (let it = 0; it < 400; it++) {
+    const q = pick([6, 12, 20, 30])
+    const p = randInt(2, q - 2)
+    const D = 1 + 4 * q
+    const sq = Math.round(Math.sqrt(D))
+    if (sq * sq !== D) continue
+    const z = (-1 + sq) / 2                            // корень x²+x−q (полюс)
+    const r1 = p + 1
+    if (Math.abs(z - r1) < 1e-9 || Math.abs(z - p) < 1e-9 || Math.abs(z - q) < 1e-9) continue
+    if (r1 >= q) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const text = `${fT(`log⦉x⦊(${linStr(-p)})`, `log⦉x${SUPD[2]}⦊(${polyStr([{ c: q, k: 0 }, { c: -1, k: 1 }])}) ${MINUS} 1`)} ${cmp} 0`
+    const F = (x) => (Math.log(x - p) / Math.log(x)) / (Math.log(q - x) / Math.log(x * x) - 1)
+    const res = build({
+      text, cmp, lhs: F, rhs: () => 0,
+      domainOK: (x) => x > p && x < q && Math.abs(x - 1) > 1e-12 && Math.abs(Math.log(q - x) / Math.log(x * x) - 1) > 1e-12,
+      // (x−1)(x−p−1) / [(x−1)(x+1)(−(x²+x−q))] = (x−p−1) / [−(x+1)(x²+x−q)]
+      lead: -1,
+      crit: [{ ep: epQ(r1), mult: 1, pole: false }, { ep: epQ(z), mult: 1, pole: true }],
+      autoDomain: true, requireDomainOnAns: true,
+      extraX: [p, q, z], extraEP: [epQ(p), epQ(q), epQ(z)],
+    })
+    if (res) return res
+  }
+  return null
+}
+
 // ── реестры ─────────────────────────────────────────────────────────────────
 export const META15 = [
   ["Рациональные неравенства", [
@@ -2741,6 +3066,17 @@ export const META15 = [
     ["logx-linear", "−2log_{x/b}(b³) ⋛ log_b(b³x) + 1", t15LogXLinear],
     ["logx-base-gt1", "основание (x−h)²+1 всегда >1", t15LogXBaseGt1],
     ["logx-prod-same", "log_A(x−p)²·log_A((x−p)²/A³) ⋛ −2, A = x²+1", t15LogXProdSame],
+    ["logx-mult", "x·log_{x+c}(ax+b) ⋛ 0 (основание = 1 выколото)", t15LogXMult],
+    ["logx-quad-zero", "log_{kx}(x²−2px+p²) ⋛ 0", t15LogXQuadZero],
+    ["logx-prod-pair", "log_x(x−a)·log_x(x+a) ⋛ 0 (кратный корень x=1)", t15LogXProdPair],
+    ["logx-quarter-sq", "log_{0,25x²}((x+k)/4) ⋛ 1", t15LogXQuarterSq],
+    ["logx-quad-base", "log_{ax²+bx+c}(dx−e) ⋛ 0", t15LogXQuadBase],
+    ["logx-recip", "1/log_{x−c}(x/d) ⋛ −1", t15LogXRecip],
+    ["logx-negpow", "log_{p−x}((x+a)/(x−p)⁴) ⋛ −4", t15LogXNegPow],
+    ["logx-frac-base", "log_{(25−x²)/16}((24+2x−x²)/14) ⋛ 1", t15LogXFracBase],
+    ["logx-two-args", "log_A f ⋛ log_A g, A = (ax−b)/(x+c)", t15LogXTwoArgs],
+    ["logx-sq-base", "2log_{A²}f ⋛ log_A g, A = (x−h)²+1", t15LogXSqBase],
+    ["logx-quot-base", "log_x(x−p)/(log_{x²}(q−x) − 1) ⋛ 0", t15LogXQuotBase],
   ]],
   ["Логарифмические: многочлен/дробь в аргументе", [
     ["log-nested", "log_{ⁿ√A}(log_{1/c}(x+k)) ⋛ m — вложенный логарифм", t15LogNested],
