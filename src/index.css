@@ -166,8 +166,10 @@ select {
   margin: 0 0.15em;
   font-size: 0.84em;
 }
-.tmath-num { display: block; border-bottom: 1.2px solid currentColor; padding: 0 0.3em; }
-.tmath-den { display: block; padding: 0 0.3em; }
+/* Просветы у черты: снизу у числителя — чтобы её не касались нижние индексы (log₄x),
+   сверху у знаменателя — чтобы в неё не упирались степени (4ˣ) и стопка log²₄x. */
+.tmath-num { display: block; border-bottom: 1.2px solid currentColor; padding: 0 0.3em 0.08em; }
+.tmath-den { display: block; padding: 0.16em 0.3em 0; }
 /* Скобки вокруг дроби-основания степени ((1/4)^x): по высоте самой дроби — начинаются у
    числителя, кончаются у знаменателя (scaleY тянет ввысь, НЕ утолщая штрих; translateY
    центрирует — у глифа «(» оптический центр выше базовой линии, иначе скобка висит низко).
@@ -218,6 +220,12 @@ select {
    чего надстрочник вылезал за черту дроби и налезал на числитель. Внутри ячеек дроби
    возвращаем нормальную высоту строки — дробь становится выше ровно на надстрочник. */
 .tmath-num .tmath-sup, .tmath-den .tmath-sup { line-height: normal; }
+/* Нижний индекс В ЧИСЛИТЕЛЕ дроби (rпок−rэкс, log₄x) спускается под строку и налезал на
+   черту дроби — она читалась как зачёркивание. Поднимаем индекс; воздух под числителем и
+   над знаменателем задан в padding у .tmath-num/.tmath-den выше. */
+.tmath-num .tmath-sub { vertical-align: -0.16em; }
+/* Стопка log²₄x в числителе: основание висит под строкой и тоже упиралось в черту. */
+.tmath-num .tmath-logpow { vertical-align: 0.42em; }
 /* Корень НАД дробью: знак √ (SVG-галочка) тянется по высоте подкоренной строки, а
    верхняя черта — border-top тела; вместе накрывают всё выражение (как ⟦r⟧, но с дробью). */
 .tmath-rootfrac { display: inline-block; vertical-align: middle; margin: 0 0.1em; }
