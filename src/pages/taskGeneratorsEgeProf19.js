@@ -742,6 +742,7 @@ export const META19 = [
     ["box-mean-split-max", "Ящик фруктов: наибольшая масса фрукта", t19BoxMeanSplitMax],
     ["box-mean-split-min", "Ящик овощей: наименьшая масса овоща", t19BoxMeanSplitMin],
     ["days-sum-up-count-down", "Дни: сумма растёт, количество убывает", t19DaysSumUpCountDown],
+    ["days-max-total-sum", "Дни: наибольшая общая сумма чисел", t19DaysMaxTotalSum],
   ]],
   ["Операции над записью числа", [
     ["swap-digits-max", "Перестановка цифр двузначных → наибольшая новая сумма", t19SwapDigitsMax],
@@ -5476,6 +5477,138 @@ export function t19DaysSumUpCountDown() {
       },
       mustMention: [B, S1, Xa, n, Yb],
       extra: [2, 5],
+      phrases: ["каждое из которых меньше", "количество чисел меньше, чем в предыдущий день"],
+    },
+  })
+}
+
+// #66. Та же схема (n дней, числа меньше B, сумма растёт, количество убывает), но
+// без ограничения на первый день: тогда число дней НЕ ограничено малым числом —
+// достаточно начать с большого количества чисел (k₁ = m + n − 1, все числа единицы,
+// а суммы 15, 16, …), поэтому пункт а) здесь «да». Если же сумма первого дня равна S,
+// то k₁ ≤ S, и наибольшая общая сумма ищется перебором убывающих наборов количеств:
+// сверху вниз sₙ = (B−1)kₙ, sᵢ = min((B−1)kᵢ, sᵢ₊₁ − 1).
+export function t19DaysMaxTotalSum() {
+  const B = 6
+  const S1 = pick([6, 7, 8])
+  const Xa = pick([4, 5])                                   // «может ли n быть больше Xa» — да
+  const Yb = 3, Zb = 4                                      // средние в пункте б)
+
+  const chain = (ks) => {                                   // максимальные суммы для набора количеств
+    const s = Array(ks.length).fill(0)
+    s[ks.length - 1] = (B - 1) * ks[ks.length - 1]
+    for (let i = ks.length - 2; i >= 0; i--) s[i] = Math.min((B - 1) * ks[i], s[i + 1] - 1)
+    for (let i = 0; i < ks.length; i++) if (s[i] < ks[i]) return null
+    return s
+  }
+  // в): перебор убывающих наборов с k₁ ≤ S1 и первым днём ровно S1
+  let bestTotal = -Infinity, bestCfg = null
+  const rec = (ks) => {
+    const s = chain(ks)
+    if (s && s[0] >= S1 && (ks.length === 1 || S1 < s[1])) {
+      const total = S1 + sum(s.slice(1))
+      if (total > bestTotal) { bestTotal = total; bestCfg = ks.map((k, i) => ({ k, s: i === 0 ? S1 : s[i] })) }
+    }
+    if (ks.length >= 7) return
+    for (let k = ks[ks.length - 1] - 1; k >= 1; k--) rec([...ks, k])
+  }
+  for (let k1 = 1; k1 <= S1; k1++) rec([k1])
+  if (!bestCfg) return null
+  // а): длинная цепочка с большим первым днём
+  const nA = Xa + 1
+  const kA = Array.from({ length: nA }, (_, i) => 10 + nA - 1 - i)
+  const exA = kA.map((k, i) => ({ k, s: kA[0] + i }))
+  if (exA.some((d) => d.s > (B - 1) * d.k)) return null
+  // б): подряд идущие количества, максимальные суммы, первый день пожат до среднего < Yb
+  let exB = null
+  for (let a = 4; a <= 30 && !exB; a++) {
+    for (let n = 2; n <= 5 && !exB; n++) {
+      const ks = Array.from({ length: n }, (_, i) => a - i)
+      if (ks[n - 1] < 1) continue
+      const s = chain(ks)
+      if (!s) continue
+      const s1cap = Math.min(s[0], Math.ceil(Yb * ks[0]) - 1)
+      if (s1cap < ks[0] || (n > 1 && s1cap >= s[1])) continue
+      const total = s1cap + sum(s.slice(1))
+      if (total > Zb * sum(ks)) exB = ks.map((k, i) => ({ k, s: i === 0 ? s1cap : s[i] }))
+    }
+  }
+  if (!exB) return null
+
+  const params = { B, S1, Xa, Yb, Zb }
+  const check = (cfg, part) => {
+    if (!Array.isArray(cfg) || cfg.length < 2) return "нужно хотя бы два дня"
+    for (const d of cfg) {
+      if (!d || !Number.isInteger(d.k) || !Number.isInteger(d.s)) return "день задаётся количеством и суммой"
+      if (d.k < 1) return "в день записывают хотя бы одно число"
+      if (d.s < d.k || d.s > (B - 1) * d.k) return `сумму ${d.s} нельзя набрать ${d.k} числами, меньшими ${B}`
+    }
+    for (let i = 1; i < cfg.length; i++) {
+      if (cfg[i].s <= cfg[i - 1].s) return `сумма в день ${i + 1} не больше, чем в предыдущий`
+      if (cfg[i].k >= cfg[i - 1].k) return `количество чисел в день ${i + 1} не меньше, чем в предыдущий`
+    }
+    if (part === "a" && cfg.length <= Xa) return `дней ${cfg.length}, а нужно больше ${Xa}`
+    if (part === "b") {
+      if (!(cfg[0].s / cfg[0].k < Yb)) return `среднее первого дня ${cfg[0].s / cfg[0].k}, а нужно меньше ${Yb}`
+      const all = sum(cfg.map((d) => d.s)) / sum(cfg.map((d) => d.k))
+      if (!(all > Zb)) return `среднее всех чисел ${all}, а нужно больше ${Zb}`
+    }
+    if (part === "c") {
+      if (cfg[0].s !== S1) return `сумма первого дня ${cfg[0].s}, а по условию ${S1}`
+      if (sum(cfg.map((d) => d.s)) !== bestTotal) return `общая сумма ${sum(cfg.map((d) => d.s))}, а заявлено ${bestTotal}`
+    }
+    return null
+  }
+  // Независимый перебор: все строго убывающие наборы количеств (для пункта в) — с
+  // k₁ ≤ S1, так как числа натуральные и k₁ ≤ s₁). Для каждого набора максимальные
+  // суммы считаются сверху вниз, что и даёт наибольшую общую сумму.
+  const solve = (P) => {
+    const chain2 = (ks) => {
+      const s = Array(ks.length).fill(0)
+      s[ks.length - 1] = (P.B - 1) * ks[ks.length - 1]
+      for (let i = ks.length - 2; i >= 0; i--) s[i] = Math.min((P.B - 1) * ks[i], s[i + 1] - 1)
+      for (let i = 0; i < ks.length; i++) if (s[i] < ks[i]) return null
+      return s
+    }
+    let longOk = false, meansOk = false, best = -Infinity
+    const walk = (ks, limit) => {
+      const s = chain2(ks)
+      if (s) {
+        if (ks.length > P.Xa) longOk = true
+        const s1cap = Math.min(s[0], Math.ceil(P.Yb * ks[0]) - 1)
+        if (s1cap >= ks[0] && (ks.length === 1 || s1cap < s[1])) {
+          if (s1cap + sum(s.slice(1)) > P.Zb * sum(ks)) meansOk = true
+        }
+        if (ks[0] <= P.S1 && s[0] >= P.S1 && (ks.length === 1 || P.S1 < s[1])) {
+          best = Math.max(best, P.S1 + sum(s.slice(1)))
+        }
+      }
+      if (ks.length >= 7) return
+      for (let k = ks[ks.length - 1] - 1; k >= 1; k--) walk([...ks, k], limit)
+    }
+    for (let k1 = 1; k1 <= 30; k1++) walk([k1], 30)
+    return { a: longOk, b: meansOk, c: best, c_next: false }
+  }
+
+  const showDays = (arr) => arr.map((d, i) => `в ${i + 1}-й день ${d.k} ${plural(d.k, "число", "числа", "чисел")} с суммой ${d.s}`).join(", ")
+  return item({
+    preamble: `В течение n дней каждый день на доску записывают натуральные числа, каждое из которых меньше ${B}. При этом каждый день (кроме первого) сумма чисел, записанных на доску в этот день, больше, а количество чисел меньше, чем в предыдущий день.`,
+    qa: `Может ли n быть больше ${Xa}?`,
+    qb: `Может ли среднее арифметическое чисел, записанных в первый день, быть меньше ${Yb}, а среднее арифметическое всех чисел, записанных за все дни, быть больше ${Zb}?`,
+    qc: `Известно, что сумма чисел, записанных в первый день, равна ${S1}. Какое наибольшее значение может принимать сумма всех чисел, записанных за все дни?`,
+    ansA: `да, например ${showDays(exA)}`,
+    ansB: `да, например ${showDays(exB)}: среднее первого дня ${frPlain(fr(exB[0].s, exB[0].k))} < ${Yb}, а среднее всех чисел ${frPlain(fr(sum(exB.map((d) => d.s)), sum(exB.map((d) => d.k))))} > ${Zb}`,
+    ansC: `${bestTotal}; например ${showDays(bestCfg)}`,
+    solution: `Пусть в день i записано kᵢ чисел с суммой sᵢ; тогда kᵢ ≤ sᵢ ≤ ${B - 1}kᵢ.\nа) Ограничения не запрещают длинных цепочек, если начинать с большого количества чисел: ${showDays(exA)} — здесь ${nA} ${plural(nA, "день", "дня", "дней")}.\nб) Пример: ${showDays(exB)}.\nв) Числа натуральные, поэтому k₁ ≤ s₁ = ${S1}. При фиксированных количествах суммы выгодно брать наибольшими: sₙ = ${B - 1}kₙ, а каждая предыдущая — на единицу меньше следующей, но не больше ${B - 1}kᵢ. Перебор убывающих наборов количеств даёт максимум ${bestTotal}: ${showDays(bestCfg)}.\nОтвет: ${bestTotal}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: `n-gt-${Xa}` },
+        b: { type: "yesno", yes: true, example: exB, target: "means" },
+        c: { type: "extremum", mode: "max", value: bestTotal, example: bestCfg },
+      },
+      mustMention: [B, S1, Xa, Yb, Zb],
+      extra: [],
       phrases: ["каждое из которых меньше", "количество чисел меньше, чем в предыдущий день"],
     },
   })
