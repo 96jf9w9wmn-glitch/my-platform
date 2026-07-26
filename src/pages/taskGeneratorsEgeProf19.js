@@ -738,6 +738,9 @@ export const META19 = [
     ["means-erase-half", "Уменьшили вдвое и стёрли малые: наиб. среднее", t19MeansEraseHalf],
     ["means-iterated-5", "Последовательные усреднения: наиб. целое отношение", t19MeansIterated5],
   ]],
+  ["Средние в контейнере", [
+    ["box-mean-split-max", "Ящик фруктов: наибольшая масса фрукта", t19BoxMeanSplitMax],
+  ]],
   ["Операции над записью числа", [
     ["swap-digits-max", "Перестановка цифр двузначных → наибольшая новая сумма", t19SwapDigitsMax],
     ["swap-digits-min", "Перестановка цифр двузначных → наименьшая новая сумма", t19SwapDigitsMin],
@@ -5224,6 +5227,99 @@ export function t19MeansIterated5() {
       mustMention: [],
       extra: [],
       phrases: ["различных натуральных чисел", "среднее арифметическое первых двух чисел"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 11. Средние в контейнере: лёгкие, тяжёлые и ровно средние (#69)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// В ящике N предметов целой массы, средняя масса всех равна M; средняя масса тех,
+// что легче M, равна p, средняя масса тех, что тяжелее M, равна q. Если лёгких a,
+// тяжёлых b, а ровно M весят c = N − a − b, то
+//   pa + qb + M(N − a − b) = MN  ⟹  (M − p)a = (q − M)b,
+// то есть a : b = (q − M) : (M − p) — жёсткая пропорция. Отсюда и «поровну не бывает»,
+// и оценка на число предметов ровно в M граммов, и наибольшая масса:
+// у b тяжёлых предметов суммарная масса qb, а каждый не легче M + 1, поэтому
+// максимум одного равен qb − (M + 1)(b − 1) и достигается при наибольшем b.
+export function t19BoxMeanSplitMax() {
+  const M = 100
+  // подбираем (p, q, N) так, чтобы фруктов ровно по M граммов оставалось не меньше трёх:
+  // иначе пункт б) выродился бы в вопрос «меньше нуля фруктов»
+  const opts = []
+  for (const d1 of [25, 27, 30]) {
+    for (const d2 of [12, 15, 18]) {
+      const g0 = gcdI(d1, d2), u0 = d2 / g0, v0 = d1 / g0
+      for (const N0 of [95, 100, 110, 120]) {
+        const t0 = Math.floor(N0 / (u0 + v0))
+        const c0 = N0 - (u0 + v0) * t0
+        if (t0 >= 2 && c0 >= 3) opts.push({ d1, d2, u: u0, v: v0, N: N0, tMax: t0, cMin: c0 })
+      }
+    }
+  }
+  if (!opts.length) return null
+  const { d1, d2, u, v, N, tMax, cMin } = pick(opts)
+  const p = M - d1, q = M + d2
+  const aMax = u * tMax, bMax = v * tMax
+  const heaviest = q * bMax - (M + 1) * (bMax - 1)
+  if (heaviest > 99999) return null
+  const Xb = cMin                                           // «меньше cMin фруктов ровно по M г» — нельзя
+
+  const params = { N, M, p, q, u, v, Xb }
+  const check = (cfg, part) => {
+    if (!Array.isArray(cfg) || cfg.length !== N) return `предметов должно быть ${N}`
+    for (const w of cfg) if (!Number.isInteger(w) || w < 1) return `${w} — не целая положительная масса`
+    if (uniq(cfg).length < 2) return "в ящике должны быть предметы различной массы"
+    if (sum(cfg) !== M * N) return `средняя масса ${sum(cfg) / N}, а не ${M}`
+    const light = cfg.filter((w) => w < M), heavy = cfg.filter((w) => w > M)
+    if (light.length && sum(light) !== p * light.length) return `средняя масса лёгких ${sum(light) / light.length}, а не ${p}`
+    if (heavy.length && sum(heavy) !== q * heavy.length) return `средняя масса тяжёлых ${sum(heavy) / heavy.length}, а не ${q}`
+    if (part === "c" && Math.max(...cfg) !== heaviest) return `наибольшая масса ${Math.max(...cfg)}, а заявлено ${heaviest}`
+    return null
+  }
+  // Независимый перебор по числу лёгких a и тяжёлых b: набор существует, когда
+  // pa + qb + M(N − a − b) = MN, лёгкие помещаются в 1…M−1, тяжёлые — от M+1.
+  const solve = (P) => {
+    let equal = false, few = false, best = -Infinity
+    for (let a = 0; a <= P.N; a++) {
+      for (let b = 0; a + b <= P.N; b++) {
+        if (P.p * a + P.q * b + P.M * (P.N - a - b) !== P.M * P.N) continue
+        if (a && (P.p * a < a || P.p * a > a * (P.M - 1))) continue
+        if (b && P.q * b < (P.M + 1) * b) continue
+        if (a + b === 0) continue                            // тогда все массы равны M
+        if (a === b) equal = true
+        if (P.N - a - b < P.Xb) few = true
+        if (b) best = Math.max(best, P.q * b - (P.M + 1) * (b - 1))
+      }
+    }
+    return { a: equal, b: few, c: best, c_next: false }
+  }
+
+  const exC = [
+    ...Array(aMax).fill(p),
+    ...Array(bMax - 1).fill(M + 1), heaviest,
+    ...Array(cMin).fill(M),
+  ]
+  return item({
+    preamble: `В ящике лежит ${N} фруктов, масса каждого из которых выражается целым числом граммов. В ящике есть хотя бы два фрукта различной массы, а средняя масса всех фруктов равна ${M} г. Средняя масса фруктов, масса каждого из которых меньше ${M} г, равна ${p} ${plural(p, "грамм", "грамма", "граммов")}. Средняя масса фруктов, масса каждого из которых больше ${M} г, равна ${q} г.`,
+    qa: `Могло ли в ящике оказаться поровну фруктов массой меньше ${M} г и фруктов массой больше ${M} г?`,
+    qb: `Могло ли в ящике оказаться меньше ${Xb} фруктов, масса каждого из которых равна ${M} г?`,
+    qc: `Какую наибольшую массу может иметь фрукт в этом ящике?`,
+    ansA: `нет: если лёгких a, а тяжёлых b, то ${d1}a = ${d2}b, то есть a : b = ${u} : ${v}. Равенство a = b возможно лишь при a = b = 0, но тогда все фрукты весят по ${M} г и различных масс в ящике нет`,
+    ansB: `нет: из a : b = ${u} : ${v} следует a = ${u}t и b = ${v}t, поэтому фруктов ровно по ${M} г остаётся ${N} − ${u + v}t. Так как ${u + v}t ≤ ${N}, получаем t ≤ ${tMax} и таких фруктов не меньше ${cMin}`,
+    ansC: `${heaviest}`,
+    solution: `Пусть в ящике a фруктов легче ${M} г, b фруктов тяжелее ${M} г и c = ${N} − a − b фруктов ровно по ${M} г. Тогда\n${p}a + ${q}b + ${M}c = ${M * N}, откуда ${d1}a = ${d2}b, то есть a : b = ${u} : ${v}, a = ${u}t, b = ${v}t.\nа) Равенство a = b означало бы t = 0, то есть все фрукты по ${M} г — но в ящике есть фрукты различной массы.\nб) Число фруктов ровно по ${M} г равно ${N} − ${u + v}t ≥ ${N} − ${u + v}·${tMax} = ${cMin}, поэтому меньше ${Xb} их быть не может.\nв) Суммарная масса тяжёлых фруктов равна ${q}b, каждый из них весит не меньше ${M + 1} г, поэтому один может весить не больше ${q}b − ${M + 1}(b − 1). Это выражение растёт по b, а b = ${v}t ≤ ${bMax}. При t = ${tMax} получаем ${q}·${bMax} − ${M + 1}·${bMax - 1} = ${heaviest} г; пример: ${aMax} фруктов по ${p} г, ${bMax - 1} по ${M + 1} г, один в ${heaviest} г и ${cMin} по ${M} г.\nОтвет: ${heaviest}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: false, reason: "ratio-fixed", target: "equal-counts" },
+        b: { type: "yesno", yes: false, reason: "count-bound", target: `fewer-${Xb}` },
+        c: { type: "extremum", mode: "max", value: heaviest, example: exC },
+      },
+      mustMention: [N, M, p, q, Xb],
+      extra: [],
+      phrases: ["целым числом граммов", "хотя бы два фрукта различной массы"],
     },
   })
 }
