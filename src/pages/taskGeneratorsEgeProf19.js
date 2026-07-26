@@ -751,6 +751,7 @@ export const META19 = [
   ["Операции над записью числа", [
     ["swap-digits-max", "Перестановка цифр двузначных → наибольшая новая сумма", t19SwapDigitsMax],
     ["swap-digits-min", "Перестановка цифр двузначных → наименьшая новая сумма", t19SwapDigitsMin],
+    ["cross-out-digits", "Вычёркивание цифр до кратности", t19CrossOutDigits],
   ]],
   ["Сюжетные задачи с перебором", [
     ["test-bonus-min", "Тест с добавкой баллов: наим. число участников", t19TestBonusMin],
@@ -7569,6 +7570,117 @@ export function t19SetAvgBelow() {
       mustMention: [N, M, B, ...must, kMin, T],
       extra: [2],
       phrases: ["натуральных чисел", "Среднее арифметическое любых"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 6 (продолжение). Вычёркивание цифр до кратности (#1)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Из записи числа вычёркивают несколько цифр (порядок оставшихся сохраняется) и хотят
+// получить число, кратное D. Пространство конечно — 2ⁿ подпоследовательностей, поэтому
+// все три пункта решаются полным перебором. Содержательная часть — подбор чисел:
+// для одного вычёркивание возможно, для другого нет ни одного варианта.
+const subseqDiv = (digits, D) => {
+  const out = []
+  const n = digits.length
+  for (let mask = 1; mask < (1 << n) - 1; mask++) {          // хотя бы одну цифру вычёркиваем
+    let t = ""
+    for (let i = 0; i < n; i++) if (mask & (1 << i)) t += digits[i]
+    if (t[0] === "0") continue
+    if (Number(t) % D === 0) out.push(t)
+  }
+  return out
+}
+
+export function t19CrossOutDigits() {
+  const D = pick([72, 36, 45])
+  const shuffle = (arr) => {
+    const a = [...arr]
+    for (let i = a.length - 1; i > 0; i--) { const j = randInt(0, i);[a[i], a[j]] = [a[j], a[i]] }
+    return a
+  }
+  const DIGITS = "123456789".split("")
+  let numA = null, numB = null, numC = null, bestC = null
+  for (let t = 0; t < 400 && (!numA || !numB || !numC); t++) {
+    const s = shuffle(DIGITS).join("")
+    const res = subseqDiv(s, D)
+    if (!numA && res.length) numA = s
+    if (!numB && !res.length) numB = s
+    if (!numC) {
+      const s8 = s.slice(0, 8)
+      const r8 = subseqDiv(s8, D)
+      if (r8.length && r8.length <= 3) {                     // немного вариантов — задача интереснее
+        const minLen = Math.min(...r8.map((x) => x.length))
+        numC = s8
+        bestC = { cut: s8.length - minLen, example: r8.find((x) => x.length === minLen) }
+      }
+    }
+  }
+  if (!numA || !numB || !numC) return null
+  const exampleA = subseqDiv(numA, D)[0]
+  // разбор по признаку делимости: чем должно оканчиваться число и какова сумма цифр
+  const SIGN = {
+    72: { tail: "тремя последними цифрами, делящимися на 8", extra: "и сумма цифр кратна 9" },
+    36: { tail: "двумя последними цифрами, делящимися на 4", extra: "и сумма цифр кратна 9" },
+    45: { tail: "последней цифрой 5 или 0", extra: "и сумма цифр кратна 9" },
+  }[D]
+  // сколько подпоследовательностей вообще удовлетворяют «хвостовому» признаку
+  const tailOk = (t) => (D === 45 ? /[05]$/.test(t) : Number(t.slice(-(D === 72 ? 3 : 2))) % (D === 72 ? 8 : 4) === 0)
+  let tailCount = 0
+  for (let mask = 1; mask < (1 << numB.length) - 1; mask++) {
+    let t = ""
+    for (let i = 0; i < numB.length; i++) if (mask & (1 << i)) t += numB[i]
+    if (t[0] !== "0" && tailOk(t)) tailCount++
+  }
+  const signText = `число, кратное ${D}, должно оканчиваться ${SIGN.tail}, ${SIGN.extra}. Из записи ${numB} вычёркиванием получается ${tailCount} ${plural(tailCount, "число", "числа", "чисел")} с подходящим окончанием, и ни у одного из них сумма цифр не делится на 9`
+
+  const params = { D, numA, numB, numC }
+  const check = (cfg, part) => {
+    if (typeof cfg !== "string" || !/^\d+$/.test(cfg)) return "ответ — число из оставшихся цифр"
+    const src = part === "a" ? numA : part === "b" ? numB : numC
+    // проверяем, что cfg — подпоследовательность src
+    let i = 0
+    for (const ch of src) if (i < cfg.length && cfg[i] === ch) i++
+    if (i !== cfg.length) return `${cfg} не получается вычёркиванием цифр из ${src}`
+    if (cfg.length >= src.length) return "нужно вычеркнуть хотя бы одну цифру"
+    if (cfg[0] === "0") return "число не может начинаться с нуля"
+    if (Number(cfg) % D !== 0) return `${cfg} не кратно ${D}`
+    if (part === "c" && src.length - cfg.length !== bestC.cut) return `вычеркнуто ${src.length - cfg.length} цифр, а заявлено ${bestC.cut}`
+    return null
+  }
+  // Независимый перебор: все подпоследовательности каждого из трёх чисел.
+  const solve = (P) => ({
+    a: subseqDiv(P.numA, P.D).length > 0,
+    b: subseqDiv(P.numB, P.D).length > 0,
+    c: (() => {
+      const r = subseqDiv(P.numC, P.D)
+      return r.length ? P.numC.length - Math.min(...r.map((x) => x.length)) : 0
+    })(),
+    c_next: false,
+  })
+
+  return item({
+    preamble: `Из записи натурального числа вычёркивают несколько цифр (оставшиеся цифры сохраняют свой порядок) и получают новое натуральное число.`,
+    qa: `Можно ли вычеркнуть несколько цифр из числа ${numA} так, чтобы получилось число, кратное ${D}?`,
+    qb: `Можно ли вычеркнуть несколько цифр из числа ${numB} так, чтобы получилось число, кратное ${D}?`,
+    qc: `Какое наибольшее количество цифр можно вычеркнуть из числа ${numC} так, чтобы получилось число, кратное ${D}?`,
+    ansA: `да: например ${exampleA} = ${D}·${Number(exampleA) / D}`,
+    ansB: `нет: ${signText}`,
+    ansC: `${bestC.cut}; остаётся число ${bestC.example} = ${D}·${Number(bestC.example) / D}`,
+    solution: `Вычёркивание цифр сохраняет порядок оставшихся, поэтому из числа с n цифрами получается одно из 2ⁿ − 2 чисел (кроме пустого и самого исходного).\nа) Из ${numA} получается ${exampleA}, а ${exampleA} = ${D}·${Number(exampleA) / D}.\nб) ${signText[0].toUpperCase() + signText.slice(1)}.\nв) Чем меньше цифр остаётся, тем больше вычеркнуто. Наименьшее по длине кратное ${D} число, получаемое из ${numC}, — это ${bestC.example} (${bestC.example.length} ${plural(bestC.example.length, "цифра", "цифры", "цифр")}), поэтому вычеркнуть можно ${bestC.cut} ${plural(bestC.cut, "цифру", "цифры", "цифр")}.\nОтвет: ${bestC.cut}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exampleA, target: `num-${numA}` },
+        b: { type: "yesno", yes: false, reason: "no-subsequence", target: `num-${numB}` },
+        c: { type: "extremum", mode: "max", value: bestC.cut, example: bestC.example },
+      },
+      mustMention: [Number(numA), Number(numB), Number(numC), D],
+      extra: [],
+      maxNumber: 999999999,
+      phrases: ["вычёркивают несколько цифр", "кратное"],
     },
   })
 }
