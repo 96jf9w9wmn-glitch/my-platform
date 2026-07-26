@@ -68,6 +68,13 @@ function qDec(c) {
   return ru(String(Number((a.p / a.q).toFixed(Math.max(k2, k5) + 1)).valueOf()))
 }
 
+// Число ВНУТРИ дроби со стоячей дробью-коэффициентом: токен ⦃n¦d⦄ (без «:» и «⟧»).
+function qNest(c) {
+  const a = toQ(c)
+  if (a.q === 1) return String(a.p).replace(/^-/, MINUS)
+  return (a.p < 0 ? MINUS : "") + fT2(Math.abs(a.p), a.q)
+}
+
 // ── корни: √D с вынесением полного квадрата ──────────────────────────────────
 function sqrtParts(D) { // D>0 целое → {k, m}: k√m
   let k = 1, m = D
@@ -105,6 +112,7 @@ function epSurdHalf(p, D, sign) {
 
 // ── многочлен на показ ───────────────────────────────────────────────────────
 // terms: [{c, k}] — коэффициент (число или {p,q}) и степень, В ПОРЯДКЕ ПОКАЗА.
+// flat: false — ⟦f⟧ (обычная дробь); true — десятичная запись; "nest" — ⦃n¦d⦄ (внутри дроби)
 function polyStr(terms, v = "x", flat = false) {
   let out = ""
   for (const { c, k } of terms) {
@@ -113,7 +121,7 @@ function polyStr(terms, v = "x", flat = false) {
     const neg = a.p < 0
     const abs = Q(Math.abs(a.p), a.q)
     const one = abs.p === 1 && abs.q === 1
-    let body = one && k > 0 ? "" : (flat ? qDec(abs) : qCond(abs))
+    let body = one && k > 0 ? "" : (flat === "nest" ? qNest(abs) : flat ? qDec(abs) : qCond(abs))
     body += k === 0 ? "" : k === 1 ? v : `${v}${SUPD[k]}`
     out += out === "" ? (neg ? MINUS : "") + body : ` ${neg ? MINUS : "+"} ${body}`
   }
@@ -244,6 +252,11 @@ function build(opts) {
       const lo2 = !isFinite(A) ? Bv - 8 : A, hi2 = !isFinite(Bv) ? A + 8 : Bv
       const want = okf(mid)
       for (let j = 1; j < 240; j++) if (okf(lo2 + (hi2 - lo2) * j / 240) !== want) return null
+      // плюс сгущение у концов: тонкая полоска ОДЗ шириной ~1/1000 куска иначе теряется
+      for (let j = 1; j <= 24; j++) {
+        const d = (hi2 - lo2) * Math.pow(0.5, j)
+        if (okf(lo2 + d) !== want || okf(hi2 - d) !== want) return null
+      }
       if (!want) continue
       const eps = crit.map((c) => c.ep).concat(opts.extraEP || [])
       const findEP = (v) => eps.find((e) => Math.abs(e.v - v) < 1e-12)
@@ -631,8 +644,13 @@ export function t15RatCommonDen() {
     if ([Math.abs(a3), Math.abs(a2), Math.abs(w)].some((v) => v > 200)) continue
     const cmp = pick(["≥", "≤", ">", "<"])
     const left = polyStr([{ c: 1, k: 3 }, { c: b, k: 2 }, { c: c0, k: 0 }])
-    const fracNum = polyStr([{ c: a3, k: 3 }, { c: a2, k: 2 }])
-    const fracDen = k === 1 ? linStr(-p) : `${k}(${linStr(-p)})`
+    // Показ дроби: либо «(8x³ − 73x²)/(2(x−5))», либо та же дробь, сокращённая на k:
+    // «(6x³ + 9/2·x²)/(x−3)» — как во второй форме ФИПИ.
+    const halved = k === 2 && Math.random() < 0.5
+    const fracNum = halved
+      ? polyStr([{ c: Q(a3, 2), k: 3 }, { c: Q(a2, 2), k: 2 }], "x", "nest")
+      : polyStr([{ c: a3, k: 3 }, { c: a2, k: 2 }])
+    const fracDen = k === 1 || halved ? linStr(-p) : `${k}(${linStr(-p)})`
     const rightNum = `(${polyStr([{ c: m, k: 1 }, { c: nn, k: 0 }])})${SUPD[2]} ${w < 0 ? MINUS : "+"} ${Math.abs(w)}`
     const text = `${left} ${MINUS} ${fT(fracNum, fracDen)} ${cmp} ${fT(rightNum, linStr(-p))}`
     const critList = [{ ep: epQ(p), mult: 1, pole: true }]
@@ -1099,7 +1117,8 @@ export function t15ExpRootPower() {
     const mBase = pick([4, 16]), mm = Math.round(Math.log(mBase) / Math.log(base)) // 16 = 2⁴
     const r = randInt(1, 3), sN = randInt(-4, 4)
     // левая часть: 2^{px+q}; правая: 2^{(mm/2)·(rx+s)/x}
-    const w = Q(mm, 2)
+    const inv = Math.random() < 0.35      // правое основание — дробь (1/16): показатель меняет знак
+    const w = Q(mm * (inv ? -1 : 1), 2)
     // p·x + q ⋛ w·(r x + s)/x  ⟺ (p x² + (q − w r)x − w s)/x ⋛ 0
     const c2 = Q(p), c1 = Qadd(Q(q), Qmul(Q(-1), Qmul(w, Q(r)))), c0 = Qmul(Q(-1), Qmul(w, Q(sN)))
     const disc = Qadd(Qmul(c1, c1), Qmul(Q(-4), Qmul(c2, c0)))
@@ -1107,19 +1126,19 @@ export function t15ExpRootPower() {
     const Dnum = Qnum(disc)
     const sq = Math.round(Math.sqrt(Dnum))
     if (Math.abs(sq * sq - Dnum) > 1e-9) continue      // корни рациональные
-    const x1 = Q(-c1.p * 2 * c2.q - sq * c1.q * 2 * c2.q, 0) // (заглушка не нужна)
-    void x1
     const r1 = Q(Math.round((-Qnum(c1) - sq) * 1e6), Math.round(2 * Qnum(c2) * 1e6))
     const r2 = Q(Math.round((-Qnum(c1) + sq) * 1e6), Math.round(2 * Qnum(c2) * 1e6))
     if (Math.abs(Qnum(r1)) < 1e-9 || Math.abs(Qnum(r2)) < 1e-9) continue
     if (Math.abs(Qnum(r1) - Qnum(r2)) < 1e-9) continue
     if (Math.abs(r1.q) > 12 || Math.abs(r2.q) > 12) continue
     const cmp = pick([">", "<"])
-    const left = `${SUPD[n]}√(${pw(A, expPoly([{ c: p, k: 1 }, { c: q, k: 0 }]), true)})`
-    const right = `√(${mBase}⟦sup:${fT(expPoly([{ c: r, k: 1 }, { c: sN, k: 0 }]), "x")}⟧)`
+    const baseR = inv ? `(⦃1¦${mBase}⦄)` : String(mBase)
+    const expR = `⦃${expPoly([{ c: r, k: 1 }, { c: sN, k: 0 }])}¦x⦄`
+    const left = `⟦rn:${n}:${A}⁅${expPoly([{ c: p, k: 1 }, { c: q, k: 0 }])}⁆⟧`
+    const right = `⟦r:${baseR}⁅${inv ? MINUS : ""}${expR}⁆⟧`
     const text = `${left} ${cmp} ${right}`
     const F = (x) => Math.pow(A, (p * x + q) / n)
-    const G = (x) => Math.sqrt(Math.pow(mBase, (r * x + sN) / x))
+    const G = (x) => Math.sqrt(Math.pow(mBase, (inv ? -1 : 1) * (r * x + sN) / x))
     const res = build({
       text, cmp, lhs: F, rhs: G,
       domainOK: (x) => Math.abs(x) > 1e-12,
@@ -1177,7 +1196,9 @@ export function t15ExpFracQuadLin() {
 export function t15ExpFracLinQuad() {
   for (let it = 0; it < 1500; it++) {
     const b = pick([2, 3, 5]), B = b * b
-    const p1 = Math.round(Math.pow(b, randInt(1, 3))), p2 = Math.round(Math.pow(b, randInt(1, 3)))
+    const symm = Math.random() < 0.3            // p₂ = −p₁: знаменатель вида B^x − p² (пок.23)
+    const p1 = Math.round(Math.pow(b, randInt(1, 3)))
+    const p2 = symm ? -p1 : Math.round(Math.pow(b, randInt(1, 3)))
     if (p1 === p2) continue
     const C = pick([Q(1, 2), Q(1), Q(2)])
     const dbl = Math.random() < 0.6
@@ -1185,21 +1206,44 @@ export function t15ExpFracLinQuad() {
     if (Qnum(u1) === p1 || Qnum(u1) === p2 || Qnum(u2) === p1 || Qnum(u2) === p2) continue
     const k = Qmul(C, Qadd(Q(p1 + p2), Qmul(Q(-1), Qadd(u1, u2))))
     const A = Qmul(C, Qadd(Q(p1 * p2), Qmul(Q(-1), Qmul(u1, u2))))
-    if (k.q !== 1 || A.q !== 1 || k.p <= 0 || A.p === 0) continue
-    if (Math.abs(A.p) > 400 || k.p > 90) continue
+    // Вариант ФИПИ (пок.23): числитель с ПОЛОЖИТЕЛЬНЫМ наклоном (k·t − A) и общий множитель μ
+    // у числителя и знаменателя: (8^{x+1} − 40)/(2·64ˣ − 32). Там p₂ = −p₁, и «обычный»
+    // числитель A − k·t дал бы k < 0, поэтому проверку k > 0 применяем только к нему.
+    const posSlope = symm && dbl
+    if (!posSlope) {
+      if (k.q !== 1 || A.q !== 1 || k.p <= 0 || A.p === 0) continue
+      if (Math.abs(A.p) > 400 || k.p > 90) continue
+    }
     const cmp = pick(["≥", "≤", ">", "<"])
-    const num = `${A.p} ${MINUS} ${k.p === 1 ? "" : k.p + "·"}${pw(b, "x", true)}`
+    const mu0 = pick([1, 2])
     const beta = -(p1 + p2), gam = p1 * p2
-    const den = `${pw(B, "x", true)} ${MINUS} ${Math.abs(beta)}·${pw(b, "x", true)} + ${gam}`
+    const kShow = posSlope ? mu0 * 2 * Qnum(C) * Qnum(u1) : k.p
+    const aShow = posSlope ? mu0 * Qnum(C) * (Qnum(u1) * Qnum(u1) - gam) : A.p
+    if (posSlope && (!Number.isInteger(kShow) || !Number.isInteger(aShow) || kShow <= 0 || aShow <= 0 || aShow > 900)) continue
+    const kTermTxt = (() => {
+      const lg = Math.round(Math.log(kShow) / Math.log(b))
+      return Math.abs(Math.pow(b, lg) - kShow) < 1e-9 && lg >= 1
+        ? pw(b, expPoly([{ c: 1, k: 1 }, { c: lg, k: 0 }]), true)
+        : `${kShow === 1 ? "" : kShow + "·"}${pw(b, "x", true)}`
+    })()
+    const num = posSlope
+      ? `${kTermTxt} ${MINUS} ${aShow}`
+      : `${A.p} ${MINUS} ${k.p === 1 ? "" : k.p + "·"}${pw(b, "x", true)}`
+    const den = beta === 0
+      ? `${posSlope && mu0 !== 1 ? mu0 + "·" : ""}${pw(B, "x", true)} ${MINUS} ${Math.abs((posSlope ? mu0 : 1) * gam)}`
+      : `${pw(B, "x", true)} ${MINUS} ${Math.abs(beta)}·${pw(b, "x", true)} + ${gam}`
     const text = `${fT(num, den)} ${cmp} ${qDec(C)}`
-    const F = (x) => (A.p - k.p * Math.pow(b, x)) / (Math.pow(B, x) + beta * Math.pow(b, x) + gam)
-    const tC = [{ t: Q(p1), mult: 1, pole: true }, { t: Q(p2), mult: 1, pole: true }]
+    const F = posSlope
+      ? (x) => (kShow * Math.pow(b, x) - aShow) / (mu0 * (Math.pow(B, x) + gam))
+      : (x) => (A.p - k.p * Math.pow(b, x)) / (Math.pow(B, x) + beta * Math.pow(b, x) + gam)
+    const tC = [{ t: Q(p1), mult: 1, pole: true }]
+    if (p2 > 0) tC.push({ t: Q(p2), mult: 1, pole: true })
     if (dbl) tC.push({ t: u1, mult: 2, pole: false })
     else tC.push({ t: u1, mult: 1, pole: false }, { t: u2, mult: 1, pole: false })
     const res = buildExpo({
       text, cmp, base: b, dir: 1, leadT: -1,   // ведущий коэффициент числителя = −C < 0
       lhs: F, rhs: () => Qnum(C),
-      domainOK: (x) => Math.abs(Math.pow(b, x) - p1) > 1e-12 && Math.abs(Math.pow(b, x) - p2) > 1e-12,
+      domainOK: (x) => Math.abs(Math.pow(b, x) - p1) > 1e-12 && (p2 < 0 || Math.abs(Math.pow(b, x) - p2) > 1e-12),
       tCrit: tC,
     })
     if (res) return res
@@ -1391,12 +1435,23 @@ export function t15ExpFracNeg() {
     if (k <= 0 || C <= 0 || C > 100000 || r2 === D) continue
     const cmp = pick(["≥", "≤", ">", "<"])
     const negX = expPoly([{ c: -1, k: 1 }])
-    const text = `${fT(`${C} ${MINUS} ${pw(B, negX, true)}`, `${D} ${MINUS} ${pw(b, negX, true)}`)} ${cmp} ${k}`
-    const F = (x) => (C - Math.pow(B, -x)) / (D - Math.pow(b, -x))
+    // вариант ФИПИ (20дз): числитель со сдвигом B^{−x−1} = B^{−x}/B и дробная правая часть
+    const sh = Math.random() < 0.4 ? 1 : 0
+    const Ck = sh ? Q(C, 1) : Q(C)
+    const numTxt = sh
+      ? `${Math.round(C / B) === C / B ? C / B : C} ${MINUS} ${pw(B, expPoly([{ c: -1, k: 1 }, { c: -1, k: 0 }]), true)}`
+      : `${C} ${MINUS} ${pw(B, negX, true)}`
+    const kShow = sh ? Q(k, B) : Q(k)
+    if (sh && (C % B !== 0)) continue
+    void Ck
+    const text = `${fT(numTxt, `${D} ${MINUS} ${pw(b, negX, true)}`)} ${cmp} ${qDec(kShow)}`
+    const F = sh
+      ? (x) => (C / B - Math.pow(B, -x - 1)) / (D - Math.pow(b, -x))
+      : (x) => (C - Math.pow(B, -x)) / (D - Math.pow(b, -x))
     const res = buildExpo({
       // после сокращения на положительный множитель t: (t−r₂)/(t−D) ⟹ при t→+∞ знак «+»
       text, cmp, base: b, dir: -1, leadT: 1,
-      lhs: F, rhs: () => k,
+      lhs: F, rhs: () => (sh ? k / B : k),
       domainOK: (x) => Math.abs(D - Math.pow(b, -x)) > 1e-12,
       tCrit: [
         { t: Q(r2), mult: 1, pole: false },
@@ -1519,17 +1574,27 @@ export function t15ExpAbsSqrt() {
     const den = holeStyle
       ? `${c}⁅√{${rootArg}}⁆ ${MINUS} ${Math.round(Math.pow(c, sPow))}`
       : `${c}⁅√{${rootArg}}⁆ + 1`
+    // Вариант ФИПИ (25дз): один множитель с |x|, другой — с x: (k^{|x|}−q)(n^x−P)
+    const mixed = Math.random() < 0.45
     const absX = "|x|"
-    const num = `${pw(k * n, absX, true)} ${MINUS} ${P === 1 ? "" : P + "·"}${pw(k, absX, true)} ${MINUS} ${q === 1 ? "" : q + "·"}${pw(n, absX, true)} + ${P * q}`
+    const e1 = absX, e2 = mixed ? "x" : absX
+    const num = mixed
+      ? `${pw(k, e1, true)}·${pw(n, "x", true)} ${MINUS} ${P === 1 ? "" : P + "·"}${pw(k, e1, true)} ${MINUS} ${q === 1 ? "" : q + "·"}${pw(n, "x", true)} + ${P * q}`
+      : `${pw(k * n, absX, true)} ${MINUS} ${P === 1 ? "" : P + "·"}${pw(k, absX, true)} ${MINUS} ${q === 1 ? "" : q + "·"}${pw(n, absX, true)} + ${P * q}`
+    void e2
     const text = `${fT(num, den)} ${cmp} 0`
-    const NUM = (x) => Math.pow(k * n, Math.abs(x)) - P * Math.pow(k, Math.abs(x)) - q * Math.pow(n, Math.abs(x)) + P * q
+    const NUM = (x) => mixed
+      ? (Math.pow(k, Math.abs(x)) - q) * (Math.pow(n, x) - P)
+      : (Math.pow(k, Math.abs(x)) - q) * (Math.pow(n, Math.abs(x)) - P)
     const DEN = (x) => holeStyle ? Math.pow(c, Math.sqrt(x + w)) - Math.pow(c, sPow) : Math.pow(c, Math.sqrt(x + w)) + 1
     if (holeStyle && xPole <= -w) continue
     const crit = []
-    for (const [lvl, mult] of [[i, 1], [j, 1]]) {
-      if (lvl === 0) crit.push({ ep: epQ(0), mult: 2, pole: false })
-      else crit.push({ ep: epQ(-lvl), mult, pole: false }, { ep: epQ(lvl), mult, pole: false })
-    }
+    // k^{|x|} = q ⟺ |x| = i (две точки, при i=0 — касание); n^{x или |x|} = P
+    if (i === 0) crit.push({ ep: epQ(0), mult: 2, pole: false })
+    else crit.push({ ep: epQ(-i), mult: 1, pole: false }, { ep: epQ(i), mult: 1, pole: false })
+    if (mixed) crit.push({ ep: epQ(j), mult: 1, pole: false })
+    else if (j === 0) crit.push({ ep: epQ(0), mult: 2, pole: false })
+    else crit.push({ ep: epQ(-j), mult: 1, pole: false }, { ep: epQ(j), mult: 1, pole: false })
     if (holeStyle) crit.push({ ep: epQ(xPole), mult: 1, pole: true })
     if (crit.some((c1) => crit.filter((c2) => Math.abs(c1.ep.v - c2.ep.v) < 1e-9).length > 1)) continue
     const res = build({
@@ -1565,10 +1630,12 @@ export function t15ExpTwoSum() {
     if (!Number.isInteger(g1) || !Number.isInteger(g2)) continue
     if (Math.abs(g1) > 300 || Math.abs(g2) > 300 || g1 === 0 || g2 === 0) continue
     const cmp = pick(["≥", "≤", ">", "<"])
-    const kTerm = (kk) => { // −25·5ˣ  либо  5^{x+2}
+    const logStyle = Math.random() < 0.3    // 5t → 5^{x+log₅5}: показ ФИПИ (№29)
+    const kTerm = (kk) => { // −25·5ˣ  либо  5^{x+2}  либо  3^{x+log₃5}
       const A = Math.abs(kk)
       const lg = Math.round(Math.log(A) / Math.log(b))
       if (Math.abs(Math.pow(b, lg) - A) < 1e-9 && lg >= 1) return pw(b, expPoly([{ c: 1, k: 1 }, { c: lg, k: 0 }]), true)
+      if (logStyle && A > 1) return `${b}⁅x + log${subU(b)}${A}⁆`
       return `${A === 1 ? "" : A + "·"}${pw(b, "x", true)}`
     }
     const numOf = (be, g) => `${pw(B, "x", true)} ${be < 0 ? MINUS : "+"} ${kTerm(be)} ${g < 0 ? MINUS : "+"} ${Math.abs(g)}`
@@ -1605,7 +1672,11 @@ export function t15ExpHomogFrac() {
     if (Math.abs(Qnum(zHole) - Qnum(zRoot)) < 1e-9) continue
     void de
     const cmp = pick(["≥", "≤", ">", "<"])
-    const num = `${P === 1 ? "" : P + "·"}${pw(a * a, "x", true)} ${MINUS} ${Qc === 1 ? "" : Qc + "·"}${pw(a * b, "x", true)} + ${R === 1 ? "" : R + "·"}${pw(b * b, "x", true)}`
+    const powStyle = P % a === 0 && Math.random() < 0.5   // 6·9ˣ → 2·3^{2x+1}, как в ФИПИ
+    const firstTerm = powStyle
+      ? `${P / a === 1 ? "" : (P / a) + "·"}${pw(a, expPoly([{ c: 2, k: 1 }, { c: 1, k: 0 }]), true)}`
+      : `${P === 1 ? "" : P + "·"}${pw(a * a, "x", true)}`
+    const num = `${firstTerm} ${MINUS} ${Qc === 1 ? "" : Qc + "·"}${pw(a * b, "x", true)} + ${R === 1 ? "" : R + "·"}${pw(b * b, "x", true)}`
     const den = `${al === 1 ? "" : al + "·"}${pw(a * a, "x", true)} ${MINUS} ${be === 1 ? "" : be + "·"}${pw(a * b, "x", true)}`
     const text = `${fT(num, den)} ${cmp} 1`
     const F = (x) => (P * Math.pow(a * a, x) - Qc * Math.pow(a * b, x) + R * Math.pow(b * b, x)) /
@@ -1678,8 +1749,9 @@ export function t15ExpQuotFracExp() {
     const cmp = pick(["≤", "<"])
     const u = fT(expPoly([{ c: 1, k: 1 }, { c: -al, k: 0 }]), expPoly([{ c: m, k: 1 }, { c: be, k: 0 }]))
     const uSup = `${MINUS}${u}`
+    const uN = `⦃${expPoly([{ c: 1, k: 1 }, { c: -al, k: 0 }])}¦${expPoly([{ c: m, k: 1 }, { c: be, k: 0 }])}⦄`
     const left = `0,5⟦sup:${uSup}⟧·${pw(M, "x")}·${pw("x", MINUS + "2")}`
-    const right = `${Math.round(Math.pow(2, pPow))}⟦sup:${uSup}⟧·${fT(pw(N, "x", true), `${K}x${SUPD[2]}`)}`
+    const right = fT(`${Math.round(Math.pow(2, pPow))}⁅${MINUS}${uN}⁆·${pw(N, "x", true)}`, `${K}x${SUPD[2]}`)
     const text = `${left} ${cmp} ${right}`
     const U = (x) => (x - al) / (m * x + be)
     const F = (x) => Math.pow(0.5, -U(x)) * Math.pow(M, x) * Math.pow(x, -2)
@@ -1862,8 +1934,12 @@ export function t15ExpCubeOverQuad() {
     if ([p, q, Qnum(hole)].some((z) => Math.abs(z - Qnum(t0)) < 1e-9)) continue
     if (Math.abs(be) > 90 || Math.abs(gm) > 90 || Math.abs(de) > 90) continue
     const cmp = pick(["≥", "≤", ">", "<"])
-    const num = `${b}·${pw(C3, "x", true)} ${be < 0 ? MINUS : "+"} ${Math.abs(be)}·${pw(B, "x", true)} ${gm < 0 ? MINUS : "+"} ${Math.abs(gm) === 1 ? "" : Math.abs(gm) + "·"}${pw(b, "x", true)} ${de < 0 ? MINUS : "+"} ${Math.abs(de)}`
-    const den = `${b}·${pw(B, "x", true)} ${MINUS} ${m * p + 1}·${pw(b, "x", true)} + ${p}`
+    // b·b^{3x} = (b³)^{x+1/3},  b·b^{2x} = (b²)^{x+1/2} — показ ФИПИ
+    const shiftStyle = Math.random() < 0.6
+    const cubeTerm = shiftStyle ? `${C3}⁅x + ⦃1¦3⦄⁆` : `${b}·${pw(C3, "x", true)}`
+    const sqTerm = shiftStyle ? `${B}⁅x + ⦃1¦2⦄⁆` : `${b}·${pw(B, "x", true)}`
+    const num = `${cubeTerm} ${be < 0 ? MINUS : "+"} ${Math.abs(be)}·${pw(B, "x", true)} ${gm < 0 ? MINUS : "+"} ${Math.abs(gm) === 1 ? "" : Math.abs(gm) + "·"}${pw(b, "x", true)} ${de < 0 ? MINUS : "+"} ${Math.abs(de)}`
+    const den = `${sqTerm} ${MINUS} ${m * p + 1}·${pw(b, "x", true)} + ${p}`
     const right = `${pw(b, "x")} + ${fT(1, `${pw(b, "x", true)} ${MINUS} ${q}`)} + ${fT(1, `${pw(b, expPoly([{ c: 1, k: 1 }, { c: 1, k: 0 }]), true)} ${MINUS} 1`)}`
     const text = `${fT(num, den)} ${cmp} ${right}`
     const F = (x) => { const t = Math.pow(b, x); return (b * t * t * t + be * t * t + gm * t + de) / (b * t * t - (m * p + 1) * t + p) }
@@ -2031,9 +2107,20 @@ export function t15LogQuadNested() {
     const S = w1 + w2, P = w1 * w2
     if (S > 90 || P > 900) continue
     const cmp = pick(["<", ">", "≤", "≥"])
-    const text = `(${logS(b, 2)} ${MINUS} 2${logS(b)})${SUPD[2]} + ${2 * S}${logS(b)} + ${P} ${cmp} ${S}${logS(b, 2)}`
-    const F = (x) => { const y = Math.log(x) / Math.log(b), w = y * y - 2 * y; return w * w + 2 * S * y + P }
-    const G = (x) => { const y = Math.log(x) / Math.log(b); return S * y * y }
+    // Два показа: «… + 2S·log x + P ⋛ S·log²x» и «… ⋛ S·log²x − 2S·log x − P» (16дз)
+    const allRight = Math.random() < 0.5
+    const wPart = `(${logS(b, 2)} ${MINUS} 2${logS(b)})${SUPD[2]}`
+    const text = allRight
+      ? `${wPart} ${cmp} ${S}${logS(b, 2)} ${MINUS} ${2 * S}${logS(b)} ${MINUS} ${P}`
+      : `${wPart} + ${2 * S}${logS(b)} + ${P} ${cmp} ${S}${logS(b, 2)}`
+    const F = (x) => {
+      const y = Math.log(x) / Math.log(b), w = y * y - 2 * y
+      return allRight ? w * w : w * w + 2 * S * y + P
+    }
+    const G = (x) => {
+      const y = Math.log(x) / Math.log(b)
+      return allRight ? S * y * y - 2 * S * y - P : S * y * y
+    }
     const res = buildLog({
       text, cmp, base: b, leadY: 1, lhs: F, rhs: G,
       yCrit: [
@@ -2056,7 +2143,8 @@ export function t15LogFracThree() {
     const cmp = pick(["≥", "≤", ">", "<"])
     const left = fT(logS(b), logS(b, 1, `(${fT2("x", `${Math.round(Math.pow(b, p))}`)})`))
     const right = `${fT(A, logS(b))} + ${fT(B, `${logS(b, 2)} ${MINUS} ${logS(b, 1, "x" + supNum(p))}`)}`
-    const text = `${left} ${cmp} ${right}`
+    const swap = Math.random() < 0.5                  // «сумма ⋛ дробь», как в 11дз ФИПИ
+    const text = swap ? `${right} ${CMP_FLIP[cmp]} ${left}` : `${left} ${cmp} ${right}`
     const F = (x) => { const y = Math.log(x) / Math.log(b); return y / (y - p) }
     const G = (x) => { const y = Math.log(x) / Math.log(b); return A / y + B / (y * y - p * y) }
     const res = buildLog({
@@ -2076,17 +2164,19 @@ export function t15LogFracThree() {
 export function t15LogLinOverSq() {
   for (let it = 0; it < 600; it++) {
     const b = pick([2, 3, 4, 7]), sPow = randInt(2, 4), u = randInt(1, 4)
-    const m = 2 * u, k = randInt(1, 4)
-    const c = u * u + sPow * sPow - k
-    if (u === sPow || c <= 0 || c > 90 || m > 12) continue
+    const C = pick([-1, -1, 1, 2])                     // правая часть: −1 (как №20) либо +1/+2 (как 20дз)
+    const m = -2 * C * u, k = randInt(1, 4)
+    if (m <= 0 || m > 12) continue
+    const c = -C * (u * u + sPow * sPow) - k     // числитель приведения: −C(y+u)²
+    if (u === sPow || c === 0 || Math.abs(c) > 90) continue
     const cmp = pick(["≥", "≤", ">", "<"])
     const arg = `(${Math.round(Math.pow(b, k))}x${supNum(m)})`
-    const text = `${fT(`${logS(b, 1, arg)} + ${c}`, `${logS(b, 2)} ${MINUS} ${sPow * sPow}`)} ${cmp} ${MINUS}1`
+    const text = `${fT(`${logS(b, 1, arg)} ${c < 0 ? MINUS : "+"} ${Math.abs(c)}`, `${logS(b, 2)} ${MINUS} ${sPow * sPow}`)} ${cmp} ${qAns(Q(C))}`
     const F = (x) => { const y = Math.log(x) / Math.log(b); return (k + m * y + c) / (y * y - sPow * sPow) }
     const res = buildLog({
-      text, cmp, base: b, leadY: -1,      // приведённая форма: −(y+u)²/(y²−s²)
-      flip: true,
-      lhs: F, rhs: () => -1,
+      // приведённая форма = LHS − C = −C(y+u)²/(y²−s²): знак при y→+∞ равен −C
+      text, cmp, base: b, leadY: C > 0 ? -1 : 1,
+      lhs: F, rhs: () => C,
       domainOK: (x) => x > 0 && Math.abs(Math.pow(Math.log(x) / Math.log(b), 2) - sPow * sPow) > 1e-12,
       yCrit: [
         { y: -u, mult: 2, pole: false },
@@ -2169,14 +2259,16 @@ export function t15LogConj() {
 //      Внутреннее основание МЕНЬШЕ 1 — знак переворачивается.
 export function t15LogNested() {
   for (let it = 0; it < 400; it++) {
-    const aBase = pick([5, 2, 3, 7]), nRoot = pick([2, 4]), c = pick([2, 3, 7])
+    const c0 = pick([5, 2, 3, 7]), eDeg = randInt(1, 3), nRoot = pick([2, 3, 4, 9])
+    const c = pick([2, 3, 7])
     const k = randInt(-4, 4), mDeg = randInt(1, 4)
-    if ((mDeg * 2) % nRoot !== 0) continue            // (ⁿ√A)^m = A^{m/n} — целая степень
-    const P = Math.round(Math.pow(aBase, mDeg * 2 / nRoot))
-    if (P > 8) continue
+    if ((eDeg * mDeg) % nRoot !== 0) continue         // (ⁿ√A)^m = A^{m/n} — целая степень
+    const P = Math.round(Math.pow(c0, eDeg * mDeg / nRoot))
+    if (P > 8 || P < 1) continue
     const cP = Math.round(Math.pow(c, P))
     if (cP > 5000) continue
-    const A = aBase * aBase
+    const A = Math.round(Math.pow(c0, eDeg))
+    if (A > 200) continue
     const cmp = pick(["≥", ">"])
     const baseTxt = nRoot === 2 ? `⟦r:${A}⟧` : `⟦rn:${nRoot}:${A}⟧`
     const text = `log⦉${baseTxt}⦊(log⦉⦃1¦${c}⦄⦊(${linStr(k)})) ${cmp} ${mDeg}`
@@ -2281,25 +2373,31 @@ export function t15LogExpArg() {
 export function t15LogDiffFrac() {
   for (let it = 0; it < 600; it++) {
     const c = pick([7, 5, 3]), a = randInt(2, 5)
-    const r1 = randInt(2, 6), r2 = -randInt(1, 5)
-    const bb = a * a - 1
+    const cc = randInt(1, 2 * a - 1)                    // числитель a²x² − c²
+    const sig = pick([1, -1])
+    const r1 = randInt(2, 8), r2 = sig > 0 ? -randInt(1, 5) : randInt(2, 8)
+    if (r1 === r2) continue
+    const bb = a * a - sig
     if (bb < 1) continue
-    const ee = r1 + r2, dd = -1 - r1 * r2
-    if (dd <= 0 || Math.abs(ee) > 12 || dd > 90) continue
+    const ee = sig * (r1 + r2), dd = -sig * r1 * r2 - cc * cc
+    if (dd === 0 || Math.abs(ee) > 20 || Math.abs(dd) > 90) continue
+    if (Math.min(r1, r2) <= cc / a) continue
     const cmp = pick(["≥", "≤", ">", "<"])
-    const num = `${a * a}x${SUPD[2]} ${MINUS} 1`
-    const rhsIn = `${bb === 1 ? "" : bb}x + ${fT2(dd, "x")} ${ee < 0 ? MINUS : "+"} ${Math.abs(ee)}`
+    const num = `${a * a}x${SUPD[2]} ${MINUS} ${cc * cc}`
+    const rhsIn = `${bb === 1 ? "" : bb}x ${dd < 0 ? MINUS : "+"} ${fT2(Math.abs(dd), "x")} ${ee < 0 ? MINUS : "+"} ${Math.abs(ee)}`
     const text = `${logS(c, 1, `(${num})`)} ${MINUS} ${logS(c, 1, "x")} ${cmp} ${logS(c, 1, `(${rhsIn})`)}`
-    const F = (x) => Math.log(a * a * x * x - 1) / Math.log(c) - Math.log(x) / Math.log(c)
+    const F = (x) => Math.log(a * a * x * x - cc * cc) / Math.log(c) - Math.log(x) / Math.log(c)
     const G = (x) => Math.log(bb * x + dd / x + ee) / Math.log(c)
+    const crit = [{ ep: epQ(r1), mult: 1, pole: false }]
+    if (r2 > cc / a) crit.push({ ep: epQ(r2), mult: 1, pole: false })
     const res = build({
       text, cmp, lhs: F, rhs: G,
-      domainOK: (x) => x > 0 && a * a * x * x - 1 > 0 && bb * x + dd / x + ee > 0,
-      lead: 1,     // (x−r1)(x−r2)/x, x>0
-      crit: [{ ep: epQ(r1), mult: 1, pole: false }],
+      domainOK: (x) => x > 0 && a * a * x * x - cc * cc > 0 && bb * x + dd / x + ee > 0,
+      lead: sig,   // σ(x−r1)(x−r2)/x, x>0
+      crit,
       autoDomain: true, requireDomainOnAns: true,
-      extraX: [1 / a, r2, 0],
-      extraEP: [epQ(Q(1, a))],
+      extraX: [cc / a, r2, 0],
+      extraEP: [epQ(Q(cc, a))],
     })
     if (res) return res
   }
@@ -2365,7 +2463,7 @@ export function t15LogCubicHidden() {
 export function t15LogThreeArgs() {
   for (let it = 0; it < 600; it++) {
     const c = pick([5, 3, 7]), d = randInt(2, 5), e = randInt(1, 4)
-    const bq = randInt(1, 3), a = randInt(1, 6)
+    const bq = randInt(1, 3), a = pick([1, -1]) * randInt(1, 6)
     // (a + bx)/(x(x+d)) − (x+e)/x² = [x(a+bx) − (x+e)(x+d)]/(x²(x+d))
     const A2 = bq - 1, A1 = a - d - e, A0 = -d * e
     if (A2 === 0) continue
@@ -2377,7 +2475,8 @@ export function t15LogThreeArgs() {
     if (r1.q > 4 || r2.q > 4) continue
     if ([lo, hi].some((v) => Math.abs(v) < 1e-9 || Math.abs(v + d) < 1e-9)) continue
     const cmp = pick(["≥", "≤", ">", "<"])
-    const text = `${logS(c, 1, `(${fT2(a, "x")} + ${bq})`)} ${MINUS} ${logS(c, 1, `(${linStr(d)})`)} ${cmp} ${logS(c, 1, `(${fT2(linStr(e), "x" + SUPD[2])})`)}`
+    const argFirst = a > 0 ? `${fT2(a, "x")} + ${bq}` : `${bq} ${MINUS} ${fT2(-a, "x")}`
+    const text = `${logS(c, 1, `(${argFirst})`)} ${MINUS} ${logS(c, 1, `(${linStr(d)})`)} ${cmp} ${logS(c, 1, `(${fT2(linStr(e), "x" + SUPD[2])})`)}`
     const F = (x) => Math.log(a / x + bq) / Math.log(c) - Math.log(x + d) / Math.log(c)
     const G = (x) => Math.log((x + e) / (x * x)) / Math.log(c)
     const res = build({
@@ -2403,16 +2502,19 @@ export function t15LogThreeArgs() {
 export function t15LogProdShift() {
   for (let it = 0; it < 6000; it++) {
     const c = pick([7, 5, 3]), a = randInt(3, 9)
-    const r1 = randInt(2, 5), r2 = r1 + randInt(2, 3)
-    const p = r1 + r2, q1 = r1 * r2                    // x²−px+q−1 = (x−r1)(x−r2)
+    const neg = Math.random() < 0.45                   // x²+px−q (как в 23дз) вместо x²−px+q
+    const r1 = neg ? -randInt(4, 8) : randInt(2, 5)
+    const r2 = neg ? r1 + randInt(5, 9) : r1 + randInt(2, 3)
+    const p = r1 + r2, q1 = r1 * r2                    // x²−px+(q−1) = (x−r1)(x−r2)
     const q = q1 + 1
     const D = p * p - 4 * q
     if (D <= 0) continue                               // ОДЗ x²−px+q>0 — два промежутка
     const sD = Math.sqrt(D)
     if (Math.abs(Math.round(sD) - sD) < 1e-9) continue // граница ОДЗ должна быть иррациональной
     const cmp = pick(["≥", "≤", ">", "<"])
-    const quad = `x${SUPD[2]} ${MINUS} ${p}x + ${q}`
-    const rhs = `x${SUPD[2]} ${MINUS} ${p}x + ${fT2(a, "x")} + ${q - 1}`
+    const px = polyStr([{ c: 1, k: 2 }, { c: -p, k: 1 }])
+    const quad = `${px} ${q < 0 ? MINUS : "+"} ${Math.abs(q)}`
+    const rhs = `${px} + ${fT2(a, "x")} ${q - 1 < 0 ? MINUS : "+"} ${Math.abs(q - 1)}`
     const text = `${logS(c, 1, `${fT2(a, "x")}`)} + ${logS(c, 1, `(${quad})`)} ${cmp} ${logS(c, 1, `(${rhs})`)}`
     const F = (x) => Math.log(a / x) / Math.log(c) + Math.log(x * x - p * x + q) / Math.log(c)
     const G = (x) => Math.log(x * x - p * x + a / x + q - 1) / Math.log(c)
@@ -2516,13 +2618,15 @@ export function t15LogRatFrac() {
     if (Math.abs(q1) > 30 || Math.abs(q0) > 60) continue
     const cmp = pick(["≥", "≤", ">", "<"])
     const QT = polyStr([{ c: q2, k: 2 }, { c: q1, k: 1 }, { c: q0, k: 0 }])
-    const text = `${fT(`1 ${MINUS} ${logS(b, 1, `(${QT})`)}`, logS(c, 1, `(${linStr(k)})`))} ${cmp} 0`
+    const inverted = Math.random() < 0.5              // «log(Q) − 1» вместо «1 − log(Q)» (3дз)
+    const numTxt = inverted ? `${logS(b, 1, `(${QT})`)} ${MINUS} 1` : `1 ${MINUS} ${logS(b, 1, `(${QT})`)}`
+    const text = `${fT(numTxt, logS(c, 1, `(${linStr(k)})`))} ${cmp} 0`
     const QF = (x) => (q2 * x + q1) * x + q0
-    const F = (x) => (1 - Math.log(QF(x)) / Math.log(b)) / (Math.log(x + k) / Math.log(c))
+    const F = (x) => ((inverted ? -1 : 1) * (1 - Math.log(QF(x)) / Math.log(b))) / (Math.log(x + k) / Math.log(c))
     const res = build({
       text, cmp, lhs: F, rhs: () => 0,
       domainOK: (x) => QF(x) > 0 && x + k > 0 && Math.abs(x + k - 1) > 1e-12,
-      lead: -1,   // −a(x−u1)(x−u2)·(x−(1−k)) ... старший коэффициент −a
+      lead: inverted ? 1 : -1,
       crit: [
         { ep: epQ(Math.min(u1, u2)), mult: 1, pole: false },
         { ep: epQ(Math.max(u1, u2)), mult: 1, pole: false },
@@ -2604,7 +2708,12 @@ export function t15LogXLinear() {
     const b = pick([3, 2, 5]), n = 3
     const cmp = pick(["≥", "≤", ">", "<"])
     const bn = Math.round(Math.pow(b, n))
-    const text = `${MINUS}2log⦉⦃x¦${b}⦄⦊${bn} ${cmp} ${logS(b, 1, `${bn}x`)} + 1`
+    // Второй показ ФИПИ (4дз): log_{b·x}(1/b²) ⋛ log_b(b⁵x) − 1 — тот же механизм.
+    const style2 = Math.random() < 0.45
+    const inv2 = b === 2 ? "0,25" : b === 5 ? "0,04" : `⦃1¦${b * b}⦄`
+    const text = style2
+      ? `log⦉${b}x⦊${inv2} ${cmp} ${logS(b, 1, `${Math.round(Math.pow(b, 5))}x`)} ${MINUS} 1`
+      : `${MINUS}2log⦉⦃x¦${b}⦄⦊${bn} ${cmp} ${logS(b, 1, `${bn}x`)} + 1`
     // −2n/(y−1) ⋛ y + n + 1 ⟺ −(y²+(n+1)y−y−(n+1)+2n)/(y−1) = −(y+n+1... ) считаем по факторам
     // −2n/(y−1) − (y+n+1) = −[2n + (y+n+1)(y−1)]/(y−1) = −[y² + n·y + 2n − n − 1 + ... ]
     // раскроем: (y+n+1)(y−1) = y² + n·y − n − 1  ⟹ числитель = −(y² + n·y + n − 1)
@@ -2613,15 +2722,23 @@ export function t15LogXLinear() {
     const sq = Math.round(Math.sqrt(disc))
     if (disc <= 0 || sq * sq !== disc) continue
     const y1 = (-Bc - sq) / 2, y2 = (-Bc + sq) / 2
-    const F = (x) => -2 * Math.log(bn) / Math.log(x / b)
-    const G = (x) => Math.log(bn * x) / Math.log(b) + 1
+    // style2: −2/(y+1) ⋛ y+4 — тот же вид, что −2n/(y−1) ⋛ y+n+1 при n=3
+    const F = style2
+      ? (x) => Math.log(1 / (b * b)) / Math.log(b * x)
+      : (x) => -2 * Math.log(bn) / Math.log(x / b)
+    const G = style2
+      ? (x) => Math.log(Math.round(Math.pow(b, 5)) * x) / Math.log(b) - 1
+      : (x) => Math.log(bn * x) / Math.log(b) + 1
     const res = buildLog({
       text, cmp, base: b, leadY: -1, lhs: F, rhs: G,
-      domainOK: (x) => x > 0 && Math.abs(x - b) > 1e-12,
+      domainOK: style2
+        ? (x) => x > 0 && Math.abs(b * x - 1) > 1e-12
+        : (x) => x > 0 && Math.abs(x - b) > 1e-12,
       yCrit: [
-        { y: Math.min(y1, y2), mult: 1, pole: false },
-        { y: Math.max(y1, y2), mult: 1, pole: false },
-        { y: 1, mult: 1, pole: true },
+        // style2 даёт те же корни, сдвинутые на −1 (полюс −1 вместо 1)
+        { y: style2 ? Math.min(y1, y2) - 1 : Math.min(y1, y2), mult: 1, pole: false },
+        { y: style2 ? Math.max(y1, y2) - 1 : Math.max(y1, y2), mult: 1, pole: false },
+        { y: style2 ? -1 : 1, mult: 1, pole: true },
       ],
     })
     if (res) return res
@@ -2751,22 +2868,25 @@ export function t15LogXQuadZero() {
 // [62] log_x(x−a)·log_x(x+a) ⋛ 0  → (x−1)²(x−a−1)(x+a−1)  (PDF логx-рац.3)
 export function t15LogXProdPair() {
   for (let it = 0; it < 400; it++) {
-    const a = randInt(1, 5), shift = randInt(0, 3)
+    const shift = randInt(0, 3)
+    let u1 = randInt(-5, 5), u2 = randInt(-5, 5)       // аргументы x+u1 и x+u2 (в 3дз они разные)
+    if (u1 === u2) continue
+    if (u1 > u2) [u1, u2] = [u2, u1]
     const base = shift === 0 ? "x" : linStr(shift)
-    const r1 = 1 + a - shift, r2 = 1 - a - shift, rb = 1 - shift
+    const r1 = 1 - u1, r2 = 1 - u2, rb = 1 - shift
     if (new Set([r1, r2, rb]).size < 3) continue
     const cmp = pick(["≤", "≥", "<", ">"])
-    const text = `log⦉${base}⦊(${linStr(-a + shift)})·log⦉${base}⦊(${linStr(a + shift)}) ${cmp} 0`
-    const F = (x) => Math.log(x + shift - a) / Math.log(x + shift) * (Math.log(x + shift + a) / Math.log(x + shift))
+    const text = `log⦉${base}⦊(${linStr(u1)})·log⦉${base}⦊(${linStr(u2)}) ${cmp} 0`
+    const F = (x) => Math.log(x + u1) / Math.log(x + shift) * (Math.log(x + u2) / Math.log(x + shift))
     const res = build({
       text, cmp, lhs: F, rhs: () => 0,
-      domainOK: (x) => x + shift - a > 0 && x + shift + a > 0 && x + shift > 0 && Math.abs(x + shift - 1) > 1e-12,
+      domainOK: (x) => x + u1 > 0 && x + u2 > 0 && x + shift > 0 && Math.abs(x + shift - 1) > 1e-12,
       lead: 1,
       crit: [{ ep: epQ(rb), mult: 2, pole: false },
         { ep: epQ(Math.min(r1, r2)), mult: 1, pole: false },
         { ep: epQ(Math.max(r1, r2)), mult: 1, pole: false }],
-      autoDomain: true, extraX: [a - shift, -shift, rb],
-      extraEP: [epQ(a - shift), epQ(-shift), epQ(rb)],
+      autoDomain: true, extraX: [-u1, -u2, -shift, rb],
+      extraEP: [epQ(-u1), epQ(-u2), epQ(-shift), epQ(rb)],
     })
     if (res) return res
   }
@@ -2776,25 +2896,29 @@ export function t15LogXProdPair() {
 // [63] log_{0,25x²}((x+k)/4) ⋛ 1  → (x²−4)(x+k−x²)  (PDF логx-рац.4)
 export function t15LogXQuarterSq() {
   for (let it = 0; it < 400; it++) {
-    const k = randInt(6, 16)
-    const D = 1 + 4 * k
+    const k = randInt(6, 16), h = randInt(0, 3)
+    // основание 0,25(x+h)²; нули приведения: (x+h)²=4 и (x+h)² = x+k
+    const D = (2 * h - 1) * (2 * h - 1) - 4 * (h * h - k)
     const sq = Math.round(Math.sqrt(D))
-    if (sq * sq !== D) continue
-    const u1 = (1 - sq) / 2, u2 = (1 + sq) / 2       // корни x² − x − k
-    if ([u1, u2].some((v) => Math.abs(Math.abs(v) - 2) < 1e-9)) continue
+    if (D < 0 || sq * sq !== D) continue
+    const u1 = (1 - 2 * h - sq) / 2, u2 = (1 - 2 * h + sq) / 2
+    if (!Number.isInteger(u1 * 2) || !Number.isInteger(u2 * 2)) continue
+    if ([u1, u2].some((v) => Math.abs(v + h - 2) < 1e-9 || Math.abs(v + h + 2) < 1e-9)) continue
     const cmp = pick(["≥", "≤", ">", "<"])
-    const text = `log⦉0,25x${SUPD[2]}⦊(${fT2(linStr(k), 4)}) ${cmp} 1`
-    const F = (x) => Math.log((x + k) / 4) / Math.log(0.25 * x * x)
+    const baseT = h === 0 ? `0,25x${SUPD[2]}` : `0,25(${linStr(h)})${SUPD[2]}`
+    const text = `log⦉${baseT}⦊(${fT2(linStr(k), 4)}) ${cmp} 1`
+    const F = (x) => Math.log((x + k) / 4) / Math.log(0.25 * (x + h) * (x + h))
     const res = build({
       text, cmp, lhs: F, rhs: () => 1,
-      domainOK: (x) => (x + k) / 4 > 0 && Math.abs(x) > 1e-12 && Math.abs(0.25 * x * x - 1) > 1e-12,
-      lead: -1,     // (x²−4)·(−(x²−x−k)) ⟹ старший коэффициент −1
+      domainOK: (x) => (x + k) / 4 > 0 && Math.abs(x + h) > 1e-12 && Math.abs(0.25 * (x + h) * (x + h) - 1) > 1e-12,
+      lead: -1,     // ((x+h)²−4)·(−((x+h)²−x−k)) ⟹ старший коэффициент −1
       crit: [
-        { ep: epQ(-2), mult: 1, pole: false }, { ep: epQ(2), mult: 1, pole: false },
-        { ep: epQ(u1), mult: 1, pole: false }, { ep: epQ(u2), mult: 1, pole: false },
+        { ep: epQ(-h - 2), mult: 1, pole: false }, { ep: epQ(-h + 2), mult: 1, pole: false },
+        { ep: epQ(Q(Math.round(u1 * 2), 2)), mult: 1, pole: false },
+        { ep: epQ(Q(Math.round(u2 * 2), 2)), mult: 1, pole: false },
       ],
-      autoDomain: true, extraX: [-k, 0, -2, 2],
-      extraEP: [epQ(-k), epQ(0), epQ(-2), epQ(2)],
+      autoDomain: true, extraX: [-k, -h, -h - 2, -h + 2],
+      extraEP: [epQ(-k), epQ(-h), epQ(-h - 2), epQ(-h + 2)],
     })
     if (res) return res
   }
@@ -2935,14 +3059,15 @@ export function t15LogXTwoArgs() {
     if (Math.abs(Qnum(rA) - u) < 1e-9 || Math.abs(Qnum(rA) + c) < 1e-9) continue
     // f = k x² + ... ; g = f − k(x−u)²  — берём f = k x² + px + q, g = f − k(x−u)²
     const pq = randInt(-6, 6), qq = randInt(-6, 6)
+    const kg = Math.random() < 0.5 ? 0 : randInt(-3, -1)   // g тоже квадратный (f−g = k(x−u)²)
     const gp = pq + 2 * kq * u, gq = qq - kq * u * u
     const cmp = pick(["≥", "≤", ">", "<"])
     const baseT = fT2(polyStr([{ c: a, k: 1 }, { c: -bq, k: 0 }]), linStr(c))
-    const fT_ = polyStr([{ c: kq, k: 2 }, { c: pq, k: 1 }, { c: qq, k: 0 }])
-    const gT = polyStr([{ c: gp, k: 1 }, { c: gq, k: 0 }])
+    const fT_ = polyStr([{ c: kq + kg, k: 2 }, { c: pq, k: 1 }, { c: qq, k: 0 }])
+    const gT = polyStr([{ c: kg, k: 2 }, { c: gp, k: 1 }, { c: gq, k: 0 }])
     const text = `log⦉${baseT}⦊(${fT_}) ${cmp} log⦉${baseT}⦊(${gT})`
     const AA = (x) => (a * x - bq) / (x + c)
-    const FF = (x) => (kq * x + pq) * x + qq, GG = (x) => gp * x + gq
+    const FF = (x) => (kq + kg) * x * x + pq * x + qq, GG = (x) => kg * x * x + gp * x + gq
     const F = (x) => Math.log(FF(x)) / Math.log(AA(x))
     const G = (x) => Math.log(GG(x)) / Math.log(AA(x))
     const res = build({
@@ -3375,19 +3500,23 @@ export function t15MixPowLog() {
 export function t15MixFactorSqrtDen() {
   for (let it = 0; it < 400; it++) {
     const [a, b] = pick([[5, 2], [7, 2], [3, 2], [5, 3]])
+    const u = pick([0, 0, 1])                   // α = b^u ⟹ нуль второго множителя x = j − u
     const i = randInt(0, 2), j = randInt(0, 2)
     const P = Math.round(Math.pow(a, i)), Qq = Math.round(Math.pow(b, j))
-    if (i === j) continue
+    // нули: aˣ = P ⟺ x = i ; α·bˣ = Q ⟺ x = j − u
     const c = randInt(1, 6)
-    if ([i, j].some((z) => z <= -c)) continue
+    if (i === j - u) continue
+    if ([i, j - u].some((z) => z <= -c)) continue
     const cmp = pick(["≥", "≤", ">", "<"])
-    const num = `${pw(a * b, "x", true)} ${MINUS} ${Qq === 1 ? "" : Qq + "·"}${pw(a, "x", true)} ${MINUS} ${P === 1 ? "" : P + "·"}${pw(b, "x", true)} + ${P * Qq}`
+    // (α·bˣ − P)(aˣ − Q) = α(ab)ˣ − αQ·bˣ − P·aˣ + PQ  — вариант ФИПИ (3дз) с α = 2
+    const al = Math.round(Math.pow(b, u))
+    const num = `${al === 1 ? "" : al + "·"}${pw(a * b, "x", true)} ${MINUS} ${Qq === 1 ? "" : Qq + "·"}${pw(a, "x", true)} ${MINUS} ${al * P === 1 ? "" : al * P + "·"}${pw(b, "x", true)} + ${P * Qq}`
     const text = `${fT(num, `√{${linStr(c)}}`)} ${cmp} 0`
-    const F = (x) => (Math.pow(a * b, x) - Qq * Math.pow(a, x) - P * Math.pow(b, x) + P * Qq) / Math.sqrt(x + c)
+    const F = (x) => (al * Math.pow(a * b, x) - Qq * Math.pow(a, x) - al * P * Math.pow(b, x) + P * Qq) / Math.sqrt(x + c)
     const res = build({
       text, cmp, lhs: F, rhs: () => 0, lead: 1,
       domainOK: (x) => x + c > 0,
-      crit: [{ ep: epQ(Math.min(i, j)), mult: 1, pole: false }, { ep: epQ(Math.max(i, j)), mult: 1, pole: false }],
+      crit: [{ ep: epQ(Math.min(i, j - u)), mult: 1, pole: false }, { ep: epQ(Math.max(i, j - u)), mult: 1, pole: false }],
       domain: { a: epQ(-c), b: POS_INF, ai: false, bi: false },
       extraX: [-c],
     })
@@ -3484,7 +3613,10 @@ export function t15MixExpOverLin() {
     if (Math.abs(Qnum(xr) + c) < 1e-9) continue
     const cmp = pick(["≥", "≤", ">", "<"])
     const dec = b === 5 ? "0,2" : b === 2 ? "0,5" : `⦃1¦${b}⦄`
-    const num = `${pw(b, expPoly([{ c: 2, k: 1 }, { c: 1, k: 0 }]), true)} ${MINUS} ${k}·${dec}⁅2x⁆ ${MINUS} ${m}`
+    // ФИПИ 7дз: коэффициент можно спрятать в сдвиг — 96·0,5^{2x} = 768·0,5^{2x+3}
+    const sh = k % (b * b * b) === 0 && Math.random() < 0.5 ? 3 : 0
+    const kShow = sh ? k * Math.pow(b, sh) : k
+    const num = `${pw(b, expPoly([{ c: 2, k: 1 }, { c: 1, k: 0 }]), true)} ${MINUS} ${kShow}·${dec}⁅${sh ? `2x + ${sh}` : "2x"}⁆ ${MINUS} ${m}`
     const text = `${fT(num, linStr(c))} ${cmp} 0`
     const F = (x) => (Math.pow(b, 2 * x + 1) - k * Math.pow(1 / b, 2 * x) - m) / (x + c)
     const res = build({
@@ -3548,6 +3680,7 @@ export function t15MixSqrtFactor() {
 export function t15MixLnPower() {
   for (let it = 0; it < 400; it++) {
     const b = pick([7, 2, 3, 5]), p = randInt(1, 5), q = randInt(1, 6)
+    const useLg = Math.random() < 0.4      // lg вместо ln — как в 9дз ФИПИ
     // x² − px ⋛ q − x ⟺ x² − (p−1)x − q ⋛ 0
     const D = (p - 1) * (p - 1) + 4 * q
     const sq = Math.round(Math.sqrt(D))
@@ -3555,19 +3688,28 @@ export function t15MixLnPower() {
     const r1 = (p - 1 - sq) / 2, r2 = (p - 1 + sq) / 2
     if (!Number.isInteger(r1 * 2) || !Number.isInteger(r2 * 2)) continue
     const cmp = pick(["≤", "<", "≥", ">"])
-    const isLg = b === 10
-    const lnB = isLg ? "lg" : "ln"
-    const text = `${b}⟦sup:${lnB}(${polyStr([{ c: 1, k: 2 }, { c: -p, k: 1 }])})⟧ ${cmp} (${polyStr([{ c: q, k: 0 }, { c: -1, k: 1 }])})⟦sup:${lnB} ${b}⟧`
-    const AR = (x) => x * x - p * x
-    const F = (x) => Math.pow(b, Math.log(AR(x)))
-    const G = (x) => Math.pow(q - x, Math.log(b))
+    const lnB = useLg ? "lg" : "ln"
+    // Второй показ (9дз ФИПИ): b^{lg(x²−c²)} ⋛ (x+c)^{lg b} — правая часть ВОЗРАСТАЕТ,
+    // после сокращения (x+c) остаётся x ⋛ c+1, а ОДЗ оставляет только x > c.
+    const style2 = Math.random() < 0.45
+    const cc2 = randInt(1, 5)
+    const argTxt = style2 ? `x${SUPD[2]} ${MINUS} ${cc2 * cc2}` : polyStr([{ c: 1, k: 2 }, { c: -p, k: 1 }])
+    const rightBase = style2 ? linStr(cc2) : polyStr([{ c: q, k: 0 }, { c: -1, k: 1 }])
+    const text = `${b}⟦sup:${lnB}(${argTxt})⟧ ${cmp} (${rightBase})⟦sup:${lnB} ${b}⟧`
+    const AR = (x) => (style2 ? x * x - cc2 * cc2 : x * x - p * x)
+    const LN = (z) => (useLg ? Math.log10(z) : Math.log(z))
+    const F = (x) => Math.pow(b, LN(AR(x)))
+    const G = (x) => Math.pow(style2 ? x + cc2 : q - x, LN(b))
     const res = build({
       text, cmp, lhs: F, rhs: G, lead: 1,
-      domainOK: (x) => AR(x) > 0 && q - x > 0,
-      crit: [{ ep: epQ(Q(Math.round(r1 * 2), 2)), mult: 1, pole: false },
-        { ep: epQ(Q(Math.round(r2 * 2), 2)), mult: 1, pole: false }],
+      domainOK: (x) => AR(x) > 0 && (style2 ? x + cc2 > 0 : q - x > 0),
+      crit: style2
+        ? [{ ep: epQ(cc2 + 1), mult: 1, pole: false }]
+        : [{ ep: epQ(Q(Math.round(r1 * 2), 2)), mult: 1, pole: false },
+          { ep: epQ(Q(Math.round(r2 * 2), 2)), mult: 1, pole: false }],
       autoDomain: true, requireDomainOnAns: true,
-      extraX: [0, p, q], extraEP: [epQ(0), epQ(p), epQ(q)],
+      extraX: style2 ? [-cc2, cc2] : [0, p, q],
+      extraEP: style2 ? [epQ(-cc2), epQ(cc2)] : [epQ(0), epQ(p), epQ(q)],
     })
     if (res) return res
   }
@@ -3578,20 +3720,22 @@ export function t15MixLnPower() {
 export function t15MixXTimesExp() {
   for (let it = 0; it < 300; it++) {
     const b = pick([3, 2, 5]), j = randInt(1, 3)
-    const t1 = Math.round(Math.pow(b, j)), t2 = Q(1, Math.round(Math.pow(b, j - 1)))
-    const C = Qmul(Q(b), Qadd(Q(t1), t2))
+    const sh1 = randInt(1, 2), sh2 = sh1 + 1           // (b^{x+sh1} + b^{sh2−x})x
+    const t1 = Math.round(Math.pow(b, j)), t2 = Q(Math.round(Math.pow(b, sh2 - sh1)), Math.round(Math.pow(b, j)))
+    const C = Qmul(powQ(b, sh1), Qadd(Q(t1), t2))
     if (C.q !== 1 || C.p > 400) continue
     const cmp = pick(["≥", "≤", ">", "<"])
-    const text = `(${pw(b, expPoly([{ c: 1, k: 1 }, { c: 1, k: 0 }]))} + ${pw(b, expPoly([{ c: 2, k: 0 }, { c: -1, k: 1 }]))})x ${cmp} ${C.p}x`
-    const F = (x) => (Math.pow(b, x + 1) + Math.pow(b, 2 - x)) * x
+    const text = `(${pw(b, expPoly([{ c: 1, k: 1 }, { c: sh1, k: 0 }]))} + ${pw(b, expPoly([{ c: sh2, k: 0 }, { c: -1, k: 1 }]))})x ${cmp} ${C.p}x`
+    const F = (x) => (Math.pow(b, x + sh1) + Math.pow(b, sh2 - x)) * x
     const G = (x) => C.p * x
     const res = build({
       text, cmp, lhs: F, rhs: G, lead: 1,
-      crit: [
-        { ep: epQ(Math.min(0, 1 - j, j)), mult: 1, pole: false },
-        { ep: epQ([0, 1 - j, j].sort((u, v) => u - v)[1]), mult: 1, pole: false },
-        { ep: epQ(Math.max(0, 1 - j, j)), mult: 1, pole: false },
-      ],
+      crit: (() => {
+        const cnt = {}
+        for (const z of [0, j, sh2 - sh1 - j]) cnt[z] = (cnt[z] || 0) + 1
+        return Object.keys(cnt).map((z) => ({ ep: epQ(Number(z)), mult: cnt[z], pole: false }))
+          .sort((z1, z2) => z1.ep.v - z2.ep.v)
+      })(),
     })
     if (res) return res
   }
@@ -3725,12 +3869,27 @@ export function t15MixRatExpLog() {
     const cmp = pick(["≤", "≥", "<", ">"])
     const fT_ = polyStr([{ c: 1, k: 2 }, { c: -(r1 + r2), k: 1 }, { c: r1 * r2, k: 0 }])
     const gT = polyStr([{ c: 1, k: 2 }, { c: -2 * h, k: 1 }, { c: h * h + 1, k: 0 }])
-    const text = `(${pw(c, fT_)} ${MINUS} 1)·log⦉⦃1¦${c}⦄⦊(${pw(c, gT)} ${MINUS} ${k}) ${cmp} 0`
-    const F = (x) => (Math.pow(c, x * x - (r1 + r2) * x + r1 * r2) - 1) *
-      (Math.log(Math.pow(c, x * x - 2 * h * x + h * h + 1) - k) / Math.log(1 / c))
+    // Два показа второго множителя: log_{1/c}(c^{g}−k) и log_{1/c}(квадратный) — оба дают −(x−h)²
+    const plainQuad = Math.random() < 0.5
+    const invC = c === 4 ? "0,25" : c === 2 ? "0,5" : `⦃1¦${c}⦄`
+    const second = plainQuad
+      ? `log⦉${invC}⦊(${polyStr([{ c: 1, k: 2 }, { c: -2 * h, k: 1 }, { c: h * h + 1, k: 0 }])})`
+      : `log⦉⦃1¦${c}⦄⦊(${pw(c, gT)} ${MINUS} ${k})`
+    const firstT = plainQuad
+      ? `(${pw(c, polyStr([{ c: -1, k: 2 }, { c: r1 + r2, k: 1 }, { c: -r1 * r2, k: 0 }]))} ${MINUS} 1)`
+      : `(${pw(c, fT_)} ${MINUS} 1)`
+    const text = `${firstT}·${second} ${cmp} 0`
+    const SEC = (x) => plainQuad
+      ? Math.log(x * x - 2 * h * x + h * h + 1) / Math.log(1 / c)
+      : Math.log(Math.pow(c, x * x - 2 * h * x + h * h + 1) - k) / Math.log(1 / c)
+    const FST = (x) => plainQuad
+      ? Math.pow(c, -(x * x) + (r1 + r2) * x - r1 * r2) - 1
+      : Math.pow(c, x * x - (r1 + r2) * x + r1 * r2) - 1
+    const F = (x) => FST(x) * SEC(x)
     const res = build({
       text, cmp, lhs: F, rhs: () => 0,
-      lead: -1,      // (x−r1)(x−r2)·(−(x−h)²)
+      // (±(x−r1)(x−r2))·(−(x−h)²): при plainQuad первый множитель меняет знак
+      lead: plainQuad ? 1 : -1,
       crit: [
         { ep: epQ(r1), mult: 1, pole: false }, { ep: epQ(r2), mult: 1, pole: false },
         { ep: epQ(h), mult: 2, pole: false },
@@ -3837,6 +3996,105 @@ export function t15LogXNestedExp() {
   return null
 }
 
+
+// [99] A|x−p| + Cx ⋛ D − B|q−x| — кусочно-линейная функция с двумя изломами (PDF мод.2дз)
+export function t15AbsSumCoef() {
+  for (let it = 0; it < 2000; it++) {
+    const A = randInt(1, 4), B = randInt(1, 4), C = randInt(-4, 4)
+    const p = randInt(-6, 5), q = randInt(1, 6)     // q > 0: показ «D − B|q − x|», как в ФИПИ
+    if (p >= q) continue
+    const D = randInt(-20, 20)
+    // F(x) = A|x−p| + B|x−q| + Cx − D; наклоны по кускам
+    const slopes = [-A - B + C, A - B + C, A + B + C]
+    if (slopes.some((z) => z === 0)) continue
+    // На каждом куске F — линейная функция с ЦЕЛЫМИ коэффициентами, корень точен:
+    //   x ≤ p:      (−A−B+C)x + (Ap+Bq−D)
+    //   p ≤ x ≤ q:  (A−B+C)x + (−Ap+Bq−D)
+    //   x ≥ q:      (A+B+C)x + (−Ap−Bq−D)
+    const consts = [A * p + B * q - D, -A * p + B * q - D, -A * p - B * q - D]
+    const pieces = [[-Infinity, p], [p, q], [q, Infinity]]
+    const roots = []
+    for (let i = 0; i < 3; i++) {
+      const r = Q(-consts[i], slopes[i]), rv = Qnum(r)
+      if (rv >= pieces[i][0] - 1e-12 && rv <= pieces[i][1] + 1e-12) {
+        if (!roots.some((z) => Math.abs(Qnum(z) - rv) < 1e-9)) roots.push(r)
+      }
+    }
+    if (roots.length < 1 || roots.length > 2) continue
+    if (roots.some((r) => r.q > 8)) continue
+    // Кратность нуля: если знак F по обе стороны одинаков — касание (кратность 2)
+    const valF = (x) => A * Math.abs(x - p) + B * Math.abs(x - q) + C * x - D
+    const gap = roots.length === 2 ? Math.abs(Qnum(roots[0]) - Qnum(roots[1])) / 3 : 0.4
+    const eps = Math.min(0.4, gap)
+    const mults = roots.map((r) => {
+      const v0 = valF(Qnum(r) - eps), v1 = valF(Qnum(r) + eps)
+      return Math.sign(v0) === Math.sign(v1) ? 2 : 1
+    })
+    const cmp = pick(["≤", "≥", "<", ">"])
+    const cTerm = C === 0 ? "" : ` ${C < 0 ? MINUS : "+"} ${Math.abs(C) === 1 ? "" : Math.abs(C)}x`
+    const text = `${A === 1 ? "" : A}|${linStr(-p)}|${cTerm} ${cmp} ${qAns(Q(D))} ${MINUS} ${B === 1 ? "" : B}|${polyStr([{ c: q, k: 0 }, { c: -1, k: 1 }])}|`
+    const res = build({
+      text, cmp,
+      lhs: (x) => A * Math.abs(x - p) + C * x,
+      rhs: (x) => D - B * Math.abs(q - x),
+      lead: slopes[2] > 0 ? 1 : -1,
+      crit: roots.map((r, i2) => ({ ep: epQ(r), mult: mults[i2], pole: false }))
+        .sort((z1, z2) => z1.ep.v - z2.ep.v),
+    })
+    if (res) return res
+  }
+  return null
+}
+
+
+// [100] Тот же механизм, что [28], но во второй записи ФИПИ (пок.32дз):
+//       (1/β²)^{U}·M^{2x}·c₁·x^{−2} ⋛ ((β³)^{−U/2}·N^{x})/(K·x²),  U = 2(x−α)/(mx+β₀).
+//       После деления: (x−α)(s(mx+β₀) − 1)/(mx+β₀) ⋛ 0, ОДЗ x ≠ 0.
+export function t15ExpQuotFracB() {
+  for (let it = 0; it < 3000; it++) {
+    const beta = pick([3, 2]), s = randInt(2, 3)
+    const al = -randInt(1, 3), m = pick([1, 2]), b0 = randInt(1, 6)
+    const bs = Math.round(Math.pow(beta, s))
+    const cK = Math.round(Math.pow(beta, -s * al))          // c₁·K = β^{−sα}
+    if (cK > 2000) continue
+    const c1 = beta, K = cK / beta
+    if (!Number.isInteger(K) || K < 1) continue
+    // N = M²/β^s должно быть целым и «человеческим»
+    const M = pick([6, 12, 18, 10, 20, 24])
+    if ((M * M) % bs !== 0) continue
+    const N = (M * M) / bs
+    if (N < 2 || N > 200 || N === M) continue
+    const x1 = Q(1 - s * b0, s * m)                          // нуль второго множителя
+    const xp = Q(-b0, m)
+    if ([al, Qnum(x1), Qnum(xp)].some((v) => Math.abs(v) < 1e-9)) continue
+    if (Math.abs(Qnum(x1) - al) < 1e-9 || Math.abs(Qnum(x1) - Qnum(xp)) < 1e-9) continue
+    if (Math.abs(Qnum(xp) - al) < 1e-9 || x1.q > 6) continue
+    const cmp = pick(["≤", "<"])
+    const uTop = expPoly([{ c: 2, k: 1 }, { c: -2 * al, k: 0 }])
+    const uBot = expPoly([{ c: m, k: 1 }, { c: b0, k: 0 }])
+    const halfTop = expPoly([{ c: 1, k: 1 }, { c: -al, k: 0 }])
+    const left = `⟦pf:1:${beta * beta}⟧⟦sup:${fT(uTop, uBot)}⟧·${pw(M, "2x")}·${c1 === 1 ? "" : c1}${pw("x", MINUS + "2")}`
+    const right = fT(`${Math.round(Math.pow(beta, 3))}⁅${MINUS}⦃${halfTop}¦${uBot}⦄⁆·${pw(N, "x", true)}`, `${K === 1 ? "" : K}x${SUPD[2]}`)
+    const text = `${left} ${cmp} ${right}`
+    const U = (x) => 2 * (x - al) / (m * x + b0)
+    const F = (x) => Math.pow(1 / (beta * beta), U(x)) * Math.pow(M, 2 * x) * c1 * Math.pow(x, -2)
+    const G = (x) => Math.pow(Math.pow(beta, 3), -U(x) / 2) * Math.pow(N, x) / (K * x * x)
+    const res = build({
+      text, cmp, lhs: F, rhs: G,
+      domainOK: (x) => Math.abs(x) > 1e-9 && Math.abs(m * x + b0) > 1e-12,
+      lead: 1,
+      crit: [
+        { ep: epQ(al), mult: 1, pole: false }, { ep: epQ(x1), mult: 1, pole: false },
+        { ep: epQ(xp), mult: 1, pole: true },
+      ],
+      puncture: [epQ(0)],
+      extraX: [0],
+    })
+    if (res) return res
+  }
+  return null
+}
+
 // ── реестры ─────────────────────────────────────────────────────────────────
 export const META15 = [
   ["Рациональные неравенства", [
@@ -3903,6 +4161,7 @@ export const META15 = [
   ["Модули", [
     ["abs-two-sides", "|ax+b| ⋛ |cx+d| — возведение в квадрат", t15AbsTwoSides],
     ["abs-sum", "|x−p| + |x+q| ⋛ C", t15AbsSum],
+    ["abs-sum-coef", "A|x−p| + Cx ⋛ D − B|q−x| (коэффициенты при модулях)", t15AbsSumCoef],
     ["abs-quad-sub", "a²x² − k|ax−b| ⋛ 2abx − b² (замена u = |ax−b|)", t15AbsQuadSub],
     ["abs-x-abs-x", "|x+a| − x|x| ⋛ 0", t15AbsXAbsX],
     ["abs-quad-ge", "|ax²+bx+c| ⋛ dx²+ex+f", t15AbsQuadGe],
@@ -3960,6 +4219,7 @@ export const META15 = [
     ["exp-homog-frac", "однородная дробь по двум базам, общий множитель сокращается", t15ExpHomogFrac],
     ["exp-two-sides", "разные базы по обе стороны: a^x и b^{x/k}", t15ExpTwoSides],
     ["exp-quot-frac", "частное степеней с дробным показателем (ОДЗ x≠0)", t15ExpQuotFracExp],
+    ["exp-quot-frac-b", "тот же механизм во второй записи ФИПИ: (1/β²)^U·M^{2x}·c·x^{−2}", t15ExpQuotFracB],
     ["exp-cancel-hole", "сокращение общего множителя + выколотая точка", t15ExpFracCancelHole],
     ["exp-shift-first", "(μc^{x−1})/(μc^{x−1}−1) ⋛ A/(c^x−p) + B/((c^x−p)(c^x−q))", t15ExpFracShiftFirst],
     ["exp-cancel-lin", "1/(b^x−a) + (B^{x+1/2}−b^{x+e}+γ)/(b^x−p) ⋛ b^{x+1}", t15ExpFracCancelLin],
