@@ -3960,11 +3960,11 @@ function coneHLSvg() {
     `</svg>`
 }
 
-// Радиус, высота и образующая — пифагорова тройка (l² = R² + h²).
-// (12,35,37) встречается в банке: диаметр 140, образующая 74 — это ×2.
-const CONE_TRIPLES = [...PYTH, [12, 35, 37]]
+// Расширенный список пифагоровых троек для стереометрии: (12,35,37) встречается
+// в банке и у конуса (диаметр 140, образующая 74 — это ×2), и у пирамиды (SO=35, SD=37).
+const PYTH_WIDE = [...PYTH, [12, 35, 37]]
 function coneTriple() {
-  const [p, q, k] = pick(CONE_TRIPLES), t = randInt(1, 3)
+  const [p, q, k] = pick(PYTH_WIDE), t = randInt(1, 3)
   const [R, h] = Math.random() < 0.5 ? [p * t, q * t] : [q * t, p * t]
   return { R, h, l: k * t }
 }
@@ -5060,6 +5060,182 @@ function t03TriPrismAngle() {
   }
 }
 
+// Правильная 4-угольная пирамида SABCD с центром основания O: пунктиром — рёбра к
+// скрытой вершине D, ребро SD, высота SO и диагонали основания.
+function pyrSqDiagSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 340" width="320" height="340" font-family="Arial, sans-serif">` +
+    `<rect width="320" height="340" fill="#fff"/>` +
+    `<line x1="45" y1="290" x2="120" y2="215" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="106"/>` +
+    `<line x1="120" y1="215" x2="270" y2="223" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="150"/>` +
+    `<line x1="157.5" y1="55" x2="120" y2="215" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="164"/>` +
+    `<line x1="157.5" y1="55" x2="157.5" y2="256.5" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="202"/>` +
+    `<line x1="45" y1="290" x2="270" y2="223" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="235"/>` +
+    `<line x1="195" y1="298" x2="120" y2="215" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="112"/>` +
+    `<line x1="157.5" y1="55" x2="45" y2="290" stroke="#000" stroke-width="1.4"/>` +
+    `<line x1="157.5" y1="55" x2="195" y2="298" stroke="#000" stroke-width="1.4"/>` +
+    `<line x1="45" y1="290" x2="195" y2="298" stroke="#000" stroke-width="2.2"/>` +
+    `<line x1="195" y1="298" x2="270" y2="223" stroke="#000" stroke-width="2.2"/>` +
+    `<line x1="157.5" y1="55" x2="270" y2="223" stroke="#000" stroke-width="2.2"/>` +
+    `<g font-size="17" font-style="italic" fill="#000" stroke="none" text-anchor="middle">` +
+    `<text x="157" y="42">S</text><text x="32" y="310">A</text><text x="196" y="321">B</text><text x="286" y="228">C</text>` +
+    `</g><g font-size="15" font-style="italic" fill="#000" stroke="none" text-anchor="middle">` +
+    `<text x="105" y="208">D</text><text x="152" y="277">O</text>` +
+    `</g></svg>`
+}
+
+// Правильная 4-угольная пирамида без подписей: пунктиром задние рёбра основания,
+// ребро к скрытой вершине и высота.
+function pyrSqPlainSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 340" width="320" height="340" font-family="Arial, sans-serif">` +
+    `<rect width="320" height="340" fill="#fff"/>` +
+    `<line x1="45" y1="290" x2="120" y2="215" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="106"/>` +
+    `<line x1="120" y1="215" x2="270" y2="223" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="150"/>` +
+    `<line x1="157.5" y1="55" x2="120" y2="215" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="164"/>` +
+    `<line x1="157.5" y1="55" x2="157.5" y2="256.5" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="202"/>` +
+    `<line x1="157.5" y1="55" x2="45" y2="290" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="157.5" y1="55" x2="195" y2="298" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="157.5" y1="55" x2="270" y2="223" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="45" y1="290" x2="195" y2="298" stroke="#000" stroke-width="1.6"/>` +
+    `<line x1="195" y1="298" x2="270" y2="223" stroke="#000" stroke-width="1.6"/>` +
+    `</svg>`
+}
+
+// Правильная треугольная пирамида без подписей: штрихом задняя сторона основания
+// и высота.
+function pyrTriSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 340" width="320" height="340" font-family="Arial, sans-serif">` +
+    `<rect width="320" height="340" fill="#fff"/>` +
+    `<line x1="45" y1="215" x2="280" y2="252" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="238"/>` +
+    `<line x1="140" y1="55" x2="140" y2="252" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="197"/>` +
+    `<line x1="140" y1="55" x2="45" y2="215" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="140" y1="55" x2="95" y2="290" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="140" y1="55" x2="280" y2="252" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="45" y1="215" x2="95" y2="290" stroke="#000" stroke-width="1.6"/>` +
+    `<line x1="95" y1="290" x2="280" y2="252" stroke="#000" stroke-width="1.6"/>` +
+    `</svg>`
+}
+
+// Пары (боковое ребро l, высота h), кратные 0,5, с l² − h² = P (P — квадрат радиуса
+// описанной вокруг основания окружности). Разложение 4P = m·n при равной чётности.
+function halfIntLegPairs(P) {
+  const F = Math.round(4 * P), out = []
+  for (let m = 1; m * m < F; m++) {
+    if (F % m) continue
+    const n = F / m
+    if ((n - m) % 2) continue
+    const l = (n + m) / 4, h = (n - m) / 4
+    if (h >= 1 && l <= 60 && Number.isInteger(l * 2) && Number.isInteger(h * 2)) out.push([l, h])
+  }
+  return out
+}
+
+// Правильная 4-угольная пирамида: R² = a²/2 ⟹ h = √(l² − a²/2).
+// Два формата условия из банка: сторона целая (ответ кратен 0,5) или сторона k√2.
+function t03PyrSqHeight() {
+  if (Math.random() < 0.5) {
+    const a = pick([6, 8, 10, 12, 14, 16, 18, 20])
+    const pairs = halfIntLegPairs(a * a / 2)
+    const [l, h] = pick(pairs)
+    return {
+      condition_text: `В правильной четырёхугольной пирамиде боковое ребро равно ${ru(l)}, а сторона основания равна ${a}. Найдите высоту пирамиды.`,
+      image_url: svgUrl(pyrSqPlainSvg()),
+      answer: ru(h),
+    }
+  }
+  const [p, q, r] = pick(PYTH_WIDE), t = randInt(1, 3)
+  const [k, h] = Math.random() < 0.5 ? [p * t, q * t] : [q * t, p * t]
+  return {
+    condition_text: `В правильной четырёхугольной пирамиде боковое ребро равно ${r * t}, а сторона основания равна ${k}${rT(2)}. Найдите высоту пирамиды.`,
+    image_url: svgUrl(pyrSqPlainSvg()),
+    answer: ru(h),
+  }
+}
+
+// По высоте и боковому ребру: R² = l² − h², сторона² = 2R² ⟹ V = ⅔·(l² − h²)·h.
+function t03PyrSqVolHL() {
+  let h, l
+  do { h = randInt(2, 12); l = randInt(h + 1, 15) } while ((2 * (l * l - h * h) * h) % 3 !== 0)
+  return {
+    condition_text: `В правильной четырёхугольной пирамиде высота равна ${h}, боковое ребро равно ${l}. Найдите её объём.`,
+    image_url: svgUrl(pyrSqPlainSvg()),
+    answer: ru(2 * (l * l - h * h) * h / 3),
+  }
+}
+
+// Правильная треугольная пирамида: R² = a²/3 ⟹ h = √(l² − a²/3).
+// Форматы банка: сторона кратна 1,5 (ответ кратен 0,5) или сторона k√3.
+function t03PyrTriHeight() {
+  if (Math.random() < 0.5) {
+    const u = pick([5, 7, 9, 11, 13]), a = clean(1.5 * u)
+    const pairs = halfIntLegPairs(a * a / 3)
+    const [l, h] = pick(pairs)
+    return {
+      condition_text: `В правильной треугольной пирамиде боковое ребро равно ${ru(l)}, а сторона основания равна ${ru(a)}. Найдите высоту пирамиды.`,
+      image_url: svgUrl(pyrTriSvg()),
+      answer: ru(h),
+    }
+  }
+  const [p, q, r] = pick(PYTH_WIDE), t = randInt(1, 3)
+  const [k, h] = Math.random() < 0.5 ? [p * t, q * t] : [q * t, p * t]
+  return {
+    condition_text: `В правильной треугольной пирамиде боковое ребро равно ${r * t}, а сторона основания равна ${k}${rT(3)}. Найдите высоту пирамиды.`,
+    image_url: svgUrl(pyrTriSvg()),
+    answer: ru(h),
+  }
+}
+
+// Та же пирамида без центра O и диагоналей: к скрытой вершине D — штрих (AD, DC, SD).
+function pyrSqSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 340" width="320" height="340" font-family="Arial, sans-serif">` +
+    `<rect width="320" height="340" fill="#fff"/>` +
+    `<line x1="45" y1="290" x2="120" y2="215" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="106"/>` +
+    `<line x1="120" y1="215" x2="270" y2="223" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="150"/>` +
+    `<line x1="157.5" y1="55" x2="120" y2="215" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="164"/>` +
+    `<line x1="157.5" y1="55" x2="45" y2="290" stroke="#000" stroke-width="1.4"/>` +
+    `<line x1="157.5" y1="55" x2="195" y2="298" stroke="#000" stroke-width="1.4"/>` +
+    `<line x1="45" y1="290" x2="195" y2="298" stroke="#000" stroke-width="2.2"/>` +
+    `<line x1="195" y1="298" x2="270" y2="223" stroke="#000" stroke-width="2.2"/>` +
+    `<line x1="157.5" y1="55" x2="270" y2="223" stroke="#000" stroke-width="2.2"/>` +
+    `<g font-size="17" font-style="italic" fill="#000" stroke="none" text-anchor="middle">` +
+    `<text x="157" y="42">S</text><text x="32" y="310">A</text><text x="196" y="321">B</text>` +
+    `<text x="286" y="228">C</text><text x="137" y="206">D</text>` +
+    `</g></svg>`
+}
+
+// Сторона основания k√2 ⟹ полудиагональ k; (k, h, SC) — пифагорова тройка,
+// V = ⅓·(k√2)²·h = ⅔·k²·h (у любой тройки один катет кратен 3 ⟹ ответ целый).
+function t03PyrSqVol() {
+  const [p, q, r] = pick(PYTH_WIDE), t = randInt(1, 2)
+  const [k, h] = Math.random() < 0.5 ? [p * t, q * t] : [q * t, p * t]
+  return {
+    condition_text: `В правильной четырёхугольной пирамиде SABCD с основанием ABCD боковое ребро SC равно ${r * t}, сторона основания равна ${k}${rT(2)}. Найдите объём пирамиды.`,
+    image_url: svgUrl(pyrSqSvg()),
+    answer: ru(2 * k * k * h / 3),
+  }
+}
+
+// SO, OD и боковое ребро SD — пифагорова тройка; диагональ основания BD = 2·OD.
+function t03PyrSqDiagBD() {
+  const [p, q, k] = pick(PYTH_WIDE), t = randInt(1, 3)
+  const [so, od] = Math.random() < 0.5 ? [p * t, q * t] : [q * t, p * t]
+  return {
+    condition_text: `В правильной четырёхугольной пирамиде SABCD с вершиной S точка O – центр основания, SO = ${so}, SD = ${k * t}. Найдите длину отрезка BD.`,
+    image_url: svgUrl(pyrSqDiagSvg()),
+    answer: ru(2 * od),
+  }
+}
+
+// Обратная: по боковому ребру и диагонали основания — высота SO.
+function t03PyrSqDiagSO() {
+  const [p, q, k] = pick(PYTH_WIDE), t = randInt(1, 3)
+  const [so, od] = Math.random() < 0.5 ? [p * t, q * t] : [q * t, p * t]
+  return {
+    condition_text: `В правильной четырёхугольной пирамиде SABCD с вершиной S точка O – центр основания, SD = ${k * t}, AC = ${2 * od}. Найдите длину отрезка SO.`,
+    image_url: svgUrl(pyrSqDiagSvg()),
+    answer: ru(so),
+  }
+}
+
 // Правильная 4-угольная пирамида SABCD с точкой E — серединой бокового ребра SB.
 // Жирным выделен тетраэдр EABC, рёбра к скрытой вершине C — жирным штрихом.
 function pyrMidEdgeSvg() {
@@ -5263,7 +5439,7 @@ export const GENERATORS_EGE_PROF = {
     t01ParMidpoint, t01ParAngle, t01ParHeights,
     t01RhombusSideDiag, t01RhombusAngle, t01TrapMidDiag],
   2: [t02DotCoord, t02DotLenAngle, t02LenCombo, t02DotOfCombos, t02GraphLenCombo],
-  3: [t03BoxTetra, t03BoxPyramid, t03BoxPyramidC1, t03BoxPyramidA1, t03BoxPrism, t03BoxTriPrism, t03BoxPrismADA1, t03PrismRightVol, t03PrismRightEdge, t03SqPrismAngle, t03TriPrismAngle, t03HexPrismAngle, t03HexPrismTri, t03HexPrismTrap, t03CylLatHeight, t03CylLatDiameter, t03MugRatio, t03TwoCylindersTaller, t03LiquidWider, t03LiquidNarrower, t03Submerge, t03SubmergeAbs, t03ConeHeight, t03ConeDiameter, t03ConeAxialFromBase, t03ConeAxialFromSlant, t03ConeLatScale, t03ConeLatScaleDown, t03ConeParSect, t03ConeFullSurfSect, t03ConeVessel, t03PrismTetraTop, t03PyrMidEdge, t03PrismTetraC1, t03PrismTetraB1, t03PrismPenta, t03PrismMidline, t03PrismCut, t03PrismCutRegular, t03PrismLateral, t03PrismLateralInv, t03CylConeLateral, t03CylConeLatInverse, t03CylConeVolume, t03CylConeVolInverse, t03ConeInSphere, t03ConeInSphereInv, t03ConeSphereRadius, t03ConeSphereSlant, t03SphereInCyl, t03SphereInCylVol, t03TwoCylinders, t03CylInBox, t03CubeCut, t03CubeCutInverse, t03CubeDiagonal, t03CubeAngle, t03BoxDiagonal, t03BoxLineSin, t03BoxSection, t03BoxDiagSection, t03StepSolid, t03LSolid, t03TSolidSurface, t03SphereSection, t03ConeScale, t03ConeHeightScale],
+  3: [t03BoxTetra, t03BoxPyramid, t03BoxPyramidC1, t03BoxPyramidA1, t03BoxPrism, t03BoxTriPrism, t03BoxPrismADA1, t03PrismRightVol, t03PrismRightEdge, t03SqPrismAngle, t03TriPrismAngle, t03HexPrismAngle, t03HexPrismTri, t03HexPrismTrap, t03CylLatHeight, t03CylLatDiameter, t03MugRatio, t03TwoCylindersTaller, t03LiquidWider, t03LiquidNarrower, t03Submerge, t03SubmergeAbs, t03ConeHeight, t03ConeDiameter, t03ConeAxialFromBase, t03ConeAxialFromSlant, t03ConeLatScale, t03ConeLatScaleDown, t03ConeParSect, t03ConeFullSurfSect, t03ConeVessel, t03PrismTetraTop, t03PyrMidEdge, t03PyrSqDiagBD, t03PyrSqDiagSO, t03PyrSqVol, t03PyrSqHeight, t03PyrSqVolHL, t03PyrTriHeight, t03PrismTetraC1, t03PrismTetraB1, t03PrismPenta, t03PrismMidline, t03PrismCut, t03PrismCutRegular, t03PrismLateral, t03PrismLateralInv, t03CylConeLateral, t03CylConeLatInverse, t03CylConeVolume, t03CylConeVolInverse, t03ConeInSphere, t03ConeInSphereInv, t03ConeSphereRadius, t03ConeSphereSlant, t03SphereInCyl, t03SphereInCylVol, t03TwoCylinders, t03CylInBox, t03CubeCut, t03CubeCutInverse, t03CubeDiagonal, t03CubeAngle, t03BoxDiagonal, t03BoxLineSin, t03BoxSection, t03BoxDiagSection, t03StepSolid, t03LSolid, t03TSolidSurface, t03SphereSection, t03ConeScale, t03ConeHeightScale],
   4: [t04ShotPut, t04Gymnastics, t04Diving, t04Tickets, t04Markers, t04Defect, t04Lottery, t04CoinTwice, t04Rooms, t04FootballCoin],
   5: [t05Lamps, t05Between, t05Shooter4, t05Coffee, t05Battery, t05ShooterN, t05DiceCond, t05TwoThemes, t05Exact],
   6: [t06ExpReduce, t06ExpBothSides, t06LogEqLog, t06LogEqNum, t06Rational, t06Cube, t06Sqrt, t06CubeRoot],
@@ -5377,6 +5553,12 @@ export const GEN_META_EGE_PROF = {
     ]],
     ["Пирамида", [
       ["pyr-mid-edge", "Середина бокового ребра: V треугольной пирамиды (÷4)", t03PyrMidEdge],
+      ["pyr-sq-diag-bd", "SO + SD → диагональ основания BD", t03PyrSqDiagBD],
+      ["pyr-sq-diag-so", "SD + AC → высота SO", t03PyrSqDiagSO],
+      ["pyr-sq-vol", "Боковое ребро + сторона k√2 → объём", t03PyrSqVol],
+      ["pyr-sq-height", "4-угольная: ребро + сторона → высота", t03PyrSqHeight],
+      ["pyr-sq-vol-hl", "4-угольная: высота + ребро → объём", t03PyrSqVolHL],
+      ["pyr-tri-height", "Треугольная: ребро + сторона → высота", t03PyrTriHeight],
     ]],
     ["Прямая призма: прямоугольный треугольник", [
       ["prism-rt-vol", "Катеты + боковое ребро → объём", t03PrismRightVol],
