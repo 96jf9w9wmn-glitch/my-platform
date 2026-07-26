@@ -3128,6 +3128,160 @@ export const t16FundYearSquare = () => t16FundYear("sq")
 export const t16FundYearLinear = () => t16FundYear("lin")
 
 // ═══════════════════════════════════════════════════════════════════════════
+//  РАЗДЕЛ 9. ИНДЕКСАЦИЯ, ИНФЛЯЦИЯ, СМЕСИ В ЭКОНОМИЧЕСКОЙ ОБЁРТКЕ
+// ═══════════════════════════════════════════════════════════════════════════
+//  Требуется заданием сверх эталона: в двух docx этих типажей нет.
+
+// ── 1. Индексация несколько лет подряд: суммарный рост в процентах ─────────
+// Рост за n лет = 100·[(1+p₁)…(1+pₙ) − 1]; берём только комбинации с точным ответом.
+export function t16IndexationTotal() {
+  const cand = []
+  const RS = [5, 8, 10, 12, 15, 20, 25, 4, 6, 30]
+  for (const a of RS) for (const b of RS) for (const c of RS) {
+    const g = (1 + a / 100) * (1 + b / 100) * (1 + c / 100)
+    const total = (g - 1) * 100
+    if (Math.abs(total * 100 - Math.round(total * 100)) > 1e-9) continue
+    const t = Math.round(total * 100) / 100
+    if (t < 15 || t > 120) continue
+    if (!noClash(t, [a, b, c])) continue
+    cand.push({ a, b, c, t })
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const THINGS = [
+    ["Тариф на электроэнергию", "тариф"],
+    ["Стоимость проезда в метро", "стоимость проезда"],
+    ["Цена абонемента в бассейн", "цена абонемента"],
+    ["Стоимость аренды помещения", "стоимость аренды"],
+  ]
+  const [subj, short] = pick(THINGS)
+  return item({
+    text: `${subj} повышался три года подряд: в первый год — на ${pct(c.a)}, во второй — ` +
+      `на ${pct(c.b)}, в третий — на ${pct(c.c)}. Каждое повышение считалось от значения, ` +
+      `установленного в предыдущем году. На сколько процентов вырос ${short} за эти три года?`,
+    answer: `${pct(c.t)}`,
+    answerNum: c.t,
+    model: { type: "optimize", rates: [c.a, c.b, c.c] },
+    sim: () => ({ steps: [], value: c.t }),
+    mustMention: [c.a, c.b, c.c],
+    extra: [],
+    forbid: [c.t],
+    checks: [
+      () => {
+        // независимый пересчёт «год за годом» от условной базы
+        let v = 1000
+        for (const r of [c.a, c.b, c.c]) v = v * (1 + r / 100)
+        return Math.abs((v / 1000 - 1) * 100 - c.t) < 1e-9 ? null : "пошаговый рост ≠ ответу"
+      },
+    ],
+  })
+}
+
+// ── 2. Зарплата против инфляции: реальная покупательная способность ────────
+// Зарплата ×(1+p)ⁿ, цены ×(1+q)ⁿ ⇒ покупательная способность ×((1+p)/(1+q))ⁿ.
+// Строим от ответа: фиксируем «чистый» множитель m = (1+p)/(1+q).
+export function t16RealIncome() {
+  const cand = []
+  for (const q of [4, 5, 8, 10, 12, 20, 25]) {
+    for (const m of [1.05, 1.1, 1.2, 1.25, 0.9, 0.8, 0.95, 0.75]) {
+      const p = ((1 + q / 100) * m - 1) * 100
+      if (Math.abs(p * 100 - Math.round(p * 100)) > 1e-9) continue
+      const pr = Math.round(p * 100) / 100
+      if (pr < 1 || pr > 45) continue
+      for (const n of [2, 3]) {
+        const k = Math.pow(m, n)
+        const change = (k - 1) * 100
+        if (Math.abs(change * 100 - Math.round(change * 100)) > 1e-9) continue
+        const ch = Math.round(change * 100) / 100
+        if (Math.abs(ch) < 3 || Math.abs(ch) > 90) continue
+        if (!noClash(Math.abs(ch), [q, pr, n])) continue
+        cand.push({ q, p: pr, n, ch })
+      }
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const grow = c.ch > 0
+  return item({
+    text: `Зарплата сотрудника фирмы ежегодно индексируется на ${pct(c.p)}, а цены на товары ` +
+      `и услуги за тот же год вырастают на ${pct(c.q)}. И индексация, и рост цен считаются ` +
+      `от значений предыдущего года. На сколько процентов ${grow ? "вырастет" : "снизится"} ` +
+      `покупательная способность зарплаты за ${years(c.n)}?`,
+    answer: `${pct(Math.abs(c.ch))}`,
+    answerNum: Math.abs(c.ch),
+    model: { type: "optimize", p: c.p, q: c.q, n: c.n },
+    sim: () => ({ steps: [], value: c.ch }),
+    mustMention: [c.p, c.q, c.n],
+    extra: [],
+    forbid: [Math.abs(c.ch)],
+    checks: [
+      () => {
+        // пошаговый пересчёт: зарплата и цены год за годом, затем отношение
+        let sal = 100_000, price = 1000
+        for (let i = 0; i < c.n; i++) { sal *= 1 + c.p / 100; price *= 1 + c.q / 100 }
+        const real = (sal / price) / (100_000 / 1000)
+        return Math.abs((real - 1) * 100 - c.ch) < 1e-9 ? null : "пошаговый расчёт ≠ ответу"
+      },
+      () => ((c.ch > 0) === (c.p > c.q) ? null : "направление изменения не совпадает со ставками"),
+    ],
+  })
+}
+
+// ── 3. Смесь двух сортов сырья: наименьшая стоимость при ограничении ───────
+// Сорт А дешевле (P₁ < P₂), но грязнее (x > y). Доля А максимальна при
+// x·u + y·(M − u) = z·M ⇒ u* = M(z − y)/(x − y); дальше цена только растёт.
+export function t16AlloyMinCost() {
+  const cand = []
+  for (const x of [12, 15, 16, 18, 20, 24, 25]) {
+    for (const y of [2, 3, 4, 5, 6, 8]) {
+      for (let z = y + 1; z < x; z++) {
+        for (const M of [100, 120, 150, 200, 250, 300, 400]) {
+          const u = M * (z - y) / (x - y)
+          if (!Number.isInteger(u) || u <= 0 || u >= M) continue
+          for (const P2 of [400, 500, 600, 800, 1000]) {
+            for (const P1 of [150, 200, 250, 300, 350]) {
+              if (P1 >= P2) continue
+              const cost = P1 * u + P2 * (M - u)
+              if (cost % 100 !== 0 || cost < 30_000 || cost > 400_000) continue
+              if (!noClash(cost, [x, y, z, M, P1, P2])) continue
+              cand.push({ x, y, z, M, P1, P2, u, cost })
+            }
+          }
+        }
+      }
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const impur = (u) => c.x * u + c.y * (c.M - u)
+  const costOf = (u) => c.P1 * u + c.P2 * (c.M - u)
+  return item({
+    text: `Фирма закупает сырьё двух сортов. Сорт А стоит ${rub(c.P1)} за килограмм и содержит ` +
+      `${pct(c.x)} примесей, сорт Б стоит ${rub(c.P2)} за килограмм и содержит ${pct(c.y)} примесей. ` +
+      `Для производства нужно получить ${c.M} кг смеси, в которой примесей не более ${pct(c.z)}. ` +
+      `Какую наименьшую сумму придётся потратить на закупку сырья?`,
+    answer: `${money(c.cost)} рублей`,
+    answerNum: c.cost,
+    model: { type: "optimize", x: c.x, y: c.y, z: c.z, M: c.M, P1: c.P1, P2: c.P2 },
+    sim: () => ({ steps: [], value: c.cost }),
+    mustMention: [c.P1, c.x, c.P2, c.y, c.M, c.z],
+    extra: [],
+    forbid: [c.cost],
+    checks: [
+      () => (impur(c.u) <= c.z * c.M + 1e-9 ? null : "смесь не проходит по примесям"),
+      // перебор ВСЕЙ сетки допустимых масс сорта А: дешевле нигде не получается
+      () => {
+        for (let u = 0; u <= c.M; u++) {
+          if (impur(u) > c.z * c.M + 1e-9) continue
+          if (costOf(u) < c.cost - 1e-6) return `дешевле при ${u} кг сорта А`
+        }
+        return Math.abs(costOf(c.u) - c.cost) < 1e-6 ? null : "минимум ≠ ответу"
+      },
+    ],
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 //  РЕЕСТР
 // ═══════════════════════════════════════════════════════════════════════════
 export const GEN16 = [
@@ -3148,6 +3302,7 @@ export const GEN16 = [
   t16OptTwoPlantsMinCost, t16OptTwoRatesMinCost, t16OptTwoPlantsMaxOutput, t16OptTwoRatesMaxOutput,
   t16OptFactoryMinPrice, t16OptFactoryPaybackYears, t16OptPriceRaise, t16OptTaxMax,
   t16OptRegionsGrowth, t16FundRateSquare, t16FundRateLinear, t16FundYearSquare, t16FundYearLinear,
+  t16IndexationTotal, t16RealIncome, t16AlloyMinCost,
 ]
 
 export const META16 = [
@@ -3224,5 +3379,10 @@ export const META16 = [
     ["opt-fund-rate-lin", "Фонд, бумаги 10t: при каких r продавать в конце t₀", t16FundRateLinear],
     ["opt-fund-year-sq", "Фонд, бумаги t², ставка дана → год продажи", t16FundYearSquare],
     ["opt-fund-year-lin", "Фонд, бумаги 10t, ставка дана → год продажи", t16FundYearLinear],
+  ]],
+  ["Индексация, инфляция, смеси", [
+    ["idx-total", "Индексация три года подряд: суммарный рост в %", t16IndexationTotal],
+    ["idx-real", "Зарплата против инфляции: покупательная способность", t16RealIncome],
+    ["mix-cost", "Смесь двух сортов сырья: наименьшая стоимость", t16AlloyMinCost],
   ]],
 ]
