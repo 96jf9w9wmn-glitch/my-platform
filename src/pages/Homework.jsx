@@ -70,6 +70,14 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
   const [genError, setGenError] = useState("")
   const [preview, setPreview] = useState(null) // {title, description, tasks:[{question,answer,options}]}
 
+  // Сырой код ошибки («DeepSeek: 400») репетитору ничего не говорит — показываем
+  // человеческий текст, а исходный оставляем в title для диагностики.
+  function humanGenError(err) {
+    if (/^DeepSeek: \d+/.test(err)) return "Сервис генерации не ответил. Попробуй ещё раз."
+    if (/Некорректный ответ модели/.test(err)) return "Модель ответила невнятно. Попробуй ещё раз."
+    return err
+  }
+
   async function handleGenerate() {
     if (!genTopic.trim()) {
       setGenError("Введи тему")
@@ -353,7 +361,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
                   </div>
                 </button>
 
-                {genError && <div className="text-xs text-red-500">{genError}</div>}
+                {genError && <div className="text-xs text-red-500" title={genError}>{humanGenError(genError)}</div>}
 
                 <button
                   type="button"
@@ -361,7 +369,9 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
                   disabled={generating}
                   className="bg-blue-600 text-white rounded-lg py-2 text-sm hover:bg-blue-700 disabled:opacity-50 active:scale-[0.99] transition-transform flex items-center justify-center gap-1.5"
                 >
-                  {generating ? "Генерирую…" : <><Icon name="sparkles" size={14} />Сгенерировать</>}
+                  {generating
+                    ? <><span className="loader-ring-sm" />Генерирую — это до минуты</>
+                    : <><Icon name="sparkles" size={14} />Сгенерировать</>}
                 </button>
 
                 {preview && (
