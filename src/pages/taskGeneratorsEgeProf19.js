@@ -195,6 +195,8 @@ export function verify19(o) {
       if (e) return { ok: false, err: `пункт ${part}: пример на ${cl.value} не проходит check — ${e}` }
       const step = cl.mode === "max" ? 1 : -1
       if (S[part + "_next"] !== false) return { ok: false, err: `пункт ${part}: перебор не подтвердил, что ${cl.value + step} невозможно` }
+    } else if (cl.type === "choice") {
+      if (cl.value !== S[part]) return { ok: false, err: `пункт ${part}: заявлено «${cl.value}», перебор даёт «${S[part]}»` }
     } else if (cl.type === "count") {
       if (cl.value !== S[part]) return { ok: false, err: `пункт ${part}: заявлено ${cl.value}, перебор даёт ${S[part]}` }
     } else if (cl.type === "value") {
@@ -709,6 +711,10 @@ export function t19BoardDistinctSum() {
 
 // ── реестр ─────────────────────────────────────────────────────────────────
 export const META19 = [
+  ["Средние арифметические набора", [
+    ["means-pos-neg", "Целые числа: средние всех / положительных / отрицательных", t19MeansPosNeg],
+    ["means-12-overlap", "12 чисел: средние семи наименьших и семи наибольших", t19Means12Overlap],
+  ]],
   ["Операции над записью числа", [
     ["swap-digits-max", "Перестановка цифр двузначных → наибольшая новая сумма", t19SwapDigitsMax],
     ["swap-digits-min", "Перестановка цифр двузначных → наименьшая новая сумма", t19SwapDigitsMin],
@@ -3025,3 +3031,186 @@ function swapDigitsFamily(mode) {
 }
 export function t19SwapDigitsMax() { return swapDigitsFamily("max") }
 export function t19SwapDigitsMin() { return swapDigitsFamily("min") }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 10 (частично). Средние арифметические набора (#90, #59)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// #90. Целые числа на доске: среднее всех равно m, среднее положительных 2t,
+// среднее отрицательных −t. Тогда m·n = 2t·p − t·q = t(2p − q), поэтому t делит m·n;
+// при взаимно простых t и m количество чисел n обязано делиться на t — это и определяет n.
+export function t19MeansPosNeg() {
+  const t = pick([4, 5, 6, 7, 8, 9])
+  const m = pick([3, 4, 5, 6, 7, 8, 9].filter((x) => gcdI(x, t) === 1 && t < 2 * x))
+  if (!m) return null
+  const n = t * randInt(4, 7)
+  const L = n - t, R = n + t                     // «более L, но менее R» ⟹ n единственное кратное t
+  const D = m * n / t                            // 2p − q = D
+  const pMax = Math.floor((n + D) / 3)
+  const pMin = Math.ceil(D / 2)
+  if (pMax < pMin || D !== Math.round(D)) return null
+  if (pMax >= D) return null                     // иначе «каких больше» не определяется однозначно
+  const q = 2 * pMax - D, z = n - pMax - q
+  if (q < 1 || z < 0) return null
+  const pos = spread(2 * t * pMax, pMax)
+  const neg = spread(t * q, q)
+  if (!pos || !neg || pos.some((v) => v < 1) || neg.some((v) => v < 1)) return null
+  const exC = [...pos, ...neg.map((v) => -v), ...Array(z).fill(0)]
+
+  const params = { t, m, n, L, R, pMax }
+  const check = (arr, part) => {
+    if (!Array.isArray(arr)) return "не набор"
+    if (arr.length <= L || arr.length >= R) return `${arr.length} чисел — не строго между ${L} и ${R}`
+    for (const v of arr) if (!Number.isInteger(v)) return `${v} не целое`
+    if (sum(arr) !== m * arr.length) return `среднее ${sum(arr) / arr.length}, а не ${m}`
+    const P = arr.filter((v) => v > 0), Ng = arr.filter((v) => v < 0)
+    if (!P.length || !Ng.length) return "нет положительных или отрицательных чисел"
+    if (sum(P) !== 2 * t * P.length) return `среднее положительных ${sum(P) / P.length}, а не ${2 * t}`
+    if (sum(Ng) !== -t * Ng.length) return `среднее отрицательных ${sum(Ng) / Ng.length}, а не −${t}`
+    if (part === "c" && P.length !== pMax) return `положительных ${P.length}, а не ${pMax}`
+    return null
+  }
+  const solve = (P) => {
+    // Пространство перебора: все тройки (количество положительных p, отрицательных q,
+    // нулей z) при общем количестве чисел строго между L и R. Набор с такими
+    // количествами существует ⟺ суммы 2t·p и t·q достижимы целыми числами (всегда).
+    const ns = new Set(); let best = 0, anyMorePos = true, anyMoreNeg = false
+    for (let N = P.L + 1; N < P.R; N++) {
+      for (let p = 1; p < N; p++) for (let q = 1; p + q <= N; q++) {
+        const z = N - p - q
+        if (2 * P.t * p - P.t * q !== P.m * N) continue
+        ns.add(N)
+        if (p > best) best = p
+        if (q >= p) { anyMoreNeg = true; anyMorePos = false }
+        void z
+      }
+    }
+    const arr = [...ns]
+    return { a: arr.length === 1 ? arr[0] : -1, b: anyMoreNeg && !anyMorePos ? "отрицательных" : "положительных", c: best, c_next: false }
+  }
+
+  return item({
+    preamble: `На доске написано более ${L}, но менее ${R} целых чисел. Среднее арифметическое этих чисел равно ${m}, среднее арифметическое всех положительных из них равно ${2 * t}, а среднее арифметическое всех отрицательных из них равно −${t}.`,
+    qa: `Сколько чисел написано на доске?`,
+    qb: `Каких чисел написано больше: положительных или отрицательных?`,
+    qc: `Какое наибольшее количество положительных чисел может быть среди них?`,
+    ansA: `${n}: если положительных p, отрицательных q, то сумма всех чисел равна ${2 * t}p − ${t}q = ${t}(2p − q) и одновременно ${m}n, поэтому ${t}·(2p − q) = ${m}n; числа ${t} и ${m} взаимно просты, значит n делится на ${t}, а между ${L} и ${R} такое число одно — это ${n}`,
+    ansB: `положительных: из ${t}(2p − q) = ${m}·${n} следует 2p − q = ${D}, то есть q = 2p − ${D}; так как нулей не может быть меньше нуля, p ≤ ${pMax}, и тогда p − q = ${D} − p ≥ ${D - pMax} > 0`,
+    ansC: `${pMax}; например ${pMax} ${plural(pMax, "положительное число", "положительных числа", "положительных чисел")} со средним ${2 * t}, ${q} ${plural(q, "отрицательное", "отрицательных", "отрицательных")} со средним −${t}${z ? ` и ${z} ${plural(z, "нуль", "нуля", "нулей")}` : ""}; больше нельзя — количество нулей ${n} − p − q = ${n} + ${D} − 3p неотрицательно, откуда p ≤ ${pMax}`,
+    solution: `Пусть на доске p положительных, q отрицательных чисел и z нулей, всего n = p + q + z.\nСумма всех чисел равна ${2 * t}p − ${t}q = ${t}(2p − q), и она же равна ${m}n. Значит ${t}(2p − q) = ${m}n; так как НОД(${t}, ${m}) = 1, число n делится на ${t}. Между ${L} и ${R} есть ровно одно такое число — ${n}.\nПодставляя n = ${n}, получаем 2p − q = ${D}, то есть q = 2p − ${D}, а z = ${n} − p − q = ${n} + ${D} − 3p ≥ 0, откуда p ≤ ${pMax}.\nПри этом p − q = ${D} − p ≥ ${D - pMax} > 0, поэтому положительных всегда больше. Наибольшее p равно ${pMax}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "count", value: n },
+        b: { type: "choice", value: "положительных" },
+        c: { type: "extremum", mode: "max", value: pMax, example: exC },
+      },
+      mustMention: [L, R, m, 2 * t, t],
+      extra: [],
+      phrases: ["целых чисел", "Среднее арифметическое этих чисел равно", "среднее арифметическое всех отрицательных"],
+    },
+  })
+}
+
+// #59. 12 различных натуральных: среднее семи наименьших равно m₁, семи наибольших — m₂.
+// Семёрки перекрываются по двум числам a₆ и a₇, поэтому сумма всех равна
+// 7m₁ + 7m₂ − (a₆ + a₇), и всё сводится к оценке величины S₆₇ = a₆ + a₇:
+//   • a₁ + … + a₅ ≥ 15 ⟹ S₆₇ ≤ 7m₁ − 15;
+//   • a₈ + … + a₁₂ ≥ 5a₇ + 15 и a₇ ≥ (S₆₇ + 1)/2 ⟹ S₆₇ ≤ (2·7m₂ − 35)/7.
+export function t19Means12Overlap() {
+  const m1 = randInt(6, 12), m2 = m1 + randInt(4, 10)
+  const S1 = 7 * m1, S2 = 7 * m2
+  const cap = Math.min(S1 - 15, Math.floor((2 * S2 - 35) / 7))
+  if (cap < 12) return null
+  // конструкция примера на S₆₇ = cap
+  const a7 = Math.ceil((cap + 1) / 2), a6 = cap - a7
+  if (a6 < 6 || a6 >= a7) return null
+  // пять различных натуральных с суммой S1 − cap и максимумом меньше a₆:
+  // начинаем с 1, 2, 3, 4, 5 и поднимаем элементы с конца, соблюдая различие
+  const lowInc = [1, 2, 3, 4, 5]
+  let extra = S1 - cap - 15
+  if (extra < 0) return null
+  for (let i = 4; i >= 0 && extra > 0; i--) {
+    const lim = (i === 4 ? a6 - 1 : lowInc[i + 1] - 1)
+    const add = Math.min(extra, lim - lowInc[i])
+    lowInc[i] += add; extra -= add
+  }
+  if (extra > 0 || lowInc[4] >= a6) return null
+  for (let i = 1; i < 5; i++) if (lowInc[i] <= lowInc[i - 1]) return null
+  const highBase = S2 - cap - (5 * a7 + 15)
+  if (highBase < 0) return null
+  const high = [a7 + 1, a7 + 2, a7 + 3, a7 + 4, a7 + 5 + highBase]
+  const exC = [...lowInc, a6, a7, ...high]
+  const meanNum = S1 + S2 - cap
+  // а) — «нет»: семь различных чисел со средним m₂ дают наибольшее не меньше m₂ + 3
+  const bigNo = m2 + randInt(0, 2)
+  // б) — «нет»: среднее всех, требующее S₆₇ > cap
+  let meanNo = Math.floor((S1 + S2 - cap) / 12)
+  if (S1 + S2 - 12 * meanNo <= cap) meanNo -= 1
+  const S67no = S1 + S2 - 12 * meanNo
+  if (S67no <= cap || meanNo < 1) return null
+
+  const params = { m1, m2, S1, S2, cap, bigNo, meanNo }
+  const check = (arr, part) => {
+    if (!Array.isArray(arr) || arr.length !== 12) return `${arr?.length} чисел вместо 12`
+    if (uniq(arr).length !== 12) return "числа не различны"
+    for (const v of arr) if (!Number.isInteger(v) || v < 1) return `${v} не натуральное`
+    const s = [...arr].sort((x, y) => x - y)
+    if (sum(s.slice(0, 7)) !== S1) return `среднее семи наименьших ${sum(s.slice(0, 7)) / 7}, а не ${m1}`
+    if (sum(s.slice(5)) !== S2) return `среднее семи наибольших ${sum(s.slice(5)) / 7}, а не ${m2}`
+    if (part === "a" && s[11] !== bigNo) return `наибольшее ${s[11]}, а не ${bigNo}`
+    if (part === "b" && sum(s) !== 12 * meanNo) return `среднее всех ${sum(s) / 12}, а не ${meanNo}`
+    if (part === "c" && sum(s) !== meanNum) return `сумма ${sum(s)}, а не ${meanNum}`
+    return null
+  }
+  const solve = (P) => {
+    // Пространство перебора: пары (a₆, a₇) с a₆ < a₇ ≤ 7m₁; для каждой пары наличие
+    // пяти различных натуральных, меньших a₆, с нужной суммой, проверяется динамикой,
+    // а пять чисел, больших a₇, существуют ⟺ их сумма не меньше 5a₇ + 15.
+    const V = P.S1
+    const dpLow = []                              // dpLow[v] — 5 различных из 1…v
+    let dp = knap([], 5, P.S1)
+    for (let v = 1; v <= V; v++) {
+      for (let c = 5; c >= 1; c--) for (let s = P.S1; s >= v; s--) if (dp[c - 1][s - v]) dp[c][s] = 1
+      dpLow[v] = dp[5].slice()
+    }
+    let best = -1, bigOK = false, meanOK = false
+    for (let a6 = 6; a6 <= V; a6++) for (let a7 = a6 + 1; a7 <= V; a7++) {
+      const rest = P.S1 - a6 - a7
+      if (rest < 15 || rest > P.S1) continue
+      if (!dpLow[a6 - 1] || !dpLow[a6 - 1][rest]) continue
+      const top = P.S2 - a6 - a7
+      if (top < 5 * a7 + 15) continue
+      const S67 = a6 + a7
+      if (S67 > best) best = S67
+      if (P.S1 + P.S2 - S67 === 12 * P.meanNo) meanOK = true
+      // a₁₂ = bigNo достижимо ⟺ оставшиеся четыре числа различны и лежат строго
+      // между a₇ и bigNo: 4a₇ + 10 ≤ top − bigNo ≤ 4·bigNo − 10
+      const rem = top - P.bigNo
+      if (P.bigNo > a7 && rem >= 4 * a7 + 10 && rem <= 4 * P.bigNo - 10) bigOK = true
+    }
+    return { a: bigOK, b: meanOK, c: P.S1 + P.S2 - best, c_next: false }
+  }
+
+  return item({
+    preamble: `На доске написано 12 различных натуральных чисел. Среднее арифметическое семи наименьших из них равно ${m1}, а среднее арифметическое семи наибольших равно ${m2}.`,
+    qa: `Может ли наибольшее из этих двенадцати чисел равняться ${bigNo}?`,
+    qb: `Может ли среднее арифметическое всех двенадцати чисел равняться ${meanNo}?`,
+    qc: `Найдите наименьшее значение среднего арифметического всех двенадцати чисел.`,
+    ansA: `нет: если наибольшее число равно M, то семь наибольших различны и не превосходят M, поэтому их сумма не больше M + (M − 1) + … + (M − 6) = 7M − 21; из 7M − 21 ≥ ${S2} следует M ≥ ${m2 + 3}, а ${bigNo} меньше`,
+    ansB: `нет: сумма всех двенадцати чисел равна ${S1} + ${S2} − (a₆ + a₇), поэтому среднее ${meanNo} потребовало бы a₆ + a₇ = ${S67no}, а эта сумма не превосходит ${cap}`,
+    ansC: `${frPlain(fr(meanNum, 12))} (то есть ${meanNum}/12); пример: ${joinRu(exC)}; меньше нельзя — среднее равно (${S1} + ${S2} − (a₆ + a₇))/12, а a₆ + a₇ ≤ ${cap}`,
+    solution: `Расположим числа по возрастанию: a₁ < a₂ < … < a₁₂. Семь наименьших — это a₁…a₇ с суммой ${S1}, семь наибольших — a₆…a₁₂ с суммой ${S2}; они перекрываются по числам a₆ и a₇.\nПоэтому сумма всех двенадцати равна ${S1} + ${S2} − (a₆ + a₇), и минимум среднего достигается при максимуме S₆₇ = a₆ + a₇.\nОценим S₆₇ сверху. Во-первых, a₁ + … + a₅ ≥ 1 + 2 + 3 + 4 + 5 = 15, поэтому S₆₇ ≤ ${S1} − 15. Во-вторых, числа a₈ … a₁₂ различны и больше a₇, значит их сумма не меньше 5a₇ + 15; вместе с a₇ ≥ (S₆₇ + 1)/2 это даёт S₆₇ ≤ ${Math.floor((2 * S2 - 35) / 7)}.\nИтого S₆₇ ≤ ${cap}, и это достигается, например, на наборе ${joinRu(exC)}. Наименьшее среднее равно ${meanNum}/12 = ${frPlain(fr(meanNum, 12))}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: false, reason: "top-bound", target: bigNo },
+        b: { type: "yesno", yes: false, reason: "overlap-bound", target: meanNo },
+        c: { type: "value", value: meanNum, example: exC },
+      },
+      mustMention: [12, m1, m2, bigNo, meanNo],
+      extra: [7],
+      phrases: ["12 различных натуральных чисел", "семи наименьших", "семи наибольших"],
+    },
+  })
+}
