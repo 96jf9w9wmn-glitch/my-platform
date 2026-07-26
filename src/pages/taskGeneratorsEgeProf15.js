@@ -3812,6 +3812,31 @@ export function t15MixRatLogFrac() {
   return null
 }
 
+
+// [98] log_x(log_{b²}(b^x − b^m)) < 1  — ответ совпадает с ОДЗ (PDF логx.3)
+export function t15LogXNestedExp() {
+  for (let it = 0; it < 200; it++) {
+    const b = pick([3, 2, 5]), m = randInt(1, 3)
+    const bm = Math.round(Math.pow(b, m))
+    const thr = Q(bm + 1)
+    const cmp = "<"
+    const text = `log⦉x⦊(log⦉${b * b}⦊(${pw(b, "x")} ${MINUS} ${bm})) ${cmp} 1`
+    const INNER = (x) => Math.log(Math.pow(b, x) - bm) / Math.log(b * b)
+    const F = (x) => Math.log(INNER(x)) / Math.log(x)
+    const lo = epLog(b, thr, 1)
+    const res = build({
+      text, cmp, lhs: F, rhs: () => 1, lead: -1,
+      // ОДЗ: b^x − b^m > 1 и x > 1; на всей ОДЗ неравенство верно (b^x − b^m < b^{2x})
+      domainOK: (x) => x > 1 && Math.pow(b, x) - bm > 1,
+      crit: [],
+      domain: { a: lo, b: POS_INF, ai: false, bi: false },
+      extraX: [lo.v],
+    })
+    if (res) return res
+  }
+  return null
+}
+
 // ── реестры ─────────────────────────────────────────────────────────────────
 export const META15 = [
   ["Рациональные неравенства", [
@@ -3891,6 +3916,7 @@ export const META15 = [
     ["logx-linear", "−2log_{x/b}(b³) ⋛ log_b(b³x) + 1", t15LogXLinear],
     ["logx-base-gt1", "основание (x−h)²+1 всегда >1", t15LogXBaseGt1],
     ["logx-prod-same", "log_A(x−p)²·log_A((x−p)²/A³) ⋛ −2, A = x²+1", t15LogXProdSame],
+    ["logx-nested-exp", "log_x(log_{b²}(b^x − b^m)) < 1 — ответ = ОДЗ", t15LogXNestedExp],
     ["logx-mult", "x·log_{x+c}(ax+b) ⋛ 0 (основание = 1 выколото)", t15LogXMult],
     ["logx-quad-zero", "log_{kx}(x²−2px+p²) ⋛ 0", t15LogXQuadZero],
     ["logx-prod-pair", "log_x(x−a)·log_x(x+a) ⋛ 0 (кратный корень x=1)", t15LogXProdPair],
