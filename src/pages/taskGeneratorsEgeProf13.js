@@ -19,6 +19,8 @@ const MINUS = "−" // U+2212
 // Юникод-подстрочные цифры — для основания логарифма (log₂, log₃…).
 const SUBD = { 0: "₀", 1: "₁", 2: "₂", 3: "₃", 4: "₄", 5: "₅", 6: "₆", 7: "₇", 8: "₈", 9: "₉" }
 const subU = (n) => String(n).split("").map((c) => SUBD[c] ?? c).join("")
+// подстрочник для нецелого основания логарифма: 1.5 → «₁,₅»
+const subDec = (v) => subU(String(v).replace(".", ","))
 
 // ── рациональная π-арифметика: значение = p·π/q, всегда q>0, дробь сокращена ──
 function R(p, q = 1) { if (q < 0) { p = -p; q = -q } const g = gcd(p, q) || 1; return { p: p / g, q: q / g } }
@@ -485,7 +487,7 @@ function pickRealInterval(rootsNum, aBase = null) {
 
 // Сборка показательного/алгебраического задания. allRoots: [{num,text}] (все корни, часть а);
 // residual(x) — фактическое уравнение LHS−RHS (без полюсов).
-function assembleReal(eq, allRoots, residual, aBase = null) {
+function assembleReal(eq, allRoots, residual, aBase = null, realResidual = null) {
   const sorted = allRoots.slice().sort((r1, r2) => r1.num - r2.num)
   const iv = pickRealInterval(sorted.map((r) => r.num), aBase)
   if (!iv) return null
@@ -495,7 +497,7 @@ function assembleReal(eq, allRoots, residual, aBase = null) {
     condition_tail: `б) Найдите корни, принадлежащие отрезку [${iv.L.text}; ${iv.R.text}].`,
     answer: `а) ${sorted.map((r) => "x = " + r.text).join(";  ")}\nб) ${inside.map((r) => r.text).join(";  ")}`,
     _verify: {
-      residual, realResidual: residual, roots: inside.map((r) => r.num),
+      residual, realResidual: realResidual || residual, roots: inside.map((r) => r.num),
       L: iv.L.num, R: iv.R.num, allRoots: sorted.map((r) => r.num),
     },
   }
@@ -2385,6 +2387,141 @@ function t13ProdLogOnce() {
   return finishGen(eq, refined, residual, { realResidual: real, domainOK, text: seriesListText(refined) })
 }
 
+// ============================================================================
+// ПОКАЗАТЕЛЬНЫЕ — оставшиеся типажи PDF: кубическая группировка, дробный показатель,
+// a^(m−x), однородное по x, уравнение с модулем.
+// ============================================================================
+
+// E1 — (a³)ˣ − p·(a²)ˣ − q²·aˣ + p·q² = 0 ⟺ (t−p)(t²−q²)=0, t=aˣ (q=aᵐ; t=−q отпадает)
+function t13ExpCubicGroup() { return retryGen(t13ExpCubicGroupOnce) }
+function t13ExpCubicGroupOnce() {
+  const a = pick([2, 3])
+  const m = pick([2, 3])
+  const q = a ** m, q2 = q * q
+  const pool = []
+  for (let v = 2; v <= 30; v++) if (v !== q && !isPow(v, a)) pool.push(v)
+  const p = pick(pool)
+  const eq = `${powE(a ** 3, "x")} ${MINUS} ${p}·${powE(a * a, "x")} ${MINUS} ${powE(a, `x+${2 * m}`)} + ${p * q2} = 0`
+  const residual = (x) => { const t = a ** x; return t ** 3 - p * t * t - q2 * t + p * q2 }
+  const roots = [{ num: logNumV(a, p), text: logT(a, p) }, { num: m, text: intT(m) }]
+  return assembleReal(eq, roots, residual, a)
+}
+
+// E2 — (a²)^(x−½) − c·a^(x−1) + d = 0 ⟺ t² − c·t + a·d = 0, t=aˣ
+function t13ExpHalfPow() { return retryGen(t13ExpHalfPowOnce) }
+function t13ExpHalfPowOnce() {
+  const a = pick([2, 3])
+  const t1 = pick([2, 3, 4, 5, 6, 8, 9]), t2 = pick([2, 3, 4, 5, 6, 8, 9])
+  if (t1 === t2) return null
+  if ((t1 * t2) % a !== 0) return null
+  const c = t1 + t2, d = t1 * t2 / a
+  const eq = `${powE(a * a, `x ${MINUS} ⟦f:1:2⟧`)} ${MINUS} ${c}·${powE(a, "x" + MINUS + "1")} + ${d} = 0`
+  const residual = (x) => { const t = a ** x; return t * t / a - c * t / a + d }
+  const mk = (v) => isPow(v, a) ? { num: logNumV(a, v), text: intT(Math.round(logNumV(a, v))) } : { num: logNumV(a, v), text: logT(a, v) }
+  return assembleReal(eq, [mk(t1), mk(t2)], residual, a)
+}
+
+// E3 — (a³)ˣ − c·a^(x+s) + a^(m−x) = 0; ×aˣ ⟹ t⁴ − c·aˢ·t² + aᵐ = 0 (биквадрат по t=aˣ)
+function t13ExpNegPow() { return retryGen(t13ExpNegPowOnce) }
+function t13ExpNegPowOnce() {
+  const a = pick([2, 3])
+  const u = pick([1, 2, 3, 4]), v = pick([1, 2, 3, 4])
+  if (u === v) return null
+  const s = Math.min(u, v), m = u + v
+  const c = a ** (u - s) + a ** (v - s)
+  const eq = `${powE(a ** 3, "x")} ${MINUS} ${c === 1 ? "" : c + "·"}${powE(a, `x+${s}`)} + ${powE(a, `${m}${MINUS}x`)} = 0`
+  const residual = (x) => { const t = a ** x; return t ** 3 - c * a ** s * t + a ** m / t }
+  const half = (n) => n % 2 === 0 ? intT(n / 2) : ru2(n / 2)
+  const roots = [{ num: u / 2, text: half(u) }, { num: v / 2, text: half(v) }]
+  return assembleReal(eq, roots, residual, null)
+}
+
+// E4 — однородное: P·(a²)ˣ + Q·(ab)ˣ + R·(b²)ˣ = 0, s=(a/b)ˣ → квадрат по s
+function t13ExpHomogLin() { return retryGen(t13ExpHomogLinOnce) }
+function t13ExpHomogLinOnce() {
+  const [a, b] = pick([[3, 2], [5, 2], [5, 3], [4, 3]])
+  const n1 = pick([0, 1, 2]); let n2 = pick([0, 1, 2])
+  if (n1 === n2) return null
+  const s1 = R(a ** n1, b ** n1)
+  const logOne = b === 2 && Math.random() < 0.4        // иначе основание a/b не десятичное
+  const extra = pick([2, 3, 4, 5, 6])
+  const s2 = logOne ? R(extra, 1) : R(a ** n2, b ** n2)
+  if (Rkey(s1) === Rkey(s2)) return null
+  if (logOne && Math.abs(Math.log(extra) / Math.log(a / b) - Math.round(Math.log(extra) / Math.log(a / b))) < 1e-9) return null
+  const { a: P, b: Q, c: Rc } = buildQuadFromRoots([s1, s2])
+  if (Q === 0 || Rc === 0) return null
+  // R·(b²)ˣ показываем как (R/b²)·(b²)^(x+1), если делится
+  const b2 = b * b
+  const lastStr = (Rc % b2 === 0 && Math.abs(Rc) !== b2)
+    ? `${Math.abs(Rc) / b2}·${powE(b2, "x+1")}`
+    : `${Math.abs(Rc) === 1 ? "" : Math.abs(Rc) + "·"}${powE(b2, "x")}`
+  const eq = `${P === 1 ? "" : P + "·"}${powE(a * a, "x")} ${Q < 0 ? MINUS : "+"} ${Math.abs(Q) === 1 ? "" : Math.abs(Q) + "·"}${powE(a * b, "x")} ${Rc < 0 ? MINUS : "+"} ${lastStr} = 0`
+  const residual = (x) => P * (a * a) ** x + Q * (a * b) ** x + Rc * (b * b) ** x
+  const lb = Math.log(a / b)
+  const rootOf = (s) => {
+    const val = s.p / s.q
+    const e = Math.log(val) / lb
+    const er = Math.round(e)
+    if (Math.abs(e - er) < 1e-9) return { num: er, text: intT(er) }
+    return { num: e, text: `log${subDec(a / b)}${val}` }          // напр. log₁,₅4
+  }
+  const roots = [rootOf(s1), rootOf(s2)]
+  if (Math.abs(roots[0].num - roots[1].num) < 1e-9) return null
+  return assembleReal(eq, roots, residual, null)
+}
+
+// E5 — с модулем: (aˣ − c)² + λ·aˣ + μ = k·|aˣ − c|
+//   w=|aˣ−c|, ветвь aˣ≥c: w²+(λ−k)w+(λc+μ)=0; ветвь aˣ<c: w²−(λ+k)w+(λc+μ)=0.
+function t13ExpAbs() { return retryGen(t13ExpAbsOnce, 300) }
+function t13ExpAbsOnce() {
+  const a = pick([2, 3, 4])
+  const c = pick([4, 5, 6, 7, 8, 9, 10])
+  const lam = pick([1, 2, 3, 4, 6])
+  const r1 = randInt(1, 8), r2 = randInt(1, 8)
+  if (r1 === r2) return null
+  const A = r1 * r2, k = lam + r1 + r2
+  const mu = A - lam * c
+  // ветвь aˣ<c: w² − (r1+r2+2λ)w + A = 0
+  const S2 = r1 + r2 + 2 * lam
+  const disc = S2 * S2 - 4 * A
+  if (disc < 0) return null
+  const sq = Math.round(Math.sqrt(disc))
+  if (sq * sq !== disc) return null
+  const w3 = (S2 - sq) / 2, w4 = (S2 + sq) / 2
+  const us = new Set()
+  for (const w of [r1, r2]) us.add(c + w)
+  for (const w of [w3, w4]) { const u = c - w; if (u > 0 && w > 0) us.add(u) }
+  const roots = []
+  for (const u of us) {
+    const e = logNumV(a, u)
+    roots.push(isPow(u, a) ? { num: e, text: intT(Math.round(e)) } : { num: e, text: logT(a, u) })
+  }
+  if (roots.length < 2 || roots.length > 3) return null
+  const uStr = `(${powE(a, "x")} ${MINUS} ${c})²`
+  const absStr = `${k}|${powE(a, "x")} ${MINUS} ${c}|`
+  // λ·aˣ показываем как a^(x+s), если λ — степень a
+  const lamStr = isPow(lam, a) && lam > 1
+    ? powE(a, `x+${Math.round(logNumV(a, lam))}`)
+    : `${lam === 1 ? "" : lam + "·"}${powE(a, "x")}`
+  const absEv = (x) => Math.abs(a ** x - c)
+  const sqEv = (x) => (a ** x - c) ** 2
+  const lamEv = (x) => a ** x
+  let eq, realResidual
+  if (mu < 0) {
+    // (aˣ−c)² − k|aˣ−c| = −μ − λ·aˣ   (правая часть начинается с положительного −μ)
+    eq = `${uStr} ${MINUS} ${absStr} = ${sumStr([{ neg: false, str: String(-mu) }, { neg: true, str: lamStr }])}`
+    realResidual = (x) => sqEv(x) - k * absEv(x) - (-mu - lam * lamEv(x))
+  } else {
+    // (aˣ−c)² + λ·aˣ + μ = k|aˣ−c|
+    const lhs = [{ neg: false, str: uStr }, { neg: false, str: lamStr }]
+    if (mu !== 0) lhs.push({ neg: false, str: String(mu) })
+    eq = `${sumStr(lhs)} = ${absStr}`
+    realResidual = (x) => sqEv(x) + lam * lamEv(x) + mu - k * absEv(x)
+  }
+  const residual = (x) => { const u = a ** x; return (u - c) ** 2 + lam * u + mu - k * Math.abs(u - c) }
+  return assembleReal(eq, roots, residual, a, realResidual)
+}
+
 // ── реестр ──────────────────────────────────────────────────────────────────
 export const GEN13 = [
   t13SinQuad, t13CosQuad, t13CosSqSinLin, t13SinSqCosLin,
@@ -2393,6 +2530,7 @@ export const GEN13 = [
   t13CubicFactor, t13CubicGroup, t13CubicPyth,
   t13FactorMixed, t13FactorTgSin2x, t13FactorCtgSin2x, t13FactorSinMinusCos, t13FactorSinPlusCos, t13FactorCosTimesEq1,
   t13ExpSumPow, t13ExpQuadInAx, t13ExpHomogQuad,
+  t13ExpCubicGroup, t13ExpHalfPow, t13ExpNegPow, t13ExpHomogLin, t13ExpAbs,
   t13LogQuad, t13LogDiff,
   t13ProductAlgTrig, t13ProductSqrt,
   t13IrrSin, t13IrrCos,
@@ -2442,6 +2580,11 @@ export const META13 = [
     ["exp-sumpow", "a^(u+k)+a^u=N, u=x²+px (корни h±√M)", t13ExpSumPow],
     ["exp-quad-ax", "b^x−a^(x+s)+C=0 (t=aˣ → n и logₐ)", t13ExpQuadInAx],
     ["exp-homog", "P·(a²)^u+Q·(ab)^u+R·(b²)^u=0 (однородное)", t13ExpHomogQuad],
+    ["exp-cubic-group", "27ˣ−p·9ˣ−a^(x+2m)+p·q²=0 (кубическая группировка)", t13ExpCubicGroup],
+    ["exp-half-pow", "(a²)^(x−½)−c·a^(x−1)+d=0 (дробный показатель)", t13ExpHalfPow],
+    ["exp-neg-pow", "(a³)ˣ−c·a^(x+s)+a^(m−x)=0 (биквадрат по aˣ)", t13ExpNegPow],
+    ["exp-homog-lin", "P·(a²)ˣ+Q·(ab)ˣ+R·(b²)ˣ=0 (однородное по x)", t13ExpHomogLin],
+    ["exp-abs", "(aˣ−c)²+λ·aˣ+μ=k|aˣ−c| (с модулем)", t13ExpAbs],
   ]],
   ["Логарифмические", [
     ["log-quad", "A·log²ₐx+B·logₐx+C=0 (корни aⁿ)", t13LogQuad],
