@@ -763,6 +763,10 @@ export const META19 = [
     ["three-AS-max", "A·S(A): наибольшее произведение, меньшее K", t19ThreeASMax],
     ["three-AS-min", "A·S(A): наименьшее произведение, большее K", t19ThreeASMin],
   ]],
+  ["Две контрольные работы: назван наивысший балл", [
+    ["tests-max-of-two-min", "Средний названных: наименьшее S при k писавших обе", t19TestsMaxOfTwoMin],
+    ["tests-max-of-two-count", "Средний названных: наим. число писавших обе", t19TestsMaxOfTwoCount],
+  ]],
   ["Доска: набор чисел с ограничением на сумму", [
     ["board-even-or-tail3", "N чисел: чётные или на 3, сумма S → наим. кол-во на 3", t19BoardEvenOrTail3],
     ["board-tail2-tail6", "N чисел на c₁ или c₂, сумма S → наим. кол-во на c₂", t19BoardTail2Tail6],
@@ -3214,3 +3218,214 @@ export function t19Means12Overlap() {
     },
   })
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 20. Две контрольные работы: назван наивысший балл (#115, #116)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Каждый из N студентов писал одну из двух работ или обе; за работу дают целое число
+// баллов от 0 до M; средний балл по КАЖДОЙ работе в отдельности равен m; затем каждый
+// назвал наивысший из своих баллов, и среднее названных равно S.
+//
+// Пусть k — число писавших обе работы, n₁ и n₂ — числа писавших первую и вторую:
+//   n₁ + n₂ = N + k,  n₁ ≥ k,  n₂ ≥ k   (отсюда сразу k ≤ N).
+// Сумма ВСЕХ выставленных баллов равна m·n₁ + m·n₂ = m(N + k), а сумма названных
+// меньше неё ровно на сумму МЕНЬШИХ баллов у писавших обе работы:
+//   S·N = m(N + k) − T,   T = Σ min(aᵢ, bᵢ).
+// Верхняя граница T (используется для всех «нет» и для оценок):
+//   T ≤ Hi(k, n₁, n₂) = min(M·k, m·n₁, m·n₂),
+// потому что каждый минимум не больше M, а баллы писавших обе не больше всей суммы
+// своей работы. Граница ДОСТИЖИМА: дать всем k общим студентам aᵢ = bᵢ = tᵢ с Σtᵢ = Hi,
+// а остаток m·n₁ − Hi ≤ M(n₁ − k) раздать писавшим только первую работу (так же для
+// второй). Именно эта конструкция и предъявляется в примерах.
+
+// Разложить total на cnt слагаемых 0…M как можно ровнее (ноль допустим — это баллы).
+function spreadCap(total, cnt, M) {
+  if (cnt <= 0) return total === 0 ? [] : null
+  if (total < 0 || total > cnt * M) return null
+  const base = Math.floor(total / cnt), rest = total - base * cnt
+  return Array.from({ length: cnt }, (_, i) => base + (i < rest ? 1 : 0))
+}
+
+// Наборы (N, m, S, k) для #116, где наименьшее k выражается ТОЧНО: равенство T = M·k
+// требует N(m − S) = k(M − m), а достижимость — 20k ≤ m·min(n₁, n₂) при n₁+n₂ = N+k.
+// Таблица считается один раз при импорте — внутри генератора перебора нет.
+const TESTS_COUNT_TABLE = (() => {
+  const rows = []
+  for (let m = 13; m <= 17; m++) {
+    const d = 20 - m
+    for (let N = 24; N <= 40; N++) {
+      for (let s = m - 1; s >= Math.max(1, m - 8); s--) {
+        const num = N * (m - s)
+        if (num % d) continue
+        const k = num / d
+        if (k < 3 || k > N) continue
+        const n1 = Math.floor((N + k) / 2), n2 = N + k - n1
+        if (20 * k > Math.min(m * n1, m * n2)) continue     // равенство T = 20k недостижимо
+        rows.push({ N, m, s, k })
+      }
+    }
+  }
+  return rows
+})()
+
+function testsFamily(kind) {
+  const M = 20                                   // за работу — от 0 до 20 баллов
+  const row = kind === "count" ? pick(TESTS_COUNT_TABLE) : null
+  const m = row ? row.m : randInt(13, 17)        // средний балл по каждой работе
+  const N = row ? row.N : randInt(24, 40)        // студентов всего
+  // Конфигурация «k общих студентов, суммарный минимум T» с наиболее равным делением
+  // n₁ и n₂ — при нём граница Hi максимальна.
+  const build = (k, T) => {
+    const n1 = Math.floor((N + k) / 2), n2 = N + k - n1
+    if (n1 < k || n2 < k || n1 < 1 || n2 < 1) return null
+    const mins = spreadCap(T, k, M)
+    const only1 = spreadCap(m * n1 - T, n1 - k, M)
+    const only2 = spreadCap(m * n2 - T, n2 - k, M)
+    if (!mins || !only1 || !only2) return null
+    return { both: mins.map((t) => [t, t]), only1, only2 }
+  }
+  const hiOf = (k) => {
+    const n1 = Math.floor((N + k) / 2), n2 = N + k - n1
+    return Math.min(M * k, m * n1, m * n2)
+  }
+  // а) S < m: достаточно одного студента, писавшего обе работы на M баллов.
+  const exA = build(1, M)
+  if (!exA) return null
+  const namedA = sum(exA.only1) + sum(exA.only2) + M
+  const sA = fr(namedA, N)
+
+  let Sb = 0, kc = 0, sC = null, exC, kb = 0, kMin = 0, Sc = 0
+  if (kind === "min") {
+    // б) «нет»: S ≥ m − (M − m)k/N ≥ 2m − M, потому что k ≤ N.
+    const bound = 2 * m - M                       // при m ≥ 13 и M = 20 это ≥ 6
+    Sb = randInt(Math.max(0, bound - 5), bound - 1)
+    // в) наименьшее S при заданном числе писавших обе работы
+    kc = randInt(4, Math.floor(N / 2))
+    const T = hiOf(kc)
+    exC = build(kc, T)
+    if (!exC) return null
+    sC = fr(m * (N + kc) - T, N)
+  } else {
+    // S и наименьшее k взяты из таблицы: там N(m − S) = k(M − m) выполнено точно.
+    Sc = row.s; kMin = row.k
+    exC = build(kMin, M * kMin)
+    if (!exC) return null
+    kb = randInt(2, Math.min(4, kMin - 1))
+  }
+
+  const params = { N, m, M, Sb, kc, Sc, kb, kind }
+  // check написан по ТЕКСТУ условия: целые баллы 0…M, средний по каждой работе m,
+  // названный балл — наибольший из своих.
+  const check = (cfg, part) => {
+    if (!cfg || !Array.isArray(cfg.both) || !Array.isArray(cfg.only1) || !Array.isArray(cfg.only2)) return "нет конфигурации"
+    for (const p of cfg.both) if (!Array.isArray(p) || p.length !== 2) return "у писавшего обе работы должно быть два балла"
+    const all = [...cfg.only1, ...cfg.only2, ...cfg.both.flat()]
+    for (const v of all) if (!Number.isInteger(v) || v < 0 || v > M) return `${v} — не целое число баллов от 0 до ${M}`
+    const k = cfg.both.length
+    const n1 = cfg.only1.length + k, n2 = cfg.only2.length + k
+    const total = cfg.only1.length + cfg.only2.length + k
+    if (total !== N) return `студентов ${total} вместо ${N}`
+    if (n1 < 1 || n2 < 1) return "одну из работ никто не писал"
+    const S1 = sum(cfg.only1) + sum(cfg.both.map((p) => p[0]))
+    const S2 = sum(cfg.only2) + sum(cfg.both.map((p) => p[1]))
+    if (S1 !== m * n1) return `средний балл за первую работу ${S1 / n1}, а не ${m}`
+    if (S2 !== m * n2) return `средний балл за вторую работу ${S2 / n2}, а не ${m}`
+    const named = sum(cfg.only1) + sum(cfg.only2) + sum(cfg.both.map((p) => Math.max(p[0], p[1])))
+    if (part === "a") return named < m * N ? null : `S = ${named / N}, а нужно меньше ${m}`
+    if (kind === "min") {
+      if (k !== kc) return `обе работы писали ${k} студентов вместо ${kc}`
+      if (named * sC.d !== sC.n * N) return `S = ${named / N}, а заявлено ${frPlain(sC)}`
+      return null
+    }
+    if (named !== Sc * N) return `S = ${named / N}, а по условию ${Sc}`
+    if (k !== kMin) return `обе работы писали ${k} студентов вместо ${kMin}`
+    return null
+  }
+  // Независимый перебор: k — число писавших обе работы (0…N, так как n₁+n₂=N+k и nᵢ≥k),
+  // n₁ — число писавших первую (k…N+k−1). Множество достижимых T вложено в [0; Hi],
+  // поэтому «нет» на этом надмножестве — честное «нет», а найденные границы
+  // подтверждаются явной конструкцией из build() через check().
+  const solve = (P) => {
+    let aYes = false, bYes = false, cMin = Infinity, kBest = Infinity
+    for (let k = 0; k <= P.N; k++) {
+      let okK = false
+      for (let n1 = Math.max(k, 1); n1 <= P.N + k - 1; n1++) {
+        const n2 = P.N + k - n1
+        if (n2 < k || n2 < 1) continue
+        const Hi = Math.min(P.M * k, P.m * n1, P.m * n2)
+        if (Hi > P.m * k) aYes = true                       // T > m·k ⟺ S < m
+        if (P.kind === "min") {
+          const T = P.m * (P.N + k) - P.Sb * P.N            // S = Sb ⟺ ровно такое T
+          if (T >= 0 && T <= Hi) bYes = true
+          if (k === P.kc) cMin = Math.min(cMin, (P.m * (P.N + k) - Hi) / P.N)
+        } else {
+          const T = P.m * (P.N + k) - P.Sc * P.N            // S = Sc ⟺ ровно такое T
+          if (T >= 0 && T <= Hi) okK = true
+        }
+      }
+      if (P.kind === "count" && okK) {
+        if (k === P.kb) bYes = true
+        if (k < kBest) kBest = k
+      }
+    }
+    return P.kind === "min"
+      ? { a: aYes, b: bYes, c: cMin }
+      : { a: aYes, b: bYes, c: kBest, c_next: false }
+  }
+
+  const preamble = `Каждый из ${N} студентов писал или одну из двух контрольных работ, или написал обе контрольные работы. За каждую работу можно было получить целое число баллов от 0 до ${M} включительно. По каждой из двух контрольных работ в отдельности средний балл составил ${m}. Затем каждый студент назвал наивысший из своих баллов (если студент писал одну работу, то он назвал балл за неё). Среднее арифметическое названных баллов равно S.`
+  // «11 студентов по 14 баллов и 6 студентов по 13 баллов»
+  const byScore = (arr) => {
+    const g = new Map()
+    for (const v of arr) g.set(v, (g.get(v) || 0) + 1)
+    return [...g.entries()].map(([v, c]) => `${c} ${plural(c, "студент", "студента", "студентов")} по ${v} ${plural(v, "баллу", "балла", "баллов")}`).join(" и ")
+  }
+  const exText = (ex, k, val) => {
+    const n1 = ex.only1.length + k, n2 = ex.only2.length + k
+    const t = ex.both[0][0]
+    const only = (arr, which) => (arr.length
+      ? `писавшие только ${which} работу набрали в сумме ${sum(arr)} ${plural(sum(arr), "балл", "балла", "баллов")} (${byScore(arr)})`
+      : `студентов, писавших только ${which} работу, не было`)
+    return `первую работу писали ${n1} ${plural(n1, "студент", "студента", "студентов")}, вторую — ${n2}; обе работы ${plural(k, "писал", "писали", "писали")} ${k} ${plural(k, "студент", "студента", "студентов")}, ${plural(k, "получивший", "получившие", "получившие")} по ${t} ${plural(t, "баллу", "балла", "баллов")} за каждую из двух работ; ${only(ex.only1, "первую")}, ${only(ex.only2, "вторую")}. Средний балл за каждую работу равен ${m}, сумма названных баллов равна ${sum(ex.only1) + sum(ex.only2) + k * t}, поэтому S = ${val}`
+  }
+  const boundTxt = `S·${N} = ${m}·(${N} + k) − T, где k — число писавших обе работы, а T — сумма меньших баллов этих k студентов`
+
+  return item({
+    preamble,
+    qa: `Приведите пример, когда S < ${m}.`,
+    qb: kind === "min"
+      ? `Могло ли значение S быть равным ${Sb}?`
+      : `Могло ли оказаться, что только ${kb} ${plural(kb, "студент написал", "студента написали", "студентов написали")} обе контрольные работы, если S = ${Sc}?`,
+    qc: kind === "min"
+      ? `Какое наименьшее значение могло принимать S, если обе контрольные работы писали ${kc} ${plural(kc, "студент", "студента", "студентов")}?`
+      : `Какое наименьшее количество студентов могло написать обе контрольные работы, если S = ${Sc}?`,
+    ansA: `да, например: ${exText(exA, 1, frPlain(sA))} < ${m}`,
+    ansB: kind === "min"
+      ? `нет: ${boundTxt}. Так как каждый меньший балл не больше ${M}, то T ≤ ${M}k, а значит S·${N} ≥ ${m}·${N} − ${M - m}k. Кроме того n₁ + n₂ = ${N} + k и n₁ ≥ k, n₂ ≥ k, откуда k ≤ ${N}. Поэтому S ≥ ${m} − ${M - m} = ${2 * m - M} > ${Sb}`
+      : `нет: ${boundTxt}. При S = ${Sc} получаем T = ${N * (m - Sc)} + ${m}k, а из T ≤ ${M}k следует ${N * (m - Sc)} ≤ ${M - m}k, то есть k ≥ ${kMin} > ${kb}`,
+    ansC: kind === "min"
+      ? `${frPlain(sC)}; например: ${exText(exC, kc, frPlain(sC))}`
+      : `${kMin}; например: ${exText(exC, kMin, String(Sc))}`,
+    solution: kind === "min"
+      ? `Пусть первую работу писали n₁ студентов, вторую — n₂, а обе работы — k студентов. Тогда n₁ + n₂ = ${N} + k, n₁ ≥ k, n₂ ≥ k, поэтому k ≤ ${N}.\nСумма всех выставленных баллов равна ${m}n₁ + ${m}n₂ = ${m}(${N} + k). Названный балл отличается от суммы двух баллов студента, писавшего обе работы, ровно на меньший из них, поэтому ${boundTxt}.\nа) Хватает одного студента, писавшего обе работы на ${M} баллов: S = ${frPlain(sA)} < ${m}.\nб) Так как T ≤ ${M}k и k ≤ ${N}, то S ≥ ${m} − ${M - m} = ${2 * m - M}, а ${Sb} < ${2 * m - M}.\nв) При k = ${kc} величина T не превосходит min(${M}·${kc}; ${m}n₁; ${m}n₂) = ${hiOf(kc)}, причём это значение достигается: ${exText(exC, kc, frPlain(sC))}.\nОтвет: ${frPlain(sC)}.`
+      : `Пусть первую работу писали n₁ студентов, вторую — n₂, а обе — k студентов. Тогда n₁ + n₂ = ${N} + k, n₁ ≥ k, n₂ ≥ k.\nСумма всех выставленных баллов равна ${m}(${N} + k), а сумма названных меньше неё на T — сумму меньших баллов у писавших обе работы, поэтому ${boundTxt}.\nПри S = ${Sc} отсюда T = ${m}(${N} + k) − ${Sc}·${N} = ${N * (m - Sc)} + ${m}k. Но каждый меньший балл не больше ${M}, значит T ≤ ${M}k, откуда ${N * (m - Sc)} ≤ ${M - m}k и k ≥ ${kMin}.\nб) ${kb} < ${kMin}, так что столько студентов писать обе работы не могло.\nв) Значение k = ${kMin} достигается: ${exText(exC, kMin, String(Sc))}.\nОтвет: ${kMin}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: m },
+        b: kind === "min"
+          ? { type: "yesno", yes: false, reason: "score-bound", target: Sb }
+          : { type: "yesno", yes: false, reason: "count-bound", target: kb },
+        c: kind === "min"
+          ? { type: "value", value: frVal(sC), example: exC }
+          : { type: "extremum", mode: "min", value: kMin, example: exC },
+      },
+      mustMention: kind === "min" ? [N, M, m, 0, Sb, kc] : [N, M, m, 0, Sc, kb],
+      extra: [],
+      phrases: ["или одну из двух контрольных работ", `от 0 до ${M} включительно`, "назвал наивысший из своих баллов"],
+    },
+  })
+}
+export function t19TestsMaxOfTwoMin() { return testsFamily("min") }
+export function t19TestsMaxOfTwoCount() { return testsFamily("count") }
