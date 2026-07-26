@@ -2522,6 +2522,150 @@ function t13ExpAbsOnce() {
   return assembleReal(eq, roots, residual, a, realResidual)
 }
 
+// ============================================================================
+// ЛОГАРИФМИЧЕСКИЕ — оставшиеся типажи PDF: разные основания, переменное основание,
+// основание-корень.
+// ============================================================================
+
+// L3 — logₐ(b − x) = log_{a²}(x⁴)  ⟺  b − x = x²  (ОДЗ: b−x>0, x≠0)
+// Корни целые с суммой −1: x²+x−b=0.
+function t13LogTwoBases() { return retryGen(t13LogTwoBasesOnce) }
+function t13LogTwoBasesOnce() {
+  const a = pick([2, 3, 5])
+  const [x1, x2] = pick([[1, -2], [2, -3], [3, -4], [4, -5], [5, -6]])
+  const b = -x1 * x2
+  const eq = `log${subU(a)}(${b} ${MINUS} x) = log${subU(a * a)}x⁴`
+  const residual = (x) => x * x + x - b                      // гладкая форма (без логарифмов)
+  const domainOK = (x) => b - x > 1e-9 && Math.abs(x) > 1e-9
+  const real = (x) => domainOK(x)
+    ? Math.log(b - x) / Math.log(a) - Math.log(x ** 4) / Math.log(a * a) : NaN
+  const roots = [{ num: x1, text: intT(x1) }, { num: x2, text: intT(x2) }]
+  const iv = pickIntInterval(roots.map((r) => r.num))
+  if (!iv) return null
+  const o = finish(eq, roots, residual, iv, domainOK)
+  if (o) o._verify.realResidual = real
+  return o
+}
+
+// L6 — log_{q(x)}(P(x)) = 0 ⟺ P(x)=1 при q>0, q≠1. Кубический P−1 даёт 3 корня,
+// один из них отсекается основанием (демонстрация ОДЗ).
+function t13LogVarBase() { return retryGen(t13LogVarBaseOnce, 80) }
+function t13LogVarBaseOnce() {
+  const rs = []
+  while (rs.length < 3) { const r = randInt(-4, 4); if (!rs.includes(r)) rs.push(r) }
+  const [r1, r2, r3] = rs
+  // (x−r1)(x−r2)(x−r3) = x³ + Ax² + Bx + C
+  const A = -(r1 + r2 + r3), B = r1 * r2 + r1 * r3 + r2 * r3, C = -r1 * r2 * r3
+  const cubic = (x) => x ** 3 + A * x * x + B * x + C
+  const beta = randInt(-5, 5), gamma = randInt(-6, 6)
+  const base = (x) => x * x + beta * x + gamma
+  const okAt = (x) => base(x) > 1e-9 && Math.abs(base(x) - 1) > 1e-9
+  const kept = rs.filter(okAt)
+  if (kept.length !== 2) return null                          // ровно один корень отсекается
+  const argStr = `x³${A ? ` ${A < 0 ? MINUS : "+"} ${Math.abs(A) === 1 ? "" : Math.abs(A)}x²` : ""}` +
+    `${B ? ` ${B < 0 ? MINUS : "+"} ${Math.abs(B) === 1 ? "" : Math.abs(B)}x` : ""}` +
+    `${C + 1 ? ` ${C + 1 < 0 ? MINUS : "+"} ${Math.abs(C + 1)}` : ""}`
+  const eq = `log⟦b:${qPoly(1, beta, gamma)}⟧(${argStr}) = 0`
+  const domainOK = (x) => okAt(x) && cubic(x) + 1 > 1e-12
+  const real = (x) => domainOK(x) ? Math.log(cubic(x) + 1) / Math.log(base(x)) : NaN
+  const roots = kept.sort((p, q) => p - q).map((r) => ({ num: r, text: intT(r) }))
+  const iv = pickIntInterval(roots.map((r) => r.num))
+  if (!iv) return null
+  const o = finish(eq, roots, cubic, iv, domainOK)
+  if (o) o._verify.realResidual = real
+  return o
+}
+
+// L7 — 1 + logₐ(x⁴ + m) = log_{√a}√(p·x² + q)  ⟺  a(x⁴+m) = p·x²+q  (биквадрат)
+function t13LogSqrtBase() { return retryGen(t13LogSqrtBaseOnce) }
+function t13LogSqrtBaseOnce() {
+  const a = pick([2, 3, 5])
+  const u1 = pick([2, 3, 5, 6, 7]), u2 = pick([2, 3, 5, 6, 7, 8])
+  if (u1 === u2) return null
+  const d = pick([1, 2, 3, 4])
+  const m = u1 * u2 + d, p = a * (u1 + u2), q = a * d
+  const eq = `1 + log${subU(a)}(x⁴ + ${m}) = log⟦b:⟦r:${a}⟧⟧⟦r:${p}x² + ${q}⟧`
+  const residual = (x) => a * (x ** 4 + m) - (p * x * x + q)
+  const real = (x) => 1 + Math.log(x ** 4 + m) / Math.log(a) - Math.log(Math.sqrt(p * x * x + q)) / Math.log(Math.sqrt(a))
+  const rootTxt = (u, sg) => {
+    const s = Math.sqrt(u)
+    const t = Math.abs(s - Math.round(s)) < 1e-9 ? intT(Math.round(s)) : `√${u}`
+    return { num: sg * s, text: sg < 0 ? MINUS + t : t }
+  }
+  const roots = [rootTxt(u1, -1), rootTxt(u1, 1), rootTxt(u2, -1), rootTxt(u2, 1)]
+  return assembleReal(eq, roots, residual, null, real)
+}
+
+// ============================================================================
+// ЛОГАРИФМИЧЕСКИЕ × ТРИГОНОМЕТРИЯ — квадрат внутри логарифма и группировка внутри
+// ============================================================================
+
+// LT1 — log_A(cos2x + Q·cos x + R) = 0 ⟺ 2cos²x + Q·cos x + (R−1) = 0.
+// Q — иррациональный (как в ФИПИ: cos2x − 9√2 cosx − 8 = 0 → cos x = −√2/2).
+function t13LogTrigQuadIn() { return retryGen(t13LogTrigQuadInOnce) }
+function t13LogTrigQuadInOnce() {
+  const A = pick([2, 3, 5, 7, 17, 29])
+  const r = pick([2, 3]), sg = pick([1, -1]), rt = Math.sqrt(r)
+  const v1 = sg * rt / 2
+  const key = numToTrigKey(v1)
+  if (!key) return null
+  const t = pick([2, 3, 4, 5, -2, -3, -4, -5])
+  const v2 = t * rt
+  if (Math.abs(v2) <= 1.0001) return null
+  // 2c² + b·c + cc = 0, b = −√r(sg + 2t), cc = r·sg·t
+  const bn = -(sg + 2 * t), cc = r * sg * t
+  if (!Number.isInteger(cc)) return null
+  const bNum = bn * rt
+  const fn = pick(["sin", "cos"])
+  const Ff = fn === "sin" ? Math.sin : Math.cos
+  // показ: cos 2x + b·f x + (cc + 2) для f=cos; для f=sin cos2x = 1−2sin²x → знак меняется
+  // cos: cos2x=2c²−1 → Q=b, R=cc+2 ; sin: cos2x=1−2s² → Q=−b, R=−cc (в обоих случаях arg=1 в корне)
+  const sgQ = fn === "cos" ? 1 : -1
+  const Rc = fn === "cos" ? cc + 2 : -cc
+  const Qnum = sgQ * bNum
+  const parts = [{ neg: false, str: "cos 2x" }, ...expandTerm(radCoefTerm(0, sgQ * bn, r, `${fn} x`))]
+  if (Rc !== 0) parts.push({ neg: Rc < 0, str: String(Math.abs(Rc)) })
+  const eq = `log${subU(A)}(${sumStr(parts)}) = 0`
+  const residual = (x) => { const c = Ff(x); return 2 * c * c + bNum * c + cc }
+  const arg = (x) => Math.cos(2 * x) + Qnum * Ff(x) + Rc
+  const domainOK = (x) => arg(x) > 1e-12
+  const real = (x) => domainOK(x) ? Math.log(arg(x)) / Math.log(A) : NaN
+  return finishGen(eq, seriesFor(fn, key), residual, { realResidual: real, domainOK, text: textFor(fn, key) })
+}
+
+// LT8 — logₐ((pq/2)·sin2x − q·sin x − p·cos x + 1 + aᵏ) = k
+//   внутреннее = (p·cos x − 1)(q·sin x − 1) → cos x = 1/p, sin x = 1/q (арккосинус/арксинус)
+function t13LogTrigGroup() { return retryGen(t13LogTrigGroupOnce) }
+function t13LogTrigGroupOnce() {
+  const [a, k] = pick([[2, 1], [2, 2], [3, 1], [3, 2], [5, 1]])
+  const Ak = a ** k
+  const pairs = []
+  for (let p = 2; p <= 5; p++) for (let q = 2; q <= 5; q++) if ((p * q) % 2 === 0) pairs.push([p, q])
+  const [p, q] = pick(pairs)
+  const inner = (x) => (p * Math.cos(x) - 1) * (q * Math.sin(x) - 1)
+  const parts = [
+    { neg: false, str: `${p * q / 2 === 1 ? "" : p * q / 2}sin 2x` },
+    { neg: true, str: `${q === 1 ? "" : q}sin x` },
+    { neg: true, str: `${p === 1 ? "" : p}cos x` },
+    { neg: false, str: String(1 + Ak) },
+  ]
+  const eq = `log${subU(a)}(${sumStr(parts)}) = ${k}`
+  const domainOK = (x) => inner(x) + Ak > 1e-12
+  const real = (x) => domainOK(x) ? Math.log(inner(x) + Ak) / Math.log(a) - k : NaN
+  const cs = trigSolution("cos", R(1, p)), ss = trigSolution("sin", R(1, q))
+  if (!cs || !ss) return null
+  return finishArc(eq, [...cs.rSeries, ...ss.rSeries], [...cs.arcSeries, ...ss.arcSeries],
+    [...cs.genParts, ...ss.genParts], inner, domainOK, real)
+}
+// решение f(x) = значение: «круглое» → π-серии, иначе арк-серии
+function trigSolution(fn, vR) {
+  const v = vR.p / vR.q
+  const key = numToTrigKey(v)
+  if (key) return { rSeries: seriesFor(fn, key), arcSeries: [], genParts: [textFor(fn, key)] }
+  const arcS = makeArcSeries(fn, vR)
+  return { rSeries: [], arcSeries: arcS, genParts: arcS.map((s) => s.genText).filter(Boolean) }
+}
+
 // ── реестр ──────────────────────────────────────────────────────────────────
 export const GEN13 = [
   t13SinQuad, t13CosQuad, t13CosSqSinLin, t13SinSqCosLin,
@@ -2531,11 +2675,11 @@ export const GEN13 = [
   t13FactorMixed, t13FactorTgSin2x, t13FactorCtgSin2x, t13FactorSinMinusCos, t13FactorSinPlusCos, t13FactorCosTimesEq1,
   t13ExpSumPow, t13ExpQuadInAx, t13ExpHomogQuad,
   t13ExpCubicGroup, t13ExpHalfPow, t13ExpNegPow, t13ExpHomogLin, t13ExpAbs,
-  t13LogQuad, t13LogDiff,
+  t13LogQuad, t13LogDiff, t13LogTwoBases, t13LogVarBase, t13LogSqrtBase,
   t13ProductAlgTrig, t13ProductSqrt,
   t13IrrSin, t13IrrCos,
   t13ExpTrigProduct, t13ExpTrigSym, t13ExpTrigQuad, t13ExpTrigTower,
-  t13LogTrigProd, t13LogTrigQuad,
+  t13LogTrigProd, t13LogTrigQuad, t13LogTrigQuadIn, t13LogTrigGroup,
   t13BiquadSin, t13BiquadCos, t13BiquadCtgSin, t13BiquadTgCos,
   t13Rational,
   t13Grouping,
@@ -2589,6 +2733,9 @@ export const META13 = [
   ["Логарифмические", [
     ["log-quad", "A·log²ₐx+B·logₐx+C=0 (корни aⁿ)", t13LogQuad],
     ["log-diff", "logₐf=logₐg, f,g квадратные (ОДЗ f,g>0)", t13LogDiff],
+    ["log-two-bases", "logₐ(b−x)=log_{a²}x⁴ (разные основания)", t13LogTwoBases],
+    ["log-var-base", "log_{x²+bx+c}(куб.)=0 (переменное основание, отсев по ОДЗ)", t13LogVarBase],
+    ["log-sqrt-base", "1+logₐ(x⁴+m)=log_{√a}√(px²+q)", t13LogSqrtBase],
   ]],
   ["Произведение / дробь = 0", [
     ["prod-alg-trig", "(алгебр. квадрат)(2cosx±1)=0 (десятич.+π)", t13ProductAlgTrig],
@@ -2607,6 +2754,8 @@ export const META13 = [
   ["Логарифмические × тригонометрия", [
     ["lt-prod", "logₐ(T±sin2x+aᵏ)=k → T=0∪other=∓1/2", t13LogTrigProd],
     ["lt-quad", "A·log²₂(2·триг)+B·log₂(2·триг)+C=0", t13LogTrigQuad],
+    ["lt-quad-in", "log_A(cos2x+Q·f x+R)=0 (квадрат внутри логарифма)", t13LogTrigQuadIn],
+    ["lt-group", "logₐ(группировка+aᵏ)=k → arccos(1/p) ∪ arcsin(1/q)", t13LogTrigGroup],
   ]],
   ["Биквадратные (дробно-квадратные по 1/sin, 1/cos)", [
     ["bq-sin", "A/sin²x+B/sinx+C=0 (ОДЗ sinx≠0)", t13BiquadSin],
