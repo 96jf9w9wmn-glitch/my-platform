@@ -174,7 +174,8 @@ export function verify19(o) {
     if (cl.type === "yesno") {
       if (cl.yes !== S[part]) return { ok: false, err: `пункт ${part}: заявлено ${cl.yes ? "да" : "нет"}, перебор говорит ${S[part] ? "да" : "нет"}` }
       if (cl.yes) {
-        if (!Array.isArray(cl.example) || !cl.example.length) return { ok: false, err: `пункт ${part}: «да» без примера` }
+        const bad = cl.example === null || cl.example === undefined || (Array.isArray(cl.example) && !cl.example.length)
+        if (bad) return { ok: false, err: `пункт ${part}: «да» без примера` }
         const e = V.check(cl.example, part)
         if (e) return { ok: false, err: `пункт ${part}: пример не проходит check — ${e}` }
       } else if (!cl.reason) return { ok: false, err: `пункт ${part}: «нет» без инварианта` }
@@ -184,6 +185,12 @@ export function verify19(o) {
       if (e) return { ok: false, err: `пункт ${part}: пример на ${cl.value} не проходит check — ${e}` }
       const step = cl.mode === "max" ? 1 : -1
       if (S[part + "_next"] !== false) return { ok: false, err: `пункт ${part}: перебор не подтвердил, что ${cl.value + step} невозможно` }
+    } else if (cl.type === "count") {
+      if (cl.value !== S[part]) return { ok: false, err: `пункт ${part}: заявлено ${cl.value}, перебор даёт ${S[part]}` }
+    } else if (cl.type === "value") {
+      if (Math.abs(cl.value - S[part]) > 1e-9) return { ok: false, err: `пункт ${part}: заявлено ${cl.value}, перебор даёт ${S[part]}` }
+      const e = V.check(cl.example, part)
+      if (e) return { ok: false, err: `пункт ${part}: пример не проходит check — ${e}` }
     } else if (cl.type === "all") {
       const got = (S[part] || []).join(",")
       if (got !== cl.values.join(",")) return { ok: false, err: `пункт ${part}: заявлено {${cl.values}}, перебор даёт {${got}}` }
@@ -692,6 +699,16 @@ export function t19BoardDistinctSum() {
 
 // ── реестр ─────────────────────────────────────────────────────────────────
 export const META19 = [
+  ["Трёхзначное число и сумма его цифр", [
+    ["three-quot-max", "Не кратное 100 → наибольшее частное A : S(A)", t19ThreeQuotMax],
+    ["three-quot-min", "Трёхзначное → наименьшее частное A : S(A)", t19ThreeQuotMin],
+    ["three-ratio-max-lead", "Отношение целое, первая цифра d → наибольшее", t19ThreeRatioMaxLead],
+    ["three-ratio-min-lead", "Отношение целое, первая цифра d → наименьшее", t19ThreeRatioMinLead],
+    ["three-minus-digits-div3", "(A − S(A))/3: сколько различных значений на отрезке", t19ThreeMinusDigitsDiv3],
+    ["three-add-tens-ratio", "A + 10·(цифра десятков) + k → наибольшее отношение", t19ThreeAddTensRatio],
+    ["three-AS-max", "A·S(A): наибольшее произведение, меньшее K", t19ThreeASMax],
+    ["three-AS-min", "A·S(A): наименьшее произведение, большее K", t19ThreeASMin],
+  ]],
   ["Доска: набор чисел с ограничением на сумму", [
     ["board-even-or-tail3", "N чисел: чётные или на 3, сумма S → наим. кол-во на 3", t19BoardEvenOrTail3],
     ["board-tail2-tail6", "N чисел на c₁ или c₂, сумма S → наим. кол-во на c₂", t19BoardTail2Tail6],
@@ -702,3 +719,374 @@ export const META19 = [
 ]
 
 export const GEN19 = META19.flatMap(([, skins]) => skins.map(([, , fn]) => fn))
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 4. Трёхзначное число и сумма его цифр (#13, #14, #15, #16, #17, #18, #19, #20, #21)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const digitSum = (n) => { let s = 0, x = n; while (x) { s += x % 10; x = (x - x % 10) / 10 } return s }
+
+// Таблица частных: все трёхзначные A, у которых сумма цифр делит A.
+// Строится ОДИН раз при импорте перебором по паре (сумма цифр s, частное q) —
+// то есть принципиально иначе, чем solve(), который идёт по самому A.
+// Это и есть «два независимых представления» для семейства #13–#16.
+const QUOT_TABLE = (() => {
+  const out = []
+  for (let s = 1; s <= 27; s++) {
+    for (let q = 1; q * s <= 999; q++) {
+      const A = q * s
+      if (A < 100) continue
+      if (digitSum(A) === s) out.push({ A, s, q })
+    }
+  }
+  return out
+})()
+// Все трёхзначные числа с заданной суммой цифр — рекурсией по цифрам (для #19/#20).
+const BY_DIGIT_SUM = (() => {
+  const map = new Map()
+  for (let x = 1; x <= 9; x++) for (let y = 0; y <= 9; y++) for (let z = 0; z <= 9; z++) {
+    const s = x + y + z
+    if (!map.has(s)) map.set(s, [])
+    map.get(s).push(100 * x + 10 * y + z)
+  }
+  return map
+})()
+
+// Общий генератор для семейства «частное/отношение трёхзначного числа и суммы его цифр».
+// mode: "max" | "min"; lead — обязательная первая цифра (0 = без ограничения);
+// noHundred — запрет чисел, кратных 100; ratioWord — формулировка эталона.
+function quotientFamily({ mode, lead, noHundred, style }) {
+  // Пункт в) эталона несёт свои ограничения (не кратно 100 / первая цифра d);
+  // пункты а) и б) спрашивают про то же частное БЕЗ них (в стиле «quot» запрет
+  // кратности 100 стоит в преамбуле, поэтому действует везде).
+  const fitsC = (r) => (!noHundred || r.A % 100 !== 0) && (!lead || Math.floor(r.A / 100) === lead)
+  const fitsAB = (r) => (style !== "quot" || !noHundred || r.A % 100 !== 0)
+  const rowsC = QUOT_TABLE.filter(fitsC)
+  const rowsAB = QUOT_TABLE.filter(fitsAB)
+  if (rowsC.length < 3 || rowsAB.length < 3) return null
+  const qsC = [...new Set(rowsC.map((r) => r.q))].sort((a, b) => a - b)
+  const qsAB = [...new Set(rowsAB.map((r) => r.q))].sort((a, b) => a - b)
+  const answer = mode === "max" ? qsC[qsC.length - 1] : qsC[0]
+  const exC = rowsC.filter((r) => r.q === answer)[0].A
+  // а) — достижимое частное (кроме крайнего, чтобы не дублировать пункт в).
+  const inner = qsAB.filter((q) => q !== answer)
+  if (!inner.length) return null
+  const q1 = pick(inner)
+  const exA = rowsAB.filter((r) => r.q === q1)[0].A
+  // б) — недостижимое частное рядом с достижимыми.
+  const holes = []
+  for (let q = qsAB[0]; q <= qsAB[qsAB.length - 1]; q++) if (!qsAB.includes(q)) holes.push(q)
+  if (!holes.length) return null
+  const q2 = pick(holes)
+  // допустимые суммы цифр для q2: A ≡ S (mod 9) ⇒ (q2−1)·S кратно 9
+  // Ограничения «не кратно 100» и «первая цифра» в формулировке эталона #15/#16
+  // относятся ТОЛЬКО к пункту в); в пунктах а)/б) их нет.
+  const admissible = []
+  for (let s = 1; s <= 27; s++) {
+    const A = q2 * s
+    if (A < 100 || A > 999) continue
+    if (((q2 - 1) * s) % 9 !== 0) continue
+    if (style === "quot" && noHundred && A % 100 === 0) continue
+    admissible.push(s)
+  }
+
+  // Текст обоснования пункта б): перечисляем допустимые S и показываем, что ни одно
+  // из чисел q2·S не имеет нужной суммы цифр.
+  const holeReason = admissible.length === 0
+    ? `ни одно такое S не даёт трёхзначного числа`
+    : admissible.length === 1
+      ? `подходит только S = ${admissible[0]}, но сумма цифр числа ${q2 * admissible[0]} равна ${digitSum(q2 * admissible[0])}, а не ${admissible[0]}`
+      : `подходят только S = ${joinRu(admissible)}; суммы цифр чисел ${joinRu(admissible.map((v) => q2 * v))} равны ${joinRu(admissible.map((v) => digitSum(q2 * v)))} — ни одна не совпала с нужной`
+
+  const cond = []
+  if (style === "quot") {
+    cond.push(`Дано трёхзначное натуральное число (число не может начинаться с нуля)${noHundred ? ", не кратное 100" : ""}.`)
+  } else {
+    cond.push("Отношение трёхзначного натурального числа к сумме его цифр — целое число.")
+  }
+  const tailC = style === "quot"
+    ? `Какое ${mode === "max" ? "наибольшее" : "наименьшее"} натуральное значение может иметь частное данного числа и суммы его цифр?`
+    : `Какое ${mode === "max" ? "наибольшее" : "наименьшее"} значение может принимать это отношение, если ${noHundred ? "число не делится на 100 и " : ""}первая цифра трёхзначного числа равна ${lead}?`
+  const qWord = style === "quot" ? "частное этого числа и суммы его цифр" : "это отношение"
+
+  const params = { mode, lead, noHundred, style, q1, q2, answer }
+  const check = (A, part) => {
+    if (!Number.isInteger(A) || A < 100 || A > 999) return `${A} не трёхзначное`
+    if (style === "ratio" && A % digitSum(A) !== 0) return `отношение ${A} к сумме цифр не целое`
+    if (part === "c") {
+      if (noHundred && A % 100 === 0) return `${A} кратно 100`
+      if (lead && Math.floor(A / 100) !== lead) return `первая цифра ${A} не ${lead}`
+    } else if (style === "quot" && noHundred && A % 100 === 0) return `${A} кратно 100`
+    const target = part === "a" ? q1 : part === "b" ? q2 : answer
+    if (A !== target * digitSum(A)) return `${A} / ${digitSum(A)} ≠ ${target}`
+    return null
+  }
+  const solve = (P) => {
+    // Пространство перебора: ВСЕ трёхзначные числа 100…999 (иных в условии нет).
+    const ok = (A) => {
+      if (A % digitSum(A) !== 0) return false
+      if (P.style === "quot" && P.noHundred && A % 100 === 0) return false
+      return true
+    }
+    const okC = (A) => ok(A) && (!P.noHundred || A % 100 !== 0) && (!P.lead || Math.floor(A / 100) === P.lead)
+    // а) и б) — ограничение «первая цифра» относится ТОЛЬКО к пункту в) эталона
+    const reach = (q) => { for (let A = 100; A <= 999; A++) if (ok(A) && A / digitSum(A) === q) return true; return false }
+    let best = null
+    for (let A = 100; A <= 999; A++) {
+      if (!okC(A)) continue
+      const q = A / digitSum(A)
+      if (best === null || (P.mode === "max" ? q > best : q < best)) best = q
+    }
+    const nextQ = P.mode === "max" ? best + 1 : best - 1
+    let nextReach = false
+    for (let A = 100; A <= 999; A++) if (okC(A) && A / digitSum(A) === nextQ) nextReach = true
+    return { a: reach(P.q1), b: reach(P.q2), c: best, c_next: nextReach }
+  }
+
+  const bound = mode === "max" ? `при частном q > ${answer} сумма цифр S = A/q не превосходит ${Math.floor(999 / (answer + 1))}` :
+    `при частном q < ${answer} из A = q·S и S ≤ 27 следует A ≤ ${(answer - 1) * 27}`
+  return item({
+    preamble: cond.join(" "),
+    qa: `Может ли ${qWord} быть равным ${q1}?`,
+    qb: `Может ли ${qWord} быть равным ${q2}?`,
+    qc: tailC,
+    ansA: `да, например ${exA} (сумма цифр ${digitSum(exA)}, ${exA} : ${digitSum(exA)} = ${q1})`,
+    ansB: `нет: из A = ${q2}·S и A ≡ S (mod 9) следует, что ${q2 - 1}·S кратно 9; ${holeReason}`,
+    ansC: `${answer}; пример: ${exC} (сумма цифр ${digitSum(exC)}, ${exC} : ${digitSum(exC)} = ${answer}); ${mode === "max" ? "больше" : "меньше"} нельзя — ${bound}, и прямая проверка всех оставшихся пар (q, S) трёхзначных чисел не даёт`,
+    solution: `Обозначим число A, сумму его цифр S. Всегда A ≡ S (mod 9), поэтому из A = q·S следует, что (q − 1)·S кратно 9 — это отсекает большинство значений q.\nДля q = ${q2}: ${holeReason}, значит ${q2} невозможно.\nДля q = ${q1} подходит число ${exA}. ${mode === "max" ? "Наибольшее" : "Наименьшее"} значение равно ${answer} и достигается на ${exC}: ${bound}, а оставшиеся пары (q, S) проверяются напрямую.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: q1 },
+        b: { type: "yesno", yes: false, reason: "mod9", target: q2 },
+        c: { type: "extremum", mode, value: answer, example: exC },
+      },
+      mustMention: [q1, q2, ...(lead ? [lead] : [])],
+      extra: [100, 0],
+      phrases: style === "quot" ? ["трёхзначное натуральное число"] : ["Отношение трёхзначного натурального числа к сумме его цифр — целое число"],
+    },
+  })
+}
+
+// #13. Трёхзначное, не кратное 100 → наибольшее натуральное частное A : S(A).
+export function t19ThreeQuotMax() { return quotientFamily({ mode: "max", lead: 0, noHundred: true, style: "quot" }) }
+// #14. Трёхзначное → наименьшее натуральное частное A : S(A).
+export function t19ThreeQuotMin() { return quotientFamily({ mode: "min", lead: 0, noHundred: false, style: "quot" }) }
+// #15. Отношение целое → наибольшее, если число не делится на 100 и первая цифра равна d.
+export function t19ThreeRatioMaxLead() { return quotientFamily({ mode: "max", lead: randInt(1, 9), noHundred: true, style: "ratio" }) }
+// #16. Отношение целое → наименьшее, если первая цифра равна d.
+export function t19ThreeRatioMinLead() { return quotientFamily({ mode: "min", lead: randInt(1, 9), noHundred: false, style: "ratio" }) }
+
+// #17. С трёхзначным числом: вычитают сумму его цифр, разность делят на 3.
+//      а) могло ли получиться v1? б) v2? в) сколько различных чисел получается из [L; R].
+// A − S(A) = 99a + 9b = 9(11a + b), поэтому результат равен 3(11a + b) — он не зависит
+// от последней цифры и всегда кратен 3. Отображение «десяток числа → результат» инъективно,
+// значит различных результатов ровно столько, сколько десятков пересекает [L; R].
+export function t19ThreeMinusDigitsDiv3() {
+  const a1 = randInt(1, 9), b1 = randInt(0, 9)
+  const v1 = 3 * (11 * a1 + b1)
+  const exA = 100 * a1 + 10 * b1 + randInt(0, 9)
+  // б) — «нет»: либо результат не кратен 3, либо t = v2/3 не представим как 11a + b, b ≤ 9.
+  const badMod3 = Math.random() < 0.5
+  let v2, reasonB
+  if (badMod3) {
+    v2 = 3 * randInt(11, 108) + pick([1, 2])
+    reasonB = "not-div3"
+  } else {
+    const a2 = randInt(1, 9)
+    v2 = 3 * (11 * a2 + 10)                 // остаток 10 при делении на 11 недостижим
+    reasonB = "not-representable"
+  }
+  if (v2 === v1) return null
+  const L = 100 * randInt(1, 4), R = 100 * randInt(5, 9) + (Math.random() < 0.5 ? 0 : 99)
+  const count = Math.floor(R / 10) - Math.floor(L / 10) + 1
+
+  const params = { v1, v2, L, R, count }
+  const check = (A, part) => {
+    if (!Number.isInteger(A) || A < 100 || A > 999) return `${A} не трёхзначное`
+    const res = (A - digitSum(A)) / 3
+    const target = part === "a" ? v1 : v2
+    if (part !== "c" && res !== target) return `из ${A} получается ${res}, а не ${target}`
+    return null
+  }
+  const solve = (P) => {
+    // Пространство перебора: все трёхзначные числа 100…999 (для а/б) и все числа
+    // отрезка [P.L; P.R] (для в) — иных чисел в условии нет.
+    const res = (A) => (A - digitSum(A)) / 3
+    const reach = (v) => { for (let A = 100; A <= 999; A++) if (res(A) === v) return true; return false }
+    const set = new Set()
+    for (let A = P.L; A <= P.R; A++) set.add(res(A))
+    return { a: reach(P.v1), b: reach(P.v2), c: set.size }
+  }
+
+  return item({
+    preamble: `С трёхзначным числом производят следующую операцию: вычитают из него сумму его цифр, а затем получившуюся разность делят на 3.`,
+    qa: `Могло ли в результате такой операции получиться число ${v1}?`,
+    qb: `Могло ли в результате такой операции получиться число ${v2}?`,
+    qc: `Сколько различных чисел может получиться в результате такой операции из чисел от ${L} до ${R} включительно?`,
+    ansA: `да, например из числа ${exA}: ${exA} − ${digitSum(exA)} = ${exA - digitSum(exA)}, и ${exA - digitSum(exA)} : 3 = ${v1}`,
+    ansB: badMod3
+      ? `нет: A − S(A) = 99a + 9b кратно 9, поэтому результат всегда кратен 3, а ${v2} на 3 не делится`
+      : `нет: результат равен 3(11a + b), где a — цифра сотен, b — цифра десятков; из ${v2} : 3 = ${v2 / 3} следует 11a + b = ${v2 / 3}, что даёт b = 10 — не цифра`,
+    ansC: `${count}: результат равен 3(11a + b) и не зависит от последней цифры, а разным парам (a, b) отвечают разные результаты, поэтому различных чисел столько же, сколько десятков пересекает отрезок [${L}; ${R}], то есть ${Math.floor(R / 10)} − ${Math.floor(L / 10)} + 1 = ${count}`,
+    solution: `Пусть A = 100a + 10b + c. Тогда A − S(A) = 99a + 9b = 9(11a + b), и после деления на 3 получается 3(11a + b).\nОтсюда сразу: результат всегда кратен 3 и не зависит от последней цифры c. Разным парам (a, b) отвечают разные значения 11a + b (если 11a₁ + b₁ = 11a₂ + b₂, то 11(a₁ − a₂) = b₂ − b₁, а |b₂ − b₁| ≤ 9, значит a₁ = a₂ и b₁ = b₂).\nПоэтому на отрезке [${L}; ${R}] различных результатов ровно столько, сколько там десятков: ${Math.floor(R / 10)} − ${Math.floor(L / 10)} + 1 = ${count}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: v1 },
+        b: { type: "yesno", yes: false, reason: reasonB, target: v2 },
+        c: { type: "count", value: count },
+      },
+      mustMention: [v1, v2, L, R],
+      extra: [3],
+      phrases: ["трёхзначным числом", "вычитают из него сумму его цифр", "делят на 3"],
+    },
+  })
+}
+
+// #18. С трёхзначным числом: прибавляют цифру десятков, умноженную на 10, затем прибавляют k.
+//      а) могло ли получиться v1? б) v2? в) наибольшее отношение полученного к исходному.
+// B = 100a + 20b + c + k, поэтому B − k внутри своей сотни даёт при делении на 20 остаток ≤ 9.
+// Отношение B/A = 1 + (10b + k)/A растёт с b и убывает с A, поэтому максимум — при b = 9
+// и наименьшем таком числе, то есть при A = 190.
+export function t19ThreeAddTensRatio() {
+  const k = randInt(1, 9)
+  const a1 = randInt(1, 9), b1 = randInt(0, 9), c1 = randInt(0, 9)
+  const exA = 100 * a1 + 10 * b1 + c1
+  const v1 = exA + 10 * b1 + k
+  // б) — «нет»: B − k = 100a₀ + r, r ∈ [10; 19] недостижимо ни при одной первой цифре.
+  const a2 = randInt(2, 9), r2 = randInt(10, 19)
+  const v2 = 100 * a2 + r2 + k
+  if (v1 === v2) return null
+  const bestA = 190, bestB = 190 + 90 + k
+  const g = (x, y) => (y ? g(y, x % y) : x)
+  const gg = g(bestB, bestA)
+  const ratio = bestB / bestA
+
+  const params = { k, v1, v2, ratio }
+  const check = (A, part) => {
+    if (!Number.isInteger(A) || A < 100 || A > 999) return `${A} не трёхзначное`
+    const tens = Math.floor(A / 10) % 10
+    const B = A + 10 * tens + k
+    if (part === "a" && B !== v1) return `из ${A} получается ${B}, а не ${v1}`
+    if (part === "b" && B !== v2) return `из ${A} получается ${B}, а не ${v2}`
+    if (part === "c" && Math.abs(B / A - ratio) > 1e-12) return `отношение ${B}/${A} не равно максимальному`
+    return null
+  }
+  const solve = (P) => {
+    // Пространство перебора: все трёхзначные числа 100…999.
+    const B = (A) => A + 10 * (Math.floor(A / 10) % 10) + P.k
+    const reach = (v) => { for (let A = 100; A <= 999; A++) if (B(A) === v) return true; return false }
+    let best = 0
+    for (let A = 100; A <= 999; A++) best = Math.max(best, B(A) / A)
+    return { a: reach(P.v1), b: reach(P.v2), c: best }
+  }
+
+  return item({
+    preamble: `С трёхзначным числом производят следующую операцию: к нему прибавляют цифру десятков, умноженную на 10, а затем к получившейся сумме прибавляют ${k}.`,
+    qa: `Могло ли в результате такой операции получиться число ${v1}?`,
+    qb: `Могло ли в результате такой операции получиться число ${v2}?`,
+    qc: `Найдите наибольшее отношение получившегося числа к исходному.`,
+    ansA: `да, например из числа ${exA}: ${exA} + 10·${b1} + ${k} = ${v1}`,
+    ansB: `нет: полученное число равно 100a + 20b + c + ${k}, поэтому ${v2} − ${k} = ${v2 - k} после вычитания 100a должно давать при делении на 20 остаток не больше 9. При a = ${a2} остаётся ${r2}, при a = ${a2 - 1} остаётся ${100 + r2}; оба дают остаток ${r2} > 9, а при меньших a остаётся больше 189 = 20·9 + 9`,
+    ansC: `${bestB / gg}/${bestA / gg} (при исходном числе 190: ${bestA} → ${bestB})`,
+    solution: `Пусть A = 100a + 10b + c. Полученное число равно B = A + 10b + ${k} = 100a + 20b + c + ${k}.\nОтношение B/A = 1 + (10b + ${k})/A растёт при увеличении b и убывает при увеличении A, поэтому нужно взять наибольшую цифру десятков b = 9 и наименьшее такое число A = 190.\nТогда B = 190 + 90 + ${k} = ${bestB}, и наибольшее отношение равно ${bestB}/${bestA} = ${bestB / gg}/${bestA / gg}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: v1 },
+        b: { type: "yesno", yes: false, reason: "mod20", target: v2 },
+        c: { type: "value", value: ratio, example: bestA },
+      },
+      mustMention: [k, v1, v2],
+      extra: [10],
+      phrases: ["трёхзначным числом", "прибавляют цифру десятков, умноженную на 10"],
+    },
+  })
+}
+
+// Произведения A·S(A) для всех трёхзначных A — строим по суммам цифр (BY_DIGIT_SUM),
+// то есть иначе, чем solve(), который идёт по A и считает сумму цифр делением.
+const AS_PRODUCTS = (() => {
+  const map = new Map()
+  for (const [s, list] of BY_DIGIT_SUM) for (const A of list) if (!map.has(A * s)) map.set(A * s, A)
+  return map
+})()
+const AS_SORTED = [...AS_PRODUCTS.keys()].sort((a, b) => a - b)
+const AS_MAX = AS_SORTED[AS_SORTED.length - 1]
+// Простые до 27000 — нужны для «нет» в пункте б) (простое произведение невозможно).
+const PRIMES = (() => {
+  const n = 27000, sieve = new Uint8Array(n + 1), out = []
+  for (let i = 2; i <= n; i++) { if (!sieve[i]) { out.push(i); for (let j = i * i; j <= n; j += i) sieve[j] = 1 } }
+  return out.filter((p) => p > 1500)
+})()
+
+// #19/#21 (max) и #20 (min). Дано трёхзначное число A, сумма цифр которого равна S.
+function asFamily(mode) {
+  const K3 = randInt(1500, 24000)
+  let answer = null, exC = null
+  if (mode === "max") {
+    for (let i = AS_SORTED.length - 1; i >= 0; i--) if (AS_SORTED[i] < K3) { answer = AS_SORTED[i]; break }
+  } else {
+    for (let i = 0; i < AS_SORTED.length; i++) if (AS_SORTED[i] > K3) { answer = AS_SORTED[i]; break }
+  }
+  if (answer === null) return null
+  exC = AS_PRODUCTS.get(answer)
+  // а) — «да» (достижимое произведение) или «нет» по оценке A·S ≤ 999·27.
+  const yesA = Math.random() < 0.5
+  const K1 = yesA ? pick(AS_SORTED) : randInt(AS_MAX + 1, 40000)
+  const exA = yesA ? AS_PRODUCTS.get(K1) : null
+  // б) — «нет»: простое произведение (S — делитель, но S ≤ 27 и A трёхзначно).
+  const K2 = pick(PRIMES)
+  if (K1 === K2 || K2 === K3 || K1 === K3 || K2 === answer) return null
+
+  const params = { mode, K1, K2, K3, answer, yesA }
+  const check = (A, part) => {
+    if (!Number.isInteger(A) || A < 100 || A > 999) return `${A} не трёхзначное`
+    const p = A * digitSum(A)
+    const target = part === "a" ? K1 : part === "b" ? K2 : answer
+    if (p !== target) return `${A}·${digitSum(A)} = ${p}, а не ${target}`
+    if (part === "c" && (mode === "max" ? p >= K3 : p <= K3)) return `${p} не ${mode === "max" ? "меньше" : "больше"} ${K3}`
+    return null
+  }
+  const solve = (P) => {
+    // Пространство перебора: все трёхзначные числа 100…999.
+    const prod = (A) => A * digitSum(A)
+    const reach = (v) => { for (let A = 100; A <= 999; A++) if (prod(A) === v) return true; return false }
+    let best = null
+    for (let A = 100; A <= 999; A++) {
+      const p = prod(A)
+      if (P.mode === "max") { if (p < P.K3 && (best === null || p > best)) best = p }
+      else if (p > P.K3 && (best === null || p < best)) best = p
+    }
+    return { a: reach(P.K1), b: reach(P.K2), c: best }
+  }
+
+  return item({
+    preamble: `Дано трёхзначное число A, сумма цифр которого равна S.`,
+    qa: `Может ли выполняться равенство A · S = ${K1}?`,
+    qb: `Может ли выполняться равенство A · S = ${K2}?`,
+    qc: mode === "max"
+      ? `Найдите наибольшее произведение A · S, меньшее ${K3}.`
+      : `Какое наименьшее значение может принимать произведение A · S, если оно больше ${K3}?`,
+    ansA: yesA
+      ? `да, например A = ${exA}: сумма цифр равна ${digitSum(exA)} и ${exA} · ${digitSum(exA)} = ${K1}`
+      : `нет: A ≤ 999 и S ≤ 27, поэтому A · S ≤ 999 · 27 = ${AS_MAX} < ${K1}`,
+    ansB: `нет: S — делитель произведения, а ${K2} простое, поэтому S = 1 или S = ${K2}; при S = 1 получаем A = ${K2}, что не трёхзначно, а S = ${K2} больше максимальной суммы цифр 27`,
+    ansC: `${answer}; достигается при A = ${exC} (сумма цифр ${digitSum(exC)}, ${exC} · ${digitSum(exC)} = ${answer}); ${mode === "max" ? `больших произведений, меньших ${K3}, нет` : `меньших произведений, больших ${K3}, нет`}`,
+    solution: `Для трёхзначного A сумма цифр S не превосходит 27, поэтому A · S ≤ 999 · 27 = 26973 — это сразу отсекает слишком большие значения.\nЕсли A · S = p, то S — делитель p, не превосходящий 27, а A = p/S обязано быть трёхзначным с суммой цифр ровно S. Для простого p = ${K2} остаются только S = 1 и S = ${K2}, и оба не подходят.\nПеребирая S от 1 до 27 и A = p/S, находим ${mode === "max" ? "наибольшее" : "наименьшее"} подходящее произведение ${mode === "max" ? "меньше" : "больше"} ${K3}: это ${answer} при A = ${exC}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: yesA, example: exA, reason: yesA ? null : "upper-bound", target: K1 },
+        b: { type: "yesno", yes: false, reason: "prime", target: K2 },
+        c: { type: "value", value: answer, example: exC },
+      },
+      mustMention: [K1, K2, K3],
+      extra: [999, 27, 26973, 1],
+      phrases: ["трёхзначное число A, сумма цифр которого равна S"],
+    },
+  })
+}
+export function t19ThreeASMax() { return asFamily("max") }
+export function t19ThreeASMin() { return asFamily("min") }
