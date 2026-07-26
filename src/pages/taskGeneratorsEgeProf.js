@@ -4045,6 +4045,87 @@ function t03ConeLatScaleDown() {
   }
 }
 
+// Конус с сечением, параллельным основанию (сечение — небольшой эллипс ближе к
+// вершине: передняя дуга сплошная, задняя штрихом).
+function coneParSectSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 350" width="280" height="350" font-family="Arial, sans-serif">` +
+    `<rect width="280" height="350" fill="#fff"/>` +
+    `<path d="M30,280 A110,26 0 0,1 250,280" fill="none" stroke="#000" stroke-width="1.3" stroke-dasharray="8 6" pathLength="228"/>` +
+    `<line x1="140" y1="55" x2="140" y2="280" stroke="#000" stroke-width="1.3" stroke-dasharray="8 6" pathLength="225"/>` +
+    `<path d="M99,138 A41,10 0 0,1 181,138" fill="none" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="88"/>` +
+    `<line x1="140" y1="55" x2="30" y2="280" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="140" y1="55" x2="250" y2="280" stroke="#000" stroke-width="1.5"/>` +
+    `<path d="M30,280 A110,26 0 0,0 250,280" fill="none" stroke="#000" stroke-width="1.5"/>` +
+    `<path d="M99,138 A41,10 0 0,0 181,138" fill="none" stroke="#000" stroke-width="1.5"/>` +
+    `</svg>`
+}
+
+// Сечение ∥ основанию делит высоту на a (от вершины) и b ⟹ подобие k = a/(a+b),
+// площадь сечения = S_осн·k². Числа подобраны так, чтобы k = 1/n.
+function t03ConeParSect() {
+  const n = randInt(2, 5), t = randInt(1, 5), S = n * n * randInt(1, 8)
+  return {
+    condition_text: `Площадь основания конуса равна ${S}. Плоскость, параллельная плоскости основания конуса, делит его высоту на отрезки длиной ${t} и ${t * (n - 1)}, считая от вершины. Найдите площадь сечения конуса этой плоскостью.`,
+    image_url: svgUrl(coneParSectSvg()),
+    answer: ru(S / (n * n)),
+  }
+}
+
+// Конус с сечением ∥ основанию ближе к основанию; отсечённый конус выделен жирным
+// (его образующие и передняя дуга сечения), нижняя часть — тонкими линиями.
+function coneSectSurfSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 350" width="280" height="350" font-family="Arial, sans-serif">` +
+    `<rect width="280" height="350" fill="#fff"/>` +
+    `<path d="M30,280 A110,26 0 0,1 250,280" fill="none" stroke="#000" stroke-width="1.3" stroke-dasharray="8 6" pathLength="228"/>` +
+    `<path d="M61,217 A79,19 0 0,1 219,217" fill="none" stroke="#000" stroke-width="1.3" stroke-dasharray="8 6" pathLength="169"/>` +
+    `<line x1="140" y1="55" x2="140" y2="280" stroke="#000" stroke-width="1.3" stroke-dasharray="8 6" pathLength="225"/>` +
+    `<line x1="61" y1="217" x2="30" y2="280" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="219" y1="217" x2="250" y2="280" stroke="#000" stroke-width="1.3"/>` +
+    `<path d="M30,280 A110,26 0 0,0 250,280" fill="none" stroke="#000" stroke-width="1.4"/>` +
+    `<line x1="140" y1="55" x2="61" y2="217" stroke="#000" stroke-width="2.2"/>` +
+    `<line x1="140" y1="55" x2="219" y2="217" stroke="#000" stroke-width="2.2"/>` +
+    `<path d="M61,217 A79,19 0 0,0 219,217" fill="none" stroke="#000" stroke-width="2.2"/>` +
+    `</svg>`
+}
+
+// Сечение делит высоту в отношении m : n от вершины ⟹ отсечённый конус подобен
+// исходному с k = m/(m+n), полная поверхность ×k². S кратна 2,5 ⟹ ответ с одним знаком.
+function t03ConeFullSurfSect() {
+  const m = randInt(1, 4), n = 5 - m
+  const S = clean(2.5 * randInt(2, 20))
+  return {
+    condition_text: `Площадь полной поверхности конуса равна ${ru(S)}. Параллельно основанию конуса проведено сечение, делящее высоту в отношении ${m} : ${n}, считая от вершины конуса. Найдите площадь полной поверхности отсечённого конуса.`,
+    image_url: svgUrl(coneSectSurfSvg()),
+    answer: ru(clean(S * m * m / 25)),
+  }
+}
+
+// Сосуд в форме конуса вершиной вниз; жидкость залита светло-голубым, её
+// поверхность — передняя дуга сплошная, задняя штрихом.
+function coneVesselSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 340" width="280" height="340" font-family="Arial, sans-serif">` +
+    `<rect width="280" height="340" fill="#fff"/>` +
+    `<path d="M77,156 A63,15 0 0,1 203,156 L140,300 Z" fill="#cfe8f7" stroke="none"/>` +
+    `<path d="M77,156 A63,15 0 0,1 203,156" fill="none" stroke="#000" stroke-width="1.5" stroke-dasharray="7 5" pathLength="134"/>` +
+    `<ellipse cx="140" cy="60" rx="105" ry="25" fill="none" stroke="#000" stroke-width="2.2"/>` +
+    `<line x1="35" y1="60" x2="140" y2="300" stroke="#000" stroke-width="2.2"/>` +
+    `<line x1="245" y1="60" x2="140" y2="300" stroke="#000" stroke-width="2.2"/>` +
+    `<path d="M77,156 A63,15 0 0,0 203,156" fill="none" stroke="#000" stroke-width="1.8"/>` +
+    `</svg>`
+}
+
+// Жидкость заполняет подобный конус с k = p/q ⟹ V_жидк = V·k³, долить = V_жидк·(q³−p³)/p³.
+const VESSEL_FRACS = [[1, 2], [1, 3], [1, 4], [2, 3], [2, 5], [2, 7], [3, 4]]
+function t03ConeVessel() {
+  const [p, q] = pick(VESSEL_FRACS)
+  const v = p * p * p * randInt(1, p === 1 ? 60 : 20)
+  return {
+    condition_text: `В сосуде, имеющем форму конуса, уровень жидкости достигает ${fT(p, q)} высоты. Объём жидкости равен ${v} мл. Сколько миллилитров жидкости нужно долить, чтобы полностью наполнить сосуд?`,
+    image_url: svgUrl(coneVesselSvg()),
+    answer: ru(v * (q * q * q - p * p * p) / (p * p * p)),
+  }
+}
+
 // Шар, вписанный в цилиндр (R общий, высота цилиндра = 2R).
 function sphereInCylSvg() {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="500" height="500" font-family="Arial, sans-serif">` +
@@ -5127,7 +5208,7 @@ export const GENERATORS_EGE_PROF = {
     t01ParMidpoint, t01ParAngle, t01ParHeights,
     t01RhombusSideDiag, t01RhombusAngle, t01TrapMidDiag],
   2: [t02DotCoord, t02DotLenAngle, t02LenCombo, t02DotOfCombos, t02GraphLenCombo],
-  3: [t03BoxTetra, t03BoxPyramid, t03BoxPyramidC1, t03BoxPyramidA1, t03BoxPrism, t03BoxTriPrism, t03BoxPrismADA1, t03PrismRightVol, t03PrismRightEdge, t03SqPrismAngle, t03TriPrismAngle, t03HexPrismAngle, t03HexPrismTri, t03HexPrismTrap, t03CylLatHeight, t03CylLatDiameter, t03MugRatio, t03TwoCylindersTaller, t03LiquidWider, t03LiquidNarrower, t03Submerge, t03SubmergeAbs, t03ConeHeight, t03ConeDiameter, t03ConeAxialFromBase, t03ConeAxialFromSlant, t03ConeLatScale, t03ConeLatScaleDown, t03PrismTetraC1, t03PrismTetraB1, t03PrismPenta, t03PrismMidline, t03PrismCut, t03PrismCutRegular, t03PrismLateral, t03PrismLateralInv, t03CylConeLateral, t03CylConeLatInverse, t03CylConeVolume, t03CylConeVolInverse, t03ConeInSphere, t03ConeInSphereInv, t03ConeSphereRadius, t03ConeSphereSlant, t03SphereInCyl, t03SphereInCylVol, t03TwoCylinders, t03CylInBox, t03CubeCut, t03CubeCutInverse, t03CubeDiagonal, t03CubeAngle, t03BoxDiagonal, t03BoxLineSin, t03BoxSection, t03BoxDiagSection, t03StepSolid, t03LSolid, t03TSolidSurface, t03SphereSection, t03ConeScale, t03ConeHeightScale],
+  3: [t03BoxTetra, t03BoxPyramid, t03BoxPyramidC1, t03BoxPyramidA1, t03BoxPrism, t03BoxTriPrism, t03BoxPrismADA1, t03PrismRightVol, t03PrismRightEdge, t03SqPrismAngle, t03TriPrismAngle, t03HexPrismAngle, t03HexPrismTri, t03HexPrismTrap, t03CylLatHeight, t03CylLatDiameter, t03MugRatio, t03TwoCylindersTaller, t03LiquidWider, t03LiquidNarrower, t03Submerge, t03SubmergeAbs, t03ConeHeight, t03ConeDiameter, t03ConeAxialFromBase, t03ConeAxialFromSlant, t03ConeLatScale, t03ConeLatScaleDown, t03ConeParSect, t03ConeFullSurfSect, t03ConeVessel, t03PrismTetraC1, t03PrismTetraB1, t03PrismPenta, t03PrismMidline, t03PrismCut, t03PrismCutRegular, t03PrismLateral, t03PrismLateralInv, t03CylConeLateral, t03CylConeLatInverse, t03CylConeVolume, t03CylConeVolInverse, t03ConeInSphere, t03ConeInSphereInv, t03ConeSphereRadius, t03ConeSphereSlant, t03SphereInCyl, t03SphereInCylVol, t03TwoCylinders, t03CylInBox, t03CubeCut, t03CubeCutInverse, t03CubeDiagonal, t03CubeAngle, t03BoxDiagonal, t03BoxLineSin, t03BoxSection, t03BoxDiagSection, t03StepSolid, t03LSolid, t03TSolidSurface, t03SphereSection, t03ConeScale, t03ConeHeightScale],
   4: [t04ShotPut, t04Gymnastics, t04Diving, t04Tickets, t04Markers, t04Defect, t04Lottery, t04CoinTwice, t04Rooms, t04FootballCoin],
   5: [t05Lamps, t05Between, t05Shooter4, t05Coffee, t05Battery, t05ShooterN, t05DiceCond, t05TwoThemes, t05Exact],
   6: [t06ExpReduce, t06ExpBothSides, t06LogEqLog, t06LogEqNum, t06Rational, t06Cube, t06Sqrt, t06CubeRoot],
@@ -5284,6 +5365,9 @@ export const GEN_META_EGE_PROF = {
       ["cone-axial-slant", "Конус: высота + образующая → S осевого сечения", t03ConeAxialFromSlant],
       ["cone-lat-scale", "Образующая ×k → S бок. ×k", t03ConeLatScale],
       ["cone-lat-scale-down", "Радиус ÷k → S бок. ÷k", t03ConeLatScaleDown],
+      ["cone-par-sect", "Сечение ∥ основанию → площадь сечения (k²)", t03ConeParSect],
+      ["cone-fullsurf-sect", "S полн. отсечённого конуса (k²)", t03ConeFullSurfSect],
+      ["cone-vessel", "Сосуд-конус: сколько долить (k³)", t03ConeVessel],
       ["cone-scale", "Радиус конуса ×k → объём ×k²", t03ConeScale],
       ["cone-h-scale", "Высота конуса ÷k → объём ÷k", t03ConeHeightScale],
     ]],
