@@ -5107,6 +5107,107 @@ function t03PyrMidlineCut() {
   }
 }
 
+// Тетраэдр «две нижние вершины + две верхние» правильной треугольной призмы:
+// V = ⅙·L·|b×c| = S·L/3 (b, c — стороны основания из общей вершины).
+const TRIPRISM_TETRA4 = [["A", "C", "B"], ["A", "B", "C"], ["B", "A", "C"], ["B", "C", "A"], ["C", "A", "B"], ["C", "B", "A"]]
+function t03PrismTetra4() {
+  const [x, y, z] = pick(TRIPRISM_TETRA4)
+  let s, l
+  do { s = randInt(2, 14); l = randInt(2, 14) } while ((s * l) % 3 !== 0)
+  return {
+    condition_text: `Найдите объём многогранника, вершинами которого являются вершины ${x}, ${y}, ${x}₁, ${z}₁ правильной треугольной призмы ABCA₁B₁C₁. Площадь основания призмы равна ${s}, а боковое ребро равно ${l}.`,
+    image_url: svgUrl(triPrismSvg()),
+    answer: ru(s * l / 3),
+  }
+}
+
+// Пирамида «целое основание + вершина другого основания» правильной шестиугольной
+// призмы: V = S·L/3.
+function t03HexPrismPyr() {
+  const i = randInt(0, 5), top = Math.random() < 0.5
+  const apex = HEX_NAMES[i] + (top ? "" : "1")
+  const base = HEX_NAMES.map(n => n + (top ? "1" : ""))
+  let S, L
+  do { S = randInt(2, 14); L = randInt(2, 14) } while ((S * L) % 3 !== 0)
+  const names = top ? [apex, ...base] : [...base, apex]
+  return {
+    condition_text: `Найдите объём многогранника, вершинами которого являются точки ${hexList(names)} правильной шестиугольной призмы ABCDEFA₁B₁C₁D₁E₁F₁, площадь основания которой равна ${S}, а боковое ребро равно ${L}.`,
+    image_url: svgUrl(hexPrismSvg()),
+    answer: ru(S * L / 3),
+  }
+}
+
+// Тетраэдр «вершина + три подряд идущие вершины другого основания» шестиугольной
+// призмы: площадь треугольника из трёх подряд вершин — ⅙ основания ⟹ V = S·L/18.
+function t03HexPrismTetra() {
+  const i = randInt(0, 5), top = Math.random() < 0.5
+  const tri = [5, 0, 1].map(k => HEX_NAMES[(i + k) % 6])   // X и два его соседа
+  const ratio = hexBaseRatio(tri)                           // = 1/6, считается по координатам
+  const sfx = top ? "1" : ""
+  const names = [...tri.map(n => n + sfx), HEX_NAMES[i] + (top ? "" : "1")]
+  let S, L
+  do { S = randInt(2, 18); L = randInt(2, 18) } while (!Number.isInteger(clean(ratio * S * L / 3)))
+  return {
+    condition_text: `Найдите объём многогранника, вершинами которого являются вершины ${hexList(names)} правильной шестиугольной призмы ABCDEFA₁B₁C₁D₁E₁F₁, площадь основания которой равна ${S}, а боковое ребро равно ${L}.`,
+    image_url: svgUrl(hexPrismSvg()),
+    answer: ru(clean(ratio * S * L / 3)),
+  }
+}
+
+// Правильная шестиугольная пирамида: симметричная проекция (без сдвига по x),
+// иначе рёбра к задним вершинам ложатся на рёбра к передним.
+function pyrHexSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 290 340" width="290" height="340" font-family="Arial, sans-serif">` +
+    `<rect width="290" height="340" fill="#fff"/>` +
+    `<line x1="245" y1="250" x2="195" y2="206.7" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="66"/>` +
+    `<line x1="195" y1="206.7" x2="95" y2="206.7" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="100"/>` +
+    `<line x1="95" y1="206.7" x2="45" y2="250" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="66"/>` +
+    `<line x1="145" y1="80" x2="195" y2="206.7" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="136"/>` +
+    `<line x1="145" y1="80" x2="95" y2="206.7" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="136"/>` +
+    `<line x1="145" y1="80" x2="145" y2="250" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="170"/>` +
+    `<line x1="45" y1="250" x2="95" y2="293.3" stroke="#000" stroke-width="1.6"/>` +
+    `<line x1="95" y1="293.3" x2="195" y2="293.3" stroke="#000" stroke-width="1.6"/>` +
+    `<line x1="195" y1="293.3" x2="245" y2="250" stroke="#000" stroke-width="1.6"/>` +
+    `<line x1="145" y1="80" x2="245" y2="250" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="145" y1="80" x2="195" y2="293.3" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="145" y1="80" x2="95" y2="293.3" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="145" y1="80" x2="45" y2="250" stroke="#000" stroke-width="1.5"/>` +
+    `</svg>`
+}
+
+// У правильного шестиугольника радиус описанной окружности равен стороне ⟹
+// h = √(l² − a²); (a, h, l) — пифагорова тройка (в банке — половинная: 2,5 / 6 / 6,5).
+function t03PyrHexHeight() {
+  const [p, q, r] = pick(PYTH_WIDE), t = pick([0.5, 1, 1.5])
+  const [a, h] = Math.random() < 0.5 ? [p * t, q * t] : [q * t, p * t]
+  return {
+    condition_text: `В правильной шестиугольной пирамиде боковое ребро равно ${ru(clean(r * t))}, а сторона основания равна ${ru(clean(a))}. Найдите высоту пирамиды.`,
+    image_url: svgUrl(pyrHexSvg()),
+    answer: ru(clean(h)),
+  }
+}
+
+// Шар с большим кругом (сечение через центр залито).
+function sphereGreatSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" width="320" height="320" font-family="Arial, sans-serif">` +
+    `<rect width="320" height="320" fill="#fff"/>` +
+    `<ellipse cx="160" cy="160" rx="130" ry="32" fill="#cfe8f7" stroke="none"/>` +
+    `<circle cx="160" cy="160" r="130" fill="none" stroke="#000" stroke-width="2"/>` +
+    `<path d="M30,160 A130,32 0 0,1 290,160" fill="none" stroke="#000" stroke-width="1.4" stroke-dasharray="7 5" pathLength="283"/>` +
+    `<path d="M30,160 A130,32 0 0,0 290,160" fill="none" stroke="#000" stroke-width="1.6"/>` +
+    `</svg>`
+}
+
+// S_шара = 4πR², большой круг πR² ⟹ круг = S/4.
+function t03SphereGreatCircle() {
+  const s = 4 * randInt(1, 25)
+  return {
+    condition_text: `Площадь поверхности шара равна ${s}. Найдите площадь большого круга шара.`,
+    image_url: svgUrl(sphereGreatSvg()),
+    answer: ru(s / 4),
+  }
+}
+
 // Правильная 4-угольная призма ABCDA₁B₁C₁D₁ (ФИПИ): скрытая задняя вершина C —
 // рёбра BC, CD, CC₁ штрихом; основание развёрнуто, чтобы вертикали не совпадали.
 function sqPrismSvg() {
@@ -5515,7 +5616,7 @@ export const GENERATORS_EGE_PROF = {
     t01ParMidpoint, t01ParAngle, t01ParHeights,
     t01RhombusSideDiag, t01RhombusAngle, t01TrapMidDiag],
   2: [t02DotCoord, t02DotLenAngle, t02LenCombo, t02DotOfCombos, t02GraphLenCombo],
-  3: [t03BoxTetra, t03BoxPyramid, t03BoxPyramidC1, t03BoxPyramidA1, t03BoxPrism, t03BoxTriPrism, t03BoxPrismADA1, t03PrismRightVol, t03PrismRightEdge, t03SqPrismAngle, t03TriPrismAngle, t03HexPrismAngle, t03HexPrismTri, t03HexPrismTrap, t03CylLatHeight, t03CylLatDiameter, t03MugRatio, t03TwoCylindersTaller, t03LiquidWider, t03LiquidNarrower, t03Submerge, t03SubmergeAbs, t03ConeHeight, t03ConeDiameter, t03ConeAxialFromBase, t03ConeAxialFromSlant, t03ConeLatScale, t03ConeLatScaleDown, t03ConeParSect, t03ConeFullSurfSect, t03ConeVessel, t03PrismTetraTop, t03PyrMidEdge, t03PyrSqDiagBD, t03PyrSqDiagSO, t03PyrSqVol, t03PyrSqHeight, t03PyrSqVolHL, t03PyrTriHeight, t03PyrMidSect, t03PyrMidlineCut, t03SqPrismPoly, t03PrismTetraC1, t03PrismTetraB1, t03PrismPenta, t03PrismMidline, t03PrismCut, t03PrismCutRegular, t03PrismLateral, t03PrismLateralInv, t03CylConeLateral, t03CylConeLatInverse, t03CylConeVolume, t03CylConeVolInverse, t03ConeInSphere, t03ConeInSphereInv, t03ConeSphereRadius, t03ConeSphereSlant, t03SphereInCyl, t03SphereInCylVol, t03TwoCylinders, t03CylInBox, t03CubeCut, t03CubeCutInverse, t03CubeDiagonal, t03CubeAngle, t03BoxDiagonal, t03BoxLineSin, t03BoxSection, t03BoxDiagSection, t03StepSolid, t03LSolid, t03TSolidSurface, t03SphereSection, t03ConeScale, t03ConeHeightScale],
+  3: [t03BoxTetra, t03BoxPyramid, t03BoxPyramidC1, t03BoxPyramidA1, t03BoxPrism, t03BoxTriPrism, t03BoxPrismADA1, t03PrismRightVol, t03PrismRightEdge, t03SqPrismAngle, t03TriPrismAngle, t03HexPrismAngle, t03HexPrismTri, t03HexPrismTrap, t03CylLatHeight, t03CylLatDiameter, t03MugRatio, t03TwoCylindersTaller, t03LiquidWider, t03LiquidNarrower, t03Submerge, t03SubmergeAbs, t03ConeHeight, t03ConeDiameter, t03ConeAxialFromBase, t03ConeAxialFromSlant, t03ConeLatScale, t03ConeLatScaleDown, t03ConeParSect, t03ConeFullSurfSect, t03ConeVessel, t03PrismTetraTop, t03PyrMidEdge, t03PyrSqDiagBD, t03PyrSqDiagSO, t03PyrSqVol, t03PyrSqHeight, t03PyrSqVolHL, t03PyrTriHeight, t03PyrMidSect, t03PyrMidlineCut, t03SqPrismPoly, t03PrismTetra4, t03HexPrismPyr, t03HexPrismTetra, t03PyrHexHeight, t03SphereGreatCircle, t03PrismTetraC1, t03PrismTetraB1, t03PrismPenta, t03PrismMidline, t03PrismCut, t03PrismCutRegular, t03PrismLateral, t03PrismLateralInv, t03CylConeLateral, t03CylConeLatInverse, t03CylConeVolume, t03CylConeVolInverse, t03ConeInSphere, t03ConeInSphereInv, t03ConeSphereRadius, t03ConeSphereSlant, t03SphereInCyl, t03SphereInCylVol, t03TwoCylinders, t03CylInBox, t03CubeCut, t03CubeCutInverse, t03CubeDiagonal, t03CubeAngle, t03BoxDiagonal, t03BoxLineSin, t03BoxSection, t03BoxDiagSection, t03StepSolid, t03LSolid, t03TSolidSurface, t03SphereSection, t03ConeScale, t03ConeHeightScale],
   4: [t04ShotPut, t04Gymnastics, t04Diving, t04Tickets, t04Markers, t04Defect, t04Lottery, t04CoinTwice, t04Rooms, t04FootballCoin],
   5: [t05Lamps, t05Between, t05Shooter4, t05Coffee, t05Battery, t05ShooterN, t05DiceCond, t05TwoThemes, t05Exact],
   6: [t06ExpReduce, t06ExpBothSides, t06LogEqLog, t06LogEqNum, t06Rational, t06Cube, t06Sqrt, t06CubeRoot],
@@ -5625,6 +5726,7 @@ export const GEN_META_EGE_PROF = {
       ["prism-tetra-c1", "Тетраэдр A,B,C,C₁ (S·L/3)", t03PrismTetraC1],
       ["prism-tetra-b1", "Тетраэдр A,B,C,B₁ (S·L/3)", t03PrismTetraB1],
       ["prism-tetra-top", "Тетраэдр A₁,B₁,C₁ + нижняя вершина (S·L/3)", t03PrismTetraTop],
+      ["prism-tetra-4", "Тетраэдр: две нижние + две верхние (S·L/3)", t03PrismTetra4],
       ["prism-penta", "Тело B,C,A₁,B₁,C₁ (2S·L/3)", t03PrismPenta],
     ]],
     ["Пирамида", [
@@ -5635,6 +5737,7 @@ export const GEN_META_EGE_PROF = {
       ["pyr-sq-height", "4-угольная: ребро + сторона → высота", t03PyrSqHeight],
       ["pyr-sq-vol-hl", "4-угольная: высота + ребро → объём", t03PyrSqVolHL],
       ["pyr-tri-height", "Треугольная: ребро + сторона → высота", t03PyrTriHeight],
+      ["pyr-hex-height", "6-угольная: ребро + сторона → высота", t03PyrHexHeight],
       ["pyr-mid-sect", "Сечение через середины боковых рёбер (a²/4)", t03PyrMidSect],
       ["pyr-midline-cut", "Плоскость через вершину и среднюю линию (÷4)", t03PyrMidlineCut],
     ]],
@@ -5653,6 +5756,8 @@ export const GEN_META_EGE_PROF = {
     ["Шестиугольная призма: объём части", [
       ["hexprism-tri", "Три подряд вершины (S·L/6)", t03HexPrismTri],
       ["hexprism-trap", "Трапеция через одну (2S·L/3)", t03HexPrismTrap],
+      ["hexprism-pyr", "Пирамида: основание + вершина (S·L/3)", t03HexPrismPyr],
+      ["hexprism-tetra", "Тетраэдр: 3 подряд + вершина (S·L/18)", t03HexPrismTetra],
     ]],
     ["Треугольная призма: сечение", [
       ["prism-midline", "Средняя линия основания → объём (×4)", t03PrismMidline],
@@ -5673,6 +5778,7 @@ export const GEN_META_EGE_PROF = {
       ["sphere-in-cyl", "Шар в цилиндре: S поверхности (⅔)", t03SphereInCyl],
       ["sphere-in-cyl-vol", "Шар в цилиндре: объём цилиндра (×1,5)", t03SphereInCylVol],
       ["sph-section", "Сечение шара через центр: S пов. (×4)", t03SphereSection],
+      ["sph-great-circle", "S поверхности → большой круг (÷4)", t03SphereGreatCircle],
       ["two-cyl", "Два цилиндра: объём второго (b²/a)", t03TwoCylinders],
       ["two-cyl-taller", "Два цилиндра: выше и уже (a/b²)", t03TwoCylindersTaller],
       ["cyl-in-box", "Цилиндр в параллелепипеде (4R²h)", t03CylInBox],
