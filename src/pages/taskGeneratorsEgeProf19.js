@@ -6809,15 +6809,37 @@ export function t19StonesTrucks() {
     }).join("; ")
   }
   const tons = (kg) => ru2(kg / 1000)
+  // Плотные загрузки (ровно W кг) — из них и складывается рассуждение пункта б)
+  const tight = []
+  for (let a = 0; a * weights[0] <= W; a++) {
+    for (let b = 0; a * weights[0] + b * weights[1] <= W; b++) {
+      for (let c = 0; a * weights[0] + b * weights[1] + c * weights[2] <= W; c++) {
+        if (a * weights[0] + b * weights[1] + c * weights[2] === W && a + b + c) tight.push([a, b, c])
+      }
+    }
+  }
+  const tightNames = tight.map((p) => p.map((v, t) => (v ? `${v} по ${weights[t]} кг` : null)).filter(Boolean).join(" + "))
+  // у эталонных весов глыбы 1500 кг входят в плотный грузовик только парами с двумя 1000 кг
+  const withBig = tight.filter((p) => p[2] > 0)
+  const perBig = withBig.length === 1 ? withBig[0] : null
+  const needBigTrucks = perBig ? counts[2] / perBig[2] : 0
+  const eatenMid = perBig ? needBigTrucks * perBig[1] : 0
+  const midLeft = counts[1] - eatenMid
+  const smallPer = tight.find((p) => p[0] > 0 && p[2] === 0)
+  const tightText = !perBig || !Number.isInteger(needBigTrucks)
+    ? `общий вес глыб равен ${tons(totalKg)} т, поэтому ${lower} грузовиков хватило бы только при полной загрузке каждого ровно на ${tons(W)} т, а перебор всех таких загрузок (${tightNames.join("; ")}) показывает, что покрыть ими весь набор глыб нельзя`
+    : midLeft < 0
+      ? `при ${lower} грузовиках каждый был бы загружен ровно на ${tons(W)} т, а ровно столько дают только наборы ${tightNames.join("; ")}. Глыбы по ${weights[2]} кг входят лишь в набор «${tightNames[tight.indexOf(perBig)]}», поэтому таких грузовиков нужно ${needBigTrucks}, и им потребуется ${eatenMid} глыб по ${weights[1]} кг — больше, чем есть (${counts[1]})`
+      : `при ${lower} грузовиках каждый был бы загружен ровно на ${tons(W)} т, а ровно столько дают только наборы ${tightNames.join("; ")}. Глыбы по ${weights[2]} кг входят лишь в набор «${tightNames[tight.indexOf(perBig)]}», поэтому таких грузовиков ровно ${needBigTrucks}, и они забирают ${eatenMid} глыб по ${weights[1]} кг; оставшиеся ${midLeft} ${plural(midLeft, "глыба", "глыбы", "глыб")} по ${weights[1]} кг позволяют плотно увезти лишь ${midLeft * (smallPer ? smallPer[0] : 0)} ${plural(midLeft * (smallPer ? smallPer[0] : 0), "глыбу", "глыбы", "глыб")} по ${weights[0]} кг, а их ${counts[0]}`
   return item({
     preamble: `Имеются каменные глыбы: ${counts[0]} штук по ${weights[0]} кг, ${counts[1]} штук по ${weights[1]} кг и ${counts[2]} штук по ${weights[2]} кг (раскалывать глыбы нельзя).`,
     qa: `Можно ли увезти все эти глыбы одновременно на ${Ka} грузовиках грузоподъёмностью ${tons(W)} тонн каждый, предполагая, что в грузовик выбранные глыбы поместятся?`,
     qb: `Можно ли увезти все эти глыбы одновременно на ${lower} грузовиках грузоподъёмностью ${tons(W)} тонн каждый, предполагая, что в грузовик выбранные глыбы поместятся?`,
     qc: `Какое наименьшее количество грузовиков грузоподъёмностью ${tons(W)} тонн каждый понадобится, чтобы вывезти все эти глыбы одновременно?`,
     ansA: `да: хватает даже ${best} ${plural(best, "грузовика", "грузовиков", "грузовиков")} — ${showPlan(exC)}`,
-    ansB: `нет: общий вес глыб равен ${tons(totalKg)} т, поэтому ${lower} грузовиков хватило бы, только если каждый из них был бы загружен ровно на ${tons(W)} т. Динамика по остатку глыб показывает, что так распределить глыбы нельзя: минимально необходимое число грузовиков равно ${best}`,
+    ansB: `нет: ${tightText}`,
     ansC: `${best}; например ${showPlan(exC)}`,
-    solution: `Общий вес глыб равен ${counts[0]}·${weights[0]} + ${counts[1]}·${weights[1]} + ${counts[2]}·${weights[2]} = ${totalKg} кг = ${tons(totalKg)} т, поэтому грузовиков нужно не меньше ${lower}.\nа) Достаточно ${best} ${plural(best, "грузовика", "грузовиков", "грузовиков")}: ${showPlan(exC)}. Тем более хватит ${Ka}.\nб) Число ${lower} возможно, только если каждый грузовик загружен ровно на ${tons(W)} т. Перебор всех наборов глыб, дающих в сумме ровно ${W} кг, показывает, что покрыть ими все глыбы нельзя, поэтому ${lower} грузовиков не хватит.\nв) Минимум равен ${best}: снизу — оценка по весу и невозможность плотной загрузки, сверху — приведённый план.\nОтвет: ${best}.`,
+    solution: `Общий вес глыб равен ${counts[0]}·${weights[0]} + ${counts[1]}·${weights[1]} + ${counts[2]}·${weights[2]} = ${totalKg} кг = ${tons(totalKg)} т, поэтому грузовиков нужно не меньше ${lower}.\nа) Достаточно ${best} ${plural(best, "грузовика", "грузовиков", "грузовиков")}: ${showPlan(exC)}. Тем более хватит ${Ka}.\nб) ${tightText}, поэтому ${lower} грузовиков не хватит.\nв) Минимум равен ${best}: снизу — оценка по весу и невозможность плотной загрузки, сверху — приведённый план.\nОтвет: ${best}.`,
     verify: {
       params, check, solve,
       claims: {
