@@ -752,6 +752,7 @@ export const META19 = [
   ]],
   ["Вася и Петя решают сборник", [
     ["vasya-petya-days", "Оба решили сборник: за сколько дней и наим. число задач", t19VasyaPetyaDays],
+    ["vasya-petya-diff1", "Первые дни отличаются на задачу: наим. число задач", t19VasyaPetyaDiffOne],
   ]],
   ["Две школы, средний балл", [
     ["schools-drop-min", "Средние упали на 10 % → наим. исходный средний в №2", t19SchoolsDropMin],
@@ -6204,6 +6205,120 @@ export function t19VasyaPetyaDays() {
         c: { type: "extremum", mode: "min", value: best.N, example: best },
       },
       mustMention: [dOdd, dEven, L, W],
+      extra: [],
+      phrases: ["на одну задачу больше", "на две задачи больше", "хотя бы одну задачу"],
+    },
+  })
+}
+
+// #79. Та же схема, но вопросы про разницу первых дней. Если Петя уложился ровно
+// в d дней, то N = dp + d(d − 1) известно с точностью до p, а число дней Васи a
+// определяется из уравнения a·v + a(a−1)/2 = N при v = p ± 1. Для каждого a это
+// линейное уравнение относительно p с коэффициентом (a − d), поэтому решение
+// единственно, а при больших a правая часть становится отрицательной — перебор конечен.
+export function t19VasyaPetyaDiffOne() {
+  // «Вася на одну меньше» разрешимо при любом числе дней Пети, а «Вася на одну больше»
+  // — только при 4 и 5 днях (проверено полным перебором), поэтому в пункт б) идут они
+  const dNo = pick([4, 5])
+  const dYes = pick([6, 7, 8, 9].filter((d) => d !== dNo))
+  const L = pick([5, 6, 7])                                // «каждый решал более L дней»
+  // а): v = p − 1, Петя ровно dYes дней
+  let exA = null
+  for (let p = 2; p <= 60 && !exA; p++) {
+    const N = vpP(dYes, p), v = p - 1
+    for (let a = 1; a <= 60; a++) if (vpV(a, v) === N) { exA = { a, v, b: dYes, p }; break }
+  }
+  if (!exA) return null
+  // б): v = p + 1, Петя ровно dNo дней — проверяем, что решений нет
+  let bad = null
+  for (let p = 1; p <= 200 && !bad; p++) {
+    const N = vpP(dNo, p), v = p + 1
+    for (let a = 1; a <= 200; a++) if (vpV(a, v) === N) { bad = { a, v, p }; break }
+  }
+  if (bad) return null
+  // в): наименьшее N при a, b > L и |v − p| = 1
+  let best = null
+  for (let N = 1; N <= 600 && !best; N++) {
+    for (let a = L + 1; a <= 60 && !best; a++) {
+      const num = N - a * (a - 1) / 2
+      if (num <= 0 || num % a) continue
+      const v = num / a
+      for (let b = L + 1; b <= 60; b++) {
+        const num2 = N - b * (b - 1)
+        if (num2 <= 0 || num2 % b) continue
+        const p = num2 / b
+        if (Math.abs(v - p) === 1) { best = { N, a, v, b, p }; break }
+      }
+    }
+  }
+  if (!best) return null
+
+  const params = { dYes, dNo, L }
+  const check = (cfg, part) => {
+    if (!cfg || !Number.isInteger(cfg.a) || !Number.isInteger(cfg.v) || !Number.isInteger(cfg.b) || !Number.isInteger(cfg.p)) return "нет конфигурации"
+    if (cfg.a < 1 || cfg.b < 1) return "каждый решал хотя бы один день"
+    if (cfg.v < 1 || cfg.p < 1) return "в первый день каждый решил хотя бы одну задачу"
+    const nV = vpV(cfg.a, cfg.v), nP = vpP(cfg.b, cfg.p)
+    if (nV !== nP) return `Вася решил ${nV} задач, а Петя ${nP} — сборник один и тот же`
+    if (part === "a") {
+      if (cfg.b !== dYes) return `Петя должен решить всё ровно за ${dYes} дней`
+      if (cfg.v !== cfg.p - 1) return "в первый день Вася должен решить на одну задачу меньше Пети"
+    }
+    if (part === "c") {
+      if (cfg.a <= L || cfg.b <= L) return `каждый должен решать более ${L} дней`
+      if (Math.abs(cfg.v - cfg.p) !== 1) return "первые дни должны отличаться ровно на одну задачу"
+      if (nV !== best.N) return `в сборнике ${nV} задач, а заявлено ${best.N}`
+    }
+    return null
+  }
+  // Независимый перебор: по первому дню Пети p и числу дней Васи a. Пространство
+  // конечно: при a(a−1)/2 > N уравнение уже не имеет натуральных решений.
+  const solve = (P) => {
+    const exists = (d, delta) => {
+      for (let p = Math.max(1, 1 - delta); p <= 200; p++) {
+        const N = vpP(d, p), v = p + delta
+        if (v < 1) continue
+        for (let a = 1; a <= 200; a++) {
+          if (a * (a - 1) / 2 > N) break
+          if (vpV(a, v) === N) return true
+        }
+      }
+      return false
+    }
+    let bestN = 0
+    for (let N = 1; N <= 600 && !bestN; N++) {
+      for (let a = P.L + 1; a <= 60 && !bestN; a++) {
+        const num = N - a * (a - 1) / 2
+        if (num <= 0 || num % a) continue
+        const v = num / a
+        for (let b = P.L + 1; b <= 60; b++) {
+          const num2 = N - b * (b - 1)
+          if (num2 <= 0 || num2 % b) continue
+          if (Math.abs(v - num2 / b) === 1) { bestN = N; break }
+        }
+      }
+    }
+    return { a: exists(P.dYes, -1), b: exists(P.dNo, +1), c: bestN, c_next: false }
+  }
+
+  const run = (start, step, days) => Array.from({ length: Math.min(days, 5) }, (_, i) => start + step * i).join(", ") + (days > 5 ? ", …" : "")
+  return item({
+    preamble: `Вася и Петя решали задачи из сборника, и они оба решили все задачи этого сборника. Каждый день Вася решал на одну задачу больше, чем в предыдущий день, а Петя решал на две задачи больше, чем в предыдущий день. Они начали решать задачи в один день, при этом в первый день каждый из них решил хотя бы одну задачу.`,
+    qa: `Могло ли получиться так, что Вася в первый день решил на одну задачу меньше, чем Петя, а Петя решил все задачи из сборника ровно за ${dYes} дней?`,
+    qb: `Могло ли получиться так, что Вася в первый день решил на одну задачу больше, чем Петя, а Петя решил все задачи из сборника ровно за ${dNo} ${plural(dNo, "день", "дня", "дней")}?`,
+    qc: `Какое наименьшее количество задач могло быть в сборнике, если каждый из ребят решал задачи более ${L} дней, причём в первый день один из мальчиков решил на одну задачу больше, чем другой?`,
+    ansA: `да, например Петя решал ${dYes} дней по ${run(exA.p, 2, dYes)} задач, а Вася — ${exA.a} ${plural(exA.a, "день", "дня", "дней")} по ${run(exA.v, 1, exA.a)}: в сборнике ${vpP(dYes, exA.p)} ${plural(vpP(dYes, exA.p), "задача", "задачи", "задач")}`,
+    ansB: `нет: при v = p + 1 равенство av + a(a − 1)/2 = ${dNo}p + ${dNo * (dNo - 1)} превращается в линейное уравнение относительно p с коэффициентом (a − ${dNo}); для каждого числа дней Васи a оно даёт единственное p, и ни при одном a это p не оказывается натуральным (а при a(a − 1)/2 > N решений нет вовсе)`,
+    ansC: `${best.N}; например Вася решал ${best.a} ${plural(best.a, "день", "дня", "дней")} по ${run(best.v, 1, best.a)} задач, а Петя — ${best.b} ${plural(best.b, "день", "дня", "дней")} по ${run(best.p, 2, best.b)}`,
+    solution: `Пусть Вася решал a дней, начав с v задач, а Петя — b дней, начав с p. Тогда\nN = av + a(a − 1)/2 = bp + b(b − 1).\nа) При b = ${dYes} и v = p − 1 подходит p = ${exA.p}: Петя решал по ${run(exA.p, 2, dYes)} задач, Вася — ${exA.a} ${plural(exA.a, "день", "дня", "дней")} по ${run(exA.v, 1, exA.a)}, всего ${vpP(dYes, exA.p)} ${plural(vpP(dYes, exA.p), "задача", "задачи", "задач")}.\nб) Пусть Петя решал ровно ${dNo} ${plural(dNo, "день", "дня", "дней")}, тогда N = ${dNo}p + ${dNo * (dNo - 1)}, а у Васи av + a(a − 1)/2 = N при v = p + 1. Для каждого a это уравнение линейно по p и имеет единственный корень; перебор всех a (при больших a правая часть отрицательна) показывает, что натуральных решений нет.\nв) Перебор по N и числам дней даёт наименьшее N = ${best.N}: Вася решал ${best.a} ${plural(best.a, "день", "дня", "дней")} по ${run(best.v, 1, best.a)} задач, Петя — ${best.b} ${plural(best.b, "день", "дня", "дней")} по ${run(best.p, 2, best.b)}.\nОтвет: ${best.N}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: `minus-one-${dYes}` },
+        b: { type: "yesno", yes: false, reason: "linear-no-root", target: `plus-one-${dNo}` },
+        c: { type: "extremum", mode: "min", value: best.N, example: best },
+      },
+      mustMention: [dYes, dNo, L],
       extra: [],
       phrases: ["на одну задачу больше", "на две задачи больше", "хотя бы одну задачу"],
     },
