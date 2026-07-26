@@ -760,6 +760,7 @@ export const META19 = [
     ["photos-diff", "Фотографии: делители разницы и наиб. сумма", t19PhotosDiff],
     ["letters-girls", "Письма девушкам: наим. и наиб. размер группы", t19LettersGirls],
     ["rabbits-food", "Кролики и порции: наиб. число кроликов", t19RabbitsFood],
+    ["set-avg-below", "33 числа: среднее любых 27 меньше 2", t19SetAvgBelow],
   ]],
   ["Вася и Петя решают сборник", [
     ["vasya-petya-days", "Оба решили сборник: за сколько дней и наим. число задач", t19VasyaPetyaDays],
@@ -7448,6 +7449,126 @@ export function t19RabbitsFood() {
       mustMention: [K, Nab, F, 100, 200, 300, 400],
       extra: [],
       phrases: ["хотя бы одному, но не всем", "могут остаться без корма"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 17 (окончание). Набор из N чисел со средним любых M меньше B (#96)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// N натуральных чисел, среди них обязательно 3, 4 и 5; среднее ЛЮБЫХ M чисел меньше B,
+// то есть сумма M наибольших не превосходит MB − 1. Если единиц k, а сумма остальных
+// (все они ≥ 2) равна S, то сумма M наибольших равна S + (k − (N − M)), поэтому
+//   S ≤ MB − 1 − k + (N − M),   при этом S ≥ 12 + 2(N − k − 3).
+// Из этих двух неравенств получается нижняя граница на число единиц — это и есть
+// ответы пунктов а) и б). Пункт в) («докажите, что найдётся подмножество с суммой T»)
+// проверяется полным перебором ВСЕХ допустимых наборов: их немного (около тысячи).
+const SET96_CACHE = new Map()
+function sets96(N, M, B, must) {
+  const key = `${N}|${M}|${B}|${must.join(",")}`
+  if (SET96_CACHE.has(key)) return SET96_CACHE.get(key)
+  const capSum = M * B - 1
+  const mustSum = sum(must)
+  const out = []
+  for (let k = 1; k <= N - must.length; k++) {
+    const extra = N - k - must.length
+    if (extra < 0) break
+    const maxNeSum = capSum - Math.max(0, k - (N - M))
+    const build = (idx, minVal, s, acc) => {
+      if (idx === extra) {
+        if (mustSum + s <= maxNeSum) out.push({ k, rest: [...acc] })
+        return
+      }
+      for (let v = minVal; mustSum + s + v * (extra - idx) <= maxNeSum; v++) {
+        acc.push(v); build(idx + 1, v, s + v, acc); acc.pop()
+      }
+    }
+    build(0, 2, 0, [])
+  }
+  SET96_CACHE.set(key, out)
+  return out
+}
+const subsetSums96 = (nums) => {
+  const dp = new Uint8Array(sum(nums) + 1)
+  dp[0] = 1
+  for (const v of nums) for (let t = dp.length - 1 - v; t >= 0; t--) if (dp[t]) dp[t + v] = 1
+  return dp
+}
+
+export function t19SetAvgBelow() {
+  const N = 33, M = 27, B = 2, must = [3, 4, 5]
+  const all = sets96(N, M, B, must)
+  if (!all.length) return null
+  const kMin = Math.min(...all.map((s) => s.k))
+  // суммы, представимые подмножеством в КАЖДОМ допустимом наборе
+  let common = null
+  for (const s of all) {
+    const nums = [...Array(s.k).fill(1), ...must, ...s.rest]
+    const dp = subsetSums96(nums)
+    if (!common) common = Array.from(dp)
+    else for (let t = 0; t < common.length; t++) if (t >= dp.length || !dp[t]) common[t] = 0
+  }
+  const goodSums = common.map((v, t) => (v ? t : -1)).filter((t) => t >= 20)
+  if (!goodSums.length) return null
+  const T = pick(goodSums.filter((t) => t <= 40))
+  if (!T) return null
+  const exA = all.find((s) => s.k === kMin)
+  if (!exA) return null
+
+  const params = { N, M, B, must, kMin, T }
+  const nums96 = (s) => [...Array(s.k).fill(1), ...must, ...s.rest]
+  const check = (cfg, part) => {
+    if (!Array.isArray(cfg) || cfg.length !== N) return `в наборе должно быть ${N} чисел`
+    for (const v of cfg) if (!Number.isInteger(v) || v < 1) return `${v} — не натуральное число`
+    for (const v of must) if (!cfg.includes(v)) return `в наборе нет числа ${v}`
+    const sorted = cfg.slice().sort((a, b) => b - a)
+    const topSum = sum(sorted.slice(0, M))
+    if (topSum >= M * B) return `среднее ${M} наибольших чисел равно ${topSum / M} — не меньше ${B}`
+    const ones = cfg.filter((v) => v === 1).length
+    if (part === "a" && ones !== kMin) return `единиц ${ones}, а нужно ровно ${kMin}`
+    if (part === "b" && ones >= kMin) return `единиц ${ones}, а нужно меньше ${kMin}`
+    return null
+  }
+  // Независимый перебор: строятся ВСЕ допустимые наборы (число единиц + мультимножество
+  // остальных чисел, каждое ≥ 2), для каждого проверяется представимость суммы T.
+  const solve = (P) => {
+    const list = sets96(P.N, P.M, P.B, P.must)
+    const minOnes = Math.min(...list.map((s) => s.k))
+    let bad = 0
+    for (const s of list) {
+      const dp = subsetSums96(nums96(s))
+      if (P.T >= dp.length || !dp[P.T]) bad++
+    }
+    return { a: list.some((s) => s.k === P.kMin), b: minOnes < P.kMin, c: bad }
+  }
+
+  const exArr = nums96(exA)
+  const groups = (() => {
+    const g = new Map()
+    for (const v of exArr) g.set(v, (g.get(v) || 0) + 1)
+    return [...g.entries()].sort((a, b) => a[0] - b[0])
+      .map(([v, c]) => (c > 1 ? `${c} ${plural(c, "число", "числа", "чисел")} по ${v}` : `число ${v}`)).join(", ")
+  })()
+  return item({
+    preamble: `Набор состоит из ${N} натуральных чисел, среди которых есть числа ${must.join(", ")}. Среднее арифметическое любых ${M} чисел этого набора меньше ${B}.`,
+    qa: `Может ли такой набор содержать ровно ${kMin} ${plural(kMin, "единицу", "единицы", "единиц")}?`,
+    qb: `Может ли такой набор содержать менее ${kMin} ${plural(kMin, "единицы", "единиц", "единиц")}?`,
+    qc: `Докажите, что в любом таком наборе есть несколько чисел, сумма которых равна ${T}.`,
+    ansA: `да, например ${groups}: сумма ${M} наибольших чисел равна ${sum(exArr.slice().sort((a, b) => b - a).slice(0, M))} < ${M * B}`,
+    ansB: `нет: пусть единиц k. Остальные ${N} − k чисел не меньше 2, причём среди них есть ${must.join(", ")}, поэтому их сумма не меньше ${sum(must)} + 2(${N} − k − ${must.length}). Сумма ${M} наибольших чисел — это сумма всех неединиц плюс ещё (k − ${N - M}) единиц, и она не превосходит ${M * B - 1}. Из ${sum(must)} + 2(${N} − k − ${must.length}) + (k − ${N - M}) ≤ ${M * B - 1} получаем k ≥ ${kMin}`,
+    ansC: `в наборе не меньше ${kMin} единиц, а любое его число не превосходит k − 5, где k — количество единиц (иначе сумма ${M} наибольших превысила бы ${M * B - 1}). Расположим числа по возрастанию: сначала k единиц, дающих все суммы от 1 до k, а каждое следующее число не больше суммы всех предыдущих плюс 1 — значит, добавляя числа по одному, мы получаем все суммы подряд, от 1 до суммы всего набора. Так как ${T} не превосходит суммы набора (она не меньше ${sum(must)} + ${N - must.length} = ${sum(must) + N - must.length}), подмножество с суммой ${T} найдётся`,
+    solution: `Условие «среднее любых ${M} чисел меньше ${B}» равносильно тому, что сумма ${M} наибольших чисел не превосходит ${M * B - 1}.\nПусть в наборе k единиц. Остальные ${N} − k чисел не меньше 2, причём среди них есть ${must.join(", ")}, поэтому их сумма S ≥ ${sum(must)} + 2(${N} − k − ${must.length}). С другой стороны, сумма ${M} наибольших равна S + (k − ${N - M}) ≤ ${M * B - 1}.\nСкладывая, получаем k ≥ ${kMin}.\nа) При k = ${kMin} набор существует: ${groups}.\nб) Меньше ${kMin} единиц быть не может — это доказано выше.\nв) Пусть в наборе k единиц. Любое число набора не превосходит k − 5: иначе сумма ${M} наибольших чисел (это число, ещё ${must.length} обязательных и остальные, каждое не меньше 2) уже превысила бы ${M * B - 1}. Расположим числа по возрастанию. Первые k единиц дают все суммы от 1 до k, а каждое следующее число не больше суммы предыдущих плюс 1, поэтому после добавления каждого числа множество получаемых сумм остаётся отрезком от 1 до текущей суммы. Значит представимы все суммы вплоть до суммы всего набора, в частности ${T}.\nОтвет: да; нет; доказано.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exArr, target: `ones-${kMin}` },
+        b: { type: "yesno", yes: false, reason: "ones-lower-bound", target: `fewer-${kMin}` },
+        c: { type: "count", value: 0 },
+      },
+      mustMention: [N, M, B, ...must, kMin, T],
+      extra: [2],
+      phrases: ["натуральных чисел", "Среднее арифметическое любых"],
     },
   })
 }
