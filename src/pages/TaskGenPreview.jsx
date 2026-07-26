@@ -70,11 +70,34 @@ function parseGen(focus) {
   const [, n, ...rest] = focus.split(":")
   return { number: Number(n), key: rest.join(":") }
 }
+// focus «fam:<номер>:<тема>» — всё семейство целиком (случайный типаж внутри темы на каждую
+// карточку): у №13 профиля 20 семейств и 89 типажей, поштучно их листать неудобно.
+const isFam = (focus) => typeof focus === "string" && focus.startsWith("fam:")
+function parseFam(focus) {
+  const [, n, ...rest] = focus.split(":")
+  return { number: Number(n), theme: rest.join(":") }
+}
+const famKey = (n, theme) => `fam:${n}:${theme}`
 // номер, к которому относится текущий focus (для показа вкладок тем)
 function focusNumber(focus) {
   if (typeof focus === "number") return focus
   if (isGen(focus)) return parseGen(focus).number
+  if (isFam(focus)) return parseFam(focus).number
   return null
+}
+// один случайный типаж семейства
+function genFamSafe(examType, number, theme) {
+  const g = (taskThemes(examType, number) || []).find((t) => t.theme === theme)
+  if (!g || !g.items.length) return { number, error: "нет семейства" }
+  return genSafe(examType, number, g.items[Math.floor(Math.random() * g.items.length)].key)
+}
+
+// «89 типажей» / «2 типажа» / «1 типаж»
+function plural(n, one, few, many) {
+  const m10 = n % 10, m100 = n % 100
+  if (m10 === 1 && m100 !== 11) return one
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few
+  return many
 }
 
 // Подписи сценариев №1–5 для карточки модуля.
@@ -95,6 +118,7 @@ function buildTasks(examType, focus) {
   if (isMod(focus)) return Array.from({ length: MOD_BATCH }, () => genModuleSafe(examType, focus.slice(4)))
   if (focus == null) return nums.map((n) => genSafe(examType, n))
   if (isGen(focus)) { const { number, key } = parseGen(focus); return Array.from({ length: BATCH }, () => genSafe(examType, number, key)) }
+  if (isFam(focus)) { const { number, theme } = parseFam(focus); return Array.from({ length: BATCH }, () => genFamSafe(examType, number, theme)) }
   return Array.from({ length: BATCH }, () => genSafe(examType, focus))
 }
 
@@ -395,6 +419,7 @@ export default function TaskGenPreview() {
   const [showAnswer, setShowAnswer] = useState(true)
   const [tasks, setTasks] = useState(() => buildTasks("ОГЭ", null))
   const [reading, setReading] = useState(null)      // {matching, module} для блока чтения №12–19
+  const [openTheme, setOpenTheme] = useState(null)  // раскрытое семейство типажей (аккордеон)
 
   const numbers = numbersWithGen(examType)
   const level = levelOf(examType)
@@ -405,7 +430,7 @@ export default function TaskGenPreview() {
 
   // Генерация запускается явно при выборе (эффект тут не нужен — набор случайный, а не
   // производный от стейта, и setState-в-эффекте вызывает каскадные рендеры).
-  function selectExam(t) { setExamType(t); setFocus(null); setTasks(buildTasks(t, null)) }
+  function selectExam(t) { setExamType(t); setFocus(null); setOpenTheme(null); setTasks(buildTasks(t, null)) }
   // Переключение уровня (ЕГЭ / ОГЭ) → берём первый доступный предмет группы.
   function selectLevel(key) {
     if (key === level) return
@@ -414,6 +439,7 @@ export default function TaskGenPreview() {
     selectExam(first.type)
   }
   function selectFocus(f) {
+    if (focusNumber(f) !== focusNumber(focus)) setOpenTheme(null)   // сменили номер — свернуть темы
     setFocus(f)
     if (f === "read12" || f === "read13") rerollReading()
     else setTasks(buildTasks(examType, f))
@@ -423,8 +449,12 @@ export default function TaskGenPreview() {
     if (focus == null) return
     if (isMod(focus)) { setTasks((prev) => [...prev, ...Array.from({ length: MOD_BATCH }, () => genModuleSafe(examType, focus.slice(4)))]); return }
     if (isGen(focus)) { const { number, key } = parseGen(focus); setTasks((prev) => [...prev, ...Array.from({ length: BATCH }, () => genSafe(examType, number, key))]); return }
+    if (isFam(focus)) { const { number, theme } = parseFam(focus); setTasks((prev) => [...prev, ...Array.from({ length: BATCH }, () => genFamSafe(examType, number, theme))]); return }
     setTasks((prev) => [...prev, ...Array.from({ length: BATCH }, () => genSafe(examType, focus))])
   }
+
+  const themes = focusNumber(focus) != null ? taskThemes(examType, focusNumber(focus)) : null
+  const themeCount = themes ? themes.reduce((a, g) => a + g.items.length, 0) : 0
 
   const chip = (active, disabled = false) =>
     `px-3 py-1.5 rounded-xl text-sm border transition-all active:scale-95 ${
@@ -508,26 +538,70 @@ export default function TaskGenPreview() {
         ))}
       </div>
 
-      {/* темы выбранного номера — можно листать и обновлять каждый типаж отдельно */}
-      {focusNumber(focus) != null && taskThemes(examType, focusNumber(focus)) && (
-        <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50/60 p-3 flex flex-col gap-2.5">
-          <button
-            onClick={() => selectFocus(focusNumber(focus))}
-            className={`self-start ${chip(typeof focus === "number")}`}
-          >
-            Все типажи №{focusNumber(focus)}
-          </button>
-          {taskThemes(examType, focusNumber(focus)).map((g) => (
-            <div key={g.theme} className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-semibold text-gray-400 w-full sm:w-36 shrink-0">{g.theme}</span>
-              {g.items.map((it) => {
-                const key = `gen:${focusNumber(focus)}:${it.key}`
-                return (
-                  <button key={it.key} onClick={() => selectFocus(key)} className={chip(focus === key)}>{it.label}</button>
-                )
-              })}
-            </div>
-          ))}
+      {/* Темы выбранного номера. Семейств бывает много (№13 профиля — 20 семейств / 89
+          типажей), поэтому список свёрнут: видны названия семейств, раскрывается одно.
+          «Смотреть» рядом с названием листает случайные типажи всего семейства. */}
+      {focusNumber(focus) != null && themes && (
+        <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50/60 p-3 flex flex-col gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button onClick={() => selectFocus(focusNumber(focus))} className={chip(typeof focus === "number")}>
+              Все типажи №{focusNumber(focus)}
+            </button>
+            <span className="text-xs text-gray-400">
+              {themeCount} {plural(themeCount, "типаж", "типажа", "типажей")} в {themes.length}{" "}
+              {plural(themes.length, "теме", "темах", "темах")}
+            </span>
+          </div>
+          {themes.map((g) => {
+            const fam = famKey(focusNumber(focus), g.theme)
+            const open = openTheme === g.theme
+            const inside = g.items.some((it) => focus === `gen:${focusNumber(focus)}:${it.key}`)
+            return (
+              <div
+                key={g.theme}
+                className={`rounded-xl border transition-colors ${
+                  open || inside || focus === fam ? "border-blue-200 bg-white" : "border-gray-200/70 bg-white/60"
+                }`}
+              >
+                <div className="flex items-center gap-2 px-2.5 py-1.5">
+                  <button
+                    onClick={() => setOpenTheme(open ? null : g.theme)}
+                    className="flex items-center gap-1.5 min-w-0 text-left text-[13px] font-semibold text-gray-600 hover:text-gray-800 transition-colors active:scale-[0.98]"
+                  >
+                    <Icon
+                      name="chevron-right"
+                      size={13}
+                      className={`shrink-0 text-gray-400 transition-transform duration-200 ${open ? "rotate-90" : ""}`}
+                    />
+                    <span className="truncate">{g.theme}</span>
+                    <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-gray-100 text-[11px] font-medium text-gray-500">
+                      {g.items.length}
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => { setOpenTheme(g.theme); selectFocus(fam) }}
+                    className={`ml-auto shrink-0 px-2.5 py-1 rounded-lg text-xs border transition-all active:scale-95 ${
+                      focus === fam
+                        ? "bg-blue-600 text-white border-blue-600"
+                        : "border-gray-200 text-gray-500 hover:bg-gray-50"
+                    }`}
+                  >
+                    Смотреть
+                  </button>
+                </div>
+                {open && (
+                  <div className="flex flex-wrap gap-2 px-2.5 pb-2.5 pt-2 border-t border-gray-100">
+                    {g.items.map((it) => {
+                      const key = `gen:${focusNumber(focus)}:${it.key}`
+                      return (
+                        <button key={it.key} onClick={() => selectFocus(key)} className={chip(focus === key)}>{it.label}</button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
 
