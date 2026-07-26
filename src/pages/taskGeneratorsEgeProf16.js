@@ -1601,7 +1601,8 @@ function diffMonthlyCandidates(rates = [1, 1.5, 2, 2.5, 3], nList = null) {
 }
 
 // ── 3. Сумма выплат за первые K месяцев (эталон 6.3) ───────────────────────
-export function t16DiffFirstK() {
+// Список кандидатов не зависит от случая — считаем его один раз на модуль.
+const DIFF_FIRSTK_CAND = once(() => {
   const base = diffMonthlyCandidates()
   const cand = []
   for (const b of base) {
@@ -1612,6 +1613,10 @@ export function t16DiffFirstK() {
       cand.push({ ...b, K, V })
     }
   }
+  return cand
+})
+export function t16DiffFirstK() {
+  const cand = DIFF_FIRSTK_CAND()
   if (!cand.length) return null
   const c = pick(cand)
   const model = diffModel(c.S, c.r, c.n, "month")
@@ -1633,7 +1638,8 @@ export function t16DiffFirstK() {
 }
 
 // ── 4. Общая сумма по известной k-й выплате (эталон 6.4) ───────────────────
-export function t16DiffTotalByKth() {
+// Список кандидатов не зависит от случая — считаем его один раз на модуль.
+const DIFF_KTH_CAND = once(() => {
   const base = diffMonthlyCandidates()
   const cand = []
   for (const b of base) {
@@ -1646,6 +1652,10 @@ export function t16DiffTotalByKth() {
       cand.push({ ...b, k, V, T })
     }
   }
+  return cand
+})
+export function t16DiffTotalByKth() {
+  const cand = DIFF_KTH_CAND()
   if (!cand.length) return null
   const c = pick(cand)
   const model = diffModel(c.S, c.r, c.n, "month")
@@ -1674,7 +1684,8 @@ export function t16DiffTotalByKth() {
 }
 
 // ── 5. Кредит по сумме ПЕРВЫХ K выплат (эталон 6.5) ────────────────────────
-export function t16DiffPrincipalByFirst() {
+// Список кандидатов не зависит от случая — считаем его один раз на модуль.
+const DIFF_BYFIRST_CAND = once(() => {
   const base = diffMonthlyCandidates()
   const cand = []
   for (const b of base) {
@@ -1685,6 +1696,10 @@ export function t16DiffPrincipalByFirst() {
       cand.push({ ...b, K, V })
     }
   }
+  return cand
+})
+export function t16DiffPrincipalByFirst() {
+  const cand = DIFF_BYFIRST_CAND()
   if (!cand.length) return null
   const c = pick(cand)
   const model = diffModel(c.S, c.r, c.n, "month")
@@ -1708,7 +1723,8 @@ export function t16DiffPrincipalByFirst() {
 }
 
 // ── 6. Кредит по сумме ПОСЛЕДНИХ K выплат (эталон 6.6) ─────────────────────
-export function t16DiffPrincipalByLast() {
+// Список кандидатов не зависит от случая — считаем его один раз на модуль.
+const DIFF_BYLAST_CAND = once(() => {
   const base = diffMonthlyCandidates()
   const cand = []
   for (const b of base) {
@@ -1719,6 +1735,10 @@ export function t16DiffPrincipalByLast() {
       cand.push({ ...b, K, V })
     }
   }
+  return cand
+})
+export function t16DiffPrincipalByLast() {
+  const cand = DIFF_BYLAST_CAND()
   if (!cand.length) return null
   const c = pick(cand)
   const model = diffModel(c.S, c.r, c.n, "month")
@@ -1922,7 +1942,8 @@ export function t16DiffTermByTotal() {
 }
 
 // ── 11. Кредит по общей сумме выплат (эталон 6.11) ─────────────────────────
-export function t16DiffPrincipalByTotal() {
+// Список кандидатов не зависит от случая — считаем его один раз на модуль.
+const DIFF_BYTOTAL_CAND = once(() => {
   const base = diffMonthlyCandidates()
   const cand = []
   for (const b of base) {
@@ -1930,6 +1951,10 @@ export function t16DiffPrincipalByTotal() {
     if (!isMoney(T) || T % 1000 !== 0 || T === b.S) continue
     cand.push({ ...b, T })
   }
+  return cand
+})
+export function t16DiffPrincipalByTotal() {
+  const cand = DIFF_BYTOTAL_CAND()
   if (!cand.length) return null
   const c = pick(cand)
   const model = diffModel(c.S, c.r, c.n, "month")
@@ -1953,7 +1978,8 @@ export function t16DiffPrincipalByTotal() {
 }
 
 // ── 12. Сумма за ВТОРОЙ год по сумме за первый (эталон 6.12) ───────────────
-export function t16DiffSecondYear() {
+// Список кандидатов не зависит от случая — считаем его один раз на модуль.
+const DIFF_SECONDYEAR_CAND = once(() => {
   const base = diffMonthlyCandidates([1, 1.5, 2, 2.5, 3], [24])
   const cand = []
   for (const b of base) {
@@ -1963,6 +1989,10 @@ export function t16DiffSecondYear() {
     if (V1 % 100 !== 0 || V2 % 100 !== 0 || V1 === V2) continue
     cand.push({ ...b, V1, V2 })
   }
+  return cand
+})
+export function t16DiffSecondYear() {
+  const cand = DIFF_SECONDYEAR_CAND()
   if (!cand.length) return null
   const c = pick(cand)
   const model = diffModel(c.S, c.r, 24, "month")
@@ -2552,7 +2582,8 @@ export function t16OptTwoRatesMaxOutput() {
 // ── 5. Наименьшая цена p, при которой завод окупится за Y лет ──────────────
 // Прибыль за год = px − (0,5x² + bx + c); максимум по x равен (p−b)²/2 − c.
 // Условие Y·[(p−b)²/2 − c] ≥ C ⇒ наименьшее целое p.
-export function t16OptFactoryMinPrice() {
+// Список кандидатов не зависит от случая — считаем его один раз на модуль.
+const OPT_MINPRICE_CAND = once(() => {
   const cand = []
   for (let b = 1; b <= 4; b++) {
     for (let cc = 4; cc <= 12; cc++) {
@@ -2571,6 +2602,10 @@ export function t16OptFactoryMinPrice() {
       }
     }
   }
+  return cand
+})
+export function t16OptFactoryMinPrice() {
+  const cand = OPT_MINPRICE_CAND()
   if (!cand.length) return null
   const c = pick(cand)
   const profit = (p) => Math.pow(p - c.b, 2) / 2 - c.c
@@ -2930,26 +2965,7 @@ export const t16FundYearLinear = () => t16FundYear("lin")
 // ═══════════════════════════════════════════════════════════════════════════
 //  РЕЕСТР
 // ═══════════════════════════════════════════════════════════════════════════
-export const GEN16 = [
-  t16AnnPayment, t16AnnPrincipal, t16AnnMinYears,
-  t16AnnDiffTotal, t16RateTwoUnequal, t16RateTwoScenarios,
-  t16DepMaxInitial, t16DepMinTopUp, t16DepTwoParams, t16DepTwoAccounts,
-  t16DepCompareLastYear, t16DepCompareTwoYears,
-  t16IntOnlyMinCredit, t16IntOnlyRate, t16IntOnlyTotal, t16GeomPayments,
-  t16TblMaxRate, t16TblMaxSPayment, t16TblMinSTotal, t16TblOverpayPct,
-  t16TblMaxSSpread, t16TblMinSInteger,
-  t16DiffRateByOverpay, t16DiffTotalPct, t16DiffFirstK, t16DiffTotalByKth,
-  t16DiffPrincipalByFirst, t16DiffPrincipalByLast, t16DiffRateByBounds,
-  t16DiffTotalByMax, t16DiffTotalByMin, t16DiffTermByTotal,
-  t16DiffPrincipalByTotal, t16DiffSecondYear,
-  t16TailPrincipal, t16TailRate, t16TailMonths, t16TailOverpay,
-  t16TailKthPayment, t16TailLastPayment, t16TailTableQuadratic,
-  t16OptTwoPlantsMinCost, t16OptTwoRatesMinCost, t16OptTwoPlantsMaxOutput, t16OptTwoRatesMaxOutput,
-  t16OptFactoryMinPrice, t16OptFactoryPaybackYears, t16OptPriceRaise, t16OptTaxMax,
-  t16OptRegionsGrowth, t16FundRateSquare, t16FundRateLinear, t16FundYearSquare, t16FundYearLinear,
-]
-
-export const META16 = [
+const RAW_META16 = [
   ["Кредит равными (аннуитетными) платежами", [
     ["ann-payment", "Найти размер равного платежа", t16AnnPayment],
     ["ann-principal", "Найти сумму кредита по платежу", t16AnnPrincipal],
@@ -3019,3 +3035,19 @@ export const META16 = [
     ["opt-fund-year-lin", "Фонд, бумаги 10t, ставка дана → год продажи", t16FundYearLinear],
   ]],
 ]
+
+// Часть скинов отбраковывает случайно выпавшую комбинацию (некрасивые числа,
+// неединственный ответ, ответ, совпавший с данным условия) и возвращает null.
+// Наружу null отдавать нельзя — потребитель ждёт готовый объект, поэтому реестр
+// отдаёт генераторы, обёрнутые в повтор попытки.
+const retry = (fn, tries = 500) => () => {
+  for (let i = 0; i < tries; i++) {
+    const o = fn()
+    if (o) return o
+  }
+  return null
+}
+
+export const META16 = RAW_META16.map(([group, skins]) =>
+  [group, skins.map(([key, label, fn]) => [key, label, retry(fn)])])
+export const GEN16 = META16.flatMap(([, skins]) => skins.map(([, , fn]) => fn))

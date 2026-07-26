@@ -1,0 +1,28 @@
+<!doctype html><meta charset="utf-8"><title>probe16</title>
+<body style="font-family:system-ui;padding:20px"><pre id="out">старт…</pre>
+<script type="module">
+const out = document.getElementById("out")
+window.onerror = (m) => { out.textContent = "ONERROR: " + m }
+try {
+  const { GENERATORS_EGE_PROF } = await import("/src/pages/taskGeneratorsEgeProf.js")
+  const { renderTaskMath } = await import("/src/utils.js")
+  const gens = GENERATORS_EGE_PROF[16]
+  out.textContent = "генераторов №16: " + gens.length + " — гоняю…"
+  let nulls = 0, thrown = 0, bad = "", calls = 0, gi = 0
+  for (const f of gens) {
+    gi++
+    for (let i = 0; i < 100; i++) {
+      calls++
+      let o
+      try { o = f() } catch (e) { thrown++; if (!bad) bad = "THROW[" + gi + "] " + e.message; continue }
+      if (!o) { nulls++; continue }
+      const { condition_text, answer } = o
+      const html = renderTaskMath(condition_text)
+      if (/⟦|⟧|undefined|NaN/.test(html + answer)) { thrown++; if (!bad) bad = "LEAK " + html.slice(0, 80) }
+    }
+  }
+  out.textContent = `ГОТОВО\nгенераторов №16: ${gens.length}\nвызовов: ${calls}\nnull: ${nulls}\nошибок: ${thrown}\n${bad}`
+} catch (e) {
+  out.textContent = "IMPORT/RUN FAIL: " + e.message
+}
+</script>
