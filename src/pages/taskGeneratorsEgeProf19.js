@@ -743,6 +743,7 @@ export const META19 = [
     ["box-mean-split-min", "Ящик овощей: наименьшая масса овоща", t19BoxMeanSplitMin],
     ["days-sum-up-count-down", "Дни: сумма растёт, количество убывает", t19DaysSumUpCountDown],
     ["days-max-total-sum", "Дни: наибольшая общая сумма чисел", t19DaysMaxTotalSum],
+    ["cards-blue-red", "Синие и красные карточки: наиб. число синих", t19CardsBlueRed],
   ]],
   ["Операции над записью числа", [
     ["swap-digits-max", "Перестановка цифр двузначных → наибольшая новая сумма", t19SwapDigitsMax],
@@ -5610,6 +5611,142 @@ export function t19DaysMaxTotalSum() {
       mustMention: [B, S1, Xa, Yb, Zb],
       extra: [],
       phrases: ["каждое из которых меньше", "количество чисел меньше, чем в предыдущий день"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 11 (продолжение). Синие и красные карточки (#73)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Всего N карточек с натуральными числами, среднее равно u. Числа на синих карточках
+// различны и каждое больше любого числа на красной. После удвоения чисел на синих
+// среднее стало v. Удвоение добавляет к общей сумме ровно сумму синих, поэтому
+//   S_син = N(v − u),   S_кр = Nu − S_син.
+// Если синих b, а красных r = N − b, то каждое красное ≥ 1 (значит r ≤ S_кр), а
+// наибольшее красное m ≥ ⌈S_кр/r⌉. Синие — b РАЗЛИЧНЫХ чисел, больших m, поэтому
+//   b(m + 1) + b(b − 1)/2 ≤ S_син.
+// Это и ограничивает количество синих карточек.
+export function t19CardsBlueRed() {
+  // Тройки (N, u, сумма красных), при которых среднее после удвоения — «человеческое»
+  // число с одним знаком после запятой, а красных карточек заведомо хватает.
+  const CFG = []
+  for (const N0 of [40, 50, 60]) {
+    for (const u0 of [14, 16, 18]) {
+      for (const d0 of [20, 24, 30, 36, 40]) {
+        if (d0 >= N0) continue                              // иначе синих карточек не остаётся
+        if ((d0 * 10) % N0) continue                        // v = 2u − d/N — одна десятичная
+        CFG.push({ N: N0, u: u0, dSum: d0 })
+      }
+    }
+  }
+  const cfg0 = pick(CFG)
+  const N = cfg0.N, u = cfg0.u, dSum = cfg0.dSum
+  const Sblue = N * u - dSum
+  const v = (N * u + Sblue) / N                            // среднее после удвоения синих
+  const minBlue = (b, m) => b * (m + 1) + b * (b - 1) / 2
+  const feasible = (r) => {
+    const b = N - r
+    if (r < 1 || b < 1 || r > dSum) return null            // каждое красное ≥ 1
+    const m = Math.ceil(dSum / r)                          // наибольшее красное не меньше среднего
+    if (m * r < dSum) return null
+    return minBlue(b, m) <= Sblue ? { b, r, m } : null
+  }
+  let bMax = 0, bestR = 0, bestM = 0
+  for (let r = 1; r < N; r++) {
+    const f = feasible(r)
+    if (f && f.b > bMax) { bMax = f.b; bestR = r; bestM = f.m }
+  }
+  if (!bMax) return null
+  const Xa = N - dSum                                       // столько синих есть всегда (все красные — единицы)
+  if (!feasible(N - Xa)) return null
+  // столько красных быть не может — берём НАИБОЛЬШЕЕ такое r (у самой границы),
+  // иначе вопрос вырождается в «может ли быть одна красная карточка»
+  let Xb = 0
+  for (let r = 1; r <= dSum; r++) if (!feasible(r)) Xb = r
+  if (Xb < 2 || N - Xb === Xa) return null
+
+  const mk = (r) => {                                       // набор карточек при r красных
+    const f = feasible(r)
+    if (!f) return null
+    const red = Array(r).fill(1)
+    let restRed = dSum - r
+    for (let i = 0; i < r && restRed > 0; i++) {
+      const add = Math.min(restRed, f.m - 1)
+      red[i] += add; restRed -= add
+    }
+    if (restRed !== 0 || Math.max(...red) !== f.m) return null
+    const blue = Array.from({ length: f.b }, (_, i) => f.m + 1 + i)
+    const extra = Sblue - sum(blue)                        // добираем сумму, сдвигая старшие числа
+    const step = Math.floor(extra / f.b), rest = extra - step * f.b
+    for (let i = 0; i < f.b; i++) blue[i] += step + (i >= f.b - rest ? 1 : 0)
+    return { blue, red }
+  }
+  const exA = mk(N - Xa), exC = mk(bestR)
+  if (!exA || !exC) return null
+
+  const params = { N, u, v, Sblue, dSum, Xa, Xb }
+  const check = (cfg, part) => {
+    if (!cfg || !Array.isArray(cfg.blue) || !Array.isArray(cfg.red)) return "нет набора карточек"
+    if (cfg.blue.length + cfg.red.length !== N) return `карточек ${cfg.blue.length + cfg.red.length} вместо ${N}`
+    if (!cfg.blue.length || !cfg.red.length) return "должны быть карточки обоих цветов"
+    for (const x of [...cfg.blue, ...cfg.red]) if (!Number.isInteger(x) || x < 1) return `${x} — не натуральное число`
+    if (uniq(cfg.blue).length !== cfg.blue.length) return "числа на синих карточках обязаны быть различными"
+    if (Math.min(...cfg.blue) <= Math.max(...cfg.red)) return `число ${Math.min(...cfg.blue)} на синей не больше числа ${Math.max(...cfg.red)} на красной`
+    if (sum(cfg.blue) + sum(cfg.red) !== N * u) return `среднее всех чисел ${(sum(cfg.blue) + sum(cfg.red)) / N}, а не ${u}`
+    // сравниваем целые суммы: N·v — дробное произведение и страдает от плавающей точки
+    if (2 * sum(cfg.blue) + sum(cfg.red) !== N * u + Sblue) return `после удвоения среднее ${ru2((2 * sum(cfg.blue) + sum(cfg.red)) / N)}, а не ${ru2(v)}`
+    if (part === "a" && cfg.blue.length !== Xa) return `синих карточек ${cfg.blue.length}, а нужно ${Xa}`
+    if (part === "c" && cfg.blue.length !== bMax) return `синих карточек ${cfg.blue.length}, а заявлено ${bMax}`
+    return null
+  }
+  // Независимый перебор по числу красных карточек r: для каждого r наибольшее красное
+  // не меньше ⌈S_кр/r⌉, а b = N − r различных синих чисел, больших этого значения,
+  // дают в сумме не меньше b(m+1) + b(b−1)/2 — это и есть критерий существования.
+  const solve = (P) => {
+    let aYes = false, bYes = false, best = 0
+    for (let r = 1; r < P.N; r++) {
+      const b = P.N - r
+      if (r > P.dSum) continue
+      const m = Math.ceil(P.dSum / r)
+      if (b * (m + 1) + b * (b - 1) / 2 > P.Sblue) continue
+      if (b === P.Xa) aYes = true
+      if (r === P.Xb) bYes = true
+      if (b > best) best = b
+    }
+    return { a: aYes, b: bYes, c: best, c_next: false }
+  }
+
+  const byValue = (arr) => {
+    const g = new Map()
+    for (const x of arr) g.set(x, (g.get(x) || 0) + 1)
+    return [...g.entries()].sort((a, b) => a[0] - b[0])
+      .map(([val, cnt]) => `${cnt} ${plural(cnt, "карточка", "карточки", "карточек")} с числом ${val}`).join(", ")
+  }
+  const showCfg = (cfg) => {
+    const b = cfg.blue.slice().sort((x, y) => x - y)
+    const blueTxt = b.length <= 4 ? b.join(", ") : `${b.slice(0, 3).join(", ")}, …, ${b[b.length - 1]}`
+    return `красные — ${byValue(cfg.red)}; синие — ${cfg.blue.length} ${plural(cfg.blue.length, "карточка", "карточки", "карточек")} с числами ${blueTxt}`
+  }
+  return item({
+    preamble: `Есть синие и красные карточки. Всего карточек ${N} штук. На каждой написаны натуральные числа, среднее арифметическое которых равно ${u}. Все числа на синих карточках разные. При этом любое число на синей карточке больше, чем любое на красной. Числа на синих увеличили в 2 раза, после чего среднее арифметическое стало равно ${ru2(v)}.`,
+    qa: `Может ли быть ${Xa} синих карточек?`,
+    qb: `Может ли быть ${Xb} ${plural(Xb, "красная карточка", "красные карточки", "красных карточек")}?`,
+    qc: `Какое наибольшее количество синих карточек может быть?`,
+    ansA: `да, например ${showCfg(exA)}`,
+    ansB: `нет: удвоение синих увеличивает общую сумму ровно на сумму синих, поэтому сумма чисел на синих равна ${N}·(${ru2(v)} − ${u}) = ${Sblue}, а на красных — ${dSum}. При ${Xb} ${plural(Xb, "красной карточке", "красных карточках", "красных карточках")} наибольшее красное число не меньше ${Math.ceil(dSum / Xb)}, значит ${N - Xb} различных синих чисел дают в сумме не меньше ${(N - Xb) * (Math.ceil(dSum / Xb) + 1) + (N - Xb) * (N - Xb - 1) / 2} > ${Sblue}`,
+    ansC: `${bMax}; например ${showCfg(exC)}`,
+    solution: `После удвоения чисел на синих карточках сумма выросла ровно на сумму синих чисел, поэтому\nS_син = ${N}·(${ru2(v)} − ${u}) = ${Sblue}, а S_кр = ${N}·${u} − ${Sblue} = ${dSum}.\nПусть красных карточек r, тогда синих ${N} − r. Каждое красное число натуральное, поэтому r ≤ ${dSum}, а наибольшее красное число m не меньше ⌈${dSum}/r⌉. Числа на синих различны и больше m, поэтому\nS_син ≥ (${N} − r)(m + 1) + (${N} − r)(${N} − r − 1)/2.\nа) При ${Xa} синих карточках все красные равны 1, и условие выполняется: ${showCfg(exA)}.\nб) При ${Xb} ${plural(Xb, "красной карточке", "красных карточках", "красных карточках")} m ≥ ${Math.ceil(dSum / Xb)}, и минимальная сумма синих равна ${(N - Xb) * (Math.ceil(dSum / Xb) + 1) + (N - Xb) * (N - Xb - 1) / 2}, что больше ${Sblue}. Значит столько красных быть не может.\nв) Перебирая r, получаем наибольшее число синих ${bMax} (при r = ${bestR}, m = ${bestM}): ${showCfg(exC)}.\nОтвет: ${bMax}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: `blue-${Xa}` },
+        b: { type: "yesno", yes: false, reason: "blue-min-sum", target: `red-${Xb}` },
+        c: { type: "extremum", mode: "max", value: bMax, example: exC },
+      },
+      mustMention: [N, u, Xa, Xb, 2, ...String(ru2(v)).split(",").map(Number)],
+      extra: [],
+      phrases: ["Все числа на синих карточках разные", "больше, чем любое на красной"],
     },
   })
 }
