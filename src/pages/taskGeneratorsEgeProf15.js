@@ -30,6 +30,8 @@ const SUPD = { 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸
 const SUBD = { 0: "₀", 1: "₁", 2: "₂", 3: "₃", 4: "₄", 5: "₅", 6: "₆", 7: "₇", 8: "₈", 9: "₉" }
 const subU = (n) => String(n).split("").map((c) => SUBD[c] ?? c).join("")
 const fT = (n, d) => `⟦f:${n}:${d}⟧`
+// Дробь ВНУТРИ дроби (второй ярус): токен без «:» и «⟧».
+const fT2 = (n, d) => `⦃${n}¦${d}⦄`
 
 // ── рациональные числа {p,q}, q>0, дробь сокращена ───────────────────────────
 function Q(p, q = 1) { if (q < 0) { p = -p; q = -q } const g = gcd(p, q) || 1; return { p: p / g, q: q / g } }
@@ -1823,6 +1825,283 @@ export function t15ExpCubeOverQuad() {
   return null
 }
 
+
+// ════════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 4. ЛОГАРИФМИЧЕСКИЕ БЕЗ x В ОСНОВАНИИ (без рационализации)
+// Замена y = log_b x (возрастающая, x>0): нули задаём по y, обратно x = b^y.
+// ════════════════════════════════════════════════════════════════════════════
+
+// log²₂x, lg⁴x, log₅(25−x²) — основание подстрочником (юникод: внутри дроби токен ⟦b⟧
+// применить нельзя, он содержит «⟧»).
+const supNum = (n) => String(n).split("").map((c) => SUPD[c] ?? (c === "1" ? "¹" : c === "0" ? "⁰" : c)).join("")
+const logS = (b, k = 1, arg = "x") => (b === 10 ? "lg" : "log") + (k > 1 ? SUPD[k] : "") + (b === 10 ? "" : subU(b)) + arg
+const logSD = (bStr, k = 1, arg = "x") => "log" + (k > 1 ? SUPD[k] : "") + bStr + arg
+
+// Конец промежутка x = b^y (y — рациональное): 3^{-2} → 1/9, 2^{3/2} → 2√2.
+function epPow(b, y) {
+  const Y = toQ(y), v = Math.pow(b, Qnum(Y))
+  if (Y.q === 1) return epQ(Y.p >= 0 ? Q(Math.round(Math.pow(b, Y.p))) : Q(1, Math.round(Math.pow(b, -Y.p))))
+  if (Y.q === 2) {
+    const P = Math.abs(Y.p), D = Math.round(Math.pow(b, P))
+    return EP(v, Y.p > 0 ? sqrtStrAns(D) : `1/${sqrtStrAns(D)}`)
+  }
+  return EP(v, `${b}^(${Y.p}/${Y.q})`)
+}
+// yCrit: [{y, mult, pole}] — нули/полюса по y; leadY — знак при y→+∞.
+function buildLog(o) {
+  const crit = o.yCrit.map((c) => ({ ep: epPow(o.base, c.y), mult: c.mult, pole: c.pole }))
+  return build({
+    ...o, crit, lead: o.leadY,
+    domain: { a: EP(0, "0"), b: POS_INF, ai: false, bi: false },
+    domainOK: o.domainOK || ((x) => x > 0),
+    extraX: [0, ...(o.extraX || [])],
+  })
+}
+
+// [34] Многочлен 4-й степени по lg x: lg⁴x − 4lg³x + 5lg²x − 2lg x ⋛ 0 (PDF лог.5)
+export function t15LogQuartic() {
+  for (let it = 0; it < 400; it++) {
+    const b = pick([10, 2, 3])
+    const u = randInt(-2, 2), r1 = randInt(-2, 3), r2 = randInt(-2, 3)
+    if (new Set([u, r1, r2]).size < 3) continue
+    const roots = [0, u, u, r1].concat(r2 === r1 ? [] : [])
+    void roots
+    // корни: 0, u (двойной), r1  → y(y−u)²(y−r1)
+    const e1 = 2 * u + r1, e2 = u * u + 2 * u * r1, e3 = u * u * r1
+    const c3 = -e1, c2 = e2, c1 = -e3
+    if ([c3, c2, c1].some((v) => Math.abs(v) > 60)) continue
+    if (c1 === 0) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    if (c3 === 0 || c2 === 0) continue   // без «0log³x» в показе
+    const T = (k, c) => `${c < 0 ? MINUS : "+"} ${Math.abs(c) === 1 ? "" : Math.abs(c)}${logS(b, k)}`
+    const text = `${logS(b, 4)} ${T(3, c3)} ${T(2, c2)} ${T(1, c1)} ${cmp} 0`
+    const F = (x) => { const y = Math.log(x) / Math.log(b); return y * y * y * y + c3 * y * y * y + c2 * y * y + c1 * y }
+    const res = buildLog({
+      text, cmp, base: b, leadY: 1, lhs: F, rhs: () => 0,
+      yCrit: [{ y: 0, mult: 1, pole: false }, { y: u, mult: 2, pole: false }, { y: r1, mult: 1, pole: false }],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [35] (A·log²x + B)/(log²x − c) ⋛ C   (PDF лог.7: (5log²₂x−100)/(log²₂x−25) ≥ 4; лог.10)
+export function t15LogFracSq() {
+  for (let it = 0; it < 600; it++) {
+    const b = pick([10, 2, 3, 5])
+    const sPow = randInt(1, 3), c = sPow * sPow
+    const C = randInt(1, 5), k = randInt(1, 4)
+    const A = k + C
+    const u = pick([0, 0, 1, 2])
+    const Bv = -k * u * u - C * c
+    if (Math.abs(Bv) > 400 || A > 12) continue
+    if (u === sPow) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const num = `${A === 1 ? "" : A}${logS(b, 2)} ${Bv < 0 ? MINUS : "+"} ${Math.abs(Bv)}`
+    const text = `${fT(num, `${logS(b, 2)} ${MINUS} ${c}`)} ${cmp} ${C}`
+    const F = (x) => { const y = Math.log(x) / Math.log(b); return (A * y * y + Bv) / (y * y - c) }
+    const yc = [{ y: -sPow, mult: 1, pole: true }, { y: sPow, mult: 1, pole: true }]
+    if (u === 0) yc.push({ y: 0, mult: 2, pole: false })
+    else yc.push({ y: -u, mult: 1, pole: false }, { y: u, mult: 1, pole: false })
+    const res = buildLog({
+      text, cmp, base: b, leadY: 1, lhs: F, rhs: () => C,
+      domainOK: (x) => x > 0 && Math.abs(Math.pow(Math.log(x) / Math.log(b), 2) - c) > 1e-12,
+      yCrit: yc,
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [36] (log_b x + a)²/(log²_b x − s²) ⋛ 0   (PDF лог.17) — кратный корень в числителе
+export function t15LogSqOverSq() {
+  for (let it = 0; it < 400; it++) {
+    const b = pick([2, 3, 4, 5]), sPow = randInt(1, 3), a = randInt(-3, 3)
+    if (Math.abs(a) === sPow) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const num = `(${logS(b)} ${a < 0 ? MINUS : "+"} ${Math.abs(a)})${SUPD[2]}`
+    const text = `${fT(num, `${logS(b, 2)} ${MINUS} ${sPow * sPow}`)} ${cmp} 0`
+    const F = (x) => { const y = Math.log(x) / Math.log(b); return Math.pow(y + a, 2) / (y * y - sPow * sPow) }
+    const res = buildLog({
+      text, cmp, base: b, leadY: 1, lhs: F, rhs: () => 0,
+      domainOK: (x) => x > 0 && Math.abs(Math.pow(Math.log(x) / Math.log(b), 2) - sPow * sPow) > 1e-12,
+      yCrit: [
+        { y: -a, mult: 2, pole: false },
+        { y: -sPow, mult: 1, pole: true }, { y: sPow, mult: 1, pole: true },
+      ],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [37] 1 + A/(log_b x − p) + B/(log²_b x − log_b(x^{2p}/b^k) + (p²−k)) ⋛ 0
+//      Знаменатель второй дроби — полный квадрат (log_b x − p)². (PDF лог.14)
+export function t15LogSqDen() {
+  for (let it = 0; it < 600; it++) {
+    const b = pick([2, 3, 5]), p = randInt(2, 5), k = randInt(1, 3)
+    const u1 = -randInt(1, 6), u2 = -randInt(1, 6)
+    if (u1 === u2) continue
+    const A = -(u1 + u2), B = u1 * u2
+    if (A === 0 || B === 0 || A > 60 || B > 60) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const argStr = `(${fT2(`x${supNum(2 * p)}`, `${Math.round(Math.pow(b, k))}`)})`
+    const text = `1 + ${fT(A, `${logS(b)} ${MINUS} ${p}`)} + ${fT(B, `${logS(b, 2)} ${MINUS} ${logS(b, 1, argStr)} + ${p * p - k}`)} ${cmp} 0`
+    const F = (x) => { const y = Math.log(x) / Math.log(b); return 1 + A / (y - p) + B / Math.pow(y - p, 2) }
+    const res = buildLog({
+      text, cmp, base: b, leadY: 1, lhs: F, rhs: () => 0,
+      domainOK: (x) => x > 0 && Math.abs(Math.log(x) / Math.log(b) - p) > 1e-12,
+      yCrit: [
+        { y: p + u1, mult: 1, pole: false }, { y: p + u2, mult: 1, pole: false },
+        { y: p, mult: 2, pole: true },
+      ],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [38] (log²x − 2log x)² + 2S·log x + P ⋛ S·log²x — замена w = log²x − 2log x (PDF лог.16)
+export function t15LogQuadNested() {
+  for (let it = 0; it < 600; it++) {
+    const b = pick([2, 3, 5])
+    const k1 = randInt(2, 5), k2 = randInt(2, 5)
+    if (k1 === k2) continue
+    const w1 = k1 * k1 - 1, w2 = k2 * k2 - 1          // y = 1 ± √(1+w) — целые концы
+    const S = w1 + w2, P = w1 * w2
+    if (S > 90 || P > 900) continue
+    const cmp = pick(["<", ">", "≤", "≥"])
+    const text = `(${logS(b, 2)} ${MINUS} 2${logS(b)})${SUPD[2]} + ${2 * S}${logS(b)} + ${P} ${cmp} ${S}${logS(b, 2)}`
+    const F = (x) => { const y = Math.log(x) / Math.log(b), w = y * y - 2 * y; return w * w + 2 * S * y + P }
+    const G = (x) => { const y = Math.log(x) / Math.log(b); return S * y * y }
+    const res = buildLog({
+      text, cmp, base: b, leadY: 1, lhs: F, rhs: G,
+      yCrit: [
+        { y: 1 - k2, mult: 1, pole: false }, { y: 1 - k1, mult: 1, pole: false },
+        { y: 1 + k1, mult: 1, pole: false }, { y: 1 + k2, mult: 1, pole: false },
+      ],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [39] log x/log(x/b^p) ⋛ A/log x + B/(log²x − log x^p)  (PDF лог.11) — кратный корень
+export function t15LogFracThree() {
+  for (let it = 0; it < 400; it++) {
+    const b = pick([2, 3, 5]), p = randInt(2, 4), u = randInt(1, 4)
+    const A = 2 * u, B = 2 * u * p - u * u
+    if (B === 0 || A > 30 || Math.abs(B) > 90) continue
+    if (u === p || u === 0) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const left = fT(logS(b), logS(b, 1, `(${fT2("x", `${Math.round(Math.pow(b, p))}`)})`))
+    const right = `${fT(A, logS(b))} + ${fT(B, `${logS(b, 2)} ${MINUS} ${logS(b, 1, "x" + supNum(p))}`)}`
+    const text = `${left} ${cmp} ${right}`
+    const F = (x) => { const y = Math.log(x) / Math.log(b); return y / (y - p) }
+    const G = (x) => { const y = Math.log(x) / Math.log(b); return A / y + B / (y * y - p * y) }
+    const res = buildLog({
+      text, cmp, base: b, leadY: 1, lhs: F, rhs: G,
+      domainOK: (x) => { const y = Math.log(x) / Math.log(b); return x > 0 && Math.abs(y) > 1e-12 && Math.abs(y - p) > 1e-12 },
+      yCrit: [
+        { y: u, mult: 2, pole: false },
+        { y: 0, mult: 1, pole: true }, { y: p, mult: 1, pole: true },
+      ],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [40] (log_b(b^k·x^m) + c)/(log²_b x − s²) ⋛ −1   (PDF лог.20) — числитель = полный квадрат
+export function t15LogLinOverSq() {
+  for (let it = 0; it < 600; it++) {
+    const b = pick([2, 3, 4, 7]), sPow = randInt(2, 4), u = randInt(1, 4)
+    const m = 2 * u, k = randInt(1, 4)
+    const c = u * u + sPow * sPow - k
+    if (u === sPow || c <= 0 || c > 90 || m > 12) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const arg = `(${Math.round(Math.pow(b, k))}x${supNum(m)})`
+    const text = `${fT(`${logS(b, 1, arg)} + ${c}`, `${logS(b, 2)} ${MINUS} ${sPow * sPow}`)} ${cmp} ${MINUS}1`
+    const F = (x) => { const y = Math.log(x) / Math.log(b); return (k + m * y + c) / (y * y - sPow * sPow) }
+    const res = buildLog({
+      text, cmp, base: b, leadY: -1,      // приведённая форма: −(y+u)²/(y²−s²)
+      flip: true,
+      lhs: F, rhs: () => -1,
+      domainOK: (x) => x > 0 && Math.abs(Math.pow(Math.log(x) / Math.log(b), 2) - sPow * sPow) > 1e-12,
+      yCrit: [
+        { y: -u, mult: 2, pole: false },
+        { y: -sPow, mult: 1, pole: true }, { y: sPow, mult: 1, pole: true },
+      ],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [41] (log_b(b^k·x) + c)/(log²_b x + m·log_b x) ⋛ C   (PDF лог.21)
+export function t15LogLinOverQuad() {
+  for (let it = 0; it < 800; it++) {
+    const b = pick([3, 6, 2, 5]), k = randInt(1, 2), m = pick([-4, -3, 3, 4])
+    const c = randInt(-14, 6)
+    const C = pick([0, 1])
+    const cmp = pick(["≥", "≤", ">", "<"])
+    // приведённая форма: ((y+k+c) − C(y²+my))/(y²+my)
+    const yc = [{ y: 0, mult: 1, pole: true }, { y: -m, mult: 1, pole: true }]
+    let leadY, flip = false
+    if (C === 0) {
+      const r = -(k + c)
+      if (r === 0 || r === -m) continue
+      yc.push({ y: r, mult: 1, pole: false })
+      leadY = 1
+    } else {
+      const disc = Math.pow(1 - C * m, 2) + 4 * C * (k + c)
+      if (disc >= 0) continue                 // числитель знакопостоянен — «ловушка»
+      leadY = -1
+    }
+    const argStr = k === 0 ? "x" : `(${Math.round(Math.pow(b, k))}x)`
+    const numTxt = `${logS(b, 1, argStr)} ${c < 0 ? MINUS : "+"} ${Math.abs(c)}`
+    const denTxt = `${logS(b, 2)} ${m < 0 ? MINUS : "+"} ${logS(b, 1, "x" + supNum(Math.abs(m)))}`
+    const text = `${fT(numTxt, denTxt)} ${cmp} ${C}`
+    const F = (x) => { const y = Math.log(x) / Math.log(b); return (y + k + c) / (y * y + m * y) }
+    const res = buildLog({
+      text, cmp, base: b, leadY, flip, lhs: F, rhs: () => C,
+      domainOK: (x) => { const y = Math.log(x) / Math.log(b); return x > 0 && Math.abs(y) > 1e-12 && Math.abs(y + m) > 1e-12 },
+      yCrit: yc,
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [42] (y+p)/(y−p) + (y−p)/(y+p) ⋛ (A·y + B)/(y²−p²), y = log_b x  (PDF лог.19)
+export function t15LogConj() {
+  for (let it = 0; it < 400; it++) {
+    const b = pick([3, 4, 5]), p = randInt(2, 4), u = randInt(-3, 3)
+    if (Math.abs(u) === p) continue
+    const A = 4 * u, B = 2 * p * p - 2 * u * u
+    if (A === 0 || Math.abs(B) > 200) continue
+    const bp = Math.round(Math.pow(b, p))
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const L1 = logS(b, 1, `(${bp}x)`), L2 = `${logS(b)} ${MINUS} ${p}`
+    const numR = A > 0
+      ? `${logS(b, 1, "x" + supNum(A))} ${B < 0 ? MINUS : "+"} ${Math.abs(B)}`
+      : `${Math.abs(B)} ${MINUS} ${logS(b, 1, "x" + supNum(-A))}`
+    const text = `${fT(L1, L2)} + ${fT(L2, L1)} ${cmp} ${fT(numR, `${logS(b, 2)} ${MINUS} ${p * p}`)}`
+    const F = (x) => { const y = Math.log(x) / Math.log(b); return (y + p) / (y - p) + (y - p) / (y + p) }
+    const G = (x) => { const y = Math.log(x) / Math.log(b); return (A * y + B) / (y * y - p * p) }
+    const res = buildLog({
+      text, cmp, base: b, leadY: 1, lhs: F, rhs: G,
+      domainOK: (x) => { const y = Math.log(x) / Math.log(b); return x > 0 && Math.abs(Math.abs(y) - p) > 1e-12 },
+      yCrit: [
+        { y: u, mult: 2, pole: false },
+        { y: -p, mult: 1, pole: true }, { y: p, mult: 1, pole: true },
+      ],
+    })
+    if (res) return res
+  }
+  return null
+}
+
 // ── реестры ─────────────────────────────────────────────────────────────────
 export const META15 = [
   ["Рациональные неравенства", [
@@ -1849,6 +2128,17 @@ export const META15 = [
     ["exp-geom", "вынос общего множителя из суммы степеней", t15ExpGeomSum],
     ["exp-mixed-quad", "a^{x²}·b^{x−1} ⋛ a", t15ExpMixedQuad],
     ["exp-root-pow", "корни от степеней → рациональное с полюсом x=0", t15ExpRootPower],
+  ]],
+  ["Логарифмические: замена y = log_b x", [
+    ["log-quartic", "многочлен 4-й степени по lg x", t15LogQuartic],
+    ["log-frac-sq", "(A·log²x + B)/(log²x − c) ⋛ C", t15LogFracSq],
+    ["log-sq-over-sq", "(log x + a)²/(log²x − s²) ⋛ 0", t15LogSqOverSq],
+    ["log-sq-den", "1 + A/(log x − p) + B/(log x − p)² (знаменатель раскрыт)", t15LogSqDen],
+    ["log-quad-nested", "(log²x − 2log x)² + 2S·log x + P ⋛ S·log²x", t15LogQuadNested],
+    ["log-frac-three", "log x/log(x/b^p) ⋛ A/log x + B/(log²x − log x^p)", t15LogFracThree],
+    ["log-lin-over-sq", "(log(b^k·x^m) + c)/(log²x − s²) ⋛ −1", t15LogLinOverSq],
+    ["log-lin-over-quad", "(log(b^k·x) + c)/(log²x + m·log x) ⋛ C", t15LogLinOverQuad],
+    ["log-conj", "сопряжённые дроби по y = log_b x", t15LogConj],
   ]],
   ["Показательные: дробно-рациональные по t", [
     ["exp-frac-quad-lin", "(B^x+βb^x+γ)/(b^x−p) ⋛ C", t15ExpFracQuadLin],
