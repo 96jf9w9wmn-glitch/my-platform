@@ -222,7 +222,9 @@ export function verify16(it) {
   // 3) ответ: конечен, не «хвостатый», совпадает с числом в тексте ответа
   const A = v.answerNum
   if (!Number.isFinite(A)) return { ok: false, err: `ответ = ${A}` }
-  if (Math.abs(A * 1000 - Math.round(A * 1000)) > 1e-6) return { ok: false, err: `ответ ${A} с длинным хвостом` }
+  if (Math.abs(A * 1000 - Math.round(A * 1000)) > Math.max(1e-6, Math.abs(A) * 1e-9)) {
+    return { ok: false, err: `ответ ${A} с длинным хвостом` }
+  }
   if (!/\d/.test(it.answer)) return { ok: false, err: "в ответе нет числа" }
 
   // 4) задачезависимые проверки (единственность, соседние целые, границы округления)
@@ -1649,6 +1651,528 @@ export function t16TblMinSInteger() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+//  РАЗДЕЛ 6. ДИФФЕРЕНЦИРОВАННЫЕ ПЛАТЕЖИ
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Долг на контрольную дату убывает на одну и ту же величину d = S/n:
+//   Dₖ = S(1 − k/n),  платёж pₖ = Dₖ₋₁·x + d,  x = r/100.
+// Платежи образуют убывающую арифметическую прогрессию с шагом −d·x, поэтому
+//   общая сумма = S·(1 + x·(n+1)/2),
+//   сумма первых K платежей = K·d + x·S·(K − K(K−1)/(2n)).
+// Эти формулы — «вторая реализация»; verify16 сверяет их с пошаговой симуляцией.
+
+const diffPayments = (S, ratePct, n) => {
+  const x = ratePct / 100, d = S / n
+  return Array.from({ length: n }, (_, i) => (S - i * d) * x + d)
+}
+const diffTotal = (S, ratePct, n) => S * (1 + (ratePct / 100) * (n + 1) / 2)
+const diffFirstK = (S, ratePct, n, K) =>
+  K * (S / n) + (ratePct / 100) * S * (K - K * (K - 1) / (2 * n))
+const diffLastK = (S, ratePct, n, K) =>
+  diffTotal(S, ratePct, n) - diffFirstK(S, ratePct, n, n - K)
+
+// Модель дифференцированного кредита; все платежи обязаны быть целыми рублями,
+// поэтому кандидаты фильтруются условием S % (n·100) = 0 (при целой ставке).
+function diffModel(S, ratePct, n, periodUnit, unit) {
+  return { type: "credit", S, ratePct, payments: diffPayments(S, ratePct, n), periodUnit, unit }
+}
+const diffExact = (S, ratePct, n) => diffPayments(S, ratePct, n).every(isMoney)
+
+// Преамбула помесячной схемы (формулировка эталона, раздел 6).
+function diffMonthPreamble(startMonth, n, rateText, sizeText) {
+  return `15-го ${MONTH_NAMES[startMonth - 1]} планируется взять кредит в банке на ${months(n)}` +
+    `${sizeText}. Условия его возврата таковы:\n` +
+    `— 1-го числа каждого месяца долг возрастает на ${rateText} по сравнению с концом ` +
+    `предыдущего месяца;\n` +
+    `— со 2-го по 14-е число каждого месяца необходимо выплатить часть долга;\n` +
+    `— 15-го числа каждого месяца долг должен быть на одну и ту же сумму меньше долга ` +
+    `на 15-е число предыдущего месяца.\n`
+}
+// Преамбула годовой схемы (эталон 6.7–6.10).
+function diffYearPreamble(n, rateText, sizeText) {
+  return `В июле планируется взять кредит в банке${sizeText}${n ? ` на срок ${years(n)}` : " на некоторый срок (целое число лет)"}. ` +
+    `Условия его возврата таковы:\n` +
+    `— каждый январь долг возрастает на ${rateText} по сравнению с концом предыдущего года;\n` +
+    `— с февраля по июнь каждого года необходимо выплатить часть долга;\n` +
+    `— в июле каждого года долг должен быть на одну и ту же сумму меньше долга на июль ` +
+    `предыдущего года.\n`
+}
+const MONTH_EXTRA = [15, 1, 2, 14]
+
+// ── 1. Ставка по переплате в процентах (эталон 6.1) ────────────────────────
+// Общая сумма на P % больше кредита ⇒ x·(n+1)/2 = P/100 ⇒ r = 200P/(n+1).
+export function t16DiffRateByOverpay() {
+  const cand = []
+  for (let n = 8; n <= 36; n++) {
+    for (let P = 5; P <= 60; P++) {
+      const r = 2 * P / (n + 1)
+      if (Math.abs(r * 2 - Math.round(r * 2)) > 1e-9) continue     // ставка кратна 0,5
+      if (r < 1 || r > 30) continue
+      cand.push({ n, P, r: Math.round(r * 2) / 2 })
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  // сумма кредита в условии не дана, но график симуляции должен быть в целых рублях
+  const S = lcm(c.n * 200, 1000) * 5
+  const model = diffModel(S, c.r, c.n, "month")
+  const startM = randInt(1, 12)
+  const overFor = (r) => 100 * ((1 + (r / 100) * (c.n + 1) / 2) - 1)
+  return item({
+    text: diffMonthPreamble(startM, c.n, "r %", "") +
+      `Известно, что общая сумма выплат после полного погашения кредита на ${pct(c.P)} больше суммы, ` +
+      `взятой в кредит. Найдите r.`,
+    answer: `${pct(c.r)}`,
+    answerNum: c.r,
+    model,
+    mustMention: [c.P],
+    extra: [...MONTH_EXTRA, c.n],
+    forbid: [],
+    checks: [
+      () => (Math.abs(overFor(c.r) - c.P) < 1e-9 ? null : "переплата ≠ заданной"),
+      () => {
+        for (let r = 0.5; r <= 40.0001; r += 0.5) {
+          if (Math.abs(r - c.r) < 1e-9) continue
+          if (Math.abs(overFor(r) - c.P) < 1e-6) return `ставка ${r} тоже подходит`
+        }
+        return null
+      },
+    ],
+  })
+}
+
+// ── 2. Сколько процентов общая сумма от кредита (эталон 6.2) ───────────────
+export function t16DiffTotalPct() {
+  const cand = []
+  for (let n = 8; n <= 36; n++) {
+    for (const r of [1, 1.5, 2, 2.5, 3]) {
+      const P = 100 + r * (n + 1) / 2
+      if (Math.abs(P * 10 - Math.round(P * 10)) > 1e-9) continue
+      cand.push({ n, r, P: Math.round(P * 10) / 10 })
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const S = lcm(c.n * 200, 1000) * 5
+  const model = diffModel(S, c.r, c.n, "month")
+  const startM = randInt(1, 12)
+  return item({
+    text: diffMonthPreamble(startM, c.n, pct(c.r), "") +
+      `Сколько процентов будет составлять общая сумма выплат от суммы, взятой в кредит?`,
+    answer: `${pct(c.P)}`,
+    answerNum: c.P,
+    model,
+    mustMention: [c.r],
+    extra: [...MONTH_EXTRA, c.n],
+    forbid: [],
+    checks: [
+      () => (Math.abs(simulateCredit(model).total / S * 100 - c.P) < 1e-6 ? null : "симуляция ≠ ответу"),
+    ],
+  })
+}
+
+// Подбор помесячного дифференцированного кредита с ЦЕЛЫМИ платежами.
+function diffMonthlyCandidates(rates = [1, 1.5, 2, 2.5, 3], nList = null) {
+  const out = []
+  const ns = nList || [12, 15, 16, 18, 20, 21, 24, 25, 30, 36]
+  for (const n of ns) {
+    for (const r of rates) {
+      const step = lcm(n * 200, 1000)                    // целые платежи + «человеческая» сумма
+      for (let S = step; S <= 10_000_000; S += step) {
+        if (S < 300_000) continue
+        if (!diffExact(S, r, n)) continue
+        out.push({ n, r, S })
+      }
+    }
+  }
+  return out
+}
+
+// ── 3. Сумма выплат за первые K месяцев (эталон 6.3) ───────────────────────
+export function t16DiffFirstK() {
+  const base = diffMonthlyCandidates()
+  const cand = []
+  for (const b of base) {
+    for (const K of [6, 12, 18]) {
+      if (K >= b.n) continue
+      const V = diffFirstK(b.S, b.r, b.n, K)
+      if (!isMoney(V) || V % 100 !== 0) continue
+      cand.push({ ...b, K, V })
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const model = diffModel(c.S, c.r, c.n, "month")
+  const startM = randInt(1, 12)
+  return item({
+    text: diffMonthPreamble(startM, c.n, pct(c.r), ` на сумму ${rub(c.S)}`) +
+      `Какую сумму нужно выплатить банку за первые ${months(c.K)}?`,
+    answer: `${money(c.V)} рублей`,
+    answerNum: c.V,
+    model,
+    mustMention: [c.S, c.r, c.K],
+    extra: [...MONTH_EXTRA, c.n],
+    forbid: [c.V],
+    checks: [
+      () => (Math.abs(sum(simulateCredit(model).steps.slice(0, c.K).map((s) => s.payment)) - c.V) < 0.005
+        ? null : "симуляция ≠ ответу"),
+    ],
+  })
+}
+
+// ── 4. Общая сумма по известной k-й выплате (эталон 6.4) ───────────────────
+export function t16DiffTotalByKth() {
+  const base = diffMonthlyCandidates()
+  const cand = []
+  for (const b of base) {
+    for (const k of [5, 8, 10, 12]) {
+      if (k > b.n) continue
+      const V = diffPayments(b.S, b.r, b.n)[k - 1]
+      if (!isMoney(V) || V % 1000 !== 0) continue
+      const T = Math.round(diffTotal(b.S, b.r, b.n) * 100) / 100
+      if (!isMoney(T)) continue
+      cand.push({ ...b, k, V, T })
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const model = diffModel(c.S, c.r, c.n, "month")
+  const startM = randInt(1, 12)
+  const ORD = { 5: "пятая", 8: "восьмая", 10: "десятая", 12: "двенадцатая" }
+  return item({
+    text: diffMonthPreamble(startM, c.n, pct(c.r), "") +
+      `Известно, что ${ORD[c.k]} выплата составила ${rub(c.V)}. Какую сумму нужно вернуть банку ` +
+      `в течение всего срока кредитования?`,
+    answer: `${money(c.T)} рублей`,
+    answerNum: c.T,
+    model,
+    mustMention: [c.r, c.V],
+    extra: [...MONTH_EXTRA, c.n],
+    forbid: [c.T],
+    checks: [
+      () => (Math.abs(simulateCredit(model).steps[c.k - 1].payment - c.V) < 0.005 ? null : "k-я выплата ≠ данной"),
+      () => (Math.abs(simulateCredit(model).total - c.T) < 0.005 ? null : "симуляция ≠ ответу"),
+      // S определяется однозначно: k-я выплата линейна и строго возрастает по S
+      () => {
+        const coef = c.V / c.S
+        return Math.abs(coef) > 1e-9 ? null : "вырожденный коэффициент"
+      },
+    ],
+  })
+}
+
+// ── 5. Кредит по сумме ПЕРВЫХ K выплат (эталон 6.5) ────────────────────────
+export function t16DiffPrincipalByFirst() {
+  const base = diffMonthlyCandidates()
+  const cand = []
+  for (const b of base) {
+    for (const K of [6, 12]) {
+      if (K >= b.n) continue
+      const V = diffFirstK(b.S, b.r, b.n, K)
+      if (!isMoney(V) || V % 100 !== 0) continue
+      cand.push({ ...b, K, V })
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const model = diffModel(c.S, c.r, c.n, "month")
+  const startM = randInt(1, 12)
+  const yearWord = c.K === 12 ? "за первый год" : `за первые ${months(c.K)}`
+  return item({
+    text: diffMonthPreamble(startM, c.n, pct(c.r), "") +
+      `Известно, что ${yearWord} нужно выплатить банку ${rub(c.V)}. Какую сумму планируется ` +
+      `взять в кредит?`,
+    answer: `${money(c.S)} рублей`,
+    answerNum: c.S,
+    model,
+    mustMention: [c.r, c.V],
+    extra: [...MONTH_EXTRA, c.n, ...(c.K === 12 ? [] : [c.K])],
+    forbid: [c.S],
+    checks: [
+      () => (Math.abs(sum(simulateCredit(model).steps.slice(0, c.K).map((s) => s.payment)) - c.V) < 0.005
+        ? null : "симуляция ≠ данной сумме"),
+    ],
+  })
+}
+
+// ── 6. Кредит по сумме ПОСЛЕДНИХ K выплат (эталон 6.6) ─────────────────────
+export function t16DiffPrincipalByLast() {
+  const base = diffMonthlyCandidates()
+  const cand = []
+  for (const b of base) {
+    for (const K of [6, 12]) {
+      if (K >= b.n) continue
+      const V = diffLastK(b.S, b.r, b.n, K)
+      if (!isMoney(V) || V % 100 !== 0) continue
+      cand.push({ ...b, K, V })
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const model = diffModel(c.S, c.r, c.n, "month")
+  const startM = randInt(1, 12)
+  return item({
+    text: diffMonthPreamble(startM, c.n, pct(c.r), "") +
+      `Известно, что за последние ${months(c.K)} нужно выплатить банку ${rub(c.V)}. Какую сумму ` +
+      `планируется взять в кредит?`,
+    answer: `${money(c.S)} рублей`,
+    answerNum: c.S,
+    model,
+    mustMention: [c.r, c.V, c.K],
+    extra: [...MONTH_EXTRA, c.n],
+    forbid: [c.S],
+    checks: [
+      () => (Math.abs(sum(simulateCredit(model).steps.slice(c.n - c.K).map((s) => s.payment)) - c.V) < 0.005
+        ? null : "симуляция ≠ данной сумме"),
+    ],
+  })
+}
+
+// ── 7. Ставка по границам наибольшего и наименьшего платежа (эталон 6.7) ───
+// p₁ ≤ A и pₙ ≥ B при A = d + xS и B = d(1+x): обе границы достигаются РОВНО
+// при одном x, поэтому ответ единственный (проверяем сканированием сетки).
+export function t16DiffRateByBounds() {
+  const cand = []
+  for (const r of [5, 10, 12, 15, 20, 25]) {
+    const x = r / 100
+    for (let n = 5; n <= 15; n++) {
+      for (let sk = 10; sk <= 100; sk++) {
+        const S = sk / 10                                  // млн, один знак после запятой
+        const d = S / n
+        const A = d + x * S, B = d * (1 + x)
+        if (Math.abs(A * 10 - Math.round(A * 10)) > 1e-9) continue
+        if (Math.abs(B * 10 - Math.round(B * 10)) > 1e-9) continue
+        if (B < 0.2 || A > 20 || A <= B) continue
+        if (r === S || r === n || r === A || r === B) continue   // ответ не должен стоять в условии
+        if (!diffExact(S * 1e6, r, n)) continue
+        cand.push({ r, n, S, A: Math.round(A * 10) / 10, B: Math.round(B * 10) / 10 })
+      }
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const model = diffModel(c.S, c.r, c.n, "year", "mln")
+  const first = (r) => c.S / c.n + (r / 100) * c.S
+  const last = (r) => (c.S / c.n) * (1 + r / 100)
+  return item({
+    text: diffYearPreamble(c.n, "r %", ` на сумму ${dec(c.S)} млн рублей`) +
+      `Найдите r, если известно, что наибольший годовой платёж по кредиту составит не более ` +
+      `${dec(c.A)} млн рублей, а наименьший — не менее ${dec(c.B)} млн рублей.`,
+    answer: `${pct(c.r)}`,
+    answerNum: c.r,
+    model,
+    mustMention: [c.S, c.A, c.B],
+    extra: [c.n],
+    forbid: [c.r],
+    checks: [
+      () => (first(c.r) <= c.A + 1e-9 && last(c.r) >= c.B - 1e-9 ? null : "ставка не удовлетворяет границам"),
+      () => {
+        for (let r = 0.5; r <= 40.0001; r += 0.5) {
+          if (Math.abs(r - c.r) < 1e-9) continue
+          if (first(r) <= c.A + 1e-9 && last(r) >= c.B - 1e-9) return `ставка ${r} тоже подходит`
+        }
+        return null
+      },
+    ],
+  })
+}
+
+// Годовые дифференцированные кандидаты (суммы в млн, платежи — целые рубли).
+function diffYearCandidates() {
+  const out = []
+  for (const r of [10, 12, 15, 20, 25]) {
+    for (let n = 4; n <= 20; n++) {
+      for (let sk = 2; sk <= 60; sk++) {
+        const S = sk                                        // целое число млн
+        if (!diffExact(S * 1e6, r, n)) continue
+        out.push({ r, n, S })
+      }
+    }
+  }
+  return out
+}
+
+// ── 8. Общая сумма по НАИБОЛЬШЕМУ годовому платежу (эталон 6.8) ────────────
+export function t16DiffTotalByMax() {
+  const cand = []
+  for (const b of diffYearCandidates()) {
+    const A = b.S / b.n + (b.r / 100) * b.S
+    const T = diffTotal(b.S, b.r, b.n)
+    if (Math.abs(A * 100 - Math.round(A * 100)) > 1e-9) continue
+    if (Math.abs(T * 100 - Math.round(T * 100)) > 1e-9) continue
+    if (A < 0.5 || A > 20 || T > 200) continue
+    cand.push({ ...b, A: Math.round(A * 100) / 100, T: Math.round(T * 100) / 100 })
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const model = diffModel(c.S, c.r, c.n, "year", "mln")
+  const maxFor = (n) => c.S / n + (c.r / 100) * c.S
+  return item({
+    text: diffYearPreamble(0, pct(c.r), ` на сумму ${dec(c.S)} млн рублей`) +
+      `Чему будет равна общая сумма выплат после полного погашения кредита, если наибольший ` +
+      `годовой платёж составит ${dec(c.A)} млн рублей?`,
+    answer: `${dec(c.T)} млн рублей`,
+    answerNum: c.T,
+    model,
+    mustMention: [c.S, c.r, c.A],
+    extra: [],
+    forbid: [c.T],
+    checks: [
+      () => (Math.abs(simulateCredit(model).total - c.T) < 1e-6 ? null : "симуляция ≠ ответу"),
+      () => {
+        for (let n = 1; n <= 40; n++) {
+          if (n === c.n) continue
+          if (Math.abs(maxFor(n) - c.A) < 1e-9) return `срок ${n} тоже даёт платёж ${c.A}`
+        }
+        return null
+      },
+    ],
+  })
+}
+
+// ── 9. Общая сумма по НАИМЕНЬШЕМУ годовому платежу (эталон 6.9) ────────────
+export function t16DiffTotalByMin() {
+  const cand = []
+  for (const b of diffYearCandidates()) {
+    const B = (b.S / b.n) * (1 + b.r / 100)
+    const T = diffTotal(b.S, b.r, b.n)
+    if (Math.abs(B * 100 - Math.round(B * 100)) > 1e-9) continue
+    if (Math.abs(T * 100 - Math.round(T * 100)) > 1e-9) continue
+    if (B < 0.2 || B > 10 || T > 200) continue
+    cand.push({ ...b, B: Math.round(B * 100) / 100, T: Math.round(T * 100) / 100 })
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const model = diffModel(c.S, c.r, c.n, "year", "mln")
+  const minFor = (n) => (c.S / n) * (1 + c.r / 100)
+  return item({
+    text: diffYearPreamble(0, pct(c.r), ` на сумму ${dec(c.S)} млн рублей`) +
+      `Чему будет равна общая сумма выплат после полного погашения кредита, если наименьший ` +
+      `годовой платёж составит ${dec(c.B)} млн рублей?`,
+    answer: `${dec(c.T)} млн рублей`,
+    answerNum: c.T,
+    model,
+    mustMention: [c.S, c.r, c.B],
+    extra: [],
+    forbid: [c.T],
+    checks: [
+      () => (Math.abs(simulateCredit(model).total - c.T) < 1e-6 ? null : "симуляция ≠ ответу"),
+      () => {
+        for (let n = 1; n <= 40; n++) {
+          if (n === c.n) continue
+          if (Math.abs(minFor(n) - c.B) < 1e-9) return `срок ${n} тоже даёт платёж ${c.B}`
+        }
+        return null
+      },
+    ],
+  })
+}
+
+// ── 10. Срок по общей сумме выплат (эталон 6.10) ───────────────────────────
+export function t16DiffTermByTotal() {
+  const cand = []
+  for (const b of diffYearCandidates()) {
+    const T = diffTotal(b.S, b.r, b.n)
+    if (Math.abs(T * 100 - Math.round(T * 100)) > 1e-9) continue
+    // срок-ответ не должен совпасть ни с одним числом условия (ставка, сумма, итог)
+    if (T > 200 || b.n === b.r || b.n === b.S || Math.abs(b.n - T) < 1e-9) continue
+    cand.push({ ...b, T: Math.round(T * 100) / 100 })
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const model = diffModel(c.S, c.r, c.n, "year", "mln")
+  const totalFor = (n) => diffTotal(c.S, c.r, n)
+  return item({
+    text: diffYearPreamble(0, pct(c.r), ` на сумму ${dec(c.S)} млн рублей`) +
+      `На сколько лет планируется взять кредит, если известно, что общая сумма выплат после его ` +
+      `полного погашения составит ${dec(c.T)} млн рублей?`,
+    answer: `${years(c.n)}`,
+    answerNum: c.n,
+    model,
+    mustMention: [c.S, c.r, c.T],
+    extra: [],
+    forbid: [c.n],
+    checks: [
+      () => (Math.abs(totalFor(c.n) - c.T) < 1e-6 ? null : "срок не даёт заявленную сумму"),
+      () => {
+        for (let n = 1; n <= 40; n++) {
+          if (n === c.n) continue
+          if (Math.abs(totalFor(n) - c.T) < 1e-6) return `срок ${n} тоже подходит`
+        }
+        return null
+      },
+    ],
+  })
+}
+
+// ── 11. Кредит по общей сумме выплат (эталон 6.11) ─────────────────────────
+export function t16DiffPrincipalByTotal() {
+  const base = diffMonthlyCandidates()
+  const cand = []
+  for (const b of base) {
+    const T = diffTotal(b.S, b.r, b.n)
+    if (!isMoney(T) || T % 1000 !== 0 || T === b.S) continue
+    cand.push({ ...b, T })
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const model = diffModel(c.S, c.r, c.n, "month")
+  const startM = randInt(1, 12)
+  const totalFor = (S) => diffTotal(S, c.r, c.n)
+  return item({
+    text: diffMonthPreamble(startM, c.n, pct(c.r), "") +
+      `Какую сумму следует взять в кредит, чтобы общая сумма выплат после полного его погашения ` +
+      `равнялась ${rub(c.T)}?`,
+    answer: `${money(c.S)} рублей`,
+    answerNum: c.S,
+    model,
+    mustMention: [c.r, c.T],
+    extra: [...MONTH_EXTRA, c.n],
+    forbid: [c.S],
+    checks: [
+      () => (Math.abs(simulateCredit(model).total - c.T) < 0.005 ? null : "симуляция ≠ данной сумме"),
+      () => (Math.abs(totalFor(c.S + 1000) - c.T) > 1 ? null : "соседняя сумма тоже подходит"),
+    ],
+  })
+}
+
+// ── 12. Сумма за ВТОРОЙ год по сумме за первый (эталон 6.12) ───────────────
+export function t16DiffSecondYear() {
+  const base = diffMonthlyCandidates([1, 1.5, 2, 2.5, 3], [24])
+  const cand = []
+  for (const b of base) {
+    const V1 = diffFirstK(b.S, b.r, 24, 12)
+    const V2 = diffTotal(b.S, b.r, 24) - V1
+    if (!isMoney(V1) || !isMoney(V2)) continue
+    if (V1 % 100 !== 0 || V2 % 100 !== 0 || V1 === V2) continue
+    cand.push({ ...b, V1, V2 })
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const model = diffModel(c.S, c.r, 24, "month")
+  const startM = randInt(1, 12)
+  return item({
+    text: diffMonthPreamble(startM, 24, pct(c.r), "") +
+      `Какую сумму надо вернуть банку за второй год, если за первые ${months(12)} нужно вернуть ` +
+      `банку ${rub(c.V1)}?`,
+    answer: `${money(c.V2)} рублей`,
+    answerNum: c.V2,
+    model,
+    mustMention: [c.r, c.V1, 12],
+    extra: [...MONTH_EXTRA, 24],
+    forbid: [c.V2],
+    checks: [
+      () => {
+        const st = simulateCredit(model).steps.map((s) => s.payment)
+        if (Math.abs(sum(st.slice(0, 12)) - c.V1) > 0.005) return "первый год ≠ данной сумме"
+        if (Math.abs(sum(st.slice(12)) - c.V2) > 0.005) return "второй год ≠ ответу"
+        return null
+      },
+    ],
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 //  РЕЕСТР
 // ═══════════════════════════════════════════════════════════════════════════
 export const GEN16 = [
@@ -1660,6 +2184,10 @@ export const GEN16 = [
   t16IntOnlyMinCredit, t16IntOnlyRate, t16IntOnlyTotal, t16GeomPayments,
   t16TblMaxRate, t16TblMaxSPayment, t16TblMinSTotal, t16TblOverpayPct,
   t16TblMaxSSpread, t16TblMinSInteger,
+  t16DiffRateByOverpay, t16DiffTotalPct, t16DiffFirstK, t16DiffTotalByKth,
+  t16DiffPrincipalByFirst, t16DiffPrincipalByLast, t16DiffRateByBounds,
+  t16DiffTotalByMax, t16DiffTotalByMin, t16DiffTermByTotal,
+  t16DiffPrincipalByTotal, t16DiffSecondYear,
 ]
 
 export const META16 = [
@@ -1698,5 +2226,19 @@ export const META16 = [
     ["tbl-overpay", "Переплата в процентах по таблице долей", t16TblOverpayPct],
     ["tbl-max-s-spread", "Наибольшее S при ограничении на размах выплат", t16TblMaxSSpread],
     ["tbl-min-s-int", "Наименьшее S, при котором все выплаты целые", t16TblMinSInteger],
+  ]],
+  ["Дифференцированные платежи (долг убывает равномерно)", [
+    ["dif-rate-overpay", "Ставка по переплате в процентах", t16DiffRateByOverpay],
+    ["dif-total-pct", "Сколько процентов общая сумма от кредита", t16DiffTotalPct],
+    ["dif-first-k", "Сумма выплат за первые K месяцев", t16DiffFirstK],
+    ["dif-total-by-kth", "Общая сумма по известной k-й выплате", t16DiffTotalByKth],
+    ["dif-s-by-first", "Кредит по сумме первых K выплат", t16DiffPrincipalByFirst],
+    ["dif-s-by-last", "Кредит по сумме последних K выплат", t16DiffPrincipalByLast],
+    ["dif-rate-bounds", "Ставка по границам наиб./наим. платежа", t16DiffRateByBounds],
+    ["dif-total-by-max", "Общая сумма по наибольшему платежу", t16DiffTotalByMax],
+    ["dif-total-by-min", "Общая сумма по наименьшему платежу", t16DiffTotalByMin],
+    ["dif-term-by-total", "Срок по общей сумме выплат", t16DiffTermByTotal],
+    ["dif-s-by-total", "Кредит по общей сумме выплат", t16DiffPrincipalByTotal],
+    ["dif-second-year", "Сумма за второй год по сумме за первый", t16DiffSecondYear],
   ]],
 ]
