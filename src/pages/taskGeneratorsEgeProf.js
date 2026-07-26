@@ -3886,6 +3886,165 @@ function t03MugRatio() {
   }
 }
 
+// Перелив жидкости: объём тот же, S основания ×k² ⟹ уровень ÷k² (чертежа в ФИПИ нет).
+function t03LiquidWider() {
+  const k = randInt(2, 7), h = k * k * randInt(1, 12)
+  return {
+    condition_text: `В цилиндрическом сосуде уровень жидкости достигает ${h} см. На какой высоте будет находиться уровень жидкости, если её перелить во второй цилиндрический сосуд, диаметр которого в ${k} ${razWord(k)} больше диаметра первого? Ответ выразите в см.`,
+    answer: ru(h / (k * k)),
+  }
+}
+
+// Обратный перелив: диаметр в k раз меньше ⟹ уровень ×k².
+function t03LiquidNarrower() {
+  const k = randInt(2, 6), h = randInt(1, 8)
+  return {
+    condition_text: `В цилиндрическом сосуде уровень жидкости достигает ${h} см. На какой высоте будет находиться уровень жидкости, если её перелить во второй цилиндрический сосуд, диаметр которого в ${k} ${razWord(k)} меньше диаметра первого? Ответ выразите в сантиметрах.`,
+    answer: ru(h * k * k),
+  }
+}
+
+// Погружение детали: уровень (а значит и объём) вырос в k раз ⟹ V_детали = V·(k−1).
+const SUBMERGE_K = [[1.2, "1,2"], [1.25, "1,25"], [1.4, "1,4"], [1.5, "1,5"], [1.75, "1,75"], [2, "2"]]
+function t03Submerge() {
+  const [k, word] = pick(SUBMERGE_K)
+  let v
+  do { v = randInt(1, 40) * 100 } while (!Number.isInteger(clean(v * (k - 1))))
+  return {
+    condition_text: `В цилиндрический сосуд налили ${v} куб. см воды. В воду полностью погрузили деталь. При этом уровень жидкости в сосуде увеличился в ${word} раза. Найдите объём детали. Ответ выразите в куб. см.`,
+    answer: ru(clean(v * (k - 1))),
+  }
+}
+
+// Цилиндрический сосуд с водой: поверхность жидкости и дно — задние дуги штрихом,
+// вода залита светло-голубым.
+function vesselWaterSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 390" width="280" height="390" font-family="Arial, sans-serif">` +
+    `<rect width="280" height="390" fill="#fff"/>` +
+    `<path d="M35,190 A105,25 0 0,1 245,190 L245,330 A105,25 0 0,1 35,330 Z" fill="#cfe8f7" stroke="none"/>` +
+    `<path d="M35,330 A105,25 0 0,1 245,330" fill="none" stroke="#000" stroke-width="1.4" stroke-dasharray="8 6" pathLength="224"/>` +
+    `<path d="M35,190 A105,25 0 0,1 245,190" fill="none" stroke="#000" stroke-width="1.4" stroke-dasharray="8 6" pathLength="224"/>` +
+    `<ellipse cx="140" cy="60" rx="105" ry="25" fill="none" stroke="#000" stroke-width="1.6"/>` +
+    `<line x1="35" y1="60" x2="35" y2="330" stroke="#000" stroke-width="1.6"/>` +
+    `<line x1="245" y1="60" x2="245" y2="330" stroke="#000" stroke-width="1.6"/>` +
+    `<path d="M35,330 A105,25 0 0,0 245,330" fill="none" stroke="#000" stroke-width="1.6"/>` +
+    `<path d="M35,190 A105,25 0 0,0 245,190" fill="none" stroke="#000" stroke-width="1.6"/>` +
+    `</svg>`
+}
+
+// Уровень поднялся НА Δh: площадь основания S = V/h ⟹ V_детали = S·Δh.
+function t03SubmergeAbs() {
+  const S = pick([100, 125, 150, 175, 200]), h = randInt(6, 20), dh = randInt(2, 15)
+  return {
+    condition_text: `В цилиндрический сосуд налили ${S * h} см³ воды. Уровень жидкости оказался равным ${h} см. В воду полностью погрузили деталь. При этом уровень жидкости в сосуде поднялся на ${dh} см. Найдите объём детали. Ответ выразите в куб. см.`,
+    image_url: svgUrl(vesselWaterSvg()),
+    answer: ru(S * dh),
+  }
+}
+
+// Конус (ФИПИ): образующие и передняя дуга основания сплошные; задняя дуга,
+// высота и диаметр — штрихом.
+function coneHLSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 350" width="280" height="350" font-family="Arial, sans-serif">` +
+    `<rect width="280" height="350" fill="#fff"/>` +
+    `<path d="M30,280 A110,26 0 0,1 250,280" fill="none" stroke="#000" stroke-width="1.4" stroke-dasharray="8 6" pathLength="228"/>` +
+    `<line x1="30" y1="280" x2="250" y2="280" stroke="#000" stroke-width="1.4" stroke-dasharray="8 6" pathLength="220"/>` +
+    `<line x1="140" y1="55" x2="140" y2="280" stroke="#000" stroke-width="1.4" stroke-dasharray="8 6" pathLength="225"/>` +
+    `<line x1="140" y1="55" x2="30" y2="280" stroke="#000" stroke-width="1.7"/>` +
+    `<line x1="140" y1="55" x2="250" y2="280" stroke="#000" stroke-width="1.7"/>` +
+    `<path d="M30,280 A110,26 0 0,0 250,280" fill="none" stroke="#000" stroke-width="1.7"/>` +
+    `</svg>`
+}
+
+// Радиус, высота и образующая — пифагорова тройка (l² = R² + h²).
+// (12,35,37) встречается в банке: диаметр 140, образующая 74 — это ×2.
+const CONE_TRIPLES = [...PYTH, [12, 35, 37]]
+function coneTriple() {
+  const [p, q, k] = pick(CONE_TRIPLES), t = randInt(1, 3)
+  const [R, h] = Math.random() < 0.5 ? [p * t, q * t] : [q * t, p * t]
+  return { R, h, l: k * t }
+}
+
+// По диаметру основания и образующей — высота.
+function t03ConeHeight() {
+  const { R, h, l } = coneTriple()
+  return {
+    condition_text: `Диаметр основания конуса равен ${2 * R}, а длина образующей – ${l}. Найдите высоту конуса.`,
+    image_url: svgUrl(coneHLSvg()),
+    answer: ru(h),
+  }
+}
+
+// Обратная: по высоте и образующей — диаметр основания.
+function t03ConeDiameter() {
+  const { R, h, l } = coneTriple()
+  return {
+    condition_text: `Высота конуса равна ${h}, а длина образующей – ${l}. Найдите диаметр основания конуса.`,
+    image_url: svgUrl(coneHLSvg()),
+    answer: ru(2 * R),
+  }
+}
+
+// Конус с осевым сечением (ФИПИ): сечение — наклонный треугольник, одна
+// образующая жирная сплошная, вторая образующая и диаметр — штрихом.
+function coneAxialSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 350" width="280" height="350" font-family="Arial, sans-serif">` +
+    `<rect width="280" height="350" fill="#fff"/>` +
+    `<path d="M30,280 A110,26 0 0,1 250,280" fill="none" stroke="#000" stroke-width="1.3" stroke-dasharray="8 6" pathLength="228"/>` +
+    `<line x1="140" y1="55" x2="140" y2="280" stroke="#000" stroke-width="1.3" stroke-dasharray="8 6" pathLength="225"/>` +
+    `<line x1="140" y1="55" x2="100.6" y2="255.7" stroke="#000" stroke-width="1.3" stroke-dasharray="8 6" pathLength="205"/>` +
+    `<line x1="100.6" y1="255.7" x2="179.4" y2="304.3" stroke="#000" stroke-width="1.3" stroke-dasharray="8 6" pathLength="93"/>` +
+    `<line x1="140" y1="55" x2="30" y2="280" stroke="#000" stroke-width="1.4"/>` +
+    `<line x1="140" y1="55" x2="250" y2="280" stroke="#000" stroke-width="1.4"/>` +
+    `<path d="M30,280 A110,26 0 0,0 250,280" fill="none" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="140" y1="55" x2="179.4" y2="304.3" stroke="#000" stroke-width="2.2"/>` +
+    `</svg>`
+}
+
+// Осевое сечение — треугольник с основанием 2R и высотой h ⟹ S = R·h.
+// Дана площадь основания πR² и высота.
+function t03ConeAxialFromBase() {
+  const R = randInt(2, 14), h = randInt(2, 20)
+  return {
+    condition_text: `Площадь основания конуса равна ${R * R}π, высота — ${h}. Найдите площадь осевого сечения этого конуса.`,
+    image_url: svgUrl(coneAxialSvg()),
+    answer: ru(R * h),
+  }
+}
+
+// Даны высота и образующая (пифагорова тройка) ⟹ R = √(l²−h²), S = R·h.
+function t03ConeAxialFromSlant() {
+  const { R, h, l } = coneTriple()
+  return {
+    condition_text: `Высота конуса равна ${h}, а длина образующей — ${l}. Найдите площадь осевого сечения этого конуса.`,
+    image_url: svgUrl(coneAxialSvg()),
+    answer: ru(R * h),
+  }
+}
+
+// S_бок = πRl: образующая ×k ⟹ S_бок ×k (радиус не меняется).
+function t03ConeLatScale() {
+  const k = randInt(2, 12)
+  return {
+    condition_text: `Во сколько раз увеличится площадь боковой поверхности конуса, если его образующая увеличится в ${k} ${razWord(k)}, а радиус основания останется прежним?`,
+    image_url: svgUrl(coneSvg()),
+    answer: ru(k),
+  }
+}
+
+// Радиус ÷k ⟹ S_бок ÷k (образующая не меняется).
+const CONE_DOWN_K = [[1.5, "1,5"], [2, "2"], [2.5, "2,5"], [3, "3"], [4, "4"], [5, "5"]]
+function t03ConeLatScaleDown() {
+  const [k, word] = pick(CONE_DOWN_K)
+  // дробное — всегда «раза» (в 1,5 раза), целое — по общему правилу (в 5 раз)
+  const raz = Number.isInteger(k) ? razWord(k) : "раза"
+  return {
+    condition_text: `Во сколько раз уменьшится площадь боковой поверхности конуса, если радиус его основания уменьшить в ${word} ${raz}, а образующую оставить прежней?`,
+    image_url: svgUrl(coneSvg()),
+    answer: ru(k),
+  }
+}
+
 // Шар, вписанный в цилиндр (R общий, высота цилиндра = 2R).
 function sphereInCylSvg() {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="500" height="500" font-family="Arial, sans-serif">` +
@@ -4968,7 +5127,7 @@ export const GENERATORS_EGE_PROF = {
     t01ParMidpoint, t01ParAngle, t01ParHeights,
     t01RhombusSideDiag, t01RhombusAngle, t01TrapMidDiag],
   2: [t02DotCoord, t02DotLenAngle, t02LenCombo, t02DotOfCombos, t02GraphLenCombo],
-  3: [t03BoxTetra, t03BoxPyramid, t03BoxPyramidC1, t03BoxPyramidA1, t03BoxPrism, t03BoxTriPrism, t03BoxPrismADA1, t03PrismRightVol, t03PrismRightEdge, t03SqPrismAngle, t03TriPrismAngle, t03HexPrismAngle, t03HexPrismTri, t03HexPrismTrap, t03CylLatHeight, t03CylLatDiameter, t03MugRatio, t03TwoCylindersTaller, t03PrismTetraC1, t03PrismTetraB1, t03PrismPenta, t03PrismMidline, t03PrismCut, t03PrismCutRegular, t03PrismLateral, t03PrismLateralInv, t03CylConeLateral, t03CylConeLatInverse, t03CylConeVolume, t03CylConeVolInverse, t03ConeInSphere, t03ConeInSphereInv, t03ConeSphereRadius, t03ConeSphereSlant, t03SphereInCyl, t03SphereInCylVol, t03TwoCylinders, t03CylInBox, t03CubeCut, t03CubeCutInverse, t03CubeDiagonal, t03CubeAngle, t03BoxDiagonal, t03BoxLineSin, t03BoxSection, t03BoxDiagSection, t03StepSolid, t03LSolid, t03TSolidSurface, t03SphereSection, t03ConeScale, t03ConeHeightScale],
+  3: [t03BoxTetra, t03BoxPyramid, t03BoxPyramidC1, t03BoxPyramidA1, t03BoxPrism, t03BoxTriPrism, t03BoxPrismADA1, t03PrismRightVol, t03PrismRightEdge, t03SqPrismAngle, t03TriPrismAngle, t03HexPrismAngle, t03HexPrismTri, t03HexPrismTrap, t03CylLatHeight, t03CylLatDiameter, t03MugRatio, t03TwoCylindersTaller, t03LiquidWider, t03LiquidNarrower, t03Submerge, t03SubmergeAbs, t03ConeHeight, t03ConeDiameter, t03ConeAxialFromBase, t03ConeAxialFromSlant, t03ConeLatScale, t03ConeLatScaleDown, t03PrismTetraC1, t03PrismTetraB1, t03PrismPenta, t03PrismMidline, t03PrismCut, t03PrismCutRegular, t03PrismLateral, t03PrismLateralInv, t03CylConeLateral, t03CylConeLatInverse, t03CylConeVolume, t03CylConeVolInverse, t03ConeInSphere, t03ConeInSphereInv, t03ConeSphereRadius, t03ConeSphereSlant, t03SphereInCyl, t03SphereInCylVol, t03TwoCylinders, t03CylInBox, t03CubeCut, t03CubeCutInverse, t03CubeDiagonal, t03CubeAngle, t03BoxDiagonal, t03BoxLineSin, t03BoxSection, t03BoxDiagSection, t03StepSolid, t03LSolid, t03TSolidSurface, t03SphereSection, t03ConeScale, t03ConeHeightScale],
   4: [t04ShotPut, t04Gymnastics, t04Diving, t04Tickets, t04Markers, t04Defect, t04Lottery, t04CoinTwice, t04Rooms, t04FootballCoin],
   5: [t05Lamps, t05Between, t05Shooter4, t05Coffee, t05Battery, t05ShooterN, t05DiceCond, t05TwoThemes, t05Exact],
   6: [t06ExpReduce, t06ExpBothSides, t06LogEqLog, t06LogEqNum, t06Rational, t06Cube, t06Sqrt, t06CubeRoot],
@@ -5115,6 +5274,16 @@ export const GEN_META_EGE_PROF = {
       ["cyl-lat-h", "S бок. + диаметр → высота цилиндра", t03CylLatHeight],
       ["cyl-lat-d", "S бок. + высота → диаметр основания", t03CylLatDiameter],
       ["mug-ratio", "Две кружки: отношение объёмов (k²/2)", t03MugRatio],
+      ["liquid-wider", "Перелив в сосуд шире (уровень ÷k²)", t03LiquidWider],
+      ["liquid-narrower", "Перелив в сосуд уже (уровень ×k²)", t03LiquidNarrower],
+      ["submerge", "Погружение детали: уровень ×k → объём", t03Submerge],
+      ["submerge-abs", "Погружение детали: уровень +Δh → объём", t03SubmergeAbs],
+      ["cone-height", "Конус: диаметр + образующая → высота", t03ConeHeight],
+      ["cone-diameter", "Конус: высота + образующая → диаметр", t03ConeDiameter],
+      ["cone-axial-base", "Конус: S осн. + высота → S осевого сечения", t03ConeAxialFromBase],
+      ["cone-axial-slant", "Конус: высота + образующая → S осевого сечения", t03ConeAxialFromSlant],
+      ["cone-lat-scale", "Образующая ×k → S бок. ×k", t03ConeLatScale],
+      ["cone-lat-scale-down", "Радиус ÷k → S бок. ÷k", t03ConeLatScaleDown],
       ["cone-scale", "Радиус конуса ×k → объём ×k²", t03ConeScale],
       ["cone-h-scale", "Высота конуса ÷k → объём ÷k", t03ConeHeightScale],
     ]],
