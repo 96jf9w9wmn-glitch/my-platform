@@ -180,20 +180,36 @@ function gapExcept(lo, hi, points, incLo = false, incHi = false) {
   iv.push(IV(prev, hi, inc, incHi))
   return SET(iv)
 }
-const epStr = (e) => (e === "-inf" ? MINUS + "∞" : e === "+inf" ? "+∞" : Rstr(e))
-function setToString(set) {
-  const parts = set.intervals.map((i) => `${i.incLo ? "[" : "("}${epStr(i.lo)}; ${epStr(i.hi)}${i.incHi ? "]" : ")"}`)
-  for (const p of set.points) parts.push(`{${Rstr(p)}}`)
-  return parts.join(" ∪ ")
+// Печать значения в ответе. unit === "pi" — число хранится в единицах π (тригонометрия),
+// печатается как «π/2», «−3π/4», «2π»; иначе обычная рациональная запись.
+function valStr(a, unit) {
+  if (unit !== "pi") return Rstr(a)
+  if (Rzero(a)) return "0"
+  const sg = a.n < 0n ? MINUS : ""
+  const n = a.n < 0n ? -a.n : a.n
+  const head = n === 1n ? "π" : `${n}π`
+  return a.d === 1n ? sg + head : `${sg}${head}/${a.d}`
+}
+const epStr = (e, unit) => (e === "-inf" ? MINUS + "∞" : e === "+inf" ? "+∞" : valStr(e, unit))
+function setToString(set, unit) {
+  // части ответа печатаются слева направо по числовой оси (изолированные точки — на своём месте)
+  const parts = set.intervals.map((i) => ({
+    at: i.lo === "-inf" ? -Infinity : Rnum(i.lo),
+    s: `${i.incLo ? "[" : "("}${epStr(i.lo, unit)}; ${epStr(i.hi, unit)}${i.incHi ? "]" : ")"}`,
+  }))
+  for (const p of set.points) parts.push({ at: Rnum(p), s: `{${valStr(p, unit)}}` })
+  return parts.sort((x, y) => x.at - y.at).map((x) => x.s).join(" ∪ ")
 }
 // Структура ответа для проверки (числа — обычные, для чтения человеком/машиной).
-function setPlain(set) {
+function setPlain(set, unit) {
+  const k = unit === "pi" ? Math.PI : 1
   return {
+    unit: unit === "pi" ? "pi" : null,
     intervals: set.intervals.map((i) => ({
-      lo: i.lo === "-inf" ? -Infinity : Rnum(i.lo), hi: i.hi === "+inf" ? Infinity : Rnum(i.hi),
+      lo: i.lo === "-inf" ? -Infinity : Rnum(i.lo) * k, hi: i.hi === "+inf" ? Infinity : Rnum(i.hi) * k,
       lo_included: i.incLo, hi_included: i.incHi,
     })),
-    points: set.points.map(Rnum),
+    points: set.points.map((p) => Rnum(p) * k),
   }
 }
 function inSet(set, a) {
@@ -416,14 +432,14 @@ function spanRange(set, pad = 6) {
 }
 
 // ── сборка объекта задания ───────────────────────────────────────────────────
-function item({ text, set, solution, pieces, solve, raw, predicate, aRange, picture }) {
+function item({ text, set, solution, pieces, solve, raw, predicate, aRange, picture, unit }) {
   return {
     condition_text: text,
-    answer: setToString(set),
-    answer_set: setPlain(set),
+    answer: setToString(set, unit),
+    answer_set: setPlain(set, unit),
     solution,
     solution_image: svgUrl(planeSvg(picture)),
-    _verify: { set, pieces, solve, raw, predicate, aRange },
+    _verify: { set, pieces, solve, raw, predicate, aRange, unit },
   }
 }
 
@@ -470,7 +486,7 @@ export function verify18(o, opts = {}) {
 
     // 2. человеческие числа: знаменатели границ ≤ 24, числители ≤ 4 знаков
     for (const b of bounds) {
-      if (b.d > 24n) return { ok: false, err: `некруглая граница ${Rstr(b)}` }
+      if (b.d > 24n) return { ok: false, err: `некруглая граница ${valStr(b, o._verify.unit)}` }
       if ((b.n < 0n ? -b.n : b.n) > 9999n) return { ok: false, err: `слишком большая граница ${Rstr(b)}` }
     }
 
@@ -547,7 +563,7 @@ export function verify18(o, opts = {}) {
     }
 
     // 7. строка ответа собрана из того же множества
-    if (setToString(set) !== o.answer) return { ok: false, err: "строка ответа не совпала со структурой" }
+    if (setToString(set, o._verify.unit) !== o.answer) return { ok: false, err: "строка ответа не совпала со структурой" }
     return { ok: true }
   } catch (e) {
     return { ok: false, err: "ИСКЛЮЧЕНИЕ " + e.message }
@@ -1547,6 +1563,340 @@ export function t18SegXTimesSqrt() {
 }
 
 // =============================================================================
+// РАЗДЕЛ C. «A² = B²» → произведение множителей = 0, единственное решение на отрезке
+// (эталон #13, #14, #15, #16, #19, #23)
+// =============================================================================
+const ONE_SOL_SEG = (L, R) => `имеет единственное решение на отрезке [${nS(L)}; ${nS(R)}].`
+const ONE_SOL_INT = (L, R) => `имеет единственное решение на интервале (${nS(L)}; ${nS(R)}).`
+
+// #13. (x² + kx + ka)² = (k²+1)x⁴ + (k²+1)(x + a)².
+// Обозначив A = x², B = x + a, получаем (A + kB)² = (k²+1)(A² + B²) ⟺ (kA − B)² = 0,
+// то есть уравнение равносильно kx² − x − a = 0. Ответ — значения a, при которых у этого
+// квадратного уравнения ровно один корень на отрезке.
+function build13({ k, L, R: Rr }) {
+  const solve = (a) => countRoots([Rneg(a), R(-1), R(k)], R(L), R(Rr), true, true)
+  const crit = [R(k * L * L - L), R(k * Rr * Rr - Rr), R(-1, 4 * k)]   // значения на концах и в вершине
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+const T13 = [[2, 0, 2], [2, 0, 1], [3, 0, 2], [2, 1, 3], [3, 0, 1], [4, 0, 2], [2, 0, 3], [3, 1, 2]]
+  .map(([k, L, R]) => ({ k, L, R }))
+export function t18SqEqPoly() {
+  const par = pick(T13), { k, L, R: Rr } = par
+  const { set, solve } = build13(par)
+  const m = k * k + 1
+  return item({
+    text: `Найдите все значения a, при которых уравнение\n\n(x${SUP[2]} + ${k}x + ${k}a)${SUP[2]} = ${m}x⁴ + ${m}(x + a)${SUP[2]}\n\n${ONE_SOL_SEG(L, Rr)}`,
+    set,
+    solution: `Обозначим A = x${SUP[2]}, B = x + a. Тогда уравнение принимает вид (A + ${k}B)${SUP[2]} = ${m}(A${SUP[2]} + B${SUP[2]}).\n`
+      + `Раскрывая, получаем ${k * k}A${SUP[2]} ${MINUS} ${2 * k}AB + B${SUP[2]} = 0, то есть (${k}A ${MINUS} B)${SUP[2]} = 0 ⟺ ${k}x${SUP[2]} ${MINUS} x ${MINUS} a = 0.\n`
+      + `Значит нужно, чтобы у уравнения a = ${k}x${SUP[2]} ${MINUS} x был ровно один корень на [${nS(L)}; ${Rr}]. Парабола ${k}x${SUP[2]} ${MINUS} x имеет вершину в x = ${Rstr(R(1, 2 * k))} со значением ${Rstr(R(-1, 4 * k))}.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    raw: {
+      seg: [L, Rr],
+      F: (a) => (x) => Math.pow(x * x + k * x + k * a, 2) - m * Math.pow(x, 4) - m * Math.pow(x + a, 2),
+      sols: (a) => {
+        const D = 1 + 4 * k * a
+        if (D < 0) return []
+        const r = [(1 - Math.sqrt(D)) / (2 * k), (1 + Math.sqrt(D)) / (2 * k)]
+        return r.filter((x, i) => (i === 0 || Math.abs(x - r[0]) > 1e-12)).filter((x) => x >= L - 1e-12 && x <= Rr + 1e-12)
+      },
+    },
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => { const D = 1 + 4 * k * a; return D >= 0 ? (1 + Math.sqrt(D)) / (2 * k) : null }, label: `корни ${k}x² − x = a` },
+        { f: (a) => { const D = 1 + 4 * k * a; return D >= 0 ? (1 - Math.sqrt(D)) / (2 * k) : null } },
+        { f: () => L, dash: true, label: "отрезок" }, { f: () => Rr, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: L - 2, xMax: Rr + 2, aMin: Rnum(setBounds(set)[0]) - 3,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #15. (k|x| + x − a)² = 2k²x² + 2(x − a)² ⟺ (k|x| − (x − a))² = 0 ⟺ a = x − k|x|.
+// Кандидаты: x = −a/(k−1) (ветвь x ≥ 0, годится при a ≤ 0) и x = a/(k+1) (ветвь x < 0, при a < 0).
+function build15({ k, L, R: Rr }) {
+  const inInt = (x) => Rcmp(x, R(L)) > 0 && Rcmp(x, R(Rr)) < 0     // интервал открытый
+  const solve = (a) => {
+    const good = []
+    if (Rsign(a) <= 0) { const x = Rdiv(Rneg(a), R(k - 1)); if (inInt(x)) good.push(x) }
+    if (Rsign(a) < 0) { const x = Rdiv(a, R(k + 1)); if (inInt(x) && !good.some((y) => Rcmp(y, x) === 0)) good.push(x) }
+    return good.length
+  }
+  const crit = [R0, R(-(k - 1) * L), R(-(k - 1) * Rr), R((k + 1) * L), R((k + 1) * Rr)]
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+const T15 = [[3, -1, 1], [2, -1, 1], [4, -1, 1], [3, -2, 2], [2, -2, 1], [5, -1, 1], [3, -1, 2], [4, -2, 2]]
+  .map(([k, L, R]) => ({ k, L, R }))
+export function t18SqEqAbs() {
+  const par = pick(T15), { k, L, R: Rr } = par
+  const { set, solve } = build15(par)
+  return item({
+    text: `Найдите все значения a, при каждом из которых уравнение\n\n(${k}|x| + x ${MINUS} a)${SUP[2]} = ${2 * k * k}x${SUP[2]} + 2(x ${MINUS} a)${SUP[2]}\n\n${ONE_SOL_INT(L, Rr)}`,
+    set,
+    solution: `Пусть A = ${k}|x|, B = x ${MINUS} a. Так как A${SUP[2]} = ${k * k}x${SUP[2]}, правая часть равна 2A${SUP[2]} + 2B${SUP[2]}, и уравнение (A + B)${SUP[2]} = 2A${SUP[2]} + 2B${SUP[2]} равносильно (A ${MINUS} B)${SUP[2]} = 0.\n`
+      + `Значит ${k}|x| = x ${MINUS} a, то есть a = x ${MINUS} ${k}|x|: при x ≥ 0 это a = ${MINUS}${k - 1}x, при x < 0 это a = ${k + 1}x.\n`
+      + `Считаем, сколько таких x попадает в интервал (${nS(L)}; ${Rr}).\nОтвет: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    raw: {
+      seg: [L, Rr],
+      F: (a) => (x) => Math.pow(k * Math.abs(x) + x - a, 2) - 2 * k * k * x * x - 2 * Math.pow(x - a, 2),
+      sols: (a) => {
+        const out = []
+        if (a <= 1e-12) { const x = -a / (k - 1); if (x > L + 1e-12 && x < Rr - 1e-12) out.push(x) }
+        if (a < -1e-12) { const x = a / (k + 1); if (x > L + 1e-12 && x < Rr - 1e-12 && !out.some((y) => Math.abs(y - x) < 1e-9)) out.push(x) }
+        return out
+      },
+    },
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => (a <= 0 ? -a / (k - 1) : null), label: "ветвь x ≥ 0" },
+        { f: (a) => (a < 0 ? a / (k + 1) : null), label: "ветвь x < 0" },
+        { f: () => L, dash: true, label: "интервал" }, { f: () => Rr, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: L - 2, xMax: Rr + 2, aMin: Rnum(setBounds(set)[0]) - 3,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #16. (kx + ln(x + ca))² = (kx − ln(x + ca))² ⟺ 4·kx·ln(x + ca) = 0.
+// Значит x = 0 (нужно ОДЗ: ca > 0) или x + ca = 1, то есть x = 1 − ca (ОДЗ выполняется само).
+function build16({ c, L, R: Rr }) {   // k на ответ не влияет: множитель kx обнуляется там же, где x
+  const inSeg = (x) => Rcmp(x, R(L)) >= 0 && Rcmp(x, R(Rr)) <= 0
+  const solve = (a) => {
+    const good = []
+    if (Rsign(Rmul(R(c), a)) > 0 && inSeg(R0)) good.push(R0)
+    const x = Rsub(R1, Rmul(R(c), a))
+    if (inSeg(x) && !good.some((y) => Rcmp(y, x) === 0)) good.push(x)
+    return good.length
+  }
+  const crit = [R0, R(1 - L, c), R(1 - Rr, c), R(1, c)]
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+const T16 = [[2, 2, 0, 1], [2, 1, 0, 1], [3, 2, 0, 1], [2, 2, 0, 2], [1, 2, 0, 1], [2, 3, 0, 1], [3, 1, 0, 2], [2, 4, 0, 2]]
+  .map(([k, c, L, R]) => ({ k, c, L, R }))
+export function t18SqEqLog() {
+  const par = pick(T16), { k, c, L, R: Rr } = par
+  const { set, solve } = build16(par)
+  const arg = `x + ${c === 1 ? "" : c}a`
+  return item({
+    text: `Найдите все значения a, при которых уравнение\n\n(${k === 1 ? "" : k}x + ln(${arg}))${SUP[2]} = (${k === 1 ? "" : k}x ${MINUS} ln(${arg}))${SUP[2]}\n\nимеет единственный корень на отрезке [${nS(L)}; ${Rr}].`,
+    set,
+    solution: `Раскрывая квадраты, получаем 4·${k === 1 ? "" : k}x·ln(${arg}) = 0, то есть x = 0 или ln(${arg}) = 0.\n`
+      + `Первый корень x = 0 годится только при выполнении ОДЗ: ${c === 1 ? "" : c}a > 0.\n`
+      + `Второй: ${arg} = 1, то есть x = 1 ${MINUS} ${c === 1 ? "" : c}a; ОДЗ там выполняется автоматически.\n`
+      + `Нужно, чтобы ровно один из них лежал на отрезке [${nS(L)}; ${Rr}] (при ${c === 1 ? "" : c}a = 1 они совпадают).\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    raw: {
+      seg: [L, Rr],
+      F: (a) => (x) => {
+        const t = x + c * a
+        if (t <= 0) return null
+        return Math.pow(k * x + Math.log(t), 2) - Math.pow(k * x - Math.log(t), 2)
+      },
+      sols: (a) => {
+        const out = []
+        if (c * a > 1e-12 && 0 >= L - 1e-12 && 0 <= Rr + 1e-12) out.push(0)
+        const x = 1 - c * a
+        if (x >= L - 1e-12 && x <= Rr + 1e-12 && !out.some((y) => Math.abs(y - x) < 1e-9)) out.push(x)
+        return out
+      },
+    },
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => (c * a > 0 ? 0 : null), label: "x = 0 (при ОДЗ)" },
+        { f: (a) => 1 - c * a, label: `x = 1 ${MINUS} ${c === 1 ? "" : c}a` },
+        { f: () => L, dash: true, label: "отрезок" }, { f: () => Rr, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: L - 2, xMax: Rr + 2, aMin: Rnum(setBounds(set)[0]) - 3,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #19. (x² − t² + √(kx − a))² = (x² − t²)² + kx − a.
+// Раскрывая: 2(x² − t²)√(kx − a) = 0, то есть x = ±t (при ОДЗ kx − a ≥ 0) или kx − a = 0.
+function build19({ t, k, L, R: Rr }) {
+  const inSeg = (x) => Rcmp(x, R(L)) >= 0 && Rcmp(x, R(Rr)) <= 0
+  const solve = (a) => {
+    const good = []
+    for (const x of [R(t), R(-t)]) if (inSeg(x) && Rcmp(Rmul(R(k), x), a) >= 0) good.push(x)
+    const x0 = Rdiv(a, R(k))
+    if (inSeg(x0) && !good.some((y) => Rcmp(y, x0) === 0)) good.push(x0)
+    return good.length
+  }
+  const crit = [R(k * t), R(-k * t), R(k * L), R(k * Rr)]
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+const T19 = [[2, 2, 0, 3], [2, 1, 0, 3], [3, 2, 0, 4], [1, 2, 0, 2], [2, 3, 0, 3], [3, 1, 0, 4], [2, 2, -1, 3], [1, 3, 0, 2]]
+  .map(([t, k, L, R]) => ({ t, k, L, R }))
+export function t18SqEqSqrt() {
+  const par = pick(T19), { t, k, L, R: Rr } = par
+  const { set, solve } = build19(par)
+  const A = `x${SUP[2]} ${MINUS} ${t * t}`
+  return item({
+    text: `Найдите все значения a, при которых уравнение\n\n(${A} + ⟦r:${k === 1 ? "" : k}x ${MINUS} a⟧)${SUP[2]} = (${A})${SUP[2]} + ${k === 1 ? "" : k}x ${MINUS} a\n\n${ONE_SOL_SEG(L, Rr)}`,
+    set,
+    solution: `Слева (${A})${SUP[2]} + 2(${A})√(${k === 1 ? "" : k}x ${MINUS} a) + (${k === 1 ? "" : k}x ${MINUS} a). Сокращая, получаем 2(${A})√(${k === 1 ? "" : k}x ${MINUS} a) = 0.\n`
+      + `Отсюда x = ${t} или x = ${MINUS}${t} (каждый годится при ОДЗ ${k === 1 ? "" : k}x ${MINUS} a ≥ 0), либо ${k === 1 ? "" : k}x ${MINUS} a = 0, то есть x = ${Rstr(R(1, k))}a.\n`
+      + `Нужно ровно одно такое решение на отрезке [${nS(L)}; ${Rr}].\nОтвет: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    raw: {
+      seg: [L, Rr],
+      F: (a) => (x) => {
+        const b = k * x - a
+        if (b < -EPS) return null
+        const A2 = x * x - t * t
+        return Math.pow(A2 + sqrtSafe(b), 2) - A2 * A2 - b
+      },
+      sols: (a) => {
+        const out = []
+        for (const x of [t, -t]) if (x >= L - 1e-12 && x <= Rr + 1e-12 && k * x - a >= -1e-12) out.push(x)
+        const x0 = a / k
+        if (x0 >= L - 1e-12 && x0 <= Rr + 1e-12 && !out.some((y) => Math.abs(y - x0) < 1e-9)) out.push(x0)
+        return out
+      },
+    },
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: () => t, label: `x = ${t}` }, { f: () => -t, label: `x = ${MINUS}${t}` },
+        { f: (a) => a / k, label: `x = a/${k}` },
+        { f: () => Rr, dash: true, label: "отрезок" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: Math.min(L, -t) - 2, xMax: Rr + 2, aMin: Rnum(setBounds(set)[0]) - 3,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #14. (kx + a + 1 + tg x)² = (kx + a − 1 − tg x)² ⟺ 4(1 + tg x)(kx + a) = 0.
+// Значит tg x = −1 (на (−π/2; π/2) это единственная точка x = −π/4) или a = −kx.
+// Всё считается В ЕДИНИЦАХ π: x = πs, a = πu — тогда арифметика снова рациональная,
+// а ответ печатается как «−π», «π/2» и т. п. (unit: "pi").
+function build14({ k }) {
+  const inInt = (sv) => Rcmp(sv, R(-1, 2)) > 0 && Rcmp(sv, R(1, 2)) < 0     // ОДЗ тангенса
+  const s0 = R(-1, 4)                                                       // tg x = −1
+  const solve = (u) => {
+    const good = [s0]
+    const s1 = Rdiv(Rneg(u), R(k))
+    if (inInt(s1) && Rcmp(s1, s0) !== 0) good.push(s1)
+    return good.length
+  }
+  const crit = [R(k, 2), R(-k, 2), R(k, 4)]
+  return { set: assembleSet((u) => solve(u) === 1, crit), solve }
+}
+const T14 = [[2], [3], [4], [1], [6]].map(([k]) => ({ k }))
+export function t18SqEqTan() {
+  const par = pick(T14), { k } = par
+  const { set, solve } = build14(par)
+  const kx = `${k === 1 ? "" : k}x`
+  return item({
+    text: `Найдите все значения a, при которых уравнение\n\n(${kx} + a + 1 + tg x)${SUP[2]} = (${kx} + a ${MINUS} 1 ${MINUS} tg x)${SUP[2]}\n\nимеет единственное решение на отрезке [${MINUS}⟦f:π:2⟧; ⟦f:π:2⟧].`,
+    set,
+    unit: "pi",
+    solution: `Разность квадратов: (A ${MINUS} B)(A + B) = 0, где A ${MINUS} B = 2(1 + tg x), A + B = 2(${kx} + a).\n`
+      + `Первый множитель даёт tg x = ${MINUS}1; на промежутке (${MINUS}π/2; π/2) это ровно один корень x = ${MINUS}π/4 (концы отрезка не входят в ОДЗ тангенса).\n`
+      + `Второй даёт x = ${MINUS}a/${k}; он попадает в промежуток при ${MINUS}${Rstr(R(k, 2))}π < a < ${Rstr(R(k, 2))}π и совпадает с ${MINUS}π/4 при a = ${Rstr(R(k, 4))}π.\n`
+      + `Значит решение единственно, когда второй корень либо вне промежутка, либо совпал с первым.\nОтвет: ${setToString(set, "pi")}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (u) => solve(u),
+    raw: {
+      seg: [-Math.PI / 2 + 1e-6, Math.PI / 2 - 1e-6],
+      F: (u) => (x) => {
+        const a = u * Math.PI, t = Math.tan(x)
+        return Math.pow(k * x + a + 1 + t, 2) - Math.pow(k * x + a - 1 - t, 2)
+      },
+      sols: (u) => {
+        const a = u * Math.PI, out = [-Math.PI / 4]
+        const x1 = -a / k
+        if (x1 > -Math.PI / 2 + 1e-9 && x1 < Math.PI / 2 - 1e-9 && Math.abs(x1 + Math.PI / 4) > 1e-9) out.push(x1)
+        return out
+      },
+    },
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: () => -0.25, label: "x = −π/4 (в единицах π)" },
+        { f: (u) => -u / k, label: `x = −a/${k}` },
+        { f: () => -0.5, dash: true, label: "ОДЗ тангенса" }, { f: () => 0.5, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -1.2, xMax: 1.2, aMin: Rnum(setBounds(set)[0]) - 1.5,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 1.5,
+    },
+  })
+}
+
+// #23. (x² + √(a − x))² = (px + q + √(a − x))² ⟺ (A − B)(A + B) = 0.
+// A − B = x² − px − q — берём (p, q) так, чтобы корни были целыми (r₁, r₂), а второй множитель
+// A + B = x² + px + q + 2√(a − x) НЕ обращался в нуль: при r₁² + 6r₁r₂ + r₂² < 0 трёхчлен
+// x² + px + q положителен при всех x, и вторая ветвь пуста. Остаются x = r₁, r₂ при ОДЗ x ≤ a.
+function build23({ r1, r2, L, R: Rr }) {
+  const inSeg = (x) => Rcmp(x, R(L)) >= 0 && Rcmp(x, R(Rr)) <= 0
+  const solve = (a) => {
+    let n = 0
+    for (const r of [R(r1), R(r2)]) if (inSeg(r) && Rcmp(r, a) <= 0) n++
+    return n
+  }
+  const crit = [R(r1), R(r2)]
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+const T23 = [[2, -1, -1, 1], [1, -1, -1, 1], [3, -1, -1, 3], [1, -2, -2, 1], [2, -1, 0, 2], [3, -2, -2, 3], [1, -3, -3, 1], [4, -1, -1, 4]]
+  .filter(([r1, r2]) => r1 * r1 + 6 * r1 * r2 + r2 * r2 < 0)
+  .map(([r1, r2, L, R]) => ({ r1, r2, L, R }))
+export function t18SqEqSqrtBoth() {
+  const par = pick(T23), { r1, r2, L, R: Rr } = par
+  const { set, solve } = build23(par)
+  const p = r1 + r2, q = -r1 * r2
+  const lin = `${p === 0 ? "" : p === 1 ? "x + " : p === -1 ? MINUS + "x + " : `${nS(p)}x + `}${q}`
+  return item({
+    text: `Найдите все значения a, при каждом из которых уравнение\n\n(x${SUP[2]} + ⟦r:a ${MINUS} x⟧)${SUP[2]} = (${lin} + ⟦r:a ${MINUS} x⟧)${SUP[2]}\n\nимеет единственный корень на отрезке [${nS(L)}; ${nS(Rr)}].`,
+    set,
+    solution: `Разность квадратов: (A ${MINUS} B)(A + B) = 0, где A ${MINUS} B = x${SUP[2]} ${MINUS} ${p === 0 ? "" : `${nS(p)}x ${MINUS} `}${q}, `
+      + `A + B = x${SUP[2]} + ${p === 0 ? "" : `${nS(p)}x + `}${q} + 2√(a ${MINUS} x).\n`
+      + `Второй множитель положителен при всех x (дискриминант трёхчлена x${SUP[2]} + ${p === 0 ? "" : `${nS(p)}x + `}${q} отрицателен, а корень неотрицателен), поэтому решения даёт только первый: x = ${r1} и x = ${nS(r2)}.\n`
+      + `Каждый годится при ОДЗ a ${MINUS} x ≥ 0, то есть x ≤ a, и при попадании на отрезок [${nS(L)}; ${nS(Rr)}].\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    raw: {
+      seg: [L, Rr],
+      F: (a) => (x) => {
+        if (a - x < -EPS) return null
+        const r = sqrtSafe(a - x)
+        return Math.pow(x * x + r, 2) - Math.pow(p * x + q + r, 2)
+      },
+      sols: (a) => [r1, r2].filter((x) => x >= L - 1e-12 && x <= Rr + 1e-12 && x <= a + 1e-12),
+    },
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: () => r1, label: `x = ${r1}` }, { f: () => r2, label: `x = ${nS(r2)}` },
+        { f: (a) => a, dash: true, label: "ОДЗ: x ≤ a" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: L - 2, xMax: Rr + 2, aMin: Rnum(setBounds(set)[0]) - 4,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 4,
+    },
+  })
+}
+
+// =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
     ["rat-quad-lin", "(k²x²−a²)/(px−q−ra) = 0 — линейный знаменатель", t18RatQuadLin],
@@ -1568,6 +1918,14 @@ export const META18 = [
     ["seg-two-sqrt", "√(x²−a²) = √(3x²−…) — равенство двух корней", t18SegTwoSqrtEq],
     ["seg-root-lin", "x²+(x−p)√(kx−a) = px — множитель при корне", t18SegRootTimesLin],
     ["seg-x-sqrt", "x√(x−a) = √((x−a)((u+v)x−uv)) — корень слева умножен на x", t18SegXTimesSqrt],
+  ]],
+  ["«A² = B²» — единственное решение на отрезке", [
+    ["sq-eq-poly", "(x²+kx+ka)² = (k²+1)x⁴+(k²+1)(x+a)² → kx²−x−a = 0", t18SqEqPoly],
+    ["sq-eq-abs", "(k|x|+x−a)² = 2k²x²+2(x−a)² → a = x−k|x|", t18SqEqAbs],
+    ["sq-eq-log", "(kx+ln(x+ca))² = (kx−ln(x+ca))² → x = 0 или x+ca = 1", t18SqEqLog],
+    ["sq-eq-sqrt", "(x²−t²+√(kx−a))² = (x²−t²)²+kx−a", t18SqEqSqrt],
+    ["sq-eq-tan", "(kx+a+1+tg x)² = (kx+a−1−tg x)² — ответ в π", t18SqEqTan],
+    ["sq-eq-sqrt-both", "(x²+√(a−x))² = (px+q+√(a−x))² — корень с обеих сторон", t18SqEqSqrtBoth],
   ]],
 ]
 

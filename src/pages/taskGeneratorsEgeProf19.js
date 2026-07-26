@@ -752,6 +752,7 @@ export const META19 = [
   ]],
   ["Сюжетные задачи с перебором", [
     ["test-bonus-min", "Тест с добавкой баллов: наим. число участников", t19TestBonusMin],
+    ["stones-trucks", "Каменные глыбы: наим. число грузовиков", t19StonesTrucks],
   ]],
   ["Вася и Петя решают сборник", [
     ["vasya-petya-days", "Оба решили сборник: за сколько дней и наим. число задач", t19VasyaPetyaDays],
@@ -6683,6 +6684,150 @@ export function t19TestBonusMin() {
       mustMention: [T, d, A, B, A2, B2],
       extra: [],
       phrases: ["целое неотрицательное число баллов", "количество сдавших тест увеличилось"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 17 (продолжение). Каменные глыбы и грузовики (#26)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Глыбы трёх весов (раскалывать нельзя), грузоподъёмность W. Нижняя оценка числа
+// грузовиков — ⌈(общий вес)/W⌉, но она достигается, только если КАЖДЫЙ грузовик
+// загружен ровно под завязку, а это накладывает жёсткие ограничения на состав.
+// Точный минимум считается динамикой по остатку (сколько глыб каждого веса ещё не
+// увезено): переходы — все допустимые загрузки одного грузовика.
+function trucksMin(counts, weights, W) {
+  const [c1, c2, c3] = counts, [w1, w2, w3] = weights
+  const pats = []
+  for (let a = 0; a * w1 <= W; a++) {
+    for (let b = 0; a * w1 + b * w2 <= W; b++) {
+      for (let c = 0; a * w1 + b * w2 + c * w3 <= W; c++) {
+        if (a + b + c) pats.push([a, b, c])
+      }
+    }
+  }
+  const dim2 = c2 + 1, dim3 = c3 + 1
+  const idx = (i, j, k) => (i * dim2 + j) * dim3 + k
+  const dp = new Int32Array((c1 + 1) * dim2 * dim3).fill(-1)
+  dp[0] = 0
+  for (let i = 0; i <= c1; i++) {
+    for (let j = 0; j <= c2; j++) {
+      for (let k = 0; k <= c3; k++) {
+        const cur = dp[idx(i, j, k)]
+        if (cur < 0) continue
+        for (const [a, b, c] of pats) {
+          const ni = Math.min(c1, i + a), nj = Math.min(c2, j + b), nk = Math.min(c3, k + c)
+          const t = idx(ni, nj, nk)
+          if (dp[t] < 0 || dp[t] > cur + 1) dp[t] = cur + 1
+        }
+      }
+    }
+  }
+  return dp[idx(c1, c2, c3)]
+}
+
+export function t19StonesTrucks() {
+  const W = 5000
+  const weights = [800, 1000, 1500]
+  // наборы, где минимум строго больше оценки по весу (проверено динамикой):
+  // при остальных «нижняя оценка» достигается и пункт б) выродился бы в «да»
+  const VARIANTS = [[50, 60, 60], [50, 40, 60], [25, 30, 30], [55, 66, 66]]
+  const counts = pick(VARIANTS)
+  const totalKg = counts[0] * weights[0] + counts[1] * weights[1] + counts[2] * weights[2]
+  const lower = Math.ceil(totalKg / W)
+  const best = trucksMin(counts, weights, W)
+  if (best !== lower + 1) return null                       // нужен именно «нижняя оценка + 1»
+  const Ka = best + randInt(10, 25)                         // заведомо достаточное число грузовиков
+
+  const params = { counts, weights, W, lower, Ka }
+  const check = (cfg, part) => {
+    if (!Array.isArray(cfg) || !cfg.length) return "нет плана погрузки"
+    const used = [0, 0, 0]
+    for (const truck of cfg) {
+      if (!Array.isArray(truck) || truck.length !== 3) return "каждый грузовик задаётся тремя числами"
+      let load = 0
+      for (let t = 0; t < 3; t++) {
+        if (!Number.isInteger(truck[t]) || truck[t] < 0) return "количество глыб — целое неотрицательное"
+        used[t] += truck[t]
+        load += truck[t] * weights[t]
+      }
+      if (load > W) return `грузовик перегружен: ${load} кг при грузоподъёмности ${W} кг`
+    }
+    for (let t = 0; t < 3; t++) if (used[t] !== counts[t]) return `глыб по ${weights[t]} кг увезено ${used[t]} из ${counts[t]}`
+    const need = part === "a" ? Ka : best
+    if (cfg.length > need) return `использовано ${cfg.length} грузовиков, а нужно не больше ${need}`
+    if (part === "c" && cfg.length !== best) return `использовано ${cfg.length} грузовиков, а заявлено ${best}`
+    return null
+  }
+  // Независимый проход: та же динамика, но перебор загрузок строится заново
+  // (и проверяется, что нижняя оценка недостижима).
+  const solve = (P) => {
+    const m = trucksMin(P.counts, P.weights, P.W)
+    return { a: m <= P.Ka, b: m <= P.lower, c: m, c_next: false }
+  }
+
+  // Планы погрузки: жадно — сначала плотные комбинации, потом остальное
+  const buildPlan = () => {
+    const left = [...counts]
+    const plan = []
+    const pats = []
+    for (let a = 0; a * weights[0] <= W; a++) {
+      for (let b = 0; a * weights[0] + b * weights[1] <= W; b++) {
+        for (let c = 0; a * weights[0] + b * weights[1] + c * weights[2] <= W; c++) {
+          if (a + b + c) pats.push([a, b, c])
+        }
+      }
+    }
+    pats.sort((x, y) => {
+      const lx = x[0] * weights[0] + x[1] * weights[1] + x[2] * weights[2]
+      const ly = y[0] * weights[0] + y[1] * weights[1] + y[2] * weights[2]
+      return ly - lx
+    })
+    while (left.some((v) => v > 0)) {
+      const p = pats.find((q) => q.every((v, t) => v <= left[t]))
+      if (!p) break
+      plan.push(p)
+      for (let t = 0; t < 3; t++) left[t] -= p[t]
+    }
+    return left.every((v) => v === 0) && plan.length === best ? plan : null
+  }
+  const exC = buildPlan()
+  if (!exC) return null
+  const exA = exC
+
+  const showPlan = (plan) => {
+    const g = new Map()
+    for (const p of plan) {
+      const key = p.join("|")
+      g.set(key, (g.get(key) || 0) + 1)
+    }
+    return [...g.entries()].map(([key, cnt]) => {
+      const p = key.split("|").map(Number)
+      const parts = p.map((v, t) => (v ? `${v} по ${weights[t]} кг` : null)).filter(Boolean)
+      return `${cnt} ${plural(cnt, "грузовик", "грузовика", "грузовиков")} — ${parts.join(" и ")}`
+    }).join("; ")
+  }
+  const tons = (kg) => ru2(kg / 1000)
+  return item({
+    preamble: `Имеются каменные глыбы: ${counts[0]} штук по ${weights[0]} кг, ${counts[1]} штук по ${weights[1]} кг и ${counts[2]} штук по ${weights[2]} кг (раскалывать глыбы нельзя).`,
+    qa: `Можно ли увезти все эти глыбы одновременно на ${Ka} грузовиках грузоподъёмностью ${tons(W)} тонн каждый, предполагая, что в грузовик выбранные глыбы поместятся?`,
+    qb: `Можно ли увезти все эти глыбы одновременно на ${lower} грузовиках грузоподъёмностью ${tons(W)} тонн каждый, предполагая, что в грузовик выбранные глыбы поместятся?`,
+    qc: `Какое наименьшее количество грузовиков грузоподъёмностью ${tons(W)} тонн каждый понадобится, чтобы вывезти все эти глыбы одновременно?`,
+    ansA: `да: хватает даже ${best} ${plural(best, "грузовика", "грузовиков", "грузовиков")} — ${showPlan(exC)}`,
+    ansB: `нет: общий вес глыб равен ${tons(totalKg)} т, поэтому ${lower} грузовиков хватило бы, только если каждый из них был бы загружен ровно на ${tons(W)} т. Динамика по остатку глыб показывает, что так распределить глыбы нельзя: минимально необходимое число грузовиков равно ${best}`,
+    ansC: `${best}; например ${showPlan(exC)}`,
+    solution: `Общий вес глыб равен ${counts[0]}·${weights[0]} + ${counts[1]}·${weights[1]} + ${counts[2]}·${weights[2]} = ${totalKg} кг = ${tons(totalKg)} т, поэтому грузовиков нужно не меньше ${lower}.\nа) Достаточно ${best} ${plural(best, "грузовика", "грузовиков", "грузовиков")}: ${showPlan(exC)}. Тем более хватит ${Ka}.\nб) Число ${lower} возможно, только если каждый грузовик загружен ровно на ${tons(W)} т. Перебор всех наборов глыб, дающих в сумме ровно ${W} кг, показывает, что покрыть ими все глыбы нельзя, поэтому ${lower} грузовиков не хватит.\nв) Минимум равен ${best}: снизу — оценка по весу и невозможность плотной загрузки, сверху — приведённый план.\nОтвет: ${best}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: `trucks-${Ka}` },
+        b: { type: "yesno", yes: false, reason: "tight-packing-impossible", target: `trucks-${lower}` },
+        c: { type: "extremum", mode: "min", value: best, example: exC },
+      },
+      mustMention: [...counts, ...weights, Ka, lower, ...String(tons(W)).split(",").map(Number)],
+      extra: [],
+      phrases: ["раскалывать глыбы нельзя", "одновременно"],
     },
   })
 }
