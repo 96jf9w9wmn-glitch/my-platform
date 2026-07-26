@@ -604,11 +604,441 @@ export function t16RateTwoScenarios() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+//  РАЗДЕЛ 3. ВКЛАДЫ
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Ставки по вкладу, дающие точные степени: q = 1 + p/100.
+const DEP_RATES = [10, 20, 25, 15, 12, 8, 5]
+
+// ── 1. Наибольший целый первоначальный вклад (эталон 3.1) ──────────────────
+// Вклад S млн (целое), 4 года по p %; в начале 3-го и 4-го годов пополняют на A млн.
+// Итог < M млн. Наибольшее S. Итог = S·q⁴ + A·(q² + q).
+export function t16DepMaxInitial() {
+  const cand = []
+  for (const p of DEP_RATES) {
+    const q = 1 + p / 100
+    const yrs = 4
+    const coefA = q * q + q                     // пополнение в начале 3-го и 4-го годов
+    for (const A of [1, 2, 3, 4, 5]) {
+      for (let S = 2; S <= 20; S++) {
+        const fin = (n) => n * Math.pow(q, yrs) + A * coefA
+        const lo = fin(S), hi = fin(S + 1)
+        // порог M — ЦЕЛОЕ млн строго внутри (lo; hi], с отступом от границ
+        for (let M = Math.ceil(lo); M <= Math.floor(hi); M++) {
+          if (M - lo < 0.05 || hi - M < 0.05) continue
+          if (M <= S) continue
+          cand.push({ p, q, A, S, M })
+        }
+      }
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const model = {
+    type: "deposit", S: c.S, rates: [c.p, c.p, c.p, c.p],
+    addBefore: [0, 0, c.A, c.A],
+  }
+  const fin = (n) => simulateDeposit({ ...model, S: n }).final
+  return item({
+    text: `Вклад составляет целое число миллионов рублей и открыт на ${years(4)}. Процентная ставка ` +
+      `по вкладу — ${pct(c.p)} годовых, то есть в конце каждого года вклад увеличивается на ${pct(c.p)} ` +
+      `по сравнению с его размером в начале этого года. В начале третьего и четвёртого годов вклад ` +
+      `пополняли на ${c.A} ${plural(c.A, "миллион", "миллиона", "миллионов")} рублей. Каков мог быть ` +
+      `наибольший размер первоначального вклада, если через ${years(4)} сумма на вкладе составила ` +
+      `менее ${c.M} ${plural(c.M, "миллиона", "миллионов", "миллионов")} рублей?`,
+    answer: `${c.S} млн рублей`,
+    answerNum: c.S,
+    model,
+    sim: () => simulateDeposit(model),
+    mustMention: [c.p, c.A, c.M, 4],
+    extra: [],
+    forbid: [],
+    checks: [
+      () => (fin(c.S) < c.M ? null : `S = ${c.S} не проходит: итог ${fin(c.S)} ≥ ${c.M}`),
+      () => (fin(c.S + 1) >= c.M ? null : `S = ${c.S + 1} тоже проходит`),
+      () => (Math.min(c.M - fin(c.S), fin(c.S + 1) - c.M) > 0.04 ? null : "порог на границе"),
+    ],
+  })
+}
+
+// ── 2. Наименьшее целое ежегодное пополнение (эталон 3.3) ──────────────────
+export function t16DepMinTopUp() {
+  const cand = []
+  for (const p of DEP_RATES) {
+    const q = 1 + p / 100
+    const coefA = q * q + q
+    for (const S of [5, 8, 10, 12, 15, 20]) {
+      for (let A = 1; A <= 12; A++) {
+        const fin = (a) => S * Math.pow(q, 4) + a * coefA
+        const lo = fin(A - 1), hi = fin(A)
+        for (let M = Math.ceil(lo); M <= Math.floor(hi); M++) {
+          if (M - lo < 0.05 || hi - M < 0.05) continue
+          if (M <= S) continue
+          cand.push({ p, q, S, A, M })
+        }
+      }
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const p0 = pick(NAME_ALL)
+  const model = {
+    type: "deposit", S: c.S, rates: [c.p, c.p, c.p, c.p],
+    addBefore: [0, 0, c.A, c.A],
+  }
+  const fin = (a) => simulateDeposit({ ...model, addBefore: [0, 0, a, a] }).final
+  return item({
+    text: `${p0.n} планирует открыть вклад в размере ${c.S} млн рублей на ${years(4)}. В конце каждого ` +
+      `года вклад увеличивается на ${pct(c.p)} по сравнению с его размером в начале года. Кроме этого, ` +
+      `в начале третьего и четвёртого годов ${p0.n} собирается ежегодно пополнять вклад на одну и ту же ` +
+      `фиксированную сумму, равную целому числу миллионов рублей. Найдите наименьший возможный размер ` +
+      `такой суммы, при котором через ${years(4)} вклад станет не меньше ${c.M} млн рублей.`,
+    answer: `${c.A} млн рублей`,
+    answerNum: c.A,
+    model,
+    sim: () => simulateDeposit(model),
+    mustMention: [c.S, c.p, c.M, 4],
+    extra: [],
+    forbid: [],
+    checks: [
+      () => (fin(c.A) >= c.M ? null : `пополнение ${c.A} не даёт ${c.M}`),
+      () => (fin(c.A - 1) < c.M ? null : `пополнение ${c.A - 1} тоже подходит`),
+      () => (Math.min(fin(c.A) - c.M, c.M - fin(c.A - 1)) > 0.04 ? null : "порог на границе"),
+    ],
+  })
+}
+
+// ── 3. Два параметра пополнения, два ограничения (эталон 3.2) ──────────────
+// «по n млн сразу после 1-го и 2-го начисления, по m млн после 3-го и 4-го;
+//  за 2 года как минимум удвоить, за 4 — утроить». Ответ — ПАРА чисел (как в эталоне).
+export function t16DepTwoParams() {
+  const cand = []
+  for (const p of DEP_RATES) {
+    const q = 1 + p / 100
+    for (const S of [5, 10, 12, 15, 20]) {
+      for (const [k2, k4] of [[2, 3], [2, 4], [3, 4], [2, 5]]) {
+        // за 2 года: S·q² + n·(q + 1) ≥ k2·S
+        const need2 = (k2 * S - S * q * q) / (q + 1)
+        if (need2 <= 0) continue
+        const n = Math.ceil(need2 - 1e-9)
+        if (Math.abs(n - need2) < 0.02 || n > 20) continue          // не на границе
+        const bal2 = S * q * q + n * (q + 1)
+        // за 4 года: bal2·q² + m·(q + 1) ≥ k4·S
+        const need4 = (k4 * S - bal2 * q * q) / (q + 1)
+        if (need4 <= 0) continue
+        const m = Math.ceil(need4 - 1e-9)
+        if (Math.abs(m - need4) < 0.02 || m > 20) continue
+        cand.push({ p, q, S, k2, k4, n, m })
+      }
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const model = {
+    type: "deposit", S: c.S, rates: [c.p, c.p, c.p, c.p],
+    addAfter: [c.n, c.n, c.m, c.m],
+  }
+  const at = (i, nn, mm) => simulateDeposit({ ...model, addAfter: [nn, nn, mm, mm] }).steps[i].closing
+  const times = (k) => (k === 2 ? "удвоятся" : k === 3 ? "утроятся" : `увеличатся в ${k} раза`)
+  return item({
+    text: `${c.S} миллионов рублей планируется вложить в проект с доходностью ${pct(c.p)} годовых. ` +
+      `Начисленные проценты остаются вложенными в проект. Кроме того, планируется дополнительно внести ` +
+      `по целому числу n миллионов рублей сразу после первого и второго начисления процентов, а также ` +
+      `по целому числу m миллионов рублей сразу после третьего и четвёртого начисления процентов. ` +
+      `При каких наименьших значениях n и m первоначальные вложения за ${years(2)} как минимум ` +
+      `${times(c.k2)}, а за ${years(4)} как минимум ${times(c.k4)}?`,
+    answer: `n = ${c.n}, m = ${c.m}`,
+    answerNum: c.n,
+    model,
+    sim: () => simulateDeposit(model),
+    mustMention: [c.S, c.p, 2, 4],
+    extra: [c.k2, c.k4],
+    forbid: [],
+    checks: [
+      () => (at(1, c.n, c.m) >= c.k2 * c.S - 1e-9 ? null : `n = ${c.n} не даёт ×${c.k2} за 2 года`),
+      () => (at(1, c.n - 1, c.m) < c.k2 * c.S - 1e-9 ? null : `n = ${c.n - 1} тоже подходит`),
+      () => (at(3, c.n, c.m) >= c.k4 * c.S - 1e-9 ? null : `m = ${c.m} не даёт ×${c.k4} за 4 года`),
+      () => (at(3, c.n, c.m - 1) < c.k4 * c.S - 1e-9 ? null : `m = ${c.m - 1} тоже подходит`),
+    ],
+  })
+}
+
+// ── 4. Два накопительных вклада: когда суммы сравняются (эталон 3.4) ───────
+// Кладут по C каждый год, банк начисляет p %. Второй вклад открыт на G лет позже
+// со взносом C·q и ставкой (q²−1)·100 %. Тогда равенство наступает ровно через G−1 лет.
+export function t16DepTwoAccounts() {
+  const base = pick([{ p: 10, q: 1.1 }, { p: 20, q: 1.2 }])
+  const G = randInt(4, 9)
+  const C1 = pick([500, 1000, 1500, 2000, 2500, 5000])
+  const C2 = Math.round(C1 * (base.q + 1))
+  if (Math.abs(C2 - C1 * (base.q + 1)) > 1e-6) return null
+  const p2 = Math.round((base.q * base.q - 1) * 10000) / 100
+  const t = G - 1
+  // накопление: взнос в начале года, начисление в конце; значение сразу ПОСЛЕ очередного взноса
+  const accum = (C, p, k) => simulateDeposit({
+    type: "deposit", S: 0, rates: Array(k).fill(p), addBefore: Array(k).fill(C),
+  }).final + C
+  const model = {
+    type: "deposit", S: 0, rates: Array(G + t).fill(base.p), addBefore: Array(G + t).fill(C1),
+  }
+  const pr = pick(NAME_ALL)
+  return item({
+    text: `${pr.n} ${pr.f ? "открыла" : "открыл"} в банке вклад, на который ${pr.f ? "она" : "он"} ежегодно ` +
+      `кладёт ${rub(C1)}. По условиям вклада банк ежегодно начисляет ${pct(base.p)} на сумму, находящуюся ` +
+      `на вкладе. Через ${years(G)} ${pr.n} ${pr.f ? "открыла" : "открыл"} в другом банке вклад, на который ` +
+      `ежегодно кладёт по ${rub(C2)}, а банк начисляет ${pct(p2)} в год. Через сколько лет после открытия ` +
+      `второго вклада после очередного пополнения суммы вкладов сравняются, если деньги со счетов не снимают?`,
+    answer: `${years(t)}`,
+    answerNum: t,
+    model,
+    sim: () => simulateDeposit(model),
+    mustMention: [C1, base.p, G, C2, p2],
+    extra: [],
+    forbid: [],
+    checks: [
+      () => (Math.abs(accum(C1, base.p, G + t) - accum(C2, p2, t)) < 0.01
+        ? null : `через ${t} лет суммы не равны`),
+      () => (accum(C1, base.p, G + t - 1) > accum(C2, p2, t - 1) + 0.01
+        ? null : `равенство наступает раньше, чем через ${t} лет`),
+      () => (accum(C1, base.p, G + t + 1) < accum(C2, p2, t + 1) - 0.01
+        ? null : `через ${t + 1} лет первый вклад всё ещё не меньше`),
+    ],
+  })
+}
+
+// ── 5. Наименьший целый процент за ПОСЛЕДНИЙ год вклада «Б» (эталон 3.5) ───
+// А: три года по a %. Б: b % первые два года и r % за третий. Нужно (1+b)²(1+r) > (1+a)³.
+export function t16DepCompareLastYear() {
+  const cand = []
+  for (let a = 6; a <= 20; a++) {
+    for (let b = 4; b <= 20; b++) {
+      if (b === a) continue
+      const need = Math.pow(1 + a / 100, 3) / Math.pow(1 + b / 100, 2) - 1
+      const r = Math.floor(need * 100) + 1
+      if (r < 1 || r > 30) continue
+      if (Math.abs(need * 100 - Math.round(need * 100)) < 0.02) continue   // не на границе
+      if (r === a || r === b) continue          // иначе ответ буквально стоит в условии
+      cand.push({ a, b, r })
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const model = { type: "deposit", S: 100000, rates: [c.b, c.b, c.r] }
+  const A = Math.pow(1 + c.a / 100, 3)
+  const B = (r) => Math.pow(1 + c.b / 100, 2) * (1 + r / 100)
+  return item({
+    text: `По вкладу «А» банк в течение трёх лет в конце каждого года увеличивает на ${pct(c.a)} сумму, ` +
+      `имеющуюся на вкладе в начале года, а по вкладу «Б» — увеличивает на ${pct(c.b)} в течение каждого ` +
+      `из первых двух лет. Найдите наименьшее целое число процентов за третий год по вкладу «Б», при ` +
+      `котором за все три года этот вклад всё ещё останется выгоднее вклада «А».`,
+    answer: `${pct(c.r)}`,
+    answerNum: c.r,
+    model,
+    sim: () => simulateDeposit(model),
+    mustMention: [c.a, c.b],
+    extra: [],
+    forbid: [c.r],
+    checks: [
+      () => (B(c.r) > A ? null : `${c.r} % не делает «Б» выгоднее`),
+      () => (B(c.r - 1) <= A ? null : `${c.r - 1} % тоже подходит`),
+      () => (Math.abs(B(c.r - 1) - A) > 1e-6 && Math.abs(B(c.r) - A) > 1e-6 ? null : "равенство вкладов"),
+    ],
+  })
+}
+
+// ── 6. Наименьшее целое r за ДВА одинаковых года вклада «Б» (эталон 3.6) ───
+// А: три года по a %. Б: b % первый год и r % за второй и третий: (1+b)(1+r)² > (1+a)³.
+export function t16DepCompareTwoYears() {
+  const cand = []
+  for (let a = 6; a <= 20; a++) {
+    for (let b = 3; b <= 20; b++) {
+      if (b === a) continue
+      const need = Math.sqrt(Math.pow(1 + a / 100, 3) / (1 + b / 100)) - 1
+      const r = Math.floor(need * 100) + 1
+      if (r < 1 || r > 30) continue
+      if (Math.abs(need * 100 - Math.round(need * 100)) < 0.02) continue
+      if (r === a || r === b) continue          // иначе ответ буквально стоит в условии
+      cand.push({ a, b, r })
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const model = { type: "deposit", S: 100000, rates: [c.b, c.r, c.r] }
+  const A = Math.pow(1 + c.a / 100, 3)
+  const B = (r) => (1 + c.b / 100) * Math.pow(1 + r / 100, 2)
+  return item({
+    text: `По вкладу «А» банк в конце каждого года планирует увеличивать на ${pct(c.a)} сумму, имеющуюся ` +
+      `на вкладе в начале года, а по вкладу «Б» — увеличивать эту сумму на ${pct(c.b)} в первый год и на ` +
+      `одинаковое целое число r процентов и за второй, и за третий годы. Найдите наименьшее значение r, ` +
+      `при котором за три года хранения вклад «Б» окажется выгоднее вклада «А» при одинаковых суммах ` +
+      `первоначальных взносов.`,
+    answer: `${pct(c.r)}`,
+    answerNum: c.r,
+    model,
+    sim: () => simulateDeposit(model),
+    mustMention: [c.a, c.b],
+    extra: [],
+    forbid: [c.r],
+    checks: [
+      () => (B(c.r) > A ? null : `${c.r} % не делает «Б» выгоднее`),
+      () => (B(c.r - 1) <= A ? null : `${c.r - 1} % тоже подходит`),
+      () => (Math.abs(B(c.r - 1) - A) > 1e-6 && Math.abs(B(c.r) - A) > 1e-6 ? null : "равенство вкладов"),
+    ],
+  })
+}
+
+// ── 7–9. Чистый сложный процент: найти сумму / срок / ставку ───────────────
+// Требование задания сверх эталона. S·qⁿ обязано быть целым рублём — перебираем.
+function compoundCandidates() {
+  const out = []
+  for (const p of [5, 8, 10, 12, 15, 20, 25]) {
+    const q = 1 + p / 100
+    for (let n = 2; n <= 6; n++) {
+      const f = Math.pow(q, n)
+      for (let k = 1; k <= 400; k++) {
+        const S = k * 25_000
+        if (S < 100_000 || S > 8_000_000) continue
+        const M = S * f
+        if (Math.abs(M - Math.round(M)) > 1e-6) continue
+        if (M > 30_000_000) continue
+        out.push({ p, q, n, S, M: Math.round(M) })
+      }
+    }
+  }
+  return out
+}
+export function t16CompoundSum() {
+  const c = pick(compoundCandidates())
+  const model = { type: "deposit", S: c.S, rates: Array(c.n).fill(c.p) }
+  return item({
+    text: `Вкладчик положил в банк ${rub(c.S)} под ${pct(c.p)} годовых. Проценты начисляются в конце ` +
+      `каждого года на всю сумму, находящуюся на вкладе, и остаются на нём. Какая сумма будет на вкладе ` +
+      `через ${years(c.n)}, если вкладчик не снимал и не добавлял денег?`,
+    answer: `${money(c.M)} рублей`,
+    answerNum: c.M,
+    model,
+    sim: () => simulateDeposit(model),
+    mustMention: [c.S, c.p, c.n],
+    extra: [],
+    forbid: [c.M],
+    checks: [() => (Math.abs(simulateDeposit(model).final - c.M) < 0.005 ? null : "симуляция ≠ ответу")],
+  })
+}
+export function t16CompoundTerm() {
+  // срок-ответ не должен совпасть со ставкой, иначе он буквально стоит в условии
+  const c = pick(compoundCandidates().filter((x) => x.n >= 3 && x.n !== x.p))
+  const model = { type: "deposit", S: c.S, rates: Array(c.n).fill(c.p) }
+  const at = (k) => c.S * Math.pow(c.q, k)
+  return item({
+    text: `Вкладчик положил в банк ${rub(c.S)} под ${pct(c.p)} годовых. Проценты начисляются в конце ` +
+      `каждого года на всю сумму, находящуюся на вкладе, и остаются на нём. Через некоторое целое число ` +
+      `лет на вкладе оказалось ${rub(c.M)}. Сколько лет пролежал вклад?`,
+    answer: `${years(c.n)}`,
+    answerNum: c.n,
+    model,
+    sim: () => simulateDeposit(model),
+    mustMention: [c.S, c.p, c.M],
+    extra: [],
+    forbid: [c.n],
+    checks: [
+      () => (Math.abs(at(c.n) - c.M) < 0.005 ? null : "через n лет сумма ≠ M"),
+      // строгая монотонность ⇒ других целых решений нет; проверяем всю сетку сроков
+      () => {
+        for (let k = 1; k <= 30; k++) {
+          if (k === c.n) continue
+          if (Math.abs(at(k) - c.M) < 0.5) return `срок ${k} тоже подходит`
+        }
+        return null
+      },
+    ],
+  })
+}
+export function t16CompoundRate() {
+  // ставка-ответ не должна совпасть со сроком
+  const c = pick(compoundCandidates().filter((x) => x.n <= 4 && x.p !== x.n))
+  const model = { type: "deposit", S: c.S, rates: Array(c.n).fill(c.p) }
+  const grow = (r) => c.S * Math.pow(1 + r / 100, c.n)
+  return item({
+    text: `Вкладчик положил в банк ${rub(c.S)} под одинаковый процент годовых. Проценты начисляются ` +
+      `в конце каждого года на всю сумму, находящуюся на вкладе, и остаются на нём. Через ${years(c.n)} ` +
+      `на вкладе оказалось ${rub(c.M)}. Под какой процент годовых был сделан вклад?`,
+    answer: `${pct(c.p)}`,
+    answerNum: c.p,
+    model,
+    sim: () => simulateDeposit(model),
+    mustMention: [c.S, c.n, c.M],
+    extra: [],
+    forbid: [c.p],
+    checks: [
+      () => {
+        for (let r = 0.5; r <= 40.0001; r += 0.5) {
+          if (Math.abs(r - c.p) < 1e-9) continue
+          if (Math.abs(grow(r) - c.M) < 0.5) return `ставка ${r} тоже подходит`
+        }
+        return Math.abs(grow(c.p) - c.M) < 0.005 ? null : "рост не сходится с M"
+      },
+    ],
+  })
+}
+
+// ── 10. Вклад с ежегодным СНЯТИЕМ фиксированной суммы (сверх эталона) ──────
+// Остаток = S·qⁿ − A·(qⁿ−1)/(q−1) ≥ R. Ответ — наибольшее A, кратное 1000.
+export function t16DepWithdraw() {
+  const cand = []
+  for (const p of [5, 8, 10, 12, 15, 20]) {
+    const q = 1 + p / 100
+    for (let n = 3; n <= 6; n++) {
+      const f = Math.pow(q, n), s = (f - 1) / (q - 1)
+      for (let sk = 4; sk <= 40; sk++) {
+        const S = sk * 250_000
+        for (let rk = 1; rk <= 20; rk++) {
+          const R = rk * 100_000
+          const bound = (S * f - R) / s
+          if (!(bound > 20_000)) continue
+          const A = Math.floor(bound / 1000) * 1000
+          if (A < 20_000 || A >= S) continue
+          // порог не на границе округления до тысячи
+          if (bound - A < 50 || A + 1000 - bound < 50) continue
+          cand.push({ p, q, n, S, R, A })
+        }
+      }
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const model = {
+    type: "deposit", S: c.S, rates: Array(c.n).fill(c.p), addAfter: Array(c.n).fill(-c.A),
+  }
+  const left = (a) => simulateDeposit({ ...model, addAfter: Array(c.n).fill(-a) }).final
+  return item({
+    text: `Вкладчик положил в банк ${rub(c.S)} под ${pct(c.p)} годовых. В конце каждого года банк ` +
+      `начисляет проценты на сумму, находящуюся на вкладе, после чего вкладчик снимает со счёта одну ` +
+      `и ту же сумму. Какую наибольшую сумму, кратную ${rub(1000)}, он может снимать ежегодно, чтобы ` +
+      `через ${years(c.n)} на вкладе осталось не менее ${rub(c.R)}?`,
+    answer: `${money(c.A)} рублей`,
+    answerNum: c.A,
+    model,
+    sim: () => simulateDeposit(model),
+    mustMention: [c.S, c.p, c.n, c.R, 1000],
+    extra: [],
+    forbid: [c.A],
+    checks: [
+      () => (left(c.A) >= c.R - 1e-6 ? null : `снятие ${c.A} оставляет меньше ${c.R}`),
+      () => (left(c.A + 1000) < c.R - 1e-6 ? null : `снятие ${c.A + 1000} тоже подходит`),
+      () => (Math.min(left(c.A) - c.R, c.R - left(c.A + 1000)) > 1 ? null : "порог на границе"),
+    ],
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 //  РЕЕСТР
 // ═══════════════════════════════════════════════════════════════════════════
 export const GEN16 = [
   t16AnnPayment, t16AnnPrincipal, t16AnnTotal, t16AnnMinYears,
   t16AnnDiffTotal, t16AnnRate, t16RateTwoUnequal, t16RateTwoScenarios,
+  t16DepMaxInitial, t16DepMinTopUp, t16DepTwoParams, t16DepTwoAccounts,
+  t16DepCompareLastYear, t16DepCompareTwoYears,
+  t16CompoundSum, t16CompoundTerm, t16CompoundRate, t16DepWithdraw,
 ]
 
 export const META16 = [
@@ -621,5 +1051,17 @@ export const META16 = [
     ["ann-rate", "Найти ставку при n равных платежах", t16AnnRate],
     ["ann-rate-2pay", "Ставка по двум неравным платежам", t16RateTwoUnequal],
     ["ann-rate-2scen", "Ставка по двум сценариям «платёж → срок»", t16RateTwoScenarios],
+  ]],
+  ["Вклады", [
+    ["dep-max-initial", "Наибольший целый первоначальный вклад", t16DepMaxInitial],
+    ["dep-min-topup", "Наименьшее целое ежегодное пополнение", t16DepMinTopUp],
+    ["dep-two-params", "Два пополнения n и m при двух ограничениях", t16DepTwoParams],
+    ["dep-two-accounts", "Два накопительных вклада: когда сравняются", t16DepTwoAccounts],
+    ["dep-cmp-last", "Наименьший % за последний год вклада «Б»", t16DepCompareLastYear],
+    ["dep-cmp-two", "Наименьший % за два года вклада «Б»", t16DepCompareTwoYears],
+    ["dep-sum", "Сложный процент: найти сумму", t16CompoundSum],
+    ["dep-term", "Сложный процент: найти срок", t16CompoundTerm],
+    ["dep-rate", "Сложный процент: найти ставку", t16CompoundRate],
+    ["dep-withdraw", "Вклад с ежегодным снятием: наибольшее снятие", t16DepWithdraw],
   ]],
 ]
