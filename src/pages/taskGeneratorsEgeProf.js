@@ -3815,6 +3815,77 @@ function t03ConeScale() {
   }
 }
 
+// Одиночный цилиндр (ФИПИ): верхнее основание — полный эллипс, у нижнего задняя
+// дуга штрихом; штрихом же ось и диаметр нижнего основания.
+function cylPlainSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 390" width="280" height="390" font-family="Arial, sans-serif">` +
+    `<rect width="280" height="390" fill="#fff"/>` +
+    `<path d="M30,320 A110,26 0 0,1 250,320" fill="none" stroke="#000" stroke-width="1.5" stroke-dasharray="8 6" pathLength="228"/>` +
+    `<line x1="140" y1="70" x2="140" y2="320" stroke="#000" stroke-width="1.5" stroke-dasharray="8 6" pathLength="250"/>` +
+    `<line x1="30" y1="320" x2="250" y2="320" stroke="#000" stroke-width="1.5" stroke-dasharray="8 6" pathLength="220"/>` +
+    `<ellipse cx="140" cy="70" rx="110" ry="26" fill="none" stroke="#000" stroke-width="1.8"/>` +
+    `<line x1="30" y1="70" x2="30" y2="320" stroke="#000" stroke-width="1.8"/>` +
+    `<line x1="250" y1="70" x2="250" y2="320" stroke="#000" stroke-width="1.8"/>` +
+    `<path d="M30,320 A110,26 0 0,0 250,320" fill="none" stroke="#000" stroke-width="1.8"/>` +
+    `</svg>`
+}
+
+// S_бок = 2πRh = πdh ⟹ по S и диаметру находится высота.
+function t03CylLatHeight() {
+  const d = randInt(2, 14), h = randInt(2, 14)
+  return {
+    condition_text: `Площадь боковой поверхности цилиндра равна ${d * h}π, а диаметр основания равен ${d}. Найдите высоту цилиндра.`,
+    image_url: svgUrl(cylPlainSvg()),
+    answer: ru(h),
+  }
+}
+
+// Обратная: по S и высоте находится диаметр основания.
+function t03CylLatDiameter() {
+  const d = randInt(2, 14), h = randInt(2, 14)
+  return {
+    condition_text: `Площадь боковой поверхности цилиндра равна ${d * h}π, а высота равна ${h}. Найдите диаметр основания цилиндра.`,
+    image_url: svgUrl(cylPlainSvg()),
+    answer: ru(d),
+  }
+}
+
+// Две цилиндрические кружки с ручками: первая узкая и высокая, вторая шире и ниже.
+function mugsSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 450 320" width="450" height="320" font-family="Arial, sans-serif">` +
+    `<rect width="450" height="320" fill="#fff"/>` +
+    // задние дуги днищ
+    `<path d="M32,275 A58,16 0 0,1 148,275" fill="none" stroke="#000" stroke-width="1.4" stroke-dasharray="8 6" pathLength="120"/>` +
+    `<path d="M205,275 A95,25 0 0,1 395,275" fill="none" stroke="#000" stroke-width="1.4" stroke-dasharray="8 6" pathLength="197"/>` +
+    // ручки (двойной контур)
+    `<path d="M148,100 C218,100 218,215 148,215" fill="none" stroke="#000" stroke-width="2.4"/>` +
+    `<path d="M148,120 C193,120 193,195 148,195" fill="none" stroke="#000" stroke-width="2.4"/>` +
+    `<path d="M395,190 C443,190 443,252 395,252" fill="none" stroke="#000" stroke-width="2.4"/>` +
+    `<path d="M395,202 C425,202 425,240 395,240" fill="none" stroke="#000" stroke-width="2.4"/>` +
+    // первая кружка
+    `<ellipse cx="90" cy="55" rx="58" ry="16" fill="#fff" stroke="#000" stroke-width="1.6"/>` +
+    `<line x1="32" y1="55" x2="32" y2="275" stroke="#000" stroke-width="1.6"/>` +
+    `<line x1="148" y1="55" x2="148" y2="275" stroke="#000" stroke-width="1.6"/>` +
+    `<path d="M32,275 A58,16 0 0,0 148,275" fill="none" stroke="#000" stroke-width="1.6"/>` +
+    // вторая кружка
+    `<ellipse cx="300" cy="165" rx="95" ry="25" fill="#fff" stroke="#000" stroke-width="1.6"/>` +
+    `<line x1="205" y1="165" x2="205" y2="275" stroke="#000" stroke-width="1.6"/>` +
+    `<line x1="395" y1="165" x2="395" y2="275" stroke="#000" stroke-width="1.6"/>` +
+    `<path d="M205,275 A95,25 0 0,0 395,275" fill="none" stroke="#000" stroke-width="1.6"/>` +
+    `</svg>`
+}
+
+// V = πR²h: первая вдвое выше, вторая в k раз шире ⟹ V₂/V₁ = k²/2.
+const MUG_WIDER = [[1.5, "1,5"], [2, "два"], [2.5, "2,5"], [3, "три"], [4, "четыре"]]
+function t03MugRatio() {
+  const [k, word] = pick(MUG_WIDER)
+  return {
+    condition_text: `Первая цилиндрическая кружка вдвое выше второй, зато вторая в ${word} раза шире. Найдите отношение объёма второй кружки к объёму первой.`,
+    image_url: svgUrl(mugsSvg()),
+    answer: ru(clean(k * k / 2)),
+  }
+}
+
 // Шар, вписанный в цилиндр (R общий, высота цилиндра = 2R).
 function sphereInCylSvg() {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="500" height="500" font-family="Arial, sans-serif">` +
@@ -4499,6 +4570,18 @@ function t03TwoCylinders() {
   }
 }
 
+// Обратный набор данных: второй цилиндр выше в a раз и уже в b раз ⟹ V₂ = V₁·a/b².
+const RAZ_WORD = { 2: "два", 3: "три", 4: "четыре" }
+function t03TwoCylindersTaller() {
+  const a = randInt(2, 4), b = randInt(2, 4)
+  const v1 = b * b * randInt(2, 12)
+  return {
+    condition_text: `Дано два цилиндра. Объём первого цилиндра равен ${v1}. У второго цилиндра высота в ${RAZ_WORD[a]} раза больше, а радиус основания в ${RAZ_WORD[b]} раза меньше, чем у первого. Найдите объём второго цилиндра.`,
+    image_url: svgUrl(twoCylSvg()),
+    answer: ru(v1 * a / (b * b)),
+  }
+}
+
 // V_шара = 4πR³/3, V_цил = 2πR³ ⟹ V_цил = 1,5·V_шара.
 function t03SphereInCylVol() {
   const v = 2 * randInt(2, 30)
@@ -4733,6 +4816,109 @@ function t03TriPrismAngle() {
   }
 }
 
+// Правильная шестиугольная призма ABCDEFA₁B₁C₁D₁E₁F₁ (ФИПИ): задние вершины E и F
+// скрыты — рёбра AF, FE, ED и боковые FF₁, EE₁ штрихом; подписи B₁, C₁, E, F внутри.
+function hexPrismSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 270 330" width="270" height="330" font-family="Arial, sans-serif">` +
+    `<rect width="270" height="330" fill="#fff"/>` +
+    // скрытые рёбра
+    `<line x1="40" y1="250" x2="121" y2="219" stroke="#000" stroke-width="1.5" stroke-dasharray="7 5" pathLength="87"/>` +
+    `<line x1="121" y1="219" x2="221" y2="219" stroke="#000" stroke-width="1.5" stroke-dasharray="7 5" pathLength="100"/>` +
+    `<line x1="221" y1="219" x2="240" y2="250" stroke="#000" stroke-width="1.5" stroke-dasharray="7 5" pathLength="36"/>` +
+    `<line x1="121" y1="219" x2="121" y2="104" stroke="#000" stroke-width="1.5" stroke-dasharray="7 5" pathLength="115"/>` +
+    `<line x1="221" y1="219" x2="221" y2="104" stroke="#000" stroke-width="1.5" stroke-dasharray="7 5" pathLength="115"/>` +
+    // нижнее основание (передняя часть)
+    `<line x1="40" y1="250" x2="59" y2="281" stroke="#000" stroke-width="1.8"/>` +
+    `<line x1="59" y1="281" x2="159" y2="281" stroke="#000" stroke-width="1.8"/>` +
+    `<line x1="159" y1="281" x2="240" y2="250" stroke="#000" stroke-width="1.8"/>` +
+    // боковые рёбра
+    `<line x1="40" y1="250" x2="40" y2="135" stroke="#000" stroke-width="1.8"/>` +
+    `<line x1="59" y1="281" x2="59" y2="166" stroke="#000" stroke-width="1.8"/>` +
+    `<line x1="159" y1="281" x2="159" y2="166" stroke="#000" stroke-width="1.8"/>` +
+    `<line x1="240" y1="250" x2="240" y2="135" stroke="#000" stroke-width="1.8"/>` +
+    // верхнее основание
+    `<line x1="40" y1="135" x2="59" y2="166" stroke="#000" stroke-width="1.8"/>` +
+    `<line x1="59" y1="166" x2="159" y2="166" stroke="#000" stroke-width="1.8"/>` +
+    `<line x1="159" y1="166" x2="240" y2="135" stroke="#000" stroke-width="1.8"/>` +
+    `<line x1="240" y1="135" x2="221" y2="104" stroke="#000" stroke-width="1.8"/>` +
+    `<line x1="221" y1="104" x2="121" y2="104" stroke="#000" stroke-width="1.8"/>` +
+    `<line x1="121" y1="104" x2="40" y2="135" stroke="#000" stroke-width="1.8"/>` +
+    // подписи
+    `<g font-size="16" font-style="italic" fill="#000" stroke="none" text-anchor="middle">` +
+    `<text x="26" y="272">A</text><text x="57" y="305">B</text><text x="159" y="305">C</text>` +
+    `<text x="254" y="272">D</text><text x="205" y="243">E</text><text x="110" y="243">F</text>` +
+    `<text x="24" y="127">A₁</text><text x="78" y="154">B₁</text><text x="140" y="154">C₁</text>` +
+    `<text x="256" y="128">D₁</text><text x="224" y="94">E₁</text><text x="118" y="94">F₁</text>` +
+    `</g></svg>`
+}
+
+// Координаты правильной шестиугольной призмы с ребром 1.
+const HEX_NAMES = ["A", "B", "C", "D", "E", "F"]
+const HEX_V = (() => {
+  const V = {}
+  HEX_NAMES.forEach((n, i) => {
+    const a = Math.PI * (3 - i) / 3            // A слева, дальше по кругу B, C, D, E, F
+    V[n] = [Math.cos(a), Math.sin(a), 0]
+    V[n + "1"] = [Math.cos(a), Math.sin(a), 1]
+  })
+  return V
+})()
+
+// Сторона основания и сторона верхнего основания (непараллельная ей) — угол 60°.
+function t03HexPrismAngle() {
+  const i = randInt(0, 5)
+  const j = (i + pick([1, 2, 4, 5])) % 6       // исключены i (та же) и i+3 (параллельная)
+  const p = HEX_NAMES[i], q = HEX_NAMES[(i + 1) % 6]
+  const r = HEX_NAMES[j] + "1", s = HEX_NAMES[(j + 1) % 6] + "1"
+  return {
+    condition_text: `В правильной шестиугольной призме ABCDEFA₁B₁C₁D₁E₁F₁, все рёбра которой равны ${randInt(1, 9)}, найдите угол между прямыми ${vertName(p)}${vertName(q)} и ${vertName(r)}${vertName(s)}. Ответ дайте в градусах.`,
+    image_url: svgUrl(hexPrismSvg()),
+    answer: ru(linesAngleDeg(HEX_V, p, q, r, s)),
+  }
+}
+
+// Доля площади основания, занимаемая многоугольником из вершин шестиугольника
+// (по координатам, формула площади многоугольника): треугольник из трёх подряд
+// идущих вершин — 1/6, трапеция через одну — 2/3.
+function hexBaseRatio(names) {
+  const P = names.map(n => HEX_V[n])
+  let s = 0
+  for (let i = 0; i < P.length; i++) {
+    const [x1, y1] = P[i], [x2, y2] = P[(i + 1) % P.length]
+    s += x1 * y2 - x2 * y1
+  }
+  return Math.abs(s / 2) / (3 * Math.sqrt(3) / 2)
+}
+const hexList = (names) => names.map(vertName).join(", ")
+
+// Призма на трёх подряд идущих вершинах основания: V = S·L/6.
+function t03HexPrismTri() {
+  const i = randInt(0, 5)
+  const base = [0, 1, 2].map(k => HEX_NAMES[(i + k) % 6])
+  const names = [...base, ...base.map(n => n + "1")]
+  let S, L
+  do { S = randInt(2, 14); L = randInt(2, 14) } while ((S * L) % 6 !== 0)
+  return {
+    condition_text: `Найдите объём многогранника, вершинами которого являются точки ${hexList(names)} правильной шестиугольной призмы ABCDEFA₁B₁C₁D₁E₁F₁, площадь основания которой равна ${S}, а боковое ребро равно ${L}.`,
+    image_url: svgUrl(hexPrismSvg()),
+    answer: ru(clean(hexBaseRatio(base) * S * L)),
+  }
+}
+
+// Призма на трапеции из четырёх вершин через одну: V = 2S·L/3.
+function t03HexPrismTrap() {
+  const i = randInt(0, 5)
+  const base = [0, 2, 3, 5].map(k => HEX_NAMES[(i + k) % 6])
+  const names = [...base, ...base.map(n => n + "1")]
+  let S, L
+  do { S = randInt(2, 14); L = randInt(2, 14) } while ((S * L) % 3 !== 0)
+  return {
+    condition_text: `Найдите объём многогранника, вершинами которого являются вершины ${hexList(names)} правильной шестиугольной призмы ABCDEFA₁B₁C₁D₁E₁F₁, площадь основания которой равна ${S}, а боковое ребро равно ${L}.`,
+    image_url: svgUrl(hexPrismSvg()),
+    answer: ru(clean(hexBaseRatio(base) * S * L)),
+  }
+}
+
 // Призма с основаниями ADA₁ и BCB₁ (треугольник ADA₁ ⟂ ребру AB):
 // V = (AD·AA₁/2)·AB = AB·AD·AA₁/2.
 function t03BoxPrismADA1() {
@@ -4756,6 +4942,16 @@ function t03PrismLateral() {
   }
 }
 
+// Обратная: боковая поверхность отсечённой призмы — половина исходной ⟹ ×2.
+function t03PrismLateralInv() {
+  const s = randInt(3, 80)
+  return {
+    condition_text: `Через среднюю линию основания треугольной призмы проведена плоскость, параллельная боковому ребру. Площадь боковой поверхности отсечённой треугольной призмы равна ${s}. Найдите площадь боковой поверхности исходной призмы.`,
+    image_url: svgUrl(prismMidlineSvg()),
+    answer: ru(2 * s),
+  }
+}
+
 // ============================================================================
 // Реестр и мета-темы
 // ============================================================================
@@ -4772,7 +4968,7 @@ export const GENERATORS_EGE_PROF = {
     t01ParMidpoint, t01ParAngle, t01ParHeights,
     t01RhombusSideDiag, t01RhombusAngle, t01TrapMidDiag],
   2: [t02DotCoord, t02DotLenAngle, t02LenCombo, t02DotOfCombos, t02GraphLenCombo],
-  3: [t03BoxTetra, t03BoxPyramid, t03BoxPyramidC1, t03BoxPyramidA1, t03BoxPrism, t03BoxTriPrism, t03BoxPrismADA1, t03PrismRightVol, t03PrismRightEdge, t03SqPrismAngle, t03TriPrismAngle, t03PrismTetraC1, t03PrismTetraB1, t03PrismPenta, t03PrismMidline, t03PrismCut, t03PrismCutRegular, t03PrismLateral, t03CylConeLateral, t03CylConeLatInverse, t03CylConeVolume, t03CylConeVolInverse, t03ConeInSphere, t03ConeInSphereInv, t03ConeSphereRadius, t03ConeSphereSlant, t03SphereInCyl, t03SphereInCylVol, t03TwoCylinders, t03CylInBox, t03CubeCut, t03CubeCutInverse, t03CubeDiagonal, t03CubeAngle, t03BoxDiagonal, t03BoxLineSin, t03BoxSection, t03BoxDiagSection, t03StepSolid, t03LSolid, t03TSolidSurface, t03SphereSection, t03ConeScale, t03ConeHeightScale],
+  3: [t03BoxTetra, t03BoxPyramid, t03BoxPyramidC1, t03BoxPyramidA1, t03BoxPrism, t03BoxTriPrism, t03BoxPrismADA1, t03PrismRightVol, t03PrismRightEdge, t03SqPrismAngle, t03TriPrismAngle, t03HexPrismAngle, t03HexPrismTri, t03HexPrismTrap, t03CylLatHeight, t03CylLatDiameter, t03MugRatio, t03TwoCylindersTaller, t03PrismTetraC1, t03PrismTetraB1, t03PrismPenta, t03PrismMidline, t03PrismCut, t03PrismCutRegular, t03PrismLateral, t03PrismLateralInv, t03CylConeLateral, t03CylConeLatInverse, t03CylConeVolume, t03CylConeVolInverse, t03ConeInSphere, t03ConeInSphereInv, t03ConeSphereRadius, t03ConeSphereSlant, t03SphereInCyl, t03SphereInCylVol, t03TwoCylinders, t03CylInBox, t03CubeCut, t03CubeCutInverse, t03CubeDiagonal, t03CubeAngle, t03BoxDiagonal, t03BoxLineSin, t03BoxSection, t03BoxDiagSection, t03StepSolid, t03LSolid, t03TSolidSurface, t03SphereSection, t03ConeScale, t03ConeHeightScale],
   4: [t04ShotPut, t04Gymnastics, t04Diving, t04Tickets, t04Markers, t04Defect, t04Lottery, t04CoinTwice, t04Rooms, t04FootballCoin],
   5: [t05Lamps, t05Between, t05Shooter4, t05Coffee, t05Battery, t05ShooterN, t05DiceCond, t05TwoThemes, t05Exact],
   6: [t06ExpReduce, t06ExpBothSides, t06LogEqLog, t06LogEqNum, t06Rational, t06Cube, t06Sqrt, t06CubeRoot],
@@ -4888,12 +5084,18 @@ export const GEN_META_EGE_PROF = {
     ["Правильная призма: углы", [
       ["sqprism-angle", "4-угольная: угол между диагоналями (60°)", t03SqPrismAngle],
       ["triprism-angle", "Треугольная: ребро и диагональ грани (45°)", t03TriPrismAngle],
+      ["hexprism-angle", "6-угольная: угол между сторонами (60°)", t03HexPrismAngle],
+    ]],
+    ["Шестиугольная призма: объём части", [
+      ["hexprism-tri", "Три подряд вершины (S·L/6)", t03HexPrismTri],
+      ["hexprism-trap", "Трапеция через одну (2S·L/3)", t03HexPrismTrap],
     ]],
     ["Треугольная призма: сечение", [
       ["prism-midline", "Средняя линия основания → объём (×4)", t03PrismMidline],
       ["prism-cut", "Средняя линия основания → отсечённая (÷4)", t03PrismCut],
       ["prism-cut-reg", "Правильная призма: отсечённая (÷4)", t03PrismCutRegular],
       ["prism-lateral", "Средняя линия основания → S бок. (÷2)", t03PrismLateral],
+      ["prism-lateral-inv", "S бок. отсечённой → S бок. исходной (×2)", t03PrismLateralInv],
     ]],
     ["Тела вращения", [
       ["cyl-cone-lat", "Цилиндр и конус (h=R): S бок. цилиндра (×2)", t03CylConeLateral],
@@ -4908,7 +5110,11 @@ export const GEN_META_EGE_PROF = {
       ["sphere-in-cyl-vol", "Шар в цилиндре: объём цилиндра (×1,5)", t03SphereInCylVol],
       ["sph-section", "Сечение шара через центр: S пов. (×4)", t03SphereSection],
       ["two-cyl", "Два цилиндра: объём второго (b²/a)", t03TwoCylinders],
+      ["two-cyl-taller", "Два цилиндра: выше и уже (a/b²)", t03TwoCylindersTaller],
       ["cyl-in-box", "Цилиндр в параллелепипеде (4R²h)", t03CylInBox],
+      ["cyl-lat-h", "S бок. + диаметр → высота цилиндра", t03CylLatHeight],
+      ["cyl-lat-d", "S бок. + высота → диаметр основания", t03CylLatDiameter],
+      ["mug-ratio", "Две кружки: отношение объёмов (k²/2)", t03MugRatio],
       ["cone-scale", "Радиус конуса ×k → объём ×k²", t03ConeScale],
       ["cone-h-scale", "Высота конуса ÷k → объём ÷k", t03ConeHeightScale],
     ]],
