@@ -1214,6 +1214,103 @@ export function t09Lens() {
 // ============================================================================
 // Реестры
 // ============================================================================
+// РАЗДЕЛ 10. Схема моста (#4) — со своим чертежом
+// ============================================================================
+const svgUrl = (svg) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+
+// Схема висячего моста: два пилона, провисающая цепь-парабола, ванты до полотна,
+// река под полотном. Чертёж СХЕМАТИЧЕСКИЙ (как в ФИПИ) — на нём нет ни одного числа,
+// но форма цепи строится по тем же a, b, c, что и в формуле условия.
+function bridgeSvg({ L, c, ymin }) {
+  const W = 560, H = 340
+  const ox = 96, oy = 232, spanPx = 330, topPx = 176
+  const sx = spanPx / L, sy = topPx / c
+  const X = (x) => ox + x * sx
+  const Y = (y) => oy - y * sy
+  const a = 4 * (c - ymin) / (L * L), b = a * L
+  const chain = (x) => a * x * x - b * x + c
+  const g = []
+  const line = (x1, y1, x2, y2, w = 1.4) => `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#111" stroke-width="${w}" stroke-linecap="round"/>`
+  const txt = (x, y, s, o = "") => `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="15" fill="#111" ${o}>${s}</text>`
+
+  // река под полотном: русло и волны — строго между берегами, не доходя до стрелки Ox
+  const bedL = ox - 30, bedR = X(L) + 30, bedTop = oy + 26
+  g.push(`<path d="M ${bedL} ${bedTop} Q ${X(L / 2)} ${bedTop + 78} ${bedR} ${bedTop}" fill="none" stroke="#111" stroke-width="1.4"/>`)
+  for (let i = 1; i <= 3; i++) {
+    const yy = bedTop + 6 + i * 16
+    const parts = []
+    for (let x = bedL + 14; x < bedR - 20; x += 26) parts.push(`M ${x} ${yy} q 6.5 -5 13 0 q 6.5 5 13 0`)
+    g.push(`<path d="${parts.join(" ")}" fill="none" stroke="#111" stroke-width="1.1"/>`)
+  }
+  // оси
+  g.push(line(ox - 52, oy, X(L) + 64, oy, 1.6))
+  g.push(`<path d="M ${X(L) + 64} ${oy} l -9 -4.5 v 9 z" fill="#111"/>`)
+  g.push(line(ox, oy + 30, ox, Y(c) - 44, 1.6))
+  g.push(`<path d="M ${ox} ${Y(c) - 44} l -4.5 9 h 9 z" fill="#111"/>`)
+  g.push(txt(X(L) + 58, oy - 8, "x", 'font-style="italic"'))
+  g.push(txt(ox + 9, Y(c) - 38, "y", 'font-style="italic"'))
+  g.push(txt(ox + 17, oy - 8, "0"))
+  // ванты с узлами на цепи
+  const kMark = 3                                   // на неё указывает выноска «ванта»
+  for (let k = 1; k <= 11; k++) {
+    const x = L * k / 12
+    g.push(line(X(x), oy, X(x), Y(chain(x)), 1.2))
+    g.push(`<circle cx="${X(x).toFixed(1)}" cy="${Y(chain(x)).toFixed(1)}" r="2.6" fill="#111"/>`)
+  }
+  // цепь
+  const pts = []
+  for (let i = 0; i <= 80; i++) { const x = L * i / 80; pts.push(`${X(x).toFixed(1)},${Y(chain(x)).toFixed(1)}`) }
+  g.push(`<polyline points="${pts.join(" ")}" fill="none" stroke="#111" stroke-width="2.4"/>`)
+  // пилоны
+  for (const x of [0, L]) {
+    g.push(`<rect x="${(X(x) - 7).toFixed(1)}" y="${Y(c).toFixed(1)}" width="14" height="${(oy - Y(c)).toFixed(1)}" fill="#fff" stroke="#111" stroke-width="1.6"/>`)
+    g.push(`<text x="${X(x) + 4.5}" y="${oy - 14}" font-size="13" fill="#111" transform="rotate(-90 ${X(x) + 4.5} ${oy - 14})">ПИЛОН</text>`)
+    g.push(`<circle cx="${X(x).toFixed(1)}" cy="${Y(c).toFixed(1)}" r="3" fill="#111"/>`)
+  }
+  // полотно моста поверх ванта
+  g.push(line(ox - 52, oy, X(L) + 64, oy, 2.6))
+  // выноски: «цепь» — к правой ветви цепи, «ванта» — к середине конкретного троса,
+  // «полотно моста» — под полотном (там пусто), чтобы подпись не легла на ванты
+  const xCep = L * 0.78, xVan = L * kMark / 12
+  g.push(txt(X(L) - 8, Y(c) - 26, "цепь"))
+  g.push(line(X(L) - 12, Y(c) - 30, X(xCep), Y(chain(xCep)) - 3, 1))
+  g.push(txt(X(L * 0.12), Y(c) - 26, "ванта"))
+  g.push(line(X(L * 0.12) + 22, Y(c) - 22, X(xVan) + 2, (oy + Y(chain(xVan))) / 2, 1))
+  g.push(txt(X(L / 2) - 46, oy + 20, "полотно моста"))
+  g.push(line(X(L / 2) - 4, oy + 8, X(L / 2) - 4, oy + 2, 1))
+  return `<svg xmlns="http://www.w3.org/2000/svg" font-family="Arial, sans-serif" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${g.join("")}</svg>`
+}
+
+// #4 y=ax²+bx+c — длина ванты, расположенной в x₀ метрах от пилона.
+// Строится от ответа: пролёт L, высота пилона c и стрела провеса ymin подобраны так,
+// что a=4(c−ymin)/L² и b=aL — короткие десятичные, а y(x₀) — ровно две цифры после запятой.
+export function t09Bridge() {
+  let L = 0, c = 0, ymin = 0, a = 0, b = 0, x0 = 0, y0 = 0
+  for (let g = 0; g < 500; g++) {
+    L = pick([150, 160, 180, 200, 240, 250])
+    c = pick([25, 28, 30, 32, 35, 40])
+    ymin = pick([2, 2.5, 3, 3.5, 4, 5])
+    a = clean(4 * (c - ymin) / (L * L))
+    b = clean(a * L)
+    x0 = 10 * randInt(3, Math.floor(L / 20))
+    y0 = clean(a * x0 * x0 - b * x0 + c)
+    const dec = (v, n) => Math.abs(v * Math.pow(10, n) - Math.round(v * Math.pow(10, n))) < 1e-9
+    if (dec(a, 4) && dec(b, 4) && dec(y0, 2) && y0 >= 2 && a >= 0.001) break
+    y0 = 0
+  }
+  if (!y0) { L = 200; c = 35; ymin = 3; a = 0.0032; b = 0.64; x0 = 70; y0 = 5.88 }
+  return {
+    condition_text: `На рисунке изображена схема моста. Вертикальные пилоны связаны провисающей цепью. Тросы, которые свисают с цепи и поддерживают полотно моста, называются вантами. Введём систему координат: ось Oy направим вертикально вверх вдоль одного из пилонов, а ось Ox направим вдоль полотна моста, как показано на рисунке. В этой системе координат линия, по которой провисает цепь моста, задаётся формулой y=${ru(a)}x²−${ru(b)}x+${c}, где x и y измеряются в метрах. Найдите длину ванты, расположенной в ${x0} метрах от пилона. Ответ дайте в метрах.`,
+    image_url: svgUrl(bridgeSvg({ L, c, ymin })),
+    answer: ru(y0),
+    verify: {
+      kind: "value", ans: y0, unit: "Ответ дайте в метрах",
+      f: () => a * x0 * x0 - b * x0 + c,
+    },
+  }
+}
+
+// ============================================================================
 export const META9 = [
   ["Экономика и рейтинги", [
     ["rate-3", "Рейтинг издания (3 показателя) → A", t09Rating3],
@@ -1272,6 +1369,9 @@ export const META9 = [
     ["diffraction", "Дифракция: мин. угол", t09Diffraction],
     ["max-height", "Высота полёта: мин. угол", t09MaxHeight],
     ["spring-energy", "Пружина: кинетическая энергия", t09SpringEnergy],
+  ]],
+  ["Схема моста", [
+    ["bridge", "Мост: длина ванты (с чертежом)", t09Bridge],
   ]],
   ["Оптика", [
     ["lens", "Линза: наименьшее расстояние", t09Lens],
