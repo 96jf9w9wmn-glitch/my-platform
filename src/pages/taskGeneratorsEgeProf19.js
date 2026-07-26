@@ -781,6 +781,7 @@ export const META19 = [
     ["board-within-3x", "Любые два отличаются не более чем втрое", t19BoardWithin3x],
     ["board-coprime-6", "Попарно взаимно простые: наименьшая сумма", t19BoardCoprimeSix],
     ["board-red-green", "Красные кратны 7, зелёные кратны 5 → наим. кол-во красных", t19BoardRedGreen],
+    ["board-frac-mean", "Дробная часть среднего → наим. среднее", t19BoardFracMean],
   ]],
 ]
 
@@ -1182,6 +1183,8 @@ const digitsOf = (n) => String(n).split("").map(Number)
 // «a₁₀» — переменная с нижним индексом (в условиях и ответах вместо a_{10}).
 const SUB_DIG = { 0: "₀", 1: "₁", 2: "₂", 3: "₃", 4: "₄", 5: "₅", 6: "₆", 7: "₇", 8: "₈", 9: "₉" }
 const aIdx = (n) => "a" + String(n).split("").map((c) => SUB_DIG[c]).join("")
+// Десятичная запись с запятой: 13.32 → «13,32».
+const ru2 = (x) => String(Math.round(x * 100) / 100).replace(".", ",")
 // Числитель, взаимно простой со знаменателем: иначе дробь сократится и довод про НОК падает.
 const coprimeTo = (q) => { const c = []; for (let r = 1; r < q; r++) if (gcdI(r, q) === 1) c.push(r); return pick(c) }
 
@@ -4307,6 +4310,91 @@ export function t19BoardRedGreen() {
       mustMention: [N, p, q, T, S],
       extra: [],
       phrases: ["Все красные числа отличаются друг от друга", "между красными и зелёными могут быть одинаковые"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 1 (продолжение). Дробная часть среднего арифметического (#97)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Несколько различных натуральных чисел, дробная часть их среднего равна a/b
+// (несократимая дробь). Если чисел n, а их сумма S, то S/n − a/b — целое, значит
+// b·S = n·(b·целое + a), откуда b | n·a, а так как НОД(a, b) = 1, то b | n.
+// Поэтому чисел не меньше b (пункт «нет»), а наименьшее среднее получается при n = b:
+// сумма не меньше b(b+1)/2 и обязана иметь вид b·m + a, откуда m = ⌈(b(b+1)/2 − a)/b⌉,
+// а среднее равно m + a/b. Увеличение n среднее только увеличивает: оно не меньше (n+1)/2.
+export function t19BoardFracMean() {
+  const FRACS = [[8, 25], [3, 25], [7, 25], [9, 25], [11, 25], [12, 25], [1, 20], [3, 20], [7, 20], [9, 20], [11, 20], [13, 20]]
+  const [a, b] = pick(FRACS)
+  const fracTxt = ru2(a / b)
+  const Xa = pick([100, 120, 150, 200].filter((v) => v > b))   // «меньше Xa чисел?» — да
+  const Xb = pick([12, 15, 16, 18, 20].filter((v) => v <= b))  // «меньше Xb чисел?» — нет
+  const m = Math.ceil((b * (b + 1) / 2 - a) / b)
+  const S = b * m + a                                          // сумма при n = b
+  const meanVal = m + a / b
+  const build = (n, total) => {                                // n различных, сумма total
+    const arr = Array.from({ length: n }, (_, i) => i + 1)
+    arr[n - 1] += total - n * (n + 1) / 2
+    return arr
+  }
+  const exC = build(b, S)
+  const exA = build(b, S)                                      // b < Xa чисел — тот же набор
+
+  const params = { a, b, Xa, Xb }
+  const check = (cfg, part) => {
+    if (!Array.isArray(cfg) || cfg.length < 2) return "нужно несколько чисел"
+    for (const v of cfg) if (!Number.isInteger(v) || v < 1) return `${v} — не натуральное число`
+    if (uniq(cfg).length !== cfg.length) return "числа обязаны быть различными"
+    const n = cfg.length, total = sum(cfg)
+    if ((total * b - n * a) % (n * b) !== 0) return `дробная часть среднего ${total}/${n} не равна ${fracTxt}`
+    if (part === "a" && n >= Xa) return `чисел ${n}, а нужно меньше ${Xa}`
+    if (part === "c" && Math.abs(total / n - meanVal) > 1e-9) return `среднее ${total / n}, а заявлено ${meanVal}`
+    return null
+  }
+  // Независимый перебор: по количеству чисел n и по сумме S (снизу от минимально
+  // возможной n(n+1)/2). Любая сумма, не меньшая минимальной, достижима — наибольшее
+  // число увеличивается на нужную величину. Верхняя граница n обоснована тем, что
+  // среднее не меньше (n + 1)/2 и при больших n заведомо хуже найденного минимума.
+  const solve = (P) => {
+    const okCount = (n) => {
+      const lo = n * (n + 1) / 2
+      for (let s = lo; s < lo + n * P.b + P.b; s++) if ((s * P.b - n * P.a) % (n * P.b) === 0) return true
+      return false
+    }
+    let anyBelow = false, belowXb = false, best = Infinity
+    for (let n = 2; n <= 4 * P.b; n++) {
+      if (!okCount(n)) continue
+      if (n < P.Xa) anyBelow = true
+      if (n < P.Xb) belowXb = true
+      if ((n + 1) / 2 > best) break
+      const lo = n * (n + 1) / 2
+      for (let s = lo; s < lo + n * P.b + P.b; s++) {
+        if ((s * P.b - n * P.a) % (n * P.b) === 0) { best = Math.min(best, s / n); break }
+      }
+    }
+    return { a: anyBelow, b: belowXb, c: best }
+  }
+
+  return item({
+    preamble: `На доске написано несколько различных натуральных чисел. Дробная часть среднего арифметического этих чисел равна ${fracTxt} (то есть если вычесть из среднего арифметического этих чисел ${fracTxt}, то получится целое число).`,
+    qa: `Могло ли на доске быть написано меньше ${Xa} чисел?`,
+    qb: `Могло ли на доске быть написано меньше ${Xb} чисел?`,
+    qc: `Найдите наименьшее возможное значение среднего арифметического этих чисел.`,
+    ansA: `да, например ${b} чисел: ${exA.slice(0, 4).join(", ")}, …, ${exA[b - 2]}, ${exA[b - 1]} (их сумма ${S}, среднее ${ru2(meanVal)})`,
+    ansB: `нет: если чисел n, а сумма равна S, то S/n − ${fracTxt} — целое число, поэтому ${b}S = n·(${b}·целое + ${a}) и ${b} делит n·${a}. Числа ${a} и ${b} взаимно просты, значит ${b} делит n, и чисел не меньше ${b} > ${Xb - 1}`,
+    ansC: `${ru2(meanVal)}; например ${exC.slice(0, 4).join(", ")}, …, ${exC[b - 2]}, ${exC[b - 1]}`,
+    solution: `Пусть на доске n различных натуральных чисел с суммой S. По условию S/n − ${fracTxt} — целое число, то есть ${b}S − ${a}n делится на ${b}n. В частности ${b} делит ${a}n, а так как ${a} и ${b} взаимно просты, ${b} делит n.\nа) Можно взять ровно ${b} чисел, это меньше ${Xa}.\nб) Из делимости n на ${b} следует n ≥ ${b}, а ${b} ≥ ${Xb}, поэтому меньше ${Xb} чисел быть не могло.\nв) Среднее равно S/n, а сумма n различных натуральных чисел не меньше n(n + 1)/2, поэтому среднее не меньше (n + 1)/2. Значит выгодно брать наименьшее допустимое n = ${b}. Тогда сумма имеет вид ${b}m + ${a} и не меньше ${b * (b + 1) / 2}, откуда m ≥ ${m} и S ≥ ${S}. Такая сумма достигается на наборе 1, 2, …, ${b - 1}, ${exC[b - 1]}, и среднее равно ${ru2(meanVal)}.\nОтвет: ${ru2(meanVal)}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: Xa },
+        b: { type: "yesno", yes: false, reason: "divisibility-of-count", target: Xb },
+        c: { type: "value", value: meanVal, example: exC },
+      },
+      mustMention: [Xa, Xb],
+      extra: [a, b, ...String(fracTxt).split(/\D+/).filter(Boolean).map(Number)],
+      phrases: ["различных натуральных чисел", "Дробная часть среднего арифметического"],
     },
   })
 }
