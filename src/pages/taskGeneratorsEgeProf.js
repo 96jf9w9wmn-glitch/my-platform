@@ -5056,6 +5056,57 @@ function t03TriPrismAngle() {
   }
 }
 
+// Правильная 4-угольная пирамида SABCD с точкой E — серединой бокового ребра SB.
+// Жирным выделен тетраэдр EABC, рёбра к скрытой вершине C — жирным штрихом.
+function pyrMidEdgeSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 330 340" width="330" height="340" font-family="Arial, sans-serif">` +
+    `<rect width="330" height="340" fill="#fff"/>` +
+    // скрытое боковое ребро SC
+    `<line x1="157.5" y1="60" x2="125" y2="225" stroke="#000" stroke-width="1.2" stroke-dasharray="6 5" pathLength="168"/>` +
+    // рёбра тетраэдра к скрытой вершине C
+    `<line x1="190" y1="290" x2="125" y2="225" stroke="#000" stroke-width="2" stroke-dasharray="7 5" pathLength="92"/>` +
+    `<line x1="125" y1="225" x2="275" y2="250" stroke="#000" stroke-width="2" stroke-dasharray="7 5" pathLength="152"/>` +
+    `<line x1="125" y1="225" x2="216" y2="155" stroke="#000" stroke-width="2" stroke-dasharray="7 5" pathLength="115"/>` +
+    // каркас пирамиды
+    `<line x1="157.5" y1="60" x2="40" y2="265" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="157.5" y1="60" x2="190" y2="290" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="157.5" y1="60" x2="275" y2="250" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="40" y1="265" x2="190" y2="290" stroke="#000" stroke-width="1.3"/>` +
+    `<line x1="40" y1="265" x2="125" y2="225" stroke="#000" stroke-width="1.3"/>` +
+    // тетраэдр EABC (видимые рёбра)
+    `<line x1="190" y1="290" x2="275" y2="250" stroke="#000" stroke-width="2.4"/>` +
+    `<line x1="275" y1="250" x2="216" y2="155" stroke="#000" stroke-width="2.4"/>` +
+    `<line x1="216" y1="155" x2="190" y2="290" stroke="#000" stroke-width="2.4"/>` +
+    // подписи
+    `<g font-size="17" font-style="italic" fill="#000" stroke="none" text-anchor="middle">` +
+    `<text x="157" y="45">S</text><text x="28" y="282">D</text><text x="192" y="313">A</text>` +
+    `<text x="292" y="248">B</text><text x="112" y="214">C</text><text x="234" y="146">E</text>` +
+    `</g></svg>`
+}
+
+// Основание ABC — половина ABCD, высота из E — половина высоты пирамиды ⟹ V_EABC = V/4.
+function t03PyrMidEdge() {
+  const v = 4 * randInt(2, 50)
+  return {
+    condition_text: `Объём правильной четырёхугольной пирамиды SABCD равен ${v}. Точка E — середина ребра SB. Найдите объём треугольной пирамиды EABC.`,
+    image_url: svgUrl(pyrMidEdgeSvg()),
+    answer: ru(v / 4),
+  }
+}
+
+// Тетраэдр «верхнее основание + одна вершина нижнего» правильной треугольной призмы:
+// основание A₁B₁C₁ площади S, высота — боковое ребро L ⟹ V = S·L/3.
+function t03PrismTetraTop() {
+  const apex = pick(["A", "B", "C"])
+  let s, l
+  do { s = randInt(2, 14); l = randInt(2, 14) } while ((s * l) % 3 !== 0)
+  const names = `${apex}, A₁, B₁, C₁`
+  const text = Math.random() < 0.5
+    ? `Найдите объём многогранника, вершинами которого являются точки ${names} правильной треугольной призмы ABCA₁B₁C₁, площадь основания которой равна ${s}, а боковое ребро равно ${l}.`
+    : `Дана правильная треугольная призма ABCA₁B₁C₁, площадь основания которой равна ${s}, а боковое ребро равно ${l}. Найдите объём многогранника, вершинами которого являются точки ${names}.`
+  return { condition_text: text, image_url: svgUrl(triPrismSvg()), answer: ru(s * l / 3) }
+}
+
 // Правильная шестиугольная призма ABCDEFA₁B₁C₁D₁E₁F₁ (ФИПИ): задние вершины E и F
 // скрыты — рёбра AF, FE, ED и боковые FF₁, EE₁ штрихом; подписи B₁, C₁, E, F внутри.
 function hexPrismSvg() {
@@ -5208,7 +5259,7 @@ export const GENERATORS_EGE_PROF = {
     t01ParMidpoint, t01ParAngle, t01ParHeights,
     t01RhombusSideDiag, t01RhombusAngle, t01TrapMidDiag],
   2: [t02DotCoord, t02DotLenAngle, t02LenCombo, t02DotOfCombos, t02GraphLenCombo],
-  3: [t03BoxTetra, t03BoxPyramid, t03BoxPyramidC1, t03BoxPyramidA1, t03BoxPrism, t03BoxTriPrism, t03BoxPrismADA1, t03PrismRightVol, t03PrismRightEdge, t03SqPrismAngle, t03TriPrismAngle, t03HexPrismAngle, t03HexPrismTri, t03HexPrismTrap, t03CylLatHeight, t03CylLatDiameter, t03MugRatio, t03TwoCylindersTaller, t03LiquidWider, t03LiquidNarrower, t03Submerge, t03SubmergeAbs, t03ConeHeight, t03ConeDiameter, t03ConeAxialFromBase, t03ConeAxialFromSlant, t03ConeLatScale, t03ConeLatScaleDown, t03ConeParSect, t03ConeFullSurfSect, t03ConeVessel, t03PrismTetraC1, t03PrismTetraB1, t03PrismPenta, t03PrismMidline, t03PrismCut, t03PrismCutRegular, t03PrismLateral, t03PrismLateralInv, t03CylConeLateral, t03CylConeLatInverse, t03CylConeVolume, t03CylConeVolInverse, t03ConeInSphere, t03ConeInSphereInv, t03ConeSphereRadius, t03ConeSphereSlant, t03SphereInCyl, t03SphereInCylVol, t03TwoCylinders, t03CylInBox, t03CubeCut, t03CubeCutInverse, t03CubeDiagonal, t03CubeAngle, t03BoxDiagonal, t03BoxLineSin, t03BoxSection, t03BoxDiagSection, t03StepSolid, t03LSolid, t03TSolidSurface, t03SphereSection, t03ConeScale, t03ConeHeightScale],
+  3: [t03BoxTetra, t03BoxPyramid, t03BoxPyramidC1, t03BoxPyramidA1, t03BoxPrism, t03BoxTriPrism, t03BoxPrismADA1, t03PrismRightVol, t03PrismRightEdge, t03SqPrismAngle, t03TriPrismAngle, t03HexPrismAngle, t03HexPrismTri, t03HexPrismTrap, t03CylLatHeight, t03CylLatDiameter, t03MugRatio, t03TwoCylindersTaller, t03LiquidWider, t03LiquidNarrower, t03Submerge, t03SubmergeAbs, t03ConeHeight, t03ConeDiameter, t03ConeAxialFromBase, t03ConeAxialFromSlant, t03ConeLatScale, t03ConeLatScaleDown, t03ConeParSect, t03ConeFullSurfSect, t03ConeVessel, t03PrismTetraTop, t03PyrMidEdge, t03PrismTetraC1, t03PrismTetraB1, t03PrismPenta, t03PrismMidline, t03PrismCut, t03PrismCutRegular, t03PrismLateral, t03PrismLateralInv, t03CylConeLateral, t03CylConeLatInverse, t03CylConeVolume, t03CylConeVolInverse, t03ConeInSphere, t03ConeInSphereInv, t03ConeSphereRadius, t03ConeSphereSlant, t03SphereInCyl, t03SphereInCylVol, t03TwoCylinders, t03CylInBox, t03CubeCut, t03CubeCutInverse, t03CubeDiagonal, t03CubeAngle, t03BoxDiagonal, t03BoxLineSin, t03BoxSection, t03BoxDiagSection, t03StepSolid, t03LSolid, t03TSolidSurface, t03SphereSection, t03ConeScale, t03ConeHeightScale],
   4: [t04ShotPut, t04Gymnastics, t04Diving, t04Tickets, t04Markers, t04Defect, t04Lottery, t04CoinTwice, t04Rooms, t04FootballCoin],
   5: [t05Lamps, t05Between, t05Shooter4, t05Coffee, t05Battery, t05ShooterN, t05DiceCond, t05TwoThemes, t05Exact],
   6: [t06ExpReduce, t06ExpBothSides, t06LogEqLog, t06LogEqNum, t06Rational, t06Cube, t06Sqrt, t06CubeRoot],
@@ -5315,7 +5366,11 @@ export const GEN_META_EGE_PROF = {
     ["Правильная призма: объём части", [
       ["prism-tetra-c1", "Тетраэдр A,B,C,C₁ (S·L/3)", t03PrismTetraC1],
       ["prism-tetra-b1", "Тетраэдр A,B,C,B₁ (S·L/3)", t03PrismTetraB1],
+      ["prism-tetra-top", "Тетраэдр A₁,B₁,C₁ + нижняя вершина (S·L/3)", t03PrismTetraTop],
       ["prism-penta", "Тело B,C,A₁,B₁,C₁ (2S·L/3)", t03PrismPenta],
+    ]],
+    ["Пирамида", [
+      ["pyr-mid-edge", "Середина бокового ребра: V треугольной пирамиды (÷4)", t03PyrMidEdge],
     ]],
     ["Прямая призма: прямоугольный треугольник", [
       ["prism-rt-vol", "Катеты + боковое ребро → объём", t03PrismRightVol],
