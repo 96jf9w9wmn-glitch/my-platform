@@ -1222,63 +1222,79 @@ const svgUrl = (svg) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(s
 // река под полотном. Чертёж СХЕМАТИЧЕСКИЙ (как в ФИПИ) — на нём нет ни одного числа,
 // но форма цепи строится по тем же a, b, c, что и в формуле условия.
 function bridgeSvg({ L, c, ymin }) {
-  const W = 560, H = 340
-  const ox = 96, oy = 232, spanPx = 330, topPx = 176
+  const W = 620, H = 470
+  const ox = 150, oy = 258, spanPx = 330, topPx = 196
   const sx = spanPx / L, sy = topPx / c
   const X = (x) => ox + x * sx
   const Y = (y) => oy - y * sy
   const a = 4 * (c - ymin) / (L * L), b = a * L
   const chain = (x) => a * x * x - b * x + c
+  const xR = X(L), yTop = Y(c)
   const g = []
-  const line = (x1, y1, x2, y2, w = 1.4) => `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#111" stroke-width="${w}" stroke-linecap="round"/>`
-  const txt = (x, y, s, o = "") => `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="15" fill="#111" ${o}>${s}</text>`
+  const P = (n) => n.toFixed(1)
+  const line = (x1, y1, x2, y2, w = 1.4) => `<line x1="${P(x1)}" y1="${P(y1)}" x2="${P(x2)}" y2="${P(y2)}" stroke="#111" stroke-width="${w}" stroke-linecap="round"/>`
+  const txt = (x, y, s, o = "") => `<text x="${P(x)}" y="${P(y)}" font-size="21" font-family="'Times New Roman', Georgia, serif" fill="#111" ${o}>${s}</text>`
 
-  // река под полотном: русло и волны — строго между берегами, не доходя до стрелки Ox
-  const bedL = ox - 30, bedR = X(L) + 30, bedTop = oy + 26
-  g.push(`<path d="M ${bedL} ${bedTop} Q ${X(L / 2)} ${bedTop + 78} ${bedR} ${bedTop}" fill="none" stroke="#111" stroke-width="1.4"/>`)
-  for (let i = 1; i <= 3; i++) {
-    const yy = bedTop + 6 + i * 16
-    const parts = []
-    for (let x = bedL + 14; x < bedR - 20; x += 26) parts.push(`M ${x} ${yy} q 6.5 -5 13 0 q 6.5 5 13 0`)
-    g.push(`<path d="${parts.join(" ")}" fill="none" stroke="#111" stroke-width="1.1"/>`)
+  // ── река: русло — парабола через берега и дно; волны строго внутри чаши,
+  // пилоны опускаются до дна (как на схеме ФИПИ)
+  const bedL = 26, bedR = W - 26, bedBot = 430
+  const bcx = (bedL + bedR) / 2, bhalf = (bedR - bedL) / 2, bdep = bedBot - oy
+  const bedY = (x) => oy + bdep * (1 - Math.pow((x - bcx) / bhalf, 2))
+  const bedHalfAt = (y) => bhalf * Math.sqrt(Math.max(0, 1 - (y - oy) / bdep))
+  g.push(`<path d="M ${bedL} ${oy} Q ${bcx} ${oy + 2 * bdep} ${bedR} ${oy}" fill="none" stroke="#111" stroke-width="2"/>`)
+  for (let i = 0; i < 3; i++) {
+    const yy = oy + 46 + i * 34
+    const half = bedHalfAt(yy) - 16
+    const parts = [`M ${P(bcx - half)} ${yy}`]
+    for (let x = bcx - half; x < bcx + half - 46; x += 46) parts.push(`q 11.5 -11 23 0 q 11.5 11 23 0`)
+    g.push(`<path d="${parts.join(" ")}" fill="none" stroke="#111" stroke-width="2"/>`)
   }
-  // оси
-  g.push(line(ox - 52, oy, X(L) + 64, oy, 1.6))
-  g.push(`<path d="M ${X(L) + 64} ${oy} l -9 -4.5 v 9 z" fill="#111"/>`)
-  g.push(line(ox, oy + 30, ox, Y(c) - 44, 1.6))
-  g.push(`<path d="M ${ox} ${Y(c) - 44} l -4.5 9 h 9 z" fill="#111"/>`)
-  g.push(txt(X(L) + 58, oy - 8, "x", 'font-style="italic"'))
-  g.push(txt(ox + 9, Y(c) - 38, "y", 'font-style="italic"'))
-  g.push(txt(ox + 17, oy - 8, "0"))
-  // ванты с узлами на цепи
-  const kMark = 3                                   // на неё указывает выноска «ванта»
+
+  // ── оттяжки: от вершины пилона наклонной прямой к берегу (как на схеме ФИПИ)
+  g.push(line(ox, yTop, bedL + 6, oy, 2.4))
+  g.push(line(xR, yTop, bedR - 6, oy, 2.4))
+
+  // ── ванты (вертикальные тросы) с узлами на цепи
   for (let k = 1; k <= 11; k++) {
     const x = L * k / 12
-    g.push(line(X(x), oy, X(x), Y(chain(x)), 1.2))
-    g.push(`<circle cx="${X(x).toFixed(1)}" cy="${Y(chain(x)).toFixed(1)}" r="2.6" fill="#111"/>`)
+    g.push(line(X(x), oy, X(x), Y(chain(x)), 1.8))
+    g.push(`<circle cx="${P(X(x))}" cy="${P(Y(chain(x)))}" r="3.4" fill="#111"/>`)
   }
-  // цепь
+  // ── цепь
   const pts = []
-  for (let i = 0; i <= 80; i++) { const x = L * i / 80; pts.push(`${X(x).toFixed(1)},${Y(chain(x)).toFixed(1)}`) }
-  g.push(`<polyline points="${pts.join(" ")}" fill="none" stroke="#111" stroke-width="2.4"/>`)
-  // пилоны
-  for (const x of [0, L]) {
-    g.push(`<rect x="${(X(x) - 7).toFixed(1)}" y="${Y(c).toFixed(1)}" width="14" height="${(oy - Y(c)).toFixed(1)}" fill="#fff" stroke="#111" stroke-width="1.6"/>`)
-    g.push(`<text x="${X(x) + 4.5}" y="${oy - 14}" font-size="13" fill="#111" transform="rotate(-90 ${X(x) + 4.5} ${oy - 14})">ПИЛОН</text>`)
-    g.push(`<circle cx="${X(x).toFixed(1)}" cy="${Y(c).toFixed(1)}" r="3" fill="#111"/>`)
+  for (let i = 0; i <= 80; i++) { const x = L * i / 80; pts.push(`${P(X(x))},${P(Y(chain(x)))}`) }
+  g.push(`<polyline points="${pts.join(" ")}" fill="none" stroke="#111" stroke-width="3.2"/>`)
+
+  // ── пилоны: сквозные линии от дна реки до вершины, подпись вдоль
+  for (const px of [ox, xR]) {
+    g.push(line(px, yTop, px, bedY(px) - 4, 3.4))
+    g.push(`<circle cx="${P(px)}" cy="${P(yTop)}" r="4.5" fill="#111"/>`)
+    const lx = px === ox ? px - 6 : px + 20
+    g.push(`<text x="${P(lx)}" y="${P(oy - 22)}" font-size="19" font-family="'Times New Roman', Georgia, serif" fill="#111" transform="rotate(-90 ${P(lx)} ${P(oy - 22)})">ПИЛОН</text>`)
   }
-  // полотно моста поверх ванта
-  g.push(line(ox - 52, oy, X(L) + 64, oy, 2.6))
-  // выноски: «цепь» — к правой ветви цепи, «ванта» — к середине конкретного троса,
-  // «полотно моста» — под полотном (там пусто), чтобы подпись не легла на ванты
-  const xCep = L * 0.78, xVan = L * kMark / 12
-  g.push(txt(X(L) - 8, Y(c) - 26, "цепь"))
-  g.push(line(X(L) - 12, Y(c) - 30, X(xCep), Y(chain(xCep)) - 3, 1))
-  g.push(txt(X(L * 0.12), Y(c) - 26, "ванта"))
-  g.push(line(X(L * 0.12) + 22, Y(c) - 22, X(xVan) + 2, (oy + Y(chain(xVan))) / 2, 1))
-  g.push(txt(X(L / 2) - 46, oy + 20, "полотно моста"))
-  g.push(line(X(L / 2) - 4, oy + 8, X(L / 2) - 4, oy + 2, 1))
-  return `<svg xmlns="http://www.w3.org/2000/svg" font-family="Arial, sans-serif" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${g.join("")}</svg>`
+
+  // ── оси: Ox идёт по полотну моста, Oy — вдоль левого пилона
+  g.push(line(bedL - 8, oy, W - 14, oy, 3))
+  g.push(`<path d="M ${W - 8} ${oy} l -13 -6.5 v 13 z" fill="#111"/>`)
+  g.push(line(ox, oy, ox, yTop - 52, 3))
+  g.push(`<path d="M ${P(ox)} ${P(yTop - 60)} l -6.5 13 h 13 z" fill="#111"/>`)
+  g.push(txt(W - 34, oy + 30, "x", 'font-style="italic"'))
+  g.push(txt(ox - 32, yTop - 52, "y", 'font-style="italic"'))
+  g.push(txt(ox + 12, oy + 28, "0"))
+
+  // ── выноски: «цепь» и «ванта» — по две (влево и вправо), как на схеме ФИПИ
+  const cepX = X(L / 2) - 34, cepY = yTop + 56
+  g.push(txt(cepX, cepY, "цепь"))
+  g.push(line(cepX - 4, cepY - 6, X(L * 0.22), Y(chain(L * 0.22)) + 4, 1.3))
+  g.push(line(cepX + 60, cepY - 6, X(L * 0.80), Y(chain(L * 0.80)) + 4, 1.3))
+  const vanX = X(L / 2) - 26, vanY = yTop + 132
+  g.push(txt(vanX, vanY, "ванта"))
+  g.push(line(vanX - 4, vanY - 6, X(L * 2 / 12) + 1, (oy + Y(chain(L * 2 / 12))) / 2, 1.3))
+  g.push(line(vanX + 74, vanY - 6, X(L * 10 / 12) - 1, (oy + Y(chain(L * 10 / 12))) / 2, 1.3))
+  const polX = X(L / 2) - 20, polY = oy + 30
+  g.push(txt(polX, polY, "полотно моста"))
+  g.push(line(polX - 6, polY - 8, X(L * 5 / 12) - 4, oy - 3, 1.3))
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${g.join("")}</svg>`
 }
 
 // #4 y=ax²+bx+c — длина ванты, расположенной в x₀ метрах от пилона.
