@@ -759,6 +759,7 @@ export const META19 = [
     ["game-stars", "Звёзды и заряд: число уровней и наиб. очки", t19GameStars],
     ["photos-diff", "Фотографии: делители разницы и наиб. сумма", t19PhotosDiff],
     ["letters-girls", "Письма девушкам: наим. и наиб. размер группы", t19LettersGirls],
+    ["rabbits-food", "Кролики и порции: наиб. число кроликов", t19RabbitsFood],
   ]],
   ["Вася и Петя решают сборник", [
     ["vasya-petya-days", "Оба решили сборник: за сколько дней и наим. число задач", t19VasyaPetyaDays],
@@ -7299,6 +7300,154 @@ export function t19LettersGirls() {
       mustMention: [p, q, exARow.r],
       extra: [],
       phrases: ["поровну юношей и девушек", "не менее двух"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 17 (продолжение). Кролики и порции корма (#67)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// K учеников насыпают корм: i-й даёт порции по i сотен граммов, каждый кормит хотя бы
+// одного кролика, но не всех. Значит каждый кролик получает сумму некоторого
+// ПОДМНОЖЕСТВА чисел 1…K, то есть одно из K(K+1)/2 + 1 значений (от 0 до 1+…+K).
+// • Все получили разное ⟹ кроликов не больше числа этих значений (пункт «нет»).
+// • Если каждый ученик кормит ровно F кроликов, то суммарно роздано F·(1+…+K) сотен
+//   граммов, а различные ненулевые значения дают в сумме не меньше 1+2+…+k, откуда
+//   ограничение на k; плюс один кролик может остаться без корма.
+export function t19RabbitsFood() {
+  const K = 4, F = pick([3, 4, 5])
+  const SUB = []
+  for (let mask = 0; mask < (1 << K); mask++) {
+    let s = 0
+    for (let i = 0; i < K; i++) if (mask & (1 << i)) s += i + 1
+    SUB.push({ mask, s })
+  }
+  const maxSum = K * (K + 1) / 2
+  const values = maxSum + 1                                // сколько различных значений бывает
+  const Nab = pick([values + 2, values + 4, values + 7])   // кроликов больше, чем значений
+  // а) все получили поровну: два непересекающихся набора с равной суммой, покрывающие всех
+  let exA = null
+  for (const c of [5, 6, 7]) {
+    const pairs = SUB.filter((x) => x.s === c && x.mask)
+    for (let i = 0; i < pairs.length && !exA; i++) {
+      for (let j = i + 1; j < pairs.length; j++) {
+        if ((pairs[i].mask & pairs[j].mask) === 0 && (pairs[i].mask | pairs[j].mask) === (1 << K) - 1) {
+          exA = { groups: [{ mask: pairs[i].mask, cnt: 1 }, { mask: pairs[j].mask, cnt: Nab - 1 }], per: c }
+          break
+        }
+      }
+    }
+    if (exA) break
+  }
+  if (!exA) return null
+  // в) наибольшее число кроликов: перебор наборов подмножеств, где каждое число 1…K
+  // встречается ровно F раз, а суммы попарно различны
+  let best = null
+  const chosen = []
+  const cnt = Array(K).fill(0)
+  const usedSums = new Set()
+  const dfs = (idx) => {
+    if (cnt.every((c) => c === F)) {
+      const total = chosen.length + 1                       // плюс кролик без корма
+      if (!best || total > best.total) best = { total, sets: [...chosen] }
+    }
+    if (idx >= SUB.length) return
+    for (let i = idx; i < SUB.length; i++) {
+      const { mask, s } = SUB[i]
+      if (!mask || usedSums.has(s)) continue
+      let ok = true
+      for (let b = 0; b < K; b++) if ((mask & (1 << b)) && cnt[b] + 1 > F) ok = false
+      if (!ok) continue
+      for (let b = 0; b < K; b++) if (mask & (1 << b)) cnt[b]++
+      usedSums.add(s); chosen.push(mask)
+      dfs(i + 1)
+      chosen.pop(); usedSums.delete(s)
+      for (let b = 0; b < K; b++) if (mask & (1 << b)) cnt[b]--
+    }
+  }
+  dfs(0)
+  if (!best) return null
+
+  const params = { K, F, Nab, values, best: best.total }
+  const setSum = (mask) => SUB.find((x) => x.mask === mask).s
+  const check = (cfg, part) => {
+    if (!cfg || !Array.isArray(cfg.rabbits)) return "нет раздачи корма"
+    const N = cfg.rabbits.length
+    if (!N) return "кроликов нет"
+    for (const mask of cfg.rabbits) if (!Number.isInteger(mask) || mask < 0 || mask >= (1 << K)) return "неверный набор учеников"
+    const per = Array(K).fill(0)
+    for (const mask of cfg.rabbits) for (let b = 0; b < K; b++) if (mask & (1 << b)) per[b]++
+    for (let b = 0; b < K; b++) {
+      if (per[b] < 1) return `ученик №${b + 1} никого не покормил`
+      if (per[b] >= N) return `ученик №${b + 1} покормил всех кроликов, а должен не всех`
+    }
+    const sums = cfg.rabbits.map(setSum)
+    if (part === "a") {
+      if (N !== Nab) return `кроликов ${N}, а нужно ${Nab}`
+      if (uniq(sums).length !== 1) return "не все кролики получили поровну"
+      return null
+    }
+    if (part === "c") {
+      if (uniq(sums).length !== sums.length) return "кролики должны получить разное количество корма"
+      for (let b = 0; b < K; b++) if (per[b] !== F) return `ученик №${b + 1} покормил ${per[b]} кроликов вместо ${F}`
+      if (N !== best.total) return `кроликов ${N}, а заявлено ${best.total}`
+    }
+    return null
+  }
+  // Независимый перебор: все наборы подмножеств с попарно различными суммами.
+  const solve = (P) => {
+    let top = 0
+    const c2 = Array(P.K).fill(0)
+    const used = new Set()
+    let picked = 0
+    const walk = (idx) => {
+      if (c2.every((c) => c === P.F) && picked + 1 > top) top = picked + 1
+      for (let i = idx; i < SUB.length; i++) {
+        const { mask, s } = SUB[i]
+        if (!mask || used.has(s)) continue
+        let ok = true
+        for (let b = 0; b < P.K; b++) if ((mask & (1 << b)) && c2[b] + 1 > P.F) ok = false
+        if (!ok) continue
+        for (let b = 0; b < P.K; b++) if (mask & (1 << b)) c2[b]++
+        used.add(s); picked++
+        walk(i + 1)
+        picked--; used.delete(s)
+        for (let b = 0; b < P.K; b++) if (mask & (1 << b)) c2[b]--
+      }
+    }
+    walk(0)
+    return { a: true, b: P.Nab <= P.values, c: top, c_next: false }
+  }
+
+  const exARabbits = []
+  for (const g of exA.groups) for (let i = 0; i < g.cnt; i++) exARabbits.push(g.mask)
+  const exC = { rabbits: [...best.sets, 0] }
+  const nameOf = (mask) => {
+    const who = []
+    for (let b = 0; b < K; b++) if (mask & (1 << b)) who.push(b + 1)
+    return who.length ? `от ${who.map((x) => `${x}-го`).join(", ")}` : "ни от кого"
+  }
+  const gram = (s) => `${s * 100} г`
+  return item({
+    preamble: `В школьном живом уголке ${K} ученика кормят кроликов. Каждый ученик насыпает нескольким кроликам (хотя бы одному, но не всем) порцию корма. При этом первый ученик даёт порции по 100 г, второй — по 200 г, третий — по 300 г, четвёртый — по 400 г, а какие-то кролики могут остаться без корма.`,
+    qa: `Может ли оказаться, что кроликов было ${Nab} и все они получили одинаковое количество корма?`,
+    qb: `Может ли оказаться, что кроликов было ${Nab} и все кролики получили разное количество корма?`,
+    qc: `Какое наибольшее количество кроликов могло быть в живом уголке, если известно, что каждый ученик засыпал корм ровно ${F} кроликам и все кролики получили разное количество корма?`,
+    ansA: `да: пусть ${exA.groups[0].cnt} ${plural(exA.groups[0].cnt, "кролик получает корм", "кролика получают корм", "кроликов получают корм")} ${nameOf(exA.groups[0].mask)} ученика, а остальные ${exA.groups[1].cnt} — ${nameOf(exA.groups[1].mask)}; тогда каждый кролик получит по ${gram(exA.per)}`,
+    ansB: `нет: каждый кролик получает сумму порций тех учеников, которые его покормили, то есть одно из значений от 0 до ${gram(maxSum)} с шагом 100 г — всего ${values} ${plural(values, "значение", "значения", "значений")}. Кроликов же ${Nab}, то есть больше, чем ${values}, поэтому у каких-то двух количество корма совпадёт`,
+    ansC: `${best.total}; например ${best.sets.length} ${plural(best.sets.length, "кролик получает", "кролика получают", "кроликов получают")} корм от наборов учеников ${best.sets.map(nameOf).join("; ")}, и ещё один остаётся без корма`,
+    solution: `Каждый кролик получает сумму порций тех учеников, которые его покормили, то есть 100 г, умноженные на сумму некоторого подмножества чисел 1, 2, …, ${K}. Всего таких значений ${values} (от 0 до ${gram(maxSum)}).\nа) Достаточно разбить кроликов на две группы: одних кормят ученики ${nameOf(exA.groups[0].mask)}, других — ${nameOf(exA.groups[1].mask)}; обе суммы равны ${gram(exA.per)}, а каждый ученик покормил кого-то, но не всех.\nб) Кроликов ${Nab}, а различных значений всего ${values} — по принципу Дирихле у каких-то двух кроликов количество корма совпадёт.\nв) Если каждый ученик кормит ровно ${F} кроликов, роздано ${F}·${maxSum} = ${F * maxSum} сотен граммов. Кролики с кормом получили различные суммы, поэтому их не больше ${best.sets.length}; ещё один кролик может остаться без корма. Пример: наборы ${best.sets.map(nameOf).join("; ")}.\nОтвет: ${best.total}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: { rabbits: exARabbits }, target: `same-${Nab}` },
+        b: { type: "yesno", yes: false, reason: "pigeonhole", target: `diff-${Nab}` },
+        c: { type: "extremum", mode: "max", value: best.total, example: exC },
+      },
+      mustMention: [K, Nab, F, 100, 200, 300, 400],
+      extra: [],
+      phrases: ["хотя бы одному, но не всем", "могут остаться без корма"],
     },
   })
 }
