@@ -750,6 +750,9 @@ export const META19 = [
     ["swap-digits-max", "Перестановка цифр двузначных → наибольшая новая сумма", t19SwapDigitsMax],
     ["swap-digits-min", "Перестановка цифр двузначных → наименьшая новая сумма", t19SwapDigitsMin],
   ]],
+  ["Вася и Петя решают сборник", [
+    ["vasya-petya-days", "Оба решили сборник: за сколько дней и наим. число задач", t19VasyaPetyaDays],
+  ]],
   ["Две школы, средний балл", [
     ["schools-drop-min", "Средние упали на 10 % → наим. исходный средний в №2", t19SchoolsDropMin],
     ["schools-rise-min", "Средние выросли на 10 % → наим. исходный средний в №2", t19SchoolsRiseMin],
@@ -6100,6 +6103,109 @@ export function t19SchoolsMoveMaxCount() {
       mustMention: [C, 1, 2, 10],
       extra: [],
       phrases: ["по крайней мере, 2 учащихся", "средний балл за тест был целым числом", "уменьшился на 10 %"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 18. Вася и Петя решают сборник (#78)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Оба решили ВЕСЬ сборник из N задач, начав в один день. Вася каждый день решает на 1
+// задачу больше предыдущего, Петя — на 2. Если Вася решал a дней и в первый день решил
+// v задач, а Петя — b дней по p задач в первый, то
+//   N = av + a(a − 1)/2 = bp + b(b − 1).
+// Если оба уложились в ОДНО И ТО ЖЕ число дней d, то dv + d(d−1)/2 = dp + d(d−1), то есть
+//   v − p = (d − 1)/2,
+// и при ЧЁТНОМ d это невозможно (слева целое, справа — нет). Это ключ к пунктам а) и б).
+const vpV = (a, v) => a * v + a * (a - 1) / 2
+const vpP = (b, p) => b * p + b * (b - 1)
+
+export function t19VasyaPetyaDays() {
+  const dOdd = pick([5, 7, 9])                             // «оба ровно за dOdd дней» — да
+  const dEven = pick([8, 10, 12])                          // «оба ровно за dEven дней» — нет
+  const L = pick([5, 6, 7])                                // «каждый решал более L дней»
+  const W = L + 1                                          // «а за W дней Петя решил больше Васи»
+  // а): v = p + (dOdd − 1)/2
+  const pA = randInt(1, 4), vA = pA + (dOdd - 1) / 2
+  const exA = { a: dOdd, v: vA, b: dOdd, p: pA }
+  // в): наименьшее N при a, b > L, v > p и «за W дней Петя решил больше Васи»
+  let best = null
+  for (let N = 1; N <= 600 && !best; N++) {
+    for (let a = L + 1; a <= 60 && !best; a++) {
+      const num = N - a * (a - 1) / 2
+      if (num <= 0 || num % a) continue
+      const v = num / a
+      for (let b = L + 1; b <= 60; b++) {
+        const num2 = N - b * (b - 1)
+        if (num2 <= 0 || num2 % b) continue
+        const p = num2 / b
+        if (v > p && vpP(W, p) > vpV(W, v)) { best = { N, a, v, b, p }; break }
+      }
+    }
+  }
+  if (!best) return null
+
+  const params = { dOdd, dEven, L, W }
+  const check = (cfg, part) => {
+    if (!cfg || !Number.isInteger(cfg.a) || !Number.isInteger(cfg.v) || !Number.isInteger(cfg.b) || !Number.isInteger(cfg.p)) return "нет конфигурации"
+    if (cfg.a < 1 || cfg.b < 1) return "каждый решал хотя бы один день"
+    if (cfg.v < 1 || cfg.p < 1) return "в первый день каждый решил хотя бы одну задачу"
+    const nV = vpV(cfg.a, cfg.v), nP = vpP(cfg.b, cfg.p)
+    if (nV !== nP) return `Вася решил ${nV} задач, а Петя ${nP} — сборник один и тот же`
+    if (part === "a" && (cfg.a !== dOdd || cfg.b !== dOdd)) return `нужно, чтобы оба решали ровно ${dOdd} дней`
+    if (part === "c") {
+      if (cfg.a <= L || cfg.b <= L) return `каждый должен решать более ${L} дней`
+      if (cfg.v <= cfg.p) return "в первый день Вася должен решить больше Пети"
+      if (vpP(W, cfg.p) <= vpV(W, cfg.v)) return `за ${W} дней Петя должен решить больше Васи`
+      if (nV !== best.N) return `в сборнике ${nV} задач, а заявлено ${best.N}`
+    }
+    return null
+  }
+  // Независимый перебор: по числу задач N и числам дней a, b — первые дни v и p
+  // восстанавливаются однозначно из N (деление с остатком), поэтому пространство конечно.
+  const solve = (P) => {
+    const sameDays = (d) => {
+      for (let v = 1; v <= 200; v++) for (let p = 1; p <= 200; p++) if (vpV(d, v) === vpP(d, p)) return true
+      return false
+    }
+    let bestN = 0
+    for (let N = 1; N <= 600 && !bestN; N++) {
+      for (let a = P.L + 1; a <= 60 && !bestN; a++) {
+        const num = N - a * (a - 1) / 2
+        if (num <= 0 || num % a) continue
+        const v = num / a
+        for (let b = P.L + 1; b <= 60; b++) {
+          const num2 = N - b * (b - 1)
+          if (num2 <= 0 || num2 % b) continue
+          const p = num2 / b
+          if (v > p && vpP(P.W, p) > vpV(P.W, v)) { bestN = N; break }
+        }
+      }
+    }
+    return { a: sameDays(P.dOdd), b: sameDays(P.dEven), c: bestN, c_next: false }
+  }
+
+  const run = (start, step, days) => Array.from({ length: days }, (_, i) => start + step * i).join(", ")
+  return item({
+    preamble: `Готовясь к экзамену, Вася и Петя решали задачи из сборника, и каждый из них решил все задачи этого сборника. Каждый день Вася решал на одну задачу больше, чем в предыдущий день, а Петя решал на две задачи больше, чем в предыдущий день. Они начали решать задачи в один день, при этом в первый день каждый из них решил хотя бы одну задачу.`,
+    qa: `Могло ли получиться так, что каждый из них решил все задачи сборника ровно за ${dOdd} дней?`,
+    qb: `Могло ли получиться так, что каждый из них решил все задачи сборника ровно за ${dEven} дней?`,
+    qc: `Какое наименьшее число задач могло быть в сборнике, если известно, что каждый из них решал задачи более ${L} дней, в первый день Вася решил больше задач, чем Петя, а за ${W} дней Петя решил больше задач, чем Вася?`,
+    ansA: `да, например Вася решал по ${run(vA, 1, dOdd)} ${plural(dOdd, "задаче", "задачи", "задач")}, а Петя — по ${run(pA, 2, dOdd)}: в сборнике ${vpV(dOdd, vA)} ${plural(vpV(dOdd, vA), "задача", "задачи", "задач")}`,
+    ansB: `нет: если оба решали ровно d дней, то dv + d(d − 1)/2 = dp + d(d − 1), откуда v − p = (d − 1)/2. При d = ${dEven} правая часть равна ${ru2((dEven - 1) / 2)} — не целое число, а v и p целые`,
+    ansC: `${best.N}; например Вася решал ${best.a} ${plural(best.a, "день", "дня", "дней")}, начав с ${best.v} ${plural(best.v, "задачи", "задач", "задач")}, а Петя — ${best.b} ${plural(best.b, "день", "дня", "дней")}, начав с ${best.p}`,
+    solution: `Пусть Вася решал a дней и в первый день решил v задач, а Петя решал b дней и в первый день p задач. Тогда\nN = av + a(a − 1)/2 = bp + b(b − 1).\nа) При a = b = ${dOdd} получаем v − p = ${(dOdd - 1) / 2}: например Петя начинал с ${pA}, Вася — с ${vA}, и в сборнике ${vpV(dOdd, vA)} ${plural(vpV(dOdd, vA), "задача", "задачи", "задач")}.\nб) При a = b = d равенство даёт v − p = (d − 1)/2, а при чётном d = ${dEven} это число не целое — противоречие.\nв) Перебирая число задач N и числа дней a, b > ${L} (первые дни восстанавливаются из N однозначно), получаем наименьшее N = ${best.N}: Вася решал ${best.a} ${plural(best.a, "день", "дня", "дней")} по ${run(best.v, 1, Math.min(best.a, 4))}, … задач, Петя — ${best.b} ${plural(best.b, "день", "дня", "дней")} по ${run(best.p, 2, Math.min(best.b, 4))}, … задач.\nОтвет: ${best.N}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: `days-${dOdd}` },
+        b: { type: "yesno", yes: false, reason: "half-integer-difference", target: `days-${dEven}` },
+        c: { type: "extremum", mode: "min", value: best.N, example: best },
+      },
+      mustMention: [dOdd, dEven, L, W],
+      extra: [],
+      phrases: ["на одну задачу больше", "на две задачи больше", "хотя бы одну задачу"],
     },
   })
 }
