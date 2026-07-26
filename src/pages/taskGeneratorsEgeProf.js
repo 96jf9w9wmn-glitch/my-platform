@@ -3713,9 +3713,13 @@ function coneInSphereSvg() {
     `<path d="M80,290 A170,62 0 0,1 420,290" fill="none" stroke="#000" stroke-width="1.4" stroke-dasharray="8 6" pathLength="386"/>` +
     `<line x1="250" y1="120" x2="85" y2="274" stroke="#000" stroke-width="1.4" stroke-dasharray="8 6" pathLength="230"/>` +
     `<line x1="250" y1="120" x2="415" y2="274" stroke="#000" stroke-width="1.4" stroke-dasharray="8 6" pathLength="230"/>` +
-    `<line x1="250" y1="290" x2="250" y2="120" stroke="#000" stroke-width="1.4" stroke-dasharray="8 6" pathLength="182"/>` +
-    `<line x1="250" y1="290" x2="366" y2="333" stroke="#000" stroke-width="1.4" stroke-dasharray="8 6" pathLength="126"/>` +
     `</svg>`
+}
+
+// Тот же чертёж с отмеченным центром сферы (для задач «сфера описана около конуса»,
+// где по условию центр сферы совпадает с центром основания конуса).
+function coneCircumSphereSvg() {
+  return coneInSphereSvg().replace("</svg>", `<circle cx="250" cy="290" r="4" fill="#000"/></svg>`)
 }
 
 // V_кон = πR³/3, V_шара = 4πR³/3 = 4·V_кон.
@@ -4594,8 +4598,8 @@ function t03SphereSection() {
 function t03ConeSphereRadius() {
   const k = randInt(2, 30)
   return {
-    condition_text: `Около конуса описана сфера (сфера содержит окружность основания конуса и его вершину). Центр сферы находится в центре основания конуса. Образующая конуса равна ${k}${rT(2)}. Найдите радиус сферы.`,
-    image_url: svgUrl(coneInSphereSvg()),
+    condition_text: `Около конуса описана сфера (сфера содержит окружность основания конуса и его вершину). Центр сферы ${pick(["находится в центре", "совпадает с центром"])} основания конуса. Образующая конуса равна ${k}${rT(2)}. Найдите радиус сферы.`,
+    image_url: svgUrl(coneCircumSphereSvg()),
     answer: ru(k),
   }
 }
@@ -4604,8 +4608,8 @@ function t03ConeSphereRadius() {
 function t03ConeSphereSlant() {
   const k = randInt(2, 90)
   return {
-    condition_text: `Около конуса описана сфера (сфера содержит окружность основания конуса и его вершину). Центр сферы находится в центре основания конуса. Радиус сферы равен ${k}${rT(2)}. Найдите длину образующей конуса.`,
-    image_url: svgUrl(coneInSphereSvg()),
+    condition_text: `Около конуса описана сфера (сфера содержит окружность основания конуса и его вершину). Центр сферы ${pick(["находится в центре", "совпадает с центром"])} основания конуса. Радиус сферы равен ${k}${rT(2)}. Найдите длину образующей конуса.`,
+    image_url: svgUrl(coneCircumSphereSvg()),
     answer: ru(2 * k),
   }
 }
@@ -4708,7 +4712,9 @@ function cylConeDashSvg() {
 function t03CylConeVolInverse() {
   const v = randInt(2, 40)
   return {
-    condition_text: `Цилиндр и конус имеют общие основание и высоту. Объём конуса равен ${v}. Найдите объём цилиндра.`,
+    condition_text: Math.random() < 0.5
+      ? `Цилиндр и конус имеют общие основание и высоту. Объём конуса равен ${v}. Найдите объём цилиндра.`
+      : `Конус и цилиндр имеют общее основание и общую высоту (конус вписан в цилиндр). Вычислите объём цилиндра, если объём конуса равен ${v}.`,
     image_url: svgUrl(cylConeDashSvg()),
     answer: ru(3 * v),
   }
