@@ -738,6 +738,7 @@ export const META19 = [
     ["discriminant-nat", "Дискриминант при натуральных m, n → наименьший", t19DiscriminantNat],
     ["unit-fractions", "Единичные дроби; все пары 1/m + 1/n = 1/N", t19UnitFractions],
     ["sqrt2-approximation", "Приближение √2 двузначными дробями", t19Sqrt2Approximation],
+    ["abcd-sum-squares", "a>b>c>d: сумма и a²−b²+c²−d²", t19ABCDSumSquares],
   ]],
   ["Доска: ограничение на попарные произведения", [
     ["prodwin-min-sum", "Произведение любых двух в (lo; hi) → наим. сумма четырёх", t19ProdWindowMinSum],
@@ -747,6 +748,7 @@ export const META19 = [
     ["four-prod-vs-digitsum", "Четырёхзначное: произведение цифр в k раз больше суммы", t19FourProdVsDigitSum],
     ["digitsum-chain-3", "Тройка n, S(n), S(S(n)): сумма и количество троек", t19DigitSumChain3],
     ["three-over-digitprod", "Частное трёхзначного без нулей и произведения цифр", t19ThreeOverDigitProd],
+    ["same-digitsum-parts", "Сумма слагаемых с одинаковой суммой цифр", t19SameDigitSumParts],
   ]],
   ["Четыре последовательных числа, делённые на цифру", [
     ["four-consec-last-digit", "Делят на последнюю цифру → наибольшее целое S", t19FourConsecLastDigit],
@@ -3429,3 +3431,211 @@ function testsFamily(kind) {
 }
 export function t19TestsMaxOfTwoMin() { return testsFamily("min") }
 export function t19TestsMaxOfTwoCount() { return testsFamily("count") }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 21 (продолжение). Четвёрка a > b > c > d: сумма и знакопеременная
+// сумма квадратов (#98)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Ключ: a² − b² + c² − d² = (a − b)(a + b) + (c − d)(c + d) ≥ (a + b) + (c + d) = a+b+c+d,
+// причём равенство достигается ТОЛЬКО при a − b = c − d = 1. Тогда a + b и c + d нечётны,
+// поэтому их сумма чётна: при нечётной сумме равенство невозможно (пункт б),
+// а при чётной сумме S = 2W + 2 получаем a = b + 1, c = d + 1, b + d = W,
+// и условие b > c = d + 1 равносильно d ≤ (W − 2)/2 (пункт в).
+
+// Пары (S, Q) с ЕДИНСТВЕННОЙ четвёркой — таблица строится один раз при импорте
+// прямым перебором по самим числам a > b > c > d (в solve перебор идёт по другим
+// переменным — полусуммам u = a+b и разностям p = a−b, то есть проходы независимы).
+const ABCD_UNIQUE = (() => {
+  const rows = []
+  for (let S = 14; S <= 30; S++) {
+    const byQ = new Map()
+    for (let d = 1; d <= S; d++) for (let c = d + 1; c <= S; c++) for (let b = c + 1; b <= S; b++) {
+      const a = S - b - c - d
+      if (a <= b) continue
+      const Q = a * a - b * b + c * c - d * d
+      if (!byQ.has(Q)) byQ.set(Q, [])
+      byQ.get(Q).push([a, b, c, d])
+    }
+    for (const [Q, quads] of byQ) {
+      if (quads.length !== 1) continue
+      if (Q <= S || Q > 6 * S) continue                  // «человеческие» числа условия
+      if (Q % S) continue                                // в эталоне Q кратно S (16 и 32)
+      rows.push({ S, Q, quad: quads[0] })
+    }
+  }
+  return rows
+})()
+
+export function t19ABCDSumSquares() {
+  const { S: Sa, Q: Qa, quad } = pick(ABCD_UNIQUE)
+  const Sb = 2 * randInt(10, 24) + 1                     // нечётная сумма — пункт б)
+  const Sc = pick([1200, 1300, 1400, 1500, 1600, 1800, 2000, 2200, 2400])
+  const W = Sc / 2 - 1                                   // b + d при a = b+1, c = d+1
+  const dMax = Math.floor((W - 2) / 2)                   // b ≥ d + 2
+  const exC = [W, W - 1, 2, 1]                           // d = 1: наибольшее возможное a
+
+  const params = { Sa, Qa, Sb, Sc }
+  const check = (q, part) => {
+    if (!Array.isArray(q) || q.length !== 4) return "нужны четыре числа"
+    const [a, b, c, d] = q
+    for (const v of q) if (!Number.isInteger(v) || v < 1) return `${v} — не натуральное число`
+    if (!(a > b && b > c && c > d)) return `нарушено a > b > c > d: ${q.join(" > ")}`
+    const S = a + b + c + d, Q = a * a - b * b + c * c - d * d
+    const need = part === "a" ? Sa : Sc
+    const needQ = part === "a" ? Qa : Sc
+    if (S !== need) return `сумма ${S}, а нужно ${need}`
+    if (Q !== needQ) return `a² − b² + c² − d² = ${Q}, а нужно ${needQ}`
+    return null
+  }
+  // Независимый перебор: u = a + b (больше половины суммы, так как a > c и b > d),
+  // p = a − b ≥ 1. Тогда v = S − u, q = (Q − pu)/v, и числа восстанавливаются
+  // однозначно. Условие pu ≤ Q обрывает цикл: при pu > Q величина q отрицательна.
+  const enumerate = (S, Q) => {
+    const res = []
+    for (let u = Math.floor(S / 2) + 1; u <= S - 3; u++) {
+      const v = S - u
+      for (let p = 1; p * u <= Q; p++) {
+        if ((u - p) % 2) continue
+        const rem = Q - p * u
+        if (rem < v || rem % v) continue
+        const qq = rem / v
+        if ((v - qq) % 2) continue
+        const a = (u + p) / 2, b = (u - p) / 2, c = (v + qq) / 2, d = (v - qq) / 2
+        if (d >= 1 && a > b && b > c && c > d) res.push([a, b, c, d])
+      }
+    }
+    return res
+  }
+  const solve = (P) => ({
+    a: enumerate(P.Sa, P.Qa).map((q) => q.join("-")).sort(),
+    b: enumerate(P.Sb, P.Sb).length > 0,
+    c: uniq(enumerate(P.Sc, P.Sc).map((q) => q[0])).length,
+  })
+
+  const key = quad.join("-")
+  return item({
+    preamble: `Натуральные числа a, b, c и d удовлетворяют условию a > b > c > d.`,
+    qa: `Найдите числа a, b, c и d, если a + b + c + d = ${Sa} и a² − b² + c² − d² = ${Qa}.`,
+    qb: `Может ли a + b + c + d = ${Sb} и a² − b² + c² − d² = ${Sb}?`,
+    qc: `Пусть a + b + c + d = ${Sc} и a² − b² + c² − d² = ${Sc}. Найдите количество возможных значений числа a.`,
+    ansA: `a = ${quad[0]}, b = ${quad[1]}, c = ${quad[2]}, d = ${quad[3]}`,
+    ansB: `нет: a² − b² + c² − d² = (a − b)(a + b) + (c − d)(c + d) ≥ (a + b) + (c + d) = a + b + c + d, и равенство возможно только при a − b = c − d = 1; тогда a + b = 2b + 1 и c + d = 2d + 1 нечётны, а их сумма чётна — значит нечётное число ${Sb} суммой быть не может`,
+    ansC: `${dMax}; крайние случаи — d = 1 (тогда ${exC.join(", ")} и a = ${W}) и d = ${dMax} (тогда a = ${W + 1 - dMax})`,
+    solution: `Так как a > b и c > d, то a − b ≥ 1 и c − d ≥ 1, поэтому\na² − b² + c² − d² = (a − b)(a + b) + (c − d)(c + d) ≥ (a + b) + (c + d) = a + b + c + d,\nи равенство достигается тогда и только тогда, когда a − b = c − d = 1.\nа) Перебор пар (a + b, a − b) при a + b + c + d = ${Sa} и a² − b² + c² − d² = ${Qa} даёт единственную четвёрку: a = ${quad[0]}, b = ${quad[1]}, c = ${quad[2]}, d = ${quad[3]}.\nб) Равенство суммы и знакопеременной суммы квадратов требует a = b + 1 и c = d + 1, тогда a + b + c + d = 2(b + d) + 2 — чётное число, а ${Sb} нечётно.\nв) При a + b + c + d = a² − b² + c² − d² = ${Sc} имеем a = b + 1, c = d + 1 и b + d = ${W}. Условие b > c = d + 1 равносильно ${W} − d > d + 1, то есть d ≤ ${dMax}; при этом d ≥ 1. Каждому такому d отвечает своё a = ${W + 1} − d, и все эти значения различны.\nОтвет: ${dMax}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "all", values: [key], examples: { [key]: quad } },
+        b: { type: "yesno", yes: false, reason: "parity", target: Sb },
+        c: { type: "count", value: dMax },
+      },
+      mustMention: [Sa, Qa, Sb, Sc],
+      extra: [],
+      phrases: ["Натуральные числа", "a > b > c > d"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 5 (продолжение). Разложение числа в сумму слагаемых с одинаковой
+// суммой цифр (#76)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Ключ — тождество столбика: S(x) + S(y) = S(x + y) + 9c, где c — число переносов.
+// Если S(x) = S(y) = s, то 2s = S(N) + 9c, поэтому S(N) + 9c обязано быть чётным.
+// Для N вида «цифра d, затем k девяток» переносов не бывает вовсе: в разряде с
+// цифрой 9 перенос требует a + b + c₋ = 19, то есть a + b = 19 − c₋; при c₋ = 0 это
+// невозможно (максимум 18), значит переносы могли бы идти только цепочкой, начиная
+// с самого младшего разряда, где c₋ = 0. Перенос из старшего разряда добавил бы
+// сумме лишний разряд. Итак c = 0 и 2s = S(N) = d + 9k — при нечётном d + 9k
+// представления нет (пункт б).
+//
+// Пункт в): n наименьших различных чисел с одинаковой суммой цифр s — это
+// s, s + 9, …, s + 9(n − 1) (годится, пока s + 9(n−1) ≤ 10s, то есть s ≥ n − 1),
+// их сумма равна n·s + 9n(n−1)/2 и растёт по s, поэтому минимум даёт s = n − 1:
+//   M = n(n − 1) + 9n(n − 1)/2 = 11n(n − 1)/2.
+const NUM_GEN = { 4: "четырёх", 5: "пяти", 6: "шести", 7: "семи", 8: "восьми" }
+
+export function t19SameDigitSumParts() {
+  // а) строим ОТ ОТВЕТА: сначала пара с равными суммами цифр, потом её сумма.
+  const s = randInt(8, 20)
+  const pool = []
+  for (let v = 100; v <= 4000; v++) if (digitSum(v) === s) pool.push(v)
+  if (pool.length < 2) return null
+  const x = pick(pool)
+  const y = pick(pool.filter((v) => v !== x))
+  const Na = x + y
+  // б) «цифра d и k девяток» с нечётной суммой цифр
+  const k = pick([2, 3])
+  const d = pick(k === 2 ? [1, 3, 5, 7] : [2, 4, 6, 8])
+  const Nb = d * Math.pow(10, k) + (Math.pow(10, k) - 1)
+  const SNb = d + 9 * k
+  // в) n различных слагаемых с одинаковой суммой цифр
+  const n = randInt(4, 8)
+  const sC = n - 1
+  const partsC = Array.from({ length: n }, (_, i) => sC + 9 * i)
+  const M = 11 * n * (n - 1) / 2
+
+  const params = { Na, Nb, n }
+  const check = (cfg, part) => {
+    if (!Array.isArray(cfg) || !cfg.length) return "нет набора"
+    for (const v of cfg) if (!Number.isInteger(v) || v < 1) return `${v} — не натуральное число`
+    if (uniq(cfg).length !== cfg.length) return "слагаемые обязаны быть различными"
+    const ds = uniq(cfg.map(digitSum))
+    if (ds.length !== 1) return `суммы цифр разные: ${cfg.map(digitSum).join(", ")}`
+    if (part === "a") {
+      if (cfg.length !== 2) return "в пункте а) должно быть два слагаемых"
+      if (sum(cfg) !== Na) return `сумма ${sum(cfg)}, а нужно ${Na}`
+      return null
+    }
+    if (cfg.length !== n) return `слагаемых ${cfg.length}, а нужно ${n}`
+    if (sum(cfg) !== M) return `сумма ${sum(cfg)}, а заявлено ${M}`
+    return null
+  }
+  // Независимый перебор. а)/б): все разбиения N = x + (N − x) с x < N/2 (равные
+  // слагаемые запрещены). в): для КАЖДОЙ суммы цифр берём n наименьших чисел,
+  // не превосходящих LIM; если их меньше n, то n-е такое число больше LIM,
+  // значит сумма больше LIM и заведомо больше уже найденного минимума (< LIM).
+  const solve = (P) => {
+    const splittable = (N) => {
+      for (let v = 1; v < N / 2; v++) if (digitSum(v) === digitSum(N - v)) return true
+      return false
+    }
+    const LIM = 1000
+    const bySum = new Map()
+    for (let v = 1; v <= LIM; v++) {
+      const ds = digitSum(v)
+      if (!bySum.has(ds)) bySum.set(ds, [])
+      bySum.get(ds).push(v)
+    }
+    let best = Infinity
+    for (const [, arr] of bySum) {
+      if (arr.length < P.n) continue
+      best = Math.min(best, sum(arr.slice(0, P.n)))
+    }
+    return { a: splittable(P.Na), b: splittable(P.Nb), c: best < LIM ? best : -1, c_next: false }
+  }
+
+  return item({
+    preamble: `Суммой цифр натурального числа называется сумма всех цифр его десятичной записи.`,
+    qa: `Можно ли представить число ${Na} в виде суммы двух различных натуральных чисел с одинаковой суммой цифр?`,
+    qb: `Можно ли представить число ${Nb} в виде суммы двух различных натуральных чисел с одинаковой суммой цифр?`,
+    qc: `Найдите наименьшее натуральное число, которое можно представить в виде суммы ${NUM_GEN[n]} различных натуральных чисел с одинаковой суммой цифр.`,
+    ansA: `да: ${Na} = ${x} + ${y}, сумма цифр каждого слагаемого равна ${s}`,
+    ansB: `нет: при сложении в столбик S(x) + S(y) = S(x + y) + 9c, где c — число переносов. У числа ${Nb} все разряды, кроме старшего, равны 9, а перенос из разряда с цифрой 9 требует a + b + c₋ = 19, то есть возможен только вслед за переносом из предыдущего разряда; в младшем разряде переноса ещё нет, значит переносов нет вообще, а перенос из старшего разряда добавил бы сумме лишний разряд. Поэтому 2s = S(${Nb}) = ${SNb} — нечётное число, что невозможно`,
+    ansC: `${M}; например ${partsC.join(" + ")} = ${M}: слагаемые различны, и сумма цифр каждого равна ${sC}`,
+    solution: `Обозначим через S(v) сумму цифр числа v. При сложении в столбик каждый перенос уменьшает сумму цифр на 9, поэтому S(x) + S(y) = S(x + y) + 9c, где c — число переносов.\nа) ${Na} = ${x} + ${y}, причём S(${x}) = S(${y}) = ${s}.\nб) Пусть ${Nb} = x + y и S(x) = S(y) = s. Тогда 2s = ${SNb} + 9c. У числа ${Nb} все разряды, кроме старшего, равны 9: перенос из такого разряда требует a + b + c₋ = 19, то есть при c₋ = 0 нужно a + b = 19 > 18 — невозможно. Значит переносы могли бы идти только цепочкой из младшего разряда, где переноса ещё нет, то есть c = 0. Но тогда 2s = ${SNb} — нечётное число, чего быть не может.\nв) Пусть все слагаемые имеют сумму цифр s. Наименьшие числа с суммой цифр s — это s, s + 9, s + 18, …, поэтому сумма ${NUM_GEN[n]} различных таких чисел не меньше n·s + 9·(1 + 2 + … + (n − 1)) = ${n}s + ${9 * n * (n - 1) / 2}. Эта величина растёт с ростом s, а требование s ≥ ${sC} возникает из того, что чисел вида s + 9i с суммой цифр s ровно s + 1. При s = ${sC} получаем ${M} и набор ${partsC.join(", ")}.\nОтвет: ${M}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: [x, y], target: Na },
+        b: { type: "yesno", yes: false, reason: "carry-parity", target: Nb },
+        c: { type: "extremum", mode: "min", value: M, example: partsC },
+      },
+      mustMention: [Na, Nb],
+      extra: [],
+      phrases: ["различных натуральных чисел с одинаковой суммой цифр"],
+    },
+  })
+}
