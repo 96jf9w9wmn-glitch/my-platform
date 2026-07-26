@@ -349,6 +349,61 @@ function niceSet(set, maxDen = 8n, maxNum = 60n, minIv = 3, maxIv = 6) {
 }
 const domStr = (dom) => dom.intervals.map((i) => `${i.incLo ? "[" : "("}${epStr(i.lo)}; ${epStr(i.hi)}${i.incHi ? "]" : ")"}`).join(" ∪ ")
 
+// Сборка ответа ПО КРИТИЧЕСКИМ ЗНАЧЕНИЯМ. Предикат задачи меняется только в точках, где
+// меняется конфигурация (корень входит/выходит из отрезка, корень совпадает с границей ОДЗ,
+// дискриминант обращается в нуль и т. п.) — все они выписываются в самом скине как ТОЧНЫЕ
+// рациональные числа. Между соседними критическими значениями предикат постоянен, поэтому
+// достаточно вычислить его в одной внутренней точке каждого промежутка и в самих точках.
+// Полнота списка критических значений не принимается на веру: verify18 всё равно проходит
+// сетку ≥ 2000 значений a и ловит любое пропущенное изменение.
+function assembleSet(test, criticals) {
+  const cs = uniqSorted(criticals)
+  const atoms = []
+  for (let i = 0; i <= cs.length; i++) {
+    const lo = i === 0 ? "-inf" : cs[i - 1], hi = i === cs.length ? "+inf" : cs[i]
+    const mid = lo === "-inf" ? Rsub(hi, R1) : hi === "+inf" ? Radd(lo, R1) : Rdiv(Radd(lo, hi), R(2))
+    atoms.push({ kind: "iv", lo, hi, ok: test(mid) })
+    if (i < cs.length) atoms.push({ kind: "pt", v: cs[i], ok: test(cs[i]) })
+  }
+  const intervals = [], points = []
+  let i = 0
+  while (i < atoms.length) {
+    if (!atoms[i].ok) { i++; continue }
+    let j = i
+    while (j + 1 < atoms.length && atoms[j + 1].ok) j++
+    const run = atoms.slice(i, j + 1)
+    if (run.length === 1 && run[0].kind === "pt") points.push(run[0].v)
+    else {
+      const first = run[0], last = run[run.length - 1]
+      intervals.push(IV(
+        first.kind === "pt" ? first.v : first.lo,
+        last.kind === "pt" ? last.v : last.hi,
+        first.kind === "pt", last.kind === "pt",
+      ))
+    }
+    i = j + 1
+  }
+  return SET(intervals, points)
+}
+// Пересечение промежутка [lo; hi] (концы — R или ±inf, с флагами включения) с другим.
+function ivCut(A, B) {
+  const cmpLo = (x, y) => (x === "-inf" ? -1 : y === "-inf" ? 1 : Rcmp(x, y))
+  const cmpHi = (x, y) => (x === "+inf" ? 1 : y === "+inf" ? -1 : Rcmp(x, y))
+  const lo = cmpLo(A.lo, B.lo) >= 0 ? A : B, hi = cmpHi(A.hi, B.hi) <= 0 ? A : B
+  const eqLo = cmpLo(A.lo, B.lo) === 0, eqHi = cmpHi(A.hi, B.hi) === 0
+  return {
+    lo: lo.lo, hi: hi.hi,
+    incLo: eqLo ? A.incLo && B.incLo : lo.incLo,
+    incHi: eqHi ? A.incHi && B.incHi : hi.incHi,
+  }
+}
+// Пуст ли промежуток (с учётом включения концов).
+function ivEmpty(I) {
+  if (I.lo === "-inf" || I.hi === "+inf") return false
+  const c = Rcmp(I.lo, I.hi)
+  return c > 0 || (c === 0 && !(I.incLo && I.incHi))
+}
+
 // Диапазон сетки по a: покрывает все границы ответа с запасом и не уже 24 единиц
 // (при шаге 1/100 это ≥ 2400 узлов — требование verify18).
 function spanRange(set, pad = 6) {
@@ -359,14 +414,14 @@ function spanRange(set, pad = 6) {
 }
 
 // ── сборка объекта задания ───────────────────────────────────────────────────
-function item({ text, set, solution, pieces, predicate, aRange, picture }) {
+function item({ text, set, solution, pieces, solve, predicate, aRange, picture }) {
   return {
     condition_text: text,
     answer: setToString(set),
     answer_set: setPlain(set),
     solution,
     solution_image: svgUrl(planeSvg(picture)),
-    _verify: { set, pieces, predicate, aRange },
+    _verify: { set, pieces, solve, predicate, aRange },
   }
 }
 
@@ -402,8 +457,9 @@ function holds(pred, cnt) {
 export function verify18(o, opts = {}) {
   try {
     if (!o || !o.condition_text || !o.answer) return { ok: false, err: "нет условия/ответа" }
-    const { set, pieces, predicate, aRange } = o._verify || {}
-    if (!set || !pieces || !predicate || !aRange) return { ok: false, err: "нет _verify" }
+    const { set, pieces, solve, predicate, aRange } = o._verify || {}
+    if (!set || (!pieces && !solve) || !predicate || !aRange) return { ok: false, err: "нет _verify" }
+    const count = (a) => (pieces ? solveCount(pieces, a) : solve(a))
 
     // 1. ответ не пуст, не вся прямая, есть хотя бы одна граница
     const bounds = setBounds(set)
@@ -424,7 +480,7 @@ export function verify18(o, opts = {}) {
     for (let k = from; k <= to; k++) {
       const a = R(k, Q)
       const want = inSet(set, a)
-      const got = holds(predicate, solveCount(pieces, a))
+      const got = holds(predicate, count(a))
       if (want !== got) return { ok: false, err: `a=${Rstr(a)}: в ответе ${want}, по решателю ${got}` }
     }
 
@@ -434,12 +490,12 @@ export function verify18(o, opts = {}) {
         for (const s of [-1, 1]) {
           const a = Radd(b, Rmul(R(s), eps))
           const want = inSet(set, a)
-          const got = holds(predicate, solveCount(pieces, a))
+          const got = holds(predicate, count(a))
           if (want !== got) return { ok: false, err: `окрестность границы ${Rstr(b)}: a=${Rstr(a)} ответ ${want}, решатель ${got}` }
         }
       }
       const wantB = inSet(set, b)
-      const gotB = holds(predicate, solveCount(pieces, b))
+      const gotB = holds(predicate, count(b))
       if (wantB !== gotB) return { ok: false, err: `в самой границе ${Rstr(b)}: ответ ${wantB}, решатель ${gotB}` }
       // граница обязана что-то менять: слева и справа от неё принадлежность различается
       const l = inSet(set, Rsub(b, R(1, 1000000))), r = inSet(set, Radd(b, R(1, 1000000)))
@@ -448,10 +504,10 @@ export function verify18(o, opts = {}) {
 
     // 5. изолированные точки: в точке предикат выполняется, в проколотой окрестности — нет
     for (const p of set.points) {
-      if (!holds(predicate, solveCount(pieces, p))) return { ok: false, err: `изолированная точка ${Rstr(p)} не выполняет предикат` }
+      if (!holds(predicate, count(p))) return { ok: false, err: `изолированная точка ${Rstr(p)} не выполняет предикат` }
       for (const eps of [R(1, 1000), R(1, 1000000)]) for (const s of [-1, 1]) {
         const a = Radd(p, Rmul(R(s), eps))
-        if (holds(predicate, solveCount(pieces, a))) return { ok: false, err: `около точки ${Rstr(p)} предикат тоже выполняется` }
+        if (holds(predicate, count(a))) return { ok: false, err: `около точки ${Rstr(p)} предикат тоже выполняется` }
       }
     }
 
@@ -1055,6 +1111,193 @@ export function t18RatSqrtDenOdz() {
 }
 
 // =============================================================================
+// РАЗДЕЛ B. «Ровно один корень на отрезке» (эталон #12, #20, #21, #22, #24, #28)
+// =============================================================================
+// Общий приём раздела: множество решений — это корни многочлена, отфильтрованные ОДЗ и
+// отрезком. Ответ собирается функцией assembleSet по ТОЧНОМУ списку критических значений a
+// (корень попал на конец отрезка / на границу ОДЗ, дискриминант обнулился, ОДЗ выродилось).
+// Наборы параметров подобраны разовым перебором так, чтобы все критические значения были
+// рациональными и круглыми; verify18 проверяет результат сеткой независимо.
+
+const ONE_ROOT_SEG = (L, R) => `имеет ровно один корень на отрезке [${nS(L)}; ${nS(R)}].`
+
+// #12. (x² − 2mx + a²)/√((a + b − x)(a − c + x)) = 0 — ОДЗ строгое, между корнями (a+b) и (c−a).
+function build12({ m, b, c, L, R: Rr }) {
+  const N = (a) => [Rmul(a, a), R(-2 * m), R1]
+  const odz = (a) => {                                   // (a+b; c−a) или (c−a; a+b) — строго
+    const u = Radd(a, R(b)), v = Rsub(R(c), a)
+    return Rcmp(u, v) <= 0 ? { lo: u, hi: v, incLo: false, incHi: false } : { lo: v, hi: u, incLo: false, incHi: false }
+  }
+  const seg = { lo: R(L), hi: R(Rr), incLo: true, incHi: true }
+  const solve = (a) => {
+    const I = ivCut(odz(a), seg)
+    if (ivEmpty(I)) return 0
+    return countRoots(N(a), I.lo, I.hi, I.incLo, I.incHi)
+  }
+  // критические значения: двойной корень, корень на конце отрезка, корень на границе ОДЗ,
+  // граница ОДЗ на конце отрезка, вырождение ОДЗ
+  const crit = [R(m), R(-m), R(c - b, 2), R(L - b), R(Rr - b), R(c - L), R(c - Rr)]
+  for (const X of [R(2 * m * L - L * L), R(2 * m * Rr - Rr * Rr)]) {       // a² = 2mX − X²
+    if (X.n < 0n) continue
+    const r = isSq(Number(X.n))
+    if (r === null) return null
+    crit.push(R(r), R(-r))
+  }
+  for (const P of [[R(b), R1], [R(c), R(-1)]]) {          // x = a+b и x = c−a как многочлены по a
+    const E = pAdd(pSub(pMul(P, P), pMul([R(2 * m)], P)), [R0, R0, R1])
+    const { roots, allRational } = ratRoots(E)
+    if (!allRational) return null
+    crit.push(...roots)
+  }
+  const set = assembleSet((a) => solve(a) === 1, crit)
+  return { set, solve, N }
+}
+const T12 = [[5, 8, 3, 2, 6], [5, 8, 3, 1, 5], [4, 6, 2, 1, 4], [6, 9, 4, 3, 8], [5, 7, 4, 2, 7], [3, 5, 2, 1, 3]]
+  .map(([m, b, c, L, R]) => ({ m, b, c, L, R }))
+export function t18SegSqrtOdz() {
+  const par = pick(T12), { m, b, c, L, R: Rr } = par
+  const { set, solve } = build12(par)
+  const num = `x${SUP[2]} ${MINUS} ${2 * m}x + a${SUP[2]}`
+  const den = `√{(a ${MINUS} x + ${b})(a + x ${MINUS} ${c})}`
+  return item({
+    text: `${HEAD_A}\n\n${fT(num, den)} = 0\n\n${ONE_ROOT_SEG(L, Rr)}`,
+    set,
+    solution: `ОДЗ: (a ${MINUS} x + ${b})(a + x ${MINUS} ${c}) > 0. Это парабола по x ветвями вниз с корнями x = a + ${b} и x = ${c} ${MINUS} a, `
+      + `поэтому ОДЗ — интервал между ними.\n`
+      + `Числитель: x${SUP[2]} ${MINUS} ${2 * m}x + a${SUP[2]} = 0, корни x = ${m} ± √(${m * m} ${MINUS} a${SUP[2]}) — существуют при |a| ≤ ${m}.\n`
+      + `Нужно, чтобы РОВНО ОДИН из корней попал в пересечение ОДЗ с отрезком [${nS(L)}; ${Rr}]. Конфигурация меняется только когда корень `
+      + `совпадает с концом отрезка, с границей ОДЗ, когда корни сливаются (a = ±${m}) или когда ОДЗ вырождается.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => (Math.abs(a) <= m ? m + Math.sqrt(m * m - a * a) : null), label: "корни числителя" },
+        { f: (a) => (Math.abs(a) <= m ? m - Math.sqrt(m * m - a * a) : null) },
+        { f: (a) => a + b, dash: true, label: "границы ОДЗ" },
+        { f: (a) => c - a, dash: true },
+        { f: () => L, dash: true, label: "отрезок" },
+        { f: () => Rr, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: Math.min(L, 0) - 4, xMax: Rr + 6, aMin: Rnum(setBounds(set)[0]) - 3,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #20. ((x − a − p)(x + a − q))/√(2mx − x² − a²) = 0 — корни линейны по a, ОДЗ квадратичное.
+function build20({ p, q, m, L, R: Rr }) {
+  const Q = (a, x) => Rsub(Rsub(Rmul(R(2 * m), x), Rmul(x, x)), Rmul(a, a))   // 2mx − x² − a²
+  const inSeg = (x) => Rcmp(x, R(L)) >= 0 && Rcmp(x, R(Rr)) <= 0
+  const solve = (a) => {
+    const xs = [Radd(a, R(p)), Rsub(R(q), a)]
+    const good = []
+    for (const x of xs) if (inSeg(x) && Rsign(Q(a, x)) > 0 && !good.some((y) => Rcmp(y, x) === 0)) good.push(x)
+    return good.length
+  }
+  const crit = [R(L - p), R(Rr - p), R(q - L), R(q - Rr), R(q - p, 2)]
+  for (const X of [[R(p), R1], [R(q), R(-1)]]) {          // подстановка корня в ОДЗ: 2mx − x² − a² = 0
+    const E = pSub(pSub(pMul([R(2 * m)], X), pMul(X, X)), [R0, R0, R1])
+    const { roots, allRational } = ratRoots(E)
+    if (!allRational) return null
+    crit.push(...roots)
+  }
+  const set = assembleSet((a) => solve(a) === 1, crit)
+  return { set, solve }
+}
+const T20 = [[7, 2, 5, 4, 8], [5, 3, 5, 2, 7], [6, 2, 6, 3, 9], [4, 4, 4, 1, 6], [8, 3, 6, 4, 10]]
+  .map(([p, q, m, L, R]) => ({ p, q, m, L, R }))
+export function t18SegTwoLinRoots() {
+  const par = pick(T20), { p, q, m, L, R: Rr } = par
+  const { set, solve } = build20(par)
+  const num = `(x ${MINUS} a ${MINUS} ${p})(x + a ${MINUS} ${q})`
+  const den = `√{${2 * m}x ${MINUS} x${SUP[2]} ${MINUS} a${SUP[2]}}`
+  return item({
+    text: `${HEAD_A}\n\n${fT(num, den)} = 0\n\n${ONE_ROOT_SEG(L, Rr)}`,
+    set,
+    solution: `Числитель обнуляется при x = a + ${p} и x = ${q} ${MINUS} a (они совпадают при a = ${Rstr(R(q - p, 2))}).\n`
+      + `ОДЗ: ${2 * m}x ${MINUS} x${SUP[2]} ${MINUS} a${SUP[2]} > 0, то есть точка обязана лежать строго внутри окружности-условия; подстановка каждого корня даёт квадратное неравенство на a.\n`
+      + `Требуется, чтобы ровно один из корней одновременно лежал на отрезке [${nS(L)}; ${Rr}] и удовлетворял ОДЗ.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => a + p, label: `x = a + ${p}` },
+        { f: (a) => q - a, label: `x = ${q} ${MINUS} a` },
+        { f: (a) => (Math.abs(a) <= m ? m + Math.sqrt(m * m - a * a) : null), dash: true, label: "границы ОДЗ" },
+        { f: (a) => (Math.abs(a) <= m ? m - Math.sqrt(m * m - a * a) : null), dash: true },
+        { f: () => L, dash: true, label: "отрезок" },
+        { f: () => Rr, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -2, xMax: Rr + 6, aMin: Rnum(setBounds(set)[0]) - 3,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #28. ln(kx − 1)·√(x² − 2mx + 2ta − a²) = 0 — произведение логарифма и корня.
+function build28({ k, m, t, L, R: Rr }) {
+  const Q = (a) => [Rsub(Rmul(R(2 * t), a), Rmul(a, a)), R(-2 * m), R1]   // x² − 2mx + 2ta − a²
+  const x0 = R(2, k)                                     // ln(kx−1) = 0 ⟺ kx − 1 = 1
+  const solve = (a) => {
+    // корни подкоренного, попавшие в (1/k; Rr] ∩ [L; Rr] — там логарифм определён
+    const I = ivCut({ lo: R(1, k), hi: "+inf", incLo: false, incHi: false }, { lo: R(L), hi: R(Rr), incLo: true, incHi: true })
+    let n = ivEmpty(I) ? 0 : countRoots(Q(a), I.lo, I.hi, I.incLo, I.incHi)
+    // x = 2/k годится, если подкоренное там неотрицательно (и это не тот же корень)
+    const v = pEval(Q(a), x0)
+    if (Rcmp(x0, R(L)) >= 0 && Rcmp(x0, R(Rr)) <= 0 && Rsign(v) > 0) n++
+    return n
+  }
+  const crit = []
+  for (const X of [x0, R(L), R(Rr), R(1, k)]) {           // подкоренное обнуляется в фиксированной точке
+    const E = [Rsub(Rmul(X, X), Rmul(R(2 * m), X)), R(2 * t), R(-1)]     // как многочлен по a
+    const { roots, allRational } = ratRoots(E)
+    if (!allRational) return null
+    crit.push(...roots)
+  }
+  const dsq = t * t - m * m                               // дискриминант подкоренного: a² − 2ta + m² = 0
+  if (dsq >= 0) { const r = isSq(dsq); if (r === null) return null; crit.push(R(t + r), R(t - r)) }
+  const set = assembleSet((a) => solve(a) === 1, crit)
+  return { set, solve }
+}
+const T28 = [[4, 3, 3, 0, 3], [2, 3, 3, 0, 4], [4, 4, 4, 0, 5], [2, 4, 4, 0, 6], [4, 5, 4, 0, 6]]
+  .map(([k, m, t, L, R]) => ({ k, m, t, L, R }))
+export function t18SegLnTimesSqrt() {
+  const par = pick(T28), { k, m, t, L, R: Rr } = par
+  const { set, solve } = build28(par)
+  const text = `ln(${k}x ${MINUS} 1) · √{x${SUP[2]} ${MINUS} ${2 * m}x + ${2 * t}a ${MINUS} a${SUP[2]}} = 0`
+  return item({
+    text: `${HEAD_A}\n\n${text}\n\n${ONE_ROOT_SEG(L, Rr)}`,
+    set,
+    solution: `Произведение равно нулю, когда равен нулю один из множителей И определён второй.\n`
+      + `ln(${k}x ${MINUS} 1) = 0 ⟺ ${k}x ${MINUS} 1 = 1 ⟺ x = ${Rstr(R(2, k))}; этот корень годится, если подкоренное там положительно.\n`
+      + `√(x${SUP[2]} ${MINUS} ${2 * m}x + ${2 * t}a ${MINUS} a${SUP[2]}) = 0 ⟺ x${SUP[2]} ${MINUS} ${2 * m}x + ${2 * t}a ${MINUS} a${SUP[2]} = 0, и нужен ${k}x ${MINUS} 1 > 0, то есть x > ${Rstr(R(1, k))}.\n`
+      + `Считаем, при каких a на отрезке [${nS(L)}; ${Rr}] остаётся ровно один такой x.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: () => 2 / k, label: `x = ${nS(2 / k)}` },
+        { f: (a) => { const d = m * m - (2 * t * a - a * a); return d >= 0 ? m + Math.sqrt(d) : null }, label: "корни подкоренного" },
+        { f: (a) => { const d = m * m - (2 * t * a - a * a); return d >= 0 ? m - Math.sqrt(d) : null } },
+        { f: () => 1 / k, dash: true, label: "ОДЗ логарифма" },
+        { f: () => Rr, dash: true, label: "отрезок" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -2, xMax: Rr + 6, aMin: Rnum(setBounds(set)[0]) - 3,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
     ["rat-quad-lin", "(k²x²−a²)/(px−q−ra) = 0 — линейный знаменатель", t18RatQuadLin],
@@ -1069,6 +1312,12 @@ export const META18 = [
     ["rat-abs-num-sq", "(|kx−b|+ra−b)/(x²−2mx+a²) = 0 — модуль и a² внизу", t18RatAbsNumSq],
     ["rat-sqrt-odz", "(x²−a(a−1)x−a³)/√(квадратный) = 0 — ОДЗ-промежуток", t18RatSqrtDenOdz],
   ]],
+  ["«Ровно один корень на отрезке»", [
+    ["seg-sqrt-odz", "(x²−2mx+a²)/√((a+b−x)(a−c+x)) = 0 на отрезке", t18SegSqrtOdz],
+    ["seg-two-lin", "((x−a−p)(x+a−q))/√(2mx−x²−a²) = 0 на отрезке", t18SegTwoLinRoots],
+    ["seg-ln-sqrt", "ln(kx−1)·√(x²−2mx+2ta−a²) = 0 на отрезке", t18SegLnTimesSqrt],
+  ]],
 ]
 
+export const _B = { build12, build20, build28, niceSet }
 export const GEN18 = META18.flatMap((g) => g[1].map((t) => t[2]))
