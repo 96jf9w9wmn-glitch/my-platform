@@ -378,6 +378,8 @@ function hwPreview(text) {
   return text
     .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, "$1/$2")
     .replace(/\\sqrt(?:\[[^\]]*\])?\{([^{}]+)\}/g, "√$1")
+    // имена функций сохраняем (иначе «\log_{2} 8» превратится в «_2 8»)
+    .replace(/\\(log|lg|ln|sin|cos|tan|cot|tg|ctg|arcsin|arccos|arctan)(?![a-zA-Z])/g, "$1")
     .replace(/\\[a-zA-Z]+/g, "").replace(/[{}$^]/g, "").replace(/\\[()[\]]/g, "")
     .replace(/\s+/g, " ").trim()
 }

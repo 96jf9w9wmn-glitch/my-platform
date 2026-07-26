@@ -12,8 +12,8 @@ const DEEPSEEK_MODEL = "deepseek-v4-flash"
 const MAX_COUNT = 20
 const MAX_TOPIC_LEN = 200
 
-// Генерация одного ДЗ укладывается в минуту; без этого функция режется дефолтным лимитом.
-export const config = { maxDuration: 60 }
+// С включёнными «размышлениями» генерация занимает 10–60 с; дефолтного лимита не хватает.
+export const config = { maxDuration: 120 }
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -145,6 +145,39 @@ function safeParse(s) {
   try {
     return JSON.parse(s)
   } catch {
-    return null
+    // Модель регулярно отдаёт LaTeX внутри JSON неэкранированным («\log», «\frac»),
+    // а это невалидный JSON-эскейп и весь ответ разваливается. Чиним: удваиваем
+    // все обратные слэши, которые не начинают допустимый эскейп.
+    try {
+      return JSON.parse(escapeStrayBackslashes(String(s).replace(/```(?:json)?/gi, "")))
+    } catch {
+      return null
+    }
   }
+}
+
+// Удваивает «одинокие» обратные слэши, оставляя настоящие пары (\\, \", \/, \uXXXX).
+// Буквенные эскейпы (\n, \t, \f, \b, \r) здесь СПЕЦИАЛЬНО считаются LaTeX-командами:
+// в сломанном ответе «\frac», «\times», «\neq» несравнимо вероятнее переноса строки,
+// а сюда мы попадаем только после того, как обычный JSON.parse уже упал.
+function escapeStrayBackslashes(s) {
+  let out = ""
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] !== "\\") {
+      out += s[i]
+      continue
+    }
+    const next = s[i + 1]
+    const validPair =
+      next === "u"
+        ? /^[0-9a-fA-F]{4}$/.test(s.slice(i + 2, i + 6))
+        : next === '"' || next === "\\" || next === "/"
+    if (validPair) {
+      out += s[i] + next
+      i++
+    } else {
+      out += "\\\\"
+    }
+  }
+  return out
 }

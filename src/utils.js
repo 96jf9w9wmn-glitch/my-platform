@@ -233,8 +233,69 @@ function takeBrace(s, i) {
   return null
 }
 
-// \frac{a}{b} → стоячая дробь, \sqrt{x} / \sqrt[3]{x} → радикал. Скобки считаются
-// сбалансированно, поэтому \frac{\sqrt{2}}{2} тоже разбирается. Вход уже экранирован.
+// Подстрочные символы Юникода — нужны внутри SVG-радикала, где <sub> не работает.
+const SUBSCRIPT_MAP = {
+  "0": "₀", "1": "₁", "2": "₂", "3": "₃", "4": "₄", "5": "₅",
+  "6": "₆", "7": "₇", "8": "₈", "9": "₉", "+": "₊", "-": "₋",
+  "=": "₌", "(": "₍", ")": "₎", "a": "ₐ", "e": "ₑ", "x": "ₓ",
+  "n": "ₙ", "i": "ᵢ", "k": "ₖ", "m": "ₘ", "p": "ₚ", "s": "ₛ", "t": "ₜ",
+}
+// Индекс целиком либо уходит в юникод, либо остаётся как «_2» — половинчатый
+// («log₂ₓ» vs «log_2x») читался бы хуже.
+function toSub(str) {
+  const chars = Array.from(str)
+  const ok = (c) => SUBSCRIPT_MAP[c] || c === "." || c === ","
+  return chars.every(ok)
+    ? chars.map((c) => SUBSCRIPT_MAP[c] || c).join("")
+    : `_${str}`
+}
+
+// Команды LaTeX → символы. Общие для HTML-рендера и для плоского текста в радикале.
+function latexSymbols(s) {
+  return s
+    // инлайн-разделители формул \( \) \[ \] (модель иногда оборачивает ими математику)
+    .replace(/\\[()[\]]/g, "")
+    .replace(/\\left|\\right/g, "")
+    // имена функций пишутся без слэша: \log_{2} 8 → log₂ 8. Границу проверяем
+    // сами (не \b): после «\log» обычно идёт «_», а это словесный символ.
+    .replace(/\\(log|lg|ln|sin|cos|tan|cot|tg|ctg|arcsin|arccos|arctan|min|max)(?![a-zA-Z])/g, "$1")
+    .replace(/\\infty/g, "∞").replace(/\\pi\b/g, "π")
+    .replace(/\\cup\b/g, "∪").replace(/\\cap\b/g, "∩")
+    .replace(/\\in\b/g, "∈").replace(/\\notin\b/g, "∉")
+    .replace(/\\varnothing\b|\\emptyset\b/g, "∅")
+    .replace(/\\setminus\b/g, "\\")
+    .replace(/\\ldots\b|\\dots\b/g, "…")
+    .replace(/\\Rightarrow\b/g, "⇒").replace(/\\rightarrow\b|\\to\b/g, "→")
+    .replace(/\\([{}])/g, "$1")
+    .replace(/\\cdot/g, "·").replace(/\\times/g, "×").replace(/\\div/g, "÷")
+    .replace(/\\pm/g, "±").replace(/\\mp/g, "∓")
+    .replace(/\\leq\b|\\le\b/g, "≤").replace(/\\geq\b|\\ge\b/g, "≥")
+    .replace(/\\neq\b/g, "≠").replace(/\\approx\b/g, "≈")
+    .replace(/\\,|\\;|\\!|\\quad/g, " ")
+    .replace(/\$/g, "")
+}
+
+// Содержимое SVG-радикала рисуется элементом <text>, внутри которого разметка не
+// работает — поэтому подкоренное выражение приводим к ПЛОСКОМУ тексту:
+// дробь через «/», индексы и степени юникодом.
+function wrapIfCompound(part) {
+  return /[+\-·×÷/\s]/.test(part.trim()) ? `(${part.trim()})` : part.trim()
+}
+
+function plainMath(s) {
+  let t = latexSymbols(s)
+    // скобки только там, где без них меняется смысл: √((a+1)/b), но √(a/b)
+    .replace(/\\d?frac\{([^{}]+)\}\{([^{}]+)\}/g, (_, n, d) => `${wrapIfCompound(n)}/${wrapIfCompound(d)}`)
+    .replace(/\\sqrt(?:\[([^\]]*)\])?\{([^{}]+)\}/g, (_, idx, x) => `${idx || ""}√(${x})`)
+    .replace(/_\{([^{}]*)\}/g, (_, x) => toSub(x))
+    .replace(/_([0-9A-Za-z])/g, (_, x) => toSub(x))
+  t = superscriptPowers(t)
+  return t.replace(/\\[a-zA-Z]+/g, "").replace(/[{}]/g, "")
+}
+
+// \frac{a}{b} → стоячая дробь, \sqrt{x} / \sqrt[3]{x} → радикал, x^{…}/x_{…} → над- и
+// подстрочник. Скобки считаются сбалансированно, поэтому и \frac{\sqrt{2}}{2}, и
+// 2^{\log_{2} 5} разбираются целиком. Вход уже экранирован.
 function convFracRoot(s) {
   let out = ""
   for (let i = 0; i < s.length;) {
@@ -252,7 +313,16 @@ function convFracRoot(s) {
       let j = i + 5, idx = ""
       if (s[j] === "[") { const e = s.indexOf("]", j); if (e !== -1) { idx = s.slice(j + 1, e); j = e + 1 } }
       const a = takeBrace(s, j)
-      if (a) { out += rootMarkup(superscriptPowers(a.content), idx); i = a.next; continue }
+      if (a) { out += rootMarkup(plainMath(a.content), idx); i = a.next; continue }
+    }
+    if ((s[i] === "^" || s[i] === "_") && s[i + 1] === "{") {
+      const a = takeBrace(s, i + 1)
+      if (a) {
+        const tag = s[i] === "^" ? ["sup", "tmath-sup"] : ["sub", "tmath-sub"]
+        out += `<${tag[0]} class="${tag[1]}">${convFracRoot(a.content)}</${tag[0]}>`
+        i = a.next
+        continue
+      }
     }
     out += s[i]
     i++
@@ -267,25 +337,13 @@ export function renderHomeworkMath(text) {
   if (!text) return ""
   let s = String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
   s = convFracRoot(s)
-  s = s
+  s = latexSymbols(s)
     // корни без \ (юникод от модели): √{x}, √(x), √2, √x
-    .replace(/√\{([^{}]+)\}/g, (_, x) => rootMarkup(superscriptPowers(x)))
-    .replace(/√\(([^()]+)\)/g, (_, x) => rootMarkup(superscriptPowers(x)))
+    .replace(/√\{([^{}]+)\}/g, (_, x) => rootMarkup(plainMath(x)))
+    .replace(/√\(([^()]+)\)/g, (_, x) => rootMarkup(plainMath(x)))
     .replace(/√\s*(-?\d+(?:[.,]\d+)?|[A-Za-zА-Яа-я])/g, (_, x) => rootMarkup(x))
-    // степени/индексы с фигурными скобками (переменный показатель)
-    .replace(/\^\{([^{}]*)\}/g, (_, x) => `<sup class="tmath-sup">${x}</sup>`)
-    .replace(/_\{([^{}]*)\}/g, (_, x) => `<sub class="tmath-sub">${x}</sub>`)
+    // одиночный индекс без скобок: x_1 (групповые ^{…}/_{…} уже развёрнуты выше)
     .replace(/_([0-9A-Za-zА-Яа-я])/g, (_, x) => `<sub class="tmath-sub">${x}</sub>`)
-    // инлайн-разделители формул \( \) \[ \] (модель иногда оборачивает ими математику)
-    .replace(/\\[()[\]]/g, "")
-    // операторы LaTeX → символы
-    .replace(/\\left|\\right/g, "")
-    .replace(/\\cdot/g, "·").replace(/\\times/g, "×").replace(/\\div/g, "÷")
-    .replace(/\\pm/g, "±").replace(/\\mp/g, "∓")
-    .replace(/\\leq\b|\\le\b/g, "≤").replace(/\\geq\b|\\ge\b/g, "≥")
-    .replace(/\\neq\b/g, "≠").replace(/\\approx\b/g, "≈")
-    .replace(/\\,|\\;|\\!|\\quad/g, " ")
-    .replace(/\$/g, "")
   s = superscriptPowers(s)          // оставшиеся ^2, ^n → ², ⁿ
   return s.replace(/\n/g, "<br>")
 }
