@@ -1892,7 +1892,8 @@ export function t15ExpCubeOverQuad() {
 
 // log²₂x, lg⁴x, log₅(25−x²) — основание подстрочником (юникод: внутри дроби токен ⟦b⟧
 // применить нельзя, он содержит «⟧»).
-const supNum = (n) => String(n).split("").map((c) => SUPD[c] ?? (c === "1" ? "¹" : c === "0" ? "⁰" : c)).join("")
+const SUPD_ALL = { 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹", "-": "⁻" }
+const supNum = (n) => String(n).split("").map((c) => SUPD_ALL[c] ?? c).join("")
 const logS = (b, k = 1, arg = "x") => (b === 10 ? "lg" : "log") + (k > 1 ? SUPD[k] : "") + (b === 10 ? "" : subU(b)) + arg
 
 // Конец промежутка x = b^y (y — рациональное): 3^{-2} → 1/9, 2^{3/2} → 2√2.
@@ -3019,6 +3020,317 @@ export function t15LogXQuotBase() {
   return null
 }
 
+
+// ════════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 3. НЕРАВЕНСТВА С ТРИГОНОМЕТРИЕЙ (ответ — серия промежутков)
+// ════════════════════════════════════════════════════════════════════════════
+
+// [71] a·log²_β(f^k x) + c·log₂(f x) ⋛ d, f = sin|cos: квадрат по y = log₂ f,
+//      обратный переход даёт периодический ответ. (PDF триг.1–3)
+export function t15TrigLogQuad() {
+  for (let it = 0; it < 2000; it++) {
+    const isCos = Math.random() < 0.5
+    const mHalf = pick([1, 2])                 // y₁ = −1 или −1/2  ⟹  f = 1/2 или √2/2
+    const y1 = Q(-1, mHalf)
+    const qDen = pick([5, 8, 9, 7])            // y₂ = 1/q > 0 — недостижимо (2^{y₂} > 1)
+    const y2 = Q(1, qDen)
+    const lam = pick([1, 2]), k = pick([1, 2, 3])   // β = 2^λ, аргумент f^k
+    const sc = randInt(1, 6)
+    const aCoef = Qmul(Q(sc * lam * lam), Q(1, k * k))
+    const cCoef = Qmul(Q(-sc), Qadd(y1, y2))
+    const dCoef = Qmul(Q(sc), Qmul(y1, y2))
+    if (aCoef.q !== 1 || cCoef.q !== 1 || dCoef.q !== 1) continue
+    if (aCoef.p > 90 || Math.abs(cCoef.p) > 40) continue
+    const ge = Math.random() < 0.5              // ≥ 0 ⟹ f ∈ (0; v];  ≤ 0 ⟹ f ∈ [v; 1]
+    const cmp = ge ? "≥" : "≤"
+    const fn = isCos ? "cos" : "sin"
+    const beta = Math.round(Math.pow(2, lam))
+    const argK = k === 1 ? `(${fn} x)` : `(${fn}${SUPD[k]}x)`
+    const text = `${aCoef.p === 1 ? "" : aCoef.p}log${SUPD[2]}${subU(beta)}${argK} ${cCoef.p < 0 ? MINUS : "+"} ${Math.abs(cCoef.p) === 1 ? "" : Math.abs(cCoef.p)}log${subU(2)}(${fn} x) ${cmp} ${qAns(Qmul(Q(-1), dCoef))}`
+    const v = Math.pow(2, Qnum(y1))             // порог 1/2 или √2/2
+    const ang = mHalf === 1 ? (isCos ? Math.PI / 3 : Math.PI / 6) : Math.PI / 4
+    const angS = mHalf === 1 ? (isCos ? "π/3" : "π/6") : "π/4"
+    const angC = mHalf === 1 ? "5π/6" : "3π/4"    // π − arcsin v
+    const F = (x) => {
+      const f = isCos ? Math.cos(x) : Math.sin(x)
+      if (f <= 0) return NaN
+      const y = Math.log(f) / Math.LN2
+      return aCoef.p * Math.pow(k * y / lam, 2) + cCoef.p * y
+    }
+    const rhsV = -Qnum(dCoef)
+    // интервалы для проверки: n ∈ {−1,0,1}
+    const ans = [], N = [-1, 0, 1]
+    let ansTxt
+    if (isCos && !ge) {                          // cos x ∈ [v; 1]
+      for (const n of N) ans.push({ a: EP(-ang + 2 * Math.PI * n, ""), b: EP(ang + 2 * Math.PI * n, ""), ai: true, bi: true })
+      ansTxt = `[${MINUS}${angS} + 2πn; ${angS} + 2πn], n ∈ ℤ`
+    } else if (isCos && ge) {                    // cos x ∈ (0; v]
+      for (const n of N) {
+        ans.push({ a: EP(ang + 2 * Math.PI * n, ""), b: EP(Math.PI / 2 + 2 * Math.PI * n, ""), ai: true, bi: false })
+        ans.push({ a: EP(-Math.PI / 2 + 2 * Math.PI * n, ""), b: EP(-ang + 2 * Math.PI * n, ""), ai: false, bi: true })
+      }
+      ansTxt = `(${MINUS}π/2 + 2πn; ${MINUS}${angS} + 2πn] ∪ [${angS} + 2πn; π/2 + 2πn), n ∈ ℤ`
+    } else if (!isCos && !ge) {                   // sin x ∈ [v; 1]
+      for (const n of N) ans.push({ a: EP(ang + 2 * Math.PI * n, ""), b: EP(Math.PI - ang + 2 * Math.PI * n, ""), ai: true, bi: true })
+      ansTxt = `[${angS} + 2πn; ${angC} + 2πn], n ∈ ℤ`
+    } else {                                      // sin x ∈ (0; v]
+      for (const n of N) {
+        ans.push({ a: EP(2 * Math.PI * n, ""), b: EP(ang + 2 * Math.PI * n, ""), ai: false, bi: true })
+        ans.push({ a: EP(Math.PI - ang + 2 * Math.PI * n, ""), b: EP(Math.PI + 2 * Math.PI * n, ""), ai: true, bi: false })
+      }
+      ansTxt = `(2πn; ${angS} + 2πn] ∪ [${angC} + 2πn; π + 2πn), n ∈ ℤ`
+    }
+    void v
+    ans.sort((u1, u2) => u1.a.v - u2.a.v)
+    const crit = ans.flatMap((I) => [I.a.v, I.b.v])
+    return {
+      condition_text: `Решите неравенство\n${text}`,
+      answer: ansTxt,
+      _verify: {
+        lhs: F, rhs: () => rhsV, cmp,
+        domainOK: (x) => (isCos ? Math.cos(x) : Math.sin(x)) > 1e-9,
+        ans, crit, range: [-2 * Math.PI - 0.5, 2 * Math.PI + 0.5], reduced: null,
+      },
+    }
+  }
+  return null
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ХВОСТ РАЗДЕЛА 4
+// ════════════════════════════════════════════════════════════════════════════
+
+// [72] log²_b(P) + B·log_{1/b}(P) + C ⋛ 0, где P = c² − (x−h)² — парабола вниз
+//      (PDF лог.8 и лог.12)
+export function t15LogQuadOfQuad() {
+  for (let it = 0; it < 600; it++) {
+    const b = pick([2, 5, 3]), h = randInt(-2, 2), c = randInt(3, 6)
+    const u1 = randInt(0, 2), u2 = u1 + randInt(1, 2)
+    const T1 = Math.round(Math.pow(b, u1)), T2 = Math.round(Math.pow(b, u2))
+    if (T2 >= c * c) continue
+    const invStyle = Math.random() < 0.5
+    const B = invStyle ? u1 + u2 : -(u1 + u2), C = u1 * u2
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const P = h === 0 ? `${c * c} ${MINUS} x${SUPD[2]}` : polyStr([{ c: c * c - h * h, k: 0 }, { c: 2 * h, k: 1 }, { c: -1, k: 2 }])
+    const lg2 = invStyle ? `log⦉${b === 2 ? "0,5" : `⦃1¦${b}⦄`}⦊` : logS(b, 1, "")
+    const text = `${logS(b, 2, `(${P})`)} ${B < 0 ? MINUS : "+"} ${Math.abs(B) === 1 ? "" : Math.abs(B)}${lg2}(${P}) + ${C} ${cmp} 0`
+    const PF = (x) => c * c - (x - h) * (x - h)
+    const F = (x) => {
+      const L = Math.log(PF(x)) / Math.log(b)
+      return L * L + B * (invStyle ? -L : L) + C
+    }
+    const crit = []
+    for (const T of [T1, T2]) {
+      const D = c * c - T
+      if (D < 0) { crit.length = 0; break }
+      if (D === 0) crit.push({ ep: epQ(h), mult: 2, pole: false })
+      else crit.push({ ep: epSurd(h, D, -1), mult: 1, pole: false }, { ep: epSurd(h, D, +1), mult: 1, pole: false })
+    }
+    if (crit.length < 2) continue
+    const res = build({
+      text, cmp, lhs: F, rhs: () => 0, lead: 1,
+      domainOK: (x) => PF(x) > 0,
+      crit,
+      domain: { a: epQ(h - c), b: epQ(h + c), ai: false, bi: false },
+      extraX: [h - c, h + c],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [73] log_b((x−a)^{M}) + log_{1/b}((1/(x−a))^{−N}) ⋛ C  → (M−N)·log_b(x−a) ⋛ C (PDF лог.9)
+export function t15LogPowersOut() {
+  for (let it = 0; it < 300; it++) {
+    const b = pick([3, 2, 5]), a = randInt(-3, 3)
+    const M = 12 * randInt(2, 4), N = 12 * randInt(1, 3)
+    if (M === N) continue
+    const k = M - N
+    const e = randInt(1, 3)
+    const C = k * e
+    if (Math.abs(C) > 400) continue
+    const cmp = pick(["<", ">", "≤", "≥"])
+    const text = `${logS(b, 1, `(${linStr(-a)})${supNum(M)}`)} + log⦉⦃1¦${b}⦄⦊${fT2(1, linStr(-a))}${supNum(-N)} ${cmp} ${qAns(Q(C))}`
+    const F = (x) => Math.log(Math.pow(x - a, M)) / Math.log(b) + Math.log(Math.pow(1 / (x - a), -N)) / Math.log(1 / b)
+    const res = build({
+      text, cmp, lhs: F, rhs: () => C, lead: k > 0 ? 1 : -1,
+      domainOK: (x) => x - a > 0,
+      crit: [{ ep: epQ(a + Math.round(Math.pow(b, e))), mult: 1, pole: false }],
+      domain: { a: epQ(a), b: POS_INF, ai: false, bi: false },
+      extraX: [a],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [74] log_b(x²−k) − log_b x ⋛ log_b(x − k/x²)  (PDF лог.13)
+export function t15LogMinusFrac() {
+  for (let it = 0; it < 300; it++) {
+    const b = pick([2, 3, 5]), k = pick([2, 3, 4, 5, 8])
+    const sk = Math.sqrt(k)
+    if (Math.abs(Math.round(sk) - sk) < 1e-9) continue    // граница ОДЗ — иррациональная (√k)
+    const cmp = pick(["≤", "<", "≥", ">"])
+    const text = `${logS(b, 1, `(x${SUPD[2]} ${MINUS} ${k})`)} ${MINUS} ${logS(b, 1, "x")} ${cmp} ${logS(b, 1, `(x ${MINUS} ${fT2(k, "x" + SUPD[2])})`)}`
+    const F = (x) => Math.log(x * x - k) / Math.log(b) - Math.log(x) / Math.log(b)
+    const G = (x) => Math.log(x - k / (x * x)) / Math.log(b)
+    const res = build({
+      text, cmp, lhs: F, rhs: G,
+      domainOK: (x) => x > 0 && x * x - k > 0 && x - k / (x * x) > 0,
+      lead: -1,       // приведённая форма (1−x)/x²
+      crit: [{ ep: epQ(1), mult: 1, pole: false }],
+      domain: { a: EP(Math.sqrt(k), sqrtStrAns(k)), b: POS_INF, ai: false, bi: false },
+      extraX: [Math.sqrt(k), 1],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 8. НЕРАВЕНСТВА С МОДУЛЯМИ
+// ════════════════════════════════════════════════════════════════════════════
+
+// [75] |ax+b| ⋛ |cx+d| — возведение в квадрат: (a²−c²)x² + … = (px+q)(rx+s) (PDF мод.1)
+export function t15AbsTwoSides() {
+  for (let it = 0; it < 600; it++) {
+    const a = randInt(1, 4), b = randInt(-6, 6), c = randInt(1, 4), d = randInt(-6, 6)
+    if (a === c && b === d) continue
+    if (a === c) continue
+    // (ax+b)² − (cx+d)² = ((a+c)x + b+d)((a−c)x + b−d)
+    const r1 = Q(-(b + d), a + c), r2 = Q(-(b - d), a - c)
+    if (Math.abs(Qnum(r1) - Qnum(r2)) < 1e-9) continue
+    if (r1.q > 4 || r2.q > 4) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const text = `|${polyStr([{ c: a, k: 1 }, { c: b, k: 0 }])}| ${cmp} |${polyStr([{ c: c, k: 1 }, { c: d, k: 0 }])}|`
+    const F = (x) => Math.abs(a * x + b), G = (x) => Math.abs(c * x + d)
+    const res = build({
+      text, cmp, lhs: F, rhs: G, lead: (a + c) * (a - c) > 0 ? 1 : -1,
+      crit: [
+        { ep: epQ(Qnum(r1) < Qnum(r2) ? r1 : r2), mult: 1, pole: false },
+        { ep: epQ(Qnum(r1) < Qnum(r2) ? r2 : r1), mult: 1, pole: false },
+      ],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [76] |x−p| + |x+q| ⋛ C — сумма модулей (PDF мод.1дз, мод.2дз)
+export function t15AbsSum() {
+  for (let it = 0; it < 400; it++) {
+    const p = randInt(1, 6), q = randInt(1, 6)
+    const span = p + q
+    const C = span + 2 * randInt(1, 4)
+    const cmp = pick(["<", ">", "≤", "≥"])
+    const lo = Q(p - q - C, 2), hi = Q(C + p - q, 2)
+    const text = `|x ${MINUS} ${p}| + |${linStr(q)}| ${cmp} ${C}`
+    const F = (x) => Math.abs(x - p) + Math.abs(x + q)
+    const res = build({
+      text, cmp, lhs: F, rhs: () => C, lead: 1,
+      crit: [{ ep: epQ(lo), mult: 1, pole: false }, { ep: epQ(hi), mult: 1, pole: false }],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [77] a²x² − k|ax−b| ⋛ 2abx − b² — замена u = |ax−b| (PDF мод.2)
+export function t15AbsQuadSub() {
+  for (let it = 0; it < 400; it++) {
+    const a = randInt(2, 5), b = randInt(1, 6), k = randInt(2, 9)
+    if (gcd(a, b) !== 1) continue      // |3 − 5x| несократим, как в ФИПИ
+    // (ax−b)² − k|ax−b| ⋛ 0 ⟺ u(u−k) ⋛ 0, u = |ax−b| ≥ 0
+    const cmp = pick(["<", ">", "≤", "≥"])
+    const text = `${a * a}x${SUPD[2]} ${MINUS} ${k === 1 ? "" : k}|${polyStr([{ c: b, k: 0 }, { c: -a, k: 1 }])}| ${cmp} ${polyStr([{ c: 2 * a * b, k: 1 }, { c: -b * b, k: 0 }])}`
+    const F = (x) => a * a * x * x - k * Math.abs(b - a * x)
+    const G = (x) => 2 * a * b * x - b * b
+    const r0 = Q(b, a), rm = Q(b - k, a), rp = Q(b + k, a)
+    const res = build({
+      text, cmp, lhs: F, rhs: G, lead: 1,
+      // u(u−k): нули u=0 (двойной по x) и |ax−b| = k
+      crit: [
+        { ep: epQ(rm), mult: 1, pole: false },
+        { ep: epQ(r0), mult: 2, pole: false },
+        { ep: epQ(rp), mult: 1, pole: false },
+      ],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [78] |x+a| − x|x| ⋛ 0 (PDF мод.3)
+export function t15AbsXAbsX() {
+  for (let it = 0; it < 200; it++) {
+    const a = randInt(1, 6)
+    const D = 1 + 4 * a
+    const sq = Math.round(Math.sqrt(D))
+    if (sq * sq !== D) continue
+    const r = (1 + sq) / 2            // корень x² − x − a при x ≥ 0
+    const cmp = pick(["≤", "<", "≥", ">"])
+    const text = `|${linStr(a)}| ${MINUS} x|x| ${cmp} 0`
+    const F = (x) => Math.abs(x + a) - x * Math.abs(x)
+    const res = build({
+      text, cmp, lhs: F, rhs: () => 0,
+      lead: -1,                        // при x→+∞: x+a−x² → −∞
+      crit: [{ ep: epQ(r), mult: 1, pole: false }],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [79] |ax² + bx + c| ⋛ dx² + ex + f — раскрытие по двум случаям (PDF мод.4)
+export function t15AbsQuadGe() {
+  for (let it = 0; it < 4000; it++) {
+    const a = randInt(1, 3), d = a + randInt(1, 2)
+    const den = pick([1, 2, 4, 8])
+    const u1 = Q(randInt(-12, 12), den), u2 = Q(randInt(-12, 12), den)
+    const v1 = Q(randInt(-12, 12), den), v2 = Q(randInt(-12, 12), den)
+    if (Qnum(u1) === Qnum(u2) || Qnum(v1) === Qnum(v2)) continue
+    const A1 = a - d, A2 = a + d
+    const bm = Qmul(Q(A1), Qmul(Q(-1), Qadd(u1, u2))), cm = Qmul(Q(A1), Qmul(u1, u2))
+    const bp = Qmul(Q(A2), Qmul(Q(-1), Qadd(v1, v2))), cp = Qmul(Q(A2), Qmul(v1, v2))
+    const b = Qmul(Qadd(bm, bp), Q(1, 2)), e = Qmul(Qadd(bp, Qmul(Q(-1), bm)), Q(1, 2))
+    const c = Qmul(Qadd(cm, cp), Q(1, 2)), f = Qmul(Qadd(cp, Qmul(Q(-1), cm)), Q(1, 2))
+    if ([b, c, e, f].some((z) => z.q > 8 || Math.abs(z.p) > 200)) continue
+    // |A| ⋛ B: часть решений даёт УСЛОВИЕ B < 0 (модуль неотрицателен), остальное — A² ⋛ B².
+    // Поэтому нужны и рациональные корни B.
+    const dscB = Qadd(Qmul(e, e), Qmul(Q(-4 * d), f))
+    if (Qnum(dscB) <= 0) continue
+    const sN = Math.sqrt(dscB.p * dscB.q)
+    if (Math.abs(Math.round(sN) - sN) > 1e-9) continue
+    const sB = Q(Math.round(sN), dscB.q)
+    const be1 = Qmul(Qadd(Qmul(Q(-1), e), Qmul(Q(-1), sB)), Q(1, 2 * d))
+    const be2 = Qmul(Qadd(Qmul(Q(-1), e), sB), Q(1, 2 * d))
+    const lo = Qnum(be1) < Qnum(be2) ? be1 : be2, hi = Qnum(be1) < Qnum(be2) ? be2 : be1
+    const vals = [u1, u2, v1, v2].map(Qnum)
+    if (new Set(vals.map((z) => z.toFixed(6))).size < 4) continue
+    const cmp = pick(["≥", ">"])
+    const text = `|${polyStr([{ c: a, k: 2 }, { c: b, k: 1 }, { c: c, k: 0 }])}| ${cmp} ${polyStr([{ c: d, k: 2 }, { c: e, k: 1 }, { c: f, k: 0 }])}`
+    const AF = (x) => a * x * x + Qnum(b) * x + Qnum(c)
+    const BF = (x) => d * x * x + Qnum(e) * x + Qnum(f)
+    const crit = [u1, u2, v1, v2].slice().sort((z1, z2) => Qnum(z1) - Qnum(z2))
+      .map((r) => ({ ep: epQ(r), mult: 1, pole: false }))
+    const ansSq = solveSign(crit, A1 * A2 > 0 ? 1 : -1, cmp)
+    const ans = normalizeSet([...ansSq, { a: epQ(lo), b: epQ(hi), ai: false, bi: false }])
+    if (!ans.length) continue
+    if (ans.length === 1 && !isFinite(ans[0].a.v) && !isFinite(ans[0].b.v)) continue
+    const xs = crit.map((z) => z.ep.v).concat([Qnum(lo), Qnum(hi)])
+    return {
+      condition_text: `Решите неравенство\n${text}`,
+      answer: fmtSet(ans),
+      _verify: {
+        lhs: (x) => Math.abs(AF(x)), rhs: BF, cmp,
+        domainOK: () => true, ans, crit: xs,
+        range: [Math.min(...xs) - 3, Math.max(...xs) + 3], reduced: null,
+      },
+    }
+  }
+  return null
+}
+
 // ── реестры ─────────────────────────────────────────────────────────────────
 export const META15 = [
   ["Рациональные неравенства", [
@@ -3057,6 +3369,16 @@ export const META15 = [
     ["log-lin-over-quad", "(log(b^k·x) + c)/(log²x + m·log x) ⋛ C", t15LogLinOverQuad],
     ["log-conj", "сопряжённые дроби по y = log_b x", t15LogConj],
   ]],
+  ["Тригонометрия (периодический ответ)", [
+    ["trig-log-quad", "квадрат по y = log₂(sin|cos x)", t15TrigLogQuad],
+  ]],
+  ["Модули", [
+    ["abs-two-sides", "|ax+b| ⋛ |cx+d| — возведение в квадрат", t15AbsTwoSides],
+    ["abs-sum", "|x−p| + |x+q| ⋛ C", t15AbsSum],
+    ["abs-quad-sub", "a²x² − k|ax−b| ⋛ 2abx − b² (замена u = |ax−b|)", t15AbsQuadSub],
+    ["abs-x-abs-x", "|x+a| − x|x| ⋛ 0", t15AbsXAbsX],
+    ["abs-quad-ge", "|ax²+bx+c| ⋛ dx²+ex+f", t15AbsQuadGe],
+  ]],
   ["Логарифмические: рационализация и переменное основание", [
     ["log-rat-quot", "log f/log g ⋛ 1 → (f−g)(g−1)", t15LogRatQuot],
     ["log-rat-prod", "произведение логарифмов + линейные члены", t15LogRatProduct],
@@ -3088,6 +3410,9 @@ export const META15 = [
     ["log-cubic-hidden", "log(mx+1) + log(1/(Kx²)+1) ⋛ log(1/(kx)+1)", t15LogCubicHidden],
     ["log-three-args", "log(a/x+b) − log(x+d) ⋛ log((x+e)/x²)", t15LogThreeArgs],
     ["log-prod-shift", "log(a/x) + log(x²−px+q) ⋛ log(… + a/x + q−1); ОДЗ режет ответ", t15LogProdShift],
+    ["log-quad-of-quad", "квадрат по log_b(c²−(x−h)²)", t15LogQuadOfQuad],
+    ["log-powers-out", "log_b((x−a)^M) + log_{1/b}((1/(x−a))^{−N}) ⋛ C", t15LogPowersOut],
+    ["log-minus-frac", "log(x²−k) − log x ⋛ log(x − k/x²)", t15LogMinusFrac],
   ]],
   ["Показательные: дробно-рациональные по t", [
     ["exp-frac-quad-lin", "(B^x+βb^x+γ)/(b^x−p) ⋛ C", t15ExpFracQuadLin],
