@@ -709,6 +709,10 @@ export function t19BoardDistinctSum() {
 
 // ── реестр ─────────────────────────────────────────────────────────────────
 export const META19 = [
+  ["Две школы, средний балл", [
+    ["schools-drop-min", "Средние упали на 10 % → наим. исходный средний в №2", t19SchoolsDropMin],
+    ["schools-rise-min", "Средние выросли на 10 % → наим. исходный средний в №2", t19SchoolsRiseMin],
+  ]],
   ["Игры и операции с инвариантом", [
     ["boxes-three", "Три коробки: ход −1, −1, +1 → наибольшее в третьей", t19BoxesThree],
     ["ones-and-plus", "n единиц и знаки «+» → для скольких n сумма достижима", t19OnesAndPlus],
@@ -2733,3 +2737,165 @@ export function t19OnesAndPlus() {
     },
   })
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 19. Две школы, средний балл (#111, #112)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Из школы №1 (n учащихся, целый средний a) в школу №2 (m учащихся, целый средний b)
+// переходит учащийся с баллом x, после чего средние в ОБЕИХ школах умножаются на k.
+// Из определения средних:
+//   x = a·n − k·a·(n − 1)  и  x = k·b·(m + 1) − b·m,
+// поэтому при k = 0,9 получаем 10x = a(n + 9) = b(9 − m), а при k = 1,1 — 10x = a(11 − n) = b(m + 11).
+// Таблица допустимых троек (n, a, b) считается один раз при импорте.
+const SCHOOL_TABLE = (() => {
+  // Для каждого допустимого n множество достижимых b — это в точности кратные
+  // некоторого b₀(n): из cB | a·cA следует a = (cB/НОД)·t, откуда b = t·cA/НОД,
+  // а условие целости x = a·cA/10 задаёт минимальное t. Никаких «обрезаний»
+  // перебором здесь нет — множество описано полностью.
+  const map = new Map()
+  const NS = { drop: [9, 11, 13, 15, 17, 19, 21], rise: [11] }   // при rise только N = 11
+  for (const mode of ["drop", "rise"]) {                          // даёт b₀(n) ≥ 2 при всех n
+    for (const N of NS[mode]) {
+      const rows = []
+      for (let m = 2; m <= N - 2; m++) {
+        const n = N - m
+        const cA = mode === "drop" ? n + 9 : 11 - n
+        const cB = mode === "drop" ? 9 - m : m + 11
+        if (cA <= 0 || cB <= 0) continue
+        const g = gcdI(cA, cB), cBs = cB / g
+        // минимальное t, при котором x = a·cA/10 целое (a = cBs·t)
+        let t0 = 0
+        for (let t = 1; t <= 100 && !t0; t++) if ((cBs * t * cA) % 10 === 0) t0 = t
+        if (!t0) continue
+        // достижимые b — это кратные step = t₀·cA/g; берём НАИМЕНЬШЕЕ из них,
+        // при котором остальным учащимся школы №1 хватает хотя бы по одному баллу
+        const step = t0 * cA / g
+        if (step < 2) continue
+        let row = null
+        for (let mul = 1; mul <= 50 && !row; mul++) {
+          const a = cBs * t0 * mul, x = a * cA / 10, b = step * mul
+          if (x >= 1 && a * n - x >= n - 1) row = { n, m, a, b, x, step }
+        }
+        if (row) rows.push(row)
+      }
+      map.set(`${N}:${mode}`, rows)
+    }
+  }
+  return map
+})()
+// Разложить сумму total на cnt натуральных баллов (как можно ровнее).
+function spread(total, cnt) {
+  if (cnt <= 0 || total < cnt) return null
+  const base = Math.floor(total / cnt), rest = total - base * cnt
+  return Array.from({ length: cnt }, (_, i) => base + (i < rest ? 1 : 0))
+}
+const SMALL_PRIMES = [101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157, 163, 167, 173, 179, 181, 191, 193, 197, 199]
+function schoolsFamily(mode) {
+  const N = pick(mode === "drop" ? [9, 11, 13, 15, 17, 19, 21] : [11])
+  const rows = SCHOOL_TABLE.get(`${N}:${mode}`)
+  if (!rows || !rows.length) return null
+  const steps = [...new Set(rows.map((r) => r.step))].sort((x, y) => x - y)
+  const bMin = Math.min(...rows.map((r) => r.b))
+  const rowC = rows.find((r) => r.b === bMin)
+  // б) — «нет»: простое число, большее всех b₀, не делится ни на одно из них.
+  const B2 = pick(SMALL_PRIMES.filter((q) => q > steps[steps.length - 1]))
+  if (!B2) return null
+  const pctTxt = mode === "drop" ? "уменьшился на 10 %" : "вырос на 10 %"
+  const kTxt = mode === "drop" ? "уменьшиться в 10 раз" : "вырасти в 2 раза"
+
+  const mk = (r) => {
+    const rest = spread(r.a * r.n - r.x, r.n - 1)
+    if (!rest) return null
+    return { s1: [r.x, ...rest], s2: Array(r.m).fill(r.b), x: r.x }
+  }
+  const exC = mk(rowC)
+  if (!exC) return null
+  let exA = null
+  if (mode === "drop") {
+    const nA = 2, mA = N - 2, aA = 10 * randInt(1, 6)
+    const xA = aA * (9 * nA + 1) / 10
+    const restA = spread(aA * nA - xA, nA - 1)
+    if (restA && restA.every((v) => v >= 1)) exA = { s1: [xA, ...restA], s2: Array(mA).fill(randInt(1, 20)), x: xA }
+    if (!exA) return null
+  }
+
+  const params = { N, mode, bMin, B2 }
+  const kNum = mode === "drop" ? 0.9 : 1.1
+  const check = (cfg, part) => {
+    if (!cfg || !Array.isArray(cfg.s1) || !Array.isArray(cfg.s2)) return "нет конфигурации"
+    const n = cfg.s1.length, m = cfg.s2.length
+    if (n < 2 || m < 2) return "в каждой школе должно быть не менее двух учащихся"
+    if (n + m !== N) return `всего ${n + m} учащихся вместо ${N}`
+    for (const v of [...cfg.s1, ...cfg.s2]) if (!Number.isInteger(v) || v < 1) return `${v} — не натуральное число баллов`
+    const S1 = sum(cfg.s1), S2 = sum(cfg.s2)
+    if (S1 % n !== 0) return "средний балл в школе №1 не целый"
+    if (S2 % m !== 0) return "средний балл в школе №2 не целый"
+    if (!cfg.s1.includes(cfg.x)) return `перешедший учащийся с баллом ${cfg.x} не из школы №1`
+    const a1 = (S1 - cfg.x) / (n - 1), b1 = (S2 + cfg.x) / (m + 1)
+    if (part === "a" && mode === "drop" && Math.abs(a1 * 10 - S1 / n) > 1e-9) return "средний в школе №1 уменьшился не в 10 раз"
+    if (part !== "a") {
+      if (Math.abs(a1 - kNum * (S1 / n)) > 1e-9) return "средний в школе №1 изменился не на 10 %"
+      if (Math.abs(b1 - kNum * (S2 / m)) > 1e-9) return "средний в школе №2 изменился не на 10 %"
+    }
+    if (part === "b" && S2 / m !== B2) return `исходный средний в школе №2 равен ${S2 / m}, а не ${B2}`
+    if (part === "c" && S2 / m !== bMin) return `исходный средний в школе №2 равен ${S2 / m}, а не ${bMin}`
+    return null
+  }
+  const solve = (P) => {
+    // Пространство перебора: число учащихся в школе №1 от 2 до N−2, средние баллы
+    // a и b от 1 до 3000. Балл перешедшего вычисляется из ОПРЕДЕЛЕНИЯ первого
+    // среднего, второе среднее проверяется напрямую.
+    const k = P.mode === "drop" ? 0.9 : 1.1
+    const bs = new Set()
+    let aYes = false
+    for (let m = 2; m <= P.N - 2; m++) {
+      const n = P.N - m
+      for (let a = 1; a <= 3000; a++) {
+        const x = a * n - k * a * (n - 1)
+        if (Math.abs(x - Math.round(x)) > 1e-9) continue
+        const xi = Math.round(x)
+        if (xi < 1 || a * n - xi < n - 1) continue
+        for (let b = 1; b <= 400; b++) if (Math.abs((b * m + xi) - k * b * (m + 1)) < 1e-9) bs.add(b)
+      }
+      if (P.mode === "drop") {
+        for (let a = 1; a <= 3000; a++) {
+          const x = a * n - (a / 10) * (n - 1)
+          if (Math.abs(x - Math.round(x)) > 1e-9) continue
+          const xi = Math.round(x)
+          if (xi >= 1 && a * n - xi >= n - 1) aYes = true
+        }
+      }
+    }
+    const arr = [...bs].sort((x, y) => x - y)
+    return { a: P.mode === "drop" ? aYes : false, b: arr.includes(P.B2), c: arr.length ? arr[0] : -1, c_next: false }
+  }
+
+  return item({
+    preamble: `В школах №1 и №2 учащиеся писали тест. Из каждой школы тест писали, по крайней мере, 2 учащихся, а суммарно тест писали ${N} учащихся. Каждый учащийся, писавший тест, набрал натуральное количество баллов. Оказалось, что в каждой школе средний балл за тест был целым числом. После этого один из учащихся, писавших тест, перешёл из школы №1 в школу №2, а средние баллы за тест были пересчитаны в обеих школах.`,
+    qa: `Мог ли средний балл в школе №1 ${kTxt}?`,
+    qb: `Средний балл в школе №1 ${pctTxt}, средний балл в школе №2 также ${pctTxt}. Мог ли первоначальный средний балл в школе №2 равняться ${B2}?`,
+    qc: `Средний балл в школе №1 ${pctTxt}, средний балл в школе №2 также ${pctTxt}. Найдите наименьшее значение первоначального среднего балла в школе №2.`,
+    ansA: mode === "drop"
+      ? `да, например в школе №1 было 2 учащихся с баллами ${joinRu(exA.s1)} (средний ${sum(exA.s1) / 2}); после ухода учащегося с баллом ${exA.x} средний стал ${sum(exA.s1) - exA.x}, то есть уменьшился в 10 раз`
+      : `нет: если в школе №1 было n ≥ 2 учащихся со средним a, то после ухода учащегося с баллом x средний равен (an − x)/(n − 1); равенство (an − x)/(n − 1) = 2a даёт x = a(2 − n) ≤ 0, а балл обязан быть натуральным`,
+    ansB: `нет: при каждом числе учащихся школы №1 первоначальный средний балл школы №2 обязан быть кратен одному из чисел ${joinRu(steps)}, а ${B2} — простое число, большее любого из них, и ни на одно из них не делится`,
+    ansC: `${bMin}; например: в школе №1 было ${rowC.n} ${plural(rowC.n, "учащийся", "учащихся", "учащихся")} с баллами ${joinRu(exC.s1)} (средний ${rowC.a}), в школе №2 — ${rowC.m} ${plural(rowC.m, "учащийся", "учащихся", "учащихся")} с баллами по ${rowC.b}; переходит учащийся с баллом ${rowC.x}`,
+    solution: `Пусть в школе №1 было n учащихся со средним баллом a, в школе №2 — m учащихся со средним b, n + m = ${N}, и перешёл учащийся с баллом x.\nИз определения среднего: (an − x)/(n − 1) = ${mode === "drop" ? "0,9" : "1,1"}a и (bm + x)/(m + 1) = ${mode === "drop" ? "0,9" : "1,1"}b. Отсюда 10x = a·${mode === "drop" ? "(n + 9)" : "(11 − n)"} = b·${mode === "drop" ? "(9 − m)" : "(m + 11)"}.\nВторое равенство показывает, что при фиксированном n величина b обязана быть кратна вполне определённому числу — эти числа равны ${joinRu(steps)}. Значит подходят только такие b, а наименьшее из них равно ${bMin}.\nОно достигается при n = ${rowC.n}, m = ${rowC.m}, a = ${rowC.a}, x = ${rowC.x}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: mode === "drop"
+          ? { type: "yesno", yes: true, example: exA, target: 10 }
+          : { type: "yesno", yes: false, reason: "growth-bound", target: 2 },
+        b: { type: "yesno", yes: false, reason: "divisibility", target: B2 },
+        c: { type: "extremum", mode: "min", value: bMin, example: exC },
+      },
+      mustMention: [N, B2, 1, 2, 10],
+      extra: [],
+      phrases: ["по крайней мере, 2 учащихся", "средний балл за тест был целым числом", "перешёл из школы №1 в школу №2"],
+    },
+  })
+}
+export function t19SchoolsDropMin() { return schoolsFamily("drop") }
+export function t19SchoolsRiseMin() { return schoolsFamily("rise") }
