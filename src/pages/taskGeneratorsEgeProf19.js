@@ -740,6 +740,7 @@ export const META19 = [
   ]],
   ["Средние в контейнере", [
     ["box-mean-split-max", "Ящик фруктов: наибольшая масса фрукта", t19BoxMeanSplitMax],
+    ["box-mean-split-min", "Ящик овощей: наименьшая масса овоща", t19BoxMeanSplitMin],
     ["days-sum-up-count-down", "Дни: сумма растёт, количество убывает", t19DaysSumUpCountDown],
   ]],
   ["Операции над записью числа", [
@@ -5244,15 +5245,17 @@ export function t19MeansIterated5() {
 // и оценка на число предметов ровно в M граммов, и наибольшая масса:
 // у b тяжёлых предметов суммарная масса qb, а каждый не легче M + 1, поэтому
 // максимум одного равен qb − (M + 1)(b − 1) и достигается при наибольшем b.
-export function t19BoxMeanSplitMax() {
-  const M = 100
+function boxMeanFamily(mode) {
+  const M = mode === "max" ? 100 : 1000
   // подбираем (p, q, N) так, чтобы фруктов ровно по M граммов оставалось не меньше трёх:
   // иначе пункт б) выродился бы в вопрос «меньше нуля фруктов»
   const opts = []
-  for (const d1 of [25, 27, 30]) {
-    for (const d2 of [12, 15, 18]) {
+  const D1 = mode === "max" ? [25, 27, 30] : [18, 20, 24]
+  const D2 = mode === "max" ? [12, 15, 18] : [24, 30, 32]
+  for (const d1 of D1) {
+    for (const d2 of D2) {
       const g0 = gcdI(d1, d2), u0 = d2 / g0, v0 = d1 / g0
-      for (const N0 of [95, 100, 110, 120]) {
+      for (const N0 of (mode === "max" ? [95, 100, 110, 120] : [60, 65, 70, 75])) {
         const t0 = Math.floor(N0 / (u0 + v0))
         const c0 = N0 - (u0 + v0) * t0
         if (t0 >= 2 && c0 >= 3) opts.push({ d1, d2, u: u0, v: v0, N: N0, tMax: t0, cMin: c0 })
@@ -5263,11 +5266,26 @@ export function t19BoxMeanSplitMax() {
   const { d1, d2, u, v, N, tMax, cMin } = pick(opts)
   const p = M - d1, q = M + d2
   const aMax = u * tMax, bMax = v * tMax
-  const heaviest = q * bMax - (M + 1) * (bMax - 1)
-  if (heaviest > 99999) return null
-  const Xb = cMin                                           // «меньше cMin фруктов ровно по M г» — нельзя
+  // max: самый тяжёлый предмет среди тяжёлых; min: самый лёгкий среди лёгких
+  const extreme = mode === "max"
+    ? q * bMax - (M + 1) * (bMax - 1)
+    : p * aMax - (M - 1) * (aMax - 1)
+  if (extreme < 1 || extreme > 99999) return null
+  // пункт б): max — «меньше cMin предметов ровно по M г»; min — «ровно Xb предметов»,
+  // где Xb не имеет вида N − (u+v)t
+  let Xb = cMin
+  if (mode === "min") {
+    const reachable = new Set()
+    for (let t = 0; t <= tMax; t++) reachable.add(N - (u + v) * t)
+    Xb = 0
+    for (let cand = cMin + 1; cand <= cMin + 4 * (u + v); cand++) if (!reachable.has(cand)) { Xb = cand; break }
+    if (!Xb) return null
+  }
+  const thing = mode === "max" ? "фрукт" : "овощ"
+  const things = mode === "max" ? "фруктов" : "овощей"        // родительный
+  const thingsNom = mode === "max" ? "фрукты" : "овощи"      // именительный
 
-  const params = { N, M, p, q, u, v, Xb }
+  const params = { N, M, p, q, u, v, Xb, mode }
   const check = (cfg, part) => {
     if (!Array.isArray(cfg) || cfg.length !== N) return `предметов должно быть ${N}`
     for (const w of cfg) if (!Number.isInteger(w) || w < 1) return `${w} — не целая положительная масса`
@@ -5276,13 +5294,16 @@ export function t19BoxMeanSplitMax() {
     const light = cfg.filter((w) => w < M), heavy = cfg.filter((w) => w > M)
     if (light.length && sum(light) !== p * light.length) return `средняя масса лёгких ${sum(light) / light.length}, а не ${p}`
     if (heavy.length && sum(heavy) !== q * heavy.length) return `средняя масса тяжёлых ${sum(heavy) / heavy.length}, а не ${q}`
-    if (part === "c" && Math.max(...cfg) !== heaviest) return `наибольшая масса ${Math.max(...cfg)}, а заявлено ${heaviest}`
+    if (part === "c") {
+      const got = mode === "max" ? Math.max(...cfg) : Math.min(...cfg)
+      if (got !== extreme) return `${mode === "max" ? "наибольшая" : "наименьшая"} масса ${got}, а заявлено ${extreme}`
+    }
     return null
   }
   // Независимый перебор по числу лёгких a и тяжёлых b: набор существует, когда
   // pa + qb + M(N − a − b) = MN, лёгкие помещаются в 1…M−1, тяжёлые — от M+1.
   const solve = (P) => {
-    let equal = false, few = false, best = -Infinity
+    let equal = false, hitB = false, best = P.mode === "max" ? -Infinity : Infinity
     for (let a = 0; a <= P.N; a++) {
       for (let b = 0; a + b <= P.N; b++) {
         if (P.p * a + P.q * b + P.M * (P.N - a - b) !== P.M * P.N) continue
@@ -5290,40 +5311,58 @@ export function t19BoxMeanSplitMax() {
         if (b && P.q * b < (P.M + 1) * b) continue
         if (a + b === 0) continue                            // тогда все массы равны M
         if (a === b) equal = true
-        if (P.N - a - b < P.Xb) few = true
-        if (b) best = Math.max(best, P.q * b - (P.M + 1) * (b - 1))
+        if (P.mode === "max") {
+          if (P.N - a - b < P.Xb) hitB = true
+          if (b) best = Math.max(best, P.q * b - (P.M + 1) * (b - 1))
+        } else {
+          if (P.N - a - b === P.Xb) hitB = true
+          if (a) best = Math.min(best, P.p * a - (P.M - 1) * (a - 1))
+        }
       }
     }
-    return { a: equal, b: few, c: best, c_next: false }
+    return { a: equal, b: hitB, c: best, c_next: false }
   }
 
-  const exC = [
-    ...Array(aMax).fill(p),
-    ...Array(bMax - 1).fill(M + 1), heaviest,
-    ...Array(cMin).fill(M),
-  ]
+  const exC = mode === "max"
+    ? [...Array(aMax).fill(p), ...Array(bMax - 1).fill(M + 1), extreme, ...Array(cMin).fill(M)]
+    : [extreme, ...Array(aMax - 1).fill(M - 1), ...Array(bMax).fill(q), ...Array(cMin).fill(M)]
+  const qbText = mode === "max"
+    ? `Могло ли в ящике оказаться меньше ${Xb} ${things}, масса каждого из которых равна ${M} г?`
+    : `Могло ли в ящике оказаться ровно ${Xb} ${things}, масса каждого из которых равна ${M} г?`
+  const ansBText = mode === "max"
+    ? `нет: из a : b = ${u} : ${v} следует a = ${u}t и b = ${v}t, поэтому ${things} ровно по ${M} г остаётся ${N} − ${u + v}t. Так как ${u + v}t ≤ ${N}, получаем t ≤ ${tMax} и таких ${things} не меньше ${cMin}`
+    : `нет: из a : b = ${u} : ${v} следует a = ${u}t и b = ${v}t, поэтому ${things} ровно по ${M} г остаётся ${N} − ${u + v}t. Число ${Xb} такого вида не имеет: ${N} − ${Xb} = ${N - Xb} не делится на ${u + v}`
+  const ansCText = mode === "max"
+    ? `${extreme}; например ${aMax} ${things} по ${p} г, ${bMax - 1} по ${M + 1} г, один в ${extreme} г и ${cMin} по ${M} г`
+    : `${extreme}; например один ${thing} в ${extreme} г, ${aMax - 1} по ${M - 1} г, ${bMax} по ${q} г и ${cMin} по ${M} г`
+  const solC = mode === "max"
+    ? `в) Суммарная масса тяжёлых ${things} равна ${q}b, каждый из них весит не меньше ${M + 1} г, поэтому один может весить не больше ${q}b − ${M + 1}(b − 1). Это выражение растёт по b, а b = ${v}t ≤ ${bMax}. При t = ${tMax} получаем ${extreme} г.`
+    : `в) Суммарная масса лёгких ${things} равна ${p}a, каждый из них весит не больше ${M - 1} г, поэтому один может весить не меньше ${p}a − ${M - 1}(a − 1). Это выражение убывает по a, а a = ${u}t ≤ ${aMax}. При t = ${tMax} получаем ${extreme} г.`
+
   return item({
-    preamble: `В ящике лежит ${N} фруктов, масса каждого из которых выражается целым числом граммов. В ящике есть хотя бы два фрукта различной массы, а средняя масса всех фруктов равна ${M} г. Средняя масса фруктов, масса каждого из которых меньше ${M} г, равна ${p} ${plural(p, "грамм", "грамма", "граммов")}. Средняя масса фруктов, масса каждого из которых больше ${M} г, равна ${q} г.`,
-    qa: `Могло ли в ящике оказаться поровну фруктов массой меньше ${M} г и фруктов массой больше ${M} г?`,
-    qb: `Могло ли в ящике оказаться меньше ${Xb} фруктов, масса каждого из которых равна ${M} г?`,
-    qc: `Какую наибольшую массу может иметь фрукт в этом ящике?`,
-    ansA: `нет: если лёгких a, а тяжёлых b, то ${d1}a = ${d2}b, то есть a : b = ${u} : ${v}. Равенство a = b возможно лишь при a = b = 0, но тогда все фрукты весят по ${M} г и различных масс в ящике нет`,
-    ansB: `нет: из a : b = ${u} : ${v} следует a = ${u}t и b = ${v}t, поэтому фруктов ровно по ${M} г остаётся ${N} − ${u + v}t. Так как ${u + v}t ≤ ${N}, получаем t ≤ ${tMax} и таких фруктов не меньше ${cMin}`,
-    ansC: `${heaviest}`,
-    solution: `Пусть в ящике a фруктов легче ${M} г, b фруктов тяжелее ${M} г и c = ${N} − a − b фруктов ровно по ${M} г. Тогда\n${p}a + ${q}b + ${M}c = ${M * N}, откуда ${d1}a = ${d2}b, то есть a : b = ${u} : ${v}, a = ${u}t, b = ${v}t.\nа) Равенство a = b означало бы t = 0, то есть все фрукты по ${M} г — но в ящике есть фрукты различной массы.\nб) Число фруктов ровно по ${M} г равно ${N} − ${u + v}t ≥ ${N} − ${u + v}·${tMax} = ${cMin}, поэтому меньше ${Xb} их быть не может.\nв) Суммарная масса тяжёлых фруктов равна ${q}b, каждый из них весит не меньше ${M + 1} г, поэтому один может весить не больше ${q}b − ${M + 1}(b − 1). Это выражение растёт по b, а b = ${v}t ≤ ${bMax}. При t = ${tMax} получаем ${q}·${bMax} − ${M + 1}·${bMax - 1} = ${heaviest} г; пример: ${aMax} фруктов по ${p} г, ${bMax - 1} по ${M + 1} г, один в ${heaviest} г и ${cMin} по ${M} г.\nОтвет: ${heaviest}.`,
+    preamble: `В ящике лежит ${N} ${things}, масса каждого из которых выражается целым числом граммов. В ящике есть хотя бы два ${thing}а различной массы, а средняя масса всех ${things} равна ${M} г. Средняя масса ${things}, масса каждого из которых меньше ${M} г, равна ${p} ${plural(p, "грамм", "грамма", "граммов")}. Средняя масса ${things}, масса каждого из которых больше ${M} г, равна ${q} г.`,
+    qa: `Могло ли в ящике оказаться поровну ${things} массой меньше ${M} г и ${things} массой больше ${M} г?`,
+    qb: qbText,
+    qc: `Какую ${mode === "max" ? "наибольшую" : "наименьшую"} массу может иметь ${thing} в этом ящике?`,
+    ansA: `нет: если лёгких a, а тяжёлых b, то ${d1}a = ${d2}b, то есть a : b = ${u} : ${v}. Равенство a = b возможно лишь при a = b = 0, но тогда все ${thingsNom} весят по ${M} г и различных масс в ящике нет`,
+    ansB: ansBText,
+    ansC: ansCText,
+    solution: `Пусть в ящике a ${things} легче ${M} г, b ${things} тяжелее ${M} г и c = ${N} − a − b ровно по ${M} г. Тогда\n${p}a + ${q}b + ${M}c = ${M * N}, откуда ${d1}a = ${d2}b, то есть a : b = ${u} : ${v}, a = ${u}t, b = ${v}t.\nа) Равенство a = b означало бы t = 0, то есть все ${thingsNom} весят по ${M} г — но в ящике есть предметы различной массы.\nб) Количество ${things} ровно по ${M} г равно ${N} − ${u + v}t, где t ≤ ${tMax}.\n${solC}\nОтвет: ${extreme}.`,
     verify: {
       params, check, solve,
       claims: {
         a: { type: "yesno", yes: false, reason: "ratio-fixed", target: "equal-counts" },
-        b: { type: "yesno", yes: false, reason: "count-bound", target: `fewer-${Xb}` },
-        c: { type: "extremum", mode: "max", value: heaviest, example: exC },
+        b: { type: "yesno", yes: false, reason: "count-bound", target: `count-${Xb}` },
+        c: { type: "extremum", mode, value: extreme, example: exC },
       },
       mustMention: [N, M, p, q, Xb],
       extra: [],
-      phrases: ["целым числом граммов", "хотя бы два фрукта различной массы"],
+      phrases: ["целым числом граммов", "различной массы"],
     },
   })
 }
+export function t19BoxMeanSplitMax() { return boxMeanFamily("max") }
+export function t19BoxMeanSplitMin() { return boxMeanFamily("min") }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // РАЗДЕЛ 11 (продолжение). Записи по дням: сумма растёт, количество убывает (#65)
