@@ -740,6 +740,7 @@ export const META19 = [
   ]],
   ["Средние в контейнере", [
     ["box-mean-split-max", "Ящик фруктов: наибольшая масса фрукта", t19BoxMeanSplitMax],
+    ["days-sum-up-count-down", "Дни: сумма растёт, количество убывает", t19DaysSumUpCountDown],
   ]],
   ["Операции над записью числа", [
     ["swap-digits-max", "Перестановка цифр двузначных → наибольшая новая сумма", t19SwapDigitsMax],
@@ -5320,6 +5321,123 @@ export function t19BoxMeanSplitMax() {
       mustMention: [N, M, p, q, Xb],
       extra: [],
       phrases: ["целым числом граммов", "хотя бы два фрукта различной массы"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 11 (продолжение). Записи по дням: сумма растёт, количество убывает (#65)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// n дней подряд записывают натуральные числа, каждое меньше B. Пусть в день i записано
+// kᵢ чисел с суммой sᵢ. Тогда kᵢ ≤ sᵢ ≤ (B−1)kᵢ, причём k строго убывает, а s строго
+// растёт. Отсюда (B−1)kₙ ≥ sₙ ≥ s₁ + (n−1) ≥ k₁ + (n−1) ≥ kₙ + 2(n−1), то есть
+//   kₙ ≥ 2(n−1)/(B−2),
+// и наименьшее общее количество чисел равно n·kₙ + n(n−1)/2 при kᵢ = kₙ + (n−i).
+// Если же задана сумма первого дня s₁ = S, то k₁ ≤ S и по той же цепочке
+//   S + (n−1) ≤ (B−1)(S − (n−1)), откуда n ≤ 1 + (B−2)S/B.
+export function t19DaysSumUpCountDown() {
+  const B = 6                                              // числа от 1 до B−1
+  const n = pick([5, 6, 7])
+  const S1 = pick([7, 9, 11, 13])
+  const nMaxByS1 = Math.floor(1 + (B - 2) * S1 / B)
+  const Xa = nMaxByS1 + randInt(1, 2)                       // «может ли n быть больше Xa» — нет
+  const kLast = Math.ceil(2 * (n - 1) / (B - 2))
+  const minTotal = n * kLast + n * (n - 1) / 2
+  const kSeq = Array.from({ length: n }, (_, i) => kLast + (n - 1 - i))
+  // жадные суммы: sᵢ = max(kᵢ, sᵢ₋₁ + 1), проверяем sᵢ ≤ (B−1)kᵢ
+  const sSeq = []
+  for (let i = 0; i < n; i++) {
+    const s = Math.max(kSeq[i], (sSeq[i - 1] ?? 0) + 1)
+    if (s > (B - 1) * kSeq[i]) return null
+    sSeq.push(s)
+  }
+  // б) первый день со средним < Yb, а все дни — со средним > Zb
+  const Yb = 2, Zb = 2.5
+  const k1 = 5, s1 = 9, k2 = 4, s2 = (B - 1) * k2
+  const exB = [{ k: k1, s: s1 }, { k: k2, s: s2 }]
+  if (!(s1 / k1 < Yb && (s1 + s2) / (k1 + k2) > Zb && s2 > s1 && k2 < k1)) return null
+  const exC = kSeq.map((k, i) => ({ k, s: sSeq[i] }))
+
+  const params = { B, n, S1, Xa, Yb, Zb }
+  const check = (cfg, part) => {
+    if (!Array.isArray(cfg) || cfg.length < 2) return "нужно хотя бы два дня"
+    for (const d of cfg) {
+      if (!d || !Number.isInteger(d.k) || !Number.isInteger(d.s)) return "день задаётся количеством и суммой"
+      if (d.k < 1) return "в день записывают хотя бы одно число"
+      if (d.s < d.k || d.s > (B - 1) * d.k) return `сумму ${d.s} нельзя набрать ${d.k} числами, меньшими ${B}`
+    }
+    for (let i = 1; i < cfg.length; i++) {
+      if (cfg[i].s <= cfg[i - 1].s) return `сумма в день ${i + 1} не больше, чем в предыдущий`
+      if (cfg[i].k >= cfg[i - 1].k) return `количество чисел в день ${i + 1} не меньше, чем в предыдущий`
+    }
+    if (part === "b") {
+      if (!(cfg[0].s / cfg[0].k < Yb)) return `среднее первого дня ${cfg[0].s / cfg[0].k}, а нужно меньше ${Yb}`
+      const all = sum(cfg.map((d) => d.s)) / sum(cfg.map((d) => d.k))
+      if (!(all > Zb)) return `среднее всех чисел ${all}, а нужно больше ${Zb}`
+    }
+    if (part === "c") {
+      if (cfg.length !== n) return `дней должно быть ${n}`
+      if (sum(cfg.map((d) => d.k)) !== minTotal) return `записано ${sum(cfg.map((d) => d.k))} чисел, а заявлено ${minTotal}`
+    }
+    return null
+  }
+  // Независимый перебор: все строго убывающие наборы (k₁ > … > kₙ) с суммой не больше
+  // предела; для каждого — жадная проверка существования строго растущих сумм
+  // sᵢ = max(kᵢ, sᵢ₋₁ + 1) ≤ (B−1)kᵢ (жадный выбор оптимален: меньшая сумма никогда
+  // не мешает следующему дню).
+  const solve = (P) => {
+    const feasible = (ks, s1fixed) => {
+      let prev = 0
+      for (let i = 0; i < ks.length; i++) {
+        let s = Math.max(ks[i], prev + 1)
+        if (i === 0 && s1fixed) { if (s1fixed < ks[i] || s1fixed > (P.B - 1) * ks[i]) return false; s = s1fixed }
+        if (s > (P.B - 1) * ks[i]) return false
+        prev = s
+      }
+      return true
+    }
+    // а): существует ли n > Xa дней при заданной сумме первого дня
+    let aYes = false
+    for (let m = P.Xa + 1; m <= 14 && !aYes; m++) {
+      const rec = (idx, prevK, ks) => {
+        if (aYes) return
+        if (idx === m) { if (feasible(ks, P.S1)) aYes = true; return }
+        for (let k = prevK - 1; k >= 1; k--) { ks.push(k); rec(idx + 1, k, ks); ks.pop() }
+      }
+      for (let k1 = 1; k1 <= P.S1 && !aYes; k1++) rec(1, k1, [k1])
+    }
+    // в): наименьшая сумма количеств при ровно n днях
+    let best = Infinity
+    const rec2 = (idx, prevK, ks, tot) => {
+      if (tot >= best) return
+      if (idx === P.n) { if (feasible(ks, null)) best = Math.min(best, tot); return }
+      for (let k = prevK - 1; k >= 1; k--) rec2(idx + 1, k, [...ks, k], tot + k)
+    }
+    for (let k1 = 1; k1 <= 40; k1++) rec2(1, k1, [k1], k1)
+    return { a: aYes, b: true, c: best, c_next: false }
+  }
+
+  const showDays = (arr) => arr.map((d, i) => `в ${i + 1}-й день ${d.k} ${plural(d.k, "число", "числа", "чисел")} с суммой ${d.s}`).join(", ")
+  return item({
+    preamble: `В течение n дней каждый день на доску записывают натуральные числа, каждое из которых меньше ${B}. При этом каждый день (кроме первого) сумма чисел, записанных на доску в этот день, больше, а количество чисел меньше, чем в предыдущий день.`,
+    qa: `Известно, что сумма чисел, записанных в первый день, равна ${S1}. Может ли n быть больше ${Xa}?`,
+    qb: `Может ли среднее арифметическое чисел, записанных в первый день, быть меньше ${Yb}, а среднее арифметическое всех чисел, записанных за все дни, быть больше ${ru2(Zb)}?`,
+    qc: `Известно, что n = ${n}. Какое наименьшее количество чисел могло быть записано за все эти дни?`,
+    ansA: `нет: числа натуральные, поэтому k₁ ≤ s₁ = ${S1}, а количество чисел убывает, значит kₙ ≤ ${S1} − (n − 1). С другой стороны sₙ ≥ ${S1} + (n − 1) и sₙ ≤ ${B - 1}kₙ, откуда ${S1} + (n − 1) ≤ ${B - 1}(${S1} − (n − 1)) и n ≤ ${nMaxByS1}`,
+    ansB: `да, например ${showDays(exB)}: среднее первого дня ${ru2(s1 / k1)} < ${Yb}, а среднее всех чисел ${frPlain(fr(s1 + s2, k1 + k2))} > ${ru2(Zb)}`,
+    ansC: `${minTotal}; например ${showDays(exC)}`,
+    solution: `Пусть в день i записано kᵢ чисел с суммой sᵢ. Все числа натуральные и меньше ${B}, поэтому kᵢ ≤ sᵢ ≤ ${B - 1}kᵢ.\nа) Так как k строго убывает, kₙ ≤ k₁ − (n − 1) ≤ ${S1} − (n − 1); так как s строго растёт, sₙ ≥ ${S1} + (n − 1). Из sₙ ≤ ${B - 1}kₙ получаем ${S1} + (n − 1) ≤ ${B - 1}(${S1} − (n − 1)), то есть n ≤ ${nMaxByS1}. Значит n больше ${Xa} быть не может.\nб) Пример: ${showDays(exB)}. Среднее первого дня равно ${ru2(s1 / k1)}, а всех чисел — ${frPlain(fr(s1 + s2, k1 + k2))}.\nв) Цепочка ${B - 1}kₙ ≥ sₙ ≥ s₁ + (n − 1) ≥ k₁ + (n − 1) ≥ kₙ + 2(n − 1) даёт kₙ ≥ ${kLast}. Тогда количества не меньше ${kSeq.join(", ")}, а всего чисел не меньше ${minTotal}. Пример: ${showDays(exC)}.\nОтвет: ${minTotal}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: false, reason: "chain-bound", target: `n-gt-${Xa}` },
+        b: { type: "yesno", yes: true, example: exB, target: "means" },
+        c: { type: "extremum", mode: "min", value: minTotal, example: exC },
+      },
+      mustMention: [B, S1, Xa, n, Yb],
+      extra: [2, 5],
+      phrases: ["каждое из которых меньше", "количество чисел меньше, чем в предыдущий день"],
     },
   })
 }
