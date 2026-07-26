@@ -203,6 +203,22 @@ export function verify19(o) {
       if (Math.abs(cl.value - S[part]) > 1e-9) return { ok: false, err: `пункт ${part}: заявлено ${cl.value}, перебор даёт ${S[part]}` }
       const e = V.check(cl.example, part)
       if (e) return { ok: false, err: `пункт ${part}: пример не проходит check — ${e}` }
+    } else if (cl.type === "except") {
+      // Ответ — БЕСКОНЕЧНОЕ множество вида «все целые, кроме перечисленных».
+      // Перебор возвращает список достижимых значений в конечном окне range,
+      // и оно обязано в точности совпасть с описанием на этом окне.
+      const [lo, hi] = cl.range
+      const got = new Set(S[part] || [])
+      for (let v = lo; v <= hi; v++) {
+        const want = !cl.excluded.includes(v)
+        if (want !== got.has(v)) {
+          return { ok: false, err: `пункт ${part}: значение ${v} ${want ? "должно быть достижимо, но перебор его не нашёл" : "не должно быть достижимо, но перебор его нашёл"}` }
+        }
+      }
+      for (const [v, ex] of Object.entries(cl.examples || {})) {
+        const e = V.check(ex, part)
+        if (e) return { ok: false, err: `пункт ${part}: пример для ${v} не проходит check — ${e}` }
+      }
     } else if (cl.type === "all") {
       const got = (S[part] || []).join(",")
       if (got !== cl.values.join(",")) return { ok: false, err: `пункт ${part}: заявлено {${cl.values}}, перебор даёт {${got}}` }
@@ -732,6 +748,7 @@ export const META19 = [
     ["ap-count-by-sum", "n различных натуральных в АП: наибольшее n и все n", t19APCountBySum],
     ["gp-three-digit", "ГП из трёхзначных с первым членом F → наибольший член", t19GPThreeDigit],
     ["prod-gp-subset", "Пять чисел с произведением P: пять/четыре/три в ГП", t19ProdGPSubset],
+    ["ap-consecutive-sum", "Сумма ≥3 подряд идущих членов АП: все значения", t19APConsecutiveSum],
   ]],
   ["Алгебраическая теория чисел", [
     ["quadratic-nat-roots", "x² + px + q = 0 с двумя натуральными корнями", t19QuadraticNatRoots],
@@ -4395,6 +4412,96 @@ export function t19BoardFracMean() {
       mustMention: [Xa, Xb],
       extra: [a, b, ...String(fracTxt).split(/\D+/).filter(Boolean).map(Number)],
       phrases: ["различных натуральных чисел", "Дробная часть среднего арифметического"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 8 (продолжение). Сумма нескольких подряд идущих членов прогрессии (#23)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// S — сумма n ≥ 3 подряд идущих членов НЕПОСТОЯННОЙ целочисленной прогрессии:
+//   S = n·a + d·n(n − 1)/2 = (n/2)·(2a + d(n − 1)),  d ≠ 0.
+// При нечётном n отсюда n | S, при чётном — (n/2) | S. В обоих случаях S либо равно
+// нулю, либо |S| ≥ n/2 ≥ 3/2, то есть |S| ≥ 2: значения ±1 недостижимы.
+// Все остальные целые достижимы: при S = 0 годится −d, 0, d, а при |S| ≥ 2 берём
+// n = 2|S| членов с d = ±1 и первым членом 1 − |S| (соответственно |S| − 1),
+// потому что 2S(1 − S) + 2S(2S − 1)/2 = S.
+export function t19APConsecutiveSum() {
+  // Компактный набор для заданной суммы: наименьшее n ≥ 3, при котором первый член
+  // a = (S − d·n(n−1)/2)/n цел. Универсальная конструкция (n = 2|S|, d = ±1) годится
+  // всегда, но для показа берём короткий набор.
+  const mk = (S) => {
+    for (let n = 3; n <= 10; n++) {
+      for (const d of [1, -1, 2, -2, 3, -3]) {
+        const num = S - d * n * (n - 1) / 2
+        if (num % n === 0) return { a: num / n, d, n }
+      }
+    }
+    if (S === 0) return { a: -1, d: 1, n: 3 }
+    const sgn = S > 0 ? 1 : -1, A = Math.abs(S)
+    return { a: sgn * (1 - A), d: sgn, n: 2 * A }
+  }
+  const R = 12                                             // окно перебора для пункта в)
+  const Sa = pick([8, 10, 14, 16, 20, 22, 26])             // пункт а) — «да»
+  const Sb = pick([1, -1])                                 // пункт б) — «нет»
+  const exA = mk(Sa)
+  const examples = {}
+  for (const v of [0, 2, -2, R]) examples[v] = mk(v)
+
+  const params = { Sa, Sb, R }
+  const check = (cfg, part) => {
+    if (!cfg || !Number.isInteger(cfg.a) || !Number.isInteger(cfg.d) || !Number.isInteger(cfg.n)) return "нет прогрессии"
+    if (cfg.d === 0) return "прогрессия постоянна (d = 0)"
+    if (cfg.n < 3) return `взято ${cfg.n} членов, а нужно не менее трёх`
+    const total = cfg.n * cfg.a + cfg.d * cfg.n * (cfg.n - 1) / 2
+    if (part === "a" && total !== Sa) return `сумма ${total}, а нужно ${Sa}`
+    return null
+  }
+  // Независимый перебор пункта в): по числу членов n, первому члену a и разности d
+  // в явном конечном окне. Окно достаточно широкое: значение S по модулю не больше R
+  // получается уже при n ≤ 2R и |a| ≤ 2R + 1, |d| ≤ 3. Недостижимость ±1 доказывается
+  // не перебором, а оценкой |S| ≥ n/2 ≥ 3/2 (см. ansB).
+  const solve = (P) => {
+    const reach = new Set()
+    for (let n = 3; n <= 2 * P.R + 2; n++) {
+      for (let d = -3; d <= 3; d++) {
+        if (d === 0) continue
+        for (let a = -(2 * P.R + 2); a <= 2 * P.R + 2; a++) {
+          const total = n * a + d * n * (n - 1) / 2
+          if (Math.abs(total) <= P.R) reach.add(total)
+        }
+      }
+    }
+    const list = [...reach].sort((x, y) => x - y)
+    return { a: reach.has(P.Sa) || Math.abs(P.Sa) > P.R, b: list.includes(P.Sb), c: list }
+  }
+
+  const showRun = (o) => {
+    const first = o.a, second = o.a + o.d, last = o.a + o.d * (o.n - 1)
+    return o.n <= 5
+      ? Array.from({ length: o.n }, (_, i) => o.a + o.d * i).join(", ")
+      : `${first}, ${second}, …, ${last} (${o.n} ${plural(o.n, "член", "члена", "членов")}, разность ${o.d})`
+  }
+  return item({
+    preamble: `Целое число S является суммой не менее трёх последовательных членов непостоянной арифметической прогрессии, состоящей из целых чисел.`,
+    qa: `Может ли S равняться ${Sa}?`,
+    qb: `Может ли S равняться ${String(Sb).replace("-", "−")}?`,
+    qc: `Найдите все значения, которые может принимать S.`,
+    ansA: `да, например ${showRun(exA)}`,
+    ansB: `нет: сумма n подряд идущих членов равна ${"(n/2)·(2a + d(n − 1))"}, поэтому при нечётном n она делится на n, а при чётном — на n/2. Значит либо S = 0, либо |S| ≥ n/2 ≥ ${"3/2"}, то есть |S| ≥ 2, а ${String(Sb).replace("-", "−")} этому не удовлетворяет`,
+    ansC: `все целые числа, кроме 1 и −1; например 0 = (−1) + 0 + 1, а любое S с |S| ≥ 2 — сумма ${"2|S|"} членов с разностью ±1, начиная с 1 − |S| (соответственно |S| − 1)`,
+    solution: `Пусть взято n ≥ 3 подряд идущих членов, первый из них равен a, разность равна d ≠ 0. Тогда\nS = na + d·n(n − 1)/2 = (n/2)·(2a + d(n − 1)).\nа) ${Sa} = сумма набора ${showRun(exA)}.\nб) Если n нечётно, то S = n·(a + d(n − 1)/2) делится на n; если n чётно, то S = (n/2)·(2a + d(n − 1)) делится на n/2. В обоих случаях либо S = 0, либо |S| не меньше n/2 ≥ 3/2, то есть |S| ≥ 2. Значит S = ${String(Sb).replace("-", "−")} невозможно.\nв) Итак, значения 1 и −1 недостижимы. Все остальные целые достижимы: 0 = (−d) + 0 + d; если |S| ≥ 2, возьмём n = 2|S| членов с разностью 1 (при S > 0) или −1 (при S < 0), начиная с 1 − |S| (соответственно |S| − 1): сумма как раз равна S.\nОтвет: все целые числа, кроме 1 и −1.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: Sa },
+        b: { type: "yesno", yes: false, reason: "abs-bound", target: Sb },
+        c: { type: "except", excluded: [1, -1], range: [-R, R], examples },
+      },
+      mustMention: [Sa, Sb].filter((v) => v > 0),
+      extra: [1],
+      phrases: ["не менее трёх последовательных членов", "непостоянной арифметической прогрессии"],
     },
   })
 }
