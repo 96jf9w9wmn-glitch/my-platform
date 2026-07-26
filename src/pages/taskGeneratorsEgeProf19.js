@@ -758,6 +758,7 @@ export const META19 = [
     ["bonus-notes", "Премии купюрами: наиб. число сотрудников", t19BonusNotes],
     ["game-stars", "Звёзды и заряд: число уровней и наиб. очки", t19GameStars],
     ["photos-diff", "Фотографии: делители разницы и наиб. сумма", t19PhotosDiff],
+    ["letters-girls", "Письма девушкам: наим. и наиб. размер группы", t19LettersGirls],
   ]],
   ["Вася и Петя решают сборник", [
     ["vasya-petya-days", "Оба решили сборник: за сколько дней и наим. число задач", t19VasyaPetyaDays],
@@ -7191,6 +7192,113 @@ export function t19PhotosDiff() {
       mustMention: [D, T, Ka, Kb],
       extra: [],
       phrases: ["на одну фотографию больше", "больше одного дня"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 17 (продолжение). Письма: юношей и девушек поровну (#64)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Юношей и девушек по N. Каждый юноша отправил либо p, либо q писем, причём тех и
+// других юношей не меньше двух: a + b = N, a ≥ 2, b ≥ 2. Всего писем pa + qb.
+// • «Все девушки получили поровну» ⟺ (pa + qb)/N целое. Так как pa + qb = pN + (q−p)b,
+//   это равносильно N | (q − p)b, откуда при взаимно простых N и (q−p) получилось бы
+//   N | b — невозможно (0 < b < N). Значит N обязано делить (q−p)b нетривиально:
+//   для q − p = 17 (простое) это даёт 17 | N, то есть N ≥ 17.
+// • «Все девушки получили разное количество» ⟹ сумма писем не меньше 0+1+…+(N−1),
+//   а сама сумма не больше p·2 + q(N−2), откуда квадратичное неравенство на N.
+export function t19LettersGirls() {
+  const p = 4, q = 21, dq = q - p                          // dq = 17 — простое
+  const total = (a, b) => p * a + q * b
+  // а) «каждая девушка получила ровно r писем»
+  const rCands = []
+  for (let r = p + 1; r < q; r++) {
+    for (let N = 4; N <= 200; N++) {
+      for (let b = 2; b <= N - 2; b++) {
+        if (total(N - b, b) === r * N) { rCands.push({ r, N, b }); break }
+      }
+      if (rCands.length && rCands[rCands.length - 1].r === r) break
+    }
+  }
+  if (!rCands.length) return null
+  const exARow = pick(rCands)
+  // б) наименьшее N, при котором письма делятся поровну
+  let Nmin = 0
+  for (let N = 4; N <= 500 && !Nmin; N++) {
+    for (let b = 2; b <= N - 2; b++) if (total(N - b, b) % N === 0) { Nmin = N; break }
+  }
+  // в) наибольшее N при попарно различных количествах писем
+  let Nmax = 0
+  for (let N = 4; N <= 500; N++) {
+    let ok = false
+    for (let b = 2; b <= N - 2 && !ok; b++) if (total(N - b, b) >= N * (N - 1) / 2) ok = true
+    if (ok) Nmax = N
+  }
+  if (!Nmin || !Nmax) return null
+
+  const params = { p, q, dq, r: exARow.r, Nmin, Nmax }
+  const check = (cfg, part) => {
+    if (!cfg || !Number.isInteger(cfg.N) || !Number.isInteger(cfg.b)) return "нет конфигурации"
+    const { N, b } = cfg, a = N - b
+    if (N < 4) return "в группе слишком мало человек"
+    if (a < 2 || b < 2) return `и тех, и других юношей должно быть не менее двух (сейчас ${a} и ${b})`
+    const T = total(a, b)
+    if (part === "a") return T === exARow.r * N ? null : `всего писем ${T}, а нужно ${exARow.r}·${N} = ${exARow.r * N}`
+    if (part === "b") {
+      if (T % N) return `письма не делятся поровну: всего ${T} на ${N} девушек`
+      if (N !== Nmin) return `девушек ${N}, а заявлено ${Nmin}`
+    }
+    if (part === "c") {
+      if (T < N * (N - 1) / 2) return `писем ${T}, а на ${N} различных количеств нужно не меньше ${N * (N - 1) / 2}`
+      if (N !== Nmax) return `девушек ${N}, а заявлено ${Nmax}`
+    }
+    return null
+  }
+  // Независимый перебор по числу девушек N и числу юношей, отправивших q писем.
+  const solve = (P) => {
+    let aOk = false, minN = 0, maxN = 0
+    for (let N = 4; N <= 500; N++) {
+      for (let b = 2; b <= N - 2; b++) {
+        const T = P.p * (N - b) + P.q * b
+        if (T === P.r * N) aOk = true
+        if (T % N === 0 && !minN) minN = N
+        if (T >= N * (N - 1) / 2) maxN = Math.max(maxN, N)
+      }
+    }
+    return { a: aOk, b: minN, c: maxN, b_next: false, c_next: false }
+  }
+
+  const exA = { N: exARow.N, b: exARow.b }
+  const exB = (() => {
+    for (let b = 2; b <= Nmin - 2; b++) if (total(Nmin - b, b) % Nmin === 0) return { N: Nmin, b }
+    return null
+  })()
+  const exC = (() => {
+    for (let b = 2; b <= Nmax - 2; b++) if (total(Nmax - b, b) >= Nmax * (Nmax - 1) / 2) return { N: Nmax, b }
+    return null
+  })()
+  if (!exB || !exC) return null
+
+  return item({
+    preamble: `В группе поровну юношей и девушек. Юноши отправляли электронные письма девушкам. Каждый юноша отправил или ${p} письма, или ${q} ${plural(q, "письмо", "письма", "писем")}, причём и тех, и других юношей было не менее двух. Возможно, что какой-то юноша отправил какой-то девушке несколько писем.`,
+    qa: `Могло ли оказаться так, что каждая девушка получила ровно ${exARow.r} ${plural(exARow.r, "письмо", "письма", "писем")}?`,
+    qb: `Какое наименьшее количество девушек могло быть в группе, если известно, что все они получили писем поровну?`,
+    qc: `Пусть все девушки получили различное количество писем (возможно, какая-то девушка не получила писем вообще). Каково наибольшее возможное количество девушек в такой группе?`,
+    ansA: `да, например в группе ${exARow.N} ${plural(exARow.N, "юноша", "юноши", "юношей")} и столько же девушек: ${exARow.N - exARow.b} ${plural(exARow.N - exARow.b, "юноша отправил", "юноши отправили", "юношей отправили")} по ${p} письма, а ${exARow.b} — по ${q}; всего ${total(exARow.N - exARow.b, exARow.b)} писем, то есть по ${exARow.r} на каждую девушку`,
+    ansB: `${Nmin}: всего писем ${p}a + ${q}b = ${p}N + ${dq}b, поэтому равное деление означает, что N делит ${dq}b. Число ${dq} простое, а 0 < b < N, поэтому N делится на ${dq}, откуда N ≥ ${Nmin}; пример — ${exB.N - exB.b} ${plural(exB.N - exB.b, "юноша", "юноши", "юношей")} по ${p} письма и ${exB.b} по ${q}`,
+    ansC: `${Nmax}; например ${exC.N - exC.b} ${plural(exC.N - exC.b, "юноша", "юноши", "юношей")} по ${p} письма и ${exC.b} по ${q} — всего ${total(exC.N - exC.b, exC.b)} писем, чего хватает на ${Nmax} ${plural(Nmax, "различное количество", "различных количества", "различных количеств")} (нужно не меньше ${Nmax * (Nmax - 1) / 2} писем)`,
+    solution: `Пусть в группе N юношей и N девушек, из них a отправили по ${p} письма и b — по ${q}, a + b = N, a ≥ 2, b ≥ 2. Всего писем ${p}a + ${q}b = ${p}N + ${dq}b.\nа) Условие «каждая получила ровно ${exARow.r}» означает ${p}N + ${dq}b = ${exARow.r}N: подходит N = ${exARow.N}, b = ${exARow.b}.\nб) Равное деление означает, что N делит ${dq}b. Так как ${dq} — простое число и 0 < b < N, число N обязано делиться на ${dq}. Наименьшее подходящее значение N = ${Nmin} (пример: b = ${exB.b}).\nв) Если все количества различны, то сумма писем не меньше 0 + 1 + … + (N − 1) = N(N − 1)/2. С другой стороны, писем не больше ${p}·2 + ${q}(N − 2). Из неравенства ${p}·2 + ${q}(N − 2) ≥ N(N − 1)/2 получаем N ≤ ${Nmax}, и это значение достигается.\nОтвет: ${Nmin}; ${Nmax}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: `each-${exARow.r}` },
+        b: { type: "extremum", mode: "min", value: Nmin, example: exB },
+        c: { type: "extremum", mode: "max", value: Nmax, example: exC },
+      },
+      mustMention: [p, q, exARow.r],
+      extra: [],
+      phrases: ["поровну юношей и девушек", "не менее двух"],
     },
   })
 }
