@@ -1893,6 +1893,7 @@ export function t15ExpCubeOverQuad() {
 // log²₂x, lg⁴x, log₅(25−x²) — основание подстрочником (юникод: внутри дроби токен ⟦b⟧
 // применить нельзя, он содержит «⟧»).
 const SUPD_ALL = { 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹", "-": "⁻" }
+const subDecStr = (s2) => String(s2).split("").map((c) => (SUBD[c] ?? (c === "," ? "," : c))).join("")
 const supNum = (n) => String(n).split("").map((c) => SUPD_ALL[c] ?? c).join("")
 const logS = (b, k = 1, arg = "x") => (b === 10 ? "lg" : "log") + (k > 1 ? SUPD[k] : "") + (b === 10 ? "" : subU(b)) + arg
 
@@ -3331,6 +3332,486 @@ export function t15AbsQuadGe() {
   return null
 }
 
+
+// ════════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛЫ 9–10. СМЕШАННЫЕ НЕРАВЕНСТВА
+// ════════════════════════════════════════════════════════════════════════════
+
+// [80] B^{x−s} − b^{x−s}(M − x²) − M·x² ⋛ 0  → (b^{x−s} − M)(b^{x−s} + x²) (PDF смеш.1)
+export function t15MixFactorExpPoly() {
+  for (let it = 0; it < 300; it++) {
+    const b = pick([2, 3]), B = b * b, s = randInt(1, 4), j = randInt(1, 4)
+    const M = Math.round(Math.pow(b, j))
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const ex = expPoly([{ c: 1, k: 1 }, { c: -s, k: 0 }])
+    const text = `${pw(B, ex)} ${MINUS} ${pw(b, ex)}(${M} ${MINUS} x${SUPD[2]}) ${MINUS} ${M}x${SUPD[2]} ${cmp} 0`
+    const F = (x) => Math.pow(B, x - s) - Math.pow(b, x - s) * (M - x * x) - M * x * x
+    const res = build({
+      text, cmp, lhs: F, rhs: () => 0, lead: 1,
+      crit: [{ ep: epQ(s + j), mult: 1, pole: false }],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [81] 2^{log²₂x} + x^{log₂x} ⋛ C — оба слагаемых равны 2^{log²₂x} (PDF смеш.2)
+export function t15MixPowLog() {
+  for (let it = 0; it < 200; it++) {
+    const k = randInt(1, 3), C = 2 * Math.round(Math.pow(2, k * k))
+    const cmp = pick(["≤", "<", "≥", ">"])
+    const text = `2⟦sup:log${SUPD[2]}${subU(2)}x⟧ + x⟦sup:log${subU(2)}x⟧ ${cmp} ${C}`
+    const F = (x) => Math.pow(2, Math.pow(Math.log(x) / Math.LN2, 2)) + Math.pow(x, Math.log(x) / Math.LN2)
+    const res = buildLog({
+      text, cmp, base: 2, leadY: 1, lhs: F, rhs: () => C,
+      yCrit: [{ y: -k, mult: 1, pole: false }, { y: k, mult: 1, pole: false }],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [82] ((ab)^x − q·a^x − p·b^x + pq)/√(x+c) ⋛ 0 (PDF смеш.3)
+export function t15MixFactorSqrtDen() {
+  for (let it = 0; it < 400; it++) {
+    const [a, b] = pick([[5, 2], [7, 2], [3, 2], [5, 3]])
+    const i = randInt(0, 2), j = randInt(0, 2)
+    const P = Math.round(Math.pow(a, i)), Qq = Math.round(Math.pow(b, j))
+    if (i === j) continue
+    const c = randInt(1, 6)
+    if ([i, j].some((z) => z <= -c)) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const num = `${pw(a * b, "x", true)} ${MINUS} ${Qq === 1 ? "" : Qq + "·"}${pw(a, "x", true)} ${MINUS} ${P === 1 ? "" : P + "·"}${pw(b, "x", true)} + ${P * Qq}`
+    const text = `${fT(num, `√{${linStr(c)}}`)} ${cmp} 0`
+    const F = (x) => (Math.pow(a * b, x) - Qq * Math.pow(a, x) - P * Math.pow(b, x) + P * Qq) / Math.sqrt(x + c)
+    const res = build({
+      text, cmp, lhs: F, rhs: () => 0, lead: 1,
+      domainOK: (x) => x + c > 0,
+      crit: [{ ep: epQ(Math.min(i, j)), mult: 1, pole: false }, { ep: epQ(Math.max(i, j)), mult: 1, pole: false }],
+      domain: { a: epQ(-c), b: POS_INF, ai: false, bi: false },
+      extraX: [-c],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [83] (b^{x²−s} + b^{x²−s−1} + b^{x²−s−2})/x ⋛ K·(√x)^{−2} (PDF смеш.4)
+export function t15MixGeomSqrt() {
+  for (let it = 0; it < 300; it++) {
+    const b = pick([3, 2]), s = randInt(1, 3), m = randInt(1, 3)
+    const lim = s + 2 - m
+    if (lim <= 0) continue
+    const sl = Math.sqrt(lim)
+    if (Math.abs(Math.round(sl) - sl) > 1e-9) continue
+    const S = b * b + b + 1
+    const K = Q(S, Math.round(Math.pow(b, m)))
+    const whole = Math.floor(K.p / K.q), rem = K.p - whole * K.q
+    if (rem === 0 || whole < 1) continue    // смешанное число, как в ФИПИ: «1 12/27»
+    const cmp = pick(["≤", "<", "≥", ">"])
+    const terms = [0, 1, 2].map((i) => pw(b, expPoly([{ c: 1, k: 2 }, { c: -s - i, k: 0 }]), true))
+    const text = `${fT(terms.join(" + "), "x")} ${cmp} ${whole}${fT(rem, K.q)}(⟦r:x⟧)⟦sup:${MINUS}2⟧`
+    const F = (x) => (Math.pow(b, x * x - s) + Math.pow(b, x * x - s - 1) + Math.pow(b, x * x - s - 2)) / x
+    const G = (x) => Qnum(K) / x
+    const res = build({
+      text, cmp, lhs: F, rhs: G, lead: 1,
+      domainOK: (x) => x > 0,
+      crit: [{ ep: epQ(Math.round(sl)), mult: 1, pole: false }],
+      domain: { a: epQ(0), b: POS_INF, ai: false, bi: false },
+      extraX: [0],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [84] √(c²−x²)·(x²+px+q) ⋛ 0 (PDF смеш.5)
+export function t15MixSqrtMult() {
+  for (let it = 0; it < 400; it++) {
+    const c = randInt(2, 6), r1 = randInt(-8, 8), r2 = randInt(-8, 8)
+    if (r1 === r2) continue
+    if ([r1, r2].some((r) => Math.abs(Math.abs(r) - c) < 1e-9)) continue
+    const pq = -(r1 + r2), qq = r1 * r2
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const text = `⟦r:${c * c} ${MINUS} x${SUPD[2]}⟧(${polyStr([{ c: 1, k: 2 }, { c: pq, k: 1 }, { c: qq, k: 0 }])}) ${cmp} 0`
+    const F = (x) => Math.sqrt(c * c - x * x) * (x * x + pq * x + qq)
+    const res = build({
+      text, cmp, lhs: F, rhs: () => 0, lead: 1,
+      domainOK: (x) => c * c - x * x >= 0,
+      crit: [
+        { ep: epQ(-c), mult: 2, pole: false }, { ep: epQ(c), mult: 2, pole: false },
+        { ep: epQ(Math.min(r1, r2)), mult: 1, pole: false }, { ep: epQ(Math.max(r1, r2)), mult: 1, pole: false },
+      ],
+      domain: { a: epQ(-c), b: epQ(c), ai: true, bi: true },
+      extraX: [-c, c],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [85] log_{0,3}(1 + x − √(x²−c²)) ⋛ 0 (PDF смеш.6)
+export function t15MixLogSqrt() {
+  for (let it = 0; it < 200; it++) {
+    const c = randInt(1, 5), bs = pick(["0,3", "0,5", "0,2"])
+    const bv = bs === "0,3" ? 0.3 : bs === "0,5" ? 0.5 : 0.2
+    const cmp = pick(["≤", "<"])
+    const text = `log⦉${bs}⦊(1 + x ${MINUS} ⟦r:x${SUPD[2]} ${MINUS} ${c * c}⟧) ${cmp} 0`
+    const ARG = (x) => 1 + x - Math.sqrt(x * x - c * c)
+    const F = (x) => Math.log(ARG(x)) / Math.log(bv)
+    const res = build({
+      text, cmp, lhs: F, rhs: () => 0, lead: 1,
+      flip: true,     // основание < 1: печатаем «≤», приведённая форма — «≥ 0»
+      domainOK: (x) => x * x - c * c >= 0 && ARG(x) > 0,
+      // знак (arg − 1) = знак (x − √(x²−c²)) = знак x
+      crit: [{ ep: epQ(0), mult: 1, pole: false }],
+      autoDomain: true, requireDomainOnAns: true,
+      extraX: [-c, c, 0], extraEP: [epQ(-c), epQ(c), epQ(0)],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [86] (b^{2x+1} − k·(1/b)^{2x} − m)/(x+c) ⋛ 0 (PDF смеш.7)
+export function t15MixExpOverLin() {
+  for (let it = 0; it < 400; it++) {
+    const b = pick([5, 2, 3]), c = randInt(-4, 4)
+    const j = randInt(0, 2), t1 = Math.round(Math.pow(b, j)), t2 = -randInt(1, 5)
+    const m = b * (t1 + t2), k = -b * t1 * t2
+    if (m <= 0 || k <= 0 || k > 300 || m > 90) continue
+    const xr = Q(j, 2)
+    if (Math.abs(Qnum(xr) + c) < 1e-9) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const dec = b === 5 ? "0,2" : b === 2 ? "0,5" : `⦃1¦${b}⦄`
+    const num = `${pw(b, expPoly([{ c: 2, k: 1 }, { c: 1, k: 0 }]), true)} ${MINUS} ${k}·${dec}⁅2x⁆ ${MINUS} ${m}`
+    const text = `${fT(num, linStr(c))} ${cmp} 0`
+    const F = (x) => (Math.pow(b, 2 * x + 1) - k * Math.pow(1 / b, 2 * x) - m) / (x + c)
+    const res = build({
+      text, cmp, lhs: F, rhs: () => 0, lead: 1,
+      domainOK: (x) => Math.abs(x + c) > 1e-12,
+      crit: [{ ep: epQ(xr), mult: 1, pole: false }, { ep: epQ(-c), mult: 1, pole: true }],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [87] x·√(x²−px−q) ⋛ 0  и  (x²+ax+b)·√(m−x) ⋛ 0 (PDF смеш.8)
+export function t15MixSqrtFactor() {
+  for (let it = 0; it < 400; it++) {
+    const styleA = Math.random() < 0.5
+    const cmp = pick(["≥", "≤", ">", "<"])
+    if (styleA) {
+      const r1 = randInt(-5, 2), r2 = r1 + randInt(2, 5)
+      if (r1 === 0 || r2 === 0) continue
+      const pq = -(r1 + r2), qq = r1 * r2
+      const text = `x·⟦r:${polyStr([{ c: 1, k: 2 }, { c: pq, k: 1 }, { c: qq, k: 0 }])}⟧ ${cmp} 0`
+      const QF = (x) => x * x + pq * x + qq
+      const F = (x) => x * Math.sqrt(QF(x))
+      const res = build({
+        text, cmp, lhs: F, rhs: () => 0, lead: 1,
+        domainOK: (x) => QF(x) >= 0,
+        crit: [
+          { ep: epQ(r1), mult: 2, pole: false }, { ep: epQ(r2), mult: 2, pole: false },
+          { ep: epQ(0), mult: 1, pole: false },
+        ],
+        domains: [
+          { a: NEG_INF, b: epQ(r1), ai: false, bi: true },
+          { a: epQ(r2), b: POS_INF, ai: true, bi: false },
+        ],
+        extraX: [r1, r2],
+      })
+      if (res) return res
+    } else {
+      const m = randInt(2, 9), r1 = randInt(-5, 3), r2 = r1 + randInt(1, 5)
+      if ([r1, r2].includes(m)) continue
+      const text = `(${polyStr([{ c: 1, k: 2 }, { c: -(r1 + r2), k: 1 }, { c: r1 * r2, k: 0 }])})·⟦r:${polyStr([{ c: m, k: 0 }, { c: -1, k: 1 }])}⟧ ${cmp} 0`
+      const F = (x) => (x * x - (r1 + r2) * x + r1 * r2) * Math.sqrt(m - x)
+      const res = build({
+        text, cmp, lhs: F, rhs: () => 0, lead: 1,
+        domainOK: (x) => m - x >= 0,
+        crit: [
+          { ep: epQ(r1), mult: 1, pole: false }, { ep: epQ(r2), mult: 1, pole: false },
+          { ep: epQ(m), mult: 2, pole: false },
+        ],
+        domain: { a: NEG_INF, b: epQ(m), ai: false, bi: true },
+        extraX: [m],
+      })
+      if (res) return res
+    }
+  }
+  return null
+}
+
+// [88] b^{ln(x²−px)} ⋛ (q−x)^{ln b} — обе части в степень ln b (PDF смеш.9)
+export function t15MixLnPower() {
+  for (let it = 0; it < 400; it++) {
+    const b = pick([7, 2, 3, 5]), p = randInt(1, 5), q = randInt(1, 6)
+    // x² − px ⋛ q − x ⟺ x² − (p−1)x − q ⋛ 0
+    const D = (p - 1) * (p - 1) + 4 * q
+    const sq = Math.round(Math.sqrt(D))
+    if (sq * sq !== D) continue
+    const r1 = (p - 1 - sq) / 2, r2 = (p - 1 + sq) / 2
+    if (!Number.isInteger(r1 * 2) || !Number.isInteger(r2 * 2)) continue
+    const cmp = pick(["≤", "<", "≥", ">"])
+    const isLg = b === 10
+    const lnB = isLg ? "lg" : "ln"
+    const text = `${b}⟦sup:${lnB}(${polyStr([{ c: 1, k: 2 }, { c: -p, k: 1 }])})⟧ ${cmp} (${polyStr([{ c: q, k: 0 }, { c: -1, k: 1 }])})⟦sup:${lnB} ${b}⟧`
+    const AR = (x) => x * x - p * x
+    const F = (x) => Math.pow(b, Math.log(AR(x)))
+    const G = (x) => Math.pow(q - x, Math.log(b))
+    const res = build({
+      text, cmp, lhs: F, rhs: G, lead: 1,
+      domainOK: (x) => AR(x) > 0 && q - x > 0,
+      crit: [{ ep: epQ(Q(Math.round(r1 * 2), 2)), mult: 1, pole: false },
+        { ep: epQ(Q(Math.round(r2 * 2), 2)), mult: 1, pole: false }],
+      autoDomain: true, requireDomainOnAns: true,
+      extraX: [0, p, q], extraEP: [epQ(0), epQ(p), epQ(q)],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [89] (b^{x+1} + b^{2−x})·x ⋛ C·x (PDF смеш.10)
+export function t15MixXTimesExp() {
+  for (let it = 0; it < 300; it++) {
+    const b = pick([3, 2, 5]), j = randInt(1, 3)
+    const t1 = Math.round(Math.pow(b, j)), t2 = Q(1, Math.round(Math.pow(b, j - 1)))
+    const C = Qmul(Q(b), Qadd(Q(t1), t2))
+    if (C.q !== 1 || C.p > 400) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const text = `(${pw(b, expPoly([{ c: 1, k: 1 }, { c: 1, k: 0 }]))} + ${pw(b, expPoly([{ c: 2, k: 0 }, { c: -1, k: 1 }]))})x ${cmp} ${C.p}x`
+    const F = (x) => (Math.pow(b, x + 1) + Math.pow(b, 2 - x)) * x
+    const G = (x) => C.p * x
+    const res = build({
+      text, cmp, lhs: F, rhs: G, lead: 1,
+      crit: [
+        { ep: epQ(Math.min(0, 1 - j, j)), mult: 1, pole: false },
+        { ep: epQ([0, 1 - j, j].sort((u, v) => u - v)[1]), mult: 1, pole: false },
+        { ep: epQ(Math.max(0, 1 - j, j)), mult: 1, pole: false },
+      ],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [90] c^{log_β x²} + (c−1)|x|^{log_β c²} ⋛ c·(1/c)^{log_{1/β}(kx+m)} → x² ⋛ kx+m (PDF смеш.11)
+export function t15MixLogPowerSwap() {
+  for (let it = 0; it < 300; it++) {
+    const c = pick([3, 2]), beta = pick([2, 5]), k = randInt(1, 3), m = randInt(1, 8)
+    const D = k * k + 4 * m
+    const sq = Math.round(Math.sqrt(D))
+    if (sq * sq !== D) continue
+    const r1 = (k - sq) / 2, r2 = (k + sq) / 2
+    if (!Number.isInteger(r1) || !Number.isInteger(r2)) continue
+    if (r1 * k + m <= 0) continue
+    const cmp = pick(["≤", "<"])
+    const invB = beta === 2 ? "0,5" : "0,2"
+    const invC = `⦃1¦${c}⦄`
+    const text = `${c}⟦sup:log${subU(beta)}x${SUPD[2]}⟧ + ${c === 2 ? "" : (c - 1) + "·"}|x|⟦sup:log${subU(beta)}${c * c}⟧ ${cmp} ${c}·⟦pf:1:${c}⟧⟦sup:log${subDecStr(invB)}(${polyStr([{ c: k, k: 1 }, { c: m, k: 0 }])})⟧`
+    void invC
+    const F = (x) => Math.pow(c, Math.log(x * x) / Math.log(beta)) + (c - 1) * Math.pow(Math.abs(x), Math.log(c * c) / Math.log(beta))
+    const G = (x) => c * Math.pow(1 / c, Math.log(k * x + m) / Math.log(1 / beta))
+    const res = build({
+      text, cmp, lhs: F, rhs: G, lead: 1,
+      domainOK: (x) => Math.abs(x) > 1e-12 && k * x + m > 0,
+      crit: [{ ep: epQ(r1), mult: 1, pole: false }, { ep: epQ(r2), mult: 1, pole: false }],
+      autoDomain: true, extraX: [0, -m / k], extraEP: [epQ(0), epQ(Q(-m, k))],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [91] (ax²+bx+c)/log_β((x+k)²) ⋛ 0 (PDF смеш-рац.1)
+export function t15MixRatQuadLog() {
+  for (let it = 0; it < 400; it++) {
+    const beta = pick([3, 5, 2]), k = randInt(1, 4), a = pick([1, 2])
+    const r1 = randInt(-8, 4), r2 = r1 + randInt(1, 6)
+    const den = pick([1, 2])
+    const R1 = Q(r1, den), R2 = Q(r2, 1)
+    const bq = Qmul(Q(-a), Qadd(R1, R2)), cq = Qmul(Q(a), Qmul(R1, R2))
+    if (bq.q !== 1 || cq.q !== 1) continue
+    const poles = [-k - 1, -k + 1]
+    if ([Qnum(R1), Qnum(R2)].some((z) => poles.includes(z) || z === -k)) continue
+    const cmp = pick(["≥", "≤", ">", "<"])
+    const text = `${fT(polyStr([{ c: a, k: 2 }, { c: bq, k: 1 }, { c: cq, k: 0 }]), logS(beta, 1, `(${linStr(k)})${SUPD[2]}`))} ${cmp} 0`
+    const F = (x) => (a * x * x + bq.p * x + cq.p) / (Math.log(Math.pow(x + k, 2)) / Math.log(beta))
+    const res = build({
+      text, cmp, lhs: F, rhs: () => 0, lead: 1,
+      domainOK: (x) => Math.abs(x + k) > 1e-12 && Math.abs(Math.abs(x + k) - 1) > 1e-12,
+      crit: [
+        { ep: epQ(Qnum(R1) < Qnum(R2) ? R1 : R2), mult: 1, pole: false },
+        { ep: epQ(Qnum(R1) < Qnum(R2) ? R2 : R1), mult: 1, pole: false },
+        { ep: epQ(poles[0]), mult: 1, pole: true }, { ep: epQ(poles[1]), mult: 1, pole: true },
+      ],
+      puncture: [epQ(-k)],
+      extraX: [-k],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [92] (x²+bx+c)/log_{√β}|x| ⋛ 0 (PDF смеш-рац.2)
+export function t15MixRatAbsLog() {
+  for (let it = 0; it < 400; it++) {
+    const beta = pick([2, 3, 5])
+    const den = pick([1, 2]), r1 = Q(randInt(-10, 6), den), r2 = Q(randInt(-6, 10), 1)
+    if (Math.abs(Qnum(r1) - Qnum(r2)) < 1e-9) continue
+    const bq = Qmul(Q(-1), Qadd(r1, r2)), cq = Qmul(r1, r2)
+    if (bq.q > 2 || cq.q > 2) continue
+    if ([Qnum(r1), Qnum(r2)].some((z) => Math.abs(Math.abs(z) - 1) < 1e-9 || Math.abs(z) < 1e-9)) continue
+    const cmp = pick(["<", ">", "≤", "≥"])
+    const text = `${fT(polyStr([{ c: 1, k: 2 }, { c: bq, k: 1 }, { c: cq, k: 0 }], "x", true), `log⦉√{${beta}}⦊|x|`)} ${cmp} 0`
+    const F = (x) => (x * x + Qnum(bq) * x + Qnum(cq)) / (Math.log(Math.abs(x)) / Math.log(Math.sqrt(beta)))
+    const res = build({
+      text, cmp, lhs: F, rhs: () => 0, lead: 1,
+      domainOK: (x) => Math.abs(x) > 1e-12 && Math.abs(Math.abs(x) - 1) > 1e-12,
+      crit: [
+        { ep: epQ(Qnum(r1) < Qnum(r2) ? r1 : r2), mult: 1, pole: false },
+        { ep: epQ(Qnum(r1) < Qnum(r2) ? r2 : r1), mult: 1, pole: false },
+        { ep: epQ(-1), mult: 1, pole: true }, { ep: epQ(1), mult: 1, pole: true },
+      ],
+      puncture: [epQ(0)],
+      extraX: [0],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [93] (log_a(a³x)·log_b(b³x))/(x² − |x|) ⋛ 0 (PDF смеш-рац.3)
+export function t15MixRatTwoLogs() {
+  for (let it = 0; it < 300; it++) {
+    const a = pick([2, 3]), b = pick([3, 4, 5])
+    if (a === b) continue
+    const ka = randInt(2, 3), kb = randInt(2, 3)
+    const A = Math.round(Math.pow(a, ka)), B = Math.round(Math.pow(b, kb))
+    const mult = pick([1, 5])
+    const r1 = Q(1, A), r2 = Q(1, B)
+    if (Math.abs(Qnum(r1) - Qnum(r2)) < 1e-9) continue
+    const pole = Q(1, mult)
+    if ([Qnum(r1), Qnum(r2)].some((z) => Math.abs(z - Qnum(pole)) < 1e-9)) continue
+    const cmp = pick(["≤", "≥", "<", ">"])
+    const denTxt = mult === 1 ? `x${SUPD[2]} ${MINUS} |x|` : `${mult}x${SUPD[2]} ${MINUS} |x|`
+    const text = `${fT(`${logS(a, 1, `(${A}x)`)}·${logS(b, 1, `(${B}x)`)}`, denTxt)} ${cmp} 0`
+    const F = (x) => (Math.log(A * x) / Math.log(a)) * (Math.log(B * x) / Math.log(b)) / (mult * x * x - Math.abs(x))
+    const res = build({
+      text, cmp, lhs: F, rhs: () => 0, lead: 1,
+      domainOK: (x) => x > 0 && Math.abs(mult * x * x - Math.abs(x)) > 1e-12,
+      crit: [
+        { ep: epQ(Qnum(r1) < Qnum(r2) ? r1 : r2), mult: 1, pole: false },
+        { ep: epQ(Qnum(r1) < Qnum(r2) ? r2 : r1), mult: 1, pole: false },
+        { ep: epQ(pole), mult: 1, pole: true },
+      ],
+      domain: { a: epQ(0), b: POS_INF, ai: false, bi: false },
+      extraX: [0],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [94] (c^{f(x)} − 1)·log_{1/c}(c^{g(x)} − k) ⋛ 0 (PDF смеш-рац.4)
+export function t15MixRatExpLog() {
+  for (let it = 0; it < 300; it++) {
+    const c = pick([4, 2, 3]), h = randInt(-3, 3)
+    const r1 = randInt(-4, 2), r2 = r1 + randInt(1, 5)
+    const k = c - 1                                   // log_{1/c}(c^{g}−k): нуль при c^g = 1+k = c
+    const cmp = pick(["≤", "≥", "<", ">"])
+    const fT_ = polyStr([{ c: 1, k: 2 }, { c: -(r1 + r2), k: 1 }, { c: r1 * r2, k: 0 }])
+    const gT = polyStr([{ c: 1, k: 2 }, { c: -2 * h, k: 1 }, { c: h * h + 1, k: 0 }])
+    const text = `(${pw(c, fT_)} ${MINUS} 1)·log⦉⦃1¦${c}⦄⦊(${pw(c, gT)} ${MINUS} ${k}) ${cmp} 0`
+    const F = (x) => (Math.pow(c, x * x - (r1 + r2) * x + r1 * r2) - 1) *
+      (Math.log(Math.pow(c, x * x - 2 * h * x + h * h + 1) - k) / Math.log(1 / c))
+    const res = build({
+      text, cmp, lhs: F, rhs: () => 0,
+      lead: -1,      // (x−r1)(x−r2)·(−(x−h)²)
+      crit: [
+        { ep: epQ(r1), mult: 1, pole: false }, { ep: epQ(r2), mult: 1, pole: false },
+        { ep: epQ(h), mult: 2, pole: false },
+      ],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [95] √(c²−x²)·log_{x+c}(b) ⋛ 0 (PDF смеш-рац.5)
+export function t15MixRatSqrtLog() {
+  for (let it = 0; it < 200; it++) {
+    const c = randInt(2, 6), b = pick([2, 3, 5])
+    const cmp = pick(["≤", "<", "≥", ">"])
+    const text = `⟦r:${c * c} ${MINUS} x${SUPD[2]}⟧·log⦉${linStr(c)}⦊${b} ${cmp} 0`
+    const F = (x) => Math.sqrt(c * c - x * x) * Math.log(b) / Math.log(x + c)
+    const res = build({
+      text, cmp, lhs: F, rhs: () => 0, lead: 1,
+      domainOK: (x) => c * c - x * x >= 0 && x + c > 0 && Math.abs(x + c - 1) > 1e-12,
+      crit: [
+        { ep: epQ(c), mult: 2, pole: false },
+        { ep: epQ(1 - c), mult: 1, pole: true },
+      ],
+      domain: { a: epQ(-c), b: epQ(c), ai: false, bi: true },
+      extraX: [-c, c, 1 - c],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [96] (b^{u} − 4·(√b)^{u} + 3)/(√x − √(x+c)) ⋛ 0, u = x²+x (PDF смеш-рац.6)
+export function t15MixRatSqrtDen() {
+  for (let it = 0; it < 200; it++) {
+    const b = 3, c = randInt(2, 6)
+    const cmp = pick(["≤", "<", "≥", ">"])
+    const u = expPoly([{ c: 1, k: 2 }, { c: 1, k: 1 }])
+    const num = `${pw(b, u, true)} ${MINUS} 4√{${b}}⁅${u}⁆ + 3`
+    const text = `${fT(num, `√{x} ${MINUS} √{${linStr(c)}}`)} ${cmp} 0`
+    const F = (x) => {
+      const uu = x * x + x
+      return (Math.pow(b, uu) - 4 * Math.pow(Math.sqrt(b), uu) + 3) / (Math.sqrt(x) - Math.sqrt(x + c))
+    }
+    const res = build({
+      text, cmp, lhs: F, rhs: () => 0,
+      domainOK: (x) => x >= 0,
+      lead: -1,           // знаменатель отрицателен всегда
+      crit: [{ ep: epQ(0), mult: 1, pole: false }, { ep: epQ(1), mult: 1, pole: false }],
+      domain: { a: epQ(0), b: POS_INF, ai: true, bi: false },
+      extraX: [0],
+    })
+    if (res) return res
+  }
+  return null
+}
+
+// [97] (log_b(b^x − k·b^{−x} − m) + 2x)/(x+1) ⋛ 1 (PDF смеш-рац.7)
+export function t15MixRatLogFrac() {
+  for (let it = 0; it < 400; it++) {
+    const b = pick([5, 3, 2]), j = randInt(1, 2)
+    const t1 = Math.round(Math.pow(b, j)), t2 = -randInt(1, 3)
+    const m = t1 + t2, k = -t1 * t2 - b
+    if (k <= 0 || m <= 0 || k > 90 || m > 90) continue
+    const cmp = pick(["≥", ">"])
+    const inner = `${pw(b, "x", true)} ${MINUS} ${k === 1 ? "" : k + "·"}${pw(b, expPoly([{ c: -1, k: 1 }]), true)} ${MINUS} ${m}`
+    const text = `${fT(`${logS(b, 1, `(${inner})`)} + 2x`, "x + 1")} ${cmp} 1`
+    const AR = (x) => Math.pow(b, x) - k * Math.pow(b, -x) - m
+    const F = (x) => (Math.log(AR(x)) / Math.log(b) + 2 * x) / (x + 1)
+    const res = build({
+      text, cmp, lhs: F, rhs: () => 1, lead: 1,
+      domainOK: (x) => AR(x) > 0 && Math.abs(x + 1) > 1e-12,
+      crit: [{ ep: epQ(j), mult: 1, pole: false }, { ep: epQ(-1), mult: 1, pole: true }],
+      autoDomain: true, requireDomainOnAns: true,
+      extraX: [-1, j], extraEP: [epQ(-1), epQ(j)],
+    })
+    if (res) return res
+  }
+  return null
+}
+
 // ── реестры ─────────────────────────────────────────────────────────────────
 export const META15 = [
   ["Рациональные неравенства", [
@@ -3371,6 +3852,28 @@ export const META15 = [
   ]],
   ["Тригонометрия (периодический ответ)", [
     ["trig-log-quad", "квадрат по y = log₂(sin|cos x)", t15TrigLogQuad],
+  ]],
+  ["Смешанные неравенства", [
+    ["mix-factor-exp", "B^{x−s} − b^{x−s}(M−x²) − Mx² ⋛ 0", t15MixFactorExpPoly],
+    ["mix-pow-log", "2^{log²₂x} + x^{log₂x} ⋛ C", t15MixPowLog],
+    ["mix-factor-sqrt", "((ab)^x − q·a^x − p·b^x + pq)/√(x+c) ⋛ 0", t15MixFactorSqrtDen],
+    ["mix-geom-sqrt", "сумма трёх степеней /x ⋛ K·(√x)^{−2}", t15MixGeomSqrt],
+    ["mix-sqrt-mult", "√(c²−x²)·(x²+px+q) ⋛ 0", t15MixSqrtMult],
+    ["mix-log-sqrt", "log_{0,3}(1 + x − √(x²−c²)) ⋛ 0", t15MixLogSqrt],
+    ["mix-exp-lin", "(b^{2x+1} − k(1/b)^{2x} − m)/(x+c) ⋛ 0", t15MixExpOverLin],
+    ["mix-sqrt-factor", "x·√(квадратный) ⋛ 0 и (квадратный)·√(m−x) ⋛ 0", t15MixSqrtFactor],
+    ["mix-ln-power", "b^{ln(x²−px)} ⋛ (q−x)^{ln b}", t15MixLnPower],
+    ["mix-x-exp", "(b^{x+1} + b^{2−x})·x ⋛ C·x", t15MixXTimesExp],
+    ["mix-log-swap", "c^{log_β x²} + …|x|^{log_β c²} ⋛ c(1/c)^{log_{1/β}(kx+m)}", t15MixLogPowerSwap],
+  ]],
+  ["Смешанные с рационализацией", [
+    ["mixrat-quad-log", "(квадратный)/log_β((x+k)²) ⋛ 0", t15MixRatQuadLog],
+    ["mixrat-abs-log", "(квадратный)/log_{√β}|x| ⋛ 0", t15MixRatAbsLog],
+    ["mixrat-two-logs", "(log_a(a³x)·log_b(b³x))/(x²−|x|) ⋛ 0", t15MixRatTwoLogs],
+    ["mixrat-exp-log", "(c^{f}−1)·log_{1/c}(c^{g}−k) ⋛ 0", t15MixRatExpLog],
+    ["mixrat-sqrt-log", "√(c²−x²)·log_{x+c}b ⋛ 0", t15MixRatSqrtLog],
+    ["mixrat-sqrt-den", "(b^u − 4(√b)^u + 3)/(√x − √(x+c)) ⋛ 0", t15MixRatSqrtDen],
+    ["mixrat-log-frac", "(log_b(b^x − k·b^{−x} − m) + 2x)/(x+1) ⋛ 1", t15MixRatLogFrac],
   ]],
   ["Модули", [
     ["abs-two-sides", "|ax+b| ⋛ |cx+d| — возведение в квадрат", t15AbsTwoSides],
