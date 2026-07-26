@@ -3839,6 +3839,16 @@ function t03CylLatDiameter() {
   }
 }
 
+// Обратная к «шар вписан в цилиндр»: V_цил = 1,5·V_шара ⟹ V_шара = 2·V_цил/3.
+function t03CylSphereVolInv() {
+  const v = 3 * randInt(2, 30)
+  return {
+    condition_text: `Цилиндр, объём которого равен ${v}, описан около шара. Найдите объём шара.`,
+    image_url: svgUrl(sphereInCylSvg()),
+    answer: ru(2 * v / 3),
+  }
+}
+
 // Две цилиндрические кружки с ручками: первая узкая и высокая, вторая шире и ниже.
 function mugsSvg() {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 450 320" width="450" height="320" font-family="Arial, sans-serif">` +
@@ -3897,11 +3907,15 @@ function t03LiquidNarrower() {
 const SUBMERGE_K = [[1.2, "1,2"], [1.25, "1,25"], [1.4, "1,4"], [1.5, "1,5"], [1.75, "1,75"], [2, "2"]]
 function t03Submerge() {
   const [k, word] = pick(SUBMERGE_K)
+  const unitDm = Math.random() < 0.5          // в банке встречаются и куб. см, и дм³
   let v
-  do { v = randInt(1, 40) * 100 } while (!Number.isInteger(clean(v * (k - 1))))
+  do { v = randInt(1, 40) * 100 } while (!Number.isInteger(clean(v * (k - 1))) ||
+    (unitDm && !Number.isInteger(clean(v * (k - 1) / 100))))
   return {
-    condition_text: `В цилиндрический сосуд налили ${v} куб. см воды. В воду полностью погрузили деталь. При этом уровень жидкости в сосуде увеличился в ${word} раза. Найдите объём детали. Ответ выразите в куб. см.`,
-    answer: ru(clean(v * (k - 1))),
+    condition_text: unitDm
+      ? `В цилиндрический сосуд налили ${clean(v / 100)} дм³ воды. В воду полностью погрузили деталь. При этом уровень жидкости в сосуде увеличился в ${word} раза. Найдите объём детали. Ответ выразите в дм³.`
+      : `В цилиндрический сосуд налили ${v} куб. см воды. В воду полностью погрузили деталь. При этом уровень жидкости в сосуде увеличился в ${word} раза. Найдите объём детали. Ответ выразите в куб. см.`,
+    answer: ru(clean(v * (k - 1) / (unitDm ? 100 : 1))),
   }
 }
 
@@ -4005,7 +4019,9 @@ function t03ConeAxialFromBase() {
 function t03ConeAxialFromSlant() {
   const { R, h, l } = coneTriple()
   return {
-    condition_text: `Высота конуса равна ${h}, а длина образующей — ${l}. Найдите площадь осевого сечения этого конуса.`,
+    condition_text: Math.random() < 0.5
+      ? `Высота конуса равна ${h}, а длина образующей — ${l}. Найдите площадь осевого сечения этого конуса.`
+      : `Диаметр основания конуса равен ${2 * R}, а длина образующей — ${l}. Найдите площадь осевого сечения этого конуса.`,
     image_url: svgUrl(coneAxialSvg()),
     answer: ru(R * h),
   }
@@ -4183,6 +4199,18 @@ function t03StepSolid() {
     condition_text: `Найдите объём многогранника, изображённого на рисунке (все двугранные углы — прямые).`,
     image_url: svgUrl(stepSolidSvg(w, d, H, h2, dd)),
     answer: ru(w * (d * H - dd * h2)),
+  }
+}
+
+// Тот же ступенчатый брус, но спрашивается площадь поверхности:
+// низ и верх дают 2wd, передняя + задняя + стенка уступа — 2wH, два бока — 2(dH − dd·h2).
+function t03StepSolidSurface() {
+  const w = randInt(2, 6), d = randInt(2, 5), H = randInt(3, 6)
+  const h2 = randInt(1, H - 1), dd = randInt(1, d - 1)
+  return {
+    condition_text: `Найдите площадь поверхности многогранника, изображённого на рисунке (все двугранные углы — прямые).`,
+    image_url: svgUrl(stepSolidSvg(w, d, H, h2, dd)),
+    answer: ru(2 * w * d + 2 * w * H + 2 * (d * H - dd * h2)),
   }
 }
 
@@ -5780,7 +5808,7 @@ export const GENERATORS_EGE_PROF = {
     t01ParMidpoint, t01ParAngle, t01ParHeights,
     t01RhombusSideDiag, t01RhombusAngle, t01TrapMidDiag],
   2: [t02DotCoord, t02DotLenAngle, t02LenCombo, t02DotOfCombos, t02GraphLenCombo],
-  3: [t03BoxTetra, t03BoxPyramid, t03BoxPyramidC1, t03BoxPyramidA1, t03BoxPrism, t03BoxTriPrism, t03BoxPrismADA1, t03PrismRightVol, t03PrismRightEdge, t03SqPrismAngle, t03TriPrismAngle, t03HexPrismAngle, t03HexPrismTri, t03HexPrismTrap, t03CylLatHeight, t03CylLatDiameter, t03MugRatio, t03TwoCylindersTaller, t03LiquidWider, t03LiquidNarrower, t03Submerge, t03SubmergeAbs, t03ConeHeight, t03ConeDiameter, t03ConeAxialFromBase, t03ConeAxialFromSlant, t03ConeLatScale, t03ConeLatScaleDown, t03ConeParSect, t03ConeFullSurfSect, t03ConeVessel, t03PrismTetraTop, t03PyrMidEdge, t03PyrSqDiagBD, t03PyrSqDiagSO, t03PyrSqVol, t03PyrSqHeight, t03PyrSqVolHL, t03PyrTriHeight, t03PyrMidSect, t03PyrMidlineCut, t03SqPrismPoly, t03PrismTetra4, t03HexPrismPyr, t03HexPrismTetra, t03PyrHexHeight, t03SphereGreatCircle, t03TwoSpheresSurf, t03TwoSpheresVol, t03SphereSumSurf, t03CubeInSphere, t03CubeInSphereVol, t03CubeInSphereVolPi, t03BoxInSphere, t03SphereInCylSurfInv, t03BoxCylHeight, t03CylCircumPrism, t03PrismTetraC1, t03PrismTetraB1, t03PrismPenta, t03PrismMidline, t03PrismCut, t03PrismCutRegular, t03PrismLateral, t03PrismLateralInv, t03CylConeLateral, t03CylConeLatInverse, t03CylConeVolume, t03CylConeVolInverse, t03ConeInSphere, t03ConeInSphereInv, t03ConeSphereRadius, t03ConeSphereSlant, t03SphereInCyl, t03SphereInCylVol, t03TwoCylinders, t03CylInBox, t03CubeCut, t03CubeCutInverse, t03CubeDiagonal, t03CubeAngle, t03BoxDiagonal, t03BoxLineSin, t03BoxSection, t03BoxDiagSection, t03StepSolid, t03LSolid, t03TSolidSurface, t03SphereSection, t03ConeScale, t03ConeHeightScale],
+  3: [t03BoxTetra, t03BoxPyramid, t03BoxPyramidC1, t03BoxPyramidA1, t03BoxPrism, t03BoxTriPrism, t03BoxPrismADA1, t03PrismRightVol, t03PrismRightEdge, t03SqPrismAngle, t03TriPrismAngle, t03HexPrismAngle, t03HexPrismTri, t03HexPrismTrap, t03CylLatHeight, t03CylLatDiameter, t03MugRatio, t03TwoCylindersTaller, t03LiquidWider, t03LiquidNarrower, t03Submerge, t03SubmergeAbs, t03ConeHeight, t03ConeDiameter, t03ConeAxialFromBase, t03ConeAxialFromSlant, t03ConeLatScale, t03ConeLatScaleDown, t03ConeParSect, t03ConeFullSurfSect, t03ConeVessel, t03PrismTetraTop, t03PyrMidEdge, t03PyrSqDiagBD, t03PyrSqDiagSO, t03PyrSqVol, t03PyrSqHeight, t03PyrSqVolHL, t03PyrTriHeight, t03PyrMidSect, t03PyrMidlineCut, t03SqPrismPoly, t03PrismTetra4, t03HexPrismPyr, t03HexPrismTetra, t03PyrHexHeight, t03SphereGreatCircle, t03TwoSpheresSurf, t03TwoSpheresVol, t03SphereSumSurf, t03CubeInSphere, t03CubeInSphereVol, t03CubeInSphereVolPi, t03BoxInSphere, t03SphereInCylSurfInv, t03BoxCylHeight, t03CylCircumPrism, t03StepSolidSurface, t03CylSphereVolInv, t03PrismTetraC1, t03PrismTetraB1, t03PrismPenta, t03PrismMidline, t03PrismCut, t03PrismCutRegular, t03PrismLateral, t03PrismLateralInv, t03CylConeLateral, t03CylConeLatInverse, t03CylConeVolume, t03CylConeVolInverse, t03ConeInSphere, t03ConeInSphereInv, t03ConeSphereRadius, t03ConeSphereSlant, t03SphereInCyl, t03SphereInCylVol, t03TwoCylinders, t03CylInBox, t03CubeCut, t03CubeCutInverse, t03CubeDiagonal, t03CubeAngle, t03BoxDiagonal, t03BoxLineSin, t03BoxSection, t03BoxDiagSection, t03StepSolid, t03LSolid, t03TSolidSurface, t03SphereSection, t03ConeScale, t03ConeHeightScale],
   4: [t04ShotPut, t04Gymnastics, t04Diving, t04Tickets, t04Markers, t04Defect, t04Lottery, t04CoinTwice, t04Rooms, t04FootballCoin],
   5: [t05Lamps, t05Between, t05Shooter4, t05Coffee, t05Battery, t05ShooterN, t05DiceCond, t05TwoThemes, t05Exact],
   6: [t06ExpReduce, t06ExpBothSides, t06LogEqLog, t06LogEqNum, t06Rational, t06Cube, t06Sqrt, t06CubeRoot],
@@ -5942,6 +5970,7 @@ export const GEN_META_EGE_PROF = {
       ["cone-sph-slant", "Сфера около конуса: образующая", t03ConeSphereSlant],
       ["sphere-in-cyl", "Шар в цилиндре: S поверхности (⅔)", t03SphereInCyl],
       ["sphere-in-cyl-vol", "Шар в цилиндре: объём цилиндра (×1,5)", t03SphereInCylVol],
+      ["cyl-sphere-vol-inv", "Объём цилиндра → объём шара (×⅔)", t03CylSphereVolInv],
       ["sphere-in-cyl-surf-inv", "S шара → S полн. цилиндра (×1,5)", t03SphereInCylSurfInv],
       ["sph-section", "Сечение шара через центр: S пов. (×4)", t03SphereSection],
       ["sph-great-circle", "S поверхности → большой круг (÷4)", t03SphereGreatCircle],
@@ -5990,6 +6019,7 @@ export const GEN_META_EGE_PROF = {
     ]],
     ["Составные многогранники (углы прямые)", [
       ["step-solid", "Ступенчатый: объём", t03StepSolid],
+      ["step-solid-surf", "Ступенчатый: площадь поверхности", t03StepSolidSurface],
       ["l-solid", "Г-образный: объём", t03LSolid],
       ["t-solid-surf", "Т-образный: площадь поверхности", t03TSolidSurface],
     ]]],
