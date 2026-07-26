@@ -2367,7 +2367,6 @@ function build27({ c, p, L, R: Rr }) {
 }
 // Быстрая сеточная сверка при ОТБОРЕ наборов: набор берём в банк только если множество,
 // собранное по критическим значениям, совпадает с предикатом на сетке (шаг 1/24).
-// eslint-disable-next-line no-unused-vars -- используется при разовом отборе наборов (см. T27)
 function gridOk(set, solve, want = 1) {
   const b = setBounds(set).map(Rnum)
   if (!b.length) return false
@@ -2442,6 +2441,233 @@ export function t18LogSqrtVsLin() {
 }
 
 // =============================================================================
+// РАЗДЕЛ E. Системы «лог/корень + кривая» — «ровно N решений» (эталон #33–#38)
+// =============================================================================
+// Логарифм (или корень) от одинаковых выражений даёт y² = k²x² плюс ОДЗ, вторая строка —
+// окружность или пара прямых. Все решения системы — конечный набор точек, которые
+// выписываются явно; счёт снова точный, без численного поиска.
+const SUB = { 2: "₂", 3: "₃", 4: "₄", 5: "₅" }
+
+// #33 / #35. {log_b(a − x²) = log_b(a − y²) | √(a − y²) = √(a − x²); x² + y² = 2px + 2qy}.
+// Первая строка ⟺ y² = x² и a > x² (для логарифма) или a ≥ x² (для корня).
+// Подстановка y = ±x в окружность даёт три точки: (0; 0), (p+q; p+q) и (p−q; −(p−q)).
+function build33({ p, q, strict }) {
+  const A = (p + q) * (p + q), B = (p - q) * (p - q)
+  const ok = (a, v) => (strict ? Rcmp(a, R(v)) > 0 : Rcmp(a, R(v)) >= 0)
+  const solve = (a) => [0, A, B].filter((v) => ok(a, v)).length
+  const crit = [R0, R(A), R(B)]
+  return { set: assembleSet((a) => solve(a) === 2, crit), solve, A, B }
+}
+function item33(par, kind) {
+  const { p, q } = par
+  const { set, solve, A, B } = build33(par)
+  const b = kind === "log" ? pick([2, 3, 4, 5]) : null
+  const left = kind === "log"
+    ? `log${SUB[b]}(a ${MINUS} x${SUP[2]}) = log${SUB[b]}(a ${MINUS} y${SUP[2]})`
+    : `⟦r:a ${MINUS} y${SUP[2]}⟧ = ⟦r:a ${MINUS} x${SUP[2]}⟧`
+  const circle = `x${SUP[2]} + y${SUP[2]} = ${2 * p === 1 ? "" : 2 * p}x + ${2 * q === 1 ? "" : 2 * q}y`
+  return item({
+    text: `${HEAD_A}\n\nсистема уравнений\n⟦cases:${left}¦${circle}⟧\n\nимеет ровно два различных решения.`,
+    set,
+    solution: `Первое уравнение равносильно y${SUP[2]} = x${SUP[2]} при ${kind === "log" ? "a > x" + SUP[2] : "a ≥ x" + SUP[2]} (аргументы должны быть ${kind === "log" ? "положительны" : "неотрицательны"}).\n`
+      + `Подставляя y = x в окружность, получаем 2x${SUP[2]} = ${2 * (p + q)}x, то есть x = 0 или x = ${p + q}; при y = ${MINUS}x — x = 0 или x = ${nS(p - q)}.\n`
+      + `Итого три точки: (0; 0), (${p + q}; ${p + q}) и (${nS(p - q)}; ${nS(-(p - q))}); они годятся при ${kind === "log" ? "a > 0, a > " + A + ", a > " + B : "a ≥ 0, a ≥ " + A + ", a ≥ " + B} соответственно.\n`
+      + `Ровно два решения — когда выполняются ровно два из этих условий.\nОтвет: ${setToString(set)}.`,
+    predicate: { type: "count", n: 2 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => (a >= 0 ? Math.sqrt(a) : null), label: "|x| = √a — граница ОДЗ" },
+        { f: (a) => (a >= 0 ? -Math.sqrt(a) : null) },
+        { f: () => p + q, dash: true, label: "точки системы" }, { f: () => p - q, dash: true }, { f: () => 0, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: Math.min(0, p - q) - 3, xMax: Math.max(0, p + q) + 3,
+      aMin: Rnum(setBounds(set)[0]) - 4, aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 4,
+    },
+  })
+}
+const T33 = []
+for (let p = 1; p <= 6; p++) for (let q = 1; q <= 6; q++) {
+  if (p === q) continue                                  // иначе точка (p−q) сливается с началом
+  const A = (p + q) * (p + q), B = (p - q) * (p - q)
+  if (A === B || A > 60 || B === 0) continue
+  T33.push({ p, q })
+}
+export function t18SysLogCircle() { return item33({ ...pick(T33), strict: true }, "log") }
+export function t18SysSqrtCircle() { return item33({ ...pick(T33), strict: false }, "sqrt") }
+
+// #34 / #37. {log_b(c² − y²) = log_b(c² − a²x²) | корень; x² + y² = 2px + 2qy}.
+// Первая строка ⟺ y = ±ax при |y| < c (логарифм) или |y| ≤ c (корень).
+// Подстановка в окружность даёт начало координат и по точке на каждой прямой.
+function build34({ p, q, c, strict }) {
+  const pts = (a) => {                                   // [x, y] всех решений, кроме проверки ОДЗ
+    const d = Radd(R1, Rmul(a, a))
+    const x1 = Rdiv(Rmul(R(2), Radd(R(p), Rmul(R(q), a))), d)
+    const x2 = Rdiv(Rmul(R(2), Rsub(R(p), Rmul(R(q), a))), d)
+    return [[R0, R0], [x1, Rmul(a, x1)], [x2, Rneg(Rmul(a, x2))]]
+  }
+  const okY = (y) => (strict ? Rcmp(Rmul(y, y), R(c * c)) < 0 : Rcmp(Rmul(y, y), R(c * c)) <= 0)
+  const solve = (a) => {
+    const good = []
+    for (const [x, y] of pts(a)) {
+      if (!okY(y)) continue
+      if (!good.some(([u, v]) => Rcmp(u, x) === 0 && Rcmp(v, y) === 0)) good.push([x, y])
+    }
+    return good.length
+  }
+  const crit = [R0, R(p, q), R(-p, q)]
+  // |a·x| = c для каждой из двух прямых: квадратные уравнения по a
+  for (const sg of [1, -1]) for (const side of [1, -1]) {
+    // a·2(p + sg·q·a) = side·c·(1 + a²)
+    const E = [Rsub(R0, R(side * c)), Rsub(R(2 * p), R0), Rsub(R(2 * sg * q), R(side * c))]
+    const { roots, allRational } = ratRoots(E)
+    if (!allRational) return null
+    crit.push(...roots)
+  }
+  return { set: assembleSet((a) => solve(a) === 2, crit), solve }
+}
+const T34 = []
+for (let p = 1; p <= 5; p++) for (let q = 1; q <= 5; q++) for (const c of [2, 3, 4, 5, 6]) for (const strict of [true, false]) {
+  const res = build34({ p, q, c, strict })
+  if (!res || !niceSet(res.set, 12n, 40n, 1, 5)) continue
+  if (!gridOk(res.set, res.solve, 2)) continue
+  T34.push({ p, q, c, strict })
+}
+function item34(strict) {
+  const cand = T34.filter((t) => t.strict === strict)
+  const par = pick(cand), { p, q, c } = par
+  const { set, solve } = build34(par)
+  const b = strict ? pick([2, 3, 5]) : null
+  const left = strict
+    ? `log${SUB[b]}(${c * c} ${MINUS} y${SUP[2]}) = log${SUB[b]}(${c * c} ${MINUS} a${SUP[2]}x${SUP[2]})`
+    : `⟦r:${c * c} ${MINUS} y${SUP[2]}⟧ = ⟦r:${c * c} ${MINUS} a${SUP[2]}x${SUP[2]}⟧`
+  const circle = `x${SUP[2]} + y${SUP[2]} = ${2 * p === 1 ? "" : 2 * p}x + ${2 * q === 1 ? "" : 2 * q}y`
+  return item({
+    text: `${HEAD_A}\n\nсистема уравнений\n⟦cases:${left}¦${circle}⟧\n\nимеет ровно два ${strict ? "решения" : "различных решения"}.`,
+    set,
+    solution: `Первое уравнение равносильно y${SUP[2]} = a${SUP[2]}x${SUP[2]} при ${strict ? "|y| < " + c : "|y| ≤ " + c}, то есть y = ax или y = ${MINUS}ax.\n`
+      + `Подстановка y = ax в окружность даёт x(1 + a${SUP[2]}) = ${2 * p} + ${2 * q}a, то есть точку с x = (${2 * p} + ${2 * q}a)/(1 + a${SUP[2]}); аналогично для y = ${MINUS}ax.\n`
+      + `Начало координат — решение всегда. Каждая из двух точек годится, если её ордината по модулю ${strict ? "меньше" : "не больше"} ${c}.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 2 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => (2 * (p + q * a)) / (1 + a * a), label: "x на прямой y = ax" },
+        { f: (a) => (2 * (p - q * a)) / (1 + a * a), label: `x на прямой y = ${MINUS}ax` },
+        { f: () => 0, dash: true, label: "начало координат" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -2, xMax: 2 * p + 4, aMin: Rnum(setBounds(set)[0]) - 3,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+export function t18SysLogSlope() { return item34(true) }
+export function t18SysSqrtSlope() { return item34(false) }
+
+// #36. {√(c² − y²) = √(c² − k²x²); xy + a² = ax + ay}.
+// Вторая строка распадается: (x − a)(y − a) = 0. Первая даёт y = ±kx при |x| ≤ c/k.
+function build36({ c, k }) {
+  const solve = (a) => {
+    const good = []
+    const add = (x, y) => { if (!good.some(([u, v]) => Rcmp(u, x) === 0 && Rcmp(v, y) === 0)) good.push([x, y]) }
+    const okX = (x) => Rcmp(Rmul(Rmul(R(k), x), Rmul(R(k), x)), R(c * c)) <= 0
+    if (okX(a)) { add(a, Rmul(R(k), a)); add(a, Rneg(Rmul(R(k), a))) }      // прямая x = a
+    for (const sg of [1, -1]) {                                             // прямая y = a
+      const x = Rdiv(a, R(sg * k))
+      if (okX(x)) add(x, a)
+    }
+    return good.length
+  }
+  const crit = [R0, R(c, k), R(-c, k), R(c), R(-c)]
+  return { set: assembleSet((a) => solve(a) === 2, crit), solve }
+}
+// вырожденные наборы (пустой ответ) отсеиваем сразу, а полноту критических значений
+// подтверждаем сеточной сверкой — как и в остальных таблицах
+const T36 = [[2, 2], [2, 1], [3, 2], [4, 2], [3, 1], [6, 3], [4, 3], [5, 2], [6, 2], [8, 4], [9, 3], [10, 5], [6, 4], [8, 3]]
+  .map(([c, k]) => ({ c, k }))
+  .filter((par) => {
+    const res = build36(par)
+    return setBounds(res.set).length > 0 && niceSet(res.set, 12n, 40n, 1, 5) && gridOk(res.set, res.solve, 2)
+  })
+export function t18SysCrossLines() {
+  const par = pick(T36), { c, k } = par
+  const { set, solve } = build36(par)
+  return item({
+    text: `Найдите все значения параметра a, при которых система\n⟦cases:⟦r:${c * c} ${MINUS} y${SUP[2]}⟧ = ⟦r:${c * c} ${MINUS} ${k * k === 1 ? "" : k * k}x${SUP[2]}⟧¦xy + a${SUP[2]} = ax + ay⟧\n\nимеет ровно 2 решения.`,
+    set,
+    solution: `Второе уравнение: xy ${MINUS} ax ${MINUS} ay + a${SUP[2]} = (x ${MINUS} a)(y ${MINUS} a) = 0, то есть x = a или y = a.\n`
+      + `Первое: ${c * c} ${MINUS} y${SUP[2]} = ${c * c} ${MINUS} ${k * k === 1 ? "" : k * k}x${SUP[2]} ≥ 0 ⟺ y = ±${k === 1 ? "" : k}x и |x| ≤ ${Rstr(R(c, k))}.\n`
+      + `На прямой x = a получаем точки (a; ±${k === 1 ? "" : k}a) — они существуют при |a| ≤ ${Rstr(R(c, k))}; на прямой y = a — точки (±a/${k}; a) при |a| ≤ ${c}.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 2 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => a, label: "x = a" }, { f: (a) => a / k, label: `x = a/${k}` }, { f: (a) => -a / k },
+        { f: () => c / k, dash: true, label: "|x| ≤ c/k" }, { f: () => -c / k, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -c - 2, xMax: c + 2, aMin: Rnum(setBounds(set)[0]) - 3,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #38. {√(2mx − x²) = √(2may − a²y²); y = x²} — слева и справа одна и та же функция
+// f(t) = 2mt − t² от t = x и t = ay. Значит ax² = x или ax² = 2m − x, плюс ОДЗ 0 ≤ x ≤ 2m.
+function build38({ m }) {
+  const solve = (a) => {
+    if (Rsign(a) <= 0) return 0                             // рассматриваем только a > 0
+    const good = [R0]                                       // x = 0 всегда в ОДЗ
+    const add = (x) => {
+      if (Rsign(x) < 0 || Rcmp(x, R(2 * m)) > 0) return
+      if (!good.some((y) => Rcmp(y, x) === 0)) good.push(x)
+    }
+    add(Rdiv(R1, a))                                        // ax² = x
+    // ax² + x − 2m = 0: считаем корни на [0; 2m] точно
+    const n = countRoots([R(-2 * m), R1, a], R0, R(2 * m), true, true)
+    // корни этого трёхчлена на [0; 2m] различны между собой; совпасть могут только с 1/a
+    const dup = Rzero(pEval([R(-2 * m), R1, a], Rdiv(R1, a))) && Rcmp(Rdiv(R1, a), R(2 * m)) <= 0 ? 1 : 0
+    return good.length + n - dup
+  }
+  const crit = [R0, R(1, 2 * m), R(1, m)]
+  const set = minusPoints(assembleSet((a) => solve(a) === 3, crit), [])
+  return { set, solve }
+}
+const T38 = [[1], [2], [3], [4]].map(([m]) => ({ m }))
+export function t18SysParabola() {
+  const par = pick(T38), { m } = par
+  const { set, solve } = build38(par)
+  return item({
+    text: `Найдите все положительные значения параметра a, при каждом из которых система\n`
+      + `⟦cases:⟦r:${2 * m === 1 ? "" : 2 * m}x ${MINUS} x${SUP[2]}⟧ = ⟦r:${2 * m === 1 ? "" : 2 * m}ay ${MINUS} a${SUP[2]}y${SUP[2]}⟧¦y = x${SUP[2]}⟧\n\nимеет ровно 3 решения.`,
+    set,
+    solution: `Обе части — значения одной функции f(t) = ${2 * m === 1 ? "" : 2 * m}t ${MINUS} t${SUP[2]} при t = x и t = ay. Из f(x) = f(ay) следует ay = x или ay = ${2 * m} ${MINUS} x, `
+      + `а ОДЗ даёт 0 ≤ x ≤ ${2 * m}.\n`
+      + `Подставляя y = x${SUP[2]}: ax${SUP[2]} = x ⟺ x = 0 или x = 1/a; ax${SUP[2]} + x ${MINUS} ${2 * m} = 0 — ещё до двух корней.\n`
+      + `Считаем, при каких a > 0 различных подходящих x ровно три (y определяется однозначно).\nОтвет: ${setToString(set)}.`,
+    predicate: { type: "count", n: 3 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => (a > 0 ? 1 / a : null), label: "x = 1/a" },
+        { f: (a) => (a > 0 ? (-1 + Math.sqrt(1 + 8 * a * m)) / (2 * a) : null), label: `ax² + x = ${2 * m}` },
+        { f: () => 2 * m, dash: true, label: "ОДЗ: x ≤ 2m" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -1, xMax: 2 * m + 2, aMin: 0, aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 4,
+    },
+  })
+}
+
+// =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
     ["rat-quad-lin", "(k²x²−a²)/(px−q−ra) = 0 — линейный знаменатель", t18RatQuadLin],
@@ -2482,6 +2708,14 @@ export const META18 = [
     ["sqrt-trig", "√(x−a)·sin x = √(x−a)·cos x на [0; Qπ]", t18SqrtTrigFactor],
     ["tan-times-log", "tg(πx)·ln(x+a) = ln(x+a)", t18TanTimesLog],
     ["log-sqrt-vs-lin", "√(x+ca)·ln(x−a) = (x−p)·ln(x−a)", t18LogSqrtVsLin],
+  ]],
+  ["Системы «лог/корень + кривая»", [
+    ["sys-log-circle", "{log(a−x²)=log(a−y²); окружность} — ровно два решения", t18SysLogCircle],
+    ["sys-sqrt-circle", "{√(a−y²)=√(a−x²); окружность} — нестрогое ОДЗ", t18SysSqrtCircle],
+    ["sys-log-slope", "{log(c²−y²)=log(c²−a²x²); окружность}", t18SysLogSlope],
+    ["sys-sqrt-slope", "{√(c²−y²)=√(c²−a²x²); окружность}", t18SysSqrtSlope],
+    ["sys-cross", "{√(c²−y²)=√(c²−k²x²); (x−a)(y−a)=0}", t18SysCrossLines],
+    ["sys-parabola", "{√(2mx−x²)=√(2may−a²y²); y=x²} — ровно 3 решения", t18SysParabola],
   ]],
 ]
 
