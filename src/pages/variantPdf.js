@@ -136,6 +136,17 @@ function matchTablePdf(body) {
     `<table style="border-collapse:collapse; margin:2px 0 8px;"><tr>${ansHead}</tr><tr>${ansBlank}</tr></table>`
 }
 
+// Простая таблица данных для PDF (график погашения долга в №16): первая строка — шапка.
+function dataTablePdf(body) {
+  const rows = body.split("‖").map((r) => r.split("⁞"))
+  const [head, ...rest] = rows
+  const cell = "border:1px solid #333; padding:4px 8px; text-align:center; font-size:13px; white-space:nowrap;"
+  const hd = cell + " background:#f2f2f7; font-weight:600;"
+  const th = head.map((c) => `<td style="${hd}">${c}</td>`).join("")
+  const trs = rest.map((r) => `<tr>${r.map((c) => `<td style="${cell}">${c}</td>`).join("")}</tr>`).join("")
+  return `<table style="border-collapse:collapse; margin:8px 0;"><tr>${th}</tr>${trs}</table>`
+}
+
 // Нумерованный список для PDF (инлайновые стили): синий номер + текст в одну строку.
 function orderedListPdf(body) {
   const items = body.split("⁞")
@@ -148,6 +159,7 @@ function orderedListPdf(body) {
 export async function renderTaskMathPdf(text) {
   const esc = escapeHtml(String(text ?? ""))
     .replace(/⟦match⟧([\s\S]*?)⟦endmatch⟧/g, (_, body) => matchTablePdf(body))
+    .replace(/⟦tbl⟧([\s\S]*?)⟦endtbl⟧/g, (_, body) => dataTablePdf(body))
     .replace(/⟦list⟧([\s\S]*?)⟦endlist⟧/g, (_, body) => orderedListPdf(body))
   const re = /⟦rf:([^⟧]*)⟧|⟦f:([^:⟧]+):([^:⟧]+)⟧|⟦r:([^⟧]+)⟧|⟦b:([^⟧]+)⟧|⟦iso:([^:⟧]+):([^:⟧]+):([^⟧]+)⟧|⟦sup:([^⟧]+)⟧|⟦rn:([^:⟧]+):([^⟧]+)⟧|⟦pf:([^:⟧]+):([^:⟧]+)⟧/g
   let out = "", last = 0, m

@@ -54,6 +54,21 @@ export function matchBlock({ leftHdr, rightHdr, left, right, letters }) {
   return `⟦match⟧${leftHdr}‖${rightHdr}‖${L.join("")}‖${left.join("⁞")}‖${right.join("⁞")}⟦endmatch⟧`
 }
 
+// ── Простая таблица данных (график погашения долга в №16 ЕГЭ Профиль и т.п.) ──
+// В эталоне ФИПИ график долга напечатан именно ТАБЛИЦЕЙ («Дата | 15.01 | 15.02 …»,
+// «Долг (в млн руб) | 1 | 0,6 …»), а не строкой текста, — повторяем один в один.
+// rows — массив строк, каждая строка массив ячеек; ПЕРВАЯ строка = шапка.
+export function tableBlock(rows) {
+  return `⟦tbl⟧${rows.map((r) => r.join("⁞")).join("‖")}⟦endtbl⟧`
+}
+function dataTableHtml(body) {
+  const rows = body.split("‖").map((r) => r.split("⁞"))
+  const [head, ...rest] = rows
+  const th = head.map((c) => `<th>${c}</th>`).join("")
+  const trs = rest.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")
+  return `<div class="tmath-tblwrap"><table class="tmath-table"><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table></div>`
+}
+
 // ── Нумерованный список вариантов (задания «на последовательность» и «вставьте элементы») ──
 // Раньше номер и текст стояли на РАЗНЫХ строках (`n)\nтекст`) — большие пустые отступы.
 // Теперь единый компактный список: синий номер и текст в одну строку (как ключи в таблице
@@ -104,6 +119,8 @@ export function renderTaskMath(text) {
     // сетка для ответа. Разворачиваем ПЕРВЫМ, оставляя внутри ячеек мат-токены (⟦f⟧,
     // ⟦b⟧…) — их развернут следующие .replace ниже по цепочке уже внутри таблицы.
     .replace(/⟦match⟧([\s\S]*?)⟦endmatch⟧/g, (_, body) => matchTableHtml(body))
+    // ⟦tbl⟧…⟦endtbl⟧ — простая таблица данных (график погашения долга).
+    .replace(/⟦tbl⟧([\s\S]*?)⟦endtbl⟧/g, (_, body) => dataTableHtml(body))
     // ⟦list⟧…⟦endlist⟧ — компактный нумерованный список вариантов (номер + текст в строку).
     .replace(/⟦list⟧([\s\S]*?)⟦endlist⟧/g, (_, body) => orderedListHtml(body))
     // ⟦code:…⟧ — моноширинный код-блок (примеры КуМира в №15 и т.п.). \n внутри станут <br>
@@ -151,6 +168,8 @@ export function plainTaskMath(text) {
       const R = (rRaw ? rRaw.split("⁞") : []).map((x, i) => `${i + 1}) ${x}`)
       return `${lh}: ${L.join("; ")} — ${rh}: ${R.join("; ")}`
     })
+    .replace(/⟦tbl⟧([\s\S]*?)⟦endtbl⟧/g, (_, body) =>
+      body.split("‖").map((r) => r.split("⁞").join(" | ")).join("; "))
     .replace(/⟦list⟧([\s\S]*?)⟦endlist⟧/g, (_, body) =>
       body.split("⁞").map((t, i) => `${i + 1}) ${t}`).join("; "))
     .replace(/⟦rf:([^⟧]*)⟧/g, (_, b) => { const [pre, n, d, post] = b.split("¦"); return `√(${pre || ""}${n}/${d}${post || ""})` })

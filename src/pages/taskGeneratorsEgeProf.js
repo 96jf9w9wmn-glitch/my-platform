@@ -14,6 +14,8 @@
 // taskGeneratorsEgeProf13.js (свой решатель тригонометрии + численная самопроверка).
 
 import { GEN13, META13 } from "./taskGeneratorsEgeProf13"
+// №16 (экономическая задача) — свой симулятор кредита/вклада + verify16.
+import { GEN16, META16 } from "./taskGeneratorsEgeProf16"
 
 const randInt = (min, max) => min + Math.floor(Math.random() * (max - min + 1))
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)]
@@ -5290,6 +5292,7 @@ export const GENERATORS_EGE_PROF = {
     t12TrigRootSegment, t12TanSegment, t12TrigProductPoint, t12ExpQuadInEx, t12QuadExpPoint,
     t12QuadExpSegment, t12LinExpSegment, t12RationalNegPoint, t12RationalRecipPoint, t12RationalSegment],
   13: GEN13,
+  16: GEN16,
 }
 
 export const GEN_META_EGE_PROF = {
@@ -5642,4 +5645,5 @@ export const GEN_META_EGE_PROF = {
       ["rat-seg", "(x²+a)/x на отрезке", t12RationalSegment],
     ]]],
   13: META13,
+  16: META16,
 }
