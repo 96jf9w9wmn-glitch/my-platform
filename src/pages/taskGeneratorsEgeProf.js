@@ -5187,6 +5187,83 @@ function t03PyrHexHeight() {
   }
 }
 
+// Два шара разного радиуса (у каждого экватор: передняя дуга сплошная, задняя штрихом).
+function twoSpheresSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 270" width="300" height="270" font-family="Arial, sans-serif">` +
+    `<rect width="300" height="270" fill="#fff"/>` +
+    `<circle cx="110" cy="160" r="75" fill="none" stroke="#000" stroke-width="1.8"/>` +
+    `<path d="M35,160 A75,20 0 0,1 185,160" fill="none" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="163"/>` +
+    `<path d="M35,160 A75,20 0 0,0 185,160" fill="none" stroke="#000" stroke-width="1.6"/>` +
+    `<circle cx="250" cy="178" r="34" fill="none" stroke="#000" stroke-width="1.8"/>` +
+    `<path d="M216,178 A34,9 0 0,1 284,178" fill="none" stroke="#000" stroke-width="1.2" stroke-dasharray="6 4" pathLength="74"/>` +
+    `<path d="M216,178 A34,9 0 0,0 284,178" fill="none" stroke="#000" stroke-width="1.5"/>` +
+    `</svg>`
+}
+
+// Куб, описанный около сферы: ребро = 2R, сфера кругом радиуса a/2 (точки касания
+// с четырьмя гранями попадают на контур, с передней и задней — скрыты сферой).
+function cubeInSphereSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 300" width="320" height="300" font-family="Arial, sans-serif">` +
+    `<rect width="320" height="300" fill="#fff"/>` +
+    `<line x1="115" y1="202" x2="60" y2="240" stroke="#000" stroke-width="1.2" stroke-dasharray="6 5" pathLength="67"/>` +
+    `<line x1="115" y1="202" x2="255" y2="202" stroke="#000" stroke-width="1.2" stroke-dasharray="6 5" pathLength="140"/>` +
+    `<line x1="115" y1="202" x2="115" y2="62" stroke="#000" stroke-width="1.2" stroke-dasharray="6 5" pathLength="140"/>` +
+    `<line x1="60" y1="240" x2="200" y2="240" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="200" y1="240" x2="255" y2="202" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="60" y1="240" x2="60" y2="100" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="200" y1="240" x2="200" y2="100" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="255" y1="202" x2="255" y2="62" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="60" y1="100" x2="200" y2="100" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="200" y1="100" x2="255" y2="62" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="60" y1="100" x2="115" y2="62" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="115" y1="62" x2="255" y2="62" stroke="#000" stroke-width="1.5"/>` +
+    `<circle cx="157.5" cy="151" r="70" fill="none" stroke="#000" stroke-width="1.6"/>` +
+    `<path d="M87.5,151 A70,19 0 0,1 227.5,151" fill="none" stroke="#000" stroke-width="1.2" stroke-dasharray="6 5" pathLength="152"/>` +
+    `<path d="M87.5,151 A70,19 0 0,0 227.5,151" fill="none" stroke="#000" stroke-width="1.4"/>` +
+    `</svg>`
+}
+
+// Радиус (или диаметр) первого шара в k раз больше ⟹ площадь поверхности ×k².
+function t03TwoSpheresSurf() {
+  const k = randInt(2, 15), byDiameter = Math.random() < 0.5
+  const what = byDiameter ? "Диаметр первого шара" : "Радиус первого шара"
+  const of = byDiameter ? "диаметра второго" : "радиуса второго"
+  return {
+    condition_text: `Дано два шара. ${what} в ${k} ${razWord(k)} больше ${of}. Во сколько раз площадь поверхности первого шара больше площади поверхности второго?`,
+    image_url: svgUrl(twoSpheresSvg()),
+    answer: ru(k * k),
+  }
+}
+
+// Радиус первого в k раз больше ⟹ объём ×k³.
+function t03TwoSpheresVol() {
+  const k = randInt(2, 15)
+  return {
+    condition_text: `Дано два шара. Радиус первого шара в ${k} ${razWord(k)} больше радиуса второго. Во сколько раз объём первого шара больше объёма второго?`,
+    image_url: svgUrl(twoSpheresSvg()),
+    answer: ru(k * k * k),
+  }
+}
+
+// S = 4πR²: сумма площадей ⟹ R = √(R₁² + R₂²) (пифагорова тройка, чертежа в банке нет).
+function t03SphereSumSurf() {
+  const [p, q] = pick(PYTH_WIDE), t = randInt(1, 6)
+  return {
+    condition_text: `Радиусы двух шаров равны ${p * t} и ${q * t}. Найдите радиус шара, площадь поверхности которого равна сумме площадей поверхностей двух данных шаров.`,
+    answer: ru(Math.sqrt((p * t) ** 2 + (q * t) ** 2)),
+  }
+}
+
+// Куб описан около сферы радиуса R ⟹ ребро 2R, объём 8R³.
+function t03CubeInSphere() {
+  const r = clean(randInt(2, 20) / 2)
+  return {
+    condition_text: `Куб описан около сферы радиуса ${ru(r)}. Найдите объём куба.`,
+    image_url: svgUrl(cubeInSphereSvg()),
+    answer: ru(clean(8 * r * r * r)),
+  }
+}
+
 // Шар с большим кругом (сечение через центр залито).
 function sphereGreatSvg() {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" width="320" height="320" font-family="Arial, sans-serif">` +
@@ -5616,7 +5693,7 @@ export const GENERATORS_EGE_PROF = {
     t01ParMidpoint, t01ParAngle, t01ParHeights,
     t01RhombusSideDiag, t01RhombusAngle, t01TrapMidDiag],
   2: [t02DotCoord, t02DotLenAngle, t02LenCombo, t02DotOfCombos, t02GraphLenCombo],
-  3: [t03BoxTetra, t03BoxPyramid, t03BoxPyramidC1, t03BoxPyramidA1, t03BoxPrism, t03BoxTriPrism, t03BoxPrismADA1, t03PrismRightVol, t03PrismRightEdge, t03SqPrismAngle, t03TriPrismAngle, t03HexPrismAngle, t03HexPrismTri, t03HexPrismTrap, t03CylLatHeight, t03CylLatDiameter, t03MugRatio, t03TwoCylindersTaller, t03LiquidWider, t03LiquidNarrower, t03Submerge, t03SubmergeAbs, t03ConeHeight, t03ConeDiameter, t03ConeAxialFromBase, t03ConeAxialFromSlant, t03ConeLatScale, t03ConeLatScaleDown, t03ConeParSect, t03ConeFullSurfSect, t03ConeVessel, t03PrismTetraTop, t03PyrMidEdge, t03PyrSqDiagBD, t03PyrSqDiagSO, t03PyrSqVol, t03PyrSqHeight, t03PyrSqVolHL, t03PyrTriHeight, t03PyrMidSect, t03PyrMidlineCut, t03SqPrismPoly, t03PrismTetra4, t03HexPrismPyr, t03HexPrismTetra, t03PyrHexHeight, t03SphereGreatCircle, t03PrismTetraC1, t03PrismTetraB1, t03PrismPenta, t03PrismMidline, t03PrismCut, t03PrismCutRegular, t03PrismLateral, t03PrismLateralInv, t03CylConeLateral, t03CylConeLatInverse, t03CylConeVolume, t03CylConeVolInverse, t03ConeInSphere, t03ConeInSphereInv, t03ConeSphereRadius, t03ConeSphereSlant, t03SphereInCyl, t03SphereInCylVol, t03TwoCylinders, t03CylInBox, t03CubeCut, t03CubeCutInverse, t03CubeDiagonal, t03CubeAngle, t03BoxDiagonal, t03BoxLineSin, t03BoxSection, t03BoxDiagSection, t03StepSolid, t03LSolid, t03TSolidSurface, t03SphereSection, t03ConeScale, t03ConeHeightScale],
+  3: [t03BoxTetra, t03BoxPyramid, t03BoxPyramidC1, t03BoxPyramidA1, t03BoxPrism, t03BoxTriPrism, t03BoxPrismADA1, t03PrismRightVol, t03PrismRightEdge, t03SqPrismAngle, t03TriPrismAngle, t03HexPrismAngle, t03HexPrismTri, t03HexPrismTrap, t03CylLatHeight, t03CylLatDiameter, t03MugRatio, t03TwoCylindersTaller, t03LiquidWider, t03LiquidNarrower, t03Submerge, t03SubmergeAbs, t03ConeHeight, t03ConeDiameter, t03ConeAxialFromBase, t03ConeAxialFromSlant, t03ConeLatScale, t03ConeLatScaleDown, t03ConeParSect, t03ConeFullSurfSect, t03ConeVessel, t03PrismTetraTop, t03PyrMidEdge, t03PyrSqDiagBD, t03PyrSqDiagSO, t03PyrSqVol, t03PyrSqHeight, t03PyrSqVolHL, t03PyrTriHeight, t03PyrMidSect, t03PyrMidlineCut, t03SqPrismPoly, t03PrismTetra4, t03HexPrismPyr, t03HexPrismTetra, t03PyrHexHeight, t03SphereGreatCircle, t03TwoSpheresSurf, t03TwoSpheresVol, t03SphereSumSurf, t03CubeInSphere, t03PrismTetraC1, t03PrismTetraB1, t03PrismPenta, t03PrismMidline, t03PrismCut, t03PrismCutRegular, t03PrismLateral, t03PrismLateralInv, t03CylConeLateral, t03CylConeLatInverse, t03CylConeVolume, t03CylConeVolInverse, t03ConeInSphere, t03ConeInSphereInv, t03ConeSphereRadius, t03ConeSphereSlant, t03SphereInCyl, t03SphereInCylVol, t03TwoCylinders, t03CylInBox, t03CubeCut, t03CubeCutInverse, t03CubeDiagonal, t03CubeAngle, t03BoxDiagonal, t03BoxLineSin, t03BoxSection, t03BoxDiagSection, t03StepSolid, t03LSolid, t03TSolidSurface, t03SphereSection, t03ConeScale, t03ConeHeightScale],
   4: [t04ShotPut, t04Gymnastics, t04Diving, t04Tickets, t04Markers, t04Defect, t04Lottery, t04CoinTwice, t04Rooms, t04FootballCoin],
   5: [t05Lamps, t05Between, t05Shooter4, t05Coffee, t05Battery, t05ShooterN, t05DiceCond, t05TwoThemes, t05Exact],
   6: [t06ExpReduce, t06ExpBothSides, t06LogEqLog, t06LogEqNum, t06Rational, t06Cube, t06Sqrt, t06CubeRoot],
@@ -5779,6 +5856,10 @@ export const GEN_META_EGE_PROF = {
       ["sphere-in-cyl-vol", "Шар в цилиндре: объём цилиндра (×1,5)", t03SphereInCylVol],
       ["sph-section", "Сечение шара через центр: S пов. (×4)", t03SphereSection],
       ["sph-great-circle", "S поверхности → большой круг (÷4)", t03SphereGreatCircle],
+      ["two-sph-surf", "Два шара: во сколько раз S больше (k²)", t03TwoSpheresSurf],
+      ["two-sph-vol", "Два шара: во сколько раз V больше (k³)", t03TwoSpheresVol],
+      ["sph-sum-surf", "Радиус шара с суммарной поверхностью (√)", t03SphereSumSurf],
+      ["cube-insphere", "Куб около сферы радиуса R (8R³)", t03CubeInSphere],
       ["two-cyl", "Два цилиндра: объём второго (b²/a)", t03TwoCylinders],
       ["two-cyl-taller", "Два цилиндра: выше и уже (a/b²)", t03TwoCylindersTaller],
       ["cyl-in-box", "Цилиндр в параллелепипеде (4R²h)", t03CylInBox],
