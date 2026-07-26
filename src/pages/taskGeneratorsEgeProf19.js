@@ -757,6 +757,7 @@ export const META19 = [
     ["stones-trucks", "Каменные глыбы: наим. число грузовиков", t19StonesTrucks],
     ["bonus-notes", "Премии купюрами: наиб. число сотрудников", t19BonusNotes],
     ["game-stars", "Звёзды и заряд: число уровней и наиб. очки", t19GameStars],
+    ["photos-diff", "Фотографии: делители разницы и наиб. сумма", t19PhotosDiff],
   ]],
   ["Вася и Петя решают сборник", [
     ["vasya-petya-days", "Оба решили сборник: за сколько дней и наим. число задач", t19VasyaPetyaDays],
@@ -7104,6 +7105,92 @@ export function t19GameStars() {
       mustMention: [c3, c2, c1, Ca, C, S, ...P],
       extra: [],
       phrases: ["от одной до трёх звёзд", "уровней игры подряд"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 17 (продолжение). Фотографии: две прогрессии с общей разностью (#58)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Обе девочки снимают k дней подряд, каждый день на одну фотографию больше, чем
+// накануне. Тогда суммы равны km + k(k−1)/2 и kn + k(k−1)/2, а их разность
+//   k(n − m) = D,
+// то есть ЧИСЛО ДНЕЙ ДЕЛИТ D. Отсюда «да»/«нет» в пунктах а) и б).
+// Наибольшая сумма второй девочки при ограничении «в последний день первая сделала
+// меньше T» (то есть m ≤ T − k) равна k(T − k) + D + k(k−1)/2 — максимум берётся
+// по делителям D, не превосходящим T − 1.
+export function t19PhotosDiff() {
+  const D = pick([1001, 715, 1105, 935])                   // 7·11·13, 5·11·13, 5·13·17, 5·11·17
+  const T = pick([40, 50])
+  const divs = []
+  for (let k = 2; k <= D; k++) if (D % k === 0) divs.push(k)
+  const okDays = divs.filter((k) => k <= T - 1)
+  if (okDays.length < 2) return null
+  const Ka = pick(okDays.filter((k) => k <= 15))
+  if (!Ka) return null
+  const Kb = pick([Ka + 1, Ka - 1, Ka + 2].filter((k) => k > 1 && D % k !== 0))
+  if (!Kb) return null
+  let best = null
+  for (const k of okDays) {
+    const m = T - k
+    if (m < 1) continue
+    const total = k * m + D + k * (k - 1) / 2
+    if (!best || total > best.total) best = { k, m, total, n: m + D / k }
+  }
+  if (!best) return null
+
+  const params = { D, T, Ka, Kb }
+  const check = (cfg, part) => {
+    if (!cfg || !Number.isInteger(cfg.k) || !Number.isInteger(cfg.m) || !Number.isInteger(cfg.n)) return "нет конфигурации"
+    if (cfg.k < 2) return "фотографировали больше одного дня"
+    if (cfg.m < 1 || cfg.n < 1) return "в первый день каждая сделала хотя бы одну фотографию"
+    const sumM = cfg.k * cfg.m + cfg.k * (cfg.k - 1) / 2
+    const sumN = cfg.k * cfg.n + cfg.k * (cfg.k - 1) / 2
+    if (sumN - sumM !== D) return `разница сумм ${sumN - sumM}, а нужно ${D}`
+    if (part === "a" && cfg.k !== Ka) return `дней ${cfg.k}, а нужно ${Ka}`
+    if (part === "c") {
+      if (cfg.m + cfg.k - 1 >= T) return `в последний день первая сделала ${cfg.m + cfg.k - 1} фотографий — не меньше ${T}`
+      if (sumN !== best.total) return `вторая сделала ${sumN} фотографий, а заявлено ${best.total}`
+    }
+    return null
+  }
+  // Независимый перебор: по числу дней k (делители D) и первому дню m ≤ T − k.
+  const solve = (P) => {
+    const divisor = (k) => P.D % k === 0
+    let top = 0
+    for (let k = 2; k <= P.D; k++) {
+      if (!divisor(k)) continue
+      for (let m = 1; m + k - 1 < P.T; m++) {
+        const sumN = k * (m + P.D / k) + k * (k - 1) / 2
+        if (sumN > top) top = sumN
+      }
+    }
+    return { a: divisor(P.Ka), b: divisor(P.Kb), c: top, c_next: false }
+  }
+
+  const exA = { k: Ka, m: 1, n: 1 + D / Ka }
+  const exC = { k: best.k, m: best.m, n: best.n }
+  const factor = (x) => { const f = []; let y = x; for (let q = 2; q * q <= y; q++) while (y % q === 0) { f.push(q); y /= q } if (y > 1) f.push(y); return f.join(" · ") }
+  return item({
+    preamble: `Маша и Наташа делали фотографии в течение некоторого количества подряд идущих дней. В первый день Маша сделала m фотографий, а Наташа — n фотографий. В каждый следующий день каждая из девочек делала на одну фотографию больше, чем в предыдущий день. Известно, что Наташа за всё время сделала суммарно на ${D} ${plural(D, "фотографию", "фотографии", "фотографий")} больше, чем Маша, и что фотографировали они больше одного дня.`,
+    qa: `Могли ли они фотографировать в течение ${Ka} дней?`,
+    qb: `Могли ли они фотографировать в течение ${Kb} дней?`,
+    qc: `Какое наибольшее суммарное число фотографий могла сделать Наташа за все дни фотографирования, если известно, что в последний день Маша сделала меньше ${T} фотографий?`,
+    ansA: `да: за ${Ka} дней разница сумм равна ${Ka}(n − m) = ${D}, поэтому n − m = ${D / Ka}; например Маша начинала с 1 фотографии, а Наташа — с ${1 + D / Ka}`,
+    ansB: `нет: за k дней разница сумм равна k(n − m), поэтому k делит ${D} = ${factor(D)}; число ${Kb} делителем не является`,
+    ansC: `${best.total}; достигается при ${best.k} днях, когда Маша начинала с ${best.m} ${plural(best.m, "фотографии", "фотографий", "фотографий")} (в последний день — ${best.m + best.k - 1}), а Наташа — с ${best.n}`,
+    solution: `Пусть фотографировали k дней. Тогда Маша сделала km + k(k − 1)/2 фотографий, Наташа — kn + k(k − 1)/2, и разность равна k(n − m) = ${D}. Значит k — делитель числа ${D} = ${factor(D)}.\nа) ${Ka} делит ${D}, поэтому такое возможно: n − m = ${D / Ka}.\nб) ${Kb} не делит ${D}, поэтому столько дней быть не могло.\nв) Суммарное число фотографий Наташи равно kn + k(k − 1)/2 = km + ${D} + k(k − 1)/2. Из условия «в последний день Маша сделала меньше ${T}» следует m + k − 1 ≤ ${T - 1}, то есть m ≤ ${T} − k. Значит сумма не больше k(${T} − k) + ${D} + k(k − 1)/2; перебирая делители ${D}, не превосходящие ${T - 1}, получаем максимум ${best.total} при k = ${best.k} и m = ${best.m}.\nОтвет: ${best.total}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: `days-${Ka}` },
+        b: { type: "yesno", yes: false, reason: "divisor-of-difference", target: `days-${Kb}` },
+        c: { type: "extremum", mode: "max", value: best.total, example: exC },
+      },
+      mustMention: [D, T, Ka, Kb],
+      extra: [],
+      phrases: ["на одну фотографию больше", "больше одного дня"],
     },
   })
 }
