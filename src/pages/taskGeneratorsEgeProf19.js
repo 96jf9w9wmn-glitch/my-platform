@@ -732,6 +732,8 @@ export const META19 = [
     ["means-12-overlap", "12 чисел: средние семи наименьших и семи наибольших", t19Means12Overlap],
     ["means-11-overlap", "11 чисел: наибольшее значение S − B", t19MeansHalvesOverlap],
     ["means-three-groups", "Деление на три группы: наим. наибольшее среднее", t19MeansThreeGroups],
+    ["means-erase-minus1", "Уменьшили на 1 и стёрли нули: наиб. среднее", t19MeansEraseMinusOne],
+    ["means-two-groups-543", "Три сорта чисел в две группы: наиб. (A+B)/2", t19MeansTwoGroups543],
   ]],
   ["Операции над записью числа", [
     ["swap-digits-max", "Перестановка цифр двузначных → наибольшая новая сумма", t19SwapDigitsMax],
@@ -4738,6 +4740,193 @@ export function t19MeansThreeGroups() {
       mustMention: nums,
       extra: [],
       phrases: ["на три группы", "хотя бы одно число"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 10 (продолжение). Уменьшение чисел на единицу и стирание нулей (#93)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// На доске N натуральных чисел, каждое ≤ M, среднее равно u (сумма Nu). Некоторые
+// числа (хотя бы одно) уменьшают на 1; ставшие нулями (то есть бывшие единицы) стирают.
+// Пусть уменьшили k чисел, из них m были единицами. Тогда осталось N − m чисел с суммой
+// Nu − k, и среднее оставшихся равно (Nu − k)/(N − m). Оно тем больше, чем больше m и
+// меньше k, а так как m ≤ k, лучшее — уменьшать ТОЛЬКО единицы: k = m.
+// Ограничение на m: остальные N − m чисел не больше M, поэтому m + (N − m)M ≥ Nu,
+// то есть m ≤ N(M − u)/(M − 1). Максимум среднего равен (Nu − m)/(N − m).
+export function t19MeansEraseMinusOne() {
+  const N = pick([20, 24, 25, 30])
+  const M = pick([40, 45, 50])
+  const u = randInt(Math.ceil(M * 0.6), M - 5)             // среднее исходных чисел
+  const mMax = Math.floor(N * (M - u) / (M - 1))
+  if (mMax < 2) return null
+  const bestFr = fr(N * u - mMax, N - mMax)
+  // б) недостижимое значение среднего оставшихся
+  let Sb = 0
+  for (let cand = Math.ceil(frVal(bestFr)) - 6; cand < frVal(bestFr); cand++) {
+    let reach = false
+    for (let m = 0; m <= mMax; m++) {
+      for (let k = Math.max(1, m); k <= N; k++) if ((N * u - k) === cand * (N - m)) reach = true
+    }
+    if (!reach && cand > u) { Sb = cand; break }
+  }
+  if (!Sb) return null
+  // Примеры: а) одна единица и остальные по M; в) mMax единиц и остальные почти по M
+  const exA = { start: [1, ...Array(N - 1).fill(M)], dec: [0] }
+  const restSum = N * u - mMax
+  const rest = Array(N - mMax).fill(M)
+  let over = (N - mMax) * M - restSum
+  for (let i = 0; i < rest.length && over > 0; i++) {
+    const cut = Math.min(over, M - 1)
+    rest[i] -= cut; over -= cut
+  }
+  if (over !== 0) return null
+  const exC = { start: [...Array(mMax).fill(1), ...rest], dec: Array.from({ length: mMax }, (_, i) => i) }
+
+  const params = { N, M, u, mMax }
+  const check = (cfg, part) => {
+    if (!cfg || !Array.isArray(cfg.start) || !Array.isArray(cfg.dec)) return "нет конфигурации"
+    if (cfg.start.length !== N) return `чисел должно быть ${N}`
+    for (const v of cfg.start) if (!Number.isInteger(v) || v < 1 || v > M) return `${v} — не натуральное число, не превосходящее ${M}`
+    if (!cfg.dec.length) return "уменьшить нужно хотя бы одно число"
+    if (uniq(cfg.dec).length !== cfg.dec.length) return "одно и то же число уменьшено дважды"
+    const after = cfg.start.map((v, i) => (cfg.dec.includes(i) ? v - 1 : v)).filter((v) => v > 0)
+    if (!after.length) return "на доске не осталось чисел"
+    const meanBefore = sum(cfg.start) / N, meanAfter = sum(after) / after.length
+    if (part === "a") return meanAfter > meanBefore ? null : `среднее было ${meanBefore}, стало ${meanAfter} — не увеличилось`
+    if (sum(cfg.start) !== N * u) return `среднее первоначальных чисел ${meanBefore}, а не ${u}`
+    if (part === "c" && Math.abs(meanAfter - frVal(bestFr)) > 1e-9) return `среднее оставшихся ${meanAfter}, а заявлено ${frPlain(bestFr)}`
+    return null
+  }
+  // Независимый перебор по числу стёртых единиц m и числу уменьшенных k: конфигурация
+  // возможна, когда m единиц и N − m чисел, не превосходящих M, дают сумму Nu,
+  // а уменьшить нужно хотя бы одно число (k ≥ 1, k ≥ m, k ≤ N).
+  const solve = (P) => {
+    let bYes = false, best = -Infinity
+    for (let m = 0; m <= P.N; m++) {
+      if (m + (P.N - m) * P.M < P.N * P.u) continue        // столько единиц не помещается
+      if (P.N - m <= 0) continue
+      for (let k = Math.max(1, m); k <= P.N; k++) {
+        const mean = (P.N * P.u - k) / (P.N - m)
+        if (Math.abs(mean - P.Sb) < 1e-12) bYes = true
+        if (mean > best) best = mean
+      }
+    }
+    // а): среди N чисел ≤ M есть набор, где стирание единицы поднимает среднее
+    const before = (1 + (P.N - 1) * P.M) / P.N
+    return { a: P.M > before, b: bYes, c: best }
+  }
+  params.Sb = Sb
+
+  const short = (arr) => (arr.length > 6 ? `${arr.slice(0, 3).join(", ")}, …, ${arr[arr.length - 1]}` : arr.join(", "))
+  return item({
+    preamble: `На доске было написано ${N} ${plural(N, "натуральное число", "натуральных числа", "натуральных чисел")} (необязательно различных), каждое из которых не превосходит ${M}. Вместо некоторых из чисел (возможно, одного) на доске написали числа, меньшие первоначальных на единицу. Числа, которые после этого оказались равными 0, с доски стёрли.`,
+    qa: `Могло ли оказаться так, что среднее арифметическое чисел на доске увеличилось?`,
+    qb: `Среднее арифметическое первоначально написанных чисел равнялось ${u}. Могло ли среднее арифметическое оставшихся на доске чисел оказаться равным ${Sb}?`,
+    qc: `Среднее арифметическое первоначально написанных чисел равнялось ${u}. Найдите наибольшее возможное значение среднего арифметического чисел, которые остались на доске.`,
+    ansA: `да, например числа 1, ${M}, ${M}, …, ${M}: единицу уменьшили и стёрли, среднее выросло с ${ru2((1 + (N - 1) * M) / N)} до ${M}`,
+    ansB: `нет: если уменьшили k чисел, из них m были единицами, то осталось ${N} − m чисел с суммой ${N * u} − k, а среднее равно (${N * u} − k)/(${N} − m). Все единицы вместе с остальными числами дают сумму не больше m + (${N} − m)·${M}, откуда m ≤ ${mMax}. Значение ${Sb} потребовало бы k = ${N * u} − ${Sb}·(${N} − m), что при m ≤ ${mMax} выходит за границы 1 ≤ k ≤ ${N}`,
+    ansC: `${frPlain(bestFr)}; например ${mMax} ${plural(mMax, "единица", "единицы", "единиц")} и числа ${short(rest)} — уменьшают и стирают все единицы`,
+    solution: `Пусть уменьшили k чисел, из них m оказались единицами (их стёрли). Тогда на доске осталось ${N} − m чисел, а их сумма равна ${N * u} − k, поэтому среднее равно (${N * u} − k)/(${N} − m).\nа) Возьмём числа 1, ${M}, …, ${M}. Их среднее равно ${ru2((1 + (N - 1) * M) / N)}, а после стирания единицы остаётся ${N - 1} ${plural(N - 1, "число", "числа", "чисел")} по ${M}, среднее ${M} — оно больше.\nб)–в) Среднее оставшихся растёт с ростом m и убывает с ростом k, а k ≥ m, поэтому выгодно уменьшать только единицы: k = m. Единиц не может быть много: сумма всех чисел не больше m + (${N} − m)·${M}, и из m + (${N} − m)·${M} ≥ ${N * u} получаем m ≤ ${mMax}.\nПри m = k = ${mMax} среднее равно (${N * u} − ${mMax})/(${N} − ${mMax}) = ${frPlain(bestFr)}; такой набор существует: ${mMax} ${plural(mMax, "единица", "единицы", "единиц")} и числа ${short(rest)}. Значение ${Sb} не достигается ни при каких допустимых m и k.\nОтвет: ${frPlain(bestFr)}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: "increase" },
+        b: { type: "yesno", yes: false, reason: "count-of-ones", target: Sb },
+        c: { type: "value", value: frVal(bestFr), example: exC },
+      },
+      mustMention: [N, M, u, Sb, 0],
+      extra: [],
+      phrases: ["не превосходит", "меньшие первоначальных на единицу", "оказались равными 0"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 10 (продолжение). Три сорта чисел, две группы, среднее средних (#62)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// На доске по c штук каждого из трёх чисел v₁ > v₂ > v₃; их делят на две непустые
+// группы со средними A и B. Если размеры групп n и N − n, а суммы s и T − s, то
+//   (A + B)/2 = (s/n + (T − s)/(N − n))/2
+// при фиксированном n линейно по s с коэффициентом (1/n − 1/(N − n))/2. При n < N/2
+// он положителен, поэтому выгодно набирать в маленькую группу самые большие числа,
+// и максимум даёт группа из ОДНОГО числа v₁: (v₁ + (T − v₁)/(N − 1))/2.
+// При n = N/2 коэффициент равен нулю: тогда (A + B)/2 = T/N — среднее всех чисел
+// (это и есть пункт б).
+export function t19MeansTwoGroups543() {
+  const c = pick([8, 10, 12])
+  const v1 = randInt(5, 7), v2 = v1 - 1, v3 = v1 - 2
+  const N = 3 * c, T = c * (v1 + v2 + v3)
+  const best = fr(v1 * (N - 1) + (T - v1), 2 * (N - 1))    // (v₁ + (T−v₁)/(N−1))/2
+  const mean = fr(T, N)
+  // а) пример, где среднее всех МЕНЬШЕ (A+B)/2: группа из двух старших чисел
+  const exA = { g1: [v1, v1], g2: [...Array(c - 2).fill(v1), ...Array(c).fill(v2), ...Array(c).fill(v3)] }
+  const exC = { g1: [v1], g2: [...Array(c - 1).fill(v1), ...Array(c).fill(v2), ...Array(c).fill(v3)] }
+
+  const params = { c, v1, v2, v3, N, T }
+  const check = (cfg, part) => {
+    if (!cfg || !Array.isArray(cfg.g1) || !Array.isArray(cfg.g2)) return "нет разбиения"
+    if (!cfg.g1.length || !cfg.g2.length) return "в каждой группе должно быть хотя бы одно число"
+    const all = [...cfg.g1, ...cfg.g2]
+    if (all.length !== N) return `чисел ${all.length} вместо ${N}`
+    for (const v of [v1, v2, v3]) {
+      const got = all.filter((x) => x === v).length
+      if (got !== c) return `чисел «${v}» ${got}, а должно быть ${c}`
+    }
+    const A = sum(cfg.g1) / cfg.g1.length, B = sum(cfg.g2) / cfg.g2.length
+    if (part === "a" && !(T / N < (A + B) / 2)) return `среднее всех ${T / N} не меньше (A + B)/2 = ${(A + B) / 2}`
+    if (part === "c" && Math.abs((A + B) / 2 - frVal(best)) > 1e-9) return `(A + B)/2 = ${(A + B) / 2}, а заявлено ${frPlain(best)}`
+    return null
+  }
+  // Независимый перебор: по размеру первой группы n и по её составу (сколько взято
+  // чисел каждого сорта). Это полный перебор всех разбиений с точностью до
+  // перестановки одинаковых чисел, которая на средние не влияет.
+  const solve = (P) => {
+    let bad = 0, mx = -Infinity
+    for (let a = 0; a <= P.c; a++) {
+      for (let b = 0; b <= P.c; b++) {
+        for (let d = 0; d <= P.c; d++) {
+          const n = a + b + d
+          if (n === 0 || n === P.N) continue
+          const s = a * P.v1 + b * P.v2 + d * P.v3
+          const val = (s / n + (P.T - s) / (P.N - n)) / 2
+          if (val > mx) mx = val
+          if (n === P.N / 2 && Math.abs(val - P.T / P.N) > 1e-9) bad++
+        }
+      }
+    }
+    return { a: mx > P.T / P.N, b: bad, c: mx }
+  }
+
+  const grp = (arr) => {
+    const parts = []
+    for (const v of [v1, v2, v3]) {
+      const k = arr.filter((x) => x === v).length
+      if (k) parts.push(`${k} ${plural(k, "число", "числа", "чисел")} «${v}»`)
+    }
+    return parts.join(", ")
+  }
+  return item({
+    preamble: `На доске написано ${N} чисел: ${c} ${plural(c, "число", "числа", "чисел")} «${v1}», ${c} «${v2}» и ${c} «${v3}». Эти числа разбивают на две группы, в каждой из которых есть хотя бы одно число. Среднее арифметическое чисел в первой группе равно A, среднее арифметическое чисел во второй группе равно B. (Для группы из единственного числа среднее арифметическое равно этому числу.)`,
+    qa: `Приведите пример разбиения исходных чисел на две группы, при котором среднее арифметическое всех чисел меньше ⟦f:A + B:2⟧.`,
+    qb: `Докажите, что если разбить исходные числа на две группы по ${N / 2} чисел, то среднее арифметическое всех чисел будет равно ⟦f:A + B:2⟧.`,
+    qc: `Найдите наибольшее возможное значение выражения ⟦f:A + B:2⟧.`,
+    ansA: `например, первая группа — ${grp(exA.g1)}, вторая — ${grp(exA.g2)}: тогда A = ${v1}, B = ${frPlain(fr(T - 2 * v1, N - 2))}, а (A + B)/2 = ${frPlain(fr(v1 * (N - 2) + T - 2 * v1, 2 * (N - 2)))} > ${frPlain(mean)}`,
+    ansB: `пусть в группах по ${N / 2} чисел с суммами s и ${T} − s. Тогда A + B = ${"s/" + N / 2} + (${T} − s)/${N / 2} = ${T}/${N / 2}, поэтому (A + B)/2 = ${T}/${N} = ${frPlain(mean)} — это и есть среднее арифметическое всех чисел`,
+    ansC: `${frPlain(best)}; достигается, когда в одной группе единственное число «${v1}»`,
+    solution: `Пусть в первой группе n чисел с суммой s, тогда во второй ${N} − n чисел с суммой ${T} − s, и\n(A + B)/2 = (s/n + (${T} − s)/(${N} − n))/2.\nб) При n = ${N / 2} получаем (s + ${T} − s)/${N} = ${T}/${N} = ${frPlain(mean)} — среднее всех чисел, что и требовалось.\nа) При n ≠ ${N / 2} равенства уже нет: например, если первая группа состоит из ${grp(exA.g1)}, то (A + B)/2 = ${frPlain(fr(v1 * (N - 2) + T - 2 * v1, 2 * (N - 2)))} — больше среднего всех чисел ${frPlain(mean)}.\nв) При фиксированном n выражение линейно по s с коэффициентом (1/n − 1/(${N} − n))/2, положительным при n < ${N / 2}. Значит в меньшую группу выгодно брать самые большие числа, и наилучший случай — группа из единственного числа «${v1}»: (A + B)/2 = (${v1} + ${frPlain(fr(T - v1, N - 1))})/2 = ${frPlain(best)}.\nОтвет: ${frPlain(best)}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: "less-than-half-sum" },
+        b: { type: "count", value: 0 },
+        c: { type: "value", value: frVal(best), example: exC },
+      },
+      mustMention: [N, c, v1, v2, v3, N / 2],
+      extra: [2],
+      phrases: ["на две группы", "хотя бы одно число"],
     },
   })
 }
