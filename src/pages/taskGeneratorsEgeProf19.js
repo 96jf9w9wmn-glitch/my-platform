@@ -698,6 +698,12 @@ export function t19BoardDistinctSum() {
 
 // ── реестр ─────────────────────────────────────────────────────────────────
 export const META19 = [
+  ["Прогрессии", [
+    ["ap-ends-sum", "АП из натуральных: сумма крайних и наибольшее число членов", t19APEndsSum],
+    ["ap-count-by-sum", "n различных натуральных в АП: наибольшее n и все n", t19APCountBySum],
+    ["gp-three-digit", "ГП из трёхзначных с первым членом F → наибольший член", t19GPThreeDigit],
+    ["prod-gp-subset", "Пять чисел с произведением P: пять/четыре/три в ГП", t19ProdGPSubset],
+  ]],
   ["Алгебраическая теория чисел", [
     ["quadratic-nat-roots", "x² + px + q = 0 с двумя натуральными корнями", t19QuadraticNatRoots],
     ["discriminant-nat", "Дискриминант при натуральных m, n → наименьший", t19DiscriminantNat],
@@ -2127,6 +2133,398 @@ export function t19Sqrt2Approximation() {
       mustMention: [E1, E2, K],
       extra: [1, 2],
       phrases: ["двузначные натуральные числа", "√2"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 8. Прогрессии (#8, #40, #92, #109)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// #8. Конечная арифметическая прогрессия из натуральных чисел.
+// Ключи: сумма крайних членов равна 2a + (k−1)d, поэтому при НЕЧЁТНОМ количестве
+// членов она чётна; среднее арифметическое прогрессии равно полусумме крайних.
+export function t19APEndsSum() {
+  const kA = pick([5, 7, 9])                     // нечётное количество ⟹ сумма крайних чётна
+  const T1 = 2 * randInt(20, 90) + 1             // нечётное ⟹ невозможно
+  const aB = randInt(1, 5)                       // б): {aB, …, aB+5}, единственная прогрессия
+  const kB = 6
+  const T2 = 2 * aB + 5
+  const setB = Array.from({ length: kB }, (_, i) => aB + i)
+  const p = 2 * randInt(5, 30) + 1               // в): среднее = p/2, сумма крайних = p
+  const nMax = p - 1
+  const meanTxt = `${(p - 1) / 2},5`      // эталон пишет среднее десятичной дробью: «6,5»
+
+  const params = { kA, T1, kB, T2, p, nMax }
+  const isAP = (arr) => {
+    if (arr.length < 2) return false
+    const d = arr[1] - arr[0]
+    for (let i = 1; i < arr.length; i++) if (arr[i] - arr[i - 1] !== d) return false
+    return true
+  }
+  const check = (arr, part) => {
+    if (!Array.isArray(arr) || arr.length < 2) return "не прогрессия"
+    for (const x of arr) if (!Number.isInteger(x) || x < 1) return `${x} не натуральное`
+    if (!isAP(arr)) return "числа не образуют арифметическую прогрессию"
+    const ends = Math.max(...arr) + Math.min(...arr)
+    if (part === "a") { if (arr.length !== kA) return `${arr.length} членов вместо ${kA}`; if (ends !== T1) return `сумма крайних ${ends}, а не ${T1}` }
+    if (part === "b") { if (arr.length !== kB) return `${arr.length} членов вместо ${kB}`; if (ends !== T2) return `сумма крайних ${ends}, а не ${T2}` }
+    if (part === "c") {
+      if (arr.length !== nMax) return `${arr.length} членов вместо ${nMax}`
+      if (2 * sum(arr) !== p * arr.length) return `среднее ${sum(arr) / arr.length}, а не ${p}/2`
+    }
+    return null
+  }
+  const solve = (P) => {
+    // Пространство перебора: все прогрессии из натуральных чисел с первым членом
+    // до 1000 и разностью по модулю до 1000 (при больших значениях крайние члены
+    // превышают заявленные суммы).
+    let a = false
+    for (let a1 = 1; a1 <= 1000; a1++) for (let d = -1000; d <= 1000; d++) {
+      const last = a1 + (P.kA - 1) * d
+      if (last < 1) continue
+      if (a1 + last === P.T1) a = true
+    }
+    const bSets = new Set()
+    for (let a1 = 1; a1 <= 1000; a1++) for (let d = -1000; d <= 1000; d++) {
+      const arr = Array.from({ length: P.kB }, (_, i) => a1 + i * d)
+      if (arr.some((x) => x < 1)) continue
+      if (Math.max(...arr) + Math.min(...arr) !== P.T2) continue
+      bSets.add([...arr].sort((x, y) => x - y).join(","))
+    }
+    let best = 0
+    for (let n = 2; n <= 2 * P.p; n++) for (let a1 = 1; a1 <= P.p; a1++) {
+      const an = P.p - a1
+      if (an < 1) continue
+      if ((an - a1) % (n - 1) !== 0) continue
+      best = Math.max(best, n)
+    }
+    return { a, b: [...bSets].sort(), c: best, c_next: false }
+  }
+
+  return item({
+    preamble: `Рассматриваются конечные арифметические прогрессии, состоящие из натуральных чисел.`,
+    qa: `Существует ли конечная арифметическая прогрессия, состоящая из ${kA} натуральных чисел, такая, что сумма наибольшего и наименьшего членов этой прогрессии равна ${T1}?`,
+    qb: `Конечная арифметическая прогрессия состоит из ${kB} натуральных чисел. Сумма наибольшего и наименьшего членов этой прогрессии равна ${T2}. Найдите все числа, из которых состоит эта прогрессия.`,
+    qc: `Среднее арифметическое членов конечной арифметической прогрессии, состоящей из натуральных чисел, равно ${meanTxt}. Какое наибольшее количество членов может быть в этой прогрессии?`,
+    ansA: `нет: сумма наибольшего и наименьшего членов равна 2a₁ + (${kA} − 1)d = 2a₁ + ${kA - 1}d, а это чётное число, тогда как ${T1} нечётно`,
+    ansB: `${joinRu(setB)}`,
+    ansC: `${nMax}; пример: ${runText(1, 1, nMax)}, среднее арифметическое равно ${meanTxt}; больше нельзя — среднее равно полусумме крайних членов, поэтому a₁ + aₙ = ${p}, а разность по модулю не меньше 1, значит n − 1 ≤ |aₙ − a₁| ≤ ${p - 2}`,
+    solution: `Сумма наибольшего и наименьшего членов прогрессии из k чисел равна 2a₁ + (k − 1)d.\nа) При нечётном k = ${kA} множитель (k − 1) чётен, поэтому вся сумма чётна и не может равняться нечётному ${T1}.\nб) При k = ${kB} получаем 2a₁ + 5d = ${T2}; перебирая допустимые d (все члены обязаны быть натуральными), находим единственный набор ${joinRu(setB)}.\nв) Среднее арифметическое арифметической прогрессии равно полусумме крайних членов, поэтому a₁ + aₙ = ${p}. Разность целая и ненулевая (иначе все члены равны ${p}/2 — не натуральному числу), значит n − 1 ≤ |aₙ − a₁| ≤ ${p} − 2, откуда n ≤ ${nMax}; равенство даёт прогрессия ${runText(1, 1, nMax)}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: false, reason: "parity", target: T1 },
+        b: { type: "all", values: [setB.join(",")], examples: { [setB.join(",")]: setB } },
+        c: { type: "extremum", mode: "max", value: nMax, example: Array.from({ length: nMax }, (_, i) => i + 1) },
+      },
+      mustMention: [kA, T1, kB, T2, (p - 1) / 2],
+      extra: [5, 2, p],
+      phrases: ["арифметическая прогрессия", "натуральных чисел", "сумма наибольшего и наименьшего членов"],
+    },
+  })
+}
+
+// #40. n различных натуральных чисел, составляющих арифметическую прогрессию (n ≥ 3).
+// Сумма равна n(2a + (n−1)d)/2 при a ≥ 1 и d ≥ 1, поэтому:
+//   • наименьшая сумма при данном n равна n(n+1)/2 — это даёт ответ на пункт б);
+//   • сумма S возможна ⟺ n делит 2S и остаток 2S/n − (n−1)d при некотором d ≥ 1
+//     чётен и не меньше 2 — это даёт пункт в) без всякого перебора наборов.
+export function t19APCountBySum() {
+  const nA = randInt(3, 6), aA = randInt(1, 6), dA = randInt(1, 4)
+  const S1 = nA * (2 * aA + (nA - 1) * dA) / 2
+  const S2 = randInt(200, 1500)
+  let nBest = 2; while ((nBest + 1) * (nBest + 2) / 2 < S2) nBest++
+  const S3 = pick([111, 141, 159, 213, 219, 249, 267, 141, 123])
+  const okN = (S, n) => {
+    if (n < 3 || (2 * S) % n !== 0) return false
+    const Q = 2 * S / n
+    if (n % 2 === 1) return Q % 2 === 0 && (n - 1) <= Q - 2
+    return Q % 2 === 0 ? 2 * (n - 1) <= Q - 2 : (n - 1) <= Q - 2
+  }
+  const valuesC = []
+  for (const n of divisors(2 * S3)) if (okN(S3, n)) valuesC.push(n)
+  if (!valuesC.length) return null
+  const mkAP = (S, n) => {
+    const Q = 2 * S / n
+    for (let d = 1; d <= Q; d++) {
+      const two = Q - (n - 1) * d
+      if (two >= 2 && two % 2 === 0) return Array.from({ length: n }, (_, i) => two / 2 + i * d)
+    }
+    return null
+  }
+  const exC = Object.fromEntries(valuesC.map((n) => [n, mkAP(S3, n)]))
+  const exA = Array.from({ length: nA }, (_, i) => aA + i * dA)
+  const exB = Array.from({ length: nBest }, (_, i) => i + 1)
+
+  const params = { S1, S2, S3, nBest, valuesC }
+  const check = (arr, part) => {
+    if (!Array.isArray(arr) || arr.length < 3) return "меньше трёх чисел"
+    if (uniq(arr).length !== arr.length) return "числа не различны"
+    for (const x of arr) if (!Number.isInteger(x) || x < 1) return `${x} не натуральное`
+    const d = arr[1] - arr[0]
+    for (let i = 1; i < arr.length; i++) if (arr[i] - arr[i - 1] !== d) return "не арифметическая прогрессия"
+    if (part === "a" && sum(arr) !== S1) return `сумма ${sum(arr)}, а не ${S1}`
+    if (part === "b") { if (sum(arr) >= S2) return `сумма ${sum(arr)} не меньше ${S2}`; if (arr.length !== nBest) return `${arr.length} чисел вместо ${nBest}` }
+    if (part === "c" && sum(arr) !== S3) return `сумма ${sum(arr)}, а не ${S3}`
+    return null
+  }
+  const solve = (P) => {
+    // Пространство перебора: все прогрессии с n от 3 до 2000, первым членом до 2000
+    // и разностью до 2000 — за этими границами сумма превосходит все три цели.
+    let a = false, best = 0
+    const cs = new Set()
+    for (let n = 3; n <= 2000; n++) {
+      const minS = n * (n + 1) / 2
+      if (minS < P.S2) best = Math.max(best, n)
+      if (minS > Math.max(P.S1, P.S3)) continue
+      for (let a1 = 1; a1 <= 2000; a1++) for (let d = 1; d <= 2000; d++) {
+        const S = n * (2 * a1 + (n - 1) * d) / 2
+        if (S > Math.max(P.S1, P.S3)) break
+        if (S === P.S1) a = true
+        if (S === P.S3) cs.add(n)
+      }
+    }
+    return { a, b: best, c: [...cs].sort((x, y) => x - y), b_next: false }
+  }
+
+  return item({
+    preamble: `Даны n различных натуральных чисел, составляющих арифметическую прогрессию (n ≥ 3).`,
+    qa: `Может ли сумма всех данных чисел быть равной ${S1}?`,
+    qb: `Каково наибольшее значение n, если сумма всех данных чисел меньше ${S2}?`,
+    qc: `Найдите все возможные значения n, если сумма всех данных чисел равна ${S3}.`,
+    ansA: `да, например ${joinRu(exA)}`,
+    ansB: `${nBest}; пример: ${runText(1, 1, nBest)} с суммой ${nBest * (nBest + 1) / 2} < ${S2}; больше нельзя — наименьшая сумма n различных натуральных чисел равна n(n+1)/2, а при n = ${nBest + 1} это уже ${(nBest + 1) * (nBest + 2) / 2} ≥ ${S2}`,
+    ansC: `${joinRu(valuesC)}${valuesC.map((n) => `; при n = ${n} подходит прогрессия ${joinRu(exC[n])}`).join("")}`,
+    solution: `Сумма n членов прогрессии равна n(2a₁ + (n − 1)d)/2, где a₁ ≥ 1 и d ≥ 1 (числа различны и натуральны).\nб) Наименьшая возможная сумма при данном n достигается на прогрессии 1, 2, …, n и равна n(n+1)/2. Наибольшее n, при котором n(n+1)/2 < ${S2}, равно ${nBest}.\nв) Из 2S = n(2a₁ + (n − 1)d) видно, что n — делитель числа 2·${S3} = ${2 * S3}. Далее для каждого такого n нужно, чтобы 2a₁ = ${2 * S3}/n − (n − 1)d было чётным и не меньше 2 при некотором d ≥ 1. Это выполняется ровно при n = ${joinRu(valuesC)}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: S1 },
+        b: { type: "extremum", mode: "max", value: nBest, example: exB },
+        c: { type: "all", values: valuesC, examples: exC },
+      },
+      mustMention: [S1, S2, S3, 3],
+      extra: [],
+      phrases: ["различных натуральных чисел, составляющих арифметическую прогрессию"],
+    },
+  })
+}
+
+// #92. Конечная геометрическая прогрессия из трёхзначных натуральных чисел
+//      с заданным первым членом и не менее чем тремя членами.
+// Конструкция перебирает ЗНАМЕНАТЕЛЬ q = p/s в несократимом виде (s — делитель F),
+// solve() же идёт по второму члену прогрессии — это разные проходы.
+const GP_TABLE = (() => {
+  const map = new Map()
+  for (const F of [128, 192, 256, 384, 512, 768]) {
+    const members = new Set()
+    for (let s = 1; s <= 256; s++) {
+      if (F % s !== 0 && s !== 1) { /* знаменатель обязан делить F на каждом шаге — проверим ниже */ }
+      for (let pn = 1; pn <= 4 * s; pn++) {
+        if (gcdI(pn, s) !== 1 || pn === s) continue
+        const seq = [F]
+        let cur = F
+        for (let step = 0; step < 12; step++) {
+          if (cur * pn % s !== 0) break
+          cur = cur * pn / s
+          if (cur < 100 || cur > 999) break
+          seq.push(cur)
+        }
+        if (seq.length >= 3) for (const x of seq) members.add(x)
+      }
+    }
+    map.set(F, [...members].sort((a, b) => a - b))
+  }
+  return map
+})()
+export function t19GPThreeDigit() {
+  const F = pick([...GP_TABLE.keys()])
+  const list = GP_TABLE.get(F)
+  if (!list || list.length < 4) return null
+  const best = list[list.length - 1]
+  const yesVal = pick(list.filter((x) => x !== F && x !== best))
+  const holes = []
+  for (let x = 100; x <= 999; x++) if (!list.includes(x)) holes.push(x)
+  const noVal = pick(holes)
+
+  const seqFor = (target) => {
+    // явная прогрессия, содержащая target (нужна для примера в ответе)
+    for (let s = 1; s <= 256; s++) for (let pn = 1; pn <= 4 * s; pn++) {
+      if (gcdI(pn, s) !== 1 || pn === s) continue
+      const seq = [F]
+      let cur = F
+      for (let step = 0; step < 12; step++) {
+        if (cur * pn % s !== 0) break
+        cur = cur * pn / s
+        if (cur < 100 || cur > 999) break
+        seq.push(cur)
+      }
+      if (seq.length >= 3 && seq.includes(target)) return { seq, pn, s }
+    }
+    return null
+  }
+  const sA = seqFor(yesVal), sC = seqFor(best)
+  if (!sA || !sC) return null
+
+  const params = { F, yesVal, noVal, best }
+  const check = (seq, part) => {
+    if (!Array.isArray(seq) || seq.length < 3) return "в прогрессии меньше трёх чисел"
+    for (const x of seq) {
+      if (!Number.isInteger(x) || x < 100 || x > 999) return `${x} не трёхзначное натуральное`
+    }
+    if (seq[0] !== F) return `первый член ${seq[0]}, а не ${F}`
+    for (let i = 2; i < seq.length; i++) if (seq[i] * seq[i - 2] !== seq[i - 1] * seq[i - 1]) return "не геометрическая прогрессия"
+    const need = part === "a" ? yesVal : part === "b" ? noVal : best
+    if (!seq.includes(need)) return `${need} не входит в прогрессию`
+    return null
+  }
+  const solve = (P) => {
+    // Пространство перебора: все прогрессии задаются вторым членом t (100…999),
+    // так как q = t/F; дальше члены определены однозначно.
+    const members = new Set()
+    for (let t = 100; t <= 999; t++) {
+      if (t === P.F) continue
+      const g = gcdI(t, P.F), pn = t / g, s = P.F / g
+      const seq = [P.F]
+      let cur = P.F
+      for (let step = 0; step < 12; step++) {
+        if (cur * pn % s !== 0) break
+        cur = cur * pn / s
+        if (cur < 100 || cur > 999) break
+        seq.push(cur)
+      }
+      if (seq.length >= 3) for (const x of seq) members.add(x)
+    }
+    const arr = [...members]
+    return { a: arr.includes(P.yesVal), b: arr.includes(P.noVal), c: Math.max(...arr) }
+  }
+
+  return item({
+    preamble: `Первый член конечной геометрической прогрессии, состоящей из трёхзначных натуральных чисел, равен ${F}. Известно, что в прогрессии не меньше трёх чисел.`,
+    qa: `Может ли число ${yesVal} являться членом такой прогрессии?`,
+    qb: `Может ли число ${noVal} являться членом такой прогрессии?`,
+    qc: `Какое наибольшее число может являться членом такой прогрессии?`,
+    ansA: `да, например прогрессия ${joinRu(sA.seq)} со знаменателем ${sA.pn}/${sA.s}`,
+    ansB: `нет: знаменатель прогрессии равен несократимой дроби p/s, и каждый следующий член получается умножением на p и делением на s, поэтому все члены имеют вид ${F}·pᵏ/sᵏ; ни при каком таком знаменателе, дающем не менее трёх трёхзначных членов, число ${noVal} не появляется`,
+    ansC: `${best}; достигается в прогрессии ${joinRu(sC.seq)} со знаменателем ${sC.pn}/${sC.s}`,
+    solution: `Пусть знаменатель равен несократимой дроби p/s. Тогда k-й член равен ${F}·pᵏ/sᵏ, и чтобы он был целым, sᵏ обязано делить ${F}; значит s — степень двойки, делящая ${F}.\nПеребирая допустимые пары (p, s) и требуя, чтобы все члены оставались трёхзначными, а их было не меньше трёх, получаем полный список возможных членов прогрессии.\nВ нём есть ${yesVal} (прогрессия ${joinRu(sA.seq)}), нет ${noVal}, а наибольшее число равно ${best} (прогрессия ${joinRu(sC.seq)}).`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: sA.seq, target: yesVal },
+        b: { type: "yesno", yes: false, reason: "no-quotient", target: noVal },
+        c: { type: "value", value: best, example: sC.seq },
+      },
+      mustMention: [F, yesVal, noVal],
+      extra: [],
+      phrases: ["геометрической прогрессии, состоящей из трёхзначных натуральных чисел", "не меньше трёх чисел"],
+    },
+  })
+}
+
+// #109. Пять различных натуральных чисел с заданным произведением; могут ли пять,
+//       четыре или три из них образовать геометрическую прогрессию.
+// Инварианты: произведение пяти членов ГП равно (среднего)⁵ — полная пятая степень;
+// произведение четырёх членов ГП равно (b²q³)² — полный квадрат.
+const GP_SUBSET = (() => {
+  const cache = new Map()
+  const build = (P) => {
+    const divs = divisors(P)
+    const res = { five: null, four: null, three: null }
+    const isGP = (arr) => { for (let i = 2; i < arr.length; i++) if (arr[i] * arr[i - 2] !== arr[i - 1] * arr[i - 1]) return false; return true }
+    const cur = []
+    const rec = (start, prod) => {
+      if (cur.length === 5) {
+        if (prod !== P) return
+        const s = [...cur]
+        if (!res.five && isGP(s)) res.five = s
+        if (!res.four) for (let skip = 0; skip < 5; skip++) { const t = s.filter((_, i) => i !== skip); if (isGP(t)) { res.four = { set: s, gp: t }; break } }
+        if (!res.three) for (let i = 0; i < 5 && !res.three; i++) for (let j = i + 1; j < 5 && !res.three; j++) for (let k = j + 1; k < 5; k++) {
+          const t = [s[i], s[j], s[k]]
+          if (isGP(t)) { res.three = { set: s, gp: t }; break }
+        }
+        return
+      }
+      for (let i = start; i < divs.length; i++) {
+        const d = divs[i]
+        if (prod * d > P || P % (prod * d) !== 0) continue
+        cur.push(d); rec(i + 1, prod * d); cur.pop()
+      }
+    }
+    rec(0, 1)
+    return res
+  }
+  for (const P of [1512, 2520, 3024, 4536, 5040]) cache.set(P, build(P))
+  return cache
+})()
+export function t19ProdGPSubset() {
+  const P = pick([...GP_SUBSET.keys()])
+  const r = GP_SUBSET.get(P)
+  // Эталонная конфигурация ответов: пять — нет, четыре — нет, три — да.
+  if (r.five || r.four || !r.three) return null
+
+  const params = { P }
+  const check = (val, part) => {
+    const set = part === "c" ? val.set : val
+    if (!Array.isArray(set) || set.length !== 5) return "не пять чисел"
+    if (uniq(set).length !== 5) return "числа не различны"
+    for (const x of set) if (!Number.isInteger(x) || x < 1) return `${x} не натуральное`
+    if (set.reduce((a, b) => a * b, 1) !== P) return `произведение ${set.reduce((a, b) => a * b, 1)}, а не ${P}`
+    if (part === "c") {
+      const gp = val.gp
+      if (!Array.isArray(gp) || gp.length !== 3) return "не три числа в прогрессии"
+      for (const x of gp) if (!set.includes(x)) return `${x} не входит в набор`
+      if (gp[2] * gp[0] !== gp[1] * gp[1]) return "три числа не образуют геометрическую прогрессию"
+    }
+    return null
+  }
+  const solve = (Pm) => {
+    // Пространство перебора: все пятёрки различных делителей числа P с произведением P.
+    const divs = divisors(Pm.P)
+    const isGP = (arr) => { for (let i = 2; i < arr.length; i++) if (arr[i] * arr[i - 2] !== arr[i - 1] * arr[i - 1]) return false; return true }
+    let five = false, four = false, three = false
+    const cur = []
+    const rec = (start, prod) => {
+      if (cur.length === 5) {
+        if (prod !== Pm.P) return
+        const s = [...cur]
+        if (isGP(s)) five = true
+        for (let skip = 0; skip < 5; skip++) if (isGP(s.filter((_, i) => i !== skip))) four = true
+        for (let i = 0; i < 5; i++) for (let j = i + 1; j < 5; j++) for (let k = j + 1; k < 5; k++) {
+          if (isGP([s[i], s[j], s[k]])) three = true
+        }
+        return
+      }
+      for (let i = start; i < divs.length; i++) {
+        const d = divs[i]
+        if (prod * d > Pm.P || Pm.P % (prod * d) !== 0) continue
+        cur.push(d); rec(i + 1, prod * d); cur.pop()
+      }
+    }
+    rec(0, 1)
+    return { a: five, b: four, c: three }
+  }
+
+  return item({
+    preamble: `Рассматриваются пять различных натуральных чисел, произведение которых равно ${P}.`,
+    qa: `Можно ли привести пример таких пяти чисел, если пять из них образуют геометрическую прогрессию?`,
+    qb: `Можно ли привести пример таких пяти чисел, если четыре из них образуют геометрическую прогрессию?`,
+    qc: `Можно ли привести пример таких пяти чисел, если три из них образуют геометрическую прогрессию?`,
+    ansA: `нет: произведение пяти членов геометрической прогрессии равно пятой степени её среднего члена, а ${P} не является пятой степенью натурального числа`,
+    ansB: `нет: произведение четырёх членов геометрической прогрессии b, bq, bq², bq³ равно (b²q³)², то есть полному квадрату; значит пятое число c обязано быть таким, что ${P}/c — точный квадрат, а для каждого подходящего c четырёх различных натуральных чисел в геометрической прогрессии с нужным произведением не существует`,
+    ansC: `да, например ${joinRu(r.three.set)}: числа ${joinRu(r.three.gp)} образуют геометрическую прогрессию, а произведение всех пяти равно ${P}`,
+    solution: `Произведение пяти последовательных членов геометрической прогрессии равно (aq²)⁵ — пятой степени среднего члена. Так как ${P} не является пятой степенью натурального числа, пункт а) невозможен.\nПроизведение четырёх членов равно b·bq·bq²·bq³ = (b²q³)² — полный квадрат. Значит оставшееся пятое число c должно давать точный квадрат ${P}/c; перебор таких c показывает, что подходящей четвёрки различных натуральных чисел нет.\nДля трёх чисел ограничений почти нет: подходит набор ${joinRu(r.three.set)}, где ${joinRu(r.three.gp)} — геометрическая прогрессия.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: false, reason: "fifth-power", target: 5 },
+        b: { type: "yesno", yes: false, reason: "square", target: 4 },
+        c: { type: "yesno", yes: true, example: r.three, target: 3 },
+      },
+      mustMention: [P],
+      extra: [],
+      phrases: ["пять различных натуральных чисел", "геометрическую прогрессию"],
     },
   })
 }
