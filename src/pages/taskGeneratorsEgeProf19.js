@@ -730,6 +730,7 @@ export const META19 = [
   ["Средние арифметические набора", [
     ["means-pos-neg", "Целые числа: средние всех / положительных / отрицательных", t19MeansPosNeg],
     ["means-12-overlap", "12 чисел: средние семи наименьших и семи наибольших", t19Means12Overlap],
+    ["means-11-overlap", "11 чисел: наибольшее значение S − B", t19MeansHalvesOverlap],
   ]],
   ["Операции над записью числа", [
     ["swap-digits-max", "Перестановка цифр двузначных → наибольшая новая сумма", t19SwapDigitsMax],
@@ -4502,6 +4503,128 @@ export function t19APConsecutiveSum() {
       mustMention: [Sa, Sb].filter((v) => v > 0),
       extra: [1],
       phrases: ["не менее трёх последовательных членов", "непостоянной арифметической прогрессии"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 10 (продолжение). Средние двух перекрывающихся половин набора (#60)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// N = 2k − 1 различных натуральных чисел a₁ < … < a_N. Среднее k наименьших равно u,
+// среднее k наибольших равно v; общий элемент двух половин — это B = a_k.
+// Сумма всех чисел равна ku + kv − B, поэтому среднее S = (k(u + v) − B)/N, и
+//   S − B = k(u + v − 2B)/N — убывает по B, значит максимум даёт наименьшее B.
+// Границы B: в нижней половине k различных чисел с наибольшим B, поэтому
+//   kB − k(k−1)/2 ≥ ku  ⟹  B ≥ u + (k−1)/2,
+// в верхней половине k различных чисел с наименьшим B, поэтому
+//   kB + k(k−1)/2 ≤ kv  ⟹  B ≤ v − (k−1)/2.
+export function t19MeansHalvesOverlap() {
+  const k = pick([6, 7])
+  const N = 2 * k - 1
+  const u = randInt(4, 7)
+  const v = u + pick([8, 10, 12])
+  const Bmin = Math.ceil(u + (k - 1) / 2)
+  const Bmax = Math.floor(v - (k - 1) / 2)
+  if (Bmin > Bmax) return null
+  // наименьшее число для пункта а): строго больше u − (k−1)/2, иначе набор существует
+  const Xa = Math.floor(u - (k - 1) / 2) + 1
+  if (Xa < 1) return null
+  // среднее для пункта б): такое целое, при котором требуемое B выходит за верхнюю
+  // границу (и остаётся положительным — иначе довод выглядел бы странно)
+  let Sb = 0, Bb = 0
+  for (let cand = Bmax + 1; cand <= k * (u + v); cand++) {
+    if ((k * (u + v) - cand) % N === 0) { Bb = cand; Sb = (k * (u + v) - cand) / N; break }
+  }
+  if (!Sb || Sb < 1) return null
+  const diff = fr(k * (u + v - 2 * Bmin), N)
+
+  // Набор, на котором достигается максимум: нижняя половина с наибольшим Bmin,
+  // верхняя — Bmin и k−1 чисел, добирающих сумму kv.
+  const low = []
+  let restLow = k * u - Bmin
+  for (let i = 1; i <= k - 1; i++) { low.push(i); restLow -= i }
+  for (let i = k - 2; i >= 0 && restLow > 0; i--) {
+    const cap = (i === k - 2 ? Bmin - 1 : low[i + 1] - 1) - low[i]
+    const add = Math.min(restLow, cap)
+    low[i] += add; restLow -= add
+  }
+  if (restLow !== 0) return null
+  const high = []
+  let restHigh = k * v - Bmin
+  for (let i = 1; i <= k - 1; i++) { high.push(Bmin + i); restHigh -= Bmin + i }
+  if (restHigh < 0) return null
+  high[k - 2] += restHigh
+  const exC = [...low, Bmin, ...high]
+
+  const params = { N, k, u, v, Xa, Sb }
+  const check = (cfg, part) => {
+    if (!Array.isArray(cfg) || cfg.length !== N) return `чисел должно быть ${N}`
+    for (const x of cfg) if (!Number.isInteger(x) || x < 1) return `${x} — не натуральное число`
+    if (uniq(cfg).length !== cfg.length) return "числа обязаны быть различными"
+    const s = cfg.slice().sort((a, b) => a - b)
+    const lowSum = sum(s.slice(0, k)), highSum = sum(s.slice(N - k))
+    if (lowSum !== k * u) return `среднее ${k} наименьших равно ${lowSum / k}, а не ${u}`
+    if (highSum !== k * v) return `среднее ${k} наибольших равно ${highSum / k}, а не ${v}`
+    if (part === "a" && s[0] !== Xa) return `наименьшее число ${s[0]}, а не ${Xa}`
+    if (part === "b" && sum(s) !== N * Sb) return `среднее всех чисел ${sum(s) / N}, а не ${Sb}`
+    if (part === "c") {
+      const val = fr(sum(s) - N * s[k - 1], N)
+      if (val.n * diff.d !== diff.n * val.d) return `S − B = ${frPlain(val)}, а заявлено ${frPlain(diff)}`
+    }
+    return null
+  }
+  // Независимый перебор по B = a_k с динамикой: существует ли k−1 различных чисел
+  // меньше B с суммой ku − B (нижняя половина) и k−1 различных чисел больше B
+  // с суммой kv − B (верхняя половина). Границы динамики выписаны явно.
+  const solve = (P) => {
+    const kk = P.k
+    const okB = (B) => {
+      const needLow = kk * P.u - B, needHigh = kk * P.v - B
+      if (needLow < 0 || needHigh < 0) return false
+      const itemsLow = []
+      for (let x = 1; x < B; x++) itemsLow.push(x)
+      const rowsLow = knap(itemsLow, kk - 1, Math.max(needLow, 0))
+      if (!rowsLow[kk - 1] || !rowsLow[kk - 1][needLow]) return false
+      const itemsHigh = []
+      for (let x = B + 1; x <= needHigh; x++) itemsHigh.push(x)
+      const rowsHigh = knap(itemsHigh, kk - 1, Math.max(needHigh, 0))
+      return !!(rowsHigh[kk - 1] && rowsHigh[kk - 1][needHigh])
+    }
+    let aYes = false, bYes = false, bestDiff = null
+    for (let B = 1; B <= kk * (P.u + P.v); B++) {
+      if (!okB(B)) continue
+      const total = kk * (P.u + P.v) - B
+      if (total === P.N * P.Sb) bYes = true
+      const d = kk * (P.u + P.v - 2 * B) / P.N
+      if (bestDiff === null || d > bestDiff) bestDiff = d
+      // наименьшее число набора: k−1 чисел меньше B с суммой ku − B, минимальное из них
+      const needLow = kk * P.u - B
+      const maxFirst = Math.floor((needLow - (kk - 2) * (kk - 1) / 2) / (kk - 1))
+      if (P.Xa <= maxFirst && P.Xa * (kk - 1) + (kk - 2) * (kk - 1) / 2 <= needLow) aYes = true
+    }
+    return { a: aYes, b: bYes, c: bestDiff }
+  }
+
+  return item({
+    preamble: `На доске написано ${N} различных натуральных чисел. Среднее арифметическое ${k === 6 ? "шести" : "семи"} наименьших из них равно ${u}, а среднее арифметическое ${k === 6 ? "шести" : "семи"} наибольших равно ${v}.`,
+    qa: `Может ли наименьшее из этих ${N} чисел равняться ${Xa}?`,
+    qb: `Может ли среднее арифметическое всех ${N} чисел равняться ${Sb}?`,
+    qc: `Пусть B — ${k === 6 ? "шестое" : "седьмое"} по величине число, а S — среднее арифметическое всех ${N} чисел. Найдите наибольшее значение выражения S − B.`,
+    ansA: `нет: если наименьшее число равно ${Xa}, то ${k} наименьших чисел различны и их сумма не меньше ${Xa} + ${Xa + 1} + … + ${Xa + k - 1} = ${k * Xa + k * (k - 1) / 2}, а она должна равняться ${k}·${u} = ${k * u}`,
+    ansB: `нет: сумма всех чисел равна ${k}·${u} + ${k}·${v} − B = ${k * (u + v)} − B, где B — ${k === 6 ? "шестое" : "седьмое"} по величине число. Из ${k} наименьших получаем B ≥ ${Bmin}, из ${k} наибольших — B ≤ ${Bmax}. Значение ${Sb} требует B = ${k * (u + v)} − ${N}·${Sb} = ${Bb}, что вне промежутка от ${Bmin} до ${Bmax}`,
+    ansC: `${frPlain(diff)}; достигается при B = ${Bmin}, например на наборе ${exC.join(", ")}`,
+    solution: `Обозначим через B ${k === 6 ? "шестое" : "седьмое"} по величине число — оно входит и в ${k} наименьших, и в ${k} наибольших. Сумма всех чисел равна ${k}${u} + ${k}${v} − B = ${k * (u + v)} − B, поэтому S = (${k * (u + v)} − B)/${N} и\nS − B = ${k}(${u} + ${v} − 2B)/${N}.\nЭто выражение убывает с ростом B, поэтому нужно наименьшее возможное B.\nа) Если наименьшее число равно ${Xa}, то сумма ${k} наименьших не меньше ${k * Xa + k * (k - 1) / 2} > ${k * u} — противоречие.\nб) В нижней половине ${k} различных чисел с наибольшим B, поэтому ${k}B − ${k * (k - 1) / 2} ≥ ${k * u}, то есть B ≥ ${Bmin}. В верхней половине ${k} различных чисел с наименьшим B, поэтому ${k}B + ${k * (k - 1) / 2} ≤ ${k * v}, то есть B ≤ ${Bmax}. Среднее ${Sb} потребовало бы B = ${Bb} — вне этих границ.\nв) При B = ${Bmin} получаем S − B = ${frPlain(diff)}; пример набора: ${exC.join(", ")}.\nОтвет: ${frPlain(diff)}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: false, reason: "low-half-sum", target: Xa },
+        b: { type: "yesno", yes: false, reason: "middle-range", target: Sb },
+        c: { type: "value", value: frVal(diff), example: exC },
+      },
+      mustMention: [N, u, v, Xa, Sb],
+      extra: [],
+      phrases: ["различных натуральных чисел", "наибольшее значение выражения"],
     },
   })
 }
