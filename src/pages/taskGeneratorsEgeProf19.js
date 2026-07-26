@@ -44,14 +44,14 @@ function plural(n, one, few, many) {
 const nums = (n) => `${n} ${plural(n, "число", "числа", "чисел")}`
 const stones = (n) => `${n} ${plural(n, "камень", "камня", "камней")}`
 // Компактная запись длинной суммы одинаковых слагаемых: «11 + … + 11 (9 слагаемых)».
-function compactSum(parts) {
+function compactSum(parts, sep = " + ") {
   const groups = []
   for (const v of parts) {
     const g = groups[groups.length - 1]
     if (g && g.v === v) g.c++
     else groups.push({ v, c: 1 })
   }
-  return groups.map(({ v, c }) => (c <= 3 ? Array(c).fill(v).join(" + ") : `${v} + … + ${v} (${c} ${plural(c, "слагаемое", "слагаемых", "слагаемых")})`)).join(" + ")
+  return groups.map(({ v, c }) => (c <= 3 ? Array(c).fill(v).join(" + ") : `${v} + … + ${v} (${c} ${plural(c, "слагаемое", "слагаемых", "слагаемых")})`)).join(sep)
 }
 // Согласование числительного с «различных натуральных чисел» / «чётных чисел».
 const distNat = (n) => `${n} ${plural(n, "различное натуральное число", "различных натуральных числа", "различных натуральных чисел")}`
@@ -709,6 +709,10 @@ export function t19BoardDistinctSum() {
 
 // ── реестр ─────────────────────────────────────────────────────────────────
 export const META19 = [
+  ["Операции над записью числа", [
+    ["swap-digits-max", "Перестановка цифр двузначных → наибольшая новая сумма", t19SwapDigitsMax],
+    ["swap-digits-min", "Перестановка цифр двузначных → наименьшая новая сумма", t19SwapDigitsMin],
+  ]],
   ["Две школы, средний балл", [
     ["schools-drop-min", "Средние упали на 10 % → наим. исходный средний в №2", t19SchoolsDropMin],
     ["schools-rise-min", "Средние выросли на 10 % → наим. исходный средний в №2", t19SchoolsRiseMin],
@@ -2899,3 +2903,125 @@ function schoolsFamily(mode) {
 }
 export function t19SchoolsDropMin() { return schoolsFamily("drop") }
 export function t19SchoolsRiseMin() { return schoolsFamily("rise") }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 6 (частично). Операции над записью числа: перестановка цифр (#102, #103)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Каждое число равно 10a + b, после перестановки — 10b + a. Если A — сумма первых цифр,
+// B — сумма вторых, то S = 10A + B и S′ = 10B + A = 10S − 99A. Набор из k чисел
+// с такими A и B существует ⟺ k ≤ A ≤ 9k и k ≤ B ≤ 9k (цифры от 1 до 9).
+function swapDigitsFamily(mode) {
+  const S = pick(mode === "max" ? [363, 462, 561, 594, 660, 693] : [2970, 3168, 3465, 3762, 4059])
+  const okPair = (A) => {
+    const B = S - 10 * A
+    if (A < 1 || B < 1) return null
+    const kLo = Math.max(Math.ceil(A / 9), Math.ceil(B / 9)), kHi = Math.min(A, B)
+    return kLo <= kHi ? { A, B, k: kLo } : null
+  }
+  // в) экстремум S′ = 10S − 99A: максимум при наименьшем допустимом A и наоборот.
+  let extA = null
+  if (mode === "max") { for (let A = 1; A * 10 < S; A++) if (okPair(A)) { extA = A; break } }
+  else { for (let A = Math.floor((S - 1) / 10); A >= 1; A--) if (okPair(A)) { extA = A; break } }
+  if (extA === null) return null
+  const extS = 10 * S - 99 * extA
+  // а) «да»: кратность r, при которой A = S(10 − r)/99 допустимо.
+  const rList = mode === "max" ? [3, 4, 5, 6] : [2, 3, 4, 5]
+  let rYes = null
+  for (const r of rList) {
+    const num = mode === "max" ? S * (10 - r) : S * (10 * r - 1)
+    const den = mode === "max" ? 99 : 99 * r
+    if (num % den !== 0) continue
+    const A = num / den
+    if (okPair(A)) { rYes = r; break }
+  }
+  if (rYes === null) return null
+  // б) «нет»: та же форма вопроса, но набор невозможен.
+  let rNo = null, reasonNo = null
+  for (const r of rList) {
+    if (r === rYes) continue
+    const num = mode === "max" ? S * (10 - r) : S * (10 * r - 1)
+    const den = mode === "max" ? 99 : 99 * r
+    if (num % den !== 0) { rNo = r; reasonNo = "div99"; break }
+    if (!okPair(num / den)) { rNo = r; reasonNo = "digit-bound"; break }
+  }
+  if (rNo === null) return null
+
+  const mk = (A) => {
+    const p = okPair(A)
+    if (!p) return null
+    const { B, k } = p
+    const firsts = spread(A, k), seconds = spread(B, k)
+    if (!firsts || !seconds) return null
+    if (firsts.some((v) => v > 9) || seconds.some((v) => v > 9)) return null
+    return firsts.map((f, i) => 10 * f + seconds[i])
+  }
+  const aA = mode === "max" ? S * (10 - rYes) / 99 : S * (10 * rYes - 1) / (99 * rYes)
+  const exA = mk(aA), exC = mk(extA)
+  if (!exA || !exC) return null
+
+  const params = { S, mode, rYes, rNo, extS, extA }
+  const rev = (v) => 10 * (v % 10) + Math.floor(v / 10)
+  const check = (list, part) => {
+    if (!Array.isArray(list) || !list.length) return "пустой набор"
+    for (const v of list) {
+      if (!Number.isInteger(v) || v < 10 || v > 99) return `${v} не двузначное`
+      if (String(v).includes("0")) return `в записи ${v} есть нуль`
+    }
+    if (sum(list) !== S) return `сумма исходных ${sum(list)}, а не ${S}`
+    const S2 = sum(list.map(rev))
+    if (part === "a") {
+      const need = mode === "max" ? rYes * S : S / rYes
+      if (S2 !== need) return `сумма получившихся ${S2}, а не ${need}`
+    }
+    if (part === "c" && S2 !== extS) return `сумма получившихся ${S2}, а не ${extS}`
+    return null
+  }
+  const solve = (P) => {
+    // Пространство перебора: все пары (A, k) — сумма первых цифр и количество чисел;
+    // A ≤ S/10, k ≤ S. Каждая допустимая пара отвечает хотя бы одному набору.
+    const vals = new Set()
+    for (let A = 1; 10 * A < P.S; A++) {
+      const B = P.S - 10 * A
+      for (let k = 1; k <= P.S; k++) {
+        if (k > A || A > 9 * k || k > B || B > 9 * k) continue
+        vals.add(10 * B + A); break
+      }
+    }
+    const arr = [...vals]
+    const needYes = P.mode === "max" ? P.rYes * P.S : P.S / P.rYes
+    const needNo = P.mode === "max" ? P.rNo * P.S : P.S / P.rNo
+    return {
+      a: arr.includes(needYes),
+      b: Number.isInteger(needNo) && arr.includes(needNo),
+      c: P.mode === "max" ? Math.max(...arr) : Math.min(...arr),
+    }
+  }
+
+  const times = (r) => (mode === "max" ? `в ${r} ${plural(r, "раз", "раза", "раз")} больше` : `в ${r} ${plural(r, "раз", "раза", "раз")} меньше`)
+  return item({
+    preamble: `На доске написали несколько не обязательно различных двузначных натуральных чисел без нулей в десятичной записи. Сумма этих чисел оказалась равной ${S}. Затем в каждом числе поменяли местами первую и вторую цифры (например, число 17 заменили на число 71).`,
+    qa: `Приведите пример исходных чисел, для которых сумма получившихся чисел ровно ${times(rYes)}, чем сумма исходных чисел.`,
+    qb: `Могла ли сумма получившихся чисел быть ровно ${times(rNo)}, чем сумма исходных чисел?`,
+    qc: `Найдите ${mode === "max" ? "наибольшее" : "наименьшее"} возможное значение суммы получившихся чисел.`,
+    ansA: `числа ${compactSum(exA, ", ")}: их сумма равна ${S}, а после перестановки цифр получаются ${compactSum(exA.map(rev), ", ")} с суммой ${sum(exA.map(rev))}`,
+    ansB: reasonNo === "div99"
+      ? `нет: если A — сумма первых цифр, а B — сумма вторых, то S = 10A + B и S′ = 10B + A, откуда S′ = 10S − 99A; требуемое значение S′ даёт для A нецелое число`
+      : `нет: из S′ = 10S − 99A получаем A = ${mode === "max" ? S * (10 - rNo) / 99 : S * (10 * rNo - 1) / (99 * rNo)}, а тогда B = ${S - 10 * (mode === "max" ? S * (10 - rNo) / 99 : S * (10 * rNo - 1) / (99 * rNo))}; но каждая из k цифр не больше 9 и не меньше 1, поэтому нужно одновременно k ≥ A/9 и k ≤ B — а это невозможно`,
+    ansC: `${extS}; достигается на наборе ${compactSum(exC, ", ")} (сумма ${S}), который после перестановки цифр даёт ${compactSum(exC.map(rev), ", ")} с суммой ${extS}`,
+    solution: `Пусть A — сумма первых цифр всех чисел, B — сумма вторых. Тогда сумма исходных чисел равна 10A + B = ${S}, а сумма получившихся равна 10B + A = 10·${S} − 99A.\nЗначит сумма получившихся чисел однозначно определяется величиной A и убывает при её росте.\nЕсли чисел k, то каждая из k первых цифр лежит между 1 и 9, поэтому k ≤ A ≤ 9k, и то же самое верно для B. Эти неравенства и определяют, какие A допустимы.\n${mode === "max" ? "Наименьшее" : "Наибольшее"} допустимое A равно ${extA}, что даёт ответ ${extS}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: rYes },
+        b: { type: "yesno", yes: false, reason: reasonNo, target: rNo },
+        c: { type: "value", value: extS, example: exC },
+      },
+      mustMention: [S, rYes, rNo, 17, 71],
+      extra: [],
+      phrases: ["двузначных натуральных чисел без нулей", "поменяли местами первую и вторую цифры"],
+    },
+  })
+}
+export function t19SwapDigitsMax() { return swapDigitsFamily("max") }
+export function t19SwapDigitsMin() { return swapDigitsFamily("min") }
