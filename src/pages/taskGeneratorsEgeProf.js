@@ -18,6 +18,9 @@ import { GEN13, META13 } from "./taskGeneratorsEgeProf13"
 import { GEN16, META16 } from "./taskGeneratorsEgeProf16"
 // №15 («Решите неравенство») — свой движок метода интервалов + verify15 в отдельном модуле
 import { GEN15, META15 } from "./taskGeneratorsEgeProf15"
+// №18 (задачи с параметром, часть 2) — отдельный файл: конструкция от ответа + точный
+// решатель (рациональная арифметика + Штурм) в verify18.
+import { GEN18, META18 } from "./taskGeneratorsEgeProf18"
 // №19 (теория чисел, часть 2) — отдельный файл: конструкция от ответа + независимый перебор.
 import { GEN19, META19 } from "./taskGeneratorsEgeProf19"
 // №9 («задачи с прикладным содержанием») — отдельный модуль: буквальный вычислитель
@@ -5658,6 +5661,7 @@ export const GENERATORS_EGE_PROF = {
   13: GEN13,
   15: GEN15,
   16: GEN16,
+  18: GEN18,
   19: GEN19,
 }
 
@@ -6022,5 +6026,6 @@ export const GEN_META_EGE_PROF = {
   13: META13,
   15: META15,
   16: META16,
+  18: META18,
   19: META19,
 }

@@ -2064,7 +2064,10 @@ export function t15LogSqOverSq() {
     const b = pick([2, 3, 4, 5]), sPow = randInt(1, 3), a = randInt(-3, 3)
     if (Math.abs(a) === sPow) continue
     const cmp = pick(["≥", "≤", ">", "<"])
-    const num = `(${logS(b)} ${a < 0 ? MINUS : "+"} ${Math.abs(a)})${SUPD[2]}`
+    // при a = 0 слагаемое не печатаем — иначе в условии стоит «(log₄x + 0)²»
+    const num = a === 0
+      ? `(${logS(b)})${SUPD[2]}`
+      : `(${logS(b)} ${a < 0 ? MINUS : "+"} ${Math.abs(a)})${SUPD[2]}`
     const text = `${fT(num, `${logS(b, 2)} ${MINUS} ${sPow * sPow}`)} ${cmp} 0`
     const F = (x) => { const y = Math.log(x) / Math.log(b); return Math.pow(y + a, 2) / (y * y - sPow * sPow) }
     const res = buildLog({
