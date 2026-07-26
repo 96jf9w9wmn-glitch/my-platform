@@ -744,6 +744,7 @@ export const META19 = [
     ["days-sum-up-count-down", "Дни: сумма растёт, количество убывает", t19DaysSumUpCountDown],
     ["days-max-total-sum", "Дни: наибольшая общая сумма чисел", t19DaysMaxTotalSum],
     ["cards-blue-red", "Синие и красные карточки: наиб. число синих", t19CardsBlueRed],
+    ["weights-move-one", "Гирьки 1…N: наиб. число гирек в первой куче", t19WeightsMoveOne],
   ]],
   ["Операции над записью числа", [
     ["swap-digits-max", "Перестановка цифр двузначных → наибольшая новая сумма", t19SwapDigitsMax],
@@ -5747,6 +5748,130 @@ export function t19CardsBlueRed() {
       mustMention: [N, u, Xa, Xb, 2, ...String(ru2(v)).split(",").map(Number)],
       extra: [],
       phrases: ["Все числа на синих карточках разные", "больше, чем любое на красной"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 11 (окончание). Гирьки 1…N: переложили одну (#82)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Гирьки массой 1, 2, …, N разложены на две непустые кучи. Из второй кучи в первую
+// переложили одну гирьку, после чего средняя масса в первой куче выросла на d граммов.
+// Если в первой куче было k гирек с суммой S и средней A = S/k, то
+//   (S + x)/(k + 1) = A + d  ⟹  x = A + d(k + 1).
+// Три следствия:
+//   • масса x обязана быть ЦЕЛОЙ, поэтому A + d(k+1) целое (при полуцелом A и целом d —
+//     противоречие);
+//   • гирька с массой x лежала во ВТОРОЙ куче, поэтому x не может оказаться среди
+//     гирек первой кучи;
+//   • A ≥ (k+1)/2 (k различных гирек), поэтому x ≥ (k+1)(d + ½) и из x ≤ N следует
+//     k + 1 ≤ 2N/(2d + 1).
+export function t19WeightsMoveOne() {
+  const showHeap = (h) => (h.length <= 6
+    ? h.join(", ")
+    : `${h.slice(0, 3).join(", ")}, …, ${h[h.length - 2]}, ${h[h.length - 1]}`)
+  const N = pick([40, 50, 60])
+  const d = 1
+  const kMax = Math.floor(2 * N / (2 * d + 1)) - 1
+  // а) тройка гирек в прогрессии с разностью 4: тогда x = A + 4 — это её же старший член
+  const t = 2 * (d + 1)
+  const a0 = 2 * randInt(1, Math.floor((N - 2 * t) / 2))
+  const trio = [a0, a0 + t, a0 + 2 * t]
+  if (trio[2] > N) return null
+  // б) полуцелая средняя масса
+  const Ab = randInt(4, 12) + 0.5
+  // в) наибольшая куча: k = kMax, куча 1…kMax, средняя (kMax+1)/2 должна быть целой
+  let kBest = 0, exC = null
+  for (let k = kMax; k >= 1 && !exC; k--) {
+    for (let A = Math.ceil((k + 1) / 2); A * k <= N * k; A++) {
+      const x = A + d * (k + 1)
+      if (x > N) break
+      const pool = []
+      for (let w = 1; w <= N; w++) if (w !== x) pool.push(w)
+      const lo = sum(pool.slice(0, k)), hi = sum(pool.slice(-k))
+      if (A * k < lo || A * k > hi) continue
+      // строим кучу: берём k наименьших и добираем сумму, поднимая старшие
+      const heap = pool.slice(0, k)
+      let need = A * k - lo
+      for (let i = k - 1; i >= 0 && need > 0; i--) {
+        const ceilW = (i === k - 1 ? pool[pool.length - 1] : heap[i + 1] - 1)
+        const add = Math.min(need, ceilW - heap[i])
+        heap[i] += add; need -= add
+      }
+      if (need === 0 && !heap.includes(x)) { kBest = k; exC = { heap, moved: x } }
+      break
+    }
+  }
+  if (!exC) return null
+
+  const params = { N, d, kMax, trio, Ab }
+  const check = (cfg, part) => {
+    if (!cfg || !Array.isArray(cfg.heap) || !Number.isInteger(cfg.moved)) return "нет конфигурации"
+    if (!cfg.heap.length || cfg.heap.length >= N) return "в каждой куче должна быть хотя бы одна гирька"
+    for (const w of cfg.heap) if (!Number.isInteger(w) || w < 1 || w > N) return `${w} — не гирька из набора 1…${N}`
+    if (uniq(cfg.heap).length !== cfg.heap.length) return "гирьки различны"
+    if (cfg.moved < 1 || cfg.moved > N) return `гирьки массой ${cfg.moved} г нет`
+    if (cfg.heap.includes(cfg.moved)) return `гирька массой ${cfg.moved} г уже лежит в первой куче`
+    const k = cfg.heap.length, S = sum(cfg.heap)
+    if ((S + cfg.moved) * k !== (S + d * k) * (k + 1)) {
+      return `средняя масса изменилась с ${S / k} на ${(S + cfg.moved) / (k + 1)} — не на ${d} г`
+    }
+    if (part === "c" && k !== kBest) return `в первой куче ${k} гирек, а заявлено ${kBest}`
+    return null
+  }
+  // Независимый перебор по числу гирек k в первой куче и её средней массе A:
+  // масса переложенной гирьки определяется однозначно (x = A + d(k+1)), а сумма kA
+  // достижима тогда и только тогда, когда лежит между суммой k наименьших и k
+  // наибольших гирек набора 1…N без гирьки x (все промежуточные суммы достижимы).
+  const solve = (P) => {
+    const okTrio = (heap) => {
+      const k = heap.length, S = sum(heap)
+      if (S % k) return false
+      const x = S / k + P.d * (k + 1)
+      return Number.isInteger(x) && x >= 1 && x <= P.N && !heap.includes(x)
+    }
+    let bHalf = false, best = 0
+    for (let k = 1; k < P.N; k++) {
+      for (let A2 = k + 1; A2 <= 2 * P.N; A2++) {           // A2 = 2A, чтобы поймать и полуцелые
+        const S2 = A2 * k
+        if (S2 % 2) continue
+        const S = S2 / 2
+        const x2 = A2 + 2 * P.d * (k + 1)
+        if (x2 % 2) continue                                // нецелая масса гирьки невозможна
+        const x = x2 / 2
+        if (x > P.N) break
+        const pool = []
+        for (let w = 1; w <= P.N; w++) if (w !== x) pool.push(w)
+        if (pool.length < k) continue
+        const lo = sum(pool.slice(0, k)), hi = sum(pool.slice(-k))
+        if (S < lo || S > hi) continue
+        if (A2 === 2 * P.Ab) bHalf = true
+        if (k > best) best = k
+      }
+    }
+    return { a: okTrio(P.trio), b: bHalf, c: best, c_next: false }
+  }
+
+  return item({
+    preamble: `${N === 40 ? "Сорок" : N === 50 ? "Пятьдесят" : "Шестьдесят"} гирек массой 1 г, 2 г, …, ${N} г разложили по двум кучам, в каждой куче хотя бы одна гирька. Масса каждой гирьки выражается целым числом граммов. Затем из второй кучи переложили в первую одну гирьку. После этого средняя масса гирек в первой куче увеличилась на ${d} г.`,
+    qa: `Могло ли такое быть, если первоначально в первой куче лежали только гирьки массой ${trio[0]} г, ${trio[1]} г и ${trio[2]} г?`,
+    qb: `Могла ли средняя масса гирек в первой куче первоначально равняться ${ru2(Ab)} г?`,
+    qc: `Какое наибольшее число гирек могло быть первоначально в первой куче?`,
+    ansA: `нет: если в первой куче k гирек со средней массой A, то из (S + x)/(k + 1) = A + ${d} следует x = A + ${d === 1 ? "" : d}(k + 1). Здесь k = 3, A = ${trio[1]} и x = ${trio[1] + d * 4} — но гирька такой массы уже лежит в первой куче, а перекладывают из второй`,
+    ansB: `нет: x = A + ${d === 1 ? "" : d}(k + 1), и при A = ${ru2(Ab)} масса переложенной гирьки равна ${ru2(Ab)} + (k + 1) — число нецелое, а массы всех гирек целые`,
+    ansC: `${kBest}; например первая куча ${showHeap(exC.heap)} (средняя масса ${sum(exC.heap) / exC.heap.length} г), перекладывают гирьку массой ${exC.moved} г`,
+    solution: `Пусть в первой куче было k гирек с суммой S и средней массой A = S/k, а переложили гирьку массой x. Тогда (S + x)/(k + 1) = A + ${d}, откуда\nx = A + ${d === 1 ? "" : d}(k + 1).\nа) Для гирек ${trio.join(", ")} имеем k = 3 и A = ${trio[1]}, поэтому x = ${trio[1] + d * 4} — гирька такой массы уже в первой куче, а перекладывают гирьку из второй.\nб) При A = ${ru2(Ab)} величина x = ${ru2(Ab)} + ${d}(k + 1) не целая, а массы гирек — целые числа.\nв) Гирьки различны, поэтому A ≥ (k + 1)/2, а значит x ≥ (k + 1)(${d} + 0,5). Из x ≤ ${N} получаем k + 1 ≤ ${ru2(2 * N / (2 * d + 1))}, то есть k ≤ ${kMax}. Значение достигается: первая куча — гирьки ${showHeap(exC.heap)}, средняя масса ${sum(exC.heap) / exC.heap.length} г, перекладывают гирьку массой ${exC.moved} г.\nОтвет: ${kBest}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: false, reason: "moved-already-inside", target: `trio-${trio.join("-")}` },
+        b: { type: "yesno", yes: false, reason: "non-integer-mass", target: `mean-${Ab}` },
+        c: { type: "extremum", mode: "max", value: kBest, example: exC },
+      },
+      mustMention: [N, d, 1, 2, ...trio, ...String(ru2(Ab)).split(",").map(Number)],
+      extra: [],
+      phrases: ["в каждой куче хотя бы одна гирька", "переложили в первую одну гирьку"],
     },
   })
 }
