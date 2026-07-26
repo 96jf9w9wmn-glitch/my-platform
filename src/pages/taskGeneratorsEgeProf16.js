@@ -364,28 +364,6 @@ export function t16AnnPrincipal() {
   })
 }
 
-// ── 3. Найти общую сумму выплат (требование задания сверх эталона) ─────────
-export function t16AnnTotal() {
-  const c = pickAnnuity(2, 5)
-  if (!c) return null
-  const p = pick(NAME_ALL), year = randInt(2015, 2024)
-  const pays = Array.from({ length: c.A.n }, () => c.X)
-  const total = c.X * c.A.n
-  const model = { type: "credit", S: c.S, ratePct: c.A.ratePct, payments: pays, periodUnit: "year" }
-  return item({
-    text: `${annPreamble(p, year, c.S, c.A.ratePct)} одну и ту же сумму. ` +
-      `Известно, что весь долг ${p.n} ${paid(p)} за ${years(c.A.n)}. ` +
-      `Какую сумму ${p.n} вернёт банку за весь срок кредитования?`,
-    answer: `${money(total)} рублей`,
-    answerNum: total,
-    model,
-    mustMention: [c.S, c.A.ratePct],
-    extra: [31, year, c.A.n],
-    forbid: [total],
-    checks: [() => (Math.abs(simulateCredit(model).total - total) > 0.005 ? "сумма платежей ≠ ответу" : null)],
-  })
-}
-
 // ── 4. Наименьший срок при ограничении на платёж (эталон 1.1) ──────────────
 // Ответ n: платёж за n лет ≤ лимита, а за (n−1) — уже больше. Лимит выбираем
 // СТРОГО внутри промежутка (не на границе), поэтому ответ однозначен.
@@ -501,40 +479,6 @@ export function t16AnnDiffTotal() {
       () => (Math.abs(simulateCredit(alt).finalDebt) < 0.005 ? null : "короткий график не гасит долг"),
       () => (Math.abs((simulateCredit(alt).total - simulateCredit(model).total) + c.diff) < 0.005
         ? null : "разница общих сумм ≠ ответу"),
-    ],
-  })
-}
-
-// ── 6. Найти ставку при n равных платежах (сверх эталона) ──────────────────
-// X(r) строго возрастает по r ⇒ корень единственный; проверяем сканированием сетки.
-export function t16AnnRate() {
-  const c = pickAnnuity(2, 4)
-  if (!c) return null
-  const p = pick(NAME_ALL), year = randInt(2015, 2024)
-  const n = c.A.n, S = c.S, X = c.X, R = c.A.ratePct
-  const pays = Array.from({ length: n }, () => X)
-  const model = { type: "credit", S, ratePct: R, payments: pays, periodUnit: "year" }
-  const payFor = (r) => { const q = 1 + r / 100; return S * Math.pow(q, n) * (q - 1) / (Math.pow(q, n) - 1) }
-  return item({
-    text: `31 декабря ${year} года ${p.n} ${took(p)} в банке ${rub(S)} в кредит под r % годовых. ` +
-      `Схема выплаты кредита следующая: 31 декабря каждого следующего года банк начисляет проценты ` +
-      `на оставшуюся сумму долга (то есть увеличивает долг на r %), затем ${p.n} переводит в банк ` +
-      `очередной платёж. Весь долг ${p.n} ${paid(p)} ${payments(n)} по ${rub(X)}. Найдите r.`,
-    answer: `${pct(R)}`,
-    answerNum: R,
-    model,
-    mustMention: [S, X],
-    extra: [31, year, n],
-    forbid: [R],
-    checks: [
-      // единственность: на всей допустимой сетке ставок платёж равен X только при r = R
-      () => {
-        for (let r = 0.5; r <= 40.0001; r += 0.5) {
-          if (Math.abs(r - R) < 1e-9) continue
-          if (Math.abs(payFor(r) - X) < 0.5) return `ставка ${r} тоже даёт платёж ${X}`
-        }
-        return Math.abs(payFor(R) - X) < 0.005 ? null : "формула платежа не сходится с X"
-      },
     ],
   })
 }
@@ -925,150 +869,6 @@ export function t16DepCompareTwoYears() {
       () => (B(c.r) > A ? null : `${c.r} % не делает «Б» выгоднее`),
       () => (B(c.r - 1) <= A ? null : `${c.r - 1} % тоже подходит`),
       () => (Math.abs(B(c.r - 1) - A) > 1e-6 && Math.abs(B(c.r) - A) > 1e-6 ? null : "равенство вкладов"),
-    ],
-  })
-}
-
-// ── 7–9. Чистый сложный процент: найти сумму / срок / ставку ───────────────
-// Требование задания сверх эталона. S·qⁿ обязано быть целым рублём — перебираем.
-function compoundCandidates() {
-  const out = []
-  for (const p of [5, 8, 10, 12, 15, 20, 25]) {
-    const q = 1 + p / 100
-    for (let n = 2; n <= 6; n++) {
-      const f = Math.pow(q, n)
-      for (let k = 1; k <= 400; k++) {
-        const S = k * 25_000
-        if (S < 100_000 || S > 8_000_000) continue
-        const M = S * f
-        if (Math.abs(M - Math.round(M)) > 1e-6) continue
-        if (M > 30_000_000) continue
-        out.push({ p, q, n, S, M: Math.round(M) })
-      }
-    }
-  }
-  return out
-}
-export function t16CompoundSum() {
-  const c = pick(compoundCandidates())
-  const model = { type: "deposit", S: c.S, rates: Array(c.n).fill(c.p) }
-  return item({
-    text: `Вкладчик положил в банк ${rub(c.S)} под ${pct(c.p)} годовых. Проценты начисляются в конце ` +
-      `каждого года на всю сумму, находящуюся на вкладе, и остаются на нём. Какая сумма будет на вкладе ` +
-      `через ${years(c.n)}, если вкладчик не снимал и не добавлял денег?`,
-    answer: `${money(c.M)} рублей`,
-    answerNum: c.M,
-    model,
-    sim: () => simulateDeposit(model),
-    mustMention: [c.S, c.p, c.n],
-    extra: [],
-    forbid: [c.M],
-    checks: [() => (Math.abs(simulateDeposit(model).final - c.M) < 0.005 ? null : "симуляция ≠ ответу")],
-  })
-}
-export function t16CompoundTerm() {
-  // срок-ответ не должен совпасть со ставкой, иначе он буквально стоит в условии
-  const c = pick(compoundCandidates().filter((x) => x.n >= 3 && x.n !== x.p))
-  const model = { type: "deposit", S: c.S, rates: Array(c.n).fill(c.p) }
-  const at = (k) => c.S * Math.pow(c.q, k)
-  return item({
-    text: `Вкладчик положил в банк ${rub(c.S)} под ${pct(c.p)} годовых. Проценты начисляются в конце ` +
-      `каждого года на всю сумму, находящуюся на вкладе, и остаются на нём. Через некоторое целое число ` +
-      `лет на вкладе оказалось ${rub(c.M)}. Сколько лет пролежал вклад?`,
-    answer: `${years(c.n)}`,
-    answerNum: c.n,
-    model,
-    sim: () => simulateDeposit(model),
-    mustMention: [c.S, c.p, c.M],
-    extra: [],
-    forbid: [c.n],
-    checks: [
-      () => (Math.abs(at(c.n) - c.M) < 0.005 ? null : "через n лет сумма ≠ M"),
-      // строгая монотонность ⇒ других целых решений нет; проверяем всю сетку сроков
-      () => {
-        for (let k = 1; k <= 30; k++) {
-          if (k === c.n) continue
-          if (Math.abs(at(k) - c.M) < 0.5) return `срок ${k} тоже подходит`
-        }
-        return null
-      },
-    ],
-  })
-}
-export function t16CompoundRate() {
-  // ставка-ответ не должна совпасть со сроком
-  const c = pick(compoundCandidates().filter((x) => x.n <= 4 && x.p !== x.n))
-  const model = { type: "deposit", S: c.S, rates: Array(c.n).fill(c.p) }
-  const grow = (r) => c.S * Math.pow(1 + r / 100, c.n)
-  return item({
-    text: `Вкладчик положил в банк ${rub(c.S)} под одинаковый процент годовых. Проценты начисляются ` +
-      `в конце каждого года на всю сумму, находящуюся на вкладе, и остаются на нём. Через ${years(c.n)} ` +
-      `на вкладе оказалось ${rub(c.M)}. Под какой процент годовых был сделан вклад?`,
-    answer: `${pct(c.p)}`,
-    answerNum: c.p,
-    model,
-    sim: () => simulateDeposit(model),
-    mustMention: [c.S, c.n, c.M],
-    extra: [],
-    forbid: [c.p],
-    checks: [
-      () => {
-        for (let r = 0.5; r <= 40.0001; r += 0.5) {
-          if (Math.abs(r - c.p) < 1e-9) continue
-          if (Math.abs(grow(r) - c.M) < 0.5) return `ставка ${r} тоже подходит`
-        }
-        return Math.abs(grow(c.p) - c.M) < 0.005 ? null : "рост не сходится с M"
-      },
-    ],
-  })
-}
-
-// ── 10. Вклад с ежегодным СНЯТИЕМ фиксированной суммы (сверх эталона) ──────
-// Остаток = S·qⁿ − A·(qⁿ−1)/(q−1) ≥ R. Ответ — наибольшее A, кратное 1000.
-export function t16DepWithdraw() {
-  const cand = []
-  for (const p of [5, 8, 10, 12, 15, 20]) {
-    const q = 1 + p / 100
-    for (let n = 3; n <= 6; n++) {
-      const f = Math.pow(q, n), s = (f - 1) / (q - 1)
-      for (let sk = 4; sk <= 40; sk++) {
-        const S = sk * 250_000
-        for (let rk = 1; rk <= 20; rk++) {
-          const R = rk * 100_000
-          const bound = (S * f - R) / s
-          if (!(bound > 20_000)) continue
-          const A = Math.floor(bound / 1000) * 1000
-          if (A < 20_000 || A >= S) continue
-          // порог не на границе округления до тысячи
-          if (bound - A < 50 || A + 1000 - bound < 50) continue
-          if (A === R || A === S) continue        // иначе ответ буквально стоит в условии
-          cand.push({ p, q, n, S, R, A })
-        }
-      }
-    }
-  }
-  if (!cand.length) return null
-  const c = pick(cand)
-  const model = {
-    type: "deposit", S: c.S, rates: Array(c.n).fill(c.p), addAfter: Array(c.n).fill(-c.A),
-  }
-  const left = (a) => simulateDeposit({ ...model, addAfter: Array(c.n).fill(-a) }).final
-  return item({
-    text: `Вкладчик положил в банк ${rub(c.S)} под ${pct(c.p)} годовых. В конце каждого года банк ` +
-      `начисляет проценты на сумму, находящуюся на вкладе, после чего вкладчик снимает со счёта одну ` +
-      `и ту же сумму. Какую наибольшую сумму, кратную ${rub(1000)}, он может снимать ежегодно, чтобы ` +
-      `через ${years(c.n)} на вкладе осталось не менее ${rub(c.R)}?`,
-    answer: `${money(c.A)} рублей`,
-    answerNum: c.A,
-    model,
-    sim: () => simulateDeposit(model),
-    mustMention: [c.S, c.p, c.n, c.R, 1000],
-    extra: [],
-    forbid: [c.A],
-    checks: [
-      () => (left(c.A) >= c.R - 1e-6 ? null : `снятие ${c.A} оставляет меньше ${c.R}`),
-      () => (left(c.A + 1000) < c.R - 1e-6 ? null : `снятие ${c.A + 1000} тоже подходит`),
-      () => (Math.min(left(c.A) - c.R, c.R - left(c.A + 1000)) > 1 ? null : "порог на границе"),
     ],
   })
 }
@@ -3128,168 +2928,13 @@ export const t16FundYearSquare = () => t16FundYear("sq")
 export const t16FundYearLinear = () => t16FundYear("lin")
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  РАЗДЕЛ 9. ИНДЕКСАЦИЯ, ИНФЛЯЦИЯ, СМЕСИ В ЭКОНОМИЧЕСКОЙ ОБЁРТКЕ
-// ═══════════════════════════════════════════════════════════════════════════
-//  Требуется заданием сверх эталона: в двух docx этих типажей нет.
-
-// ── 1. Индексация несколько лет подряд: суммарный рост в процентах ─────────
-// Рост за n лет = 100·[(1+p₁)…(1+pₙ) − 1]; берём только комбинации с точным ответом.
-export function t16IndexationTotal() {
-  const cand = []
-  const RS = [5, 8, 10, 12, 15, 20, 25, 4, 6, 30]
-  for (const a of RS) for (const b of RS) for (const c of RS) {
-    const g = (1 + a / 100) * (1 + b / 100) * (1 + c / 100)
-    const total = (g - 1) * 100
-    if (Math.abs(total * 100 - Math.round(total * 100)) > 1e-9) continue
-    const t = Math.round(total * 100) / 100
-    if (t < 15 || t > 120) continue
-    if (!noClash(t, [a, b, c])) continue
-    cand.push({ a, b, c, t })
-  }
-  if (!cand.length) return null
-  const c = pick(cand)
-  const THINGS = [
-    ["Тариф на электроэнергию", "тариф"],
-    ["Стоимость проезда в метро", "стоимость проезда"],
-    ["Цена абонемента в бассейн", "цена абонемента"],
-    ["Стоимость аренды помещения", "стоимость аренды"],
-  ]
-  const [subj, short] = pick(THINGS)
-  return item({
-    text: `${subj} повышался три года подряд: в первый год — на ${pct(c.a)}, во второй — ` +
-      `на ${pct(c.b)}, в третий — на ${pct(c.c)}. Каждое повышение считалось от значения, ` +
-      `установленного в предыдущем году. На сколько процентов вырос ${short} за эти три года?`,
-    answer: `${pct(c.t)}`,
-    answerNum: c.t,
-    model: { type: "optimize", rates: [c.a, c.b, c.c] },
-    sim: () => ({ steps: [], value: c.t }),
-    mustMention: [c.a, c.b, c.c],
-    extra: [],
-    forbid: [c.t],
-    checks: [
-      () => {
-        // независимый пересчёт «год за годом» от условной базы
-        let v = 1000
-        for (const r of [c.a, c.b, c.c]) v = v * (1 + r / 100)
-        return Math.abs((v / 1000 - 1) * 100 - c.t) < 1e-9 ? null : "пошаговый рост ≠ ответу"
-      },
-    ],
-  })
-}
-
-// ── 2. Зарплата против инфляции: реальная покупательная способность ────────
-// Зарплата ×(1+p)ⁿ, цены ×(1+q)ⁿ ⇒ покупательная способность ×((1+p)/(1+q))ⁿ.
-// Строим от ответа: фиксируем «чистый» множитель m = (1+p)/(1+q).
-export function t16RealIncome() {
-  const cand = []
-  for (const q of [4, 5, 8, 10, 12, 20, 25]) {
-    for (const m of [1.05, 1.1, 1.2, 1.25, 0.9, 0.8, 0.95, 0.75]) {
-      const p = ((1 + q / 100) * m - 1) * 100
-      if (Math.abs(p * 100 - Math.round(p * 100)) > 1e-9) continue
-      const pr = Math.round(p * 100) / 100
-      if (pr < 1 || pr > 45) continue
-      for (const n of [2, 3]) {
-        const k = Math.pow(m, n)
-        const change = (k - 1) * 100
-        if (Math.abs(change * 100 - Math.round(change * 100)) > 1e-9) continue
-        const ch = Math.round(change * 100) / 100
-        if (Math.abs(ch) < 3 || Math.abs(ch) > 90) continue
-        if (!noClash(Math.abs(ch), [q, pr, n])) continue
-        cand.push({ q, p: pr, n, ch })
-      }
-    }
-  }
-  if (!cand.length) return null
-  const c = pick(cand)
-  const grow = c.ch > 0
-  return item({
-    text: `Зарплата сотрудника фирмы ежегодно индексируется на ${pct(c.p)}, а цены на товары ` +
-      `и услуги за тот же год вырастают на ${pct(c.q)}. И индексация, и рост цен считаются ` +
-      `от значений предыдущего года. На сколько процентов ${grow ? "вырастет" : "снизится"} ` +
-      `покупательная способность зарплаты за ${years(c.n)}?`,
-    answer: `${pct(Math.abs(c.ch))}`,
-    answerNum: Math.abs(c.ch),
-    model: { type: "optimize", p: c.p, q: c.q, n: c.n },
-    sim: () => ({ steps: [], value: c.ch }),
-    mustMention: [c.p, c.q, c.n],
-    extra: [],
-    forbid: [Math.abs(c.ch)],
-    checks: [
-      () => {
-        // пошаговый пересчёт: зарплата и цены год за годом, затем отношение
-        let sal = 100_000, price = 1000
-        for (let i = 0; i < c.n; i++) { sal *= 1 + c.p / 100; price *= 1 + c.q / 100 }
-        const real = (sal / price) / (100_000 / 1000)
-        return Math.abs((real - 1) * 100 - c.ch) < 1e-9 ? null : "пошаговый расчёт ≠ ответу"
-      },
-      () => ((c.ch > 0) === (c.p > c.q) ? null : "направление изменения не совпадает со ставками"),
-    ],
-  })
-}
-
-// ── 3. Смесь двух сортов сырья: наименьшая стоимость при ограничении ───────
-// Сорт А дешевле (P₁ < P₂), но грязнее (x > y). Доля А максимальна при
-// x·u + y·(M − u) = z·M ⇒ u* = M(z − y)/(x − y); дальше цена только растёт.
-export function t16AlloyMinCost() {
-  const cand = []
-  for (const x of [12, 15, 16, 18, 20, 24, 25]) {
-    for (const y of [2, 3, 4, 5, 6, 8]) {
-      for (let z = y + 1; z < x; z++) {
-        for (const M of [100, 120, 150, 200, 250, 300, 400]) {
-          const u = M * (z - y) / (x - y)
-          if (!Number.isInteger(u) || u <= 0 || u >= M) continue
-          for (const P2 of [400, 500, 600, 800, 1000]) {
-            for (const P1 of [150, 200, 250, 300, 350]) {
-              if (P1 >= P2) continue
-              const cost = P1 * u + P2 * (M - u)
-              if (cost % 100 !== 0 || cost < 30_000 || cost > 400_000) continue
-              if (!noClash(cost, [x, y, z, M, P1, P2])) continue
-              cand.push({ x, y, z, M, P1, P2, u, cost })
-            }
-          }
-        }
-      }
-    }
-  }
-  if (!cand.length) return null
-  const c = pick(cand)
-  const impur = (u) => c.x * u + c.y * (c.M - u)
-  const costOf = (u) => c.P1 * u + c.P2 * (c.M - u)
-  return item({
-    text: `Фирма закупает сырьё двух сортов. Сорт А стоит ${rub(c.P1)} за килограмм и содержит ` +
-      `${pct(c.x)} примесей, сорт Б стоит ${rub(c.P2)} за килограмм и содержит ${pct(c.y)} примесей. ` +
-      `Для производства нужно получить ${c.M} кг смеси, в которой примесей не более ${pct(c.z)}. ` +
-      `Какую наименьшую сумму придётся потратить на закупку сырья?`,
-    answer: `${money(c.cost)} рублей`,
-    answerNum: c.cost,
-    model: { type: "optimize", x: c.x, y: c.y, z: c.z, M: c.M, P1: c.P1, P2: c.P2 },
-    sim: () => ({ steps: [], value: c.cost }),
-    mustMention: [c.P1, c.x, c.P2, c.y, c.M, c.z],
-    extra: [],
-    forbid: [c.cost],
-    checks: [
-      () => (impur(c.u) <= c.z * c.M + 1e-9 ? null : "смесь не проходит по примесям"),
-      // перебор ВСЕЙ сетки допустимых масс сорта А: дешевле нигде не получается
-      () => {
-        for (let u = 0; u <= c.M; u++) {
-          if (impur(u) > c.z * c.M + 1e-9) continue
-          if (costOf(u) < c.cost - 1e-6) return `дешевле при ${u} кг сорта А`
-        }
-        return Math.abs(costOf(c.u) - c.cost) < 1e-6 ? null : "минимум ≠ ответу"
-      },
-    ],
-  })
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
 //  РЕЕСТР
 // ═══════════════════════════════════════════════════════════════════════════
 export const GEN16 = [
-  t16AnnPayment, t16AnnPrincipal, t16AnnTotal, t16AnnMinYears,
-  t16AnnDiffTotal, t16AnnRate, t16RateTwoUnequal, t16RateTwoScenarios,
+  t16AnnPayment, t16AnnPrincipal, t16AnnMinYears,
+  t16AnnDiffTotal, t16RateTwoUnequal, t16RateTwoScenarios,
   t16DepMaxInitial, t16DepMinTopUp, t16DepTwoParams, t16DepTwoAccounts,
   t16DepCompareLastYear, t16DepCompareTwoYears,
-  t16CompoundSum, t16CompoundTerm, t16CompoundRate, t16DepWithdraw,
   t16IntOnlyMinCredit, t16IntOnlyRate, t16IntOnlyTotal, t16GeomPayments,
   t16TblMaxRate, t16TblMaxSPayment, t16TblMinSTotal, t16TblOverpayPct,
   t16TblMaxSSpread, t16TblMinSInteger,
@@ -3302,17 +2947,14 @@ export const GEN16 = [
   t16OptTwoPlantsMinCost, t16OptTwoRatesMinCost, t16OptTwoPlantsMaxOutput, t16OptTwoRatesMaxOutput,
   t16OptFactoryMinPrice, t16OptFactoryPaybackYears, t16OptPriceRaise, t16OptTaxMax,
   t16OptRegionsGrowth, t16FundRateSquare, t16FundRateLinear, t16FundYearSquare, t16FundYearLinear,
-  t16IndexationTotal, t16RealIncome, t16AlloyMinCost,
 ]
 
 export const META16 = [
   ["Кредит равными (аннуитетными) платежами", [
     ["ann-payment", "Найти размер равного платежа", t16AnnPayment],
     ["ann-principal", "Найти сумму кредита по платежу", t16AnnPrincipal],
-    ["ann-total", "Найти общую сумму выплат", t16AnnTotal],
     ["ann-min-years", "Наименьший срок при лимите платежа", t16AnnMinYears],
     ["ann-diff-total", "На сколько меньше отдал бы за меньший срок", t16AnnDiffTotal],
-    ["ann-rate", "Найти ставку при n равных платежах", t16AnnRate],
     ["ann-rate-2pay", "Ставка по двум неравным платежам", t16RateTwoUnequal],
     ["ann-rate-2scen", "Ставка по двум сценариям «платёж → срок»", t16RateTwoScenarios],
   ]],
@@ -3323,10 +2965,6 @@ export const META16 = [
     ["dep-two-accounts", "Два накопительных вклада: когда сравняются", t16DepTwoAccounts],
     ["dep-cmp-last", "Наименьший % за последний год вклада «Б»", t16DepCompareLastYear],
     ["dep-cmp-two", "Наименьший % за два года вклада «Б»", t16DepCompareTwoYears],
-    ["dep-sum", "Сложный процент: найти сумму", t16CompoundSum],
-    ["dep-term", "Сложный процент: найти срок", t16CompoundTerm],
-    ["dep-rate", "Сложный процент: найти ставку", t16CompoundRate],
-    ["dep-withdraw", "Вклад с ежегодным снятием: наибольшее снятие", t16DepWithdraw],
   ]],
   ["Другие схемы выплат", [
     ["io-min-credit", "Только проценты + равные платежи: наименьший кредит", t16IntOnlyMinCredit],
@@ -3379,10 +3017,5 @@ export const META16 = [
     ["opt-fund-rate-lin", "Фонд, бумаги 10t: при каких r продавать в конце t₀", t16FundRateLinear],
     ["opt-fund-year-sq", "Фонд, бумаги t², ставка дана → год продажи", t16FundYearSquare],
     ["opt-fund-year-lin", "Фонд, бумаги 10t, ставка дана → год продажи", t16FundYearLinear],
-  ]],
-  ["Индексация, инфляция, смеси", [
-    ["idx-total", "Индексация три года подряд: суммарный рост в %", t16IndexationTotal],
-    ["idx-real", "Зарплата против инфляции: покупательная способность", t16RealIncome],
-    ["mix-cost", "Смесь двух сортов сырья: наименьшая стоимость", t16AlloyMinCost],
   ]],
 ]
