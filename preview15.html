@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><title>Проверка рендера №15</title></head>
+<style>html,body{height:auto!important;min-height:0!important;overflow:auto!important;position:static!important;background:#fff!important}</style>
+<body>
+<div id="root" style="position:fixed;inset:0;overflow:auto;padding:24px 40px;background:#fff"></div>
+<script type="module">
+  import "/src/index.css"
+  import { renderTaskMath } from "/src/utils.js"
+  import { META15, verify15 } from "/src/pages/taskGeneratorsEgeProf15.js"
+  const root = document.getElementById("root")
+  const qs = new URLSearchParams(location.search)
+  const only = qs.get("skin") || ""
+  const N = Number(qs.get("n") || 2)
+  let html = `<h1 style="font:600 20px system-ui;margin-bottom:16px">№15 — проверка рендера</h1>`
+  for (const [group, skins] of META15) {
+    html += `<h2 style="font:600 16px system-ui;margin:20px 0 8px;color:#007AFF">${group}</h2>`
+    for (const [key, label, fn] of skins) {
+      if (only && !key.startsWith(only)) continue
+      html += `<div style="font:600 13px system-ui;margin:14px 0 4px;color:#666">[${key}] ${label}</div>`
+      for (let i = 0; i < N; i++) {
+        let o = null
+        for (let t = 0; t < 80 && !o; t++) { const c = fn(); if (c && verify15(c).ok) o = c }
+        if (!o) { html += `<div style="color:red">не сгенерировалось</div>`; continue }
+        html += `<div style="border:1px solid #e5e5ea;border-radius:12px;padding:12px 14px;margin:6px 0">
+          <div style="font-size:15px;line-height:1.7">${renderTaskMath(o.condition_text)}</div>
+          <div style="font-size:14px;color:#007AFF;margin-top:8px">Ответ: ${o.answer}</div></div>`
+      }
+    }
+  }
+  root.innerHTML = html
+</script>
+</body>
+</html>

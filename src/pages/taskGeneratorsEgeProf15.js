@@ -1975,9 +1975,12 @@ export function t15ExpCubeOverQuad() {
 // log²₂x, lg⁴x, log₅(25−x²) — основание подстрочником (юникод: внутри дроби токен ⟦b⟧
 // применить нельзя, он содержит «⟧»).
 const SUPD_ALL = { 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹", "-": "⁻" }
-const subDecStr = (s2) => String(s2).split("").map((c) => (SUBD[c] ?? (c === "," ? "," : c))).join("")
 const supNum = (n) => String(n).split("").map((c) => SUPD_ALL[c] ?? c).join("")
-const logS = (b, k = 1, arg = "x") => (b === 10 ? "lg" : "log") + (k > 1 ? SUPD[k] : "") + (b === 10 ? "" : subU(b)) + arg
+// log²₂x — степень и основание СТОПКОЙ, по левому краю (токен ⦅k¦b⦆); при k=1 —
+// обычный нижний индекс ⦉b⦊. Для lg (основание 10) индекса нет: lg⁴x.
+const logS = (b, k = 1, arg = "x") => (b === 10
+  ? "lg" + (k > 1 ? SUPD[k] : "")
+  : k > 1 ? `log⦅${k}¦${b}⦆` : `log⦉${b}⦊`) + arg
 
 // Конец промежутка x = b^y (y — рациональное): 3^{-2} → 1/9, 2^{3/2} → 2√2.
 function epPow(b, y) {
@@ -2692,7 +2695,7 @@ export function t15LogXConstTrick() {
     const M = Math.round(Math.pow(b, e))
     const cmp = pick(["≤", "<"])
     const arg = k === 0 ? "x" : `(${linStr(k)})`
-    const text = `log${SUPD[2]}⦉|${k === 0 ? "x" : linStr(k)}|⦊${arg}${supNum(2 * n)} + ${logS(b, 1, `${arg}${SUPD[2]}`)} ${cmp} ${C}`
+    const text = `log⦅2¦|${k === 0 ? "x" : linStr(k)}|⦆${arg}${supNum(2 * n)} + ${logS(b, 1, `${arg}${SUPD[2]}`)} ${cmp} ${C}`
     const F = (x) => Math.pow(2 * n, 2) + Math.log(Math.pow(x + k, 2)) / Math.log(b)
     const punct = [epQ(-k), epQ(-k - 1), epQ(-k + 1)]
     const res = build({
@@ -3178,7 +3181,7 @@ export function t15TrigLogQuad() {
     const fn = isCos ? "cos" : "sin"
     const beta = Math.round(Math.pow(2, lam))
     const argK = k === 1 ? `(${fn} x)` : `(${fn}${SUPD[k]}x)`
-    const text = `${aCoef.p === 1 ? "" : aCoef.p}log${SUPD[2]}${subU(beta)}${argK} ${cCoef.p < 0 ? MINUS : "+"} ${Math.abs(cCoef.p) === 1 ? "" : Math.abs(cCoef.p)}log${subU(2)}(${fn} x) ${cmp} ${qAns(Qmul(Q(-1), dCoef))}`
+    const text = `${aCoef.p === 1 ? "" : aCoef.p}log⦅2¦${beta}⦆${argK} ${cCoef.p < 0 ? MINUS : "+"} ${Math.abs(cCoef.p) === 1 ? "" : Math.abs(cCoef.p)}log⦉2⦊(${fn} x) ${cmp} ${qAns(Qmul(Q(-1), dCoef))}`
     const v = Math.pow(2, Qnum(y1))             // порог 1/2 или √2/2
     const ang = mHalf === 1 ? (isCos ? Math.PI / 3 : Math.PI / 6) : Math.PI / 4
     const angS = mHalf === 1 ? (isCos ? "π/3" : "π/6") : "π/4"
@@ -3491,7 +3494,7 @@ export function t15MixPowLog() {
   for (let it = 0; it < 200; it++) {
     const k = randInt(1, 3), C = 2 * Math.round(Math.pow(2, k * k))
     const cmp = pick(["≤", "<", "≥", ">"])
-    const text = `2⟦sup:log${SUPD[2]}${subU(2)}x⟧ + x⟦sup:log${subU(2)}x⟧ ${cmp} ${C}`
+    const text = `2⟦sup:log⦅2¦2⦆x⟧ + x⟦sup:log⦉2⦊x⟧ ${cmp} ${C}`
     const F = (x) => Math.pow(2, Math.pow(Math.log(x) / Math.LN2, 2)) + Math.pow(x, Math.log(x) / Math.LN2)
     const res = buildLog({
       text, cmp, base: 2, leadY: 1, lhs: F, rhs: () => C,
@@ -3761,7 +3764,7 @@ export function t15MixLogPowerSwap() {
     const cmp = pick(["≤", "<"])
     const invB = beta === 2 ? "0,5" : "0,2"
     const invC = `⦃1¦${c}⦄`
-    const text = `${c}⟦sup:log${subU(beta)}x${SUPD[2]}⟧ + ${c === 2 ? "" : (c - 1) + "·"}|x|⟦sup:log${subU(beta)}${c * c}⟧ ${cmp} ${c}·⟦pf:1:${c}⟧⟦sup:log${subDecStr(invB)}(${polyStr([{ c: k, k: 1 }, { c: m, k: 0 }])})⟧`
+    const text = `${c}⟦sup:log⦉${beta}⦊x${SUPD[2]}⟧ + ${c === 2 ? "" : (c - 1) + "·"}|x|⟦sup:log⦉${beta}⦊${c * c}⟧ ${cmp} ${c}·⟦pf:1:${c}⟧⟦sup:log⦉${invB}⦊(${polyStr([{ c: k, k: 1 }, { c: m, k: 0 }])})⟧`
     void invC
     const F = (x) => Math.pow(c, Math.log(x * x) / Math.log(beta)) + (c - 1) * Math.pow(Math.abs(x), Math.log(c * c) / Math.log(beta))
     const G = (x) => c * Math.pow(1 / c, Math.log(k * x + m) / Math.log(1 / beta))

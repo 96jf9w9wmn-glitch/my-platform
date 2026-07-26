@@ -34,6 +34,8 @@ const supInSvg = (s) => String(s)
   // вложенная дробь внутри SVG-дроби — в строку («x/25»): второй ярус черты не рисуем
   .replace(/⦃([^¦⦄]*)¦([^⦄]*)⦄/g, "$1/$2")
   .replace(/⦉([^⦊]*)⦊/g, (_, x) => `<tspan baseline-shift="sub" font-size="0.75em">${x}</tspan>`)
+  .replace(/⦅([^¦⦆]*)¦([^⦆]*)⦆/g, (_, a, b) =>
+    `<tspan baseline-shift="super" font-size="0.7em">${a}</tspan><tspan baseline-shift="sub" font-size="0.7em">${b}</tspan>`)
 function fracSvg(num0, den0) {
   const num = supInSvg(rootInPdf(num0)), den = supInSvg(rootInPdf(den0))
   const fs = FS * 0.95
@@ -173,7 +175,7 @@ export async function renderTaskMathPdf(text) {
     .replace(/⟦match⟧([\s\S]*?)⟦endmatch⟧/g, (_, body) => matchTablePdf(body))
     .replace(/⟦tbl⟧([\s\S]*?)⟦endtbl⟧/g, (_, body) => dataTablePdf(body))
     .replace(/⟦list⟧([\s\S]*?)⟦endlist⟧/g, (_, body) => orderedListPdf(body))
-  const re = /⟦rf:([^⟧]*)⟧|⟦f:([^:⟧]+):([^:⟧]+)⟧|⟦r:([^⟧]+)⟧|⟦b:([^⟧]+)⟧|⟦iso:([^:⟧]+):([^:⟧]+):([^⟧]+)⟧|⟦sup:([^⟧]+)⟧|⟦rn:([^:⟧]+):([^⟧]+)⟧|⟦pf:([^:⟧]+):([^:⟧]+)⟧|⁅([^⁆]*)⁆|⦃([^¦⦄]*)¦([^⦄]*)⦄|⦉([^⦊]*)⦊/g
+  const re = /⟦rf:([^⟧]*)⟧|⟦f:([^:⟧]+):([^:⟧]+)⟧|⟦r:([^⟧]+)⟧|⟦b:([^⟧]+)⟧|⟦iso:([^:⟧]+):([^:⟧]+):([^⟧]+)⟧|⟦sup:([^⟧]+)⟧|⟦rn:([^:⟧]+):([^⟧]+)⟧|⟦pf:([^:⟧]+):([^:⟧]+)⟧|⁅([^⁆]*)⁆|⦃([^¦⦄]*)¦([^⦄]*)⦄|⦉([^⦊]*)⦊|⦅([^¦⦆]*)¦([^⦆]*)⦆/g
   let out = "", last = 0, m
   while ((m = re.exec(esc)) !== null) {
     out += esc.slice(last, m.index)
@@ -187,6 +189,7 @@ export async function renderTaskMathPdf(text) {
     else if (m[14] !== undefined) out += `<sup style="font-size:0.72em; line-height:0; vertical-align:0.55em;">${m[14]}</sup>`
     else if (m[15] !== undefined) out += await svgToInlineImg(fracSvg(m[15], m[16]), FRAC_VALIGN)
     else if (m[17] !== undefined) out += `<sub>${m[17]}</sub>`
+    else if (m[18] !== undefined) out += `<span style="display:inline-flex; flex-direction:column; align-items:flex-start; text-align:left; vertical-align:-0.35em; font-size:0.62em; line-height:1.05; margin-right:0.05em;"><span>${m[18]}</span><span>${m[19]}</span></span>`
     else out += await svgToInlineImg(fracSvg(m[2], m[3]), FRAC_VALIGN)
     last = m.index + m[0].length
   }

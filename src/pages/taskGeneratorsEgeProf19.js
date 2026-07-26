@@ -698,6 +698,15 @@ export function t19BoardDistinctSum() {
 
 // ── реестр ─────────────────────────────────────────────────────────────────
 export const META19 = [
+  ["Доска: ограничение на попарные произведения", [
+    ["prodwin-min-sum", "Произведение любых двух в (lo; hi) → наим. сумма четырёх", t19ProdWindowMinSum],
+    ["prodwin-max-sum", "Произведение любых двух в (lo; hi) → наиб. сумма четырёх", t19ProdWindowMaxSum],
+  ]],
+  ["Цифры: произведение цифр и цепочки сумм цифр", [
+    ["four-prod-vs-digitsum", "Четырёхзначное: произведение цифр в k раз больше суммы", t19FourProdVsDigitSum],
+    ["digitsum-chain-3", "Тройка n, S(n), S(S(n)): сумма и количество троек", t19DigitSumChain3],
+    ["three-over-digitprod", "Частное трёхзначного без нулей и произведения цифр", t19ThreeOverDigitProd],
+  ]],
   ["Четыре последовательных числа, делённые на цифру", [
     ["four-consec-last-digit", "Делят на последнюю цифру → наибольшее целое S", t19FourConsecLastDigit],
     ["four-consec-first-digit", "Делят на первую цифру → наибольшее целое S на отрезке", t19FourConsecFirstDigit],
@@ -1416,3 +1425,371 @@ export function t19FourConsecAnyDigit() {
     },
   })
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 5. Цифры: произведение цифр и цепочки сумм цифр (#35, #77, #84)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const digProd = (n) => digitsOf(n).reduce((p, d) => p * d, 1)
+// Все перестановки мультимножества цифр, дающие число без ведущего нуля.
+function permsOf(ds) {
+  const out = new Set()
+  const rec = (left, acc) => {
+    if (!left.length) { if (acc[0] !== 0) out.add(Number(acc.join(""))); return }
+    const seen = new Set()
+    for (let i = 0; i < left.length; i++) {
+      if (seen.has(left[i])) continue
+      seen.add(left[i])
+      rec([...left.slice(0, i), ...left.slice(i + 1)], [...acc, left[i]])
+    }
+  }
+  rec(ds, [])
+  return [...out].sort((a, b) => a - b)
+}
+// #35: таблица «во сколько раз произведение цифр больше суммы» → список чисел.
+// Строится перебором НЕВОЗРАСТАЮЩИХ четвёрок цифр (комбинаторно), тогда как solve()
+// идёт по самим числам 1000…9999 — это два разных прохода.
+const PROD_VS_SUM4 = (() => {
+  const map = new Map()
+  for (let a = 9; a >= 1; a--) for (let b = a; b >= 0; b--) for (let c = b; c >= 0; c--) for (let d = c; d >= 0; d--) {
+    const P = a * b * c * d, S = a + b + c + d
+    if (!S || P === 0 || P % S !== 0) continue
+    const k = P / S
+    if (!map.has(k)) map.set(k, [])
+    map.get(k).push(...permsOf([a, b, c, d]))
+  }
+  for (const [k, v] of map) map.set(k, [...new Set(v)].sort((x, y) => x - y))
+  return map
+})()
+
+// #35. Четырёхзначное число: произведение цифр в k раз больше суммы цифр.
+export function t19FourProdVsDigitSum() {
+  const keys = [...PROD_VS_SUM4.keys()]
+  const k1 = pick(keys.filter((k) => PROD_VS_SUM4.get(k).length >= 1))
+  const exA = PROD_VS_SUM4.get(k1)[0]
+  // б) — «нет»: k2 содержит простой делитель, больший 9, поэтому произведение цифр
+  // (каждая цифра ≤ 9) не может на него делиться.
+  const bigPrime = pick([11, 13, 17, 19, 23])
+  const k2 = bigPrime * randInt(1, Math.floor(300 / bigPrime))
+  // в) — «найдите все»: k с небольшим числом решений.
+  const k3 = pick(keys.filter((k) => { const n = PROD_VS_SUM4.get(k).length; return n >= 1 && n <= 6 }))
+  if (k1 === k2 || k2 === k3 || k1 === k3) return null
+  const allC = PROD_VS_SUM4.get(k3)
+
+  const params = { k1, k2, k3 }
+  const check = (A, part) => {
+    if (!Number.isInteger(A) || A < 1000 || A > 9999) return `${A} не четырёхзначное`
+    const target = part === "a" ? k1 : part === "b" ? k2 : k3
+    const P = digProd(A), S = digitSum(A)
+    if (P !== target * S) return `у ${A} произведение цифр ${P}, а ${target}·${S} = ${target * S}`
+    return null
+  }
+  const solve = (P) => {
+    // Пространство перебора: все четырёхзначные числа 1000…9999.
+    const has = (k) => { for (let A = 1000; A <= 9999; A++) if (digProd(A) === k * digitSum(A)) return true; return false }
+    const all = []
+    for (let A = 1000; A <= 9999; A++) if (digProd(A) === P.k3 * digitSum(A)) all.push(A)
+    return { a: has(P.k1), b: has(P.k2), c: all }
+  }
+
+  return item({
+    preamble: `Для четырёхзначного натурального числа рассматривают произведение его цифр и сумму его цифр.`,
+    qa: `Приведите пример четырёхзначного числа, произведение цифр которого в ${k1} раз больше суммы цифр этого числа.`,
+    qb: `Существует ли такое четырёхзначное число, произведение цифр которого в ${k2} раз больше суммы цифр этого числа?`,
+    qc: `Найдите все четырёхзначные числа, произведение цифр которых в ${k3} раз больше суммы цифр этого числа.`,
+    ansA: `${exA}: произведение цифр ${digProd(exA)}, сумма цифр ${digitSum(exA)}, и ${digProd(exA)} = ${k1} · ${digitSum(exA)}`,
+    ansB: `нет: произведение цифр равнялось бы ${k2}·S и делилось бы на ${bigPrime}, но произведение четырёх цифр — это произведение чисел, не превосходящих 9, и простого делителя ${bigPrime} у него быть не может`,
+    ansC: `${joinRu(allC)}${allC.length === 1 ? "" : " — других нет"}`,
+    solution: `Обозначим произведение цифр P, сумму цифр S. Условие P = k·S.\nСразу отметим: P — произведение четырёх цифр, поэтому все простые делители P не превосходят 7. Если k делится на простое число, большее 9 (как ${k2} на ${bigPrime}), то и P делилось бы на него — противоречие, значит такого числа нет.\nДля k = ${k3} перебор наборов цифр (достаточно перебирать невозрастающие четвёрки, а затем брать перестановки без ведущего нуля) даёт ровно ${allC.length === 1 ? "одно число" : `${allC.length} чисел`}: ${joinRu(allC)}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: k1 },
+        b: { type: "yesno", yes: false, reason: "big-prime", target: k2 },
+        c: { type: "all", values: allC, examples: Object.fromEntries(allC.map((v) => [v, v])) },
+      },
+      mustMention: [k1, k2, k3],
+      extra: [],
+      phrases: ["четырёхзначного натурального числа", "произведение его цифр", "сумму его цифр"],
+    },
+  })
+}
+
+// #77. Три различных натуральных: второе — сумма цифр первого, третье — сумма цифр второго.
+// Инвариант: n ≡ S(n) (mod 9), поэтому все три числа сравнимы по модулю 9,
+// а их сумма сравнима с 3n — то есть ВСЕГДА кратна 3.
+const CHAIN_COUNT = (() => {                    // сколько трёхзначных n даёт третье число v
+  const cnt = new Array(10).fill(0)
+  for (let a = 1; a <= 9; a++) for (let b = 0; b <= 9; b++) for (let c = 0; c <= 9; c++) {
+    const s = a + b + c
+    if (s < 10) continue                        // иначе второе и третье числа совпадут
+    cnt[digitSum(s)]++
+  }
+  return cnt
+})()
+export function t19DigitSumChain3() {
+  const chain = (n) => { const s2 = digitSum(n), s3 = digitSum(s2); return { s2, s3, total: n + s2 + s3 } }
+  // а) — «да»: берём конкретное первое число (обязательно с S(n) ≥ 10, иначе числа совпадут).
+  let nA = 0
+  for (let t = 0; t < 200 && !nA; t++) { const c = randInt(100, 3000); if (digitSum(c) >= 10) nA = c }
+  if (!nA) return null
+  const T1 = chain(nA).total
+  // б) — «нет»: сумма всегда кратна 3, поэтому берём число, не кратное 3.
+  const T2 = 3 * randInt(30, 900) + pick([1, 2])
+  const v = pick([1, 2, 3, 4, 5, 6, 7, 8, 9].filter((x) => CHAIN_COUNT[x] > 0))
+  const count = CHAIN_COUNT[v]
+
+  const params = { T1, T2, v, count }
+  const check = (n, part) => {
+    if (!Number.isInteger(n) || n < 1) return `${n} не натуральное`
+    const { s2, s3, total } = chain(n)
+    if (n === s2 || n === s3 || s2 === s3) return `числа ${n}, ${s2}, ${s3} не все различны`
+    if (part === "a" && total !== T1) return `сумма ${total}, а не ${T1}`
+    if (part === "b" && total !== T2) return `сумма ${total}, а не ${T2}`
+    if (part === "c") {
+      if (n < 100 || n > 999) return `${n} не трёхзначное`
+      if (s3 !== v) return `третье число ${s3}, а не ${v}`
+    }
+    return null
+  }
+  const solve = (P) => {
+    // Пространство перебора: сумма трёх чисел не меньше первого, поэтому для суммы T
+    // достаточно перебрать все n ≤ T; для пункта в) — все трёхзначные n.
+    const ok = (n) => { const s2 = digitSum(n), s3 = digitSum(s2); return n !== s2 && s2 !== s3 && n !== s3 }
+    const reach = (T) => { for (let n = 1; n <= T; n++) if (ok(n) && n + digitSum(n) + digitSum(digitSum(n)) === T) return true; return false }
+    let c = 0
+    for (let n = 100; n <= 999; n++) if (ok(n) && digitSum(digitSum(n)) === P.v) c++
+    return { a: reach(P.T1), b: reach(P.T2), c }
+  }
+
+  const cA = chain(nA)
+  return item({
+    preamble: `На доске написаны три различных натуральных числа. Второе число равно сумме цифр первого, а третье равно сумме цифр второго.`,
+    qa: `Может ли сумма этих чисел быть равна ${T1}?`,
+    qb: `Может ли сумма этих чисел быть равна ${T2}?`,
+    qc: `В тройке чисел первое число трёхзначное, а третье равно ${v}. Сколько существует таких троек?`,
+    ansA: `да, например ${nA}, ${cA.s2} и ${cA.s3}: их сумма равна ${T1}`,
+    ansB: `нет: натуральное число и сумма его цифр дают одинаковые остатки при делении на 9, поэтому все три числа сравнимы по модулю 9, а их сумма сравнима с утроенным первым числом — она всегда кратна 3, тогда как ${T2} на 3 не делится`,
+    ansC: `${count}`,
+    solution: `Для любого натурального n верно n ≡ S(n) (mod 9). Значит все три числа тройки дают один и тот же остаток при делении на 9, а их сумма сравнима с 3n по модулю 9 — в частности, она всегда кратна 3. Это сразу отвечает на пункт б).\nВ пункте в) первое число трёхзначное, поэтому второе — сумма его цифр — лежит между 1 и 27. Чтобы второе и третье числа были различны, вторая сумма обязана быть не меньше 10. Значит нужно сосчитать трёхзначные числа, сумма цифр которых не меньше 10 и сама имеет сумму цифр ${v}; таких чисел ${count}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: nA, target: T1 },
+        b: { type: "yesno", yes: false, reason: "mod3", target: T2 },
+        c: { type: "count", value: count },
+      },
+      mustMention: [T1, T2, v],
+      extra: [],
+      phrases: ["три различных натуральных числа", "Второе число равно сумме цифр первого", "третье равно сумме цифр второго"],
+    },
+  })
+}
+
+// #84. Частное трёхзначного числа без нулей и произведения его цифр.
+// Таблица «несократимая дробь A/P» строится по цифрам (a, b, c), solve() идёт по A.
+const NOZERO_FRAC = (() => {
+  const byDen = new Map()
+  for (let a = 1; a <= 9; a++) for (let b = 1; b <= 9; b++) for (let c = 1; c <= 9; c++) {
+    const A = 100 * a + 10 * b + c, P = a * b * c
+    const f = fr(A, P)
+    if (!byDen.has(f.d)) byDen.set(f.d, new Map())
+    if (!byDen.get(f.d).has(f.n)) byDen.get(f.d).set(f.n, A)
+  }
+  return byDen
+})()
+export function t19ThreeOverDigitProd() {
+  // Знаменатели держим «эталонными» (в ФИПИ это 27): небольшие и круглые.
+  const NICE = [8, 9, 12, 16, 18, 24, 27, 32, 36]
+  const dens = [...NOZERO_FRAC.keys()].filter((q) => NICE.includes(q) && NOZERO_FRAC.get(q).size >= 3)
+  if (!dens.length) return null
+  const q = pick(dens)
+  const nums = [...NOZERO_FRAC.get(q).keys()].sort((a, b) => a - b)
+  const m1 = pick(nums.filter((m) => m !== nums[nums.length - 1]))
+  const exA = NOZERO_FRAC.get(q).get(m1)
+  // б) — «нет»: числитель из того же диапазона, но недостижимый.
+  const holes = []
+  for (let m = nums[0]; m <= nums[nums.length - 1]; m++) if (!nums.includes(m) && gcdI(m, q) === 1) holes.push(m)
+  if (!holes.length) return null
+  const m2 = pick(holes)
+  const m3 = nums[nums.length - 1]
+  const exC = NOZERO_FRAC.get(q).get(m3)
+  // все произведения трёх ненулевых цифр, кратные q — именно они дают знаменатель q
+  const prods = new Set()
+  for (let a = 1; a <= 9; a++) for (let b = 1; b <= 9; b++) for (let c = 1; c <= 9; c++) if ((a * b * c) % q === 0) prods.add(a * b * c)
+  const plist = [...prods].sort((x, y) => x - y)
+
+  const params = { q, m1, m2, m3 }
+  const check = (A, part) => {
+    if (!Number.isInteger(A) || A < 100 || A > 999) return `${A} не трёхзначное`
+    if (String(A).includes("0")) return `в записи ${A} есть нуль`
+    const f = fr(A, digProd(A))
+    const m = part === "a" ? m1 : part === "b" ? m2 : m3
+    if (f.n !== m || f.d !== q) return `частное ${A}/${digProd(A)} = ${f.n}/${f.d}, а не ${m}/${q}`
+    return null
+  }
+  const solve = (P) => {
+    // Пространство перебора: все трёхзначные числа без нулей (их 729).
+    let best = null, hitA = false, hitB = false
+    for (let A = 100; A <= 999; A++) {
+      if (String(A).includes("0")) continue
+      const f = fr(A, digProd(A))
+      if (f.d !== P.q) continue
+      if (f.n === P.m1) hitA = true
+      if (f.n === P.m2) hitB = true
+      if (best === null || f.n > best) best = f.n
+    }
+    return { a: hitA, b: hitB, c: best }
+  }
+
+  return item({
+    preamble: `Рассмотрим частное трёхзначного числа, в записи которого нет нулей, и произведения его цифр.`,
+    qa: `Приведите пример числа, для которого это частное равно ⟦f:${m1}:${q}⟧.`,
+    qb: `Может ли это частное равняться ⟦f:${m2}:${q}⟧?`,
+    qc: `Какое наибольшее значение может принимать это частное, если оно равно несократимой дроби со знаменателем ${q}?`,
+    ansA: `${exA}: произведение цифр равно ${digProd(exA)}, и ${exA}/${digProd(exA)} = ${m1}/${q}`,
+    ansB: `нет: знаменатель ${q} у несократимой дроби означает, что произведение цифр кратно ${q}; таких произведений трёх ненулевых цифр всего ${plist.length}: ${plist.slice(0, 6).join(", ")}${plist.length > 6 ? ", …" : ""}, и для каждого из них число ${m2}·P/${q} либо не трёхзначно, либо имеет другое произведение цифр`,
+    ansC: `${m3}/${q}; достигается при числе ${exC}, у которого произведение цифр равно ${digProd(exC)}`,
+    solution: `Пусть A — трёхзначное число без нулей, P — произведение его цифр. Несократимая дробь A/P имеет знаменатель ${q} ровно тогда, когда P кратно ${q}, а после сокращения в знаменателе остаётся именно ${q}.\nПроизведений трёх ненулевых цифр, кратных ${q}, всего ${plist.length}: ${plist.slice(0, 6).join(", ")}${plist.length > 6 ? ", …" : ""}. Для каждого такого P числитель равен A·${q}/P, поэтому достаточно перебрать эти P и подходящие A.\nНаибольший числитель равен ${m3} и достигается при A = ${exC}; для ${m2} подходящего числа нет.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: m1 },
+        b: { type: "yesno", yes: false, reason: "prod-multiple", target: m2 },
+        c: { type: "value", value: m3, example: exC },
+      },
+      mustMention: [m1, m2, q],
+      extra: [],
+      phrases: ["трёхзначного числа, в записи которого нет нулей", "произведения его цифр"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 2. Доска: ограничение на попарные произведения (#27, #28)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Различные натуральные, произведение любых двух больше lo и меньше hi.
+// Структурные факты (ими и строится задача, БЕЗ перебора):
+//   • наименьшее число набора не меньше m₀ = min{a : a(a+1) > lo};
+//   • набор из k чисел существует ⟺ (m₀+k−2)(m₀+k−1) < hi
+//     (минимальный кандидат {m₀, …, m₀+k−1} — самый «лёгкий» из всех);
+//   • наименьшая сумма четырёх равна 4m₀ + 6;
+//   • наибольшая сумма четырёх = max по парам (a₃ < a₄) с a₃a₄ < hi и (a₃−2)(a₃−1) > lo
+//     от величины a₄ + 3a₃ − 3 (два младших числа выгодно брать максимальными: a₃−1, a₃−2).
+// solve() ничего этого не знает и перебирает сами наборы.
+function prodWindowFamily(mode) {
+  // Структурные факты (ими и строится задача, БЕЗ перебора наборов):
+  //   • a₁ ≤ a₂ − 1, поэтому из a₁a₂ > lo следует a₂(a₂ − 1) > lo, то есть a₂ ≥ A,
+  //     где A = min{a : a(a − 1) > lo};
+  //   • набор из k чисел выгоднее всего брать «плотным»: {a₁, a₂, a₂+1, …, a₂+k−2},
+  //     поэтому k чисел существует ⟺ (A + k − 3)(A + k − 2) < hi;
+  //   • для наименьшей суммы четырёх перебираем ОДИН параметр a₂ и берём наименьшее
+  //     подходящее a₁ = ⌊lo/a₂⌋ + 1, а три старших — подряд;
+  //   • для наибольшей суммы, наоборот, два младших выгодно взять как a₃−2 и a₃−1.
+  const A = randInt(6, 12)
+  const lo = randInt(A * (A - 1) - A + 1, A * (A - 1) - 1)   // ⟹ min{a : a(a−1) > lo} = A
+  const hi = randInt((A + 2) * (A + 3) + 1, (A + 3) * (A + 4))
+  let chk = 1; while (chk * (chk - 1) <= lo) chk++
+  if (chk !== A) return null
+  const can = (k) => (A + k - 3) * (A + k - 2) < hi
+  if (!can(4) || !can(5) || can(6)) return null           // эталон: 5 — да, 6 — нет
+
+  const minFirst = (a2) => Math.floor(lo / a2) + 1        // наименьшее a₁ с a₁·a₂ > lo
+  const packed = (a2, k) => { const f = minFirst(a2); return f >= 1 && f < a2 && (a2 + k - 3) * (a2 + k - 2) < hi ? [f, ...Array.from({ length: k - 1 }, (_, i) => a2 + i)] : null }
+  const ex5 = packed(A, 5)
+  if (!ex5) return null
+
+  let answer, exC
+  if (mode === "min") {
+    let best = null
+    for (let a2 = A; (a2 + 1) * (a2 + 2) < hi; a2++) {
+      const set = packed(a2, 4)
+      if (set && (best === null || sum(set) < best.s)) best = { s: sum(set), set }
+    }
+    if (!best) return null
+    answer = best.s; exC = best.set
+  } else {
+    let best = null
+    for (let a3 = A + 1; a3 * (a3 + 1) < hi; a3++) {
+      if ((a3 - 2) * (a3 - 1) <= lo || a3 - 2 < 1) continue
+      for (let a4 = a3 + 1; a3 * a4 < hi; a4++) {
+        const s4 = a4 + 3 * a3 - 3
+        if (best === null || s4 > best.s) best = { s: s4, set: [a3 - 2, a3 - 1, a3, a4] }
+      }
+    }
+    if (!best) return null
+    answer = best.s; exC = best.set
+  }
+
+  const params = { lo, hi, mode, answer }
+  const check = (arr, part) => {
+    if (!Array.isArray(arr)) return "не набор"
+    if (uniq(arr).length !== arr.length) return "числа не различны"
+    for (const x of arr) if (!Number.isInteger(x) || x < 1) return `${x} не натуральное`
+    for (let i = 0; i < arr.length; i++) for (let j = i + 1; j < arr.length; j++) {
+      const p = arr[i] * arr[j]
+      if (p <= lo) return `${arr[i]}·${arr[j]} = ${p} не больше ${lo}`
+      if (p >= hi) return `${arr[i]}·${arr[j]} = ${p} не меньше ${hi}`
+    }
+    if (part === "a" && arr.length !== 5) return `${arr.length} чисел вместо 5`
+    if (part === "b" && arr.length !== 6) return `${arr.length} чисел вместо 6`
+    if (part === "c") {
+      if (arr.length !== 4) return `${arr.length} чисел вместо четырёх`
+      if (sum(arr) !== answer) return `сумма ${sum(arr)}, а не ${answer}`
+    }
+    return null
+  }
+  const solve = (P) => {
+    // Пространство перебора: ВСЕ возрастающие наборы различных натуральных чисел,
+    // не превосходящих P.hi (большее число в паре с любым другим даёт произведение
+    // не меньше P.hi). Отсечения ускоряют обход, но пространство не сужают.
+    const res = { 4: [], 5: false, 6: false }
+    const cur = []
+    const rec = (start, k) => {
+      if (cur.length === k) { if (k === 4) res[4].push(sum(cur)); else res[k] = true; return }
+      for (let x = start; x <= P.hi; x++) {
+        let ok = true
+        for (const y of cur) { const p = y * x; if (p <= P.lo || p >= P.hi) { ok = false; break } }
+        if (!ok) { if (cur.length && cur[cur.length - 1] * x >= P.hi) break; continue }
+        cur.push(x); rec(x + 1, k); cur.pop()
+        if (res[k] === true) return
+      }
+    }
+    rec(1, 5); const a = res[5]
+    cur.length = 0; rec(1, 6); const b = res[6]
+    cur.length = 0; rec(1, 4)
+    const sums = res[4]
+    const c = sums.length ? (P.mode === "min" ? Math.min(...sums) : Math.max(...sums)) : null
+    const cNext = c === null ? false : sums.some((x) => (P.mode === "min" ? x < c : x > c))
+    return { a, b, c, c_next: cNext }
+  }
+
+  return item({
+    preamble: `На доске написано несколько различных натуральных чисел, произведение любых двух из которых больше ${lo} и меньше ${hi}.`,
+    qa: `Может ли на доске быть 5 чисел?`,
+    qb: `Может ли на доске быть 6 чисел?`,
+    qc: `Какое ${mode === "min" ? "наименьшее" : "наибольшее"} значение может принимать сумма чисел на доске, если их четыре?`,
+    ansA: `да, например ${joinRu(ex5)}`,
+    ansB: `нет: из a₁ < a₂ и a₁a₂ > ${lo} следует a₂(a₂ − 1) > ${lo}, то есть второе по величине число не меньше ${A}; тогда при шести числах два наибольших не меньше ${A + 3} и ${A + 4}, а их произведение не меньше ${(A + 3) * (A + 4)} > ${hi}`,
+    ansC: `${answer}; достигается на наборе ${joinRu(exC)}; ${mode === "min"
+      ? `меньше нельзя — второе по величине число не меньше ${A}, поэтому три старших числа не меньше ${A}, ${A + 1}, ${A + 2}, а младшее не меньше ⌊${lo}/a₂⌋ + 1`
+      : `больше нельзя — произведение двух наибольших меньше ${hi}, а два младших не превосходят ${exC[2] - 1} и ${exC[2] - 2}`}`,
+    solution: `Пусть числа набора a₁ < a₂ < … < a_k. Условие «произведение любых двух больше ${lo}» равносильно a₁a₂ > ${lo}, а «меньше ${hi}» — условию a_{k−1}a_k < ${hi}: остальные пары зажаты между этими двумя.\nИз a₁ ≤ a₂ − 1 следует a₂(a₂ − 1) > ${lo}, то есть a₂ ≥ ${A}. Плотный набор {a₁, a₂, a₂+1, …, a₂+k−2} — самый выгодный, поэтому k чисел существует ровно тогда, когда (a₂ + k − 3)(a₂ + k − 2) < ${hi}.\nДля k = 5 это ${(A + 2) * (A + 3)} < ${hi} — верно; для k = 6 это ${(A + 3) * (A + 4)} < ${hi} — неверно.\n${mode === "min"
+      ? `Наименьшую сумму четырёх ищем перебором одного параметра a₂: младшее число тогда равно ⌊${lo}/a₂⌋ + 1, а два старших идут подряд. Минимум ${answer} даёт набор ${joinRu(exC)}.`
+      : `Для наибольшей суммы два младших числа выгодно взять максимальными: a₁ = a₃ − 2, a₂ = a₃ − 1, а затем максимизировать a₄ при a₃a₄ < ${hi}. Максимум ${answer} даёт набор ${joinRu(exC)}.`}`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: ex5, target: 5 },
+        b: { type: "yesno", yes: false, reason: "two-largest", target: 6 },
+        c: { type: "extremum", mode, value: answer, example: exC },
+      },
+      mustMention: [lo, hi, 5, 6],
+      extra: [],
+      phrases: ["различных натуральных чисел", "произведение любых двух из которых больше", "если их четыре"],
+    },
+  })
+}
+export function t19ProdWindowMinSum() { return prodWindowFamily("min") }
+export function t19ProdWindowMaxSum() { return prodWindowFamily("max") }

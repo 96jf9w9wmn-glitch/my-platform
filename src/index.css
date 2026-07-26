@@ -186,6 +186,20 @@ select {
   margin-right: 0.05em;
   text-align: right;
 }
+/* ⦅k¦b⦆ — степень логарифма над основанием: стопкой, ПО ЛЕВОМУ краю (log²₂x).
+   Отличие от ⟦iso⟧ — выравнивание влево: у логарифма индексы идут после слова «log». */
+.tmath-logpow {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  /* базовая линия inline-flex = базовая линия ПЕРВОГО элемента (степени), поэтому
+     поднимаем всю стопку: степень встаёт на уровень надстрочника, основание — под строку */
+  vertical-align: 0.34em;
+  font-size: 0.62em;
+  line-height: 1.05;
+  margin-right: 0.05em;
+  text-align: left;
+}
 /* Радикал — инлайновый SVG (знак √ и черта единым path). display:inline-block
    обязателен — Tailwind preflight ставит svg{display:block}, иначе корень падает на
    свою строку. Текст под корнем наследует шрифт; vertical-align сажает на базовую линию. */
