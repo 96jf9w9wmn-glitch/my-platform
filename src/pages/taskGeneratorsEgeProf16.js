@@ -16,6 +16,8 @@
 // Формула, по которой задача строилась, и simulate — РАЗНЫЕ реализации; verify16 требует,
 // чтобы они совпали. Ошибка в формуле не пройдёт незамеченной.
 
+import { tableBlock } from "../utils.js"
+
 // ── базовые утилиты ────────────────────────────────────────────────────────
 const randInt = (min, max) => min + Math.floor(Math.random() * (max - min + 1))
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)]
@@ -26,7 +28,18 @@ const NBSP = " "    // неразрывный пробел: разряды де
 const sum = (a) => a.reduce((s, x) => s + x, 0)
 // Округление до копейки — используется только для сравнения, не для построения.
 const r2 = (x) => Math.round(x * 100) / 100
-const isMoney = (x) => Number.isFinite(x) && Math.abs(x * 100 - Math.round(x * 100)) < 1e-6
+// «Ровно рубли или копейки» с поправкой на накопленный шум float: остаток порядка
+// 1e−14 от миллионных сумм — это ноль, а не «доля копейки», и наоборот — у больших
+// величин допуск в копейках должен расти вместе с ulp.
+const isMoney = (x) => {
+  if (!Number.isFinite(x)) return false
+  if (Math.abs(x) < 1e-4) return true
+  const k = x * 100
+  return Math.abs(k - Math.round(k)) < Math.max(1e-6, Math.abs(k) * 1e-12)
+}
+// Суммы модели могут быть выражены в рублях, тысячах или миллионах — множитель
+// приводит их к рублям, чтобы «ровно до копейки» проверялось в правильном масштабе.
+export const UNIT_MULT = { rub: 1, ths: 1e3, mln: 1e6 }
 
 // ── форматирование ─────────────────────────────────────────────────────────
 // Деньги: разряды неразрывными пробелами, десятичная часть — запятой. Разделитель
@@ -55,7 +68,13 @@ function plural(n, one, few, many) {
   if (b === 1) return one
   return many
 }
+// Перечисление по-русски: [a] → «a», [a,b] → «a и b», [a,b,c] → «a, b и c».
+function joinRu(arr) {
+  if (arr.length <= 1) return String(arr[0] ?? "")
+  return arr.slice(0, -1).join(", ") + " и " + arr[arr.length - 1]
+}
 const years = (n) => `${n} ${plural(n, "год", "года", "лет")}`
+const months = (n) => `${n} ${plural(n, "месяц", "месяца", "месяцев")}`
 const rub = (n) => `${money(n)} ${plural(Math.round(n), "рубль", "рубля", "рублей")}`
 const payments = (n) => `${n} ${plural(n, "равным платежом", "равными платежами", "равными платежами")}`
 
@@ -160,14 +179,27 @@ export function verify16(it) {
     for (const st of s.steps) {
       for (const [k, x] of Object.entries(st)) {
         if (!Number.isFinite(x)) return { ok: false, err: `${k} = ${x}` }
-        if (!isMoney(x)) return { ok: false, err: `${k} = ${x} — не целые рубли и не копейки` }
+        // model.fractional — схемы, где сам ЭТАЛОН даёт непредставимый в копейках платёж
+        // (напр. «долг гасится двумя равными суммами» при кредите в целых миллионах):
+        // платёж задан условием как точное число, а спрашивается другая величина.
+        const mult = UNIT_MULT[m.unit || "rub"]
+        if (!m.fractional && !isMoney(x * mult)) return { ok: false, err: `${k} = ${x} — не целые рубли и не копейки` }
       }
       if (st.opening < -1e-9 || st.closing < -1e-9) return { ok: false, err: "отрицательный долг" }
       if (st.interest < -1e-9) return { ok: false, err: "отрицательные проценты" }
       if (st.payment <= 0) return { ok: false, err: "неположительный платёж" }
-      if (st.payment > m.S + 1e-9) return { ok: false, err: "платёж больше всего долга" }
-      if (st.closing > st.opening + 1e-9) return { ok: false, err: "долг не убывает" }
-      if (st.closing > prev + 1e-9) return { ok: false, err: "долг не монотонен" }
+      if (st.payment > st.opening * (1 + m.ratePct / 100) + 1e-6) {
+        return { ok: false, err: "платёж больше выросшего долга" }
+      }
+      // Монотонность долга — норма для аннуитета и дифференцированных платежей, но НЕ
+      // для графика «каждый следующий платёж втрое больше предыдущего»: там первый
+      // платёж законно меньше начисленных процентов и долг за первый год растёт
+      // (так и в эталонной задаче 270 200 руб. под 10 %). Такие модели помечены
+      // nonMonotone, но обязаны погасить долг в ноль и не уходить в минус.
+      if (!m.nonMonotone) {
+        if (st.closing > st.opening + 1e-9) return { ok: false, err: "долг не убывает" }
+        if (st.closing > prev + 1e-9) return { ok: false, err: "долг не монотонен" }
+      }
       prev = st.closing
     }
     // реалистичность
@@ -999,6 +1031,7 @@ export function t16DepWithdraw() {
           if (A < 20_000 || A >= S) continue
           // порог не на границе округления до тысячи
           if (bound - A < 50 || A + 1000 - bound < 50) continue
+          if (A === R || A === S) continue        // иначе ответ буквально стоит в условии
           cand.push({ p, q, n, S, R, A })
         }
       }
@@ -1031,6 +1064,591 @@ export function t16DepWithdraw() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+//  РАЗДЕЛ 4. ДРУГИЕ СХЕМЫ ВЫПЛАТ
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Схема «k лет только проценты, затем m равных платежей»: первые k лет долг остаётся
+// равным S (платится ровно S·x), затем X = S·qᵐ(q−1)/(qᵐ−1).
+// Общая сумма = k·S·x + m·X.
+
+function interestOnlyPlan(S, ratePct, k, m) {
+  const q = 1 + ratePct / 100
+  const X = S * Math.pow(q, m) * (q - 1) / (Math.pow(q, m) - 1)
+  return { X, payments: [...Array(k).fill(S * ratePct / 100), ...Array(m).fill(X)], total: k * S * ratePct / 100 + m * X }
+}
+
+// ── 1. Наименьший целый кредит при общей сумме > M (эталон 4.1) ────────────
+export function t16IntOnlyMinCredit() {
+  const cand = []
+  for (const p of [10, 15, 20, 25]) {
+    for (const k of [2, 3]) {
+      for (const m of [2, 3]) {
+        for (let S = 2; S <= 25; S++) {
+          const lo = interestOnlyPlan(S - 1, p, k, m).total
+          const hi = interestOnlyPlan(S, p, k, m).total
+          for (let M = Math.ceil(lo); M <= Math.floor(hi); M++) {
+            if (M - lo < 0.05 || hi - M < 0.05 || M <= S) continue
+            cand.push({ p, k, m, S, M })
+          }
+        }
+      }
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const plan = interestOnlyPlan(c.S, c.p, c.k, c.m)
+  const model = {
+    type: "credit", S: c.S, ratePct: c.p, payments: plan.payments,
+    periodUnit: "year", unit: "mln", fractional: true,
+  }
+  const pr = pick(NAME_ALL)
+  const ord = ["1-го", "2-го", "3-го", "4-го", "5-го"]
+  return item({
+    text: `${pr.n} планирует взять кредит на целое число миллионов рублей на ${years(c.k + c.m)}. ` +
+      `В середине каждого года действия кредита долг возрастает на ${pct(c.p)} по сравнению с началом года. ` +
+      `В конце ${joinRu(ord.slice(0, c.k))} годов ${pr.n} выплачивает только проценты по кредиту, оставляя ` +
+      `долг неизменно равным первоначальному. В конце ${joinRu(ord.slice(c.k, c.k + c.m))} годов ${pr.n} ` +
+      `выплачивает одинаковые суммы, погашая весь долг полностью. Найдите наименьший размер кредита, ` +
+      `при котором общая сумма выплат превысит ${c.M} млн рублей.`,
+    answer: `${c.S} млн рублей`,
+    answerNum: c.S,
+    model,
+    sim: () => simulateCredit(model),
+    mustMention: [c.p],
+    extra: [c.k + c.m, c.M, 1, 2, 3, 4, 5],
+    forbid: [],
+    checks: [
+      () => (interestOnlyPlan(c.S, c.p, c.k, c.m).total > c.M ? null : `S = ${c.S} не превышает ${c.M}`),
+      () => (interestOnlyPlan(c.S - 1, c.p, c.k, c.m).total <= c.M ? null : `S = ${c.S - 1} тоже подходит`),
+      () => (Math.abs(simulateCredit(model).total - plan.total) < 1e-6 ? null : "сумма платежей ≠ плану"),
+    ],
+  })
+}
+
+// ── 2. Ставка по общей сумме выплат в той же схеме (эталон 4.2) ────────────
+export function t16IntOnlyRate() {
+  const cand = []
+  for (const p of [5, 10, 12, 15, 20, 25]) {
+    for (const k of [2, 3]) {
+      for (const m of [2, 3]) {
+        for (let sk = 10; sk <= 100; sk++) {
+          const S = sk / 10                                   // млн, с одним знаком
+          const T = interestOnlyPlan(S, p, k, m).total
+          if (Math.abs(T * 10 - Math.round(T * 10)) > 1e-9) continue   // общая сумма — «круглая»
+          if (T <= S) continue
+          cand.push({ p, k, m, S, T: Math.round(T * 10) / 10 })
+        }
+      }
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const plan = interestOnlyPlan(c.S, c.p, c.k, c.m)
+  const model = {
+    type: "credit", S: c.S, ratePct: c.p, payments: plan.payments,
+    periodUnit: "year", unit: "mln", fractional: true,
+  }
+  const y0 = randInt(2015, 2022)
+  const yrsHold = Array.from({ length: c.k }, (_, i) => y0 + 1 + i)
+  const yrsPay = Array.from({ length: c.m }, (_, i) => y0 + 1 + c.k + i)
+  const pr = pick(NAME_ALL)
+  const totalFor = (r) => interestOnlyPlan(c.S, r, c.k, c.m).total
+  return item({
+    text: `В июле ${y0} года ${pr.n} планирует взять кредит в размере ${dec(c.S)} млн рублей. ` +
+      `Условия возврата таковы:\n` +
+      `— каждый январь долг возрастает на r % по сравнению с концом предыдущего года;\n` +
+      `— с февраля по июнь необходимо выплатить часть долга;\n` +
+      `— в июле ${joinRu(yrsHold)} годов долг остаётся равным ${dec(c.S)} млн рублей;\n` +
+      `— суммы выплат ${joinRu(yrsPay)} годов равны.\n` +
+      `Найдите r, если общая сумма выплат составит ${dec(c.T)} млн рублей.`,
+    answer: `${pct(c.p)}`,
+    answerNum: c.p,
+    model,
+    sim: () => simulateCredit(model),
+    mustMention: [c.S, c.T],
+    extra: [y0, ...yrsHold, ...yrsPay],
+    forbid: [c.p],
+    checks: [
+      () => {
+        for (let r = 0.5; r <= 40.0001; r += 0.5) {
+          if (Math.abs(r - c.p) < 1e-9) continue
+          if (Math.abs(totalFor(r) - c.T) < 0.005) return `ставка ${r} тоже даёт ${c.T}`
+        }
+        return Math.abs(totalFor(c.p) - c.T) < 1e-6 ? null : "общая сумма не сходится"
+      },
+    ],
+  })
+}
+
+// ── 3. Общая сумма выплат по известному равному платежу (эталон 4.3) ───────
+export function t16IntOnlyTotal() {
+  const cand = []
+  for (const rate of RATES.filter((r) => [4, 5, 8, 10, 20, 25].includes(r.b))) {
+    const q = rate.m / rate.b
+    for (const k of [2, 3]) {
+      for (const m of [2, 3]) {
+        // X = S·qᵐ(q−1)/(qᵐ−1) ⇒ S = X·(qᵐ−1)/(qᵐ(q−1)); подбираем X кратным 10 тыс.
+        for (let xk = 5; xk <= 200; xk++) {
+          const X = xk * 10_000
+          const S = X * (Math.pow(q, m) - 1) / (Math.pow(q, m) * (q - 1))
+          if (!Number.isInteger(S) || S % 10_000 !== 0) continue
+          if (S < 200_000 || S > 8_000_000) continue
+          const T = k * S * rate.pct / 100 + m * X
+          if (!Number.isInteger(T)) continue
+          cand.push({ rate, k, m, S, X, T })
+        }
+      }
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const plan = interestOnlyPlan(c.S, c.rate.pct, c.k, c.m)
+  const model = {
+    type: "credit", S: c.S, ratePct: c.rate.pct, payments: plan.payments, periodUnit: "year",
+  }
+  const y0 = randInt(2015, 2022)
+  const yrsHold = Array.from({ length: c.k }, (_, i) => y0 + 1 + i)
+  const yrsPay = Array.from({ length: c.m }, (_, i) => y0 + 1 + c.k + i)
+  return item({
+    text: `В июле ${y0} года планируется взять кредит в банке на ${years(c.k + c.m)} в размере S рублей. ` +
+      `Условия его возврата таковы:\n` +
+      `— каждый январь долг возрастает на ${pct(c.rate.pct)} по сравнению с концом предыдущего года;\n` +
+      `— с февраля по июнь каждого года необходимо выплатить часть долга;\n` +
+      `— в июле ${joinRu(yrsHold)} годов долг остаётся равным S рублей;\n` +
+      `— выплаты в ${joinRu(yrsPay)} годах равны по ${rub(c.X)};\n` +
+      `— к июлю ${yrsPay[yrsPay.length - 1]} года долг будет выплачен полностью.\n` +
+      `Найдите общую сумму выплат за весь срок кредитования.`,
+    answer: `${money(c.T)} рублей`,
+    answerNum: c.T,
+    model,
+    sim: () => simulateCredit(model),
+    mustMention: [c.rate.pct, c.X],
+    extra: [y0, ...yrsHold, ...yrsPay, c.k + c.m],
+    forbid: [c.T, c.S],
+    checks: [
+      () => (Math.abs(simulateCredit(model).total - c.T) < 0.005 ? null : "симуляция ≠ ответу"),
+      () => (Math.abs(plan.X - c.X) < 0.005 ? null : "равный платёж ≠ заявленному"),
+    ],
+  })
+}
+
+// ── 4. Платежи в геометрической прогрессии (эталон 4.4) ────────────────────
+// Каждый следующий платёж в g раз больше предыдущего. S·qⁿ = X(qⁿ⁻¹ + g·qⁿ⁻² + … + gⁿ⁻¹).
+// Целочисленное построение: X = t·mⁿ, S = t·b·Σ(mⁿ⁻¹⁻ⁱ·gⁱ·bⁱ).
+export function t16GeomPayments() {
+  const cand = []
+  for (const rate of RATES) {
+    const { b, m } = rate
+    for (const g of [2, 3]) {
+      for (const n of [2, 3]) {
+        let D = 0
+        for (let i = 0; i < n; i++) D += Math.pow(m, n - 1 - i) * Math.pow(g, i) * Math.pow(b, i)
+        const base = b * D                                   // S = t·base, X = t·mⁿ
+        const mn = Math.pow(m, n)
+        if (!Number.isSafeInteger(base) || base > 2_000_000) continue
+        for (let t = 1; t <= 2000; t++) {
+          const S = t * base, X = t * mn
+          if (S > 10_000_000) break
+          if (S < 100_000 || X < 1000) continue
+          cand.push({ rate, g, n, S, X, t })
+        }
+      }
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const pays = Array.from({ length: c.n }, (_, i) => c.X * Math.pow(c.g, i))
+  const model = {
+    type: "credit", S: c.S, ratePct: c.rate.pct, payments: pays,
+    periodUnit: "year", nonMonotone: true,
+  }
+  const pr = pick(NAME_ALL)
+  const word = c.g === 2 ? "вдвое" : "втрое"
+  return item({
+    text: `${pr.n} ${took(pr)} кредит в банке на сумму ${rub(c.S)}. Схема выплаты кредита такова: ` +
+      `в конце каждого года банк увеличивает на ${pct(c.rate.pct)} оставшуюся сумму долга, а затем ` +
+      `${pr.n} переводит в банк свой очередной платёж. Известно, что ${pr.n} ${p2paid(pr)} кредит ` +
+      `за ${years(c.n)}, причём каждый следующий платёж был ровно ${word} больше предыдущего. ` +
+      `Какую сумму ${pr.n} ${pr.f ? "заплатила" : "заплатил"} в первый раз?`,
+    answer: `${money(c.X)} рублей`,
+    answerNum: c.X,
+    model,
+    mustMention: [c.S, c.rate.pct, c.n],
+    extra: [],
+    forbid: [c.X],
+    checks: [
+      () => (Math.abs(simulateCredit(model).finalDebt) < 0.005 ? null : "кредит не погашен"),
+      () => {
+        for (const d of [-1, 1]) {
+          const alt = simulateCredit({ ...model, payments: pays.map((_, i) => (c.X + d) * Math.pow(c.g, i)) })
+          if (Math.abs(alt.finalDebt) < 0.005) return `первый платёж ${c.X + d} тоже гасит долг`
+        }
+        return null
+      },
+    ],
+  })
+}
+const p2paid = (p) => (p.f ? "погасила" : "погасил")
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  РАЗДЕЛ 5. УМЕНЬШЕНИЕ ДОЛГА ПО ТАБЛИЦЕ
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Долг на контрольные даты задан ТАБЛИЦЕЙ: D₀ = S, D₁, …, Dₙ = 0. В каждом периоде
+// долг растёт на r %, затем вносится платёж pₖ = Dₖ₋₁·(1+x) − Dₖ.
+// Отсюда общая сумма выплат = S + x·(D₀ + D₁ + … + Dₙ₋₁) — эту формулу и проверяет
+// verify16 против пошаговой симуляции.
+
+// Платежи по табличному графику (fr — доли от S, fr[0] = 1, последняя 0).
+function tablePayments(S, ratePct, fr) {
+  const q = 1 + ratePct / 100
+  const out = []
+  for (let k = 1; k < fr.length; k++) out.push(S * (q * fr[k - 1] - fr[k]))
+  return out
+}
+// Коэффициенты платежей при S = 1 (для сравнения «наибольшая/наименьшая выплата»).
+const tableCoefs = (ratePct, fr) => tablePayments(1, ratePct, fr)
+
+const MONTH_NAMES = ["января", "февраля", "марта", "апреля", "мая", "июня",
+  "июля", "августа", "сентября", "октября", "ноября", "декабря"]
+const MONTH_CAP = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+  "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"]
+
+// Шапка таблицы для помесячного графика: 15.01, 15.02, …
+const monthDates = (startMonth, n) =>
+  Array.from({ length: n + 1 }, (_, i) => `15.${String(((startMonth - 1 + i) % 12) + 1).padStart(2, "0")}`)
+// Шапка для годового графика: «Июль 2017», «Июль 2018», …
+const yearDates = (monthIdx, y0, n) =>
+  Array.from({ length: n + 1 }, (_, i) => `${MONTH_CAP[monthIdx]} ${y0 + i}`)
+
+// ── 1. Наибольшее целое r при общей сумме < M (эталон 5.1) ─────────────────
+export function t16TblMaxRate() {
+  const cand = []
+  for (const S of [1, 1.2, 1.5, 2, 2.5, 3]) {
+    for (let n = 4; n <= 7; n++) {
+      // убывающий график с шагом 0,1 млн, последнее значение — 0
+      for (let trial = 0; trial < 60; trial++) {
+        const vals = [S]
+        let ok = true
+        for (let k = 1; k < n; k++) {
+          const maxV = Math.round((vals[k - 1] - 0.1) * 10) / 10
+          if (maxV < 0.1) { ok = false; break }
+          vals.push(Math.round(randInt(1, Math.round(maxV * 10)) ) / 10)
+        }
+        if (!ok || vals.length !== n) continue
+        vals.push(0)
+        const sig = sum(vals.slice(0, n))
+        for (let r0 = 3; r0 <= 20; r0++) {
+          const lo = S + r0 * sig / 100, hi = S + (r0 + 1) * sig / 100
+          for (let M = Math.ceil(lo * 20) / 20; M <= hi; M = Math.round((M + 0.05) * 100) / 100) {
+            if (M - lo < 0.01 || hi - M < 0.01) continue
+            cand.push({ S, n, vals, r0, M: Math.round(M * 100) / 100 })
+          }
+        }
+      }
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const startM = randInt(1, 12)
+  const dates = monthDates(startM, c.n)
+  const tbl = tableBlock([["Дата", ...dates], ["Долг (в млн руб.)", ...c.vals.map(dec)]])
+  const model = {
+    type: "credit", S: c.S, ratePct: c.r0,
+    payments: c.vals.slice(1).map((v, i) => c.vals[i] * (1 + c.r0 / 100) - v),
+    periodUnit: "month", unit: "mln",
+  }
+  const totalFor = (r) => c.S + r * sum(c.vals.slice(0, c.n)) / 100
+  return item({
+    text: `15-го ${MONTH_NAMES[startM - 1]} планируется взять кредит в банке на ${months(c.n)} в размере ` +
+      `${dec(c.S)} млн рублей. Условия его возврата таковы:\n` +
+      `— 1-го числа каждого месяца долг увеличивается на r процентов по сравнению с концом предыдущего ` +
+      `месяца, где r — целое число;\n` +
+      `— со 2-го по 14-е число каждого месяца необходимо выплатить часть долга;\n` +
+      `— 15-го числа каждого месяца долг должен составлять некоторую сумму в соответствии со следующей ` +
+      `таблицей:\n${tbl}` +
+      `Найдите наибольшее значение r, при котором общая сумма выплат будет меньше ${dec(c.M)} млн рублей.`,
+    answer: `${pct(c.r0)}`,
+    answerNum: c.r0,
+    model,
+    mustMention: [c.S, c.M],
+    extra: [15, 1, 2, 14, c.n, ...numbersIn(tbl)],
+    forbid: [],
+    checks: [
+      () => (totalFor(c.r0) < c.M ? null : `r = ${c.r0} не проходит`),
+      () => (totalFor(c.r0 + 1) >= c.M ? null : `r = ${c.r0 + 1} тоже проходит`),
+      () => (Math.min(c.M - totalFor(c.r0), totalFor(c.r0 + 1) - c.M) > 0.009 ? null : "порог на границе"),
+      () => (Math.abs(simulateCredit(model).total - totalFor(c.r0)) < 1e-6 ? null : "симуляция ≠ формуле"),
+    ],
+  })
+}
+
+// Общий каркас для «долевых» табличных задач (S — целое число млн/тыс.).
+function fracScheduleCandidates(ratePcts, fracSets) {
+  const out = []
+  for (const p of ratePcts) {
+    for (const fr of fracSets) {
+      const co = tableCoefs(p, fr)
+      if (co.some((x) => x <= 0)) continue                      // все выплаты положительны
+      out.push({ p, fr, co, sigma: sum(fr.slice(0, fr.length - 1)) })
+    }
+  }
+  return out
+}
+const FRAC_SETS = [
+  [1, 0.75, 0.5, 0], [1, 0.7, 0.4, 0], [1, 0.8, 0.5, 0], [1, 0.6, 0.3, 0],
+  [1, 0.7, 0.4, 0.2, 0], [1, 0.75, 0.5, 0.25, 0], [1, 0.8, 0.6, 0.3, 0],
+  [1, 0.9, 0.7, 0.4, 0.2, 0], [1, 0.8, 0.6, 0.4, 0.2, 0],
+]
+const FRAC_RATES = [10, 15, 20, 25, 30]
+
+// Текст «долевой» табличной задачи (годовой график, как в эталоне 5.2/5.3/5.5/5.6).
+function fracTableText({ p, fr, y0, unitWord, unitTable, question }) {
+  const n = fr.length - 1
+  const dates = yearDates(6, y0, n)                              // «Июль 2017…»
+  const tbl = tableBlock([
+    ["Месяц и год", ...dates],
+    [`Долг (в ${unitTable})`, ...fr.map((f) => (f === 1 ? "S" : f === 0 ? "0" : `${dec(f)}S`))],
+  ])
+  return {
+    tbl,
+    text: `В июле ${y0} года планируется взять кредит в банке на ${years(n)} в размере S ${unitWord}, ` +
+      `где S — целое число. Условия его возврата таковы:\n` +
+      `— каждый январь долг увеличивается на ${pct(p)} по сравнению с концом предыдущего года;\n` +
+      `— с февраля по июнь каждого года необходимо выплатить часть долга;\n` +
+      `— в июле каждого года долг должен составлять часть кредита в соответствии со следующей таблицей:\n` +
+      `${tbl}${question}`,
+  }
+}
+
+// ── 2. Наибольшее целое S при ограничении на КАЖДУЮ выплату (эталон 5.2) ───
+export function t16TblMaxSPayment() {
+  const cand = []
+  for (const b of fracScheduleCandidates(FRAC_RATES, FRAC_SETS)) {
+    const cmax = Math.max(...b.co)
+    for (let S = 2; S <= 40; S++) {
+      const lo = cmax * S, hi = cmax * (S + 1)
+      for (let L = Math.ceil(lo); L <= Math.floor(hi); L++) {
+        if (L - lo < 0.05 || hi - L < 0.05) continue
+        cand.push({ ...b, S, L, cmax })
+      }
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const y0 = randInt(2015, 2022)
+  const q = fracTableText({
+    p: c.p, fr: c.fr, y0, unitWord: "млн рублей", unitTable: "млн руб.",
+    question: `Найдите наибольшее значение S, при котором каждая из выплат будет меньше ${c.L} млн рублей.`,
+  })
+  const model = {
+    type: "credit", S: c.S, ratePct: c.p,
+    payments: tablePayments(c.S, c.p, c.fr), periodUnit: "year", unit: "mln",
+  }
+  return item({
+    text: q.text,
+    answer: `${c.S} млн рублей`,
+    answerNum: c.S,
+    model,
+    mustMention: [c.p, c.L],
+    extra: [y0, c.fr.length - 1, ...numbersIn(q.tbl)],
+    forbid: [],
+    checks: [
+      () => (Math.max(...tablePayments(c.S, c.p, c.fr)) < c.L ? null : `S = ${c.S} не проходит`),
+      () => (Math.max(...tablePayments(c.S + 1, c.p, c.fr)) >= c.L ? null : `S = ${c.S + 1} тоже проходит`),
+      () => (Math.min(c.L - c.cmax * c.S, c.cmax * (c.S + 1) - c.L) > 0.04 ? null : "порог на границе"),
+    ],
+  })
+}
+
+// ── 3. Наименьшее целое S при общей сумме > M (эталон 5.3) ─────────────────
+export function t16TblMinSTotal() {
+  const cand = []
+  for (const b of fracScheduleCandidates(FRAC_RATES, FRAC_SETS)) {
+    const k = 1 + b.p * b.sigma / 100                          // общая сумма = k·S
+    for (let S = 2; S <= 40; S++) {
+      const lo = k * (S - 1), hi = k * S
+      for (let M = Math.ceil(lo); M <= Math.floor(hi); M++) {
+        if (M - lo < 0.05 || hi - M < 0.05) continue
+        cand.push({ ...b, S, M, k })
+      }
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const y0 = randInt(2015, 2022)
+  const q = fracTableText({
+    p: c.p, fr: c.fr, y0, unitWord: "млн рублей", unitTable: "млн руб.",
+    question: `Найдите наименьшее значение S, при котором общая сумма выплат будет больше ${c.M} млн рублей.`,
+  })
+  const model = {
+    type: "credit", S: c.S, ratePct: c.p,
+    payments: tablePayments(c.S, c.p, c.fr), periodUnit: "year", unit: "mln",
+  }
+  return item({
+    text: q.text,
+    answer: `${c.S} млн рублей`,
+    answerNum: c.S,
+    model,
+    mustMention: [c.p, c.M],
+    extra: [y0, c.fr.length - 1, ...numbersIn(q.tbl)],
+    forbid: [],
+    checks: [
+      () => (c.k * c.S > c.M ? null : `S = ${c.S} не проходит`),
+      () => (c.k * (c.S - 1) <= c.M ? null : `S = ${c.S - 1} тоже проходит`),
+      () => (Math.abs(simulateCredit(model).total - c.k * c.S) < 1e-6 ? null : "симуляция ≠ формуле"),
+    ],
+  })
+}
+
+// ── 4. Переплата в процентах по таблице долей (эталон 5.4) ─────────────────
+// Таблица в % от кредита; ответ — на сколько процентов общая сумма выплат больше кредита.
+export function t16TblOverpayPct() {
+  const cand = []
+  for (const p of [2, 3, 4, 5, 6, 8, 10]) {
+    for (const fr of FRAC_SETS.concat([[1, 0.9, 0.8, 0.7, 0.6, 0.5, 0]])) {
+      const co = tableCoefs(p, fr)
+      if (co.some((x) => x <= 0)) continue
+      const sigma = sum(fr.slice(0, fr.length - 1))
+      const over = p * sigma                                    // переплата в % от кредита
+      if (Math.abs(over * 10 - Math.round(over * 10)) > 1e-9) continue
+      if (over < 3 || over > 60) continue
+      cand.push({ p, fr, over: Math.round(over * 10) / 10 })
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const n = c.fr.length - 1
+  const startM = randInt(1, 12)
+  const dates = monthDates(startM, n)
+  const tbl = tableBlock([
+    ["Дата", ...dates],
+    ["Долг (в % от кредита)", ...c.fr.map((f) => `${Math.round(f * 100)} %`)],
+  ])
+  const S = 1_000_000
+  const model = {
+    type: "credit", S, ratePct: c.p, payments: tablePayments(S, c.p, c.fr),
+    periodUnit: "month",
+  }
+  return item({
+    text: `15-го ${MONTH_NAMES[startM - 1]} был выдан кредит на ${months(n)}. В таблице представлен ` +
+      `график его погашения.\n${tbl}` +
+      `В конце каждого месяца текущий долг увеличивался на ${pct(c.p)}, а выплаты по погашению кредита ` +
+      `происходили в первой половине следующего месяца. На сколько процентов общая сумма выплат ` +
+      `при таких условиях больше суммы самого кредита?`,
+    answer: `${pct(c.over)}`,
+    answerNum: c.over,
+    model,
+    mustMention: [c.p],
+    extra: [15, n, ...numbersIn(tbl)],
+    forbid: [],
+    checks: [
+      () => (Math.abs(simulateCredit(model).total / S - (1 + c.over / 100)) < 1e-9
+        ? null : "переплата ≠ ответу"),
+    ],
+  })
+}
+
+// ── 5. Наибольшее S при ограничении на РАЗМАХ выплат (эталон 5.5) ──────────
+export function t16TblMaxSSpread() {
+  const cand = []
+  for (const b of fracScheduleCandidates(FRAC_RATES, FRAC_SETS)) {
+    const spread = Math.max(...b.co) - Math.min(...b.co)
+    if (spread <= 0.01) continue
+    for (let S = 3; S <= 40; S++) {
+      const lo = spread * S, hi = spread * (S + 1)
+      for (let L = Math.ceil(lo); L <= Math.floor(hi); L++) {
+        if (L - lo < 0.05 || hi - L < 0.05 || L < 1) continue
+        cand.push({ ...b, S, L, spread })
+      }
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const y0 = randInt(2015, 2022)
+  const q = fracTableText({
+    p: c.p, fr: c.fr, y0, unitWord: "млн рублей", unitTable: "млн рублей",
+    question: `Найдите наибольшее значение S, при котором разница между наибольшей и наименьшей ` +
+      `выплатами будет меньше ${c.L} млн рублей.`,
+  })
+  const model = {
+    type: "credit", S: c.S, ratePct: c.p,
+    payments: tablePayments(c.S, c.p, c.fr), periodUnit: "year", unit: "mln",
+  }
+  const spreadOf = (S) => {
+    const ps = tablePayments(S, c.p, c.fr)
+    return Math.max(...ps) - Math.min(...ps)
+  }
+  return item({
+    text: q.text,
+    answer: `${c.S} млн рублей`,
+    answerNum: c.S,
+    model,
+    mustMention: [c.p, c.L],
+    extra: [y0, c.fr.length - 1, ...numbersIn(q.tbl)],
+    forbid: [],
+    checks: [
+      () => (spreadOf(c.S) < c.L ? null : `S = ${c.S} не проходит`),
+      () => (spreadOf(c.S + 1) >= c.L ? null : `S = ${c.S + 1} тоже проходит`),
+      () => (Math.min(c.L - spreadOf(c.S), spreadOf(c.S + 1) - c.L) > 0.04 ? null : "порог на границе"),
+    ],
+  })
+}
+
+// ── 6. Наименьшее S, при котором ВСЕ выплаты — целые тысячи (эталон 5.6) ───
+// pₖ = (Q·Fₖ₋₁ − 100·Fₖ)/100000 · S, где F — доли ×1000, Q = 100 + p.
+// Целое ⟺ S кратно 100000/НОД(числитель, 100000); ответ — НОК по всем k.
+export function t16TblMinSInteger() {
+  const cand = []
+  for (const p of [10, 15, 20, 25, 12, 30]) {
+    for (const fr of FRAC_SETS) {
+      const co = tableCoefs(p, fr)
+      if (co.some((x) => x <= 0)) continue
+      const Q = 100 + p
+      const F = fr.map((f) => Math.round(f * 1000))
+      let need = 1, ok = true
+      for (let k = 1; k < F.length; k++) {
+        const num = Q * F[k - 1] - 100 * F[k]
+        if (num <= 0) { ok = false; break }
+        need = lcm(need, 100000 / gcd(num, 100000))
+      }
+      if (!ok || need < 5 || need > 5000) continue
+      cand.push({ p, fr, S: need })
+    }
+  }
+  if (!cand.length) return null
+  const c = pick(cand)
+  const y0 = randInt(2015, 2022)
+  const q = fracTableText({
+    p: c.p, fr: c.fr, y0, unitWord: "тыс. рублей", unitTable: "тыс. руб.",
+    question: `Найдите наименьшее значение S, при котором каждая из выплат будет составлять целое ` +
+      `число тысяч рублей.`,
+  })
+  const model = {
+    type: "credit", S: c.S, ratePct: c.p,
+    payments: tablePayments(c.S, c.p, c.fr), periodUnit: "year", unit: "ths",
+  }
+  const allInt = (S) => tablePayments(S, c.p, c.fr).every((x) => Math.abs(x - Math.round(x)) < 1e-6)
+  return item({
+    text: q.text,
+    answer: `${money(c.S)} тыс. рублей`,
+    answerNum: c.S,
+    model,
+    mustMention: [c.p],
+    extra: [y0, c.fr.length - 1, ...numbersIn(q.tbl)],
+    forbid: [],
+    checks: [
+      () => (allInt(c.S) ? null : `S = ${c.S} не даёт целых выплат`),
+      // перебор ВСЕХ меньших натуральных S — минимальность доказана, а не заявлена
+      () => {
+        for (let S = 1; S < c.S; S++) if (allInt(S)) return `S = ${S} тоже подходит и меньше`
+        return null
+      },
+    ],
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 //  РЕЕСТР
 // ═══════════════════════════════════════════════════════════════════════════
 export const GEN16 = [
@@ -1039,6 +1657,9 @@ export const GEN16 = [
   t16DepMaxInitial, t16DepMinTopUp, t16DepTwoParams, t16DepTwoAccounts,
   t16DepCompareLastYear, t16DepCompareTwoYears,
   t16CompoundSum, t16CompoundTerm, t16CompoundRate, t16DepWithdraw,
+  t16IntOnlyMinCredit, t16IntOnlyRate, t16IntOnlyTotal, t16GeomPayments,
+  t16TblMaxRate, t16TblMaxSPayment, t16TblMinSTotal, t16TblOverpayPct,
+  t16TblMaxSSpread, t16TblMinSInteger,
 ]
 
 export const META16 = [
@@ -1063,5 +1684,19 @@ export const META16 = [
     ["dep-term", "Сложный процент: найти срок", t16CompoundTerm],
     ["dep-rate", "Сложный процент: найти ставку", t16CompoundRate],
     ["dep-withdraw", "Вклад с ежегодным снятием: наибольшее снятие", t16DepWithdraw],
+  ]],
+  ["Другие схемы выплат", [
+    ["io-min-credit", "Только проценты + равные платежи: наименьший кредит", t16IntOnlyMinCredit],
+    ["io-rate", "Только проценты + равные платежи: найти ставку", t16IntOnlyRate],
+    ["io-total", "Только проценты + равные платежи: общая сумма", t16IntOnlyTotal],
+    ["geom-pay", "Платежи в геометрической прогрессии: первый платёж", t16GeomPayments],
+  ]],
+  ["Уменьшение долга по таблице", [
+    ["tbl-max-rate", "Наибольшее целое r при общей сумме < M", t16TblMaxRate],
+    ["tbl-max-s-pay", "Наибольшее S при ограничении на каждую выплату", t16TblMaxSPayment],
+    ["tbl-min-s-total", "Наименьшее S при общей сумме > M", t16TblMinSTotal],
+    ["tbl-overpay", "Переплата в процентах по таблице долей", t16TblOverpayPct],
+    ["tbl-max-s-spread", "Наибольшее S при ограничении на размах выплат", t16TblMaxSSpread],
+    ["tbl-min-s-int", "Наименьшее S, при котором все выплаты целые", t16TblMinSInteger],
   ]],
 ]
