@@ -32,6 +32,8 @@ const fT = (n, d) => `⟦f:${n}:${d}⟧`
 const nS = (n) => String(n).replace("-", MINUS)
 // Слагаемое «± kx» в цепочке (k может быть отрицательным или нулём).
 const term = (k, v) => (k === 0 ? "" : ` ${k > 0 ? "+" : MINUS} ${Math.abs(k) === 1 ? "" : Math.abs(k)}${v}`)
+const EPS = 1e-9
+const sqrtSafe = (v) => Math.sqrt(Math.max(0, v))     // подкоренное, равное нулю с точностью до float
 const svgUrl = (svg) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
 
 // ── рациональные числа на BigInt ─────────────────────────────────────────────
@@ -414,14 +416,14 @@ function spanRange(set, pad = 6) {
 }
 
 // ── сборка объекта задания ───────────────────────────────────────────────────
-function item({ text, set, solution, pieces, solve, predicate, aRange, picture }) {
+function item({ text, set, solution, pieces, solve, raw, predicate, aRange, picture }) {
   return {
     condition_text: text,
     answer: setToString(set),
     answer_set: setPlain(set),
     solution,
     solution_image: svgUrl(planeSvg(picture)),
-    _verify: { set, pieces, solve, predicate, aRange },
+    _verify: { set, pieces, solve, raw, predicate, aRange },
   }
 }
 
@@ -511,7 +513,40 @@ export function verify18(o, opts = {}) {
       }
     }
 
-    // 6. строка ответа собрана из того же множества
+    // 6. НЕЗАВИСИМАЯ ЧИСЛОВАЯ СВЕРКА С ИСХОДНЫМ ВЫРАЖЕНИЕМ (для разделов, где точный решатель
+    // опирается на алгебраическое преобразование условия — разложение, возведение в квадрат).
+    // Проверяем две вещи: каждый заявленный корень действительно обнуляет НАПЕЧАТАННОЕ
+    // выражение, и ни одна смена знака на отрезке не осталась без корня.
+    const raw = o._verify.raw
+    if (raw) {
+      const [sL, sR] = raw.seg
+      for (let k = 0; k < 24; k++) {
+        const a = R(Math.round((aLo + ((aHi - aLo) * k) / 23) * 12), 12)
+        const F = raw.F(Rnum(a)), sols = raw.sols(Rnum(a))
+        if (sols.length !== count(a)) return { ok: false, err: `a=${Rstr(a)}: точный решатель даёт ${count(a)} корней, числовой список — ${sols.length}` }
+        for (const x of sols) {
+          const v = F(x)
+          if (v === null || !Number.isFinite(v) || Math.abs(v) > 1e-7) {
+            return { ok: false, err: `a=${Rstr(a)}: x=${x} объявлен корнем, но исходное выражение даёт ${v}` }
+          }
+        }
+        const N = 2000
+        let prev = null, prevX = null
+        for (let i = 0; i <= N; i++) {
+          const x = sL + ((sR - sL) * i) / N
+          const v = F(x)
+          if (v === null || !Number.isFinite(v)) { prev = null; continue }
+          if (prev !== null && Math.sign(v) !== Math.sign(prev) && v !== 0 && prev !== 0) {
+            if (!sols.some((r) => r >= Math.min(prevX, x) - 1e-9 && r <= Math.max(prevX, x) + 1e-9)) {
+              return { ok: false, err: `a=${Rstr(a)}: смена знака на (${prevX.toFixed(4)}; ${x.toFixed(4)}) не покрыта ни одним корнем` }
+            }
+          }
+          prev = v; prevX = x
+        }
+      }
+    }
+
+    // 7. строка ответа собрана из того же множества
     if (setToString(set) !== o.answer) return { ok: false, err: "строка ответа не совпала со структурой" }
     return { ok: true }
   } catch (e) {
@@ -1152,8 +1187,10 @@ function build12({ m, b, c, L, R: Rr }) {
   const set = assembleSet((a) => solve(a) === 1, crit)
   return { set, solve, N }
 }
-const T12 = [[5, 8, 3, 2, 6], [5, 8, 3, 1, 5], [4, 6, 2, 1, 4], [6, 9, 4, 3, 8], [5, 7, 4, 2, 7], [3, 5, 2, 1, 3]]
-  .map(([m, b, c, L, R]) => ({ m, b, c, L, R }))
+// Наборы (m, b, c, L, R) отобраны разовым перебором: все критические значения рациональны
+// (у оригинала ФИПИ, например, они содержат √24 — такие наборы генератор не берёт).
+const T12 = [[3, 6, 6, 0, 6], [4, 8, 8, 4, 8], [5, 4, 4, 0, 5], [5, 4, 4, 2, 5], [5, 4, 6, 0, 5],
+  [5, 4, 6, 2, 5], [5, 6, 4, 0, 5], [5, 6, 4, 2, 5], [5, 6, 6, 0, 5]].map(([m, b, c, L, R]) => ({ m, b, c, L, R }))
 export function t18SegSqrtOdz() {
   const par = pick(T12), { m, b, c, L, R: Rr } = par
   const { set, solve } = build12(par)
@@ -1168,6 +1205,17 @@ export function t18SegSqrtOdz() {
       + `Нужно, чтобы РОВНО ОДИН из корней попал в пересечение ОДЗ с отрезком [${nS(L)}; ${Rr}]. Конфигурация меняется только когда корень `
       + `совпадает с концом отрезка, с границей ОДЗ, когда корни сливаются (a = ±${m}) или когда ОДЗ вырождается.\n`
       + `Ответ: ${setToString(set)}.`,
+    // числовая сверка идёт по НАПЕЧАТАННОМУ выражению, а не по разложению
+    raw: {
+      seg: [L, Rr],
+      F: (a) => (x) => { const d = (a - x + b) * (a + x - c); return d > 0 ? (x * x - 2 * m * x + a * a) / Math.sqrt(d) : null },
+      sols: (a) => {
+        if (Math.abs(a) > m) return []
+        const d = Math.sqrt(m * m - a * a)
+        return [m - d, m + d].filter((x, i, arr) => (i === 0 || Math.abs(x - arr[0]) > 1e-12))
+          .filter((x) => x >= L - 1e-12 && x <= Rr + 1e-12 && (a - x + b) * (a + x - c) > 1e-12)
+      },
+    },
     predicate: { type: "count", n: 1 },
     solve: (a) => solve(a),
     aRange: spanRange(set),
@@ -1207,8 +1255,9 @@ function build20({ p, q, m, L, R: Rr }) {
   const set = assembleSet((a) => solve(a) === 1, crit)
   return { set, solve }
 }
-const T20 = [[7, 2, 5, 4, 8], [5, 3, 5, 2, 7], [6, 2, 6, 3, 9], [4, 4, 4, 1, 6], [8, 3, 6, 4, 10]]
-  .map(([p, q, m, L, R]) => ({ p, q, m, L, R }))
+// Наборы (p, q, m, L, R) — тем же отбором.
+const T20 = [[4, 4, 5, 0, 3], [4, 4, 5, 0, 5], [4, 4, 5, 0, 6], [4, 4, 5, 2, 5], [4, 4, 5, 2, 7],
+  [4, 4, 5, 2, 8], [4, 4, 5, 3, 7], [4, 4, 5, 3, 8], [4, 6, 5, 0, 3], [4, 6, 5, 0, 4]].map(([p, q, m, L, R]) => ({ p, q, m, L, R }))
 export function t18SegTwoLinRoots() {
   const par = pick(T20), { p, q, m, L, R: Rr } = par
   const { set, solve } = build20(par)
@@ -1221,6 +1270,12 @@ export function t18SegTwoLinRoots() {
       + `ОДЗ: ${2 * m}x ${MINUS} x${SUP[2]} ${MINUS} a${SUP[2]} > 0, то есть точка обязана лежать строго внутри окружности-условия; подстановка каждого корня даёт квадратное неравенство на a.\n`
       + `Требуется, чтобы ровно один из корней одновременно лежал на отрезке [${nS(L)}; ${Rr}] и удовлетворял ОДЗ.\n`
       + `Ответ: ${setToString(set)}.`,
+    raw: {
+      seg: [L, Rr],
+      F: (a) => (x) => { const d = 2 * m * x - x * x - a * a; return d > 0 ? ((x - a - p) * (x + a - q)) / Math.sqrt(d) : null },
+      sols: (a) => [a + p, q - a].filter((x, i, arr) => i === 0 || Math.abs(x - arr[0]) > 1e-12)
+        .filter((x) => x >= L - 1e-12 && x <= Rr + 1e-12 && 2 * m * x - x * x - a * a > 1e-12),
+    },
     predicate: { type: "count", n: 1 },
     solve: (a) => solve(a),
     aRange: spanRange(set),
@@ -1265,8 +1320,9 @@ function build28({ k, m, t, L, R: Rr }) {
   const set = assembleSet((a) => solve(a) === 1, crit)
   return { set, solve }
 }
-const T28 = [[4, 3, 3, 0, 3], [2, 3, 3, 0, 4], [4, 4, 4, 0, 5], [2, 4, 4, 0, 6], [4, 5, 4, 0, 6]]
-  .map(([k, m, t, L, R]) => ({ k, m, t, L, R }))
+// Наборы (k, m, t, L, R) — тем же отбором; набор [4, 3, 3, 0, 3] совпадает с оригиналом ФИПИ.
+const T28 = [[4, 3, 3, 0, 3], [2, 2, 2, 0, 3], [2, 2, 2, 0, 4], [2, 2, 2, 0, 5], [2, 2, 2, 0, 6],
+  [2, 2, 2, 1, 4], [2, 2, 2, 1, 5], [2, 3, 3, 0, 3], [2, 3, 3, 0, 5]].map(([k, m, t, L, R]) => ({ k, m, t, L, R }))
 export function t18SegLnTimesSqrt() {
   const par = pick(T28), { k, m, t, L, R: Rr } = par
   const { set, solve } = build28(par)
@@ -1279,6 +1335,23 @@ export function t18SegLnTimesSqrt() {
       + `√(x${SUP[2]} ${MINUS} ${2 * m}x + ${2 * t}a ${MINUS} a${SUP[2]}) = 0 ⟺ x${SUP[2]} ${MINUS} ${2 * m}x + ${2 * t}a ${MINUS} a${SUP[2]} = 0, и нужен ${k}x ${MINUS} 1 > 0, то есть x > ${Rstr(R(1, k))}.\n`
       + `Считаем, при каких a на отрезке [${nS(L)}; ${Rr}] остаётся ровно один такой x.\n`
       + `Ответ: ${setToString(set)}.`,
+    raw: {
+      seg: [L, Rr],
+      F: (a) => (x) => {
+        const q = x * x - 2 * m * x + 2 * t * a - a * a
+        return k * x - 1 > 0 && q >= -EPS ? Math.log(k * x - 1) * sqrtSafe(q) : null
+      },
+      sols: (a) => {
+        const out = [], D = m * m - (2 * t * a - a * a)
+        if (D >= 0) for (const x of [m - Math.sqrt(D), m + Math.sqrt(D)]) {
+          if (k * x - 1 > 1e-12 && x >= L - 1e-12 && x <= Rr + 1e-12 && !out.some((y) => Math.abs(y - x) < 1e-9)) out.push(x)
+        }
+        const x0 = 2 / k
+        if (x0 >= L - 1e-12 && x0 <= Rr + 1e-12 && x0 * x0 - 2 * m * x0 + 2 * t * a - a * a > 1e-12
+          && !out.some((y) => Math.abs(y - x0) < 1e-9)) out.push(x0)
+        return out
+      },
+    },
     predicate: { type: "count", n: 1 },
     solve: (a) => solve(a),
     aRange: spanRange(set),
@@ -1292,6 +1365,182 @@ export function t18SegLnTimesSqrt() {
       ],
       marks: [], hlines: setBounds(set).map(Rnum),
       xMin: -2, xMax: Rr + 6, aMin: Rnum(setBounds(set)[0]) - 3,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #21. √(x² − a²) = √(3x² − ((p+2)a + q)x + (p−1)a² + qa) — равенство двух корней.
+// Разность подкоренных тождественно равна ${MINUS}2(x − a)(x − (pa+q)/2), поэтому кандидаты —
+// x = a и x = (pa+q)/2; годится тот, у которого x² ≥ a² (тогда оба подкоренных неотрицательны).
+function build21({ p, q, L, R: Rr }) {
+  const x2 = (a) => Rdiv(Radd(Rmul(R(p), a), R(q)), R(2))
+  const okVal = (a, x) => Rcmp(Rmul(x, x), Rmul(a, a)) >= 0
+  const inSeg = (x) => Rcmp(x, R(L)) >= 0 && Rcmp(x, R(Rr)) <= 0
+  const solve = (a) => {
+    const cand = [a, x2(a)], good = []
+    for (const x of cand) if (inSeg(x) && okVal(a, x) && !good.some((y) => Rcmp(y, x) === 0)) good.push(x)
+    return good.length
+  }
+  const crit = [R(L), R(Rr)]
+  if (p !== 0) { crit.push(R(2 * L - q, p), R(2 * Rr - q, p)) }
+  if (p !== 2) crit.push(R(q, 2 - p))
+  if (p !== 2) crit.push(R(-q, p - 2))
+  if (p !== -2) crit.push(R(-q, p + 2))
+  const set = assembleSet((a) => solve(a) === 1, crit)
+  return { set, solve }
+}
+const T21 = [[1, 1, 0, 1], [1, 2, 0, 2], [1, 1, 0, 2], [3, 1, 0, 1], [1, 3, 0, 3], [3, 2, 0, 2], [1, 4, 0, 4], [3, 4, 0, 2]]
+  .map(([p, q, L, R]) => ({ p, q, L, R }))
+export function t18SegTwoSqrtEq() {
+  const par = pick(T21), { p, q, L, R: Rr } = par
+  const { set, solve } = build21(par)
+  const c1 = `(${p + 2 === 1 ? "" : p + 2}a + ${q})`
+  const c0 = p === 1 ? `${q === 1 ? "" : q}a` : `${p - 1 === 1 ? "" : p - 1}a${SUP[2]} + ${q === 1 ? "" : q}a`
+  return item({
+    text: `${HEAD_A}\n\n⟦r:x${SUP[2]} ${MINUS} a${SUP[2]}⟧ = ⟦r:3x${SUP[2]} ${MINUS} ${c1}x + ${c0}⟧\n\n${ONE_ROOT_SEG(L, Rr)}`,
+    set,
+    solution: `Оба корня определены и равны ⟺ подкоренные равны и неотрицательны.\n`
+      + `Разность подкоренных: (x${SUP[2]} ${MINUS} a${SUP[2]}) ${MINUS} (3x${SUP[2]} ${MINUS} ${c1}x + ${c0}) = ${MINUS}2(x ${MINUS} a)(x ${MINUS} ${Rstr(R(p, 2))}a ${MINUS} ${Rstr(R(q, 2))}), `
+      + `значит кандидаты — x = a и x = ${Rstr(R(p, 2))}a + ${Rstr(R(q, 2))}.\n`
+      + `Кандидат годится, когда x${SUP[2]} ${MINUS} a${SUP[2]} ≥ 0 (для x = a это верно всегда) и когда он попал на отрезок [${nS(L)}; ${Rr}].\n`
+      + `Ответ: ${setToString(set)}.`,
+    raw: {
+      seg: [L, Rr],
+      F: (a) => (x) => {
+        const A = x * x - a * a, B = 3 * x * x - ((p + 2) * a + q) * x + (p - 1) * a * a + q * a
+        return A >= -EPS && B >= -EPS ? sqrtSafe(A) - sqrtSafe(B) : null
+      },
+      sols: (a) => [a, (p * a + q) / 2].filter((x, i, arr) => i === 0 || Math.abs(x - arr[0]) > 1e-12)
+        .filter((x) => x >= L - 1e-12 && x <= Rr + 1e-12 && x * x - a * a >= -1e-12),
+    },
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => a, label: "x = a" },
+        { f: (a) => (p * a + q) / 2, label: `x = (${p === 1 ? "" : p}a + ${q})/2` },
+        { f: () => L, dash: true, label: "отрезок" },
+        { f: () => Rr, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: L - 4, xMax: Rr + 4, aMin: Rnum(setBounds(set)[0]) - 3,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #22. x² + (x − p)·√(kx − a) = px ⟺ (x − p)(x + √(kx − a)) = 0.
+// Значит либо x = p (нужно kp − a ≥ 0), либо √(kx − a) = −x, что требует x ≤ 0 и x² = kx − a.
+function build22({ k, p, L, R: Rr }) {
+  const solve = (a) => {
+    let n = 0
+    if (Rcmp(R(k * p), a) >= 0 && Rcmp(R(p), R(L)) >= 0 && Rcmp(R(p), R(Rr)) <= 0) n++
+    // корни x² − kx + a = 0 при x ≤ 0, попавшие на отрезок (x = p сюда не попадает, p > 0)
+    const I = ivCut({ lo: "-inf", hi: R0, incLo: false, incHi: true }, { lo: R(L), hi: R(Rr), incLo: true, incHi: true })
+    if (!ivEmpty(I)) n += countRoots([a, R(-k), R1], I.lo, I.hi, I.incLo, I.incHi)
+    return n
+  }
+  const crit = [R(k * p), R0, R(k * L - L * L), R(k * k, 4)]
+  const set = assembleSet((a) => solve(a) === 1, crit)
+  return { set, solve }
+}
+const T22 = [[3, 1, 0, 1], [4, 1, 0, 1], [3, 1, -1, 1], [4, 2, 0, 2], [5, 1, -1, 1], [2, 1, 0, 1], [6, 2, -1, 2], [4, 1, -2, 1]]
+  .map(([k, p, L, R]) => ({ k, p, L, R }))
+export function t18SegRootTimesLin() {
+  const par = pick(T22), { k, p, L, R: Rr } = par
+  const { set, solve } = build22(par)
+  return item({
+    text: `${HEAD_A}\n\nx${SUP[2]} + (x ${MINUS} ${p})·⟦r:${k}x ${MINUS} a⟧ = ${p === 1 ? "" : p}x\n\n${ONE_ROOT_SEG(L, Rr)}`,
+    set,
+    solution: `Перенесём ${p === 1 ? "" : p}x влево: x${SUP[2]} ${MINUS} ${p === 1 ? "" : p}x + (x ${MINUS} ${p})√(${k}x ${MINUS} a) = 0 ⟺ (x ${MINUS} ${p})(x + √(${k}x ${MINUS} a)) = 0.\n`
+      + `Первый множитель даёт x = ${p} — годится, если подкоренное неотрицательно: ${k * p} ${MINUS} a ≥ 0, то есть a ≤ ${k * p}.\n`
+      + `Второй даёт √(${k}x ${MINUS} a) = ${MINUS}x, что возможно лишь при x ≤ 0 и x${SUP[2]} = ${k}x ${MINUS} a, то есть x${SUP[2]} ${MINUS} ${k}x + a = 0.\n`
+      + `Считаем, сколько таких x лежит на отрезке [${nS(L)}; ${Rr}].\nОтвет: ${setToString(set)}.`,
+    raw: {
+      seg: [L, Rr],
+      F: (a) => (x) => (k * x - a >= -EPS ? x * x + (x - p) * sqrtSafe(k * x - a) - p * x : null),
+      sols: (a) => {
+        const out = []
+        if (k * p - a >= -1e-12 && p >= L - 1e-12 && p <= Rr + 1e-12) out.push(p)
+        const D = k * k - 4 * a
+        if (D >= 0) for (const x of [(k - Math.sqrt(D)) / 2, (k + Math.sqrt(D)) / 2]) {
+          if (x <= 1e-12 && x >= L - 1e-12 && x <= Rr + 1e-12 && !out.some((y) => Math.abs(y - x) < 1e-9)) out.push(x)
+        }
+        return out
+      },
+    },
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: () => p, label: `x = ${p}` },
+        { f: (a) => { const d = k * k - 4 * a; return d >= 0 ? (k - Math.sqrt(d)) / 2 : null }, label: "корень x ≤ 0" },
+        { f: () => L, dash: true, label: "отрезок" },
+        { f: () => Rr, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: L - 4, xMax: Rr + 4, aMin: Rnum(setBounds(set)[0]) - 3,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #24. x·√(x − a) = √((u+v)x² − (uv + (u+v)a)x + uv·a).
+// Подкоренное справа = (x − a)((u+v)x − uv), возведение в квадрат даёт (x − a)(x − u)(x − v) = 0;
+// условия: x ≥ 0 (левая часть неотрицательна) и x ≥ a (ОДЗ). Кандидаты: a, u, v.
+function build24({ u, v, L, R: Rr }) {
+  const inSeg = (x) => Rcmp(x, R(L)) >= 0 && Rcmp(x, R(Rr)) <= 0
+  const solve = (a) => {
+    const cand = [a, R(u), R(v)], good = []
+    for (const x of cand) {
+      if (Rsign(x) < 0 || Rcmp(x, a) < 0 || !inSeg(x)) continue
+      if (!good.some((y) => Rcmp(y, x) === 0)) good.push(x)
+    }
+    return good.length
+  }
+  const crit = [R0, R(L), R(Rr), R(u), R(v)]
+  const set = assembleSet((a) => solve(a) === 1, crit)
+  return { set, solve }
+}
+const T24 = [[1, 4, 0, 1], [1, 3, 0, 2], [2, 5, 0, 3], [1, 5, 0, 1], [2, 3, 0, 2], [1, 6, 0, 4], [3, 4, 0, 3], [2, 6, 0, 5]]
+  .map(([u, v, L, R]) => ({ u, v, L, R }))
+export function t18SegXTimesSqrt() {
+  const par = pick(T24), { u, v, L, R: Rr } = par
+  const { set, solve } = build24(par)
+  const S = u + v, P = u * v
+  const rad = `${S}x${SUP[2]} ${MINUS} (${P} + ${S}a)x + ${P}a`
+  return item({
+    text: `${HEAD_A}\n\nx⟦r:x ${MINUS} a⟧ = ⟦r:${rad}⟧\n\n${ONE_ROOT_SEG(L, Rr)}`,
+    set,
+    solution: `Правое подкоренное раскладывается: ${rad} = (x ${MINUS} a)(${S}x ${MINUS} ${P}).\n`
+      + `Левая часть неотрицательна, поэтому нужно x ≥ 0; ОДЗ даёт x ≥ a. Возводя в квадрат, получаем `
+      + `x${SUP[2]}(x ${MINUS} a) = (x ${MINUS} a)(${S}x ${MINUS} ${P}) ⟺ (x ${MINUS} a)(x ${MINUS} ${u})(x ${MINUS} ${v}) = 0.\n`
+      + `Кандидаты x = a, x = ${u}, x = ${v}; каждый годится при x ≥ 0 и x ≥ a. Считаем попавшие на отрезок [${nS(L)}; ${Rr}].\n`
+      + `Ответ: ${setToString(set)}.`,
+    raw: {
+      seg: [L, Rr],
+      F: (a) => (x) => {
+        const rad = (u + v) * x * x - (u * v + (u + v) * a) * x + u * v * a
+        return x - a >= -EPS && rad >= -EPS ? x * sqrtSafe(x - a) - sqrtSafe(rad) : null
+      },
+      sols: (a) => [a, u, v].filter((x) => x >= -1e-12 && x >= a - 1e-12 && x >= L - 1e-12 && x <= Rr + 1e-12)
+        .filter((x, i, arr) => arr.findIndex((y) => Math.abs(y - x) < 1e-9) === i),
+    },
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => a, label: "x = a" },
+        { f: () => u, label: `x = ${u}` },
+        { f: () => v, label: `x = ${v}` },
+        { f: () => Rr, dash: true, label: "отрезок" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: L - 3, xMax: Math.max(v, Rr) + 3, aMin: Rnum(setBounds(set)[0]) - 3,
       aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
     },
   })
@@ -1316,8 +1565,10 @@ export const META18 = [
     ["seg-sqrt-odz", "(x²−2mx+a²)/√((a+b−x)(a−c+x)) = 0 на отрезке", t18SegSqrtOdz],
     ["seg-two-lin", "((x−a−p)(x+a−q))/√(2mx−x²−a²) = 0 на отрезке", t18SegTwoLinRoots],
     ["seg-ln-sqrt", "ln(kx−1)·√(x²−2mx+2ta−a²) = 0 на отрезке", t18SegLnTimesSqrt],
+    ["seg-two-sqrt", "√(x²−a²) = √(3x²−…) — равенство двух корней", t18SegTwoSqrtEq],
+    ["seg-root-lin", "x²+(x−p)√(kx−a) = px — множитель при корне", t18SegRootTimesLin],
+    ["seg-x-sqrt", "x√(x−a) = √((x−a)((u+v)x−uv)) — корень слева умножен на x", t18SegXTimesSqrt],
   ]],
 ]
 
-export const _B = { build12, build20, build28, niceSet }
 export const GEN18 = META18.flatMap((g) => g[1].map((t) => t[2]))
