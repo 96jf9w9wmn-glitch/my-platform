@@ -756,6 +756,7 @@ export const META19 = [
     ["test-bonus-min", "Тест с добавкой баллов: наим. число участников", t19TestBonusMin],
     ["stones-trucks", "Каменные глыбы: наим. число грузовиков", t19StonesTrucks],
     ["bonus-notes", "Премии купюрами: наиб. число сотрудников", t19BonusNotes],
+    ["game-stars", "Звёзды и заряд: число уровней и наиб. очки", t19GameStars],
   ]],
   ["Вася и Петя решают сборник", [
     ["vasya-petya-days", "Оба решили сборник: за сколько дней и наим. число задач", t19VasyaPetyaDays],
@@ -6998,6 +6999,111 @@ export function t19BonusNotes() {
       extra: [],
       maxNumber: 999999,                                    // сумма премий — шестизначная
       phrases: ["без сдачи и размена", "кратное"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 17 (продолжение). Звёзды за уровни и заряд аккумулятора (#41)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// За уровень дают 3, 2 или 1 звезду, заряд падает на c3, c2, c1 пунктов соответственно
+// (все три числа кратны d). Если уровней с тремя звёздами x, с двумя y, с одной z, то
+//   c3·x + c2·y + c1·z = C   и   3x + 2y + z = S.
+// Первое равенство показывает, что C обязано делиться на d (пункт «нет»).
+// При эталонных c = (9, 12, 15) вычитание даёт y + 2z = (C/3 − S)/2, а число уровней
+//   n = x + y + z = (S + C/3)/6
+// оказывается ОДНИМ И ТЕМ ЖЕ для всех решений. Очки же линейны по z, поэтому максимум
+// достигается на крайнем допустимом значении z.
+export function t19GameStars() {
+  const c3 = 9, c2 = 12, c1 = 15, d = 3
+  const P = [7000, 6000, 3000]                             // очки за 3, 2 и 1 звезду
+  const Ca = pick([50, 55, 65, 70, 80])                    // не кратно d — пункт а)
+  if (Ca % d === 0) return null
+  // б)/в): подбираем (C, S), при которых решений несколько
+  const sols = (C, S) => {
+    const res = []
+    for (let x = 0; c3 * x <= C; x++) {
+      for (let y = 0; c3 * x + c2 * y <= C; y++) {
+        const restC = C - c3 * x - c2 * y
+        if (restC % c1) continue
+        const z = restC / c1
+        if (3 * x + 2 * y + z === S) res.push({ x, y, z })
+      }
+    }
+    return res
+  }
+  const CANDS = []
+  for (const C of [75, 84, 90, 96, 105, 111]) {
+    for (let S = 5; S <= 30; S++) {
+      const r = sols(C, S)
+      if (r.length >= 2 && uniq(r.map((t) => t.x + t.y + t.z)).length === 1) CANDS.push({ C, S, r })
+    }
+  }
+  if (!CANDS.length) return null
+  const { C, S, r } = pick(CANDS)
+  const levels = r[0].x + r[0].y + r[0].z
+  const score = (t) => P[0] * t.x + P[1] * t.y + P[2] * t.z
+  const bestSol = r.reduce((a, b) => (score(b) > score(a) ? b : a))
+  const bestScore = score(bestSol)
+
+  const params = { c3, c2, c1, d, Ca, C, S, P }
+  const check = (cfg, part) => {
+    if (!cfg || !Number.isInteger(cfg.x) || !Number.isInteger(cfg.y) || !Number.isInteger(cfg.z)) return "нет набора уровней"
+    if (cfg.x < 0 || cfg.y < 0 || cfg.z < 0) return "количества уровней неотрицательны"
+    if (cfg.x + cfg.y + cfg.z < 1) return "должен быть пройден хотя бы один уровень"
+    const spent = c3 * cfg.x + c2 * cfg.y + c1 * cfg.z
+    const stars = 3 * cfg.x + 2 * cfg.y + cfg.z
+    if (part === "a") return spent === Ca ? null : `заряд уменьшился на ${spent}, а нужно на ${Ca}`
+    if (spent !== C) return `заряд уменьшился на ${spent}, а нужно на ${C}`
+    if (stars !== S) return `звёзд получено ${stars}, а нужно ${S}`
+    if (part === "b" && cfg.x + cfg.y + cfg.z !== levels) return `уровней ${cfg.x + cfg.y + cfg.z}, а заявлено ${levels}`
+    if (part === "c" && score(cfg) !== bestScore) return `очков ${score(cfg)}, а заявлено ${bestScore}`
+    return null
+  }
+  // Независимый перебор всех троек (x, y, z): пространство ограничено расходом заряда.
+  const solve = (Pm) => {
+    const all = sols(Pm.C, Pm.S)
+    const lv = uniq(all.map((t) => t.x + t.y + t.z))
+    let aYes = false
+    for (let x = 0; c3 * x <= Pm.Ca; x++) {
+      for (let y = 0; c3 * x + c2 * y <= Pm.Ca; y++) {
+        const rest = Pm.Ca - c3 * x - c2 * y
+        if (rest % c1 === 0 && x + y + rest / c1 >= 1) aYes = true
+      }
+    }
+    return {
+      a: aYes,
+      b: lv.length === 1 ? lv[0] : -1,
+      c: Math.max(...all.map((t) => Pm.P[0] * t.x + Pm.P[1] * t.y + Pm.P[2] * t.z)),
+      c_next: false,
+    }
+  }
+
+  const descr = (t) => [
+    t.x ? `${t.x} ${plural(t.x, "уровень", "уровня", "уровней")} на три звезды` : null,
+    t.y ? `${t.y} ${plural(t.y, "уровень", "уровня", "уровней")} на две звезды` : null,
+    t.z ? `${t.z} ${plural(t.z, "уровень", "уровня", "уровней")} на одну звезду` : null,
+  ].filter(Boolean).join(", ")
+  return item({
+    preamble: `За прохождение каждого уровня игры на планшете можно получить от одной до трёх звёзд. При этом заряд аккумулятора планшета уменьшается на ${c3} пунктов при получении трёх звёзд, на ${c2} пунктов при получении двух звёзд и на ${c1} пунктов при получении одной звезды. Витя прошёл несколько уровней игры подряд.`,
+    qa: `Мог ли заряд аккумулятора уменьшиться ровно на ${Ca} пунктов?`,
+    qb: `Сколько уровней игры было пройдено, если заряд аккумулятора уменьшился на ${C} пунктов и суммарно было получено ${S} ${plural(S, "звезда", "звезды", "звёзд")}?`,
+    qc: `За пройденный уровень начисляется ${P[0]} очков при получении трёх звёзд, ${P[1]} — при получении двух звёзд и ${P[2]} — при получении одной звезды. Какое наибольшее количество очков мог получить Витя, если заряд аккумулятора уменьшился на ${C} пунктов и суммарно было получено ${S} ${plural(S, "звезда", "звезды", "звёзд")}?`,
+    ansA: `нет: все три расхода заряда (${c3}, ${c2} и ${c1}) делятся на ${d}, поэтому и общий расход делится на ${d}, а ${Ca} на ${d} не делится`,
+    ansB: `${levels}: из ${c3}x + ${c2}y + ${c1}z = ${C} и 3x + 2y + z = ${S} следует, что число уровней x + y + z равно ${levels} при каждом решении (их ${r.length}: ${r.map(descr).join("; ")})`,
+    ansC: `${bestScore}; достигается, когда ${descr(bestSol)}`,
+    solution: `Пусть уровней на три звезды x, на две звезды y и на одну звезду z. Тогда\n${c3}x + ${c2}y + ${c1}z = C и 3x + 2y + z = S.\nа) Все коэффициенты ${c3}, ${c2}, ${c1} кратны ${d}, поэтому расход заряда кратен ${d}; число ${Ca} не кратно ${d}, значит так уменьшиться заряд не мог.\nб) При C = ${C} и S = ${S} система имеет ${r.length} ${plural(r.length, "решение", "решения", "решений")}: ${r.map(descr).join("; ")}. Во всех случаях уровней ровно ${levels}.\nв) Очки равны ${P[0]}x + ${P[1]}y + ${P[2]}z; перебирая те же решения, получаем наибольшее значение ${bestScore} (${descr(bestSol)}).\nОтвет: ${levels}; ${bestScore}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: false, reason: "divisibility", target: `charge-${Ca}` },
+        b: { type: "count", value: levels },
+        c: { type: "extremum", mode: "max", value: bestScore, example: bestSol },
+      },
+      mustMention: [c3, c2, c1, Ca, C, S, ...P],
+      extra: [],
+      phrases: ["от одной до трёх звёзд", "уровней игры подряд"],
     },
   })
 }
