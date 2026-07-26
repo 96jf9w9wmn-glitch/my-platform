@@ -3633,39 +3633,18 @@ function t03BoxPyramidC1() {
 }
 
 // Правильная треугольная призма; выделен многогранник B, C, A₁, B₁, C₁
-// (призма минус тетраэдр A,A₁,B,C). Рёбра тела к скрытой C — жирный пунктир.
-function prismPentaSvg() {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 470 470" width="470" height="470" font-family="Arial, sans-serif">` +
-    `<rect width="470" height="470" fill="#fff"/>` +
-    // отсекаемый тетраэдр (рёбра к вершине A) — тонкие
-    `<line x1="235" y1="430" x2="220" y2="195" stroke="#000" stroke-width="1.3"/>` +
-    `<line x1="235" y1="430" x2="425" y2="360" stroke="#000" stroke-width="1.3"/>` +
-    `<line x1="235" y1="430" x2="300" y2="300" stroke="#000" stroke-width="1.3" stroke-dasharray="5 4"/>` +
-    // тело B,C,A₁,B₁,C₁: видимые рёбра жирные
-    `<line x1="220" y1="195" x2="410" y2="125" stroke="#000" stroke-width="2.4"/>` +
-    `<line x1="410" y1="125" x2="285" y2="65" stroke="#000" stroke-width="2.4"/>` +
-    `<line x1="285" y1="65" x2="220" y2="195" stroke="#000" stroke-width="2.4"/>` +
-    `<line x1="220" y1="195" x2="425" y2="360" stroke="#000" stroke-width="2.4"/>` +
-    `<line x1="425" y1="360" x2="410" y2="125" stroke="#000" stroke-width="2.4"/>` +
-    // тело: скрытые рёбра (вершина C) — жирный пунктир
-    `<line x1="425" y1="360" x2="300" y2="300" stroke="#000" stroke-width="2.4" stroke-dasharray="7 5"/>` +
-    `<line x1="300" y1="300" x2="285" y2="65" stroke="#000" stroke-width="2.4" stroke-dasharray="7 5"/>` +
-    `<line x1="220" y1="195" x2="300" y2="300" stroke="#000" stroke-width="2.4" stroke-dasharray="7 5"/>` +
-    // подписи
-    `<g font-size="17" font-style="italic" fill="#000" text-anchor="middle">` +
-    `<text x="227" y="450">A</text><text x="441" y="364">B</text><text x="318" y="298">C</text>` +
-    `<text x="202" y="196">A₁</text><text x="426" y="122">B₁</text><text x="277" y="53">C₁</text>` +
-    `</g></svg>`
-}
 
+// Призма без тетраэдра «третья нижняя вершина + верхнее основание»: две любые нижние
+// вершины плюс всё верхнее основание ⟹ V = S·L − S·L/3 = 2S·L/3.
+const PRISM_PENTA_PAIRS = [["B", "C"], ["A", "C"], ["A", "B"]]
 function t03PrismPenta() {
   let s, l
   do { s = randInt(2, 12); l = randInt(3, 12) } while ((s * l) % 3 !== 0)
-  return {
-    condition_text: `Дана правильная треугольная призма ABCA₁B₁C₁, площадь основания которой равна ${s}, а боковое ребро равно ${l}. Найдите объём многогранника, вершинами которого являются точки B, C, A₁, B₁, C₁.`,
-    image_url: svgUrl(prismPentaSvg()),
-    answer: ru(2 * s * l / 3),
-  }
+  const names = `${pick(PRISM_PENTA_PAIRS).join(", ")}, A₁, B₁, C₁`
+  const text = Math.random() < 0.5
+    ? `Дана правильная треугольная призма ABCA₁B₁C₁, площадь основания которой равна ${s}, а боковое ребро равно ${l}. Найдите объём многогранника, вершинами которого являются точки ${names}.`
+    : `Найдите объём многогранника, вершинами которого являются вершины ${names} правильной треугольной призмы ABCA₁B₁C₁. Площадь основания призмы равна ${s}, а боковое ребро равно ${l}.`
+  return { condition_text: text, image_url: svgUrl(triPrismSvg()), answer: ru(2 * s * l / 3) }
 }
 
 // Чистый параллелепипед ABCDA₁B₁C₁D₁ (тело A,B,C,D,A₁,B₁ ученик достраивает сам).
@@ -5100,6 +5079,103 @@ function pyrSqPlainSvg() {
     `</svg>`
 }
 
+// Треугольная пирамида с плоскостью через вершину и среднюю линию основания:
+// жирным — отсечённая пирамида, средняя линия и второе ребро сечения штрихом.
+function pyrMidlineCutSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 340" width="320" height="340" font-family="Arial, sans-serif">` +
+    `<rect width="320" height="340" fill="#fff"/>` +
+    `<line x1="45" y1="215" x2="280" y2="252" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="238"/>` +
+    `<line x1="70" y1="252.5" x2="162.5" y2="233.5" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="94"/>` +
+    `<line x1="140" y1="55" x2="162.5" y2="233.5" stroke="#000" stroke-width="1.3" stroke-dasharray="7 5" pathLength="180"/>` +
+    `<line x1="140" y1="55" x2="95" y2="290" stroke="#000" stroke-width="1.4"/>` +
+    `<line x1="140" y1="55" x2="280" y2="252" stroke="#000" stroke-width="1.4"/>` +
+    `<line x1="70" y1="252.5" x2="95" y2="290" stroke="#000" stroke-width="1.4"/>` +
+    `<line x1="95" y1="290" x2="280" y2="252" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="140" y1="55" x2="45" y2="215" stroke="#000" stroke-width="2.4"/>` +
+    `<line x1="140" y1="55" x2="70" y2="252.5" stroke="#000" stroke-width="2.4"/>` +
+    `<line x1="45" y1="215" x2="70" y2="252.5" stroke="#000" stroke-width="2.4"/>` +
+    `</svg>`
+}
+
+// Средняя линия отсекает от основания треугольник в ¼ площади, высота та же ⟹ V/4.
+function t03PyrMidlineCut() {
+  const v = 2 * randInt(3, 60)
+  return {
+    condition_text: `Объём треугольной пирамиды равен ${v}. Через вершину пирамиды и среднюю линию её основания проведена плоскость (см. рисунок). Найдите объём отсечённой треугольной пирамиды.`,
+    image_url: svgUrl(pyrMidlineCutSvg()),
+    answer: ru(clean(v / 4)),
+  }
+}
+
+// Правильная 4-угольная призма ABCDA₁B₁C₁D₁ (ФИПИ): скрытая задняя вершина C —
+// рёбра BC, CD, CC₁ штрихом; основание развёрнуто, чтобы вертикали не совпадали.
+function sqPrismSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 350" width="300" height="350" font-family="Arial, sans-serif">` +
+    `<rect width="300" height="350" fill="#fff"/>` +
+    `<line x1="245" y1="275" x2="185" y2="220" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="81"/>` +
+    `<line x1="185" y1="220" x2="60" y2="245" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="127"/>` +
+    `<line x1="185" y1="220" x2="185" y2="50" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="170"/>` +
+    `<line x1="120" y1="300" x2="245" y2="275" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="120" y1="300" x2="60" y2="245" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="120" y1="300" x2="120" y2="130" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="245" y1="275" x2="245" y2="105" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="60" y1="245" x2="60" y2="75" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="120" y1="130" x2="245" y2="105" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="245" y1="105" x2="185" y2="50" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="185" y1="50" x2="60" y2="75" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="60" y1="75" x2="120" y2="130" stroke="#000" stroke-width="1.5"/>` +
+    `<g font-size="16" font-style="italic" fill="#000" stroke="none" text-anchor="middle">` +
+    `<text x="114" y="322">A</text><text x="262" y="290">B</text><text x="200" y="213">C</text><text x="46" y="259">D</text>` +
+    `<text x="104" y="148">A₁</text><text x="263" y="112">B₁</text><text x="188" y="40">C₁</text><text x="44" y="70">D₁</text>` +
+    `</g></svg>`
+}
+
+// Три подряд идущие вершины основания + две верхние над первыми двумя: пирамида с
+// основанием — боковая грань и вершиной в третьей точке ⟹ V = S·L/3.
+const SQ_NAMES = ["A", "B", "C", "D"]
+function t03SqPrismPoly() {
+  const i = randInt(0, 3)
+  const [x, y, z] = [0, 1, 2].map(k => SQ_NAMES[(i + k) % 4])
+  let s, l
+  do { s = randInt(2, 14); l = randInt(2, 14) } while ((s * l) % 3 !== 0)
+  return {
+    condition_text: `Дана правильная четырёхугольная призма ABCDA₁B₁C₁D₁, площадь основания которой равна ${s}, а боковое ребро равно ${l}. Найдите объём многогранника, вершинами которого являются точки ${x}, ${y}, ${z}, ${x}₁, ${y}₁.`,
+    image_url: svgUrl(sqPrismSvg()),
+    answer: ru(s * l / 3),
+  }
+}
+
+// Пирамида с сечением через середины боковых рёбер: передние стороны сечения
+// жирные сплошные, задние — штрихом.
+function pyrMidSectSvg() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 340" width="320" height="340" font-family="Arial, sans-serif">` +
+    `<rect width="320" height="340" fill="#fff"/>` +
+    `<line x1="45" y1="290" x2="120" y2="215" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="106"/>` +
+    `<line x1="120" y1="215" x2="270" y2="223" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="150"/>` +
+    `<line x1="157.5" y1="55" x2="120" y2="215" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="164"/>` +
+    `<line x1="157.5" y1="55" x2="157.5" y2="256.5" stroke="#000" stroke-width="1.3" stroke-dasharray="6 5" pathLength="202"/>` +
+    `<line x1="213.75" y1="139" x2="138.75" y2="135" stroke="#000" stroke-width="1.5" stroke-dasharray="6 5" pathLength="75"/>` +
+    `<line x1="138.75" y1="135" x2="101.25" y2="172.5" stroke="#000" stroke-width="1.5" stroke-dasharray="6 5" pathLength="53"/>` +
+    `<line x1="157.5" y1="55" x2="45" y2="290" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="157.5" y1="55" x2="195" y2="298" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="157.5" y1="55" x2="270" y2="223" stroke="#000" stroke-width="1.5"/>` +
+    `<line x1="45" y1="290" x2="195" y2="298" stroke="#000" stroke-width="1.6"/>` +
+    `<line x1="195" y1="298" x2="270" y2="223" stroke="#000" stroke-width="1.6"/>` +
+    `<line x1="101.25" y1="172.5" x2="176.25" y2="176.5" stroke="#000" stroke-width="2.4"/>` +
+    `<line x1="176.25" y1="176.5" x2="213.75" y2="139" stroke="#000" stroke-width="2.4"/>` +
+    `</svg>`
+}
+
+// Середины боковых рёбер дают квадрат со стороной a/2 (средняя линия) ⟹ S = a²/4.
+function t03PyrMidSect() {
+  const a = 2 * randInt(1, 10)
+  return {
+    condition_text: `В правильной четырёхугольной пирамиде все рёбра равны ${a}. Найдите площадь сечения пирамиды плоскостью, проходящей через середины боковых рёбер.`,
+    image_url: svgUrl(pyrMidSectSvg()),
+    answer: ru(a * a / 4),
+  }
+}
+
 // Правильная треугольная пирамида без подписей: штрихом задняя сторона основания
 // и высота.
 function pyrTriSvg() {
@@ -5439,7 +5515,7 @@ export const GENERATORS_EGE_PROF = {
     t01ParMidpoint, t01ParAngle, t01ParHeights,
     t01RhombusSideDiag, t01RhombusAngle, t01TrapMidDiag],
   2: [t02DotCoord, t02DotLenAngle, t02LenCombo, t02DotOfCombos, t02GraphLenCombo],
-  3: [t03BoxTetra, t03BoxPyramid, t03BoxPyramidC1, t03BoxPyramidA1, t03BoxPrism, t03BoxTriPrism, t03BoxPrismADA1, t03PrismRightVol, t03PrismRightEdge, t03SqPrismAngle, t03TriPrismAngle, t03HexPrismAngle, t03HexPrismTri, t03HexPrismTrap, t03CylLatHeight, t03CylLatDiameter, t03MugRatio, t03TwoCylindersTaller, t03LiquidWider, t03LiquidNarrower, t03Submerge, t03SubmergeAbs, t03ConeHeight, t03ConeDiameter, t03ConeAxialFromBase, t03ConeAxialFromSlant, t03ConeLatScale, t03ConeLatScaleDown, t03ConeParSect, t03ConeFullSurfSect, t03ConeVessel, t03PrismTetraTop, t03PyrMidEdge, t03PyrSqDiagBD, t03PyrSqDiagSO, t03PyrSqVol, t03PyrSqHeight, t03PyrSqVolHL, t03PyrTriHeight, t03PrismTetraC1, t03PrismTetraB1, t03PrismPenta, t03PrismMidline, t03PrismCut, t03PrismCutRegular, t03PrismLateral, t03PrismLateralInv, t03CylConeLateral, t03CylConeLatInverse, t03CylConeVolume, t03CylConeVolInverse, t03ConeInSphere, t03ConeInSphereInv, t03ConeSphereRadius, t03ConeSphereSlant, t03SphereInCyl, t03SphereInCylVol, t03TwoCylinders, t03CylInBox, t03CubeCut, t03CubeCutInverse, t03CubeDiagonal, t03CubeAngle, t03BoxDiagonal, t03BoxLineSin, t03BoxSection, t03BoxDiagSection, t03StepSolid, t03LSolid, t03TSolidSurface, t03SphereSection, t03ConeScale, t03ConeHeightScale],
+  3: [t03BoxTetra, t03BoxPyramid, t03BoxPyramidC1, t03BoxPyramidA1, t03BoxPrism, t03BoxTriPrism, t03BoxPrismADA1, t03PrismRightVol, t03PrismRightEdge, t03SqPrismAngle, t03TriPrismAngle, t03HexPrismAngle, t03HexPrismTri, t03HexPrismTrap, t03CylLatHeight, t03CylLatDiameter, t03MugRatio, t03TwoCylindersTaller, t03LiquidWider, t03LiquidNarrower, t03Submerge, t03SubmergeAbs, t03ConeHeight, t03ConeDiameter, t03ConeAxialFromBase, t03ConeAxialFromSlant, t03ConeLatScale, t03ConeLatScaleDown, t03ConeParSect, t03ConeFullSurfSect, t03ConeVessel, t03PrismTetraTop, t03PyrMidEdge, t03PyrSqDiagBD, t03PyrSqDiagSO, t03PyrSqVol, t03PyrSqHeight, t03PyrSqVolHL, t03PyrTriHeight, t03PyrMidSect, t03PyrMidlineCut, t03SqPrismPoly, t03PrismTetraC1, t03PrismTetraB1, t03PrismPenta, t03PrismMidline, t03PrismCut, t03PrismCutRegular, t03PrismLateral, t03PrismLateralInv, t03CylConeLateral, t03CylConeLatInverse, t03CylConeVolume, t03CylConeVolInverse, t03ConeInSphere, t03ConeInSphereInv, t03ConeSphereRadius, t03ConeSphereSlant, t03SphereInCyl, t03SphereInCylVol, t03TwoCylinders, t03CylInBox, t03CubeCut, t03CubeCutInverse, t03CubeDiagonal, t03CubeAngle, t03BoxDiagonal, t03BoxLineSin, t03BoxSection, t03BoxDiagSection, t03StepSolid, t03LSolid, t03TSolidSurface, t03SphereSection, t03ConeScale, t03ConeHeightScale],
   4: [t04ShotPut, t04Gymnastics, t04Diving, t04Tickets, t04Markers, t04Defect, t04Lottery, t04CoinTwice, t04Rooms, t04FootballCoin],
   5: [t05Lamps, t05Between, t05Shooter4, t05Coffee, t05Battery, t05ShooterN, t05DiceCond, t05TwoThemes, t05Exact],
   6: [t06ExpReduce, t06ExpBothSides, t06LogEqLog, t06LogEqNum, t06Rational, t06Cube, t06Sqrt, t06CubeRoot],
@@ -5559,6 +5635,11 @@ export const GEN_META_EGE_PROF = {
       ["pyr-sq-height", "4-угольная: ребро + сторона → высота", t03PyrSqHeight],
       ["pyr-sq-vol-hl", "4-угольная: высота + ребро → объём", t03PyrSqVolHL],
       ["pyr-tri-height", "Треугольная: ребро + сторона → высота", t03PyrTriHeight],
+      ["pyr-mid-sect", "Сечение через середины боковых рёбер (a²/4)", t03PyrMidSect],
+      ["pyr-midline-cut", "Плоскость через вершину и среднюю линию (÷4)", t03PyrMidlineCut],
+    ]],
+    ["Правильная 4-угольная призма", [
+      ["sqprism-poly", "Три вершины основания + две верхние (S·L/3)", t03SqPrismPoly],
     ]],
     ["Прямая призма: прямоугольный треугольник", [
       ["prism-rt-vol", "Катеты + боковое ребро → объём", t03PrismRightVol],
