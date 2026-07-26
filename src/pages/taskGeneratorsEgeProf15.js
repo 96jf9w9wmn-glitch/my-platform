@@ -247,15 +247,21 @@ function build(opts) {
     for (let i = 0; i < bounds.length - 1; i++) {
       const A = bounds[i], Bv = bounds[i + 1]
       const mid = !isFinite(A) ? Bv - 1 : !isFinite(Bv) ? A + 1 : (A + Bv) / 2
-      // ОДЗ обязано быть ПОСТОЯННЫМ внутри куска: если оно меняется внутри (граница —
-      // корень кубического уравнения и т.п.), точный ответ выписать нельзя — отбрасываем выборку.
+      // ОДЗ внутри куска должно быть ПОСТОЯННЫМ. Если оно меняется (граница — корень
+      // кубического уравнения и т.п.) и ответ этот кусок задевает, точный конец выписать
+      // нельзя — отбрасываем выборку. Если ответ куска не касается, кусок просто исключаем.
       const lo2 = !isFinite(A) ? Bv - 8 : A, hi2 = !isFinite(Bv) ? A + 8 : Bv
       const want = okf(mid)
-      for (let j = 1; j < 240; j++) if (okf(lo2 + (hi2 - lo2) * j / 240) !== want) return null
-      // плюс сгущение у концов: тонкая полоска ОДЗ шириной ~1/1000 куска иначе теряется
-      for (let j = 1; j <= 24; j++) {
+      let mixedDom = false
+      for (let j = 1; j < 240 && !mixedDom; j++) if (okf(lo2 + (hi2 - lo2) * j / 240) !== want) mixedDom = true
+      for (let j = 1; j <= 24 && !mixedDom; j++) {   // сгущение у концов: тонкие полоски ОДЗ
         const d = (hi2 - lo2) * Math.pow(0.5, j)
-        if (okf(lo2 + d) !== want || okf(hi2 - d) !== want) return null
+        if (okf(lo2 + d) !== want || okf(hi2 - d) !== want) mixedDom = true
+      }
+      if (mixedDom) {
+        const touches = ans.some((I) => I.a.v < Bv - 1e-12 && I.b.v > A + 1e-12)
+        if (touches) return null
+        continue
       }
       if (!want) continue
       const eps = crit.map((c) => c.ep).concat(opts.extraEP || [])

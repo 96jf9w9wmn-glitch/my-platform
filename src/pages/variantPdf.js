@@ -21,7 +21,13 @@ const chW = (s) => { let w = 0; for (const ch of s) w += /[⁰¹²³⁴⁵⁶⁷
 
 // корень внутри дроби (маркер √{X}) → √ с чертой над подкоренным; ширину считаем по «√X».
 const rootInPdf = (s) => s.replace(/√\{([^}]+)\}/g, (_, x) => `√<tspan text-decoration="overline">${x}</tspan>`)
-const stripRootMarker = (s) => s.replace(/√\{([^}]+)\}/g, "√$1")
+// Для ОЦЕНКИ ШИРИНЫ: убираем маркеры (√{}, ⁅⁆ степень, ⦃¦⦄ вложенная дробь, ⦉⦊ индекс) —
+// иначе ширина дроби считается по служебным символам и черта получается длиннее текста.
+const stripRootMarker = (s) => String(s)
+  .replace(/√\{([^}]+)\}/g, "√$1")
+  .replace(/⁅([^⁆]*)⁆/g, "$1")
+  .replace(/⦃([^¦⦄]*)¦([^⦄]*)⦄/g, "$1/$2")
+  .replace(/⦉([^⦊]*)⦊/g, "$1")
 // ⁅x⁆ внутри числителя/знаменателя дроби (степень: 2ˣ, 4ˣ⁻³) — SVG-надстрочник.
 const supInSvg = (s) => String(s)
   .replace(/⁅([^⁆]*)⁆/g, (_, x) => `<tspan baseline-shift="super" font-size="0.72em">${x}</tspan>`)
