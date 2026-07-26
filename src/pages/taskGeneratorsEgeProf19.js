@@ -734,6 +734,8 @@ export const META19 = [
     ["means-three-groups", "Деление на три группы: наим. наибольшее среднее", t19MeansThreeGroups],
     ["means-erase-minus1", "Уменьшили на 1 и стёрли нули: наиб. среднее", t19MeansEraseMinusOne],
     ["means-two-groups-543", "Три сорта чисел в две группы: наиб. (A+B)/2", t19MeansTwoGroups543],
+    ["means-odd-median", "Нечётные числа: наибольшее B − A", t19MeansOddMedian],
+    ["means-erase-half", "Уменьшили вдвое и стёрли малые: наиб. среднее", t19MeansEraseHalf],
   ]],
   ["Операции над записью числа", [
     ["swap-digits-max", "Перестановка цифр двузначных → наибольшая новая сумма", t19SwapDigitsMax],
@@ -4927,6 +4929,189 @@ export function t19MeansTwoGroups543() {
       mustMention: [N, c, v1, v2, v3, N / 2],
       extra: [2],
       phrases: ["на две группы", "хотя бы одно число"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 10 (продолжение). Медиана и среднее выборки нечётных чисел (#88)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Из K последовательных нечётных чисел 1, 3, …, 2K−1 выбирают n = 2h+1 различных;
+// A — серединное (h+1-е) из выбранных, B — их среднее. Тогда
+//   B − A = (Σ(aᵢ − A))/n,
+// а все разности выбранных чисел ЧЁТНЫ, поэтому числитель чётен: дробь с нечётным
+// числителем недостижима. Максимум даёт наименьшая возможная медиана A = 2h+1
+// (под ней стоят 1, 3, …, 2h−1), а сверху берутся h наибольших чисел:
+//   B − A = 2h(K − 2h − 1)/n.
+export function t19MeansOddMedian() {
+  const h = 3, n = 2 * h + 1
+  const K = pick([30, 36, 40, 45, 50])
+  const top = 2 * K - 1
+  const maxFr = fr(2 * h * (K - 2 * h - 1), n)
+  const numA = 2, numB = 3                                 // числители в пунктах а) и б)
+  // а) пример на 2/n: медиана x, снизу x−2h+…, сверху почти симметрично, «перевес» 2
+  let exA = null
+  for (let x = 2 * h + 1; x <= top - 2 * h && !exA; x += 2) {
+    const low = Array.from({ length: h }, (_, i) => x - 2 * (h - i))
+    const high = Array.from({ length: h }, (_, i) => x + 2 * (i + 1))
+    const need = numA + 6 * x - sum(low) - sum(high)        // сколько добрать сверху
+    if (need % 2 === 0 && need >= 0 && high[h - 1] + need <= top) {
+      high[h - 1] += need
+      exA = [...low, x, ...high]
+    }
+  }
+  if (!exA) return null
+  const exC = [
+    ...Array.from({ length: h }, (_, i) => 2 * i + 1), 2 * h + 1,
+    ...Array.from({ length: h }, (_, i) => top - 2 * (h - 1 - i)),
+  ]
+
+  const params = { K, h, n, numA, numB }
+  const check = (cfg, part) => {
+    if (!Array.isArray(cfg) || cfg.length !== n) return `нужно выбрать ${n} чисел`
+    for (const v of cfg) if (!Number.isInteger(v) || v < 1 || v > top || v % 2 === 0) return `${v} — не из набора 1, 3, …, ${top}`
+    if (uniq(cfg).length !== cfg.length) return "числа обязаны быть различными"
+    const s = cfg.slice().sort((a, b) => a - b)
+    const A = s[h], B = sum(s) / n
+    const want = part === "a" ? numA / n : frVal(maxFr)
+    if (Math.abs(B - A - want) > 1e-9) return `B − A = ${B - A}, а нужно ${want}`
+    return null
+  }
+  // Независимый перебор: медиана x, затем динамика по суммам h чисел снизу и h сверху.
+  const solve = (P) => {
+    const hh = P.h, nn = P.n, hi = 2 * P.K - 1
+    let aYes = false, bYes = false, best = -Infinity
+    for (let x = 1; x <= hi; x += 2) {
+      const low = [], high = []
+      for (let v = 1; v < x; v += 2) low.push(v)
+      for (let v = x + 2; v <= hi; v += 2) high.push(v)
+      if (low.length < hh || high.length < hh) continue
+      const maxLow = sum(low.slice(-hh)), maxHigh = sum(high.slice(-hh))
+      const rowsLow = knap(low, hh, maxLow), rowsHigh = knap(high, hh, maxHigh)
+      best = Math.max(best, (maxLow + maxHigh - 2 * hh * x) / nn)
+      for (let sl = 0; sl <= maxLow; sl++) {
+        if (!rowsLow[hh][sl]) continue
+        for (const t of [P.numA, P.numB]) {
+          const sh = t + 2 * hh * x - sl
+          if (sh >= 0 && sh <= maxHigh && rowsHigh[hh][sh]) { if (t === P.numA) aYes = true; else bYes = true }
+        }
+      }
+    }
+    return { a: aYes, b: bYes, c: best }
+  }
+
+  return item({
+    preamble: `Из ${K} последовательных нечётных чисел 1, 3, 5, …, ${top} выбрали ${n} различных чисел, которые записали в порядке возрастания. Пусть A — ${h + 1 === 4 ? "четвёртое" : `${h + 1}-е`} по величине среди этих чисел, а B — среднее арифметическое выбранных ${n} чисел.`,
+    qa: `Может ли B − A равняться ${frCond(fr(numA, n))}?`,
+    qb: `Может ли B − A равняться ${frCond(fr(numB, n))}?`,
+    qc: `Найдите наибольшее возможное значение B − A.`,
+    ansA: `да, например ${exA.join(", ")}`,
+    ansB: `нет: B − A = (Σ(aᵢ − A))/${n}, а все выбранные числа нечётны, поэтому каждая разность aᵢ − A чётна и числитель чётен. Дробь ${frPlain(fr(numB, n))} имеет нечётный числитель`,
+    ansC: `${frPlain(maxFr)}; например ${exC.join(", ")}`,
+    solution: `Пусть выбраны a₁ < a₂ < … < ${aIdx(n)}, тогда A = ${aIdx(h + 1)} и\nB − A = (a₁ + … + ${aIdx(n)} − ${n}A)/${n} = ((a₁ − A) + … + (${aIdx(n)} − A))/${n}.\nа) Пример: ${exA.join(", ")}.\nб) Все числа нечётны, поэтому все разности aᵢ − A чётны, и числитель дроби чётен. У дроби ${frPlain(fr(numB, n))} числитель нечётный, значит такое значение невозможно.\nв) Числитель равен (сумма ${h} наибольших) + (сумма ${h} наименьших) − ${2 * h}A, поэтому выгодно взять наименьшую возможную медиану A = ${2 * h + 1} (под ней стоят 1, 3, …, ${2 * h - 1}) и ${h} наибольших чисел ${top - 2 * (h - 1)}, …, ${top}. Тогда B − A = ${2 * h}(${K} − ${2 * h + 1})/${n} = ${frPlain(maxFr)}.\nОтвет: ${frPlain(maxFr)}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: `num-${numA}` },
+        b: { type: "yesno", yes: false, reason: "even-numerator", target: `num-${numB}` },
+        c: { type: "value", value: frVal(maxFr), example: exC },
+      },
+      mustMention: [K, top, n, 1, 3, 5, numA, numB],
+      extra: [h + 1],
+      phrases: ["последовательных нечётных чисел", "в порядке возрастания"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 10 (продолжение). Числа уменьшили вдвое, малые стёрли (#94)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// N натуральных чисел, каждое ≤ M, среднее равно u (сумма Nu). Каждое число заменяют
+// на вдвое меньшее; ставшие меньше 1 (то есть бывшие единицы) стирают. Если единиц
+// было m, то осталось N − m чисел с суммой (Nu − m)/2, и среднее равно
+//   f(m) = (Nu − m) / (2(N − m)),
+// то есть множество возможных средних КОНЕЧНО — это значения f(m) при допустимых m.
+// Допустимость: остальные N − m чисел не больше M, поэтому m + (N − m)M ≥ Nu.
+export function t19MeansEraseHalf() {
+  const N = pick([24, 30, 36])
+  const M = pick([40, 45, 50])
+  const u = randInt(6, 9)
+  const mMax = Math.floor((N * M - N * u) / (M - 1))
+  if (mMax >= N || mMax < 3) return null
+  const fm = (m) => fr(N * u - m, 2 * (N - m))
+  const best = fm(mMax)
+  const vals = []
+  for (let m = 0; m <= mMax; m++) vals.push(frVal(fm(m)))
+  // б) целочисленный «зазор» (p; p+1), в который не попадает ни одно значение
+  let gap = 0
+  for (let p = Math.floor(u / 2); p < frVal(best); p++) {
+    if (!vals.some((v) => v > p && v < p + 1)) { gap = p; break }
+  }
+  if (!gap) return null
+  // а) «больше X»: значение, которое максимум превосходит
+  const Xa = Math.max(gap + 1, Math.floor(frVal(best)) - randInt(1, 3))
+  if (Xa >= frVal(best)) return null
+  const mk = (m) => {
+    const rest = Array(N - m).fill(M)
+    let over = (N - m) * M - (N * u - m)
+    for (let i = 0; i < rest.length && over > 0; i++) {
+      const cut = Math.min(over, M - 2)
+      rest[i] -= cut; over -= cut
+    }
+    return over === 0 ? [...Array(m).fill(1), ...rest] : null
+  }
+  const exC = mk(mMax)
+  if (!exC) return null
+
+  const params = { N, M, u, mMax, gap, Xa }
+  const check = (cfg, part) => {
+    if (!Array.isArray(cfg) || cfg.length !== N) return `чисел должно быть ${N}`
+    for (const v of cfg) if (!Number.isInteger(v) || v < 1 || v > M) return `${v} — не натуральное число, не превосходящее ${M}`
+    if (sum(cfg) !== N * u) return `среднее написанных чисел ${sum(cfg) / N}, а не ${u}`
+    const after = cfg.map((v) => v / 2).filter((v) => v >= 1)
+    if (!after.length) return "на доске не осталось чисел"
+    const mean = sum(after) / after.length
+    if (part === "a" && !(mean > Xa)) return `среднее оставшихся ${mean}, не больше ${Xa}`
+    if (part === "c" && Math.abs(mean - frVal(best)) > 1e-9) return `среднее оставшихся ${mean}, а заявлено ${frPlain(best)}`
+    return null
+  }
+  // Независимый перебор по числу единиц m: конфигурация возможна, когда m единиц
+  // и N − m чисел от 2 до M дают в сумме Nu.
+  const solve = (P) => {
+    let aYes = false, bYes = false, best2 = -Infinity
+    for (let m = 0; m < P.N; m++) {
+      const rest = P.N * P.u - m, cnt = P.N - m
+      if (rest < 2 * cnt || rest > P.M * cnt) continue      // остальные числа от 2 до M
+      const mean = rest / (2 * cnt)
+      if (mean > P.Xa) aYes = true
+      if (mean > P.gap && mean < P.gap + 1) bYes = true
+      if (mean > best2) best2 = mean
+    }
+    return { a: aYes, b: bYes, c: best2 }
+  }
+
+  const short = (arr) => `${arr.slice(0, 3).join(", ")}, …, ${arr[arr.length - 1]}`
+  return item({
+    preamble: `На доске было написано ${N} ${plural(N, "натуральное число", "натуральных числа", "натуральных чисел")} (необязательно различных), каждое из которых не превосходит ${M}. Среднее арифметическое написанных чисел равнялось ${u}. Вместо каждого из чисел на доске написали число, в два раза меньшее первоначального. Числа, которые после этого оказались меньше 1, с доски стёрли.`,
+    qa: `Могло ли оказаться так, что среднее арифметическое чисел, оставшихся на доске, больше ${Xa}?`,
+    qb: `Могло ли среднее арифметическое оставшихся на доске чисел оказаться больше ${gap}, но меньше ${gap + 1}?`,
+    qc: `Найдите наибольшее возможное значение среднего арифметического чисел, которые остались на доске.`,
+    ansA: `да, например ${mMax} ${plural(mMax, "единица", "единицы", "единиц")} и ${N - mMax} ${plural(N - mMax, "число", "числа", "чисел")} ${short(exC.slice(mMax))}: после деления пополам остаётся ${N - mMax} ${plural(N - mMax, "число", "числа", "чисел")} со средним ${frPlain(best)} > ${Xa}`,
+    ansB: `нет: если единиц было m, то они (и только они) стираются, остаётся ${N} − m чисел с суммой (${N * u} − m)/2, поэтому среднее равно (${N * u} − m)/(2(${N} − m)). Перебор допустимых m даёт лишь конечный список значений, и ни одно из них не лежит строго между ${gap} и ${gap + 1}`,
+    ansC: `${frPlain(best)}; например ${mMax} ${plural(mMax, "единица", "единицы", "единиц")} и числа ${short(exC.slice(mMax))}`,
+    solution: `После деления пополам стираются в точности бывшие единицы (0,5 < 1). Пусть их было m. Тогда осталось ${N} − m чисел, сумма которых равна (${N * u} − m)/2, и\nсреднее = (${N * u} − m)/(2(${N} − m)).\nЭто выражение растёт по m, а m ограничено вместимостью: остальные ${N} − m чисел не больше ${M}, поэтому m + (${N} − m)·${M} ≥ ${N * u}, откуда m ≤ ${mMax}.\nа) При m = ${mMax} среднее равно ${frPlain(best)} > ${Xa}.\nб) Возможные средние образуют конечный список значений (по одному на каждое допустимое m), и между ${gap} и ${gap + 1} ни одного из них нет.\nв) Наибольшее значение достигается при m = ${mMax}: ${frPlain(best)}; пример набора — ${mMax} ${plural(mMax, "единица", "единицы", "единиц")} и числа ${short(exC.slice(mMax))}.\nОтвет: ${frPlain(best)}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exC, target: `gt-${Xa}` },
+        b: { type: "yesno", yes: false, reason: "discrete-values", target: `between-${gap}` },
+        c: { type: "value", value: frVal(best), example: exC },
+      },
+      mustMention: [N, M, u, Xa, gap, gap + 1, 1],
+      extra: [2],
+      phrases: ["в два раза меньшее первоначального", "оказались меньше 1"],
     },
   })
 }
