@@ -429,7 +429,7 @@ function StudentHomeworkCard({ hw, index, onSelect }) {
     <button
       onClick={() => onSelect(hw)}
       style={{ animationDelay: `${Math.min(index, 8) * 45}ms` }}
-      className="item-enter press-tap text-left w-full glass rounded-2xl p-3.5 flex items-center gap-3 active:scale-[0.99] transition-transform"
+      className="item-enter press-tap text-left w-full glass rounded-2xl p-3.5 flex items-center gap-3"
     >
       <div className={`shrink-0 w-11 h-11 rounded-2xl flex items-center justify-center bg-gradient-to-br ${meta.tile}`}>
         <Icon name={icon} size={18} />
@@ -1023,7 +1023,7 @@ function SubmitResultDialog({ score, max, onClose }) {
         <p className="mt-2 text-xs text-gray-400">Часть 1 · {score} из {max} баллов</p>
         <button
           onClick={onClose}
-          className="mt-5 w-full py-2.5 rounded-xl bg-gradient-to-b from-[#0a84ff] to-[#0060df] text-white text-sm font-medium shadow-sm hover:opacity-95 active:scale-[0.98] transition"
+          className="mt-5 w-full py-2.5 rounded-xl bg-gradient-to-b from-[#0a84ff] to-[#0060df] text-white text-sm font-medium shadow-sm hover:opacity-95 transition"
         >
           Готово
         </button>
@@ -2015,7 +2015,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                     <button
                       onClick={submitPart1}
                       disabled={submitting}
-                      className="w-full bg-blue-600 text-white rounded-lg py-2.5 text-sm hover:bg-blue-700 disabled:opacity-50 active:scale-[0.99] transition-transform"
+                      className="w-full bg-blue-600 text-white rounded-lg py-2.5 text-sm hover:bg-blue-700 disabled:opacity-50"
                     >
                       {submitting ? "Отправляем..." : "Отправить ответы"}
                     </button>

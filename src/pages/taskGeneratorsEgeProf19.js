@@ -753,6 +753,7 @@ export const META19 = [
   ["Две школы, средний балл", [
     ["schools-drop-min", "Средние упали на 10 % → наим. исходный средний в №2", t19SchoolsDropMin],
     ["schools-rise-min", "Средние выросли на 10 % → наим. исходный средний в №2", t19SchoolsRiseMin],
+    ["schools-move-counts", "Переход учащегося: сколько учащихся и наиб. балл", t19SchoolsMoveCounts],
   ]],
   ["Игры и операции с инвариантом", [
     ["boxes-three", "Три коробки: ход −1, −1, +1 → наибольшее в третьей", t19BoxesThree],
@@ -5872,6 +5873,126 @@ export function t19WeightsMoveOne() {
       mustMention: [N, d, 1, 2, ...trio, ...String(ru2(Ab)).split(",").map(Number)],
       extra: [],
       phrases: ["в каждой куче хотя бы одна гирька", "переложили в первую одну гирьку"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 19 (продолжение). Две школы: переход учащегося и средние баллы (#113)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Из школы №1 (n учащихся, целый средний балл A) в школу №2 (m учащихся, целый средний
+// балл C) переходит учащийся с баллом x, после чего оба средних вырастают на 10 %:
+//   (An − x)/(n − 1) = 1,1A  ⟹  x = A(11 − n)/10,
+//   (Cm + x)/(m + 1) = 1,1C  ⟹  10x = C(m + 11).
+// Первое равенство однозначно задаёт возможные n (нужна целость x ≥ 1), второе —
+// связь между числом учащихся школы №2 и её средним баллом.
+export function t19SchoolsMoveCounts() {
+  const A = pick([12, 14, 16, 18, 22, 24, 26])             // средний балл школы №1, не кратен 5
+  const ns = []
+  for (let n = 2; n <= 20; n++) {
+    const x10 = A * (11 - n)
+    if (x10 <= 0 || x10 % 10) continue
+    const x = x10 / 10
+    if (A * n - x < n - 1) continue                        // остальным нужно хотя бы по баллу
+    ns.push({ n, x })
+  }
+  if (ns.length !== 1) return null
+  const { n, x } = ns[0]
+  // б) все баллы школы №1 различны: минимальная сумма прочих — наименьшие числа плюс x
+  const others = []
+  for (let v = 1; others.length < n - 2; v++) if (v !== x) others.push(v)
+  const restSum = sum(others) + x
+  const topScore = A * n - restSum
+  if (topScore <= Math.max(x, ...others)) return null
+  const exB = [...others, x, topScore]
+  // в) при более чем L учащихся в школе №2 — наименьшее их количество
+  const L = 10
+  let mMin = 0, cFor = 0
+  for (let m = L + 1; m <= 10 * x; m++) {
+    if ((10 * x) % (m + 11)) continue
+    const c = 10 * x / (m + 11)
+    if (c >= 1) { mMin = m; cFor = c; break }
+  }
+  if (!mMin) return null
+
+  const params = { A, n, x, L }
+  const check = (cfg, part) => {
+    if (!cfg || !Array.isArray(cfg.s1) || !Number.isInteger(cfg.moved)) return "нет конфигурации"
+    if (cfg.s1.length < 2) return "в школе №1 тест писали не менее двух учащихся"
+    for (const v of cfg.s1) if (!Number.isInteger(v) || v < 1) return `${v} — не натуральное количество баллов`
+    if (!cfg.s1.includes(cfg.moved)) return `перешедший учащийся с ${cfg.moved} баллами не из школы №1`
+    const S = sum(cfg.s1), k = cfg.s1.length
+    if (S % k) return "средний балл в школе №1 не целый"
+    if (S / k !== A) return `средний балл школы №1 равен ${S / k}, а не ${A}`
+    if (10 * (S - cfg.moved) !== 11 * A * (k - 1)) return `после перехода средний балл школы №1 вырос не на 10 %`
+    if (part === "a" && k !== n) return `в школе №1 ${k} учащихся, а заявлено ${n}`
+    if (part === "b") {
+      if (uniq(cfg.s1).length !== cfg.s1.length) return "в пункте б) все баллы должны быть различными"
+      if (Math.max(...cfg.s1) !== topScore) return `наибольший балл ${Math.max(...cfg.s1)}, а заявлено ${topScore}`
+    }
+    if (part === "c") {
+      if (!Array.isArray(cfg.s2)) return "нет школы №2"
+      if (cfg.s2.length !== mMin) return `в школе №2 ${cfg.s2.length} учащихся, а заявлено ${mMin}`
+      const S2 = sum(cfg.s2)
+      if (S2 % cfg.s2.length) return "средний балл в школе №2 не целый"
+      if (10 * (S2 + cfg.moved) !== 11 * (S2 / cfg.s2.length) * (cfg.s2.length + 1)) return "средний балл школы №2 вырос не на 10 %"
+    }
+    return null
+  }
+  // Независимый перебор: по числу учащихся школы №1 (целость x), по составу баллов
+  // (минимальная сумма прочих различных баллов) и по числу учащихся школы №2
+  // (делимость 10x на m + 11).
+  const solve = (P) => {
+    const counts = []
+    for (let k = 2; k <= 40; k++) {
+      const x10 = P.A * (11 - k)
+      if (x10 <= 0 || x10 % 10) continue
+      if (P.A * k - x10 / 10 < k - 1) continue
+      counts.push(k)
+    }
+    let top = -Infinity
+    for (const k of counts) {
+      const xk = P.A * (11 - k) / 10
+      const small = []
+      for (let v = 1; small.length < k - 2; v++) if (v !== xk) small.push(v)
+      const cand = P.A * k - sum(small) - xk
+      if (cand > Math.max(xk, ...small)) top = Math.max(top, cand)
+    }
+    let best = 0
+    for (let m = P.L + 1; m <= 10 * P.x; m++) {
+      if ((10 * P.x) % (m + 11) === 0 && 10 * P.x / (m + 11) >= 1) { best = m; break }
+    }
+    return { a: counts.map(String), b: top, c: best, c_next: false }
+  }
+
+  const exA = { s1: [...Array(n - 1).fill(A), A], moved: x }
+  exA.s1 = (() => {                                        // n баллов со средним A, среди них x
+    const arr = Array(n).fill(A)
+    arr[0] = x
+    arr[1] += A - x
+    return arr
+  })()
+  const exC = { s1: exA.s1, moved: x, s2: Array(mMin).fill(cFor) }
+  return item({
+    preamble: `В школах №1 и №2 учащиеся писали тест. Из каждой школы тест писали, по крайней мере, 2 учащихся. Каждый учащийся, писавший тест, набрал натуральное количество баллов. Оказалось, что в каждой школе средний балл за тест был целым числом, причём в школе №1 средний балл равнялся ${A}. Один из учащихся, писавших тест, перешёл из школы №1 в школу №2, а средние баллы за тест были пересчитаны в обеих школах. В результате средний балл в школе №1 вырос на 10 %, средний балл в школе №2 также вырос на 10 %.`,
+    qa: `Сколько учащихся могло писать тест в школе №1 изначально?`,
+    qb: `В школе №1 все писавшие тест набрали разное количество баллов. Какое наибольшее количество баллов мог набрать учащийся этой школы?`,
+    qc: `Известно, что изначально в школе №2 писали тест более ${L} учащихся. Какое наименьшее количество учащихся могло писать тест в школе №2 изначально?`,
+    ansA: `${n}: из (${A}n − x)/(n − 1) = 1,1·${A} следует x = ${A}(11 − n)/10, и это натуральное число только при n = ${n} (тогда x = ${x})`,
+    ansB: `${topScore}; например баллы ${exB.join(", ")}: их сумма ${A * n} даёт средний балл ${A}, а переходит учащийся с ${x} ${plural(x, "баллом", "баллами", "баллами")}`,
+    ansC: `${mMin}; например в школе №2 было ${mMin} ${plural(mMin, "учащийся", "учащихся", "учащихся")} по ${cFor} ${plural(cFor, "баллу", "балла", "баллов")}`,
+    solution: `Пусть в школе №1 было n учащихся со средним баллом ${A}, а перешёл учащийся с баллом x.\nа) Из (${A}n − x)/(n − 1) = 1,1·${A} получаем x = ${A}(11 − n)/10. Число x натуральное, поэтому 11 − n кратно ${10 / gcdI(A, 10)} и x ≥ 1: подходит только n = ${n}, при этом x = ${x}.\nб) Все баллы различны, их сумма равна ${A}·${n} = ${A * n}, и среди них есть ${x}. Чтобы один балл был наибольшим, остальные берём наименьшими: ${others.join(", ")} и ${x}. Тогда наибольший балл равен ${A * n} − ${restSum} = ${topScore}.\nв) Для школы №2 с m учащимися и средним баллом C: (Cm + ${x})/(m + 1) = 1,1C, откуда 10·${x} = C(m + 11), то есть C = ${10 * x}/(m + 11). При m > ${L} наименьшее подходящее значение m = ${mMin} (тогда C = ${cFor}).\nОтвет: ${n}; ${topScore}; ${mMin}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "all", values: [String(n)], examples: { [String(n)]: exA } },
+        b: { type: "extremum", mode: "max", value: topScore, example: { s1: exB, moved: x } },
+        c: { type: "extremum", mode: "min", value: mMin, example: exC },
+      },
+      mustMention: [A, L, 1, 2, 10],
+      extra: [],
+      phrases: ["по крайней мере, 2 учащихся", "средний балл за тест был целым числом", "вырос на 10 %"],
     },
   })
 }

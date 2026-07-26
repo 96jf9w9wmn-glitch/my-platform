@@ -258,6 +258,106 @@ function planeSvg({ curves = [], marks = [], hlines = [], xMin = -6, xMax = 6, a
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${g.join("")}</svg>`
 }
 
+// ── точная алгебра по параметру a (нужна разделам, где выкалывания — корни резольвенты) ──
+// Коэффициенты уравнения — многочлены ПО ПАРАМЕТРУ a (те же массивы R, что и по x).
+// Всё считается точно, поэтому в ответ не может «просочиться» невыписанное выкалывание.
+
+// Делители натурального числа (BigInt) — для теоремы о рациональных корнях.
+function divisorsBig(n) {
+  n = n < 0n ? -n : n
+  const out = []
+  for (let d = 1n; d * d <= n; d++) if (n % d === 0n) { out.push(d); if (d * d !== n) out.push(n / d) }
+  return out
+}
+// ВСЕ рациональные корни многочлена (кратность не учитываем) + признак «иррациональных нет».
+// Иррациональные ловятся сравнением с точным числом вещественных корней (Штурм).
+function ratRoots(E) {
+  E = pTrim(E)
+  if (pDeg(E) <= 0) return { roots: [], allRational: pDeg(E) === 0 }
+  // приводим к целым коэффициентам
+  let L = 1n
+  for (const c of E) L = (L * c.d) / bgcd(L, c.d)
+  const ints = E.map((c) => (c.n * L) / c.d)
+  let k = 0
+  while (k < ints.length && ints[k] === 0n) k++             // x = 0 — корень кратности k
+  const roots = k > 0 ? [R0] : []
+  const tail = ints.slice(k)
+  if (tail.length > 1) {
+    const a0 = tail[0], an = tail[tail.length - 1]
+    for (const pn of divisorsBig(a0)) for (const qd of divisorsBig(an)) for (const sg of [1n, -1n]) {
+      const r = R(sg * pn, qd)
+      if (roots.some((x) => Rcmp(x, r) === 0)) continue
+      if (Rzero(pEval(E, r))) roots.push(r)
+    }
+  }
+  const real = countRoots(E, "-inf", "+inf", false, false)
+  return { roots: roots.sort(Rcmp), allRational: roots.length === real }
+}
+// Множество {a : P(a) > 0} для многочлена степени ≤ 2 с рациональными корнями.
+function positiveSet(P) {
+  P = pTrim(P)
+  const deg = pDeg(P)
+  if (deg <= 0) return Rsign(P[0] || R0) > 0 ? SET([IV("-inf", "+inf")]) : null
+  const { roots, allRational } = ratRoots(P)
+  if (!allRational) return null
+  const lead = Rsign(pLead(P))
+  if (deg === 1) return roots.length !== 1 ? null
+    : SET([lead > 0 ? IV(roots[0], "+inf") : IV("-inf", roots[0])])
+  if (deg !== 2) return null
+  if (roots.length !== 2) return null                        // касание/нет корней — вырождено
+  const [r1, r2] = roots
+  return lead > 0 ? SET([IV("-inf", r1), IV(r2, "+inf")]) : SET([IV(r1, r2)])
+}
+// Выколоть точки из множества (промежутки режутся, точки-совпадения выбрасываются).
+function minusPoints(set, pts) {
+  const iv = []
+  for (const i of set.intervals) {
+    const inside = uniqSorted(pts.filter((p) => (i.lo === "-inf" || Rcmp(p, i.lo) > 0) && (i.hi === "+inf" || Rcmp(p, i.hi) < 0)))
+    let prev = i.lo, inc = i.incLo
+    for (const p of inside) { iv.push(IV(prev, p, inc, false)); prev = p; inc = false }
+    iv.push(IV(prev, i.hi, inc, i.incHi))
+  }
+  const points = set.points.filter((q) => !pts.some((p) => Rcmp(p, q) === 0))
+  return SET(iv, points)
+}
+// Значения a, при которых у монических (по x) квадратных N и D есть общий корень:
+// из N − D = Δ₁x + Δ₀ = 0 получаем x = −Δ₀/Δ₁, подстановка в D даёт
+// E(a) = Δ₀² − d₁·Δ₀·Δ₁ + d₀·Δ₁². Коэффициенты n₁,n₀,d₁,d₀ — многочлены по a.
+function commonRootPoly(n1, n0, d1, d0) {
+  const D1 = pSub(n1, d1), D0 = pSub(n0, d0)
+  return pAdd(pSub(pMul(D0, D0), pMul(d1, pMul(D0, D1))), pMul(d0, pMul(D1, D1)))
+}
+// Ответ для «дробь = 0, ровно два различных решения» с монической квадратичной N по x:
+// {a : disc(N) > 0} без значений, где корень числителя совпал с полюсом.
+// Возвращает null, если хоть что-то получилось иррациональным (такой набор параметров
+// генератор просто не берёт — границы обязаны быть круглыми).
+function twoRootsSet(n1, n0, d1, d0) {
+  const disc = pSub(pMul(n1, n1), pMul([R(4)], n0))          // n₁² − 4n₀
+  const dom = positiveSet(disc)
+  if (!dom) return null
+  const E = commonRootPoly(n1, n0, d1, d0)
+  const { roots, allRational } = ratRoots(E)
+  if (!allRational) return null
+  return { set: minusPoints(dom, roots), dom, excl: roots }
+}
+// «Круглый» ли ответ: все границы — целые или простые дроби, промежутков немного.
+// eslint-disable-next-line no-unused-vars -- критерий отбора при разовом переборе таблиц (T5–T10)
+function niceSet(set, maxDen = 8n, maxNum = 60n, minIv = 3, maxIv = 6) {
+  const b = setBounds(set)
+  if (!b.length || set.intervals.length < minIv || set.intervals.length > maxIv) return false
+  return b.every((x) => x.d <= maxDen && (x.n < 0n ? -x.n : x.n) <= maxNum)
+}
+const domStr = (dom) => dom.intervals.map((i) => `${i.incLo ? "[" : "("}${epStr(i.lo)}; ${epStr(i.hi)}${i.incHi ? "]" : ")"}`).join(" ∪ ")
+
+// Диапазон сетки по a: покрывает все границы ответа с запасом и не уже 24 единиц
+// (при шаге 1/100 это ≥ 2400 узлов — требование verify18).
+function spanRange(set, pad = 6) {
+  const b = setBounds(set).map(Rnum)
+  let lo = Math.floor(Math.min(...b)) - pad, hi = Math.ceil(Math.max(...b)) + pad
+  while (hi - lo < 24) { lo -= 1; hi += 1 }
+  return [lo, hi]
+}
+
 // ── сборка объекта задания ───────────────────────────────────────────────────
 function item({ text, set, solution, pieces, predicate, aRange, picture }) {
   return {
@@ -626,7 +726,7 @@ export function t18RatDenSqrtA() {
       D: [Rneg(a), R0, R1],
       lo: "-inf", hi: "+inf", incLo: false, incHi: false,
     }],
-    aRange: [Math.floor(Rnum(lo)) - 6, Math.ceil(Rnum(hi)) + 6],
+    aRange: spanRange(set),
     picture: {
       curves: [
         { f: (a) => { const d = m * m - al * (a * a - 2 * t * a); return d > 0 ? (m + Math.sqrt(d)) / al : null }, label: "корни числителя" },
@@ -637,6 +737,271 @@ export function t18RatDenSqrtA() {
       marks: [{ x: 0, a: 0 }, ...excl.map((e) => ({ x: Math.sqrt(e), a: e })), ...excl.map((e) => ({ x: -Math.sqrt(e), a: e }))],
       hlines: [Rnum(lo), Rnum(hi), 0, ...excl],
       xMin: -8, xMax: 14, aMin: Rnum(lo) - 2, aMax: Rnum(hi) + 2,
+    },
+  })
+}
+
+// #5. (x² − 2mx + a² + 2ta)/(kx² − (k−1)ax − a²) = 0. Знаменатель = (kx + a)(x − a).
+// Таблица строится проверкой ТОЧНОГО ответа: берём набор (m, t, k), считаем множество
+// twoRootsSet (условие «два различных корня» + выкалывания через резольвенту) и оставляем
+// набор, только если все границы круглые — иррациональные наборы просто не попадают в банк.
+// Наборы (m, t, k) найдены разовым перебором ЭТИМ ЖЕ движком (условие: twoRootsSet
+// возвращает множество с круглыми границами) и зафиксированы литералом, чтобы импорт модуля
+// был мгновенным; корректность каждого набора всё равно перепроверяет verify18 в смоуке.
+const T5 = [[3, 4, 2], [3, 4, 3], [4, 3, 2], [4, 3, 3], [5, 12, 5], [6, 8, 3],
+  [8, 6, 2], [8, 15, 4], [9, 12, 3], [12, 9, 2], [12, 16, 3], [16, 12, 2]].map(([m, t, k]) => ({ m, t, k }))
+export function t18RatFactorDen() {
+  const { m, t, k } = pick(T5)
+  const n1 = [R(-2 * m)], n0 = [R0, R(2 * t), R1]
+  const d1 = [R0, R(-(k - 1), k)], d0 = [R0, R0, R(-1, k)]
+  const { set, dom, excl } = twoRootsSet(n1, n0, d1, d0)
+  const num = `x${SUP[2]} ${MINUS} ${2 * m}x + a${SUP[2]} + ${2 * t}a`
+  const den = `${k}x${SUP[2]} ${MINUS} ${k - 1 === 1 ? "" : k - 1}ax ${MINUS} a${SUP[2]}`
+  return item({
+    text: `${HEAD_PARAM}\n\n${fT(num, den)} = 0\n\n${TWO_SOL}`,
+    set,
+    solution: `Знаменатель раскладывается: ${k}x${SUP[2]} ${MINUS} ${k - 1}ax ${MINUS} a${SUP[2]} = (${k}x + a)(x ${MINUS} a), полюсы x = ${MINUS}a/${k} и x = a.\n`
+      + `У числителя два различных корня ⟺ D/4 = ${m * m} ${MINUS} (a${SUP[2]} + ${2 * t}a) > 0 ⟺ a ∈ ${domStr(dom)}.\n`
+      + `Корень пропадает, когда совпадает с полюсом: подстановка x = a даёт a(a + ${t - m > 0 ? t - m : ""}${t - m <= 0 ? MINUS + String(m - t) : ""}) = 0, `
+      + `подстановка x = ${MINUS}a/${k} — ещё одно значение; всего выкалываются a = ${excl.map(Rstr).join(", a = ")}.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 2 },
+    pieces: (a) => [{
+      N: [Radd(Rmul(a, a), Rmul(R(2 * t), a)), R(-2 * m), R1],
+      D: [Rneg(Rmul(a, a)), Rmul(R(-(k - 1)), a), R(k)],
+      lo: "-inf", hi: "+inf", incLo: false, incHi: false,
+    }],
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => { const d = m * m - (a * a + 2 * t * a); return d > 0 ? m + Math.sqrt(d) : null }, label: "корни числителя" },
+        { f: (a) => { const d = m * m - (a * a + 2 * t * a); return d > 0 ? m - Math.sqrt(d) : null } },
+        { f: (a) => a, dash: true, label: "полюсы" },
+        { f: (a) => -a / k, dash: true },
+      ],
+      marks: excl.map((e) => ({ x: Rnum(e), a: Rnum(e) })).concat(excl.map((e) => ({ x: -Rnum(e) / k, a: Rnum(e) }))),
+      hlines: setBounds(set).map(Rnum),
+      xMin: -14, xMax: 14, aMin: Rnum(setBounds(set)[0]) - 3, aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #6. (x² − 2mx + a² − 2ta)/(x² + px − qa) = 0 — знаменатель НЕ раскладывается по a,
+// поэтому выкалывания ищутся резольвентой (общий корень двух квадратных трёхчленов).
+// Наборы (m, t, p, q) — тем же разовым перебором (см. комментарий к T5).
+const T6 = [[3, 4, 1, 8], [3, 4, 2, 6], [4, 3, 1, 8], [4, 3, 6, 1], [5, 12, 2, 5], [5, 12, 5, 2],
+  [8, 6, 5, 1], [8, 15, 4, 3], [12, 9, 4, 1], [16, 12, 3, 1]].map(([m, t, p, q]) => ({ m, t, p, q }))
+export function t18RatQuadDenParam() {
+  const { m, t, p, q } = pick(T6)
+  const n1 = [R(-2 * m)], n0 = [R0, R(-2 * t), R1]
+  const d1 = [R(p)], d0 = [R0, R(-q)]
+  const { set, dom, excl } = twoRootsSet(n1, n0, d1, d0)
+  const num = `x${SUP[2]} ${MINUS} ${2 * m}x + a${SUP[2]} ${MINUS} ${2 * t}a`
+  const den = `x${SUP[2]} + ${p === 1 ? "" : p}x ${MINUS} ${q === 1 ? "" : q}a`
+  return item({
+    text: `${HEAD_PARAM}\n\n${fT(num, den)} = 0\n\n${TWO_SOL}`,
+    set,
+    solution: `У числителя два различных корня ⟺ D/4 = ${m * m} ${MINUS} (a${SUP[2]} ${MINUS} ${2 * t}a) > 0 ⟺ a ∈ ${domStr(dom)}.\n`
+      + `Если корень числителя совпал с полюсом, он не годится. Вычитая знаменатель из числителя, получаем `
+      + `${MINUS}${2 * m + p}x + a${SUP[2]} ${MINUS} ${2 * t - q}a = 0, то есть общий корень равен x = (a${SUP[2]} ${MINUS} ${2 * t - q}a)/${2 * m + p}; `
+      + `подстановка его в знаменатель даёт уравнение на a с корнями a = ${excl.map(Rstr).join(", a = ")} — эти значения выкалываем.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 2 },
+    pieces: (a) => [{
+      N: [Rsub(Rmul(a, a), Rmul(R(2 * t), a)), R(-2 * m), R1],
+      D: [Rmul(R(-q), a), R(p), R1],
+      lo: "-inf", hi: "+inf", incLo: false, incHi: false,
+    }],
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => { const d = m * m - (a * a - 2 * t * a); return d > 0 ? m + Math.sqrt(d) : null }, label: "корни числителя" },
+        { f: (a) => { const d = m * m - (a * a - 2 * t * a); return d > 0 ? m - Math.sqrt(d) : null } },
+        { f: (a) => { const d = p * p + 4 * q * a; return d > 0 ? (-p + Math.sqrt(d)) / 2 : null }, dash: true, label: "полюсы" },
+        { f: (a) => { const d = p * p + 4 * q * a; return d > 0 ? (-p - Math.sqrt(d)) / 2 : null }, dash: true },
+      ],
+      marks: excl.map((e) => { const a = Rnum(e); return { x: (a * a - (2 * t - q) * a) / (2 * m + p), a } }),
+      hlines: setBounds(set).map(Rnum),
+      xMin: -12, xMax: 12, aMin: Rnum(setBounds(set)[0]) - 3, aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #7. (x² + 2ux − ca)/(x² − 2vx + a² − 2wa) = 0 — параметр и в числителе, и в знаменателе.
+// Область — луч (дискриминант числителя линеен по a), выкалывания — снова резольвента.
+// Наборы (u, c, v, w) — тем же разовым перебором (см. комментарий к T5).
+const T7 = [
+  [1, 1, 1, 4], [1, 1, 2, 1], [1, 1, 4, 7], [1, 1, 5, 3], [1, 2, 1, 2], [1, 2, 2, 6], [1, 2, 3, 1], [1, 2, 5, 5],
+  [1, 3, 2, 4], [1, 3, 3, 8], [1, 3, 4, 1], [1, 3, 4, 3], [1, 3, 6, 2], [1, 4, 1, 1], [1, 4, 1, 7], [1, 4, 2, 3],
+  [1, 4, 3, 6], [1, 4, 5, 1], [1, 4, 5, 5], [1, 6, 1, 3], [1, 6, 2, 2], [1, 6, 3, 1], [1, 6, 3, 4], [1, 8, 1, 5],
+  [1, 8, 2, 4], [1, 8, 3, 3], [1, 8, 4, 2], [1, 8, 4, 5], [1, 8, 5, 1], [2, 1, 1, 6], [2, 1, 3, 2], [2, 2, 1, 3],
+  [2, 2, 2, 8], [2, 2, 4, 2], [2, 2, 6, 7], [2, 3, 1, 2], [2, 3, 1, 8], [2, 3, 3, 1], [2, 3, 4, 7], [2, 3, 5, 2],
+  [2, 4, 2, 4], [2, 4, 4, 3], [2, 4, 6, 2], [2, 6, 1, 1], [2, 6, 3, 5], [2, 6, 4, 8], [2, 6, 6, 7], [2, 8, 1, 3],
+  [2, 8, 1, 8], [2, 8, 2, 2], [2, 8, 3, 1], [2, 8, 4, 6], [3, 1, 1, 8], [3, 1, 4, 3], [3, 2, 1, 4], [3, 2, 5, 3],
+  [3, 3, 3, 4], [3, 3, 6, 3], [3, 4, 1, 2], [3, 4, 2, 5], [3, 4, 3, 1], [3, 4, 6, 8], [3, 6, 1, 7], [3, 6, 3, 6],
+  [3, 6, 5, 5], [3, 8, 1, 1], [3, 8, 4, 7], [4, 1, 5, 4], [4, 2, 1, 5], [4, 2, 6, 4], [4, 3, 2, 1], [4, 3, 2, 8],
+  [4, 3, 6, 7], [4, 4, 2, 6], [4, 4, 5, 5], [4, 6, 2, 4], [4, 6, 3, 7], [4, 6, 4, 3], [4, 6, 6, 2], [4, 8, 2, 3],
+  [4, 8, 4, 8], [4, 8, 5, 1], [4, 8, 6, 7], [5, 1, 6, 5], [5, 2, 1, 6], [5, 3, 1, 4], [5, 3, 5, 3], [5, 4, 1, 3],
+  [5, 4, 2, 7], [5, 4, 4, 2], [5, 6, 1, 2], [5, 6, 3, 1], [5, 6, 3, 8], [5, 8, 1, 7], [5, 8, 3, 6], [5, 8, 5, 5],
+  [6, 2, 1, 7], [6, 3, 4, 7], [6, 4, 2, 8], [6, 4, 6, 7], [6, 6, 6, 8], [6, 8, 2, 4], [6, 8, 4, 3], [6, 8, 6, 2]
+].map(([u, c, v, w]) => ({ u, c, v, w }))
+export function t18RatParamBoth() {
+  const { u, c, v, w } = pick(T7)
+  const n1 = [R(2 * u)], n0 = [R0, R(-c)]
+  const d1 = [R(-2 * v)], d0 = [R0, R(-2 * w), R1]
+  const { set, dom, excl } = twoRootsSet(n1, n0, d1, d0)
+  const num = `x${SUP[2]} + ${2 * u === 1 ? "" : 2 * u}x ${MINUS} ${c === 1 ? "" : c}a`
+  const den = `x${SUP[2]} ${MINUS} ${2 * v === 1 ? "" : 2 * v}x + a${SUP[2]} ${MINUS} ${2 * w}a`
+  return item({
+    text: `${HEAD_PARAM}\n\n${fT(num, den)} = 0\n\n${TWO_SOL}`,
+    set,
+    solution: `У числителя два различных корня ⟺ D/4 = ${u * u} + ${c}a > 0 ⟺ a ∈ ${domStr(dom)}.\n`
+      + `Совпадение корня с полюсом: вычитая знаменатель из числителя, получаем ${2 * u + 2 * v}x ${MINUS} ${c}a ${MINUS} a${SUP[2]} + ${2 * w}a = 0, `
+      + `то есть x = (a${SUP[2]} + ${c - 2 * w > 0 ? c - 2 * w : MINUS + String(2 * w - c)}a)/${2 * u + 2 * v}; подстановка в знаменатель даёт a = ${excl.map(Rstr).join(", a = ")}.\n`
+      + `Эти значения выкалываем.\nОтвет: ${setToString(set)}.`,
+    predicate: { type: "count", n: 2 },
+    pieces: (a) => [{
+      N: [Rmul(R(-c), a), R(2 * u), R1],
+      D: [Rsub(Rmul(a, a), Rmul(R(2 * w), a)), R(-2 * v), R1],
+      lo: "-inf", hi: "+inf", incLo: false, incHi: false,
+    }],
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => { const d = u * u + c * a; return d > 0 ? -u + Math.sqrt(d) : null }, label: "корни числителя" },
+        { f: (a) => { const d = u * u + c * a; return d > 0 ? -u - Math.sqrt(d) : null } },
+        { f: (a) => { const d = v * v - (a * a - 2 * w * a); return d > 0 ? v + Math.sqrt(d) : null }, dash: true, label: "полюсы" },
+        { f: (a) => { const d = v * v - (a * a - 2 * w * a); return d > 0 ? v - Math.sqrt(d) : null }, dash: true },
+      ],
+      marks: excl.map((e) => { const a = Rnum(e); return { x: (a * a + (c - 2 * w) * a) / (2 * u + 2 * v), a } }),
+      hlines: setBounds(set).map(Rnum),
+      xMin: -12, xMax: 12, aMin: Rnum(setBounds(set)[0]) - 3, aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 6,
+    },
+  })
+}
+
+// #9. (|kx| − x − c − a)/(x² − px − qa) = 0 — модуль в числителе.
+// Числитель: при x ≥ 0 это (k−1)x = c + a, при x < 0 это −(k+1)x = c + a. Значит два корня
+// x₁ = (c+a)/(k−1) > 0 и x₂ = −(c+a)/(k+1) < 0 существуют ровно при a > −c (при a = −c оба
+// сливаются в x = 0). Выкалываются те a > −c, при которых x₁ или x₂ — полюс: подстановка в
+// знаменатель даёт два квадратных уравнения на a; берём наборы, где все их корни рациональны.
+function excl9(k, c, p, q) {
+  const out = []
+  for (const [sh, sg] of [[k - 1, 1], [k + 1, -1]]) {
+    // (c+a)² + sg·p·sh·(c+a) − q·sh²·a = 0  (для x₁ знак «−p», для x₂ знак «+p»)
+    const ca = [R(c), R1]                                    // c + a как многочлен по a
+    const E = pAdd(pSub(pMul(ca, ca), pMul([R(sg * p * sh)], ca)), [R0, R(-q * sh * sh)])
+    const { roots, allRational } = ratRoots(E)
+    if (!allRational) return null
+    for (const r of roots) if (Rcmp(r, R(-c)) > 0) out.push(r)
+  }
+  return uniqSorted(out)
+}
+// Наборы (k, c, p, q) найдены разовым перебором функцией excl9 (все выкалывания рациональны,
+// границы круглые) и зафиксированы литералом — импорт модуля должен быть мгновенным.
+const T9 = [
+  [2, 1, 1, 1], [2, 2, 1, 2], [2, 2, 2, 1], [2, 2, 2, 2], [2, 2, 2, 3], [2, 2, 3, 2], [2, 2, 4, 3], [2, 3, 1, 2],
+  [2, 3, 3, 1], [2, 3, 3, 2], [2, 3, 3, 3], [2, 3, 4, 4], [2, 4, 1, 3], [2, 4, 2, 3], [2, 4, 2, 4], [2, 4, 4, 1],
+  [2, 4, 4, 2], [2, 4, 4, 3], [2, 4, 4, 4], [2, 5, 1, 3], [2, 5, 3, 4], [2, 6, 1, 4], [2, 6, 2, 4], [2, 6, 4, 1],
+  [2, 7, 1, 4], [3, 2, 1, 1], [3, 3, 1, 2], [3, 3, 2, 1], [3, 3, 3, 2], [3, 4, 2, 2], [3, 4, 3, 1], [3, 5, 1, 2],
+  [3, 5, 3, 2], [3, 5, 4, 1], [3, 5, 4, 4], [3, 6, 1, 2], [3, 6, 1, 3], [3, 6, 3, 1], [3, 6, 3, 2], [3, 6, 3, 3],
+  [3, 6, 4, 2], [3, 7, 2, 3], [3, 7, 4, 3], [3, 8, 1, 3], [3, 8, 2, 3], [3, 8, 4, 1], [3, 8, 4, 3], [3, 8, 4, 4],
+  [3, 9, 1, 4], [3, 9, 3, 4], [3, 9, 4, 4], [4, 3, 1, 1], [4, 4, 1, 1], [4, 4, 2, 1], [4, 5, 3, 1], [4, 6, 2, 1],
+  [4, 6, 2, 2], [4, 6, 4, 1], [4, 7, 1, 2], [4, 7, 3, 2], [4, 8, 2, 2], [4, 8, 3, 1], [4, 8, 4, 2], [4, 9, 1, 2],
+  [4, 9, 3, 2], [4, 9, 3, 3], [5, 4, 1, 1], [5, 5, 2, 1], [5, 6, 1, 1], [5, 6, 3, 1], [5, 7, 4, 1], [5, 8, 2, 1],
+  [5, 8, 2, 2], [5, 9, 3, 2], [6, 5, 1, 1], [6, 6, 2, 1], [6, 7, 3, 1], [6, 8, 1, 1], [6, 8, 4, 1], [6, 9, 1, 1]
+].map(([k, c, p, q]) => ({ k, c, p, q }))
+export function t18RatAbsNum() {
+  const { k, c, p, q } = pick(T9)
+  const ex = excl9(k, c, p, q)
+  const set = minusPoints(SET([IV(R(-c), "+inf")]), ex)
+  const num = `|${k === 1 ? "" : k}x| ${MINUS} x ${MINUS} ${c} ${MINUS} a`
+  const den = `x${SUP[2]} ${MINUS} ${p === 1 ? "" : p}x ${MINUS} ${q === 1 ? "" : q}a`
+  return item({
+    text: `При каких значениях параметра a уравнение\n\n${fT(num, den)} = 0\n\nимеет ровно 2 различных решения?`,
+    set,
+    solution: `Числитель равен нулю: при x ≥ 0 получаем ${k - 1}x = ${c} + a, то есть x = (${c} + a)/${k - 1}; `
+      + `при x < 0 получаем ${MINUS}${k + 1}x = ${c} + a, то есть x = ${MINUS}(${c} + a)/${k + 1}.\n`
+      + `Первый корень неотрицателен, второй отрицателен ровно при a > ${MINUS}${c}; при a = ${MINUS}${c} оба равны нулю (один корень), при a < ${MINUS}${c} корней нет.\n`
+      + `Осталось выколотьa, при которых корень попал в полюс: подстановка каждого корня в знаменатель даёт квадратные уравнения на a с корнями a = ${ex.map(Rstr).join(", a = ")}.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 2 },
+    // Два куска: x ≥ 0 (|kx| = kx) и x < 0 (|kx| = −kx); точка x = 0 принадлежит первому,
+    // поэтому не считается дважды.
+    pieces: (a) => {
+      const D = [Rmul(R(-q), a), R(-p), R1]
+      return [
+        { N: [Rneg(Radd(R(c), a)), R(k - 1)], D, lo: R0, hi: "+inf", incLo: true, incHi: false },
+        { N: [Rneg(Radd(R(c), a)), R(-(k + 1))], D, lo: "-inf", hi: R0, incLo: false, incHi: false },
+      ]
+    },
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => (a > -c ? (c + a) / (k - 1) : null), label: "корни числителя" },
+        { f: (a) => (a > -c ? -(c + a) / (k + 1) : null) },
+        { f: (a) => { const d = p * p + 4 * q * a; return d > 0 ? (p + Math.sqrt(d)) / 2 : null }, dash: true, label: "полюсы" },
+        { f: (a) => { const d = p * p + 4 * q * a; return d > 0 ? (p - Math.sqrt(d)) / 2 : null }, dash: true },
+      ],
+      marks: ex.map((e) => { const a = Rnum(e); return { x: (c + a) / (k - 1), a } })
+        .concat(ex.map((e) => { const a = Rnum(e); return { x: -(c + a) / (k + 1), a } })),
+      hlines: setBounds(set).map(Rnum),
+      xMin: -10, xMax: 16, aMin: -c - 2, aMax: Rnum(ex[ex.length - 1]) + 4,
+    },
+  })
+}
+
+// #10. (|kx − b| + ra − b)/(x² − 2mx + a²) = 0 — модуль в числителе, a² в знаменателе.
+// |kx − b| = b − ra: два корня x = (2b − ra)/k и x = ra/k существуют ровно при a < b/r.
+// Выкалывания — снова подстановка каждого корня в знаменатель (квадратные уравнения на a).
+function excl10(k, b, r, m) {
+  const out = []
+  for (const X of [[R(2 * b, k), R(-r, k)], [R0, R(r, k)]]) {           // x как многочлен по a
+    const E = pAdd(pSub(pMul(X, X), pMul([R(2 * m)], X)), [R0, R0, R1]) // x² − 2mx + a²
+    const { roots, allRational } = ratRoots(E)
+    if (!allRational) return null
+    for (const t of roots) if (Rcmp(t, R(b, r)) < 0) out.push(t)
+  }
+  return uniqSorted(out)
+}
+// Наборы (k, b, r, m) — тем же разовым перебором функцией excl10.
+const T10 = [
+  [2, 12, 2, 5], [2, 15, 1, 10], [2, 24, 2, 10], [3, 5, 1, 5], [3, 10, 1, 5],
+  [3, 10, 1, 10], [3, 18, 3, 5], [3, 20, 1, 10], [4, 15, 2, 5]
+].map(([k, b, r, m]) => ({ k, b, r, m }))
+export function t18RatAbsNumSq() {
+  const { k, b, r, m } = pick(T10)
+  const ex = excl10(k, b, r, m)
+  const set = minusPoints(SET([IV("-inf", R(b, r))]), ex)
+  const num = `|${k}x ${MINUS} ${b}| + ${r === 1 ? "" : r}a ${MINUS} ${b}`
+  const den = `x${SUP[2]} ${MINUS} ${2 * m}x + a${SUP[2]}`
+  return item({
+    text: `${HEAD_A}\n\n${fT(num, den)} = 0\n\n${TWO_SOL}`,
+    set,
+    solution: `Уравнение числителя: |${k}x ${MINUS} ${b}| = ${b} ${MINUS} ${r === 1 ? "" : r}a. Оно имеет два различных корня ровно при ${b} ${MINUS} ${r === 1 ? "" : r}a > 0, то есть при a < ${Rstr(R(b, r))}; `
+      + `корни x = ${Rstr(R(2 * b, k))} ${MINUS} ${Rstr(R(r, k))}a и x = ${Rstr(R(r, k))}a.\n`
+      + `Знаменатель x${SUP[2]} ${MINUS} ${2 * m}x + a${SUP[2]} обнуляется в полюсах; подстановка каждого корня даёт квадратные уравнения на a с корнями a = ${ex.map(Rstr).join(", a = ")} — их выкалываем.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 2 },
+    pieces: (a) => {
+      const D = [Rmul(a, a), R(-2 * m), R1]
+      return [
+        { N: [Rsub(Rmul(R(r), a), R(2 * b)), R(k)], D, lo: R(b, k), hi: "+inf", incLo: true, incHi: false },
+        { N: [Rmul(R(r), a), R(-k)], D, lo: "-inf", hi: R(b, k), incLo: false, incHi: false },
+      ]
+    },
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => (a < b / r ? (2 * b - r * a) / k : null), label: "корни числителя" },
+        { f: (a) => (a < b / r ? (r * a) / k : null) },
+        { f: (a) => { const d = m * m - a * a; return d >= 0 ? m + Math.sqrt(d) : null }, dash: true, label: "полюсы" },
+        { f: (a) => { const d = m * m - a * a; return d >= 0 ? m - Math.sqrt(d) : null }, dash: true },
+      ],
+      marks: ex.map((e) => { const a = Rnum(e); return { x: (r * a) / k, a } })
+        .concat(ex.map((e) => { const a = Rnum(e); return { x: (2 * b - r * a) / k, a } })),
+      hlines: setBounds(set).map(Rnum),
+      xMin: -6, xMax: 2 * m + 6, aMin: Rnum(ex[0]) - 3, aMax: b / r + 3,
     },
   })
 }
@@ -697,6 +1062,11 @@ export const META18 = [
     ["rat-num-const", "(x²−2mx+a)/((kx−a)(x−a)) = 0 — параметр в свободном члене", t18RatNumConst],
     ["rat-cubic-excl", "(ca−x²+bx)/(x−a²) = 0 — полюс x = a², кубика выкалываний", t18RatCubicExcl],
     ["rat-den-sqrt-a", "(x²−2mx+a²−2ta)/(x²−a) = 0 — полюсы ±√a", t18RatDenSqrtA],
+    ["rat-factor-den", "(x²−2mx+a²+2ta)/((kx+a)(x−a)) = 0 — раскладывающийся знаменатель", t18RatFactorDen],
+    ["rat-quad-den-param", "(x²−2mx+a²−2ta)/(x²+px−qa) = 0 — выкалывания через резольвенту", t18RatQuadDenParam],
+    ["rat-param-both", "(x²+2ux−ca)/(x²−2vx+a²−2wa) = 0 — параметр в обеих частях", t18RatParamBoth],
+    ["rat-abs-num", "(|kx|−x−c−a)/(x²−px−qa) = 0 — модуль в числителе", t18RatAbsNum],
+    ["rat-abs-num-sq", "(|kx−b|+ra−b)/(x²−2mx+a²) = 0 — модуль и a² внизу", t18RatAbsNumSq],
     ["rat-sqrt-odz", "(x²−a(a−1)x−a³)/√(квадратный) = 0 — ОДЗ-промежуток", t18RatSqrtDenOdz],
   ]],
 ]

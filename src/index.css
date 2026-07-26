@@ -561,10 +561,52 @@ body::before {
 .stagger > *:nth-child(7)  { animation-delay: 210ms; }
 .stagger > *:nth-child(8)  { animation-delay: 245ms; }
 
-/* Global button press — tactile scale feedback */
+/* Global button press — тактильный scale для компактных кнопок */
 button:not([disabled]):not(.no-press):active {
   transform: scale(0.96);
   transition: transform 0.08s ease-out;
+}
+
+/* Широкие кнопки НЕ масштабируем: сжатие длинной строки читается как уродливая
+   «пульсация» и рвёт края. Им — мягкая заливка на всю площадь (как .press-tap).
+   «Широкая» = w-full, ручной .press-fill, либо кнопка, растянутая колоночным
+   flex- или grid-контейнером (кроме явно ужатых self-start, w-auto, mx-auto). */
+.press-fill:not([disabled]):not(.no-press),
+button.w-full:not([disabled]):not(.no-press),
+.flex-col > button:not([disabled]):not(.no-press):not(.self-start):not(.self-center):not(.self-end):not(.w-auto):not(.mx-auto),
+.grid > button:not([disabled]):not(.no-press):not(.self-start):not(.self-center):not(.self-end):not(.w-auto):not(.mx-auto) {
+  position: relative;
+}
+.press-fill:not([disabled]):not(.no-press)::after,
+button.w-full:not([disabled]):not(.no-press)::after,
+.flex-col > button:not([disabled]):not(.no-press):not(.self-start):not(.self-center):not(.self-end):not(.w-auto):not(.mx-auto)::after,
+.grid > button:not([disabled]):not(.no-press):not(.self-start):not(.self-center):not(.self-end):not(.w-auto):not(.mx-auto)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(0, 0, 0, 0);
+  transition: background 0.18s ease;
+  pointer-events: none;
+}
+.press-fill:not([disabled]):not(.no-press):active,
+button.w-full:not([disabled]):not(.no-press):active,
+.flex-col > button:not([disabled]):not(.no-press):not(.self-start):not(.self-center):not(.self-end):not(.w-auto):not(.mx-auto):active,
+.grid > button:not([disabled]):not(.no-press):not(.self-start):not(.self-center):not(.self-end):not(.w-auto):not(.mx-auto):active {
+  transform: none;
+}
+.press-fill:not([disabled]):not(.no-press):active::after,
+button.w-full:not([disabled]):not(.no-press):active::after,
+.flex-col > button:not([disabled]):not(.no-press):not(.self-start):not(.self-center):not(.self-end):not(.w-auto):not(.mx-auto):active::after,
+.grid > button:not([disabled]):not(.no-press):not(.self-start):not(.self-center):not(.self-end):not(.w-auto):not(.mx-auto):active::after {
+  background: rgba(0, 0, 0, 0.06);
+  transition-duration: 0.04s;
+}
+.dark .press-fill:not([disabled]):not(.no-press):active::after,
+.dark button.w-full:not([disabled]):not(.no-press):active::after,
+.dark .flex-col > button:not([disabled]):not(.no-press):not(.self-start):not(.self-center):not(.self-end):not(.w-auto):not(.mx-auto):active::after,
+.dark .grid > button:not([disabled]):not(.no-press):not(.self-start):not(.self-center):not(.self-end):not(.w-auto):not(.mx-auto):active::after {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 /* Stat card hover lift */

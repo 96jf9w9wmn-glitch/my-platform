@@ -210,7 +210,7 @@ function StudentOnboardingModal({ studentId, onComplete, demo = false }) {
 
         {isLast && (
           <div className="px-6 pb-6 pt-1 flex-shrink-0">
-            <button onClick={finish} disabled={saving} className="w-full btn-primary py-2.5 disabled:opacity-50 active:scale-[0.99] transition-transform">
+            <button onClick={finish} disabled={saving} className="w-full btn-primary py-2.5 disabled:opacity-50">
               {saving ? "Сохраняем..." : "Готово"}
             </button>
           </div>

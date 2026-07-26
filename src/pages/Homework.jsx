@@ -307,7 +307,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
             <button
               type="button"
               onClick={() => setShowGen((v) => !v)}
-              className="w-full flex items-center justify-between text-sm font-medium text-blue-700 active:scale-[0.99] transition-transform"
+              className="w-full flex items-center justify-between text-sm font-medium text-blue-700 rounded-lg"
             >
               <span className="flex items-center gap-1.5"><Icon name="sparkles" size={15} />Сгенерировать по теме</span>
               <Icon name={showGen ? "chevron-up" : "chevron-down"} size={16} />
