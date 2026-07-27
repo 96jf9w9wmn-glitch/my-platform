@@ -6317,6 +6317,899 @@ export function t18AbsDiffSubstTwo() {
 }
 
 // =============================================================================
+// РАЗДЕЛ Q. Иррациональные уравнения (эталон #138–#144, #147, #148)
+// =============================================================================
+// Общий приём раздела: обе части возводятся в квадрат, а лишние корни отсекает ЗНАКОВОЕ
+// условие «правая часть ≥ 0» — именно оно, а не ОДЗ подкоренного выражения, делает ответ
+// нетривиальным (там, где равенство выполнено, подкоренное автоматически равно квадрату
+// правой части, то есть неотрицательно). Всюду, где счёт корней опирается на моё
+// алгебраическое преобразование, включена независимая числовая сверка raw
+// с НАПЕЧАТАННЫМ выражением: каждый заявленный корень обязан обнулять исходную запись,
+// и ни одна смена знака на отрезке не может остаться без корня.
+const Rabs = (a) => (Rsign(a) < 0 ? Rneg(a) : a)
+const supIn = (x) => `⁅${x}⁆`                      // надстрочник ВНУТРИ √{…} и дробей
+const HEAD_POS = "Найдите все положительные значения a, при каждом из которых уравнение"
+
+// «Круглый» ли ответ (для отбора наборов параметров перебором).
+function tidySet(set, maxIv = 4, maxDen = 12n, maxNum = 400n) {
+  const b = setBounds(set)
+  if (!b.length || b.length > 6) return false
+  if (set.intervals.length + set.points.length > maxIv) return false
+  return b.every((x) => x.d <= maxDen && Rabs(x).n <= maxNum)
+}
+// Корни Ax² + Bx + C как обычные числа (кратный корень — один раз). Только для сверки raw.
+function numQuad(A, B, C) {
+  const d = B * B - 4 * A * C
+  if (d < 0) return []
+  const s = Math.sqrt(d)
+  const r1 = (-B - s) / (2 * A), r2 = (-B + s) / (2 * A)
+  return Math.abs(r1 - r2) < 1e-9 ? [(r1 + r2) / 2] : [Math.min(r1, r2), Math.max(r1, r2)]
+}
+
+// #138. √(x⁴ − k²x² + a²) = x² + kx + sa (s = ±1) — «ровно три различных корня».
+// При возведении в квадрат x⁴ и a² сокращаются и остаётся 2x(kx + sa)(x + k) = 0,
+// то есть ровно три кандидата: x = 0, x = −sa/k, x = −k. Корнем является тот из них,
+// у которого правая часть неотрицательна.
+function build138({ k, s }) {
+  const rhs = (a, x) => Radd(Radd(Rmul(x, x), Rmul(R(k), x)), Rmul(R(s), a))
+  const solve = (a) => {
+    const good = []
+    for (const x of [R0, Rdiv(Rmul(R(-s), a), R(k)), R(-k)]) {
+      if (Rsign(rhs(a, x)) >= 0 && !good.some((y) => Rcmp(y, x) === 0)) good.push(x)
+    }
+    return good.length
+  }
+  // конфигурация меняется только там, где −sa/k совпадает с 0 или с −k и где меняется знак
+  // правой части в точках x = 0 и x = −k (обе дают одно и то же условие sa ≤ 0)
+  return { set: assembleSet((a) => solve(a) === 3, [R0, R(s * k * k)]), solve }
+}
+const T138 = []
+for (const k of [1, 2, 3, 4]) for (const s of [1, -1]) T138.push({ k, s })
+export function t18SqrtQuarticThree() {
+  const par = pick(T138), { k, s } = par
+  const { set, solve } = build138(par)
+  const aRange = spanRange(set)
+  const kx = k === 1 ? "x" : `${k}x`
+  const rad = `x⁴ ${MINUS} ${k === 1 ? "" : k * k}x${SUP[2]} + a${SUP[2]}`
+  const rt = `x${SUP[2]} + ${kx} ${s > 0 ? "+" : MINUS} a`
+  return item({
+    text: `${HEAD_A}\n\n√{${rad}} = ${rt}\n\nимеет ровно три различных корня.`,
+    set,
+    solution: `Обе части неотрицательны только при ${rt} ≥ 0 — это обязательное условие; при нём возведение в квадрат равносильно.\n`
+      + `После возведения x⁴ и a${SUP[2]} сокращаются: 0 = 2x(${kx === "x" ? "" : k}x${SUP[2]} + (${k * k} ${s > 0 ? "+" : MINUS} a)x ${s > 0 ? "+" : MINUS} ${k}a) = 2x(${k === 1 ? "" : k}x ${s > 0 ? "+" : MINUS} a)(x + ${k}).\n`
+      + `Значит кандидаты — x = 0, x = ${s > 0 ? MINUS : ""}${fT("a", String(k))} и x = ${MINUS}${k}.\n`
+      + `Проверка знака правой части: при x = 0 и при x = ${MINUS}${k} она равна ${s > 0 ? "" : MINUS}a, при x = ${s > 0 ? MINUS : ""}a/${k} — равна a${SUP[2]}/${k * k} ≥ 0 (годится всегда).\n`
+      + `Три РАЗЛИЧНЫХ корня получаются, когда ${s > 0 ? "a > 0" : "a < 0"} и при этом ${s > 0 ? MINUS : ""}a/${k} не совпадает ни с 0, ни с ${MINUS}${k}, то есть a ≠ 0 и a ≠ ${nS(s * k * k)}.\n`
+      + `Ответ: ${setToString(set)}.`,
+    raw: {
+      seg: [-k - 12, k + 12],
+      F: (a) => (x) => {
+        const v = x ** 4 - k * k * x * x + a * a
+        return v < 0 ? null : Math.sqrt(v) - (x * x + k * x + s * a)
+      },
+      sols: (a) => {
+        const out = []
+        for (const x of [0, (-s * a) / k, -k]) {
+          if (x * x + k * x + s * a < -1e-9) continue
+          if (!out.some((y) => Math.abs(y - x) < 1e-9)) out.push(x)
+        }
+        return out
+      },
+    },
+    predicate: { type: "count", n: 3 },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => (-s * a) / k, label: `x = ${s > 0 ? MINUS : ""}a/${k}` },
+        { f: () => 0, dash: true, label: "x = 0" },
+        { f: () => -k, dash: true, label: `x = ${MINUS}${k}` },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -k - 6, xMax: k + 6, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// #139. √((w²+2)x² + 2ax + 1) = x² + ax + 1 — «ровно три различных корня».
+// Свободный член и коэффициент при x подобраны так, что после возведения в квадрат
+// остаётся x²(x² + 2ax + a² − w²) = 0: корень x = 0 (двойной, считается один раз)
+// и x = −a ± w. Знак правой части в этих точках равен w² + 1 ∓ aw.
+function build139({ w }) {
+  const rhs = (a, x) => Radd(Radd(Rmul(x, x), Rmul(a, x)), R1)
+  const solve = (a) => {
+    const good = []
+    for (const x of [R0, Radd(Rneg(a), R(w)), Rsub(Rneg(a), R(w))]) {
+      if (Rsign(rhs(a, x)) >= 0 && !good.some((y) => Rcmp(y, x) === 0)) good.push(x)
+    }
+    return good.length
+  }
+  const B = R(w * w + 1, w)
+  return { set: assembleSet((a) => solve(a) === 3, [R(w), R(-w), B, Rneg(B)]), solve }
+}
+const T139 = [1, 2, 3, 4].map((w) => ({ w }))
+export function t18SqrtQuadThree() {
+  const par = pick(T139), { w } = par
+  const p = w * w + 2
+  const { set, solve } = build139(par)
+  const aRange = spanRange(set)
+  return item({
+    text: `${HEAD_A}\n\n√{${p}x${SUP[2]} + 2ax + 1} = x${SUP[2]} + ax + 1\n\nимеет ровно три различных корня.`,
+    set,
+    solution: `Возведение в квадрат равносильно при x${SUP[2]} + ax + 1 ≥ 0. Свободные члены и слагаемые с x сокращаются:\n`
+      + `${p}x${SUP[2]} + 2ax + 1 = x⁴ + a${SUP[2]}x${SUP[2]} + 1 + 2ax³ + 2x${SUP[2]} + 2ax ⟹ x⁴ + 2ax³ + (a${SUP[2]} ${MINUS} ${w * w})x${SUP[2]} = 0, то есть x${SUP[2]}(x + a ${MINUS} ${w})(x + a + ${w}) = 0.\n`
+      + `Кандидаты: x = 0 (в нём правая часть равна 1 — корень всегда) и x = ${MINUS}a ± ${w}.\n`
+      + `Правая часть в точке x = ${MINUS}a + ${w} равна ${w * w + 1} ${MINUS} ${w === 1 ? "" : w}a, а в точке x = ${MINUS}a ${MINUS} ${w} равна ${w * w + 1} + ${w === 1 ? "" : w}a, поэтому оба этих корня годятся ровно при |a| ≤ ${Rstr(R(w * w + 1, w))}.\n`
+      + `Осталось потребовать, чтобы ни один из них не совпал с нулём: a ≠ ±${w}.\n`
+      + `Ответ: ${setToString(set)}.`,
+    raw: {
+      seg: [-w - 24, w + 24],
+      F: (a) => (x) => {
+        const v = p * x * x + 2 * a * x + 1
+        return v < 0 ? null : Math.sqrt(v) - (x * x + a * x + 1)
+      },
+      sols: (a) => {
+        const out = []
+        for (const x of [0, -a + w, -a - w]) {
+          if (x * x + a * x + 1 < -1e-9) continue
+          if (!out.some((y) => Math.abs(y - x) < 1e-9)) out.push(x)
+        }
+        return out
+      },
+    },
+    predicate: { type: "count", n: 3 },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => -a + w, label: `x = ${MINUS}a + ${w}` },
+        { f: (a) => -a - w, label: `x = ${MINUS}a ${MINUS} ${w}` },
+        { f: () => 0, dash: true, label: "x = 0" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -w - 8, xMax: w + 8, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// #140. √(x + pa + c) + √(x − a) = m — «хотя бы один корень».
+// Замена u = √(x − a) ≥ 0 превращает первое подкоренное в u² + (p+1)a + c, поэтому
+// уравнение равносильно √(u² + K) = m − u при K = (p+1)a + c. Возведение в квадрат
+// убирает u² целиком: K = m² − 2mu, то есть u определяется ОДНОЗНАЧНО: u = (m² − K)/(2m).
+// Корень существует ⟺ этот u лежит на отрезке [0; m].
+function build140({ p, c, m }) {
+  const K = (a) => Radd(Rmul(R(p + 1), a), R(c))
+  const solve = (a) => (Rcmp(K(a), R(-m * m)) >= 0 && Rcmp(K(a), R(m * m)) <= 0 ? 1 : 0)
+  const crit = [R(-m * m - c, p + 1), R(m * m - c, p + 1)]
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+const T140 = []
+for (const p of [2, 3, 4, 5]) for (const c of [-2, -1, 0, 1, 2]) for (const m of [1, 2, 3]) T140.push({ p, c, m })
+export function t18SqrtSumExists() {
+  const par = pick(T140), { p, c, m } = par
+  const { set, solve } = build140(par)
+  const aRange = spanRange(set)
+  const rad1 = `x + ${p}a${term(c, "")}`
+  return item({
+    text: `${HEAD_A}\n\n√{${rad1}} + √{x ${MINUS} a} = ${m}\n\nимеет хотя бы один корень.`,
+    set,
+    solution: `Обозначим u = √(x ${MINUS} a) ≥ 0. Тогда x + ${p}a${term(c, "")} = u${SUP[2]} + ${p + 1}a${term(c, "")}, и уравнение принимает вид √(u${SUP[2]} + K) = ${m} ${MINUS} u, где K = ${p + 1}a${term(c, "")}.\n`
+      + `Отсюда сразу u ≤ ${m}, а после возведения в квадрат u${SUP[2]} сокращается: K = ${m * m} ${MINUS} ${2 * m}u, то есть u = ${fT(`${m * m} ${MINUS} K`, String(2 * m))} — значение ЕДИНСТВЕННОЕ.\n`
+      + `Корень x = u${SUP[2]} + a существует ровно тогда, когда 0 ≤ u ≤ ${m}, то есть ${MINUS}${m * m} ≤ K ≤ ${m * m}.\n`
+      + `Решая ${MINUS}${m * m} ≤ ${p + 1}a${term(c, "")} ≤ ${m * m}, получаем ответ.\n`
+      + `Ответ: ${setToString(set)}.`,
+    raw: {
+      seg: [-2 - Math.abs(aRange[0]), m * m + 2 + Math.abs(aRange[1])],
+      F: (a) => (x) => {
+        const r1 = x + p * a + c, r2 = x - a
+        return r1 < 0 || r2 < 0 ? null : Math.sqrt(r1) + Math.sqrt(r2) - m
+      },
+      sols: (a) => {
+        const K = (p + 1) * a + c
+        const u = (m * m - K) / (2 * m)
+        return u < -1e-12 || u > m + 1e-12 ? [] : [u * u + a]
+      },
+    },
+    predicate: { type: "exists" },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => ((m * m - ((p + 1) * a + c)) / (2 * m)) ** 2 + a, label: "корень x(a)" },
+        { f: (a) => a, dash: true, label: "x = a (левый конец ОДЗ)" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -6, xMax: m * m + 6, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// #141. bˣ − a = √(b²ˣ − ka + m) — «единственный корень».
+// Замена t = bˣ > 0. Левая часть обязана быть неотрицательной, а после возведения в квадрат
+// t² сокращается: 2at = a² + ka − m. При a ≠ 0 отсюда t = (a² + ka − m)/(2a) — ЕДИНСТВЕННОЕ
+// значение; при a = 0 остаётся m = 0, что при m ≠ 0 невозможно. Наборы (k, m) подобраны так,
+// что оба условия t > 0 и t ≥ a разлагаются на рациональные множители:
+// t = (a − p₁)(a − p₂)/(2a), t − a = −(a − r₁)(a − r₂)/(2a).
+function build141({ k, m }) {
+  const num = (a) => Rsub(Radd(Rmul(a, a), Rmul(R(k), a)), R(m))       // a² + ka − m
+  const solve = (a) => {
+    if (Rzero(a)) return 0
+    const t = Rdiv(num(a), Rmul(R(2), a))
+    if (Rsign(t) <= 0) return 0                                        // t = bˣ должно быть > 0
+    if (Rcmp(t, a) < 0) return 0                                       // левая часть t − a ≥ 0
+    return 1
+  }
+  const c1 = ratRoots([R(-m), R(k), R1])                               // t = 0
+  const c2 = ratRoots([R(m), R(-k), R1])                               // t = a
+  if (!c1.allRational || !c2.allRational) return null
+  const set = assembleSet((a) => solve(a) === 1, [R0, ...c1.roots, ...c2.roots])
+  return { set, solve }
+}
+const T141 = []
+// Оба условия раскладываются на рациональные множители ровно тогда, когда k² + 4m и k² − 4m —
+// точные квадраты (это редкость: на k ≤ 26 таких пар всего десяток).
+for (let k = 1; k <= 26; k++) for (let m = -170; m <= 170; m++) {
+  if (m === 0 || isSq(k * k + 4 * m) === null || isSq(k * k - 4 * m) === null) continue
+  const r = build141({ k, m })
+  if (r && tidySet(r.set)) T141.push({ k, m })
+}
+export function t18ExpSqrtOne() {
+  const par = pick(T141), { k, m } = par
+  const b = pick([2, 3, 5])
+  const { set, solve } = build141(par)
+  const aRange = spanRange(set)
+  const bx = `${b}${supT("x")}`
+  const rad = `${b * b}${supIn("x")} ${MINUS} ${k === 1 ? "" : k}a${term(m, "")}`
+  return item({
+    text: `${HEAD_A}\n\n${bx} ${MINUS} a = √{${rad}}\n\nимеет единственный корень.`,
+    set,
+    solution: `Обозначим t = ${bx} > 0; каждому t > 0 отвечает ровно один x = log${SUB[b] || ""}t. Левая часть t ${MINUS} a обязана быть неотрицательной.\n`
+      + `После возведения в квадрат t${SUP[2]} сокращается: ${MINUS}${k === 1 ? "" : k}a${term(m, "")} = ${MINUS}2at + a${SUP[2]}, то есть 2at = a${SUP[2]} + ${k === 1 ? "" : k}a ${MINUS} ${nS(m)}.\n`
+      + `При a = 0 это даёт ${MINUS}${nS(m)} = 0 — неверно, значит a ≠ 0 и t = ${fT(`a${SUP[2]} + ${k === 1 ? "" : k}a ${MINUS} ${nS(m)}`, "2a")}.\n`
+      + `Осталось два условия: t > 0 и t ${MINUS} a = ${fT(`${MINUS}(a${SUP[2]} ${MINUS} ${k === 1 ? "" : k}a + ${nS(m)})`, "2a")} ≥ 0. Оба числителя раскладываются на линейные множители, и метод интервалов даёт ответ.\n`
+      + `Ответ: ${setToString(set)}.`,
+    raw: {
+      seg: [-8, 8],
+      F: (a) => (x) => {
+        const t = b ** x
+        const v = t * t - k * a + m
+        return v < 0 ? null : t - a - Math.sqrt(v)
+      },
+      sols: (a) => {
+        if (Math.abs(a) < 1e-12) return []
+        const t = (a * a + k * a - m) / (2 * a)
+        return t <= 1e-12 || t - a < -1e-9 ? [] : [Math.log(t) / Math.log(b)]
+      },
+    },
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => (Math.abs(a) < 1e-9 ? null : (a * a + k * a - m) / (2 * a)), label: "t(a)" },
+        { f: (a) => a, dash: true, label: "t = a" },
+        { f: () => 0, dash: true, label: "t = 0" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -8, xMax: 8, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// #142. √(bˣ − a) + (a − c)/√(bˣ − a) = m — «ровно два различных корня».
+// Замена u = √(bˣ − a) > 0 даёт u² − mu + (a − c) = 0. Каждому положительному u отвечает
+// ровно один x (bˣ = u² + a = mu + c > 0 при c ≥ 1), поэтому корней столько же,
+// сколько положительных различных u: два ⟺ произведение a − c > 0 и дискриминант m² − 4(a − c) > 0.
+function build142({ c, m }) {
+  const solve = (a) => {
+    const q = Rsub(a, R(c))                                  // произведение корней
+    const d = Rsub(R(m * m), Rmul(R(4), q))                  // дискриминант
+    if (Rsign(q) <= 0) return 1                              // один положительный корень (второй ≤ 0)
+    return Rsign(d) > 0 ? 2 : Rsign(d) === 0 ? 1 : 0
+  }
+  return { set: assembleSet((a) => solve(a) === 2, [R(c), R(4 * c + m * m, 4)]), solve }
+}
+const T142 = []
+for (const c of [1, 2, 3, 4]) for (const m of [1, 2, 3]) T142.push({ c, m })
+export function t18ExpSqrtRecipTwo() {
+  const par = pick(T142), { c, m } = par
+  const b = pick([2, 3, 5])
+  const { set, solve } = build142(par)
+  const aRange = spanRange(set)
+  const rt = `√{${b}${supIn("x")} ${MINUS} a}`
+  return item({
+    text: `${HEAD_A}\n\n${rt} + ${fT(`a ${MINUS} ${c}`, rt)} = ${m}\n\nимеет ровно два различных корня.`,
+    set,
+    solution: `Обозначим u = √(${b}${supT("x")} ${MINUS} a) > 0 (нуль запрещён знаменателем). Умножая на u, получаем u${SUP[2]} ${MINUS} ${m === 1 ? "" : m}u + a ${MINUS} ${c} = 0.\n`
+      + `По каждому положительному u восстанавливается ровно один x: ${b}${supT("x")} = u${SUP[2]} + a = ${m === 1 ? "" : m}u + ${c} > 0.\n`
+      + `Значит нужно ровно два различных положительных корня квадратного уравнения: их сумма ${m} > 0 уже положительна, поэтому остаётся `
+      + `произведение a ${MINUS} ${c} > 0 и дискриминант ${m * m} ${MINUS} 4(a ${MINUS} ${c}) > 0.\n`
+      + `Отсюда ${c} < a < ${Rstr(R(4 * c + m * m, 4))}.\n`
+      + `Ответ: ${setToString(set)}.`,
+    raw: {
+      seg: [-6, 8],
+      F: (a) => (x) => {
+        const v = b ** x - a
+        return v <= 0 ? null : Math.sqrt(v) + (a - c) / Math.sqrt(v) - m
+      },
+      sols: (a) => numQuad(1, -m, a - c).filter((u) => u > 1e-12).map((u) => Math.log(m * u + c) / Math.log(b)),
+    },
+    predicate: { type: "count", n: 2 },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => (m * m - 4 * (a - c) >= 0 ? (m + Math.sqrt(m * m - 4 * (a - c))) / 2 : null), label: "u(a)" },
+        { f: (a) => (m * m - 4 * (a - c) >= 0 ? (m - Math.sqrt(m * m - 4 * (a - c))) / 2 : null) },
+        { f: () => 0, dash: true, label: "u = 0" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -2, xMax: m + 4, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// #143. (px − x²)² − c√(px − x²) = a² − qa — «хотя бы один корень».
+// Замена u = √(px − x²) ∈ [0; p/2] (подкоренное — парабола с максимумом p²/4).
+// Левая часть равна g(u) = u⁴ − cu, и при c ≥ 4(p/2)³ функция g на этом отрезке убывает,
+// поэтому её множество значений — отрезок [g(p/2); 0], а каждому значению отвечает ОДНО u.
+// По u восстанавливаются два x (или один, если u = p/2).
+function build143({ p, c, q }) {
+  const h = p / 2
+  if (!Number.isInteger(h) || c < 4 * h * h * h) return null
+  const G = R(h ** 4 - c * h)
+  const solve = (a) => {
+    const V = Rsub(Rmul(a, a), Rmul(R(q), a))
+    if (Rsign(V) > 0 || Rcmp(V, G) < 0) return 0
+    return Rcmp(V, G) === 0 ? 1 : 2
+  }
+  const e = ratRoots([Rneg(G), R(-q), R1])                    // a² − qa − G = 0
+  if (!e.allRational) return null
+  const set = assembleSet((a) => solve(a) >= 1, [R0, R(q), ...e.roots])
+  return { set, solve, G, h }
+}
+const T143 = []
+for (const p of [2, 4]) for (let c = 4; c <= 40; c++) for (let q = -16; q <= 16; q++) {
+  if (q === 0) continue
+  const r = build143({ p, c, q })
+  if (r && tidySet(r.set, 3) && r.set.intervals.length >= 2) T143.push({ p, c, q })
+}
+export function t18SqrtRangeQuartic() {
+  const par = pick(T143), { p, c, q } = par
+  const { set, solve, G, h } = build143(par)
+  const aRange = spanRange(set)
+  const w = `${p}x ${MINUS} x${SUP[2]}`
+  return item({
+    text: `${HEAD_A}\n\n(${w})${SUP[2]} ${MINUS} ${c === 1 ? "" : c}√{${w}} = a${SUP[2]}${term(-q, "a")}\n\nимеет хотя бы один корень.`,
+    set,
+    solution: `Обозначим u = √(${w}) ≥ 0. Выражение ${w} = ${h * h} ${MINUS} (x ${MINUS} ${h})${SUP[2]} не превосходит ${h * h}, поэтому u пробегает отрезок [0; ${h}], причём каждому u ∈ (0; ${h}) отвечают ДВА значения x, а u = ${h} — одно (x = ${h}).\n`
+      + `Левая часть равна g(u) = u⁴ ${MINUS} ${c === 1 ? "" : c}u. Её производная 4u³ ${MINUS} ${c} на отрезке [0; ${h}] не положительна (${c} ≥ ${4 * h * h * h}), значит g убывает от g(0) = 0 до g(${h}) = ${Rstr(G)}.\n`
+      + `Поэтому корень существует ⟺ ${Rstr(G)} ≤ a${SUP[2]}${term(-q, "a")} ≤ 0.\n`
+      + `Неравенство a${SUP[2]}${term(-q, "a")} ≤ 0 даёт отрезок между 0 и ${q}, а a${SUP[2]}${term(-q, "a")} ≥ ${Rstr(G)} выкалывает из него середину.\n`
+      + `Ответ: ${setToString(set)}.`,
+    raw: {
+      seg: [0, p],
+      F: (a) => (x) => {
+        const v = p * x - x * x
+        return v < 0 ? null : v * v - c * Math.sqrt(v) - (a * a - q * a)
+      },
+      sols: (a) => {
+        const V = a * a - q * a
+        const g = (u) => u ** 4 - c * u
+        if (V > 1e-12 || V < g(h) - 1e-12) return []
+        let lo = 0, hi = h
+        for (let i = 0; i < 200; i++) { const mid = (lo + hi) / 2; if (g(mid) > V) lo = mid; else hi = mid }
+        const ww = ((lo + hi) / 2) ** 2
+        const d = p * p - 4 * ww
+        if (d <= 1e-9) return [h]
+        const s = Math.sqrt(d)
+        return [(p - s) / 2, (p + s) / 2]
+      },
+    },
+    predicate: { type: "exists" },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => a * a - q * a, label: "правая часть a² − qa" },
+        { f: () => 0, dash: true, label: "0 — наибольшее значение" },
+        { f: () => Rnum(G), dash: true, label: `${Rstr(G)} — наименьшее` },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: Rnum(G) - 2, xMax: 4, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// #144. √x + √(pa − x) = ca — «ровно два различных корня».
+// После возведения в квадрат pa + 2√(x(pa − x)) = c²a², то есть 2√(x(pa − x)) = a(c²a − p);
+// правая часть обязана быть неотрицательной. Ещё одно возведение даёт
+// 4x² − 4pax + a²(c²a − p)² = 0 — оба корня автоматически лежат на отрезке [0; pa]
+// (их сумма pa, произведение неотрицательно), поэтому всё решает дискриминант
+// a²(p² − (c²a − p)²) > 0, равносильный 0 < c²a < 2p.
+function build144({ p, c }) {
+  const lo = R(p, c * c), hi = R(2 * p, c * c)
+  const solve = (a) => {
+    if (Rsign(a) < 0) return 0
+    if (Rzero(a)) return 1                                    // x = 0
+    if (Rcmp(a, lo) < 0 || Rcmp(a, hi) > 0) return 0
+    return Rcmp(a, hi) === 0 ? 1 : 2
+  }
+  return { set: assembleSet((a) => solve(a) === 2, [R0, lo, hi]), solve }
+}
+const T144 = []
+for (const p of [1, 2, 3, 4, 5, 6, 8]) for (const c of [1, 2, 3]) T144.push({ p, c })
+export function t18SqrtTwoTermsTwo() {
+  const par = pick(T144), { p, c } = par
+  const { set, solve } = build144(par)
+  const aRange = spanRange(set)
+  return item({
+    text: `${HEAD_A}\n\n√{x} + √{${p === 1 ? "" : p}a ${MINUS} x} = ${c === 1 ? "a" : `${c}a`}\n\nимеет ровно два различных корня.`,
+    set,
+    solution: `ОДЗ: 0 ≤ x ≤ ${p === 1 ? "" : p}a (значит a ≥ 0). Возводим в квадрат: ${p === 1 ? "" : p}a + 2√(x(${p === 1 ? "" : p}a ${MINUS} x)) = ${c * c === 1 ? "" : c * c}a${SUP[2]}, откуда 2√(x(${p === 1 ? "" : p}a ${MINUS} x)) = a(${c * c === 1 ? "" : c * c}a ${MINUS} ${p}) — правая часть обязана быть неотрицательной.\n`
+      + `Ещё одно возведение даёт 4x${SUP[2]} ${MINUS} ${4 * p === 1 ? "" : 4 * p}ax + a${SUP[2]}(${c * c === 1 ? "" : c * c}a ${MINUS} ${p})${SUP[2]} = 0. Сумма корней ${p === 1 ? "" : p}a ≥ 0, произведение ≥ 0, поэтому оба корня сами собой попадают в ОДЗ.\n`
+      + `Остаётся дискриминант: ${4 * p * p}a${SUP[2]} ${MINUS} 4a${SUP[2]}(${c * c === 1 ? "" : c * c}a ${MINUS} ${p})${SUP[2]} > 0 ⟺ |${c * c === 1 ? "" : c * c}a ${MINUS} ${p}| < ${p} ⟺ 0 < ${c * c === 1 ? "" : c * c}a < ${2 * p}.\n`
+      + `Вместе с условием a(${c * c === 1 ? "" : c * c}a ${MINUS} ${p}) ≥ 0 это даёт ${Rstr(R(p, c * c))} ≤ a < ${Rstr(R(2 * p, c * c))}.\n`
+      + `Ответ: ${setToString(set)}.`,
+    raw: {
+      seg: [0, Math.max(2, p * aRange[1])],
+      F: (a) => (x) => (x < 0 || p * a - x < 0 ? null : Math.sqrt(x) + Math.sqrt(p * a - x) - c * a),
+      sols: (a) => {
+        if (a < 0) return []
+        const d = p * p - (c * c * a - p) ** 2
+        if (a * (c * c * a - p) < -1e-12 || d < -1e-12) return []
+        const s = Math.sqrt(Math.max(0, d))
+        const x1 = (a * (p - s)) / 2, x2 = (a * (p + s)) / 2
+        return Math.abs(x1 - x2) < 1e-9 ? [(x1 + x2) / 2] : [x1, x2]
+      },
+    },
+    predicate: { type: "count", n: 2 },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => (a >= 0 && p * p - (c * c * a - p) ** 2 >= 0 ? (a * (p + Math.sqrt(p * p - (c * c * a - p) ** 2))) / 2 : null), label: "корни x(a)" },
+        { f: (a) => (a >= 0 && p * p - (c * c * a - p) ** 2 >= 0 ? (a * (p - Math.sqrt(p * p - (c * c * a - p) ** 2))) / 2 : null) },
+        { f: (a) => p * a, dash: true, label: "x = pa (правый конец ОДЗ)" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -2, xMax: 2 * p * Rnum(R(2 * p, c * c)), aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// #147. |1 − k√x| = m(x + a) — «ровно два корня» среди ПОЛОЖИТЕЛЬНЫХ a.
+// Замена u = √x ≥ 0 взаимно однозначна (x = u²), а модуль раскрывается на двух промежутках:
+// при u ≤ 1/k получаем mu² + ku + ma − 1 = 0, при u > 1/k — mu² − ku + ma + 1 = 0.
+// Число корней на каждом промежутке считается точно (Штурм) через механизм pieces.
+function build147({ k, m }) {
+  const pieces = (a) => [
+    { N: [Rsub(Rmul(R(m), a), R1), R(k), R(m)], lo: R0, hi: R(1, k), incLo: true, incHi: true },
+    { N: [Radd(Rmul(R(m), a), R1), R(-k), R(m)], lo: R(1, k), hi: "+inf", incLo: false, incHi: false },
+  ]
+  const solve = (a) => solveCount(pieces, a)
+  const crit = [R0, R(k * k + 4 * m, 4 * m * m), R(k * k - 4 * m, 4 * m * m), R(1, m), R(-1, m), R(-1, k * k)]
+  const set = assembleSet((a) => Rsign(a) > 0 && solve(a) === 2, crit)
+  const b = setBounds(set)
+  if (!b.length || solve(R0) === 2) return null                // a = 0 обязано выпадать из ответа
+  const hi = Math.max(24, Math.ceil(Rnum(b[b.length - 1])) + 6)
+  return { set, pieces, solve, aRange: [0, hi] }
+}
+const T147 = []
+for (let k = 1; k <= 9; k++) for (const m of [1, 2, 3, 4]) {
+  const r = build147({ k, m })
+  // изолированную точку в ответе не берём: она возникает при вырождении (корень u = 0
+  // появляется ровно тогда же, когда вторая ветвь даёт двойной корень) и выглядит как брак
+  if (r && tidySet(r.set, 2) && r.set.intervals.length >= 1) T147.push({ k, m })
+}
+export function t18AbsSqrtLineTwo() {
+  const par = pick(T147), { k, m } = par
+  const { set, pieces, aRange } = build147(par)
+  return item({
+    text: `${HEAD_POS}\n\n|1 ${MINUS} ${k === 1 ? "" : k}√{x}| = ${m === 1 ? "x + a" : `${m}(x + a)`}\n\nимеет ровно два корня.`,
+    set,
+    solution: `Обозначим u = √x ≥ 0, тогда x = u${SUP[2]} и разным u ≥ 0 отвечают разные x. Уравнение принимает вид |1 ${MINUS} ${k === 1 ? "" : k}u| = ${m === 1 ? `u${SUP[2]} + a` : `${m}(u${SUP[2]} + a)`}.\n`
+      + `При u ≤ ${Rstr(R(1, k))} модуль раскрывается со знаком «+»: ${m === 1 ? "" : m}u${SUP[2]} + ${k === 1 ? "" : k}u + ${m === 1 ? "" : m}a ${MINUS} 1 = 0.\n`
+      + `При u > ${Rstr(R(1, k))} — со знаком «−»: ${m === 1 ? "" : m}u${SUP[2]} ${MINUS} ${k === 1 ? "" : k}u + ${m === 1 ? "" : m}a + 1 = 0.\n`
+      + `Дискриминанты равны ${k * k} ${MINUS} ${4 * m === 1 ? "" : 4 * m}(${m === 1 ? "" : m}a ${MINUS} 1) и ${k * k} ${MINUS} ${4 * m === 1 ? "" : 4 * m}(${m === 1 ? "" : m}a + 1), а конфигурация меняется ещё и когда корень попадает на границу u = ${Rstr(R(1, k))} или в u = 0.\n`
+      + `Перебирая промежутки между этими критическими значениями и оставляя только положительные a, получаем ответ.\n`
+      + `Ответ: ${setToString(set)}.`,
+    raw: {
+      seg: [0, (k / m) ** 2 + 3],
+      F: (a) => (x) => (x < 0 ? null : Math.abs(1 - k * Math.sqrt(x)) - m * (x + a)),
+      sols: (a) => {
+        const out = []
+        for (const u of numQuad(m, k, m * a - 1)) if (u >= -1e-12 && u <= 1 / k + 1e-12) out.push(u)
+        for (const u of numQuad(m, -k, m * a + 1)) if (u > 1 / k + 1e-12) out.push(u)
+        return out.map((u) => u * u)
+      },
+    },
+    predicate: { type: "count", n: 2 },
+    pieces,
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => (k * k - 4 * m * (m * a - 1) >= 0 ? (-k + Math.sqrt(k * k - 4 * m * (m * a - 1))) / (2 * m) : null), label: "u из первой ветви" },
+        { f: (a) => (k * k - 4 * m * (m * a + 1) >= 0 ? (k - Math.sqrt(k * k - 4 * m * (m * a + 1))) / (2 * m) : null), label: "u из второй ветви" },
+        { f: (a) => (k * k - 4 * m * (m * a + 1) >= 0 ? (k + Math.sqrt(k * k - 4 * m * (m * a + 1))) / (2 * m) : null) },
+        { f: () => 1 / k, dash: true, label: `u = 1/${k}` },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -1, xMax: k / m + 2, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// #148. √(1 − px) = a − k|x| — «более двух корней».
+// Правая часть обязана быть неотрицательной, поэтому |x| ≤ a/k (в частности a ≥ 0),
+// а ОДЗ даёт x ≤ 1/p. На каждом из двух промежутков (x ≥ 0 и x < 0) после возведения
+// в квадрат получается квадратный трёхчлен, и корни считаются точно через pieces.
+function build148({ p, k }) {
+  const pieces = (a) => {
+    if (Rsign(a) < 0) return []
+    const cap = Rcmp(R(1, p), Rdiv(a, R(k))) <= 0 ? R(1, p) : Rdiv(a, R(k))
+    const out = [{
+      N: [Rsub(Rmul(a, a), R1), Rsub(R(p), Rmul(R(2 * k), a)), R(k * k)],
+      lo: R0, hi: cap, incLo: true, incHi: true,
+    }]
+    if (Rsign(a) > 0) out.push({
+      N: [Rsub(Rmul(a, a), R1), Radd(R(p), Rmul(R(2 * k), a)), R(k * k)],
+      lo: Rdiv(Rneg(a), R(k)), hi: R0, incLo: true, incHi: false,
+    })
+    return out
+  }
+  const solve = (a) => solveCount(pieces, a)
+  const crit = [R0, R1, R(-1), R(k, p), R(-k, p), R(p * p + 4 * k * k, 4 * p * k), R(-(p * p + 4 * k * k), 4 * p * k)]
+  return { set: assembleSet((a) => solve(a) >= 3, crit), pieces, solve }
+}
+const T148 = []
+for (const p of [1, 2, 3, 4]) for (const k of [1, 2, 3, 4, 5]) {
+  const r = build148({ p, k })
+  if (r && tidySet(r.set, 2)) T148.push({ p, k })
+}
+export function t18SqrtVeeMore() {
+  const par = pick(T148), { p, k } = par
+  const { set, pieces } = build148(par)
+  const aRange = spanRange(set)
+  return item({
+    text: `${HEAD_A}\n\n√{1 ${MINUS} ${p === 1 ? "" : p}x} = a ${MINUS} ${k === 1 ? "" : k}|x|\n\nимеет более двух корней.`,
+    set,
+    solution: `ОДЗ: x ≤ ${Rstr(R(1, p))}. Правая часть обязана быть неотрицательной: ${k === 1 ? "" : k}|x| ≤ a, откуда сразу a ≥ 0 и ${MINUS}${fT("a", String(k))} ≤ x ≤ ${fT("a", String(k))}.\n`
+      + `При x ≥ 0 возведение в квадрат даёт ${k * k === 1 ? "" : k * k}x${SUP[2]} ${MINUS} ${2 * k === 1 ? "" : 2 * k}ax + ${p === 1 ? "" : p}x + a${SUP[2]} ${MINUS} 1 = 0, при x < 0 — ${k * k === 1 ? "" : k * k}x${SUP[2]} + ${2 * k === 1 ? "" : 2 * k}ax + ${p === 1 ? "" : p}x + a${SUP[2]} ${MINUS} 1 = 0.\n`
+      + `Оба дискриминанта равны ${p * p} ∓ ${4 * p * k}a + ${4 * k * k}, корень попадает в нуль при a${SUP[2]} = 1, а на правый конец промежутка — при a = ${Rstr(R(k, p))}.\n`
+      + `Между соседними критическими значениями число корней постоянно; больше двух их оказывается только на ${setToString(set)}.\n`
+      + `Ответ: ${setToString(set)}.`,
+    raw: {
+      seg: [-Math.abs(aRange[1]) / k - 1, 1 / p],
+      F: (a) => (x) => {
+        const v = 1 - p * x
+        return v < 0 ? null : Math.sqrt(v) - (a - k * Math.abs(x))
+      },
+      sols: (a) => {
+        if (a < 0) return []
+        const cap = Math.min(1 / p, a / k)
+        const out = []
+        for (const x of numQuad(k * k, p - 2 * k * a, a * a - 1)) if (x >= -1e-12 && x <= cap + 1e-12) out.push(x)
+        for (const x of numQuad(k * k, p + 2 * k * a, a * a - 1)) if (x < -1e-12 && x >= -a / k - 1e-12) out.push(x)
+        return out
+      },
+    },
+    predicate: { type: "atLeast", n: 3 },
+    pieces,
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => (a >= 0 ? a / k : null), dash: true, label: "x = a/k" },
+        { f: (a) => (a >= 0 ? -a / k : null), dash: true },
+        { f: () => 1 / p, dash: true, label: `x = 1/${p}` },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -4, xMax: 2, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// =============================================================================
+// РАЗДЕЛ L. Монотонная замена φ(t) = tⁿ + ct (эталон #99–#101)
+// =============================================================================
+// Во всех задачах раздела уравнение — это замаскированное равенство φ(A) = φ(B) для
+// НЕЧЁТНОЙ строго возрастающей функции φ(t) = tⁿ + ct (n нечётно). Такая φ инъективна,
+// поэтому уравнение равносильно A = B — обычному квадратному уравнению, и дальше всё
+// решается точно. Главное для генератора — напечатать РАЗВЁРНУТУЮ запись (именно в таком
+// виде задача стоит в эталоне), а не свёрнутую.
+const SUPD = { 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹" }
+const supNum = (n) => String(n).split("").map((d) => SUPD[d]).join("")
+const coef = (k) => (k === 1 ? "" : String(k))
+
+// #99. k³x⁶ + (pa − qx)³ + ckx² + cpa = cqx — «не имеет корней».
+// Слева стоит φ(kx²) + φ(pa − qx) при φ(t) = t³ + ct, поэтому уравнение равносильно
+// kx² = qx − pa, то есть kx² − qx + pa = 0. Корней нет ⟺ q² − 4kpa < 0.
+function build99({ k, p, q }) {   // c влияет только на печать
+  const solve = (a) => countRoots([Rmul(R(p), a), R(-q), R(k)], "-inf", "+inf", false, false)
+  return { set: assembleSet((a) => solve(a) === 0, [R(q * q, 4 * k * p)]), solve }
+}
+const T99 = []
+for (const k of [1, 2, 3]) for (const c of [1, 2, 3]) for (const p of [2, 3, 4, 5, 6]) for (const q of [1, 2, 3, 4]) {
+  const r = build99({ k, c, p, q })                  // круглость границы q²/(4kp) проверит tidySet
+  if (r && tidySet(r.set, 2)) T99.push({ k, c, p, q })
+}
+export function t18MonoCubeNoRoots() {
+  const par = pick(T99), { k, c, p, q } = par
+  const { set, solve } = build99(par)
+  const aRange = spanRange(set)
+  const inner = `${coef(p)}a ${MINUS} ${coef(q)}x`
+  return item({
+    text: `${HEAD_A}\n\n${coef(k ** 3)}x⁶ + (${inner})${SUP[3]} + ${coef(c * k)}x${SUP[2]} + ${coef(c * p)}a = ${coef(c * q)}x\n\nне имеет корней.`,
+    set,
+    solution: `Соберём слагаемые в две одинаковые конструкции: ${coef(k ** 3)}x⁶ + ${coef(c * k)}x${SUP[2]} = (${coef(k)}x${SUP[2]})${SUP[3]} + ${coef(c)}·${coef(k)}x${SUP[2]}, `
+      + `а (${inner})${SUP[3]} + ${coef(c * p)}a ${MINUS} ${coef(c * q)}x = (${inner})${SUP[3]} + ${coef(c)}(${inner}).\n`
+      + `Значит уравнение имеет вид φ(${coef(k)}x${SUP[2]}) + φ(${inner}) = 0, где φ(t) = t${SUP[3]} + ${coef(c)}t.\n`
+      + `Функция φ возрастает (её производная 3t${SUP[2]} + ${c} положительна) и нечётна, поэтому равенство φ(A) = ${MINUS}φ(B) = φ(${MINUS}B) равносильно A = ${MINUS}B.\n`
+      + `Получаем ${coef(k)}x${SUP[2]} = ${coef(q)}x ${MINUS} ${coef(p)}a, то есть ${coef(k)}x${SUP[2]} ${MINUS} ${coef(q)}x + ${coef(p)}a = 0. Корней нет ⟺ дискриминант ${q * q} ${MINUS} ${4 * k * p}a < 0.\n`
+      + `Ответ: ${setToString(set)}.`,
+    raw: {
+      seg: [-10, 10],
+      // делим на общий положительный множитель: корни и смены знака те же, но величина
+      // остаётся порядка единицы (иначе x⁶ на краю отрезка съедает точность double)
+      F: (a) => (x) => (k ** 3 * x ** 6 + (p * a - q * x) ** 3 + c * k * x * x + c * p * a - c * q * x) / (1 + Math.abs(x) ** 6),
+      sols: (a) => numQuad(k, -q, p * a),
+    },
+    predicate: { type: "none" },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => (q * q - 4 * k * p * a >= 0 ? (q + Math.sqrt(q * q - 4 * k * p * a)) / (2 * k) : null), label: "корни kx²−qx+pa" },
+        { f: (a) => (q * q - 4 * k * p * a >= 0 ? (q - Math.sqrt(q * q - 4 * k * p * a)) / (2 * k) : null) },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -6, xMax: 6, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// #100. x²ⁿ + (a − k|x|)ⁿ + x² − k|x| + a = 0 — «более трёх различных решений».
+// Слева φ(x²) + φ(a − k|x|) при φ(t) = tⁿ + t, значит x² = k|x| − a. Замена u = |x| ≥ 0
+// даёт u² − ku + a = 0; каждому корню u > 0 отвечают ДВА значения x, корню u = 0 — одно.
+function build100({ k }) {          // n влияет только на печать
+  const solve = (a) => {
+    const d = Rsub(R(k * k), Rmul(R(4), a))               // дискриминант по u
+    if (Rsign(d) < 0) return 0
+    if (Rsign(d) === 0) return 2                          // u = k/2 > 0 — два значения x
+    if (Rsign(a) > 0) return 4                            // оба корня положительны
+    return Rzero(a) ? 3 : 2                               // u = 0 даёт одно x, отрицательный корень отбрасываем
+  }
+  return { set: assembleSet((a) => solve(a) >= 4, [R0, R(k * k, 4)]), solve }
+}
+const T100 = []
+for (const n of [3, 5]) for (const k of [1, 2, 3, 4, 5, 6]) T100.push({ n, k })
+export function t18MonoAbsMore() {
+  const par = pick(T100), { n, k } = par
+  const { set, solve } = build100(par)
+  const aRange = spanRange(set)
+  const inner = `a ${MINUS} ${coef(k)}|x|`
+  return item({
+    text: `${HEAD_A}\n\nx${supNum(2 * n)} + (${inner})${supNum(n)} + x${SUP[2]} ${MINUS} ${coef(k)}|x| + a = 0\n\nимеет более трёх различных решений.`,
+    set,
+    solution: `Заметим, что x${supNum(2 * n)} = (x${SUP[2]})${supNum(n)}, а x${SUP[2]} ${MINUS} ${coef(k)}|x| + a = x${SUP[2]} + (${inner}).\n`
+      + `Поэтому уравнение имеет вид φ(x${SUP[2]}) + φ(${inner}) = 0, где φ(t) = t${supNum(n)} + t — нечётная возрастающая функция.\n`
+      + `Отсюда x${SUP[2]} = ${MINUS}(${inner}) = ${coef(k)}|x| ${MINUS} a. Обозначим u = |x| ≥ 0: u${SUP[2]} ${MINUS} ${coef(k)}u + a = 0.\n`
+      + `Каждому корню u > 0 отвечают два значения x = ±u, корню u = 0 — одно. Значит решений больше трёх ⟺ оба корня положительны и различны: `
+      + `дискриминант ${k * k} ${MINUS} 4a > 0 и произведение a > 0.\n`
+      + `Ответ: ${setToString(set)}.`,
+    raw: {
+      seg: [-k - 8, k + 8],
+      F: (a) => (x) => (x ** (2 * n) + (a - k * Math.abs(x)) ** n + x * x - k * Math.abs(x) + a) / (1 + Math.abs(x) ** (2 * n)),
+      sols: (a) => {
+        const out = []
+        for (const u of numQuad(1, -k, a)) {
+          if (u < -1e-12) continue
+          if (u < 1e-12) out.push(0)
+          else { out.push(-u); out.push(u) }
+        }
+        return out
+      },
+    },
+    predicate: { type: "atLeast", n: 4 },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => (k * k - 4 * a >= 0 ? (k + Math.sqrt(k * k - 4 * a)) / 2 : null), label: "u = |x|" },
+        { f: (a) => (k * k - 4 * a >= 0 ? (k - Math.sqrt(k * k - 4 * a)) / 2 : null) },
+        { f: () => 0, dash: true, label: "u = 0" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -1, xMax: k + 2, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// #101. cos²ⁿx + (k·cos x − a)ⁿ + cos²x + k·cos x = a — «хотя бы один корень».
+// Слева φ(cos²x) + φ(k·cos x − a) при φ(t) = tⁿ + t, поэтому cos²x = a − k·cos x.
+// Обозначив c = cos x ∈ [−1; 1], получаем c² + kc − a = 0: корень по x существует ровно
+// тогда, когда у этого уравнения есть корень на отрезке [−1; 1].
+function build101({ k }) {          // n влияет только на печать
+  const solve = (a) => countRoots([Rneg(a), R(k), R1], R(-1), R1, true, true)
+  const crit = [R(1 - k), R(1 + k), R(-k * k, 4)]
+  return { set: assembleSet((a) => solve(a) >= 1, crit), solve }
+}
+const T101 = []
+for (const n of [3, 5, 9]) for (const k of [1, 2, 3, 4, 5, 6]) T101.push({ n, k })
+export function t18MonoCosExists() {
+  const par = pick(T101), { n, k } = par
+  const { set, solve } = build101(par)
+  const aRange = spanRange(set)
+  const inner = `${coef(k)}cos x ${MINUS} a`
+  return item({
+    text: `${HEAD_A}\n\ncos${supNum(2 * n)}x + (${inner})${supNum(n)} + cos${SUP[2]}x + ${coef(k)}cos x = a\n\nимеет хотя бы один корень.`,
+    set,
+    solution: `Так как cos${supNum(2 * n)}x = (cos${SUP[2]}x)${supNum(n)}, а ${coef(k)}cos x ${MINUS} a — это ровно то выражение, что стоит в скобках, уравнение имеет вид `
+      + `φ(cos${SUP[2]}x) + φ(${inner}) = 0, где φ(t) = t${supNum(n)} + t.\n`
+      + `Функция φ возрастает и нечётна, поэтому cos${SUP[2]}x = a ${MINUS} ${coef(k)}cos x.\n`
+      + `Обозначим c = cos x ∈ [${MINUS}1; 1]: уравнение принимает вид c${SUP[2]} + ${coef(k)}c = a. Функция c${SUP[2]} + ${coef(k)}c ${k >= 2 ? `на отрезке [${MINUS}1; 1] возрастает (вершина параболы c = ${MINUS}${Rstr(R(k, 2))} лежит левее)` : `имеет минимум в вершине c = ${MINUS}${Rstr(R(k, 2))}`}.\n`
+      + `Её множество значений на этом отрезке — ${setToString(set)}; при таких a корень есть, при остальных — нет.\n`
+      + `Ответ: ${setToString(set)}.`,
+    raw: {
+      seg: [0, Math.PI],
+      F: (a) => (x) => Math.cos(x) ** (2 * n) + (k * Math.cos(x) - a) ** n + Math.cos(x) ** 2 + k * Math.cos(x) - a,
+      sols: (a) => numQuad(1, k, -a).filter((c) => c >= -1 - 1e-12 && c <= 1 + 1e-12)
+        .map((c) => Math.acos(Math.min(1, Math.max(-1, c)))),
+    },
+    predicate: { type: "exists" },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => (k * k + 4 * a >= 0 ? (-k + Math.sqrt(k * k + 4 * a)) / 2 : null), label: "c = cos x" },
+        { f: (a) => (k * k + 4 * a >= 0 ? (-k - Math.sqrt(k * k + 4 * a)) / 2 : null) },
+        { f: () => 1, dash: true, label: "c = ±1" },
+        { f: () => -1, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -3, xMax: 3, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// =============================================================================
+// РАЗДЕЛ R. Логарифмические уравнения (эталон #145, #146)
+// =============================================================================
+// Десятичная запись рационального числа с одним знаком после запятой (у ФИПИ основание
+// логарифма пишется как «a − 3,5», а не «a − 7/2»).
+const decStr = (r) => (r.d === 1n ? nS(Number(r.n)) : r.d === 2n
+  ? `${r.n < 0n ? MINUS : ""}${(Number(r.n < 0n ? -r.n : r.n) - 1) / 2},5` : Rstr(r))
+
+// #145. log_{a−p}(kx² + c) = log_{a−p}(k(a−q)x + d) — «ровно два различных корня».
+// Логарифмы с одним основанием равны ⟺ равны аргументы (и положительны). Левый аргумент
+// положителен всегда, значит и правый — автоматически. Остаётся kx² − k(a−q)x + c − d = 0
+// с дискриминантом k²(a−q)² + 4k(d−c) > 0 (при d > c он положителен ВСЕГДА), то есть корней
+// всегда ровно два, и весь ответ определяется условиями на основание: a − p > 0 и a − p ≠ 1.
+function build145({ p, k, q, c, d }) {
+  const solve = (a) => {
+    const b = Rsub(a, p)
+    if (Rsign(b) <= 0 || Rcmp(b, R1) === 0) return 0
+    return countRoots([R(c - d), Rmul(R(-k), Rsub(a, R(q))), R(k)], "-inf", "+inf", false, false)
+  }
+  return { set: assembleSet((a) => solve(a) === 2, [p, Radd(p, R1)]), solve }
+}
+const T145 = []
+for (const pn of [2, 3, 4, 5, 7, 9]) for (const k of [1, 2, 3, 4]) for (const q of [1, 2, 3]) {
+  for (const [c, d] of [[8, 9], [1, 2], [2, 5], [3, 4], [5, 9], [4, 13]]) T145.push({ p: R(pn, 2), k, q, c, d })
+}
+export function t18LogSameBaseTwo() {
+  const par = pick(T145), { p, k, q, c, d } = par
+  const { set, solve } = build145(par)
+  const base = `⟦b:a ${MINUS} ${decStr(p)}⟧`
+  const left = `${k === 1 ? "" : k}x${SUP[2]} + ${c}`
+  const right = `${k === 1 ? "" : k}(a ${MINUS} ${q})x + ${d}`
+  return item({
+    text: `${HEAD_A}\n\nlog${base}(${left}) = log${base}(${right})\n\nимеет ровно два различных корня.`,
+    set,
+    solution: `Основание логарифма обязано быть положительным и не равным единице: a ${MINUS} ${decStr(p)} > 0 и a ${MINUS} ${decStr(p)} ≠ 1, то есть a > ${decStr(p)} и a ≠ ${decStr(Radd(p, R1))}.\n`
+      + `При таком основании равенство логарифмов равносильно равенству аргументов: ${left} = ${right}. Левая часть положительна всегда, значит и правая при этом положительна автоматически — отдельного условия ОДЗ не возникает.\n`
+      + `Получаем ${k === 1 ? "" : k}x${SUP[2]} ${MINUS} ${k === 1 ? "" : k}(a ${MINUS} ${q})x + ${c - d === 0 ? "0" : nS(c - d)} = 0. Его дискриминант ${k * k === 1 ? "" : k * k}(a ${MINUS} ${q})${SUP[2]} + ${4 * k * (d - c)} положителен при ЛЮБОМ a, поэтому различных корней всегда ровно два.\n`
+      + `Значит ответ определяется только условиями на основание.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 2 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => (a - Rnum(p) > 0 ? (k * (a - q) + Math.sqrt(k * k * (a - q) ** 2 + 4 * k * (d - c))) / (2 * k) : null), label: "корни" },
+        { f: (a) => (a - Rnum(p) > 0 ? (k * (a - q) - Math.sqrt(k * k * (a - q) ** 2 + 4 * k * (d - c))) / (2 * k) : null) },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -8, xMax: 8, aMin: spanRange(set)[0], aMax: spanRange(set)[1],
+    },
+  })
+}
+
+// #146. (log₂(x+a) − log₂(x−a))² − S(a)·(log₂(x+a) − log₂(x−a)) + P(a) = 0 — «ровно два решения».
+// Обозначим t = log₂((x + a)/(x − a)); ОДЗ x > |a|. При a > 0 отношение (x+a)/(x−a) убывает
+// от +∞ до 1, поэтому t пробегает (0; +∞) ВЗАИМНО ОДНОЗНАЧНО; при a < 0 оно растёт от 0 до 1,
+// и t пробегает (−∞; 0). При a = 0 всегда t = 0.
+// Коэффициенты подобраны так, что квадратное уравнение по t раскладывается: t = αa + β и
+// t = γa + δ. Решений столько, сколько РАЗЛИЧНЫХ значений t попало в нужную полупрямую.
+// Печатаемые коэффициенты S и P берутся не «на глаз», а СИМВОЛЬНО из этих же корней
+// (pAdd/pMul над Q), поэтому напечатанное уравнение заведомо равносильно разложению.
+function build146({ al, be, ga, de }) {
+  const t1 = [R(be), R(al)], t2 = [R(de), R(ga)]              // корни как многочлены по a
+  const Sc = pAdd(t1, t2).map((c) => Number(c.n))             // сумма корней
+  const Pc = pMul(t1, t2).map((c) => Number(c.n))             // произведение корней
+  const solve = (a) => {
+    if (Rzero(a)) return 0                                    // t = 0, а свободный член βδ ≠ 0
+    const want = Rsign(a) > 0 ? 1 : -1
+    const ts = uniqSorted([Radd(Rmul(R(al), a), R(be)), Radd(Rmul(R(ga), a), R(de))])
+    return ts.filter((t) => Rsign(t) === want).length
+  }
+  const crit = [R0]
+  if (al !== 0) crit.push(R(-be, al))
+  if (ga !== 0) crit.push(R(-de, ga))
+  if (ga !== al) crit.push(R(be - de, ga - al))
+  return { set: assembleSet((a) => solve(a) === 2, crit), solve, Sc, Pc }
+}
+// Одноразовая ЧИСЛОВАЯ сверка набора с напечатанным видом уравнения: при нескольких
+// значениях a (взяты небольшие, чтобы |t| было умеренным и логарифмы считались точно)
+// сканируем x по ОДЗ и сравниваем число смен знака ИСХОДНОГО выражения с ответом решателя.
+// Аналог `raw` из других разделов; в самом verify18 он здесь не годится, потому что при
+// больших |a| корень x подходит к границе ОДЗ на 10⁻⁷ и double теряет точность.
+function check146(solve, Sc, Pc) {
+  const val = (a, x) => {
+    const t = Math.log((x + a) / (x - a)) / Math.LN2
+    return t * t - (Sc[1] * a + Sc[0]) * t + (Pc[2] * a * a + Pc[1] * a + Pc[0])
+  }
+  for (const a of [-3.5, -2.5, -1.5, -0.5, 0.5, 1.5, 2.5, 3.5]) {
+    const lo = Math.abs(a) + 1e-6, hi = Math.abs(a) + 400
+    let prev = val(a, lo), n = 0
+    for (let i = 1; i <= 200000; i++) {
+      const x = lo + ((hi - lo) * i) / 200000
+      const v = val(a, x)
+      if (Math.sign(v) !== Math.sign(prev) && v !== 0 && prev !== 0) n++
+      prev = v
+    }
+    if (n !== solve(R(Math.round(a * 2), 2))) return false
+  }
+  return true
+}
+const T146 = []
+for (const al of [1, 2, 3]) for (const be of [-2, -1, 1, 2]) for (const ga of [1, 2, 3]) for (const de of [-2, -1, 1, 2]) {
+  if (al === ga && be === de) continue
+  const r = build146({ al, be, ga, de })
+  if (r && tidySet(r.set, 4) && check146(r.solve, r.Sc, r.Pc)) T146.push({ al, be, ga, de })
+}
+export function t18LogDiffSubstTwo() {
+  const par = pick(T146), { al, be, ga, de } = par
+  const { set, solve, Sc, Pc } = build146(par)
+  const aRange = spanRange(set)
+  const L = `log⟦b:2⟧(x + a) ${MINUS} log⟦b:2⟧(x ${MINUS} a)`
+  const S = `${Sc[1] === 1 ? "" : Sc[1]}a${term(Sc[0], "")}`
+  const P = `${term(Pc[2], `a${SUP[2]}`)}${term(Pc[1], "a")}${term(Pc[0], "")}`.trim()
+  return item({
+    text: `${HEAD_A}\n\n(${L})${SUP[2]} ${MINUS} (${S})(${L}) ${P} = 0\n\nимеет ровно два различных решения.`,
+    set,
+    solution: `ОДЗ: x + a > 0 и x ${MINUS} a > 0, то есть x > |a|. Обозначим t = ${L} = log⟦b:2⟧${fT("x + a", `x ${MINUS} a`)}.\n`
+      + `При a > 0 дробь (x + a)/(x ${MINUS} a) убывает от +∞ до 1, поэтому t пробегает всю полупрямую (0; +∞), причём каждому t отвечает ровно один x. `
+      + `При a < 0 та же дробь растёт от 0 до 1, и t пробегает (${MINUS}∞; 0). При a = 0 всегда t = 0, а свободный член ${nS(be * de)} ≠ 0 — решений нет.\n`
+      + `Квадратное уравнение по t раскладывается: t = ${al === 1 ? "" : al}a${term(be, "")} или t = ${ga === 1 ? "" : ga}a${term(de, "")}.\n`
+      + `Значит решений ровно два ⟺ эти значения различны и оба лежат в нужной полупрямой (положительны при a > 0, отрицательны при a < 0).\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 2 },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => al * a + be, label: `t = ${al === 1 ? "" : al}a${term(be, "")}` },
+        { f: (a) => ga * a + de, label: `t = ${ga === 1 ? "" : ga}a${term(de, "")}` },
+        { f: () => 0, dash: true, label: "t = 0" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -8, xMax: 8, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
     ["rat-quad-lin", "(k²x²−a²)/(px−q−ra) = 0 — линейный знаменатель", t18RatQuadLin],
@@ -6456,6 +7349,26 @@ export const META18 = [
     ["sys-circle-cross", "{окружность радиуса k√2; y²=x²} — ровно четыре", t18SysCircleCross],
     ["sys-circle-cross-exp", "та же окружность в раскрытом виде — ровно четыре", t18SysCircleCrossExpanded],
     ["sys-pencil-cross", "{пучок окружностей; (x−1)(y−1)=0} — ровно четыре", t18SysPencilCross],
+  ]],
+  ["Иррациональные уравнения", [
+    ["sqrt-quartic-three", "√(x⁴−k²x²+a²) = x²+kx±a — ровно три различных корня", t18SqrtQuarticThree],
+    ["sqrt-quad-three", "√((w²+2)x²+2ax+1) = x²+ax+1 — ровно три различных корня", t18SqrtQuadThree],
+    ["sqrt-sum-exists", "√(x+pa+c) + √(x−a) = m — хотя бы один корень", t18SqrtSumExists],
+    ["exp-sqrt-one", "bˣ − a = √(b²ˣ−ka+m) — единственный корень", t18ExpSqrtOne],
+    ["exp-sqrt-recip", "√(bˣ−a) + (a−c)/√(bˣ−a) = m — ровно два корня", t18ExpSqrtRecipTwo],
+    ["sqrt-range-quartic", "(px−x²)² − c√(px−x²) = a²−qa — хотя бы один корень", t18SqrtRangeQuartic],
+    ["sqrt-two-terms", "√x + √(pa−x) = ca — ровно два различных корня", t18SqrtTwoTermsTwo],
+    ["abs-sqrt-line", "|1−k√x| = m(x+a) — ровно два корня при a > 0", t18AbsSqrtLineTwo],
+    ["sqrt-vee-more", "√(1−px) = a−k|x| — более двух корней", t18SqrtVeeMore],
+  ]],
+  ["Монотонная замена φ(t) = tⁿ + ct", [
+    ["mono-cube-none", "k³x⁶+(pa−qx)³+ckx²+cpa = cqx — не имеет корней", t18MonoCubeNoRoots],
+    ["mono-abs-more", "x²ⁿ+(a−k|x|)ⁿ+x²−k|x|+a = 0 — более трёх решений", t18MonoAbsMore],
+    ["mono-cos-exists", "cos²ⁿx+(k cos x−a)ⁿ+cos²x+k cos x = a — хотя бы один корень", t18MonoCosExists],
+  ]],
+  ["Логарифмические с параметром", [
+    ["log-same-base", "log_{a−p}(kx²+c) = log_{a−p}(k(a−q)x+d) — ровно два корня", t18LogSameBaseTwo],
+    ["log-diff-subst", "(log₂(x+a)−log₂(x−a))² − S·(…) + P = 0 — ровно два решения", t18LogDiffSubstTwo],
   ]],
 ]
 
