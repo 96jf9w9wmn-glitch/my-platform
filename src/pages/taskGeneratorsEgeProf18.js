@@ -4891,6 +4891,452 @@ export function t18SysPencilCross() {
 }
 const s1txt = (u, w) => (1 + 2 * u + w === 1 ? "" : 1 + 2 * u + w === -1 ? MINUS : nS(1 + 2 * u + w))
 
+
+// =============================================================================
+// РАЗДЕЛ I. Окружность/фигура + семейство (эталон #66, #76, #81)
+// =============================================================================
+
+// #66. {(|x| − q)² + (y − h)² = ρ²; (x + p)² + y² = a²}, a > 0, «единственное решение».
+// Модуль в первой строке даёт ДВЕ окружности — с центрами (q; h) и (−q; h) (при ρ < q каждая
+// целиком лежит в своей полуплоскости). Вторая строка — окружность с центром (−p; 0) и
+// радиусом a. Расстояния от него до двух центров равны √((q−p)² + h²) и √((q+p)² + h²);
+// наборы взяты так, что ОБА расстояния целые — тогда все касания происходят при целых a.
+function build66({ q, p, h, rho }) {
+  const B2 = (q - p) * (q - p) + h * h, A2 = (q + p) * (q + p) + h * h
+  const A = Math.round(Math.sqrt(A2)), B = Math.round(Math.sqrt(B2))
+  if (A * A !== A2 || B * B !== B2 || rho >= q || rho >= B) return null
+  const solve = (a) => {
+    if (Rsign(a) <= 0) return 0                            // ищем только положительные a
+    const a2 = Rmul(a, a), r2 = R(rho * rho)
+    return circleHits(R(B2), r2, a2) + circleHits(R(A2), r2, a2)
+  }
+  const crit = [R0, R(B - rho), R(B + rho), R(A - rho), R(A + rho)]
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve, A, B }
+}
+const T66 = []
+for (const [q, p, h] of [[7, 2, 12], [4, 4, 6], [3, 3, 8], [14, 6, 15], [22, 14, 15], [28, 8, 15], [26, 14, 9], [18, 3, 20], [20, 15, 12]]) {
+  for (const rho of [1, 2, 3, 4, 5, 6, 7, 8]) {
+    const res = build66({ q, p, h, rho })
+    if (!res || res.set.intervals.length || res.set.points.length < 2) continue
+    if (setBounds(res.set).some((x) => x.d > 1n)) continue  // ответ — только целые точки
+    T66.push({ q, p, h, rho })
+  }
+}
+export function t18SysAbsTwoCircles() {
+  const par = pick(T66), { q, p, h, rho } = par
+  const { set, solve, A, B } = build66(par)
+  return item({
+    text: `Найдите все положительные значения a, при каждом из которых система\n`
+      + `⟦cases:(|x| ${MINUS} ${q})${SUP[2]} + (y ${MINUS} ${h})${SUP[2]} = ${rho * rho}¦(x + ${p})${SUP[2]} + y${SUP[2]} = a${SUP[2]}⟧\n\nимеет единственное решение.`,
+    set,
+    solution: `При x ≥ 0 первая строка — окружность с центром O₁(${q}; ${h}) и радиусом ${rho}, при x ≤ 0 — окружность с центром O₂(${MINUS}${q}; ${h}) и тем же радиусом; `
+      + `так как ${rho} < ${q}, каждая целиком лежит в своей полуплоскости, то есть первая строка задаёт ровно эти две окружности.\n`
+      + `Вторая строка — окружность с центром C(${MINUS}${p}; 0) и радиусом a.\n`
+      + `Расстояния от C до центров: CO₂ = ⟦r:${(q - p) * (q - p)} + ${h * h}⟧ = ${B} и CO₁ = ⟦r:${(q + p) * (q + p)} + ${h * h}⟧ = ${A}.\n`
+      + `С каждой из окружностей радиуса ${rho} окружность радиуса a имеет две общие точки при |d ${MINUS} a| < ${rho} < d + a и одну при касании (a = d ± ${rho}).\n`
+      + `Единственное решение всей системы — когда касание есть с одной окружностью, а со второй общих точек нет.\nОтвет: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [{ f: () => q, dash: true, label: "центры O₁, O₂" }, { f: () => -q, dash: true }, { f: (a) => -p + a, label: "правый край C-окружности" }],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -q - 4, xMax: q + 4, aMin: 0, aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 4,
+    },
+  })
+}
+
+// #76. {(x − u)² + (y − v)² = 2m²; y = |x − a| + w} — «ровно три различных решения».
+// Вторая строка — «галочка» с вершиной (a; w) и наклонами ±1. Подстановка ветвей даёт
+// квадратные уравнения, а ограничения x ≥ a и x ≤ a учитываются ТОЧНО: число корней на
+// нужном луче считает Штурм. Радиус берём вида m√2 (правая часть 2m²) — тогда условия
+// касания рациональны, а |v − w| подобрано так, чтобы и «вершина на окружности» давала
+// рациональное a: (a − u)² = 2m² − (v − w)².
+function build76({ u, v, w, m }) {
+  const g2 = 2 * m * m - (v - w) * (v - w)
+  const g = Math.round(Math.sqrt(g2))
+  if (g * g !== g2) return null
+  const solve = (a) => {
+    // правая ветвь y = x − a + w: (x − u)² + (x − s)² = 2m², s = a − w + v
+    const s = Radd(Rsub(a, R(w)), R(v)), t = Radd(Rsub(a, R(v)), R(w))
+    const q1 = [Rsub(Radd(Rmul(R(u), R(u)), Rmul(s, s)), R(2 * m * m)), Rmul(R(-2), Radd(R(u), s)), R(2)]
+    const q2 = [Rsub(Radd(Rmul(R(u), R(u)), Rmul(t, t)), R(2 * m * m)), Rmul(R(-2), Radd(R(u), t)), R(2)]
+    let n = countRoots(q1, a, "+inf", true, false) + countRoots(q2, "-inf", a, false, true)
+    const du = Rsub(a, R(u))
+    if (Rzero(Rsub(Radd(Rmul(du, du), R((v - w) * (v - w))), R(2 * m * m)))) n -= 1   // вершина на окружности
+    return n
+  }
+  const crit = [R(u + w - v - 2 * m), R(u + w - v + 2 * m), R(u - w + v - 2 * m), R(u - w + v + 2 * m), R(u - g), R(u + g)]
+  return { set: assembleSet((a) => solve(a) === 3, crit), solve }
+}
+// Три решения возможны только когда вершина «галочки» может сесть на НИЖНЮЮ часть окружности
+// так, чтобы оба луча уходили внутрь: для этого нужно m < v − w < m⟦r:2⟧, то есть
+// 2m² = (v − w)² + g² с g < m < v − w. Такие тройки редки: (m; v−w; g) = (5;7;1), (10;14;2), (15;21;3), …
+const T76 = []
+for (const [m, d] of [[5, 7], [10, 14]]) for (const u of [2, 3, 4, 5, 6]) for (const w of [0, 1, 2]) {
+  const par = { u, v: w + d, w, m }
+  const res = build76(par)
+  if (!res || res.set.intervals.length || res.set.points.length < 3) continue
+  if (setBounds(res.set).some((x) => x.d > 1n)) continue
+  T76.push(par)
+}
+export function t18SysCircleVee() {
+  const par = pick(T76), { u, v, w, m } = par
+  const { set, solve } = build76(par)
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:(x ${MINUS} ${u})${SUP[2]} + (y ${MINUS} ${v})${SUP[2]} = ${2 * m * m}¦y = |x ${MINUS} a|${w === 0 ? "" : ` + ${w}`}⟧\n\nимеет ровно три различных решения.`,
+    set,
+    solution: `Вторая строка — «галочка» с вершиной (a; ${w}) и наклонами ±1: при x ≥ a это y = x ${MINUS} a + ${w}, при x ≤ a — y = ${MINUS}x + a + ${w}.\n`
+      + `Первая строка — окружность с центром (${u}; ${v}) и радиусом ${m}⟦r:2⟧.\n`
+      + `Подставляя каждую ветвь, получаем квадратное уравнение; важно, что корни годятся только на своём луче (x ≥ a или x ≤ a), `
+      + `а вершина (a; ${w}) при (a ${MINUS} ${u})${SUP[2]} = ${2 * m * m} ${MINUS} ${(v - w) * (v - w)} лежит на окружности и считается дважды.\n`
+      + `Три различных точки получаются, когда одна ветвь даёт две точки, а другая — одну (либо когда четыре точки склеиваются в три из-за вершины).\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 3 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => a, label: "вершина галочки" }, { f: () => u, dash: true, label: "центр окружности" },
+        { f: () => u - m * Math.SQRT2, dash: true }, { f: () => u + m * Math.SQRT2, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: u - 2 * m - 3, xMax: u + 2 * m + 3,
+      aMin: Rnum(setBounds(set)[0]) - 3, aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #81. {((|y| − x − c)(x² − 2dx + y² + e))/(x + c) = 0; y = √(a − f)·x} — «ровно два решения».
+// Первый множитель — «галочка» |y| = x + c с вершиной (−c; 0), которая ВЫКОЛОТА знаменателем.
+// Второй — окружность (x − d)² + y² = d² − e. Прямая y = kx с k = √(a − f) ≥ 0 существует
+// при a ≥ f, и все условия зависят только от k² = a − f, то есть рациональны.
+function build81({ d, e, f }) {                          // c — сдвиг «галочки», на ответ не влияет
+  const R2 = d * d - e                                     // квадрат радиуса окружности
+  const solve = (a) => {
+    const K = Rsub(a, R(f))                                // K = k² = a − f
+    if (Rsign(K) < 0) return 0
+    // «галочка»: при x < 0 всегда одна точка (кроме k = 0, там она попадает в выколотую вершину),
+    // при x > 0 точка есть только если k > 1
+    let n = (Rsign(K) > 0 ? 1 : 0) + (Rcmp(K, R1) > 0 ? 1 : 0)
+    // окружность: (1 + k²)x² − 2dx + e = 0, четверть дискриминанта d² − e(1 + k²)
+    const disc = Rsub(R(d * d), Rmul(R(e), Radd(R1, K)))
+    n += Rsign(disc) > 0 ? 2 : Rsign(disc) === 0 ? 1 : 0
+    return n
+  }
+  const crit = [R(f), Radd(R(f), R1), Radd(R(f), R(R2, e))]
+  return { set: assembleSet((a) => solve(a) === 2, crit), solve, R2 }
+}
+const T81 = []
+for (const d of [2, 3, 4, 5]) for (const e of [1, 2, 3, 4, 6]) for (const c of [1, 2, 3]) for (const f of [1, 2, 3, 4]) {
+  if (d * d - e <= 0) continue
+  const res = build81({ c, d, e, f })
+  if (!res) continue
+  const b = setBounds(res.set)
+  if (!b.length || b.some((x) => x.d > 8n)) continue
+  T81.push({ c, d, e, f })
+}
+export function t18SysVeeCircleSlope() {
+  const par = pick(T81), { c, d, e, f } = par
+  const { set, solve, R2 } = build81(par)
+  const num = `(|y| ${MINUS} x ${MINUS} ${c})(x${SUP[2]} ${MINUS} ${2 * d}x + y${SUP[2]} + ${e})`
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:${fT(num, `x + ${c}`)} = 0¦y = ⟦r:a ${MINUS} ${f}⟧·x⟧\n\nимеет ровно два различных решения.`,
+    set,
+    solution: `Дробь равна нулю, когда числитель равен нулю, а знаменатель — нет: значит x ≠ ${MINUS}${c}.\n`
+      + `Первый множитель: |y| = x + ${c} — «галочка» с вершиной (${MINUS}${c}; 0), но сама вершина выколота.\n`
+      + `Второй: (x ${MINUS} ${d})${SUP[2]} + y${SUP[2]} = ${R2} — окружность с центром (${d}; 0) и радиусом ⟦r:${R2}⟧.\n`
+      + `Вторая строка системы — прямая y = kx с k = ⟦r:a ${MINUS} ${f}⟧ ≥ 0 (она есть только при a ≥ ${f}), и все условия зависят лишь от k${SUP[2]} = a ${MINUS} ${f}.\n`
+      + `С «галочкой»: при x < 0 всегда одна точка (при k = 0 она совпадает с выколотой вершиной), при x > 0 точка появляется только если k > 1.\n`
+      + `С окружностью: (1 + k${SUP[2]})x${SUP[2]} ${MINUS} ${2 * d}x + ${e} = 0, четверть дискриминанта равна ${d * d} ${MINUS} ${e}(1 + k${SUP[2]}), поэтому две точки при k${SUP[2]} < ${Rstr(R(R2, e))} и ни одной при k${SUP[2]} > ${Rstr(R(R2, e))}.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 2 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => (a >= f ? -c / (1 + Math.sqrt(a - f)) : null), label: "точка галочки при x < 0" },
+        { f: (a) => (a > f + 1 ? c / (Math.sqrt(a - f) - 1) : null), label: "точка галочки при x > 0" },
+        { f: () => d, dash: true, label: "центр окружности" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -c - 3, xMax: d + 6, aMin: f - 2, aMax: f + R2 / e + 6,
+    },
+  })
+}
+
+// =============================================================================
+// РАЗДЕЛ J (начало). Уравнения с двумя модулями: |x − t| + |x + t| = 2·max(|x|, |t|)
+// (эталон #82, #83, #85)
+// =============================================================================
+// Все три задачи — одно наблюдение: сумма |x − t| + |x + t| равна 2·max(|x|; |t|). После
+// замены u = |x| ≥ 0, v = |t| ≥ 0 уравнение распадается на две ветви (u ≤ v и u > v), в каждой
+// из которых остаётся МНОГОЧЛЕН с рациональными коэффициентами: корни на нужном промежутке
+// считает Штурм, а ветвь u ≤ v даёт не больше одного значения u. Каждое u > 0 даёт два x, u = 0 — один.
+function buildMaxAbs({ shape, p, k }) {
+  const solve = (a) => {
+    const t = Rsub(a, R(p)), v = Rsign(t) < 0 ? Rneg(t) : t
+    const v2 = Rmul(v, v), v4 = Rmul(v2, v2)
+    // ветвь u ≤ v: max = v
+    const c = shape === "root" ? Rsub(Rmul(R(4 * k * k), v2), v4) : Rsub(Rmul(R(2 * k), v), v2)
+    const cap = shape === "sq" ? v2 : v4                   // u ≤ v ⟺ u^deg ≤ v^deg
+    let zero = false, pos = 0
+    if (Rzero(c)) zero = true
+    else if (Rsign(c) > 0 && Rcmp(c, cap) <= 0) pos++
+    // ветвь u > v: многочлен от u
+    const poly = shape === "sq" ? [v2, R(-2 * k), R1]
+      : shape === "quart" ? [v2, R(-2 * k), R0, R0, R1]
+      : [v4, R0, R(-4 * k * k), R0, R1]
+    pos += countRoots(poly, v, "+inf", false, false)
+    return 2 * pos + (zero ? 1 : 0)
+  }
+  const crit = [R(p), R(p - k), R(p + k), R(p - 2 * k), R(p + 2 * k), R(p - 3 * k), R(p + 3 * k)]
+  const want = shape === "quart" ? (n) => n <= 1 : (n) => n === 1
+  return { set: assembleSet((a) => want(solve(a)), crit), solve }
+}
+const absSum = (p, k) => {
+  const co = k === 1 ? "" : `${k}`
+  return `${co}|x ${MINUS} a + ${p}| + ${co}|x + a ${MINUS} ${p}|`
+}
+const T82 = []
+for (const p of [1, 2, 3, 4, 5]) for (const k of [1, 2, 3]) T82.push({ p, k })
+export function t18AbsSumSquare() {
+  const par = pick(T82), { p, k } = par
+  const { set, solve } = buildMaxAbs({ ...par, shape: "sq" })
+  return item({
+    text: `${HEAD_A}\n\nx${SUP[2]} + (${p} ${MINUS} a)${SUP[2]} = ${absSum(p, k)}\n\nимеет единственный корень.`,
+    set,
+    solution: `Обозначим t = a ${MINUS} ${p}. Правая часть равна ${k === 1 ? "" : k}(|x ${MINUS} t| + |x + t|) = ${2 * k}·max(|x|; |t|), а левая — x${SUP[2]} + t${SUP[2]}.\n`
+      + `Уравнение чётно и по x, и по t, поэтому положим u = |x| ≥ 0, v = |t| ≥ 0: u${SUP[2]} + v${SUP[2]} = ${2 * k}·max(u; v). Каждое u > 0 даёт два корня x = ±u, а u = 0 — один.\n`
+      + `При u ≤ v получаем u${SUP[2]} = ${2 * k}v ${MINUS} v${SUP[2]} (годится, если правая часть неотрицательна и не больше v${SUP[2]}), при u > v — u${SUP[2]} ${MINUS} ${2 * k}u + v${SUP[2]} = 0.\n`
+      + `Единственный корень возможен только когда корень — это x = 0 и других нет: ${2 * k}v = v${SUP[2]}, то есть v = ${2 * k} (при v = 0 добавляются ещё x = ±${2 * k}).\n`
+      + `Значит |a ${MINUS} ${p}| = ${2 * k}.\nОтвет: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [{ f: (a) => Math.abs(a - p), label: "v = |a − p|" }, { f: () => 2 * k, dash: true, label: `v = ${2 * k}` }],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -1, xMax: 4 * k + 4, aMin: p - 4 * k - 4, aMax: p + 4 * k + 4,
+    },
+  })
+}
+export function t18AbsSumQuartic() {
+  const par = pick(T82), { p, k } = par
+  const { set, solve } = buildMaxAbs({ ...par, shape: "quart" })
+  return item({
+    text: `${HEAD_A}\n\nx${SUP[4]} + (a ${MINUS} ${p})${SUP[2]} = ${absSum(p, k)}\n\nлибо имеет единственное решение, либо не имеет решений.`,
+    set,
+    solution: `Обозначим t = a ${MINUS} ${p}. Правая часть равна ${2 * k}·max(|x|; |t|), поэтому после замены u = |x| ≥ 0, v = |t| ≥ 0 уравнение принимает вид u${SUP[4]} + v${SUP[2]} = ${2 * k}·max(u; v).\n`
+      + `Каждое u > 0 даёт два корня x = ±u, а u = 0 — один. Значит «не больше одного решения» ⟺ положительных u нет вовсе.\n`
+      + `При u ≤ v: u${SUP[4]} = ${2 * k}v ${MINUS} v${SUP[2]} — положительное u есть только при 0 < v < ${2 * k}. При u > v: u${SUP[4]} ${MINUS} ${2 * k}u + v${SUP[2]} = 0, `
+      + `и при v ≥ ${2 * k} левая часть строго положительна (u${SUP[4]} > ${2 * k}u уже при u > ${2 * k}).\n`
+      + `Итого положительных u нет ровно при v ≥ ${2 * k}, то есть |a ${MINUS} ${p}| ≥ ${2 * k} (при v = ${2 * k} остаётся один корень x = 0, при v > ${2 * k} корней нет).\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "countIn", values: [0, 1] },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [{ f: (a) => Math.abs(a - p), label: "v = |a − p|" }, { f: () => 2 * k, dash: true, label: `v = ${2 * k}` }],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -1, xMax: 4 * k + 4, aMin: p - 4 * k - 4, aMax: p + 4 * k + 4,
+    },
+  })
+}
+export function t18AbsSumRoot() {
+  const par = pick(T82), { p, k } = par
+  const { set, solve } = buildMaxAbs({ ...par, shape: "root" })
+  return item({
+    text: `${HEAD_A}\n\n⟦r:x${SUP[4]} + (a ${MINUS} ${p})${SUP[4]}⟧ = ${absSum(p, k)}\n\nимеет единственное решение.`,
+    set,
+    solution: `Обозначим t = a ${MINUS} ${p}. Правая часть равна ${2 * k}·max(|x|; |t|) и неотрицательна, поэтому можно возвести в квадрат: x${SUP[4]} + t${SUP[4]} = ${4 * k * k}·max(|x|; |t|)${SUP[2]}.\n`
+      + `После замены u = |x| ≥ 0, v = |t| ≥ 0: при u ≤ v получаем u${SUP[4]} = ${4 * k * k}v${SUP[2]} ${MINUS} v${SUP[4]}, при u > v — u${SUP[4]} ${MINUS} ${4 * k * k}u${SUP[2]} + v${SUP[4]} = 0.\n`
+      + `Каждое u > 0 даёт два корня x = ±u, значит единственный корень — это x = 0 и никаких других: ${4 * k * k}v${SUP[2]} = v${SUP[4]}, то есть v${SUP[2]} = ${4 * k * k}.\n`
+      + `При v = 0 кроме нуля появляются ещё x = ±${2 * k}, поэтому годится только v = ${2 * k}, то есть |a ${MINUS} ${p}| = ${2 * k}.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [{ f: (a) => Math.abs(a - p), label: "v = |a − p|" }, { f: () => 2 * k, dash: true, label: `v = ${2 * k}` }],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -1, xMax: 4 * k + 4, aMin: p - 4 * k - 4, aMax: p + 4 * k + 4,
+    },
+  })
+}
+
+
+// #68. {x² + px + y² + qy + r = |x² + y² − R²|; px + qy = a} — «более одного решения».
+// Модуль раскрывается по кругу x² + y² ≤ R²:
+//   снаружи остаётся ПРЯМАЯ px + qy = L, где L = −(r + R²);
+//   внутри — окружность C: x² + y² + (p/2)x + (q/2)y + (r − R²)/2 = 0.
+// Ключ: для точки НА C разность x² + y² − R² равна −(px + qy − L)/2, поэтому «внутри круга»
+// на C равносильно px + qy > L. Значит вторая строка (прямая, параллельная первой ветви!)
+// либо совпадает с ветвью-прямой (тогда решений бесконечно много), либо при a > L даёт
+// пересечения с C, либо при a < L не даёт ничего. Наборы взяты так, что (p; q) — пифагорова
+// пара, а радиус C рационален: тогда все границы круглые.
+function build68({ p, q, R2, r }) {
+  const k2 = p * p + q * q
+  const k = Math.round(Math.sqrt(k2))
+  const L = -(r + R2)
+  const c0 = -k2 / 4                                       // значение px + qy в центре C
+  const rho2 = k2 / 16 + (R2 - r) / 2                      // квадрат радиуса C
+  const rho = Math.sqrt(rho2)
+  if (k * k !== k2 || rho2 <= 0 || !Number.isInteger(2 * rho) || Math.abs(L - c0) >= k * rho) return null
+  const solve = (a) => {
+    if (Rcmp(a, R(L)) === 0) return 99                     // прямая совпала с ветвью-прямой
+    if (Rcmp(a, R(L)) < 0) return 0
+    const d = Rsub(a, R(c0, 1))
+    const cc = Rcmp(Rmul(d, d), Rmul(R(k2), R(Math.round(4 * rho2), 4)))
+    return cc < 0 ? 2 : cc === 0 ? 1 : 0
+  }
+  const crit = [R(L), R(Math.round(4 * (c0 - k * rho)), 4), R(Math.round(4 * (c0 + k * rho)), 4)]
+  return { set: assembleSet((a) => solve(a) >= 2, crit), solve, L, c0, rho }
+}
+const T68 = []
+for (const [p, q] of [[6, 8], [8, 6], [6, -8], [-6, 8], [3, 4], [4, 3], [4, -3], [-3, 4]]) {
+  for (const R2 of [9, 16, 25, 36]) for (const dd of [3, 7, 12, 24, 48]) {
+    const par = { p, q, R2, r: R2 - dd }
+    const res = build68(par)
+    if (!res || !res.set.intervals.length) continue
+    const b = setBounds(res.set)
+    if (!b.length || b.some((x) => x.d > 4n || (x.n < 0n ? -x.n : x.n) > 200n)) continue
+    T68.push(par)
+  }
+}
+export function t18SysAbsCircleLine() {
+  const par = pick(T68), { p, q, R2, r } = par
+  const { set, solve, L, rho } = build68(par)
+  const lin = `${p === 1 ? "" : nS(p)}x${term(q, "y")}`
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:x${SUP[2]}${term(p, "x")} + y${SUP[2]}${term(q, "y")}${term(r, "")} = |x${SUP[2]} + y${SUP[2]} ${MINUS} ${R2}|¦${lin} = a⟧\n\nимеет более одного решения.`,
+    set,
+    solution: `Раскроем модуль. Если x${SUP[2]} + y${SUP[2]} ≥ ${R2}, всё сокращается до прямой ${lin} = ${nS(L)}. `
+      + `Если x${SUP[2]} + y${SUP[2]} < ${R2}, получаем окружность C: 2x${SUP[2]} + 2y${SUP[2]}${term(p, "x")}${term(q, "y")}${term(r - R2, "")} = 0 радиуса ${Rstr(R(Math.round(2 * rho), 2))}.\n`
+      + `Заметим, что для точки НА C выполнено x${SUP[2]} + y${SUP[2]} ${MINUS} ${R2} = ${MINUS}(${lin} ${MINUS} ${nS(L)})/2, поэтому условие «внутри круга» на C равносильно ${lin} > ${nS(L)}.\n`
+      + `Вторая строка — прямая, ПАРАЛЛЕЛЬНАЯ первой ветви. При a = ${nS(L)} она с ней совпадает и решений бесконечно много; при a < ${nS(L)} решений нет вовсе; `
+      + `при a > ${nS(L)} решения — это пересечения с C, и их два, пока расстояние от центра C до прямой меньше её радиуса.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "atLeast", n: 2 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [{ f: () => L, dash: true, label: "ветвь-прямая" }, { f: (a) => a, label: "вторая прямая" }],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: Rnum(setBounds(set)[0]) - 6, xMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 6,
+      aMin: Rnum(setBounds(set)[0]) - 6, aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 6,
+    },
+  })
+}
+
+// #78 и #79. {f(x) = f(y); x + y = a} — «более двух решений».
+// Обе задачи об одном: кусочно-квадратичная f (из-за модуля) и симметричное условие
+// f(x) = f(a − x). Решения считаются ТОЧНО: точки склейки — это разрывы кусков и их
+// отражения a − b; между ними разность f(x) − f(a − x) есть многочлен над Q (композиция
+// многочлена с a − x считается явно), и его корни на промежутке даёт Штурм.
+// Отдельно проверяется, не обратилась ли разность в ТОЖДЕСТВЕННЫЙ нуль — тогда решений
+// бесконечно много (так бывает ровно при одном значении a, когда «параболы» совпадают).
+function pCompLin(P, al, be) {                             // P(al + be·x)
+  let res = [], pw = [R1]
+  for (let i = 0; i < P.length; i++) { res = pAdd(res, pMul([P[i]], pw)); pw = pMul(pw, [al, be]) }
+  return pTrim(res)
+}
+function countSymEq({ cuts, polys }, a) {
+  const pieceAt = (x) => { for (let i = 0; i < cuts.length; i++) if (Rcmp(x, cuts[i]) <= 0) return i; return cuts.length }
+  const fVal = (x) => pEval(polys[pieceAt(x)], x)
+  const marks = uniqSorted([...cuts, ...cuts.map((c) => Rsub(a, c))])
+  let n = 0
+  for (const c of marks) if (Rcmp(fVal(c), fVal(Rsub(a, c))) === 0) n++
+  for (let i = 0; i <= marks.length; i++) {
+    const lo = i === 0 ? "-inf" : marks[i - 1], hi = i === marks.length ? "+inf" : marks[i]
+    const mid = lo === "-inf" ? Rsub(hi, R1) : hi === "+inf" ? Radd(lo, R1) : Rdiv(Radd(lo, hi), R(2))
+    const g = pSub(polys[pieceAt(mid)], pCompLin(polys[pieceAt(Rsub(a, mid))], a, R(-1)))
+    if (!pTrim(g).length) return 99                        // тождественное совпадение
+    n += countRoots(g, lo, hi, false, false)
+  }
+  return n
+}
+
+// #78. f(s) = |s² − c²| + 2ks − s²: снаружи полосы |s| ≥ c это ЛИНЕЙНАЯ 2ks − c²,
+// внутри — парабола −2s² + 2ks + c². Критические значения a рациональны: ±2c (корень
+// выходит на границу |y| = c), k (разность обращается в тождественный нуль) и (k² + c²)/k
+// (дискриминант «смешанного» случая равен нулю).
+function build78({ c, k }) {
+  const pw = { cuts: [R(-c), R(c)], polys: [[R(-c * c), R(2 * k)], [R(c * c), R(2 * k), R(-2)], [R(-c * c), R(2 * k)]] }
+  const solve = (a) => countSymEq(pw, a)
+  const crit = [R(2 * c), R(-2 * c), R(k), R(k * k + c * c, k)]
+  return { set: assembleSet((a) => solve(a) >= 3, crit), solve }
+}
+const T78 = []
+for (const c of [1, 2, 3, 4]) for (const k of [1, 2, 3, 4, 6]) {
+  const res = build78({ c, k })
+  const b = setBounds(res.set)
+  if (!b.length || b.some((x) => x.d > 12n)) continue
+  T78.push({ c, k })
+}
+export function t18SymAbsQuadPair() {
+  const par = pick(T78), { c, k } = par
+  const { set, solve } = build78(par)
+  const side = (v) => `|${v}${SUP[2]} ${MINUS} ${c * c}| + ${2 * k === 1 ? "" : 2 * k}${v} ${MINUS} ${v}${SUP[2]}`
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:${side("x")} = ${side("y")}¦x + y = a⟧\n\nимеет более двух решений.`,
+    set,
+    solution: `Обозначим f(s) = |s${SUP[2]} ${MINUS} ${c * c}| + ${2 * k === 1 ? "" : 2 * k}s ${MINUS} s${SUP[2]}. При |s| ≥ ${c} модуль раскрывается со знаком плюс и квадраты сокращаются: f(s) = ${2 * k === 1 ? "" : 2 * k}s ${MINUS} ${c * c} — ЛИНЕЙНАЯ функция.\n`
+      + `При |s| < ${c} получаем f(s) = ${MINUS}2s${SUP[2]} + ${2 * k === 1 ? "" : 2 * k}s + ${c * c} — параболу.\n`
+      + `Система означает f(x) = f(a ${MINUS} x). Решение x = a/2 есть всегда, поэтому «более двух решений» — это «есть решение с x ≠ a ${MINUS} x».\n`
+      + `Если оба числа вне полосы, из линейности сразу x = a ${MINUS} x. Если оба внутри, разность равна (${k} ${MINUS} a)(4x ${MINUS} 2a): при a = ${k} подходит целый отрезок.\n`
+      + `Остаётся смешанный случай (одно внутри, другое вне): подстановка даёт u${SUP[2]} ${MINUS} ${2 * k}u + ${k}a ${MINUS} ${c * c} = 0, то есть u = ${k} ± ⟦r:${k * k + c * c} ${MINUS} ${k}a⟧, и нужно, чтобы такое u попало в полосу, а a ${MINUS} u — вне неё.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "atLeast", n: 3 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [{ f: (a) => a / 2, label: "решение x = a/2" }, { f: () => c, dash: true, label: "границы полосы" }, { f: () => -c, dash: true }],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -2 * c - 4, xMax: 2 * c + 4,
+      aMin: Rnum(setBounds(set)[0]) - 4, aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 4,
+    },
+  })
+}
+
+// #79. f(s) = s² + |s² − 2ds|: на [0; 2d] это ЛИНЕЙНАЯ 2ds, вне — 2s² − 2ds.
+// Критические значения: 0, d (разность обращается в тождественный нуль) и 4d.
+function build79({ d }) {
+  const pw = { cuts: [R0, R(2 * d)], polys: [[R0, R(-2 * d), R(2)], [R0, R(2 * d)], [R0, R(-2 * d), R(2)]] }
+  const solve = (a) => countSymEq(pw, a)
+  return { set: assembleSet((a) => solve(a) >= 3, [R0, R(d), R(4 * d)]), solve }
+}
+const T79 = [1, 2, 3, 4, 5].map((d) => ({ d }))
+export function t18SymAbsShiftPair() {
+  const par = pick(T79), { d } = par
+  const { set, solve } = build79(par)
+  const side = (v) => `${v}${SUP[2]} + |${v}${SUP[2]} ${MINUS} ${2 * d === 1 ? "" : 2 * d}${v}|`
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:${side("x")} = ${side("y")}¦x + y = a⟧\n\nимеет более двух решений.`,
+    set,
+    solution: `Обозначим f(s) = s${SUP[2]} + |s${SUP[2]} ${MINUS} ${2 * d === 1 ? "" : 2 * d}s|. При 0 ≤ s ≤ ${2 * d} модуль раскрывается со знаком минус и квадраты сокращаются: f(s) = ${2 * d === 1 ? "" : 2 * d}s — ЛИНЕЙНАЯ функция.\n`
+      + `При s ≤ 0 и при s ≥ ${2 * d} получаем f(s) = 2s${SUP[2]} ${MINUS} ${2 * d === 1 ? "" : 2 * d}s.\n`
+      + `Система означает f(x) = f(a ${MINUS} x); решение x = a/2 есть всегда, значит «более двух решений» — это «есть решение с x ≠ a ${MINUS} x».\n`
+      + `Если оба числа вне отрезка [0; ${2 * d}], разность равна 2(x ${MINUS} y)(x + y ${MINUS} ${d}), то есть при a = ${d} подходит бесконечно много точек. `
+      + `Если оба внутри, линейность сразу даёт x = a ${MINUS} x.\n`
+      + `В смешанном случае 2x${SUP[2]} ${MINUS} ${2 * d}x = ${2 * d}(a ${MINUS} x) даёт x${SUP[2]} = ${d}a, то есть x = ±⟦r:${d}a⟧ — и нужно, чтобы такое x было вне отрезка, а a ${MINUS} x — внутри.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "atLeast", n: 3 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => a / 2, label: "решение x = a/2" },
+        { f: (a) => (a * d >= 0 ? Math.sqrt(a * d) : null), label: "x = √(da)" },
+        { f: () => 2 * d, dash: true, label: "границы отрезка" }, { f: () => 0, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -2 * d - 4, xMax: 4 * d + 4,
+      aMin: Rnum(setBounds(set)[0]) - 4, aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 4,
+    },
+  })
+}
+
 // =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
@@ -4969,6 +5415,17 @@ export const META18 = [
     ["sys-pencil-ybound", "ОДЗ по y, ровно три решения", t18SysPencilYBound],
     ["sys-pencil-horiz", "множитель √(y−yLo) добавляет горизонталь", t18SysPencilHoriz],
     ["sys-semi-parab", "{((√(A−x²)−y)(x²+py−q))/(d−x²) = 0; y = 1−2a}", t18SysSemiParab],
+  ]],
+  ["Окружность/фигура + семейство; два модуля", [
+    ["sys-abs-2circles", "{(|x|−q)²+(y−h)²=ρ²; окружность радиуса a} — единственное", t18SysAbsTwoCircles],
+    ["sys-circle-vee", "{окружность радиуса m√2; y=|x−a|+w} — ровно три", t18SysCircleVee],
+    ["sys-vee-circle-slope", "{(|y|−x−c)(окружность)/(x+c)=0; y=√(a−f)·x} — ровно два", t18SysVeeCircleSlope],
+    ["abs-sum-square", "x²+(p−a)² = |x−a+p|+|x+a−p| — единственный корень", t18AbsSumSquare],
+    ["abs-sum-quartic", "x⁴+(a−p)² = сумма модулей — одно решение или ни одного", t18AbsSumQuartic],
+    ["abs-sum-root", "√(x⁴+(a−p)⁴) = сумма модулей — единственное решение", t18AbsSumRoot],
+    ["sys-abs-circle-line", "{|x²+y²−R²| справа; прямая px+qy=a} — более одного решения", t18SysAbsCircleLine],
+    ["sym-abs-quad-pair", "{f(x)=f(y) с |x²−c²|; x+y=a} — более двух решений", t18SymAbsQuadPair],
+    ["sym-abs-shift-pair", "{f(x)=f(y) с |x²−2dx|; x+y=a} — более двух решений", t18SymAbsShiftPair],
   ]],
   ["Системы «две кривые»: точки, прямые, окружности", [
     ["sys-point-line", "{(x−p)²+(y−q)²=0; a²+ax+may=K} — имеет решение", t18SysPointLine],
