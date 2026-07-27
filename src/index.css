@@ -449,26 +449,6 @@ body::before {
   animation: bell-ring 0.6s cubic-bezier(0.36, 0.07, 0.19, 0.97);
 }
 
-/* Sun — spins in from rotation */
-@keyframes sun-enter {
-  from { transform: rotate(-120deg) scale(0.4); opacity: 0; }
-  to   { transform: rotate(0deg) scale(1); opacity: 1; }
-}
-.icon-sun-enter {
-  display: inline-flex;
-  animation: sun-enter 0.4s cubic-bezier(0.34, 1.5, 0.64, 1) both;
-}
-
-/* Moon — swings in from the side */
-@keyframes moon-enter {
-  from { transform: rotate(40deg) scale(0.4); opacity: 0; }
-  to   { transform: rotate(0deg) scale(1); opacity: 1; }
-}
-.icon-moon-enter {
-  display: inline-flex;
-  animation: moon-enter 0.35s cubic-bezier(0.34, 1.4, 0.64, 1) both;
-}
-
 /* Popup bubble — spring pop from top-right corner */
 @keyframes popup-bubble {
   0%   { opacity: 0; transform: scale(0.82) translateY(-10px); }

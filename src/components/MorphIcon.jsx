@@ -26,11 +26,14 @@ function layerStyle(shown, rotate, leaving) {
   }
 }
 
-function MorphIcon({ from, to = "check", size = 14, active = false, rotate = false, dot = false, toClassName = "", className = "" }) {
+function MorphIcon({ from, to = "check", size = 14, active = false, hover = true, rotate = false, dot = false, toClassName = "", className = "" }) {
   const ref = useRef(null)
   const [hovered, setHovered] = useState(false)
 
   useEffect(() => {
+    // hover={false} — когда иконка показывает состояние, а не действие
+    // (переключатель темы: солнце/луна меняются по клику, а не под курсором).
+    if (!hover) return
     const host = ref.current?.closest("button, a, [role='button']")
     if (!host) return
     // Тач-тап шлёт pointerenter, но «навести и убрать» пальцем нельзя — иконка
@@ -47,7 +50,7 @@ function MorphIcon({ from, to = "check", size = 14, active = false, rotate = fal
       host.removeEventListener("pointercancel", leave)
       host.removeEventListener("blur", leave)
     }
-  }, [])
+  }, [hover])
 
   const shown = active || hovered
 

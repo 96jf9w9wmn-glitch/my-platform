@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react"
 import Icon from "../components/Icon"
+import MorphIcon from "../components/MorphIcon"
 import Collapse from "../components/Collapse"
 import FormulaBackdrop from "../components/FormulaBackdrop"
 import { Highlight } from "../components/Mark"
@@ -656,9 +657,7 @@ function Landing({ onStart }) {
               aria-label="Переключить тему"
               className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
             >
-              <span key={dark ? "sun" : "moon"} className={dark ? "icon-sun-enter" : "icon-moon-enter"}>
-                {dark ? <Icon name="sun" size={16} /> : <Icon name="moon" size={16} />}
-              </span>
+              <MorphIcon from="moon" to="sun" size={16} active={dark} hover={false} rotate />
             </button>
             <button
               onClick={() => start(role, "login")}

@@ -1664,9 +1664,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
               onClick={() => setDark(!dark)}
               className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg text-sm"
             >
-              <span key={dark ? "sun" : "moon"} className={dark ? "icon-sun-enter" : "icon-moon-enter"}>
-                {dark ? <Icon name="sun" size={16} /> : <Icon name="moon" size={16} />}
-              </span>
+              <MorphIcon from="moon" to="sun" size={16} active={dark} hover={false} rotate />
             </button>
             <StudentNotificationBell userId={user.id} onNavigate={goTab} />
             <button onClick={onLogout} className="text-sm text-gray-400 hover:text-gray-600">Выйти</button>
