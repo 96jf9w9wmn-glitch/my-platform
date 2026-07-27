@@ -753,6 +753,7 @@ export const META19 = [
     ["swap-digits-min", "Перестановка цифр двузначных → наименьшая новая сумма", t19SwapDigitsMin],
     ["cross-out-digits", "Вычёркивание цифр до кратности", t19CrossOutDigits],
     ["insert-digit-sums", "Вставка сумм соседних цифр", t19InsertDigitSums],
+    ["supersequence-digits", "Наименьшее число, дающее все числа 1…N", t19SupersequenceDigits],
   ]],
   ["Сюжетные задачи с перебором", [
     ["test-bonus-min", "Тест с добавкой баллов: наим. число участников", t19TestBonusMin],
@@ -7795,6 +7796,147 @@ export function t19InsertDigitSums() {
       extra: [],
       maxNumber: 9999999999,
       phrases: ["между каждыми двумя его соседними цифрами", "сумму этих цифр"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 6 (продолжение). Общая надпоследовательность: числа вычёркиванием (#22)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Из записи числа вычёркиванием цифр получают другие числа. Вопрос «существует ли
+// L-значное число, из которого получаются все данные» — это поиск кратчайшей общей
+// НАДпоследовательности. Для нескольких коротких целей она ищется поиском в ширину по
+// состояниям (сколько символов каждой цели уже сопоставлено) — состояний немного.
+// Для набора 1…N ответ конструктивен: пусть F — наибольшая цифра a, при которой все
+// числа 10a…10a+9 не превосходят N. После первого вхождения каждой из цифр 1…F должны
+// встретиться все десять цифр, поэтому длина не меньше F + 10; столько и достаточно.
+function shortestSuper(targets) {
+  const start = targets.map(() => 0)
+  const key = (st) => st.join(",")
+  let level = new Map([[key(start), ""]])
+  for (let L = 1; L <= 12; L++) {
+    const next = new Map()
+    for (const [k, str] of level) {
+      const st = k.split(",").map(Number)
+      for (let d = 0; d <= 9; d++) {
+        if (!str && d === 0) continue
+        const ns = st.map((p, i) => (p < targets[i].length && targets[i][p] === String(d) ? p + 1 : p))
+        const nk = key(ns)
+        const cand = str + d
+        const prev = next.get(nk)
+        if (prev === undefined || cand < prev) next.set(nk, cand)
+      }
+    }
+    level = next
+    for (const [k, str] of level) {
+      if (k.split(",").map(Number).every((p, i) => p === targets[i].length)) return { len: L, str }
+    }
+  }
+  return null
+}
+
+export function t19SupersequenceDigits() {
+  const N = pick([40, 30, 50])
+  const rnd3 = () => String(randInt(102, 987))
+  // а) три трёхзначных числа с общей надпоследовательностью ровно из La цифр
+  const La = 7
+  let setA = null
+  for (let t = 0; t < 200 && !setA; t++) {
+    const g = [rnd3(), rnd3(), rnd3()]
+    if (uniq(g).length !== 3) continue
+    const r = shortestSuper(g)
+    if (r && r.len === La) setA = { nums: g, sup: r.str }
+  }
+  // б) пять трёхзначных чисел, для которых Lb цифр НЕ хватает
+  const Lb = 9
+  let setB = null
+  for (let t = 0; t < 300 && !setB; t++) {
+    const g = [rnd3(), rnd3(), rnd3(), rnd3(), rnd3()]
+    if (uniq(g).length !== 5) continue
+    const r = shortestSuper(g)
+    if (r && r.len > Lb) setB = { nums: g, need: r.len }
+  }
+  if (!setA || !setB) return null
+  // в) наименьшее число, из которого получаются все числа от 1 до N
+  const F = Math.floor((N - 9) / 10)
+  if (F < 1) return null
+  const head = Array.from({ length: F }, (_, i) => i + 1)   // 1, 2, …, F
+  const tailDigits = []                                     // все десять цифр после головы
+  const lastFirst = Math.floor(N / 10)                      // цифра десятков у N (например 4 для 40)
+  const needEarly = lastFirst > F ? lastFirst : null        // цифра, которой нужен «свой» ноль
+  for (let d = 1; d <= 9; d++) tailDigits.push(d)
+  tailDigits.push(0)
+  // хвост: лексикографически минимальная перестановка 1…9,0, где needEarly стоит до нуля
+  // хвост собираем жадно, каждый раз беря НАИМЕНЬШУЮ допустимую цифру
+  const tail = []
+  const restDigits = [...tailDigits]
+  while (restDigits.length) {
+    const order = [...restDigits].sort((x, y) => x - y)
+    for (const d of order) {
+      const left = restDigits.filter((v) => v !== d)
+      const earlyLeft = needEarly !== null && left.includes(needEarly)
+      if (d === 0 && earlyLeft) continue                          // ноль раньше нужной цифры нельзя
+      tail.push(d); restDigits.splice(restDigits.indexOf(d), 1); break
+    }
+  }
+  const answer = [...head, ...tail].join("")
+  const covers = (str, v) => {
+    const s = String(v)
+    let i = 0
+    for (const ch of str) if (i < s.length && s[i] === ch) i++
+    return i === s.length
+  }
+  for (let v = 1; v <= N; v++) if (!covers(answer, v)) return null
+
+  const params = { N, La, Lb, setA, setB, F }
+  const check = (cfg, part) => {
+    if (typeof cfg !== "string" || !/^[1-9]\d*$/.test(cfg)) return "нужно натуральное число без ведущего нуля"
+    if (part === "a") {
+      if (cfg.length !== La) return `число должно быть ${La}-значным, а в нём ${cfg.length} цифр`
+      for (const g of setA.nums) if (!covers(cfg, g)) return `из ${cfg} нельзя получить ${g}`
+      return null
+    }
+    if (part === "c") {
+      if (cfg.length !== answer.length) return `в числе ${cfg.length} цифр, а в ответе ${answer.length}`
+      for (let v = 1; v <= N; v++) if (!covers(cfg, v)) return `из ${cfg} нельзя получить ${v}`
+      if (Number(cfg) !== Number(answer)) return `${cfg} не совпадает с заявленным ответом ${answer}`
+    }
+    return null
+  }
+  // Независимый проход: кратчайшая надпоследовательность ищется поиском в ширину
+  // (пункты а и б), а для пункта в) проверяется покрытие и нижняя оценка длины F + 10.
+  const solve = (P) => {
+    const ra = shortestSuper(P.setA.nums)
+    const rb = shortestSuper(P.setB.nums)
+    return {
+      a: !!ra && ra.len <= P.La,
+      b: !!rb && rb.len <= P.Lb,
+      c: answer.length === P.F + 10 ? Number(answer) : -1,
+      c_next: false,
+    }
+  }
+
+  return item({
+    preamble: `Из записи натурального числа вычёркивают несколько цифр (оставшиеся цифры сохраняют свой порядок) и получают новое натуральное число.`,
+    qa: `Приведите пример ${La === 7 ? "семизначного" : `${La}-значного`} числа, вычёркивая цифры которого, можно получить каждое из чисел: ${setA.nums.join(", ")}.`,
+    qb: `Существует ли ${Lb === 9 ? "девятизначное" : `${Lb}-значное`} число, вычёркивая цифры которого, можно получить каждое из чисел: ${setB.nums.join(", ")}?`,
+    qc: `Найдите наименьшее число, из которого можно получить все числа от 1 до ${N} включительно, вычёркивая из него цифры.`,
+    ansA: `${setA.sup}`,
+    ansB: `нет: поиск кратчайшего числа, из которого получаются все пять данных чисел, даёт ${setB.need} ${plural(setB.need, "цифру", "цифры", "цифр")} — меньше чем ${setB.need} цифрами обойтись нельзя, а ${Lb} < ${setB.need}`,
+    ansC: `${answer}`,
+    solution: `а) Подходит число ${setA.sup}: из него вычёркиванием получаются ${setA.nums.join(", ")}.\nб) Кратчайшее число, из которого получаются все числа ${setB.nums.join(", ")}, содержит ${setB.need} ${plural(setB.need, "цифру", "цифры", "цифр")}, поэтому ${Lb}-значного числа недостаточно.\nв) Чтобы получить все числа вида 10a + b при a = 1, …, ${F} и b = 0, …, 9, после первого вхождения каждой из цифр 1, …, ${F} должны встретиться все десять цифр. Значит длина записи не меньше ${F} + 10 = ${F + 10}. Столько цифр и достаточно: ${answer} — здесь сначала идут ${head.join(", ")}, а затем все десять цифр в порядке ${tail.join(", ")}, причём ${needEarly !== null ? `цифра ${needEarly} стоит раньше нуля (это нужно для числа ${N})` : "порядок выбран лексикографически наименьшим"}.\nОтвет: ${answer}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: setA.sup, target: `set-${setA.nums.join("-")}` },
+        b: { type: "yesno", yes: false, reason: "supersequence-too-long", target: `set-${setB.nums.join("-")}` },
+        c: { type: "value", value: Number(answer), example: answer },
+      },
+      mustMention: [N, 1, ...setA.nums.map(Number), ...setB.nums.map(Number)],
+      extra: [],
+      maxNumber: 999,
+      phrases: ["вычёркивая цифры которого", "от 1 до"],
     },
   })
 }

@@ -5,9 +5,11 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import Icon from "../components/Icon"
 import NavIcon from "../components/NavIcon"
 import StudentSidebar from "../components/StudentSidebar"
+import FormulaBackdrop from "../components/FormulaBackdrop"
 import Chat from "./Chat"
 import StudentOnboardingModal from "../components/StudentOnboardingModal"
 const Board = lazy(() => import("../components/Board"))
+const Practice = lazy(() => import("./Practice"))
 import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, formatPhone } from "../utils"
 // ЕГЭ (профиль и база) — единый поток части 2 (13–19); ОГЭ — свой (20–25).
 const isEgeType = (t) => t === "ЕГЭ" || t === "ЕГЭ Профиль"
@@ -496,8 +498,11 @@ function StudentHomeworkList({ homework, onSelect }) {
         })}
       </div>
       {list.length === 0 ? (
-        <div className="text-sm text-gray-400 text-center py-10 border border-dashed border-white/50 glass-sm">
-          {filter === "all" ? "Заданий пока нет" : "В этой категории пусто"}
+        <div className="relative overflow-hidden text-sm text-gray-400 text-center py-10 border border-dashed border-white/50 glass-sm">
+          <FormulaBackdrop variant="panel" />
+          <span className="relative z-10">
+            {filter === "all" ? "Заданий пока нет" : "В этой категории пусто"}
+          </span>
         </div>
       ) : (
         <div className="flex flex-col gap-2.5">
@@ -1481,6 +1486,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
 
   const navItems = [
     { id: "schedule", label: "Профиль", icon: "profile" },
+    { id: "practice", label: "Практика", icon: "practice" },
     { id: "chat", label: "Чат", icon: "chat" },
     { id: "variants", label: "Варианты", icon: "variants" },
     { id: "homework", label: "Задания", icon: "homework" },
@@ -1781,6 +1787,12 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
               </div>
             )}
           </>
+        )}
+
+        {activeTab === "practice" && (
+          <Suspense fallback={<div className="text-sm text-gray-400 py-10 text-center">Загружаем практику…</div>}>
+            <Practice userId={user.id} />
+          </Suspense>
         )}
 
         {activeTab === "homework" && (
@@ -2279,7 +2291,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                 <button
                   key={item.id}
                   onClick={() => goTab(item.id)}
-                  className={`relative flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-all min-w-[44px] ${
+                  className={`relative flex-1 min-w-0 flex flex-col items-center gap-0.5 px-0.5 py-1 rounded-xl transition-all ${
                     activeTab === item.id
                       ? "text-blue-600 bg-blue-500/10 font-semibold"
                       : "text-gray-400"
@@ -2291,7 +2303,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       {badge > 9 ? "9+" : badge}
                     </span>
                   )}
-                  <span className="text-[10px]">{item.label}</span>
+                  <span className="text-[10px] max-w-full truncate">{item.label}</span>
                 </button>
               )
             })}

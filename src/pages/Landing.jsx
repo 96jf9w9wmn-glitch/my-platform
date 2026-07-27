@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react"
 import Icon from "../components/Icon"
+import FormulaBackdrop from "../components/FormulaBackdrop"
 
 // Продающий лендинг перед регистрацией. Объясняет ценность платформы
 // и убеждает зарегистрироваться — отдельно для репетитора, ученика и
@@ -449,8 +450,11 @@ function Landing({ onStart }) {
 
       <main className="flex-1 w-full">
         {/* ── Геро ── */}
-        <section className="max-w-6xl mx-auto w-full px-4 pt-10 sm:pt-16 pb-4">
-          <div className="grid lg:grid-cols-2 gap-10 items-center">
+        {/* Фон из формул кладём на всю ширину экрана (а не внутрь max-w-6xl):
+            формулы должны лежать в полях по краям, не под текстом. */}
+        <section className="relative overflow-hidden pt-10 sm:pt-16 pb-4">
+          <FormulaBackdrop variant="hero" />
+          <div className="relative z-10 max-w-6xl mx-auto w-full px-4 grid lg:grid-cols-2 gap-10 items-center">
             {/* Текст */}
             <div className="text-center lg:text-left">
               <div className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full ring-1 ${cfg.ring} ${cfg.soft} ${cfg.text} mb-5`}>

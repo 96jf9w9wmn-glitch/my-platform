@@ -3,6 +3,7 @@ import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import Icon from "../components/Icon"
 import Collapse from "../components/Collapse"
+import FormulaBackdrop from "../components/FormulaBackdrop"
 import { parseLocalDate, renderHomeworkMath } from "../utils"
 // Лениво: Variants тянет весь банк заданий (генераторы на 34k строк) + jspdf.
 // Нужен только во вкладке «варианты», незачем держать его в стартовом бандле.
@@ -929,8 +930,11 @@ function Homework({ user, students, embedded = false }) {
           </div>
 
           {groupNames.length === 0 ? (
-            <div className="text-sm text-gray-400 text-center py-12 border border-dashed border-white/50 glass-sm">
-              {filter === "all" ? "Заданий пока нет" : "Нет заданий с таким статусом"}
+            <div className="relative overflow-hidden text-sm text-gray-400 text-center py-12 border border-dashed border-white/50 glass-sm">
+              <FormulaBackdrop variant="panel" />
+              <span className="relative z-10">
+                {filter === "all" ? "Заданий пока нет" : "Нет заданий с таким статусом"}
+              </span>
             </div>
           ) : (
             <div className="flex flex-col gap-3">

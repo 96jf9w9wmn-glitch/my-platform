@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
 import AddStudentModal from "../components/AddStudentModal"
 import Icon from "../components/Icon"
+import FormulaBackdrop from "../components/FormulaBackdrop"
 import StudentProfile from "./StudentProfile"
 import { supabase } from "../supabase"
 import { isLessonConducted, getInitials, plural, formatPhone } from "../utils"
@@ -261,7 +262,10 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
             )
           })}
           {filtered.length === 0 && (
-            <div className="text-center text-sm text-gray-400 py-10">{query ? "Ничего не найдено" : "Пока нет учеников"}</div>
+            <div className="relative overflow-hidden text-center text-sm text-gray-400 py-10">
+              <FormulaBackdrop variant="panel" />
+              <span className="relative z-10">{query ? "Ничего не найдено" : "Пока нет учеников"}</span>
+            </div>
           )}
         </div>
       ) : (
@@ -373,8 +377,11 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
           })}
 
           {filtered.length === 0 && (
-            <div className="px-4 py-10 text-center text-sm text-gray-400 border-t border-white/40">
-              {query ? "Ничего не найдено" : "Пока нет учеников"}
+            <div className="relative overflow-hidden px-4 py-10 text-center text-sm text-gray-400 border-t border-white/40">
+              <FormulaBackdrop variant="panel" />
+              <span className="relative z-10">
+                {query ? "Ничего не найдено" : "Пока нет учеников"}
+              </span>
             </div>
           )}
         </div>

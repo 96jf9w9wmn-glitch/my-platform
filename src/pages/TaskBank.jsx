@@ -3,6 +3,7 @@ import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import Icon from "../components/Icon"
 import Collapse from "../components/Collapse"
+import FormulaBackdrop from "../components/FormulaBackdrop"
 import { TASK_NUMBERS_BY_TYPE } from "./taskBankApi"
 import { plainTaskMath, normalizeTaskImage } from "../utils"
 
@@ -130,9 +131,10 @@ export function TaskBankModal({ initialExamType = "ОГЭ", onClose }) {
     <div className="fixed inset-0 glass-overlay z-50 overflow-y-auto">
       <div className="min-h-full flex items-center justify-center p-4">
         <div className="glass-modal p-6 w-full max-w-lg max-h-[90dvh] overflow-y-auto">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-medium">Банк заданий</h2>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><Icon name="x" size={18} /></button>
+          <div className="relative overflow-hidden -mx-6 -mt-6 px-6 pt-6 pb-4 mb-4 flex justify-between items-center">
+            <FormulaBackdrop variant="panel" />
+            <h2 className="relative z-10 text-lg font-medium">Банк заданий</h2>
+            <button onClick={onClose} className="relative z-10 text-gray-400 hover:text-gray-600"><Icon name="x" size={18} /></button>
           </div>
 
           <div className="flex gap-2 mb-4">

@@ -537,3 +537,8 @@ export function defaultExamType(examFocus) {
   if (examFocus?.includes("ЕГЭ")) return "ЕГЭ"
   return "ОГЭ"
 }
+
+// Число в русском виде: округление до сотых и десятичная ЗАПЯТАЯ
+// (используется в подписях чертежей интерактивной практики).
+export const fmtNum = (n) =>
+  String(Math.round(n * 100) / 100).replace(".", ",").replace("-", "\u2212")

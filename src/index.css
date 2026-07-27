@@ -27,6 +27,20 @@
   --glass-blur: blur(24px) saturate(180%);
   --accent: #007aff;
   --accent-light: rgba(0, 122, 255, 0.15);
+
+  /* Вторичный акцент — только для «положительных» действий (сдано, проверено,
+     оплачено). Приём подсмотрен у sparxmaths.com (синяя база + мятная кнопка). */
+  --accent-mint: #34c7a4;
+  --accent-mint-light: rgba(52, 199, 164, 0.15);
+
+  /* Маркерная подсветка слов в заголовках (umschool.net / webium.ru) */
+  --marker-blue: rgba(0, 122, 255, 0.18);
+  --marker-mint: rgba(52, 199, 164, 0.2);
+  --marker-amber: rgba(255, 159, 10, 0.22);
+
+  /* Чернила фоновых формул «мелом» (drfrost.org). В светлой теме белого мела
+     не видно на светлом фоне — берём тёмно-синие чернила той же плотности. */
+  --formula-ink: rgba(20, 40, 90, 0.13);
 }
 
 .dark {
@@ -35,6 +49,14 @@
   --glass-border: rgba(255, 255, 255, 0.12);
   --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255, 255, 255, 0.06) inset;
   color-scheme: dark;
+
+  --accent-mint: #30d9b0;
+  --accent-mint-light: rgba(48, 217, 176, 0.18);
+  --marker-blue: rgba(10, 132, 255, 0.28);
+  --marker-mint: rgba(48, 217, 176, 0.24);
+  --marker-amber: rgba(255, 159, 10, 0.26);
+  /* На тёмном мел настоящий — белый, но приглушённый, чтобы не «светился» */
+  --formula-ink: rgba(255, 255, 255, 0.09);
 
   /* ── Tailwind v4 color variables — ALL utilities using these adapt automatically ── */
   --color-gray-50:  #111113;
@@ -1133,4 +1155,173 @@ button.w-full:not([disabled]):not(.no-press):active::after,
   input, textarea, select {
     font-size: 16px !important;
   }
+}
+
+/* ── Практика (Practice.jsx): интерактивные микро-уроки ── */
+
+/* Плеер урока — отдельный полноэкранный слой: во время урока в кабинете
+   ничего не отвлекает (как в brilliant.org). Своё непрозрачное дно, потому
+   что слой перекрывает и мобильную нижнюю навигацию. */
+.practice-shell {
+  background: #f5f5f7;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.dark .practice-shell { background: #0d0d0f; }
+
+/* Нижняя панель действия: до проверки нейтральная, после — тонируется
+   в цвет вердикта (зелёный/красный), как полоса обратной связи Brilliant. */
+.practice-bar {
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(30px) saturate(180%);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  transition: background 0.22s ease;
+}
+.dark .practice-bar { border-top-color: rgba(255, 255, 255, 0.09); }
+.practice-bar.bar-right { background: rgba(52, 199, 89, 0.16); }
+.practice-bar.bar-wrong { background: rgba(255, 59, 48, 0.14); }
+.dark .practice-bar.bar-right { background: rgba(52, 199, 89, 0.20); }
+.dark .practice-bar.bar-wrong { background: rgba(255, 59, 48, 0.18); }
+
+/* Ползунок манипулятива — iOS-образный: тонкая дорожка, крупная «таблетка».
+   Высота обёртки 44px, чтобы палец попадал (требование touch-target). */
+.practice-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 44px;
+  background: transparent;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+.practice-range::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(120, 120, 128, 0.22);
+}
+.practice-range::-moz-range-track {
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(120, 120, 128, 0.22);
+}
+.practice-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 28px;
+  height: 28px;
+  margin-top: -11.5px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.16);
+  transition: transform 0.12s ease;
+}
+.practice-range::-moz-range-thumb {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.16);
+}
+.practice-range:active::-webkit-slider-thumb { transform: scale(1.12); }
+.practice-range:focus-visible { outline: none; }
+.practice-range:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.35), 0 3px 8px rgba(0, 0, 0, 0.16);
+}
+.dark .practice-range::-webkit-slider-thumb { background: #f2f2f7; }
+.dark .practice-range::-moz-range-thumb { background: #f2f2f7; }
+
+/* Неверный ответ — короткая тряска «нет» (только transform, без реflow) */
+@keyframes shake-x {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(2px); }
+}
+.shake-x { animation: shake-x 0.34s cubic-bezier(0.36, 0.07, 0.19, 0.97) both; }
+
+/* Переход к следующему шагу — движение снизу вверх (вперёд по уроку) */
+@keyframes practice-step-enter {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+.step-enter { animation: practice-step-enter 0.26s cubic-bezier(0.25, 0.8, 0.25, 1) both; }
+
+/* Итоговое кольцо на финише — пружинка */
+@keyframes finish-pop {
+  0%   { opacity: 0; transform: scale(0.7); }
+  60%  { opacity: 1; transform: scale(1.06); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.finish-pop { animation: finish-pop 0.5s cubic-bezier(0.34, 1.5, 0.64, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .shake-x, .step-enter, .finish-pop { animation: none; }
+  .practice-range::-webkit-slider-thumb { transition: none; }
+}
+
+/* ── Фон из формул «мелом» (FormulaBackdrop) ──────────────────────────────
+   Приём с drfrost.org: полупрозрачные формулы и чертежи лежат в полях вокруг
+   текста, одним цветом-«чернилами». Формулы у нас настоящие — из генераторов
+   банка, отрендеренные тем же renderTaskMath (дроби столбиком, корни с чертой).
+   Слой чисто декоративный: overflow скрыт (чтобы не появлялся горизонтальный
+   скролл), клики проходят насквозь. */
+.formula-backdrop {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  color: var(--formula-ink);
+  z-index: 0;
+}
+/* Боковые поля страницы: всё, что шире контентной колонки (max-w-6xl = 72rem).
+   Если полей нет — ширина 0 и фон не показывается, вместо наезда на текст. */
+.fb-gutter {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: max(0px, calc((100% - 72rem) / 2));
+  overflow: hidden;
+}
+.fb-gutter-l { left: 0; }
+.fb-gutter-r { right: 0; }
+
+.fb-item {
+  position: absolute;
+  white-space: nowrap;
+  font-weight: 500;
+  line-height: 1.15;
+  transform: translate(-50%, -50%) rotate(var(--fb-rot, 0deg));
+  animation: fb-drift 22s ease-in-out infinite alternate;
+}
+.fb-item > svg { display: block; }
+
+/* В полях формула прижата к внутреннему краю поля (ближнему к тексту) и уходит
+   за край экрана: обрез получается один — по краю окна, как в источнике, а не
+   «кусок формулы», обрезанный сразу с двух сторон в узком поле. */
+.fb-item-edge {
+  transform: translateY(-50%) rotate(var(--fb-rot, 0deg));
+  animation-name: fb-drift-edge;
+}
+
+@keyframes fb-drift {
+  from { transform: translate(-50%, -50%) rotate(var(--fb-rot, 0deg)) translateY(0); }
+  to   { transform: translate(-50%, -50%) rotate(var(--fb-rot, 0deg)) translateY(-7px); }
+}
+@keyframes fb-drift-edge {
+  from { transform: translateY(-50%) rotate(var(--fb-rot, 0deg)) translateY(0); }
+  to   { transform: translateY(-50%) rotate(var(--fb-rot, 0deg)) translateY(-7px); }
+}
+
+/* На узком экране центральная колонка занимает всю ширину — оставляем только
+   «полевые» элементы, помеченные .fb-wide, прячем, чтобы не спорить с текстом */
+@media (max-width: 639px) {
+  .fb-wide { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fb-item { animation: none; }
 }
