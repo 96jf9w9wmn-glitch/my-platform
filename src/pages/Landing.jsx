@@ -521,7 +521,7 @@ function Landing({ onStart }) {
             </button>
             <button
               onClick={() => start(role, "login")}
-              className="text-sm font-medium px-4 py-2 rounded-xl text-gray-700 dark:text-gray-200 bg-white/70 dark:bg-gray-800/70 ring-1 ring-gray-200 dark:ring-gray-700 hover:opacity-80 transition-opacity"
+              className="text-sm font-medium px-4 py-2 rounded-full text-gray-700 dark:text-gray-200 bg-white/70 dark:bg-white/[0.08] ring-1 ring-gray-200 dark:ring-white/15 hover:opacity-80 transition-opacity"
             >
               Войти
             </button>

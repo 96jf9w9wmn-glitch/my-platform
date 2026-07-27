@@ -453,7 +453,7 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
             <button
               onClick={mode === "reset" ? handleResetPassword : handleSubmit}
               disabled={loading || cooldownLeft > 0}
-              className={`w-full py-2.5 text-sm text-white font-medium rounded-xl disabled:opacity-50 mt-1 transition-all bg-gradient-to-r ${roleConfig[role].grad}`}
+              className={`w-full h-[52px] text-[15px] text-white font-semibold rounded-full disabled:opacity-50 mt-1 transition-all bg-gradient-to-r ${roleConfig[role].grad}`}
             >
               {loading
                 ? "Загрузка..."
