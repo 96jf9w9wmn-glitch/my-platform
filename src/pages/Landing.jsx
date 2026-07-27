@@ -645,7 +645,7 @@ function Landing({ onStart }) {
             <div className="mt-8 text-center">
               <button
                 onClick={() => start(role, cfg.cta.mode)}
-                className={`inline-flex items-center gap-2 px-7 py-3.5 rounded-2xl text-white font-semibold bg-gradient-to-r ${cfg.grad} shadow-lg ${cfg.glow} hover:opacity-95 transition-opacity`}
+                className={`press-fill w-full sm:w-auto inline-flex items-center justify-center gap-2 h-[52px] px-7 rounded-full text-white font-semibold bg-gradient-to-r ${cfg.grad} shadow-lg ${cfg.glow} hover:opacity-95 transition-opacity`}
               >
                 {cfg.cta.label}
                 <Icon name="arrow" size={16} />
@@ -736,7 +736,7 @@ function Landing({ onStart }) {
               <div className="mt-7 flex flex-col sm:flex-row gap-3 justify-center">
                 <button
                   onClick={() => start(cfg.final.primary.role, cfg.final.primary.mode)}
-                  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-2xl font-semibold bg-white text-gray-900 shadow-lg hover:opacity-90 transition-opacity"
+                  className="press-fill w-full sm:w-auto inline-flex items-center justify-center gap-2 h-[52px] px-7 rounded-full font-semibold bg-white text-gray-900 shadow-lg hover:opacity-90 transition-opacity"
                 >
                   <Icon name={cfg.final.primary.icon} size={17} />
                   {cfg.final.primary.label}
@@ -744,7 +744,7 @@ function Landing({ onStart }) {
                 {cfg.final.secondary && (
                   <button
                     onClick={() => start(cfg.final.secondary.role, cfg.final.secondary.mode)}
-                    className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-2xl font-semibold bg-white/15 text-white ring-1 ring-white/40 backdrop-blur-sm hover:bg-white/25 transition-colors"
+                    className="press-fill w-full sm:w-auto inline-flex items-center justify-center gap-2 h-[52px] px-7 rounded-full font-semibold bg-white/15 text-white ring-1 ring-white/40 backdrop-blur-sm hover:bg-white/25 transition-colors"
                   >
                     <Icon name={cfg.final.secondary.icon} size={17} />
                     {cfg.final.secondary.label}
