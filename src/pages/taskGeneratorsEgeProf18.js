@@ -5975,6 +5975,347 @@ function item159(kind) {
 export function t18TrigSqrtSin() { return item159("sin") }
 export function t18TrigSqrtCos() { return item159("cos") }
 
+
+// =============================================================================
+// РАЗДЕЛ O. Показательные и модульные уравнения (эталон #119–#129)
+// =============================================================================
+const supT = (x) => `⟦sup:${x}⟧`                           // надстрочник: b^|x|, 2ˣ и т. п.
+
+// #119. (pa/(a − q))·b^|x| = (b²)^|x| + (ra + s)/(a − q) — «ровно два различных корня».
+// Замена t = b^|x| ≥ 1: каждое t > 1 даёт ДВА корня x = ±log_b t, а t = 1 — ровно один (x = 0).
+// После умножения на (a − q) остаётся (a − q)t² − pa·t + (ra + s) = 0; значение a = q
+// запрещено ОДЗ. Наборы подобраны так, что дискриминант по a имеет рациональные корни.
+function build119({ p, q, r, s }) {
+  const solve = (a) => {
+    if (Rcmp(a, R(q)) === 0) return 0                      // выражение не определено
+    const P = [Radd(Rmul(R(r), a), R(s)), Rmul(R(-p), a), Rsub(a, R(q))]
+    return 2 * countRoots(P, R1, "+inf", false, false) + (Rzero(pEval(P, R1)) ? 1 : 0)
+  }
+  const crit = [R(q)]
+  if (1 - p + r !== 0) crit.push(R(q - s, 1 - p + r))       // корень t = 1
+  const { roots, allRational } = ratRoots([R(4 * q * s), R(4 * q * r - 4 * s), R(p * p - 4 * r)])
+  if (!allRational) return null
+  crit.push(...roots)
+  return { set: assembleSet((a) => solve(a) === 2, crit), solve }
+}
+// Наборы (p, q, r, s) отобраны разовым перебором ЭТИМ ЖЕ движком: дискриминант по a
+// обязан иметь рациональные корни, ответ — непустое объединение промежутков с круглыми
+// границами. Из 94 подходящих взяты 20 с попарно различными ответами.
+const T119 = [
+  [3, 2, 2, 3], [3, 3, 2, 5], [3, 3, 4, 3], [3, 4, 2, 5], [4, 2, 2, 3], [4, 2, 2, 5], [4, 2, 2, 7],
+  [4, 2, 2, 9], [4, 2, 4, 3], [4, 2, 4, 5], [4, 2, 4, 7], [4, 2, 4, 9], [4, 3, 2, 3], [4, 3, 2, 7],
+  [4, 3, 2, 9], [4, 3, 4, 3], [4, 3, 4, 5], [4, 3, 4, 7], [4, 3, 4, 9], [4, 3, 6, 5],
+].map(([p, q, r, s]) => ({ p, q, r, s }))
+export function t18ExpFracTwoRoots() {
+  const par = pick(T119), { p, q, r, s } = par
+  const b = pick([2, 3, 5, 7])
+  const { set, solve } = build119(par)
+  const bx = `${b}${supT("|x|")}`
+  return item({
+    text: `${HEAD_A}\n\n${fT(`${p}a`, `a ${MINUS} ${q}`)}·${bx} = ${b * b}${supT("|x|")} + ${fT(`${r}a + ${s}`, `a ${MINUS} ${q}`)}\n\nимеет ровно два различных корня.`,
+    set,
+    solution: `Значение a = ${q} невозможно (знаменатели обращаются в нуль). Обозначим t = ${bx} ≥ 1: каждому t > 1 отвечают ДВА корня x = ±log${SUB[b] || ""}t, а t = 1 даёт ровно один корень x = 0.\n`
+      + `Так как ${b * b}${supT("|x|")} = t${SUP[2]}, после умножения на (a ${MINUS} ${q}) уравнение принимает вид (a ${MINUS} ${q})t${SUP[2]} ${MINUS} ${p}a·t + ${r}a + ${s} = 0.\n`
+      + `Значение t = 1 является корнем при ${1 - p + r === 0 ? "никаком a" : `a = ${Rstr(R(q - s, 1 - p + r))}`}, а дискриминант равен ${p * p - 4 * r === 0 ? "" : `${p * p - 4 * r}a${SUP[2]}`}${term(4 * q * r - 4 * s, "a")}${term(4 * q * s, "")}.\n`
+      + `Ровно два корня — это ровно одно значение t > 1 и при этом t = 1 корнем не является.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 2 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [{ f: () => 1, dash: true, label: "t = 1" }],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -1, xMax: 8, aMin: Rnum(setBounds(set)[0]) - 4, aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 4,
+    },
+  })
+}
+
+// #120. |kx + a²/x + c| + |kx + a²/x − d| = c + d — «хотя бы один корень».
+// Сумма |u + c| + |u − d| равна c + d ровно на отрезке u ∈ [−c; d] (вне него она больше).
+// При a ≠ 0 выражение u = kx + a²/x при x > 0 не меньше 2|a|√k, а при x < 0 не больше
+// −2|a|√k (неравенство о среднем), поэтому решение есть ⟺ 2|a|√k ≤ max(c; d).
+// Коэффициент k берём полным квадратом, чтобы граница была рациональной.
+function build120({ k, c, d }) {
+  const w = Math.round(Math.sqrt(k))
+  if (w * w !== k) return null
+  const M = Math.max(c, d)
+  const solve = (a) => {
+    const aa = Rsign(a) < 0 ? Rneg(a) : a
+    return Rcmp(Rmul(R(2 * w), aa), R(M)) <= 0 ? 1 : 0
+  }
+  return { set: assembleSet((a) => solve(a) === 1, [R(M, 2 * w), R(-M, 2 * w)]), solve, w, M }
+}
+const T120 = []
+for (const k of [1, 4, 9]) for (const c of [1, 2, 3, 4, 6]) for (const d of [1, 2, 3, 4, 6]) T120.push({ k, c, d })
+export function t18AbsSumRecipExists() {
+  const par = pick(T120), { k, c, d } = par
+  const { set, solve, w, M } = build120(par)
+  const U = `${k === 1 ? "" : k}x + ${fT(`a${SUP[2]}`, "x")}`
+  return item({
+    text: `${HEAD_A}\n\n|${U} + ${c}| + |${U} ${MINUS} ${d}| = ${c + d}\n\nимеет хотя бы один корень.`,
+    set,
+    solution: `Обозначим u = ${k === 1 ? "" : k}x + a${SUP[2]}/x. Сумма |u + ${c}| + |u ${MINUS} ${d}| равна расстоянию между точками ${MINUS}${c} и ${d}, то есть ${c + d}, ровно тогда, когда u лежит НА отрезке [${MINUS}${c}; ${d}] (вне него сумма больше).\n`
+      + `При a ≠ 0 и x > 0 по неравенству о среднем ${k === 1 ? "" : k}x + a${SUP[2]}/x ≥ 2|a|${w === 1 ? "" : `·${w}`} (равенство при x = |a|/${w}), а при x < 0 симметрично u ≤ ${MINUS}2|a|${w === 1 ? "" : `·${w}`}.\n`
+      + `Значит подходящее u существует ⟺ 2|a|${w === 1 ? "" : `·${w}`} ≤ ${M} (наибольший из концов отрезка).\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "exists" },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [{ f: (a) => 2 * w * Math.abs(a), label: "наименьшее |u|" }, { f: () => M, dash: true, label: `граница ${M}` }],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -1, xMax: M + 4, aMin: -M, aMax: M,
+    },
+  })
+}
+
+// #123. (|x + p| + |x − a|)² − 2q(|x + p| + |x − a|) + q² − (ka − m)² = 0 — «ровно два решения».
+// По u = |x + p| + |x − a| это (u − q)² = (ka − m)², то есть u = q + |ka − m| или u = q − |ka − m|.
+// Функция u(x) равна |a + p| на отрезке между −p и a и растёт вне него, поэтому уравнение
+// u = v имеет: ни одного решения при v < |a + p|; бесконечно много при v = |a + p| ≠ 0;
+// одно при v = |a + p| = 0; два при v > |a + p|.
+function build123({ p, q, k, m }) {
+  const solve = (a) => {
+    const s = Radd(a, R(p)), mn = Rsign(s) < 0 ? Rneg(s) : s
+    const t = Rsub(Rmul(R(k), a), R(m)), ad = Rsign(t) < 0 ? Rneg(t) : t
+    let n = 0
+    for (const v of uniqSorted([Radd(R(q), ad), Rsub(R(q), ad)])) {
+      const c = Rcmp(v, mn)
+      if (c > 0) n += 2
+      else if (c === 0) n += Rzero(mn) ? 1 : 99
+    }
+    return n
+  }
+  const crit = [R(-p), R(m, k)]
+  for (const s1 of [1, -1]) for (const s2 of [1, -1]) {
+    const A = s1 * k - s2, B = s2 * p + s1 * m - q         // A·a = B
+    if (A !== 0) crit.push(R(B, A))
+  }
+  return { set: assembleSet((a) => solve(a) === 2, crit), solve }
+}
+const T123 = []
+for (const p of [1, 2, 3]) for (const q of [1, 2, 3]) for (const k of [2, 3]) for (const m of [1, 2, 3]) T123.push({ p, q, k, m })
+export function t18AbsSumSubstTwo() {
+  const par = pick(T123), { p, q, k, m } = par
+  const { set, solve } = build123(par)
+  const U = `|x + ${p}| + |x ${MINUS} a|`
+  return item({
+    text: `${HEAD_A}\n\n(${U})${SUP[2]} ${MINUS} ${2 * q === 1 ? "" : 2 * q}(${U})${term(-k * k, `a${SUP[2]}`)}${term(2 * k * m, "a")}${term(q * q - m * m, "")} = 0\n\nимеет ровно два различных решения.`,
+    set,
+    solution: `Обозначим u = ${U} ≥ 0. Уравнение принимает вид u${SUP[2]} ${MINUS} ${2 * q === 1 ? "" : 2 * q}u + ${q * q} ${MINUS} (${k}a ${MINUS} ${m})${SUP[2]} = 0, то есть (u ${MINUS} ${q})${SUP[2]} = (${k}a ${MINUS} ${m})${SUP[2]}.\n`
+      + `Значит u = ${q} + |${k}a ${MINUS} ${m}| или u = ${q} ${MINUS} |${k}a ${MINUS} ${m}|.\n`
+      + `Сумма расстояний от x до точек ${MINUS}${p} и a равна |a + ${p}| на всём отрезке между ними и растёт вне него. Поэтому уравнение u = v `
+      + `не имеет решений при v < |a + ${p}|, имеет бесконечно много при v = |a + ${p}| ≠ 0 (весь отрезок) и ровно два при v > |a + ${p}|.\n`
+      + `Ровно два решения — когда одно из значений v даёт два корня, а другое не даёт ни одного.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 2 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => q + Math.abs(k * a - m), label: "u = q + |ka − m|" },
+        { f: (a) => q - Math.abs(k * a - m), label: "u = q − |ka − m|" },
+        { f: (a) => Math.abs(a + p), dash: true, label: "наименьшее значение u" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -1, xMax: q + 6, aMin: Rnum(setBounds(set)[0]) - 3, aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #125. 4ˣ + (a − c)2ˣ = (m + k|a|)2ˣ + (a − c)(k|a| + m) — «единственное решение».
+// По t = 2ˣ > 0 левая часть минус правая раскладывается: (t − (k|a| + m))(t + a − c) = 0.
+// Первый корень t = k|a| + m положителен всегда и даёт один x; второй t = c − a годится
+// только при a < c. Единственное решение — когда второй корень не годится либо совпал с первым.
+function build125({ c, k, m }) {
+  const solve = (a) => {
+    const aa = Rsign(a) < 0 ? Rneg(a) : a
+    const t1 = Radd(Rmul(R(k), aa), R(m)), t2 = Rsub(R(c), a)
+    const good = [t1]
+    if (Rsign(t2) > 0 && Rcmp(t2, t1) !== 0) good.push(t2)
+    return good.length
+  }
+  const crit = [R0, R(c), R(c - m, k + 1), R(c - m, 1 - k)]
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+const T125 = []
+for (const c of [4, 5, 6, 8]) for (const k of [2, 3, 4]) for (const m of [1, 2, 3]) T125.push({ c, k, m })
+export function t18ExpFactorOne() {
+  const par = pick(T125), { c, k, m } = par
+  const { set, solve } = build125(par)
+  const two = `2${supT("x")}`
+  return item({
+    text: `${HEAD_A}\n\n4${supT("x")} + (a ${MINUS} ${c})${two} = (${m} + ${k}|a|)${two} + (a ${MINUS} ${c})(${k}|a| + ${m})\n\nимеет единственное решение.`,
+    set,
+    solution: `Обозначим t = ${two} > 0; тогда 4${supT("x")} = t${SUP[2]}. Перенесём всё влево и разложим:\n`
+      + `t${SUP[2]} + (a ${MINUS} ${c})t ${MINUS} (${m} + ${k}|a|)t ${MINUS} (a ${MINUS} ${c})(${k}|a| + ${m}) = (t ${MINUS} ${k}|a| ${MINUS} ${m})(t + a ${MINUS} ${c}) = 0.\n`
+      + `Первый множитель даёт t = ${k}|a| + ${m} > 0 — это всегда ровно один корень x. Второй даёт t = ${c} ${MINUS} a, что годится лишь при a < ${c}.\n`
+      + `Единственное решение — когда второй корень не подходит (a ≥ ${c}) либо совпал с первым: ${k}|a| + ${m} = ${c} ${MINUS} a.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [{ f: (a) => k * Math.abs(a) + m, label: "t = k|a| + m" }, { f: (a) => c - a, label: "t = c − a" }, { f: () => 0, dash: true, label: "t > 0" }],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -1, xMax: c + 6, aMin: -c - 2, aMax: c + 6,
+    },
+  })
+}
+
+// #126. |x − A| + |x − B| = A − B, где A = a² + αa + β, B = a² + γa + δ (α > γ) —
+// «корни есть, но ни один не принадлежит (L; Rr)».
+// Сумма расстояний до двух точек равна расстоянию между ними РОВНО на отрезке между ними,
+// поэтому решения есть ⟺ A ≥ B, и тогда множество решений — весь отрезок [B; A].
+// Условие «ни один корень не попал в (L; Rr)» ⟺ A ≤ L или B ≥ Rr.
+function build126({ al, be, ga, de, L, Rr }) {
+  const A = (a) => Radd(Radd(Rmul(a, a), Rmul(R(al), a)), R(be))
+  const B = (a) => Radd(Radd(Rmul(a, a), Rmul(R(ga), a)), R(de))
+  const solve = (a) => {
+    if (Rcmp(A(a), B(a)) < 0) return 0                     // правая часть отрицательна — решений нет
+    return Rcmp(A(a), R(L)) <= 0 || Rcmp(B(a), R(Rr)) >= 0 ? 1 : 0
+  }
+  const crit = [R(de - be, al - ga)]
+  for (const P of [[R(be - L), R(al), R1], [R(de - Rr), R(ga), R1]]) {
+    const { roots, allRational } = ratRoots(P)
+    if (!allRational) return null
+    crit.push(...roots)
+  }
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+// Наборы (α, β, γ, δ, L, Rr) отобраны перебором: оба уравнения A = L и B = Rr обязаны иметь
+// рациональные корни, ответ — не меньше двух промежутков с круглыми границами. Взяты 14 наборов
+// с попарно различными ответами; среди них (−1, −2, −3, 1, 4, 19) — коэффициенты эталона.
+const T126 = [
+  [1, -2, -1, -1, 4, 19], [1, 2, -1, -1, 4, 19], [2, 1, -1, -1, 4, 19], [2, 1, 1, -1, 4, 19],
+  [2, -2, -1, -1, 6, 19], [2, -2, 1, -1, 6, 19], [-2, 1, -3, 1, 4, 19], [-1, -2, -3, 1, 4, 19],
+  [-1, 2, -3, 1, 4, 19], [4, -1, -1, -1, 4, 19], [2, 1, -3, 1, 4, 19], [4, -1, 1, -1, 4, 19],
+  [1, -2, -3, 1, 4, 19], [1, 4, -1, -1, 6, 19],
+].map(([al, be, ga, de, L, Rr]) => ({ al, be, ga, de, L, Rr }))
+export function t18AbsSumOutside() {
+  const par = pick(T126), { al, be, ga, de, L, Rr } = par
+  const { set, solve } = build126(par)
+  const Atxt = `x ${MINUS} a${SUP[2]}${term(-al, "a")}${term(-be, "")}`
+  const Btxt = `x ${MINUS} a${SUP[2]}${term(-ga, "a")}${term(-de, "")}`
+  const Ctxt = `${al - ga === 1 ? "" : al - ga}a${term(be - de, "")}`
+  return item({
+    text: `${HEAD_A}\n\n|${Atxt}| + |${Btxt}| = ${Ctxt}\n\nимеет корни, но ни один из них не принадлежит интервалу (${L}; ${Rr}).`,
+    set,
+    solution: `Обозначим A = a${SUP[2]}${term(al, "a")}${term(be, "")} и B = a${SUP[2]}${term(ga, "a")}${term(de, "")}; тогда уравнение — это |x ${MINUS} A| + |x ${MINUS} B| = A ${MINUS} B.\n`
+      + `Сумма расстояний от x до A и до B не меньше |A ${MINUS} B| и равна ей РОВНО на отрезке между A и B. Значит корни есть ⟺ A ${MINUS} B ≥ 0, и тогда множество корней — весь отрезок [B; A].\n`
+      + `Остаётся потребовать, чтобы этот отрезок не пересекал интервал (${L}; ${Rr}): A ≤ ${L} или B ≥ ${Rr}.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => a * a + al * a + be, label: "правый конец A" },
+        { f: (a) => a * a + ga * a + de, label: "левый конец B" },
+        { f: () => L, dash: true, label: "запретный интервал" }, { f: () => Rr, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -4, xMax: Rr + 6, aMin: Rnum(setBounds(set)[0]) - 3, aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #127. |x − a − p| + |x + a + q| = 2a + p + q — «любое x из [L; Rr] является решением».
+// Точки A = a + p и B = −a − q, а правая часть равна |A − B| при 2a + p + q ≥ 0,
+// поэтому множество решений — весь отрезок [B; A]. Условие: [L; Rr] ⊆ [B; A].
+function build127({ p, q, L, Rr }) {
+  const solve = (a) => {
+    if (Rsign(Radd(Rmul(R(2), a), R(p + q))) < 0) return 0
+    const A = Radd(a, R(p)), B = Rneg(Radd(a, R(q)))
+    return Rcmp(B, R(L)) <= 0 && Rcmp(A, R(Rr)) >= 0 ? 1 : 0
+  }
+  const crit = [R(-(p + q), 2), R(-q - L), R(Rr - p)]
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+const T127 = []
+for (const p of [1, 2, 3]) for (const q of [2, 3, 4]) for (const [L, Rr] of [[2, 3], [1, 4], [3, 5], [2, 6]]) T127.push({ p, q, L, Rr })
+export function t18AbsSumWholeSeg() {
+  const par = pick(T127), { p, q, L, Rr } = par
+  const { set, solve } = build127(par)
+  return item({
+    text: `Найдите все значения a, при каждом из которых любое число из отрезка [${L}; ${Rr}] является решением уравнения\n\n`
+      + `|x ${MINUS} a ${MINUS} ${p}| + |x + a + ${q}| = 2a + ${p + q}.`,
+    set,
+    solution: `Обозначим A = a + ${p} и B = ${MINUS}a ${MINUS} ${q}. Тогда |A ${MINUS} B| = |2a + ${p + q}|, и при 2a + ${p + q} ≥ 0 правая часть уравнения равна ровно |A ${MINUS} B|.\n`
+      + `Сумма расстояний от x до A и до B равна |A ${MINUS} B| РОВНО на отрезке между A и B, поэтому множество решений — отрезок [${MINUS}a ${MINUS} ${q}; a + ${p}] (при 2a + ${p + q} < 0 решений нет вовсе).\n`
+      + `Чтобы каждое число из [${L}; ${Rr}] было решением, нужно ${MINUS}a ${MINUS} ${q} ≤ ${L} и a + ${p} ≥ ${Rr}, то есть a ≥ ${nS(-q - L)} и a ≥ ${nS(Rr - p)}.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [{ f: (a) => a + p, label: "правый конец" }, { f: (a) => -a - q, label: "левый конец" },
+        { f: () => L, dash: true, label: "нужный отрезок" }, { f: () => Rr, dash: true }],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -Rr - 4, xMax: Rr + 6, aMin: Rnum(setBounds(set)[0]) - 6, aMax: Rnum(setBounds(set)[0]) + 10,
+    },
+  })
+}
+
+// #128. (|x − h| − |x − a|)² − ka(|x − h| − |x − a|) + Q(a) = 0, где Q подобрано так, что
+// дискриминант равен (pa − q)²: тогда v = ((k + p)a − q)/2 или v = ((k − p)a + q)/2.
+// Функция v(x) = |x − h| − |x − a| постоянна вне отрезка между h и a (значения ±(h − a))
+// и линейна внутри, поэтому уравнение v = w имеет ровно ОДНО решение при |w| < |h − a|
+// и бесконечно много при |w| = |h − a| ≠ 0.
+function build128({ h, k, p, q }) {
+  const solve = (a) => {
+    const d = Rsub(R(h), a), ad = Rsign(d) < 0 ? Rneg(d) : d
+    const v1 = Rdiv(Rsub(Rmul(R(k + p), a), R(q)), R(2))
+    const v2 = Rdiv(Radd(Rmul(R(k - p), a), R(q)), R(2))
+    let n = 0
+    for (const v of uniqSorted([v1, v2])) {
+      const av = Rsign(v) < 0 ? Rneg(v) : v
+      const c = Rcmp(av, ad)
+      if (c < 0) n += 1
+      else if (c === 0) n += Rzero(ad) ? 0 : 99
+    }
+    return n
+  }
+  const crit = [R(h), R(q, p)]
+  for (const [A, B] of [[k + p, -q], [k - p, q]]) for (const sg of [1, -1]) {
+    // (A·a + B)/2 = sg·(h − a) ⟹ a(A + 2sg) = 2sg·h − B
+    if (A + 2 * sg !== 0) crit.push(R(2 * sg * h - B, A + 2 * sg))
+  }
+  return { set: assembleSet((a) => solve(a) === 2, crit), solve }
+}
+const T128 = []
+for (const [k, p, q] of [[9, 7, 8], [7, 5, 4], [11, 9, 6], [5, 3, 4], [8, 4, 2], [6, 4, 2]]) {
+  for (const h of [5, 7, 9, 11]) T128.push({ h, k, p, q })
+}
+export function t18AbsDiffSubstTwo() {
+  const par = pick(T128), { h, k, p, q } = par
+  const { set, solve } = build128(par)
+  const V = `|x ${MINUS} ${h}| ${MINUS} |x ${MINUS} a|`
+  const q2 = (k * k - p * p) / 4, q1 = (2 * p * q) / 4, q0 = -(q * q) / 4
+  return item({
+    text: `${HEAD_A}\n\n(${V})${SUP[2]} ${MINUS} ${k}a(${V})${term(q2, `a${SUP[2]}`)}${term(q1, "a")}${term(q0, "")} = 0\n\nимеет ровно два различных решения.`,
+    set,
+    solution: `Обозначим v = ${V}. Уравнение квадратное по v, и его дискриминант равен ${k * k}a${SUP[2]} ${MINUS} 4(${q2}a${SUP[2]}${term(q1, "a")}${term(q0, "")}) = (${p}a ${MINUS} ${q})${SUP[2]} — полный квадрат.\n`
+      + `Поэтому v = ${fT(`${k + p}a ${MINUS} ${q}`, "2")} или v = ${fT(`${k - p === 1 ? "" : k - p}a + ${q}`, "2")}.\n`
+      + `Функция v(x) постоянна вне отрезка между ${h} и a (там она равна ${h} ${MINUS} a или a ${MINUS} ${h}) и линейна внутри него. Значит уравнение v = w имеет ровно один корень при |w| < |${h} ${MINUS} a| `
+      + `и бесконечно много корней при |w| = |${h} ${MINUS} a| ≠ 0.\n`
+      + `Ровно два решения — когда ОБА значения v различны и по модулю строго меньше |${h} ${MINUS} a|.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 2 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => ((k + p) * a - q) / 2, label: "первое значение v" },
+        { f: (a) => ((k - p) * a + q) / 2, label: "второе значение v" },
+        { f: (a) => Math.abs(h - a), dash: true, label: "|h − a|" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -h - 2, xMax: h + 2, aMin: Rnum(setBounds(set)[0]) - 3, aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
 // =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
@@ -6053,6 +6394,15 @@ export const META18 = [
     ["sys-pencil-ybound", "ОДЗ по y, ровно три решения", t18SysPencilYBound],
     ["sys-pencil-horiz", "множитель √(y−yLo) добавляет горизонталь", t18SysPencilHoriz],
     ["sys-semi-parab", "{((√(A−x²)−y)(x²+py−q))/(d−x²) = 0; y = 1−2a}", t18SysSemiParab],
+  ]],
+  ["Показательные и модульные уравнения", [
+    ["exp-frac-two", "(pa/(a−q))·b^|x| = b²^|x| + (ra+s)/(a−q) — ровно два корня", t18ExpFracTwoRoots],
+    ["abs-sum-recip", "|kx+a²/x+c| + |kx+a²/x−d| = c+d — хотя бы один корень", t18AbsSumRecipExists],
+    ["abs-sum-subst", "(|x+p|+|x−a|)² − 2q(…) + q²−(ka−m)² = 0 — ровно два", t18AbsSumSubstTwo],
+    ["exp-factor-one", "4ˣ + (a−c)2ˣ = (m+k|a|)2ˣ + … — единственное решение", t18ExpFactorOne],
+    ["abs-sum-outside", "сумма модулей = A−B: корни есть, но не в интервале", t18AbsSumOutside],
+    ["abs-sum-whole-seg", "весь отрезок [L;R] — решения уравнения с модулями", t18AbsSumWholeSeg],
+    ["abs-diff-subst", "(|x−h|−|x−a|)² − ka(…) + Q(a) = 0 — ровно два решения", t18AbsDiffSubstTwo],
   ]],
   ["Тригонометрия с параметром", [
     ["trig-cos-subst", "(p·cos x−c−a)cos x − q·cos2x + r = 0 — хотя бы один корень", t18TrigCosSubstExists],
