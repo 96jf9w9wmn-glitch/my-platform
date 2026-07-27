@@ -1531,6 +1531,35 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     }
     if (error) { alert("Не получилось отправить: " + error.message); setSubmitting(false); return }
 
+    // Попытки по каждому заданию части 1 — основа работы над ошибками, аналитики
+    // слабых типажей и повторений. Тип задания берём из снимка варианта: там с
+    // недавних пор лежит gen_key, по которому типаж воспроизводится свежими числами.
+    // Пишем через RPC с session_token: прямой записи в task_attempts у ученика нет.
+    const snap = variant.tasks_snapshot || []
+    const attempts = []
+    part1Answers.forEach((ans, i) => {
+      const num = i + 1
+      if (num > maxCount) return
+      const given = (ans || "").trim()
+      if (!given) return // не отвечал — это не попытка, а пропуск
+      const task = snap.find((t) => t.number === num)
+      attempts.push({
+        p_account: user.id,
+        p_token: user.token,
+        p_student_id: variant.submission?.student_id != null ? String(variant.submission.student_id) : null,
+        p_source: "variant",
+        p_source_id: variant.submission.id,
+        p_exam_type: task?.exam_type || variant.type,
+        p_number: num,
+        p_gen_key: task?.gen_key || null,
+        p_is_correct: given.toLowerCase() === (correctAnswers[i] || "").trim().toLowerCase(),
+        p_answer: given,
+      })
+    })
+    // Сдачу это блокировать не должно: аналитика — не критичный путь, а таблица
+    // может ещё не существовать на базе без миграции task_attempts.sql.
+    Promise.all(attempts.map((a) => supabase.rpc("task_attempt_log", a))).catch(() => {})
+
     await supabase.from("notifications").insert({
       user_id: variant.tutor_id,
       title: "Ученик сдал часть 1",
