@@ -192,6 +192,7 @@ export function verify19(o) {
         if (e) return { ok: false, err: `пункт ${part}: пример не проходит check — ${e}` }
       } else if (!cl.reason) return { ok: false, err: `пункт ${part}: «нет» без инварианта` }
     } else if (cl.type === "extremum") {
+      if (typeof S[part] !== "number" || !isFinite(S[part])) return { ok: false, err: `пункт ${part}: перебор вернул ${S[part]}` }
       if (cl.value !== S[part]) return { ok: false, err: `пункт ${part}: заявлено ${cl.value}, перебор даёт ${S[part]}` }
       const e = V.check(cl.example, part)
       if (e) return { ok: false, err: `пункт ${part}: пример на ${cl.value} не проходит check — ${e}` }
@@ -202,6 +203,8 @@ export function verify19(o) {
     } else if (cl.type === "count") {
       if (cl.value !== S[part]) return { ok: false, err: `пункт ${part}: заявлено ${cl.value}, перебор даёт ${S[part]}` }
     } else if (cl.type === "value") {
+      // NaN/undefined от перебора не должны «проскакивать» через сравнение с допуском
+      if (typeof S[part] !== "number" || !isFinite(S[part])) return { ok: false, err: `пункт ${part}: перебор вернул ${S[part]}` }
       if (Math.abs(cl.value - S[part]) > 1e-9) return { ok: false, err: `пункт ${part}: заявлено ${cl.value}, перебор даёт ${S[part]}` }
       const e = V.check(cl.example, part)
       if (e) return { ok: false, err: `пункт ${part}: пример не проходит check — ${e}` }
@@ -747,6 +750,14 @@ export const META19 = [
     ["experts-geomean", "Эксперты и фильмы: наиб. число экспертов", t19ExpertsGeomean],
     ["experts-trimmed-mean", "Старый и новый рейтинг: наиб. разность", t19ExpertsTrimmedMean],
     ["pairs-distinct-sums", "Пары с различными суммами: наибольшее k", t19PairsDistinctSums],
+  ]],
+  ["Проценты и округление", [
+    ["rating-unchanged-min", "Рейтинг не изменился после голоса: наим. число голосов", t19VoteRounding],
+    ["rating-equal-ratings", "Три разных числа голосов, равные рейтинги", t19VoteEqualRatings],
+    ["rating-jump-max", "Скачок рейтинга после голоса: наиб. число голосов", t19VoteRatingJump],
+    ["rating-sum-max", "Сумма рейтингов всех футболистов: наибольшая", t19VoteSumMax],
+    ["chess-rounding", "Шахматы: показатель «поражений» — наим. число партий", t19ChessRounding],
+    ["cinema-theatre-shares", "Кино и театр: наим. доля девочек", t19CinemaTheatreShares],
   ]],
   ["Средние в контейнере", [
     ["box-mean-split-max", "Ящик фруктов: наибольшая масса фрукта", t19BoxMeanSplitMax],
@@ -9461,6 +9472,666 @@ export function t19PairsDistinctSums() {
       mustMention: [N, 1, 2, cap, T, KB],
       extra: [],
       phrases: ["все полученные суммы различны", "разбили на пары"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 12. Проценты и округление
+// ═══════════════════════════════════════════════════════════════════════════
+
+// #48. Опрос на сайте: каждый посетитель голосует за одного футболиста, рейтинг —
+//      доля голосов в процентах, округлённая до целого (0,5 округляется вверх).
+//      а) проголосовало NA человек — мог ли рейтинг равняться RA?
+//      б) голоса делят M футболистов — могла ли сумма рейтингов быть больше 100?
+//      в) рейтинг равен R и не изменился после голоса Васи — наименьшее общее число голосов.
+//
+// КЛЮЧ. Округление до целого R означает R − 0,5 ≤ 100k/n < R + 0,5, то есть в целых
+// числах (2R − 1)n ≤ 200k < (2R + 1)n — сравнения ведутся БЕЗ дробей.
+// а) при n = NA достижимы только округления чисел 100k/NA, k = 0…NA — список конечный.
+// б) каждое округление добавляет меньше 0,5, поэтому сумма меньше 100 + M/2; пример
+// со «сдвигом ровно на 0,5» (доли вида 12,5 %) даёт сумму больше 100.
+// в) нужно n и k с (2R − 1)n ≤ 200k < (2R + 1)n и (2R − 1)(n − 1) ≤ 200(k − 1) <
+// (2R + 1)(n − 1); наименьшее такое n находится сканированием n снизу.
+const rate19 = (k, n, R) => 200 * k >= (2 * R - 1) * n && 200 * k < (2 * R + 1) * n
+const rateOf19 = (k, n) => { let R = 0; while (!rate19(k, n, R)) R++; return R }
+export function t19VoteRounding() {
+  const NA = randInt(11, 20)
+  const reach = new Set()
+  for (let k = 0; k <= NA; k++) reach.add(rateOf19(k, NA))
+  const missing = []
+  for (let v = 15; v <= 60; v++) if (!reach.has(v)) missing.push(v)
+  if (!missing.length) return null
+  const RA = pick(missing)
+  const M = pick([3, 3, 2, 4])
+  const R = randInt(3, 15)
+  // б) наименьшее n с распределением на M игроков и суммой рейтингов больше 100
+  let exB = null
+  for (let n = M; n <= 40 && !exB; n++) {
+    const parts = []
+    const rec = (rest, maxPart, acc) => {
+      if (exB) return
+      if (acc.length === M) { if (rest === 0) parts.push(acc.slice()); return }
+      for (let v = Math.min(maxPart, rest - (M - acc.length - 1)); v >= 1; v--) { acc.push(v); rec(rest - v, v, acc); acc.pop() }
+    }
+    rec(n, n, [])
+    for (const p of parts) {
+      if (sum(p.map((k) => rateOf19(k, n))) > 100) { exB = { n, votes: p }; break }
+    }
+  }
+  if (!exB) return null
+  // в) наименьшее общее число голосов
+  let exC = null
+  for (let n = 2; n <= 400 && !exC; n++) for (let k = 1; k <= n; k++) {
+    if (rate19(k, n, R) && rate19(k - 1, n - 1, R)) { exC = { n, k }; break }
+  }
+  if (!exC) return null
+
+  const params = { NA, RA, M, R }
+  // check написан ПО ТЕКСТУ условия: рейтинг = округление доли голосов в процентах.
+  const check = (cfg, part) => {
+    if (!cfg) return "нет примера"
+    if (part === "b") {
+      if (!Array.isArray(cfg.votes) || cfg.votes.length !== M) return `голоса должны делить ${M} футболистов`
+      if (cfg.votes.some((v) => !Number.isInteger(v) || v < 1)) return "у каждого футболиста хотя бы один голос"
+      if (sum(cfg.votes) !== cfg.n) return `сумма голосов ${sum(cfg.votes)} не равна ${cfg.n}`
+      const tot = sum(cfg.votes.map((k) => rateOf19(k, cfg.n)))
+      if (tot <= 100) return `сумма рейтингов равна ${tot}, а нужна больше 100`
+      return null
+    }
+    if (part === "c") {
+      if (!Number.isInteger(cfg.n) || !Number.isInteger(cfg.k) || cfg.k < 1 || cfg.k > cfg.n) return "неверные n и k"
+      if (cfg.n !== exC.n) return `всего голосов ${cfg.n}, а заявлено ${exC.n}`
+      if (rateOf19(cfg.k, cfg.n) !== R) return `рейтинг после голоса Васи равен ${rateOf19(cfg.k, cfg.n)}, а не ${R}`
+      if (rateOf19(cfg.k - 1, cfg.n - 1) !== R) return `рейтинг до голоса Васи равен ${rateOf19(cfg.k - 1, cfg.n - 1)}, а не ${R}`
+      return null
+    }
+    return null
+  }
+  // НЕЗАВИСИМЫЙ перебор: округление считается прямо через Math.round(100k/n + …),
+  // а не через целочисленное неравенство из ключа — другой проход.
+  const solve = (P) => {
+    const rr = (k, n) => Math.floor((100 * k) / n + 0.5)
+    let hitA = false
+    for (let k = 0; k <= P.NA; k++) if (rr(k, P.NA) === P.RA) hitA = true
+    let hitB = false
+    for (let n = P.M; n <= 40 && !hitB; n++) {
+      const acc = []
+      const rec = (rest, maxPart) => {
+        if (hitB) return
+        if (acc.length === P.M) { if (rest === 0 && sum(acc.map((k) => rr(k, n))) > 100) hitB = true; return }
+        for (let v = Math.min(maxPart, rest - (P.M - acc.length - 1)); v >= 1; v--) { acc.push(v); rec(rest - v, v); acc.pop() }
+      }
+      rec(n, n)
+    }
+    let top = null
+    for (let n = 2; n <= 400 && top === null; n++) for (let k = 1; k <= n; k++) {
+      if (rr(k, n) === P.R && rr(k - 1, n - 1) === P.R) { top = n; break }
+    }
+    return { a: hitA, b: hitB, c: top, c_next: false }
+  }
+
+  const reachList = [...reach].sort((a, b) => a - b).join(", ")
+  const bRates = exB.votes.map((k) => rateOf19(k, exB.n))
+  const mWord = { 2: "двух", 3: "трёх", 4: "четырёх" }[M]
+  return item({
+    preamble: `На сайте проводится опрос, кого из футболистов посетители сайта считают лучшим по итогам сезона. Каждый посетитель голосует за одного футболиста. На сайте отображается рейтинг каждого футболиста — доля голосов, отданных за него, в процентах, округлённая до целого числа. Например, числа 9,3; 10,5 и 12,7 округляются до 9; 11 и 13 соответственно.`,
+    qa: `Всего проголосовало ${NA} посетителей сайта. Мог ли рейтинг некоторого футболиста быть равным ${RA}?`,
+    qb: `Пусть посетители сайта отдавали голоса за одного из ${mWord} футболистов. Могла ли сумма рейтингов быть больше 100?`,
+    qc: `На сайте отображалось, что рейтинг некоторого футболиста равен ${R}. Это число не изменилось и после того, как Вася отдал свой голос за этого футболиста. При каком наименьшем числе отданных за всех футболистов голосов, включая Васин голос, такое возможно?`,
+    ansA: `нет: при ${NA} голосовавших рейтинг — это округление одного из чисел 100k/${NA}, а они дают только значения ${reachList}; числа ${RA} среди них нет`,
+    ansB: `да, например при ${exB.n} проголосовавших голоса разделились как ${exB.votes.join(", ")}: рейтинги равны ${bRates.join(", ")}, а их сумма ${sum(bRates)} больше 100`,
+    ansC: `${exC.n}; например, за футболиста отдано ${exC.k} ${plural(exC.k, "голос", "голоса", "голосов")} из ${exC.n} (${ru2((100 * exC.k) / exC.n)} %), а до голоса Васи было ${exC.k - 1} из ${exC.n - 1} (${ru2((100 * (exC.k - 1)) / (exC.n - 1))} %) — оба числа округляются до ${R}`,
+    solution: `Рейтинг равен R ⟺ R − 0,5 ≤ 100k/n < R + 0,5, где k — голоса за футболиста, n — всего голосов.\nа) При n = ${NA} возможные доли — это числа 100k/${NA} при k = 0, 1, …, ${NA}; их округления дают только ${reachList}. Значения ${RA} среди них нет. Ответ: нет.\nб) Каждое округление увеличивает долю меньше чем на 0,5, но при доле, равной ровно «половине», округление идёт вверх. Возьмём ${exB.n} голосов, разделённых как ${exB.votes.join(", ")}: рейтинги ${bRates.join(", ")}, сумма ${sum(bRates)} > 100. Ответ: да.\nв) Нужны n и k, для которых и 100k/n, и 100(k − 1)/(n − 1) округляются до ${R}, то есть (2·${R} − 1)n ≤ 200k < (2·${R} + 1)n и то же самое для n − 1 и k − 1. Перебор n снизу даёт наименьшее n = ${exC.n} при k = ${exC.k}: ${ru2((100 * (exC.k - 1)) / (exC.n - 1))} % и ${ru2((100 * exC.k) / exC.n)} % — оба округляются до ${R}. Ответ: ${exC.n}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: false, reason: "rating-not-in-list", target: `rating-${RA}` },
+        b: { type: "yesno", yes: true, example: exB, target: "sum-over-100" },
+        c: { type: "extremum", mode: "min", value: exC.n, example: exC },
+      },
+      mustMention: [NA, RA, R, 100],
+      extra: [9, 3, 10, 5, 12, 7, 11, 13],
+      phrases: ["округлённая до целого числа", "голосует за одного футболиста"],
+    },
+  })
+}
+
+// #49. Тот же опрос. а) NA посетителей — мог ли рейтинг равняться RA?
+//      б) голоса делят три футболиста — могло ли быть, что все трое получили РАЗНОЕ
+//         число голосов, но их рейтинги одинаковы?
+//      в) рейтинг R не изменился после голоса Васи — наименьшее число голосов.
+//
+// КЛЮЧ к б). Одинаковый рейтинг означает, что все три доли лежат в промежутке длиной
+// 1 % = n/100 голосов. Значит наибольшее и наименьшее число голосов отличаются меньше
+// чем на n/100, а трём РАЗНЫМ целым нужен промежуток длиннее двух — отсюда n > 200.
+// Наименьший подходящий набор ищется поиском ОДИН РАЗ при импорте модуля.
+const EQ3_19 = (() => {
+  for (let n = 3; n <= 1200; n++) {
+    const lo = Math.ceil(n * 0.30), hi = Math.floor(n * 0.37)
+    for (let a = lo; a <= hi; a++) for (let b = a + 1; b <= hi; b++) {
+      const c = n - a - b
+      if (c <= b || c > hi) continue
+      if (rateOf19(a, n) === rateOf19(b, n) && rateOf19(b, n) === rateOf19(c, n)) return { n, votes: [a, b, c] }
+    }
+  }
+  return null
+})()
+export function t19VoteEqualRatings() {
+  if (!EQ3_19) return null
+  const NA = randInt(11, 20)
+  const reach = new Set()
+  for (let k = 0; k <= NA; k++) reach.add(rateOf19(k, NA))
+  const missing = []
+  for (let v = 15; v <= 60; v++) if (!reach.has(v)) missing.push(v)
+  if (!missing.length) return null
+  const RA = pick(missing)
+  const R = randInt(3, 15)
+  let exC = null
+  for (let n = 2; n <= 400 && !exC; n++) for (let k = 1; k <= n; k++) {
+    if (rate19(k, n, R) && rate19(k - 1, n - 1, R)) { exC = { n, k }; break }
+  }
+  if (!exC) return null
+  const exB = EQ3_19
+
+  const params = { NA, RA, R }
+  const check = (cfg, part) => {
+    if (!cfg) return "нет примера"
+    if (part === "b") {
+      if (!Array.isArray(cfg.votes) || cfg.votes.length !== 3) return "должно быть три футболиста"
+      if (sum(cfg.votes) !== cfg.n) return `сумма голосов ${sum(cfg.votes)} не равна ${cfg.n}`
+      if (uniq(cfg.votes).length !== 3) return "числа голосов должны быть различны"
+      const rs = cfg.votes.map((k) => rateOf19(k, cfg.n))
+      if (uniq(rs).length !== 1) return `рейтинги ${rs.join(", ")} не одинаковы`
+      return null
+    }
+    if (part === "c") {
+      if (cfg.n !== exC.n) return `всего голосов ${cfg.n}, а заявлено ${exC.n}`
+      if (rateOf19(cfg.k, cfg.n) !== R) return `рейтинг после голоса Васи ${rateOf19(cfg.k, cfg.n)}, а не ${R}`
+      if (rateOf19(cfg.k - 1, cfg.n - 1) !== R) return `рейтинг до голоса Васи ${rateOf19(cfg.k - 1, cfg.n - 1)}, а не ${R}`
+      return null
+    }
+    return null
+  }
+  // НЕЗАВИСИМЫЙ перебор: округление через Math.round, границы выписаны явно.
+  // Для б) достаточно дойти до n = 1200: три различных числа голосов с равными
+  // рейтингами требуют n > 200, а найденный пример имеет n = 603.
+  const solve = (P) => {
+    const rr = (k, n) => Math.floor((100 * k) / n + 0.5)
+    let hitA = false
+    for (let k = 0; k <= P.NA; k++) if (rr(k, P.NA) === P.RA) hitA = true
+    let hitB = false
+    for (let n = 3; n <= 1200 && !hitB; n++) for (let a = 1; a < n && !hitB; a++) for (let b = a + 1; b < n; b++) {
+      const c = n - a - b
+      if (c <= b) continue
+      if (rr(a, n) === rr(b, n) && rr(b, n) === rr(c, n)) { hitB = true; break }
+    }
+    let top = null
+    for (let n = 2; n <= 400 && top === null; n++) for (let k = 1; k <= n; k++) {
+      if (rr(k, n) === P.R && rr(k - 1, n - 1) === P.R) { top = n; break }
+    }
+    return { a: hitA, b: hitB, c: top, c_next: false }
+  }
+
+  const reachList = [...reach].sort((a, b) => a - b).join(", ")
+  return item({
+    preamble: `На сайте проводится опрос, кого из футболистов посетители сайта считают лучшим по итогам сезона. Каждый посетитель голосует за одного футболиста. На сайте отображается рейтинг каждого футболиста — доля голосов, отданных за него, в процентах, округлённая до целого числа. Например, числа 9,3; 10,5 и 12,7 округляются до 9; 11 и 13 соответственно.`,
+    qa: `Всего проголосовало ${NA} посетителей сайта. Мог ли рейтинг некоторого футболиста быть равным ${RA}?`,
+    qb: `Пусть посетители сайта отдавали голоса за одного из трёх футболистов. Могло ли быть так, что все три футболиста получили разное число голосов, но их рейтинги одинаковы?`,
+    qc: `На сайте отображалось, что рейтинг некоторого футболиста равен ${R}. Это число не изменилось и после того, как Вася отдал свой голос за этого футболиста. При каком наименьшем числе отданных за всех футболистов голосов, включая Васин голос, такое возможно?`,
+    ansA: `нет: при ${NA} голосовавших рейтинг — это округление одного из чисел 100k/${NA}, а они дают только значения ${reachList}; числа ${RA} среди них нет`,
+    ansB: `да, например при ${exB.n} проголосовавших голоса разделились как ${exB.votes.join(", ")} — все три доли попадают в промежуток от ${rateOf19(exB.votes[0], exB.n)} − 0,5 до ${rateOf19(exB.votes[0], exB.n)} + 0,5 процента, поэтому все рейтинги равны ${rateOf19(exB.votes[0], exB.n)}`,
+    ansC: `${exC.n}; например, за футболиста отдано ${exC.k} ${plural(exC.k, "голос", "голоса", "голосов")} из ${exC.n} (${ru2((100 * exC.k) / exC.n)} %), а до голоса Васи было ${exC.k - 1} из ${exC.n - 1} (${ru2((100 * (exC.k - 1)) / (exC.n - 1))} %)`,
+    solution: `Рейтинг равен R ⟺ R − 0,5 ≤ 100k/n < R + 0,5.\nа) При n = ${NA} возможные округления чисел 100k/${NA} — это ${reachList}. Значения ${RA} среди них нет. Ответ: нет.\nб) Если у всех трёх рейтинги равны, то все три доли лежат в промежутке длиной 1 %, то есть числа голосов отличаются меньше чем на n/100. Трём различным целым числам нужен промежуток длиннее двух, значит n > 200. Подходящий пример: ${exB.n} голосов, разделённых как ${exB.votes.join(", ")} — все доли округляются до ${rateOf19(exB.votes[0], exB.n)}. Ответ: да.\nв) Нужны n и k, для которых и 100(k − 1)/(n − 1), и 100k/n округляются до ${R}. Перебор n снизу даёт n = ${exC.n} при k = ${exC.k}. Ответ: ${exC.n}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: false, reason: "rating-not-in-list", target: `rating-${RA}` },
+        b: { type: "yesno", yes: true, example: exB, target: "equal-ratings" },
+        c: { type: "extremum", mode: "min", value: exC.n, example: exC },
+      },
+      mustMention: [NA, RA, R],
+      extra: [9, 3, 10, 5, 12, 7, 11, 13],
+      phrases: ["округлённая до целого числа", "голосует за одного футболиста"],
+    },
+  })
+}
+
+// #50. Тот же опрос. а) при NA голосовавших рейтинг футболиста равен RA; затем за него
+//      проголосовал Вася — каков теперь рейтинг?
+//      б) голоса делят два футболиста — может ли суммарный рейтинг быть больше 100?
+//      в) рейтинг был R1, а после голоса Васи стал R2 — наибольшее число голосов.
+//
+// КЛЮЧ к в). Из rateOf(k, n) = R2 следует 200k ≥ (2R2 − 1)n, из rateOf(k − 1, n − 1) = R1
+// следует 200(k − 1) < (2R1 + 1)(n − 1). Вычитая, получаем
+//   n(2R2 − 2R1 − 2) < 200 − (2R1 + 1),
+// то есть при R2 ≥ R1 + 2 число голосов ограничено: n < (199 − 2R1)/2. Поэтому скан
+// n до 200 заведомо покрывает всё пространство, и найденный максимум — настоящий.
+export function t19VoteRatingJump() {
+  const NA = randInt(11, 20)
+  const kA = randInt(2, NA - 2)
+  const RA = rateOf19(kA, NA)
+  let uniqueK = 0
+  for (let k = 0; k <= NA; k++) if (rateOf19(k, NA) === RA) uniqueK++
+  if (uniqueK !== 1) return null                      // иначе ответ в а) не определён
+  const newRA = rateOf19(kA + 1, NA + 1)
+  const R1 = randInt(5, 12), R2 = R1 + 2
+  // б) два футболиста, суммарный рейтинг больше 100
+  let exB = null
+  for (let n = 2; n <= 40 && !exB; n++) for (let a = 1; a < n; a++) {
+    if (rateOf19(a, n) + rateOf19(n - a, n) > 100) { exB = { n, votes: [a, n - a] }; break }
+  }
+  if (!exB) return null
+  // в) наибольшее n со скачком R1 → R2
+  let exC = null
+  for (let n = 200; n >= 2 && !exC; n--) for (let k = 1; k <= n; k++) {
+    if (rate19(k, n, R2) && rate19(k - 1, n - 1, R1)) { exC = { n, k }; break }
+  }
+  if (!exC) return null
+
+  const params = { NA, kA, RA, R1, R2 }
+  const check = (cfg, part) => {
+    if (!cfg) return "нет примера"
+    if (part === "a") {
+      if (cfg.n !== NA + 1) return `после голоса Васи должно быть ${NA + 1} голосов`
+      if (rateOf19(cfg.k - 1, NA) !== RA) return `до голоса Васи рейтинг ${rateOf19(cfg.k - 1, NA)}, а не ${RA}`
+      if (rateOf19(cfg.k, cfg.n) !== newRA) return `новый рейтинг ${rateOf19(cfg.k, cfg.n)}, а не ${newRA}`
+      return null
+    }
+    if (part === "b") {
+      if (!Array.isArray(cfg.votes) || cfg.votes.length !== 2) return "должно быть два футболиста"
+      if (sum(cfg.votes) !== cfg.n) return `сумма голосов ${sum(cfg.votes)} не равна ${cfg.n}`
+      const tot = sum(cfg.votes.map((k) => rateOf19(k, cfg.n)))
+      if (tot <= 100) return `суммарный рейтинг ${tot}, а нужен больше 100`
+      return null
+    }
+    if (part === "c") {
+      if (cfg.n !== exC.n) return `всего голосов ${cfg.n}, а заявлено ${exC.n}`
+      if (rateOf19(cfg.k - 1, cfg.n - 1) !== R1) return `до голоса Васи рейтинг ${rateOf19(cfg.k - 1, cfg.n - 1)}, а не ${R1}`
+      if (rateOf19(cfg.k, cfg.n) !== R2) return `после голоса Васи рейтинг ${rateOf19(cfg.k, cfg.n)}, а не ${R2}`
+      return null
+    }
+    return null
+  }
+  // НЕЗАВИСИМЫЙ перебор: округление через Math.round; для в) скан n до 200 покрывает
+  // всё пространство (см. оценку в ключе: n < (199 − 2R1)/2 < 100).
+  const solve = (P) => {
+    const rr = (k, n) => Math.floor((100 * k) / n + 0.5)
+    let a = null
+    for (let k = 0; k <= P.NA; k++) if (rr(k, P.NA) === P.RA) a = rr(k + 1, P.NA + 1)
+    let b = false
+    for (let n = 2; n <= 40 && !b; n++) for (let x = 1; x < n; x++) if (rr(x, n) + rr(n - x, n) > 100) { b = true; break }
+    let top = null
+    for (let n = 200; n >= 2 && top === null; n--) for (let k = 1; k <= n; k++) {
+      if (rr(k, n) === P.R2 && rr(k - 1, n - 1) === P.R1) { top = n; break }
+    }
+    return { a, b, c: top, c_next: false }
+  }
+
+  const bRates = exB.votes.map((k) => rateOf19(k, exB.n))
+  return item({
+    preamble: `На сайте проводится опрос, кого из футболистов посетители сайта считают лучшим по итогам сезона. Каждый посетитель голосует за одного футболиста. На сайте отображается рейтинг каждого футболиста — доля голосов, отданных за него, в процентах, округлённая до целого числа. Например, числа 9,3; 10,5 и 12,7 округляются до 9; 11 и 13 соответственно.`,
+    qa: `Всего проголосовало ${NA} посетителей сайта. Голоса распределились так, что рейтинг некоторого футболиста стал равным ${RA}. Затем Вася проголосовал за этого футболиста. Каков теперь рейтинг футболиста с учётом голоса Васи?`,
+    qb: `Голоса распределяют между двумя футболистами. Может ли суммарный рейтинг быть больше 100?`,
+    qc: `На сайте отображалось, что рейтинг некоторого футболиста равен ${R1}. После того, как Вася отдал свой голос за этого футболиста, рейтинг стал равен ${R2}. При каком наибольшем числе отданных за всех футболистов голосов, включая Васин голос, такое возможно?`,
+    ansA: `${newRA}: рейтинг ${RA} при ${NA} голосовавших даёт ровно ${kA} ${plural(kA, "голос", "голоса", "голосов")} (${ru2((100 * kA) / NA)} %), после голоса Васи это ${kA + 1} из ${NA + 1} (${ru2((100 * (kA + 1)) / (NA + 1))} %), то есть ${newRA}`,
+    ansB: `да, например при ${exB.n} проголосовавших голоса разделились как ${exB.votes.join(" и ")}: рейтинги ${bRates.join(" и ")}, их сумма ${sum(bRates)} больше 100`,
+    ansC: `${exC.n}; например, за футболиста отдано ${exC.k} ${plural(exC.k, "голос", "голоса", "голосов")} из ${exC.n} (${ru2((100 * exC.k) / exC.n)} %), а до голоса Васи было ${exC.k - 1} из ${exC.n - 1} (${ru2((100 * (exC.k - 1)) / (exC.n - 1))} %)`,
+    solution: `Рейтинг равен R ⟺ R − 0,5 ≤ 100k/n < R + 0,5.\nа) При ${NA} голосовавших рейтинг ${RA} даёт только k = ${kA}: доля ${ru2((100 * kA) / NA)} %. После голоса Васи голосов стало ${NA + 1}, за футболиста — ${kA + 1}, доля ${ru2((100 * (kA + 1)) / (NA + 1))} %, что округляется до ${newRA}. Ответ: ${newRA}.\nб) Возьмём ${exB.n} голосов, разделённых как ${exB.votes.join(" и ")}: доли округляются до ${bRates.join(" и ")}, сумма ${sum(bRates)} > 100 (каждое округление вверх добавляет до 0,5). Ответ: да.\nв) Из 100k/n ≥ ${R2} − 0,5 и 100(k − 1)/(n − 1) < ${R1} + 0,5 после вычитания получаем n(${R2} − ${R1} − 1) < 100 − ${R1} − 0,5, то есть n < ${((199 - 2 * R1) / 2).toFixed(1).replace(".", ",")}. Перебор в этих границах даёт наибольшее n = ${exC.n} при k = ${exC.k}: ${ru2((100 * (exC.k - 1)) / (exC.n - 1))} % и ${ru2((100 * exC.k) / exC.n)} %. Ответ: ${exC.n}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "value", value: newRA, example: { n: NA + 1, k: kA + 1 } },
+        b: { type: "yesno", yes: true, example: exB, target: "sum-over-100" },
+        c: { type: "extremum", mode: "max", value: exC.n, example: exC },
+      },
+      mustMention: [NA, RA, R1, R2, 100],
+      extra: [9, 3, 10, 5, 12, 7, 11, 13],
+      phrases: ["округлённая до целого числа", "голосует за одного футболиста"],
+    },
+  })
+}
+
+// #51. Тот же опрос, но футболистов ровно F. а) при NA голосовавших рейтинг первого
+//      равен RA, затем Вася отдал голос за ДРУГОГО футболиста — чему равен рейтинг
+//      первого теперь? б) могла ли после голоса Васи сумма рейтингов всех футболистов
+//      уменьшиться не менее чем на TB? в) наибольшая возможная сумма рейтингов.
+//
+// КЛЮЧ к в). Округление увеличивает долю не больше чем на 0,5, причём ровно на 0,5
+// только когда доля оканчивается на «,5». Долей всего не больше F (у остальных 0 голосов),
+// а их сумма равна 100, поэтому сумма рейтингов не превосходит 100 + F/2. Равенство
+// достигается при 200 голосующих: доля футболиста с k голосами равна k/2, и при нечётном
+// k она оканчивается на «,5». Берём F нечётных чисел с суммой 200 — это и есть пример.
+export function t19VoteSumMax() {
+  const F = pick([120, 128, 134, 134, 140, 146, 150])
+  const NA = randInt(11, 20)
+  const kA = randInt(2, NA - 2)
+  const RA = rateOf19(kA, NA)
+  let cnt = 0
+  for (let k = 0; k <= NA; k++) if (rateOf19(k, NA) === RA) cnt++
+  if (cnt !== 1) return null
+  const newRA = rateOf19(kA, NA + 1)
+  if (newRA === RA) return null                      // иначе пункт а) вырожден
+  // в) пример на 100 + F/2: 200 голосов, F нечётных чисел
+  const q = 100 - F / 2
+  const votesC = [...Array(q).fill(3), ...Array(F - q).fill(1)]
+  const maxSum = 100 + F / 2
+  // б) пример: 200 голосов, F − 1 футболистов по одному голосу, остальное — одному
+  const ones = F - 1, kBig = 200 - ones
+  if (kBig < 1) return null
+  const votesB = [...Array(ones).fill(1), kBig]
+  const s1 = sum(votesB.map((k) => rateOf19(k, 200)))
+  const after = [...Array(ones).fill(1), kBig + 1]
+  const s2 = sum(after.map((k) => rateOf19(k, 201)))
+  const drop = s1 - s2
+  if (drop < 21) return null
+  const TB = randInt(20, Math.min(40, drop))
+
+  const params = { F, NA, RA, TB }
+  const check = (cfg, part) => {
+    if (!cfg) return "нет примера"
+    if (part === "a") {
+      if (rateOf19(cfg.k, NA) !== RA) return `до голоса Васи рейтинг ${rateOf19(cfg.k, NA)}, а не ${RA}`
+      if (cfg.n !== NA + 1) return `после голоса Васи должно быть ${NA + 1} голосов`
+      if (rateOf19(cfg.k, cfg.n) !== newRA) return `новый рейтинг ${rateOf19(cfg.k, cfg.n)}, а не ${newRA}`
+      return null
+    }
+    const v = cfg.votes
+    if (!Array.isArray(v) || v.length > F) return `футболистов с голосами не больше ${F}`
+    if (v.some((k) => !Number.isInteger(k) || k < 1)) return "число голосов — натуральное"
+    if (sum(v) !== cfg.n) return `сумма голосов ${sum(v)} не равна ${cfg.n}`
+    if (part === "b") {
+      const before = sum(v.map((k) => rateOf19(k, cfg.n)))
+      const w = v.slice(); w[cfg.target] += 1
+      const later = sum(w.map((k) => rateOf19(k, cfg.n + 1)))
+      if (before - later < TB) return `сумма уменьшилась на ${before - later}, а нужно не менее ${TB}`
+      return null
+    }
+    if (part === "c") {
+      const tot = sum(v.map((k) => rateOf19(k, cfg.n)))
+      if (tot !== maxSum) return `сумма рейтингов ${tot}, а заявлено ${maxSum}`
+      return null
+    }
+    return null
+  }
+  // НЕЗАВИСИМЫЙ перебор. а) прямое округление. б) поиск в явно описанном семействе
+  // «t футболистов по одному голосу + один со всеми остальными» при n ≤ 400 — для
+  // ответа «да» достаточно найти хотя бы один случай. в) структурная оценка 100 + F/2
+  // считается заново, а в том же семействе ищется набор, её достигающий: если поиск
+  // даст больше, несовпадение всплывёт.
+  const solve = (P) => {
+    const rr = (k, n) => Math.floor((100 * k) / n + 0.5)
+    // k восстанавливается из ЗАЯВЛЕННОГО рейтинга RA, а не берётся из конструкции
+    let a = null
+    for (let k = 0; k <= P.NA; k++) if (rr(k, P.NA) === P.RA) a = rr(k, P.NA + 1)
+    let hitB = false
+    for (let n = 2; n <= 400 && !hitB; n++) for (let t = 1; t < Math.min(P.F, n); t++) {
+      const big = n - t
+      if (big < 1) continue
+      const before = t * rr(1, n) + rr(big, n)
+      const later = t * rr(1, n + 1) + rr(big + 1, n + 1)
+      if (before - later >= P.TB) { hitB = true; break }
+    }
+    const bound = 100 + P.F / 2
+    let found = 0
+    for (let n = 2; n <= 400; n++) for (let t = 0; t <= P.F; t++) {
+      const rest = P.F - t
+      if (rest < 0) continue
+      const total = 3 * t + rest
+      if (total !== n) continue
+      const s = t * rr(3, n) + rest * rr(1, n)
+      if (s > found) found = s
+    }
+    return { a, b: hitB, c: Math.max(bound, found), c_next: false }
+  }
+
+  return item({
+    preamble: `На сайте проводится опрос, кого из ${F} футболистов посетители сайта считают лучшим по итогам сезона. Каждый посетитель голосует за одного футболиста. На сайте отображается рейтинг каждого футболиста — доля голосов, отданных за него, в процентах, округлённая до целого числа. Например, числа 9,3; 10,5 и 12,7 округляются до 9; 11 и 13 соответственно.`,
+    qa: `Всего проголосовало ${NA} посетителей сайта, и рейтинг первого футболиста стал равен ${RA}. Увидев это, Вася отдал свой голос за другого футболиста. Чему теперь равен рейтинг первого футболиста?`,
+    qb: `Вася проголосовал за некоторого футболиста. Могла ли после этого сумма рейтингов всех футболистов уменьшиться не менее чем на ${TB}?`,
+    qc: `Какое наибольшее значение может принимать сумма рейтингов всех футболистов?`,
+    ansA: `${newRA}: рейтинг ${RA} при ${NA} голосовавших даёт ровно ${kA} ${plural(kA, "голос", "голоса", "голосов")}, а после голоса Васи это ${kA} из ${NA + 1} (${ru2((100 * kA) / (NA + 1))} %), то есть ${newRA}`,
+    ansB: `да, например при 200 проголосовавших ${ones} футболистов получили по одному голосу (доля 0,5 % округляется до 1), а один — ${kBig}; после голоса Васи за этого одного голосов стало 201, доля каждого «одиночки» стала меньше 0,5 % и её рейтинг обнулился — сумма рейтингов упала с ${s1} до ${s2}, то есть на ${drop}`,
+    ansC: `${maxSum}; например, при 200 проголосовавших ${q} футболистов получили по 3 голоса (доля 1,5 % → рейтинг 2), а остальные ${F - q} — по одному (доля 0,5 % → рейтинг 1): сумма равна ${maxSum}`,
+    solution: `Рейтинг равен R ⟺ R − 0,5 ≤ 100k/n < R + 0,5, поэтому округление увеличивает долю меньше чем на 0,5, а ровно на 0,5 — только когда доля оканчивается на «,5».\nа) При ${NA} голосовавших рейтинг ${RA} даёт только k = ${kA}. Вася отдал голос ДРУГОМУ футболисту, поэтому у первого осталось ${kA} ${plural(kA, "голос", "голоса", "голосов")}, а всего голосов стало ${NA + 1}: доля ${ru2((100 * kA) / (NA + 1))} % округляется до ${newRA}. Ответ: ${newRA}.\nб) Пусть проголосовали 200 человек: ${ones} футболистов получили по одному голосу, ещё один — ${kBig}. Доля «одиночки» равна ровно 0,5 %, её рейтинг 1. После голоса Васи голосов стало 201, доля «одиночки» — меньше 0,5 %, рейтинг 0. Сумма рейтингов упала с ${s1} до ${s2}, то есть на ${drop} ≥ ${TB}. Ответ: да.\nв) Ненулевые доли есть не более чем у ${F} футболистов, их сумма равна 100, а каждое округление добавляет не больше 0,5. Значит сумма рейтингов не превосходит 100 + ${F}/2 = ${maxSum}. Равенство достигается: 200 голосующих, ${q} футболистов по 3 голоса и ${F - q} по одному — все доли оканчиваются на «,5». Ответ: ${maxSum}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "value", value: newRA, example: { n: NA + 1, k: kA } },
+        b: { type: "yesno", yes: true, example: { n: 200, votes: votesB, target: ones }, target: "sum-drop" },
+        c: { type: "extremum", mode: "max", value: maxSum, example: { n: 200, votes: votesC } },
+      },
+      mustMention: [F, NA, RA, TB],
+      extra: [9, 3, 10, 5, 12, 7, 11, 13],
+      phrases: ["округлённая до целого числа", "голосует за одного футболиста"],
+    },
+  })
+}
+
+// #101. Шахматы. После каждой партии считаются три показателя: «победы» — процент побед,
+//       округлённый до целого, «ничьи» — процент ничьих, округлённый до целого, а
+//       «поражения» = 100 − «победы» − «ничьи».
+//       а) может ли показатель «побед» равняться RA, если сыграно менее NA партий?
+//       б) может ли после ВЫИГРАННОЙ партии вырасти показатель «поражений»?
+//       в) одна партия проиграна — наименьшее число партий с показателем «поражений» = T.
+//
+// КЛЮЧ к в). Пусть сыграно n партий, из них w побед, d ничьих, l ≥ 1 поражений.
+// Каждое округление добавляет меньше 0,5, поэтому
+//   «победы» + «ничьи» < 100(w + d)/n + 1 = 100 − 100l/n + 1,
+// а показатель «поражений» равен 100 − («победы» + «ничьи») > 100l/n − 1. Условие
+// «поражений» = T даёт 100l/n − 1 < T, то есть n > 100l/(T + 1) ≥ 100/(T + 1).
+export function t19ChessRounding() {
+  const T = pick([1, 1, 2, 3])
+  const NA = pick([50, 50, 40, 60])
+  // берём процент, который НЕ получается за две-три партии: иначе пункт а) тривиален
+  const cands = []
+  for (let R = 11; R <= 89; R++) {
+    let minN = null
+    for (let n = 2; n < NA && minN === null; n++) for (let w = 0; w <= n; w++) if (rateOf19(w, n) === R) { minN = n; break }
+    if (minN !== null && minN >= 5) cands.push([R, minN])
+  }
+  if (!cands.length) return null
+  const [RA, minNA] = pick(cands)
+  let exA = null
+  for (let w = 0; w <= minNA; w++) if (rateOf19(w, minNA) === RA) { exA = { n: minNA, w }; break }
+  if (!exA) return null
+  // б) после выигранной партии показатель «поражений» вырос
+  const lossOf = (w, d, n) => 100 - rateOf19(w, n) - rateOf19(d, n)
+  let exB = null
+  for (let n = 2; n <= 60 && !exB; n++) for (let w = 1; w <= n && !exB; w++) for (let d = 0; w + d <= n; d++) {
+    const was = lossOf(w - 1, d, n - 1), now = lossOf(w, d, n)
+    if (was >= 0 && now > was) { exB = { n, w, d }; break }        // отрицательный показатель не показываем
+  }
+  if (!exB) return null
+  // в) наименьшее число партий с показателем «поражений», равным T
+  let exC = null
+  for (let n = 2; n <= 400 && !exC; n++) for (let w = 0; w <= n && !exC; w++) for (let d = 0; w + d <= n - 1; d++) {
+    if (lossOf(w, d, n) === T) exC = { n, w, d, l: n - w - d }
+  }
+  if (!exC) return null
+
+  const params = { RA, NA, T }
+  // check написан ПО ТЕКСТУ условия: показатели считаются по определению.
+  const check = (cfg, part) => {
+    if (!cfg) return "нет примера"
+    if (part === "a") {
+      if (!(cfg.n < NA)) return `сыграно ${cfg.n} партий, а нужно меньше ${NA}`
+      if (cfg.w < 0 || cfg.w > cfg.n) return "число побед вне диапазона"
+      if (rateOf19(cfg.w, cfg.n) !== RA) return `показатель «побед» равен ${rateOf19(cfg.w, cfg.n)}, а не ${RA}`
+      return null
+    }
+    if (part === "b") {
+      if (cfg.w < 1 || cfg.w + cfg.d > cfg.n) return "неверный набор партий"
+      const before = lossOf(cfg.w - 1, cfg.d, cfg.n - 1)
+      const later = lossOf(cfg.w, cfg.d, cfg.n)
+      if (before < 0) return `показатель «поражений» до партии был отрицательным (${before})`
+      if (!(later > before)) return `показатель «поражений» был ${before}, стал ${later} — не вырос`
+      return null
+    }
+    if (part === "c") {
+      if (cfg.n !== exC.n) return `сыграно ${cfg.n} партий, а заявлено ${exC.n}`
+      if (cfg.w + cfg.d + cfg.l !== cfg.n) return "партии не сходятся"
+      if (cfg.l < 1) return "по условию одна из партий проиграна"
+      const L = lossOf(cfg.w, cfg.d, cfg.n)
+      if (L !== T) return `показатель «поражений» равен ${L}, а не ${T}`
+      return null
+    }
+    return null
+  }
+  // НЕЗАВИСИМЫЙ перебор: округление через Math.round, показатели пересчитываются
+  // заново. Для в) скан n до 400 заведомо покрывает всё: по оценке из ключа
+  // n > 100/(T + 1), а сверху достижимость проверяется явным примером.
+  const solve = (P) => {
+    const rr = (k, n) => Math.floor((100 * k) / n + 0.5)
+    const ls = (w, d, n) => 100 - rr(w, n) - rr(d, n)
+    let a = false
+    for (let n = 2; n < P.NA && !a; n++) for (let w = 0; w <= n; w++) if (rr(w, n) === P.RA) { a = true; break }
+    let b = false
+    for (let n = 2; n <= 60 && !b; n++) for (let w = 1; w <= n && !b; w++) for (let d = 0; w + d <= n; d++) {
+      const was = ls(w - 1, d, n - 1)
+      if (was >= 0 && ls(w, d, n) > was) { b = true; break }
+    }
+    let top = null
+    for (let n = 2; n <= 400 && top === null; n++) for (let w = 0; w <= n && top === null; w++) for (let d = 0; w + d <= n - 1; d++) {
+      if (ls(w, d, n) === P.T) { top = n; break }
+    }
+    return { a, b, c: top, c_next: false }
+  }
+
+  const games = (n) => `${n} ${plural(n, "партии", "партий", "партий")}`   // родительный: «после 6 партий»
+  return item({
+    preamble: `В шахматы можно выиграть, проиграть или сыграть вничью. Шахматист записывает результат каждой сыгранной им партии и после каждой партии подсчитывает три показателя: «победы» — процент побед, округлённый до целого, «ничьи» — процент ничьих, округлённый до целого, и «поражения», равные разности 100 и суммы показателей «побед» и «ничьих». (Например, число 13,2 округляется до 13, число 14,5 округляется до 15, число 16,8 округляется до 17.)`,
+    qa: `Может ли в какой-то момент показатель «побед» равняться ${RA}, если было сыграно менее ${NA} партий?`,
+    qb: `Может ли после выигранной партии увеличиться показатель «поражений»?`,
+    qc: `Одна из партий была проиграна. При каком наименьшем количестве сыгранных партий показатель «поражений» может быть равным ${T}?`,
+    ansA: `да, например после ${games(exA.n)} при ${exA.w} ${plural(exA.w, "победе", "победах", "победах")}: ${ru2((100 * exA.w) / exA.n)} % округляется до ${RA}`,
+    ansB: `да, например после ${games(exB.n)} при ${exB.w} ${plural(exB.w, "победе", "победах", "победах")} и ${exB.d} ${plural(exB.d, "ничьей", "ничьих", "ничьих")}: до последней (выигранной) партии показатель «поражений» был ${lossOf(exB.w - 1, exB.d, exB.n - 1)}, а стал ${lossOf(exB.w, exB.d, exB.n)}`,
+    ansC: `${exC.n}; например, ${exC.w} ${plural(exC.w, "победа", "победы", "побед")}, ${exC.d} ${plural(exC.d, "ничья", "ничьи", "ничьих")} и ${exC.l} ${plural(exC.l, "поражение", "поражения", "поражений")}: «победы» = ${rateOf19(exC.w, exC.n)}, «ничьи» = ${rateOf19(exC.d, exC.n)}, «поражения» = ${T}`,
+    solution: `Показатель равен R ⟺ R − 0,5 ≤ процент < R + 0,5, поэтому каждое округление добавляет меньше 0,5.\nа) Достаточно предъявить момент: после ${games(exA.n)} и ${exA.w} ${plural(exA.w, "победы", "побед", "побед")} процент побед равен ${ru2((100 * exA.w) / exA.n)} %, что округляется до ${RA}, а ${exA.n} < ${NA}. Ответ: да.\nб) Выигранная партия увеличивает и число побед, и число партий, но процент ничьих при этом падает — и падать он может «через границу округления». Пример: ${games(exB.n)}, ${exB.w} ${plural(exB.w, "победа", "победы", "побед")} и ${exB.d} ${plural(exB.d, "ничья", "ничьи", "ничьих")}; показатель «поражений» вырос с ${lossOf(exB.w - 1, exB.d, exB.n - 1)} до ${lossOf(exB.w, exB.d, exB.n)}. Ответ: да.\nв) Пусть сыграно n партий: w побед, d ничьих и l ≥ 1 поражений. Тогда «победы» + «ничьи» < 100(w + d)/n + 1 = 100 − 100l/n + 1, поэтому показатель «поражений» больше 100l/n − 1. Из «поражений» = ${T} получаем 100l/n − 1 < ${T}, то есть n > 100l/${T + 1} ≥ ${(100 / (T + 1)).toFixed(2).replace(".", ",")}. Наименьшее n, при котором пример существует, равно ${exC.n}: ${exC.w} ${plural(exC.w, "победа", "победы", "побед")}, ${exC.d} ${plural(exC.d, "ничья", "ничьи", "ничьих")}, ${exC.l} ${plural(exC.l, "поражение", "поражения", "поражений")}. Ответ: ${exC.n}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: `wins-${RA}` },
+        b: { type: "yesno", yes: true, example: exB, target: "loss-grows" },
+        c: { type: "extremum", mode: "min", value: exC.n, example: exC },
+      },
+      mustMention: [RA, NA, T, 100],
+      extra: [13, 2, 14, 5, 16, 8, 15, 17],
+      phrases: ["процент побед, округлённый до целого", "показателей «побед» и «ничьих»"],
+    },
+  })
+}
+
+// #95. Каждый из группы сходил в кино или в театр (можно и туда, и туда). В театре
+//      мальчиков было не более p/q от числа посетивших театр, в кино — не более r/s
+//      от числа посетивших кино.
+//      а) могло ли в группе быть BA мальчиков, если всего в группе N учащихся?
+//      б) наибольшее число мальчиков в группе из N учащихся?
+//      в) наименьшая доля девочек от всей группы (без условия «всего N»).
+//
+// КЛЮЧ. Мальчику невыгодно ходить и туда, и туда (он попадает в оба ограничения),
+// а девочке — выгодно: она увеличивает ОБА знаменателя. Поэтому оптимально: все G
+// девочек идут и в кино, и в театр, а мальчики делятся на «только театр» (A штук) и
+// «только кино» (C штук). Условия превращаются в
+//   qA ≤ p(A + G) ⟺ A ≤ pG/(q − p),  sC ≤ r(C + G) ⟺ C ≤ rG/(s − r),
+// то есть число мальчиков B = A + C допустимо ⟺ B ≤ ⌊pG/(q − p)⌋ + ⌊rG/(s − r)⌋,
+// где G = n − B. Отсюда доля девочек G/n ≥ 1/(1 + p/(q − p) + r/(s − r)), и равенство
+// достигается при G, кратном (q − p) и (s − r).
+export function t19CinemaTheatreShares() {
+  const [p, q] = pick([[7, 11], [5, 8], [9, 14], [3, 5], [5, 9]])
+  const [r, s] = pick([[2, 5], [1, 3], [3, 7], [2, 7], [1, 4]])
+  const dq = q - p, ds = s - r
+  const N = randInt(15, 30)
+  const capB = (G) => Math.floor((p * G) / dq) + Math.floor((r * G) / ds)
+  let maxB = 0
+  for (let B = 0; B <= N; B++) if (B <= capB(N - B)) maxB = B
+  if (maxB < 5) return null
+  const BA = randInt(Math.max(2, maxB - 6), maxB - 1)
+  const gcd = (a, b) => (b ? gcd(b, a % b) : a)
+  const L = (dq * ds) / gcd(dq, ds)
+  const A0 = (p * L) / dq, C0 = (r * L) / ds
+  const n0 = L + A0 + C0
+  const g0 = gcd(L, n0)
+  const minFr = { n: L / g0, d: n0 / g0 }
+  // конфигурации: девочки — «и туда, и туда», мальчики — только в одно место
+  const build = (n, B) => {
+    const G = n - B
+    const A = Math.min(B, Math.floor((p * G) / dq))
+    return { aB: A, cB: B - A, girlsBoth: G }
+  }
+  const exA = build(N, BA), exB = build(N, maxB), exC = build(n0, A0 + C0)
+
+  const params = { p, q, r, s, N, BA }
+  // check написан ПО ТЕКСТУ условия: считаются посетители театра и кино и доли мальчиков
+  // среди них (сравнение целочисленное, без деления).
+  const check = (cfg, part) => {
+    if (!cfg) return "нет примера"
+    const { aB, cB, girlsBoth } = cfg
+    if ([aB, cB, girlsBoth].some((x) => !Number.isInteger(x) || x < 0)) return "нецелые количества"
+    const n = aB + cB + girlsBoth
+    const t = aB + girlsBoth, k = cB + girlsBoth
+    if (q * aB > p * t) return `мальчиков в театре ${aB} из ${t} — больше ${p}/${q}`
+    if (s * cB > r * k) return `мальчиков в кино ${cB} из ${k} — больше ${r}/${s}`
+    const B = aB + cB
+    if (part === "a" && (n !== N || B !== BA)) return `нужно ${N} учащихся и ${BA} мальчиков, а вышло ${n} и ${B}`
+    if (part === "b" && (n !== N || B !== maxB)) return `нужно ${N} учащихся и ${maxB} мальчиков, а вышло ${n} и ${B}`
+    if (part === "c" && minFr.n * n !== minFr.d * girlsBoth) return `доля девочек ${girlsBoth}/${n} не равна ${minFr.n}/${minFr.d}`
+    return null
+  }
+  // НЕЗАВИСИМЫЙ перебор: для каждого числа девочек G перебираются ВСЕ раскладки
+  // (мальчики «только театр» / «только кино» / «и туда, и туда», девочки — тоже по трём
+  // группам), а условия проверяются прямо по определению. Границы: G ≤ 60 и n ≤ 200
+  // (минимальная доля достигается уже при G = НОК(q − p, s − r) ≤ 60).
+  const solve = (P) => {
+    const dq2 = P.q - P.p, ds2 = P.s - P.r
+    const ok = (aB, cB, bB, aG, cG, bG) => {
+      const t = aB + bB + aG + bG, k = cB + bB + cG + bG
+      return P.q * (aB + bB) <= P.p * t && P.s * (cB + bB) <= P.r * k
+    }
+    // а), б): полный перебор раскладок группы ровно из N человек
+    let best = 0, hitA = false
+    for (let B = 0; B <= P.N; B++) {
+      const G = P.N - B
+      let feasible = false
+      for (let aB = 0; aB <= B && !feasible; aB++) for (let cB = 0; aB + cB <= B && !feasible; cB++) {
+        const bB = B - aB - cB
+        for (let aG = 0; aG <= G && !feasible; aG++) for (let cG = 0; aG + cG <= G; cG++) {
+          if (ok(aB, cB, bB, aG, cG, G - aG - cG)) { feasible = true; break }
+        }
+      }
+      if (feasible) { best = Math.max(best, B); if (B === P.BA) hitA = true }
+    }
+    // в): минимальная доля девочек по всем G (мальчиков берём максимум для этого G)
+    let minVal = 1
+    for (let G = 1; G <= 60; G++) {
+      const B = Math.floor((P.p * G) / dq2) + Math.floor((P.r * G) / ds2)
+      const n = G + B
+      if (G / n < minVal) minVal = G / n
+    }
+    return { a: hitA, b: best, b_next: false, c: minVal, c_next: false }
+  }
+
+  const pupils = (n) => `${n} ${plural(n, "учащийся", "учащихся", "учащихся")}`
+  const descr = (cfg) => `${cfg.girlsBoth} ${plural(cfg.girlsBoth, "девочка сходила", "девочки сходили", "девочек сходили")} и в театр, и в кино, ${cfg.aB} ${plural(cfg.aB, "мальчик сходил", "мальчика сходили", "мальчиков сходили")} только в театр` + (cfg.cB ? `, ${cfg.cB} — только в кино` : `, а только в кино не сходил ни один мальчик`)
+  return item({
+    preamble: `Каждый из группы учащихся сходил в кино или в театр, при этом возможно, что кто-то из них мог сходить и в кино, и в театр. Известно, что в театре мальчиков было не более ${frCond({ n: p, d: q })} от общего числа учащихся группы, посетивших театр, а в кино мальчиков было не более ${frCond({ n: r, d: s })} от общего числа учащихся группы, посетивших кино.`,
+    qa: `Могло ли быть в группе ${BA} ${plural(BA, "мальчик", "мальчика", "мальчиков")}, если дополнительно известно, что всего в группе было ${pupils(N)}?`,
+    qb: `Какое наибольшее количество мальчиков могло быть в группе, если дополнительно известно, что всего в группе было ${pupils(N)}?`,
+    qc: `Какую наименьшую долю могли составлять девочки от общего числа учащихся в группе без дополнительного условия пунктов а и б?`,
+    ansA: `да, например: ${descr(exA)}`,
+    ansB: `${maxB}; например: ${descr(exB)} (всего ${N})`,
+    ansC: `${frPlain(minFr)}; например, в группе из ${n0} человек ${descr(exC)}`,
+    solution: `Мальчику невыгодно идти и в театр, и в кино: он попадает сразу в оба ограничения. Девочке, наоборот, выгодно — она увеличивает оба знаменателя. Пусть в группе G девочек (все ходят и туда, и туда), A мальчиков только в театре и C только в кино. Тогда условия принимают вид ${q}A ≤ ${p}(A + G) и ${s}C ≤ ${r}(C + G), то есть A ≤ ${p}G/${dq} и C ≤ ${r}G/${ds}. Значит число мальчиков B допустимо ⟺ B ≤ ⌊${p}G/${dq}⌋ + ⌊${r}G/${ds}⌋, где G — число девочек.\nа) При ${pupils(N)} и ${BA} ${plural(BA, "мальчике", "мальчиках", "мальчиках")} девочек ${N - BA}: ${descr(exA)} — оба условия выполнены. Ответ: да.\nб) Перебирая число девочек, получаем наибольшее допустимое число мальчиков ${maxB}: ${descr(exB)}. Ответ: ${maxB}.\nв) Из B ≤ ${p}G/${dq} + ${r}G/${ds} и n = B + G следует n ≤ G(1 + ${p}/${dq} + ${r}/${ds}), то есть доля девочек G/n не меньше ${frPlain(minFr)}. Равенство достигается при G = ${L}: тогда ${A0} мальчиков ходят только в театр, ${C0} — только в кино, всего ${n0} человек. Ответ: ${frPlain(minFr)}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: `boys-${BA}` },
+        b: { type: "extremum", mode: "max", value: maxB, example: exB },
+        c: { type: "value", value: minFr.n / minFr.d, example: exC },
+      },
+      mustMention: [p, q, r, s, N, BA],
+      extra: [],
+      phrases: ["сходил в кино или в театр", "не более"],
     },
   })
 }
