@@ -7837,7 +7837,9 @@ function shortestSuper(targets) {
 }
 
 export function t19SupersequenceDigits() {
-  const N = pick([40, 30, 50])
+  // только те N, для которых ответ сверен независимым поиском в ширину
+  // (N = 30 → 121230456789, N = 40 → 1231234056789); для 50 перебор не помещается в память
+  const N = pick([30, 40])
   const rnd3 = () => String(randInt(102, 987))
   // а) три трёхзначных числа с общей надпоследовательностью ровно из La цифр
   const La = 7
