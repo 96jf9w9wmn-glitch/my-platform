@@ -251,7 +251,10 @@ async function renderBlock(innerHtml) {
 // Рендерит каждое задание отдельным блоком и раскладывает по страницам A4 так, чтобы задание
 // НИКОГДА не разрывалось разворотом страниц — если блок не влезает в остаток текущей страницы,
 // он целиком переносится на следующую.
-export async function generateVariantPdf({ title, examType, tasks }) {
+// mode: "blank" — лист ученику (как было), "answers" — тот же лист плюс страница
+// ответов, "solutions" — плюс разбор. Ответы и решения идут ОТДЕЛЬНЫМ разделом в
+// конце, а не рядом с заданием: иначе лист нельзя дать ученику, не засветив ответ.
+export async function generateVariantPdf({ title, examType, tasks, mode = "blank" }) {
   // Вариант ОГЭ теперь включает часть 2 (20–25) — PDF делится на разделы «Часть 1»/«Часть 2».
   const part2From = examType === "ОГЭ" ? 20 : null
   const hasPart2 = part2From != null && tasks.some((t) => t.number >= part2From)
@@ -291,6 +294,32 @@ export async function generateVariantPdf({ title, examType, tasks }) {
         ${t.condition_tail ? `<div style="font-size:14px; white-space:pre-wrap; line-height:1.5; margin-top:8px;">${await renderTaskMathPdf(t.condition_tail)}</div>` : ""}
       </div>`
     ))
+  }
+
+  if (mode === "answers" || mode === "solutions") {
+    taskCanvases.push(await sectionBlock("Ответы", "Лист для проверяющего — ученику не выдавать."))
+    const rows = tasks
+      .filter((t) => t.answer != null && String(t.answer).trim() !== "")
+      .map((t) => `<tr><td style="padding:3px 12px 3px 0; font-weight:600; white-space:nowrap;">${t.number}</td><td style="padding:3px 0;">${escapeHtml(String(t.answer))}</td></tr>`)
+      .join("")
+    taskCanvases.push(await renderBlock(
+      `<div style="padding:10px 40px 16px; font-size:14px;"><table style="border-collapse:collapse;">${rows}</table></div>`
+    ))
+  }
+
+  if (mode === "solutions") {
+    const withSolution = tasks.filter((t) => t.solution && String(t.solution).trim())
+    if (withSolution.length) {
+      taskCanvases.push(await sectionBlock("Решения", "Разбор по заданиям."))
+      for (const t of withSolution) {
+        taskCanvases.push(await renderBlock(
+          `<div style="padding:12px 40px;">
+            <div style="font-weight:600; font-size:14px; margin-bottom:4px;">Задание ${t.number}</div>
+            <div style="font-size:13px; white-space:pre-wrap; line-height:1.5;">${await renderTaskMathPdf(String(t.solution))}</div>
+          </div>`
+        ))
+      }
+    }
   }
 
   const pdf = new jsPDF({ unit: "px", format: "a4" })

@@ -6,6 +6,57 @@ import Icon from "../components/Icon"
 import { assembleFromBank, rerollTask, rerollModule, isModuleNumber, PART2_NUMBERS, makeAnswerChoices } from "./taskBankApi"
 import { generateVariantPdf } from "./variantPdf"
 
+// Лист варианта в трёх видах (приём Kuta Software): ученику — без ответов,
+// проверяющему — с ответами, для разбора — с решениями. Пересобираем из
+// tasks_snapshot, поэтому числа те же, что получил ученик, а не новые.
+function ExtraPdfButtons({ variant }) {
+  const [busy, setBusy] = useState(null)
+  const [err, setErr] = useState("")
+
+  async function download(mode) {
+    setBusy(mode); setErr("")
+    try {
+      const blob = await generateVariantPdf({
+        title: variant.title, examType: variant.type, tasks: variant.tasks_snapshot, mode,
+      })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `${variant.title || "Вариант"} — ${mode === "solutions" ? "с решениями" : "с ответами"}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      setErr("Не получилось собрать PDF")
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const hasSolutions = variant.tasks_snapshot.some((t) => t.solution && String(t.solution).trim())
+
+  return (
+    <div className="mx-5 mt-4">
+      <div className="text-xs text-gray-400 mb-2">Печатные листы</div>
+      <div className="flex flex-wrap gap-2">
+        <button onClick={() => download("answers")} disabled={busy}
+          className="press-fill text-xs px-3 py-2 rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200 disabled:opacity-50">
+          {busy === "answers" ? "Собираем…" : "С ответами"}
+        </button>
+        {hasSolutions && (
+          <button onClick={() => download("solutions")} disabled={busy}
+            className="press-fill text-xs px-3 py-2 rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200 disabled:opacity-50">
+            {busy === "solutions" ? "Собираем…" : "С решениями"}
+          </button>
+        )}
+      </div>
+      {err && <div className="text-xs text-red-500 mt-2">{err}</div>}
+      <div className="text-[11px] text-gray-400 mt-2 leading-snug">
+        Ответы и решения идут отдельным разделом в конце — лист ученику остаётся чистым.
+      </div>
+    </div>
+  )
+}
+
 const OGE_PART1_GEOMETRY = [15,16,17,18,19]
 const OGE_PART2_TASKS = [20, 21, 22, 23, 24, 25]
 // По спецификации ФИПИ все задания части 2 ОГЭ оцениваются в 2 балла (максимум 12).
@@ -791,6 +842,10 @@ function Variants({ user, students = [], embedded = false, addOpen, onAddOpenCha
                   </div>
                   <span className="text-xs text-gray-400">{variantSubmissions.length} {plural(variantSubmissions.length, "ученик", "ученика", "учеников")}</span>
                 </div>
+
+                {selectedVariant.tasks_snapshot?.length > 0 && (
+                  <ExtraPdfButtons variant={selectedVariant} />
+                )}
 
                 {selectedVariant.file_url && (
                   <div className="mx-5 mt-4 border border-gray-100 rounded-xl overflow-hidden">
