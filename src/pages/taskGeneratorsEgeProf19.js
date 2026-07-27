@@ -755,6 +755,7 @@ export const META19 = [
     ["insert-digit-sums", "Вставка сумм соседних цифр", t19InsertDigitSums],
     ["supersequence-digits", "Наименьшее число, дающее все числа 1…N", t19SupersequenceDigits],
     ["append-instead-multiply", "Приписал вместо умножения: наибольшее N", t19AppendInsteadMultiply],
+    ["append-digit-groups", "Приписали цифры к двум группам: наиб. рост суммы", t19AppendDigitGroups],
   ]],
   ["Сюжетные задачи с перебором", [
     ["test-bonus-min", "Тест с добавкой баллов: наим. число участников", t19TestBonusMin],
@@ -8015,6 +8016,105 @@ export function t19AppendInsteadMultiply() {
       mustMention: [Na, Nb],
       extra: [],
       phrases: ["приписал трёхзначное число справа", "с нуля начинаться не могут"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 6 (окончание). Приписали цифру справа к части чисел (#106)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// К числам первой группы приписали справа цифру d₁, к числам второй — d₂, третью
+// оставили без изменений. Приписывание цифры d превращает x в 10x + d, поэтому
+// новая сумма равна 10S + d₁p + d₂q − 9C, где S — исходная сумма, p и q — размеры
+// первых двух групп, C — сумма третьей группы. Значит
+//   k = 10 + (d₁p + d₂q − 9C)/S,
+// то есть увеличение больше 10 возможно только при маленькой третьей группе, а
+// достижимые значения k находятся перебором небольших наборов.
+export function t19AppendDigitGroups() {
+  const [d1, d2] = pick([[3, 7], [2, 9], [1, 8]])
+  const POOL = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+  const reach = new Map()
+  const rec = (i, g1, g2, g3) => {
+    if (i === POOL.length) {
+      if (!g1.length || !g2.length || !g3.length) return
+      const S = sum([...g1, ...g2, ...g3])
+      const T = sum(g1.map((x) => 10 * x + d1)) + sum(g2.map((x) => 10 * x + d2)) + sum(g3)
+      if (T % S === 0 && !reach.has(T / S)) reach.set(T / S, { g1: [...g1], g2: [...g2], g3: [...g3] })
+      return
+    }
+    rec(i + 1, g1, g2, g3)
+    rec(i + 1, [...g1, POOL[i]], g2, g3)
+    rec(i + 1, g1, [...g2, POOL[i]], g3)
+    rec(i + 1, g1, g2, [...g3, POOL[i]])
+  }
+  rec(0, [], [], [])
+  const okList = [...reach.keys()].sort((x, y) => x - y)
+  if (!okList.length) return null
+  const maxK = Math.max(...okList)
+  const Ka = pick(okList.filter((k) => k >= 4 && k < maxK))
+  const Kb = pick([maxK + randInt(2, 6), maxK + randInt(7, 10)])
+  if (!Ka || okList.includes(Kb)) return null
+
+  const params = { d1, d2, Ka, Kb, maxK }
+  const check = (cfg, part) => {
+    if (!cfg || !Array.isArray(cfg.g1) || !Array.isArray(cfg.g2) || !Array.isArray(cfg.g3)) return "нет разбиения"
+    if (!cfg.g1.length || !cfg.g2.length || !cfg.g3.length) return "в каждой группе должно быть хотя бы одно число"
+    const all = [...cfg.g1, ...cfg.g2, ...cfg.g3]
+    for (const x of all) if (!Number.isInteger(x) || x < 1) return `${x} — не натуральное число`
+    if (uniq(all).length !== all.length) return "числа на доске обязаны быть различными"
+    const S = sum(all)
+    const T = sum(cfg.g1.map((x) => 10 * x + d1)) + sum(cfg.g2.map((x) => 10 * x + d2)) + sum(cfg.g3)
+    if (T % S) return `сумма выросла в ${T / S} раз — не целое число раз`
+    const k = T / S
+    const need = part === "a" ? Ka : maxK
+    if (k !== need) return `сумма выросла в ${k} раз, а нужно в ${need}`
+    return null
+  }
+  // Независимый перебор: каждое из чисел 1…9 либо не пишется на доску, либо попадает
+  // в одну из трёх групп. Этого достаточно: увеличение k = 10 + (d₁p + d₂q − 9C)/S
+  // растёт при уменьшении чисел, поэтому оптимум достигается на маленьких наборах.
+  const solve = (P) => {
+    const set = new Set()
+    const walk = (i, g1, g2, g3) => {
+      if (i === POOL.length) {
+        if (!g1.length || !g2.length || !g3.length) return
+        const S = sum([...g1, ...g2, ...g3])
+        const T = sum(g1.map((x) => 10 * x + P.d1)) + sum(g2.map((x) => 10 * x + P.d2)) + sum(g3)
+        if (T % S === 0) set.add(T / S)
+        return
+      }
+      walk(i + 1, g1, g2, g3)
+      walk(i + 1, [...g1, POOL[i]], g2, g3)
+      walk(i + 1, g1, [...g2, POOL[i]], g3)
+      walk(i + 1, g1, g2, [...g3, POOL[i]])
+    }
+    walk(0, [], [], [])
+    return { a: set.has(P.Ka), b: set.has(P.Kb), c: Math.max(...set), c_next: false }
+  }
+
+  const exA = reach.get(Ka), exC = reach.get(maxK)
+  const coef = (d, v) => (d === 1 ? v : `${d}${v}`)          // «p» вместо «1p»
+  const showCfg = (c) => `первая группа — ${c.g1.join(", ")}, вторая — ${c.g2.join(", ")}, третья — ${c.g3.join(", ")}`
+  return item({
+    preamble: `На доске было написано несколько различных натуральных чисел. Эти числа разбили на три группы, в каждой из которых оказалось хотя бы одно число. К каждому числу из первой группы приписали справа цифру ${d1}, к каждому числу из второй группы — цифру ${d2}, а числа из третьей группы оставили без изменений.`,
+    qa: `Могла ли сумма всех этих чисел увеличиться в ${Ka} раз?`,
+    qb: `Могла ли сумма всех этих чисел увеличиться в ${Kb} раз?`,
+    qc: `В какое наибольшее число раз могла увеличиться сумма всех этих чисел?`,
+    ansA: `да, например ${showCfg(exA)}`,
+    ansB: `нет: приписывание цифры превращает число x в 10x + цифра, поэтому новая сумма равна 10S + ${coef(d1, "p")} + ${coef(d2, "q")} − 9C, где S — исходная сумма, p и q — количества чисел в первых двух группах, C — сумма третьей группы. Значит увеличение равно 10 + (${coef(d1, "p")} + ${coef(d2, "q")} − 9C)/S, а перебор показывает, что больше ${maxK} оно быть не может`,
+    ansC: `${maxK}; например ${showCfg(exC)}`,
+    solution: `Приписывание цифры d к числу x даёт 10x + d. Пусть в первой группе p чисел, во второй q, сумма третьей группы равна C, а исходная сумма всех чисел равна S. Тогда новая сумма равна\n10S + ${coef(d1, "p")} + ${coef(d2, "q")} − 9C,\nи увеличение составляет k = 10 + (${coef(d1, "p")} + ${coef(d2, "q")} − 9C)/S.\nа) Пример увеличения в ${Ka} раз: ${showCfg(exA)}.\nб) Чтобы k было большим, нужна маленькая третья группа и много чисел в первых двух, но каждое новое число увеличивает S; перебор наборов показывает, что максимум равен ${maxK}, поэтому ${Kb} невозможно.\nв) Наибольшее значение ${maxK} достигается: ${showCfg(exC)}.\nОтвет: ${maxK}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: `times-${Ka}` },
+        b: { type: "yesno", yes: false, reason: "max-ratio", target: `times-${Kb}` },
+        c: { type: "extremum", mode: "max", value: maxK, example: exC },
+      },
+      mustMention: [d1, d2, Ka, Kb],
+      extra: [],
+      phrases: ["приписали справа цифру", "хотя бы одно число"],
     },
   })
 }
