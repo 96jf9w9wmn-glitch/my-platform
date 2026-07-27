@@ -3151,6 +3151,325 @@ export function t18LinePencilSemicircle() {
 }
 
 // =============================================================================
+// РАЗДЕЛ G. Системы неравенств с параметром (эталон #49–#54)
+// =============================================================================
+
+// #49. {ka ≤ x; 2mx > x² + a²; x + a ≤ s} — хотя бы одно решение на [L; R].
+// Допустимые x — рациональный промежуток [max(ka; L); min(s−a; R)], внутри которого должно
+// найтись x с x² − 2mx + a² < 0. Парабола ветвями вверх: минимум либо в вершине x = m,
+// либо на ближайшем конце промежутка — проверяется точно.
+function build49({ k, m, s, L, Rr }) {
+  const q = (a, x) => Radd(Rsub(Rmul(x, x), Rmul(R(2 * m), x)), Rmul(a, a))
+  const solve = (a) => {
+    const lo = Rcmp(Rmul(R(k), a), R(L)) > 0 ? Rmul(R(k), a) : R(L)
+    const hi = Rcmp(Rsub(R(s), a), R(Rr)) < 0 ? Rsub(R(s), a) : R(Rr)
+    if (Rcmp(lo, hi) > 0) return 0
+    const at = Rcmp(R(m), lo) < 0 ? lo : Rcmp(R(m), hi) > 0 ? hi : R(m)   // точка минимума на промежутке
+    return Rsign(q(a, at)) < 0 ? 1 : 0
+  }
+  const crit = [R0, R(2 * m * k, k * k + 1), R(m), R(-m), R(s, k + 1), R(L, k), R(Rr, k), R(s - L), R(s - Rr)]
+  for (const E of [[R(L * L - 2 * m * L), R0, R1], [R(Rr * Rr - 2 * m * Rr), R0, R1],
+    [R(s * s - 2 * m * s), R(2 * m - 2 * s), R(2)]]) {          // q(L)=0, q(R)=0, q(s−a)=0
+    crit.push(...ratRoots(E).roots)
+  }
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+// Наборы (k, m, s, L, R) отобраны разовым перебором с двойной сеточной сверкой (шаги 1/24 и 1/60).
+const T49 = [
+  [1, 3, 5, 3, 4], [1, 3, 5, 2, 4], [1, 3, 5, 3, 5], [1, 3, 6, 3, 4], [1, 3, 6, 2, 4], [1, 3, 6, 3, 5],
+  [1, 3, 7, 3, 4], [1, 3, 7, 2, 4], [1, 3, 7, 3, 5], [1, 3, 8, 3, 4], [1, 3, 8, 2, 4], [1, 3, 8, 3, 5],
+  [1, 4, 5, 3, 4], [1, 4, 5, 4, 5], [1, 4, 5, 2, 4], [1, 4, 5, 3, 5], [1, 4, 6, 3, 4], [1, 4, 6, 4, 5],
+  [1, 4, 6, 2, 4], [1, 4, 6, 3, 5], [1, 4, 7, 3, 4], [1, 4, 7, 4, 5], [1, 4, 7, 2, 4], [1, 4, 7, 3, 5],
+  [1, 4, 8, 3, 4], [1, 4, 8, 4, 5], [1, 4, 8, 2, 4], [1, 4, 8, 3, 5], [1, 5, 5, 4, 5], [1, 5, 5, 3, 5],
+  [1, 5, 6, 4, 5], [1, 5, 6, 3, 5], [1, 5, 7, 4, 5], [1, 5, 7, 3, 5], [1, 5, 8, 4, 5], [1, 5, 8, 3, 5],
+  [2, 3, 5, 3, 4], [2, 3, 5, 2, 4], [2, 3, 5, 3, 5], [2, 3, 6, 3, 4], [2, 3, 6, 2, 4], [2, 3, 6, 3, 5],
+  [2, 3, 7, 3, 4], [2, 3, 7, 2, 4], [2, 3, 7, 3, 5], [2, 3, 8, 3, 4], [2, 3, 8, 2, 4], [2, 3, 8, 3, 5],
+  [2, 4, 5, 3, 4], [2, 4, 5, 4, 5], [2, 4, 5, 2, 4], [2, 4, 5, 3, 5], [2, 4, 6, 3, 4], [2, 4, 6, 4, 5],
+  [2, 4, 6, 2, 4], [2, 4, 6, 3, 5], [2, 4, 7, 3, 4], [2, 4, 7, 4, 5], [2, 4, 7, 2, 4], [2, 4, 7, 3, 5],
+  [2, 4, 8, 3, 4], [2, 4, 8, 4, 5], [2, 4, 8, 2, 4], [2, 4, 8, 3, 5], [2, 5, 5, 4, 5], [2, 5, 5, 3, 5],
+  [2, 5, 6, 4, 5], [2, 5, 6, 3, 5], [2, 5, 7, 4, 5], [2, 5, 7, 3, 5], [2, 5, 8, 4, 5], [2, 5, 8, 3, 5],
+  [3, 3, 5, 3, 4], [3, 3, 5, 2, 4], [3, 3, 5, 3, 5], [3, 3, 6, 3, 4], [3, 3, 6, 2, 4], [3, 3, 6, 3, 5],
+  [3, 3, 7, 3, 4], [3, 3, 7, 2, 4], [3, 3, 7, 3, 5], [3, 3, 8, 3, 4], [3, 3, 8, 2, 4], [3, 3, 8, 3, 5],
+  [3, 4, 5, 3, 4], [3, 4, 5, 4, 5], [3, 4, 5, 2, 4], [3, 4, 5, 3, 5], [3, 4, 6, 3, 4], [3, 4, 6, 4, 5],
+  [3, 4, 6, 2, 4], [3, 4, 6, 3, 5], [3, 4, 7, 3, 4], [3, 4, 7, 4, 5], [3, 4, 7, 2, 4], [3, 4, 7, 3, 5],
+  [3, 4, 8, 3, 4], [3, 4, 8, 4, 5], [3, 4, 8, 2, 4], [3, 4, 8, 3, 5], [3, 5, 5, 4, 5], [3, 5, 5, 3, 5],
+  [3, 5, 6, 4, 5], [3, 5, 6, 3, 5], [3, 5, 7, 4, 5], [3, 5, 7, 3, 5], [3, 5, 8, 4, 5], [3, 5, 8, 3, 5]
+].map(([k, m, s, L, Rr]) => ({ k, m, s, L, Rr }))
+export function t18SysThreeIneq() {
+  const par = pick(T49), { k, m, s, L, Rr } = par
+  const { set, solve } = build49(par)
+  return item({
+    text: `${HEAD_A}\n\nсистема неравенств\n⟦cases:${k === 1 ? "" : k}a ≤ x¦${2 * m}x > x${SUP[2]} + a${SUP[2]}¦x + a ≤ ${s}⟧\n\nимеет хотя бы одно решение на отрезке [${nS(L)}; ${Rr}].`,
+    set,
+    solution: `Первое и третье неравенства задают промежуток ${k === 1 ? "" : k}a ≤ x ≤ ${s} ${MINUS} a; вместе с отрезком [${nS(L)}; ${Rr}] получаем `
+      + `x ∈ [max(${k === 1 ? "" : k}a; ${L}); min(${s} ${MINUS} a; ${Rr})].\n`
+      + `Второе неравенство равносильно x${SUP[2]} ${MINUS} ${2 * m}x + a${SUP[2]} < 0. Парабола ветвями вверх с вершиной x = ${m}, `
+      + `поэтому достаточно проверить её наименьшее значение на найденном промежутке.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "exists" },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => k * a, dash: true, label: `x ≥ ${k === 1 ? "" : k}a` },
+        { f: (a) => s - a, dash: true, label: `x ≤ ${s} ${MINUS} a` },
+        { f: (a) => (m * m - a * a >= 0 ? m - Math.sqrt(m * m - a * a) : null), label: "полоса второго неравенства" },
+        { f: (a) => (m * m - a * a >= 0 ? m + Math.sqrt(m * m - a * a) : null) },
+        { f: () => L, dash: true }, { f: () => Rr, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: L - 3, xMax: Rr + 3, aMin: Rnum(setBounds(set)[0]) - 3,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #50. {y(y−c) = xy − b(x + d); x ≤ p; (a(x − p) − e)/(y − e) = 1} — единственное решение.
+// Первое уравнение распадается: (y − b)(y − e − x) = 0 при подходящих b, c, d, e
+// (в эталоне: y = 5 и y = x + 2). Третье — пучок прямых y = a(x − p) с выколотой прямой y = e.
+function build50({ b, e, p }) {
+  const solve = (a) => {
+    const good = []
+    const add = (x, y) => {
+      if (Rcmp(x, R(p)) > 0 || Rcmp(y, R(e)) === 0) return
+      if (!good.some(([u, v]) => Rcmp(u, x) === 0 && Rcmp(v, y) === 0)) good.push([x, y])
+    }
+    if (!Rzero(a)) add(Radd(R(p), Rdiv(R(b), a)), R(b))                    // пересечение с y = b
+    if (Rcmp(a, R1) !== 0) {                                               // пересечение с y = x + e
+      const x = Rdiv(Radd(Rmul(a, R(p)), R(e)), Rsub(a, R1))
+      add(x, Radd(x, R(e)))
+    }
+    return good.length
+  }
+  // критические значения: a = 0 и a = 1 (точки уходят за x = p / пучок вырождается),
+  // a = −e/p (вторая точка попадает на выколотую прямую y = e) и совпадение двух точек:
+  // p + b/a = (ap + e)/(a − 1) ⟺ a(b − p − e) = b
+  const crit = [R0, R1, R(-e, p)]
+  if (b - p - e !== 0) crit.push(R(b, b - p - e))
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+// Наборы (b, e, p) — тем же отбором.
+const T50 = [
+  [3, 1, 4], [3, 1, 5], [3, 1, 6], [3, 1, 7], [3, 2, 4], [3, 2, 5], [3, 2, 6], [3, 2, 7],
+  [4, 1, 4], [4, 1, 5], [4, 1, 6], [4, 1, 7], [4, 2, 4], [4, 2, 5], [4, 2, 6], [4, 2, 7],
+  [4, 3, 4], [4, 3, 5], [4, 3, 6], [4, 3, 7], [5, 1, 4], [5, 1, 5], [5, 1, 6], [5, 1, 7],
+  [5, 2, 4], [5, 2, 5], [5, 2, 6], [5, 2, 7], [5, 3, 4], [5, 3, 5], [5, 3, 6], [5, 3, 7],
+  [6, 1, 4], [6, 1, 5], [6, 1, 6], [6, 1, 7], [6, 2, 4], [6, 2, 5], [6, 2, 6], [6, 2, 7],
+  [6, 3, 4], [6, 3, 5], [6, 3, 6], [6, 3, 7]
+].map(([b, e, p]) => ({ b, e, p }))
+export function t18SysSplitPencil() {
+  const par = pick(T50), { b, e, p } = par
+  const { set, solve } = build50(par)
+  // y(y − (b+e)) = xy − b(x + e) ⟺ (y − b)(y − e − x) = 0
+  const c = b + e
+  return item({
+    text: `Найдите все значения параметра a, при каждом из которых система\n`
+      + `⟦cases:y(y ${MINUS} ${c}) = xy ${MINUS} ${b}(x + ${e})¦x ≤ ${p}¦${fT(`a(x ${MINUS} ${p}) ${MINUS} ${e}`, `y ${MINUS} ${e}`)} = 1⟧\n\nимеет единственное решение.`,
+    set,
+    solution: `Первое уравнение: y${SUP[2]} ${MINUS} ${c}y ${MINUS} xy + ${b}x + ${b * e} = 0 ⟺ (y ${MINUS} ${b})(y ${MINUS} x ${MINUS} ${e}) = 0, то есть y = ${b} или y = x + ${e}.\n`
+      + `Третье уравнение при y ≠ ${e} равносильно a(x ${MINUS} ${p}) = y, то есть это пучок прямых с центром (${p}; 0).\n`
+      + `Прямая пересекает y = ${b} в точке x = ${p} + ${b}/a и прямую y = x + ${e} в точке x = (${p}a + ${e})/(a ${MINUS} 1); годятся лишь точки с x ≤ ${p} и y ≠ ${e}.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => (a !== 0 ? p + b / a : null), label: `точка на y = ${b}` },
+        { f: (a) => (a !== 1 ? (a * p + e) / (a - 1) : null), label: `точка на y = x + ${e}` },
+        { f: () => p, dash: true, label: `x ≤ ${p}` },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: p - 12, xMax: p + 6, aMin: Rnum(setBounds(set)[0]) - 3,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #51. {((x−u)² + (y−v)² − r²)((x−w)² + (y−z)²) ≤ 0; y = a(x − h) + g} — система НЕ имеет решений.
+// Второй множитель неотрицателен, поэтому решения — это круг радиуса r с центром (u; v)
+// (кроме точки (w; z), если она внутри) плюс сама точка (w; z).
+// Прямая пучка с центром (h; g) не должна ни задевать круг, ни проходить через точку.
+function build51({ u, v, r, w, z, h, g }) {
+  const solve = (a) => {
+    // расстояние от центра круга до прямой ax − y + (g − ah) = 0
+    const num = Rsub(Radd(Rmul(a, R(u)), R(g - 0)), Radd(R(v), Rmul(a, R(h))))   // a·u − v + g − a·h
+    const lhs = Rmul(num, num)
+    const rhs = Rmul(R(r * r), Radd(Rmul(a, a), R1))
+    const hitsCircle = Rcmp(lhs, rhs) <= 0
+    const throughPoint = Rzero(Rsub(R(z), Radd(Rmul(a, Rsub(R(w), R(h))), R(g))))
+    return hitsCircle || throughPoint ? 1 : 0
+  }
+  const tang = [R((g - v) * (g - v) - r * r), R(2 * (u - h) * (g - v)), R((u - h) * (u - h) - r * r)]
+  const tr = ratRoots(tang)
+  if (!tr.allRational) return null
+  const crit = [...tr.roots, ...ratRoots([R(g - z), R(w - h)]).roots]
+  return { set: assembleSet((a) => solve(a) === 0, crit), solve }
+}
+// Наборы (u, r, w, z): центр круга (u; 3), центр пучка (0; 3), особая точка (w; z);
+// расстояние между центрами и радиус образуют пифагорову пару — тогда касание рационально.
+const T51 = [
+  [5, 3, 1, -2], [5, 3, 1, -1], [5, 3, 1, 1], [5, 3, 2, -2], [5, 3, 2, -1], [5, 3, 2, 1],
+  [5, 3, 3, -2], [5, 3, 3, -1], [5, 3, 3, 1], [5, 4, 1, -2], [5, 4, 1, -1], [5, 4, 1, 1],
+  [5, 4, 2, -2], [5, 4, 2, -1], [5, 4, 2, 1], [5, 4, 3, -2], [5, 4, 3, -1], [5, 4, 3, 1]
+].map(([u, r, w, z]) => ({ u, v: 3, r, w, z, h: 0, g: 3 }))
+export function t18SysDiskNoSol() {
+  const par = pick(T51), { u, v, r, w, z, h, g } = par
+  const { set, solve } = build51(par)
+  const lineTxt = h === 0 ? `y = ax + ${g}` : `y = a(x ${MINUS} ${h}) + ${g}`
+  return item({
+    text: `Найдите все значения параметра a, при каждом из которых система\n`
+      + `⟦cases:((x ${MINUS} ${u})${SUP[2]} + (y ${MINUS} ${v})${SUP[2]} ${MINUS} ${r * r})((x ${MINUS} ${w})${SUP[2]} + (y ${term(-z, "")})${SUP[2]}) ≤ 0¦${lineTxt}⟧\n\nне имеет решений.`,
+    set,
+    solution: `Второй множитель неотрицателен, поэтому произведение ≤ 0 только если первый множитель ≤ 0 (это круг с центром (${u}; ${v}) радиуса ${r}) `
+      + `или второй множитель равен нулю (это точка (${w}; ${nS(z)})).\n`
+      + `Прямые ${lineTxt} образуют пучок с центром (${h}; ${g}). Система не имеет решений, когда прямая и круг не пересекаются `
+      + `(расстояние от центра до прямой больше ${r}) и прямая не проходит через точку (${w}; ${nS(z)}).\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "none" },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: () => u, dash: true, label: "центр круга" },
+        { f: () => w, dash: true, label: "особая точка" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -2, xMax: u + r + 3, aMin: Rnum(setBounds(set)[0]) - 3,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #52. {(x + k₁a + m₁)(x + k₂a + m₂) < 0; x² + a² = c²} — хотя бы одно решение.
+// Вторая строка даёт x = ±√(c² − a²). Подставляя, получаем (c² − a² + P) + S·x < 0, где
+// S и P рациональны. Сравнение иррационального выражения с нулём делается ТОЧНО:
+// неравенство base + t√D < 0 сводится к сравнению квадратов с учётом знака t.
+function ltZero(base, t, D) {
+  if (Rzero(t)) return Rsign(base) < 0
+  if (Rsign(t) > 0) return Rsign(base) < 0 && Rcmp(Rmul(Rmul(t, t), D), Rmul(base, base)) < 0
+  const u = Rdiv(Rneg(base), t)                       // √D > u
+  return Rsign(u) < 0 || Rcmp(D, Rmul(u, u)) > 0
+}
+function build52({ k1, m1, k2, m2, c }) {
+  const solve = (a) => {
+    const D = Rsub(R(c * c), Rmul(a, a))
+    if (Rsign(D) < 0) return 0
+    const S = Radd(Rmul(R(k1 + k2), a), R(m1 + m2))
+    const P = Rmul(Radd(Rmul(R(k1), a), R(m1)), Radd(Rmul(R(k2), a), R(m2)))
+    const base = Radd(D, P)
+    let n = 0
+    for (const eps of [1, -1]) {
+      if (eps === -1 && Rzero(D)) break                 // x = 0 — одна точка
+      if (ltZero(base, Rmul(R(eps), S), D)) n++
+    }
+    return n
+  }
+  // критические значения: обращение произведения в нуль (base² = S²D) и |a| = c
+  const A = [R(c * c), R0, R(-1)]                       // D = c² − a² как многочлен по a
+  const Spoly = [R(m1 + m2), R(k1 + k2)]
+  const Ppoly = pMul([R(m1), R(k1)], [R(m2), R(k2)])
+  const basePoly = pAdd(A, Ppoly)
+  const E = pSub(pMul(basePoly, basePoly), pMul(pMul(Spoly, Spoly), A))
+  const er = ratRoots(E)
+  if (!er.allRational) return null
+  return { set: assembleSet((a) => solve(a) >= 1, [R(c), R(-c), ...er.roots]), solve }
+}
+// Наборы (k₁, m₁, k₂, m₂, c) — тем же отбором.
+const T52 = [
+  [1, 2, 2, 2, 2], [1, 2, 3, 2, 2], [1, 2, 4, 2, 2], [2, 2, 3, 2, 2], [2, 2, 4, 2, 2], [1, 1, 2, 2, 5]
+].map(([k1, m1, k2, m2, c]) => ({ k1, m1, k2, m2, c }))
+export function t18SysCircleStrip() {
+  const par = pick(T52), { k1, m1, k2, m2, c } = par
+  const { set, solve } = build52(par)
+  const S = k1 + k2, P1 = k1 * m2 + k2 * m1, P0 = m1 * m2
+  const quad = `x${SUP[2]} + (${S === 1 ? "" : S}a${term(m1 + m2, "")})x${P1 === 0 && P0 === 0 ? "" : ` + ${k1 * k2 === 1 ? "" : k1 * k2}a${SUP[2]}${term(P1, "a")}${term(P0, "")}`}`
+  return item({
+    text: `${HEAD_A}\n\nсистема\n⟦cases:${quad} < 0¦x${SUP[2]} + a${SUP[2]} = ${c * c}⟧\n\nимеет хотя бы одно решение.`,
+    set,
+    solution: `Трёхчлен слева раскладывается: (x + ${k1 === 1 ? "" : k1}a${term(m1, "")})(x + ${k2 === 1 ? "" : k2}a${term(m2, "")}) < 0, `
+      + `то есть x лежит строго между числами ${MINUS}${k1 === 1 ? "" : k1}a${term(-m1, "")} и ${MINUS}${k2 === 1 ? "" : k2}a${term(-m2, "")}.\n`
+      + `Второе уравнение задаёт окружность радиуса ${c} в плоскости (x; a): x = ±√(${c * c} ${MINUS} a${SUP[2]}), причём |a| ≤ ${c}.\n`
+      + `Подставляя каждое из двух значений x, получаем условие на a; система разрешима, когда хотя бы одно из них выполнено.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "exists" },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => (c * c - a * a >= 0 ? Math.sqrt(c * c - a * a) : null), label: "окружность" },
+        { f: (a) => (c * c - a * a >= 0 ? -Math.sqrt(c * c - a * a) : null) },
+        { f: (a) => -k1 * a - m1, dash: true, label: "границы полосы" },
+        { f: (a) => -k2 * a - m2, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -c - 3, xMax: c + 3, aMin: -c - 2, aMax: c + 2,
+    },
+  })
+}
+
+// #54. {a(x − 1) ≥ 4; 2√(x − c) ≥ a; kx < a + d} — хотя бы одно решение на [L; R].
+// При a ≤ 0 первое неравенство на [L; R] невозможно (x − 1 > 0). При a > 0 все три условия
+// дают промежуток по x с РАЦИОНАЛЬНЫМИ границами: x ≥ 1 + 4/a, x ≥ c + a²/4, x < (a + d)/k.
+function build54({ c, k, d, L, Rr }) {
+  const solve = (a) => {
+    if (Rsign(a) <= 0) return 0
+    let lo = R(L)
+    for (const cand of [Radd(R1, Rdiv(R(4), a)), Radd(R(c), Rdiv(Rmul(a, a), R(4)))]) {
+      if (Rcmp(cand, lo) > 0) lo = cand
+    }
+    const hiOpen = Rdiv(Radd(a, R(d)), R(k))
+    const hi = Rcmp(hiOpen, R(Rr)) < 0 ? hiOpen : R(Rr)
+    const hiIncl = Rcmp(hiOpen, R(Rr)) < 0 ? false : true
+    if (Rcmp(lo, hi) > 0 || (Rcmp(lo, hi) === 0 && !hiIncl)) return 0
+    return 1
+  }
+  const crit = [R0, R(4, Rr - 1), R(4, L - 1), R(k * L - d), R(k * Rr - d)]
+  for (const E of [[R(-4 * k), R(d - k), R1],                     // 1 + 4/a = (a+d)/k
+    [R(4 * c * k - 4 * d), R(-4), R(k)],                          // c + a²/4 = (a+d)/k
+    [R(-16), R(4 * (1 - c)), R0, R1]]) {                          // 1 + 4/a = c + a²/4
+    crit.push(...ratRoots(E).roots)
+  }
+  for (const val of [4 * (L - c), 4 * (Rr - c)]) {                // c + a²/4 = L и = R
+    if (val < 0) continue
+    const r = isSq(val)
+    if (r === null) return null
+    crit.push(R(r), R(-r))
+  }
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+// Наборы (c, k, d, L, R): L − c и R − c — точные квадраты, иначе границы ответа иррациональны.
+const T54 = [
+  [3, 2, 10, 3, 4], [3, 2, 12, 3, 4], [3, 2, 14, 4, 7], [3, 2, 14, 3, 4], [3, 2, 16, 4, 7], [3, 2, 16, 3, 4],
+  [3, 3, 12, 3, 4], [3, 3, 14, 4, 7], [3, 3, 14, 3, 4], [3, 3, 16, 3, 4], [3, 4, 16, 3, 4]
+].map(([c, k, d, L, Rr]) => ({ c, k, d, L, Rr }))
+export function t18SysTripleSqrt() {
+  const par = pick(T54), { c, k, d, L, Rr } = par
+  const { set, solve } = build54(par)
+  return item({
+    text: `${HEAD_A}\n\nсистема неравенств\n⟦cases:a(x ${MINUS} 1) ≥ 4¦2⟦r:x ${MINUS} ${c}⟧ ≥ a¦${k === 1 ? "" : k}x < a + ${d}⟧\n\nимеет хотя бы одно решение на отрезке [${L}; ${Rr}].`,
+    set,
+    solution: `На отрезке [${L}; ${Rr}] выражение x ${MINUS} 1 положительно, поэтому первое неравенство при a ≤ 0 невыполнимо, а при a > 0 равносильно x ≥ 1 + 4/a.\n`
+      + `Второе (при a > 0) равносильно x ${MINUS} ${c} ≥ a${SUP[2]}/4, то есть x ≥ ${c} + a${SUP[2]}/4; третье — x < (a + ${d})/${k}.\n`
+      + `Значит подходящие x образуют промежуток [max(${L}; 1 + 4/a; ${c} + a${SUP[2]}/4); min(${Rr}; (a + ${d})/${k})), и надо, чтобы он был непуст.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "exists" },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => (a > 0 ? 1 + 4 / a : null), label: "x ≥ 1 + 4/a" },
+        { f: (a) => c + (a * a) / 4, label: `x ≥ ${c} + a²/4` },
+        { f: (a) => (a + d) / k, dash: true, label: `x < (a + ${d})/${k}` },
+        { f: () => L, dash: true }, { f: () => Rr, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: L - 3, xMax: Rr + 3, aMin: 0, aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
     ["rat-quad-lin", "(k²x²−a²)/(px−q−ra) = 0 — линейный знаменатель", t18RatQuadLin],
@@ -3209,6 +3528,13 @@ export const META18 = [
     ["abs-recip", "|c/x−k| = ax−1 на (0;+∞) — более двух корней", t18AbsRecipMoreTwo],
     ["two-abs-three", "|x²−px−q|−ka = |x−a|−c — ровно три корня", t18TwoAbsThree],
     ["line-semicircle", "ax+√(r²−(x+m)²) = ap+q — пучок прямых и полуокружность", t18LinePencilSemicircle],
+  ]],
+  ["Системы неравенств с параметром", [
+    ["sys-three-ineq", "{ka≤x; 2mx>x²+a²; x+a≤s} — хотя бы одно решение на отрезке", t18SysThreeIneq],
+    ["sys-split-pencil", "распадающаяся кривая + пучок прямых — единственное решение", t18SysSplitPencil],
+    ["sys-disk-nosol", "круг ∪ точка и пучок прямых — НЕ имеет решений", t18SysDiskNoSol],
+    ["sys-circle-strip", "{(x+k₁a+m₁)(x+k₂a+m₂)<0; x²+a²=c²} — хотя бы одно решение", t18SysCircleStrip],
+    ["sys-triple-sqrt", "{a(x−1)≥4; 2√(x−c)≥a; kx<a+d} — хотя бы одно решение", t18SysTripleSqrt],
   ]],
 ]
 
