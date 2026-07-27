@@ -10,7 +10,7 @@ import Chat from "./Chat"
 import StudentOnboardingModal from "../components/StudentOnboardingModal"
 const Board = lazy(() => import("../components/Board"))
 const Practice = lazy(() => import("./Practice"))
-import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, formatPhone } from "../utils"
+import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, formatPhone, answersEqual } from "../utils"
 // ЕГЭ (профиль и база) — единый поток части 2 (13–19); ОГЭ — свой (20–25).
 const isEgeType = (t) => t === "ЕГЭ" || t === "ЕГЭ Профиль"
 
@@ -799,7 +799,7 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
           <div className="flex flex-col gap-1">
             {hw.correct_answers.map((correct, i) => {
               const studentAns = hw.student_answers[i] || "—"
-              const isCorrect = studentAns.trim().toLowerCase() === correct.trim().toLowerCase()
+              const isCorrect = answersEqual(studentAns, correct)
               return (
                 <div
                   key={i}
@@ -1327,7 +1327,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     const correct = hw.correct_answers || []
     let score = 0
     answers.forEach((ans, i) => {
-      if (ans.trim().toLowerCase() === correct[i]?.trim().toLowerCase()) score++
+      if (answersEqual(ans, correct[i])) score++
     })
 
     const isPureTest = hw.hw_type === "test"
@@ -1512,7 +1512,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     const correctAnswers = variant.answers?.part1 || []
     let score = 0
     part1Answers.forEach((ans, i) => {
-      if (ans.trim().toLowerCase() === correctAnswers[i]?.trim().toLowerCase()) score++
+      if (answersEqual(ans, correctAnswers[i])) score++
     })
 
     const base = {
@@ -1552,7 +1552,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
         p_exam_type: task?.exam_type || variant.type,
         p_number: num,
         p_gen_key: task?.gen_key || null,
-        p_is_correct: given.toLowerCase() === (correctAnswers[i] || "").trim().toLowerCase(),
+        p_is_correct: answersEqual(given, correctAnswers[i]),
         p_answer: given,
       })
     })

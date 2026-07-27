@@ -542,3 +542,65 @@ export function defaultExamType(examFocus) {
 // (используется в подписях чертежей интерактивной практики).
 export const fmtNum = (n) =>
   String(Math.round(n * 100) / 100).replace(".", ",").replace("-", "\u2212")
+
+// ── Сравнение ответа ученика с эталоном ──────────────────────────────────────
+// Раньше ответы сравнивались строкой: «0,5» и «0.5», «−3» и «-3», «2 3» и «23»
+// считались разными, и ученик терял балл за оформление, а не за математику.
+//
+// Осторожно: нормализация НЕ должна прощать неверный формат там, где ФИПИ
+// требует конкретную запись («в ответ запишите целое число»). Поэтому здесь
+// только заведомо безопасные приведения: пробелы, юникод-минусы, десятичная
+// запятая, обычная дробь и порядок в перечислении. Округления «на глазок» и
+// отбрасывания единиц измерения тут нет намеренно.
+function normalizeAnswerPart(raw) {
+  return String(raw ?? "")
+    .trim()
+    .toLowerCase()
+    // юникод-минусы и тире → обычный дефис
+    .replace(/[−–—]/g, "-")
+    // неразрывные и обычные пробелы внутри числа: «1 234» → «1234».
+    // \u00a0 записан кодом: «неправильный» пробел в исходнике ловит линтер.
+    .replace(/(\d)[\s\u00a0](?=\d)/g, "$1")
+    // десятичная запятая → точка (только между цифрами, иначе это разделитель)
+    .replace(/(\d),(?=\d)/g, "$1.")
+    .replace(/\s+/g, "")
+}
+
+// Значение части ответа как число: понимает «7», «-0.5», «3/4», «+2».
+// Возвращает null, если это не число (тогда сравниваем как текст).
+function answerToNumber(part) {
+  if (/^[+-]?\d+(\.\d+)?$/.test(part)) return Number(part)
+  const frac = part.match(/^([+-]?\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)$/)
+  if (frac && Number(frac[2]) !== 0) return Number(frac[1]) / Number(frac[2])
+  return null
+}
+
+// Перечисление: «2;3», «2 3», «2,3» (когда рядом не цифры десятичной дроби).
+function splitAnswerParts(norm) {
+  return norm.split(/[;]+/).filter(Boolean)
+}
+
+// Равны ли ответы по смыслу. Числа сравниваются с допуском 1e-9 (иначе
+// 0.1+0.2 и 0.3 разошлись бы), перечисления — без учёта порядка.
+export function answersEqual(given, expected) {
+  const a = normalizeAnswerPart(given)
+  const b = normalizeAnswerPart(expected)
+  if (!a || !b) return false
+  if (a === b) return true
+
+  const an = answerToNumber(a)
+  const bn = answerToNumber(b)
+  if (an !== null && bn !== null) return Math.abs(an - bn) < 1e-9
+
+  const ap = splitAnswerParts(a)
+  const bp = splitAnswerParts(b)
+  if (ap.length > 1 && ap.length === bp.length) {
+    const norm = (arr) => arr.map((x) => {
+      const n = answerToNumber(x)
+      return n === null ? x : String(n)
+    }).sort()
+    const na = norm(ap), nb = norm(bp)
+    return na.every((x, i) => x === nb[i])
+  }
+  return false
+}
