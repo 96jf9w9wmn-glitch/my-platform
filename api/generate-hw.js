@@ -21,6 +21,30 @@ let cachedModel = null
 // С включёнными «размышлениями» генерация занимает 10–60 с; дефолтного лимита не хватает.
 export const config = { maxDuration: 120 }
 
+// Ограничитель частоты. Функция открыта анонимно, а каждый вызов стоит денег в
+// DeepSeek — без лимита один скрипт выжигает баланс за минуты. Счётчик живёт в
+// памяти инстанса: на Vercel их несколько, поэтому это не строгий барьер, а
+// защита от самого дешёвого злоупотребления. Строгий лимит потребует внешнего
+// хранилища (KV/Redis) — отдельным шагом.
+const RATE_WINDOW_MS = 60_000
+const RATE_MAX = 8            // генераций в минуту с одного адреса
+const hits = new Map()        // ip -> [метки времени]
+
+export function rateLimit(ip, now = Date.now()) {
+  const fresh = (hits.get(ip) || []).filter((t) => now - t < RATE_WINDOW_MS)
+  if (fresh.length >= RATE_MAX) {
+    hits.set(ip, fresh)
+    return { ok: false, retryAfter: Math.ceil((RATE_WINDOW_MS - (now - fresh[0])) / 1000) }
+  }
+  fresh.push(now)
+  hits.set(ip, fresh)
+  // Карта не должна расти бесконечно: изредка чистим протухшие адреса.
+  if (hits.size > 500) {
+    for (const [k, v] of hits) if (!v.some((t) => now - t < RATE_WINDOW_MS)) hits.delete(k)
+  }
+  return { ok: true }
+}
+
 export default async function handler(req, res) {
   const apiKey = process.env.DEEPSEEK_API_KEY
 
@@ -49,6 +73,14 @@ export default async function handler(req, res) {
 
   if (req.method !== "POST") {
     res.status(405).json({ error: "Method not allowed" })
+    return
+  }
+
+  const ip = (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || "unknown"
+  const limit = rateLimit(ip)
+  if (!limit.ok) {
+    res.setHeader("Retry-After", String(limit.retryAfter))
+    res.status(429).json({ error: `Слишком часто. Попробуйте через ${limit.retryAfter} с.` })
     return
   }
 
