@@ -5690,6 +5690,291 @@ export function t18AbsEqAbsMoreTwo() {
   })
 }
 
+
+// =============================================================================
+// РАЗДЕЛ P. Тригонометрия с параметром (эталон #130–#137, #155–#161)
+// =============================================================================
+
+// #134. (p·cos x − c − a)·cos x − q·cos 2x + r = 0 — «хотя бы один корень».
+// Замена u = cos x ∈ [−1; 1] и cos 2x = 2u² − 1: коэффициенты подобраны так (2q = p + 1),
+// что квадрат по u сворачивается в u² + (c + a)u − d = 0, где d = q + r > 0.
+// Свободный член отрицателен ⟹ корни лежат по разные стороны от нуля, поэтому корень
+// попадает на [−1; 1] ровно тогда, когда f(−1) ≥ 0 или f(1) ≥ 0.
+function build134({ p, c, d }) {
+  const solve = (a) => countRoots([R(-d), Radd(R(c), a), R1], R(-1), R1, true, true)
+  return { set: assembleSet((a) => solve(a) >= 1, [R(1 - c - d), R(d - c - 1)]), solve, q: (p + 1) / 2, r: d - (p + 1) / 2 }
+}
+const T134 = []
+for (const p of [3, 5, 7]) for (const c of [1, 2, 3, 4, 5]) for (const d of [2, 3, 4, 6]) T134.push({ p, c, d })
+export function t18TrigCosSubstExists() {
+  const par = pick(T134), { p, c, d } = par
+  const { set, solve, q, r } = build134(par)
+  return item({
+    text: `${HEAD_A}\n\n(${p}cos x ${MINUS} ${c} ${MINUS} a)·cos x ${MINUS} ${q === 1 ? "" : q}cos 2x${term(r, "")} = 0\n\nимеет хотя бы один корень.`,
+    set,
+    solution: `Обозначим u = cos x ∈ [${MINUS}1; 1] и воспользуемся cos 2x = 2u${SUP[2]} ${MINUS} 1:\n`
+      + `(${p}u ${MINUS} ${c} ${MINUS} a)u ${MINUS} ${q === 1 ? "" : q}(2u${SUP[2]} ${MINUS} 1)${term(r, "")} = ${MINUS}u${SUP[2]} ${MINUS} (${c} + a)u + ${d} = 0, то есть u${SUP[2]} + (${c} + a)u ${MINUS} ${d} = 0.\n`
+      + `Свободный член равен ${MINUS}${d} < 0, поэтому корни всегда есть и лежат по разные стороны от нуля; в частности f(0) = ${MINUS}${d} < 0.\n`
+      + `Тогда корень попадает на [${MINUS}1; 1] ровно тогда, когда f(${MINUS}1) ≥ 0 или f(1) ≥ 0, то есть ${MINUS}${d - 1} ${MINUS} ${c} ${MINUS} a ≥ 0 или a + ${c} ${MINUS} ${d - 1} ≥ 0.\n`
+      + `Каждое подходящее u даёт хотя бы один x.\nОтвет: ${setToString(set)}.`,
+    predicate: { type: "exists" },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => (-(c + a) + Math.sqrt((c + a) * (c + a) + 4 * d)) / 2, label: "положительный корень u" },
+        { f: (a) => (-(c + a) - Math.sqrt((c + a) * (c + a) + 4 * d)) / 2, label: "отрицательный корень u" },
+        { f: () => 1, dash: true, label: "|u| ≤ 1" }, { f: () => -1, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -3, xMax: 3, aMin: Rnum(setBounds(set)[0]) - 4, aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 4,
+    },
+  })
+}
+
+// #135. k·sin x = m·cos x + a — «единственное решение» на [0; π] или на [0; π/2].
+// k sin x − m cos x = c·sin(x − φ), где c = √(k² + m²), cos φ = k/c, sin φ = m/c;
+// набор — пифагорова тройка, поэтому c рационально. Функция возрастает от −m до c
+// (максимум достигается внутри (0; π/2)), а затем убывает до m (или до k на половинном отрезке).
+function build135({ k, m, c, half }) {
+  const endR = half ? k : m
+  const solve = (a) => {
+    if (Rcmp(a, R(-m)) < 0 || Rcmp(a, R(c)) > 0) return 0
+    if (Rcmp(a, R(c)) === 0) return 1
+    return Rcmp(a, R(endR)) >= 0 ? 2 : 1
+  }
+  return { set: assembleSet((a) => solve(a) === 1, [R(-m), R(endR), R(c)]), solve, endR }
+}
+const T135 = []
+for (const [k, m, c] of [[3, 4, 5], [4, 3, 5], [5, 12, 13], [12, 5, 13], [8, 15, 17], [15, 8, 17], [7, 24, 25], [24, 7, 25], [20, 21, 29], [21, 20, 29]]) {
+  for (const half of [false, true]) T135.push({ k, m, c, half })
+}
+export function t18TrigLinCombOne() {
+  const par = pick(T135), { k, m, c, half } = par
+  const { set, solve, endR } = build135(par)
+  const seg = half ? `[0; ⟦f:π:2⟧]` : `[0; π]`
+  return item({
+    text: `${HEAD_A}\n\n${k}sin x = ${m === 1 ? "" : m}cos x + a\n\nимеет единственное решение на отрезке ${seg}.`,
+    set,
+    solution: `Перепишем: ${k}sin x ${MINUS} ${m === 1 ? "" : m}cos x = a. Так как ${k}${SUP[2]} + ${m}${SUP[2]} = ${c}${SUP[2]}, левая часть равна ${c}sin(x ${MINUS} φ), где cos φ = ${Rstr(R(k, c))}, sin φ = ${Rstr(R(m, c))} и φ ∈ (0; π/2).\n`
+      + `На отрезке ${seg} функция сначала возрастает от значения ${MINUS}${m} (при x = 0) до ${c} (в точке x = φ), а затем убывает до ${endR}.\n`
+      + `Поэтому при a < ${MINUS}${m} и при a > ${c} решений нет; при ${MINUS}${m} ≤ a < ${endR} решение одно (только на возрастающей ветви); при ${endR} ≤ a < ${c} их два; при a = ${c} — снова одно (вершина).\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [{ f: () => c, dash: true, label: "наибольшее значение" }, { f: () => -m, dash: true, label: "значение в нуле" }, { f: (a) => a, label: "a" }],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -m - 3, xMax: c + 3, aMin: -m - 4, aMax: c + 4,
+    },
+  })
+}
+
+// #136. (tg x + b)² − (a² + ka + m + b)(tg x + b) + a²(ka + m + b) = 0 —
+// «ровно два решения на [0; 3π/2]». Трёхчлен по t = tg x + b раскладывается:
+// (t − a²)(t − (ka + m + b)) = 0, то есть tg x = a² − b или tg x = ka + m.
+// На [0; 3π/2] уравнение tg x = v имеет один корень на (π/2; 3π/2) при ЛЮБОМ v
+// (там тангенс непрерывно возрастает от −∞ до +∞) и ещё один на [0; π/2) при v ≥ 0.
+// Набор подобран так, что b — полный квадрат (граница a² = b рациональна) и
+// уравнение a² − ka − (m + b) = 0 «склейки двух ветвей» тоже имеет рациональные корни.
+function build136({ b, k, m }) {
+  const w = Math.round(Math.sqrt(b))
+  if (w * w !== b) return null
+  const solve = (a) => {
+    const vs = uniqSorted([Rsub(Rmul(a, a), R(b)), Radd(Rmul(R(k), a), R(m))])
+    return vs.reduce((n, v) => n + 1 + (Rsign(v) >= 0 ? 1 : 0), 0)
+  }
+  const crit = [R(w), R(-w), R(-m, k)]
+  const { roots, allRational } = ratRoots([R(-(m + b)), R(-k), R1])
+  if (!allRational) return null
+  crit.push(...roots)
+  return { set: assembleSet((a) => solve(a) === 2, crit), solve, w }
+}
+const T136 = [[9, 4, 3], [4, 4, 1], [16, 6, 11]].map(([b, k, m]) => ({ b, k, m }))
+export function t18TrigTanSubstTwo() {
+  const par = pick(T136), { b, k, m } = par
+  const { set, solve, w } = build136(par)
+  const S = m + b
+  return item({
+    text: `${HEAD_A}\n\n(tg x + ${b})${SUP[2]} ${MINUS} (a${SUP[2]} + ${k}a + ${S})(tg x + ${b}) + a${SUP[2]}(${k}a + ${S}) = 0\n\nимеет ровно два решения на отрезке [0; ⟦f:3π:2⟧].`,
+    set,
+    solution: `Обозначим t = tg x + ${b}. Трёхчлен раскладывается: t${SUP[2]} ${MINUS} (a${SUP[2]} + ${k}a + ${S})t + a${SUP[2]}(${k}a + ${S}) = (t ${MINUS} a${SUP[2]})(t ${MINUS} ${k}a ${MINUS} ${S}) = 0.\n`
+      + `Значит tg x = a${SUP[2]} ${MINUS} ${b} или tg x = ${k}a + ${m}.\n`
+      + `На отрезке [0; 3π/2] тангенс не определён в точках π/2 и 3π/2. На интервале (π/2; 3π/2) он непрерывно возрастает от ${MINUS}∞ до +∞, поэтому уравнение tg x = v имеет там ровно один корень при любом v; `
+      + `на [0; π/2) добавляется ещё один корень, но только если v ≥ 0.\n`
+      + `Значит ровно два решения — это либо два разных отрицательных значения v, либо один общий корень с v ≥ 0 (ветви склеиваются при a${SUP[2]} ${MINUS} ${b} = ${k}a + ${m}).\n`
+      + `Первое v отрицательно при |a| < ${w}, второе — при a < ${Rstr(R(-m, k))}.\nОтвет: ${setToString(set)}.`,
+    predicate: { type: "count", n: 2 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [{ f: (a) => a * a - b, label: "tg x первой ветви" }, { f: (a) => k * a + m, label: "tg x второй ветви" }, { f: () => 0, dash: true, label: "знак v" }],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -10, xMax: 10, aMin: -w - 4, aMax: w + 8,
+    },
+  })
+}
+
+// #155. |sin²x + k·cos x + a| = sin²x + m·cos x − a — «единственный корень на (π/2; π]».
+// На (π/2; π] косинус строго убывает, поэтому u = cos x пробегает [−1; 0) и каждому u
+// отвечает РОВНО ОДИН x. Равенство |A| = B требует B ≥ 0 и A = ±B.
+// A = B даёт (k − m)u = −2a; A = −B даёт 2u² − (k + m)u − 2 = 0, и при k + m = 3
+// это u = 2 (не подходит) или u = −1/2. Условие B ≥ 0 для первого корня — квадратное
+// неравенство по a с рациональными корнями (за счёт того же k + m = 3).
+function build155({ k, m }) {
+  const g = k - m
+  const solve = (a) => {
+    const B = (u) => Rsub(Radd(Rsub(R1, Rmul(u, u)), Rmul(R(m), u)), a)
+    const good = []
+    const add = (u) => {
+      if (Rcmp(u, R(-1)) < 0 || Rsign(u) >= 0) return       // u = cos x ∈ [−1; 0)
+      if (Rsign(B(u)) < 0) return
+      if (!good.some((v) => Rcmp(v, u) === 0)) good.push(u)
+    }
+    add(Rdiv(Rmul(R(-2), a), R(g)))
+    add(R(-1, 2))
+    return good.length
+  }
+  const crit = [R0, R(g, 2), R(g, 4), R(-g), Rsub(R(3, 4), R(m, 2))]
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+const T155 = [[2, 1], [3, 0], [4, -1], [5, -2]].map(([k, m]) => ({ k, m }))
+export function t18TrigAbsCosOne() {
+  const par = pick(T155), { k, m } = par
+  const { set, solve } = build155(par)
+  const g = k - m
+  return item({
+    text: `${HEAD_A}\n\n|sin${SUP[2]}x${term(k, "cos x")} + a| = sin${SUP[2]}x${term(m, "cos x")} ${MINUS} a\n\nимеет единственный корень на промежутке (⟦f:π:2⟧; π].`,
+    set,
+    solution: `На промежутке (π/2; π] косинус строго убывает, поэтому u = cos x пробегает [${MINUS}1; 0) и каждому такому u отвечает ровно один x.\n`
+      + `Заменим sin${SUP[2]}x = 1 ${MINUS} u${SUP[2]} и обозначим A = 1 ${MINUS} u${SUP[2]}${term(k, "u")} + a, B = 1 ${MINUS} u${SUP[2]}${term(m, "u")} ${MINUS} a. Равенство |A| = B требует B ≥ 0 и A = B либо A = ${MINUS}B.\n`
+      + `Из A = B получаем ${g === 1 ? "" : g}u = ${MINUS}2a, то есть u = ${MINUS}${Rstr(R(2, g))}a.\n`
+      + `Из A = ${MINUS}B получаем 2u${SUP[2]} ${MINUS} ${k + m}u ${MINUS} 2 = 0, то есть u = 2 (не подходит) или u = ${MINUS}0,5.\n`
+      + `Осталось потребовать B ≥ 0 для каждого из кандидатов и не забыть, что при a = ${Rstr(R(g, 4))} они совпадают.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [{ f: (a) => (-2 * a) / g, label: "u = −2a/(k−m)" }, { f: () => -0.5, dash: true, label: "u = −0,5" }, { f: () => -1, dash: true, label: "|u| ≤ 1" }],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -2, xMax: 1, aMin: Rnum(setBounds(set)[0]) - 4, aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 4,
+    },
+  })
+}
+
+// #158. p·ⁿ√(cx − d) + q·log_b(kx + t) + ra = 0 при НЕЧЁТНОМ n — «любой корень
+// принадлежит [L; R]». Нечётный корень определён при всех x, поэтому область определения
+// задаёт только логарифм: на её левом краю логарифм уходит в −∞, а на +∞ сумма растёт.
+// Значит строго возрастающая сумма пробегает ВСЮ прямую, корень существует и единственен,
+// и условие равносильно g(L) ≤ −ra ≤ g(R). Числа подобраны так, что в концах подкоренное
+// равно 1 и 2ⁿ, а аргумент логарифма — b и b²: тогда g(L) = p + q, g(R) = 2p + 2q.
+function build158({ p, q, r, L, n, b }) {
+  const c = 2 ** n - 1, k = b * b - b
+  const solve = (a) => {
+    const v = Rmul(R(-r), a)
+    return Rcmp(v, R(p + q)) >= 0 && Rcmp(v, R(2 * p + 2 * q)) <= 0 ? 1 : 0
+  }
+  const crit = [R(-(p + q), r), R(-(2 * p + 2 * q), r)]
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve, c, k, d: c * L - 1, t: b - k * L }
+}
+const T158 = []
+for (const n of [3, 5]) for (const b of [2, 3, 5]) for (const L of [1, 2, 3]) for (const p of [2, 3, 4]) for (const q of [3, 4, 5]) for (const r of [1, 2, 5]) {
+  const res = build158({ p, q, r, L, n, b })
+  if (setBounds(res.set).some((x) => x.d > 12n)) continue
+  T158.push({ p, q, r, L, n, b })
+}
+export function t18MonoRootInSeg() {
+  const par = pick(T158), { p, q, r, L, n, b } = par
+  const { set, solve, c, k, d, t } = build158(par)
+  const lhs = `${p === 1 ? "" : p}⟦rn:${n}:${c}x ${MINUS} ${d}⟧ + ${q === 1 ? "" : q}log${SUB[b]}(${k}x${term(t, "")}) + ${r === 1 ? "" : r}a`
+  return item({
+    text: `Найдите все значения a, при каждом из которых любой корень уравнения\n\n${lhs} = 0\n\nпринадлежит отрезку [${L}; ${L + 1}].`,
+    set,
+    solution: `Корень ${n}-й степени — нечётный, он определён при всех x, поэтому область определения задаёт только логарифм: x > ${Rstr(R(k * L - b, k))}.\n`
+      + `Обе функции строго возрастают, значит и сумма g(x) строго возрастает; у левого края области определения логарифм уходит в ${MINUS}∞, а при x → +∞ сумма неограниченно растёт. `
+      + `Поэтому g пробегает ВСЮ прямую: корень существует и он единственный, и условие «любой корень лежит на [${L}; ${L + 1}]» равносильно g(${L}) ≤ ${MINUS}${r === 1 ? "" : r}a ≤ g(${L + 1}).\n`
+      + `Числа подобраны так, что в концах всё считается точно: при x = ${L} подкоренное равно 1, а аргумент логарифма — ${b}, поэтому g(${L}) = ${p} + ${q} = ${p + q}; `
+      + `при x = ${L + 1} подкоренное равно ${2 ** n}, аргумент логарифма — ${b * b}, поэтому g(${L + 1}) = ${2 * p} + ${2 * q} = ${2 * p + 2 * q}.\n`
+      + `Остаётся ${p + q} ≤ ${MINUS}${r === 1 ? "" : r}a ≤ ${2 * p + 2 * q}.\nОтвет: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [{ f: () => L, dash: true, label: "концы отрезка" }, { f: () => L + 1, dash: true }],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: 0, xMax: L + 4, aMin: Rnum(setBounds(set)[0]) - 4, aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 4,
+    },
+  })
+}
+
+// #159 и #160. sin√(ax − kx²) + cos 2√(ax − kx²) = 0 и cos√(ax − kx²) + cos 2√(ax − kx²) = 0
+// — «ровно два решения». Обозначим u = √(ax − kx²) ≥ 0.
+// Для синуса: cos 2u = 1 − 2sin²u ⟹ 2sin²u − sin u − 1 = 0 ⟹ sin u = 1 или sin u = −1/2.
+// Для косинуса: cos 2u = 2cos²u − 1 ⟹ 2cos²u + cos u − 1 = 0 ⟹ cos u = 1/2 или cos u = −1.
+// В обоих случаях допустимые u — арифметические прогрессии с шагом 2π (u = 0 не подходит).
+// Далее u² = ax − kx², то есть kx² − ax + u² = 0 с дискриминантом a² − 4ku²: два корня при
+// |a| > 2√k·u, один при равенстве, ни одного при |a| < 2√k·u. Ответ выражается в π.
+function buildTrigSqrt({ kind, k }) {
+  const w = Math.round(Math.sqrt(k))
+  if (w * w !== k) return null
+  const base = kind === "sin" ? [R(1, 2), R(7, 6), R(11, 6)] : [R(1, 3), R1, R(5, 3)]
+  const thresholds = (lim) => {                            // 2√k·u в единицах π, по возрастанию
+    const out = []
+    for (let n = 0; n <= lim + 2; n++) for (const b of base) {
+      const th = Rmul(R(2 * w), Radd(b, R(2 * n)))
+      if (Rcmp(th, R(lim)) <= 0) out.push(th)
+    }
+    return uniqSorted(out)
+  }
+  const solve = (u) => {
+    const au = Rsign(u) < 0 ? Rneg(u) : u
+    const lim = Math.ceil(Rnum(au)) + 1
+    return thresholds(lim).reduce((n, th) => {
+      const c = Rcmp(au, th)
+      return n + (c > 0 ? 2 : c === 0 ? 1 : 0)
+    }, 0)
+  }
+  const th = thresholds(40)
+  const crit = [R0, ...th, ...th.map(Rneg)]
+  return { set: assembleSet((u) => solve(u) === 2, crit), solve, th }
+}
+const T159 = []
+for (const kind of ["sin", "cos"]) for (const k of [1, 4, 9]) T159.push({ kind, k })
+function item159(kind) {
+  const par = pick(T159.filter((t) => t.kind === kind)), { k } = par
+  const { set, solve, th } = buildTrigSqrt(par)
+  const rad = `⟦r:ax ${MINUS} ${k === 1 ? "" : k}x${SUP[2]}⟧`
+  const first = kind === "sin" ? `sin ${rad}` : `cos ${rad}`
+  const w = Math.round(Math.sqrt(k))
+  return item({
+    text: `${HEAD_A}\n\n${first} + cos 2${rad} = 0\n\nимеет ровно два различных решения.`,
+    set,
+    unit: "pi",
+    solution: `Обозначим u = ${rad} ≥ 0.\n`
+      + (kind === "sin"
+        ? `Так как cos 2u = 1 ${MINUS} 2sin${SUP[2]}u, уравнение принимает вид 2sin${SUP[2]}u ${MINUS} sin u ${MINUS} 1 = 0, то есть (2sin u + 1)(sin u ${MINUS} 1) = 0 и sin u = 1 или sin u = ${MINUS}0,5.\n`
+          + `При u ≥ 0 это u = π/2 + 2πn, u = 7π/6 + 2πn, u = 11π/6 + 2πn (значение u = 0 не подходит).\n`
+        : `Так как cos 2u = 2cos${SUP[2]}u ${MINUS} 1, уравнение принимает вид 2cos${SUP[2]}u + cos u ${MINUS} 1 = 0, то есть (2cos u ${MINUS} 1)(cos u + 1) = 0 и cos u = 0,5 или cos u = ${MINUS}1.\n`
+          + `При u ≥ 0 это u = π/3 + 2πn, u = 5π/3 + 2πn, u = π + 2πn (значение u = 0 не подходит).\n`)
+      + `Далее u${SUP[2]} = ax ${MINUS} ${k === 1 ? "" : k}x${SUP[2]}, то есть ${k === 1 ? "" : k}x${SUP[2]} ${MINUS} ax + u${SUP[2]} = 0 с дискриминантом a${SUP[2]} ${MINUS} ${4 * k}u${SUP[2]}.\n`
+      + `Каждое допустимое u даёт два корня x при |a| > ${2 * w === 1 ? "" : 2 * w}u, один при равенстве и ни одного при |a| < ${2 * w === 1 ? "" : 2 * w}u (разным u отвечают разные x).\n`
+      + `Ровно два решения — когда «работает» только наименьшее допустимое u: ${valStr(th[0], "pi")} < |a| < ${valStr(th[1], "pi")}.\n`
+      + `Ответ: ${setToString(set, "pi")}.`,
+    predicate: { type: "count", n: 2 },
+    solve: (u) => solve(u),
+    aRange: spanRange(set),
+    picture: {
+      curves: [{ f: (u) => Math.abs(u) / (2 * k), label: "x = a/(2k)" }, { f: () => 0, dash: true, label: "ОДЗ: 0 ≤ x ≤ a/k" }],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -1, xMax: 6, aMin: Rnum(setBounds(set)[0]) - 2, aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 2,
+    },
+  })
+}
+export function t18TrigSqrtSin() { return item159("sin") }
+export function t18TrigSqrtCos() { return item159("cos") }
+
 // =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
@@ -5768,6 +6053,15 @@ export const META18 = [
     ["sys-pencil-ybound", "ОДЗ по y, ровно три решения", t18SysPencilYBound],
     ["sys-pencil-horiz", "множитель √(y−yLo) добавляет горизонталь", t18SysPencilHoriz],
     ["sys-semi-parab", "{((√(A−x²)−y)(x²+py−q))/(d−x²) = 0; y = 1−2a}", t18SysSemiParab],
+  ]],
+  ["Тригонометрия с параметром", [
+    ["trig-cos-subst", "(p·cos x−c−a)cos x − q·cos2x + r = 0 — хотя бы один корень", t18TrigCosSubstExists],
+    ["trig-lin-comb", "k·sin x = m·cos x + a — единственное решение на отрезке", t18TrigLinCombOne],
+    ["trig-tan-subst", "(tg x+b)² − … = 0 — ровно два решения на [0; 3π/2]", t18TrigTanSubstTwo],
+    ["trig-abs-cos", "|sin²x+k·cos x+a| = sin²x+m·cos x−a — единственный корень", t18TrigAbsCosOne],
+    ["mono-root-seg", "ⁿ√ + log + ra = 0 — любой корень принадлежит отрезку", t18MonoRootInSeg],
+    ["trig-sqrt-sin", "sin√(ax−kx²) + cos2√(ax−kx²) = 0 — ровно два решения", t18TrigSqrtSin],
+    ["trig-sqrt-cos", "cos√(ax−kx²) + cos2√(ax−kx²) = 0 — ровно два решения", t18TrigSqrtCos],
   ]],
   ["Квадрат по замене, расстояние между корнями", [
     ["subst-square-one", "(x²+kx+m+2a²)² = 8a²(x²+kx+m) — ровно один корень", t18SubstSquareOne],
