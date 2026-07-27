@@ -785,6 +785,7 @@ export const META19 = [
     ["barrels-pour", "Переливания между бочками: наим. число переливаний", t19BarrelsPour],
     ["four-boxes-plus3", "Четыре коробки: −1,−1,−1,+3 → наиб. в первой", t19FourBoxesPlus3],
     ["erase-triples", "Стирание троек с различными суммами", t19EraseTriples],
+    ["pair-moves-2a1", "Пара чисел: (a+b, 2a−1) → наим. разность", t19PairMoves],
   ]],
   ["Прогрессии", [
     ["ap-ends-sum", "АП из натуральных: сумма крайних и наибольшее число членов", t19APEndsSum],
@@ -8467,6 +8468,145 @@ export function t19EraseTriples() {
       mustMention: [N, T, Ka, Kb, 1, 2, 3],
       extra: [],
       phrases: ["стереть произвольные три числа", "отлична от каждой из сумм"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 13 (продолжение). Пара чисел: (a+b, 2a−1) или (a+b, 2b−1) (#83)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Ход заменяет пару (a, b) на (a + b, 2a − 1) либо на (a + b, 2b − 1). Если d = a − b,
+// то новая разность равна 1 − d или d + 1, поэтому МОДУЛЬ разности меняется ровно на
+// единицу: |d| → |d| ± 1 (из |d| = v получаются |1 − v| = v − 1 и v + 1). Отсюда:
+// • чётность |d| меняется каждый ход, и после n ходов |d| ≡ |d₀| + n (mod 2);
+// • равные числа (|d| = 0) запрещены, поэтому минимальная разность после нечётного
+//   числа ходов равна 2, а после чётного — 1.
+// Кроме того меньшее из чисел не убывает и растёт не медленнее, чем a → 2a − 1,
+// то есть после n ходов оба числа не меньше 2ⁿ + 1 — этим закрывается пункт «нет».
+export function t19PairMoves() {
+  const start = [2, 3]
+  // а) достижимое число: гоняем цепочку (a, b) → (a+b, 2·min−1)
+  const chain = [[...start]]
+  let cur = [...start]
+  for (let i = 0; i < 5; i++) {
+    const [a, b] = cur
+    cur = [a + b, 2 * Math.min(a, b) - 1].sort((x, y) => x - y)
+    chain.push([...cur])
+  }
+  const targetA = chain[3][1]                                // число после трёх ходов
+  const movesB = pick([100, 150, 200])
+  const targetB = pick([400, 500, 640])                      // недостижимо: 2^n + 1 больше
+  const movesC = pick([513, 401, 621])                       // нечётное число ходов
+  const minDiff = (Math.abs(start[0] - start[1]) + movesC) % 2 === 0 ? 2 : 1
+
+  const params = { start, targetA, movesB, targetB, movesC, minDiff }
+  const check = (cfg, part) => {
+    if (!Array.isArray(cfg) || !cfg.length) return "нет последовательности ходов"
+    // числа растут как 2ⁿ, поэтому ходы моделируются в BigInt
+    let pair = start.map(BigInt)
+    for (const mv of cfg) {
+      if (!Array.isArray(mv) || mv.length !== 2) return "ход задаётся парой чисел"
+      const a = BigInt(mv[0]), b = BigInt(mv[1])
+      const same = (pair[0] === a && pair[1] === b) || (pair[0] === b && pair[1] === a)
+      if (!same) return `на доске ${pair.join(" и ")}, а ход сделан числами ${mv.join(" и ")}`
+      pair = [a + b, 2n * a - 1n]
+    }
+    if (part === "a" && !pair.includes(BigInt(targetA))) return `на доске ${pair.join(" и ")}, числа ${targetA} нет`
+    if (part === "c") {
+      if (cfg.length !== movesC) return `ходов ${cfg.length}, а нужно ${movesC}`
+      const d = pair[0] > pair[1] ? pair[0] - pair[1] : pair[1] - pair[0]
+      if (d !== BigInt(minDiff)) return `разность ${d}, а заявлено ${minDiff}`
+    }
+    return null
+  }
+  // Независимый проход: пункт а) — поиск в ширину по парам с небольшими числами;
+  // пункт б) — оценка снизу на меньшее число (оно не меньше 2ⁿ + 1);
+  // пункт в) — динамика по достижимым значениям |d| при запрете нулевой разности.
+  const solve = (P) => {
+    const seen = new Set()
+    let frontier = [[...P.start]]
+    let aOk = false
+    for (let step = 0; step < 8 && !aOk; step++) {
+      const next = []
+      for (const [a, b] of frontier) {
+        for (const nb of [2 * a - 1, 2 * b - 1]) {
+          const pr = [a + b, nb]
+          if (pr.includes(P.targetA)) aOk = true
+          const key = pr.join(",")
+          if (!seen.has(key) && Math.max(...pr) < 5000) { seen.add(key); next.push(pr) }
+        }
+      }
+      frontier = next
+    }
+    // меньшее число после n ходов: mₙ ≥ 2mₙ₋₁ − 1
+    let low = Math.min(...P.start)
+    let bOk = false
+    for (let i = 0; i < P.movesB; i++) {
+      low = 2 * low - 1
+      if (low > P.targetB * 4) break
+    }
+    if (low <= P.targetB) bOk = true
+    // достижимые |d| без нулей
+    let ds = new Set([Math.abs(P.start[0] - P.start[1])])
+    for (let i = 0; i < P.movesC; i++) {
+      const nx = new Set()
+      for (const v of ds) {
+        if (v - 1 > 0) nx.add(v - 1)
+        if (v + 1 <= P.movesC + 2) nx.add(v + 1)
+      }
+      ds = nx
+    }
+    return { a: aOk, b: bOk, c: ds.size ? Math.min(...ds) : -1, c_next: false }
+  }
+
+  const exA = []
+  {
+    let pair = [...start]
+    for (let i = 0; i < 3; i++) {
+      const [a, b] = pair[0] <= pair[1] ? pair : [pair[1], pair[0]]
+      exA.push([a, b])
+      pair = [a + b, 2 * a - 1]
+    }
+  }
+  // Ходы для пункта в): на каждом шаге выбираем то из двух чисел, удвоение которого
+  // даёт нужный модуль разности (чередуем minDiff и minDiff + 1, ноль запрещён).
+  // Ходы для пункта в): на каждом шаге выбираем то из двух чисел, удвоение которого
+  // даёт нужный модуль разности (чередуем minDiff и minDiff + 1, ноль запрещён).
+  // Сами числа огромны (порядка 2ⁿ), поэтому считаем их в BigInt.
+  const exC = []
+  {
+    let pair = start.map(BigInt)
+    const absDiff = (p) => (p[0] > p[1] ? p[0] - p[1] : p[1] - p[0])
+    for (let i = 0; i < movesC; i++) {
+      const want = BigInt((movesC - i) % 2 === 1 ? minDiff : minDiff + 1)
+      const [x, y] = pair
+      const opts = [{ a: x, b: y }, { a: y, b: x }].map((o) => ({ ...o, d: absDiff([o.a + o.b, 2n * o.a - 1n]) }))
+      const pickOpt = opts.find((o) => o.d === want && o.d > 0n) || opts.find((o) => o.d > 0n)
+      exC.push([pickOpt.a, pickOpt.b])
+      pair = [pickOpt.a + pickOpt.b, 2n * pickOpt.a - 1n]
+    }
+  }
+
+  return item({
+    preamble: `На доске написаны числа ${start[0]} и ${start[1]}. За один ход два числа a и b, записанные на доске, заменяются на два числа: или a + b и 2a − 1, или a + b и 2b − 1 (например, из чисел ${start[0]} и ${start[1]} можно получить либо ${start[0] + start[1]} и ${2 * start[0] - 1}, либо ${start[0] + start[1]} и ${2 * start[1] - 1}).`,
+    qa: `Приведите пример последовательности ходов, после которых одно из двух чисел, написанных на доске, окажется числом ${targetA}.`,
+    qb: `Может ли после ${movesB} ходов одно из двух чисел, написанных на доске, оказаться числом ${targetB}?`,
+    qc: `Сделали ${movesC} ${plural(movesC, "ход", "хода", "ходов")}, причём на доске никогда не было написано одновременно двух равных чисел. Какое наименьшее значение может принимать разность большего и меньшего из полученных чисел?`,
+    ansA: `${chain.slice(0, 4).map((p) => p.join(" и ")).join(" → ")}`,
+    ansB: `нет: меньшее из двух чисел не убывает, а после хода оно не меньше 2m − 1, где m — прежнее меньшее. Начиная с ${Math.min(...start)}, после n ходов оба числа не меньше 2ⁿ + 1, поэтому уже после десяти ходов они больше ${targetB}, а ходов ${movesB}`,
+    ansC: `${minDiff}`,
+    solution: `Обозначим d = a − b. После хода получается пара (a + b, 2a − 1) или (a + b, 2b − 1), и её разность равна (a + b) − (2a − 1) = 1 − d или (a + b) − (2b − 1) = d + 1. Значит модуль разности меняется ровно на единицу: |d| → |d| ± 1.\nа) ${chain.slice(0, 4).map((p) => p.join(" и ")).join(" → ")} — получилось число ${targetA}.\nб) Меньшее число не убывает: из пары (a, b) с a ≤ b получаются числа a + b и 2a − 1 (или 2b − 1), и оба не меньше 2a − 1. Значит после n ходов числа не меньше 2ⁿ + 1, что при ${movesB} ходах несравнимо больше ${targetB}.\nв) Вначале |d| = ${Math.abs(start[0] - start[1])}, за каждый ход модуль разности меняется на единицу, поэтому после ${movesC} ходов он имеет ту же чётность, что и ${Math.abs(start[0] - start[1])} + ${movesC}. Нулевая разность запрещена условием, поэтому наименьшее возможное значение равно ${minDiff}; оно достигается, если чередовать ходы, переводящие |d| между ${minDiff} и ${minDiff + 1}.\nОтвет: ${minDiff}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: `num-${targetA}` },
+        b: { type: "yesno", yes: false, reason: "exponential-growth", target: `num-${targetB}` },
+        c: { type: "extremum", mode: "min", value: minDiff, example: exC },
+      },
+      mustMention: [start[0], start[1], start[0] + start[1], 2 * start[0] - 1, 2 * start[1] - 1, targetA, movesB, targetB, movesC, 1, 2],
+      extra: [],
+      phrases: ["заменяются на два числа", "двух равных чисел"],
     },
   })
 }
