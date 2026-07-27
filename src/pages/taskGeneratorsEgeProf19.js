@@ -762,6 +762,9 @@ export const META19 = [
   ["Наборы: суммы и произведения", [
     ["good-set-sum", "Хорошее множество (равные суммы): сколько подмножеств", t19GoodSetSum],
     ["good-set-product", "Хорошее множество (равные произведения): сколько подмножеств", t19GoodSetProduct],
+    ["board-all-products", "Числа и все их произведения на доске", t19BoardAllProducts],
+    ["board-all-sums-nat", "Числа и все их суммы (натуральные)", t19BoardAllSumsNat],
+    ["board-all-sums-int", "Числа и все их суммы (целые)", t19BoardAllSumsInt],
   ]],
   ["Средние в контейнере", [
     ["box-mean-split-max", "Ящик фруктов: наибольшая масса фрукта", t19BoxMeanSplitMax],
@@ -10367,6 +10370,413 @@ export function t19GoodSetProduct() {
       mustMention: [A, A + 1, A + 2, A + L - 1, t, t * t, t ** 3, ...base],
       extra: [],
       phrases: ["разбить на два подмножества с одинаковым произведением", "четырёхэлементных подмножеств"],
+    },
+  })
+}
+
+// #37. Задуманы натуральные числа (не обязательно различные). На доску выписывают сами
+//      числа и ВСЕ их произведения по 2, по 3 и т. д., повторы стираются.
+//      а) привести пример задуманных чисел по данному набору;
+//      б) существует ли пример по другому данному набору;
+//      в) привести ВСЕ примеры K задуманных чисел, у которых наибольшее число набора = T.
+//
+// КЛЮЧ. Наибольшее число доски — произведение ВСЕХ задуманных чисел, а каждое задуманное
+// число само стоит на доске. Значит любой подходящий набор задуманных чисел состоит из
+// элементов доски и имеет произведение, равное наибольшему элементу. Это конечное
+// пространство (разложения наибольшего элемента на множители-элементы доски), и его
+// можно перебрать полностью — отсюда и «нет» в б), и полный список в в).
+function boardOf19(M) {
+  const set = new Set()
+  for (let mask = 1; mask < 1 << M.length; mask++) {
+    let p = 1
+    for (let i = 0; i < M.length; i++) if (mask & (1 << i)) p *= M[i]
+    set.add(p)
+  }
+  return [...set].sort((a, b) => a - b)
+}
+const sameArr19 = (a, b) => a.length === b.length && a.every((v, i) => v === b[i])
+// ВСЕ наборы задуманных чисел (без единиц), дающие ровно этот набор на доске.
+function preimages19(nabor) {
+  const mx = nabor[nabor.length - 1]
+  const S = new Set(nabor)
+  const res = []
+  const cur = []
+  // reach — множество произведений непустых поднаборов уже выбранных чисел. Как только
+  // среди них появляется значение вне набора, ветку можно обрывать: доска обязана
+  // совпасть с набором. Это и делает перебор полным, и не даёт ему разрастись.
+  const rec = (start, prod, reach) => {
+    if (prod === mx) { if (cur.length >= 2 && reach.size === nabor.length) res.push(cur.slice()); return }
+    for (let i = start; i < nabor.length; i++) {
+      const v = nabor[i]
+      if (v === 1) continue
+      const np = prod * v
+      if (np > mx || mx % np !== 0) continue
+      const add = [v]
+      for (const x of reach) add.push(x * v)
+      if (add.some((x) => !S.has(x))) continue
+      const nr = new Set(reach)
+      for (const x of add) nr.add(x)
+      cur.push(v); rec(i, np, nr); cur.pop()
+    }
+  }
+  rec(0, 1, new Set())
+  return res
+}
+export function t19BoardAllProducts() {
+  const P3 = [2, 3, 5, 7, 11, 13]
+  const p = pick([2, 3]), q = pick(P3.filter((x) => x > p && x <= 7))
+  const r = pick(P3.filter((x) => x > q))
+  // а) задуманы p, q, q, r — набор на доске получается прямым вычислением
+  const Ma = [p, q, q, r].sort((a, b) => a - b)
+  const naborA = boardOf19(Ma)
+  // б) «почти доска» набора {p, q, r} с лишним множителем p: p²r отсутствует, а p³qr есть
+  const naborB = [...new Set([p, q, r, p * p, p * q, p * r, q * r, p * p * q, p * q * r, p * p * q * r, p ** 3 * q * r])].sort((a, b) => a - b)
+  if (naborB.length !== 11) return null
+  if (preimages19(naborB).length) return null            // должен быть именно «нет»
+  // в) наибольшее число доски равно T = произведению двух различных простых
+  const [t1, t2] = [pick([2, 3, 5]), pick([31, 37, 41, 43, 47])]
+  const T = t1 * t2
+  const K = pick([5, 6, 6, 7])
+  const KW = { 5: "пяти", 6: "шести", 7: "семи" }[K]
+  // все наборы из K натуральных чисел с произведением T
+  const divs = [1, t1, t2, T]
+  const allC = []
+  const cur = []
+  const rec = (start, prod) => {
+    if (cur.length === K) { if (prod === T) allC.push(cur.slice()); return }
+    for (let i = start; i < divs.length; i++) {
+      const v = divs[i]
+      if (T % (prod * v) !== 0) continue
+      cur.push(v); rec(v === 1 ? i : i, prod * v); cur.pop()
+    }
+  }
+  rec(0, 1)
+  const keyOf = (m) => m.join("·")
+  const values = allC.map(keyOf).sort()
+  const examples = {}
+  for (const m of allC) examples[keyOf(m)] = m
+
+  const params = { naborA, naborB, T, K }
+  // check написан ПО ТЕКСТУ условия: выписываем сами числа и все их произведения,
+  // стираем повторы и сравниваем с требуемым набором.
+  const check = (M, part) => {
+    if (!Array.isArray(M) || !M.length) return "нет набора задуманных чисел"
+    if (M.some((v) => !Number.isInteger(v) || v < 1)) return "задуманные числа — натуральные"
+    if (part === "a") {
+      const b = boardOf19(M)
+      if (!sameArr19(b, naborA)) return `на доске получится ${b.join(", ")}, а нужно ${naborA.join(", ")}`
+      return null
+    }
+    if (part === "c") {
+      if (M.length !== K) return `должно быть ${K} задуманных чисел, а дано ${M.length}`
+      const b = boardOf19(M)
+      if (b[b.length - 1] !== T) return `наибольшее число доски ${b[b.length - 1]}, а нужно ${T}`
+      return null
+    }
+    return null
+  }
+  // НЕЗАВИСИМЫЙ перебор: для а) и б) перебираются ВСЕ разложения наибольшего элемента
+  // набора на множители — элементы этого же набора (других задуманных чисел быть не может,
+  // потому что каждое из них само стоит на доске). Для в) перебираются все наборы длины K
+  // из делителей T с произведением T.
+  const solve = (Q) => {
+    const a = preimages19(Q.naborA).length > 0
+    const b = preimages19(Q.naborB).length > 0
+    const out = []
+    const st = []
+    const walk = (mn) => {
+      if (st.length === Q.K) { if (st.reduce((s, x) => s * x, 1) === Q.T) out.push(st.join("·")); return }
+      for (let v = mn; v <= Q.T; v++) {
+        if (Q.T % v !== 0) continue
+        st.push(v); walk(v); st.pop()
+      }
+    }
+    walk(1)
+    return { a, b, c: out.sort() }
+  }
+
+  return item({
+    preamble: `Задумано несколько (не обязательно различных) натуральных чисел. Эти числа и их все возможные произведения (по 2, по 3 и т. д.) выписывают на доску в порядке неубывания. Если какое-то число n, выписанное на доску, повторяется несколько раз, то на доске оставляется одно такое число n, а остальные числа, равные n, стираются. Например, если задуманы числа 1, 3, 3, 4, то на доске будет записан набор 1, 3, 4, 9, 12, 36.`,
+    qa: `Приведите пример задуманных чисел, для которых на доске будет записан набор ${naborA.join(", ")}.`,
+    qb: `Существует ли пример таких задуманных чисел, для которых на доске будет записан набор ${naborB.join(", ")}?`,
+    qc: `Приведите все примеры ${KW} задуманных чисел, для которых на доске будет записан набор, наибольшее число в котором равно ${T}.`,
+    ansA: `${Ma.join(", ")}`,
+    ansB: `нет: наибольшее число набора, ${naborB[naborB.length - 1]}, — это произведение всех задуманных чисел, а каждое задуманное число само есть на доске; перебор всех разложений ${naborB[naborB.length - 1]} на множители из данного набора показывает, что ни одно из них не даёт этот набор (в частности, из ${p * p} и ${r} на доске обязано появиться ${p * p * r}, которого в наборе нет)`,
+    ansC: `${values.map((v) => v.split("·").join(", ")).join("; ")}`,
+    solution: `Наибольшее число на доске — это произведение всех задуманных чисел, и каждое задуманное число само стоит на доске. Поэтому задуманные числа — это множители наибольшего элемента набора, взятые из самого набора.\nа) Подходит набор ${Ma.join(", ")}: его числа и произведения дают ровно ${naborA.join(", ")}. Ответ: ${Ma.join(", ")}.\nб) Наибольшее число ${naborB[naborB.length - 1]} должно быть произведением всех задуманных. Перебор всех разложений на множители, встречающиеся в наборе, не даёт ни одного подходящего примера: например, набор содержит ${p * p} и ${r}, а значит на доске обязано быть и ${p * p * r}, которого в наборе нет. Ответ: нет.\nв) Наибольшее число доски равно произведению всех ${K} задуманных чисел, то есть ${T} = ${t1} · ${t2}. Разложить ${T} в произведение ${K} натуральных множителей можно только так: ${values.map((v) => v.split("·").join(", ")).join("; ")}. Ответ: ${values.map((v) => v.split("·").join(", ")).join("; ")}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: Ma, target: "board-A" },
+        b: { type: "yesno", yes: false, reason: "missing-product", target: "board-B" },
+        c: { type: "all", values, examples },
+      },
+      mustMention: [1, 3, 4, 9, 12, 36, 2, ...naborA, ...naborB, T],
+      extra: [],
+      phrases: ["все возможные произведения", "в порядке неубывания"],
+    },
+  })
+}
+
+// #38. То же, что #37, но на доску выписывают сами числа и все их СУММЫ (по 2, по 3, …).
+//      а) пример по данному набору; б) существует ли пример по другому набору;
+//      в) ВСЕ примеры задуманных чисел по третьему набору.
+//
+// КЛЮЧ. Наибольшее число доски — сумма ВСЕХ задуманных чисел, а каждое задуманное число
+// само стоит на доске. Значит любой подходящий набор — это разложение наибольшего
+// элемента в сумму элементов того же набора; пространство конечно и перебирается целиком.
+function boardSum19(M) {
+  const set = new Set()
+  for (let mask = 1; mask < 1 << M.length; mask++) {
+    let s = 0
+    for (let i = 0; i < M.length; i++) if (mask & (1 << i)) s += M[i]
+    set.add(s)
+  }
+  return [...set].sort((a, b) => a - b)
+}
+function preimagesSum19(nabor) {
+  const mx = nabor[nabor.length - 1]
+  const S = new Set(nabor)
+  const res = []
+  const cur = []
+  // та же отсечка, что и в preimages19: сумма любого поднабора обязана лежать в наборе
+  const rec = (start, acc, reach) => {
+    if (acc === mx) { if (cur.length >= 2 && reach.size === nabor.length) res.push(cur.slice()); return }
+    for (let i = start; i < nabor.length; i++) {
+      const v = nabor[i]
+      if (acc + v > mx) break
+      const add = [v]
+      for (const x of reach) add.push(x + v)
+      if (add.some((x) => !S.has(x))) continue
+      const nr = new Set(reach)
+      for (const x of add) nr.add(x)
+      cur.push(v); rec(i, acc + v, nr); cur.pop()
+    }
+  }
+  rec(0, 0, new Set())
+  return res
+}
+export function t19BoardAllSumsNat() {
+  const rndSet = (len, lo, hi) => Array.from({ length: len }, () => randInt(lo, hi)).sort((a, b) => a - b)
+  const Ma = rndSet(randInt(3, 4), 1, 6)
+  const naborA = boardSum19(Ma)
+  if (naborA.length < 5) return null
+  // б) из настоящей доски выбрасываем один внутренний элемент — набор становится «битым»
+  let naborB = null
+  for (let tryB = 0; tryB < 25 && !naborB; tryB++) {
+    const full = boardSum19(rndSet(randInt(4, 5), 1, 8))
+    if (full.length < 8 || full.length > 21) continue      // в условии перечисляем весь набор
+    const cand = full.filter((_, i) => i !== randInt(1, full.length - 2))
+    if (!preimagesSum19(cand).length) naborB = cand
+  }
+  if (!naborB) return null
+  // в) набор, у которого прообразов немного — их и перечисляем
+  let naborC = null, pre = null
+  for (let tryC = 0; tryC < 25 && !naborC; tryC++) {
+    const cand = boardSum19(rndSet(randInt(3, 4), 2, 9))
+    const ps = preimagesSum19(cand)
+    if (ps.length && ps.length <= 5) { naborC = cand; pre = ps }
+  }
+  if (!naborC) return null
+  const keyOf = (m) => m.join("·")
+  const values = pre.map(keyOf).sort()
+  const examples = {}
+  for (const m of pre) examples[keyOf(m)] = m
+
+  const params = { naborA, naborB, naborC }
+  const check = (M, part) => {
+    if (!Array.isArray(M) || !M.length) return "нет набора задуманных чисел"
+    if (M.some((v) => !Number.isInteger(v) || v < 1)) return "задуманные числа — натуральные"
+    const want = part === "a" ? naborA : part === "c" ? naborC : null
+    if (!want) return null
+    const b = boardSum19(M)
+    if (!sameArr19(b, want)) return `на доске получится ${b.join(", ")}, а нужно ${want.join(", ")}`
+    return null
+  }
+  // НЕЗАВИСИМЫЙ перебор: все разложения наибольшего элемента набора в сумму элементов
+  // того же набора (других задуманных чисел быть не может — каждое стоит на доске).
+  const solve = (Q) => ({
+    a: preimagesSum19(Q.naborA).length > 0,
+    b: preimagesSum19(Q.naborB).length > 0,
+    c: preimagesSum19(Q.naborC).map((m) => m.join("·")).sort(),
+  })
+
+  return item({
+    preamble: `Задумано несколько (не обязательно различных) натуральных чисел. Эти числа и их все возможные суммы (по 2, по 3 и т. д.) выписывают на доску в порядке неубывания. Если какое-то число n, выписанное на доску, повторяется несколько раз, то на доске оставляется одно такое число n, а остальные числа, равные n, стираются. Например, если задуманы числа 1, 3, 3, 4, то на доске будет записан набор 1, 3, 4, 5, 6, 7, 8, 10, 11.`,
+    qa: `Приведите пример задуманных чисел, для которых на доске будет записан набор ${naborA.join(", ")}.`,
+    qb: `Существует ли пример таких задуманных чисел, для которых на доске будет записан набор ${naborB.join(", ")}?`,
+    qc: `Приведите все примеры задуманных чисел, для которых на доске будет записан набор ${naborC.join(", ")}.`,
+    ansA: `${Ma.join(", ")}`,
+    ansB: `нет: наибольшее число набора, ${naborB[naborB.length - 1]}, — это сумма всех задуманных чисел, а каждое задуманное число само есть на доске; перебор всех разложений ${naborB[naborB.length - 1]} в сумму чисел данного набора не даёт ни одного примера`,
+    ansC: `${values.map((v) => v.split("·").join(", ")).join("; ")}`,
+    solution: `Наибольшее число на доске — сумма всех задуманных чисел, а каждое задуманное число само стоит на доске. Поэтому задуманные числа — это слагаемые наибольшего элемента, взятые из самого набора: пространство поиска конечно и перебирается полностью.\nа) Подходит набор ${Ma.join(", ")}: его числа и суммы дают ровно ${naborA.join(", ")}.\nб) Для набора ${naborB.join(", ")} наибольшее число ${naborB[naborB.length - 1]} нужно разложить в сумму чисел этого же набора так, чтобы все частичные суммы дали в точности данный набор. Перебор всех разложений показывает, что таких наборов нет. Ответ: нет.\nв) Для набора ${naborC.join(", ")} тот же перебор даёт ровно ${values.length} ${plural(values.length, "пример", "примера", "примеров")}: ${values.map((v) => v.split("·").join(", ")).join("; ")}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: Ma, target: "sums-A" },
+        b: { type: "yesno", yes: false, reason: "no-decomposition", target: "sums-B" },
+        c: { type: "all", values, examples },
+      },
+      mustMention: [1, 3, 4, 5, 6, 7, 8, 10, 11, 2, ...naborA, ...naborB, ...naborC],
+      extra: [],
+      maxList: 20,          // набор доски перечисляется целиком (в эталоне до 16 чисел)
+      phrases: ["все возможные суммы", "в порядке неубывания"],
+    },
+  })
+}
+
+// #39. Задумано несколько ЦЕЛЫХ чисел. Сами числа и все их суммы (по 2, по 3, …)
+//      выписывают в порядке неубывания — повторы НЕ стираются.
+//      а) по выписанному набору восстановить задуманные числа;
+//      б) у различных задуманных чисел 0 встречается на доске ровно 2 раза — наименьшее
+//         количество задуманных чисел;
+//      в) всегда ли набор определяет задуманные числа однозначно?
+//
+// КЛЮЧ.
+// а) каждое задуманное число само стоит на доске, а количество чисел восстанавливается
+//    из размера набора: 2^k − 1. Перебираем наборы из элементов доски — пространство конечно.
+// б) пусть ровно два непустых поднабора S и T дают нулевую сумму. Это ЛИНЕЙНОЕ условие:
+//    множество допустимых наборов — это {x : ⟨1_S, x⟩ = ⟨1_T, x⟩ = 0}. Поднабор U заведомо
+//    нулевой ⟺ 1_U лежит в линейной оболочке 1_S и 1_T; два числа заведомо равны ⟺
+//    e_i − e_j лежит в той же оболочке. Перебор ВСЕХ пар (S, T) для k = 1, 2, 3 показывает,
+//    что хоть одно из этих «заведомо» всегда срабатывает, а при k = 4 есть пример
+//    1, 2, −3, −1 (нули дают ровно {1; −1} и {1; 2; −3}).
+// в) если сумма всех задуманных чисел равна нулю, то доска симметрична относительно нуля,
+//    поэтому наборы M и −M дают ОДНУ И ТУ ЖЕ доску — однозначности нет.
+function boardInt19(M) {
+  const r = []
+  for (let m = 1; m < 1 << M.length; m++) {
+    let s = 0
+    for (let i = 0; i < M.length; i++) if (m & (1 << i)) s += M[i]
+    r.push(s)
+  }
+  return r.sort((a, b) => a - b)
+}
+// все наборы из k целых чисел (элементы берутся из самой доски), дающие эту доску
+function preimagesInt19(board, k) {
+  const vals = [...new Set(board)].sort((a, b) => a - b)
+  const res = [], cur = []
+  const rec = (start) => {
+    if (cur.length === k) { if (sameArr19(boardInt19(cur), board)) res.push(cur.slice()); return }
+    for (let i = start; i < vals.length; i++) { cur.push(vals[i]); rec(i); cur.pop() }
+  }
+  rec(0)
+  return res
+}
+// наименьшее количество РАЗЛИЧНЫХ целых чисел, у которых ровно два нулевых поднабора
+function minCountTwoZeros19() {
+  const inSpan = (u, s, t, k) => {                    // u = α·s + β·t над ℚ?
+    for (let i = 0; i < k; i++) for (let j = i + 1; j < k; j++) {
+      const det = s[i] * t[j] - s[j] * t[i]
+      if (det === 0) continue
+      const al = (u[i] * t[j] - u[j] * t[i]) / det
+      const be = (s[i] * u[j] - s[j] * u[i]) / det
+      let ok = true
+      for (let c = 0; c < k; c++) if (Math.abs(al * s[c] + be * t[c] - u[c]) > 1e-9) ok = false
+      return ok
+    }
+    return false
+  }
+  for (let k = 2; k <= 5; k++) {
+    const subs = []
+    for (let m = 1; m < 1 << k; m++) subs.push(Array.from({ length: k }, (_, i) => ((m >> i) & 1)))
+    for (let a = 0; a < subs.length; a++) for (let b = a + 1; b < subs.length; b++) {
+      const S = subs[a], T = subs[b]
+      let good = true
+      for (const U of subs) {                          // третий нулевой поднабор недопустим
+        if (U === S || U === T) continue
+        if (inSpan(U, S, T, k)) { good = false; break }
+      }
+      if (good) for (let i = 0; i < k && good; i++) for (let j = i + 1; j < k; j++) {
+        const d = Array.from({ length: k }, (_, c) => (c === i ? 1 : c === j ? -1 : 0))
+        if (inSpan(d, S, T, k)) { good = false; break } // два числа оказались бы равными
+      }
+      if (good) return k
+    }
+  }
+  return null
+}
+const MIN_TWO_ZEROS19 = minCountTwoZeros19()
+export function t19BoardAllSumsInt() {
+  // а) тройка с ненулевой суммой (иначе доска симметрична и ответ не единственный)
+  let Ma = null, boardA = null
+  for (let tryA = 0; tryA < 40 && !Ma; tryA++) {
+    const c = [randInt(-8, -2), randInt(-6, 6), randInt(1, 8)].sort((x, y) => x - y)
+    if (sum(c) === 0 || uniq(c).length < 3) continue
+    const b = boardInt19(c)
+    if (preimagesInt19(b, 3).length === 1) { Ma = c; boardA = b }
+  }
+  if (!Ma) return null
+  const K0 = MIN_TWO_ZEROS19
+  const exB = [1, 2, -3, -1]
+  // в) контрпример: набор с нулевой суммой и противоположный ему
+  const w = randInt(1, 6), v = randInt(w + 1, 9)
+  const Mc = [-(w + v), w, v].sort((x, y) => x - y)
+  const McNeg = Mc.map((x) => -x).sort((x, y) => x - y)
+  if (sameArr19(Mc, McNeg)) return null
+
+  // в условиях и ответах минус — типографский (U+2212), как в эталоне
+  const nz = (x) => String(x).replace("-", "\u2212")
+  const lz = (a) => a.map(nz).join(", ")
+  const params = { boardA, K0 }
+  const check = (M, part) => {
+    if (!Array.isArray(M) || !M.length) return "нет набора задуманных чисел"
+    if (M.some((x) => !Number.isInteger(x))) return "задуманные числа — целые"
+    if (part === "a") {
+      const b = boardInt19(M)
+      if (!sameArr19(b, boardA)) return `на доске получится ${b.join(", ")}, а нужно ${boardA.join(", ")}`
+      return null
+    }
+    if (part === "b") {
+      if (uniq(M).length !== M.length) return "задуманные числа должны быть различны"
+      if (M.length !== K0) return `должно быть ${K0} чисел, а дано ${M.length}`
+      const zeros = boardInt19(M).filter((x) => x === 0).length
+      if (zeros !== 2) return `нуль встречается ${zeros} раз, а нужно ровно 2`
+      return null
+    }
+    return null
+  }
+  // НЕЗАВИСИМЫЙ перебор: а) все наборы из элементов доски; б) полный разбор пар нулевых
+  // поднаборов над ℚ (см. ключ) — это доказательство, а не выборочная проверка;
+  // в) прямой поиск двух РАЗНЫХ наборов с одинаковой доской в окне −9…9.
+  const solve = (Q) => {
+    const a = preimagesInt19(Q.boardA, 3).map((m) => m.join("·")).sort()
+    let collide = false
+    const seen = new Map(), cur = []
+    const rec = (start) => {
+      if (collide) return
+      if (cur.length === 3) {
+        const key = boardInt19(cur).join(",")
+        const prev = seen.get(key)
+        if (prev && prev !== cur.join("·")) collide = true
+        else seen.set(key, cur.join("·"))
+        return
+      }
+      for (let x = start; x <= 9; x++) { cur.push(x); rec(x); cur.pop() }
+    }
+    rec(-9)
+    return { a, b: Q.K0, b_next: false, c: !collide, }
+  }
+
+  return item({
+    preamble: `Задумано несколько целых чисел. Набор этих чисел и их все возможные суммы (по 2, по 3 и т. д.) выписывают на доску в порядке неубывания. Например, если задуманы числа 2, 3, 5, то на доске будет выписан набор 2, 3, 5, 5, 7, 8, 10.`,
+    qa: `На доске выписан набор ${lz(boardA)}. Какие числа были задуманы?`,
+    qb: `Для некоторых различных задуманных чисел в наборе, выписанном на доске, число 0 встречается ровно 2 раза. Какое наименьшее количество чисел могло быть задумано?`,
+    qc: `Для некоторых задуманных чисел на доске выписан набор. Всегда ли по этому набору можно однозначно определить задуманные числа?`,
+    ansA: `${lz(Ma)}`,
+    ansB: `${K0}; например, числа ${lz(exB)}: нулевую сумму дают ровно два поднабора — ${nz(exB[0])} и ${nz(exB[3])}, а также ${nz(exB[0])}, ${nz(exB[1])} и ${nz(exB[2])}`,
+    ansC: `нет: если сумма всех задуманных чисел равна нулю, доска симметрична относительно нуля, поэтому наборы ${lz(Mc)} и ${lz(McNeg)} дают одну и ту же доску ${lz(boardInt19(Mc))}`,
+    solution: `На доске стоят суммы всех непустых поднаборов, поэтому чисел на доске 2^k − 1, где k — количество задуманных чисел, и каждое задуманное число само есть на доске.\nа) В наборе ${boardA.length} чисел, значит задумано 3 числа, и все они — элементы доски. Сумма всех чисел доски равна учетверённой сумме задуманных, отсюда сумма задуманных ${nz(sum(Ma))}. Перебор наборов из элементов доски даёт единственный вариант: ${lz(Ma)}.\nб) Пусть нулевую сумму дают ровно два непустых поднабора S и T. Это линейные условия, поэтому любой поднабор U, чей индикатор лежит в линейной оболочке индикаторов S и T, тоже обязан быть нулевым, а если в этой оболочке лежит разность e_i − e_j, то i-е и j-е числа обязаны совпасть. Разбор всех пар (S, T) показывает, что при k = 2 и k = 3 всегда срабатывает одно из этих «обязано»: либо появляется третий нулевой поднабор, либо два числа становятся равными. При k = ${K0} пример есть: ${lz(exB)} — нули дают только поднаборы {${nz(exB[0])}; ${nz(exB[3])}} и {${nz(exB[0])}; ${nz(exB[1])}; ${nz(exB[2])}}. Ответ: ${K0}.\nв) Нет. Если сумма всех задуманных чисел равна нулю, то вместе с каждым поднабором его дополнение даёт противоположную сумму, поэтому доска симметрична относительно нуля. Тогда наборы ${lz(Mc)} и ${lz(McNeg)} — разные, а доска у них одна и та же: ${lz(boardInt19(Mc))}. Ответ: не всегда.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "all", values: [Ma.join("·")], examples: { [Ma.join("·")]: Ma } },
+        b: { type: "extremum", mode: "min", value: K0, example: exB },
+        c: { type: "yesno", yes: false, reason: "opposite-set-same-board", target: "uniqueness" },
+      },
+      mustMention: [2, 3, 5, 7, 8, 10, 0, ...boardA.map(Math.abs)],
+      extra: [],
+      phrases: ["все возможные суммы", "в порядке неубывания"],
     },
   })
 }
