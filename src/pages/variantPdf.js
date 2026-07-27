@@ -186,11 +186,35 @@ function braceSvg(H) {
     `<path d="${d}" fill="none" stroke="#1c1c1e" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>` }
 }
 
+// Границы «чернил» (тёмных пикселей) на снимке: по ним видно, где html2canvas РЕАЛЬНО
+// нарисовал строки системы. Порог 150 — текст #1c1c1e и линии дробей заведомо темнее.
+function inkBounds(canvas) {
+  const { width: w, height: h } = canvas
+  const d = canvas.getContext("2d").getImageData(0, 0, w, h).data
+  let top = -1, bot = -1
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4
+      if (d[i] < 150 && d[i + 1] < 150 && d[i + 2] < 150) { if (top < 0) top = y; bot = y; break }
+    }
+  }
+  return top < 0 ? null : { top, bot }
+}
+
 // ⟦cases:строка⁞строка…⟧ — система (фигурная скобка) в PDF. Разворачивается ПОСЛЕ
 // цикла формул: к этому моменту внутренние ⟦f⟧/⟦r⟧ уже стали <img>, поэтому их «⟧»
 // не рвут токен, а разделителем строк остаётся только ⁞ или ¦ (в ЕГЭ №18 — ¦).
-// Высоту колонки строк не угадать (строка с дробью втрое выше обычной) — измеряем её
-// скрытым замером в том же шрифте, что и PDF-блок, и под неё рисуем скобку.
+//
+// Высоту и положение скобки НЕЛЬЗЯ брать из DOM-бокса колонки строк: html2canvas рисует
+// ТЕКСТ примерно на пол-строки ниже браузера, а картинки (дроби, сама скобка) — ровно по
+// DOM-боксу. Скобка, выставленная по DOM, оказывалась на эти полстроки выше текста системы
+// и налезала на строку над формулой («Постройте график функции»). Поэтому колонку строк
+// снимаем тем же html2canvas и меряем границы чернил — то есть где строки стоят НА САМОМ
+// ДЕЛЕ в снимке, — и уже под них подгоняем высоту и сдвиг скобки. Замер с запасом-полями
+// (PROBE_PAD), иначе съехавший вниз текст обрезался бы краем пробного снимка.
+const PROBE_PAD = 28          // поля пробного снимка, чтобы сдвинутый текст не обрезался
+const BRACE_PAD = 4           // насколько скобка выступает за чернила строк сверху и снизу
+
 async function casesPdf(html) {
   const re = /⟦cases:([^⟧]+)⟧/g
   let out = "", last = 0, m
@@ -199,13 +223,26 @@ async function casesPdf(html) {
     const lines = m[1].split(/[⁞¦]/)
       .map((l) => `<span style="display:block; white-space:nowrap;">${l}</span>`).join("")
     const probe = document.createElement("div")
-    probe.style.cssText = `position:fixed; left:-9999px; top:0; font-family:Arial,sans-serif; font-size:${FS}px; line-height:1.5;`
+    probe.style.cssText = `position:fixed; left:-9999px; top:0; background:#fff; color:#1c1c1e;`
+      + ` font-family:Arial,sans-serif; font-size:${FS}px; line-height:1.5; padding:${PROBE_PAD}px; width:max-content;`
     probe.innerHTML = lines
     document.body.appendChild(probe)
-    const H = Math.max(24, Math.round(probe.getBoundingClientRect().height))
+    const colH = Math.max(24, Math.round(probe.getBoundingClientRect().height) - 2 * PROBE_PAD)
+    let ink
+    try {
+      const pImgs = [...probe.querySelectorAll("img")]
+      await Promise.all(pImgs.map((img) => img.complete
+        ? Promise.resolve()
+        : new Promise((resolve) => { img.onload = resolve; img.onerror = resolve })))
+      ink = inkBounds(await html2canvas(probe, { scale: 1, backgroundColor: "#ffffff" }))
+    } catch { ink = null }                       // снимок не удался — рисуем скобку по DOM-боксу
     document.body.removeChild(probe)
-    out += `<span data-cases="1" style="display:inline-flex; align-items:center; vertical-align:middle;">`
-      + `<span style="flex:none; margin-right:6px; font-size:0;">${await svgToInlineImg(braceSvg(H), "middle")}</span>`
+    // top — сдвиг скобки относительно верха колонки строк (может быть отрицательным)
+    const H = ink ? Math.max(24, ink.bot - ink.top + 2 * BRACE_PAD) : colH
+    const top = ink ? ink.top - PROBE_PAD - BRACE_PAD : Math.round((colH - H) / 2)
+    out += `<span data-cases="1" style="display:inline-flex; align-items:flex-start; vertical-align:middle;">`
+      + `<span style="flex:none; margin-right:6px; font-size:0; position:relative; top:${top}px;">`
+      + `${await svgToInlineImg(braceSvg(H), "top")}</span>`
       + `<span style="display:inline-flex; flex-direction:column; align-items:flex-start;">${lines}</span></span>`
     last = m.index + m[0].length
   }
