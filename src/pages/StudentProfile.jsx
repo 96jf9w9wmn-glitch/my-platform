@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import Icon from "../components/Icon"
+import WeakTypes from "../components/WeakTypes"
 import { parseLocalDate, isLessonConducted, getInitials, formatPhone } from "../utils"
 
 const MESSENGER_LABELS = {
@@ -535,6 +536,9 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
 
       {/* Правая колонка: занятия + оплата */}
       <div className="flex flex-col gap-3">
+        {/* Блок появляется, только когда по ученику накопились попытки */}
+        <WeakTypes studentId={student.id} />
+
         <div className="glass p-4">
           <h2 className="text-sm font-medium mb-3">Ближайшие занятия</h2>
           {upcoming.length === 0 ? (
