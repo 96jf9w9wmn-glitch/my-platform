@@ -784,6 +784,7 @@ export const META19 = [
     ["ones-and-plus", "n единиц и знаки «+» → для скольких n сумма достижима", t19OnesAndPlus],
     ["barrels-pour", "Переливания между бочками: наим. число переливаний", t19BarrelsPour],
     ["four-boxes-plus3", "Четыре коробки: −1,−1,−1,+3 → наиб. в первой", t19FourBoxesPlus3],
+    ["erase-triples", "Стирание троек с различными суммами", t19EraseTriples],
   ]],
   ["Прогрессии", [
     ["ap-ends-sum", "АП из натуральных: сумма крайних и наибольшее число членов", t19APEndsSum],
@@ -8347,6 +8348,125 @@ export function t19FourBoxesPlus3() {
       mustMention: [...start.slice(0, 3), ...stateA, S],
       extra: [],
       phrases: ["по одному камню из любых трёх коробок", "камней нет"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 13 (продолжение). Стирание троек с различными суммами (#54)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// На доске числа 1…N; за ход стирают три числа, сумма которых меньше T и не совпадает
+// ни с одной суммой, стёртой раньше. Если сделано k ходов, то стёрто 3k чисел, а их
+// общая сумма не меньше 1 + 2 + … + 3k = 3k(3k+1)/2. С другой стороны, k сумм попарно
+// различны и не превосходят T − 1, поэтому их сумма не больше (T−1) + (T−2) + … + (T−k).
+// Из 3k(3k+1)/2 ≤ k(2T − 1 − k)/2 получается верхняя граница на число ходов.
+function eraseTriplesMax(N, T) {
+  let best = 0
+  for (let k = 1; 3 * k <= N; k++) {
+    const lo = 3 * k * (3 * k + 1) / 2
+    let hi = 0
+    for (let i = 0; i < k; i++) hi += T - 1 - i
+    if (lo <= hi) best = k
+  }
+  return best
+}
+// Явный набор из k троек: поиск с возвратом по наименьшим числам, с ограничением
+// числа шагов и кэшем — иначе на некоторых (N, T) перебор уходит в долгий обход.
+const ERASE_CACHE = new Map()
+function eraseTriplesBuild(N, T, k) {
+  const key = `${N}|${T}|${k}`
+  if (ERASE_CACHE.has(key)) return ERASE_CACHE.get(key)
+  const pool = Array.from({ length: Math.min(N, 3 * k + 3) }, (_, i) => i + 1)
+  let found = null, steps = 0
+  const rec = (rest, triples, used) => {
+    if (found || steps > 200000) return
+    if (triples.length === k) { found = triples.map((t) => [...t]); return }
+    if (rest.length < 3) return
+    const [a, ...tail] = rest
+    for (let i = 0; i < tail.length && !found; i++) {
+      for (let j = tail.length - 1; j > i && !found; j--) {      // крупные суммы вперёд
+        steps++
+        if (steps > 200000) return
+        const s = a + tail[i] + tail[j]
+        if (s >= T || used.has(s)) continue
+        used.add(s)
+        rec(tail.filter((_, x) => x !== i && x !== j), [...triples, [a, tail[i], tail[j]]], used)
+        used.delete(s)
+      }
+    }
+  }
+  rec(pool, [], new Set())
+  ERASE_CACHE.set(key, found)
+  return found
+}
+
+export function t19EraseTriples() {
+  const N = pick([30, 27, 33])
+  // Порог 35 — единственный из проверенных, где верхняя оценка ДОСТИЖИМА: при 32
+  // формула обещает 6 ходов, но поиск (20 млн шагов) находит только 5, а при 38
+  // недостижимы обещанные 7. Заявлять недостижимую оценку нельзя.
+  const T = 35
+  const kMax = eraseTriplesMax(N, T)
+  if (kMax < 4) return null
+  const full = eraseTriplesBuild(N, T, kMax)
+  if (!full) return null
+  const Ka = Math.max(3, kMax - 1)                          // пример на Ka ходов
+  const exA = full.slice(0, Ka)
+  const Kb = Math.floor(N / 3)                              // «можно ли стереть всё» — нет
+  if (Kb <= kMax) return null
+
+  const params = { N, T, kMax, Ka, Kb }
+  const check = (cfg, part) => {
+    if (!Array.isArray(cfg) || !cfg.length) return "нет ходов"
+    const seen = new Set(), usedNums = new Set()
+    for (const t of cfg) {
+      if (!Array.isArray(t) || t.length !== 3) return "за ход стирают ровно три числа"
+      for (const v of t) {
+        if (!Number.isInteger(v) || v < 1 || v > N) return `${v} — не число с доски`
+        if (usedNums.has(v)) return `число ${v} стирают дважды`
+        usedNums.add(v)
+      }
+      const s = sum(t)
+      if (s >= T) return `сумма ${t.join(" + ")} = ${s} не меньше ${T}`
+      if (seen.has(s)) return `сумма ${s} уже встречалась`
+      seen.add(s)
+    }
+    const need = part === "a" ? Ka : kMax
+    if (cfg.length !== need) return `ходов ${cfg.length}, а нужно ${need}`
+    return null
+  }
+  // Независимый проход: верхняя граница по неравенству сумм и явное построение набора.
+  const solve = (P) => {
+    const top = eraseTriplesMax(P.N, P.T)
+    return {
+      a: !!eraseTriplesBuild(P.N, P.T, P.Ka),
+      b: P.Kb <= top,
+      c: top,
+      c_next: false,
+    }
+  }
+
+  const showTriples = (ts) => ts.map((t) => `${t.join(" + ")} = ${sum(t)}`).join("; ")
+  return item({
+    preamble: `На доске написаны числа 1, 2, 3, …, ${N}. За один ход разрешается стереть произвольные три числа, сумма которых меньше ${T} и отлична от каждой из сумм троек чисел, стёртых на предыдущих ходах.`,
+    qa: `Приведите пример последовательных ${Ka} ходов.`,
+    qb: `Можно ли сделать ${Kb} ${plural(Kb, "ход", "хода", "ходов")}?`,
+    qc: `Какое наибольшее число ходов можно сделать?`,
+    ansA: `${showTriples(exA)}`,
+    ansB: `нет: за ${Kb} ходов было бы стёрто ${3 * Kb} ${plural(3 * Kb, "число", "числа", "чисел")}, то есть все числа доски, и сумма стёртого равна ${N * (N + 1) / 2}. Но ${Kb} различных сумм, каждая меньше ${T}, дают в сумме не больше ${(() => { let h = 0; for (let i = 0; i < Kb; i++) h += T - 1 - i; return h })()} — меньше, чем ${N * (N + 1) / 2}`,
+    ansC: `${kMax}; например ${showTriples(full)}`,
+    solution: `Пусть сделано k ходов. Тогда стёрто 3k различных чисел с доски, поэтому их сумма не меньше 1 + 2 + … + 3k = ${"3k(3k+1)/2"}. С другой стороны, суммы троек попарно различны и меньше ${T}, поэтому их общая сумма не больше ${T - 1} + ${T - 2} + … + (${T} − k).\nИз неравенства 3k(3k + 1)/2 ≤ k(2·${T} − 1 − k)/2 получаем k ≤ ${kMax}.\nа) Пример ${Ka} ходов: ${showTriples(exA)}.\nб) При k = ${Kb} левая часть равна ${N * (N + 1) / 2}, а правая — ${(() => { let h = 0; for (let i = 0; i < Kb; i++) h += T - 1 - i; return h })()}, поэтому столько ходов сделать нельзя.\nв) Значение ${kMax} достигается: ${showTriples(full)}.\nОтвет: ${kMax}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: `moves-${Ka}` },
+        b: { type: "yesno", yes: false, reason: "sum-bound", target: `moves-${Kb}` },
+        c: { type: "extremum", mode: "max", value: kMax, example: full },
+      },
+      mustMention: [N, T, Ka, Kb, 1, 2, 3],
+      extra: [],
+      phrases: ["стереть произвольные три числа", "отлична от каждой из сумм"],
     },
   })
 }
