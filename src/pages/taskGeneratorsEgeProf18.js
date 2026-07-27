@@ -7823,6 +7823,97 @@ export function t18MinLinPlusAbsQuad() {
   })
 }
 
+// ── Точки экстремума кусочно-квадратичной функции (эталон #90, #91) ──────────
+// Второй кирпич к quadMin/pwExtreme: локальные экстремумы непрерывной кусочно-квадратичной
+// функции бывают только двух сортов — вершина параболы СТРОГО внутри своего куска и точка
+// стыка, в которой производная меняет знак. Всё считается точно: знак односторонней
+// производной в точке стыка — это знак 2c₂x₀ + c₁, а если он нулевой, то знак определяется
+// направлением ветвей (слева от стыка производная ведёт себя как −2c₂ε).
+function countExtrema(pieces) {
+  let total = 0, maxima = 0
+  for (const pc of pieces) {
+    const c2 = pc.P[2] || R0, c1 = pc.P[1] || R0
+    if (Rzero(c2)) continue
+    const v = Rdiv(Rneg(c1), Rmul(R(2), c2))
+    const inLo = pc.lo === "-inf" || Rcmp(v, pc.lo) > 0
+    const inHi = pc.hi === "+inf" || Rcmp(v, pc.hi) < 0
+    if (inLo && inHi) { total++; if (Rsign(c2) < 0) maxima++ }
+  }
+  for (let i = 0; i + 1 < pieces.length; i++) {
+    const x0 = pieces[i].hi
+    const sgn = (P, side) => {
+      const c2 = P[2] || R0, c1 = P[1] || R0
+      const d = Radd(Rmul(Rmul(R(2), c2), x0), c1)
+      return Rzero(d) ? (side === "left" ? -Rsign(c2) : Rsign(c2)) : Rsign(d)
+    }
+    const sL = sgn(pieces[i].P, "left"), sR = sgn(pieces[i + 1].P, "right")
+    if (sL !== 0 && sR !== 0 && sL !== sR) { total++; if (sL > 0) maxima++ }
+  }
+  return { total, maxima }
+}
+
+// #90 и #91. f(x) = x² − c|x − a²| − kx — «более двух точек экстремума» / «есть точка максимума».
+// Справа от излома f = x² − (k+c)x + ca² (вершина (k+c)/2), слева f = x² − (k−c)x − ca²
+// (вершина (k−c)/2). Обе параболы ветвями вверх, поэтому ЕДИНСТВЕННЫЙ возможный максимум —
+// сама точка излома x = a², и она же добавляет третий экстремум. Чтобы границы ответа были
+// рациональными, берём (k−c)/2 = u² и (k+c)/2 = w², то есть k = u² + w², c = w² − u².
+function build90({ u, w }) {
+  const k = u * u + w * w, c = w * w - u * u
+  const pieces = (a) => {
+    const s = Rmul(a, a)
+    return [
+      { P: [Rneg(Rmul(R(c), s)), R(-(k - c)), R1], lo: "-inf", hi: s },
+      { P: [Rmul(R(c), s), R(-(k + c)), R1], lo: s, hi: "+inf" },
+    ]
+  }
+  const total = (a) => countExtrema(pieces(a)).total
+  const maxima = (a) => countExtrema(pieces(a)).maxima
+  const crit = [R0, R(u), R(-u), R(w), R(-w)]
+  return {
+    setTotal: assembleSet((a) => total(a) >= 3, crit),
+    setMax: assembleSet((a) => maxima(a) >= 1, crit),
+    total, maxima, k, c,
+  }
+}
+const T90 = []
+for (const u of [0, 1, 2, 3]) for (const w of [1, 2, 3, 4, 5]) {
+  if (w <= u) continue
+  const r = build90({ u, w })
+  if (r && tidySet(r.setTotal, 3) && tidySet(r.setMax, 3)) T90.push({ u, w })
+}
+function item90(par, kind) {
+  const { u, w } = par
+  const { setTotal, setMax, total, maxima, k, c } = build90(par)
+  const set = kind === "total" ? setTotal : setMax
+  const aRange = spanRange(set)
+  const f = `x${SUP[2]} ${MINUS} ${c === 1 ? "" : c}|x ${MINUS} a${SUP[2]}| ${MINUS} ${k === 1 ? "" : k}x`
+  return item({
+    text: `Найдите все значения a, при каждом из которых функция\n\nf(x) = ${f}\n\n`
+      + (kind === "total" ? "имеет более двух точек экстремума." : "имеет хотя бы одну точку максимума."),
+    set,
+    solution: `При x ≥ a${SUP[2]} модуль раскрывается со знаком «+»: f(x) = x${SUP[2]} ${MINUS} ${k + c}x + ${c === 1 ? "" : c}a${SUP[2]} — парабола ветвями вверх с вершиной x = ${w * w}.\n`
+      + `При x ≤ a${SUP[2]} получаем f(x) = x${SUP[2]} ${MINUS} ${k - c === 1 ? "" : k - c}x ${MINUS} ${c === 1 ? "" : c}a${SUP[2]} — вершина x = ${u * u}.\n`
+      + `Вершина считается точкой экстремума, только если лежит СТРОГО внутри своего куска: ${u * u} < a${SUP[2]} для левой и ${w * w} > a${SUP[2]} для правой.\n`
+      + `В самой точке излома x = a${SUP[2]} производная слева равна 2a${SUP[2]} ${MINUS} ${k - c}, справа — 2a${SUP[2]} ${MINUS} ${k + c}; знак меняется (с «+» на «−», то есть это МАКСИМУМ) ровно при ${u * u} < a${SUP[2]} < ${w * w}.\n`
+      + `Обе параболы направлены ветвями вверх, поэтому других максимумов быть не может, а третий экстремум появляется вместе с изломом: ${u} < |a| < ${w}.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: kind === "total" ? { type: "atLeast", n: 3 } : { type: "exists" },
+    solve: (a) => (kind === "total" ? total(a) : maxima(a)),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => a * a, label: "излом x = a²" },
+        { f: () => u * u, dash: true, label: `вершина ${u * u}` },
+        { f: () => w * w, dash: true, label: `вершина ${w * w}` },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -2, xMax: w * w + 4, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+export function t18ExtremaCountAbs() { return item90(pick(T90), "total") }
+export function t18MaxPointAbs() { return item90(pick(T90), "max") }
+
 // =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
@@ -7998,6 +8089,8 @@ export const META18 = [
     ["max-abs-square", "наибольшее значение |x−a| − kx² не меньше C", t18MaxAbsMinusSquare],
     ["min-quad-outside", "наименьшее значение (kx−a)²+pa+q на |x| ≥ r", t18MinQuadOutside],
     ["min-lin-absquad", "наименьшее значение (αa+β)x + γa+δ + |x²−px+q|", t18MinLinPlusAbsQuad],
+    ["extrema-count", "f(x) = x² − c|x−a²| − kx — более двух точек экстремума", t18ExtremaCountAbs],
+    ["max-point-abs", "тот же типаж: есть хотя бы одна точка максимума", t18MaxPointAbs],
   ]],
 ]
 
