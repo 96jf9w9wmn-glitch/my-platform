@@ -4,6 +4,7 @@ import { supabase } from "../supabase"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
 import WeakTypes from "../components/WeakTypes"
+import ReportComposer from "../components/ReportComposer"
 import { parseLocalDate, isLessonConducted, getInitials, formatPhone } from "../utils"
 
 const MESSENGER_LABELS = {
@@ -539,6 +540,8 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
       {/* Правая колонка: занятия + оплата */}
       <div className="flex flex-col gap-3">
         {/* Блок появляется, только когда по ученику накопились попытки */}
+        <ReportComposer student={student} />
+
         <WeakTypes studentId={student.id} studentName={student.name} />
 
         <div className="glass p-4">
