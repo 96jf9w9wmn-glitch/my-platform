@@ -5337,6 +5337,359 @@ export function t18SymAbsShiftPair() {
   })
 }
 
+
+// =============================================================================
+// РАЗДЕЛ M. Квадрат по замене, расстояние между корнями (эталон #102–#115)
+// =============================================================================
+
+// #102. (x² + kx + m + 2a²)² = 8a²(x² + kx + m) — «ровно один корень».
+// Обозначив s = x² + kx + m, получаем (s + 2a²)² = 8a²s ⟺ s² − 4a²s + 4a⁴ = 0 ⟺ (s − 2a²)² = 0.
+// Значит всё сводится к x² + kx + m − 2a² = 0 с дискриминантом k² − 4m + 8a².
+// Наборы взяты так, что 4m − k² = 8w²: тогда единственный корень ровно при a = ±w.
+function build102({ k, m }) {
+  const w2 = (4 * m - k * k) / 8
+  const w = Math.round(Math.sqrt(w2))
+  if (w * w !== w2 || w === 0) return null
+  const solve = (a) => countRoots([Rsub(R(m), Rmul(R(2), Rmul(a, a))), R(k), R1], "-inf", "+inf", false, false)
+  return { set: assembleSet((a) => solve(a) === 1, [R0, R(w), R(-w)]), solve, w }
+}
+const T102 = []
+for (const j of [0, 1, 2, 3]) for (const w of [1, 2, 3]) T102.push({ k: 2 * j, m: j * j + 2 * w * w })
+export function t18SubstSquareOne() {
+  const par = pick(T102), { k, m } = par
+  const { set, solve, w } = build102(par)
+  const S = `x${SUP[2]}${term(k, "x")} + ${m}`
+  return item({
+    text: `${HEAD_A}\n\n(${S} + 2a${SUP[2]})${SUP[2]} = 8a${SUP[2]}(${S})\n\nимеет ровно один корень.`,
+    set,
+    solution: `Обозначим s = ${S}. Уравнение принимает вид (s + 2a${SUP[2]})${SUP[2]} = 8a${SUP[2]}s, то есть s${SUP[2]} ${MINUS} 4a${SUP[2]}s + 4a${SUP[4]} = 0, или (s ${MINUS} 2a${SUP[2]})${SUP[2]} = 0.\n`
+      + `Значит s = 2a${SUP[2]}, то есть ${S} ${MINUS} 2a${SUP[2]} = 0 — квадратное уравнение с дискриминантом ${k * k} ${MINUS} ${4 * m} + 8a${SUP[2]} = 8a${SUP[2]} ${MINUS} ${4 * m - k * k}.\n`
+      + `Ровно один корень — когда дискриминант равен нулю: a${SUP[2]} = ${w * w}.\nОтвет: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [{ f: () => -k / 2, dash: true, label: "вершина параболы" }, { f: (a) => (8 * a * a - (4 * m - k * k) >= 0 ? -k / 2 + Math.sqrt(8 * a * a - (4 * m - k * k)) / 2 : null), label: "корни" }],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -k - 6, xMax: 6, aMin: -w - 4, aMax: w + 4,
+    },
+  })
+}
+
+// #103. x² − 2px + (p² + m) + a² − 2ka = 0 — «модуль разности корней наибольший».
+// Дискриминант равен −(a² − 2ka + m) = (k² − m) − (a − k)², то есть |x₁ − x₂| = 2√D
+// максимален ровно при a = k. Решатель сравнивает 4D с квадратом заявленного максимума —
+// это независимая проверка: если бы максимум был назван неверно, множество не совпало бы.
+function build103({ k, m }) {                             // p — сдвиг по x, на ответ не влияет
+  if (k * k - m <= 0) return null
+  const M2 = 4 * (k * k - m)                               // квадрат наибольшего значения |x₁ − x₂|
+  const D = (a) => Rneg(Radd(Rsub(Rmul(a, a), Rmul(R(2 * k), a)), R(m)))
+  const solve = (a) => (Rsign(D(a)) >= 0 && Rcmp(Rmul(R(4), D(a)), R(M2)) >= 0 ? 1 : 0)
+  return { set: assembleSet((a) => solve(a) === 1, [R(k)]), solve, M2 }
+}
+const T103 = []
+for (const p of [2, 3, 4, 5]) for (const k of [1, 2, 3, 4]) for (const m of [-3, -2, 0, 3]) {
+  if (k * k - m <= 0 || p * p + m <= 0) continue
+  T103.push({ p, k, m })
+}
+export function t18RootGapMax() {
+  const par = pick(T103), { p, k, m } = par
+  const { set, solve, M2 } = build103(par)
+  const mx = Math.round(Math.sqrt(M2)) ** 2 === M2 ? `${Math.round(Math.sqrt(M2))}` : `2⟦r:${k * k - m}⟧`
+  return item({
+    text: `Найдите все значения a, при каждом из которых модуль разности корней уравнения\n\n`
+      + `x${SUP[2]} ${MINUS} ${2 * p}x + ${p * p + m} + a${SUP[2]} ${MINUS} ${2 * k}a = 0\n\nпринимает наибольшее значение.`,
+    set,
+    solution: `Дискриминант уравнения равен ${p * p} ${MINUS} (${p * p + m} + a${SUP[2]} ${MINUS} ${2 * k}a) = ${MINUS}(a${SUP[2]}${term(-2 * k, "a")}${term(m, "")}) = ${k * k - m} ${MINUS} (a ${MINUS} ${k})${SUP[2]}.\n`
+      + `Корни существуют, когда он неотрицателен, а |x₁ ${MINUS} x₂| = ⟦r:D⟧, поэтому модуль разности тем больше, чем больше D.\n`
+      + `Наибольшее значение D равно ${k * k - m} и достигается ровно при a = ${k}; тогда |x₁ ${MINUS} x₂| = ${mx}.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [{ f: () => p, dash: true, label: "середина между корнями" },
+        { f: (a) => (k * k - m - (a - k) * (a - k) >= 0 ? p + Math.sqrt(k * k - m - (a - k) * (a - k)) : null), label: "корни" },
+        { f: (a) => (k * k - m - (a - k) * (a - k) >= 0 ? p - Math.sqrt(k * k - m - (a - k) * (a - k)) : null) }],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: p - 6, xMax: p + 6, aMin: k - 8, aMax: k + 8,
+    },
+  })
+}
+
+// #104. w²(ax − kx²) + 1/(ax − kx²) + 2w = 0 — «ровно два корня на [L; R)».
+// Обозначив t = ax − kx², получаем w²t² + 2wt + 1 = 0 ⟺ (wt + 1)² = 0, то есть t = −1/w.
+// Остаётся wkx² − wax − 1 = 0; произведение корней отрицательно, значит один корень
+// отрицателен, другой положителен. Число корней на полуинтервале Штурм считает точно.
+function build104({ w, kk, L, Rr }) {
+  const solve = (a) => countRoots([R(-1), Rmul(R(-w), a), R(w * kk)], R(L), R(Rr), true, false)
+  const crit = [R(w * kk * L * L - 1, w * L), R(w * kk * Rr * Rr - 1, w * Rr)]
+  return { set: assembleSet((a) => solve(a) === 2, crit), solve }
+}
+const T104 = []
+for (const w of [1, 2, 3]) for (const kk of [1, 2]) for (const [L, Rr] of [[-1, 1], [-1, 2], [-2, 1], [-2, 2]]) {
+  const res = build104({ w, kk, L, Rr })
+  const b = setBounds(res.set)
+  if (!b.length || b.some((x) => x.d > 12n)) continue
+  T104.push({ w, kk, L, Rr })
+}
+export function t18SubstReciprocalSeg() {
+  const par = pick(T104), { w, kk, L, Rr } = par
+  const { set, solve } = build104(par)
+  const T = `ax ${MINUS} ${kk === 1 ? "" : kk}x${SUP[2]}`
+  return item({
+    text: `${HEAD_A}\n\n${w * w === 1 ? "" : w * w}(${T}) + ${fT("1", T)} + ${2 * w} = 0\n\nимеет ровно два различных корня на промежутке [${nS(L)}; ${Rr}).`,
+    set,
+    solution: `Обозначим t = ${T} (он не равен нулю). Умножив на t, получаем ${w * w === 1 ? "" : w * w}t${SUP[2]} + ${2 * w}t + 1 = 0, то есть (${w === 1 ? "" : w}t + 1)${SUP[2]} = 0 и t = ${MINUS}${Rstr(R(1, w))}.\n`
+      + `Значит ${T} = ${MINUS}${Rstr(R(1, w))}, то есть ${w * kk === 1 ? "" : w * kk}x${SUP[2]} ${MINUS} ${w === 1 ? "" : w}ax ${MINUS} 1 = 0.\n`
+      + `Произведение корней равно ${MINUS}${Rstr(R(1, w * kk))} < 0, поэтому корни всегда существуют, различны и лежат по разные стороны от нуля.\n`
+      + `Оба корня попадают на [${nS(L)}; ${Rr}) ровно тогда, когда значения левой части на концах имеют нужные знаки: отсюда границы по a.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 2 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => (w * a + Math.sqrt(w * w * a * a + 4 * w * kk)) / (2 * w * kk), label: "больший корень" },
+        { f: (a) => (w * a - Math.sqrt(w * w * a * a + 4 * w * kk)) / (2 * w * kk), label: "меньший корень" },
+        { f: () => L, dash: true, label: "концы промежутка" }, { f: () => Rr, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: L - 2, xMax: Rr + 2, aMin: -6, aMax: 6,
+    },
+  })
+}
+
+// #106. ax² + 2(a + p)x + (a + q) = 0 — «два корня, расстояние между ними больше d».
+// Четверть дискриминанта равна (a + p)² − a(a + q) = (2p − q)a + p², а квадрат расстояния
+// между корнями — 4·(четверть дискриминанта)/a². Наборы подобраны так, что (2p − q)² + d²p²
+// — полный квадрат: тогда границы ответа рациональны.
+function build106({ p, q, d }) {
+  const solve = (a) => {
+    if (Rzero(a)) return 0
+    const D = Radd(Rmul(R(2 * p - q), a), R(p * p))
+    if (Rsign(D) <= 0) return 0
+    return Rcmp(Rmul(R(4), D), Rmul(R(d * d), Rmul(a, a))) > 0 ? 1 : 0
+  }
+  const crit = [R0]
+  const { roots, allRational } = ratRoots([R(4 * p * p), R(4 * (2 * p - q)), R(-d * d)])
+  if (!allRational) return null
+  crit.push(...roots)
+  if (2 * p - q !== 0) crit.push(R(-p * p, 2 * p - q))
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+const T106 = []
+for (const [p, q, d] of [[3, 2, 1], [4, 5, 1], [6, 4, 1], [8, 10, 1], [12, 19, 1], [3, 6, 2], [3, -2, 2], [4, 8, 2], [4, 2, 2], [6, 12, 2], [6, 4, 3]]) {
+  const res = build106({ p, q, d })
+  if (!res || !res.set.intervals.length) continue
+  const b = setBounds(res.set)
+  if (!b.length || b.some((x) => x.d > 12n || (x.n < 0n ? -x.n : x.n) > 99n)) continue
+  T106.push({ p, q, d })
+}
+export function t18RootGapGreater() {
+  const par = pick(T106), { p, q, d } = par
+  const { set, solve } = build106(par)
+  return item({
+    text: `${HEAD_A}\n\nax${SUP[2]} + 2(a + ${p})x + a + ${nS(q)} = 0\n\nимеет два различных корня, расстояние между которыми больше ${d}.`,
+    set,
+    solution: `При a = 0 уравнение линейное, поэтому a ≠ 0. Четверть дискриминанта равна (a + ${p})${SUP[2]} ${MINUS} a(a + ${nS(q)}) = ${nS(2 * p - q)}a + ${p * p}.\n`
+      + `Квадрат расстояния между корнями равен ${fT(`4(${nS(2 * p - q)}a + ${p * p})`, `a${SUP[2]}`)}, и условие «больше ${d}» превращается в 4(${nS(2 * p - q)}a + ${p * p}) > ${d * d === 1 ? "" : d * d}a${SUP[2]} `
+      + `(она же автоматически даёт положительность дискриминанта).\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [{ f: (a) => (a !== 0 ? -(a + p) / a : null), label: "середина между корнями" }],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -8, xMax: 8, aMin: Rnum(setBounds(set)[0]) - 4, aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 4,
+    },
+  })
+}
+
+// #107. (ax² − 2x)² + (ca² − a + c₀)(ax² − 2x) − ca²(a − c₀) = 0 — «ровно два решения».
+// Левая часть — квадратный трёхчлен по t = ax² − 2x, который РАСКЛАДЫВАЕТСЯ:
+// (t + ca²)(t − a + c₀) = 0. Значит ax² − 2x + ca² = 0 или ax² − 2x − a + c₀ = 0.
+// Число различных корней объединения считается точно: n₁ + n₂ − (число общих корней),
+// а общие корни — это корни НОД двух многочленов.
+function build107({ c, c0 }) {
+  const solve = (a) => {
+    const P1 = [Rmul(R(c), Rmul(a, a)), R(-2), a]
+    const P2 = [Rsub(R(c0), a), R(-2), a]
+    const cnt = (P) => countRoots(P, "-inf", "+inf", false, false)
+    const g = pGcd(pTrim(P1), pTrim(P2))
+    return cnt(P1) + cnt(P2) - (pDeg(g) > 0 ? cnt(g) : 0)
+  }
+  const crit = [R0, R(c0 > 0 ? 1 : -1)]
+  const w = Math.round(Math.cbrt(c))
+  if (w * w * w !== c) return null
+  crit.push(R(1, w))
+  const { roots, allRational } = ratRoots([R(-c0), R1, R(c)])   // ca² + a − c₀ = 0: уравнения совпали
+  if (!allRational) return null
+  crit.push(...roots)
+  return { set: assembleSet((a) => solve(a) === 2, crit), solve }
+}
+const T107 = []
+for (const c of [1, 8, 27]) for (const c0 of [2, -2]) {
+  const res = build107({ c, c0 })
+  if (!res || !res.set.intervals.length) continue
+  T107.push({ c, c0 })
+}
+export function t18SubstFactorTwo() {
+  const par = pick(T107), { c, c0 } = par
+  const { set, solve } = build107(par)
+  const T = `ax${SUP[2]} ${MINUS} 2x`
+  return item({
+    text: `${HEAD_A}\n\n(${T})${SUP[2]} + (${c === 1 ? "" : c}a${SUP[2]} ${MINUS} a${term(c0, "")})(${T}) ${MINUS} ${c === 1 ? "" : c}a${SUP[2]}(a${term(-c0, "")}) = 0\n\nимеет ровно два различных решения.`,
+    set,
+    solution: `Обозначим t = ${T}. Тогда левая часть — квадратный трёхчлен по t, который раскладывается на множители:\n`
+      + `t${SUP[2]} + (${c === 1 ? "" : c}a${SUP[2]} ${MINUS} a${term(c0, "")})t ${MINUS} ${c === 1 ? "" : c}a${SUP[2]}(a${term(-c0, "")}) = (t + ${c === 1 ? "" : c}a${SUP[2]})(t ${MINUS} a${term(c0, "")}) = 0.\n`
+      + `Значит ${T} = ${MINUS}${c === 1 ? "" : c}a${SUP[2]} или ${T} = a${term(-c0, "")}, то есть\n`
+      + `ax${SUP[2]} ${MINUS} 2x + ${c === 1 ? "" : c}a${SUP[2]} = 0 и ax${SUP[2]} ${MINUS} 2x ${MINUS} a${term(c0, "")} = 0.\n`
+      + `У первого четверть дискриминанта равна 1 ${MINUS} ${c === 1 ? "" : c}a${SUP[3]}, у второго — (a${term(-c0 / 2, "")})${SUP[2]} ≥ 0, то есть второе уравнение корни имеет всегда. `
+      + `Ровно два различных корня получаются, когда первое уравнение корней не имеет либо когда оба уравнения совпадают.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 2 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [{ f: (a) => (a !== 0 ? 1 / a : null), dash: true, label: "вершина парабол" }],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -6, xMax: 6, aMin: -4, aMax: 4,
+    },
+  })
+}
+
+// #108. (x + 1/(x − a))² − (a + w)(x + 1/(x − a)) + 2a(w − a) = 0 — «ровно четыре решения».
+// Трёхчлен по u = x + 1/(x − a) раскладывается: (u − 2a)(u − (w − a)) = 0.
+// Равенство x + 1/(x − a) = c равносильно (x − a)(x − c) + 1 = 0, то есть
+// x² − (a + c)x + ac + 1 = 0 (x = a корнем быть не может — подстановка даёт 1 = 0).
+function build108({ w }) {
+  const quad = (c, a) => [Radd(Rmul(a, c), R1), Rneg(Radd(a, c)), R1]
+  const solve = (a) => {
+    const P1 = quad(Rmul(R(2), a), a), P2 = quad(Rsub(R(w), a), a)
+    const cnt = (P) => countRoots(P, "-inf", "+inf", false, false)
+    const g = pGcd(P1, P2)
+    return cnt(P1) + cnt(P2) - (pDeg(g) > 0 ? cnt(g) : 0)
+  }
+  const crit = [R(2), R(-2), R(w - 2, 2), R(w + 2, 2), R(w, 3)]
+  return { set: assembleSet((a) => solve(a) === 4, crit), solve }
+}
+const T108 = [6, 7, 8, 9, 10, 11, 12].map((w) => ({ w }))
+export function t18SubstReciprocalFour() {
+  const par = pick(T108), { w } = par
+  const { set, solve } = build108(par)
+  const U = `x + ${fT("1", `x ${MINUS} a`)}`
+  return item({
+    text: `${HEAD_A}\n\n(${U})${SUP[2]} ${MINUS} (a + ${w})(${U}) + 2a(${w} ${MINUS} a) = 0\n\nимеет ровно четыре различных решения.`,
+    set,
+    solution: `Обозначим u = ${U}. Трёхчлен по u раскладывается: u${SUP[2]} ${MINUS} (a + ${w})u + 2a(${w} ${MINUS} a) = (u ${MINUS} 2a)(u ${MINUS} ${w} + a) = 0.\n`
+      + `Равенство ${U} = c равносильно (x ${MINUS} a)(x ${MINUS} c) + 1 = 0, то есть x${SUP[2]} ${MINUS} (a + c)x + ac + 1 = 0 (значение x = a корнем быть не может: подстановка даёт 1 = 0).\n`
+      + `При c = 2a получаем x${SUP[2]} ${MINUS} 3ax + 2a${SUP[2]} + 1 = 0 с дискриминантом a${SUP[2]} ${MINUS} 4, при c = ${w} ${MINUS} a — x${SUP[2]} ${MINUS} ${w}x + a(${w} ${MINUS} a) + 1 = 0 с дискриминантом (2a ${MINUS} ${w})${SUP[2]} ${MINUS} 4.\n`
+      + `Четыре различных решения — когда оба дискриминанта положительны и уравнения не совпали (совпадение происходит при a = ${Rstr(R(w, 3))}).\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 4 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [{ f: (a) => a, dash: true, label: "выколотое x = a" }, { f: (a) => 1.5 * a, label: "середина первой пары" }],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -8, xMax: 12, aMin: -6, aMax: w + 4,
+    },
+  })
+}
+
+// #109. ((a − 1)x² + bx)² − 2((a − 1)x² + bx) + 1 − a² = 0 — «ровно два решения».
+// По t = (a − 1)x² + bx: (t − 1)² = a², то есть t = 1 + a или t = 1 − a.
+// Дискриминанты получившихся уравнений равны b² + 4a² − 4 и b² − 4(a − 1)².
+function build109({ b }) {
+  const solve = (a) => {
+    const A = Rsub(a, R1)
+    const P1 = [Rneg(Radd(R1, a)), R(b), A], P2 = [Rsub(a, R1), R(b), A]
+    const cnt = (P) => countRoots(P, "-inf", "+inf", false, false)
+    const g = pGcd(pTrim(P1), pTrim(P2))
+    return cnt(P1) + cnt(P2) - (pDeg(g) > 0 ? cnt(g) : 0)
+  }
+  const crit = [R0, R1, R(2 - b, 2), R(2 + b, 2)]
+  return { set: assembleSet((a) => solve(a) === 2, crit), solve }
+}
+const T109 = [2, 3, 4, 5, 6].map((b) => ({ b }))
+export function t18SubstShiftTwo() {
+  const par = pick(T109), { b } = par
+  const { set, solve } = build109(par)
+  const T = `(a ${MINUS} 1)x${SUP[2]} + ${b === 1 ? "" : b}x`
+  return item({
+    text: `${HEAD_A}\n\n(${T})${SUP[2]} ${MINUS} 2(${T}) + 1 ${MINUS} a${SUP[2]} = 0\n\nимеет ровно два различных решения.`,
+    set,
+    solution: `Обозначим t = ${T}. Тогда t${SUP[2]} ${MINUS} 2t + 1 = a${SUP[2]}, то есть (t ${MINUS} 1)${SUP[2]} = a${SUP[2]} и t = 1 + a или t = 1 ${MINUS} a.\n`
+      + `Первое даёт (a ${MINUS} 1)x${SUP[2]} + ${b === 1 ? "" : b}x ${MINUS} 1 ${MINUS} a = 0 с дискриминантом ${b * b} + 4(a ${MINUS} 1)(a + 1) = ${b * b} + 4a${SUP[2]} ${MINUS} 4, `
+      + `второе — (a ${MINUS} 1)x${SUP[2]} + ${b === 1 ? "" : b}x + a ${MINUS} 1 = 0 с дискриминантом ${b * b} ${MINUS} 4(a ${MINUS} 1)${SUP[2]}.\n`
+      + `При a = 1 оба уравнения линейные и дают ровно два корня; при a = 0 они совпадают.\n`
+      + `Ровно два различных решения — когда второе уравнение корней не имеет, то есть |a ${MINUS} 1| > ${Rstr(R(b, 2))}, плюс отдельные значения a = 0 и a = 1.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 2 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [{ f: (a) => (a !== 1 ? -b / (2 * (a - 1)) : null), label: "вершина парабол" }],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -8, xMax: 8, aMin: Rnum(setBounds(set)[0]) - 4, aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 4,
+    },
+  })
+}
+
+// #114. |x² − 2ax + c| = |ka − x² − 2bx − d| — «более двух различных корней».
+// Равенство модулей распадается: A = B даёт x² + (b − a)x + (c + d − ka)/2 = 0,
+// а A = −B — линейное уравнение, которое при c − d = kb превращается в x = k/2
+// (не зависит от a!), а при a = −b становится тождеством: тогда решений бесконечно много.
+// Условие «k² + 4d — полный квадрат» делает границы ответа рациональными.
+function build114({ b, k, d }) {
+  const c = d + k * b
+  const P = (a) => [Rdiv(Rsub(R(c + d), Rmul(R(k), a)), R(2)), Rsub(R(b), a), R1]
+  const solve = (a) => {
+    if (Rcmp(a, R(-b)) === 0) return 99                    // A ≡ −B: подходит любое x
+    let n = countRoots(P(a), "-inf", "+inf", false, false) + 1
+    if (Rzero(pEval(P(a), R(k, 2)))) n -= 1                // x = k/2 уже среди корней
+    return n
+  }
+  const crit = [R(-b), R(k * k + 2 * k * b + 2 * c + 2 * d, 4 * k)]
+  const { roots, allRational } = ratRoots([R(b * b - 2 * c - 2 * d), R(2 * k - 2 * b), R1])
+  if (!allRational) return null
+  crit.push(...roots)
+  return { set: assembleSet((a) => solve(a) >= 3, crit), solve, c }
+}
+const T114 = []
+for (const [k, d] of [[2, 3], [2, 8], [2, 15], [4, 5], [4, 12], [4, 21], [6, 7], [6, 16], [6, 27], [8, 9], [8, 20]]) {
+  for (const b of [1, 2, 3]) {
+    const res = build114({ b, k, d })
+    if (!res || res.set.intervals.length < 2) continue
+    const bd = setBounds(res.set)
+    if (!bd.length || bd.some((x) => x.d > 12n || (x.n < 0n ? -x.n : x.n) > 99n)) continue
+    T114.push({ b, k, d })
+  }
+}
+export function t18AbsEqAbsMoreTwo() {
+  const par = pick(T114), { b, k, d } = par
+  const { set, solve, c } = build114(par)
+  return item({
+    text: `${HEAD_A}\n\n|x${SUP[2]} ${MINUS} 2ax + ${c}| = |${k}a ${MINUS} x${SUP[2]} ${MINUS} ${2 * b === 1 ? "" : 2 * b}x ${MINUS} ${d}|\n\nимеет более двух различных корней.`,
+    set,
+    solution: `Обозначим A = x${SUP[2]} ${MINUS} 2ax + ${c} и B = ${k}a ${MINUS} x${SUP[2]} ${MINUS} ${2 * b === 1 ? "" : 2 * b}x ${MINUS} ${d}. Равенство |A| = |B| означает A = B или A = ${MINUS}B.\n`
+      + `Случай A = ${MINUS}B: квадраты сокращаются, остаётся ${MINUS}2ax + ${c} = ${2 * b === 1 ? "" : 2 * b}x ${MINUS} ${k}a + ${d}, то есть 2(a + ${b})x = ${k}(a + ${b}). При a ≠ ${MINUS}${b} отсюда x = ${Rstr(R(k, 2))} — один и тот же корень при всех a, а при a = ${MINUS}${b} равенство выполняется тождественно (решений бесконечно много).\n`
+      + `Случай A = B: 2x${SUP[2]} + ${2 * b === 1 ? "2" : 2 * b}x ${MINUS} 2ax + ${c} + ${d} ${MINUS} ${k}a = 0, то есть x${SUP[2]} + (${b} ${MINUS} a)x + ${fT(`${c + d} ${MINUS} ${k}a`, "2")} = 0.\n`
+      + `Больше двух корней — значит это квадратное уравнение должно давать два корня, отличных от ${Rstr(R(k, 2))}.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "atLeast", n: 3 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [{ f: () => k / 2, dash: true, label: `корень x = ${Rstr(R(k, 2))}` }, { f: (a) => (a - b) / 2, label: "вершина параболы" }],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -10, xMax: 10, aMin: Rnum(setBounds(set)[0]) - 4, aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 4,
+    },
+  })
+}
+
 // =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
@@ -5415,6 +5768,16 @@ export const META18 = [
     ["sys-pencil-ybound", "ОДЗ по y, ровно три решения", t18SysPencilYBound],
     ["sys-pencil-horiz", "множитель √(y−yLo) добавляет горизонталь", t18SysPencilHoriz],
     ["sys-semi-parab", "{((√(A−x²)−y)(x²+py−q))/(d−x²) = 0; y = 1−2a}", t18SysSemiParab],
+  ]],
+  ["Квадрат по замене, расстояние между корнями", [
+    ["subst-square-one", "(x²+kx+m+2a²)² = 8a²(x²+kx+m) — ровно один корень", t18SubstSquareOne],
+    ["root-gap-max", "модуль разности корней наибольший", t18RootGapMax],
+    ["subst-recip-seg", "w²t + 1/t + 2w = 0, t = ax−kx² — два корня на [L;R)", t18SubstReciprocalSeg],
+    ["root-gap-greater", "ax²+2(a+p)x+a+q = 0 — расстояние между корнями больше d", t18RootGapGreater],
+    ["subst-factor-two", "(ax²−2x)² + … = 0 — трёхчлен по t раскладывается", t18SubstFactorTwo],
+    ["subst-recip-four", "(x+1/(x−a))² − (a+w)(…) + 2a(w−a) = 0 — ровно четыре", t18SubstReciprocalFour],
+    ["subst-shift-two", "((a−1)x²+bx)² − 2(…) + 1 − a² = 0 — ровно два", t18SubstShiftTwo],
+    ["abs-eq-abs-more", "|x²−2ax+c| = |ka−x²−2bx−d| — более двух корней", t18AbsEqAbsMoreTwo],
   ]],
   ["Окружность/фигура + семейство; два модуля", [
     ["sys-abs-2circles", "{(|x|−q)²+(y−h)²=ρ²; окружность радиуса a} — единственное", t18SysAbsTwoCircles],
