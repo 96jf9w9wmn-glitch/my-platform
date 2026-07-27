@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
 import AddStudentModal from "../components/AddStudentModal"
 import Icon from "../components/Icon"
+import MorphIcon from "../components/MorphIcon"
 import FormulaBackdrop from "../components/FormulaBackdrop"
 import StudentProfile from "./StudentProfile"
 import { supabase } from "../supabase"
@@ -195,7 +196,8 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
             {invite.link}
           </div>
           <div className="flex flex-wrap gap-2 mt-3">
-            <button onClick={copyInvite} className="press-fill px-3 py-2 text-sm rounded-xl bg-blue-600 text-white">
+            <button onClick={copyInvite} className="press-fill px-3 py-2 text-sm rounded-xl bg-blue-600 text-white flex items-center gap-1.5">
+              <MorphIcon from="clipboard" size={14} active={copied} />
               {copied ? "Скопировано" : "Скопировать текст"}
             </button>
             <a

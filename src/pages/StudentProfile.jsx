@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import Icon from "../components/Icon"
+import MorphIcon from "../components/MorphIcon"
 import WeakTypes from "../components/WeakTypes"
 import { parseLocalDate, isLessonConducted, getInitials, formatPhone } from "../utils"
 
@@ -446,8 +447,9 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
                   </code>
                   <button
                     onClick={() => copyParentCode(student.parent_code)}
-                    className={`text-xs transition-colors ${copiedCode ? "text-green-500" : "text-blue-500 hover:text-blue-700"}`}
+                    className={`text-xs flex items-center gap-1.5 transition-colors ${copiedCode ? "text-green-500" : "text-blue-500 hover:text-blue-700"}`}
                   >
+                    <MorphIcon from="clipboard" size={13} active={copiedCode} />
                     {copiedCode ? "Скопировано!" : "Копировать"}
                   </button>
                 </>

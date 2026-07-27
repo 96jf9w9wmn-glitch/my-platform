@@ -4,6 +4,7 @@ import { supabase } from "./supabase"
 import Sidebar from "./components/Sidebar"
 import NavIcon from "./components/NavIcon"
 import Icon from "./components/Icon"
+import MorphIcon from "./components/MorphIcon"
 import Students from "./pages/Students"
 import Payment from "./pages/Payment"
 import Auth from "./pages/Auth"
@@ -185,7 +186,7 @@ function NotificationBell({ userId, onNavigate }) {
         className="relative p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
       >
         <span key={ringKey} className={ringKey > 0 ? "bell-ringing" : "inline-flex"}>
-          <Icon name="bell" size={16} />
+          <MorphIcon from="bell" to="bell-ring" size={16} active={unread > 0} rotate toClassName="text-orange-500" />
         </span>
         {unread > 0 && (
           <span className="badge-pulse absolute -top-1.5 -right-1.5 min-w-[16px] h-[16px] px-1 bg-red-500 text-white text-[10px] font-semibold leading-none rounded-full flex items-center justify-center">

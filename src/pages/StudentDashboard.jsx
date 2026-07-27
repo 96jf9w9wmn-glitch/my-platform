@@ -3,6 +3,7 @@ import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import Icon from "../components/Icon"
+import MorphIcon from "../components/MorphIcon"
 import NavIcon from "../components/NavIcon"
 import StudentSidebar from "../components/StudentSidebar"
 import FormulaBackdrop from "../components/FormulaBackdrop"
@@ -907,8 +908,9 @@ function CopyCodeBlock({ code }) {
       </code>
       <button
         onClick={copy}
-        className={`text-xs flex-shrink-0 transition-colors ${copied ? "text-green-500" : "text-blue-500 hover:text-blue-700"}`}
+        className={`text-xs flex-shrink-0 flex items-center gap-1.5 transition-colors ${copied ? "text-green-500" : "text-blue-500 hover:text-blue-700"}`}
       >
+        <MorphIcon from="clipboard" size={13} active={copied} />
         {copied ? "Скопировано!" : "Копировать"}
       </button>
     </div>
@@ -1002,7 +1004,7 @@ function StudentNotificationBell({ userId, onNavigate }) {
         className="relative p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
       >
         <span key={ringKey} className={ringKey > 0 ? "bell-ringing" : "inline-flex"}>
-          <Icon name="bell" size={16} />
+          <MorphIcon from="bell" to="bell-ring" size={16} active={unread > 0} rotate toClassName="text-orange-500" />
         </span>
         {unread > 0 && (
           <span className="badge-pulse absolute -top-1.5 -right-1.5 min-w-[16px] h-[16px] px-1 bg-red-500 text-white text-[10px] font-semibold leading-none rounded-full flex items-center justify-center">
@@ -2070,7 +2072,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                   {variantDownloadUrl && (
                     <a href={variantDownloadUrl} download
                       className="flex-shrink-0 flex items-center gap-1.5 text-xs text-blue-600 border border-blue-200 rounded-lg px-3 py-1.5 hover:bg-blue-50 transition-colors active:scale-95">
-                      <Icon name="download" size={14} />Скачать PDF
+                      <MorphIcon from="download" size={14} />Скачать PDF
                     </a>
                   )}
                 </div>

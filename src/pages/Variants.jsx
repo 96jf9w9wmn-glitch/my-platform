@@ -3,6 +3,7 @@ import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import { plural, getInitials, defaultExamType, renderTaskMath, plainTaskMath } from "../utils"
 import Icon from "../components/Icon"
+import MorphIcon from "../components/MorphIcon"
 import { assembleFromBank, rerollTask, rerollModule, isModuleNumber, PART2_NUMBERS, makeAnswerChoices } from "./taskBankApi"
 import { generateVariantPdf } from "./variantPdf"
 
@@ -39,12 +40,14 @@ function ExtraPdfButtons({ variant }) {
       <div className="text-xs text-gray-400 mb-2">Печатные листы</div>
       <div className="flex flex-wrap gap-2">
         <button onClick={() => download("answers")} disabled={busy}
-          className="press-fill text-xs px-3 py-2 rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200 disabled:opacity-50">
+          className="press-fill text-xs px-3 py-2 rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200 disabled:opacity-50 flex items-center gap-1.5">
+          <MorphIcon from="download" size={13} />
           {busy === "answers" ? "Собираем…" : "С ответами"}
         </button>
         {hasSolutions && (
           <button onClick={() => download("solutions")} disabled={busy}
-            className="press-fill text-xs px-3 py-2 rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200 disabled:opacity-50">
+            className="press-fill text-xs px-3 py-2 rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200 disabled:opacity-50 flex items-center gap-1.5">
+            <MorphIcon from="download" size={13} />
             {busy === "solutions" ? "Собираем…" : "С решениями"}
           </button>
         )}
@@ -855,7 +858,7 @@ function Variants({ user, students = [], embedded = false, addOpen, onAddOpenCha
                         <span>{selectedVariant.file_url.split("/").pop() || "Файл варианта"}</span>
                       </div>
                       <div className="flex items-center gap-3">
-                        <a href={selectedVariant.file_url + (selectedVariant.file_url.includes("?") ? "&" : "?") + "download"} download className="text-xs text-blue-600 hover:opacity-70 transition-opacity flex items-center gap-1"><Icon name="download" size={12} />Скачать PDF</a>
+                        <a href={selectedVariant.file_url + (selectedVariant.file_url.includes("?") ? "&" : "?") + "download"} download className="text-xs text-blue-600 hover:opacity-70 transition-opacity flex items-center gap-1.5"><MorphIcon from="download" size={12} />Скачать PDF</a>
                         <a href={selectedVariant.file_url} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:opacity-70 transition-opacity">Открыть ↗</a>
                         <button onClick={() => setPreviewFile(selectedVariant.file_url)} className="text-xs text-gray-400 hover:text-gray-600">На весь экран</button>
                       </div>

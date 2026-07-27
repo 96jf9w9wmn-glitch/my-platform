@@ -6,6 +6,7 @@ import { renderTaskMath } from "../utils"
 import { downloadZip } from "./zipWriter"
 import { downloadXlsx } from "./xlsxWriter"
 import Icon from "../components/Icon"
+import MorphIcon from "../components/MorphIcon"
 
 // Временный раздел: быстрый предпросмотр сгенерированных заданий (проверить вид/опечатки).
 // Работает целиком на клиентских генераторах (taskGenerators.js), без Supabase.
@@ -147,8 +148,8 @@ function CodeBlock({ name, code, wide }) {
       <div className="flex items-center justify-between px-3 py-1.5 bg-gray-100 border-b border-gray-200">
         <span className="text-xs font-semibold text-gray-600">{name}</span>
         <button onClick={copy} title="Скопировать код"
-          className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-blue-600 transition active:scale-95">
-          <Icon name={copied ? "check" : "clipboard"} size={13} />
+          className="flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-blue-600 transition active:scale-95">
+          <MorphIcon from="clipboard" size={13} active={copied} />
           {copied ? "Скопировано" : "Копировать"}
         </button>
       </div>
