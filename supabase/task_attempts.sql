@@ -97,6 +97,12 @@ SELECT account_id,
   FROM public.task_attempts
  GROUP BY account_id, student_id, exam_type, number, gen_key;
 
+-- КРИТИЧНО: вьюха поверх RLS-таблицы по умолчанию исполняется правами ВЛАДЕЛЬЦА
+-- и обходит RLS — иначе любой с публичным anon-ключом прочитал бы сводку по всем
+-- ученикам сразу. security_invoker переводит её на права вызывающего, и тогда
+-- работает та же политика, что и на самой таблице.
+ALTER VIEW public.v_student_weak_types SET (security_invoker = on);
+
 -- Режим работы над ошибками у домашней работы.
 ALTER TABLE homework ADD COLUMN IF NOT EXISTS retry_policy text DEFAULT 'none';  -- 'none' | 'until_correct' | 'n_tries'
 ALTER TABLE homework ADD COLUMN IF NOT EXISTS retry_limit  smallint;
