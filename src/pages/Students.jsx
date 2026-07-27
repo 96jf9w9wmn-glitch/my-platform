@@ -50,6 +50,10 @@ const GOAL_STYLE = {
 }
 
 function Students({ students, setStudents, tutorId, onOpenBoard }) {
+  // Приглашение одной ссылкой: одноразовый токен на 7 дней (student_invites.sql).
+  const [invite, setInvite] = useState(null)      // { link, text }
+  const [inviting, setInviting] = useState(false)
+  const [copied, setCopied] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [selectedStudent, setSelectedStudent] = useState(null)
   const [returning, setReturning] = useState(false)
@@ -117,6 +121,41 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
     ? students.filter((s) => s.name?.toLowerCase().includes(query) || s.phone?.toLowerCase().includes(query))
     : students
 
+  async function createInvite() {
+    setInviting(true)
+    setCopied(false)
+    const { data, error } = await supabase
+      .from("student_invites")
+      .insert({ tutor_id: tutorId })
+      .select("token")
+      .single()
+    setInviting(false)
+    if (error || !data) {
+      alert(
+        /student_invites/.test(error?.message || "")
+          ? "Приглашения по ссылке пока недоступны: выполните supabase/student_invites.sql в Supabase → SQL Editor."
+          : "Не удалось создать приглашение: " + (error?.message || "")
+      )
+      return
+    }
+    const link = `${window.location.origin}/?invite=${data.token}`
+    setInvite({
+      link,
+      text: `Привет! Занимаемся через Precettore — регистрация по ссылке, займёт пару минут: ${link}`,
+    })
+  }
+
+  async function copyInvite() {
+    try {
+      await navigator.clipboard.writeText(invite.text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Safari без https/разрешения — покажем текст, чтобы можно было выделить руками
+      window.prompt("Скопируйте текст приглашения:", invite.text)
+    }
+  }
+
   return (
     <div
       className={"p-4 md:p-6" + (returning ? " view-back" : "")}
@@ -127,8 +166,55 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
           <h1 className="text-xl font-medium">Ученики</h1>
           <p className="text-xs text-gray-400 mt-0.5">{students.length} {plural(students.length, "ученик", "ученика", "учеников")}</p>
         </div>
-        <button onClick={() => setShowModal(true)} className="btn-primary px-3 py-2 text-sm">+ Добавить</button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={createInvite}
+            disabled={inviting}
+            className="press-fill px-3 py-2 text-sm rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200 bg-white/70 dark:bg-white/[0.08] disabled:opacity-50"
+          >
+            {inviting ? "Готовим…" : "Пригласить"}
+          </button>
+          <button onClick={() => setShowModal(true)} className="btn-primary px-3 py-2 text-sm">+ Добавить</button>
+        </div>
       </div>
+
+      {invite && (
+        <div className="glass rounded-2xl p-4 mb-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-gray-900">Ссылка-приглашение готова</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                Одноразовая, действует 7 дней. Ученик по ней зарегистрируется и сразу привяжется к вам.
+              </div>
+            </div>
+            <button onClick={() => setInvite(null)} className="text-gray-400 hover:text-gray-600 shrink-0">
+              <Icon name="x" size={16} />
+            </button>
+          </div>
+          <div className="mt-3 text-xs text-gray-500 dark:text-gray-400 break-all bg-black/[0.03] dark:bg-white/[0.06] rounded-xl px-3 py-2">
+            {invite.link}
+          </div>
+          <div className="flex flex-wrap gap-2 mt-3">
+            <button onClick={copyInvite} className="press-fill px-3 py-2 text-sm rounded-xl bg-blue-600 text-white">
+              {copied ? "Скопировано" : "Скопировать текст"}
+            </button>
+            <a
+              href={`https://wa.me/?text=${encodeURIComponent(invite.text)}`}
+              target="_blank" rel="noreferrer"
+              className="px-3 py-2 text-sm rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200"
+            >
+              WhatsApp
+            </a>
+            <a
+              href={`https://t.me/share/url?url=${encodeURIComponent(invite.link)}&text=${encodeURIComponent("Занимаемся через Precettore — регистрация по ссылке:")}`}
+              target="_blank" rel="noreferrer"
+              className="px-3 py-2 text-sm rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200"
+            >
+              Telegram
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* Pending requests */}
       {pending.length > 0 && (

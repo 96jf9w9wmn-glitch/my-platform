@@ -253,7 +253,26 @@ function App() {
   const [board, setBoard] = useState(null) // { roomId, title } — открытая доска ученика
   // Лендинг показывается первым для неавторизованного гостя; из него уходим
   // в Auth с предвыбранной ролью/режимом. null → показываем лендинг.
-  const [authIntent, setAuthIntent] = useState(null)
+  // Ссылка-приглашение от репетитора: ?invite=<token>. Токен запоминаем до
+  // конца регистрации и гасим сразу после входа ученика (см. эффект ниже).
+  const [authIntent, setAuthIntent] = useState(() => {
+    const t = new URLSearchParams(window.location.search).get("invite")
+    if (!t) return null
+    sessionStorage.setItem("pending_invite", t)
+    return { role: "student", mode: "register" }
+  })
+
+  // Приглашение по ссылке: как только ученик вошёл, обмениваем токен на код
+  // репетитора (RPC invite_claim гасит токен — второй раз ссылка не сработает).
+  // Сам код кладём в localStorage: кабинет подставит его в поле привязки.
+  useEffect(() => {
+    const token = sessionStorage.getItem("pending_invite")
+    if (!token || user?.role !== "student" || !user?.id) return
+    supabase.rpc("invite_claim", { p_token: token, p_account: user.id }).then(({ data }) => {
+      sessionStorage.removeItem("pending_invite")
+      if (data) localStorage.setItem("pending_tutor_code", data)
+    })
+  }, [user])
 
   function openBoard(studentId, title) {
     if (studentId) setBoard({ roomId: studentId, title })

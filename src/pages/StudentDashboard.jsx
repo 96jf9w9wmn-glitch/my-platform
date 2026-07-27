@@ -1104,7 +1104,9 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   const [part2Choices, setPart2Choices] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const [resultDialog, setResultDialog] = useState(null)
-  const [tutorCode, setTutorCode] = useState("")
+  // Пришёл по ссылке-приглашению — код репетитора уже получен в App.jsx,
+  // подставляем его в поле, ученику остаётся нажать «Привязать».
+  const [tutorCode, setTutorCode] = useState(() => localStorage.getItem("pending_tutor_code") || "")
   const [tutorLinking, setTutorLinking] = useState(false)
   const [tutorLinkError, setTutorLinkError] = useState("")
   const [tutorLinkSuccess, setTutorLinkSuccess] = useState("")
@@ -1474,6 +1476,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
         })
       }
 
+      localStorage.removeItem("pending_tutor_code")
       setTutorLinkSuccess("Подключено к репетитору " + tutorData.name + "!")
       setTutorCode("")
       if (onReloadStudents) onReloadStudents(tutorData.id)
