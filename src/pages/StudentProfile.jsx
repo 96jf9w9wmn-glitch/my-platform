@@ -537,7 +537,7 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
       {/* Правая колонка: занятия + оплата */}
       <div className="flex flex-col gap-3">
         {/* Блок появляется, только когда по ученику накопились попытки */}
-        <WeakTypes studentId={student.id} />
+        <WeakTypes studentId={student.id} studentName={student.name} />
 
         <div className="glass p-4">
           <h2 className="text-sm font-medium mb-3">Ближайшие занятия</h2>

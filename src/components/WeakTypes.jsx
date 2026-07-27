@@ -16,9 +16,13 @@ function tone(row) {
   return { cls: "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300", note: null }
 }
 
-function WeakTypes({ studentId }) {
+// Сколько задач кладём в тренировочный лист по одному типажу.
+const DRILL_SIZE = 8
+
+function WeakTypes({ studentId, studentName }) {
   const [rows, setRows] = useState([])
   const [labels, setLabels] = useState({})
+  const [drilling, setDrilling] = useState(null)
 
   useEffect(() => {
     if (!studentId) return
@@ -57,6 +61,37 @@ function WeakTypes({ studentId }) {
     return () => { alive = false }
   }, [rows])
 
+  // Лист-тренировка по одному типажу: тот же genKey, свежие числа. Ровно то,
+  // ради чего ключ типажа вообще появился — «ещё восемь таких же».
+  async function drill(row) {
+    if (!row.gen_key) return
+    setDrilling(row.gen_key)
+    try {
+      const [{ generateTask }, { generateVariantPdf }] = await Promise.all([
+        import("../pages/taskGenerators"),
+        import("../pages/variantPdf"),
+      ])
+      const tasks = []
+      for (let i = 0; i < DRILL_SIZE; i++) {
+        const t = generateTask(row.exam_type, row.number, row.gen_key)
+        if (t) tasks.push({ ...t, number: row.number })
+      }
+      if (!tasks.length) return
+      const title = `Тренировка · №${row.number}${labels[row.gen_key] ? " · " + labels[row.gen_key] : ""}` +
+        (studentName ? ` · ${studentName}` : "")
+      // Сразу с ответами: лист делается для репетитора, чтобы дать и проверить.
+      const blob = await generateVariantPdf({ title, examType: row.exam_type, tasks, mode: "answers" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = title + ".pdf"
+      a.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      setDrilling(null)
+    }
+  }
+
   if (!rows.length) return null
 
   return (
@@ -79,6 +114,16 @@ function WeakTypes({ studentId }) {
               <span className={`shrink-0 text-[11px] px-2 py-0.5 rounded-full font-medium ${t.cls}`}>
                 {r.attempts < MIN_ATTEMPTS ? "—" : `${r.accuracy}%`}
               </span>
+              {r.gen_key && (
+                <button
+                  onClick={() => drill(r)}
+                  disabled={drilling === r.gen_key}
+                  title={`Лист из ${DRILL_SIZE} задач этого же типажа, числа новые`}
+                  className="press-fill shrink-0 text-[11px] px-2.5 py-1.5 rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200 disabled:opacity-50"
+                >
+                  {drilling === r.gen_key ? "Собираем…" : "Тренировка"}
+                </button>
+              )}
             </div>
           )
         })}
