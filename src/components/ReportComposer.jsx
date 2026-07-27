@@ -78,9 +78,14 @@ function ReportComposer({ student }) {
     }
     // Уведомляем ученика: у родителя своего аккаунта в notifications нет,
     // а семья смотрит приложение с одного телефона чаще, чем два раза.
-    if (student.studentAccountId) {
+    // studentAccountId проставляется в App.jsx сопоставлением по телефону и
+    // бывает пустым — тогда ищем аккаунт сами, как это уже делает Homework.jsx.
+    const accountId = student.studentAccountId || (student.phone
+      ? (await supabase.from("student_accounts").select("id").eq("phone", student.phone).maybeSingle()).data?.id
+      : null)
+    if (accountId) {
       await supabase.from("notifications").insert({
-        user_id: student.studentAccountId,
+        user_id: accountId,
         title: "Отчёт о занятиях",
         body: "Репетитор отправил отчёт — он виден в кабинете родителя.",
       })
