@@ -47,6 +47,8 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
   const [title, setTitle] = useState(editingHw?.title || "")
   const [description, setDescription] = useState(editingHw?.description || "")
   const [deadline, setDeadline] = useState(editingHw?.deadline || "")
+  // Ограничение по времени в минутах: пусто — без таймера (как было раньше).
+  const [timeLimit, setTimeLimit] = useState(editingHw?.time_limit_min ? String(editingHw.time_limit_min) : "")
   const [file, setFile] = useState(null)
   const [saving, setSaving] = useState(false)
   const [hwType, setHwType] = useState(editingHw?.hw_type || "written")
@@ -236,6 +238,10 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
       test_options: hwType !== "written" && isMcq ? testOptions : null,
       require_solution: hwType !== "written" ? requireSolution : false,
     }
+    // Колонку добавляет supabase/homework_timer.sql. Пока миграция не выполнена,
+    // поля в payload нет вовсе — выдача ДЗ работает как раньше.
+    if (timeLimit) payload.time_limit_min = Number(timeLimit)
+    else if (editingHw?.time_limit_min != null) payload.time_limit_min = null
 
     let error
     if (isEditing) {
@@ -260,6 +266,9 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
     if (!error) {
       onCreated()
       onClose()
+    } else if (/time_limit_min/.test(error.message || "")) {
+      // Колонки ещё нет: миграция supabase/homework_timer.sql не выполнена.
+      alert("Ограничение по времени пока недоступно: выполните supabase/homework_timer.sql в Supabase → SQL Editor. Пока что оставьте поле пустым.")
     } else {
       alert("Ошибка: " + error.message)
     }
@@ -491,6 +500,27 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
             <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400" />
           </div>
+
+          {/* Таймер имеет смысл там, где есть что сдать автоматически — то есть
+              в работах с тестом. У чисто письменной работы автосдавать нечего. */}
+          {hwType !== "written" && (
+          <div>
+            <label className="text-sm text-gray-500 mb-1 block">Ограничение по времени (необязательно)</label>
+            <input
+              type="number"
+              inputMode="numeric"
+              min="1"
+              max="600"
+              placeholder="например, 45 минут"
+              value={timeLimit}
+              onChange={(e) => setTimeLimit(e.target.value.replace(/\D/g, ""))}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400"
+            />
+            <div className="text-[11px] text-gray-400 mt-1 leading-snug">
+              Отсчёт начнётся, когда ученик откроет работу. По истечении времени работа отправится на проверку сама.
+            </div>
+          </div>
+          )}
 
           <div>
             <label className="text-sm text-gray-500 mb-1 block">

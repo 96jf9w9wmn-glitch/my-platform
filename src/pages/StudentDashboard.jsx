@@ -529,6 +529,49 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
   const isMcq = Array.isArray(hw.test_options) && hw.test_options.length > 0
   const requireSolution = !!hw.require_solution && hasTest
 
+  // ── Таймер выполнения с автосдачей ────────────────────────────────────────
+  // Отсчёт идёт от ВРЕМЕНИ СЕРВЕРА: момент открытия ставит RPC homework_open и
+  // только один раз (coalesce), поэтому перезагрузка страницы и вход с другого
+  // устройства таймер не сбрасывают. Пока миграция supabase/homework_timer.sql
+  // не выполнена, у работы нет time_limit_min — таймера просто нет, всё как раньше.
+  const timerActive = !!hw.time_limit_min && hasTest && !testDone &&
+    (hw.status === "assigned" || hw.status === "revision")
+  const [endsAt, setEndsAt] = useState(null)
+  const [nowTs, setNowTs] = useState(() => Date.now())
+  const autoSentRef = useRef(false)
+
+  useEffect(() => {
+    if (!timerActive) return
+    let cancelled = false
+    supabase.rpc("homework_open", { p_id: hw.id }).then(({ data, error }) => {
+      // Нет функции (миграция не выполнена) — молча остаёмся без таймера,
+      // работу это ломать не должно.
+      if (cancelled || error || !data) return
+      setEndsAt(new Date(data).getTime() + hw.time_limit_min * 60000)
+    })
+    return () => { cancelled = true }
+  }, [timerActive, hw.id, hw.time_limit_min])
+
+  // Тикаем текущим временем, а остаток считаем на рендере: setState живёт
+  // внутри колбэка интервала, а не в теле эффекта.
+  useEffect(() => {
+    if (!endsAt) return
+    const t = setInterval(() => setNowTs(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [endsAt])
+  const msLeft = timerActive && endsAt ? Math.max(0, endsAt - nowTs) : null
+
+  // Время вышло — отправляем то, что ученик успел ввести, ровно один раз.
+  useEffect(() => {
+    if (msLeft !== 0 || !timerActive || autoSentRef.current) return
+    autoSentRef.current = true
+    onSubmitTest(hw.id, testAnswers, null, true)
+  }, [msLeft, timerActive, hw.id, testAnswers, onSubmitTest])
+
+  const lastMinute = msLeft != null && msLeft <= 60000
+  const timerText = msLeft == null ? null :
+    `${String(Math.floor(msLeft / 60000)).padStart(2, "0")}:${String(Math.floor((msLeft % 60000) / 1000)).padStart(2, "0")}`
+
   async function handleFileChange(e) {
     const file = e.target.files[0]
     if (!file) return
@@ -580,6 +623,16 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
               {dl && (
                 <span className={`inline-flex items-center gap-1 ${dl.cls}`}>
                   {dl.icon && <Icon name={dl.icon} size={10} />}{dl.text}
+                </span>
+              )}
+              {timerText && (
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold tabular-nums ${
+                  lastMinute
+                    ? "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300"
+                    : "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300"
+                }`}>
+                  <Icon name="clock" size={10} />
+                  Осталось {timerText}
                 </span>
               )}
             </div>
@@ -1265,7 +1318,8 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     if (onReloadStudents) onReloadStudents()
   }
 
-  async function submitHomeworkTest(hwId, answers, solutionFile) {
+  // auto = true — работу отправил таймер по истечении времени, а не ученик.
+  async function submitHomeworkTest(hwId, answers, solutionFile, auto = false) {
     const hw = homework.find((h) => h.id === hwId)
     if (!hw) return
     const correct = hw.correct_answers || []
@@ -1279,6 +1333,9 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
       student_answers: answers,
       test_score: score,
     }
+    // Колонки нет на базе без миграции homework_timer.sql — но и авто-сдача там
+    // невозможна (нет time_limit_min), поэтому поле уходит только вместе с ней.
+    if (auto) updates.auto_submitted = true
     if (isPureTest) {
       const percent = Math.round((score / hw.question_count) * 100)
       updates.status = "done"
@@ -1300,8 +1357,8 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     if (!isPureTest) {
       await supabase.from("notifications").insert({
         user_id: hw.tutor_id,
-        title: "Ученик прошёл тест в ДЗ",
-        body: user.profile?.name + " прошёл тест в «" + hw.title + "»: " + score + " / " + hw.question_count,
+        title: auto ? "Время вышло — работа сдана автоматически" : "Ученик прошёл тест в ДЗ",
+        body: user.profile?.name + (auto ? " не успел завершить «" : " прошёл тест в «") + hw.title + "»: " + score + " / " + hw.question_count,
       })
     }
 
