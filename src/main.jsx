@@ -40,6 +40,18 @@ createRoot(document.getElementById('root')).render(
   </StrictMode>,
 )
 
+// Снимаем стартовый экран (см. #splash в index.html) после первого кадра React:
+// двойной rAF — чтобы приложение успело отрисоваться и подмены не было видно.
+const splash = document.getElementById("splash")
+if (splash) {
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      splash.classList.add("splash-off")
+      setTimeout(() => splash.remove(), 260)
+    })
+  )
+}
+
 // PWA: регистрируем service worker (офлайн + установка на домашний экран).
 // Только в проде — в dev SW мешает hot-reload.
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
