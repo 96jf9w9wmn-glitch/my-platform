@@ -39,7 +39,16 @@ function WeakTypes({ studentId, studentName }) {
         // Наверх — типажи, по которым данных достаточно, худшие первыми. Строки с
         // одной-двумя попытками уходят вниз: иначе единственная случайная ошибка
         // (точность 0%) вытеснила бы из десятки настоящую проблему с 40% из 12 попыток.
-        const sorted = [...data].sort((a, b) => {
+        // PostgREST отдаёт numeric и count как СТРОКИ («40», «12»). Сравнения
+        // вроде accuracy < 40 на строках срабатывают только благодаря приведению
+        // типов, а «40.0%» в подписи уже выглядело бы неряшливо — приводим сами.
+        const norm = data.map((r) => ({
+          ...r,
+          attempts: Number(r.attempts),
+          correct: Number(r.correct),
+          accuracy: Math.round(Number(r.accuracy)),
+        }))
+        const sorted = norm.sort((a, b) => {
           const aEnough = a.attempts >= MIN_ATTEMPTS, bEnough = b.attempts >= MIN_ATTEMPTS
           if (aEnough !== bEnough) return aEnough ? -1 : 1
           if (a.accuracy !== b.accuracy) return a.accuracy - b.accuracy
