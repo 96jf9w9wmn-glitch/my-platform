@@ -674,7 +674,10 @@ function Landing({ onStart }) {
         {/* ── Геро ── */}
         {/* Фон из формул кладём на всю ширину экрана (а не внутрь max-w-6xl):
             формулы должны лежать в полях по краям, не под текстом. */}
-        <section className="relative overflow-hidden pt-10 sm:pt-16 pb-10">
+        {/* min-h на широком экране: заголовки ролей разной длины (у «Ученикам»
+            на строку больше), и без запаса высоты вся секция прыгала бы при
+            переключении роли — вместе с фоном-формулами и карточками входа. */}
+        <section className="relative overflow-hidden pt-10 sm:pt-16 pb-10 lg:min-h-[36rem]">
           <FormulaBackdrop variant="hero" />
           <div className="relative z-10 max-w-6xl mx-auto w-full px-4 grid lg:grid-cols-2 gap-10 items-center">
             {/* Текст */}
