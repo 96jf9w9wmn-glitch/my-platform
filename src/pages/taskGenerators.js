@@ -5037,16 +5037,27 @@ function keyOfGen(examType, number, fn) {
 export function generateTask(examType, number, genKey) {
   // Типаж выбираем ЗДЕСЬ, а не внутри сборки: только так известно, какой именно
   // генератор сработал при случайном выборе, и его ключ можно записать в задание.
-  const fn = genKey ? findGen(examType, number, genKey) : pick(GENERATORS[examType]?.[number] || [])
-  if (!fn) return null
-  const task = buildTask(examType, number, fn)
-  if (!task) return null
-  task.gen_key = genKey || keyOfGen(examType, number, fn) || null
-  return task
+  //
+  // Скину РАЗРЕШЕНО вернуть null («выпавшие числа не сошлись») — у некоторых типажей
+  // это до половины вызовов. Поэтому пробуем несколько раз: при заданном genKey — тот же
+  // типаж со свежими числами, иначе каждый раз новый случайный. При доле null 0,6
+  // вероятность не собрать задание за 40 попыток порядка 10⁻⁹.
+  const list = GENERATORS[examType]?.[number] || []
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const fn = genKey ? findGen(examType, number, genKey) : pick(list)
+    if (!fn) return null
+    const task = buildTask(examType, number, fn)
+    if (!task) continue
+    task.gen_key = genKey || keyOfGen(examType, number, fn) || null
+    return task
+  }
+  return null
 }
 
 function buildTask(examType, number, fn) {
-  const { condition_text, condition_tail, answer, image_url, solution_image, solution, program, archive, spreadsheet, answerProgram, source_text, source_title } = fn()
+  const out = fn()
+  if (!out) return null                     // скин отказался от этого набора параметров
+  const { condition_text, condition_tail, answer, image_url, solution_image, solution, program, archive, spreadsheet, answerProgram, source_text, source_title } = out
   const id = `gen-${number}-${Math.random().toString(36).slice(2, 10)}`
   // №23/№24 (часть 2, геометрия): чертёж строит сам ученик, поэтому в условие он не идёт —
   // прячем его в solution_image (пригодится для будущего разбора решения). Полное решение
