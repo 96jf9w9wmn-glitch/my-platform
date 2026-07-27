@@ -5018,11 +5018,34 @@ function findGen(examType, number, key) {
   return null
 }
 
+// Ключ типажа по самой функции-генератору: нужен, когда типаж выбран случайно
+// (genKey не передали) — иначе потом невозможно повторить ЭТОТ ЖЕ типаж со
+// свежими числами. Сравниваем ссылки на функции, а не имена: имена съедает минификация.
+function keyOfGen(examType, number, fn) {
+  const m = GEN_META[examType]?.[number]
+  if (!m) return null
+  for (const [, items] of m) for (const [k, , f] of items) if (f === fn) return k
+  return null
+}
+
 // Собирает одно задание указанного номера: случайный шаблон (или конкретный типаж по
 // genKey) + свежие числа. Форма объекта совпадает со строкой банка `tasks`.
+//
+// К результату всегда приписывается gen_key — ключ типажа, из которого задание
+// собрано. По нему потом делается «вот такая же задача, но с другими числами»
+// (работа над ошибками, тематическая тренировка, аналитика слабых типажей).
 export function generateTask(examType, number, genKey) {
+  // Типаж выбираем ЗДЕСЬ, а не внутри сборки: только так известно, какой именно
+  // генератор сработал при случайном выборе, и его ключ можно записать в задание.
   const fn = genKey ? findGen(examType, number, genKey) : pick(GENERATORS[examType]?.[number] || [])
   if (!fn) return null
+  const task = buildTask(examType, number, fn)
+  if (!task) return null
+  task.gen_key = genKey || keyOfGen(examType, number, fn) || null
+  return task
+}
+
+function buildTask(examType, number, fn) {
   const { condition_text, condition_tail, answer, image_url, solution_image, solution, program, archive, spreadsheet, answerProgram, source_text, source_title } = fn()
   const id = `gen-${number}-${Math.random().toString(36).slice(2, 10)}`
   // №23/№24 (часть 2, геометрия): чертёж строит сам ученик, поэтому в условие он не идёт —
