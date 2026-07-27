@@ -754,6 +754,7 @@ export const META19 = [
     ["cross-out-digits", "Вычёркивание цифр до кратности", t19CrossOutDigits],
     ["insert-digit-sums", "Вставка сумм соседних цифр", t19InsertDigitSums],
     ["supersequence-digits", "Наименьшее число, дающее все числа 1…N", t19SupersequenceDigits],
+    ["append-instead-multiply", "Приписал вместо умножения: наибольшее N", t19AppendInsteadMultiply],
   ]],
   ["Сюжетные задачи с перебором", [
     ["test-bonus-min", "Тест с добавкой баллов: наим. число участников", t19TestBonusMin],
@@ -7939,6 +7940,81 @@ export function t19SupersequenceDigits() {
       extra: [],
       maxNumber: 999,
       phrases: ["вычёркивая цифры которого", "от 1 до"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 6 (продолжение). Приписывание числа справа вместо умножения (#99)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Двузначное a приписали трёхзначное b справа, получив 1000a + b, и это оказалось
+// в N раз больше произведения ab:
+//   1000a + b = N·a·b   ⟺   N = 1000/b + 1/a.
+// Отсюда сразу видно, что N ≤ 1000/100 + 1/10 = 10,1, то есть N ≤ 10, а перебор
+// (a от 10 до 99, b от 100 до 999) показывает, какие значения достижимы.
+export function t19AppendInsteadMultiply() {
+  const reach = new Map()
+  for (let a = 10; a <= 99; a++) {
+    for (let b = 100; b <= 999; b++) {
+      const v = 1000 * a + b
+      if (v % (a * b)) continue
+      const N = v / (a * b)
+      if (!reach.has(N)) reach.set(N, { a, b })
+    }
+  }
+  const okList = [...reach.keys()].sort((x, y) => x - y)
+  const maxN = Math.max(...okList)
+  const Na = pick(okList.filter((N) => N < maxN))
+  const badList = []
+  for (let N = 2; N <= 12; N++) if (!reach.has(N)) badList.push(N)
+  const Nb = pick(badList)
+  if (!Na || !Nb) return null
+
+  const params = { Na, Nb, maxN }
+  const check = (cfg, part) => {
+    if (!cfg || !Number.isInteger(cfg.a) || !Number.isInteger(cfg.b)) return "нужны два числа"
+    if (cfg.a < 10 || cfg.a > 99) return `${cfg.a} — не двузначное число`
+    if (cfg.b < 100 || cfg.b > 999) return `${cfg.b} — не трёхзначное число`
+    const glued = 1000 * cfg.a + cfg.b, prod = cfg.a * cfg.b
+    if (glued % prod) return `${glued} не делится на ${prod}`
+    const N = glued / prod
+    const need = part === "a" ? Na : maxN
+    if (N !== need) return `получилось в ${N} раз больше, а нужно в ${need}`
+    return null
+  }
+  // Независимый перебор всех пар (двузначное, трёхзначное).
+  const solve = (P) => {
+    const set = new Set()
+    for (let a = 10; a <= 99; a++) {
+      for (let b = 100; b <= 999; b++) {
+        const v = 1000 * a + b
+        if (v % (a * b) === 0) set.add(v / (a * b))
+      }
+    }
+    return { a: set.has(P.Na), b: set.has(P.Nb), c: Math.max(...set), c_next: false }
+  }
+
+  const exA = reach.get(Na), exC = reach.get(maxN)
+  return item({
+    preamble: `Максим должен был умножить двузначное число на трёхзначное число (числа с нуля начинаться не могут). Вместо этого он просто приписал трёхзначное число справа к двузначному, получив пятизначное число, которое оказалось в N раз (N — натуральное число) больше правильного результата.`,
+    qa: `Могло ли N равняться ${Na}?`,
+    qb: `Могло ли N равняться ${Nb}?`,
+    qc: `Каково наибольшее возможное значение N?`,
+    ansA: `да: ${exA.a} и ${exA.b} дают ${1000 * exA.a + exA.b} = ${Na}·${exA.a}·${exA.b}`,
+    ansB: `нет: из 1000a + b = N·a·b следует N = ${"1000/b + 1/a"}; чтобы N было целым, число b(Na − 1) должно равняться 1000a, а так как a и Na − 1 взаимно просты, Na − 1 обязано делить 1000. При N = ${Nb} ни одно значение ${Nb}a − 1 (при двузначном a) делителем 1000 не является`,
+    ansC: `${maxN}; например ${exC.a} и ${exC.b}: ${1000 * exC.a + exC.b} = ${maxN}·${exC.a}·${exC.b}`,
+    solution: `Пусть a — двузначное число, b — трёхзначное. Приписывание даёт 1000a + b, и по условию 1000a + b = N·a·b, откуда\nN = 1000/b + 1/a.\nТак как b ≥ 100 и a ≥ 10, получаем N ≤ 10 + 0,1, то есть N ≤ 10.\nа) При N = ${Na} подходят a = ${exA.a}, b = ${exA.b}.\nб) Равенство 1000a + b = ${Nb}ab означает b(${Nb}a − 1) = 1000a; числа a и ${Nb}a − 1 взаимно просты, поэтому ${Nb}a − 1 делит 1000. Перебирая двузначные a, убеждаемся, что таких значений нет.\nв) Значение N = 10 невозможно (те же рассуждения: 10a − 1 оканчивается на 9 и не делит 1000), а N = ${maxN} достигается: ${exC.a} и ${exC.b}.\nОтвет: ${maxN}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: `N-${Na}` },
+        b: { type: "yesno", yes: false, reason: "divisor-1000", target: `N-${Nb}` },
+        c: { type: "extremum", mode: "max", value: maxN, example: exC },
+      },
+      mustMention: [Na, Nb],
+      extra: [],
+      phrases: ["приписал трёхзначное число справа", "с нуля начинаться не могут"],
     },
   })
 }
