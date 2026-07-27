@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react"
 import Icon from "../components/Icon"
 import FormulaBackdrop from "../components/FormulaBackdrop"
-import StatCounters from "../components/StatCounters"
 import { Highlight } from "../components/Mark"
 import { BANK_STATS } from "./bankStats"
 
@@ -238,15 +237,27 @@ const SUBJECTS = [
   { name: "Математика база", exam: "ЕГЭ" },
 ]
 
-// Цифры берём из bankStats.js (его считает scripts/bank-stats.mjs по самому
-// банку). Ничего не вписано руками — цифра на витрине всегда настоящая.
-// Подписи — в именительном падеже: тогда они не «спорят» с числом
-// (201 → «номер», 202 → «номера») и остаются верными при любом пересчёте.
-const STATS = [
-  { n: BANK_STATS.subjects, label: "предметы ОГЭ и ЕГЭ" },
-  { n: BANK_STATS.numbers, label: "номера заданий" },
-  { n: BANK_STATS.types, label: "типажи заданий" },
-  { text: "∞", label: "варианты не повторяются" },
+
+// Главное отличие платформы: задание собирается заново при каждой выдаче,
+// поэтому готового ответа на него нет ни в интернете, ни у соседа по парте.
+// Приём вынесен на первый экран по образцу didak.ru, где «защита заданий от
+// поиска в интернете» стоит первым пунктом лендинга.
+const NO_CHEATING = [
+  {
+    icon: "repeat",
+    title: "Задание собирается заново",
+    desc: "Каждый раз новые числа и чертёж. Нагуглить готовое решение не выйдет — такого задания ещё не существовало.",
+  },
+  {
+    icon: "users",
+    title: "У каждого ученика — своё",
+    desc: "Один и тот же номер приходит разным ученикам с разными числами. Списать у соседа нечего.",
+  },
+  {
+    icon: "file-text",
+    title: "Но всё — по образцу ФИПИ",
+    desc: "Формулировки, чертежи и бланк ответов как на настоящем экзамене: тренировка честная, а не «похожая».",
+  },
 ]
 
 // ── Мини-визуалы (декоративные макеты продукта) ──
@@ -532,7 +543,7 @@ function Landing({ onStart }) {
               </div>
               <div className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full ring-1 ${cfg.ring} ${cfg.soft} ${cfg.text} mb-5`}>
                 <Icon name="sparkles" size={13} />
-                Платформа для репетиторов и их учеников
+                Задания генерируются — их нет в интернете
               </div>
               {/* key — чтобы текст геро мягко въезжал при смене роли */}
               <div key={role} className="slide-up">
@@ -565,9 +576,24 @@ function Landing({ onStart }) {
           </div>
         </section>
 
-        {/* ── Цифры ── */}
+        {/* ── Почему задания нельзя нагуглить ── */}
         <section className="max-w-6xl mx-auto w-full px-4 py-8">
-          <StatCounters items={STATS} grad={cfg.grad} />
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900 text-center mb-6">
+            <Highlight text="Эти задания нельзя нагуглить" mark="нельзя нагуглить" tone={cfg.mark} />
+          </h2>
+          <div className="grid sm:grid-cols-3 gap-3">
+            {NO_CHEATING.map((f) => (
+              <div key={f.title} className="glass rounded-2xl p-5 flex flex-col gap-3">
+                <div className={`w-11 h-11 rounded-xl flex items-center justify-center ring-1 ${cfg.ring} ${cfg.soft} ${cfg.text}`}>
+                  <Icon name={f.icon} size={20} />
+                </div>
+                <div>
+                  <div className="font-semibold text-gray-900">{f.title}</div>
+                  <div className="text-sm text-gray-500 dark:text-gray-400 mt-1 leading-snug">{f.desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
         </section>
 
         {/* ── Роли ── */}
