@@ -7591,6 +7591,239 @@ export function t18SysSymmetricOne() {
 }
 
 // =============================================================================
+// РАЗДЕЛ K. Наибольшее/наименьшее значение функции (эталон #92, #93, #95, #97)
+// =============================================================================
+// Новый кирпич движка: ТОЧНЫЙ минимум (максимум) кусочно-квадратичной функции.
+// Все функции раздела — это квадратный трёхчлен плюс модули многочленов с РАЦИОНАЛЬНЫМИ
+// корнями, поэтому после разбиения оси точками излома на каждом куске стоит обычный
+// квадратный трёхчлен над Q: экстремум ищется среди концов куска и вершины, а все
+// сравнения — точные сравнения рациональных чисел (никаких ε).
+// Предикат «наименьшее значение ⋚ C» подаётся в verify18 как индикатор (solve = 1/0)
+// с типом exists — сетка по a всё равно проверяет его независимо.
+
+// Минимум квадратного трёхчлена [c0, c1, c2] на промежутке (концы — R или ±inf).
+// null означает −∞ (функция не ограничена снизу).
+function quadMin(P, lo, hi) {
+  const c0 = P[0] || R0, c1 = P[1] || R0, c2 = P[2] || R0
+  const at = (x) => Radd(Radd(c0, Rmul(c1, x)), Rmul(c2, Rmul(x, x)))
+  if (Rsign(c2) < 0 && (lo === "-inf" || hi === "+inf")) return null
+  if (Rzero(c2)) {
+    if (Rsign(c1) > 0 && lo === "-inf") return null
+    if (Rsign(c1) < 0 && hi === "+inf") return null
+    if (Rzero(c1) && lo === "-inf" && hi === "+inf") return c0
+  }
+  const cands = []
+  if (lo !== "-inf") cands.push(at(lo))
+  if (hi !== "+inf") cands.push(at(hi))
+  if (Rsign(c2) > 0) {
+    const v = Rdiv(Rneg(c1), Rmul(R(2), c2))
+    if ((lo === "-inf" || Rcmp(v, lo) >= 0) && (hi === "+inf" || Rcmp(v, hi) <= 0)) cands.push(at(v))
+  }
+  if (!cands.length) return null
+  return cands.reduce((m, x) => (Rcmp(x, m) < 0 ? x : m))
+}
+const quadMax = (P, lo, hi) => {
+  const m = quadMin(P.map(Rneg), lo, hi)
+  return m === null ? null : Rneg(m)
+}
+// Экстремум кусочно-квадратичной функции: pieces = [{ P, lo, hi }] (куски замкнутые,
+// функция непрерывна, поэтому дублирование концов безвредно). null = не ограничена.
+function pwExtreme(pieces, kind) {
+  let best = null
+  for (const pc of pieces) {
+    const v = kind === "min" ? quadMin(pc.P, pc.lo, pc.hi) : quadMax(pc.P, pc.lo, pc.hi)
+    if (v === null) return null
+    if (best === null || (kind === "min" ? Rcmp(v, best) < 0 : Rcmp(v, best) > 0)) best = v
+  }
+  return best
+}
+const HEAD_MAX = "Найдите все значения a, при каждом из которых наибольшее значение функции"
+const HEAD_MIN = "Найдите все значения a, при каждом из которых наименьшее значение функции"
+const cmpStr = { ge: "не меньше", gt: "больше", le: "не больше", lt: "меньше" }
+const cmpOk = (v, C, how) => {
+  if (v === null) return how === "gt" || how === "ge" ? false : true   // −∞ меньше любого числа
+  const c = Rcmp(v, C)
+  return how === "ge" ? c >= 0 : how === "gt" ? c > 0 : how === "le" ? c <= 0 : c < 0
+}
+
+// #92. f(x) = |x − a| − kx² — «наибольшее значение не меньше C».
+// Точка излома одна (x = a), на каждом куске — парабола ветвями вниз, поэтому максимум
+// достигается в вершине (если она попала на кусок) или в точке излома.
+function build92({ k, C }) {
+  const pieces = (a) => [
+    { P: [a, R(-1), R(-k)], lo: "-inf", hi: a },        // x ≤ a: (a − x) − kx²
+    { P: [Rneg(a), R1, R(-k)], lo: a, hi: "+inf" },     // x ≥ a: (x − a) − kx²
+  ]
+  const solve = (a) => (cmpOk(pwExtreme(pieces(a), "max"), C, "ge") ? 1 : 0)
+  // критические значения: вершина ±1/(2k) уходит со своего куска; значение в вершине
+  // 1/(4k) ± a равно C; значение в самой точке излома −ka² равно C
+  const crit = [R(1, 2 * k), R(-1, 2 * k), Rsub(C, R(1, 4 * k)), Rneg(Rsub(C, R(1, 4 * k)))]
+  const sq = ratRoots([Rneg(C), R0, R(-k)])
+  if (!sq.allRational) return null
+  crit.push(...sq.roots)
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+const T92 = []
+for (const k of [1, 2, 3, 4]) for (const Cn of [-2, -1, 1, 2, 3, 4]) {
+  const r = build92({ k, C: R(Cn) })
+  if (r && tidySet(r.set, 3)) T92.push({ k, C: R(Cn) })
+}
+export function t18MaxAbsMinusSquare() {
+  const par = pick(T92), { k, C } = par
+  const { set, solve } = build92(par)
+  const aRange = spanRange(set)
+  return item({
+    text: `${HEAD_MAX}\n\nf(x) = |x ${MINUS} a| ${MINUS} ${k === 1 ? "" : k}x${SUP[2]}\n\n${cmpStr.ge} ${Rstr(C)}.`,
+    set,
+    solution: `Точка излома одна — x = a. При x ≥ a получаем f(x) = ${MINUS}${k === 1 ? "" : k}x${SUP[2]} + x ${MINUS} a (парабола ветвями вниз с вершиной x = ${Rstr(R(1, 2 * k))}), при x ≤ a — f(x) = ${MINUS}${k === 1 ? "" : k}x${SUP[2]} ${MINUS} x + a (вершина x = ${Rstr(R(-1, 2 * k))}).\n`
+      + `Если вершина попадает на свой кусок, значение в ней равно ${Rstr(R(1, 4 * k))} ${MINUS} a (правая ветвь) или ${Rstr(R(1, 4 * k))} + a (левая); иначе максимум куска достигается в точке излома, где f(a) = ${MINUS}${k === 1 ? "" : k}a${SUP[2]}.\n`
+      + `Хотя бы одна из вершин всегда «своя», поэтому наибольшее значение равно ${Rstr(R(1, 4 * k))} + |a|.\n`
+      + `Условие ${Rstr(R(1, 4 * k))} + |a| ≥ ${Rstr(C)} даёт ответ.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "exists" },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => a, dash: true, label: "x = a (излом)" },
+        { f: () => 1 / (2 * k), dash: true, label: "вершины ±1/(2k)" },
+        { f: () => -1 / (2 * k), dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -6, xMax: 6, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// #93. f(x) = (kx − a)² + pa + q на множестве |x| ≥ r — «наименьшее значение ⋚ C».
+// Модулей нет: два замкнутых луча, на каждом — парабола ветвями вверх с общей вершиной x = a/k.
+function build93({ k, p, q, r, C, how }) {
+  const P = (a) => [Radd(Radd(Rmul(a, a), Rmul(R(p), a)), R(q)), Rmul(R(-2 * k), a), R(k * k)]
+  const pieces = (a) => [
+    { P: P(a), lo: "-inf", hi: R(-r) },
+    { P: P(a), lo: R(r), hi: "+inf" },
+  ]
+  const solve = (a) => (cmpOk(pwExtreme(pieces(a), "min"), C, how) ? 1 : 0)
+  const crit = [R(k * r), R(-k * r)]                        // вершина a/k выходит за |x| ≥ r
+  if (p !== 0) crit.push(R(C.n - BigInt(q) * C.d, C.d * BigInt(p)))   // pa + q = C
+  for (const s of [1, -1]) {                                 // (kr ∓ a)² + pa + q = C
+    const e = ratRoots([Rsub(Radd(R(k * k * r * r + q), R0), C), R(p + 2 * s * k * r), R1])
+    if (!e.allRational) return null
+    crit.push(...e.roots)
+  }
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+const T93 = []
+for (const k of [1, 2]) for (const p of [1, 2]) for (const q of [1, 2, 3]) for (const r of [1, 2]) {
+  for (const Cn of [2, 4, 6, 8]) for (const how of ["ge", "lt"]) {
+    const r2 = build93({ k, p, q, r, C: R(Cn), how })
+    if (r2 && tidySet(r2.set, 3)) T93.push({ k, p, q, r, C: R(Cn), how })
+  }
+}
+export function t18MinQuadOutside() {
+  const par = pick(T93), { k, p, q, r, C, how } = par
+  const { set, solve } = build93(par)
+  const aRange = spanRange(set)
+  const f = `${k * k === 1 ? "" : k * k}x${SUP[2]} ${MINUS} ${2 * k === 1 ? "" : 2 * k}ax + a${SUP[2]}${term(p, "a")}${term(q, "")}`
+  return item({
+    text: `${HEAD_MIN}\n\nf(x) = ${f}\n\nна множестве |x| ≥ ${r} ${cmpStr[how]} ${Rstr(C)}.`,
+    set,
+    solution: `Соберём полный квадрат: f(x) = (${k === 1 ? "" : k}x ${MINUS} a)${SUP[2]}${term(p, "a")}${term(q, "")}. Это парабола ветвями вверх с вершиной x = ${fT("a", String(k))} и наименьшим значением ${p === 1 ? "" : p}a${term(q, "")}.\n`
+      + `Если вершина принадлежит множеству |x| ≥ ${r} (то есть |a| ≥ ${k * r}), наименьшее значение и равно ${p === 1 ? "" : p}a${term(q, "")}.\n`
+      + `Иначе минимум достигается на ближайшем конце x = ±${r} и равен (${k * r} ${MINUS} a)${SUP[2]}${term(p, "a")}${term(q, "")} или (${k * r} + a)${SUP[2]}${term(p, "a")}${term(q, "")} — меньшем из двух.\n`
+      + `Остаётся сравнить полученное значение с ${Rstr(C)}.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "exists" },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => a / k, label: "вершина x = a/k" },
+        { f: () => r, dash: true, label: `|x| ≥ ${r}` },
+        { f: () => -r, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -r - 5, xMax: r + 5, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// #95 и #97. f(x) = (αa + β)x + γa + δ + |x² − px + q| — «наименьшее значение ⋚ C».
+// Квадратный трёхчлен под модулем имеет РАЦИОНАЛЬНЫЕ корни r₁ < r₂, поэтому ось делится
+// на три куска. На крайних кусках парабола ветвями вверх (минимум — вершина или конец),
+// на среднем — ветвями вниз (минимум на конце). В обеих точках излома модуль равен нулю,
+// поэтому f(rᵢ) — линейная функция a: именно она обычно и даёт минимум.
+function build9597({ al, be, ga, de, r1, r2, C, how }) {
+  const p = r1 + r2, q = r1 * r2
+  const lin = (a) => Radd(Rmul(R(al), a), R(be))                   // коэффициент при x
+  const con = (a) => Radd(Rmul(R(ga), a), R(de))                   // свободный член
+  const pieces = (a) => {
+    const L = lin(a), K = con(a)
+    const up = [Radd(K, R(q)), Rsub(L, R(p)), R1]                  // x² − px + q ≥ 0
+    const dn = [Rsub(K, R(q)), Radd(L, R(p)), R(-1)]               // x² − px + q ≤ 0
+    return [
+      { P: up, lo: "-inf", hi: R(r1) },
+      { P: dn, lo: R(r1), hi: R(r2) },
+      { P: up, lo: R(r2), hi: "+inf" },
+    ]
+  }
+  const solve = (a) => (cmpOk(pwExtreme(pieces(a), "min"), C, how) ? 1 : 0)
+  const crit = []
+  for (const r of [r1, r2]) {                                      // f(r) = C — линейно по a
+    const A = al * r + ga, B = be * r + de
+    if (A !== 0) crit.push(Rdiv(Rsub(C, R(B)), R(A)))
+    if (al !== 0) crit.push(R(p - 2 * r - be, al))                 // вершина крайнего куска в точке r
+  }
+  // значение в вершине крайнего куска: (q + γa + δ) − (αa + β − p)²/4 = C
+  const B0 = [Rsub(R(be - p), R0), R(al)]                          // αa + (β − p)
+  const V = pSub([Radd(R(q + de), R0), R(ga)], pMul([R(1, 4)], pMul(B0, B0)))
+  const e = ratRoots(pSub(V, [C]))
+  if (!e.allRational) return null
+  crit.push(...e.roots)
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+const T9597 = []
+for (const [r1, r2] of [[-1, 2], [1, 5], [-2, 1], [0, 3], [-3, -1], [2, 4]]) {
+  for (const al of [1, 2, 4]) for (const be of [0]) for (const ga of [-2, 0, 2]) for (const de of [-1, 0, 1]) {
+    for (const Cn of [-24, -8, -4, -2, 0, 2]) for (const how of ["gt", "lt"]) {
+      const r = build9597({ al, be, ga, de, r1, r2, C: R(Cn), how })
+      if (r && tidySet(r.set, 3)) T9597.push({ al, be, ga, de, r1, r2, C: R(Cn), how })
+    }
+  }
+}
+export function t18MinLinPlusAbsQuad() {
+  const par = pick(T9597), { al, be, ga, de, r1, r2, C, how } = par
+  const { set, solve } = build9597(par)
+  const aRange = spanRange(set)
+  const p = r1 + r2, q = r1 * r2
+  const linTxt = `${al === 1 ? "" : al}a${be === 0 ? "" : term(be, "")}x`
+  const conTxt = `${ga === 0 ? "" : term(ga, "a")}${de === 0 ? "" : term(de, "")}`
+  const quad = `x${SUP[2]}${term(-p, "x")}${term(q, "")}`
+  return item({
+    text: `${HEAD_MIN}\n\nf(x) = ${linTxt}${conTxt} + |${quad}|\n\n${cmpStr[how]} ${Rstr(C)}.`,
+    set,
+    solution: `Трёхчлен под модулем раскладывается: ${quad} = (x ${MINUS} ${nS(r1)})(x ${MINUS} ${nS(r2)}), поэтому точки излома — x = ${nS(r1)} и x = ${nS(r2)}.\n`
+      + `Вне отрезка [${nS(r1)}; ${nS(r2)}] функция равна x${SUP[2]} + (${linTxt.replace("x", "")} ${MINUS} ${p === 1 ? "" : nS(p)})x + ${nS(q)}${conTxt} — парабола ветвями ВВЕРХ; внутри отрезка знак модуля меняется, и парабола идёт ветвями ВНИЗ, значит там минимум достигается на конце.\n`
+      + `В самих точках излома модуль равен нулю: f(${nS(r1)}) и f(${nS(r2)}) — линейные функции a.\n`
+      + `Значит наименьшее значение — это меньшее из f(${nS(r1)}), f(${nS(r2)}) и значения в вершине крайнего куска (если вершина действительно лежит вне отрезка).\n`
+      + `Сравнивая его с ${Rstr(C)}, получаем ответ.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "exists" },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: () => r1, dash: true, label: `x = ${nS(r1)}` },
+        { f: () => r2, dash: true, label: `x = ${nS(r2)}` },
+        { f: (a) => (p - (al * a + be)) / 2, label: "вершина крайнего куска" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: Math.min(r1, 0) - 5, xMax: r2 + 5, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
     ["rat-quad-lin", "(k²x²−a²)/(px−q−ra) = 0 — линейный знаменатель", t18RatQuadLin],
@@ -7760,6 +7993,11 @@ export const META18 = [
     ["sys-circle-2lines", "{окружность с центром (a;0); p²x² = q²y²} — ровно четыре решения", t18SysCircleTwoLines],
     ["sys-quartic-circle", "{a(x⁴+1) = y+c−|x|; окружность} — единственное решение", t18SysQuarticCircleOne],
     ["sys-symmetric", "{y = f(x); x = f(y)} — ровно одно решение", t18SysSymmetricOne],
+  ]],
+  ["Наибольшее/наименьшее значение функции", [
+    ["max-abs-square", "наибольшее значение |x−a| − kx² не меньше C", t18MaxAbsMinusSquare],
+    ["min-quad-outside", "наименьшее значение (kx−a)²+pa+q на |x| ≥ r", t18MinQuadOutside],
+    ["min-lin-absquad", "наименьшее значение (αa+β)x + γa+δ + |x²−px+q|", t18MinLinPlusAbsQuad],
   ]],
 ]
 
