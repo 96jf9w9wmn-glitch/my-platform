@@ -36,6 +36,15 @@ const GRADE_COLORS = {
   2: "bg-red-100 text-red-700",
 }
 
+// Просрочка: дедлайн прошёл, а работа ещё не сдана и не проверена.
+// Сравниваем по началу суток — дедлайн в базе хранится датой, без времени.
+function isOverdue(hw) {
+  if (!hw.deadline) return false
+  if (hw.status === "done" || hw.status === "submitted") return false
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  return parseLocalDate(hw.deadline) < today
+}
+
 function buildUploadPath(tutorId, name) {
   const ext = name.split(".").pop()
   return tutorId + "/" + Date.now() + "." + ext
@@ -716,8 +725,10 @@ function HomeworkCard({ hw, studentName, studentPhone, studentAccountId, onUpdat
       )}
 
       {hw.deadline && (
-        <div className="text-xs text-gray-400 mt-2">
-          Дедлайн: {parseLocalDate(hw.deadline).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}
+        <div className={`text-xs mt-2 inline-flex items-center gap-1 ${isOverdue(hw) ? "text-red-500 font-medium" : "text-gray-400"}`}>
+          {isOverdue(hw) && <Icon name="alert-triangle" size={12} />}
+          {isOverdue(hw) ? "Просрочено · " : "Дедлайн: "}
+          {parseLocalDate(hw.deadline).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}
         </div>
       )}
 
@@ -892,7 +903,11 @@ function Homework({ user, students, embedded = false }) {
     setHomework(data || [])
   }
 
-  const filtered = filter === "all" ? homework : homework.filter((h) => h.status === filter)
+  const overdueCount = homework.filter(isOverdue).length
+  const filtered =
+    filter === "all" ? homework :
+    filter === "overdue" ? homework.filter(isOverdue) :
+    homework.filter((h) => h.status === filter)
 
   const grouped = {}
   filtered.forEach((hw) => {
@@ -944,6 +959,9 @@ function Homework({ user, students, embedded = false }) {
               { id: "submitted", label: "На проверке" },
               { id: "done", label: "Выполнено" },
               { id: "revision", label: "На доработку" },
+              // Просрочку показываем отдельной кнопкой и только когда она есть —
+              // пустой фильтр в списке ни к чему.
+              ...(overdueCount ? [{ id: "overdue", label: `Просрочено · ${overdueCount}` }] : []),
             ].map((f) => (
               <button
                 key={f.id}
@@ -963,7 +981,7 @@ function Homework({ user, students, embedded = false }) {
             <div className="relative overflow-hidden text-sm text-gray-400 text-center py-12 border border-dashed border-white/50 glass-sm">
               <FormulaBackdrop variant="panel" />
               <span className="relative z-10">
-                {filter === "all" ? "Заданий пока нет" : "Нет заданий с таким статусом"}
+                {filter === "all" ? "Заданий пока нет" : filter === "overdue" ? "Просроченных заданий нет" : "Нет заданий с таким статусом"}
               </span>
             </div>
           ) : (
