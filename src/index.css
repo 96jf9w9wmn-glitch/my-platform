@@ -1262,6 +1262,13 @@ button.w-full:not([disabled]):not(.no-press):active::after,
   .practice-range::-webkit-slider-thumb { transition: none; }
 }
 
+/* Сегмент-контрол роли на лендинге: «палец» едет к выбранному сегменту
+   (приём umschool.net / webium.ru). Движение — только transform. */
+.seg-finger { transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+@media (prefers-reduced-motion: reduce) {
+  .seg-finger { transition: none; }
+}
+
 /* ── Фон из формул «мелом» (FormulaBackdrop) ──────────────────────────────
    Приём с drfrost.org: полупрозрачные формулы и чертежи лежат в полях вокруг
    текста, одним цветом-«чернилами». Формулы у нас настоящие — из генераторов

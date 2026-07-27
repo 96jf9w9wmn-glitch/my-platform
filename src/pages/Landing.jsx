@@ -34,6 +34,11 @@ const ROLES = {
     ],
     cta: { label: "Создать аккаунт репетитора", mode: "register" },
     card: { title: "Я репетитор", sub: "Ученики, ДЗ, варианты и оплата" },
+    hero: {
+      title: "Вся подготовка ваших учеников —",
+      accent: "в одном кабинете",
+      lead: "Занятия, домашние задания, тренировочные варианты ОГЭ и ЕГЭ, оплаты и прогресс каждого ученика — вместо десятка табличек, чатов и тетрадок.",
+    },
     note: "Бесплатно на старте · без привязки карты",
     deep: [
       {
@@ -97,6 +102,11 @@ const ROLES = {
     ],
     cta: { label: "Создать аккаунт ученика", mode: "register" },
     card: { title: "Я ученик", sub: "Задания, варианты и прогресс" },
+    hero: {
+      title: "Вся подготовка к экзамену —",
+      accent: "в одном приложении",
+      lead: "Домашние задания, тренировочные варианты по образцу ФИПИ и разбор с репетитором — всё в телефоне. Ничего не теряется в чатах и тетрадках.",
+    },
     note: "Бесплатно · регистрация по номеру телефона",
     deep: [
       {
@@ -158,6 +168,11 @@ const ROLES = {
     ],
     cta: { label: "Войти по коду ученика", mode: "login" },
     card: { title: "Я родитель", sub: "Успехи и оплаты ребёнка" },
+    hero: {
+      title: "Успехи ребёнка —",
+      accent: "видно без расспросов",
+      lead: "Занятия, домашние задания, оплаты и прогресс — прозрачно и в одном месте. По коду от репетитора: отдельный аккаунт заводить не нужно.",
+    },
     note: "Код выдаёт репетитор ученика",
     deep: [
       {
@@ -251,50 +266,6 @@ function MiniVariantCard({ cfg }) {
       </div>
       <div className={`mt-3 h-8 rounded-xl border border-dashed ${cfg.text} opacity-60 flex items-center px-3 text-[11px] font-medium ${cfg.text}`}>
         Ответ: ________
-      </div>
-    </div>
-  )
-}
-
-function MiniProgressCard({ cfg }) {
-  const r = 20, c = 2 * Math.PI * r, pct = 0.78
-  return (
-    <div className="glass rounded-2xl p-3.5 flex items-center gap-3">
-      <div className="relative w-14 h-14 shrink-0">
-        <svg viewBox="0 0 48 48" className="w-14 h-14 -rotate-90">
-          <circle cx="24" cy="24" r={r} fill="none" strokeWidth="5" className="stroke-gray-200 dark:stroke-gray-700" />
-          <circle cx="24" cy="24" r={r} fill="none" strokeWidth="5" strokeLinecap="round"
-            className={cfg.text} stroke="currentColor" strokeDasharray={c} strokeDashoffset={c * (1 - pct)} />
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-gray-900">78%</div>
-      </div>
-      <div>
-        <div className="text-sm font-semibold text-gray-900">Прогресс</div>
-        <div className="text-[11px] text-gray-500 dark:text-gray-400">Готовность к ОГЭ</div>
-      </div>
-    </div>
-  )
-}
-
-function MiniScheduleCard() {
-  const rows = [
-    { d: "Пн", t: "17:00" },
-    { d: "Ср", t: "18:30" },
-    { d: "Пт", t: "16:00" },
-  ]
-  return (
-    <div className="glass rounded-2xl p-3.5">
-      <div className="flex items-center gap-1.5 mb-2.5 text-gray-900">
-        <Icon name="calendar" size={14} />
-        <span className="text-sm font-semibold">Расписание</span>
-      </div>
-      <div className="space-y-1.5">
-        {rows.map((r) => (
-          <div key={r.d} className="flex items-center justify-between text-[11px]">
-            <span className="text-gray-500 dark:text-gray-400">{r.d}</span>
-            <span className="font-semibold text-gray-900">{r.t}</span>
-          </div>
-        ))}
       </div>
     </div>
   )
@@ -427,15 +398,61 @@ function RoleCard({ cfg, onClick }) {
   )
 }
 
+// Сегмент-контрол роли — первый элемент страницы, как на umschool.net и
+// webium.ru: пилюля-дорожка и белый «палец», который едет к выбранному
+// сегменту. Переключает весь лендинг: заголовок геро, подводку и разборы.
+function RoleSwitch({ role, onChange }) {
+  const keys = Object.keys(ROLES)
+  const idx = keys.indexOf(role)
+  return (
+    <div
+      role="tablist"
+      aria-label="Кому платформа"
+      /* в .dark серые токены инвертированы (gray-800 = светлый), поэтому
+         дорожка и «палец» здесь на белых прозрачностях, а не на gray-* */
+      className="relative flex p-1 rounded-full bg-gray-100 dark:bg-white/[0.06] ring-1 ring-black/5 dark:ring-white/10"
+    >
+      <span
+        aria-hidden="true"
+        className="seg-finger absolute top-1 bottom-1 left-1 rounded-full bg-white dark:bg-white/[0.14] shadow-sm"
+        style={{ width: "calc((100% - 0.5rem) / 3)", transform: `translateX(${idx * 100}%)` }}
+      />
+      {keys.map((r) => (
+        <button
+          key={r}
+          role="tab"
+          aria-selected={role === r}
+          onClick={() => onChange(r)}
+          className={`no-press relative z-10 flex-1 py-2 px-2 rounded-full text-sm font-semibold transition-colors duration-200 ${
+            role === r ? ROLES[r].text : "text-gray-500 dark:text-gray-400"
+          }`}
+        >
+          {ROLES[r].tab}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function Landing({ onStart }) {
-  // Роль запоминаем: следующий заход на лендинг и форма входа откроются с ней же.
-  const [role, setRole] = useState(() => localStorage.getItem("preferred_role") || "tutor")
+  // Роль берём сперва из ссылки (?for=parent — чтобы можно было дать родителю
+  // прямую ссылку), затем из памяти прошлого захода.
+  const [role, setRole] = useState(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get("for")
+    if (fromUrl && ROLES[fromUrl]) return fromUrl
+    return localStorage.getItem("preferred_role") || "tutor"
+  })
   const [dark, setDark] = useState(() => localStorage.getItem("theme") === "dark")
   const cfg = ROLES[role]
 
   function chooseRole(r) {
     setRole(r)
     localStorage.setItem("preferred_role", r)
+    // Роль — в адресную строку, без записи в историю: ссылкой можно поделиться,
+    // но кнопка «назад» не превращается в перебор ролей.
+    const url = new URL(window.location.href)
+    url.searchParams.set("for", r)
+    window.history.replaceState(null, "", url)
   }
 
   // Единая точка перехода в Auth: попутно запоминает роль.
@@ -492,46 +509,43 @@ function Landing({ onStart }) {
         {/* ── Геро ── */}
         {/* Фон из формул кладём на всю ширину экрана (а не внутрь max-w-6xl):
             формулы должны лежать в полях по краям, не под текстом. */}
-        <section className="relative overflow-hidden pt-10 sm:pt-16 pb-4">
+        <section className="relative overflow-hidden pt-10 sm:pt-16 pb-10">
           <FormulaBackdrop variant="hero" />
           <div className="relative z-10 max-w-6xl mx-auto w-full px-4 grid lg:grid-cols-2 gap-10 items-center">
             {/* Текст */}
             <div className="text-center lg:text-left">
+              <div className="max-w-sm mx-auto lg:mx-0 mb-6">
+                <RoleSwitch role={role} onChange={chooseRole} />
+              </div>
               <div className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full ring-1 ${cfg.ring} ${cfg.soft} ${cfg.text} mb-5`}>
                 <Icon name="sparkles" size={13} />
                 Платформа для репетиторов и их учеников
               </div>
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-gray-900 leading-[1.05]">
-                Вся подготовка к экзамену —{" "}
-                <span className={`text-transparent bg-clip-text bg-gradient-to-r ${cfg.grad}`}>
-                  в одной платформе
-                </span>
-              </h1>
-              <p className="mt-5 text-base sm:text-lg text-gray-500 dark:text-gray-400 max-w-xl mx-auto lg:mx-0">
-                Precettore связывает репетитора, ученика и родителя: занятия, домашние
-                задания, тренировочные варианты ОГЭ и ЕГЭ, оплата и прогресс — вместо
-                десятка табличек, чатов и тетрадок.
-              </p>
-              {/* Вход по роли: репетитор, ученик, родитель — родителю раньше
-                  на первом экране места не было вовсе. */}
-              <div className="mt-7 flex flex-col gap-2.5 max-w-md mx-auto lg:mx-0">
-                {["tutor", "student", "parent"].map((r) => (
-                  <RoleCard key={r} cfg={ROLES[r]} onClick={() => start(r, ROLES[r].cta.mode)} />
-                ))}
-              </div>
-              <div className="mt-4 text-sm text-gray-400 dark:text-gray-500">
-                Регистрация за минуту · без привязки карты
+              {/* key — чтобы текст геро мягко въезжал при смене роли */}
+              <div key={role} className="slide-up">
+                <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-gray-900 leading-[1.05] text-balance">
+                  {cfg.hero.title}{" "}
+                  <span className={`text-transparent bg-clip-text bg-gradient-to-r ${cfg.grad}`}>
+                    {cfg.hero.accent}
+                  </span>
+                </h1>
+                <p className="mt-5 text-base sm:text-lg text-gray-500 dark:text-gray-400 max-w-xl mx-auto lg:mx-0">
+                  {cfg.hero.lead}
+                </p>
               </div>
             </div>
 
-            {/* Визуал-коллаж */}
-            <div className="relative">
+            {/* Вход по роли: репетитор, ученик, родитель — родителю раньше
+                на первом экране места не было вовсе. Карточки стоят справа от
+                заголовка: это главное действие первого экрана, а не картинка. */}
+            <div className="relative w-full max-w-md mx-auto">
               <div className={`absolute -inset-6 rounded-[2rem] bg-gradient-to-br ${cfg.grad} opacity-10 blur-2xl`} />
-              <div className="relative grid gap-3">
-                <MiniVariantCard cfg={cfg} />
-                <div className="grid grid-cols-2 gap-3">
-                  <MiniProgressCard cfg={cfg} />
-                  <MiniScheduleCard />
+              <div className="relative flex flex-col gap-2.5">
+                {["tutor", "student", "parent"].map((r) => (
+                  <RoleCard key={r} cfg={ROLES[r]} onClick={() => start(r, ROLES[r].cta.mode)} />
+                ))}
+                <div className="mt-1 text-center text-sm text-gray-400 dark:text-gray-500">
+                  Регистрация за минуту · без привязки карты
                 </div>
               </div>
             </div>
@@ -552,38 +566,10 @@ function Landing({ onStart }) {
 
         {/* ── Роли ── */}
         <section className="max-w-6xl mx-auto w-full px-4 py-6">
-          <div className="text-center mb-6">
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900">Одна платформа — три роли</h2>
-            <p className="mt-2 text-gray-500 dark:text-gray-400">Выберите свою — и посмотрите, что получите именно вы.</p>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2 max-w-xl mx-auto mb-8">
-            {Object.entries(ROLES).map(([r, rc]) => {
-              const active = role === r
-              return (
-                <button
-                  key={r}
-                  onClick={() => chooseRole(r)}
-                  aria-pressed={active}
-                  className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-2xl border-2 transition-all duration-200 ${
-                    active
-                      ? `bg-gradient-to-br ${rc.grad} text-white border-transparent shadow-lg ${rc.glow}`
-                      : `bg-white dark:bg-gray-800 ${rc.text} border-gray-200 dark:border-gray-700`
-                  }`}
-                >
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${active ? "bg-white/20" : rc.soft}`}>
-                    <Icon name={rc.icon} size={18} />
-                  </div>
-                  <span className="text-xs font-semibold">{rc.tab}</span>
-                </button>
-              )
-            })}
-          </div>
-
           {/* Контент выбранной роли — key перезапускает stagger при переключении */}
           <div key={role} className="slide-up">
             <div className="text-center mb-7">
-              <h3 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900">{cfg.tagline}</h3>
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900">{cfg.tagline}</h2>
               <p className="mt-2 text-gray-500 dark:text-gray-400 max-w-2xl mx-auto">{cfg.lead}</p>
             </div>
 
