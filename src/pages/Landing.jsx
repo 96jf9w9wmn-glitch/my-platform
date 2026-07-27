@@ -3,6 +3,7 @@ import Icon from "../components/Icon"
 import Collapse from "../components/Collapse"
 import FormulaBackdrop from "../components/FormulaBackdrop"
 import { Highlight } from "../components/Mark"
+import { supabase } from "../supabase"
 import { BANK_STATS } from "./bankStats"
 
 // Продающий лендинг перед регистрацией. Объясняет ценность платформы
@@ -506,6 +507,94 @@ function PainCard({ item, index, cfg, open, onToggle }) {
   )
 }
 
+// Заявка на пробный урок. Приём с GoStudent/Preply: до регистрации человек
+// готов оставить контакт, но не готов заводить аккаунт. Пишем в leads —
+// таблицу, из которой посетитель может только писать, но не читать.
+function TrialForm({ cfg }) {
+  const [form, setForm] = useState({ name: "", contact: "", goal: "" })
+  const [sending, setSending] = useState(false)
+  const [sent, setSent] = useState(false)
+  const [error, setError] = useState("")
+
+  async function submit(e) {
+    e.preventDefault()
+    if (!form.name.trim() || !form.contact.trim()) {
+      setError("Оставьте имя и способ связи — иначе не сможем ответить")
+      return
+    }
+    setError("")
+    setSending(true)
+    const { error: err } = await supabase.from("leads").insert({
+      name: form.name.trim(),
+      contact: form.contact.trim(),
+      goal: form.goal.trim() || null,
+    })
+    setSending(false)
+    if (err) {
+      setError("Не получилось отправить. Попробуйте ещё раз или напишите нам напрямую.")
+      return
+    }
+    setSent(true)
+  }
+
+  if (sent) {
+    return (
+      <div className="glass rounded-3xl p-6 sm:p-8 text-center max-w-xl mx-auto">
+        <div className={`w-12 h-12 rounded-2xl mx-auto flex items-center justify-center ring-1 ${cfg.ring} ${cfg.soft} ${cfg.text}`}>
+          <Icon name="check" size={22} />
+        </div>
+        <h3 className="text-xl font-bold tracking-tight text-gray-900 mt-4">Заявка принята</h3>
+        <p className="mt-2 text-gray-500 dark:text-gray-400">
+          Свяжемся с вами по указанному контакту и подберём время пробного занятия.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <form onSubmit={submit} className="glass rounded-3xl p-6 sm:p-8 max-w-xl mx-auto">
+      <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900 text-center">
+        Пробное занятие
+      </h3>
+      <p className="mt-2 text-center text-gray-500 dark:text-gray-400 text-sm">
+        Оставьте контакт — подберём преподавателя и время. Аккаунт заводить не нужно.
+      </p>
+      <div className="flex flex-col gap-3 mt-5">
+        <input
+          value={form.name}
+          onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+          placeholder="Как вас зовут"
+          autoComplete="name"
+          className="input-glass"
+        />
+        <input
+          value={form.contact}
+          onChange={(e) => setForm((f) => ({ ...f, contact: e.target.value }))}
+          placeholder="Телефон или @телеграм"
+          className="input-glass"
+        />
+        <input
+          value={form.goal}
+          onChange={(e) => setForm((f) => ({ ...f, goal: e.target.value }))}
+          placeholder="Предмет и класс — например, математика, 9 класс"
+          className="input-glass"
+        />
+        {error && <div className="text-sm text-red-500">{error}</div>}
+        <button
+          type="submit"
+          disabled={sending}
+          className={`press-fill w-full h-[52px] rounded-full text-white font-semibold bg-gradient-to-r ${cfg.grad} shadow-lg ${cfg.glow} disabled:opacity-50`}
+        >
+          {sending ? "Отправляем…" : "Записаться на пробное"}
+        </button>
+        <div className="text-[11px] text-gray-400 dark:text-gray-500 text-center leading-snug">
+          Отправляя заявку, вы соглашаетесь на обработку персональных данных
+        </div>
+      </div>
+    </form>
+  )
+}
+
 function Landing({ onStart }) {
   // Роль берём сперва из ссылки (?for=parent — чтобы можно было дать родителю
   // прямую ссылку), затем из памяти прошлого захода.
@@ -798,6 +887,11 @@ function Landing({ onStart }) {
               </div>
             </div>
           ))}
+        </section>
+
+        {/* ── Пробное занятие ── */}
+        <section className="max-w-6xl mx-auto w-full px-4 py-8">
+          <TrialForm cfg={cfg} />
         </section>
 
         {/* ── Финальный призыв выбранной роли ── */}
