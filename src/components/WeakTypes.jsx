@@ -31,12 +31,22 @@ function WeakTypes({ studentId, studentName }) {
       .from("v_student_weak_types")
       .select("*")
       .eq("student_id", String(studentId))
-      // Сначала самые проблемные, при равной точности — где больше попыток.
-      .order("accuracy", { ascending: true })
-      .order("attempts", { ascending: false })
-      .limit(10)
+      // Берём с запасом: сортировать нужно по правилу, которого нет в SQL (см. ниже).
+      .limit(60)
       // Вьюхи может не быть (миграция task_attempts.sql не выполнена) — тогда блока просто нет.
-      .then(({ data }) => { if (alive && data) setRows(data) })
+      .then(({ data }) => {
+        if (!alive || !data) return
+        // Наверх — типажи, по которым данных достаточно, худшие первыми. Строки с
+        // одной-двумя попытками уходят вниз: иначе единственная случайная ошибка
+        // (точность 0%) вытеснила бы из десятки настоящую проблему с 40% из 12 попыток.
+        const sorted = [...data].sort((a, b) => {
+          const aEnough = a.attempts >= MIN_ATTEMPTS, bEnough = b.attempts >= MIN_ATTEMPTS
+          if (aEnough !== bEnough) return aEnough ? -1 : 1
+          if (a.accuracy !== b.accuracy) return a.accuracy - b.accuracy
+          return b.attempts - a.attempts
+        })
+        setRows(sorted.slice(0, 10))
+      })
     return () => { alive = false }
   }, [studentId])
 
