@@ -783,6 +783,7 @@ export const META19 = [
     ["boxes-three", "Три коробки: ход −1, −1, +1 → наибольшее в третьей", t19BoxesThree],
     ["ones-and-plus", "n единиц и знаки «+» → для скольких n сумма достижима", t19OnesAndPlus],
     ["barrels-pour", "Переливания между бочками: наим. число переливаний", t19BarrelsPour],
+    ["four-boxes-plus3", "Четыре коробки: −1,−1,−1,+3 → наиб. в первой", t19FourBoxesPlus3],
   ]],
   ["Прогрессии", [
     ["ap-ends-sum", "АП из натуральных: сумма крайних и наибольшее число членов", t19APEndsSum],
@@ -8241,6 +8242,111 @@ export function t19BarrelsPour() {
       mustMention: [...volsA, La, nB, Lb, nC],
       extra: [],
       phrases: ["перелить любое количество воды", "уравнять количество воды"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 13 (продолжение). Четыре коробки: −1, −1, −1, +3 (#25)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// За ход из трёх коробок берут по камню и кладут в четвёртую. Общая сумма не меняется,
+// а каждая попарная разность меняется на 0 или ±4, поэтому ВСЕ попарные разности
+// сохраняются по модулю 4 — это инвариант. Если сделано n ходов и i-я коробка получала
+// «+3» ровно kᵢ раз, то aᵢ' = aᵢ + 4kᵢ − n, откуда и достижимость: нужны целые kᵢ ≥ 0
+// с Σkᵢ = n. Наибольшее число камней в первой коробке ищется из условия, что остальные
+// три неотрицательны и имеют нужные остатки по модулю 4.
+export function t19FourBoxesPlus3() {
+  const base = pick([101, 97, 121, 149])
+  const start = [base, base + 1, base + 2, 0]
+  const S = sum(start)
+  const okState = (st) => {
+    if (sum(st) !== S) return false
+    for (const v of st) if (!Number.isInteger(v) || v < 0) return false
+    for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) {
+      if (((st[i] - st[j]) - (start[i] - start[j])) % 4 !== 0) return false
+    }
+    // достижимость: n = (сумма превышений) и kᵢ = (aᵢ' − aᵢ + n)/4 ≥ 0
+    for (let n = 0; n <= 4 * S; n += 1) {
+      const ks = st.map((v, i) => (v - start[i] + n) / 4)
+      if (ks.every((k) => Number.isInteger(k) && k >= 0) && Math.abs(sum(ks) - n) < 1e-9) return true
+      if (n > 2 * S) break
+    }
+    return false
+  }
+  // а) достижимое состояние: делаем несколько ходов от начального
+  const st = [...start]
+  const movesA = randInt(2, 6)
+  for (let t = 0; t < movesA; t++) {
+    const to = randInt(0, 3)
+    let ok = true
+    for (let i = 0; i < 4; i++) if (i !== to && st[i] < 1) ok = false
+    if (!ok) { t--; continue }
+    for (let i = 0; i < 4; i++) st[i] += (i === to ? 3 : -1)
+  }
+  const stateA = [...st]
+  if (stateA.join() === start.join()) return null
+  // б) недостижимое: вся куча в одной коробке
+  const idxB = 3
+  const stateB = [0, 0, 0, 0]
+  stateB[idxB] = S
+  if (okState(stateB)) return null
+  // в) наибольшее число камней в первой коробке
+  let best = -1, bestState = null
+  for (let m = S; m >= 0; m--) {
+    const rest = [1, 2, 3].map((i) => {
+      const need = ((m - (start[0] - start[i])) % 4 + 4) % 4
+      return need
+    })
+    if (m + sum(rest) !== S) continue
+    const cand = [m, ...rest]
+    if (okState(cand)) { best = m; bestState = cand; break }
+  }
+  if (best < 0) return null
+
+  const params = { start, S, stateA, stateB, best }
+  const check = (cfg, part) => {
+    if (!Array.isArray(cfg) || cfg.length !== 4) return "состояние — четыре числа"
+    for (const v of cfg) if (!Number.isInteger(v) || v < 0) return `${v} — не целое неотрицательное число камней`
+    if (sum(cfg) !== S) return `всего камней ${sum(cfg)}, а должно быть ${S}`
+    for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) {
+      if (((cfg[i] - cfg[j]) - (start[i] - start[j])) % 4 !== 0) return `разность коробок ${i + 1} и ${j + 1} изменилась не на кратное 4`
+    }
+    if (part === "a" && cfg.join() !== stateA.join()) return `нужно состояние ${stateA.join(", ")}`
+    if (part === "c" && cfg[0] !== best) return `в первой коробке ${cfg[0]} камней, а заявлено ${best}`
+    return null
+  }
+  // Независимый проход: перебор всех состояний с нужной суммой (первая коробка сверху
+  // вниз), проверка инварианта по модулю 4 и разрешимости системы aᵢ' = aᵢ + 4kᵢ − n.
+  const solve = (P) => {
+    let top = -1
+    for (let m = P.S; m >= 0 && top < 0; m--) {
+      const rest = [1, 2, 3].map((i) => (((m - (P.start[0] - P.start[i])) % 4) + 4) % 4)
+      if (m + sum(rest) !== P.S) continue
+      if (okState([m, ...rest])) top = m
+    }
+    return { a: okState(P.stateA), b: okState(P.stateB), c: top, c_next: false }
+  }
+
+  return item({
+    preamble: `Есть четыре коробки: в первой коробке ${start[0]} ${plural(start[0], "камень", "камня", "камней")}, во второй — ${start[1]}, в третьей — ${start[2]}, а в четвёртой коробке камней нет. За один ход берут по одному камню из любых трёх коробок и кладут в оставшуюся. Сделали некоторое количество таких ходов.`,
+    qa: `Могло ли в первой коробке оказаться ${stateA[0]} ${plural(stateA[0], "камень", "камня", "камней")}, во второй — ${stateA[1]}, в третьей — ${stateA[2]}, а в четвёртой — ${stateA[3]}?`,
+    qb: `Могло ли в четвёртой коробке оказаться ${S} ${plural(S, "камень", "камня", "камней")}?`,
+    qc: `Какое наибольшее число камней могло оказаться в первой коробке?`,
+    ansA: `да: такое состояние получается за ${movesA} ${plural(movesA, "ход", "хода", "ходов")}`,
+    ansB: `нет: за ход три коробки теряют по камню, а одна получает три, поэтому любая разность двух коробок меняется на 0 или ±4 — все попарные разности сохраняются по модулю 4. Вначале разность первой и второй коробок равна ${String(start[0] - start[1]).replace("-", "−")}, то есть ${(((start[0] - start[1]) % 4) + 4) % 4} по модулю 4, а в требуемом состоянии обе коробки пусты и разность равна 0`,
+    ansC: `${best}; например ${bestState.join(", ")}`,
+    solution: `Общее число камней не меняется и равно ${S}. За ход одна коробка получает 3 камня, а три другие теряют по одному, поэтому разность любых двух коробок меняется на 0 или ±4: все попарные разности сохраняются по модулю 4.\nа) Указанное состояние получается за ${movesA} ${plural(movesA, "ход", "хода", "ходов")}.\nб) Если в четвёртой коробке ${S} камней, то остальные пусты и их разности равны нулю, а изначально разность первой и второй равна ${String(start[0] - start[1]).replace("-", "−")} — по модулю 4 это ${(((start[0] - start[1]) % 4) + 4) % 4}, противоречие.\nв) Пусть в первой коробке стало m камней. Остальные три числа неотрицательны, в сумме дают ${S} − m и имеют определённые остатки по модулю 4 (они восстанавливаются из инварианта). Наименьшая возможная сумма этих остатков достигается при m = ${best}: тогда в коробках ${bestState.join(", ")}. Такое состояние достижимо, потому что система aᵢ' = aᵢ + 4kᵢ − n имеет решение в неотрицательных целых.\nОтвет: ${best}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: stateA, target: `state-${stateA.join("-")}` },
+        b: { type: "yesno", yes: false, reason: "mod4-invariant", target: `all-in-${idxB}` },
+        c: { type: "extremum", mode: "max", value: best, example: bestState },
+      },
+      mustMention: [...start.slice(0, 3), ...stateA, S],
+      extra: [],
+      phrases: ["по одному камню из любых трёх коробок", "камней нет"],
     },
   })
 }
