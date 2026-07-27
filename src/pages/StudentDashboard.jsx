@@ -1583,7 +1583,10 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
       attempts.push({
         p_account: user.id,
         p_token: user.token,
-        p_student_id: variant.submission?.student_id != null ? String(variant.submission.student_id) : null,
+        // ВАЖНО: тут нужен id ученика У РЕПЕТИТОРА (students.id), а не id аккаунта.
+        // В variant_submissions.student_id лежит именно аккаунт — по нему ни RLS
+        // (политика джойнит students), ни блок слабых типажей ничего не найдут.
+        p_student_id: student?.id != null ? String(student.id) : null,
         p_source: "variant",
         p_source_id: variant.submission.id,
         p_exam_type: task?.exam_type || variant.type,
