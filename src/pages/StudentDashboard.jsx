@@ -10,7 +10,7 @@ import Chat from "./Chat"
 import StudentOnboardingModal from "../components/StudentOnboardingModal"
 const Board = lazy(() => import("../components/Board"))
 const Practice = lazy(() => import("./Practice"))
-import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, formatPhone, answersEqual } from "../utils"
+import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, formatPhone, answersEqual, plural } from "../utils"
 // ЕГЭ (профиль и база) — единый поток части 2 (13–19); ОГЭ — свой (20–25).
 const isEgeType = (t) => t === "ЕГЭ" || t === "ЕГЭ Профиль"
 
@@ -524,6 +524,7 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
   const [testAnswers, setTestAnswers] = useState(Array(hw.question_count || 0).fill(""))
   const [submittingTest, setSubmittingTest] = useState(false)
   const [solutionFile, setSolutionFile] = useState(null)
+  const [answersOpen, setAnswersOpen] = useState(false)   // разбор ответов свёрнут по умолчанию
   const fileRef = useRef()
   const solutionCameraRef = useRef()
   const solutionFileRef = useRef()
@@ -809,32 +810,52 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
 
       {hasTest && testDone && hw.student_answers && hw.correct_answers && (
         <div className="glass p-5 mb-4">
-          <h3 className="text-sm font-medium mb-3">Разбор ответов</h3>
-          <div className="flex flex-col gap-1">
-            {hw.correct_answers.map((correct, i) => {
-              const studentAns = hw.student_answers[i] || "—"
-              const isCorrect = answersEqual(studentAns, correct)
-              return (
-                <div
-                  key={i}
-                  className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm ${
-                    isCorrect ? "bg-green-50" : "bg-red-50"
-                  }`}
-                >
-                  <span className="text-gray-500 w-6">{i + 1}</span>
-                  <span className={isCorrect ? "text-green-700 font-medium flex-1" : "text-red-700 font-medium flex-1"}>
-                    {studentAns}
-                  </span>
-                  {!isCorrect && (
-                    <span className="text-gray-400 text-xs">
-                      правильно: <span className="text-gray-700 font-medium">{correct}</span>
-                    </span>
-                  )}
-                  {isCorrect && <Icon name="check" size={12} className="text-green-500" />}
-                </div>
-              )
-            })}
-          </div>
+          <button
+            onClick={() => setAnswersOpen((v) => !v)}
+            className="w-full flex items-center justify-between gap-3 text-left"
+          >
+            <span className="text-sm font-medium">Разбор ответов</span>
+            <span className="flex items-center gap-2 text-xs text-gray-400">
+              {(() => {
+                const wrong = hw.correct_answers.filter((c, i) => !answersEqual(hw.student_answers[i] || "—", c)).length
+                return wrong === 0 ? "все верно" : `${wrong} ${plural(wrong, "ошибка", "ошибки", "ошибок")}`
+              })()}
+              <Icon name="chevron-down" size={14}
+                className={`transition-transform duration-200 ${answersOpen ? "rotate-180" : ""}`} />
+            </span>
+          </button>
+          {answersOpen && (
+            <div className="mt-3 rounded-xl border border-gray-100 overflow-hidden slide-up">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="bg-gray-50 text-xs text-gray-400">
+                    <th className="w-8 py-2 px-3 font-normal text-left">№</th>
+                    <th className="py-2 px-3 font-normal text-left">Мой ответ</th>
+                    <th className="py-2 px-3 font-normal text-left">Правильный ответ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {hw.correct_answers.map((correct, i) => {
+                    const studentAns = hw.student_answers[i] || "—"
+                    const isCorrect = answersEqual(studentAns, correct)
+                    return (
+                      <tr key={i} className={`border-t border-gray-100 ${isCorrect ? "bg-green-50" : "bg-red-50"}`}>
+                        <td className="py-2 px-3 text-gray-400 align-top">{i + 1}</td>
+                        <td className={`py-2 px-3 align-top font-medium ${isCorrect ? "text-green-700" : "text-red-700"}`}>
+                          <span className="flex items-start gap-1.5">
+                            <Icon name={isCorrect ? "check" : "x"} size={12}
+                              className={`mt-1 flex-shrink-0 ${isCorrect ? "text-green-500" : "text-red-500"}`} />
+                            {studentAns}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3 align-top text-gray-700">{correct}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 

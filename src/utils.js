@@ -120,7 +120,8 @@ const NB_VOID = /^(br|img|hr|input|col|path|line|circle|rect|ellipse|polyline|po
 // блочные (и «широкие» формульные) элементы разрывают склейку: таблица соответствия,
 // список, код, система ⟦cases⟧ — сами по себе занимают строку целиком.
 const NB_BLOCK = /^(table|thead|tbody|tr|td|th|div|ol|ul|li|p|br|code|pre|h[1-6])$/i
-const NB_WIDE = /class="tmath-(cases|code|match|answer|table|tblwrap|list)/
+// data-cases — та же система, но в PDF-разметке (там классов нет, только инлайн-стили)
+const NB_WIDE = /class="tmath-(cases|code|match|answer|table|tblwrap|list)|data-cases/
 // формульная разметка: SVG-радикал, PNG-формула в PDF, индексы/степени, .tmath-* и
 // inline-flex-стопки (в PDF классов нет — только инлайновые стили)
 const NB_MATH = /^<(?:svg|img|sub|sup)\b|class="tmath-|inline-flex/
@@ -272,9 +273,11 @@ function renderTaskMathRaw(text) {
     .replace(/⟦iso:([^:⟧]+):([^:⟧]+):([^⟧]+)⟧/g, (_, a, z, s) =>
       `<span class="tmath-iso"><span class="tmath-iso-nums"><span>${a}</span><span>${z}</span></span>${s}</span>`)
     // ⟦cases:строка⁞строка…⟧ — система (фигурная скобка) для кусочно-заданных функций;
-    // раскрываем ПОСЛЕ дробей, чтобы внутренние ⟦f⟧ уже стали <span> (без ⟧ внутри)
+    // раскрываем ПОСЛЕ дробей, чтобы внутренние ⟦f⟧ уже стали <span> (без ⟧ внутри).
+    // Разделитель строк — ⁞ или ¦ (генераторы ЕГЭ №18 пишут ¦); к этому моменту все
+    // токены со «своим» ¦ (⟦rf⟧, ⦃¦⦄, ⦅¦⦆) уже развёрнуты, так что путаницы нет.
     .replace(/⟦cases:([^⟧]+)⟧/g, (_, b) =>
-      `<span class="tmath-cases"><svg class="tmath-brace" viewBox="0 0 10 100" preserveAspectRatio="none" aria-hidden="true"><path d="M9 1C5 1 5 6 5 25C5 44 4 49 1 50C4 51 5 56 5 75C5 94 5 99 9 99" fill="none" stroke="currentColor" stroke-width="1.2" vector-effect="non-scaling-stroke"/></svg><span class="tmath-lines">${b.split("⁞").map((l) => `<span>${l}</span>`).join("")}</span></span>`)
+      `<span class="tmath-cases"><svg class="tmath-brace" viewBox="0 0 10 100" preserveAspectRatio="none" aria-hidden="true"><path d="M9 1C5 1 5 6 5 25C5 44 4 49 1 50C4 51 5 56 5 75C5 94 5 99 9 99" fill="none" stroke="currentColor" stroke-width="1.2" vector-effect="non-scaling-stroke"/></svg><span class="tmath-lines">${b.split(/[⁞¦]/).map((l) => `<span>${l}</span>`).join("")}</span></span>`)
     .replace(/\n/g, "<br>")
 }
 
@@ -308,7 +311,7 @@ export function plainTaskMath(text) {
     .replace(/⦉([^⦊]*)⦊/g, "$1")
     .replace(/⟦iso:([^:⟧]+):([^:⟧]+):([^⟧]+)⟧/g, (_, a, z, s) =>
       a.replace(/\d/g, (d) => "⁰¹²³⁴⁵⁶⁷⁸⁹"[+d]) + z.replace(/\d/g, (d) => "₀₁₂₃₄₅₆₇₈₉"[+d]) + s)
-    .replace(/⟦cases:([^⟧]+)⟧/g, (_, b) => b.split("⁞").join("; "))
+    .replace(/⟦cases:([^⟧]+)⟧/g, (_, b) => b.split(/[⁞¦]/).join("; "))
 }
 
 // Разворачивает мат-токены в SVG-РАЗМЕТКУ (корень — √ с чертой над подкоренным, дробь —

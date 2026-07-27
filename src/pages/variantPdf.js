@@ -171,6 +171,47 @@ function orderedListPdf(body) {
     `</div>`
 }
 
+// Фигурная скобка системы под известную высоту H. Растянутый SVG (viewBox +
+// preserveAspectRatio="none", как в вебе) html2canvas снимает бледной ниткой, поэтому
+// path считаем сразу в пикселях и растеризуем в PNG — так же, как дробь и корень.
+function braceSvg(H) {
+  const W = 10, mid = H / 2
+  const k = Math.min(14, mid * 0.45)                    // длина прямого «плеча» скобки
+  const n = (v) => v.toFixed(1)
+  const d = `M8.6,1 C5.2,1 5,2.4 5,${n(1 + k)} L5,${n(mid - k * 0.55)} `
+    + `C5,${n(mid - 1.5)} 3.6,${n(mid - 0.6)} 1,${n(mid)} `
+    + `C3.6,${n(mid + 0.6)} 5,${n(mid + 1.5)} 5,${n(mid + k * 0.55)} `
+    + `L5,${n(H - 1 - k)} C5,${n(H - 2.4)} 5.2,${n(H - 1)} 8.6,${n(H - 1)}`
+  return { W, H, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">` +
+    `<path d="${d}" fill="none" stroke="#1c1c1e" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>` }
+}
+
+// ⟦cases:строка⁞строка…⟧ — система (фигурная скобка) в PDF. Разворачивается ПОСЛЕ
+// цикла формул: к этому моменту внутренние ⟦f⟧/⟦r⟧ уже стали <img>, поэтому их «⟧»
+// не рвут токен, а разделителем строк остаётся только ⁞ или ¦ (в ЕГЭ №18 — ¦).
+// Высоту колонки строк не угадать (строка с дробью втрое выше обычной) — измеряем её
+// скрытым замером в том же шрифте, что и PDF-блок, и под неё рисуем скобку.
+async function casesPdf(html) {
+  const re = /⟦cases:([^⟧]+)⟧/g
+  let out = "", last = 0, m
+  while ((m = re.exec(html)) !== null) {
+    out += html.slice(last, m.index)
+    const lines = m[1].split(/[⁞¦]/)
+      .map((l) => `<span style="display:block; white-space:nowrap;">${l}</span>`).join("")
+    const probe = document.createElement("div")
+    probe.style.cssText = `position:fixed; left:-9999px; top:0; font-family:Arial,sans-serif; font-size:${FS}px; line-height:1.5;`
+    probe.innerHTML = lines
+    document.body.appendChild(probe)
+    const H = Math.max(24, Math.round(probe.getBoundingClientRect().height))
+    document.body.removeChild(probe)
+    out += `<span data-cases="1" style="display:inline-flex; align-items:center; vertical-align:middle;">`
+      + `<span style="flex:none; margin-right:6px; font-size:0;">${await svgToInlineImg(braceSvg(H), "middle")}</span>`
+      + `<span style="display:inline-flex; flex-direction:column; align-items:flex-start;">${lines}</span></span>`
+    last = m.index + m[0].length
+  }
+  return out + html.slice(last)
+}
+
 export async function renderTaskMathPdf(text) {
   const esc = escapeHtml(String(text ?? ""))
     .replace(/⟦match⟧([\s\S]*?)⟦endmatch⟧/g, (_, body) => matchTablePdf(body))
@@ -195,7 +236,7 @@ export async function renderTaskMathPdf(text) {
     last = m.index + m[0].length
   }
   // формула не должна рваться переносом строки и в PDF (см. noBreakMath в utils.js)
-  return noBreakMath(out + esc.slice(last))
+  return noBreakMath(await casesPdf(out + esc.slice(last)))
 }
 
 // html2canvas ненадёжно рисует живые <img src="*.svg"> (известное ограничение библиотеки,
