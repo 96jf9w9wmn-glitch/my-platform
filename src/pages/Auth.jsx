@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react"
 import { supabase } from "../supabase"
 import Icon from "../components/Icon"
-import StudentOnboardingModal from "../components/StudentOnboardingModal" // ВРЕМЕННО: демо-кнопка опросника
 
 function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
   const [mode, setMode] = useState(initialMode)
@@ -18,7 +17,6 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [failedAttempts, setFailedAttempts] = useState(0)
   const [cooldownLeft, setCooldownLeft] = useState(0)
-  const [showOnbDemo, setShowOnbDemo] = useState(false) // ВРЕМЕННО: демо опросника ученика
 
   useEffect(() => {
     if (cooldownLeft <= 0) return
@@ -208,17 +206,6 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
-      {/* ВРЕМЕННО: кнопка для предпросмотра опросника ученика (демо-режим, без БД). Удалить позже. */}
-      <button
-        onClick={() => setShowOnbDemo(true)}
-        className="fixed bottom-4 left-4 z-50 text-xs px-3 py-2 rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-500/30 active:scale-95 transition-transform"
-      >
-        Опросник (демо)
-      </button>
-      {showOnbDemo && (
-        <StudentOnboardingModal demo studentId="demo" token="demo" onComplete={() => setShowOnbDemo(false)} />
-      )}
-
       {onBack && (
         <button
           onClick={onBack}
