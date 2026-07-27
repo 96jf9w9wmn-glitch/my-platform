@@ -3863,6 +3863,540 @@ export function t18SysSemiParab() {
 }
 
 // =============================================================================
+// РАЗДЕЛ T. Системы «две кривые» — «ровно N решений» (эталон #162–#187)
+// =============================================================================
+// Каждая строка системы — кривая в плоскости (x; y): точка, пара прямых, окружность,
+// гипербола, полоса. Вопрос — о числе ОБЩИХ точек. Счёт остаётся точным: сравнения
+// расстояний и радиусов сводятся к сравнению квадратов рациональных чисел, число корней
+// квадратных уравнений считает Штурм, поэтому иррациональные радиусы в сравнения не попадают.
+
+// Число общих точек двух окружностей по КВАДРАТАМ расстояния между центрами и радиусов.
+// Ключ к точности: |r₁ − r₂| < d < r₁ + r₂ ⟺ (d² − r₁² − r₂²)² < 4r₁²r₂², а касание —
+// равенство; корни извлекать не нужно. 99 — окружности совпали (бесконечно много решений).
+function circleHits(d2, r12, r22) {
+  if (Rsign(r12) < 0 || Rsign(r22) < 0) return 0
+  if (Rzero(d2) && Rcmp(r12, r22) === 0) return Rzero(r12) ? 1 : 99
+  const A = Rsub(Rsub(d2, r12), r22)
+  const c = Rcmp(Rmul(A, A), Rmul(R(4), Rmul(r12, r22)))
+  return c < 0 ? 2 : c === 0 ? 1 : 0
+}
+const HEAD_SYS = "Найдите все значения a, при каждом из которых система"
+// «(a − r)» с человеческим знаком: при отрицательном r печатаем «(a + |r|)»
+const facA = (r) => (Rsign(r) >= 0 ? `(a ${MINUS} ${Rstr(r)})` : `(a + ${Rstr(Rneg(r))})`)
+
+// #162. {x² + y² + (p² + q²) = 2(px + qy); a² + ax + may = K} — «имеет решение».
+// Первая строка — (x − p)² + (y − q)² = 0, то есть РОВНО ОДНА точка (p; q). Подстановка
+// её во вторую строку превращает систему в квадратное уравнение по параметру.
+function build162({ p, q, m, r1 }) {
+  const S = p + m * q, r2 = -S - r1, K = -r1 * r2       // a² + Sa − K = (a − r1)(a − r2)
+  const P = [R(-K), R(S), R1]
+  return { set: SET([], uniqSorted([R(r1), R(r2)])), solve: (a) => (Rzero(pEval(P, a)) ? 1 : 0), S, K, r2 }
+}
+const T162 = []
+for (const p of [1, 2, 3]) for (const q of [1, 2, 3]) for (const m of [1, 2, 3]) for (const r1 of [1, 2, 3]) T162.push({ p, q, m, r1 })
+export function t18SysPointLine() {
+  const par = pick(T162), { p, q, m, r1 } = par
+  const { set, solve, S, K, r2 } = build162(par)
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:x${SUP[2]} + y${SUP[2]} + ${p * p + q * q} = 2(${p === 1 ? "" : p}x + ${q === 1 ? "" : q}y)`
+      + `¦a${SUP[2]} + ax + ${m === 1 ? "" : m}ay = ${K}⟧\n\nимеет решение.`,
+    set,
+    solution: `Первое уравнение: x${SUP[2]} ${MINUS} ${2 * p}x + ${p * p} + y${SUP[2]} ${MINUS} ${2 * q}y + ${q * q} = 0, то есть (x ${MINUS} ${p})${SUP[2]} + (y ${MINUS} ${q})${SUP[2]} = 0.\n`
+      + `Сумма двух квадратов равна нулю только когда каждый равен нулю, поэтому первая строка задаёт единственную точку (${p}; ${q}).\n`
+      + `Система имеет решение ровно тогда, когда эта точка подходит и ко второму уравнению: a${SUP[2]} + ${p}a + ${m * q}a = ${K}, то есть a${SUP[2]} + ${S}a ${MINUS} ${K} = 0.\n`
+      + `Корни: a = ${nS(r1)} и a = ${nS(r2)}.\nОтвет: ${setToString(set)}.`,
+    predicate: { type: "exists" },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [{ f: () => p, dash: true, label: `точка (${p}; ${q})` }],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -2, xMax: p + 4, aMin: Rnum(setBounds(set)[0]) - 4, aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 4,
+    },
+  })
+}
+
+// #163. {((x − u₁)² + (y − v₁)²)((x − u₂)² + (y − v₂)²) ≤ 0; (x − a)² + (y − 2a)² ≤ 4a²}.
+// Первый множитель — произведение двух неотрицательных выражений: произведение ≤ 0 только
+// если один из множителей равен нулю, то есть решения первой строки — ДВЕ точки.
+// Точка (u; v) лежит в круге ⟺ a² − 2(u + 2v)a + u² + v² ≤ 0 (коэффициент 1 + 4 − 4 = 1),
+// то есть a лежит на отрезке между корнями (u + 2v) ± √(v(4u + 3v)).
+const disk163 = (u, v, a) => Rsign(Radd(Rsub(Rmul(a, a), Rmul(R(2 * (u + 2 * v)), a)), R(u * u + v * v))) <= 0
+const roots163 = (u, v) => {
+  const g = Math.round(Math.sqrt(v * (4 * u + 3 * v)))
+  return g * g === v * (4 * u + 3 * v) ? [R(u + 2 * v - g), R(u + 2 * v + g)] : null
+}
+function build163({ u1, v1, u2, v2 }) {
+  const r1 = roots163(u1, v1), r2 = roots163(u2, v2)
+  if (!r1 || !r2) return null
+  const solve = (a) => (disk163(u1, v1, a) ? 1 : 0) + (disk163(u2, v2, a) ? 1 : 0)
+  return { set: assembleSet((a) => solve(a) === 1, [...r1, ...r2]), solve, r1, r2 }
+}
+const T163 = [
+  [1, 4, 6, 4], [3, 2, 11, 2], [3, 2, 1, 4], [11, 2, 13, 4], [6, 4, 9, 6],
+  [2, 8, 12, 8], [1, 4, 11, 2], [3, 2, 6, 4], [9, 6, 13, 4], [1, 4, 13, 4],
+].map(([u1, v1, u2, v2]) => ({ u1, v1, u2, v2 }))
+export function t18SysTwoPointsDisk() {
+  const par = pick(T163), { u1, v1, u2, v2 } = par
+  const { set, solve, r1, r2 } = build163(par)
+  const pt = (u, v) => `(x ${MINUS} ${u})${SUP[2]} + (y ${MINUS} ${v})${SUP[2]}`
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:(${pt(u1, v1)})(${pt(u2, v2)}) ≤ 0¦(x ${MINUS} a)${SUP[2]} + (y ${MINUS} 2a)${SUP[2]} ≤ 4a${SUP[2]}⟧\n\nимеет ровно одно решение.`,
+    set,
+    solution: `Оба множителя в первой строке неотрицательны, поэтому произведение ≤ 0 только если один из них равен нулю: `
+      + `решения первой строки — две точки A(${u1}; ${v1}) и B(${u2}; ${v2}).\n`
+      + `Вторая строка — круг с центром (a; 2a) радиуса 2|a|: центр бежит по прямой y = 2x, радиус растёт вместе с |a|.\n`
+      + `Точка (u; v) лежит в круге ⟺ (u ${MINUS} a)${SUP[2]} + (v ${MINUS} 2a)${SUP[2]} ≤ 4a${SUP[2]} ⟺ a${SUP[2]} ${MINUS} 2(u + 2v)a + u${SUP[2]} + v${SUP[2]} ≤ 0.\n`
+      + `Для A это a ∈ [${Rstr(r1[0])}; ${Rstr(r1[1])}], для B — a ∈ [${Rstr(r2[0])}; ${Rstr(r2[1])}]. Ровно одно решение — когда a попадает ровно в один из этих отрезков.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [{ f: (a) => a, label: "центр круга: x = a" }, { f: (a) => 3 * a, dash: true, label: "правый край круга" }],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -2, xMax: Math.max(u1, u2) + 4,
+      aMin: Rnum(setBounds(set)[0]) - 3, aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #167. {(x + ay − c)(x + ay − ca) = 0; x² + y² = R²} — «ровно четыре различных решения».
+// Первая строка — две ПАРАЛЛЕЛЬНЫЕ прямые x + ay = c и x + ay = ca (общая нормаль (1; a)).
+// Прямая x + ay = d пересекает окружность в двух точках ⟺ d² < R²(1 + a²).
+// При a = 1 прямые совпадают, и решений остаётся вдвое меньше.
+function build167({ c, rad, g }) {                       // g² = c² − rad², g < rad
+  const solve = (a) => {
+    const hits = (d) => {
+      const cc = Rcmp(Rmul(d, d), Rmul(R(rad * rad), Radd(R1, Rmul(a, a))))
+      return cc < 0 ? 2 : cc === 0 ? 1 : 0
+    }
+    const n1 = hits(R(c))
+    return Rcmp(a, R1) === 0 ? n1 : n1 + hits(Rmul(R(c), a))
+  }
+  const crit = [R1, R(g, rad), R(-g, rad), R(rad, g), R(-rad, g)]
+  return { set: assembleSet((a) => solve(a) === 4, crit), solve }
+}
+const T167 = [[5, 4, 3], [10, 8, 6], [13, 12, 5], [17, 15, 8], [25, 24, 7], [29, 21, 20]]
+  .map(([c, rad, g]) => ({ c, rad, g }))
+export function t18SysParallelCircle() {
+  const par = pick(T167), { c, rad, g } = par
+  const { set, solve } = build167(par)
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:(x + ay ${MINUS} ${c})(x + ay ${MINUS} ${c}a) = 0¦x${SUP[2]} + y${SUP[2]} = ${rad * rad}⟧\n\nимеет ровно четыре различных решения.`,
+    set,
+    solution: `Первая строка — две параллельные прямые x + ay = ${c} и x + ay = ${c}a: у них общий вектор нормали (1; a), а при a = 1 они совпадают.\n`
+      + `Расстояние от начала координат до прямой x + ay = d равно |d| : ⟦r:1 + a${SUP[2]}⟧, поэтому такая прямая пересекает окружность радиуса ${rad} в двух точках ⟺ d${SUP[2]} < ${rad * rad}(1 + a${SUP[2]}).\n`
+      + `Четыре различных решения — когда каждая из прямых даёт по две точки и прямые не совпали:\n`
+      + `${c * c} < ${rad * rad}(1 + a${SUP[2]}) ⟺ |a| > ${Rstr(R(g, rad))};   ${c * c}a${SUP[2]} < ${rad * rad}(1 + a${SUP[2]}) ⟺ |a| < ${Rstr(R(rad, g))};   a ≠ 1.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 4 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: () => rad, dash: true, label: "края окружности" }, { f: () => -rad, dash: true },
+        { f: () => c, label: "первая прямая при y = 0" }, { f: (a) => c * a, label: "вторая прямая при y = 0" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -rad - 2, xMax: rad + 2, aMin: -3, aMax: 3,
+    },
+  })
+}
+
+// #170. {y = (a + p)x² + 2ax + a − p; y² = k²x²} — «ровно четыре различных решения».
+// Вторая строка — пара прямых y = ±kx. Подстановка даёт два квадратных уравнения
+// (a + p)x² + (2a ∓ k)x + (a − p) = 0 с дискриминантами ∓4ka + k² + 4p².
+// Ненулевые корни двух уравнений различны всегда; совпасть может только x = 0 (при a = p).
+function build170({ p, k }) {
+  const quads = (a) => [
+    [Rsub(a, R(p)), Rsub(Rmul(R(2), a), R(k)), Radd(a, R(p))],
+    [Rsub(a, R(p)), Radd(Rmul(R(2), a), R(k)), Radd(a, R(p))],
+  ]
+  const solve = (a) => {
+    let n = 0
+    for (const q of quads(a)) n += countRoots(q, "-inf", "+inf", false, false)
+    if (Rcmp(a, R(p)) === 0) n -= 1                      // начало координат посчитано дважды
+    return n
+  }
+  const B = R(k * k + 4 * p * p, 4 * k)
+  return { set: assembleSet((a) => solve(a) === 4, [B, Rneg(B), R(p), R(-p)]), solve, B }
+}
+const T170 = []
+for (const p of [1, 2, 3, 4]) for (const k of [1, 2, 3]) if (k !== 2 * p) T170.push({ p, k })
+export function t18SysParabolaCross() {
+  const par = pick(T170), { p, k } = par
+  const { set, solve, B } = build170(par)
+  const kx = k === 1 ? "x" : `${k}x`
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:y = (a + ${p})x${SUP[2]} + 2ax + a ${MINUS} ${p}¦y${SUP[2]} = ${k * k === 1 ? "" : k * k}x${SUP[2]}⟧\n\nимеет ровно четыре различных решения.`,
+    set,
+    solution: `Вторая строка ⟺ y = ${kx} или y = ${MINUS}${kx}.\n`
+      + `Подстановка y = ${kx}: (a + ${p})x${SUP[2]} + (2a ${MINUS} ${k})x + a ${MINUS} ${p} = 0, дискриминант равен ${MINUS}${4 * k}a + ${k * k + 4 * p * p}.\n`
+      + `Подстановка y = ${MINUS}${kx}: (a + ${p})x${SUP[2]} + (2a + ${k})x + a ${MINUS} ${p} = 0, дискриминант равен ${4 * k}a + ${k * k + 4 * p * p}.\n`
+      + `Оба положительны ⟺ |a| < ${Rstr(B)}. При a = ${MINUS}${p} обнуляется старший коэффициент (каждое уравнение даёт по одному корню — всего два решения), `
+      + `а при a = ${p} у обоих уравнений появляется общий корень x = 0, и различных решений три.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 4 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => (Math.abs(a + p) < 1e-9 ? null : (k - 2 * a + Math.sqrt(Math.max(0, -4 * k * a + k * k + 4 * p * p))) / (2 * (a + p))), label: `x на прямой y = ${kx}` },
+        { f: (a) => (Math.abs(a + p) < 1e-9 ? null : (-k - 2 * a + Math.sqrt(Math.max(0, 4 * k * a + k * k + 4 * p * p))) / (2 * (a + p))), label: `x на прямой y = ${MINUS}${kx}` },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -6, xMax: 6, aMin: Rnum(setBounds(set)[0]) - 2, aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 2,
+    },
+  })
+}
+
+// #172. {x² + y² = a²; xy = a² − ka} — «ровно два различных решения».
+// Через s = x + y и p = xy: s² = x² + y² + 2xy = 3a² − 2ka, а сами x, y — корни
+// t² − st + p = 0 с дискриминантом s² − 4p = 2ka − a². Число решений — произведение
+// «сколько значений s» × «сколько корней t при каждом s».
+function build172({ k }) {
+  const solve = (a) => {
+    const S = Rmul(a, Rsub(Rmul(R(3), a), R(2 * k)))
+    const D = Rmul(a, Rsub(R(2 * k), a))
+    if (Rsign(S) < 0 || Rsign(D) < 0) return 0
+    return (Rsign(S) > 0 ? 2 : 1) * (Rsign(D) > 0 ? 2 : 1)
+  }
+  return { set: assembleSet((a) => solve(a) === 2, [R0, R(2 * k, 3), R(2 * k)]), solve }
+}
+const T172 = [1, 2, 3, 4, 5, 6, 9, 12].map((k) => ({ k }))
+export function t18SysCircleHyperbola() {
+  const par = pick(T172), { k } = par
+  const { set, solve } = build172(par)
+  const ka = k === 1 ? "a" : `${k}a`
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:x${SUP[2]} + y${SUP[2]} = a${SUP[2]}¦xy = a${SUP[2]} ${MINUS} ${ka}⟧\n\nимеет ровно два различных решения.`,
+    set,
+    solution: `Обозначим s = x + y и p = xy = a${SUP[2]} ${MINUS} ${ka}. Тогда s${SUP[2]} = x${SUP[2]} + y${SUP[2]} + 2xy = a${SUP[2]} + 2(a${SUP[2]} ${MINUS} ${ka}) = 3a${SUP[2]} ${MINUS} ${2 * k}a.\n`
+      + `Сами x и y — корни уравнения t${SUP[2]} ${MINUS} st + p = 0 с дискриминантом s${SUP[2]} ${MINUS} 4p = ${2 * k}a ${MINUS} a${SUP[2]}.\n`
+      + `Если 3a${SUP[2]} ${MINUS} ${2 * k}a > 0, значений s два, при равенстве нулю — одно (s = 0), при отрицательном решений нет. `
+      + `Каждое s даёт две пары (x; y) при положительном дискриминанте и одну при нулевом.\n`
+      + `Значит ровно две пары получаются в двух случаях: 3a${SUP[2]} = ${2 * k}a, то есть a = ${Rstr(R(2 * k, 3))} (дискриминант ещё положителен), и ${2 * k}a = a${SUP[2]}, то есть a = ${2 * k}.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 2 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => (3 * a * a - 2 * k * a >= 0 ? Math.sqrt(3 * a * a - 2 * k * a) : null), label: "s = x + y" },
+        { f: (a) => (3 * a * a - 2 * k * a >= 0 ? -Math.sqrt(3 * a * a - 2 * k * a) : null) },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -2 * k - 2, xMax: 2 * k + 2, aMin: -2, aMax: 2 * k + 4,
+    },
+  })
+}
+
+// #174. {x² + y² = 2px + 2qy; x² + y² = 2(p + tqa)x + 2(q − tpa)y − t²(p² + q²)a²}.
+// Обе строки — окружности ОДНОГО радиуса √(p² + q²): свободный член второй подобран так,
+// что квадрат радиуса не зависит от a. Центры (p; q) и (p + tqa; q − tpa), расстояние
+// между ними d = t√(p² + q²)·|a|. Две точки пересечения ⟺ 0 < d < 2r.
+function build174({ p, q, t, sg }) {
+  const rho = p * p + q * q
+  const solve = (a) => circleHits(Rmul(R(t * t * rho), Rmul(a, a)), R(rho), R(rho))
+  return { set: assembleSet((a) => solve(a) === 2, [R0, R(2, t), R(-2, t)]), solve, rho, A: sg * t * q, B: sg * t * p }
+}
+const T174 = []
+for (const [p, q] of [[1, 1], [2, 1], [1, 2], [3, 1], [1, 3], [3, 2], [2, 3]]) for (const t of [1, 2, 3]) for (const sg of [1, -1]) T174.push({ p, q, t, sg })
+export function t18SysTwoCircles() {
+  const par = pick(T174), { p, q, t } = par
+  const { set, solve, rho, A, B } = build174(par)
+  const c1 = `${p}${term(A, "a")}`, c2 = `${q}${term(-B, "a")}`
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:x${SUP[2]} + y${SUP[2]} = ${2 * p === 1 ? "" : 2 * p}x + ${2 * q === 1 ? "" : 2 * q}y`
+      + `¦x${SUP[2]} + y${SUP[2]} = 2(${c1})x + 2(${c2})y ${MINUS} ${t * t * rho}a${SUP[2]}⟧\n\nимеет ровно два различных решения.`,
+    set,
+    solution: `Первая строка: (x ${MINUS} ${p})${SUP[2]} + (y ${MINUS} ${q})${SUP[2]} = ${rho} — окружность с центром (${p}; ${q}) и радиусом ⟦r:${rho}⟧.\n`
+      + `Вторая: (x ${MINUS} (${c1}))${SUP[2]} + (y ${MINUS} (${c2}))${SUP[2]} = ${rho} — радиус тот же, а центр с ростом a бежит по прямой.\n`
+      + `Квадрат расстояния между центрами d${SUP[2]} = ${A * A + B * B}a${SUP[2]}. У двух окружностей равного радиуса ровно две общие точки ⟺ 0 < d < 2⟦r:${rho}⟧, `
+      + `то есть 0 < ${A * A + B * B}a${SUP[2]} < ${4 * rho} (при a = 0 окружности совпадают, и решений бесконечно много).\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 2 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [{ f: () => p, dash: true, label: "центр первой" }, { f: (a) => p + A * a, label: "центр второй" }],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -6, xMax: 6, aMin: -4, aMax: 4,
+    },
+  })
+}
+
+// #175. {(x − ka + m)² + (y − a)² = r²; (x + m)² + (y − a)² = (a + c)²} при a > 0 —
+// «единственное решение». Центры (ka − m; a) и (−m; a) лежат на одной горизонтали,
+// поэтому d = ka. Единственная общая точка — касание: d = r + (a + c) или d = |r − (a + c)|.
+function build175({ k, r, c }) {                         // m — только сдвиг по x, на ответ не влияет
+  const solve = (a) => {
+    if (Rsign(a) <= 0) return 0                          // ищем только положительные a
+    const rr = Radd(a, R(c))
+    return circleHits(Rmul(R(k * k), Rmul(a, a)), R(r * r), Rmul(rr, rr))
+  }
+  const crit = [R0]
+  for (const s of [1, -1]) {
+    const base = [Radd(R(r), R(s * c)), R(s)]            // r + s(a + c)
+    const { roots, allRational } = ratRoots(pSub([R0, R0, R(k * k)], pMul(base, base)))
+    if (!allRational) return null
+    crit.push(...roots)
+  }
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+// Все наборы с c ≠ r дают ровно две точки касания с круглыми координатами
+// ((r + c)/(k − 1) и (c − r)/(k − 1) либо (r − c)/(k + 1)) — отбирать нечего.
+const T175 = []
+for (const k of [2, 3]) for (const m of [1, 2, 3]) for (const r of [1, 2, 3, 4]) for (const c of [1, 2, 3, 4, 5]) {
+  if (c !== r) T175.push({ k, m, r, c })
+}
+export function t18SysCirclesTangent() {
+  const par = pick(T175), { k, m, r, c } = par
+  const { set, solve } = build175(par)
+  const ka = k === 1 ? "a" : `${k}a`
+  return item({
+    text: `Найдите все положительные значения a, при каждом из которых система\n`
+      + `⟦cases:(x ${MINUS} ${ka} + ${m})${SUP[2]} + (y ${MINUS} a)${SUP[2]} = ${r * r}`
+      + `¦(x + ${m})${SUP[2]} + (y ${MINUS} a)${SUP[2]} = a${SUP[2]} + ${2 * c === 1 ? "" : 2 * c}a + ${c * c}⟧\n\nимеет единственное решение.`,
+    set,
+    solution: `Первая строка — окружность с центром O₁(${ka} ${MINUS} ${m}; a) и радиусом ${r}.\n`
+      + `Во второй строке a${SUP[2]} + ${2 * c === 1 ? "" : 2 * c}a + ${c * c} = (a + ${c})${SUP[2]}, то есть это окружность с центром O₂(${MINUS}${m}; a) и радиусом a + ${c} (он положителен при a > 0).\n`
+      + `Ординаты центров совпадают, поэтому расстояние между ними d = ${ka}.\n`
+      + `Общая точка ровно одна ⟺ окружности касаются: ${ka} = ${r} + a + ${c} (внешнее касание) или ${ka} = |${r} ${MINUS} a ${MINUS} ${c}| (внутреннее).\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [{ f: (a) => k * a - m, label: "центр O₁" }, { f: () => -m, dash: true, label: "центр O₂" }],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -m - 3, xMax: m + 8, aMin: -2, aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 4,
+    },
+  })
+}
+
+// #176. {x² + y² − 2(α₁x + β₁y)a = u² − 2ua + (1 − α₁² − β₁²)a²; то же со (α₂, β₂, v)}
+// — «НЕ имеет решений». Каждая строка — окружность с центром (α·a; β·a) и радиусом |a − u|.
+// Расстояние между центрами d = k|a|, где k² = (α₁ − α₂)² + (β₁ − β₂)². Решений нет ⟺
+// d > r₁ + r₂ или d < |r₁ − r₂|, а это в обоих случаях равносильно
+// (k²a² − (2a − u − v)²)(k²a² − (u − v)²) > 0 — сюда не входят сами модули.
+function build176({ a1, b1, a2, b2, u, v }) {
+  const Q = (a1 - a2) ** 2 + (b1 - b2) ** 2
+  const kk = Math.round(Math.sqrt(Q))
+  if (kk * kk !== Q || kk === 2 || u === v || u === -v) return null
+  const solve = (a) => {
+    const du = Rsub(a, R(u)), dv = Rsub(a, R(v))
+    return circleHits(Rmul(R(Q), Rmul(a, a)), Rmul(du, du), Rmul(dv, dv))
+  }
+  const crit = [R(u + v, 2 - kk), R(u + v, kk + 2), R(u - v, kk), R(v - u, kk)]
+  return { set: assembleSet((a) => solve(a) === 0, crit), solve, kk }
+}
+// Пары (α₁ − α₂; β₁ − β₂) — пифагоровы (расстояние между центрами k|a| рационально),
+// поэтому все наборы проходят: границы ответа — (u + v)/(2 ∓ k) и ±(u − v)/k.
+const T176 = []
+for (const c of [[1, -1, -3, -4], [2, 1, -2, -2], [1, 1, -3, -2], [1, -1, 4, 3], [1, 2, -2, -2], [3, 1, -1, -2], [1, 1, -2, 1], [2, -1, -1, 3]]) {
+  for (const [u, v] of [[3, 1], [4, 2], [2, 5], [5, 1], [1, 4], [6, 2], [2, 7]]) {
+    T176.push({ a1: c[0], b1: c[1], a2: c[2], b2: c[3], u, v })
+  }
+}
+// «x² + y² − 2(αx + βy)a»: при α < 0 выносим знак наружу, чтобы запись выглядела как в ФИПИ
+function centerTxt176(al, be) {
+  const flip = al < 0
+  const g = (x, y) => (y ? g(y, x % y) : Math.abs(x))
+  const t = g(al, be)                                    // общий множитель выносим за скобку
+  const A = (flip ? -al : al) / t, B = (flip ? -be : be) / t
+  return `x${SUP[2]} + y${SUP[2]} ${flip ? "+" : MINUS} ${2 * t === 1 ? "" : 2 * t}(${A === 1 ? "" : A}x${term(B, "y")})a`
+}
+export function t18SysCirclesNoSol() {
+  const par = pick(T176), { a1, b1, a2, b2, u, v } = par
+  const { set, solve, kk } = build176(par)
+  const rhs = (w, al, be) => `${w * w}${term(-2 * w, "a")}${term(1 - al * al - be * be, `a${SUP[2]}`)}`
+  const ca = (c) => `${c < 0 ? MINUS : ""}${Math.abs(c) === 1 ? "" : Math.abs(c)}a`   // «−a», «3a»
+  const sq = (v, c) => `(${v}${term(-c, "a")})${SUP[2]}`                              // «(x − 2a)²», «(y + a)²»
+  const cen = (al, be) => `(${ca(al)}; ${ca(be)})`
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:${centerTxt176(a1, b1)} = ${rhs(u, a1, b1)}¦${centerTxt176(a2, b2)} = ${rhs(v, a2, b2)}⟧\n\nне имеет решений.`,
+    set,
+    solution: `Соберём полные квадраты. Первая строка: ${sq("x", a1)} + ${sq("y", b1)} = (a ${MINUS} ${u})${SUP[2]} — `
+      + `окружность с центром ${cen(a1, b1)} и радиусом |a ${MINUS} ${u}|.\n`
+      + `Вторая: ${sq("x", a2)} + ${sq("y", b2)} = (a ${MINUS} ${v})${SUP[2]} — центр ${cen(a2, b2)}, радиус |a ${MINUS} ${v}|.\n`
+      + `Расстояние между центрами d = ${kk}|a|. Общих точек нет ⟺ d > r₁ + r₂ или d < |r₁ ${MINUS} r₂|; `
+      + `после возведения в квадрат оба случая складываются в одно неравенство\n`
+      + `(${kk * kk}a${SUP[2]} ${MINUS} (2a ${MINUS} ${u + v})${SUP[2]})(${kk * kk}a${SUP[2]} ${MINUS} ${(u - v) * (u - v)}) > 0.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "none" },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [{ f: (a) => a1 * a, label: "центр первой" }, { f: (a) => a2 * a, label: "центр второй" }],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -8, xMax: 8, aMin: Rnum(setBounds(set)[0]) - 3, aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #177. {px² + py² = kxy; (x − a)² + (y − a)² = ρa⁴} — «ровно два решения».
+// Первая строка распадается на пару прямых y = λx и y = x/λ (p = λ, k = 1 + λ²).
+// Подстановка в окружность даёт квадратные уравнения, у которых четверть дискриминанта
+// равна a²[ρ(1 + λ²)a² − (λ − 1)²] — для обеих прямых знак один и тот же.
+function build177({ lam, rho }) {
+  const w = Math.round(Math.sqrt(rho * (1 + lam * lam)))
+  const solve = (a) => {
+    if (Rzero(a)) return 1                               // окружность выродилась в точку (0; 0)
+    const D = Rsub(Rmul(R(rho * (1 + lam * lam)), Rmul(a, a)), R((lam - 1) * (lam - 1)))
+    const s = Rsign(D)
+    if (s < 0) return 0
+    if (s === 0) return 2                                // по одной точке касания на каждой прямой
+    const a2 = Rmul(a, a)
+    const onO = Rzero(Rsub(Rmul(R(2), a2), Rmul(R(rho), Rmul(a2, a2))))
+    return onO ? 3 : 4                                   // начало координат лежит на обеих прямых
+  }
+  return { set: assembleSet((a) => solve(a) === 2, [R0, R(lam - 1, w), R(-(lam - 1), w)]), solve, w }
+}
+const T177 = [[2, 5], [2, 20], [2, 45], [3, 10], [3, 40], [4, 17], [5, 26]].map(([lam, rho]) => ({ lam, rho }))
+export function t18SysLinesCircle() {
+  const par = pick(T177), { lam, rho } = par
+  const { set, solve, w } = build177(par)
+  const p = lam, k = 1 + lam * lam
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:${p}x${SUP[2]} + ${p}y${SUP[2]} = ${k}xy¦(x ${MINUS} a)${SUP[2]} + (y ${MINUS} a)${SUP[2]} = ${rho}a${SUP[4]}⟧\n\nимеет ровно два решения.`,
+    set,
+    solution: `Первая строка: ${p}x${SUP[2]} ${MINUS} ${k}xy + ${p}y${SUP[2]} = 0 ⟺ (y ${MINUS} ${lam}x)(${lam}y ${MINUS} x) = 0, то есть y = ${lam}x или ${lam}y = x.\n`
+      + `Вторая — окружность с центром (a; a) и радиусом ⟦r:${rho}⟧·a${SUP[2]}.\n`
+      + `Подстановка y = ${lam}x даёт ${1 + lam * lam}x${SUP[2]} ${MINUS} ${2 * (1 + lam)}ax + 2a${SUP[2]} ${MINUS} ${rho}a${SUP[4]} = 0; четверть дискриминанта равна a${SUP[2]}(${rho * (1 + lam * lam)}a${SUP[2]} ${MINUS} ${(lam - 1) * (lam - 1)}), `
+      + `и для второй прямой знак дискриминанта тот же.\n`
+      + `При |a| > ${Rstr(R(lam - 1, w))} каждая прямая даёт по две точки (всего четыре), при 0 < |a| < ${Rstr(R(lam - 1, w))} — ни одной, при a = 0 окружность вырождается в точку (0; 0) (одно решение). `
+      + `Ровно две точки — когда обе прямые касательные.\nОтвет: ${setToString(set)}.`,
+    predicate: { type: "count", n: 2 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => a, dash: true, label: "центр окружности" },
+        { f: (a) => (a * (1 + lam)) / (1 + lam * lam), label: "точка касания" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -4, xMax: 4, aMin: -4, aMax: 4,
+    },
+  })
+}
+
+// #178. {(x − b)(x + g) ≤ 0; f·x² + f·y² − 2fa(x − y) − 2fh·y + (2f − 1)a² − (2fh + e)a + fh² = 0}
+// — «единственное решение». Первая строка — вертикальная полоса −g ≤ x ≤ b. Вторая после
+// сборки квадратов: (x − a)² + (y + a − h)² = a(a + e)/f — ОКРУЖНОСТЬ (кривая, не круг!),
+// центр которой движется по прямой, а радиус зависит от a. У полосы и окружности ровно одна
+// общая точка либо когда радиус равен нулю и центр внутри полосы, либо при касании края
+// полосы снаружи; во всех остальных непустых случаях общая часть — дуга.
+function build178({ e, f, b, g }) {
+  const solve = (a) => {
+    const r2 = Rdiv(Rmul(a, Radd(a, R(e))), R(f))
+    if (Rsign(r2) < 0) return 0
+    if (Rzero(r2)) return Rcmp(a, R(-g)) >= 0 && Rcmp(a, R(b)) <= 0 ? 1 : 0
+    const cmpR = (t) => (Rsign(t) < 0 ? 1 : Rcmp(r2, Rmul(t, t)))   // сравнение радиуса с t
+    const dr = cmpR(Rsub(a, R(b))), dl = cmpR(Rsub(R(-g), a))
+    if (dr < 0 || dl < 0) return 0                       // окружность целиком вне полосы
+    if (dr === 0 || dl === 0) return 1                   // касание края полосы
+    return 99                                            // дуга внутри полосы
+  }
+  const crit = [R0, R(-e)]
+  for (const [A, B, C] of [[f - 1, -(2 * f * b + e), f * b * b], [f - 1, 2 * f * g - e, f * g * g]]) {
+    const { roots, allRational } = ratRoots([R(C), R(B), R(A)])
+    if (!allRational) return null
+    crit.push(...roots)
+  }
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+// Наборы (e, f, b, g) найдены разовым перебором e ≤ 6, f ≤ 12, b, g ≤ 3 этим же движком:
+// оба уравнения касания ((f−1)a² − (2fb+e)a + fb² = 0 и (f−1)a² + (2fg−e)a + fg² = 0)
+// обязаны иметь рациональные корни, а ответ — не меньше трёх круглых точек.
+const T178 = [
+  [1, 2, 2, 1], [1, 2, 2, 3], [1, 3, 1, 1], [1, 3, 1, 2], [1, 5, 2, 1], [1, 5, 2, 3], [1, 6, 1, 1], [1, 6, 1, 2],
+  [1, 6, 3, 1], [1, 6, 3, 2], [1, 7, 2, 1], [1, 7, 2, 3], [1, 10, 1, 1], [1, 10, 1, 2], [1, 12, 2, 1], [1, 12, 2, 3],
+  [2, 3, 2, 2], [2, 5, 1, 2], [2, 5, 1, 3], [2, 6, 2, 2], [2, 8, 1, 2], [2, 8, 1, 3], [2, 8, 3, 2], [2, 8, 3, 3],
+  [2, 10, 2, 2], [3, 3, 3, 3], [3, 4, 2, 3], [3, 6, 3, 3], [3, 7, 1, 3], [3, 7, 2, 3], [3, 10, 1, 3], [3, 10, 3, 3],
+].map(([e, f, b, g]) => ({ e, f, b, g }))
+export function t18SysStripCircle() {
+  const par = pick(T178), { e, f, b, g } = par
+  const h = pick([2, 3, 4])
+  const { set, solve } = build178(par)
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:(x ${MINUS} ${b})(x + ${g}) ≤ 0`
+      + `¦${f}x${SUP[2]} + ${f}y${SUP[2]} ${MINUS} ${2 * f}a(x ${MINUS} y) ${MINUS} ${2 * f * h}y + ${2 * f - 1}a${SUP[2]} ${MINUS} ${2 * f * h + e}a + ${f * h * h} = 0⟧\n\nимеет единственное решение.`,
+    set,
+    solution: `Первая строка задаёт полосу ${MINUS}${g} ≤ x ≤ ${b}.\n`
+      + `Во второй разделим всё на ${f} и соберём полные квадраты: (x ${MINUS} a)${SUP[2]} + (y + a ${MINUS} ${h})${SUP[2]} = ${fT(`a(a + ${e})`, `${f}`)}. `
+      + `Это окружность с центром (a; ${h} ${MINUS} a) и квадратом радиуса r${SUP[2]} = a(a + ${e})/${f}; она существует при a(a + ${e}) ≥ 0.\n`
+      + `Полоса и окружность имеют ровно одну общую точку в двух случаях: r = 0 и центр лежит в полосе (a = 0 или a = ${MINUS}${e}), `
+      + `либо окружность касается края полосы снаружи — a ${MINUS} r = ${b} при a > ${b} или a + r = ${MINUS}${g} при a < ${MINUS}${g}. `
+      + `Во всех остальных случаях общая часть либо пуста, либо содержит целую дугу.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: () => b, dash: true, label: "края полосы" }, { f: () => -g, dash: true },
+        { f: (a) => a - Math.sqrt(Math.max(0, (a * (a + e)) / f)), label: "левый край окружности" },
+        { f: (a) => a + Math.sqrt(Math.max(0, (a * (a + e)) / f)), label: "правый край" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -g - 5, xMax: b + 5, aMin: Rnum(setBounds(set)[0]) - 3, aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #165. {x⁴ − y⁴ = pa − q; x² + y² = a} — «ровно четыре различных решения».
+// Замена u = x² ≥ 0, v = y² ≥ 0: u + v = a и a(u − v) = pa − q, откуда при a ≠ 0
+// u = (a² + pa − q)/(2a), v = (a² − pa + q)/(2a). Четыре решения ⟺ u > 0 и v > 0
+// (каждое даёт по два значения x и y). Коэффициенты подобраны так, чтобы ОБА трёхчлена
+// раскладывались над Q: p² + 4q и p² − 4q — полные квадраты (то есть 2p² = s² + t²).
+function build165({ p, q }) {
+  const num = (sg) => [R(sg > 0 ? -q : q), R(sg * p), R1]          // a² ± pa ∓ q
+  const solve = (a) => {
+    if (Rzero(a)) return 0
+    const u = Rdiv(pEval(num(1), a), Rmul(R(2), a)), v = Rdiv(pEval(num(-1), a), Rmul(R(2), a))
+    if (Rsign(u) < 0 || Rsign(v) < 0) return 0
+    return (Rsign(u) > 0 ? 2 : 1) * (Rsign(v) > 0 ? 2 : 1)
+  }
+  const crit = [R0]
+  const fac = []
+  for (const sg of [1, -1]) {
+    const { roots, allRational } = ratRoots(num(sg))
+    if (!allRational || roots.length !== 2) return null
+    crit.push(...roots)
+    fac.push(roots)
+  }
+  return { set: assembleSet((a) => solve(a) === 4, crit), solve, fac }
+}
+const T165 = [[5, 6], [10, 24], [13, 30], [15, 54], [17, 60], [20, 96], [25, 84]].map(([p, q]) => ({ p, q }))
+export function t18SysQuarticDiff() {
+  const par = pick(T165), { p, q } = par
+  const { set, solve, fac } = build165(par)
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:x${SUP[4]} ${MINUS} y${SUP[4]} = ${p}a ${MINUS} ${q}¦x${SUP[2]} + y${SUP[2]} = a⟧\n\nимеет ровно четыре различных решения.`,
+    set,
+    solution: `Обозначим u = x${SUP[2]} ≥ 0 и v = y${SUP[2]} ≥ 0. Тогда u + v = a, а x${SUP[4]} ${MINUS} y${SUP[4]} = (u ${MINUS} v)(u + v) = a(u ${MINUS} v) = ${p}a ${MINUS} ${q}.\n`
+      + `При a = 0 первая строка даёт ${MINUS}${q} = 0 — решений нет. При a ≠ 0 получаем u ${MINUS} v = (${p}a ${MINUS} ${q})/a, откуда\n`
+      + `u = ${fT(`a${SUP[2]} + ${p}a ${MINUS} ${q}`, "2a")} = ${fT(`${facA(fac[0][0])}${facA(fac[0][1])}`, "2a")},   `
+      + `v = ${fT(`a${SUP[2]} ${MINUS} ${p}a + ${q}`, "2a")} = ${fT(`${facA(fac[1][0])}${facA(fac[1][1])}`, "2a")}.\n`
+      + `Каждое из условий u > 0 и v > 0 даёт по два значения (x = ±⟦r:u⟧, y = ±⟦r:v⟧), значит четыре различных решения получаются ровно тогда, когда u > 0 и v > 0 одновременно.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 4 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => (a !== 0 ? (a * a + p * a - q) / (2 * a) : null), label: "u = x²" },
+        { f: (a) => (a !== 0 ? (a * a - p * a + q) / (2 * a) : null), label: "v = y²" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -4, xMax: 12, aMin: Rnum(setBounds(set)[0]) - 4, aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 6,
+    },
+  })
+}
+
+// =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
     ["rat-quad-lin", "(k²x²−a²)/(px−q−ra) = 0 — линейный знаменатель", t18RatQuadLin],
@@ -3940,6 +4474,19 @@ export const META18 = [
     ["sys-pencil-ybound", "ОДЗ по y, ровно три решения", t18SysPencilYBound],
     ["sys-pencil-horiz", "множитель √(y−yLo) добавляет горизонталь", t18SysPencilHoriz],
     ["sys-semi-parab", "{((√(A−x²)−y)(x²+py−q))/(d−x²) = 0; y = 1−2a}", t18SysSemiParab],
+  ]],
+  ["Системы «две кривые»: точки, прямые, окружности", [
+    ["sys-point-line", "{(x−p)²+(y−q)²=0; a²+ax+may=K} — имеет решение", t18SysPointLine],
+    ["sys-2points-disk", "{две точки; круг с центром (a; 2a)} — ровно одно решение", t18SysTwoPointsDisk],
+    ["sys-parallel-circle", "{(x+ay−c)(x+ay−ca)=0; окружность} — ровно четыре", t18SysParallelCircle],
+    ["sys-parab-cross", "{y=(a+p)x²+2ax+a−p; y²=k²x²} — ровно четыре", t18SysParabolaCross],
+    ["sys-circle-hyper", "{x²+y²=a²; xy=a²−ka} — ровно два решения", t18SysCircleHyperbola],
+    ["sys-two-circles", "две окружности равного радиуса — ровно два решения", t18SysTwoCircles],
+    ["sys-circles-tangent", "две окружности, касание — единственное решение", t18SysCirclesTangent],
+    ["sys-circles-nosol", "две окружности с бегущими центрами — нет решений", t18SysCirclesNoSol],
+    ["sys-lines-circle", "{px²+py²=kxy; (x−a)²+(y−a)²=ρa⁴} — ровно два", t18SysLinesCircle],
+    ["sys-strip-circle", "{полоса; окружность} — единственное решение", t18SysStripCircle],
+    ["sys-quartic-diff", "{x⁴−y⁴=pa−q; x²+y²=a} — ровно четыре", t18SysQuarticDiff],
   ]],
 ]
 
