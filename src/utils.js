@@ -582,11 +582,19 @@ function splitAnswerParts(norm) {
 
 // Равны ли ответы по смыслу. Числа сравниваются с допуском 1e-9 (иначе
 // 0.1+0.2 и 0.3 разошлись бы), перечисления — без учёта порядка.
-export function answersEqual(given, expected) {
+//
+// allowFractions по умолчанию ВЫКЛЮЧЕН намеренно. В бланк ФИПИ ответ вносится
+// целым или десятичной дробью; «1/2» вместо «0,5» на настоящем экзамене — это
+// потерянный балл. Принимать такую запись в тренировке значит учить ошибке,
+// поэтому дробь засчитывается только там, где типаж явно это разрешает.
+export function answersEqual(given, expected, { allowFractions = false } = {}) {
   const a = normalizeAnswerPart(given)
   const b = normalizeAnswerPart(expected)
   if (!a || !b) return false
   if (a === b) return true
+
+  const isFrac = (x) => x.includes("/")
+  if (!allowFractions && (isFrac(a) !== isFrac(b))) return false
 
   const an = answerToNumber(a)
   const bn = answerToNumber(b)
