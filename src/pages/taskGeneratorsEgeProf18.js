@@ -2668,6 +2668,301 @@ export function t18SysParabola() {
 }
 
 // =============================================================================
+// РАЗДЕЛ F. Рациональные, четвёртой степени, кусочные (эталон #39–#48)
+// =============================================================================
+
+// #39. (x³ + x² − k²a²x − 2mx + a)/(x³ − k²a²x) = 1 ⟺ x² − 2mx + a = 0 при x ∉ {0, ±ka}.
+function build39({ k, m }) {
+  const solve = (a) => {
+    const N = [a, R(-2 * m), R1]
+    let n = countRoots(N, "-inf", "+inf", false, false)
+    // выколотые точки знаменателя x(x − ka)(x + ka); при a = 0 все три сливаются в одну
+    for (const bad of uniqSorted([R0, Rmul(R(k), a), Rmul(R(-k), a)])) {
+      if (Rzero(pEval(N, bad))) n--
+    }
+    return n
+  }
+  const crit = [R(m * m), R0, R(2 * m * k - 1, k * k), R(-(2 * m * k + 1), k * k)]
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+// k ≤ 4: знаменатели границ равны k², а verify18 требует «человеческих» чисел (≤ 24)
+const T39 = [[3, 1], [2, 1], [3, 2], [4, 1], [2, 2], [4, 3], [3, 3], [2, 3], [4, 2], [3, 4]].map(([k, m]) => ({ k, m }))
+export function t18RatEqOne() {
+  const par = pick(T39), { k, m } = par
+  const { set, solve } = build39(par)
+  const num = `x${SUP[3]} + x${SUP[2]} ${MINUS} ${k * k}a${SUP[2]}x ${MINUS} ${2 * m === 1 ? "" : 2 * m}x + a`
+  const den = `x${SUP[3]} ${MINUS} ${k * k}a${SUP[2]}x`
+  return item({
+    text: `${HEAD_A}\n\n${fT(num, den)} = 1\n\nимеет ровно один корень.`,
+    set,
+    solution: `Дробь равна единице, когда числитель минус знаменатель равен нулю, а знаменатель — нет.\n`
+      + `Разность даёт x${SUP[2]} ${MINUS} ${2 * m === 1 ? "" : 2 * m}x + a = 0, а знаменатель x(x ${MINUS} ${k}a)(x + ${k}a) обращается в нуль при x = 0 и x = ±${k}a — эти корни надо выколоть.\n`
+      + `Ровно один корень получается, когда либо дискриминант равен нулю (a = ${m * m}), либо один из двух корней совпал с выколотой точкой.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => (m * m - a >= 0 ? m + Math.sqrt(m * m - a) : null), label: "корни x² − 2mx + a" },
+        { f: (a) => (m * m - a >= 0 ? m - Math.sqrt(m * m - a) : null) },
+        { f: (a) => k * a, dash: true, label: "выколотые x = ±ka" }, { f: (a) => -k * a, dash: true },
+        { f: () => 0, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -8, xMax: 10, aMin: Rnum(setBounds(set)[0]) - 3,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #40. x⁴ − rx³ − tx² + rax + ta − a² = 0 — квадратное ОТНОСИТЕЛЬНО a: a = x² или a = −x² + rx + t.
+// «Не менее трёх корней» ⟺ a между вершиной первой параболы (0) и вершиной второй (t + r²/4).
+function build40({ r, t }) {
+  const solve = (a) => countRoots([Rsub(Rmul(R(t), a), Rmul(a, a)), Rmul(R(r), a), R(-t), R(-r), R1],
+    "-inf", "+inf", false, false)
+  const crit = [R0, R(4 * t + r * r, 4)]
+  return { set: assembleSet((a) => solve(a) >= 3, crit), solve }
+}
+const T40 = [[4, 6], [2, 4], [4, 2], [6, 3], [2, 8], [6, 7], [4, 8], [8, 4]].map(([r, t]) => ({ r, t }))
+export function t18QuarticParam() {
+  const par = pick(T40), { r, t } = par
+  const { set, solve } = build40(par)
+  return item({
+    text: `${HEAD_A}\n\nx⁴ ${MINUS} ${r}x${SUP[3]} ${MINUS} ${t}x${SUP[2]} + ${r}ax + ${t}a ${MINUS} a${SUP[2]} = 0\n\nимеет не менее трёх корней.`,
+    set,
+    solution: `Посмотрим на уравнение как на квадратное относительно a: a${SUP[2]} ${MINUS} (${r}x + ${t})a + (x⁴ ${MINUS} ${r}x${SUP[3]} ${MINUS} ${t}x${SUP[2]}) = 0.\n`
+      + `Его дискриминант равен (x${SUP[2]} + ${r}x + ${t})${SUP[2]}... точнее, корни равны a = x${SUP[2]} и a = ${MINUS}x${SUP[2]} + ${r}x + ${t}.\n`
+      + `Значит уравнение равносильно совокупности a = x${SUP[2]} (парабола ветвями вверх, наименьшее значение 0) и a = ${MINUS}x${SUP[2]} + ${r}x + ${t} (ветви вниз, наибольшее значение ${Rstr(R(4 * t + r * r, 4))}).\n`
+      + `Первая даёт два корня при a > 0, вторая — два корня при a < ${Rstr(R(4 * t + r * r, 4))}; не менее трёх корней получается ровно на отрезке между этими значениями.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "atLeast", n: 3 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => (a >= 0 ? Math.sqrt(a) : null), label: "a = x²" }, { f: (a) => (a >= 0 ? -Math.sqrt(a) : null) },
+        { f: (a) => { const d = r * r / 4 + t - a; return d >= 0 ? r / 2 + Math.sqrt(d) : null }, label: `a = ${MINUS}x² + ${r}x + ${t}` },
+        { f: (a) => { const d = r * r / 4 + t - a; return d >= 0 ? r / 2 - Math.sqrt(d) : null } },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -6, xMax: r + 6, aMin: -4, aMax: t + r * r / 4 + 4,
+    },
+  })
+}
+
+// #41. log_{c−x}(d − a − x) = 2 ⟺ (c − x)² = d − a − x при c − x > 0, c − x ≠ 1.
+// Получается x² − (2c−1)x + c² − d + a = 0 с выколотой точкой x = c − 1.
+function build41({ c, d, L, Rr }) {
+  const quad = (a) => [Radd(R(c * c - d), a), R(-(2 * c - 1)), R1]
+  const solve = (a) => {
+    const I = ivCut({ lo: "-inf", hi: R(c), incLo: false, incHi: false }, { lo: R(L), hi: R(Rr), incLo: true, incHi: false })
+    if (ivEmpty(I)) return 0
+    let n = countRoots(quad(a), I.lo, I.hi, I.incLo, I.incHi)
+    const hole = R(c - 1)                                   // основание логарифма равно 1
+    if (Rzero(pEval(quad(a), hole)) && Rcmp(hole, I.lo) >= 0 && Rcmp(hole, I.hi) < 0) n--
+    return n
+  }
+  const crit = [R(d - c * c + (2 * c - 1) * L - L * L), R(d - c * c + (2 * c - 1) * Rr - Rr * Rr),
+    R(d - c * c + (2 * c - 1) * (c - 1) - (c - 1) * (c - 1)), R(4 * (d - c * c) + (2 * c - 1) * (2 * c - 1), 4)]
+  return { set: assembleSet((a) => solve(a) >= 1, crit), solve }
+}
+const T41 = [[1, 3, -2, 1], [1, 4, -3, 1], [2, 5, -1, 2], [1, 5, -4, 1], [2, 6, -2, 2], [3, 8, -1, 3]]
+  .map(([c, d, L, R]) => ({ c, d, L, Rr: R }))
+export function t18LogVarBase() {
+  const par = pick(T41), { c, d, L, Rr } = par
+  const { set, solve } = build41(par)
+  return item({
+    text: `${HEAD_A}\n\nlog⟦b:${c} ${MINUS} x⟧(${d} ${MINUS} a ${MINUS} x) = 2\n\nимеет хотя бы один корень, принадлежащий промежутку [${nS(L)}; ${Rr}).`,
+    set,
+    solution: `ОДЗ: ${c} ${MINUS} x > 0, ${c} ${MINUS} x ≠ 1 (то есть x ≠ ${c - 1}) и ${d} ${MINUS} a ${MINUS} x > 0.\n`
+      + `По определению логарифма (${c} ${MINUS} x)${SUP[2]} = ${d} ${MINUS} a ${MINUS} x, то есть x${SUP[2]} ${MINUS} ${2 * c - 1}x + ${c * c - d} + a = 0 `
+      + `(правая часть тогда положительна автоматически).\n`
+      + `Нужно, чтобы хотя бы один такой корень попал в [${nS(L)}; ${Rr}) и не равнялся ${c - 1}.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "exists" },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => { const D = (2 * c - 1) * (2 * c - 1) / 4 - (c * c - d + a); return D >= 0 ? (2 * c - 1) / 2 + Math.sqrt(D) : null }, label: "корни квадратного" },
+        { f: (a) => { const D = (2 * c - 1) * (2 * c - 1) / 4 - (c * c - d + a); return D >= 0 ? (2 * c - 1) / 2 - Math.sqrt(D) : null } },
+        { f: () => c - 1, dash: true, label: "выколото: основание = 1" },
+        { f: () => L, dash: true }, { f: () => Rr, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: L - 2, xMax: c + 2, aMin: Rnum(setBounds(set)[0]) - 3,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// То же, что gridOk, но для произвольного предиката (не «ровно N»).
+// eslint-disable-next-line no-unused-vars -- нужна при разовом отборе таблиц (T42, T44)
+function gridOk2(set, test) {
+  const b = setBounds(set).map(Rnum)
+  if (!b.length) return false
+  const lo = Math.floor(Math.min(...b)) - 4, hi = Math.ceil(Math.max(...b)) + 4
+  for (let k = lo * 24; k <= hi * 24; k++) { const a = R(k, 24); if (inSet(set, a) !== test(a)) return false }
+  return true
+}
+
+// #42. |px² + qx + r| = a − (px² + sx). Слева и справа одинаковый старший коэффициент, поэтому
+// на промежутке, где трёхчлен отрицателен, уравнение становится ЛИНЕЙНЫМ.
+// Ответ — значения a, при которых решений нет или оно единственное.
+function build42({ p, q, r, s, r1, r2 }) {
+  const up = (a) => [Rsub(R(r), a), R(q + s), R(2 * p)]        // ветвь P ≥ 0: 2px² + (q+s)x + r = a
+  const lin = (a) => [Rsub(R(-r), a), R(s - q)]                // ветвь P < 0: (s−q)x − r = a
+  const solve = (a) => countRoots(up(a), "-inf", R(r1), false, true)
+    + countRoots(lin(a), R(r1), R(r2), false, false)
+    + countRoots(up(a), R(r2), "+inf", true, false)
+  const gUp = (x) => R(2 * p * x * x + (q + s) * x + r)
+  const xv = R(-(q + s), 4 * p)
+  const crit = [gUp(r1), gUp(r2)]
+  if (Rcmp(xv, R(r1)) <= 0 || Rcmp(xv, R(r2)) >= 0) {          // вершина параболы внутри своей ветви
+    crit.push(Rsub(Rsub(R(r), Rdiv(Rmul(R(q + s), R(q + s)), R(8 * p))), Rdiv(Rmul(R(q + s), R(q + s)), R(8 * p))))
+  }
+  return { set: assembleSet((a) => solve(a) <= 1, crit), solve }
+}
+// Наборы (p, q, r, s, r₁, r₂) отобраны разовым перебором: корни трёхчлена целые, ответ круглый,
+// и собранное множество совпало с предикатом на сетке (шаг 1/24).
+const T42 = [
+  [1, -1, -6, 4, -2, 3], [1, -1, -6, 6, -2, 3], [1, -1, -6, 8, -2, 3], [1, 1, -6, 4, -3, 2],
+  [1, 1, -6, 6, -3, 2], [1, 1, -6, 8, -3, 2], [1, 1, -6, 10, -3, 2], [1, 3, -10, 4, -5, 2],
+  [1, 3, -10, 6, -5, 2], [1, 3, -10, 8, -5, 2], [1, 3, -10, 10, -5, 2], [1, 3, -10, 12, -5, 2],
+  [2, -2, -12, 4, -2, 3], [2, -2, -12, 6, -2, 3], [2, -2, -12, 8, -2, 3], [2, -2, -12, 10, -2, 3],
+  [2, -2, -12, 12, -2, 3], [2, 2, -12, 4, -3, 2], [2, 2, -12, 6, -3, 2], [2, 2, -12, 8, -3, 2],
+  [2, 2, -12, 10, -3, 2], [2, 2, -12, 12, -3, 2], [2, -10, 12, 10, 2, 3], [2, 6, -20, 4, -5, 2],
+  [2, 6, -20, 8, -5, 2], [2, 6, -20, 10, -5, 2], [2, 6, -20, 12, -5, 2], [3, -3, -18, 4, -2, 3],
+  [3, -3, -18, 6, -2, 3], [3, -3, -18, 8, -2, 3], [3, -3, -18, 10, -2, 3], [3, -3, -18, 12, -2, 3],
+  [3, 3, -18, 4, -3, 2], [3, 3, -18, 6, -3, 2], [3, 3, -18, 8, -3, 2], [3, 3, -18, 10, -3, 2],
+  [3, 3, -18, 12, -3, 2], [3, 9, -30, 4, -5, 2], [3, 9, -30, 6, -5, 2], [3, 9, -30, 8, -5, 2],
+  [3, 9, -30, 10, -5, 2], [3, 9, -30, 12, -5, 2]
+].map(([p, q, r, s, r1, r2]) => ({ p, q, r, s, r1, r2 }))
+export function t18AbsQuadEq() {
+  const par = pick(T42), { p, q, r, s } = par
+  const { set, solve } = build42(par)
+  const P = `${p === 1 ? "" : p}x${SUP[2]}${term(q, "x")}${term(r, "")}`
+  return item({
+    text: `${HEAD_A}\n\n|${P}| = a ${MINUS} ${p === 1 ? "" : p}x${SUP[2]} ${MINUS} ${s}x\n\nлибо не имеет решений, либо имеет единственное решение.`,
+    set,
+    solution: `Перепишем: a = |${P}| + ${p === 1 ? "" : p}x${SUP[2]} + ${s}x.\n`
+      + `Там, где ${P} ≥ 0 (то есть x ≤ ${par.r1} или x ≥ ${par.r2}), правая часть равна ${2 * p}x${SUP[2]}${term(q + s, "x")}${term(r, "")}, `
+      + `а между корнями — линейной функции ${s - q === 1 ? "" : s - q}x${term(-r, "")} (квадраты сокращаются).\n`
+      + `Значит надо найти те a, при которых горизонтальная прямая пересекает этот график не более одного раза.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "countIn", values: [0, 1] },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => { const D = (q + s) * (q + s) - 8 * p * (r - a); return D >= 0 ? (-(q + s) + Math.sqrt(D)) / (4 * p) : null }, label: "ветви |·| ≥ 0" },
+        { f: (a) => { const D = (q + s) * (q + s) - 8 * p * (r - a); return D >= 0 ? (-(q + s) - Math.sqrt(D)) / (4 * p) : null } },
+        { f: (a) => (a + r) / (s - q), label: "линейная ветвь" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: par.r1 - 4, xMax: par.r2 + 4, aMin: Rnum(setBounds(set)[0]) - 5,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 5,
+    },
+  })
+}
+
+// #43. a|x − p| = c/(x + q) на [0; +∞) — ровно два корня.
+// При a ≠ 0 равносильно a|x − p|(x + q) = c; левая часть — «галочка», умноженная на прямую.
+function build43({ p, q, c }) {
+  const solve = (a) => {
+    if (Rzero(a)) return 0                                    // 0 = c невозможно
+    const left = [Rsub(Rmul(Rmul(a, R(p)), R(q)), R(c)), Rmul(a, R(p - q)), Rneg(a)]   // a(p−x)(x+q) − c
+    const right = [Rsub(Rmul(Rmul(Rneg(a), R(p)), R(q)), R(c)), Rmul(a, R(q - p)), a]  // a(x−p)(x+q) − c
+    return countRoots(left, R0, R(p), true, true) + countRoots(right, R(p), "+inf", false, false)
+  }
+  const crit = [R0, R(c, p * q), R(4 * c, (p + q) * (p + q))]
+  return { set: assembleSet((a) => solve(a) === 2, crit), solve }
+}
+// Наборы (p, q, c) — тем же отбором.
+const T43 = [
+  [2, 1, 4], [2, 1, 5], [2, 1, 6], [2, 1, 8], [2, 1, 9], [2, 1, 10], [2, 1, 12],
+  [2, 2, 4], [2, 2, 5], [2, 2, 6], [2, 2, 8], [2, 2, 9], [2, 2, 10], [2, 2, 12],
+  [2, 3, 4], [2, 3, 5], [2, 3, 6], [2, 3, 8], [2, 3, 9], [2, 3, 10], [2, 3, 12],
+  [2, 4, 4], [2, 4, 5], [2, 4, 6], [2, 4, 8], [2, 4, 9], [2, 4, 10], [2, 4, 12],
+  [3, 1, 4], [3, 1, 5], [3, 1, 6], [3, 1, 8], [3, 1, 9], [3, 1, 10], [3, 1, 12],
+  [3, 2, 5], [3, 2, 10], [3, 3, 4], [3, 3, 5], [3, 3, 6], [3, 3, 8], [3, 3, 9],
+  [3, 3, 10], [3, 3, 12], [3, 4, 4], [3, 4, 5], [3, 4, 6], [3, 4, 8], [3, 4, 9],
+  [3, 4, 10], [3, 4, 12], [4, 1, 5], [4, 1, 10], [4, 2, 4], [4, 2, 5], [4, 2, 6],
+  [4, 2, 8], [4, 2, 9], [4, 2, 10], [4, 2, 12], [4, 4, 4], [4, 4, 5], [4, 4, 6],
+  [4, 4, 8], [4, 4, 9], [4, 4, 10], [4, 4, 12], [5, 1, 4], [5, 1, 5], [5, 1, 6],
+  [5, 1, 8], [5, 1, 9], [5, 1, 10], [5, 1, 12], [5, 3, 4], [5, 3, 5], [5, 3, 6],
+  [5, 3, 8], [5, 3, 9], [5, 3, 10], [5, 3, 12], [5, 4, 9]
+].map(([p, q, c]) => ({ p, q, c }))
+export function t18AbsHyperbola() {
+  const par = pick(T43), { p, q, c } = par
+  const { set, solve } = build43(par)
+  return item({
+    text: `${HEAD_A}\n\na|x ${MINUS} ${p}| = ${fT(String(c), `x + ${q}`)}\n\nна промежутке [0; +∞) имеет ровно два корня.`,
+    set,
+    solution: `На [0; +∞) знаменатель положителен, поэтому уравнение равносильно a|x ${MINUS} ${p}|(x + ${q}) = ${c}.\n`
+      + `При a = 0 решений нет. При a ≠ 0 обозначим h(x) = |x ${MINUS} ${p}|(x + ${q}): на [0; ${p}] это парабола ветвями вниз со значением ${p * q} в нуле `
+      + `и наибольшим значением ${Rstr(R((p + q) * (p + q), 4))} в точке x = ${Rstr(R(p - q, 2))}, дальше — возрастающая ветвь от нуля.\n`
+      + `Число корней уравнения h(x) = ${c}/a и даёт ответ.\nОтвет: ${setToString(set)}.`,
+    predicate: { type: "count", n: 2 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => { if (!a) return null; const D = (p + q) * (p + q) / 4 - (p * q - c / a); return D >= 0 ? (p - q) / 2 + Math.sqrt(D) : null }, label: "ветвь [0; p]" },
+        { f: (a) => { if (!a) return null; const D = (p + q) * (p + q) / 4 + c / a; return D >= 0 ? (p - q) / 2 + Math.sqrt(D) : null }, label: "ветвь x ≥ p" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -1, xMax: p + 6, aMin: Rnum(setBounds(set)[0]) - 2,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #44. |c/x − k| = ax − 1 на (0; +∞) — более двух корней.
+// Умножая на x > 0: |c − kx| = ax² − x. Два куска: до c/k и после.
+function build44({ c, k }) {
+  const solve = (a) => {
+    const p1 = [R(-c), R(k - 1), a]                         // ax² + (k−1)x − c = 0 при 0 < x ≤ c/k
+    const p2 = [R(c), R(-(k + 1)), a]                       // ax² − (k+1)x + c = 0 при x > c/k
+    return countRoots(p1, R0, R(c, k), false, true) + countRoots(p2, R(c, k), "+inf", false, false)
+  }
+  const crit = [R0, R(k, c), R(-(k - 1) * (k - 1), 4 * c), R((k + 1) * (k + 1), 4 * c)]
+  return { set: assembleSet((a) => solve(a) >= 3, crit), solve }
+}
+// Наборы (c, k) — тем же отбором.
+const T44 = [
+  [4, 3], [4, 4], [4, 5], [4, 6], [4, 7], [6, 3], [6, 4], [6, 5],
+  [6, 6], [6, 7], [8, 3], [8, 5], [8, 7], [9, 3], [9, 5], [9, 7],
+  [10, 3], [10, 4], [10, 5], [10, 7], [12, 3], [12, 5], [12, 7]
+].map(([c, k]) => ({ c, k }))
+export function t18AbsRecipMoreTwo() {
+  const par = pick(T44), { c, k } = par
+  const { set, solve } = build44(par)
+  return item({
+    text: `${HEAD_A}\n\n|${fT(String(c), "x")} ${MINUS} ${k}| = ax ${MINUS} 1\n\nна промежутке (0; +∞) имеет более двух корней.`,
+    set,
+    solution: `Умножим обе части на x > 0: |${c} ${MINUS} ${k}x| = ax${SUP[2]} ${MINUS} x.\n`
+      + `При 0 < x ≤ ${Rstr(R(c, k))} получаем ax${SUP[2]} + ${k - 1}x ${MINUS} ${c} = 0, при x > ${Rstr(R(c, k))} — ax${SUP[2]} ${MINUS} ${k + 1}x + ${c} = 0.\n`
+      + `Считаем суммарное число корней на своих промежутках и берём те a, при которых их больше двух.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "atLeast", n: 3 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => { const D = (k - 1) * (k - 1) + 4 * a * c; return a !== 0 && D >= 0 ? (-(k - 1) + Math.sqrt(D)) / (2 * a) : null }, label: "первый кусок" },
+        { f: (a) => { const D = (k + 1) * (k + 1) - 4 * a * c; return a !== 0 && D >= 0 ? ((k + 1) - Math.sqrt(D)) / (2 * a) : null }, label: "второй кусок" },
+        { f: () => c / k, dash: true, label: "стык кусков" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: 0, xMax: c + 4, aMin: Rnum(setBounds(set)[0]) - 2,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 2,
+    },
+  })
+}
+
+// =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
     ["rat-quad-lin", "(k²x²−a²)/(px−q−ra) = 0 — линейный знаменатель", t18RatQuadLin],
@@ -2716,6 +3011,14 @@ export const META18 = [
     ["sys-sqrt-slope", "{√(c²−y²)=√(c²−a²x²); окружность}", t18SysSqrtSlope],
     ["sys-cross", "{√(c²−y²)=√(c²−k²x²); (x−a)(y−a)=0}", t18SysCrossLines],
     ["sys-parabola", "{√(2mx−x²)=√(2may−a²y²); y=x²} — ровно 3 решения", t18SysParabola],
+  ]],
+  ["Рациональные, четвёртой степени, кусочные", [
+    ["rat-eq-one", "(x³+x²−k²a²x−2mx+a)/(x³−k²a²x) = 1", t18RatEqOne],
+    ["quartic-param", "x⁴−rx³−tx²+rax+ta−a² = 0 — не менее трёх корней", t18QuarticParam],
+    ["log-var-base", "log_{c−x}(d−a−x) = 2 — хотя бы один корень на промежутке", t18LogVarBase],
+    ["abs-quad-eq", "|px²+qx+r| = a−px²−sx — нет решений или единственное", t18AbsQuadEq],
+    ["abs-hyperbola", "a|x−p| = c/(x+q) на [0;+∞) — ровно два корня", t18AbsHyperbola],
+    ["abs-recip", "|c/x−k| = ax−1 на (0;+∞) — более двух корней", t18AbsRecipMoreTwo],
   ]],
 ]
 
