@@ -3,9 +3,11 @@ import { supabase } from "../supabase"
 import Icon from "../components/Icon"
 import StudentOnboardingModal from "../components/StudentOnboardingModal" // ВРЕМЕННО: демо-кнопка опросника
 
-function Auth({ onLogin, initialRole = "tutor", initialMode = "login", onBack }) {
+function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
   const [mode, setMode] = useState(initialMode)
-  const [role, setRole] = useState(initialRole)
+  // Роль помним между заходами (её же выбирают карточками на лендинге):
+  // повторный вход открывается сразу нужной формой.
+  const [role, setRole] = useState(() => initialRole || localStorage.getItem("preferred_role") || "tutor")
   const [form, setForm] = useState({ name: "", email: "", phone: "+7", password: "", code: "" })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -266,7 +268,7 @@ function Auth({ onLogin, initialRole = "tutor", initialMode = "login", onBack })
               return (
                 <button
                   key={r}
-                  onClick={() => { setRole(r); setError("") }}
+                  onClick={() => { setRole(r); localStorage.setItem("preferred_role", r); setError("") }}
                   className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-2xl border-2 transition-all duration-200 ${
                     active
                       ? `bg-gradient-to-br ${cfg.grad} text-white border-transparent shadow-lg ${cfg.glow}`

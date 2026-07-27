@@ -33,6 +33,7 @@ const ROLES = {
       { t: "Ведите занятия", d: "Доска, ДЗ, расписание и оплаты — в одном кабинете." },
     ],
     cta: { label: "Создать аккаунт репетитора", mode: "register" },
+    card: { title: "Я репетитор", sub: "Ученики, ДЗ, варианты и оплата" },
     note: "Бесплатно на старте · без привязки карты",
     deep: [
       {
@@ -95,6 +96,7 @@ const ROLES = {
       { t: "Решайте и растите", d: "ДЗ, варианты и прогресс — всё под рукой." },
     ],
     cta: { label: "Создать аккаунт ученика", mode: "register" },
+    card: { title: "Я ученик", sub: "Задания, варианты и прогресс" },
     note: "Бесплатно · регистрация по номеру телефона",
     deep: [
       {
@@ -155,6 +157,7 @@ const ROLES = {
       { t: "Следите за успехами", d: "Прогресс, расписание и оплаты — в одном экране." },
     ],
     cta: { label: "Войти по коду ученика", mode: "login" },
+    card: { title: "Я родитель", sub: "Успехи и оплаты ребёнка" },
     note: "Код выдаёт репетитор ученика",
     deep: [
       {
@@ -399,10 +402,47 @@ function DeepVisual({ kind, accent }) {
   )
 }
 
+// Ролевая карточка входа. Приём с savemyexams.com: тонированная иконка в
+// скруглённом квадрате с кольцом, заголовок, короткая подпись и стрелка справа.
+// Кликается вся карточка целиком и ведёт СРАЗУ в нужную форму входа — один клик
+// с лендинга до формы. Нажатие — заливкой (.press-fill), а не scale: карточка
+// широкая, scale дал бы зазоры по краям.
+function RoleCard({ cfg, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className="press-fill group glass rounded-2xl w-full p-3.5 flex items-center gap-3.5 text-left ring-1 ring-black/5 dark:ring-white/10"
+    >
+      <span className={`w-11 h-11 shrink-0 rounded-xl flex items-center justify-center ring-1 ${cfg.ring} ${cfg.soft} ${cfg.text}`}>
+        <Icon name={cfg.icon} size={20} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[17px] font-semibold text-gray-900 leading-tight">{cfg.card.title}</span>
+        <span className="block text-[13px] text-gray-500 dark:text-gray-400 mt-0.5 leading-snug">{cfg.card.sub}</span>
+      </span>
+      <span className={`shrink-0 ${cfg.text} transition-transform duration-200 group-hover:translate-x-0.5`}>
+        <Icon name="arrow" size={17} />
+      </span>
+    </button>
+  )
+}
+
 function Landing({ onStart }) {
-  const [role, setRole] = useState("tutor")
+  // Роль запоминаем: следующий заход на лендинг и форма входа откроются с ней же.
+  const [role, setRole] = useState(() => localStorage.getItem("preferred_role") || "tutor")
   const [dark, setDark] = useState(() => localStorage.getItem("theme") === "dark")
   const cfg = ROLES[role]
+
+  function chooseRole(r) {
+    setRole(r)
+    localStorage.setItem("preferred_role", r)
+  }
+
+  // Единая точка перехода в Auth: попутно запоминает роль.
+  function start(r, mode) {
+    localStorage.setItem("preferred_role", r)
+    onStart(r, mode)
+  }
 
   useEffect(() => {
     if (dark) {
@@ -439,7 +479,7 @@ function Landing({ onStart }) {
               </span>
             </button>
             <button
-              onClick={() => onStart(role, "login")}
+              onClick={() => start(role, "login")}
               className="text-sm font-medium px-4 py-2 rounded-xl text-gray-700 dark:text-gray-200 bg-white/70 dark:bg-gray-800/70 ring-1 ring-gray-200 dark:ring-gray-700 hover:opacity-80 transition-opacity"
             >
               Войти
@@ -472,24 +512,15 @@ function Landing({ onStart }) {
                 задания, тренировочные варианты ОГЭ и ЕГЭ, оплата и прогресс — вместо
                 десятка табличек, чатов и тетрадок.
               </p>
-              <div className="mt-7 flex flex-col sm:flex-row gap-3 justify-center lg:justify-start">
-                <button
-                  onClick={() => onStart("tutor", "register")}
-                  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-2xl text-white font-semibold bg-gradient-to-r from-blue-500 to-blue-600 shadow-lg shadow-blue-500/40 hover:opacity-95 transition-opacity"
-                >
-                  <Icon name="user-teacher" size={17} />
-                  Я репетитор
-                </button>
-                <button
-                  onClick={() => onStart("student", "register")}
-                  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-2xl font-semibold text-gray-800 dark:text-gray-100 bg-white/80 dark:bg-gray-800/80 ring-1 ring-gray-200 dark:ring-gray-700 hover:opacity-90 transition-opacity"
-                >
-                  <Icon name="book" size={17} />
-                  Я ученик
-                </button>
+              {/* Вход по роли: репетитор, ученик, родитель — родителю раньше
+                  на первом экране места не было вовсе. */}
+              <div className="mt-7 flex flex-col gap-2.5 max-w-md mx-auto lg:mx-0">
+                {["tutor", "student", "parent"].map((r) => (
+                  <RoleCard key={r} cfg={ROLES[r]} onClick={() => start(r, ROLES[r].cta.mode)} />
+                ))}
               </div>
               <div className="mt-4 text-sm text-gray-400 dark:text-gray-500">
-                Бесплатно на старте · без привязки карты
+                Регистрация за минуту · без привязки карты
               </div>
             </div>
 
@@ -532,7 +563,7 @@ function Landing({ onStart }) {
               return (
                 <button
                   key={r}
-                  onClick={() => setRole(r)}
+                  onClick={() => chooseRole(r)}
                   aria-pressed={active}
                   className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-2xl border-2 transition-all duration-200 ${
                     active
@@ -593,7 +624,7 @@ function Landing({ onStart }) {
             {/* CTA роли */}
             <div className="mt-8 text-center">
               <button
-                onClick={() => onStart(role, cfg.cta.mode)}
+                onClick={() => start(role, cfg.cta.mode)}
                 className={`inline-flex items-center gap-2 px-7 py-3.5 rounded-2xl text-white font-semibold bg-gradient-to-r ${cfg.grad} shadow-lg ${cfg.glow} hover:opacity-95 transition-opacity`}
               >
                 {cfg.cta.label}
@@ -604,7 +635,7 @@ function Landing({ onStart }) {
                 {role !== "parent" && (
                   <>
                     {" · "}
-                    <button onClick={() => onStart(role, "login")} className={`font-medium ${cfg.text} hover:opacity-70 transition-opacity`}>
+                    <button onClick={() => start(role, "login")} className={`font-medium ${cfg.text} hover:opacity-70 transition-opacity`}>
                       Уже есть аккаунт? Войти
                     </button>
                   </>
@@ -678,7 +709,7 @@ function Landing({ onStart }) {
               <p className="mt-3 text-white/80 max-w-xl mx-auto">{cfg.final.sub}</p>
               <div className="mt-7 flex flex-col sm:flex-row gap-3 justify-center">
                 <button
-                  onClick={() => onStart(cfg.final.primary.role, cfg.final.primary.mode)}
+                  onClick={() => start(cfg.final.primary.role, cfg.final.primary.mode)}
                   className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-2xl font-semibold bg-white text-gray-900 shadow-lg hover:opacity-90 transition-opacity"
                 >
                   <Icon name={cfg.final.primary.icon} size={17} />
@@ -686,7 +717,7 @@ function Landing({ onStart }) {
                 </button>
                 {cfg.final.secondary && (
                   <button
-                    onClick={() => onStart(cfg.final.secondary.role, cfg.final.secondary.mode)}
+                    onClick={() => start(cfg.final.secondary.role, cfg.final.secondary.mode)}
                     className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-2xl font-semibold bg-white/15 text-white ring-1 ring-white/40 backdrop-blur-sm hover:bg-white/25 transition-colors"
                   >
                     <Icon name={cfg.final.secondary.icon} size={17} />
