@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react"
 import Icon from "../components/Icon"
+import Collapse from "../components/Collapse"
 import FormulaBackdrop from "../components/FormulaBackdrop"
 import { Highlight } from "../components/Mark"
 import { BANK_STATS } from "./bankStats"
@@ -38,6 +39,12 @@ const ROLES = {
     ],
     cta: { label: "Создать аккаунт репетитора", mode: "register" },
     card: { title: "Я репетитор", sub: "Ученики, ДЗ, варианты и оплата" },
+    pains: [
+      { q: "Варианты приходится собирать вручную", a: "Вариант собирается из банка за минуту — с чертежами и ответами, сразу в PDF." },
+      { q: "Ученик находит решение в интернете", a: "Задания генерируются заново: готового решения нет ни в поиске, ни у соседа по парте." },
+      { q: "Оплаты и долги живут в табличке", a: "Оплаты, расходы и чистая прибыль считаются в кабинете — без Excel и калькулятора." },
+      { q: "Домашки теряются в переписке", a: "ДЗ выдаётся в приложении: видно, кто сдал, кто нет и что пора проверить." },
+    ],
     hero: {
       title: "Вся подготовка ваших учеников —",
       accent: "в одном кабинете",
@@ -108,6 +115,12 @@ const ROLES = {
     ],
     cta: { label: "Создать аккаунт ученика", mode: "register" },
     card: { title: "Я ученик", sub: "Задания, варианты и прогресс" },
+    pains: [
+      { q: "Кажется, что не успею подготовиться", a: "Занятия, задания и прогресс в одном месте: видно, что уже сделано и что осталось." },
+      { q: "На экзамене попадётся незнакомое", a: "Варианты по образцу ФИПИ: те же формулировки, чертежи и бланк ответов." },
+      { q: "Решаю одни и те же задачи по кругу", a: "Задание собирается заново — числа и чертёж каждый раз новые." },
+      { q: "Забываю, что задали", a: "Задания от репетитора приходят в приложение и не теряются в чатах." },
+    ],
     hero: {
       title: "Вся подготовка к экзамену —",
       accent: "в одном приложении",
@@ -176,6 +189,12 @@ const ROLES = {
     ],
     cta: { label: "Войти по коду ученика", mode: "login" },
     card: { title: "Я родитель", sub: "Успехи и оплаты ребёнка" },
+    pains: [
+      { q: "Непонятно, занимается ли ребёнок", a: "Видно расписание, сданные домашние задания и результаты — без расспросов." },
+      { q: "Неясно, за что именно платим", a: "История оплат по занятиям: каждое занятие и его оплата в одном списке." },
+      { q: "А вдруг он просто списывает", a: "Задания генерируются: у каждого ученика свои числа, списать негде." },
+      { q: "Нужно заводить ещё один аккаунт", a: "Вход по коду от репетитора — отдельная регистрация не нужна." },
+    ],
     hero: {
       title: "Успехи ребёнка —",
       accent: "видно без расспросов",
@@ -458,6 +477,35 @@ function RoleSwitch({ role, onChange }) {
   )
 }
 
+// Блок «что обычно мешает» — приём с umschool.net («Бинго страхов»), но без
+// запугивания и без выдуманных цифр «N учеников этого боятся»: карточка — это
+// вопрос, который правда задают, а по нажатию раскрывается, как платформа его
+// закрывает. Список свой для каждой роли.
+function PainCard({ item, index, cfg, open, onToggle }) {
+  return (
+    <button
+      onClick={onToggle}
+      aria-expanded={open}
+      className="press-fill glass rounded-2xl p-4 text-left w-full flex flex-col gap-2"
+    >
+      <span className="flex items-center gap-2.5">
+        <span className={`shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-[12px] font-bold ring-1 ${cfg.ring} ${cfg.soft} ${cfg.text}`}>
+          {index + 1}
+        </span>
+        <span className="flex-1 font-semibold text-gray-900 leading-snug">«{item.q}»</span>
+        <span className={`shrink-0 transition-transform duration-300 ${cfg.text} ${open ? "rotate-90" : ""}`}>
+          <Icon name="arrow" size={16} />
+        </span>
+      </span>
+      <Collapse open={open}>
+        <span className="flex gap-2.5 pt-1 pl-9.5">
+          <span className="text-sm text-gray-500 dark:text-gray-400 leading-snug">{item.a}</span>
+        </span>
+      </Collapse>
+    </button>
+  )
+}
+
 function Landing({ onStart }) {
   // Роль берём сперва из ссылки (?for=parent — чтобы можно было дать родителю
   // прямую ссылку), затем из памяти прошлого захода.
@@ -469,8 +517,12 @@ function Landing({ onStart }) {
   const [dark, setDark] = useState(() => localStorage.getItem("theme") === "dark")
   const cfg = ROLES[role]
 
+  // Какая из карточек «что обычно мешает» раскрыта (null — все свёрнуты)
+  const [openPain, setOpenPain] = useState(null)
+
   function chooseRole(r) {
     setRole(r)
+    setOpenPain(null)
     localStorage.setItem("preferred_role", r)
     // Роль — в адресную строку, без записи в историю: ссылкой можно поделиться,
     // но кнопка «назад» не превращается в перебор ролей.
@@ -592,6 +644,28 @@ function Landing({ onStart }) {
                   <div className="text-sm text-gray-500 dark:text-gray-400 mt-1 leading-snug">{f.desc}</div>
                 </div>
               </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ── Что обычно мешает ── */}
+        <section className="max-w-6xl mx-auto w-full px-4 py-8">
+          <div className="text-center mb-6">
+            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900">Что обычно мешает</h2>
+            <p className="mt-2 text-gray-500 dark:text-gray-400">Нажмите на знакомое — покажем, как это решается.</p>
+          </div>
+          {/* items-start: свёрнутая карточка не должна растягиваться под высоту
+              раскрытой соседки — иначе под ней зияет пустота */}
+          <div key={`pains-${role}`} className="grid sm:grid-cols-2 gap-3 items-start">
+            {cfg.pains.map((p, i) => (
+              <PainCard
+                key={p.q}
+                item={p}
+                index={i}
+                cfg={cfg}
+                open={openPain === i}
+                onToggle={() => setOpenPain(openPain === i ? null : i)}
+              />
             ))}
           </div>
         </section>
