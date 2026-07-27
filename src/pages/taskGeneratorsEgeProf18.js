@@ -7210,6 +7210,387 @@ export function t18LogDiffSubstTwo() {
 }
 
 // =============================================================================
+// РАЗДЕЛ O/R (продолжение). |kt − a| − |t + ma| = t² на полупрямой (эталон #121, #154)
+// =============================================================================
+// Обе задачи — одно и то же уравнение в разных «одеждах»: показательной (#121, t = bˣ)
+// и логарифмической (#154, t = log₀,₅x). Модули режут полупрямую точками t = a/k и t = −ma,
+// а на каждом куске остаётся обычный квадратный трёхчлен — ровно то, для чего есть механизм
+// pieces (число корней считается Штурмом, точно).
+function absAbsPieces({ k, m, lo, incLo }) {
+  return (a) => {
+    const cuts = uniqSorted([Rdiv(a, R(k)), Rmul(R(-m), a)]).filter((b) => Rcmp(b, lo) > 0)
+    const ivs = []
+    let prev = lo, prevInc = incLo
+    for (const c of cuts) { ivs.push({ lo: prev, hi: c, incLo: prevInc, incHi: false }); prev = c; prevInc = true }
+    ivs.push({ lo: prev, hi: "+inf", incLo: prevInc, incHi: false })
+    return ivs.map((iv) => {
+      const mid = iv.hi === "+inf" ? Radd(iv.lo, R1) : Rdiv(Radd(iv.lo, iv.hi), R(2))
+      const s1 = Rsign(Rsub(Rmul(R(k), mid), a)) >= 0 ? 1 : -1      // знак kt − a
+      const s2 = Rsign(Radd(mid, Rmul(R(m), a))) >= 0 ? 1 : -1      // знак t + ma
+      // s₁(kt − a) − s₂(t + ma) − t² = 0
+      return { N: [Rmul(Rneg(a), R(s1 + s2 * m)), R(s1 * k - s2), R(-1)], ...iv }
+    })
+  }
+}
+// Критические значения: концы кусков наезжают на начало полупрямой, точки излома сливаются,
+// корень попадает на излом или на начало, дискриминант куска обращается в нуль.
+function absAbsCrit({ k, m, lo }) {
+  const crit = [R0, Rmul(R(k), lo), Rdiv(Rneg(lo), R(m))]
+  for (const s1 of [1, -1]) for (const s2 of [1, -1]) {
+    const A = -(s1 + s2 * m), B = s1 * k - s2
+    // корень на конце полупрямой: −a(s₁ + s₂m) + (s₁k − s₂)·lo − lo² = 0
+    if (A !== 0) crit.push(Rdiv(Rsub(Rmul(Rmul(lo, lo), R1), Rmul(R(B), lo)), R(A)))
+    // нулевой дискриминант: B² − 4a(s₁ + s₂m) = 0
+    if (s1 + s2 * m !== 0) crit.push(R(B * B, 4 * (s1 + s2 * m)))
+    // корень в самой точке излома t = a/k и t = −ma
+    for (const [pn, pd] of [[1, k], [-m, 1]]) {
+      // N(pa) = −a(s₁+s₂m) + B·(p·a) − (p·a)² = 0 → a(−(s₁+s₂m) + Bp − p²a) = 0
+      const p = R(pn, pd)
+      const c1 = Radd(R(A), Rmul(R(B), p))
+      if (!Rzero(p)) crit.push(Rdiv(c1, Rmul(p, p)))
+    }
+  }
+  return crit
+}
+const DEC = { 2: ["0,5", "0,25"], 5: ["0,2", "0,04"], 10: ["0,1", "0,01"] }
+
+// #121. |k·b·(1/b)^{1−x} − a| − |bˣ + ma| = (1/b²)^{−x} — «ровно два неотрицательных решения».
+// Замена t = bˣ; неотрицательные x — это в точности t ≥ 1, а (1/b²)^{−x} = t².
+function build121({ k, m, b }) {
+  const lo = R1
+  const pieces = absAbsPieces({ k, m, lo, incLo: true })
+  const solve = (a) => solveCount(pieces, a)
+  return { set: assembleSet((a) => solve(a) === 2, absAbsCrit({ k, m, lo })), pieces, solve, b }
+}
+const T121 = []
+for (const k of [1, 2, 3]) for (const m of [1, 2, 3]) for (const b of [2, 5, 10]) {
+  const r = build121({ k, m, b })
+  if (r && tidySet(r.set, 3)) T121.push({ k, m, b })
+}
+export function t18ExpAbsAbsTwo() {
+  const par = pick(T121), { k, m, b } = par
+  const { set, pieces } = build121(par)
+  const aRange = spanRange(set)
+  const [d1, d2] = DEC[b]
+  return item({
+    text: `${HEAD_A}\n\n|${k * b}·${d1}${supT(`1 ${MINUS} x`)} ${MINUS} a| ${MINUS} |${b}${supT("x")} + ${m === 1 ? "" : m}a| = ${d2}${supT(`${MINUS}x`)}\n\n`
+      + `имеет ровно два неотрицательных решения.`,
+    set,
+    solution: `Заметим, что ${d1}${supT(`1 ${MINUS} x`)} = ${b}${supT(`x ${MINUS} 1`)}, поэтому ${k * b}·${d1}${supT(`1 ${MINUS} x`)} = ${k === 1 ? "" : k}·${b}${supT("x")}, а ${d2}${supT(`${MINUS}x`)} = ${b * b}${supT("x")} = (${b}${supT("x")})${SUP[2]}.\n`
+      + `Обозначим t = ${b}${supT("x")}; неотрицательные x — это в точности t ≥ 1. Уравнение принимает вид |${k === 1 ? "" : k}t ${MINUS} a| ${MINUS} |t + ${m === 1 ? "" : m}a| = t${SUP[2]}.\n`
+      + `Модули меняют знак в точках t = ${fT("a", String(k))} и t = ${MINUS}${m === 1 ? "" : m}a, между ними уравнение — обычное квадратное.\n`
+      + `Разбирая куски полупрямой [1; +∞) и следя, когда корень заходит на излом или на её начало, получаем ответ.\n`
+      + `Ответ: ${setToString(set)}.`,
+    raw: {
+      seg: [0, 6],
+      F: (a) => (x) => {
+        const t = b ** x
+        return Math.abs(k * t - a) - Math.abs(t + m * a) - t * t
+      },
+      sols: (a) => {
+        const out = []
+        for (const s1 of [1, -1]) for (const s2 of [1, -1]) {
+          for (const t of numQuad(-1, s1 * k - s2, -a * (s1 + s2 * m))) {
+            if (t < 1 - 1e-12) continue
+            if (Math.sign(k * t - a || s1) !== s1 && Math.abs(k * t - a) > 1e-9) continue
+            if (Math.sign(t + m * a || s2) !== s2 && Math.abs(t + m * a) > 1e-9) continue
+            const x = Math.log(t) / Math.log(b)
+            if (!out.some((y) => Math.abs(y - x) < 1e-9)) out.push(x)
+          }
+        }
+        return out
+      },
+    },
+    predicate: { type: "count", n: 2 },
+    pieces,
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => a / k, dash: true, label: "t = a/k" },
+        { f: (a) => -m * a, dash: true, label: "t = −ma" },
+        { f: () => 1, dash: true, label: "t = 1" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -2, xMax: 8, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// #154. |log₀,₅(x²) − a| − |log₀,₅x + ma| = (log₀,₅x)² — «есть решение, меньшее C».
+// Замена t = log₀,₅x (ОДЗ x > 0): log₀,₅(x²) = 2t, а условие x < C равносильно t > log₀,₅C.
+function build154({ m, lo }) {
+  const pieces = absAbsPieces({ k: 2, m, lo: R(lo), incLo: false })
+  const solve = (a) => solveCount(pieces, a)
+  return { set: assembleSet((a) => solve(a) >= 1, absAbsCrit({ k: 2, m, lo: R(lo) })), pieces, solve }
+}
+const T154 = []
+for (const m of [1, 2, 3]) for (const lo of [-2, -1, 0, 1]) {
+  const r = build154({ m, lo })
+  if (r && tidySet(r.set, 3)) T154.push({ m, lo })
+}
+export function t18LogAbsAbsExists() {
+  const par = pick(T154), { m, lo } = par
+  const { set, pieces } = build154(par)
+  const aRange = spanRange(set)
+  const C = 2 ** -lo
+  const Cs = Number.isInteger(C) ? String(C) : String(C).replace(".", ",")
+  const lg = "log⟦b:0,5⟧"
+  return item({
+    text: `${HEAD_A}\n\n|${lg}(x${SUP[2]}) ${MINUS} a| ${MINUS} |${lg}x + ${m === 1 ? "" : m}a| = (${lg}x)${SUP[2]}\n\n`
+      + `имеет хотя бы одно решение, меньшее ${Cs}.`,
+    set,
+    solution: `ОДЗ: x > 0. Обозначим t = ${lg}x; тогда ${lg}(x${SUP[2]}) = 2t, а условие x < ${Cs} равносильно t > ${nS(lo)} (логарифм по основанию 0,5 убывает).\n`
+      + `Уравнение принимает вид |2t ${MINUS} a| ${MINUS} |t + ${m === 1 ? "" : m}a| = t${SUP[2]}.\n`
+      + `Модули меняют знак в точках t = ${fT("a", "2")} и t = ${MINUS}${m === 1 ? "" : m}a; между ними уравнение квадратное, поэтому достаточно на каждом куске полупрямой (${nS(lo)}; +∞) посчитать корни и проверить, остался ли хоть один.\n`
+      + `Ответ: ${setToString(set)}.`,
+    raw: {
+      seg: [1e-6, C],
+      F: (a) => (x) => {
+        if (x <= 0) return null
+        const t = Math.log(x) / Math.log(0.5)
+        return Math.abs(2 * t - a) - Math.abs(t + m * a) - t * t
+      },
+      sols: (a) => {
+        const out = []
+        for (const s1 of [1, -1]) for (const s2 of [1, -1]) {
+          for (const t of numQuad(-1, 2 * s1 - s2, -a * (s1 + s2 * m))) {
+            if (t <= lo + 1e-12) continue
+            if (Math.abs(2 * t - a) > 1e-9 && Math.sign(2 * t - a) !== s1) continue
+            if (Math.abs(t + m * a) > 1e-9 && Math.sign(t + m * a) !== s2) continue
+            const x = 0.5 ** t
+            if (!out.some((y) => Math.abs(y - x) < 1e-12)) out.push(x)
+          }
+        }
+        return out
+      },
+    },
+    predicate: { type: "exists" },
+    pieces,
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => a / 2, dash: true, label: "t = a/2" },
+        { f: (a) => -m * a, dash: true, label: "t = −ma" },
+        { f: () => lo, dash: true, label: `t = ${nS(lo)}` },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: lo - 4, xMax: lo + 10, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// #124. (c + |x + a|)³ − (c + |x + a|)² = (d − x² − 2ax − ka²)³ − (d − x² − 2ax − ka²)²
+// — «хотя бы один корень». Функция φ(u) = u³ − u² возрастает при u ≥ 2/3, а слева u ≥ c ≥ 2,
+// значит φ(u) ≥ 4 > 0; но φ(v) ≤ 0 при v ≤ 1, поэтому из равенства сразу следует v > 1 и,
+// по инъективности φ на [2/3; +∞), u = v.
+// Осталось c + y = d − y² − (k−1)a², где y = |x + a| ≥ 0, то есть y² + y + c − d + (k−1)a² = 0.
+function build124({ c, k, r }) {
+  const d = c + (k - 1) * r * r
+  const solve = (a) => {
+    const q = Radd(R(c - d), Rmul(R(k - 1), Rmul(a, a)))      // свободный член по y
+    const s = Rsign(q)
+    return s > 0 ? 0 : s === 0 ? 1 : 2
+  }
+  return { set: assembleSet((a) => solve(a) >= 1, [R(r), R(-r)]), solve, d }
+}
+const T124 = []
+for (const c of [2, 3, 4]) for (const k of [2, 3, 4, 5]) for (const r of [1, 2, 3]) T124.push({ c, k, r })
+export function t18MonoCubeSquareExists() {
+  const par = pick(T124), { c, k, r } = par
+  const { set, solve, d } = build124(par)
+  const aRange = spanRange(set)
+  const U = `${c} + |x + a|`
+  const V = `${d} ${MINUS} x${SUP[2]} ${MINUS} 2ax ${MINUS} ${k === 1 ? "" : k}a${SUP[2]}`
+  return item({
+    text: `${HEAD_A}\n\n(${U})${SUP[3]} ${MINUS} (${U})${SUP[2]} = (${V})${SUP[3]} ${MINUS} (${V})${SUP[2]}\n\nимеет хотя бы один корень.`,
+    set,
+    solution: `Обе части — значения функции φ(u) = u${SUP[3]} ${MINUS} u${SUP[2]}. Она возрастает при u ≥ ${fT("2", "3")} (φ′(u) = u(3u ${MINUS} 2)) и неположительна при u ≤ 1.\n`
+      + `Слева u = ${U} ≥ ${c}, поэтому φ(u) ≥ ${c * c * c - c * c} > 0. Значит и правая часть положительна, откуда v = ${V} > 1, а на промежутке [${fT("2", "3")}; +∞) функция φ обратима — остаётся u = v.\n`
+      + `Заметим, что ${MINUS}x${SUP[2]} ${MINUS} 2ax ${MINUS} ${k === 1 ? "" : k}a${SUP[2]} = ${MINUS}(x + a)${SUP[2]} ${MINUS} ${k - 1 === 1 ? "" : k - 1}a${SUP[2]}. Обозначим y = |x + a| ≥ 0: ${c} + y = ${d} ${MINUS} y${SUP[2]} ${MINUS} ${k - 1 === 1 ? "" : k - 1}a${SUP[2]}, то есть y${SUP[2]} + y + ${k - 1 === 1 ? "" : k - 1}a${SUP[2]} ${MINUS} ${d - c} = 0.\n`
+      + `Функция y${SUP[2]} + y возрастает при y ≥ 0 и равна нулю в нуле, поэтому подходящий y ≥ 0 существует ⟺ ${d - c} ${MINUS} ${k - 1 === 1 ? "" : k - 1}a${SUP[2]} ≥ 0 ⟺ |a| ≤ ${r}.\n`
+      + `Ответ: ${setToString(set)}.`,
+    raw: {
+      seg: [-Math.abs(aRange[0]) - r - 2, Math.abs(aRange[1]) + r + 2],
+      F: (a) => (x) => {
+        const u = c + Math.abs(x + a), v = d - x * x - 2 * a * x - k * a * a
+        return (u * u * u - u * u - (v * v * v - v * v)) / (1 + Math.abs(v) ** 3)
+      },
+      sols: (a) => {
+        const q = c - d + (k - 1) * a * a
+        if (q > 1e-12) return []
+        const y = (-1 + Math.sqrt(1 - 4 * q)) / 2
+        return y < 1e-9 ? [-a] : [-a - y, -a + y]
+      },
+    },
+    predicate: { type: "exists" },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => -a + (-1 + Math.sqrt(Math.max(0, 1 - 4 * (c - d + (k - 1) * a * a)))) / 2, label: "корни x(a)" },
+        { f: (a) => -a - (-1 + Math.sqrt(Math.max(0, 1 - 4 * (c - d + (k - 1) * a * a)))) / 2 },
+        { f: (a) => -a, dash: true, label: "x = −a" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -r - 6, xMax: r + 6, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// =============================================================================
+// РАЗДЕЛ L (продолжение). Симметричные системы (эталон #86, #87, #89)
+// =============================================================================
+
+// #86. {x² + y² = ρ² + 2ax − a²; p²x² = q²y²} — «ровно четыре решения».
+// Первое уравнение — окружность (x − a)² + y² = ρ² с бегущим по оси абсцисс центром,
+// второе — пара прямых py = ±px/q, то есть px − qy = 0 и px + qy = 0.
+// Расстояние от центра (a; 0) до каждой прямой равно |pa|/√(p² + q²); чтобы граница была
+// рациональной, (p; q; h) берётся ПИФАГОРОВОЙ тройкой (h² = p² + q²), и тогда прямая
+// пересекает окружность по двум точкам ровно при |a| < ρh/p.
+// Единственная общая точка прямых — начало координат; если оно лежит на окружности
+// (то есть |a| = ρ), четыре точки склеиваются в три.
+function build86({ rho, p, q, h }) {
+  if (p * p + q * q !== h * h) return null
+  const bound = R(rho * h, p)
+  const solve = (a) => {
+    const aa = Rabs(a)
+    const c = Rcmp(aa, bound)
+    const perLine = c < 0 ? 2 : c === 0 ? 1 : 0
+    const originOnCircle = Rcmp(aa, R(rho)) === 0 ? 1 : 0
+    return 2 * perLine - originOnCircle
+  }
+  return { set: assembleSet((a) => solve(a) === 4, [bound, Rneg(bound), R(rho), R(-rho)]), solve, bound }
+}
+const T86 = []
+for (const rho of [1, 2, 3, 4, 6]) for (const [p, q, h] of [[3, 4, 5], [4, 3, 5], [5, 12, 13], [12, 5, 13], [8, 15, 17], [15, 8, 17]]) {
+  const r = build86({ rho, p, q, h })
+  if (r && tidySet(r.set, 3)) T86.push({ rho, p, q, h })
+}
+export function t18SysCircleTwoLines() {
+  const par = pick(T86), { rho, p, q, h } = par
+  const { set, solve, bound } = build86(par)
+  const aRange = spanRange(set)
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:x${SUP[2]} + y${SUP[2]} = ${rho * rho} + 2ax ${MINUS} a${SUP[2]}¦${p * p === 1 ? "" : p * p}x${SUP[2]} = ${q * q === 1 ? "" : q * q}y${SUP[2]}⟧\n\nимеет ровно четыре различных решения.`,
+    set,
+    solution: `Первое уравнение — это (x ${MINUS} a)${SUP[2]} + y${SUP[2]} = ${rho * rho}: окружность радиуса ${rho} с центром (a; 0), бегущим по оси абсцисс.\n`
+      + `Второе распадается на две прямые ${p === 1 ? "" : p}x ${MINUS} ${q === 1 ? "" : q}y = 0 и ${p === 1 ? "" : p}x + ${q === 1 ? "" : q}y = 0, пересекающиеся в начале координат.\n`
+      + `Расстояние от центра до каждой прямой равно ${fT(`${p === 1 ? "" : p}|a|`, String(h))} (так как ${p}${SUP[2]} + ${q}${SUP[2]} = ${h}${SUP[2]}), поэтому каждая прямая даёт две точки ровно при |a| < ${Rstr(bound)}, одну при равенстве и ни одной дальше.\n`
+      + `Итого четыре точки — когда обе прямые секущие и при этом начало координат НЕ лежит на окружности (иначе две пары точек склеиваются в три различные): |a| ≠ ${rho}.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 4 },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => a + rho, label: "окружность" },
+        { f: (a) => a - rho },
+        { f: () => 0, dash: true, label: "прямые пересекаются в O" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -rho - 6, xMax: rho + 6, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// #87. {a(x⁴ + 1) = y + c − |x|; x² + y² = ρ²} — «единственное решение».
+// Система ЧЁТНА по x, поэтому решения идут парами (x; y), (−x; y): единственное решение
+// обязано иметь x = 0, а тогда y = a − c и y = ±ρ, то есть a = c ± ρ — всего два кандидата.
+// Число решений считается точно: подстановка y = ax⁴ + a − c + |x| в окружность даёт
+// многочлен восьмой степени по u = |x| ≥ 0, и корни считаются Штурмом (u = 0 — одно решение,
+// каждый корень u > 0 — два).
+function build87({ c, rho }) {
+  const poly = (a) => {                                   // u² + (a u⁴ + (a − c) + u)² − ρ²
+    const g = [Rsub(a, R(c)), R1, R0, R0, a]              // a u⁴ + u + (a − c)
+    return pSub(pAdd([R0, R0, R1], pMul(g, g)), [R(rho * rho)])
+  }
+  const solve = (a) => {
+    const P = pTrim(poly(a))
+    if (!P.length) return 99                              // вырождение: годится любой x
+    return (Rzero(pEval(P, R0)) ? 1 : 0) + 2 * countRoots(P, R0, "+inf", false, false)
+  }
+  return { set: assembleSet((a) => solve(a) === 1, [R(c + rho), R(c - rho)]), solve }
+}
+const T87 = []
+for (const c of [1, 2, 3, 4, 5]) for (const rho of [1, 2, 3, 4]) {
+  const r = build87({ c, rho })
+  if (r && tidySet(r.set, 2)) T87.push({ c, rho })
+}
+export function t18SysQuarticCircleOne() {
+  const par = pick(T87), { c, rho } = par
+  const { set, solve } = build87(par)
+  const aRange = spanRange(set)
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:a(x⁴ + 1) = y + ${c} ${MINUS} |x|¦x${SUP[2]} + y${SUP[2]} = ${rho * rho}⟧\n\nимеет единственное решение.`,
+    set,
+    solution: `Обе строки не меняются при замене x на ${MINUS}x (входят только x⁴, |x| и x${SUP[2]}), поэтому вместе с (x; y) решением будет и (${MINUS}x; y). Значит единственное решение обязано иметь x = 0.\n`
+      + `При x = 0 первое уравнение даёт a = y + ${c}, второе — y = ±${rho}. Отсюда только два кандидата: a = ${c + rho} и a = ${nS(c - rho)}.\n`
+      + `Проверка. При a = ${c + rho} из первой строки y = ${c + rho}x⁴ + |x| + ${rho} ≥ ${rho}, а из окружности y ≤ ${rho}; равенство возможно лишь при x = 0, y = ${rho} — решение единственное.\n`
+      + `При a = ${nS(c - rho)} кривая y = ${nS(c - rho)}x⁴ + |x| ${MINUS} ${rho} выходит из точки (0; ${MINUS}${rho}) круче, чем окружность, и пересекает её ещё в двух точках — решений три.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: () => 0, dash: true, label: "x = 0 (ось симметрии)" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -rho - 3, xMax: rho + 3, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// #89. {y = (a+k)x² + 2ax + a+m; x = (a+k)y² + 2ay + a+m} — «ровно одно решение».
+// Система симметрична относительно перестановки x ↔ y. Вычитая строки, получаем
+// (y − x)·(1 + (a+k)(x+y) + 2a) = 0: решения либо на диагонали y = x, либо на прямой
+// x + y = −(1+2a)/(a+k), причём вторые идут ПАРАМИ (x; y) и (y; x).
+// Значит «ровно одно решение» — это ровно один корень диагонального уравнения
+// (a+k)x² + (2a−1)x + (a+m) = 0 И отсутствие внедиагональных пар.
+function build89({ k, m }) {
+  const diag = (a) => [Radd(a, R(m)), Rsub(Rmul(R(2), a), R1), Radd(a, R(k))]
+  const offDisc = (a) => Rsub(Rsub(Rmul(R(-4 * (1 + k + m)), a), R(3)), R(4 * k * m))
+  const solve = (a) => {
+    const D = countRoots(diag(a), "-inf", "+inf", false, false)
+    if (Rcmp(a, R(-k)) === 0) return D                    // множитель 1 + 2a = 1 − 2k ≠ 0: вне диагонали решений нет
+    return D + (Rsign(offDisc(a)) > 0 ? 2 : 0)
+  }
+  const crit = [R(-k), R(1 - 4 * k * m, 4 * (1 + k + m)), R(-3 - 4 * k * m, 4 * (1 + k + m))]
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+const T89 = []
+for (const k of [1, 2, 3, 4]) for (const m of [-3, -2, -1, 1, 2, 3]) {
+  if (1 + k + m === 0) continue
+  const r = build89({ k, m })
+  if (r && tidySet(r.set, 3)) T89.push({ k, m })
+}
+export function t18SysSymmetricOne() {
+  const par = pick(T89), { k, m } = par
+  const { set, solve } = build89(par)
+  const aRange = spanRange(set)
+  const row = (u, v) => `${u} = (a + ${k})${v}${SUP[2]} + 2a${v} + a${term(m, "")}`
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:${row("y", "x")}¦${row("x", "y")}⟧\n\nимеет ровно одно решение.`,
+    set,
+    solution: `Система симметрична: если (x; y) — решение, то и (y; x). Вычтем строки: y ${MINUS} x = (a + ${k})(x${SUP[2]} ${MINUS} y${SUP[2]}) + 2a(x ${MINUS} y), то есть (y ${MINUS} x)(1 + (a + ${k})(x + y) + 2a) = 0.\n`
+      + `Значит либо y = x, либо x + y = ${MINUS}${fT("1 + 2a", `a + ${k}`)}; во втором случае решения идут парами (x; y) и (y; x), поэтому их всегда чётное число.\n`
+      + `На диагонали: (a + ${k})x${SUP[2]} + (2a ${MINUS} 1)x + a${term(m, "")} = 0. Внедиагональные решения существуют, когда ${MINUS}${4 * (1 + k + m) === 1 ? "" : 4 * (1 + k + m)}a ${MINUS} ${3 + 4 * k * m} > 0.\n`
+      + `Ровно одно решение — когда диагональное уравнение даёт ровно один корень (при a = ${MINUS}${k} оно линейное, а при a = ${Rstr(R(1 - 4 * k * m, 4 * (1 + k + m)))} его дискриминант равен нулю) и при этом внедиагональных пар нет.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => (a + k === 0 ? null : -(1 + 2 * a) / (2 * (a + k))), dash: true, label: "середина внедиагональной пары" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -8, xMax: 8, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
     ["rat-quad-lin", "(k²x²−a²)/(px−q−ra) = 0 — линейный знаменатель", t18RatQuadLin],
@@ -7369,6 +7750,16 @@ export const META18 = [
   ["Логарифмические с параметром", [
     ["log-same-base", "log_{a−p}(kx²+c) = log_{a−p}(k(a−q)x+d) — ровно два корня", t18LogSameBaseTwo],
     ["log-diff-subst", "(log₂(x+a)−log₂(x−a))² − S·(…) + P = 0 — ровно два решения", t18LogDiffSubstTwo],
+  ]],
+  ["Модули на полупрямой: |kt−a|−|t+ma| = t²", [
+    ["exp-abs-abs", "|k·bˣ−a| − |bˣ+ma| = b²ˣ — ровно два неотрицательных решения", t18ExpAbsAbsTwo],
+    ["log-abs-abs", "|log₀,₅(x²)−a| − |log₀,₅x+ma| = (log₀,₅x)² — есть решение < C", t18LogAbsAbsExists],
+    ["mono-cube-square", "(c+|x+a|)³−(…)² = (d−x²−2ax−ka²)³−(…)² — хотя бы один корень", t18MonoCubeSquareExists],
+  ]],
+  ["Симметричные системы", [
+    ["sys-circle-2lines", "{окружность с центром (a;0); p²x² = q²y²} — ровно четыре решения", t18SysCircleTwoLines],
+    ["sys-quartic-circle", "{a(x⁴+1) = y+c−|x|; окружность} — единственное решение", t18SysQuarticCircleOne],
+    ["sys-symmetric", "{y = f(x); x = f(y)} — ровно одно решение", t18SysSymmetricOne],
   ]],
 ]
 
