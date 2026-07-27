@@ -2797,6 +2797,17 @@ export function t18LogVarBase() {
   })
 }
 
+// Сеточная сверка с мелким шагом 1/60 — для наборов, где критические значения могут иметь
+// «неудобные» знаменатели (шага 1/24 не хватает, чтобы их поймать).
+// eslint-disable-next-line no-unused-vars -- нужна при разовом отборе таблиц (T48)
+function gridOk60(set, test) {
+  const b = setBounds(set).map(Rnum)
+  if (!b.length) return false
+  const lo = Math.floor(Math.min(...b)) - 3, hi = Math.ceil(Math.max(...b)) + 3
+  for (let k = lo * 60; k <= hi * 60; k++) { const a = R(k, 60); if (inSet(set, a) !== test(a)) return false }
+  return true
+}
+
 // То же, что gridOk, но для произвольного предиката (не «ровно N»).
 // eslint-disable-next-line no-unused-vars -- нужна при разовом отборе таблиц (T42, T44)
 function gridOk2(set, test) {
@@ -2962,6 +2973,183 @@ export function t18AbsRecipMoreTwo() {
   })
 }
 
+// #46. |x² − px − q| − ka = |x − a| − c — два модуля, «ровно три различных корня».
+// Точки смены знака: корни трёхчлена (целые r₁ < r₂) и точка x = a. На каждом куске уравнение
+// квадратное, число корней считается точно; критические значения a — это обнуление дискриминанта
+// куска, попадание корня на стык и совпадение стыков.
+function build46({ p, q, k, c, r1, r2 }) {
+  // на куске: s₁(x² − px − q) − ka = s₂(x − a) − c
+  const poly = (a, s1, s2) => [Rsub(Radd(Rsub(Rmul(R(-s1 * q), R1), Rmul(R(k), a)), Rmul(R(s2), a)), R(-c)),
+    R(-(s1 * p + s2)), R(s1)]
+  const solve = (a) => {
+    const bp = uniqSorted([R(r1), R(r2), a])
+    const edges = ["-inf", ...bp, "+inf"]
+    let n = 0
+    for (let i = 0; i < edges.length - 1; i++) {
+      const lo = edges[i], hi = edges[i + 1]
+      const mid = lo === "-inf" ? Rsub(hi, R1) : hi === "+inf" ? Radd(lo, R1) : Rdiv(Radd(lo, hi), R(2))
+      const s1 = Rsign(pEval([R(-q), R(-p), R1], mid)) >= 0 ? 1 : -1
+      const s2 = Rcmp(mid, a) >= 0 ? 1 : -1
+      n += countRoots(poly(a, s1, s2), lo, hi, false, true)      // концы: левый открыт, правый закрыт
+    }
+    // самый правый кусок закрыт справа «на бесконечности» — правая граница не считается дважды
+    return n
+  }
+  const crit = [R(r1), R(r2)]
+  for (const s1 of [1, -1]) for (const s2 of [1, -1]) {
+    // дискриминант куска равен нулю
+    const A = R(s1), B = R(-(s1 * p + s2))
+    const C0 = [Rsub(R(-s1 * q), R(-c)), Rsub(R(s2), R(k))]      // свободный член как многочлен по a
+    const disc = pSub([Rmul(B, B)], pMul([Rmul(R(4), A)], C0))
+    crit.push(...ratRoots(disc).roots)
+    // корень попал на стык x = r₁, x = r₂ или x = a
+    for (const e of [R(r1), R(r2)]) {
+      const E = [Radd(Rsub(Radd(Rmul(A, Rmul(e, e)), Rmul(B, e)), R(s1 * q)), R(c)), Rsub(R(s2), R(k))]
+      crit.push(...ratRoots(E).roots)
+    }
+    const Ex = [R(c - s1 * q), Rsub(Rsub(R(s2), R(k)), R(s1 * p + s2)), R(s1)]   // подстановка x = a
+    crit.push(...ratRoots(Ex).roots)
+  }
+  return { set: assembleSet((a) => solve(a) === 3, crit), solve }
+}
+// Наборы (r₁, r₂, k, c) отобраны разовым перебором: ответ круглый и совпал с предикатом
+// на сетке (шаг 1/24). Конфигураций с тремя корнями и круглым ответом мало — отсюда две штуки.
+const T46 = [
+  [-1, 3, 1, 3], [-3, 1, 1, 1]
+].map(([r1, r2, k, c]) => ({ r1, r2, k, c, p: r1 + r2, q: -r1 * r2 }))
+export function t18TwoAbsThree() {
+  const par = pick(T46), { p, q, k, c } = par
+  const { set, solve } = build46(par)
+  const Q = `x${SUP[2]}${term(-p, "x")}${term(-q, "")}`
+  return item({
+    text: `${HEAD_A}\n\n|${Q}| ${MINUS} ${k === 1 ? "" : k}a = |x ${MINUS} a| ${MINUS} ${c}\n\nимеет ровно три различных корня.`,
+    set,
+    solution: `Модули раскрываются на промежутках, границами которых служат корни трёхчлена (x = ${par.r1} и x = ${par.r2}) и точка x = a.\n`
+      + `На каждом таком промежутке уравнение становится квадратным: ±(${Q}) ${MINUS} ${k === 1 ? "" : k}a = ±(x ${MINUS} a) ${MINUS} ${c}.\n`
+      + `Число корней меняется только там, где дискриминант куска обращается в нуль, где корень попадает на границу промежутка `
+      + `или где сама точка a проходит через ${par.r1} или ${par.r2}. Между такими значениями ответ постоянен.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 3 },
+    solve: (a) => solve(a),
+    raw: {
+      seg: [par.r1 - 8, par.r2 + 8],
+      F: (a) => (x) => Math.abs(x * x - p * x - q) - k * a - Math.abs(x - a) + c,
+      sols: (a) => {
+        const out = []
+        for (const s1 of [1, -1]) for (const s2 of [1, -1]) {
+          const A = s1, B = -(s1 * p + s2), C = -s1 * q - k * a + s2 * a + c
+          const D = B * B - 4 * A * C
+          if (D < 0) continue
+          for (const x of [(-B - Math.sqrt(D)) / (2 * A), (-B + Math.sqrt(D)) / (2 * A)]) {
+            const okQ = s1 * (x * x - p * x - q) >= -1e-9, okA = s2 * (x - a) >= -1e-9
+            if (okQ && okA && !out.some((y) => Math.abs(y - x) < 1e-9)) out.push(x)
+          }
+        }
+        return out
+      },
+    },
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => a, dash: true, label: "x = a" },
+        { f: () => par.r1, dash: true, label: "корни трёхчлена" }, { f: () => par.r2, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: par.r1 - 5, xMax: par.r2 + 5, aMin: Rnum(setBounds(set)[0]) - 3,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #48. ax + √(r² − (x + m)²) = ap + q — прямая пучка с центром (p; q) и верхняя полуокружность
+// с центром (−m; 0) радиуса r. «Единственный корень» — ровно одна общая точка.
+function build48({ m, r, p, q }) {
+  const solve = (a) => {
+    // √(r² − (x+m)²) = a(p − x) + q; нужно (правая часть) ≥ 0 и x ∈ [−m−r; −m+r]
+    const A = Radd(R1, Rmul(a, a))
+    const B = Rsub(Rmul(R(2), R(m)), Rmul(R(2), Rmul(a, Radd(Rmul(a, R(p)), R(q)))))
+    const C = Rsub(Radd(Rmul(R(m), R(m)), Rmul(Radd(Rmul(a, R(p)), R(q)), Radd(Rmul(a, R(p)), R(q)))), Rmul(R(r), R(r)))
+    const quad = [C, B, A]                                          // (1+a²)x² + … = 0
+    // область: [−m−r; −m+r] ∩ {a(p−x)+q ≥ 0}
+    let I = { lo: R(-m - r), hi: R(-m + r), incLo: true, incHi: true }
+    if (!Rzero(a)) {
+      const xb = Radd(R(p), Rdiv(R(q), a))                           // a(p−x)+q = 0 ⟺ x = p + q/a
+      I = Rsign(a) > 0 ? ivCut(I, { lo: "-inf", hi: xb, incLo: false, incHi: true })
+        : ivCut(I, { lo: xb, hi: "+inf", incLo: true, incHi: false })
+    } else if (Rsign(R(q)) < 0) return 0
+    if (ivEmpty(I)) return 0
+    return countRoots(quad, I.lo, I.hi, I.incLo, I.incHi)
+  }
+  // критические значения: касание (расстояние от центра до прямой = r) и прохождение через концы
+  // касание: расстояние от центра (−m; 0) до прямой ax + y − (ap + q) = 0 равно r
+  // ⟺ a²((m+p)² − r²) + 2q(m+p)·a + (q² − r²) = 0
+  const tang = [R(q * q - r * r), R(2 * q * (m + p)), R((m + p) * (m + p) - r * r)]
+  const tr = ratRoots(tang)
+  if (!tr.allRational) return null                      // иррациональное касание — набор не берём
+  const crit = [R0, ...tr.roots]
+  for (const e of [-m - r, -m + r]) crit.push(...ratRoots([R(q), R(p - e)]).roots)   // прямая через конец ОДЗ
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+// Наборы (m, r, p, q) — тем же отбором (плюс требование рационального касания).
+const T48 = [
+  [2, 2, 1, 2], [2, 2, 2, 2], [2, 2, 3, 2], [2, 3, 1, 1], [2, 3, 1, 2], [2, 3, 1, 3], [2, 3, 1, 4],
+  [2, 3, 2, 3], [2, 3, 3, 3], [2, 4, 1, 1], [2, 4, 1, 2], [2, 4, 1, 4], [2, 4, 2, 1], [2, 4, 2, 2],
+  [2, 4, 2, 3], [2, 4, 2, 4], [2, 4, 3, 4], [2, 5, 1, 1], [2, 5, 1, 2], [2, 5, 1, 3], [2, 5, 1, 4],
+  [2, 5, 2, 1], [2, 5, 2, 2], [2, 5, 2, 3], [2, 5, 3, 1], [2, 5, 3, 2], [2, 5, 3, 3], [3, 2, 1, 2],
+  [3, 2, 2, 2], [3, 2, 3, 2], [3, 3, 1, 3], [3, 3, 2, 3], [3, 3, 3, 3], [3, 4, 1, 1], [3, 4, 1, 2],
+  [3, 4, 1, 3], [3, 4, 1, 4], [3, 4, 2, 4], [3, 4, 3, 4], [3, 5, 1, 1], [3, 5, 1, 2], [3, 5, 1, 3],
+  [3, 5, 2, 1], [3, 5, 2, 2], [3, 5, 2, 3], [4, 2, 1, 2], [4, 2, 2, 2], [4, 2, 3, 2], [4, 3, 1, 3],
+  [4, 3, 2, 3], [4, 3, 3, 3], [4, 4, 1, 4], [4, 4, 2, 4], [4, 4, 3, 4], [4, 5, 1, 1], [4, 5, 1, 2],
+  [4, 5, 1, 3], [4, 5, 3, 1], [5, 2, 1, 2], [5, 2, 2, 2], [5, 2, 3, 2], [5, 3, 1, 3], [5, 3, 2, 3],
+  [5, 3, 3, 3], [5, 4, 1, 4], [5, 4, 2, 4], [5, 4, 3, 1], [5, 4, 3, 4], [5, 5, 2, 1]
+].map(([m, r, p, q]) => ({ m, r, p, q }))
+export function t18LinePencilSemicircle() {
+  const par = pick(T48), { m, r, p, q } = par
+  const { set, solve } = build48(par)
+  const under = `${nS(r * r - m * m)} ${MINUS} ${2 * m === 1 ? "" : 2 * m}x ${MINUS} x${SUP[2]}`
+  return item({
+    text: `${HEAD_A}\n\nax + ⟦r:${under}⟧ = ${p === 1 ? "" : p}a + ${q}\n\nимеет единственный корень.`,
+    set,
+    solution: `Подкоренное выражение равно ${r * r} ${MINUS} (x + ${m})${SUP[2]}, поэтому ОДЗ — отрезок [${nS(-m - r)}; ${nS(-m + r)}], `
+      + `а график левой части — верхняя полуокружность с центром (${nS(-m)}; 0) радиуса ${r}.\n`
+      + `Уравнение равносильно √(${r * r} ${MINUS} (x + ${m})${SUP[2]}) = a(${p} ${MINUS} x) + ${q} — справа семейство прямых, проходящих через точку (${p}; ${q}).\n`
+      + `Единственный корень — когда прямая пересекает полуокружность ровно один раз (в том числе касание).\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    raw: {
+      seg: [-m - r, -m + r],
+      F: (a) => (x) => {
+        const u = r * r - (x + m) * (x + m)
+        if (u < -EPS) return null
+        return a * x + sqrtSafe(u) - (a * p + q)
+      },
+      sols: (a) => {
+        const A = 1 + a * a, B = 2 * m - 2 * a * (a * p + q), C = m * m + (a * p + q) * (a * p + q) - r * r
+        const D = B * B - 4 * A * C
+        if (D < 0) return []
+        const out = []
+        for (const x of [(-B - Math.sqrt(D)) / (2 * A), (-B + Math.sqrt(D)) / (2 * A)]) {
+          if (x >= -m - r - 1e-12 && x <= -m + r + 1e-12 && a * (p - x) + q >= -1e-9
+            && !out.some((y) => Math.abs(y - x) < 1e-9)) out.push(x)
+        }
+        return out
+      },
+    },
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => { const A = 1 + a * a, B = 2 * m - 2 * a * (a * p + q), C = m * m + (a * p + q) * (a * p + q) - r * r; const D = B * B - 4 * A * C; return D >= 0 ? (-B + Math.sqrt(D)) / (2 * A) : null }, label: "точки пересечения" },
+        { f: (a) => { const A = 1 + a * a, B = 2 * m - 2 * a * (a * p + q), C = m * m + (a * p + q) * (a * p + q) - r * r; const D = B * B - 4 * A * C; return D >= 0 ? (-B - Math.sqrt(D)) / (2 * A) : null } },
+        { f: () => -m - r, dash: true, label: "ОДЗ" }, { f: () => -m + r, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -m - r - 2, xMax: Math.max(p, -m + r) + 2, aMin: Rnum(setBounds(set)[0]) - 3,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
 // =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
@@ -3019,6 +3207,8 @@ export const META18 = [
     ["abs-quad-eq", "|px²+qx+r| = a−px²−sx — нет решений или единственное", t18AbsQuadEq],
     ["abs-hyperbola", "a|x−p| = c/(x+q) на [0;+∞) — ровно два корня", t18AbsHyperbola],
     ["abs-recip", "|c/x−k| = ax−1 на (0;+∞) — более двух корней", t18AbsRecipMoreTwo],
+    ["two-abs-three", "|x²−px−q|−ka = |x−a|−c — ровно три корня", t18TwoAbsThree],
+    ["line-semicircle", "ax+√(r²−(x+m)²) = ap+q — пучок прямых и полуокружность", t18LinePencilSemicircle],
   ]],
 ]
 
