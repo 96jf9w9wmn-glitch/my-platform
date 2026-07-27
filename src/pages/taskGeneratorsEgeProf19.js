@@ -742,6 +742,11 @@ export const META19 = [
   ]],
   ["Сравнение групп", [
     ["mushroom-groups", "Мальчики и девочки за грибами: наим. сумма", t19MushroomGroups],
+    ["triples-triangle", "Хорошие и отличные тройки: наиб. число отличных", t19GoodExcellentTriples],
+    ["stones-three-piles", "Камни в трёх кучах: наим. верхняя граница массы", t19StonesThreePiles],
+    ["experts-geomean", "Эксперты и фильмы: наиб. число экспертов", t19ExpertsGeomean],
+    ["experts-trimmed-mean", "Старый и новый рейтинг: наиб. разность", t19ExpertsTrimmedMean],
+    ["pairs-distinct-sums", "Пары с различными суммами: наибольшее k", t19PairsDistinctSums],
   ]],
   ["Средние в контейнере", [
     ["box-mean-split-max", "Ящик фруктов: наибольшая масса фрукта", t19BoxMeanSplitMax],
@@ -8837,6 +8842,625 @@ export function t19MushroomGroups() {
       mustMention: [M, F, p, q, r, s],
       extra: [],
       phrases: ["пошли в лес за грибами", "набрали больше грибов"],
+    },
+  })
+}
+
+// #45. «Хорошая тройка» — числа могут быть длинами сторон треугольника, «отличная
+//      тройка» — сторонами ПРЯМОУГОЛЬНОГО треугольника.
+//      а) na различных натуральных: может ли не найтись ни одной хорошей тройки?
+//      б) m различных натуральных: может ли найтись t отличных троек?
+//      в) nc различных чисел (не обязательно натуральных): наибольшее число отличных троек.
+//
+// КЛЮЧ. Пусть числа упорядочены: x₁ < … < x_n. Тройка (x_i, x_j, x_k), i<j<k, отличная
+// ⟺ x_i² + x_j² = x_k². Обозначив u_i = x_i², получаем набор различных положительных
+// u₁ < … < u_n и подсчёт троек с u_i + u_j = u_k. При фиксированном k пары (i, j) с
+// u_i + u_j = u_k ПОПАРНО НЕ ПЕРЕСЕКАЮТСЯ (по одному i второе слагаемое определено
+// однозначно), поэтому их не больше ⌊(k−1)/2⌋. Итого троек не больше
+//   B(n) = Σ_{k=1..n} ⌊(k−1)/2⌋ = ⌊(n−1)²/4⌋,
+// и эта оценка ДОСТИГАЕТСЯ на наборе √1, √2, …, √n (там u_i = i, и тройка отвечает
+// ровно равенству i + j = k). Отсюда: в) ответ B(nc); б) «нет», потому что t > B(m).
+// а) «да»: набор Фибоначчи-типа a_{k} = a_{k−1} + a_{k−2} — в нём x_i + x_j ≤ x_k
+// для любых i < j < k, то есть треугольник не собирается ни из какой тройки.
+export function t19GoodExcellentTriples() {
+  const na = randInt(7, 10)
+  const m = pick([4, 4, 5, 6])
+  const nc = randInt(10, 14)
+  const bound = (n) => Math.floor(((n - 1) * (n - 1)) / 4)
+  const t = bound(m) + 1                                   // заведомо недостижимо
+  const cVal = bound(nc)
+  // а) набор без хороших троек: a1, a2, a1+a2, … (числа Фибоначчи со сдвигом)
+  const a1 = randInt(1, 3), a2 = a1 + randInt(1, 3)
+  const exA = [a1, a2]
+  while (exA.length < na) exA.push(exA[exA.length - 1] + exA[exA.length - 2])
+  // в) пример на максимум: квадраты равны 1, 2, …, nc
+  const exC = Array.from({ length: nc }, (_, i) => Math.sqrt(i + 1))
+
+  const tWord = { 3: "три", 5: "пять", 7: "семь" }[t]
+  const tPhrase = t < 5 ? `${tWord} отличные тройки` : `${tWord} отличных троек`
+
+  const params = { na, m, nc, t }
+  // check написан ПО ТЕКСТУ: «хорошая» = неравенство треугольника, «отличная» = Пифагор.
+  const isGood = (x, y, z) => { const [p, q, r] = [x, y, z].sort((u, v) => u - v); return p + q > r }
+  const isExcellent = (x, y, z) => {
+    const [p, q, r] = [x, y, z].sort((u, v) => u - v)
+    return Math.abs(p * p + q * q - r * r) <= 1e-9 * Math.max(1, r * r)
+  }
+  const countExcellent = (arr) => {
+    let c = 0
+    for (let i = 0; i < arr.length; i++) for (let j = i + 1; j < arr.length; j++) for (let k = j + 1; k < arr.length; k++) if (isExcellent(arr[i], arr[j], arr[k])) c++
+    return c
+  }
+  const check = (arr, part) => {
+    if (!Array.isArray(arr)) return "нет набора чисел"
+    const need = part === "a" ? na : nc
+    if (arr.length !== need) return `должно быть ${need} чисел, а дано ${arr.length}`
+    for (const v of arr) {
+      if (!(typeof v === "number" && isFinite(v) && v > 0)) return `${v} — не положительное число`
+      if (part === "a" && !Number.isInteger(v)) return `${v} — не натуральное число`
+    }
+    for (let i = 0; i < arr.length; i++) for (let j = i + 1; j < arr.length; j++) {
+      if (Math.abs(arr[i] - arr[j]) <= 1e-9) return `числа ${arr[i]} и ${arr[j]} не различны`
+    }
+    if (part === "a") {
+      for (let i = 0; i < arr.length; i++) for (let j = i + 1; j < arr.length; j++) for (let k = j + 1; k < arr.length; k++) {
+        if (isGood(arr[i], arr[j], arr[k])) return `тройка ${arr[i]}, ${arr[j]}, ${arr[k]} — хорошая`
+      }
+    }
+    if (part === "c") {
+      const got = countExcellent(arr)
+      if (got !== cVal) return `в наборе ${got} отличных троек, а заявлено ${cVal}`
+    }
+    return null
+  }
+
+  // НЕЗАВИСИМЫЙ перебор.
+  // а) полный поиск в окне 1…LIM: h[p][c] — сколько чисел ещё можно приписать к набору,
+  //    оканчивающемуся парой (p, c). Набор без хороших троек ⟺ каждое следующее число
+  //    не меньше суммы двух предыдущих (остальные тройки слабее этой), поэтому переход
+  //    из (p, c) идёт в любое n ≥ p + c. Суффиксные максимумы дают O(LIM²).
+  // б), в) структурная оценка B(n) считается ЗАНОВО суммой ⌊(k−1)/2⌋, а достижимость
+  //    проверяется отдельным перебором наборов u ⊂ {1, …, nc + 3}: если он найдёт
+  //    больше B(nc), несовпадение всплывёт.
+  const solve = (P) => {
+    const LIM = 300
+    const W = LIM + 1
+    const h = new Int16Array(W * W)
+    const suf = new Int16Array(W + 2)
+    let best = 0
+    for (let c = LIM; c >= 1; c--) {
+      suf[LIM + 1] = -1
+      for (let n = LIM; n >= 1; n--) suf[n] = Math.max(suf[n + 1], h[c * W + n])
+      for (let p = 1; p < c; p++) {
+        const nxt = p + c
+        const v = nxt > LIM ? 0 : 1 + suf[nxt]
+        h[p * W + c] = v
+        if (v + 2 > best) best = v + 2
+      }
+    }
+    let bSum = 0
+    for (let k = 1; k <= P.m; k++) bSum += Math.floor((k - 1) / 2)
+    let cSum = 0
+    for (let k = 1; k <= P.nc; k++) cSum += Math.floor((k - 1) / 2)
+    // достижимость: перебираем, какие 3 числа выбросить из {1, …, nc + 3}
+    const M = P.nc + 3
+    let found = 0
+    for (let d1 = 1; d1 <= M; d1++) for (let d2 = d1 + 1; d2 <= M; d2++) for (let d3 = d2 + 1; d3 <= M; d3++) {
+      const inSet = new Uint8Array(M + 1).fill(1)
+      inSet[d1] = 0; inSet[d2] = 0; inSet[d3] = 0
+      let cnt = 0
+      for (let i = 1; i <= M; i++) { if (!inSet[i]) continue
+        for (let j = i + 1; j <= M; j++) { if (!inSet[j]) continue
+          if (i + j <= M && inSet[i + j]) cnt++ } }
+      if (cnt > found) found = cnt
+    }
+    return { a: best >= P.na, b: P.t <= bSum, c: Math.max(cSum, found), c_next: false }
+  }
+
+  return item({
+    preamble: `Три числа назовём хорошей тройкой, если они могут быть длинами сторон треугольника. Три числа назовём отличной тройкой, если они могут быть длинами сторон прямоугольного треугольника.`,
+    qa: `Даны ${distNat(na)}. Может ли оказаться, что среди них не найдётся ни одной хорошей тройки?`,
+    qb: `Даны ${distNat(m)}. Может ли оказаться, что среди них можно найти ${tPhrase}?`,
+    qc: `Даны ${distNums(nc)} (необязательно натуральных). Какое наибольшее количество отличных троек могло оказаться среди них?`,
+    ansA: `да, например ${exA.join(", ")}: каждое число не меньше суммы двух предыдущих, поэтому в любой тройке a < b < c выполнено a + b ≤ c и треугольник не получается`,
+    ansB: `нет: возведём числа в квадрат и упорядочим. Отличная тройка — это равенство «сумма двух меньших квадратов равна большему»; при фиксированном большем квадрате такие пары слагаемых не пересекаются, поэтому у k-го по величине числа их не больше ⌊(k − 1)/2⌋, а всего отличных троек не больше ${bound(m)} < ${t}`,
+    ansC: `${cVal}; например, числа √1, √2, √3, …, √${nc}: тройка (√i; √j; √k) отличная ровно тогда, когда i + j = k, и таких троек ровно ${cVal}`,
+    solution: `Расставим числа по возрастанию и заменим каждое его квадратом: тройка отличная ⟺ сумма двух меньших квадратов равна большему.\nа) Возьмём набор ${exA.join(", ")}, в котором каждое следующее число равно сумме двух предыдущих. Если a < b < c — любые три числа набора, то a и b не превосходят двух чисел, стоящих непосредственно перед c, поэтому a + b ≤ c и треугольник не собирается. Ответ: да.\nб) Зафиксируем больший квадрат тройки. Разные представления его в виде суммы двух меньших квадратов набора не имеют общих слагаемых: по одному слагаемому второе восстанавливается однозначно. Значит у k-го по величине числа таких представлений не больше ⌊(k − 1)/2⌋, а всего отличных троек не больше суммы ⌊(k − 1)/2⌋ по k от 1 до ${m}, то есть не больше ${bound(m)}. Так как ${bound(m)} < ${t}, ответ: нет.\nв) Та же оценка для ${nc} чисел даёт не больше ${cVal} отличных троек. Она достигается на наборе √1, √2, …, √${nc}: квадраты равны 1, 2, …, ${nc}, тройка отличная ровно при i + j = k, а число пар i < j с суммой k равно ⌊(k − 1)/2⌋. Ответ: ${cVal}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: "no-good-triple" },
+        b: { type: "yesno", yes: false, reason: "pairs-per-hypotenuse-bound", target: "many-excellent" },
+        c: { type: "extremum", mode: "max", value: cVal, example: exC },
+      },
+      mustMention: [na, m, nc],
+      extra: [],
+      phrases: ["хорошей тройкой", "отличной тройкой", "прямоугольного треугольника", "необязательно натуральных"],
+    },
+  })
+}
+
+// #47. N камней, масса каждого — целое число граммов, не меньше M. Камни разложены
+//      по трём кучам: n₁ < n₂ < n₃ камней, суммарные массы S₁, S₂, S₃.
+//      а) может ли быть S₁ > S₂ > S₃? б) то же, если масса камня не превосходит KB?
+//      в) наименьшее целое k (масса камня ≤ k), при котором S₁ > S₂ > S₃ возможно.
+//
+// КЛЮЧ. Наименьшие допустимые суммы: S₃ = M·n₃, значит S₂ ≥ M·n₃ + 1 и S₁ ≥ M·n₃ + 2
+// (обе оценки не мешают условию S_i ≥ M·n_i, потому что n₃ больше n₂ и n₁). Сверху
+// S₁ ≤ k·n₁, поэтому тройка (n₁, n₂, n₃) годится ровно при k·n₁ ≥ M·n₃ + 2, то есть
+// k ≥ ⌈(M·n₃ + 2)/n₁⌉. Ответ в) — минимум этой величины по всем разбиениям
+// n₁ < n₂ < n₃ с суммой N; для б) достаточно проверить, что KB меньше этого минимума.
+export function t19StonesThreePiles() {
+  const M = pick([100, 100, 100, 150, 200])
+  const N = randInt(38, 56)
+  // перебор разбиений — это арифметика по ≤ N²/2 тройкам, а не поиск по массам
+  let bestK = Infinity, bestTriple = null
+  for (let n1 = 1; n1 <= N; n1++) for (let n2 = n1 + 1; n2 <= N; n2++) {
+    const n3 = N - n1 - n2
+    if (n3 <= n2) continue
+    const k = Math.ceil((M * n3 + 2) / n1)
+    if (k < bestK) { bestK = k; bestTriple = [n1, n2, n3] }
+  }
+  if (!bestTriple) return null
+  const KB = randInt(M + 2, bestK - 3)
+  if (KB <= M) return null
+
+  // разложить сумму S на n камней массой от M до cap: rem камней по base+1, остальные по base
+  const split = (S, n) => {
+    const base = Math.floor(S / n), rem = S % n
+    return [...Array(rem).fill(base + 1), ...Array(n - rem).fill(base)]
+  }
+  const pileText = (arr) => {
+    const g = []
+    for (const v of arr) { const last = g[g.length - 1]; if (last && last.v === v) last.c++; else g.push({ v, c: 1 }) }
+    return g.map(({ v, c }) => (c === 1 ? `камень массой ${v} г` : `${c} ${plural(c, "камень", "камня", "камней")} по ${v} г`)).join(" и ")
+  }
+  // а) без верхней границы: 1, 2 и N − 3 камня
+  const s3a = M * (N - 3)
+  const exA = { piles: [[s3a + 2], split(s3a + 1, 2), Array(N - 3).fill(M)] }
+  // в) пример на bestK
+  const [b1, b2, b3] = bestTriple
+  const exC = { piles: [split(M * b3 + 2, b1), split(M * b3 + 1, b2), Array(b3).fill(M)] }
+
+  const params = { N, M, KB, bestK }
+  // check написан ПО ТЕКСТУ условия: три кучи, размеры строго возрастают, масса каждого
+  // камня — целое от M до cap, и суммарные массы строго убывают.
+  const check = (cfg, part) => {
+    if (!cfg || !Array.isArray(cfg.piles) || cfg.piles.length !== 3) return "нужно три кучи"
+    const cap = part === "c" ? bestK : part === "b" ? KB : Infinity
+    const sizes = cfg.piles.map((p) => p.length)
+    if (sum(sizes) !== N) return `всего ${sum(sizes)} камней, а должно быть ${N}`
+    if (!(sizes[0] < sizes[1] && sizes[1] < sizes[2])) return `размеры куч ${sizes.join(" < ")} не возрастают`
+    for (const p of cfg.piles) for (const v of p) {
+      if (!Number.isInteger(v)) return `масса ${v} не целая`
+      if (v < M) return `масса ${v} меньше ${M} г`
+      if (v > cap) return `масса ${v} больше ${cap} г`
+    }
+    const S = cfg.piles.map(sum)
+    if (!(S[0] > S[1] && S[1] > S[2])) return `суммарные массы ${S.join(", ")} не убывают строго`
+    return null
+  }
+  // НЕЗАВИСИМЫЙ перебор. Для данного k тройка (n₁, n₂, n₃) реализуема ⟺ жадный выбор
+  // наименьших сумм проходит: S₃ = M·n₃, S₂ = max(M·n₂, S₃ + 1), S₁ = max(M·n₁, S₂ + 1),
+  // и каждая сумма не превосходит k·n_i (сумма n камней массой ≤ k не больше k·n, и любое
+  // целое из отрезка [M·n; k·n] набирается). Сканируем k снизу — никакой формулы.
+  const solve = (P) => {
+    const feasible = (k) => {
+      for (let n1 = 1; n1 <= P.N; n1++) for (let n2 = n1 + 1; n2 <= P.N; n2++) {
+        const n3 = P.N - n1 - n2
+        if (n3 <= n2) continue
+        const S3 = P.M * n3
+        const S2 = Math.max(P.M * n2, S3 + 1)
+        const S1 = Math.max(P.M * n1, S2 + 1)
+        if (S1 <= k * n1 && S2 <= k * n2 && S3 <= k * n3) return true
+      }
+      return false
+    }
+    let kMin = null
+    for (let k = P.M; k <= P.M * 60 && kMin === null; k++) if (feasible(k)) kMin = k
+    return { a: feasible(P.M * 1000), b: feasible(P.KB), c: kMin, c_next: false }
+  }
+
+  return item({
+    preamble: `У ювелира есть ${N} ${plural(N, "полудрагоценный камень", "полудрагоценных камня", "полудрагоценных камней")}, масса каждого из которых — целое число граммов, не меньше ${M} (некоторые камни могут иметь равную массу). Эти камни распределили по трём кучам: в первой куче n₁ камней, во второй — n₂ камней, в третьей — n₃ камней, причём n₁ < n₂ < n₃. Суммарная масса (в граммах) камней в первой куче равна S₁, во второй — S₂, а в третьей — S₃.`,
+    qa: `Может ли выполняться неравенство S₁ > S₂ > S₃?`,
+    qb: `Может ли выполняться неравенство S₁ > S₂ > S₃, если масса любого камня не превосходит ${KB} граммов?`,
+    qc: `Известно, что масса любого камня не превосходит k граммов. Найдите наименьшее целое значение k, для которого может выполняться неравенство S₁ > S₂ > S₃.`,
+    ansA: `да, например: в первой куче камень массой ${s3a + 2} г, во второй — ${pileText(exA.piles[1])}, в третьей — ${N - 3} ${plural(N - 3, "камень", "камня", "камней")} по ${M} г; тогда S₁ = ${s3a + 2} > S₂ = ${s3a + 1} > S₃ = ${s3a}`,
+    ansB: `нет: S₃ ≥ ${M}n₃, поэтому S₁ ≥ ${M}n₃ + 2, а сверху S₁ ≤ ${KB}n₁; из n₁ < n₂ < n₃ и n₁ + n₂ + n₃ = ${N} следует n₁ ≤ ${bestTriple[0]} и n₃ ≥ ${bestTriple[2]}, и неравенство ${KB}n₁ ≥ ${M}n₃ + 2 невыполнимо`,
+    ansC: `${bestK}; например, в первой куче ${pileText(exC.piles[0])} (всего ${M * b3 + 2} г), во второй — ${pileText(exC.piles[1])} (всего ${M * b3 + 1} г), в третьей — ${b3} ${plural(b3, "камень", "камня", "камней")} по ${M} г`,
+    solution: `Так как масса каждого камня не меньше ${M} г, то S₃ ≥ ${M}n₃. Из S₁ > S₂ > S₃ следует S₂ ≥ ${M}n₃ + 1 и S₁ ≥ ${M}n₃ + 2 (эти оценки не противоречат условиям S₂ ≥ ${M}n₂ и S₁ ≥ ${M}n₁, потому что n₃ больше n₂ и n₁).\nа) Верхней границы на массу нет: положим в третью кучу ${N - 3} ${plural(N - 3, "камень", "камня", "камней")} по ${M} г, во вторую — два камня общей массой ${s3a + 1} г, в первую — один камень массой ${s3a + 2} г. Получаем S₁ > S₂ > S₃. Ответ: да.\nб) Если масса каждого камня не превосходит ${KB} г, то S₁ ≤ ${KB}n₁, и должно выполняться ${KB}n₁ ≥ ${M}n₃ + 2. Из n₁ < n₂ < n₃ и n₁ + n₂ + n₃ = ${N} получаем n₁ ≤ ${bestTriple[0]}, а при таком n₁ наименьшее возможное n₃ равно ${bestTriple[2]}; проверка всех разбиений показывает, что нужное неравенство не выполняется ни для одного из них. Ответ: нет.\nв) Условие реализуемо ровно тогда, когда k·n₁ ≥ ${M}n₃ + 2 для какого-то разбиения, то есть k ≥ ⌈(${M}n₃ + 2)/n₁⌉. Минимум правой части по всем разбиениям достигается при n₁ = ${b1}, n₂ = ${b2}, n₃ = ${b3} и равен ${bestK}. Пример на ${bestK}: первая куча — ${pileText(exC.piles[0])}, вторая — ${pileText(exC.piles[1])}, третья — ${b3} ${plural(b3, "камень", "камня", "камней")} по ${M} г. Ответ: ${bestK}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: "unbounded-mass" },
+        b: { type: "yesno", yes: false, reason: "pile-sizes-too-close", target: "capped-mass" },
+        c: { type: "extremum", mode: "min", value: bestK, example: exC },
+      },
+      mustMention: [N, M, KB],
+      extra: [],
+      phrases: ["целое число граммов", "n₁ < n₂ < n₃", "не превосходит"],
+    },
+  })
+}
+
+// #86. Эксперты и кинофильмы. Каждый эксперт ставит каждому фильму целую оценку от 1
+//      до L; все оценки одного фильма различны; рейтинг фильма — среднее геометрическое
+//      оценок, и рейтинги всех фильмов — различные целые числа.
+//      а) могло ли быть nA экспертов и fA фильмов? б) nB экспертов и fB фильмов?
+//      в) наибольшее число экспертов, при котором ситуация возможна для одного фильма.
+//
+// КЛЮЧ. Для n экспертов рейтинг фильма — целое m ⟺ произведение n РАЗЛИЧНЫХ оценок
+// из 1…L является n-й степенью. Множество достижимых рейтингов R(n) конечно и мало
+// (например, при L = 10 это {2, 3, 4, 6} и для n = 2, и для n = 3), поэтому число
+// фильмов с различными целыми рейтингами не превосходит |R(n)|. Отсюда: а) fA = |R(nA)| + 1
+// невозможно; б) fB = |R(nB)| достижимо; в) ответ — наибольшее n с непустым R(n).
+const PRIMES19 = [2, 3, 5, 7, 11, 13, 17, 19, 23]
+// R(n) для оценок 1…L: карта «рейтинг → пример набора оценок». Считается по ВЕКТОРАМ
+// показателей простых (solve тот же факт проверяет прямым извлечением корня).
+function ratingsByExperts(L) {
+  const f = []
+  for (let v = 1; v <= L; v++) {
+    const e = new Array(PRIMES19.length).fill(0)
+    let x = v
+    for (let i = 0; i < PRIMES19.length; i++) while (x % PRIMES19[i] === 0) { e[i]++; x /= PRIMES19[i] }
+    f.push(e)
+  }
+  const byN = new Map()
+  const cur = []
+  const rec = (start, exp) => {
+    const n = cur.length
+    if (n >= 2 && exp.every((e) => e % n === 0)) {
+      let m = 1
+      for (let i = 0; i < PRIMES19.length; i++) m *= PRIMES19[i] ** (exp[i] / n)
+      if (!byN.has(n)) byN.set(n, new Map())
+      const tab = byN.get(n)
+      if (!tab.has(m)) tab.set(m, cur.slice())
+    }
+    if (cur.length >= L) return
+    for (let v = start; v <= L; v++) {
+      cur.push(v)
+      rec(v + 1, exp.map((e, i) => e + f[v - 1][i]))
+      cur.pop()
+    }
+  }
+  rec(1, new Array(PRIMES19.length).fill(0))
+  return byN
+}
+const RATINGS19 = new Map()      // таблица строится ОДИН РАЗ на импорт модуля
+for (const L of [10, 11, 12, 13]) RATINGS19.set(L, ratingsByExperts(L))
+
+export function t19ExpertsGeomean() {
+  const L = pick([10, 10, 10, 11, 12, 13])
+  const tab = RATINGS19.get(L)
+  const ns = [...tab.keys()].sort((a, b) => a - b)
+  const nMax = ns[ns.length - 1]
+  const big = ns.filter((n) => tab.get(n).size >= 2)
+  if (big.length < 2) return null
+  const nA = pick(ns)
+  const nB = pick(big.filter((n) => n !== nA))
+  if (nB === undefined) return null
+  const listA = [...tab.get(nA).keys()].sort((a, b) => a - b)
+  const listB = [...tab.get(nB).keys()].sort((a, b) => a - b)
+  const fA = listA.length + 1, fB = listB.length
+  const exB = { films: listB.map((m) => tab.get(nB).get(m)) }
+  const mMax = [...tab.get(nMax).keys()][0]
+  const exC = { films: [tab.get(nMax).get(mMax)] }
+  const prodMax = tab.get(nMax).get(mMax).reduce((s, x) => s * x, 1)
+
+  const params = { L, nA, fA, nB, fB }
+  // check написан ПО ТЕКСТУ условия: оценки целые из 1…L, у одного фильма различны,
+  // среднее геометрическое каждого фильма — целое, рейтинги фильмов попарно различны.
+  const check = (cfg, part) => {
+    if (!cfg || !Array.isArray(cfg.films) || !cfg.films.length) return "нет фильмов"
+    const needFilms = part === "c" ? 1 : fB
+    const needExperts = part === "c" ? nMax : nB
+    if (cfg.films.length !== needFilms) return `должно быть ${needFilms} фильмов, а дано ${cfg.films.length}`
+    const seen = []
+    for (const film of cfg.films) {
+      if (!Array.isArray(film) || film.length !== needExperts) return `у фильма должно быть ${needExperts} оценок`
+      for (const v of film) if (!Number.isInteger(v) || v < 1 || v > L) return `оценка ${v} не целая от 1 до ${L}`
+      if (uniq(film).length !== film.length) return `оценки одного фильма ${film.join(", ")} не различны`
+      const p = film.reduce((s, x) => s * x, 1)
+      let m = 1
+      while (m ** needExperts < p) m++
+      if (m ** needExperts !== p) return `среднее геометрическое оценок ${film.join(", ")} не целое`
+      seen.push(m)
+    }
+    if (uniq(seen).length !== seen.length) return `рейтинги ${seen.join(", ")} не различны`
+    return null
+  }
+  // НЕЗАВИСИМЫЙ перебор: все подмножества {1, …, L} (их 2^L ≤ 8192), произведение
+  // считается напрямую, целость корня проверяется подъёмом m, пока m^n < p. Никаких
+  // векторов показателей — другой проход, чем в конструкции.
+  const solve = (P) => {
+    const cnt = new Map()
+    const cur = []
+    const rec = (start, prod) => {
+      const n = cur.length
+      if (n >= 2) {
+        let m = 1
+        while (m ** n < prod) m++
+        if (m ** n === prod) {
+          if (!cnt.has(n)) cnt.set(n, new Set())
+          cnt.get(n).add(m)
+        }
+      }
+      for (let v = start; v <= P.L; v++) { cur.push(v); rec(v + 1, prod * v); cur.pop() }
+    }
+    rec(1, 1)
+    const sizeOf = (n) => (cnt.get(n) ? cnt.get(n).size : 0)
+    let top = 0
+    for (const n of cnt.keys()) if (n > top) top = n
+    return { a: sizeOf(P.nA) >= P.fA, b: sizeOf(P.nB) >= P.fB, c: top, c_next: false }
+  }
+
+  const experts = (n) => `${n} ${plural(n, "эксперт", "эксперта", "экспертов")}`
+  const expertsPrep = (n) => `${n} ${plural(n, "эксперте", "экспертах", "экспертах")}`
+  const films = (n) => `${n} ${plural(n, "кинофильм", "кинофильма", "кинофильмов")}`
+  const filmText = (arr) => `${arr.join(", ")} (рейтинг ${Math.round(arr.reduce((s, x) => s * x, 1) ** (1 / arr.length))})`
+  const sup = (n) => String(n).replace(/\d/g, (d) => "\u2070\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079"[+d])
+  const ratingList = (list) => `${plural(list.length, "рейтинг", "рейтинги", "рейтинги")} ${joinRu(list)} — ${list.length === 1 ? "всего один" : `всего ${list.length}`}`
+  const ratingsNeeded = (n) => `${n} ${plural(n, "различный целый рейтинг", "различных целых рейтинга", "различных целых рейтингов")}`
+  return item({
+    preamble: `Несколько экспертов оценивают несколько кинофильмов. Каждый из них выставляет оценку каждому кинофильму — целое число баллов от 1 до ${L} включительно. Известно, что каждому кинофильму все эксперты выставили различные оценки. Рейтинг кинофильма — среднее геометрическое оценок всех экспертов, то есть корень степени n из произведения n оценок. Оказалось, что рейтинги всех кинофильмов — это различные целые числа.`,
+    qa: `Могло ли быть ${experts(nA)} и ${films(fA)}?`,
+    qb: `Могло ли быть ${experts(nB)} и ${films(fB)}?`,
+    qc: `При каком наибольшем количестве экспертов описанная ситуация возможна для одного кинофильма?`,
+    ansA: `нет: при ${expertsPrep(nA)} произведение ${nA} различных оценок обязано быть ${nA}-й степенью, а это даёт лишь ${ratingList(listA)}, поэтому ${ratingsNeeded(fA)} не набрать`,
+    ansB: `да, например оценки фильмов: ${exB.films.map(filmText).join("; ")}`,
+    ansC: `${nMax}; например, оценки ${tab.get(nMax).get(mMax).join(", ")}: их произведение равно ${prodMax} = ${mMax}${sup(nMax)}, поэтому рейтинг равен ${mMax}`,
+    solution: `Пусть фильму поставили оценки n экспертов. Рейтинг такого фильма — целое число m ⟺ произведение его оценок равно m в степени n. Перебор всех наборов различных оценок из 1…${L} показывает, какие рейтинги вообще достижимы.\nа) При n = ${nA} целыми могут быть только ${ratingList(listA)}. Рейтинги разных фильмов различны, значит фильмов не больше ${listA.length} < ${fA}. Ответ: нет.\nб) При n = ${nB} достижимы ${ratingList(listB)}, и все эти рейтинги реализуются одновременно: ${exB.films.map(filmText).join("; ")}. Ответ: да.\nв) Наборов из ${nMax + 1} и более различных оценок с целым средним геометрическим не существует (в произведении обязательно появляется простой множитель в степени, не кратной количеству оценок), а для ${nMax} оценок пример есть: ${tab.get(nMax).get(mMax).join(", ")}, произведение ${prodMax} = ${mMax}${sup(nMax)}. Ответ: ${nMax}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: false, reason: "few-integer-ratings", target: `films-${nA}-${fA}` },
+        b: { type: "yesno", yes: true, example: exB, target: `films-${nB}-${fB}` },
+        c: { type: "extremum", mode: "max", value: nMax, example: exC },
+      },
+      mustMention: [1, L, nA, fA, nB, fB],
+      extra: [],
+      phrases: ["различные оценки", "среднее геометрическое", "различные целые числа"],
+    },
+  })
+}
+
+// #87. n экспертов ставят фильму различные целые оценки от 0 до L. Старый рейтинг —
+//      среднее арифметическое всех n оценок, новый — среднее (n − 2) оставшихся после
+//      отбрасывания наименьшей и наибольшей.
+//      а) может ли разность старого и нового рейтингов равняться 1/qA?
+//      б) то же для 1/qB? в) наибольшее значение разности.
+//
+// КЛЮЧ. Пусть m и M — наименьшая и наибольшая оценки, T — сумма остальных (n − 2).
+// Тогда разность равна
+//   D = (m + M + T)/n − T/(n − 2) = ((n − 2)(m + M) − 2T) / (n(n − 2)),
+// то есть D всегда кратна 1/(n(n − 2)) — отсюда «нет» в а) для знаменателя, не делящего
+// n(n − 2). Числитель E = (n − 2)(m + M) − 2T оценивается через T ≥ (n − 2)m +
+// (n − 2)(n − 1)/2: E ≤ (n − 2)(M − m − (n − 1)) ≤ (n − 2)(L − n + 1), и равенство даёт
+// набор 0, 1, …, n − 2, L. Значит наибольшая разность равна (L − n + 1)/n.
+const WORD_N19 = { 3: ["Три", "трёх"], 5: ["Пять", "пяти"], 7: ["Семь", "семи"], 9: ["Девять", "девяти"] }
+export function t19ExpertsTrimmedMean() {
+  const n = pick([5, 7, 7, 9])                 // нечётное: иначе E = 1 недостижимо
+  const L = randInt(n + 2, 2 * n - 2)          // ответ в) — правильная дробь
+  const D0 = n * (n - 2)
+  // а) знаменатель, не делящий D0 → 1/qA не кратно 1/D0
+  const cand = []
+  for (let q = Math.ceil(D0 / 2); q <= 2 * D0; q++) if (D0 % q !== 0) cand.push(q)
+  const qA = pick(cand)
+  const qB = D0
+  // б) пример на разность 1/D0: m = 0, M нечётно, T = ((n − 2)M − 1)/2
+  const pickSum = (lo, hi, k, target) => {
+    const arr = Array.from({ length: k }, (_, i) => lo + i)
+    let need = target - sum(arr)
+    if (need < 0) return null
+    for (let i = k - 1; i >= 0 && need > 0; i--) {
+      const cap = hi - (k - 1 - i)
+      const add = Math.min(need, cap - arr[i])
+      arr[i] += add; need -= add
+    }
+    return need === 0 ? arr : null
+  }
+  const Ms = []
+  for (let M = n; M <= L; M++) if (M % 2 === 1) Ms.push(M)
+  if (!Ms.length) return null
+  const Mb = pick(Ms)
+  const mid = pickSum(1, Mb - 1, n - 2, ((n - 2) * Mb - 1) / 2)
+  if (!mid) return null
+  const exB = [0, ...mid, Mb]
+  const exC = [...Array.from({ length: n - 1 }, (_, i) => i), L]
+  const maxE = (n - 2) * (L - n + 1)
+  const g = (a, b) => (b ? g(b, a % b) : a)
+  const gc = g(L - n + 1, n)
+  const maxFr = { n: (L - n + 1) / gc, d: n / gc }
+
+  const params = { n, L, qA, qB }
+  // Разность, ВЫРАЖЕННАЯ В ДОЛЯХ 1/(n(n − 2)), — целое число E; claim в) сравнивает
+  // именно E (точное целое сравнение вместо шаткого сравнения дробей с плавающей точкой).
+  // check написан ПО ТЕКСТУ условия: n различных целых оценок от 0 до L, а разность
+  // старого и нового рейтингов считается прямо по определению (среднее всех минус
+  // среднее оставшихся после отбрасывания крайних).
+  const check = (arr, part) => {
+    if (!Array.isArray(arr) || arr.length !== n) return `должно быть ${n} оценок`
+    for (const v of arr) if (!Number.isInteger(v) || v < 0 || v > L) return `оценка ${v} не целая от 0 до ${L}`
+    if (uniq(arr).length !== n) return `оценки ${arr.join(", ")} не различны`
+    const s = arr.slice().sort((a, b) => a - b)
+    const old = sum(s) / n
+    const neu = sum(s.slice(1, -1)) / (n - 2)
+    const want = part === "c" ? maxE / D0 : 1 / qB
+    if (Math.abs(old - neu - want) > 1e-9) return `разность рейтингов равна ${old - neu}, а нужно ${want}`
+    return null
+  }
+  // НЕЗАВИСИМЫЙ перебор: все наборы из n различных оценок в 0…L (их C(L+1, n) ≤ 25000),
+  // для каждого числитель E считается по определению рейтингов. Формула E из ключа
+  // здесь не используется — суммы берутся напрямую.
+  const solve = (P) => {
+    const D = P.n * (P.n - 2)
+    const seen = new Set()
+    const cur = []
+    const rec = (start) => {
+      if (cur.length === P.n) {
+        const old = sum(cur) / P.n
+        const neu = sum(cur.slice(1, -1)) / (P.n - 2)
+        seen.add(Math.round((old - neu) * D))
+        return
+      }
+      for (let v = start; v <= P.L; v++) { cur.push(v); rec(v + 1); cur.pop() }
+    }
+    rec(0)
+    const hits = (q) => D % q === 0 && seen.has(D / q)
+    let top = -Infinity
+    for (const e of seen) if (e > top) top = e
+    return { a: hits(P.qA), b: hits(P.qB), c: top, c_next: false }
+  }
+
+  return item({
+    preamble: `${WORD_N19[n][0]} экспертов оценивают кинофильм. Каждый из них выставляет оценку — целое число баллов от 0 до ${L} включительно. Известно, что все эксперты выставили различные оценки. По старой системе оценивания рейтинг кинофильма — это среднее арифметическое всех оценок экспертов. По новой системе оценивания рейтинг кинофильма вычисляется следующим образом: отбрасываются наименьшая и наибольшая оценки и подсчитывается среднее арифметическое ${WORD_N19[n - 2][1]} оставшихся оценок.`,
+    qa: `Может ли разность рейтингов, вычисленных по старой и новой системам оценивания, равняться ${frCond({ n: 1, d: qA })}?`,
+    qb: `Может ли разность рейтингов, вычисленных по старой и новой системам оценивания, равняться ${frCond({ n: 1, d: qB })}?`,
+    qc: `Найдите наибольшее возможное значение разности рейтингов, вычисленных по старой и новой системам оценивания.`,
+    ansA: `нет: если m и M — крайние оценки, а T — сумма остальных, то разность равна (${n - 2}(m + M) − 2T)/${D0}, то есть кратна 1/${D0}; число 1/${qA} этому виду не удовлетворяет, так как ${D0} не делится на ${qA}`,
+    ansB: `да, например оценки ${exB.join(", ")}: старый рейтинг ${sum(exB)}/${n}, новый ${sum(exB) - exB[0] - exB[n - 1]}/${n - 2}, их разность равна 1/${D0}`,
+    ansC: `${frPlain(maxFr)}; например, оценки ${exC.join(", ")}: старый рейтинг ${sum(exC)}/${n}, новый ${(sum(exC) - L) / (n - 2)}, разность ${frPlain(maxFr)}`,
+    solution: `Пусть оценки упорядочены, m — наименьшая, M — наибольшая, T — сумма остальных ${n - 2}. Тогда разность рейтингов равна (m + M + T)/${n} − T/${n - 2} = (${n - 2}(m + M) − 2T)/${D0}.\nа) Числитель — целое число, поэтому разность кратна 1/${D0}. Если бы она равнялась 1/${qA}, то ${D0}/${qA} было бы целым, а это не так. Ответ: нет.\nб) Нужен числитель 1. Возьмём оценки ${exB.join(", ")}: сумма всех равна ${sum(exB)}, сумма средних — ${sum(exB) - exB[0] - exB[n - 1]}, и ${sum(exB)}/${n} − ${sum(exB) - exB[0] - exB[n - 1]}/${n - 2} = 1/${D0}. Ответ: да.\nв) Средние ${n - 2} оценок больше m, поэтому T ≥ (${n - 2})m + ${((n - 2) * (n - 1)) / 2}. Значит числитель не превосходит ${n - 2}(M − m − ${n - 1}) ≤ ${n - 2} · (${L} − ${n - 1}) = ${maxE}, то есть разность не больше ${maxE}/${D0} = ${frPlain(maxFr)}. Равенство достигается на наборе ${exC.join(", ")}. Ответ: ${frPlain(maxFr)}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: false, reason: "multiple-of-1-over-D0", target: `diff-${qA}` },
+        b: { type: "yesno", yes: true, example: exB, target: `diff-${qB}` },
+        c: { type: "extremum", mode: "max", value: maxE, example: exC },
+      },
+      mustMention: [0, L, 1, qA, qB],
+      extra: [],
+      phrases: ["различные оценки", "отбрасываются наименьшая и наибольшая оценки", "среднее арифметическое"],
+    },
+  })
+}
+
+// #89. Из первых N натуральных чисел выбрали 2k различных, разбили на пары и посчитали
+//      суммы в парах: все суммы различны и не превосходят CAP.
+//      а) может ли сумма всех выбранных равняться T, если в каждой паре одно число
+//         ровно в r раз больше другого? б) может ли k равняться KB? в) наибольшее k.
+//
+// КЛЮЧ. а) пара имеет вид (a; r·a), её сумма (r + 1)a, поэтому сумма всех выбранных
+// чисел делится на r + 1 — берём T, не кратное r + 1.
+// б), в) сумма 2k выбранных чисел не меньше 1 + 2 + … + 2k = k(2k + 1), а сверху она
+// равна сумме k различных чисел, не превосходящих CAP, то есть не больше
+// CAP + (CAP − 1) + … + (CAP − k + 1). Неравенство k(2k + 1) ≤ k·CAP − k(k − 1)/2
+// отсекает все большие k; наибольшее допустимое достигается явным разбиением 1…2k.
+// Разбиение ищется поиском с возвратом ОДИН РАЗ при импорте модуля.
+function pairingFor(k, cap) {
+  const n = 2 * k
+  const used = new Array(n + 1).fill(false)
+  const sums = new Set(), pairs = []
+  const rec = () => {
+    let a = 1
+    while (a <= n && used[a]) a++
+    if (a > n) return true
+    used[a] = true
+    for (let b = n; b > a; b--) {
+      if (used[b]) continue
+      const s = a + b
+      if (s > cap || sums.has(s)) continue
+      used[b] = true; sums.add(s); pairs.push([a, b])
+      if (rec()) return true
+      pairs.pop(); sums.delete(s); used[b] = false
+    }
+    used[a] = false
+    return false
+  }
+  return rec() ? pairs : null
+}
+const PAIRS19 = [[18, 22], [20, 24], [22, 27], [22, 27], [24, 29], [26, 32], [28, 34]].map(([N, cap]) => {
+  let kMax = 0
+  for (let k = 1; k <= Math.floor(N / 2); k++) {
+    let cover = 0
+    for (let i = 0; i < k; i++) cover += cap - i
+    if (k * (2 * k + 1) <= cover) kMax = k
+  }
+  return { N, cap, kMax, pairs: pairingFor(kMax, cap) }
+}).filter((p) => p.pairs && p.kMax + 1 <= Math.floor(p.N / 2))
+
+export function t19PairsDistinctSums() {
+  const P = pick(PAIRS19)
+  const { N, cap, kMax, pairs } = P
+  const KB = kMax + 1
+  const r = pick([3, 3, 2, 4])
+  const rWord = { 2: "два раза", 3: "три раза", 4: "четыре раза" }[r]
+  // T не кратно r + 1 → пункт а) невозможен
+  const lo = Math.ceil((3 * N) / (r + 1)), hi = Math.floor((8 * N) / (r + 1))
+  if (hi <= lo) return null
+  const T = (r + 1) * randInt(lo, hi) + randInt(1, r)
+  if (T % (r + 1) === 0) return null
+  let maxTotalKB = 0
+  for (let i = 0; i < KB; i++) maxTotalKB += cap - i
+
+  const params = { N, cap, T, r, KB }
+  // check написан ПО ТЕКСТУ условия: числа различны, лежат в 1…N, суммы пар различны
+  // и не превосходят CAP; для пункта в) число пар обязано равняться заявленному k.
+  const check = (cfg, part) => {
+    if (!cfg || !Array.isArray(cfg.pairs)) return "нет разбиения на пары"
+    if (part === "c" && cfg.pairs.length !== kMax) return `должно быть ${kMax} пар, а дано ${cfg.pairs.length}`
+    const all = []
+    const seen = new Set()
+    for (const pr of cfg.pairs) {
+      if (!Array.isArray(pr) || pr.length !== 2) return "пара должна состоять из двух чисел"
+      for (const v of pr) {
+        if (!Number.isInteger(v) || v < 1 || v > N) return `число ${v} не входит в 1…${N}`
+        all.push(v)
+      }
+      const s = pr[0] + pr[1]
+      if (s > cap) return `сумма пары ${pr.join(" + ")} больше ${cap}`
+      if (seen.has(s)) return `сумма ${s} встречается дважды`
+      seen.add(s)
+    }
+    if (uniq(all).length !== all.length) return "выбранные числа не различны"
+    return null
+  }
+  // НЕЗАВИСИМЫЙ перебор.
+  // а) все допустимые пары (a; r·a) — это a от 1 до min(⌊N/r⌋, ⌊CAP/(r+1)⌋); перебираем
+  //    ВСЕ подмножества таких a (их не больше 2^9), проверяя, что числа не повторяются,
+  //    и смотрим, достижима ли сумма T.
+  // б), в) для каждого k считаем наименьшую возможную сумму 2k чисел и наибольшую
+  //    возможную сумму k различных пар — это и есть проверка допустимости k.
+  const solve = (Q) => {
+    const aMax = Math.min(Math.floor(Q.N / Q.r), Math.floor(Q.cap / (Q.r + 1)))
+    let hitA = false
+    for (let mask = 1; mask < (1 << aMax) && !hitA; mask++) {
+      const nums = []
+      let s = 0
+      for (let a = 1; a <= aMax; a++) if (mask & (1 << (a - 1))) { nums.push(a, Q.r * a); s += (Q.r + 1) * a }
+      if (uniq(nums).length === nums.length && s === Q.T) hitA = true
+    }
+    let top = 0
+    for (let k = 1; k <= Math.floor(Q.N / 2); k++) {
+      let cover = 0
+      for (let i = 0; i < k; i++) cover += Q.cap - i
+      if (k * (2 * k + 1) <= cover) top = k
+    }
+    return { a: hitA, b: Q.KB <= top, c: top, c_next: false }
+  }
+
+  const pairsText = pairs.map(([a, b]) => `(${a}; ${b})`).join(", ")
+  const sumsText = pairs.map(([a, b]) => a + b).sort((x, y) => x - y).join(", ")
+  return item({
+    preamble: `Из первых ${N} натуральных чисел 1, 2, …, ${N} выбрали 2k различных чисел. Выбранные числа разбили на пары и посчитали суммы чисел в каждой паре. Оказалось, что все полученные суммы различны и не превосходят ${cap}.`,
+    qa: `Может ли получиться так, что сумма всех 2k выбранных чисел равняется ${T} и в каждой паре одно из чисел ровно в ${rWord} больше другого?`,
+    qb: `Может ли число k быть равным ${KB}?`,
+    qc: `Найдите наибольшее возможное значение числа k.`,
+    ansA: `нет: такая пара имеет вид a и ${r}a, её сумма равна ${r + 1}a, поэтому сумма всех выбранных чисел делится на ${r + 1}, а ${T} на ${r + 1} не делится`,
+    ansB: `нет: сумма ${2 * KB} различных чисел не меньше 1 + 2 + … + ${2 * KB} = ${KB * (2 * KB + 1)}, а ${KB} различных сумм, не превосходящих ${cap}, дают в сумме не больше ${cap} + ${cap - 1} + … + ${cap - KB + 1} = ${maxTotalKB} < ${KB * (2 * KB + 1)}`,
+    ansC: `${kMax}; например, пары ${pairsText} с суммами ${sumsText}`,
+    solution: `а) Если в паре одно число в ${rWord} больше другого, то пара — это a и ${r}a, а её сумма равна ${r + 1}a. Сумма всех выбранных чисел равна сумме сумм пар, значит она делится на ${r + 1}. Число ${T} на ${r + 1} не делится. Ответ: нет.\nб) Пусть k = ${KB}. Выбраны ${2 * KB} различных натуральных чисел, поэтому их сумма не меньше 1 + 2 + … + ${2 * KB} = ${KB * (2 * KB + 1)}. С другой стороны, эта же сумма равна сумме ${KB} различных сумм пар, каждая из которых не превосходит ${cap}, то есть не больше ${cap} + ${cap - 1} + … + ${cap - KB + 1} = ${maxTotalKB}. Но ${KB * (2 * KB + 1)} > ${maxTotalKB} — противоречие. Ответ: нет.\nв) То же рассуждение для произвольного k даёт k(2k + 1) ≤ ${cap}k − k(k − 1)/2, откуда k ≤ ${kMax}. Значение ${kMax} достигается: пары ${pairsText}, их суммы ${sumsText} различны и не превосходят ${cap}. Ответ: ${kMax}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: false, reason: "divisible-by-r-plus-1", target: `sum-${T}` },
+        b: { type: "yesno", yes: false, reason: "counting-bound", target: `k-${KB}` },
+        c: { type: "extremum", mode: "max", value: kMax, example: { pairs } },
+      },
+      mustMention: [N, 1, 2, cap, T, KB],
+      extra: [],
+      phrases: ["все полученные суммы различны", "разбили на пары"],
     },
   })
 }
