@@ -759,6 +759,10 @@ export const META19 = [
     ["chess-rounding", "Шахматы: показатель «поражений» — наим. число партий", t19ChessRounding],
     ["cinema-theatre-shares", "Кино и театр: наим. доля девочек", t19CinemaTheatreShares],
   ]],
+  ["Наборы: суммы и произведения", [
+    ["good-set-sum", "Хорошее множество (равные суммы): сколько подмножеств", t19GoodSetSum],
+    ["good-set-product", "Хорошее множество (равные произведения): сколько подмножеств", t19GoodSetProduct],
+  ]],
   ["Средние в контейнере", [
     ["box-mean-split-max", "Ящик фруктов: наибольшая масса фрукта", t19BoxMeanSplitMax],
     ["box-mean-split-min", "Ящик овощей: наименьшая масса овоща", t19BoxMeanSplitMin],
@@ -10132,6 +10136,237 @@ export function t19CinemaTheatreShares() {
       mustMention: [p, q, r, s, N, BA],
       extra: [],
       phrases: ["сходил в кино или в театр", "не более"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 16. Наборы и их суммы/произведения
+// ═══════════════════════════════════════════════════════════════════════════
+
+// #74. Множество чисел «хорошее», если его можно разбить на два подмножества с
+//      одинаковой СУММОЙ. а) хорошо ли {A; A+1; …; A+L−1}? б) хорошо ли {t; t²; …; tᵐ}?
+//      в) сколько хороших четырёхэлементных подмножеств у данного семиэлементного?
+//
+// КЛЮЧ. а) при L, кратном 4, числа разбиваются на L/2 пар с равными суммами
+// (первое с последним и т. д.), а пары делятся поровну — множество хорошее.
+// б) сумма всех членов геометрической прогрессии, кроме последнего, равна
+// (tᵐ − t)/(t − 1) < tᵐ при t ≥ 2, поэтому часть с наибольшим числом всегда тяжелее.
+const SUP19 = (n) => String(n).replace(/\d/g, (d) => "⁰¹²³⁴⁵⁶⁷⁸⁹"[+d])
+export function t19GoodSetSum() {
+  const L = 4 * randInt(6, 25)
+  const A = randInt(2, 9) * 25
+  const t = pick([2, 2, 3, 5])
+  const m = pick([60, 80, 100, 120])
+  const base = []
+  while (base.length < 7) { const v = randInt(1, 14); if (!base.includes(v)) base.push(v) }
+  base.sort((x, y) => x - y)
+  // в) подсчёт хороших четырёхэлементных подмножеств
+  const isGood = (arr) => {
+    const tot = sum(arr)
+    if (tot % 2) return false
+    for (let mask = 1; mask < (1 << arr.length) - 1; mask++) {
+      let s = 0
+      for (let i = 0; i < arr.length; i++) if (mask & (1 << i)) s += arr[i]
+      if (2 * s === tot) return true
+    }
+    return false
+  }
+  let cnt = 0
+  for (let mask = 0; mask < 128; mask++) {
+    const sub = base.filter((_, i) => mask & (1 << i))
+    if (sub.length === 4 && isGood(sub)) cnt++
+  }
+  if (cnt < 1) return null
+  // а) явное разбиение: пары (A+i, A+L−1−i), половина пар в каждую часть
+  const p1 = [], p2 = []
+  for (let i = 0; i < L / 2; i++) {
+    const pair = [A + i, A + L - 1 - i]
+    if (i < L / 4) p1.push(...pair); else p2.push(...pair)
+  }
+  const exA = { parts: [p1, p2] }
+
+  const params = { A, L, t, m, base, cnt }
+  // check написан ПО ТЕКСТУ условия: две части без общих элементов дают всё множество
+  // и имеют одинаковые суммы.
+  const check = (cfg, part) => {
+    if (part !== "a") return null
+    if (!cfg || !Array.isArray(cfg.parts) || cfg.parts.length !== 2) return "нужны две части"
+    const [x, y] = cfg.parts
+    if (!x.length || !y.length) return "обе части должны быть непусты"
+    const all = [...x, ...y].sort((u, v) => u - v)
+    if (all.length !== L) return `в разбиении ${all.length} чисел, а должно быть ${L}`
+    for (let i = 0; i < L; i++) if (all[i] !== A + i) return `число ${all[i]} не на своём месте — множество должно быть {${A}; …; ${A + L - 1}}`
+    if (sum(x) !== sum(y)) return `суммы частей ${sum(x)} и ${sum(y)} различны`
+    return null
+  }
+  // НЕЗАВИСИМЫЙ перебор. а) динамика достижимых сумм подмножеств (никаких пар).
+  // б) сравнение по BigInt: сумма всех членов, кроме последнего, против последнего —
+  // множество хорошее только если наибольшее число не больше суммы остальных.
+  // в) полный перебор всех 4-элементных подмножеств и всех их разбиений.
+  const solve = (P) => {
+    const tot = (P.L * (2 * P.A + P.L - 1)) / 2
+    let a = false
+    if (tot % 2 === 0) {
+      const half = tot / 2
+      const dp = new Uint8Array(half + 1); dp[0] = 1
+      for (let v = P.A; v < P.A + P.L; v++) for (let s = half; s >= v; s--) if (dp[s - v]) dp[s] = 1
+      a = dp[half] === 1
+    }
+    let big = 1n, rest = 0n
+    const T = BigInt(P.t)
+    for (let i = 1; i <= P.m; i++) { const v = T ** BigInt(i); if (i === P.m) big = v; else rest += v }
+    const b = rest >= big
+    let c = 0
+    for (let mask = 0; mask < 1 << P.base.length; mask++) {
+      const sub = P.base.filter((_, i) => mask & (1 << i))
+      if (sub.length !== 4) continue
+      const s4 = sum(sub)
+      if (s4 % 2) continue
+      for (let sm = 1; sm < 15; sm++) {
+        let s = 0
+        for (let i = 0; i < 4; i++) if (sm & (1 << i)) s += sub[i]
+        if (2 * s === s4) { c++; break }
+      }
+    }
+    return { a, b, c }
+  }
+
+  return item({
+    preamble: `Множество чисел назовём хорошим, если его можно разбить на два подмножества с одинаковой суммой чисел.`,
+    qa: `Является ли множество {${A}; ${A + 1}; ${A + 2}; …; ${A + L - 1}} хорошим?`,
+    qb: `Является ли множество {${t}; ${t * t}; ${t ** 3}; …; ${t}${SUP19(m)}} хорошим?`,
+    qc: `Сколько хороших четырёхэлементных подмножеств у множества {${base.join("; ")}}?`,
+    ansA: `да: разобьём числа на ${L / 2} ${plural(L / 2, "пару", "пары", "пар")} «первое с последним» — ${A} и ${A + L - 1}, ${A + 1} и ${A + L - 2} и так далее; сумма в каждой паре равна ${2 * A + L - 1}, а пар чётное число, поэтому по ${L / 4} пар в каждой части дают равные суммы по ${((2 * A + L - 1) * L) / 4}`,
+    ansB: `нет: сумма всех чисел множества, кроме наибольшего, равна (${t}${SUP19(m)} − ${t})/(${t} − 1), а это меньше ${t}${SUP19(m)}, поэтому часть, содержащая ${t}${SUP19(m)}, всегда тяжелее другой`,
+    ansC: `${cnt}`,
+    solution: `а) Разобьём {${A}; …; ${A + L - 1}} на ${L / 2} ${plural(L / 2, "пару", "пары", "пар")}: ${A} и ${A + L - 1}, ${A + 1} и ${A + L - 2}, …; сумма каждой пары равна ${2 * A + L - 1}. Число пар ${L / 2} чётно, поэтому положим ${L / 4} пар в одну часть и ${L / 4} — в другую: суммы получатся равными ${((2 * A + L - 1) * L) / 4}. Ответ: да.\nб) Сумма всех членов, кроме наибольшего, равна ${t} + ${t * t} + … + ${t}${SUP19(m - 1)} = (${t}${SUP19(m)} − ${t})/(${t} − 1), а это меньше ${t}${SUP19(m)}. Значит та часть, в которую попало ${t}${SUP19(m)}, тяжелее, и равных сумм не бывает. Ответ: нет.\nв) Четырёхэлементное подмножество хорошее, когда его сумма чётна и какая-то его часть весит ровно половину. Перебор всех ${(() => { let k = 1; for (let i = 0; i < 4; i++) k = (k * (7 - i)) / (i + 1); return k })()} четырёхэлементных подмножеств множества {${base.join("; ")}} даёт ${cnt}. Ответ: ${cnt}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: "consecutive-block" },
+        b: { type: "yesno", yes: false, reason: "largest-exceeds-rest", target: "geometric-powers" },
+        c: { type: "count", value: cnt },
+      },
+      mustMention: [A, A + 1, A + 2, A + L - 1, t, t * t, t ** 3, ...base],
+      extra: [],
+      phrases: ["разбить на два подмножества с одинаковой суммой", "четырёхэлементных подмножеств"],
+    },
+  })
+}
+
+// #75. То же слово «хорошее», но части должны иметь одинаковое ПРОИЗВЕДЕНИЕ.
+//      а) хорошо ли {A; A+1; …; A+L−1}? б) хорошо ли {t; t²; …; tᵐ}?
+//      в) сколько хороших четырёхэлементных подмножеств у данного множества?
+//
+// КЛЮЧ. Равные произведения означают, что произведение ВСЕГО множества — точный квадрат.
+// а) в отрезке есть простое p, большее половины наибольшего числа: оно входит в
+// произведение ровно один раз, поэтому квадрата не получается — множество не хорошее.
+// б) произведение равно t в степени 1 + 2 + … + m = m(m + 1)/2; равные произведения
+// ⟺ показатели 1…m делятся на две группы с равными суммами, что возможно ровно тогда,
+// когда m(m + 1)/2 чётно (берём подмножество нужной суммы жадно сверху).
+export function t19GoodSetProduct() {
+  const L = randInt(60, 100)
+  const A = pick([100, 150, 200, 250])
+  const t = pick([2, 2, 3, 5])
+  const m = pick([200, 199, 120, 123])          // m(m+1)/2 чётно
+  if (((m * (m + 1)) / 2) % 2 !== 0) return null
+  const base = []
+  while (base.length < 9) { const v = randInt(1, 13); if (!base.includes(v)) base.push(v) }
+  base.sort((x, y) => x - y)
+  // а) простое, большее половины наибольшего числа отрезка
+  const isPrime = (x) => { if (x < 2) return false; for (let d = 2; d * d <= x; d++) if (x % d === 0) return false; return true }
+  let bigPrime = null
+  for (let x = A + L - 1; x >= A; x--) if (isPrime(x) && 2 * x > A + L - 1) { bigPrime = x; break }
+  if (!bigPrime) return null
+  // б) жадное подмножество показателей с суммой m(m+1)/4
+  const target = (m * (m + 1)) / 4
+  const exps = []
+  let acc = 0
+  for (let e = m; e >= 1; e--) if (acc + e <= target) { exps.push(e); acc += e }
+  if (acc !== target) return null
+  exps.sort((x, y) => x - y)
+  // в) хорошие четырёхэлементные подмножества (равные произведения)
+  const prodOf = (arr) => arr.reduce((s, x) => s * x, 1)
+  const goodProd = (arr) => {
+    const tot = prodOf(arr)
+    for (let mask = 1; mask < (1 << arr.length) - 1; mask++) {
+      const part = arr.filter((_, i) => mask & (1 << i))
+      if (prodOf(part) ** 2 === tot) return true
+    }
+    return false
+  }
+  let cnt = 0
+  for (let mask = 0; mask < 1 << 9; mask++) {
+    const sub = base.filter((_, i) => mask & (1 << i))
+    if (sub.length === 4 && goodProd(sub)) cnt++
+  }
+  if (cnt < 2) return null            // иначе ответ в) слишком куцый
+
+  const params = { A, L, t, m, base, target }
+  const check = (cfg, part) => {
+    if (part !== "b") return null
+    if (!cfg || !Array.isArray(cfg.exps)) return "нужен список показателей"
+    if (cfg.exps.some((e) => !Number.isInteger(e) || e < 1 || e > m)) return `показатель вне 1…${m}`
+    if (uniq(cfg.exps).length !== cfg.exps.length) return "показатели должны быть различны"
+    if (2 * sum(cfg.exps) !== (m * (m + 1)) / 2) return `сумма показателей ${sum(cfg.exps)}, а нужна половина от ${(m * (m + 1)) / 2}`
+    return null
+  }
+  // НЕЗАВИСИМЫЙ перебор. а) раскладываем произведение отрезка на простые и смотрим,
+  // все ли показатели чётны (без ссылки на «большое простое»). б) динамика достижимых
+  // сумм подмножеств {1, …, m}. в) полный перебор 4-элементных подмножеств и разбиений.
+  const solve = (P) => {
+    const exp = new Map()
+    for (let v = P.A; v < P.A + P.L; v++) {
+      let x = v
+      for (let d = 2; d * d <= x; d++) while (x % d === 0) { exp.set(d, (exp.get(d) || 0) + 1); x /= d }
+      if (x > 1) exp.set(x, (exp.get(x) || 0) + 1)
+    }
+    let a = true
+    for (const e of exp.values()) if (e % 2) a = false
+    const S = (P.m * (P.m + 1)) / 2
+    let b = false
+    if (S % 2 === 0) {
+      const half = S / 2
+      const dp = new Uint8Array(half + 1); dp[0] = 1
+      for (let e = 1; e <= P.m; e++) for (let s = half; s >= e; s--) if (dp[s - e]) dp[s] = 1
+      b = dp[half] === 1
+    }
+    let c = 0
+    for (let mask = 0; mask < 1 << P.base.length; mask++) {
+      const sub = P.base.filter((_, i) => mask & (1 << i))
+      if (sub.length !== 4) continue
+      const tot = sub.reduce((s, x) => s * x, 1)
+      for (let sm = 1; sm < 15; sm++) {
+        const part = sub.filter((_, i) => sm & (1 << i))
+        const pr = part.reduce((s, x) => s * x, 1)
+        if (pr * pr === tot) { c++; break }
+      }
+    }
+    return { a, b, c }
+  }
+
+  const runTail = exps.filter((e) => e >= exps[exps.length - 1] - (exps.length - 2))
+  const head = exps.filter((e) => !runTail.includes(e))
+  return item({
+    preamble: `Множество чисел назовём хорошим, если его можно разбить на два подмножества с одинаковым произведением чисел.`,
+    qa: `Является ли множество {${A}; ${A + 1}; ${A + 2}; …; ${A + L - 1}} хорошим?`,
+    qb: `Является ли множество {${t}; ${t * t}; ${t ** 3}; …; ${t}${SUP19(m)}} хорошим?`,
+    qc: `Сколько хороших четырёхэлементных подмножеств у множества {${base.join("; ")}}?`,
+    ansA: `нет: равные произведения означают, что произведение всех чисел — точный квадрат, а простое число ${bigPrime} входит в это произведение ровно один раз (следующее кратное ему, ${2 * bigPrime}, уже больше ${A + L - 1})`,
+    ansB: `да: произведение всех чисел равно ${t} в степени 1 + 2 + … + ${m} = ${(m * (m + 1)) / 2}, а показатели 1, 2, …, ${m} можно разбить на две группы с равными суммами по ${target} — например, в одну группу взять ${head.length ? head.join(", ") + " и " : ""}все числа от ${runTail[0]} до ${m}`,
+    ansC: `${cnt}`,
+    solution: `Равные произведения частей означают, что произведение всех чисел множества — точный квадрат.\nа) В отрезке от ${A} до ${A + L - 1} есть простое число ${bigPrime}, причём ${2 * bigPrime} > ${A + L - 1}, поэтому кратных ${bigPrime} в отрезке ровно одно. Значит ${bigPrime} входит в произведение в первой степени, и квадрата не получается. Ответ: нет.\nб) Произведение равно ${t} в степени 1 + 2 + … + ${m} = ${(m * (m + 1)) / 2}. Части имеют равные произведения ⟺ показатели 1, 2, …, ${m} делятся на две группы с суммой ${target} каждая. Такое разбиение есть: ${head.length ? head.join(", ") + " и " : ""}все числа от ${runTail[0]} до ${m} дают ровно ${target}. Ответ: да.\nв) Перебор всех четырёхэлементных подмножеств множества {${base.join("; ")}} и всех их разбиений даёт ${cnt} ${plural(cnt, "хорошее", "хороших", "хороших")}. Ответ: ${cnt}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: false, reason: "prime-once", target: "consecutive-block" },
+        b: { type: "yesno", yes: true, example: { exps }, target: "geometric-powers" },
+        c: { type: "count", value: cnt },
+      },
+      mustMention: [A, A + 1, A + 2, A + L - 1, t, t * t, t ** 3, ...base],
+      extra: [],
+      phrases: ["разбить на два подмножества с одинаковым произведением", "четырёхэлементных подмножеств"],
     },
   })
 }
