@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import Icon from "../components/Icon"
 import FormulaBackdrop from "../components/FormulaBackdrop"
 import StatCounters from "../components/StatCounters"
+import { Highlight } from "../components/Mark"
 import { BANK_STATS } from "./bankStats"
 
 // Продающий лендинг перед регистрацией. Объясняет ценность платформы
@@ -20,6 +21,8 @@ const ROLES = {
     ring: "ring-blue-200 dark:ring-blue-700",
     glow: "shadow-blue-500/40",
     tagline: "Ведите всех учеников в одном месте",
+    taglineMark: "в одном месте",
+    mark: "blue",
     lead: "Хватит держать занятия в заметках, оплаты в табличке, а варианты собирать вручную. Precettore заменяет весь этот зоопарк одним кабинетом.",
     features: [
       { icon: "users", title: "Ученики и профили", desc: "Карточки учеников, прогресс по темам, привязка родителей по коду." },
@@ -88,6 +91,8 @@ const ROLES = {
     ring: "ring-emerald-200 dark:ring-emerald-700",
     glow: "shadow-emerald-500/40",
     tagline: "Готовьтесь к экзамену без хаоса",
+    taglineMark: "без хаоса",
+    mark: "mint",
     lead: "Все задания, тренировочные варианты и переписка с репетитором — в одном приложении на телефоне. Ничего не потеряется в чатах и тетрадках.",
     features: [
       { icon: "clipboard", title: "Домашние задания", desc: "Все задания от репетитора в одном списке — видно, что сделано." },
@@ -156,6 +161,8 @@ const ROLES = {
     ring: "ring-amber-200 dark:ring-amber-700",
     glow: "shadow-amber-500/40",
     tagline: "Будьте в курсе, не вмешиваясь",
+    taglineMark: "не вмешиваясь",
+    mark: "amber",
     lead: "Видите занятия, задания, оплаты и прогресс ребёнка — прозрачно и в одном месте. По коду от репетитора, отдельный аккаунт заводить не нужно.",
     features: [
       { icon: "bar-chart", title: "Успеваемость", desc: "Результаты и прогресс ребёнка по темам — на виду." },
@@ -568,7 +575,9 @@ function Landing({ onStart }) {
           {/* Контент выбранной роли — key перезапускает stagger при переключении */}
           <div key={role} className="slide-up">
             <div className="text-center mb-7">
-              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900">{cfg.tagline}</h2>
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900">
+                <Highlight text={cfg.tagline} mark={cfg.taglineMark} tone={cfg.mark} />
+              </h2>
               <p className="mt-2 text-gray-500 dark:text-gray-400 max-w-2xl mx-auto">{cfg.lead}</p>
             </div>
 
@@ -633,7 +642,13 @@ function Landing({ onStart }) {
         {/* ── Предметы ── */}
         <section className="max-w-6xl mx-auto w-full px-4 py-10">
           <div className="text-center mb-6">
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900">Банк заданий по 13 предметам</h2>
+            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900">
+              <Highlight
+                text={`Банк заданий по ${BANK_STATS.subjects} предметам`}
+                mark={`по ${BANK_STATS.subjects} предметам`}
+                tone="mint"
+              />
+            </h2>
             <p className="mt-2 text-gray-500 dark:text-gray-400 max-w-2xl mx-auto">
               Тренировочные варианты по образцу ФИПИ — с чертежами, графиками и ответами.
               Собственные аналоги заданий, а не чужой скрап.

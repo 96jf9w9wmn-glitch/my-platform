@@ -1262,6 +1262,27 @@ button.w-full:not([disabled]):not(.no-press):active::after,
   .practice-range::-webkit-slider-thumb { transition: none; }
 }
 
+/* Маркерная подсветка слова в заголовке (umschool.net / webium.ru).
+   Полоса занимает нижние 45% строки, как след маркера, и прорисовывается
+   слева направо, когда заголовок появляется в вьюпорте (класс .mark-on
+   ставит React-компонент Mark). Цвет — один из --marker-*. */
+.mark-hl {
+  background-image: linear-gradient(180deg, transparent 55%, var(--mark-c, var(--marker-blue)) 55%);
+  background-repeat: no-repeat;
+  background-size: 0% 100%;
+  padding: 0 0.18em;
+  border-radius: 0.18em;
+  transition: background-size 400ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.mark-hl.mark-on { background-size: 100% 100%; }
+.mark-blue  { --mark-c: var(--marker-blue); }
+.mark-mint  { --mark-c: var(--marker-mint); }
+.mark-amber { --mark-c: var(--marker-amber); }
+
+@media (prefers-reduced-motion: reduce) {
+  .mark-hl { transition: none; }
+}
+
 /* Сегмент-контрол роли на лендинге: «палец» едет к выбранному сегменту
    (приём umschool.net / webium.ru). Движение — только transform. */
 .seg-finger { transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
