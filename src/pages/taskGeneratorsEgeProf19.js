@@ -782,6 +782,7 @@ export const META19 = [
   ["Игры и операции с инвариантом", [
     ["boxes-three", "Три коробки: ход −1, −1, +1 → наибольшее в третьей", t19BoxesThree],
     ["ones-and-plus", "n единиц и знаки «+» → для скольких n сумма достижима", t19OnesAndPlus],
+    ["barrels-pour", "Переливания между бочками: наим. число переливаний", t19BarrelsPour],
   ]],
   ["Прогрессии", [
     ["ap-ends-sum", "АП из натуральных: сумма крайних и наибольшее число членов", t19APEndsSum],
@@ -8115,6 +8116,131 @@ export function t19AppendDigitGroups() {
       mustMention: [d1, d2, Ka, Kb],
       extra: [],
       phrases: ["приписали справа цифру", "хотя бы одно число"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 13 (продолжение). Переливания между бочками (#4)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// В n бочках налито суммарно S литров, за одно переливание можно перелить любое
+// количество из одной бочки в другую. В конце в каждой бочке должно быть m = S/n.
+// • Каждое переливание можно устроить так, чтобы хотя бы одна бочка стала «готовой»,
+//   поэтому набор из k бочек уравнивается за k − 1 переливание.
+// • Если бочки разбиваются на g групп, в каждой из которых суммарный объём кратен m
+//   (то есть равен (размер группы)·m), группы уравниваются независимо: всего n − g.
+// • Больше g групп не бывает, а в худшем случае (например, вся вода в одной бочке)
+//   g = 1, поэтому ГАРАНТИРОВАННО нужно ровно n − 1 переливаний.
+function pourMin(vols) {
+  const n = vols.length, S = sum(vols)
+  if (S % n) return null
+  const m = S / n
+  // максимальное число групп с суммой, кратной m: перебор разбиений (n мало)
+  let best = 1
+  const rec = (idx, groups) => {
+    if (idx === n) {
+      if (groups.every((g) => sum(g) % m === 0 && sum(g) / m === g.length)) best = Math.max(best, groups.length)
+      return
+    }
+    for (let i = 0; i < groups.length; i++) {
+      groups[i].push(vols[idx]); rec(idx + 1, groups); groups[i].pop()
+    }
+    groups.push([vols[idx]]); rec(idx + 1, groups); groups.pop()
+  }
+  rec(0, [])
+  return n - best
+}
+
+export function t19BarrelsPour() {
+  const nA = 4
+  const m = pick([48, 50, 36, 60])
+  // а) четыре бочки с суммой 4m и лимитом переливаний La
+  let volsA = null
+  for (let t = 0; t < 300 && !volsA; t++) {
+    const v = [randInt(m - 25, m - 5), randInt(m - 20, m + 5), randInt(m - 10, m + 10)]
+    const last = 4 * m - sum(v)
+    if (last < 1 || v.includes(last)) continue
+    const cand = [...v, last].sort((a, b) => a - b)
+    if (uniq(cand).length !== 4) continue
+    if (pourMin(cand) === 3) volsA = cand                    // нужен ровно общий случай
+  }
+  if (!volsA) return null
+  const La = nA                                              // «не более чем за 4 переливания»
+  const nB = pick([7, 8, 9])
+  const Lb = nB - 2                                          // «не более чем за n−2» — не всегда
+  const nC = pick([26, 30, 24])
+
+  const params = { nA, volsA, La, nB, Lb, nC }
+  const check = (cfg, part) => {
+    if (!cfg || !Array.isArray(cfg.vols) || !Array.isArray(cfg.moves)) return "нет плана переливаний"
+    const vols = [...cfg.vols]
+    const n = vols.length
+    if (sum(vols) % n) return "воду нельзя уравнять: сумма не делится на число бочек"
+    for (const mv of cfg.moves) {
+      if (!Array.isArray(mv) || mv.length !== 3) return "переливание задаётся тройкой (откуда, куда, сколько)"
+      const [from, to, amount] = mv
+      if (!Number.isInteger(from) || !Number.isInteger(to) || from === to) return "переливать нужно между разными бочками"
+      if (from < 0 || to < 0 || from >= n || to >= n) return "нет такой бочки"
+      if (!(amount > 0) || amount > vols[from]) return `нельзя перелить ${amount} л из бочки с ${vols[from]} л`
+      vols[from] -= amount; vols[to] += amount
+    }
+    if (uniq(vols).length !== 1) return `в бочках получилось ${vols.join(", ")} — не поровну`
+    const limit = part === "a" ? La : part === "c" ? nC - 1 : Lb
+    if (cfg.moves.length > limit) return `переливаний ${cfg.moves.length}, а разрешено не более ${limit}`
+    return null
+  }
+  // Независимый проход: для конкретного набора минимум считается перебором разбиений
+  // на группы, а «гарантированное» число переливаний — это n − 1 (худший случай:
+  // вся вода в одной бочке, тогда каждая из остальных n − 1 бочек должна получить воду).
+  const solve = (P) => ({
+    a: pourMin(P.volsA) <= P.La,
+    b: P.nB - 1 <= P.Lb,
+    c: P.nC - 1,
+    c_next: false,
+  })
+
+  // план для пункта а): выливаем излишки в бочки с недостатком
+  const buildPlan = (vols) => {
+    const v = [...vols], mm = sum(v) / v.length, moves = []
+    for (let i = 0; i < v.length; i++) {
+      if (v[i] <= mm) continue
+      for (let j = 0; j < v.length && v[i] > mm; j++) {
+        if (v[j] >= mm) continue
+        const amount = Math.min(v[i] - mm, mm - v[j])
+        v[i] -= amount; v[j] += amount; moves.push([i, j, amount])
+      }
+    }
+    return moves
+  }
+  const exA = { vols: volsA, moves: buildPlan(volsA) }
+  const exC = (() => {                                        // худший случай для n бочек
+    const vols = Array(nC).fill(0)
+    vols[0] = nC * 10
+    const moves = []
+    for (let i = 1; i < nC; i++) moves.push([0, i, 10])
+    return { vols, moves }
+  })()
+
+  return item({
+    preamble: `В нескольких одинаковых бочках налито некоторое количество литров воды (необязательно одинаковое). За один раз можно перелить любое количество воды из одной бочки в другую.`,
+    qa: `Пусть есть четыре бочки, в которых ${volsA.join(", ")} ${plural(volsA[3], "литр", "литра", "литров")}. Можно ли не более чем за ${La} переливания уравнять количество воды в бочках?`,
+    qb: `Пусть есть ${nB} бочек. Всегда ли можно уравнять количество воды во всех бочках не более чем за ${Lb} переливаний?`,
+    qc: `За какое наименьшее количество переливаний можно заведомо уравнять количество воды в ${nC} бочках?`,
+    ansA: `да: среднее равно ${sum(volsA) / 4} ${plural(sum(volsA) / 4, "литр", "литра", "литров")}, и хватает ${exA.moves.length} ${plural(exA.moves.length, "переливания", "переливаний", "переливаний")} — каждым из них одна бочка доводится ровно до среднего`,
+    ansB: `нет: если вся вода налита в одну бочку, а остальные ${nB - 1} пусты, то каждая пустая бочка должна получить воду хотя бы одним переливанием, поэтому нужно не менее ${nB - 1} переливаний, а ${Lb} < ${nB - 1}`,
+    ansC: `${nC - 1}`,
+    solution: `Пусть бочек n, а всего налито S литров; в конце в каждой должно быть m = S/n.\nСверху: если в бочке больше m, лишнее переливаем в бочку, где меньше m, причём выравниваем ровно одну из них — каждое переливание «закрывает» хотя бы одну бочку, поэтому n бочек уравниваются за n − 1 переливание.\nСнизу: если вся вода в одной бочке, а остальные n − 1 пусты, то в каждую пустую нужно хотя бы раз перелить воду, то есть переливаний не меньше n − 1.\nа) Среднее равно ${sum(volsA) / 4}, достаточно ${exA.moves.length} ${plural(exA.moves.length, "переливания", "переливаний", "переливаний")} — это не больше ${La}.\nб) Для ${nB} бочек гарантированно нужно ${nB - 1} переливаний, а ${Lb} меньше.\nв) Для ${nC} бочек ответ ${nC - 1}.\nОтвет: ${nC - 1}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: exA, target: `pour-${La}` },
+        b: { type: "yesno", yes: false, reason: "empty-barrels", target: `pour-${Lb}` },
+        c: { type: "extremum", mode: "min", value: nC - 1, example: exC },
+      },
+      mustMention: [...volsA, La, nB, Lb, nC],
+      extra: [],
+      phrases: ["перелить любое количество воды", "уравнять количество воды"],
     },
   })
 }
