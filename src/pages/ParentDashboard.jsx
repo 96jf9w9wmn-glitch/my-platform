@@ -35,6 +35,63 @@ function GradeBar({ label, count, max, color }) {
   )
 }
 
+const CONF_TONE = {
+  struggling: { label: "тяжело", cls: "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300" },
+  progress: { label: "движемся", cls: "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300" },
+  confident: { label: "уверенно", cls: "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300" },
+}
+
+// Лента отчётов о занятиях. Родителю показываются только ОТПРАВЛЕННЫЕ отчёты —
+// это гарантирует функция в базе, а не фильтр здесь: черновик репетитора и
+// сырые данные, которые скармливались модели, наружу не уходят вовсе.
+function ReportsFeed({ parentCode }) {
+  const [reports, setReports] = useState([])
+
+  useEffect(() => {
+    if (!parentCode) return
+    let alive = true
+    supabase.rpc("lesson_report_list_parent", { p_parent_code: parentCode })
+      // Нет функции (миграция не выполнена) — блока просто не будет.
+      .then(({ data }) => { if (alive && data) setReports(data) })
+    return () => { alive = false }
+  }, [parentCode])
+
+  if (!reports.length) return null
+
+  return (
+    <div className="glass p-4 mb-3 rounded-2xl">
+      <div className="text-sm font-semibold text-gray-700 mb-3">Отчёты о занятиях</div>
+      <div className="flex flex-col gap-3">
+        {reports.map((r) => (
+          <div key={r.id} className="glass-sm rounded-2xl px-3 py-3">
+            <div className="text-[11px] text-gray-400 mb-1">
+              {new Date(r.lesson_date).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}
+            </div>
+            {r.summary && <div className="text-sm text-gray-700 leading-snug">{r.summary}</div>}
+            {Array.isArray(r.topics) && r.topics.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {r.topics.map((t, i) => {
+                  const tone = CONF_TONE[t.confidence] || CONF_TONE.progress
+                  return (
+                    <span key={i} className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${tone.cls}`} title={t.comment || ""}>
+                      {t.title} · {tone.label}
+                    </span>
+                  )
+                })}
+              </div>
+            )}
+            {r.next_steps && (
+              <div className="text-[12px] text-gray-500 dark:text-gray-400 mt-2 leading-snug">
+                Дальше: {r.next_steps}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function ParentDashboard({ user, onLogout }) {
   const [student, setStudent] = useState(user.student)
   const [homework, setHomework] = useState([])
@@ -302,6 +359,8 @@ function ParentDashboard({ user, onLogout }) {
             </div>
           </div>
         </div>
+
+        <ReportsFeed parentCode={student.parent_code} />
 
         {/* Домашние задания */}
         <div className="glass p-4 mb-3 rounded-2xl">
