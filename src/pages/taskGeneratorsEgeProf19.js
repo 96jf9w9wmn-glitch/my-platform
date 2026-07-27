@@ -752,6 +752,7 @@ export const META19 = [
     ["swap-digits-max", "Перестановка цифр двузначных → наибольшая новая сумма", t19SwapDigitsMax],
     ["swap-digits-min", "Перестановка цифр двузначных → наименьшая новая сумма", t19SwapDigitsMin],
     ["cross-out-digits", "Вычёркивание цифр до кратности", t19CrossOutDigits],
+    ["insert-digit-sums", "Вставка сумм соседних цифр", t19InsertDigitSums],
   ]],
   ["Сюжетные задачи с перебором", [
     ["test-bonus-min", "Тест с добавкой баллов: наим. число участников", t19TestBonusMin],
@@ -7681,6 +7682,119 @@ export function t19CrossOutDigits() {
       extra: [],
       maxNumber: 999999999,
       phrases: ["вычёркивают несколько цифр", "кратное"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 6 (продолжение). Вставка сумм соседних цифр (#7)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Операция: между каждыми двумя соседними цифрами вписывают их сумму
+// (1923 → 1 10 9 11 2 5 3 = 110911253). Обратный разбор однозначен по шагам:
+// первая цифра результата — первая цифра исходного числа, дальше читаем «сумму»
+// (одна или две цифры) и следующую цифру, проверяя, что сумма действительно равна
+// сумме соседей. Поэтому существование прообраза проверяется рекурсией по строке,
+// а не перебором всех чисел.
+const insertSums = (n) => {
+  const s = String(n)
+  let r = s[0]
+  for (let i = 1; i < s.length; i++) r += String(Number(s[i - 1]) + Number(s[i])) + s[i]
+  return r
+}
+// Все прообразы строки (обычно их 0 или 1)
+function preimages(str) {
+  const out = []
+  const walk = (pos, prevDigit, acc) => {
+    if (pos === str.length) { if (acc.length >= 2) out.push(acc.join("")); return }
+    for (const len of [1, 2]) {                                // длина записанной суммы
+      if (pos + len >= str.length) continue
+      const sumPart = str.slice(pos, pos + len)
+      if (len === 2 && sumPart[0] === "0") continue
+      const nextDigit = Number(str[pos + len])
+      if (Number(sumPart) !== prevDigit + nextDigit) continue
+      acc.push(nextDigit)
+      walk(pos + len + 1, nextDigit, acc)
+      acc.pop()
+    }
+  }
+  if (!str.length) return out
+  walk(1, Number(str[0]), [Number(str[0])])
+  return out
+}
+
+export function t19InsertDigitSums() {
+  const K = pick([11, 9, 13])
+  let srcA = 0
+  for (let t = 0; t < 100 && !srcA; t++) {                   // без нулей: иначе разбор неоднозначен
+    const cand = randInt(1000, 9999)
+    if (!String(cand).includes("0")) srcA = cand
+  }
+  if (!srcA) return null
+  const strA = insertSums(srcA)
+  // б) строка без прообраза: портим одну цифру результата другого числа
+  let strB = null
+  for (let t = 0; t < 200 && !strB; t++) {
+    const base = insertSums(randInt(1000, 9999))
+    const pos = randInt(0, base.length - 1)
+    const digit = String(randInt(0, 9))
+    if (base[pos] === digit) continue
+    const cand = base.slice(0, pos) + digit + base.slice(pos + 1)
+    if (cand[0] !== "0" && cand.length >= 7 && !preimages(cand).length) strB = cand
+  }
+  if (!strB) return null
+  // в) наибольшее кратное K, получаемое из трёхзначного числа
+  let best = 0, bestSrc = 0
+  for (let n = 100; n <= 999; n++) {
+    const v = Number(insertSums(n))
+    if (v % K === 0 && v > best) { best = v; bestSrc = n }
+  }
+  if (!best) return null
+
+  const params = { K, strA, strB }
+  const check = (cfg, part) => {
+    if (!Number.isInteger(cfg) || cfg < 10) return "нужно натуральное число не менее чем из двух цифр"
+    const got = insertSums(cfg)
+    if (part === "a") return got === strA ? null : `из ${cfg} получается ${got}, а нужно ${strA}`
+    if (part === "b") return got === strB ? null : `из ${cfg} получается ${got}, а нужно ${strB}`
+    if (part === "c") {
+      if (cfg < 100 || cfg > 999) return "число должно быть трёхзначным"
+      if (Number(got) % K) return `${got} не кратно ${K}`
+      if (Number(got) !== best) return `получается ${got}, а заявлено ${best}`
+    }
+    return null
+  }
+  // Независимый проход: прообразы ищутся разбором строки, а максимум — перебором
+  // всех трёхзначных чисел.
+  const solve = (P) => {
+    let top = 0
+    for (let n = 100; n <= 999; n++) {
+      const v = Number(insertSums(n))
+      if (v % P.K === 0 && v > top) top = v
+    }
+    return { a: preimages(P.strA).length > 0, b: preimages(P.strB).length > 0, c: top, c_next: false }
+  }
+
+  return item({
+    preamble: `С натуральным числом проводят следующую операцию: между каждыми двумя его соседними цифрами записывают сумму этих цифр (например, из числа 1923 получается число 110911253).`,
+    qa: `Приведите пример числа, из которого получается ${strA}.`,
+    qb: `Может ли из какого-нибудь числа получиться число ${strB}?`,
+    qc: `Какое наибольшее число, кратное ${K}, может получиться из трёхзначного числа?`,
+    ansA: `${srcA}`,
+    ansB: `нет: разбор однозначен — первая цифра результата совпадает с первой цифрой исходного числа, затем идёт сумма первых двух цифр, затем вторая цифра и так далее. Проверяя оба варианта длины каждой записанной суммы (одна цифра или две), убеждаемся, что запись ${strB} так не разбирается`,
+    ansC: `${best}; получается из числа ${bestSrc}`,
+    solution: `Обозначим цифры исходного числа d₁, d₂, …, dₙ. После операции получается запись d₁ (d₁+d₂) d₂ (d₂+d₃) d₃ … dₙ, где каждая сумма записана одной или двумя цифрами.\nа) ${strA} = ${String(srcA).split("").map((d, i, a) => (i ? `${Number(a[i - 1]) + Number(d)} ${d}` : d)).join(" ")}, поэтому подходит число ${srcA}.\nб) Разбор записи однозначен: первая цифра — это d₁, дальше на каждом шаге читается сумма (одна или две цифры) и следующая цифра, причём сумма обязана равняться сумме соседних цифр. Перебор обоих вариантов длины на каждом шаге показывает, что запись ${strB} не разбирается ни при каком выборе.\nв) Для трёхзначного числа результат равен d₁ (d₁+d₂) d₂ (d₂+d₃) d₃; перебирая все трёхзначные числа, получаем наибольшее кратное ${K} значение ${best} (из числа ${bestSrc}).\nОтвет: ${best}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: true, example: srcA, target: `src-${strA}` },
+        b: { type: "yesno", yes: false, reason: "no-preimage", target: `src-${strB}` },
+        c: { type: "extremum", mode: "max", value: best, example: bestSrc },
+      },
+      mustMention: [1923, 110911253, Number(strA), Number(strB), K],
+      extra: [],
+      maxNumber: 9999999999,
+      phrases: ["между каждыми двумя его соседними цифрами", "сумму этих цифр"],
     },
   })
 }
