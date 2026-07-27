@@ -740,6 +740,9 @@ export const META19 = [
     ["means-erase-half", "Уменьшили вдвое и стёрли малые: наиб. среднее", t19MeansEraseHalf],
     ["means-iterated-5", "Последовательные усреднения: наиб. целое отношение", t19MeansIterated5],
   ]],
+  ["Сравнение групп", [
+    ["mushroom-groups", "Мальчики и девочки за грибами: наим. сумма", t19MushroomGroups],
+  ]],
   ["Средние в контейнере", [
     ["box-mean-split-max", "Ящик фруктов: наибольшая масса фрукта", t19BoxMeanSplitMax],
     ["box-mean-split-min", "Ящик овощей: наименьшая масса овоща", t19BoxMeanSplitMin],
@@ -8738,6 +8741,102 @@ export function t19CandyCircle() {
       mustMention: [S],
       extra: [],
       phrases: ["четверть всех своих конфет", "хотя бы два мальчика"],
+    },
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// РАЗДЕЛ 15. Сравнение групп: мальчики и девочки за грибами (#44)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// M мальчиков и F девочек. Условия: любые p девочек набрали больше, чем любые q
+// мальчиков, и любые r мальчиков — больше, чем любые s девочек. В терминах
+// упорядоченных наборов это два неравенства:
+//   (сумма p наименьших девочек) > (сумма q наибольших мальчиков),
+//   (сумма r наименьших мальчиков) > (сумма s наибольших девочек).
+// Из них следует, что КАЖДЫЙ мальчик набрал меньше КАЖДОЙ девочки: иначе, оценивая
+// суммы через наименьшие элементы, получаем противоречие. Минимальная суммарная
+// величина ищется перебором «все мальчики по b, все девочки по G»: неравенства
+// превращаются в pG > qb и rb > sG, а внутри групп выравнивание оптимально.
+export function t19MushroomGroups() {
+  const M = 10, F = 7
+  const [p, q, r, s] = [2, 3, 5, 3]
+  let best = null
+  for (let b = 1; b <= 400 && !best; b++) {
+    for (let G = 1; G <= 600; G++) {
+      if (!(p * G > q * b)) continue
+      if (!(r * b > s * G)) continue
+      const total = M * b + F * G
+      if (!best || total < best.total) best = { b, G, total }
+    }
+  }
+  if (!best) return null
+  // б) пример, где все значения различны
+  let distinct = null
+  for (let b5 = 40; b5 <= 200 && !distinct; b5++) {
+    const bs = Array.from({ length: M }, (_, i) => b5 - 4 + i)
+    const lo = Math.floor((q * b5 + 11) / p) + 1
+    for (let g1 = lo; g1 <= lo + 400 && !distinct; g1++) {
+      const gs = Array.from({ length: F }, (_, i) => g1 + i)
+      const c1 = sum(gs.slice(0, p)) > sum(bs.slice(M - q))
+      const c2 = sum(bs.slice(0, r)) > sum(gs.slice(F - s))
+      if (c1 && c2 && bs[M - 1] < gs[0]) distinct = { bs, gs }
+    }
+  }
+  if (!distinct) return null
+
+  const params = { M, F, p, q, r, s, best: best.total }
+  const check = (cfg, part) => {
+    if (!cfg || !Array.isArray(cfg.boys) || !Array.isArray(cfg.girls)) return "нет набора"
+    if (cfg.boys.length !== M || cfg.girls.length !== F) return `должно быть ${M} мальчиков и ${F} девочек`
+    for (const v of [...cfg.boys, ...cfg.girls]) if (!Number.isInteger(v) || v < 0) return `${v} — не целое неотрицательное количество грибов`
+    const bs = cfg.boys.slice().sort((a, b) => a - b)
+    const gs = cfg.girls.slice().sort((a, b) => a - b)
+    if (!(sum(gs.slice(0, p)) > sum(bs.slice(M - q)))) return `нарушено условие: любые ${p} девочки должны набрать больше любых ${q} мальчиков`
+    if (!(sum(bs.slice(0, r)) > sum(gs.slice(F - s)))) return `нарушено условие: любые ${r} мальчиков должны набрать больше любых ${s} девочек`
+    if (part === "b") {
+      const all = [...cfg.boys, ...cfg.girls]
+      if (uniq(all).length !== all.length) return "в пункте б) все количества должны быть различны"
+    }
+    if (part === "c" && sum([...cfg.boys, ...cfg.girls]) !== best.total) return `всего грибов ${sum([...cfg.boys, ...cfg.girls])}, а заявлено ${best.total}`
+    return null
+  }
+  // Независимый перебор: минимум ищется по уровням b и G (внутри групп выравнивание
+  // не ухудшает неравенств), существование «все различны» — прямым построением.
+  const solve = (P) => {
+    let top = null
+    for (let b = 1; b <= 400; b++) {
+      for (let G = 1; G <= 600; G++) {
+        if (P.p * G > P.q * b && P.r * b > P.s * G) {
+          const t = P.M * b + P.F * G
+          if (top === null || t < top) top = t
+        }
+      }
+    }
+    return { a: false, b: !!distinct, c: top, c_next: false }
+  }
+
+  const exB = { boys: distinct.bs, girls: distinct.gs }
+  const exC = { boys: Array(M).fill(best.b), girls: Array(F).fill(best.G) }
+  return item({
+    preamble: `${M} мальчиков и ${F} девочек пошли в лес за грибами. Известно, что любые ${p} девочки набрали больше грибов, чем любые ${q} мальчика, но любые ${r} мальчиков набрали больше грибов, чем любые ${s} девочки.`,
+    qa: `Может ли так случиться, что какая-то девочка набрала меньше грибов, чем какой-нибудь мальчик?`,
+    qb: `Может ли так случиться, что количество найденных грибов у всех детей будет различным?`,
+    qc: `Найдите минимальное возможное количество грибов, собранное всеми детьми суммарно.`,
+    ansA: `нет: пусть b — наибольшее количество грибов у мальчика, а g — наименьшее у девочки. Из условия «любые ${r} мальчиков больше любых ${s} девочек» наименьшие мальчики в сумме больше ${s} наибольших девочек, поэтому мальчики не могут быть слишком малы; подставляя эту оценку в первое условие («любые ${p} девочки больше любых ${q} мальчиков»), получаем b < g. Значит каждый мальчик набрал меньше каждой девочки`,
+    ansB: `да, например мальчики набрали ${distinct.bs.join(", ")}, а девочки — ${distinct.gs.join(", ")}: ${sum(distinct.gs.slice(0, p))} > ${sum(distinct.bs.slice(M - q))} и ${sum(distinct.bs.slice(0, r))} > ${sum(distinct.gs.slice(F - s))}`,
+    ansC: `${best.total}; например каждый мальчик набрал по ${best.b} ${plural(best.b, "грибу", "гриба", "грибов")}, а каждая девочка — по ${best.G}`,
+    solution: `Упорядочим количества грибов. Условия означают, что сумма ${p} наименьших у девочек больше суммы ${q} наибольших у мальчиков, и сумма ${r} наименьших у мальчиков больше суммы ${s} наибольших у девочек.\nа) Из второго условия ${r}·(наименьший мальчик) не меньше суммы ${r} наименьших мальчиков, которая больше ${s}·(наибольшая девочка) — отсюда мальчики не могут быть слишком малы. Подставляя это в первое условие, получаем, что наибольший мальчик меньше наименьшей девочки: каждый мальчик набрал меньше каждой девочки.\nб) Пример со всеми различными количествами: мальчики ${distinct.bs.join(", ")}, девочки ${distinct.gs.join(", ")}.\nв) Внутри каждой группы выгодно выровнять количества: если все мальчики набрали по b, а девочки по G, условия принимают вид ${p}G > ${q}b и ${r}b > ${s}G. Перебирая b, получаем наименьшую сумму ${M}b + ${F}G = ${best.total} при b = ${best.b} и G = ${best.G} (${p}·${best.G} = ${p * best.G} > ${q * best.b} и ${r}·${best.b} = ${r * best.b} > ${s * best.G}).\nОтвет: ${best.total}.`,
+    verify: {
+      params, check, solve,
+      claims: {
+        a: { type: "yesno", yes: false, reason: "boys-below-girls", target: "girl-less-than-boy" },
+        b: { type: "yesno", yes: true, example: exB, target: "all-distinct" },
+        c: { type: "extremum", mode: "min", value: best.total, example: exC },
+      },
+      mustMention: [M, F, p, q, r, s],
+      extra: [],
+      phrases: ["пошли в лес за грибами", "набрали больше грибов"],
     },
   })
 }
