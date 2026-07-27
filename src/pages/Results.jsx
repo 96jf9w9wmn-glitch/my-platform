@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { supabase } from "../supabase"
 import Icon from "../components/Icon"
+import WeakTypes from "../components/WeakTypes"
 import Collapse from "../components/Collapse"
 import { plural, getInitials } from "../utils"
 
@@ -421,11 +422,16 @@ function Results({ students, user }) {
               Выбери ученика слева
             </div>
           ) : (
-            <StudentResults
-              student={selected}
-              variants={variantsData[selected.id] || []}
-              isEge={selected.goal === "ЕГЭ"}
-            />
+            <div className="flex flex-col gap-4">
+              <StudentResults
+                student={selected}
+                variants={variantsData[selected.id] || []}
+                isEge={selected.goal === "ЕГЭ"}
+              />
+              {/* Тот же блок, что в карточке ученика: общий балл говорит «72%»,
+                  а тьютору нужно знать, КАКОЙ типаж проседает. */}
+              <WeakTypes studentId={selected.id} studentName={selected.name} />
+            </div>
           )}
         </div>
       </div>
