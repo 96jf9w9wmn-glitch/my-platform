@@ -2799,7 +2799,6 @@ export function t18LogVarBase() {
 
 // Сеточная сверка с мелким шагом 1/60 — для наборов, где критические значения могут иметь
 // «неудобные» знаменатели (шага 1/24 не хватает, чтобы их поймать).
-// eslint-disable-next-line no-unused-vars -- нужна при разовом отборе таблиц (T48)
 function gridOk60(set, test) {
   const b = setBounds(set).map(Rnum)
   if (!b.length) return false
@@ -3470,6 +3469,400 @@ export function t18SysTripleSqrt() {
 }
 
 // =============================================================================
+// РАЗДЕЛ H. Распадающаяся кривая + прямая (эталон #55–#65)
+// =============================================================================
+// Числитель раскладывается на множители: (y − h)(xy − k) или (y − h)(y − x − b), а корень-
+// множитель добавляет вертикальную прямую x = v (либо горизонталь y = w). Вторая строка —
+// прямая с фиксированным наклоном и параметром-сдвигом. Все точки пересечения рациональны.
+
+// #55. {(xy² − xy − ky + k)/√(x − v) = 0; y = x + a} — ровно два различных решения.
+// Числитель = (y − 1)(xy − k); ОДЗ x > v (знаменатель — корень).
+function build55({ k, v }) {
+  const solve = (a) => {
+    const quad = [R(-k), a, R1]                               // x² + ax − k = 0 (гипербола xy = k)
+    let n = countRoots(quad, R(v), "+inf", false, false)
+    const x1 = Rsub(R1, a)                                    // точка на прямой y = 1
+    if (Rcmp(x1, R(v)) > 0 && !Rzero(pEval(quad, x1))) n++    // совпавшую с гиперболой считаем один раз
+    else if (Rcmp(x1, R(v)) > 0) { /* точка уже учтена как корень гиперболы */ }
+    return n
+  }
+  // критические значения: точка y = 1 уходит за ОДЗ (a = 1 − v), отрицательный корень гиперболы
+  // проходит через x = v (v² + av − k = 0) и совпадение точки с корнем гиперболы (a = 1 − k)
+  const crit = [R(1 - v), R(k - v * v, v), R(1 - k)]
+  return { set: assembleSet((a) => solve(a) === 2, crit), solve }
+}
+const T55 = []
+for (const k of [3, 4, 5, 6, 8, 9]) for (const v of [-1, -2, -3, -4]) {
+  const par = { k, v }
+  const res = build55(par)
+  if (!setBounds(res.set).length || !niceSet(res.set, 24n, 60n, 1, 4)) continue
+  if (!gridOk(res.set, res.solve, 2) || !gridOk60(res.set, (a) => res.solve(a) === 2)) continue
+  T55.push(par)
+}
+export function t18SysHyperLine() {
+  const par = pick(T55), { k, v } = par
+  const { set, solve } = build55(par)
+  const num = `xy${SUP[2]} ${MINUS} xy ${MINUS} ${k}y + ${k}`
+  return item({
+    text: `${HEAD_A}\n\nсистема уравнений\n⟦cases:${fT(num, `√{x${term(-v, "")}}`)} = 0¦y = x + a⟧\n\nимеет ровно два различных решения.`,
+    set,
+    solution: `Числитель раскладывается: ${num} = (y ${MINUS} 1)(xy ${MINUS} ${k}), а ОДЗ (знаменатель — корень) даёт x > ${nS(v)}.\n`
+      + `Значит первая строка задаёт прямую y = 1 и гиперболу xy = ${k} при x > ${nS(v)}.\n`
+      + `Прямая y = x + a пересекает y = 1 в точке x = 1 ${MINUS} a, а гиперболу — в корнях уравнения x${SUP[2]} + ax ${MINUS} ${k} = 0.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 2 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => 1 - a, label: "точка на y = 1" },
+        { f: (a) => (-a + Math.sqrt(a * a + 4 * k)) / 2, label: "точки на гиперболе" },
+        { f: (a) => (-a - Math.sqrt(a * a + 4 * k)) / 2 },
+        { f: () => v, dash: true, label: `ОДЗ: x > ${nS(v)}` },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: v - 3, xMax: k + 3, aMin: Rnum(setBounds(set)[0]) - 3,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+
+// #56–#59. {(y − h)(y − x − b)·(корень-множитель) = 0; x + y = a} — кривая распадается на
+// горизонталь y = h, прямую y = x + b и вертикаль x = v (нуль корня-множителя).
+// ОДЗ: v ≤ x < xHi (правый конец — из корня в знаменателе), иногда ещё y < yHi.
+function buildH2({ h, b, v, xHi, yHi, n }) {
+  const okX = (x) => Rcmp(x, R(v)) >= 0 && (xHi === null || Rcmp(x, R(xHi)) < 0)
+  const okY = (y) => yHi === null || Rcmp(y, R(yHi)) < 0
+  const solve = (a) => {
+    const good = []
+    const add = (x, y) => {
+      if (!okX(x) || !okY(y)) return
+      if (!good.some(([u, w]) => Rcmp(u, x) === 0 && Rcmp(w, y) === 0)) good.push([x, y])
+    }
+    add(Rsub(a, R(h)), R(h))                                  // y = h
+    const x2 = Rdiv(Rsub(a, R(b)), R(2))
+    add(x2, Radd(x2, R(b)))                                   // y = x + b
+    add(R(v), Rsub(a, R(v)))                                  // x = v
+    return good.length
+  }
+  const crit = [R(h + v), R(2 * v + b), R(2 * h - b), R(h + v)]
+  if (xHi !== null) crit.push(R(h + xHi), R(2 * xHi + b))
+  if (yHi !== null) crit.push(R(yHi + v), R(2 * yHi - b))
+  return { set: assembleSet((a) => solve(a) === n, crit), solve }
+}
+function itemH2(par, txt) {
+  const { h, b, v, xHi, n } = par
+  const { set, solve } = buildH2(par)
+  return item({
+    text: `${HEAD_A}\n\nсистема уравнений\n⟦cases:${txt.num}¦${txt.line}⟧\n\nимеет ${n === 1 ? "единственное решение" : "ровно два различных решения"}.`,
+    set,
+    solution: `Первое уравнение распадается: ${txt.split}. ОДЗ: ${txt.odz}.\n`
+      + `Значит кривая — это горизонталь y = ${h}, прямая y = x ${term(b, "").trim() ? term(b, "") : ""} и вертикаль x = ${nS(v)}.\n`
+      + `Прямая x + y = a пересекает их в точках (a ${MINUS} ${h}; ${h}), ((a ${MINUS} ${nS(b)})/2; (a + ${nS(b)})/2) и (${nS(v)}; a ${MINUS} ${nS(v)}) — считаем те, что удовлетворяют ОДЗ, и убираем совпавшие.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => a - h, label: `точка на y = ${h}` },
+        { f: (a) => (a - b) / 2, label: `точка на y = x ${term(b, "")}` },
+        { f: () => v, dash: true, label: `вертикаль x = ${nS(v)}` },
+        ...(xHi !== null ? [{ f: () => xHi, dash: true, label: "ОДЗ справа" }] : []),
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: v - 3, xMax: (xHi === null ? v + 10 : xHi) + 3, aMin: Rnum(setBounds(set)[0]) - 3,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 3,
+    },
+  })
+}
+const T56 = [[1, 2, -3, null, null], [2, 3, -4, null, null], [1, 3, -2, null, null], [3, 2, -5, null, null]]
+  .map(([h, b, v, xHi, yHi]) => ({ h, b, v, xHi, yHi, n: 2 }))
+  .filter((par) => {                                          // вырожденные наборы не берём
+    const res = buildH2(par)
+    return setBounds(res.set).length > 0 && niceSet(res.set, 24n, 60n, 1, 4)
+      && gridOk(res.set, res.solve, 2) && gridOk60(res.set, (a) => res.solve(a) === 2)
+  })
+  .filter((par) => {                                          // вырожденные наборы не берём
+    const res = buildH2(par)
+    return setBounds(res.set).length > 0 && niceSet(res.set, 24n, 60n, 1, 4)
+      && gridOk(res.set, res.solve, 2) && gridOk60(res.set, (a) => res.solve(a) === 2)
+  })
+  .filter((par) => {                                          // вырожденные наборы не берём
+    const res = buildH2(par)
+    return setBounds(res.set).length > 0 && niceSet(res.set, 24n, 60n, 1, 4)
+      && gridOk(res.set, res.solve, 2) && gridOk60(res.set, (a) => res.solve(a) === 2)
+  })
+export function t18SysCurveVert() {
+  const par = pick(T56)
+  const { h, b, v } = par
+  return itemH2(par, {
+    num: `(y${SUP[2]} ${MINUS} xy${term(h, "x")}${term(-(h + b), "y")}${term(h * b, "")})√{x${term(-v, "")}} = 0`,
+    line: `a ${MINUS} x ${MINUS} y = 0`,
+    split: `(y ${MINUS} ${h})(y ${MINUS} x${term(-b, "")}) · √(x${term(-v, "")}) = 0`,
+    odz: `x ≥ ${nS(v)} (в точке x = ${nS(v)} корень обращается в нуль, поэтому подходит вся вертикаль)`,
+  })
+}
+const T57 = [[1, 0, -4, 3, null], [1, 0, -3, 4, null], [2, 0, -4, 3, null], [1, 0, -5, 3, null]]
+  .map(([h, b, v, xHi, yHi]) => ({ h, b, v, xHi, yHi, n: 2 }))
+  .filter((par) => {                                          // вырожденные наборы не берём
+    const res = buildH2(par)
+    return setBounds(res.set).length > 0 && niceSet(res.set, 24n, 60n, 1, 4)
+      && gridOk(res.set, res.solve, 2) && gridOk60(res.set, (a) => res.solve(a) === 2)
+  })
+  .filter((par) => {                                          // вырожденные наборы не берём
+    const res = buildH2(par)
+    return setBounds(res.set).length > 0 && niceSet(res.set, 24n, 60n, 1, 4)
+      && gridOk(res.set, res.solve, 2) && gridOk60(res.set, (a) => res.solve(a) === 2)
+  })
+  .filter((par) => {                                          // вырожденные наборы не берём
+    const res = buildH2(par)
+    return setBounds(res.set).length > 0 && niceSet(res.set, 24n, 60n, 1, 4)
+      && gridOk(res.set, res.solve, 2) && gridOk60(res.set, (a) => res.solve(a) === 2)
+  })
+export function t18SysCurveTwoSqrt() {
+  const par = pick(T57)
+  const { h, b, v, xHi } = par
+  return itemH2(par, {
+    num: `${fT(`(y${SUP[2]} ${MINUS} xy${term(h, "x")}${term(-(h + b), "y")}${term(h * b, "")})√{x${term(-v, "")}}`, `√{${xHi} ${MINUS} x}`)} = 0`,
+    line: `a = x + y`,
+    split: `(y ${MINUS} ${h})(y ${MINUS} x${term(-b, "")}) · √(x${term(-v, "")}) = 0`,
+    odz: `${nS(v)} ≤ x < ${xHi} (корень в числителе даёт вертикаль x = ${nS(v)}, корень в знаменателе — строгую границу справа)`,
+  })
+}
+const T58 = [[5, 4, -5, null, 7], [4, 3, -4, null, 6], [5, 3, -6, null, 8], [6, 4, -5, null, 9]]
+  .map(([h, b, v, xHi, yHi]) => ({ h, b, v, xHi, yHi, n: 1 }))
+  .filter((par) => {                                          // вырожденные наборы не берём
+    const res = buildH2(par)
+    return setBounds(res.set).length > 0 && niceSet(res.set, 24n, 60n, 1, 4)
+      && gridOk(res.set, res.solve, 1) && gridOk60(res.set, (a) => res.solve(a) === 1)
+  })
+export function t18SysCurveYBound() {
+  const par = pick(T58)
+  const { h, b, v, yHi } = par
+  return itemH2(par, {
+    num: `${fT(`(y${SUP[2]} ${MINUS} xy${term(h, "x")}${term(-(h + b), "y")}${term(h * b, "")})√{x${term(-v, "")}}`, `√{${yHi} ${MINUS} y}`)} = 0`,
+    line: `a = x + y`,
+    split: `(y ${MINUS} ${h})(y ${MINUS} x${term(-b, "")}) · √(x${term(-v, "")}) = 0`,
+    odz: `x ≥ ${nS(v)} и y < ${yHi}`,
+  })
+}
+const T59 = [[3, -2, -2, 6, null], [2, -3, -3, 5, null], [4, -2, -2, 7, null], [3, -1, -4, 6, null]]
+  .map(([h, b, v, xHi, yHi]) => ({ h, b, v, xHi, yHi, n: 2 }))
+  .filter((par) => {                                          // вырожденные наборы не берём
+    const res = buildH2(par)
+    return setBounds(res.set).length > 0 && niceSet(res.set, 24n, 60n, 1, 4)
+      && gridOk(res.set, res.solve, 2) && gridOk60(res.set, (a) => res.solve(a) === 2)
+  })
+  .filter((par) => {                                          // вырожденные наборы не берём
+    const res = buildH2(par)
+    return setBounds(res.set).length > 0 && niceSet(res.set, 24n, 60n, 1, 4)
+      && gridOk(res.set, res.solve, 2) && gridOk60(res.set, (a) => res.solve(a) === 2)
+  })
+  .filter((par) => {                                          // вырожденные наборы не берём
+    const res = buildH2(par)
+    return setBounds(res.set).length > 0 && niceSet(res.set, 24n, 60n, 1, 4)
+      && gridOk(res.set, res.solve, 2) && gridOk60(res.set, (a) => res.solve(a) === 2)
+  })
+export function t18SysCurveNegShift() {
+  const par = pick(T59)
+  const { h, b, v, xHi } = par
+  return itemH2(par, {
+    num: `${fT(`(y${SUP[2]} ${MINUS} xy${term(h, "x")}${term(-(h + b), "y")}${term(h * b, "")})√{x${term(-v, "")}}`, `√{${xHi} ${MINUS} x}`)} = 0`,
+    line: `x + y ${MINUS} a = 0`,
+    split: `(y ${MINUS} ${h})(y ${MINUS} x${term(-b, "")}) · √(x${term(-v, "")}) = 0`,
+    odz: `${nS(v)} ≤ x < ${xHi}`,
+  })
+}
+
+// #60–#63. {(y − h)(xy − k)·(корень-множитель) = 0; y = ax} — прямая ПУЧКА через начало.
+// Точки на гиперболе имеют иррациональные координаты (x = ±√(k/a)), но все ограничения
+// проверяются точно возведением в квадрат с учётом знака.
+function buildPencil({ h, k, xLo, xHi, yLo, yHi, extraV, extraH, n }) {
+  const okX = (x) => (xLo === null || Rcmp(x, R(xLo)) > 0) && (xHi === null || Rcmp(x, R(xHi)) <= 0)
+  const okY = (y) => (yLo === null || Rcmp(y, R(yLo)) >= 0) && (yHi === null || Rcmp(y, R(yHi)) < 0)
+  const solve = (a) => {
+    const pts = []                                          // рациональные точки
+    const addPt = (x, y) => {
+      if (!okX(x) || !okY(y)) return
+      if (!pts.some(([u, w]) => Rcmp(u, x) === 0 && Rcmp(w, y) === 0)) pts.push([x, y])
+    }
+    if (!Rzero(a)) addPt(Rdiv(R(h), a), R(h))               // прямая y = h
+    if (extraV !== null && !Rzero(a)) addPt(R(extraV), Rmul(a, R(extraV)))          // вертикаль x = v
+    if (extraH !== null && !Rzero(a)) addPt(Rdiv(R(extraH), a), R(extraH))          // горизонталь y = w
+    let n2 = 0
+    if (Rsign(a) > 0) {                                     // гипербола: a·x² = k, k > 0
+      const ka = Rmul(R(k), a), koa = Rdiv(R(k), a)         // ka = y², k/a = x²
+      // корень «плюс»: x = √(k/a) > 0, y = √(ka) > 0
+      let ok = true
+      if (xHi !== null) ok = ok && Rcmp(koa, R(xHi * xHi)) <= 0 && xHi > 0
+      if (yHi !== null) ok = ok && (yHi <= 0 ? false : Rcmp(ka, R(yHi * yHi)) < 0)
+      if (ok) n2++
+      // корень «минус»: x = −√(k/a) < 0, y = −√(ka) < 0
+      let ok2 = true
+      if (xLo !== null) ok2 = ok2 && (xLo >= 0 ? false : Rcmp(koa, R(xLo * xLo)) < 0)
+      if (yLo !== null) ok2 = ok2 && (yLo > 0 ? false : Rcmp(ka, R(yLo * yLo)) <= 0)
+      if (xHi !== null && xHi < 0) ok2 = false
+      if (ok2) n2++
+      // рациональная точка могла попасть на гиперболу — тогда она уже посчитана
+      for (const [x, y] of pts) if (Rcmp(Rmul(x, y), R(k)) === 0) n2--
+    }
+    return pts.length + n2
+  }
+  const crit = [R0]
+  if (xLo !== null) { crit.push(R(h, xLo), R(k, xLo * xLo)); if (extraH !== null) crit.push(R(extraH, xLo)) }
+  if (xHi !== null) { crit.push(R(h, xHi), R(k, xHi * xHi)); if (extraH !== null) crit.push(R(extraH, xHi)) }
+  if (yLo !== null) { crit.push(R(yLo * yLo, k)); if (extraV !== null) crit.push(R(yLo, extraV)) }
+  if (yHi !== null) { crit.push(R(yHi * yHi, k)); if (extraV !== null) crit.push(R(yHi, extraV)) }
+  crit.push(R(h * h, k))                                    // точка (h/a; h) попала на гиперболу
+  if (extraV !== null) { crit.push(R(h, extraV), R(k, extraV * extraV)) }
+  if (extraH !== null) { crit.push(R(extraH * extraH, k)) }
+  return { set: assembleSet((a) => solve(a) === n, crit), solve }
+}
+function itemPencil(par, txt) {
+  const { h, k, n } = par
+  const { set, solve } = buildPencil(par)
+  return item({
+    text: `${HEAD_A}\n\nсистема уравнений\n⟦cases:${txt.num}¦y = ax⟧\n\nимеет ровно ${n === 2 ? "два различных решения" : "три различных решения"}.`,
+    set,
+    solution: `Числитель раскладывается: (y ${MINUS} ${h})(xy ${MINUS} ${k}), поэтому кривая — это прямая y = ${h} и гипербола xy = ${k}${txt.extra}. ОДЗ: ${txt.odz}.\n`
+      + `Прямая y = ax проходит через начало координат: с прямой y = ${h} она пересекается в точке x = ${h}/a, а с гиперболой — там, где ax${SUP[2]} = ${k}, `
+      + `то есть при a > 0 в двух точках x = ±√(${k}/a).\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => (a !== 0 ? h / a : null), label: `точка на y = ${h}` },
+        { f: (a) => (a > 0 ? Math.sqrt(k / a) : null), label: "точки на гиперболе" },
+        { f: (a) => (a > 0 ? -Math.sqrt(k / a) : null) },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -8, xMax: 10, aMin: Rnum(setBounds(set)[0]) - 2,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 2,
+    },
+  })
+}
+const mkPencil = (rows, n) => rows
+  .map(([h, k, xLo, xHi, yLo, yHi, extraV, extraH]) => ({ h, k, xLo, xHi, yLo, yHi, extraV, extraH, n }))
+  .filter((par) => {
+    const res = buildPencil(par)
+    return setBounds(res.set).length > 0 && niceSet(res.set, 24n, 60n, 1, 4)
+      && gridOk(res.set, res.solve, n) && gridOk60(res.set, (a) => res.solve(a) === n)
+  })
+// #60: ОДЗ x > v (корень в знаменателе), ровно два решения
+const T60 = mkPencil([[3, 3, -3, null, null, null, null, null], [2, 4, -2, null, null, null, null, null],
+  [3, 6, -3, null, null, null, null, null], [1, 4, -4, null, null, null, null, null],
+  [2, 6, -3, null, null, null, null, null], [4, 4, -2, null, null, null, null, null]], 2)
+export function t18SysPencilHyper() {
+  const par = pick(T60), { h, k, xLo } = par
+  return itemPencil(par, {
+    num: `${fT(`xy${SUP[2]}${term(-h, "xy")}${term(-k, "y")}${term(h * k, "")}`, `√{x${term(-xLo, "")}}`)} = 0`,
+    extra: "", odz: `x > ${nS(xLo)}`,
+  })
+}
+// #61: множитель √(xHi − x) добавляет вертикаль x = xHi; ровно три решения
+const T61 = mkPencil([[1, 3, null, 6, null, null, 6, null], [1, 4, null, 8, null, null, 8, null],
+  [1, 6, null, 6, null, null, 6, null], [2, 3, null, 6, null, null, 6, null],
+  [1, 3, null, 4, null, null, 4, null], [1, 8, null, 8, null, null, 8, null]], 3)
+export function t18SysPencilVert() {
+  const par = pick(T61), { h, k, xHi } = par
+  return itemPencil(par, {
+    num: `(xy${SUP[2]}${term(-h, "xy")}${term(-k, "y")}${term(h * k, "")})√{${xHi} ${MINUS} x} = 0`,
+    extra: `, а множитель √(${xHi} ${MINUS} x) добавляет вертикаль x = ${xHi}`, odz: `x ≤ ${xHi}`,
+  })
+}
+// #62: ОДЗ y < yHi (корень в знаменателе), ровно три решения
+const T62 = mkPencil([[1, 5, null, null, null, 5, null, null], [1, 6, null, null, null, 6, null, null],
+  [1, 4, null, null, null, 4, null, null], [2, 6, null, null, null, 6, null, null],
+  [1, 8, null, null, null, 8, null, null], [1, 5, null, null, null, 6, null, null]], 3)
+export function t18SysPencilYBound() {
+  const par = pick(T62), { h, k, yHi } = par
+  return itemPencil(par, {
+    num: `${fT(`xy${SUP[2]}${term(-h, "xy")}${term(-k, "y")}${term(h * k, "")}`, `√{${yHi} ${MINUS} y}`)} = 0`,
+    extra: "", odz: `y < ${yHi}`,
+  })
+}
+// #63: множитель √(y − yLo) добавляет горизонталь y = yLo; ровно три решения
+const T63 = mkPencil([[1, 6, null, null, -2, null, null, -2], [1, 4, null, null, -2, null, null, -2],
+  [1, 8, null, null, -2, null, null, -2], [2, 6, null, null, -3, null, null, -3],
+  [1, 6, null, null, -3, null, null, -3], [1, 12, null, null, -3, null, null, -3]], 3)
+export function t18SysPencilHoriz() {
+  const par = pick(T63), { h, k, yLo } = par
+  return itemPencil(par, {
+    num: `(xy${SUP[2]}${term(-h, "xy")}${term(-k, "y")}${term(h * k, "")})√{y${term(-yLo, "")}} = 0`,
+    extra: `, а множитель √(y${term(-yLo, "")}) добавляет горизонталь y = ${nS(yLo)}`, odz: `y ≥ ${nS(yLo)}`,
+  })
+}
+
+// #65. {((√(A − x²) − y)(x² + py − q))/(d − x²) = 0; y = 1 − 2a} — горизонталь и две кривые:
+// верхняя полуокружность y = √(A − x²) и парабола y = (q − x²)/p; точки с x² = d выколоты.
+// В эталоне A = 12 (иррациональная вершина), в аналоге берём A и A − d точными квадратами.
+function build65({ A, p, q, d }) {
+  const solve = (a) => {
+    const t = Rsub(R1, Rmul(R(2), a))                       // высота горизонтали
+    let n = 0
+    // полуокружность: x² = A − t² при t ≥ 0
+    if (Rsign(t) >= 0) {
+      const x2 = Rsub(R(A), Rmul(t, t))
+      if (Rsign(x2) >= 0 && Rcmp(x2, R(d)) !== 0) n += Rzero(x2) ? 1 : 2
+    }
+    // парабола: x² = q − pt, нужно ещё x² ≤ A (ОДЗ корня)
+    const x2p = Rsub(R(q), Rmul(R(p), t))
+    if (Rsign(x2p) >= 0 && Rcmp(x2p, R(A)) <= 0 && Rcmp(x2p, R(d)) !== 0) {
+      // совпадение с точками полуокружности: тогда та же пара точек уже посчитана
+      const same = Rsign(t) >= 0 && Rcmp(x2p, Rsub(R(A), Rmul(t, t))) === 0
+      if (!same) n += Rzero(x2p) ? 1 : 2
+    }
+    return n
+  }
+  const tCrit = [R0, R(isSq(A)), R(q, p), R((q - A), p), R((q - d), p)]
+  const s1 = isSq(A - d)
+  if (s1 !== null) tCrit.push(R(s1), R(-s1))
+  const crit = tCrit.map((t) => Rdiv(Rsub(R1, t), R(2)))     // a = (1 − t)/2
+  return { set: assembleSet((a) => solve(a) === 2, crit), solve }
+}
+const T65 = []
+for (const A of [9, 16, 25]) for (const d of [1, 4, 9, 16]) for (const p of [2, 3, 4]) for (const q of [6, 8, 9, 12, 16]) {
+  if (d >= A || isSq(A - d) === null) continue
+  const par = { A, p, q, d }
+  const res = build65(par)
+  if (!setBounds(res.set).length || !niceSet(res.set, 24n, 60n, 1, 4)) continue
+  if (!gridOk(res.set, res.solve, 2) || !gridOk60(res.set, (a) => res.solve(a) === 2)) continue
+  T65.push(par)
+}
+export function t18SysSemiParab() {
+  const par = pick(T65), { A, p, q, d } = par
+  const { set, solve } = build65(par)
+  const num = `(√{${A} ${MINUS} x${SUP[2]}} ${MINUS} y)(x${SUP[2]} + ${p === 1 ? "" : p}y ${MINUS} ${q})`
+  return item({
+    text: `Найдите все значения параметра a, при которых система уравнений\n`
+      + `⟦cases:${fT(num, `${d} ${MINUS} x${SUP[2]}`)} = 0¦y = 1 ${MINUS} 2a⟧\n\nимеет ровно два решения.`,
+    set,
+    solution: `Дробь равна нулю, когда числитель равен нулю, а знаменатель — нет: значит x${SUP[2]} ≠ ${d}.\n`
+      + `Первый множитель даёт верхнюю полуокружность y = √(${A} ${MINUS} x${SUP[2]}) (ОДЗ: |x| ≤ ${isSq(A)}), второй — параболу y = (${q} ${MINUS} x${SUP[2]})/${p}.\n`
+      + `Горизонталь y = 1 ${MINUS} 2a пересекает полуокружность в точках с x${SUP[2]} = ${A} ${MINUS} (1 ${MINUS} 2a)${SUP[2]} (при 1 ${MINUS} 2a ≥ 0), `
+      + `а параболу — в точках с x${SUP[2]} = ${q} ${MINUS} ${p}(1 ${MINUS} 2a); выколотые точки с x${SUP[2]} = ${d} не считаются.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 2 },
+    solve: (a) => solve(a),
+    aRange: spanRange(set),
+    picture: {
+      curves: [
+        { f: (a) => { const t = 1 - 2 * a, x2 = A - t * t; return t >= 0 && x2 >= 0 ? Math.sqrt(x2) : null }, label: "на полуокружности" },
+        { f: (a) => { const t = 1 - 2 * a, x2 = A - t * t; return t >= 0 && x2 >= 0 ? -Math.sqrt(x2) : null } },
+        { f: (a) => { const x2 = q - p * (1 - 2 * a); return x2 >= 0 && x2 <= A ? Math.sqrt(x2) : null }, label: "на параболе" },
+        { f: (a) => { const x2 = q - p * (1 - 2 * a); return x2 >= 0 && x2 <= A ? -Math.sqrt(x2) : null } },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -isSq(A) - 2, xMax: isSq(A) + 2, aMin: Rnum(setBounds(set)[0]) - 2,
+      aMax: Rnum(setBounds(set)[setBounds(set).length - 1]) + 2,
+    },
+  })
+}
+
+// =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
     ["rat-quad-lin", "(k²x²−a²)/(px−q−ra) = 0 — линейный знаменатель", t18RatQuadLin],
@@ -3535,6 +3928,18 @@ export const META18 = [
     ["sys-disk-nosol", "круг ∪ точка и пучок прямых — НЕ имеет решений", t18SysDiskNoSol],
     ["sys-circle-strip", "{(x+k₁a+m₁)(x+k₂a+m₂)<0; x²+a²=c²} — хотя бы одно решение", t18SysCircleStrip],
     ["sys-triple-sqrt", "{a(x−1)≥4; 2√(x−c)≥a; kx<a+d} — хотя бы одно решение", t18SysTripleSqrt],
+  ]],
+  ["Распадающаяся кривая + прямая", [
+    ["sys-hyper-line", "{(y−1)(xy−k)/√(x−v) = 0; y = x + a}", t18SysHyperLine],
+    ["sys-curve-vert", "{(y−h)(y−x−b)√(x−v) = 0; x + y = a}", t18SysCurveVert],
+    ["sys-curve-2sqrt", "корень в числителе и в знаменателе", t18SysCurveTwoSqrt],
+    ["sys-curve-ybound", "ограничение по y, единственное решение", t18SysCurveYBound],
+    ["sys-curve-negshift", "сдвиг прямой отрицательный", t18SysCurveNegShift],
+    ["sys-pencil-hyper", "{(y−h)(xy−k)/√(x−v) = 0; y = ax}", t18SysPencilHyper],
+    ["sys-pencil-vert", "множитель √(xHi−x) добавляет вертикаль", t18SysPencilVert],
+    ["sys-pencil-ybound", "ОДЗ по y, ровно три решения", t18SysPencilYBound],
+    ["sys-pencil-horiz", "множитель √(y−yLo) добавляет горизонталь", t18SysPencilHoriz],
+    ["sys-semi-parab", "{((√(A−x²)−y)(x²+py−q))/(d−x²) = 0; y = 1−2a}", t18SysSemiParab],
   ]],
 ]
 
