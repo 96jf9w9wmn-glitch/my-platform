@@ -71,10 +71,20 @@ function WeakTypes({ studentId, studentName }) {
         import("../pages/taskGenerators"),
         import("../pages/variantPdf"),
       ])
+      // У части типажей пространство параметров узкое (например, ЕГЭ Профиль №5
+      // «lamps» даёт всего 5 разных условий на 20 генераций), поэтому не берём
+      // подряд, а отбираем НЕПОВТОРЯЮЩИЕСЯ: лист с двумя одинаковыми задачами
+      // выглядит как ошибка платформы. Если разных меньше восьми — отдаём
+      // сколько есть, а не добираем дублями.
       const tasks = []
-      for (let i = 0; i < DRILL_SIZE; i++) {
+      const seen = new Set()
+      for (let i = 0; i < DRILL_SIZE * 4 && tasks.length < DRILL_SIZE; i++) {
         const t = generateTask(row.exam_type, row.number, row.gen_key)
-        if (t) tasks.push({ ...t, number: row.number })
+        if (!t) continue
+        const fingerprint = `${t.condition_text || ""}|${t.answer || ""}`
+        if (seen.has(fingerprint)) continue
+        seen.add(fingerprint)
+        tasks.push({ ...t, number: row.number })
       }
       if (!tasks.length) return
       const title = `Тренировка · №${row.number}${labels[row.gen_key] ? " · " + labels[row.gen_key] : ""}` +
