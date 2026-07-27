@@ -17,6 +17,7 @@ function ReportComposer({ student }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
   const [draft, setDraft] = useState(null)   // { summary, topics, next_steps }
+  const [sent, setSent] = useState(false)
 
   // Что скармливаем модели: последние проведённые занятия с заметками и
   // замечания из карточки. Ничего чужого — только этот ученик.
@@ -75,8 +76,19 @@ function ReportComposer({ student }) {
       setError(/lesson_reports/.test(err.message) ? "Выполните supabase/lesson_reports.sql в Supabase" : err.message)
       return
     }
+    // Уведомляем ученика: у родителя своего аккаунта в notifications нет,
+    // а семья смотрит приложение с одного телефона чаще, чем два раза.
+    if (student.studentAccountId) {
+      await supabase.from("notifications").insert({
+        user_id: student.studentAccountId,
+        title: "Отчёт о занятиях",
+        body: "Репетитор отправил отчёт — он виден в кабинете родителя.",
+      })
+    }
     setOpen(false)
     setDraft(null)
+    setSent(true)
+    setTimeout(() => setSent(false), 4000)
   }
 
   return (
@@ -87,7 +99,9 @@ function ReportComposer({ student }) {
         </span>
         <span className="min-w-0">
           <span className="block text-sm font-medium">Отчёт родителю</span>
-          <span className="block text-xs text-gray-400">Черновик по заметкам занятий — перед отправкой можно править</span>
+          <span className="block text-xs text-gray-400">
+            {sent ? "Отчёт отправлен родителю" : "Черновик по заметкам занятий — перед отправкой можно править"}
+          </span>
         </span>
       </button>
 
