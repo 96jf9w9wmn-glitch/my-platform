@@ -358,12 +358,16 @@ function ProgressChart({ variants, targetScore, maxScore }) {
   )
 }
 
-const GRADE_COLORS = {
-  5: "bg-green-100 text-green-700",
-  4: "bg-blue-100 text-blue-700",
-  3: "bg-amber-100 text-amber-700",
-  2: "bg-red-100 text-red-700",
+// Оценка задаёт цвет ВСЕЙ карточки проверенной работы: один акцент на карточку,
+// иначе зелёный фон «выполнено» спорит с красным баллом. Тинты на opacity →
+// одинаково ок в светлой и тёмной теме.
+const GRADE_LOOK = {
+  5: { tint: "glass-tint-green", accent: "text-green-600 dark:text-green-300", chip: "bg-green-500/18 text-green-700 dark:text-green-300 ring-1 ring-green-500/35", tile: "from-green-400/25 to-green-500/10 text-green-600 dark:text-green-300", note: "Отличная работа" },
+  4: { tint: "glass-tint-blue",  accent: "text-blue-600 dark:text-blue-300",   chip: "bg-blue-500/18 text-blue-700 dark:text-blue-300 ring-1 ring-blue-500/35",    tile: "from-blue-400/25 to-blue-500/10 text-blue-600 dark:text-blue-300",    note: "Хорошая работа" },
+  3: { tint: "glass-tint-amber", accent: "text-amber-600 dark:text-amber-300", chip: "bg-amber-500/18 text-amber-700 dark:text-amber-300 ring-1 ring-amber-500/35", tile: "from-amber-400/25 to-amber-500/10 text-amber-600 dark:text-amber-300", note: "Есть над чем поработать" },
+  2: { tint: "glass-tint-red",   accent: "text-red-600 dark:text-red-300",     chip: "bg-red-500/18 text-red-700 dark:text-red-300 ring-1 ring-red-500/35",      tile: "from-red-400/25 to-red-500/10 text-red-600 dark:text-red-300",      note: "Разберём ошибки на уроке" },
 }
+const GRADE_NEUTRAL = { tint: "glass-tint-green", accent: "text-green-600 dark:text-green-300", chip: "bg-green-500/18 text-green-700 dark:text-green-300 ring-1 ring-green-500/35", note: "" }
 
 // Вид карточки ДЗ у ученика по статусу: цвет плитки-иконки (аватар) и чипа.
 // Тинты на opacity → одинаково ок в светлой и тёмной теме.
@@ -427,20 +431,22 @@ function StudentHomeworkCard({ hw, index, onSelect }) {
     : hw.hw_type === "combined" ? "Тест + письменное" : "Письменное"
   const preview = hw.hw_type !== "test" ? hwPreview(hw.description) : ""
   const icon = isDone ? "check" : hw.hw_type === "test" ? "clipboard" : hw.hw_type === "combined" ? "file-text" : "edit"
+  // Проверенная работа: плитка и балл — в одном цвете оценки, а не «зелёная плитка + красный балл».
+  const gradeLook = isDone && hw.grade ? (GRADE_LOOK[hw.grade] || GRADE_NEUTRAL) : null
   return (
     <button
       onClick={() => onSelect(hw)}
       style={{ animationDelay: `${Math.min(index, 8) * 45}ms` }}
       className="item-enter press-tap text-left w-full glass rounded-2xl p-3.5 flex items-center gap-3"
     >
-      <div className={`shrink-0 w-11 h-11 rounded-2xl flex items-center justify-center bg-gradient-to-br ${meta.tile}`}>
+      <div className={`shrink-0 w-11 h-11 rounded-2xl flex items-center justify-center bg-gradient-to-br ${gradeLook ? gradeLook.tile : meta.tile}`}>
         <Icon name={icon} size={18} />
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <div className="font-medium text-sm truncate flex-1">{hw.title}</div>
-          {isDone && hw.grade ? (
-            <span className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${GRADE_COLORS[hw.grade]}`}>{hw.grade}</span>
+          {gradeLook ? (
+            <span className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${gradeLook.chip}`}>{hw.grade}</span>
           ) : (
             <span className={`shrink-0 text-[11px] px-2 py-0.5 rounded-full font-medium ${meta.chip}`}>{meta.label}</span>
           )}
@@ -602,6 +608,8 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
   const typeLabel = hw.hw_type === "test" ? `Тест · ${hw.question_count || 0} вопр.`
     : hw.hw_type === "combined" ? "Тест + письменное" : "Письменное"
   const headerIcon = hw.status === "done" ? "check" : hw.hw_type === "test" ? "clipboard" : hw.hw_type === "combined" ? "file-text" : "edit"
+  // Вся карточка результата красится в цвет оценки — один акцент, без «зелёное + красное».
+  const look = (hw.grade && GRADE_LOOK[hw.grade]) || GRADE_NEUTRAL
   const { intro, tasks } = parseHomeworkTasks(hw.description)
 
   return (
@@ -664,15 +672,21 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
       </div>
 
       {hw.status === "done" && (
-        <div className="glass-tint-green p-5 text-center mb-4">
-          <div className="text-green-600 mb-2 flex justify-center"><Icon name="check" size={28} /></div>
-          <div className="text-sm font-medium text-green-700">Задание выполнено!</div>
+        <div className={`${look.tint} p-5 text-center mb-4`}>
+          <div className={`mb-2 flex justify-center ${look.accent}`}><Icon name="check" size={28} /></div>
+          <div className={`text-sm font-medium ${look.accent}`}>{hw.grade ? "Работа проверена" : "Задание выполнено!"}</div>
           {hw.grade && (
-            <div className={`inline-block mt-2 text-lg font-medium px-4 py-1 rounded-full ${GRADE_COLORS[hw.grade]}`}>
-              Оценка: {hw.grade}
+            <div className={`inline-flex items-baseline gap-1.5 mt-2.5 px-4 py-1.5 rounded-full font-medium ${look.chip}`}>
+              <span className="text-xs opacity-70">Оценка</span>
+              <span className="text-lg leading-none">{hw.grade}</span>
             </div>
           )}
-          {hw.comment && <div className="text-xs text-green-600 mt-2 flex items-start gap-1"><Icon name="message" size={12} className="mt-0.5 flex-shrink-0" />{hw.comment}</div>}
+          {look.note && <div className="text-xs text-gray-500 mt-2">{look.note}</div>}
+          {hw.comment && (
+            <div className="text-xs text-gray-600 mt-3 flex items-start gap-1 justify-center text-left">
+              <Icon name="message" size={12} className="mt-0.5 flex-shrink-0" />{hw.comment}
+            </div>
+          )}
         </div>
       )}
 

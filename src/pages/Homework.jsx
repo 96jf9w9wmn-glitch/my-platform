@@ -29,11 +29,12 @@ function getGradeFromPercent(percent) {
   return 2
 }
 
+// Тинты на opacity + кольцо → одинаково читаются в светлой и тёмной теме.
 const GRADE_COLORS = {
-  5: "bg-green-100 text-green-700",
-  4: "bg-blue-100 text-blue-700",
-  3: "bg-amber-100 text-amber-700",
-  2: "bg-red-100 text-red-700",
+  5: "bg-green-500/18 text-green-700 dark:text-green-300 ring-1 ring-green-500/35",
+  4: "bg-blue-500/18 text-blue-700 dark:text-blue-300 ring-1 ring-blue-500/35",
+  3: "bg-amber-500/18 text-amber-700 dark:text-amber-300 ring-1 ring-amber-500/35",
+  2: "bg-red-500/18 text-red-700 dark:text-red-300 ring-1 ring-red-500/35",
 }
 
 // Просрочка: дедлайн прошёл, а работа ещё не сдана и не проверена.
