@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react"
 import Icon from "../components/Icon"
 import FormulaBackdrop from "../components/FormulaBackdrop"
+import StatCounters from "../components/StatCounters"
+import { BANK_STATS } from "./bankStats"
 
 // Продающий лендинг перед регистрацией. Объясняет ценность платформы
 // и убеждает зарегистрироваться — отдельно для репетитора, ученика и
@@ -229,11 +231,15 @@ const SUBJECTS = [
   { name: "Математика база", exam: "ЕГЭ" },
 ]
 
+// Цифры берём из bankStats.js (его считает scripts/bank-stats.mjs по самому
+// банку). Ничего не вписано руками — цифра на витрине всегда настоящая.
+// Подписи — в именительном падеже: тогда они не «спорят» с числом
+// (201 → «номер», 202 → «номера») и остаются верными при любом пересчёте.
 const STATS = [
-  { n: "13", l: "предметов ОГЭ и ЕГЭ" },
-  { n: "Сотни", l: "типов заданий" },
-  { n: "по ФИПИ", l: "варианты по образцу" },
-  { n: "3-в-1", l: "репетитор, ученик, родитель" },
+  { n: BANK_STATS.subjects, label: "предметы ОГЭ и ЕГЭ" },
+  { n: BANK_STATS.numbers, label: "номера заданий" },
+  { n: BANK_STATS.types, label: "типажи заданий" },
+  { text: "∞", label: "варианты не повторяются" },
 ]
 
 // ── Мини-визуалы (декоративные макеты продукта) ──
@@ -554,14 +560,7 @@ function Landing({ onStart }) {
 
         {/* ── Цифры ── */}
         <section className="max-w-6xl mx-auto w-full px-4 py-8">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {STATS.map((s) => (
-              <div key={s.l} className="glass rounded-2xl p-4 text-center">
-                <div className={`text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r ${cfg.grad}`}>{s.n}</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-snug">{s.l}</div>
-              </div>
-            ))}
-          </div>
+          <StatCounters items={STATS} grad={cfg.grad} />
         </section>
 
         {/* ── Роли ── */}
