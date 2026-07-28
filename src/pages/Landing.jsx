@@ -690,7 +690,7 @@ function Landing({ onStart }) {
               </div>
               {/* key — чтобы текст геро мягко въезжал при смене роли */}
               <div key={role} className="slide-up">
-                <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-gray-900 leading-[1.05] text-balance">
+                <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight text-gray-900 leading-[1.05] text-balance">
                   {cfg.hero.title}{" "}
                   <span className={`text-transparent bg-clip-text bg-gradient-to-r ${cfg.grad}`}>
                     {cfg.hero.accent}
@@ -721,7 +721,7 @@ function Landing({ onStart }) {
 
         {/* ── Почему задания нельзя нагуглить ── */}
         <section className="max-w-6xl mx-auto w-full px-4 py-8">
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900 text-center mb-6">
+          <h2 className="font-display text-2xl sm:text-3xl font-semibold tracking-tight text-gray-900 text-center mb-6">
             <Highlight text="Эти задания нельзя нагуглить" mark="нельзя нагуглить" tone={cfg.mark} />
           </h2>
           <div className="grid sm:grid-cols-3 gap-3">
@@ -742,7 +742,7 @@ function Landing({ onStart }) {
         {/* ── Что обычно мешает ── */}
         <section className="max-w-6xl mx-auto w-full px-4 py-8">
           <div className="text-center mb-6">
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900">Что обычно мешает</h2>
+            <h2 className="font-display text-2xl sm:text-3xl font-semibold tracking-tight text-gray-900">Что обычно мешает</h2>
             <p className="mt-2 text-gray-500 dark:text-gray-400">Нажмите на знакомое — покажем, как это решается.</p>
           </div>
           {/* items-start: свёрнутая карточка не должна растягиваться под высоту
@@ -766,7 +766,7 @@ function Landing({ onStart }) {
           {/* Контент выбранной роли — key перезапускает stagger при переключении */}
           <div key={role} className="slide-up">
             <div className="text-center mb-7">
-              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900">
+              <h2 className="font-display text-2xl sm:text-3xl font-semibold tracking-tight text-gray-900">
                 <Highlight text={cfg.tagline} mark={cfg.taglineMark} tone={cfg.mark} />
               </h2>
               <p className="mt-2 text-gray-500 dark:text-gray-400 max-w-2xl mx-auto">{cfg.lead}</p>
@@ -833,7 +833,7 @@ function Landing({ onStart }) {
         {/* ── Предметы ── */}
         <section className="max-w-6xl mx-auto w-full px-4 py-10">
           <div className="text-center mb-6">
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900">
+            <h2 className="font-display text-2xl sm:text-3xl font-semibold tracking-tight text-gray-900">
               <Highlight
                 text={`Банк заданий по ${BANK_STATS.subjects} предметам`}
                 mark={`по ${BANK_STATS.subjects} предметам`}
@@ -860,7 +860,7 @@ function Landing({ onStart }) {
         {/* ── Разборы возможностей выбранной роли ── */}
         <section key={`deep-${role}`} className="max-w-6xl mx-auto w-full px-4 py-6 space-y-6 slide-up">
           <div className="text-center">
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900">
+            <h2 className="font-display text-2xl sm:text-3xl font-semibold tracking-tight text-gray-900">
               {role === "tutor" ? "Что получает репетитор" : role === "student" ? "Что получает ученик" : "Что видит родитель"}
             </h2>
           </div>
@@ -901,7 +901,7 @@ function Landing({ onStart }) {
           <div className={`relative overflow-hidden rounded-3xl bg-gradient-to-br ${cfg.grad} px-6 sm:px-12 py-12 text-center text-white shadow-xl ${cfg.glow}`}>
             <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "radial-gradient(circle at 20% 30%, white 0%, transparent 45%), radial-gradient(circle at 85% 70%, white 0%, transparent 40%)" }} />
             <div key={`final-${role}`} className="relative slide-up">
-              <h2 className="text-2xl sm:text-4xl font-bold tracking-tight">{cfg.final.title}</h2>
+              <h2 className="font-display text-2xl sm:text-4xl font-semibold tracking-tight">{cfg.final.title}</h2>
               <p className="mt-3 text-white/80 max-w-xl mx-auto">{cfg.final.sub}</p>
               <div className="mt-7 flex flex-col sm:flex-row gap-3 justify-center">
                 <button

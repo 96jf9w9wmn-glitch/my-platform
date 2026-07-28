@@ -20,6 +20,10 @@
 :root {
   --font-sans: "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont,
     "Helvetica Neue", system-ui, sans-serif;
+  /* Витринное начертание — только заголовки лендинга и приветствий (см. .font-display).
+     Внутри рабочих экранов (таблицы, формы, задания) остаётся SF Pro: там важна
+     плотность и одинаковая ширина цифр, а не характер. Приём — brilliant.org. */
+  --font-display: "New York", "Iowan Old Style", Georgia, "Times New Roman", serif;
   --glass-bg: rgba(255, 255, 255, 0.72);
   --glass-bg-strong: rgba(255, 255, 255, 0.98);
   --glass-border: rgba(255, 255, 255, 0.55);
@@ -614,6 +618,16 @@ button.w-full:not([disabled]):not(.no-press):active::after,
 .dark .flex-col > button:not([disabled]):not(.no-press):not(.self-start):not(.self-center):not(.self-end):not(.w-auto):not(.mx-auto):active::after,
 .dark .grid > button:not([disabled]):not(.no-press):not(.self-start):not(.self-center):not(.self-end):not(.w-auto):not(.mx-auto):active::after {
   background: rgba(255, 255, 255, 0.08);
+}
+
+/* Витринный заголовок: serif поверх sans-подзаголовка (приём brilliant.org).
+   Вешать ТОЛЬКО на заголовки лендинга, приветствий и пустых состояний —
+   в рабочих экранах характер шрифта мешает читать плотные таблицы и условия.
+   Насыщенность задаётся в разметке (font-semibold): serif в 700 на крупном
+   кегле выглядит грузно, а перебивать утилиту Tailwind из этого класса нельзя. */
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.015em;
 }
 
 /* Stat card hover lift */
