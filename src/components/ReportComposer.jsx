@@ -11,6 +11,34 @@ const CONF = [
   { id: "confident", label: "уверенно" },
 ]
 
+// Имя ученика не уходит в DeepSeek: сервис в КНР, а имя школьника —
+// персональные данные, их передача за границу требует отдельного согласия
+// (152-ФЗ). Поэтому имя вырезается здесь, в браузере, а в готовый черновик
+// подставляется обратно. Модель на его месте пишет метку NAME_TOKEN.
+const NAME_TOKEN = "{{ИМЯ}}"
+
+// В свободном тексте имя склоняется («Ваня решил» → «у Вани»), поэтому ищем не
+// точное слово, а основу с любым коротким окончанием. Обычный \b здесь не
+// годится: в JS он считает кириллицу небуквенной — вместо него запрет на
+// продолжение слова справа.
+function nameRegexes(name) {
+  return String(name || "")
+    .split(/[\s,]+/)
+    .filter((w) => w.length >= 3)
+    .map((w) => {
+      const stem = w.slice(0, Math.max(3, w.length - 2)).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      return new RegExp(`${stem}[а-яёa-z]{0,3}(?![а-яёa-zA-ZА-ЯЁ])`, "gi")
+    })
+}
+
+function hideName(text, name) {
+  return nameRegexes(name).reduce((acc, re) => acc.replace(re, NAME_TOKEN), String(text || ""))
+}
+
+function restoreName(text, name) {
+  return String(text || "").split(NAME_TOKEN).join(name || "ученик")
+}
+
 function ReportComposer({ student }) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -33,15 +61,28 @@ function ReportComposer({ student }) {
     }
   }
 
+  // То же самое, но для отправки наружу: без имени — ни отдельным полем, ни
+  // внутри заметок, куда репетитор его пишет свободным текстом.
+  function forModel(src) {
+    return {
+      period: src.period,
+      notes: hideName(src.notes, src.studentName),
+      results: hideName(src.results, src.studentName),
+    }
+  }
+
   async function generate() {
     setOpen(true)
     setError("")
     setLoading(true)
+    // Отчёт читает родитель, поэтому подставляем имя, а не «Иванов Иван».
+    const source = collectSource()
+    const firstName = String(source.studentName || "").split(/\s+/)[0]
     try {
       const res = await fetch("/api/lesson-report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(collectSource()),
+        body: JSON.stringify(forModel(source)),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -50,7 +91,15 @@ function ReportComposer({ student }) {
         setDraft({ summary: "", topics: [], next_steps: "" })
         return
       }
-      setDraft({ summary: data.summary || "", topics: data.topics || [], next_steps: data.next_steps || "" })
+      setDraft({
+        summary: restoreName(data.summary, firstName),
+        topics: (data.topics || []).map((t) => ({
+          ...t,
+          title: restoreName(t.title, firstName),
+          comment: restoreName(t.comment, firstName),
+        })),
+        next_steps: restoreName(data.next_steps, firstName),
+      })
     } catch {
       setError("Сеть недоступна — заполните отчёт вручную")
       setDraft({ summary: "", topics: [], next_steps: "" })

@@ -33,13 +33,32 @@ export function safeParse(raw) {
   try { return JSON.parse(fixed) } catch { return null }
 }
 
-function buildPrompt({ studentName, period, notes, results, weakTypes }) {
+// Имя ученика сюда НЕ передаётся: DeepSeek — сервис в КНР, а имя школьника это
+// персональные данные, и их отправка была бы трансграничной передачей (152-ФЗ).
+// Клиент вырезает имя из текста перед отправкой и подставляет обратно в готовый
+// черновик; модель пишет вместо имени метку NAME_TOKEN. Поле studentName
+// игнорируется намеренно — на случай, если его пришлёт старый билд фронтенда.
+const NAME_TOKEN = "{{ИМЯ}}"
+
+// Телефон и почта в заметках модели не нужны ни для чего — вырезаем.
+// Телефон ищем строго в формате 3-3-2-2 («+7 (900) 123-45-67», «89001234567»),
+// а не «любые 10+ цифр подряд»: широкий шаблон съедает даты занятий 2026-07-29,
+// которые в заметках как раз есть.
+export function scrubContacts(value) {
+  return String(value || "")
+    .replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, "[почта]")
+    .replace(/(?:\+7|\b8|\b7)?[\s(-]*\d{3}[\s)-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}\b/g, "[телефон]")
+}
+
+function buildPrompt({ period, notes, results, weakTypes }) {
   return [
     "Ты — помощник репетитора. Составь короткий отчёт РОДИТЕЛЮ о занятиях.",
     "Пиши по-русски, спокойно и по делу, без рекламы и без обращения к ученику.",
     "НИЧЕГО НЕ ВЫДУМЫВАЙ: если данных мало, так и напиши в summary и оставь topics пустым.",
     "",
-    `Ученик: ${studentName || "не указан"}`,
+    `Имя ученика не передаётся. Там, где по смыслу нужно имя, пиши ровно ${NAME_TOKEN} —`,
+    "эту метку подставят вместо имени уже после тебя. Не придумывай имя сам.",
+    "",
     `Период: ${period || "последние занятия"}`,
     `Заметки репетитора: ${notes || "нет"}`,
     `Результаты работ: ${results || "нет"}`,
@@ -86,9 +105,18 @@ export default async function handler(req, res) {
   }
 
   const body = req.body || {}
-  if (!body.studentName && !body.notes && !body.results) {
+  if (!body.notes && !body.results) {
     res.status(400).json({ error: "Нет данных для отчёта: нужны хотя бы заметки или результаты" })
     return
+  }
+
+  // Второй рубеж: имя вырезает клиент, но телефон или почта могли попасть в
+  // свободный текст заметок мимо него. Наружу они уходить не должны.
+  const safe = {
+    period: scrubContacts(body.period),
+    notes: scrubContacts(body.notes),
+    results: scrubContacts(body.results),
+    weakTypes: scrubContacts(body.weakTypes),
   }
 
   let { model } = await pickModel(apiKey).catch(() => ({ model: MODEL_PREFERENCE[0] }))
@@ -99,7 +127,7 @@ export default async function handler(req, res) {
     body: JSON.stringify({
       model: m,
       temperature: 0.3,
-      messages: [{ role: "user", content: buildPrompt(body) }],
+      messages: [{ role: "user", content: buildPrompt(safe) }],
     }),
   })
 
