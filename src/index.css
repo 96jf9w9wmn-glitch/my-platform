@@ -16,9 +16,9 @@
   }
 }
 
-/* ── SF Pro / iOS typography ── */
+/* ── System font stack (San Francisco на Apple, Segoe UI / Roboto на остальных) ── */
 :root {
-  --font-sans: "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont,
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", system-ui, sans-serif;
   /* Витринное начертание — только заголовки лендинга и приветствий (см. .font-display).
      Внутри рабочих экранов (таблицы, формы, задания) остаётся SF Pro: там важна
