@@ -13,8 +13,16 @@
 //      переносится в историю ученика ровно один раз (флаг payment_orders.applied
 //      захватывается атомарно).
 
+//
+// Сюда же прилетают уведомления об оплате ПОДПИСКИ репетитора на платформу
+// (другой магазин ЮKassa). Отличаем их по metadata.kind === "subscription":
+// заказ ищем в subscription_orders и продлеваем тариф, а не пишем в историю
+// ученика. Если магазин платформы отдельный, в его кабинете можно указать
+// адрес /api/subscription-webhook — это тот же самый обработчик.
+
 import { createClient } from "@supabase/supabase-js"
 import { ykAuth } from "./yookassa.js"
+import { ykPlatformAuth } from "./plan-gate.js"
 
 const API = "https://api.yookassa.ru/v3"
 
@@ -95,9 +103,12 @@ export default async function handler(req, res) {
     return
   }
 
-  const auth = ykAuth()
+  // Магазинов может быть два (репетиторский и платформенный), а какому именно
+  // принадлежит платёж, до запроса неизвестно. Поэтому спрашиваем по очереди:
+  // чужой магазин на GET /payments/{id} отвечает 404, свой — платежом.
+  const auths = [...new Set([ykAuth(), ykPlatformAuth()].filter(Boolean))]
   const db = admin()
-  if (!auth || !db) {
+  if (!auths.length || !db) {
     // Сервер не настроен — просим ЮKassa повторить позже (не 200).
     res.status(503).json({ error: "not configured" })
     return
@@ -112,18 +123,33 @@ export default async function handler(req, res) {
   }
 
   // Единственный достоверный источник — сам API ЮKassa.
-  let payment
+  let payment = null
+  let notFound = false
   try {
-    const r = await fetch(`${API}/payments/${encodeURIComponent(paymentId)}`, {
-      headers: { Authorization: auth },
-    })
-    payment = await r.json().catch(() => null)
-    if (!r.ok || !payment?.id) {
-      res.status(503).json({ error: "cannot verify payment" })
-      return
+    for (const a of auths) {
+      const r = await fetch(`${API}/payments/${encodeURIComponent(paymentId)}`, {
+        headers: { Authorization: a },
+      })
+      const body = await r.json().catch(() => null)
+      if (r.ok && body?.id) { payment = body; break }
+      if (r.status === 404) { notFound = true; continue }
     }
   } catch {
     res.status(503).json({ error: "yookassa unreachable" })
+    return
+  }
+  if (!payment) {
+    // Платежа нет ни в одном нашем магазине — повторять бессмысленно, отвечаем 200.
+    // Любая другая причина (сеть, 5xx) — 503, чтобы ЮKassa попробовала снова.
+    res.status(notFound ? 200 : 503).json(
+      notFound ? { ok: true, unknown_payment: true } : { error: "cannot verify payment" }
+    )
+    return
+  }
+
+  // Подписка репетитора на платформу — своя ветка: продлеваем тариф.
+  if (payment?.metadata?.kind === "subscription") {
+    await applySubscription(db, payment, res)
     return
   }
 
@@ -220,4 +246,64 @@ export default async function handler(req, res) {
   }
 
   res.status(200).json({ ok: true, applied: true })
+}
+
+// Подписка на платформу. Продление делает RPC subscription_apply: захват флага
+// applied и сдвиг срока обязаны быть одной атомарной операцией, иначе повторная
+// доставка уведомления продлила бы тариф дважды.
+async function applySubscription(db, payment, res) {
+  const orderId = payment?.metadata?.order_id
+  const { data: order } = await db
+    .from("subscription_orders")
+    .select("id, tutor_id, plan, months, amount, status, applied")
+    .eq(orderId ? "id" : "yk_payment_id", orderId || payment.id)
+    .maybeSingle()
+
+  if (!order) {
+    res.status(200).json({ ok: true, unknown_order: true })
+    return
+  }
+
+  if (payment.status === "canceled") {
+    await db.from("subscription_orders")
+      .update({ status: "canceled", yk_payment_id: payment.id })
+      .eq("id", order.id)
+      .eq("applied", false)
+    res.status(200).json({ ok: true, status: "canceled" })
+    return
+  }
+
+  if (payment.status !== "succeeded") {
+    res.status(200).json({ ok: true, status: payment.status })
+    return
+  }
+
+  const paidAmount = Number(payment?.amount?.value || 0)
+  if (Math.abs(paidAmount - Number(order.amount || 0)) > 0.01) {
+    // Заплатили не ту сумму — фиксируем платёж, но тариф не выдаём: такой случай
+    // разбирается руками, автоматически «Студию» за 100 ₽ выдавать нельзя.
+    await db.from("subscription_orders")
+      .update({
+        status: "succeeded",
+        yk_payment_id: payment.id,
+        paid_at: payment.captured_at || new Date().toISOString(),
+      })
+      .eq("id", order.id)
+    res.status(200).json({ ok: true, amount_mismatch: true })
+    return
+  }
+
+  const { data: applied, error } = await db.rpc("subscription_apply", {
+    p_order: order.id,
+    p_payment: payment.id,
+    p_paid_at: payment.captured_at || new Date().toISOString(),
+  })
+
+  if (error) {
+    // Миграция не выполнена или база недоступна — просим ЮKassa повторить.
+    res.status(503).json({ error: "apply failed", detail: error.message })
+    return
+  }
+
+  res.status(200).json({ ok: true, applied: Boolean(applied), already_applied: !applied })
 }

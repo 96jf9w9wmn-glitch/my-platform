@@ -6,6 +6,8 @@ import FormulaBackdrop from "../components/FormulaBackdrop"
 import StudentProfile from "./StudentProfile"
 import { supabase } from "../supabase"
 import { isLessonConducted, getInitials, plural, formatPhone } from "../utils"
+import { usePlan } from "../subscription"
+import { PlanHint } from "../components/PlanLock"
 
 function formatDate(date) {
   return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`
@@ -62,6 +64,12 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
   const [pending, setPending] = useState([])
   const [acceptingRequest, setAcceptingRequest] = useState(null)
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+
+  // Лимит учеников по тарифу. Уже заведённых не трогаем и не прячем — упирается
+  // только добавление нового.
+  const { plan, within, limit, openPlans } = usePlan()
+  const studentsLimit = limit("students")
+  const canAddStudent = within("students", students.length)
 
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 768)
@@ -169,15 +177,30 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={createInvite}
+            onClick={() => (canAddStudent ? createInvite() : openPlans())}
             disabled={inviting}
             className="press-fill px-3 py-2 text-sm rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200 bg-white/70 dark:bg-white/[0.08] disabled:opacity-50"
           >
             {inviting ? "Готовим…" : "Пригласить"}
           </button>
-          <button onClick={() => setShowModal(true)} className="btn-primary px-3 py-2 text-sm">+ Добавить</button>
+          <button
+            onClick={() => (canAddStudent ? setShowModal(true) : openPlans())}
+            className="btn-primary px-3 py-2 text-sm"
+            title={canAddStudent ? undefined : `На тарифе «${plan.name}» доступно ${studentsLimit} учеников`}
+          >
+            + Добавить
+          </button>
         </div>
       </div>
+
+      {!canAddStudent && (
+        <div className="mb-4">
+          <PlanHint feature="students">
+            На тарифе «{plan.name}» можно вести {studentsLimit} {plural(studentsLimit, "ученика", "ученика", "учеников")}.
+            Уже добавленные остаются на месте — чтобы добавить нового, поднимите тариф.
+          </PlanHint>
+        </div>
+      )}
 
       {invite && (
         <div className="glass rounded-2xl p-4 mb-4">
@@ -230,7 +253,7 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
                   <div className="text-xs text-gray-500 mt-0.5">{formatPhone(req.phone)}</div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <button onClick={() => setAcceptingRequest(req)} className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 font-medium">Принять</button>
+                  <button onClick={() => (canAddStudent ? setAcceptingRequest(req) : openPlans())} className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 font-medium">Принять</button>
                   <button onClick={() => handleReject(req.id)} className="text-sm text-gray-400 hover:text-red-600 px-2 py-1.5">Отклонить</button>
                 </div>
               </div>

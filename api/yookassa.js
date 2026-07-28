@@ -21,6 +21,7 @@
 
 import { createClient } from "@supabase/supabase-js"
 import { rateLimit } from "./generate-hw.js"
+import { featureAllowed } from "./plan-gate.js"
 
 const API = "https://api.yookassa.ru/v3"
 const MAX_AMOUNT = 300_000        // предохранитель от опечатки в цене занятия
@@ -33,6 +34,8 @@ function admin() {
   return createClient(url, key, { auth: { persistSession: false } })
 }
 
+// Магазин РЕПЕТИТОРА: сюда ученик платит за занятия. Магазин ПЛАТФОРМЫ (куда
+// репетитор платит за подписку) — отдельный, его ключи живут в api/subscription.js.
 export function ykAuth() {
   const shopId = process.env.YOOKASSA_SHOP_ID
   const secret = process.env.YOOKASSA_SECRET_KEY
@@ -141,6 +144,15 @@ export default async function handler(req, res) {
     res.status(403).json({ error: "Репетитор пока не подключил онлайн-оплату" })
     return
   }
+  // Приём онлайн-оплаты — возможность платных тарифов репетитора. Тумблер в его
+  // настройках мог остаться включённым с оплаченного периода, поэтому право
+  // проверяем здесь, а не только в интерфейсе.
+  const access = await featureAllowed(db, account.tutor_id, "onlinePay")
+  if (!access.ok) {
+    res.status(403).json({ error: "Репетитор пока не подключил онлайн-оплату" })
+    return
+  }
+
   const maxLessons = settings.max_lessons || DEFAULT_MAX_LESSONS
   if (lessons > maxLessons) {
     res.status(400).json({ error: `Не больше ${maxLessons} занятий за раз` })

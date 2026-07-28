@@ -7,6 +7,8 @@ import WeakTypes from "../components/WeakTypes"
 import BoardHistory from "../components/BoardHistory"
 import ReportComposer from "../components/ReportComposer"
 import { parseLocalDate, isLessonConducted, getInitials, formatPhone } from "../utils"
+import { usePlan } from "../subscription"
+import { PlanLock } from "../components/PlanLock"
 
 const MESSENGER_LABELS = {
   telegram: "Telegram",
@@ -279,6 +281,7 @@ function EditModal({ student, onClose, onSave }) {
 }
 
 function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
+  const { allows } = usePlan()
   const [showEdit, setShowEdit] = useState(false)
   const [hwAvg, setHwAvg] = useState(null)
   const [hwCount, setHwCount] = useState(0)
@@ -541,12 +544,24 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
       {/* Правая колонка: занятия + оплата */}
       <div className="flex flex-col gap-3">
         {/* Блок появляется, только когда по ученику накопились попытки */}
-        <ReportComposer student={student} />
+        {allows("parentReports")
+          ? <ReportComposer student={student} />
+          : <PlanLock
+              feature="parentReports"
+              title="Отчёт родителю"
+              text="Отчёт об уроке с темами, ошибками и рекомендациями — родитель открывает его по коду."
+            />}
 
         <WeakTypes studentId={student.id} studentName={student.name} />
 
         {/* Доски прошлых занятий — блока нет, пока ни одной не сохранено */}
-        <BoardHistory studentId={student.id} studentName={student.name} />
+        {allows("boardHistory")
+          ? <BoardHistory studentId={student.id} studentName={student.name} />
+          : <PlanLock
+              feature="boardHistory"
+              title="Доски занятий"
+              text="Снимки доски за каждое занятие: можно вернуться к разобранной задаче через месяц."
+            />}
 
         <div className="glass p-4">
           <h2 className="text-sm font-medium mb-3">Ближайшие занятия</h2>

@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react"
 import Icon from "./Icon"
 import { supabase } from "../supabase"
+import { usePlan } from "../subscription"
+import { PlanHint } from "./PlanLock"
 
 // Карточка «Онлайн-оплата» на странице финансов репетитора.
 //
@@ -27,6 +29,11 @@ export default function OnlinePaySettings({ tutorId }) {
   const [orders, setOrders] = useState([])
   const [ready, setReady] = useState(false)      // миграция yookassa.sql выполнена
   const [saving, setSaving] = useState(false)
+
+  // Приём онлайн-оплаты — возможность платных тарифов. Тот же барьер стоит на
+  // сервере (api/yookassa.js), здесь — чтобы тумблер не обманывал репетитора.
+  const { allows } = usePlan()
+  const canOnlinePay = allows("onlinePay")
 
   useEffect(() => {
     fetch("/api/yookassa").then((r) => r.json()).then(setHealth).catch(() => setHealth({ ok: false }))
@@ -92,7 +99,7 @@ export default function OnlinePaySettings({ tutorId }) {
         <button
           type="button"
           onClick={() => save({ online_enabled: !enabled })}
-          disabled={saving || !health?.ok}
+          disabled={saving || !health?.ok || !canOnlinePay}
           aria-label={enabled ? "Выключить приём оплаты" : "Включить приём оплаты"}
           className={`no-press relative w-12 h-7 rounded-full transition-colors disabled:opacity-40 active:scale-[0.96] ${
             enabled ? "bg-[#007AFF]" : "bg-black/[0.12] dark:bg-white/[0.16]"
@@ -105,6 +112,14 @@ export default function OnlinePaySettings({ tutorId }) {
       <p className="text-xs text-gray-500 mb-4">
         Ученик платит картой или через СБП, деньги приходят на ваш счёт в ЮKassa. Оплата попадает в историю автоматически.
       </p>
+
+      {!canOnlinePay && (
+        <div className="mb-4">
+          <PlanHint feature="onlinePay">
+            Ученик платит картой или через СБП прямо из кабинета — деньги идут вам.
+          </PlanHint>
+        </div>
+      )}
 
       {!health?.ok && health && (
         <div className="text-xs text-amber-600 dark:text-amber-300 bg-amber-500/10 ring-1 ring-inset ring-amber-500/20 rounded-xl px-3 py-2.5 mb-4">

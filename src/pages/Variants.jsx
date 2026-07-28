@@ -6,6 +6,8 @@ import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
 import { assembleFromBank, rerollTask, rerollModule, isModuleNumber, PART2_NUMBERS, makeAnswerChoices } from "./taskBankApi"
 import { generateVariantPdf } from "./variantPdf"
+import { usePlan } from "../subscription"
+import { PlanHint } from "../components/PlanLock"
 
 // Лист варианта в трёх видах (приём Kuta Software): ученику — без ответов,
 // проверяющему — с ответами, для разбора — с решениями. Пересобираем из
@@ -692,6 +694,11 @@ function Variants({ user, students = [], embedded = false, addOpen, onAddOpenCha
   const controlled = typeof onAddOpenChange === "function"
   const showAdd = controlled ? addOpen : showAddInternal
   const setShowAdd = controlled ? onAddOpenChange : setShowAddInternal
+
+  // Сборка вариантов — возможность платных тарифов. Уже выданные варианты
+  // остаются доступными: тариф ограничивает создание нового, а не историю.
+  const { allows, openPlans } = usePlan()
+  const canVariants = allows("variants")
   const [selectedVariant, setSelectedVariant] = useState(null)
   const [selectedSubmission, setSelectedSubmission] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -750,10 +757,16 @@ function Variants({ user, students = [], embedded = false, addOpen, onAddOpenCha
       {!controlled && (
         <div className="flex justify-between items-center">
           {!embedded && <h1 className="text-xl font-medium">Варианты</h1>}
-          <button onClick={() => setShowAdd(true)} className="btn-primary text-sm px-4 py-2 flex items-center gap-1.5 ml-auto">
+          <button onClick={() => (canVariants ? setShowAdd(true) : openPlans())} className="btn-primary text-sm px-4 py-2 flex items-center gap-1.5 ml-auto">
             + Новый вариант
           </button>
         </div>
+      )}
+
+      {!canVariants && (
+        <PlanHint feature="variants">
+          Сборка вариантов ОГЭ/ЕГЭ из банка заданий и выдача их ученикам с PDF.
+        </PlanHint>
       )}
 
       <div className="grid grid-cols-3 gap-3">
@@ -931,7 +944,7 @@ function Variants({ user, students = [], embedded = false, addOpen, onAddOpenCha
           </div>
         </div>
       )}
-      {showAdd && (
+      {showAdd && canVariants && (
         <AddVariantModal tutorId={user.id} students={students} examFocus={user.profile?.exam_focus} onClose={() => setShowAdd(false)} onAdd={(v) => { setVariants((prev) => [v, ...prev]); setShowAdd(false) }} />
       )}
 

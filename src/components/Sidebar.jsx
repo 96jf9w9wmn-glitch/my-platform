@@ -9,6 +9,7 @@ const navItems = [
   { label: "Оплата", id: "payment" },
   { label: "Результаты", id: "results" },
   { label: "Банк заданий", id: "taskgen" },
+  { label: "Подписка", id: "subscription" },
 ]
 
 function Sidebar({ activePage, setActivePage, badges = {} }) {

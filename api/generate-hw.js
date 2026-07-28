@@ -4,6 +4,15 @@
 //
 // Настройка: в дашборде Vercel → Project → Settings → Environment Variables
 // добавить DEEPSEEK_API_KEY (значение — ключ из platform.deepseek.com).
+//
+// Тариф. Генерация есть только на платных тарифах, у «Про» — 150 в месяц
+// (см. src/plans.js). Проверка идёт по токену репетитора и включается, только
+// когда задан SUPABASE_SERVICE_ROLE_KEY: без него сервер не может ни узнать,
+// кто пришёл, ни посчитать расход, и функция работает как раньше.
+// Побочный плюс: с ключом функция перестаёт быть анонимной — это закрывает
+// старый долг «anon-доступ жжёт баланс DeepSeek».
+
+import { admin, tutorFromRequest, bumpAiUsage, refundAiUsage } from "./plan-gate.js"
 
 const DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
 const DEEPSEEK_MODELS_URL = "https://api.deepseek.com/models"
@@ -89,6 +98,31 @@ export default async function handler(req, res) {
     return
   }
 
+  // Тариф и месячный лимит. Списываем генерацию ДО обращения к DeepSeek
+  // (иначе две вкладки одновременно проскочат мимо лимита), а если генерация
+  // не состоялась — возвращаем списанное обратно.
+  const db = admin()
+  let payer = null
+  if (db) {
+    const tutor = await tutorFromRequest(db, req)
+    if (!tutor) {
+      res.status(401).json({ error: "Нужна авторизация репетитора" })
+      return
+    }
+    const usage = await bumpAiUsage(db, tutor.id)
+    if (!usage.ok) {
+      res.status(403).json({
+        error: usage.limit === 0
+          ? "ИИ-генерация ДЗ доступна на тарифах «Про» и «Студия»"
+          : `Лимит ИИ-генераций исчерпан: ${usage.used} из ${usage.limit} в этом месяце`,
+        upgrade: true,
+      })
+      return
+    }
+    if (usage.installed) payer = tutor.id
+  }
+  const refund = () => refundAiUsage(db, payer)
+
   const body = typeof req.body === "string" ? safeParse(req.body) : req.body || {}
   const topic = String(body.topic || "").trim().slice(0, MAX_TOPIC_LEN)
   const subject = String(body.subject || "").trim().slice(0, 80)
@@ -99,6 +133,7 @@ export default async function handler(req, res) {
   const asTest = String(body.format || "").trim() === "test"
 
   if (!topic) {
+    await refund()
     res.status(400).json({ error: "Не указана тема" })
     return
   }
@@ -156,6 +191,7 @@ export default async function handler(req, res) {
         }
       } else {
         console.error("DeepSeek error 400", text.slice(0, 500))
+        await refund()
         res.status(502).json({ error: "DeepSeek: 400", detail: text.slice(0, 300) })
         return
       }
@@ -164,6 +200,7 @@ export default async function handler(req, res) {
     if (!upstream.ok) {
       const text = await upstream.text()
       console.error("DeepSeek error", upstream.status, text.slice(0, 500))
+      await refund()
       res.status(502).json({ error: `DeepSeek: ${upstream.status}`, detail: text.slice(0, 300) })
       return
     }
@@ -173,6 +210,7 @@ export default async function handler(req, res) {
     const parsed = safeParse(content)
 
     if (!parsed || !Array.isArray(parsed.tasks)) {
+      await refund()
       res.status(502).json({ error: "Некорректный ответ модели", detail: content.slice(0, 300) })
       return
     }
@@ -205,6 +243,7 @@ export default async function handler(req, res) {
       tasks,
     })
   } catch (e) {
+    await refund()
     res.status(500).json({ error: "Сбой запроса к DeepSeek", detail: String(e).slice(0, 300) })
   }
 }

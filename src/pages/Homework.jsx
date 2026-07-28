@@ -5,6 +5,8 @@ import Icon from "../components/Icon"
 import Collapse from "../components/Collapse"
 import FormulaBackdrop from "../components/FormulaBackdrop"
 import { parseLocalDate, renderHomeworkMath } from "../utils"
+import { usePlan } from "../subscription"
+import { PlanHint } from "../components/PlanLock"
 // Лениво: Variants тянет весь банк заданий (генераторы на 34k строк) + jspdf.
 // Нужен только во вкладке «варианты», незачем держать его в стартовом бандле.
 const Variants = lazy(() => import("./Variants"))
@@ -83,6 +85,15 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
   const [genError, setGenError] = useState("")
   const [preview, setPreview] = useState(null) // {title, description, tasks:[{question,answer,options}]}
 
+  // Тариф: генерация есть только на платных, у «Про» — месячный лимит.
+  // Настоящая проверка на сервере (api/generate-hw.js), здесь — чтобы репетитор
+  // видел остаток и не жал кнопку в пустоту.
+  const { limit: planLimit, usage, reload: reloadPlan } = usePlan()
+  const aiLimit = planLimit("aiHomework")
+  const aiUsed = usage?.ai_homework || 0
+  const aiBlocked = aiLimit === 0
+  const aiLeft = aiLimit < 0 ? null : Math.max(0, aiLimit - aiUsed)
+
   // Сырой код ошибки («DeepSeek: 400») репетитору ничего не говорит — показываем
   // человеческий текст, а исходный оставляем в title для диагностики.
   function humanGenError(err) {
@@ -99,9 +110,15 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
     setGenError("")
     setGenerating(true)
     try {
+      // Токен репетитора: по нему сервер понимает, чей это лимит (и функция
+      // перестаёт быть анонимной).
+      const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch("/api/generate-hw", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
         body: JSON.stringify({
           topic: genTopic,
           subject: genSubject,
@@ -115,6 +132,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
         setGenError(data.error || "Ошибка генерации")
         return
       }
+      reloadPlan()   // одна генерация списана — обновляем остаток
       setPreview({
         title: data.title || genTopic,
         description: data.description || "",
@@ -330,10 +348,23 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
               className="w-full flex items-center justify-between text-sm font-medium text-blue-700 rounded-lg"
             >
               <span className="flex items-center gap-1.5"><Icon name="sparkles" size={15} />Сгенерировать по теме</span>
-              <Icon name={showGen ? "chevron-up" : "chevron-down"} size={16} />
+              <span className="flex items-center gap-2">
+                {aiLeft !== null && !aiBlocked && (
+                  <span className="text-[11px] font-normal text-blue-500/80 tabular-nums">осталось {aiLeft}</span>
+                )}
+                <Icon name={showGen ? "chevron-up" : "chevron-down"} size={16} />
+              </span>
             </button>
 
-            {showGen && (
+            {showGen && aiBlocked && (
+              <div className="mt-3">
+                <PlanHint feature="aiHomework">
+                  ИИ придумает задания по теме и оформит их тестом с автопроверкой.
+                </PlanHint>
+              </div>
+            )}
+
+            {showGen && !aiBlocked && (
               <div className="mt-3 flex flex-col gap-2.5">
                 <input
                   value={genTopic}
@@ -386,11 +417,13 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
                 <button
                   type="button"
                   onClick={handleGenerate}
-                  disabled={generating}
+                  disabled={generating || aiLeft === 0}
                   className="bg-blue-600 text-white rounded-lg py-2 text-sm hover:bg-blue-700 disabled:opacity-50 active:scale-[0.99] transition-transform flex items-center justify-center gap-1.5"
                 >
                   {generating
                     ? <><span className="loader-ring-sm" />Генерирую — это до минуты</>
+                    : aiLeft === 0
+                    ? <>Лимит на этот месяц исчерпан</>
                     : <><Icon name="sparkles" size={14} />Сгенерировать</>}
                 </button>
 
@@ -888,6 +921,9 @@ function Homework({ user, students, embedded = false }) {
   const [homework, setHomework] = useState([])
   const [showModal, setShowModal] = useState(false)
   const [showAddVariant, setShowAddVariant] = useState(false)
+  // Сборку вариантов открываем только на тарифе, где она включена.
+  const { allows, openPlans } = usePlan()
+  const canVariants = allows("variants")
   const [filter, setFilter] = useState("all")
   const [editingHw, setEditingHw] = useState(null)
 
@@ -939,7 +975,7 @@ function Homework({ user, students, embedded = false }) {
             + Задание
           </button>
         ) : (
-          <button onClick={() => setShowAddVariant(true)} className="btn-primary px-4 py-2 text-sm self-end sm:self-auto order-1 sm:order-2">
+          <button onClick={() => (canVariants ? setShowAddVariant(true) : openPlans())} className="btn-primary px-4 py-2 text-sm self-end sm:self-auto order-1 sm:order-2">
             + Новый вариант
           </button>
         )}

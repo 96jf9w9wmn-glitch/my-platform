@@ -16,6 +16,8 @@ import Schedule from "./pages/Schedule"
 import ParentDashboard from "./pages/ParentDashboard"
 import Chat from "./pages/Chat"
 import Legal from "./pages/Legal"
+import Subscription from "./pages/Subscription"
+import { SubscriptionProvider } from "./subscriptionProvider"
 import TutorOnboardingModal from "./components/TutorOnboardingModal"
 // Excalidraw тяжёлый (mermaid/katex) — грузим доску только при открытии
 const Board = lazy(() => import("./components/Board"))
@@ -246,8 +248,11 @@ function App() {
   // иначе голый id из localStorage давал мгновенный доступ без проверки токена.
   const [user, setUser] = useState(() => readStoredSession("parent_session"))
   const [loadingAuth, setLoadingAuth] = useState(() => !readStoredSession("parent_session"))
-  const [activePage, setActivePage] = useState("dashboard")
-  const [visitedPages, setVisitedPages] = useState(() => new Set(["dashboard"]))
+  // Возврат с оплаты подписки (?sub=<заказ>) должен открыть саму «Подписку»:
+  // именно там ждут подтверждения платежа.
+  const startPage = new URLSearchParams(window.location.search).get("sub") ? "subscription" : "dashboard"
+  const [activePage, setActivePage] = useState(startPage)
+  const [visitedPages, setVisitedPages] = useState(() => new Set([startPage]))
   const [chatUnread, setChatUnread] = useState(0)
   const [board, setBoard] = useState(null) // { roomId, title } — открытая доска ученика
   // Лендинг показывается первым для неавторизованного гостя; из него уходим
@@ -287,6 +292,7 @@ function App() {
     schedule: "Расписание",
     chat: "Чат",
     taskgen: "Банк заданий",
+    subscription: "Подписка",
   }
 
   function navigateTo(page) {
@@ -585,6 +591,7 @@ function App() {
   ]
 
   return (
+    <SubscriptionProvider tutorId={user.id} onOpenPlans={() => navigateTo("subscription")}>
     <div className="flex app-shell overflow-clip">
       {user.profile && !user.profile.onboarding_completed && (
         <TutorOnboardingModal
@@ -639,6 +646,7 @@ function App() {
           <div className={activePage !== "homework" ? "hidden" : "page-active"}>{visitedPages.has("homework") && <Homework user={user} students={students} />}</div>
           <div className={activePage !== "results" ? "hidden" : "page-active"}>{visitedPages.has("results") && <Results students={students} user={user} />}</div>
           <div className={activePage !== "taskgen" ? "hidden" : "page-active"}>{visitedPages.has("taskgen") && <TaskGenPreview />}</div>
+          <div className={activePage !== "subscription" ? "hidden" : "page-active"}>{visitedPages.has("subscription") && <Subscription studentsCount={students.length} />}</div>
           <div className={activePage !== "chat" ? "hidden" : "flex-1 min-h-0 flex flex-col page-active"}>{visitedPages.has("chat") && (
             <Chat
               myId={`t:${user.id}`}
@@ -682,6 +690,7 @@ function App() {
         </div>
       </div>
     </div>
+    </SubscriptionProvider>
   )
 }
 
