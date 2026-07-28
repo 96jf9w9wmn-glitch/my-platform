@@ -9272,6 +9272,83 @@ export function t18RangeContainsSeg() {
   })
 }
 
+// ── #161. Множество значений тригонометрической дроби содержит отрезок [L; H] ──
+// y = (√(a+1) − k·cos 3x + 1)/(sin²3x + a + 2√(a+1) + m + 1). Обозначим w = √(a+1) ≥ 0,
+// v = 1 + w и c = cos 3x ∈ [−1; 1]; тогда sin²3x = 1 − c², а знаменатель равен v² + m − c² > 0.
+// Производная по c имеет числитель −kc² + 2cv − k(v² + m); его дискриминант равен
+// 4(v²(1 − k²) − k²m) < 0 при k ≥ 1, поэтому КРИТИЧЕСКИХ ТОЧЕК НЕТ: функция монотонна по c,
+// и множество её значений — отрезок с концами в c = ±1, то есть [(v−k)/D; (v+k)/D], D = v² + m − 1.
+// Условие «содержит [L; H]» превращается в два неравенства вида A + B·w ⋛ 0, а их знак
+// сравнивается точно (возведением в квадрат с учётом знаков) — никакой численности.
+function signLin(A, B, s) {                                     // знак A + B√s (s ≥ 0)
+  if (Rzero(s)) return Rsign(A)                                 // √0 = 0 — знак определяет A
+  const sa = Rsign(A), sb = Rsign(B)
+  if (sb === 0) return sa
+  if (sa === 0) return sb
+  if (sa === sb) return sa
+  const c = Rcmp(Rmul(A, A), Rmul(Rmul(B, B), s))               // |A| ⋛ |B|√s
+  return sa > 0 ? (c > 0 ? 1 : c === 0 ? 0 : -1) : (c > 0 ? -1 : c === 0 ? 0 : 1)
+}
+function build161({ k, m, L, H }) {
+  if (k < 1 || m <= 0 || L >= H) return null
+  const cond = (a) => {
+    if (Rcmp(a, R(-1)) < 0) return 0                            // ОДЗ: a ≥ −1
+    const s = Radd(a, R1)                                       // w = √s
+    const T = Radd(Radd(a, R(m)), R1)                           // a + m + 1
+    const A1 = Rsub(R(1 - k), Rmul(R(L), T)), B1 = R(1 - 2 * L)  // (v − k) − L·D ≤ 0
+    const A2 = Rsub(R(1 + k), Rmul(R(H), T)), B2 = R(1 - 2 * H)  // (v + k) − H·D ≥ 0
+    return signLin(A1, B1, s) <= 0 && signLin(A2, B2, s) >= 0 ? 1 : 0
+  }
+  const crit = [R(-1)]
+  for (const [c0, c1, sgn] of [[1 - k, 1 - 2 * L, L], [1 + k, 1 - 2 * H, H]]) {
+    // (c₀ − sgn·(a + m + 1)) + c₁·w = 0 ⟹ возводим в квадрат: (c₀ − sgn(a+m+1))² = c₁²(a+1)
+    const A = [R(c0 - sgn * (m + 1)), R(-sgn)]                   // многочлен по a
+    const e = ratRoots(pSub(pMul(A, A), [R(c1 * c1), R(c1 * c1)]))
+    if (!e.allRational) return null
+    crit.push(...e.roots)
+  }
+  const set = assembleSet((a) => cond(a) === 1, crit)
+  return { set, solve: cond }
+}
+const T161 = []
+for (const k of [1, 2, 3, 4, 5]) for (const m of [1, 2, 3, 4, 5, 6]) {
+  for (const L of [0, 1, 2, 3, 4]) for (const H of [1, 2, 3, 4, 5, 6]) {
+    if (L >= H) continue
+    const r = build161({ k, m, L, H })
+    if (r && tidySet(r.set, 3)) T161.push({ k, m, L, H })
+  }
+}
+export function t18TrigRangeContains() {
+  const par = pick(T161), { k, m, L, H } = par
+  const { set, solve } = build161(par)
+  const aRange = spanRange(set)
+  const num = `√{a + 1} ${MINUS} ${k === 1 ? "" : k}cos 3x + 1`
+  const den = `sin${SUP[2]}3x + a + 2√{a + 1} + ${m + 1}`
+  return item({
+    text: `Найдите все значения a, при каждом из которых множество значений функции\n\n`
+      + `y = ${fT(num, den)}\n\nсодержит отрезок [${L}; ${H}].`,
+    set,
+    solution: `Обозначим w = √(a + 1) ≥ 0 (значит a ≥ ${MINUS}1), v = 1 + w и c = cos 3x ∈ [${MINUS}1; 1]. Так как sin${SUP[2]}3x = 1 ${MINUS} c${SUP[2]}, а v${SUP[2]} = a + 2 + 2w, знаменатель равен v${SUP[2]} + ${m} ${MINUS} c${SUP[2]} > 0, а числитель — v ${MINUS} ${k === 1 ? "" : k}c.\n`
+      + `Найдём производную по c: её числитель равен ${MINUS}${k === 1 ? "" : k}c${SUP[2]} + 2cv ${MINUS} ${k === 1 ? "" : k}(v${SUP[2]} + ${m}), и его дискриминант 4(v${SUP[2]}(1 ${MINUS} ${k * k}) ${MINUS} ${k * k * m}) отрицателен. Значит функция МОНОТОННА по c, и множество её значений — отрезок с концами при c = ±1.\n`
+      + `При c = ±1 знаменатель равен v${SUP[2]}${term(m - 1, "")}, поэтому множество значений — это отрезок от ${fT(`v ${MINUS} ${k}`, `v${SUP[2]}${term(m - 1, "")}`)} до ${fT(`v + ${k}`, `v${SUP[2]}${term(m - 1, "")}`)}.\n`
+      + `Условие «содержит [${L}; ${H}]» равносильно двум неравенствам: левый конец ≤ ${L} и правый ≥ ${H}. Каждое из них имеет вид A + B·w ⋛ 0 и решается точно.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "exists" },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => (a < -1 ? null : (1 + Math.sqrt(a + 1) + k) / ((1 + Math.sqrt(a + 1)) ** 2 + m - 1)), label: "правый конец множества значений" },
+        { f: (a) => (a < -1 ? null : (1 + Math.sqrt(a + 1) - k) / ((1 + Math.sqrt(a + 1)) ** 2 + m - 1)), label: "левый конец" },
+        { f: () => L, dash: true, label: `[${L}; ${H}]` },
+        { f: () => H, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -2, xMax: H + 4, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
 // =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
@@ -9472,6 +9549,7 @@ export const META18 = [
     ["cubic-one-root-seg", "x³+px²−ax+q = 0 — единственный корень на отрезке", t18CubicOneRootSeg],
     ["smallest-natural-gap", "наименьшее натуральное a: расстояние между крайними корнями ≥ d", t18SmallestNaturalGap],
     ["range-contains-seg", "множество значений (A+Bt)/(t²+m²) содержит отрезок [0; h]", t18RangeContainsSeg],
+    ["trig-range-contains", "множество значений (√(a+1)−k cos3x+1)/(sin²3x+…) содержит [L; H]", t18TrigRangeContains],
   ]],
   ["Оценочные «хотя бы один корень»", [
     ["sum-abs-disk", "p|x−u| + q|x+a| ≤ √(ρ²−y²) − c — существует пара (x; y)", t18SumAbsUnderDisk],
