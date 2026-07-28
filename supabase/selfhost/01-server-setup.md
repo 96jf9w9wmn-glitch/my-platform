@@ -13,7 +13,7 @@
 
 ```bash
 sudo apt update && sudo apt upgrade -y
-sudo apt install -y ca-certificates curl git ufw
+sudo apt install -y ca-certificates curl git ufw rsync
 ```
 
 Docker (официальный репозиторий, не `apt install docker.io` — там старая версия):
@@ -162,16 +162,31 @@ ssh -N -L 5432:127.0.0.1:5432 root@<IP сервера>
 #!/usr/bin/env bash
 set -euo pipefail
 DIR=/var/backups/precettore
+VOLUMES=/opt/precettore-db/volumes
 mkdir -p "$DIR"
 STAMP=$(date +%F-%H%M)
+
+# 1. База — ежедневно, 14 копий. Дамп маленький (текст), место не съест.
 docker compose -f /opt/precettore-db/docker-compose.yml exec -T db \
   pg_dump -U postgres -d postgres --clean --if-exists \
   | gzip > "$DIR/db-$STAMP.sql.gz"
-# файлы Storage
-tar czf "$DIR/storage-$STAMP.tar.gz" -C /opt/precettore-db/volumes storage
-# держим 14 дней
-find "$DIR" -name '*.gz' -mtime +14 -delete
+find "$DIR" -name 'db-*.sql.gz' -mtime +14 -delete
+
+# 2. Файлы Storage — зеркало, а НЕ ежедневный архив. Полный tar фотографий
+#    решений каждую ночь × 14 дней означает 14-кратный объём Storage на том же
+#    диске: при 5 ГБ файлов это 70 ГБ и переполнение 80-гигабайтного диска.
+#    rsync переносит только изменившееся и держит одну копию.
+rsync -a --delete "$VOLUMES/storage/" "$DIR/storage-current/"
+
+# 3. Архив Storage — раз в неделю (по воскресеньям), держим 2 копии.
+if [ "$(date +%u)" = "7" ]; then
+  tar czf "$DIR/storage-$STAMP.tar.gz" -C "$VOLUMES" storage
+  ls -1t "$DIR"/storage-*.tar.gz | tail -n +3 | xargs -r rm --
+fi
 ```
+
+Потолок по месту получается примерно «объём Storage × 3» вместо × 14.
+Следить всё равно: `df -h /` в чеклисте приёмки.
 
 ```bash
 chmod +x /opt/precettore-db/backup.sh
