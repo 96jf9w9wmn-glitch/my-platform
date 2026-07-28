@@ -8059,6 +8059,155 @@ function item117(par, kind) {
 export function t18AllXSegment() { return item117(pick(T117), "all") }
 export function t18NoSolSegment() { return item117(pick(T117), "none") }
 
+// ── Два модуля сразу: k|x + a| + |x² − px + q| и x − 2|x| + |(x−a)(x−a−2)| (эталон #94, #96) ──
+// Точки излома здесь ЗАВИСЯТ от a, поэтому куски собираются заново при каждом a, а знаки
+// модулей определяются подстановкой середины куска. Дальше — тот же quadMin.
+
+// #94. f(x) = k|x + a| + |x² − px + q| — «наименьшее значение ⋚ C».
+function pieces94(a, { k, r1, r2 }) {
+  const p = r1 + r2, q = r1 * r2
+  const cuts = uniqSorted([Rneg(a), R(r1), R(r2)])
+  const bs = ["-inf", ...cuts, "+inf"]
+  const out = []
+  for (let i = 0; i + 1 < bs.length; i++) {
+    const lo = bs[i], hi = bs[i + 1]
+    const mid = lo === "-inf" ? Rsub(hi, R1) : hi === "+inf" ? Radd(lo, R1) : Rdiv(Radd(lo, hi), R(2))
+    const s1 = Rsign(Radd(mid, a)) >= 0 ? 1 : -1
+    const s2 = Rsign(Radd(Rsub(Rmul(mid, mid), Rmul(R(p), mid)), R(q))) >= 0 ? 1 : -1
+    out.push({ P: [Radd(R(s2 * q), Rmul(R(k * s1), a)), R(-s2 * p + k * s1), R(s2)], lo, hi })
+  }
+  return out
+}
+function build94({ k, r1, r2, C, how }) {
+  const p = r1 + r2, q = r1 * r2
+  const solve = (a) => (cmpOk(pwExtreme(pieces94(a, { k, r1, r2 }), "min"), C, how) ? 1 : 0)
+  const crit = [R(-r1), R(-r2)]
+  // f(−a) = |a² + pa + q| = C — уравнение имеет смысл только при C ≥ 0
+  if (Rsign(C) >= 0) for (const s of [1, -1]) {
+    const e = ratRoots([Rsub(R(q), Rmul(R(s), C)), R(p), R1])
+    if (!e.allRational) return null
+    crit.push(...e.roots)
+  }
+  for (const r of [r1, r2]) for (const s of [1, -1]) crit.push(Radd(R(-r), Rmul(R(s), Rdiv(C, R(k)))))
+  for (const s1 of [1, -1]) {                                  // вершина куска с ветвями вверх
+    const c1 = k * s1 - p
+    crit.push(R(-c1, 2))                                       // −a = вершина
+    crit.push(Rdiv(Rsub(Radd(C, R(c1 * c1, 4)), R(q)), R(k * s1)))
+  }
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+const T94 = []
+for (const k of [1, 2, 3, 4]) for (const [r1, r2] of [[-1, 2], [1, 5], [-2, 1], [0, 3], [-3, 1], [2, 4]]) {
+  for (const Cn of [-4, -2, 0, 1, 2, 3, 4, 6]) for (const how of ["lt", "gt"]) {
+    const r = build94({ k, r1, r2, C: R(Cn), how })
+    if (r && tidySet(r.set, 3)) T94.push({ k, r1, r2, C: R(Cn), how })
+  }
+}
+export function t18MinTwoAbs() {
+  const par = pick(T94), { k, r1, r2, C, how } = par
+  const { set, solve } = build94(par)
+  const aRange = spanRange(set)
+  const p = r1 + r2, q = r1 * r2
+  const quad = `x${SUP[2]}${term(-p, "x")}${term(q, "")}`
+  return item({
+    text: `${HEAD_MIN}\n\nf(x) = ${k === 1 ? "" : k}|x + a| + |${quad}|\n\n${cmpStr[how]} ${Rstr(C)}.`,
+    set,
+    solution: `Точки излома: x = ${MINUS}a (первый модуль) и корни второго трёхчлена x = ${nS(r1)}, x = ${nS(r2)} (${quad} = (x ${MINUS} ${nS(r1)})(x ${MINUS} ${nS(r2)})).\n`
+      + `Между соседними изломами f — обычный квадратный трёхчлен, поэтому её наименьшее значение достигается либо в точке излома, либо в вершине куска, направленного ветвями вверх.\n`
+      + `В изломах: f(${MINUS}a) = |a${SUP[2]}${term(p, "a")}${term(q, "")}|, f(${nS(r1)}) = ${k === 1 ? "" : k}|a${term(r1, "")}|, f(${nS(r2)}) = ${k === 1 ? "" : k}|a${term(r2, "")}|.\n`
+      + `Вершина куска, где оба модуля раскрыты со знаком «+» или «−», стоит в точке x = ${Rstr(R(p - k, 2))} либо x = ${Rstr(R(p + k, 2))}, и значение в ней линейно по a.\n`
+      + `Сравнивая наименьшее из этих значений с ${Rstr(C)}, получаем ответ.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "exists" },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => -a, label: "x = −a" },
+        { f: () => r1, dash: true, label: `x = ${nS(r1)}` },
+        { f: () => r2, dash: true, label: `x = ${nS(r2)}` },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: Math.min(r1, 0) - 5, xMax: r2 + 5, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// #96. f(x) = x − k|x| + |x² − 2(a+w)x + a² + 2wa| — «наименьшее значение ⋚ C».
+// Второй модуль — это |(x − a)(x − a − 2w)|, поэтому изломы стоят в 0, a и a + 2w.
+function pieces96(a, { k, w }) {
+  const cuts = uniqSorted([R0, a, Radd(a, R(2 * w))])
+  const bs = ["-inf", ...cuts, "+inf"]
+  const out = []
+  for (let i = 0; i + 1 < bs.length; i++) {
+    const lo = bs[i], hi = bs[i + 1]
+    const mid = lo === "-inf" ? Rsub(hi, R1) : hi === "+inf" ? Radd(lo, R1) : Rdiv(Radd(lo, hi), R(2))
+    const s0 = Rsign(mid) >= 0 ? 1 : -1
+    const s2 = Rsign(Rmul(Rsub(mid, a), Rsub(mid, Radd(a, R(2 * w))))) >= 0 ? 1 : -1
+    const A2 = Radd(Rmul(a, a), Rmul(R(2 * w), a))                      // a² + 2wa
+    out.push({
+      P: [Rmul(R(s2), A2), Rsub(R(1 - k * s0), Rmul(R(s2), Radd(Rmul(R(2), a), R(2 * w)))), R(s2)],
+      lo, hi,
+    })
+  }
+  return out
+}
+function build96({ k, w, C, how }) {
+  const solve = (a) => (cmpOk(pwExtreme(pieces96(a, { k, w }), "min"), C, how) ? 1 : 0)
+  const crit = [R0, R(-2 * w)]
+  // f(0) = |a² + 2wa| = C — только при C ≥ 0 (модуль отрицательным не бывает)
+  if (Rsign(C) >= 0) for (const s of [1, -1]) {
+    const e = ratRoots([Rneg(Rmul(R(s), C)), R(2 * w), R1])
+    if (!e.allRational) return null
+    crit.push(...e.roots)
+  }
+  // f(a) = a − k|a| = C и f(a + 2w) = (a + 2w) − k|a + 2w| = C
+  for (const [sh, s] of [[0, 1], [0, -1], [2 * w, 1], [2 * w, -1]]) {
+    const A = 1 - k * s
+    if (A !== 0) crit.push(Rdiv(Rsub(Radd(C, R(k * s * sh)), R(sh)), R(A)))
+  }
+  for (const s0 of [1, -1]) {                                           // вершина куска (s₂ = +1)
+    // c₁ = (1 − k·s₀) − (2a + 2w), вершина x = a + w − (1 − k·s₀)/2, значение = (a² + 2wa) − c₁²/4
+    const t = 1 - k * s0, u = t - 2 * w
+    crit.push(R(u, 2))                                                  // вершина совпала с нулём
+    // значение в вершине равно a(2w + u) − u²/4 — оно ЛИНЕЙНО по a
+    if (2 * w + u !== 0) crit.push(Rdiv(Radd(C, R(u * u, 4)), R(2 * w + u)))
+  }
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+const T96 = []
+for (const k of [2, 3, 4]) for (const w of [1, 2, 3]) for (const Cn of [-10, -8, -6, -5, -4, -3, -2, -1, 0, 2]) for (const how of ["gt", "lt"]) {
+  const r = build96({ k, w, C: R(Cn), how })
+  if (r && tidySet(r.set, 3)) T96.push({ k, w, C: R(Cn), how })
+}
+export function t18MinAbsPlusShifted() {
+  const par = pick(T96), { k, w, C, how } = par
+  const { set, solve } = build96(par)
+  const aRange = spanRange(set)
+  const quad = `x${SUP[2]} ${MINUS} 2(a${term(w, "")})x + a${SUP[2]}${term(2 * w, "a")}`
+  return item({
+    text: `${HEAD_MIN}\n\nf(x) = x ${MINUS} ${k === 1 ? "" : k}|x| + |${quad}|\n\n${cmpStr[how]} ${Rstr(C)}.`,
+    set,
+    solution: `Трёхчлен под вторым модулем раскладывается: ${quad} = (x ${MINUS} a)(x ${MINUS} a ${MINUS} ${2 * w}), поэтому изломы стоят в точках x = 0, x = a и x = a + ${2 * w}.\n`
+      + `На каждом куске f — квадратный трёхчлен, значит минимум достигается либо в изломе, либо в вершине куска с ветвями вверх.\n`
+      + `В изломах: f(0) = |a${SUP[2]}${term(2 * w, "a")}|, f(a) = a ${MINUS} ${k === 1 ? "" : k}|a|, f(a + ${2 * w}) = a + ${2 * w} ${MINUS} ${k === 1 ? "" : k}|a + ${2 * w}|.\n`
+      + `Сравнивая наименьшее из значений с ${Rstr(C)}, получаем ответ.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "exists" },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => a, label: "x = a" },
+        { f: (a) => a + 2 * w, label: `x = a + ${2 * w}` },
+        { f: () => 0, dash: true, label: "x = 0" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -8, xMax: 8, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
 // =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
@@ -8236,6 +8385,8 @@ export const META18 = [
     ["min-lin-absquad", "наименьшее значение (αa+β)x + γa+δ + |x²−px+q|", t18MinLinPlusAbsQuad],
     ["extrema-count", "f(x) = x² − c|x−a²| − kx — более двух точек экстремума", t18ExtremaCountAbs],
     ["max-point-abs", "тот же типаж: есть хотя бы одна точка максимума", t18MaxPointAbs],
+    ["min-two-abs", "наименьшее значение k|x+a| + |x²−px+q|", t18MinTwoAbs],
+    ["min-abs-shifted", "наименьшее значение x − k|x| + |(x−a)(x−a−2w)|", t18MinAbsPlusShifted],
   ]],
   ["Неравенства «при всех x»", [
     ["all-x-fraction", "|(x²+ax+c)/(px²+qx+r)| < M при всех x", t18AllXFraction],
