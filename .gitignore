@@ -47,3 +47,5 @@ capacitor.config.json
 CLAUDE.md
 .vercel
 .env*
+# ...кроме шаблона без значений — он нужен в репозитории
+!.env.example
