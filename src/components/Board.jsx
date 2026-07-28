@@ -36,7 +36,9 @@ const makeId = (author) => `${author}-${Date.now().toString(36)}-${(uidCounter++
 const rectsIntersect = (a, b) => !(a.maxX < b.minX || a.minX > b.maxX || a.maxY < b.minY || a.minY > b.maxY)
 const pointInBBox = (x, y, b) => x >= b.minX && x <= b.maxX && y >= b.minY && y <= b.maxY
 
-const SHOW_CURSORS = false // курсоры собеседников временно скрыты
+// Курсор собеседника держится CURSOR_HOLD мс после последнего движения, потом гаснет
+const CURSOR_HOLD = 3000, CURSOR_FADE = 400
+const POINTER_RATE = 60 // не чаще 1 посылки в 60 мс (~16/сек) — экономим realtime
 const DASH_STYLES = ["solid", "dashed", "dotted"]
 
 // Расстояние от точки до отрезка
@@ -187,6 +189,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const drawing = useRef(null)
   const cursors = useRef(new Map())   // userId -> {x, y, name} в МИРОВЫХ координатах
   const cursorTimers = useRef(new Map()) // userId -> таймер авто-скрытия неподвижного курсора
+  const lastPointerSend = useRef(0)   // троттлинг рассылки своего курсора
   const view = useRef({ x: 0, y: 0, scale: 1 }) // экранное смещение (css px) + масштаб
   const pointers = useRef(new Map())  // активные указатели для мультитача
   const gesture = useRef(null)        // состояние пинча
@@ -357,16 +360,51 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       const m = marquee.current
       drawDashRect({ minX: Math.min(m.x0, m.x1), minY: Math.min(m.y0, m.y1), maxX: Math.max(m.x0, m.x1), maxY: Math.max(m.y0, m.y1) }, "#007AFF", [5, 4])
     }
-    // Курсоры собеседников (пока отключено — SHOW_CURSORS)
-    if (SHOW_CURSORS) {
-      for (const [id, c] of cursors.current) {
-        const sx = c.x * v.scale + v.x, sy = c.y * v.scale + v.y
-        const col = colorFor(id)
-        ctx.beginPath(); ctx.arc(sx, sy, 5, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill()
-        ctx.font = "500 13px -apple-system, system-ui, sans-serif"
-        ctx.fillText(c.name || "", sx + 9, sy + 4)
+    // Курсоры собеседников: стрелка своего цвета и подпись именем. Через
+    // CURSOR_HOLD после последнего движения курсор гаснет за CURSOR_FADE —
+    // забытый чужой курсор посреди чертежа мешает читать доску.
+    const now = performance.now()
+    let fading = false
+    for (const [id, c] of cursors.current) {
+      const age = now - c.t
+      if (age > CURSOR_HOLD + CURSOR_FADE) { cursors.current.delete(id); continue }
+      const alpha = age <= CURSOR_HOLD ? 1 : 1 - (age - CURSOR_HOLD) / CURSOR_FADE
+      if (age > CURSOR_HOLD - 100) fading = true
+      const sx = c.x * v.scale + v.x, sy = c.y * v.scale + v.y
+      const col = colorFor(id)
+      ctx.save()
+      ctx.globalAlpha = alpha
+      // Стрелка: белая обводка держит её читаемой на любом фоне и на штрихах
+      ctx.beginPath()
+      ctx.moveTo(sx, sy)
+      ctx.lineTo(sx + 12, sy + 12.5)
+      ctx.lineTo(sx + 5.2, sy + 12.6)
+      ctx.lineTo(sx + 2.4, sy + 18.5)
+      ctx.closePath()
+      ctx.fillStyle = col
+      ctx.strokeStyle = "#fff"
+      ctx.lineWidth = 1.5
+      ctx.lineJoin = "round"
+      ctx.fill()
+      ctx.stroke()
+      const name = c.name || ""
+      if (name) {
+        ctx.font = "600 11px -apple-system, system-ui, sans-serif"
+        const tw = ctx.measureText(name).width
+        const bx = sx + 14, by = sy + 16, bw = tw + 12, bh = 18
+        ctx.beginPath()
+        if (ctx.roundRect) ctx.roundRect(bx, by, bw, bh, 9)
+        else ctx.rect(bx, by, bw, bh)
+        ctx.fillStyle = col
+        ctx.fill()
+        ctx.fillStyle = "#fff"
+        ctx.textBaseline = "middle"
+        ctx.fillText(name, bx + 6, by + bh / 2 + 0.5)
       }
+      ctx.restore()
     }
+    // Пока курсор гаснет, кадры нужны сами по себе — событий больше не будет
+    if (fading) scheduleDraw()
   }
 
   const scheduleDraw = useCallback(() => {
@@ -442,12 +480,13 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         if (payload.bgColor != null) setBgColor(payload.bgColor)
       })
       .on("broadcast", { event: "pointer" }, ({ payload }) => {
-        cursors.current.set(payload.id, { x: payload.x, y: payload.y, name: payload.name })
-        // Прячем неподвижный курсор через 2.5с после последнего движения
+        cursors.current.set(payload.id, { x: payload.x, y: payload.y, name: payload.name, t: performance.now() })
+        // Само затухание считает redraw по времени; таймер нужен только чтобы
+        // разбудить отрисовку, когда событий больше не приходит.
         clearTimeout(cursorTimers.current.get(payload.id))
         cursorTimers.current.set(payload.id, setTimeout(() => {
-          cursors.current.delete(payload.id); cursorTimers.current.delete(payload.id); scheduleDraw()
-        }, 2500))
+          cursorTimers.current.delete(payload.id); scheduleDraw()
+        }, CURSOR_HOLD))
         scheduleDraw()
       })
       .on("presence", { event: "sync" }, () => {
@@ -671,9 +710,14 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       scheduleDraw()
       return
     }
-    // курсор собеседникам (в мировых координатах)
+    // курсор собеседникам (в мировых координатах), не чаще POINTER_RATE:
+    // pointermove сыплется сотнями в секунду, а канал у нас общий с рисованием.
     const w = toWorld(e.clientX, e.clientY)
-    channelRef.current?.send({ type: "broadcast", event: "pointer", payload: { id: userId, name: userName, x: w[0], y: w[1] } })
+    const nowMs = performance.now()
+    if (nowMs - lastPointerSend.current >= POINTER_RATE) {
+      lastPointerSend.current = nowMs
+      channelRef.current?.send({ type: "broadcast", event: "pointer", payload: { id: userId, name: userName, x: w[0], y: w[1] } })
+    }
 
     if (!drawing.current) return
     const pts = drawing.current.points
