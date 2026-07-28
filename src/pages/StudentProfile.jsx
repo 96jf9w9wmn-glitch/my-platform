@@ -4,6 +4,7 @@ import { supabase } from "../supabase"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
 import WeakTypes from "../components/WeakTypes"
+import BoardHistory from "../components/BoardHistory"
 import ReportComposer from "../components/ReportComposer"
 import { parseLocalDate, isLessonConducted, getInitials, formatPhone } from "../utils"
 
@@ -543,6 +544,9 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
         <ReportComposer student={student} />
 
         <WeakTypes studentId={student.id} studentName={student.name} />
+
+        {/* Доски прошлых занятий — блока нет, пока ни одной не сохранено */}
+        <BoardHistory studentId={student.id} studentName={student.name} />
 
         <div className="glass p-4">
           <h2 className="text-sm font-medium mb-3">Ближайшие занятия</h2>

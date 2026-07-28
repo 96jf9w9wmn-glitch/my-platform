@@ -9,6 +9,8 @@ import StudentSidebar from "../components/StudentSidebar"
 import FormulaBackdrop from "../components/FormulaBackdrop"
 import Chat from "./Chat"
 import StudentOnboardingModal from "../components/StudentOnboardingModal"
+import BoardHistory from "../components/BoardHistory"
+
 const Board = lazy(() => import("../components/Board"))
 const Practice = lazy(() => import("./Practice"))
 import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, formatPhone, answersEqual, plural } from "../utils"
@@ -1645,6 +1647,10 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
             userName={user.profile?.name || "Ученик"}
             theme={dark ? "dark" : "light"}
             onClose={() => setBoardOpen(false)}
+            /* Снимок занятия ученик пишет только через RPC с токеном сессии:
+               прямой записи в board_snapshots у него нет (RLS включён). */
+            account={user.id}
+            token={user.token}
           />
         </Suspense>
       )}
@@ -1910,6 +1916,9 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                 />
 
                 <StudentScheduleCalendar student={student} onOpenBoard={() => setBoardOpen(true)} />
+
+                {/* Доски прошлых занятий — можно вернуться к разобранному (только чтение) */}
+                <BoardHistory studentId={student.id} studentName={user.profile?.name} account={user.id} token={user.token} />
 
               </div>
             )}
