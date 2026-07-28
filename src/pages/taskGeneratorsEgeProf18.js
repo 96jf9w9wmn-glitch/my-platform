@@ -8641,6 +8641,80 @@ export function t18SysTwoLinesArc() {
   })
 }
 
+// ── #70. {2x − 2y − 2d = |x² + y² − ρ²|; пучок через вершину} — «более двух решений» ──
+// Модуль раскрывается двумя способами и даёт ДВЕ окружности с фиксированными центрами
+// (1; −1) и (−1; 1): (x−1)² + (y+1)² = ρ² − 2d + 2 и (x+1)² + (y−1)² = ρ² + 2d + 2.
+// Обе они пересекают прямую x − y = d в одних и тех же двух точках, а знак подмодульного
+// выражения на каждой окружности равносилен именно неравенству x − y ⋛ d. Поэтому кривая —
+// «лепесток» из двух дуг с общими концами. Пучок проведён через вершину лепестка, так что
+// одна точка есть всегда; остальные считаются точно (Штурм на луче).
+// Условие рациональности: 2ρ² − d² — точный квадрат (тогда вершины рациональны).
+function build70({ rho2, d }) {
+  const s = isSq(2 * rho2 - d * d)
+  if (s === null || s === 0) return null
+  if ((d + s) % 2 !== 0) return null
+  const x0 = (d + s) / 2, y0 = x0 - d                    // вершина пучка
+  const R1 = rho2 - 2 * d + 2, R2 = rho2 + 2 * d + 2     // квадраты радиусов
+  if (R1 <= 0 || R2 <= 0) return null
+  // подстановка y = y₀ + a(x − x₀) в (x − cx)² + (y − cy)² = R
+  const poly = (a, cx, cy, RR) => {
+    const k = a, b = Rsub(R(y0), Rmul(a, R(x0)))         // y = kx + b
+    const c0 = Radd(Rsub(Radd(Rmul(R(cx), R(cx)), Rmul(Rsub(b, R(cy)), Rsub(b, R(cy)))), R(RR)), R0)
+    const c1 = Radd(R(-2 * cx), Rmul(R(2), Rmul(k, Rsub(b, R(cy)))))
+    const c2 = Radd(R(1), Rmul(k, k))
+    return [c0, c1, c2]
+  }
+  const solve = (a) => {
+    const c = Rcmp(a, R(1))                     // сравнение a с 1
+    const P1 = poly(a, 1, -1, R1), P2 = poly(a, -1, 1, R2)
+    if (c === 0) return countRoots(P1, "-inf", "+inf", false, false)
+    if (c < 0) return countRoots(P1, R(x0), "+inf", true, false) + countRoots(P2, R(x0), "+inf", false, false)
+    return countRoots(P1, "-inf", R(x0), false, true) + countRoots(P2, "-inf", R(x0), false, false)
+  }
+  const crit = [R(1)]
+  for (const [cx, cy, RR] of [[1, -1, R1], [-1, 1, R2]]) {
+    // касание: (a(cx − x₀) + y₀ − cy)² = R(a² + 1)
+    const A = cx - x0, B = y0 - cy
+    const e = ratRoots([R(B * B - RR), R(2 * A * B), R(A * A - RR)])
+    if (!e.allRational) return null
+    crit.push(...e.roots)
+  }
+  return { set: assembleSet((a) => solve(a) >= 3, crit), solve, x0, y0, R1, R2 }
+}
+const T70 = []
+for (const rho2 of [1, 2, 4, 5, 9, 16, 25, 36, 49]) for (const d of [-6, -5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 6]) {
+  const r = build70({ rho2, d })
+  if (r && tidySet(r.set, 3)) T70.push({ rho2, d })
+}
+export function t18SysPetalPencil() {
+  const par = pick(T70), { rho2, d } = par
+  const { set, solve, x0, y0, R1, R2 } = build70(par)
+  const aRange = spanRange(set)
+  const line = y0 === 0 ? `y = a(x${term(-x0, "")})` : `y${term(-y0, "")} = a(x${term(-x0, "")})`
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:2x ${MINUS} 2y ${MINUS} ${2 * d === 1 ? "" : nS(2 * d)} = |x${SUP[2]} + y${SUP[2]} ${MINUS} ${rho2}|¦${line}⟧\n\nимеет более двух различных решений.`,
+    set,
+    solution: `Раскроем модуль. Если x${SUP[2]} + y${SUP[2]} ≥ ${rho2}, то x${SUP[2]} + y${SUP[2]} ${MINUS} ${rho2} = 2x ${MINUS} 2y ${MINUS} ${nS(2 * d)}, то есть (x ${MINUS} 1)${SUP[2]} + (y + 1)${SUP[2]} = ${R1}.\n`
+      + `Если же x${SUP[2]} + y${SUP[2]} < ${rho2}, получаем (x + 1)${SUP[2]} + (y ${MINUS} 1)${SUP[2]} = ${R2}.\n`
+      + `На первой окружности x${SUP[2]} + y${SUP[2]} ${MINUS} ${rho2} = 2(x ${MINUS} y ${MINUS} ${nS(d)}), на второй — ${MINUS}2(x ${MINUS} y ${MINUS} ${nS(d)}), поэтому первая берётся при x ${MINUS} y ≥ ${nS(d)}, вторая — при x ${MINUS} y > ${nS(d)}. Значит кривая состоит из двух дуг с общими концами (${nS(x0)}; ${nS(y0)}) и (${nS(d - x0)}; ${nS(-x0)}).\n`
+      + `Пучок ${line} проходит через вершину (${nS(x0)}; ${nS(y0)}), поэтому одна общая точка есть при любом a; условие x ${MINUS} y ⋛ ${nS(d)} на прямой равносильно (1 ${MINUS} a)(x ${MINUS} ${nS(x0)}) ⋛ 0, то есть отсекает луч.\n`
+      + `Больше двух решений — когда прямая, кроме вершины, задевает дуги ещё хотя бы дважды; границы дают касания и значение a = 1 (прямая идёт вдоль хорды).\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "atLeast", n: 3 },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: () => x0, dash: true, label: "вершина пучка" },
+        { f: (a) => x0 + Math.sqrt(Math.max(0, R1)) / Math.sqrt(1 + a * a), label: "дуга 1" },
+        { f: (a) => x0 - Math.sqrt(Math.max(0, R2)) / Math.sqrt(1 + a * a), label: "дуга 2" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: x0 - 8, xMax: x0 + 8, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
 // =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
@@ -8830,6 +8904,7 @@ export const META18 = [
     ["sys-cubic-abs-line", "{(x−h)(y+kx−kh) = |x−h|³; y = mx+a} — ровно четыре решения", t18SysCubicAbsLine],
     ["sys-two-halfcircles", "{x(x²+y²+αy+β) = |x|(γy+δ); 4y = 3x+a} — ровно три решения", t18SysTwoHalfCircles],
     ["sys-two-lines-arc", "{y²−αx−c = |x²−px−q|; x−2y = a} — более двух решений", t18SysTwoLinesArc],
+    ["sys-petal-pencil", "{2x−2y−2d = |x²+y²−ρ²|; пучок через вершину} — более двух решений", t18SysPetalPencil],
   ]],
   ["Дроби и замены (остаток раздела M)", [
     ["two-fractions-one", "(x−pa)/(x+c) + (x−d)/(x−a) = 1 — ровно один корень", t18TwoFractionsOne],
