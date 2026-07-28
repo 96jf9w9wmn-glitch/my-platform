@@ -3,6 +3,7 @@ import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
 import Collapse from "../components/Collapse"
 import FormulaBackdrop from "../components/FormulaBackdrop"
+import { TUTOR_STEPS } from "../onboardingSteps"
 import { Highlight } from "../components/Mark"
 import { supabase } from "../supabase"
 import { BANK_STATS } from "./bankStats"
@@ -34,11 +35,8 @@ const ROLES = {
       { icon: "dollar", title: "Финансы без Excel", desc: "Оплаты, расходы и чистая прибыль считаются автоматически." },
       { icon: "calendar", title: "Расписание и напоминания", desc: "Уроки, история занятий и напоминания — всегда под рукой." },
     ],
-    steps: [
-      { t: "Заведите учеников", d: "Добавьте карточки и раздайте коды родителям." },
-      { t: "Соберите вариант", d: "За минуту из банка по образцу ФИПИ — с чертежами и ответами." },
-      { t: "Ведите занятия", d: "Доска, ДЗ, расписание и оплаты — в одном кабинете." },
-    ],
+    // Тот же список, что показывается репетитору в анкете после регистрации
+    steps: TUTOR_STEPS,
     cta: { label: "Создать аккаунт репетитора", mode: "register" },
     card: { title: "Я репетитор", sub: "Ученики, ДЗ, варианты и оплата" },
     pains: [

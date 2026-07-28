@@ -589,7 +589,11 @@ function App() {
       {user.profile && !user.profile.onboarding_completed && (
         <TutorOnboardingModal
           tutorId={user.id}
-          onComplete={(fields) => setUser((prev) => ({ ...prev, profile: { ...prev.profile, ...fields } }))}
+          // second arg — куда пойти сразу после анкеты («Добавить первого ученика»)
+          onComplete={(fields, goTo) => {
+            setUser((prev) => ({ ...prev, profile: { ...prev.profile, ...fields } }))
+            if (goTo) navigateTo(goTo)
+          }}
         />
       )}
 

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import Icon from "./Icon"
+import { TUTOR_STEPS } from "../onboardingSteps"
 
 const SUBJECTS = ["Математика", "Русский язык", "Английский язык", "Физика", "Химия", "Обществознание", "Информатика", "Другое"]
 const EXPERIENCE_OPTIONS = ["До 1 года", "1–3 года", "3–5 лет", "5+ лет"]
@@ -63,6 +64,10 @@ function TutorOnboardingModal({ tutorId, onComplete }) {
   const [teachingFormat, setTeachingFormat] = useState(null)
   const [examFocus, setExamFocus] = useState([])
   const [saving, setSaving] = useState(false)
+  // Анкета сохранена — вместо мгновенного закрытия показываем маршрут первого
+  // занятия: сразу после регистрации кабинет пуст, и без подсказки непонятно,
+  // с чего начинать. Те же три шага обещал лендинг (TUTOR_STEPS).
+  const [done, setDone] = useState(null)   // сохранённые поля или null
   const advanceTimer = useRef(null)
 
   useEffect(() => () => clearTimeout(advanceTimer.current), [])
@@ -104,7 +109,7 @@ function TutorOnboardingModal({ tutorId, onComplete }) {
     const { error } = await supabase.from("tutors").update({ ...fields, onboarding_completed: true }).eq("id", tutorId)
     setSaving(false)
     if (error) { alert("Не удалось сохранить: " + error.message); return }
-    onComplete({ ...fields, onboarding_completed: true })
+    setDone({ ...fields, onboarding_completed: true })
   }
 
   function handleSkip() {
@@ -123,6 +128,48 @@ function TutorOnboardingModal({ tutorId, onComplete }) {
   }
 
   const current = STEPS[step]
+
+  // Экран маршрута: анкета уже сохранена, дальше — куда идти в пустом кабинете
+  if (done) {
+    return createPortal(
+      <div className="fixed inset-0 glass-overlay flex items-center justify-center z-50 p-4">
+        <div className="glass-modal w-full max-w-md flex flex-col overflow-hidden step-enter-forward">
+          <div className="px-6 pt-7 pb-2 flex flex-col items-center text-center gap-1">
+            <div className="w-12 h-12 rounded-2xl bg-green-50 dark:bg-green-500/15 flex items-center justify-center text-green-600 dark:text-green-400 mb-2">
+              <Icon name="check" size={22} />
+            </div>
+            <h2 className="font-display text-xl font-semibold">Готово, кабинет ваш</h2>
+            <p className="text-xs text-gray-400">Три шага до первого занятия</p>
+          </div>
+
+          <div className="px-6 pt-4 pb-2 flex flex-col gap-2.5">
+            {TUTOR_STEPS.map((s, i) => (
+              <div key={s.t} className="flex gap-3 items-start" style={{ animationDelay: `${i * 70}ms` }}>
+                <div className="w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-white text-sm font-bold bg-gradient-to-br from-blue-500 to-blue-600 shadow shadow-blue-500/25">
+                  {i + 1}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold">{s.t}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-snug">{s.d}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="px-6 pb-6 pt-4 flex flex-col gap-2">
+            <button onClick={() => onComplete(done, "students")}
+              className="press-fill w-full h-[50px] rounded-full font-semibold text-white bg-gradient-to-r from-blue-500 to-blue-600 shadow-lg shadow-blue-500/25 hover:opacity-95 transition-opacity">
+              Добавить первого ученика
+            </button>
+            <button onClick={() => onComplete(done)} className="press-fill w-full py-2 rounded-xl text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
+              Осмотрюсь сам
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body
+    )
+  }
 
   return createPortal(
     <div className="fixed inset-0 glass-overlay flex items-center justify-center z-50 p-4">
