@@ -8453,6 +8453,195 @@ export function t18TwoFractionsOne() {
 }
 
 // =============================================================================
+// РАЗДЕЛ J (продолжение). Кривая с модулем + прямая (эталон #73, #74)
+// =============================================================================
+// В обеих задачах первая строка ПОСЛЕ раскрытия модуля распадается на вертикальную прямую
+// x = h (на ней равенство выполняется тождественно) и две «половинки» кривой — по одной
+// в каждой полуплоскости. Прямая всегда пересекает вертикаль ровно в одной точке, а на
+// половинках число точек считается точно: подстановка даёт квадратный трёхчлен, и корни
+// на нужном луче считает Штурм.
+
+// #73. {(x − h)(y + kx − kh) = |x − h|³; y = mx + a} — «ровно четыре различных решения».
+// При t = x − h ≠ 0 равенство равносильно y = t² − kt при t > 0 и y = −t² − kt при t < 0,
+// а t = 0 (вертикаль x = h) годится при любом y. Подставляя прямую y = mt + b (b = mh + a),
+// получаем t² − st − b = 0 на t > 0 и t² + st + b = 0 на t < 0, где s = k + m.
+function build73({ h, k, m }) {
+  const s = k + m
+  if (s <= 0) return null
+  const bOf = (a) => Radd(Rmul(R(m), R(h)), a)
+  const solve = (a) => {
+    const b = bOf(a)
+    const n1 = countRoots([Rneg(b), R(-s), R1], R0, "+inf", false, false)
+    const n2 = countRoots([b, R(s), R1], "-inf", R0, false, false)
+    return 1 + n1 + n2
+  }
+  const crit = [R(-m * h), R(-s * s - 4 * m * h, 4), R(s * s - 4 * m * h, 4)]
+  return { set: assembleSet((a) => solve(a) === 4, crit), solve, s }
+}
+const T73 = []
+for (const h of [-2, -1, 0, 1, 2, 3]) for (const k of [1, 2, 3, 4]) for (const m of [1, 2, 3]) {
+  const r = build73({ h, k, m })
+  if (r && tidySet(r.set, 3)) T73.push({ h, k, m })
+}
+export function t18SysCubicAbsLine() {
+  const par = pick(T73), { h, k, m } = par
+  const { set, solve, s } = build73(par)
+  const aRange = spanRange(set)
+  const inner = `y${term(k, "x")}${term(-k * h, "")}`
+  const absPart = `|x${term(-h, "")}|${SUP[3]}`
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:(x${term(-h, "")})(${inner}) = ${absPart}¦y = ${m === 1 ? "" : m}x + a⟧\n\nимеет ровно четыре различных решения.`,
+    set,
+    solution: `Обозначим t = x${term(-h, "")}. Первая строка принимает вид t(y + ${k === 1 ? "" : k}t) = |t|${SUP[3]}.\n`
+      + `При t = 0 (то есть на всей вертикальной прямой x = ${nS(h)}) она выполняется тождественно — это целая прямая точек кривой.\n`
+      + `При t > 0 делим на t: y = t${SUP[2]} ${MINUS} ${k === 1 ? "" : k}t; при t < 0 получаем y = ${MINUS}t${SUP[2]} ${MINUS} ${k === 1 ? "" : k}t.\n`
+      + `Прямая y = ${m === 1 ? "" : m}x + a в координате t записывается как y = ${m === 1 ? "" : m}t + b, где b = a${term(m * h, "")}; вертикаль она пересекает ровно один раз при любом a.\n`
+      + `Остаётся t${SUP[2]} ${MINUS} ${s === 1 ? "" : s}t ${MINUS} b = 0 на луче t > 0 и t${SUP[2]} + ${s === 1 ? "" : s}t + b = 0 на луче t < 0. Первое даёт два корня при ${MINUS}${Rstr(R(s * s, 4))} < b < 0 и один при b > 0, второе — два при 0 < b < ${Rstr(R(s * s, 4))} и один при b < 0.\n`
+      + `Итого четыре точки ⟺ b ≠ 0 и |b| < ${Rstr(R(s * s, 4))}.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 4 },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: () => h, dash: true, label: `x = ${nS(h)} (вертикаль кривой)` },
+        { f: (a) => h + (s + Math.sqrt(Math.max(0, s * s + 4 * (m * h + a)))) / 2, label: "точки на правой ветви" },
+        { f: (a) => h - (s + Math.sqrt(Math.max(0, s * s - 4 * (m * h + a)))) / 2, label: "точки на левой ветви" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: h - 6, xMax: h + 6, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// #74. {x(x² + y² + αy + β) = |x|(γy + δ); 4y = 3x + a} — «ровно три различных решения».
+// При x > 0 сокращаем на x: x² + y² + (α−γ)y + (β−δ) = 0 — окружность с центром на оси Oy;
+// при x < 0 знак модуля меняется и получается ДРУГАЯ окружность; x = 0 подходит при любом y.
+// Прямая взята с «пифагоровым» угловым коэффициентом 3/4: тогда и касание (a = 4c ± 5ρ),
+// и прохождение через точки окружности на оси Oy (a = 4(c ± ρ)) — рациональные значения a
+// (при прямой y = x + a, как у оригинала, они содержали бы √2).
+function build74({ c1, r1, c2, r2 }) {
+  if ((c1 * c1 - r1 * r1) % 2 !== (c2 * c2 - r2 * r2) % 2) return null
+  const al = -(c1 + c2), ga = c1 - c2
+  const be = (c1 * c1 - r1 * r1 + c2 * c2 - r2 * r2) / 2
+  const de = (c2 * c2 - r2 * r2 - c1 * c1 + r1 * r1) / 2
+  if (!Number.isInteger(be) || !Number.isInteger(de)) return null
+  // 25x² + 6(a − 4c)x + (a − 4c)² − 16ρ² = 0 — подстановка прямой в окружность
+  const poly = (a, c, r) => {
+    const u = Rsub(a, R(4 * c))
+    return [Rsub(Rmul(u, u), R(16 * r * r)), Rmul(R(6), u), R(25)]
+  }
+  const solve = (a) => 1
+    + countRoots(poly(a, c1, r1), R0, "+inf", false, false)
+    + countRoots(poly(a, c2, r2), "-inf", R0, false, false)
+  const crit = []
+  for (const [c, r] of [[c1, r1], [c2, r2]]) {
+    crit.push(R(4 * c + 5 * r), R(4 * c - 5 * r), R(4 * (c + r)), R(4 * (c - r)))
+  }
+  return { set: assembleSet((a) => solve(a) === 3, crit), solve, al, be, ga, de }
+}
+const T74 = []
+for (const c1 of [0, 1, 2]) for (const r1 of [1, 2, 3]) for (const c2 of [-2, -1, 0, 1]) for (const r2 of [1, 2, 3]) {
+  if (c1 === c2 && r1 === r2) continue
+  const r = build74({ c1, r1, c2, r2 })
+  if (r && tidySet(r.set, 4)) T74.push({ c1, r1, c2, r2 })
+}
+export function t18SysTwoHalfCircles() {
+  const par = pick(T74), { c1, r1, c2, r2 } = par
+  const { set, solve, al, be, ga, de } = build74(par)
+  const aRange = spanRange(set)
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:x(x${SUP[2]} + y${SUP[2]}${term(al, "y")}${term(be, "")}) = |x|(${ga === 1 ? "" : ga === -1 ? MINUS : nS(ga)}y${term(de, "")})¦4y = 3x + a⟧\n\nимеет ровно три различных решения.`,
+    set,
+    solution: `При x = 0 первая строка обращается в 0 = 0, то есть ВСЯ ось Oy принадлежит кривой; прямая 4y = 3x + a пересекает её ровно в одной точке (0; ${fT("a", "4")}).\n`
+      + `При x > 0 сокращаем на x: x${SUP[2]} + y${SUP[2]}${term(al - ga, "y")}${term(be - de, "")} = 0, то есть x${SUP[2]} + (y ${MINUS} ${nS(c1)})${SUP[2]} = ${r1 * r1} — правая половина окружности с центром (0; ${nS(c1)}) радиуса ${r1}.\n`
+      + `При x < 0 модуль меняет знак: x${SUP[2]} + (y ${MINUS} ${nS(c2)})${SUP[2]} = ${r2 * r2} — левая половина окружности с центром (0; ${nS(c2)}) радиуса ${r2}.\n`
+      + `Подставляя прямую, получаем 25x${SUP[2]} + 6(a ${MINUS} ${4 * c1})x + (a ${MINUS} ${4 * c1})${SUP[2]} ${MINUS} ${16 * r1 * r1} = 0 (и аналогично для второй окружности); нужны корни строго нужного знака.\n`
+      + `Три решения — это точка на оси Oy плюс ровно две точки на полуокружностях. Касание происходит при a = ${4 * c1} ± ${5 * r1} и a = ${4 * c2} ± ${5 * r2}, а точка пересечения переходит через ось Oy при a = ${4 * (c1 + r1)}, ${4 * (c1 - r1)}, ${4 * (c2 + r2)}, ${4 * (c2 - r2)}.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 3 },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: () => 0, dash: true, label: "ось Oy — часть кривой" },
+        { f: (a) => (25 * 16 * r1 * r1 - 16 * (a - 4 * c1) ** 2 >= 0 ? (-6 * (a - 4 * c1) + Math.sqrt(Math.max(0, 36 * (a - 4 * c1) ** 2 - 100 * ((a - 4 * c1) ** 2 - 16 * r1 * r1)))) / 50 : null), label: "правая полуокружность" },
+        { f: (a) => (25 * 16 * r2 * r2 - 16 * (a - 4 * c2) ** 2 >= 0 ? (-6 * (a - 4 * c2) - Math.sqrt(Math.max(0, 36 * (a - 4 * c2) ** 2 - 100 * ((a - 4 * c2) ** 2 - 16 * r2 * r2)))) / 50 : null), label: "левая полуокружность" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -6, xMax: 6, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// ── #69. {y² − αx − c = |x² − px − q|; x − 2y = a} — «более двух решений» ────
+// Вне отрезка между корнями подмодульного трёхчлена модуль раскрывается со знаком «+»,
+// и правая часть даёт y² = (x + w)² — ДВЕ прямые y = ±(x + w); внутри отрезка знак меняется
+// и остаётся окружность (x − x₀)² + y² = ρ². Коэффициенты подобраны так, что обе картинки
+// стыкуются (α = p + 2w, c = q + w²), корни трёхчлена рациональны, а 5ρ² — точный квадрат:
+// тогда касание прямой x − 2y = a с окружностью происходит при рациональном a
+// (у оригинала прямая x − y = a, и касание было бы иррациональным).
+function build69({ p, q, w }) {
+  const dsc = p * p + 4 * q
+  const sq = isSq(dsc)
+  if (sq === null || (p + sq) % 2 !== 0) return null
+  const xm = R(p - sq, 2), xp = R(p + sq, 2)                    // корни x² − px − q
+  const x0 = p + w, rho2 = 2 * q + w * w + (p + w) * (p + w)
+  const t = isSq(5 * rho2)
+  if (t === null || rho2 <= 0) return null
+  const arc = (a) => [Radd(Rsub(Rmul(a, a), R(4 * rho2)), R(4 * x0 * x0)), Rneg(Radd(R(8 * x0), Rmul(R(2), a))), R(5)]
+  const outside = (x) => Rcmp(x, xm) <= 0 || Rcmp(x, xp) >= 0
+  const solve = (a) => {
+    let n = countRoots(arc(a), xm, xp, false, false)            // дуга — открытый промежуток
+    if (outside(Rsub(Rneg(a), R(2 * w)))) n++                   // прямая y = x + w
+    if (outside(Rdiv(Rsub(a, R(2 * w)), R(3)))) n++             // прямая y = −(x + w)
+    return n
+  }
+  const crit = [R(x0 + t), R(x0 - t)]                           // касание
+  for (const x of [xm, xp]) {
+    crit.push(Rsub(Rneg(x), R(2 * w)), Radd(Rmul(R(3), x), R(2 * w)))
+    const e = ratRoots([Radd(Rsub(Rmul(R(5), Rmul(x, x)), Rmul(R(8 * x0), x)), R(4 * x0 * x0 - 4 * rho2)), Rmul(R(-2), x), R1])
+    if (!e.allRational) return null
+    crit.push(...e.roots)
+  }
+  return { set: assembleSet((a) => solve(a) >= 3, crit), solve, x0, rho2, xm, xp }
+}
+const T69 = []
+for (const p of [-3, -2, -1, 0, 1, 2, 3]) for (const q of [1, 2, 3, 4, 5, 6, 8, 10, 12]) for (const w of [-2, -1, 0, 1, 2]) {
+  const r = build69({ p, q, w })
+  if (r && tidySet(r.set, 4)) T69.push({ p, q, w })
+}
+export function t18SysTwoLinesArc() {
+  const par = pick(T69), { p, q, w } = par
+  const { set, solve, x0, rho2, xm, xp } = build69(par)
+  const aRange = spanRange(set)
+  const al = p + 2 * w, c = q + w * w
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:y${SUP[2]}${term(-al, "x")}${term(-c, "")} = |x${SUP[2]}${term(-p, "x")}${term(-q, "")}|¦x ${MINUS} 2y = a⟧\n\nимеет более двух различных решений.`,
+    set,
+    solution: `Корни подмодульного трёхчлена — x = ${Rstr(xm)} и x = ${Rstr(xp)}.\n`
+      + `Вне отрезка [${Rstr(xm)}; ${Rstr(xp)}] модуль раскрывается со знаком «+», и первая строка даёт y${SUP[2]} = x${SUP[2]}${term(2 * w, "x")}${term(w * w, "")} = (x${term(w, "")})${SUP[2]}, то есть ДВЕ прямые y = ±(x${term(w, "")}).\n`
+      + `Внутри отрезка знак противоположный: y${SUP[2]} = ${MINUS}x${SUP[2]}${term(al + p, "x")}${term(c + q, "")}, то есть дуга окружности (x ${MINUS} ${nS(x0)})${SUP[2]} + y${SUP[2]} = ${rho2}. В концах отрезка обе записи дают одно и то же — кривая непрерывна.\n`
+      + `Прямая x ${MINUS} 2y = a пересекает прямую y = x${term(w, "")} в точке x = ${MINUS}a${term(-2 * w, "")}, прямую y = ${MINUS}(x${term(w, "")}) — в точке x = ${fT(`a${term(-2 * w, "")}`, "3")}; засчитываются они только если попали ВНЕ отрезка.\n`
+      + `Точки на дуге ищутся из 5x${SUP[2]} ${MINUS} (${8 * x0} + 2a)x + ${4 * x0 * x0 - 4 * rho2} + a${SUP[2]} = 0; касание происходит при a = ${nS(x0)} ± ${isSq(5 * rho2)}.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "atLeast", n: 3 },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: () => Rnum(xm), dash: true, label: "концы отрезка" },
+        { f: () => Rnum(xp), dash: true },
+        { f: (a) => -a - 2 * w, label: "точка на прямой y = x + w" },
+        { f: (a) => (a - 2 * w) / 3, label: "точка на прямой y = −(x + w)" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: Rnum(xm) - 6, xMax: Rnum(xp) + 6, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
     ["rat-quad-lin", "(k²x²−a²)/(px−q−ra) = 0 — линейный знаменатель", t18RatQuadLin],
@@ -8636,6 +8825,11 @@ export const META18 = [
     ["all-x-fraction", "|(x²+ax+c)/(px²+qx+r)| < M при всех x", t18AllXFraction],
     ["all-x-segment", "|x²−px+a+c| ≤ M для всех x из [a−L; a]", t18AllXSegment],
     ["no-sol-segment", "тот же типаж: |…| > M не имеет решений на отрезке", t18NoSolSegment],
+  ]],
+  ["Кривая с модулем + прямая", [
+    ["sys-cubic-abs-line", "{(x−h)(y+kx−kh) = |x−h|³; y = mx+a} — ровно четыре решения", t18SysCubicAbsLine],
+    ["sys-two-halfcircles", "{x(x²+y²+αy+β) = |x|(γy+δ); 4y = 3x+a} — ровно три решения", t18SysTwoHalfCircles],
+    ["sys-two-lines-arc", "{y²−αx−c = |x²−px−q|; x−2y = a} — более двух решений", t18SysTwoLinesArc],
   ]],
   ["Дроби и замены (остаток раздела M)", [
     ["two-fractions-one", "(x−pa)/(x+c) + (x−d)/(x−a) = 1 — ровно один корень", t18TwoFractionsOne],
