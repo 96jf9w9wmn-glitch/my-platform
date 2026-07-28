@@ -9017,6 +9017,143 @@ export function t18SysAxisLineCircle() {
   })
 }
 
+// ── #72. {|x² + px + q| = (y − k)² + cx + d; n₁x + n₂y = a} — «одно или два решения» ──
+// Вне корней подмодульного трёхчлена (y − k)² = (x + w)², то есть ДВЕ прямые y = k ± (x + w);
+// внутри — дуга окружности с центром (−(p+c)/2; k). Коэффициенты связаны условиями
+// p − c = 2w и q − d = w², иначе первая картинка не будет парой прямых.
+// Радиус подобран так, что ρ² = n₁² + n₂²: тогда касание прямой n₁x + n₂y = a с окружностью
+// происходит при a = n·C ± ρ√(n₁²+n₂²) = n·C ± (n₁²+n₂²) — рациональном значении.
+function build72({ p, q, w, k, n1, n2 }) {
+  const c = p - 2 * w, d = q - w * w
+  const disc = p * p - 4 * q
+  const sq = isSq(disc)
+  if (sq === null || sq === 0) return null                     // корни трёхчлена должны быть рациональны
+  if ((p + sq) % 2 !== 0) return null
+  const r1 = (-p - sq) / 2, r2 = (-p + sq) / 2                 // корни x² + px + q
+  const cx = -(p + c) / 2                                      // центр дуги
+  const rho2 = cx * cx - q - d
+  const N = n1 * n1 + n2 * n2
+  if (rho2 !== N || n2 === 0) return null                      // условие рационального касания
+  if (n1 === n2 || n1 === -n2) return null                     // прямая не должна быть параллельна ветвям
+  const onLines = (a) => {                                     // точки на прямых y = k ± (x + w)
+    let n = 0
+    for (const s of [1, -1]) {
+      const den = n1 + n2 * s                                  // n₁x + n₂(k + s(x+w)) = a
+      if (den === 0) continue
+      const x = Rdiv(Rsub(a, R(n2 * (k + s * w))), R(den))
+      if (Rcmp(x, R(r1)) <= 0 || Rcmp(x, R(r2)) >= 0) n++       // только вне корней (концы входят)
+    }
+    return n
+  }
+  const arcPoly = (a) => {                                     // подстановка y = (a − n₁x)/n₂ в окружность
+    const kk = R(-n1, n2), b = Rdiv(a, R(n2))
+    const dy = Rsub(b, R(k))
+    return [
+      Radd(Rsub(Radd(Rmul(R(cx), R(cx)), Rmul(dy, dy)), R(rho2)), R0),
+      Radd(R(-2 * cx), Rmul(R(2), Rmul(kk, dy))),
+      Radd(R(1), Rmul(kk, kk)),
+    ]
+  }
+  const solve = (a) => onLines(a) + countRoots(arcPoly(a), R(r1), R(r2), false, false)
+  const crit = [R(n1 * cx + n2 * k + N), R(n1 * cx + n2 * k - N)]  // касания
+  for (const x of [r1, r2]) for (const s of [1, -1]) crit.push(R(n1 * x + n2 * (k + s * (x + w))))
+  return { set: assembleSet((a) => [1, 2].includes(solve(a)), crit), solve, r1, r2, cx, rho2, c, d }
+}
+const T72 = []
+for (const [n1, n2] of [[2, -3], [3, -2], [2, 3], [3, 2], [1, -2], [2, 1], [1, 2], [3, -4], [4, 3]]) {
+  for (const p of [-3, -2, -1, 0, 1, 2, 3]) for (const q of [-12, -10, -8, -6, -4, -2, 2, 4]) {
+    for (const w of [-2, -1, 0, 1, 2]) for (const k of [-1, 0, 1, 2]) {
+      const r = build72({ p, q, w, k, n1, n2 })
+      if (r && tidySet(r.set, 4)) T72.push({ p, q, w, k, n1, n2 })
+    }
+  }
+}
+export function t18SysArcFourRays() {
+  const par = pick(T72), { p, q, w, k, n1, n2 } = par
+  const { set, solve, r1, r2, cx, rho2, c, d } = build72(par)
+  const aRange = spanRange(set)
+  const lead = (t) => t.replace(/^ \+ /, "").replace(/^ − /, MINUS)
+  const yk = k === 0 ? "y" : `(y${term(-k, "")})`
+  const rhs = `${yk}${SUP[2]}${term(c, "x")}${term(d, "")}`
+  const lineStr = lead(`${term(n1, "x")}${term(n2, "y")}`)
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:|x${SUP[2]}${term(p, "x")}${term(q, "")}| = ${rhs}¦${lineStr} = a⟧\n\nимеет одно или два различных решения.`,
+    set,
+    solution: `Корни подмодульного трёхчлена — x = ${nS(r1)} и x = ${nS(r2)}.\n`
+      + `Вне отрезка [${nS(r1)}; ${nS(r2)}] модуль раскрывается со знаком «+», и получается ${yk}${SUP[2]} = (x${term(w, "")})${SUP[2]}, то есть ЧЕТЫРЕ луча на прямых y = ${k === 0 ? "" : `${nS(k)} + `}(x${term(w, "")}) и y = ${k === 0 ? "" : `${nS(k)} ${MINUS} `}(x${term(w, "")}).\n`
+      + `Внутри отрезка знак противоположный: (x${term(-cx, "")})${SUP[2]} + ${yk}${SUP[2]} = ${rho2} — дуга окружности. В концах отрезка обе записи дают одни и те же точки, кривая непрерывна.\n`
+      + `Прямая ${lineStr} = a бежит параллельно самой себе. Её касание с окружностью происходит при a = ${n1 * cx + n2 * k} ± ${rho2} (радиус подобран так, что ρ${SUP[2]} = ${n1}${SUP[2]} + ${nS(n2)}${SUP[2]}), а через концы дуги она проходит при a = ${[...new Set([r1, r2].flatMap((x) => [1, -1].map((s) => n1 * x + n2 * (k + s * (x + w)))))].sort((x, y) => x - y).map(nS).join(", ")}.\n`
+      + `Между соседними критическими значениями число общих точек постоянно; одно или два решения получается на ${setToString(set)}.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "countIn", values: [1, 2] },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: () => r1, dash: true, label: "концы дуги" },
+        { f: () => r2, dash: true },
+        { f: () => cx, dash: true, label: "центр дуги" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: Math.min(r1, cx) - 6, xMax: Math.max(r2, cx) + 6, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// ── #110. x³ + px² − ax + q = 0 — «единственный корень на отрезке [L; R]» ────
+// Число корней кубического многочлена на отрезке считается точно (Штурм). Конфигурация
+// меняется только когда корень выходит через конец отрезка (тогда a = (x³ + px² + q)/x
+// в этом конце) или когда два корня сливаются — а это в точности нулевой дискриминант
+// кубики, дающий уравнение 4a³ + p²a² − 18pq·a − 4p³q − 27q² = 0 по параметру.
+function build110({ p, q, L, R: Rr }) {
+  if (q === 0 || L === 0 || Rr === 0 || L >= Rr) return null
+  const solve = (a) => countRoots([R(q), Rneg(a), R(p), R(1)], R(L), R(Rr), true, true)
+  const crit = [R(L * L * L + p * L * L + q, L), R(Rr * Rr * Rr + p * Rr * Rr + q, Rr)]
+  const e = ratRoots([R(-(4 * p * p * p * q + 27 * q * q)), R(-18 * p * q), R(p * p), R(4)])
+  if (!e.allRational) return null
+  crit.push(...e.roots)
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+// Наборы (p, q, L, R) отобраны разовым перебором: границы ответа круглые И число корней
+// СВЕРЕНО численно (скан по x при нескольких a, не совпадающих с критическими значениями)
+// с точным решателем. Результат зафиксирован литералом — импорт модуля должен быть мгновенным.
+const T110 = [
+  [-3, 4, -1, 2], [-3, 4, -2, 1], [-3, 4, -1, 3], [-3, 4, -3, 1], [-3, 4, -2, 2], [-3, 4, -1, 1],
+  [-3, 4, -4, 2], [-3, 4, -2, 3], [-2, -4, -1, 2], [-2, -4, -2, 1], [-2, -4, -1, 3], [-2, -4, -3, 1],
+  [-2, -4, -2, 2], [-2, -4, -1, 1], [-2, -4, -4, 2], [-2, -4, -2, 3], [-2, 8, -1, 2], [-2, 8, -2, 1],
+  [-2, 8, -1, 3], [-2, 8, -3, 1], [-2, 8, -2, 2], [-2, 8, -1, 1], [-2, 8, -4, 2], [-2, 8, -2, 3],
+  [2, -8, -1, 2], [2, -8, -2, 1], [2, -8, -1, 3], [2, -8, -3, 1], [2, -8, -2, 2], [2, -8, -1, 1],
+  [2, -8, -4, 2], [2, -8, -2, 3], [2, 4, -1, 2], [2, 4, -2, 1], [2, 4, -1, 3], [2, 4, -3, 1],
+  [2, 4, -2, 2], [2, 4, -1, 1], [2, 4, -4, 2], [2, 4, -2, 3], [3, -4, -1, 2], [3, -4, -2, 1],
+  [3, -4, -1, 3], [3, -4, -3, 1], [3, -4, -2, 2], [3, -4, -1, 1], [3, -4, -4, 2], [3, -4, -2, 3],
+].map(([p, q, L, R]) => ({ p, q, L, R }))
+
+export function t18CubicOneRootSeg() {
+  const par = pick(T110), { p, q, L, R: Rr } = par
+  const { set, solve } = build110(par)
+  const aRange = spanRange(set)
+  return item({
+    text: `${HEAD_A}\n\nx${SUP[3]}${term(p, `x${SUP[2]}`)} ${MINUS} ax${term(q, "")} = 0\n\nимеет единственный корень на отрезке [${nS(L)}; ${nS(Rr)}].`,
+    set,
+    solution: `При x = 0 уравнение даёт ${nS(q)} = 0 — неверно, поэтому нуль корнем не бывает и можно выразить параметр: a = ${fT(`x${SUP[3]}${term(p, `x${SUP[2]}`)}${term(q, "")}`, "x")}.\n`
+      + `Значит вопрос равносилен такому: сколько раз горизонтальная прямая a пересекает график этой функции на [${nS(L)}; ${nS(Rr)}].\n`
+      + `Число корней меняется только в двух случаях: корень уходит через конец отрезка (тогда a = ${Rstr(R(L * L * L + p * L * L + q, L))} или a = ${Rstr(R(Rr * Rr * Rr + p * Rr * Rr + q, Rr))}) либо два корня сливаются — а это нулевой дискриминант кубики, то есть 4a${SUP[3]}${term(p * p, `a${SUP[2]}`)}${term(-18 * p * q, "a")}${term(-(4 * p * p * p * q + 27 * q * q), "")} = 0.\n`
+      + `Между соседними критическими значениями число корней постоянно, и остаётся выбрать промежутки, где оно равно единице.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: () => L, dash: true, label: "отрезок" },
+        { f: () => Rr, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: L - 3, xMax: Rr + 3, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
 // =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
@@ -9210,9 +9347,11 @@ export const META18 = [
     ["sys-radical-pencil", "{x²+px+y²+qy+r = |αx+βy+γ|; пучок через точку стыка} — ровно два решения", t18SysRadicalPencil],
     ["sys-radical-parallel", "тот же «лепесток», но семейство параллельных прямых — более двух решений", t18SysRadicalParallel],
     ["sys-axis-line-circle", "{ось Oy + луч прямой + полуокружность; пучок} — ровно три решения", t18SysAxisLineCircle],
+    ["sys-arc-four-rays", "{|x²+px+q| = (y−k)²+cx+d; n₁x+n₂y = a} — одно или два решения", t18SysArcFourRays],
   ]],
   ["Дроби и замены (остаток раздела M)", [
     ["two-fractions-one", "(x−pa)/(x+c) + (x−d)/(x−a) = 1 — ровно один корень", t18TwoFractionsOne],
+    ["cubic-one-root-seg", "x³+px²−ax+q = 0 — единственный корень на отрезке", t18CubicOneRootSeg],
   ]],
   ["Оценочные «хотя бы один корень»", [
     ["sum-abs-disk", "p|x−u| + q|x+a| ≤ √(ρ²−y²) − c — существует пара (x; y)", t18SumAbsUnderDisk],
