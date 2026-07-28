@@ -9623,6 +9623,113 @@ export function t18TrigTangentSeg() {
   })
 }
 
+// ── #115. y = a|x − u| + |a| − c и y = a/k ограничивают треугольник площади ≤ S ──
+// «Галочка» с вершиной (u; |a| − c) и горизонтальная прямая ограничивают треугольник, только
+// если прямая идёт с нужной стороны от вершины. Высота треугольника h — это расстояние от
+// вершины до прямой, половина основания равна h/|a| (наклоны ветвей ±a), поэтому площадь
+// равна h²/|a|. Условие «площадь ≤ S» превращается в квадратное неравенство по a.
+function build115({ c, k, S }) {                // u влияет только на печать
+  const hPos = (a) => Rsub(R(c), Rmul(a, R(k - 1, k)))          // при a > 0: h = c − a(k−1)/k
+  const hNeg = (a) => Rsub(Rmul(Rneg(a), R(k + 1, k)), R(c))    // при a < 0: h = −a(k+1)/k − c
+  const solve = (a) => {
+    const s = Rsign(a)
+    if (s === 0) return 0                                       // прямые параллельны — фигуры нет
+    const h = s > 0 ? hPos(a) : hNeg(a)
+    if (Rsign(h) <= 0) return 0                                 // прямая не с той стороны от вершины
+    const lhs = Rmul(h, h), rhs = Rmul(R(S.n, S.d), s > 0 ? a : Rneg(a))
+    return Rcmp(lhs, rhs) <= 0 ? 1 : 0
+  }
+  const crit = [R0, R(c * k, k - 1), R(-c * k, k + 1)]          // h = 0 (треугольник вырождается)
+  // h² = S|a| — по квадратному уравнению на каждой ветви
+  const A = R((k - 1) * (k - 1), k * k), B1 = Rsub(Rmul(R(-2 * c), R(k - 1, k)), S)
+  const e1 = ratRoots([R(c * c), B1, A])
+  const A2 = R((k + 1) * (k + 1), k * k), B2 = Radd(Rmul(R(2 * c), R(k + 1, k)), S)
+  const e2 = ratRoots([R(c * c), B2, A2])
+  if (!e1.allRational || !e2.allRational) return null
+  crit.push(...e1.roots, ...e2.roots)
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+const T115 = []
+for (const u of [-2, -1, 1, 2, 3]) for (const c of [1, 2, 3, 4]) for (const k of [2, 3, 4]) {
+  for (const S of [R(1, 2), R1, R(3, 2), R(2)]) {
+    const r = build115({ u, c, k, S })
+    if (r && tidySet(r.set, 3)) T115.push({ u, c, k, S })
+  }
+}
+export function t18TriangleArea() {
+  const par = pick(T115), { u, c, k, S } = par
+  const { set, solve } = build115(par)
+  const aRange = spanRange(set)
+  return item({
+    text: `Найдите все значения a, при каждом из которых линии\n\n`
+      + `y = a|x${term(-u, "")}| + |a| ${MINUS} ${c}  и  y = ${fT("a", String(k))}\n\n`
+      + `ограничивают многоугольник, площадь которого не больше ${decStr(S)}.`,
+    set,
+    solution: `Первая линия — «галочка» с вершиной (${nS(u)}; |a| ${MINUS} ${c}) и наклонами ветвей ±a, вторая — горизонтальная прямая y = ${fT("a", String(k))}.\n`
+      + `Они ограничивают треугольник, только если прямая проходит с той стороны от вершины, куда открыта галочка: при a > 0 нужно ${fT("a", String(k))} > a ${MINUS} ${c}, при a < 0 — наоборот.\n`
+      + `Высота треугольника h равна расстоянию от вершины до прямой, а половина основания — h/|a| (ветви имеют наклон ±a). Значит площадь равна ${fT("h" + SUP[2], "|a|")}.\n`
+      + `Неравенство h${SUP[2]} ≤ ${decStr(S)}|a| после подстановки h становится обычным квадратным неравенством по a — отдельно на каждой ветви.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "exists" },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: () => u, dash: true, label: "вершина галочки" },
+        { f: (a) => (a > 0 ? u + (c - a * (k - 1) / k) / a : null), label: "вершина треугольника" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: u - 6, xMax: u + 6, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// ── #47. 3x² − 24x + (45 + 3k²) = a|x − 3| — «ровно три положительных корня» ──
+// Замена t = x − 3 приводит уравнение к виду 3t² − 6t + 3k² = a|t|, где положительным x
+// отвечают t > −3. На каждой из двух половин остаётся квадратный трёхчлен, и число корней
+// считается точно (Штурм на луче). Свободный член взят равным 3k² именно для того, чтобы
+// минимум ветви a = 3t + 3k²/t − 6 достигался в РАЦИОНАЛЬНОЙ точке t = k и равнялся 6k − 6
+// (у оригинала свободный член 19, и минимум иррационален).
+function build47({ k }) {
+  const c = 3 * k * k
+  const P1 = (a) => [R(c), Rneg(Radd(R(6), a)), R(3)]            // t > 0
+  const P2 = (a) => [R(c), Rsub(a, R(6)), R(3)]                  // −3 < t < 0
+  const solve = (a) => countRoots(P1(a), R0, "+inf", false, false)
+    + countRoots(P2(a), R(-3), R0, false, false)
+  const crit = [R(-6 + 6 * k), R(-6 - 6 * k), R(6 + 6 * k), R(6 - 6 * k), R(15 + k * k)]
+  return { set: assembleSet((a) => solve(a) === 3, crit), solve, c }
+}
+const T47 = [2, 3, 4, 5, 6].map((k) => ({ k })).filter((par) => {
+  const r = build47(par)
+  return r && tidySet(r.set, 3)
+})
+export function t18ThreePositiveRoots() {
+  const par = pick(T47), { k } = par
+  const { set, solve, c } = build47(par)
+  const aRange = spanRange(set)
+  return item({
+    text: `${HEAD_A}\n\n3x${SUP[2]} ${MINUS} 24x + ${45 + c} = a|x ${MINUS} 3|\n\nимеет ровно три положительных корня.`,
+    set,
+    solution: `Обозначим t = x ${MINUS} 3. Тогда 3x${SUP[2]} ${MINUS} 24x + ${45 + c} = 3t${SUP[2]} ${MINUS} 6t + ${c}, а положительным x отвечают t > ${MINUS}3.\n`
+      + `Уравнение принимает вид 3t${SUP[2]} ${MINUS} 6t + ${c} = a|t|. При t > 0 это 3t${SUP[2]} ${MINUS} (6 + a)t + ${c} = 0, при t < 0 — 3t${SUP[2]} + (a ${MINUS} 6)t + ${c} = 0; t = 0 корнем не бывает.\n`
+      + `На ветви t > 0 параметр выражается как a = 3t + ${fT(String(c), "t")} ${MINUS} 6; наименьшее значение достигается при t = ${k} и равно ${6 * k - 6}. Аналогично на второй ветви граница равна ${MINUS}${6 * k - 6}… а корень попадает на конец t = ${MINUS}3 при a = ${15 + k * k}.\n`
+      + `Перебирая промежутки между этими критическими значениями, получаем ответ.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 3 },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => ((6 + a) * (6 + a) - 12 * c >= 0 ? ((6 + a) + Math.sqrt((6 + a) ** 2 - 12 * c)) / 6 : null), label: "корни правой ветви" },
+        { f: (a) => ((6 - a) * (6 - a) - 12 * c >= 0 ? ((6 - a) - Math.sqrt((6 - a) ** 2 - 12 * c)) / 6 : null), label: "корни левой ветви" },
+        { f: () => -3, dash: true, label: "t = −3 (x = 0)" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -6, xMax: 8, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
 // =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
@@ -9825,6 +9932,8 @@ export const META18 = [
     ["cubic-one-root-seg", "x³+px²−ax+q = 0 — единственный корень на отрезке", t18CubicOneRootSeg],
     ["smallest-natural-gap", "наименьшее натуральное a: расстояние между крайними корнями ≥ d", t18SmallestNaturalGap],
     ["range-contains-seg", "множество значений (A+Bt)/(t²+m²) содержит отрезок [0; h]", t18RangeContainsSeg],
+    ["triangle-area", "галочка и горизонталь ограничивают треугольник площади ≤ S", t18TriangleArea],
+    ["three-positive-roots", "3x²−24x+c = a|x−3| — ровно три положительных корня", t18ThreePositiveRoots],
     ["trig-range-contains", "множество значений (√(a+1)−k cos3x+1)/(sin²3x+…) содержит [L; H]", t18TrigRangeContains],
     ["trig-param-range", "(Aa−(mq−Ca)cos t)/(p sin t−q cos t) = m — есть решение на [0; π/2]", t18TrigParamRange],
     ["trig-tangent-seg", "(sin x−a cos x)/(sin x+q cos x) = 1/(a+r) — есть решение на отрезке", t18TrigTangentSeg],
