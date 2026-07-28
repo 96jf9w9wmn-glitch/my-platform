@@ -73,6 +73,18 @@ Self-hosted Supabase даёт те же самые API. **Клиентский �
 [указана как 4 916 ₽/мес](https://timeweb.cloud/services/vds-vps). **Цены проверять
 на сайте перед заказом** — тарифы меняются, и в этом документе они не эталон.
 
+### Куда идти: конкретные ссылки
+
+| Шаг | Ссылка | Что выбрать |
+|---|---|---|
+| Сервер, вариант А | [Selectel — облачные серверы](https://selectel.ru/services/cloud/servers/), [калькулятор цен](https://selectel.ru/prices/) | Линейка Standard, 4 vCPU / 8 ГБ / 80 ГБ NVMe, зона **ru-1 (СПб)** или **ru-3 (Москва)**, Ubuntu 24.04 LTS. При регистрации дают грант на тестирование — можно проверить до оплаты |
+| Сервер, вариант Б | [Timeweb Cloud — VDS](https://timeweb.cloud/services/vds-vps) | Конфигурация 4 CPU / 8 ГБ / 80 ГБ NVMe, локация **Санкт-Петербург** или **Москва** (в списке есть Амстердам и Казахстан — они не подходят под 242-ФЗ), Ubuntu 24.04 |
+| Поддомен `db.precettore.ru` | [Рег.ру — настройка ресурсных записей](https://help.reg.ru/support/dns-servery-i-nastroyka-zony/nastroyka-resursnykh-zapisey-dns/nastroyka-resursnykh-zapisey-v-lichnom-kabinete) | Домен → «DNS-серверы и зона» → «Добавить запись» → тип **A**, Subdomain `db`, IP — адрес нового сервера. Вступает в силу ~15 минут |
+| Почта для GoTrue | [Яндекс 360 для бизнеса](https://360.yandex.ru/business/), затем [настройки SMTP](https://yandex.ru/support/mail-business/mail-clients/others.html) | `smtp.yandex.ru`, порт 465, SSL. Логин — полный адрес ящика. Нужен **пароль приложения**, обычный пароль от почты Яндекс не примет |
+| Уведомление оператора ПДн | [Портал персональных данных РКН](https://pd.rkn.gov.ru/) | Подаётся до начала обработки (ст. 22 152-ФЗ), формы утверждены приказом РКН № 180 от 28.10.2022 |
+
+Справочно — [документация Supabase по self-hosting](https://supabase.com/docs/guides/self-hosting/docker).
+
 ### Что ещё понадобится, кроме сервера
 
 - **Домен для базы:** поддомен `db.precettore.ru` (A-запись на IP сервера в
