@@ -9511,6 +9511,118 @@ export function t18NestedAbsTwoRoots() {
   })
 }
 
+// ── #130. (Aa − (mq − Ca)cos t)/(p sin t − q cos t) = m — «есть решение на [0; π/2]» ──
+// После умножения на знаменатель слагаемые с cos t сокращаются (для этого свободный член
+// в числителе взят равным mq), и остаётся a(A + C·cos t) = mp·sin t, то есть
+// a = mp·sin t/(A + C·cos t). На [0; π/2] эта функция возрастает (производная числителя
+// даёт A·cos t + C > 0), поэтому её множество значений — отрезок [0; mp/A].
+// Единственная тонкость — ОДЗ: точка t₀ с tg t₀ = q/p выколота, и соответствующее значение
+// параметра равно mpq/(A·h + Cp), где h = √(p² + q²). Чтобы оно было рациональным,
+// (p; q; h) берётся ПИФАГОРОВОЙ тройкой (у оригинала p = q = 1, и там выкалывается
+// иррациональное значение).
+function build130({ A, C, m, p, q, h }) {
+  if (p * p + q * q !== h * h) return null
+  const hi = R(m * p, A)                                       // правый конец множества значений
+  const k0 = R(m * p * q, A * h + C * p)                       // выколотое значение
+  const solve = (a) => {
+    if (Rsign(a) < 0 || Rcmp(a, hi) > 0) return 0
+    return Rcmp(a, k0) === 0 ? 0 : 1
+  }
+  return { set: assembleSet((a) => solve(a) === 1, [R0, hi, k0]), solve, hi, k0 }
+}
+const T130 = []
+for (const [p, q, h] of [[3, 4, 5], [4, 3, 5], [5, 12, 13], [12, 5, 13], [8, 15, 17], [15, 8, 17]]) {
+  for (const A of [3, 4, 6, 8]) for (const C of [1, 2, 3]) for (const m of [1, 2]) {
+    const r = build130({ A, C, m, p, q, h })
+    if (r && tidySet(r.set, 3)) T130.push({ A, C, m, p, q, h })
+  }
+}
+export function t18TrigParamRange() {
+  const par = pick(T130), { A, C, m, p, q, h } = par
+  const { set, solve, hi, k0 } = build130(par)
+  const aRange = spanRange(set)
+  const num = `${A === 1 ? "" : A}a ${MINUS} (${m * q} ${MINUS} ${C === 1 ? "" : C}a)cos t`
+  const den = `${p === 1 ? "" : p}sin t ${MINUS} ${q === 1 ? "" : q}cos t`
+  return item({
+    text: `${HEAD_A}\n\n${fT(num, den)} = ${m}\n\nимеет хотя бы одно решение на отрезке [0; ${fT("π", "2")}].`,
+    set,
+    solution: `Умножим на знаменатель: ${A === 1 ? "" : A}a ${MINUS} ${m * q}cos t + ${C === 1 ? "" : C}a·cos t = ${m * p === 1 ? "" : m * p}sin t ${MINUS} ${m * q === 1 ? "" : m * q}cos t. Слагаемые с cos t без параметра сокращаются, и остаётся a(${A} + ${C === 1 ? "" : C}cos t) = ${m * p === 1 ? "" : m * p}sin t.\n`
+      + `Значит a = ${fT(`${m * p === 1 ? "" : m * p}sin t`, `${A} + ${C === 1 ? "" : C}cos t`)}. Производная этой функции имеет числитель ${A}cos t + ${C} > 0, поэтому на [0; π/2] она возрастает от 0 до ${Rstr(hi)}.\n`
+      + `Остаётся ОДЗ: знаменатель ${den} обращается в нуль при tg t = ${Rstr(R(q, p))}, то есть при sin t = ${Rstr(R(q, h))}, cos t = ${Rstr(R(p, h))} (здесь ${p}${SUP[2]} + ${q}${SUP[2]} = ${h}${SUP[2]}). В этой точке параметр равен ${Rstr(k0)} — это значение выкалывается.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "exists" },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: () => Rnum(hi), dash: true, label: "верх множества значений" },
+        { f: () => Rnum(k0), dash: true, label: "выколотое значение" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -1, xMax: 2, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// ── #131. (sin x − a cos x)/(sin x + q cos x) = 1/(a + r) при q = r − 1 ──────
+// Делим числитель и знаменатель на cos x и обозначаем u = tg x. Уравнение принимает вид
+// (u − a)(a + r) = u + q, то есть u(a + r − 1) = a² + ar + q. При q = r − 1 правая часть
+// раскладывается: a² + ra + r − 1 = (a + r − 1)(a + 1). Значит при a ≠ 1 − r остаётся
+// РОВНО ОДНО значение u = a + 1, а при a = 1 − r уравнение обращается в тождество —
+// подходит любое x. Остаётся проверить, попадает ли u = a + 1 в множество значений тангенса
+// на данном отрезке.
+function build131({ r, seg }) {
+  const q = r - 1
+  if (q < 0) return null
+  const [lo, hi] = seg.tan                                     // границы тангенса (hi = null ⇒ +∞)
+  const solve = (a) => {
+    if (Rcmp(a, R(-r)) === 0) return 0                         // ОДЗ: a + r ≠ 0
+    if (Rcmp(a, R(1 - r)) === 0) return 99                     // тождество — решений бесконечно много
+    const u = Radd(a, R1)
+    const okLo = Rcmp(u, R(lo)) >= 0
+    const okHi = hi === null || Rcmp(u, R(hi)) <= 0
+    return okLo && okHi ? 1 : 0
+  }
+  const crit = [R(-r), R(1 - r), R(lo - 1)]
+  if (hi !== null) crit.push(R(hi - 1))
+  return { set: assembleSet((a) => solve(a) >= 1, crit), solve, q }
+}
+const SEG131 = [
+  { txt: `[${fT("π", "4")}; ${fT("π", "2")}]`, tan: [1, null] },
+  { txt: `[0; ${fT("π", "4")}]`, tan: [0, 1] },
+  { txt: `[0; ${fT("π", "2")}]`, tan: [0, null] },
+]
+const T131 = []
+for (const r of [1, 2, 3, 4, 5]) for (const seg of SEG131) {
+  const x = build131({ r, seg })
+  if (x && tidySet(x.set, 3)) T131.push({ r, seg })
+}
+export function t18TrigTangentSeg() {
+  const par = pick(T131), { r, seg } = par
+  const { set, solve, q } = build131(par)
+  const aRange = spanRange(set)
+  return item({
+    text: `${HEAD_A}\n\n${fT(`sin x ${MINUS} a cos x`, `sin x + ${q === 1 ? "" : q}cos x`)} = ${fT("1", `a + ${r}`)}\n\nимеет хотя бы одно решение на отрезке ${seg.txt}.`,
+    set,
+    solution: `ОДЗ: a ≠ ${MINUS}${r}. Разделим числитель и знаменатель на cos x (на данном отрезке знаменатель положителен) и обозначим u = tg x: получаем ${fT(`u ${MINUS} a`, `u + ${q === 1 ? "" : q}`)} = ${fT("1", `a + ${r}`)}.\n`
+      + `Отсюда (u ${MINUS} a)(a + ${r}) = u + ${q}, то есть u(a + ${r - 1}) = a${SUP[2]} + ${r === 1 ? "" : r}a + ${q}. Правая часть раскладывается: a${SUP[2]} + ${r === 1 ? "" : r}a + ${q} = (a + ${r - 1})(a + 1).\n`
+      + `Значит при a ≠ ${nS(1 - r)} остаётся u = a + 1, а при a = ${nS(1 - r)} уравнение превращается в тождество и годится любое x из отрезка.\n`
+      + `На отрезке ${seg.txt} тангенс пробегает ${seg.tan[1] === null ? `[${seg.tan[0]}; +∞)` : `[${seg.tan[0]}; ${seg.tan[1]}]`}, поэтому условие сводится к принадлежности a + 1 этому множеству.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "exists" },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => a + 1, label: "u = tg x = a + 1" },
+        { f: () => seg.tan[0], dash: true, label: "границы тангенса" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -4, xMax: 6, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
 // =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
@@ -9714,6 +9826,8 @@ export const META18 = [
     ["smallest-natural-gap", "наименьшее натуральное a: расстояние между крайними корнями ≥ d", t18SmallestNaturalGap],
     ["range-contains-seg", "множество значений (A+Bt)/(t²+m²) содержит отрезок [0; h]", t18RangeContainsSeg],
     ["trig-range-contains", "множество значений (√(a+1)−k cos3x+1)/(sin²3x+…) содержит [L; H]", t18TrigRangeContains],
+    ["trig-param-range", "(Aa−(mq−Ca)cos t)/(p sin t−q cos t) = m — есть решение на [0; π/2]", t18TrigParamRange],
+    ["trig-tangent-seg", "(sin x−a cos x)/(sin x+q cos x) = 1/(a+r) — есть решение на отрезке", t18TrigTangentSeg],
   ]],
   ["Оценочные «хотя бы один корень»", [
     ["sum-abs-disk", "p|x−u| + q|x+a| ≤ √(ρ²−y²) − c — существует пара (x; y)", t18SumAbsUnderDisk],
