@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
 import Icon from "../components/Icon"
 import ConfirmModal from "../components/ConfirmModal"
+import OnlinePaySettings from "../components/OnlinePaySettings"
 import { supabase } from "../supabase"
 import { isLessonConducted, getInitials } from "../utils"
 
@@ -760,6 +761,9 @@ function Payment({ students, setStudents, tutorId }) {
             </div>
           </div>
         </div>
+
+        {/* Онлайн-оплата через ЮKassa: выключатель + журнал заказов */}
+        <OnlinePaySettings tutorId={tutorId} />
 
       {/* История оплат — замыкающая (растягивающаяся) карточка правой колонки */}
       <div className="glass p-5 flex flex-col flex-1">

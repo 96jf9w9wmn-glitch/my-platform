@@ -10,6 +10,7 @@ import FormulaBackdrop from "../components/FormulaBackdrop"
 import Chat from "./Chat"
 import StudentOnboardingModal from "../components/StudentOnboardingModal"
 import BoardHistory from "../components/BoardHistory"
+import OnlinePayCard from "../components/OnlinePayCard"
 
 const Board = lazy(() => import("../components/Board"))
 const Practice = lazy(() => import("./Practice"))
@@ -1131,7 +1132,11 @@ function SubmitResultDialog({ score, max, onClose }) {
 }
 
 function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadStudents }) {
-  const [activeTab, setActiveTab] = useState("schedule")
+  // Возврат из ЮKassa приходит на /?pay=<id заказа> — открываем сразу «Оплату»,
+  // иначе ученик увидит расписание и решит, что платёж потерялся.
+  const [activeTab, setActiveTab] = useState(
+    () => (new URLSearchParams(window.location.search).has("pay") ? "payment" : "schedule")
+  )
   const variantsCacheKey = `variants_cache_${user.id}`
   const [variants, setVariants] = useState(() => {
     try { return JSON.parse(localStorage.getItem(`variants_cache_${user.id}`)) || [] } catch { return [] }
@@ -1993,6 +1998,9 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       Стоимость занятия: <span className="font-medium text-gray-800">{student.lessonPrice.toLocaleString("ru-RU")} ₽</span>
                     </div>
                   )}
+
+                  {/* Онлайн-оплата: карточки нет, пока репетитор не включил приём (см. supabase/yookassa.sql) */}
+                  <OnlinePayCard user={user} student={student} debt={debt} />
 
                   <div className="glass p-5">
                     <h2 className="text-base font-medium mb-4">История платежей</h2>
