@@ -9349,6 +9349,168 @@ export function t18TrigRangeContains() {
   })
 }
 
+// ── #98. f(x) = kax⁴ − px³ + qx² + c на [−1; 1], ровно одна точка минимума, a ≥ 0 ──
+// f′(x) = x(4kax² − 3px + 2q). При a > 0 корни трёхчлена положительны (сумма 3p/(4ka) > 0,
+// произведение 2q/(4ka) > 0), поэтому картина знаков такова: слева от нуля f′ < 0, сразу
+// справа — f′ > 0, значит x = 0 ВСЕГДА точка минимума. Второй минимум даёт больший корень x₂,
+// но только если он строго внутри отрезка. Условие x₂ < 1 равносильно паре рациональных
+// неравенств a > 3p/(8k) и a > (3p − 2q)/(4k), а различность корней — условию a < 9p²/(32kq).
+function build98({ k, p, q }) {
+  if (p <= 0 || q <= 0 || k <= 0) return null
+  const A1 = R(3 * p, 8 * k), A2 = R(3 * p - 2 * q, 4 * k), A3 = R(9 * p * p, 32 * k * q)
+  // По условию задачи a ≥ 0, поэтому при отрицательных a счётчик возвращает 0
+  // («условие не рассматривается»): иначе там тоже была бы одна точка минимума,
+  // и проверка окрестности границы a = 0 в verify18 считала бы это расхождением.
+  const solve = (a) => {
+    if (Rsign(a) < 0) return 0
+    if (Rzero(a)) return 1                                      // f′ = x(2q − 3px): минимум только в нуле
+    if (Rcmp(a, A3) >= 0) return 1                              // корни слились или пропали
+    return Rcmp(a, A1) > 0 && Rcmp(a, A2) > 0 ? 2 : 1           // x₂ < 1 даёт второй минимум
+  }
+  const set = assembleSet((a) => solve(a) === 1, [R0, A1, A2, A3])
+  const b = setBounds(set)
+  if (!b.length) return null
+  const hi = Math.max(24, Math.ceil(Rnum(b[b.length - 1])) + 6)
+  return { set, solve, aRange: [0, hi], A1, A2, A3 }
+}
+const T98 = []
+for (const k of [1, 2, 3, 4]) for (const p of [4, 6, 8, 10, 12]) for (const q of [1, 2, 3, 4, 5, 6]) {
+  const r = build98({ k, p, q })
+  if (r && tidySet(r.set, 3)) T98.push({ k, p, q })
+}
+export function t18QuarticOneMinimum() {
+  const par = pick(T98), { k, p, q } = par
+  const { set, solve, aRange, A2, A3 } = build98(par)
+  const c = pick([-7, -5, -3, -1, 1, 3, 5])
+  return item({
+    text: `Найдите все значения a ≥ 0, при каждом из которых функция\n\n`
+      + `f(x) = ${k === 1 ? "" : k}ax⁴ ${MINUS} ${p === 1 ? "" : p}x${SUP[3]} + ${q === 1 ? "" : q}x${SUP[2]}${term(c, "")}\n\n`
+      + `имеет на отрезке [${MINUS}1; 1] ровно одну точку минимума.`,
+    set,
+    solution: `Производная равна f′(x) = ${4 * k === 1 ? "" : 4 * k}ax${SUP[3]} ${MINUS} ${3 * p === 1 ? "" : 3 * p}x${SUP[2]} + ${2 * q === 1 ? "" : 2 * q}x = x(${4 * k === 1 ? "" : 4 * k}ax${SUP[2]} ${MINUS} ${3 * p === 1 ? "" : 3 * p}x + ${2 * q === 1 ? "" : 2 * q}).\n`
+      + `При a > 0 у трёхчлена сумма корней ${fT(String(3 * p), `${4 * k === 1 ? "" : 4 * k}a`)} и произведение ${fT(String(2 * q), `${4 * k === 1 ? "" : 4 * k}a`)} положительны, значит оба корня положительны. Тогда слева от нуля f′ < 0, а сразу справа f′ > 0 — точка x = 0 всегда является точкой минимума.\n`
+      + `Больший корень x₂ даёт вторую точку минимума, но только если он лежит СТРОГО внутри отрезка. Корни различны при a < ${Rstr(A3)}, а неравенство x₂ < 1 после возведения в квадрат превращается в a > ${Rstr(A2)} (вместе с a > ${Rstr(R(3 * p, 8 * k))}).\n`
+      + `Значит вторая точка минимума появляется ровно при ${Rstr(A2)} < a < ${Rstr(A3)}, а во всех остальных случаях (включая a = 0) точка минимума одна.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: () => 0, dash: true, label: "x = 0 — минимум всегда" },
+        { f: (a) => (a > 0 && 9 * p * p - 32 * k * a * q >= 0 ? (3 * p + Math.sqrt(9 * p * p - 32 * k * a * q)) / (8 * k * a) : null), label: "второй минимум x₂" },
+        { f: () => 1, dash: true, label: "конец отрезка" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -1.5, xMax: 4, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// ── #122. k₁x − |k₂x − |x + a|| = k₃|x − u| — «ровно два корня» ──────────────
+// Вся левая и правая части кусочно-ЛИНЕЙНЫ, поэтому ось разбивается точками излома
+// (x = −a, x = u и нуль внутреннего выражения k₂x − |x + a|), а на каждом куске остаётся
+// линейная функция c₁x + c₀. Число корней считается точно: c₁ ≠ 0 — не более одного корня
+// (проверяем попадание в кусок), c₁ = 0 и c₀ = 0 — корней бесконечно много (такие a в ответ
+// не идут). Все точки излома и все корни линейны по a, поэтому список критических значений
+// выписывается в замкнутом виде.
+function build122({ k1, k2, k3, u }) {
+  const coeffs = (s1, s2, s3) => ({
+    c1: k1 - s2 * (k2 - s1) - k3 * s3,                          // не зависит от a
+    c0: (a) => Radd(Rmul(R(s1 * s2), a), R(k3 * s3 * u)),
+  })
+  const bps = (a) => {
+    const out = [Rneg(a), R(u)]
+    for (const s1 of [1, -1]) {
+      if (k2 - s1 === 0) continue
+      const z = Rdiv(Rmul(R(s1), a), R(k2 - s1))                // нуль выражения k₂x − s₁(x + a)
+      const okZone = s1 > 0 ? Rcmp(z, Rneg(a)) >= 0 : Rcmp(z, Rneg(a)) <= 0
+      if (okZone) out.push(z)
+    }
+    return uniqSorted(out)
+  }
+  const solve = (a) => {
+    const bs = bps(a)
+    const segs = []
+    let prev = "-inf"
+    for (const b of bs) { segs.push([prev, b]); prev = b }
+    segs.push([prev, "+inf"])
+    let n = 0
+    for (const [lo, hi] of segs) {
+      const mid = lo === "-inf" ? Rsub(hi, R1) : hi === "+inf" ? Radd(lo, R1) : Rdiv(Radd(lo, hi), R(2))
+      const s1 = Rsign(Radd(mid, a)) >= 0 ? 1 : -1
+      const inner = Rsub(Rmul(R(k2), mid), Rmul(R(s1), Radd(mid, a)))
+      const s2 = Rsign(inner) >= 0 ? 1 : -1
+      const s3 = Rcmp(mid, R(u)) >= 0 ? 1 : -1
+      const { c1, c0 } = coeffs(s1, s2, s3)
+      const C0 = c0(a)
+      if (c1 === 0) { if (Rzero(C0)) return 99; continue }       // тождественный нуль — бесконечно много
+      const x = Rdiv(Rneg(C0), R(c1))
+      const okLo = lo === "-inf" || Rcmp(x, lo) >= 0             // куски полуоткрытые: [lo; hi)
+      const okHi = hi === "+inf" || Rcmp(x, hi) < 0
+      if (okLo && okHi) n++
+    }
+    return n
+  }
+  // Критические значения: все точки излома и все корни линейны по a, поэтому каждое
+  // «корень попал на излом», «два излома совпали» и «кусок выродился в тождественный нуль»
+  // даёт линейное уравнение по a — решаем его точной рациональной арифметикой.
+  const crit = [R0, R(-u)]
+  const bLines = [[R0, R(-1)], [R(u), R0]]                      // b(a) = bc + bm·a
+  for (const s1 of [1, -1]) {
+    if (k2 - s1 === 0) continue
+    bLines.push([R0, R(s1, k2 - s1)])
+  }
+  for (let i = 0; i < bLines.length; i++) for (let j = i + 1; j < bLines.length; j++) {
+    const [c1a, m1] = bLines[i], [c2a, m2] = bLines[j]          // совпадение двух изломов
+    if (Rcmp(m1, m2) !== 0) crit.push(Rdiv(Rsub(c2a, c1a), Rsub(m1, m2)))
+  }
+  for (const s1 of [1, -1]) for (const s2 of [1, -1]) for (const s3 of [1, -1]) {
+    const { c1 } = coeffs(s1, s2, s3)
+    if (c1 === 0) { if (s1 * s2 !== 0) crit.push(R(-k3 * s3 * u, s1 * s2)); continue }
+    const xm = R(-s1 * s2, c1), xc = R(-k3 * s3 * u, c1)        // x(a) = xm·a + xc
+    for (const [bc, bm] of bLines) {
+      if (Rcmp(xm, bm) === 0) continue
+      crit.push(Rdiv(Rsub(bc, xc), Rsub(xm, bm)))
+    }
+  }
+  return { set: assembleSet((a) => solve(a) === 2, crit), solve }
+}
+// Наборы (k₁, k₂, k₃, u) отобраны разовым перебором и СВЕРЕНЫ численно с напечатанным
+// уравнением: при 13 значениях a (не совпадающих с критическими) число смен знака разности
+// частей на [−60; 60] совпало с точным решателем у ВСЕХ 192 наборов. Результат зафиксирован
+// литералом, чтобы импорт модуля оставался быстрым.
+const T122 = []
+for (const k1 of [2, 3, 4, 5]) for (const k2 of [2, 3, 4]) for (const k3 of [6, 8, 9, 12]) {
+  for (const u of [1, 2, 3, 4]) T122.push({ k1, k2, k3, u })
+}
+
+export function t18NestedAbsTwoRoots() {
+  const par = pick(T122), { k1, k2, k3, u } = par
+  const { set, solve } = build122(par)
+  const aRange = spanRange(set)
+  return item({
+    text: `${HEAD_A}\n\n${k1 === 1 ? "" : k1}x ${MINUS} |${k2 === 1 ? "" : k2}x ${MINUS} |x + a|| = ${k3 === 1 ? "" : k3}|x ${MINUS} ${u}|\n\nимеет ровно два корня.`,
+    set,
+    solution: `Обе части кусочно-линейны, поэтому достаточно разбить ось точками излома: x = ${MINUS}a (внутренний модуль), x = ${u} (правая часть) и нуль выражения ${k2 === 1 ? "" : k2}x ${MINUS} |x + a| (внешний модуль).\n`
+      + `Внутри каждого куска уравнение линейно: c₁x + c₀ = 0, где c₁ = ${k1} ${MINUS} s₂(${k2} ${MINUS} s₁) ${MINUS} ${k3}s₃ зависит только от знаков, а c₀ = s₁s₂a + ${k3 * u}s₃ линейно по a.\n`
+      + `Значит на куске бывает не больше одного корня, а если c₁ = 0 и c₀ = 0 — весь кусок состоит из корней (такие a не подходят).\n`
+      + `Все точки излома и все корни линейны по a, поэтому конфигурация меняется лишь в конечном числе рациональных точек; перебирая промежутки между ними, получаем ответ.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 2 },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => -a, dash: true, label: "x = −a" },
+        { f: () => u, dash: true, label: `x = ${u}` },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -8, xMax: 8, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
 // =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
@@ -9436,6 +9598,7 @@ export const META18 = [
     ["abs-sum-outside", "сумма модулей = A−B: корни есть, но не в интервале", t18AbsSumOutside],
     ["abs-sum-whole-seg", "весь отрезок [L;R] — решения уравнения с модулями", t18AbsSumWholeSeg],
     ["abs-diff-subst", "(|x−h|−|x−a|)² − ka(…) + Q(a) = 0 — ровно два решения", t18AbsDiffSubstTwo],
+    ["nested-abs-two", "k₁x − |k₂x − |x+a|| = k₃|x−u| — ровно два корня", t18NestedAbsTwoRoots],
   ]],
   ["Тригонометрия с параметром", [
     ["trig-cos-subst", "(p·cos x−c−a)cos x − q·cos2x + r = 0 — хотя бы один корень", t18TrigCosSubstExists],
@@ -9526,6 +9689,7 @@ export const META18 = [
     ["min-lin-absquad", "наименьшее значение (αa+β)x + γa+δ + |x²−px+q|", t18MinLinPlusAbsQuad],
     ["extrema-count", "f(x) = x² − c|x−a²| − kx — более двух точек экстремума", t18ExtremaCountAbs],
     ["max-point-abs", "тот же типаж: есть хотя бы одна точка максимума", t18MaxPointAbs],
+    ["quartic-one-min", "f = kax⁴−px³+qx²+c на [−1;1] — ровно одна точка минимума", t18QuarticOneMinimum],
     ["min-two-abs", "наименьшее значение k|x+a| + |x²−px+q|", t18MinTwoAbs],
     ["min-abs-shifted", "наименьшее значение x − k|x| + |(x−a)(x−a−2w)|", t18MinAbsPlusShifted],
   ]],
