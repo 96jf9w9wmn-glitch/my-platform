@@ -367,6 +367,8 @@ const domStr = (dom) => dom.intervals.map((i) => `${i.incLo ? "[" : "("}${epStr(
 // сетку ≥ 2000 значений a и ловит любое пропущенное изменение.
 function assembleSet(test, criticals) {
   const cs = uniqSorted(criticals)
+  // без критических значений предикат постоянен: либо вся прямая, либо пусто
+  if (!cs.length) return test(R0) ? SET([IV("-inf", "+inf")]) : SET([])
   const atoms = []
   for (let i = 0; i <= cs.length; i++) {
     const lo = i === 0 ? "-inf" : cs[i - 1], hi = i === cs.length ? "+inf" : cs[i]
@@ -425,14 +427,18 @@ function spanRange(set, pad = 6) {
 }
 
 // ── сборка объекта задания ───────────────────────────────────────────────────
-function item({ text, set, solution, pieces, solve, raw, predicate, aRange, picture, unit }) {
+// answerText — ответ, отличный от самого множества (например «наименьшее натуральное a»):
+// в задании печатается он, но verify18 всё равно проверяет МНОЖЕСТВО (сеткой по предикату),
+// а сравнение строки идёт с сохранённым setStr, а не с напечатанным ответом.
+function item({ text, set, solution, pieces, solve, raw, predicate, aRange, picture, unit, answerText }) {
+  const setStr = setToString(set, unit)
   return {
     condition_text: text,
-    answer: setToString(set, unit),
-    answer_set: setPlain(set, unit),
+    answer: answerText ?? setStr,
+    answer_set: answerText ? { value: answerText, set: setPlain(set, unit) } : setPlain(set, unit),
     solution,
     solution_image: svgUrl(planeSvg(picture)),
-    _verify: { set, pieces, solve, raw, predicate, aRange, unit },
+    _verify: { set, pieces, solve, raw, predicate, aRange, unit, setStr },
   }
 }
 
@@ -559,7 +565,7 @@ export function verify18(o, opts = {}) {
     }
 
     // 7. строка ответа собрана из того же множества
-    if (setToString(set, o._verify.unit) !== o.answer) return { ok: false, err: "строка ответа не совпала со структурой" }
+    if (setToString(set, o._verify.unit) !== (o._verify.setStr ?? o.answer)) return { ok: false, err: "строка ответа не совпала со структурой" }
     return { ok: true }
   } catch (e) {
     return { ok: false, err: "ИСКЛЮЧЕНИЕ " + e.message }
@@ -9154,6 +9160,118 @@ export function t18CubicOneRootSeg() {
   })
 }
 
+// ── #105. Наименьшее натуральное a: расстояние между крайними корнями ≥ d ────
+// Уравнение (x − a + k)(x² − ax + ka − c) = 0 имеет корень x = a − k и два корня квадратного
+// трёхчлена (его дискриминант D = a² − 4ka + 4c положителен при любом a, если c > k²).
+// При m = k корень a − k ВСЕГДА лежит между корнями трёхчлена, поэтому расстояние между
+// наибольшим и наименьшим корнями равно ровно √D. Условие √D ≥ d — обычное квадратное
+// неравенство по a; его решение (два луча) и проверяется сеткой, а в ответ идёт
+// наименьшее натуральное число из этого множества.
+function build105({ k, c, d }) {
+  if (c <= k * k) return null                                  // D > 0 при любом a
+  const s = isSq(4 * k * k - 4 * c + d * d)
+  if (s === null || s === 0) return null                       // границы должны быть рациональны
+  if ((2 * k + s) % 1 !== 0) return null
+  const solve = (a) => {                                       // индикатор «расстояние ≥ d»
+    const D = Radd(Rsub(Rmul(a, a), Rmul(R(4 * k), a)), R(4 * c))
+    return Rcmp(D, R(d * d)) >= 0 ? 1 : 0
+  }
+  const set = assembleSet((a) => solve(a) === 1, [R(2 * k - s), R(2 * k + s)])
+  if (2 * k - s >= 1) return null                              // иначе наименьшее натуральное = 1 (вырождение)
+  const nat = Math.max(1, Math.ceil(2 * k + s))
+  return { set, solve, nat, lo: 2 * k - s, hi: 2 * k + s }
+}
+const T105 = []
+for (const k of [2, 3, 4, 5, 6]) for (const c of [10, 13, 17, 20, 26, 29, 37, 41]) {
+  for (const d of [7, 8, 9, 10, 11, 12, 13]) {
+    const r = build105({ k, c, d })
+    if (r && tidySet(r.set, 2)) T105.push({ k, c, d })
+  }
+}
+export function t18SmallestNaturalGap() {
+  const par = pick(T105), { k, c, d } = par
+  const { set, solve, nat, hi } = build105(par)
+  const aRange = spanRange(set)
+  return item({
+    text: `Найдите наименьшее натуральное значение a, при котором расстояние между наибольшим и наименьшим корнями уравнения\n\n`
+      + `(x ${MINUS} a + ${k})(x${SUP[2]} ${MINUS} ax + ${k === 1 ? "" : k}a ${MINUS} ${c}) = 0\n\nне меньше ${d}.`,
+    set,
+    answerText: String(nat),
+    solution: `Первый множитель даёт корень x = a ${MINUS} ${k}. Дискриминант второго равен D = a${SUP[2]} ${MINUS} ${4 * k}a + ${4 * c} = (a ${MINUS} ${2 * k})${SUP[2]} + ${4 * c - 4 * k * k} > 0, поэтому у трёхчлена всегда два корня ${fT(`a ± √{D}`, "2")}.\n`
+      + `Проверим, что корень a ${MINUS} ${k} лежит МЕЖДУ ними: это равносильно D > (a ${MINUS} ${2 * k})${SUP[2]}, то есть ${4 * c - 4 * k * k} > 0 — верно всегда.\n`
+      + `Значит наибольший и наименьший корни — это как раз корни трёхчлена, а расстояние между ними равно √D.\n`
+      + `Условие √D ≥ ${d} даёт a${SUP[2]} ${MINUS} ${4 * k}a + ${4 * c - d * d} ≥ 0, то есть a ≤ ${Rstr(R(2 * k - isSq(4 * k * k - 4 * c + d * d)))} или a ≥ ${Rstr(R(hi))}.\n`
+      + `Натуральных чисел в первом промежутке нет, поэтому наименьшее подходящее натуральное a равно ${nat}.\n`
+      + `Ответ: ${nat}.`,
+    predicate: { type: "exists" },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => Math.sqrt(Math.max(0, a * a - 4 * k * a + 4 * c)), label: "расстояние √D" },
+        { f: () => d, dash: true, label: `порог ${d}` },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: 0, xMax: d + 6, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// ── #112. Множество значений дробно-рациональной функции содержит отрезок ────
+// y = ((α+γ)a + pγx − pax) / (p²x² + 2pax + a² + m²). После замены t = px + a знаменатель
+// становится t² + m², а числитель — линейным: y = (A + Bt)/(t² + m²), где A = (α+γ)a − a(γ−a)
+// … точнее A = a² + αa и B = γ − a. Уравнение y(t² + m²) = A + Bt имеет решение по t
+// ровно тогда, когда его дискриминант неотрицателен: 4m²y² − 4Ay − B² ≤ 0, то есть множество
+// значений — отрезок [y₁; y₂] с концами (A ± √(A² + m²B²))/(2m²).
+// Условие y₁ ≤ 0 выполняется всегда, а y₂ ≥ h равносильно B² + 4hA ≥ 4m²h² —
+// обычному квадратному неравенству по a, которое и решается точно.
+function build112({ m, al, ga, h }) {          // p влияет только на печать
+  const A2 = 1 + 4 * h, A1 = 4 * h * al - 2 * ga, A0 = ga * ga - 4 * m * m * h * h
+  const solve = (a) => {
+    const v = Radd(Radd(Rmul(R(A2), Rmul(a, a)), Rmul(R(A1), a)), R(A0))
+    return Rsign(v) >= 0 ? 1 : 0
+  }
+  const e = ratRoots([R(A0), R(A1), R(A2)])
+  if (!e.allRational || e.roots.length < 2) return null      // нужен настоящий, а не вырожденный ответ
+  const set = assembleSet((a) => solve(a) === 1, e.roots)
+  return { set, solve }
+}
+const T112 = []
+for (const p of [10, 5, 4, 6]) for (const m of [1, 2, 3, 5]) for (const al of [-10, -8, -6, -4, -2, 0, 2]) {
+  for (const ga of [3, 5, 8, 10, 12, 15]) for (const h of [1, 2, 3]) {
+    const r = build112({ p, m, al, ga, h })
+    if (r && tidySet(r.set, 3)) T112.push({ p, m, al, ga, h })
+  }
+}
+export function t18RangeContainsSeg() {
+  const par = pick(T112), { p, m, al, ga, h } = par
+  const { set, solve } = build112(par)
+  const aRange = spanRange(set)
+  const num = `${al + ga === 1 ? "" : al + ga === -1 ? MINUS : nS(al + ga)}a${term(p * ga, "x")} ${MINUS} ${p === 1 ? "" : p}ax`
+  const den = `${p * p === 1 ? "" : p * p}x${SUP[2]} + ${2 * p === 1 ? "" : 2 * p}ax + a${SUP[2]} + ${m * m}`
+  return item({
+    text: `Найдите все значения a, при каждом из которых множество значений функции\n\n`
+      + `y = ${fT(num, den)}\n\nсодержит отрезок [0; ${h}].`,
+    set,
+    solution: `Обозначим t = ${p === 1 ? "" : p}x + a. Тогда знаменатель равен t${SUP[2]} + ${m * m}, а числитель — линейной функцией: ${num} = a${SUP[2]}${term(al, "a")} + (${ga} ${MINUS} a)t.\n`
+      + `Значение y достигается ⟺ уравнение y(t${SUP[2]} + ${m * m}) = A + Bt имеет корень по t, где A = a${SUP[2]}${term(al, "a")} и B = ${ga} ${MINUS} a. Это квадратное уравнение yt${SUP[2]} ${MINUS} Bt + (${m * m}y ${MINUS} A) = 0, и его дискриминант B${SUP[2]} ${MINUS} 4y(${m * m}y ${MINUS} A) ≥ 0.\n`
+      + `Отсюда множество значений — отрезок с концами ${fT(`A ± √{A${SUP[2]} + ${m * m}B${SUP[2]}}`, String(2 * m * m))}. Левый конец всегда неположителен, поэтому условие «отрезок [0; ${h}] содержится» сводится к неравенству для правого конца: B${SUP[2]} + ${4 * h === 1 ? "" : 4 * h}A ≥ ${4 * m * m * h * h}.\n`
+      + `Подставляя A и B, получаем ${1 + 4 * h}a${SUP[2]}${term(4 * h * al - 2 * ga, "a")}${term(ga * ga - 4 * m * m * h * h, "")} ≥ 0.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "exists" },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => (a * a + al * a + Math.sqrt((a * a + al * a) ** 2 + m * m * (ga - a) ** 2)) / (2 * m * m), label: "правый конец множества значений" },
+        { f: () => h, dash: true, label: `порог ${h}` },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -2, xMax: h + 6, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
 // =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
@@ -9352,6 +9470,8 @@ export const META18 = [
   ["Дроби и замены (остаток раздела M)", [
     ["two-fractions-one", "(x−pa)/(x+c) + (x−d)/(x−a) = 1 — ровно один корень", t18TwoFractionsOne],
     ["cubic-one-root-seg", "x³+px²−ax+q = 0 — единственный корень на отрезке", t18CubicOneRootSeg],
+    ["smallest-natural-gap", "наименьшее натуральное a: расстояние между крайними корнями ≥ d", t18SmallestNaturalGap],
+    ["range-contains-seg", "множество значений (A+Bt)/(t²+m²) содержит отрезок [0; h]", t18RangeContainsSeg],
   ]],
   ["Оценочные «хотя бы один корень»", [
     ["sum-abs-disk", "p|x−u| + q|x+a| ≤ √(ρ²−y²) − c — существует пара (x; y)", t18SumAbsUnderDisk],
