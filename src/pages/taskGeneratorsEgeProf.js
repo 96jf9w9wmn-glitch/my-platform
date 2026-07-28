@@ -2664,7 +2664,32 @@ function t01TwoAltitudes() {
   g += pRight(Dh, Aa, Bb, 8) + pRight(Eh, P, Bb, 8)   // прямой угол у E — между высотой EC и основанием (а не вдоль основания)
   g += pArc(O, Dh, Eh, 13) + pDot(O)
   g += pV(Aa, "bl", "A") + pV(Bb, "br", "B") + pV(P, "t", "C") + pV(Dh, "r", "D") + pV(Eh, "l", "E") + pV(O, "b", "O")
-  return { condition_text: `В треугольнике ABC угол A равен ${deg(A)}, углы B и C острые, высоты BD и CE пересекаются в точке O. Найдите угол DOE. Ответ дайте в градусах.`, image_url: svgUrl(stWrap(270, 205, g)), answer: ru(180 - A) }
+  // две формулировки ФИПИ (#10 и #10_ДЗ) — одна с «углы B и C острые», вторая «в остроугольном»
+  const txt = Math.random() < 0.5
+    ? `В треугольнике ABC угол A равен ${deg(A)}, углы B и C острые, высоты BD и CE пересекаются в точке O. Найдите угол DOE. Ответ дайте в градусах.`
+    : `В остроугольном треугольнике ABC угол A равен ${deg(A)}, BD и CE — высоты, пересекающиеся в точке O. Найдите угол DOE. Ответ дайте в градусах.`
+  return { condition_text: txt, image_url: svgUrl(stWrap(270, 205, g)), answer: ru(180 - A) }
+}
+
+// Две биссектрисы AD и BE пересекаются в O: ∠AOB = 90 + C/2.
+// (в треугольнике AOB углы при A и B — половины ∠A и ∠B, их сумма = (180−C)/2)
+function figTwoBisectors() {
+  const A = [55, 178], B = [235, 178], C = [150, 46]
+  const D = mid(B, C), E = mid(A, C)
+  const inter = (p1, p2, p3, p4) => { const a1 = p2[1] - p1[1], b1 = p1[0] - p2[0], c1 = a1 * p1[0] + b1 * p1[1], a2 = p4[1] - p3[1], b2 = p3[0] - p4[0], c2 = a2 * p3[0] + b2 * p3[1], d = a1 * b2 - a2 * b1; return [(b2 * c1 - b1 * c2) / d, (a1 * c2 - a2 * c1) / d] }
+  const O = inter(A, D, B, E)
+  let g = pPolygon([A, B, C]) + pSeg(A, D) + pSeg(B, E)
+  // равные половины у A помечаем одиночной дугой, у B — двойной: ∠A и ∠B в общем
+  // случае РАЗНЫЕ, одинаковым числом дуг их метить нельзя
+  g += pArc(A, B, O, 20) + pArc(A, O, C, 20)
+  g += pArc(B, O, A, 20, { double: true }) + pArc(B, C, O, 20, { double: true })
+  g += pArc(O, A, B, 13) + pDot(O)
+  g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "t", "C") + pV(D, "r", "D") + pV(E, "l", "E") + pV(O, "t", "O")
+  return stWrap(285, 205, g)
+}
+function t01TwoBisectors() {
+  const C = randInt(10, 85) * 2                        // чётный → ∠AOB целый
+  return { condition_text: `В треугольнике ABC угол C равен ${deg(C)}, биссектрисы AD и BE пересекаются в точке O. Найдите угол AOB. Ответ дайте в градусах.`, image_url: svgUrl(figTwoBisectors()), answer: ru(90 + C / 2) }
 }
 
 // Теорема синусов: R = a/(2 sin α). Углы с «хорошим» синусом.
@@ -2732,13 +2757,19 @@ function t01RightCevians() {
   if (!reverse) {
     let B = randInt(50, 80), A = 90 - B                 // острый угол B (больший)
     const ans = p.between(A, B)
+    // формулировка «острые углы равны X и Y» (эталон #71): только для высоты и медианы
+    if (p.feet[0] === "H" && p.feet[1] === "M" && Math.random() < 0.5)
+      return { condition_text: `Острые углы прямоугольного треугольника равны ${deg(B)} и ${deg(A)}. Найдите угол между высотой и медианой, проведёнными из вершины прямого угла. Ответ дайте в градусах.`, image_url: svgUrl(figRightCevians(p.feet)), answer: ru(ans) }
     return { condition_text: `Острый угол B прямоугольного треугольника ABC равен ${deg(B)}. Найдите величину угла между ${p.t1} и ${p.t2}, проведёнными из вершины прямого угла C. Ответ дайте в градусах.`, image_url: svgUrl(figRightCevians(p.feet)), answer: ru(ans) }
   }
   // обратная: дан угол между чевианами → меньший острый угол
   const half = p.feet.includes("M") && p.feet.includes("H")
   if (half) { const d = randInt(6, 40) * 2; return { condition_text: `Угол между высотой и медианой прямоугольного треугольника, проведёнными из вершины прямого угла, равен ${deg(d)}. Найдите меньший угол прямоугольного треугольника. Ответ дайте в градусах.`, image_url: svgUrl(figRightCevians(["H", "M"])), answer: ru((90 - d) / 2) } }
+  // формулировки ФИПИ различаются: у «бисс.+медиана» (#69) и у «высота+бисс.» (#70)
   const d = randInt(3, 40)
-  return { condition_text: `Угол между ${p.feet.includes("H") ? "высотой и биссектрисой" : "биссектрисой и медианой"} прямоугольного треугольника, проведёнными из вершины прямого угла, равен ${deg(d)}. Найдите меньший угол прямоугольного треугольника. Ответ дайте в градусах.`, image_url: svgUrl(figRightCevians(p.feet)), answer: ru(45 - d) }
+  if (p.feet.includes("H"))
+    return { condition_text: `В прямоугольном треугольнике угол между высотой и биссектрисой, проведёнными из вершины прямого угла, равен ${deg(d)}. Найдите меньший угол прямоугольного треугольника. Ответ дайте в градусах.`, image_url: svgUrl(figRightCevians(p.feet)), answer: ru(45 - d) }
+  return { condition_text: `Угол между биссектрисой и медианой прямоугольного треугольника, проведёнными из вершины прямого угла, равен ${deg(d)}. Найдите меньший угол прямоугольного треугольника. Ответ дайте в градусах.`, image_url: svgUrl(figRightCevians(p.feet)), answer: ru(45 - d) }
 }
 
 // ── Треугольник: две стороны и высоты (S постоянна) ─────────────────────────
@@ -2764,17 +2795,27 @@ function t01TwoSidesHeight() {
 }
 
 // ── Средняя линия треугольника: S(CDE)=¼S(ABC); трапеция=¾S ─────────────────
-function figMidline() {
-  const A = [40, 178], B = [235, 178], C = [150, 44], D = mid(A, C), E = mid(B, C)
-  // без заливки: искомая область (CDE / трапеция ABED) названа в условии и видна по подписям вершин
+// kind "cde"/"trap" — средняя линия DE отсекает треугольник у вершины C;
+// kind "bef" — средняя линия EF (E на CB, F на AB) отсекает треугольник у вершины B.
+function figMidline(kind = "cde") {
+  const A = [40, 178], B = [235, 178], C = [150, 44]
+  // без заливки: искомая область (CDE / трапеция ABED / BEF) названа в условии
+  if (kind === "bef") {
+    const E = mid(C, B), F = mid(A, B)
+    let g = pPolygon([A, B, C]) + pSeg(E, F)
+    g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "t", "C") + pV(E, "r", "E") + pV(F, "b", "F")
+    return stWrap(280, 205, g)
+  }
+  const D = mid(A, C), E = mid(B, C)
   let g = pPolygon([A, B, C]) + pSeg(D, E)
   g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "t", "C") + pV(D, "l", "D") + pV(E, "r", "E")
   return stWrap(280, 205, g)
 }
 function t01Midline() {
-  const mode = pick(["cde-from-abc", "abc-from-cde", "trap-from-abc"])
+  const mode = pick(["cde-from-abc", "abc-from-cde", "abc-from-bef", "trap-from-abc"])
   if (mode === "cde-from-abc") { const S = randInt(2, 30) * 4; return { condition_text: `В треугольнике ABC DE — средняя линия, параллельная стороне AB. Площадь треугольника ABC равна ${S}. Найдите площадь треугольника CDE.`, image_url: svgUrl(figMidline("cde")), answer: ru(S / 4) } }
   if (mode === "abc-from-cde") { const s = randInt(2, 40); return { condition_text: `В треугольнике ABC DE — средняя линия. Площадь треугольника CDE равна ${s}. Найдите площадь треугольника ABC.`, image_url: svgUrl(figMidline("cde")), answer: ru(4 * s) } }
+  if (mode === "abc-from-bef") { const s = randInt(2, 40); return { condition_text: `В треугольнике ABC EF — средняя линия. Площадь треугольника BEF равна ${s}. Найдите площадь треугольника ABC.`, image_url: svgUrl(figMidline("bef")), answer: ru(4 * s) } }
   const S = randInt(2, 40) * 4; return { condition_text: `Площадь треугольника ABC равна ${S}, DE — средняя линия, параллельная стороне AB. Найдите площадь трапеции ABED.`, image_url: svgUrl(figMidline("trap")), answer: ru(3 * S / 4) }
 }
 
@@ -2802,13 +2843,23 @@ function figRightTrig(labels, showRight = true) {
   g += pV(A, "tl", labels.A || "A") + pV(B, "br", labels.B || "B") + pV(C, "bl", labels.C || "C")
   return stWrap(285, 210, g)
 }
-const RT_TRIP = [[3, 4, 5], [6, 8, 10], [9, 12, 15], [12, 16, 20], [15, 20, 25]]  // ноги a,b гип c → ratios .6/.8
+// [BC, AC, AB]; гипотенуза только 5·2^k — иначе sin/cos не конечная десятичная
+const RT_TRIP = [[3, 4, 5], [4, 3, 5], [6, 8, 10], [8, 6, 10], [9, 12, 15], [12, 9, 15],
+  [12, 16, 20], [16, 12, 20], [15, 20, 25], [20, 15, 25], [7, 24, 25], [24, 7, 25]]
+// sin A = √m/n (m не полный квадрат) → sin B = cos A = k/n; m = n²−k²
+// (n — только 4/5/8/10: иначе k/n не конечная десятичная дробь)
+const RT_IRR_SIN = [[7, 3, 4], [15, 1, 4], [21, 2, 5], [15, 7, 8], [39, 5, 8], [55, 3, 8],
+  [19, 9, 10], [91, 3, 10], [51, 7, 10]]
+// tg A = √m/n → AB = k·h, AC = k·n, BC = k·√m (m + n² = h²)
+const RT_IRR_TG = [[3, 1, 2], [5, 2, 3], [7, 3, 4], [11, 5, 6], [15, 1, 4], [13, 6, 7], [21, 10, 11]]
 function t01RightTrig() {
-  const mode = pick(["legHypToTrig", "cosFindHyp", "tgFindHyp", "sinAToSinB", "sqrtLeg"])
+  const mode = pick(["legHypToTrig", "cosFindHyp", "tgFindHyp", "tgIrr", "tgScaled",
+    "sinAToSinB", "sinIrrToSinB", "sqrtLeg"])
   const fig = svgUrl(figRightTrig({}))
   if (mode === "legHypToTrig") {                       // даны катет и гипотенуза → sin/cos
     const [a, b, c] = pick(RT_TRIP)                     // a=BC, b=AC, c=AB
-    if (Math.random() < 0.5) return { condition_text: `В треугольнике ABC угол C равен 90°, BC = ${a}, AB = ${c}. Найдите sin A.`, image_url: fig, answer: ru(clean(b / c)) }
+    // sin B = AC/AB и cos A = AC/AB — оба равны b/c
+    if (Math.random() < 0.5) return { condition_text: `В треугольнике ABC угол C равен 90°, BC = ${a}, AB = ${c}. Найдите sin B.`, image_url: fig, answer: ru(clean(b / c)) }
     return { condition_text: `В треугольнике ABC угол C равен 90°, AC = ${b}, AB = ${c}. Найдите cos A.`, image_url: fig, answer: ru(clean(b / c)) }
   }
   if (mode === "cosFindHyp") {                          // катет + cos B → гипотенуза
@@ -2816,18 +2867,54 @@ function t01RightTrig() {
     const BC = a * k, AB = c * k
     return { condition_text: `В треугольнике ABC угол C равен 90°, BC = ${BC}, cos B = ${fT(a, c)}. Найдите AB.`, image_url: fig, answer: ru(AB) }
   }
-  if (mode === "tgFindHyp") {                           // катет AC + tg A → гипотенуза AB
-    const [a, b, c] = pick(RT_TRIP), AC = b, tg = fT(a, b)
+  if (mode === "tgFindHyp") {                           // катет AC + tg A (рацион.) → гипотенуза AB
+    const [a, b, c] = pick(RT_TRIP), AC = b, g = gcd(a, b), tg = fT(a / g, b / g)
     return { condition_text: `В треугольнике ABC угол C равен 90°, AC = ${AC}, tg A = ${tg}. Найдите AB.`, image_url: fig, answer: ru(c) }
+  }
+  if (mode === "tgIrr") {                               // катет AC + tg A = √m/n → AB
+    const [m, n, h] = pick(RT_IRR_TG), k = randInt(2, 7)
+    return { condition_text: `В треугольнике ABC угол C равен 90°, AC = ${k * n}, tg A = ${fT(`√{${m}}`, n)}. Найдите AB.`, image_url: fig, answer: ru(k * h) }
+  }
+  if (mode === "tgScaled") {                            // AC не кратен катету тройки: AB = AC·c/b
+    let a, b, c, AC
+    do { [a, b, c] = pick(PYTH); AC = randInt(2, 40) } while (decLen(AC * c, b) > 2)
+    const g = gcd(a, b)
+    return { condition_text: `В треугольнике ABC угол C равен 90°, AC = ${AC}, tg A = ${fT(a / g, b / g)}. Найдите AB.`, image_url: fig, answer: ru(clean(AC * c / b)) }
   }
   if (mode === "sinAToSinB") {                          // sin A → sin B (= cos A)
     const [a, b, c] = pick(RT_TRIP)
     return { condition_text: `В треугольнике ABC угол C равен 90°, sin A = ${ru(clean(a / c))}. Найдите sin B.`, image_url: fig, answer: ru(clean(b / c)) }
   }
+  if (mode === "sinIrrToSinB") {                        // sin A = √m/n → sin B = k/n
+    const [m, k, n] = pick(RT_IRR_SIN)
+    return { condition_text: `В треугольнике ABC угол C равен 90°, sin A = ${fT(`√{${m}}`, n)}. Найдите sin B.`, image_url: fig, answer: ru(clean(k / n)) }
+  }
   // sqrtLeg: гип c и катет BC=√(c²−m²) → AC=m, cos A = AC/AB = m/c (c=5,10 → терминир. дробь)
   const c = pick([5, 10]), m = randInt(2, c - 1), other = c * c - m * m
   const o = Math.sqrt(other), bcTxt = Number.isInteger(o) ? ru(o) : rT(other)
   return { condition_text: `В треугольнике ABC угол C равен 90°, AB = ${c}, BC = ${bcTxt}. Найдите cos A.`, image_url: fig, answer: ru(clean(m / c)) }
+}
+
+// Два катета (один с корнем) → sin B / cos B. 30-60-90: катеты k и k√3, гипотенуза 2k.
+function t01RightTwoLegsTrig() {
+  const k = randInt(1, 9), swap = Math.random() < 0.5
+  // swap=false: BC = k√3, AC = k → sin B = AC/AB = 1/2
+  // swap=true:  BC = k,   AC = k√3 → cos B = BC/AB = 1/2 (и sin B = √3/2 — не даём)
+  const legRoot = `${k === 1 ? "" : k}${rT(3)}`, legPlain = ru(k)
+  if (!swap) return { condition_text: `В треугольнике ABC угол C равен 90°, BC = ${legRoot}, AC = ${legPlain}. Найдите sin B.`, image_url: svgUrl(figRightTrig({})), answer: ru(clean(0.5)) }
+  return { condition_text: `В треугольнике ABC угол C равен 90°, BC = ${legPlain}, AC = ${legRoot}. Найдите cos B.`, image_url: svgUrl(figRightTrig({})), answer: ru(clean(0.5)) }
+}
+
+// Гипотенуза AB + tg острого угла A → катет BC (или AC).
+function t01RightHypTgLeg() {
+  let a, b, c, AB, BC, AC
+  do {
+    [a, b, c] = pick(PYTH)                              // a=BC, b=AC, c=AB (пропорции)
+    AB = randInt(2, 40); BC = AB * a / c; AC = AB * b / c
+  } while (decLen(AB * a, c) > 2 || decLen(AB * b, c) > 2)
+  const g = gcd(a, b), tg = a / g === 3 && b / g === 4 ? "0,75" : fT(a / g, b / g)
+  if (Math.random() < 0.5) return { condition_text: `В прямоугольном треугольнике ABC угол C равен 90°, AB = ${AB}, tg A = ${tg}. Найдите BC.`, image_url: svgUrl(figRightTrig({})), answer: ru(clean(BC)) }
+  return { condition_text: `В прямоугольном треугольнике ABC угол C равен 90°, AB = ${AB}, tg A = ${tg}. Найдите AC.`, image_url: svgUrl(figRightTrig({})), answer: ru(clean(AC)) }
 }
 
 // ── Равнобедренный + высота → sin/cos угла или сторона ───────────────────────
@@ -3133,19 +3220,24 @@ function t01IncircleRight() {
 
 // ── Параллелограмм / ромб / трапеция ────────────────────────────────────────
 // параллелограмм ABCD (+ опц. точка E — середина AD, диагональ/заливка)
-function figParallelogram({ eMid = false } = {}) {
+// midOn: "AD" → E(сер. AD) и отрезок BE; "CD" → G(сер. CD) и BG; "BC" → F(сер. BC) и AF
+function figParallelogram({ midOn = null } = {}) {
   const A = [55, 180], B = [215, 180], C = [262, 68], D = [102, 68]
-  const E = mid(A, D)
   // без заливки: область названа в условии
   let g = pPolygon([A, B, C, D])
-  if (eMid) g += pSeg(B, E) + pV(E, "l", "E")
+  if (midOn === "AD") { const E = mid(A, D); g += pSeg(B, E) + pV(E, "l", "E") }
+  if (midOn === "CD") { const G = mid(C, D); g += pSeg(B, G) + pV(G, "t", "G") }
+  if (midOn === "BC") { const F = mid(B, C); g += pSeg(A, F) + pV(F, "r", "F") }
   g += pV(A, "bl", "A") + pV(B, "br", "B") + pV(C, "tr", "C") + pV(D, "tl", "D")
   return stWrap(290, 205, g)
 }
 function t01ParMidpoint() {
   const S = randInt(2, 40) * 4
-  if (Math.random() < 0.5) return { condition_text: `Площадь параллелограмма ABCD равна ${S}. Точка E — середина стороны AD. Найдите площадь треугольника ABE.`, image_url: svgUrl(figParallelogram({ eMid: true, shade: "abe" })), answer: ru(S / 4) }
-  return { condition_text: `Площадь параллелограмма ABCD равна ${S}. Точка E — середина стороны AD. Найдите площадь трапеции BCDE.`, image_url: svgUrl(figParallelogram({ eMid: true, shade: "bcde" })), answer: ru(3 * S / 4) }
+  const mode = pick(["abe", "bcde", "abgd", "afcd"])
+  if (mode === "abe") return { condition_text: `Площадь параллелограмма ABCD равна ${S}. Точка E — середина стороны AD. Найдите площадь треугольника ABE.`, image_url: svgUrl(figParallelogram({ midOn: "AD" })), answer: ru(S / 4) }
+  if (mode === "bcde") return { condition_text: `Площадь параллелограмма ABCD равна ${S}. Точка E — середина стороны AD. Найдите площадь трапеции BCDE.`, image_url: svgUrl(figParallelogram({ midOn: "AD" })), answer: ru(3 * S / 4) }
+  if (mode === "abgd") return { condition_text: `Площадь параллелограмма ABCD равна ${S}. Точка G — середина стороны CD. Найдите площадь трапеции ABGD.`, image_url: svgUrl(figParallelogram({ midOn: "CD" })), answer: ru(3 * S / 4) }
+  return { condition_text: `Площадь параллелограмма ABCD равна ${S}. Точка F — середина стороны BC. Найдите площадь трапеции AFCD.`, image_url: svgUrl(figParallelogram({ midOn: "BC" })), answer: ru(3 * S / 4) }
 }
 // один угол параллелограмма больше другого на d
 function t01ParAngle() {
@@ -5618,9 +5710,9 @@ function t03PrismLateralInv() {
 // ============================================================================
 
 export const GENERATORS_EGE_PROF = {
-  1: [t01IsoAngle, t01IsoExt, t01Bisector, t01TwoAltitudes, t01SineTheorem,
+  1: [t01IsoAngle, t01IsoExt, t01Bisector, t01TwoAltitudes, t01TwoBisectors, t01SineTheorem,
     t01RightMedian, t01RightCevians, t01TwoSidesHeight, t01Midline, t01IsoApexArea,
-    t01EquilHeight, t01RightTrig, t01IsoHeightTrig,
+    t01EquilHeight, t01RightTrig, t01RightTwoLegsTrig, t01RightHypTgLeg, t01IsoHeightTrig,
     t01InscribedArc, t01CentralVsInscribed, t01CentralTri, t01ArcsToACB,
     t01InscQuadOpp, t01InscQuadArc, t01InscTriTwo, t01Diameters,
     t01TangentRadius, t01TangentSecantDiam, t01TwoTangents, t01TwoSecants, t01TangentChord,
@@ -5671,6 +5763,7 @@ export const GEN_META_EGE_PROF = {
     ["iso-ext", "Равнобедр.: внешний угол", t01IsoExt],
     ["bisector", "Биссектриса: C и CAD → B/ADB", t01Bisector],
     ["two-alt", "Две высоты → угол DOE", t01TwoAltitudes],
+    ["two-bis", "Две биссектрисы → угол AOB", t01TwoBisectors],
     ["sine-th", "Теорема синусов → R описанной", t01SineTheorem],
   ]],
     ["Прямоугольный: чевианы из прямого угла", [
@@ -5683,6 +5776,8 @@ export const GEN_META_EGE_PROF = {
       ["iso-apex-area", "Равнобедр.: угол+боковая → площадь", t01IsoApexArea],
       ["equil-height", "Равносторонний: высота → сторона", t01EquilHeight],
       ["right-trig", "Прямоуг.: сторона+триг → сторона/триг", t01RightTrig],
+      ["rt-two-legs", "Прямоуг.: два катета с корнем → sin/cos", t01RightTwoLegsTrig],
+      ["rt-hyp-tg", "Прямоуг.: гипотенуза+tg → катет", t01RightHypTgLeg],
       ["iso-h-trig", "Равнобедр.+высота → sin/cos/сторона", t01IsoHeightTrig],
     ]],
     ["Окружность: вписанные и центральные углы", [
