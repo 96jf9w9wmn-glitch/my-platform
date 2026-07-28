@@ -8823,12 +8823,11 @@ export function t18SysRadicalPencil() {
   const aRange = spanRange(set)
   const P = par.P
   // подмодульное выражение печатаем как обычную сумму, без ведущего «+»
-  const lead = (t) => t.replace(/^ \+ /, "").replace(/^ − /, MINUS)
-  const Lstr = lead(`${term(al, "x")}${term(be, "y")}${term(ga, "")}`)
+  const AL = absLineStr(al, be, ga), Lstr = AL.inner
   const xs = P[0] === 0 ? "ax" : `a(x${term(-P[0], "")})`
   const line = P[1] === 0 ? `y = ${xs}` : `y${term(-P[1], "")} = ${xs}`
   return item({
-    text: `${HEAD_SYS}\n⟦cases:x${SUP[2]}${term(p, "x")} + y${SUP[2]}${term(q, "y")}${term(rr, "")} = |${Lstr}|¦${line}⟧\n\nимеет ровно два различных решения.`,
+    text: `${HEAD_SYS}\n⟦cases:x${SUP[2]}${term(p, "x")} + y${SUP[2]}${term(q, "y")}${term(rr, "")} = ${AL.txt}¦${line}⟧\n\nимеет ровно два различных решения.`,
     set,
     solution: `Раскроем модуль. При ${Lstr} ≥ 0 получаем окружность (x${term(-c1.O[0], "")})${SUP[2]} + (y${term(-c1.O[1], "")})${SUP[2]} = ${c1.rho2}, при противоположном знаке — (x${term(-c2.O[0], "")})${SUP[2]} + (y${term(-c2.O[1], "")})${SUP[2]} = ${c2.rho2}.\n`
       + `Прямая ${Lstr} = 0 — радикальная ось этих окружностей, поэтому она проходит через ОБЕ их общие точки (${nS(P[0])}; ${nS(P[1])}) и (${nS(par.Q[0])}; ${nS(par.Q[1])}), и кривая склеивается из двух дуг с этими концами.\n`
@@ -8844,6 +8843,176 @@ export function t18SysRadicalPencil() {
       ],
       marks: [], hlines: setBounds(set).map(Rnum),
       xMin: Math.min(P[0], par.Q[0]) - 6, xMax: Math.max(P[0], par.Q[0]) + 6, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// Общий множитель подмодульного выражения выносим наружу — как в эталоне ФИПИ
+// (|8x − 4y − 40| печатается как 4|2x − y − 10|).
+function absLineStr(al, be, ga) {
+  const g0 = (a, b) => (b ? g0(b, a % b) : Math.abs(a))
+  const g = g0(g0(Math.abs(al), Math.abs(be)), Math.abs(ga)) || 1
+  const lead = (t) => t.replace(/^ \+ /, "").replace(/^ − /, MINUS)
+  const inner = lead(`${term(al / g, "x")}${term(be / g, "y")}${term(ga / g, "")}`)
+  return { txt: `${g === 1 ? "" : g}|${inner}|`, inner, g }
+}
+// ── #71. {x² + px + y² + qy + r = |αx + βy + γ|; n₁x + n₂y = a} ─────────────
+// Та же картинка, что и в #77 (две окружности плюс их радикальная ось под модулем),
+// но вторая строка — СЕМЕЙСТВО ПАРАЛЛЕЛЬНЫХ прямых с фиксированной нормалью (n₁; n₂).
+// Тогда касание происходит при a = n·O ± ρ√(n₁² + n₂²), и чтобы это было рациональным,
+// радиусы подбираются из условия «ρ²(n₁² + n₂²) — точный квадрат» (у оригинала нормаль (1; 2)
+// и радиус 5, то есть 125 — не квадрат, и ответ содержал бы √5).
+function build71({ P, Q, O1, O2, n1, n2 }) {
+  const N = n1 * n1 + n2 * n2
+  const cir = (O) => {
+    const rho2 = (O[0] - P[0]) ** 2 + (O[1] - P[1]) ** 2
+    return { A: -2 * O[0], B: -2 * O[1], C: O[0] * O[0] + O[1] * O[1] - rho2, O, rho2, t: isSq(rho2 * N) }
+  }
+  const c1 = cir(O1), c2 = cir(O2)
+  if (c1.rho2 <= 0 || c2.rho2 <= 0 || c1.t === null || c2.t === null) return null
+  const p = (c1.A + c2.A) / 2, q = (c1.B + c2.B) / 2, r = (c1.C + c2.C) / 2
+  let al = (c2.A - c1.A) / 2, be = (c2.B - c1.B) / 2, ga = (c2.C - c1.C) / 2
+  let A = c1, B = c2
+  if (al < 0 || (al === 0 && be < 0)) { al = -al; be = -be; ga = -ga; A = c2; B = c1 }
+  if (![p, q, r, al, be, ga].every(Number.isInteger)) return null
+  if (n2 === 0) return null
+  // y = (a − n₁x)/n₂ подставляем в окружность
+  const poly = (a, c) => {
+    const k = R(-n1, n2), b = Rdiv(a, R(n2))                  // y = kx + b
+    return [
+      Radd(Radd(Rmul(b, b), Rmul(R(c.B), b)), R(c.C)),
+      Radd(Radd(R(c.A), Rmul(R(2), Rmul(k, b))), Rmul(R(c.B), k)),
+      Radd(R(1), Rmul(k, k)),
+    ]
+  }
+  const solve = (a) => {
+    const k = R(-n1, n2), b = Rdiv(a, R(n2))
+    const cc = Radd(R(al), Rmul(R(be), k))                     // L(x) = cc·x + dd
+    const dd = Radd(Rmul(R(be), b), R(ga))
+    const P1 = poly(a, A), P2 = poly(a, B)
+    if (Rzero(cc)) {
+      return Rsign(dd) >= 0
+        ? countRoots(P1, "-inf", "+inf", false, false)
+        : countRoots(P2, "-inf", "+inf", false, false)
+    }
+    const x0 = Rdiv(Rneg(dd), cc)
+    return Rsign(cc) > 0
+      ? countRoots(P1, x0, "+inf", true, false) + countRoots(P2, "-inf", x0, false, false)
+      : countRoots(P1, "-inf", x0, false, true) + countRoots(P2, x0, "+inf", false, false)
+  }
+  const crit = []
+  for (const c of [c1, c2]) {
+    const base = n1 * c.O[0] + n2 * c.O[1]
+    crit.push(R(base + c.t), R(base - c.t))                    // касание
+  }
+  crit.push(R(n1 * P[0] + n2 * P[1]), R(n1 * Q[0] + n2 * Q[1]))  // прямая через точки стыка
+  return { set: assembleSet((a) => solve(a) >= 3, crit), solve, p, q, r, al, be, ga, c1: A, c2: B }
+}
+// Наборы: точки стыка P, Q; центры на серединном перпендикуляре; нормаль прямой.
+const T71 = []
+for (const [n1, n2] of [[1, 2], [2, 1], [3, 4], [4, 3], [1, 1], [1, -1]]) {
+  for (const P of [[0, 0], [1, 1], [2, 0], [0, 2], [3, 1], [-1, 2], [3, -4]]) {
+    for (const Q of [[0, 0], [4, 2], [2, 4], [5, 0], [0, 5], [3, -1], [-2, 2]]) {
+      if (P[0] === Q[0] && P[1] === Q[1]) continue
+      const dx = Q[0] - P[0], dy = Q[1] - P[1]
+      const rhs = Q[0] * Q[0] + Q[1] * Q[1] - P[0] * P[0] - P[1] * P[1]
+      const cent = []
+      for (let ox = -8; ox <= 8; ox++) {
+        if (dy === 0) continue
+        const oy = (rhs - 2 * dx * ox) / (2 * dy)
+        if (Number.isInteger(oy) && Math.abs(oy) <= 8) cent.push([ox, oy])
+      }
+      for (let i = 0; i < cent.length; i++) for (let j = i + 1; j < cent.length; j++) {
+        const r = build71({ P, Q, O1: cent[i], O2: cent[j], n1, n2 })
+        if (r && tidySet(r.set, 3)) T71.push({ P, Q, O1: cent[i], O2: cent[j], n1, n2 })
+      }
+    }
+  }
+}
+export function t18SysRadicalParallel() {
+  const par = pick(T71), { n1, n2, P, Q } = par
+  const { set, solve, p, q, r, al, be, ga, c1, c2 } = build71(par)
+  const aRange = spanRange(set)
+  const lead = (t) => t.replace(/^ \+ /, "").replace(/^ − /, MINUS)
+  const AL = absLineStr(al, be, ga), Lstr = AL.inner
+  const lineStr = lead(`${term(n1, "x")}${term(n2, "y")}`)
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:x${SUP[2]}${term(p, "x")} + y${SUP[2]}${term(q, "y")}${term(r, "")} = ${AL.txt}¦${lineStr} = a⟧\n\nимеет более двух различных решений.`,
+    set,
+    solution: `Раскроем модуль: при ${Lstr} ≥ 0 получаем окружность (x${term(-c1.O[0], "")})${SUP[2]} + (y${term(-c1.O[1], "")})${SUP[2]} = ${c1.rho2}, при ${Lstr} < 0 — окружность (x${term(-c2.O[0], "")})${SUP[2]} + (y${term(-c2.O[1], "")})${SUP[2]} = ${c2.rho2}.\n`
+      + `Прямая ${Lstr} = 0 — радикальная ось этих окружностей, поэтому она проходит через их общие точки (${nS(P[0])}; ${nS(P[1])}) и (${nS(Q[0])}; ${nS(Q[1])}), и кривая склеена из двух дуг с этими концами.\n`
+      + `Вторая строка задаёт семейство ПАРАЛЛЕЛЬНЫХ прямых с нормалью (${nS(n1)}; ${nS(n2)}). Прямая ${lineStr} = a касается первой окружности при a = ${n1 * c1.O[0] + n2 * c1.O[1]} ± ${c1.t}, второй — при a = ${n1 * c2.O[0] + n2 * c2.O[1]} ± ${c2.t}, а через точки стыка проходит при a = ${n1 * P[0] + n2 * P[1]} и a = ${n1 * Q[0] + n2 * Q[1]}.\n`
+      + `Между соседними критическими значениями число общих точек постоянно; больше двух их оказывается только на ${setToString(set)}.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "atLeast", n: 3 },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: () => c1.O[0], dash: true, label: "центр первой окружности" },
+        { f: () => c2.O[0], dash: true, label: "центр второй" },
+        { f: (a) => (n1 === 0 ? null : a / n1), label: "след прямой на оси Ox" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: Math.min(c1.O[0], c2.O[0]) - 6, xMax: Math.max(c1.O[0], c2.O[0]) + 6, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// ── #75. {x(x²+y²+y−mx−b−ρ²) = |x|(x²+y²−y+mx+b−ρ²); y = a(x+d)} ────────────
+// При x > 0 обе скобки равны, и остаётся ПРЯМАЯ y = mx + b; при x < 0 сумма скобок равна нулю,
+// то есть x² + y² = ρ² — окружность; а x = 0 годится при любом y (вся ось Oy).
+// Пучок проведён через точку (−d; 0), причём d² − ρ² — точный квадрат: тогда касание
+// с окружностью происходит при рациональном a = ±ρ/√(d² − ρ²).
+function build75({ m, b, rho, d }) {
+  const s = isSq(d * d - rho * rho)
+  if (s === null || s === 0 || rho <= 0 || d <= 0) return null
+  const solve = (a) => {
+    let n = 1                                                  // ось Oy: точка (0; ad)
+    if (Rcmp(a, R(m)) !== 0) {                                 // луч прямой y = mx + b при x > 0
+      const x = Rdiv(Rsub(Rmul(a, R(d)), R(b)), Rsub(R(m), a))
+      if (Rsign(x) > 0) n++
+    }
+    // левая полуокружность: (1 + a²)x² + 2a²dx + a²d² − ρ² = 0 при x < 0
+    const P = [Rsub(Rmul(Rmul(a, a), R(d * d)), R(rho * rho)), Rmul(R(2 * d), Rmul(a, a)), Radd(R(1), Rmul(a, a))]
+    return n + countRoots(P, "-inf", R0, false, false)
+  }
+  const crit = [R(m), R(b, d), R(rho, d), R(-rho, d), R(rho, s), R(-rho, s)]
+  return { set: assembleSet((a) => solve(a) === 3, crit), solve, s }
+}
+const T75 = []
+for (const [rho, , d] of [[3, 4, 5], [4, 3, 5], [5, 12, 13], [12, 5, 13], [6, 8, 10], [8, 6, 10]]) {   // s = √(d²−ρ²) считается внутри build75
+  for (const m of [1, 2, 3]) for (const b of [-3, -2, -1, 1, 2, 3]) {
+    const r = build75({ m, b, rho, d })
+    if (r && tidySet(r.set, 4)) T75.push({ m, b, rho, d })
+  }
+}
+export function t18SysAxisLineCircle() {
+  const par = pick(T75), { m, b, rho, d } = par
+  const { set, solve, s } = build75(par)
+  const aRange = spanRange(set)
+  const A = `x${SUP[2]} + y${SUP[2]} + y${term(-m, "x")}${term(-b - rho * rho, "")}`
+  const B = `x${SUP[2]} + y${SUP[2]} ${MINUS} y${term(m, "x")}${term(b - rho * rho, "")}`
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:x(${A}) = |x|(${B})¦y = a(x + ${d})⟧\n\nимеет ровно три различных решения.`,
+    set,
+    solution: `При x = 0 первая строка обращается в 0 = 0 — вся ось Oy принадлежит кривой, и пучок пересекает её ровно в одной точке (0; ${d === 1 ? "" : d}a).\n`
+      + `При x > 0 сокращаем на x: скобки равны, то есть 2y = ${2 * m === 1 ? "" : 2 * m}x + ${2 * b} — луч прямой y = ${m === 1 ? "" : m}x${term(b, "")} при x > 0.\n`
+      + `При x < 0 модуль меняет знак, и сумма скобок равна нулю: 2x${SUP[2]} + 2y${SUP[2]} ${MINUS} ${2 * rho * rho} = 0, то есть левая половина окружности x${SUP[2]} + y${SUP[2]} = ${rho * rho}.\n`
+      + `Пучок y = a(x + ${d}) проходит через точку (${MINUS}${d}; 0). Он касается окружности при a = ±${Rstr(R(rho, s))} (так как ${d}${SUP[2]} ${MINUS} ${rho * rho} = ${s}${SUP[2]}), проходит через точки (0; ±${rho}) при a = ±${Rstr(R(rho, d))}, а прямой становится параллелен при a = ${m}.\n`
+      + `Три решения — это точка на оси Oy плюс ровно две точки на луче и полуокружности вместе.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 3 },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: () => 0, dash: true, label: "ось Oy — часть кривой" },
+        { f: (a) => (Math.abs(a - m) < 1e-9 ? null : (a * d - b) / (m - a)), label: "точка на луче" },
+        { f: () => -rho, dash: true, label: "левая полуокружность" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -d - 2, xMax: d + 2, aMin: aRange[0], aMax: aRange[1],
     },
   })
 }
@@ -9039,6 +9208,8 @@ export const META18 = [
     ["sys-two-lines-arc", "{y²−αx−c = |x²−px−q|; x−2y = a} — более двух решений", t18SysTwoLinesArc],
     ["sys-petal-pencil", "{2x−2y−2d = |x²+y²−ρ²|; пучок через вершину} — более двух решений", t18SysPetalPencil],
     ["sys-radical-pencil", "{x²+px+y²+qy+r = |αx+βy+γ|; пучок через точку стыка} — ровно два решения", t18SysRadicalPencil],
+    ["sys-radical-parallel", "тот же «лепесток», но семейство параллельных прямых — более двух решений", t18SysRadicalParallel],
+    ["sys-axis-line-circle", "{ось Oy + луч прямой + полуокружность; пучок} — ровно три решения", t18SysAxisLineCircle],
   ]],
   ["Дроби и замены (остаток раздела M)", [
     ["two-fractions-one", "(x−pa)/(x+c) + (x−d)/(x−a) = 1 — ровно один корень", t18TwoFractionsOne],
