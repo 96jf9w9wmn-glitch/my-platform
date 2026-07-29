@@ -170,21 +170,33 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const [width, setWidth] = useState(WIDTHS[1])
   const [dash, setDash] = useState("solid")     // solid | dashed | dotted
   const [corner, setCorner] = useState("sharp") // round | sharp
-  const [strokeMenu, setStrokeMenu] = useState(false)
-  const [selStrokeMenu, setSelStrokeMenu] = useState(false)
+  // Открытый попап панели — ОДИН на всех: "stroke" | "selStroke" | "shapes" | "bg" | null.
+  // Поэтому открытие любого попапа автоматически закрывает предыдущий, а клик мимо
+  // (по холсту или где-то ещё) закрывает открытый — см. эффект ниже и onPointerDown.
+  const [menu, setMenu] = useState(null)
+  const toggleMenu = (id) => setMenu((m) => (m === id ? null : id))
   const [bg, setBg] = useState("plain")      // plain | grid | dots — узор
   const [bgColor, setBgColor] = useState(theme === "dark" ? BG_DARK : BG_LIGHT) // цвет фона
   const [shapeTool, setShapeTool] = useState("rect") // последняя выбранная фигура
-  const [shapesMenu, setShapesMenu] = useState(false)
-  const [bgMenu, setBgMenu] = useState(false)
   const [online, setOnline] = useState([])
   const [saveState, setSaveState] = useState("idle")
   const [loaded, setLoaded] = useState(false)
   const [zoomPct, setZoomPct] = useState(100)
   const [selCount, setSelCount] = useState(0)
+  // Число выделенных штрихов: пропало выделение — закрываем попап его настроек
+  const applySelCount = (n) => { setSelCount(n); if (!n) setMenu((m) => (m === "selStroke" ? null : m)) }
   const [selBox, setSelBox] = useState(null)   // ориентированная рамка выделения (экранные координаты)
   const [selProps, setSelProps] = useState(null) // свойства первого выделенного штриха {width,dash,corner}
   const [dragActive, setDragActive] = useState(false) // перетаскивание файла над доской
+
+  // Клик мимо открытого попапа закрывает его. Всё, что должно считаться «своим»
+  // (кнопка попапа + сам попап), обёрнуто в контейнер с data-menu.
+  useEffect(() => {
+    if (!menu) return
+    const onDown = (e) => { if (!e.target?.closest?.("[data-menu]")) setMenu(null) }
+    window.addEventListener("pointerdown", onDown)
+    return () => window.removeEventListener("pointerdown", onDown)
+  }, [menu])
 
   const wrapRef = useRef(null)
   const canvasRef = useRef(null)
@@ -644,6 +656,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   }
 
   function onPointerDown(e) {
+    // Открыт попап панели → первый тык по холсту просто закрывает его, не рисуя
+    if (menu) { setMenu(null); return }
     // Новый первичный указатель = начало нового жеста → сбрасываем возможные
     // «зависшие» указатели (недоснятое касание и т.п.), иначе рисование
     // навсегда уходит в режим жеста. Это самовосстановление.
@@ -766,7 +780,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         for (const [id, s] of strokes.current) if (hitStroke(s, m.x0, m.y0, tol)) hit = id
         if (hit) selection.current.add(hit)
       }
-      setSelCount(selection.current.size)
+      applySelCount(selection.current.size)
       scheduleDraw()
       return
     }
@@ -786,7 +800,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       strokes.current.delete(id)
       channelRef.current?.send({ type: "broadcast", event: "remove", payload: { id } })
     }
-    selection.current.clear(); setSelCount(0)
+    selection.current.clear(); applySelCount(0)
     scheduleDraw(); scheduleSave()
   }
 
@@ -946,7 +960,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       channelRef.current?.send({ type: "broadcast", event: "draw", payload: ns })
       next.add(ns.id)
     }
-    selection.current = next; setSelCount(next.size)
+    selection.current = next; applySelCount(next.size)
     redoStack.current = []; scheduleDraw(); scheduleSave()
   }
 
@@ -1012,7 +1026,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     changeBgColor(isDarkColor(bgColor) ? BG_LIGHT : BG_DARK)
   }
   function pickShape(id) {
-    setShapeTool(id); setTool(id); setShapesMenu(false)
+    setShapeTool(id); setTool(id); setMenu(null)
   }
   function zoomBy(factor) {
     const c = canvasRef.current
@@ -1046,7 +1060,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     if (tool === "cursor") return
     selection.current.clear(); marquee.current = null; movingSel.current = null
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSelCount(0)
+    applySelCount(0)
     scheduleDraw()
   }, [tool, scheduleDraw])
   useEffect(() => {
@@ -1062,7 +1076,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       // Горячие клавиши инструментов (без модификаторов, не в поле ввода)
       const tag = e.target?.tagName
       if (tag === "INPUT" || tag === "TEXTAREA" || e.target?.isContentEditable) return
-      if (e.code === "Escape") { setTool("cursor"); setBgMenu(false); setShapesMenu(false); return }
+      if (e.code === "Escape") { setTool("cursor"); setMenu(null); return }
       if (e.code === "Delete" || e.code === "Backspace") { e.preventDefault(); actions.current.del(); return }
       const t = TOOL_CODES[e.code]
       if (t) { setTool(t); if (SHAPE_TOOLS.has(t)) setShapeTool(t) }
@@ -1238,12 +1252,12 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
               ))}
               {divider}
               {/* Настройки обводки для выделения */}
-              <div className="relative">
-                <button onClick={() => setSelStrokeMenu((v) => !v)} title="Настройки обводки"
+              <div className="relative" data-menu>
+                <button onClick={() => toggleMenu("selStroke")} title="Настройки обводки"
                   className="press-tap w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:bg-black/5 dark:hover:bg-white/10">
                   <Icon name="stroke" size={16} />
                 </button>
-                {selStrokeMenu && (
+                {menu === "selStroke" && (
                   <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 p-2 rounded-xl shadow-lg popup-bubble z-10"
                     style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
                     <StrokeSettings dark={dark} tool={selProps?.tool} curWidth={selProps?.width} curDash={selProps?.dash || "solid"} curCorner={selProps?.corner || "sharp"}
@@ -1290,15 +1304,15 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         <div className="flex flex-wrap items-center justify-center gap-1.5 rounded-2xl px-2 py-1.5 shadow-lg relative pointer-events-auto max-w-full"
           style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
           {TOOLS.map((t) => t.shapes ? (
-            <div key="shapes" className="relative">
-              <button onClick={() => setShapesMenu((v) => !v)}
+            <div key="shapes" className="relative" data-menu>
+              <button onClick={() => toggleMenu("shapes")}
                 className={`group relative press-tap w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
                   shapeMenuIds.has(tool) ? "bg-blue-500 text-white" : "text-gray-500 hover:bg-black/5 dark:hover:bg-white/10"
                 }`}>
                 <Icon name={shapeIconOf(shapeTool)} size={17} />
                 <Tip label="Фигуры" dark={dark} />
               </button>
-              {shapesMenu && (
+              {menu === "shapes" && (
                 <div className="absolute bottom-11 left-1/2 -translate-x-1/2 flex flex-col gap-2 p-2 rounded-xl shadow-lg popup-bubble"
                   style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
                   {[["Плоские", SHAPES_2D], ["Объёмные", SHAPES_3D]].map(([title, list]) => (
@@ -1349,13 +1363,13 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
           {divider}
 
           {/* Настройки обводки */}
-          <div className="relative">
-            <button onClick={() => setStrokeMenu((v) => !v)}
+          <div className="relative" data-menu>
+            <button onClick={() => toggleMenu("stroke")}
               className="group relative press-tap w-9 h-9 rounded-xl flex items-center justify-center text-gray-500 hover:bg-black/5 dark:hover:bg-white/10">
               <Icon name="stroke" size={17} />
               <Tip label="Настройки обводки" dark={dark} />
             </button>
-            {strokeMenu && (
+            {menu === "stroke" && (
               <div className="absolute bottom-11 left-1/2 -translate-x-1/2 p-2 rounded-xl shadow-lg popup-bubble"
                 style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
                 <StrokeSettings dark={dark} tool={tool} curWidth={width} curDash={dash} curCorner={corner} onWidth={setWidth} onDash={setDash} onCorner={setCorner} />
@@ -1376,13 +1390,13 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
           {divider}
 
           {/* Фон */}
-          <div className="relative">
-            <button onClick={() => setBgMenu((v) => !v)}
+          <div className="relative" data-menu>
+            <button onClick={() => toggleMenu("bg")}
               className={`group relative press-tap w-9 h-9 rounded-xl flex items-center justify-center ${bg !== "plain" ? "text-blue-500" : "text-gray-500"} hover:bg-black/5 dark:hover:bg-white/10`}>
               <Icon name="grid" size={17} />
               <Tip label="Фон доски" dark={dark} />
             </button>
-            {bgMenu && (
+            {menu === "bg" && (
               <div className="absolute bottom-11 left-1/2 -translate-x-1/2 flex flex-col gap-2 p-2 rounded-xl shadow-lg popup-bubble"
                 style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
                 {/* Узор */}
