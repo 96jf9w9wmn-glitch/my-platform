@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { supabase } from "../supabase"
 import Icon from "./Icon"
 import {
-  GRID, ENCLOSED_SHAPES, SHAPE_TOOLS,
+  GRID, ENCLOSED_SHAPES, SHAPE_TOOLS, DASHABLE_SHAPES,
   isDarkColor, resolveColor, strokeBBox, paintStroke, scenePreview,
 } from "./boardPaint"
 
@@ -116,11 +116,15 @@ function Tip({ label, hotkey, dark }) {
   )
 }
 
-// Содержимое попапа «Настройки обводки»: толщина + стиль линии + углы (в одну строку)
-function StrokeSettings({ dark, curWidth, curDash, curCorner, onWidth, onDash, onCorner }) {
+// Содержимое попапа «Настройки обводки»: толщина + стиль линии + углы (в одну строку).
+// Стиль линии и углы применяются только к фигурам (см. paintStroke): у пера и ластика
+// штрих всегда сплошной и со скруглёнными стыками — для них эти группы не показываем.
+function StrokeSettings({ dark, tool, curWidth, curDash, curCorner, onWidth, onDash, onCorner }) {
   const swatch = dark ? "#e5e5ea" : "#1c1c1e"
   const sep = <div className="w-px h-7 mx-0.5 flex-shrink-0" style={{ background: dark ? "rgba(255,255,255,.12)" : "rgba(0,0,0,.1)" }} />
   const dashArr = (d) => d === "dashed" ? "5,4" : d === "dotted" ? "0.1,5" : ""
+  const showDash = DASHABLE_SHAPES.has(tool)
+  const showCorner = SHAPE_TOOLS.has(tool)
   return (
     <div className="flex items-center gap-1">
       {WIDTHS.map((w) => (
@@ -129,15 +133,15 @@ function StrokeSettings({ dark, curWidth, curDash, curCorner, onWidth, onDash, o
           <span className="rounded-full" style={{ width: w + 4, height: w + 4, background: swatch }} />
         </button>
       ))}
-      {sep}
-      {DASH_STYLES.map((d) => (
+      {showDash && sep}
+      {showDash && DASH_STYLES.map((d) => (
         <button key={d} onClick={() => onDash(d)} title={d === "solid" ? "Сплошная" : d === "dashed" ? "Пунктир" : "Точки"}
           className={`press-tap w-11 h-9 rounded-xl flex items-center justify-center ${curDash === d ? "bg-blue-500/15" : "hover:bg-black/5 dark:hover:bg-white/10"}`}>
           <svg width="34" height="12" viewBox="0 0 34 12"><line x1="2" y1="6" x2="32" y2="6" stroke={swatch} strokeWidth="2.5" strokeLinecap="round" strokeDasharray={dashArr(d)} /></svg>
         </button>
       ))}
-      {sep}
-      {[["round", true], ["sharp", false]].map(([id, round]) => (
+      {showCorner && sep}
+      {showCorner && [["round", true], ["sharp", false]].map(([id, round]) => (
         <button key={id} onClick={() => onCorner(id)} title={round ? "Скруглённые углы" : "Острые углы"}
           className={`press-tap w-11 h-9 rounded-xl flex items-center justify-center ${curCorner === id ? "bg-blue-500/15" : "hover:bg-black/5 dark:hover:bg-white/10"}`}>
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke={swatch} strokeWidth="2">
@@ -350,10 +354,10 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     let props = null
     if (frame && selection.current.size) {
       const s0 = strokes.current.get([...selection.current][0])
-      if (s0) props = { width: s0.width, dash: s0.dash || "solid", corner: s0.corner || "sharp" }
+      if (s0) props = { tool: s0.tool, width: s0.width, dash: s0.dash || "solid", corner: s0.corner || "sharp" }
     }
     const pp = lastSelProps.current
-    if ((!pp) !== (!props) || (pp && props && (pp.width !== props.width || pp.dash !== props.dash || pp.corner !== props.corner))) {
+    if ((!pp) !== (!props) || (pp && props && (pp.tool !== props.tool || pp.width !== props.width || pp.dash !== props.dash || pp.corner !== props.corner))) {
       lastSelProps.current = props; setSelProps(props)
     }
     if (marquee.current) {
@@ -1242,7 +1246,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
                 {selStrokeMenu && (
                   <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 p-2 rounded-xl shadow-lg popup-bubble z-10"
                     style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
-                    <StrokeSettings dark={dark} curWidth={selProps?.width} curDash={selProps?.dash || "solid"} curCorner={selProps?.corner || "sharp"}
+                    <StrokeSettings dark={dark} tool={selProps?.tool} curWidth={selProps?.width} curDash={selProps?.dash || "solid"} curCorner={selProps?.corner || "sharp"}
                       onWidth={setSelectionWidth} onDash={setSelectionDash} onCorner={setSelectionCorner} />
                   </div>
                 )}
@@ -1354,7 +1358,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
             {strokeMenu && (
               <div className="absolute bottom-11 left-1/2 -translate-x-1/2 p-2 rounded-xl shadow-lg popup-bubble"
                 style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
-                <StrokeSettings dark={dark} curWidth={width} curDash={dash} curCorner={corner} onWidth={setWidth} onDash={setDash} onCorner={setCorner} />
+                <StrokeSettings dark={dark} tool={tool} curWidth={width} curDash={dash} curCorner={corner} onWidth={setWidth} onDash={setDash} onCorner={setCorner} />
               </div>
             )}
           </div>
