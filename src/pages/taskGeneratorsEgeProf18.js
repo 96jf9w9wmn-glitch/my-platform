@@ -9730,6 +9730,70 @@ export function t18ThreePositiveRoots() {
   })
 }
 
+// ── #132. (a − (a² − pa)cos 2x + q)/(r − cos 4x + a²) < 1 содержит отрезок ───
+// Обозначим c = cos 2x. Тогда cos 4x = 2c² − 1, знаменатель равен r + 1 − 2c² + a² > 0,
+// и неравенство равносильно 2c² − (a² − pa)c + (a + q − r − 1 − a²) < 0.
+// На указанном отрезке аргумент 2x пробегает промежуток длиной больше π, включающий и точку
+// с cos 2x = 1, и точку с cos 2x = −1, поэтому c принимает ВСЕ значения из [−1; 1].
+// Значит «множество решений содержит отрезок» ⟺ квадратный трёхчлен по c отрицателен на всём
+// [−1; 1], а так как он с положительным старшим коэффициентом, достаточно проверить концы.
+function build132({ p, q, r }) {
+  if (r < 1) return null                                        // знаменатель обязан быть положительным
+  const bOf = (a) => Rsub(Rmul(a, a), Rmul(R(p), a))            // b = a² − pa
+  const kOf = (a) => Rsub(Radd(a, R(q - r - 1)), Rmul(a, a))    // k = a + q − r − 1 − a²
+  const solve = (a) => {
+    const b = bOf(a), k = kOf(a)
+    const atPlus = Radd(Rsub(R(2), b), k)                       // значение при c = 1
+    const atMinus = Radd(Radd(R(2), b), k)                      // значение при c = −1
+    return Rsign(atPlus) < 0 && Rsign(atMinus) < 0 ? 1 : 0
+  }
+  const e1 = ratRoots([R(q - r + 1), R(p + 1), R(-2)])          // 2 − b + k = 0
+  const e2 = ratRoots([R(q - r + 1), R(1 - p)])                 // 2 + b + k = 0
+  if (!e1.allRational || !e2.allRational) return null
+  const set = assembleSet((a) => solve(a) === 1, [...e1.roots, ...e2.roots])
+  return { set, solve }
+}
+const SEG132 = [
+  { txt: `[${MINUS}2π; ${MINUS}${fT("7π", "6")}]` },
+  { txt: `[0; ${fT("5π", "6")}]` },
+  { txt: `[π; ${fT("11π", "6")}]` },
+]
+const T132 = []
+for (const p of [0, 1, 2, 3, 4]) for (const q of [0, 1, 2, 3, 4]) for (const r of [1, 2, 3, 4, 5]) {
+  const x = build132({ p, q, r })
+  if (x && tidySet(x.set, 3)) T132.push({ p, q, r })
+}
+export function t18TrigIneqContainsSeg() {
+  const par = pick(T132), { p, q, r } = par
+  const seg = pick(SEG132)
+  const { set, solve } = build132(par)
+  const aRange = spanRange(set)
+  const num = `a ${MINUS} (a${SUP[2]}${term(-p, "a")})cos 2x${term(q, "")}`
+  const den = `${r} ${MINUS} cos 4x + a${SUP[2]}`
+  return item({
+    text: `Найдите все значения a, при каждом из которых множество решений неравенства\n\n`
+      + `${fT(num, den)} < 1\n\nсодержит отрезок ${seg.txt}.`,
+    set,
+    solution: `Обозначим c = cos 2x; тогда cos 4x = 2c${SUP[2]} ${MINUS} 1, и знаменатель равен ${r + 1} ${MINUS} 2c${SUP[2]} + a${SUP[2]} > 0 при любых значениях.\n`
+      + `Умножая на него, получаем 2c${SUP[2]} ${MINUS} (a${SUP[2]}${term(-p, "a")})c + (a${term(q - r - 1, "")} ${MINUS} a${SUP[2]}) < 0 — квадратный трёхчлен по c с положительным старшим коэффициентом.\n`
+      + `На отрезке ${seg.txt} аргумент 2x пробегает промежуток длиной ${fT("5π", "3")} и проходит и через точку с cos 2x = 1, и через точку с cos 2x = ${MINUS}1, поэтому c принимает ВСЕ значения из [${MINUS}1; 1].\n`
+      + `Значит нужно, чтобы трёхчлен был отрицателен на всём [${MINUS}1; 1]; ветви направлены вверх, поэтому достаточно проверить концы: 2 ${MINUS} b + k < 0 и 2 + b + k < 0, где b = a${SUP[2]}${term(-p, "a")} и k = a${term(q - r - 1, "")} ${MINUS} a${SUP[2]}.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "exists" },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => 2 - (a * a - p * a) + (a + q - r - 1 - a * a), label: "значение при c = 1" },
+        { f: (a) => 2 + (a * a - p * a) + (a + q - r - 1 - a * a), label: "значение при c = −1" },
+        { f: () => 0, dash: true, label: "нуль" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -6, xMax: 4, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
 // =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
@@ -9937,6 +10001,7 @@ export const META18 = [
     ["trig-range-contains", "множество значений (√(a+1)−k cos3x+1)/(sin²3x+…) содержит [L; H]", t18TrigRangeContains],
     ["trig-param-range", "(Aa−(mq−Ca)cos t)/(p sin t−q cos t) = m — есть решение на [0; π/2]", t18TrigParamRange],
     ["trig-tangent-seg", "(sin x−a cos x)/(sin x+q cos x) = 1/(a+r) — есть решение на отрезке", t18TrigTangentSeg],
+    ["trig-ineq-contains", "множество решений тригонометрического неравенства содержит отрезок", t18TrigIneqContainsSeg],
   ]],
   ["Оценочные «хотя бы один корень»", [
     ["sum-abs-disk", "p|x−u| + q|x+a| ≤ √(ρ²−y²) − c — существует пара (x; y)", t18SumAbsUnderDisk],
