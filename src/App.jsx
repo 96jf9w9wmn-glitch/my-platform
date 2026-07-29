@@ -646,7 +646,7 @@ function App() {
           <div className={activePage !== "homework" ? "hidden" : "page-active"}>{visitedPages.has("homework") && <Homework user={user} students={students} />}</div>
           <div className={activePage !== "results" ? "hidden" : "page-active"}>{visitedPages.has("results") && <Results students={students} user={user} />}</div>
           <div className={activePage !== "taskgen" ? "hidden" : "page-active"}>{visitedPages.has("taskgen") && <TaskGenPreview />}</div>
-          <div className={activePage !== "subscription" ? "hidden" : "page-active"}>{visitedPages.has("subscription") && <Subscription studentsCount={students.length} />}</div>
+          <div className={activePage !== "subscription" ? "hidden" : "page-active"}>{visitedPages.has("subscription") && <Subscription studentsCount={students.length} tutorId={user.id} />}</div>
           <div className={activePage !== "chat" ? "hidden" : "flex-1 min-h-0 flex flex-col page-active"}>{visitedPages.has("chat") && (
             <Chat
               myId={`t:${user.id}`}

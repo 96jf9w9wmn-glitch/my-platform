@@ -11,6 +11,7 @@ import { useEffect, useState } from "react"
 import Icon from "../components/Icon"
 import { supabase } from "../supabase"
 import { useSubscription } from "../subscription"
+import { MarketingToggle } from "../components/ConsentChecks"
 import {
   PLANS, PERIODS, FEATURE_ROWS, UNLIMITED,
   effectivePlanId, isActive, formatLimit, formatPrice, priceOf, planById,
@@ -130,7 +131,7 @@ function PlanCard({ plan, period, currentId, active, busy, onBuy }) {
   )
 }
 
-export default function Subscription({ studentsCount = 0 }) {
+export default function Subscription({ studentsCount = 0, tutorId }) {
   const { sub, usage, installed, reload } = useSubscription()
   const [period, setPeriod] = useState("month")
   const [health, setHealth] = useState(null)
@@ -402,6 +403,12 @@ export default function Subscription({ studentsCount = 0 }) {
           </div>
         </div>
       )}
+
+      {/* Единственная страница про аккаунт репетитора — здесь же и согласие на
+          необязательную рассылку, которое мы больше не спрашиваем при регистрации. */}
+      <div className="mt-4">
+        <MarketingToggle table="tutors" id={tutorId} role="tutor" />
+      </div>
 
       <p className="text-[11px] text-gray-400 mt-4 leading-relaxed">
         Оплата проходит через ЮKassa. Подписка не продлевается автоматически: когда срок закончится,

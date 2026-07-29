@@ -21,9 +21,11 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [failedAttempts, setFailedAttempts] = useState(0)
   const [cooldownLeft, setCooldownLeft] = useState(0)
-  // Согласия при регистрации. Галочки НЕ проставлены заранее: с 01.09.2025
-  // согласие на обработку ПДн даётся активным действием (см. legal/consent.md).
-  const [consent, setConsent] = useState({ terms: false, pd: false, guardian: false, marketing: false })
+  // Согласия при регистрации — только обязательные, чтобы форма помещалась на
+  // экран. Галочки НЕ проставлены заранее: с 01.09.2025 согласие на обработку
+  // ПДн даётся активным действием (см. legal/consent.md). Необязательная
+  // рассылка спрашивается уже в кабинете, а не здесь.
+  const [consent, setConsent] = useState({ terms: false, pd: false, guardian: false })
 
   useEffect(() => {
     if (cooldownLeft <= 0) return
@@ -120,7 +122,6 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
       terms: consent.terms,
       personalData: consent.pd,
       guardian: role === "student" ? consent.guardian : null,
-      marketing: consent.marketing,
     })
   }
 
@@ -484,8 +485,7 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
                 onChange={(v) => setConsent((p) => ({ ...p, pd: v }))}
                 accent={roleConfig[role].grad}
               >
-                Даю <ConsentLink href="/consent">согласие на обработку персональных данных</ConsentLink> на
-                указанных в нём условиях
+                Даю <ConsentLink href="/consent">согласие на обработку персональных данных</ConsentLink>
               </ConsentRow>
 
               {role === "student" && (
@@ -494,19 +494,10 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
                   onChange={(v) => setConsent((p) => ({ ...p, guardian: v }))}
                   accent={roleConfig[role].grad}
                 >
-                  Мне есть 18 лет — либо мой родитель (законный представитель) ознакомлен
-                  с документами и даёт согласие на обработку моих данных
+                  Мне 18 лет — либо мой родитель (законный представитель) согласен
+                  на обработку моих данных
                 </ConsentRow>
               )}
-
-              <ConsentRow
-                checked={consent.marketing}
-                onChange={(v) => setConsent((p) => ({ ...p, marketing: v }))}
-                accent={roleConfig[role].grad}
-              >
-                Хочу получать напоминания о занятиях и новости сервиса
-                <span className="text-gray-400 dark:text-gray-500"> — необязательно</span>
-              </ConsentRow>
             </div>
           )}
 

@@ -11,6 +11,7 @@ import Chat from "./Chat"
 import StudentOnboardingModal from "../components/StudentOnboardingModal"
 import BoardHistory from "../components/BoardHistory"
 import OnlinePayCard from "../components/OnlinePayCard"
+import { MarketingToggle } from "../components/ConsentChecks"
 
 const Board = lazy(() => import("../components/Board"))
 const Practice = lazy(() => import("./Practice"))
@@ -2071,6 +2072,8 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                 </div>
               </div>
             </div>
+
+            <MarketingToggle table="student_accounts" id={user.id} role="student" />
           </div>
         )}
 

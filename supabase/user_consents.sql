@@ -46,4 +46,12 @@ CREATE POLICY user_consents_public_insert ON public.user_consents
 -- только через service_role (SQL Editor). Отзыв согласия оформляется новой
 -- записью, а не правкой старой.
 
+-- Текущее состояние необязательной рассылки держим в профиле: журнал append-only
+-- и из клиента не читается, а переключатель в кабинете должен показывать, как
+-- сейчас. Каждое переключение дополнительно ложится записью в журнал.
+ALTER TABLE public.tutors
+  ADD COLUMN IF NOT EXISTS marketing_opt_in boolean NOT NULL DEFAULT false;
+ALTER TABLE public.student_accounts
+  ADD COLUMN IF NOT EXISTS marketing_opt_in boolean NOT NULL DEFAULT false;
+
 NOTIFY pgrst, 'reload schema';
