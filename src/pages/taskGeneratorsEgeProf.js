@@ -489,17 +489,20 @@ function t06ExpReduce() {
   const b = pick([2, 3, 4, 5, 6, 7])
   const frac = Math.random() < 0.35            // основание 1/b
   const baseSign = frac ? -1 : 1               // (1/b)^E = b^(−E)
+  // c — коэффициент при x: 1 → «x+q», −1 → «q−x», 2/3/5 → «kx+q» (эталон 3^(2x−16)=1/81)
   let c, x0, q, e0, bexp
   let guard = 0
   do {
-    c = pick([1, -1]); x0 = randInt(-6, 6); q = randInt(-6, 6)
+    c = pick([1, 1, -1, -1, 2, 3, 5]); x0 = randInt(-6, 6); q = randInt(-16, 16)
     e0 = c * x0 + q                            // значение показателя при x0
     bexp = baseSign * e0                       // степень основания b в правой части
     guard++
-  } while ((bexp === 0 || Math.abs(bexp) > 3 || b ** Math.abs(bexp) > 999) && guard < 200)
+  } while ((bexp === 0 || Math.abs(bexp) > 4 || b ** Math.abs(bexp) > 999 || Math.abs(q) > 6 + 2 * Math.abs(c)) && guard < 400)
   const expr = c === 1
     ? `x${signed(q)}`.replace("+0", "").replace("−0", "")
-    : `${ru(q)}−x`                                // c=−1 → «q−x» (вид ФИПИ: 2−x, −4−x)
+    : c === -1
+      ? `${ru(q)}−x`                              // c=−1 → «q−x» (вид ФИПИ: 2−x, −4−x)
+      : `${c}x${signed(q)}`.replace("+0", "").replace("−0", "")
   const baseStr = frac ? `⟦pf:1:${b}⟧` : String(b)   // дробь-основание в степени — в скобках по высоте дроби
   const rhs = bexp > 0 ? String(b ** bexp) : fT(1, b ** -bexp)
   return {
@@ -576,15 +579,16 @@ function t06Rational() {
   }
 }
 
-// Кубическое: (x+s)³=V, V=±m³.
+// (x+s)ⁿ = ±mⁿ, n нечётное (эталон #7: n=9 и n=3).
 function t06Cube() {
+  const [n, ms] = pick([[3, [2, 3, 4, 5, 6, 7, 8, 9]], [5, [2, 3, 4, 5]], [7, [2, 3]], [9, [2]]])
   const s = randInt(-9, 9)
-  const m = randInt(2, 6)
+  const m = pick(ms)
   const neg = Math.random() < 0.5
-  const V = neg ? -(m ** 3) : m ** 3
+  const V = neg ? -(m ** n) : m ** n
   const x0 = -s + (neg ? -m : m)
   return {
-    condition_text: `Найдите корень уравнения (x${signed(s)})${sup(3)}=${ru(V)}.`.replace("(x+0)", "(x)"),
+    condition_text: `Найдите корень уравнения (x${signed(s)})${sup(n)}=${ru(V)}.`.replace("(x+0)", "(x)"),
     answer: ru(x0),
   }
 }
@@ -613,6 +617,145 @@ function t06CubeRoot() {
   return {
     condition_text: `Найдите корень уравнения ⟦rn:3:${inner}⟧=${c}.`,
     answer: ru(x0),
+  }
+}
+
+// ── Типажи №6, добавленные по построчному эталону new/ (typages_task06_uravneniya.md) ──
+
+// (p/q)x = −(N r/q): справа СМЕШАННОЕ число с тем же знаменателем (#1).
+function t06LinMixed() {
+  let p, q, x0, M, whole, rem, guard = 0
+  do {
+    q = pick([3, 4, 5, 6, 7, 8, 9, 11, 13])
+    p = randInt(2, q - 1)
+    x0 = randInt(4, 40) * pick([1, -1, -1])     // чаще отрицательный корень, как в ФИПИ
+    M = p * Math.abs(x0); whole = Math.floor(M / q); rem = M - whole * q
+    guard++
+  } while ((gcd(p, q) !== 1 || rem === 0 || whole < 1 || whole > 40) && guard < 500)
+  const sign = x0 < 0 ? "−" : ""
+  return {
+    condition_text: `Найдите корень уравнения ${fT(p, q)}x = ${sign}${whole}${fT(rem, q)}.`,
+    answer: ru(x0),
+  }
+}
+
+// (ax−b)² = (ax−c)² → ax−b = −(ax−c) → x = (b+c)/(2a)  (#3).
+function t06SqEqSq() {
+  let a, b, c, x0, guard = 0
+  do {
+    a = randInt(2, 9); b = randInt(2, 20); c = randInt(2, 20)
+    x0 = (b + c) / (2 * a); guard++
+  } while ((b === c || decLen(b + c, 2 * a) > 1 || x0 < 0.5 || x0 > 20) && guard < 500)
+  return {
+    condition_text: `Найдите корень уравнения (${a}x−${b})${sup(2)}=(${a}x−${c})${sup(2)}.`,
+    answer: ru(clean(x0)),
+  }
+}
+
+// (x+a)² = 4a·x → (x−a)² = 0 → x = a  (#5).
+function t06SqEqLin() {
+  const a = randInt(2, 30)
+  return { condition_text: `Найдите корень уравнения (x+${a})${sup(2)}=${4 * a}x.`, answer: ru(a) }
+}
+
+// 1/(ax+b) = 1/(cx+d) → ax+b = cx+d  (#8_ДЗ).
+function t06RecipRecip() {
+  let a, b, c, d, x0, guard = 0
+  do {
+    a = randInt(2, 9); c = randInt(2, 9); b = randInt(-15, 15); d = randInt(-15, 15)
+    x0 = a === c ? NaN : (d - b) / (a - c); guard++
+  } while ((!Number.isFinite(x0) || decLen(d - b, a - c) > 1 || Math.abs(x0) > 20
+    || x0 === 0 || a * x0 + b === 0) && guard < 600)
+  const L = `${a}x${signed(b)}`.replace("+0", "").replace("−0", "")
+  const R = `${c}x${signed(d)}`.replace("+0", "").replace("−0", "")
+  return {
+    condition_text: `Найдите корень уравнения ${fT(1, L)}=${fT(1, R)}.`,
+    answer: ru(clean(x0)),
+  }
+}
+
+// √(b+ax) = x → x² − ax − b = 0; годится только неотрицательный корень  (#15).
+function t06SqrtEqX() {
+  let x0, a, b, guard = 0
+  do { x0 = randInt(3, 15); a = randInt(1, x0 - 1); b = x0 * x0 - a * x0; guard++ }
+  while ((b < 2 || b > 220) && guard < 400)
+  const inner = `${b}+${a === 1 ? "" : a}x`
+  return {
+    condition_text: `Решите уравнение ${rT(inner)}=x. Если уравнение имеет более одного корня, укажите меньший из них.`,
+    answer: ru(x0),
+  }
+}
+
+// lg(f) = k → f = 10ᵏ  (#19).
+function t06LgEqNum() {
+  const k = pick([1, 2, 3]), V = 10 ** k
+  if (Math.random() < 0.45) {
+    const s = randInt(2, 14), x0 = s - V
+    return { condition_text: `Найдите корень уравнения lg(${s}−x)=${k}.`, answer: ru(x0) }
+  }
+  const s = randInt(-20, 20), x0 = V - s
+  return {
+    condition_text: `Найдите корень уравнения lg(x${signed(s)})=${k}.`.replace("(x+0)", "(x)"),
+    answer: ru(x0),
+  }
+}
+
+// logₓ N = k → x = ᵏ√N  (#20).
+function t06LogBaseX() {
+  let m, k, guard = 0
+  do { m = randInt(2, 7); k = randInt(2, 6); guard++ } while (m ** k > 4000 && guard < 300)
+  return { condition_text: `Решите уравнение log${subB("x")}${m ** k}=${k}.`, answer: ru(m) }
+}
+
+// log_{aᵐ}(a^(px+q)) = k → px+q = k·m  (#24).
+function t06LogOfPow() {
+  let a, m, k, p, q, x0, guard = 0
+  do {
+    a = pick([2, 3, 5]); m = randInt(2, 4); k = randInt(2, 3)
+    p = randInt(2, 6); q = randInt(-10, 10)
+    x0 = (k * m - q) / p; guard++
+  } while ((a ** m > 300 || decLen(k * m - q, p) > 1 || Math.abs(x0) > 15 || x0 === 0) && guard < 700)
+  const inner = `${p}x${signed(q)}`.replace("+0", "").replace("−0", "")
+  return {
+    condition_text: `Найдите корень уравнения log${subB(a ** m)}${a}⁅${inner}⁆=${k}.`,
+    answer: ru(clean(x0)),
+  }
+}
+
+// log_{x−s} N = 2 → x−s = √N (основание положительно и ≠ 1)  (#25).
+function t06LogBaseLin() {
+  const r = randInt(2, 12), s = randInt(1, 9)
+  return {
+    condition_text: `Решите уравнение log${subB(`x−${s}`)}${r * r}=2. Если уравнение имеет более одного корня, укажите меньший из них.`,
+    answer: ru(s + r),
+  }
+}
+
+// (bᵐ)^(x−s) = 1/bᵗ → m(x−s) = −t; ответ дробный  (#28).
+function t06ExpSqBase() {
+  let b, m, t, s, x0, guard = 0
+  do {
+    b = pick([2, 3, 5, 6, 7, 10]); m = pick([2, 2, 2, 4]); t = randInt(1, 3)
+    s = randInt(2, 12); x0 = s - t / m; guard++
+  } while ((b ** m > 1000 || b ** t > 1000 || decLen(t, m) > 2 || t % m === 0) && guard < 500)
+  return {
+    condition_text: `Найдите корень уравнения ${b ** m}${supT(`x−${s}`)}=${fT(1, b ** t)}.`,
+    answer: ru(clean(x0)),
+  }
+}
+
+// a^(log_{aᵏ}(px+q)) = m → (px+q)^(1/k) = m → px+q = mᵏ  (#30, #31).
+function t06PowLog() {
+  let a, k, m, p, q, V, x0, guard = 0
+  do {
+    a = pick([2, 3, 5]); k = pick([2, 3]); m = randInt(2, 9)
+    p = randInt(2, 6); q = randInt(-12, 12)
+    V = m ** k; x0 = (V - q) / p; guard++
+  } while ((a ** k > 130 || V > 400 || decLen(V - q, p) > 1 || x0 <= 0 || x0 > 60) && guard < 800)
+  const inner = `${p}x${signed(q)}`.replace("+0", "").replace("−0", "")
+  return {
+    condition_text: `Найдите корень уравнения ${a}⁅log${subB(a ** k)}(${inner})⁆=${m}.`,
+    answer: ru(clean(x0)),
   }
 }
 
@@ -5724,7 +5867,9 @@ export const GENERATORS_EGE_PROF = {
   3: [t03BoxTetra, t03BoxPyramid, t03BoxPyramidC1, t03BoxPyramidA1, t03BoxPrism, t03BoxTriPrism, t03BoxPrismADA1, t03PrismRightVol, t03PrismRightEdge, t03SqPrismAngle, t03TriPrismAngle, t03HexPrismAngle, t03HexPrismTri, t03HexPrismTrap, t03CylLatHeight, t03CylLatDiameter, t03MugRatio, t03TwoCylindersTaller, t03LiquidWider, t03LiquidNarrower, t03Submerge, t03SubmergeAbs, t03ConeHeight, t03ConeDiameter, t03ConeAxialFromBase, t03ConeAxialFromSlant, t03ConeLatScale, t03ConeLatScaleDown, t03ConeParSect, t03ConeFullSurfSect, t03ConeVessel, t03PrismTetraTop, t03PyrMidEdge, t03PyrSqDiagBD, t03PyrSqDiagSO, t03PyrSqVol, t03PyrSqHeight, t03PyrSqVolHL, t03PyrTriHeight, t03PyrMidSect, t03PyrMidlineCut, t03SqPrismPoly, t03PrismTetra4, t03HexPrismPyr, t03HexPrismTetra, t03PyrHexHeight, t03SphereGreatCircle, t03TwoSpheresSurf, t03TwoSpheresVol, t03SphereSumSurf, t03CubeInSphere, t03CubeInSphereVol, t03CubeInSphereVolPi, t03BoxInSphere, t03SphereInCylSurfInv, t03BoxCylHeight, t03CylCircumPrism, t03StepSolidSurface, t03CylSphereVolInv, t03PrismTetraC1, t03PrismTetraB1, t03PrismPenta, t03PrismMidline, t03PrismCut, t03PrismCutRegular, t03PrismLateral, t03PrismLateralInv, t03CylConeLateral, t03CylConeLatInverse, t03CylConeVolume, t03CylConeVolInverse, t03ConeInSphere, t03ConeInSphereInv, t03ConeSphereRadius, t03ConeSphereSlant, t03SphereInCyl, t03SphereInCylVol, t03TwoCylinders, t03CylInBox, t03CubeCut, t03CubeCutInverse, t03CubeDiagonal, t03CubeAngle, t03BoxDiagonal, t03BoxLineSin, t03BoxSection, t03BoxDiagSection, t03StepSolid, t03LSolid, t03TSolidSurface, t03SphereSection, t03ConeScale, t03ConeHeightScale],
   4: [t04ShotPut, t04Gymnastics, t04Diving, t04Tickets, t04Markers, t04Defect, t04Lottery, t04CoinTwice, t04Rooms, t04FootballCoin],
   5: [t05Lamps, t05Between, t05Shooter4, t05Coffee, t05Battery, t05ShooterN, t05DiceCond, t05TwoThemes, t05Exact],
-  6: [t06ExpReduce, t06ExpBothSides, t06LogEqLog, t06LogEqNum, t06Rational, t06Cube, t06Sqrt, t06CubeRoot],
+  6: [t06ExpReduce, t06ExpBothSides, t06ExpSqBase, t06LogEqLog, t06LogEqNum, t06LgEqNum,
+    t06LogBaseX, t06LogOfPow, t06LogBaseLin, t06PowLog, t06Rational, t06RecipRecip,
+    t06Cube, t06Sqrt, t06CubeRoot, t06SqrtEqX, t06LinMixed, t06SqEqSq, t06SqEqLin],
   7: [t07PowPowDiv, t07PowFracExp, t07SqCoefRoot, t07DistribRoot, t07LogSum, t07LogDiff, t07LogRatio, t07TrigDouble],
   8: [
     () => t8fSignCount(true), () => t8fSignCount(false), () => t8fIntSign(true), () => t8fIntSign(false),
@@ -5971,17 +6116,32 @@ export const GEN_META_EGE_PROF = {
   6: [["Показательные", [
     ["exp-reduce", "Свести к основанию", t06ExpReduce],
     ["exp-both", "Обе части — степени", t06ExpBothSides],
+    ["exp-sqbase", "Основание-степень: 36^(x−s)=1/6", t06ExpSqBase],
   ]],
     ["Логарифмические", [
       ["log-log", "log=log", t06LogEqLog],
       ["log-num", "log=число", t06LogEqNum],
+      ["lg-num", "lg(f)=k", t06LgEqNum],
+      ["log-base-x", "Неизвестное основание logₓN=k", t06LogBaseX],
+      ["log-of-pow", "log_{aᵐ}a^(px+q)=k", t06LogOfPow],
+      ["log-base-lin", "Основание x−s: log_(x−s)N=2", t06LogBaseLin],
+      ["pow-log", "a^(log_{aᵏ}f)=m", t06PowLog],
     ]],
     ["Корни и степени", [
-      ["cube", "Кубическое (x+s)³=V", t06Cube],
+      ["cube", "Степенное (x+s)ⁿ=V", t06Cube],
       ["sqrt", "Квадратный корень", t06Sqrt],
       ["cube-root", "Кубический корень", t06CubeRoot],
+      ["sqrt-eq-x", "√(b+ax)=x", t06SqrtEqX],
     ]],
-    ["Дробно-рациональные", [["rational", "1/(ax+b)=c", t06Rational]]]],
+    ["Алгебраические", [
+      ["lin-mixed", "(p/q)x = смешанное число", t06LinMixed],
+      ["sq-eq-sq", "(ax−b)²=(ax−c)²", t06SqEqSq],
+      ["sq-eq-lin", "(x+a)²=4ax", t06SqEqLin],
+    ]],
+    ["Дробно-рациональные", [
+      ["rational", "1/(ax+b)=c", t06Rational],
+      ["recip-recip", "1/(ax+b)=1/(cx+d)", t06RecipRecip],
+    ]]],
   7: [["Степени", [
     ["pow-div", "Степень степени (частное)", t07PowPowDiv],
     ["pow-frac", "Дробные показатели", t07PowFracExp],
