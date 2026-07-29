@@ -9946,6 +9946,106 @@ export function t18ProductIneqSeg() {
   })
 }
 
+// ── #166. {px − qy + z = kx² + my²; −x + y + rz = a} — «единственное решение» ──
+// Из первой строки z выражается однозначно: z = kx² + my² − px + qy. Подставляя во вторую,
+// получаем rk·x² + rm·y² − (1 + rp)x + (1 + rq)y = a — положительно определённую квадратичную
+// функцию двух переменных. Её множество уровня: пусто ниже минимума, ОДНА точка в минимуме
+// и целый эллипс выше. Значит единственное решение бывает ровно при одном значении a —
+// в точности при минимуме, который считается точно (выделение полных квадратов).
+function build166({ p, q, k, m, r }) {
+  if (k <= 0 || m <= 0 || r <= 0) return null
+  const c1 = 1 + r * p, c2 = 1 + r * q
+  const minVal = Rsub(Rneg(R(c1 * c1, 4 * r * k)), R(c2 * c2, 4 * r * m))
+  const solve = (a) => {
+    const c = Rcmp(a, minVal)
+    return c < 0 ? 0 : c === 0 ? 1 : 99                          // ниже минимума пусто, выше — эллипс
+  }
+  return { set: assembleSet((a) => solve(a) === 1, [minVal]), solve, minVal, c1, c2 }
+}
+const T166 = []
+for (const p of [1, 2, 3, 4]) for (const q of [1, 2, 3]) for (const k of [1, 2, 3]) {
+  for (const m of [1, 2, 3]) for (const r of [1, 2, 3]) {
+    const x = build166({ p, q, k, m, r })
+    if (x && tidySet(x.set, 2)) T166.push({ p, q, k, m, r })
+  }
+}
+export function t18ThreeVarUnique() {
+  const par = pick(T166), { p, q, k, m, r } = par
+  const { set, solve, minVal, c1, c2 } = build166(par)
+  const aRange = spanRange(set)
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:${p === 1 ? "" : p}x ${MINUS} ${q === 1 ? "" : q}y + z = ${k === 1 ? "" : k}x${SUP[2]} + ${m === 1 ? "" : m}y${SUP[2]}¦${MINUS}x + y + ${r === 1 ? "" : r}z = a⟧\n\nимеет единственное решение.`,
+    set,
+    solution: `Из первой строки z выражается однозначно: z = ${k === 1 ? "" : k}x${SUP[2]} + ${m === 1 ? "" : m}y${SUP[2]} ${MINUS} ${p === 1 ? "" : p}x + ${q === 1 ? "" : q}y.\n`
+      + `Подставим во вторую: ${MINUS}x + y + ${r === 1 ? "" : r}(${k === 1 ? "" : k}x${SUP[2]} + ${m === 1 ? "" : m}y${SUP[2]} ${MINUS} ${p === 1 ? "" : p}x + ${q === 1 ? "" : q}y) = a, то есть ${r * k === 1 ? "" : r * k}x${SUP[2]} + ${r * m === 1 ? "" : r * m}y${SUP[2]} ${MINUS} ${c1 === 1 ? "" : c1}x + ${c2 === 1 ? "" : c2}y = a.\n`
+      + `Слева стоит положительно определённая функция: выделяя полные квадраты, получаем ${r * k === 1 ? "" : r * k}(x ${MINUS} ${Rstr(R(c1, 2 * r * k))})${SUP[2]} + ${r * m === 1 ? "" : r * m}(y + ${Rstr(R(c2, 2 * r * m))})${SUP[2]} ${MINUS} ${Rstr(Rneg(minVal))}.\n`
+      + `Её наименьшее значение равно ${Rstr(minVal)}; ниже него решений нет, выше — целый эллипс, и лишь в самом минимуме решение ЕДИНСТВЕННО (а z по нему восстанавливается однозначно).\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: () => Rnum(R(c1, 2 * r * k)), dash: true, label: "x в минимуме" },
+        { f: () => -Rnum(R(c2, 2 * r * m)), dash: true, label: "y в минимуме" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -4, xMax: 4, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// ── #84. √(a² + x²) = cos kx + a² + pa − c — «единственное решение» ──────────
+// Обе части оцениваются в одной точке: слева √(a² + x²) ≥ |a| с равенством ТОЛЬКО при x = 0,
+// справа cos kx + (a² + pa − c) ≤ 1 + a² + pa − c с равенством только при cos kx = 1.
+// Поэтому решение может быть единственным лишь тогда, когда обе оценки «встречаются»:
+// |a| = 1 + a² + pa − c. В этом случае равенство вынуждает x = 0 — решение действительно одно.
+// При остальных a уравнение ЧЁТНО по x, поэтому решений чётное число, и единственным оно быть
+// не может. Значит ответ — в точности рациональные корни двух ветвей уравнения на |a|.
+function build84({ p, c, k }) {
+  const eNeg = ratRoots([R(1 - c), R(p + 1), R1])                // a < 0: a² + (p+1)a + 1 − c = 0
+  const ePos = ratRoots([R(1 - c), R(p - 1), R1])                // a ≥ 0: a² + (p−1)a + 1 − c = 0
+  if (!eNeg.allRational || !ePos.allRational) return null
+  const roots = [
+    ...eNeg.roots.filter((x) => Rsign(x) < 0),
+    ...ePos.roots.filter((x) => Rsign(x) >= 0),
+  ]
+  if (!roots.length) return null
+  const solve = (a) => (roots.some((x) => Rcmp(x, a) === 0) ? 1 : 0)
+  return { set: assembleSet((a) => solve(a) === 1, roots), solve, k }
+}
+const T84 = []
+for (const p of [0, 1, 2, 3, 4, 5, 6]) for (const c of [-3, -2, -1, 0, 1, 2, 3, 5, 8]) for (const k of [1, 2, 3]) {
+  const x = build84({ p, c, k })
+  if (x && tidySet(x.set, 3)) T84.push({ p, c, k })
+}
+export function t18EvenSqrtCosUnique() {
+  const par = pick(T84), { p, c, k } = par
+  const { set, solve } = build84(par)
+  const aRange = spanRange(set)
+  return item({
+    text: `${HEAD_A}\n\n√{a${SUP[2]} + x${SUP[2]}} = cos ${k === 1 ? "" : k}x + a${SUP[2]}${term(p, "a")}${term(-c, "")}\n\nимеет единственное решение.`,
+    set,
+    solution: `Уравнение ЧЁТНО по x: вместе с x решением будет и ${MINUS}x. Значит при x ≠ 0 решения идут парами, и единственное решение обязано быть при x = 0.\n`
+      + `Оценим части. Слева √(a${SUP[2]} + x${SUP[2]}) ≥ |a|, причём равенство только при x = 0. Справа cos ${k === 1 ? "" : k}x + (a${SUP[2]}${term(p, "a")}${term(-c, "")}) ≤ 1 + a${SUP[2]}${term(p, "a")}${term(-c, "")}, и равенство только при cos ${k === 1 ? "" : k}x = 1.\n`
+      + `Если |a| > 1 + a${SUP[2]}${term(p, "a")}${term(-c, "")}, то левая часть всюду больше правой — решений нет; если |a| < 1 + …, решений чётное число (и они идут парами).\n`
+      + `Остаётся случай |a| = 1 + a${SUP[2]}${term(p, "a")}${term(-c, "")}: тогда равенство вынуждает одновременно x = 0 и cos ${k === 1 ? "" : k}x = 1, то есть решение ровно одно.\n`
+      + `Решая это уравнение отдельно при a ≥ 0 и при a < 0, получаем ответ.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => Math.abs(a), label: "|a| — минимум левой части" },
+        { f: (a) => 1 + a * a + p * a - c, label: "максимум правой части" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -2, xMax: 8, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
 // =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
@@ -10118,6 +10218,8 @@ export const META18 = [
   ["Симметричные системы", [
     ["sys-circle-2lines", "{окружность с центром (a;0); p²x² = q²y²} — ровно четыре решения", t18SysCircleTwoLines],
     ["sys-quartic-circle", "{a(x⁴+1) = y+c−|x|; окружность} — единственное решение", t18SysQuarticCircleOne],
+    ["three-var-unique", "{px−qy+z = kx²+my²; −x+y+rz = a} — единственное решение", t18ThreeVarUnique],
+    ["even-sqrt-cos", "√(a²+x²) = cos kx + a²+pa−c — единственное решение", t18EvenSqrtCosUnique],
     ["sys-symmetric", "{y = f(x); x = f(y)} — ровно одно решение", t18SysSymmetricOne],
   ]],
   ["Наибольшее/наименьшее значение функции", [
