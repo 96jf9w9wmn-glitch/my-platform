@@ -9794,6 +9794,158 @@ export function t18TrigIneqContainsSeg() {
   })
 }
 
+// ── #53. {(a + px + c)(a − qx + c) ≤ 0; a + rx ≥ x²} — «единственное решение» ──
+// Первое неравенство: произведение двух линейных по x функций с наклонами p и −q — парабола
+// ветвями ВНИЗ, поэтому оно выполняется ВНЕ интервала между корнями x = −A/p и x = A/q,
+// где A = a + c. Второе: x² − rx − a ≤ 0, то есть отрезок [u₁; u₂] с концами (r ∓ √(r²+4a))/2.
+// Значит множество решений — это отрезок [u₁; u₂] без открытого интервала (m₁; m₂), и оно
+// вырождается в точку ровно тогда, когда один из «хвостов» стянулся в точку, а второй пуст.
+// Концы u иррациональны, но все нужные сравнения точны: знак (r − 2ρ ∓ √s)/2 считает signLin.
+function build53({ p, q, c, r }) {
+  const single = (a) => {
+    const s = Radd(R(r * r), Rmul(R(4), a))                     // подкоренное для u
+    if (Rsign(s) < 0) return 0                                  // второе неравенство несовместно
+    const A = Radd(a, R(c))
+    const b1 = Rdiv(Rneg(A), R(p)), b2 = Rdiv(A, R(q))
+    const m1 = Rcmp(b1, b2) <= 0 ? b1 : b2, m2 = Rcmp(b1, b2) <= 0 ? b2 : b1
+    const cmpU1 = (rr) => signLin(Rsub(R(r), Rmul(R(2), rr)), R(-1), s)   // знак u₁ − rr
+    const cmpU2 = (rr) => signLin(Rsub(R(r), Rmul(R(2), rr)), R(1), s)    // знак u₂ − rr
+    const deg = Rzero(s)                                        // отрезок стянулся в точку
+    const Lne = cmpU1(m1) <= 0                                  // левый хвост непуст
+    const Rne = cmpU2(m2) >= 0                                  // правый хвост непуст
+    const Ls = (deg && Lne) || (cmpU1(m1) === 0 && cmpU2(m1) >= 0)
+    const Rs = (deg && Rne) || (cmpU2(m2) === 0 && cmpU1(m2) <= 0)
+    if (Ls && Rs && deg) return 1
+    if (Ls && !Rne) return 1
+    if (Rs && !Lne) return 1
+    return 0
+  }
+  const crit = [R(-r * r, 4), R(-c)]
+  // u₁ = −A/p, u₁ = A/q, u₂ = −A/p, u₂ = A/q — после возведения в квадрат это квадратные
+  // уравнения по a: (r − 2ρ(a))² = r² + 4a, где ρ(a) — соответствующая рациональная граница
+  for (const [num, den] of [[-1, p], [1, q]]) {
+    // ρ(a) = num·(a + c)/den ⟹ r − 2ρ = r − (2num/den)a − 2num·c/den
+    const k1 = R(-2 * num, den), k0 = Radd(R(r), R(-2 * num * c, den))
+    const lhs = pMul([k0, k1], [k0, k1])                        // (r − 2ρ)²
+    const e = ratRoots(pSub(lhs, [R(r * r), R(4)]))
+    if (!e.allRational) return null
+    crit.push(...e.roots)
+  }
+  return { set: assembleSet((a) => single(a) === 1, crit), solve: single }
+}
+const T53 = []
+for (const p of [5, 7, 9, 11, 13]) for (const q of [1, 2, 3, 4]) for (const c of [1, 3, 5, 7, 9]) {
+  for (const r of [3, 5, 7, 9]) {
+    const x = build53({ p, q, c, r })
+    if (x && tidySet(x.set, 3)) T53.push({ p, q, c, r })
+  }
+}
+export function t18WedgeParabolaOne() {
+  const par = pick(T53), { p, q, c, r } = par
+  const { set, solve } = build53(par)
+  const aRange = spanRange(set)
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:(a + ${p === 1 ? "" : p}x + ${c})(a ${MINUS} ${q === 1 ? "" : q}x + ${c}) ≤ 0¦a + ${r === 1 ? "" : r}x ≥ x${SUP[2]}⟧\n\nимеет единственное решение.`,
+    set,
+    solution: `Обозначим A = a + ${c}. Первое неравенство — это произведение линейных по x функций с наклонами ${p} и ${MINUS}${q}, то есть парабола ветвями вниз с корнями x = ${MINUS}${fT("A", String(p))} и x = ${fT("A", String(q))}; она неположительна ВНЕ интервала между ними.\n`
+      + `Второе неравенство равносильно x${SUP[2]} ${MINUS} ${r === 1 ? "" : r}x ${MINUS} a ≤ 0, то есть отрезку [u₁; u₂] с концами u = ${fT(`${r} ∓ √{${r * r} + 4a}`, "2")} (он существует при a ≥ ${Rstr(R(-r * r, 4))}).\n`
+      + `Значит множество решений — отрезок [u₁; u₂], из которого выброшен открытый интервал между корнями первой параболы. Оно состоит из двух «хвостов», и единственное решение получается ровно тогда, когда один хвост стянулся в точку, а второй пуст (либо когда сам отрезок выродился в точку, попавшую в нужную область).\n`
+      + `Все сравнения концов точные: разность ${fT(`${r} ${MINUS} 2ρ ∓ √{${r * r} + 4a}`, "2")} сравнивается с нулём возведением в квадрат с учётом знаков.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "exists" },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => (r * r + 4 * a >= 0 ? (r - Math.sqrt(r * r + 4 * a)) / 2 : null), label: "u₁" },
+        { f: (a) => (r * r + 4 * a >= 0 ? (r + Math.sqrt(r * r + 4 * a)) / 2 : null), label: "u₂" },
+        { f: (a) => -(a + c) / p, dash: true, label: "границы «уголка»" },
+        { f: (a) => (a + c) / q, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -8, xMax: 10, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// ── #45. (k|x| − a − c)(x² − px − q − a) ≤ 0 — «есть решение на [−L; L]» ─────
+// Произведение неположительно ⟺ множители разных знаков (или один из них нуль), поэтому
+// условие распадается на два: пересечение {k|x| ≤ a + c} с внешностью параболы непусто ЛИБО
+// пересечение внешности «галочки» с отрезком между корнями параболы непусто.
+// Первое множество — [−m; m] с рациональным m = (a + c)/k, второе — отрезок [x₁; x₂]
+// с иррациональными концами (p ∓ √(p² + 4q + 4a))/2; все сравнения точные (signLin).
+function build45({ k, c, p, q, L }) {
+  const inside = (a) => {
+    const s = Radd(R(p * p + 4 * q), Rmul(R(4), a))              // подкоренное для корней параболы
+    const m = Rdiv(Radd(a, R(c)), R(k))                          // граница «галочки»
+    const hasV = Rsign(m) >= 0                                   // {k|x| ≤ a + c} непусто
+    const M = hasV ? (Rcmp(m, R(L)) <= 0 ? m : R(L)) : null      // [−M; M] = пересечение с отрезком
+    const cx1 = (rr) => signLin(Rsub(R(p), Rmul(R(2), rr)), R(-1), s)   // знак x₁ − rr
+    const cx2 = (rr) => signLin(Rsub(R(p), Rmul(R(2), rr)), R(1), s)    // знак x₂ − rr
+    // (1) «галочка» ∩ внешность параболы
+    let one = false
+    if (hasV) {
+      if (Rsign(s) < 0) one = true                               // парабола нигде не отрицательна
+      else one = cx1(Rneg(M)) >= 0 || cx2(M) <= 0                // −M ≤ x₁ либо x₂ ≤ M
+    }
+    if (one) return 1
+    // (2) внешность «галочки» ∩ [x₁; x₂] ∩ [−L; L]
+    if (Rsign(s) < 0) return 0
+    if (cx1(R(L)) > 0 || cx2(R(-L)) < 0) return 0                // отрезок корней не задевает [−L; L]
+    const loIsX1 = cx1(R(-L)) >= 0                               // lo = max(x₁; −L)
+    const hiIsX2 = cx2(R(L)) <= 0                                // hi = min(x₂; L)
+    if (!hasV) return 1                                          // «галочка» пуста — годится весь отрезок
+    const loOut = loIsX1 ? cx1(Rneg(m)) <= 0 : Rcmp(R(-L), Rneg(m)) <= 0
+    const hiOut = hiIsX2 ? cx2(m) >= 0 : Rcmp(R(L), m) >= 0
+    return loOut || hiOut ? 1 : 0
+  }
+  const crit = [R(-(p * p + 4 * q), 4), R(-c), R(k * L - c), R(-k * L - c)]
+  // x₁ или x₂ совпал с одной из рациональных границ ±m(a), ±L: (p − 2ρ)² = p² + 4q + 4a
+  const rhoLines = [[R(c, k), R(1, k)], [R(-c, k), R(-1, k)], [R(L), R0], [R(-L), R0]]
+  for (const [r0, r1] of rhoLines) {
+    const k0 = Rsub(R(p), Rmul(R(2), r0)), k1 = Rmul(R(-2), r1)  // p − 2ρ(a) = k0 + k1·a
+    const e = ratRoots(pSub(pMul([k0, k1], [k0, k1]), [R(p * p + 4 * q), R(4)]))
+    if (!e.allRational) return null
+    crit.push(...e.roots)
+  }
+  return { set: assembleSet((a) => inside(a) === 1, crit), solve: inside }
+}
+const T45 = []
+for (const k of [2, 3, 4]) for (const c of [1, 2, 3, 4]) for (const p of [0, 2, 4]) {
+  for (const q of [0, 1, 2, 3]) for (const L of [2, 3, 4, 5]) {
+    const x = build45({ k, c, p, q, L })
+    if (x && tidySet(x.set, 3)) T45.push({ k, c, p, q, L })
+  }
+}
+export function t18ProductIneqSeg() {
+  const par = pick(T45), { k, c, p, q, L } = par
+  const { set, solve } = build45(par)
+  const aRange = spanRange(set)
+  return item({
+    text: `Найдите все значения a, при каждом из которых неравенство\n\n`
+      + `(${k === 1 ? "" : k}|x| ${MINUS} a ${MINUS} ${c})(x${SUP[2]}${term(-p, "x")}${term(-q, "")} ${MINUS} a) ≤ 0\n\n`
+      + `имеет хотя бы одно решение, принадлежащее отрезку [${MINUS}${L}; ${L}].`,
+    set,
+    solution: `Произведение неположительно ⟺ множители имеют разные знаки (или один из них равен нулю). Значит подходит любое x, для которого выполняется одно из двух: ${k === 1 ? "" : k}|x| ≤ a + ${c} и одновременно x${SUP[2]}${term(-p, "x")}${term(-q, "")} ≥ a, либо наоборот.\n`
+      + `Первое множество — отрезок [${MINUS}m; m] с m = ${fT(`a + ${c}`, String(k))} (он существует при a ≥ ${MINUS}${c}), второе — отрезок [x₁; x₂] с концами ${fT(`${p === 0 ? "" : p} ∓ √{${p * p + 4 * q} + 4a}`, "2")}.\n`
+      + `Остаётся проверить непустоту двух пересечений внутри [${MINUS}${L}; ${L}]. Концы x₁ и x₂ иррациональны, но сравнения с рациональными границами точны: знак разности ${fT(`${p === 0 ? "" : p} ${MINUS} 2ρ ∓ √{${p * p + 4 * q} + 4a}`, "2")} определяется возведением в квадрат с учётом знаков.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "exists" },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => (a + c) / k, dash: true, label: "границы «галочки»" },
+        { f: (a) => -(a + c) / k, dash: true },
+        { f: (a) => (p * p + 4 * q + 4 * a >= 0 ? (p - Math.sqrt(p * p + 4 * q + 4 * a)) / 2 : null), label: "корни параболы" },
+        { f: (a) => (p * p + 4 * q + 4 * a >= 0 ? (p + Math.sqrt(p * p + 4 * q + 4 * a)) / 2 : null) },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -L - 3, xMax: L + 3, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
 // =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
@@ -9860,6 +10012,8 @@ export const META18 = [
     ["sys-disk-nosol", "круг ∪ точка и пучок прямых — НЕ имеет решений", t18SysDiskNoSol],
     ["sys-circle-strip", "{(x+k₁a+m₁)(x+k₂a+m₂)<0; x²+a²=c²} — хотя бы одно решение", t18SysCircleStrip],
     ["sys-triple-sqrt", "{a(x−1)≥4; 2√(x−c)≥a; kx<a+d} — хотя бы одно решение", t18SysTripleSqrt],
+    ["wedge-parabola-one", "{(a+px+c)(a−qx+c) ≤ 0; a+rx ≥ x²} — единственное решение", t18WedgeParabolaOne],
+    ["product-ineq-seg", "(k|x|−a−c)(x²−px−q−a) ≤ 0 — есть решение на [−L; L]", t18ProductIneqSeg],
   ]],
   ["Распадающаяся кривая + прямая", [
     ["sys-hyper-line", "{(y−1)(xy−k)/√(x−v) = 0; y = x + a}", t18SysHyperLine],
