@@ -5,6 +5,7 @@ import Collapse from "../components/Collapse"
 import FormulaBackdrop from "../components/FormulaBackdrop"
 import { TUTOR_STEPS } from "../onboardingSteps"
 import { Highlight } from "../components/Mark"
+import SiteFooter from "../components/SiteFooter"
 import { supabase } from "../supabase"
 import { BANK_STATS } from "./bankStats"
 
@@ -924,13 +925,7 @@ function Landing({ onStart }) {
         </section>
       </main>
 
-      {/* Футер с юр-ссылками */}
-      <footer className="flex flex-wrap justify-center gap-x-4 gap-y-1 pb-6 px-4 text-[11px] text-gray-400 dark:text-gray-500">
-        <a href="/privacy" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Политика конфиденциальности</a>
-        <a href="/consent" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Согласие на обработку ПДн</a>
-        <a href="/cookie" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Cookie</a>
-        <a href="/rules" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Правила чата</a>
-      </footer>
+      <SiteFooter />
     </div>
   )
 }

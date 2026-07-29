@@ -8,6 +8,7 @@
 // Источник правды для юриста — файлы в /legal/*.md.
 
 import Icon from "../components/Icon"
+import SiteFooter from "../components/SiteFooter"
 
 const OPERATOR = "Саркисян Арман Нверович (самозанятый, налог на профессиональный доход)"
 const INN = "262308648105"
@@ -459,13 +460,9 @@ export default function Legal({ path }) {
 
           <Body />
 
-          <div className="mt-10 pt-6 border-t border-gray-100 dark:border-gray-800 flex flex-wrap gap-x-5 gap-y-2 text-sm">
-            <a href="/privacy" className="text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400">Политика</a>
-            <a href="/consent" className="text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400">Согласие</a>
-            <a href="/cookie" className="text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400">Cookie</a>
-            <a href="/rules" className="text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400">Правила чата</a>
-          </div>
         </div>
+
+        <SiteFooter />
       </div>
     </div>
   )
