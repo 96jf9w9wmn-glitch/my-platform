@@ -10046,6 +10046,66 @@ export function t18EvenSqrtCosUnique() {
   })
 }
 
+// ── #67. {|x| + |a| ≤ c; x² + px < ka + d} — «есть решение на [L; 0]» ────────
+// На отрезке [L; 0] модуль раскрывается как |x| = −x, поэтому первое условие равносильно
+// x ≥ |a| − c, а второе — попаданию x строго внутрь корней параболы x² + px − (ka + d).
+// Значит решение есть ⟺ пересечение [max(L; |a| − c); 0] с интервалом (r₁; r₂) непусто.
+// Концы r иррациональны, но все нужные сравнения точны: знак (2A + p ∓ √s)/2 даёт signLin.
+function build67({ c, p, k, d, L }) {
+  if (L >= 0 || c <= 0 || k === 0) return null
+  const solve = (a) => {
+    const s = Radd(R(p * p + 4 * d), Rmul(R(4 * k), a))          // p² + 4(ka + d)
+    if (Rsign(s) <= 0) return 0                                  // парабола нигде не отрицательна
+    const A0 = Rsub(Rabs(a), R(c))
+    const A = Rcmp(A0, R(L)) >= 0 ? A0 : R(L)                    // левый конец = max(L; |a| − c)
+    if (Rsign(A) > 0) return 0                                   // он правее нуля — отрезок пуст
+    if (signLin(R(-p), R(-1), s) >= 0) return 0                  // нужно r₁ < 0
+    return signLin(Radd(Rmul(R(2), A), R(p)), R(-1), s) < 0 ? 1 : 0   // A < r₂
+  }
+  const crit = [R(c), R(-c), R(L + c), R(-(L + c)), R(-(p * p + 4 * d), 4 * k), R(-d, k)]
+  // A = r₂ ⟺ (2A + p)² = s при 2A + p ≤ 0; A линейно по a на каждой из веток
+  for (const [a0, a1] of [[R(L), R0], [R(-c), R1], [R(-c), R(-1)]]) {
+    const lin = [Radd(Rmul(R(2), a0), R(p)), Rmul(R(2), a1)]     // 2A + p
+    const e = ratRoots(pSub(pMul(lin, lin), [R(p * p + 4 * d), R(4 * k)]))
+    if (!e.allRational) return null
+    crit.push(...e.roots)
+  }
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+const T67 = []
+for (const c of [2, 3, 4, 5, 6]) for (const p of [2, 4, 6, 8]) for (const k of [4, 8, 12, 16]) {
+  for (const d of [8, 12, 16, 24, 32, 48]) for (const L of [-1, -2, -3]) {
+    const x = build67({ c, p, k, d, L })
+    if (x && tidySet(x.set, 3)) T67.push({ c, p, k, d, L })
+  }
+}
+export function t18AbsParamStrip() {
+  const par = pick(T67), { c, p, k, d, L } = par
+  const { set, solve } = build67(par)
+  const aRange = spanRange(set)
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:|x| + |a| ≤ ${c}¦x${SUP[2]} + ${p === 1 ? "" : p}x < ${k === 1 ? "" : k}a + ${d}⟧\n\nимеет хотя бы одно решение на отрезке [${nS(L)}; 0].`,
+    set,
+    solution: `На отрезке [${nS(L)}; 0] имеем |x| = ${MINUS}x, поэтому первое условие превращается в x ≥ |a| ${MINUS} ${c}.\n`
+      + `Второе — это x${SUP[2]} + ${p === 1 ? "" : p}x ${MINUS} ${k === 1 ? "" : k}a ${MINUS} ${d} < 0, то есть x строго между корнями r₁ и r₂ = ${fT(`${MINUS}${p} ± √{${p * p + 4 * d} + ${4 * k}a}`, "2")} (при неотрицательном подкоренном).\n`
+      + `Значит решение существует ⟺ отрезок [max(${nS(L)}; |a| ${MINUS} ${c}); 0] пересекается с интервалом (r₁; r₂): нужно, чтобы левый конец не был правее нуля, чтобы r₁ < 0 и чтобы левый конец был меньше r₂.\n`
+      + `Концы r иррациональны, но сравнения точные: знак выражения вида A + B√s определяется возведением в квадрат с учётом знаков.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "exists" },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => Math.max(L, Math.abs(a) - c), label: "левый конец отрезка" },
+        { f: (a) => (p * p + 4 * d + 4 * k * a >= 0 ? (-p + Math.sqrt(p * p + 4 * d + 4 * k * a)) / 2 : null), label: "r₂" },
+        { f: () => 0, dash: true, label: "x = 0" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: L - 3, xMax: 4, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
 // =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
@@ -10113,6 +10173,7 @@ export const META18 = [
     ["sys-circle-strip", "{(x+k₁a+m₁)(x+k₂a+m₂)<0; x²+a²=c²} — хотя бы одно решение", t18SysCircleStrip],
     ["sys-triple-sqrt", "{a(x−1)≥4; 2√(x−c)≥a; kx<a+d} — хотя бы одно решение", t18SysTripleSqrt],
     ["wedge-parabola-one", "{(a+px+c)(a−qx+c) ≤ 0; a+rx ≥ x²} — единственное решение", t18WedgeParabolaOne],
+    ["abs-param-strip", "{|x|+|a| ≤ c; x²+px < ka+d} — есть решение на [L; 0]", t18AbsParamStrip],
     ["product-ineq-seg", "(k|x|−a−c)(x²−px−q−a) ≤ 0 — есть решение на [−L; L]", t18ProductIneqSeg],
   ]],
   ["Распадающаяся кривая + прямая", [
