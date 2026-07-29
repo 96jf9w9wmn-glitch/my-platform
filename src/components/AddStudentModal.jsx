@@ -4,6 +4,8 @@ import Icon from "./Icon"
 import PhoneInput, { isValidPhoneNumber } from "react-phone-number-input"
 import "react-phone-number-input/style.css"
 import { plural, parseLocalDate } from "../utils"
+import { ConsentRow, ConsentLink } from "./ConsentChecks"
+import { logConsent } from "../consents"
 import { supabase } from "../supabase"
 
 const DURATIONS = [30, 45, 60, 90, 120]
@@ -123,6 +125,7 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
   const [recurringStartDate, setRecurringStartDate] = useState("")
   const [recurringWeeks, setRecurringWeeks] = useState(4)
   const [onboardingPulled, setOnboardingPulled] = useState(false)
+  const [hasStudentConsent, setHasStudentConsent] = useState(false)
 
   // Если ученик уже прошёл анкету в своём кабинете — при добавлении его репетитором
   // подтягиваем результаты анкеты (цель, целевой балл) по совпадению телефона.
@@ -207,10 +210,13 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
   function handleSubmit() {
     if (submitting) return
     if (!form.name || !phone) { alert("Заполни имя и телефон!"); return }
+    if (!hasStudentConsent) { alert("Подтверди, что согласие ученика или его родителя на внесение данных получено"); return }
     if (mode === "single" && lessons.length === 0) { alert("Выбери даты занятий!"); return }
     if (mode === "recurring" && (!recurringStartDate || recurringDays.length === 0)) { alert("Укажи дату начала и дни недели!"); return }
 
     setSubmitting(true)
+
+    logConsent({ role: "tutor_for_student", contact: phone, guardian: true })
 
     const finalLessons = previewLessons
     onAdd({
@@ -472,6 +478,14 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
               )}
             </div>
           )}
+
+          {/* Данные ученика вносит репетитор, а согласие даёт сам ученик или его
+              родитель — поэтому здесь подтверждение, что оно уже получено. */}
+          <ConsentRow checked={hasStudentConsent} onChange={setHasStudentConsent}>
+            У меня есть согласие ученика или его законного представителя на внесение
+            этих данных в сервис и на обработку по{" "}
+            <ConsentLink href="/privacy">Политике конфиденциальности</ConsentLink>
+          </ConsentRow>
         </div>
         </div>
 

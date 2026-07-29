@@ -97,7 +97,9 @@ function SocialChip({ s }) {
   )
 }
 
-function LegalLinks({ className = "" }) {
+// Юр-ссылки отдельно от подвала: на карточке входа нужны только они,
+// без контактов и соцсетей — те живут в подвале страницы.
+export function LegalLinks({ className = "" }) {
   return (
     <div className={`flex flex-wrap gap-x-4 gap-y-1.5 text-[11px] text-gray-400 dark:text-gray-500 ${className}`}>
       {LEGAL.map((l) => (
@@ -123,43 +125,7 @@ function MailChip({ full = true }) {
   )
 }
 
-// compact — для узкой карточки входа: без колонок и описаний.
-function SiteFooter({ compact = false }) {
-  if (compact) {
-    return (
-      <footer className="px-6 pb-6 pt-1 space-y-3">
-        <div className="text-center text-[11px] text-gray-400 dark:text-gray-500">
-          Нашли ошибку? Напишите — поправим:{" "}
-          <a
-            href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(SUPPORT_SUBJECT)}`}
-            className="font-medium text-blue-600 dark:text-blue-400 hover:opacity-70 transition-opacity"
-          >
-            {SUPPORT_EMAIL}
-          </a>
-        </div>
-        <div className="flex justify-center gap-2">
-          {SOCIALS.map((s) => {
-            const ready = Boolean(s.href)
-            return (
-              <a
-                key={s.key}
-                href={ready ? s.href : "#"}
-                {...(ready ? { target: "_blank", rel: "noreferrer noopener" } : {})}
-                onClick={ready ? undefined : (e) => e.preventDefault()}
-                aria-label={s.label}
-                title={ready ? s.label : `${s.label} — ссылка появится позже`}
-                className={`w-9 h-9 rounded-xl flex items-center justify-center ${s.soft} ${s.text} active:scale-90 transition-transform ${ready ? "" : "cursor-default"}`}
-              >
-                <SocialGlyph name={s.key} size={16} />
-              </a>
-            )
-          })}
-        </div>
-        <LegalLinks className="justify-center" />
-      </footer>
-    )
-  }
-
+function SiteFooter() {
   return (
     <footer className="mt-6 border-t border-gray-200/70 dark:border-gray-800/70">
       {/* @container, а не media-query: подвал стоит и в широком лендинге, и в

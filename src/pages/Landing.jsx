@@ -6,6 +6,8 @@ import FormulaBackdrop from "../components/FormulaBackdrop"
 import { TUTOR_STEPS } from "../onboardingSteps"
 import { Highlight } from "../components/Mark"
 import SiteFooter from "../components/SiteFooter"
+import { ConsentRow, ConsentLink } from "../components/ConsentChecks"
+import { logConsent } from "../consents"
 import { supabase } from "../supabase"
 import { BANK_STATS } from "./bankStats"
 
@@ -515,11 +517,18 @@ function TrialForm({ cfg }) {
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState(false)
   const [error, setError] = useState("")
+  // Галочка, а не строчка «отправляя заявку, вы соглашаетесь»: согласие даётся
+  // активным действием, иначе оно не считается полученным.
+  const [agreed, setAgreed] = useState(false)
 
   async function submit(e) {
     e.preventDefault()
     if (!form.name.trim() || !form.contact.trim()) {
       setError("Оставьте имя и способ связи — иначе не сможем ответить")
+      return
+    }
+    if (!agreed) {
+      setError("Отметьте согласие на обработку персональных данных — без него заявку принять нельзя")
       return
     }
     setError("")
@@ -534,6 +543,7 @@ function TrialForm({ cfg }) {
       setError("Не получилось отправить. Попробуйте ещё раз или напишите нам напрямую.")
       return
     }
+    logConsent({ role: "lead", contact: form.contact.trim() })
     setSent(true)
   }
 
@@ -579,6 +589,11 @@ function TrialForm({ cfg }) {
           placeholder="Предмет и класс — например, математика, 9 класс"
           className="input-glass"
         />
+        <ConsentRow checked={agreed} onChange={setAgreed} accent={cfg.grad}>
+          Ознакомлен(а) с <ConsentLink href="/privacy">Политикой конфиденциальности</ConsentLink> и даю{" "}
+          <ConsentLink href="/consent">согласие на обработку персональных данных</ConsentLink> для
+          ответа на заявку
+        </ConsentRow>
         {error && <div className="text-sm text-red-500">{error}</div>}
         <button
           type="submit"
@@ -587,9 +602,6 @@ function TrialForm({ cfg }) {
         >
           {sending ? "Отправляем…" : "Записаться на пробное"}
         </button>
-        <div className="text-[11px] text-gray-400 dark:text-gray-500 text-center leading-snug">
-          Отправляя заявку, вы соглашаетесь на обработку персональных данных
-        </div>
       </div>
     </form>
   )

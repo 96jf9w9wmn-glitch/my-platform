@@ -2,6 +2,9 @@ import { useState, useEffect } from "react"
 import { supabase } from "../supabase"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
+import { LegalLinks } from "../components/SiteFooter"
+import { ConsentRow, ConsentLink } from "../components/ConsentChecks"
+import { logConsent } from "../consents"
 
 function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
   const [mode, setMode] = useState(initialMode)
@@ -18,6 +21,9 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [failedAttempts, setFailedAttempts] = useState(0)
   const [cooldownLeft, setCooldownLeft] = useState(0)
+  // Согласия при регистрации. Галочки НЕ проставлены заранее: с 01.09.2025
+  // согласие на обработку ПДн даётся активным действием (см. legal/consent.md).
+  const [consent, setConsent] = useState({ terms: false, pd: false, guardian: false, marketing: false })
 
   useEffect(() => {
     if (cooldownLeft <= 0) return
@@ -92,6 +98,32 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
     }
   }
 
+  // Обязательные согласия. Необязательная галочка (рассылка) тут намеренно
+  // не проверяется — она добровольная.
+  function requireConsent() {
+    // У родителя аккаунта нет, он входит по коду ребёнка — но своё имя оставляет
+    // и получает доступ к данным ребёнка, поэтому согласие нужно и здесь.
+    if (role === "parent") {
+      if (!consent.pd) throw new Error("Подтвердите согласие на обработку данных — без него доступ к кабинету ребёнка открыть нельзя")
+      return
+    }
+    if (!consent.terms) throw new Error("Подтвердите, что ознакомились с Политикой конфиденциальности и Правилами сервиса")
+    if (!consent.pd) throw new Error("Без согласия на обработку персональных данных зарегистрировать аккаунт нельзя")
+    if (role === "student" && !consent.guardian) throw new Error("Подтвердите возраст или согласие законного представителя")
+  }
+
+  function saveConsent(subjectId, contact) {
+    return logConsent({
+      role,
+      subjectId,
+      contact,
+      terms: consent.terms,
+      personalData: consent.pd,
+      guardian: role === "student" ? consent.guardian : null,
+      marketing: consent.marketing,
+    })
+  }
+
   async function handleSubmit() {
     setError("")
     if (cooldownLeft > 0) {
@@ -104,12 +136,14 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
       if (role === "parent") {
         const code = form.code.trim().toUpperCase()
         if (!code) throw new Error("Введи код ученика")
+        requireConsent()
         const { data: found, error: fetchError } = await supabase
           .from("students")
           .select("*")
           .eq("parent_code", code)
         if (fetchError) throw fetchError
         if (!found || found.length === 0) throw new Error("Ученик с таким кодом не найден")
+        await saveConsent(found[0].id, form.name.trim() || null)
         const sessionData = { role: "parent", parentName: form.name.trim() || null, student: found[0] }
         localStorage.setItem("parent_session", JSON.stringify(sessionData))
         onLogin(sessionData)
@@ -134,6 +168,7 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
         } else {
           if (!form.name) throw new Error("Введи имя")
           if (form.password.length < 6) throw new Error("Пароль минимум 6 символов")
+          requireConsent()
 
           // Регистрация без кода репетитора — только аккаунт. Репетиторов ученик
           // привязывает по коду в опроснике/настройках (можно несколько).
@@ -148,6 +183,7 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
           if (!newAccount) throw new Error("Не удалось создать аккаунт")
 
           const { session_token, ...profile } = newAccount
+          await saveConsent(newAccount.id, phone)
           const sessionData = { id: newAccount.id, role: "student", profile, token: session_token }
           localStorage.setItem("student_session", JSON.stringify(sessionData))
           onLogin(sessionData)
@@ -167,6 +203,7 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
           if (!form.name) throw new Error("Введи имя")
           if (!form.email) throw new Error("Введи email")
           if (form.password.length < 6) throw new Error("Пароль минимум 6 символов")
+          requireConsent()
 
           const { data, error } = await supabase.auth.signUp({
             email: form.email,
@@ -180,6 +217,8 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
             name: form.name,
           })
           if (profileError) throw profileError
+
+          await saveConsent(data.user.id, form.email)
 
           const { data: tutor } = await supabase.from("tutors").select("*").eq("id", data.user.id).single()
           onLogin({ ...data.user, role: "tutor", profile: tutor })
@@ -429,6 +468,62 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
             </div>
           )}
 
+          {mode === "register" && role !== "parent" && (
+            <div className="flex flex-col gap-1.5 mt-1">
+              <ConsentRow
+                checked={consent.terms}
+                onChange={(v) => setConsent((p) => ({ ...p, terms: v }))}
+                accent={roleConfig[role].grad}
+              >
+                Ознакомлен(а) с <ConsentLink href="/privacy">Политикой конфиденциальности</ConsentLink> и
+                принимаю <ConsentLink href="/rules">Правила сервиса</ConsentLink>
+              </ConsentRow>
+
+              <ConsentRow
+                checked={consent.pd}
+                onChange={(v) => setConsent((p) => ({ ...p, pd: v }))}
+                accent={roleConfig[role].grad}
+              >
+                Даю <ConsentLink href="/consent">согласие на обработку персональных данных</ConsentLink> на
+                указанных в нём условиях
+              </ConsentRow>
+
+              {role === "student" && (
+                <ConsentRow
+                  checked={consent.guardian}
+                  onChange={(v) => setConsent((p) => ({ ...p, guardian: v }))}
+                  accent={roleConfig[role].grad}
+                >
+                  Мне есть 18 лет — либо мой родитель (законный представитель) ознакомлен
+                  с документами и даёт согласие на обработку моих данных
+                </ConsentRow>
+              )}
+
+              <ConsentRow
+                checked={consent.marketing}
+                onChange={(v) => setConsent((p) => ({ ...p, marketing: v }))}
+                accent={roleConfig[role].grad}
+              >
+                Хочу получать напоминания о занятиях и новости сервиса
+                <span className="text-gray-400 dark:text-gray-500"> — необязательно</span>
+              </ConsentRow>
+            </div>
+          )}
+
+          {role === "parent" && (
+            <div className="mt-1">
+              <ConsentRow
+                checked={consent.pd}
+                onChange={(v) => setConsent((p) => ({ ...p, pd: v }))}
+                accent={roleConfig.parent.grad}
+              >
+                Я законный представитель ученика: ознакомлен(а) с{" "}
+                <ConsentLink href="/privacy">Политикой конфиденциальности</ConsentLink> и даю{" "}
+                <ConsentLink href="/consent">согласие на обработку персональных данных</ConsentLink> — своих и ребёнка
+              </ConsentRow>
+            </div>
+          )}
+
           {error && (
             <div className="bg-red-50 text-red-600 text-sm px-3 py-2 rounded-lg">
               {error}
@@ -492,12 +587,7 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
           </div>
         )}
         </div> {/* p-6 */}
-        <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 pb-5 -mt-1 text-[11px] text-gray-400 dark:text-gray-500">
-          <a href="/privacy" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Политика конфиденциальности</a>
-          <a href="/consent" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Согласие на обработку ПДн</a>
-          <a href="/cookie" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Cookie</a>
-          <a href="/rules" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Правила чата</a>
-        </div>
+        <LegalLinks className="justify-center pb-5 -mt-1" />
       </div>
     </div>
   )
