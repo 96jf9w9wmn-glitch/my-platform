@@ -8,6 +8,9 @@ const glyphW = (s) => { let w = 0; for (const ch of s) w += /[⁰¹²³⁴⁵⁶
 // index — показатель степени корня (∛ → index="3"): цифра сидит В КРЮЧКЕ радикала
 // (как у ФИПИ), а не висит высоким надстрочником слева. Радикал сдвигается вправо на ox,
 // освобождая слева место под индекс.
+// Маркер корня, который можно класть ВНУТРЬ дроби/степени: √{X} и √[i]{X} (со степенью).
+// В отличие от токенов ⟦r⟧/⟦rn⟧ не содержит «⟧» и «:», поэтому не рвёт захват ⟦f:n:d⟧.
+const RE_ROOT_MARK = /√(?:\[([^\]{}]+)\])?\{([^{}]+)\}/g
 function rootMarkup(content, index = "") {
   const FS = 14
   const idxFS = 10
@@ -219,7 +222,8 @@ function renderTaskMathRaw(text) {
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
   // корень внутри числителя/знаменателя дроби записывается маркером √{X} (не токеном ⟦r⟧,
   // т.к. ⟦r⟧ содержит «⟧» и рвёт захват дроби) — разворачиваем его в настоящий радикал.
-  const rootIn = (s) => s.replace(/√\{([^}]+)\}/g, (_, x) => rootMarkup(x))
+  // √[i]{X} — тот же маркер со степенью корня (аналог ⟦rn:i:X⟧), индекс сидит в крючке.
+  const rootIn = (s) => s.replace(RE_ROOT_MARK, (_, i, x) => rootMarkup(x, i || ""))
   return esc
     // ⟦match⟧…⟦endmatch⟧ — задание «на соответствие»: два столбца РЯДОМ (таблица) +
     // сетка для ответа. Разворачиваем ПЕРВЫМ, оставляя внутри ячеек мат-токены (⟦f⟧,
@@ -267,7 +271,7 @@ function renderTaskMathRaw(text) {
       `<span class="tmath-frac"><span class="tmath-num">${n}</span><span class="tmath-den">${d}</span></span>`)
     // Корень вне дроби, записанный маркером √{X} (внутри ⟦sup⟧ токен ⟦r⟧ применить нельзя —
     // он содержит «⟧»): разворачиваем в радикал, иначе фигурные скобки видны в условии.
-    .replace(/√\{([^}]+)\}/g, (_, x) => rootMarkup(x))
+    .replace(RE_ROOT_MARK, (_, i, x) => rootMarkup(x, i || ""))
     // ⟦iso:A:Z:Sym⟧ — символ нуклида: массовое число A над зарядовым Z (стопкой),
     // прижаты вправо и стоят слева от символа элемента (¹⁴₇N).
     .replace(/⟦iso:([^:⟧]+):([^:⟧]+):([^⟧]+)⟧/g, (_, a, z, s) =>
@@ -298,7 +302,7 @@ export function plainTaskMath(text) {
     .replace(/⟦list⟧([\s\S]*?)⟦endlist⟧/g, (_, body) =>
       body.split("⁞").map((t, i) => `${i + 1}) ${t}`).join("; "))
     .replace(/⟦rf:([^⟧]*)⟧/g, (_, b) => { const [pre, n, d, post] = b.split("¦"); return `√(${pre || ""}${n}/${d}${post || ""})` })
-    .replace(/√\{([^}]+)\}/g, "√$1")
+    .replace(RE_ROOT_MARK, (_, i, x) => (i ? `${i}√(${x})` : `√${x}`))
     .replace(/⟦pf:([^:⟧]+):([^:⟧]+)⟧/g, "($1/$2)")
     .replace(/⟦f:([^:⟧]+):([^:⟧]+)⟧/g, "$1/$2")
     .replace(/⟦rn:([^:⟧]+):([^⟧]+)⟧/g, (_, i, x) => `${i}√(${x})`)
@@ -320,7 +324,7 @@ export function plainTaskMath(text) {
 export function expandSvgMathTokens(svg) {
   return String(svg)
     .replace(/⟦rf:([^⟧]*)⟧/g, (_, b) => { const [pre, n, d, post] = b.split("¦"); return `√(${pre || ""}${n}/${d}${post || ""})` })
-    .replace(/√\{([^}]+)\}/g, (_, x) => `√<tspan text-decoration="overline">${x}</tspan>`)
+    .replace(RE_ROOT_MARK, (_, i, x) => `${i ? `<tspan baseline-shift="super" font-size="0.7em">${i}</tspan>` : ""}√<tspan text-decoration="overline">${x}</tspan>`)
     .replace(/⟦pf:([^:⟧]+):([^:⟧]+)⟧/g, "($1/$2)")
     .replace(/⟦f:([^:⟧]+):([^:⟧]+)⟧/g, "$1/$2")
     .replace(/⟦r:([^⟧]+)⟧/g, (_, x) => `√<tspan text-decoration="overline">${x}</tspan>`)

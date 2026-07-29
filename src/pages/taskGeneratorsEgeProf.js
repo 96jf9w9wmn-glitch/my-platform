@@ -632,6 +632,7 @@ function t06LinMixed() {
     M = p * Math.abs(x0); whole = Math.floor(M / q); rem = M - whole * q
     guard++
   } while ((gcd(p, q) !== 1 || rem === 0 || whole < 1 || whole > 40) && guard < 500)
+  if (gcd(p, q) !== 1 || rem === 0 || whole < 1) return t06LinMixed()
   const sign = x0 < 0 ? "−" : ""
   return {
     condition_text: `Найдите корень уравнения ${fT(p, q)}x = ${sign}${whole}${fT(rem, q)}.`,
@@ -646,6 +647,7 @@ function t06SqEqSq() {
     a = randInt(2, 9); b = randInt(2, 20); c = randInt(2, 20)
     x0 = (b + c) / (2 * a); guard++
   } while ((b === c || decLen(b + c, 2 * a) > 1 || x0 < 0.5 || x0 > 20) && guard < 500)
+  if (b === c || decLen(b + c, 2 * a) > 1) return t06SqEqSq()   // b=c дало бы тождество
   return {
     condition_text: `Найдите корень уравнения (${a}x−${b})${sup(2)}=(${a}x−${c})${sup(2)}.`,
     answer: ru(clean(x0)),
@@ -1587,6 +1589,7 @@ function t07PowPowDiv() {
     diff = lExp - rExp
     g++
   } while ((diff < 1 || diff > 5 || p ** diff > 3000) && g < 600)
+  if (diff < 1 || diff > 5) return t07PowPowDiv()      // цикл вышел по счётчику — пересобрать
   const rhs = nested ? `(${base2}${sup(c)})${sup(d)}` : `${base2}${sup(e)}`
   return {
     condition_text: `Найдите значение выражения ${fT(`(${base1}${sup(a)})${sup(b)}`, rhs)}.`,
@@ -1664,6 +1667,567 @@ function t07TrigDouble() {
   return {
     condition_text: `Найдите значение выражения ${k}cos2α, если ${useSin ? "sin" : "cos"}α=${ru(val)}.`,
     answer: ru(clean(k * cos2)),
+  }
+}
+
+// ── Типажи №7 по построчному эталону new/ (typages_task07_vychisleniya.md) ───
+// Маркеры, которые МОЖНО класть внутрь ⟦f⟧ (нет «:» и «⟧»):
+//   ⁅x⁆ — степень, ⦃n¦d⦄ — вложенная дробь, ⦉x⦊ — индекс, √{x} / √[i]{x} — корень.
+const supX = (x) => `⁅${x}⁆`
+const fIn = (n, d) => `⦃${n}¦${d}⦄`
+const rIn = (x, i) => (i ? `√[${i}]{${x}}` : `√{${x}}`)
+const subIn = (x) => `⦉${x}⦊`
+const D2R = (d) => d * Math.PI / 180
+// свободно от квадратов: иначе в условии появится неупрощённый корень (√24 вместо 2√6)
+const sqFree = (n) => { for (let k = 2; k * k <= n; k++) if (n % (k * k) === 0) return false; return true }
+// значение «красиво» (конечная десятичная ≤ p знаков) — иначе null
+const exact = (x, p = 2) => { const r = Math.round(x * 10 ** p) / 10 ** p; return Math.abs(r - x) < 1e-9 ? r : null }
+// коэффициент вида c√m: «3√2», «√2», «6», либо одним корнем «√72»
+function coefTxt(c, m, single) {
+  if (m === 1) return ru(c)
+  if (single) return rT(c * c * m)
+  return `${c === 1 ? "" : ru(c)}${rT(m)}`
+}
+const piTxt = (p, q) => (q === 1 ? (p === 1 ? "π" : `${p}π`) : fT(p === 1 ? "π" : `${p}π`, q))
+
+// ── Степени ─────────────────────────────────────────────────────────────────
+// #24: 81^2,6 / 9^3,7 — основания степени одного числа, дробные показатели.
+function t07PowRatioBase() {
+  let p, k1, k2, a, b, T, g = 0
+  do {
+    p = pick([2, 3, 5]); k1 = pick([2, 3, 4, 6]); k2 = pick([2, 3, 4, 6])
+    T = randInt(1, 7); a = randInt(11, 99) / 10
+    b = clean((k1 * a - T) / k2); g++
+  } while ((k1 === k2 || b <= 0.5 || b > 12 || !Number.isInteger(clean(b * 10)) ||
+    p ** T > 3000 || p ** k1 > 300 || p ** k2 > 300) && g < 900)
+  return {
+    condition_text: `Найдите значение выражения ${fT(`${p ** k1}${supX(ru(a))}`, `${p ** k2}${supX(ru(b))}`)}.`,
+    answer: ru(p ** T),
+  }
+}
+
+// #31: (A^(p/q) · B^(r/s))^N / (AB)^M.
+function t07PowProdPow() {
+  let A, B, p, q, r, s, N, M, t, g = 0
+  do {
+    q = pick([3, 5, 7]); s = pick([3, 5, 7])
+    p = randInt(1, q - 1); r = randInt(1, s - 1)
+    A = pick([2, 3, 4, 5, 7, 11]); B = pick([2, 3, 5, 7, 11, 13])
+    N = q * s; M = s * p; t = q * r - s * p; g++
+  } while ((q === s || A === B || t < 1 || t > 3 || B ** t > 1500 || A * B > 200 || M > 30) && g < 900)
+  if (q === s || A === B || t < 1 || t > 3) return t07PowProdPow()
+  const num = `(${A}${supX(fIn(p, q))}·${B}${supX(fIn(r, s))})${supX(N)}`
+  return {
+    condition_text: `Найдите значение выражения ${fT(num, `${A * B}${supX(M)}`)}.`,
+    answer: ru(B ** t),
+  }
+}
+
+// #32: A^a · B^b / (AB)^c — разложение составного основания на множители.
+function t07PowFactorize() {
+  let A, B, u, v, c, a, b, num, den, g = 0
+  do {
+    A = pick([2, 3, 5]); B = pick([2, 3, 5, 7, 11])
+    u = randInt(-2, 2); v = randInt(-2, 2)
+    c = randInt(11, 90) / 10
+    a = clean(c + u); b = clean(c + v)
+    num = A ** Math.max(u, 0) * B ** Math.max(v, 0)
+    den = A ** Math.max(-u, 0) * B ** Math.max(-v, 0)
+    g++
+  } while ((A === B || gcd(A, B) !== 1 || a <= 0 || b <= 0 || (u === 0 && v === 0)
+    || decLen(num, den) > 2 || num / den > 2000 || num / den < 0.05 || A * B > 60) && g < 900)
+  return {
+    condition_text: `Найдите значение выражения ${fT(`${A}${supX(ru(a))}·${B}${supX(ru(b))}`, `${A * B}${supX(ru(c))}`)}.`,
+    answer: ru(clean(num / den)),
+  }
+}
+
+// #35: (AB)^x · P^y : Q^z — три основания, деление знаком «:».
+function t07PowThreeBases() {
+  let A, B, u, v, x, y, z, num, den, midOnA, g = 0
+  do {
+    A = pick([4, 5, 3, 2]); B = pick([5, 3, 7, 2])
+    u = pick([-1, 1]); v = pick([-1, 1])
+    x = clean(randInt(-90, 90) / 10)
+    midOnA = Math.random() < 0.5
+    // (AB)^x даёт A^x·B^x; далее умножаем на одно основание и делим на другое
+    y = clean((midOnA ? u : v) - x)          // показатель среднего множителя
+    z = clean(x - (midOnA ? v : u))          // показатель делителя
+    num = A ** Math.max(u, 0) * B ** Math.max(v, 0)
+    den = A ** Math.max(-u, 0) * B ** Math.max(-v, 0)
+    g++
+  } while ((A === B || gcd(A, B) !== 1 || x === 0 || y === 0 || z === 0 || A * B > 60
+    || Math.abs(y) > 9 || Math.abs(z) > 9 || decLen(num, den) > 2) && g < 900)
+  const mid = midOnA ? A : B, div = midOnA ? B : A
+  return {
+    condition_text: `Найдите значение выражения ${A * B}${supT(ru(x))}·${mid}${supT(ru(y))}:${div}${supT(ru(z))}.`,
+    answer: ru(clean(num / den)),
+  }
+}
+
+// #36: (A/B)^(1/n) · B^(2/n) · (AB)^((n−1)/n) = A·B.
+function t07PowDecFrac() {
+  const opts = [[3, 4, "0,75"], [4, 5, "0,8"], [1, 2, "0,5"], [2, 5, "0,4"], [1, 4, "0,25"],
+  [3, 5, "0,6"], [1, 5, "0,2"], [5, 8, "0,625"], [3, 8, "0,375"], [7, 10, "0,7"]]
+  const [A, B, dec] = pick(opts)
+  const n = pick([5, 7, 8, 9, 11, 13])
+  const g2 = gcd(2, n), g3 = gcd(n - 1, n)
+  return {
+    condition_text: `Найдите значение выражения ${dec}${supT(fT(1, n))}·${B}${supT(fT(2 / g2, n / g2))}·${A * B}${supT(fT((n - 1) / g3, n / g3))}.`,
+    answer: ru(A * B),
+  }
+}
+
+// #52: a^p/(a^q·a^r) при a = число или дробь.
+function t07PowLetter() {
+  const t = pick([1, -1, 2, -2])
+  const asFrac = Math.random() < 0.4
+  let A, B, val, num, den
+  if (asFrac) {
+    A = pick([2, 3, 4, 5]); B = pick([5, 7, 9, 10])
+    if (A >= B || gcd(A, B) !== 1) { A = 2; B = 7 }        // дробь несократимая, как в ФИПИ
+    num = t > 0 ? A ** t : B ** -t; den = t > 0 ? B ** t : A ** -t
+    val = fT(A, B)
+  } else {
+    A = pick([2, 3, 5, 6, 7, 10]); num = t > 0 ? A ** t : 1; den = t > 0 ? 1 : A ** -t
+    val = ru(A)
+  }
+  if (decLen(num, den) > 3) return t07PowLetter()
+  const q = clean(randInt(101, 899) / 100), r = clean(randInt(101, 899) / 100)
+  if (Math.random() < 0.5) {                       // a^p / (a^q · a^r)
+    const p = clean(q + r + t)
+    if (p <= 0) return t07PowLetter()
+    return {
+      condition_text: `Найдите значение выражения ${fT(`a${supX(ru(p))}`, `a${supX(ru(q))}·a${supX(ru(r))}`)} при a = ${val}.`,
+      answer: ru(clean(num / den)),
+    }
+  }
+  const p = clean(q + r - t)                        // (a^q · a^r) / a^p
+  if (p <= 0) return t07PowLetter()
+  return {
+    condition_text: `Найдите значение выражения ${fT(`a${supX(ru(q))}·a${supX(ru(r))}`, `a${supX(ru(p))}`)} при a = ${val}.`,
+    answer: ru(clean(num / den)),
+  }
+}
+
+// ── Корни ───────────────────────────────────────────────────────────────────
+// #62: √x·√y/√z = √(xy/z).
+function t07RootProdDiv() {
+  let x, y, r, z, g = 0
+  do {
+    r = randInt(2, 9); x = clean(randInt(11, 90) / 10); y = clean(randInt(11, 90) / 10)
+    z = clean(x * y / (r * r)); g++
+  } while ((!Number.isInteger(clean(z * 100)) || z < 0.01 || z >= 10
+    || Number.isInteger(x) || Number.isInteger(y) || Number.isInteger(z)) && g < 900)
+  if (!Number.isInteger(clean(z * 100)) || z < 0.01 || Number.isInteger(x) || Number.isInteger(y)) return t07RootProdDiv()
+  return {
+    condition_text: `Найдите значение выражения ${fT(`${rIn(ru(x))}·${rIn(ru(y))}`, rIn(ru(z)))}.`,
+    answer: ru(r),
+  }
+}
+
+// #63: (√a+√b)²/(λ(a+b) + 2λ√(ab)) = 1/λ.
+function t07RootSqSum() {
+  const LAM = [[1, 2], [1, 1], [2, 1], [4, 1], [5, 1], [8, 1], [10, 1]]   // λ = n/d
+  let a, b, ln, ld, s, m, g = 0
+  do {
+    a = pick([2, 3, 5, 6, 7, 10, 11, 13]); b = pick([2, 3, 5, 6, 7, 10, 11, 13]);
+    [ln, ld] = pick(LAM)
+    s = (a + b) * ln / ld; m = 2 * ln / ld; g++
+  } while ((a === b || !sqFree(a * b) || !Number.isInteger(s)
+    || !Number.isInteger(m) || decLen(ld, ln) > 3) && g < 900)
+  if (a === b || !sqFree(a * b) || !Number.isInteger(s) || !Number.isInteger(m)) return t07RootSqSum()
+  const denTail = m === 1 ? rIn(a * b) : `${m}${rIn(a * b)}`
+  return {
+    condition_text: `Найдите значение выражения ${fT(`(${rIn(a)}+${rIn(b)})${sup(2)}`, `${s}+${denTail}`)}.`,
+    answer: ru(clean(ld / ln)),
+  }
+}
+
+// #64: √(m² − n²) — под корнем разность квадратов (пифагорова тройка).
+function t07RootDiffSq() {
+  const [p, q, c] = pick(PYTH), k = randInt(2, 14)
+  const legs = Math.random() < 0.5 ? [p, q] : [q, p]
+  return {
+    condition_text: `Найдите значение выражения ${rT(`${c * k}${sup(2)}−${legs[0] * k}${sup(2)}`)}.`,
+    answer: ru(legs[1] * k),
+  }
+}
+
+// #67: корни РАЗНЫХ степеней одного числа: (ⁿ√a · a^e · ᵐ√a)/ᵏ√a.
+function t07RootDegrees() {
+  // t = 1/n + e + 1/m − 1/k — подбираем n, k и РЕШАЕМ уравнение относительно m,
+  // а не угадываем тройку (иначе цикл выходил по счётчику с негодными числами
+  // и генератор выдавал неверный ответ).
+  const BASES = [[2, [1]], [3, [1]], [5, [1]], [6, [1]], [7, [1]], [10, [1]],
+  [4, [0.5, 1]], [9, [0.5, 1]], [36, [0.5, 1]], [25, [0.5, 1]], [100, [0.5, 1]]]
+  for (let i = 0; i < 800; i++) {
+    const [a, ts] = pick(BASES), t = pick(ts), e = pick([0, 1])
+    const n = randInt(3, 20), k = randInt(2, 30)
+    const inv = t - e - 1 / n + 1 / k                  // = 1/m
+    if (inv <= 0) continue
+    const m = Math.round(1 / inv)
+    if (m < 2 || m > 30 || Math.abs(1 / m - inv) > 1e-12) continue
+    if (n === m || n === k || m === k) continue
+    const ans = Math.round(a ** t)
+    if (Math.abs(a ** t - ans) > 1e-9 || ans < 2 || ans > 400) continue
+    const mid = e === 1 ? `·${a}` : ""
+    return {
+      condition_text: `Найдите значение выражения ${fT(`${rIn(a, n)}${mid}·${rIn(a, m)}`, rIn(a, k))}.`,
+      answer: ru(ans),
+    }
+  }
+  // гарантированный запасной вариант (эталон ФИПИ #67): 1/15 + 1 + 1/10 − 1/6 = 1
+  return {
+    condition_text: `Найдите значение выражения ${fT(`${rIn(5, 15)}·5·${rIn(5, 10)}`, rIn(5, 6))}.`,
+    answer: "5",
+  }
+}
+
+// #68: корни ОДНОЙ степени разных чисел: (ⁿ√x · ⁿ√y)/ⁿ√z = ⁿ√(xy/z).
+function t07RootSameDeg() {
+  let n, r, x, y, z, g = 0
+  do {
+    n = pick([3, 4, 5]); r = randInt(2, 6)
+    x = randInt(2, 60); y = randInt(2, 60)
+    z = clean(x * y / r ** n); g++
+  } while ((!Number.isInteger(z) || z < 2 || z > 400 || x * y > 4000) && g < 1500)
+  if (!Number.isInteger(z) || z < 2) return t07RootSameDeg()
+  return {
+    condition_text: `Найдите значение выражения ${fT(`${rIn(x, n)}·${rIn(y, n)}`, rIn(z, n))}.`,
+    answer: ru(r),
+  }
+}
+
+// ── Тригонометрия ───────────────────────────────────────────────────────────
+const SIN_HALF = [30, 150, 210, 330], SIN_ONE = [90, 270]
+const COS_HALF = [60, 120, 240, 300], COS_ONE = [0, 180]
+// #80: k·sin A · cos B (табличные углы, значения ±½ и ±1).
+function t07TrigTableProd() {
+  const A = pick([...SIN_HALF, ...SIN_ONE]), B = pick([...COS_HALF, ...COS_ONE])
+  const k = randInt(2, 30) * pick([1, 1, -1])
+  const v = exact(k * Math.sin(D2R(A)) * Math.cos(D2R(B)), 2)
+  if (v === null || v === 0) return t07TrigTableProd()
+  return { condition_text: `Найдите значение выражения ${ru(k)}sin${deg(A)}·cos${deg(B)}.`, answer: ru(v) }
+}
+
+// #82: k√m · tg(π/a) · sin(π/b) — табличные углы в радианах.
+function t07TrigTablePi() {
+  const FN = [["sin", Math.sin], ["cos", Math.cos], ["tg", Math.tan]]
+  const QS = [[1, 6], [1, 4], [1, 3]]
+  const [n1, f1] = pick(FN), [n2, f2] = pick(FN)
+  const [p1, q1] = pick(QS), [p2, q2] = pick(QS)
+  const m = pick([1, 2, 3, 6]), c = randInt(m === 1 ? 2 : 1, 30)
+  const v = exact(c * Math.sqrt(m) * f1(Math.PI * p1 / q1) * f2(Math.PI * p2 / q2), 2)
+  if (v === null || v === 0 || Math.abs(v) > 200) return t07TrigTablePi()
+  return {
+    condition_text: `Найдите значение выражения ${coefTxt(c, m)}${n1}${piTxt(p1, q1)}${n2}${piTxt(p2, q2)}.`,
+    answer: ru(v),
+  }
+}
+
+// #84: k√m · cos(−225°) — одна функция от «неудобного» угла.
+function t07TrigTableNeg() {
+  const ANG = [120, 135, 150, 210, 225, 240, 300, 315, 330]
+  const [nm, f] = pick([["sin", Math.sin], ["cos", Math.cos]])
+  const A = pick(ANG) * pick([1, -1])
+  const m = pick([1, 2, 3]), c = randInt(m === 1 ? 2 : 1, 24)
+  const v = exact(c * Math.sqrt(m) * f(D2R(A)), 2)
+  if (v === null || v === 0) return t07TrigTableNeg()
+  const angTxt = A < 0 ? `(−${Math.abs(A)}°)` : `${A}°`
+  return { condition_text: `Найдите значение выражения ${coefTxt(c, m)}${nm}${angTxt}.`, answer: ru(v) }
+}
+
+// #87: cos α по sin α (или наоборот) и промежутку.
+const QUARTERS = [
+  ["(0; ⟦f:π:2⟧)", 1, 1], ["(⟦f:π:2⟧; π)", -1, 1], ["(π; ⟦f:3π:2⟧)", -1, -1], ["(⟦f:3π:2⟧; 2π)", 1, -1],
+]
+function t07TrigQuarter() {
+  let d, k, m, g = 0
+  do { d = pick([5, 10, 13, 25, 4, 20]); k = randInt(1, d - 1); m = d * d - k * k; g++ }
+  while ((!sqFree(m) || decLen(k, d) > 2) && g < 400)
+  if (!sqFree(m) || decLen(k, d) > 2) return t07TrigQuarter()
+  const [qTxt, cs, sn] = pick(QUARTERS)
+  const giveSin = Math.random() < 0.5
+  // известная функция — иррациональная (√m/d), искомая — рациональная (k/d)
+  const knownTxt = `${(giveSin ? sn : cs) < 0 ? "−" : ""}${fT(rIn(m), d)}`
+  const ans = clean((giveSin ? cs : sn) * k / d)
+  return {
+    condition_text: `Найдите ${giveSin ? "cos" : "sin"}α, если ${giveSin ? "sin" : "cos"}α = ${knownTxt} и α∈${qTxt}.`,
+    answer: ru(ans),
+  }
+}
+
+// #89: tg α по sin α или cos α (вида a√N/N) и промежутку.
+function t07TrigQuarterTg() {
+  let a, b, N, g = 0
+  do { a = randInt(1, 12); b = randInt(1, 12); N = a * a + b * b; g++ }
+  while ((!sqFree(N) || decLen(a, b) > 2 || N > 200) && g < 400)
+  if (!sqFree(N) || decLen(a, b) > 2) return t07TrigQuarterTg()
+  const [qTxt, cs, sn] = pick(QUARTERS)
+  const giveSin = Math.random() < 0.5
+  const numer = giveSin ? a : b
+  const sign = giveSin ? sn : cs
+  const knownTxt = `${sign < 0 ? "−" : ""}${fT(`${numer === 1 ? "" : numer}${rIn(N)}`, N)}`
+  return {
+    condition_text: `Найдите tgα, если ${giveSin ? "sin" : "cos"}α = ${knownTxt} и α∈${qTxt}.`,
+    answer: ru(clean(sn * cs * a / b)),
+  }
+}
+
+// #90: k·sinA·cosA / sin2A = k/2.
+function t07TrigSin2Frac() {
+  const A = randInt(4, 89), kk = randInt(3, 40)
+  return {
+    condition_text: `Найдите значение выражения ${fT(`${2 * kk}sin${deg(A)}·cos${deg(A)}`, `sin${deg(2 * A)}`)}.`,
+    answer: ru(kk),
+  }
+}
+
+// #91: k(sin²A − cos²A)/cos2A = −k.
+function t07TrigCos2Frac() {
+  const k = randInt(3, 40)
+  let A; do { A = randInt(4, 88) } while (A === 45)   // при A=45 знаменатель cos90°=0
+  return {
+    condition_text: `Найдите значение выражения ${fT(`${k}(sin${sup(2)}${deg(A)}−cos${sup(2)}${deg(A)})`, `cos${deg(2 * A)}`)}.`,
+    answer: ru(-k),
+  }
+}
+
+// #94: sin2α по cosα (или sinα) и промежутку π < α < 2π.
+function t07TrigSin2FromCos() {
+  const [p, q, c] = pick(PYTH)
+  const swap = Math.random() < 0.5
+  const cosA = clean((swap ? q : p) / c), sinAbs = clean((swap ? p : q) / c)
+  if (decLen(swap ? q : p, c) > 2 || decLen(swap ? p : q, c) > 2) return t07TrigSin2FromCos()
+  // Даём именно cosα: по sinα знак косинуса на (π; 2π) не определён — задача была бы
+  // неоднозначной. В эталоне ФИПИ (#94) тоже дан косинус.
+  const sinA = -sinAbs
+  const ans = exact(2 * sinA * cosA, 2)
+  if (ans === null) return t07TrigSin2FromCos()
+  const sign = Math.random() < 0.5 ? 1 : -1
+  return {
+    condition_text: `Найдите sin2α, если cosα = ${ru(clean(sign * cosA))} и π < α < 2π.`,
+    answer: ru(clean(sign * ans)),
+  }
+}
+
+// общий помощник для #95/#96/#97: угол x = pπ/q, у которого cos2x «табличный»
+function pickCos2() {
+  for (let i = 0; i < 400; i++) {
+    const q = pick([8, 12, 6, 4, 3]), p = randInt(1, 2 * q - 1)
+    const c = exact(Math.cos(2 * Math.PI * p / q), 6)
+    if (c === null || c === 0) continue
+    if (gcd(p, q) !== 1) continue
+    return { p, q, c }
+  }
+  return { p: 9, q: 8, c: Math.SQRT1_2 }
+}
+// #95: k·cos²x − k·sin²x = k·cos2x.
+function t07TrigCos2Diff() {
+  const { p, q, c } = pickCos2()
+  const m = pick([1, 2, 3, 6]), cf = randInt(m === 1 ? 2 : 1, 12), single = Math.random() < 0.4
+  const v = exact(cf * Math.sqrt(m) * c, 2)
+  if (v === null || v === 0) return t07TrigCos2Diff()
+  const K = coefTxt(cf, m, single)
+  return {
+    condition_text: `Найдите значение выражения ${K}cos${sup(2)}${piTxt(p, q)}−${K}sin${sup(2)}${piTxt(p, q)}.`,
+    answer: ru(v),
+  }
+}
+// #96: 2B·cos²x − B = B·cos2x.
+function t07TrigCos2Half() {
+  const { p, q, c } = pickCos2()
+  const cf = randInt(1, 9), m = pick([1, 2, 3, 6]), single = Math.random() < 0.5
+  const v = exact(cf * Math.sqrt(m) * c, 2)
+  if (v === null || v === 0) return t07TrigCos2Half()
+  return {
+    condition_text: `Найдите значение выражения ${coefTxt(2 * cf, m, single)}cos${sup(2)}${piTxt(p, q)}−${coefTxt(cf, m, single)}.`,
+    answer: ru(v),
+  }
+}
+// #97: B − 2B·sin²x = B·cos2x.
+function t07TrigCos2Minus() {
+  const { p, q, c } = pickCos2()
+  const cf = randInt(1, 9), m = pick([1, 2, 3, 6]), single = Math.random() < 0.5
+  const v = exact(cf * Math.sqrt(m) * c, 2)
+  if (v === null || v === 0) return t07TrigCos2Minus()
+  return {
+    condition_text: `Найдите значение выражения ${coefTxt(cf, m, single)}−${coefTxt(2 * cf, m, single)}sin${sup(2)}${piTxt(p, q)}.`,
+    answer: ru(v),
+  }
+}
+// #98/#99: k·sin x·cos x = (k/2)·sin2x.
+function t07TrigSin2Prod() {
+  for (let i = 0; i < 400; i++) {
+    const q = pick([8, 12, 6, 4, 3]), p = randInt(1, 2 * q - 1)
+    if (gcd(p, q) !== 1) continue
+    const s = exact(Math.sin(2 * Math.PI * p / q), 6)
+    if (s === null || s === 0) continue
+    const m = pick([1, 2, 3]), cf = randInt(m === 1 ? 2 : 1, 12)
+    const v = exact(cf * Math.sqrt(m) * s / 2, 2)
+    if (v === null || v === 0) continue
+    return {
+      condition_text: `Найдите значение выражения ${coefTxt(cf, m)}sin${piTxt(p, q)}·cos${piTxt(p, q)}.`,
+      answer: ru(v),
+    }
+  }
+  return { condition_text: `Найдите значение выражения ${rT(2)}sin${fT("7π", 8)}·cos${fT("7π", 8)}.`, answer: "−0,5" }
+}
+
+// #103: формулы приведения — (k·f₁ + f₂)/f₃ = k − 1.
+function t07TrigReduction() {
+  const k = randInt(2, 9), odd = pick([1, 3, 5, 7, 9])
+  const oddTxt = odd === 1 ? "π" : `${odd}π`
+  if (Math.random() < 0.5) {
+    const num = `${k}sin(α−${oddTxt})+cos(${fIn("3π", 2)}+α)`
+    return { condition_text: `Найдите значение выражения ${fT(num, "sin(α+π)")}.`, answer: ru(k - 1) }
+  }
+  const num = `${k}cos(π−β)+sin(${fIn("π", 2)}+β)`
+  return { condition_text: `Найдите значение выражения ${fT(num, `cos(β+${oddTxt})`)}.`, answer: ru(k - 1) }
+}
+
+// #105: k·sin(A+360°)/sin A = k (период).
+function t07TrigPeriod() {
+  const k = randInt(2, 40) * pick([1, -1]), A = randInt(3, 80)
+  const [nm] = pick([["sin"], ["cos"]])
+  return {
+    condition_text: `Найдите значение выражения ${fT(`${ru(k)}${nm}${deg(A + 360)}`, `${nm}${deg(A)}`)}.`,
+    answer: ru(k),
+  }
+}
+
+// #106: k·cosA/sin(90°−A) ± c = k ± c (дополнительные углы).
+function t07TrigCofunc() {
+  const k = randInt(3, 60), A = randInt(2, 88), c = randInt(2, 40) * pick([1, -1])
+  const flip = Math.random() < 0.5
+  const top = flip ? `${k}sin${deg(A)}` : `${k}cos${deg(A)}`
+  const bot = flip ? `cos${deg(90 - A)}` : `sin${deg(90 - A)}`
+  return {
+    condition_text: `Найдите значение выражения ${fT(top, bot)}${c < 0 ? "−" : "+"}${Math.abs(c)}.`,
+    answer: ru(k + c),
+  }
+}
+
+// #107: k·tgA·tg(90°−A) + c = k + c.
+function t07TrigTgTg() {
+  const k = randInt(3, 60) * pick([1, -1]), A = randInt(2, 88), c = randInt(2, 50) * pick([1, -1])
+  return {
+    condition_text: `Найдите значение выражения ${ru(k)}tg${deg(A)}·tg${deg(90 - A)}${c < 0 ? "−" : "+"}${Math.abs(c)}.`,
+    answer: ru(k + c),
+  }
+}
+
+// #108: k·sin2A/(cosA·cos(90°−A)) = 2k.
+function t07TrigSin2Cofunc() {
+  const k = randInt(3, 40), A = randInt(10, 80)
+  return {
+    condition_text: `Найдите значение выражения ${fT(`${k}sin${deg(2 * A)}`, `cos${deg(A)}·cos${deg(90 - A)}`)}.`,
+    answer: ru(2 * k),
+  }
+}
+
+// #109: N/(sin²A + c + sin²(A+90°)) = N/(1+c).
+function t07TrigSinSqSum() {
+  const useCos = Math.random() < 0.5
+  let N, c, A, g = 0
+  // у cos-варианта угол дополнительный (90°−A), поэтому A ≤ 88 — иначе вышел бы
+  // отрицательный угол «cos²−31°», какого в ФИПИ не бывает
+  do { c = randInt(1, 9); N = randInt(2, 60); A = useCos ? randInt(2, 88) : randInt(5, 175); g++ }
+  while (decLen(N, 1 + c) > 2 && g < 300)
+  const B = useCos ? 90 - A : A + 90
+  const fn = useCos ? "cos" : "sin"
+  return {
+    condition_text: `Найдите значение выражения ${fT(N, `${fn}${sup(2)}${deg(A)}+${c}+${fn}${sup(2)}${deg(B)}`)}.`,
+    answer: ru(clean(N / (1 + c))),
+  }
+}
+
+// ── Логарифмы ───────────────────────────────────────────────────────────────
+// #124: a^(log_a m) + (a²)^(log_a √n) = m + n.
+function t07LogAPowLog() {
+  const a = pick([2, 3, 5, 7]), m = randInt(2, 30), n = randInt(2, 40)
+  return {
+    condition_text: `Найдите значение выражения ${a}${supX(`log${subIn(a)}${m}`)}+${a * a}${supX(`log${subIn(a)}${rIn(n)}`)}.`,
+    answer: ru(m + n),
+  }
+}
+
+// #132: log_{a^p}N / log_{a^q}N = q/p.
+function t07LogRatioPowBase() {
+  let a, p, q, g = 0
+  do { a = pick([2, 3, 5]); p = randInt(1, 4); q = randInt(1, 6); g++ }
+  while ((p === q || decLen(q, p) > 2 || a ** p > 300 || a ** q > 300) && g < 400)
+  if (p === q || decLen(q, p) > 2) return t07LogRatioPowBase()  // p=q — вырожденное задание
+  const N = randInt(2, 40)
+  return {
+    condition_text: `Найдите значение выражения ${fT(`log${subU(a ** p)}${N}`, `log${subU(a ** q)}${N}`)}.`,
+    answer: ru(clean(q / p)),
+  }
+}
+
+// #133: log_c A/log_c B + log_B(1/D) = log_B(A/D).
+function t07LogRecipSum() {
+  let B, t, D, A, c, g = 0
+  do {
+    B = pick([2, 3, 5, 7, 8, 13]); t = randInt(0, 3); D = pick([2, 4, 5, 8, 10])
+    A = D * B ** t; c = pick([3, 5, 7, 11]); g++
+  } while ((A > 500 || A === 1 || c === B) && g < 400)
+  if (A === 1 || c === B) return t07LogRecipSum()
+  const inv = clean(1 / D)
+  return {
+    condition_text: `Найдите значение выражения ${fT(`log${subU(c)}${A}`, `log${subU(c)}${B}`)}+log${subB(B)}${ru(inv)}.`,
+    answer: ru(t),
+  }
+}
+
+// #135: log_{ⁿ√a} a = n.
+function t07LogRootBase() {
+  const a = pick([3, 5, 7, 10, 11, 13, 17, 2]), n = randInt(2, 12)
+  return {
+    condition_text: `Найдите значение выражения log${subIn(rIn(a, n === 2 ? "" : n))}${a}.`,
+    answer: ru(n),
+  }
+}
+
+// #136: log_a b · log_b c = log_a c.
+function t07LogChain() {
+  const a = pick([2, 3, 5, 7]), k = randInt(2, 4), b = pick([5, 7, 11, 13, 6])
+  return {
+    condition_text: `Найдите значение выражения log${subB(a)}${b}·log${subB(b)}${a ** k}.`,
+    answer: ru(k),
+  }
+}
+
+// #137: k·log_a(ⁿ√a) = k/n.
+function t07LogKRoot() {
+  let a, n, k, g = 0
+  do { a = pick([2, 3, 5, 7, 11]); n = randInt(2, 12); k = randInt(2, 120); g++ }
+  while (decLen(k, n) > 2 && g < 400)
+  return {
+    condition_text: `Найдите значение выражения ${k}log${subB(a)}${rIn(a, n === 2 ? "" : n)}.`,
+    answer: ru(clean(k / n)),
+  }
+}
+
+// #141: log_{1/a} √a = −0,5.
+function t07LogFracBaseRoot() {
+  const a = pick([3, 5, 7, 11, 13, 17, 18, 6, 10, 12, 15])
+  return {
+    condition_text: `Найдите значение выражения log${subIn(fIn(1, a))}${rIn(a)}.`,
+    answer: "−0,5",
+  }
+}
+
+// #143: k·log_b A · log_A(1/b) = −k.
+function t07LogRecipProd() {
+  const pairs = [["1,25", "0,8"], ["0,5", "2"], ["0,2", "5"], ["2", "0,5"], ["4", "0,25"], ["0,25", "4"]]
+  const [b, invB] = pick(pairs)
+  const A = pick([5, 7, 3, 11, 13])
+  const k = randInt(2, 30)
+  return {
+    condition_text: `Найдите значение выражения ${k}log${subB(b)}${A}·log${subB(A)}${invB}.`,
+    answer: ru(-k),
   }
 }
 
@@ -5870,7 +6434,16 @@ export const GENERATORS_EGE_PROF = {
   6: [t06ExpReduce, t06ExpBothSides, t06ExpSqBase, t06LogEqLog, t06LogEqNum, t06LgEqNum,
     t06LogBaseX, t06LogOfPow, t06LogBaseLin, t06PowLog, t06Rational, t06RecipRecip,
     t06Cube, t06Sqrt, t06CubeRoot, t06SqrtEqX, t06LinMixed, t06SqEqSq, t06SqEqLin],
-  7: [t07PowPowDiv, t07PowFracExp, t07SqCoefRoot, t07DistribRoot, t07LogSum, t07LogDiff, t07LogRatio, t07TrigDouble],
+  7: [t07PowPowDiv, t07PowFracExp, t07PowRatioBase, t07PowProdPow, t07PowFactorize,
+    t07PowThreeBases, t07PowDecFrac, t07PowLetter,
+    t07SqCoefRoot, t07DistribRoot, t07RootProdDiv, t07RootSqSum, t07RootDiffSq,
+    t07RootDegrees, t07RootSameDeg,
+    t07TrigDouble, t07TrigTableProd, t07TrigTablePi, t07TrigTableNeg, t07TrigQuarter,
+    t07TrigQuarterTg, t07TrigSin2Frac, t07TrigCos2Frac, t07TrigSin2FromCos,
+    t07TrigCos2Diff, t07TrigCos2Half, t07TrigCos2Minus, t07TrigSin2Prod, t07TrigReduction,
+    t07TrigPeriod, t07TrigCofunc, t07TrigTgTg, t07TrigSin2Cofunc, t07TrigSinSqSum,
+    t07LogSum, t07LogDiff, t07LogRatio, t07LogAPowLog, t07LogRatioPowBase, t07LogRecipSum,
+    t07LogRootBase, t07LogChain, t07LogKRoot, t07LogFracBaseRoot, t07LogRecipProd],
   8: [
     () => t8fSignCount(true), () => t8fSignCount(false), () => t8fIntSign(true), () => t8fIntSign(false),
     () => t8fDerivExtreme(true), () => t8fDerivExtreme(false),
@@ -6145,17 +6718,56 @@ export const GEN_META_EGE_PROF = {
   7: [["Степени", [
     ["pow-div", "Степень степени (частное)", t07PowPowDiv],
     ["pow-frac", "Дробные показатели", t07PowFracExp],
+    ["pow-ratio-base", "81^a / 9^b — основания одной степени", t07PowRatioBase],
+    ["pow-prod-pow", "(A^p·B^q)^N / (AB)^M", t07PowProdPow],
+    ["pow-factorize", "A^a·B^b / (AB)^c", t07PowFactorize],
+    ["pow-three", "(AB)^x · P^y : Q^z", t07PowThreeBases],
+    ["pow-decfrac", "0,75^(1/8)·4^(1/4)·12^(7/8)", t07PowDecFrac],
+    ["pow-letter", "a^p/(a^q·a^r) при a=…", t07PowLetter],
   ]],
     ["Корни", [
       ["sq-coef-root", "((k√A)²)/D", t07SqCoefRoot],
       ["distrib-root", "(√A−√B)·√c", t07DistribRoot],
+      ["root-proddiv", "√x·√y/√z", t07RootProdDiv],
+      ["root-sqsum", "(√a+√b)²/(s+m√ab)", t07RootSqSum],
+      ["root-diffsq", "√(m²−n²)", t07RootDiffSq],
+      ["root-degrees", "Корни разных степеней", t07RootDegrees],
+      ["root-samedeg", "Корни одной степени", t07RootSameDeg],
     ]],
     ["Логарифмы", [
       ["log-sum", "Сумма логарифмов", t07LogSum],
       ["log-diff", "Разность логарифмов", t07LogDiff],
       ["log-ratio", "Отношение логарифмов", t07LogRatio],
+      ["log-apowlog", "a^(log_a m) + …", t07LogAPowLog],
+      ["log-ratio-pow", "log_{aᵖ}N / log_{aᑫ}N", t07LogRatioPowBase],
+      ["log-recip-sum", "log_cA/log_cB + log_B(1/D)", t07LogRecipSum],
+      ["log-rootbase", "log_{ⁿ√a}a", t07LogRootBase],
+      ["log-chain", "log_a b · log_b c", t07LogChain],
+      ["log-kroot", "k·log_a(ⁿ√a)", t07LogKRoot],
+      ["log-fracbase", "log_{1/a}√a", t07LogFracBaseRoot],
+      ["log-recip-prod", "k·log_b A · log_A(1/b)", t07LogRecipProd],
     ]],
-    ["Тригонометрия", [["trig-double", "Двойной угол cos2α", t07TrigDouble]]]],
+    ["Тригонометрия", [
+      ["trig-double", "Двойной угол cos2α", t07TrigDouble],
+      ["trig-table", "k·sinA·cosB (табличные)", t07TrigTableProd],
+      ["trig-table-pi", "k√m·tg(π/a)·sin(π/b)", t07TrigTablePi],
+      ["trig-table-neg", "k√m·cos(−225°)", t07TrigTableNeg],
+      ["trig-quarter", "cosα по sinα и промежутку", t07TrigQuarter],
+      ["trig-quarter-tg", "tgα по sinα/cosα", t07TrigQuarterTg],
+      ["trig-sin2-frac", "k·sinA·cosA/sin2A", t07TrigSin2Frac],
+      ["trig-cos2-frac", "k(sin²A−cos²A)/cos2A", t07TrigCos2Frac],
+      ["trig-sin2-cos", "sin2α по cosα", t07TrigSin2FromCos],
+      ["trig-cos2-diff", "k·cos²x − k·sin²x", t07TrigCos2Diff],
+      ["trig-cos2-half", "2B·cos²x − B", t07TrigCos2Half],
+      ["trig-cos2-minus", "B − 2B·sin²x", t07TrigCos2Minus],
+      ["trig-sin2-prod", "k·sinx·cosx", t07TrigSin2Prod],
+      ["trig-reduction", "Формулы приведения", t07TrigReduction],
+      ["trig-period", "k·sin(A+360°)/sinA", t07TrigPeriod],
+      ["trig-cofunc", "k·cosA/sin(90°−A) ± c", t07TrigCofunc],
+      ["trig-tgtg", "k·tgA·tg(90°−A) + c", t07TrigTgTg],
+      ["trig-sin2-cofunc", "k·sin2A/(cosA·cos(90°−A))", t07TrigSin2Cofunc],
+      ["trig-sinsq-sum", "N/(sin²A+c+sin²(A+90°))", t07TrigSinSqSum],
+    ]]],
   8: [["График f(x): знак производной", [
     ["f-pos", "Сколько точек f′>0", () => t8fSignCount(true)],
     ["f-neg", "Сколько точек f′<0", () => t8fSignCount(false)],

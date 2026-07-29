@@ -21,11 +21,11 @@ const FS = 14                                  // размер шрифта ус
 const chW = (s) => { let w = 0; for (const ch of s) w += /[⁰¹²³⁴⁵⁶⁷⁸⁹⁻]/.test(ch) ? 0.42 : 0.58; return w }
 
 // корень внутри дроби (маркер √{X}) → √ с чертой над подкоренным; ширину считаем по «√X».
-const rootInPdf = (s) => s.replace(/√\{([^}]+)\}/g, (_, x) => `√<tspan text-decoration="overline">${x}</tspan>`)
+const rootInPdf = (s) => s.replace(/√(?:\[([^\]{}]+)\])?\{([^{}]+)\}/g, (_, i, x) => `${i ? `<tspan baseline-shift="super" font-size="0.7em">${i}</tspan>` : ""}√<tspan text-decoration="overline">${x}</tspan>`)
 // Для ОЦЕНКИ ШИРИНЫ: убираем маркеры (√{}, ⁅⁆ степень, ⦃¦⦄ вложенная дробь, ⦉⦊ индекс) —
 // иначе ширина дроби считается по служебным символам и черта получается длиннее текста.
 const stripRootMarker = (s) => String(s)
-  .replace(/√\{([^}]+)\}/g, "√$1")
+  .replace(/√(?:\[([^\]{}]+)\])?\{([^{}]+)\}/g, (_, i, x) => `${i || ""}√${x}`)
   .replace(/⁅([^⁆]*)⁆/g, "$1")
   .replace(/⦃([^¦⦄]*)¦([^⦄]*)⦄/g, "$1/$2")
   .replace(/⦉([^⦊]*)⦊/g, "$1")
