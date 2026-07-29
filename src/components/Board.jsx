@@ -40,6 +40,8 @@ const pointInBBox = (x, y, b) => x >= b.minX && x <= b.maxX && y >= b.minY && y 
 const CURSOR_HOLD = 3000, CURSOR_FADE = 400
 const POINTER_RATE = 60 // не чаще 1 посылки в 60 мс (~16/сек) — экономим realtime
 const DASH_STYLES = ["solid", "dashed", "dotted"]
+// Длительность анимации ухода попапа — синхронно с .popup-bubble-out в index.css
+const POPUP_OUT_MS = 200
 
 // Расстояние от точки до отрезка
 function distToSeg(px, py, ax, ay, bx, by) {
@@ -174,7 +176,28 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // Поэтому открытие любого попапа автоматически закрывает предыдущий, а клик мимо
   // (по холсту или где-то ещё) закрывает открытый — см. эффект ниже и onPointerDown.
   const [menu, setMenu] = useState(null)
-  const toggleMenu = (id) => setMenu((m) => (m === id ? null : id))
+  // Закрывающийся попап держим смонтированным, пока играет анимация ухода
+  const [closingMenu, setClosingMenu] = useState(null)
+  const closeTimer = useRef(null)
+  const beginClosing = (id) => {
+    setClosingMenu(id)
+    clearTimeout(closeTimer.current)
+    closeTimer.current = setTimeout(() => setClosingMenu(null), POPUP_OUT_MS)
+  }
+  const closeMenu = (id = menu) => { if (id) { beginClosing(id); setMenu(null) } }
+  const openMenu = (id) => {
+    if (menu === id) return
+    if (menu) beginClosing(menu)                 // предыдущий уходит с анимацией
+    else if (closingMenu === id) setClosingMenu(null) // открыли тот же, пока он ещё уходил
+    setMenu(id)
+  }
+  const toggleMenu = (id) => (menu === id ? closeMenu(id) : openMenu(id))
+  // Попап виден и пока уходит; класс задаёт нужную анимацию
+  const menuShown = (id) => menu === id || closingMenu === id
+  const menuAnim = (id) => (menu === id ? "popup-bubble" : "popup-bubble-out")
+  const closeMenuRef = useRef(closeMenu)
+  useEffect(() => { closeMenuRef.current = closeMenu })
+  useEffect(() => () => clearTimeout(closeTimer.current), [])
   const [bg, setBg] = useState("plain")      // plain | grid | dots — узор
   const [bgColor, setBgColor] = useState(theme === "dark" ? BG_DARK : BG_LIGHT) // цвет фона
   const [shapeTool, setShapeTool] = useState("rect") // последняя выбранная фигура
@@ -184,7 +207,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const [zoomPct, setZoomPct] = useState(100)
   const [selCount, setSelCount] = useState(0)
   // Число выделенных штрихов: пропало выделение — закрываем попап его настроек
-  const applySelCount = (n) => { setSelCount(n); if (!n) setMenu((m) => (m === "selStroke" ? null : m)) }
+  const applySelCount = (n) => { setSelCount(n); if (!n && menu === "selStroke") closeMenu("selStroke") }
   const [selBox, setSelBox] = useState(null)   // ориентированная рамка выделения (экранные координаты)
   const [selProps, setSelProps] = useState(null) // свойства первого выделенного штриха {width,dash,corner}
   const [dragActive, setDragActive] = useState(false) // перетаскивание файла над доской
@@ -193,7 +216,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // (кнопка попапа + сам попап), обёрнуто в контейнер с data-menu.
   useEffect(() => {
     if (!menu) return
-    const onDown = (e) => { if (!e.target?.closest?.("[data-menu]")) setMenu(null) }
+    const onDown = (e) => { if (!e.target?.closest?.("[data-menu]")) closeMenu() }
     window.addEventListener("pointerdown", onDown)
     return () => window.removeEventListener("pointerdown", onDown)
   }, [menu])
@@ -657,7 +680,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
 
   function onPointerDown(e) {
     // Открыт попап панели → первый тык по холсту просто закрывает его, не рисуя
-    if (menu) { setMenu(null); return }
+    if (menu) { closeMenu(); return }
     // Новый первичный указатель = начало нового жеста → сбрасываем возможные
     // «зависшие» указатели (недоснятое касание и т.п.), иначе рисование
     // навсегда уходит в режим жеста. Это самовосстановление.
@@ -1026,7 +1049,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     changeBgColor(isDarkColor(bgColor) ? BG_LIGHT : BG_DARK)
   }
   function pickShape(id) {
-    setShapeTool(id); setTool(id); setMenu(null)
+    setShapeTool(id); setTool(id); closeMenu()
   }
   function zoomBy(factor) {
     const c = canvasRef.current
@@ -1076,7 +1099,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       // Горячие клавиши инструментов (без модификаторов, не в поле ввода)
       const tag = e.target?.tagName
       if (tag === "INPUT" || tag === "TEXTAREA" || e.target?.isContentEditable) return
-      if (e.code === "Escape") { setTool("cursor"); setMenu(null); return }
+      if (e.code === "Escape") { setTool("cursor"); closeMenuRef.current(); return }
       if (e.code === "Delete" || e.code === "Backspace") { e.preventDefault(); actions.current.del(); return }
       const t = TOOL_CODES[e.code]
       if (t) { setTool(t); if (SHAPE_TOOLS.has(t)) setShapeTool(t) }
@@ -1257,8 +1280,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
                   className="press-tap w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:bg-black/5 dark:hover:bg-white/10">
                   <Icon name="stroke" size={16} />
                 </button>
-                {menu === "selStroke" && (
-                  <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 p-2 rounded-xl shadow-lg popup-bubble z-10"
+                {menuShown("selStroke") && (
+                  <div className={`absolute bottom-full mb-2 left-1/2 -translate-x-1/2 p-2 rounded-xl shadow-lg z-10 ${menuAnim("selStroke")}`}
                     style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
                     <StrokeSettings dark={dark} tool={selProps?.tool} curWidth={selProps?.width} curDash={selProps?.dash || "solid"} curCorner={selProps?.corner || "sharp"}
                       onWidth={setSelectionWidth} onDash={setSelectionDash} onCorner={setSelectionCorner} />
@@ -1312,8 +1335,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
                 <Icon name={shapeIconOf(shapeTool)} size={17} />
                 <Tip label="Фигуры" dark={dark} />
               </button>
-              {menu === "shapes" && (
-                <div className="absolute bottom-11 left-1/2 -translate-x-1/2 flex flex-col gap-2 p-2 rounded-xl shadow-lg popup-bubble"
+              {menuShown("shapes") && (
+                <div className={`absolute bottom-11 left-1/2 -translate-x-1/2 flex flex-col gap-2 p-2 rounded-xl shadow-lg ${menuAnim("shapes")}`}
                   style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
                   {[["Плоские", SHAPES_2D], ["Объёмные", SHAPES_3D]].map(([title, list]) => (
                     <div key={title}>
@@ -1369,8 +1392,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
               <Icon name="stroke" size={17} />
               <Tip label="Настройки обводки" dark={dark} />
             </button>
-            {menu === "stroke" && (
-              <div className="absolute bottom-11 left-1/2 -translate-x-1/2 p-2 rounded-xl shadow-lg popup-bubble"
+            {menuShown("stroke") && (
+              <div className={`absolute bottom-11 left-1/2 -translate-x-1/2 p-2 rounded-xl shadow-lg ${menuAnim("stroke")}`}
                 style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
                 <StrokeSettings dark={dark} tool={tool} curWidth={width} curDash={dash} curCorner={corner} onWidth={setWidth} onDash={setDash} onCorner={setCorner} />
               </div>
@@ -1396,8 +1419,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
               <Icon name="grid" size={17} />
               <Tip label="Фон доски" dark={dark} />
             </button>
-            {menu === "bg" && (
-              <div className="absolute bottom-11 left-1/2 -translate-x-1/2 flex flex-col gap-2 p-2 rounded-xl shadow-lg popup-bubble"
+            {menuShown("bg") && (
+              <div className={`absolute bottom-11 left-1/2 -translate-x-1/2 flex flex-col gap-2 p-2 rounded-xl shadow-lg ${menuAnim("bg")}`}
                 style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
                 {/* Узор */}
                 <div className="flex gap-1">
