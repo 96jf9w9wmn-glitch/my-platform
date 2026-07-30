@@ -21,17 +21,20 @@
 //   POST /api/telegram?action=notify   — событие от клиента («ученик сдал ДЗ»)
 //   GET  /api/telegram                 — health-check: настроен ли бот
 //
-// Переменные окружения Vercel: TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET,
-// SUPABASE_SERVICE_ROLE_KEY (обязателен — без него боту нечего читать).
-// Установка вебхука и создание бота — docs/telegram.md.
+// Переменные окружения Vercel: TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET и
+// TELEGRAM_DB_SECRET — секрет, которым бот опознаётся перед базой. Ключ
+// service_role боту НЕ нужен: он ходит через узкий набор функций
+// (supabase/telegram_bot_rpc.sql). Создание бота — docs/telegram.md.
 //
 // Внутренние функции экспортированы намеренно (как rateLimit в generate-hw.js):
 // на них гоняется локальная проверка разделов и уведомлений с мок-базой, без
 // Telegram и без боевых ключей.
 
-import { admin, featureAllowed, tutorFromRequest } from "./plan-gate.js"
+import { createClient } from "@supabase/supabase-js"
+import { admin, tutorFromRequest } from "./plan-gate.js"
 import { clientIp } from "./generate-hw.js"
 import { isLessonConducted, parsePaymentDate, plural } from "../src/utils.js"
+import { can } from "../src/plans.js"
 
 const API = "https://api.telegram.org"
 const APP_URL = process.env.APP_URL || "https://precettore.ru"
@@ -41,6 +44,45 @@ const APP_URL = process.env.APP_URL || "https://precettore.ru"
 const TZ = "Europe/Moscow"
 
 const token = () => process.env.TELEGRAM_BOT_TOKEN || ""
+
+// ── Доступ к базе ───────────────────────────────────────────────────────────
+//
+// Бот ходит в базу НЕ под service_role (тот ключ может в базе всё), а через
+// восемь именованных функций из supabase/telegram_bot_rpc.sql, опознаваясь
+// собственным секретом. Утечка этого секрета не открывает базу целиком, а
+// список того, что боту разрешено делать с данными, виден в одном файле.
+//
+// Ключ PostgREST здесь публичный (anon) — тот же, что у браузера: сами функции
+// без секрета не отдают ничего.
+export function botDb() {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
+  const key = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
+  const secret = process.env.TELEGRAM_DB_SECRET
+  if (!url || !key || !secret) return null
+
+  const client = createClient(url, key, { auth: { persistSession: false } })
+  return {
+    async call(fn, args = {}) {
+      const { data, error } = await client.rpc(fn, { p_secret: secret, ...args })
+      if (error) {
+        // Молчаливое падение здесь выглядело бы как «бот сломался»: пишем в лог
+        // функции, а наверх отдаём null — вызывающий решает, что показать.
+        console.error(`telegram rpc ${fn}:`, error.message)
+        return null
+      }
+      return data
+    },
+  }
+}
+
+// Тариф репетитора. Как и в api/plan-gate.js: «биллинг не установлен» — это не
+// бесплатный тариф, и резать возможности в этом случае нельзя, иначе забытая
+// миграция молча выключила бы бота.
+async function planAllows(db, tutorId) {
+  const plan = await db.call("bot_plan", { p_tutor: tutorId })
+  if (!plan || plan.installed === false) return true
+  return can(plan.sub || null, "telegramBot")
+}
 
 async function tg(method, payload) {
   const t = token()
@@ -155,22 +197,11 @@ const backTo = (target = "menu", extra = []) => ({
 // строку, и два-три раздельных запроса на каждое нажатие кнопки — это лишние
 // сотни миллисекунд в чате.
 async function loadStudents(db, tutorId) {
-  const { data } = await db
-    .from("students")
-    .select("id, name, goal, lesson_price, lessons, payments, exam_date, target_score")
-    .eq("tutor_id", tutorId)
-    .order("created_at", { ascending: true })
-  return data || []
+  return (await db.call("bot_students", { p_tutor: tutorId })) || []
 }
 
 async function loadHomework(db, tutorId) {
-  const { data } = await db
-    .from("homework")
-    .select("id, student_id, title, status, deadline, grade, submitted_at, submission_url, created_at")
-    .eq("tutor_id", tutorId)
-    .order("created_at", { ascending: false })
-    .limit(400)
-  return data || []
+  return (await db.call("bot_homework", { p_tutor: tutorId })) || []
 }
 
 // Все уроки всех учеников в плоский список за интервал дат.
@@ -490,14 +521,7 @@ const MENU_TEXT = "<b>Кабинет репетитора</b>\n\nВыберит�
 // callback_data, то есть снаружи, и без этой проверки чужую работу можно было бы
 // зачесть, подставив её id.
 async function setHomeworkStatus(db, tutorId, hwId, status) {
-  const { data, error } = await db
-    .from("homework")
-    .update({ status })
-    .eq("id", hwId)
-    .eq("tutor_id", tutorId)
-    .select("id, title")
-    .maybeSingle()
-  return error || !data ? null : data
+  return db.call("bot_hw_status", { p_tutor: tutorId, p_hw: hwId, p_status: status })
 }
 
 export async function route(db, link, action) {
@@ -534,11 +558,7 @@ export async function handleUpdate(db, update) {
     return
   }
 
-  const { data: link } = await db
-    .from("tutor_telegram")
-    .select("tutor_id, chat_id, full_names, notify")
-    .eq("chat_id", chat)
-    .maybeSingle()
+  const link = await db.call("bot_link", { p_chat: chat })
 
   // ── Ещё не привязан: единственное, что можно — прислать код ──
   if (!link) {
@@ -564,21 +584,13 @@ export async function handleUpdate(db, update) {
       return
     }
 
-    const { data: tutorId, error } = await db.rpc("telegram_link_claim", {
+    const tutorId = await db.call("bot_link_claim", {
       p_code: code,
       p_chat: chat,
       p_username: msg?.from?.username || null,
       p_first_name: msg?.from?.first_name || null,
     })
 
-    if (error) {
-      // Миграции нет — честно говорим об этом, иначе выглядит как «бот молчит».
-      await tg("sendMessage", {
-        chat_id: chat,
-        text: "Привязка недоступна: на сервере не выполнена миграция telegram_bot.sql.",
-      })
-      return
-    }
     if (!tutorId) {
       await tg("sendMessage", {
         chat_id: chat,
@@ -587,8 +599,7 @@ export async function handleUpdate(db, update) {
       return
     }
 
-    const gate = await featureAllowed(db, tutorId, "telegramBot")
-    if (!gate.ok) {
+    if (!(await planAllows(db, tutorId))) {
       await tg("sendMessage", {
         chat_id: chat,
         parse_mode: "HTML",
@@ -607,8 +618,7 @@ export async function handleUpdate(db, update) {
   }
 
   // ── Привязан: тариф проверяем на каждом действии ──
-  const gate = await featureAllowed(db, link.tutor_id, "telegramBot")
-  if (!gate.ok) {
+  if (!(await planAllows(db, link.tutor_id))) {
     if (cb) await tg("answerCallbackQuery", { callback_query_id: cb.id, text: "Нужен тариф «Про»" })
     await tg("sendMessage", {
       chat_id: chat,
@@ -618,8 +628,7 @@ export async function handleUpdate(db, update) {
     return
   }
 
-  db.from("tutor_telegram").update({ last_seen: new Date().toISOString() })
-    .eq("chat_id", chat).then(() => {}, () => {})
+  db.call("bot_link", { p_chat: chat, p_touch: true }).catch(() => {})
 
   // ── Нажатие кнопки ──
   if (cb) {
@@ -627,9 +636,10 @@ export async function handleUpdate(db, update) {
     const answer = (text) => tg("answerCallbackQuery", { callback_query_id: cb.id, ...(text ? { text } : {}) })
 
     if (data === "setname" || data === "setnotify") {
-      const patch = data === "setname" ? { full_names: !link.full_names } : { notify: !link.notify }
-      await db.from("tutor_telegram").update(patch).eq("chat_id", chat)
-      const fresh = { ...link, ...patch }
+      const patch = data === "setname"
+        ? { p_full_names: !link.full_names }
+        : { p_notify: !link.notify }
+      const fresh = (await db.call("bot_link", { p_chat: chat, ...patch })) || link
       const view = viewSettings(fresh)
       await answer("Готово")
       await tg("editMessageText", {
@@ -640,7 +650,7 @@ export async function handleUpdate(db, update) {
     }
 
     if (data === "unlink") {
-      await db.from("tutor_telegram").delete().eq("chat_id", chat)
+      await db.call("bot_link", { p_chat: chat, p_unlink: true })
       await answer("Чат отвязан")
       await tg("sendMessage", {
         chat_id: chat,
@@ -710,102 +720,15 @@ function notifyLimited(ip, now = Date.now()) {
   return false
 }
 
-// Одно событие = один текст + свой ключ. Ключ строится по фактам из базы, а не
-// по данным запроса, иначе повторную отправку можно было бы устроить вручную.
-export async function buildNotice(db, kind, id) {
-  if (kind === "hw_submitted") {
-    const { data } = await db
-      .from("homework")
-      .select("id, tutor_id, student_id, title, status, grade, test_score, question_count, submission_url")
-      .eq("id", id)
-      .maybeSingle()
-    if (!data) return null
-    // Обычная работа приходит со статусом submitted, а чистый тест ученик
-    // «сдаёт» сразу проверенным (status done, оценка ставится автоматически) —
-    // репетитору интересно и то, и другое.
-    const isTest = data.status === "done" && data.grade != null
-    if (data.status !== "submitted" && !isTest) return null
-    return {
-      tutorId: data.tutor_id,
-      key: `hw:${data.id}:${data.status}`,
-      studentId: data.student_id,
-      title: isTest && data.question_count
-        ? `${data.title} — ${data.test_score ?? "?"} / ${data.question_count}, оценка ${data.grade}`
-        : data.title,
-      icon: isTest ? "🧮" : "📩",
-      what: isTest ? "прошёл тест" : "сдал домашнее задание",
-      url: data.submission_url,
-    }
-  }
-
-  if (kind === "variant_submitted") {
-    const { data } = await db
-      .from("variant_submissions")
-      .select("id, student_id, status, total_score, variant_id, variants(tutor_id, title)")
-      .eq("id", id)
-      .maybeSingle()
-    if (!data) return null
-    return {
-      tutorId: data.variants?.tutor_id,
-      key: `vs:${data.id}:${data.status}`,
-      accountId: data.student_id,
-      title: data.variants?.title || "вариант",
-      icon: "🧾",
-      what: "сдал вариант",
-    }
-  }
-
-  if (kind === "chat") {
-    // Здесь id — это conversation_id, а не id сообщения: вставка сообщения в
-    // Chat.jsx идёт без returning, и id клиенту неизвестен. Сервер берёт
-    // последнее сообщение разговора сам, поэтому подменить автора или текст
-    // через этот вызов нельзя.
-    const { data } = await db
-      .from("chat_messages")
-      .select("id, sender_id, recipient_id, created_at")
-      .eq("conversation_id", id)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    if (!data) return null
-    const to = String(data.recipient_id || "")
-    if (!to.startsWith("t:")) return null       // репетитору ли писали
-    const at = Date.parse(data.created_at || "")
-    // Старое сообщение уведомлением не считается: иначе повторный вызов поднимал
-    // бы переписку недельной давности.
-    if (!at || Date.now() - at > 5 * 60_000) return null
-    // Сообщений в чате бывает много: ключ включает номер десятиминутки, поэтому
-    // подряд идущие сообщения схлопываются сами, без отдельного счётчика.
-    return {
-      tutorId: to.slice(2),
-      key: `chat:${data.sender_id}:${Math.floor(at / 600_000)}`,
-      senderId: String(data.sender_id || ""),
-      icon: "💬",
-      what: "написал в чат",
-    }
-  }
-
-  return null
-}
-
-// Имя ученика для уведомления. У ДЗ есть students.id, у варианта и чата —
-// student_accounts.id, поэтому ищем в обеих таблицах.
-async function noticeName(db, tutorId, notice, full) {
-  const tryStudents = async (id) => {
-    const { data } = await db.from("students").select("name")
-      .eq("id", id).eq("tutor_id", tutorId).maybeSingle()
-    return data?.name || null
-  }
-  const tryAccounts = async (id) => {
-    const { data } = await db.from("student_accounts").select("name").eq("id", id).maybeSingle()
-    return data?.name || null
-  }
-
-  let name = null
-  if (notice.studentId != null) name = await tryStudents(notice.studentId)
-  if (!name && notice.accountId != null) name = await tryAccounts(notice.accountId)
-  if (!name && notice.senderId?.startsWith("s:")) name = await tryAccounts(notice.senderId.slice(2))
-  return studentName(name || "Ученик", full)
+// Что произошло, кому это принадлежит и стоит ли вообще писать — выясняет база
+// (bot_notice): клиент присылает только вид события и его id, поэтому подделать
+// уведомление этим вызовом нельзя. Сюда возвращаются голые факты, а текст и
+// сокращение имени — уже здесь.
+const NOTICE_LOOK = {
+  hw_submitted: { icon: "📩", what: "сдал домашнее задание" },
+  hw_test:      { icon: "🧮", what: "прошёл тест" },
+  variant_submitted: { icon: "🧾", what: "сдал вариант" },
+  chat:         { icon: "💬", what: "написал в чат" },
 }
 
 export async function handleNotify(db, body) {
@@ -813,33 +736,23 @@ export async function handleNotify(db, body) {
   const id = body?.id
   if (!id) return
 
-  const notice = await buildNotice(db, kind, id)
-  if (!notice?.tutorId) return
+  const notice = await db.call("bot_notice", { p_kind: kind, p_id: String(id) })
+  if (!notice?.chat_id) return
 
-  const { data: link } = await db
-    .from("tutor_telegram")
-    .select("tutor_id, chat_id, full_names, notify")
-    .eq("tutor_id", notice.tutorId)
-    .maybeSingle()
-  if (!link || !link.notify) return
-
-  const gate = await featureAllowed(db, notice.tutorId, "telegramBot")
-  if (!gate.ok) return
+  if (!(await planAllows(db, notice.tutor))) return
 
   // Захват события: если его уже отправляли, второй раз не пишем.
-  const { data: claimed, error } = await db.rpc("telegram_event_claim", {
-    p_key: notice.key,
-    p_tutor: notice.tutorId,
-  })
-  if (error || claimed === false) return
+  const claimed = await db.call("bot_event_claim", { p_key: notice.key, p_tutor: notice.tutor })
+  if (claimed !== true) return
 
-  const name = await noticeName(db, notice.tutorId, notice, link.full_names)
-  const lines = [`${notice.icon} <b>${esc(name)}</b> ${notice.what}`]
+  const look = NOTICE_LOOK[notice.test ? "hw_test" : kind] || NOTICE_LOOK.chat
+  const name = studentName(notice.name, notice.full_names)
+  const lines = [`${look.icon} <b>${esc(name)}</b> ${look.what}`]
   if (notice.title) lines.push(esc(notice.title))
   if (notice.url) lines.push(`<a href="${esc(notice.url)}">Посмотреть работу</a>`)
 
   await tg("sendMessage", {
-    chat_id: link.chat_id,
+    chat_id: notice.chat_id,
     parse_mode: "HTML",
     text: lines.join("\n"),
     reply_markup: { inline_keyboard: [[{ text: "📝 Домашки", callback_data: "hw" }]] },
@@ -847,10 +760,11 @@ export async function handleNotify(db, body) {
   })
 }
 
+
 // ── Точка входа ─────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
-  const db = admin()
+  const db = botDb()
 
   // GET — health-check: настроен ли бот и как он называется. Им пользуется
   // страница «Подписка», чтобы дать правильную ссылку t.me и не обещать
@@ -861,7 +775,7 @@ export default async function handler(req, res) {
       return
     }
     if (!db) {
-      res.status(200).json({ ok: false, error: "SUPABASE_SERVICE_ROLE_KEY не задан — боту нечего читать" })
+      res.status(200).json({ ok: false, error: "TELEGRAM_DB_SECRET не задан — боту нечего читать" })
       return
     }
     const me = await tg("getMe", {})
@@ -907,7 +821,7 @@ export default async function handler(req, res) {
   }
 
   if (!db) {
-    res.status(503).json({ error: "SUPABASE_SERVICE_ROLE_KEY не задан" })
+    res.status(503).json({ error: "TELEGRAM_DB_SECRET не задан" })
     return
   }
 
@@ -940,13 +854,20 @@ export default async function handler(req, res) {
       res.status(503).json({ error: "TELEGRAM_WEBHOOK_SECRET не задан на сервере" })
       return
     }
-    const tutor = await tutorFromRequest(db, req)
+    // Здесь нужен разбор токена репетитора, а он умеет только supabase-клиент
+    // под service_role. Ключа может не быть — тогда ручная настройка недоступна,
+    // но она и не нужна: вебхук ставится сам при health-check (см. GET выше).
+    const auth = admin()
+    if (!auth) {
+      res.status(503).json({ error: "Ручная настройка недоступна — вебхук ставится сам при заходе в кабинет" })
+      return
+    }
+    const tutor = await tutorFromRequest(auth, req)
     if (!tutor) {
       res.status(401).json({ error: "Нужна авторизация репетитора" })
       return
     }
-    const gate = await featureAllowed(db, tutor.id, "telegramBot")
-    if (!gate.ok) {
+    if (!(await planAllows(db, tutor.id))) {
       res.status(403).json({ error: "Бот входит в тариф «Про»" })
       return
     }
