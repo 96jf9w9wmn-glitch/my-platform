@@ -11,9 +11,12 @@ const SUPPORT_SUBJECT = "Ошибка на precettore.ru"
 const SOCIALS = [
   {
     key: "telegram",
+    // Бот — кабинет репетитора в телефоне, а не служба поддержки: незнакомому
+    // человеку он ответит «пришлите код привязки». Подпись честно об этом говорит,
+    // иначе ученик пишет в него с вопросом и не получает ответа.
     label: "Telegram-бот",
-    hint: "поддержка и напоминания",
-    href: "",
+    hint: "кабинет репетитора в телефоне",
+    href: "https://t.me/precettore_tutor_bot",
     soft: "bg-sky-50 dark:bg-sky-900/30",
     text: "text-sky-500 dark:text-sky-400",
     ring: "hover:ring-sky-200 dark:hover:ring-sky-700",
