@@ -265,7 +265,7 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
       <div className="glass-modal w-full max-w-md overflow-hidden">
 
         {/* Шапка с логотипом — плавный переход градиента */}
-        <div className="relative px-8 pt-8 pb-10 text-white text-center overflow-hidden">
+        <div className="relative px-8 pt-6 pb-6 text-white text-center overflow-hidden">
           {Object.entries(roleConfig).map(([r, cfg]) => (
             <div
               key={r}
@@ -275,11 +275,11 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
           ))}
           <div className="absolute inset-0 opacity-20" style={{backgroundImage: "radial-gradient(circle at 20% 50%, white 0%, transparent 50%), radial-gradient(circle at 80% 20%, white 0%, transparent 40%)"}} />
           <div className="relative z-10">
-            <div className="w-16 h-16 rounded-2xl overflow-hidden bg-white/25 backdrop-blur-sm mx-auto mb-3 shadow-lg">
+            <div className="w-12 h-12 rounded-2xl overflow-hidden bg-white/25 backdrop-blur-sm mx-auto mb-2 shadow-lg">
               <img src="/logo.webp" alt="Логотип" className="w-full h-full object-cover" />
             </div>
-            <div className="text-xl font-bold tracking-tight">Precettore</div>
-            <div className="text-sm text-white/75 mt-0.5">
+            <div className="text-lg font-bold tracking-tight">Precettore</div>
+            <div className="text-[13px] text-white/75 mt-0.5">
               {mode === "login" ? "Войдите в аккаунт" : "Создайте аккаунт"}
             </div>
           </div>
