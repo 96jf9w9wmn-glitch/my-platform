@@ -10251,6 +10251,82 @@ export function t18HyperRayPencil() {
   })
 }
 
+const discStr = (C, u, B) => `${C * C - 4 * (u * u + B * u)}`
+// ── #164. {a(x² + y² + Bx + Cy) + px + q = 0; (x − u)(x² + vx − y) = 0} ─────
+// Вторая строка распадается на вертикаль x = u и параболу y = x² + vx.
+// Первая — пучок окружностей: на вертикали остаётся квадратное уравнение по y, а на параболе
+// после подстановки получается a·Q(x) + px + q = 0, где Q(x) = x²(x² + 2vx + w) — уравнение
+// ЧЕТВЁРТОЙ степени, корни которого считает Штурм.
+// Критические значения — это касание пучка с параболой; исключая a из системы
+// a·Q + px + q = 0, a·Q′ + p = 0, получаем кубическое уравнение
+// 3p·x³ + 4(q + vp)·x² + (6qv + pw)·x + 2qw = 0, и наборы отбираются так, чтобы ВСЕ его корни
+// были рациональны (у оригинала p = 5, q = 1, v = 1, w = 4 — там корни иррациональны).
+function build164({ p, q, v, w, u }) {
+  const C = w - v * v - 1, B = -C * v
+  const Qpoly = [R0, R0, R(w), R(2 * v), R1]                     // Q = x⁴ + 2v x³ + w x²
+  const cub = ratRoots([R(2 * q * w), R(6 * q * v + p * w), R(4 * (q + v * p)), R(3 * p)])
+  if (!cub.allRational) return null
+  const Qat = (x) => x * x * (x * x + 2 * v * x + w)
+  const overlap = Qat(u) === 0 ? null : R(-(p * u + q), Qat(u))  // общая точка вертикали и параболы
+  const discLine = C * C - 4 * (u * u + B * u)                   // дискриминант на вертикали без 1/a
+  const solve = (a) => {
+    let n = 0
+    if (!Rzero(a)) {                                             // вертикаль x = u
+      const d = Rsub(R(discLine), Rdiv(R(4 * (p * u + q)), a))
+      n += Rsign(d) > 0 ? 2 : Rsign(d) === 0 ? 1 : 0
+    } else if (p * u + q === 0) return 99                        // вся вертикаль
+    const P = pAdd(pMul([a], Qpoly), [R(q), R(p)])               // a·Q(x) + px + q
+    n += countRoots(P, "-inf", "+inf", false, false)
+    if (overlap && Rcmp(a, overlap) === 0) n -= 1                // точка (u; u²+vu) посчитана дважды
+    return n
+  }
+  const crit = [R0]
+  if (overlap) crit.push(overlap)
+  if (discLine !== 0) crit.push(R(4 * (p * u + q), discLine))    // касание на вертикали
+  for (const x of cub.roots) {                                   // касание с параболой
+    const Qv = Rmul(Rmul(x, x), Radd(Radd(Rmul(x, x), Rmul(R(2 * v), x)), R(w)))
+    if (Rzero(Qv)) continue
+    crit.push(Rdiv(Rneg(Radd(Rmul(R(p), x), R(q))), Qv))
+  }
+  return { set: assembleSet((a) => solve(a) === 4, crit), solve, B, C }
+}
+const T164 = []
+for (const p of [1, 2, 3, 4, 5, 6]) for (const q of [-4, -3, -2, -1, 1, 2, 3, 4]) {
+  for (const v of [-2, -1, 0, 1, 2]) for (const w of [1, 2, 3, 4, 5, 6, 8]) for (const u of [-1, 1, 2]) {
+    const x = build164({ p, q, v, w, u })
+    if (x && tidySet(x.set, 3)) T164.push({ p, q, v, w, u })
+  }
+}
+export function t18PencilVertParabola() {
+  const par = pick(T164), { p, q, v, w, u } = par
+  const { set, solve, B, C } = build164(par)
+  const aRange = spanRange(set)
+  const first = `ax${SUP[2]} + ay${SUP[2]}${B === 0 ? term(p, "x") : ` + (${B === 1 ? "" : B === -1 ? MINUS : nS(B)}a${term(p, "")})x`}`
+    + `${term(C, "ay")}${term(q, "")} = 0`
+  const second = `x${SUP[3]}${term(v - u, `x${SUP[2]}`)}${term(u, "y")} = xy${term(u * v, "x")}`
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:${first}¦${second}⟧\n\nимеет ровно четыре различных решения.`,
+    set,
+    solution: `Вторая строка раскладывается: (x ${MINUS} ${nS(u)})(x${SUP[2]}${term(v, "x")} ${MINUS} y) = 0, то есть это вертикаль x = ${nS(u)} ЛИБО парабола y = x${SUP[2]}${term(v, "x")}.\n`
+      + `Первая строка — пучок окружностей a(x${SUP[2]} + y${SUP[2]}${term(B, "x")}${term(C, "y")}) + ${p === 1 ? "" : p}x${term(q, "")} = 0.\n`
+      + `На вертикали остаётся квадратное уравнение по y, число корней которого определяется знаком дискриминанта ${discStr(C, u, B)} ${MINUS} ${fT(String(4 * (p * u + q)), "a")}.\n`
+      + `На параболе подстановка даёт a·x${SUP[2]}(x${SUP[2]}${term(2 * v, "x")}${term(w, "")}) + ${p === 1 ? "" : p}x${term(q, "")} = 0 — уравнение четвёртой степени; его корни считаются точно.\n`
+      + `Касание пучка с параболой находится исключением a из системы «значение и производная равны нулю»: получается кубическое уравнение ${3 * p === 1 ? "" : 3 * p}x${SUP[3]}${term(4 * (q + v * p), `x${SUP[2]}`)}${term(6 * q * v + p * w, "x")}${term(2 * q * w, "")} = 0, и все его корни рациональны.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 4 },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: () => u, dash: true, label: `вертикаль x = ${nS(u)}` },
+        { f: () => 0, dash: true, label: "x = 0" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -5, xMax: 5, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
 // =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
@@ -10427,6 +10503,7 @@ export const META18 = [
     ["three-var-unique", "{px−qy+z = kx²+my²; −x+y+rz = a} — единственное решение", t18ThreeVarUnique],
     ["quartic-ellipse-four", "{nx⁴+my² = na²; x²+y = |pa−c|} — ровно четыре решения", t18QuarticEllipseFour],
     ["hyper-ray-pencil", "{ветвь гиперболы + вертикальный луч; прямая и пучок} — более трёх решений", t18HyperRayPencil],
+    ["pencil-vert-parabola", "{пучок окружностей; вертикаль и парабола} — ровно четыре решения", t18PencilVertParabola],
     ["even-sqrt-cos", "√(a²+x²) = cos kx + a²+pa−c — единственное решение", t18EvenSqrtCosUnique],
     ["sys-symmetric", "{y = f(x); x = f(y)} — ровно одно решение", t18SysSymmetricOne],
   ]],
