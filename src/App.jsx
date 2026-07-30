@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, lazy, Suspense } from "react"
 import { createPortal } from "react-dom"
-import { supabase } from "./supabase"
+import { supabase, isPasswordRecovery } from "./supabase"
 import Sidebar from "./components/Sidebar"
 import NavIcon from "./components/NavIcon"
 import Icon from "./components/Icon"
@@ -249,13 +249,10 @@ function App() {
   // иначе голый id из localStorage давал мгновенный доступ без проверки токена.
   const [user, setUser] = useState(() => readStoredSession("parent_session"))
   const [loadingAuth, setLoadingAuth] = useState(() => !readStoredSession("parent_session"))
-  // Переход по ссылке «сброс пароля» из письма. GoTrue возвращает репетитора с
-  // готовой сессией и метками в hash, поэтому проверяем hash СРАЗУ, до
-  // getSession(): иначе сессия успеет восстановиться, человек окажется в
-  // кабинете, а пароль так и останется старым.
-  const [recovery, setRecovery] = useState(
-    () => typeof window !== "undefined" && /[#&]type=recovery/.test(window.location.hash)
-  )
+  // Переход по ссылке «сброс пароля» из письма. Признак вычисляется в
+  // src/supabase.js до создания клиента — к моменту первого рендера hash уже
+  // вычищен клиентом, здесь его проверять поздно.
+  const [recovery, setRecovery] = useState(isPasswordRecovery)
   // Возврат с оплаты подписки (?sub=<заказ>) должен открыть саму «Подписку»:
   // именно там ждут подтверждения платежа.
   const startPage = new URLSearchParams(window.location.search).get("sub") ? "subscription" : "dashboard"

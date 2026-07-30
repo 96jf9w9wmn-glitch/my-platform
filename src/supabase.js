@@ -14,4 +14,12 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   )
 }
 
+// Переход по ссылке «сброс пароля» из письма определяем ЗДЕСЬ и до createClient.
+// Причина: клиент сам разбирает адрес, забирает из hash токены и вычищает его
+// через history.replaceState, а событие PASSWORD_RECOVERY рассылает сразу же —
+// до того, как React смонтируется и успеет подписаться. То есть к первому
+// рендеру оба признака уже потеряны, и проверять их в компоненте бесполезно.
+export const isPasswordRecovery =
+  typeof window !== "undefined" && /[#&]type=recovery/.test(window.location.hash)
+
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
