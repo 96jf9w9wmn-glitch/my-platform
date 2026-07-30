@@ -10267,6 +10267,9 @@ function build164({ p, q, v, w, u }) {
   const cub = ratRoots([R(2 * q * w), R(6 * q * v + p * w), R(4 * (q + v * p)), R(3 * p)])
   if (!cub.allRational) return null
   const Qat = (x) => x * x * (x * x + 2 * v * x + w)
+  // Если x = −q/p — корень Q, то он остаётся корнем квартики при ЛЮБОМ a, и исключение
+  // параметра для касания вырождается (0/0): такие наборы пропускаем.
+  if (p !== 0 && Qat(-q / p) === 0) return null
   const overlap = Qat(u) === 0 ? null : R(-(p * u + q), Qat(u))  // общая точка вертикали и параболы
   const discLine = C * C - 4 * (u * u + B * u)                   // дискриминант на вертикали без 1/a
   const solve = (a) => {
@@ -10323,6 +10326,77 @@ export function t18PencilVertParabola() {
       ],
       marks: [], hlines: setBounds(set).map(Rnum),
       xMin: -5, xMax: 5, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// ── #80. {|2x² + y² − w| + y² + py = 0; y = mx + a} — «два или три корня» ────
+// Правая часть требует y² + py ≤ 0, то есть −p ≤ y ≤ 0. При 2x² + y² − w ≥ 0 получается
+// окружность x² + (y + p/4)² = ρ², где ρ² = (w + p²/8)/2, а при обратном знаке — парабола
+// y = (2x² − w)/p. Замечательно, что на КАЖДОЙ из этих кривых выражение 2x² + y² − w равно
+// ровно −(y² + py), поэтому обе берутся в одной и той же полосе −p ≤ y ≤ 0 (окружность —
+// с нестрогим неравенством, парабола — со строгим), и склеиваются они в точках (±g; 0),
+// где g = √(w/2). Получается «линза», которую и пересекает прямая.
+// Наборы подобраны так, что ρ² = g² + e² — точный квадрат (пифагорова тройка при p = 4e,
+// w = 2g²), а наклон прямой взят пифагоровым (m = 3/4), поэтому касание рационально;
+// вдобавок g² < 8e² гарантирует, что нижняя граница полосы y = −p кривых не задевает.
+function build80({ e, g, mn, md }) {
+  const p = 4 * e, w = 2 * g * g
+  const rho2 = g * g + e * e
+  const rho = isSq(rho2)
+  if (rho === null || g * g >= 8 * e * e) return null
+  const one = mn * mn + md * md                                  // (1 + m²)·md² = mn² + md²
+  const t = isSq(one)
+  if (t === null) return null                                    // √(1+m²) = t/md — рационально
+  const m = R(mn, md)
+  const circle = (a) => {                                        // (1+m²)x² + 2m(a + p/4)x + (a+p/4)² − ρ²
+    const s = Radd(a, R(p, 4))
+    return [Rsub(Rmul(s, s), R(rho2)), Rmul(Rmul(R(2), m), s), Radd(R1, Rmul(m, m))]
+  }
+  const parab = (a) => [Rneg(Radd(Rmul(R(p), a), R(w))), Rmul(R(-p), m), R(2)]
+  const solve = (a) => {
+    const xTop = Rdiv(Rneg(a), m)                                // y ≤ 0 ⟺ x ≤ −a/m (m > 0)
+    return countRoots(circle(a), "-inf", xTop, false, true)
+      + countRoots(parab(a), R(-g), R(g), false, false)
+  }
+  const crit = [
+    Rsub(R(-p, 4), R(rho * t, md)), Radd(R(-p, 4), R(rho * t, md)),   // касание с окружностью
+    Rneg(Rmul(m, R(g))), Rmul(m, R(g)),                               // прямая через точки склейки
+    R(-(p * p * mn * mn + 8 * w * md * md), 8 * p * md * md),         // касание с параболой
+  ]
+  return { set: assembleSet((a) => [2, 3].includes(solve(a)), crit), solve, p, w, rho2, g }
+}
+const T80 = []
+for (const e of [2, 3, 4, 5, 6, 8, 10, 12]) for (const g of [3, 4, 5, 6, 8, 9, 12, 15, 16]) {
+  for (const [mn, md] of [[3, 4], [4, 3], [1, 1], [5, 12], [12, 5], [8, 15]]) {
+    const x = build80({ e, g, mn, md })
+    if (x && tidySet(x.set, 3)) T80.push({ e, g, mn, md })
+  }
+}
+export function t18LensLine() {
+  const par = pick(T80), { g, mn, md } = par
+  const { set, solve, p, w, rho2 } = build80(par)
+  const aRange = spanRange(set)
+  const mStr = md === 1 ? `${mn}x` : `${fT(String(mn), String(md))}x`
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:|2x${SUP[2]} + y${SUP[2]} ${MINUS} ${w}| + y${SUP[2]} + ${p === 1 ? "" : p}y = 0¦y = ${mStr} + a⟧\n\nимеет два или три различных решения.`,
+    set,
+    solution: `Из первой строки y${SUP[2]} + ${p === 1 ? "" : p}y ≤ 0, то есть ${MINUS}${p} ≤ y ≤ 0.\n`
+      + `При 2x${SUP[2]} + y${SUP[2]} ${MINUS} ${w} ≥ 0 получаем 2x${SUP[2]} + 2y${SUP[2]} + ${p === 1 ? "" : p}y = ${w}, то есть окружность x${SUP[2]} + (y + ${p / 4})${SUP[2]} = ${rho2}; при обратном знаке — параболу y = ${fT(`2x${SUP[2]} ${MINUS} ${w}`, String(p))}.\n`
+      + `На каждой из этих кривых выражение 2x${SUP[2]} + y${SUP[2]} ${MINUS} ${w} равно ровно ${MINUS}(y${SUP[2]} + ${p === 1 ? "" : p}y), поэтому обе берутся в одной и той же полосе, а склеиваются в точках (±${g}; 0) — получается замкнутая «линза».\n`
+      + `Прямая y = ${mStr} + a пересекает её; критические значения — касание с окружностью, касание с параболой и проход через точки склейки, и все они рациональны по построению набора.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "countIn", values: [2, 3] },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: () => g, dash: true, label: "точки склейки ±g" },
+        { f: () => -g, dash: true },
+        { f: (a) => (-a * md) / mn, label: "след прямой на оси Ox" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -g - 3, xMax: g + 3, aMin: aRange[0], aMax: aRange[1],
     },
   })
 }
@@ -10395,6 +10469,7 @@ export const META18 = [
     ["sys-triple-sqrt", "{a(x−1)≥4; 2√(x−c)≥a; kx<a+d} — хотя бы одно решение", t18SysTripleSqrt],
     ["wedge-parabola-one", "{(a+px+c)(a−qx+c) ≤ 0; a+rx ≥ x²} — единственное решение", t18WedgeParabolaOne],
     ["abs-param-strip", "{|x|+|a| ≤ c; x²+px < ka+d} — есть решение на [L; 0]", t18AbsParamStrip],
+    ["lens-line", "{|2x²+y²−w| + y²+py = 0; y = mx+a} — два или три решения", t18LensLine],
     ["product-ineq-seg", "(k|x|−a−c)(x²−px−q−a) ≤ 0 — есть решение на [−L; L]", t18ProductIneqSeg],
   ]],
   ["Распадающаяся кривая + прямая", [
