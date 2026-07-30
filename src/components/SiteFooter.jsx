@@ -4,7 +4,7 @@ import Icon from "./Icon"
 // об ошибках, соцсети и юр-ссылки. Ссылки на соцсети пока МАКЕТЫ — реальные
 // адреса подставляются в SOCIALS ниже, менять больше нигде не нужно.
 
-const SUPPORT_EMAIL = "arm_227@mail.ru"
+const SUPPORT_EMAIL = "precettore@inbox.ru"
 const SUPPORT_SUBJECT = "Ошибка на precettore.ru"
 
 // href: "" — канал ещё не заведён, чип показывается, но никуда не ведёт.
