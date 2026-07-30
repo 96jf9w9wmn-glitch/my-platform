@@ -871,7 +871,26 @@ export default async function handler(req, res) {
     }
     // Заодно состояние вебхука: без него бот молчит на любые сообщения, и это
     // единственная поломка, которую по самому боту не отличить от «не привязан».
-    const hook = await tg("getWebhookInfo", {})
+    let hook = await tg("getWebhookInfo", {})
+
+    // Самонастройка: адрес вебхука — не выбор и не настройка, а единственное
+    // правильное значение, поэтому лишний ручной шаг здесь не нужен. Как только
+    // на сервере появляются токен и секрет, первый же health-check прописывает
+    // вебхук сам.
+    //
+    // Строго на БОЕВОМ домене: превью-деплой Vercel получает тот же токен, и без
+    // этой проверки случайно открытый предпросмотр перевёл бы живого бота на себя.
+    const host = String(req.headers["x-forwarded-host"] || req.headers.host || "")
+    const isProdHost = host === new URL(APP_URL).host
+    if (!hook?.result?.url && process.env.TELEGRAM_WEBHOOK_SECRET && isProdHost) {
+      const set = await tg("setWebhook", {
+        url: `https://${host}/api/telegram`,
+        secret_token: process.env.TELEGRAM_WEBHOOK_SECRET,
+        allowed_updates: ["message", "callback_query"],
+      })
+      if (set?.ok) hook = await tg("getWebhookInfo", {})
+    }
+
     res.status(200).json({
       ok: true,
       bot: me.result?.username || null,
