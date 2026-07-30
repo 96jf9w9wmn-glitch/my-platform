@@ -706,7 +706,9 @@ function Landing({ onStart }) {
                   на строку короче, чем у «Репетиторам». Жёсткий min-h пришлось
                   бы подгонять под каждый брейкпоинт и он бы врал при смене
                   шрифта. key на активном — чтобы текст мягко въезжал. */}
-              <div className="grid">
+              {/* items-center: у короткой роли лишняя высота делится пополам
+                  сверху и снизу — воздух, а не пустота под текстом */}
+              <div className="grid items-center">
                 {Object.keys(ROLES).map((r) => {
                   const active = r === role
                   return (
