@@ -78,7 +78,12 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
     try {
       if (role === "tutor") {
         if (!form.email) throw new Error("Введи email")
-        const { error } = await supabase.auth.resetPasswordForEmail(form.email)
+        // redirectTo задаём явно: иначе ссылка ведёт на SITE_URL из настроек
+        // сервера, а он один и тот же для прода и локальной разработки.
+        // Адрес должен быть в ADDITIONAL_REDIRECT_URLS на сервере.
+        const { error } = await supabase.auth.resetPasswordForEmail(form.email, {
+          redirectTo: window.location.origin,
+        })
         if (error) throw error
         setResetSent(true)
       } else {

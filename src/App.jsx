@@ -8,6 +8,7 @@ import MorphIcon from "./components/MorphIcon"
 import Students from "./pages/Students"
 import Payment from "./pages/Payment"
 import Auth from "./pages/Auth"
+import ResetPassword from "./pages/ResetPassword"
 import Landing from "./pages/Landing"
 import Results from "./pages/Results"
 import Dashboard from "./pages/Dashboard"
@@ -248,6 +249,13 @@ function App() {
   // иначе голый id из localStorage давал мгновенный доступ без проверки токена.
   const [user, setUser] = useState(() => readStoredSession("parent_session"))
   const [loadingAuth, setLoadingAuth] = useState(() => !readStoredSession("parent_session"))
+  // Переход по ссылке «сброс пароля» из письма. GoTrue возвращает репетитора с
+  // готовой сессией и метками в hash, поэтому проверяем hash СРАЗУ, до
+  // getSession(): иначе сессия успеет восстановиться, человек окажется в
+  // кабинете, а пароль так и останется старым.
+  const [recovery, setRecovery] = useState(
+    () => typeof window !== "undefined" && /[#&]type=recovery/.test(window.location.hash)
+  )
   // Возврат с оплаты подписки (?sub=<заказ>) должен открыть саму «Подписку»:
   // именно там ждут подтверждения платежа.
   const startPage = new URLSearchParams(window.location.search).get("sub") ? "subscription" : "dashboard"
@@ -490,6 +498,13 @@ function App() {
       .catch(() => setLoadingAuth(false))
 
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY") {
+        // Дубль защиты к проверке hash выше: событие приходит асинхронно, но
+        // если hash по какой-то причине уже подчищен — ловим здесь.
+        setRecovery(true)
+        setLoadingAuth(false)
+        return
+      }
       if (session) {
         restoreSession(session)
       } else if (event === "SIGNED_OUT" || event === "INITIAL_SESSION") {
@@ -519,6 +534,18 @@ function App() {
   const legalPath = typeof window !== "undefined" ? window.location.pathname : "/"
   if (legalPath === "/privacy" || legalPath === "/consent" || legalPath === "/cookie" || legalPath === "/rules") {
     return <Legal path={legalPath} />
+  }
+
+  // Сброс пароля важнее всех остальных экранов: пока новый пароль не задан, в
+  // кабинет не пускаем, иначе ссылка из письма превращается в обычный вход.
+  // После сохранения перезагружаем страницу без hash — сессия уже действует,
+  // и обычный путь через getSession() откроет кабинет.
+  if (recovery) {
+    return (
+      <ResetPassword
+        onDone={() => window.location.replace(window.location.pathname)}
+      />
+    )
   }
 
   if (loadingAuth) {
