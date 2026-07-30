@@ -171,7 +171,7 @@ function BoardHistory({ studentId, studentName, account = null, token = null }) 
             <div className="px-2.5 py-2 flex items-center justify-between gap-2">
               <span className="text-xs font-medium truncate">{humanDate(r.lesson_date)}</span>
               {loadingDate === r.lesson_date
-                ? <span className="loader-ring" style={{ width: 12, height: 12 }} />
+                ? <span className="loader-dots text-gray-400"><i /><i /><i /></span>
                 : <span className="text-[11px] text-gray-400 tabular-nums">{r.strokes}</span>}
             </div>
           </button>

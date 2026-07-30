@@ -525,8 +525,7 @@ function App() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="loader-wrap flex flex-col items-center gap-5">
-          <img src="/logo.webp" alt="Precettore" className="w-16 h-16 rounded-2xl object-cover shadow-xl shadow-blue-500/30" />
-          <div className="loader-ring" />
+          <img src="/logo.webp" alt="Precettore" className="loader-breathe w-16 h-16 rounded-2xl object-cover shadow-xl shadow-blue-500/30" />
           <div className="loader-label text-[11px] text-gray-400 uppercase font-medium">
             Precettore
           </div>
@@ -555,7 +554,7 @@ function App() {
 
   if (user.role === "student") {
     return (
-      <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center bg-white dark:bg-[#1c1c1e]"><div className="loader-ring" /></div>}>
+      <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center bg-white dark:bg-[#1c1c1e]"><div className="loader-logo" /></div>}>
       <StudentDashboard
         user={user}
         students={students}
@@ -605,7 +604,7 @@ function App() {
       )}
 
       {board && (
-        <Suspense fallback={<div className="fixed inset-0 z-[100000] bg-white dark:bg-[#1c1c1e] flex items-center justify-center"><div className="loader-ring" /></div>}>
+        <Suspense fallback={<div className="fixed inset-0 z-[100000] bg-white dark:bg-[#1c1c1e] flex items-center justify-center"><div className="loader-logo" /></div>}>
           <Board
             roomId={board.roomId}
             userId={`t:${user.id}`}
@@ -636,8 +635,8 @@ function App() {
           </div>
         </div>
 
-        <div className={`flex-1 min-h-0 overflow-x-hidden ${activePage === "chat" ? "flex flex-col overflow-hidden" : "overflow-y-auto pb-20 md:pb-0"}`}>
-          <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="loader-ring" /></div>}>
+        <div className={`flex-1 min-h-0 overflow-x-hidden ${activePage === "chat" ? "flex flex-col overflow-hidden" : "page-scroll overflow-y-auto pb-20 md:pb-0"}`}>
+          <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="loader-logo" /></div>}>
           <div className={activePage !== "dashboard" ? "hidden" : "page-active"}>{visitedPages.has("dashboard") && <Dashboard students={students} setActivePage={navigateTo} onOpenBoard={openBoard} />}</div>
           <div className={activePage !== "students" ? "hidden" : "page-active"}>{visitedPages.has("students") && <Students students={students} setStudents={handleSetStudents} tutorId={user.id} onOpenBoard={openBoard} />}</div>
 <div className={activePage !== "payment" ? "hidden" : "page-active"}>{visitedPages.has("payment") && <Payment students={students} setStudents={handleSetStudents} tutorId={user.id} />}</div>

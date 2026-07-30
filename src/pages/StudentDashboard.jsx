@@ -1646,7 +1646,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
         />
       )}
       {boardOpen && student?.id && (
-        <Suspense fallback={<div className="fixed inset-0 z-[100000] bg-white dark:bg-[#1c1c1e] flex items-center justify-center"><div className="loader-ring" /></div>}>
+        <Suspense fallback={<div className="fixed inset-0 z-[100000] bg-white dark:bg-[#1c1c1e] flex items-center justify-center"><div className="loader-logo" /></div>}>
           <Board
             roomId={student.id}
             userId={`s:${user.id}`}
@@ -1686,7 +1686,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
           </div>
         </div>
 
-        <div className={`flex-1 min-h-0 overflow-x-hidden ${activeTab === "chat" ? "flex flex-col overflow-hidden" : "overflow-y-auto pb-20 md:pb-0"}`}>
+        <div className={`flex-1 min-h-0 overflow-x-hidden ${activeTab === "chat" ? "flex flex-col overflow-hidden" : "page-scroll overflow-y-auto pb-20 md:pb-0"}`}>
           {activeTab === "chat" ? (
             <div className="flex-1 min-h-0 flex flex-col overflow-hidden page-active">
               <Chat

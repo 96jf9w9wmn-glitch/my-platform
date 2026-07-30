@@ -1301,7 +1301,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
           </>
         )}
         {!loaded && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><div className="loader-ring" /></div>
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><div className="loader-logo" /></div>
         )}
 
         {/* Зум-контролы */}

@@ -234,7 +234,7 @@ export default function Subscription({ studentsCount = 0, tutorId }) {
       {/* Результат возврата с оплаты */}
       {checking && (
         <div className="glass-tint-blue px-4 py-3 mb-4 flex items-center gap-2.5 text-sm text-[#007AFF]">
-          <span className="loader-ring-sm" />
+          <span className="loader-dots"><i /><i /><i /></span>
           Проверяем оплату…
         </div>
       )}

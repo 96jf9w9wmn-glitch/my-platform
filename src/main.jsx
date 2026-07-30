@@ -46,8 +46,17 @@ const splash = document.getElementById("splash")
 if (splash) {
   requestAnimationFrame(() =>
     requestAnimationFrame(() => {
-      splash.classList.add("splash-off")
-      setTimeout(() => splash.remove(), 260)
+      // Splash проявляется с задержкой (animation splash-in). Гасим от той
+      // прозрачности, до которой он реально успел дойти: при быстрой загрузке
+      // это 0 — экран исчезает незаметно, вместо «мигнул и пропал». Анимацию
+      // снимаем явно, иначе она перебивает transition затухания.
+      const shown = getComputedStyle(splash).opacity
+      splash.style.animation = "none"
+      splash.style.opacity = shown
+      requestAnimationFrame(() => {
+        splash.classList.add("splash-off")
+        setTimeout(() => splash.remove(), 260)
+      })
     })
   )
 }

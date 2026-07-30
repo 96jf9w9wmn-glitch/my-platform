@@ -416,10 +416,9 @@ body::before {
   100% { filter: hue-rotate(12deg); }
 }
 
-/* ── Loading screen ── */
-@keyframes spin-ring {
-  to { transform: rotate(360deg); }
-}
+/* ── Loading screen ──
+   Крутящегося кольца нигде нет намеренно: вместо него «дышит» сам логотип
+   (крупные загрузки) или три точки (загрузка внутри кнопки/строки). */
 @keyframes fade-in-up {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -428,30 +427,54 @@ body::before {
   0%, 100% { opacity: 0.35; }
   50%       { opacity: 0.75; }
 }
+@keyframes logo-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50%      { transform: scale(1.06); opacity: 1; }
+}
+@keyframes dot-pulse {
+  0%, 100% { opacity: 0.3; transform: translateY(0); }
+  50%      { opacity: 1;   transform: translateY(-2px); }
+}
 
 .loader-wrap {
   animation: fade-in-up 0.5s ease-out both;
 }
-.loader-ring {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: 2px solid rgba(0, 122, 255, 0.18);
-  border-top-color: #007aff;
-  animation: spin-ring 0.75s linear infinite;
+/* Крупная загрузка (Suspense, экран авторизации, доска): брендовый логотип.
+   То же самое, что на стартовом экране в index.html — переход незаметен. */
+.loader-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: url("/logo.webp") center / cover no-repeat;
+  box-shadow: 0 10px 26px rgba(0, 122, 255, 0.22);
+  animation: logo-breathe 1.9s ease-in-out infinite;
 }
-/* Тот же спиннер размером в строку — внутри цветной кнопки (ИИ-генерация ДЗ и т.п.) */
-.loader-ring-sm {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.35);
-  border-top-color: #fff;
-  animation: spin-ring 0.75s linear infinite;
+/* Логотип уже стоит в разметке (экран восстановления сессии) — только дыхание */
+.loader-breathe {
+  animation: logo-breathe 1.9s ease-in-out infinite;
 }
+/* Загрузка в строку — внутри кнопки («Генерирую…») или рядом с текстом.
+   Точки берут currentColor, поэтому одинаково живут на цветной кнопке и на фоне. */
+.loader-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.loader-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: dot-pulse 1.1s ease-in-out infinite;
+}
+.loader-dots i:nth-child(2) { animation-delay: 0.15s; }
+.loader-dots i:nth-child(3) { animation-delay: 0.3s; }
 .loader-label {
   letter-spacing: 0.18em;
   animation: pulse-label 2.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .loader-logo, .loader-breathe, .loader-dots i, .loader-label { animation: none; }
 }
 
 /* ── Icon micro-animations ── */
@@ -561,6 +584,16 @@ body::before {
 /* Все стеклянные модалки скроллятся без видимой полосы */
 .glass-modal { scrollbar-width: none; -ms-overflow-style: none; }
 .glass-modal::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+/* Основная область страниц: место под вертикальную полосу держим всегда.
+   Иначе на системах с классическим (не overlay) скроллбаром короткая страница
+   шире длинной на ~15px — карточки «прыгают» при переключении страниц и даже
+   внутри одной (расписание: «Месяц» помещается без прокрутки, «Неделя» нет,
+   отсюда разная ширина календаря). На macOS/iOS с overlay-полосой резерв
+   равен нулю, поэтому там ничего не меняется. */
+.page-scroll {
+  scrollbar-gutter: stable;
+}
 
 /* Slide up — for bottom sheets on mobile */
 @keyframes slide-up {

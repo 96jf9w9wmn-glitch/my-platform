@@ -421,7 +421,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
                   className="bg-blue-600 text-white rounded-lg py-2 text-sm hover:bg-blue-700 disabled:opacity-50 active:scale-[0.99] transition-transform flex items-center justify-center gap-1.5"
                 >
                   {generating
-                    ? <><span className="loader-ring-sm" />Генерирую — это до минуты</>
+                    ? <><span className="loader-dots"><i /><i /><i /></span>Генерирую — это до минуты</>
                     : aiLeft === 0
                     ? <>Лимит на этот месяц исчерпан</>
                     : <><Icon name="sparkles" size={14} />Сгенерировать</>}
@@ -982,7 +982,7 @@ function Homework({ user, students, embedded = false }) {
       </div>
 
       {tab === "variants" && (
-        <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="loader-ring" /></div>}>
+        <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="loader-logo" /></div>}>
           <Variants user={user} embedded addOpen={showAddVariant} onAddOpenChange={setShowAddVariant} />
         </Suspense>
       )}
