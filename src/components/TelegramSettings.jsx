@@ -199,7 +199,12 @@ export default function TelegramSettings() {
           className="no-press self-start inline-flex items-center gap-1.5 px-5 py-2.5 rounded-full text-sm font-medium text-white active:scale-95 transition-transform disabled:opacity-45 disabled:cursor-default"
           style={{ background: "linear-gradient(135deg, #0A84FF 0%, #0060DF 100%)", boxShadow: "0 6px 18px rgba(0,122,255,0.28)" }}
         >
-          {busy ? "Готовим код…" : "Подключить Telegram"}
+          {/* Серая кнопка обязана сама говорить, почему она серая: иначе это
+              выглядит как поломка, а не как «на сервере не хватает ключей». */}
+          {busy ? "Готовим код…"
+            : health && !health.ok ? "Бот не настроен на сервере"
+            : !ready ? "Нужна миграция"
+            : "Подключить Telegram"}
         </button>
       )}
 
