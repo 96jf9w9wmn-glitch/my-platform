@@ -1023,7 +1023,7 @@ function StudentNotificationBell({ userId, onNavigate }) {
           style={{ top: pos.top, right: pos.right }}
           onClick={e => e.stopPropagation()}
         >
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
             <span className="text-sm font-semibold text-gray-700">Уведомления</span>
             {unread > 0 && (
               <button onClick={markAllRead} className="text-xs text-blue-500 hover:text-blue-700">
@@ -1038,7 +1038,7 @@ function StudentNotificationBell({ userId, onNavigate }) {
               <div
                 key={n.id}
                 onClick={() => handleNotifClick(n)}
-                className={`group px-4 py-3 border-b border-gray-50 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${!n.read ? "bg-blue-50 dark:bg-blue-900/20" : ""}`}
+                className={`group px-4 py-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 transition-colors ${!n.read ? "bg-blue-50 dark:bg-blue-900/20" : ""}`}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">

@@ -442,7 +442,7 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
           )}
 
           {/* Код для родителей */}
-          <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-700 mt-1">
+          <div className="flex items-center justify-between pt-2 border-t border-gray-100 mt-1">
             <span className="text-xs text-gray-400">Код для родителей</span>
             <div className="flex items-center gap-2">
               {student.parent_code ? (
@@ -527,7 +527,7 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
             onChange={(e) => setRemarkDraft(e.target.value)}
             placeholder="Написать замечание..."
             rows={2}
-            className="flex-1 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-blue-400"
+            className="flex-1 text-sm rounded-lg border border-gray-200 bg-white px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-blue-400"
           />
           <button
             onClick={addRemark}

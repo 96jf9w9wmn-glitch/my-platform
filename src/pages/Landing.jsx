@@ -284,7 +284,7 @@ const NO_CHEATING = [
 
 // ── Мини-визуалы (декоративные макеты продукта) ──
 function Line({ w = "100%", h = 8, className = "" }) {
-  return <div className={`rounded-full bg-gray-200 dark:bg-gray-700 ${className}`} style={{ width: w, height: h }} />
+  return <div className={`rounded-full bg-gray-200 ${className}`} style={{ width: w, height: h }} />
 }
 
 function MiniVariantCard({ cfg }) {
@@ -335,7 +335,7 @@ function DeepVisual({ kind, accent }) {
                 <span className="text-gray-500 dark:text-gray-400">{t}</span>
                 <span className="font-semibold text-gray-900">{p}%</span>
               </div>
-              <div className="h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+              <div className="h-2 rounded-full bg-gray-200 overflow-hidden">
                 <div className={`h-full rounded-full bg-gradient-to-r ${accent.grad}`} style={{ width: `${p}%` }} />
               </div>
             </div>
@@ -361,10 +361,10 @@ function DeepVisual({ kind, accent }) {
             </div>
           ))}
         </div>
-        <div className="border-t border-gray-200 dark:border-gray-700 pt-2.5 space-y-1.5">
+        <div className="border-t border-gray-200 pt-2.5 space-y-1.5">
           {hw.map(([t, done]) => (
             <div key={t} className="flex items-center gap-2 text-[11px]">
-              <span className={`w-4 h-4 shrink-0 rounded-full flex items-center justify-center ${done ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400" : "bg-gray-200 dark:bg-gray-700 text-gray-400"}`}>
+              <span className={`w-4 h-4 shrink-0 rounded-full flex items-center justify-center ${done ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400" : "bg-gray-200 text-gray-400"}`}>
                 {done ? <Icon name="check" size={10} /> : <Icon name="clock" size={10} />}
               </span>
               <span className={done ? "text-gray-500 dark:text-gray-400 line-through" : "font-medium text-gray-900"}>{t}</span>
@@ -381,7 +381,7 @@ function DeepVisual({ kind, accent }) {
           <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${accent.soft} ${accent.text}`}><Icon name="edit" size={14} /></div>
           <span className="text-sm font-semibold">Онлайн-доска</span>
         </div>
-        <div className="relative h-28 rounded-xl bg-gray-100 dark:bg-gray-800 overflow-hidden">
+        <div className="relative h-28 rounded-xl bg-gray-100 overflow-hidden">
           <svg viewBox="0 0 200 100" className="w-full h-full">
             <path d="M15 70 Q40 20 70 55 T130 45" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className={accent.text} />
             <circle cx="150" cy="30" r="12" fill="none" stroke="currentColor" strokeWidth="3" className="text-purple-400" />
@@ -672,7 +672,7 @@ function Landing({ onStart }) {
             </button>
             <button
               onClick={() => start(role, "login")}
-              className="text-sm font-medium px-4 py-2 rounded-full text-gray-700 dark:text-gray-200 bg-white/70 dark:bg-white/[0.08] ring-1 ring-gray-200 dark:ring-white/15 hover:opacity-80 transition-opacity"
+              className="text-sm font-medium px-4 py-2 rounded-full text-gray-700 bg-white/70 dark:bg-white/[0.08] ring-1 ring-gray-200 dark:ring-white/15 hover:opacity-80 transition-opacity"
             >
               Войти
             </button>
@@ -699,17 +699,34 @@ function Landing({ onStart }) {
                 <Icon name="sparkles" size={13} />
                 Задания генерируются — их нет в интернете
               </div>
-              {/* key — чтобы текст геро мягко въезжал при смене роли */}
-              <div key={role} className="slide-up">
-                <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight text-gray-900 leading-[1.05] text-balance">
-                  {cfg.hero.title}{" "}
-                  <span className={`text-transparent bg-clip-text bg-gradient-to-r ${cfg.grad}`}>
-                    {cfg.hero.accent}
-                  </span>
-                </h1>
-                <p className="mt-5 text-base sm:text-lg text-gray-500 dark:text-gray-400 max-w-xl mx-auto lg:mx-0">
-                  {cfg.hero.lead}
-                </p>
+              {/* Все три варианта заголовка лежат в ОДНОЙ клетке грида (друг
+                  поверх друга), неактивные — invisible. Высота блока всегда
+                  равна самому длинному тексту, поэтому карточки входа под ним
+                  не подпрыгивают при переключении роли: у «Родителям» заголовок
+                  на строку короче, чем у «Репетиторам». Жёсткий min-h пришлось
+                  бы подгонять под каждый брейкпоинт и он бы врал при смене
+                  шрифта. key на активном — чтобы текст мягко въезжал. */}
+              <div className="grid">
+                {Object.keys(ROLES).map((r) => {
+                  const active = r === role
+                  return (
+                    <div
+                      key={active ? `${r}-active` : r}
+                      aria-hidden={!active}
+                      className={`col-start-1 row-start-1 ${active ? "slide-up" : "invisible"}`}
+                    >
+                      <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight text-gray-900 leading-[1.05] text-balance">
+                        {ROLES[r].hero.title}{" "}
+                        <span className={`text-transparent bg-clip-text bg-gradient-to-r ${ROLES[r].grad}`}>
+                          {ROLES[r].hero.accent}
+                        </span>
+                      </h1>
+                      <p className="mt-5 text-base sm:text-lg text-gray-500 dark:text-gray-400 max-w-xl mx-auto lg:mx-0">
+                        {ROLES[r].hero.lead}
+                      </p>
+                    </div>
+                  )
+                })}
               </div>
             </div>
 

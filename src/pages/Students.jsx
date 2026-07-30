@@ -179,7 +179,7 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
           <button
             onClick={() => (canAddStudent ? createInvite() : openPlans())}
             disabled={inviting}
-            className="press-fill px-3 py-2 text-sm rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200 bg-white/70 dark:bg-white/[0.08] disabled:opacity-50"
+            className="press-fill px-3 py-2 text-sm rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 bg-white/70 dark:bg-white/[0.08] disabled:opacity-50"
           >
             {inviting ? "Готовим…" : "Пригласить"}
           </button>
@@ -226,14 +226,14 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
             <a
               href={`https://wa.me/?text=${encodeURIComponent(invite.text)}`}
               target="_blank" rel="noreferrer"
-              className="px-3 py-2 text-sm rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200"
+              className="px-3 py-2 text-sm rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700"
             >
               WhatsApp
             </a>
             <a
               href={`https://t.me/share/url?url=${encodeURIComponent(invite.link)}&text=${encodeURIComponent("Занимаемся через Precettore — регистрация по ссылке:")}`}
               target="_blank" rel="noreferrer"
-              className="px-3 py-2 text-sm rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200"
+              className="px-3 py-2 text-sm rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700"
             >
               Telegram
             </a>

@@ -161,7 +161,7 @@ function TutorOnboardingModal({ tutorId, onComplete }) {
               className="press-fill w-full h-[50px] rounded-full font-semibold text-white bg-gradient-to-r from-blue-500 to-blue-600 shadow-lg shadow-blue-500/25 hover:opacity-95 transition-opacity">
               Добавить первого ученика
             </button>
-            <button onClick={() => onComplete(done)} className="press-fill w-full py-2 rounded-xl text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
+            <button onClick={() => onComplete(done)} className="press-fill w-full py-2 rounded-xl text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 transition-colors">
               Осмотрюсь сам
             </button>
           </div>

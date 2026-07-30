@@ -103,7 +103,7 @@ export function LegalLinks({ className = "" }) {
   return (
     <div className={`flex flex-wrap gap-x-4 gap-y-1.5 text-[11px] text-gray-400 dark:text-gray-500 ${className}`}>
       {LEGAL.map((l) => (
-        <a key={l.href} href={l.href} className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+        <a key={l.href} href={l.href} className="hover:text-gray-600 transition-colors">
           {l.label}
         </a>
       ))}
@@ -127,7 +127,7 @@ function MailChip({ full = true }) {
 
 function SiteFooter() {
   return (
-    <footer className="mt-6 border-t border-gray-200/70 dark:border-gray-800/70">
+    <footer className="mt-6 border-t border-gray-200/70 dark:border-white/10">
       {/* @container, а не media-query: подвал стоит и в широком лендинге, и в
           узкой колонке юр-страниц — раскладку задаёт ширина самого подвала */}
       <div className="@container max-w-6xl mx-auto w-full px-4 py-10">
@@ -170,7 +170,7 @@ function SiteFooter() {
         </div>
 
         {/* Нижняя строка */}
-        <div className="mt-9 pt-5 border-t border-gray-200/70 dark:border-gray-800/70 flex flex-col gap-3 @[1000px]:flex-row @[1000px]:items-center @[1000px]:justify-between">
+        <div className="mt-9 pt-5 border-t border-gray-200/70 dark:border-white/10 flex flex-col gap-3 @[1000px]:flex-row @[1000px]:items-center @[1000px]:justify-between">
           <LegalLinks />
           <div className="text-[11px] text-gray-400 dark:text-gray-500 @[1000px]:text-right shrink-0">
             © {new Date().getFullYear()} Precettore · Саркисян А. Н. (самозанятый), ИНН 262308648105

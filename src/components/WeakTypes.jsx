@@ -10,7 +10,7 @@ import { supabase } from "../supabase"
 const MIN_ATTEMPTS = 3
 
 function tone(row) {
-  if (row.attempts < MIN_ATTEMPTS) return { cls: "bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-gray-300", note: "мало данных" }
+  if (row.attempts < MIN_ATTEMPTS) return { cls: "bg-gray-100 text-gray-500 dark:bg-white/10", note: "мало данных" }
   if (row.accuracy < 40) return { cls: "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300", note: null }
   if (row.accuracy < 70) return { cls: "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300", note: null }
   return { cls: "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300", note: null }
@@ -148,7 +148,7 @@ function WeakTypes({ studentId, studentName }) {
                   onClick={() => drill(r)}
                   disabled={drilling === r.gen_key}
                   title={`Лист из ${DRILL_SIZE} задач этого же типажа, числа новые`}
-                  className="press-fill shrink-0 text-[11px] px-2.5 py-1.5 rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200 disabled:opacity-50"
+                  className="press-fill shrink-0 text-[11px] px-2.5 py-1.5 rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 disabled:opacity-50"
                 >
                   {drilling === r.gen_key ? "Собираем…" : "Тренировка"}
                 </button>

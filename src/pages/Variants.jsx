@@ -42,13 +42,13 @@ function ExtraPdfButtons({ variant }) {
       <div className="text-xs text-gray-400 mb-2">Печатные листы</div>
       <div className="flex flex-wrap gap-2">
         <button onClick={() => download("answers")} disabled={busy}
-          className="press-fill text-xs px-3 py-2 rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200 disabled:opacity-50 flex items-center gap-1.5">
+          className="press-fill text-xs px-3 py-2 rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 disabled:opacity-50 flex items-center gap-1.5">
           <MorphIcon from="download" size={13} />
           {busy === "answers" ? "Собираем…" : "С ответами"}
         </button>
         {hasSolutions && (
           <button onClick={() => download("solutions")} disabled={busy}
-            className="press-fill text-xs px-3 py-2 rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200 disabled:opacity-50 flex items-center gap-1.5">
+            className="press-fill text-xs px-3 py-2 rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 disabled:opacity-50 flex items-center gap-1.5">
             <MorphIcon from="download" size={13} />
             {busy === "solutions" ? "Собираем…" : "С решениями"}
           </button>

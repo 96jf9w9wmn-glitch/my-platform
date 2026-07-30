@@ -62,7 +62,14 @@
   /* На тёмном мел настоящий — белый, но приглушённый, чтобы не «светился» */
   --formula-ink: rgba(255, 255, 255, 0.09);
 
-  /* ── Tailwind v4 color variables — ALL utilities using these adapt automatically ── */
+  /* ── Tailwind v4 color variables — ALL utilities using these adapt automatically ──
+     ВНИМАНИЕ: шкала здесь ПЕРЕВЁРНУТА — gray-50…300 становятся тёмными, а
+     gray-600…900 светлыми. Поэтому в тёмной теме НЕ НУЖНО (и вредно) писать
+     `dark:`-варианты серых токенов: `dark:text-gray-200` даёт тёмный текст на
+     тёмном фоне (так пропадала кнопка «Войти»), а `dark:bg-gray-700` — почти
+     белую плашку. Пишите просто `text-gray-700` / `bg-gray-100` — они сами
+     станут светлым текстом и тёмным фоном. Если нужен именно стеклянный
+     оттенок — берите `dark:bg-white/10`, `dark:ring-white/15`. */
   --color-gray-50:  #111113;
   --color-gray-100: #2c2c2e;
   --color-gray-200: #3a3a3c;

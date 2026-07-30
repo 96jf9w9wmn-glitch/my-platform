@@ -298,7 +298,7 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
                   className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-2xl border-2 transition-all duration-200 ${
                     active
                       ? `bg-gradient-to-br ${cfg.grad} text-white border-transparent shadow-lg ${cfg.glow}`
-                      : `bg-white dark:bg-gray-800 ${cfg.text} ${cfg.border}`
+                      : `bg-white ${cfg.text} ${cfg.border}`
                   }`}
                 >
                   <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${active ? "bg-white/20" : cfg.soft}`}>

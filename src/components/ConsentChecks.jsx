@@ -32,7 +32,7 @@ export function ConsentRow({ checked, onChange, accent = "from-blue-500 to-blue-
                     group-active:scale-90 ${
           checked
             ? `bg-gradient-to-br ${accent} ring-transparent text-white shadow-sm`
-            : "bg-white dark:bg-gray-800 ring-gray-300 dark:ring-gray-600 text-transparent"
+            : "bg-white ring-gray-300 dark:ring-white/20 text-transparent"
         }`}
       >
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
@@ -108,11 +108,11 @@ export function MarketingToggle({ table, id, role }) {
         disabled={saving}
         role="switch"
         aria-checked={value}
-        className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-300 active:scale-[0.98] transition-transform disabled:opacity-50"
+        className="flex items-center gap-3 text-sm text-gray-600 active:scale-[0.98] transition-transform disabled:opacity-50"
       >
         <span
           className={`w-11 h-6 rounded-full p-0.5 flex transition-colors ${
-            value ? "bg-[#007AFF]" : "bg-gray-300 dark:bg-gray-600"
+            value ? "bg-[#007AFF]" : "bg-gray-300"
           }`}
         >
           <span className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${value ? "translate-x-5" : ""}`} />

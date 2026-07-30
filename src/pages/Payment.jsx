@@ -717,7 +717,7 @@ function Payment({ students, setStudents, tutorId }) {
                 className={`text-xs font-medium py-2 rounded-lg transition active:scale-[0.97] ${
                   taxMode === key
                     ? "bg-white dark:bg-white/15 shadow-sm text-gray-900 dark:text-white"
-                    : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                    : "text-gray-500 dark:text-gray-400 hover:text-gray-700"
                 }`}>
                 {m.label}
               </button>
@@ -732,7 +732,7 @@ function Payment({ students, setStudents, tutorId }) {
                   className={`text-xs font-medium px-2.5 py-1 rounded-full transition active:scale-95 ${
                     taxRate === r
                       ? "bg-blue-500/12 text-blue-600 dark:text-blue-300 ring-1 ring-inset ring-blue-500/25"
-                      : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                      : "text-gray-400 hover:text-gray-600"
                   }`}>
                   {r}% {r === 4 ? "с физлиц" : "с юрлиц"}
                 </button>

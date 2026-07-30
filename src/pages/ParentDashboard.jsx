@@ -242,8 +242,8 @@ function ParentDashboard({ user, onLogout }) {
               onClick={() => { setMainTab(tab.id); if (tab.id === "chat") setChatUnread(0) }}
               className={`flex-1 py-2 text-sm rounded-xl transition-all font-medium flex items-center justify-center gap-1.5 ${
                 mainTab === tab.id
-                  ? "bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 shadow-sm"
-                  : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                  ? "bg-white text-gray-800 shadow-sm"
+                  : "text-gray-400 hover:text-gray-600"
               }`}
             >
               {tab.label}
@@ -315,7 +315,7 @@ function ParentDashboard({ user, onLogout }) {
           {upcoming.length === 0 ? (
             <div className="text-sm text-gray-400 text-center py-3">Нет запланированных занятий</div>
           ) : (
-            <div className="flex flex-col divide-y divide-gray-100 dark:divide-gray-700">
+            <div className="flex flex-col divide-y divide-gray-100">
               {upcoming.map((l, i) => (
                 <div key={i} className="flex items-center justify-between py-2.5 first:pt-0 last:pb-0">
                   <div>
@@ -347,7 +347,7 @@ function ParentDashboard({ user, onLogout }) {
               <span className="text-gray-500">Оплачено</span>
               <span className="font-medium text-green-600">{totalPaid.toLocaleString("ru-RU")} ₽</span>
             </div>
-            <div className="flex justify-between text-sm font-semibold border-t border-gray-100 dark:border-gray-700 pt-2 mt-0.5">
+            <div className="flex justify-between text-sm font-semibold border-t border-gray-100 pt-2 mt-0.5">
               <span>Задолженность</span>
               <span className={debt > 0 ? "text-amber-500" : "text-green-600"}>
                 {debt > 0 ? debt.toLocaleString("ru-RU") + " ₽" : "Нет"}
@@ -366,13 +366,13 @@ function ParentDashboard({ user, onLogout }) {
               <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
                 <button
                   onClick={() => setHwTab("list")}
-                  className={`text-xs px-2.5 py-1 rounded-md transition-colors ${hwTab === "list" ? "bg-white dark:bg-gray-600 text-gray-700 dark:text-gray-200 shadow-sm" : "text-gray-500"}`}
+                  className={`text-xs px-2.5 py-1 rounded-md transition-colors ${hwTab === "list" ? "bg-white text-gray-700 shadow-sm" : "text-gray-500"}`}
                 >
                   Список
                 </button>
                 <button
                   onClick={() => setHwTab("analytics")}
-                  className={`text-xs px-2.5 py-1 rounded-md transition-colors ${hwTab === "analytics" ? "bg-white dark:bg-gray-600 text-gray-700 dark:text-gray-200 shadow-sm" : "text-gray-500"}`}
+                  className={`text-xs px-2.5 py-1 rounded-md transition-colors ${hwTab === "analytics" ? "bg-white text-gray-700 shadow-sm" : "text-gray-500"}`}
                 >
                   Аналитика
                 </button>
@@ -390,7 +390,7 @@ function ParentDashboard({ user, onLogout }) {
                 <span>Выполнено: {doneCount} / {homework.length}</span>
                 {avg && <span>Средний балл: {avg}</span>}
               </div>
-              <div className="flex flex-col divide-y divide-gray-100 dark:divide-gray-700">
+              <div className="flex flex-col divide-y divide-gray-100">
                 {homework.slice(0, 10).map((hw) => (
                   <div key={hw.id} className="flex items-center justify-between py-2.5 first:pt-0 last:pb-0">
                     <div className="min-w-0 flex-1 mr-3">
@@ -428,7 +428,7 @@ function ParentDashboard({ user, onLogout }) {
               </div>
 
               {/* Прогресс */}
-              <div className="border-t border-gray-100 dark:border-gray-700 pt-3">
+              <div className="border-t border-gray-100 pt-3">
                 <div className="text-xs text-gray-400 mb-2">Выполнение ({doneCount} / {homework.length})</div>
                 <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                   <div
@@ -443,7 +443,7 @@ function ParentDashboard({ user, onLogout }) {
 
               {/* Последние оценки */}
               {recentGraded.length > 0 && (
-                <div className="border-t border-gray-100 dark:border-gray-700 pt-3">
+                <div className="border-t border-gray-100 pt-3">
                   <div className="text-xs text-gray-400 mb-2">Последние оценки</div>
                   <div className="flex items-end gap-1.5 h-12">
                     {recentGraded.map((hw, i) => {

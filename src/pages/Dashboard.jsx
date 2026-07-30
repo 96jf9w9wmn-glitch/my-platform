@@ -106,7 +106,7 @@ function LeadsBlock() {
                 <button
                   onClick={() => move(lead, nextStage.id)}
                   disabled={busy === lead.id}
-                  className="press-fill shrink-0 text-xs px-2.5 py-1.5 rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200 disabled:opacity-50"
+                  className="press-fill shrink-0 text-xs px-2.5 py-1.5 rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 disabled:opacity-50"
                 >
                   {nextStage.label}
                 </button>

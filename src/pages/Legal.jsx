@@ -566,12 +566,12 @@ export default function Legal({ path }) {
       <div className="max-w-3xl mx-auto">
         <a
           href="/"
-          className="inline-flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-6 transition-colors"
+          className="inline-flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 mb-6 transition-colors"
         >
           ← На главную
         </a>
 
-        <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-sm ring-1 ring-gray-100 dark:ring-gray-800 p-7 sm:p-10">
+        <div className="bg-white rounded-3xl shadow-sm ring-1 ring-gray-100 p-7 sm:p-10">
           {DRAFT && (
             <div className="mb-6 rounded-2xl bg-amber-50 dark:bg-amber-900/30 ring-1 ring-amber-200 dark:ring-amber-800 px-4 py-3 flex items-start gap-2.5 text-sm text-amber-800 dark:text-amber-200">
               <Icon name="warning" size={16} className="shrink-0 mt-0.5 text-amber-500 dark:text-amber-400" />

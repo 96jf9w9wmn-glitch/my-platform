@@ -141,7 +141,7 @@ export default function OnlinePaySettings({ tutorId }) {
                 className={`no-press text-xs font-medium px-2.5 py-1 rounded-full transition active:scale-95 ${
                   maxLessons === n
                     ? "bg-blue-500/12 text-blue-600 dark:text-blue-400 ring-1 ring-inset ring-blue-500/25"
-                    : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                    : "text-gray-400 hover:text-gray-600"
                 }`}>
                 {n} зан.
               </button>

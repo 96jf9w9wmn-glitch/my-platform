@@ -339,13 +339,13 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
   const totalUnread = Object.values(unreadByContact).reduce((a, b) => a + b, 0)
 
   return (
-    <div className="flex-1 min-h-0 flex overflow-hidden pb-20 md:pb-0 bg-white dark:bg-gray-900">
+    <div className="flex-1 min-h-0 flex overflow-hidden pb-20 md:pb-0 bg-white">
 
       {/* Контакты: полный экран на мобильном (когда нет активного диалога) */}
-      <div className={`flex-col border-r border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 ${
+      <div className={`flex-col border-r border-gray-100 bg-white ${
         activeContact ? "hidden md:flex md:w-64 md:flex-shrink-0" : "flex w-full md:w-64 md:flex-shrink-0"
       }`}>
-        <div className="px-4 py-3.5 flex items-center justify-between border-b border-gray-100 dark:border-gray-800">
+        <div className="px-4 py-3.5 flex items-center justify-between border-b border-gray-100">
           <div className="flex items-center gap-2">
             <span className="text-sm font-bold text-gray-900 dark:text-white">Сообщения</span>
             {totalUnread > 0 && (
@@ -372,7 +372,7 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
               value={codeInput}
               onChange={e => setCodeInput(e.target.value.toUpperCase())}
               placeholder="AB1234"
-              className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm font-mono tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-blue-500/30 mb-2"
+              className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 dark:text-white text-sm font-mono tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-blue-500/30 mb-2"
               maxLength={6}
               autoFocus
               onKeyDown={e => e.key === "Enter" && findByCode()}
@@ -388,7 +388,7 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
               </button>
               <button
                 onClick={() => { setAdding(false); setCodeError(""); setCodeInput("") }}
-                className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 px-2"
+                className="text-xs text-gray-400 hover:text-gray-600 px-2"
               >Отмена</button>
             </div>
           </div>
@@ -415,7 +415,7 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
                 <div className={`w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-bold overflow-hidden ${
                   isActive
                     ? "bg-white/25 text-white"
-                    : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
+                    : "bg-gray-100 text-gray-600"
                 }`}>
                   {c.avatar
                     ? <img src={c.avatar} alt="" className="w-full h-full object-cover" />
@@ -446,7 +446,7 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
       </div>
 
       {/* Правая панель: скрыта на мобильном если нет активного диалога */}
-      <div className={`flex-1 min-h-0 flex-col min-w-0 bg-white dark:bg-gray-900 ${
+      <div className={`flex-1 min-h-0 flex-col min-w-0 bg-white ${
         activeContact ? "flex" : "hidden md:flex"
       }`}>
         {!activeContact ? (
@@ -475,7 +475,7 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
         ) : (
           <>
             {/* Шапка */}
-            <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex items-center gap-3 bg-white dark:bg-gray-900">
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-3 bg-white">
               <button
                 onClick={() => setActiveId(null)}
                 className="md:hidden text-blue-600 dark:text-blue-400 flex-shrink-0 -ml-1 p-1"
@@ -554,14 +554,14 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
               </div>
 
               {/* Ввод — закреплён снизу */}
-              <div className="absolute bottom-0 left-0 right-0 px-3 py-3 border-t border-gray-100 dark:border-gray-800 flex gap-2 bg-white dark:bg-gray-900">
+              <div className="absolute bottom-0 left-0 right-0 px-3 py-3 border-t border-gray-100 flex gap-2 bg-white">
                 <textarea
                   value={input}
                   onChange={e => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="Сообщение..."
                   rows={1}
-                  className="flex-1 px-4 py-2.5 text-sm rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30 resize-none leading-5"
+                  className="flex-1 px-4 py-2.5 text-sm rounded-2xl border border-gray-200 bg-gray-50 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30 resize-none leading-5"
                   style={{ minHeight: 42, maxHeight: 120, overflowY: "auto" }}
                 />
                 <button
