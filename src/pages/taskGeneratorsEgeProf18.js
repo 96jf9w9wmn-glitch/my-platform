@@ -10585,6 +10585,72 @@ export function t18TwoSemicirclesDiag() {
   })
 }
 
+// ── #152. c₃x³ + c₁x + p|x + a − u| + q|kx − a + u| + ⁿ√(mx − r) ≤ M при всех x ∈ [L; R] ──
+// Ключевое наблюдение: ВСЯ левая часть возрастает. Действительно, производная гладкой части
+// равна 3c₃x² + c₁ + m/(n·(mx − r)^{(n−1)/n}) ≥ c₁, а модули добавляют наклон, по модулю
+// не превосходящий p + qk. Поэтому при c₁ > p + qk левая часть строго возрастает на всём
+// отрезке, и «неравенство при всех x» равносильно ОДНОМУ условию — в правом конце x = R.
+// Там остаётся p|a − (u − R)| + q|a − (u + kR)| ≤ S: сумма двух взвешенных расстояний,
+// то есть обычная кусочно-линейная задача с рациональными границами.
+function build152({ c3, c1, p, q, k, u, m, r, n, M, R: Rr }) {   // L влияет только на печать
+  if (c1 <= p + q * k) return null                              // иначе возрастания может не быть
+  const rad = m * Rr - r
+  const rt = Math.sign(rad) * Math.round(Math.abs(rad) ** (1 / n))   // ⁿ√ в точке R обязан быть целым
+  if (Math.sign(rt) * Math.abs(rt) ** n !== rad) return null
+  const S = M - c3 * Rr * Rr * Rr - c1 * Rr - rt                // запас для модулей в точке R
+  const A1 = R(u - Rr), A2 = R(u + k * Rr)                      // p|a − A₁| + q|a − A₂| ≤ S
+  const solve = (a) => {
+    const v = Radd(Rmul(R(p), Rabs(Rsub(a, A1))), Rmul(R(q), Rabs(Rsub(a, A2))))
+    return Rcmp(v, R(S)) <= 0 ? 1 : 0
+  }
+  const crit = [A1, A2]
+  for (const [s1, s2] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+    const den = p * s1 + q * s2                                 // p·s₁(a − A₁) + q·s₂(a − A₂) = S
+    if (den === 0) continue
+    crit.push(Rdiv(Radd(R(S), Radd(Rmul(R(p * s1), A1), Rmul(R(q * s2), A2))), R(den)))
+  }
+  const set = assembleSet((a) => solve(a) === 1, crit)
+  if (!setBounds(set).length) return null
+  return { set, solve, S, A1, A2, rt }
+}
+const T152 = []
+for (const [n, m, r, Rr] of [[5, 2, 3, 1], [3, 1, 9, 1], [5, 1, 33, 1], [3, 2, 10, 1], [5, 3, 4, 1]]) {
+  for (const c3 of [1, 2]) for (const c1 of [8, 9, 10, 12]) for (const p of [2, 3]) {
+    for (const q of [1, 2]) for (const k of [2, 3]) for (const u of [1, 2, 3]) for (const M of [12, 16, 20]) {
+      const x = build152({ c3, c1, p, q, k, u, m, r, n, M, L: -2, R: Rr })
+      if (x && tidySet(x.set, 2)) T152.push({ c3, c1, p, q, k, u, m, r, n, M, L: -2, R: Rr })
+    }
+  }
+}
+export function t18IncreasingAllX() {
+  const par = pick(T152), { c3, c1, p, q, k, u, m, r, n, M, L, R: Rr } = par
+  const { set, solve, S, rt } = build152(par)
+  const aRange = spanRange(set)
+  const radStr = `${n === 3 ? "∛" : `⟦rn:${n}:${m === 1 ? "" : m}x ${MINUS} ${r}⟧`}${n === 3 ? `(${m === 1 ? "" : m}x ${MINUS} ${r})` : ""}`
+  return item({
+    text: `Найдите все значения a, при каждом из которых неравенство\n\n`
+      + `${c3 === 1 ? "" : c3}x${SUP[3]} + ${c1 === 1 ? "" : c1}x + ${p === 1 ? "" : p}|x + a ${MINUS} ${u}| + ${q === 1 ? "" : q}|${k === 1 ? "" : k}x ${MINUS} a + ${u}| + ${radStr} ≤ ${M}\n\n`
+      + `выполняется при всех x из отрезка [${nS(L)}; ${nS(Rr)}].`,
+    set,
+    solution: `Покажем, что левая часть ВОЗРАСТАЕТ. У гладкой части производная равна ${3 * c3 === 1 ? "" : 3 * c3}x${SUP[2]} + ${c1} плюс положительное слагаемое от корня, то есть не меньше ${c1}. Модули добавляют наклон, по модулю не больший ${p} + ${q === 1 ? "" : `${q}·`}${k} = ${p + q * k} < ${c1}.\n`
+      + `Значит левая часть строго возрастает на всём отрезке, и её наибольшее значение достигается в правом конце x = ${nS(Rr)}. Поэтому «неравенство при всех x» равносильно одному условию — при x = ${nS(Rr)}.\n`
+      + `Подставляя, получаем ${p === 1 ? "" : p}|a ${MINUS} ${Rstr(R(u - Rr))}| + ${q === 1 ? "" : q}|a ${MINUS} ${Rstr(R(u + k * Rr))}| ≤ ${S} (здесь ${radStr} в точке x = ${nS(Rr)} равен ${nS(rt)}).\n`
+      + `Это сумма двух взвешенных расстояний до точек ${Rstr(R(u - Rr))} и ${Rstr(R(u + k * Rr))} — обычная кусочно-линейная задача, решаемая точно.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "exists" },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => p * Math.abs(a - (u - Rr)) + q * Math.abs(a - (u + k * Rr)), label: "сумма расстояний" },
+        { f: () => S, dash: true, label: `порог ${S}` },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -2, xMax: S + 4, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
 // =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
@@ -10779,6 +10845,7 @@ export const META18 = [
   ]],
   ["Неравенства «при всех x»", [
     ["all-x-fraction", "|(x²+ax+c)/(px²+qx+r)| < M при всех x", t18AllXFraction],
+    ["increasing-all-x", "возрастающая левая часть: «при всех x» сводится к правому концу", t18IncreasingAllX],
     ["all-x-segment", "|x²−px+a+c| ≤ M для всех x из [a−L; a]", t18AllXSegment],
     ["no-sol-segment", "тот же типаж: |…| > M не имеет решений на отрезке", t18NoSolSegment],
   ]],
