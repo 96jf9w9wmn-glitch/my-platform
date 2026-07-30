@@ -216,9 +216,13 @@ mkdir -p "$DIR"
 STAMP=$(date +%F-%H%M)
 
 # 1. База — ежедневно, 14 копий. Дамп маленький (текст), место не съест.
-docker compose -f /opt/precettore-db/docker-compose.yml exec -T db \
-  pg_dump -U postgres -d postgres --clean --if-exists \
-  | gzip > "$DIR/db-$STAMP.sql.gz"
+#    ВАЖНО: под supabase_admin, а не postgres. postgres в self-hosted Supabase
+#    не суперюзер, и снятый им дамп неполон — при восстановлении получаем 200+
+#    ошибок «must be able to SET ROLE supabase_admin / supabase_auth_admin /
+#    supabase_storage_admin». Данные при этом доезжают, но поднять инстанс с
+#    нуля таким бэкапом нельзя. Под supabase_admin — 0 ошибок (проверено).
+docker compose exec -T db pg_dump -U supabase_admin -d postgres --clean --if-exists \
+  < /dev/null | gzip > "$DIR/db-$STAMP.sql.gz"
 find "$DIR" -name 'db-*.sql.gz' -mtime +14 -delete
 
 # 2. Файлы Storage — зеркало, а НЕ ежедневный архив. Полный tar фотографий
@@ -239,13 +243,24 @@ fi
 
 ```bash
 chmod +x /opt/precettore-db/backup.sh
-sudo crontab -e
-# 0 4 * * *  /opt/precettore-db/backup.sh >> /var/log/precettore-backup.log 2>&1
+LINE="0 4 * * * /opt/precettore-db/backup.sh >> /var/log/precettore-backup.log 2>&1"
+{ crontab -l 2>/dev/null | grep -v 'precettore-db/backup.sh' || true; echo "$LINE"; } | crontab -
+crontab -l
 ```
 
-**Бэкап без проверенного восстановления бэкапом не является.** Один раз
-восстановить дамп в пустую тестовую базу и убедиться, что данные на месте —
-обязательный пункт приёмки ([03-acceptance.md](03-acceptance.md)).
+> `|| true` здесь не для красоты: на пустом кроне `crontab -l | grep` возвращает
+> код 1, и при `set -e` строка не дописывается — крон молча остаётся пустым.
+
+**Бэкап без проверенного восстановления бэкапом не является.** Проверка —
+обязательный пункт приёмки ([03-acceptance.md](03-acceptance.md)):
+
+```bash
+cd /opt/precettore-db
+BK=$(ls -1t /var/backups/precettore/db-*.sql.gz | head -1)
+docker compose exec -T db psql -U supabase_admin -d postgres -c "create database restore_test" < /dev/null
+gunzip -c "$BK" | docker compose exec -T db psql -U supabase_admin -d restore_test -q 2>&1 | grep -c "^ERROR"
+# ожидаем 0; затем сверить счётчики и удалить restore_test
+```
 
 Копию бэкапов держать вне этого сервера (объектное хранилище того же
 российского провайдера) — иначе потеря ВМ означает потерю и данных, и бэкапов.
