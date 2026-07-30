@@ -10106,6 +10106,69 @@ export function t18AbsParamStrip() {
   })
 }
 
+// ── #180. {n·x⁴ + m·y² = n·a²; x² + y = |pa − c|} — «ровно четыре решения» ───
+// Замена u = x² ≥ 0 превращает систему в пересечение эллипса n·u² + m·y² = n·a² с прямой
+// u + y = B, где B = |pa − c| ≥ 0. Каждой точке пересечения с u > 0 отвечают ДВА значения x,
+// точке с u = 0 — одно. Значит «ровно четыре решения» ⟺ на прямой ровно две точки с u > 0.
+// Подстановка даёт (n + m)u² − 2mBu + (mB² − na²) = 0; корни считаются точно (Штурм),
+// а критические значения — это нулевой дискриминант ((n+m)a² = mB²) и попадание корня в нуль
+// (mB² = na²). Оба условия квадратичны по a, и их дискриминанты равны 4mc²(n+m) и 4mc²n —
+// поэтому m(n+m) и mn обязаны быть точными квадратами. Это выполняется ровно тогда, когда
+// m = dα², n = dβ² с ПИФАГОРОВОЙ парой α² + β² = γ² (у оригинала m = n = 1, и там √2).
+function build180({ m, n, p, c }) {
+  if (isSq(m * n) === null || isSq(m * (n + m)) === null || p === 0 || c === 0) return null
+  const poly = (a) => {
+    const B = Rabs(Rsub(Rmul(R(p), a), R(c)))
+    return [Rsub(Rmul(R(m), Rmul(B, B)), Rmul(R(n), Rmul(a, a))), Rmul(R(-2 * m), B), R(n + m)]
+  }
+  const solve = (a) => {
+    const P = poly(a)
+    return 2 * countRoots(P, R0, "+inf", false, false) + (Rzero(pEval(P, R0)) ? 1 : 0)
+  }
+  const crit = [R(c, p)]
+  for (const [A2, A1, A0] of [
+    [n + m - m * p * p, 2 * m * p * c, -m * c * c],               // (n+m)a² = mB²  (касание)
+    [m * p * p - n, -2 * m * p * c, m * c * c],                   // mB² = na²      (корень в нуле)
+  ]) {
+    const e = ratRoots([R(A0), R(A1), R(A2)])
+    if (!e.allRational) return null
+    crit.push(...e.roots)
+  }
+  return { set: assembleSet((a) => solve(a) === 4, crit), solve }
+}
+const T180 = []
+for (const [m, n] of [[9, 16], [16, 9], [25, 144], [144, 25], [4, 12], [12, 4], [9, 12], [12, 9]]) {
+  for (const p of [1, 2, 3, 4]) for (const c of [1, 2, 3, 4, 6, 8]) {
+    const x = build180({ m, n, p, c })
+    if (x && tidySet(x.set, 3)) T180.push({ m, n, p, c })
+  }
+}
+export function t18QuarticEllipseFour() {
+  const par = pick(T180), { m, n, p, c } = par
+  const { set, solve } = build180(par)
+  const aRange = spanRange(set)
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:${n === 1 ? "" : n}x⁴ + ${m === 1 ? "" : m}y${SUP[2]} = ${n === 1 ? "" : n}a${SUP[2]}¦x${SUP[2]} + y = |${p === 1 ? "" : p}a ${MINUS} ${c}|⟧\n\nимеет ровно четыре различных решения.`,
+    set,
+    solution: `Обозначим u = x${SUP[2]} ≥ 0 и B = |${p === 1 ? "" : p}a ${MINUS} ${c}| ≥ 0. Система превращается в пересечение эллипса ${n === 1 ? "" : n}u${SUP[2]} + ${m === 1 ? "" : m}y${SUP[2]} = ${n === 1 ? "" : n}a${SUP[2]} с прямой u + y = B.\n`
+      + `Каждой точке пересечения с u > 0 отвечают ДВА значения x = ±√u, а точке с u = 0 — одно. Значит четыре решения — это ровно две точки с положительным u.\n`
+      + `Подставляя y = B ${MINUS} u, получаем ${n + m}u${SUP[2]} ${MINUS} ${2 * m}Bu + ${m === 1 ? "" : m}B${SUP[2]} ${MINUS} ${n === 1 ? "" : n}a${SUP[2]} = 0. Обе точки положительны ⟺ дискриминант положителен и произведение корней ${m === 1 ? "" : m}B${SUP[2]} ${MINUS} ${n === 1 ? "" : n}a${SUP[2]} > 0.\n`
+      + `Нулевой дискриминант равносилен ${n + m}a${SUP[2]} = ${m === 1 ? "" : m}B${SUP[2]}, а обращение корня в нуль — равенству ${m === 1 ? "" : m}B${SUP[2]} = ${n === 1 ? "" : n}a${SUP[2]}; оба условия квадратны по a и решаются точно.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 4 },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => Math.abs(p * a - c), label: "B = |pa − c|" },
+        { f: (a) => Math.abs(a) * Math.sqrt(n / (n + m)), dash: true, label: "порог касания" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: 0, xMax: 8, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
 // =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
@@ -10280,6 +10343,7 @@ export const META18 = [
     ["sys-circle-2lines", "{окружность с центром (a;0); p²x² = q²y²} — ровно четыре решения", t18SysCircleTwoLines],
     ["sys-quartic-circle", "{a(x⁴+1) = y+c−|x|; окружность} — единственное решение", t18SysQuarticCircleOne],
     ["three-var-unique", "{px−qy+z = kx²+my²; −x+y+rz = a} — единственное решение", t18ThreeVarUnique],
+    ["quartic-ellipse-four", "{nx⁴+my² = na²; x²+y = |pa−c|} — ровно четыре решения", t18QuarticEllipseFour],
     ["even-sqrt-cos", "√(a²+x²) = cos kx + a²+pa−c — единственное решение", t18EvenSqrtCosUnique],
     ["sys-symmetric", "{y = f(x); x = f(y)} — ровно одно решение", t18SysSymmetricOne],
   ]],
