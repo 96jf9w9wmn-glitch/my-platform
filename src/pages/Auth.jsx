@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { supabase } from "../supabase"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
@@ -26,6 +26,22 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
   // ПДн даётся активным действием (см. legal/consent.md). Необязательная
   // рассылка спрашивается уже в кабинете, а не здесь.
   const [consent, setConsent] = useState({ terms: false, pd: false, guardian: false })
+
+  // Карточка центрирована по вертикали, а формы разной длины (вход 655px,
+  // регистрация ученика 836px). Без этого при каждом переключении роли или
+  // режима карточка перецентрировалась рывком. Меряем содержимое и задаём
+  // карточке высоту числом — тогда её можно анимировать (height: auto CSS
+  // анимировать не умеет), и она мягко раскрывается из центра.
+  const bodyRef = useRef(null)
+  const [cardHeight, setCardHeight] = useState(null)
+
+  useEffect(() => {
+    const el = bodyRef.current
+    if (!el || typeof ResizeObserver === "undefined") return
+    const ro = new ResizeObserver(() => setCardHeight(el.getBoundingClientRect().height))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   useEffect(() => {
     if (cooldownLeft <= 0) return
@@ -257,9 +273,12 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
     // первое поле уезжали. Верх прибит к постоянному отступу, форма растёт
     // только вниз. dvh, а не vh: на мобильном Safari 100vh врёт на высоту
     // адресной строки.
-    // pt-16 на узком экране: карточка на всю ширину, и при меньшем отступе
-    // фиксированные кнопки «Обзор» и темы легли бы прямо на её шапку.
-    <div className="min-h-dvh flex items-start justify-center px-4 pt-16 pb-6 sm:pt-8 sm:pb-8">
+    // py-16 на узком экране: карточка там во всю ширину, и при меньшем
+    // отступе фиксированные кнопки «Обзор» и темы легли бы на её шапку.
+    // Отступы сверху и снизу равны — иначе центр перекошен.
+    // min-h (а не h) + items-center: когда форма выше экрана, документ растёт
+    // и страница прокручивается, а не обрезает карточку сверху.
+    <div className="min-h-dvh flex items-center justify-center px-4 py-16 sm:py-8">
       {onBack && (
         <button
           onClick={onBack}
@@ -275,7 +294,11 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
       >
         <MorphIcon from="moon" to="sun" size={16} active={dark} hover={false} rotate />
       </button>
-      <div className="glass-modal w-full max-w-md overflow-hidden">
+      <div
+        className="glass-modal w-full max-w-md overflow-hidden transition-[height] duration-300 ease-out motion-reduce:transition-none"
+        style={cardHeight ? { height: cardHeight } : undefined}
+      >
+       <div ref={bodyRef}>
 
         {/* Шапка с логотипом — плавный переход градиента */}
         <div className="relative px-8 pt-6 pb-6 text-white text-center overflow-hidden">
@@ -594,6 +617,7 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
         )}
         </div> {/* p-6 */}
         <LegalLinks className="justify-center pb-5 -mt-1" />
+       </div> {/* измеряемое содержимое */}
       </div>
     </div>
   )
