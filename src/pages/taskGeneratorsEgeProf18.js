@@ -10401,6 +10401,128 @@ export function t18LensLine() {
   })
 }
 
+// ── #137. (A(a)sin x + B(a)cos x)/(C sin x + D cos x) = 1 — ответ ПО x ───────
+// Коэффициенты подобраны так, что числитель минус знаменатель равен λa·sin(x − θ):
+// A = C + λcos θ·a, B = D − λsin θ·a. Значит равенство выполняется ПРИ ЛЮБОМ a из отрезка
+// (в нём есть ненулевые значения) ровно тогда, когда sin(x − θ) = 0, то есть x = θ + πn;
+// знаменатель в этих точках равен ±(C sin θ + D cos θ) ≠ 0.
+// Здесь роль «параметра» при проверке играет сам x, измеренный в единицах π: verify18 гоняет
+// предикат по сетке из 24 периодов, а печатается ответ периодической записью (answerText).
+// При λ = 2 коэффициенты λcos θ и λsin θ выходят красивыми: 2, 1, √2 или √3.
+// Обозначения: null — коэффициент 0 (слагаемого нет), "" — коэффициент 1.
+const ANG137 = [
+  { t: R(0), txt: "0", pl: "0", ca: "2", sa: null },
+  { t: R(1, 2), txt: `${fT("π", "2")}`, pl: "π/2", ca: null, sa: "2" },
+  { t: R(1, 6), txt: `${fT("π", "6")}`, pl: "π/6", ca: "√{3}", sa: "" },
+  { t: R(1, 3), txt: `${fT("π", "3")}`, pl: "π/3", ca: "", sa: "√{3}" },
+  { t: R(1, 4), txt: `${fT("π", "4")}`, pl: "π/4", ca: "√{2}", sa: "√{2}" },
+]
+function build137({ ang, C, D }) {
+  if (ang.ca === null && C === 0) return null                   // знаменатель обязан быть ненулевым
+  if (ang.sa === null && D === 0) return null
+  const solve = (t) => (Rsub(t, ang.t).d === 1n ? 1 : 0)        // t = θ/π + n ⟺ разность целая
+  const pts = []
+  for (let n = -13; n <= 13; n++) pts.push(Radd(ang.t, R(n)))
+  return { set: SET([], pts), solve, aRange: [-12, 12] }
+}
+const T137 = []
+for (const ang of ANG137) for (const C of [1, 2, 3, 4, 6]) for (const D of [-3, -2, -1, 1, 2, 3]) {
+  for (const [L, H] of [[-1, 4], [0, 5], [-2, 2], [1, 6]]) {
+    if (build137({ ang, C, D })) T137.push({ ang, C, D, L, H })
+  }
+}
+export function t18AnswerByX() {
+  const par = pick(T137), { ang, C, D, L, H } = par
+  const { set, solve, aRange } = build137(par)
+  const kA = ang.ca, kB = ang.sa                                 // null → слагаемого нет, "" → 1
+  const num = `${kA === null ? `${C}sin x` : `(${C} + ${kA}a)sin x`} ${kB === null ? term(D, "cos x").trim() : `${MINUS} (${kB}a${term(-D, "")})cos x`}`
+  const den = `${C}sin x${term(D, "cos x")}`
+  const ans = `${ang.pl === "0" ? "" : `${ang.pl} + `}πn, n ∈ ℤ`
+  return item({
+    text: `Найдите все значения x, при каждом из которых равенство\n\n${fT(num, den)} = 1\n\n`
+      + `верно при любом значении параметра a из отрезка [${nS(L)}; ${nS(H)}].`,
+    set,
+    answerText: ans,
+    solution: `Знаменатель в интересующих точках отличен от нуля, поэтому равенство равносильно совпадению числителя со знаменателем, то есть равенству нулю их разности.\n`
+      + `Разность равна ${kA === null ? "" : `${kA}a·sin x`}${kB === null ? "" : ` ${MINUS} ${kB}a·cos x`}, то есть 2a·sin(x ${MINUS} ${ang.txt}).\n`
+      + `Равенство должно выполняться при ЛЮБОМ a из отрезка [${nS(L)}; ${nS(H)}], а на нём есть значения, отличные от нуля. Значит обязано быть sin(x ${MINUS} ${ang.txt}) = 0.\n`
+      + `Отсюда x ${MINUS} ${ang.txt} = πn, то есть x = ${ang.pl === "0" ? "" : `${ang.txt} + `}πn; в этих точках знаменатель равен ±(${C}sin ${ang.txt}${term(D, `cos ${ang.txt}`)}) ≠ 0, так что все они подходят.\n`
+      + `Ответ: ${ans}.`,
+    predicate: { type: "exists" },
+    solve: (t) => solve(t),
+    aRange,
+    unit: "pi",
+    picture: {
+      curves: [{ f: () => 0, dash: true, label: "sin(x − θ) = 0" }],
+      marks: [], hlines: [],
+      xMin: -2, xMax: 2, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// ── #133. x⁴·sin α + P·x²·cos α + Q·sin α = 0 — «ровно два различных решения» ──
+// Замена t = x² ≥ 0. При sin α = 0 остаётся P·t·cos α = 0, то есть t = 0 и ровно ОДИН
+// корень x = 0. При sin α ≠ 0 делим на sin α: t² + P·ctg α·t + Q = 0. Произведение корней
+// равно Q > 0, значит они одного знака, а положительны ⟺ ctg α < 0. Каждому t > 0 отвечают
+// ДВА значения x = ±√t, поэтому ровно два решения бывают только при СЛИЯНИИ корней:
+// P²ctg²α = 4Q и ctg α < 0, то есть ctg α = −2√Q/P.
+// Наборы (P; Q) берутся так, что 2√Q/P равно ctg θ₀ для θ₀ ∈ {π/6; π/4; π/3} — тогда ответ
+// записывается рациональной долей π: α = π − θ₀ + πn. Печатаемые коэффициенты при этом целые.
+// Проверка точная: у рационального u = α/π (mod 1) знак ctg πu определяется сравнением
+// с 1/2, а |ctg πu| сравнивается с ctg πθ₀ по монотонности котангенса на (0; π).
+const ANG133 = { 1: { th: R(1, 4), pl: "3π/4", txt: `${fT("3π", "4")}`, c: "1" },
+  3: { th: R(1, 6), pl: "5π/6", txt: `${fT("5π", "6")}`, c: "√{3}" },
+  "1/3": { th: R(1, 3), pl: "2π/3", txt: `${fT("2π", "3")}`, c: `${fT("1", "√{3}")}` } }
+function build133({ P, Q }) {
+  const ratio = (4 * Q) / (P * P)                                    // (2√Q/P)² = ctg²θ₀
+  const key = ratio === 1 ? 1 : ratio === 3 ? 3 : Math.abs(ratio - 1 / 3) < 1e-12 ? "1/3" : null
+  if (key === null) return null
+  const ang = ANG133[key]
+  const target = Rsub(R1, ang.th)                                    // α/π (mod 1)
+  const solve = (t) => {
+    let u = Rsub(t, R(Math.floor(Rnum(t))))                          // дробная часть α/π
+    if (Rsign(u) < 0) u = Radd(u, R1)
+    if (Rzero(u)) return 1                                           // sin α = 0 ⇒ единственный корень x = 0
+    if (Rcmp(u, R(1, 2)) <= 0) return 0                              // ctg α ≥ 0 ⇒ корни неположительны
+    const c = Rcmp(u, target)
+    return c < 0 ? 0 : c === 0 ? 2 : 4                               // слияние корней даёт ровно два x
+  }
+  const pts = []
+  for (let n = -13; n <= 13; n++) pts.push(Radd(target, R(n)))
+  return { set: SET([], pts), solve, aRange: [-12, 12], ang }
+}
+const T133 = []
+for (const P of [2, 4, 6, 8, 10, 12]) for (const Q of [1, 3, 4, 9, 12, 16, 25, 27, 36, 48]) {
+  if (build133({ P, Q })) T133.push({ P, Q })
+}
+export function t18BiquadTrigTwo() {
+  const par = pick(T133), { P, Q } = par
+  const { set, solve, aRange, ang } = build133(par)
+  const ans = `${ang.pl} + πn, n ∈ ℤ`
+  return item({
+    text: `Найдите все значения α, при каждом из которых уравнение\n\n`
+      + `x⁴sin α + ${P === 1 ? "" : P}x${SUP[2]}cos α + ${Q === 1 ? "" : Q}sin α = 0\n\n`
+      + `имеет ровно два различных решения.`,
+    set,
+    answerText: ans,
+    solution: `Обозначим t = x${SUP[2]} ≥ 0; тогда t${SUP[2]}sin α + ${P === 1 ? "" : P}t·cos α + ${Q === 1 ? "" : Q}sin α = 0.\n`
+      + `Если sin α = 0, то cos α = ±1, остаётся ${P === 1 ? "" : P}t·cos α = 0, то есть t = 0 — ровно один корень x = 0, не подходит.\n`
+      + `Пусть sin α ≠ 0. Разделив на sin α, получаем t${SUP[2]} + ${P === 1 ? "" : P}·ctg α·t + ${Q === 1 ? "" : Q} = 0. Произведение корней равно ${Q} > 0, значит они одного знака, а положительны ⟺ ctg α < 0.\n`
+      + `Каждому корню t > 0 отвечают ДВА значения x = ±√t, поэтому ровно два решения получаются только при слиянии корней: ${P * P === 1 ? "" : P * P}ctg${SUP[2]}α = ${4 * Q} при ctg α < 0.\n`
+      + `Отсюда ctg α = ${MINUS}${ang.c}, то есть α = ${ang.txt} + πn.\n`
+      + `Ответ: ${ans}.`,
+    predicate: { type: "count", n: 2 },
+    solve: (t) => solve(t),
+    aRange,
+    unit: "pi",
+    picture: {
+      curves: [{ f: () => 0, dash: true, label: "ctg α = −2√Q/P" }],
+      marks: [], hlines: [],
+      xMin: -2, xMax: 2, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
 // =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
@@ -10618,6 +10740,8 @@ export const META18 = [
     ["trig-param-range", "(Aa−(mq−Ca)cos t)/(p sin t−q cos t) = m — есть решение на [0; π/2]", t18TrigParamRange],
     ["trig-tangent-seg", "(sin x−a cos x)/(sin x+q cos x) = 1/(a+r) — есть решение на отрезке", t18TrigTangentSeg],
     ["trig-ineq-contains", "множество решений тригонометрического неравенства содержит отрезок", t18TrigIneqContainsSeg],
+    ["answer-by-x", "равенство верно при любом a из отрезка — найти все x", t18AnswerByX],
+    ["biquad-trig", "x⁴sin α + Px²cos α + Q sin α = 0 — ровно два решения", t18BiquadTrigTwo],
   ]],
   ["Оценочные «хотя бы один корень»", [
     ["sum-abs-disk", "p|x−u| + q|x+a| ≤ √(ρ²−y²) − c — существует пара (x; y)", t18SumAbsUnderDisk],
