@@ -385,7 +385,9 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
             </>
           )}
 
-          {mode !== "reset" && mode === "register" && (
+          {/* role !== "parent": у родителя ниже своё поле имени
+              («Имя и фамилия — необязательно»), иначе два поля подряд */}
+          {mode === "register" && role !== "parent" && (
             <div>
               <label className="text-sm text-gray-500 mb-1 block">Имя</label>
               <input

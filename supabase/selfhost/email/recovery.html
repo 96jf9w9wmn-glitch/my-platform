@@ -1,0 +1,53 @@
+<!--
+  Шаблон письма «сброс пароля» для GoTrue. Отдаётся Caddy по адресу
+  https://db.precettore.ru/email/recovery.html, путь указан в
+  GOTRUE_MAILER_TEMPLATES_RECOVERY (см. docker-compose.override.yml).
+
+  Доступные подстановки GoTrue: .ConfirmationURL, .Token, .SiteURL, .Email.
+  Без шаблона письмо уходит стандартным английским текстом «Reset Your Password».
+-->
+<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;background:#f4f5f7;padding:32px 16px;">
+  <div style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);">
+
+    <div style="background:linear-gradient(135deg,#3b82f6,#2563eb);padding:28px 32px;text-align:center;">
+      <div style="color:#ffffff;font-size:19px;font-weight:700;letter-spacing:-.2px;">Precettore</div>
+      <div style="color:rgba(255,255,255,.8);font-size:13px;margin-top:4px;">Сброс пароля</div>
+    </div>
+
+    <div style="padding:32px;">
+      <p style="margin:0 0 16px;color:#111827;font-size:15px;line-height:1.6;">
+        Вы запросили смену пароля для входа в кабинет репетитора.
+        Нажмите кнопку ниже — откроется страница, где можно задать новый пароль.
+      </p>
+
+      <div style="text-align:center;margin:28px 0;">
+        <a href="{{ .ConfirmationURL }}"
+           style="display:inline-block;background:linear-gradient(135deg,#3b82f6,#2563eb);color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:14px 32px;border-radius:999px;">
+          Задать новый пароль
+        </a>
+      </div>
+
+      <p style="margin:0 0 16px;color:#6b7280;font-size:13px;line-height:1.6;">
+        Ссылка действует ограниченное время и работает один раз.
+        Если кнопка не открывается, скопируйте адрес в браузер:
+      </p>
+      <p style="margin:0 0 24px;word-break:break-all;">
+        <a href="{{ .ConfirmationURL }}" style="color:#2563eb;font-size:12px;">{{ .ConfirmationURL }}</a>
+      </p>
+
+      <div style="border-top:1px solid #e5e7eb;padding-top:20px;">
+        <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.6;">
+          Если пароль менять вы не собирались — просто удалите это письмо.
+          Пароль останется прежним, никаких действий не требуется.
+        </p>
+      </div>
+    </div>
+
+    <div style="background:#f9fafb;padding:16px 32px;text-align:center;">
+      <div style="color:#9ca3af;font-size:12px;">
+        Письмо отправлено автоматически, отвечать на него не нужно.
+      </div>
+    </div>
+
+  </div>
+</div>
