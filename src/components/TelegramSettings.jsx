@@ -64,6 +64,31 @@ export default function TelegramSettings() {
     setTimeout(() => setCode(""), 15 * 60 * 1000)
   }
 
+  // Прописать вебхук: без него Telegram не доставляет боту ни одного сообщения.
+  // Делает сервер (api/telegram.js?action=setup) — токен бота лежит в его
+  // переменных окружения и в браузер не попадает.
+  async function setupWebhook() {
+    setError("")
+    setBusy(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch("/api/telegram?action=setup", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session?.access_token || ""}` },
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.detail ? `${data.error}: ${data.detail}` : data.error || "Не удалось настроить вебхук")
+        return
+      }
+      setHealth((h) => ({ ...h, webhook: data.webhook, webhookError: "" }))
+    } catch (e) {
+      setError("Сеть недоступна: " + String(e?.message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function unlink() {
     setBusy(true)
     await supabase.from("tutor_telegram").delete().eq("chat_id", link.chat_id)
@@ -196,6 +221,27 @@ export default function TelegramSettings() {
       {health?.ok && !health.webhookSecret && (
         <div className="text-xs text-amber-600 dark:text-amber-300 bg-amber-500/10 ring-1 ring-inset ring-amber-500/20 rounded-xl px-3 py-2.5 mt-4">
           Не задан <span className="font-mono">TELEGRAM_WEBHOOK_SECRET</span> — бот не будет отвечать на сообщения.
+        </div>
+      )}
+
+      {/* Вебхук — единственная поломка, которую по самому боту не отличить от
+          «просто не привязан»: он молчит и там, и там. Поэтому показываем прямо. */}
+      {health?.ok && health.webhookSecret && !health.webhook && (
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 text-xs text-amber-600 dark:text-amber-300 bg-amber-500/10 ring-1 ring-inset ring-amber-500/20 rounded-xl px-3 py-2.5 mt-4">
+          <span className="flex-1">Telegram ещё не знает адрес бота — он не ответит ни на одно сообщение.</span>
+          <button
+            onClick={setupWebhook}
+            disabled={busy}
+            className="no-press shrink-0 self-start px-3 py-1.5 rounded-full font-medium text-white active:scale-95 transition-transform disabled:opacity-45"
+            style={{ background: "linear-gradient(135deg, #0A84FF 0%, #0060DF 100%)" }}
+          >
+            {busy ? "Настраиваем…" : "Настроить вебхук"}
+          </button>
+        </div>
+      )}
+      {health?.ok && health.webhookError && (
+        <div className="text-xs text-amber-600 dark:text-amber-300 bg-amber-500/10 ring-1 ring-inset ring-amber-500/20 rounded-xl px-3 py-2.5 mt-4">
+          Последняя доставка не удалась: {health.webhookError}
         </div>
       )}
     </div>

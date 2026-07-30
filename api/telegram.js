@@ -29,7 +29,7 @@
 // на них гоняется локальная проверка разделов и уведомлений с мок-базой, без
 // Telegram и без боевых ключей.
 
-import { admin, featureAllowed } from "./plan-gate.js"
+import { admin, featureAllowed, tutorFromRequest } from "./plan-gate.js"
 import { clientIp } from "./generate-hw.js"
 import { isLessonConducted, parsePaymentDate, plural } from "../src/utils.js"
 
@@ -869,10 +869,15 @@ export default async function handler(req, res) {
       res.status(200).json({ ok: false, error: "Telegram не принял токен бота" })
       return
     }
+    // Заодно состояние вебхука: без него бот молчит на любые сообщения, и это
+    // единственная поломка, которую по самому боту не отличить от «не привязан».
+    const hook = await tg("getWebhookInfo", {})
     res.status(200).json({
       ok: true,
       bot: me.result?.username || null,
       webhookSecret: Boolean(process.env.TELEGRAM_WEBHOOK_SECRET),
+      webhook: hook?.result?.url || "",
+      webhookError: hook?.result?.last_error_message || "",
     })
     return
   }
@@ -900,6 +905,51 @@ export default async function handler(req, res) {
     }
     // Всегда 204: ответ не должен подсказывать, что за id существует.
     res.status(204).end()
+    return
+  }
+
+  // Прописать вебхук из кабинета. Иначе это делается руками через curl с
+  // токеном бота в командной строке — лишний повод носить секрет по буферам
+  // обмена. Токен берётся из переменных окружения и наружу не выходит.
+  // Право на действие — вход репетитора с подходящим тарифом.
+  if (req.query?.action === "setup") {
+    if (!token()) {
+      res.status(503).json({ error: "TELEGRAM_BOT_TOKEN не задан на сервере" })
+      return
+    }
+    if (!process.env.TELEGRAM_WEBHOOK_SECRET) {
+      res.status(503).json({ error: "TELEGRAM_WEBHOOK_SECRET не задан на сервере" })
+      return
+    }
+    const tutor = await tutorFromRequest(db, req)
+    if (!tutor) {
+      res.status(401).json({ error: "Нужна авторизация репетитора" })
+      return
+    }
+    const gate = await featureAllowed(db, tutor.id, "telegramBot")
+    if (!gate.ok) {
+      res.status(403).json({ error: "Бот входит в тариф «Про»" })
+      return
+    }
+    // Адрес берём из запроса, а не из настроек: кабинет открыт на том же домене,
+    // на который Telegram и должен стучаться (боевой, а не превью-деплой).
+    const host = req.headers["x-forwarded-host"] || req.headers.host
+    if (!host) {
+      res.status(400).json({ error: "Не удалось определить адрес сервера" })
+      return
+    }
+    const result = await tg("setWebhook", {
+      url: `https://${host}/api/telegram`,
+      secret_token: process.env.TELEGRAM_WEBHOOK_SECRET,
+      allowed_updates: ["message", "callback_query"],
+      drop_pending_updates: true,
+    })
+    if (!result?.ok) {
+      res.status(502).json({ error: "Telegram не принял вебхук", detail: result?.description || "" })
+      return
+    }
+    const hook = await tg("getWebhookInfo", {})
+    res.status(200).json({ ok: true, webhook: hook?.result?.url || "" })
     return
   }
 
