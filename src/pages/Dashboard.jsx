@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react"
 import Icon from "../components/Icon"
-import { supabase } from "../supabase"
 import { isLessonConducted, getInitials } from "../utils"
 
 function useCountUp(target, duration = 700) {
@@ -48,83 +47,6 @@ function timeUntil(dateStr, timeStr) {
   const days = Math.floor(totalHrs / 24)
   const hrs = totalHrs % 24
   return hrs === 0 ? `через ${days} дн` : `через ${days} дн ${hrs} ч`
-}
-
-// Воронка заявок с лендинга: новый → связались → пробный → клиент.
-// Читать leads может только вошедший репетитор (политика в supabase/leads.sql),
-// поэтому блок живёт в кабинете и на лендинге ничего не раскрывает.
-const LEAD_STAGES = [
-  { id: "new", label: "Новые", cls: "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300" },
-  { id: "contacted", label: "Связались", cls: "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300" },
-  { id: "trial", label: "Пробное", cls: "bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300" },
-  { id: "client", label: "Клиент", cls: "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300" },
-]
-
-function LeadsBlock() {
-  const [leads, setLeads] = useState([])
-  const [busy, setBusy] = useState(null)
-
-  useEffect(() => {
-    let alive = true
-    supabase.from("leads").select("*").neq("status", "lost").order("created_at", { ascending: false }).limit(20)
-      // Таблицы может не быть (миграция leads.sql не выполнена) — блок просто не покажется.
-      .then(({ data }) => { if (alive && data) setLeads(data) })
-    return () => { alive = false }
-  }, [])
-
-  async function move(lead, status) {
-    setBusy(lead.id)
-    const { error } = await supabase.from("leads").update({ status }).eq("id", lead.id)
-    setBusy(null)
-    if (error) return
-    setLeads((prev) => (status === "lost" ? prev.filter((l) => l.id !== lead.id)
-      : prev.map((l) => (l.id === lead.id ? { ...l, status } : l))))
-  }
-
-  if (!leads.length) return null
-
-  return (
-    <div className="glass p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div className="text-sm font-medium">Заявки с сайта</div>
-        <span className="text-xs text-gray-400">{leads.filter((l) => l.status === "new").length} новых</span>
-      </div>
-      <div className="flex flex-col gap-2">
-        {leads.map((lead) => {
-          const stage = LEAD_STAGES.find((st) => st.id === lead.status) || LEAD_STAGES[0]
-          const nextStage = LEAD_STAGES[LEAD_STAGES.findIndex((st) => st.id === stage.id) + 1]
-          return (
-            <div key={lead.id} className="glass-sm rounded-2xl px-3 py-2.5 flex items-center gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium truncate">{lead.name}</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                  {lead.contact}{lead.goal ? " · " + lead.goal : ""}
-                </div>
-              </div>
-              <span className={`shrink-0 text-[11px] px-2 py-0.5 rounded-full font-medium ${stage.cls}`}>{stage.label}</span>
-              {nextStage && (
-                <button
-                  onClick={() => move(lead, nextStage.id)}
-                  disabled={busy === lead.id}
-                  className="press-fill shrink-0 text-xs px-2.5 py-1.5 rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 disabled:opacity-50"
-                >
-                  {nextStage.label}
-                </button>
-              )}
-              <button
-                onClick={() => move(lead, "lost")}
-                disabled={busy === lead.id}
-                title="Убрать из воронки"
-                className="shrink-0 text-gray-300 hover:text-red-500 w-6 h-6 flex items-center justify-center"
-              >
-                <Icon name="x" size={14} />
-              </button>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
 }
 
 function Dashboard({ students, setActivePage, onOpenBoard }) {
@@ -233,8 +155,6 @@ function Dashboard({ students, setActivePage, onOpenBoard }) {
         </h1>
         <p className="text-sm text-gray-400 mt-0.5">Добро пожаловать</p>
       </div>
-
-      <LeadsBlock />
 
       {/* Stats row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
