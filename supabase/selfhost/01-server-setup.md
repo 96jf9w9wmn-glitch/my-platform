@@ -41,117 +41,166 @@ sudo ufw status verbose
 
 ---
 
-## 2.2 Стек Supabase
+## 2.2 Зеркало Docker Hub
+
+Docker Hub лимитирует анонимные загрузки по IP и на облачных адресах отдаёт
+`429 Too Many Requests` — стек из десяти образов скачать не удастся. Помогает
+зеркало провайдера (заодно трафик не уходит за пределы РФ):
+
+```bash
+sudo mkdir -p /etc/docker
+echo '{ "registry-mirrors": ["https://dockerhub.timeweb.cloud"] }' | sudo tee /etc/docker/daemon.json
+sudo systemctl restart docker
+docker info | grep -A2 "Registry Mirrors"
+```
+
+---
+
+## 2.3 Стек Supabase
 
 ```bash
 sudo mkdir -p /opt && cd /opt
 git clone --depth 1 https://github.com/supabase/supabase
 mkdir -p /opt/precettore-db
-cp -r supabase/docker/* /opt/precettore-db/
-cp supabase/docker/.env.example /opt/precettore-db/.env
+cp -r /opt/supabase/docker/. /opt/precettore-db/
 cd /opt/precettore-db
+cp .env.example .env
+chmod 600 .env
 ```
 
-Сгенерировать секреты (скрипт кладёт `JWT_SECRET`, ключи и пароли в `.env`):
+Секреты генерирует штатный скрипт — он заполняет `JWT_SECRET`, `ANON_KEY`,
+`SERVICE_ROLE_KEY`, `POSTGRES_PASSWORD`, `DASHBOARD_PASSWORD`, `VAULT_ENC_KEY`,
+`PG_META_CRYPTO_KEY`, `SECRET_KEY_BASE`, `REALTIME_DB_ENC_KEY`:
 
 ```bash
-sh utils/generate-keys.sh
-sh utils/add-new-auth-keys.sh
+sh utils/generate-keys.sh --update-env
 ```
 
-> Если скриптов в вашей версии репозитория нет — секреты генерируются вручную:
-> `openssl rand -base64 48` для каждого из `POSTGRES_PASSWORD`, `JWT_SECRET`,
-> `SECRET_KEY_BASE`, `VAULT_ENC_KEY`, `REALTIME_DB_ENC_KEY`, `PG_META_CRYPTO_KEY`,
-> а `ANON_KEY`/`SERVICE_ROLE_KEY` — JWT, подписанные `JWT_SECRET`
-> (генератор есть в документации Supabase по self-hosting).
+`POOLER_TENANT_ID` он не трогает — задать вручную.
 
-### Что дописать в `.env` руками
+### Что дописать в `.env`
 
 ```ini
-# --- адреса ---
+# Порядок файлов важен: наш override идёт ПОСЛЕДНИМ, см. 2.4
+COMPOSE_FILE=docker-compose.yml:docker-compose.caddy.yml:docker-compose.override.yml
+
 SUPABASE_PUBLIC_URL=https://db.precettore.ru
-API_EXTERNAL_URL=https://db.precettore.ru
+# ВНИМАНИЕ: с суффиксом /auth/v1 — так в актуальном .env.example,
+# эта переменная идёт в GoTrue и как GOTRUE_JWT_ISSUER
+API_EXTERNAL_URL=https://db.precettore.ru/auth/v1
 SITE_URL=https://precettore.ru
 ADDITIONAL_REDIRECT_URLS=https://precettore.ru,http://localhost:5174
+PROXY_DOMAIN=db.precettore.ru
+POOLER_TENANT_ID=precettore
+DASHBOARD_USERNAME=precettore
+STUDIO_DEFAULT_ORGANIZATION=Precettore
+STUDIO_DEFAULT_PROJECT=precettore
 
-# --- панель Studio (наружу НЕ выставляем, см. 2.4) ---
-DASHBOARD_USERNAME=<свой логин>
-DASHBOARD_PASSWORD=<длинный пароль с буквами, не только цифры>
+# Пока SMTP не подключён — иначе регистрация репетитора зависнет
+# в ожидании письма, которое некому отправить
+ENABLE_EMAIL_AUTOCONFIRM=true
 
 # --- почта: без неё не работает сброс пароля репетитора ---
-SMTP_HOST=<smtp вашего российского провайдера>
+SMTP_HOST=smtp.yandex.ru
 SMTP_PORT=465
 SMTP_USER=<ящик>
-SMTP_PASS=<пароль приложения>
+SMTP_PASS=<пароль приложения, не пароль от почты>
 SMTP_SENDER_NAME=Precettore
 SMTP_ADMIN_EMAIL=<ящик>
 ```
 
-⚠️ Проверить **до** запуска: в облачном проекте подтверждение e-mail при
-регистрации репетитора было включено или выключено. Соответственно выставить
-`ENABLE_EMAIL_AUTOCONFIRM` (`true` = не требовать подтверждения). Расхождение
-здесь ломает регистрацию новых репетиторов, и это заметно не сразу.
+⚠️ Когда SMTP появится, сверить `ENABLE_EMAIL_AUTOCONFIRM` с настройкой
+облачного проекта. Расхождение ломает регистрацию новых репетиторов, и это
+заметно не сразу.
 
-Запуск:
+---
+
+## 2.4 Порты: Docker обходит ufw
+
+Docker вставляет свои правила в iptables **раньше** ufw, поэтому опубликованный
+на `0.0.0.0` порт доступен из интернета несмотря на `ufw default deny`. В
+штатном `docker-compose.yml` так публикуются Postgres (5432) и пулер (6543) —
+сервисом `supavisor`, — а также Kong (8000).
+
+Лечится не файрволом, а привязкой к localhost. Создать
+`/opt/precettore-db/docker-compose.override.yml`:
+
+```yaml
+services:
+  supavisor:
+    ports: !override
+      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:6543:6543"
+  kong:
+    ports: !override
+      - "127.0.0.1:8000:8000"
+```
+
+Файл должен идти в `COMPOSE_FILE` **последним**: `docker-compose.caddy.yml`
+сбрасывает порты Kong (`ports: !reset []`), а нам нужен локальный 8000 для
+миграции Storage и отладки с хоста.
+
+Проверка после запуска — наружу не должно смотреть ничего, кроме SSH:
+
+```bash
+ss -tlnp | grep -vE '127.0.0.1|\[::1\]'
+```
+
+---
+
+## 2.5 Запуск и TLS
+
+Caddy не нужно ставить в систему: в репозитории есть готовый оверлей
+`docker-compose.caddy.yml` — он снимает публикацию портов Kong, поднимает Caddy
+на 80/443, сам выпускает и продлевает сертификат Let's Encrypt по `PROXY_DOMAIN`
+и закрывает Studio basic-аутентификацией из `DASHBOARD_USERNAME`/`PASSWORD`.
+API-пути (`/auth/v1/*`, `/rest/v1/*`, `/realtime/v1/*`, `/storage/v1/*`,
+`/functions/v1/*`) идут к Kong без basic-auth, всё остальное — к Studio с ним.
+
+**A-запись `db` должна уже резолвиться до первого запуска Caddy** — неудачные
+попытки выпуска жгут лимит Let's Encrypt. Проверить у авторитетного сервера,
+а не через кеш:
+
+```bash
+dig @ns1.reg.ru db.precettore.ru A +short
+```
 
 ```bash
 cd /opt/precettore-db
 docker compose pull
 docker compose up -d
 docker compose ps        # все сервисы должны быть healthy
+docker compose logs caddy | grep -i "certificate obtained"
+```
+
+### Проверка снаружи
+
+```bash
+ANON=$(ssh precettore-db 'grep "^ANON_KEY=" /opt/precettore-db/.env | cut -d= -f2')
+curl -s -o /dev/null -w "%{http_code}\n" https://db.precettore.ru/storage/v1/bucket \
+  -H "apikey: $ANON" -H "Authorization: Bearer $ANON"       # 200
+curl -s -o /dev/null -w "%{http_code}\n" https://db.precettore.ru/   # 401 — Studio под паролем
+```
+
+> `GET /rest/v1/` отдаёт **403 и это норма**: корневой OpenAPI-эндпоинт в
+> Supabase намеренно разрешён только группе `admin` (см. комментарий в
+> `volumes/api/kong.yml`). Проверять надо запрос к конкретной таблице —
+> на несуществующую придёт 404, что означает «дошло до PostgREST».
+
+## 2.6 Доступ к Studio и Postgres
+
+Studio открывается на `https://db.precettore.ru/` под логином и паролем из
+`.env` (`grep DASHBOARD /opt/precettore-db/.env`). Там же SQL Editor.
+
+К Postgres напрямую — SSH-туннелем, порт снаружи закрыт:
+
+```bash
+ssh -N -L 5432:127.0.0.1:5432 precettore-db
 ```
 
 ---
 
-## 2.3 TLS и обратный прокси
-
-Caddy сам выпускает и продлевает сертификат Let's Encrypt.
-
-```bash
-sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
-sudo apt update && sudo apt install -y caddy
-```
-
-`/etc/caddy/Caddyfile`:
-
-```
-db.precettore.ru {
-	encode gzip
-	reverse_proxy 127.0.0.1:8000
-}
-```
-
-```bash
-sudo systemctl reload caddy
-curl -I https://db.precettore.ru/rest/v1/    # ожидаем 401 — значит Kong отвечает
-```
-
-401 без ключа — правильный ответ: шлюз живой и требует авторизацию.
-
----
-
-## 2.4 Панель Studio — не выставлять наружу
-
-Studio (порт 3000 внутри стека) закрыта только логином из `.env`. Наружу её не
-публикуем; заходим SSH-туннелем с ноутбука:
-
-```bash
-ssh -N -L 8000:127.0.0.1:8000 root@<IP сервера>
-```
-
-и открываем `http://localhost:8000` — там же доступен SQL Editor для миграций.
-
-К самому Postgres из локальных инструментов — тем же приёмом:
-
-```bash
-ssh -N -L 5432:127.0.0.1:5432 root@<IP сервера>
-```
-
----
-
-## 2.5 Бэкапы
+## 2.7 Бэкапы
 
 Снапшот виртуальной машины у провайдера — включить, но его недостаточно:
 снапшот работающей БД не гарантирует консистентность. Нужен `pg_dump` по расписанию.
