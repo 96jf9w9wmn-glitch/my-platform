@@ -3,7 +3,7 @@ import Icon from "../components/Icon"
 import ConfirmModal from "../components/ConfirmModal"
 import OnlinePaySettings from "../components/OnlinePaySettings"
 import { supabase } from "../supabase"
-import { isLessonConducted, getInitials } from "../utils"
+import { isLessonConducted, getInitials, parsePaymentDate } from "../utils"
 
 const TAX_MODES = {
   none: { label: "Без налога", rate: 0 },
@@ -12,13 +12,6 @@ const TAX_MODES = {
 }
 // Подсказки для быстрого добавления при пустом списке расходов.
 const EXPENSE_SUGGESTIONS = ["Онлайн-доска", "Подписка Precettore", "Реклама", "Связь"]
-
-function parsePaymentDate(dateStr) {
-  if (!dateStr) return null
-  const parts = dateStr.split(".")
-  if (parts.length === 3) return new Date(parts[2], parts[1] - 1, parts[0])
-  return new Date(dateStr)
-}
 
 function getWeekRange() {
   const now = new Date()

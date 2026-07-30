@@ -513,6 +513,17 @@ export function parseLocalDate(dateStr) {
   return new Date(y, m - 1, d)
 }
 
+// Дата платежа хранится строкой в том виде, в каком её показывают: "дд.мм.гггг"
+// (toLocaleDateString("ru-RU") при записи в Payment.jsx). ISO-строки тоже
+// встречаются — у платежей из ЮKassa. Разбор нужен и странице «Финансы», и
+// телеграм-боту, поэтому живёт здесь, а не в одной из них.
+export function parsePaymentDate(dateStr) {
+  if (!dateStr) return null
+  const parts = String(dateStr).split(".")
+  if (parts.length === 3) return new Date(parts[2], parts[1] - 1, parts[0])
+  return new Date(dateStr)
+}
+
 export function isLessonConducted(lesson, now = new Date()) {
   if (!lesson.date) return false
   const [y, m, d] = lesson.date.split("-").map(Number)

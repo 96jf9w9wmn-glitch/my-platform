@@ -25,6 +25,7 @@ export const PLANS = [
       onlinePay: false,
       boardHistory: false,
       parentReports: false,
+      telegramBot: false,
       prioritySupport: false,
     },
     // Что показываем в карточке тарифа (коротко, без повтора таблицы ниже)
@@ -46,6 +47,7 @@ export const PLANS = [
       onlinePay: true,
       boardHistory: true,
       parentReports: true,
+      telegramBot: true,
       prioritySupport: false,
     },
     popular: true,
@@ -54,6 +56,7 @@ export const PLANS = [
       "Сборка вариантов ОГЭ/ЕГЭ и PDF",
       "ИИ-генерация ДЗ — 150 в месяц",
       "Онлайн-оплата занятий учениками",
+      "Телеграм-бот: расписание и ДЗ в телефоне",
       "История досок и отчёты родителям",
     ],
   },
@@ -68,6 +71,7 @@ export const PLANS = [
       onlinePay: true,
       boardHistory: true,
       parentReports: true,
+      telegramBot: true,
       prioritySupport: true,
     },
     highlights: [
@@ -100,6 +104,7 @@ export const FEATURE_ROWS = [
   { key: "onlinePay", kind: "bool", label: "Онлайн-оплата занятий учениками" },
   { key: "boardHistory", kind: "bool", label: "История досок занятий" },
   { key: "parentReports", kind: "bool", label: "Отчёты родителям об уроке" },
+  { key: "telegramBot", kind: "bool", label: "Телеграм-бот репетитора" },
   { key: "prioritySupport", kind: "bool", label: "Приоритетная поддержка" },
 ]
 

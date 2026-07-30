@@ -1,0 +1,926 @@
+// Телеграм-бот репетитора: второй вход в тот же кабинет.
+//
+// Бот НЕ хранит своих данных: он читает те же students / homework / lessons, что
+// и сайт, и умеет ровно то, что нужно между занятиями с телефона в руке —
+// посмотреть расписание, увидеть, кто сдал и кто не сдал ДЗ, зачесть работу,
+// проверить долги. Всё остальное остаётся в кабинете.
+//
+// Три вещи, из-за которых файл выглядит именно так:
+//
+//  1. Telegram обращается к нам НАПРЯМУЮ, минуя интерфейс с его ограничениями,
+//     поэтому и тариф, и владение данными проверяются здесь на каждом сообщении.
+//     Доступ к боту входит в «Про» (src/plans.js → features.telegramBot).
+//  2. Ответ должен быть быстрым и всегда 200: на ошибку Telegram присылает тот же
+//     update снова и снова, и репетитор получит пачку одинаковых сообщений.
+//  3. Telegram — внешний сервис за пределами РФ. Поэтому имена учеников по
+//     умолчанию сокращаются до «Имя Ф.», а телефонов и адресов бот не пишет
+//     вовсе (152-ФЗ, минимизация; та же логика, что с DeepSeek в lesson-report.js).
+//
+// Адреса:
+//   POST /api/telegram                 — webhook Telegram (секрет в заголовке)
+//   POST /api/telegram?action=notify   — событие от клиента («ученик сдал ДЗ»)
+//   GET  /api/telegram                 — health-check: настроен ли бот
+//
+// Переменные окружения Vercel: TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET,
+// SUPABASE_SERVICE_ROLE_KEY (обязателен — без него боту нечего читать).
+// Установка вебхука и создание бота — docs/telegram.md.
+//
+// Внутренние функции экспортированы намеренно (как rateLimit в generate-hw.js):
+// на них гоняется локальная проверка разделов и уведомлений с мок-базой, без
+// Telegram и без боевых ключей.
+
+import { admin, featureAllowed } from "./plan-gate.js"
+import { clientIp } from "./generate-hw.js"
+import { isLessonConducted, parsePaymentDate, plural } from "../src/utils.js"
+
+const API = "https://api.telegram.org"
+const APP_URL = process.env.APP_URL || "https://precettore.ru"
+
+// Расписание, дедлайны и «уже проведён» у репетитора московские, а сервер Vercel
+// живёт по UTC. Без пересчёта после 21:00 МСК бот показывал бы вчерашний день.
+const TZ = "Europe/Moscow"
+
+const token = () => process.env.TELEGRAM_BOT_TOKEN || ""
+
+async function tg(method, payload) {
+  const t = token()
+  if (!t) return null
+  try {
+    const r = await fetch(`${API}/bot${t}/${method}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+    return await r.json().catch(() => null)
+  } catch {
+    // Telegram недоступен — это не причина отвечать ему ошибкой и получить ретрай.
+    return null
+  }
+}
+
+// ── Даты по Москве ──────────────────────────────────────────────────────────
+
+// "YYYY-MM-DD" текущего московского дня.
+export function mskToday() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date())
+}
+
+// Момент «сейчас» московскими компонентами, но в локальной зоне процесса —
+// чтобы сравнивать его с уроками, которые isLessonConducted() тоже собирает
+// локальным конструктором из "YYYY-MM-DD" + "HH:MM".
+export function mskNow() {
+  const p = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(new Date()).reduce((a, x) => (a[x.type] = x.value, a), {})
+  return new Date(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute)
+}
+
+const shiftDay = (iso, days) => {
+  const [y, m, d] = iso.split("-").map(Number)
+  const t = new Date(y, m - 1, d + days)
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`
+}
+
+const WEEKDAYS = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"]
+const MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня",
+  "июля", "августа", "сентября", "октября", "ноября", "декабря"]
+
+export function humanDate(iso) {
+  const [y, m, d] = iso.split("-").map(Number)
+  const wd = WEEKDAYS[new Date(y, m - 1, d).getDay()]
+  return `${d} ${MONTHS[m - 1]}, ${wd}`
+}
+
+// Дата без дня недели: для дедлайнов и даты экзамена. Год добавляем, только если
+// он не текущий, — «1 июня 2027» полезно, «27 июля 2026» в июле 2026 шумит.
+export function shortDate(iso) {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return String(iso || "")
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number)
+  const thisYear = Number(mskToday().slice(0, 4))
+  return `${d} ${MONTHS[m - 1]}${y === thisYear ? "" : ` ${y}`}`
+}
+
+// «3 занятия», а не «3 занятий».
+const lessonsWord = (n) => `${n} ${plural(n, "занятие", "занятия", "занятий")}`
+
+// ── Текст ───────────────────────────────────────────────────────────────────
+
+// parse_mode HTML — экранируем всё, что пришло из базы: имя ученика вида
+// «Петя <3» иначе развалит разметку сообщения.
+const esc = (s) => String(s ?? "")
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+
+const money = (n) => `${Math.round(n).toLocaleString("ru-RU")} ₽`
+
+// «Иван Петров» → «Иван П.». Полное имя — только если репетитор сам включил:
+// в Telegram уходит ровно столько, сколько нужно, чтобы узнать ученика.
+export function studentName(name, full) {
+  const clean = String(name || "").trim()
+  // Заглушку сокращать нельзя: «Без имени» превращалось в «Без И.».
+  if (!clean) return "Без имени"
+  if (full) return clean
+  const parts = clean.split(/\s+/)
+  if (parts.length < 2) return clean
+  return `${parts[0]} ${parts[1][0].toUpperCase()}.`
+}
+
+// Сообщения Telegram обрезаются на 4096 символах, и обрезаются молча. Длинные
+// списки режем сами и ЧЕСТНО пишем, сколько осталось за кадром.
+export function joinLimited(lines, max, tailWord = "строк") {
+  if (lines.length <= max) return lines.join("\n")
+  const rest = lines.length - max
+  return [...lines.slice(0, max), `<i>…и ещё ${rest} ${tailWord}</i>`].join("\n")
+}
+
+// ── Клавиатуры ──────────────────────────────────────────────────────────────
+
+const MENU = {
+  inline_keyboard: [
+    [{ text: "📅 Сегодня", callback_data: "today" }, { text: "🗓 Неделя", callback_data: "week" }],
+    [{ text: "📝 Домашки", callback_data: "hw" }, { text: "👥 Ученики", callback_data: "st" }],
+    [{ text: "💰 Деньги", callback_data: "money" }, { text: "⚙️ Настройки", callback_data: "set" }],
+  ],
+}
+
+const backTo = (target = "menu", extra = []) => ({
+  inline_keyboard: [...extra, [{ text: "‹ Меню", callback_data: target }]],
+})
+
+// ── Данные репетитора ───────────────────────────────────────────────────────
+
+// Один поход в базу на весь ответ: у бота обычно спрашивают сводку, а не одну
+// строку, и два-три раздельных запроса на каждое нажатие кнопки — это лишние
+// сотни миллисекунд в чате.
+async function loadStudents(db, tutorId) {
+  const { data } = await db
+    .from("students")
+    .select("id, name, goal, lesson_price, lessons, payments, exam_date, target_score")
+    .eq("tutor_id", tutorId)
+    .order("created_at", { ascending: true })
+  return data || []
+}
+
+async function loadHomework(db, tutorId) {
+  const { data } = await db
+    .from("homework")
+    .select("id, student_id, title, status, deadline, grade, submitted_at, submission_url, created_at")
+    .eq("tutor_id", tutorId)
+    .order("created_at", { ascending: false })
+    .limit(400)
+  return data || []
+}
+
+// Все уроки всех учеников в плоский список за интервал дат.
+export function lessonsBetween(students, fromIso, toIso) {
+  const out = []
+  for (const s of students) {
+    for (const l of s.lessons || []) {
+      if (!l?.date || l.date < fromIso || l.date > toIso) continue
+      out.push({ ...l, student: s })
+    }
+  }
+  return out.sort((a, b) =>
+    a.date.localeCompare(b.date) || String(a.time || "").localeCompare(String(b.time || "")))
+}
+
+function nextLesson(students, fromIso) {
+  const all = lessonsBetween(students, fromIso, shiftDay(fromIso, 60))
+  const now = mskNow()
+  return all.find((l) => !isLessonConducted(l, now)) || null
+}
+
+// Долг ученика считается так же, как на странице «Финансы»: проведённые уроки
+// по цене занятия минус все внесённые платежи.
+export function debtOf(student) {
+  const now = mskNow()
+  const conducted = (student.lessons || []).filter((l) => isLessonConducted(l, now)).length
+  const owed = conducted * (student.lesson_price || 0)
+  const paid = (student.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
+  return owed - paid
+}
+
+const HW_ACTIVE = new Set(["assigned", "revision"])
+
+// ── Разделы ─────────────────────────────────────────────────────────────────
+
+export async function viewToday(db, link) {
+  const students = await loadStudents(db, link.tutor_id)
+  const today = mskToday()
+  const items = lessonsBetween(students, today, today)
+  const now = mskNow()
+
+  if (!items.length) {
+    const next = nextLesson(students, today)
+    return {
+      text: [
+        `<b>${humanDate(today)}</b>`,
+        "",
+        "Занятий нет.",
+        next
+          ? `Ближайшее — ${humanDate(next.date)} в ${esc(next.time || "—")}: ${esc(studentName(next.student.name, link.full_names))}`
+          : "Дальше в расписании тоже пусто.",
+      ].join("\n"),
+      keyboard: backTo(),
+    }
+  }
+
+  const sum = items.reduce((s, l) => s + (l.student.lesson_price || 0), 0)
+  const lines = items.map((l) => {
+    const done = isLessonConducted(l, now)
+    return `${done ? "✅" : "🕐"} <b>${esc(l.time || "—")}</b> · ${esc(studentName(l.student.name, link.full_names))}` +
+      ` · ${l.duration || 60} мин`
+  })
+
+  return {
+    text: [
+      `<b>${humanDate(today)}</b>`,
+      `${lessonsWord(items.length)} · ${money(sum)}`,
+      "",
+      joinLimited(lines, 20, "занятий"),
+    ].join("\n"),
+    keyboard: backTo(),
+  }
+}
+
+export async function viewWeek(db, link) {
+  const students = await loadStudents(db, link.tutor_id)
+  const from = mskToday()
+  const to = shiftDay(from, 6)
+  const items = lessonsBetween(students, from, to)
+
+  if (!items.length) {
+    return { text: "<b>Неделя впереди</b>\n\nЗанятий не запланировано.", keyboard: backTo() }
+  }
+
+  const byDay = new Map()
+  for (const l of items) {
+    if (!byDay.has(l.date)) byDay.set(l.date, [])
+    byDay.get(l.date).push(l)
+  }
+
+  const blocks = [...byDay.entries()].map(([date, day]) => {
+    const rows = day.map((l) =>
+      `  ${esc(l.time || "—")} · ${esc(studentName(l.student.name, link.full_names))}`)
+    return [`<b>${humanDate(date)}</b>`, ...rows].join("\n")
+  })
+
+  const sum = items.reduce((s, l) => s + (l.student.lesson_price || 0), 0)
+  return {
+    text: [
+      `<b>Ближайшие 7 дней</b>`,
+      `${lessonsWord(items.length)} · ${money(sum)}`,
+      "",
+      joinLimited(blocks, 7, "дней"),
+    ].join("\n"),
+    keyboard: backTo(),
+  }
+}
+
+export async function viewHomework(db, link) {
+  const [students, homework] = await Promise.all([
+    loadStudents(db, link.tutor_id),
+    loadHomework(db, link.tutor_id),
+  ])
+  const nameById = new Map(students.map((s) => [String(s.id), s.name]))
+  const who = (id) => esc(studentName(nameById.get(String(id)), link.full_names))
+  const today = mskToday()
+
+  const toCheck = homework.filter((h) => h.status === "submitted")
+  const overdue = homework.filter((h) => HW_ACTIVE.has(h.status) && h.deadline && h.deadline < today)
+  const active = homework.filter((h) => HW_ACTIVE.has(h.status) && (!h.deadline || h.deadline >= today))
+
+  const parts = [`<b>Домашние задания</b>`,
+    `На проверке ${toCheck.length} · просрочено ${overdue.length} · в работе ${active.length}`]
+
+  if (toCheck.length) {
+    parts.push("", "<b>Ждут проверки</b>")
+    parts.push(joinLimited(toCheck.map((h) =>
+      `📩 ${who(h.student_id)} · ${esc(h.title)}` +
+      (h.submission_url ? ` · <a href="${esc(h.submission_url)}">работа</a>` : "")), 10, "работ"))
+  }
+  if (overdue.length) {
+    parts.push("", "<b>Просрочено</b>")
+    parts.push(joinLimited(overdue.map((h) =>
+      `⚠️ ${who(h.student_id)} · ${esc(h.title)} · до ${esc(shortDate(h.deadline))}`), 10, "заданий"))
+  }
+  if (!toCheck.length && !overdue.length) {
+    parts.push("", active.length ? "Всё сдано в срок — проверять пока нечего." : "Активных заданий нет.")
+  }
+
+  // Кнопка «Зачесть» — на каждую сданную работу. Больше пяти в один экран не
+  // ставим: клавиатура из двадцати кнопок в телефоне бесполезна.
+  const rows = toCheck.slice(0, 5).map((h) => ([
+    { text: `✅ Зачесть · ${studentName(nameById.get(String(h.student_id)), link.full_names)}`, callback_data: `hwok:${h.id}` },
+    { text: "↩️ На доработку", callback_data: `hwrev:${h.id}` },
+  ]))
+
+  return { text: parts.join("\n"), keyboard: backTo("menu", rows) }
+}
+
+export async function viewStudents(db, link) {
+  const students = await loadStudents(db, link.tutor_id)
+  if (!students.length) {
+    return { text: "<b>Ученики</b>\n\nПока никого нет — добавьте ученика в кабинете.", keyboard: backTo() }
+  }
+  const homework = await loadHomework(db, link.tutor_id)
+  const hwActive = new Map()
+  for (const h of homework) {
+    if (!HW_ACTIVE.has(h.status) && h.status !== "submitted") continue
+    const k = String(h.student_id)
+    hwActive.set(k, (hwActive.get(k) || 0) + 1)
+  }
+
+  const now = mskNow()
+  const lines = students.map((s) => {
+    const conducted = (s.lessons || []).filter((l) => isLessonConducted(l, now)).length
+    const debt = debtOf(s)
+    const hw = hwActive.get(String(s.id)) || 0
+    const tail = [
+      `${conducted} зан.`,
+      hw ? `${hw} ДЗ` : null,
+      debt > 0 ? `долг ${money(debt)}` : null,
+    ].filter(Boolean).join(" · ")
+    return `• <b>${esc(studentName(s.name, link.full_names))}</b> — ${tail}`
+  })
+
+  // Кнопки-карточки: первые восемь учеников, дальше подробности в кабинете.
+  const rows = []
+  students.slice(0, 8).forEach((s, i) => {
+    const btn = { text: studentName(s.name, link.full_names), callback_data: `stu:${s.id}` }
+    if (i % 2 === 0) rows.push([btn])
+    else rows[rows.length - 1].push(btn)
+  })
+
+  return {
+    text: [`<b>Ученики</b> · ${students.length}`, "", joinLimited(lines, 25, "учеников")].join("\n"),
+    keyboard: backTo("menu", rows),
+  }
+}
+
+export async function viewStudent(db, link, studentId) {
+  const [students, homework] = await Promise.all([
+    loadStudents(db, link.tutor_id),
+    loadHomework(db, link.tutor_id),
+  ])
+  const s = students.find((x) => String(x.id) === String(studentId))
+  // Ученик чужого репетитора сюда не попадёт: выборка идёт по tutor_id владельца
+  // чата, а не по присланному id.
+  if (!s) return { text: "Ученик не найден.", keyboard: backTo("st") }
+
+  const now = mskNow()
+  const lessons = s.lessons || []
+  const conducted = lessons.filter((l) => isLessonConducted(l, now))
+  const upcoming = lessons
+    .filter((l) => !isLessonConducted(l, now) && l.date >= mskToday())
+    .sort((a, b) => a.date.localeCompare(b.date) || String(a.time || "").localeCompare(String(b.time || "")))
+  const mine = homework.filter((h) => String(h.student_id) === String(s.id))
+  const toCheck = mine.filter((h) => h.status === "submitted").length
+  const activeHw = mine.filter((h) => HW_ACTIVE.has(h.status)).length
+  const debt = debtOf(s)
+
+  const lines = [
+    `<b>${esc(studentName(s.name, link.full_names))}</b>`,
+    s.goal ? `Цель: ${esc(s.goal)}` : null,
+    s.exam_date ? `Экзамен: ${esc(shortDate(s.exam_date))}` : null,
+    s.target_score ? `Цель по баллам: ${esc(s.target_score)}` : null,
+    "",
+    `Проведено занятий: ${conducted.length}`,
+    upcoming.length
+      ? `Ближайшее: ${humanDate(upcoming[0].date)} в ${esc(upcoming[0].time || "—")}`
+      : "Ближайшее занятие не назначено",
+    s.lesson_price ? `Цена занятия: ${money(s.lesson_price)}` : null,
+    debt > 0 ? `Долг: <b>${money(debt)}</b>` : debt < 0 ? `Предоплата: ${money(-debt)}` : "Оплачено полностью",
+    "",
+    `ДЗ: ${activeHw} в работе, ${toCheck} на проверке`,
+  ].filter((x) => x !== null)
+
+  return { text: lines.join("\n"), keyboard: backTo("st") }
+}
+
+export async function viewMoney(db, link) {
+  const students = await loadStudents(db, link.tutor_id)
+  const now = mskNow()
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+
+  let monthIncome = 0
+  for (const s of students) {
+    for (const p of s.payments || []) {
+      const d = parsePaymentDate(p.date)
+      if (d && d >= monthStart && d <= now) monthIncome += p.amount || 0
+    }
+  }
+
+  const debtors = students
+    .map((s) => ({ name: s.name, debt: debtOf(s) }))
+    .filter((x) => x.debt > 0)
+    .sort((a, b) => b.debt - a.debt)
+  const debtTotal = debtors.reduce((sum, d) => sum + d.debt, 0)
+
+  // Ожидаемый доход: занятия, которые ещё будут проведены до конца месяца.
+  const monthEndIso = (() => {
+    const e = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    return `${e.getFullYear()}-${String(e.getMonth() + 1).padStart(2, "0")}-${String(e.getDate()).padStart(2, "0")}`
+  })()
+  const ahead = lessonsBetween(students, mskToday(), monthEndIso)
+    .filter((l) => !isLessonConducted(l, now))
+    .reduce((sum, l) => sum + (l.student.lesson_price || 0), 0)
+
+  const parts = [
+    "<b>Деньги</b>",
+    `Получено в этом месяце: <b>${money(monthIncome)}</b>`,
+    `Ещё запланировано до конца месяца: ${money(ahead)}`,
+  ]
+  if (debtors.length) {
+    parts.push("", `<b>Долги</b> · ${money(debtTotal)}`)
+    parts.push(joinLimited(debtors.map((d) =>
+      `• ${esc(studentName(d.name, link.full_names))} — ${money(d.debt)}`), 12, "учеников"))
+  } else {
+    parts.push("", "Долгов нет.")
+  }
+  parts.push("", `<i>Расходы и налог — в кабинете: ${APP_URL}</i>`)
+
+  return { text: parts.join("\n"), keyboard: backTo() }
+}
+
+export function viewSettings(link) {
+  return {
+    text: [
+      "<b>Настройки</b>",
+      "",
+      `Полные имена учеников: <b>${link.full_names ? "показывать" : "сокращать"}</b>`,
+      link.full_names
+        ? "<i>Фамилии уходят в Telegram полностью.</i>"
+        : "<i>Бот пишет «Имя Ф.» — в Telegram уходит меньше персональных данных.</i>",
+      "",
+      `Уведомления: <b>${link.notify ? "включены" : "выключены"}</b>`,
+      "<i>Сданные ДЗ, работы по вариантам и сообщения учеников.</i>",
+    ].join("\n"),
+    keyboard: {
+      inline_keyboard: [
+        [{ text: link.full_names ? "Сокращать имена" : "Показывать полные имена", callback_data: "setname" }],
+        [{ text: link.notify ? "🔕 Выключить уведомления" : "🔔 Включить уведомления", callback_data: "setnotify" }],
+        [{ text: "🚫 Отвязать этот чат", callback_data: "unlink" }],
+        [{ text: "‹ Меню", callback_data: "menu" }],
+      ],
+    },
+  }
+}
+
+const HELP = [
+  "<b>Что умеет бот</b>",
+  "",
+  "📅 <b>Сегодня</b> и 🗓 <b>Неделя</b> — расписание занятий.",
+  "📝 <b>Домашки</b> — кто сдал, кто просрочил; работу можно зачесть или вернуть на доработку.",
+  "👥 <b>Ученики</b> — карточка: занятия, ближайший урок, долг, ДЗ.",
+  "💰 <b>Деньги</b> — получено за месяц, план и долги.",
+  "",
+  "Команды: /menu, /today, /week, /hw, /students, /money, /help",
+  "",
+  `Полный кабинет — ${APP_URL}`,
+].join("\n")
+
+// ── Диспетчер ───────────────────────────────────────────────────────────────
+
+const MENU_TEXT = "<b>Кабинет репетитора</b>\n\nВыберите раздел.";
+
+// Действия над ДЗ. tutor_id в условии обязателен: id задания приходит из
+// callback_data, то есть снаружи, и без этой проверки чужую работу можно было бы
+// зачесть, подставив её id.
+async function setHomeworkStatus(db, tutorId, hwId, status) {
+  const { data, error } = await db
+    .from("homework")
+    .update({ status })
+    .eq("id", hwId)
+    .eq("tutor_id", tutorId)
+    .select("id, title")
+    .maybeSingle()
+  return error || !data ? null : data
+}
+
+export async function route(db, link, action) {
+  if (action === "today") return viewToday(db, link)
+  if (action === "week") return viewWeek(db, link)
+  if (action === "hw") return viewHomework(db, link)
+  if (action === "st") return viewStudents(db, link)
+  if (action === "money") return viewMoney(db, link)
+  if (action === "set") return viewSettings(link)
+  if (action === "help") return { text: HELP, keyboard: backTo() }
+  if (action.startsWith("stu:")) return viewStudent(db, link, action.slice(4))
+  return { text: MENU_TEXT, keyboard: MENU }
+}
+
+const COMMANDS = {
+  "/menu": "menu", "/start": "menu",
+  "/today": "today", "/week": "week",
+  "/hw": "hw", "/students": "st", "/money": "money",
+  "/help": "help", "/settings": "set",
+}
+
+// ── Обработка update ────────────────────────────────────────────────────────
+
+export async function handleUpdate(db, update) {
+  const msg = update.message || update.edited_message
+  const cb = update.callback_query
+  const chat = msg?.chat?.id ?? cb?.message?.chat?.id
+  if (!chat) return
+
+  // Бот личный: в группе он выдавал бы данные учеников всем участникам.
+  const chatType = msg?.chat?.type || cb?.message?.chat?.type
+  if (chatType && chatType !== "private") {
+    await tg("sendMessage", { chat_id: chat, text: "Бот работает только в личном чате." })
+    return
+  }
+
+  const { data: link } = await db
+    .from("tutor_telegram")
+    .select("tutor_id, chat_id, full_names, notify")
+    .eq("chat_id", chat)
+    .maybeSingle()
+
+  // ── Ещё не привязан: единственное, что можно — прислать код ──
+  if (!link) {
+    const text = String(msg?.text || "").trim()
+    const code = text.startsWith("/start") ? text.slice(6).trim() : text
+    if (cb) await tg("answerCallbackQuery", { callback_query_id: cb.id })
+
+    if (!code) {
+      await tg("sendMessage", {
+        chat_id: chat,
+        parse_mode: "HTML",
+        text: [
+          "<b>Precettore</b> — бот репетитора.",
+          "",
+          "Чтобы связать бота с вашим кабинетом:",
+          `1. откройте ${APP_URL} → «Подписка»;`,
+          "2. в блоке «Телеграм-бот» нажмите «Подключить»;",
+          "3. пришлите сюда код привязки.",
+          "",
+          "<i>Бот входит в тариф «Про».</i>",
+        ].join("\n"),
+      })
+      return
+    }
+
+    const { data: tutorId, error } = await db.rpc("telegram_link_claim", {
+      p_code: code,
+      p_chat: chat,
+      p_username: msg?.from?.username || null,
+      p_first_name: msg?.from?.first_name || null,
+    })
+
+    if (error) {
+      // Миграции нет — честно говорим об этом, иначе выглядит как «бот молчит».
+      await tg("sendMessage", {
+        chat_id: chat,
+        text: "Привязка недоступна: на сервере не выполнена миграция telegram_bot.sql.",
+      })
+      return
+    }
+    if (!tutorId) {
+      await tg("sendMessage", {
+        chat_id: chat,
+        text: "Код не подошёл: он одноразовый и живёт 15 минут. Возьмите новый в кабинете.",
+      })
+      return
+    }
+
+    const gate = await featureAllowed(db, tutorId, "telegramBot")
+    if (!gate.ok) {
+      await tg("sendMessage", {
+        chat_id: chat,
+        parse_mode: "HTML",
+        text: `Чат привязан, но бот входит в тариф «Про».\nПодключить — ${APP_URL}`,
+      })
+      return
+    }
+
+    await tg("sendMessage", {
+      chat_id: chat,
+      parse_mode: "HTML",
+      text: `✅ Чат привязан к вашему кабинету.\n\n${HELP}`,
+      reply_markup: MENU,
+    })
+    return
+  }
+
+  // ── Привязан: тариф проверяем на каждом действии ──
+  const gate = await featureAllowed(db, link.tutor_id, "telegramBot")
+  if (!gate.ok) {
+    if (cb) await tg("answerCallbackQuery", { callback_query_id: cb.id, text: "Нужен тариф «Про»" })
+    await tg("sendMessage", {
+      chat_id: chat,
+      parse_mode: "HTML",
+      text: `Бот входит в тариф «Про». Данные никуда не пропали — они в кабинете: ${APP_URL}`,
+    })
+    return
+  }
+
+  db.from("tutor_telegram").update({ last_seen: new Date().toISOString() })
+    .eq("chat_id", chat).then(() => {}, () => {})
+
+  // ── Нажатие кнопки ──
+  if (cb) {
+    const data = String(cb.data || "")
+    const answer = (text) => tg("answerCallbackQuery", { callback_query_id: cb.id, ...(text ? { text } : {}) })
+
+    if (data === "setname" || data === "setnotify") {
+      const patch = data === "setname" ? { full_names: !link.full_names } : { notify: !link.notify }
+      await db.from("tutor_telegram").update(patch).eq("chat_id", chat)
+      const fresh = { ...link, ...patch }
+      const view = viewSettings(fresh)
+      await answer("Готово")
+      await tg("editMessageText", {
+        chat_id: chat, message_id: cb.message.message_id,
+        parse_mode: "HTML", text: view.text, reply_markup: view.keyboard,
+      })
+      return
+    }
+
+    if (data === "unlink") {
+      await db.from("tutor_telegram").delete().eq("chat_id", chat)
+      await answer("Чат отвязан")
+      await tg("sendMessage", {
+        chat_id: chat,
+        text: "Чат отвязан. Чтобы вернуть бота, возьмите новый код в кабинете.",
+      })
+      return
+    }
+
+    if (data.startsWith("hwok:") || data.startsWith("hwrev:")) {
+      const done = data.startsWith("hwok:")
+      const id = data.slice(data.indexOf(":") + 1)
+      const row = await setHomeworkStatus(db, link.tutor_id, id, done ? "done" : "revision")
+      await answer(row ? (done ? "Зачтено" : "Отправлено на доработку") : "Не получилось")
+      const view = await viewHomework(db, link)
+      await tg("editMessageText", {
+        chat_id: chat, message_id: cb.message.message_id,
+        parse_mode: "HTML", text: view.text, reply_markup: view.keyboard,
+        link_preview_options: { is_disabled: true },
+      })
+      return
+    }
+
+    const view = await route(db, link, data)
+    await answer()
+    await tg("editMessageText", {
+      chat_id: chat, message_id: cb.message.message_id,
+      parse_mode: "HTML", text: view.text, reply_markup: view.keyboard,
+      link_preview_options: { is_disabled: true },
+    })
+    return
+  }
+
+  // ── Текст и команды ──
+  const text = String(msg?.text || "").trim()
+  const cmd = text.split(/[\s@]/)[0].toLowerCase()
+  const action = COMMANDS[cmd] || (text ? "menu" : "menu")
+  const view = await route(db, link, action)
+  await tg("sendMessage", {
+    chat_id: chat,
+    parse_mode: "HTML",
+    text: view.text,
+    reply_markup: view.keyboard,
+    link_preview_options: { is_disabled: true },
+  })
+}
+
+// ── Уведомления от клиента ──────────────────────────────────────────────────
+//
+// Сдача ДЗ, работа по варианту и сообщение в чате уходят в базу напрямую из
+// браузера ученика (так работает RLS), поэтому серверу неоткуда узнать о них
+// самому. Клиент сообщает только ТИП и ID события — что произошло, сервер
+// проверяет в базе сам и пишет репетитору. Ответ всегда 204: по нему нельзя
+// понять, существует ли задание и подключён ли у репетитора бот.
+
+const NOTIFY_WINDOW_MS = 60_000
+const NOTIFY_MAX = 40
+const notifyHits = new Map()
+
+function notifyLimited(ip, now = Date.now()) {
+  const fresh = (notifyHits.get(ip) || []).filter((t) => now - t < NOTIFY_WINDOW_MS)
+  notifyHits.set(ip, fresh)
+  if (fresh.length >= NOTIFY_MAX) return true
+  fresh.push(now)
+  if (notifyHits.size > 500) {
+    for (const [k, v] of notifyHits) if (!v.some((t) => now - t < NOTIFY_WINDOW_MS)) notifyHits.delete(k)
+  }
+  return false
+}
+
+// Одно событие = один текст + свой ключ. Ключ строится по фактам из базы, а не
+// по данным запроса, иначе повторную отправку можно было бы устроить вручную.
+export async function buildNotice(db, kind, id) {
+  if (kind === "hw_submitted") {
+    const { data } = await db
+      .from("homework")
+      .select("id, tutor_id, student_id, title, status, grade, test_score, question_count, submission_url")
+      .eq("id", id)
+      .maybeSingle()
+    if (!data) return null
+    // Обычная работа приходит со статусом submitted, а чистый тест ученик
+    // «сдаёт» сразу проверенным (status done, оценка ставится автоматически) —
+    // репетитору интересно и то, и другое.
+    const isTest = data.status === "done" && data.grade != null
+    if (data.status !== "submitted" && !isTest) return null
+    return {
+      tutorId: data.tutor_id,
+      key: `hw:${data.id}:${data.status}`,
+      studentId: data.student_id,
+      title: isTest && data.question_count
+        ? `${data.title} — ${data.test_score ?? "?"} / ${data.question_count}, оценка ${data.grade}`
+        : data.title,
+      icon: isTest ? "🧮" : "📩",
+      what: isTest ? "прошёл тест" : "сдал домашнее задание",
+      url: data.submission_url,
+    }
+  }
+
+  if (kind === "variant_submitted") {
+    const { data } = await db
+      .from("variant_submissions")
+      .select("id, student_id, status, total_score, variant_id, variants(tutor_id, title)")
+      .eq("id", id)
+      .maybeSingle()
+    if (!data) return null
+    return {
+      tutorId: data.variants?.tutor_id,
+      key: `vs:${data.id}:${data.status}`,
+      accountId: data.student_id,
+      title: data.variants?.title || "вариант",
+      icon: "🧾",
+      what: "сдал вариант",
+    }
+  }
+
+  if (kind === "chat") {
+    // Здесь id — это conversation_id, а не id сообщения: вставка сообщения в
+    // Chat.jsx идёт без returning, и id клиенту неизвестен. Сервер берёт
+    // последнее сообщение разговора сам, поэтому подменить автора или текст
+    // через этот вызов нельзя.
+    const { data } = await db
+      .from("chat_messages")
+      .select("id, sender_id, recipient_id, created_at")
+      .eq("conversation_id", id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (!data) return null
+    const to = String(data.recipient_id || "")
+    if (!to.startsWith("t:")) return null       // репетитору ли писали
+    const at = Date.parse(data.created_at || "")
+    // Старое сообщение уведомлением не считается: иначе повторный вызов поднимал
+    // бы переписку недельной давности.
+    if (!at || Date.now() - at > 5 * 60_000) return null
+    // Сообщений в чате бывает много: ключ включает номер десятиминутки, поэтому
+    // подряд идущие сообщения схлопываются сами, без отдельного счётчика.
+    return {
+      tutorId: to.slice(2),
+      key: `chat:${data.sender_id}:${Math.floor(at / 600_000)}`,
+      senderId: String(data.sender_id || ""),
+      icon: "💬",
+      what: "написал в чат",
+    }
+  }
+
+  return null
+}
+
+// Имя ученика для уведомления. У ДЗ есть students.id, у варианта и чата —
+// student_accounts.id, поэтому ищем в обеих таблицах.
+async function noticeName(db, tutorId, notice, full) {
+  const tryStudents = async (id) => {
+    const { data } = await db.from("students").select("name")
+      .eq("id", id).eq("tutor_id", tutorId).maybeSingle()
+    return data?.name || null
+  }
+  const tryAccounts = async (id) => {
+    const { data } = await db.from("student_accounts").select("name").eq("id", id).maybeSingle()
+    return data?.name || null
+  }
+
+  let name = null
+  if (notice.studentId != null) name = await tryStudents(notice.studentId)
+  if (!name && notice.accountId != null) name = await tryAccounts(notice.accountId)
+  if (!name && notice.senderId?.startsWith("s:")) name = await tryAccounts(notice.senderId.slice(2))
+  return studentName(name || "Ученик", full)
+}
+
+export async function handleNotify(db, body) {
+  const kind = String(body?.kind || "")
+  const id = body?.id
+  if (!id) return
+
+  const notice = await buildNotice(db, kind, id)
+  if (!notice?.tutorId) return
+
+  const { data: link } = await db
+    .from("tutor_telegram")
+    .select("tutor_id, chat_id, full_names, notify")
+    .eq("tutor_id", notice.tutorId)
+    .maybeSingle()
+  if (!link || !link.notify) return
+
+  const gate = await featureAllowed(db, notice.tutorId, "telegramBot")
+  if (!gate.ok) return
+
+  // Захват события: если его уже отправляли, второй раз не пишем.
+  const { data: claimed, error } = await db.rpc("telegram_event_claim", {
+    p_key: notice.key,
+    p_tutor: notice.tutorId,
+  })
+  if (error || claimed === false) return
+
+  const name = await noticeName(db, notice.tutorId, notice, link.full_names)
+  const lines = [`${notice.icon} <b>${esc(name)}</b> ${notice.what}`]
+  if (notice.title) lines.push(esc(notice.title))
+  if (notice.url) lines.push(`<a href="${esc(notice.url)}">Посмотреть работу</a>`)
+
+  await tg("sendMessage", {
+    chat_id: link.chat_id,
+    parse_mode: "HTML",
+    text: lines.join("\n"),
+    reply_markup: { inline_keyboard: [[{ text: "📝 Домашки", callback_data: "hw" }]] },
+    link_preview_options: { is_disabled: true },
+  })
+}
+
+// ── Точка входа ─────────────────────────────────────────────────────────────
+
+export default async function handler(req, res) {
+  const db = admin()
+
+  // GET — health-check: настроен ли бот и как он называется. Им пользуется
+  // страница «Подписка», чтобы дать правильную ссылку t.me и не обещать
+  // работающего бота там, где не хватает ключей.
+  if (req.method === "GET") {
+    if (!token()) {
+      res.status(200).json({ ok: false, error: "TELEGRAM_BOT_TOKEN не задан на сервере" })
+      return
+    }
+    if (!db) {
+      res.status(200).json({ ok: false, error: "SUPABASE_SERVICE_ROLE_KEY не задан — боту нечего читать" })
+      return
+    }
+    const me = await tg("getMe", {})
+    if (!me?.ok) {
+      res.status(200).json({ ok: false, error: "Telegram не принял токен бота" })
+      return
+    }
+    res.status(200).json({
+      ok: true,
+      bot: me.result?.username || null,
+      webhookSecret: Boolean(process.env.TELEGRAM_WEBHOOK_SECRET),
+    })
+    return
+  }
+
+  if (req.method !== "POST") {
+    res.status(405).json({ error: "Method not allowed" })
+    return
+  }
+
+  if (!db) {
+    res.status(503).json({ error: "SUPABASE_SERVICE_ROLE_KEY не задан" })
+    return
+  }
+
+  // Уведомление от клиента платформы.
+  if (req.query?.action === "notify") {
+    if (notifyLimited(clientIp(req))) {
+      res.status(429).end()
+      return
+    }
+    try {
+      await handleNotify(db, req.body || {})
+    } catch (e) {
+      console.error("telegram notify failed:", e)
+    }
+    // Всегда 204: ответ не должен подсказывать, что за id существует.
+    res.status(204).end()
+    return
+  }
+
+  // Вебхук Telegram. Секрет обязателен: без него адрес открыт любому, кто его
+  // угадал, и «нажать кнопку за репетитора» стало бы делом одного curl.
+  const secret = process.env.TELEGRAM_WEBHOOK_SECRET
+  if (!secret) {
+    res.status(503).json({ error: "TELEGRAM_WEBHOOK_SECRET не задан" })
+    return
+  }
+  if (req.headers["x-telegram-bot-api-secret-token"] !== secret) {
+    res.status(401).json({ error: "Unauthorized" })
+    return
+  }
+
+  try {
+    await handleUpdate(db, req.body || {})
+  } catch (e) {
+    // Ошибку логируем, но Telegram отвечаем 200: иначе он повторит этот же
+    // update десятки раз, и репетитор получит пачку одинаковых сообщений.
+    console.error("telegram update failed:", e)
+  }
+  res.status(200).json({ ok: true })
+}

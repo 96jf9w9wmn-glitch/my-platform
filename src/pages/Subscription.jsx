@@ -12,6 +12,7 @@ import Icon from "../components/Icon"
 import { supabase } from "../supabase"
 import { useSubscription } from "../subscription"
 import { MarketingToggle } from "../components/ConsentChecks"
+import TelegramSettings from "../components/TelegramSettings"
 import {
   PLANS, PERIODS, FEATURE_ROWS, UNLIMITED,
   effectivePlanId, isActive, formatLimit, formatPrice, priceOf, planById,
@@ -283,6 +284,13 @@ export default function Subscription({ studentsCount = 0, tutorId }) {
           <UsageBar label="Учеников" used={studentsCount} limit={studentsLimit} />
           <UsageBar label="ИИ-генерации ДЗ в этом месяце" used={usage?.ai_homework || 0} limit={aiLimit} />
         </div>
+      </div>
+
+      {/* Телеграм-бот: тот же кабинет в телефоне. Стоит здесь, потому что это
+          единственная страница про аккаунт репетитора, а сам бот — возможность
+          тарифа «Про». */}
+      <div className="mb-4">
+        <TelegramSettings />
       </div>
 
       {/* Период оплаты */}

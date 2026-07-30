@@ -16,6 +16,7 @@ import { MarketingToggle } from "../components/ConsentChecks"
 const Board = lazy(() => import("../components/Board"))
 const Practice = lazy(() => import("./Practice"))
 import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, formatPhone, answersEqual, plural } from "../utils"
+import { notifyTutor } from "../telegramNotify"
 // ЕГЭ (профиль и база) — единый поток части 2 (13–19); ОГЭ — свой (20–25).
 const isEgeType = (t) => t === "ЕГЭ" || t === "ЕГЭ Профиль"
 
@@ -1408,6 +1409,9 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
         body: user.profile?.name + (auto ? " не успел завершить «" : " прошёл тест в «") + hw.title + "»: " + score + " / " + hw.question_count,
       })
     }
+    // Чистый тест проверяется сам и сразу получает оценку — в бот уходит и он,
+    // и смешанная работа: репетитору важно узнать о результате одинаково.
+    notifyTutor("hw_submitted", hwId)
 
     loadHomework()
     const updated = await supabase.from("homework").select("*").eq("id", hwId).single()
@@ -1433,6 +1437,8 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
       title: "Ученик сдал домашнее задание",
       body: user.profile?.name + " сдал «" + hw.title + "»",
     })
+    // То же событие — в телеграм-бот репетитора, если он у него подключён.
+    notifyTutor("hw_submitted", hwId)
 
     loadHomework()
     setSelectedHomework(null)
@@ -1613,6 +1619,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
       title: "Ученик сдал часть 1",
       body: user.profile?.name + " выполнил вариант «" + variant.title + "». Часть 1: " + score + " / " + maxCount,
     })
+    notifyTutor("variant_submitted", variant.submission.id)
 
     setSubmitting(false)
     setSelectedVariant(null)

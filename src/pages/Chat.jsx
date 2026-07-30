@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, Fragment } from "react"
 import { supabase } from "../supabase"
+import { notifyTutor } from "../telegramNotify"
 
 // Один ли это календарный день у двух сообщений
 function isSameDay(a, b) {
@@ -254,6 +255,12 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
         body: preview,
       })
     }
+
+    // Репетитору — ещё и в телеграм-бот, если он подключён. Текст сообщения туда
+    // не уходит: бот пишет только «кто-то ответил в чате», сама переписка
+    // остаётся на платформе. Передаём разговор, а не сообщение: id вставленной
+    // строки клиенту неизвестен, последнее сообщение сервер найдёт сам.
+    if (recipientRole === "t") notifyTutor("chat", convId)
   }
 
   function handleKeyDown(e) {
