@@ -130,6 +130,15 @@ const sturmV = (ch, x) => {
   for (const p of ch) { const s = pSignAt(p, x); if (s === 0) continue; if (prev !== 0 && s !== prev) v++; prev = s }
   return v
 }
+// Тот же счёт, но по УЖЕ построенной цепи Штурма бесквадратной части (её построение —
+// самая дорогая часть; при бисекции полезно посчитать цепь один раз).
+function countWith(sq, ch, lo, hi, incLo, incHi) {
+  if (pDeg(sq) <= 0) return 0
+  let n = sturmV(ch, lo) - sturmV(ch, hi)        // корни на (lo; hi]
+  if (incLo && lo !== "-inf" && Rzero(pEval(sq, lo))) n++
+  if (!incHi && hi !== "+inf" && Rzero(pEval(sq, hi))) n--
+  return n
+}
 // ЧИСЛО РАЗЛИЧНЫХ вещественных корней p на промежутке с указанным включением концов.
 // Точно, без приближений: Штурм даёт число корней на (l; r], концы правим явно.
 function countRoots(p, lo, hi, incLo, incHi) {
@@ -138,11 +147,7 @@ function countRoots(p, lo, hi, incLo, incHi) {
   if (pDeg(p) === 0) return 0
   const sq = pDivExact(p, pGcd(p, pDeriv(p)))   // бесквадратная часть: только различные корни
   if (pDeg(sq) === 0) return 0
-  const ch = sturmChain(sq)
-  let n = sturmV(ch, lo) - sturmV(ch, hi)        // корни на (lo; hi]
-  if (incLo && lo !== "-inf" && Rzero(pEval(sq, lo))) n++
-  if (!incHi && hi !== "+inf" && Rzero(pEval(sq, hi))) n--
-  return n
+  return countWith(sq, sturmChain(sq), lo, hi, incLo, incHi)
 }
 
 // ── множество значений параметра: промежутки + изолированные точки ───────────
@@ -7611,6 +7616,130 @@ export function t18SysSymmetricOne() {
   })
 }
 
+// ── #88. {x²+y²−2c(x+y)sin α+2c²sin²α = m·U−n; x/y+y/x = λm·U+2−λn} ─────────
+// U — это sin α (pow = 1) или sin²α (pow = 2), u₀ = n/m — порог.
+// Первая строка — ОКРУЖНОСТЬ (x − c sin α)² + (y − c sin α)² = m·U − n с центром на прямой
+// y = x; решений нет, пока U < u₀. Вторая (ОДЗ: xy ≠ 0) равносильна x² + y² = g·xy, то есть
+// ПАРЕ ПРЯМЫХ y = kx, где k + 1/k = g = 2 + λ(m·U − n); вещественные k есть ровно при g ≥ 2,
+// то есть при том же условии U ≥ u₀, и произведение угловых коэффициентов k₁k₂ = 1 — значит
+// прямые СИММЕТРИЧНЫ относительно y = x.
+// Центр окружности лежит на оси симметрии, поэтому обе прямые пересекают её ОДИНАКОВОЕ число
+// раз: общее число решений всегда чётно — кроме случая, когда прямые сливаются (g = 2,
+// то есть U = u₀), а окружность одновременно вырождается в точку (c sin α; c sin α), лежащую
+// как раз на y = x. Значит единственное решение бывает ровно при U = u₀.
+// Расстояние от центра до прямой считается БЕЗ извлечения корня: k² + 1 = gk и (k − 1)² = k(g − 2),
+// поэтому d² = c²sin²α·(g − 2)/g, и неравенство d² < R² сводится к λ(c²sin²α − m·U + n) < 2 —
+// это рациональное условие, и наборы берутся только те, где оно выполнено на всём (u₀; 1]
+// (тогда при U > u₀ решений ровно четыре, никаких касаний внутри диапазона нет).
+// Проверка точная: у рационального t = α/π сравнение sin α (или sin²α) с порогом равносильно
+// сравнению t с θ = arcsin √u₀ / π ∈ {1/6; 1/4; 1/3; 1/2} — по монотонности синуса.
+// Порог по U → (θ = arcsin √u₀ / π; как печатается сам sin α).
+// pow = 1 (порог на sin α): допустимы 1/2 и 1; pow = 2 (порог на sin²α): 1/4, 1/2, 3/4 и 1.
+const THETA88 = {
+  1: { "1/2": { th: R(1, 6), sin: "1/2" }, "1": { th: R(1, 2), sin: "1" } },
+  2: {
+    "1/4": { th: R(1, 6), sin: "1/2" }, "1/2": { th: R(1, 4), sin: fT("√{2}", "2") },
+    "3/4": { th: R(1, 3), sin: fT("√{3}", "2") }, "1": { th: R(1, 2), sin: "1" },
+  },
+}
+// Точный остаток t по модулю целого T (T ∈ {1; 2}), результат в [0; T).
+function modInt(t, T) {
+  const d = t.d * BigInt(T)
+  let q = t.n / d
+  if (t.n % d !== 0n && t.n < 0n) q -= 1n
+  return Rsub(t, R(q * BigInt(T)))
+}
+function build88({ c, m, n, lam, pow }) {
+  const u0 = n / m                                            // порог по U
+  const s0 = pow === 1 ? u0 : Math.sqrt(u0)                    // порог по sin α
+  const kk = u0 === 0.25 ? "1/4" : u0 === 0.5 ? "1/2" : u0 === 0.75 ? "3/4" : u0 === 1 ? "1" : null
+  const info = kk && THETA88[pow][kk]
+  if (!info) return null
+  const theta = info.th
+  const A = lam * m, B = 2 - lam * n                           // x/y + y/x = A·U + B
+  if (!Number.isInteger(A) || !Number.isInteger(B) || A === 0 || Math.abs(A) > 12 || Math.abs(B) > 12) return null
+  if (!Number.isInteger(2 * c) || !Number.isInteger(2 * c * c)) return null
+  // d² < R² на всём (u₀; 1]: слева выражение λ(c²s² − m·U + n), выпуклое (pow = 1) или
+  // линейное (pow = 2) — достаточно проверить оба конца диапазона.
+  const gap = (s) => lam * (c * c * s * s - m * (pow === 1 ? s : s * s) + n)
+  if (u0 < 1 && (gap(s0) >= 2 - 1e-12 || gap(1) >= 2 - 1e-12)) return null
+  // начало координат не должно попадать на окружность (иначе ОДЗ xy ≠ 0 срезало бы точки):
+  // 2c²sin²α = m·U − n при U > u₀ не должно иметь решений
+  // (уравнение 2c²sin²α = m·U − n; ищем его корни ЯВНО, а не «почти нулевые» значения:
+  // при попадании начала координат на окружность решений было бы два, а не четыре)
+  const roots = pow === 2
+    ? (m === 2 * c * c ? [] : [n / (m - 2 * c * c)].map(Math.sqrt))     // корень по u = sin²α
+    : (() => {                                                          // 2c²s² − ms + n = 0
+      const D = m * m - 8 * c * c * n
+      if (D < 0) return []
+      return [(m + Math.sqrt(D)) / (4 * c * c), (m - Math.sqrt(D)) / (4 * c * c)]
+    })()
+  if (roots.some((s) => Number.isFinite(s) && s >= s0 - 1e-9 && s <= 1 + 1e-9)) return null
+  const one = R1
+  const solve = (t) => {
+    const u = modInt(t, pow === 1 ? 2 : 1)
+    const hi = Rsub(one, theta)
+    if (Rcmp(u, theta) === 0 || Rcmp(u, hi) === 0) return 1     // U = u₀: точка на слившихся прямых
+    return Rcmp(u, theta) > 0 && Rcmp(u, hi) < 0 ? 4 : 0        // U > u₀ — четыре точки, иначе решений нет
+  }
+  const T = pow === 1 ? 2 : 1
+  const pts = []
+  for (let k = -13; k <= 13; k++) for (const p of [Radd(theta, R(k * T)), Radd(Rsub(one, theta), R(k * T))]) {
+    if (!pts.some((q) => Rcmp(q, p) === 0)) pts.push(p)
+  }
+  return { set: SET([], pts), solve, theta, s0, u0, info }
+}
+// Порог u₀ = 1 (ответ из одной точки π/2) — вырожденная разновидность: её оставляем
+// в таблице лишь несколькими наборами, иначе она вытеснит содержательные пороги.
+const T88 = [], T88DEG = []
+for (const c of [1, 2, 3]) for (const m of [1, 2, 3, 4, 5, 6, 8, 9, 10, 12]) for (const lam of [0.25, 0.5, 0.75, 1, 1.5, 2, 2.5, 3]) {
+  for (const pow of [1, 2]) for (const frac of pow === 1 ? [0.5, 1] : [0.25, 0.5, 0.75, 1]) {
+    const n = m * frac
+    if (!Number.isInteger(n)) continue
+    if (pow === 2 && 2 * c * c === m) continue                 // иначе sin²α сокращается и первая строка беднеет
+    if (!build88({ c, m, n, lam, pow })) continue
+    ;(frac === 1 ? T88DEG : T88).push({ c, m, n, lam, pow })
+  }
+}
+T88.push(...T88DEG.slice(0, 3))
+export function t18SysSinParam() {
+  const par = pick(T88), { c, m, n, lam, pow } = par
+  const { set, solve, u0, info } = build88(par)
+  const U = pow === 1 ? "sin α" : `sin${SUP[2]}α`
+  const A = lam * m, B = 2 - lam * n
+  const circle = `x${SUP[2]} + y${SUP[2]} ${MINUS} ${2 * c === 1 ? "" : 2 * c}(x + y)sin α + ${2 * c * c === 1 ? "" : 2 * c * c}sin${SUP[2]}α = ${m === 1 ? "" : m}${U} ${MINUS} ${n}`
+  const lines = `${fT("x", "y")} + ${fT("y", "x")} = ${A === 1 ? "" : A}${U}${term(B, "")}`
+  // ответ — точки семейства, попавшие в (0; π)
+  const inWindow = set.points.filter((p) => Rsign(p) > 0 && Rcmp(p, R1) < 0).sort(Rcmp)
+  const ans = inWindow.map((p) => valStr(p, "pi")).join("; ")
+  const cs = 2 * c * c === 1 ? "" : 2 * c * c
+  return item({
+    text: `Найдите все значения α из промежутка (0; π), при каждом из которых система\n`
+      + `⟦cases:${circle}¦${lines}⟧\n\nимеет единственное решение.`,
+    set,
+    answerText: ans,
+    solution: `Первая строка — окружность: (x ${MINUS} ${c === 1 ? "" : c}sin α)${SUP[2]} + (y ${MINUS} ${c === 1 ? "" : c}sin α)${SUP[2]} = ${m === 1 ? "" : m}${U} ${MINUS} ${n}. Её центр лежит на прямой y = x, а решения есть только при ${m === 1 ? "" : m}${U} ≥ ${n}, то есть при ${pow === 1 ? "sin α" : `sin${SUP[2]}α`} ≥ ${Rstr(R(n, m))}.\n`
+      + `Вторая строка (ОДЗ: xy ≠ 0) равносильна x${SUP[2]} + y${SUP[2]} = g·xy, где g = ${A === 1 ? "" : A}${U}${term(B, "")}. Подставив y = kx, получаем k${SUP[2]} ${MINUS} gk + 1 = 0: вещественные k существуют ровно при g ≥ 2, а это то же самое условие ${pow === 1 ? "sin α" : `sin${SUP[2]}α`} ≥ ${Rstr(R(n, m))}.\n`
+      + `Корни связаны равенством k₁k₂ = 1, поэтому прямые y = k₁x и y = k₂x СИММЕТРИЧНЫ относительно y = x. Центр окружности лежит на этой оси симметрии, значит каждая из прямых пересекает окружность одинаковое число раз и общее число решений ЧЁТНО.\n`
+      + `Нечётным (а именно единственным) оно может стать только тогда, когда прямые сливаются в одну: g = 2, то есть ${pow === 1 ? "sin α" : `sin${SUP[2]}α`} = ${Rstr(R(n, m))}. При этом радиус обращается в нуль, и окружность вырождается в точку (${c === 1 ? "" : c}sin α; ${c === 1 ? "" : c}sin α), лежащую как раз на прямой y = x, — ровно одно решение.\n`
+      + `При ${pow === 1 ? "sin α" : `sin${SUP[2]}α`} > ${Rstr(R(n, m))} решений четыре: расстояние от центра до прямой равно d${SUP[2]} = ${cs === "" ? "" : `${Rstr(R(c * c))}`}sin${SUP[2]}α·(g ${MINUS} 2)/g (здесь k${SUP[2]} + 1 = gk и (k ${MINUS} 1)${SUP[2]} = k(g ${MINUS} 2)), и оно меньше квадрата радиуса на всём промежутке.\n`
+      + `Осталось решить ${pow === 1 ? "sin α" : `sin${SUP[2]}α`} = ${Rstr(R(n, m))} на (0; π): sin α = ${info.sin} — отсюда α = ${ans}.\n`
+      + `Ответ: ${ans}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (t) => solve(t),
+    aRange: [-12, 12],
+    unit: "pi",
+    picture: {
+      curves: [
+        { f: (t) => (pow === 1 ? Math.sin(Math.PI * t) : Math.sin(Math.PI * t) ** 2), label: pow === 1 ? "sin α" : "sin²α" },
+        { f: () => u0, dash: true, label: `порог ${Rstr(R(n, m))}` },
+      ],
+      marks: [], hlines: [],
+      xMin: -1.5, xMax: 1.5, aMin: -12, aMax: 12,
+    },
+  })
+}
+
 // =============================================================================
 // РАЗДЕЛ K. Наибольшее/наименьшее значение функции (эталон #92, #93, #95, #97)
 // =============================================================================
@@ -8395,6 +8524,239 @@ function item150(par, kind) {
 export function t18EstimateRootPlain() { return item150(pick(T150), "plain") }
 export function t18EstimateRootShift() { return item150(pick(T150), "shift") }
 
+// ── ТОЧНОЕ СРАВНЕНИЕ ИРРАЦИОНАЛЬНЫХ КОНЦОВ: изоляция корней по Штурму ───────
+// Кирпич движка для систем неравенств, где концы множеств — корни РАЗНЫХ квадратных
+// трёхчленов: сравнить их через signLin нельзя (радикалы разные), а бисекция по Штурму
+// сравнивает точно и без ε. Идея: рациональные корни находим явно (ratRoots), а оставшиеся
+// (заведомо иррациональные) изолируем рациональными отрезками — тогда любой рациональный
+// конец отрезка ГАРАНТИРОВАННО не корень, и знаки многочленов между корнями считаются точно.
+const sqFree = (P) => (pDeg(pTrim(P)) <= 0 ? pTrim(P) : pDivExact(pTrim(P), pGcd(pTrim(P), pDeriv(pTrim(P)))))
+// Граница Коши: все корни строго внутри (−B; B).
+function cauchyBound(P) {
+  const lead = pLead(P)
+  let mx = R0
+  for (let i = 0; i < P.length - 1; i++) {
+    const c = Rdiv(P[i], lead), ac = Rsign(c) < 0 ? Rneg(c) : c
+    if (Rcmp(ac, mx) > 0) mx = ac
+  }
+  return Radd(R1, mx)
+}
+// «Расположение корней» многочлена: непересекающиеся отрезки [lo; hi], в каждом ровно один
+// корень, причём КОНЦЫ ЗАВЕДОМО НЕ КОРНИ (середину при делении сдвигаем, если она попала
+// в корень). Именно это даёт право считать знаки в промежутках между отрезками.
+function rootPlaces(P) {
+  const sq = sqFree(P)
+  if (pDeg(sq) <= 0) return []
+  const B = cauchyBound(sq)                                       // все корни строго внутри (−B; B)
+  const ch = sturmChain(sq)
+  const out = []
+  const rec = (l, r, depth) => {
+    const n = countWith(sq, ch, l, r, false, false)               // корни строго внутри (l; r)
+    if (n === 0) return
+    if (n === 1 || depth > 80) { out.push({ lo: l, hi: r }); return }
+    let m = Rdiv(Radd(l, r), R(2))
+    for (let k = 3; Rzero(pEval(sq, m)) && k <= 32; k *= 2) m = Radd(Rdiv(Radd(l, r), R(2)), Rdiv(Rsub(r, l), R(k * 2)))
+    rec(l, m, depth + 1); rec(m, r, depth + 1)
+  }
+  rec(Rneg(B), B, 0)
+  return out
+}
+// Знак многочлена Q в изолированном корне многочлена P (отрезок seg содержит ровно его).
+// Возвращает −1/0/1; 0 — общий корень (тогда сужать бессмысленно).
+function signAtIrrational(Psq, Q, seg) {
+  let lo = seg.lo, hi = seg.hi
+  const Qs = pTrim(Q)
+  if (!Qs.length) return 0
+  const g = pGcd(Psq, Qs)
+  if (pDeg(g) > 0 && countRoots(g, lo, hi, true, true) > 0) return 0
+  const Qsq = sqFree(Qs), chQ = pDeg(Qsq) > 0 ? sturmChain(Qsq) : null
+  const chP = sturmChain(Psq)
+  for (let it = 0; chQ && it < 200; it++) {
+    if (countWith(Qsq, chQ, lo, hi, true, true) === 0) break
+    const m = Rdiv(Radd(lo, hi), R(2))
+    if (countWith(Psq, chP, lo, m, false, true) === 1) hi = m; else lo = m
+  }
+  return Rsign(pEval(Qs, Rdiv(Radd(lo, hi), R(2))))
+}
+// Число решений системы { P(x) ≤ 0; Q(x) ≥ 0 }: точное количество точек, либо INF_SOL,
+// если множество решений содержит целый промежуток.
+const INF_SOL = 99
+function countIneqPair(P, Q) {
+  const Pt = pTrim(P), Qt = pTrim(Q)
+  const alwaysP = !Pt.length, alwaysQ = !Qt.length                 // тождественный нуль подходит под ≤ и ≥
+  if (pDeg(Pt) === 0 && Rsign(Pt[0]) > 0) return 0                 // P — положительная константа
+  if (pDeg(Qt) === 0 && Rsign(Qt[0]) < 0) return 0
+  const okP = (x) => alwaysP || Rsign(pEval(Pt, x)) <= 0
+  const okQ = (x) => alwaysQ || Rsign(pEval(Qt, x)) >= 0
+  const W = alwaysP ? Qt : alwaysQ ? Pt : pMul(sqFree(Pt), sqFree(Qt))
+  const places = pDeg(W) > 0 ? rootPlaces(W) : []
+  // пробные точки в промежутках между корнями: там знаки обоих многочленов постоянны,
+  // поэтому одна точка решает судьбу всего промежутка
+  const tests = []
+  if (!places.length) tests.push(R0)
+  else {
+    tests.push(Rsub(places[0].lo, R1))
+    for (let i = 0; i + 1 < places.length; i++) tests.push(Rdiv(Radd(places[i].hi, places[i + 1].lo), R(2)))
+    tests.push(Radd(places[places.length - 1].hi, R1))
+  }
+  for (const x of tests) if (okP(x) && okQ(x)) return INF_SOL
+  let cnt = 0
+  const Psq = sqFree(Pt), Qsq = sqFree(Qt)
+  for (const pl of places) {
+    const isP = !alwaysP && countRoots(Psq, pl.lo, pl.hi, false, false) === 1
+    const isQ = !alwaysQ && countRoots(Qsq, pl.lo, pl.hi, false, false) === 1
+    if (isP && isQ) { cnt++; continue }                            // общий корень: P = Q = 0
+    if (isP) { const s = signAtIrrational(Psq, Qt, pl); if (s >= 0) cnt++; continue }
+    if (isQ) { const s = signAtIrrational(Qsq, Pt, pl); if (s <= 0) cnt++ }
+  }
+  return cnt
+}
+
+// ── #179. {(a + p)x² + 2ax + a + q ≤ 0; ax² + 2(a + s)x + a + t ≥ 0} ────────
+// «Единственное решение». Оба множества — отрезки или дополнения отрезков с ИРРАЦИОНАЛЬНЫМИ
+// концами, причём радикалы у них разные, поэтому число решений считается через изоляцию
+// корней (countIneqPair): точно, без ε.
+// Конфигурация может меняться только там, где обнуляется дискриминант одного из трёхчленов,
+// где обнуляется старший коэффициент (парабола вырождается в прямую) и где у трёхчленов
+// появляется ОБЩИЙ корень — последнее равносильно нулю результанта
+// Res = (a₂b₀ − a₀b₂)² − (a₂b₁ − a₁b₂)(a₁b₀ − a₀b₁), многочлена по a степени ≤ 4.
+// Наборы берём только те, у которых все корни результанта рациональны.
+function build179({ p, q, s, t }) {
+  const A = [[R(q), R1], [R0, R(2)], [R(p), R1]]                   // коэффициенты по x, каждый — многочлен по a
+  const B = [[R(t), R1], [R(2 * s), R(2)], [R0, R1]]
+  const at = (C, a) => C.map((c) => pEval(c, a))
+  const solve = (a) => countIneqPair(at(A, a), at(B, a))
+  const [a0, a1, a2] = A, [b0, b1, b2] = B
+  const res = pSub(pMul(pSub(pMul(a2, b0), pMul(a0, b2)), pSub(pMul(a2, b0), pMul(a0, b2))),
+    pMul(pSub(pMul(a2, b1), pMul(a1, b2)), pSub(pMul(a1, b0), pMul(a0, b1))))
+  const e = ratRoots(res)
+  if (!e.allRational) return null
+  const crit = [R0, R(-p), ...e.roots]
+  for (const [c2, c1, c0] of [[a2, a1, a0], [b2, b1, b0]]) {       // дискриминант = 0
+    const d = ratRoots(pSub(pMul(c1, c1), pMul([R(4)], pMul(c2, c0))))
+    if (!d.allRational) return null
+    crit.push(...d.roots)
+  }
+  const set = assembleSet((a) => solve(a) === 1, crit)
+  return { set, solve }
+}
+// Наборы (p, q, s, t) отобраны разовым перебором ЭТИМ ЖЕ решателем: ответ круглый
+// (знаменатели ≤ 9, числители ≤ 24) и состоит хотя бы из двух кусков. Сам решатель сверен
+// с независимой ЧИСЛОВОЙ реализацией (множества через дискриминанты и пересечение отрезков)
+// на 10 798 значениях a — расхождений нет. Список зафиксирован литералом: перебор идёт
+// секунды, в импорт модуля его пускать нельзя.
+const T179 = [
+  [-4, -4, 4, -4], [-4, 1, 3, -3], [-4, 2, 4, 2], [-4, 3, 3, -1], [-4, 4, 1, -2], [-4, 4, 3, 4], [-4, 5, 2, -3], [-4, 5, 3, 5],
+  [-3, -2, 3, -2], [-3, -1, 4, -4], [-3, 1, 3, 1], [-3, 2, 2, -2], [-3, 3, 1, -5], [-3, 3, 2, -1], [-3, 4, -1, -4], [-3, 4, 3, 4],
+  [-3, 5, 1, -3], [-3, 5, 4, 2], [-2, -3, 2, -3], [-2, -2, 3, -2], [-2, -1, 3, -1], [-2, 1, 2, -5], [-2, 2, 1, -2], [-2, 2, 3, 2],
+  [-2, 3, 1, -1], [-2, 3, 3, 3], [-2, 4, 2, 4], [-2, 5, 2, -1], [-2, 5, 3, 5], [-1, -5, 2, -5], [-1, -4, 4, -4], [-1, -3, 3, -3],
+  [-1, -2, 3, -2], [-1, -1, 1, -1], [-1, 1, 1, 1], [-1, 1, 3, 1], [-1, 2, 1, -1], [-1, 3, -1, -5], [-1, 3, 1, 3], [-1, 4, -1, -5],
+  [-1, 4, 1, 1], [-1, 4, 3, -3], [-1, 5, 1, 2], [-1, 5, 3, -2], [1, -4, 1, -4], [1, -3, 1, -3], [1, -2, 1, -2], [1, -2, 4, -2],
+  [1, -1, 2, -1], [1, 1, 1, 1], [1, 1, 3, 1], [1, 2, 2, -1], [1, 2, 3, 2], [1, 3, -3, -5], [1, 3, 3, -2], [1, 3, 4, 3],
+  [1, 4, 2, 4], [1, 4, 4, 4], [1, 5, 2, 2], [1, 5, 4, 5], [2, -4, 1, -4], [2, -3, 1, -3], [2, -2, 1, -2], [2, -2, 4, -2],
+  [2, -1, 2, 3], [2, -1, 4, -1], [2, 1, 3, -3], [2, 1, 4, 2], [2, 2, 3, -2], [2, 2, 4, 2], [2, 3, 3, -1], [2, 3, 4, 3],
+  [2, 4, 3, 4], [2, 5, 1, 5], [2, 5, 3, 5], [3, -5, 1, -4], [3, -4, -1, -4], [3, -3, -1, -3], [3, -3, 2, -4], [3, -3, 3, -3],
+  [3, -2, 2, 2], [3, -2, 4, -2], [3, -1, 2, -2], [3, -1, 3, 4], [3, 1, -1, 1], [3, 1, 2, 1], [3, 1, 3, 2], [3, 2, 1, 2],
+  [3, 2, 2, 2], [3, 2, 4, -2], [3, 3, 1, 4], [3, 3, 3, 3], [3, 3, 4, 3], [3, 4, 4, -1], [3, 5, 3, 5], [4, -5, -1, -5],
+  [4, -5, 2, -5], [4, -4, -1, -4], [4, -4, 2, -4], [4, -4, 4, -4], [4, -3, 1, -3], [4, -3, 3, -5], [4, -2, -1, -2], [4, -2, 2, 1],
+  [4, -2, 3, 2], [4, -1, -1, -1], [4, -1, 2, -1], [4, -1, 3, -1], [4, -1, 4, 4], [4, 1, 1, 1], [4, 1, 2, 4], [4, 1, 3, 5],
+  [4, 1, 4, 3], [4, 2, 1, 4], [4, 2, 3, 2], [4, 3, -1, 3], [4, 3, 2, 3], [4, 3, 4, 1], [4, 4, 1, 4], [4, 4, 3, 4],
+  [4, 5, -1, 5], [4, 5, 3, 3], [4, 5, 4, 5],
+].map(([p, q, s, t]) => ({ p, q, s, t }))
+
+export function t18TwoParabolasOne() {
+  const par = pick(T179), { p, q, s, t } = par
+  const { set, solve } = build179(par)
+  const aRange = spanRange(set)
+  const A = `(a${term(p, "")})x${SUP[2]} + 2ax + a${term(q, "")}`
+  const B = `ax${SUP[2]} + 2(a${term(s, "")})x + a${term(t, "")}`
+  return item({
+    text: `${HEAD_SYS} неравенств\n⟦cases:${A} ≤ 0¦${B} ≥ 0⟧\n\nимеет единственное решение.`,
+    set,
+    solution: `Каждое неравенство задаёт по оси x отрезок или дополнение отрезка: у первого ветви направлены вверх при a > ${nS(-p)} и вниз при a < ${nS(-p)}, у второго — вверх при a > 0 и вниз при a < 0.\n`
+      + `Концы этих множеств — корни трёхчленов, и радикалы у первого и второго неравенств РАЗНЫЕ, поэтому сравнивать концы «в лоб» нельзя.\n`
+      + `Единственное решение возникает только в трёх случаях: множество первого неравенства стянулось в точку (нулевой дискриминант), множество второго стянулось в точку, либо два множества соприкоснулись концами — а последнее равносильно наличию ОБЩЕГО корня у трёхчленов, то есть равенству нулю их результанта.\n`
+      + `Все три условия — многочлены по a; их корни и дают критические значения, между которыми конфигурация не меняется, поэтому достаточно проверить по одной точке каждого промежутка.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => (a + p === 0 ? null : (-a - Math.sqrt(Math.max(0, a * a - (a + p) * (a + q)))) / (a + p)), label: "концы первого" },
+        { f: (a) => (a + p === 0 ? null : (-a + Math.sqrt(Math.max(0, a * a - (a + p) * (a + q)))) / (a + p)) },
+        { f: (a) => (a === 0 ? null : (-(a + s) - Math.sqrt(Math.max(0, (a + s) * (a + s) - a * (a + t)))) / a), dash: true, label: "концы второго" },
+        { f: (a) => (a === 0 ? null : (-(a + s) + Math.sqrt(Math.max(0, (a + s) * (a + s) - a * (a + t)))) / a), dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: -8, xMax: 8, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// ── #157. 1 ≤ (a + x² + 2L)/(K√(Px⁴+Qx²) + a + 1 + L²) — «ровно одна точка» ──
+// Здесь L = log_c((a − b)² + t) ≥ 0, а ответ нужен ДВОЙНОЙ: и значения a, и само решение.
+// При a > 0 знаменатель положителен (K√… ≥ 0, a + 1 > 0, L² ≥ 0), поэтому неравенство
+// равносильно K√(Px⁴ + Qx²) ≤ x² − (L − 1)².
+// Оценка: √(Px⁴ + Qx²) ≥ √P·x² при Q ≥ 0, и если K√P > 1, то левая часть больше x² при x ≠ 0 —
+// значит ненулевых решений нет НИКОГДА. Остаётся x = 0, где неравенство превращается
+// в 0 ≤ −(L − 1)², то есть выполняется ровно при L = 1.
+// Поэтому множество решений — одна точка ⟺ (a − b)² + t = c ⟺ a = b ± √(c − t); числа берём
+// так, чтобы c − t было точным квадратом (тогда оба значения a рациональны), а само решение
+// во всех случаях x = 0.
+function build157({ b, d, t, c, K, P }) {
+  if (c - t !== d * d) return null
+  if (K * Math.sqrt(P) < 1.2) return null                      // запас в оценке √(Px⁴+Qx²) ≥ √P·x²
+  if (b - d < 0) return null                                   // отрицательные a в задаче не рассматриваются
+  const roots = [R(b - d), R(b + d)]
+  const solve = (a) => {                                       // число решений: 1 при L = 1, иначе 0
+    const v = Rsub(a, R(b))
+    return Rcmp(Radd(Rmul(v, v), R(t)), R(c)) === 0 ? 1 : 0
+  }
+  return { set: SET([], roots), solve, roots }
+}
+const T157 = []
+for (const [c, t, d] of [[2, 1, 1], [3, 2, 1], [4, 3, 1], [5, 4, 1], [5, 1, 2], [10, 9, 1], [10, 6, 2], [10, 1, 3]]) {
+  for (const b of [d, d + 1, d + 2, d + 3]) for (const K of [2, 3, 5, 10, 20, 30]) {
+    for (const P of [2, 3, 5, 10, 17]) for (const Q of [0, 1, 2, 3, 5, 7]) {
+      if (build157({ b, d, t, c, K, P })) T157.push({ b, d, t, c, K, P, Q })
+    }
+  }
+}
+export function t18IneqOnePointBoth() {
+  const par = pick(T157), { b, d, t, c, K, P, Q } = par
+  const { set, solve, roots } = build157(par)
+  const inner = `a${SUP[2]}${term(-2 * b, "a")}${term(b * b + t, "")}`
+  const num = `a + x${SUP[2]} + 2log⦉${c}⦊(${inner})`
+  const den = `${K === 1 ? "" : K}√{${P === 1 ? "" : P}x⁴${Q === 0 ? "" : ` + ${Q === 1 ? "" : Q}x${SUP[2]}`}} + a + 1 + log⦅2¦${c}⦆(${inner})`
+  const pos = roots.filter((r) => Rsign(r) > 0)
+  const ans = pos.length === 1
+    ? `a = ${Rstr(pos[0])}, x = 0`
+    : `a = ${pos.map(Rstr).join("; a = ")} — в каждом случае x = 0`
+  return item({
+    text: `Найдите все значения a > 0, при каждом из которых множество решений неравенства\n\n`
+      + `1 ≤ ${fT(num, den)}\n\n`
+      + `состоит ровно из одной точки, и укажите это решение.`,
+    set,
+    answerText: ans,
+    solution: `Обозначим L = log⟦b:${c}⟧(${inner}) = log⟦b:${c}⟧((a ${MINUS} ${b})${SUP[2]}${term(t, "")}); при a > 0 знаменатель дроби положителен (${K === 1 ? "" : K}√(…) ≥ 0, a + 1 > 0, L${SUP[2]} ≥ 0), поэтому неравенство равносильно\n`
+      + `${K === 1 ? "" : K}√(${P === 1 ? "" : P}x⁴${Q === 0 ? "" : ` + ${Q === 1 ? "" : Q}x${SUP[2]}`}) + a + 1 + L${SUP[2]} ≤ a + x${SUP[2]} + 2L, то есть ${K === 1 ? "" : K}√(${P === 1 ? "" : P}x⁴${Q === 0 ? "" : ` + ${Q === 1 ? "" : Q}x${SUP[2]}`}) ≤ x${SUP[2]} ${MINUS} (L ${MINUS} 1)${SUP[2]}.\n`
+      + `Оценим левую часть: ${P === 1 ? "" : P}x⁴${Q === 0 ? "" : ` + ${Q === 1 ? "" : Q}x${SUP[2]}`} ≥ ${P === 1 ? "" : P}x⁴, значит она не меньше ${K === 1 ? "" : K}√${P}·x${SUP[2]} > x${SUP[2]} при x ≠ 0. Поэтому ненулевых решений нет ни при каком a.\n`
+      + `Остаётся x = 0: неравенство принимает вид 0 ≤ ${MINUS}(L ${MINUS} 1)${SUP[2]}, а это верно ровно при L = 1.\n`
+      + `L = 1 ⟺ (a ${MINUS} ${b})${SUP[2]}${term(t, "")} = ${c} ⟺ (a ${MINUS} ${b})${SUP[2]} = ${d * d} ⟺ a = ${b - d} или a = ${b + d}${b - d === 0 ? `; значение a = 0 не подходит по условию a > 0` : ""}.\n`
+      + `Ответ: ${ans}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange: [-0.9, Math.max(23, b + d + 6)],
+    picture: {
+      curves: [{ f: () => 0, dash: true, label: "решение x = 0" }],
+      marks: roots.map((r) => ({ x: 0, a: Rnum(r) })),
+      hlines: roots.map(Rnum),
+      xMin: -4, xMax: 4, aMin: -1, aMax: Math.max(23, b + d + 6),
+    },
+  })
+}
+
 // ── #113. (x − pa)/(x + c) + (x − d)/(x − a) = 1 — «ровно один корень» ───────
 // После приведения к общему знаменателю дробные части сокращаются полностью и остаётся
 // квадратное уравнение x² − (pa + d)x + pa² + ac − dc = 0, но с ОДЗ x ≠ −c и x ≠ a.
@@ -9146,6 +9508,74 @@ export function t18CubicOneRootSeg() {
       + `Число корней меняется только в двух случаях: корень уходит через конец отрезка (тогда a = ${Rstr(R(L * L * L + p * L * L + q, L))} или a = ${Rstr(R(Rr * Rr * Rr + p * Rr * Rr + q, Rr))}) либо два корня сливаются — а это нулевой дискриминант кубики, то есть 4a${SUP[3]}${term(p * p, `a${SUP[2]}`)}${term(-18 * p * q, "a")}${term(-(4 * p * p * p * q + 27 * q * q), "")} = 0.\n`
       + `Между соседними критическими значениями число корней постоянно, и остаётся выбрать промежутки, где оно равно единице.\n`
       + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: () => L, dash: true, label: "отрезок" },
+        { f: () => Rr, dash: true },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: L - 3, xMax: Rr + 3, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
+// ── #111. x³ + px² − x·log_c(b − s) + q = 0 — единственный корень на [L; R] ──
+// Тот же типаж, что #110, но параметр спрятан под логарифмом. Подстановка
+// a = log_c(b − s) переводит задачу ровно в предыдущую (a пробегает ВСЮ прямую, когда
+// b пробегает (s; +∞)), а ответ переносится обратно ВОЗРАСТАЮЩЕЙ заменой b = s + cᵃ:
+// порядок концов и включение/исключение при этом сохраняются, −∞ переходит в
+// выколотую границу ОДЗ b = s, а +∞ остаётся +∞.
+// verify18 проверяет МНОЖЕСТВО ПО a (сеткой, тем же решателем, что у #110), а печатается
+// ответ по b — через answerText, как в #105.
+const powR = (c, v) => (v >= 0 ? R(BigInt(c) ** BigInt(v)) : R(1, BigInt(c) ** BigInt(-v)))
+// Печать множества значений b по множеству значений a (все границы по a — целые).
+function bSetString(set, c, s) {
+  const val = (e) => Radd(R(s), powR(c, Number(e.n)))
+  const parts = set.intervals.map((i) => {
+    // −∞ по a — это выколотая граница ОДЗ b = s (левее неё логарифм не определён)
+    const lo = i.lo === "-inf" ? Rstr(R(s)) : Rstr(val(i.lo))
+    const hi = i.hi === "+inf" ? "+∞" : Rstr(val(i.hi))
+    const br1 = i.lo !== "-inf" && i.incLo ? "[" : "("
+    const br2 = i.hi !== "+inf" && i.incHi ? "]" : ")"
+    return { at: i.lo === "-inf" ? -Infinity : Rnum(i.lo), s: `${br1}${lo}; ${hi}${br2}` }
+  })
+  for (const p of set.points) parts.push({ at: Rnum(p), s: `{${Rstr(val(p))}}` })
+  return parts.sort((x, y) => x.at - y.at).map((x) => x.s).join(" ∪ ")
+}
+// Наборы (p, q, L, R) — те же, что у #110, но отобраны так, чтобы ВСЕ границы ответа по a
+// были ЦЕЛЫМИ (иначе b = s + cᵃ иррационально) и небольшими по модулю (иначе cᵃ огромно).
+// Список получен разовым перебором p ∈ [−6; 6], q ∈ [−12; 12], −4 ≤ L < R ≤ 4 тем же
+// build110 и зафиксирован литералом — импорт модуля должен оставаться мгновенным.
+const T111 = [
+  // [p, q, L, R, основание] — основание 3 берём только там, где границы по a не больше 3
+  [-5, 9, -1, 1, 2], [-3, 4, -1, 1, 2], [-3, 4, -1, 1, 3], [-3, 4, -1, 4, 2], [-3, 4, 1, 4, 2],
+  [-1, -3, -1, 1, 2], [0, -2, -2, 1, 2], [0, -2, -2, 2, 2], [0, -2, -1, 1, 2], [0, -2, -1, 1, 3],
+  [0, 2, -2, 2, 2], [0, 2, -1, 1, 2], [0, 2, -1, 1, 3], [0, 2, -1, 2, 2], [1, 3, -1, 1, 2],
+  [3, -4, -4, -1, 2], [3, -4, -4, 1, 2], [3, -4, -1, 1, 2], [3, -4, -1, 1, 3], [5, -9, -1, 1, 2],
+].map(([p, q, L, R, c]) => ({ p, q, L, R, c }))
+
+export function t18CubicOneRootLog() {
+  const par = pick(T111), { p, q, L, R: Rr, c } = par
+  const s = pick([1, 2, 3])
+  const { set, solve } = build110(par)
+  const aRange = spanRange(set)
+  const lg = `log${SUB[c]}(b ${MINUS} ${s})`
+  const ans = bSetString(set, c, s)
+  return item({
+    text: `Найдите все значения b, при каждом из которых уравнение\n\n`
+      + `x${SUP[3]}${term(p, `x${SUP[2]}`)} ${MINUS} x·${lg}${term(q, "")} = 0\n\n`
+      + `имеет единственный корень на отрезке [${nS(L)}; ${nS(Rr)}].`,
+    set,
+    answerText: ans,
+    solution: `ОДЗ: b ${MINUS} ${s} > 0, то есть b > ${s}. Обозначим a = ${lg}; когда b пробегает (${s}; +∞), значение a пробегает ВСЮ числовую прямую, причём замена b = ${s} + ${c}${"ᵃ"} возрастающая.\n`
+      + `Уравнение принимает вид x${SUP[3]}${term(p, `x${SUP[2]}`)} ${MINUS} ax${term(q, "")} = 0. При x = 0 оно даёт ${nS(q)} = 0 — неверно, поэтому x = 0 корнем не бывает и параметр выражается: a = ${fT(`x${SUP[3]}${term(p, `x${SUP[2]}`)}${term(q, "")}`, "x")}.\n`
+      + `Число корней меняется только тогда, когда корень уходит через конец отрезка (a = ${Rstr(R(L * L * L + p * L * L + q, L))} или a = ${Rstr(R(Rr * Rr * Rr + p * Rr * Rr + q, Rr))}) либо два корня сливаются (нулевой дискриминант кубики).\n`
+      + `Единственный корень на [${nS(L)}; ${nS(Rr)}] получается при a ∈ ${setToString(set)}.\n`
+      + `Остаётся вернуться к b по формуле b = ${s} + ${c}${"ᵃ"} (функция возрастающая, поэтому концы переходят в концы, а строгость сохраняется).\n`
+      + `Ответ: ${ans}.`,
     predicate: { type: "count", n: 1 },
     solve: (a) => solve(a),
     aRange,
@@ -10718,6 +11148,7 @@ export const META18 = [
     ["sys-circle-strip", "{(x+k₁a+m₁)(x+k₂a+m₂)<0; x²+a²=c²} — хотя бы одно решение", t18SysCircleStrip],
     ["sys-triple-sqrt", "{a(x−1)≥4; 2√(x−c)≥a; kx<a+d} — хотя бы одно решение", t18SysTripleSqrt],
     ["wedge-parabola-one", "{(a+px+c)(a−qx+c) ≤ 0; a+rx ≥ x²} — единственное решение", t18WedgeParabolaOne],
+    ["two-parabolas-one", "{(a+p)x²+2ax+a+q ≤ 0; ax²+2(a+s)x+a+t ≥ 0} — единственное решение", t18TwoParabolasOne],
     ["abs-param-strip", "{|x|+|a| ≤ c; x²+px < ka+d} — есть решение на [L; 0]", t18AbsParamStrip],
     ["lens-line", "{|2x²+y²−w| + y²+py = 0; y = mx+a} — два или три решения", t18LensLine],
     ["product-ineq-seg", "(k|x|−a−c)(x²−px−q−a) ≤ 0 — есть решение на [−L; L]", t18ProductIneqSeg],
@@ -10832,6 +11263,7 @@ export const META18 = [
     ["pencil-vert-parabola", "{пучок окружностей; вертикаль и парабола} — ровно четыре решения", t18PencilVertParabola],
     ["even-sqrt-cos", "√(a²+x²) = cos kx + a²+pa−c — единственное решение", t18EvenSqrtCosUnique],
     ["sys-symmetric", "{y = f(x); x = f(y)} — ровно одно решение", t18SysSymmetricOne],
+    ["sys-sin-param", "{окружность с центром на y = x; x/y+y/x = g(sin α)} — единственное решение", t18SysSinParam],
   ]],
   ["Наибольшее/наименьшее значение функции", [
     ["max-abs-square", "наибольшее значение |x−a| − kx² не меньше C", t18MaxAbsMinusSquare],
@@ -10862,6 +11294,7 @@ export const META18 = [
   ["Дроби и замены (остаток раздела M)", [
     ["two-fractions-one", "(x−pa)/(x+c) + (x−d)/(x−a) = 1 — ровно один корень", t18TwoFractionsOne],
     ["cubic-one-root-seg", "x³+px²−ax+q = 0 — единственный корень на отрезке", t18CubicOneRootSeg],
+    ["cubic-one-root-log", "тот же типаж с параметром под логарифмом: x³+px²−x·log_c(b−s)+q = 0", t18CubicOneRootLog],
     ["smallest-natural-gap", "наименьшее натуральное a: расстояние между крайними корнями ≥ d", t18SmallestNaturalGap],
     ["range-contains-seg", "множество значений (A+Bt)/(t²+m²) содержит отрезок [0; h]", t18RangeContainsSeg],
     ["triangle-area", "галочка и горизонталь ограничивают треугольник площади ≤ S", t18TriangleArea],
@@ -10877,6 +11310,7 @@ export const META18 = [
     ["sum-abs-disk", "p|x−u| + q|x+a| ≤ √(ρ²−y²) − c — существует пара (x; y)", t18SumAbsUnderDisk],
     ["estimate-root", "a²−pa+k√(x²+β²) = u|x−va| − w|x| — хотя бы один корень", t18EstimateRootPlain],
     ["estimate-root-shift", "тот же приём в сдвинутой записи (модуль слева)", t18EstimateRootShift],
+    ["ineq-one-point-both", "1 ≤ (a+x²+2L)/(K√(Px⁴+Qx²)+a+1+L²) — одна точка; ответ и по a, и по x", t18IneqOnePointBoth],
   ]],
 ]
 

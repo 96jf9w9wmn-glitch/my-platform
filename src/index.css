@@ -602,6 +602,19 @@ body::before {
   scrollbar-gutter: stable;
 }
 
+/* Полноэкранные оверлеи (доска, история досок, модалки, splash у Suspense)
+   позиционируются `fixed inset-0`, а это вьюпорт БЕЗ зарезервированного места
+   под полосу прокрутки. Из-за `scrollbar-gutter: stable` на html оверлей
+   не доходил до правого края и справа оставалась вертикальная полоса фона
+   html шириной с полосу прокрутки (~15px) — её и видно на доске.
+   Пока открыт любой такой оверлей, резерв не нужен: документ под ним всё равно
+   не должен скроллиться. На macOS/iOS с overlay-полосой правило ничего
+   не меняет (там резерв и так нулевой). */
+html:has(.fixed.inset-0) {
+  scrollbar-gutter: auto;
+  overflow: hidden;
+}
+
 /* Slide up — for bottom sheets on mobile */
 @keyframes slide-up {
   from { opacity: 0; transform: translateY(20px); }
