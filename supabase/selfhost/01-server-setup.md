@@ -101,13 +101,49 @@ STUDIO_DEFAULT_PROJECT=precettore
 ENABLE_EMAIL_AUTOCONFIRM=true
 
 # --- почта: без неё не работает сброс пароля репетитора ---
-SMTP_HOST=smtp.yandex.ru
+# inbox.ru / list.ru / bk.ru обслуживаются тем же сервером, что mail.ru
+SMTP_HOST=smtp.mail.ru
 SMTP_PORT=465
-SMTP_USER=<ящик>
-SMTP_PASS=<пароль приложения, не пароль от почты>
+SMTP_USER=precettore@inbox.ru
+SMTP_PASS=<пароль для внешних приложений, НЕ пароль от почты>
 SMTP_SENDER_NAME=Precettore
-SMTP_ADMIN_EMAIL=<ящик>
+SMTP_ADMIN_EMAIL=precettore@inbox.ru
 ```
+
+### Русские письма
+
+Базовый compose не задаёт ни темы, ни шаблоны — по умолчанию GoTrue шлёт
+английское «Reset Your Password». Дописать в `docker-compose.override.yml`:
+
+```yaml
+  auth:
+    environment:
+      GOTRUE_MAILER_SUBJECTS_RECOVERY: "Precettore — сброс пароля"
+      GOTRUE_MAILER_SUBJECTS_CONFIRMATION: "Precettore — подтверждение адреса"
+      GOTRUE_MAILER_SUBJECTS_INVITE: "Precettore — приглашение"
+      GOTRUE_MAILER_SUBJECTS_EMAIL_CHANGE: "Precettore — смена адреса"
+      GOTRUE_MAILER_TEMPLATES_RECOVERY: "https://db.precettore.ru/email/recovery.html"
+```
+
+Шаблон GoTrue умеет брать **только по HTTP-адресу**, а весь домен, кроме
+API-путей, закрыт basic-аутентификацией панели Studio — оттуда GoTrue файл не
+скачает. Поэтому в `volumes/proxy/caddy/Caddyfile` добавлен отдельный маршрут
+**до** общего `handle`:
+
+```
+    handle_path /email/* {
+        root * /etc/caddy/email
+        file_server
+    }
+```
+
+Сам шаблон — [email/recovery.html](email/recovery.html), кладётся в
+`volumes/proxy/caddy/email/`. Внутри только вёрстка, ничего приватного.
+Подстановки GoTrue: `{{ .ConfirmationURL }}`, `{{ .Token }}`, `{{ .SiteURL }}`,
+`{{ .Email }}`.
+
+⚠️ Caddy **не перечитывает** смонтированный Caddyfile сам — после правки нужен
+`docker compose restart caddy`, иначе маршрут молча отдаёт 401 от Studio.
 
 ⚠️ Когда SMTP появится, сверить `ENABLE_EMAIL_AUTOCONFIRM` с настройкой
 облачного проекта. Расхождение ломает регистрацию новых репетиторов, и это
