@@ -15,6 +15,29 @@
 **с нового сервера** — там уже есть Postgres нужной версии внутри стека, и
 проблемы «pg_dump 14 не читает базу 17» не возникает.
 
+## Три грабли, на которые наступили (учтены в скриптах)
+
+**1. Supabase Cloud отдаёт direct connection только по IPv6.** Выделенный IPv4 —
+платный add-on. У хоста Timeweb IPv6 есть, но у контейнеров Docker по умолчанию
+нет: изнутри стека получаем `Network is unreachable`. Поэтому `pg_dump` идёт
+через `docker run --rm --network host <образ базы>`, а не `docker compose exec db`.
+Покупать IPv4 add-on не нужно — сначала проверьте IPv6 с сервера:
+
+```bash
+curl -6 -s -o /dev/null -w '%{http_code}\n' https://api64.ipify.org
+```
+
+**2. `CREATE SCHEMA public;` в дампе.** В свежей базе Supabase схема уже есть
+вместе с грантами для `anon`/`authenticated`/`service_role`. Без замены на
+`IF NOT EXISTS` вся транзакция откатывается на первой строке.
+
+**3. `ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin`.** В self-hosted Supabase
+роль `postgres` **не суперюзер** — суперюзер только `supabase_admin`, поэтому
+менять его дефолтные привилегии postgres не может. Заливать под `supabase_admin`
+нельзя: он стал бы владельцем `SECURITY DEFINER` функций (`student_login` и
+остальных), и они исполнялись бы с правами суперюзера. Эти 12 строк
+отфильтрованы — базовый стек настраивает такие привилегии сам.
+
 ---
 
 ## 3.1 Подготовка

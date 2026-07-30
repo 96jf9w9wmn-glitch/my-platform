@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
-# Снять дамп с облачного Supabase. Запускать НА НОВОМ СЕРВЕРЕ из /opt/precettore-db —
-# pg_dump берётся из контейнера db, поэтому его версия совпадает с версией базы.
+# Снять дамп с облачного Supabase. Запускать НА НОВОМ СЕРВЕРЕ из /opt/precettore-db.
 #
 #   bash scripts/dump-cloud.sh
 #
 # Требует /opt/precettore-db/migrate.env с CLOUD_DB_URL (прямое подключение, порт 5432).
+#
+# Почему `docker run --network host`, а не `docker compose exec db`:
+# Supabase Cloud отдаёт для direct connection ТОЛЬКО IPv6 (IPv4 у них платный
+# add-on), а контейнеры Docker по умолчанию без IPv6 — изнутри стека получаем
+# «Network is unreachable». Сеть хоста IPv6 имеет, поэтому pg_dump запускаем в
+# ней. Образ берём тот же, что у нашей базы, чтобы версии pg_dump и сервера
+# совпадали.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -20,14 +26,17 @@ case "$CLOUD_DB_URL" in
   *:6543/*) echo "CLOUD_DB_URL указывает на пулер (6543). Нужно прямое подключение, порт 5432."; exit 1 ;;
 esac
 
+PG_IMAGE=$(docker inspect --format '{{.Config.Image}}' supabase-db 2>/dev/null || echo "")
+[ -n "$PG_IMAGE" ] || { echo "Контейнер supabase-db не найден — сначала поднимите стек"; exit 1; }
+echo "pg_dump из образа $PG_IMAGE (сеть хоста, IPv6)"
+
 mkdir -p "$OUT"
 cd "$HERE"
 
-# pg_dump внутри контейнера db; строка подключения передаётся как аргумент.
 dump() {
   local out="$1"; shift
   echo "→ $out"
-  docker compose exec -T db pg_dump "$CLOUD_DB_URL" "$@" > "$OUT/$out"
+  docker run --rm --network host "$PG_IMAGE" pg_dump "$CLOUD_DB_URL" "$@" > "$OUT/$out"
 }
 
 # 1. Схема public: таблицы, вьюхи, функции (RPC), триггеры, гранты.
@@ -47,8 +56,8 @@ echo
 echo "Готово. Размеры (пустой файл = что-то не выгрузилось, разбираться до заливки):"
 ls -lh "$OUT"
 echo
-echo "Быстрая сверка содержимого:"
+echo "Строк COPY по ключевым таблицам:"
 for t in students homework chat_messages student_accounts variants notifications; do
-  printf "  %-18s строк COPY: %s\n" "$t" \
+  printf "  %-18s %s\n" "$t" \
     "$(awk "/^COPY public.$t /{f=1;next} f&&/^\\\\\\.$/{f=0} f" "$OUT/data.sql" | wc -l)"
 done
