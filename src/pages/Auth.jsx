@@ -283,15 +283,20 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
     // только вниз. dvh, а не vh: на мобильном Safari 100vh врёт на высоту
     // адресной строки.
     // py-16 на узком экране: карточка там во всю ширину, и при меньшем
-    // отступе фиксированные кнопки «Обзор» и темы легли бы на её шапку.
+    // отступе кнопки «Обзор» и темы легли бы на её шапку.
     // Отступы сверху и снизу равны — иначе центр перекошен.
     // min-h (а не h) + items-center: когда форма выше экрана, документ растёт
     // и страница прокручивается, а не обрезает карточку сверху.
-    <div className="min-h-dvh flex items-center justify-center px-4 py-16 sm:py-8">
+    <div className="relative min-h-dvh flex items-center justify-center px-4 py-16 sm:py-8">
+      {/* absolute, а НЕ fixed: на телефоне форма регистрации выше экрана, и
+          страницу приходится прокручивать. Прибитые к вьюпорту кнопки при этом
+          оставались на месте и наезжали на синюю шапку карточки поверх
+          «Создайте аккаунт». Здесь они лежат в верху документа и уезжают
+          вместе с ним. */}
       {onBack && (
         <button
           onClick={onBack}
-          className="fixed top-4 left-4 flex items-center gap-1 p-2 pr-3 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg text-sm z-50"
+          className="absolute top-4 left-4 flex items-center gap-1 p-2 pr-3 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg text-sm z-50"
         >
           <Icon name="chevron-left" size={16} />
           Обзор
@@ -299,7 +304,7 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
       )}
       <button
         onClick={() => setDark(!dark)}
-        className="fixed top-4 right-4 p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg text-sm z-50"
+        className="absolute top-4 right-4 p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg text-sm z-50"
       >
         <MorphIcon from="moon" to="sun" size={16} active={dark} hover={false} rotate />
       </button>
