@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react"
-import { supabase } from "../supabase"
+import { supabase, setAppToken } from "../supabase"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
 import { LegalLinks } from "../components/SiteFooter"
@@ -159,12 +159,21 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
         const code = form.code.trim().toUpperCase()
         if (!code) throw new Error("Введи код ученика")
         requireConsent()
-        const { data: found, error: fetchError } = await supabase
+        // Раньше это был прямой select по parent_code — он требовал держать
+        // таблицу учеников открытой на чтение анониму. Теперь код проверяет RPC
+        // и возвращает токен, под которым родитель уже читает карточку ребёнка.
+        const { data: rows, error: fetchError } = await supabase
+          .rpc("parent_login", { p_code: code })
+        if (fetchError) throw fetchError
+        const match = rows?.[0]
+        if (!match) throw new Error("Ученик с таким кодом не найден")
+        setAppToken(match.token)
+        const { data: found, error: rowError } = await supabase
           .from("students")
           .select("*")
-          .eq("parent_code", code)
-        if (fetchError) throw fetchError
-        if (!found || found.length === 0) throw new Error("Ученик с таким кодом не найден")
+          .eq("id", match.student_id)
+        if (rowError) throw rowError
+        if (!found || found.length === 0) throw new Error("Не удалось открыть карточку ученика")
         await saveConsent(found[0].id, form.name.trim() || null)
         const sessionData = { role: "parent", parentName: form.name.trim() || null, student: found[0] }
         localStorage.setItem("parent_session", JSON.stringify(sessionData))

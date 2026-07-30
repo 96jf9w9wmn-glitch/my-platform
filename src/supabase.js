@@ -22,4 +22,37 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
 export const isPasswordRecovery =
   typeof window !== "undefined" && /[#&]type=recovery/.test(window.location.hash)
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+// Токен ученика или родителя. В отличие от репетитора, они не заведены в
+// auth.users, поэтому GoTrue им сессию не выдаёт — токен приходит из RPC входа
+// (student_login / student_validate_session / parent_login) и хранится здесь.
+// Без него их запросы идут под ролью anon, которой после включения RLS не
+// доступно ничего. См. supabase/rls_step2_identity.sql
+const APP_TOKEN_KEY = "app_jwt"
+
+export function setAppToken(token) {
+  if (token) localStorage.setItem(APP_TOKEN_KEY, token)
+  else localStorage.removeItem(APP_TOKEN_KEY)
+  // Realtime держит отдельное соединение и свой заголовок — подмена fetch его
+  // не касается. Без этого чат и доска у ученика замолчат при включённом RLS.
+  try { supabase?.realtime?.setAuth(token || SUPABASE_ANON_KEY) } catch { /* до создания клиента */ }
+}
+
+export function getAppToken() {
+  try { return localStorage.getItem(APP_TOKEN_KEY) } catch { return null }
+}
+
+// Подменяем Authorization на лету, а не через опцию accessToken: та отключает
+// собственный auth клиента, а он нужен репетитору. Репетитор и ученик никогда
+// не залогинены одновременно, поэтому конфликта нет: если токен ученика лежит
+// в хранилище, он и уходит в заголовке.
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  global: {
+    fetch: (input, init = {}) => {
+      const token = getAppToken()
+      if (token) {
+        init.headers = { ...(init.headers || {}), Authorization: `Bearer ${token}` }
+      }
+      return fetch(input, init)
+    },
+  },
+})

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, lazy, Suspense } from "react"
 import { createPortal } from "react-dom"
-import { supabase, isPasswordRecovery } from "./supabase"
+import { supabase, isPasswordRecovery, setAppToken } from "./supabase"
 import Sidebar from "./components/Sidebar"
 import NavIcon from "./components/NavIcon"
 import Icon from "./components/Icon"
@@ -458,7 +458,18 @@ function App() {
 
     if (localStorage.getItem("parent_session")) {
       // Валидная сессия уже восстановлена в useState-инициализаторе
-      if (readStoredSession("parent_session")) return
+      const parentSession = readStoredSession("parent_session")
+      if (parentSession) {
+        // Сессия родителя в браузере бессрочна, а его JWT живёт 12 часов —
+        // перевыпускаем по коду ребёнка при каждом заходе, иначе через полдня
+        // кабинет молча опустеет: запросы пойдут под ролью anon.
+        const code = parentSession.student?.parent_code
+        if (code) {
+          supabase.rpc("parent_login", { p_code: code })
+            .then(({ data }) => setAppToken(data?.[0]?.token || null))
+        }
+        return
+      }
       localStorage.removeItem("parent_session") // битый JSON — продолжаем обычный вход
     }
 
@@ -517,6 +528,7 @@ function App() {
   async function handleLogout() {
     localStorage.removeItem("student_session")
     localStorage.removeItem("parent_session")
+    setAppToken(null)
     await supabase.auth.signOut()
     setUser(null)
     // Сбрасываем данные учеников, иначе при входе под другим аккаунтом
