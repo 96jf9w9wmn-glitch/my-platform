@@ -514,36 +514,122 @@ function PainCard({ item, index, cfg, open, onToggle }) {
   )
 }
 
-// Опросник для репетитора вместо формы «пробного занятия»: платформа не школа
-// и учеников не подбирает — заявку оставляет репетитор, которому нужен кабинет.
-// Вопросы заодно квалифицируют лид: предмет, объём, чем пользуется сейчас и что
-// болит. В CRM это приходит вместе с контактом, поэтому первый звонок начинается
-// не с «расскажите о себе», а с сути.
-const QUIZ_STEPS = [
-  {
-    id: "subject",
-    q: "Какой предмет вы ведёте?",
-    hint: "Если несколько — выберите основной",
-    options: ["Математика", "Русский язык", "Физика", "Информатика", "Английский", "Другой предмет"],
+// Опросники вместо формы «пробного занятия»: платформа не школа и учеников не
+// подбирает. У каждой роли свой набор вопросов — репетитора спрашиваем про его
+// работу, ученика и родителя про то, что у них болит. Ответы приходят в CRM
+// вместе с контактом, поэтому первый разговор начинается не с «расскажите о себе».
+//
+// Формулировки финального шага намеренно ничего не обещают про подбор
+// преподавателя: мы этого не делаем, и обещать это в заявке — врать.
+const QUIZZES = {
+  tutor: {
+    steps: [
+      {
+        id: "subject",
+        q: "Какой предмет вы ведёте?",
+        hint: "Если несколько — выберите основной",
+        options: ["Математика", "Русский язык", "Физика", "Информатика", "Английский", "Другой предмет"],
+      },
+      {
+        id: "students",
+        q: "Сколько учеников ведёте сейчас?",
+        options: ["1–3", "4–10", "11–20", "Больше 20"],
+      },
+      {
+        id: "tools",
+        q: "Где сейчас живут занятия, оплаты и домашки?",
+        options: ["В тетради и заметках", "В таблицах Excel или Google", "В другой платформе", "Нигде — держу в голове"],
+      },
+      {
+        id: "pain",
+        q: "Что забирает больше всего времени?",
+        options: ["Собирать задания и варианты", "Проверять домашние работы", "Расписание и оплаты", "Отчитываться родителям"],
+      },
+    ],
+    finalTitle: "Куда прислать ответ?",
+    finalLead: "Покажем кабинет на ваших предметах и поможем перенести учеников. Аккаунт заводить не нужно.",
+    doneTitle: "Спасибо, записали",
+    doneLead: "Свяжемся по указанному контакту, покажем кабинет и поможем перенести учеников.",
+    summaryKeys: ["subject", "students", "tools"],
   },
-  {
-    id: "students",
-    q: "Сколько учеников ведёте сейчас?",
-    options: ["1–3", "4–10", "11–20", "Больше 20"],
-  },
-  {
-    id: "tools",
-    q: "Где сейчас живут занятия, оплаты и домашки?",
-    options: ["В тетради и заметках", "В таблицах Excel или Google", "В другой платформе", "Нигде — держу в голове"],
-  },
-  {
-    id: "pain",
-    q: "Что забирает больше всего времени?",
-    options: ["Собирать задания и варианты", "Проверять домашние работы", "Расписание и оплаты", "Отчитываться родителям"],
-  },
-]
 
-function TutorQuiz({ cfg }) {
+  student: {
+    steps: [
+      {
+        id: "exam",
+        q: "К чему готовишься?",
+        options: ["ОГЭ", "ЕГЭ", "Школьная программа", "Олимпиады", "Пока не решил"],
+      },
+      {
+        id: "subject",
+        q: "Какой предмет даётся тяжелее всего?",
+        options: ["Математика", "Русский язык", "Физика", "Информатика", "Английский", "Другой предмет"],
+      },
+      {
+        id: "pain",
+        q: "Что мешает больше всего?",
+        hint: "Выбери то, что ближе",
+        options: [
+          "Не понимаю темы, объясняют быстро",
+          "Не знаю, с чего начать и что учить",
+          "Нет режима — откладываю до последнего",
+          "Решаю, но забываю и не повторяю",
+          "Волнуюсь и теряю баллы на ошибках",
+        ],
+      },
+      {
+        id: "howNow",
+        q: "Как занимаешься сейчас?",
+        options: ["С репетитором", "Сам по учебникам и видео", "На курсах", "Никак — только школа"],
+      },
+    ],
+    finalTitle: "Куда прислать ответ?",
+    finalLead: "Напишем, как платформа помогает с подготовкой, и что делать с твоей ситуацией. Аккаунт заводить не нужно.",
+    doneTitle: "Спасибо, записали",
+    doneLead: "Свяжемся по указанному контакту и подскажем, с чего начать подготовку.",
+    summaryKeys: ["exam", "subject", "pain"],
+  },
+
+  parent: {
+    steps: [
+      {
+        id: "grade",
+        q: "В каком классе ребёнок?",
+        options: ["5–7 класс", "8–9 класс", "10–11 класс", "Выпускник"],
+      },
+      {
+        id: "goal",
+        q: "К чему готовитесь?",
+        options: ["ОГЭ", "ЕГЭ", "Подтянуть школьную программу", "Олимпиады", "Пока разбираемся"],
+      },
+      {
+        id: "worry",
+        q: "Что беспокоит больше всего?",
+        hint: "Выберите то, что ближе",
+        options: [
+          "Не видно, есть ли прогресс",
+          "Не знаю, чем занимаются на занятиях",
+          "Ребёнок не занимается без контроля",
+          "Занятия идут, а результата нет",
+          "Дорого, непонятно за что платим",
+        ],
+      },
+      {
+        id: "tutorNow",
+        q: "Репетитор сейчас есть?",
+        options: ["Да, занимаемся", "Ищем", "Занимались, но бросили", "Нет, справляемся сами"],
+      },
+    ],
+    finalTitle: "Куда прислать ответ?",
+    finalLead: "Расскажем, как видеть занятия, домашние задания и прогресс ребёнка. Аккаунт заводить не нужно.",
+    doneTitle: "Спасибо, записали",
+    doneLead: "Свяжемся по указанному контакту и покажем, как следить за подготовкой ребёнка.",
+    summaryKeys: ["grade", "goal", "worry"],
+  },
+}
+
+function RoleQuiz({ cfg, role }) {
+  const quiz = QUIZZES[role]
   const [step, setStep] = useState(0)
   const [answers, setAnswers] = useState({})
   const [form, setForm] = useState({ name: "", contact: "" })
@@ -552,9 +638,9 @@ function TutorQuiz({ cfg }) {
   const [sent, setSent] = useState(false)
   const [error, setError] = useState("")
 
-  const total = QUIZ_STEPS.length + 1          // вопросы + шаг с контактами
-  const isContactStep = step === QUIZ_STEPS.length
-  const current = QUIZ_STEPS[step]
+  const total = quiz.steps.length + 1          // вопросы + шаг с контактами
+  const isContactStep = step === quiz.steps.length
+  const current = quiz.steps[step]
 
   function choose(value) {
     setAnswers((prev) => ({ ...prev, [current.id]: value }))
@@ -573,15 +659,15 @@ function TutorQuiz({ cfg }) {
     }
     setError("")
     setSending(true)
-    // Сводка в goal — чтобы в списке заявок суть была видна без раскрытия карточки,
-    // полные ответы — в answers.
-    const summary = [answers.subject, answers.students && answers.students + " учеников", answers.tools]
-      .filter(Boolean).join(" · ")
+    // Сводка в goal — чтобы суть была видна в списке заявок без раскрытия
+    // карточки; полные ответы уходят в answers.
+    const summary = quiz.summaryKeys.map((k) => answers[k]).filter(Boolean).join(" · ")
     const { error: err } = await supabase.from("leads").insert({
       name: form.name.trim(),
       contact: form.contact.trim(),
       goal: summary || null,
       source: "квиз",
+      role,
       answers,
     })
     setSending(false)
@@ -599,11 +685,8 @@ function TutorQuiz({ cfg }) {
         <div className={`w-12 h-12 rounded-2xl mx-auto flex items-center justify-center ring-1 ${cfg.ring} ${cfg.soft} ${cfg.text}`}>
           <Icon name="check" size={22} />
         </div>
-        <h3 className="text-xl font-bold tracking-tight text-gray-900 mt-4">Спасибо, записали</h3>
-        <p className="mt-2 text-gray-500 dark:text-gray-400">
-          Свяжемся по указанному контакту, покажем кабинет на ваших предметах
-          и поможем перенести учеников.
-        </p>
+        <h3 className="text-xl font-bold tracking-tight text-gray-900 mt-4">{quiz.doneTitle}</h3>
+        <p className="mt-2 text-gray-500 dark:text-gray-400">{quiz.doneLead}</p>
       </div>
     )
   }
@@ -624,7 +707,7 @@ function TutorQuiz({ cfg }) {
       </div>
 
       {!isContactStep ? (
-        <div key={current.id} className="slide-up">
+        <div key={`${role}-${current.id}`} className="slide-up">
           <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900 mt-5">
             {current.q}
           </h3>
@@ -660,12 +743,9 @@ function TutorQuiz({ cfg }) {
       ) : (
         <form onSubmit={submit} className="slide-up">
           <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900 mt-5">
-            Куда прислать ответ?
+            {quiz.finalTitle}
           </h3>
-          <p className="mt-1.5 text-sm text-gray-500 dark:text-gray-400">
-            Покажем кабинет на ваших предметах и поможем перенести учеников.
-            Аккаунт заводить не нужно.
-          </p>
+          <p className="mt-1.5 text-sm text-gray-500 dark:text-gray-400">{quiz.finalLead}</p>
 
           <div className="flex flex-col gap-3 mt-5">
             <input
@@ -1028,12 +1108,12 @@ function Landing({ onStart }) {
           ))}
         </section>
 
-        {/* ── Опросник для репетитора ── */}
-        {role === "tutor" && (
-          <section className="max-w-6xl mx-auto w-full px-4 py-8">
-            <TutorQuiz cfg={cfg} />
-          </section>
-        )}
+        {/* ── Опросник выбранной роли ── */}
+        <section className="max-w-6xl mx-auto w-full px-4 py-8">
+          {/* key по роли: смена вкладки — это другой опросник, и состояние надо
+              начинать с нуля, иначе ответы репетитора уехали бы в заявку родителя. */}
+          <RoleQuiz key={role} cfg={cfg} role={role} />
+        </section>
 
         {/* ── Финальный призыв выбранной роли ── */}
         <section className="max-w-6xl mx-auto w-full px-4 py-10">
