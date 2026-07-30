@@ -10523,6 +10523,68 @@ export function t18BiquadTrigTwo() {
   })
 }
 
+// ── #64. {y = √(ρ²−c²+2cx−x²) + c; y = √(ρ²−a²+2ax−x²) + a} — «единственное решение» ──
+// Обе строки — ВЕРХНИЕ полуокружности радиуса ρ с центрами (c; c) и (a; a), то есть вторая
+// получается из первой сдвигом вдоль прямой y = x. Общие точки полных окружностей лежат
+// на радикальной оси x + y = a + c, а подстановка даёт 2x² − 2(a+c)x + (a² + c² − ρ²) = 0.
+// Условия «верхних» половин (y ≥ c и y ≥ a) на этой прямой равносильны x ≤ a и x ≤ c,
+// то есть x ≤ min(a; c).
+// Важное наблюдение: в точке КАСАНИЯ окружностей (|a − c| = ρ√2 — иррациональное значение)
+// двойной корень равен (a+c)/2 и всегда лежит СТРОГО правее min(a; c), поэтому касание даёт
+// НОЛЬ решений и в ответ не попадает. Значит все границы ответа рациональны: это a = c ± ρ
+// (корень попадает ровно в min(a; c)) и a = c (полуокружности совпадают).
+// Сравнения корней с min(a; c) точные — их делает signLin (знак A + B√D).
+function build64({ c, rho }) {
+  if (rho <= 0) return null
+  const solve = (a) => {
+    if (Rcmp(a, R(c)) === 0) return 99                            // полуокружности совпали
+    const D = Rsub(R(2 * rho * rho), Rmul(Rsub(a, R(c)), Rsub(a, R(c))))
+    if (Rsign(D) < 0) return 0                                    // окружности не пересекаются
+    const m = Rcmp(a, R(c)) < 0 ? a : R(c)                        // min(a; c)
+    const base = Rsub(Rmul(R(2), m), Radd(a, R(c)))               // 2m − (a + c)
+    let n = 0
+    for (const sgn of [1, -1]) {                                  // x = ((a+c) ± √D)/2 ≤ m
+      if (signLin(base, R(-sgn), D) >= 0) n++
+    }
+    return n
+  }
+  const crit = [R(c), R(c + rho), R(c - rho)]
+  return { set: assembleSet((a) => solve(a) === 1, crit), solve }
+}
+const T64 = []
+for (const c of [-3, -2, -1, 1, 2, 3, 4]) for (const rho of [2, 3, 4, 5, 6]) {
+  const x = build64({ c, rho })
+  if (x && tidySet(x.set, 3)) T64.push({ c, rho })
+}
+export function t18TwoSemicirclesDiag() {
+  const par = pick(T64), { c, rho } = par
+  const { set, solve } = build64(par)
+  const aRange = spanRange(set)
+  const first = `√{${nS(rho * rho - c * c)}${term(2 * c, "x")} ${MINUS} x${SUP[2]}}${term(c, "")}`
+  const second = `√{${rho * rho} ${MINUS} a${SUP[2]} + 2ax ${MINUS} x${SUP[2]}} + a`
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:y = ${first}¦y = ${second}⟧\n\nимеет единственное решение.`,
+    set,
+    solution: `Обе строки задают ВЕРХНИЕ полуокружности радиуса ${rho}: первая — с центром (${nS(c)}; ${nS(c)}), вторая — с центром (a; a). Значит вторая получается из первой сдвигом вдоль прямой y = x.\n`
+      + `Общие точки полных окружностей лежат на радикальной оси x + y = a${term(c, "")}; подставляя y = a${term(c, "")} ${MINUS} x в первую, получаем 2x${SUP[2]} ${MINUS} 2(a${term(c, "")})x + (a${SUP[2]} + ${c * c} ${MINUS} ${rho * rho}) = 0.\n`
+      + `Условия «верхних» половин (y ≥ ${nS(c)} и y ≥ a) на этой прямой равносильны x ≤ a и x ≤ ${nS(c)}, то есть x ≤ min(a; ${nS(c)}).\n`
+      + `В точке касания окружностей двойной корень равен ${fT(`a${term(c, "")}`, "2")} и всегда лежит строго правее min(a; ${nS(c)}) — значит касание даёт НОЛЬ решений, и иррациональные значения |a ${MINUS} ${nS(c)}| = ${rho}√2 в ответ не попадают.\n`
+      + `Остаются рациональные границы: корень попадает ровно в min(a; ${nS(c)}) при (a ${MINUS} ${nS(c)})${SUP[2]} = ${rho * rho}, то есть a = ${nS(c - rho)} и a = ${nS(c + rho)}; а при a = ${nS(c)} полуокружности совпадают и решений бесконечно много.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "count", n: 1 },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: (a) => (2 * rho * rho - (a - c) ** 2 >= 0 ? ((a + c) - Math.sqrt(2 * rho * rho - (a - c) ** 2)) / 2 : null), label: "меньший корень" },
+        { f: (a) => Math.min(a, c), dash: true, label: "граница min(a; c)" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: c - rho - 3, xMax: c + rho + 3, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
 // =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
@@ -10605,6 +10667,7 @@ export const META18 = [
     ["sys-pencil-ybound", "ОДЗ по y, ровно три решения", t18SysPencilYBound],
     ["sys-pencil-horiz", "множитель √(y−yLo) добавляет горизонталь", t18SysPencilHoriz],
     ["sys-semi-parab", "{((√(A−x²)−y)(x²+py−q))/(d−x²) = 0; y = 1−2a}", t18SysSemiParab],
+    ["two-semicircles-diag", "две верхние полуокружности, сдвинутые вдоль y = x — единственное решение", t18TwoSemicirclesDiag],
   ]],
   ["Показательные и модульные уравнения", [
     ["exp-frac-two", "(pa/(a−q))·b^|x| = b²^|x| + (ra+s)/(a−q) — ровно два корня", t18ExpFracTwoRoots],
