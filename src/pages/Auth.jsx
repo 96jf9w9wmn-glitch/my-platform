@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from "react"
 import { supabase, setAppToken } from "../supabase"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
-import { LegalLinks } from "../components/SiteFooter"
 import { ConsentRow, ConsentLink } from "../components/ConsentChecks"
 import { logConsent } from "../consents"
 
@@ -630,7 +629,6 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
           </div>
         )}
         </div> {/* p-6 */}
-        <LegalLinks className="justify-center pb-5 -mt-1" />
        </div> {/* измеряемое содержимое */}
       </div>
     </div>
