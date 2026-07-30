@@ -783,6 +783,14 @@ export default async function handler(req, res) {
       res.status(200).json({ ok: false, error: "Telegram не принял токен бота" })
       return
     }
+    // Проба секрета базы: без неё расхождение между TELEGRAM_DB_SECRET и тем,
+    // что записано в bot_config, выглядит как «бот не отвечает на код привязки» —
+    // самая незаметная из возможных поломок.
+    const probe = await db.call("bot_plan", { p_tutor: "00000000-0000-0000-0000-000000000000" })
+    if (!probe) {
+      res.status(200).json({ ok: false, error: "TELEGRAM_DB_SECRET не совпадает с базой (bot_secret_set)" })
+      return
+    }
     // Заодно состояние вебхука: без него бот молчит на любые сообщения, и это
     // единственная поломка, которую по самому боту не отличить от «не привязан».
     let hook = await tg("getWebhookInfo", {})
