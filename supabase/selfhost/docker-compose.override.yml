@@ -1,0 +1,60 @@
+# Публикация портов только на localhost.
+# Docker вставляет свои правила в iptables ДО ufw, поэтому публикация на
+# 0.0.0.0 была бы доступна из интернета несмотря на "ufw default deny".
+# Наружу отвечает только Caddy (80/443); к Postgres и пулеру — SSH-туннелем.
+services:
+  supavisor:
+    ports: !override
+      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:6543:6543"
+  kong:
+    ports: !override
+      - "127.0.0.1:8000:8000"
+  auth:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      GOTRUE_MAILER_SUBJECTS_RECOVERY: "Precettore — сброс пароля"
+      GOTRUE_MAILER_SUBJECTS_CONFIRMATION: "Precettore — подтверждение адреса"
+      GOTRUE_MAILER_SUBJECTS_INVITE: "Precettore — приглашение"
+      GOTRUE_MAILER_SUBJECTS_EMAIL_CHANGE: "Precettore — смена адреса"
+      GOTRUE_MAILER_TEMPLATES_RECOVERY: "https://db.precettore.ru/email/recovery.html"
+
+  # SMTP-релей в сети ХОСТА — из-за IPv6.
+  #
+  # Диагностика (30.07.2026): smtp.mail.ru доступен по IPv6 стабильно, а по
+  # обоим IPv4-адресам (94.100.180.160, 217.69.139.160) соединение то проходит,
+  # то висит по таймауту. У хоста IPv6 есть, у контейнеров Docker — нет, поэтому
+  # GoTrue из своей сети получал только ненадёжный IPv4 и отваливался с 504.
+  # В логе доставки видно, что письмо ушло именно через IPv6:
+  #   relay=smtp.mail.ru[2a00:1148:1000:101:5:3:0:33]:587 ... status=sent
+  #
+  # Отсюда два шага: GoTrue отдаёт письмо релею на host.docker.internal, релей
+  # стоит в хостовой сети и отправляет наружу по IPv6. Очередь Postfix заодно
+  # переживает моменты, когда mail.ru не отвечает, — GoTrue при этом сразу
+  # получает 200 и не ждёт доставку.
+  #
+  # Альтернативой был бы IPv6 внутри Docker, но это перестройка сети всего
+  # работающего стека ради одного сервиса.
+  #
+  # Порт 587 слушается на всех интерфейсах, но снаружи закрыт ufw; для доступа
+  # из docker-сетей добавлены точечные правила:
+  #   ufw allow from 172.17.0.0/16 to any port 587 proto tcp
+  #   ufw allow from 172.18.0.0/16 to any port 587 proto tcp
+  smtp-relay:
+    image: boky/postfix
+    container_name: supabase-smtp-relay
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      RELAYHOST: "smtp.mail.ru:587"
+      RELAYHOST_USERNAME: "precettore@inbox.ru"
+      RELAYHOST_PASSWORD: "<пароль приложения>"
+      RELAYHOST_TLS_LEVEL: "encrypt"
+      ALLOWED_SENDER_DOMAINS: "inbox.ru"
+      # На входе TLS не объявляем: соединение GoTrue -> релей не покидает
+      # машину, а самоподписанный сертификат релея (CN=localhost) GoTrue
+      # всё равно отвергает. Наружу релей шлёт с обязательным шифрованием
+      # (RELAYHOST_TLS_LEVEL=encrypt) — там TLS как раз нужен.
+      POSTFIX_smtpd_tls_security_level: "none"
+      POSTFIX_smtpd_use_tls: "no"

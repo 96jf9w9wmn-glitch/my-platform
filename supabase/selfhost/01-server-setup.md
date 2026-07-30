@@ -100,10 +100,9 @@ STUDIO_DEFAULT_PROJECT=precettore
 # в ожидании письма, которое некому отправить
 ENABLE_EMAIL_AUTOCONFIRM=true
 
-# --- почта: без неё не работает сброс пароля репетитора ---
-# inbox.ru / list.ru / bk.ru обслуживаются тем же сервером, что mail.ru
-SMTP_HOST=smtp.mail.ru
-SMTP_PORT=465
+# --- почта: GoTrue шлёт не напрямую, а через локальный релей, см. 2.6 ---
+SMTP_HOST=host.docker.internal
+SMTP_PORT=587
 SMTP_USER=precettore@inbox.ru
 SMTP_PASS=<пароль для внешних приложений, НЕ пароль от почты>
 SMTP_SENDER_NAME=Precettore
@@ -223,7 +222,55 @@ curl -s -o /dev/null -w "%{http_code}\n" https://db.precettore.ru/   # 401 — S
 > `volumes/api/kong.yml`). Проверять надо запрос к конкретной таблице —
 > на несуществующую придёт 404, что означает «дошло до PostgREST».
 
-## 2.6 Доступ к Studio и Postgres
+## 2.6 Почта: релей вместо прямой отправки
+
+GoTrue **не может** отправлять письма напрямую из своей сети. Диагностика
+30.07.2026:
+
+| Откуда | Куда | Результат |
+|---|---|---|
+| хост | `smtp.mail.ru` по IPv6 | стабильно работает |
+| хост | оба IPv4 mail.ru | то проходит, то таймаут |
+| контейнер | IPv6 | `Network unreachable` — IPv6 в Docker нет |
+| контейнер | IPv4 | таймаут вслед за хостом |
+| контейнер | HTTPS (443) | работает |
+
+То есть у mail.ru надёжен только IPv6, а контейнерам он недоступен — GoTrue
+отваливался с `504 request_timeout` ровно через 10 секунд. Проверены и отброшены:
+порты 25/465/587, MTU, правила ufw и iptables.
+
+Решение — релей `boky/postfix` с `network_mode: host` (см.
+[docker-compose.override.yml](docker-compose.override.yml)). GoTrue отдаёт письмо
+ему на `host.docker.internal:587`, релей отправляет наружу по IPv6. Очередь
+Postfix заодно переживает моменты недоступности mail.ru: GoTrue сразу получает
+`200`, доставка идёт асинхронно.
+
+Нужны два точечных правила ufw — обращение из docker-сети к порту на хосте
+попадает под `default deny`:
+
+```bash
+sudo ufw allow from 172.17.0.0/16 to any port 587 proto tcp comment "SMTP relay from docker"
+sudo ufw allow from 172.18.0.0/16 to any port 587 proto tcp comment "SMTP relay from docker"
+sudo ufw reload
+```
+
+Проверка доставки:
+
+```bash
+ANON=$(ssh precettore-db 'grep "^ANON_KEY=" /opt/precettore-db/.env | cut -d= -f2')
+curl -s -o /dev/null -w "%{http_code}\n" -X POST https://db.precettore.ru/auth/v1/recover \
+  -H "apikey: $ANON" -H "Content-Type: application/json" -d '{"email":"<ваш ящик>"}'   # 200
+ssh precettore-db 'cd /opt/precettore-db && docker compose logs smtp-relay | grep status='
+# ожидаем: status=sent (250 OK ...)
+```
+
+`200` от GoTrue означает только «письмо принято релеем» — доставку смотреть
+в логе релея. Если письмо застряло: `docker compose exec smtp-relay postqueue -p`,
+форсировать `postqueue -f`.
+
+---
+
+## 2.7 Доступ к Studio и Postgres
 
 Studio открывается на `https://db.precettore.ru/` под логином и паролем из
 `.env` (`grep DASHBOARD /opt/precettore-db/.env`). Там же SQL Editor.
@@ -236,7 +283,7 @@ ssh -N -L 5432:127.0.0.1:5432 precettore-db
 
 ---
 
-## 2.7 Бэкапы
+## 2.8 Бэкапы
 
 Снапшот виртуальной машины у провайдера — включить, но его недостаточно:
 снапшот работающей БД не гарантирует консистентность. Нужен `pg_dump` по расписанию.
