@@ -514,17 +514,52 @@ function PainCard({ item, index, cfg, open, onToggle }) {
   )
 }
 
-// Заявка на пробный урок. Приём с GoStudent/Preply: до регистрации человек
-// готов оставить контакт, но не готов заводить аккаунт. Пишем в leads —
-// таблицу, из которой посетитель может только писать, но не читать.
-function TrialForm({ cfg }) {
-  const [form, setForm] = useState({ name: "", contact: "", goal: "" })
+// Опросник для репетитора вместо формы «пробного занятия»: платформа не школа
+// и учеников не подбирает — заявку оставляет репетитор, которому нужен кабинет.
+// Вопросы заодно квалифицируют лид: предмет, объём, чем пользуется сейчас и что
+// болит. В CRM это приходит вместе с контактом, поэтому первый звонок начинается
+// не с «расскажите о себе», а с сути.
+const QUIZ_STEPS = [
+  {
+    id: "subject",
+    q: "Какой предмет вы ведёте?",
+    hint: "Если несколько — выберите основной",
+    options: ["Математика", "Русский язык", "Физика", "Информатика", "Английский", "Другой предмет"],
+  },
+  {
+    id: "students",
+    q: "Сколько учеников ведёте сейчас?",
+    options: ["1–3", "4–10", "11–20", "Больше 20"],
+  },
+  {
+    id: "tools",
+    q: "Где сейчас живут занятия, оплаты и домашки?",
+    options: ["В тетради и заметках", "В таблицах Excel или Google", "В другой платформе", "Нигде — держу в голове"],
+  },
+  {
+    id: "pain",
+    q: "Что забирает больше всего времени?",
+    options: ["Собирать задания и варианты", "Проверять домашние работы", "Расписание и оплаты", "Отчитываться родителям"],
+  },
+]
+
+function TutorQuiz({ cfg }) {
+  const [step, setStep] = useState(0)
+  const [answers, setAnswers] = useState({})
+  const [form, setForm] = useState({ name: "", contact: "" })
+  const [agreed, setAgreed] = useState(false)
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState(false)
   const [error, setError] = useState("")
-  // Галочка, а не строчка «отправляя заявку, вы соглашаетесь»: согласие даётся
-  // активным действием, иначе оно не считается полученным.
-  const [agreed, setAgreed] = useState(false)
+
+  const total = QUIZ_STEPS.length + 1          // вопросы + шаг с контактами
+  const isContactStep = step === QUIZ_STEPS.length
+  const current = QUIZ_STEPS[step]
+
+  function choose(value) {
+    setAnswers((prev) => ({ ...prev, [current.id]: value }))
+    setStep((s) => s + 1)
+  }
 
   async function submit(e) {
     e.preventDefault()
@@ -538,10 +573,16 @@ function TrialForm({ cfg }) {
     }
     setError("")
     setSending(true)
+    // Сводка в goal — чтобы в списке заявок суть была видна без раскрытия карточки,
+    // полные ответы — в answers.
+    const summary = [answers.subject, answers.students && answers.students + " учеников", answers.tools]
+      .filter(Boolean).join(" · ")
     const { error: err } = await supabase.from("leads").insert({
       name: form.name.trim(),
       contact: form.contact.trim(),
-      goal: form.goal.trim() || null,
+      goal: summary || null,
+      source: "квиз",
+      answers,
     })
     setSending(false)
     if (err) {
@@ -558,57 +599,113 @@ function TrialForm({ cfg }) {
         <div className={`w-12 h-12 rounded-2xl mx-auto flex items-center justify-center ring-1 ${cfg.ring} ${cfg.soft} ${cfg.text}`}>
           <Icon name="check" size={22} />
         </div>
-        <h3 className="text-xl font-bold tracking-tight text-gray-900 mt-4">Заявка принята</h3>
+        <h3 className="text-xl font-bold tracking-tight text-gray-900 mt-4">Спасибо, записали</h3>
         <p className="mt-2 text-gray-500 dark:text-gray-400">
-          Свяжемся с вами по указанному контакту и подберём время пробного занятия.
+          Свяжемся по указанному контакту, покажем кабинет на ваших предметах
+          и поможем перенести учеников.
         </p>
       </div>
     )
   }
 
   return (
-    <form onSubmit={submit} className="glass rounded-3xl p-6 sm:p-8 max-w-xl mx-auto">
-      <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900 text-center">
-        Пробное занятие
-      </h3>
-      <p className="mt-2 text-center text-gray-500 dark:text-gray-400 text-sm">
-        Оставьте контакт — подберём преподавателя и время. Аккаунт заводить не нужно.
-      </p>
-      <div className="flex flex-col gap-3 mt-5">
-        <input
-          value={form.name}
-          onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-          placeholder="Как вас зовут"
-          autoComplete="name"
-          className="input-glass"
-        />
-        <input
-          value={form.contact}
-          onChange={(e) => setForm((f) => ({ ...f, contact: e.target.value }))}
-          placeholder="Телефон или @телеграм"
-          className="input-glass"
-        />
-        <input
-          value={form.goal}
-          onChange={(e) => setForm((f) => ({ ...f, goal: e.target.value }))}
-          placeholder="Предмет и класс — например, математика, 9 класс"
-          className="input-glass"
-        />
-        <ConsentRow checked={agreed} onChange={setAgreed} accent={cfg.grad}>
-          Ознакомлен(а) с <ConsentLink href="/privacy">Политикой конфиденциальности</ConsentLink> и даю{" "}
-          <ConsentLink href="/consent">согласие на обработку персональных данных</ConsentLink> для
-          ответа на заявку
-        </ConsentRow>
-        {error && <div className="text-sm text-red-500">{error}</div>}
-        <button
-          type="submit"
-          disabled={sending}
-          className={`press-fill w-full h-[52px] rounded-full text-white font-semibold bg-gradient-to-r ${cfg.grad} shadow-lg ${cfg.glow} disabled:opacity-50`}
-        >
-          {sending ? "Отправляем…" : "Записаться на пробное"}
-        </button>
+    <div className="glass rounded-3xl p-6 sm:p-8 max-w-xl mx-auto">
+      {/* Прогресс: видно, что вопросов немного и это не анкета на полчаса */}
+      <div className="flex items-center gap-3">
+        <div className="flex-1 h-1.5 rounded-full bg-gray-100 dark:bg-white/10 overflow-hidden">
+          <div
+            className={`h-full rounded-full bg-gradient-to-r ${cfg.grad} transition-[width] duration-300`}
+            style={{ width: `${((step + (isContactStep ? 1 : 0)) / total) * 100}%` }}
+          />
+        </div>
+        <span className="text-xs text-gray-400 tabular-nums shrink-0">
+          {Math.min(step + 1, total)} из {total}
+        </span>
       </div>
-    </form>
+
+      {!isContactStep ? (
+        <div key={current.id} className="slide-up">
+          <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900 mt-5">
+            {current.q}
+          </h3>
+          {current.hint && <p className="mt-1.5 text-sm text-gray-500 dark:text-gray-400">{current.hint}</p>}
+
+          <div className="flex flex-col gap-2 mt-5">
+            {current.options.map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => choose(opt)}
+                className={`press-fill w-full text-left px-4 py-3.5 rounded-2xl ring-1 transition-colors
+                  ${answers[current.id] === opt
+                    ? `${cfg.soft} ${cfg.text} ${cfg.ring} font-medium`
+                    : "bg-white/70 dark:bg-white/[0.06] ring-gray-200 dark:ring-white/10 text-gray-700 hover:bg-white"}`}
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
+
+          {step > 0 && (
+            <button
+              type="button"
+              onClick={() => setStep((s) => s - 1)}
+              className="mt-4 text-sm text-gray-400 hover:text-gray-600 inline-flex items-center gap-1.5"
+            >
+              <Icon name="arrow" size={14} className="rotate-180" />
+              Назад
+            </button>
+          )}
+        </div>
+      ) : (
+        <form onSubmit={submit} className="slide-up">
+          <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900 mt-5">
+            Куда прислать ответ?
+          </h3>
+          <p className="mt-1.5 text-sm text-gray-500 dark:text-gray-400">
+            Покажем кабинет на ваших предметах и поможем перенести учеников.
+            Аккаунт заводить не нужно.
+          </p>
+
+          <div className="flex flex-col gap-3 mt-5">
+            <input
+              value={form.name}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              placeholder="Как вас зовут"
+              autoComplete="name"
+              className="input-glass"
+            />
+            <input
+              value={form.contact}
+              onChange={(e) => setForm((f) => ({ ...f, contact: e.target.value }))}
+              placeholder="Телефон или @телеграм"
+              className="input-glass"
+            />
+            <ConsentRow checked={agreed} onChange={setAgreed} accent={cfg.grad}>
+              Ознакомлен(а) с <ConsentLink href="/privacy">Политикой конфиденциальности</ConsentLink> и даю{" "}
+              <ConsentLink href="/consent">согласие на обработку персональных данных</ConsentLink> для
+              ответа на заявку
+            </ConsentRow>
+            {error && <div className="text-sm text-red-500">{error}</div>}
+            <button
+              type="submit"
+              disabled={sending}
+              className={`press-fill w-full h-[52px] rounded-full text-white font-semibold bg-gradient-to-r ${cfg.grad} shadow-lg ${cfg.glow} disabled:opacity-50`}
+            >
+              {sending ? "Отправляем…" : "Отправить"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setStep((s) => s - 1)}
+              className="text-sm text-gray-400 hover:text-gray-600 inline-flex items-center gap-1.5 self-start"
+            >
+              <Icon name="arrow" size={14} className="rotate-180" />
+              Назад
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
   )
 }
 
@@ -931,10 +1028,12 @@ function Landing({ onStart }) {
           ))}
         </section>
 
-        {/* ── Пробное занятие ── */}
-        <section className="max-w-6xl mx-auto w-full px-4 py-8">
-          <TrialForm cfg={cfg} />
-        </section>
+        {/* ── Опросник для репетитора ── */}
+        {role === "tutor" && (
+          <section className="max-w-6xl mx-auto w-full px-4 py-8">
+            <TutorQuiz cfg={cfg} />
+          </section>
+        )}
 
         {/* ── Финальный призыв выбранной роли ── */}
         <section className="max-w-6xl mx-auto w-full px-4 py-10">
