@@ -9,7 +9,6 @@ import SiteFooter from "../components/SiteFooter"
 import { ConsentRow, ConsentLink } from "../components/ConsentChecks"
 import { logConsent } from "../consents"
 import { supabase } from "../supabase"
-import { BANK_STATS } from "./bankStats"
 
 // Продающий лендинг перед регистрацией. Объясняет ценность платформы
 // и убеждает зарегистрироваться — отдельно для репетитора, ученика и
@@ -246,24 +245,6 @@ const ROLES = {
     },
   },
 }
-
-// 13 предметов банка заданий — ключевая ценность платформы.
-const SUBJECTS = [
-  { name: "Математика", exam: "ОГЭ" },
-  { name: "Русский язык", exam: "ОГЭ" },
-  { name: "Информатика", exam: "ОГЭ" },
-  { name: "Физика", exam: "ОГЭ" },
-  { name: "Химия", exam: "ОГЭ" },
-  { name: "Биология", exam: "ОГЭ" },
-  { name: "Английский", exam: "ОГЭ" },
-  { name: "История", exam: "ОГЭ" },
-  { name: "Обществознание", exam: "ОГЭ" },
-  { name: "Литература", exam: "ОГЭ" },
-  { name: "География", exam: "ОГЭ" },
-  { name: "Математика профиль", exam: "ЕГЭ" },
-  { name: "Математика база", exam: "ЕГЭ" },
-]
-
 
 // Главное отличие платформы: задание собирается заново при каждой выдаче,
 // поэтому готового ответа на него нет ни в интернете, ни у соседа по парте.
@@ -1044,33 +1025,6 @@ function Landing({ onStart }) {
                 )}
               </div>
             </div>
-          </div>
-        </section>
-
-        {/* ── Предметы ── */}
-        <section className="max-w-6xl mx-auto w-full px-4 py-10">
-          <div className="text-center mb-6">
-            <h2 className="font-display text-2xl sm:text-3xl font-semibold tracking-tight text-gray-900">
-              <Highlight
-                text={`Банк заданий по ${BANK_STATS.subjects} предметам`}
-                mark={`по ${BANK_STATS.subjects} предметам`}
-                tone="mint"
-              />
-            </h2>
-            <p className="mt-2 text-gray-500 dark:text-gray-400 max-w-2xl mx-auto">
-              Тренировочные варианты по образцу ФИПИ — с чертежами, графиками и ответами.
-              Собственные аналоги заданий, а не чужой скрап.
-            </p>
-          </div>
-          <div className="flex flex-wrap justify-center gap-2">
-            {SUBJECTS.map((s) => (
-              <div key={s.name} className="glass-sm rounded-xl px-3.5 py-2 flex items-center gap-2">
-                <span className={`w-1.5 h-1.5 rounded-full ${s.exam === "ЕГЭ" ? "bg-purple-500" : "bg-blue-500"}`} />
-                {/* gray-токены в .dark инвертируются сами — dark:-override не нужен */}
-                <span className="text-sm font-medium text-gray-800">{s.name}</span>
-                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500">{s.exam}</span>
-              </div>
-            ))}
           </div>
         </section>
 
