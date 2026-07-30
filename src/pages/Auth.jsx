@@ -251,7 +251,15 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    // items-start, а НЕ items-center: формы разной высоты (вход 655px,
+    // регистрация ученика 836px), и при центрировании карточка на каждое
+    // переключение роли/режима перецентрировалась — шапка, вкладки ролей и
+    // первое поле уезжали. Верх прибит к постоянному отступу, форма растёт
+    // только вниз. dvh, а не vh: на мобильном Safari 100vh врёт на высоту
+    // адресной строки.
+    // pt-16 на узком экране: карточка на всю ширину, и при меньшем отступе
+    // фиксированные кнопки «Обзор» и темы легли бы прямо на её шапку.
+    <div className="min-h-dvh flex items-start justify-center px-4 pt-16 pb-6 sm:pt-8 sm:pb-8">
       {onBack && (
         <button
           onClick={onBack}

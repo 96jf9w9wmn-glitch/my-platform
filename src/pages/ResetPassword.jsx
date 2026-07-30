@@ -33,7 +33,9 @@ function ResetPassword({ onDone }) {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    // Тот же якорь по верху, что и в Auth: экран сброса открывается из формы
+    // входа и не должен прыгать относительно неё.
+    <div className="min-h-dvh flex items-start justify-center px-4 pt-16 pb-6 sm:pt-8 sm:pb-8">
       <div className="glass-modal w-full max-w-md overflow-hidden">
         <div className="relative px-8 pt-6 pb-6 text-white text-center overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-blue-500 to-blue-600" />
