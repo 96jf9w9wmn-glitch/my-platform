@@ -10169,6 +10169,88 @@ export function t18QuarticEllipseFour() {
   })
 }
 
+// ── #183. {r/x + s − y = |y − p + q/x|; μy(y−d) + νx(ax+d) = xy(μa+ν)} ──────
+// Первая строка после раскрытия модуля распадается на ВЕТВЬ ГИПЕРБОЛЫ y = H + K/x
+// (где H = (p+s)/2, K = (r−q)/2), взятую при x > 0 или x ≤ x₀, и ВЕРТИКАЛЬНЫЙ ЛУЧ x = x₀,
+// y < Y₀, где x₀ = (r+q)/(p−s) и Y₀ = p − q/x₀.
+// Вторая строка — это в точности (μy − νx)(y − ax − d) = 0: фиксированная прямая y = (ν/μ)x
+// и пучок y = ax + d. Фиксированная прямая даёт от кривой постоянное число точек, поэтому
+// «больше трёх решений» — это условие на пучок, и все критические значения рациональны
+// (нужно лишь, чтобы корни фиксированной прямой с гиперболой были рациональны).
+function build183({ p, q, r, s, mu, nu, d }) {
+  if ((p + s) % 2 !== 0 || (r - q) % 2 !== 0 || p === s) return null
+  const H = (p + s) / 2, K = (r - q) / 2
+  if (K === 0) return null
+  if ((r + q) % (p - s) !== 0) return null
+  const x0 = (r + q) / (p - s)
+  if (x0 >= 0) return null                                      // луч должен уходить влево
+  const Y0 = R(p * x0 - q, x0)                                  // y-граница луча: p − q/x₀
+  const L = R(nu, mu)
+  // корни фиксированной прямой с гиперболой: Lx² − Hx − K = 0
+  const fx = ratRoots([R(-K), R(-H), L])
+  if (!fx.allRational || fx.roots.length !== 2) return null
+  const inRegion = (x) => Rsign(x) > 0 || Rcmp(x, R(x0)) <= 0
+  const countHyp = (P) => countRoots(P, R0, "+inf", false, false) + countRoots(P, "-inf", R(x0), false, true)
+  const fixedCount = fx.roots.filter(inRegion).length
+    + (Rcmp(Rmul(L, R(x0)), Y0) < 0 ? 1 : 0)                    // точка на вертикальном луче
+  const solve = (a) => {
+    let n = fixedCount
+    n += countHyp([R(-K), Rsub(R(d), R(H)), a])                 // пучок ∩ гипербола
+    if (Rcmp(Radd(Rmul(a, R(x0)), R(d)), Y0) < 0) n++           // пучок ∩ вертикальный луч
+    if (Rcmp(a, L) !== 0) {                                     // общая точка прямой и пучка
+      const xc = Rdiv(R(d), Rsub(L, a))
+      const onHyp = fx.roots.some((x) => Rcmp(x, xc) === 0) && inRegion(xc)
+      const onRay = Rcmp(xc, R(x0)) === 0 && Rcmp(Radd(Rmul(a, R(x0)), R(d)), Y0) < 0
+      if (onHyp || onRay) n--
+    }
+    return n
+  }
+  const crit = [L, R0, Rdiv(Rsub(Y0, R(d)), R(x0))]             // параллельность, вырождение, луч
+  crit.push(Rneg(R((d - H) * (d - H), 4 * K)))                  // касание пучка с гиперболой
+  crit.push(R(K - (d - H) * x0, x0 * x0))                       // корень пучка попал на конец луча
+  for (const xf of [...fx.roots, R(x0)]) {                      // общая точка прямой и пучка на кривой
+    if (Rzero(xf)) continue
+    crit.push(Rsub(L, Rdiv(R(d), xf)))
+  }
+  return { set: assembleSet((a) => solve(a) >= 4, crit), solve, H, K, x0, Y0, L, fixedCount }
+}
+const T183 = []
+for (const p of [1, 2, 3]) for (const q of [1, 2, 3, 4, 6]) for (const r of [2, 3, 4, 5, 6, 8]) {
+  for (const s of [2, 3, 4, 5]) for (const [mu, nu] of [[2, 3], [1, 1], [1, 2], [2, 1], [3, 2]]) {
+    for (const d of [2, 3, 4, 6]) {
+      const x = build183({ p, q, r, s, mu, nu, d })
+      if (x && tidySet(x.set, 3)) T183.push({ p, q, r, s, mu, nu, d })
+    }
+  }
+}
+export function t18HyperRayPencil() {
+  const par = pick(T183), { p, q, r, s, mu, nu, d } = par
+  const { set, solve, H, K, x0, Y0, fixedCount } = build183(par)
+  const aRange = spanRange(set)
+  return item({
+    text: `${HEAD_SYS}\n⟦cases:${fT(String(r), "x")} + ${s} ${MINUS} y = |y ${MINUS} ${p} + ${fT(String(q), "x")}|`
+      + `¦${mu === 1 ? "" : mu}y(y ${MINUS} ${d}) + ${nu === 1 ? "" : nu}x(ax + ${d}) = xy(${mu === 1 ? "" : mu}a + ${nu})⟧\n\nимеет более трёх различных решений.`,
+    set,
+    solution: `Раскроем модуль в первой строке. При y ${MINUS} ${p} + ${q}/x ≥ 0 получаем 2y = ${p + s} + ${r - q}/x, то есть ветвь гиперболы y = ${Rstr(R(H))} + ${fT(String(K), "x")}; само условие равносильно x > 0 или x ≤ ${nS(x0)}.\n`
+      + `При обратном знаке переменная y сокращается, и остаётся x = ${nS(x0)} — вертикальный луч, на котором y < ${Rstr(Y0)}.\n`
+      + `Вторая строка — это в точности (${mu === 1 ? "" : mu}y ${MINUS} ${nu === 1 ? "" : nu}x)(y ${MINUS} ax ${MINUS} ${d}) = 0: фиксированная прямая y = ${Rstr(R(nu, mu))}x и пучок y = ax + ${d}.\n`
+      + `Фиксированная прямая пересекает кривую в ${fixedCount} точках при любом a, поэтому «больше трёх решений» — это условие на пучок: он должен добавить ещё как минимум ${4 - fixedCount} точки.\n`
+      + `Критические значения — касание пучка с гиперболой, проход через конец луча и совпадение точки пересечения прямых с точкой кривой; все они рациональны.\n`
+      + `Ответ: ${setToString(set)}.`,
+    predicate: { type: "atLeast", n: 4 },
+    solve: (a) => solve(a),
+    aRange,
+    picture: {
+      curves: [
+        { f: () => x0, dash: true, label: "вертикальный луч" },
+        { f: () => 0, dash: true, label: "x = 0" },
+      ],
+      marks: [], hlines: setBounds(set).map(Rnum),
+      xMin: x0 - 3, xMax: 6, aMin: aRange[0], aMax: aRange[1],
+    },
+  })
+}
+
 // =============================================================================
 export const META18 = [
   ["Дробь = 0, «ровно два различных решения»", [
@@ -10344,6 +10426,7 @@ export const META18 = [
     ["sys-quartic-circle", "{a(x⁴+1) = y+c−|x|; окружность} — единственное решение", t18SysQuarticCircleOne],
     ["three-var-unique", "{px−qy+z = kx²+my²; −x+y+rz = a} — единственное решение", t18ThreeVarUnique],
     ["quartic-ellipse-four", "{nx⁴+my² = na²; x²+y = |pa−c|} — ровно четыре решения", t18QuarticEllipseFour],
+    ["hyper-ray-pencil", "{ветвь гиперболы + вертикальный луч; прямая и пучок} — более трёх решений", t18HyperRayPencil],
     ["even-sqrt-cos", "√(a²+x²) = cos kx + a²+pa−c — единственное решение", t18EvenSqrtCosUnique],
     ["sys-symmetric", "{y = f(x); x = f(y)} — ровно одно решение", t18SysSymmetricOne],
   ]],
