@@ -79,9 +79,15 @@ function ReportComposer({ student }) {
     const source = collectSource()
     const firstName = String(source.studentName || "").split(/\s+/)[0]
     try {
+      // Токен репетитора: без него сервер отвечает 401 — функция ходит в платный
+      // DeepSeek и анонимной быть не должна (как и generate-hw).
+      const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch("/api/lesson-report", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
         body: JSON.stringify(forModel(source)),
       })
       const data = await res.json()

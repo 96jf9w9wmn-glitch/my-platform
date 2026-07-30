@@ -20,7 +20,7 @@
 //     второй платёж, ЮKassa вернёт тот же самый (гарантия — 24 часа).
 
 import { createClient } from "@supabase/supabase-js"
-import { rateLimit } from "./generate-hw.js"
+import { rateLimit, clientIp } from "./generate-hw.js"
 import { featureAllowed } from "./plan-gate.js"
 
 const API = "https://api.yookassa.ru/v3"
@@ -96,8 +96,7 @@ export default async function handler(req, res) {
     return
   }
 
-  const ip = (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || "unknown"
-  const limit = rateLimit(`pay:${ip}`)
+  const limit = rateLimit(`pay:${clientIp(req)}`)
   if (!limit.ok) {
     res.status(429).json({ error: `Слишком часто. Повторите через ${limit.retryAfter} с.` })
     return

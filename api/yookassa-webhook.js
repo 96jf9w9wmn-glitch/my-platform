@@ -23,6 +23,7 @@
 import { createClient } from "@supabase/supabase-js"
 import { ykAuth } from "./yookassa.js"
 import { ykPlatformAuth } from "./plan-gate.js"
+import { clientIp } from "./generate-hw.js"
 
 const API = "https://api.yookassa.ru/v3"
 
@@ -96,7 +97,10 @@ export default async function handler(req, res) {
     return
   }
 
-  const ip = (req.headers["x-forwarded-for"] || "").split(",")[0].trim()
+  // Здесь на адресе держится ВСЯ проверка подлинности (подписи у ЮKassa нет),
+  // поэтому берём его только из заголовков прокси Vercel: клиентский
+  // `x-forwarded-for` подделывается и пускал бы кого угодно (аудит 30.07.2026).
+  const ip = clientIp(req)
   if (!isYooKassaIp(ip)) {
     // Не 200: это не ЮKassa, повторов бояться нечего.
     res.status(403).json({ error: "forbidden" })

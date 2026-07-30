@@ -21,7 +21,7 @@
 // Проверка тарифа и ключи магазина платформы живут в api/plan-gate.js — их же
 // используют api/generate-hw.js и api/yookassa.js.
 
-import { rateLimit } from "./generate-hw.js"
+import { rateLimit, clientIp } from "./generate-hw.js"
 import { admin, ykPlatformAuth, platformShopId, platformSecret, tutorFromRequest, isMissingSchema } from "./plan-gate.js"
 import { PLANS, planById, priceOf, monthsOf } from "../src/plans.js"
 
@@ -63,8 +63,7 @@ export default async function handler(req, res) {
     return
   }
 
-  const ip = (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || "unknown"
-  const limit = rateLimit(`sub:${ip}`)
+  const limit = rateLimit(`sub:${clientIp(req)}`)
   if (!limit.ok) {
     res.status(429).json({ error: `Слишком часто. Повторите через ${limit.retryAfter} с.` })
     return

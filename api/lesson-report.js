@@ -1,4 +1,6 @@
-import { rateLimit } from "./generate-hw.js"
+import { createClient } from "@supabase/supabase-js"
+import { rateLimit, clientIp } from "./generate-hw.js"
+import { tutorFromRequest } from "./plan-gate.js"
 
 // Отчёт родителю после занятия: на входе — заметки репетитора и результаты
 // работ, на выходе строгий JSON, который репетитор правит перед отправкой.
@@ -50,6 +52,15 @@ export function scrubContacts(value) {
     .replace(/(?:\+7|\b8|\b7)?[\s(-]*\d{3}[\s)-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}\b/g, "[телефон]")
 }
 
+// Тот же клиент под service_role, что и в generate-hw.js: нужен только для
+// проверки токена репетитора. Нет ключа — нет проверки (см. handler ниже).
+function admin() {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !key) return null
+  return createClient(url, key, { auth: { persistSession: false } })
+}
+
 function buildPrompt({ period, notes, results, weakTypes }) {
   return [
     "Ты — помощник репетитора. Составь короткий отчёт РОДИТЕЛЮ о занятиях.",
@@ -91,11 +102,21 @@ export default async function handler(req, res) {
     return
   }
 
-  const ip = (req.headers?.["x-forwarded-for"] || "").split(",")[0].trim() || "unknown"
-  const limit = rateLimit(ip)
+  const limit = rateLimit(clientIp(req))
   if (!limit.ok) {
     res.setHeader?.("Retry-After", String(limit.retryAfter))
     res.status(429).json({ error: `Слишком часто. Попробуйте через ${limit.retryAfter} с.` })
+    return
+  }
+
+  // Функция ходит в платный DeepSeek, поэтому анонимной быть не должна: без
+  // проверки токена любой желающий жёг бы баланс с чужого адреса (аудит
+  // 30.07.2026, P2-1). Логика та же, что в generate-hw.js: если сервер знает
+  // service_role — требуем токен репетитора; без ключа работаем как раньше,
+  // чтобы забытая переменная окружения не выключила фичу целиком.
+  const db = admin()
+  if (db && !(await tutorFromRequest(db, req))) {
+    res.status(401).json({ error: "Нужна авторизация репетитора" })
     return
   }
 

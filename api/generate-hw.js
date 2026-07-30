@@ -54,6 +54,17 @@ export function rateLimit(ip, now = Date.now()) {
   return { ok: true }
 }
 
+// Адрес клиента для лимитера. `x-forwarded-for` клиент присылает сам, и если
+// брать из него первый элемент, лимит обходится подстановкой чужого адреса в
+// заголовок (аудит 30.07.2026, P2-3). `x-vercel-forwarded-for` и `x-real-ip`
+// проставляет прокси Vercel — им можно верить; XFF оставлен последним запасным
+// вариантом на случай запуска не на Vercel.
+export function clientIp(req) {
+  const h = req.headers || {}
+  const first = (v) => String(v || "").split(",")[0].trim()
+  return first(h["x-vercel-forwarded-for"]) || first(h["x-real-ip"]) || first(h["x-forwarded-for"]) || "unknown"
+}
+
 export default async function handler(req, res) {
   const apiKey = process.env.DEEPSEEK_API_KEY
 
@@ -85,8 +96,7 @@ export default async function handler(req, res) {
     return
   }
 
-  const ip = (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || "unknown"
-  const limit = rateLimit(ip)
+  const limit = rateLimit(clientIp(req))
   if (!limit.ok) {
     res.setHeader("Retry-After", String(limit.retryAfter))
     res.status(429).json({ error: `Слишком часто. Попробуйте через ${limit.retryAfter} с.` })
