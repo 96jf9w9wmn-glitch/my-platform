@@ -80,39 +80,50 @@ function drawGrid(pdf, x, y, w, h) {
 }
 
 // Подпись «Ответ:» — картинкой: кириллицу встроенными шрифтами jsPDF не написать.
-// Снимается один раз на всю тетрадь и обрезается по чернилам, иначе к слову приклеился бы
-// пустой хвост блока во всю ширину страницы и линия ответа уехала бы вправо.
-const LABEL_H = 4.2   // высота подписи в мм
+// Снимается один раз на всю тетрадь и обрезается по чернилам с четырёх сторон, иначе к
+// слову приклеился бы пустой хвост блока во всю ширину страницы и линия уехала бы вправо.
+//
+// Запас снизу (LABEL_PAD) обязателен: html2canvas рисует текст ниже DOM-бокса, и у блока
+// высотой ровно в строку низ букв не попадал в снимок — подпись выходила срезанной пополам.
+const LABEL_PAD = 24     // запас вокруг подписи в снимке, px
 async function renderAnswerLabel() {
-  const c = await renderBlock(`<div style="font-family:Arial,sans-serif; font-size:15px; color:#3a3a3c;">Ответ:</div>`)
+  const c = await renderBlock(
+    `<div style="font-family:Arial,sans-serif; font-size:15px; color:#3a3a3c; padding:${LABEL_PAD}px 0;">Ответ:</div>`
+  )
   const { width: w, height: h } = c
   const d = c.getContext("2d").getImageData(0, 0, w, h).data
-  let right = 0, bottom = 0
+  let left = w, right = 0, top = h, bottom = 0
   for (let py = 0; py < h; py++) {
     for (let px = 0; px < w; px++) {
       const i = (py * w + px) * 4
       if (d[i] < 200 && d[i + 1] < 200 && d[i + 2] < 200) {
+        if (px < left) left = px
         if (px > right) right = px
+        if (py < top) top = py
         if (py > bottom) bottom = py
       }
     }
   }
+  if (right < left || bottom < top) return null
+  const x0 = Math.max(0, left - 2), y0 = Math.max(0, top - 2)
   const crop = document.createElement("canvas")
-  crop.width = Math.min(w, right + 3)
-  crop.height = Math.min(h, bottom + 3)
+  crop.width = Math.min(w, right + 3) - x0
+  crop.height = Math.min(h, bottom + 3) - y0
   const ctx = crop.getContext("2d")
   ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, crop.width, crop.height)
-  ctx.drawImage(c, 0, 0)
-  return { dataUrl: crop.toDataURL("image/png"), width: crop.width, height: crop.height }
+  ctx.drawImage(c, -x0, -y0)
+  // размеры в мм — по фактическому масштабу снимка (вся его ширина = ширина колонки),
+  // чтобы подпись была того же кегля, что и текст условий, а не растянутой под заданную высоту
+  const mm = CONTENT_W / w
+  return { dataUrl: crop.toDataURL("image/png"), w: crop.width * mm, h: crop.height * mm }
 }
 
 // Строка «Ответ: ______» под полем: подпись-картинка + векторная линия.
 function drawAnswerLine(pdf, label, x, y, w) {
-  const labelW = LABEL_H * (label.width / label.height)
-  pdf.addImage(label.dataUrl, "PNG", x, y - LABEL_H + 1, labelW, LABEL_H)
+  pdf.addImage(label.dataUrl, "PNG", x, y - label.h + 1, label.w, label.h)
   pdf.setLineWidth(0.3)
   pdf.setDrawColor(...RULE_COLOR)
-  pdf.line(x + labelW + 2, y + 1, Math.min(x + w, x + labelW + 2 + 70), y + 1)
+  pdf.line(x + label.w + 2, y + 1, Math.min(x + w, x + label.w + 2 + 70), y + 1)
 }
 
 const escapeHtml = (s) => {
@@ -218,8 +229,12 @@ async function snapAll(htmls) {
       out.push(...await snapBatch(batch))
     } catch {
       for (const h of batch) {
-        const c = await renderBlock(h)
-        out.push({ dataUrl: c.toDataURL("image/jpeg", 0.92), h: blockHeight(c) })
+        // запас снизу и здесь: без него html2canvas срезает низ последней строки
+        // (текст он рисует ниже DOM-бокса), а лишнее белое поле снимет обрезка по чернилам
+        const c = await renderBlock(`<div style="padding-bottom:${SEP / 2}px;">${h}</div>`)
+        const data = c.getContext("2d").getImageData(0, 0, c.width, c.height).data
+        const stripe = cropStripe(c, data, 0, c.height)
+        out.push({ dataUrl: stripe.toDataURL("image/jpeg", 0.92), h: blockHeight(stripe) })
       }
     }
   }
