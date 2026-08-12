@@ -18,6 +18,7 @@ import Schedule from "./pages/Schedule"
 import ParentDashboard from "./pages/ParentDashboard"
 import Chat from "./pages/Chat"
 import Legal from "./pages/Legal"
+import { LEGAL_PATHS } from "./legalPaths"
 import Subscription from "./pages/Subscription"
 import { SubscriptionProvider } from "./subscriptionProvider"
 import TutorOnboardingModal from "./components/TutorOnboardingModal"
@@ -544,8 +545,10 @@ function App() {
 
   // Публичные юр-страницы — доступны без авторизации и до загрузки сессии
   // (152-ФЗ требует свободного доступа к Политике обработки ПДн).
+  // Список адресов держит сама страница (LEGAL_PATHS), чтобы новый документ не
+  // забыли добавить в маршрут и он не отдавал кабинет вместо текста.
   const legalPath = typeof window !== "undefined" ? window.location.pathname : "/"
-  if (legalPath === "/privacy" || legalPath === "/consent" || legalPath === "/cookie" || legalPath === "/rules") {
+  if (LEGAL_PATHS.includes(legalPath)) {
     return <Legal path={legalPath} />
   }
 

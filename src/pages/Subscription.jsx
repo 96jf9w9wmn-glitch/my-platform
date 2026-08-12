@@ -326,6 +326,16 @@ export default function Subscription({ studentsCount = 0, tutorId }) {
         ))}
       </div>
 
+      {/* Акцепт оферты при оплате — п. 3.1 договора. Стоит прямо под кнопками:
+          условие должно быть видно до нажатия, а не в подвале страницы. */}
+      <p className="text-[11px] text-gray-400 dark:text-gray-500 mb-4 leading-relaxed">
+        Нажимая «Перейти» или «Продлить», вы принимаете{" "}
+        <a href="/offer" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 underline underline-offset-2">
+          договор-оферту
+        </a>{" "}
+        и оплачиваете выбранный тариф.
+      </p>
+
       {error && (
         <div className="glass-tint-red px-4 py-3 mb-4 text-sm text-red-600 dark:text-red-300">{error}</div>
       )}
@@ -418,10 +428,26 @@ export default function Subscription({ studentsCount = 0, tutorId }) {
         <MarketingToggle table="tutors" id={tutorId} role="tutor" />
       </div>
 
-      <p className="text-[11px] text-gray-400 mt-4 leading-relaxed">
-        Оплата проходит через ЮKassa. Подписка не продлевается автоматически: когда срок закончится,
-        доступ станет бесплатным «Стартом», а данные учеников останутся на месте.
-      </p>
+      {/* Условия, которые исполнитель обязан довести до потребителя до оплаты
+          (ст. 8–10 ЗоЗПП): кто исполнитель, что с НДС и чеком, как вернуть деньги. */}
+      <div className="text-[11px] text-gray-400 dark:text-gray-500 mt-4 leading-relaxed space-y-1.5">
+        <p>
+          Оплата проходит через ЮKassa. Подписка не продлевается автоматически: когда срок
+          закончится, доступ станет бесплатным «Стартом», а данные учеников останутся на месте.
+        </p>
+        <p>
+          Исполнитель — Саркисян А. Н. (самозанятый), ИНН 262308648105. НДС не начисляется.
+          На каждую оплату формируется чек «Мой налог» и направляется на почту вашего аккаунта.
+        </p>
+        <p>
+          Отказаться и вернуть деньги за неиспользованные дни можно в любой момент — письмом на
+          arm_227@mail.ru, возврат в течение 10 рабочих дней (раздел 6{" "}
+          <a href="/offer" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 underline underline-offset-2">
+            оферты
+          </a>
+          ). <a href="/requisites" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 underline underline-offset-2">Реквизиты</a>.
+        </p>
+      </div>
     </div>
   )
 }

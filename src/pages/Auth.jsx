@@ -144,7 +144,7 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
       if (!consent.pd) throw new Error("Подтвердите согласие на обработку данных — без него доступ к кабинету ребёнка открыть нельзя")
       return
     }
-    if (!consent.terms) throw new Error("Подтвердите, что ознакомились с Политикой конфиденциальности и Правилами сервиса")
+    if (!consent.terms) throw new Error("Подтвердите принятие договора-оферты и Правил чата — без этого договор не считается заключённым")
     if (!consent.pd) throw new Error("Без согласия на обработку персональных данных зарегистрировать аккаунт нельзя")
     if (role === "student" && !consent.guardian) throw new Error("Подтвердите возраст или согласие законного представителя")
   }
@@ -543,8 +543,9 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
                 onChange={(v) => setConsent((p) => ({ ...p, terms: v }))}
                 accent={roleConfig[role].grad}
               >
-                Ознакомлен(а) с <ConsentLink href="/privacy">Политикой конфиденциальности</ConsentLink> и
-                принимаю <ConsentLink href="/rules">Правила сервиса</ConsentLink>
+                Принимаю <ConsentLink href="/offer">договор-оферту</ConsentLink> и{" "}
+                <ConsentLink href="/rules">Правила чата</ConsentLink>, ознакомлен(а) с{" "}
+                <ConsentLink href="/privacy">Политикой конфиденциальности</ConsentLink>
               </ConsentRow>
 
               <ConsentRow
@@ -575,7 +576,8 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
                 onChange={(v) => setConsent((p) => ({ ...p, pd: v }))}
                 accent={roleConfig.parent.grad}
               >
-                Я законный представитель ученика: ознакомлен(а) с{" "}
+                Я законный представитель ученика: принимаю{" "}
+                <ConsentLink href="/offer">договор-оферту</ConsentLink>, ознакомлен(а) с{" "}
                 <ConsentLink href="/privacy">Политикой конфиденциальности</ConsentLink> и даю{" "}
                 <ConsentLink href="/consent">согласие на обработку персональных данных</ConsentLink> — своих и ребёнка
               </ConsentRow>

@@ -42,10 +42,12 @@ const SOCIALS = [
 ]
 
 const LEGAL = [
+  { href: "/offer", label: "Договор-оферта" },
   { href: "/privacy", label: "Политика конфиденциальности" },
   { href: "/consent", label: "Согласие на обработку ПДн" },
   { href: "/cookie", label: "Cookie" },
   { href: "/rules", label: "Правила чата" },
+  { href: "/requisites", label: "Реквизиты" },
 ]
 
 // Фирменные знаки соцсетей. Не в Icon.jsx: там все иконки линейные (fill=none),
