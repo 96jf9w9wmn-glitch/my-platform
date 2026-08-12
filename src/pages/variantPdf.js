@@ -300,7 +300,9 @@ export async function svgUrlToPng(url, maxWidth = 380) {
     ctx.fillStyle = "#ffffff"
     ctx.fillRect(0, 0, canvas.width, canvas.height)
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-    return { dataUrl: canvas.toDataURL("image/png"), width }
+    // height нужен рабочей тетради: там <img> получает явные размеры, чтобы высота блока
+    // не зависела от того, успел ли браузер декодировать картинку
+    return { dataUrl: canvas.toDataURL("image/png"), width, height: Math.round(width * aspect) }
   } finally {
     URL.revokeObjectURL(blobUrl)
   }

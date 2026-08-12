@@ -49,15 +49,43 @@ function fieldHeightFor(space, examType, task) {
 
 // Картинка задания. Генераторы отдают SVG (data-URL) — его надо растеризовать самим,
 // html2canvas живые SVG рисует ненадёжно; готовый растр из банка вставляем как есть.
-async function taskImage(url) {
-  if (!url) return null
-  const isSvg = url.startsWith("data:image/svg") || /\.svg($|\?)/i.test(url)
-  if (!isSvg) return { dataUrl: url, width: 380 }
+//
+// Высота известна ЗДЕСЬ и проставляется в <img> явным атрибутом. Без неё высота блока
+// зависит от того, успел ли браузер декодировать картинку: html2canvas снимает не сам
+// документ, а его клон, и недекодированная картинка в клоне даёт нулевую высоту — блок
+// в снимке выходит короче, чем в DOM, и чертёж пропадает из задания (у ученика остаётся
+// «на рисунке изображён график» без графика).
+const capped = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(r, ms))])
+
+// Размер растровой картинки из банка (у SVG он известен после растеризации, мерить нечего).
+async function measure(dataUrl, width) {
+  const img = new Image()
   try {
-    return await svgUrlToPng(url)
+    await new Promise((resolve, reject) => {
+      img.onload = resolve
+      img.onerror = () => reject(new Error("картинка не загрузилась"))
+      img.src = dataUrl
+    })
+    if (!img.naturalWidth) return null
+    return Math.round((width * img.naturalHeight) / img.naturalWidth)
   } catch {
     return null
   }
+}
+
+async function taskImage(url) {
+  if (!url) return null
+  const isSvg = url.startsWith("data:image/svg") || /\.svg($|\?)/i.test(url)
+  if (isSvg) {
+    try {
+      const png = await svgUrlToPng(url)
+      return { dataUrl: png.dataUrl, width: png.width, height: png.height }
+    } catch {
+      // растеризовать не вышло — отдаём исходный адрес: пусть попробует html2canvas.
+      // Молча терять чертёж нельзя, задание без него нерешаемо.
+    }
+  }
+  return { dataUrl: url, width: 380, height: await measure(url, 380) }
 }
 
 // Сетка в клетку + рамка. Возвращает фактическую высоту (кратна клетке, чтобы у поля
@@ -163,6 +191,10 @@ function inkRange(data, w, top, bot) {
   return first < 0 ? null : { first, last }
 }
 
+// Вырезает полосу снимка, обрезая белые поля. clipped — чернила упираются в край полосы,
+// то есть содержимое, скорее всего, продолжается за ней и в сегмент попало не всё.
+// Признак именно такой, а не «сегмент короче блока в DOM»: у чертежа бывают широкие белые
+// поля, и по высоте честно обрезанный сегмент выглядел бы подозрительным.
 function cropStripe(canvas, data, top, bot) {
   const ink = inkRange(data, canvas.width, top, bot)
   const y0 = ink ? Math.max(top, ink.first - INK_PAD) : top
@@ -173,6 +205,8 @@ function cropStripe(canvas, data, top, bot) {
   const ctx = out.getContext("2d")
   ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, out.width, out.height)
   ctx.drawImage(canvas, 0, -y0)
+  const edge = 2 * SNAP_SCALE
+  out.clipped = !!ink && (ink.first - top < edge || bot - ink.last < edge)
   return out
 }
 
@@ -183,10 +217,16 @@ async function snapBatch(htmls) {
   el.innerHTML = htmls.map((h) => `<div style="padding-bottom:${SEP}px;">${h}</div>`).join("")
   document.body.appendChild(el)
   try {
+    // ждём именно ДЕКОДИРОВАНИЯ: complete у data-URL истинно раньше, чем картинка готова,
+    // а html2canvas снимает клон документа — недорисованная картинка в нём теряется
+    // decode() здесь звать НЕЛЬЗЯ: для картинки, которую браузер не рисует на экране
+    // (контейнер уехал за левый край), обещание может не разрешиться вовсе — пачка просто
+    // ждала бы таймаут, и сборка замедлялась впятеро. Геометрию блока держат явные
+    // width/height у <img>, а декодирование перед отрисовкой html2canvas ждёт сам.
     const imgs = [...el.querySelectorAll("img")]
     await Promise.all(imgs.map((img) => img.complete
       ? Promise.resolve()
-      : new Promise((resolve) => { img.onload = resolve; img.onerror = resolve })))
+      : capped(new Promise((resolve) => { img.onload = resolve; img.onerror = resolve }), 5000)))
     const kids = [...el.children]
     const tops = kids.map((k) => k.offsetTop)
     const totalCss = el.offsetHeight
@@ -197,7 +237,8 @@ async function snapBatch(htmls) {
       const top = Math.max(0, Math.round((i === 0 ? 0 : tops[i] - SEP / 2) * k))
       const bot = Math.min(canvas.height, Math.round((i === kids.length - 1 ? totalCss : tops[i + 1] - SEP / 2) * k))
       const stripe = cropStripe(canvas, data, top, bot)
-      return { dataUrl: stripe.toDataURL("image/jpeg", 0.92), h: blockHeight(stripe) }
+      // в сегмент попало не всё (чаще всего это потерянный чертёж) — блок переснимем отдельно
+      return { dataUrl: stripe.toDataURL("image/jpeg", 0.92), h: blockHeight(stripe), short: stripe.clipped }
     })
   } finally {
     document.body.removeChild(el)
@@ -223,19 +264,26 @@ async function snapAll(htmls) {
   })
   if (cur.length) batches.push(cur)
 
+  // Одиночный снимок блока — надёжный путь: своё поле снизу (иначе html2canvas срежет
+  // низ последней строки, он рисует текст ниже DOM-бокса), обрезка по чернилам.
+  const snapOne = async (h) => {
+    const c = await renderBlock(`<div style="padding-bottom:${SEP / 2}px;">${h}</div>`)
+    const data = c.getContext("2d").getImageData(0, 0, c.width, c.height).data
+    const stripe = cropStripe(c, data, 0, c.height)
+    return { dataUrl: stripe.toDataURL("image/jpeg", 0.92), h: blockHeight(stripe) }
+  }
+
   const out = []
   for (const batch of batches) {
+    let shots
     try {
-      out.push(...await snapBatch(batch))
+      shots = await snapBatch(batch)
     } catch {
-      for (const h of batch) {
-        // запас снизу и здесь: без него html2canvas срезает низ последней строки
-        // (текст он рисует ниже DOM-бокса), а лишнее белое поле снимет обрезка по чернилам
-        const c = await renderBlock(`<div style="padding-bottom:${SEP / 2}px;">${h}</div>`)
-        const data = c.getContext("2d").getImageData(0, 0, c.width, c.height).data
-        const stripe = cropStripe(c, data, 0, c.height)
-        out.push({ dataUrl: stripe.toDataURL("image/jpeg", 0.92), h: blockHeight(stripe) })
-      }
+      shots = batch.map(() => null)
+    }
+    for (let i = 0; i < batch.length; i++) {
+      // снимок пачки не удался или задание вышло обрезанным — переснимаем его одно
+      out.push(!shots[i] || shots[i].short ? await snapOne(batch[i]) : shots[i])
     }
   }
   return out
@@ -294,7 +342,7 @@ export async function generateWorkbookPdf({
       `<div style="font-family:Arial,sans-serif; color:#1c1c1e;">
         <div style="font-weight:700; font-size:16px; margin-bottom:6px;">Задание ${i + 1}${num}</div>
         ${t.condition_text ? `<div style="font-size:15px; white-space:pre-wrap; line-height:1.5;">${await renderTaskMathPdf(t.condition_text)}</div>` : ""}
-        ${img ? `<img src="${img.dataUrl}" style="width:${img.width}px; display:block; margin-top:10px;" />` : ""}
+        ${img ? `<img src="${img.dataUrl}" width="${img.width}"${img.height ? ` height="${img.height}"` : ""} style="width:${img.width}px;${img.height ? ` height:${img.height}px;` : ""} display:block; margin-top:10px;" />` : ""}
         ${t.condition_tail ? `<div style="font-size:15px; white-space:pre-wrap; line-height:1.5; margin-top:8px;">${await renderTaskMathPdf(t.condition_tail)}</div>` : ""}
       </div>`
     )
