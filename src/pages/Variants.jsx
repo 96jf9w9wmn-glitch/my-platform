@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
+import { signRows } from "../storageUrl"
 import { plural, getInitials, defaultExamType, renderTaskMath, plainTaskMath } from "../utils"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
@@ -728,8 +729,10 @@ function Variants({ user, students = [], embedded = false, addOpen, onAddOpenCha
     setLoading(true)
     const { data: v } = await supabase.from("variants").select("*").eq("tutor_id", user.id).order("created_at", { ascending: false })
     const { data: s } = await supabase.from("variant_submissions").select("*, student_accounts(name, email)").in("variant_id", (v || []).map((x) => x.id))
-    setVariants(v || [])
-    setSubmissions(s || [])
+    // Бакет `variants` приватный: PDF варианта и фото решений части 2 —
+    // рабочие файлы учеников, отдаём по временной подписанной ссылке.
+    setVariants(await signRows(v || [], { file_url: "variants" }))
+    setSubmissions(await signRows(s || [], { part2_files: "variants" }))
     setLoading(false)
   }
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react"
 import { supabase } from "../supabase"
+import { signBoardScene } from "../storageUrl"
 import Icon from "./Icon"
 import { renderScene, preloadSceneImages, isDarkColor } from "./boardPaint"
 
@@ -148,7 +149,7 @@ function BoardHistory({ studentId, studentName, account = null, token = null }) 
           .select("scene").eq("student_id", String(studentId)).eq("lesson_date", date).maybeSingle()
         scene = data?.scene
       }
-      if (scene) setOpen({ date, scene })
+      if (scene) setOpen({ date, scene: await signBoardScene(scene) })
     } finally {
       setLoadingDate(null)
     }

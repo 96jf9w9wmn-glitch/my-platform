@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, lazy, Suspense } from "react"
 import { createPortal } from "react-dom"
 import { supabase, isPasswordRecovery, setAppToken } from "./supabase"
+import { signRows } from "./storageUrl"
 import Sidebar from "./components/Sidebar"
 import NavIcon from "./components/NavIcon"
 import Icon from "./components/Icon"
@@ -396,6 +397,9 @@ function App() {
         }))
       }
     }
+
+    // Бакет с аватарами приватный, поэтому адрес подписываем на время.
+    mapped = await signRows(mapped, { avatar: "homework" })
 
     setStudents(mapped)
     setStudentsLoaded(true)

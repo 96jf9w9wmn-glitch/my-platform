@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react"
 import { supabase } from "../supabase"
+import { signRows } from "../storageUrl"
 import Chat from "./Chat"
 import { getInitials } from "../utils"
 import MorphIcon from "../components/MorphIcon"
@@ -107,9 +108,10 @@ function ParentDashboard({ user, onLogout }) {
   // (уроки, оплаты, цель), поэтому подтягиваем актуальную строку при заходе.
   useEffect(() => {
     supabase.from("students").select("*").eq("id", user.student.id).maybeSingle()
-      .then(({ data }) => {
+      .then(async ({ data }) => {
         if (!data) return
-        const refreshed = { ...data, lessonPrice: data.lesson_price, lessonDuration: data.lesson_duration }
+        const [withAvatar] = await signRows([data], { avatar: "homework" })
+        const refreshed = { ...withAvatar, lessonPrice: data.lesson_price, lessonDuration: data.lesson_duration }
         setStudent(refreshed)
         const stored = localStorage.getItem("parent_session")
         if (stored) {
@@ -164,7 +166,10 @@ function ParentDashboard({ user, onLogout }) {
       .select("*")
       .eq("student_id", student.id)
       .order("created_at", { ascending: false })
-      .then(({ data }) => { setHomework(data || []); setLoading(false) })
+      .then(async ({ data }) => {
+        setHomework(await signRows(data || [], { file_url: "homework", submission_url: "homework" }))
+        setLoading(false)
+      })
   }, [student.id])
 
   const now = new Date()

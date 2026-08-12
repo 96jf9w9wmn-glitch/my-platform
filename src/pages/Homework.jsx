@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, lazy, Suspense } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
+import { signRows } from "../storageUrl"
 import Icon from "../components/Icon"
 import Collapse from "../components/Collapse"
 import FormulaBackdrop from "../components/FormulaBackdrop"
@@ -937,7 +938,9 @@ function Homework({ user, students, embedded = false }) {
       .select("*")
       .eq("tutor_id", user.id)
       .order("created_at", { ascending: false })
-    setHomework(data || [])
+    // Бакет `homework` приватный — файл задания и присланное решение
+    // открываются по временной подписанной ссылке.
+    setHomework(await signRows(data || [], { file_url: "homework", submission_url: "homework" }))
   }
 
   const overdueCount = homework.filter(isOverdue).length

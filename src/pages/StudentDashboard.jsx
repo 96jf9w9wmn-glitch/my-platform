@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo, lazy, Suspense } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
+import { signRows } from "../storageUrl"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
@@ -1326,7 +1327,8 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
       .select("*")
       .eq("student_id", student.id)
       .order("created_at", { ascending: false })
-    setHomework(data || [])
+    // Бакет приватный — ссылки на файл задания и своё решение подписываем.
+    setHomework(await signRows(data || [], { file_url: "homework", submission_url: "homework" }))
   }
 
   async function handleStudentAvatarChange(e) {
@@ -1415,7 +1417,10 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
 
     loadHomework()
     const updated = await supabase.from("homework").select("*").eq("id", hwId).single()
-    if (updated.data) setSelectedHomework(updated.data)
+    if (updated.data) {
+      const [signed] = await signRows([updated.data], { file_url: "homework", submission_url: "homework" })
+      setSelectedHomework(signed)
+    }
   }
 
   async function uploadHomeworkSubmission(hwId, file) {
@@ -1544,8 +1549,8 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
       .select("*, variants(*)")
       .eq("student_id", user.id)
       .order("created_at", { ascending: false })
-    const mapped = (subs || [])
-      .map((s) => ({ ...s.variants, submission: s }))
+    const signedSubs = await signRows(subs || [], { part2_files: "variants" })
+    const mapped = (await signRows(signedSubs.map((s) => ({ ...s.variants, submission: s })), { file_url: "variants" }))
       .sort((a, b) => String(b.submission?.created_at || "").localeCompare(String(a.submission?.created_at || "")))
     setVariants(mapped)
     try { localStorage.setItem(variantsCacheKey, JSON.stringify(mapped)) } catch { /* переполнение localStorage — кэш не критичен */ }

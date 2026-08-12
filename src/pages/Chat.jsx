@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, Fragment } from "react"
 import { supabase } from "../supabase"
+import { signStorageUrl } from "../storageUrl"
 import { notifyTutor } from "../telegramNotify"
 
 // Один ли это календарный день у двух сообщений
@@ -289,7 +290,8 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
     }
 
     const myRole = myId.split(":")[0]
-    let contactId, contactName, contactAvatar = student.avatar || null
+    // Аватары лежат в приватном бакете — подписываем ссылку на время.
+    let contactId, contactName, contactAvatar = (await signStorageUrl(student.avatar, "homework")) || null
 
     if (myRole === "p") {
       contactId = `p:${student.id}`

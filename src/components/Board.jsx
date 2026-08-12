@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { supabase } from "../supabase"
+import { signBoardScene } from "../storageUrl"
 import Icon from "./Icon"
 import {
   GRID, ENCLOSED_SHAPES, SHAPE_TOOLS, DASHABLE_SHAPES,
@@ -475,9 +476,10 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   useEffect(() => {
     let alive = true
     supabase.from("boards").select("scene").eq("student_id", String(roomId)).maybeSingle()
-      .then(({ data }) => {
+      .then(async ({ data }) => {
         if (!alive) return
-        const scene = data?.scene || {}
+        // Бакет с картинками доски приватный — подписываем их ссылки.
+        const scene = (await signBoardScene(data?.scene)) || {}
         for (const s of scene.strokes || []) strokes.current.set(s.id, s)
         if (scene.bg) setBg(scene.bg)
         if (scene.bgColor) setBgColor(scene.bgColor)

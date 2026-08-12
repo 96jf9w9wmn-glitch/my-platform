@@ -27,9 +27,11 @@ function TaskForm({ examType, editingTask, onSaved, onCancel }) {
     if (file) {
       const ext = file.name.split(".").pop()
       const fileName = "tasks/" + Date.now() + "." + ext
-      const { error: uploadError } = await supabase.storage.from("variants").upload(fileName, file, { upsert: true })
+      // Картинки заданий — не ПДн, нужны всем и в PDF, поэтому лежат в
+      // отдельном публичном бакете; `variants` стал приватным.
+      const { error: uploadError } = await supabase.storage.from("task-assets").upload(fileName, file, { upsert: true })
       if (!uploadError) {
-        const { data: urlData } = supabase.storage.from("variants").getPublicUrl(fileName)
+        const { data: urlData } = supabase.storage.from("task-assets").getPublicUrl(fileName)
         finalImageUrl = urlData.publicUrl
       }
     }
