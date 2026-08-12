@@ -30,7 +30,16 @@ const cache = new Map()
 export function parseStorageRef(value, defaultBucket) {
   if (typeof value !== "string" || !value) return null
   if (value.startsWith("data:") || value.startsWith("blob:")) return null
-  if (value.includes(SIGN_MARK)) return null
+  // Уже подписанный адрес разбираем так же: подпись живёт ограниченное время,
+  // а ссылка могла осесть в localStorage — тогда её надо выписать заново.
+  const signed = value.indexOf(SIGN_MARK)
+  if (signed !== -1) {
+    const rest = value.slice(signed + SIGN_MARK.length)
+    const slash = rest.indexOf("/")
+    if (slash === -1) return null
+    const path = rest.slice(slash + 1).split("?")[0]
+    return { bucket: rest.slice(0, slash), path: decodeURIComponent(path) }
+  }
 
   const mark = value.indexOf(PUBLIC_MARK)
   if (mark !== -1) {

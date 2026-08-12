@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, lazy, Suspense } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
-import { signRows } from "../storageUrl"
+import { signRows, signStorageUrl } from "../storageUrl"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
@@ -1244,10 +1244,20 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     }
   }, [liveStudent, cachedStudentKey])
 
+  // Аватар из кэша — это ссылка, снятая в прошлой сессии. Бакет приватный,
+  // подпись живёт ограниченное время, поэтому выписываем её заново.
+  const [cachedAvatar, setCachedAvatar] = useState(null)
+  useEffect(() => {
+    let alive = true
+    if (!cachedStudent?.avatar) { setCachedAvatar(null); return }
+    signStorageUrl(cachedStudent.avatar, "homework").then((url) => { if (alive) setCachedAvatar(url) })
+    return () => { alive = false }
+  }, [cachedStudent?.avatar])
+
   // Живые данные с сохранением аватарки из кэша если она не дошла до students таблицы
   const student = liveStudent
-    ? { ...liveStudent, avatar: liveStudent.avatar || cachedStudent?.avatar || null }
-    : cachedStudent
+    ? { ...liveStudent, avatar: liveStudent.avatar || cachedAvatar || null }
+    : (cachedStudent ? { ...cachedStudent, avatar: cachedAvatar || cachedStudent.avatar } : cachedStudent)
 
   const gradedHw = homework.filter((h) => h.grade != null)
   const hwAvg = gradedHw.length > 0
