@@ -6,6 +6,7 @@ import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
 import { assembleFromBank, rerollTask, rerollModule, isModuleNumber, PART2_NUMBERS, makeAnswerChoices } from "./taskBankApi"
 import { generateVariantPdf } from "./variantPdf"
+import { generateWorkbookPdf } from "./workbookPdf"
 import { usePlan } from "../subscription"
 import { PlanHint } from "../components/PlanLock"
 
@@ -19,13 +20,24 @@ function ExtraPdfButtons({ variant }) {
   async function download(mode) {
     setBusy(mode); setErr("")
     try {
-      const blob = await generateVariantPdf({
-        title: variant.title, examType: variant.type, tasks: variant.tasks_snapshot, mode,
-      })
+      // «Тетрадь» — тот же вариант, но с полем в клетку под каждым заданием (для письма от руки).
+      const blob = mode === "workbook"
+        ? await generateWorkbookPdf({
+            title: variant.title || "Рабочая тетрадь",
+            subtitle: variant.type,
+            examType: variant.type,
+            tasks: variant.tasks_snapshot,
+            space: "auto",
+            answersPage: false,
+          })
+        : await generateVariantPdf({
+            title: variant.title, examType: variant.type, tasks: variant.tasks_snapshot, mode,
+          })
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
-      a.download = `${variant.title || "Вариант"} — ${mode === "solutions" ? "с решениями" : "с ответами"}.pdf`
+      const suffix = mode === "solutions" ? "с решениями" : mode === "workbook" ? "рабочая тетрадь" : "с ответами"
+      a.download = `${variant.title || "Вариант"} — ${suffix}.pdf`
       a.click()
       URL.revokeObjectURL(url)
     } catch {
@@ -41,6 +53,11 @@ function ExtraPdfButtons({ variant }) {
     <div className="mx-5 mt-4">
       <div className="text-xs text-gray-400 mb-2">Печатные листы</div>
       <div className="flex flex-wrap gap-2">
+        <button onClick={() => download("workbook")} disabled={busy}
+          className="press-fill text-xs px-3 py-2 rounded-xl ring-1 ring-blue-200 dark:ring-blue-400/25 text-blue-600 bg-blue-500/8 disabled:opacity-50 flex items-center gap-1.5">
+          <MorphIcon from="grid" to="download" size={13} />
+          {busy === "workbook" ? "Собираем…" : "Рабочая тетрадь"}
+        </button>
         <button onClick={() => download("answers")} disabled={busy}
           className="press-fill text-xs px-3 py-2 rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 disabled:opacity-50 flex items-center gap-1.5">
           <MorphIcon from="download" size={13} />
@@ -56,7 +73,8 @@ function ExtraPdfButtons({ variant }) {
       </div>
       {err && <div className="text-xs text-red-500 mt-2">{err}</div>}
       <div className="text-[11px] text-gray-400 mt-2 leading-snug">
-        Ответы и решения идут отдельным разделом в конце — лист ученику остаётся чистым.
+        В тетради под каждым заданием поле в клетку для решения от руки. Ответы и решения идут
+        отдельным разделом в конце — лист ученику остаётся чистым.
       </div>
     </div>
   )

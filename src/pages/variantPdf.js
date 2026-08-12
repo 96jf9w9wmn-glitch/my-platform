@@ -281,7 +281,7 @@ export async function renderTaskMathPdf(text) {
 // canvas и вставляем уже готовую растровую картинку, это html2canvas снимает без проблем.
 // Маленькие SVG (формулы вроде дроби №6) НЕ растягиваем до maxWidth — иначе формула
 // раздувается на всю страницу; берём их натуральную ширину. Возвращает { dataUrl, width }.
-async function svgUrlToPng(url, maxWidth = 380) {
+export async function svgUrlToPng(url, maxWidth = 380) {
   const svgText = await (await fetch(url)).text()
   const blobUrl = URL.createObjectURL(new Blob([svgText], { type: "image/svg+xml" }))
   const img = new Image()
@@ -306,11 +306,11 @@ async function svgUrlToPng(url, maxWidth = 380) {
   }
 }
 
-const CONTAINER_W = 750   // ширина offscreen-контейнера в px; блоки масштабируются на ширину страницы
+export const CONTAINER_W = 750   // ширина offscreen-контейнера в px; блоки масштабируются на ширину страницы
 
 // Снимает один HTML-блок в canvas (кириллица рендерится браузером как есть — иначе пришлось бы
 // вшивать в PDF отдельный кириллический шрифт). Ждёт загрузки картинок перед снимком.
-async function renderBlock(innerHtml) {
+export async function renderBlock(innerHtml) {
   const el = document.createElement("div")
   el.style.cssText = `position:fixed; left:-9999px; top:0; width:${CONTAINER_W}px; background:#fff; font-family:Arial,sans-serif; color:#1c1c1e;`
   el.innerHTML = innerHtml
