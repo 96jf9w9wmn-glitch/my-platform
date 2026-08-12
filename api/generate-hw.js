@@ -54,15 +54,29 @@ export function rateLimit(ip, now = Date.now()) {
   return { ok: true }
 }
 
-// Адрес клиента для лимитера. `x-forwarded-for` клиент присылает сам, и если
-// брать из него первый элемент, лимит обходится подстановкой чужого адреса в
-// заголовок (аудит 30.07.2026, P2-3). `x-vercel-forwarded-for` и `x-real-ip`
-// проставляет прокси Vercel — им можно верить; XFF оставлен последним запасным
-// вариантом на случай запуска не на Vercel.
+// Адрес клиента для лимитера и — важнее — для первой ступени проверки вебхука
+// ЮKassa (api/yookassa-webhook.js: сеть отправителя, затем перезапрос платежа).
+//
+// `x-forwarded-for` присылает сам клиент, и первый его элемент подставляет кто
+// угодно (аудит 30.07.2026, P2-3). Поэтому верим только заголовку, который наш
+// прокси ПЕРЕЗАПИСЫВАЕТ поверх присланного:
+//   Vercel  — `x-vercel-forwarded-for`;
+//   свой сервер — `x-real-ip`, его задаёт `header_up X-Real-IP {remote_host}`
+//   в Caddyfile (server/Caddyfile.precettore) — правки здесь и там парные.
+// XFF убран из цепочки сознательно: за Caddy настоящий адрес дописывается в
+// КОНЕЦ списка, так что старое «взять первый» отдавало бы подделку. Последний
+// запасной вариант — адрес сокета: он не подделывается, а если прокси однажды
+// перестанет слать заголовок, лимит просто станет общим на всех вместо того,
+// чтобы пускать вебхук с любого адреса.
 export function clientIp(req) {
   const h = req.headers || {}
   const first = (v) => String(v || "").split(",")[0].trim()
-  return first(h["x-vercel-forwarded-for"]) || first(h["x-real-ip"]) || first(h["x-forwarded-for"]) || "unknown"
+  return (
+    first(h["x-vercel-forwarded-for"]) ||
+    first(h["x-real-ip"]) ||
+    String(req.socket?.remoteAddress || "").replace(/^::ffff:/, "") ||
+    "unknown"
+  )
 }
 
 export default async function handler(req, res) {

@@ -1,0 +1,116 @@
+# Сайт precettore.ru на своём сервере — то, что раньше делал Vercel.
+#
+# Файл кладётся на сервер как /opt/precettore-db/volumes/proxy/caddy/precettore.caddy
+# и подключается ОДНОЙ строкой в конце основного Caddyfile:
+#
+#     import /etc/caddy/precettore.caddy
+#
+# Отдельным файлом, а не дописыванием в основной Caddyfile: там живёт блок
+# db.precettore.ru, и обновление нашего конфига не должно его переписывать.
+#
+# Раскатка целиком и порядок переключения — docs/hosting.md.
+
+# Общая начинка сайта. Объявлена ДО блоков, которые её импортируют: Caddyfile
+# разбирается сверху вниз, и сниппет, объявленный ниже точки импорта, не виден.
+(precettore_site) {
+    encode zstd gzip
+
+    header {
+        # Заголовки один в один из vercel.json (аудит 30.07.2026), кроме двух
+        # отличий, отмеченных ниже.
+        -Server
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+
+        # Отличие 1: из connect-src убраны https://*.supabase.co и
+        # wss://*.supabase.co — остатки облака, которого в цепочке больше нет
+        # (единственное упоминание supabase.co во всём коде было в vercel.json).
+        # Без wss://db.precettore.ru молча отваливается realtime, без https://
+        # не работает вообще ничего — правило из CLAUDE.md.
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://db.precettore.ru wss://db.precettore.ru; media-src 'self' blob:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+
+        # Отличие 2: добавлен HSTS, которого на Vercel не было. Без
+        # includeSubDomains и без preload сознательно — и то и другое отменяется
+        # только через год ожидания в браузерах, а поддомены нам ещё заводить.
+        Strict-Transport-Security "max-age=31536000"
+    }
+
+    # Всё, кроме ассетов с хэшем, не кэшируем намертво: закэшированный service
+    # worker или index.html со ссылками на старые хэши — это «правка
+    # задеплоена, но её не видно». no-cache = перепроверять на сервере, а не
+    # «не хранить».
+    #
+    # Матчером, а НЕ строкой в общем блоке выше: заголовки из общего блока
+    # применяются на обратном ходе цепочки и затирают то, что выставил
+    # вложенный handle. Проверено живьём — /assets/* уезжал с no-cache.
+    @nohash not path /assets/*
+    header @nohash Cache-Control "no-cache"
+
+    handle /api/* {
+        reverse_proxy web:8787 {
+            # X-Real-IP клиент может прислать сам — здесь он ПЕРЕЗАПИСЫВАЕТСЯ
+            # настоящим адресом соединения. На этом заголовке держится
+            # clientIp() в api/generate-hw.js: ограничитель частоты и первая
+            # ступень проверки вебхука ЮKassa. Правки здесь и там парные.
+            header_up X-Real-IP {remote_host}
+
+            # Генерация ДЗ через DeepSeek занимает до 120 с — прокси не должен
+            # обрывать ответ раньше самого обработчика.
+            transport http {
+                response_header_timeout 180s
+                read_timeout 180s
+            }
+        }
+    }
+
+    root * /srv/precettore
+
+    # Хэш в имени файла уже делает адрес уникальным, поэтому их можно кэшировать
+    # навсегда. Отдельным handle, а не общим try_files: пропавший ассет должен
+    # честно отдавать 404, а не index.html с кодом 200 — иначе поломка выглядит
+    # как «приложение странно себя ведёт» вместо внятной ошибки в консоли.
+    handle /assets/* {
+        header Cache-Control "public, max-age=31536000, immutable"
+        file_server
+    }
+
+    handle {
+        try_files {path} /index.html
+        file_server
+    }
+}
+
+# Порт для проверки ИЗНУТРИ контейнера, пока DNS ещё смотрит на Vercel.
+# Наружу не опубликован (в docker-compose.caddy.yml опубликованы только 80/443),
+# поэтому доступен единственным способом:
+#
+#     docker exec supabase-caddy wget -qO- http://localhost:8080/api/healthz
+#
+# Позволяет проверить статику, SPA-подстановку, заголовки и проксирование на
+# `web` ещё до переключения домена. После переезда блок можно удалить —
+# он безвреден, но и бесполезен.
+:8080 {
+    import precettore_site
+}
+
+# --- БОЕВОЕ ИМЯ: включать ТОЛЬКО когда A-запись precettore.ru уже указывает
+# на этот сервер ------------------------------------------------------------
+# Caddy получает сертификат Let's Encrypt проверкой по этому же адресу. Если
+# включить блок заранее, проверка будет уходить на Vercel и падать, а Caddy
+# уводит неудачные попытки в экспоненциальную паузу — после переключения DNS
+# сайт мог бы пролежать ещё до часа, ожидая следующей попытки. Поэтому порядок
+# строго такой: сначала DNS, сразу следом раскомментировать и перечитать конфиг
+#
+#     docker exec supabase-caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+#
+# precettore.ru {
+#     import precettore_site
+# }
+
+# www в DNS не заведён. Если появится — отдельным блоком, а не вторым именем у
+# апекса, чтобы неудачный выпуск сертификата на www не мешал основному имени.
+# www.precettore.ru {
+#     redir https://precettore.ru{uri} permanent
+# }

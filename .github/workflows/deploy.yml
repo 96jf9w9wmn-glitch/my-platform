@@ -1,0 +1,115 @@
+# Автодеплой precettore.ru на свой сервер — замена автодеплоя Vercel.
+#
+# Раннер только СОБИРАЕТ статику: персональных данных в сборке нет, поэтому то,
+# что раннер зарубежный, к 152-ФЗ отношения не имеет. Всё, что работает с ПДн,
+# живёт и исполняется на сервере в Москве.
+#
+# Требуемые секреты репозитория (Settings → Secrets and variables → Actions):
+#   VITE_SUPABASE_URL       адрес базы (попадает в бандл, не секрет по сути)
+#   VITE_SUPABASE_ANON_KEY  публичный ключ (он и так уходит в браузер)
+#   DEPLOY_HOST             IP или имя сервера
+#   DEPLOY_USER             deploy
+#   DEPLOY_SSH_KEY          приватный ключ deploy-пользователя (ed25519)
+#   DEPLOY_KNOWN_HOSTS      вывод `ssh-keyscan -t ed25519 <host>`
+#
+# Секреты серверных функций (ключи ЮKassa, токен бота, service_role) сюда НЕ
+# кладутся: они лежат на сервере в /opt/precettore-web/api.env и деплоем не
+# трогаются. Раннеру они не нужны, а секрет, которого нет в CI, не утечёт из CI.
+
+name: Деплой на precettore.ru
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Два деплоя подряд не должны раскатываться внахлёст: rsync --delete во время
+# чужого rsync оставит на сервере смесь двух сборок.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # Выключатель на время переезда: пока переменная репозитория DEPLOY_ENABLED
+    # не выставлена в 1, задача пропускается. Без него каждый push до настройки
+    # секретов давал бы красный крестик на коммите, а красный крестик, который
+    # «так и должно быть», очень быстро перестают замечать.
+    if: ${{ vars.DEPLOY_ENABLED == '1' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Установить зависимости
+        run: npm ci
+
+      - name: Проверка линтером
+        run: npm run lint
+
+      - name: Сборка
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: npm run build
+
+      - name: Собрать то, что поедет на сервер
+        run: |
+          set -euo pipefail
+          # Выкидываем сборочные зависимости (vite, tailwind, eslint), оставляя
+          # прод-набор из того же package-lock.json. Отдельного package.json для
+          # сервера сознательно нет: разъехавшиеся версии @supabase/supabase-js
+          # на клиенте и на сервере — ровно тот баг, который потом не находится.
+          npm prune --omit=dev
+          mkdir -p bundle
+          # package.json обязателен: без "type": "module" Node считает файлы
+          # api/ коммонжсом и не стартует вовсе.
+          cp -r dist api src server package.json bundle/
+          cp -r node_modules bundle/node_modules
+
+      - name: Ключ для ssh
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          # Отпечаток закреплён заранее. StrictHostKeyChecking=no здесь означал
+          # бы «доверять любому, кто ответит по этому адресу».
+          printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Раскатка
+        run: |
+          set -euo pipefail
+          rsync -az --delete --checksum \
+            -e "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes" \
+            bundle/ \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/opt/precettore-web/current/"
+          # Статику Caddy подхватывает сразу, а Node держит модули в памяти —
+          # его надо перезапустить. Право на эту одну команду выдано в sudoers
+          # точечно: deploy-пользователь НЕ в группе docker, иначе утёкший
+          # секрет репозитория означал бы root на сервере с базой.
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            'sudo /usr/bin/docker restart precettore-web'
+
+      - name: Проверить, что живой
+        # Пока апекс ещё смотрит на Vercel, проверяемся по временному имени:
+        # заведите переменную репозитория HEALTH_URL со значением
+        # https://new.precettore.ru/api/healthz, а после переключения DNS удалите.
+        env:
+          HEALTH_URL: ${{ vars.HEALTH_URL || 'https://precettore.ru/api/healthz' }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 20); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$HEALTH_URL" || true)
+            if [ "$code" = "200" ]; then echo "$HEALTH_URL ответил 200"; exit 0; fi
+            echo "попытка $i: $code"; sleep 3
+          done
+          echo "$HEALTH_URL так и не ответил 200"; exit 1

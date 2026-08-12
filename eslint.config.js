@@ -5,7 +5,9 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist', 'ios', 'build']),
+  // `.claude` — чужие скрипты навыков, а не код приложения; они тянут за собой
+  // два десятка ошибок и роняли бы линтер в деплое (.github/workflows/deploy.yml).
+  globalIgnores(['dist', 'ios', 'build', '.claude']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [
@@ -19,8 +21,9 @@ export default defineConfig([
     },
   },
   {
-    // Vercel serverless functions выполняются в Node, не в браузере
-    files: ['api/**/*.js'],
+    // Серверная часть выполняется в Node, не в браузере: обработчики api/ и
+    // http-сервер, который их поднимает на нашем сервере вместо Vercel.
+    files: ['api/**/*.js', 'server/**/*.js'],
     languageOptions: { globals: globals.node },
   },
 ])

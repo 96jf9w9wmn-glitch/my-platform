@@ -1,0 +1,46 @@
+# Функции api/ как контейнер рядом с базой. Кладётся на сервер в
+# /opt/precettore-db/docker-compose.web.yml и подключается штатным способом:
+#
+#   sh /opt/precettore-db/run.sh config add web
+#
+# Почему контейнером, а не процессом на хосте: Node на сервере не установлен, а
+# Docker есть, и так `web` попадает в ту же сеть compose — Caddy зовёт его по
+# имени `web:8787`, наружу порт не публикуется вовсе. Публиковать его было бы
+# ошибкой: docker вставляет свои правила в iptables ДО ufw, поэтому «опубликовал
+# на 0.0.0.0» здесь означает «открыл в интернет» (см. docker-compose.override.yml).
+
+services:
+
+  web:
+    container_name: precettore-web
+    image: node:22-alpine
+    restart: unless-stopped
+    working_dir: /app
+    command: ["node", "server/index.js"]
+    volumes:
+      # Код раскатывает rsync из GitHub Actions. :ro — приложению писать в свой
+      # каталог незачем, а случайная запись из контейнера в раскатанный релиз
+      # ломала бы воспроизводимость деплоя.
+      - /opt/precettore-web/current:/app:ro
+    env_file:
+      # Секреты (ключи ЮKassa, токен бота, service_role) лежат ОТДЕЛЬНО от кода
+      # и деплоем не перезаписываются. chmod 600, владелец root.
+      - /opt/precettore-web/api.env
+    environment:
+      PORT: "8787"
+      NODE_ENV: production
+    expose:
+      - "8787"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  caddy:
+    volumes:
+      # Дописывается к томам из docker-compose.caddy.yml (compose сливает списки
+      # томов по точке монтирования, а не заменяет их целиком).
+      # Статику Caddy отдаёт сам — через Node она бы шла без всякой пользы.
+      - /opt/precettore-web/current/dist:/srv/precettore:ro
