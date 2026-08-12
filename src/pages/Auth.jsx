@@ -32,12 +32,27 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
   // карточке высоту числом — тогда её можно анимировать (height: auto CSS
   // анимировать не умеет), и она мягко раскрывается из центра.
   const bodyRef = useRef(null)
+  const cardRef = useRef(null)
   const [cardHeight, setCardHeight] = useState(null)
 
   useEffect(() => {
     const el = bodyRef.current
     if (!el || typeof ResizeObserver === "undefined") return
-    const ro = new ResizeObserver(() => setCardHeight(el.getBoundingClientRect().height))
+    // Мерить строго высоту В ПОТОКЕ (borderBoxSize / offsetHeight), НЕ
+    // getBoundingClientRect: при появлении карточки играет `modal-enter` со
+    // scale(0.94), а rect отдаёт высоту С УЧЁТОМ трансформа родителя. Первый
+    // же вызов наблюдателя приходится на анимацию, и карточка запоминала
+    // высоту на ~6% меньше нужной (670 → 630). Больше наблюдатель не
+    // срабатывал (в потоке-то ничего не менялось), поэтому overflow-hidden
+    // навсегда срезал нижнюю строку — ссылку «Нет аккаунта?».
+    // Плюс к содержимому нужны рамки самой карточки: box-sizing: border-box,
+    // и без них height срезал бы ещё 2px.
+    const ro = new ResizeObserver(([entry]) => {
+      const inner = entry?.borderBoxSize?.[0]?.blockSize ?? el.offsetHeight
+      const card = cardRef.current
+      const borders = card ? card.offsetHeight - card.clientHeight : 0
+      setCardHeight(Math.ceil(inner) + borders)
+    })
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
@@ -308,6 +323,7 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
         <MorphIcon from="moon" to="sun" size={16} active={dark} hover={false} rotate />
       </button>
       <div
+        ref={cardRef}
         className="glass-modal w-full max-w-md overflow-hidden transition-[height] duration-300 ease-out motion-reduce:transition-none"
         style={cardHeight ? { height: cardHeight } : undefined}
       >
