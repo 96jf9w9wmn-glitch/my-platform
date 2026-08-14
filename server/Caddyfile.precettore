@@ -76,6 +76,13 @@
         file_server
     }
 
+    # Личная страница репетитора — обычная статика, лежит в dist/me.
+    # Отдельным handle ДО общей подстановки: иначе try_files не находит файл по
+    # адресу каталога и отдаёт index.html приложения вместо страницы.
+    handle /me* {
+        file_server
+    }
+
     handle {
         try_files {path} /index.html
         file_server

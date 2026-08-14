@@ -72,6 +72,12 @@ jobs:
           # api/ коммонжсом и не стартует вовсе.
           cp -r dist api src server package.json bundle/
           cp -r node_modules bundle/node_modules
+          # Личная страница репетитора (precettore.ru/me) — обычная статика,
+          # едет вместе со сборкой. Именно вместе, а не отдельной выкладкой:
+          # раскатка идёт rsync --delete прямо в current/, и папка, положенная
+          # на сервер руками, была бы стёрта первым же деплоем сайта.
+          mkdir -p bundle/dist/me
+          cp portfolio/index.html portfolio/arman.webp bundle/dist/me/
 
       - name: Ключ для ssh
         run: |
