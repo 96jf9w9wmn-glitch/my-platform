@@ -104,18 +104,13 @@ h2{font-size:clamp(30px,4.6vw,50px);line-height:1.1}
 h3{font-size:20px;line-height:1.25}
 .lead{color:var(--muted);font-size:clamp(16px,1.7vw,19px);line-height:1.7}
 section{position:relative;padding:clamp(58px,7vw,96px) 0}
-/* Заголовок раздела занимает всю ширину: h2 слева, поясняющая строка справа.
-   Раньше и то и другое стояло одной колонкой у левого края, и справа
-   оставалась пустая половина экрана. */
+/* Заголовок раздела: пояснение идёт СТРОКОЙ ПОД заголовком, а не рядом с ним.
+   Ширину при этом занимает всю — сужать его в колонку у левого края нельзя. */
 .sec-head{display:grid;grid-template-columns:repeat(var(--grid-cols),1fr);gap:var(--gutter);
-  align-items:end;margin-bottom:clamp(32px,5vw,56px)}
-.sec-head .head{grid-column:1 / span 6}
-.sec-head .lead{grid-column:7 / span 6;margin:0}
+  margin-bottom:clamp(32px,5vw,56px)}
+.sec-head .head{grid-column:1 / -1}
+.sec-head .lead{grid-column:1 / -1;margin:16px 0 0}
 .sec-head h2{margin-top:14px}
-@media (max-width:880px){
-  .sec-head{display:block}
-  .sec-head .lead{margin-top:16px}
-}
 
 /* появление при скролле. Прячем только если JS жив (класс .js ставит скрипт
    в <head>) — иначе при сбое скрипта страница осталась бы пустой. */
@@ -466,8 +461,9 @@ header.stuck{background:rgba(8,9,12,.72);backdrop-filter:blur(18px) saturate(1.4
 .review .meta i{display:block;font-style:normal;font-size:13px;color:var(--dim);margin-top:3px}
 
 /* управление лентой */
-#reviews .sec-head .lead{grid-column:7 / span 4}
-.rev-nav{grid-column:11 / span 2;display:flex;gap:8px;justify-content:flex-end;align-self:end;padding-bottom:4px}
+#reviews .sec-head .head{grid-column:1 / span 10}
+#reviews .sec-head .lead{grid-column:1 / -1}
+.rev-nav{grid-column:11 / span 2;grid-row:1;display:flex;gap:8px;justify-content:flex-end;align-self:end;padding-bottom:4px}
 @media (max-width:880px){.rev-nav{display:none}}
 .rev-nav button{
   width:44px;height:44px;border-radius:50%;display:grid;place-items:center;cursor:pointer;
@@ -506,13 +502,15 @@ header.stuck{background:rgba(8,9,12,.72);backdrop-filter:blur(18px) saturate(1.4
 /* заголовок слева, текст справа: при одной колонке текста справа оставалась
    пустая половина экрана, и блок читался как прижатый к левому краю */
 .about{display:grid;grid-template-columns:repeat(var(--grid-cols),1fr);gap:var(--gutter);align-items:start}
-.about-head{grid-column:1 / span 5}
-.about-body{grid-column:7 / span 6}
+.about-head{grid-column:1 / -1}
+.about-body{grid-column:1 / -1;display:grid;grid-template-columns:repeat(3,1fr);
+  gap:var(--gutter);margin-top:clamp(20px,3vw,30px)}
+.about-body p{margin:0}
+@media (max-width:880px){.about-body{grid-template-columns:1fr;gap:14px}}
 .about-card{grid-column:1 / -1}
 .about-cta{grid-column:1 / -1}      /* кнопка закрывает раздел, а не висит в правой колонке */
 @media (max-width:880px){.about-head,.about-body,.about-cta{grid-column:1 / -1}}
 .about p{color:var(--muted);font-size:16.5px;line-height:1.75}
-.about p+p{margin-top:16px}
 .about p b{color:var(--text);font-weight:500}
 /* карточка-полоса под текстом: так под короткой колонкой не остаётся пустоты */
 .about-card{margin-top:clamp(24px,3vw,38px);border-radius:var(--r-l);border:1px solid var(--line);
