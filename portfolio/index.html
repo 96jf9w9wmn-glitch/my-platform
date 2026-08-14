@@ -1,0 +1,1106 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Арман Саркисян — репетитор по математике · ОГЭ и ЕГЭ</title>
+<meta name="description" content="Репетитор по математике: подготовка к ОГЭ и ЕГЭ (база и профиль), 7–11 класс. Разбор задач на онлайн-доске, домашние задания с проверкой, свой банк тренировочных вариантов. Первое занятие — бесплатно.">
+<meta name="theme-color" content="#08090C">
+<meta property="og:title" content="Арман Саркисян — репетитор по математике">
+<meta property="og:description" content="ОГЭ, ЕГЭ база и профиль, 7–11 класс. Первое занятие — бесплатно.">
+<meta property="og:image" content="arman.jpg">
+<meta property="og:type" content="profile">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%230b0d12'/><text x='50' y='72' font-size='62' font-family='Georgia,serif' fill='%234B8CFF' text-anchor='middle'>∫</text></svg>">
+
+<!--
+  ─────────────────────────────────────────────────────────────────────────
+  ЧТО НУЖНО ЗАМЕНИТЬ СВОИМИ ДАННЫМИ ПЕРЕД ПУБЛИКАЦИЕЙ
+  (всё собрано в одном месте — в объекте CONFIG внизу файла и в разделах ниже)
+
+  1. CONFIG.tg / CONFIG.phone / CONFIG.email — личные контакты.
+  2. Раздел «Ответ» (цифры результатов) — сейчас там ДЕМО-значения.
+  3. Раздел «Отзывы» — сейчас там ДЕМО-отзывы, ОБЯЗАТЕЛЬНО заменить на
+     настоящие: публиковать выдуманные отзывы нельзя.
+  4. Цены в разделе «Форматы» — проверить, что совпадают с реальными.
+  Все места помечены комментарием ЗАМЕНИТЬ.
+  ─────────────────────────────────────────────────────────────────────────
+-->
+
+<script>document.documentElement.className="js"</script>
+<style>
+/* ═══════════════ токены ═══════════════ */
+:root{
+  --bg:#08090C; --bg-2:#0B0D12; --bg-3:#10131A;
+  --surface:rgba(255,255,255,.035);
+  --surface-2:rgba(255,255,255,.06);
+  --line:rgba(255,255,255,.09);
+  --line-2:rgba(255,255,255,.16);
+  --text:#F3F5F8; --muted:#98A0AD; --dim:#6B7280;
+  --accent:#5B93FF; --accent-2:#8FB6FF; --accent-dim:rgba(91,147,255,.14);
+  --warm:#E9B45C;
+  --ok:#4ADE80;
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Times New Roman",serif;
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  --r-s:12px; --r-m:18px; --r-l:26px;
+  --ease:cubic-bezier(.16,1,.3,1);
+  --pad:clamp(20px,5vw,40px);
+  --maxw:1180px;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+body{
+  margin:0;background:var(--bg);color:var(--text);
+  font:400 17px/1.65 var(--sans);
+  -webkit-font-smoothing:antialiased;overflow-x:hidden;
+}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+img{max-width:100%;height:auto;display:block}
+a{color:inherit}
+button,input,textarea,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:6px}
+
+/* ═══════════════ фон: тетрадная клетка + сияние ═══════════════ */
+.bg{position:fixed;inset:0;z-index:-2;pointer-events:none}
+.bg::before{           /* клетка 5 мм, как в тетради */
+  content:"";position:absolute;inset:0;
+  background-image:linear-gradient(rgba(255,255,255,.028) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(255,255,255,.028) 1px,transparent 1px);
+  background-size:26px 26px;
+  mask-image:radial-gradient(120% 90% at 50% 0%,#000 0%,transparent 75%);
+  -webkit-mask-image:radial-gradient(120% 90% at 50% 0%,#000 0%,transparent 75%);
+}
+.glow{position:absolute;border-radius:50%;filter:blur(90px);opacity:.5}
+.glow.a{width:52vw;height:52vw;left:-12vw;top:-16vw;background:radial-gradient(circle,rgba(91,147,255,.30),transparent 65%)}
+.glow.b{width:44vw;height:44vw;right:-14vw;top:8vh;background:radial-gradient(circle,rgba(140,110,255,.20),transparent 65%)}
+.glow.c{width:60vw;height:60vw;left:20vw;top:120vh;background:radial-gradient(circle,rgba(91,147,255,.13),transparent 65%)}
+
+/* ═══════════════ служебное ═══════════════ */
+.wrap{max-width:var(--maxw);margin:0 auto;padding-inline:var(--pad)}
+.eyebrow{
+  font:500 12px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;
+  color:var(--accent-2);display:inline-flex;align-items:center;gap:9px
+}
+.eyebrow::before{content:"";width:26px;height:1px;background:var(--accent);opacity:.7}
+h1,h2,h3{font-family:var(--serif);font-weight:400;letter-spacing:-.015em;margin:0}
+h2{font-size:clamp(30px,4.6vw,50px);line-height:1.1}
+h3{font-size:20px;line-height:1.25}
+.lead{color:var(--muted);font-size:clamp(16px,1.7vw,19px);line-height:1.7;max-width:62ch}
+em.hl{font-style:normal;color:var(--text);background:linear-gradient(transparent 62%,rgba(91,147,255,.28) 62%)}
+section{position:relative;padding:clamp(58px,7vw,96px) 0}
+.sec-head{margin-bottom:clamp(32px,5vw,56px)}
+.sec-head h2{margin-top:14px}
+.sec-head .lead{margin-top:16px}
+
+/* появление при скролле. Прячем только если JS жив (класс .js ставит скрипт
+   в <head>) — иначе при сбое скрипта страница осталась бы пустой. */
+.js .rise{opacity:0;transform:translateY(22px);transition:opacity .7s var(--ease),transform .7s var(--ease)}
+.js .rise.in{opacity:1;transform:none}
+
+/* ═══════════════ шапка ═══════════════ */
+.progress{position:fixed;top:0;left:0;height:2px;width:0;z-index:60;
+  background:linear-gradient(90deg,var(--accent),#A78BFA);box-shadow:0 0 12px rgba(91,147,255,.6)}
+header{
+  position:fixed;top:0;left:0;right:0;z-index:50;
+  transition:background .4s var(--ease),border-color .4s var(--ease),backdrop-filter .4s;
+  border-bottom:1px solid transparent;
+}
+header.stuck{background:rgba(8,9,12,.72);backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4);border-bottom-color:var(--line)}
+.nav{display:flex;align-items:center;gap:20px;height:66px}
+.brand{display:flex;align-items:center;gap:11px;text-decoration:none;margin-right:auto;flex-shrink:0}
+.brand .mark{
+  width:34px;height:34px;border-radius:11px;display:grid;place-items:center;flex-shrink:0;
+  background:linear-gradient(150deg,rgba(91,147,255,.28),rgba(255,255,255,.05));
+  border:1px solid var(--line-2);font-family:var(--serif);font-size:19px;color:var(--accent-2)
+}
+.brand b{font:500 15px/1 var(--sans);letter-spacing:-.01em}
+.brand span{display:block;font:400 11px/1.5 var(--mono);color:var(--dim);letter-spacing:.06em}
+.nav-links{display:flex;gap:4px}
+.nav-links a{
+  position:relative;text-decoration:none;color:var(--muted);font-size:14.5px;
+  padding:9px 13px;border-radius:10px;transition:color .25s;
+}
+.nav-links a::after{content:"";position:absolute;inset:0;border-radius:10px;background:var(--surface-2);opacity:0;transition:opacity .25s}
+.nav-links a:hover{color:var(--text)} .nav-links a:hover::after{opacity:1}
+.nav-links a:active::after{opacity:.6}
+@media (max-width:900px){.nav-links{display:none}}
+
+/* ═══════════════ кнопки ═══════════════ */
+.btn{
+  --btn-bg:var(--surface-2);
+  position:relative;display:inline-flex;align-items:center;justify-content:center;gap:9px;
+  min-height:50px;padding:0 24px;border-radius:999px;border:1px solid var(--line-2);
+  background:var(--btn-bg);color:var(--text);text-decoration:none;cursor:pointer;
+  font-size:15.5px;font-weight:500;letter-spacing:-.005em;overflow:hidden;
+  transition:transform .18s var(--ease),border-color .25s,box-shadow .3s;
+  -webkit-tap-highlight-color:transparent;
+}
+.btn::after{content:"";position:absolute;inset:0;background:#fff;opacity:0;transition:opacity .2s}
+.btn:hover{border-color:rgba(255,255,255,.3)}
+.btn:hover::after{opacity:.06}
+.btn:active{transform:scale(.975)}
+.btn:active::after{opacity:.12}
+.btn.primary{
+  border-color:transparent;color:#08090C;font-weight:600;
+  background:linear-gradient(135deg,#DCE8FF,#FFFFFF 40%,#C9DBFF);
+  box-shadow:0 10px 34px -12px rgba(91,147,255,.75),0 0 0 1px rgba(255,255,255,.12) inset;
+}
+.btn.primary::after{background:#08090C}
+.btn.primary:hover{box-shadow:0 14px 42px -12px rgba(91,147,255,.95)}
+.btn.primary:hover::after{opacity:.05}
+.btn .arr{transition:transform .3s var(--ease)}
+.btn:hover .arr{transform:translateX(3px)}
+
+/* ═══════════════ HERO ═══════════════ */
+.hero{padding-top:clamp(104px,14vw,150px);padding-bottom:clamp(48px,7vw,80px)}
+.hero-grid{display:grid;grid-template-columns:1.08fr .92fr;gap:clamp(28px,5vw,64px);align-items:center}
+.hero-grid>*,.cta-box>*{min-width:0}
+@media (max-width:940px){.hero-grid{grid-template-columns:1fr;gap:8px}}
+
+.badge{
+  display:inline-flex;align-items:center;gap:9px;padding:7px 14px 7px 9px;border-radius:999px;
+  background:var(--accent-dim);border:1px solid rgba(91,147,255,.28);
+  font:500 13px/1 var(--sans);color:var(--accent-2);
+}
+.badge .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 4px rgba(74,222,128,.16);animation:pulse 2.6s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+
+.hero h1{
+  font-size:clamp(40px,6.6vw,74px);line-height:1.02;margin:22px 0 0;letter-spacing:-.03em;
+}
+.hero h1 .sub{display:block;font-size:.46em;color:var(--muted);letter-spacing:0;margin-top:16px;font-family:var(--sans);line-height:1.45}
+.hero h1 .sub b{color:var(--text);font-weight:500}
+.hero .lead{margin-top:22px}
+.hero-cta{display:flex;flex-wrap:wrap;gap:12px;margin-top:30px}
+.hero-note{margin-top:16px;font:400 13.5px/1.6 var(--sans);color:var(--dim);display:flex;align-items:center;gap:7px}
+
+/* фото: снято на чёрном — blend растворяет фон в странице */
+/* фото снято на чёрном: mix-blend-mode:screen растворяет фон в странице,
+   маска гасит только нижний край, чтобы свитер не обрывался линией */
+.photo{position:relative;justify-self:center;width:min(100%,480px);aspect-ratio:1}
+.photo img{
+  width:100%;mix-blend-mode:screen;
+  -webkit-mask-image:linear-gradient(to bottom,#000 62%,transparent 99%);
+  mask-image:linear-gradient(to bottom,#000 62%,transparent 99%);
+}
+.photo::before{  /* ореол за головой */
+  content:"";position:absolute;left:50%;top:34%;transform:translate(-50%,-50%);
+  width:78%;aspect-ratio:1;border-radius:50%;z-index:-1;
+  background:radial-gradient(circle,rgba(91,147,255,.34),rgba(91,147,255,.05) 55%,transparent 72%);
+  filter:blur(8px);
+}
+.orbit{position:absolute;inset:2%;border:1px solid var(--line);border-radius:50%;
+  -webkit-mask-image:linear-gradient(200deg,#000 8%,transparent 52%);mask-image:linear-gradient(200deg,#000 8%,transparent 52%)}
+.chip{
+  position:absolute;padding:8px 13px;border-radius:12px;white-space:nowrap;
+  background:rgba(14,16,22,.78);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border:1px solid var(--line-2);font:400 13.5px/1 var(--mono);color:var(--accent-2);
+  box-shadow:0 12px 30px -14px rgba(0,0,0,.9);animation:float 7s ease-in-out infinite
+}
+.chip.c1{left:-11%;top:26%}
+.chip.c2{right:-8%;top:47%;animation-delay:-2.3s;color:var(--warm)}
+.chip.c3{left:-6%;bottom:24%;animation-delay:-4.6s;color:var(--text)}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
+@media (max-width:940px){
+  .photo{width:min(84%,340px);margin-top:26px;order:-1}
+  .chip.c1{left:-8%}.chip.c2{right:-8%}
+}
+@media (max-width:520px){.chip{font-size:12px;padding:6px 10px}}
+
+/* полоса фактов */
+.facts{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:1px;margin-top:clamp(44px,7vw,72px);
+  background:var(--line);border:1px solid var(--line);border-radius:var(--r-m);overflow:hidden
+}
+.facts div{background:var(--bg-2);padding:22px 20px}
+.facts b{display:block;font:400 clamp(26px,3.4vw,36px)/1 var(--serif);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.facts span{display:block;margin-top:8px;font-size:13.5px;color:var(--dim);line-height:1.45}
+@media (max-width:760px){.facts{grid-template-columns:1fr 1fr}}
+
+/* ═══════════════ ДАНО ═══════════════ */
+.given{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:820px){.given{grid-template-columns:1fr}}
+.given-item{
+  position:relative;padding:24px 26px 24px 30px;border-radius:var(--r-m);
+  background:var(--surface);border:1px solid var(--line);overflow:hidden;
+  transition:border-color .35s,background .35s,transform .35s var(--ease)
+}
+.given-item::before{content:"";position:absolute;left:0;top:16px;bottom:16px;width:2px;background:var(--line-2);transition:background .35s,box-shadow .35s}
+.given-item:hover{border-color:var(--line-2);background:var(--surface-2);transform:translateY(-2px)}
+.given-item:hover::before{background:var(--accent);box-shadow:0 0 14px rgba(91,147,255,.8)}
+.given-item .q{font-family:var(--serif);font-size:19px;line-height:1.3}
+.given-item .a{margin-top:11px;color:var(--muted);font-size:15.5px;line-height:1.6}
+.given-item .a::before{content:"→";color:var(--accent);margin-right:9px;font-family:var(--mono)}
+
+/* ═══════════════ РЕШЕНИЕ (шаги) ═══════════════ */
+.steps{position:relative;display:grid;gap:2px}
+.steps::before{content:"";position:absolute;left:27px;top:34px;bottom:34px;width:1px;background:linear-gradient(var(--line),var(--line-2),var(--line))}
+@media (max-width:640px){.steps::before{left:21px}}
+.step{position:relative;display:grid;grid-template-columns:56px 1fr;gap:clamp(14px,3vw,30px);
+  padding:26px 0;align-items:start}
+@media (max-width:640px){.step{grid-template-columns:44px 1fr}}
+.step .num{
+  position:relative;z-index:1;width:56px;height:56px;border-radius:50%;display:grid;place-items:center;
+  background:var(--bg-2);border:1px solid var(--line-2);
+  font:400 19px/1 var(--serif);color:var(--accent-2);font-variant-numeric:tabular-nums;
+  transition:border-color .4s,box-shadow .4s,color .4s,background .4s
+}
+@media (max-width:640px){.step .num{width:44px;height:44px;font-size:16px}}
+.step.in .num{border-color:rgba(91,147,255,.55);box-shadow:0 0 0 5px rgba(91,147,255,.09);color:#fff;background:linear-gradient(150deg,rgba(91,147,255,.3),var(--bg-2))}
+.step h3{padding-top:13px}
+@media (max-width:640px){.step h3{padding-top:8px;font-size:18px}}
+.step p{margin:10px 0 0;color:var(--muted);font-size:16px;line-height:1.65;max-width:72ch}
+.step .tag{display:inline-block;margin-top:13px;padding:5px 11px;border-radius:8px;
+  background:var(--accent-dim);border:1px solid rgba(91,147,255,.22);
+  font:400 12.5px/1 var(--mono);color:var(--accent-2)}
+
+/* ═══════════════ ФОРМАТЫ / ЦЕНЫ ═══════════════ */
+.plans{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:stretch}
+@media (max-width:900px){.plans{grid-template-columns:1fr}}
+.plan{
+  display:flex;flex-direction:column;padding:30px 28px;border-radius:var(--r-l);
+  background:linear-gradient(170deg,var(--surface),rgba(255,255,255,.012));
+  border:1px solid var(--line);position:relative;overflow:hidden;
+  transition:transform .4s var(--ease),border-color .4s,box-shadow .4s
+}
+.plan:hover{transform:translateY(-4px);border-color:var(--line-2);box-shadow:0 30px 60px -34px rgba(0,0,0,.9)}
+.plan.featured{border-color:rgba(91,147,255,.42);background:linear-gradient(170deg,rgba(91,147,255,.11),rgba(255,255,255,.015))}
+.plan.featured::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:radial-gradient(90% 55% at 50% 0%,rgba(91,147,255,.20),transparent 70%)}
+.plan .flag{position:absolute;top:20px;right:20px;padding:5px 11px;border-radius:999px;
+  background:rgba(91,147,255,.2);border:1px solid rgba(91,147,255,.4);
+  font:500 11.5px/1 var(--mono);letter-spacing:.06em;color:var(--accent-2);text-transform:uppercase}
+.plan .ico{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;
+  background:var(--surface-2);border:1px solid var(--line);color:var(--accent-2);margin-bottom:18px}
+.plan h3{font-size:23px}
+.plan .who{margin-top:7px;color:var(--dim);font-size:14px}
+.plan .price{margin:20px 0 4px;display:flex;align-items:baseline;gap:8px}
+.plan .price b{font:400 38px/1 var(--serif);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.plan .price i{font-style:normal;color:var(--dim);font-size:14px}
+.plan ul{list-style:none;margin:22px 0 0;padding:0;display:grid;gap:11px}
+.plan li{position:relative;padding-left:27px;font-size:15px;color:var(--muted);line-height:1.55}
+.plan li svg{position:absolute;left:0;top:3px;color:var(--accent)}
+.plan .btn{margin-top:26px;width:100%}
+.plan-foot{margin-top:auto;padding-top:8px}
+
+/* ═══════════════ ОТВЕТ / РЕЗУЛЬТАТЫ ═══════════════ */
+.answer-box{
+  position:relative;border-radius:var(--r-l);padding:clamp(30px,5vw,54px);
+  background:linear-gradient(160deg,rgba(91,147,255,.10),rgba(255,255,255,.02));
+  border:1px solid var(--line-2);overflow:hidden
+}
+.answer-box::after{content:"";position:absolute;right:-8%;top:-30%;width:46%;aspect-ratio:1;border-radius:50%;
+  background:radial-gradient(circle,rgba(91,147,255,.22),transparent 66%);filter:blur(30px);pointer-events:none}
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(20px,4vw,44px);position:relative}
+@media (max-width:760px){.metrics{grid-template-columns:1fr;gap:26px}}
+.metric b{display:block;white-space:nowrap;font:400 clamp(42px,6vw,64px)/1 var(--serif);letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.metric span{display:block;margin-top:10px;color:var(--muted);font-size:15px;line-height:1.5}
+.bars{margin-top:clamp(30px,5vw,46px);display:grid;gap:16px;position:relative}
+.bar-row{display:grid;grid-template-columns:130px 1fr 58px;align-items:center;gap:14px;font-size:14.5px}
+@media (max-width:600px){.bar-row{grid-template-columns:96px 1fr 46px;gap:10px;font-size:13.5px}}
+.bar-row .lbl{color:var(--muted)}
+.bar-track{height:8px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden}
+.bar-fill{display:block;height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,var(--accent),#A78BFA);
+  transition:width 1.4s var(--ease);box-shadow:0 0 14px rgba(91,147,255,.5)}
+.bar-row .val{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--text)}
+
+/* ═══════════════ МИНИ-ЗАДАЧА ═══════════════ */
+.task{
+  display:grid;grid-template-columns:1fr 1fr;gap:clamp(20px,4vw,44px);align-items:center;
+  border-radius:var(--r-l);border:1px solid var(--line);padding:clamp(24px,4vw,44px);
+  background:var(--bg-2);position:relative;overflow:hidden
+}
+/* без min-width:0 элемент сетки не сжимается ниже своего min-content
+   и на узком экране распирает карточку за край страницы */
+.task>*{min-width:0}
+@media (max-width:880px){.task{grid-template-columns:1fr}}
+.task::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background-image:linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);
+  background-size:22px 22px;
+  -webkit-mask-image:linear-gradient(115deg,#000,transparent 62%);mask-image:linear-gradient(115deg,#000,transparent 62%)}
+.task>*{position:relative}
+.task-tabs{display:flex;gap:7px;margin-bottom:20px;flex-wrap:wrap}
+.task-tab{
+  padding:8px 15px;border-radius:999px;border:1px solid var(--line);background:transparent;
+  color:var(--muted);font-size:13.5px;cursor:pointer;transition:all .25s var(--ease);
+  -webkit-tap-highlight-color:transparent
+}
+.task-tab:hover{border-color:var(--line-2);color:var(--text)}
+.task-tab:active{transform:scale(.96)}
+.task-tab[aria-selected="true"]{background:var(--accent-dim);border-color:rgba(91,147,255,.45);color:var(--accent-2)}
+.task-body{font-family:var(--serif);font-size:clamp(19px,2.3vw,25px);line-height:1.45;min-height:3.2em}
+.task-body .m{font-family:var(--mono);font-size:.86em;color:var(--accent-2)}
+.task-panel{background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:var(--r-m);padding:24px}
+.task-panel label{display:block;font:400 12.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:11px}
+.task-input{display:flex;gap:10px}
+.task-input input{
+  flex:1;min-width:0;min-height:50px;padding:0 16px;border-radius:14px;
+  background:rgba(0,0,0,.35);border:1px solid var(--line-2);
+  font-family:var(--mono);font-size:17px;transition:border-color .25s,box-shadow .25s
+}
+.task-input input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px rgba(91,147,255,.14)}
+.task-verdict{margin-top:16px;font-size:15px;line-height:1.6;min-height:1.6em}
+.task-verdict.ok{color:var(--ok)} .task-verdict.no{color:#FCA5A5}
+.task-solution{
+  margin-top:14px;padding:16px 18px;border-radius:14px;background:rgba(91,147,255,.08);
+  border:1px solid rgba(91,147,255,.2);color:var(--muted);font-size:14.5px;line-height:1.65;display:none
+}
+.task-solution.show{display:block;animation:fade .4s var(--ease)}
+@keyframes fade{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+.link-btn{background:none;border:none;padding:6px 0;margin-top:10px;color:var(--accent-2);
+  font-size:14px;cursor:pointer;text-decoration:underline;text-underline-offset:4px;
+  text-decoration-color:rgba(143,182,255,.35);transition:opacity .2s}
+.link-btn:hover{opacity:.75} .link-btn:active{opacity:.55}
+
+/* ═══════════════ ОТЗЫВЫ ═══════════════ */
+.reviews{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+@media (max-width:1000px){.reviews{grid-template-columns:1fr 1fr}}
+@media (max-width:680px){.reviews{grid-template-columns:1fr}}
+.review{
+  display:flex;flex-direction:column;padding:26px;border-radius:var(--r-m);
+  background:var(--surface);border:1px solid var(--line);
+  transition:transform .4s var(--ease),border-color .4s,background .4s
+}
+.review:hover{transform:translateY(-3px);border-color:var(--line-2);background:var(--surface-2)}
+.stars{display:flex;gap:3px;color:var(--warm);margin-bottom:14px}
+.review p{margin:0;font-size:15.5px;line-height:1.68;color:#DDE2EA}
+.review p::before{content:"«"}.review p::after{content:"»"}
+.review .who{display:flex;align-items:center;gap:12px;margin-top:auto;padding-top:20px}
+.review .av{width:40px;height:40px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;
+  font:500 15px/1 var(--sans);color:#0B0D12;background:linear-gradient(140deg,#C9DBFF,#8FB6FF)}
+.review .av.w{background:linear-gradient(140deg,#F5D9A8,#E9B45C)}
+.review .av.g{background:linear-gradient(140deg,#BFF0D2,#6EE7A8)}
+.review .meta b{display:block;font:500 14.5px/1.3 var(--sans)}
+.review .meta i{display:block;font-style:normal;font-size:13px;color:var(--dim);margin-top:3px}
+
+/* ═══════════════ ОБО МНЕ ═══════════════ */
+.about p{color:var(--muted);font-size:16.5px;line-height:1.75;max-width:66ch}
+.about p+p{margin-top:16px}
+.about p b{color:var(--text);font-weight:500}
+/* карточка-полоса под текстом: так под короткой колонкой не остаётся пустоты */
+.about-card{margin-top:clamp(30px,4vw,46px);border-radius:var(--r-l);border:1px solid var(--line);
+  background:var(--bg-2);overflow:hidden}
+.about-card .top{padding:22px 26px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px}
+.about-card .top .ico{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;flex-shrink:0;
+  background:var(--accent-dim);border:1px solid rgba(91,147,255,.3);color:var(--accent-2)}
+.about-card .top b{font:500 15.5px/1.3 var(--sans)}
+.about-card .top i{display:block;font-style:normal;font-size:13px;color:var(--dim);margin-top:2px}
+.about-card ul{list-style:none;margin:0;padding:24px 26px;display:grid;gap:14px;
+  grid-template-columns:repeat(4,1fr)}
+@media (max-width:900px){.about-card ul{grid-template-columns:1fr 1fr}}
+@media (max-width:560px){.about-card ul{grid-template-columns:1fr}}
+.about-card li{position:relative;padding-left:26px;font-size:14.5px;color:var(--muted);line-height:1.5}
+.about-card li svg{position:absolute;left:0;top:2px;color:var(--accent)}
+
+/* ═══════════════ FAQ ═══════════════ */
+.faq{display:grid;gap:10px;max-width:880px}
+.faq-item{border:1px solid var(--line);border-radius:var(--r-m);background:var(--surface);overflow:hidden;transition:border-color .3s,background .3s}
+.faq-item:hover{border-color:var(--line-2)}
+.faq-item[open]{background:var(--surface-2);border-color:var(--line-2)}
+.faq-q{
+  width:100%;display:flex;align-items:center;justify-content:space-between;gap:16px;text-align:left;
+  padding:20px 24px;background:none;border:none;cursor:pointer;font-size:16.5px;font-weight:500;
+  -webkit-tap-highlight-color:transparent;transition:color .25s
+}
+.faq-q:hover{color:var(--accent-2)}
+.faq-q .pm{flex-shrink:0;width:26px;height:26px;border-radius:50%;border:1px solid var(--line-2);
+  display:grid;place-items:center;transition:transform .35s var(--ease),background .3s,border-color .3s}
+.faq-item[open] .faq-q .pm{transform:rotate(45deg);background:var(--accent-dim);border-color:rgba(91,147,255,.4)}
+.faq-a{display:grid;grid-template-rows:0fr;transition:grid-template-rows .38s var(--ease)}
+.faq-item[open] .faq-a{grid-template-rows:1fr}
+.faq-a>div{overflow:hidden}
+.faq-a p{margin:0;padding:0 24px 22px;color:var(--muted);font-size:15.5px;line-height:1.7;max-width:70ch}
+
+/* ═══════════════ ЗАПИСЬ ═══════════════ */
+.cta-box{
+  border-radius:var(--r-l);border:1px solid var(--line-2);overflow:hidden;
+  display:grid;grid-template-columns:1fr 1fr;
+  background:linear-gradient(160deg,rgba(91,147,255,.13),rgba(255,255,255,.02))
+}
+@media (max-width:900px){.cta-box{grid-template-columns:1fr}}
+.cta-left{padding:clamp(28px,4.5vw,50px);border-right:1px solid var(--line)}
+@media (max-width:900px){.cta-left{border-right:none;border-bottom:1px solid var(--line)}}
+.cta-left h2{font-size:clamp(28px,3.8vw,42px)}
+.cta-left .lead{margin-top:16px;font-size:16px}
+.cta-list{list-style:none;margin:26px 0 0;padding:0;display:grid;gap:12px}
+.cta-list li{position:relative;padding-left:28px;color:var(--muted);font-size:15px;line-height:1.5}
+.cta-list li svg{position:absolute;left:0;top:2px;color:var(--accent)}
+.direct{margin-top:28px;display:flex;flex-wrap:wrap;gap:10px}
+.direct a{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:999px;
+  border:1px solid var(--line-2);background:var(--surface);text-decoration:none;font-size:14.5px;
+  transition:transform .18s var(--ease),background .25s,border-color .25s}
+.direct a:hover{background:var(--surface-2);border-color:rgba(255,255,255,.28)}
+.direct a:active{transform:scale(.97)}
+.cta-right{padding:clamp(28px,4.5vw,50px)}
+.field{margin-bottom:18px}
+.field label{display:block;font:400 12.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:10px}
+.field label .req{color:var(--accent)}
+.field input,.field textarea,.field select{
+  width:100%;min-height:52px;padding:14px 16px;border-radius:14px;
+  background:rgba(0,0,0,.32);border:1px solid var(--line-2);
+  font-size:16px;transition:border-color .25s,box-shadow .25s;
+}
+.field textarea{min-height:96px;resize:vertical;line-height:1.55}
+.field select{appearance:none;-webkit-appearance:none;cursor:pointer;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9' viewBox='0 0 14 9'%3E%3Cpath d='M1 1l6 6 6-6' stroke='%2398A0AD' stroke-width='1.8' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 18px center}
+.field input:focus,.field textarea:focus,.field select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px rgba(91,147,255,.14)}
+.field input::placeholder,.field textarea::placeholder{color:#5A6270}
+.field .err{display:none;margin-top:8px;font-size:13.5px;color:#FCA5A5}
+.field.bad input,.field.bad textarea{border-color:rgba(252,165,165,.6)}
+.field.bad .err{display:block}
+.form-note{margin-top:14px;font-size:12.5px;line-height:1.6;color:var(--dim)}
+.form-note a{color:var(--muted)}
+.form-status{margin-top:14px;font-size:14.5px;min-height:1.4em}
+.form-status.ok{color:var(--ok)} .form-status.no{color:#FCA5A5}
+.sent{text-align:center;padding:30px 0}
+.sent .ring{width:64px;height:64px;border-radius:50%;margin:0 auto 20px;display:grid;place-items:center;
+  background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.4);color:var(--ok)}
+.sent h3{font-size:24px} .sent p{color:var(--muted);margin:12px auto 0;max-width:38ch;font-size:15.5px}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
+
+/* ═══════════════ футер ═══════════════ */
+footer{border-top:1px solid var(--line);padding:44px 0 56px;margin-top:clamp(60px,9vw,110px)}
+.foot{display:flex;flex-wrap:wrap;gap:22px;align-items:center;justify-content:space-between}
+.foot .who b{font:500 15px/1.4 var(--sans)}
+.foot .who span{display:block;font-size:13px;color:var(--dim);margin-top:4px}
+.foot-links{display:flex;flex-wrap:wrap;gap:18px;font-size:13.5px}
+.foot-links a{color:var(--dim);text-decoration:none;transition:color .25s}
+.foot-links a:hover{color:var(--text)}
+.up{position:fixed;right:22px;bottom:22px;z-index:40;width:46px;height:46px;border-radius:50%;
+  display:grid;place-items:center;background:rgba(14,16,22,.85);backdrop-filter:blur(12px);
+  border:1px solid var(--line-2);color:var(--muted);cursor:pointer;opacity:0;pointer-events:none;
+  transform:translateY(10px);transition:opacity .35s,transform .35s var(--ease),color .25s,border-color .25s}
+.up.show{opacity:1;pointer-events:auto;transform:none}
+.up:hover{color:var(--text);border-color:rgba(255,255,255,.3)}
+.up:active{transform:scale(.93)}
+@media (max-width:600px){.up{right:14px;bottom:14px}}
+</style>
+</head>
+<body>
+
+<div class="bg" aria-hidden="true">
+  <div class="glow a"></div><div class="glow b"></div><div class="glow c"></div>
+</div>
+<div class="progress" id="progress" aria-hidden="true"></div>
+
+<header id="header">
+  <div class="wrap nav">
+    <a class="brand" href="#top">
+      <span class="mark">∫</span>
+      <span><b>Арман Саркисян</b><span>Репетитор по математике</span></span>
+    </a>
+    <nav class="nav-links" aria-label="Разделы страницы">
+      <a href="#method">Как я работаю</a>
+      <a href="#plans">Форматы</a>
+      <a href="#results">Результаты</a>
+      <a href="#reviews">Отзывы</a>
+      <a href="#task">Задача дня</a>
+    </nav>
+    <a class="btn primary" href="#signup">Пробное занятие</a>
+  </div>
+</header>
+
+<main id="top">
+
+<!-- ═══════════ HERO ═══════════ -->
+<section class="hero">
+  <div class="wrap">
+    <div class="hero-grid">
+      <div>
+        <span class="badge"><span class="dot"></span> Беру учеников на 2026/27 · осталось 3 места</span>
+        <h1>
+          Математика,<br>которая наконец<br>сходится
+          <span class="sub">Готовлю к <b>ОГЭ</b> и <b>ЕГЭ</b> — базе и профилю. И к тому, чтобы предмет перестал быть страшным.</span>
+        </h1>
+        <p class="lead">
+          Не «прорешиваем сборник», а собираем понимание с той точки, где оно сломалось.
+          Каждому ученику — <em class="hl">свой набор задач</em>, домашка с проверкой и честная картина: сколько баллов есть сейчас и что даёт следующие.
+        </p>
+        <div class="hero-cta">
+          <a class="btn primary" href="#signup">Записаться на пробное <span class="arr">→</span></a>
+          <a class="btn" href="#method">Как проходят занятия</a>
+        </div>
+        <p class="hero-note">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 4.5v4l2.5 1.5"/><circle cx="8" cy="8" r="6.2"/></svg>
+          Первое занятие — 60 минут, бесплатно. Без предоплаты и обязательств.
+        </p>
+      </div>
+
+      <div class="photo">
+        <div class="orbit" aria-hidden="true"></div>
+        <img src="arman.jpg" alt="Арман Саркисян, репетитор по математике" width="1250" height="1250" fetchpriority="high">
+        <span class="chip c1" aria-hidden="true">f(x) = ax² + bx + c</span>
+        <span class="chip c2" aria-hidden="true">ОГЭ · ЕГЭ</span>
+        <span class="chip c3" aria-hidden="true">∫ x dx</span>
+      </div>
+    </div>
+
+    <!-- ЗАМЕНИТЬ: цифры под себя -->
+    <div class="facts rise">
+      <div><b data-count="7">0</b><span>лет преподаю математику</span></div>
+      <div><b data-count="120" data-suffix="+">0</b><span>учеников довёл до экзамена</span></div>
+      <div><b data-count="82" data-suffix=" б.">0</b><span>средний балл ЕГЭ в 2026-м</span></div>
+      <div><b data-count="100" data-suffix="%">0</b><span>сдали ОГЭ на «4» и «5»</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ ДАНО ═══════════ -->
+<section id="given">
+  <div class="wrap">
+    <div class="sec-head rise">
+      <span class="eyebrow">Дано</span>
+      <h2>С чем ко мне приходят</h2>
+      <p class="lead">Почти всегда это не «не дано» и не «запустил». Это четыре узнаваемые ситуации — и у каждой есть выход.</p>
+    </div>
+    <div class="given">
+      <div class="given-item rise">
+        <p class="q">«Сидим над домашкой до ночи, а толку ноль»</p>
+        <p class="a">Значит, дыра ниже по программе. Находим её тестом на первом занятии и закрываем — дальше домашка занимает 30 минут.</p>
+      </div>
+      <div class="given-item rise">
+        <p class="q">«В классе понимает, дома — как будто и не было»</p>
+        <p class="a">Разбираем на общей онлайн-доске: запись занятия остаётся у ученика, к ней можно вернуться в любой момент.</p>
+      </div>
+      <div class="given-item rise">
+        <p class="q">«До экзамена полгода, а решает только первую часть»</p>
+        <p class="a">Считаем реальный балл, выбираем номера с лучшим соотношением «усилие / баллы» и идём по ним по плану.</p>
+      </div>
+      <div class="given-item rise">
+        <p class="q">«Списывает решения из интернета»</p>
+        <p class="a">Задания генерируются заново под каждого: точно такой задачи нет ни в поиске, ни у соседа по парте.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ РЕШЕНИЕ ═══════════ -->
+<section id="method">
+  <div class="wrap">
+    <div class="sec-head rise">
+      <span class="eyebrow">Решение</span>
+      <h2>Как устроены занятия</h2>
+      <p class="lead">Пять шагов, одинаковых для всех, и содержание, которое у каждого своё.</p>
+    </div>
+    <div class="steps">
+      <div class="step rise"><div class="num">1</div><div>
+        <h3>Бесплатная диагностика</h3>
+        <p>Час: короткий срез по темам, разговор про цель и сроки. На выходе — честный текущий балл и список тем, которые его держат. Ничего не покупаем, решаем, идём ли вместе.</p>
+        <span class="tag">60 минут · бесплатно</span>
+      </div></div>
+      <div class="step rise"><div class="num">2</div><div>
+        <h3>План до экзамена</h3>
+        <p>Расписываем недели до даты экзамена: какие номера когда закрываем, где контрольные точки. План видно ученику и родителю — сюрпризов «за месяц до» не бывает.</p>
+        <span class="tag">Виден в личном кабинете</span>
+      </div></div>
+      <div class="step rise"><div class="num">3</div><div>
+        <h3>Занятие на онлайн-доске</h3>
+        <p>Пишем и рисуем вместе в реальном времени — как за одним столом. Доска сохраняется: ученик открывает разбор через неделю и видит ровно то, что мы делали, своим и моим почерком.</p>
+        <span class="tag">История всех досок сохраняется</span>
+      </div></div>
+      <div class="step rise"><div class="num">4</div><div>
+        <h3>Домашка, которую видно</h3>
+        <p>Задания приходят в кабинет, а не теряются в переписке. Я вижу, что решено, что нет и где именно ошибка. Разбор ошибок — начало следующего занятия, а не «посмотри сам».</p>
+        <span class="tag">С таймером, как на экзамене</span>
+      </div></div>
+      <div class="step rise"><div class="num">5</div><div>
+        <h3>Пробники по образцу ФИПИ</h3>
+        <p>Раз в две-три недели — полный вариант в экзаменационном формате: бланк, время, критерии. Растущий балл видно на графике, и становится ясно, какие номера ещё дают прибавку.</p>
+        <span class="tag">Свой банк заданий, обновляется</span>
+      </div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ ФОРМАТЫ ═══════════ -->
+<section id="plans">
+  <div class="wrap">
+    <div class="sec-head rise">
+      <span class="eyebrow">Форматы</span>
+      <h2>Занятия и стоимость</h2>
+      <p class="lead">Цена за одно занятие, оплата — по факту, за прошедшие уроки. Первое занятие в любом формате бесплатное.</p>
+    </div>
+    <!-- ЗАМЕНИТЬ: цены и состав под свои условия -->
+    <div class="plans">
+      <div class="plan rise">
+        <div class="ico"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 5.5h14M3 10h14M3 14.5h9"/></svg></div>
+        <h3>7–9 класс</h3>
+        <p class="who">Школьная программа и подготовка к ОГЭ</p>
+        <div class="price"><b>1 500 ₽</b><i>/ 60 минут</i></div>
+        <ul>
+          <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>Подтягиваем текущие темы и оценки</li>
+          <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>Закрываем пробелы прошлых классов</li>
+          <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>Домашка с проверкой между занятиями</li>
+        </ul>
+        <div class="plan-foot"><a class="btn" href="#signup">Записаться</a></div>
+      </div>
+
+      <div class="plan featured rise">
+        <span class="flag">чаще всего</span>
+        <div class="ico"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5l2.2 4.7 5.1.7-3.7 3.6.9 5.1-4.5-2.4-4.5 2.4.9-5.1L2.7 7.9l5.1-.7z"/></svg></div>
+        <h3>ОГЭ · 9 класс</h3>
+        <p class="who">Полная подготовка к экзамену за год</p>
+        <div class="price"><b>1 800 ₽</b><i>/ 60 минут</i></div>
+        <ul>
+          <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>Первая часть до автоматизма, вторая — на баллы</li>
+          <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>Геометрия с нуля, если её «не было»</li>
+          <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>Пробники каждые 2–3 недели</li>
+          <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>Отчёт родителю после каждого занятия</li>
+        </ul>
+        <div class="plan-foot"><a class="btn primary" href="#signup">Записаться</a></div>
+      </div>
+
+      <div class="plan rise">
+        <div class="ico"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 15.5c4-1 5.5-4.5 6.5-8s2.5-5 5.5-5"/><path d="M2.5 9.5h6"/></svg></div>
+        <h3>ЕГЭ · 10–11 класс</h3>
+        <p class="who">База или профиль, включая вторую часть</p>
+        <div class="price"><b>2 200 ₽</b><i>/ 60 минут</i></div>
+        <ul>
+          <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>Стратегия под нужный балл, а не «всё подряд»</li>
+          <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>Вторая часть: 13–19 с оформлением по критериям</li>
+          <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>Разбор реальных вариантов прошлых лет</li>
+        </ul>
+        <div class="plan-foot"><a class="btn" href="#signup">Записаться</a></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ ОТВЕТ / РЕЗУЛЬТАТЫ ═══════════ -->
+<section id="results">
+  <div class="wrap">
+    <div class="sec-head rise">
+      <span class="eyebrow">Ответ</span>
+      <h2>Что получается на выходе</h2>
+      <p class="lead">Средние значения по ученикам, которые занимались от полугода. Считаю честно: и тех, кто пришёл с нуля, и тех, кто добирал последние баллы.</p>
+    </div>
+    <!-- ЗАМЕНИТЬ: реальные метрики и приросты -->
+    <div class="answer-box rise">
+      <div class="metrics">
+        <div class="metric"><b data-count="27" data-prefix="+"></b><span>баллов — средний прирост на ЕГЭ за год занятий</span></div>
+        <div class="metric"><b data-count="19" data-prefix="+"></b><span>баллов — средний прирост на ОГЭ за год занятий</span></div>
+        <div class="metric"><b data-count="9" data-suffix=" из 10"></b><span>учеников остаются на второй год подготовки</span></div>
+      </div>
+      <div class="bars">
+        <div class="bar-row"><span class="lbl">ЕГЭ профиль</span><span class="bar-track"><span class="bar-fill" data-w="78"></span></span><span class="val">78</span></div>
+        <div class="bar-row"><span class="lbl">ЕГЭ база</span><span class="bar-track"><span class="bar-fill" data-w="92"></span></span><span class="val">5,0</span></div>
+        <div class="bar-row"><span class="lbl">ОГЭ</span><span class="bar-track"><span class="bar-fill" data-w="86"></span></span><span class="val">4,7</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ ЗАДАЧА ═══════════ -->
+<section id="task">
+  <div class="wrap">
+    <div class="sec-head rise">
+      <span class="eyebrow">Проверка</span>
+      <h2>Задача дня</h2>
+      <p class="lead">Три задачи из реальных вариантов — по одной на каждый уровень. Решите, если хочется понять, о чём вообще речь на занятиях.</p>
+    </div>
+
+    <div class="task rise">
+      <div>
+        <div class="task-tabs" role="tablist" aria-label="Уровень задачи">
+          <button class="task-tab" role="tab" aria-selected="true" data-i="0">ОГЭ · №21</button>
+          <button class="task-tab" role="tab" aria-selected="false" data-i="1">ЕГЭ база · №11</button>
+          <button class="task-tab" role="tab" aria-selected="false" data-i="2">ЕГЭ профиль · №6</button>
+        </div>
+        <p class="task-body" id="taskBody"></p>
+      </div>
+
+      <div class="task-panel">
+        <label for="taskAns">Ваш ответ</label>
+        <div class="task-input">
+          <input id="taskAns" type="text" inputmode="decimal" autocomplete="off" placeholder="Число" aria-describedby="taskVerdict">
+          <button class="btn" id="taskCheck" type="button">Проверить</button>
+        </div>
+        <p class="task-verdict" id="taskVerdict" role="status" aria-live="polite"></p>
+        <button class="link-btn" id="taskShow" type="button">Показать решение</button>
+        <div class="task-solution" id="taskSol"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ ОТЗЫВЫ ═══════════ -->
+<!--
+  ЗАМЕНИТЬ ОБЯЗАТЕЛЬНО: ниже стоят ДЕМОНСТРАЦИОННЫЕ отзывы — просто чтобы
+  показать вёрстку блока. Публиковать их как настоящие нельзя.
+  Подставьте реальные отзывы своих учеников и родителей.
+-->
+<section id="reviews">
+  <div class="wrap">
+    <div class="sec-head rise">
+      <span class="eyebrow">Отзывы</span>
+      <h2>Что говорят ученики и родители</h2>
+    </div>
+    <div class="reviews">
+      <div class="review rise">
+        <div class="stars" aria-label="Оценка 5 из 5"><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.6l1.9 4 4.3.6-3.1 3 .7 4.2L8 11.5 4.2 13.4l.7-4.2-3.1-3 4.3-.6z"/></svg><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.6l1.9 4 4.3.6-3.1 3 .7 4.2L8 11.5 4.2 13.4l.7-4.2-3.1-3 4.3-.6z"/></svg><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.6l1.9 4 4.3.6-3.1 3 .7 4.2L8 11.5 4.2 13.4l.7-4.2-3.1-3 4.3-.6z"/></svg><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.6l1.9 4 4.3.6-3.1 3 .7 4.2L8 11.5 4.2 13.4l.7-4.2-3.1-3 4.3-.6z"/></svg><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.6l1.9 4 4.3.6-3.1 3 .7 4.2L8 11.5 4.2 13.4l.7-4.2-3.1-3 4.3-.6z"/></svg></div>
+        <p>Пришли в сентябре с тройкой и полным нежеланием. К зиме дочь сама садилась за домашку, потому что было понятно, что делать. ОГЭ — пятёрка, чего мы вообще не планировали</p>
+        <div class="who"><span class="av">М</span><span class="meta"><b>Марина</b><i>мама Полины, ОГЭ 2026</i></span></div>
+      </div>
+      <div class="review rise">
+        <div class="stars" aria-label="Оценка 5 из 5"><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.6l1.9 4 4.3.6-3.1 3 .7 4.2L8 11.5 4.2 13.4l.7-4.2-3.1-3 4.3-.6z"/></svg><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.6l1.9 4 4.3.6-3.1 3 .7 4.2L8 11.5 4.2 13.4l.7-4.2-3.1-3 4.3-.6z"/></svg><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.6l1.9 4 4.3.6-3.1 3 .7 4.2L8 11.5 4.2 13.4l.7-4.2-3.1-3 4.3-.6z"/></svg><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.6l1.9 4 4.3.6-3.1 3 .7 4.2L8 11.5 4.2 13.4l.7-4.2-3.1-3 4.3-.6z"/></svg><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.6l1.9 4 4.3.6-3.1 3 .7 4.2L8 11.5 4.2 13.4l.7-4.2-3.1-3 4.3-.6z"/></svg></div>
+        <p>Больше всего зашло, что все разборы сохраняются. Забыл, как делали параметр — открыл доску с прошлого месяца и вспомнил за пять минут. 84 балла на профиле</p>
+        <div class="who"><span class="av w">К</span><span class="meta"><b>Кирилл</b><i>11 класс, ЕГЭ профиль 2026</i></span></div>
+      </div>
+      <div class="review rise">
+        <div class="stars" aria-label="Оценка 5 из 5"><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.6l1.9 4 4.3.6-3.1 3 .7 4.2L8 11.5 4.2 13.4l.7-4.2-3.1-3 4.3-.6z"/></svg><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.6l1.9 4 4.3.6-3.1 3 .7 4.2L8 11.5 4.2 13.4l.7-4.2-3.1-3 4.3-.6z"/></svg><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.6l1.9 4 4.3.6-3.1 3 .7 4.2L8 11.5 4.2 13.4l.7-4.2-3.1-3 4.3-.6z"/></svg><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.6l1.9 4 4.3.6-3.1 3 .7 4.2L8 11.5 4.2 13.4l.7-4.2-3.1-3 4.3-.6z"/></svg><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.6l1.9 4 4.3.6-3.1 3 .7 4.2L8 11.5 4.2 13.4l.7-4.2-3.1-3 4.3-.6z"/></svg></div>
+        <p>Отдельное спасибо за отчёты после занятий. Я наконец перестала спрашивать «ну как там математика» и слышать «нормально» — я и так всё вижу</p>
+        <div class="who"><span class="av g">Е</span><span class="meta"><b>Елена</b><i>мама Артёма, 8 класс</i></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ ОБО МНЕ ═══════════ -->
+<section id="about">
+  <div class="wrap">
+    <div class="about rise">
+      <span class="eyebrow">Обо мне</span>
+      <h2 style="margin-top:14px;max-width:20ch">Я не только преподаю — я построил инструмент, в котором преподаю</h2>
+      <p style="margin-top:22px">
+        Несколько лет я вёл занятия так же, как все: заметки, чаты, сборники, домашки в фотографиях.
+        Потом надоело — и я <b>написал собственную платформу</b>, в которой держу учеников, доски, домашние задания и тренировочные варианты.
+      </p>
+      <p>
+        Она называется <b>Precettore</b>, и это не «приложение для галочки»: банк заданий там собран по открытому банку ФИПИ,
+        варианты генерируются заново под каждого ученика, а родитель видит прогресс, не выспрашивая его у ребёнка.
+      </p>
+      <p>
+        Для вас это значит простое: занятия не растворяются в переписке. Всё, что мы разобрали, <b>остаётся и доступно</b> — и через неделю, и в мае перед экзаменом.
+      </p>
+
+      <div class="about-card">
+        <div class="top">
+          <span class="ico"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="15" height="11" rx="2"/><path d="M7 17.5h6"/><path d="M10 14.5v3"/></svg></span>
+          <span><b>Precettore</b><i>кабинет, в котором идут наши занятия</i></span>
+        </div>
+        <ul>
+          <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>Совместная доска с сохранением занятий</li>
+          <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>Домашние задания и проверка в одном месте</li>
+          <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>Банк заданий по образцу ФИПИ, 13 предметов</li>
+          <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>Кабинет родителя: прогресс, отчёты, оплаты</li>
+        </ul>
+      </div>
+
+      <div class="hero-cta" style="margin-top:26px">
+        <a class="btn" href="https://precettore.ru" target="_blank" rel="noopener">Посмотреть платформу <span class="arr">→</span></a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ FAQ ═══════════ -->
+<section id="faq">
+  <div class="wrap">
+    <div class="sec-head rise">
+      <span class="eyebrow">Вопросы</span>
+      <h2>Коротко о главном</h2>
+    </div>
+    <div class="faq">
+      <details class="faq-item rise">
+        <summary class="faq-q">Занятия онлайн или очно?<span class="pm" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 1.5v9M1.5 6h9"/></svg></span></summary>
+        <div class="faq-a"><div><p>Онлайн — на общей доске, где мы оба пишем и рисуем. По опыту это не хуже очного: видно каждый шаг решения, а запись занятия остаётся у ученика навсегда. Очно — по договорённости, если вы в моём городе.</p></div></div>
+      </details>
+      <details class="faq-item rise">
+        <summary class="faq-q">Сколько занятий в неделю нужно?<span class="pm" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 1.5v9M1.5 6h9"/></svg></span></summary>
+        <div class="faq-a"><div><p>Для школьной программы обычно хватает одного. Для ОГЭ и ЕГЭ с сентября — одного-двух; если готовимся с февраля, честно скажу сразу: понадобится два, иначе до нужного балла не дойдём. Точное число называю после диагностики, а не «на всякий случай».</p></div></div>
+      </details>
+      <details class="faq-item rise">
+        <summary class="faq-q">Что если ребёнок «совсем не понимает математику»?<span class="pm" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 1.5v9M1.5 6h9"/></svg></span></summary>
+        <div class="faq-a"><div><p>«Не понимает» почти всегда означает «пропустил одну тему двумя годами раньше, и с тех пор всё держится на памяти». Диагностика как раз ищет эту точку. Возвращаемся к ней — дальше идёт быстрее, чем вы ожидаете.</p></div></div>
+      </details>
+      <details class="faq-item rise">
+        <summary class="faq-q">Как оплачивать и можно ли отменить занятие?<span class="pm" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 1.5v9M1.5 6h9"/></svg></span></summary>
+        <div class="faq-a"><div><p>Оплата за прошедшие занятия — раз в неделю или помесячно, как удобнее; чек приходит автоматически. Отмена без потерь — не позже чем за 12 часов, перенос внутри недели всегда бесплатный.</p></div></div>
+      </details>
+      <details class="faq-item rise">
+        <summary class="faq-q">Что нужно для первого занятия?<span class="pm" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 1.5v9M1.5 6h9"/></svg></span></summary>
+        <div class="faq-a"><div><p>Компьютер или планшет с интернетом и полчаса тишины. Ссылку пришлю сам, ставить ничего не нужно. Бумага и ручка пригодятся — считать на них всё равно быстрее.</p></div></div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ ЗАПИСЬ ═══════════ -->
+<section id="signup">
+  <div class="wrap">
+    <div class="cta-box rise">
+      <div class="cta-left">
+        <span class="eyebrow">Запись</span>
+        <h2 style="margin-top:14px">Первое занятие — бесплатно</h2>
+        <p class="lead">Оставьте контакт: напишу в течение дня, подберём время. На занятии посмотрим текущий уровень и решим, нужен ли вам вообще репетитор — бывает, что нет.</p>
+        <ul class="cta-list">
+          <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>60 минут, без предоплаты и обязательств</li>
+          <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>По итогу — письменный разбор: что западает и что делать</li>
+          <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>Никаких звонков без предупреждения — сначала пишу</li>
+        </ul>
+        <div class="direct">
+          <a id="lnkTg" href="#" target="_blank" rel="noopener">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M14.6 2.3 1.9 7.2c-.7.3-.7.8-.1 1l3.2 1 1.2 3.7c.2.4.3.6.6.6.3 0 .4-.1.6-.3l1.5-1.5 3.2 2.3c.6.3 1 .2 1.1-.5l2.1-9.8c.2-.8-.3-1.2-1-1z"/></svg>
+            Телеграм
+          </a>
+          <a id="lnkWa" href="#" target="_blank" rel="noopener">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 14l1-3.2A6 6 0 1 1 5.4 13z"/><path d="M5.8 6.2c.4 2 1.9 3.5 3.9 3.9"/></svg>
+            WhatsApp
+          </a>
+          <a id="lnkMail" href="#">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="1.8" y="3.5" width="12.4" height="9" rx="1.6"/><path d="M2.2 4.6L8 8.6l5.8-4"/></svg>
+            Почта
+          </a>
+        </div>
+      </div>
+
+      <div class="cta-right">
+        <form id="leadForm" novalidate>
+          <div class="field">
+            <label for="fName">Как вас зовут <span class="req">*</span></label>
+            <input id="fName" name="name" type="text" autocomplete="name" placeholder="Имя родителя или ученика" required>
+            <span class="err">Напишите, пожалуйста, имя</span>
+          </div>
+          <div class="field">
+            <label for="fContact">Телефон или телеграм <span class="req">*</span></label>
+            <input id="fContact" name="contact" type="text" inputmode="tel" autocomplete="tel" placeholder="+7 900 000-00-00 или @username" required>
+            <span class="err">Нужен контакт, по которому я смогу ответить</span>
+          </div>
+          <div class="field">
+            <label for="fGoal">Цель занятий</label>
+            <select id="fGoal" name="goal">
+              <option>ОГЭ, 9 класс</option>
+              <option>ЕГЭ база, 10–11 класс</option>
+              <option>ЕГЭ профиль, 10–11 класс</option>
+              <option>Школьная программа, 7–9 класс</option>
+              <option>Пока не решили — нужен совет</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="fNote">Что важно знать заранее</label>
+            <textarea id="fNote" name="note" placeholder="Например: тройка в четверти, геометрию не понимает совсем, экзамен в июне"></textarea>
+          </div>
+          <input class="hp" type="text" name="company" tabindex="-1" autocomplete="off" aria-hidden="true">
+          <button class="btn primary" type="submit" id="fSubmit" style="width:100%">Записаться на бесплатное занятие</button>
+          <p class="form-status" id="fStatus" role="status" aria-live="polite"></p>
+          <p class="form-note">
+            Нажимая кнопку, вы соглашаетесь на обработку контактных данных для ответа на заявку —
+            <a href="https://precettore.ru/privacy" target="_blank" rel="noopener">политика конфиденциальности</a>.
+          </p>
+        </form>
+        <div class="sent" id="fSent" hidden>
+          <div class="ring"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg></div>
+          <h3>Заявка у меня</h3>
+          <p>Напишу в течение дня и предложу время. Если удобнее прямо сейчас — пишите в телеграм.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <div class="who">
+      <b>Саркисян Арман Нверович</b>
+      <span>Репетитор по математике · самозанятый, ИНН 262308648105</span>
+    </div>
+    <nav class="foot-links" aria-label="Ссылки">
+      <a href="https://precettore.ru" target="_blank" rel="noopener">Платформа Precettore</a>
+      <a href="https://precettore.ru/privacy" target="_blank" rel="noopener">Конфиденциальность</a>
+      <a href="#signup">Записаться</a>
+    </nav>
+  </div>
+</footer>
+
+<button class="up" id="up" type="button" aria-label="Наверх">
+  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 16V5M5 10l5-5 5 5"/></svg>
+</button>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   ЗАМЕНИТЬ: личные контакты. Больше нигде их править не нужно.
+   ═══════════════════════════════════════════════════════════════ */
+const CONFIG = {
+  tg:    "precettore",             // телеграм без «@»
+  phone: "79000000000",            // для WhatsApp, только цифры
+  email: "precettore@inbox.ru",
+  // Приём заявок в ту же базу, что и лендинг платформы (таблица leads).
+  // Ключ anon публичный по своей природе — он и так лежит в бандле сайта.
+  db:  "https://db.precettore.ru",
+  key: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzg1NDA3Nzg2LCJleHAiOjE5NDMwODc3ODZ9.5m1C9fQE6BoZRKaXaAxDhmqj2-nj4uCw6xEnmaUKyfM"
+};
+
+/* ── контакты в ссылки ── */
+lnkTg.href   = "https://t.me/" + CONFIG.tg;
+lnkWa.href   = "https://wa.me/" + CONFIG.phone;
+lnkMail.href = "mailto:" + CONFIG.email;
+
+/* ── прогресс чтения + шапка + кнопка «наверх» ── */
+const header = document.getElementById("header");
+const bar    = document.getElementById("progress");
+const upBtn  = document.getElementById("up");
+let ticking = false;
+function onScroll(){
+  const y = window.scrollY;
+  const h = document.documentElement.scrollHeight - window.innerHeight;
+  bar.style.width = (h > 0 ? (y / h) * 100 : 0) + "%";
+  header.classList.toggle("stuck", y > 16);
+  upBtn.classList.toggle("show", y > 900);
+  ticking = false;
+}
+addEventListener("scroll", () => { if(!ticking){ ticking = true; requestAnimationFrame(onScroll); } }, {passive:true});
+onScroll();
+upBtn.onclick = () => scrollTo({top:0, behavior:"smooth"});
+
+/* ── появление блоков + счётчики + полосы ── */
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function animateCount(el){
+  const to = parseFloat(el.dataset.count);
+  const pre = el.dataset.prefix || "", suf = el.dataset.suffix || "";
+  const dur = reduce ? 0 : 1100, t0 = performance.now();
+  const put = v => { el.textContent = pre + v + suf; };
+  if (!dur) return put(to);
+  (function tick(now){
+    const p = Math.min(1, (now - t0) / dur);
+    put(Math.round(to * (1 - Math.pow(1 - p, 3))));
+    if (p < 1) requestAnimationFrame(tick);
+  })(t0);
+}
+
+const io = new IntersectionObserver((entries) => {
+  for (const e of entries){
+    if (!e.isIntersecting) continue;
+    e.target.classList.add("in");
+    e.target.querySelectorAll?.("[data-count]").forEach(animateCount);
+    e.target.querySelectorAll?.(".bar-fill").forEach(b => { b.style.width = b.dataset.w + "%"; });
+    io.unobserve(e.target);
+  }
+}, {threshold:.18, rootMargin:"0px 0px -8% 0px"});
+
+document.querySelectorAll(".rise, .step").forEach((el, i) => {
+  el.style.transitionDelay = Math.min(i % 4, 3) * 60 + "ms";
+  io.observe(el);
+});
+// страховка: что бы ни случилось с наблюдателем, через 3 с всё видно
+setTimeout(() => document.querySelectorAll(".rise:not(.in)").forEach(el => {
+  const r = el.getBoundingClientRect();
+  if (r.top < innerHeight) el.classList.add("in");
+}), 3000);
+
+/* ── задача дня ── */
+const TASKS = [
+  {
+    text: 'Теплоход прошёл 24 км по течению и вернулся обратно, потратив на весь путь 5 часов. Скорость течения — 2 км/ч. Найдите собственную скорость теплохода <span class="m">(км/ч)</span>.',
+    ans: 10,
+    sol: 'Пусть собственная скорость — <b>v</b>. Тогда 24/(v+2) + 24/(v−2) = 5. Умножаем на (v²−4): 24(v−2) + 24(v+2) = 5(v²−4), то есть 48v = 5v² − 20. Решаем 5v² − 48v − 20 = 0: v = 10 (второй корень отрицательный и не подходит). <b>Ответ: 10 км/ч.</b>'
+  },
+  {
+    text: 'В группе 30 студентов, из них 12 занимаются лёгкой атлетикой, 9 — плаванием, а 5 — и тем, и другим. Сколько студентов не занимаются ни одним из этих видов спорта?',
+    ans: 14,
+    sol: 'Занимаются хотя бы одним: 12 + 9 − 5 = 16 (пятерых посчитали дважды, поэтому вычитаем). Остальные: 30 − 16 = 14. <b>Ответ: 14.</b>'
+  },
+  {
+    text: 'Найдите корень уравнения <span class="m">log₃(2x − 5) = 2</span>.',
+    ans: 7,
+    sol: 'По определению логарифма 2x − 5 = 3² = 9, откуда 2x = 14 и x = 7. Проверяем область определения: 2·7 − 5 = 9 &gt; 0 — годится. <b>Ответ: 7.</b>'
+  }
+];
+let taskI = 0;
+const tBody = document.getElementById("taskBody"),
+      tAns  = document.getElementById("taskAns"),
+      tVer  = document.getElementById("taskVerdict"),
+      tSol  = document.getElementById("taskSol"),
+      tShow = document.getElementById("taskShow");
+
+function renderTask(){
+  tBody.innerHTML = TASKS[taskI].text;
+  tSol.innerHTML  = TASKS[taskI].sol;
+  tSol.classList.remove("show");
+  tShow.textContent = "Показать решение";
+  tVer.textContent = ""; tVer.className = "task-verdict";
+  tAns.value = "";
+}
+document.querySelectorAll(".task-tab").forEach(tab => {
+  tab.onclick = () => {
+    document.querySelectorAll(".task-tab").forEach(t => t.setAttribute("aria-selected", "false"));
+    tab.setAttribute("aria-selected", "true");
+    taskI = +tab.dataset.i;
+    renderTask();
+  };
+});
+function checkTask(){
+  const raw = tAns.value.trim().replace(",", ".");
+  if (!raw){ tVer.className = "task-verdict"; tVer.textContent = "Введите ответ числом."; return; }
+  const v = parseFloat(raw);
+  if (Number.isFinite(v) && Math.abs(v - TASKS[taskI].ans) < 1e-9){
+    tVer.className = "task-verdict ok";
+    tVer.textContent = "Верно. Именно так это и считается на экзамене.";
+  } else {
+    tVer.className = "task-verdict no";
+    tVer.textContent = "Не сходится. Попробуйте ещё раз — или откройте решение.";
+  }
+}
+document.getElementById("taskCheck").onclick = checkTask;
+tAns.addEventListener("keydown", e => { if (e.key === "Enter"){ e.preventDefault(); checkTask(); } });
+tShow.onclick = () => {
+  const open = tSol.classList.toggle("show");
+  tShow.textContent = open ? "Скрыть решение" : "Показать решение";
+};
+renderTask();
+
+/* ── форма заявки ── */
+const form = document.getElementById("leadForm"),
+      fStatus = document.getElementById("fStatus"),
+      fSubmit = document.getElementById("fSubmit"),
+      fSent = document.getElementById("fSent");
+
+function markBad(input, bad){ input.closest(".field").classList.toggle("bad", bad); }
+["fName","fContact"].forEach(id => {
+  const el = document.getElementById(id);
+  el.addEventListener("blur", () => markBad(el, !el.value.trim()));
+  el.addEventListener("input", () => { if (el.value.trim()) markBad(el, false); });
+});
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const name = fName.value.trim(), contact = fContact.value.trim();
+  markBad(fName, !name); markBad(fContact, !contact);
+  if (!name || !contact){ (name ? fContact : fName).focus(); return; }
+  if (form.company.value) return;           // ловушка для ботов
+
+  fSubmit.disabled = true;
+  fSubmit.textContent = "Отправляю…";
+  fStatus.className = "form-status"; fStatus.textContent = "";
+
+  const goal = [fGoal.value, fNote.value.trim()].filter(Boolean).join(" — ");
+  try{
+    const r = await fetch(CONFIG.db + "/rest/v1/leads", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: CONFIG.key,
+        Authorization: "Bearer " + CONFIG.key,
+        Prefer: "return=minimal"
+      },
+      body: JSON.stringify({ name, contact, goal: goal || null, source: "портфолио" })
+    });
+    if (!r.ok) throw new Error(r.status);
+    form.hidden = true; fSent.hidden = false;
+    fSent.scrollIntoView({block:"center", behavior: reduce ? "auto" : "smooth"});
+  } catch {
+    fStatus.className = "form-status no";
+    fStatus.innerHTML = 'Не отправилось. Напишите мне напрямую: <a href="https://t.me/' + CONFIG.tg + '" target="_blank" rel="noopener">телеграм</a> или ' + CONFIG.email + '.';
+    fSubmit.disabled = false;
+    fSubmit.textContent = "Записаться на бесплатное занятие";
+  }
+});
+</script>
+</body>
+</html>
