@@ -30,7 +30,10 @@
 <style>
 /* ═══════════════ токены ═══════════════ */
 :root{
-  --grid-cols:12; --gutter:16px;   /* модульная сетка страницы */
+  /* Модульная сетка страницы. --colstep задан в абсолютных единицах,
+     поэтому ширину в колонках можно задать на любой вложенности:
+     N колонок = calc(var(--colstep) * N - var(--gutter)) */
+  --grid-cols:12; --gutter:16px;
   --bg:#08090C; --bg-2:#0B0D12; --bg-3:#10131A;
   --surface:rgba(255,255,255,.035);
   --surface-2:rgba(255,255,255,.06);
@@ -47,6 +50,8 @@
   --ease:cubic-bezier(.16,1,.3,1);
   --pad:clamp(20px,5vw,40px);
   --maxw:1180px;
+  --inner:calc(min(var(--maxw), 100vw) - 2 * var(--pad));
+  --colstep:calc((var(--inner) + var(--gutter)) / var(--grid-cols));
 }
 *,*::before,*::after{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
@@ -79,6 +84,14 @@ button,input,textarea,select{font:inherit;color:inherit}
 .glow.b{width:44vw;height:44vw;right:-14vw;top:8vh;background:radial-gradient(circle,rgba(140,110,255,.20),transparent 65%)}
 .glow.c{width:60vw;height:60vw;left:20vw;top:120vh;background:radial-gradient(circle,rgba(91,147,255,.13),transparent 65%)}
 
+/* Отладочная подложка: открыть страницу с ?grid и увидеть 12 колонок.
+   По ней проверяется, что края блоков ложатся на границы колонок. */
+.gridlines{position:fixed;inset:0;z-index:200;pointer-events:none;display:none}
+body.showgrid .gridlines{display:block}
+.gridlines .wrap{height:100%}
+.gridlines .cols{height:100%;display:grid;grid-template-columns:repeat(var(--grid-cols),1fr);gap:var(--gutter)}
+.gridlines .cols i{background:rgba(91,147,255,.09);outline:1px solid rgba(91,147,255,.22);outline-offset:-1px}
+
 /* ═══════════════ служебное ═══════════════ */
 .wrap{max-width:var(--maxw);margin:0 auto;padding-inline:var(--pad)}
 .eyebrow{
@@ -89,7 +102,7 @@ button,input,textarea,select{font:inherit;color:inherit}
 h1,h2,h3{font-family:var(--serif);font-weight:400;letter-spacing:-.015em;margin:0}
 h2{font-size:clamp(30px,4.6vw,50px);line-height:1.1}
 h3{font-size:20px;line-height:1.25}
-.lead{color:var(--muted);font-size:clamp(16px,1.7vw,19px);line-height:1.7;max-width:62ch}
+.lead{color:var(--muted);font-size:clamp(16px,1.7vw,19px);line-height:1.7;max-width:calc(var(--colstep) * 7 - var(--gutter))}
 section{position:relative;padding:clamp(58px,7vw,96px) 0}
 .sec-head{margin-bottom:clamp(32px,5vw,56px)}
 .sec-head h2{margin-top:14px}
@@ -194,7 +207,7 @@ header.stuck{background:rgba(8,9,12,.72);backdrop-filter:blur(18px) saturate(1.4
 /* фото: снято на чёрном — blend растворяет фон в странице */
 /* фон у снимка вырезан в альфа-канал, поэтому никакого режима наложения
    не нужно; маска гасит только нижний край, чтобы свитер не обрывался линией */
-.photo{position:relative;justify-self:center;width:100%;max-width:480px;aspect-ratio:1}
+.photo{position:relative;justify-self:center;width:100%;aspect-ratio:1}
 .photo img{
   width:100%;
   -webkit-mask-image:linear-gradient(to bottom,#000 62%,transparent 99%);
@@ -256,9 +269,13 @@ header.stuck{background:rgba(8,9,12,.72);backdrop-filter:blur(18px) saturate(1.4
 .steps{position:relative;display:grid;gap:2px}
 .steps::before{content:"";position:absolute;left:27px;top:34px;bottom:34px;width:1px;background:linear-gradient(var(--line),var(--line-2),var(--line))}
 @media (max-width:640px){.steps::before{left:21px}}
-.step{position:relative;display:grid;grid-template-columns:56px 1fr;gap:clamp(14px,3vw,30px);
+/* первая колонка сетки отдана номеру, поэтому текст шага начинается ровно
+   со второй колонки страницы, а не «примерно там же» */
+.step{position:relative;display:grid;
+  grid-template-columns:calc(var(--colstep) - var(--gutter)) 1fr;gap:var(--gutter);
   padding:26px 0;align-items:start}
-@media (max-width:640px){.step{grid-template-columns:44px 1fr}}
+.step .num{justify-self:start}
+@media (max-width:640px){.step{grid-template-columns:44px 1fr;gap:14px}}
 .step .num{
   position:relative;z-index:1;width:56px;height:56px;border-radius:50%;display:grid;place-items:center;
   background:var(--bg-2);border:1px solid var(--line-2);
@@ -269,7 +286,7 @@ header.stuck{background:rgba(8,9,12,.72);backdrop-filter:blur(18px) saturate(1.4
 .step.in .num{border-color:rgba(91,147,255,.55);box-shadow:0 0 0 5px rgba(91,147,255,.09);color:#fff;background:linear-gradient(150deg,rgba(91,147,255,.3),var(--bg-2))}
 .step h3{padding-top:13px}
 @media (max-width:640px){.step h3{padding-top:8px;font-size:18px}}
-.step p{margin:10px 0 0;color:var(--muted);font-size:16px;line-height:1.65;max-width:72ch}
+.step p{margin:10px 0 0;color:var(--muted);font-size:16px;line-height:1.65;max-width:calc(var(--colstep) * 8 - var(--gutter))}
 .step .tag{display:inline-block;margin-top:13px;padding:5px 11px;border-radius:8px;
   background:var(--accent-dim);border:1px solid rgba(91,147,255,.22);
   font:400 12.5px/1 var(--mono);color:var(--accent-2)}
@@ -466,7 +483,7 @@ header.stuck{background:rgba(8,9,12,.72);backdrop-filter:blur(18px) saturate(1.4
 .rev-close:active{transform:scale(.92)}
 
 /* ═══════════════ ОБО МНЕ ═══════════════ */
-.about p{color:var(--muted);font-size:16.5px;line-height:1.75;max-width:66ch}
+.about p{color:var(--muted);font-size:16.5px;line-height:1.75;max-width:calc(var(--colstep) * 7 - var(--gutter))}
 .about p+p{margin-top:16px}
 .about p b{color:var(--text);font-weight:500}
 /* карточка-полоса под текстом: так под короткой колонкой не остаётся пустоты */
@@ -485,7 +502,7 @@ header.stuck{background:rgba(8,9,12,.72);backdrop-filter:blur(18px) saturate(1.4
 .about-card li svg{position:absolute;left:0;top:2px;color:var(--accent)}
 
 /* ═══════════════ FAQ ═══════════════ */
-.faq{display:grid;gap:10px;max-width:calc((100% + var(--gutter)) * 10 / var(--grid-cols) - var(--gutter))}
+.faq{display:grid;gap:10px;max-width:calc(var(--colstep) * 10 - var(--gutter))}
 .faq-item{border:1px solid var(--line);border-radius:var(--r-m);background:var(--surface);overflow:hidden;transition:border-color .3s,background .3s}
 .faq-item:hover{border-color:var(--line-2)}
 .faq-item[open]{background:var(--surface-2);border-color:var(--line-2)}
@@ -501,7 +518,7 @@ header.stuck{background:rgba(8,9,12,.72);backdrop-filter:blur(18px) saturate(1.4
 .faq-a{display:grid;grid-template-rows:0fr;transition:grid-template-rows .38s var(--ease)}
 .faq-item[open] .faq-a{grid-template-rows:1fr}
 .faq-a>div{overflow:hidden}
-.faq-a p{margin:0;padding:0 24px 22px;color:var(--muted);font-size:15.5px;line-height:1.7;max-width:70ch}
+.faq-a p{margin:0;padding:0 24px 22px;color:var(--muted);font-size:15.5px;line-height:1.7}
 
 /* ═══════════════ ЗАПИСЬ ═══════════════ */
 .cta-box{
@@ -574,6 +591,9 @@ footer{border-top:1px solid var(--line);padding:44px 0 56px;margin-top:clamp(60p
 </head>
 <body>
 
+<div class="gridlines" aria-hidden="true"><div class="wrap"><div class="cols">
+  <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+</div></div></div>
 <div class="bg" aria-hidden="true">
   <div class="glow a"></div><div class="glow b"></div><div class="glow c"></div>
 </div>
@@ -979,7 +999,7 @@ footer{border-top:1px solid var(--line);padding:44px 0 56px;margin-top:clamp(60p
   <div class="wrap">
     <div class="about rise">
       <span class="eyebrow">Обо мне</span>
-      <h2 style="margin-top:14px;max-width:20ch">Я не только преподаю — я построил инструмент, в котором преподаю</h2>
+      <h2 style="margin-top:14px;max-width:calc(var(--colstep) * 8 - var(--gutter))">Я не только преподаю — я построил инструмент, в котором преподаю</h2>
       <p style="margin-top:22px">
         Несколько лет я вёл занятия так же, как все: заметки, чаты, сборники, домашки в фотографиях.
         Потом надоело — и я <b>написал собственную платформу</b>, в которой держу учеников, доски, домашние задания и тренировочные варианты.
@@ -1162,6 +1182,8 @@ lnkWa.href    = "https://wa.me/" + CONFIG.phone;
 lnkMail.href  = "mailto:" + CONFIG.email;
 lnkTel.href   = "tel:+" + CONFIG.phone;
 lnkTel.querySelector("span").textContent = CONFIG.phoneText;
+
+if (location.search.includes("grid")) document.body.classList.add("showgrid");
 
 /* ── прогресс чтения + шапка + кнопка «наверх» ── */
 const header = document.getElementById("header");
