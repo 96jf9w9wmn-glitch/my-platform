@@ -510,7 +510,7 @@ header.stuck{background:rgba(8,9,12,.72);backdrop-filter:blur(18px) saturate(1.4
 .about-card li svg{position:absolute;left:0;top:2px;color:var(--accent)}
 
 /* ═══════════════ FAQ ═══════════════ */
-.faq{display:grid;gap:10px;max-width:calc(var(--colstep) * 10 - var(--gutter))}
+.faq{display:grid;gap:10px}          /* на все 12 колонок */
 .faq-item{border:1px solid var(--line);border-radius:var(--r-m);background:var(--surface);overflow:hidden;transition:border-color .3s,background .3s}
 .faq-item:hover{border-color:var(--line-2)}
 .faq-item[open]{background:var(--surface-2);border-color:var(--line-2)}
@@ -526,7 +526,10 @@ header.stuck{background:rgba(8,9,12,.72);backdrop-filter:blur(18px) saturate(1.4
 .faq-a{display:grid;grid-template-rows:0fr;transition:grid-template-rows .38s var(--ease)}
 .faq-item[open] .faq-a{grid-template-rows:1fr}
 .faq-a>div{overflow:hidden}
-.faq-a p{margin:0;padding:0 24px 22px;color:var(--muted);font-size:15.5px;line-height:1.7}
+/* строка вопроса — на все 12 колонок, а вот сам ответ ограничен 9: во всю
+   ширину в строке выходит больше ста знаков, такую строку тяжело читать */
+.faq-a p{margin:0;padding:0 24px 22px;color:var(--muted);font-size:15.5px;line-height:1.7;
+  max-width:calc(var(--colstep) * 9 - var(--gutter))}
 
 /* ═══════════════ ЗАПИСЬ ═══════════════ */
 .cta-box{
