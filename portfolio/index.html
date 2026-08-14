@@ -483,11 +483,19 @@ header.stuck{background:rgba(8,9,12,.72);backdrop-filter:blur(18px) saturate(1.4
 .rev-close:active{transform:scale(.92)}
 
 /* ═══════════════ ОБО МНЕ ═══════════════ */
-.about p{color:var(--muted);font-size:16.5px;line-height:1.75;max-width:calc(var(--colstep) * 7 - var(--gutter))}
+/* заголовок слева, текст справа: при одной колонке текста справа оставалась
+   пустая половина экрана, и блок читался как прижатый к левому краю */
+.about{display:grid;grid-template-columns:repeat(var(--grid-cols),1fr);gap:var(--gutter);align-items:start}
+.about-head{grid-column:1 / span 5}
+.about-body{grid-column:7 / span 6}
+.about-card{grid-column:1 / -1}
+.about-cta{grid-column:1 / -1}      /* кнопка закрывает раздел, а не висит в правой колонке */
+@media (max-width:880px){.about-head,.about-body,.about-cta{grid-column:1 / -1}}
+.about p{color:var(--muted);font-size:16.5px;line-height:1.75}
 .about p+p{margin-top:16px}
 .about p b{color:var(--text);font-weight:500}
 /* карточка-полоса под текстом: так под короткой колонкой не остаётся пустоты */
-.about-card{margin-top:clamp(30px,4vw,46px);border-radius:var(--r-l);border:1px solid var(--line);
+.about-card{margin-top:clamp(24px,3vw,38px);border-radius:var(--r-l);border:1px solid var(--line);
   background:var(--bg-2);overflow:hidden}
 .about-card .top{padding:22px 26px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px}
 .about-card .top .ico{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;flex-shrink:0;
@@ -998,9 +1006,13 @@ footer{border-top:1px solid var(--line);padding:44px 0 56px;margin-top:clamp(60p
 <section id="about">
   <div class="wrap">
     <div class="about rise">
-      <span class="eyebrow">Обо мне</span>
-      <h2 style="margin-top:14px;max-width:calc(var(--colstep) * 8 - var(--gutter))">Я не только преподаю — я построил инструмент, в котором преподаю</h2>
-      <p style="margin-top:22px">
+      <div class="about-head">
+        <span class="eyebrow">Обо мне</span>
+        <h2 style="margin-top:14px">Я не только преподаю — я построил инструмент, в котором преподаю</h2>
+      </div>
+
+      <div class="about-body">
+      <p>
         Несколько лет я вёл занятия так же, как все: заметки, чаты, сборники, домашки в фотографиях.
         Потом надоело — и я <b>написал собственную платформу</b>, в которой держу учеников, доски, домашние задания и тренировочные варианты.
       </p>
@@ -1011,6 +1023,7 @@ footer{border-top:1px solid var(--line);padding:44px 0 56px;margin-top:clamp(60p
       <p>
         Для вас это значит простое: занятия не растворяются в переписке. Всё, что мы разобрали, <b>остаётся и доступно</b> — и через неделю, и в мае перед экзаменом.
       </p>
+      </div>
 
       <div class="about-card">
         <div class="top">
@@ -1025,7 +1038,7 @@ footer{border-top:1px solid var(--line);padding:44px 0 56px;margin-top:clamp(60p
         </ul>
       </div>
 
-      <div class="hero-cta" style="margin-top:26px">
+      <div class="hero-cta about-cta" style="margin-top:24px">
         <a class="btn" href="https://precettore.ru" target="_blank" rel="noopener">Посмотреть платформу <span class="arr">→</span></a>
       </div>
     </div>
