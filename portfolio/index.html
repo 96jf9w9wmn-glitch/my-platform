@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#08090C">
 <meta property="og:title" content="Арман Саркисян — репетитор по математике">
 <meta property="og:description" content="ОГЭ, ЕГЭ база и профиль, 7–11 класс. Первое занятие — бесплатно.">
-<meta property="og:image" content="arman.jpg">
+<meta property="og:image" content="arman.webp">
 <meta property="og:type" content="profile">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%230b0d12'/><text x='50' y='72' font-size='62' font-family='Georgia,serif' fill='%234B8CFF' text-anchor='middle'>∫</text></svg>">
 
@@ -186,11 +186,11 @@ header.stuck{background:rgba(8,9,12,.72);backdrop-filter:blur(18px) saturate(1.4
 .hero-note{margin-top:16px;font:400 13.5px/1.6 var(--sans);color:var(--dim);display:flex;align-items:center;gap:7px}
 
 /* фото: снято на чёрном — blend растворяет фон в странице */
-/* фото снято на чёрном: mix-blend-mode:screen растворяет фон в странице,
-   маска гасит только нижний край, чтобы свитер не обрывался линией */
+/* фон у снимка вырезан в альфа-канал, поэтому никакого режима наложения
+   не нужно; маска гасит только нижний край, чтобы свитер не обрывался линией */
 .photo{position:relative;justify-self:center;width:min(100%,480px);aspect-ratio:1}
 .photo img{
-  width:100%;mix-blend-mode:screen;
+  width:100%;
   -webkit-mask-image:linear-gradient(to bottom,#000 62%,transparent 99%);
   mask-image:linear-gradient(to bottom,#000 62%,transparent 99%);
 }
@@ -611,7 +611,7 @@ footer{border-top:1px solid var(--line);padding:44px 0 56px;margin-top:clamp(60p
 
       <div class="photo">
         <div class="orbit" aria-hidden="true"></div>
-        <img src="arman.jpg" alt="Арман Саркисян, репетитор по математике" width="1250" height="1250" fetchpriority="high">
+        <img src="arman.webp" alt="Арман Саркисян, репетитор по математике" width="1000" height="1000" fetchpriority="high">
         <span class="chip c1" aria-hidden="true">ax² + bx + c</span>
         <span class="chip c2" aria-hidden="true">ОГЭ · ЕГЭ</span>
         <span class="chip c3" aria-hidden="true">∫ x dx</span>
