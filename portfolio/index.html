@@ -215,8 +215,11 @@ header.stuck{background:rgba(8,9,12,.72);backdrop-filter:blur(18px) saturate(1.4
 @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
 @media (max-width:940px){
   .photo{width:min(84%,340px);margin-top:26px;order:-1}
-  .chip.c1{left:-8%}.chip.c2{right:-8%}
 }
+/* Плашка с формулой шире, чем свободное поле слева от головы, как только
+   колонка с фото становится уже ~445 px: она наезжает на лицо. Поэтому ниже
+   этой ширины плашек нет вовсе — и на планшете, и на телефоне. */
+@media (max-width:1120px){.chip{display:none}}
 @media (max-width:520px){.chip{font-size:12px;padding:6px 10px}}
 
 /* полоса фактов */
@@ -609,7 +612,7 @@ footer{border-top:1px solid var(--line);padding:44px 0 56px;margin-top:clamp(60p
       <div class="photo">
         <div class="orbit" aria-hidden="true"></div>
         <img src="arman.jpg" alt="Арман Саркисян, репетитор по математике" width="1250" height="1250" fetchpriority="high">
-        <span class="chip c1" aria-hidden="true">f(x) = ax² + bx + c</span>
+        <span class="chip c1" aria-hidden="true">ax² + bx + c</span>
         <span class="chip c2" aria-hidden="true">ОГЭ · ЕГЭ</span>
         <span class="chip c3" aria-hidden="true">∫ x dx</span>
       </div>
