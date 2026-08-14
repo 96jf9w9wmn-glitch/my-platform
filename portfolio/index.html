@@ -17,12 +17,12 @@
   ЧТО НУЖНО ЗАМЕНИТЬ СВОИМИ ДАННЫМИ ПЕРЕД ПУБЛИКАЦИЕЙ
   (всё собрано в одном месте — в объекте CONFIG внизу файла и в разделах ниже)
 
-  1. CONFIG.tg / CONFIG.phone / CONFIG.email — личные контакты.
-  2. Раздел «Ответ» (цифры результатов) — сейчас там ДЕМО-значения.
-  3. Раздел «Отзывы» — сейчас там ДЕМО-отзывы, ОБЯЗАТЕЛЬНО заменить на
+  1. Раздел «Отзывы» — сейчас там ДЕМО-отзывы, ОБЯЗАТЕЛЬНО заменить на
      настоящие: публиковать выдуманные отзывы нельзя.
-  4. Цены в разделе «Форматы» — проверить, что совпадают с реальными.
+  2. Полоса фактов в первом экране и раздел «Ответ» — ДЕМО-цифры.
+  3. Цены в разделе «Форматы» — проверить, что совпадают с реальными.
   Все места помечены комментарием ЗАМЕНИТЬ.
+  Контакты уже настоящие и лежат в объекте CONFIG внизу файла.
   ─────────────────────────────────────────────────────────────────────────
 -->
 
@@ -434,6 +434,9 @@ header.stuck{background:rgba(8,9,12,.72);backdrop-filter:blur(18px) saturate(1.4
   transition:transform .18s var(--ease),background .25s,border-color .25s}
 .direct a:hover{background:var(--surface-2);border-color:rgba(255,255,255,.28)}
 .direct a:active{transform:scale(.97)}
+.direct a.tel{font-variant-numeric:tabular-nums;color:var(--text);
+  background:var(--accent-dim);border-color:rgba(91,147,255,.32)}
+.direct a.tel:hover{background:rgba(91,147,255,.2);border-color:rgba(91,147,255,.5)}
 .cta-right{padding:clamp(28px,4.5vw,50px)}
 .field{margin-bottom:18px}
 .field label{display:block;font:400 12.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:10px}
@@ -843,6 +846,10 @@ footer{border-top:1px solid var(--line);padding:44px 0 56px;margin-top:clamp(60p
           <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>Никаких звонков без предупреждения — сначала пишу</li>
         </ul>
         <div class="direct">
+          <a id="lnkTel" href="#" class="tel">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5.6 2.6l1.5 2.6-1.4 1.3a8 8 0 0 0 3.8 3.8l1.3-1.4 2.6 1.5-.5 2.2c-.1.5-.6.8-1.1.7C7.6 12.6 3.4 8.4 2.4 3.2c-.1-.5.2-1 .7-1.1z"/></svg>
+            <span>+7 (000) 000-00-00</span>
+          </a>
           <a id="lnkTg" href="#" target="_blank" rel="noopener">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M14.6 2.3 1.9 7.2c-.7.3-.7.8-.1 1l3.2 1 1.2 3.7c.2.4.3.6.6.6.3 0 .4-.1.6-.3l1.5-1.5 3.2 2.3c.6.3 1 .2 1.1-.5l2.1-9.8c.2-.8-.3-1.2-1-1z"/></svg>
             Телеграм
@@ -927,9 +934,10 @@ footer{border-top:1px solid var(--line);padding:44px 0 56px;margin-top:clamp(60p
    ЗАМЕНИТЬ: личные контакты. Больше нигде их править не нужно.
    ═══════════════════════════════════════════════════════════════ */
 const CONFIG = {
-  tg:    "precettore",             // телеграм без «@»
-  phone: "79000000000",            // для WhatsApp, только цифры
-  email: "precettore@inbox.ru",
+  tg:    "armmm227",               // телеграм без «@»
+  phone: "79614590582",            // только цифры — для звонка и WhatsApp
+  phoneText: "+7 (961) 459-05-82", // как показывать на странице
+  email: "arm_227@mail.ru",
   // Приём заявок в ту же базу, что и лендинг платформы (таблица leads).
   // Ключ anon публичный по своей природе — он и так лежит в бандле сайта.
   db:  "https://db.precettore.ru",
@@ -937,9 +945,11 @@ const CONFIG = {
 };
 
 /* ── контакты в ссылки ── */
-lnkTg.href   = "https://t.me/" + CONFIG.tg;
-lnkWa.href   = "https://wa.me/" + CONFIG.phone;
-lnkMail.href = "mailto:" + CONFIG.email;
+lnkTg.href    = "https://t.me/" + CONFIG.tg;
+lnkWa.href    = "https://wa.me/" + CONFIG.phone;
+lnkMail.href  = "mailto:" + CONFIG.email;
+lnkTel.href   = "tel:+" + CONFIG.phone;
+lnkTel.querySelector("span").textContent = CONFIG.phoneText;
 
 /* ── прогресс чтения + шапка + кнопка «наверх» ── */
 const header = document.getElementById("header");
