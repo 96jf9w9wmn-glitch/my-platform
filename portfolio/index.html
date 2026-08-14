@@ -102,11 +102,20 @@ body.showgrid .gridlines{display:block}
 h1,h2,h3{font-family:var(--serif);font-weight:400;letter-spacing:-.015em;margin:0}
 h2{font-size:clamp(30px,4.6vw,50px);line-height:1.1}
 h3{font-size:20px;line-height:1.25}
-.lead{color:var(--muted);font-size:clamp(16px,1.7vw,19px);line-height:1.7;max-width:calc(var(--colstep) * 7 - var(--gutter))}
+.lead{color:var(--muted);font-size:clamp(16px,1.7vw,19px);line-height:1.7}
 section{position:relative;padding:clamp(58px,7vw,96px) 0}
-.sec-head{margin-bottom:clamp(32px,5vw,56px)}
+/* Заголовок раздела занимает всю ширину: h2 слева, поясняющая строка справа.
+   Раньше и то и другое стояло одной колонкой у левого края, и справа
+   оставалась пустая половина экрана. */
+.sec-head{display:grid;grid-template-columns:repeat(var(--grid-cols),1fr);gap:var(--gutter);
+  align-items:end;margin-bottom:clamp(32px,5vw,56px)}
+.sec-head .head{grid-column:1 / span 6}
+.sec-head .lead{grid-column:7 / span 6;margin:0}
 .sec-head h2{margin-top:14px}
-.sec-head .lead{margin-top:16px}
+@media (max-width:880px){
+  .sec-head{display:block}
+  .sec-head .lead{margin-top:16px}
+}
 
 /* появление при скролле. Прячем только если JS жив (класс .js ставит скрипт
    в <head>) — иначе при сбое скрипта страница осталась бы пустой. */
@@ -271,11 +280,21 @@ header.stuck{background:rgba(8,9,12,.72);backdrop-filter:blur(18px) saturate(1.4
 @media (max-width:640px){.steps::before{left:21px}}
 /* первая колонка сетки отдана номеру, поэтому текст шага начинается ровно
    со второй колонки страницы, а не «примерно там же» */
+/* номер — первая колонка, название — 2–5, описание — 6–12: так шаг занимает
+   всю ширину, а не обрывается текстовой колонкой посреди страницы */
 .step{position:relative;display:grid;
-  grid-template-columns:calc(var(--colstep) - var(--gutter)) 1fr;gap:var(--gutter);
+  grid-template-columns:repeat(var(--grid-cols),1fr);gap:var(--gutter);
   padding:26px 0;align-items:start}
-.step .num{justify-self:start}
-@media (max-width:640px){.step{grid-template-columns:44px 1fr;gap:14px}}
+.step .num{grid-column:1;justify-self:start}
+.step h3{grid-column:2 / span 4}
+.step .body{grid-column:6 / span 7}
+@media (max-width:880px){
+  .step{grid-template-columns:44px 1fr;gap:16px}
+  .step .num{grid-column:1}
+  .step h3{grid-column:2;padding-top:8px}
+  .step .body{grid-column:2;padding-top:0}
+  .step p{margin-top:10px}
+}
 .step .num{
   position:relative;z-index:1;width:56px;height:56px;border-radius:50%;display:grid;place-items:center;
   background:var(--bg-2);border:1px solid var(--line-2);
@@ -284,10 +303,11 @@ header.stuck{background:rgba(8,9,12,.72);backdrop-filter:blur(18px) saturate(1.4
 }
 @media (max-width:640px){.step .num{width:44px;height:44px;font-size:16px}}
 .step.in .num{border-color:rgba(91,147,255,.55);box-shadow:0 0 0 5px rgba(91,147,255,.09);color:#fff;background:linear-gradient(150deg,rgba(91,147,255,.3),var(--bg-2))}
-.step h3{padding-top:13px}
+.step h3{padding-top:12px}
+.step .body{padding-top:12px}
 @media (max-width:640px){.step h3{padding-top:8px;font-size:18px}}
-.step p{margin:10px 0 0;color:var(--muted);font-size:16px;line-height:1.65;max-width:calc(var(--colstep) * 8 - var(--gutter))}
-.step .tag{display:inline-block;margin-top:13px;padding:5px 11px;border-radius:8px;
+.step p{margin:0;color:var(--muted);font-size:16px;line-height:1.65}
+.step .tag{display:inline-block;margin-top:14px;padding:5px 11px;border-radius:8px;
   background:var(--accent-dim);border:1px solid rgba(91,147,255,.22);
   font:400 12.5px/1 var(--mono);color:var(--accent-2)}
 
@@ -446,8 +466,9 @@ header.stuck{background:rgba(8,9,12,.72);backdrop-filter:blur(18px) saturate(1.4
 .review .meta i{display:block;font-style:normal;font-size:13px;color:var(--dim);margin-top:3px}
 
 /* управление лентой */
-.rev-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap}
-.rev-nav{display:flex;gap:8px;flex-shrink:0;padding-bottom:4px}
+#reviews .sec-head .lead{grid-column:7 / span 4}
+.rev-nav{grid-column:11 / span 2;display:flex;gap:8px;justify-content:flex-end;align-self:end;padding-bottom:4px}
+@media (max-width:880px){.rev-nav{display:none}}
 .rev-nav button{
   width:44px;height:44px;border-radius:50%;display:grid;place-items:center;cursor:pointer;
   background:var(--surface);border:1px solid var(--line-2);color:var(--muted);
@@ -456,7 +477,6 @@ header.stuck{background:rgba(8,9,12,.72);backdrop-filter:blur(18px) saturate(1.4
 .rev-nav button:hover:not(:disabled){background:var(--surface-2);color:var(--text);border-color:rgba(255,255,255,.3)}
 .rev-nav button:active:not(:disabled){transform:scale(.92)}
 .rev-nav button:disabled{opacity:.3;cursor:default}
-@media (max-width:640px){.rev-nav{display:none}}
 .rev-rail{height:2px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden}
 .rev-rail i{display:block;height:100%;width:30%;border-radius:99px;
   background:linear-gradient(90deg,var(--accent),#A78BFA);transition:transform .18s linear;transform-origin:left}
@@ -526,10 +546,13 @@ header.stuck{background:rgba(8,9,12,.72);backdrop-filter:blur(18px) saturate(1.4
 .faq-a{display:grid;grid-template-rows:0fr;transition:grid-template-rows .38s var(--ease)}
 .faq-item[open] .faq-a{grid-template-rows:1fr}
 .faq-a>div{overflow:hidden}
-/* строка вопроса — на все 12 колонок, а вот сам ответ ограничен 9: во всю
-   ширину в строке выходит больше ста знаков, такую строку тяжело читать */
-.faq-a p{margin:0;padding:0 24px 22px;color:var(--muted);font-size:15.5px;line-height:1.7;
-  max-width:calc(var(--colstep) * 9 - var(--gutter))}
+.faq-a p{margin:0;padding:0 24px 22px;color:var(--muted);font-size:15.5px;line-height:1.7}
+/* строка вопроса — на все 12 колонок, а сам ответ на широком экране ограничен
+   девятью: во всю ширину в строке выходит больше ста знаков, читать тяжело.
+   Ширину в колонках задаём только здесь: на телефоне колонка около 29 px. */
+@media (min-width:881px){
+  .faq-a p{max-width:calc(var(--colstep) * 9 - var(--gutter))}
+}
 
 /* ═══════════════ ЗАПИСЬ ═══════════════ */
 .cta-box{
@@ -672,8 +695,8 @@ footer{border-top:1px solid var(--line);padding:44px 0 56px;margin-top:clamp(60p
 <section id="given">
   <div class="wrap">
     <div class="sec-head rise">
-      <span class="eyebrow">Дано</span>
-      <h2>С чем ко мне приходят</h2>
+      <div class="head"><span class="eyebrow">Дано</span>
+      <h2>С чем ко мне приходят</h2></div>
       <p class="lead">Почти всегда это не «не дано» и не «запустил». Это четыре узнаваемые ситуации — и у каждой есть выход.</p>
     </div>
     <div class="given">
@@ -701,36 +724,36 @@ footer{border-top:1px solid var(--line);padding:44px 0 56px;margin-top:clamp(60p
 <section id="method">
   <div class="wrap">
     <div class="sec-head rise">
-      <span class="eyebrow">Решение</span>
-      <h2>Как устроены занятия</h2>
+      <div class="head"><span class="eyebrow">Решение</span>
+      <h2>Как устроены занятия</h2></div>
       <p class="lead">Пять шагов, одинаковых для всех, и содержание, которое у каждого своё.</p>
     </div>
     <div class="steps">
-      <div class="step rise"><div class="num">1</div><div>
+      <div class="step rise"><div class="num">1</div>
         <h3>Бесплатная диагностика</h3>
-        <p>Час: короткий срез по темам, разговор про цель и сроки. На выходе — честный текущий балл и список тем, которые его держат. Ничего не покупаем, решаем, идём ли вместе.</p>
-        <span class="tag">60 минут · бесплатно</span>
-      </div></div>
-      <div class="step rise"><div class="num">2</div><div>
+        <div class="body"><p>Час: короткий срез по темам, разговор про цель и сроки. На выходе — честный текущий балл и список тем, которые его держат. Ничего не покупаем, решаем, идём ли вместе.</p>
+        <span class="tag">60 минут · бесплатно</span></div>
+      </div>
+      <div class="step rise"><div class="num">2</div>
         <h3>План до экзамена</h3>
-        <p>Расписываем недели до даты экзамена: какие номера когда закрываем, где контрольные точки. План видно ученику и родителю — сюрпризов «за месяц до» не бывает.</p>
-        <span class="tag">Виден в личном кабинете</span>
-      </div></div>
-      <div class="step rise"><div class="num">3</div><div>
+        <div class="body"><p>Расписываем недели до даты экзамена: какие номера когда закрываем, где контрольные точки. План видно ученику и родителю — сюрпризов «за месяц до» не бывает.</p>
+        <span class="tag">Виден в личном кабинете</span></div>
+      </div>
+      <div class="step rise"><div class="num">3</div>
         <h3>Занятие на онлайн-доске</h3>
-        <p>Пишем и рисуем вместе в реальном времени — как за одним столом. Доска сохраняется: ученик открывает разбор через неделю и видит ровно то, что мы делали, своим и моим почерком.</p>
-        <span class="tag">История всех досок сохраняется</span>
-      </div></div>
-      <div class="step rise"><div class="num">4</div><div>
+        <div class="body"><p>Пишем и рисуем вместе в реальном времени — как за одним столом. Доска сохраняется: ученик открывает разбор через неделю и видит ровно то, что мы делали, своим и моим почерком.</p>
+        <span class="tag">История всех досок сохраняется</span></div>
+      </div>
+      <div class="step rise"><div class="num">4</div>
         <h3>Домашка, которую видно</h3>
-        <p>Задания приходят в кабинет, а не теряются в переписке. Я вижу, что решено, что нет и где именно ошибка. Разбор ошибок — начало следующего занятия, а не «посмотри сам».</p>
-        <span class="tag">С таймером, как на экзамене</span>
-      </div></div>
-      <div class="step rise"><div class="num">5</div><div>
+        <div class="body"><p>Задания приходят в кабинет, а не теряются в переписке. Я вижу, что решено, что нет и где именно ошибка. Разбор ошибок — начало следующего занятия, а не «посмотри сам».</p>
+        <span class="tag">С таймером, как на экзамене</span></div>
+      </div>
+      <div class="step rise"><div class="num">5</div>
         <h3>Пробники по образцу ФИПИ</h3>
-        <p>Раз в две-три недели — полный вариант в экзаменационном формате: бланк, время, критерии. Растущий балл видно на графике, и становится ясно, какие номера ещё дают прибавку.</p>
-        <span class="tag">Свой банк заданий, обновляется</span>
-      </div></div>
+        <div class="body"><p>Раз в две-три недели — полный вариант в экзаменационном формате: бланк, время, критерии. Растущий балл видно на графике, и становится ясно, какие номера ещё дают прибавку.</p>
+        <span class="tag">Свой банк заданий, обновляется</span></div>
+      </div>
     </div>
   </div>
 </section>
@@ -739,8 +762,8 @@ footer{border-top:1px solid var(--line);padding:44px 0 56px;margin-top:clamp(60p
 <section id="plans">
   <div class="wrap">
     <div class="sec-head rise">
-      <span class="eyebrow">Форматы</span>
-      <h2>Занятия и стоимость</h2>
+      <div class="head"><span class="eyebrow">Форматы</span>
+      <h2>Занятия и стоимость</h2></div>
       <p class="lead">Цена за одно занятие, оплата — по факту, за прошедшие уроки. Первое занятие в любом формате бесплатное.</p>
     </div>
     <!-- ЗАМЕНИТЬ: цены и состав под свои условия -->
@@ -749,7 +772,7 @@ footer{border-top:1px solid var(--line);padding:44px 0 56px;margin-top:clamp(60p
         <div class="ico"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 5.5h14M3 10h14M3 14.5h9"/></svg></div>
         <h3>7–9 класс</h3>
         <p class="who">Школьная программа и подготовка к ОГЭ</p>
-        <div class="price"><b>1 500 ₽</b><i>/ 60 минут</i></div>
+        <div class="price"><b>1 800 ₽</b><i>/ час</i></div>
         <ul>
           <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>Подтягиваем текущие темы и оценки</li>
           <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>Закрываем пробелы прошлых классов</li>
@@ -763,7 +786,7 @@ footer{border-top:1px solid var(--line);padding:44px 0 56px;margin-top:clamp(60p
         <div class="ico"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5l2.2 4.7 5.1.7-3.7 3.6.9 5.1-4.5-2.4-4.5 2.4.9-5.1L2.7 7.9l5.1-.7z"/></svg></div>
         <h3>ОГЭ · 9 класс</h3>
         <p class="who">Полная подготовка к экзамену за год</p>
-        <div class="price"><b>1 800 ₽</b><i>/ 60 минут</i></div>
+        <div class="price"><b>2 000 ₽</b><i>/ час</i></div>
         <ul>
           <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>Первая часть до автоматизма, вторая — на баллы</li>
           <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>Геометрия с нуля, если её «не было»</li>
@@ -777,7 +800,7 @@ footer{border-top:1px solid var(--line);padding:44px 0 56px;margin-top:clamp(60p
         <div class="ico"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 15.5c4-1 5.5-4.5 6.5-8s2.5-5 5.5-5"/><path d="M2.5 9.5h6"/></svg></div>
         <h3>ЕГЭ · 10–11 класс</h3>
         <p class="who">База или профиль, включая вторую часть</p>
-        <div class="price"><b>2 200 ₽</b><i>/ 60 минут</i></div>
+        <div class="price"><b>2 400 ₽</b><i>/ час</i></div>
         <ul>
           <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>Стратегия под нужный балл, а не «всё подряд»</li>
           <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3.2L13 5"/></svg>Вторая часть: 13–19 с оформлением по критериям</li>
@@ -793,8 +816,8 @@ footer{border-top:1px solid var(--line);padding:44px 0 56px;margin-top:clamp(60p
 <section id="results">
   <div class="wrap">
     <div class="sec-head rise">
-      <span class="eyebrow">Ответ</span>
-      <h2>Что получается на выходе</h2>
+      <div class="head"><span class="eyebrow">Ответ</span>
+      <h2>Что получается на выходе</h2></div>
       <p class="lead">Средние значения по ученикам, которые занимались от полугода. Считаю честно: и тех, кто пришёл с нуля, и тех, кто добирал последние баллы.</p>
     </div>
     <!-- ЗАМЕНИТЬ: реальные метрики и приросты -->
@@ -817,8 +840,8 @@ footer{border-top:1px solid var(--line);padding:44px 0 56px;margin-top:clamp(60p
 <section id="task">
   <div class="wrap">
     <div class="sec-head rise">
-      <span class="eyebrow">Проверка</span>
-      <h2>Задача дня</h2>
+      <div class="head"><span class="eyebrow">Проверка</span>
+      <h2>Задача дня</h2></div>
       <p class="lead">Три задачи из реальных вариантов — по одной на каждый уровень. Решите, если хочется понять, о чём вообще речь на занятиях.</p>
     </div>
 
@@ -857,20 +880,18 @@ footer{border-top:1px solid var(--line);padding:44px 0 56px;margin-top:clamp(60p
 <section id="reviews">
   <div class="wrap">
     <div class="sec-head rise">
-      <div class="rev-head">
-        <div>
-          <span class="eyebrow">Отзывы</span>
-          <h2 style="margin-top:14px">Что говорят ученики и родители</h2>
-          <p class="lead" style="margin-top:16px">Имя указано там, где отзыв оставлен публично. Остальные пришли в переписке — их публикую без имён.</p>
-        </div>
-        <div class="rev-nav">
+      <div class="head">
+        <span class="eyebrow">Отзывы</span>
+        <h2 style="margin-top:14px">Что говорят ученики и родители</h2>
+      </div>
+      <p class="lead">Имя указано там, где отзыв оставлен публично. Остальные пришли в переписке — их публикую без имён.</p>
+      <div class="rev-nav">
           <button type="button" id="revPrev" aria-label="Предыдущие отзывы">
             <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l-6 6 6 6"/></svg>
           </button>
           <button type="button" id="revNext" aria-label="Следующие отзывы">
             <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4l6 6-6 6"/></svg>
-          </button>
-        </div>
+        </button>
       </div>
     </div>
 
@@ -1052,8 +1073,8 @@ footer{border-top:1px solid var(--line);padding:44px 0 56px;margin-top:clamp(60p
 <section id="faq">
   <div class="wrap">
     <div class="sec-head rise">
-      <span class="eyebrow">Вопросы</span>
-      <h2>Коротко о главном</h2>
+      <div class="head"><span class="eyebrow">Вопросы</span>
+      <h2>Коротко о главном</h2></div>
     </div>
     <div class="faq">
       <details class="faq-item rise">
