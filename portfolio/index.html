@@ -275,20 +275,20 @@ header.stuck{background:rgba(8,9,12,.72);backdrop-filter:blur(18px) saturate(1.4
 @media (max-width:640px){.steps::before{left:21px}}
 /* первая колонка сетки отдана номеру, поэтому текст шага начинается ровно
    со второй колонки страницы, а не «примерно там же» */
-/* номер — первая колонка, название — 2–5, описание — 6–12: так шаг занимает
-   всю ширину, а не обрывается текстовой колонкой посреди страницы */
+/* Номер — первая колонка, название и описание — одним столбцом под ним
+   (текста рядом с заголовком быть не должно), метка шага уходит к правому
+   краю: так правая треть занята, а строка остаётся читаемой. */
 .step{position:relative;display:grid;
   grid-template-columns:repeat(var(--grid-cols),1fr);gap:var(--gutter);
   padding:26px 0;align-items:start}
 .step .num{grid-column:1;justify-self:start}
-.step h3{grid-column:2 / span 4}
-.step .body{grid-column:6 / span 7}
+.step .copy{grid-column:2 / span 8}
+.step .tag{grid-column:10 / span 3;justify-self:end;margin-top:14px}
 @media (max-width:880px){
   .step{grid-template-columns:44px 1fr;gap:16px}
   .step .num{grid-column:1}
-  .step h3{grid-column:2;padding-top:8px}
-  .step .body{grid-column:2;padding-top:0}
-  .step p{margin-top:10px}
+  .step .copy{grid-column:2;padding-top:8px}
+  .step .tag{grid-column:2;justify-self:start;margin-top:12px}
 }
 .step .num{
   position:relative;z-index:1;width:56px;height:56px;border-radius:50%;display:grid;place-items:center;
@@ -298,11 +298,10 @@ header.stuck{background:rgba(8,9,12,.72);backdrop-filter:blur(18px) saturate(1.4
 }
 @media (max-width:640px){.step .num{width:44px;height:44px;font-size:16px}}
 .step.in .num{border-color:rgba(91,147,255,.55);box-shadow:0 0 0 5px rgba(91,147,255,.09);color:#fff;background:linear-gradient(150deg,rgba(91,147,255,.3),var(--bg-2))}
-.step h3{padding-top:12px}
-.step .body{padding-top:12px}
+.step .copy{padding-top:12px}
 @media (max-width:640px){.step h3{padding-top:8px;font-size:18px}}
-.step p{margin:0;color:var(--muted);font-size:16px;line-height:1.65}
-.step .tag{display:inline-block;margin-top:14px;padding:5px 11px;border-radius:8px;
+.step p{margin:10px 0 0;color:var(--muted);font-size:16px;line-height:1.65}
+.step .tag{display:inline-block;padding:5px 11px;border-radius:8px;
   background:var(--accent-dim);border:1px solid rgba(91,147,255,.22);
   font:400 12.5px/1 var(--mono);color:var(--accent-2)}
 
@@ -730,29 +729,29 @@ footer{border-top:1px solid var(--line);padding:44px 0 56px;margin-top:clamp(60p
     </div>
     <div class="steps">
       <div class="step rise"><div class="num">1</div>
-        <h3>Бесплатная диагностика</h3>
-        <div class="body"><p>Час: короткий срез по темам, разговор про цель и сроки. На выходе — честный текущий балл и список тем, которые его держат. Ничего не покупаем, решаем, идём ли вместе.</p>
-        <span class="tag">60 минут · бесплатно</span></div>
+        <div class="copy"><h3>Бесплатная диагностика</h3>
+        <p>Час: короткий срез по темам, разговор про цель и сроки. На выходе — честный текущий балл и список тем, которые его держат. Ничего не покупаем, решаем, идём ли вместе.</p></div>
+        <span class="tag">60 минут · бесплатно</span>
       </div>
       <div class="step rise"><div class="num">2</div>
-        <h3>План до экзамена</h3>
-        <div class="body"><p>Расписываем недели до даты экзамена: какие номера когда закрываем, где контрольные точки. План видно ученику и родителю — сюрпризов «за месяц до» не бывает.</p>
-        <span class="tag">Виден в личном кабинете</span></div>
+        <div class="copy"><h3>План до экзамена</h3>
+        <p>Расписываем недели до даты экзамена: какие номера когда закрываем, где контрольные точки. План видно ученику и родителю — сюрпризов «за месяц до» не бывает.</p></div>
+        <span class="tag">Виден в личном кабинете</span>
       </div>
       <div class="step rise"><div class="num">3</div>
-        <h3>Занятие на онлайн-доске</h3>
-        <div class="body"><p>Пишем и рисуем вместе в реальном времени — как за одним столом. Доска сохраняется: ученик открывает разбор через неделю и видит ровно то, что мы делали, своим и моим почерком.</p>
-        <span class="tag">История всех досок сохраняется</span></div>
+        <div class="copy"><h3>Занятие на онлайн-доске</h3>
+        <p>Пишем и рисуем вместе в реальном времени — как за одним столом. Доска сохраняется: ученик открывает разбор через неделю и видит ровно то, что мы делали, своим и моим почерком.</p></div>
+        <span class="tag">История всех досок сохраняется</span>
       </div>
       <div class="step rise"><div class="num">4</div>
-        <h3>Домашка, которую видно</h3>
-        <div class="body"><p>Задания приходят в кабинет, а не теряются в переписке. Я вижу, что решено, что нет и где именно ошибка. Разбор ошибок — начало следующего занятия, а не «посмотри сам».</p>
-        <span class="tag">С таймером, как на экзамене</span></div>
+        <div class="copy"><h3>Домашка, которую видно</h3>
+        <p>Задания приходят в кабинет, а не теряются в переписке. Я вижу, что решено, что нет и где именно ошибка. Разбор ошибок — начало следующего занятия, а не «посмотри сам».</p></div>
+        <span class="tag">С таймером, как на экзамене</span>
       </div>
       <div class="step rise"><div class="num">5</div>
-        <h3>Пробники по образцу ФИПИ</h3>
-        <div class="body"><p>Раз в две-три недели — полный вариант в экзаменационном формате: бланк, время, критерии. Растущий балл видно на графике, и становится ясно, какие номера ещё дают прибавку.</p>
-        <span class="tag">Свой банк заданий, обновляется</span></div>
+        <div class="copy"><h3>Пробники по образцу ФИПИ</h3>
+        <p>Раз в две-три недели — полный вариант в экзаменационном формате: бланк, время, критерии. Растущий балл видно на графике, и становится ясно, какие номера ещё дают прибавку.</p></div>
+        <span class="tag">Свой банк заданий, обновляется</span>
       </div>
     </div>
   </div>
