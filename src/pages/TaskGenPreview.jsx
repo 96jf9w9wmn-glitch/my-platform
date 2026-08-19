@@ -7,6 +7,8 @@ import { downloadZip } from "./zipWriter"
 import { downloadXlsx } from "./xlsxWriter"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
+import { PlanHint } from "../components/PlanLock"
+import { usePlan } from "../subscription"
 // Тетрадь тянет за собой jsPDF и html2canvas — грузим только когда её открыли,
 // иначе просмотр банка стал бы на полмегабайта тяжелее.
 const WorkbookModal = lazy(() => import("./WorkbookModal"))
@@ -418,6 +420,10 @@ function ReadingStatementsCard({ module, showAnswer }) {
 }
 
 export default function TaskGenPreview() {
+  // Печатные листы — возможность тарифа: посмотреть банк на экране можно
+  // бесплатно (это витрина), а вот унести задания на бумагу — уже нет.
+  const { allows, openPlans } = usePlan()
+  const canWorkbook = allows("workbook")
   const [examType, setExamType] = useState("ОГЭ")
   const [focus, setFocus] = useState(null)          // null → «Все», иначе конкретный номер
   const [showAnswer, setShowAnswer] = useState(true)
@@ -482,13 +488,21 @@ export default function TaskGenPreview() {
         </p>
         {/* Печатная тетрадь по тому, что сейчас выбрано: условие + поле в клетку под решение */}
         <button
-          onClick={() => setWorkbook(true)}
+          onClick={() => (canWorkbook ? setWorkbook(true) : openPlans())}
           className="press-fill flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm text-white bg-gradient-to-b from-blue-500 to-blue-600 shadow-sm shadow-blue-600/25"
         >
-          <MorphIcon from="grid" to="download" size={14} />
+          <MorphIcon from="grid" to={canWorkbook ? "download" : "sparkles"} size={14} />
           Рабочая тетрадь
         </button>
       </div>
+
+      {!canWorkbook && (
+        <div className="mb-5">
+          <PlanHint feature="workbook">
+            Задания видно целиком, а печать листов и рабочих тетрадей — на тарифе «Про».
+          </PlanHint>
+        </div>
+      )}
 
       {workbook && (
         <Suspense fallback={null}>

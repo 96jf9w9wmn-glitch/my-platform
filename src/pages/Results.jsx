@@ -4,6 +4,8 @@ import Icon from "../components/Icon"
 import WeakTypes from "../components/WeakTypes"
 import Collapse from "../components/Collapse"
 import { plural, getInitials } from "../utils"
+import { PlanLock } from "../components/PlanLock"
+import { usePlan } from "../subscription"
 
 function getOgeGrade(total, geomScore) {
   if (total < 8 || geomScore < 2) return 2
@@ -439,4 +441,25 @@ function Results({ students, user }) {
   )
 }
 
-export default Results
+// Раздел под тарифом. Гейт стоит ОБЁРТКОЙ, а не условным return внутри
+// Results: иначе половина хуков компонента переставала бы вызываться и React
+// ругался бы на разное их число между рендерами.
+function ResultsGate(props) {
+  const { allows } = usePlan()
+  if (allows("analytics")) return <Results {...props} />
+  return (
+    <div className="p-4 sm:p-6">
+      <h1 className="text-xl font-medium mb-1">Результаты</h1>
+      <p className="text-sm text-gray-500 mb-5">
+        Баллы за пробники, динамика и типы заданий, которые чаще всего не выходят.
+      </p>
+      <PlanLock
+        feature="analytics"
+        title="Результаты и аналитика"
+        text="Графики баллов по каждому ученику, прогресс между пробниками и разбор слабых типов заданий."
+      />
+    </div>
+  )
+}
+
+export default ResultsGate

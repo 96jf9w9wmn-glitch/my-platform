@@ -38,11 +38,13 @@ export const PLANS = [
   {
     id: "start",
     name: "Старт",
-    tagline: "Попробовать платформу на паре учеников",
+    tagline: "Посмотреть платформу изнутри на одном ученике",
     price: { month: 0, year: 0 },
-    limits: { students: 3, aiHomework: 0 },
+    limits: { students: 1, aiHomework: 0 },
     features: {
       variants: false,
+      workbook: false,
+      analytics: false,
       onlinePay: false,
       boardHistory: false,
       parentReports: false,
@@ -51,9 +53,9 @@ export const PLANS = [
     },
     // Что показываем в карточке тарифа (коротко, без повтора таблицы ниже)
     highlights: [
-      "До 3 учеников",
+      "Один ученик — попробовать, как всё устроено",
       "Расписание, задания, чат, финансы",
-      "Банк заданий: просмотр и тренировка",
+      "Банк заданий: только просмотр на экране",
       "Совместная доска",
     ],
   },
@@ -65,6 +67,8 @@ export const PLANS = [
     limits: { students: 25, aiHomework: 150 },
     features: {
       variants: true,
+      workbook: true,
+      analytics: true,
       onlinePay: true,
       boardHistory: true,
       parentReports: true,
@@ -74,7 +78,8 @@ export const PLANS = [
     popular: true,
     highlights: [
       "До 25 учеников",
-      "Сборка вариантов ОГЭ/ЕГЭ и PDF",
+      "Варианты ОГЭ/ЕГЭ, рабочие тетради и печать",
+      "Результаты и аналитика по ученикам",
       "ИИ-генерация ДЗ — 150 в месяц",
       "Онлайн-оплата занятий учениками",
       "Телеграм-бот: расписание и ДЗ в телефоне",
@@ -89,6 +94,8 @@ export const PLANS = [
     limits: { students: UNLIMITED, aiHomework: UNLIMITED },
     features: {
       variants: true,
+      workbook: true,
+      analytics: true,
       onlinePay: true,
       boardHistory: true,
       parentReports: true,
@@ -122,8 +129,10 @@ export const PERIODS = {
 export const FEATURE_ROWS = [
   { key: "students", kind: "limit", label: "Учеников", suffix: "" },
   { key: "core", kind: "always", label: "Расписание, ДЗ, чат, финансы" },
-  { key: "bank", kind: "always", label: "Банк заданий и тренировка" },
+  { key: "bank", kind: "always", label: "Банк заданий: просмотр и тренировка" },
   { key: "variants", kind: "bool", label: "Сборка вариантов ОГЭ/ЕГЭ и PDF" },
+  { key: "workbook", kind: "bool", label: "Рабочие тетради и печатные листы" },
+  { key: "analytics", kind: "bool", label: "Результаты и аналитика по ученикам" },
   { key: "aiHomework", kind: "limit", label: "ИИ-генерация ДЗ", suffix: " / мес" },
   { key: "onlinePay", kind: "bool", label: "Онлайн-оплата занятий учениками" },
   { key: "boardHistory", kind: "bool", label: "История досок занятий" },
