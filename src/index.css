@@ -804,9 +804,9 @@ button.w-full:not([disabled]):not(.no-press):active::after,
 }
 
 .dark .nav-active {
-  background: rgba(0, 122, 255, 0.22) !important;
-  border: 1px solid rgba(0, 122, 255, 0.35) !important;
-  box-shadow: 0 0 6px rgba(0, 122, 255, 0.14), 0 1px 4px rgba(0, 122, 255, 0.08) !important;
+  background: rgba(0, 122, 255, 0.20) !important;
+  border: 1px solid rgba(0, 122, 255, 0.26) !important;
+  box-shadow: 0 0 3px rgba(0, 122, 255, 0.08) !important;
 }
 
 /* Stat cards */
