@@ -1,5 +1,10 @@
 import NavIcon from "./NavIcon"
+import { useSubscription } from "../subscription"
+import { effectivePlan } from "../plans"
 
+// Только рабочие разделы. Всё про сам аккаунт (подписка, код для учеников,
+// выход) живёт в «Профиле» — он открывается из блока внизу меню, поэтому
+// список вкладок не растёт от каждой такой мелочи.
 const navItems = [
   { label: "Главная", id: "dashboard" },
   { label: "Ученики", id: "students" },
@@ -9,10 +14,15 @@ const navItems = [
   { label: "Оплата", id: "payment" },
   { label: "Результаты", id: "results" },
   { label: "Банк заданий", id: "taskgen" },
-  { label: "Подписка", id: "subscription" },
 ]
 
-function Sidebar({ activePage, setActivePage, badges = {} }) {
+function Sidebar({ activePage, setActivePage, badges = {}, name, email }) {
+  const { sub } = useSubscription()
+  const plan = effectivePlan(sub)
+  const title = name || email || "Профиль"
+  const letter = title.trim().charAt(0).toUpperCase()
+  const active = activePage === "profile"
+
   return (
     <div className="sidebar-glass w-52 h-dvh sticky top-0 p-4 flex flex-col">
       <div className="flex items-center gap-2.5 mb-5 px-1">
@@ -40,6 +50,26 @@ function Sidebar({ activePage, setActivePage, badges = {} }) {
           </button>
         ))}
       </div>
+
+      {/* Профиль репетитора: аккаунт и подписка. Прижат к низу — так же, как
+          в почте и мессенджерах, где «это я» всегда в нижнем углу. */}
+      <button
+        onClick={() => setActivePage("profile")}
+        className={`mt-auto w-full flex items-center gap-2.5 p-2 rounded-xl text-left transition-all duration-200 focus:outline-none border border-transparent ${
+          active ? "nav-active" : "hover:bg-white/40"
+        }`}
+      >
+        <span
+          className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium flex-shrink-0"
+          style={{ background: "linear-gradient(135deg, #0A84FF 0%, #5E5CE6 100%)" }}
+        >
+          {letter}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className={`block text-sm truncate ${active ? "font-medium" : "text-gray-600"}`}>{title}</span>
+          <span className="block text-[11px] text-gray-400 truncate">Тариф «{plan.name}»</span>
+        </span>
+      </button>
     </div>
   )
 }

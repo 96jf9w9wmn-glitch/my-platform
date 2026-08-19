@@ -19,7 +19,7 @@ import ParentDashboard from "./pages/ParentDashboard"
 import Chat from "./pages/Chat"
 import Legal from "./pages/Legal"
 import { LEGAL_PATHS } from "./legalPaths"
-import Subscription from "./pages/Subscription"
+import Profile from "./pages/Profile"
 import { SubscriptionProvider } from "./subscriptionProvider"
 import TutorOnboardingModal from "./components/TutorOnboardingModal"
 // Excalidraw тяжёлый (mermaid/katex) — грузим доску только при открытии
@@ -255,9 +255,9 @@ function App() {
   // src/supabase.js до создания клиента — к моменту первого рендера hash уже
   // вычищен клиентом, здесь его проверять поздно.
   const [recovery, setRecovery] = useState(isPasswordRecovery)
-  // Возврат с оплаты подписки (?sub=<заказ>) должен открыть саму «Подписку»:
-  // именно там ждут подтверждения платежа.
-  const startPage = new URLSearchParams(window.location.search).get("sub") ? "subscription" : "dashboard"
+  // Возврат с оплаты подписки (?sub=<заказ>) должен открыть «Профиль»: там
+  // живёт секция подписки, которая ждёт подтверждения платежа.
+  const startPage = new URLSearchParams(window.location.search).get("sub") ? "profile" : "dashboard"
   const [activePage, setActivePage] = useState(startPage)
   const [visitedPages, setVisitedPages] = useState(() => new Set([startPage]))
   const [chatUnread, setChatUnread] = useState(0)
@@ -299,7 +299,7 @@ function App() {
     schedule: "Расписание",
     chat: "Чат",
     taskgen: "Банк заданий",
-    subscription: "Подписка",
+    profile: "Профиль",
   }
 
   function navigateTo(page) {
@@ -633,7 +633,7 @@ function App() {
   ]
 
   return (
-    <SubscriptionProvider tutorId={user.id} onOpenPlans={() => navigateTo("subscription")}>
+    <SubscriptionProvider tutorId={user.id} onOpenPlans={() => navigateTo("profile")}>
     <div className="flex app-shell overflow-clip">
       {user.profile && !user.profile.onboarding_completed && (
         <TutorOnboardingModal
@@ -659,22 +659,27 @@ function App() {
       )}
 
       <div className="hidden md:block">
-        <Sidebar activePage={activePage} setActivePage={navigateTo} badges={{ chat: chatUnread }} />
+        <Sidebar activePage={activePage} setActivePage={navigateTo} badges={{ chat: chatUnread }} name={user.profile?.name} email={user.email} />
       </div>
 
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <div className="topbar-glass flex justify-between items-center px-4 py-3">
           <div className="md:hidden text-sm font-semibold text-gray-700">Precettore</div>
           <div className="flex items-center gap-2 ml-auto">
-            {user.profile?.code && (
-              <div className="hidden md:block text-xs text-gray-500 bg-white/60 px-3 py-1.5 rounded-lg">
-                Код для учеников: <span className="font-mono font-medium text-gray-700">{user.profile.code}</span>
-              </div>
-            )}
             <ThemeToggle />
             <NotificationBell userId={user.id} onNavigate={navigateTo} />
-            <span className="hidden md:block text-sm text-gray-600">{user.profile?.name || user.email}</span>
-            <button onClick={handleLogout} className="text-sm text-gray-400 hover:text-gray-600">Выйти</button>
+            {/* Аватар — вход в «Профиль»: аккаунт, код для учеников, подписка
+                и выход. На телефоне это единственная точка входа туда. */}
+            <button
+              onClick={() => navigateTo("profile")}
+              aria-label="Профиль"
+              className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium transition-all active:scale-95 ${
+                activePage === "profile" ? "ring-2 ring-[#007AFF]/50 ring-offset-1 ring-offset-transparent" : ""
+              }`}
+              style={{ background: "linear-gradient(135deg, #0A84FF 0%, #5E5CE6 100%)" }}
+            >
+              {(user.profile?.name || user.email || "?").trim().charAt(0).toUpperCase()}
+            </button>
           </div>
         </div>
 
@@ -688,7 +693,14 @@ function App() {
           <div className={activePage !== "homework" ? "hidden" : "page-active"}>{visitedPages.has("homework") && <Homework user={user} students={students} />}</div>
           <div className={activePage !== "results" ? "hidden" : "page-active"}>{visitedPages.has("results") && <Results students={students} user={user} />}</div>
           <div className={activePage !== "taskgen" ? "hidden" : "page-active"}>{visitedPages.has("taskgen") && <TaskGenPreview />}</div>
-          <div className={activePage !== "subscription" ? "hidden" : "page-active"}>{visitedPages.has("subscription") && <Subscription studentsCount={students.length} tutorId={user.id} />}</div>
+          <div className={activePage !== "profile" ? "hidden" : "page-active"}>{visitedPages.has("profile") && (
+            <Profile
+              user={user}
+              studentsCount={students.length}
+              onLogout={handleLogout}
+              onProfileChange={(fields) => setUser((prev) => ({ ...prev, profile: { ...prev.profile, ...fields } }))}
+            />
+          )}</div>
           <div className={activePage !== "chat" ? "hidden" : "flex-1 min-h-0 flex flex-col page-active"}>{visitedPages.has("chat") && (
             <Chat
               myId={`t:${user.id}`}

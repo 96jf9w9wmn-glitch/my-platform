@@ -1,4 +1,6 @@
-// Страница «Подписка»: три тарифа, текущий статус, расход лимитов и история оплат.
+// Секция «Подписка» внутри раздела «Профиль»: три тарифа, текущий статус,
+// расход лимитов и история оплат. Отдельной вкладкой в меню больше не является —
+// собственных отступов страницы поэтому не задаёт, их даёт Profile.jsx.
 //
 // Деньги идут платформе (магазин ЮKassa платформы, см. api/subscription.js).
 // Сумму считает сервер по src/plans.js — здесь цены только показываются.
@@ -162,9 +164,9 @@ export default function Subscription({ studentsCount = 0, tutorId }) {
   const notReady = health && !health.ok
 
   return (
-    <div className="p-4 sm:p-6">
-      <h1 className="text-xl font-medium mb-1">Подписка</h1>
-      <p className="text-sm text-gray-500 mb-5 sm:mb-6">
+    <div>
+      <h2 className="text-lg font-medium mb-1">Подписка</h2>
+      <p className="text-sm text-gray-500 mb-4 sm:mb-5">
         Тариф определяет, сколько у вас может быть учеников и какие возможности платформы включены.
       </p>
 

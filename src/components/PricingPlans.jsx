@@ -172,7 +172,7 @@ export default function PricingPlans({ period, onPeriod, currentId, active, busy
 
       <div className="relative z-10">
         <div className="text-center mb-6 sm:mb-7">
-          <h2 className="text-2xl sm:text-3xl font-medium">Тарифы</h2>
+          <h3 className="text-xl sm:text-2xl font-medium">Тарифы</h3>
           <p className="text-sm text-gray-500 mt-2">
             Год стоит как десять месяцев вместо двенадцати. Тариф можно сменить в любой момент.
           </p>
