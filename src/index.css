@@ -1432,7 +1432,7 @@ button.w-full:not([disabled]):not(.no-press):active::after,
 /* ═══════════════ Блок тарифов на странице «Подписка» ═══════════════
    Сделан по образцу pricing-section из shadcn-блоков, но на своих токенах:
    скользящая «таблетка» в переключателе периода, сетка-подложка под маской,
-   инверсная карточка «Студии» и мягкое свечение у популярного тарифа. */
+   тонированная карточка старшего тарифа и свечение у популярного. */
 
 /* Подложка блока: клетка, гаснущая к низу — контент кладётся поверх (z-10). */
 .pricing-bg {
@@ -1488,59 +1488,43 @@ button.w-full:not([disabled]):not(.no-press):active::after,
   background: radial-gradient(80% 60% at 50% -8%, rgba(0, 122, 255, 0.16), transparent 70%);
 }
 
-/* «Студия» — инверсная карточка: тёмная в светлой теме и светлая в тёмной.
-   Тот же приём, что bg-foreground/text-background в исходном компоненте. */
-.plan-inverted {
-  background: linear-gradient(168deg, #171B24 0%, #0B0D12 100%);
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.20);
+/* Старший тариф — не инверсия, а тонированное стекло: в светлой теме чёрная
+   карточка, а в тёмной белая слишком выбивались из страницы. Индиго-синий тинт
+   и более заметная рамка держат акцент, оставаясь в языке остальных панелей. */
+.plan-premium {
+  background: linear-gradient(165deg,
+    rgba(94, 92, 230, 0.13) 0%,
+    rgba(0, 122, 255, 0.07) 45%,
+    rgba(255, 255, 255, 0.42) 100%);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid rgba(94, 92, 230, 0.22);
+  box-shadow: var(--glass-shadow);
   border-radius: 20px;
-  color: #F2F4F8;
 }
-.dark .plan-inverted {
-  background: linear-gradient(168deg, #FFFFFF 0%, #E9EDF4 100%);
-  border-color: rgba(0, 0, 0, 0.06);
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.45);
-  color: #0B0D12;
+.dark .plan-premium {
+  background: linear-gradient(165deg,
+    rgba(94, 92, 230, 0.20) 0%,
+    rgba(10, 132, 255, 0.10) 45%,
+    rgba(255, 255, 255, 0.045) 100%);
+  border-color: rgba(140, 138, 255, 0.24);
 }
-.plan-inverted::before {
+.plan-premium::before {
   background:
-    linear-gradient(rgba(255, 255, 255, 0.075) 1px, transparent 1px) 0 0 / 32px 32px,
-    linear-gradient(90deg, rgba(255, 255, 255, 0.075) 1px, transparent 1px) 0 0 / 32px 32px;
+    linear-gradient(rgba(94, 92, 230, 0.06) 1px, transparent 1px) 0 0 / 32px 32px,
+    linear-gradient(90deg, rgba(94, 92, 230, 0.06) 1px, transparent 1px) 0 0 / 32px 32px;
   mask-image: radial-gradient(100% 58% at 50% 0%, #000 45%, transparent 85%);
   -webkit-mask-image: radial-gradient(100% 58% at 50% 0%, #000 45%, transparent 85%);
 }
-.dark .plan-inverted::before {
+.dark .plan-premium::before {
   background:
-    linear-gradient(rgba(0, 0, 0, 0.07) 1px, transparent 1px) 0 0 / 32px 32px,
-    linear-gradient(90deg, rgba(0, 0, 0, 0.07) 1px, transparent 1px) 0 0 / 32px 32px;
+    linear-gradient(rgba(160, 158, 255, 0.07) 1px, transparent 1px) 0 0 / 32px 32px,
+    linear-gradient(90deg, rgba(160, 158, 255, 0.07) 1px, transparent 1px) 0 0 / 32px 32px;
 }
 
-/* Цвета внутри инверсной карточки: задаются переменными, чтобы разметка не
-   таскала два набора классов на каждую строку. */
-.plan-inverted {
-  --pc-muted: rgba(255, 255, 255, 0.55);
-  --pc-soft: rgba(255, 255, 255, 0.78);
-  --pc-accent: #7FB4FF;
-}
-.dark .plan-inverted {
-  --pc-muted: rgba(11, 13, 18, 0.55);
-  --pc-soft: rgba(11, 13, 18, 0.74);
-  --pc-accent: #007AFF;
-}
-.pc-muted { color: var(--pc-muted); }
-.pc-soft { color: var(--pc-soft); }
-.pc-check { color: var(--pc-accent); }
-
-/* Кнопка инверсной карточки — контрастная фону карточки, а не синяя:
-   на тёмной карточке белая, на светлой (тёмная тема) — почти чёрная. */
-.plan-inverted .pc-btn {
-  background: #fff;
-  color: #0B0D12;
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.30);
-}
-.dark .plan-inverted .pc-btn {
-  background: #0B0D12;
+/* Кнопка старшего тарифа: индиго→синий, родственно «Про», но не тот же цвет. */
+.plan-premium .pc-btn {
+  background: linear-gradient(135deg, #6E6BF2 0%, #0A84FF 100%);
   color: #fff;
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 6px 18px rgba(94, 92, 230, 0.30);
 }

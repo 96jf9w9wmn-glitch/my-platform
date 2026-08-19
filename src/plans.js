@@ -61,8 +61,8 @@ export const PLANS = [
     ],
   },
   {
-    id: "studio",
-    name: "Студия",
+    id: "studio",          // id в базе и в чеках менять нельзя — только имя
+    name: "Макс",
     tagline: "Для большого потока и небольшой команды",
     price: { month: 2490, year: 24900 },
     limits: { students: UNLIMITED, aiHomework: UNLIMITED },
@@ -74,8 +74,8 @@ export const PLANS = [
       telegramBot: true,
       prioritySupport: true,
     },
-    // Визуальный флаг для карточки тарифа: «Студия» рисуется инверсной
-    // (тёмной в светлой теме и наоборот) — так же, как popular у «Про».
+    // Визуальный флаг для карточки тарифа: старший тариф рисуется тонированным
+    // стеклом с более заметной рамкой — так же, как popular у «Про».
     highlighted: true,
     highlights: [
       "Учеников без ограничений",

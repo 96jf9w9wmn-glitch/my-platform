@@ -137,7 +137,7 @@ export default async function handler(req, res) {
     if (!usage.ok) {
       res.status(403).json({
         error: usage.limit === 0
-          ? "ИИ-генерация ДЗ доступна на тарифах «Про» и «Студия»"
+          ? "ИИ-генерация ДЗ доступна на тарифах «Про» и «Макс»"
           : `Лимит ИИ-генераций исчерпан: ${usage.used} из ${usage.limit} в этом месяце`,
         upgrade: true,
       })

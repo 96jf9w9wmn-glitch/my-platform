@@ -285,7 +285,7 @@ async function applySubscription(db, payment, res) {
   const paidAmount = Number(payment?.amount?.value || 0)
   if (Math.abs(paidAmount - Number(order.amount || 0)) > 0.01) {
     // Заплатили не ту сумму — фиксируем платёж, но тариф не выдаём: такой случай
-    // разбирается руками, автоматически «Студию» за 100 ₽ выдавать нельзя.
+    // разбирается руками, автоматически «Макс» за 100 ₽ выдавать нельзя.
     await db.from("subscription_orders")
       .update({
         status: "succeeded",

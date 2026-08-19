@@ -2,7 +2,8 @@
 // периода со скользящей «таблеткой» и три карточки.
 //
 // Собран по образцу pricing-section из shadcn-блоков, но на своих токенах:
-// стекло, акцент #007AFF, инверсная карточка «Студии» вместо bg-foreground,
+// стекло, акцент #007AFF, тонированная карточка старшего тарифа вместо
+// bg-foreground (чёрная карточка в светлой теме слишком выбивалась),
 // свой хук вместо NumberFlow и CSS-переход вместо framer-motion (лишние
 // зависимости ради одного блока не тянем). Стили — в index.css, раздел
 // «Блок тарифов».
@@ -86,23 +87,17 @@ function PlanCard({ plan, period, currentId, active, busy, onBuy }) {
   const free = plan.price.month === 0
   const monthly = period === "year" && !free ? Math.round(price / 12) : null
   const shown = useAnimatedNumber(price)
-  const inv = Boolean(plan.highlighted)   // инверсная карточка «Студии»
+  const premium = Boolean(plan.highlighted)   // старший тариф: тонированная карточка
 
   const label = free
     ? (isCurrent ? "Текущий тариф" : "Базовый доступ")
     : isCurrent && active ? "Продлить"
     : "Перейти"
 
-  // Внутри инверсной карточки серые тайлвинд-классы нечитаемы: там свои
-  // переменные цвета (см. .plan-inverted в index.css).
-  const mutedCls = inv ? "pc-muted" : "text-gray-500"
-  const softCls = inv ? "pc-soft" : "text-gray-600"
-  const dimCls = inv ? "pc-muted" : "text-gray-400"
-
   return (
     <div
       className={`plan-card p-5 flex flex-col h-full relative ${
-        inv ? "plan-inverted" : "glass"
+        premium ? "plan-premium" : "glass"
       } ${plan.popular ? "plan-popular ring-2 ring-[#007AFF]/35" : ""}`}
     >
       {plan.popular && (
@@ -120,7 +115,7 @@ function PlanCard({ plan, period, currentId, active, busy, onBuy }) {
           </span>
         )}
       </div>
-      <p className={`text-xs leading-relaxed mb-4 md:min-h-[36px] ${mutedCls}`}>{plan.tagline}</p>
+      <p className="text-xs text-gray-500 leading-relaxed mb-4 md:min-h-[36px]">{plan.tagline}</p>
 
       {/* Высота фиксирована с ряда в три колонки: при переключении периода
           строка «≈ … в месяц» появляется и исчезает, и без этого цены съезжали
@@ -129,10 +124,10 @@ function PlanCard({ plan, period, currentId, active, busy, onBuy }) {
       <div className="mb-4 md:h-[52px]">
         <div className="text-2xl font-medium tabular-nums">
           {formatPrice(shown)}
-          {!free && <span className={`text-sm font-normal ${dimCls}`}> / {PERIODS[period].short}</span>}
+          {!free && <span className="text-sm font-normal text-gray-400"> / {PERIODS[period].short}</span>}
         </div>
         {monthly && (
-          <div className={`text-xs mt-0.5 tabular-nums ${dimCls}`}>
+          <div className="text-xs text-gray-400 mt-0.5 tabular-nums">
             ≈ {monthly.toLocaleString("ru-RU")} ₽ в месяц
           </div>
         )}
@@ -140,8 +135,8 @@ function PlanCard({ plan, period, currentId, active, busy, onBuy }) {
 
       <ul className="flex flex-col gap-2 mb-5">
         {plan.highlights.map((h) => (
-          <li key={h} className={`flex items-start gap-2 text-sm ${softCls}`}>
-            <Icon name="check" size={14} className={`mt-0.5 shrink-0 ${inv ? "pc-check" : "text-[#007AFF]"}`} />
+          <li key={h} className="flex items-start gap-2 text-sm text-gray-600">
+            <Icon name="check" size={14} className="mt-0.5 shrink-0 text-[#007AFF]" />
             <span className="leading-snug">{h}</span>
           </li>
         ))}
@@ -153,9 +148,9 @@ function PlanCard({ plan, period, currentId, active, busy, onBuy }) {
         className={`group mt-auto w-full py-2.5 rounded-full text-sm font-medium transition-all disabled:opacity-45 disabled:cursor-default flex items-center justify-center gap-1.5 ${
           free
             ? "text-[#007AFF] bg-[#007AFF]/10 ring-1 ring-inset ring-[#007AFF]/25"
-            : inv ? "pc-btn" : "text-white"
+            : premium ? "pc-btn" : "text-white"
         }`}
-        style={free || inv
+        style={free || premium
           ? undefined
           : { background: "linear-gradient(135deg, #0A84FF 0%, #0060DF 100%)", boxShadow: "0 6px 18px rgba(0,122,255,0.28)" }}
       >
