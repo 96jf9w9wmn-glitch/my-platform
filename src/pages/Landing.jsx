@@ -621,10 +621,9 @@ function RoleQuiz({ cfg, role }) {
 
   const total = quiz.steps.length + 1          // вопросы + шаг с контактами
   const isContactStep = step === quiz.steps.length
-  const current = quiz.steps[step]
 
-  function choose(value) {
-    setAnswers((prev) => ({ ...prev, [current.id]: value }))
+  function choose(id, value) {
+    setAnswers((prev) => ({ ...prev, [id]: value }))
     setStep((s) => s + 1)
   }
 
@@ -660,22 +659,19 @@ function RoleQuiz({ cfg, role }) {
     setSent(true)
   }
 
-  if (sent) {
-    return (
-      <div className="glass rounded-3xl p-6 sm:p-8 text-center max-w-xl mx-auto">
-        <div className={`w-12 h-12 rounded-2xl mx-auto flex items-center justify-center ring-1 ${cfg.ring} ${cfg.soft} ${cfg.text}`}>
-          <Icon name="check" size={22} />
-        </div>
-        <h3 className="text-xl font-bold tracking-tight text-gray-900 mt-4">{quiz.doneTitle}</h3>
-        <p className="mt-2 text-gray-500 dark:text-gray-400">{quiz.doneLead}</p>
-      </div>
-    )
-  }
+  // Экраны квиза (вопросы → контакты → «спасибо») лежат в ОДНОЙ ячейке грида:
+  // высота карточки равна самому высокому экрану и не прыгает при переходе с
+  // вопроса на вопрос — вопросы разной длины и с разным числом вариантов.
+  // Неактивные экраны остаются в потоке (visibility: hidden), поэтому не ловят
+  // фокус, не кликаются и не читаются скринридером.
+  const panel = (active) =>
+    `[grid-area:1/1] ${active ? "slide-up" : "invisible pointer-events-none"}`
 
   return (
     <div className="glass rounded-3xl p-6 sm:p-8 max-w-xl mx-auto">
-      {/* Прогресс: видно, что вопросов немного и это не анкета на полчаса */}
-      <div className="flex items-center gap-3">
+      {/* Прогресс: видно, что вопросов немного и это не анкета на полчаса.
+          На экране «спасибо» прячем, но место оставляем — иначе прыжок. */}
+      <div className={`flex items-center gap-3 ${sent ? "invisible" : ""}`}>
         <div className="flex-1 h-1.5 rounded-full bg-gray-100 dark:bg-white/10 overflow-hidden">
           <div
             className={`h-full rounded-full bg-gradient-to-r ${cfg.grad} transition-[width] duration-300`}
@@ -687,42 +683,49 @@ function RoleQuiz({ cfg, role }) {
         </span>
       </div>
 
-      {!isContactStep ? (
-        <div key={`${role}-${current.id}`} className="slide-up">
-          <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900 mt-5">
-            {current.q}
-          </h3>
-          {current.hint && <p className="mt-1.5 text-sm text-gray-500 dark:text-gray-400">{current.hint}</p>}
+      <div className="grid items-start">
+        {quiz.steps.map((s, i) => {
+          const active = !sent && step === i
+          return (
+            <div key={`${role}-${s.id}`} className={panel(active)} aria-hidden={!active}>
+              <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900 mt-5">
+                {s.q}
+              </h3>
+              {s.hint && <p className="mt-1.5 text-sm text-gray-500 dark:text-gray-400">{s.hint}</p>}
 
-          <div className="flex flex-col gap-2 mt-5">
-            {current.options.map((opt) => (
-              <button
-                key={opt}
-                type="button"
-                onClick={() => choose(opt)}
-                className={`press-fill w-full text-left px-4 py-3.5 rounded-2xl ring-1 transition-colors
-                  ${answers[current.id] === opt
-                    ? `${cfg.soft} ${cfg.text} ${cfg.ring} font-medium`
-                    : "bg-white/70 dark:bg-white/[0.06] ring-gray-200 dark:ring-white/10 text-gray-700 hover:bg-white"}`}
-              >
-                {opt}
-              </button>
-            ))}
-          </div>
+              <div className="flex flex-col gap-2 mt-5">
+                {s.options.map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    tabIndex={active ? undefined : -1}
+                    onClick={() => choose(s.id, opt)}
+                    className={`press-fill w-full text-left px-4 py-3.5 rounded-2xl ring-1 transition-colors
+                      ${answers[s.id] === opt
+                        ? `${cfg.soft} ${cfg.text} ${cfg.ring} font-medium`
+                        : "bg-white/70 dark:bg-white/[0.06] ring-gray-200 dark:ring-white/10 text-gray-700 hover:bg-white dark:hover:bg-white/[0.12]"}`}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
 
-          {step > 0 && (
-            <button
-              type="button"
-              onClick={() => setStep((s) => s - 1)}
-              className="mt-4 text-sm text-gray-400 hover:text-gray-600 inline-flex items-center gap-1.5"
-            >
-              <Icon name="arrow" size={14} className="rotate-180" />
-              Назад
-            </button>
-          )}
-        </div>
-      ) : (
-        <form onSubmit={submit} className="slide-up">
+              {i > 0 && (
+                <button
+                  type="button"
+                  tabIndex={active ? undefined : -1}
+                  onClick={() => setStep((st) => st - 1)}
+                  className="mt-4 text-sm text-gray-400 hover:text-gray-600 inline-flex items-center gap-1.5"
+                >
+                  <Icon name="arrow" size={14} className="rotate-180" />
+                  Назад
+                </button>
+              )}
+            </div>
+          )
+        })}
+
+        <form onSubmit={submit} className={panel(!sent && isContactStep)} aria-hidden={sent || !isContactStep}>
           <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900 mt-5">
             {quiz.finalTitle}
           </h3>
@@ -757,6 +760,7 @@ function RoleQuiz({ cfg, role }) {
             </button>
             <button
               type="button"
+              tabIndex={isContactStep && !sent ? undefined : -1}
               onClick={() => setStep((s) => s - 1)}
               className="text-sm text-gray-400 hover:text-gray-600 inline-flex items-center gap-1.5 self-start"
             >
@@ -765,7 +769,15 @@ function RoleQuiz({ cfg, role }) {
             </button>
           </div>
         </form>
-      )}
+
+        <div className={`${panel(sent)} text-center`} aria-hidden={!sent}>
+          <div className={`w-12 h-12 rounded-2xl mx-auto flex items-center justify-center ring-1 mt-5 ${cfg.ring} ${cfg.soft} ${cfg.text}`}>
+            <Icon name="check" size={22} />
+          </div>
+          <h3 className="text-xl font-bold tracking-tight text-gray-900 mt-4">{quiz.doneTitle}</h3>
+          <p className="mt-2 text-gray-500 dark:text-gray-400">{quiz.doneLead}</p>
+        </div>
+      </div>
     </div>
   )
 }

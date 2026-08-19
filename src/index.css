@@ -1055,6 +1055,9 @@ button.w-full:not([disabled]):not(.no-press):active::after,
 .dark .bg-white\/40 { background-color: rgba(255,255,255,0.05) !important; }
 .dark .bg-white\/50 { background-color: rgba(255,255,255,0.06) !important; }
 .dark .bg-white\/60 { background-color: rgba(255,255,255,0.08) !important; }
+/* Голый hover:bg-white (без dark:-пары) в тёмной теме давал белую плашку, на
+   которой светлый текст пропадал (вариант квиза на лендинге, кнопка оплаты). */
+.dark .hover\:bg-white:hover { background-color: rgba(255,255,255,0.12) !important; }
 .dark .hover\:bg-white\/30:hover { background-color: rgba(255,255,255,0.05) !important; }
 .dark .hover\:bg-white\/40:hover { background-color: rgba(255,255,255,0.08) !important; }
 
