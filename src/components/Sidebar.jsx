@@ -1,6 +1,7 @@
 import NavIcon from "./NavIcon"
 import { useSubscription } from "../subscription"
 import { effectivePlan } from "../plans"
+import { isOwner } from "../owner"
 
 // Только рабочие разделы. Всё про сам аккаунт (подписка, код для учеников,
 // выход) живёт в «Профиле» — он открывается из блока внизу меню, поэтому
@@ -13,7 +14,9 @@ const navItems = [
   { label: "Чат", id: "chat" },
   { label: "Оплата", id: "payment" },
   { label: "Результаты", id: "results" },
-  { label: "Банк заданий", id: "taskgen" },
+  // Виден только владельцу платформы: это просмотр генераторов, а не
+  // возможность тарифа (см. src/owner.js).
+  { label: "Банк заданий", id: "taskgen", ownerOnly: true },
 ]
 
 function Sidebar({ activePage, setActivePage, badges = {}, name, email }) {
@@ -30,7 +33,7 @@ function Sidebar({ activePage, setActivePage, badges = {}, name, email }) {
         <span className="text-sm font-semibold text-gray-600 tracking-wide">Precettore</span>
       </div>
       <div className="flex flex-col gap-1">
-        {navItems.map((item) => (
+        {navItems.filter((item) => !item.ownerOnly || isOwner(email)).map((item) => (
           <button
             key={item.id}
             onClick={() => setActivePage(item.id)}

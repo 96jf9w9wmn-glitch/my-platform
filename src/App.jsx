@@ -21,6 +21,7 @@ import Legal from "./pages/Legal"
 import { LEGAL_PATHS } from "./legalPaths"
 import Profile from "./pages/Profile"
 import { SubscriptionProvider } from "./subscriptionProvider"
+import { isOwner } from "./owner"
 import TutorOnboardingModal from "./components/TutorOnboardingModal"
 // Excalidraw тяжёлый (mermaid/katex) — грузим доску только при открытии
 const Board = lazy(() => import("./components/Board"))
@@ -302,7 +303,15 @@ function App() {
     profile: "Профиль",
   }
 
+  // «Банк заданий» — внутренний раздел владельца платформы (src/owner.js).
+  // Проверяем и здесь, и в меню: пункт скрыт, но переход мог остаться в стейте
+  // (например, ?sub= или старая вкладка), а показывать чужому кабинету раздел,
+  // которого у него нет, нельзя.
+  const ownerPages = { taskgen: isOwner(user?.email) }
+  const pageAllowed = (page) => ownerPages[page] !== false
+
   function navigateTo(page) {
+    if (!pageAllowed(page)) return
     setActivePage(page)
     setVisitedPages((prev) => new Set([...prev, page]))
   }
@@ -692,7 +701,7 @@ function App() {
           <div className={activePage !== "schedule" ? "hidden" : "page-active"}>{visitedPages.has("schedule") && <Schedule students={students} setStudents={handleSetStudents} />}</div>
           <div className={activePage !== "homework" ? "hidden" : "page-active"}>{visitedPages.has("homework") && <Homework user={user} students={students} />}</div>
           <div className={activePage !== "results" ? "hidden" : "page-active"}>{visitedPages.has("results") && <Results students={students} user={user} />}</div>
-          <div className={activePage !== "taskgen" ? "hidden" : "page-active"}>{visitedPages.has("taskgen") && <TaskGenPreview />}</div>
+          <div className={activePage !== "taskgen" ? "hidden" : "page-active"}>{pageAllowed("taskgen") && visitedPages.has("taskgen") && <TaskGenPreview />}</div>
           <div className={activePage !== "profile" ? "hidden" : "page-active"}>{visitedPages.has("profile") && (
             <Profile
               user={user}
