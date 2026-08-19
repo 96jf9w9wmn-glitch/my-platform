@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js"
-import { rateLimit, clientIp } from "./generate-hw.js"
-import { tutorFromRequest } from "./plan-gate.js"
+import { rateLimit, clientIp, MODEL_PREFERENCE } from "./generate-hw.js"
+import { featureAllowed, tutorFromRequest } from "./plan-gate.js"
 
 // Отчёт родителю после занятия: на входе — заметки репетитора и результаты
 // работ, на выходе строгий JSON, который репетитор правит перед отправкой.
@@ -10,7 +10,10 @@ import { tutorFromRequest } from "./plan-gate.js"
 //  • имя модели — СПИСОК: DeepSeek уже ломал фичу переименованием модели;
 //  • GET без тела — health-check, его дёргают задачи статуса;
 //  • ответ модели парсим бережно: LaTeX внутри JSON приходит неэкранированным.
-const MODEL_PREFERENCE = ["deepseek-chat", "deepseek-v3", "deepseek-reasoner"]
+// Список моделей — ОДИН на обе ИИ-функции (импортируется из generate-hw.js).
+// Здесь он когда-то жил своей копией и успел протухнуть: остались имена
+// deepseek-chat/v3, которых у DeepSeek давно нет, — то есть отчёты уходили в
+// 400 и держались только на аварийном переборе /models.
 const API = "https://api.deepseek.com"
 
 async function listModels(apiKey) {
@@ -115,9 +118,23 @@ export default async function handler(req, res) {
   // service_role — требуем токен репетитора; без ключа работаем как раньше,
   // чтобы забытая переменная окружения не выключила фичу целиком.
   const db = admin()
-  if (db && !(await tutorFromRequest(db, req))) {
-    res.status(401).json({ error: "Нужна авторизация репетитора" })
-    return
+  if (db) {
+    const tutor = await tutorFromRequest(db, req)
+    if (!tutor) {
+      res.status(401).json({ error: "Нужна авторизация репетитора" })
+      return
+    }
+    // Отчёт родителю — возможность тарифа, а не бесплатная: он так же ходит в
+    // платный DeepSeek, как генерация ДЗ. Раньше здесь стояла только проверка
+    // авторизации, и на «Старте» ИИ-отчёты работали в обход тарифа.
+    const allowed = await featureAllowed(db, tutor.id, "parentReports")
+    if (!allowed.ok) {
+      res.status(403).json({
+        error: "Отчёты родителям с ИИ доступны на тарифах «Про» и «Макс»",
+        upgrade: true,
+      })
+      return
+    }
   }
 
   if (!apiKey) {

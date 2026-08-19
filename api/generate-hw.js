@@ -19,7 +19,7 @@ const DEEPSEEK_MODELS_URL = "https://api.deepseek.com/models"
 // DeepSeek УЖЕ ломал нас переименованием: `deepseek-chat` сняли, и генерация встала
 // с 400. Поэтому имя модели не одно, а список по предпочтению, и при ошибке «нет
 // такой модели» функция сама спрашивает /models и берёт живую (см. resolveModel).
-const MODEL_PREFERENCE = ["deepseek-v4-flash", "deepseek-v4-pro"]
+export const MODEL_PREFERENCE = ["deepseek-v4-flash", "deepseek-v4-pro"]
 const MAX_COUNT = 20
 const MAX_TOPIC_LEN = 200
 
@@ -136,10 +136,13 @@ export default async function handler(req, res) {
     const usage = await bumpAiUsage(db, tutor.id)
     if (!usage.ok) {
       res.status(403).json({
-        error: usage.limit === 0
+        error: usage.soft
+          ? `За месяц с аккаунта ушло ${usage.used} ИИ-генераций — это похоже на автоматический перебор. Напишите нам, снимем ограничение.`
+          : usage.limit === 0
           ? "ИИ-генерация ДЗ доступна на тарифах «Про» и «Макс»"
           : `Лимит ИИ-генераций исчерпан: ${usage.used} из ${usage.limit} в этом месяце`,
-        upgrade: true,
+        // Тариф дороже мягкому потолку не поможет — предлагать его тут нечестно.
+        upgrade: !usage.soft,
       })
       return
     }

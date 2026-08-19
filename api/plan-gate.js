@@ -10,7 +10,7 @@
 // Тарифы и лимиты берутся из src/plans.js — того же файла, что и у клиента.
 
 import { createClient } from "@supabase/supabase-js"
-import { effectivePlan, can, limitOf } from "../src/plans.js"
+import { effectivePlan, can, limitOf, UNLIMITED, AI_SOFT_CAP } from "../src/plans.js"
 
 export function admin() {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
@@ -64,7 +64,13 @@ export async function featureAllowed(db, tutorId, feature) {
   return { ok: can(sub, feature), sub, installed: true }
 }
 
-// Списание одной ИИ-генерации: { ok, used, limit, plan }.
+// Списание одной ИИ-генерации: { ok, used, limit, plan, soft }.
+//
+// limit — то, что обещано тарифом (−1 = без ограничений), именно он уходит в
+// интерфейс. В базу же уходит effLimit: для безлимитных тарифов это мягкий
+// потолок AI_SOFT_CAP (см. src/plans.js). Флаг soft говорит вызывающему, что
+// отказ пришёл не от тарифа, а от этой защиты, — сообщение пользователю там
+// должно быть другим, «обратитесь в поддержку», а не «купите тариф дороже».
 export async function bumpAiUsage(db, tutorId) {
   const { sub, installed } = await tutorPlan(db, tutorId)
   if (!installed) return { ok: true, used: 0, limit: -1, plan: null, installed: false }
@@ -73,7 +79,8 @@ export async function bumpAiUsage(db, tutorId) {
   const limit = limitOf(sub, "aiHomework")
   if (limit === 0) return { ok: false, used: 0, limit: 0, plan, installed: true }
 
-  const { data, error } = await db.rpc("usage_bump_ai", { p_tutor: tutorId, p_limit: limit })
+  const effLimit = limit === UNLIMITED ? AI_SOFT_CAP : limit
+  const { data, error } = await db.rpc("usage_bump_ai", { p_tutor: tutorId, p_limit: effLimit })
   if (error) {
     // Счётчика нет — право на возможность уже проверено по тарифу выше,
     // из-за отсутствующей инфраструктуры работу не блокируем.
@@ -81,7 +88,15 @@ export async function bumpAiUsage(db, tutorId) {
     return { ok: false, used: 0, limit, plan, installed: true, error: error.message }
   }
   const row = Array.isArray(data) ? data[0] : data
-  return { ok: Boolean(row?.allowed), used: Number(row?.used || 0), limit, plan, installed: true }
+  const ok = Boolean(row?.allowed)
+  return {
+    ok,
+    used: Number(row?.used || 0),
+    limit,
+    plan,
+    installed: true,
+    soft: !ok && limit === UNLIMITED,
+  }
 }
 
 // Возврат списанной генерации, если генерация в итоге не состоялась.
