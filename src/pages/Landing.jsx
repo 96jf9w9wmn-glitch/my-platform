@@ -621,6 +621,7 @@ function RoleQuiz({ cfg, role }) {
 
   const total = quiz.steps.length + 1          // вопросы + шаг с контактами
   const isContactStep = step === quiz.steps.length
+  const canGoBack = !sent && step > 0
 
   function choose(id, value) {
     setAnswers((prev) => ({ ...prev, [id]: value }))
@@ -669,6 +670,22 @@ function RoleQuiz({ cfg, role }) {
 
   return (
     <div className="glass rounded-3xl p-6 sm:p-8 max-w-xl mx-auto">
+      {/* «Назад» держим наверху и в одном месте: экраны разной высоты, и внизу
+          кнопка съезжала бы вслед за списком вариантов — палец промахивается.
+          Место резервируем всегда, поэтому на первом шаге и на «спасибо»
+          карточка не дёргается. */}
+      <button
+        type="button"
+        tabIndex={canGoBack ? undefined : -1}
+        aria-hidden={!canGoBack}
+        onClick={() => setStep((s) => s - 1)}
+        className={`-ml-1 mb-3 px-1 py-1 text-sm text-gray-400 hover:text-gray-600 inline-flex items-center gap-1.5
+          ${canGoBack ? "" : "invisible pointer-events-none"}`}
+      >
+        <Icon name="arrow" size={14} className="rotate-180" />
+        Назад
+      </button>
+
       {/* Прогресс: видно, что вопросов немного и это не анкета на полчаса.
           На экране «спасибо» прячем, но место оставляем — иначе прыжок. */}
       <div className={`flex items-center gap-3 ${sent ? "invisible" : ""}`}>
@@ -709,18 +726,6 @@ function RoleQuiz({ cfg, role }) {
                   </button>
                 ))}
               </div>
-
-              {i > 0 && (
-                <button
-                  type="button"
-                  tabIndex={active ? undefined : -1}
-                  onClick={() => setStep((st) => st - 1)}
-                  className="mt-4 text-sm text-gray-400 hover:text-gray-600 inline-flex items-center gap-1.5"
-                >
-                  <Icon name="arrow" size={14} className="rotate-180" />
-                  Назад
-                </button>
-              )}
             </div>
           )
         })}
@@ -757,17 +762,7 @@ function RoleQuiz({ cfg, role }) {
               className={`press-fill w-full h-[52px] rounded-full text-white font-semibold bg-gradient-to-r ${cfg.grad} shadow-lg ${cfg.glow} disabled:opacity-50`}
             >
               {sending ? "Отправляем…" : "Отправить"}
-            </button>
-            <button
-              type="button"
-              tabIndex={isContactStep && !sent ? undefined : -1}
-              onClick={() => setStep((s) => s - 1)}
-              className="text-sm text-gray-400 hover:text-gray-600 inline-flex items-center gap-1.5 self-start"
-            >
-              <Icon name="arrow" size={14} className="rotate-180" />
-              Назад
-            </button>
-          </div>
+            </button>          </div>
         </form>
 
         <div className={`${panel(sent)} text-center`} aria-hidden={!sent}>
