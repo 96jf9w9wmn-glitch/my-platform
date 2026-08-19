@@ -27,7 +27,7 @@
   --glass-bg: rgba(255, 255, 255, 0.72);
   --glass-bg-strong: rgba(255, 255, 255, 0.98);
   --glass-border: rgba(255, 255, 255, 0.55);
-  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), 0 1px 0 rgba(255, 255, 255, 0.6) inset;
+  --glass-shadow: 0 6px 20px rgba(0, 0, 0, 0.055), 0 1px 0 rgba(255, 255, 255, 0.6) inset;
   --glass-blur: blur(24px) saturate(180%);
   --accent: #007aff;
   --accent-light: rgba(0, 122, 255, 0.15);
@@ -51,7 +51,7 @@
   --glass-bg: rgba(28, 28, 30, 0.72);
   --glass-bg-strong: rgba(28, 28, 30, 0.88);
   --glass-border: rgba(255, 255, 255, 0.12);
-  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255, 255, 255, 0.06) inset;
+  --glass-shadow: 0 6px 20px rgba(0, 0, 0, 0.32), 0 1px 0 rgba(255, 255, 255, 0.06) inset;
   color-scheme: dark;
 
   --accent-mint: #30d9b0;
@@ -705,7 +705,7 @@ button.w-full:not([disabled]):not(.no-press):active::after,
 }
 .stat-card:hover {
   transform: translateY(-3px);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.11), 0 1px 0 rgba(255, 255, 255, 0.6) inset;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.08), 0 1px 0 rgba(255, 255, 255, 0.6) inset;
 }
 
 /* ── Glass surfaces ── */
@@ -800,13 +800,13 @@ button.w-full:not([disabled]):not(.no-press):active::after,
   color: #007aff !important;
   border: 1px solid rgba(0, 122, 255, 0.22) !important;
   font-weight: 500;
-  box-shadow: 0 0 12px rgba(0, 122, 255, 0.18), 0 2px 8px rgba(0, 122, 255, 0.12);
+  box-shadow: 0 0 6px rgba(0, 122, 255, 0.10), 0 1px 4px rgba(0, 122, 255, 0.08);
 }
 
 .dark .nav-active {
   background: rgba(0, 122, 255, 0.22) !important;
   border: 1px solid rgba(0, 122, 255, 0.35) !important;
-  box-shadow: 0 0 12px rgba(0, 122, 255, 0.25), 0 2px 8px rgba(0, 122, 255, 0.12) !important;
+  box-shadow: 0 0 6px rgba(0, 122, 255, 0.14), 0 1px 4px rgba(0, 122, 255, 0.08) !important;
 }
 
 /* Stat cards */
@@ -817,7 +817,7 @@ button.w-full:not([disabled]):not(.no-press):active::after,
   border: 1px solid rgba(255, 255, 255, 0.75);
   border-radius: 16px;
   padding: 16px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.045);
 }
 
 /* ── Schedule page ── */
