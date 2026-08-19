@@ -13,9 +13,10 @@ import { supabase } from "../supabase"
 import { useSubscription } from "../subscription"
 import { MarketingToggle } from "../components/ConsentChecks"
 import TelegramSettings from "../components/TelegramSettings"
+import PricingPlans from "../components/PricingPlans"
 import {
-  PLANS, PERIODS, FEATURE_ROWS, UNLIMITED,
-  effectivePlanId, isActive, formatLimit, formatPrice, priceOf, planById,
+  PLANS, FEATURE_ROWS, UNLIMITED,
+  effectivePlanId, isActive, formatLimit, planById,
 } from "../plans"
 
 const fmtDate = (iso) =>
@@ -63,71 +64,6 @@ function UsageBar({ label, used, limit }) {
           style={{ width: `${share}%` }}
         />
       </div>
-    </div>
-  )
-}
-
-function PlanCard({ plan, period, currentId, active, busy, onBuy }) {
-  const isCurrent = plan.id === currentId
-  const price = priceOf(plan.id, period)
-  const free = plan.price.month === 0
-  const monthly = period === "year" && !free ? Math.round(price / 12) : null
-
-  const label = free
-    ? (isCurrent ? "Текущий тариф" : "Базовый доступ")
-    : isCurrent && active ? "Продлить"
-    : "Перейти"
-
-  return (
-    <div
-      className={`glass p-5 flex flex-col h-full relative ${plan.popular ? "ring-2 ring-[#007AFF]/35" : ""}`}
-    >
-      {plan.popular && (
-        <span className="absolute -top-2.5 left-5 text-[11px] font-medium text-white px-2.5 py-1 rounded-full"
-          style={{ background: "linear-gradient(135deg, #0A84FF 0%, #0060DF 100%)" }}>
-          Чаще всего берут
-        </span>
-      )}
-
-      <div className="flex items-center gap-2 mb-1">
-        <h3 className="text-base font-medium">{plan.name}</h3>
-        {isCurrent && (
-          <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-green-500/12 text-green-700 dark:text-green-300 ring-1 ring-inset ring-green-500/25">
-            Ваш
-          </span>
-        )}
-      </div>
-      <p className="text-xs text-gray-500 leading-relaxed mb-4">{plan.tagline}</p>
-
-      <div className="mb-4">
-        <div className="text-2xl font-medium tabular-nums">
-          {formatPrice(price)}
-          {!free && <span className="text-sm text-gray-400 font-normal"> / {PERIODS[period].short}</span>}
-        </div>
-        {monthly && <div className="text-xs text-gray-400 mt-0.5 tabular-nums">≈ {monthly.toLocaleString("ru-RU")} ₽ в месяц</div>}
-      </div>
-
-      <ul className="flex flex-col gap-2 mb-5">
-        {plan.highlights.map((h) => (
-          <li key={h} className="flex items-start gap-2 text-sm text-gray-600">
-            <Icon name="check" size={14} className="mt-0.5 shrink-0 text-[#007AFF]" />
-            <span className="leading-snug">{h}</span>
-          </li>
-        ))}
-      </ul>
-
-      <button
-        onClick={() => onBuy(plan.id)}
-        disabled={free || busy}
-        className={`mt-auto w-full py-2.5 rounded-full text-sm font-medium transition-all disabled:opacity-45 disabled:cursor-default ${
-          free ? "text-[#007AFF] bg-[#007AFF]/10 ring-1 ring-inset ring-[#007AFF]/25" : "text-white"
-        }`}
-        style={free
-          ? undefined
-          : { background: "linear-gradient(135deg, #0A84FF 0%, #0060DF 100%)", boxShadow: "0 6px 18px rgba(0,122,255,0.28)" }}
-      >
-        {busy ? "Открываем оплату…" : label}
-      </button>
     </div>
   )
 }
@@ -293,37 +229,16 @@ export default function Subscription({ studentsCount = 0, tutorId }) {
         <TelegramSettings />
       </div>
 
-      {/* Период оплаты */}
-      <div className="flex items-center justify-center gap-1.5 mb-4">
-        <div className="inline-flex p-1 rounded-full bg-black/[0.05] dark:bg-white/[0.08]">
-          {Object.values(PERIODS).map((p) => (
-            <button
-              key={p.id}
-              onClick={() => setPeriod(p.id)}
-              className={`no-press px-4 py-1.5 rounded-full text-sm font-medium transition-all active:scale-95 ${
-                period === p.id ? "bg-white dark:bg-white/[0.14] shadow-sm text-gray-700" : "text-gray-500 hover:text-gray-600"
-              }`}
-            >
-              {p.label}
-              {p.id === "year" && <span className="ml-1.5 text-[11px] text-[#007AFF]">−2 мес.</span>}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Тарифы */}
-      <div className="grid md:grid-cols-3 gap-4 items-stretch mb-4">
-        {PLANS.map((plan) => (
-          <PlanCard
-            key={plan.id}
-            plan={plan}
-            period={period}
-            currentId={currentId}
-            active={active}
-            busy={busy === plan.id}
-            onBuy={buy}
-          />
-        ))}
+      {/* Тарифы. Сам блок — в components/PricingPlans.jsx. */}
+      <div className="mt-6 mb-4">
+        <PricingPlans
+          period={period}
+          onPeriod={setPeriod}
+          currentId={currentId}
+          active={active}
+          busy={busy}
+          onBuy={buy}
+        />
       </div>
 
       {/* Акцепт оферты при оплате — п. 3.1 договора. Стоит прямо под кнопками:

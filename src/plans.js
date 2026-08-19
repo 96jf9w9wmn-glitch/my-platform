@@ -74,6 +74,9 @@ export const PLANS = [
       telegramBot: true,
       prioritySupport: true,
     },
+    // Визуальный флаг для карточки тарифа: «Студия» рисуется инверсной
+    // (тёмной в светлой теме и наоборот) — так же, как popular у «Про».
+    highlighted: true,
     highlights: [
       "Учеников без ограничений",
       "ИИ-генерация ДЗ без лимита",

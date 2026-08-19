@@ -1425,3 +1425,119 @@ button.w-full:not([disabled]):not(.no-press):active::after,
 @media (prefers-reduced-motion: reduce) {
   .fb-item { animation: none; }
 }
+
+/* ═══════════════ Блок тарифов на странице «Подписка» ═══════════════
+   Сделан по образцу pricing-section из shadcn-блоков, но на своих токенах:
+   скользящая «таблетка» в переключателе периода, сетка-подложка под маской,
+   инверсная карточка «Студии» и мягкое свечение у популярного тарифа. */
+
+/* Подложка блока: клетка, гаснущая к низу — контент кладётся поверх (z-10). */
+.pricing-bg {
+  position: absolute;
+  inset: -10px -6px auto;
+  height: 420px;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(0, 0, 0, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.055) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: radial-gradient(ellipse 62% 70% at 50% 0%, #000 40%, transparent 82%);
+  -webkit-mask-image: radial-gradient(ellipse 62% 70% at 50% 0%, #000 40%, transparent 82%);
+}
+.dark .pricing-bg {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+}
+
+/* Переключатель периода: таблетка едет под кнопками (аналог layoutId в motion).
+   Две колонки 1fr — поэтому сдвиг ровно на 100% собственной ширины. */
+.period-pill {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc(50% - 4px);
+  border-radius: 9999px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.10);
+  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.dark .period-pill {
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+.period-pill[data-i="1"] { transform: translateX(100%); }
+
+/* Карточка тарифа. Свечение и клетка живут в ::before со СВОИМ отрицательным
+   слоем: он ложится над фоном карточки, но под её содержимым. isolation держит
+   этот слой внутри карточки — иначе −1 ушёл бы под фон страницы. */
+.plan-card { isolation: isolate; }
+.plan-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: -1;
+}
+.plan-popular::before {
+  background: radial-gradient(80% 60% at 50% -8%, rgba(0, 122, 255, 0.16), transparent 70%);
+}
+
+/* «Студия» — инверсная карточка: тёмная в светлой теме и светлая в тёмной.
+   Тот же приём, что bg-foreground/text-background в исходном компоненте. */
+.plan-inverted {
+  background: linear-gradient(168deg, #171B24 0%, #0B0D12 100%);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.20);
+  border-radius: 20px;
+  color: #F2F4F8;
+}
+.dark .plan-inverted {
+  background: linear-gradient(168deg, #FFFFFF 0%, #E9EDF4 100%);
+  border-color: rgba(0, 0, 0, 0.06);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.45);
+  color: #0B0D12;
+}
+.plan-inverted::before {
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.075) 1px, transparent 1px) 0 0 / 32px 32px,
+    linear-gradient(90deg, rgba(255, 255, 255, 0.075) 1px, transparent 1px) 0 0 / 32px 32px;
+  mask-image: radial-gradient(100% 58% at 50% 0%, #000 45%, transparent 85%);
+  -webkit-mask-image: radial-gradient(100% 58% at 50% 0%, #000 45%, transparent 85%);
+}
+.dark .plan-inverted::before {
+  background:
+    linear-gradient(rgba(0, 0, 0, 0.07) 1px, transparent 1px) 0 0 / 32px 32px,
+    linear-gradient(90deg, rgba(0, 0, 0, 0.07) 1px, transparent 1px) 0 0 / 32px 32px;
+}
+
+/* Цвета внутри инверсной карточки: задаются переменными, чтобы разметка не
+   таскала два набора классов на каждую строку. */
+.plan-inverted {
+  --pc-muted: rgba(255, 255, 255, 0.55);
+  --pc-soft: rgba(255, 255, 255, 0.78);
+  --pc-accent: #7FB4FF;
+}
+.dark .plan-inverted {
+  --pc-muted: rgba(11, 13, 18, 0.55);
+  --pc-soft: rgba(11, 13, 18, 0.74);
+  --pc-accent: #007AFF;
+}
+.pc-muted { color: var(--pc-muted); }
+.pc-soft { color: var(--pc-soft); }
+.pc-check { color: var(--pc-accent); }
+
+/* Кнопка инверсной карточки — контрастная фону карточки, а не синяя:
+   на тёмной карточке белая, на светлой (тёмная тема) — почти чёрная. */
+.plan-inverted .pc-btn {
+  background: #fff;
+  color: #0B0D12;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.30);
+}
+.dark .plan-inverted .pc-btn {
+  background: #0B0D12;
+  color: #fff;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+}
