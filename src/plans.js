@@ -38,12 +38,18 @@ export const PLANS = [
   {
     id: "start",
     name: "Старт",
-    tagline: "Посмотреть платформу изнутри на одном ученике",
+    tagline: "Расписание и переписка с тремя учениками",
     price: { month: 0, year: 0 },
-    limits: { students: 1, aiHomework: 0 },
+    limits: { students: 3, aiHomework: 0 },
+    // На бесплатном тарифе включены только расписание и чат (они всегда «✓» и
+    // флагов не имеют). Всё остальное — домашние задания, финансы, банк
+    // заданий, доска, варианты, аналитика — начинается с «Про».
     features: {
+      homework: false,
+      finance: false,
+      taskBank: false,
+      board: false,
       variants: false,
-      workbook: false,
       analytics: false,
       onlinePay: false,
       boardHistory: false,
@@ -53,10 +59,9 @@ export const PLANS = [
     },
     // Что показываем в карточке тарифа (коротко, без повтора таблицы ниже)
     highlights: [
-      "Один ученик — попробовать, как всё устроено",
-      "Расписание, задания, чат, финансы",
-      "Банк заданий: только просмотр на экране",
-      "Совместная доска",
+      "До 3 учеников",
+      "Расписание занятий",
+      "Чат с учениками и родителями",
     ],
   },
   {
@@ -66,8 +71,11 @@ export const PLANS = [
     price: { month: 1990, year: 19900 },
     limits: { students: 25, aiHomework: 150 },
     features: {
+      homework: true,
+      finance: true,
+      taskBank: true,
+      board: true,
       variants: true,
-      workbook: true,
       analytics: true,
       onlinePay: true,
       boardHistory: true,
@@ -78,7 +86,8 @@ export const PLANS = [
     popular: true,
     highlights: [
       "До 25 учеников",
-      "Варианты ОГЭ/ЕГЭ, рабочие тетради и печать",
+      "Домашние задания, финансы, доска",
+      "Банк заданий, варианты и печатные тетради",
       "Результаты и аналитика по ученикам",
       "ИИ-генерация ДЗ — 150 в месяц",
       "Онлайн-оплата занятий учениками",
@@ -93,8 +102,11 @@ export const PLANS = [
     price: { month: 4900, year: 49000 },
     limits: { students: UNLIMITED, aiHomework: UNLIMITED },
     features: {
+      homework: true,
+      finance: true,
+      taskBank: true,
+      board: true,
       variants: true,
-      workbook: true,
       analytics: true,
       onlinePay: true,
       boardHistory: true,
@@ -128,10 +140,13 @@ export const PERIODS = {
 // "limit" — число из limits (−1 → «без ограничений»).
 export const FEATURE_ROWS = [
   { key: "students", kind: "limit", label: "Учеников", suffix: "" },
-  { key: "core", kind: "always", label: "Расписание, ДЗ, чат, финансы" },
-  { key: "bank", kind: "always", label: "Банк заданий: просмотр и тренировка" },
+  { key: "schedule", kind: "always", label: "Расписание занятий" },
+  { key: "chat", kind: "always", label: "Чат с учениками и родителями" },
+  { key: "homework", kind: "bool", label: "Домашние задания и проверка" },
+  { key: "finance", kind: "bool", label: "Финансы: оплаты и долги" },
+  { key: "taskBank", kind: "bool", label: "Банк заданий и печатные тетради" },
+  { key: "board", kind: "bool", label: "Совместная доска" },
   { key: "variants", kind: "bool", label: "Сборка вариантов ОГЭ/ЕГЭ и PDF" },
-  { key: "workbook", kind: "bool", label: "Рабочие тетради и печатные листы" },
   { key: "analytics", kind: "bool", label: "Результаты и аналитика по ученикам" },
   { key: "aiHomework", kind: "limit", label: "ИИ-генерация ДЗ", suffix: " / мес" },
   { key: "onlinePay", kind: "bool", label: "Онлайн-оплата занятий учениками" },

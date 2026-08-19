@@ -142,6 +142,14 @@ function PlanCard({ plan, period, currentId, active, busy, onBuy }) {
         ))}
       </ul>
 
+      {/* У бесплатного тарифа список короткий — без этой строки под ним зияла бы
+          пустота, а главное, было бы непонятно, что именно он НЕ умеет. */}
+      {free && (
+        <p className="-mt-3 mb-5 text-xs text-gray-400 leading-relaxed">
+          Задания, финансы, банк заданий, доска и аналитика открываются на «Про».
+        </p>
+      )}
+
       <button
         onClick={() => onBuy(plan.id)}
         disabled={free || busy}

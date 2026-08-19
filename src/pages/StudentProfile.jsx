@@ -281,7 +281,7 @@ function EditModal({ student, onClose, onSave }) {
 }
 
 function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
-  const { allows } = usePlan()
+  const { allows, openPlans } = usePlan()
   const [showEdit, setShowEdit] = useState(false)
   const [hwAvg, setHwAvg] = useState(null)
   const [hwCount, setHwCount] = useState(0)
@@ -412,7 +412,7 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
           ))}
 
           <div className="flex items-center gap-2 pt-1">
-              <button onClick={() => onOpenBoard?.(student.id, student.name)}
+              <button onClick={() => (allows("board") ? onOpenBoard?.(student.id, student.name) : openPlans())}
                 className="press-tap flex items-center gap-1.5 text-xs bg-blue-50 text-blue-600 dark:text-blue-400 border border-blue-100 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">
                 <Icon name="clipboard" size={12} />Доска
               </button>

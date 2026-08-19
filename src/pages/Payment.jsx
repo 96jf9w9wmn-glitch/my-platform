@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react"
 import Icon from "../components/Icon"
+import { PlanLock } from "../components/PlanLock"
+import { usePlan } from "../subscription"
 import ConfirmModal from "../components/ConfirmModal"
 import OnlinePaySettings from "../components/OnlinePaySettings"
 import { supabase } from "../supabase"
@@ -817,4 +819,18 @@ function Payment({ students, setStudents, tutorId }) {
   )
 }
 
-export default Payment
+// Раздел под тарифом. Гейт стоит ОБЁРТКОЙ, а не условным return внутри
+// Payment: иначе часть хуков компонента перестала бы вызываться.
+function PaymentGate(props) {
+  const { allows } = usePlan()
+  if (allows("finance")) return <Payment {...props} />
+  return (
+    <div className="p-4 sm:p-6">
+      <h1 className="text-xl font-medium mb-1">Оплата</h1>
+      <p className="text-sm text-gray-500 mb-5">Оплаты, долги и доход по занятиям.</p>
+      <PlanLock feature="finance" title="Финансы" text="Учёт оплат и долгов по каждому ученику, расходы, налог и чистая прибыль." />
+    </div>
+  )
+}
+
+export default PaymentGate

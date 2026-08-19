@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import Icon from "../components/Icon"
+import { usePlan } from "../subscription"
 import { isLessonConducted, getInitials } from "../utils"
 
 function useCountUp(target, duration = 700) {
@@ -50,6 +51,10 @@ function timeUntil(dateStr, timeStr) {
 }
 
 function Dashboard({ students, setActivePage, onOpenBoard }) {
+  // Совместная доска включается с «Про». Кнопку не прячем: репетитор должен
+  // видеть, что она есть, — нажатие ведёт к тарифам.
+  const { allows, openPlans } = usePlan()
+  const openBoard = (id, name) => (allows("board") ? onOpenBoard?.(id, name) : openPlans())
   const today = new Date()
   const todayStr = formatDate(today)
   const now = new Date()
@@ -232,7 +237,7 @@ function Dashboard({ students, setActivePage, onOpenBoard }) {
                 </div>
               </div>
               <div className="relative flex gap-2">
-                  <button onClick={() => onOpenBoard?.(nextLesson.studentId, nextLesson.studentName)}
+                  <button onClick={() => openBoard(nextLesson.studentId, nextLesson.studentName)}
                     className="press-tap flex items-center gap-1.5 bg-[rgba(255,255,255,0.2)] hover:bg-[rgba(255,255,255,0.3)] transition-colors rounded-xl px-3.5 py-1.5 text-sm font-medium backdrop-blur-sm">
                     <Icon name="clipboard" size={14} />Доска
                   </button>

@@ -505,6 +505,25 @@ export function renderHomeworkMath(text) {
   return noBreakMath(s.replace(/\n/g, "<br>"))
 }
 
+// Разбивает описание ДЗ на вступление и отдельные пронумерованные задания
+// («1. …», «2. …»), чтобы показать каждое своей карточкой, а не сплошным абзацем.
+// Общая для кабинета ученика и карточки репетитора — иначе они расходятся видом.
+export function parseHomeworkTasks(desc) {
+  if (!desc) return { intro: "", tasks: [] }
+  const tasks = []
+  const intro = []
+  let cur = null
+  for (const raw of desc.split("\n")) {
+    const line = raw.trim()
+    const m = line.match(/^(\d+)[.)]\s+(.*)$/)
+    if (m) { if (cur) tasks.push(cur); cur = { n: m[1], text: m[2] } }
+    else if (cur) { if (line) cur.text += "\n" + line }
+    else if (line) intro.push(line)
+  }
+  if (cur) tasks.push(cur)
+  return { intro: intro.join("\n"), tasks }
+}
+
 // new Date("YYYY-MM-DD") parses as UTC midnight, which shifts a day back in
 // timezones behind UTC — this constructs the date from local components instead.
 export function parseLocalDate(dateStr) {

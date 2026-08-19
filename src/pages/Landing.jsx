@@ -21,10 +21,12 @@ const ROLES = {
     tab: "Репетиторам",
     label: "Репетитор",
     grad: "from-blue-500 to-blue-600",
+    gradDark: "dark:from-blue-900 dark:to-blue-950",
+    ctaDark: { bg: "#0a84ff", fg: "#ffffff" },
     soft: "bg-blue-50 dark:bg-blue-900/30",
     text: "text-blue-600 dark:text-blue-400",
     ring: "ring-blue-200 dark:ring-blue-700",
-    glow: "shadow-blue-500/40",
+    glow: "shadow-blue-500/40 dark:shadow-blue-900/30",
     tagline: "Ведите всех учеников в одном месте",
     taglineMark: "в одном месте",
     mark: "blue",
@@ -97,10 +99,12 @@ const ROLES = {
     tab: "Ученикам",
     label: "Ученик",
     grad: "from-emerald-500 to-teal-600",
+    gradDark: "dark:from-emerald-900 dark:to-teal-950",
+    ctaDark: { bg: "#30d9b0", fg: "#06251f" },
     soft: "bg-emerald-50 dark:bg-emerald-900/30",
     text: "text-emerald-600 dark:text-emerald-400",
     ring: "ring-emerald-200 dark:ring-emerald-700",
-    glow: "shadow-emerald-500/40",
+    glow: "shadow-emerald-500/40 dark:shadow-emerald-900/30",
     tagline: "Готовьтесь к экзамену без хаоса",
     taglineMark: "без хаоса",
     mark: "mint",
@@ -174,10 +178,12 @@ const ROLES = {
     tab: "Родителям",
     label: "Родитель",
     grad: "from-amber-500 to-orange-500",
+    gradDark: "dark:from-amber-900 dark:to-orange-950",
+    ctaDark: { bg: "#ff9f0a", fg: "#2a1705" },
     soft: "bg-amber-50 dark:bg-amber-900/30",
     text: "text-amber-600 dark:text-amber-400",
     ring: "ring-amber-200 dark:ring-amber-700",
-    glow: "shadow-amber-500/40",
+    glow: "shadow-amber-500/40 dark:shadow-amber-900/30",
     tagline: "Будьте в курсе, не вмешиваясь",
     taglineMark: "не вмешиваясь",
     mark: "amber",
@@ -665,8 +671,11 @@ function RoleQuiz({ cfg, role }) {
   // вопроса на вопрос — вопросы разной длины и с разным числом вариантов.
   // Неактивные экраны остаются в потоке (visibility: hidden), поэтому не ловят
   // фокус, не кликаются и не читаются скринридером.
-  const panel = (active) =>
-    `[grid-area:1/1] ${active ? "slide-up" : "invisible pointer-events-none"}`
+  // Само перелистывание — в .quiz-panel: экран знает, он позади текущего шага
+  // или впереди, и уходит/приходит с нужной стороны, поэтому «Назад»
+  // отыгрывается обратной анимацией, а не той же, что «вперёд».
+  const current = sent ? quiz.steps.length + 1 : step
+  const panelPos = (i) => (i === current ? "active" : i < current ? "before" : "after")
 
   return (
     <div className="glass rounded-3xl p-6 sm:p-8 max-w-xl mx-auto">
@@ -704,7 +713,7 @@ function RoleQuiz({ cfg, role }) {
         {quiz.steps.map((s, i) => {
           const active = !sent && step === i
           return (
-            <div key={`${role}-${s.id}`} className={panel(active)} aria-hidden={!active}>
+            <div key={`${role}-${s.id}`} className="quiz-panel" data-pos={panelPos(i)} aria-hidden={!active}>
               <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900 mt-5">
                 {s.q}
               </h3>
@@ -730,7 +739,12 @@ function RoleQuiz({ cfg, role }) {
           )
         })}
 
-        <form onSubmit={submit} className={panel(!sent && isContactStep)} aria-hidden={sent || !isContactStep}>
+        <form
+          onSubmit={submit}
+          className="quiz-panel"
+          data-pos={panelPos(quiz.steps.length)}
+          aria-hidden={sent || !isContactStep}
+        >
           <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900 mt-5">
             {quiz.finalTitle}
           </h3>
@@ -765,7 +779,7 @@ function RoleQuiz({ cfg, role }) {
             </button>          </div>
         </form>
 
-        <div className={`${panel(sent)} text-center`} aria-hidden={!sent}>
+        <div className="quiz-panel text-center" data-pos={panelPos(quiz.steps.length + 1)} aria-hidden={!sent}>
           <div className={`w-12 h-12 rounded-2xl mx-auto flex items-center justify-center ring-1 mt-5 ${cfg.ring} ${cfg.soft} ${cfg.text}`}>
             <Icon name="check" size={22} />
           </div>
@@ -1078,15 +1092,16 @@ function Landing({ onStart }) {
 
         {/* ── Финальный призыв выбранной роли ── */}
         <section className="max-w-6xl mx-auto w-full px-4 py-10">
-          <div className={`relative overflow-hidden rounded-3xl bg-gradient-to-br ${cfg.grad} px-6 sm:px-12 py-12 text-center text-white shadow-xl ${cfg.glow}`}>
-            <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "radial-gradient(circle at 20% 30%, white 0%, transparent 45%), radial-gradient(circle at 85% 70%, white 0%, transparent 40%)" }} />
+          <div className={`relative overflow-hidden rounded-3xl bg-gradient-to-br ${cfg.grad} ${cfg.gradDark} px-6 sm:px-12 py-12 text-center text-white shadow-xl dark:shadow-lg ${cfg.glow} dark:ring-1 dark:ring-white/10`}>
+            <div className="absolute inset-0 opacity-20 dark:opacity-10" style={{ backgroundImage: "radial-gradient(circle at 20% 30%, white 0%, transparent 45%), radial-gradient(circle at 85% 70%, white 0%, transparent 40%)" }} />
             <div key={`final-${role}`} className="relative slide-up">
               <h2 className="font-display text-2xl sm:text-4xl font-semibold tracking-tight">{cfg.final.title}</h2>
               <p className="mt-3 text-white/80 max-w-xl mx-auto">{cfg.final.sub}</p>
               <div className="mt-7 flex flex-col sm:flex-row gap-3 justify-center">
                 <button
                   onClick={() => start(cfg.final.primary.role, cfg.final.primary.mode)}
-                  className="press-fill w-full sm:w-auto inline-flex items-center justify-center gap-2 h-[52px] px-7 rounded-full font-semibold bg-white text-gray-900 shadow-lg hover:opacity-90 transition-opacity"
+                  style={{ "--cta-dark": cfg.ctaDark.bg, "--cta-dark-fg": cfg.ctaDark.fg }}
+                  className="press-fill w-full sm:w-auto inline-flex items-center justify-center gap-2 h-[52px] px-7 rounded-full font-semibold cta-solid shadow-lg hover:opacity-90 transition-opacity"
                 >
                   <Icon name={cfg.final.primary.icon} size={17} />
                   {cfg.final.primary.label}

@@ -5,9 +5,9 @@ import { signRows } from "../storageUrl"
 import Icon from "../components/Icon"
 import Collapse from "../components/Collapse"
 import FormulaBackdrop from "../components/FormulaBackdrop"
-import { parseLocalDate, renderHomeworkMath } from "../utils"
+import { parseLocalDate, renderHomeworkMath, parseHomeworkTasks, plural } from "../utils"
 import { usePlan } from "../subscription"
-import { PlanHint } from "../components/PlanLock"
+import { PlanHint, PlanLock } from "../components/PlanLock"
 // Лениво: Variants тянет весь банк заданий (генераторы на 34k строк) + jspdf.
 // Нужен только во вкладке «варианты», незачем держать его в стартовом бандле.
 const Variants = lazy(() => import("./Variants"))
@@ -678,7 +678,96 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
   )
 }
 
-function HomeworkCard({ hw, studentName, studentPhone, studentAccountId, onUpdate, onEdit }) {
+// Сколько заданий видно до разворота: карточек в списке много, полный текст
+// теста на 15 вопросов превращает страницу в простыню.
+const TASKS_PREVIEW = 3
+
+// Одно задание строкой: номер кружком, условие, правильный ответ справа.
+function TaskLine({ t, options, answer }) {
+  return (
+    <div className="rounded-xl bg-gray-500/[0.06] dark:bg-white/[0.05] px-2.5 py-2">
+      <div className="flex items-start gap-2.5">
+        <span className="shrink-0 w-5 h-5 rounded-full bg-blue-500/12 text-blue-600 text-[10px] font-semibold flex items-center justify-center">
+          {t.n}
+        </span>
+        <div
+          className="text-xs text-gray-700 leading-relaxed min-w-0 flex-1"
+          dangerouslySetInnerHTML={{ __html: renderHomeworkMath(t.text) }}
+        />
+        {answer && !options && (
+          <span className="shrink-0 text-[11px] px-2 py-0.5 rounded-full bg-green-500/15 text-green-700 ring-1 ring-green-500/30">
+            <span dangerouslySetInnerHTML={{ __html: renderHomeworkMath(answer) }} />
+          </span>
+        )}
+      </div>
+      {options && (
+        <div className="flex flex-wrap gap-1.5 mt-1.5 pl-[30px]">
+          {options.map((o, j) => {
+            const correct = answer != null && o === answer
+            return (
+              <span
+                key={j}
+                className={`text-[11px] px-2 py-0.5 rounded-full ring-1 ${
+                  correct
+                    ? "bg-green-500/15 text-green-700 ring-green-500/30"
+                    : "text-gray-500 ring-gray-500/20"
+                }`}
+                dangerouslySetInnerHTML={{ __html: renderHomeworkMath(o) }}
+              />
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Описание ДЗ: вступление + пронумерованные задания карточками (как видит ученик),
+// а не сплошной абзац. Если разбить не удалось — показываем текст как есть.
+function HomeworkTasks({ hw }) {
+  const [showAll, setShowAll] = useState(false)
+  if (!hw.description) return null
+
+  const { intro, tasks } = parseHomeworkTasks(hw.description)
+  const options = Array.isArray(hw.test_options) ? hw.test_options : null
+  const answers = Array.isArray(hw.correct_answers) ? hw.correct_answers : []
+  const hidden = Math.max(0, tasks.length - TASKS_PREVIEW)
+
+  const line = (t, i) => (
+    <TaskLine key={i} t={t} options={options?.[i] || null} answer={answers[i] ?? null} />
+  )
+
+  return (
+    <div className="mt-2">
+      {intro && (
+        <div className="text-xs text-gray-600 leading-relaxed" dangerouslySetInnerHTML={{ __html: renderHomeworkMath(intro) }} />
+      )}
+
+      {tasks.length > 0 && (
+        <div className={`flex flex-col gap-1.5 ${intro ? "mt-2" : ""}`}>
+          {tasks.slice(0, TASKS_PREVIEW).map(line)}
+
+          {hidden > 0 && (
+            <>
+              <Collapse open={showAll}>
+                <div className="flex flex-col gap-1.5 pb-1.5">{tasks.slice(TASKS_PREVIEW).map(line)}</div>
+              </Collapse>
+              <button
+                onClick={() => setShowAll((v) => !v)}
+                className="self-start inline-flex items-center gap-1 text-xs text-blue-600 hover:opacity-70 active:scale-[0.97] transition-all"
+              >
+                {showAll ? "Свернуть" : `Ещё ${hidden} ${plural(hidden, "задание", "задания", "заданий")}`}
+                <Icon name="chevron-down" size={12} className={`transition-transform duration-300 ${showAll ? "rotate-180" : ""}`} />
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function HomeworkCard({ hw, studentName, studentPhone, studentAccountId, onUpdate, onEdit }) {
   const [grading, setGrading] = useState(false)
   const [comment, setComment] = useState(hw.comment || "")
   const [selectedGrade, setSelectedGrade] = useState(hw.grade || null)
@@ -755,9 +844,7 @@ function HomeworkCard({ hw, studentName, studentPhone, studentAccountId, onUpdat
         </div>
       </div>
 
-      {hw.description && (
-        <div className="text-xs text-gray-600 mt-2" dangerouslySetInnerHTML={{ __html: renderHomeworkMath(hw.description) }} />
-      )}
+      <HomeworkTasks hw={hw} />
 
       {hw.deadline && (
         <div className={`text-xs mt-2 inline-flex items-center gap-1 ${isOverdue(hw) ? "text-red-500 font-medium" : "text-gray-400"}`}>
@@ -1067,4 +1154,18 @@ function Homework({ user, students, embedded = false }) {
   )
 }
 
-export default Homework
+// Раздел под тарифом. Гейт стоит ОБЁРТКОЙ, а не условным return внутри
+// Homework: иначе часть хуков компонента перестала бы вызываться.
+function HomeworkGate(props) {
+  const { allows } = usePlan()
+  if (allows("homework")) return <Homework {...props} />
+  return (
+    <div className="p-4 sm:p-6">
+      <h1 className="text-xl font-medium mb-1">Задания</h1>
+      <p className="text-sm text-gray-500 mb-5">Домашние задания ученикам и их проверка.</p>
+      <PlanLock feature="homework" title="Домашние задания" text="Выдача заданий ученикам, таймер как на экзамене, проверка с комментариями и возврат на доработку." />
+    </div>
+  )
+}
+
+export default HomeworkGate

@@ -16,7 +16,7 @@ import { MarketingToggle } from "../components/ConsentChecks"
 
 const Board = lazy(() => import("../components/Board"))
 const Practice = lazy(() => import("./Practice"))
-import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, formatPhone, answersEqual, plural } from "../utils"
+import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, parseHomeworkTasks, formatPhone, answersEqual, plural } from "../utils"
 import { notifyTutor } from "../telegramNotify"
 // ЕГЭ (профиль и база) — единый поток части 2 (13–19); ОГЭ — свой (20–25).
 const isEgeType = (t) => t === "ЕГЭ" || t === "ЕГЭ Профиль"
@@ -395,24 +395,6 @@ function hwPreview(text) {
     .replace(/\\(log|lg|ln|sin|cos|tan|cot|tg|ctg|arcsin|arccos|arctan)(?![a-zA-Z])/g, "$1")
     .replace(/\\[a-zA-Z]+/g, "").replace(/[{}$^]/g, "").replace(/\\[()[\]]/g, "")
     .replace(/\s+/g, " ").trim()
-}
-
-// Разбивает описание ДЗ на вступление и отдельные пронумерованные задания
-// («1. …», «2. …»), чтобы показать каждое своей карточкой, а не сплошным абзацем.
-function parseHomeworkTasks(desc) {
-  if (!desc) return { intro: "", tasks: [] }
-  const tasks = []
-  const intro = []
-  let cur = null
-  for (const raw of desc.split("\n")) {
-    const line = raw.trim()
-    const m = line.match(/^(\d+)[.)]\s+(.*)$/)
-    if (m) { if (cur) tasks.push(cur); cur = { n: m[1], text: m[2] } }
-    else if (cur) { if (line) cur.text += "\n" + line }
-    else if (line) intro.push(line)
-  }
-  if (cur) tasks.push(cur)
-  return { intro: intro.join("\n"), tasks }
 }
 
 // Дедлайн со срочностью: просрочено/сегодня/завтра — цветом, иначе дата.
