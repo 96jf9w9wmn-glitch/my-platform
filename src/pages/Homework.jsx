@@ -687,7 +687,7 @@ function TaskLine({ t, options, answer }) {
   return (
     <div className="rounded-xl bg-gray-500/[0.06] dark:bg-white/[0.05] px-2.5 py-2">
       <div className="flex items-start gap-2.5">
-        <span className="shrink-0 w-5 h-5 rounded-full bg-blue-500/12 text-blue-600 text-[10px] font-semibold flex items-center justify-center">
+        <span className="shrink-0 w-5 h-5 rounded-full bg-blue-500/12 text-blue-600 dark:text-blue-400 text-[10px] font-semibold flex items-center justify-center">
           {t.n}
         </span>
         <div
@@ -767,7 +767,7 @@ function HomeworkTasks({ hw }) {
   )
 }
 
-export function HomeworkCard({ hw, studentName, studentPhone, studentAccountId, onUpdate, onEdit }) {
+function HomeworkCard({ hw, studentName, studentPhone, studentAccountId, onUpdate, onEdit }) {
   const [grading, setGrading] = useState(false)
   const [comment, setComment] = useState(hw.comment || "")
   const [selectedGrade, setSelectedGrade] = useState(hw.grade || null)
