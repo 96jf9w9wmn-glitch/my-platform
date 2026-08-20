@@ -15,7 +15,6 @@ import OnlinePayCard from "../components/OnlinePayCard"
 import { MarketingToggle } from "../components/ConsentChecks"
 
 const Board = lazy(() => import("../components/Board"))
-const Practice = lazy(() => import("./Practice"))
 import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, parseHomeworkTasks, formatPhone, answersEqual, plural } from "../utils"
 import { notifyTutor } from "../telegramNotify"
 // ЕГЭ (профиль и база) — единый поток части 2 (13–19); ОГЭ — свой (20–25).
@@ -1627,7 +1626,6 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
 
   const navItems = [
     { id: "schedule", label: "Профиль", icon: "profile" },
-    { id: "practice", label: "Практика", icon: "practice" },
     { id: "chat", label: "Чат", icon: "chat" },
     { id: "variants", label: "Варианты", icon: "variants" },
     { id: "homework", label: "Задания", icon: "homework" },
@@ -1933,12 +1931,6 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
               </div>
             )}
           </>
-        )}
-
-        {activeTab === "practice" && (
-          <Suspense fallback={<div className="text-sm text-gray-400 py-10 text-center">Загружаем практику…</div>}>
-            <Practice userId={user.id} />
-          </Suspense>
         )}
 
         {activeTab === "homework" && (
