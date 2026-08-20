@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import AddStudentModal from "../components/AddStudentModal"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
@@ -8,6 +8,12 @@ import { supabase } from "../supabase"
 import { isLessonConducted, getInitials, plural, formatPhone } from "../utils"
 import { usePlan } from "../subscription"
 import { PlanHint } from "../components/PlanLock"
+
+// Телефон — единственная связка карточки с аккаунтом ученика (по нему сшивает и
+// RLS, current_student_rows), но записан он местами по-разному. Сравниваем по цифрам.
+function phoneKey(raw) {
+  return String(raw || "").replace(/\D/g, "")
+}
 
 function formatDate(date) {
   return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`
@@ -83,6 +89,7 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
   const [returning, setReturning] = useState(false)
   const [search, setSearch] = useState("")
   const [pending, setPending] = useState([])
+  const [linkedAccounts, setLinkedAccounts] = useState([])
   const [acceptingRequest, setAcceptingRequest] = useState(null)
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
 
@@ -103,8 +110,33 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
     let cancelled = false
     supabase.from("pending_students").select("*").eq("tutor_id", tutorId).order("created_at", { ascending: false })
       .then(({ data }) => { if (!cancelled) setPending(data || []) })
+    // Ученики, привязавшие этого репетитора. Нужны, чтобы не потерять того, у кого
+    // строки заявки нет: вставки в students и pending_students при регистрации
+    // сделаны best-effort (auth_hardening.sql — при сбое только raise warning), да и
+    // карточку могли удалить. Читать их RLS разрешает: политика accounts_tutor_read
+    // пускает репетитора к аккаунтам с tutor_id = auth.uid().
+    supabase.from("student_accounts").select("id, name, phone").eq("tutor_id", tutorId)
+      .then(({ data }) => { if (!cancelled) setLinkedAccounts(data || []) })
     return () => { cancelled = true }
   }, [tutorId])
+
+  // Заявка = либо строка pending_students, либо привязанный аккаунт, под который
+  // карточки нет вовсе. Второе — страховка: без неё такой ученик не виден никому,
+  // а завести его руками репетитор больше не может.
+  const requests = useMemo(() => {
+    const fromPending = pending.map((p) => ({
+      key: `p:${p.id}`, pendingId: p.id, name: p.name, phone: p.phone, orphan: false,
+    }))
+    const claimed = new Set(pending.map((p) => phoneKey(p.phone)).filter(Boolean))
+    const carded = new Set(students.map((s) => phoneKey(s.phone)).filter(Boolean))
+    const fromAccounts = linkedAccounts
+      .filter((a) => {
+        const key = phoneKey(a.phone)
+        return key && !claimed.has(key) && !carded.has(key)
+      })
+      .map((a) => ({ key: `a:${a.id}`, pendingId: null, name: a.name, phone: a.phone, orphan: true }))
+    return [...fromPending, ...fromAccounts]
+  }, [pending, linkedAccounts, students])
 
   async function handleReject(requestId) {
     if (!window.confirm("Отклонить заявку?")) return
@@ -112,13 +144,16 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
     setPending((prev) => prev.filter((p) => p.id !== requestId))
   }
 
-  async function handleAcceptComplete(newStudent, requestId) {
+  async function handleAcceptComplete(newStudent, request) {
     // Карточка ученика уже заведена автоматически в момент привязки (student_register
     // / привязка из кабинета), поэтому при приёме заявки её ДОЗАПОЛНЯЕМ, а не заводим
     // вторую. Вторая была бы не просто дублем: ученика с карточкой RLS сшивает по
     // телефону (current_student_rows), так что обе строки принадлежали бы ему, а ДЗ,
     // занятия и долги разъехались бы по двум карточкам.
-    const existing = students.find((s) => s.phone && s.phone === newStudent.phone)
+    // Сверяем по цифрам, а не по строке: если карточка старая и номер в ней записан
+    // в другом формате, слияние заодно перепишет его на номер из аккаунта — той самой
+    // строкой, по которой ученика пускает RLS.
+    const existing = students.find((s) => phoneKey(s.phone) && phoneKey(s.phone) === phoneKey(newStudent.phone))
     // setStudents is handleSetStudents from App.jsx — it diffs the new array against
     // the old one and upserts any added/changed student itself, so no separate insert here.
     if (existing) {
@@ -139,8 +174,10 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
     } else {
       setStudents((prev) => [...prev, newStudent])
     }
-    await supabase.from("pending_students").delete().eq("id", requestId)
-    setPending((prev) => prev.filter((p) => p.id !== requestId))
+    if (request?.pendingId) {
+      await supabase.from("pending_students").delete().eq("id", request.pendingId)
+      setPending((prev) => prev.filter((p) => p.id !== request.pendingId))
+    }
     setAcceptingRequest(null)
   }
 
@@ -283,19 +320,27 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
       )}
 
       {/* Pending requests */}
-      {pending.length > 0 && (
+      {requests.length > 0 && (
         <div className="mb-4">
           <h2 className="text-sm font-medium mb-2 text-blue-600">Заявки от учеников</h2>
           <div className="flex flex-col gap-2">
-            {pending.map((req) => (
-              <div key={req.id} className="glass-tint-blue px-4 py-3 flex items-center justify-between gap-3">
-                <div>
+            {requests.map((req) => (
+              <div key={req.key} className="glass-tint-blue px-4 py-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
                   <div className="text-sm font-medium">{req.name}</div>
                   <div className="text-xs text-gray-500 mt-0.5">{formatPhone(req.phone)}</div>
+                  {req.orphan && (
+                    <div className="text-xs text-gray-400 mt-0.5">Привязал вас в своём кабинете — карточки ещё нет</div>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button onClick={() => (canAddStudent ? setAcceptingRequest(req) : openPlans())} className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 font-medium">Принять</button>
-                  <button onClick={() => handleReject(req.id)} className="text-sm text-gray-400 hover:text-red-600 px-2 py-1.5">Отклонить</button>
+                  {/* Отклонить умеем только заявку-строку: отвязать сам аккаунт репетитор
+                      не может (student_accounts ему доступен лишь на чтение), а кнопка,
+                      после которой ученик возвращается тем же списком, врала бы. */}
+                  {req.pendingId && (
+                    <button onClick={() => handleReject(req.pendingId)} className="text-sm text-gray-400 hover:text-red-600 px-2 py-1.5">Отклонить</button>
+                  )}
                 </div>
               </div>
             ))}
@@ -552,7 +597,7 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
       {acceptingRequest && (
         <AddStudentModal
           onClose={() => setAcceptingRequest(null)}
-          onAdd={(s) => handleAcceptComplete(s, acceptingRequest.id)}
+          onAdd={(s) => handleAcceptComplete(s, acceptingRequest)}
           initialName={acceptingRequest.name}
           initialPhone={acceptingRequest.phone}
         />

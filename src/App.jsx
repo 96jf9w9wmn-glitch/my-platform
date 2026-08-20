@@ -440,7 +440,12 @@ function App() {
       board_url: student.boardUrl || null,
       call_url: student.callUrl || null,
     })
-    if (error) console.error("saveStudent failed:", error.message, error)
+    if (error) {
+      // Молчать тут нельзя: ровно так полтора месяца незаметно не создавались
+      // карточки — ошибка вставки уходила в консоль, а репетитор видел «сохранено».
+      console.error("saveStudent failed:", error.message, error)
+      alert("Не удалось сохранить ученика: " + error.message)
+    }
   }
 
   async function handleSetStudents(updater) {

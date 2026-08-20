@@ -222,7 +222,10 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
     onAdd({
       ...form,
       phone, contacts,
-      id: crypto.randomUUID(),
+      // students.id в базе — bigint без автогенерации, поэтому id даёт клиент, как и
+      // раньше: миллисекунды. UUID здесь молча ронял вставку («invalid input syntax
+      // for type bigint») — карточка не создавалась, а ошибка уходила только в консоль.
+      id: Date.now(),
       balance: 0, results: [],
       lessons: finalLessons,
       lessonDates: finalLessons.map((l) => l.date),
