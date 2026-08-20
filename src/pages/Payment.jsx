@@ -4,10 +4,8 @@ import { PlanLock } from "../components/PlanLock"
 import { usePlan } from "../subscription"
 import ConfirmModal from "../components/ConfirmModal"
 import Collapse from "../components/Collapse"
-import OnlinePaySettings from "../components/OnlinePaySettings"
-import AutoInvoiceSettings from "../components/AutoInvoiceSettings"
 import { supabase } from "../supabase"
-import { isLessonConducted, getInitials, parsePaymentDate } from "../utils"
+import { isLessonConducted, getInitials, parsePaymentDate, plural } from "../utils"
 
 const TAX_MODES = {
   none: { label: "Без налога", rate: 0 },
@@ -80,38 +78,6 @@ function getMonthForecast(students) {
 
 const fmt = (n) => Math.round(n || 0).toLocaleString("ru-RU").replace(/\s/g, " ")
 
-// Второстепенный раздел: заголовок с итогом виден всегда, содержимое
-// разворачивается по нажатию. Так «Финансы» открываются на том, ради чего сюда
-// заходят каждый день (кто должен и сколько пришло), а налог, настройки и
-// список рассчитавшихся не соревнуются с ними за внимание — но и не прячутся
-// в меню, из которого их никто не достанет.
-function Fold({ title, summary, tone = "muted", children, defaultOpen = false }) {
-  const [open, setOpen] = useState(defaultOpen)
-  return (
-    <div className="glass overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left transition hover:bg-black/[0.02] dark:hover:bg-white/[0.03]"
-      >
-        <span className="text-base font-medium">{title}</span>
-        <span className="flex items-center gap-2.5 shrink-0">
-          {summary && (
-            <span className={`text-sm tabular-nums ${tone === "amber" ? "text-amber-600 dark:text-amber-300" : "text-gray-500 dark:text-gray-400"}`}>
-              {summary}
-            </span>
-          )}
-          <Icon name={open ? "chevron-up" : "chevron-down"} size={16} className="text-gray-400" />
-        </span>
-      </button>
-      <Collapse open={open}>
-        <div className="px-5 pb-5">{children}</div>
-      </Collapse>
-    </div>
-  )
-}
-
 // Доход по месяцам в стиле аналитики Т-Банка: крупная сумма выбранного месяца
 // сверху, под ней ряд высоких скруглённых столбцов. Тап по столбцу выбирает
 // месяц — сумма и подпись обновляются. Читается за счёт большого числа и
@@ -121,7 +87,16 @@ function IncomeChart({ buckets, forecast, mounted }) {
   const [sel, setSel] = useState(lastIdx)
   const projectedLast = buckets[lastIdx].total + forecast
   const maxVal = Math.max(...buckets.map((b) => b.total), projectedLast, 1)
-  const AREA = 132 // высота зоны столбцов, px
+  // Высота зоны столбцов. На телефоне ниже: там график и так занимает
+  // весь первый экран, а при коротких столбцах над ними висела пустота.
+  const [area, setArea] = useState(() =>
+    typeof window !== "undefined" && window.innerWidth < 640 ? 92 : 132)
+  useEffect(() => {
+    const onResize = () => setArea(window.innerWidth < 640 ? 92 : 132)
+    window.addEventListener("resize", onResize)
+    return () => window.removeEventListener("resize", onResize)
+  }, [])
+  const AREA = area
 
   const cur = buckets[sel]
   const isCurrentMonth = sel === lastIdx
@@ -304,6 +279,9 @@ function GoalRing({ value, projected, goal, onSetGoal }) {
 }
 
 function Payment({ students, setStudents, tutorId }) {
+  const [tab, setTab] = useState("debts")
+  const [filter, setFilter] = useState("debt")
+  const [expandedId, setExpandedId] = useState(null)
   const [period, setPeriod] = useState("all")
   const [confirmId, setConfirmId] = useState(null)
   const [customAmount, setCustomAmount] = useState("")
@@ -466,390 +444,411 @@ function Payment({ students, setStudents, tutorId }) {
   const taxAmount = Math.round(monthTotal * effRate / 100)
   const netProfit = monthTotal - expenseTotal - taxAmount
 
+  // Вкладки, а не одна простыня: у зарубежных сервисов (TutorBird, Teachworks,
+  // TutorCruncher) деньги разложены по жанрам — рабочий список должников,
+  // история платежей и отчётность живут на разных экранах. Пока всё лежало на
+  // одной странице, найти «кто должен» было невозможно.
+  const TABS = [
+    { id: "debts", label: "Долги", badge: debtors.length },
+    { id: "payments", label: "Платежи", badge: 0 },
+    { id: "report", label: "Отчёт", badge: 0 },
+  ]
+
+  // Статусы работают фильтрами списка, а не декоративными плитками: так же
+  // устроены Overdue / Outstanding / Paid у FreshBooks — по счётчику кликают.
+  const FILTERS = [
+    { id: "debt", label: "Должны", count: debtors.length, sum: totalDebt, tone: "amber" },
+    { id: "paid", label: "Рассчитались", count: paid.length, tone: "green" },
+    { id: "none", label: "Без занятий", count: noLessons.length, tone: "gray" },
+  ]
+  const shownList = filter === "debt" ? debtors : filter === "paid" ? paid : noLessons
+
+  const chipTone = {
+    amber: "bg-amber-500/12 text-amber-700 dark:text-amber-300 ring-amber-500/25",
+    green: "bg-green-500/12 text-green-700 dark:text-green-300 ring-green-500/25",
+    gray: "bg-black/[0.05] dark:bg-white/[0.08] text-gray-500 ring-black/[0.05] dark:ring-white/[0.1]",
+  }
+
   return (
     <div className="p-4 sm:p-6">
       <h1 className="text-xl font-medium mb-4 sm:mb-6">Финансы</h1>
 
-      {/* HERO — доход по месяцам (стиль аналитики Т-Банка). Цель месяца стоит
-          здесь, а не отдельной плиткой: справа от столбцов всё равно пустовало,
-          а лишняя карточка в полосе KPI была ровно тем, из-за чего страница
-          читалась как свалка одинаковых блоков. */}
-      <div className="glass p-4 sm:p-5 md:p-6 mb-3 overflow-hidden relative">
+      {/* HERO — доход по месяцам. Цель месяца стоит здесь, а не отдельной
+          плиткой: справа от столбцов всё равно пустовало. */}
+      <div className="glass p-4 sm:p-5 md:p-6 mb-4 overflow-hidden relative">
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_220px] gap-5 items-center">
           <IncomeChart buckets={buckets} forecast={forecast} mounted={mounted} />
           <GoalRing value={monthTotal} projected={projected} goal={goal} onSetGoal={saveGoal} />
         </div>
       </div>
 
-      {/* Главное: кто должен и что уже пришло. Остальное — ниже, свёрнутым. */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start mb-3">
+      {/* Вкладки */}
+      <div className="flex gap-1 p-1 rounded-2xl bg-black/[0.04] dark:bg-white/[0.06] mb-4 w-full sm:w-auto sm:inline-flex">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 sm:px-6 py-2 rounded-xl text-sm font-medium transition active:scale-[0.97] ${
+              tab === t.id
+                ? "bg-white dark:bg-white/15 shadow-sm text-gray-900 dark:text-white"
+                : "text-gray-500 dark:text-gray-400 hover:text-gray-700"
+            }`}
+          >
+            {t.label}
+            {t.badge > 0 && (
+              <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-300 tabular-nums">
+                {t.badge}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
 
+      {/* ── ДОЛГИ: рабочий список. Одна строка на ученика, одно действие ── */}
+      {tab === "debts" && (
         <div className="flex flex-col gap-3">
-          {debtors.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                <h2 className="text-base font-medium">Ждут оплаты</h2>
-                <span className="text-xs font-medium text-amber-600 dark:text-amber-300 bg-amber-500/12 ring-1 ring-inset ring-amber-500/20 px-2 py-0.5 rounded-full">{debtors.length}</span>
-                <span className="ml-auto text-sm font-semibold tabular-nums text-amber-600 dark:text-amber-300">{fmt(totalDebt)} ₽</span>
-              </div>
-              <div className="flex flex-col gap-3">
-                {debtors.map((s) => (
-                  <div key={s.id} className="glass rounded-2xl p-4">
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 bg-amber-500/15 text-amber-700 dark:text-amber-300">
-                          {getInitials(s.name)}
-                        </div>
-                        <div className="text-sm font-semibold truncate">{s.name}</div>
-                      </div>
-                      <div className="text-[13px] font-semibold text-amber-600 dark:text-amber-300 bg-amber-500/12 ring-1 ring-inset ring-amber-500/20 px-2.5 py-1 rounded-full shrink-0 tabular-nums">
-                        Долг {fmt(getStudentDebt(s))} ₽
-                      </div>
-                    </div>
-                    <div className="divide-y divide-black/[0.06] dark:divide-white/[0.08]">
-                      {getUnpaidLessons(s).map((l, i) => {
-                        const lessonKey = s.id + "_" + l.date + "_" + l.time
-                        const open = confirmId === lessonKey
-                        return (
-                          <div key={i} className="py-3 first:pt-2 last:pb-0">
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex items-center gap-3 min-w-0">
-                                <div className="w-9 h-9 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] flex items-center justify-center text-gray-400 shrink-0">
-                                  <Icon name="calendar" size={16} />
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="text-sm font-medium truncate whitespace-nowrap">
-                                    {new Date(l.date + "T00:00:00").toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "long" })}
-                                  </div>
-                                  <div className="text-xs text-gray-400 mt-0.5 whitespace-nowrap">{l.time} · {l.duration || 60} мин</div>
-                                </div>
-                              </div>
-                              <div className="flex flex-col items-end gap-1.5 shrink-0">
-                                <div className="text-sm font-semibold tabular-nums">{fmt(l.amountDue)} ₽</div>
-                                {!open && (
-                                  <button
-                                    onClick={() => { setConfirmId(lessonKey); setCustomAmount(String(l.amountDue || "")) }}
-                                    className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold text-white bg-gradient-to-b from-[#34C759] to-[#28A745] shadow-[0_2px_10px_rgba(52,199,89,0.35)] transition hover:brightness-105 active:scale-[0.97]"
-                                  >
-                                    <Icon name="check" size={14} /> Оплата
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                            {open && (
-                              <div className="mt-3 flex items-center gap-2 rounded-xl bg-black/[0.03] dark:bg-white/[0.05] p-2">
-                                <div className="relative flex-1">
-                                  <input
-                                    type="text"
-                                    inputMode="numeric"
-                                    autoFocus
-                                    value={customAmount}
-                                    onChange={(e) => setCustomAmount(e.target.value.replace(/\D/g, ""))}
-                                    onKeyDown={(e) => e.key === "Enter" && handlePay(s, Number(customAmount))}
-                                    placeholder="Сумма"
-                                    className="input-glass pr-8 w-full"
-                                  />
-                                  <span className="absolute right-3 top-1.5 text-sm text-gray-400">₽</span>
-                                </div>
-                                <button onClick={() => handlePay(s, Number(customAmount))}
-                                  className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition active:scale-95">
-                                  Внести
-                                </button>
-                                <button onClick={() => setConfirmId(null)}
-                                  className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition">
-                                  <Icon name="x" size={16} />
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          <div className="flex flex-wrap gap-2">
+            {FILTERS.map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setFilter(f.id)}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-full text-sm font-medium ring-1 ring-inset transition active:scale-[0.96] ${
+                  filter === f.id
+                    ? chipTone[f.tone]
+                    : "bg-white/50 dark:bg-white/[0.04] text-gray-500 ring-black/[0.06] dark:ring-white/[0.08] hover:bg-white/80"
+                }`}
+              >
+                {f.label}
+                <span className="tabular-nums opacity-70">{f.count}</span>
+                {f.sum > 0 && filter === f.id && (
+                  <span className="tabular-nums font-semibold">· {fmt(f.sum)} ₽</span>
+                )}
+              </button>
+            ))}
+          </div>
 
-          {debtors.length === 0 && (
-            <div className="glass p-5 flex items-center gap-3">
+          {shownList.length === 0 ? (
+            <div className="glass p-6 flex items-center gap-3">
               <div className="w-10 h-10 rounded-full grid place-items-center shrink-0 bg-green-500/12 text-green-600 dark:text-green-300">
                 <Icon name="check" size={18} />
               </div>
               <div>
-                <div className="text-sm font-medium">Никто не должен</div>
-                <div className="text-xs text-gray-400 mt-0.5">Все проведённые занятия оплачены</div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* ПРАВАЯ КОЛОНКА: что уже пришло + всё второстепенное. Свёрнутые
-            разделы стоят здесь, а не под гридом: иначе под короткой историей
-            оставалась дыра во весь экран, пока слева тянулся список долгов. */}
-        <div className="flex flex-col gap-3">
-      {/* История оплат — вторая колонка главного ряда */}
-      <div className="glass p-5 flex flex-col">
-        <div className="flex justify-between items-center mb-4">
-          <div className="flex items-baseline gap-2.5 min-w-0">
-            <h2 className="text-base font-medium">История оплат</h2>
-            <span className="text-xs text-gray-400 tabular-nums whitespace-nowrap">{fmt(allTotal)} ₽ за всё время</span>
-          </div>
-          <div className="flex gap-1">
-            {[{ id: "all", label: "Все" }, { id: "month", label: "Месяц" }, { id: "week", label: "Неделя" }].map((p) => (
-              <button key={p.id} onClick={() => setPeriod(p.id)}
-                className={p.id === period ? "px-3 py-1 rounded-lg text-xs border bg-blue-600 text-white border-blue-600 transition active:scale-95" : "px-3 py-1 rounded-lg text-xs border border-gray-200 dark:border-white/10 text-gray-600 hover:bg-gray-50 dark:hover:bg-white/5 transition active:scale-95"}>
-                {p.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        {filteredPayments.length === 0 ? (
-          <div className="flex-1 flex items-center justify-center text-sm text-gray-400 text-center py-8">Оплат за этот период нет</div>
-        ) : (
-          <div className="grid sm:grid-cols-2 gap-x-6 gap-y-0.5 max-h-80 overflow-y-auto content-start">
-            {filteredPayments.map((p, i) => (
-              <div key={i} className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-white/[0.06]">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-semibold shrink-0 bg-green-500/12 text-green-700 dark:text-green-300">
-                    {getInitials(p.studentName)}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium truncate">{p.studentName}</div>
-                    <div className="text-xs text-gray-400">{p.date}{p.note ? " · " + p.note : ""}</div>
-                  </div>
+                <div className="text-sm font-medium">
+                  {filter === "debt" ? "Никто не должен" : "Здесь пусто"}
                 </div>
-                <div className="text-sm font-medium text-green-600 tabular-nums shrink-0">+{fmt(p.amount)} ₽</div>
-              </div>
-            ))}
-          </div>
-        )}
-        {filteredPayments.length > 0 && (
-          <div className="pt-3 mt-auto border-t border-gray-200 dark:border-white/10 flex justify-between">
-            <span className="text-sm text-gray-500">Итого за период</span>
-            <span className="text-sm font-semibold text-green-600 tabular-nums">{fmt(filteredPayments.reduce((s, p) => s + p.amount, 0))} ₽</span>
-          </div>
-        )}
-      </div>{/* /История */}
-
-
-        {/* Второстепенное: итог виден в заголовке, подробности — по нажатию */}
-        <div className="flex flex-col gap-3">
-
-        <Fold title="Расходы и налог" summary={`${fmt(netProfit)} ₽ чистыми`}>
-          <div className="flex flex-col gap-6">
-        {/* Налог и чистая прибыль */}
-        <div className="flex flex-col">
-
-          <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] mb-4">
-            {Object.entries(TAX_MODES).map(([key, m]) => (
-              <button key={key}
-                onClick={() => saveTaxSettings(key, key === "npd" ? (taxMode === "npd" ? taxRate : 4) : m.rate)}
-                className={`text-xs font-medium py-2 rounded-lg transition active:scale-[0.97] ${
-                  taxMode === key
-                    ? "bg-white dark:bg-white/15 shadow-sm text-gray-900 dark:text-white"
-                    : "text-gray-500 dark:text-gray-400 hover:text-gray-700"
-                }`}>
-                {m.label}
-              </button>
-            ))}
-          </div>
-
-          {taxMode === "npd" && (
-            <div className="flex items-center gap-2 mb-4 -mt-1">
-              <span className="text-xs text-gray-500 dark:text-gray-400">Ставка НПД:</span>
-              {[4, 6].map((r) => (
-                <button key={r} onClick={() => saveTaxSettings("npd", r)}
-                  className={`text-xs font-medium px-2.5 py-1 rounded-full transition active:scale-95 ${
-                    taxRate === r
-                      ? "bg-blue-500/12 text-blue-600 dark:text-blue-300 ring-1 ring-inset ring-blue-500/25"
-                      : "text-gray-400 hover:text-gray-600"
-                  }`}>
-                  {r}% {r === 4 ? "с физлиц" : "с юрлиц"}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="flex flex-col gap-2 text-sm mt-auto">
-            <div className="flex justify-between items-center">
-              <span className="text-gray-500 dark:text-gray-400">Доход за месяц</span>
-              <span className="font-medium tabular-nums text-green-600 dark:text-green-400">+{fmt(monthTotal)} ₽</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-500 dark:text-gray-400">Расходы</span>
-              <span className="font-medium tabular-nums text-gray-500 dark:text-gray-400">−{fmt(expenseTotal)} ₽</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-500 dark:text-gray-400">Налог {effRate > 0 ? `(${effRate}%)` : ""}</span>
-              <span className="font-medium tabular-nums text-amber-600 dark:text-amber-400">−{fmt(taxAmount)} ₽</span>
-            </div>
-            <div className="flex justify-between items-center pt-3 mt-1 border-t border-black/[0.07] dark:border-white/[0.1]">
-              <span className="font-medium">Чистыми</span>
-              <span className={`text-lg font-semibold tabular-nums ${netProfit >= 0 ? "text-gray-900 dark:text-white" : "text-red-500"}`}>
-                {fmt(netProfit)} ₽
-              </span>
-            </div>
-          </div>
-        </div>
-          {/* Ежемесячные расходы — замыкающая (растягивающаяся) карточка левой колонки */}
-          <div className="flex flex-col">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-medium text-gray-500">Ежемесячные расходы</h3>
-            <span className="text-sm font-semibold text-gray-500 tabular-nums">−{fmt(expenseTotal)} ₽/мес</span>
-          </div>
-
-          {expenses.length > 0 && (
-            <div className="divide-y divide-black/[0.06] dark:divide-white/[0.08] mb-3">
-              {expenses.map((e) => (
-                <div key={e.id} className="group flex items-center justify-between py-2.5">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-8 h-8 rounded-lg bg-black/[0.04] dark:bg-white/[0.06] flex items-center justify-center text-gray-400 shrink-0">
-                      <Icon name="repeat" size={14} />
-                    </div>
-                    <div className="text-sm font-medium truncate">{e.name}</div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <div className="text-sm font-semibold tabular-nums text-gray-600">{fmt(e.amount)} ₽</div>
-                    <button onClick={() => removeExpense(e.id)}
-                      className="w-7 h-7 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-500/10 transition active:scale-90 md:opacity-0 md:group-hover:opacity-100"
-                      title="Удалить расход">
-                      <Icon name="trash" size={14} />
-                    </button>
-                  </div>
+                <div className="text-xs text-gray-400 mt-0.5">
+                  {filter === "debt" ? "Все проведённые занятия оплачены" : "Выберите другой фильтр"}
                 </div>
-              ))}
-            </div>
-          )}
-
-          {EXPENSE_SUGGESTIONS.some((name) => !expenses.some((e) => e.name === name)) && (
-            <div className="flex flex-wrap gap-2 mb-3">
-              {EXPENSE_SUGGESTIONS.filter((name) => !expenses.some((e) => e.name === name)).map((name) => (
-                <button key={name} onClick={() => setNewExpName(name)}
-                  className="text-xs font-medium text-gray-500 bg-black/[0.04] dark:bg-white/[0.08] ring-1 ring-inset ring-black/[0.05] dark:ring-white/[0.1] px-2.5 py-1.5 rounded-full hover:bg-black/[0.07] dark:hover:bg-white/[0.12] transition active:scale-95">
-                  + {name}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="flex items-center gap-2 mt-auto">
-            <input
-              type="text"
-              value={newExpName}
-              onChange={(e) => setNewExpName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && addExpense(newExpName, Number(newExpAmount))}
-              placeholder="Название"
-              className="input-glass flex-1 min-w-0"
-            />
-            <div className="relative w-28 shrink-0">
-              <input
-                type="text"
-                inputMode="numeric"
-                value={newExpAmount}
-                onChange={(e) => setNewExpAmount(e.target.value.replace(/\D/g, ""))}
-                onKeyDown={(e) => e.key === "Enter" && addExpense(newExpName, Number(newExpAmount))}
-                placeholder="Сумма"
-                className="input-glass pr-7 w-full"
-              />
-              <span className="absolute right-3 top-1.5 text-sm text-gray-400">₽</span>
-            </div>
-            <button
-              onClick={() => addExpense(newExpName, Number(newExpAmount))}
-              disabled={!newExpName.trim() || !newExpAmount}
-              className="w-9 h-9 flex items-center justify-center rounded-lg bg-blue-600 text-white shrink-0 hover:bg-blue-700 transition active:scale-95 disabled:opacity-40 disabled:active:scale-100"
-              title="Добавить расход">
-              <Icon name="plus" size={18} />
-            </button>
-          </div>
-        </div>
-          </div>
-        </Fold>
-
-        <Fold title="Приём оплаты" summary="квитанции и онлайн">
-          <div className="flex flex-col gap-6">
-        {/* Квитанции ученику после каждого занятия: выставляются сами */}
-        <AutoInvoiceSettings tutorId={tutorId} students={students} surface="" />
-        {/* Онлайн-оплата через ЮKassa: выключатель + журнал заказов */}
-        <OnlinePaySettings tutorId={tutorId} surface="" />
-          </div>
-        </Fold>
-
-        {(paid.length > 0 || noLessons.length > 0) && (
-          <Fold title="Остальные ученики" summary={`${paid.length + noLessons.length}`}>
-            <div className="flex flex-col gap-5">
-          {paid.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                <h3 className="text-sm font-medium">Оплатили</h3>
-                <span className="text-xs font-medium text-green-700 dark:text-green-300 bg-green-500/12 ring-1 ring-inset ring-green-500/25 px-2 py-0.5 rounded-full">{paid.length}</span>
-              </div>
-              <div className="flex flex-col gap-2">
-                {paid.map((s) => (
-                  <div key={s.id} className="group flex items-center justify-between glass rounded-xl px-4 py-3">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 bg-green-500/15 text-green-700 dark:text-green-300">
-                        <Icon name="check" size={16} />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium truncate">{s.name}</div>
-                        <div className="text-xs text-gray-400 mt-0.5 tabular-nums">
-                          {s.lessonPrice ? fmt(s.lessonPrice) + " ₽ / занятие" : "Рассчитан"}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 dark:text-green-300 bg-green-500/12 ring-1 ring-inset ring-green-500/25 px-2.5 py-1 rounded-full">
-                        <Icon name="check" size={12} /> Оплачено
-                      </span>
-                      <button
-                        onClick={() => setUndoStudent(s)}
-                        className="w-8 h-8 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-500/10 transition active:scale-90 md:opacity-0 md:group-hover:opacity-100"
-                        title="Откатить последнюю оплату"
-                      ><Icon name="x" size={15} /></button>
-                    </div>
-                  </div>
-                ))}
               </div>
             </div>
-          )}
-          {noLessons.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-white/25" />
-                <h3 className="text-sm font-medium text-gray-500">Занятий ещё не было</h3>
-              </div>
-              <div className="flex flex-col gap-2">
-                {noLessons.map((s) => (
-                  <div key={s.id} className="flex items-center justify-between glass rounded-xl px-4 py-3">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 bg-black/[0.05] dark:bg-white/[0.08] text-gray-400">
+          ) : (
+            <div className="glass overflow-hidden">
+              {shownList.map((s) => {
+                const debt = getStudentDebt(s)
+                const unpaid = filter === "debt" ? getUnpaidLessons(s) : []
+                const open = expandedId === s.id
+                const paying = confirmId === s.id
+                return (
+                  <div key={s.id} className="border-t border-black/[0.06] dark:border-white/[0.08] first:border-t-0">
+                    <div className="flex items-center gap-3 px-4 py-3 flex-wrap sm:flex-nowrap">
+                      <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 ${
+                        filter === "debt"
+                          ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                          : filter === "paid"
+                            ? "bg-green-500/15 text-green-700 dark:text-green-300"
+                            : "bg-black/[0.05] dark:bg-white/[0.08] text-gray-400"
+                      }`}>
                         {getInitials(s.name)}
                       </div>
-                      <div className="min-w-0">
+
+                      <div className="min-w-0 flex-1">
                         <div className="text-sm font-medium truncate">{s.name}</div>
-                        <div className="text-xs text-gray-400 mt-0.5 tabular-nums">
-                          {s.lessonPrice ? fmt(s.lessonPrice) + " ₽ / занятие" : "Стоимость не указана"}
-                        </div>
+                        {filter === "debt" ? (
+                          <button
+                            onClick={() => setExpandedId(open ? null : s.id)}
+                            className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition"
+                          >
+                            <span className="whitespace-nowrap">
+                              {unpaid.length} {plural(unpaid.length, "занятие", "занятия", "занятий")} не оплачено
+                            </span>
+                            <Icon name={open ? "chevron-up" : "chevron-down"} size={13} className="shrink-0" />
+                          </button>
+                        ) : (
+                          <div className="text-xs text-gray-400 tabular-nums">
+                            {s.lessonPrice ? fmt(s.lessonPrice) + " ₽ / занятие" : "Стоимость не указана"}
+                          </div>
+                        )}
                       </div>
+
+                      {filter === "debt" && (
+                        <div className="flex items-center gap-3 shrink-0 w-full sm:w-auto justify-end">
+                          <div className="text-sm font-semibold tabular-nums text-amber-600 dark:text-amber-300">
+                            {fmt(debt)} ₽
+                          </div>
+                          {!paying && (
+                            <button
+                              onClick={() => { setConfirmId(s.id); setCustomAmount(String(Math.round(debt) || "")) }}
+                              className="shrink-0 inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold text-white bg-gradient-to-b from-[#34C759] to-[#28A745] shadow-[0_2px_10px_rgba(52,199,89,0.35)] transition hover:brightness-105 active:scale-[0.97]"
+                            >
+                              <Icon name="check" size={14} /> Оплата
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {filter === "paid" && (
+                        <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
+                          <span className="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-green-700 dark:text-green-300 bg-green-500/12 ring-1 ring-inset ring-green-500/25 px-2.5 py-1 rounded-full">
+                            <Icon name="check" size={12} /> Оплачено
+                          </span>
+                          <button
+                            onClick={() => setUndoStudent(s)}
+                            className="shrink-0 w-8 h-8 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-500/10 transition active:scale-90"
+                            title="Откатить последнюю оплату"
+                          ><Icon name="x" size={15} /></button>
+                        </div>
+                      )}
+
+                      {filter === "none" && (
+                        <span className="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-gray-500 bg-black/[0.04] dark:bg-white/[0.08] ring-1 ring-inset ring-black/[0.05] dark:ring-white/[0.1] px-2.5 py-1 rounded-full">
+                          <Icon name="clock" size={12} /> Ожидает
+                        </span>
+                      )}
                     </div>
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 bg-black/[0.04] dark:bg-white/[0.08] ring-1 ring-inset ring-black/[0.05] dark:ring-white/[0.1] px-2.5 py-1 rounded-full shrink-0">
-                      <Icon name="clock" size={12} /> Ожидает
-                    </span>
+
+                    {/* Ввод суммы: предзаполнен всем долгом — обычный случай,
+                        когда платят целиком, закрывается одним нажатием. */}
+                    {paying && (
+                      <div className="flex items-center gap-2 px-4 pb-3">
+                        <div className="relative flex-1">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            autoFocus
+                            value={customAmount}
+                            onChange={(e) => setCustomAmount(e.target.value.replace(/\D/g, ""))}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handlePay(s, Number(customAmount))
+                              if (e.key === "Escape") setConfirmId(null)
+                            }}
+                            placeholder="Сумма"
+                            className="input-glass pr-8 w-full"
+                          />
+                          <span className="absolute right-3 top-1.5 text-sm text-gray-400">₽</span>
+                        </div>
+                        <button onClick={() => handlePay(s, Number(customAmount))}
+                          className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition active:scale-95">
+                          Внести
+                        </button>
+                        <button onClick={() => setConfirmId(null)}
+                          className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition">
+                          <Icon name="x" size={16} />
+                        </button>
+                      </div>
+                    )}
+
+                    {/* За что именно долг — по запросу, а не всегда на экране */}
+                    <Collapse open={open && filter === "debt"}>
+                      <div className="px-4 pb-3 pl-16 divide-y divide-black/[0.06] dark:divide-white/[0.08]">
+                        {unpaid.map((l, i) => (
+                          <div key={i} className="flex items-center justify-between gap-3 py-2">
+                            <div className="text-sm">
+                              {new Date(l.date + "T00:00:00").toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "long" })}
+                              <span className="text-xs text-gray-400"> · {l.time}</span>
+                            </div>
+                            <div className="text-sm tabular-nums text-gray-500">{fmt(l.amountDue)} ₽</div>
+                          </div>
+                        ))}
+                      </div>
+                    </Collapse>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── ПЛАТЕЖИ: что уже пришло ── */}
+      {tab === "payments" && (
+        <div className="glass p-5 flex flex-col">
+          <div className="flex justify-between items-center mb-4">
+            <div className="flex items-baseline gap-2.5 min-w-0">
+              <h2 className="text-base font-medium">История оплат</h2>
+              <span className="text-xs text-gray-400 tabular-nums whitespace-nowrap">{fmt(allTotal)} ₽ за всё время</span>
+            </div>
+            <div className="flex gap-1">
+              {[{ id: "all", label: "Все" }, { id: "month", label: "Месяц" }, { id: "week", label: "Неделя" }].map((p) => (
+                <button key={p.id} onClick={() => setPeriod(p.id)}
+                  className={p.id === period ? "px-3 py-1 rounded-lg text-xs border bg-blue-600 text-white border-blue-600 transition active:scale-95" : "px-3 py-1 rounded-lg text-xs border border-gray-200 dark:border-white/10 text-gray-600 hover:bg-gray-50 dark:hover:bg-white/5 transition active:scale-95"}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {filteredPayments.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center text-sm text-gray-400 text-center py-8">Оплат за этот период нет</div>
+          ) : (
+            <div className="grid sm:grid-cols-2 gap-x-6 gap-y-0.5 content-start">
+              {filteredPayments.map((p, i) => (
+                <div key={i} className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-white/[0.06]">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-semibold shrink-0 bg-green-500/12 text-green-700 dark:text-green-300">
+                      {getInitials(p.studentName)}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium truncate">{p.studentName}</div>
+                      <div className="text-xs text-gray-400">{p.date}{p.note ? " · " + p.note : ""}</div>
+                    </div>
+                  </div>
+                  <div className="text-sm font-medium text-green-600 tabular-nums shrink-0">+{fmt(p.amount)} ₽</div>
+                </div>
+              ))}
+            </div>
+          )}
+          {filteredPayments.length > 0 && (
+            <div className="pt-3 mt-4 border-t border-gray-200 dark:border-white/10 flex justify-between">
+              <span className="text-sm text-gray-500">Итого за период</span>
+              <span className="text-sm font-semibold text-green-600 tabular-nums">{fmt(filteredPayments.reduce((s, p) => s + p.amount, 0))} ₽</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── ОТЧЁТ: расходы, налог, что осталось ── */}
+      {tab === "report" && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+          <div className="glass p-5 flex flex-col">
+            <h2 className="text-base font-medium mb-4">Налог и прибыль</h2>
+
+            <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] mb-4">
+              {Object.entries(TAX_MODES).map(([key, m]) => (
+                <button key={key}
+                  onClick={() => saveTaxSettings(key, key === "npd" ? (taxMode === "npd" ? taxRate : 4) : m.rate)}
+                  className={`text-xs font-medium py-2 rounded-lg transition active:scale-[0.97] ${
+                    taxMode === key
+                      ? "bg-white dark:bg-white/15 shadow-sm text-gray-900 dark:text-white"
+                      : "text-gray-500 dark:text-gray-400 hover:text-gray-700"
+                  }`}>
+                  {m.label}
+                </button>
+              ))}
+            </div>
+
+            {taxMode === "npd" && (
+              <div className="flex items-center gap-2 mb-4 -mt-1">
+                <span className="text-xs text-gray-500 dark:text-gray-400">Ставка НПД:</span>
+                {[4, 6].map((r) => (
+                  <button key={r} onClick={() => saveTaxSettings("npd", r)}
+                    className={`text-xs font-medium px-2.5 py-1 rounded-full transition active:scale-95 ${
+                      taxRate === r
+                        ? "bg-blue-500/12 text-blue-600 dark:text-blue-300 ring-1 ring-inset ring-blue-500/25"
+                        : "text-gray-400 hover:text-gray-600"
+                    }`}>
+                    {r}% {r === 4 ? "с физлиц" : "с юрлиц"}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2 text-sm">
+              <div className="flex justify-between items-center">
+                <span className="text-gray-500 dark:text-gray-400">Доход за месяц</span>
+                <span className="font-medium tabular-nums text-green-600 dark:text-green-400">+{fmt(monthTotal)} ₽</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-500 dark:text-gray-400">Расходы</span>
+                <span className="font-medium tabular-nums text-gray-500 dark:text-gray-400">−{fmt(expenseTotal)} ₽</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-500 dark:text-gray-400">Налог {effRate > 0 ? `(${effRate}%)` : ""}</span>
+                <span className="font-medium tabular-nums text-amber-600 dark:text-amber-400">−{fmt(taxAmount)} ₽</span>
+              </div>
+              <div className="flex justify-between items-center pt-3 mt-1 border-t border-black/[0.07] dark:border-white/[0.1]">
+                <span className="font-medium">Чистыми</span>
+                <span className={`text-lg font-semibold tabular-nums ${netProfit >= 0 ? "text-gray-900 dark:text-white" : "text-red-500"}`}>
+                  {fmt(netProfit)} ₽
+                </span>
+              </div>
+              <div className="flex justify-between items-center pt-3 mt-1 border-t border-black/[0.07] dark:border-white/[0.1]">
+                <span className="text-gray-500 dark:text-gray-400">Получено за всё время</span>
+                <span className="font-medium tabular-nums">{fmt(allTotal)} ₽</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="glass p-5 flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-medium">Ежемесячные расходы</h2>
+              <span className="text-sm font-semibold text-gray-500 tabular-nums">−{fmt(expenseTotal)} ₽/мес</span>
+            </div>
+
+            {expenses.length > 0 && (
+              <div className="divide-y divide-black/[0.06] dark:divide-white/[0.08] mb-3">
+                {expenses.map((e) => (
+                  <div key={e.id} className="group flex items-center justify-between py-2.5">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-8 h-8 rounded-lg bg-black/[0.04] dark:bg-white/[0.06] flex items-center justify-center text-gray-400 shrink-0">
+                        <Icon name="repeat" size={14} />
+                      </div>
+                      <div className="text-sm font-medium truncate">{e.name}</div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="text-sm font-semibold tabular-nums text-gray-600">{fmt(e.amount)} ₽</div>
+                      <button onClick={() => removeExpense(e.id)}
+                        className="w-7 h-7 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-500/10 transition active:scale-90 md:opacity-0 md:group-hover:opacity-100"
+                        title="Удалить расход">
+                        <Icon name="trash" size={14} />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-            </div>
-          </Fold>
-        )}
-        </div>
-        </div>{/* /ПРАВАЯ КОЛОНКА */}
-      </div>{/* /grid */}
+            )}
 
+            {EXPENSE_SUGGESTIONS.some((name) => !expenses.some((e) => e.name === name)) && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {EXPENSE_SUGGESTIONS.filter((name) => !expenses.some((e) => e.name === name)).map((name) => (
+                  <button key={name} onClick={() => setNewExpName(name)}
+                    className="text-xs font-medium text-gray-500 bg-black/[0.04] dark:bg-white/[0.08] ring-1 ring-inset ring-black/[0.05] dark:ring-white/[0.1] px-2.5 py-1.5 rounded-full hover:bg-black/[0.07] dark:hover:bg-white/[0.12] transition active:scale-95">
+                    + {name}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 mt-auto">
+              <input
+                type="text"
+                value={newExpName}
+                onChange={(e) => setNewExpName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && addExpense(newExpName, Number(newExpAmount))}
+                placeholder="Название"
+                className="input-glass flex-1 min-w-0"
+              />
+              <div className="relative w-28 shrink-0">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={newExpAmount}
+                  onChange={(e) => setNewExpAmount(e.target.value.replace(/\D/g, ""))}
+                  onKeyDown={(e) => e.key === "Enter" && addExpense(newExpName, Number(newExpAmount))}
+                  placeholder="Сумма"
+                  className="input-glass pr-7 w-full"
+                />
+                <span className="absolute right-3 top-1.5 text-sm text-gray-400">₽</span>
+              </div>
+              <button
+                onClick={() => addExpense(newExpName, Number(newExpAmount))}
+                disabled={!newExpName.trim() || !newExpAmount}
+                className="w-9 h-9 flex items-center justify-center rounded-lg bg-blue-600 text-white shrink-0 hover:bg-blue-700 transition active:scale-95 disabled:opacity-40 disabled:active:scale-100"
+                title="Добавить расход">
+                <Icon name="plus" size={18} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ConfirmModal
         open={!!undoStudent}

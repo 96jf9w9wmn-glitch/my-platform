@@ -1,9 +1,14 @@
 // Раздел «Профиль»: всё про аккаунт репетитора в одном месте — карточка
-// аккаунта, код для учеников и подписка на платформу.
+// аккаунта, код для учеников, настройки приёма денег и подписка на платформу.
 //
 // Появился, чтобы разгрузить боковое меню: «Подписка» была отдельной вкладкой
 // наравне с рабочими разделами, хотя относится не к работе с учениками, а к
 // самому аккаунту. Теперь она — секция этой страницы.
+//
+// Сюда же переехали настройки квитанций и онлайн-оплаты: на «Финансах» они
+// стояли наравне с долгами и историей, хотя трогают их раз в жизни. Так же
+// разделены и зарубежные сервисы — у TutorCruncher настройки биллинга лежат в
+// General Accounting Settings, а не на экране с деньгами.
 
 import { useState } from "react"
 import Icon from "../components/Icon"
@@ -11,6 +16,8 @@ import { supabase } from "../supabase"
 import { useSubscription } from "../subscription"
 import { effectivePlan, isActive } from "../plans"
 import Subscription from "./Subscription"
+import AutoInvoiceSettings from "../components/AutoInvoiceSettings"
+import OnlinePaySettings from "../components/OnlinePaySettings"
 
 // Инициал в цветном кружке: аватара у репетитора в базе нет, а пустой серый
 // круг выглядит как незагрузившаяся картинка.
@@ -32,7 +39,7 @@ function Avatar({ name, email, size = 56 }) {
   )
 }
 
-export default function Profile({ user, studentsCount = 0, onLogout, onProfileChange }) {
+export default function Profile({ user, students = [], studentsCount = 0, onLogout, onProfileChange }) {
   const { sub } = useSubscription()
   const plan = effectivePlan(sub)
   const paid = isActive(sub)
@@ -142,6 +149,12 @@ export default function Profile({ user, studentsCount = 0, onLogout, onProfileCh
           </div>
         </div>
       )}
+
+      {/* Приём денег с учеников: квитанции после занятия и онлайн-оплата. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4 items-start">
+        <AutoInvoiceSettings tutorId={user.id} students={students} />
+        <OnlinePaySettings tutorId={user.id} />
+      </div>
 
       {/* Подписка со всем содержимым: статус, лимиты, телеграм-бот, тарифы. */}
       <Subscription studentsCount={studentsCount} tutorId={user.id} />

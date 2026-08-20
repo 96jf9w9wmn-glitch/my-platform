@@ -705,6 +705,7 @@ function App() {
           <div className={activePage !== "profile" ? "hidden" : "page-active"}>{visitedPages.has("profile") && (
             <Profile
               user={user}
+              students={students}
               studentsCount={students.length}
               onLogout={handleLogout}
               onProfileChange={(fields) => setUser((prev) => ({ ...prev, profile: { ...prev.profile, ...fields } }))}
