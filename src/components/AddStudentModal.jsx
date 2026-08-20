@@ -244,7 +244,12 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
       <div className="glass-modal w-full max-w-lg flex flex-col" style={{ maxHeight: "90dvh" }}>
         {/* Липкий хедер */}
         <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100/60 flex-shrink-0">
-          <h2 className="text-lg font-medium">Новый ученик</h2>
+          <div>
+            {/* Модалка открывается только при приёме заявки: ученик уже привязался
+                сам, репетитор лишь дозаполняет карточку. */}
+            <h2 className="text-lg font-medium">Данные ученика</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Заявка от ученика — заполните карточку и примите</p>
+          </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1"><Icon name="x" size={18} /></button>
         </div>
 
@@ -493,7 +498,7 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
         <div className="flex gap-3 px-6 py-4 border-t border-gray-100/60 flex-shrink-0">
           <button onClick={onClose} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-gray-50">Отмена</button>
           <button onClick={handleSubmit} disabled={submitting} className="flex-1 btn-primary py-2.5 disabled:opacity-50">
-            {submitting ? "Добавляем..." : "Добавить"}
+            {submitting ? "Принимаем..." : "Принять ученика"}
           </button>
         </div>
       </div>

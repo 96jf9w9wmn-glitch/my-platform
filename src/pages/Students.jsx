@@ -52,12 +52,33 @@ const GOAL_STYLE = {
   "Успеваемость": { cls: "bg-green-100 text-green-700",  label: "Успев." },
 }
 
+// Пустой список: карточку ученика вручную не заводят, поэтому объясняем, откуда
+// ученик берётся, и даём единственное действие — пригласить.
+function EmptyStudents({ onInvite, inviting }) {
+  return (
+    <div className="flex flex-col items-center gap-3">
+      <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-500/15 flex items-center justify-center text-blue-600 dark:text-blue-400">
+        <Icon name="users" size={22} />
+      </div>
+      <div>
+        <div className="text-sm font-medium text-gray-700 dark:text-gray-200">Пока нет учеников</div>
+        <p className="text-xs text-gray-400 mt-1 max-w-xs mx-auto leading-relaxed">
+          Ученик заводится сам: регистрируется, привязывает вас по ссылке или коду —
+          и вы получаете заявку. Карточку заполните, когда её примете.
+        </p>
+      </div>
+      <button onClick={onInvite} disabled={inviting} className="btn-primary px-4 py-2 text-sm disabled:opacity-50">
+        {inviting ? "Готовим…" : "Пригласить ученика"}
+      </button>
+    </div>
+  )
+}
+
 function Students({ students, setStudents, tutorId, onOpenBoard }) {
   // Приглашение одной ссылкой: одноразовый токен на 7 дней (student_invites.sql).
   const [invite, setInvite] = useState(null)      // { link, text }
   const [inviting, setInviting] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [showModal, setShowModal] = useState(false)
   const [selectedStudent, setSelectedStudent] = useState(null)
   const [returning, setReturning] = useState(false)
   const [search, setSearch] = useState("")
@@ -176,19 +197,16 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
           <p className="text-xs text-gray-400 mt-0.5">{students.length} {plural(students.length, "ученик", "ученика", "учеников")}</p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Единственный способ завести ученика — он сам привязывается к репетитору
+              (по ссылке или коду), после чего приходит заявка. Карточку заполняем
+              при её приёме, вручную ученика не создаём. */}
           <button
             onClick={() => (canAddStudent ? createInvite() : openPlans())}
             disabled={inviting}
-            className="press-fill px-3 py-2 text-sm rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 bg-white/70 dark:bg-white/[0.08] disabled:opacity-50"
-          >
-            {inviting ? "Готовим…" : "Пригласить"}
-          </button>
-          <button
-            onClick={() => (canAddStudent ? setShowModal(true) : openPlans())}
-            className="btn-primary px-3 py-2 text-sm"
+            className="btn-primary px-3 py-2 text-sm disabled:opacity-50"
             title={canAddStudent ? undefined : `На тарифе «${plan.name}» доступно ${studentsLimit} учеников`}
           >
-            + Добавить
+            {inviting ? "Готовим…" : "Пригласить ученика"}
           </button>
         </div>
       </div>
@@ -197,7 +215,7 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
         <div className="mb-4">
           <PlanHint feature="students">
             На тарифе «{plan.name}» можно вести {studentsLimit} {plural(studentsLimit, "ученика", "ученика", "учеников")}.
-            Уже добавленные остаются на месте — чтобы добавить нового, поднимите тариф.
+            Уже добавленные остаются на месте — чтобы принять нового, поднимите тариф.
           </PlanHint>
         </div>
       )}
@@ -373,9 +391,15 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
             )
           })}
           {filtered.length === 0 && (
-            <div className="relative overflow-hidden text-center text-sm text-gray-400 py-10">
+            <div className="relative overflow-hidden text-center py-10 px-4">
               <FormulaBackdrop variant="panel" />
-              <span className="relative z-10">{query ? "Ничего не найдено" : "Пока нет учеников"}</span>
+              <div className="relative z-10">
+                {query ? (
+                  <span className="text-sm text-gray-400">Ничего не найдено</span>
+                ) : (
+                  <EmptyStudents onInvite={() => (canAddStudent ? createInvite() : openPlans())} inviting={inviting} />
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -488,17 +512,20 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
           })}
 
           {filtered.length === 0 && (
-            <div className="relative overflow-hidden px-4 py-10 text-center text-sm text-gray-400 border-t border-white/40">
+            <div className="relative overflow-hidden px-4 py-10 text-center border-t border-white/40">
               <FormulaBackdrop variant="panel" />
-              <span className="relative z-10">
-                {query ? "Ничего не найдено" : "Пока нет учеников"}
-              </span>
+              <div className="relative z-10">
+                {query ? (
+                  <span className="text-sm text-gray-400">Ничего не найдено</span>
+                ) : (
+                  <EmptyStudents onInvite={() => (canAddStudent ? createInvite() : openPlans())} inviting={inviting} />
+                )}
+              </div>
             </div>
           )}
         </div>
       )}
 
-      {showModal && <AddStudentModal onClose={() => setShowModal(false)} onAdd={(s) => setStudents((prev) => [...prev, s])} />}
       {acceptingRequest && (
         <AddStudentModal
           onClose={() => setAcceptingRequest(null)}
