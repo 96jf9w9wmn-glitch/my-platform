@@ -4,6 +4,7 @@ import { signRows } from "../storageUrl"
 import Chat from "./Chat"
 import { getInitials } from "../utils"
 import MorphIcon from "../components/MorphIcon"
+import InvoiceCard from "../components/InvoiceCard"
 
 function SvgIcon({ d, size = 16 }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d={d}/></svg>
@@ -360,6 +361,14 @@ function ParentDashboard({ user, onLogout }) {
             </div>
           </div>
         </div>
+
+        {/* Квитанции за проведённые занятия: приходят сами, платить можно переводом */}
+        <InvoiceCard
+          student={{ ...student, lessonPrice: student.lessonPrice || student.lesson_price }}
+          tutorId={student.tutor_id}
+          tutorName={tutorName}
+          className="mb-3 rounded-2xl"
+        />
 
         <ReportsFeed parentCode={student.parent_code} />
 

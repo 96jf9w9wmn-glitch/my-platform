@@ -4,6 +4,7 @@ import { PlanLock } from "../components/PlanLock"
 import { usePlan } from "../subscription"
 import ConfirmModal from "../components/ConfirmModal"
 import OnlinePaySettings from "../components/OnlinePaySettings"
+import AutoInvoiceSettings from "../components/AutoInvoiceSettings"
 import { supabase } from "../supabase"
 import { isLessonConducted, getInitials, parsePaymentDate } from "../utils"
 
@@ -756,6 +757,9 @@ function Payment({ students, setStudents, tutorId }) {
             </div>
           </div>
         </div>
+
+        {/* Квитанции ученику после каждого занятия: выставляются сами */}
+        <AutoInvoiceSettings tutorId={tutorId} students={students} />
 
         {/* Онлайн-оплата через ЮKassa: выключатель + журнал заказов */}
         <OnlinePaySettings tutorId={tutorId} />

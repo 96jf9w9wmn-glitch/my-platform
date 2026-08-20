@@ -20,7 +20,10 @@
 CREATE TABLE IF NOT EXISTS public.payment_orders (
   id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tutor_id         uuid NOT NULL,          -- кому идут деньги (auth.users.id)
-  student_id       uuid,                   -- students.id у этого репетитора
+  -- students.id в этой базе bigint (uuid остался только у student_accounts).
+  -- Колонка была объявлена uuid, и первая же вставка заказа падала бы на
+  -- несовпадении типов — api/yookassa.js кладёт сюда students.id как есть.
+  student_id       bigint,                 -- students.id у этого репетитора
   account_id       uuid,                   -- student_accounts.id того, кто платил
   student_name     text,                   -- снимок имени на момент заказа
   lessons          smallint,               -- за сколько занятий платят (null = произвольная сумма)

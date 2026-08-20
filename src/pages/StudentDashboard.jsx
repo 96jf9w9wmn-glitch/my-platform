@@ -12,6 +12,7 @@ import Chat from "./Chat"
 import StudentOnboardingModal from "../components/StudentOnboardingModal"
 import BoardHistory from "../components/BoardHistory"
 import OnlinePayCard from "../components/OnlinePayCard"
+import InvoiceCard from "../components/InvoiceCard"
 import { MarketingToggle } from "../components/ConsentChecks"
 
 const Board = lazy(() => import("../components/Board"))
@@ -1995,6 +1996,9 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       Стоимость занятия: <span className="font-medium text-gray-800">{student.lessonPrice.toLocaleString("ru-RU")} ₽</span>
                     </div>
                   )}
+
+                  {/* Квитанции за проведённые занятия — приходят сами после каждого занятия */}
+                  <InvoiceCard student={student} tutorId={user.profile?.tutor_id} tutorName={tutorName} />
 
                   {/* Онлайн-оплата: карточки нет, пока репетитор не включил приём (см. supabase/yookassa.sql) */}
                   <OnlinePayCard user={user} student={student} debt={debt} />
