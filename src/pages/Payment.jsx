@@ -3,6 +3,7 @@ import Icon from "../components/Icon"
 import { PlanLock } from "../components/PlanLock"
 import { usePlan } from "../subscription"
 import ConfirmModal from "../components/ConfirmModal"
+import Collapse from "../components/Collapse"
 import OnlinePaySettings from "../components/OnlinePaySettings"
 import AutoInvoiceSettings from "../components/AutoInvoiceSettings"
 import { supabase } from "../supabase"
@@ -78,6 +79,38 @@ function getMonthForecast(students) {
 }
 
 const fmt = (n) => Math.round(n || 0).toLocaleString("ru-RU").replace(/\s/g, " ")
+
+// Второстепенный раздел: заголовок с итогом виден всегда, содержимое
+// разворачивается по нажатию. Так «Финансы» открываются на том, ради чего сюда
+// заходят каждый день (кто должен и сколько пришло), а налог, настройки и
+// список рассчитавшихся не соревнуются с ними за внимание — но и не прячутся
+// в меню, из которого их никто не достанет.
+function Fold({ title, summary, tone = "muted", children, defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div className="glass overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left transition hover:bg-black/[0.02] dark:hover:bg-white/[0.03]"
+      >
+        <span className="text-base font-medium">{title}</span>
+        <span className="flex items-center gap-2.5 shrink-0">
+          {summary && (
+            <span className={`text-sm tabular-nums ${tone === "amber" ? "text-amber-600 dark:text-amber-300" : "text-gray-500 dark:text-gray-400"}`}>
+              {summary}
+            </span>
+          )}
+          <Icon name={open ? "chevron-up" : "chevron-down"} size={16} className="text-gray-400" />
+        </span>
+      </button>
+      <Collapse open={open}>
+        <div className="px-5 pb-5">{children}</div>
+      </Collapse>
+    </div>
+  )
+}
 
 // Доход по месяцам в стиле аналитики Т-Банка: крупная сумма выбранного месяца
 // сверху, под ней ряд высоких скруглённых столбцов. Тап по столбцу выбирает
@@ -420,7 +453,6 @@ function Payment({ students, setStudents, tutorId }) {
   const buckets = getMonthlyIncome(allPayments, 6)
   const forecast = getMonthForecast(students)
   const projected = monthTotal + forecast
-  const avgCheck = allPayments.length > 0 ? allTotal / allPayments.length : 0
 
   const debtors = students.filter((s) => getStudentDebt(s) > 0)
   const totalDebt = debtors.reduce((sum, s) => sum + getStudentDebt(s), 0)
@@ -438,47 +470,28 @@ function Payment({ students, setStudents, tutorId }) {
     <div className="p-4 sm:p-6">
       <h1 className="text-xl font-medium mb-4 sm:mb-6">Финансы</h1>
 
-      {/* HERO — доход по месяцам (стиль аналитики Т-Банка) */}
-      <div className="glass p-4 sm:p-5 md:p-6 mb-4 overflow-hidden relative">
-        <IncomeChart buckets={buckets} forecast={forecast} mounted={mounted} />
+      {/* HERO — доход по месяцам (стиль аналитики Т-Банка). Цель месяца стоит
+          здесь, а не отдельной плиткой: справа от столбцов всё равно пустовало,
+          а лишняя карточка в полосе KPI была ровно тем, из-за чего страница
+          читалась как свалка одинаковых блоков. */}
+      <div className="glass p-4 sm:p-5 md:p-6 mb-3 overflow-hidden relative">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_220px] gap-5 items-center">
+          <IncomeChart buckets={buckets} forecast={forecast} mounted={mounted} />
+          <GoalRing value={monthTotal} projected={projected} goal={goal} onSetGoal={saveGoal} />
+        </div>
       </div>
 
-      {/* KPI-полоса */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        <div className="stat-card">
-          <div className="text-sm text-gray-500 mb-1">Всего получено</div>
-          <div className="text-2xl font-medium text-green-600">{fmt(allTotal)} ₽</div>
-          <div className="text-xs text-gray-400 mt-1">за всё время</div>
-        </div>
-        <div className="stat-card">
-          <div className="text-sm text-gray-500 mb-1">Средний чек</div>
-          <div className="text-2xl font-medium">{fmt(avgCheck)} ₽</div>
-          <div className="text-xs text-gray-400 mt-1">{allPayments.length} платеж{allPayments.length % 10 === 1 && allPayments.length % 100 !== 11 ? "" : "ей"}</div>
-        </div>
-        <div className={debtors.length > 0 ? "glass-tint-amber p-4" : "stat-card"}>
-          <div className={`text-sm mb-1 ${debtors.length > 0 ? "text-amber-500" : "text-gray-500"}`}>Задолженность</div>
-          <div className={`text-2xl font-medium ${debtors.length > 0 ? "text-amber-600" : "text-gray-400"}`}>{fmt(totalDebt)} ₽</div>
-          <div className={`text-xs mt-1 ${debtors.length > 0 ? "text-amber-400" : "text-gray-400"}`}>
-            {debtors.length > 0 ? `${debtors.length} должник${debtors.length % 10 === 1 && debtors.length % 100 !== 11 ? "" : "ов"}` : "все рассчитались"}
-          </div>
-        </div>
-        <GoalRing value={monthTotal} projected={projected} goal={goal} onSetGoal={saveGoal} />
-      </div>
+      {/* Главное: кто должен и что уже пришло. Остальное — ниже, свёрнутым. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start mb-3">
 
-      {/* Две flex-колонки равной высоты (grid → items-stretch). Замыкающая карточка
-          каждой колонки (расходы слева, история справа) растягивается на остаток
-          высоты, поэтому низ колонок выровнен и под ними не остаётся пустот. */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
-
-        {/* ЛЕВАЯ КОЛОНКА: статусы оплат + расходы */}
-        <div className="flex flex-col gap-4 min-h-0">
-
+        <div className="flex flex-col gap-3">
           {debtors.length > 0 && (
             <div>
               <div className="flex items-center gap-2 mb-3">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                 <h2 className="text-base font-medium">Ждут оплаты</h2>
                 <span className="text-xs font-medium text-amber-600 dark:text-amber-300 bg-amber-500/12 ring-1 ring-inset ring-amber-500/20 px-2 py-0.5 rounded-full">{debtors.length}</span>
+                <span className="ml-auto text-sm font-semibold tabular-nums text-amber-600 dark:text-amber-300">{fmt(totalDebt)} ₽</span>
               </div>
               <div className="flex flex-col gap-3">
                 {debtors.map((s) => (
@@ -559,76 +572,131 @@ function Payment({ students, setStudents, tutorId }) {
             </div>
           )}
 
-          {paid.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                <h2 className="text-base font-medium">Оплатили</h2>
-                <span className="text-xs font-medium text-green-700 dark:text-green-300 bg-green-500/12 ring-1 ring-inset ring-green-500/25 px-2 py-0.5 rounded-full">{paid.length}</span>
+          {debtors.length === 0 && (
+            <div className="glass p-5 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full grid place-items-center shrink-0 bg-green-500/12 text-green-600 dark:text-green-300">
+                <Icon name="check" size={18} />
               </div>
-              <div className="flex flex-col gap-2">
-                {paid.map((s) => (
-                  <div key={s.id} className="group flex items-center justify-between glass rounded-xl px-4 py-3">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 bg-green-500/15 text-green-700 dark:text-green-300">
-                        <Icon name="check" size={16} />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium truncate">{s.name}</div>
-                        <div className="text-xs text-gray-400 mt-0.5 tabular-nums">
-                          {s.lessonPrice ? fmt(s.lessonPrice) + " ₽ / занятие" : "Рассчитан"}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 dark:text-green-300 bg-green-500/12 ring-1 ring-inset ring-green-500/25 px-2.5 py-1 rounded-full">
-                        <Icon name="check" size={12} /> Оплачено
-                      </span>
-                      <button
-                        onClick={() => setUndoStudent(s)}
-                        className="w-8 h-8 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-500/10 transition active:scale-90 md:opacity-0 md:group-hover:opacity-100"
-                        title="Откатить последнюю оплату"
-                      ><Icon name="x" size={15} /></button>
-                    </div>
-                  </div>
-                ))}
+              <div>
+                <div className="text-sm font-medium">Никто не должен</div>
+                <div className="text-xs text-gray-400 mt-0.5">Все проведённые занятия оплачены</div>
               </div>
             </div>
           )}
+        </div>
 
-          {noLessons.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-white/25" />
-                <h2 className="text-base font-medium text-gray-500">Занятий ещё не было</h2>
-              </div>
-              <div className="flex flex-col gap-2">
-                {noLessons.map((s) => (
-                  <div key={s.id} className="flex items-center justify-between glass rounded-xl px-4 py-3">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 bg-black/[0.05] dark:bg-white/[0.08] text-gray-400">
-                        {getInitials(s.name)}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium truncate">{s.name}</div>
-                        <div className="text-xs text-gray-400 mt-0.5 tabular-nums">
-                          {s.lessonPrice ? fmt(s.lessonPrice) + " ₽ / занятие" : "Стоимость не указана"}
-                        </div>
-                      </div>
-                    </div>
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 bg-black/[0.04] dark:bg-white/[0.08] ring-1 ring-inset ring-black/[0.05] dark:ring-white/[0.1] px-2.5 py-1 rounded-full shrink-0">
-                      <Icon name="clock" size={12} /> Ожидает
-                    </span>
+        {/* ПРАВАЯ КОЛОНКА: что уже пришло + всё второстепенное. Свёрнутые
+            разделы стоят здесь, а не под гридом: иначе под короткой историей
+            оставалась дыра во весь экран, пока слева тянулся список долгов. */}
+        <div className="flex flex-col gap-3">
+      {/* История оплат — вторая колонка главного ряда */}
+      <div className="glass p-5 flex flex-col">
+        <div className="flex justify-between items-center mb-4">
+          <div className="flex items-baseline gap-2.5 min-w-0">
+            <h2 className="text-base font-medium">История оплат</h2>
+            <span className="text-xs text-gray-400 tabular-nums whitespace-nowrap">{fmt(allTotal)} ₽ за всё время</span>
+          </div>
+          <div className="flex gap-1">
+            {[{ id: "all", label: "Все" }, { id: "month", label: "Месяц" }, { id: "week", label: "Неделя" }].map((p) => (
+              <button key={p.id} onClick={() => setPeriod(p.id)}
+                className={p.id === period ? "px-3 py-1 rounded-lg text-xs border bg-blue-600 text-white border-blue-600 transition active:scale-95" : "px-3 py-1 rounded-lg text-xs border border-gray-200 dark:border-white/10 text-gray-600 hover:bg-gray-50 dark:hover:bg-white/5 transition active:scale-95"}>
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {filteredPayments.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center text-sm text-gray-400 text-center py-8">Оплат за этот период нет</div>
+        ) : (
+          <div className="grid sm:grid-cols-2 gap-x-6 gap-y-0.5 max-h-80 overflow-y-auto content-start">
+            {filteredPayments.map((p, i) => (
+              <div key={i} className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-white/[0.06]">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-semibold shrink-0 bg-green-500/12 text-green-700 dark:text-green-300">
+                    {getInitials(p.studentName)}
                   </div>
-                ))}
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium truncate">{p.studentName}</div>
+                    <div className="text-xs text-gray-400">{p.date}{p.note ? " · " + p.note : ""}</div>
+                  </div>
+                </div>
+                <div className="text-sm font-medium text-green-600 tabular-nums shrink-0">+{fmt(p.amount)} ₽</div>
               </div>
+            ))}
+          </div>
+        )}
+        {filteredPayments.length > 0 && (
+          <div className="pt-3 mt-auto border-t border-gray-200 dark:border-white/10 flex justify-between">
+            <span className="text-sm text-gray-500">Итого за период</span>
+            <span className="text-sm font-semibold text-green-600 tabular-nums">{fmt(filteredPayments.reduce((s, p) => s + p.amount, 0))} ₽</span>
+          </div>
+        )}
+      </div>{/* /История */}
+
+
+        {/* Второстепенное: итог виден в заголовке, подробности — по нажатию */}
+        <div className="flex flex-col gap-3">
+
+        <Fold title="Расходы и налог" summary={`${fmt(netProfit)} ₽ чистыми`}>
+          <div className="flex flex-col gap-6">
+        {/* Налог и чистая прибыль */}
+        <div className="flex flex-col">
+
+          <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] mb-4">
+            {Object.entries(TAX_MODES).map(([key, m]) => (
+              <button key={key}
+                onClick={() => saveTaxSettings(key, key === "npd" ? (taxMode === "npd" ? taxRate : 4) : m.rate)}
+                className={`text-xs font-medium py-2 rounded-lg transition active:scale-[0.97] ${
+                  taxMode === key
+                    ? "bg-white dark:bg-white/15 shadow-sm text-gray-900 dark:text-white"
+                    : "text-gray-500 dark:text-gray-400 hover:text-gray-700"
+                }`}>
+                {m.label}
+              </button>
+            ))}
+          </div>
+
+          {taxMode === "npd" && (
+            <div className="flex items-center gap-2 mb-4 -mt-1">
+              <span className="text-xs text-gray-500 dark:text-gray-400">Ставка НПД:</span>
+              {[4, 6].map((r) => (
+                <button key={r} onClick={() => saveTaxSettings("npd", r)}
+                  className={`text-xs font-medium px-2.5 py-1 rounded-full transition active:scale-95 ${
+                    taxRate === r
+                      ? "bg-blue-500/12 text-blue-600 dark:text-blue-300 ring-1 ring-inset ring-blue-500/25"
+                      : "text-gray-400 hover:text-gray-600"
+                  }`}>
+                  {r}% {r === 4 ? "с физлиц" : "с юрлиц"}
+                </button>
+              ))}
             </div>
           )}
 
+          <div className="flex flex-col gap-2 text-sm mt-auto">
+            <div className="flex justify-between items-center">
+              <span className="text-gray-500 dark:text-gray-400">Доход за месяц</span>
+              <span className="font-medium tabular-nums text-green-600 dark:text-green-400">+{fmt(monthTotal)} ₽</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-500 dark:text-gray-400">Расходы</span>
+              <span className="font-medium tabular-nums text-gray-500 dark:text-gray-400">−{fmt(expenseTotal)} ₽</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-500 dark:text-gray-400">Налог {effRate > 0 ? `(${effRate}%)` : ""}</span>
+              <span className="font-medium tabular-nums text-amber-600 dark:text-amber-400">−{fmt(taxAmount)} ₽</span>
+            </div>
+            <div className="flex justify-between items-center pt-3 mt-1 border-t border-black/[0.07] dark:border-white/[0.1]">
+              <span className="font-medium">Чистыми</span>
+              <span className={`text-lg font-semibold tabular-nums ${netProfit >= 0 ? "text-gray-900 dark:text-white" : "text-red-500"}`}>
+                {fmt(netProfit)} ₽
+              </span>
+            </div>
+          </div>
+        </div>
           {/* Ежемесячные расходы — замыкающая (растягивающаяся) карточка левой колонки */}
-          <div className="glass p-5 flex flex-col flex-1">
+          <div className="flex flex-col">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-medium">Ежемесячные расходы</h2>
+            <h3 className="text-sm font-medium text-gray-500">Ежемесячные расходы</h3>
             <span className="text-sm font-semibold text-gray-500 tabular-nums">−{fmt(expenseTotal)} ₽/мес</span>
           </div>
 
@@ -696,117 +764,92 @@ function Payment({ students, setStudents, tutorId }) {
             </button>
           </div>
         </div>
-
-        </div>{/* /ЛЕВАЯ КОЛОНКА */}
-
-        {/* ПРАВАЯ КОЛОНКА: налог/прибыль + история оплат */}
-        <div className="flex flex-col gap-4 min-h-0">
-
-        {/* Налог и чистая прибыль */}
-        <div className="glass p-5 flex flex-col">
-          <h2 className="text-base font-medium mb-4">Налог и прибыль</h2>
-
-          <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] mb-4">
-            {Object.entries(TAX_MODES).map(([key, m]) => (
-              <button key={key}
-                onClick={() => saveTaxSettings(key, key === "npd" ? (taxMode === "npd" ? taxRate : 4) : m.rate)}
-                className={`text-xs font-medium py-2 rounded-lg transition active:scale-[0.97] ${
-                  taxMode === key
-                    ? "bg-white dark:bg-white/15 shadow-sm text-gray-900 dark:text-white"
-                    : "text-gray-500 dark:text-gray-400 hover:text-gray-700"
-                }`}>
-                {m.label}
-              </button>
-            ))}
           </div>
+        </Fold>
 
-          {taxMode === "npd" && (
-            <div className="flex items-center gap-2 mb-4 -mt-1">
-              <span className="text-xs text-gray-500 dark:text-gray-400">Ставка НПД:</span>
-              {[4, 6].map((r) => (
-                <button key={r} onClick={() => saveTaxSettings("npd", r)}
-                  className={`text-xs font-medium px-2.5 py-1 rounded-full transition active:scale-95 ${
-                    taxRate === r
-                      ? "bg-blue-500/12 text-blue-600 dark:text-blue-300 ring-1 ring-inset ring-blue-500/25"
-                      : "text-gray-400 hover:text-gray-600"
-                  }`}>
-                  {r}% {r === 4 ? "с физлиц" : "с юрлиц"}
-                </button>
-              ))}
+        <Fold title="Приём оплаты" summary="квитанции и онлайн">
+          <div className="flex flex-col gap-6">
+        {/* Квитанции ученику после каждого занятия: выставляются сами */}
+        <AutoInvoiceSettings tutorId={tutorId} students={students} surface="" />
+        {/* Онлайн-оплата через ЮKassa: выключатель + журнал заказов */}
+        <OnlinePaySettings tutorId={tutorId} surface="" />
+          </div>
+        </Fold>
+
+        {(paid.length > 0 || noLessons.length > 0) && (
+          <Fold title="Остальные ученики" summary={`${paid.length + noLessons.length}`}>
+            <div className="flex flex-col gap-5">
+          {paid.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                <h3 className="text-sm font-medium">Оплатили</h3>
+                <span className="text-xs font-medium text-green-700 dark:text-green-300 bg-green-500/12 ring-1 ring-inset ring-green-500/25 px-2 py-0.5 rounded-full">{paid.length}</span>
+              </div>
+              <div className="flex flex-col gap-2">
+                {paid.map((s) => (
+                  <div key={s.id} className="group flex items-center justify-between glass rounded-xl px-4 py-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 bg-green-500/15 text-green-700 dark:text-green-300">
+                        <Icon name="check" size={16} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium truncate">{s.name}</div>
+                        <div className="text-xs text-gray-400 mt-0.5 tabular-nums">
+                          {s.lessonPrice ? fmt(s.lessonPrice) + " ₽ / занятие" : "Рассчитан"}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 dark:text-green-300 bg-green-500/12 ring-1 ring-inset ring-green-500/25 px-2.5 py-1 rounded-full">
+                        <Icon name="check" size={12} /> Оплачено
+                      </span>
+                      <button
+                        onClick={() => setUndoStudent(s)}
+                        className="w-8 h-8 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-500/10 transition active:scale-90 md:opacity-0 md:group-hover:opacity-100"
+                        title="Откатить последнюю оплату"
+                      ><Icon name="x" size={15} /></button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
-
-          <div className="flex flex-col gap-2 text-sm mt-auto">
-            <div className="flex justify-between items-center">
-              <span className="text-gray-500 dark:text-gray-400">Доход за месяц</span>
-              <span className="font-medium tabular-nums text-green-600 dark:text-green-400">+{fmt(monthTotal)} ₽</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-500 dark:text-gray-400">Расходы</span>
-              <span className="font-medium tabular-nums text-gray-500 dark:text-gray-400">−{fmt(expenseTotal)} ₽</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-500 dark:text-gray-400">Налог {effRate > 0 ? `(${effRate}%)` : ""}</span>
-              <span className="font-medium tabular-nums text-amber-600 dark:text-amber-400">−{fmt(taxAmount)} ₽</span>
-            </div>
-            <div className="flex justify-between items-center pt-3 mt-1 border-t border-black/[0.07] dark:border-white/[0.1]">
-              <span className="font-medium">Чистыми</span>
-              <span className={`text-lg font-semibold tabular-nums ${netProfit >= 0 ? "text-gray-900 dark:text-white" : "text-red-500"}`}>
-                {fmt(netProfit)} ₽
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Квитанции ученику после каждого занятия: выставляются сами */}
-        <AutoInvoiceSettings tutorId={tutorId} students={students} />
-
-        {/* Онлайн-оплата через ЮKassa: выключатель + журнал заказов */}
-        <OnlinePaySettings tutorId={tutorId} />
-
-      {/* История оплат — замыкающая (растягивающаяся) карточка правой колонки */}
-      <div className="glass p-5 flex flex-col flex-1">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-base font-medium">История оплат</h2>
-          <div className="flex gap-1">
-            {[{ id: "all", label: "Все" }, { id: "month", label: "Месяц" }, { id: "week", label: "Неделя" }].map((p) => (
-              <button key={p.id} onClick={() => setPeriod(p.id)}
-                className={p.id === period ? "px-3 py-1 rounded-lg text-xs border bg-blue-600 text-white border-blue-600 transition active:scale-95" : "px-3 py-1 rounded-lg text-xs border border-gray-200 dark:border-white/10 text-gray-600 hover:bg-gray-50 dark:hover:bg-white/5 transition active:scale-95"}>
-                {p.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        {filteredPayments.length === 0 ? (
-          <div className="flex-1 flex items-center justify-center text-sm text-gray-400 text-center py-8">Оплат за этот период нет</div>
-        ) : (
-          <div className="grid sm:grid-cols-2 gap-x-6 gap-y-0.5 max-h-80 overflow-y-auto content-start">
-            {filteredPayments.map((p, i) => (
-              <div key={i} className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-white/[0.06]">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-semibold shrink-0 bg-green-500/12 text-green-700 dark:text-green-300">
-                    {getInitials(p.studentName)}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium truncate">{p.studentName}</div>
-                    <div className="text-xs text-gray-400">{p.date}{p.note ? " · " + p.note : ""}</div>
-                  </div>
-                </div>
-                <div className="text-sm font-medium text-green-600 tabular-nums shrink-0">+{fmt(p.amount)} ₽</div>
+          {noLessons.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <span className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-white/25" />
+                <h3 className="text-sm font-medium text-gray-500">Занятий ещё не было</h3>
               </div>
-            ))}
-          </div>
+              <div className="flex flex-col gap-2">
+                {noLessons.map((s) => (
+                  <div key={s.id} className="flex items-center justify-between glass rounded-xl px-4 py-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 bg-black/[0.05] dark:bg-white/[0.08] text-gray-400">
+                        {getInitials(s.name)}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium truncate">{s.name}</div>
+                        <div className="text-xs text-gray-400 mt-0.5 tabular-nums">
+                          {s.lessonPrice ? fmt(s.lessonPrice) + " ₽ / занятие" : "Стоимость не указана"}
+                        </div>
+                      </div>
+                    </div>
+                    <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 bg-black/[0.04] dark:bg-white/[0.08] ring-1 ring-inset ring-black/[0.05] dark:ring-white/[0.1] px-2.5 py-1 rounded-full shrink-0">
+                      <Icon name="clock" size={12} /> Ожидает
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+            </div>
+          </Fold>
         )}
-        {filteredPayments.length > 0 && (
-          <div className="pt-3 mt-auto border-t border-gray-200 dark:border-white/10 flex justify-between">
-            <span className="text-sm text-gray-500">Итого за период</span>
-            <span className="text-sm font-semibold text-green-600 tabular-nums">{fmt(filteredPayments.reduce((s, p) => s + p.amount, 0))} ₽</span>
-          </div>
-        )}
-      </div>{/* /История */}
-
+        </div>
         </div>{/* /ПРАВАЯ КОЛОНКА */}
       </div>{/* /grid */}
+
 
       <ConfirmModal
         open={!!undoStudent}

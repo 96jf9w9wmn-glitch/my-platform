@@ -39,7 +39,7 @@ const Chip = ({ active, children, ...props }) => (
   </button>
 )
 
-export default function AutoInvoiceSettings({ tutorId, students = [] }) {
+export default function AutoInvoiceSettings({ tutorId, students = [], surface = "glass p-5" }) {
   const [cfg, setCfg] = useState({ enabled: false, delay_min: 0, remind_days: 3, since: null, payee_name: "", payee_details: "" })
   const [ready, setReady] = useState(true)     // миграция lesson_invoices.sql выполнена
   const [rows, setRows] = useState([])
@@ -136,7 +136,7 @@ export default function AutoInvoiceSettings({ tutorId, students = [] }) {
     : "сегодня"
 
   return (
-    <div className="glass p-5 flex flex-col">
+    <div className={`${surface} flex flex-col`}>
       <div className="flex items-center justify-between gap-3 mb-1">
         <div className="flex items-center gap-2">
           <h2 className="text-base font-medium">Квитанции после занятия</h2>

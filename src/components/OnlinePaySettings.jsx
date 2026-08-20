@@ -22,7 +22,7 @@ const STATUS = {
   canceled:  { label: "Отменён", cls: "bg-gray-500/10 text-gray-500 ring-gray-500/20" },
 }
 
-export default function OnlinePaySettings({ tutorId }) {
+export default function OnlinePaySettings({ tutorId, surface = "glass p-5" }) {
   const [health, setHealth] = useState(null)     // null = ещё спрашиваем
   const [enabled, setEnabled] = useState(false)
   const [maxLessons, setMaxLessons] = useState(10)
@@ -80,7 +80,7 @@ export default function OnlinePaySettings({ tutorId }) {
   const mode = health?.mode === "live" ? "Боевой магазин" : "Тестовый магазин"
 
   return (
-    <div className="glass p-5 flex flex-col">
+    <div className={`${surface} flex flex-col`}>
       <div className="flex items-center justify-between gap-3 mb-1">
         <div className="flex items-center gap-2">
           <h2 className="text-base font-medium">Онлайн-оплата</h2>
@@ -121,14 +121,15 @@ export default function OnlinePaySettings({ tutorId }) {
         </div>
       )}
 
-      {!health?.ok && health && (
+      {/* Пока онлайн-оплата не подключена, нехватку ключей и невыполненную
+          миграцию показываем ОДНОЙ строкой: две одинаковые жёлтые плашки
+          подряд занимали больше места, чем сама настройка. */}
+      {((health && !health.ok) || !ready) && (
         <div className="text-xs text-amber-600 dark:text-amber-300 bg-amber-500/10 ring-1 ring-inset ring-amber-500/20 rounded-xl px-3 py-2.5 mb-4">
-          Ключи магазина не заданы. Добавьте YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY в переменные окружения Vercel — инструкция в README.
-        </div>
-      )}
-      {!ready && (
-        <div className="text-xs text-amber-600 dark:text-amber-300 bg-amber-500/10 ring-1 ring-inset ring-amber-500/20 rounded-xl px-3 py-2.5 mb-4">
-          Не выполнена миграция supabase/yookassa.sql — заказы негде хранить.
+          Не подключено: {[
+            health && !health.ok ? "нет ключей магазина (YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY)" : null,
+            !ready ? "не выполнена миграция supabase/yookassa.sql" : null,
+          ].filter(Boolean).join("; ")}. Инструкция — docs/yookassa.md.
         </div>
       )}
 
