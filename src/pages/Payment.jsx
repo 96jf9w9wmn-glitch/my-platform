@@ -109,7 +109,11 @@ function IncomeChart({ buckets, forecast, mounted }) {
   const fullLabel = rawFull.charAt(0).toUpperCase() + rawFull.slice(1)
 
   return (
-    <div>
+    // Сумма слева, столбцы справа: после того как из шапки убрали цель месяца,
+    // карточка растянулась во всю ширину и под суммой оставалась пустота в
+    // половину экрана. На телефоне колонки схлопываются в одну.
+    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,240px)_minmax(0,1fr)] lg:gap-8 lg:items-center">
+      <div>
       <div className="flex items-center gap-2 mb-1">
         <div className="text-sm text-gray-500">{fullLabel}</div>
         {deltaPct !== null && (
@@ -132,8 +136,10 @@ function IncomeChart({ buckets, forecast, mounted }) {
           : isCurrentMonth ? "получено в этом месяце" : "получено за месяц"}
       </div>
 
+      </div>
+
       {/* Столбцы по месяцам — тап переключает выбранный месяц */}
-      <div className="mt-5 flex items-end justify-between gap-1.5">
+      <div className="mt-5 lg:mt-0 flex items-end justify-between gap-1.5">
         {buckets.map((b, i) => {
           const isCur = i === lastIdx
           const isSel = i === sel
@@ -176,110 +182,6 @@ function IncomeChart({ buckets, forecast, mounted }) {
   )
 }
 
-function GoalRing({ value, projected, goal, onSetGoal }) {
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState(goal ? String(goal) : "")
-  const R = 32, C = 2 * Math.PI * R
-  const pct = goal > 0 ? Math.min(value / goal, 1) : 0
-  const projPct = goal > 0 ? Math.min(projected / goal, 1) : 0
-  const remaining = Math.max(0, goal - value)
-
-  function save() {
-    onSetGoal(Number(draft) || 0)
-    setEditing(false)
-  }
-
-  // Пустая цель — аккуратная подсказка, а не сырое поле в узкой карточке.
-  if (!goal && !editing) {
-    return (
-      <button
-        onClick={() => { setDraft(""); setEditing(true) }}
-        className="stat-card flex items-center gap-3 text-left transition active:scale-[0.98]"
-      >
-        <div className="w-11 h-11 rounded-full flex items-center justify-center shrink-0 text-blue-500 bg-blue-500/10 border border-dashed border-blue-500/45">
-          <Icon name="target" size={20} />
-        </div>
-        <div className="min-w-0">
-          <div className="text-sm text-gray-500">Цель месяца</div>
-          <div className="text-sm font-medium text-blue-600 dark:text-blue-300">Поставить цель</div>
-        </div>
-      </button>
-    )
-  }
-
-  if (editing) {
-    return (
-      <div className="stat-card flex flex-col justify-center">
-        <div className="text-sm text-gray-500 mb-2">Цель месяца</div>
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1 min-w-0">
-            <input
-              type="text" inputMode="numeric" autoFocus
-              value={draft}
-              onChange={(e) => setDraft(e.target.value.replace(/\D/g, ""))}
-              onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") setEditing(false) }}
-              placeholder="60 000"
-              className="input-glass pr-7 w-full"
-            />
-            <span className="absolute right-3 top-1.5 text-sm text-gray-400">₽</span>
-          </div>
-          <button onClick={save}
-            className="bg-blue-600 text-white w-9 h-9 flex items-center justify-center rounded-lg shrink-0 hover:bg-blue-700 transition active:scale-95">
-            <Icon name="check" size={16} />
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  const dash = (frac) => `${C * frac} ${C}`
-
-  return (
-    <button
-      onClick={() => { setDraft(String(goal)); setEditing(true) }}
-      className="stat-card flex items-center gap-3 text-left group transition active:scale-[0.98]"
-      title="Изменить цель"
-    >
-      <div className="relative shrink-0" style={{ width: 62, height: 62 }}>
-        <svg viewBox="0 0 78 78" className="w-full h-full -rotate-90">
-          <circle cx="39" cy="39" r={R} fill="none" stroke="currentColor" strokeOpacity="0.1" strokeWidth="7" />
-          {projPct > pct && (
-            <circle cx="39" cy="39" r={R} fill="none" stroke="#007AFF" strokeOpacity="0.25"
-              strokeWidth="7" strokeLinecap="round" strokeDasharray={dash(projPct)} />
-          )}
-          <circle cx="39" cy="39" r={R} fill="none" stroke="url(#goalStroke)"
-            strokeWidth="7" strokeLinecap="round" strokeDasharray={dash(pct)}
-            style={{ transition: "stroke-dasharray .9s cubic-bezier(.22,1,.36,1)" }} />
-          <defs>
-            <linearGradient id="goalStroke" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#5AC8FA" />
-              <stop offset="100%" stopColor="#5856D6" />
-            </linearGradient>
-          </defs>
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="font-semibold tracking-tight tabular-nums"
-            style={{ fontSize: pct >= 1 ? 13 : 15 }}>{Math.round(pct * 100)}%</span>
-        </div>
-      </div>
-      <div className="min-w-0">
-        <div className="text-sm text-gray-500 mb-0.5 flex items-center gap-1">
-          Цель месяца
-          <Icon name="edit" size={11} className="opacity-0 group-hover:opacity-40 transition-opacity" />
-        </div>
-        <div className="text-base font-medium">{fmt(goal)} ₽</div>
-        {/* Одной строкой и без иконки: колонка узкая, и «цель достигнута» с
-            конфетти переносилась, а иконка уезжала под текст в угол карточки. */}
-        <div className="text-xs mt-0.5 truncate">
-          {remaining > 0
-            ? <span className="text-gray-400">осталось {fmt(remaining)} ₽</span>
-            : <span className="text-green-600 dark:text-green-400 font-medium">Цель достигнута</span>}
-        </div>
-      </div>
-    </button>
-  )
-}
-
 function Payment({ students, setStudents, tutorId }) {
   const [tab, setTab] = useState("debts")
   const [filter, setFilter] = useState("debt")
@@ -289,10 +191,6 @@ function Payment({ students, setStudents, tutorId }) {
   const [customAmount, setCustomAmount] = useState("")
   const [mounted, setMounted] = useState(false)
   const [undoStudent, setUndoStudent] = useState(null)
-  const [goal, setGoal] = useState(() => {
-    const v = localStorage.getItem("precettore_finance_goal")
-    return v ? Number(v) : 0
-  })
   const [taxMode, setTaxMode] = useState("none")
   const [taxRate, setTaxRate] = useState(4)
   const [expenses, setExpenses] = useState([])
@@ -348,12 +246,6 @@ function Payment({ students, setStudents, tutorId }) {
     setExpenses((prev) => prev.filter((e) => e.id !== id))
     if (!tutorId || String(id).startsWith("tmp_")) return
     try { await supabase.from("tutor_expenses").delete().eq("id", id).eq("tutor_id", tutorId) } catch { /* no-op */ }
-  }
-
-  function saveGoal(v) {
-    setGoal(v)
-    if (v > 0) localStorage.setItem("precettore_finance_goal", String(v))
-    else localStorage.removeItem("precettore_finance_goal")
   }
 
   function handlePay(student, amount) {
@@ -432,7 +324,6 @@ function Payment({ students, setStudents, tutorId }) {
 
   const buckets = getMonthlyIncome(allPayments, 6)
   const forecast = getMonthForecast(students)
-  const projected = monthTotal + forecast
 
   const debtors = students.filter((s) => getStudentDebt(s) > 0)
   const totalDebt = debtors.reduce((sum, s) => sum + getStudentDebt(s), 0)
@@ -475,13 +366,11 @@ function Payment({ students, setStudents, tutorId }) {
     <div className="p-4 sm:p-6">
       <h1 className="text-xl font-medium mb-4 sm:mb-6">Финансы</h1>
 
-      {/* HERO — доход по месяцам. Цель месяца стоит здесь, а не отдельной
-          плиткой: справа от столбцов всё равно пустовало. */}
+      {/* HERO — доход по месяцам. Цели по доходу здесь нет намеренно: у
+          Teachworks, TutorBird и TutorCruncher на финансовом экране только
+          числа и таблицы, а кольцо прогресса — паттерн из фитнес-трекеров. */}
       <div className="glass p-4 sm:p-5 md:p-6 mb-4 overflow-hidden relative">
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_248px] gap-5 items-center">
-          <IncomeChart buckets={buckets} forecast={forecast} mounted={mounted} />
-          <GoalRing value={monthTotal} projected={projected} goal={goal} onSetGoal={saveGoal} />
-        </div>
+        <IncomeChart buckets={buckets} forecast={forecast} mounted={mounted} />
       </div>
 
       {/* Вкладки */}
