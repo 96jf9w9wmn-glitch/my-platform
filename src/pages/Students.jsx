@@ -125,7 +125,8 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
   // а завести его руками репетитор больше не может.
   const requests = useMemo(() => {
     const fromPending = pending.map((p) => ({
-      key: `p:${p.id}`, pendingId: p.id, name: p.name, phone: p.phone, orphan: false,
+      key: `p:${p.id}`, pendingId: p.id, accountId: p.student_account_id || null,
+      name: p.name, phone: p.phone, orphan: false,
     }))
     const claimed = new Set(pending.map((p) => phoneKey(p.phone)).filter(Boolean))
     const carded = new Set(students.map((s) => phoneKey(s.phone)).filter(Boolean))
@@ -134,14 +135,26 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
         const key = phoneKey(a.phone)
         return key && !claimed.has(key) && !carded.has(key)
       })
-      .map((a) => ({ key: `a:${a.id}`, pendingId: null, name: a.name, phone: a.phone, orphan: true }))
+      .map((a) => ({ key: `a:${a.id}`, pendingId: null, accountId: a.id, name: a.name, phone: a.phone, orphan: true }))
     return [...fromPending, ...fromAccounts]
   }, [pending, linkedAccounts, students])
 
-  async function handleReject(requestId) {
-    if (!window.confirm("Отклонить заявку?")) return
-    await supabase.from("pending_students").delete().eq("id", requestId)
-    setPending((prev) => prev.filter((p) => p.id !== requestId))
+  async function handleReject(req) {
+    if (!window.confirm("Отклонить заявку? Ученик будет отвязан от вас.")) return
+    // Одной RPC (student_link_cleanup.sql): снимает заявку И отвязывает аккаунт.
+    // Раньше удалялась только строка заявки, а привязка оставалась — ученик
+    // возвращался в список при следующем заходе. Карточку, если по ней уже вели
+    // занятия, функция не трогает: удалять её должен человек.
+    const { error } = await supabase.rpc("student_request_reject", {
+      p_account: req.accountId || null,
+      p_pending: req.pendingId || null,
+    })
+    if (error) { alert("Не удалось отклонить заявку: " + error.message); return }
+    if (req.pendingId) setPending((prev) => prev.filter((p) => p.id !== req.pendingId))
+    if (req.accountId) {
+      setPending((prev) => prev.filter((p) => p.student_account_id !== req.accountId))
+      setLinkedAccounts((prev) => prev.filter((a) => a.id !== req.accountId))
+    }
   }
 
   async function handleAcceptComplete(newStudent, request) {
@@ -335,12 +348,7 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button onClick={() => (canAddStudent ? setAcceptingRequest(req) : openPlans())} className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 font-medium">Принять</button>
-                  {/* Отклонить умеем только заявку-строку: отвязать сам аккаунт репетитор
-                      не может (student_accounts ему доступен лишь на чтение), а кнопка,
-                      после которой ученик возвращается тем же списком, врала бы. */}
-                  {req.pendingId && (
-                    <button onClick={() => handleReject(req.pendingId)} className="text-sm text-gray-400 hover:text-red-600 px-2 py-1.5">Отклонить</button>
-                  )}
+                  <button onClick={() => handleReject(req)} className="text-sm text-gray-400 hover:text-red-600 px-2 py-1.5">Отклонить</button>
                 </div>
               </div>
             ))}

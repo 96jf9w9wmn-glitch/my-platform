@@ -395,15 +395,18 @@ function App() {
         .in("phone", phones)
       if (accounts?.length) {
         const avatarByPhone = {}
+        const avatarById = {}
         const idByPhone = {}
         accounts.forEach((a) => {
-          if (a.avatar) avatarByPhone[a.phone] = a.avatar
+          if (a.avatar) { avatarByPhone[a.phone] = a.avatar; avatarById[a.id] = a.avatar }
           if (a.id) idByPhone[a.phone] = a.id
         })
         mapped = mapped.map((s) => ({
           ...s,
-          avatar: s.avatar || avatarByPhone[s.phone] || null,
-          studentAccountId: idByPhone[s.phone] || null,
+          // Явная колонка важнее телефона: номер могли записать в другом формате,
+          // и раньше карточка из-за этого «отвязывалась» от аккаунта (student_link_cleanup.sql).
+          avatar: s.avatar || avatarById[s.student_account_id] || avatarByPhone[s.phone] || null,
+          studentAccountId: s.student_account_id || idByPhone[s.phone] || null,
         }))
       }
     }
@@ -416,8 +419,10 @@ function App() {
   }
 
   async function saveStudent(student) {
-    const { error } = await supabase.from("students").upsert({
-      id: student.id,
+    // Новая карточка приходит с временным id (tmp:…): id выдаёт база (sequence из
+    // student_link_cleanup.sql), клиент его больше не выдумывает.
+    const isNew = typeof student.id === "string" && student.id.startsWith("tmp:")
+    const row = {
       tutor_id: user.id,
       name: student.name,
       phone: student.phone,
@@ -439,13 +444,18 @@ function App() {
       remarks: student.remarks || [],
       board_url: student.boardUrl || null,
       call_url: student.callUrl || null,
-    })
+    }
+    const { data, error } = isNew
+      ? await supabase.from("students").insert(row).select("id").single()
+      : await supabase.from("students").upsert({ id: student.id, ...row }).select("id").single()
     if (error) {
       // Молчать тут нельзя: ровно так полтора месяца незаметно не создавались
       // карточки — ошибка вставки уходила в консоль, а репетитор видел «сохранено».
       console.error("saveStudent failed:", error.message, error)
       alert("Не удалось сохранить ученика: " + error.message)
+      return null
     }
+    return data?.id ?? student.id
   }
 
   async function handleSetStudents(updater) {
@@ -457,7 +467,12 @@ function App() {
       return old && JSON.stringify(old) !== JSON.stringify(s)
     })
     for (const s of [...added, ...updated]) {
-      await saveStudent(s)
+      const savedId = await saveStudent(s)
+      // Временный id меняем на выданный базой, иначе следующий diff примет ту же
+      // карточку за новую и заведёт её второй раз.
+      if (savedId && savedId !== s.id) {
+        setStudents((prev) => prev.map((x) => (x.id === s.id ? { ...x, id: savedId } : x)))
+      }
     }
   }
 

@@ -1449,16 +1449,6 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
       const code = tutorCode.trim().toLowerCase()
       if (!code) throw new Error("Введи код репетитора")
 
-      const { data: tutorData, error: tutorError } = await supabase
-        .from("tutors")
-        .select("id, name")
-        .eq("code", code)
-        .single()
-      if (tutorError || !tutorData) throw new Error("Репетитор с таким кодом не найден")
-
-      const phone = user.profile?.phone
-      const name = user.profile?.name
-
       // Предметы, выбранные в анкете — подставляем их в карточку у репетитора.
       let subjectStr = null
       try {
@@ -1466,68 +1456,25 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
         if (Array.isArray(arr) && arr.length) subjectStr = arr.join(", ")
       } catch { /* нет сохранённых предметов — не критично */ }
 
-      // Update student_accounts with tutor link
-      await supabase
-        .from("student_accounts")
-        .update({ tutor_id: tutorData.id, tutor_code: code })
-        .eq("id", user.id)
-
-      // Find student row by phone (most reliable)
-      const { data: byPhone } = await supabase
-        .from("students")
-        .select("id")
-        .eq("tutor_id", tutorData.id)
-        .eq("phone", phone)
-        .maybeSingle()
-
-      if (!byPhone) {
-        // Try by name, then update phone so future matches work
-        const { data: byName } = await supabase
-          .from("students")
-          .select("id")
-          .eq("tutor_id", tutorData.id)
-          .ilike("name", `%${name}%`)
-          .maybeSingle()
-
-        if (byName) {
-          await supabase.from("students").update({ phone, ...(subjectStr ? { subject: subjectStr } : {}) }).eq("id", byName.id)
-        } else {
-          // Not in tutor's list yet — create a row
-          await supabase.from("students").insert({
-            tutor_id: tutorData.id,
-            name,
-            phone,
-            ...(subjectStr ? { subject: subjectStr } : {}),
-          })
-        }
-      }
-
-      // Pending request + notification
-      const { data: existingPending } = await supabase
-        .from("pending_students")
-        .select("id")
-        .eq("tutor_id", tutorData.id)
-        .eq("student_account_id", user.id)
-        .maybeSingle()
-
-      if (!existingPending) {
-        await supabase.from("pending_students").insert({
-          tutor_id: tutorData.id,
-          student_account_id: user.id,
-          name,
-          phone,
-        })
-        await supabase.from("notifications").insert({
-          user_id: tutorData.id,
-          title: "Новая заявка от ученика",
-          body: name + " хочет присоединиться к тебе",
-        })
-      }
+      // Вся привязка — одной серверной функцией (student_link_cleanup.sql): она
+      // проверяет сессию, заводит карточку в ростере, ставит основного репетитора,
+      // создаёт заявку и уведомление. Раньше это делалось четырьмя запросами
+      // отсюда, и вставка карточки была обречена: прав на students у роли ученика
+      // нет, а id таблица не выдаёт сама.
+      const { data, error } = await supabase.rpc("student_link_tutor", {
+        p_student_id: user.id,
+        p_token: user.token,
+        p_code: code,
+        p_subject: subjectStr,
+      })
+      if (error) throw new Error(error.message)
+      const linked = data?.[0]
+      if (!linked) throw new Error("Репетитор с таким кодом не найден")
 
       localStorage.removeItem("pending_tutor_code")
-      setTutorLinkSuccess("Подключено к репетитору " + tutorData.name + "!")
+      setTutorLinkSuccess("Подключено к репетитору " + linked.tutor_name + "!")
       setTutorCode("")
-      if (onReloadStudents) onReloadStudents(tutorData.id)
+      if (onReloadStudents) onReloadStudents(linked.tutor_id)
     } catch (err) {
       setTutorLinkError(err.message)
     } finally {
