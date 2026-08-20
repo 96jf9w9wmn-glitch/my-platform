@@ -24,6 +24,7 @@ const EXAM_GROUPS = [
     subjects: [
       { type: "ЕГЭ", label: "Математика база", dot: "bg-blue-500" },
       { type: "ЕГЭ Профиль", label: "Математика профиль", dot: "bg-indigo-500" },
+      { type: "ЕГЭ Информатика", label: "Информатика", dot: "bg-cyan-500" },
     ],
   },
   {
