@@ -268,10 +268,12 @@ function GoalRing({ value, projected, goal, onSetGoal }) {
           <Icon name="edit" size={11} className="opacity-0 group-hover:opacity-40 transition-opacity" />
         </div>
         <div className="text-base font-medium">{fmt(goal)} ₽</div>
-        <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
+        {/* Одной строкой и без иконки: колонка узкая, и «цель достигнута» с
+            конфетти переносилась, а иконка уезжала под текст в угол карточки. */}
+        <div className="text-xs mt-0.5 truncate">
           {remaining > 0
-            ? `осталось ${fmt(remaining)} ₽`
-            : <>цель достигнута <Icon name="party" size={12} className="text-blue-500 shrink-0" /></>}
+            ? <span className="text-gray-400">осталось {fmt(remaining)} ₽</span>
+            : <span className="text-green-600 dark:text-green-400 font-medium">Цель достигнута</span>}
         </div>
       </div>
     </button>
@@ -476,7 +478,7 @@ function Payment({ students, setStudents, tutorId }) {
       {/* HERO — доход по месяцам. Цель месяца стоит здесь, а не отдельной
           плиткой: справа от столбцов всё равно пустовало. */}
       <div className="glass p-4 sm:p-5 md:p-6 mb-4 overflow-hidden relative">
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_220px] gap-5 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_248px] gap-5 items-center">
           <IncomeChart buckets={buckets} forecast={forecast} mounted={mounted} />
           <GoalRing value={monthTotal} projected={projected} goal={goal} onSetGoal={saveGoal} />
         </div>
