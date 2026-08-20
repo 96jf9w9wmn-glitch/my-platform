@@ -143,7 +143,21 @@ function EditModal({ student, onClose, onSave }) {
           </div>
           <div>
             <label className="text-sm text-gray-500 mb-1 block">Телефон</label>
-            <input name="phone" value={form.phone} onChange={handleChange} className="input-glass" />
+            {student.studentAccountId ? (
+              // Ученик уже привязал кабинет, и база сшивает карточку с его аккаунтом
+              // именно по номеру (current_student_rows в RLS). Изменённый здесь номер
+              // молча отрезал бы ученику доступ к собственной карточке, поэтому только
+              // сам ученик меняет его у себя в кабинете.
+              <>
+                <div className="input-glass flex items-center justify-between gap-2 text-gray-500 dark:text-gray-300">
+                  <span>{formatPhone(form.phone)}</span>
+                  <Icon name="check" size={14} className="text-green-600 flex-shrink-0" />
+                </div>
+                <p className="text-xs text-gray-400 mt-1">Номер из кабинета ученика — менять его может только он сам.</p>
+              </>
+            ) : (
+              <input name="phone" value={form.phone} onChange={handleChange} className="input-glass" />
+            )}
           </div>
           <div>
             <div className="flex justify-between items-center mb-2">

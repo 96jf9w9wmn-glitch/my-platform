@@ -3,7 +3,7 @@ import { createPortal } from "react-dom"
 import Icon from "./Icon"
 import PhoneInput, { isValidPhoneNumber } from "react-phone-number-input"
 import "react-phone-number-input/style.css"
-import { plural, parseLocalDate } from "../utils"
+import { plural, parseLocalDate, formatPhone } from "../utils"
 import { ConsentRow, ConsentLink } from "./ConsentChecks"
 import { logConsent } from "../consents"
 import { supabase } from "../supabase"
@@ -264,9 +264,22 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
 
           <div>
             <label className="text-sm text-gray-500 mb-1 block">Телефон</label>
-            <div className="phone-input-wrapper">
-              <PhoneInput international defaultCountry="RU" value={phone} onChange={setPhone} placeholder="Введи номер телефона" />
-            </div>
+            {initialPhone ? (
+              // Номер пришёл из аккаунта ученика. Именно по нему база сшивает карточку
+              // с аккаунтом (current_student_rows в RLS), поэтому править его нельзя:
+              // изменив номер, репетитор молча отрежет ученику доступ к своей карточке.
+              <>
+                <div className="input-glass flex items-center justify-between gap-2 text-gray-500 dark:text-gray-300">
+                  <span>{formatPhone(initialPhone)}</span>
+                  <Icon name="check" size={14} className="text-green-600 flex-shrink-0" />
+                </div>
+                <p className="text-xs text-gray-400 mt-1">Номер подтверждён при регистрации ученика — по нему карточка связана с его кабинетом.</p>
+              </>
+            ) : (
+              <div className="phone-input-wrapper">
+                <PhoneInput international defaultCountry="RU" value={phone} onChange={setPhone} placeholder="Введи номер телефона" />
+              </div>
+            )}
           </div>
 
           <div>

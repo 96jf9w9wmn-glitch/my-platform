@@ -113,9 +113,32 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
   }
 
   async function handleAcceptComplete(newStudent, requestId) {
+    // Карточка ученика уже заведена автоматически в момент привязки (student_register
+    // / привязка из кабинета), поэтому при приёме заявки её ДОЗАПОЛНЯЕМ, а не заводим
+    // вторую. Вторая была бы не просто дублем: ученика с карточкой RLS сшивает по
+    // телефону (current_student_rows), так что обе строки принадлежали бы ему, а ДЗ,
+    // занятия и долги разъехались бы по двум карточкам.
+    const existing = students.find((s) => s.phone && s.phone === newStudent.phone)
     // setStudents is handleSetStudents from App.jsx — it diffs the new array against
     // the old one and upserts any added/changed student itself, so no separate insert here.
-    setStudents((prev) => [...prev, newStudent])
+    if (existing) {
+      const merged = {
+        ...existing,
+        ...newStudent,
+        id: existing.id,
+        // Уже накопленное в карточке важнее пустых значений из формы.
+        lessons: [...(existing.lessons || []), ...(newStudent.lessons || [])]
+          .filter((l, i, arr) => arr.findIndex((x) => x.date === l.date && x.time === l.time) === i)
+          .sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time)),
+        payments: existing.payments?.length ? existing.payments : newStudent.payments,
+        results: existing.results?.length ? existing.results : newStudent.results,
+        parent_code: existing.parent_code || newStudent.parent_code,
+      }
+      merged.lessonDates = merged.lessons.map((l) => l.date)
+      setStudents((prev) => prev.map((s) => (s.id === existing.id ? merged : s)))
+    } else {
+      setStudents((prev) => [...prev, newStudent])
+    }
     await supabase.from("pending_students").delete().eq("id", requestId)
     setPending((prev) => prev.filter((p) => p.id !== requestId))
     setAcceptingRequest(null)
