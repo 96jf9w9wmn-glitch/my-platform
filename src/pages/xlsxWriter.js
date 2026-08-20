@@ -31,8 +31,15 @@ function sheetXml(rows) {
 }
 
 // sheetName — до 31 символа; rows — массив массивов ячеек (string | number). → Blob (.xlsx)
-export function makeXlsxBlob(sheetName, rows) {
-  const name = esc(String(sheetName).slice(0, 31).replace(/[\\/?*[\]:]/g, " ") || "Лист1")
+// Книга из НЕСКОЛЬКИХ листов: sheets = [{ name, rows }]. КЕГЭ №3 (реляционные базы)
+// требует именно нескольких связанных таблиц, поэтому книга собирается по общему пути,
+// а однолистовой makeXlsxBlob остался обёрткой над ним.
+export function makeXlsxBookBlob(sheets) {
+  const list = sheets.map((sh, i) => ({
+    name: esc(String(sh.name).slice(0, 31).replace(/[\\/?*[\]:]/g, " ") || `Лист${i + 1}`),
+    rows: sh.rows,
+    id: i + 1,
+  }))
   const files = {
     "[Content_Types].xml":
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
@@ -40,7 +47,7 @@ export function makeXlsxBlob(sheetName, rows) {
       `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
       `<Default Extension="xml" ContentType="application/xml"/>` +
       `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>` +
-      `<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>` +
+      list.map((sh) => `<Override PartName="/xl/worksheets/sheet${sh.id}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("") +
       `</Types>`,
     "_rels/.rels":
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
@@ -50,20 +57,27 @@ export function makeXlsxBlob(sheetName, rows) {
     "xl/workbook.xml":
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
       `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
-      `<sheets><sheet name="${name}" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+      `<sheets>${list.map((sh) => `<sheet name="${sh.name}" sheetId="${sh.id}" r:id="rId${sh.id}"/>`).join("")}</sheets></workbook>`,
     "xl/_rels/workbook.xml.rels":
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
       `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
-      `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>` +
+      list.map((sh) => `<Relationship Id="rId${sh.id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${sh.id}.xml"/>`).join("") +
       `</Relationships>`,
-    "xl/worksheets/sheet1.xml": sheetXml(rows),
   }
+  list.forEach((sh) => { files[`xl/worksheets/sheet${sh.id}.xml`] = sheetXml(sh.rows) })
   const blob = makeZipBlob(files)
   return new Blob([blob], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })
 }
 
+export function makeXlsxBlob(sheetName, rows) {
+  return makeXlsxBookBlob([{ name: sheetName, rows }])
+}
+
+// sheetName может быть массивом листов [{ name, rows }] — тогда rows игнорируется.
 export function downloadXlsx(fileName, sheetName, rows) {
-  const url = URL.createObjectURL(makeXlsxBlob(sheetName, rows))
+  const url = URL.createObjectURL(Array.isArray(sheetName)
+    ? makeXlsxBookBlob(sheetName)
+    : makeXlsxBlob(sheetName, rows))
   const a = document.createElement("a")
   a.href = url
   a.download = fileName.endsWith(".xlsx") ? fileName : `${fileName}.xlsx`

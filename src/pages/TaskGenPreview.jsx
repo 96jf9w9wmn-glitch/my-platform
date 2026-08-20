@@ -187,14 +187,41 @@ function ArchiveButton({ archive }) {
 
 // №14: кнопка скачивания прилагаемой электронной таблицы (.xlsx собирается на клиенте).
 function SpreadsheetButton({ spreadsheet }) {
-  const rows = spreadsheet.rows.length - 1
+  // Книга может быть многолистовой (КЕГЭ №3): тогда в rows лежит массив листов.
+  const sheets = Array.isArray(spreadsheet.sheets) ? spreadsheet.sheets : null
+  const rows = sheets ? sheets.reduce((a, sh) => a + sh.rows.length - 1, 0) : spreadsheet.rows.length - 1
   return (
     <button
-      onClick={() => downloadXlsx(spreadsheet.name, spreadsheet.sheetName, spreadsheet.rows)}
+      onClick={() => downloadXlsx(spreadsheet.name, sheets || spreadsheet.sheetName, spreadsheet.rows)}
       className="self-start flex items-center gap-2 mt-1 px-3 py-2 rounded-xl border border-green-200 bg-green-50 text-green-700 text-sm font-medium hover:bg-green-100 transition active:scale-95">
       <Icon name="download" size={15} />
       {spreadsheet.name}
       <span className="text-[11px] text-green-500">({rows} строк)</span>
+    </button>
+  )
+}
+
+// КЕГЭ №17, №24, №26, №27: кнопка скачивания прилагаемого текстового файла с данными.
+// Файл генерируется вместе с задачей, поэтому ответ всегда соответствует его содержимому.
+function TextFileButton({ textFile }) {
+  const lines = textFile.content.split("\n").length
+  const download = () => {
+    const url = URL.createObjectURL(new Blob([textFile.content], { type: "text/plain;charset=utf-8" }))
+    const a = document.createElement("a")
+    a.href = url
+    a.download = textFile.name
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+  return (
+    <button
+      onClick={download}
+      className="self-start flex items-center gap-2 mt-1 px-3 py-2 rounded-xl border border-amber-200 bg-amber-50 text-amber-700 text-sm font-medium hover:bg-amber-100 transition active:scale-95">
+      <Icon name="download" size={15} />
+      {textFile.name}
+      <span className="text-[11px] text-amber-500">({lines > 1 ? `${lines} строк` : `${textFile.content.length} символов`})</span>
     </button>
   )
 }
@@ -238,6 +265,7 @@ function TaskCard({ task, showAnswer }) {
             />
           )}
           {task.spreadsheet && <SpreadsheetButton spreadsheet={task.spreadsheet} />}
+          {task.textFile && <TextFileButton textFile={task.textFile} />}
           {showAnswer && (
             <div className="text-xs text-gray-400 mt-1 pt-2 border-t border-gray-50">
               Ответ: <span className="font-mono text-gray-600 whitespace-pre-line">{String(task.answer)}</span>

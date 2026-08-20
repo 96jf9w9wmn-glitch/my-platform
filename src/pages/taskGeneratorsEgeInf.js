@@ -3198,10 +3198,1134 @@ export function t7Unicode() {
   }
 }
 
+
+// ── №06 «Определение результатов работы простейших алгоритмов» ──────────────
+// Эталон (113 задач): три типажа.
+//   print 57 — «что напечатает программа»: цикл while над двумя переменными;
+//   input 15 — «при каком наибольшем/наименьшем введённом s программа выведет N»;
+//   turtle 41 — исполнитель Черепаха рисует два прямоугольника: сколько точек с
+//               целочисленными координатами лежит в пересечении фигур.
+// Программы печатаются на трёх языках из ОДНОГО описания и им же исполняются.
+
+// Цикл вида: s = s0; n = n0; пока (s + n < LIM) { s = s + ds; n = n - dn } печатать s.
+export function t6Print() {
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const s0 = pick([0, 1, 5, 10]), n0 = randInt(40, 120)
+    const ds = pick([3, 5, 7, 10, 20]), dn = pick([2, 4, 5, 10])
+    const lim = randInt(n0 + 10, n0 + 90)
+    let s = s0, n = n0, steps = 0
+    while (s + n < lim && steps++ < 1000) { s += ds; n -= dn }
+    if (steps === 0 || steps > 40) continue
+    const py = `s = ${s0}\nn = ${n0}\nwhile s + n < ${lim}:\n    s = s + ${ds}\n    n = n - ${dn}\nprint(s)`
+    const pas = `var s, n: integer;\nbegin\n    s := ${s0};\n    n := ${n0};\n    while s + n < ${lim} do\n    begin\n        s := s + ${ds};\n        n := n - ${dn}\n    end;\n    writeln(s)\nend.`
+    const alg = `алг\nнач\n    цел s, n\n    s := ${s0}\n    n := ${n0}\n    нц пока s + n < ${lim}\n        s := s + ${ds}\n        n := n - ${dn}\n    кц\n    вывод s\nкон`
+    return {
+      condition_text:
+        "Запишите число, которое будет напечатано в результате выполнения следующей программы. " +
+        "Для Вашего удобства программа представлена на трёх языках программирования.\n" +
+        `Python:\n⟦code:${py}⟧\nПаскаль:\n⟦code:${pas}⟧\nАлгоритмический язык:\n⟦code:${alg}⟧`,
+      answer: String(s),
+    }
+  }
+  return null
+}
+
+// Цикл: читаем s; n = 1; пока s < LIM { s = s + ds; n = n * k } печатать n.
+// Спрашивают наибольшее (наименьшее) введённое s, при котором на выходе заданное N.
+export function t6Input() {
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const ds = pick([2, 3, 4, 5]), k = pick([2, 3])
+    const lim = randInt(30, 90)
+    const power = randInt(3, 6)
+    const target = Math.pow(k, power)                   // сколько итераций должно пройти
+    const run = (start) => {
+      let s = start, n = 1, guard = 0
+      while (s < lim && guard++ < 1000) { s += ds; n *= k }
+      return n
+    }
+    const good = []
+    for (let start = -200; start <= lim; start++) if (run(start) === target) good.push(start)
+    if (good.length < 2) continue
+    const askMax = Math.random() < 0.5
+    const answer = askMax ? Math.max(...good) : Math.min(...good)
+    const py = `s = int(input())\nn = 1\nwhile s < ${lim}:\n    s = s + ${ds}\n    n = n * ${k}\nprint(n)`
+    const pas = `var s, n: integer;\nbegin\n    readln(s);\n    n := 1;\n    while s < ${lim} do\n    begin\n        s := s + ${ds};\n        n := n * ${k}\n    end;\n    writeln(n)\nend.`
+    const alg = `алг\nнач\n    цел n, s\n    ввод s\n    n := 1\n    нц пока s < ${lim}\n        s := s + ${ds}\n        n := n * ${k}\n    кц\n    вывод n\nкон`
+    return {
+      condition_text:
+        `Определите, при каком ${askMax ? "наибольшем" : "наименьшем"} введённом значении переменной s программа выведет число ${target}. ` +
+        "Для Вашего удобства программа представлена на трёх языках программирования.\n" +
+        `Python:\n⟦code:${py}⟧\nПаскаль:\n⟦code:${pas}⟧\nАлгоритмический язык:\n⟦code:${alg}⟧`,
+      answer: String(answer),
+    }
+  }
+  return null
+}
+
+// ── Исполнитель Черепаха ─────────────────────────────────────────────────────
+// Алгоритм рисует две прямоугольные рамки; вопрос — сколько точек с целочисленными
+// координатами лежит внутри пересечения фигур (включая границу). Прямоугольники
+// считаются по СЛЕДУ пера: эмулятор ниже выполняет ровно те команды, что напечатаны.
+const T6_TURTLE_INTRO =
+  "Исполнитель Черепаха действует на плоскости с декартовой системой координат. В начальный момент Черепаха находится " +
+  "в начале координат, её голова направлена вдоль положительного направления оси ординат, хвост опущен. " +
+  "При опущенном хвосте Черепаха оставляет на поле след в виде линии. У исполнителя существует 6 команд: " +
+  "Поднять хвост, означающая переход к перемещению без рисования; Опустить хвост, означающая переход в режим рисования; " +
+  "Вперёд n — передвижение на n единиц в том направлении, куда указывает голова; Назад n — передвижение в противоположном " +
+  "направлении; Направо m — поворот на m градусов по часовой стрелке; Налево m — поворот против часовой стрелки.\n" +
+  "Запись Повтори k [Команда1 Команда2 … КомандаS] означает, что последовательность из S команд повторится k раз.\n"
+
+// Эмуляция: возвращает список отрезков (по одному на каждое перемещение с пером).
+function t6TurtleRun(cmds) {
+  let x = 0, y = 0, dir = 90, pen = true      // dir в градусах, 90 — вдоль оси ординат
+  const segs = []
+  const step = (len) => {
+    const rad = dir * Math.PI / 180
+    const nx = x + Math.round(Math.cos(rad) * len), ny = y + Math.round(Math.sin(rad) * len)
+    if (pen) segs.push([x, y, nx, ny])
+    x = nx; y = ny
+  }
+  const exec = (list) => {
+    for (const c of list) {
+      if (c.t === "fwd") step(c.n)
+      else if (c.t === "back") step(-c.n)
+      else if (c.t === "right") dir -= c.n
+      else if (c.t === "left") dir += c.n
+      else if (c.t === "up") pen = false
+      else if (c.t === "down") pen = true
+      else if (c.t === "rep") for (let i = 0; i < c.k; i++) exec(c.body)
+    }
+  }
+  exec(cmds)
+  return segs
+}
+
+const t6Bbox = (segs) => segs.reduce((b, [x1, y1, x2, y2]) => ({
+  x1: Math.min(b.x1, x1, x2), y1: Math.min(b.y1, y1, y2),
+  x2: Math.max(b.x2, x1, x2), y2: Math.max(b.y2, y1, y2),
+}), { x1: Infinity, y1: Infinity, x2: -Infinity, y2: -Infinity })
+
+export function t6Turtle() {
+  for (let attempt = 0; attempt < 80; attempt++) {
+    const w1 = randInt(10, 25), h1 = randInt(10, 25)
+    const w2 = randInt(30, 90), h2 = randInt(30, 90)
+    const dx = randInt(2, 12), dy = randInt(2, 12)
+    const reps = pick([5, 7, 9])
+    // Первая фигура — прямоугольник w1×h1, затем перо поднимается, Черепаха
+    // смещается и рисует второй прямоугольник w2×h2.
+    const cmds = [
+      { t: "rep", k: reps, body: [{ t: "fwd", n: h1 }, { t: "right", n: 90 }, { t: "fwd", n: w1 }, { t: "right", n: 90 }] },
+      { t: "up" },
+      { t: "fwd", n: dy }, { t: "right", n: 90 }, { t: "fwd", n: dx }, { t: "left", n: 90 },
+      { t: "down" },
+      { t: "rep", k: reps, body: [{ t: "fwd", n: h2 }, { t: "right", n: 90 }, { t: "fwd", n: w2 }, { t: "right", n: 90 }] },
+    ]
+    const all = t6TurtleRun(cmds)
+    // Один повтор рисует ДВЕ стороны («Вперёд h … Вперёд w …»), поэтому отрезков
+    // первой фигуры ровно 2·reps. При нечётном reps Черепаха остаётся развёрнутой
+    // в противоположную сторону — второй прямоугольник рисуется «вниз», как в банке.
+    const firstCount = reps * 2
+    const b1 = t6Bbox(all.slice(0, firstCount))
+    const b2 = t6Bbox(all.slice(firstCount))
+    const ix1 = Math.max(b1.x1, b2.x1), iy1 = Math.max(b1.y1, b2.y1)
+    const ix2 = Math.min(b1.x2, b2.x2), iy2 = Math.min(b1.y2, b2.y2)
+    if (ix2 <= ix1 || iy2 <= iy1) continue
+    const points = (ix2 - ix1 + 1) * (iy2 - iy1 + 1)
+    if (points < 20 || points > 3000) continue
+    const prog =
+      `Повтори ${reps} [Вперёд ${h1} Направо 90 Вперёд ${w1} Направо 90]\n` +
+      "Поднять хвост\n" +
+      `Вперёд ${dy} Направо 90 Вперёд ${dx} Налево 90\n` +
+      "Опустить хвост\n" +
+      `Повтори ${reps} [Вперёд ${h2} Направо 90 Вперёд ${w2} Направо 90]`
+    return {
+      condition_text: T6_TURTLE_INTRO +
+        "Черепахе был дан для исполнения следующий алгоритм:\n⟦code:" + prog + "⟧\n" +
+        "Определите, сколько точек с целочисленными координатами находятся внутри области пересечения фигур, " +
+        "ограниченных заданными алгоритмом линиями, включая точки на границах этого пересечения.",
+      answer: String(points),
+    }
+  }
+  return null
+}
+
+
+// ── №01 «Анализ информационных моделей» (графы и таблицы дорог) ─────────────
+// Эталон (175 задач): три механики.
+//   pair 80 — схема-граф И таблица длин, нарисованные НЕЗАВИСИМО: сначала надо
+//             сопоставить пункты таблицы с буквами графа (по числу дорог), потом
+//             ответить про конкретные дороги. Генератор проверяет, что сопоставление
+//             даёт единственный ответ, перебирая все биекции;
+//   short 54 — только таблица длин: кратчайший путь между двумя пунктами (Дейкстра);
+//   long  15 — ориентированный граф: длина самого длинного пути из А в М.
+
+const T1_LETTERS = ["А", "Б", "В", "Г", "Д", "Е", "Ж"]
+
+// Случайный связный неориентированный граф на n вершинах с весами.
+function t1RandomGraph(n, extraEdges) {
+  const w = Array.from({ length: n }, () => Array(n).fill(0))
+  const order = shuffle([...Array(n).keys()])
+  for (let i = 1; i < n; i++) {                       // остовное дерево — связность
+    const a = order[i], b = order[randInt(0, i - 1)]
+    w[a][b] = w[b][a] = randInt(1, 30)
+  }
+  for (let k = 0; k < extraEdges; k++) {
+    const a = randInt(0, n - 1), b = randInt(0, n - 1)
+    if (a !== b && !w[a][b]) w[a][b] = w[b][a] = randInt(1, 30)
+  }
+  return w
+}
+
+// Раскладка вершин по кругу + подписи. labels — что писать у вершин.
+function t1GraphSvg(w, labels) {
+  const n = labels.length
+  const R = 110, cx = 150, cy = 135, W = 300, H = 275
+  const pos = labels.map((_, i) => {
+    const a = -Math.PI / 2 + (2 * Math.PI * i) / n
+    return [cx + R * Math.cos(a), cy + R * Math.sin(a)]
+  })
+  let el = ""
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+    if (!w[i][j]) continue
+    el += `<line x1="${pos[i][0].toFixed(1)}" y1="${pos[i][1].toFixed(1)}" x2="${pos[j][0].toFixed(1)}" y2="${pos[j][1].toFixed(1)}" stroke="#111" stroke-width="1.4"/>`
+  }
+  labels.forEach((lbl, i) => {
+    const [x, y] = pos[i]
+    el += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="13" fill="#fff" stroke="#111" stroke-width="1.4"/>`
+    el += `<text x="${x.toFixed(1)}" y="${(y + 5).toFixed(1)}" text-anchor="middle" font-size="15" font-family="Arial, sans-serif" font-weight="bold" fill="#111">${lbl}</text>`
+  })
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${el}</svg>`
+}
+
+// Схема (буквы) + таблица (П1…Пn) нарисованы независимо: найти сумму длин двух дорог.
+export function t1GraphTable() {
+  for (let attempt = 0; attempt < 120; attempt++) {
+    const n = pick([6, 7])
+    const w = t1RandomGraph(n, randInt(2, 4))
+    // Перестановка «пункт таблицы → вершина графа» (скрытая от ученика).
+    const perm = shuffle([...Array(n).keys()])
+    // Таблица строится по перестановке: строка i — пункт Пi, вершина perm[i].
+    const table = Array.from({ length: n }, (_, i) =>
+      Array.from({ length: n }, (_, j) => w[perm[i]][perm[j]]))
+    // Спрашиваем сумму длин двух дорог, заданных БУКВАМИ на графе.
+    const edges = []
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) if (w[i][j]) edges.push([i, j])
+    if (edges.length < 6) continue
+    const [e1, e2] = shuffle(edges).slice(0, 2)
+    const answer = w[e1[0]][e1[1]] + w[e2[0]][e2[1]]
+    // Проверка однозначности: любая биекция «пункты таблицы → вершины графа»,
+    // согласованная с матрицей смежности графа, обязана давать тот же ответ.
+    let unique = true
+    const used = Array(n).fill(false)
+    const map = Array(n).fill(-1)
+    const rec = (i) => {
+      if (!unique) return
+      if (i === n) {
+        const sum = w[e1[0]][e1[1]] + w[e2[0]][e2[1]]
+        // Ответ ученика: длины он читает из таблицы по найденному соответствию.
+        const inv = Array(n)
+        map.forEach((v, k) => { inv[v] = k })
+        const got = table[inv[e1[0]]][inv[e1[1]]] + table[inv[e2[0]]][inv[e2[1]]]
+        if (got !== sum) unique = false
+        return
+      }
+      for (let v = 0; v < n; v++) {
+        if (used[v]) continue
+        let ok = true
+        for (let k = 0; k < i; k++) {
+          const a = table[i][k] > 0, b = w[v][map[k]] > 0
+          if (a !== b) { ok = false; break }
+        }
+        if (!ok) continue
+        used[v] = true; map[i] = v
+        rec(i + 1)
+        used[v] = false; map[i] = -1
+        if (!unique) return
+      }
+    }
+    rec(0)
+    if (!unique) continue
+    const labels = T1_LETTERS.slice(0, n)
+    const head = ["", ...Array.from({ length: n }, (_, i) => `П${i + 1}`)]
+    const rows = table.map((row, i) => [`П${i + 1}`, ...row.map((x) => (x ? String(x) : ""))])
+    return {
+      condition_text:
+        "На рисунке схема дорог N-ского района изображена в виде графа, в таблице содержатся сведения о протяжённости " +
+        "каждой из этих дорог (в километрах).",
+      image_url: svgUrl(t1GraphSvg(w, labels)),
+      condition_tail:
+        tableBlock([head, ...rows]) + "\n" +
+        "Так как таблицу и схему рисовали независимо друг от друга, то нумерация населённых пунктов в таблице никак " +
+        "не связана с буквенными обозначениями на графе. " +
+        `Определите, какова сумма протяжённостей дорог из пункта ${labels[e1[0]]} в пункт ${labels[e1[1]]} ` +
+        `и из пункта ${labels[e2[0]]} в пункт ${labels[e2[1]]}. В ответе запишите целое число.`,
+      answer: String(answer),
+    }
+  }
+  return null
+}
+
+// Только таблица длин: кратчайший путь между двумя пунктами.
+export function t1ShortestPath() {
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const n = pick([6, 7])
+    const w = t1RandomGraph(n, randInt(3, 5))
+    const letters = ["A", "B", "C", "D", "E", "F", "G"].slice(0, n)
+    // Дейкстра от 0 до n-1.
+    const dist = Array(n).fill(Infinity); dist[0] = 0
+    const done = Array(n).fill(false)
+    for (let k = 0; k < n; k++) {
+      let u = -1
+      for (let i = 0; i < n; i++) if (!done[i] && (u === -1 || dist[i] < dist[u])) u = i
+      if (dist[u] === Infinity) break
+      done[u] = true
+      for (let v = 0; v < n; v++) if (w[u][v] && dist[u] + w[u][v] < dist[v]) dist[v] = dist[u] + w[u][v]
+    }
+    const target = n - 1
+    if (!isFinite(dist[target])) continue
+    if (dist[target] === w[0][target]) continue          // прямая дорога — задача вырождается
+    const head = ["", ...letters]
+    const rows = w.map((row, i) => [letters[i], ...row.map((x) => (x ? String(x) : ""))])
+    return {
+      condition_text:
+        `Между населёнными пунктами ${letters.join(", ")} построены дороги, протяжённость которых приведена в таблице. ` +
+        "(Отсутствие числа в таблице означает, что прямой дороги между пунктами нет.)\n" +
+        tableBlock([head, ...rows]) + "\n" +
+        `Определите длину кратчайшего пути между пунктами ${letters[0]} и ${letters[target]} ` +
+        "(при условии, что передвигаться можно только по построенным дорогам).",
+      answer: String(dist[target]),
+    }
+  }
+  return null
+}
+
+
+// ── №17 «Обработка числовой последовательности» (с прилагаемым файлом) ──────
+// Эталон (44 задачи): в файле — последовательность целых чисел; надо посчитать
+// количество пар (соседних) или троек с условием на состав и на сумму/произведение
+// относительно ОПОРНОГО элемента всей последовательности (максимального или
+// минимального с заданным свойством), и вывести два числа: количество и
+// экстремальную сумму (произведение) среди найденных.
+// Файл генерируется вместе с задачей — ответ считается по нему же.
+
+const digitsCount = (v) => String(Math.abs(v)).length
+
+// Свойства опорного элемента последовательности.
+const T17_ANCHORS = [
+  { text: (d) => `максимального элемента последовательности, оканчивающегося на ${d}`,
+    param: () => randInt(1, 9), pick: "max", ok: (v, d) => Math.abs(v) % 10 === d },
+  { text: (d) => `минимального положительного элемента последовательности, кратного ${d}`,
+    param: () => pick([3, 7, 11, 13, 123]), pick: "min", ok: (v, d) => v > 0 && v % d === 0 },
+  { text: () => "максимального двузначного элемента последовательности",
+    param: () => 0, pick: "max", ok: (v) => digitsCount(v) === 2 },
+  { text: () => "минимального трёхзначного элемента последовательности",
+    param: () => 0, pick: "min", ok: (v) => digitsCount(v) === 3 },
+]
+
+// Условия на состав пары/тройки.
+const T17_SHAPES = [
+  { text: (k) => `только один из элементов является ${k === 2 ? "двузначным" : k === 3 ? "трёхзначным" : "четырёхзначным"} числом`,
+    param: () => pick([2, 3, 4]), ok: (arr, k) => arr.filter((v) => digitsCount(v) === k).length === 1 },
+  { text: (k) => `есть не менее одного ${k === 5 ? "пятизначного" : k === 4 ? "четырёхзначного" : "трёхзначного"} числа`,
+    param: () => pick([3, 4, 5]), ok: (arr, k) => arr.some((v) => digitsCount(v) === k) },
+  { text: () => "все числа одного знака",
+    param: () => 0, ok: (arr) => arr.every((v) => v > 0) || arr.every((v) => v < 0) },
+  { text: (k) => `ровно два ${k === 2 ? "двузначных" : "трёхзначных"} числа`,
+    param: () => pick([2, 3]), ok: (arr, k) => arr.filter((v) => digitsCount(v) === k).length === 2 },
+]
+
+export function t17Sequence() {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const N = 1000
+    const natural = Math.random() < 0.4
+    const seq = Array.from({ length: N }, () => natural ? randInt(1, 100000) : randInt(-100000, 100000))
+    const anchor = pick(T17_ANCHORS)
+    const aParam = anchor.param()
+    const cand = seq.filter((v) => anchor.ok(v, aParam))
+    if (!cand.length) continue
+    const anchorValue = anchor.pick === "max" ? Math.max(...cand) : Math.min(...cand)
+    const triple = Math.random() < 0.6
+    const size = triple ? 3 : 2
+    const shape = pick(T17_SHAPES)
+    const sParam = shape.param()
+    const cmp = pick([
+      { text: "меньше", f: (x, a) => x < a }, { text: "не больше", f: (x, a) => x <= a },
+      { text: "больше", f: (x, a) => x > a }, { text: "не меньше", f: (x, a) => x >= a },
+    ])
+    const groups = []
+    for (let i = 0; i + size <= N; i++) groups.push(seq.slice(i, i + size))
+    const hits = groups.filter((g) => shape.ok(g, sParam) && cmp.f(g.reduce((a, b) => a + b, 0), anchorValue))
+    if (hits.length < 3 || hits.length > 400) continue
+    const sums = hits.map((g) => g.reduce((a, b) => a + b, 0))
+    const askMax = cmp.text.includes("больше")
+    const extreme = askMax ? Math.max(...sums) : Math.min(...sums)
+    return {
+      condition_text:
+        `В файле содержится последовательность ${natural ? "натуральных" : "целых"} чисел. Её элементы могут принимать ` +
+        `целые значения ${natural ? "от 1 до 100 000" : "от −100 000 до 100 000"} включительно. ` +
+        `Определите количество ${triple ? "троек" : "пар"} элементов последовательности, в которых ${shape.text(sParam)}, ` +
+        `а сумма элементов ${triple ? "тройки" : "пары"} ${cmp.text} ${anchor.text(aParam)}. ` +
+        `В ответе запишите количество найденных ${triple ? "троек" : "пар"}, затем ${askMax ? "максимальную" : "минимальную"} из сумм таких ${triple ? "троек" : "пар"}. ` +
+        `В данной задаче под ${triple ? "тройкой подразумеваются три идущих подряд элемента" : "парой подразумеваются два идущих подряд элемента"} последовательности.`,
+      textFile: { name: "17.txt", content: seq.join("\n") },
+      answer: `${hits.length} ${extreme}`,
+    }
+  }
+  return null
+}
+
+// ── №24 «Обработка символьных строк» (с прилагаемым файлом) ────────────────
+// Эталон (50 задач): текстовый файл из десятичных цифр и заглавных латинских букв;
+// ищут максимальную (минимальную) по длине подстроку с ограничениями на состав.
+// Строка генерируется здесь же, ответ считается скользящим окном по ней.
+const T24_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+function t24Text(len, letterFreq = 0.25) {
+  let out = ""
+  for (let i = 0; i < len; i++) {
+    out += Math.random() < letterFreq
+      ? T24_LETTERS[randInt(0, 25)]
+      : String(randInt(0, 9))
+  }
+  return out
+}
+
+const T24_CLASSES = [
+  { text: "нечётных цифр", ok: (c) => /\d/.test(c) && Number(c) % 2 === 1 },
+  { text: "чётных цифр", ok: (c) => /\d/.test(c) && Number(c) % 2 === 0 },
+  { text: "любых цифр", ok: (c) => /\d/.test(c) },
+]
+
+// Максимальная подстрока, начинающаяся с буквы X, без других X, с ровно K символами класса.
+export function t24MaxRun() {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const text = t24Text(30000)
+    const letter = T24_LETTERS[randInt(0, 25)]
+    const cls = pick(T24_CLASSES)
+    const K = randInt(20, 60)
+    let best = 0
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] !== letter) continue
+      let cnt = 0
+      for (let j = i + 1; j < text.length; j++) {
+        if (text[j] === letter) break
+        if (cls.ok(text[j])) cnt++
+        if (cnt === K) best = Math.max(best, j - i + 1)
+        if (cnt > K) break
+      }
+    }
+    if (best < 10) continue
+    return {
+      condition_text:
+        "Текстовый файл состоит из десятичных цифр и заглавных букв латинского алфавита. " +
+        `Определите в прилагаемом файле последовательность из максимального количества идущих подряд символов, ` +
+        `среди которых ровно ${K} ${cls.text} и при этом начинающуюся с буквы ${letter}, не содержащую других букв ${letter}, кроме первой. ` +
+        "В ответе запишите число — количество символов в найденной последовательности.\n" +
+        "Для выполнения этого задания следует написать программу.",
+      textFile: { name: "24.txt", content: text },
+      answer: String(best),
+    }
+  }
+  return null
+}
+
+// Подстрока S встречается не менее K раз и ровно M букв Y: максимальная или
+// минимальная длина такого участка. Окна с «ровно M буквами» ограничены соседними
+// вхождениями буквы: между pos[i−1] и pos[i+M] — это даёт точный перебор без O(n²).
+export function t24Substring() {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const sub = String(randInt(2020, 2030))
+    // В случайном тексте четырёхзначная подстрока почти не встречается (≈1 раз на
+    // 20 000 символов), поэтому вставляем её явно — как и в файлах ФИПИ, где
+    // искомых вхождений заведомо много.
+    const base = t24Text(20000, 0.2).split("")
+    for (let k = 0; k < 400; k++) {
+      const p0 = randInt(0, base.length - sub.length - 1)
+      for (let j = 0; j < sub.length; j++) base[p0 + j] = sub[j]
+    }
+    const text = base.join("")
+    const letter = T24_LETTERS[randInt(0, 25)]
+    const askMin = Math.random() < 0.5
+    const n = text.length
+    const preSub = Array(n + 1).fill(0)
+    for (let i = 0; i < n; i++) preSub[i + 1] = preSub[i] + (text.startsWith(sub, i) ? 1 : 0)
+    // Вхождения подстроки целиком внутри [l, r] (r включительно).
+    const subIn = (l, r) => (r - l + 1 < sub.length ? 0 : preSub[r - sub.length + 2] - preSub[l])
+    const pos = []
+    for (let i = 0; i < n; i++) if (text[i] === letter) pos.push(i)
+    if (pos.length < 30 || preSub[n] < 30) continue
+    const M = randInt(3, Math.min(20, Math.floor(pos.length / 4)))
+    const K = randInt(2, 8)
+    let best = askMin ? Infinity : 0
+    for (let i = 0; i + M - 1 < pos.length; i++) {
+      const lMin = i === 0 ? 0 : pos[i - 1] + 1
+      const rMax = i + M < pos.length ? pos[i + M] - 1 : n - 1
+      const lMax = pos[i], rMin = pos[i + M - 1]
+      if (askMin) {
+        // Минимальная длина: для каждой левой границы ищем ближайшую правую,
+        // при которой вхождений уже K (границы обязаны накрыть M букв).
+        for (let l = lMin; l <= lMax; l++) {
+          let lo = Math.max(rMin, l), hi = rMax, found = -1
+          while (lo <= hi) {
+            const mid = (lo + hi) >> 1
+            if (subIn(l, mid) >= K) { found = mid; hi = mid - 1 } else lo = mid + 1
+          }
+          if (found >= 0) best = Math.min(best, found - l + 1)
+        }
+      } else if (subIn(lMin, rMax) >= K) {
+        best = Math.max(best, rMax - lMin + 1)
+      }
+    }
+    if (!isFinite(best) || best === 0) continue
+    return {
+      condition_text:
+        "Текстовый файл состоит из десятичных цифр и заглавных букв латинского алфавита. " +
+        `Определите в прилагаемом файле ${askMin ? "минимальное" : "максимальное"} количество идущих подряд символов, ` +
+        `среди которых подстрока ${sub} встречается не менее ${K} раз и при этом содержится ровно ${M} букв ${letter}. ` +
+        "В ответе запишите число — количество символов.\n" +
+        "Для выполнения этого задания следует написать программу.",
+      textFile: { name: "24.txt", content: text },
+      answer: String(best),
+    }
+  }
+  return null
+}
+
+
+// ── №22 «Многопроцессорные системы» (с прилагаемой таблицей) ────────────────
+// Эталон (40 задач): в файле таблица процессов «ID | время | от кого зависит».
+// Спрашивают минимальное время выполнения всей совокупности (критический путь)
+// или сколько процессов успеет завершиться за первые T мс. Таблица генерируется
+// вместе с задачей, ответ считается по ней же (топологический порядок + DP).
+export function t22Processes() {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const N = randInt(25, 60)
+    const dur = [], deps = []
+    for (let i = 0; i < N; i++) {
+      dur.push(randInt(1, 12))
+      // Зависимости — только от процессов с меньшим ID: граф гарантированно без циклов.
+      const maxDeps = Math.min(i, 3)
+      const cnt = i === 0 ? 0 : randInt(0, maxDeps)
+      deps.push(shuffle([...Array(i).keys()]).slice(0, cnt).sort((a, b) => a - b))
+    }
+    // Время завершения процесса: max(время завершения зависимостей) + своя длительность.
+    const finish = []
+    for (let i = 0; i < N; i++) {
+      const start = deps[i].length ? Math.max(...deps[i].map((d) => finish[d])) : 0
+      finish.push(start + dur[i])
+    }
+    const total = Math.max(...finish)
+    const askCount = Math.random() < 0.5
+    const T = randInt(Math.floor(total / 3), Math.floor(total * 0.7))
+    const done = finish.filter((f) => f <= T).length
+    if (total < 20 || (askCount && (done < 5 || done > N - 5))) continue
+    const rows = [["ID", "Время выполнения", "ID процессов, от которых зависит данный процесс"]]
+    for (let i = 0; i < N; i++) {
+      rows.push([i + 1, dur[i], deps[i].length ? deps[i].map((d) => d + 1).join(";") : 0])
+    }
+    return {
+      condition_text:
+        "В файле содержится информация о совокупности N вычислительных процессов, которые могут выполняться параллельно " +
+        "или последовательно. Приостановка выполнения процесса не допускается. Будем говорить, что процесс B зависит от " +
+        "процесса A, если для выполнения процесса B необходимы результаты выполнения процесса A. В этом случае процессы A и B " +
+        "могут выполняться только последовательно.\n" +
+        "Информация о процессах представлена в файле в виде таблицы. В первом столбце таблицы указан идентификатор процесса (ID), " +
+        "во втором столбце — время его выполнения в миллисекундах, в третьем столбце перечислены с разделителем «;» ID процессов, " +
+        "от которых зависит данный процесс. Если процесс независимый, то в таблице указано значение 0.\n" +
+        (askCount
+          ? `Определите максимальное количество процессов, которые могут быть завершены за первые ${T} мс. ` +
+            "Считать, что каждый процесс начинается в самое раннее допустимое время. Нумерация миллисекунд начинается с 1."
+          : "Определите минимальное время, через которое завершится выполнение всей совокупности процессов, при условии, " +
+            "что все независимые друг от друга процессы могут выполняться параллельно.") +
+        "\nДля выполнения задания используйте данные из прилагаемого файла.",
+      spreadsheet: { name: "22.xlsx", sheetName: "Процессы", rows },
+      answer: String(askCount ? done : total),
+    }
+  }
+  return null
+}
+
+// ── №26 «Обработка целочисленной информации» (с прилагаемым файлом) ────────
+// Эталон (47 задач): во входном файле — параметры и список чисел; классика —
+// «грузоподъёмность судна S и массы N контейнеров: сколько контейнеров можно
+// увезти за рейс и какова масса самого тяжёлого среди увезённых» (жадный отбор
+// от лёгких к тяжёлым). Ответ — два числа.
+export function t26Containers() {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const N = randInt(200, 600)
+    const weights = Array.from({ length: N }, () => randInt(50, 3000))
+    const total = weights.reduce((a, b) => a + b, 0)
+    const S = Math.floor(total * (0.3 + Math.random() * 0.3))     // заведомо меньше суммы
+    const sorted = [...weights].sort((a, b) => a - b)
+    let sum = 0, cnt = 0, heaviest = 0
+    for (const w of sorted) {
+      if (sum + w > S) break
+      sum += w; cnt++; heaviest = w
+    }
+    if (cnt < 5 || cnt >= N) continue
+    const content = `${S} ${N}\n` + weights.join("\n")
+    return {
+      condition_text:
+        "На грузовом судне необходимо перевезти контейнеры, имеющие одинаковый габарит и разные массы. " +
+        "Общая масса всех контейнеров превышает грузоподъёмность судна. Количество грузовых мест на судне не меньше " +
+        "количества контейнеров, назначенных к перевозке.\n" +
+        "Какое максимальное количество контейнеров можно перевезти за один рейс и какова масса самого тяжёлого контейнера " +
+        "среди всех контейнеров, которые можно перевезти за один рейс?\n" +
+        "Входные данные. В первой строке входного файла находятся два числа: S — грузоподъёмность судна и N — количество контейнеров. " +
+        "В следующих N строках находятся значения масс контейнеров (все числа натуральные).\n" +
+        "В ответе запишите два числа: сначала максимальное количество контейнеров, затем массу самого тяжёлого из перевозимых контейнеров.",
+      textFile: { name: "26.txt", content },
+      answer: `${cnt} ${heaviest}`,
+    }
+  }
+  return null
+}
+
+// ── №27 «Программирование»: пара элементов с максимальной суммой ────────────
+// Эталон (74 задачи): последовательность из N чисел; среди пар, удовлетворяющих
+// условию (разные остатки по модулю d / чётная разность / делимость на p), найти
+// максимальную сумму. Ответ — сама сумма (её и проверяют).
+export function t27MaxPair() {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const N = randInt(300, 900)
+    const nums = Array.from({ length: N }, () => randInt(1, 10000))
+    const p = pick([7, 11, 13, 17, 21])
+    const kind = Math.random() < 0.5
+    const d = pick([100, 200, 250])
+    let best = 0
+    for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {
+      const a = nums[i], b = nums[j]
+      const cond = kind
+        ? (a % d !== b % d) && (a % p === 0 || b % p === 0)
+        : ((a - b) % 2 === 0) && (a % p === 0 || b % p === 0)
+      if (cond) best = Math.max(best, a + b)
+    }
+    if (!best) continue
+    const content = `${N}\n` + nums.join("\n")
+    return {
+      condition_text:
+        (Math.random() < 0.5
+          ? "На вход программы поступает последовательность из N целых положительных чисел, все числа в последовательности различны. Рассматриваются все пары различных элементов последовательности, "
+          : "Дана последовательность N целых положительных чисел. Рассматриваются все пары элементов последовательности, ") +
+        (kind
+          ? `удовлетворяющие следующим условиям: числа в паре имеют различные остатки от деления на d = ${d}, и, по крайней мере, одно из чисел пары делится на p = ${p}. `
+          : `разность которых чётна и, по крайней мере, один из элементов делится на p = ${p}. `) +
+        "Порядок элементов в паре неважен. Среди всех таких пар нужно найти пару с максимальной суммой элементов.\n" +
+        "Описание входных данных: в первой строке задаётся количество чисел N, в каждой из последующих N строк записано одно натуральное число.\n" +
+        "В ответе запишите максимальную сумму элементов такой пары.",
+      textFile: { name: "27.txt", content },
+      answer: String(best),
+    }
+  }
+  return null
+}
+
+
+// ── №18 «Робот-сборщик монет» (с прилагаемой таблицей) ─────────────────────
+// Эталон (61 задача): квадрат N × N, в клетках плата за посещение; Робот идёт
+// из левой верхней клетки в правую нижнюю только вправо и вниз. Спрашивают
+// минимальную и максимальную суммы (иногда — одну из них). Считается динамикой
+// по той же таблице, что приложена к заданию.
+export function t18Robot() {
+  const N = randInt(12, 20)
+  const grid = Array.from({ length: N }, () => Array.from({ length: N }, () => randInt(1, 100)))
+  const dp = (better) => {
+    const d = Array.from({ length: N }, () => Array(N).fill(0))
+    for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+      const prev = i === 0 && j === 0 ? 0
+        : i === 0 ? d[i][j - 1]
+          : j === 0 ? d[i - 1][j]
+            : better(d[i - 1][j], d[i][j - 1])
+      d[i][j] = prev + grid[i][j]
+    }
+    return d[N - 1][N - 1]
+  }
+  const min = dp(Math.min), max = dp(Math.max)
+  return {
+    condition_text:
+      `Квадрат разлинован на N × N клеток (1 < N < 26). Исполнитель Робот может перемещаться по клеткам, выполняя за одно ` +
+      "перемещение одну из двух команд: вправо или вниз. По команде вправо Робот перемещается в соседнюю правую клетку; " +
+      "по команде вниз — в соседнюю нижнюю. При попытке выхода за границу квадрата Робот разрушается. " +
+      "Перед каждым запуском Робота в каждой клетке квадрата указана плата за посещение в размере от 1 до 100. " +
+      "Посетив клетку, Робот платит за её посещение; это также относится к начальной и конечной клеткам маршрута Робота.\n" +
+      "Определите минимальную и максимальную денежные суммы, которые заплатит Робот, пройдя из левой верхней клетки " +
+      "в правую нижнюю. В ответе укажите два числа — сначала минимальную сумму, затем максимальную.\n" +
+      "Исходные данные представлены в прилагаемом файле в виде электронной таблицы размером N × N, каждая ячейка которой " +
+      "соответствует клетке квадрата.",
+    spreadsheet: { name: "18.xlsx", sheetName: "Робот", rows: grid },
+    answer: `${min} ${max}`,
+  }
+}
+
+// ── №09 «Работа с таблицами» (с прилагаемой таблицей) ──────────────────────
+// Эталон (62 задачи): электронная таблица с измерениями; спрашивают разность
+// между экстремумом по диапазону и средним по нему, количество строк с условием
+// и т. п. Таблица генерируется здесь же — ответ считается по ней.
+// [название в таблице, дней, предложный падеж] — «в апреле», «в мае», «в июне».
+const T9_MONTHS = [["апрель", 30, "апреле"], ["май", 31, "мае"], ["июнь", 30, "июне"],
+  ["июль", 31, "июле"], ["август", 31, "августе"], ["сентябрь", 30, "сентябре"]]
+
+export function t9Temperature() {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const startIdx = randInt(0, T9_MONTHS.length - 3)
+    const months = T9_MONTHS.slice(startIdx, startIdx + 3)
+    const rows = [["Месяц", "День", "Час", "Температура"]]
+    const data = []
+    months.forEach(([name, days], mi) => {
+      for (let d = 1; d <= days; d++) {
+        for (let h = 0; h < 24; h++) {
+          const base = 12 + mi * 4 + 8 * Math.sin((h - 4) * Math.PI / 12)
+          const t = Math.round((base + (Math.random() * 6 - 3)) * 10) / 10
+          data.push({ m: name, mi, d, h, t })
+          rows.push([name, d, h, t])
+        }
+      }
+    })
+    const h1 = randInt(6, 12), h2 = h1 + randInt(2, 5)
+    const twoMonths = [months[0][0], months[1][0]]
+    const twoIn = [months[0][2], months[1][2]]
+    const sel = data.filter((r) => twoMonths.includes(r.m) && r.h >= h1 && r.h <= h2)
+    if (sel.length < 50) continue
+    const mx = Math.max(...sel.map((r) => r.t))
+    const avg = sel.reduce((a, r) => a + r.t, 0) / sel.length
+    const answer = Math.floor(mx - avg)
+    return {
+      condition_text:
+        "Откройте файл электронной таблицы, содержащей вещественные числа — результаты ежечасного измерения температуры " +
+        "воздуха в течение трёх месяцев. Найдите разность между максимальной температурой воздуха " +
+        `в ${twoIn[0]} и ${twoIn[1]} с ${h1}:00 до ${h2}:00 включительно и средним значением температуры воздуха ` +
+        "в эти часы за те же два месяца.\n" +
+        "В ответе запишите только целую часть получившегося числа.",
+      spreadsheet: { name: "9.xlsx", sheetName: "Температура", rows },
+      answer: String(answer),
+    }
+  }
+  return null
+}
+
+
+// ── №03 «Поиск информации в реляционных базах данных» ──────────────────────
+// Эталон (83 задачи): книга из трёх связанных таблиц («Движение товаров», «Товар»,
+// «Магазин»); вопрос — агрегат по связям (общий вес товара, полученного магазинами
+// района за период). Книга генерируется здесь же, ответ считается по ней.
+// Плюс старый типаж — условие отбора при фильтрации (выбор из четырёх).
+const T3_DISTRICTS = ["Промышленный", "Заводской", "Центральный", "Северный", "Южный", "Ленинский"]
+const T3_SHOPS = ["Радуга", "Огонёк", "Смак", "Улыбка", "Ветерок", "Лакомка", "Медведь", "Ромашка", "Заря", "Колосок"]
+const T3_SWEETS = ["Суфле в шоколаде", "Ассорти", "Грильяж", "Птичье молоко", "Трюфель", "Мишка косолапый"]
+const T3_COOKIES = ["Овсяное", "Земляничное", "Юбилейное", "Сахарное", "Топлёное молоко", "Ореховое"]
+
+export function t3Database() {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const shops = shuffle(T3_SHOPS).slice(0, 8).map((name, i) => ({
+      id: i + 1, name, district: pick(T3_DISTRICTS),
+    }))
+    const goods = [
+      ...shuffle(T3_SWEETS).slice(0, 4).map((n) => ({ name: n, type: "конфеты" })),
+      ...shuffle(T3_COOKIES).slice(0, 4).map((n) => ({ name: n, type: "печенье" })),
+    ].map((g, i) => ({ id: i + 1, ...g, weight: pick([0.2, 0.25, 0.3, 0.4, 0.5, 1]) }))
+    const days = 15
+    const moves = []
+    for (let d = 1; d <= days; d++) {
+      for (let k = 0; k < 12; k++) {
+        moves.push({
+          id: moves.length + 1,
+          date: `${String(d).padStart(2, "0")}.06.2025`,
+          day: d,
+          shop: pick(shops).id,
+          good: pick(goods).id,
+          op: Math.random() < 0.55 ? "Поступление" : "Продажа",
+          qty: randInt(1, 40),
+        })
+      }
+    }
+    const district = pick(T3_DISTRICTS)
+    const good = pick(goods)
+    const d1 = randInt(1, 5), d2 = randInt(10, days)
+    const shopIds = shops.filter((sh) => sh.district === district).map((sh) => sh.id)
+    if (!shopIds.length) continue
+    const packs = moves
+      .filter((m) => m.op === "Поступление" && m.good === good.id && shopIds.includes(m.shop) && m.day >= d1 && m.day <= d2)
+      .reduce((a, m) => a + m.qty, 0)
+    const kg = Math.round(packs * good.weight * 100) / 100
+    if (packs < 10) continue
+    const sheets = [
+      { name: "Движение товаров", rows: [["ID", "Дата", "ID магазина", "ID товара", "Тип операции", "Количество упаковок, шт."],
+        ...moves.map((m) => [m.id, m.date, m.shop, m.good, m.op, m.qty])] },
+      { name: "Товар", rows: [["ID товара", "Наименование товара", "Тип товара", "Вес упаковки, кг"],
+        ...goods.map((g) => [g.id, g.name, g.type, g.weight])] },
+      { name: "Магазин", rows: [["ID магазина", "Название", "Район"],
+        ...shops.map((sh) => [sh.id, sh.name, sh.district])] },
+    ]
+    return {
+      condition_text:
+        "В файле приведён фрагмент базы данных «Кондитерские изделия» о поставках конфет и печенья в магазины районов города. " +
+        "База данных состоит из трёх таблиц.\n" +
+        "Таблица «Движение товаров» содержит записи о поставках товаров в магазины в течение первой половины июня 2025 г., " +
+        "а также информацию о проданных товарах. Поле «Тип операции» содержит значение Поступление или Продажа, " +
+        "а в поле «Количество упаковок, шт.» внесена информация о том, сколько упаковок товара поступило в магазин " +
+        "или было продано в течение дня.\n" +
+        "Таблица «Товар» содержит информацию об основных характеристиках каждого товара, таблица «Магазин» — сведения о магазинах и районах.\n" +
+        `Используя информацию из приведённой базы данных, определите общий вес (в кг) товара «${good.name}», полученного ` +
+        `магазинами ${district.replace(/ый$/, "ого").replace(/ий$/, "его")} района за период с ${d1} по ${d2} июня включительно. ` +
+        "В ответе запишите только число.",
+      spreadsheet: { name: "3.xlsx", sheets },
+      // Дробный ответ на КЕГЭ записывается через запятую.
+      answer: String(kg).replace(".", ","),
+    }
+  }
+  return null
+}
+
+// Старый типаж №3: как записать условие отбора при фильтрации.
+export function t3Filter() {
+  const fields = [["Фамилия", "текст"], ["Имя", "текст"], ["Пол", "текст", "м или д"],
+    ["Год рождения", "число"], ["Рост", "число"], ["Вес", "число"], ["Увлечение", "текст"]]
+  const height = pick([170, 175, 180, 185])
+  const year = pick([2007, 2008, 2009, 2010])
+  const girls = Math.random() < 0.5
+  const sex = girls ? "д" : "м"
+  const right = `Пол="${sex}" И Рост > ${height} И Год рождения < ${year}`
+  const wrong = [
+    `Пол="${sex}" ИЛИ Рост > ${height} И Год рождения = ${year - 1}`,
+    `Пол="${sex}" И Рост > ${height} ИЛИ Год рождения < ${year - 1}`,
+    `Пол="${sex}" И Рост = ${height} И Год рождения < ${year - 1}`,
+  ]
+  const options = shuffle([right, ...wrong])
+  return {
+    condition_text:
+      "База данных «Учащиеся» содержит поля:\n" +
+      tableBlock([["Поле", "Тип", "Примечание"], ...fields.map((f) => [f[0], f[1], f[2] || ""])]) + "\n" +
+      `Как следует записать условие отбора при фильтрации, которое позволит сформировать список ${girls ? "девушек" : "юношей"} ` +
+      `для участия в спортивном празднике? (Отбираются ${girls ? "девушки" : "юноши"}, имеющие рост более ${height} см ` +
+      `и родившиеся раньше ${year} года.)\n` +
+      tableBlock([["№", "Условие"], ...options.map((o, i) => [`${i + 1})`, o])]) + "\n" +
+      "В ответе укажите номер варианта.",
+    answer: String(options.indexOf(right) + 1),
+  }
+}
+
+// ── №10 «Поиск символов в текстовом редакторе» ─────────────────────────────
+// Эталон (68 задач): к заданию приложен текст, в котором надо посчитать вхождения
+// слова в заданной форме. Текст здесь собственный (собирается из фраз), поэтому
+// правильный ответ известен точно, а искать его ученик всё равно должен поиском
+// по документу — как в оригинале.
+const T10_FRAGMENTS = [
+  "Дорога шла через поле, и путник считал каждый час пути.",
+  "Прошло около часа, прежде чем показалась деревня.",
+  "В полдень часы на башне пробили двенадцать раз.",
+  "Он ждал целый час, но никто так и не пришёл.",
+  "Через два часа обоз тронулся дальше на север.",
+  "Работа заняла час с четвертью, не больше.",
+  "Мастер починил старинные часы за один вечер.",
+  "К вечеру ветер стих, и наступил тихий час покоя.",
+  "Ещё часа три пути — и покажется река.",
+  "Часовой сменился ровно в полночь.",
+  "Путешественники отдыхали в тени старого дуба.",
+  "Дождь начался внезапно и лил до самого утра.",
+  "На ярмарке торговали хлебом, солью и полотном.",
+  "Мальчик бежал по тропинке, размахивая корзиной.",
+  "Лес стоял тихий, только изредка перекликались птицы.",
+]
+
+export function t10WordCount() {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const lines = []
+    for (let i = 0; i < 300; i++) lines.push(pick(T10_FRAGMENTS))
+    const text = lines.join(" ")
+    const forms = pick([["час", "часа"], ["часы", "часов"], ["час"]])
+    // Считаем вхождения ТОЛЬКО заданных форм с маленькой буквы, по границам слова.
+    const count = forms.reduce((acc, form) => {
+      const re = new RegExp(`(^|[^А-Яа-яЁё])${form}([^А-Яа-яЁё]|$)`, "g")
+      let n = 0, m
+      while ((m = re.exec(text)) !== null) { n++; re.lastIndex = m.index + 1 }
+      return acc + n
+    }, 0)
+    if (count < 20) continue
+    const list = forms.map((f) => `«${f}»`).join(" или ")
+    return {
+      condition_text:
+        "Текст рассказа представлен в прилагаемом файле. Откройте файл и определите, сколько раз встречается " +
+        `в тексте слово ${list} (со строчной буквы). Другие формы слова, такие как «часов», «часик» и т. д., ` +
+        "учитывать не следует (если они не указаны в задании). В ответе укажите только число.",
+      textFile: { name: "10.txt", content: lines.join("\n") },
+      answer: String(count),
+    }
+  }
+  return null
+}
+
+
+// Старый типаж №3: фрагмент базы данных таблицей — сколько записей удовлетворяют
+// условию вида «Пол='м' ИЛИ Химия>Биология».
+const T3_SURNAMES = ["Аганян", "Воронин", "Григорчук", "Роднина", "Сергеенко", "Черепанова",
+  "Титов", "Мельник", "Ерохин", "Кузьмина", "Панов", "Савельева"]
+const T3_SUBJECTS = ["Математика", "Русский язык", "Химия", "Информатика", "Биология"]
+
+export function t3Records() {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const n = randInt(5, 7)
+    const rows = shuffle(T3_SURNAMES).slice(0, n).map((fam) => ({
+      fam, sex: pick(["м", "ж"]),
+      marks: Object.fromEntries(T3_SUBJECTS.map((sub) => [sub, randInt(20, 95)])),
+    }))
+    const [s1, s2] = shuffle(T3_SUBJECTS).slice(0, 2)
+    const sex = pick(["м", "ж"])
+    const or = Math.random() < 0.5
+    const test = (r) => or
+      ? (r.sex === sex || r.marks[s1] > r.marks[s2])
+      : (r.sex === sex && r.marks[s1] > r.marks[s2])
+    const count = rows.filter(test).length
+    if (count === 0 || count === n) continue
+    const options = shuffle([...new Set([count, count + 1, Math.max(0, count - 1), Math.min(n, count + 2)])]).slice(0, 4)
+    if (!options.includes(count)) options[0] = count
+    return {
+      condition_text:
+        "Ниже в табличной форме представлен фрагмент базы данных о результатах тестирования учащихся " +
+        "(используется стобалльная шкала):\n" +
+        tableBlock([["Фамилия", "Пол", ...T3_SUBJECTS],
+          ...rows.map((r) => [r.fam, r.sex, ...T3_SUBJECTS.map((sub) => String(r.marks[sub]))])]) + "\n" +
+        `Сколько записей в данном фрагменте удовлетворяют условию «Пол = '${sex}' ${or ? "ИЛИ" : "И"} ${s1} > ${s2}»?\n` +
+        tableBlock([["№", "Вариант"], ...options.map((o, i) => [`${i + 1})`, String(o)])]) + "\n" +
+        "В ответе укажите номер варианта.",
+      answer: String(options.indexOf(count) + 1),
+    }
+  }
+  return null
+}
+
+// Старый типаж №3: две связанные таблицы (жители и родство) — у скольких детей
+// на момент рождения родителю было меньше N лет.
+const T3_PEOPLE = ["Петрова Н.А.", "Иваненко И.М.", "Соколов П.Р.", "Кузьмина А.В.", "Лебедев О.С.",
+  "Морозова Т.Н.", "Волков Д.А.", "Зайцева Е.П.", "Орлов К.М.", "Белова Л.И.", "Гусев Н.Н.", "Ткачук В.С."]
+
+export function t3TwoTables() {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const n = randInt(9, 12)
+    const people = shuffle(T3_PEOPLE).slice(0, n).map((name, i) => ({
+      id: 10 + i * randInt(2, 5),
+      name,
+      sex: name.endsWith("а Н.А.") || /ова |ева |ина |ая /.test(name) ? "Ж" : pick(["М", "Ж"]),
+      year: randInt(1935, 1975),
+    }))
+    // Родство: ребёнок моложе родителя минимум на 16 лет.
+    const links = []
+    for (const child of people) {
+      for (const parent of people) {
+        if (parent === child) continue
+        if (child.year - parent.year >= 16 && child.year - parent.year <= 45 && Math.random() < 0.25) {
+          links.push({ parent: parent.id, child: child.id })
+        }
+      }
+    }
+    if (links.length < 6) continue
+    const limit = pick([21, 22, 23, 24, 25])
+    const sex = pick(["М", "Ж"])
+    const byId = Object.fromEntries(people.map((p) => [p.id, p]))
+    const hits = new Set()
+    for (const l of links) {
+      const p = byId[l.parent], c = byId[l.child]
+      if (p.sex === sex && c.year - p.year < limit) hits.add(c.id)
+    }
+    if (hits.size < 1 || hits.size > 5) continue
+    return {
+      condition_text:
+        "Ниже представлены два фрагмента таблиц из базы данных о жителях микрорайона. " +
+        "Каждая строка таблицы 2 содержит информацию о ребёнке и об одном из его родителей. " +
+        "Информация представлена значением поля ID в соответствующей строке таблицы 1.\n" +
+        "Таблица 1:\n" +
+        tableBlock([["ID", "Фамилия И.О.", "Пол", "Год рождения"],
+          ...people.map((p) => [String(p.id), p.name, p.sex, String(p.year)])]) + "\n" +
+        "Таблица 2:\n" +
+        tableBlock([["ID родителя", "ID ребёнка"], ...links.map((l) => [String(l.parent), String(l.child)])]) + "\n" +
+        `Определите на основании приведённых данных, у скольких детей на момент их рождения ` +
+        `${sex === "М" ? "отцам" : "матерям"} было меньше ${limit} полных лет. ` +
+        "При вычислении ответа учитывайте только информацию из приведённых фрагментов таблиц.",
+      answer: String(hits.size),
+    }
+  }
+  return null
+}
+
+// №17 без файла: множество чисел из отрезка с условиями делимости.
+export function t17Range() {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const lo = randInt(10000, 20000), hi = randInt(40000, 60000)
+    const m = pick([7, 11, 13, 17, 19]), r = randInt(1, m - 1)
+    const [d1, d2] = shuffle([3, 4, 5, 6, 8, 9, 12]).slice(0, 2)
+    const found = []
+    for (let v = lo; v <= hi; v++) if (v % m === r && v % d1 !== 0 && v % d2 !== 0) found.push(v)
+    if (found.length < 50) continue
+    const askMin = Math.random() < 0.5
+    return {
+      condition_text:
+        `Рассматривается множество целых чисел, принадлежащих числовому отрезку [${lo.toLocaleString("ru-RU").replace(/\s/g, "\u00A0")}; ` +
+        `${hi.toLocaleString("ru-RU").replace(/\s/g, "\u00A0")}], остаток от деления которых на ${m} равен ${r}, ` +
+        `и при этом они не делятся ни на ${d1}, ни на ${d2}. ` +
+        `Найдите количество таких чисел и ${askMin ? "минимальное" : "максимальное"} из них. ` +
+        `В ответе запишите два целых числа: сначала количество, затем ${askMin ? "минимальное" : "максимальное"} число.`,
+      answer: `${found.length} ${askMin ? found[0] : found[found.length - 1]}`,
+    }
+  }
+  return null
+}
+
+// №10 (старый типаж): куда переместили файл — восстановить прежнее полное имя каталога.
+export function t10FilePath() {
+  const disk = pick(["A:\\", "C:\\", "D:\\"])
+  const parts = shuffle(["SCHOOL", "USER", "TXT", "MAY", "DOC", "WORK", "DATA"]).slice(0, 4)
+  const file = pick(["Дневник.txt", "Отчёт.doc", "Список.txt", "Задание.txt"])
+  const full = disk + parts.join("\\") + "\\" + file
+  const right = disk + parts.slice(0, -1).join("\\")
+  const options = shuffle([right, parts[parts.length - 1], parts[0], full.slice(0, full.lastIndexOf("\\"))]
+    .filter((v, i, a) => a.indexOf(v) === i)).slice(0, 4)
+  if (!options.includes(right)) options[0] = right
+  return {
+    condition_text:
+      `В некотором каталоге хранился файл ${file}. После того как в этом каталоге создали подкаталог и переместили ` +
+      `в созданный подкаталог файл ${file}, полное имя файла стало ${full}. ` +
+      "Каково полное имя каталога, в котором хранился файл до перемещения?\n" +
+      tableBlock([["№", "Вариант"], ...options.map((o, i) => [`${i + 1})`, o])]) + "\n" +
+      "В ответе укажите номер варианта.",
+    answer: String(options.indexOf(right) + 1),
+  }
+}
+
+// №26 (старый типаж): лучшие по среднему баллу ученики.
+const T26_SURNAMES = ["Иванов", "Петров", "Сидорова", "Кузнецов", "Смирнова", "Попов", "Волкова",
+  "Соколов", "Лебедева", "Козлов", "Новиков", "Морозова", "Егоров", "Павлова", "Семёнов"]
+
+export function t26Students() {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const N = randInt(20, 60)
+    // Женская фамилия (…ова/…ева/…ина) требует женского имени — иначе получается
+    // «Волкова Пётр», чего в реальных данных не бывает.
+    const female = ["Мария", "Анна", "Дарья", "Нина", "Елена"]
+    const male = ["Пётр", "Иван", "Олег", "Сергей", "Артём"]
+    const students = Array.from({ length: N }, () => {
+      const fam = pick(T26_SURNAMES)
+      const isF = /(ова|ева|ина)$/.test(fam)
+      return { fam, name: pick(isF ? female : male), marks: [randInt(2, 5), randInt(2, 5), randInt(2, 5)] }
+    })
+    students.forEach((st) => { st.avg = st.marks.reduce((a, b) => a + b, 0) / 3 })
+    const sorted = [...students].sort((a, b) => b.avg - a.avg || (a.fam + a.name).localeCompare(b.fam + b.name))
+    const best = sorted.slice(0, 3)
+    // Ответ проверяем по среднему баллу третьего места: если он совпадает с четвёртым,
+    // тройка не определена однозначно — такую выборку отбрасываем.
+    if (sorted.length > 3 && Math.abs(sorted[2].avg - sorted[3].avg) < 1e-9) continue
+    const content = `${N}\n` + students.map((st) => `${st.fam} ${st.name} ${st.marks.join(" ")}`).join("\n")
+    return {
+      condition_text:
+        "На вход программе подаются сведения о сдаче экзаменов учениками 9-х классов некоторой средней школы. " +
+        "В первой строке сообщается количество учеников N, каждая из следующих N строк имеет формат: " +
+        "«Фамилия Имя оценки», где оценки — через пробел три целых числа по пятибалльной системе.\n" +
+        "Пример входной строки: Иванов Пётр 4 5 4\n" +
+        "Определите фамилии и имена трёх лучших по среднему баллу учеников. " +
+        "В ответе запишите фамилии и имена трёх лучших учеников (в порядке убывания среднего балла), " +
+        "разделяя записи точкой с запятой.",
+      textFile: { name: "26.txt", content },
+      answer: best.map((st) => `${st.fam} ${st.name}`).join("; "),
+    }
+  }
+  return null
+}
+
+
+// №27 (старый типаж): контрольное значение — наибольшее произведение двух чисел,
+// переданных в разные минуты, делящееся на заданное число.
+export function t27Control() {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const N = randInt(400, 1000)
+    const nums = Array.from({ length: N }, () => randInt(1, 1000))
+    const div = pick([14, 21, 26, 33, 39, 55])
+    let best = 0
+    for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {
+      const prod = nums[i] * nums[j]
+      if (prod % div === 0 && prod > best) best = prod
+    }
+    if (!best) continue
+    return {
+      condition_text:
+        "На спутнике «Восход» установлен прибор, предназначенный для измерения солнечной активности. " +
+        "В течение времени эксперимента прибор каждую минуту передаёт в обсерваторию по каналу связи положительное целое число, " +
+        "не превышающее 1000, — количество энергии солнечного излучения, полученной за последнюю минуту.\n" +
+        "После окончания эксперимента передаётся контрольное значение — наибольшее число R, удовлетворяющее следующим условиям:\n" +
+        "1) R — произведение двух чисел, переданных в разные минуты;\n" +
+        `2) R делится на ${div}.\n` +
+        "Определите по прилагаемому файлу контрольное значение R. В первой строке файла записано количество чисел N, " +
+        "в каждой из следующих N строк — одно число.",
+      textFile: { name: "27.txt", content: `${N}\n${nums.join("\n")}` },
+      answer: String(best),
+    }
+  }
+  return null
+}
+
+// №27 (старый типаж): из каждой тройки выбрать одно число так, чтобы сумма не
+// делилась на k и была максимальной. Решается жадно + минимальная «уступка».
+export function t27Triples() {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const N = randInt(300, 800)
+    const k = pick([3, 5, 7, 109, 11])
+    const triples = Array.from({ length: N }, () => [randInt(1, 12000), randInt(1, 12000), randInt(1, 12000)])
+    const maxSum = triples.reduce((a, t) => a + Math.max(...t), 0)
+    let answer = null
+    if (maxSum % k !== 0) answer = maxSum
+    else {
+      // Сумма делится на k — надо уступить минимально: в одной тройке взять не максимум.
+      let bestLoss = Infinity
+      for (const t of triples) {
+        const mx = Math.max(...t)
+        for (const v of t) {
+          const loss = mx - v
+          if (loss > 0 && (maxSum - loss) % k !== 0) bestLoss = Math.min(bestLoss, loss)
+        }
+      }
+      if (isFinite(bestLoss)) answer = maxSum - bestLoss
+    }
+    if (answer === null) continue
+    const content = `${N}\n` + triples.map((t) => t.join(" ")).join("\n")
+    return {
+      condition_text:
+        "Имеется набор данных, состоящий из троек положительных целых чисел. Необходимо выбрать из каждой тройки ровно одно число так, " +
+        `чтобы сумма всех выбранных чисел не делилась на k = ${k} и при этом была максимально возможной. ` +
+        "Гарантируется, что искомую сумму получить можно.\n" +
+        "Входные данные: в первой строке файла записано количество троек N, каждая из следующих N строк содержит три натуральных числа.\n" +
+        "В ответе укажите максимально возможную сумму, соответствующую условиям задачи.",
+      textFile: { name: "27.txt", content },
+      answer: String(answer),
+    }
+  }
+  return null
+}
+
+// №24 (старый типаж): буквы в порядке убывания частоты, при равенстве — по алфавиту.
+export function t24Frequency() {
+  const len = randInt(2000, 6000)
+  let text = ""
+  for (let i = 0; i < len; i++) text += String.fromCharCode(97 + randInt(0, 12))
+  const freq = {}
+  for (const c of text) freq[c] = (freq[c] || 0) + 1
+  const order = Object.keys(freq).sort((a, b) => freq[b] - freq[a] || a.localeCompare(b))
+  return {
+    condition_text:
+      "На вход программе подаются строчные английские буквы. Ввод этих символов заканчивается точкой " +
+      "(другие символы, отличные от «.» и букв «a».. «z», во входных данных отсутствуют). " +
+      "Требуется написать эффективную программу, которая напечатает буквы, встречающиеся во входной последовательности, " +
+      "в порядке уменьшения частоты их встречаемости. Каждая буква должна быть напечатана один раз, точка не учитывается. " +
+      "Если какие-то буквы встречаются одинаковое число раз, они выводятся в алфавитном порядке.\n" +
+      "Например, если на вход подаются символы batat., программа должна вывести atb.\n" +
+      "В ответе запишите полученную строку букв.",
+    textFile: { name: "24.txt", content: text + "." },
+    answer: order.join(""),
+  }
+}
+
 export const GENERATORS_EGE_INF = {
   2: [t2Misha, t2AllRows, t2ChooseExpr],
   4: [t4FanoShortest, t4FanoColors, t4FanoSumLen, t4FanoWord, t4SeqHex, t4UniqueDecode],
   5: [t5Bin, t5Parity, t5Ternary, t5Calc, t5Automat],
+  1: [t1GraphTable, t1ShortestPath],
+  6: [t6Print, t6Input, t6Turtle],
   7: [t7Transfer, t7Colors, t7ColorsCompressed, t7Volume, t7Packet, t7Sound, t7Modem, t7Traffic, t7Reserve, t7Adsl, t7Rgb, t7Unicode],
   8: [t8WordIndex, t8FirstLetter, t8Filter, t8Parity, t8CountOnce, t8CountDigits, t8Lamps, t8DistinctAlternating],
   11: [t11PassExtra, t11Volume, t11Plate, t11Split, t11Power, t11MinLength, t11Message, t11Catalogs],
@@ -3210,8 +4334,17 @@ export const GENERATORS_EGE_INF = {
   14: [t14PowerSum, t14UnknownDigit, t14MinusX, t14BinOnes],
   15: [t15Inequality, t15Segments, t15DelSegment, t15DelMax, t15DelMin, t15BitAnd],
   16: [t16Formula, t16FG, t16Print, t16Stars],
+  3: [t3Database, t3Filter, t3Records, t3TwoTables],
+  9: [t9Temperature],
+  10: [t10WordCount, t10FilePath],
+  17: [t17Sequence, t17Range],
+  18: [t18Robot],
   19: [t19FirstMove],
   23: [t23Programs],
+  22: [t22Processes],
+  24: [t24MaxRun, t24Substring, t24Frequency],
+  26: [t26Containers, t26Students],
+  27: [t27MaxPair, t27Control, t27Triples],
   25: [t25Mask, t25Semiprime, t25DivisorEnding, t25MinMaxDivisors, t25SumDivisors],
   20: [t20SecondMove],
   21: [t21VanyaSecond],
@@ -3241,6 +4374,17 @@ export const GEN_META_EGE_INF = {
   ["Исполнители и автоматы", [
     ["calc", "Калькулятор/Квадратор: собрать программу", t5Calc],
     ["automat", "Автомат: произведения цифр", t5Automat],
+  ]]],
+  1: [["Схема дорог и таблица", [
+    ["pair", "Граф + таблица: сумма длин дорог", t1GraphTable],
+    ["short", "Кратчайший путь по таблице", t1ShortestPath],
+  ]]],
+  6: [["Результат работы программы", [
+    ["print", "Что напечатает программа", t6Print],
+    ["input", "Наибольшее/наименьшее введённое s", t6Input],
+  ]],
+  ["Исполнитель Черепаха", [
+    ["turtle", "Точки в пересечении фигур", t6Turtle],
   ]]],
   7: [["Передача данных", [
     ["transfer", "Архив или без архива: что быстрее", t7Transfer],
@@ -3346,6 +4490,43 @@ export const GEN_META_EGE_INF = {
     ["divisor", "Делитель, оканчивающийся на цифру", t25DivisorEnding],
     ["minmax", "Сумма мин. и макс. делителей (M)", t25MinMaxDivisors],
     ["sum-div", "Сумма делителей (R)", t25SumDivisors],
+  ]]],
+  3: [["Реляционная база данных", [
+    ["db", "Три таблицы: агрегат по связям", t3Database],
+    ["filter", "Условие отбора при фильтрации", t3Filter],
+    ["records", "Сколько записей удовлетворяют условию", t3Records],
+    ["two-tables", "Две связанные таблицы (родители и дети)", t3TwoTables],
+  ]]],
+  10: [["Поиск в текстовом документе", [
+    ["words", "Сколько раз встречается слово", t10WordCount],
+    ["path", "Полное имя каталога до перемещения", t10FilePath],
+  ]]],
+  9: [["Электронная таблица измерений", [
+    ["temp", "Максимум и среднее по диапазону часов", t9Temperature],
+  ]]],
+  18: [["Робот-сборщик монет", [
+    ["robot", "Минимальная и максимальная плата", t18Robot],
+  ]]],
+  17: [["Числовая последовательность из файла", [
+    ["seq", "Пары/тройки с условием на сумму", t17Sequence],
+    ["range", "Числа отрезка с условиями делимости", t17Range],
+  ]]],
+  22: [["Многопроцессорные системы", [
+    ["proc", "Критический путь / успевшие процессы", t22Processes],
+  ]]],
+  26: [["Обработка целочисленной информации", [
+    ["containers", "Контейнеры и грузоподъёмность", t26Containers],
+    ["students", "Лучшие по среднему баллу", t26Students],
+  ]]],
+  27: [["Программирование", [
+    ["max-pair", "Пара с максимальной суммой", t27MaxPair],
+    ["control", "Контрольное значение (произведение)", t27Control],
+    ["triples", "Выбор из троек с условием делимости", t27Triples],
+  ]]],
+  24: [["Символьная строка из файла", [
+    ["max-run", "Максимальная подстрока с буквой-границей", t24MaxRun],
+    ["substr", "Подстрока и буквы: мин./макс. длина", t24Substring],
+    ["freq", "Буквы по убыванию частоты", t24Frequency],
   ]]],
   19: [["Выигрышная стратегия", [
     ["first", "Ваня выигрывает первым ходом", t19FirstMove],
