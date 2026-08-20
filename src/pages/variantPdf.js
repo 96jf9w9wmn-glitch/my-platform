@@ -423,9 +423,9 @@ const answerRule = `<div style="margin:5px 0 0;">Ответ:<span style="display
 
 // Рендерит каждый блок листа отдельным снимком и раскладывает по колонкам так, чтобы
 // задание НИКОГДА не разрывалось: не влезло в остаток колонки — целиком уходит в следующую.
-// mode: "blank" — лист ученику, "answers" — плюс страница ответов, "solutions" — плюс разбор.
-// Ответы и решения идут ОТДЕЛЬНЫМ разделом в конце, а не рядом с заданием: иначе лист
-// нельзя дать ученику, не засветив ответ.
+// mode: "blank" — лист ученику, "answers" — плюс страница ответов. Разбор в лист не
+// подшивается: печатный вариант — это КИМ, а не методичка. Ответы идут ОТДЕЛЬНОЙ
+// страницей в конце, а не рядом с заданием: иначе лист нельзя дать ученику, не засветив их.
 export async function generateVariantPdf({ title, examType, tasks, mode = "blank" }) {
   const pdf = new jsPDF({ unit: "px", format: "a4", orientation: "landscape" })
   // «px» у jsPDF — НЕ CSS-пиксель (A4-ландшафт = 631 единица, а не 1122): считаем всю
@@ -523,7 +523,7 @@ export async function generateVariantPdf({ title, examType, tasks, mode = "blank
     return rows.length ? `<table style="border-collapse:collapse;">${rows.join("")}</table>` : ""
   }
 
-  if (mode === "answers" || mode === "solutions") {
+  if (mode === "answers") {
     brk("page")
     // название варианта не дублируем — оно в колонтитуле на каждой странице
     await push(`<div style="font-weight:bold;">ОТВЕТЫ</div>`
@@ -532,21 +532,6 @@ export async function generateVariantPdf({ title, examType, tasks, mode = "blank
     if (t1) await push(t1)
     const t2 = await answerRows(part2)
     if (t2) { brk("col"); await push(t2) }
-  }
-
-  if (mode === "solutions") {
-    const withSolution = tasks.filter((t) => t.solution && String(t.solution).trim())
-    if (withSolution.length) {
-      brk("page")
-      await push(`<div style="font-weight:bold; margin-bottom:8px;">РЕШЕНИЯ</div>`, true)
-      for (const t of withSolution) {
-        await push(
-          `<div style="display:flex; align-items:flex-start; padding:4px 0 8px;">` +
-            `<div style="flex:0 0 ${NUM_W}px;">${t.number}.</div>` +
-            `<div style="flex:1; min-width:0; text-align:justify; white-space:pre-wrap;">${await renderTaskMathPdf(String(t.solution), MATH_TIMES)}</div>` +
-          `</div>`)
-      }
-    }
   }
 
   // ── Раскладка по колонкам ─────────────────────────────────────────────────

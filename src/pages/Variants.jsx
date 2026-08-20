@@ -11,9 +11,9 @@ import { generateWorkbookPdf } from "./workbookPdf"
 import { usePlan } from "../subscription"
 import { PlanHint } from "../components/PlanLock"
 
-// Лист варианта в трёх видах (приём Kuta Software): ученику — без ответов,
-// проверяющему — с ответами, для разбора — с решениями. Пересобираем из
-// tasks_snapshot, поэтому числа те же, что получил ученик, а не новые.
+// Лист варианта в двух видах (приём Kuta Software): ученику — без ответов,
+// проверяющему — с ответами. Пересобираем из tasks_snapshot, поэтому числа те же,
+// что получил ученик, а не новые.
 function ExtraPdfButtons({ variant }) {
   const [busy, setBusy] = useState(null)
   const [err, setErr] = useState("")
@@ -37,7 +37,7 @@ function ExtraPdfButtons({ variant }) {
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
-      const suffix = mode === "solutions" ? "с решениями" : mode === "workbook" ? "рабочая тетрадь" : "с ответами"
+      const suffix = mode === "workbook" ? "рабочая тетрадь" : "с ответами"
       a.download = `${variant.title || "Вариант"} — ${suffix}.pdf`
       a.click()
       URL.revokeObjectURL(url)
@@ -47,8 +47,6 @@ function ExtraPdfButtons({ variant }) {
       setBusy(null)
     }
   }
-
-  const hasSolutions = variant.tasks_snapshot.some((t) => t.solution && String(t.solution).trim())
 
   return (
     <div className="px-5 py-4 border-t border-gray-100/60">
@@ -64,17 +62,10 @@ function ExtraPdfButtons({ variant }) {
           <MorphIcon from="download" size={13} />
           {busy === "answers" ? "Собираем…" : "С ответами"}
         </button>
-        {hasSolutions && (
-          <button onClick={() => download("solutions")} disabled={busy}
-            className="press-fill text-xs px-3 py-2 rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 disabled:opacity-50 flex items-center gap-1.5">
-            <MorphIcon from="download" size={13} />
-            {busy === "solutions" ? "Собираем…" : "С решениями"}
-          </button>
-        )}
       </div>
       {err && <div className="text-xs text-red-500 mt-2">{err}</div>}
       <div className="text-[11px] text-gray-400 mt-2.5 leading-snug">
-        В тетради под каждым заданием — поле в клетку, ответы и решения отдельным разделом в конце.
+        В тетради под каждым заданием — поле в клетку, ответы отдельной страницей в конце.
       </div>
     </div>
   )
