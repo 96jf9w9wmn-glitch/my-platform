@@ -692,7 +692,7 @@ export function t4FanoColors() {
       `Для кодирования растрового рисунка, напечатанного с использованием ${NUMW_GEN[colors.length]} красок, применили неравномерный двоичный код. ` +
       "Для кодирования цветов используются кодовые слова.\n" +
       built.table + "\n" +
-      `Укажите кратчайшее кодовое слово для ${built.hidden === "белый" ? "белого" : built.hidden.replace(/ый$/, "ого").replace(/ий$/, "его")} цвета, при котором код будет удовлетворять условию Фано. ` +
+      `Укажите кратчайшее кодовое слово для ${built.hidden === "белый" ? "белого" : built.hidden.replace(/(ый|ий)$/, "ого")} цвета, при котором код будет удовлетворять условию Фано. ` +
       "Если таких кодов несколько, укажите код с наименьшим числовым значением.\n" + T4_FANO_NOTE,
     answer: built.answer,
   }
@@ -3332,6 +3332,9 @@ export function t6Turtle() {
     if (ix2 <= ix1 || iy2 <= iy1) continue
     const points = (ix2 - ix1 + 1) * (iy2 - iy1 + 1)
     if (points < 20 || points > 3000) continue
+    // Второй вопрос из банка — периметр области пересечения (это прямоугольник).
+    const perimeter = 2 * ((ix2 - ix1) + (iy2 - iy1))
+    const askPerimeter = Math.random() < 0.35
     const prog =
       `Повтори ${reps} [Вперёд ${h1} Направо 90 Вперёд ${w1} Направо 90]\n` +
       "Поднять хвост\n" +
@@ -3341,9 +3344,12 @@ export function t6Turtle() {
     return {
       condition_text: T6_TURTLE_INTRO +
         "Черепахе был дан для исполнения следующий алгоритм:\n⟦code:" + prog + "⟧\n" +
-        "Определите, сколько точек с целочисленными координатами находятся внутри области пересечения фигур, " +
-        "ограниченных заданными алгоритмом линиями, включая точки на границах этого пересечения.",
-      answer: String(points),
+        (askPerimeter
+          ? "Определите периметр области пересечения фигур, ограниченных заданными алгоритмом линиями. " +
+            "Ответ запишите в виде целого числа."
+          : "Определите, сколько точек с целочисленными координатами находятся внутри области пересечения фигур, " +
+            "ограниченных заданными алгоритмом линиями, включая точки на границах этого пересечения."),
+      answer: String(askPerimeter ? perimeter : points),
     }
   }
   return null
@@ -3715,10 +3721,33 @@ export function t22Processes() {
       finish.push(start + dur[i])
     }
     const total = Math.max(...finish)
-    const askCount = Math.random() < 0.5
+    // Четыре вопроса из банка: общее время, сколько успеет за T мс, сколько
+    // процессов идёт параллельно на T-й мс, за какое время завершатся K процессов.
+    const ask = randInt(0, 4)
     const T = randInt(Math.floor(total / 3), Math.floor(total * 0.7))
     const done = finish.filter((f) => f <= T).length
-    if (total < 20 || (askCount && (done < 5 || done > N - 5))) continue
+    // На T-й мс процесс выполняется, если начался не позже и ещё не закончился.
+    const start = finish.map((f, i) => f - dur[i])
+    const parallel = start.filter((st, i) => st < T && finish[i] >= T).length
+    const K = randInt(Math.floor(N / 3), Math.floor(N * 0.8))
+    const sortedFin = [...finish].sort((a, b) => a - b)
+    const timeForK = sortedFin[K - 1]
+    // Профиль загрузки: сколько процессов идёт одновременно в каждую миллисекунду.
+    // Нужен для вопроса «максимальная продолжительность работы максимального числа процессов».
+    const profile = Array(total + 2).fill(0)
+    for (let i = 0; i < N; i++) {
+      for (let ms = start[i] + 1; ms <= finish[i]; ms++) profile[ms]++
+    }
+    const peak = Math.max(...profile)
+    let peakRun = 0, run = 0
+    for (const v of profile) {
+      run = v === peak ? run + 1 : 0
+      peakRun = Math.max(peakRun, run)
+    }
+    if (total < 20) continue
+    if (ask === 1 && (done < 5 || done > N - 5)) continue
+    if (ask === 2 && parallel < 2) continue
+    if (ask === 4 && (peak < 3 || peakRun < 1)) continue
     const rows = [["ID", "Время выполнения", "ID процессов, от которых зависит данный процесс"]]
     for (let i = 0; i < N; i++) {
       rows.push([i + 1, dur[i], deps[i].length ? deps[i].map((d) => d + 1).join(";") : 0])
@@ -3732,14 +3761,24 @@ export function t22Processes() {
         "Информация о процессах представлена в файле в виде таблицы. В первом столбце таблицы указан идентификатор процесса (ID), " +
         "во втором столбце — время его выполнения в миллисекундах, в третьем столбце перечислены с разделителем «;» ID процессов, " +
         "от которых зависит данный процесс. Если процесс независимый, то в таблице указано значение 0.\n" +
-        (askCount
+        (ask === 1
           ? `Определите максимальное количество процессов, которые могут быть завершены за первые ${T} мс. ` +
             "Считать, что каждый процесс начинается в самое раннее допустимое время. Нумерация миллисекунд начинается с 1."
-          : "Определите минимальное время, через которое завершится выполнение всей совокупности процессов, при условии, " +
-            "что все независимые друг от друга процессы могут выполняться параллельно.") +
+          : ask === 2
+            ? `Определите максимальное количество процессов, которые параллельно выполняются на ${T}-й мс. ` +
+              "Считать, что каждый процесс начинается в самое раннее допустимое время. Нумерация миллисекунд начинается с 1."
+            : ask === 3
+              ? `Определите минимальное время (в мс), за которое завершатся ${K} ${plural(K, "процесс", "процесса", "процессов")}, при условии, что все ` +
+                "независимые друг от друга процессы могут выполняться параллельно."
+              : ask === 4
+                ? "Определите максимальную продолжительность отрезка времени (в мс), в течение которого возможно одновременное " +
+                  "выполнение максимального количества процессов при условии, что все независимые друг от друга процессы могут " +
+                  "выполняться параллельно."
+                : "Определите минимальное время, через которое завершится выполнение всей совокупности процессов, при условии, " +
+                  "что все независимые друг от друга процессы могут выполняться параллельно.") +
         "\nДля выполнения задания используйте данные из прилагаемого файла.",
       spreadsheet: { name: "22.xlsx", sheetName: "Процессы", rows },
-      answer: String(askCount ? done : total),
+      answer: String(ask === 1 ? done : ask === 2 ? parallel : ask === 3 ? timeForK : ask === 4 ? peakRun : total),
     }
   }
   return null
@@ -3841,19 +3880,33 @@ export function t18Robot() {
     return d[N - 1][N - 1]
   }
   const min = dp(Math.min), max = dp(Math.max)
+  // В банке три «одёжки» одной механики: Робот СОБИРАЕТ монеты, собирает бонусы
+  // или ПЛАТИТ за посещение. От неё зависит и порядок чисел в ответе
+  // («максимальную и минимальную» против «минимальную и максимальную»).
+  const kind = randInt(0, 2)
+  const maxFirst = kind !== 2
+  const what = kind === 0
+    ? { intro: "Перед каждым запуском Робота в каждой клетке квадрата лежит монета достоинством от 1 до 100. " +
+        "Посетив клетку, Робот забирает монету с собой; это также относится к начальной и конечной клеткам маршрута Робота.",
+      ask: "Определите максимальную и минимальную денежные суммы, которые может собрать Робот, пройдя из левой верхней клетки в правую нижнюю." }
+    : kind === 1
+      ? { intro: "Перед каждым запуском Робота в каждой клетке квадрата начисляется бонус в размере от 1 до 100. " +
+          "Посетив клетку, Робот получает бонус; это также относится к начальной и конечной клеткам маршрута.",
+        ask: "Определите максимальную и минимальную суммы бонусов среди всех возможных итоговых сумм, которые может собрать Робот, перемещаясь из левой верхней клетки квадрата в его правую нижнюю клетку." }
+      : { intro: "Перед каждым запуском Робота в каждой клетке квадрата указана плата за посещение в размере от 1 до 100. " +
+          "Посетив клетку, Робот платит за её посещение; это также относится к начальной и конечной клеткам маршрута Робота.",
+        ask: "Определите минимальную и максимальную денежные суммы, которые заплатит Робот, пройдя из левой верхней клетки в правую нижнюю." }
   return {
     condition_text:
-      `Квадрат разлинован на N × N клеток (1 < N < 26). Исполнитель Робот может перемещаться по клеткам, выполняя за одно ` +
+      "Квадрат разлинован на N × N клеток (1 < N < 26). Исполнитель Робот может перемещаться по клеткам, выполняя за одно " +
       "перемещение одну из двух команд: вправо или вниз. По команде вправо Робот перемещается в соседнюю правую клетку; " +
-      "по команде вниз — в соседнюю нижнюю. При попытке выхода за границу квадрата Робот разрушается. " +
-      "Перед каждым запуском Робота в каждой клетке квадрата указана плата за посещение в размере от 1 до 100. " +
-      "Посетив клетку, Робот платит за её посещение; это также относится к начальной и конечной клеткам маршрута Робота.\n" +
-      "Определите минимальную и максимальную денежные суммы, которые заплатит Робот, пройдя из левой верхней клетки " +
-      "в правую нижнюю. В ответе укажите два числа — сначала минимальную сумму, затем максимальную.\n" +
+      "по команде вниз — в соседнюю нижнюю. При попытке выхода за границу квадрата Робот разрушается.\n" +
+      what.intro + "\n" + what.ask + "\n" +
+      `В ответе укажите два числа — сначала ${maxFirst ? "максимальную" : "минимальную"} сумму, затем ${maxFirst ? "минимальную" : "максимальную"}.\n` +
       "Исходные данные представлены в прилагаемом файле в виде электронной таблицы размером N × N, каждая ячейка которой " +
       "соответствует клетке квадрата.",
     spreadsheet: { name: "18.xlsx", sheetName: "Робот", rows: grid },
-    answer: `${min} ${max}`,
+    answer: maxFirst ? `${max} ${min}` : `${min} ${max}`,
   }
 }
 
@@ -3922,7 +3975,7 @@ export function t3Database() {
     const goods = [
       ...shuffle(T3_SWEETS).slice(0, 4).map((n) => ({ name: n, type: "конфеты" })),
       ...shuffle(T3_COOKIES).slice(0, 4).map((n) => ({ name: n, type: "печенье" })),
-    ].map((g, i) => ({ id: i + 1, ...g, weight: pick([0.2, 0.25, 0.3, 0.4, 0.5, 1]) }))
+    ].map((g, i) => ({ id: i + 1, ...g, weight: pick([0.2, 0.25, 0.3, 0.4, 0.5, 1]), price: randInt(40, 400) }))
     const days = 15
     const moves = []
     for (let d = 1; d <= days; d++) {
@@ -3943,16 +3996,29 @@ export function t3Database() {
     const d1 = randInt(1, 5), d2 = randInt(10, days)
     const shopIds = shops.filter((sh) => sh.district === district).map((sh) => sh.id)
     if (!shopIds.length) continue
-    const packs = moves
-      .filter((m) => m.op === "Поступление" && m.good === good.id && shopIds.includes(m.shop) && m.day >= d1 && m.day <= d2)
+    const sel = (op) => moves
+      .filter((m) => m.op === op && m.good === good.id && shopIds.includes(m.shop) && m.day >= d1 && m.day <= d2)
       .reduce((a, m) => a + m.qty, 0)
+    const packs = sel("Поступление"), sold = sel("Продажа")
     const kg = Math.round(packs * good.weight * 100) / 100
-    if (packs < 10) continue
+    if (packs < 10 || sold < 5 || packs <= sold) continue
+    // Вопросы из банка: вес поступившего, количество упаковок, выручка от продажи,
+    // стоимость поступившего и прирост запаса (поступление минус продажа).
+    const ask = randInt(0, 4)
+    const money = (n) => n * good.price
+    const answers = [String(kg).replace(".", ","), String(packs), String(money(sold)), String(money(packs)), String(packs - sold)]
+    const questions = [
+      `определите общий вес (в кг) товара «${good.name}», полученного магазинами`,
+      `определите количество (в шт.) упаковок товара «${good.name}», поступивших в магазины`,
+      `определите общую выручку (в руб.) от продажи товара «${good.name}» в магазинах`,
+      `определите общую стоимость (в руб.) товара «${good.name}», поступившего в магазины`,
+      `определите, на сколько увеличилось количество упаковок товара «${good.name}», имеющихся в наличии в магазинах`,
+    ]
     const sheets = [
       { name: "Движение товаров", rows: [["ID", "Дата", "ID магазина", "ID товара", "Тип операции", "Количество упаковок, шт."],
         ...moves.map((m) => [m.id, m.date, m.shop, m.good, m.op, m.qty])] },
-      { name: "Товар", rows: [["ID товара", "Наименование товара", "Тип товара", "Вес упаковки, кг"],
-        ...goods.map((g) => [g.id, g.name, g.type, g.weight])] },
+      { name: "Товар", rows: [["ID товара", "Наименование товара", "Тип товара", "Вес упаковки, кг", "Цена упаковки, руб."],
+        ...goods.map((g) => [g.id, g.name, g.type, g.weight, g.price])] },
       { name: "Магазин", rows: [["ID магазина", "Название", "Район"],
         ...shops.map((sh) => [sh.id, sh.name, sh.district])] },
     ]
@@ -3965,12 +4031,12 @@ export function t3Database() {
         "а в поле «Количество упаковок, шт.» внесена информация о том, сколько упаковок товара поступило в магазин " +
         "или было продано в течение дня.\n" +
         "Таблица «Товар» содержит информацию об основных характеристиках каждого товара, таблица «Магазин» — сведения о магазинах и районах.\n" +
-        `Используя информацию из приведённой базы данных, определите общий вес (в кг) товара «${good.name}», полученного ` +
-        `магазинами ${district.replace(/ый$/, "ого").replace(/ий$/, "его")} района за период с ${d1} по ${d2} июня включительно. ` +
+        `Используя информацию из приведённой базы данных, ${questions[ask]} ` +
+        `${district.replace(/(ый|ий)$/, "ого")} района за период с ${d1} по ${d2} июня включительно. ` +
         "В ответе запишите только число.",
       spreadsheet: { name: "3.xlsx", sheets },
       // Дробный ответ на КЕГЭ записывается через запятую.
-      answer: String(kg).replace(".", ","),
+      answer: answers[ask],
     }
   }
   return null
@@ -4028,142 +4094,55 @@ const T10_FRAGMENTS = [
 ]
 
 export function t10WordCount() {
-  for (let attempt = 0; attempt < 20; attempt++) {
+  for (let attempt = 0; attempt < 30; attempt++) {
     const lines = []
     for (let i = 0; i < 300; i++) lines.push(pick(T10_FRAGMENTS))
     const text = lines.join(" ")
-    const forms = pick([["час", "часа"], ["часы", "часов"], ["час"]])
-    // Считаем вхождения ТОЛЬКО заданных форм с маленькой буквы, по границам слова.
+    // Три вопроса из банка: отдельное слово со строчной буквы; отдельное слово
+    // в обоих регистрах; сочетание букв ТОЛЬКО внутри других слов.
+    const kind = randInt(0, 2)
+    const RU = "А-Яа-яЁё"
+    if (kind === 2) {
+      const combo = pick(["час", "раз", "ход", "свет", "по", "то"])
+      const both = Math.random() < 0.5
+      const re = new RegExp(`[${RU}-]*${combo}[${RU}-]*`, "gi")
+      const inner = (text.match(re) || []).filter((w) => {
+        const low = w.toLowerCase()
+        if (low === combo) return false                       // отдельное слово не считаем
+        return both || w.slice(w.toLowerCase().indexOf(combo), w.toLowerCase().indexOf(combo) + combo.length) === combo
+      }).length
+      if (inner < 5) continue
+      return {
+        condition_text:
+          "Текст рассказа представлен в прилагаемом файле. Откройте файл и определите, сколько раз встречается " +
+          `в тексте сочетание букв «${combo}»${both ? ` или «${combo[0].toUpperCase() + combo.slice(1)}»` : " (со строчной буквы)"} ` +
+          "только в составе других слов, в том числе сложных слов, соединённых дефисом, но не как отдельное слово. " +
+          "В ответе запишите только число.",
+        textFile: { name: "10.txt", content: lines.join("\n") },
+        answer: String(inner),
+      }
+    }
+    const forms = pick([["час", "часа"], ["часы", "часов"], ["час"], ["год"], ["ход"]])
+    const both = kind === 1
     const count = forms.reduce((acc, form) => {
-      const re = new RegExp(`(^|[^А-Яа-яЁё])${form}([^А-Яа-яЁё]|$)`, "g")
+      const re = new RegExp(`(^|[^${RU}])(${form})([^${RU}]|$)`, both ? "gi" : "g")
       let n = 0, m
-      while ((m = re.exec(text)) !== null) { n++; re.lastIndex = m.index + 1 }
+      while ((m = re.exec(text)) !== null) {
+        if (!both && m[2] !== form) { re.lastIndex = m.index + 1; continue }
+        n++
+        re.lastIndex = m.index + 1
+      }
       return acc + n
     }, 0)
-    if (count < 20) continue
-    const list = forms.map((f) => `«${f}»`).join(" или ")
+    if (count < 15) continue
+    const list = forms.map((f) => `«${f}»${both ? ` или «${f[0].toUpperCase() + f.slice(1)}»` : ""}`).join(" или ")
     return {
       condition_text:
         "Текст рассказа представлен в прилагаемом файле. Откройте файл и определите, сколько раз встречается " +
-        `в тексте слово ${list} (со строчной буквы). Другие формы слова, такие как «часов», «часик» и т. д., ` +
-        "учитывать не следует (если они не указаны в задании). В ответе укажите только число.",
+        `в тексте отдельное слово ${list}${both ? "" : " (со строчной буквы)"}. ` +
+        "Другие формы слова учитывать не следует. В ответе запишите только число.",
       textFile: { name: "10.txt", content: lines.join("\n") },
       answer: String(count),
-    }
-  }
-  return null
-}
-
-
-// Старый типаж №3: фрагмент базы данных таблицей — сколько записей удовлетворяют
-// условию вида «Пол='м' ИЛИ Химия>Биология».
-const T3_SURNAMES = ["Аганян", "Воронин", "Григорчук", "Роднина", "Сергеенко", "Черепанова",
-  "Титов", "Мельник", "Ерохин", "Кузьмина", "Панов", "Савельева"]
-const T3_SUBJECTS = ["Математика", "Русский язык", "Химия", "Информатика", "Биология"]
-
-export function t3Records() {
-  for (let attempt = 0; attempt < 40; attempt++) {
-    const n = randInt(5, 7)
-    const rows = shuffle(T3_SURNAMES).slice(0, n).map((fam) => ({
-      fam, sex: pick(["м", "ж"]),
-      marks: Object.fromEntries(T3_SUBJECTS.map((sub) => [sub, randInt(20, 95)])),
-    }))
-    const [s1, s2] = shuffle(T3_SUBJECTS).slice(0, 2)
-    const sex = pick(["м", "ж"])
-    const or = Math.random() < 0.5
-    const test = (r) => or
-      ? (r.sex === sex || r.marks[s1] > r.marks[s2])
-      : (r.sex === sex && r.marks[s1] > r.marks[s2])
-    const count = rows.filter(test).length
-    if (count === 0 || count === n) continue
-    const options = shuffle([...new Set([count, count + 1, Math.max(0, count - 1), Math.min(n, count + 2)])]).slice(0, 4)
-    if (!options.includes(count)) options[0] = count
-    return {
-      condition_text:
-        "Ниже в табличной форме представлен фрагмент базы данных о результатах тестирования учащихся " +
-        "(используется стобалльная шкала):\n" +
-        tableBlock([["Фамилия", "Пол", ...T3_SUBJECTS],
-          ...rows.map((r) => [r.fam, r.sex, ...T3_SUBJECTS.map((sub) => String(r.marks[sub]))])]) + "\n" +
-        `Сколько записей в данном фрагменте удовлетворяют условию «Пол = '${sex}' ${or ? "ИЛИ" : "И"} ${s1} > ${s2}»?\n` +
-        tableBlock([["№", "Вариант"], ...options.map((o, i) => [`${i + 1})`, String(o)])]) + "\n" +
-        "В ответе укажите номер варианта.",
-      answer: String(options.indexOf(count) + 1),
-    }
-  }
-  return null
-}
-
-// Старый типаж №3: две связанные таблицы (жители и родство) — у скольких детей
-// на момент рождения родителю было меньше N лет.
-const T3_PEOPLE = ["Петрова Н.А.", "Иваненко И.М.", "Соколов П.Р.", "Кузьмина А.В.", "Лебедев О.С.",
-  "Морозова Т.Н.", "Волков Д.А.", "Зайцева Е.П.", "Орлов К.М.", "Белова Л.И.", "Гусев Н.Н.", "Ткачук В.С."]
-
-export function t3TwoTables() {
-  for (let attempt = 0; attempt < 40; attempt++) {
-    const n = randInt(9, 12)
-    const people = shuffle(T3_PEOPLE).slice(0, n).map((name, i) => ({
-      id: 10 + i * randInt(2, 5),
-      name,
-      sex: name.endsWith("а Н.А.") || /ова |ева |ина |ая /.test(name) ? "Ж" : pick(["М", "Ж"]),
-      year: randInt(1935, 1975),
-    }))
-    // Родство: ребёнок моложе родителя минимум на 16 лет.
-    const links = []
-    for (const child of people) {
-      for (const parent of people) {
-        if (parent === child) continue
-        if (child.year - parent.year >= 16 && child.year - parent.year <= 45 && Math.random() < 0.25) {
-          links.push({ parent: parent.id, child: child.id })
-        }
-      }
-    }
-    if (links.length < 6) continue
-    const limit = pick([21, 22, 23, 24, 25])
-    const sex = pick(["М", "Ж"])
-    const byId = Object.fromEntries(people.map((p) => [p.id, p]))
-    const hits = new Set()
-    for (const l of links) {
-      const p = byId[l.parent], c = byId[l.child]
-      if (p.sex === sex && c.year - p.year < limit) hits.add(c.id)
-    }
-    if (hits.size < 1 || hits.size > 5) continue
-    return {
-      condition_text:
-        "Ниже представлены два фрагмента таблиц из базы данных о жителях микрорайона. " +
-        "Каждая строка таблицы 2 содержит информацию о ребёнке и об одном из его родителей. " +
-        "Информация представлена значением поля ID в соответствующей строке таблицы 1.\n" +
-        "Таблица 1:\n" +
-        tableBlock([["ID", "Фамилия И.О.", "Пол", "Год рождения"],
-          ...people.map((p) => [String(p.id), p.name, p.sex, String(p.year)])]) + "\n" +
-        "Таблица 2:\n" +
-        tableBlock([["ID родителя", "ID ребёнка"], ...links.map((l) => [String(l.parent), String(l.child)])]) + "\n" +
-        `Определите на основании приведённых данных, у скольких детей на момент их рождения ` +
-        `${sex === "М" ? "отцам" : "матерям"} было меньше ${limit} полных лет. ` +
-        "При вычислении ответа учитывайте только информацию из приведённых фрагментов таблиц.",
-      answer: String(hits.size),
-    }
-  }
-  return null
-}
-
-// №17 без файла: множество чисел из отрезка с условиями делимости.
-export function t17Range() {
-  for (let attempt = 0; attempt < 40; attempt++) {
-    const lo = randInt(10000, 20000), hi = randInt(40000, 60000)
-    const m = pick([7, 11, 13, 17, 19]), r = randInt(1, m - 1)
-    const [d1, d2] = shuffle([3, 4, 5, 6, 8, 9, 12]).slice(0, 2)
-    const found = []
-    for (let v = lo; v <= hi; v++) if (v % m === r && v % d1 !== 0 && v % d2 !== 0) found.push(v)
-    if (found.length < 50) continue
-    const askMin = Math.random() < 0.5
-    return {
-      condition_text:
-        `Рассматривается множество целых чисел, принадлежащих числовому отрезку [${lo.toLocaleString("ru-RU").replace(/\s/g, "\u00A0")}; ` +
-        `${hi.toLocaleString("ru-RU").replace(/\s/g, "\u00A0")}], остаток от деления которых на ${m} равен ${r}, ` +
-        `и при этом они не делятся ни на ${d1}, ни на ${d2}. ` +
-        `Найдите количество таких чисел и ${askMin ? "минимальное" : "максимальное"} из них. ` +
-        `В ответе запишите два целых числа: сначала количество, затем ${askMin ? "минимальное" : "максимальное"} число.`,
-      answer: `${found.length} ${askMin ? found[0] : found[found.length - 1]}`,
     }
   }
   return null
@@ -4320,11 +4299,1280 @@ export function t24Frequency() {
   }
 }
 
+
+// №24: максимальная цепочка идущих подряд ПАР символов заданного вида
+// (согласная+гласная, либо пары из перечисленного набора). Ответ — число пар.
+export function t24Pairs() {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const byClass = Math.random() < 0.5
+    const cons = shuffle(["B", "C", "D", "F", "K", "M"]).slice(0, 3)
+    const vow = shuffle(["A", "E", "O", "U", "I"]).slice(0, 2)
+    const alphabet = byClass ? [...cons, ...vow] : shuffle(["A", "B", "C", "D"]).slice(0, 3)
+    const consFirst = Math.random() < 0.5
+    const pairSet = byClass
+      ? null
+      : [alphabet[1] + alphabet[0], alphabet[2] + alphabet[0]]     // напр. «BA» и «DA»
+    const len = 40000
+    let text = ""
+    for (let i = 0; i < len; i++) text += pick(alphabet)
+    const okPair = (a, b) => byClass
+      ? (consFirst ? cons.includes(a) && vow.includes(b) : vow.includes(a) && cons.includes(b))
+      : pairSet.includes(a + b)
+    // Цепочка пар может начинаться с любой позиции — считаем от каждой чётности.
+    let best = 0
+    for (let start = 0; start < text.length - 1; start++) {
+      let n = 0, i = start
+      while (i + 1 < text.length && okPair(text[i], text[i + 1])) { n++; i += 2 }
+      if (n > best) best = n
+    }
+    if (best < 3) continue
+    const what = byClass
+      ? `пар символов вида ${consFirst ? "согласная + гласная" : "гласная + согласная"}`
+      : `пар символов ${pairSet[0]} или ${pairSet[1]}`
+    return {
+      condition_text:
+        `Текстовый файл состоит из символов ${alphabet.slice().sort().join(", ")}. ` +
+        `Определите максимальное количество идущих подряд ${what} в прилагаемом файле. ` +
+        (byClass ? "" : `Искомая подпоследовательность должна состоять только из пар ${pairSet[0]}, ` +
+          `или только из пар ${pairSet[1]}, или из пар ${pairSet[0]} и ${pairSet[1]} в произвольном порядке следования. `) +
+        "Для выполнения этого задания следует написать программу.",
+      textFile: { name: "24.txt", content: text },
+      answer: String(best),
+    }
+  }
+  return null
+}
+
+// №24: максимальная длина корректного арифметического выражения из цифр и знаков
+// «–» и «*»: два знака не стоят рядом, у чисел нет ведущих нулей, 0 без знака.
+export function t24Expression() {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const digits = shuffle(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]).slice(0, randInt(4, 5))
+    if (!digits.includes("0")) digits[0] = "0"
+    const alphabet = [...digits, "-", "*"]
+    const len = 20000
+    let text = ""
+    for (let i = 0; i < len; i++) text += pick(alphabet)
+    // Корректность проверяем автоматом: число → знак → число …
+    // Число: либо «0», либо цифра 1–9 с любым продолжением из цифр.
+    const isDigit = (c) => c >= "0" && c <= "9"
+    const isOp = (c) => c === "-" || c === "*"
+    // Динамика: best[i] — длина самого длинного корректного выражения, кончающегося в i.
+    // Состояния: после числа можно продолжить цифрой (если число не «0») или знаком.
+    let best = 0
+    let i = 0
+    while (i < text.length) {
+      if (!isDigit(text[i])) { i++; continue }
+      // Разбираем максимально длинное корректное выражение, начиная с i.
+      let j = i, ok = true, lastEnd = -1
+      while (j < text.length) {
+        // читаем число
+        if (!isDigit(text[j])) { ok = false; break }
+        let numStart = j
+        if (text[j] === "0") j++                       // «0» — число целиком
+        else while (j < text.length && isDigit(text[j])) j++
+        if (numStart === i && text[numStart] === "0" && j < text.length && isDigit(text[j])) {
+          // «0» в начале, дальше цифра — выражение обрывается на самом «0»
+        }
+        lastEnd = j                                     // выражение может закончиться здесь
+        if (j < text.length && isOp(text[j]) && j + 1 < text.length && isDigit(text[j + 1])) j++
+        else break
+      }
+      if (ok !== false && lastEnd > i) best = Math.max(best, lastEnd - i)
+      i++
+    }
+    if (best < 5) continue
+    return {
+      condition_text:
+        `Текстовый файл состоит из цифр ${digits.slice().sort().join(", ")} и знаков арифметических операций ` +
+        "«–» и «*» (вычитание и умножение). Определите максимальное количество символов в непрерывной последовательности, " +
+        "которая является корректным арифметическим выражением с целыми неотрицательными числами. В этом выражении никакие " +
+        "два знака арифметических операций не стоят рядом, в записи чисел отсутствуют незначащие (ведущие) нули и число 0 " +
+        "не имеет знака. В ответе укажите количество символов.",
+      textFile: { name: "24.txt", content: text },
+      answer: String(best),
+    }
+  }
+  return null
+}
+
+// №24: запись максимального (чётного) числа в системе счисления с основанием b —
+// в ответе количество значащих цифр.
+export function t24MaxNumber() {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const base = pick([12, 13, 14, 16])
+    const digits = "0123456789ABCDEF".slice(0, base).split("")
+    const even = Math.random() < 0.6
+    const len = 20000
+    let text = ""
+    for (let i = 0; i < len; i++) {
+      // Кроме цифр системы в файле есть «посторонние» буквы — они разрывают числа.
+      text += Math.random() < 0.15 ? pick(["W", "X", "Y", "Z", "Q"]) : pick(digits)
+    }
+    const val = (c) => digits.indexOf(c)
+    // Сравнение чисел без BigInt: сначала по длине без ведущих нулей, потом лексикографически.
+    let bestStr = ""
+    const better = (a, b) => a.length !== b.length ? a.length > b.length : a > b
+    let i = 0
+    while (i < text.length) {
+      if (val(text[i]) < 0) { i++; continue }
+      let j = i
+      while (j < text.length && val(text[j]) >= 0) j++
+      const chunk = text.slice(i, j)
+      // Внутри куска рассматриваем все подстроки без ведущего нуля, оканчивающиеся
+      // нужной чётностью: достаточно взять самую длинную и «подрезать» хвост.
+      for (let a = 0; a < chunk.length; a++) {
+        if (chunk[a] === "0") continue
+        for (let b = chunk.length; b > a; b--) {
+          const cand = chunk.slice(a, b)
+          if (even && val(cand[cand.length - 1]) % 2 !== 0) continue
+          if (better(cand, bestStr)) bestStr = cand
+          break                                        // длиннее для этого начала уже не будет
+        }
+      }
+      i = j
+    }
+    if (!bestStr) continue
+    return {
+      condition_text:
+        "Текстовый файл состоит из цифр и заглавных букв латинского алфавита. " +
+        `Определите в этом файле последовательность идущих подряд символов, представляющих собой запись максимального ` +
+        `${even ? "чётного " : ""}${base}-ричного числа. В ответе запишите количество символов (значащих цифр в записи числа) ` +
+        "в этой последовательности.\n" +
+        `Примечание. Латинские буквы ${digits.slice(10).join(", ")} означают цифры из алфавита ${base}-ричной системы счисления; ` +
+        "остальные буквы цифрами не являются.",
+      textFile: { name: "24.txt", content: text },
+      answer: String(bestStr.length),
+    }
+  }
+  return null
+}
+
+
+// ── №27: типажи с ДВУМЯ входными файлами (A и B) ───────────────────────────
+// В КЕГЭ №27 ответ — два числа: значение для файла A и для файла B. Генератор
+// поэтому отдаёт массив textFile: [A, B] и считает обе величины своим кодом.
+
+// Три показания прибора, между моментами передачи любых двух не менее K минут,
+// сумма минимальна (максимальна). Считается за один проход префиксами.
+function t27ThreeSolve(a, K, wantMin) {
+  const n = a.length
+  const pref = Array(n).fill(0), suf = Array(n).fill(0)
+  pref[0] = a[0]
+  for (let i = 1; i < n; i++) pref[i] = wantMin ? Math.min(pref[i - 1], a[i]) : Math.max(pref[i - 1], a[i])
+  suf[n - 1] = a[n - 1]
+  for (let i = n - 2; i >= 0; i--) suf[i] = wantMin ? Math.min(suf[i + 1], a[i]) : Math.max(suf[i + 1], a[i])
+  let best = null
+  for (let j = K; j + K < n; j++) {
+    const v = pref[j - K] + a[j] + suf[j + K]
+    if (best === null || (wantMin ? v < best : v > best)) best = v
+  }
+  return best
+}
+
+export function t27ThreeReadings() {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const K = randInt(2, 6)
+    const wantMin = Math.random() < 0.6
+    const files = [], answers = []
+    for (const size of [randInt(400, 900), randInt(900, 1500)]) {
+      const a = Array.from({ length: size }, () => randInt(1, 10000))
+      const v = t27ThreeSolve(a, K, wantMin)
+      if (v === null) { answers.length = 0; break }
+      files.push(`${K}\n${size}\n${a.join("\n")}`)
+      answers.push(v)
+    }
+    if (answers.length !== 2) continue
+    const what = pick(["силы тока", "напряжения", "мощности"])
+    return {
+      condition_text:
+        "По каналу связи передаётся последовательность целых чисел — показания прибора. " +
+        `В течение N мин. (N — натуральное число) прибор ежеминутно регистрирует значение ${what} ` +
+        "(в условных единицах) в электрической сети и передаёт его на сервер.\n" +
+        `Определите три таких переданных числа, чтобы между моментами передачи любых двух из них прошло не менее K мин., ` +
+        `а сумма этих трёх чисел была ${wantMin ? "минимально" : "максимально"} возможной. Запишите в ответе найденную сумму.\n` +
+        "Входные данные. Даны два входных файла (файл A и файл B), каждый из которых в первой строке содержит натуральное " +
+        "число K — минимальное количество минут между моментами передачи показаний, во второй — количество показаний N. " +
+        "В каждой из следующих N строк находится одно натуральное число.\n" +
+        "Запишите в ответе два числа: сначала значение искомой величины для файла A, затем — для файла B.",
+      textFile: [{ name: "27_A.txt", content: files[0] }, { name: "27_B.txt", content: files[1] }],
+      answer: `${answers[0]} ${answers[1]}`,
+    }
+  }
+  return null
+}
+
+// Тройка Si < Sj, Sk < Sj с максимальным (Sj − Si) + (Sj − Sk).
+function t27PeakSolve(a) {
+  const n = a.length
+  const pref = Array(n).fill(Infinity), suf = Array(n).fill(Infinity)
+  pref[0] = a[0]
+  for (let i = 1; i < n; i++) pref[i] = Math.min(pref[i - 1], a[i])
+  suf[n - 1] = a[n - 1]
+  for (let i = n - 2; i >= 0; i--) suf[i] = Math.min(suf[i + 1], a[i])
+  let best = null
+  for (let j = 1; j < n - 1; j++) {
+    const l = pref[j - 1], r = suf[j + 1]
+    if (l >= a[j] || r >= a[j]) continue
+    const v = (a[j] - l) + (a[j] - r)
+    if (best === null || v > best) best = v
+  }
+  return best
+}
+
+export function t27PeakTriple() {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const files = [], answers = []
+    for (const size of [randInt(400, 900), randInt(900, 1500)]) {
+      const a = Array.from({ length: size }, () => randInt(-1000, 1000))
+      const v = t27PeakSolve(a)
+      if (v === null) { answers.length = 0; break }
+      files.push(`${size}\n${a.join("\n")}`)
+      answers.push(v)
+    }
+    if (answers.length !== 2) continue
+    return {
+      condition_text:
+        "Пусть S — последовательность из N целых чисел, пронумерованных подряд начиная с 1. " +
+        "Обозначим S⟦b:i⟧, S⟦b:j⟧, S⟦b:k⟧ три элемента последовательности S, где i < j < k.\n" +
+        "Определите в последовательности S три таких числа S⟦b:i⟧, S⟦b:j⟧, S⟦b:k⟧, что S⟦b:i⟧ < S⟦b:j⟧, S⟦b:k⟧ < S⟦b:j⟧ " +
+        "и значение выражения (S⟦b:j⟧ − S⟦b:i⟧) + (S⟦b:j⟧ − S⟦b:k⟧) максимально.\n" +
+        "В ответе укажите найденное максимальное значение этого выражения.\n" +
+        "Входные данные. Даны два входных файла (файл A и файл B), каждый из которых в первой строке содержит число N — " +
+        "количество целых чисел; каждая из следующих N строк содержит одно целое число.\n" +
+        "В ответе укажите два числа: сначала значение искомой величины для файла A, затем — для файла B.",
+      textFile: [{ name: "27_A.txt", content: files[0] }, { name: "27_B.txt", content: files[1] }],
+      answer: `${answers[0]} ${answers[1]}`,
+    }
+  }
+  return null
+}
+
+// Подпоследовательность максимальной длины с положительной чётной суммой.
+// Для каждого правого конца ищем самый ранний префикс той же чётности с меньшей
+// суммой — по массиву минимумов (он невозрастающий) бинарным поиском.
+function t27SubseqSolve(a) {
+  const n = a.length
+  const pref = Array(n + 1).fill(0)
+  for (let i = 0; i < n; i++) pref[i + 1] = pref[i] + a[i]
+  // minByParity[t][i] — минимум pref[0..i] среди индексов с чётностью суммы t.
+  const minByParity = [Array(n + 1).fill(Infinity), Array(n + 1).fill(Infinity)]
+  for (let i = 0; i <= n; i++) {
+    const t = ((pref[i] % 2) + 2) % 2
+    for (const p of [0, 1]) minByParity[p][i] = i === 0 ? Infinity : minByParity[p][i - 1]
+    minByParity[t][i] = Math.min(i === 0 ? Infinity : minByParity[t][i - 1], pref[i])
+  }
+  let best = 0
+  for (let r = 1; r <= n; r++) {
+    const t = ((pref[r] % 2) + 2) % 2
+    // ищем минимальный индекс l ≤ r−1 с pref[l] < pref[r] и той же чётностью
+    let lo = 0, hi = r - 1, found = -1
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1
+      if (minByParity[t][mid] < pref[r]) { found = mid; hi = mid - 1 } else lo = mid + 1
+    }
+    if (found >= 0) best = Math.max(best, r - found)
+  }
+  return best
+}
+
+export function t27MaxSubseq() {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const files = [], answers = []
+    for (const size of [randInt(400, 900), randInt(900, 1500)]) {
+      const a = Array.from({ length: size }, () => randInt(-1000, 1000))
+      const v = t27SubseqSolve(a)
+      if (!v) { answers.length = 0; break }
+      files.push(`${size}\n${a.join("\n")}`)
+      answers.push(v)
+    }
+    if (answers.length !== 2) continue
+    return {
+      condition_text:
+        "Пусть S — последовательность из N целых чисел, пронумерованных подряд начиная с 1. " +
+        "Обозначим S(L, R) подпоследовательность, состоящую из идущих подряд элементов S с номерами от L до R включительно.\n" +
+        "Требуется найти такую подпоследовательность S(L, R) максимальной длины, что сумма её элементов положительна и чётна. " +
+        "Гарантируется, что хотя бы одна подпоследовательность требуемого вида существует. В ответе укажите длину искомой подпоследовательности.\n" +
+        "Входные данные. Даны два входных файла (файл A и файл B), каждый из которых в первой строке содержит число N, " +
+        "а в каждой из следующих N строк — одно целое число.\n" +
+        "В ответе укажите два числа: сначала значение искомой величины для файла A, затем — для файла B.",
+      textFile: [{ name: "27_A.txt", content: files[0] }, { name: "27_B.txt", content: files[1] }],
+      answer: `${answers[0]} ${answers[1]}`,
+    }
+  }
+  return null
+}
+
+// Размещение пункта (цеха / лаборатории) с минимальной суммарной стоимостью
+// доставки: на кольце расстояние берётся по короткой дуге, на прямой — обычное.
+function t27PlaceSolve(w, ring) {
+  const n = w.length
+  let best = null
+  for (let p = 0; p < n; p++) {
+    let sum = 0
+    for (let i = 0; i < n; i++) {
+      const d = ring ? Math.min(Math.abs(i - p), n - Math.abs(i - p)) : Math.abs(i - p)
+      sum += d * w[i]
+    }
+    if (best === null || sum < best) best = sum
+  }
+  return best
+}
+
+export function t27Placement() {
+  const ring = Math.random() < 0.5
+  const files = [], answers = []
+  for (const size of [randInt(300, 600), randInt(600, 900)]) {
+    const w = Array.from({ length: size }, () => randInt(1, 200))
+    const val = ring
+      ? t27PlaceSolve(w, true)
+      // На прямой у ФИПИ везут КОНТЕЙНЕРАМИ по 40 пробирок — вес округляется вверх.
+      : t27PlaceSolve(w.map((x) => Math.ceil(x / 40)), false)
+    files.push(`${size}\n${w.join("\n")}`)
+    answers.push(val)
+  }
+  return {
+    condition_text: ring
+      ? "Для участников велогонки на каждом километре кольцевой трассы с двусторонним движением установлены пункты питания. " +
+        "Длина кольцевой трассы равна N километров, нулевой и N-й километры находятся в одной точке. Известно количество " +
+        "комплектов питания в каждом пункте. Стоимость доставки равна произведению количества комплектов на расстояние " +
+        "от мобильного цеха до пункта. Цех расположен в одном из пунктов так, что общая стоимость доставки минимальна.\n" +
+        "Определите минимальную суммарную стоимость доставки питания.\n" +
+        "Входные данные. Даны два файла (A и B): в первой строке число N — количество пунктов, далее N строк с количеством комплектов.\n" +
+        "В ответе укажите два числа: сначала значение для файла A, затем — для файла B."
+      : "У медицинской компании есть N пунктов приёма биоматериалов. Все пункты расположены вдоль автомагистрали и имеют номера, " +
+        "соответствующие расстоянию от нулевой отметки. Известно количество пробирок, которое ежедневно принимают в каждом пункте. " +
+        "Пробирки перевозят в контейнерах вместимостью не более 40 штук; контейнер упаковывается в пункте приёма. " +
+        "Стоимость перевозки равна произведению расстояния от пункта до лаборатории на количество контейнеров. " +
+        "Лабораторию открывают в одном из пунктов так, что общая стоимость доставки минимальна.\n" +
+        "Определите минимальную общую стоимость доставки биоматериалов.\n" +
+        "Входные данные. Даны два файла (A и B): в первой строке число N — количество пунктов, далее N строк с количеством пробирок.\n" +
+        "В ответе укажите два числа: сначала значение для файла A, затем — для файла B.",
+    textFile: [{ name: "27_A.txt", content: files[0] }, { name: "27_B.txt", content: files[1] }],
+    answer: `${answers[0]} ${answers[1]}`,
+  }
+}
+
+// Кластеризация точек: кластеры лежат в непересекающихся прямоугольниках H×W,
+// центр кластера — его точка с минимальной суммой расстояний до остальных.
+// Ответ — целые части |Px·10000| и |Py·10000| для каждого файла.
+function t27ClusterAnswer(clusters) {
+  const centers = clusters.map((pts) => {
+    let best = null, bestSum = Infinity
+    for (const p of pts) {
+      let s = 0
+      for (const q of pts) s += Math.hypot(p[0] - q[0], p[1] - q[1])
+      if (s < bestSum) { bestSum = s; best = p }
+    }
+    return best
+  })
+  const px = centers.reduce((a, c) => a + c[0], 0) / centers.length
+  const py = centers.reduce((a, c) => a + c[1], 0) / centers.length
+  return [Math.floor(Math.abs(px * 10000)), Math.floor(Math.abs(py * 10000))]
+}
+
+export function t27Clusters() {
+  const round4 = (v) => Math.round(v * 10000) / 10000
+  const make = (nClusters, size, H) => {
+    const clusters = []
+    const spots = shuffle([[0, 0], [40, 0], [0, 40], [40, 40], [80, 0], [80, 40]]).slice(0, nClusters)
+    for (const [cx, cy] of spots) {
+      const pts = Array.from({ length: Math.floor(size / nClusters) }, () => [
+        round4(cx + Math.random() * H), round4(cy + Math.random() * H),
+      ])
+      clusters.push(pts)
+    }
+    return clusters
+  }
+  const a = make(2, randInt(60, 120), 6)
+  const b = make(3, randInt(150, 300), 8)
+  const ansA = t27ClusterAnswer(a), ansB = t27ClusterAnswer(b)
+  const dump = (cl) => shuffle(cl.flat()).map(([x, y]) => `${x} ${y}`).join("\n")
+  return {
+    condition_text:
+      "Фрагмент звёздного неба спроецирован на плоскость с декартовой системой координат. Учёный решил провести " +
+      "кластеризацию полученных точек, то есть разбить их множество на непересекающиеся непустые подмножества (кластеры) так, " +
+      "что точки каждого подмножества лежат внутри прямоугольника со сторонами H и W, причём эти прямоугольники между собой " +
+      "не пересекаются. Гарантируется, что такое разбиение существует и единственно.\n" +
+      "Центром кластера называется точка этого кластера, сумма расстояний от которой до всех остальных точек кластера минимальна " +
+      "(центр каждого кластера единственный).\n" +
+      "В файле A хранятся координаты точек двух кластеров, где H = W = 6; в файле B — координаты точек трёх кластеров, где H = W = 8. " +
+      "В каждой строке файла записаны координата x и координата y одной точки.\n" +
+      "Для каждого файла определите координаты центра каждого кластера, затем вычислите P⟦b:x⟧ — среднее арифметическое абсцисс центров " +
+      "и P⟦b:y⟧ — среднее арифметическое ординат центров.\n" +
+      "В ответе запишите четыре числа: для файла A — целую часть |P⟦b:x⟧ × 10 000| и целую часть |P⟦b:y⟧ × 10 000|, затем те же две величины для файла B.",
+    textFile: [{ name: "27_A.txt", content: dump(a) }, { name: "27_B.txt", content: dump(b) }],
+    answer: `${ansA[0]} ${ansA[1]} ${ansB[0]} ${ansB[1]}`,
+  }
+}
+
+
+// №24: граница подстроки — не буква, а КЛАСС символов (чётная/нечётная цифра):
+// «максимальная подстрока, где ровно K букв X, начинающаяся чётной цифрой,
+// и других чётных цифр в ней нет». Отдельный типаж: и граница, и счёт другие.
+export function t24MaxRunClass() {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const letter = T24_LETTERS[randInt(0, 25)]
+    const even = Math.random() < 0.5
+    const isBound = (c) => /\d/.test(c) && (Number(c) % 2 === 0) === even
+    // Граничные цифры должны быть РЕДКИМИ, иначе между двумя соседними границами
+    // не набрать нужного количества букв (в файлах ФИПИ они тоже редки).
+    const bounds = "0123456789".split("").filter((c) => isBound(c))
+    const others = "0123456789".split("").filter((c) => !isBound(c))
+    let text = ""
+    for (let i = 0; i < 30000; i++) {
+      const r = Math.random()
+      text += r < 0.02 ? pick(bounds) : r < 0.5 ? pick(others) : T24_LETTERS[randInt(0, 25)]
+    }
+    const K = randInt(4, 12)
+    let best = 0
+    for (let i = 0; i < text.length; i++) {
+      if (!isBound(text[i])) continue
+      let cnt = 0
+      for (let j = i + 1; j < text.length; j++) {
+        if (isBound(text[j])) break                    // другая граничная цифра — конец
+        if (text[j] === letter) cnt++
+        if (cnt === K) best = Math.max(best, j - i + 1)
+        if (cnt > K) break
+      }
+    }
+    if (best < 10) continue
+    const word = even ? "чётной" : "нечётной"
+    return {
+      condition_text:
+        "Текстовый файл состоит из десятичных цифр и заглавных букв латинского алфавита. " +
+        "Определите в прилагаемом файле последовательность из максимального количества идущих подряд символов, " +
+        `среди которых ровно ${K} букв ${letter}, начинающуюся ${word} цифрой, причём других ${even ? "чётных" : "нечётных"} ` +
+        "цифр в последовательности нет. В ответе запишите число — количество символов в найденной последовательности.\n" +
+        "Для выполнения этого задания следует написать программу.",
+      textFile: { name: "24.txt", content: text },
+      answer: String(best),
+    }
+  }
+  return null
+}
+
+
+// №09 (второе семейство): таблица из N строк по несколько чисел — надо посчитать
+// строки, у которых выполнены ДВА условия: структурное (какие числа повторяются)
+// и числовое (соотношение между ними). В банке эти условия комбинируются между
+// собой, поэтому генератор собирает пару так же, а не хранит готовые формулировки.
+const T9_SORT = (r) => [...r].sort((a, b) => a - b)
+const T9_SUM = (r) => r.reduce((a, x) => a + x, 0)
+const T9_COUNTS = (r) => {
+  const m = new Map()
+  r.forEach((x) => m.set(x, (m.get(x) || 0) + 1))
+  return [...m.entries()]
+}
+const T9_DUPS = (r) => T9_COUNTS(r).filter(([, n]) => n > 1)
+const T9_UNIQ = (r) => T9_COUNTS(r).filter(([, n]) => n === 1).map(([v]) => v)
+
+// Структурные условия. dup — какие повторы обязаны быть (для числовых условий,
+// которым нужны повторяющиеся числа).
+const T9_STRUCT = [
+  { text: "в строке все числа различны", dup: false, ok: (r) => new Set(r).size === r.length },
+  { text: "среди чисел строки есть только одна пара равных чисел", dup: true,
+    ok: (r) => { const d = T9_DUPS(r); return d.length === 1 && d[0][1] === 2 } },
+  { text: "в строке есть только одно число, которое повторяется дважды, остальные числа различны", dup: true,
+    ok: (r) => { const d = T9_DUPS(r); return d.length === 1 && d[0][1] === 2 } },
+  { text: "в строке есть два числа, каждое из которых повторяется дважды, остальные числа различны", dup: true,
+    ok: (r) => { const d = T9_DUPS(r); return d.length === 2 && d.every(([, n]) => n === 2) } },
+  { text: "в строке только одно число повторяется трижды, остальные числа различны", dup: true,
+    ok: (r) => { const d = T9_DUPS(r); return d.length === 1 && d[0][1] === 3 } },
+]
+
+// Числовые условия. needDup — требуется наличие повторяющихся чисел.
+const T9_REL = [
+  { text: (n) => `наибольшее из ${T9_NUMW[n]} чисел меньше суммы остальных`,
+    ok: (r) => { const s = T9_SORT(r); return s[s.length - 1] < T9_SUM(s.slice(0, -1)) } },
+  { text: () => "удвоенная сумма максимального и минимального чисел строки больше суммы оставшихся чисел",
+    ok: (r) => { const s = T9_SORT(r); return 2 * (s[0] + s[s.length - 1]) > T9_SUM(s.slice(1, -1)) } },
+  { text: () => "удвоенная сумма максимального и минимального чисел строки не больше суммы оставшихся чисел",
+    ok: (r) => { const s = T9_SORT(r); return 2 * (s[0] + s[s.length - 1]) <= T9_SUM(s.slice(1, -1)) } },
+  { text: () => "квадрат суммы максимального и минимального чисел строки больше суммы квадратов оставшихся чисел",
+    ok: (r) => { const s = T9_SORT(r); return Math.pow(s[0] + s[s.length - 1], 2) > s.slice(1, -1).reduce((a, x) => a + x * x, 0) } },
+  { text: () => "сумма двух наибольших чисел строки не больше суммы оставшихся чисел",
+    ok: (r) => { const s = T9_SORT(r); return s[s.length - 1] + s[s.length - 2] <= T9_SUM(s.slice(0, -2)) } },
+  { text: () => "утроенное произведение минимального и максимального чисел строки не больше удвоенной суммы оставшихся чисел",
+    ok: (r) => { const s = T9_SORT(r); return 3 * s[0] * s[s.length - 1] <= 2 * T9_SUM(s.slice(1, -1)) } },
+  { text: () => "повторяющееся число строки больше, чем среднее арифметическое её неповторяющихся чисел", needDup: true,
+    ok: (r) => {
+      const d = T9_DUPS(r), u = T9_UNIQ(r)
+      if (d.length !== 1 || !u.length) return false
+      return d[0][0] > T9_SUM(u) / u.length
+    } },
+  { text: () => "максимальное число строки не является повторяющимся", needDup: true,
+    ok: (r) => {
+      const d = T9_DUPS(r)
+      if (!d.length) return false
+      return Math.max(...r) !== Math.max(...d.map(([v]) => v))
+    } },
+  { text: () => "среднее арифметическое всех повторяющихся чисел строки больше среднего арифметического её неповторяющихся чисел", needDup: true,
+    ok: (r) => {
+      const d = T9_DUPS(r).map(([v]) => v), u = T9_UNIQ(r)
+      if (!d.length || !u.length) return false
+      return T9_SUM(d) / d.length > T9_SUM(u) / u.length
+    } },
+]
+
+const T9_NUMW = { 3: "трёх", 4: "четырёх", 5: "пяти", 6: "шести", 7: "семи" }
+const T9_COLW = { 3: "три", 4: "четыре", 5: "пять", 6: "шесть", 7: "семь" }
+
+export function t9Rows() {
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const cols = pick([4, 4, 5, 5, 6, 7])
+    const struct = pick(T9_STRUCT)
+    const rel = pick(T9_REL.filter((x) => !x.needDup || struct.dup))
+    // Повторы в случайных числах из широкого диапазона почти не встречаются —
+    // для структур с повторами диапазон сужаем, иначе подходящих строк не будет.
+    const hi = struct.dup ? randInt(6, 12) : randInt(30, 100)
+    const N = randInt(300, 800)
+    const rows = Array.from({ length: N }, () => Array.from({ length: cols }, () => randInt(1, hi)))
+    const hits = rows.map((r, i) => [i + 1, r]).filter(([, r]) => struct.ok(r) && rel.ok(r))
+    if (hits.length < 8 || hits.length > N - 8) continue
+    const ask = randInt(0, 5)
+    const nums = hits.flatMap(([, r]) => r)
+    const answer = ask === 0 ? hits.length
+      : ask === 1 ? hits[hits.length - 1][0]
+        : ask === 2 ? hits[0][0]
+          : ask === 3 ? Math.floor(T9_SUM(nums) / nums.length)
+            : ask === 4 ? T9_SUM(hits[hits.length - 1][1])   // сумма чисел строки с наибольшим номером
+              : T9_SUM(hits[0][1])                            // …и с наименьшим
+    const head = ask === 0 ? "Определите количество строк таблицы, содержащих числа"
+      : ask === 1 ? "Определите наибольший номер строки таблицы, содержащей числа"
+        : ask === 2 ? "Определите наименьший номер строки таблицы, содержащей числа"
+          : ask === 3 ? "Определите среднее арифметическое чисел всех строк таблицы, содержащих числа"
+            : ask === 4 ? "Определите сумму чисел в строке таблицы с наибольшим номером, содержащей числа"
+              : "Определите сумму чисел в строке таблицы с наименьшим номером, содержащей числа"
+    return {
+      condition_text:
+        `Откройте файл электронной таблицы, содержащей в каждой строке ${T9_COLW[cols]} ` +
+        `${cols < 5 ? "натуральных числа" : "натуральных чисел"}.\n` +
+        `${head}, для которых выполнены оба условия:\n` +
+        `— ${struct.text};\n— ${rel.text(cols)}.\n` +
+        (ask === 3 ? "В ответе запишите целую часть полученного числа." : "В ответе запишите только число."),
+      spreadsheet: { name: "9.xlsx", sheetName: "Числа", rows },
+      answer: String(answer),
+    }
+  }
+  return null
+}
+
+
+// №01: ориентированная схема дорог — длина самого длинного пути (в дорогах)
+// или количество различных путей из первого города в последний.
+const T1_CITIES = ["А", "Б", "В", "Г", "Д", "Е", "Ж", "З", "И", "К", "Л", "М"]
+
+function t1DirectedSvg(n, edges, labels) {
+  // Раскладка «слоями»: город i рисуем в колонке по его порядковому номеру,
+  // строки чередуем — так стрелки почти не пересекаются, как в схемах ФИПИ.
+  const W = 560, H = 240
+  const cols = Math.ceil(n / 2)
+  const pos = labels.map((_, i) => {
+    const c = Math.floor(i / 2), r = i % 2
+    return [40 + c * ((W - 80) / Math.max(1, cols - 1)), 60 + r * 110]
+  })
+  let el = `<defs><marker id="a" markerWidth="9" markerHeight="7" refX="9" refY="3.5" orient="auto">` +
+    `<polygon points="0 0, 9 3.5, 0 7" fill="#111"/></marker></defs>`
+  for (const [u, v] of edges) {
+    const [x1, y1] = pos[u], [x2, y2] = pos[v]
+    const dx = x2 - x1, dy = y2 - y1
+    const len = Math.hypot(dx, dy) || 1
+    const sx = x1 + dx / len * 15, sy = y1 + dy / len * 15
+    const ex = x2 - dx / len * 17, ey = y2 - dy / len * 17
+    el += `<line x1="${sx.toFixed(1)}" y1="${sy.toFixed(1)}" x2="${ex.toFixed(1)}" y2="${ey.toFixed(1)}" stroke="#111" stroke-width="1.3" marker-end="url(#a)"/>`
+  }
+  labels.forEach((lbl, i) => {
+    const [x, y] = pos[i]
+    el += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="14" fill="#fff" stroke="#111" stroke-width="1.4"/>`
+    el += `<text x="${x.toFixed(1)}" y="${(y + 5).toFixed(1)}" text-anchor="middle" font-size="15" font-family="Arial, sans-serif" font-weight="bold" fill="#111">${lbl}</text>`
+  })
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${el}</svg>`
+}
+
+export function t1LongestPath() {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const n = randInt(8, 12)
+    const labels = T1_CITIES.slice(0, n)
+    const edges = []
+    // Рёбра только «слева направо» — граф ацикличен, путь всегда конечен.
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < Math.min(n, i + 4); j++) {
+        if (Math.random() < 0.45) edges.push([i, j])
+      }
+    }
+    // Изолированных городов на схемах ФИПИ не бывает: каждому даём вход и выход.
+    for (let i = 0; i < n - 1; i++) {
+      if (!edges.some(([u]) => u === i)) edges.push([i, randInt(i + 1, Math.min(n - 1, i + 3))])
+    }
+    for (let j = 1; j < n; j++) {
+      if (!edges.some(([, v]) => v === j)) edges.push([randInt(Math.max(0, j - 3), j - 1), j])
+    }
+    if (!edges.some(([u]) => u === 0) || !edges.some(([, v]) => v === n - 1)) continue
+    // Динамика по вершинам: длиннейший путь (в рёбрах) и количество путей.
+    const longest = Array(n).fill(-Infinity), ways = Array(n).fill(0)
+    longest[0] = 0; ways[0] = 1
+    for (let v = 1; v < n; v++) {
+      for (const [a, b] of edges) {
+        if (b !== v || longest[a] === -Infinity) continue
+        longest[v] = Math.max(longest[v], longest[a] + 1)
+        ways[v] += ways[a]
+      }
+    }
+    if (!isFinite(longest[n - 1]) || longest[n - 1] < 3 || ways[n - 1] < 2) continue
+    const askLong = Math.random() < 0.5
+    return {
+      condition_text:
+        `На рисунке представлена схема дорог, связывающих города ${labels.join(", ")}. ` +
+        "По каждой дороге можно двигаться только в одном направлении, указанном стрелкой.\n" +
+        (askLong
+          ? `Какова длина самого длинного пути из города ${labels[0]} в город ${labels[n - 1]}? ` +
+            "Длиной пути считать количество дорог, составляющих этот путь."
+          : `Сколько существует различных путей из города ${labels[0]} в город ${labels[n - 1]}?`),
+      image_url: svgUrl(t1DirectedSvg(n, edges, labels)),
+      answer: String(askLong ? longest[n - 1] : ways[n - 1]),
+    }
+  }
+  return null
+}
+
+// №01 (старый типаж): дана таблица стоимости перевозок — выбрать схему из четырёх.
+// Все четыре схемы рисуются в одном изображении (2 × 2) с номерами.
+export function t1MatchScheme() {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const n = 5
+    const labels = ["A", "B", "C", "D", "E"]
+    const w = t1RandomGraph(n, randInt(1, 2))
+    // Стоимости перевозок в этом типаже у ФИПИ однозначные — ужимаем до 1…9.
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) if (w[i][j]) { const v = randInt(1, 9); w[i][j] = w[j][i] = v }
+    const edges = []
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) if (w[i][j]) edges.push([i, j, w[i][j]])
+    if (edges.length < 4 || edges.length > 6) continue
+    // Отвлекающие схемы: у каждой изменено одно ребро (добавлено, убрано или другой вес).
+    const variants = [edges]
+    for (let k = 0; k < 20 && variants.length < 4; k++) {
+      const alt = edges.map((e) => [...e])
+      const mode = randInt(0, 2)
+      if (mode === 0) {
+        alt[randInt(0, alt.length - 1)][2] += randInt(1, 3)
+      } else if (mode === 1) {
+        alt.splice(randInt(0, alt.length - 1), 1)
+      } else {
+        // добавить ребро, которого нет
+        const pairs = []
+        for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) if (!w[i][j]) pairs.push([i, j])
+        if (!pairs.length) continue
+        const [i, j] = pick(pairs)
+        alt.push([i, j, randInt(1, 5)])
+      }
+      const key = (list) => list.map((e) => e.join(",")).sort().join(";")
+      if (variants.every((v) => key(v) !== key(alt))) variants.push(alt)
+    }
+    if (variants.length < 4) continue
+    const order = shuffle(variants.map((v, i) => ({ v, right: i === 0 })))
+    // Одно изображение: четыре схемы 2 × 2 с номерами.
+    const cellW = 270, cellH = 190
+    let el = ""
+    order.forEach((o, k) => {
+      const ox = (k % 2) * cellW, oy = Math.floor(k / 2) * cellH
+      const pos = labels.map((_, i) => {
+        const a = -Math.PI / 2 + (2 * Math.PI * i) / n
+        return [ox + cellW / 2 + 62 * Math.cos(a), oy + cellH / 2 + 10 + 62 * Math.sin(a)]
+      })
+      el += `<text x="${ox + 12}" y="${oy + 20}" font-size="14" font-family="Arial, sans-serif" fill="#111">${k + 1})</text>`
+      for (const [i, j, val] of o.v) {
+        const [x1, y1] = pos[i], [x2, y2] = pos[j]
+        el += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#111" stroke-width="1.2"/>`
+        el += `<text x="${((x1 + x2) / 2).toFixed(1)}" y="${((y1 + y2) / 2 - 3).toFixed(1)}" font-size="12" text-anchor="middle" font-family="Arial, sans-serif" fill="#111">${val}</text>`
+      }
+      labels.forEach((lbl, i) => {
+        const [x, y] = pos[i]
+        el += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="11" fill="#fff" stroke="#111" stroke-width="1.2"/>`
+        el += `<text x="${x.toFixed(1)}" y="${(y + 4).toFixed(1)}" text-anchor="middle" font-size="12" font-family="Arial, sans-serif" font-weight="bold" fill="#111">${lbl}</text>`
+      })
+    })
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${cellW * 2}" height="${cellH * 2}" viewBox="0 0 ${cellW * 2} ${cellH * 2}"><rect width="${cellW * 2}" height="${cellH * 2}" fill="#fff"/>${el}</svg>`
+    return {
+      condition_text:
+        "В таблице приведена стоимость перевозок между соседними железнодорожными станциями. " +
+        "Укажите схему, соответствующую таблице.\n" +
+        tableBlock([["", ...labels], ...w.map((row, i) => [labels[i], ...row.map((x) => (x ? String(x) : ""))])]) + "\n" +
+        "Варианты ответа приведены на рисунке. В ответе укажите номер схемы.",
+      image_url: svgUrl(svg),
+      answer: String(order.findIndex((o) => o.right) + 1),
+    }
+  }
+  return null
+}
+
+
+// ── №26: сюжеты с симуляцией (эталон — 47 задач, механики разные) ──────────
+// Конференц-зал: из заявок (начало, конец) выбрать максимум непересекающихся
+// мероприятий; второе число — либо самое позднее время окончания последнего,
+// либо наибольший перерыв между двумя последними. Считается динамикой по
+// заявкам, отсортированным по времени окончания.
+export function t26Conference() {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const N = randInt(60, 200)
+    const reqs = []
+    for (let i = 0; i < N; i++) {
+      const start = randInt(0, 1380)
+      reqs.push([start, Math.min(1440, start + randInt(10, 120))])
+    }
+    const sorted = [...reqs].sort((a, b) => a[1] - b[1] || a[0] - b[0])
+    const n = sorted.length
+    // dp[i] — максимум мероприятий, если последнее выбранное — i.
+    const dp = Array(n).fill(1)
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < i; j++) {
+        if (sorted[j][1] <= sorted[i][0] && dp[j] + 1 > dp[i]) dp[i] = dp[j] + 1
+      }
+    }
+    const best = Math.max(...dp)
+    if (best < 4) continue
+    const askGap = Math.random() < 0.5
+    let second = 0
+    if (askGap) {
+      // наибольший перерыв между двумя последними мероприятиями в максимальном наборе
+      for (let i = 0; i < n; i++) {
+        if (dp[i] !== best) continue
+        for (let j = 0; j < i; j++) {
+          if (dp[j] === best - 1 && sorted[j][1] <= sorted[i][0]) {
+            second = Math.max(second, sorted[i][0] - sorted[j][1])
+          }
+        }
+      }
+    } else {
+      for (let i = 0; i < n; i++) if (dp[i] === best) second = Math.max(second, sorted[i][1])
+    }
+    const content = `${N}\n` + reqs.map(([a, b]) => `${a} ${b}`).join("\n")
+    return {
+      condition_text:
+        "Входной файл содержит сведения о заявках на проведение мероприятий в конференц-зале. В каждой заявке указаны " +
+        "время начала и время окончания мероприятия (в минутах от начала суток). Если время начала одного мероприятия меньше " +
+        "времени окончания другого, то провести можно только одно из них. Если время окончания одного мероприятия совпадает " +
+        "со временем начала другого, то провести можно оба.\n" +
+        "Определите, какое максимальное количество мероприятий можно провести в конференц-зале, и " +
+        (askGap ? "каков при этом максимально возможный перерыв между двумя последними мероприятиями."
+          : "каково самое позднее время окончания последнего мероприятия.") + "\n" +
+        "Входные данные. В первой строке файла находится число N — количество заявок; следующие N строк содержат пары чисел " +
+        "(время начала и время окончания мероприятия).\n" +
+        `Запишите в ответе два числа: максимальное количество мероприятий и ${askGap ? "самый длинный перерыв между двумя последними мероприятиями (в минутах)" : "самое позднее время окончания последнего мероприятия"}.`,
+      textFile: { name: "26.txt", content },
+      answer: `${best} ${second}`,
+    }
+  }
+  return null
+}
+
+// Места в рядах: найти ряд с наибольшим номером, где два соседних места свободны,
+// а слева и справа от них места заняты.
+export function t26Seats() {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const rowsCount = randInt(8, 20)
+    const firstRow = randInt(10, 60)
+    const taken = []
+    const byRow = new Map()
+    for (let r = 0; r < rowsCount; r++) {
+      const row = firstRow + r
+      const seats = new Set()
+      const total = randInt(20, 60)
+      for (let k = 0; k < total; k++) seats.add(randInt(1, 80))
+      byRow.set(row, seats)
+      for (const st of seats) taken.push([row, st])
+    }
+    // Пара свободных мест a+1, a+2 при занятых a и a+3.
+    let bestRow = null, bestSeat = null
+    for (const [row, seats] of byRow) {
+      const list = [...seats].sort((a, b) => a - b)
+      for (const a of list) {
+        if (seats.has(a + 3) && !seats.has(a + 1) && !seats.has(a + 2)) {
+          if (bestRow === null || row > bestRow || (row === bestRow && a + 1 < bestSeat)) {
+            if (bestRow === null || row > bestRow) { bestRow = row; bestSeat = a + 1 }
+            else bestSeat = Math.min(bestSeat, a + 1)
+          }
+        }
+      }
+    }
+    if (bestRow === null) continue
+    const shuffled = shuffle(taken)
+    const content = `${shuffled.length}\n` + shuffled.map(([r, st]) => `${r} ${st}`).join("\n")
+    return {
+      condition_text:
+        "Организация купила для своих сотрудников все места в нескольких подряд идущих рядах на концертной площадке. " +
+        "Известно, какие места уже распределены между сотрудниками.\n" +
+        "Найдите ряд с наибольшим номером, в котором есть два соседних места, таких что слева и справа от них в том же ряду " +
+        "места уже распределены (заняты). Гарантируется, что есть хотя бы один ряд, удовлетворяющий этому условию.\n" +
+        "Входные данные. В первой строке файла находится число N — количество занятых мест; каждая из следующих N строк " +
+        "содержит два натуральных числа: номер ряда и номер занятого места.\n" +
+        "В ответе запишите два целых числа: номер ряда и наименьший номер места из найденных в этом ряду подходящих пар свободных мест.",
+      textFile: { name: "26.txt", content },
+      answer: `${bestRow} ${bestSeat}`,
+    }
+  }
+  return null
+}
+
+// Камера хранения: K ячеек, заявки (время сдачи, время освобождения). Багаж кладут
+// в свободную ячейку с минимальным номером; если свободных нет — пассажир уходит.
+export function t26Storage() {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const K = randInt(4, 12), N = randInt(60, 200)
+    const reqs = []
+    for (let i = 0; i < N; i++) {
+      const t0 = randInt(1, 1300)
+      reqs.push([t0, Math.min(1440, t0 + randInt(20, 200))])
+    }
+    // Обрабатываем заявки в порядке времени сдачи; ячейка занята до времени
+    // освобождения включительно, следующий может занять её со следующей минуты.
+    const order = [...reqs].sort((a, b) => a[0] - b[0] || a[1] - b[1])
+    const freeAt = Array(K).fill(0)          // с какой минуты ячейка снова свободна
+    let served = 0, lastCell = 0, lastTime = -1
+    for (const [t0, t1] of order) {
+      let cell = -1
+      for (let c = 0; c < K; c++) if (freeAt[c] <= t0) { cell = c; break }
+      if (cell < 0) continue
+      freeAt[cell] = t1 + 1
+      served++
+      if (t0 > lastTime) { lastTime = t0; lastCell = cell + 1 }
+      else if (t0 === lastTime) lastCell = Math.min(lastCell, cell + 1)
+    }
+    if (served < 10 || served === N) continue
+    const content = `${K}\n${N}\n` + reqs.map(([a, b]) => `${a} ${b}`).join("\n")
+    return {
+      condition_text:
+        "Входной файл содержит заявки пассажиров, желающих сдать свой багаж в камеру хранения. В заявке указаны время сдачи " +
+        "багажа и время освобождения ячейки (в минутах от начала суток). Багаж одного пассажира размещается в одной свободной " +
+        "ячейке с минимальным номером; ячейки пронумерованы начиная с единицы. Багаж можно поместить в только что освобождённую " +
+        "ячейку начиная со следующей минуты. Если в момент сдачи багажа свободных ячеек нет, то пассажир уходит.\n" +
+        "Определите, сколько пассажиров сможет сдать свой багаж в течение 24 ч и какой номер будет иметь ячейка, которую займут " +
+        "последней. Если таких ячеек несколько, укажите минимальный номер ячейки.\n" +
+        "Входные данные. В первой строке файла — число K (количество ячеек), во второй — число N (количество пассажиров); " +
+        "каждая из следующих N строк содержит время размещения багажа и время освобождения ячейки.",
+      textFile: { name: "26.txt", content },
+      answer: `${served} ${lastCell}`,
+    }
+  }
+  return null
+}
+
+
+// №26 «коржи»: диаметры форм; корж кладётся на другой, если его диаметр меньше
+// хотя бы на D. Нужны наибольшее число ярусов и максимальный диаметр верхнего
+// (самого маленького) коржа. Считается динамикой по отсортированным диаметрам.
+export function t26Cakes() {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const N = randInt(200, 600)
+    const D = pick([3, 4, 5, 6])
+    // Тот же механизм в банке подаётся двумя сюжетами: коржи торта и коробки-матрёшки.
+    const boxes = Math.random() < 0.5
+    const diam = Array.from({ length: N }, () => randInt(10, 400))
+    const sorted = [...diam].sort((a, b) => a - b)
+    // Жадно снизу вверх: берём наименьший, затем каждый следующий, отличающийся на ≥ D.
+    // Для «максимально возможного диаметра самого маленького коржа» считаем цепочки
+    // сверху вниз: dp[i] — длина цепочки, начинающейся с i-го (по возрастанию) коржа.
+    const n = sorted.length
+    const dp = Array(n).fill(1)
+    for (let i = n - 2; i >= 0; i--) {
+      // ближайший корж, который можно положить сверху на i-й
+      let j = i + 1
+      while (j < n && sorted[j] - sorted[i] < D) j++
+      dp[i] = j < n ? dp[j] + 1 : 1
+    }
+    const best = Math.max(...dp)
+    if (best < 4) continue
+    // Самый маленький корж — нижний в цепочке максимальной длины: берём наибольший
+    // диаметр среди начал таких цепочек.
+    let maxSmall = 0
+    for (let i = 0; i < n; i++) if (dp[i] === best) maxSmall = Math.max(maxSmall, sorted[i])
+    return {
+      condition_text: boxes
+        ? `На складе есть N кубических коробок. Подарок упаковывают в несколько коробок, вкладывая их одна в другую: ` +
+          `коробку можно вложить в другую, если длина её стороны хотя бы на ${D} единиц${D === 3 ? "ы" : ""} меньше ` +
+          "длины стороны другой коробки.\n" +
+          "Определите наибольшее количество коробок, которое можно использовать для упаковки одного подарка, " +
+          "и максимально возможную длину стороны самой маленькой коробки, где будет находиться подарок.\n" +
+          "Входные данные. В первой строке файла — число N (количество коробок), в следующих N строках — длины сторон коробок.\n" +
+          "В ответе запишите два числа: количество коробок и длину стороны самой маленькой из них."
+        : "В кондитерской есть N круглых форм для коржей. Специализация кондитерской — многоярусные торты, в которых диаметр " +
+          "каждого верхнего коржа меньше диаметра предыдущего. Один корж можно поместить на другой, если его диаметр хотя бы " +
+          `на ${D} единиц${D === 3 ? "ы" : ""} меньше диаметра другого коржа.\n` +
+          "Определите наибольшее количество коржей, которое можно использовать для создания многоярусного торта, " +
+          "и максимально возможный диаметр самого маленького коржа.\n" +
+          "Входные данные. В первой строке файла — число N (количество форм), в следующих N строках — диаметры форм.\n" +
+          "В ответе запишите два числа: количество коржей и диаметр самого маленького коржа.",
+      textFile: { name: "26.txt", content: `${N}\n${diam.join("\n")}` },
+      answer: `${best} ${maxSmall}`,
+    }
+  }
+  return null
+}
+
+// №26 «рейтинг»: участники с баллами; список сортируется по сумме баллов, при
+// равенстве — по дополнительному критерию, затем по ID. Спрашивают проходной балл
+// и количество зачисленных (либо ID на границе).
+export function t26Rating() {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const N = randInt(100, 400)
+    const places = randInt(20, Math.max(21, Math.floor(N / 3)))
+    const people = []
+    const usedIds = new Set()
+    for (let i = 0; i < N; i++) {
+      let id
+      do { id = randInt(1000, 99999) } while (usedIds.has(id))
+      usedIds.add(id)
+      const tests = [randInt(0, 100), randInt(0, 100), randInt(0, 100)]
+      const talk = randInt(0, 10)
+      people.push({ id, tests, talk, total: tests.reduce((a, b) => a + b, 0) + talk })
+    }
+    const sorted = [...people].sort((a, b) => b.total - a.total || b.talk - a.talk || a.id - b.id)
+    // Проходной балл — минимальная сумма, с которой зачисляются ВСЕ её набравшие:
+    // берём балл участника на границе мест и поднимаемся, пока все с таким баллом влезают.
+    const border = sorted[places - 1].total
+    let pass = border
+    while (people.filter((p) => p.total >= pass).length > places) pass++
+    const enrolled = people.filter((p) => p.total >= pass).length
+    if (enrolled < 5 || enrolled > places) continue
+    const content = `${N}\n${places}\n` + people.map((p) => `${p.id} ${p.tests.join(" ")} ${p.talk}`).join("\n")
+    return {
+      condition_text:
+        "Каждый кандидат в отряд космонавтов проходит 3 испытания, за каждое из которых можно получить от 0 до 100 баллов. " +
+        "Кроме того, можно получить дополнительно от 0 до 10 баллов по итогам собеседования. Каждому кандидату присвоен " +
+        "уникальный идентификационный номер (ID).\n" +
+        "В отряде имеется фиксированное число мест, на которые кандидаты зачисляются в порядке их номера в рейтинговом списке. " +
+        "Рейтинговый список формируется по убыванию суммы набранных баллов, включая баллы за собеседование; при равенстве сумм " +
+        "выше стоит кандидат с бо́льшими баллами за собеседование, а при равенстве и этих баллов — с меньшим ID.\n" +
+        "Минимальная сумма баллов, с которой зачисляются в отряд все её набравшие, называется проходным баллом.\n" +
+        "Определите проходной балл и количество кандидатов, зачисленных в отряд.\n" +
+        "Входные данные. В первой строке файла — число N (количество кандидатов), во второй — количество мест в отряде; " +
+        "каждая из следующих N строк содержит ID кандидата, три оценки за испытания и балл за собеседование.",
+      textFile: { name: "26.txt", content },
+      answer: `${pass} ${enrolled}`,
+    }
+  }
+  return null
+}
+
+// №26 «магазин»: товары нескольких артикулов, часть продана. Лидер продаж —
+// артикул с наибольшим числом проданных единиц среди дорогих (цена выше средней).
+// Ответ — выручка от лидера продаж и остаток товара этого артикула.
+export function t26Sales() {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const kinds = randInt(6, 14)
+    const arts = shuffle(Array.from({ length: 90 }, (_, i) => 1000 + i)).slice(0, kinds)
+    const price = Object.fromEntries(arts.map((a) => [a, randInt(50, 900)]))
+    const items = []
+    for (const a of arts) {
+      const count = randInt(20, 80)
+      for (let i = 0; i < count; i++) items.push({ art: a, sold: Math.random() < 0.5 })
+    }
+    const avg = items.reduce((s, it) => s + price[it.art], 0) / items.length
+    const expensive = arts.filter((a) => price[a] > avg)
+    if (!expensive.length) continue
+    const soldBy = Object.fromEntries(arts.map((a) => [a, items.filter((it) => it.art === a && it.sold).length]))
+    const leader = expensive.slice().sort((x, y) =>
+      soldBy[y] - soldBy[x] || price[y] - price[x] || x - y)[0]
+    const revenue = soldBy[leader] * price[leader]
+    const left = items.filter((it) => it.art === leader && !it.sold).length
+    if (!revenue || !left) continue
+    const content = `${items.length}\n` + shuffle(items).map((it) => `${it.art} ${price[it.art]} ${it.sold ? 1 : 0}`).join("\n")
+    return {
+      condition_text:
+        "В магазине продаётся N товаров нескольких артикулов. Товары одного артикула имеют одинаковую цену. Учёт ведётся " +
+        "поштучно: для каждой единицы товара известен её текущий статус (1 — продана, 0 — нет).\n" +
+        "Дорогими считаются товары, цена которых превышает среднее арифметическое цен всех товаров в базе данных магазина " +
+        "без учёта их текущего статуса; остальные товары считаются дешёвыми.\n" +
+        "Лидером продаж называется товар с таким артикулом, наибольшее количество единиц которого продано. Лидер продаж " +
+        "выбирается среди дорогих товаров; если продано одинаковое количество товаров с разными артикулами, лидером считается " +
+        "товар с наибольшей ценой, а если и таких несколько — с наименьшим артикулом.\n" +
+        "Найдите суммарную выручку магазина от реализации товара — лидера продаж, а также оставшееся количество товара с этим артикулом.\n" +
+        "Входные данные. В первой строке файла — число N; каждая из следующих N строк содержит артикул, цену и статус единицы товара.",
+      textFile: { name: "26.txt", content },
+      answer: `${revenue} ${left}`,
+    }
+  }
+  return null
+}
+
+
+// №26 «журнал сервера»: запросы (время, клиент, объём) заполняют раздел памяти;
+// когда очередной запрос не влезает, создаётся резервная копия накопленного и
+// раздел очищается. Спрашивают наименьшую суммарную передачу с двух клиентов
+// (у каждого не меньше порога) и наименьший объём копии до заданного времени.
+export function t26Server() {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const N = randInt(400, 900)
+    const K = randInt(2000, 6000)
+    const clients = Array.from({ length: randInt(8, 16) }, () => randInt(1000, 9999))
+    const log = []
+    for (let i = 0; i < N; i++) {
+      const sec = randInt(0, 86399)
+      log.push({ sec, client: pick(clients), size: randInt(50, Math.floor(K / 3)) })
+    }
+    log.sort((a, b) => a.sec - b.sec)
+    // Суммы по клиентам и порог: берём такой, чтобы через него проходило ≥ 2 клиентов.
+    const byClient = new Map()
+    log.forEach((r) => byClient.set(r.client, (byClient.get(r.client) || 0) + r.size))
+    const sums = [...byClient.values()].sort((a, b) => a - b)
+    const limit = Math.round(sums[Math.floor(sums.length / 2)] / 1000) * 1000
+    const passing = [...byClient.values()].filter((v) => v >= limit).sort((a, b) => a - b)
+    if (passing.length < 2 || !limit) continue
+    const pairSum = passing[0] + passing[1]
+    // Резервные копии: раздел заполняется, при нехватке места копируется и очищается.
+    const DEADLINE = 12 * 3600 - 1
+    let acc = 0, minCopy = null
+    for (const r of log) {
+      if (acc + r.size > K) {
+        if (r.sec <= DEADLINE && acc > 0) minCopy = minCopy === null ? acc : Math.min(minCopy, acc)
+        acc = 0
+      }
+      acc += r.size
+    }
+    if (minCopy === null) continue
+    const hhmmss = (s) => [Math.floor(s / 3600), Math.floor(s / 60) % 60, s % 60]
+      .map((x) => String(x).padStart(2, "0")).join(":")
+    const content = `${N} ${K}\n` + log.map((r) => `${hhmmss(r.sec)} ${r.client} ${r.size}`).join("\n")
+    return {
+      condition_text:
+        "Сервер выполняет запросы на передачу данных: сведения о каждом выполненном запросе (время регистрации, идентификатор " +
+        "клиента и объём переданных данных) сохраняются в журнале работы, а сам запрос — в специальном разделе памяти сервера " +
+        "ограниченного объёма. Каждый раз, когда в специальном разделе остаётся недостаточно свободной памяти, сервер создаёт " +
+        "резервную копию всех накопленных там данных, после чего освобождает раздел и продолжает выполнение запросов.\n" +
+        `Определите наименьший суммарный объём данных, переданных на сервер с двух клиентских устройств (не менее ${limit} Кбайт ` +
+        "с каждого устройства), а также наименьший объём резервной копии специального раздела (в Кбайт), выполненной " +
+        "не позднее 11:59:59.\n" +
+        "Входные данные. Первая строка файла содержит числа N (количество строк журнала) и K (вместимость раздела в Кбайт). " +
+        "Каждая из следующих N строк содержит время регистрации запроса, идентификатор клиента и объём переданных данных.",
+      textFile: { name: "26.txt", content },
+      answer: `${pairSum} ${minCopy}`,
+    }
+  }
+  return null
+}
+
+
+// №17 (второе семейство): условие не на состав пары, а на её АРИФМЕТИКУ —
+// остатки, делимость, сравнение с опорным элементом последовательности.
+// Опорное значение всегда вычисляется по всей последовательности.
+// Опорное значение подставляется в разных падежах: «равна минимальному элементу»
+// (дат.), «делится на минимальный элемент» (вин.), «меньше минимального элемента» (род.).
+const T17_ANCHORS2 = [
+  { dat: (k) => `минимальному элементу последовательности, кратному ${k}`,
+    acc: (k) => `минимальный элемент последовательности, кратный ${k}`,
+    gen: (k) => `минимального элемента последовательности, кратного ${k}`,
+    guarantee: true,
+    param: () => pick([11, 15, 19, 21, 33, 123]),
+    calc: (seq, k) => { const c = seq.filter((v) => v > 0 && v % k === 0); return c.length ? Math.min(...c) : null } },
+  { dat: () => "минимальному элементу последовательности",
+    acc: () => "минимальный элемент последовательности",
+    gen: () => "минимального элемента последовательности",
+    param: () => 0, calc: (seq) => Math.min(...seq) },
+  { dat: () => "максимальному двузначному элементу последовательности",
+    acc: () => "максимальный двузначный элемент последовательности",
+    gen: () => "максимального двузначного элемента последовательности",
+    param: () => 0,
+    calc: (seq) => { const c = seq.filter((v) => digitsCount(v) === 2); return c.length ? Math.max(...c) : null } },
+  { dat: (k) => `количеству чисел последовательности, кратных ${k}`,
+    acc: (k) => `количество чисел последовательности, кратных ${k}`,
+    gen: (k) => `количества чисел последовательности, кратных ${k}`,
+    param: () => pick([16, 21, 32, 45]),
+    calc: (seq, k) => seq.filter((v) => v % k === 0).length },
+]
+
+const T17_PAIR_RULES = [
+  { text: (m) => `сумма остатков от деления обоих элементов на ${m} равна`, form: "dat",
+    param: () => pick([11, 12, 15, 18, 20, 21]),
+    ok: (a, b, m, anchor) => (a % m) + (b % m) === anchor },
+  { text: (m) => `остаток от деления на ${m} хотя бы одного из элементов равен`, form: "dat",
+    param: () => pick([33, 55, 111, 21]),
+    ok: (a, b, m, anchor) => a % m === anchor || b % m === anchor },
+  { text: () => "хотя бы одно число делится на", form: "acc", param: () => 0,
+    ok: (a, b, _m, anchor) => anchor !== 0 && (a % anchor === 0 || b % anchor === 0) },
+  { text: () => "элементы не равны, а абсолютное значение их разности делится на", form: "acc", param: () => 0,
+    ok: (a, b, _m, anchor) => a !== b && anchor !== 0 && Math.abs(a - b) % anchor === 0 },
+  { text: () => "сумма элементов пары кратна", form: "dat", param: () => 0,
+    ok: (a, b, _m, anchor) => anchor !== 0 && (a + b) % anchor === 0 },
+  { text: () => "сумма элементов пары меньше", form: "gen", param: () => 0,
+    ok: (a, b, _m, anchor) => a + b < anchor },
+]
+
+export function t17PairRule() {
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const N = 1000
+    const natural = Math.random() < 0.7
+    const seq = Array.from({ length: N }, () => natural ? randInt(1, 100000) : randInt(-100000, 100000))
+    const anchor = pick(T17_ANCHORS2)
+    const aParam = anchor.param()
+    const anchorValue = anchor.calc(seq, aParam)
+    if (anchorValue === null || !isFinite(anchorValue)) continue
+    const rule = pick(T17_PAIR_RULES)
+    const rParam = rule.param()
+    const hits = []
+    for (let i = 0; i + 1 < N; i++) {
+      if (rule.ok(seq[i], seq[i + 1], rParam, anchorValue)) hits.push(seq[i] + seq[i + 1])
+    }
+    if (hits.length < 3 || hits.length > 300) continue
+    const askMax = Math.random() < 0.5
+    const extreme = askMax ? Math.max(...hits) : Math.min(...hits)
+    return {
+      condition_text:
+        `В файле содержится последовательность ${natural ? "натуральных" : "целых"} чисел. Её элементы могут принимать ` +
+        `целые значения ${natural ? "от 1 до 100 000" : "от −100 000 до 100 000"} включительно.\n` +
+        `Определите количество пар последовательности, в которых ${rule.text(rParam)} ${anchor[rule.form](aParam)}. ` +
+        (anchor.guarantee ? "Гарантируется, что такой элемент в последовательности есть. " : "") +
+        `В ответе запишите количество найденных пар, затем ${askMax ? "максимальную" : "минимальную"} из сумм элементов таких пар. ` +
+        "В данной задаче под парой подразумеваются два идущих подряд элемента последовательности.",
+      textFile: { name: "17.txt", content: seq.join("\n") },
+      answer: `${hits.length} ${extreme}`,
+    }
+  }
+  return null
+}
+
+
+export function t3Records() {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const n = randInt(5, 7)
+    const rows = shuffle(T3_SURNAMES).slice(0, n).map((fam) => ({
+      fam, sex: pick(["м", "ж"]),
+      marks: Object.fromEntries(T3_SUBJECTS.map((sub) => [sub, randInt(20, 95)])),
+    }))
+    const [s1, s2] = shuffle(T3_SUBJECTS).slice(0, 2)
+    const sex = pick(["м", "ж"])
+    const or = Math.random() < 0.5
+    const test = (r) => or
+      ? (r.sex === sex || r.marks[s1] > r.marks[s2])
+      : (r.sex === sex && r.marks[s1] > r.marks[s2])
+    const count = rows.filter(test).length
+    if (count === 0 || count === n) continue
+    const options = shuffle([...new Set([count, count + 1, Math.max(0, count - 1), Math.min(n, count + 2)])]).slice(0, 4)
+    if (!options.includes(count)) options[0] = count
+    return {
+      condition_text:
+        "Ниже в табличной форме представлен фрагмент базы данных о результатах тестирования учащихся " +
+        "(используется стобалльная шкала):\n" +
+        tableBlock([["Фамилия", "Пол", ...T3_SUBJECTS],
+          ...rows.map((r) => [r.fam, r.sex, ...T3_SUBJECTS.map((sub) => String(r.marks[sub]))])]) + "\n" +
+        `Сколько записей в данном фрагменте удовлетворяют условию «Пол = '${sex}' ${or ? "ИЛИ" : "И"} ${s1} > ${s2}»?\n` +
+        tableBlock([["№", "Вариант"], ...options.map((o, i) => [`${i + 1})`, String(o)])]) + "\n" +
+        "В ответе укажите номер варианта.",
+      answer: String(options.indexOf(count) + 1),
+    }
+  }
+  return null
+}
+
+
+
+const T3_CITIES = ["Москва", "Тверь", "Казань", "Пермь", "Омск", "Курск", "Тула"]
+
+export function t3TwoTables() {
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const n = randInt(12, 18)
+    const people = shuffle(T3_PEOPLE).slice(0, Math.min(n, T3_PEOPLE.length)).map((name, i) => ({
+      id: 10 + i * randInt(2, 5),
+      name,
+      sex: /ова |ева |ина |ая /.test(name) || /а [А-Я]\.[А-Я]\.$/.test(name) ? "Ж" : pick(["М", "Ж"]),
+      year: randInt(1935, 1985),
+      city: pick(T3_CITIES),
+    }))
+    const links = []
+    for (const child of people) {
+      for (const parent of people) {
+        if (parent === child) continue
+        const diff = child.year - parent.year
+        if (diff >= 16 && diff <= 45 && Math.random() < 0.3) links.push({ parent: parent.id, child: child.id })
+      }
+    }
+    if (links.length < 8) continue
+    const byId = Object.fromEntries(people.map((p) => [p.id, p]))
+    const limit = pick([21, 22, 23, 24, 25])
+    const sex = pick(["М", "Ж"])
+    // Четыре вопроса из банка на одном наборе данных.
+    const youngParents = new Set()
+    for (const l of links) {
+      const p = byId[l.parent], c = byId[l.child]
+      if (p.sex === sex && c.year - p.year < limit) youngParents.add(c.id)
+    }
+    // Самая молодая мать: минимальная разница лет среди женщин-родителей.
+    let youngest = null, youngestAge = Infinity
+    for (const l of links) {
+      const p = byId[l.parent], c = byId[l.child]
+      if (p.sex !== "Ж") continue
+      const age = c.year - p.year
+      if (age < youngestAge) { youngestAge = age; youngest = p.id }
+    }
+    // Жители, родившиеся в том же городе, что и их родитель.
+    const sameCity = new Set(links.filter((l) => byId[l.parent].city === byId[l.child].city).map((l) => l.child))
+    // Жители, у которых в таблице есть и мать, и отец.
+    const parentsOf = new Map()
+    links.forEach((l) => {
+      if (!parentsOf.has(l.child)) parentsOf.set(l.child, [])
+      parentsOf.get(l.child).push(byId[l.parent].sex)
+    })
+    const bothParents = [...parentsOf.values()].filter((v) => v.includes("М") && v.includes("Ж")).length
+    const ask = randInt(0, 3)
+    const answers = [String(youngParents.size), String(youngest), String(sameCity.size), String(bothParents)]
+    if (!answers[ask] || answers[ask] === "null" || answers[ask] === "0") continue
+    const questions = [
+      `определите, у скольких детей на момент их рождения ${sex === "М" ? "отцам" : "матерям"} было меньше ${limit} полных лет`,
+      "определите ID женщины, ставшей матерью в наиболее молодом возрасте",
+      "определите, сколько жителей родились в том же городе, что и их родитель",
+      "определите, для скольких жителей в таблице указаны оба родителя",
+    ]
+    return {
+      condition_text:
+        "Ниже представлены два фрагмента таблиц из базы данных о жителях микрорайона. " +
+        "Каждая строка таблицы 2 содержит информацию о ребёнке и об одном из его родителей. " +
+        "Информация представлена значением поля ID в соответствующей строке таблицы 1.\n" +
+        "Таблица 1:\n" +
+        tableBlock([["ID", "Фамилия И.О.", "Пол", "Год рождения", "Город рождения"],
+          ...people.map((p) => [String(p.id), p.name, p.sex, String(p.year), p.city])]) + "\n" +
+        "Таблица 2:\n" +
+        tableBlock([["ID родителя", "ID ребёнка"], ...links.map((l) => [String(l.parent), String(l.child)])]) + "\n" +
+        `На основании приведённых данных ${questions[ask]}. ` +
+        "При вычислении ответа учитывайте только информацию из приведённых фрагментов таблиц.",
+      answer: answers[ask],
+    }
+  }
+  return null
+}
+
+// №17 без файла: множество чисел из отрезка с условиями делимости.
+export function t17Range() {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const lo = randInt(10000, 20000), hi = randInt(40000, 60000)
+    const m = pick([7, 11, 13, 17, 19]), r = randInt(1, m - 1)
+    const [d1, d2] = shuffle([3, 4, 5, 6, 8, 9, 12]).slice(0, 2)
+    const found = []
+    for (let v = lo; v <= hi; v++) if (v % m === r && v % d1 !== 0 && v % d2 !== 0) found.push(v)
+    if (found.length < 50) continue
+    const askMin = Math.random() < 0.5
+    return {
+      condition_text:
+        `Рассматривается множество целых чисел, принадлежащих числовому отрезку [${lo.toLocaleString("ru-RU").replace(/\s/g, "\u00A0")}; ` +
+        `${hi.toLocaleString("ru-RU").replace(/\s/g, "\u00A0")}], остаток от деления которых на ${m} равен ${r}, ` +
+        `и при этом они не делятся ни на ${d1}, ни на ${d2}. ` +
+        `Найдите количество таких чисел и ${askMin ? "минимальное" : "максимальное"} из них. ` +
+        `В ответе запишите два целых числа: сначала количество, затем ${askMin ? "минимальное" : "максимальное"} число.`,
+      answer: `${found.length} ${askMin ? found[0] : found[found.length - 1]}`,
+    }
+  }
+  return null
+}
+
+
+const T3_SURNAMES = ["Аганян", "Воронин", "Григорчук", "Роднина", "Сергеенко", "Черепанова",
+  "Титов", "Мельник", "Ерохин", "Кузьмина", "Панов", "Савельева"]
+const T3_SUBJECTS = ["Математика", "Русский язык", "Химия", "Информатика", "Биология"]
+const T3_PEOPLE = ["Петрова Н.А.", "Иваненко И.М.", "Соколов П.Р.", "Кузьмина А.В.", "Лебедев О.С.",
+  "Морозова Т.Н.", "Волков Д.А.", "Зайцева Е.П.", "Орлов К.М.", "Белова Л.И.", "Гусев Н.Н.", "Ткачук В.С."]
+
 export const GENERATORS_EGE_INF = {
   2: [t2Misha, t2AllRows, t2ChooseExpr],
   4: [t4FanoShortest, t4FanoColors, t4FanoSumLen, t4FanoWord, t4SeqHex, t4UniqueDecode],
   5: [t5Bin, t5Parity, t5Ternary, t5Calc, t5Automat],
-  1: [t1GraphTable, t1ShortestPath],
+  1: [t1GraphTable, t1ShortestPath, t1LongestPath, t1MatchScheme],
   6: [t6Print, t6Input, t6Turtle],
   7: [t7Transfer, t7Colors, t7ColorsCompressed, t7Volume, t7Packet, t7Sound, t7Modem, t7Traffic, t7Reserve, t7Adsl, t7Rgb, t7Unicode],
   8: [t8WordIndex, t8FirstLetter, t8Filter, t8Parity, t8CountOnce, t8CountDigits, t8Lamps, t8DistinctAlternating],
@@ -4335,16 +5583,16 @@ export const GENERATORS_EGE_INF = {
   15: [t15Inequality, t15Segments, t15DelSegment, t15DelMax, t15DelMin, t15BitAnd],
   16: [t16Formula, t16FG, t16Print, t16Stars],
   3: [t3Database, t3Filter, t3Records, t3TwoTables],
-  9: [t9Temperature],
+  9: [t9Temperature, t9Rows],
   10: [t10WordCount, t10FilePath],
-  17: [t17Sequence, t17Range],
+  17: [t17Sequence, t17Range, t17PairRule],
   18: [t18Robot],
   19: [t19FirstMove],
   23: [t23Programs],
   22: [t22Processes],
-  24: [t24MaxRun, t24Substring, t24Frequency],
-  26: [t26Containers, t26Students],
-  27: [t27MaxPair, t27Control, t27Triples],
+  24: [t24MaxRun, t24Substring, t24Frequency, t24Pairs, t24Expression, t24MaxNumber, t24MaxRunClass],
+  26: [t26Containers, t26Students, t26Conference, t26Seats, t26Storage, t26Cakes, t26Rating, t26Sales, t26Server],
+  27: [t27MaxPair, t27Control, t27Triples, t27ThreeReadings, t27PeakTriple, t27MaxSubseq, t27Placement, t27Clusters],
   25: [t25Mask, t25Semiprime, t25DivisorEnding, t25MinMaxDivisors, t25SumDivisors],
   20: [t20SecondMove],
   21: [t21VanyaSecond],
@@ -4378,6 +5626,8 @@ export const GEN_META_EGE_INF = {
   1: [["Схема дорог и таблица", [
     ["pair", "Граф + таблица: сумма длин дорог", t1GraphTable],
     ["short", "Кратчайший путь по таблице", t1ShortestPath],
+    ["long", "Ориентированный граф: длина/число путей", t1LongestPath],
+    ["scheme", "Выбрать схему по таблице", t1MatchScheme],
   ]]],
   6: [["Результат работы программы", [
     ["print", "Что напечатает программа", t6Print],
@@ -4503,6 +5753,7 @@ export const GEN_META_EGE_INF = {
   ]]],
   9: [["Электронная таблица измерений", [
     ["temp", "Максимум и среднее по диапазону часов", t9Temperature],
+    ["rows", "Сколько строк удовлетворяют условию", t9Rows],
   ]]],
   18: [["Робот-сборщик монет", [
     ["robot", "Минимальная и максимальная плата", t18Robot],
@@ -4510,6 +5761,7 @@ export const GEN_META_EGE_INF = {
   17: [["Числовая последовательность из файла", [
     ["seq", "Пары/тройки с условием на сумму", t17Sequence],
     ["range", "Числа отрезка с условиями делимости", t17Range],
+    ["pair-rule", "Пары: остатки и делимость", t17PairRule],
   ]]],
   22: [["Многопроцессорные системы", [
     ["proc", "Критический путь / успевшие процессы", t22Processes],
@@ -4517,16 +5769,34 @@ export const GEN_META_EGE_INF = {
   26: [["Обработка целочисленной информации", [
     ["containers", "Контейнеры и грузоподъёмность", t26Containers],
     ["students", "Лучшие по среднему баллу", t26Students],
+    ["conference", "Мероприятия в конференц-зале", t26Conference],
+    ["seats", "Два свободных места между занятыми", t26Seats],
+    ["storage", "Камера хранения: ячейки и заявки", t26Storage],
+    ["cakes", "Многоярусный торт из коржей", t26Cakes],
+    ["rating", "Рейтинг и проходной балл", t26Rating],
+    ["sales", "Лидер продаж в магазине", t26Sales],
+    ["server", "Журнал сервера и резервные копии", t26Server],
   ]]],
   27: [["Программирование", [
     ["max-pair", "Пара с максимальной суммой", t27MaxPair],
     ["control", "Контрольное значение (произведение)", t27Control],
     ["triples", "Выбор из троек с условием делимости", t27Triples],
+  ]],
+  ["Два входных файла (A и B)", [
+    ["readings", "Три показания прибора с интервалом K", t27ThreeReadings],
+    ["peak", "Тройка Si < Sj > Sk с максимумом разностей", t27PeakTriple],
+    ["subseq", "Подпоследовательность с чётной суммой", t27MaxSubseq],
+    ["placement", "Размещение цеха/лаборатории", t27Placement],
+    ["clusters", "Кластеризация точек и центры", t27Clusters],
   ]]],
   24: [["Символьная строка из файла", [
     ["max-run", "Максимальная подстрока с буквой-границей", t24MaxRun],
     ["substr", "Подстрока и буквы: мин./макс. длина", t24Substring],
     ["freq", "Буквы по убыванию частоты", t24Frequency],
+    ["pairs", "Цепочка пар символов", t24Pairs],
+    ["expr", "Корректное арифметическое выражение", t24Expression],
+    ["max-num", "Максимальное N-ричное число", t24MaxNumber],
+    ["max-run-class", "Граница — чётная/нечётная цифра", t24MaxRunClass],
   ]]],
   19: [["Выигрышная стратегия", [
     ["first", "Ваня выигрывает первым ходом", t19FirstMove],

@@ -265,7 +265,9 @@ function TaskCard({ task, showAnswer }) {
             />
           )}
           {task.spreadsheet && <SpreadsheetButton spreadsheet={task.spreadsheet} />}
-          {task.textFile && <TextFileButton textFile={task.textFile} />}
+          {/* №27 приходит с ДВУМЯ входными файлами (A и B) — тогда task.textFile массив. */}
+          {task.textFile && (Array.isArray(task.textFile) ? task.textFile : [task.textFile])
+            .map((f) => <TextFileButton key={f.name} textFile={f} />)}
           {showAnswer && (
             <div className="text-xs text-gray-400 mt-1 pt-2 border-t border-gray-50">
               Ответ: <span className="font-mono text-gray-600 whitespace-pre-line">{String(task.answer)}</span>
