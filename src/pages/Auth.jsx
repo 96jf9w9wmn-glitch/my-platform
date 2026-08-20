@@ -20,11 +20,23 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [failedAttempts, setFailedAttempts] = useState(0)
   const [cooldownLeft, setCooldownLeft] = useState(0)
+  // Кнопки «Обзор» и темы прибиты к вьюпорту, а страница под ними
+  // прокручивается. Как только прокрутка началась, под кнопками проявляется
+  // матовая подложка — иначе на телефоне карточка (там она во всю ширину)
+  // проезжает прямо сквозь них.
+  const [scrolled, setScrolled] = useState(false)
   // Согласия при регистрации — только обязательные, чтобы форма помещалась на
   // экран. Галочки НЕ проставлены заранее: с 01.09.2025 согласие на обработку
   // ПДн даётся активным действием (см. legal/consent.md). Необязательная
   // рассылка спрашивается уже в кабинете, а не здесь.
   const [consent, setConsent] = useState({ terms: false, pd: false, guardian: false })
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 4)
+    onScroll()
+    window.addEventListener("scroll", onScroll, { passive: true })
+    return () => window.removeEventListener("scroll", onScroll)
+  }, [])
 
   // Карточка центрирована по вертикали, а формы разной длины (вход 655px,
   // регистрация ученика 836px). Без этого при каждом переключении роли или
@@ -283,6 +295,13 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
     }
   }
 
+  // Подложка плавающих кнопок: появляется только при прокрутке. Цвет текста
+  // тоже подтягиваем — на цветной шапке карточки, которая уезжает под кнопки,
+  // gray-500 читается плохо (в тёмной теме это #98989f).
+  const floatBtn = scrolled
+    ? "text-gray-700 bg-white/80 hover:bg-white dark:bg-white/15 dark:hover:bg-white/25 backdrop-blur-xl shadow-sm"
+    : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+
   const roleConfig = {
     tutor:   { icon: "user-teacher", label: "Репетитор", desc: "Управляй учениками",   grad: "from-blue-500 to-blue-600",   soft: "bg-blue-50 dark:bg-blue-900/30",   text: "text-blue-600 dark:text-blue-400",   border: "border-blue-200 dark:border-blue-700",   glow: "shadow-blue-500/40" },
     student: { icon: "book",         label: "Ученик",     desc: "Готовься к экзамену",  grad: "from-emerald-500 to-teal-600", soft: "bg-emerald-50 dark:bg-emerald-900/30", text: "text-emerald-600 dark:text-emerald-400", border: "border-emerald-200 dark:border-emerald-700", glow: "shadow-emerald-500/40" },
@@ -302,15 +321,16 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
     // min-h (а не h) + items-center: когда форма выше экрана, документ растёт
     // и страница прокручивается, а не обрезает карточку сверху.
     <div className="relative min-h-dvh flex items-center justify-center px-4 py-16 sm:py-8">
-      {/* absolute, а НЕ fixed: на телефоне форма регистрации выше экрана, и
-          страницу приходится прокручивать. Прибитые к вьюпорту кнопки при этом
-          оставались на месте и наезжали на синюю шапку карточки поверх
-          «Создайте аккаунт». Здесь они лежат в верху документа и уезжают
-          вместе с ним. */}
+      {/* fixed, а НЕ absolute: форма регистрации выше экрана, страницу
+          приходится прокручивать, и на absolute кнопки уезжали вверх вместе с
+          ней. Прежняя причина отказа от fixed (карточка проезжала под ними и
+          кнопки читались поверх синей шапки) снята подложкой `floatBtn`: пока
+          прокрутки нет — кнопки голые, как раньше; как только страница поехала
+          — под ними проявляется матовое стекло, и наезд выглядит намеренным. */}
       {onBack && (
         <button
           onClick={onBack}
-          className="absolute top-4 left-4 flex items-center gap-1 p-2 pr-3 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg text-sm z-50"
+          className={`fixed top-4 left-4 flex items-center gap-1 p-2 pr-3 rounded-lg text-sm z-50 transition-all duration-200 active:scale-95 ${floatBtn}`}
         >
           <Icon name="chevron-left" size={16} />
           Обзор
@@ -318,7 +338,7 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
       )}
       <button
         onClick={() => setDark(!dark)}
-        className="absolute top-4 right-4 p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg text-sm z-50"
+        className={`fixed top-4 right-4 p-2 rounded-lg text-sm z-50 transition-all duration-200 active:scale-95 ${floatBtn}`}
       >
         <MorphIcon from="moon" to="sun" size={16} active={dark} hover={false} rotate />
       </button>
