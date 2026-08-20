@@ -93,7 +93,11 @@ jobs:
       - name: Раскатка
         run: |
           set -euo pipefail
-          rsync -az --delete --checksum \
+          # --exclude /dist/crm/ — панель владельца (отдельный репозиторий
+          # ~/precettore-crm) лежит в dist/crm и раскатывается своим скриптом.
+          # Без исключения rsync --delete сносил бы её каждым деплоем сайта.
+          # Правка парная со scripts/deploy.sh.
+          rsync -az --delete --checksum --exclude '/dist/crm/' \
             -e "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes" \
             bundle/ \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/opt/precettore-web/current/"

@@ -45,7 +45,8 @@
     # Матчером, а НЕ строкой в общем блоке выше: заголовки из общего блока
     # применяются на обратном ходе цепочки и затирают то, что выставил
     # вложенный handle. Проверено живьём — /assets/* уезжал с no-cache.
-    @nohash not path /assets/*
+    # /crm/assets/* — ассеты панели владельца, у них тоже хэш в имени.
+    @nohash not path /assets/* /crm/assets/*
     header @nohash Cache-Control "no-cache"
 
     handle /api/* {
@@ -73,6 +74,32 @@
     # как «приложение странно себя ведёт» вместо внятной ошибки в консоли.
     handle /assets/* {
         header Cache-Control "public, max-age=31536000, immutable"
+        file_server
+    }
+
+    # Панель владельца (CRM заявок, репетиторов и подписок) — отдельное
+    # приложение из ~/precettore-crm, собранное с base "/crm/". Живёт подпутём
+    # основного домена, а не на своём поддомене: отдельное имя потребовало бы
+    # DNS-записи и второго сертификата, а база, вход и аккаунт те же самые.
+    #
+    # Файлы лежат в dist/crm и раскатываются СВОИМ скриптом
+    # (~/precettore-crm/scripts/deploy.sh), поэтому в раскатке платформы стоит
+    # --exclude на /crm — иначе rsync --delete сносил бы папку каждым деплоем.
+    handle /crm/assets/* {
+        header Cache-Control "public, max-age=31536000, immutable"
+        file_server
+    }
+
+    # Своя SPA-подстановка: без неё внутренние адреса панели отдавали бы
+    # index.html кабинета репетитора. X-Robots-Tag, а не robots.txt: запись в
+    # robots.txt сама рассказала бы поисковикам и любопытным, где искать
+    # панель, а заголовок закрывает индексацию, ничего не выдавая.
+    # Именованным матчером, а не двумя путями в handle: handle принимает
+    # ровно один аргумент и на «handle /crm /crm/*» падает при разборе.
+    @crm path /crm /crm/*
+    handle @crm {
+        header X-Robots-Tag "noindex, nofollow, noarchive"
+        try_files {path} /crm/index.html
         file_server
     }
 

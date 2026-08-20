@@ -25,8 +25,12 @@ mkdir -p .deploy/dist/me
 cp -r dist/. .deploy/dist/
 cp portfolio/index.html portfolio/arman.webp .deploy/dist/me/
 
+# --exclude /crm/ — панель владельца (репозиторий ~/precettore-crm) лежит в
+# dist/crm и раскатывается своим скриптом. Без исключения rsync --delete снёс
+# бы её первым же деплоем сайта: ровно так 19.08.2026 погибла страница /me.
+# Правка парная с .github/workflows/deploy.yml — состав должен совпадать.
 echo "→ статика"
-rsync -az --delete -e ssh .deploy/dist/ "$HOST:$ROOT/dist/"
+rsync -az --delete --exclude '/crm/' -e ssh .deploy/dist/ "$HOST:$ROOT/dist/"
 
 echo "→ функции и общий код"
 rsync -az --delete -e ssh api/ "$HOST:$ROOT/api/"
