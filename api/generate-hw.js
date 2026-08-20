@@ -13,6 +13,7 @@
 // старый долг «anon-доступ жжёт баланс DeepSeek».
 
 import { admin, tutorFromRequest, bumpAiUsage, refundAiUsage } from "./plan-gate.js"
+import { hasHigherAiLimit } from "../src/plans.js"
 
 const DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
 const DEEPSEEK_MODELS_URL = "https://api.deepseek.com/models"
@@ -135,14 +136,18 @@ export default async function handler(req, res) {
     }
     const usage = await bumpAiUsage(db, tutor.id)
     if (!usage.ok) {
+      const canUpgrade = !usage.soft && hasHigherAiLimit(usage.plan?.id)
       res.status(403).json({
         error: usage.soft
           ? `За месяц с аккаунта ушло ${usage.used} ИИ-генераций — это похоже на автоматический перебор. Напишите нам, снимем ограничение.`
           : usage.limit === 0
           ? "ИИ-генерация ДЗ доступна на тарифах «Про» и «Макс»"
-          : `Лимит ИИ-генераций исчерпан: ${usage.used} из ${usage.limit} в этом месяце`,
-        // Тариф дороже мягкому потолку не поможет — предлагать его тут нечестно.
-        upgrade: !usage.soft,
+          : canUpgrade
+          ? `Лимит ИИ-генераций исчерпан: ${usage.used} из ${usage.limit} в этом месяце`
+          : `Лимит ИИ-генераций исчерпан: ${usage.used} из ${usage.limit} в этом месяце. Это старший тариф — если генераций нужно больше, напишите нам.`,
+        // Тариф дороже не поможет ни мягкому потолку, ни тому, кто уже на
+        // старшем тарифе, — предлагать его в этих случаях нечестно.
+        upgrade: canUpgrade,
       })
       return
     }
