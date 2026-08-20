@@ -568,7 +568,7 @@ export function t5Automat() {
 
 // Числительные прописью — ФИПИ в условиях пишет «восемь букв», а не «8 букв».
 const NUMW = { 2: "две", 3: "три", 4: "четыре", 5: "пять", 6: "шесть", 7: "семь", 8: "восемь", 9: "девять", 10: "десять" }
-const NUMW_GEN = { 2: "двух", 3: "трёх", 4: "четырёх", 5: "пяти", 6: "шести", 7: "семи", 8: "восьми", 9: "девяти", 10: "десяти" }
+const NUMW_GEN = { 1: "одной", 2: "двух", 3: "трёх", 4: "четырёх", 5: "пяти", 6: "шести", 7: "семи", 8: "восьми", 9: "девяти", 10: "десяти" }
 
 const T4_FANO_NOTE =
   "Примечание. Условие Фано означает, что никакое кодовое слово не является началом другого кодового слова. " +
@@ -653,7 +653,8 @@ function t4ShortestBase({ items, kindWord, tail }) {
           return [a[0], a[1], "", b ? b[0] : "", b ? b[1] : ""]
         })])
       : tableBlock([[kindWord, "Кодовое слово"], ...rows])
-    return { table, hidden: items[hideIdx], answer, tail, largest }
+    return { table, hidden: items[hideIdx], answer, tail, largest,
+      knownList: items.map((l, i) => [l, codes[i]]).filter((_, i) => i !== hideIdx) }
   }
   return null
 }
@@ -662,12 +663,21 @@ export function t4FanoShortest() {
   const letters = shuffle(Math.random() < 0.5 ? T4_LAT : T4_RU).slice(0, randInt(5, 8)).sort()
   const built = t4ShortestBase({ items: letters, kindWord: "Буква" })
   if (!built) return null
-  return {
-    condition_text:
-      `По каналу связи передаются шифрованные сообщения, содержащие только ${NUMW[letters.length]} букв: ` +
+  // В банке коды подаются двумя способами: таблицей и перечислением прямо в тексте.
+  // Перечисление возможно, когда неизвестен код последней буквы — иначе порядок путается.
+  const inline = built.knownList.length <= 4 && Math.random() < 0.45
+  const head = inline
+    ? `Для кодирования некоторой последовательности, состоящей из букв ${letters.join(", ")}, решили использовать ` +
+      "неравномерный двоичный код, удовлетворяющий условию Фано. " +
+      `Для букв ${built.knownList.map(([l]) => l).join(", ")} использовали кодовые слова ` +
+      `${built.knownList.map(([, c]) => c).join(", ")} соответственно.\n`
+    : `По каналу связи передаются шифрованные сообщения, содержащие только ${NUMW[letters.length]} букв: ` +
       `${letters.join(", ")}; для передачи используется неравномерный двоичный код. Для кодирования букв используются кодовые слова.\n` +
-      built.table + "\n" +
-      `Укажите кратчайшее кодовое слово для буквы ${built.hidden}, при котором код удовлетворяет условию Фано. ` +
+      built.table + "\n"
+  return {
+    condition_text: head +
+      `Укажите кратчайшее ${inline ? "возможное " : ""}кодовое слово для буквы ${built.hidden}, при котором код ` +
+      `${inline ? "будет удовлетворять" : "удовлетворяет"} условию Фано. ` +
       `Если таких кодов несколько, укажите код с ${built.largest ? "наибольшим" : "наименьшим"} числовым значением.\n` + T4_FANO_NOTE,
     answer: built.answer,
   }
@@ -703,12 +713,16 @@ export function t4FanoSumLen() {
     if (!isFinite(answer)) continue
     const hidden = hide.map((i) => letters[i])
     return {
-      condition_text:
-        `По каналу связи передаются сообщения, содержащие только ${NUMW[n]} букв: ${letters.join(", ")}. ` +
-        "Для передачи используется двоичный код, удовлетворяющий условию Фано. Кодовые слова для некоторых букв известны:\n" +
-        tableBlock([["Буква", "Кодовое слово"], ...known.map(([l, c]) => [l, c])]) + "\n" +
-        `Какое наименьшее количество двоичных знаков потребуется для кодирования ${NUMW_GEN[hidden.length]} оставшихся букв?\n` +
-        `В ответе запишите суммарную длину кодовых слов для букв: ${hidden.join(", ")}.\n` + T4_FANO_NOTE,
+      condition_text: (known.length <= 3 && Math.random() < 0.5
+        ? `По каналу связи передаются шифрованные сообщения, содержащие только ${NUMW[n]} букв: ${letters.join(", ")}. ` +
+          "Для передачи используется неравномерный двоичный код. " +
+          `Для букв ${known.map(([l]) => l).join(", ")} используются кодовые слова ${known.map(([, c]) => c).join(", ")} соответственно.\n` +
+          `Укажите минимальную сумму длин кодовых слов для букв ${hidden.join(" и ")}, при которых код будет удовлетворять условию Фано.\n`
+        : `По каналу связи передаются сообщения, содержащие только ${NUMW[n]} букв: ${letters.join(", ")}. ` +
+          "Для передачи используется двоичный код, удовлетворяющий условию Фано. Кодовые слова для некоторых букв известны:\n" +
+          tableBlock([["Буква", "Кодовое слово"], ...known.map(([l, c]) => [l, c])]) + "\n" +
+          `Какое наименьшее количество двоичных знаков потребуется для кодирования ${NUMW_GEN[hidden.length]} оставшихся букв?\n` +
+          `В ответе запишите суммарную длину кодовых слов для букв: ${hidden.join(", ")}.\n`) + T4_FANO_NOTE,
       answer: String(answer),
     }
   }
@@ -939,16 +953,16 @@ export function t8CountDigits() {
     const len = pick([4, 5, 5, 6])
     if (Math.pow(base, len) > 600000) continue
     const d = randInt(0, base - 1)
-    const kind = randInt(0, 2)
+    // 0–2 — сколько раз встречается цифра d; 3 — «ровно одна d, и рядом с ней
+    // не стоит цифра из запрещённого класса» (в банке — чётные/нечётные или список).
+    const kind = randInt(0, 3)
     const oddBan = Math.random() < 0.5
     const tailBan = shuffle([...Array(base).keys()]).slice(0, 2)
     const limit = randInt(1, 2)
-    const cond = (digits) => {
-      const cnt = digits.filter((x) => x === d).length
-      if (kind === 0) return cnt <= limit
-      if (kind === 1) return cnt >= limit
-      return cnt === limit
-    }
+    const nearOdd = Math.random() < 0.6           // сосед не может быть нечётным (иначе — чётным)
+    const nearList = shuffle([...Array(base).keys()].filter((x) => x !== d)).slice(0, 4).sort((a, b) => a - b)
+    const useList = Math.random() < 0.4
+    const forbidden = (x) => (useList ? nearList.includes(x) : (nearOdd ? x % 2 === 1 : x % 2 === 0))
     let n = 0
     const total = Math.pow(base, len)
     for (let v = 0; v < total; v++) {
@@ -956,15 +970,36 @@ export function t8CountDigits() {
       let x = v
       for (let i = 0; i < len; i++) { digits.unshift(x % base); x = Math.floor(x / base) }
       if (digits[0] === 0) continue                       // числа без ведущего нуля
+      const cnt = digits.filter((y) => y === d).length
+      if (kind === 3) {
+        if (cnt !== 1) continue
+        const i = digits.indexOf(d)
+        if (i > 0 && forbidden(digits[i - 1])) continue
+        if (i < len - 1 && forbidden(digits[i + 1])) continue
+        n++
+        continue
+      }
       if (kind === 2 && oddBan) {
         if (digits[0] % 2 === 1) continue
         if (tailBan.includes(digits[len - 1])) continue
       }
-      if (cond(digits)) n++
+      const ok = kind === 0 ? cnt <= limit : kind === 1 ? cnt >= limit : cnt === limit
+      if (ok) n++
     }
     if (n < 10) continue
     const lenWord = { 4: "четырёхзначных", 5: "пятизначных", 6: "шестизначных" }[len]
     const baseWord = BASE_NAME[base] ? BASE_NAME[base].replace(/ой$/, "ых") : `${base}-ричных`
+    if (kind === 3) {
+      const near = useList
+        ? `никакая из цифр ${nearList.join(", ")} не стоит рядом с цифрой ${d}`
+        : `никакая ${nearOdd ? "нечётная" : "чётная"} цифра не стоит рядом с цифрой ${d}`
+      return {
+        condition_text:
+          `Определите количество ${lenWord} чисел, записанных в ${BASE_NAME[base] || `${base}-ричной`} системе счисления, ` +
+          `в записи которых ровно одна цифра ${d}, при этом ${near}.`,
+        answer: String(n),
+      }
+    }
     // «…содержат ровно одну цифру 0» (винительный) и «…в записи которых ровно одна цифра 0»
     // (именительный) — падеж зависит от того, какой оборот используется.
     const cntAcc = kind === 0 ? `не более ${NUMW_GEN[limit] || limit} цифр${limit === 1 ? "ы" : ""} ${d}`
@@ -1398,12 +1433,15 @@ export function t16Print() {
     const out = []
     t16Exec(alg, start, out)
     if (out.length < 4 || out.length > 25) continue
+    const askShort = Math.random() < 0.4
     return {
       condition_text:
         "Ниже на трёх языках программирования записан рекурсивный алгоритм F.\n" +
         t16Listing(alg) + "\n" +
-        `Запишите подряд без пробелов и разделителей все числа, которые будут выведены на экран при выполнении вызова F(${start}). ` +
-        "Числа должны быть записаны в том же порядке, в каком они выводятся алгоритмом.",
+        (askShort
+          ? `Что выведет программа при вызове F(${start})? В ответе запишите последовательность выведенных чисел подряд, без пробелов и разделителей.`
+          : `Запишите подряд без пробелов и разделителей все числа, которые будут выведены на экран при выполнении вызова F(${start}). ` +
+            "Числа должны быть записаны в том же порядке, в каком они выводятся алгоритмом."),
       answer: out.join(""),
     }
   }
@@ -1812,11 +1850,13 @@ export function t7Colors() {
     const kb = bytes / KB
     if (kb < 8 || kb > 4000) continue
     return {
-      condition_text:
-        `Автоматическая камера производит растровые изображения размером ${w}×${h} пикселей. ` +
-        "Для кодирования цвета каждого пикселя используется одинаковое количество бит, коды пикселей записываются в файл один за другим без промежутков. " +
-        `Объём файла с изображением не может превышать ${kb} Кбайт без учёта размера заголовка файла. ` +
-        "Какое максимальное количество цветов можно использовать в палитре?",
+      condition_text: Math.random() < 0.4
+        ? `Для хранения растрового изображения размером ${w} × ${h} пикселей отвели ${bytes} байт памяти без учёта размера заголовка файла. ` +
+          "Каково максимально возможное число цветов в палитре изображения?"
+        : `Автоматическая камера производит растровые изображения размером ${w}×${h} пикселей. ` +
+          "Для кодирования цвета каждого пикселя используется одинаковое количество бит, коды пикселей записываются в файл один за другим без промежутков. " +
+          `Объём файла с изображением не может превышать ${kb} Кбайт без учёта размера заголовка файла. ` +
+          "Какое максимальное количество цветов можно использовать в палитре?",
       answer: String(Math.pow(2, bits)),
     }
   }
@@ -2575,21 +2615,604 @@ export function t25DivisorEnding() {
   return null
 }
 
+
+// Адрес файла в Интернете по фрагментам, закодированным буквами А–Ж: ученик
+// собирает адрес вида протокол://сервер/файл и записывает последовательность букв.
+// (В экспорте банка сама таблица фрагментов потерялась, поэтому фрагменты
+// разбиты по тем же правилам, что в КИМ: протокол, «://», части сервера, «/», файл.)
+const T13_URL_LETTERS = ["А", "Б", "В", "Г", "Д", "Е", "Ж"]
+const T13_PROTO = ["http", "ftp"]
+const T13_WORDS = ["www", "txt", "net", "org", "com", "ftp", "http", "doc", "edu", "ru"]
+
+export function t13Url() {
+  const proto = pick(T13_PROTO)
+  const [s1, s2, f1, f2] = shuffle(T13_WORDS).slice(0, 4)
+  const server = `${s1}.${s2}`
+  const file = `${f1}.${f2}`
+  // Фрагменты — ровно семь, как в задании: протокол, «://», две части сервера, «/», две части файла.
+  const parts = [proto, "://", `${s1}.`, s2, "/", `${f1}.`, f2]
+  const order = shuffle(parts.map((p, i) => ({ p, i })))
+  const rows = order.map((o, k) => [`${T13_URL_LETTERS[k]})`, o.p])
+  const answer = parts.map((p) => T13_URL_LETTERS[order.findIndex((o) => o.p === p && parts[o.i] === p)]).join("")
+  // Соответствие «фрагмент → буква» ищем по позиции в исходном списке, иначе
+  // одинаковые фрагменты (например «txt.» и «txt») перепутались бы местами.
+  const letterOf = (idx) => T13_URL_LETTERS[order.findIndex((o) => o.i === idx)]
+  const exact = parts.map((_, idx) => letterOf(idx)).join("")
+  return {
+    condition_text:
+      `Доступ к файлу ${file}, находящемуся на сервере ${server}, осуществляется по протоколу ${proto}. ` +
+      "В таблице фрагменты адреса файла закодированы буквами от А до Ж. " +
+      "Запишите последовательность этих букв, кодирующую адрес указанного файла в сети Интернет.\n" +
+      tableBlock([["Буква", "Фрагмент"], ...rows]),
+    answer: exact || answer,
+  }
+}
+
+// Перемещение по каталогам: из последовательности посещённых каталогов восстановить,
+// откуда пользователь начал (либо где оказался). Спуск/подъём на один уровень.
+export function t11Catalogs() {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const names = shuffle(["DOC", "USER", "SCHOOL", "LETTER", "INBOX", "WORK", "TEXT", "DATA"])
+    const disk = pick(["A:\\", "C:\\", "D:\\"])
+    const depth = randInt(2, 3)
+    // Строим маршрут: сначала поднимаемся до корня, потом спускаемся в другую ветку.
+    const up = names.slice(0, depth)                    // начальный путь (снизу вверх)
+    const down = names.slice(depth, depth + depth)      // конечный путь (сверху вниз)
+    const visited = [...up, disk, ...down]
+    const startPath = disk + [...up].reverse().join("\\")
+    const endPath = disk + down.join("\\")
+    const askStart = Math.random() < 0.5
+    const right = askStart ? startPath : endPath
+    const wrong = shuffle([
+      disk + up.join("\\"),
+      disk + down.slice().reverse().join("\\"),
+      askStart ? endPath : startPath,
+      disk + names[0],
+    ].filter((w) => w !== right)).slice(0, 3)
+    const options = shuffle([right, ...wrong])
+    return {
+      condition_text:
+        `Перемещаясь из одного каталога в другой, пользователь последовательно посетил каталоги ${visited.join(", ")}. ` +
+        "При каждом перемещении пользователь либо спускался в каталог на уровень ниже, либо поднимался на уровень выше. " +
+        `Каково полное имя каталога, ${askStart ? "из которого начал перемещение пользователь" : "в котором оказался пользователь"}?\n` +
+        tableBlock([["№", "Вариант"], ...options.map((o, i) => [`${i + 1})`, o])]) + "\n" +
+        "В ответе укажите номер варианта.",
+      answer: String(options.indexOf(right) + 1),
+    }
+  }
+  return null
+}
+
+// Поразрядная конъюнкция: наименьшее A, при котором формула тождественно истинна.
+// Достаточно перебрать x до 2^k (k — старший значащий бит участвующих констант):
+// старшие биты x на значение формулы не влияют.
+export function t15BitAnd() {
+  for (let attempt = 0; attempt < 80; attempt++) {
+    const m = randInt(5, 120), n = randInt(5, 120)
+    if ((m & n) === 0 || m === n) continue
+    const BITS = 9, LIM = 1 << BITS
+    const kind = randInt(0, 1)
+    // kind 0: ((x & m ≠ 0) /\ (x & n = 0)) → ¬(x & A = 0)
+    // kind 1: (x & m ≠ 0) → ((x & n ≠ 0) \/ ¬(x & A = 0))
+    const holds = (A) => {
+      for (let x = 0; x < LIM; x++) {
+        const left = kind === 0 ? ((x & m) !== 0 && (x & n) === 0) : ((x & m) !== 0)
+        const right = kind === 0 ? ((x & A) !== 0) : ((x & n) !== 0 || (x & A) !== 0)
+        if (left && !right) return false
+      }
+      return true
+    }
+    let best = null
+    for (let A = 0; A < LIM; A++) if (holds(A)) { best = A; break }
+    if (best === null || best === 0 || best > 400) continue
+    const formula = kind === 0
+      ? `((x & ${m} ≠ 0) /\\ (x & ${n} = 0)) → ¬(x & A = 0)`
+      : `(x & ${m} ≠ 0) → ((x & ${n} ≠ 0) \\/ ¬(x & A = 0))`
+    return {
+      condition_text:
+        "Обозначим через m & n поразрядную конъюнкцию неотрицательных целых чисел m и n. " +
+        "Так, например, 14 & 5 = 1110⟦b:2⟧ & 0101⟦b:2⟧ = 0100⟦b:2⟧ = 4.\n" +
+        `Для какого наименьшего неотрицательного целого числа A формула\n${formula}\n` +
+        "тождественно истинна (т.е. принимает значение 1) при любом неотрицательном целом значении переменной x?",
+      answer: String(best),
+    }
+  }
+  return null
+}
+
+
+// Экономия трафика: снимок пересохраняют в другом разрешении и с другой глубиной
+// цвета — сколько Кбайт экономится на партии фотографий (ответ — целая часть).
+export function t7Traffic() {
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const w1 = pick([1024, 1280, 1920, 2560, 3840]), h1 = pick([768, 1024, 1080, 1440, 2160])
+    const bits1 = randInt(16, 30)
+    const w2 = pick([640, 800, 1024, 1280]), h2 = pick([480, 600, 768, 1024])
+    const bits2 = pick([8, 12, 16, 20, 24])
+    const one = w1 * h1 * bits1, two = w2 * h2 * bits2
+    if (one <= two) continue
+    const count = pick([50, 60, 80, 100, 120, 150, 200])
+    const kb = Math.floor((one - two) * count / 8 / KB)
+    if (kb < 100) continue
+    return {
+      condition_text:
+        "Виталий фотографирует интересные места и события с помощью своего смартфона. " +
+        `Каждая фотография представляет собой растровое изображение размером ${w1}×${h1} пикселей, ` +
+        `при этом используется палитра из 2⟦sup:${bits1}⟧ цветов. ` +
+        "В конце дня Виталий отправляет снимки друзьям с помощью приложения-мессенджера. " +
+        `Для экономии трафика приложение оцифровывает снимки повторно, используя размер ${w2}×${h2} пикселей ` +
+        `и глубину цвета ${bits2} бит. Сколько Кбайт трафика экономится при передаче ${count} фотографий? ` +
+        "В ответе укажите целую часть полученного числа.",
+      answer: String(kb),
+    }
+  }
+  return null
+}
+
+// Числа, у которых все цифры различны и никакие две чётные (или две нечётные) цифры
+// не стоят рядом. Перебор всех чисел системы счисления — не больше 10⁵ вариантов.
+export function t8DistinctAlternating() {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const base = pick([8, 9, 10, 10])
+    const len = pick([4, 5])
+    const extra = randInt(0, 2)                     // 0 — без ограничений, 1 — без цифры d, 2 — кратно 5
+    const d = randInt(1, base - 1)
+    let n = 0
+    const total = Math.pow(base, len)
+    for (let v = 0; v < total; v++) {
+      const digits = []
+      let x = v
+      for (let i = 0; i < len; i++) { digits.unshift(x % base); x = Math.floor(x / base) }
+      if (digits[0] === 0) continue
+      if (new Set(digits).size !== len) continue                       // все цифры различны
+      let ok = true
+      for (let i = 1; i < len; i++) if (digits[i] % 2 === digits[i - 1] % 2) { ok = false; break }
+      if (!ok) continue
+      if (extra === 1 && digits.includes(d)) continue
+      if (extra === 2 && base === 10 && digits[len - 1] !== 5 && digits[len - 1] !== 0) continue
+      n++
+    }
+    if (n < 20) continue
+    const baseWord = base === 10 ? "десятичных" : base === 8 ? "восьмеричных" : "девятеричных"
+    const lenWord = len === 4 ? "четырёхзначных" : "пятизначных"
+    const cond = extra === 1 ? `, не содержащих в своей записи цифру ${d},`
+      : extra === 2 && base === 10 ? ", делящихся на 5," : ","
+    return {
+      condition_text:
+        `Сколько существует ${baseWord} ${lenWord} чисел${cond} в которых все цифры различны ` +
+        "и никакие две чётные или две нечётные цифры не стоят рядом?",
+      answer: String(n),
+    }
+  }
+  return null
+}
+
+// M — сумма минимального и максимального собственных делителей (кроме 1 и самого
+// числа); у простых чисел M считаем равным нулю. Найти числа с условием на M.
+export function t25MinMaxDivisors() {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const start = pick([300000, 452021, 500000, 600000, 800000])
+    // M = наименьший собственный делитель + наибольший собственный делитель.
+    // Наибольший — это v / наименьший (у ФИПИ пример: для 20 M = 2 + 10 = 12),
+    // поэтому достаточно найти первый делитель.
+    const M = (v) => {
+      for (let d = 2; d * d <= v; d++) if (v % d === 0) return d + v / d
+      return 0
+    }
+    const byDigit = Math.random() < 0.5
+    const digit = randInt(0, 9)
+    const mod = pick([7, 9, 11, 13]), rest = randInt(1, 5)
+    const fits = (m) => (m !== 0) && (byDigit ? m % 10 === digit : m % mod === rest)
+    const found = []
+    for (let v = start + 1; found.length < 5 && v < start + 60000; v++) {
+      const m = M(v)
+      if (fits(m)) found.push([v, m])
+    }
+    if (found.length < 5) continue
+    return {
+      condition_text:
+        "Пусть M — сумма минимального и максимального натуральных делителей целого числа, не считая единицы и самого числа. " +
+        "Если таких делителей у числа нет, то считаем значение M равным нулю.\n" +
+        `Напишите программу, которая перебирает целые числа, бо́льшие ${start.toLocaleString("ru-RU").replace(/\s/g, "\u00A0")}, ` +
+        "в порядке возрастания и ищет среди них такие, для которых " +
+        (byDigit ? `M оканчивается на ${digit}` : `значение M при делении на ${mod} даёт в остатке ${rest}`) + ". " +
+        "Выведите первые пять найденных чисел и соответствующие им значения M.\n" +
+        "Например, для числа 20 M = 2 + 10 = 12.",
+      answer: found.map(([v, m]) => `${v} — ${m}`).join("; "),
+    }
+  }
+  return null
+}
+
+
+// ── Исполнитель МТ (машина Тьюринга) — типаж №12 ─────────────────────────────
+// Программа задаётся таблицей: строки — состояния, столбцы — символы ленты,
+// в ячейке «что записать, куда сдвинуться (L/R/S), в какое состояние перейти».
+// На ленте — двоичная запись числа; ученик прослеживает работу и переводит
+// результат в десятичную систему. Эмулятор ниже исполняет ровно ту таблицу,
+// которая напечатана в условии, — разойтись они не могут.
+const T12_MT_INTRO =
+  "Исполнитель МТ представляет собой читающую и записывающую головку, которая может передвигаться вдоль бесконечной " +
+  "горизонтальной ленты, разделённой на равные ячейки. В каждой ячейке находится ровно один символ из алфавита исполнителя, " +
+  "включая специальный пустой символ «λ». Время работы исполнителя делится на дискретные такты (шаги). На каждом такте головка " +
+  "находится в одном из допустимых состояний; в начальный момент времени головка находится в состоянии q⟦b:0⟧. " +
+  "За один такт головка может изменить символ в текущей ячейке и переместиться в соседнюю ячейку слева (L) или справа (R) " +
+  "либо остаться на месте (S), после чего переходит в новое состояние. Программа задаётся таблицей: в первой строке — символы " +
+  "ленты, в первом столбце — состояния головки; на пересечении — команда «символ, сдвиг, состояние». Пустая ячейка означает, " +
+  "что такая ситуация при работе программы не встречается.\n"
+
+// Программы МТ. cells: состояние → символ → [что записать, сдвиг, новое состояние].
+// halt — состояние, в котором машина останавливается (команда со сдвигом S).
+const T12_MT_PROGRAMS = [
+  { title: "приписать единицу слева",
+    start: "right",                            // головка справа от числа
+    cells: {
+      q0: { "λ": ["λ", "L", "q1"], "0": null, "1": null },
+      q1: { "λ": ["1", "L", "q2"], "0": ["0", "L", "q1"], "1": ["1", "L", "q1"] },
+      q2: { "λ": ["λ", "S", "q2"], "0": null, "1": null },
+    } },
+  { title: "инвертировать все двоичные цифры",
+    start: "right",
+    cells: {
+      q0: { "λ": ["λ", "L", "q1"], "0": null, "1": null },
+      q1: { "λ": ["λ", "S", "q2"], "0": ["1", "L", "q1"], "1": ["0", "L", "q1"] },
+      q2: { "λ": ["λ", "S", "q2"], "0": null, "1": null },
+    } },
+  { title: "прибавить единицу к двоичному числу",
+    start: "right",
+    cells: {
+      q0: { "λ": ["λ", "L", "q1"], "0": null, "1": null },
+      q1: { "λ": ["1", "S", "q2"], "0": ["1", "S", "q2"], "1": ["0", "L", "q1"] },
+      q2: { "λ": ["λ", "S", "q2"], "0": ["0", "S", "q2"], "1": ["1", "S", "q2"] },
+    } },
+  { title: "приписать нуль справа",
+    start: "right",
+    cells: {
+      q0: { "λ": ["0", "L", "q1"], "0": null, "1": null },
+      q1: { "λ": ["λ", "S", "q1"], "0": ["0", "L", "q1"], "1": ["1", "L", "q1"] },
+    } },
+]
+
+// Исполнение программы над лентой. tape — объект «позиция → символ», head — позиция.
+function t12RunMT(prog, bits) {
+  const tape = {}
+  bits.split("").forEach((c, i) => { tape[i] = c })
+  let head = bits.length                       // ближайшая справа пустая ячейка
+  let state = "q0"
+  for (let step = 0; step < 10000; step++) {
+    const sym = tape[head] || "λ"
+    const cmd = prog.cells[state] && prog.cells[state][sym]
+    if (!cmd) return null                      // такой ситуации быть не должно
+    const [write, move, next] = cmd
+    if (write === "λ") delete tape[head]; else tape[head] = write
+    if (move === "S" && next === state) {      // остановка
+      const keys = Object.keys(tape).map(Number).sort((a, b) => a - b)
+      return keys.map((k) => tape[k]).join("")
+    }
+    head += move === "L" ? -1 : move === "R" ? 1 : 0
+    state = next
+  }
+  return null
+}
+
+export function t12Turing() {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const prog = pick(T12_MT_PROGRAMS)
+    const n = randInt(500, 3000)
+    const bits = n.toString(2)
+    const res = t12RunMT(prog, bits)
+    if (!res || !/^[01]+$/.test(res)) continue
+    const states = Object.keys(prog.cells)
+    const table = tableBlock([
+      ["", "λ", "0", "1"],
+      ...states.map((q) => [`q⟦b:${q.slice(1)}⟧`, ...["λ", "0", "1"].map((sym) => {
+        const c = prog.cells[q][sym]
+        return c ? `${c[0]}, ${c[1]}, q⟦b:${c[2].slice(1)}⟧` : ""
+      })]),
+    ])
+    return {
+      condition_text: T12_MT_INTRO +
+        `На ленте в соседних ячейках записано двоичное представление числа ${n} без ведущих нулей. ` +
+        "Ячейки справа и слева от последовательности заполнены пустыми символами «λ». " +
+        "В начальный момент времени головка расположена в ближайшей справа к последовательности ячейке. " +
+        "Программа работы исполнителя:\n" + table + "\n" +
+        "Определите результат выполнения программы. В ответе запишите получившееся число в десятичной системе счисления.",
+      answer: String(parseInt(res, 2)),
+    }
+  }
+  return null
+}
+
+// «Наибольшее возможное значение суммы цифр результата» — максимум по всем n
+// из диапазона (программа с ЕСЛИ/ИНАЧЕ, вход «d» + n одинаковых цифр).
+export function t12EditorMaxSum() {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const sets = [
+      { rules: [["39", "3"], ["999", "7"], ["7777", "9"]], head: "3", body: "9" },
+      { rules: [["28", "2"], ["888", "5"], ["5555", "8"]], head: "2", body: "8" },
+      { rules: [["17", "1"], ["777", "4"], ["4444", "7"]], head: "1", body: "7" },
+    ]
+    const set = pick(sets)
+    const NMAX = 400
+    let best = 0, ok = true
+    for (let n = 4; n <= NMAX; n++) {
+      // Первое правило — в отдельном ЕСЛИ, второе и третье — ЕСЛИ/ИНАЧЕ.
+      let str = set.head + set.body.repeat(n), guard = 0
+      while (guard++ < 200000) {
+        const has = set.rules.some(([v]) => str.includes(v))
+        if (!has) break
+        const [v1, w1] = set.rules[0]
+        if (str.includes(v1)) { const i = str.indexOf(v1); str = str.slice(0, i) + w1 + str.slice(i + v1.length) }
+        const [v2, w2] = set.rules[1], [v3, w3] = set.rules[2]
+        if (str.includes(v2)) { const i = str.indexOf(v2); str = str.slice(0, i) + w2 + str.slice(i + v2.length) }
+        else if (str.includes(v3)) { const i = str.indexOf(v3); str = str.slice(0, i) + w3 + str.slice(i + v3.length) }
+      }
+      if (guard >= 200000) { ok = false; break }
+      best = Math.max(best, digitSum(str))
+    }
+    if (!ok || best === 0) continue
+    const program = "НАЧАЛО\n" +
+      "ПОКА " + set.rules.map(([v]) => `нашлось (${v})`).join(" ИЛИ ") + "\n" +
+      `ЕСЛИ нашлось (${set.rules[0][0]})\nТО заменить (${set.rules[0][0]}, ${set.rules[0][1]})\nКОНЕЦ ЕСЛИ\n` +
+      `ЕСЛИ нашлось (${set.rules[1][0]})\nТО заменить (${set.rules[1][0]}, ${set.rules[1][1]})\n` +
+      `ИНАЧЕ заменить (${set.rules[2][0]}, ${set.rules[2][1]})\nКОНЕЦ ЕСЛИ\n` +
+      "КОНЕЦ ПОКА\nКОНЕЦ"
+    return {
+      condition_text: T12_PREAMBLE +
+        "В конструкции\nЕСЛИ условие\nТО команда1\nИНАЧЕ команда2\nКОНЕЦ ЕСЛИ\n" +
+        "выполняется команда1 (если условие истинно) или команда2 (если условие ложно).\n" +
+        "Дана программа для Редактора:\n" + program + "\n" +
+        `На вход приведённой выше программе поступает строка, начинающаяся с цифры «${set.head}», ` +
+        `а затем содержащая n цифр «${set.body}» (3 < n < ${NMAX}).\n` +
+        "Определите наибольшее возможное значение суммы числовых значений цифр в строке, которая может быть результатом выполнения программы.",
+      answer: String(best),
+    }
+  }
+  return null
+}
+
+
+// Минимальный объём памяти под изображение при заданном числе цветов.
+export function t7Reserve() {
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const w = pick([320, 640, 800, 1024]), h = pick([200, 240, 320, 480, 600])
+    const colors = pick([16, 32, 64, 128, 256, 1024, 4096])
+    const bytes = w * h * bitsFor(colors) / 8
+    if (!Number.isInteger(bytes) || bytes % KB !== 0) continue
+    return {
+      condition_text:
+        `Какой минимальный объём памяти (в Кбайт) нужно зарезервировать, чтобы можно было сохранить любое растровое изображение ` +
+        `размером ${w}×${h} пикселей при условии, что в изображении могут использоваться ${colors} различных цветов? ` +
+        "Для кодирования цвета каждого пикселя используется одинаковое количество бит, коды пикселей записываются в файл один за другим без промежутков. " +
+        "Искомый объём не учитывает размера заголовка файла. В ответе запишите только целое число, единицу измерения писать не нужно.",
+      answer: String(bytes / KB),
+    }
+  }
+  return null
+}
+
+// Скорость соединения и время передачи → размер файла (в Кбайт).
+export function t7Adsl() {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const speed = pick([128000, 256000, 512000, 1024000, 64000])
+    const minutes = randInt(1, 6)
+    const bytes = speed * minutes * 60 / 8
+    if (bytes % KB !== 0) continue
+    return {
+      condition_text:
+        `Скорость передачи данных через ADSL-соединение равна ${speed} бит/с. ` +
+        `Передача файла через данное соединение заняла ${mins(minutes)}. Определите размер файла в килобайтах.`,
+      answer: String(bytes / KB),
+    }
+  }
+  return null
+}
+
+// R — сумма делителей числа (всех или без единицы и самого числа).
+export function t25SumDivisors() {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const start = pick([300000, 500000, 600000, 700000])
+    const proper = Math.random() < 0.5                     // без 1 и самого числа
+    const digit = randInt(0, 9)
+    const R = (v) => {
+      let s = proper ? 0 : 1 + v
+      for (let d = 2; d * d <= v; d++) {
+        if (v % d) continue
+        s += d
+        if (d !== v / d) s += v / d
+      }
+      return s
+    }
+    const found = []
+    for (let v = start + 1; found.length < 5 && v < start + 30000; v++) {
+      const r = R(v)
+      if (r % 10 === digit) found.push([v, r])
+    }
+    if (found.length < 5) continue
+    return {
+      condition_text:
+        `Пусть R — сумма ${proper ? "различных натуральных делителей целого числа, не считая единицы и самого числа" : "всех различных натуральных делителей целого числа"}.\n` +
+        `Напишите программу, которая перебирает целые числа, бо́льшие ${start.toLocaleString("ru-RU").replace(/\s/g, " ")}, ` +
+        `в порядке возрастания и ищет среди них такие, для которых значение R оканчивается на цифру ${digit}. ` +
+        "Выведите первые пять найденных чисел и соответствующие им значения R.\n" +
+        (proper ? "Например, для числа 20 R = 2 + 4 + 5 + 10 = 21." : "Например, для числа 20 R = 1 + 2 + 4 + 5 + 10 + 20 = 42."),
+      answer: found.map(([v, r]) => `${v} — ${r}`).join("; "),
+    }
+  }
+  return null
+}
+
+// Фрагмент алгоритма со строковыми функциями Длина/Извлечь/Склеить: что окажется
+// в переменной b. Исполняется тем же кодом, что напечатан в условии.
+const T12_STR_WORDS = ["ПОЕЗД", "КОРАБЛЬ", "МАШИНА", "САМОЛЁТ", "ВЕЛОСИПЕД", "ТРАМВАЙ", "АВТОБУС"]
+export function t12StringAlg() {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const word = pick(T12_STR_WORDS)
+    const step = randInt(1, 3)
+    const startLetter = pick(["А", "Б", "К"])
+    const endLetter = pick(["Т", "Я", "Ь"])
+    const backwards = Math.random() < 0.6
+    let b = startLetter
+    if (backwards) { for (let i = word.length; i > 0; i -= step) b += word[i - 1] }
+    else { for (let i = 1; i <= word.length; i += step) b += word[i - 1] }
+    b += endLetter
+    const code = backwards
+      ? `i := Длина(a)\nk := ${step}\nb := '${startLetter}'\nпока i > 0\n  нц\n    c := Извлечь(a, i)\n    b := Склеить(b, c)\n    i := i – k\n  кц\nb := Склеить(b, '${endLetter}')`
+      : `i := 1\nk := ${step}\nb := '${startLetter}'\nпока i <= Длина(a)\n  нц\n    c := Извлечь(a, i)\n    b := Склеить(b, c)\n    i := i + k\n  кц\nb := Склеить(b, '${endLetter}')`
+    // Отвлекающие варианты — правдоподобные ошибки: другой шаг, обратный порядок, без хвоста.
+    const wrongs = new Set()
+    let alt = startLetter
+    for (let i = word.length; i > 0; i -= (step === 1 ? 2 : 1)) alt += word[i - 1]
+    wrongs.add(alt + endLetter)
+    wrongs.add(startLetter + [...b.slice(1, -1)].reverse().join("") + endLetter)
+    wrongs.add(b.slice(0, -1))
+    const options = shuffle([b, ...[...wrongs].filter((w) => w !== b).slice(0, 3)])
+    if (options.length < 4) continue
+    return {
+      condition_text:
+        "В приведённом ниже фрагменте алгоритма, записанном на алгоритмическом языке, переменные a, b, c имеют тип «строка», " +
+        "а переменные i, k — тип «целое». Используются следующие функции:\n" +
+        "Длина(a) — возвращает количество символов в строке a (тип «целое»).\n" +
+        "Извлечь(a, i) — возвращает i-й (слева) символ строки a (тип «строка»).\n" +
+        "Склеить(a, b) — возвращает строку, в которой записаны сначала все символы строки a, а затем все символы строки b (тип «строка»).\n" +
+        "Значения строк записываются в одинарных кавычках (например, a := 'дом').\n" +
+        "Фрагмент алгоритма:\n⟦code:" + code + "⟧\n" +
+        `Какое значение будет у переменной b после выполнения этого фрагмента, если значение переменной a было '${word}'?\n` +
+        tableBlock([["№", "Вариант"], ...options.map((o, i) => [`${i + 1})`, `'${o}'`])]) + "\n" +
+        "В ответе укажите номер варианта.",
+      answer: String(options.indexOf(b) + 1),
+    }
+  }
+  return null
+}
+
+
+// Старый формат №4: буквы кодируются последовательными двухразрядными числами,
+// последовательность записывают шестнадцатеричным кодом.
+export function t4SeqHex() {
+  const letters = ["А", "Б", "В", "Г"]
+  const word = Array.from({ length: 4 }, () => pick(letters)).join("")
+  const bits = [...word].map((c) => letters.indexOf(c).toString(2).padStart(2, "0")).join("")
+  const hex = parseInt(bits, 2).toString(16).toUpperCase().padStart(2, "0")
+  const wrong = new Set([
+    parseInt([...bits].reverse().join(""), 2).toString(16).toUpperCase(),
+    [...word].map((c) => letters.indexOf(c)).join(""),
+    parseInt(bits, 2).toString(10),
+  ])
+  const options = shuffle([hex, ...[...wrong].filter((w) => w !== hex).slice(0, 3)])
+  return {
+    condition_text:
+      `Для кодирования букв ${letters.join(", ")} решили использовать двухразрядные последовательные двоичные числа ` +
+      "(от 00 до 11 соответственно). Если таким способом закодировать последовательность символов " +
+      `${word} и записать результат шестнадцатеричным кодом, то получится:\n` +
+      tableBlock([["№", "Вариант"], ...options.map((o, i) => [`${i + 1})`, o])]) + "\n" +
+      "В ответе укажите номер варианта.",
+    answer: String(options.indexOf(hex) + 1),
+  }
+}
+
+// Старый формат №4: из четырёх сообщений только одно декодируется однозначно
+// в заданной (непрефиксной) кодировке — найти его.
+export function t4UniqueDecode() {
+  for (let attempt = 0; attempt < 80; attempt++) {
+    const letters = shuffle(["В", "К", "А", "Р", "Д", "О", "М", "С"]).slice(0, 5)
+    const codes = ["000", "11", "01", "001", "10"]
+    const map = Object.fromEntries(letters.map((l, i) => [l, codes[i]]))
+    // Декодирование перебором: сколько разборов у строки (0 — нельзя, 1 — однозначно).
+    const ways = (str) => {
+      const memo = new Map()
+      const rec = (i) => {
+        if (i === str.length) return 1
+        if (memo.has(i)) return memo.get(i)
+        let n = 0
+        for (const c of codes) if (str.startsWith(c, i)) n += rec(i + c.length)
+        memo.set(i, n)
+        return n
+      }
+      return rec(0)
+    }
+    const word = Array.from({ length: randInt(5, 7) }, () => pick(letters)).join("")
+    const right = [...word].map((c) => map[c]).join("")
+    if (ways(right) !== 1) continue
+    const wrongs = new Set()
+    for (let k = 0; k < 200 && wrongs.size < 3; k++) {
+      const bits = [...right]
+      const i = randInt(0, bits.length - 1)
+      bits[i] = bits[i] === "0" ? "1" : "0"
+      const cand = bits.join("")
+      if (cand !== right && ways(cand) !== 1) wrongs.add(cand)
+    }
+    if (wrongs.size < 3) continue
+    const options = shuffle([right, ...[...wrongs]])
+    return {
+      condition_text:
+        `Для ${letters.length} букв русского алфавита заданы их двоичные коды (для некоторых букв — из двух бит, для некоторых — из трёх). ` +
+        "Эти коды представлены в таблице:\n" +
+        tableBlock([letters, letters.map((l) => map[l])]) + "\n" +
+        "Из четырёх полученных сообщений в этой кодировке только одно прошло без ошибки и может быть корректно декодировано. Найдите его:\n" +
+        tableBlock([["№", "Сообщение"], ...options.map((o, i) => [`${i + 1})`, o])]) + "\n" +
+        "В ответе укажите номер варианта.",
+      answer: String(options.indexOf(right) + 1),
+    }
+  }
+  return null
+}
+
+// Составляющие цвета пикселя: сколько бит отвели под зелёную.
+export function t7Rgb() {
+  const other = pick([4, 5, 6])
+  const green = pick([5, 6, 8, 10])
+  const w = pick([8, 16, 32]), h = w
+  const bytes = w * h * (2 * other + green) / 8
+  if (!Number.isInteger(bytes)) return null
+  const options = shuffle([...new Set([green, other, green + 2, green * 2])]).slice(0, 4)
+  if (!options.includes(green)) options[0] = green
+  return {
+    condition_text:
+      "Цвет пикселя монитора определяется тремя составляющими: зелёной, синей и красной. " +
+      `Под красную и синюю составляющие одного пикселя отвели по ${other} бит. ` +
+      `Сколько бит отвели под зелёную составляющую одного пикселя, если растровое изображение размером ${w}×${h} пикселей ` +
+      `занимает ${bytes} байт памяти?`,
+    answer: String(green),
+  }
+}
+
+// Объём текста в Unicode: каждый символ — два байта.
+const T7_SENTENCES = [
+  "Один пуд — около 16,4 килограмма.",
+  "В одном килобайте 1024 байта.",
+  "Скорость света в вакууме — 299 792 458 м/с.",
+  "Информатика — наука о способах обработки информации.",
+  "Земля делает оборот вокруг Солнца за 365 суток.",
+]
+export function t7Unicode() {
+  const sentence = pick(T7_SENTENCES)
+  const chars = [...sentence].length
+  const bits = Math.random() < 0.5
+  return {
+    condition_text:
+      "Считая, что каждый символ кодируется двумя байтами, оцените информационный объём следующего предложения " +
+      `в кодировке Unicode:\n${sentence}\n` +
+      `В ответе запишите целое число — количество ${bits ? "бит" : "байт"}.`,
+    answer: String(bits ? chars * 16 : chars * 2),
+  }
+}
+
 export const GENERATORS_EGE_INF = {
   2: [t2Misha, t2AllRows, t2ChooseExpr],
-  4: [t4FanoShortest, t4FanoColors, t4FanoSumLen, t4FanoWord],
+  4: [t4FanoShortest, t4FanoColors, t4FanoSumLen, t4FanoWord, t4SeqHex, t4UniqueDecode],
   5: [t5Bin, t5Parity, t5Ternary, t5Calc, t5Automat],
-  7: [t7Transfer, t7Colors, t7ColorsCompressed, t7Volume, t7Packet, t7Sound, t7Modem],
-  8: [t8WordIndex, t8FirstLetter, t8Filter, t8Parity, t8CountOnce, t8CountDigits, t8Lamps],
-  11: [t11PassExtra, t11Volume, t11Plate, t11Split, t11Power, t11MinLength, t11Message],
-  12: [t12EditorMinN, t12EditorSum, t12EditorResult],
-  13: [t13Graph, t13MaskByte, t13HostAddress, t13NetAddress, t13CountOnes, t13MaskBits],
+  7: [t7Transfer, t7Colors, t7ColorsCompressed, t7Volume, t7Packet, t7Sound, t7Modem, t7Traffic, t7Reserve, t7Adsl, t7Rgb, t7Unicode],
+  8: [t8WordIndex, t8FirstLetter, t8Filter, t8Parity, t8CountOnce, t8CountDigits, t8Lamps, t8DistinctAlternating],
+  11: [t11PassExtra, t11Volume, t11Plate, t11Split, t11Power, t11MinLength, t11Message, t11Catalogs],
+  12: [t12EditorMinN, t12EditorSum, t12EditorResult, t12EditorMaxSum, t12Turing, t12StringAlg],
+  13: [t13Graph, t13MaskByte, t13HostAddress, t13NetAddress, t13CountOnes, t13MaskBits, t13Url],
   14: [t14PowerSum, t14UnknownDigit, t14MinusX, t14BinOnes],
-  15: [t15Inequality, t15Segments, t15DelSegment, t15DelMax, t15DelMin],
+  15: [t15Inequality, t15Segments, t15DelSegment, t15DelMax, t15DelMin, t15BitAnd],
   16: [t16Formula, t16FG, t16Print, t16Stars],
   19: [t19FirstMove],
   23: [t23Programs],
-  25: [t25Mask, t25Semiprime, t25DivisorEnding],
+  25: [t25Mask, t25Semiprime, t25DivisorEnding, t25MinMaxDivisors, t25SumDivisors],
   20: [t20SecondMove],
   21: [t21VanyaSecond],
 }
@@ -2605,6 +3228,10 @@ export const GEN_META_EGE_INF = {
     ["colors", "Кратчайший код для цвета рисунка", t4FanoColors],
     ["sumlen", "Наименьшая суммарная длина кодов", t4FanoSumLen],
     ["word", "Минимальная длина кодировки слова", t4FanoWord],
+  ]],
+  ["Кодирование последовательностей", [
+    ["seq-hex", "Двухразрядные коды → шестнадцатеричная запись", t4SeqHex],
+    ["unique", "Какое сообщение декодируется однозначно", t4UniqueDecode],
   ]]],
   5: [["Алгоритм над записью числа", [
     ["bin", "Дописывание разрядов к двоичной записи", t5Bin],
@@ -2624,6 +3251,11 @@ export const GEN_META_EGE_INF = {
     ["colors", "Максимальная палитра по объёму файла", t7Colors],
     ["colors-zip", "Палитра при сжатии «больше на N%»", t7ColorsCompressed],
     ["volume", "Объём файла с фотографией", t7Volume],
+    ["rgb", "Составляющие цвета пикселя", t7Rgb],
+    ["traffic", "Экономия трафика при пересжатии", t7Traffic],
+    ["reserve", "Сколько памяти зарезервировать", t7Reserve],
+    ["adsl", "Размер файла по скорости и времени", t7Adsl],
+    ["unicode", "Объём предложения в Unicode", t7Unicode],
   ]],
   ["Звук", [
     ["sound", "Оцифровка: частота, глубина, каналы", t7Sound],
@@ -2638,6 +3270,7 @@ export const GEN_META_EGE_INF = {
     ["count-once", "Буква ровно один раз (Вася/Игорь)", t8CountOnce],
     ["count-digits", "Числа в системе счисления с условием", t8CountDigits],
     ["lamps", "Световое табло: сколько лампочек", t8Lamps],
+    ["distinct", "Все цифры различны, чётность чередуется", t8DistinctAlternating],
   ]]],
   11: [["Объём памяти при посимвольном кодировании", [
     ["extra", "Пароль + дополнительные сведения", t11PassExtra],
@@ -2651,11 +3284,21 @@ export const GEN_META_EGE_INF = {
   ]],
   ["Объём сообщения", [
     ["message", "Секретное сообщение из N символов", t11Message],
+  ]],
+  ["Файловая система", [
+    ["catalogs", "Путь по каталогам вверх-вниз", t11Catalogs],
   ]]],
   12: [["Исполнитель Редактор", [
     ["min-n", "Наименьшее n по сумме цифр", t12EditorMinN],
     ["sum", "Сумма цифр результата (маркер «>»)", t12EditorSum],
     ["result", "Какая строка получится (ЕСЛИ/ИНАЧЕ)", t12EditorResult],
+    ["max-sum", "Наибольшая сумма цифр результата", t12EditorMaxSum],
+  ]],
+  ["Исполнитель МТ", [
+    ["turing", "Машина Тьюринга над двоичным числом", t12Turing],
+  ]],
+  ["Строковые функции", [
+    ["string", "Длина/Извлечь/Склеить: значение b", t12StringAlg],
   ]]],
   13: [["Схема дорог (граф)", [
     ["graph", "Пути из А в М через город", t13Graph],
@@ -2666,6 +3309,9 @@ export const GEN_META_EGE_INF = {
     ["net", "Адрес сети по IP и маске", t13NetAddress],
     ["count-ones", "Адреса с условием на число единиц", t13CountOnes],
     ["mask-bits", "Число единиц/нулей в маске", t13MaskBits],
+  ]],
+  ["Адрес файла в Интернете", [
+    ["url", "Собрать адрес из фрагментов А–Ж", t13Url],
   ]]],
   14: [["Запись значения выражения", [
     ["powsum", "Нули/цифры в записи суммы степеней", t14PowerSum],
@@ -2681,6 +3327,9 @@ export const GEN_META_EGE_INF = {
   ["Отрезки на числовой прямой", [
     ["seg", "Наименьшая длина отрезка A", t15Segments],
   ]],
+  ["Поразрядная конъюнкция", [
+    ["bitand", "Наименьшее A для x & A", t15BitAnd],
+  ]],
   ["Предикат ДЕЛ(n, m)", [
     ["del-seg", "ДЕЛ и отрезок B", t15DelSegment],
     ["del-max", "Наибольшее A", t15DelMax],
@@ -2695,6 +3344,8 @@ export const GEN_META_EGE_INF = {
   ["Перебор чисел программой", [
     ["semiprime", "Произведение двух простых", t25Semiprime],
     ["divisor", "Делитель, оканчивающийся на цифру", t25DivisorEnding],
+    ["minmax", "Сумма мин. и макс. делителей (M)", t25MinMaxDivisors],
+    ["sum-div", "Сумма делителей (R)", t25SumDivisors],
   ]]],
   19: [["Выигрышная стратегия", [
     ["first", "Ваня выигрывает первым ходом", t19FirstMove],
