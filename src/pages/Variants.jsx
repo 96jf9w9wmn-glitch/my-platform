@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, Fragment } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import { signRows } from "../storageUrl"
@@ -704,6 +704,25 @@ function SubmissionReview({ submission, variant, onClose, onSave }) {
   )
 }
 
+// Число колонок в сетке вариантов: 1 / 2 / 3 — теми же порогами, что и
+// классы Tailwind у самой сетки. Нужно, чтобы разбор раскрывался целой
+// строкой под рядом выбранной карточки, а не разрывал ряд посередине.
+function useGridCols() {
+  const read = () =>
+    typeof window === "undefined" ? 1
+      : window.matchMedia("(min-width: 1280px)").matches ? 3
+      : window.matchMedia("(min-width: 640px)").matches ? 2
+      : 1
+  const [cols, setCols] = useState(read)
+  useEffect(() => {
+    const mqs = [window.matchMedia("(min-width: 640px)"), window.matchMedia("(min-width: 1280px)")]
+    const onChange = () => setCols(read())
+    mqs.forEach((m) => m.addEventListener("change", onChange))
+    return () => mqs.forEach((m) => m.removeEventListener("change", onChange))
+  }, [])
+  return cols
+}
+
 function Variants({ user, students = [], embedded = false, addOpen, onAddOpenChange }) {
   const [variants, setVariants] = useState([])
   const [submissions, setSubmissions] = useState([])
@@ -721,6 +740,10 @@ function Variants({ user, students = [], embedded = false, addOpen, onAddOpenCha
   const [selectedSubmission, setSelectedSubmission] = useState(null)
   const [loading, setLoading] = useState(true)
   const [previewFile, setPreviewFile] = useState(null)
+  // Сколько карточек в ряду прямо сейчас — нужно, чтобы вставить разбор ПОСЛЕ
+  // ряда выбранной карточки. Пороги обязаны совпадать с классами сетки ниже
+  // (sm:grid-cols-2 xl:grid-cols-3), иначе панель разорвёт ряд.
+  const cols = useGridCols()
 
   useEffect(() => { loadData() }, [])
 
@@ -772,6 +795,143 @@ function Variants({ user, students = [], embedded = false, addOpen, onAddOpenCha
     return "Итого: " + sub.total_score + " баллов · оценка " + getOgeGrade(sub.total_score, sub.geom_score || 0)
   }
 
+  // Разбор выбранного варианта раскрывается прямо под его рядом карточек:
+  // так он всегда рядом с тем, что открыли, и не нужно ни второй колонки,
+  // ни прокрутки к панели в конце списка.
+  const selectedIndex = selectedVariant ? variants.findIndex((v) => v.id === selectedVariant.id) : -1
+  const detailRowEnd = selectedIndex < 0
+    ? -1
+    : Math.min(Math.floor(selectedIndex / cols) * cols + cols - 1, variants.length - 1)
+
+  const detailPanel = selectedVariant ? (
+    <div className="col-span-full glass overflow-hidden slide-up">
+              <div className="flex items-center justify-between gap-3 px-5 py-4">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-medium text-base truncate">{selectedVariant.title}</span>
+                  <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ring-1 ${isEgeType(selectedVariant.type) ? "text-purple-600 bg-purple-500/10 ring-purple-500/20" : "text-blue-600 bg-blue-500/10 ring-blue-500/20"}`}>{selectedVariant.type}</span>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span className="text-[11px] text-gray-400 flex items-center gap-1.5">
+                    <Icon name="users" size={12} />
+                    {variantSubmissions.length} {plural(variantSubmissions.length, "ученик", "ученика", "учеников")}
+                  </span>
+                  <button onClick={() => setSelectedVariant(null)} title="Свернуть"
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-500/10 transition-colors">
+                    <Icon name="x" size={15} />
+                  </button>
+                </div>
+              </div>
+
+              {selectedVariant.tasks_snapshot?.length > 0 && (
+                <ExtraPdfButtons variant={selectedVariant} />
+              )}
+
+              {selectedVariant.file_url && (
+                <div className="px-5 py-4 border-t border-gray-100/60">
+                  <div className="section-label mb-2.5">Файл варианта</div>
+                  <div className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 overflow-hidden">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-3 py-2 bg-gray-500/[0.04]">
+                      <div className="flex items-center gap-2 text-xs text-gray-500 min-w-0">
+                        <Icon name="paperclip" size={12} />
+                        {/* адрес подписанный — отрезаем хвост с токеном, иначе он попадёт в имя */}
+                        <span className="truncate">{selectedVariant.file_url.split("?")[0].split("/").pop() || "Файл варианта"}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <a href={selectedVariant.file_url + (selectedVariant.file_url.includes("?") ? "&" : "?") + "download"} download
+                          className="press-fill text-[11px] px-2.5 py-1.5 rounded-lg ring-1 ring-blue-200 dark:ring-blue-400/25 text-blue-600 bg-blue-500/8 flex items-center gap-1.5">
+                          <MorphIcon from="download" size={12} />Скачать
+                        </a>
+                        <a href={selectedVariant.file_url} target="_blank" rel="noreferrer"
+                          className="press-fill text-[11px] px-2.5 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-600">
+                          Открыть ↗
+                        </a>
+                        <button onClick={() => setPreviewFile(selectedVariant.file_url)} title="На весь экран"
+                          className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-500/10 transition-colors">
+                          <Icon name="maximize" size={13} />
+                        </button>
+                      </div>
+                    </div>
+                    {selectedVariant.file_url.match(/\.(jpg|jpeg|png|gif|webp)/i) && (
+                      <img src={selectedVariant.file_url} alt="вариант" className="w-full max-h-48 object-contain bg-white cursor-pointer" onClick={() => setPreviewFile(selectedVariant.file_url)} />
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {selectedVariant.tasks_snapshot?.length > 0 && (
+                <div className="px-5 py-4 border-t border-gray-100/60">
+                  <details className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 overflow-hidden group">
+                    <summary className="px-3 py-2.5 bg-gray-500/[0.04] text-xs text-gray-500 cursor-pointer flex items-center gap-2 select-none hover:text-gray-700 transition-colors">
+                      <Icon name="book" size={12} />
+                      Задания из банка
+                      <span className="text-[11px] text-gray-400 bg-gray-500/10 px-1.5 py-0.5 rounded-full">{selectedVariant.tasks_snapshot.length}</span>
+                      <span className="ml-auto text-gray-400 transition-transform group-open:rotate-90">›</span>
+                    </summary>
+                    <div className="flex flex-col gap-1.5 p-2.5">
+                      {selectedVariant.tasks_snapshot.map((t) => (
+                        <div key={t.number} className="text-xs rounded-lg bg-gray-500/[0.05] px-2.5 py-2 flex items-start gap-2.5">
+                          <span className="shrink-0 w-5 h-5 rounded-full bg-blue-500/12 text-blue-600 dark:text-blue-400 text-[10px] font-semibold flex items-center justify-center">
+                            {t.number}
+                          </span>
+                          <div className="min-w-0">
+                            {t.condition_text && <span className="text-gray-600 leading-snug" dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_text) }} />}
+                            {t.image_url && (
+                              <a href={t.image_url} target="_blank" rel="noreferrer" className="block mt-1.5">
+                                <img src={t.image_url} alt={`Задание ${t.number}`} className="h-20 rounded-lg ring-1 ring-gray-200/70 bg-white" />
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                </div>
+              )}
+
+              <div className="px-5 py-4 border-t border-gray-100/60">
+                <div className="section-label mb-2.5">Ученики</div>
+                {/* Панель теперь во всю ширину: на широком экране строка ученика
+                    растягивалась на метр, поэтому раскладываем в две колонки. */}
+                <div className={`grid grid-cols-1 gap-1.5 ${variantSubmissions.length > 3 ? "xl:grid-cols-2" : ""}`}>
+                {variantSubmissions.length === 0 ? (
+                  <div className="xl:col-span-2 text-sm text-gray-400 text-center py-8">Вариант ещё никому не выдан</div>
+                ) : variantSubmissions.map((sub) => {
+                  const name = sub.student_accounts?.name || sub.student_accounts?.email || ""
+                  const color = getAvatarColor(name)
+                  return (
+                    <div key={sub.id} className="flex items-center gap-3 bg-gray-500/[0.04] rounded-xl px-3 py-2.5">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 ${color.bg} ${color.text}`}>
+                        {getInitials(name)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">{name}</div>
+                        <div className="text-xs text-gray-400 mt-0.5">{renderScore(sub)}</div>
+                      </div>
+                      <div className="flex-shrink-0">
+                        {sub.status === "pending" && (
+                          <span className="text-[11px] text-gray-400 bg-gray-500/8 ring-1 ring-gray-500/15 px-2.5 py-1 rounded-full">Ожидает</span>
+                        )}
+                        {sub.status === "submitted" && (
+                          <button onClick={() => setSelectedSubmission(sub)} className="text-[11px] text-amber-600 bg-amber-500/12 ring-1 ring-amber-500/25 px-2.5 py-1 rounded-full hover:bg-amber-500/20 transition-colors font-medium">
+                            Проверить →
+                          </button>
+                        )}
+                        {sub.status === "graded" && (
+                          <span className="text-[11px] px-2.5 py-1 rounded-full text-green-600 bg-green-500/12 ring-1 ring-green-500/25 font-medium">
+                            {isEgeType(selectedVariant.type)
+                              ? getEgeTestScore(sub.total_score) + " б"
+                              : "Оценка " + getOgeGrade(sub.total_score, sub.geom_score || 0)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+                </div>
+              </div>
+          </div>
+  ) : null
+
   return (
     <div className={`flex flex-col gap-5 ${embedded ? "" : "p-4 md:p-6"}`}>
       {!controlled && (
@@ -817,16 +977,16 @@ function Variants({ user, students = [], embedded = false, addOpen, onAddOpenCha
       {loading ? (
         <div className="text-sm text-gray-400 text-center py-8">Загрузка...</div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
-          <div className={`col-span-1 flex flex-col gap-2 ${selectedVariant ? "hidden md:flex" : "flex"}`}>
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 items-stretch">
             {variants.length === 0 ? (
-              <div className="flex flex-col items-center gap-2 text-center py-12 px-4 border border-dashed border-gray-200 dark:border-white/15 rounded-xl">
+              <div className="sm:col-span-2 xl:col-span-3 flex flex-col items-center gap-2 text-center py-12 px-4 border border-dashed border-gray-200 dark:border-white/15 rounded-xl">
                 <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center">
                   <Icon name="clipboard" size={18} />
                 </div>
                 <div className="text-sm text-gray-400">Вариантов пока нет</div>
               </div>
-            ) : variants.map((v) => {
+            ) : variants.map((v, i) => {
               const subs = submissions.filter((s) => s.variant_id === v.id)
               const graded = subs.filter((s) => s.status === "graded").length
               const submitted = subs.filter((s) => s.status === "submitted").length
@@ -834,8 +994,11 @@ function Variants({ user, students = [], embedded = false, addOpen, onAddOpenCha
               const progressPct = total > 0 ? Math.round((graded / total) * 100) : 0
               const isSelected = selectedVariant?.id === v.id
               return (
-                <div key={v.id} className={`glass-sm overflow-hidden transition-all ${isSelected ? "!border-blue-400/60 ring-1 ring-blue-400/30" : ""}`}>
-                  <button onClick={() => setSelectedVariant(v)} className="w-full text-left px-4 pt-3.5 pb-3">
+                <Fragment key={v.id}>
+                <div className={`glass-sm overflow-hidden transition-all flex flex-col ${isSelected ? "!border-blue-400/70 ring-2 ring-blue-400/35" : "hover:!border-blue-300/60"}`}>
+                  {/* Повторный клик сворачивает разбор: карточки стоят строкой,
+                      и закрывать панель под ними больше нечем. */}
+                  <button onClick={() => setSelectedVariant(isSelected ? null : v)} className="w-full text-left px-4 pt-3.5 pb-3 flex-1">
                     <div className="flex items-baseline justify-between gap-2 mb-1.5">
                       <div className="font-medium text-sm truncate">{v.title}</div>
                       <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ring-1 ${isEgeType(v.type) ? "text-purple-600 bg-purple-500/10 ring-purple-500/20" : "text-blue-600 bg-blue-500/10 ring-blue-500/20"}`}>{v.type}</span>
@@ -881,137 +1044,12 @@ function Variants({ user, students = [], embedded = false, addOpen, onAddOpenCha
                     </div>
                   </div>
                 </div>
+                {/* Разбор — целой строкой сразу после ряда, в котором стоит
+                    выбранная карточка (на последнем ряду — после последней). */}
+                {detailPanel && (i === detailRowEnd) && detailPanel}
+                </Fragment>
               )
             })}
-          </div>
-
-          <div className={`md:col-span-2 ${!selectedVariant ? "hidden md:block" : "block"}`}>
-            {!selectedVariant ? (
-              <div className="glass flex flex-col items-center justify-center gap-2.5 text-center px-5 py-20">
-                <div className="w-11 h-11 rounded-2xl bg-gray-500/8 text-gray-400 flex items-center justify-center">
-                  <Icon name="cursor" size={18} />
-                </div>
-                <div className="text-sm text-gray-400">Выберите вариант слева, чтобы увидеть листы и работы учеников</div>
-              </div>
-            ) : (
-              <div className="glass overflow-hidden">
-                <div className="flex items-center justify-between gap-3 px-5 py-4">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <button onClick={() => setSelectedVariant(null)} className="md:hidden text-blue-600 text-sm mr-1">← Назад</button>
-                    <span className="font-medium text-base truncate">{selectedVariant.title}</span>
-                    <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ring-1 ${isEgeType(selectedVariant.type) ? "text-purple-600 bg-purple-500/10 ring-purple-500/20" : "text-blue-600 bg-blue-500/10 ring-blue-500/20"}`}>{selectedVariant.type}</span>
-                  </div>
-                  <span className="text-[11px] text-gray-400 flex items-center gap-1.5 flex-shrink-0">
-                    <Icon name="users" size={12} />
-                    {variantSubmissions.length} {plural(variantSubmissions.length, "ученик", "ученика", "учеников")}
-                  </span>
-                </div>
-
-                {selectedVariant.tasks_snapshot?.length > 0 && (
-                  <ExtraPdfButtons variant={selectedVariant} />
-                )}
-
-                {selectedVariant.file_url && (
-                  <div className="px-5 py-4 border-t border-gray-100/60">
-                    <div className="section-label mb-2.5">Файл варианта</div>
-                    <div className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 overflow-hidden">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-3 py-2 bg-gray-500/[0.04]">
-                        <div className="flex items-center gap-2 text-xs text-gray-500 min-w-0">
-                          <Icon name="paperclip" size={12} />
-                          {/* адрес подписанный — отрезаем хвост с токеном, иначе он попадёт в имя */}
-                          <span className="truncate">{selectedVariant.file_url.split("?")[0].split("/").pop() || "Файл варианта"}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 flex-shrink-0">
-                          <a href={selectedVariant.file_url + (selectedVariant.file_url.includes("?") ? "&" : "?") + "download"} download
-                            className="press-fill text-[11px] px-2.5 py-1.5 rounded-lg ring-1 ring-blue-200 dark:ring-blue-400/25 text-blue-600 bg-blue-500/8 flex items-center gap-1.5">
-                            <MorphIcon from="download" size={12} />Скачать
-                          </a>
-                          <a href={selectedVariant.file_url} target="_blank" rel="noreferrer"
-                            className="press-fill text-[11px] px-2.5 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-600">
-                            Открыть ↗
-                          </a>
-                          <button onClick={() => setPreviewFile(selectedVariant.file_url)} title="На весь экран"
-                            className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-500/10 transition-colors">
-                            <Icon name="maximize" size={13} />
-                          </button>
-                        </div>
-                      </div>
-                      {selectedVariant.file_url.match(/\.(jpg|jpeg|png|gif|webp)/i) && (
-                        <img src={selectedVariant.file_url} alt="вариант" className="w-full max-h-48 object-contain bg-white cursor-pointer" onClick={() => setPreviewFile(selectedVariant.file_url)} />
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {selectedVariant.tasks_snapshot?.length > 0 && (
-                  <div className="px-5 py-4 border-t border-gray-100/60">
-                    <details className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 overflow-hidden group">
-                      <summary className="px-3 py-2.5 bg-gray-500/[0.04] text-xs text-gray-500 cursor-pointer flex items-center gap-2 select-none hover:text-gray-700 transition-colors">
-                        <Icon name="book" size={12} />
-                        Задания из банка
-                        <span className="text-[11px] text-gray-400 bg-gray-500/10 px-1.5 py-0.5 rounded-full">{selectedVariant.tasks_snapshot.length}</span>
-                        <span className="ml-auto text-gray-400 transition-transform group-open:rotate-90">›</span>
-                      </summary>
-                      <div className="flex flex-col gap-1.5 p-2.5">
-                        {selectedVariant.tasks_snapshot.map((t) => (
-                          <div key={t.number} className="text-xs rounded-lg bg-gray-500/[0.05] px-2.5 py-2 flex items-start gap-2.5">
-                            <span className="shrink-0 w-5 h-5 rounded-full bg-blue-500/12 text-blue-600 dark:text-blue-400 text-[10px] font-semibold flex items-center justify-center">
-                              {t.number}
-                            </span>
-                            <div className="min-w-0">
-                              {t.condition_text && <span className="text-gray-600 leading-snug" dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_text) }} />}
-                              {t.image_url && (
-                                <a href={t.image_url} target="_blank" rel="noreferrer" className="block mt-1.5">
-                                  <img src={t.image_url} alt={`Задание ${t.number}`} className="h-20 rounded-lg ring-1 ring-gray-200/70 bg-white" />
-                                </a>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </details>
-                  </div>
-                )}
-
-                <div className="px-5 py-4 border-t border-gray-100/60 flex flex-col gap-1.5">
-                  <div className="section-label mb-1">Ученики</div>
-                  {variantSubmissions.length === 0 ? (
-                    <div className="text-sm text-gray-400 text-center py-8">Вариант ещё никому не выдан</div>
-                  ) : variantSubmissions.map((sub) => {
-                    const name = sub.student_accounts?.name || sub.student_accounts?.email || ""
-                    const color = getAvatarColor(name)
-                    return (
-                      <div key={sub.id} className="flex items-center gap-3 bg-gray-500/[0.04] rounded-xl px-3 py-2.5">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 ${color.bg} ${color.text}`}>
-                          {getInitials(name)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium truncate">{name}</div>
-                          <div className="text-xs text-gray-400 mt-0.5">{renderScore(sub)}</div>
-                        </div>
-                        <div className="flex-shrink-0">
-                          {sub.status === "pending" && (
-                            <span className="text-[11px] text-gray-400 bg-gray-500/8 ring-1 ring-gray-500/15 px-2.5 py-1 rounded-full">Ожидает</span>
-                          )}
-                          {sub.status === "submitted" && (
-                            <button onClick={() => setSelectedSubmission(sub)} className="text-[11px] text-amber-600 bg-amber-500/12 ring-1 ring-amber-500/25 px-2.5 py-1 rounded-full hover:bg-amber-500/20 transition-colors font-medium">
-                              Проверить →
-                            </button>
-                          )}
-                          {sub.status === "graded" && (
-                            <span className="text-[11px] px-2.5 py-1 rounded-full text-green-600 bg-green-500/12 ring-1 ring-green-500/25 font-medium">
-                              {isEgeType(selectedVariant.type)
-                                ? getEgeTestScore(sub.total_score) + " б"
-                                : "Оценка " + getOgeGrade(sub.total_score, sub.geom_score || 0)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}
