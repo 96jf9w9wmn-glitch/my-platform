@@ -76,13 +76,21 @@ export function recognizeShape(rawPoints, { minSize = 30 } = {}) {
   const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2
   const rx = w / 2, ry = h / 2
 
-  // Окружность/эллипс: все точки лежат на (x/rx)² + (y/ry)² = 1
+  // Круг всегда РОВНЫЙ: распознаём по эллипсу (от руки окружность выходит слегка
+  // сплюснутой, по строгой окружности её пришлось бы не узнавать), но на доску
+  // кладём круг — габарит подменяем квадратом со стороной по среднему из ширины
+  // и высоты. Эллипса SmartDraw не рисует намеренно.
+  const round = () => {
+    const d = (w + h) / 2
+    return { tool: "circle", a: [cx - d / 2, cy - d / 2], b: [cx + d / 2, cy + d / 2] }
+  }
+  // Все точки лежат на (x/rx)² + (y/ry)² = 1
   let ellErr = 1
   if (rx > 3 && ry > 3) {
     let sum = 0
     for (const p of pts) sum += Math.abs(Math.hypot((p[0] - cx) / rx, (p[1] - cy) / ry) - 1)
     ellErr = sum / pts.length
-    if (ellErr < 0.1) return { tool: "circle", a: box.a, b: box.b }
+    if (ellErr < 0.1) return round()
   }
 
   // Углы замкнутой ломаной. Контур замыкаем явно, иначе стык первой и последней
@@ -101,7 +109,7 @@ export function recognizeShape(rawPoints, { minSize = 30 } = {}) {
       .reduce((acc, p) => acc + Math.min(...list.map((q) => dist(p, q))), 0)
     return { tool: near(mids) < near(corns) ? "diamond" : "rect", a: box.a, b: box.b }
   }
-  // Много мелких углов и приличная посадка на эллипс — всё-таки овал
-  if (n >= 6 && ellErr < 0.18) return { tool: "circle", a: box.a, b: box.b }
+  // Много мелких углов и приличная посадка на овал — всё-таки круглая фигура
+  if (n >= 6 && ellErr < 0.18) return round()
   return null
 }
