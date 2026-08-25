@@ -5,15 +5,26 @@ import { signRows } from "../storageUrl"
 import { plural, getInitials, defaultExamType, renderTaskMath, plainTaskMath } from "../utils"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
-import { assembleFromBank, rerollTask, rerollModule, isModuleNumber, PART2_NUMBERS, makeAnswerChoices } from "./taskBankApi"
-import { generateVariantPdf } from "./variantPdf"
-import { generateWorkbookPdf } from "./workbookPdf"
+import { isModuleNumber, PART2_NUMBERS } from "./taskBankMeta"
 import { usePlan } from "../subscription"
 import { PlanHint } from "../components/PlanLock"
 import ConfirmModal from "../components/ConfirmModal"
 import { useClosing } from "../useClosing"
 // Тетрадь тянет генераторы заданий — грузим только когда её открыли.
 const WorkbookModal = lazy(() => import("./WorkbookModal"))
+
+// Банк заданий и сборка PDF — самые тяжёлые модули приложения: генераторы всех предметов
+// весят около 3,3 МБ, jsPDF с html2canvas — ещё около 0,2 МБ. Разделу они нужны только по
+// нажатию кнопки, поэтому подключаются в этот момент, а не при открытии раздела: список
+// вариантов появляется сразу. Сразу после отрисовки банк подтягивается фоном (prefetchBank),
+// так что к нажатию «Собрать вариант» он обычно уже в кэше.
+const loadBank = () => import("./taskBankApi")
+const loadVariantPdf = () => import("./variantPdf")
+const loadWorkbookPdf = () => import("./workbookPdf")
+function prefetchBank() {
+  const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1500))
+  idle(() => { loadBank(); loadVariantPdf() })
+}
 
 // Лист варианта в двух видах (приём Kuta Software): ученику — без ответов,
 // проверяющему — с ответами. Пересобираем из tasks_snapshot, поэтому числа те же,
@@ -27,7 +38,7 @@ function ExtraPdfButtons({ variant }) {
     try {
       // «Тетрадь» — тот же вариант, но с полем в клетку под каждым заданием (для письма от руки).
       const blob = mode === "workbook"
-        ? await generateWorkbookPdf({
+        ? await (await loadWorkbookPdf()).generateWorkbookPdf({
             title: variant.title || "Рабочая тетрадь",
             subtitle: variant.type,
             examType: variant.type,
@@ -35,7 +46,7 @@ function ExtraPdfButtons({ variant }) {
             space: "auto",
             answersPage: false,
           })
-        : await generateVariantPdf({
+        : await (await loadVariantPdf()).generateVariantPdf({
             title: variant.title, examType: variant.type, tasks: variant.tasks_snapshot, mode,
           })
       const url = URL.createObjectURL(blob)
@@ -165,6 +176,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
 
   async function handleAssemble() {
     setAssembling(true)
+    const { assembleFromBank } = await loadBank()
     const { picked, missing, count } = await assembleFromBank(examType)
     setBankPicked(picked)
     setBankMissing(missing)
@@ -180,6 +192,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
   }
 
   async function handleReroll(number) {
+    const { rerollModule, rerollTask } = await loadBank()
     // Задания 1–5 — связанный модуль: замена любого пересобирает весь сценарий целиком.
     if (isModuleNumber(examType, number)) {
       const fresh = rerollModule(examType)
@@ -225,6 +238,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
 
     // Варианты ответа части 2 (ученик выбирает один из четырёх): у собранного из банка
     // берутся у сгенерированных заданий, у своего файла строятся из введённых ответов.
+    const { makeAnswerChoices } = await loadBank()
     const part2Choices = {}
     for (const n of part2Numbers) {
       const fromBank = source === "bank" ? bankPicked.find((t) => t.number === n)?.choices : null
@@ -236,6 +250,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
     // загруженный вариант — генерируем PDF из собранных условий прямо в браузере
     if (source === "bank") {
       setUploading(true)
+      const { generateVariantPdf } = await loadVariantPdf()
       const pdfBlob = await generateVariantPdf({ title, examType, tasks: bankPicked })
       const fileName = storageFileName(tutorId, "pdf")
       const { error: uploadError } = await supabase.storage.from("variants").upload(fileName, pdfBlob, { contentType: "application/pdf" })
@@ -755,6 +770,9 @@ function Variants({ user, students = [] }) {
   const cols = useGridCols()
 
   useEffect(() => { loadData() }, [])
+  // Банк заданий сам по себе не нужен для показа списка — подтягиваем его фоном,
+  // когда браузер освободится, чтобы «Собрать вариант» открывалось без ожидания.
+  useEffect(() => { if (canVariants) prefetchBank() }, [canVariants])
 
   async function loadData() {
     setLoading(true)

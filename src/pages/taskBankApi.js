@@ -1,18 +1,15 @@
 import { supabase } from "../supabase"
 import { hasGenerators, generateTask } from "./taskGenerators"
-import { hasModules, generateModule } from "./taskModules"
+import { hasModules, generateModule, moduleExamTypes } from "./taskModules"
 import { normalizeTaskImage } from "../utils"
+import { TASK_NUMBERS_BY_TYPE, PART2_NUMBERS, MODULE_EXAM_TYPES } from "./taskBankMeta"
 
 // «Лечит» image_url строк банка, сохранённых до разворота мат-токенов (иначе в подписи чертежа
 // виден сырой «4⟦r:2⟧»). Идемпотентно для новых строк без токенов.
 const healImages = (rows) => (rows || []).map((t) => t?.image_url ? { ...t, image_url: normalizeTaskImage(t.image_url) } : t)
 
-const NUMBERS_BY_TYPE = { "ОГЭ": 19, "ЕГЭ": 12, "ЕГЭ Профиль": 12 }
-// Номера части 2, входящие в собранный вариант. У ЕГЭ Профиль часть 2 начинается с №13
-// (развёрнутое: решение + фото, балл ставит репетитор); остальные 14–19 подключатся по мере
-// появления генераторов этих номеров.
-const PART2_NUMBERS_BY_TYPE = { "ОГЭ": [20, 21, 22, 23, 24, 25], "ЕГЭ Профиль": [13] }
-const MODULE_COUNT = 5   // задания 1–5 — связанный практический модуль (общий текст + рисунок)
+const NUMBERS_BY_TYPE = TASK_NUMBERS_BY_TYPE
+const PART2_NUMBERS_BY_TYPE = PART2_NUMBERS
 
 const shuffle = (arr) => {
   for (let i = arr.length - 1; i > 0; i--) {
@@ -92,9 +89,14 @@ const withChoices = (examType, t) =>
     ? { ...t, choices: makeAnswerChoices(t.answer) }
     : t
 
-// Номер входит в практический модуль №1–5 (когда для типа экзамена есть модули).
-export function isModuleNumber(examType, number) {
-  return hasModules(examType) && number >= 1 && number <= MODULE_COUNT
+export { isModuleNumber } from "./taskBankMeta"
+
+// Лёгкий список типов с модулями в taskBankMeta.js дублирует MODULES — при расхождении
+// «Варианты» подписали бы кнопку замены не тем текстом. Ловим это при разработке.
+if (import.meta.env?.DEV) {
+  const real = moduleExamTypes()
+  if (real.length !== MODULE_EXAM_TYPES.length || real.some((t) => !MODULE_EXAM_TYPES.includes(t)))
+    console.warn("MODULE_EXAM_TYPES в taskBankMeta.js разошёлся с MODULES:", real, MODULE_EXAM_TYPES)
 }
 
 // Генерирует модуль №1–5 (случайный сценарий) и разворачивает его в 5 «плоских» заданий,
@@ -174,5 +176,4 @@ export async function rerollTask(examType, number, excludeId) {
   return withChoices(examType, pool[Math.floor(Math.random() * pool.length)])
 }
 
-export const TASK_NUMBERS_BY_TYPE = NUMBERS_BY_TYPE
-export const PART2_NUMBERS = PART2_NUMBERS_BY_TYPE
+export { TASK_NUMBERS_BY_TYPE, PART2_NUMBERS } from "./taskBankMeta"

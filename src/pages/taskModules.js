@@ -1249,6 +1249,11 @@ export function hasModules(examType) {
   return !!MODULES[examType]?.length
 }
 
+// Типы экзаменов с модулями — для сверки с продублированным списком в taskBankMeta.js.
+export function moduleExamTypes() {
+  return Object.keys(MODULES).filter((t) => MODULES[t]?.length)
+}
+
 // Список сценариев №1–5 (ключ + подпись) для вкладок превью.
 export function moduleScenarios(examType) {
   return (MODULES[examType] || []).map((s) => ({ key: s.key, label: s.label }))
