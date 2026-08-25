@@ -86,6 +86,86 @@ function ExtraPdfButtons({ variant }) {
   )
 }
 
+// Файл варианта: свой PDF/фото репетитора или печатный лист, собранный из банка.
+// Лист СОБИРАЕТСЯ ЗДЕСЬ, а не при сохранении варианта: html2canvas снимает страницу
+// секундами, и отправка ученикам не должна их ждать — вариант из банка ученик решает
+// в кабинете, файл нужен только для печати и для скачивания.
+function VariantFileBlock({ variant, tutorId, onBuilt, onPreview }) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState("")
+  const url = variant.file_url
+
+  async function build() {
+    setBusy(true); setErr("")
+    try {
+      const { generateVariantPdf } = await loadVariantPdf()
+      const blob = await generateVariantPdf({ title: variant.title, examType: variant.type, tasks: variant.tasks_snapshot })
+      const fileName = storageFileName(tutorId, "pdf")
+      const { error: upErr } = await supabase.storage.from("variants").upload(fileName, blob, { contentType: "application/pdf" })
+      if (upErr) throw upErr
+      const { data: urlData } = supabase.storage.from("variants").getPublicUrl(fileName)
+      const { error: rowErr } = await supabase.from("variants").update({ file_url: urlData.publicUrl }).eq("id", variant.id)
+      if (rowErr) throw rowErr
+      // бакет приватный — показываем по временной ссылке, как и остальные файлы списка
+      const [signed] = await signRows([{ file_url: urlData.publicUrl }], { file_url: "variants" })
+      onBuilt(signed.file_url)
+    } catch {
+      setErr("Не получилось собрать PDF. Попробуйте ещё раз.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!url && !(variant.tasks_snapshot?.length > 0)) return null
+
+  return (
+    <div className="px-5 py-4 border-t border-gray-100/60">
+      <div className="section-label mb-2.5">Файл варианта</div>
+      {url ? (
+        <div className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 overflow-hidden">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-3 py-2 bg-gray-500/[0.04]">
+            <div className="flex items-center gap-2 text-xs text-gray-500 min-w-0">
+              <Icon name="paperclip" size={12} />
+              {/* адрес подписанный — отрезаем хвост с токеном, иначе он попадёт в имя */}
+              <span className="truncate">{url.split("?")[0].split("/").pop() || "Файл варианта"}</span>
+            </div>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <a href={url + (url.includes("?") ? "&" : "?") + "download"} download
+                className="press-fill text-[11px] px-2.5 py-1.5 rounded-lg ring-1 ring-blue-200 dark:ring-blue-400/25 text-blue-600 bg-blue-500/8 flex items-center gap-1.5">
+                <MorphIcon from="download" size={12} />Скачать
+              </a>
+              <a href={url} target="_blank" rel="noreferrer"
+                className="press-fill text-[11px] px-2.5 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-600">
+                Открыть ↗
+              </a>
+              <button onClick={() => onPreview(url)} title="На весь экран"
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-500/10 transition-colors">
+                <Icon name="maximize" size={13} />
+              </button>
+            </div>
+          </div>
+          {url.match(/\.(jpg|jpeg|png|gif|webp)/i) && (
+            <img src={url} alt="вариант" className="w-full max-h-48 object-contain bg-white cursor-pointer" onClick={() => onPreview(url)} />
+          )}
+        </div>
+      ) : (
+        <div className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 bg-gray-500/[0.04] px-3 py-3 flex flex-col sm:flex-row sm:items-center gap-2.5">
+          <div className="min-w-0 flex-1 text-[11px] text-gray-500 leading-snug">
+            Печатный лист ещё не собран. Ученик решает вариант в кабинете, файл нужен для печати
+            и для кнопки «Скачать PDF» у ученика. Сборка занимает несколько секунд.
+          </div>
+          <button onClick={build} disabled={busy}
+            className="press-fill text-xs px-3 py-2 rounded-xl ring-1 ring-blue-200 dark:ring-blue-400/25 text-blue-600 bg-blue-500/8 disabled:opacity-50 flex items-center justify-center gap-1.5 flex-shrink-0">
+            <MorphIcon from="file-text" to="download" size={13} />
+            {busy ? "Собираем…" : "Собрать PDF"}
+          </button>
+        </div>
+      )}
+      {err && <div className="text-xs text-red-500 mt-2">{err}</div>}
+    </div>
+  )
+}
+
 const OGE_PART1_GEOMETRY = [15,16,17,18,19]
 const OGE_PART2_TASKS = [20, 21, 22, 23, 24, 25]
 // По спецификации ФИПИ все задания части 2 ОГЭ оцениваются в 2 балла (максимум 12).
@@ -251,20 +331,10 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
       if (choices) part2Choices[n] = choices
     }
 
-    // Ученику вариант из банка отправляется тем же файловым PDF-просмотром, что и обычный
-    // загруженный вариант — генерируем PDF из собранных условий прямо в браузере
-    if (source === "bank") {
-      setUploading(true)
-      const { generateVariantPdf } = await loadVariantPdf()
-      const pdfBlob = await generateVariantPdf({ title, examType, tasks: bankPicked })
-      const fileName = storageFileName(tutorId, "pdf")
-      const { error: uploadError } = await supabase.storage.from("variants").upload(fileName, pdfBlob, { contentType: "application/pdf" })
-      if (!uploadError) {
-        const { data: urlData } = supabase.storage.from("variants").getPublicUrl(fileName)
-        fileUrl = urlData.publicUrl
-      }
-      setUploading(false)
-    }
+    // PDF собранного варианта здесь НЕ делается: сборка листа занимает секунды, и всё это
+    // время репетитор смотрел бы на «Сохраняем…» ради файла, который ученику для решения
+    // не нужен (вариант из банка он решает прямо в кабинете). Лист собирается потом,
+    // кнопкой в карточке варианта (VariantFileBlock).
 
     const { data, error } = await supabase.from("variants").insert({
       tutor_id: tutorId, title, type: examType,
@@ -369,14 +439,20 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
                   </button>
 
                   {bankPicked.length > 0 && (
-                    <div className="text-xs mb-1">
-                      Собрано заданий: <span className={bankMissing.length === 0 ? "text-green-600 font-medium" : "text-amber-600 font-medium"}>
-                        {bankPicked.length} / {answerCount + part2Numbers.length}
-                      </span>
-                      {bankMissing.length > 0 && (
-                        <span className="text-amber-600"> · нет в банке: {bankMissing.join(", ")}</span>
-                      )}
-                    </div>
+                    <>
+                      <div className="text-xs mb-1">
+                        Собрано заданий: <span className={bankMissing.length === 0 ? "text-green-600 font-medium" : "text-amber-600 font-medium"}>
+                          {bankPicked.length} / {answerCount + part2Numbers.length}
+                        </span>
+                        {bankMissing.length > 0 && (
+                          <span className="text-amber-600"> · нет в банке: {bankMissing.join(", ")}</span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-gray-400 mb-1 leading-snug">
+                        Ученик решит вариант прямо в кабинете. Печатный лист PDF собирается отдельно —
+                        кнопкой в карточке варианта, чтобы отправка не ждала сборки файла.
+                      </div>
+                    </>
                   )}
 
                   {bankPicked.length > 0 && (
@@ -504,7 +580,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
           <div className="flex gap-3 mt-4">
             <button onClick={close} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-gray-50">Отмена</button>
             <button onClick={handleSubmit} disabled={loading || uploading} className="flex-1 btn-primary py-2.5 disabled:opacity-50">
-              {uploading ? (source === "bank" ? "Готовим PDF..." : "Загружаем...") : loading ? "Отправляем..." : recipientId === "all" ? "Отправить ученикам" : "Отправить ученику"}
+              {uploading ? "Загружаем файл..." : loading ? "Отправляем..." : recipientId === "all" ? "Отправить ученикам" : "Отправить ученику"}
             </button>
           </div>
         </div>
@@ -858,37 +934,15 @@ function Variants({ user, students = [] }) {
                 <ExtraPdfButtons variant={selectedVariant} />
               )}
 
-              {selectedVariant.file_url && (
-                <div className="px-5 py-4 border-t border-gray-100/60">
-                  <div className="section-label mb-2.5">Файл варианта</div>
-                  <div className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 overflow-hidden">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-3 py-2 bg-gray-500/[0.04]">
-                      <div className="flex items-center gap-2 text-xs text-gray-500 min-w-0">
-                        <Icon name="paperclip" size={12} />
-                        {/* адрес подписанный — отрезаем хвост с токеном, иначе он попадёт в имя */}
-                        <span className="truncate">{selectedVariant.file_url.split("?")[0].split("/").pop() || "Файл варианта"}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <a href={selectedVariant.file_url + (selectedVariant.file_url.includes("?") ? "&" : "?") + "download"} download
-                          className="press-fill text-[11px] px-2.5 py-1.5 rounded-lg ring-1 ring-blue-200 dark:ring-blue-400/25 text-blue-600 bg-blue-500/8 flex items-center gap-1.5">
-                          <MorphIcon from="download" size={12} />Скачать
-                        </a>
-                        <a href={selectedVariant.file_url} target="_blank" rel="noreferrer"
-                          className="press-fill text-[11px] px-2.5 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-600">
-                          Открыть ↗
-                        </a>
-                        <button onClick={() => setPreviewFile(selectedVariant.file_url)} title="На весь экран"
-                          className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-500/10 transition-colors">
-                          <Icon name="maximize" size={13} />
-                        </button>
-                      </div>
-                    </div>
-                    {selectedVariant.file_url.match(/\.(jpg|jpeg|png|gif|webp)/i) && (
-                      <img src={selectedVariant.file_url} alt="вариант" className="w-full max-h-48 object-contain bg-white cursor-pointer" onClick={() => setPreviewFile(selectedVariant.file_url)} />
-                    )}
-                  </div>
-                </div>
-              )}
+              <VariantFileBlock
+                variant={selectedVariant}
+                tutorId={user.id}
+                onPreview={setPreviewFile}
+                onBuilt={(url) => {
+                  setVariants((prev) => prev.map((x) => (x.id === selectedVariant.id ? { ...x, file_url: url } : x)))
+                  setSelectedVariant((prev) => (prev ? { ...prev, file_url: url } : prev))
+                }}
+              />
 
               {selectedVariant.tasks_snapshot?.length > 0 && (
                 <div className="px-5 py-4 border-t border-gray-100/60">
