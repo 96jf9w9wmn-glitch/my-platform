@@ -526,7 +526,11 @@ function App() {
             setLoadingAuth(false)
             return
           }
-          const { session_token, ...profile } = account
+          // student_validate_session выдаёт свежий JWT — кладём его, иначе через
+          // 12 часов (срок жизни токена) кабинет ученика молча опустеет, а до
+          // этой правки токена не было вовсе и запросы шли под anon.
+          const { session_token, token: jwt, ...profile } = account
+          setAppToken(jwt || null)
           const updated = { ...parsed, profile, token: session_token }
           setUser(updated)
           setLoadingAuth(false)
