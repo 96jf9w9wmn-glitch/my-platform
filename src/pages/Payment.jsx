@@ -7,12 +7,8 @@ import Collapse from "../components/Collapse"
 import SegmentSwitch from "../components/SegmentSwitch"
 import { supabase } from "../supabase"
 import { isLessonConducted, getInitials, parsePaymentDate, plural } from "../utils"
+import { TAX_MODES } from "../taxModes"
 
-const TAX_MODES = {
-  none: { label: "Без налога", rate: 0 },
-  npd: { label: "Самозанятый", rate: 4 },
-  usn6: { label: "ИП · УСН 6%", rate: 6 },
-}
 // Подсказки для быстрого добавления при пустом списке расходов.
 const EXPENSE_SUGGESTIONS = ["Онлайн-доска", "Подписка Precettore", "Реклама", "Связь"]
 
@@ -316,7 +312,11 @@ function Payment({ students, setStudents, tutorId }) {
   }
 
   const allPayments = students
-    .flatMap((s) => (s.payments || []).map((p) => ({ ...p, studentName: s.name })))
+    // isLast — самая свежая оплата ученика: только её можно откатить,
+    // потому что handleUndo снимает последнюю запись из его массива.
+    .flatMap((s) => (s.payments || []).map((p, i, arr) => ({
+      ...p, studentName: s.name, studentId: s.id, isLast: i === arr.length - 1,
+    })))
     .sort((a, b) => parsePaymentDate(b.date) - parsePaymentDate(a.date))
 
   const weekRange = getWeekRange()
@@ -332,7 +332,6 @@ function Payment({ students, setStudents, tutorId }) {
 
   const debtors = students.filter((s) => getStudentDebt(s) > 0)
   const totalDebt = debtors.reduce((sum, s) => sum + getStudentDebt(s), 0)
-  const paid = students.filter((s) => hasConductedLessons(s) && getStudentDebt(s) <= 0)
   const noLessons = students.filter((s) => !hasConductedLessons(s))
 
   // Расходы / налог / чистая прибыль за текущий месяц.
@@ -353,17 +352,17 @@ function Payment({ students, setStudents, tutorId }) {
   ]
 
   // Статусы работают фильтрами списка, а не декоративными плитками: так же
-  // устроены Overdue / Outstanding / Paid у FreshBooks — по счётчику кликают.
+  // устроены Overdue / Outstanding у FreshBooks — по счётчику кликают.
+  // Рассчитавшихся отдельным фильтром нет намеренно: вкладка «Долги» —
+  // рабочий список, а кто уже заплатил, видно во вкладке «Платежи».
   const FILTERS = [
     { id: "debt", label: "Должны", count: debtors.length, sum: totalDebt, tone: "amber" },
-    { id: "paid", label: "Рассчитались", count: paid.length, tone: "green" },
     { id: "none", label: "Без занятий", count: noLessons.length, tone: "gray" },
   ]
-  const shownList = filter === "debt" ? debtors : filter === "paid" ? paid : noLessons
+  const shownList = filter === "debt" ? debtors : noLessons
 
   const chipTone = {
     amber: "bg-amber-500/12 text-amber-700 dark:text-amber-300 ring-amber-500/25",
-    green: "bg-green-500/12 text-green-700 dark:text-green-300 ring-green-500/25",
     gray: "bg-black/[0.05] dark:bg-white/[0.08] text-gray-500 ring-black/[0.05] dark:ring-white/[0.1]",
   }
 
@@ -453,9 +452,7 @@ function Payment({ students, setStudents, tutorId }) {
                       <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 ${
                         filter === "debt"
                           ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
-                          : filter === "paid"
-                            ? "bg-green-500/15 text-green-700 dark:text-green-300"
-                            : "bg-black/[0.05] dark:bg-white/[0.08] text-gray-400"
+                          : "bg-black/[0.05] dark:bg-white/[0.08] text-gray-400"
                       }`}>
                         {getInitials(s.name)}
                       </div>
@@ -492,19 +489,6 @@ function Payment({ students, setStudents, tutorId }) {
                               <Icon name="check" size={14} /> Оплата
                             </button>
                           )}
-                        </div>
-                      )}
-
-                      {filter === "paid" && (
-                        <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
-                          <span className="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-green-700 dark:text-green-300 bg-green-500/12 ring-1 ring-inset ring-green-500/25 px-2.5 py-1 rounded-full">
-                            <Icon name="check" size={12} /> Оплачено
-                          </span>
-                          <button
-                            onClick={() => setUndoStudent(s)}
-                            className="shrink-0 w-8 h-8 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-500/10 transition active:scale-90"
-                            title="Откатить последнюю оплату"
-                          ><Icon name="x" size={15} /></button>
                         </div>
                       )}
 
@@ -592,7 +576,7 @@ function Payment({ students, setStudents, tutorId }) {
           ) : (
             <div className="grid sm:grid-cols-2 gap-x-6 gap-y-0.5 content-start">
               {filteredPayments.map((p, i) => (
-                <div key={i} className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-white/[0.06]">
+                <div key={i} className="group flex justify-between items-center py-2 border-b border-gray-100 dark:border-white/[0.06]">
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-semibold shrink-0 bg-green-500/12 text-green-700 dark:text-green-300">
                       {getInitials(p.studentName)}
@@ -602,7 +586,18 @@ function Payment({ students, setStudents, tutorId }) {
                       <div className="text-xs text-gray-400">{p.date}{p.note ? " · " + p.note : ""}</div>
                     </div>
                   </div>
-                  <div className="text-sm font-medium text-green-600 tabular-nums shrink-0">+{fmt(p.amount)} ₽</div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="text-sm font-medium text-green-600 tabular-nums">+{fmt(p.amount)} ₽</div>
+                    {/* Ошибочную оплату откатывают здесь: у ученика снимается
+                        только последняя запись, поэтому кнопка есть у неё одной. */}
+                    {p.isLast && (
+                      <button
+                        onClick={() => setUndoStudent(students.find((s) => s.id === p.studentId))}
+                        className="w-7 h-7 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-500/10 transition active:scale-90 md:opacity-0 md:group-hover:opacity-100"
+                        title="Отменить эту оплату"
+                      ><Icon name="x" size={14} /></button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

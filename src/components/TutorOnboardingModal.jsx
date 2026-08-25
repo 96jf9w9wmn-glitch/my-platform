@@ -4,6 +4,7 @@ import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import Icon from "./Icon"
 import { TUTOR_STEPS } from "../onboardingSteps"
+import { TAX_MODES } from "../taxModes"
 
 const SUBJECTS = ["Математика", "Русский язык", "Английский язык", "Физика", "Химия", "Обществознание", "Информатика", "Другое"]
 const EXPERIENCE_OPTIONS = ["До 1 года", "1–3 года", "3–5 лет", "5+ лет"]
@@ -19,12 +20,17 @@ const EXAM_FOCUS_OPTIONS = [
   { id: "Успеваемость", label: "Успеваемость", iconName: "trending-up" },
 ]
 
+// Режим спрашиваем сразу при регистрации: от него зависит расчёт налога и
+// чистой прибыли в «Финансах», а искать эту настройку потом никто не идёт.
+const TAX_OPTIONS = Object.entries(TAX_MODES).map(([id, m]) => ({ id, label: m.label, hint: m.hint }))
+
 const STEPS = [
   { key: "subject", icon: "book", title: "Какой предмет вы преподаёте?" },
   { key: "experience", icon: "clock", title: "Какой у вас стаж репетиторства?" },
   { key: "studentCountRange", icon: "users", title: "Сколько сейчас учеников?" },
   { key: "teachingFormat", icon: "video", title: "В каком формате занимаетесь?" },
   { key: "examFocus", icon: "target", title: "К каким экзаменам готовите?" },
+  { key: "taxMode", icon: "ruble", title: "Как оформлена ваша деятельность?" },
 ]
 
 function PillGroup({ options, value, onChange, multi = false, autoFocus }) {
@@ -64,6 +70,7 @@ function TutorOnboardingModal({ tutorId, onComplete }) {
   const [studentCountRange, setStudentCountRange] = useState(null)
   const [teachingFormat, setTeachingFormat] = useState(null)
   const [examFocus, setExamFocus] = useState([])
+  const [taxMode, setTaxMode] = useState(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState("")
   // Куда уйти после анкеты; закрывается плавно, как и остальные модалки.
@@ -110,9 +117,26 @@ function TutorOnboardingModal({ tutorId, onComplete }) {
     autoAdvance()
   }
 
-  async function persist(fields) {
+  // Налоговый режим живёт не в анкете тьютора, а в tutor_finance_settings —
+  // там же, откуда его читают «Финансы», поэтому пишем отдельной строкой.
+  // Ошибку глушим: до прогона finance.sql таблицы может не быть, и это не
+  // повод не пустить репетитора в кабинет — режим переключается в «Финансах».
+  async function persistTax(mode) {
+    if (!mode) return
+    try {
+      await supabase.from("tutor_finance_settings").upsert({
+        tutor_id: tutorId,
+        tax_mode: mode,
+        tax_rate: TAX_MODES[mode].rate,
+        updated_at: new Date().toISOString(),
+      })
+    } catch { /* таблицы ещё нет — молча */ }
+  }
+
+  async function persist(fields, mode) {
     setSaving(true)
     const { error } = await supabase.from("tutors").update({ ...fields, onboarding_completed: true }).eq("id", tutorId)
+    if (!error) await persistTax(mode)
     setSaving(false)
     if (error) { setSaveError("Не удалось сохранить: " + error.message); return }
     setDone({ ...fields, onboarding_completed: true })
@@ -130,7 +154,7 @@ function TutorOnboardingModal({ tutorId, onComplete }) {
       student_count_range: studentCountRange,
       teaching_format: teachingFormat,
       exam_focus: examFocus,
-    })
+    }, taxMode)
   }
 
   const current = STEPS[step]
@@ -242,6 +266,34 @@ function TutorOnboardingModal({ tutorId, onComplete }) {
             <div className="flex flex-col items-center gap-4">
               <PillGroup options={EXAM_FOCUS_OPTIONS} value={examFocus} onChange={setExamFocus} multi autoFocus />
               <p className="text-xs text-gray-400">Можно выбрать несколько</p>
+              {/* Выбор здесь множественный, поэтому сам шаг не перелистнётся */}
+              <button onClick={() => goTo(step + 1, "forward")} className="btn-primary px-6 py-2">
+                Далее
+              </button>
+            </div>
+          )}
+
+          {current.key === "taxMode" && (
+            <div className="flex flex-col gap-2">
+              {TAX_OPTIONS.map((opt, i) => (
+                <button key={opt.id} type="button" onClick={() => setTaxMode(opt.id)}
+                  style={{ animationDelay: `${i * 35}ms` }}
+                  autoFocus={i === 0}
+                  className={`pill-pop flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-left border transition-all duration-200 ${
+                    taxMode === opt.id
+                      ? "bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-500/30"
+                      : "border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/[0.04] hover:border-gray-300"
+                  }`}>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium">{opt.label}</span>
+                    <span className={`block text-xs mt-0.5 ${taxMode === opt.id ? "text-white/70" : "text-gray-400"}`}>{opt.hint}</span>
+                  </span>
+                  {taxMode === opt.id && <Icon name="check" size={16} className="shrink-0" />}
+                </button>
+              ))}
+              <p className="text-xs text-gray-400 text-center mt-2">
+                Нужно, чтобы «Финансы» считали налог и чистый доход. Режим можно поменять там же.
+              </p>
             </div>
           )}
         </div>
