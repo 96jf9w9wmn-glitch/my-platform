@@ -223,97 +223,8 @@ export function t2Misha() {
   return null
 }
 
-// Типаж «все наборы, при которых F ложна (истинна)»: значения показаны полностью,
-// но столбцы не подписаны; строк ровно столько, сколько нулей (единиц) у функции.
-export function t2AllRows() {
-  const allPerms = perms(T2_VARS)
-  for (let attempt = 0; attempt < 200; attempt++) {
-    const { node, text } = t2Formula()
-    const target = Math.random() < 0.7 ? 0 : 1
-    const rows = t2Rows(node, target)
-    if (rows.length < 3 || rows.length > 5) continue
-    const perm = shuffle(T2_VARS)
-    const cellRows = shuffle(rows).map((r) => perm.map((v) => r[T2_VARS.indexOf(v)]))
-    if (t2CountSolutions(cellRows, rows, allPerms) !== 1) continue
-    const word = target === 0 ? "ложна" : "истинна"
-    const table = tableBlock([
-      ["Переменная 1", "Переменная 2", "Переменная 3", "Переменная 4", "Функция F"],
-      ...cellRows.map((r) => r.map(String).concat(String(target))),
-    ])
-    return {
-      condition_text:
-        `Логическая функция F задаётся выражением\n${text}.\n` +
-        `На рисунке приведён фрагмент таблицы истинности функции F, содержащий все наборы аргументов, при которых функция F ${word}.\n` +
-        "Определите, какому столбцу таблицы истинности функции F соответствует каждая из переменных w, x, y, z.\n" +
-        table + "\n" + T2_TAIL,
-      answer: perm.join(""),
-    }
-  }
-  return null
-}
-
-// Типаж старого формата: три переменные X, Y, Z, дан фрагмент таблицы —
-// выбрать из четырёх выражений то, которому фрагмент соответствует.
-const T3VARS = ["X", "Y", "Z"]
-function t2Expr3() {
-  const [a, b, c] = shuffle(T3VARS)
-  const kind = randInt(0, 3)
-  const n = (v) => (Math.random() < 0.5 ? NOT(V(v)) : V(v))
-  if (kind === 0) return OR(OR(n(a), n(b)), n(c))
-  if (kind === 1) return AND(AND(n(a), n(b)), n(c))
-  if (kind === 2) return OR(AND(n(a), n(b)), n(c))
-  return AND(OR(n(a), n(b)), n(c))
-}
-
-export function t2ChooseExpr() {
-  for (let attempt = 0; attempt < 300; attempt++) {
-    const right = t2Expr3()
-    const envs = allEnvs(T3VARS)
-    const sig = (node) => envs.map((e) => evalNode(node, e)).join("")
-    const rightSig = sig(right)
-    if (rightSig === "00000000" || rightSig === "11111111") continue
-    // Фрагмент из трёх строк таблицы истинности правильного выражения.
-    const rowsIdx = shuffle(envs.map((_, i) => i)).slice(0, 3).sort((p, q) => p - q)
-    const frag = rowsIdx.map((i) => ({ e: envs[i], f: rightSig[i] }))
-    // Три отвлекающих выражения, каждое обязано противоречить хотя бы одной строке фрагмента.
-    const wrong = []
-    for (let k = 0; k < 400 && wrong.length < 3; k++) {
-      const w = t2Expr3()
-      const ws = sig(w)
-      if (ws === rightSig || wrong.some((x) => sig(x) === ws)) continue
-      const conflicts = rowsIdx.some((i) => ws[i] !== rightSig[i])
-      if (conflicts) wrong.push(w)
-    }
-    if (wrong.length < 3) continue
-    const options = shuffle([right, ...wrong])
-    const answer = String(options.indexOf(right) + 1)
-    return {
-      condition_text:
-        "Символом F обозначено одно из указанных ниже логических выражений от трёх аргументов: X, Y, Z.\n" +
-        "Дан фрагмент таблицы истинности выражения F:\n" +
-        tableBlock([
-          ["X", "Y", "Z", "F"],
-          ...frag.map(({ e, f }) => [String(e.X), String(e.Y), String(e.Z), String(f)]),
-        ]) + "\n" +
-        "Какое выражение соответствует F?\n" +
-        tableBlock([["№", "Выражение"], ...options.map((o, i) => [`${i + 1})`, formula(o)])]) + "\n" +
-        "В ответе укажите номер выражения.",
-      answer,
-    }
-  }
-  return null
-}
 
 
-// ── №05 «Анализ и построение алгоритмов для исполнителей» ────────────────────
-// Эталон (77 задач) — четыре механизма:
-//   bin      41 — правило дописывает разряды к ДВОИЧНОЙ записи N (ветви по чётности / делимости на 3);
-//   parity   17 — контроль чётности: справа дописывается остаток суммы цифр на 2 (иногда дважды);
-//   ternary   8 — то же самое, но запись ТРОИЧНАЯ (остаток × 5 → троичная запись);
-//   calc      4 — исполнитель Калькулятор/Квадратор: собрать программу из двух команд;
-//   automat   2 — автомат над трёхзначным числом (произведения соседних цифр).
-// Вопрос всегда один из четырёх: мин./макс. R с порогом либо мин./макс. N по условию на R.
-// Ответ ищется перебором N до N_MAX — так же, как его находит ученик, только машинно.
 
 const bin = (n) => n.toString(2)
 const ter = (n) => n.toString(3)
@@ -465,106 +376,8 @@ export function t5Ternary() {
   return null
 }
 
-// Исполнитель с двумя командами: найти программу из ≤ k команд, переводящую a в b.
-const T5_EXECUTORS = [
-  { name: "Калькулятор", c1: ["прибавь 2", (x) => x + 2], c2: ["умножь на 5", (x) => x * 5],
-    desc: () => `Выполняя первую из них, Калькулятор прибавляет к числу на экране 2, а выполняя вторую, умножает его на 5.` },
-  { name: "Калькулятор", c1: ["прибавь 3", (x) => x + 3], c2: ["умножь на 4", (x) => x * 4],
-    desc: () => "Выполняя первую из них, Калькулятор прибавляет к числу на экране 3, а выполняя вторую, умножает его на 4." },
-  { name: "Квадратор", c1: ["возведи в квадрат", (x) => x * x], c2: ["прибавь 1", (x) => x + 1],
-    desc: () => "Первая из них возводит число на экране в квадрат, вторая — увеличивает его на 1." },
-  { name: "Удвоитель", c1: ["прибавь 1", (x) => x + 1], c2: ["умножь на 2", (x) => x * 2],
-    desc: () => "Первая из них увеличивает число на экране на 1, вторая — удваивает его." },
-]
-
-export function t5Calc() {
-  for (let attempt = 0; attempt < 60; attempt++) {
-    const ex = pick(T5_EXECUTORS)
-    const start = randInt(1, 3)
-    const len = randInt(3, 5)                      // длина программы-цели
-    // Все результаты программ длиной ≤ len; ищем цель, достижимую РОВНО за len команд.
-    // Все программы длиной ≤ len: значение → список программ. Цель берём такую,
-    // для которой программа РОВНО одна, — тогда ответ проверяется автоматически
-    // (формулировка «запишите любую» у ФИПИ на автопроверку не рассчитана).
-    const reach = new Map()
-    let frontier = [[start, ""]]
-    for (let step = 1; step <= len; step++) {
-      const next = []
-      for (const [val, prog] of frontier) {
-        for (const [num, cmd] of [[1, ex.c1], [2, ex.c2]]) {
-          const v = cmd[1](val)
-          if (v > 10000) continue
-          const p = prog + num
-          next.push([v, p])
-          if (!reach.has(v)) reach.set(v, [])
-          reach.get(v).push(p)
-        }
-      }
-      frontier = next
-    }
-    const targets = [...reach.entries()].filter(([v, ps]) => ps.length === 1 && ps[0].length === len && v > start + 5 && v < 1000)
-    if (!targets.length) continue
-    const [target, progs] = pick(targets)
-    const prog = progs[0]
-    const demoEntry = pick([...reach.entries()].filter(([v, ps]) => v !== target && ps.some((p) => p.length === 4)))
-    if (!demoEntry) continue
-    const demo = [demoEntry[0], demoEntry[1].find((p) => p.length === 4)]
-    return {
-      condition_text:
-        `У исполнителя ${ex.name} две команды, которым присвоены номера:\n` +
-        `1. ${ex.c1[0]},\n2. ${ex.c2[0]}.\n` +
-        ex.desc() + "\n" +
-        `Например, программа ${demo[1]} — это программа\n` +
-        demo[1].split("").map((d) => (d === "1" ? ex.c1[0] : ex.c2[0])).join(",\n") + ",\n" +
-        `которая преобразует число ${start} в число ${demo[0]}.\n` +
-        `Запишите порядок команд в программе, которая преобразует число ${start} в число ${target} и содержит не более ${NUMW_GEN[len]} команд. ` +
-        "Указывайте лишь номера команд. Если таких программ более одной, то запишите любую из них.",
-      answer: prog,
-    }
-  }
-  return null
-}
-
-// Автомат над трёхзначным числом: произведения соседних цифр, записанные по неубыванию.
-export function t5Automat() {
-  for (let attempt = 0; attempt < 200; attempt++) {
-    const build = (n) => {
-      const d = String(n).split("").map(Number)
-      const p = [d[0] * d[1], d[1] * d[2]].sort((a, b) => a - b)
-      return `${p[0]}${p[1]}`
-    }
-    const all = []
-    for (let n = 100; n <= 999; n++) all.push([n, build(n)])
-    const target = pick(all)[1]
-    const src = all.filter(([, r]) => r === target).map(([n]) => n)
-    if (src.length < 2) continue                    // ответ должен быть «наименьшим из нескольких»
-    const demoN = pick(all.map(([n]) => n).filter((n) => String(n).indexOf("0") < 0))
-    const d = String(demoN).split("").map(Number)
-    const kind = pick(["наименьшее", "наибольшее"])
-    return {
-      condition_text:
-        "Автомат получает на вход трёхзначное число. По этому числу строится новое число по следующим правилам.\n" +
-        "1. Перемножаются первая и вторая, а также вторая и третья цифры исходного числа.\n" +
-        "2. Полученные два числа записываются друг за другом в порядке неубывания (без разделителей).\n" +
-        `Пример. Исходное число: ${demoN}. Произведения: ${d[0]} × ${d[1]} = ${d[0] * d[1]}; ${d[1]} × ${d[2]} = ${d[1] * d[2]}. Результат: ${build(demoN)}.\n` +
-        `Укажите ${kind} число, при обработке которого автомат выдаст число ${target}.`,
-      answer: String(kind === "наименьшее" ? Math.min(...src) : Math.max(...src)),
-    }
-  }
-  return null
-}
 
 
-// ── №04 «Кодирование и декодирование информации» (условие Фано) ──────────────
-// Эталон (76 задач) — четыре механики:
-//   shortest 30 — дана таблица кодов, для одной буквы код неизвестен: найти кратчайший
-//                 (при равной длине — с наименьшим числовым значением);
-//   sumlen   23 — известны коды части букв: наименьшая суммарная длина кодов остальных;
-//   word     12 — известны коды двух букв: сколько двоичных знаков займёт слово при
-//                 минимально возможном кодировании (это Хаффман поверх занятых кодов);
-//   colors    4 — та же «shortest», но про цвета растрового рисунка.
-// Всё считается на двоичном дереве: код допустим, если ни он не начинается с чужого
-// кодового слова, ни чужое — с него (условие Фано = префиксный код).
 
 // Числительные прописью — ФИПИ в условиях пишет «восемь букв», а не «8 букв».
 const NUMW = { 2: "две", 3: "три", 4: "четыре", 5: "пять", 6: "шесть", 7: "семь", 8: "восемь", 9: "девять", 10: "десять" }
@@ -1019,16 +832,6 @@ export function t8CountDigits() {
   return null
 }
 
-// Световое табло: сколько лампочек нужно, чтобы закодировать N различных сигналов.
-export function t8Lamps() {
-  const need = pick([50, 60, 80, 100, 120, 150, 200, 300, 500, 1000])
-  return {
-    condition_text:
-      "Световое табло состоит из лампочек, каждая из которых может находиться в двух состояниях («включено» или «выключено»). " +
-      `Какое наименьшее количество лампочек должно находиться на табло, чтобы с его помощью можно было передать ${need} различных сигналов?`,
-    answer: String(bitsFor(need)),
-  }
-}
 
 // ── №11 «Вычисление количества информации» ──────────────────────────────────
 // Эталон (126 задач): посимвольное кодирование, на символ — минимальное целое
@@ -1395,85 +1198,10 @@ export function t16FG() {
   }
 }
 
-// Описание рекурсивного алгоритма: печатает n (или звёздочки) и вызывает себя
-// на нескольких аргументах. По одному описанию строятся и листинги, и исполнение.
-const T16_ARG_TXT = {
-  py: { minus: (d) => `n - ${d}`, half: "n // 2", third: "n // 3" },
-  cpp: { minus: (d) => `n - ${d}`, half: "n / 2", third: "n / 3" },
-  pas: { minus: (d) => `n - ${d}`, half: "n div 2", third: "n div 3" },
-}
-const T16_ARG_FN = { minus: (d) => (n) => n - d, half: () => (n) => Math.floor(n / 2), third: () => (n) => Math.floor(n / 3) }
 
-function t16Listing(alg) {
-  const argTxt = (lang, a) => (a.kind === "minus" ? T16_ARG_TXT[lang].minus(a.d) : T16_ARG_TXT[lang][a.kind])
-  const py = `def F(n):\n    if n > ${alg.threshold}:\n        print(${alg.printExpr.py})\n` +
-    alg.calls.map((a) => `        F(${argTxt("py", a)})`).join("\n")
-  const cpp = `void F(int n) {\n    if (n > ${alg.threshold}) {\n        cout << ${alg.printExpr.cpp};\n` +
-    alg.calls.map((a) => `        F(${argTxt("cpp", a)});`).join("\n") + "\n    }\n}"
-  const pas = `procedure F(n: integer);\nbegin\n    if n > ${alg.threshold} then begin\n        write(${alg.printExpr.pas});\n` +
-    alg.calls.map((a) => `        F(${argTxt("pas", a)})`).join(";\n") + "\n    end\nend;"
-  return `Python:\n⟦code:${py}⟧\nС++:\n⟦code:${cpp}⟧\nПаскаль:\n⟦code:${pas}⟧`
-}
 
-function t16Exec(alg, n, out) {
-  if (n <= alg.threshold) return
-  out.push(alg.printValue(n))
-  for (const a of alg.calls) t16Exec(alg, T16_ARG_FN[a.kind](a.d)(n), out)
-}
 
-export function t16Print() {
-  for (let attempt = 0; attempt < 40; attempt++) {
-    const threshold = randInt(0, 2)
-    const calls = shuffle([
-      { kind: "minus", d: randInt(1, 3) },
-      Math.random() < 0.5 ? { kind: "half" } : { kind: "minus", d: randInt(2, 4) },
-    ])
-    const alg = { threshold, calls, printExpr: { py: "n", cpp: "n", pas: "n" }, printValue: (n) => String(n) }
-    const start = randInt(5, 9)
-    const out = []
-    t16Exec(alg, start, out)
-    if (out.length < 4 || out.length > 25) continue
-    const askShort = Math.random() < 0.4
-    return {
-      condition_text:
-        "Ниже на трёх языках программирования записан рекурсивный алгоритм F.\n" +
-        t16Listing(alg) + "\n" +
-        (askShort
-          ? `Что выведет программа при вызове F(${start})? В ответе запишите последовательность выведенных чисел подряд, без пробелов и разделителей.`
-          : `Запишите подряд без пробелов и разделителей все числа, которые будут выведены на экран при выполнении вызова F(${start}). ` +
-            "Числа должны быть записаны в том же порядке, в каком они выводятся алгоритмом."),
-      answer: out.join(""),
-    }
-  }
-  return null
-}
 
-// Две взаимно рекурсивные процедуры, печатающие звёздочки.
-export function t16Stars() {
-  for (let attempt = 0; attempt < 40; attempt++) {
-    const fStars = randInt(1, 2), gStars = randInt(1, 3)
-    const fLim = randInt(1, 3), gLim = randInt(0, 2)
-    const dFF = randInt(2, 4), dFG = randInt(1, 3), dGF = randInt(1, 3)
-    const F = (n) => (n > fLim ? fStars + F(n - dFF) + G(n - dFG) : 0)
-    const G = (n) => (n > gLim ? gStars + F(n - dGF) : 0)
-    const start = randInt(14, 22)
-    const total = F(start)
-    if (total < 10 || total > 400) continue
-    const star = (k) => "'" + "*".repeat(k) + "'"
-    const py = `def F(n):\n    if n > ${fLim}:\n        print(${star(fStars)})\n        F(n - ${dFF})\n        G(n - ${dFG})\n\n` +
-      `def G(n):\n    if n > ${gLim}:\n        print(${star(gStars)})\n        F(n - ${dGF})`
-    const pas = `procedure G(n: integer); forward;\n\nprocedure F(n: integer);\nbegin\n    if n > ${fLim} then begin\n        write(${star(fStars)});\n        F(n - ${dFF});\n        G(n - ${dFG})\n    end\nend;\n\n` +
-      `procedure G(n: integer);\nbegin\n    if n > ${gLim} then begin\n        write(${star(gStars)});\n        F(n - ${dGF})\n    end\nend;`
-    return {
-      condition_text:
-        "Ниже на двух языках программирования записаны две рекурсивные функции (процедуры): F и G.\n" +
-        `Python:\n⟦code:${py}⟧\nПаскаль:\n⟦code:${pas}⟧\n` +
-        `Сколько символов «звёздочка» будет напечатано на экране при выполнении вызова F(${start})?`,
-      answer: String(total),
-    }
-  }
-  return null
-}
 
 
 
@@ -1553,105 +1281,8 @@ export function t12EditorResult() {
 //              единиц/нулей в маске.
 // Граф рисуется SVG: слои слева направо, стрелки — как в оригинале.
 
-const CITY_RU = ["А", "Б", "В", "Г", "Д", "Е", "Ж", "З", "И", "К", "Л", "М"]
 
-// Стрелка от (x1,y1) к (x2,y2) с укорочением у концов (чтобы не влезала в кружок).
-function gArrow(x1, y1, x2, y2) {
-  const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1
-  const ux = dx / len, uy = dy / len
-  const sx = x1 + ux * 7, sy = y1 + uy * 7
-  const ex = x2 - ux * 9, ey = y2 - uy * 9
-  const a = Math.atan2(uy, ux)
-  const p = (ang, r) => `${(ex - Math.cos(a + ang) * r).toFixed(1)},${(ey - Math.sin(a + ang) * r).toFixed(1)}`
-  return `<line x1="${sx.toFixed(1)}" y1="${sy.toFixed(1)}" x2="${ex.toFixed(1)}" y2="${ey.toFixed(1)}" stroke="#111" stroke-width="1.4"/>` +
-    `<polygon points="${ex.toFixed(1)},${ey.toFixed(1)} ${p(0.38, 9)} ${p(-0.38, 9)}" fill="#111"/>`
-}
 
-export function t13Graph() {
-  for (let tries = 0; tries < 400; tries++) {
-    const L = pick([5, 6])
-    const sizes = [1]
-    let rest = 12 - 2
-    for (let i = 1; i < L - 1; i++) {
-      const take = Math.min(3, Math.max(1, Math.round(rest / (L - 1 - i))))
-      sizes.push(take); rest -= take
-    }
-    if (rest !== 0) continue
-    sizes.push(1)
-    const layerNodes = [], layerOf = [], rowOf = []
-    let idx = 0
-    for (let li = 0; li < L; li++) {
-      const arr = []
-      for (let k = 0; k < sizes[li]; k++) { arr.push(idx); layerOf[idx] = li; rowOf[idx] = k; idx++ }
-      layerNodes.push(arr)
-    }
-    const n = idx
-    if (n !== 12) continue
-    const end = n - 1
-    const adj = Array.from({ length: n }, () => [])
-    for (let u = 0; u < n; u++) {
-      if (layerOf[u] === L - 1) continue
-      const cands = []
-      for (let tl = layerOf[u] + 1; tl <= Math.min(layerOf[u] + 2, L - 1); tl++) cands.push(...layerNodes[tl])
-      const deg = Math.min(cands.length, pick([1, 2, 2, 3]))
-      for (const c of shuffle(cands).slice(0, deg)) if (!adj[u].includes(c)) adj[u].push(c)
-      if (!adj[u].length) adj[u].push(cands[0])
-    }
-    for (let v = 1; v < n; v++) if (!adj.some((a) => a.includes(v))) adj[pick(layerNodes[layerOf[v] - 1])].push(v)
-    // Число путей из вершины до М и из А до вершины (DP по слоям).
-    const order = [...Array(n).keys()].sort((a, b) => layerOf[a] - layerOf[b])
-    const toEnd = Array(n).fill(0); toEnd[end] = 1
-    for (const u of [...order].reverse()) if (u !== end) toEnd[u] = adj[u].reduce((s, v) => s + toEnd[v], 0)
-    const fromA = Array(n).fill(0); fromA[0] = 1
-    for (const u of order) for (const v of adj[u]) fromA[v] += fromA[u]
-    if (toEnd.some((w, i) => i !== end && w === 0)) continue     // тупиков быть не должно
-    const total = toEnd[0]
-    if (total < 8 || total > 400) continue
-    const mids = [...Array(n).keys()].filter((u) => u !== 0 && u !== end && fromA[u] * toEnd[u] > 1)
-    if (!mids.length) continue
-    const via = pick(mids)
-    // Вариант «через X и не проходящих через Y»: считаем пути в графе без Y.
-    const withBan = Math.random() < 0.3
-    let ban = null, count = fromA[via] * toEnd[via]
-    if (withBan) {
-      const cands = [...Array(n).keys()].filter((u) => u !== 0 && u !== end && u !== via)
-      ban = pick(cands)
-      const f = Array(n).fill(0); f[0] = 1
-      for (const u of order) { if (u === ban) continue; for (const v of adj[u]) if (v !== ban) f[v] += f[u] }
-      const g = Array(n).fill(0); g[end] = 1
-      for (const u of [...order].reverse()) { if (u === ban || u === end) continue; g[u] = adj[u].reduce((sm, v) => sm + (v === ban ? 0 : g[v]), 0) }
-      count = f[via] * g[via]
-      if (count < 2) continue
-    }
-    // Раскладка: слои по X, вершины слоя — по Y.
-    const colGap = 110, mx = 52, cy = 130, H = 265
-    const off = (c) => (c === 1 ? [0] : c === 2 ? [-52, 52] : [-78, 0, 78])
-    const X = (u) => mx + layerOf[u] * colGap
-    const Y = (u) => cy + off(sizes[layerOf[u]])[rowOf[u]]
-    const W = mx * 2 + (L - 1) * colGap
-    let el = ""
-    for (let u = 0; u < n; u++) for (const v of adj[u]) el += gArrow(X(u), Y(u), X(v), Y(v))
-    for (let u = 0; u < n; u++) {
-      el += `<circle cx="${X(u)}" cy="${Y(u)}" r="4.5" fill="#111"/>`
-      const lx = u === 0 ? X(u) - 12 : u === end ? X(u) + 12 : X(u)
-      const anchor = u === 0 ? "end" : u === end ? "start" : "middle"
-      const ly = u === 0 || u === end ? Y(u) + 5 : (Y(u) <= cy ? Y(u) - 12 : Y(u) + 19)
-      el += `<text x="${lx}" y="${ly}" text-anchor="${anchor}" font-size="17" font-family="Arial, sans-serif" font-weight="bold" fill="#111">${CITY_RU[u]}</text>`
-    }
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${el}</svg>`
-    return {
-      condition_text:
-        `На рисунке представлена схема дорог, связывающих города ${CITY_RU.join(", ")}.\n` +
-        "По каждой дороге можно двигаться только в одном направлении, указанном стрелкой.",
-      image_url: svgUrl(svg),
-      condition_tail:
-        `Сколько существует различных путей из города ${CITY_RU[0]} в город ${CITY_RU[end]}, проходящих через город ${CITY_RU[via]}` +
-        (ban === null ? "?" : ` и не проходящих через город ${CITY_RU[ban]}?`),
-      answer: String(count),
-    }
-  }
-  return null
-}
 
 // ── Маски сетей ──────────────────────────────────────────────────────────────
 const T13_MASK_INTRO =
@@ -2450,75 +2081,119 @@ export function t21VanyaSecond() {
 // («содержит X», «не содержит Y», «содержит X, но не содержит Y»).
 // Считается динамикой: f(v) — сколько программ переводит v в B.
 
-const T23_EXECUTORS = [
-  { name: "Аллегро", cmds: [["Прибавить 1", (v) => v + 1], ["Прибавить 2", (v) => v + 2], ["Умножить на 3", (v) => v * 3]] },
-  { name: "Калькулятор", cmds: [["Прибавить 1", (v) => v + 1], ["Умножить на 2", (v) => v * 2]] },
-  { name: "Вычислитель", cmds: [["Прибавить 1", (v) => v + 1], ["Умножить на 3", (v) => v * 3]] },
-  { name: "Калькулятор", cmds: [["Прибавить 2", (v) => v + 2], ["Умножить на 3", (v) => v * 3]] },
-  { name: "Вычислитель", cmds: [["Прибавить 3", (v) => v + 3], ["Умножить на 2", (v) => v * 2]] },
+// Исполнители «вверх» (прибавить/умножить) и «вниз» (вычесть/целая часть) — в банке
+// есть и те, и другие. Третий элемент команды — её словесное описание для условия.
+const T23_UP = [
+  { name: "Аллегро", cmds: [["Прибавить 1", (v) => v + 1, "увеличивает число на экране на 1"], ["Прибавить 2", (v) => v + 2, "увеличивает это число на 2"], ["Умножить на 3", (v) => v * 3, "умножает его на 3"]] },
+  { name: "Калькулятор", cmds: [["Прибавить 1", (v) => v + 1, "увеличивает число на экране на 1"], ["Умножить на 2", (v) => v * 2, "умножает его на 2"]] },
+  { name: "Вычислитель", cmds: [["Прибавить 1", (v) => v + 1, "увеличивает число на экране на 1"], ["Умножить на 3", (v) => v * 3, "умножает его на 3"]] },
+  { name: "Калькулятор", cmds: [["Прибавить 2", (v) => v + 2, "увеличивает число на экране на 2"], ["Умножить на 3", (v) => v * 3, "умножает его на 3"]] },
+  { name: "Вычислитель", cmds: [["Прибавить 3", (v) => v + 3, "увеличивает число на экране на 3"], ["Умножить на 2", (v) => v * 2, "умножает его на 2"]] },
 ]
 
-export function t23Programs() {
-  for (let attempt = 0; attempt < 60; attempt++) {
-    const ex = pick(T23_EXECUTORS)
-    const start = randInt(1, 6)
-    const target = randInt(25, 90)
-    if (target <= start) continue
-    const kind = randInt(0, 3)                       // 0 — без условий, 1 — через X, 2 — через X без Y, 3 — через X и Y
-    const via = randInt(start + 1, target - 1)
-    const ban = randInt(start + 1, target - 1)
-    const via2 = randInt(via + 1, target - 1)
-    if (kind === 2 && (ban === via || ban <= via)) continue
-    if (kind === 3 && via2 <= via) continue
-    // f(v, passed) — число программ из v в target; passed — прошли ли через via.
-    const memo = new Map()
-    const count = (v, passed, passed2) => {
-      if (kind >= 1 && v === via) passed = true
-      if (kind === 3 && v === via2) passed2 = true
-      if (kind === 2 && v === ban) return 0
-      if (v === target) return (kind === 0 || (passed && (kind !== 3 || passed2))) ? 1 : 0
-      if (v > target) return 0
-      const key = `${v}|${passed}|${passed2}`
-      if (memo.has(key)) return memo.get(key)
-      let n = 0
-      for (const [, f] of ex.cmds) n += count(f(v), passed, passed2)
-      memo.set(key, n)
-      return n
+const T23_DOWN = [
+  { name: "Минус", cmds: [["Вычесть 2", (v) => v - 2, "уменьшает число на экране на 2"], ["Вычесть 5", (v) => v - 5, "уменьшает это число на 5"]] },
+  { name: "Минус", cmds: [["Вычесть 1", (v) => v - 1, "уменьшает число на экране на 1"], ["Вычесть 3", (v) => v - 3, "уменьшает это число на 3"]] },
+  { name: null, cmds: [["Вычти 1", (v) => v - 1, "уменьшает число на экране на 1"], ["Найди целую часть от деления на 2", (v) => Math.floor(v / 2), "заменяет число на экране на целую часть от деления числа на 2"]] },
+  { name: null, cmds: [["Вычти 2", (v) => v - 2, "уменьшает число на экране на 2"], ["Найди целую часть от деления на 2", (v) => Math.floor(v / 2), "заменяет число на экране на целую часть от деления числа на 2"]] },
+  { name: null, cmds: [["Вычесть 1", (v) => v - 1, "уменьшает число на экране на 1"], ["Вычесть 2", (v) => v - 2, "уменьшает это число на 2"], ["Найти целую часть от деления на 3", (v) => Math.floor(v / 3), "заменяет число на экране на целую часть от деления числа на 3"]] },
+]
+
+// Число программ, переводящих start в target. Условия на траекторию: обязательные
+// числа via/via2 и запрещённые ban/ban2. Траектория — результаты команд, поэтому
+// via/ban выбираются строго между start и target и исходное число не проверяется.
+function t23Count(ex, start, target, { via = null, via2 = null, ban = null, ban2 = null, down = false }) {
+  const memo = new Map()
+  const rec = (v, got, got2) => {
+    if (v === ban || v === ban2) return 0
+    if (v === via) got = true
+    if (v === via2) got2 = true
+    if (v === target) return (via === null || got) && (via2 === null || got2) ? 1 : 0
+    if (down ? v <= target : v >= target) return 0
+    const key = `${v}|${got ? 1 : 0}|${got2 ? 1 : 0}`
+    if (memo.has(key)) return memo.get(key)
+    let n = 0
+    for (const [, f] of ex.cmds) {
+      const w = f(v)
+      if (down ? w >= v : w <= v) continue          // страховка от зацикливания
+      n += rec(w, got, got2)
     }
-    const answer = count(start, false, false)
+    memo.set(key, n)
+    return n
+  }
+  let total = 0
+  for (const [, f] of ex.cmds) {
+    const w = f(start)
+    if (down ? w >= start : w <= start) continue
+    total += rec(w, false, false)
+  }
+  return total
+}
+
+// Общая сборка условия №23. cond — какое ограничение на траекторию ставим.
+function t23Build(down, cond) {
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const ex = pick(down ? T23_DOWN : T23_UP)
+    const start = down ? randInt(17, 42) : randInt(1, 6)
+    const target = down ? randInt(1, 4) : randInt(25, 90)
+    const lo = Math.min(start, target), hi = Math.max(start, target)
+    if (hi - lo < 12) continue
+    const nums = shuffle(Array.from({ length: hi - lo - 1 }, (_, k) => lo + 1 + k)).slice(0, 3)
+    if (nums.length < 3) continue
+    const [x, y, z] = nums
+    const opts = { down }
+    if (cond === "via") { opts.via = x; if (randInt(0, 1)) opts.via2 = y }
+    if (cond === "ban") { opts.ban = x; if (randInt(0, 1)) opts.ban2 = y; else opts.via = z }
+    const answer = t23Count(ex, start, target, opts)
     if (answer < 3 || answer > 100000) continue
-    const cmdList = ex.cmds.map(([label], i) => `${i + 1}. ${label}`).join("\n")
-    const descr = ex.cmds.map(([label]) => {
-      const m = /Прибавить (\d+)/.exec(label)
-      return m ? `увеличивает число на экране на ${m[1]}` : `умножает его на ${/Умножить на (\d+)/.exec(label)[1]}`
-    })
-    const trailExample = (() => {
-      let v = start + 7
-      const prog = "12".slice(0, Math.min(2, ex.cmds.length))
-      const steps = []
-      for (const c of prog) { v = ex.cmds[Number(c) - 1][1](v); steps.push(v) }
-      return { from: start + 7, prog, steps }
-    })()
-    const ask = kind === 3
-      ? `Сколько существует таких программ, которые преобразуют исходное число ${start} в число ${target} и при этом траектория вычислений программы содержит числа ${via} и ${via2}?`
-      : kind === 0
-      ? `Сколько существует программ, для которых при исходном числе ${start} результатом является число ${target}?`
-      : kind === 1
-        ? `Сколько существует программ, для которых при исходном числе ${start} результатом является число ${target} и при этом траектория вычислений содержит число ${via}?`
-        : `Сколько существует программ, для которых при исходном числе ${start} результатом является число ${target} и при этом траектория вычислений содержит число ${via}, но не содержит число ${ban}?`
+    // Латинские буквы или номера — в банке встречаются оба оформления, но у
+    // именованного исполнителя («Минус», «Калькулятор») команды всегда нумерованные.
+    const letters = !ex.name && randInt(0, 1) === 1
+    const mark = (k) => (letters ? "ABCDE"[k] : String(k + 1))
+    const cmdList = ex.cmds.map(([label], k) => `${mark(k)}. ${label}`).join("\n")
+    const descr = ex.cmds.map(([, , d]) => d)
+    // Пример траектории: короткая программа из двух-трёх команд на своём числе.
+    const exFrom = down ? start - 2 : start + 7
+    const prog = [randInt(0, ex.cmds.length - 1), randInt(0, ex.cmds.length - 1)]
+    const steps = []
+    let v = exFrom
+    for (const c of prog) { v = ex.cmds[c][1](v); steps.push(v) }
+    if (steps.some((s) => s < 0)) continue
+    const need =
+      cond === "via"
+        ? opts.via2
+          ? ` и при этом траектория вычислений содержит числа ${opts.via} и ${opts.via2}`
+          : ` и при этом траектория вычислений содержит число ${opts.via}`
+        : cond === "ban"
+          ? opts.ban2
+            ? `, при этом траектория вычислений не содержит чисел ${Math.min(opts.ban, opts.ban2)} и ${Math.max(opts.ban, opts.ban2)}`
+            : `, при этом траектория вычислений не содержит числа ${opts.ban} и содержит ${opts.via}`
+          : ""
+    const head = ex.name
+      ? `Исполнитель ${ex.name} преобразует число на экране.\n` +
+        `У исполнителя есть ${NUMW[ex.cmds.length]} команды, которым присвоены номера:\n`
+      : "Исполнитель преобразует число на экране.\n" +
+        `У исполнителя есть ${NUMW[ex.cmds.length]} команды, которые обозначены ${letters ? "латинскими буквами" : "номерами"}:\n`
     return {
       condition_text:
-        `Исполнитель ${ex.name} преобразует число на экране.\n` +
-        `У исполнителя есть ${NUMW[ex.cmds.length]} команды, которым присвоены номера:\n` + cmdList + "\n" +
+        head + cmdList + "\n" +
         `Первая команда ${descr[0]}, вторая ${descr[1]}${descr[2] ? `, третья ${descr[2]}` : ""}. ` +
-        `Программа для исполнителя ${ex.name} — это последовательность команд.\n` + ask + "\n" +
-        "Траектория вычислений программы — это последовательность результатов выполнения всех команд программы. " +
-        `Например, для программы ${trailExample.prog} при исходном числе ${trailExample.from} траектория будет состоять из чисел ${trailExample.steps.join(", ")}.`,
+        `Программа для исполнителя${ex.name ? ` ${ex.name}` : ""} — это последовательность команд.\n` +
+        `Сколько существует программ, для которых при исходном числе ${start} результатом является число ${target}${need}?` +
+        (need
+          ? "\nТраектория вычислений программы — это последовательность результатов выполнения всех команд программы. " +
+            `Например, для программы ${prog.map(mark).join("")} при исходном числе ${exFrom} траектория будет состоять из чисел ${steps.join(", ")}.`
+          : ""),
       answer: String(answer),
     }
   }
   return null
 }
+
+export function t23Up() { return t23Build(false, "plain") }
+export function t23Down() { return t23Build(true, "plain") }
+export function t23Via() { return pick([() => t23Build(false, "via"), () => t23Build(true, "via")])() }
+export function t23Ban() { return pick([() => t23Build(false, "ban"), () => t23Build(true, "ban")])() }
 
 // ── №25 «Обработка целочисленной информации» (маски чисел) ──────────────────
 // Эталон (49 основных задач): маска с «?» (одна цифра) и «*» (любая последовательность);
@@ -2616,72 +2291,8 @@ export function t25DivisorEnding() {
 }
 
 
-// Адрес файла в Интернете по фрагментам, закодированным буквами А–Ж: ученик
-// собирает адрес вида протокол://сервер/файл и записывает последовательность букв.
-// (В экспорте банка сама таблица фрагментов потерялась, поэтому фрагменты
-// разбиты по тем же правилам, что в КИМ: протокол, «://», части сервера, «/», файл.)
-const T13_URL_LETTERS = ["А", "Б", "В", "Г", "Д", "Е", "Ж"]
-const T13_PROTO = ["http", "ftp"]
-const T13_WORDS = ["www", "txt", "net", "org", "com", "ftp", "http", "doc", "edu", "ru"]
 
-export function t13Url() {
-  const proto = pick(T13_PROTO)
-  const [s1, s2, f1, f2] = shuffle(T13_WORDS).slice(0, 4)
-  const server = `${s1}.${s2}`
-  const file = `${f1}.${f2}`
-  // Фрагменты — ровно семь, как в задании: протокол, «://», две части сервера, «/», две части файла.
-  const parts = [proto, "://", `${s1}.`, s2, "/", `${f1}.`, f2]
-  const order = shuffle(parts.map((p, i) => ({ p, i })))
-  const rows = order.map((o, k) => [`${T13_URL_LETTERS[k]})`, o.p])
-  const answer = parts.map((p) => T13_URL_LETTERS[order.findIndex((o) => o.p === p && parts[o.i] === p)]).join("")
-  // Соответствие «фрагмент → буква» ищем по позиции в исходном списке, иначе
-  // одинаковые фрагменты (например «txt.» и «txt») перепутались бы местами.
-  const letterOf = (idx) => T13_URL_LETTERS[order.findIndex((o) => o.i === idx)]
-  const exact = parts.map((_, idx) => letterOf(idx)).join("")
-  return {
-    condition_text:
-      `Доступ к файлу ${file}, находящемуся на сервере ${server}, осуществляется по протоколу ${proto}. ` +
-      "В таблице фрагменты адреса файла закодированы буквами от А до Ж. " +
-      "Запишите последовательность этих букв, кодирующую адрес указанного файла в сети Интернет.\n" +
-      tableBlock([["Буква", "Фрагмент"], ...rows]),
-    answer: exact || answer,
-  }
-}
 
-// Перемещение по каталогам: из последовательности посещённых каталогов восстановить,
-// откуда пользователь начал (либо где оказался). Спуск/подъём на один уровень.
-export function t11Catalogs() {
-  for (let attempt = 0; attempt < 40; attempt++) {
-    const names = shuffle(["DOC", "USER", "SCHOOL", "LETTER", "INBOX", "WORK", "TEXT", "DATA"])
-    const disk = pick(["A:\\", "C:\\", "D:\\"])
-    const depth = randInt(2, 3)
-    // Строим маршрут: сначала поднимаемся до корня, потом спускаемся в другую ветку.
-    const up = names.slice(0, depth)                    // начальный путь (снизу вверх)
-    const down = names.slice(depth, depth + depth)      // конечный путь (сверху вниз)
-    const visited = [...up, disk, ...down]
-    const startPath = disk + [...up].reverse().join("\\")
-    const endPath = disk + down.join("\\")
-    const askStart = Math.random() < 0.5
-    const right = askStart ? startPath : endPath
-    const wrong = shuffle([
-      disk + up.join("\\"),
-      disk + down.slice().reverse().join("\\"),
-      askStart ? endPath : startPath,
-      disk + names[0],
-    ].filter((w) => w !== right)).slice(0, 3)
-    const options = shuffle([right, ...wrong])
-    return {
-      condition_text:
-        `Перемещаясь из одного каталога в другой, пользователь последовательно посетил каталоги ${visited.join(", ")}. ` +
-        "При каждом перемещении пользователь либо спускался в каталог на уровень ниже, либо поднимался на уровень выше. " +
-        `Каково полное имя каталога, ${askStart ? "из которого начал перемещение пользователь" : "в котором оказался пользователь"}?\n` +
-        tableBlock([["№", "Вариант"], ...options.map((o, i) => [`${i + 1})`, o])]) + "\n" +
-        "В ответе укажите номер варианта.",
-      answer: String(options.indexOf(right) + 1),
-    }
-  }
-  return null
-}
 
 // Поразрядная конъюнкция: наименьшее A, при котором формула тождественно истинна.
 // Достаточно перебрать x до 2^k (k — старший значащий бит участвующих констант):
@@ -3042,121 +2653,9 @@ export function t25SumDivisors() {
   return null
 }
 
-// Фрагмент алгоритма со строковыми функциями Длина/Извлечь/Склеить: что окажется
-// в переменной b. Исполняется тем же кодом, что напечатан в условии.
-const T12_STR_WORDS = ["ПОЕЗД", "КОРАБЛЬ", "МАШИНА", "САМОЛЁТ", "ВЕЛОСИПЕД", "ТРАМВАЙ", "АВТОБУС"]
-export function t12StringAlg() {
-  for (let attempt = 0; attempt < 40; attempt++) {
-    const word = pick(T12_STR_WORDS)
-    const step = randInt(1, 3)
-    const startLetter = pick(["А", "Б", "К"])
-    const endLetter = pick(["Т", "Я", "Ь"])
-    const backwards = Math.random() < 0.6
-    let b = startLetter
-    if (backwards) { for (let i = word.length; i > 0; i -= step) b += word[i - 1] }
-    else { for (let i = 1; i <= word.length; i += step) b += word[i - 1] }
-    b += endLetter
-    const code = backwards
-      ? `i := Длина(a)\nk := ${step}\nb := '${startLetter}'\nпока i > 0\n  нц\n    c := Извлечь(a, i)\n    b := Склеить(b, c)\n    i := i – k\n  кц\nb := Склеить(b, '${endLetter}')`
-      : `i := 1\nk := ${step}\nb := '${startLetter}'\nпока i <= Длина(a)\n  нц\n    c := Извлечь(a, i)\n    b := Склеить(b, c)\n    i := i + k\n  кц\nb := Склеить(b, '${endLetter}')`
-    // Отвлекающие варианты — правдоподобные ошибки: другой шаг, обратный порядок, без хвоста.
-    const wrongs = new Set()
-    let alt = startLetter
-    for (let i = word.length; i > 0; i -= (step === 1 ? 2 : 1)) alt += word[i - 1]
-    wrongs.add(alt + endLetter)
-    wrongs.add(startLetter + [...b.slice(1, -1)].reverse().join("") + endLetter)
-    wrongs.add(b.slice(0, -1))
-    const options = shuffle([b, ...[...wrongs].filter((w) => w !== b).slice(0, 3)])
-    if (options.length < 4) continue
-    return {
-      condition_text:
-        "В приведённом ниже фрагменте алгоритма, записанном на алгоритмическом языке, переменные a, b, c имеют тип «строка», " +
-        "а переменные i, k — тип «целое». Используются следующие функции:\n" +
-        "Длина(a) — возвращает количество символов в строке a (тип «целое»).\n" +
-        "Извлечь(a, i) — возвращает i-й (слева) символ строки a (тип «строка»).\n" +
-        "Склеить(a, b) — возвращает строку, в которой записаны сначала все символы строки a, а затем все символы строки b (тип «строка»).\n" +
-        "Значения строк записываются в одинарных кавычках (например, a := 'дом').\n" +
-        "Фрагмент алгоритма:\n⟦code:" + code + "⟧\n" +
-        `Какое значение будет у переменной b после выполнения этого фрагмента, если значение переменной a было '${word}'?\n` +
-        tableBlock([["№", "Вариант"], ...options.map((o, i) => [`${i + 1})`, `'${o}'`])]) + "\n" +
-        "В ответе укажите номер варианта.",
-      answer: String(options.indexOf(b) + 1),
-    }
-  }
-  return null
-}
 
 
-// Старый формат №4: буквы кодируются последовательными двухразрядными числами,
-// последовательность записывают шестнадцатеричным кодом.
-export function t4SeqHex() {
-  const letters = ["А", "Б", "В", "Г"]
-  const word = Array.from({ length: 4 }, () => pick(letters)).join("")
-  const bits = [...word].map((c) => letters.indexOf(c).toString(2).padStart(2, "0")).join("")
-  const hex = parseInt(bits, 2).toString(16).toUpperCase().padStart(2, "0")
-  const wrong = new Set([
-    parseInt([...bits].reverse().join(""), 2).toString(16).toUpperCase(),
-    [...word].map((c) => letters.indexOf(c)).join(""),
-    parseInt(bits, 2).toString(10),
-  ])
-  const options = shuffle([hex, ...[...wrong].filter((w) => w !== hex).slice(0, 3)])
-  return {
-    condition_text:
-      `Для кодирования букв ${letters.join(", ")} решили использовать двухразрядные последовательные двоичные числа ` +
-      "(от 00 до 11 соответственно). Если таким способом закодировать последовательность символов " +
-      `${word} и записать результат шестнадцатеричным кодом, то получится:\n` +
-      tableBlock([["№", "Вариант"], ...options.map((o, i) => [`${i + 1})`, o])]) + "\n" +
-      "В ответе укажите номер варианта.",
-    answer: String(options.indexOf(hex) + 1),
-  }
-}
 
-// Старый формат №4: из четырёх сообщений только одно декодируется однозначно
-// в заданной (непрефиксной) кодировке — найти его.
-export function t4UniqueDecode() {
-  for (let attempt = 0; attempt < 80; attempt++) {
-    const letters = shuffle(["В", "К", "А", "Р", "Д", "О", "М", "С"]).slice(0, 5)
-    const codes = ["000", "11", "01", "001", "10"]
-    const map = Object.fromEntries(letters.map((l, i) => [l, codes[i]]))
-    // Декодирование перебором: сколько разборов у строки (0 — нельзя, 1 — однозначно).
-    const ways = (str) => {
-      const memo = new Map()
-      const rec = (i) => {
-        if (i === str.length) return 1
-        if (memo.has(i)) return memo.get(i)
-        let n = 0
-        for (const c of codes) if (str.startsWith(c, i)) n += rec(i + c.length)
-        memo.set(i, n)
-        return n
-      }
-      return rec(0)
-    }
-    const word = Array.from({ length: randInt(5, 7) }, () => pick(letters)).join("")
-    const right = [...word].map((c) => map[c]).join("")
-    if (ways(right) !== 1) continue
-    const wrongs = new Set()
-    for (let k = 0; k < 200 && wrongs.size < 3; k++) {
-      const bits = [...right]
-      const i = randInt(0, bits.length - 1)
-      bits[i] = bits[i] === "0" ? "1" : "0"
-      const cand = bits.join("")
-      if (cand !== right && ways(cand) !== 1) wrongs.add(cand)
-    }
-    if (wrongs.size < 3) continue
-    const options = shuffle([right, ...[...wrongs]])
-    return {
-      condition_text:
-        `Для ${letters.length} букв русского алфавита заданы их двоичные коды (для некоторых букв — из двух бит, для некоторых — из трёх). ` +
-        "Эти коды представлены в таблице:\n" +
-        tableBlock([letters, letters.map((l) => map[l])]) + "\n" +
-        "Из четырёх полученных сообщений в этой кодировке только одно прошло без ошибки и может быть корректно декодировано. Найдите его:\n" +
-        tableBlock([["№", "Сообщение"], ...options.map((o, i) => [`${i + 1})`, o])]) + "\n" +
-        "В ответе укажите номер варианта.",
-      answer: String(options.indexOf(right) + 1),
-    }
-  }
-  return null
-}
 
 // Составляющие цвета пикселя: сколько бит отвели под зелёную.
 export function t7Rgb() {
@@ -3177,90 +2676,8 @@ export function t7Rgb() {
   }
 }
 
-// Объём текста в Unicode: каждый символ — два байта.
-const T7_SENTENCES = [
-  "Один пуд — около 16,4 килограмма.",
-  "В одном килобайте 1024 байта.",
-  "Скорость света в вакууме — 299 792 458 м/с.",
-  "Информатика — наука о способах обработки информации.",
-  "Земля делает оборот вокруг Солнца за 365 суток.",
-]
-export function t7Unicode() {
-  const sentence = pick(T7_SENTENCES)
-  const chars = [...sentence].length
-  const bits = Math.random() < 0.5
-  return {
-    condition_text:
-      "Считая, что каждый символ кодируется двумя байтами, оцените информационный объём следующего предложения " +
-      `в кодировке Unicode:\n${sentence}\n` +
-      `В ответе запишите целое число — количество ${bits ? "бит" : "байт"}.`,
-    answer: String(bits ? chars * 16 : chars * 2),
-  }
-}
 
 
-// ── №06 «Определение результатов работы простейших алгоритмов» ──────────────
-// Эталон (113 задач): три типажа.
-//   print 57 — «что напечатает программа»: цикл while над двумя переменными;
-//   input 15 — «при каком наибольшем/наименьшем введённом s программа выведет N»;
-//   turtle 41 — исполнитель Черепаха рисует два прямоугольника: сколько точек с
-//               целочисленными координатами лежит в пересечении фигур.
-// Программы печатаются на трёх языках из ОДНОГО описания и им же исполняются.
-
-// Цикл вида: s = s0; n = n0; пока (s + n < LIM) { s = s + ds; n = n - dn } печатать s.
-export function t6Print() {
-  for (let attempt = 0; attempt < 60; attempt++) {
-    const s0 = pick([0, 1, 5, 10]), n0 = randInt(40, 120)
-    const ds = pick([3, 5, 7, 10, 20]), dn = pick([2, 4, 5, 10])
-    const lim = randInt(n0 + 10, n0 + 90)
-    let s = s0, n = n0, steps = 0
-    while (s + n < lim && steps++ < 1000) { s += ds; n -= dn }
-    if (steps === 0 || steps > 40) continue
-    const py = `s = ${s0}\nn = ${n0}\nwhile s + n < ${lim}:\n    s = s + ${ds}\n    n = n - ${dn}\nprint(s)`
-    const pas = `var s, n: integer;\nbegin\n    s := ${s0};\n    n := ${n0};\n    while s + n < ${lim} do\n    begin\n        s := s + ${ds};\n        n := n - ${dn}\n    end;\n    writeln(s)\nend.`
-    const alg = `алг\nнач\n    цел s, n\n    s := ${s0}\n    n := ${n0}\n    нц пока s + n < ${lim}\n        s := s + ${ds}\n        n := n - ${dn}\n    кц\n    вывод s\nкон`
-    return {
-      condition_text:
-        "Запишите число, которое будет напечатано в результате выполнения следующей программы. " +
-        "Для Вашего удобства программа представлена на трёх языках программирования.\n" +
-        `Python:\n⟦code:${py}⟧\nПаскаль:\n⟦code:${pas}⟧\nАлгоритмический язык:\n⟦code:${alg}⟧`,
-      answer: String(s),
-    }
-  }
-  return null
-}
-
-// Цикл: читаем s; n = 1; пока s < LIM { s = s + ds; n = n * k } печатать n.
-// Спрашивают наибольшее (наименьшее) введённое s, при котором на выходе заданное N.
-export function t6Input() {
-  for (let attempt = 0; attempt < 60; attempt++) {
-    const ds = pick([2, 3, 4, 5]), k = pick([2, 3])
-    const lim = randInt(30, 90)
-    const power = randInt(3, 6)
-    const target = Math.pow(k, power)                   // сколько итераций должно пройти
-    const run = (start) => {
-      let s = start, n = 1, guard = 0
-      while (s < lim && guard++ < 1000) { s += ds; n *= k }
-      return n
-    }
-    const good = []
-    for (let start = -200; start <= lim; start++) if (run(start) === target) good.push(start)
-    if (good.length < 2) continue
-    const askMax = Math.random() < 0.5
-    const answer = askMax ? Math.max(...good) : Math.min(...good)
-    const py = `s = int(input())\nn = 1\nwhile s < ${lim}:\n    s = s + ${ds}\n    n = n * ${k}\nprint(n)`
-    const pas = `var s, n: integer;\nbegin\n    readln(s);\n    n := 1;\n    while s < ${lim} do\n    begin\n        s := s + ${ds};\n        n := n * ${k}\n    end;\n    writeln(n)\nend.`
-    const alg = `алг\nнач\n    цел n, s\n    ввод s\n    n := 1\n    нц пока s < ${lim}\n        s := s + ${ds}\n        n := n * ${k}\n    кц\n    вывод n\nкон`
-    return {
-      condition_text:
-        `Определите, при каком ${askMax ? "наибольшем" : "наименьшем"} введённом значении переменной s программа выведет число ${target}. ` +
-        "Для Вашего удобства программа представлена на трёх языках программирования.\n" +
-        `Python:\n⟦code:${py}⟧\nПаскаль:\n⟦code:${pas}⟧\nАлгоритмический язык:\n⟦code:${alg}⟧`,
-      answer: String(answer),
-    }
-  }
-  return null
-}
 
 // ── Исполнитель Черепаха ─────────────────────────────────────────────────────
 // Алгоритм рисует две прямоугольные рамки; вопрос — сколько точек с целочисленными
@@ -3471,40 +2888,149 @@ export function t1GraphTable() {
   return null
 }
 
-// Только таблица длин: кратчайший путь между двумя пунктами.
-export function t1ShortestPath() {
-  for (let attempt = 0; attempt < 60; attempt++) {
-    const n = pick([6, 7])
-    const w = t1RandomGraph(n, randInt(3, 5))
-    const letters = ["A", "B", "C", "D", "E", "F", "G"].slice(0, n)
-    // Дейкстра от 0 до n-1.
-    const dist = Array(n).fill(Infinity); dist[0] = 0
-    const done = Array(n).fill(false)
-    for (let k = 0; k < n; k++) {
-      let u = -1
-      for (let i = 0; i < n; i++) if (!done[i] && (u === -1 || dist[i] < dist[u])) u = i
-      if (dist[u] === Infinity) break
-      done[u] = true
-      for (let v = 0; v < n; v++) if (w[u][v] && dist[u] + w[u][v] < dist[v]) dist[v] = dist[u] + w[u][v]
+// ── №01 «звёздочки»: неоднозначное соответствие таблицы и схемы ──────────────
+// Эталон (14 задач «какие номера МОГУТ соответствовать»): таблица отмечает
+// звёздочкой только НАЛИЧИЕ дороги, длин в ней нет. Граф подбирается так, чтобы у
+// него была ровно одна нетривиальная симметрия — перестановка двух вершин с
+// одинаковым окружением. Поэтому номера этих двух пунктов по отдельности не
+// определяются (в этом и есть неоднозначность), а ответ — их пара по возрастанию.
+const T1_LAT = ["A", "B", "C", "D", "E", "F", "G", "H"]
+
+// Все автоморфизмы графа (перебор с отсечением по степеням и смежности, n ≤ 8).
+function t1Automorphisms(g) {
+  const n = g.length
+  const deg = g.map((row) => row.reduce((s, x) => s + x, 0))
+  const res = []
+  const map = Array(n).fill(-1)
+  const used = Array(n).fill(false)
+  const rec = (i) => {
+    if (res.length > 64) return                     // страховка от взрыва перебора
+    if (i === n) { res.push(map.slice()); return }
+    for (let v = 0; v < n; v++) {
+      if (used[v] || deg[v] !== deg[i]) continue
+      let ok = true
+      for (let k = 0; k < i; k++) if (g[i][k] !== g[v][map[k]]) { ok = false; break }
+      if (!ok) continue
+      used[v] = true; map[i] = v
+      rec(i + 1)
+      used[v] = false; map[i] = -1
     }
-    const target = n - 1
-    if (!isFinite(dist[target])) continue
-    if (dist[target] === w[0][target]) continue          // прямая дорога — задача вырождается
-    const head = ["", ...letters]
-    const rows = w.map((row, i) => [letters[i], ...row.map((x) => (x ? String(x) : ""))])
-    return {
-      condition_text:
-        `Между населёнными пунктами ${letters.join(", ")} построены дороги, протяжённость которых приведена в таблице. ` +
-        "(Отсутствие числа в таблице означает, что прямой дороги между пунктами нет.)\n" +
-        tableBlock([head, ...rows]) + "\n" +
-        `Определите длину кратчайшего пути между пунктами ${letters[0]} и ${letters[target]} ` +
-        "(при условии, что передвигаться можно только по построенным дорогам).",
-      answer: String(dist[target]),
+  }
+  rec(0)
+  return res
+}
+
+// Расстояние от точки до отрезка — нужно, чтобы ребро не проходило через чужую
+// вершину: иначе на чертеже видна «дорога», которой в таблице нет.
+function t1PointSegDist(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1
+  const len2 = dx * dx + dy * dy || 1
+  let t = ((px - x1) * dx + (py - y1) * dy) / len2
+  t = Math.max(0, Math.min(1, t))
+  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy))
+}
+
+// Схема дорог без длин: вершины по кругу со случайным порядком и разбросом радиуса,
+// раскладка принимается только если ни одно ребро не задевает чужую вершину.
+function t1StarsSvg(g, labels) {
+  const n = labels.length
+  const W = 330, H = 310, cx = 165, cy = 152
+  for (let attempt = 0; attempt < 240; attempt++) {
+    const slots = shuffle([...Array(n).keys()])
+    const rot = Math.random() * Math.PI * 2
+    const pos = labels.map((_, i) => {
+      const a = rot + (2 * Math.PI * slots[i]) / n
+      const R = 118 + randInt(-18, 12)
+      return [cx + R * Math.cos(a), cy + R * Math.sin(a)]
+    })
+    let clean = true
+    for (let i = 0; i < n && clean; i++) for (let j = i + 1; j < n && clean; j++) {
+      if (!g[i][j]) continue
+      for (let k = 0; k < n; k++) {
+        if (k === i || k === j) continue
+        if (t1PointSegDist(pos[k][0], pos[k][1], pos[i][0], pos[i][1], pos[j][0], pos[j][1]) < 24) { clean = false; break }
+      }
     }
+    if (!clean) continue
+    // Вершины не должны и просто слипаться.
+    for (let i = 0; i < n && clean; i++) for (let j = i + 1; j < n; j++) {
+      if (Math.hypot(pos[i][0] - pos[j][0], pos[i][1] - pos[j][1]) < 44) { clean = false; break }
+    }
+    if (!clean) continue
+    let el = ""
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+      if (!g[i][j]) continue
+      el += `<line x1="${pos[i][0].toFixed(1)}" y1="${pos[i][1].toFixed(1)}" x2="${pos[j][0].toFixed(1)}" y2="${pos[j][1].toFixed(1)}" stroke="#111" stroke-width="1.4"/>`
+    }
+    labels.forEach((lbl, i) => {
+      const [x, y] = pos[i]
+      el += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="13" fill="#fff" stroke="#111" stroke-width="1.4"/>`
+      el += `<text x="${x.toFixed(1)}" y="${(y + 5).toFixed(1)}" text-anchor="middle" font-size="15" font-family="Arial, sans-serif" font-weight="bold" fill="#111">${lbl}</text>`
+    })
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${el}</svg>`
   }
   return null
 }
 
+export function t1StarsAmbiguous() {
+  for (let attempt = 0; attempt < 400; attempt++) {
+    const n = pick([7, 7, 8])
+    // Каркас на n−1 вершинах: дерево (связность) + случайные хорды.
+    const g = Array.from({ length: n }, () => Array(n).fill(0))
+    const base = n - 1
+    const order = shuffle([...Array(base).keys()])
+    for (let i = 1; i < base; i++) {
+      const a = order[i], b = order[randInt(0, i - 1)]
+      g[a][b] = g[b][a] = 1
+    }
+    for (let k = 0, add = randInt(3, 5); k < add; k++) {
+      const a = randInt(0, base - 1), b = randInt(0, base - 1)
+      if (a !== b) g[a][b] = g[b][a] = 1
+    }
+    // Вершина-близнец: то же окружение, что у выбранной вершины. Она и создаёт
+    // единственную симметрию графа — и вместе с ней неоднозначность.
+    const twin = randInt(0, base - 1)
+    for (let v = 0; v < base; v++) if (g[twin][v]) g[n - 1][v] = g[v][n - 1] = 1
+    if (randInt(0, 1)) g[twin][n - 1] = g[n - 1][twin] = 1   // близнецы бывают и соседями
+    const deg = g.map((row) => row.reduce((s, x) => s + x, 0))
+    if (Math.min(...deg) < 2 || Math.max(...deg) > n - 2) continue
+    const edges = deg.reduce((s, d) => s + d, 0) / 2
+    if (edges < n + 2 || edges > n + 6) continue
+    // Ровно одна нетривиальная симметрия, и она — перестановка ровно двух вершин.
+    const autos = t1Automorphisms(g)
+    if (autos.length !== 2) continue
+    const nonId = autos.find((m) => m.some((v, i) => v !== i))
+    const moved = nonId.map((v, i) => (v === i ? -1 : i)).filter((i) => i >= 0)
+    if (moved.length !== 2) continue
+    const [u, t] = moved
+    // Нумерация в таблице своя, со схемой не связана.
+    const perm = shuffle([...Array(n).keys()])          // строка i таблицы → вершина perm[i]
+    const rowOf = Array(n)
+    perm.forEach((v, i) => { rowOf[v] = i })
+    const svg = t1StarsSvg(g, T1_LAT.slice(0, n))
+    if (!svg) continue
+    const nums = [rowOf[u] + 1, rowOf[t] + 1].sort((a, b) => a - b)
+    const [la, lb] = [T1_LAT[u], T1_LAT[t]].sort()
+    const head = ["Номер пункта", ...Array.from({ length: n }, (_, i) => String(i + 1))]
+    const rows = Array.from({ length: n }, (_, i) => [
+      String(i + 1),
+      ...Array.from({ length: n }, (_, j) => (g[perm[i]][perm[j]] ? "*" : "")),
+    ])
+    return {
+      condition_text:
+        "На рисунке изображена схема дорог N-ского района, в таблице звёздочкой обозначено наличие дороги " +
+        "из одного населённого пункта в другой. Отсутствие звёздочки означает, что такой дороги нет.",
+      image_url: svgUrl(svg),
+      condition_tail:
+        tableBlock([head, ...rows]) + "\n" +
+        "Каждому населённому пункту на схеме соответствует его номер в таблице, но неизвестно, какой именно номер. " +
+        `Определите, какие номера населённых пунктов в таблице могут соответствовать населённым пунктам ${la} и ${lb} ` +
+        "на схеме. В ответе запишите эти два номера в возрастающем порядке без пробелов и знаков препинания.",
+      answer: nums.join(""),
+    }
+  }
+  return null
+}
 
 // ── №17 «Обработка числовой последовательности» (с прилагаемым файлом) ──────
 // Эталон (44 задачи): в файле — последовательность целых чисел; надо посчитать
@@ -3703,7 +3229,10 @@ export function t24Substring() {
 // Спрашивают минимальное время выполнения всей совокупности (критический путь)
 // или сколько процессов успеет завершиться за первые T мс. Таблица генерируется
 // вместе с задачей, ответ считается по ней же (топологический порядок + DP).
-export function t22Processes() {
+// asks — какие вопросы допустимы в этом типаже: 0 — общее время, 1 — сколько
+// успеет за T мс, 2 — сколько идёт параллельно на T-й мс, 3 — время для K процессов,
+// 4 — сколько длится отрезок с максимальным числом параллельных процессов.
+function t22Build(asks) {
   for (let attempt = 0; attempt < 40; attempt++) {
     const N = randInt(25, 60)
     const dur = [], deps = []
@@ -3723,7 +3252,7 @@ export function t22Processes() {
     const total = Math.max(...finish)
     // Четыре вопроса из банка: общее время, сколько успеет за T мс, сколько
     // процессов идёт параллельно на T-й мс, за какое время завершатся K процессов.
-    const ask = randInt(0, 4)
+    const ask = pick(asks)
     const T = randInt(Math.floor(total / 3), Math.floor(total * 0.7))
     const done = finish.filter((f) => f <= T).length
     // На T-й мс процесс выполняется, если начался не позже и ещё не закончился.
@@ -3783,6 +3312,14 @@ export function t22Processes() {
   }
   return null
 }
+
+// Основной вопрос банка: за какое время завершится вся совокупность (критический путь)
+// и сколько процессов успеет завершиться к заданному моменту.
+export function t22Processes() { return t22Build([0, 0, 1, 3]) }
+
+// Параллельность: сколько процессов идёт одновременно в заданную миллисекунду и
+// сколько длится отрезок, на котором их одновременно работает максимум.
+export function t22Parallel() { return t22Build([2, 4]) }
 
 // ── №26 «Обработка целочисленной информации» (с прилагаемым файлом) ────────
 // Эталон (47 задач): во входном файле — параметры и список чисел; классика —
@@ -4042,33 +3579,6 @@ export function t3Database() {
   return null
 }
 
-// Старый типаж №3: как записать условие отбора при фильтрации.
-export function t3Filter() {
-  const fields = [["Фамилия", "текст"], ["Имя", "текст"], ["Пол", "текст", "м или д"],
-    ["Год рождения", "число"], ["Рост", "число"], ["Вес", "число"], ["Увлечение", "текст"]]
-  const height = pick([170, 175, 180, 185])
-  const year = pick([2007, 2008, 2009, 2010])
-  const girls = Math.random() < 0.5
-  const sex = girls ? "д" : "м"
-  const right = `Пол="${sex}" И Рост > ${height} И Год рождения < ${year}`
-  const wrong = [
-    `Пол="${sex}" ИЛИ Рост > ${height} И Год рождения = ${year - 1}`,
-    `Пол="${sex}" И Рост > ${height} ИЛИ Год рождения < ${year - 1}`,
-    `Пол="${sex}" И Рост = ${height} И Год рождения < ${year - 1}`,
-  ]
-  const options = shuffle([right, ...wrong])
-  return {
-    condition_text:
-      "База данных «Учащиеся» содержит поля:\n" +
-      tableBlock([["Поле", "Тип", "Примечание"], ...fields.map((f) => [f[0], f[1], f[2] || ""])]) + "\n" +
-      `Как следует записать условие отбора при фильтрации, которое позволит сформировать список ${girls ? "девушек" : "юношей"} ` +
-      `для участия в спортивном празднике? (Отбираются ${girls ? "девушки" : "юноши"}, имеющие рост более ${height} см ` +
-      `и родившиеся раньше ${year} года.)\n` +
-      tableBlock([["№", "Условие"], ...options.map((o, i) => [`${i + 1})`, o])]) + "\n" +
-      "В ответе укажите номер варианта.",
-    answer: String(options.indexOf(right) + 1),
-  }
-}
 
 // ── №10 «Поиск символов в текстовом редакторе» ─────────────────────────────
 // Эталон (68 задач): к заданию приложен текст, в котором надо посчитать вхождения
@@ -4148,26 +3658,6 @@ export function t10WordCount() {
   return null
 }
 
-// №10 (старый типаж): куда переместили файл — восстановить прежнее полное имя каталога.
-export function t10FilePath() {
-  const disk = pick(["A:\\", "C:\\", "D:\\"])
-  const parts = shuffle(["SCHOOL", "USER", "TXT", "MAY", "DOC", "WORK", "DATA"]).slice(0, 4)
-  const file = pick(["Дневник.txt", "Отчёт.doc", "Список.txt", "Задание.txt"])
-  const full = disk + parts.join("\\") + "\\" + file
-  const right = disk + parts.slice(0, -1).join("\\")
-  const options = shuffle([right, parts[parts.length - 1], parts[0], full.slice(0, full.lastIndexOf("\\"))]
-    .filter((v, i, a) => a.indexOf(v) === i)).slice(0, 4)
-  if (!options.includes(right)) options[0] = right
-  return {
-    condition_text:
-      `В некотором каталоге хранился файл ${file}. После того как в этом каталоге создали подкаталог и переместили ` +
-      `в созданный подкаталог файл ${file}, полное имя файла стало ${full}. ` +
-      "Каково полное имя каталога, в котором хранился файл до перемещения?\n" +
-      tableBlock([["№", "Вариант"], ...options.map((o, i) => [`${i + 1})`, o])]) + "\n" +
-      "В ответе укажите номер варианта.",
-    answer: String(options.indexOf(right) + 1),
-  }
-}
 
 // №26 (старый типаж): лучшие по среднему баллу ученики.
 const T26_SURNAMES = ["Иванов", "Петров", "Сидорова", "Кузнецов", "Смирнова", "Попов", "Волкова",
@@ -4859,153 +4349,6 @@ export function t9Rows() {
 }
 
 
-// №01: ориентированная схема дорог — длина самого длинного пути (в дорогах)
-// или количество различных путей из первого города в последний.
-const T1_CITIES = ["А", "Б", "В", "Г", "Д", "Е", "Ж", "З", "И", "К", "Л", "М"]
-
-function t1DirectedSvg(n, edges, labels) {
-  // Раскладка «слоями»: город i рисуем в колонке по его порядковому номеру,
-  // строки чередуем — так стрелки почти не пересекаются, как в схемах ФИПИ.
-  const W = 560, H = 240
-  const cols = Math.ceil(n / 2)
-  const pos = labels.map((_, i) => {
-    const c = Math.floor(i / 2), r = i % 2
-    return [40 + c * ((W - 80) / Math.max(1, cols - 1)), 60 + r * 110]
-  })
-  let el = `<defs><marker id="a" markerWidth="9" markerHeight="7" refX="9" refY="3.5" orient="auto">` +
-    `<polygon points="0 0, 9 3.5, 0 7" fill="#111"/></marker></defs>`
-  for (const [u, v] of edges) {
-    const [x1, y1] = pos[u], [x2, y2] = pos[v]
-    const dx = x2 - x1, dy = y2 - y1
-    const len = Math.hypot(dx, dy) || 1
-    const sx = x1 + dx / len * 15, sy = y1 + dy / len * 15
-    const ex = x2 - dx / len * 17, ey = y2 - dy / len * 17
-    el += `<line x1="${sx.toFixed(1)}" y1="${sy.toFixed(1)}" x2="${ex.toFixed(1)}" y2="${ey.toFixed(1)}" stroke="#111" stroke-width="1.3" marker-end="url(#a)"/>`
-  }
-  labels.forEach((lbl, i) => {
-    const [x, y] = pos[i]
-    el += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="14" fill="#fff" stroke="#111" stroke-width="1.4"/>`
-    el += `<text x="${x.toFixed(1)}" y="${(y + 5).toFixed(1)}" text-anchor="middle" font-size="15" font-family="Arial, sans-serif" font-weight="bold" fill="#111">${lbl}</text>`
-  })
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${el}</svg>`
-}
-
-export function t1LongestPath() {
-  for (let attempt = 0; attempt < 40; attempt++) {
-    const n = randInt(8, 12)
-    const labels = T1_CITIES.slice(0, n)
-    const edges = []
-    // Рёбра только «слева направо» — граф ацикличен, путь всегда конечен.
-    for (let i = 0; i < n; i++) {
-      for (let j = i + 1; j < Math.min(n, i + 4); j++) {
-        if (Math.random() < 0.45) edges.push([i, j])
-      }
-    }
-    // Изолированных городов на схемах ФИПИ не бывает: каждому даём вход и выход.
-    for (let i = 0; i < n - 1; i++) {
-      if (!edges.some(([u]) => u === i)) edges.push([i, randInt(i + 1, Math.min(n - 1, i + 3))])
-    }
-    for (let j = 1; j < n; j++) {
-      if (!edges.some(([, v]) => v === j)) edges.push([randInt(Math.max(0, j - 3), j - 1), j])
-    }
-    if (!edges.some(([u]) => u === 0) || !edges.some(([, v]) => v === n - 1)) continue
-    // Динамика по вершинам: длиннейший путь (в рёбрах) и количество путей.
-    const longest = Array(n).fill(-Infinity), ways = Array(n).fill(0)
-    longest[0] = 0; ways[0] = 1
-    for (let v = 1; v < n; v++) {
-      for (const [a, b] of edges) {
-        if (b !== v || longest[a] === -Infinity) continue
-        longest[v] = Math.max(longest[v], longest[a] + 1)
-        ways[v] += ways[a]
-      }
-    }
-    if (!isFinite(longest[n - 1]) || longest[n - 1] < 3 || ways[n - 1] < 2) continue
-    const askLong = Math.random() < 0.5
-    return {
-      condition_text:
-        `На рисунке представлена схема дорог, связывающих города ${labels.join(", ")}. ` +
-        "По каждой дороге можно двигаться только в одном направлении, указанном стрелкой.\n" +
-        (askLong
-          ? `Какова длина самого длинного пути из города ${labels[0]} в город ${labels[n - 1]}? ` +
-            "Длиной пути считать количество дорог, составляющих этот путь."
-          : `Сколько существует различных путей из города ${labels[0]} в город ${labels[n - 1]}?`),
-      image_url: svgUrl(t1DirectedSvg(n, edges, labels)),
-      answer: String(askLong ? longest[n - 1] : ways[n - 1]),
-    }
-  }
-  return null
-}
-
-// №01 (старый типаж): дана таблица стоимости перевозок — выбрать схему из четырёх.
-// Все четыре схемы рисуются в одном изображении (2 × 2) с номерами.
-export function t1MatchScheme() {
-  for (let attempt = 0; attempt < 40; attempt++) {
-    const n = 5
-    const labels = ["A", "B", "C", "D", "E"]
-    const w = t1RandomGraph(n, randInt(1, 2))
-    // Стоимости перевозок в этом типаже у ФИПИ однозначные — ужимаем до 1…9.
-    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) if (w[i][j]) { const v = randInt(1, 9); w[i][j] = w[j][i] = v }
-    const edges = []
-    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) if (w[i][j]) edges.push([i, j, w[i][j]])
-    if (edges.length < 4 || edges.length > 6) continue
-    // Отвлекающие схемы: у каждой изменено одно ребро (добавлено, убрано или другой вес).
-    const variants = [edges]
-    for (let k = 0; k < 20 && variants.length < 4; k++) {
-      const alt = edges.map((e) => [...e])
-      const mode = randInt(0, 2)
-      if (mode === 0) {
-        alt[randInt(0, alt.length - 1)][2] += randInt(1, 3)
-      } else if (mode === 1) {
-        alt.splice(randInt(0, alt.length - 1), 1)
-      } else {
-        // добавить ребро, которого нет
-        const pairs = []
-        for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) if (!w[i][j]) pairs.push([i, j])
-        if (!pairs.length) continue
-        const [i, j] = pick(pairs)
-        alt.push([i, j, randInt(1, 5)])
-      }
-      const key = (list) => list.map((e) => e.join(",")).sort().join(";")
-      if (variants.every((v) => key(v) !== key(alt))) variants.push(alt)
-    }
-    if (variants.length < 4) continue
-    const order = shuffle(variants.map((v, i) => ({ v, right: i === 0 })))
-    // Одно изображение: четыре схемы 2 × 2 с номерами.
-    const cellW = 270, cellH = 190
-    let el = ""
-    order.forEach((o, k) => {
-      const ox = (k % 2) * cellW, oy = Math.floor(k / 2) * cellH
-      const pos = labels.map((_, i) => {
-        const a = -Math.PI / 2 + (2 * Math.PI * i) / n
-        return [ox + cellW / 2 + 62 * Math.cos(a), oy + cellH / 2 + 10 + 62 * Math.sin(a)]
-      })
-      el += `<text x="${ox + 12}" y="${oy + 20}" font-size="14" font-family="Arial, sans-serif" fill="#111">${k + 1})</text>`
-      for (const [i, j, val] of o.v) {
-        const [x1, y1] = pos[i], [x2, y2] = pos[j]
-        el += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="#111" stroke-width="1.2"/>`
-        el += `<text x="${((x1 + x2) / 2).toFixed(1)}" y="${((y1 + y2) / 2 - 3).toFixed(1)}" font-size="12" text-anchor="middle" font-family="Arial, sans-serif" fill="#111">${val}</text>`
-      }
-      labels.forEach((lbl, i) => {
-        const [x, y] = pos[i]
-        el += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="11" fill="#fff" stroke="#111" stroke-width="1.2"/>`
-        el += `<text x="${x.toFixed(1)}" y="${(y + 4).toFixed(1)}" text-anchor="middle" font-size="12" font-family="Arial, sans-serif" font-weight="bold" fill="#111">${lbl}</text>`
-      })
-    })
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${cellW * 2}" height="${cellH * 2}" viewBox="0 0 ${cellW * 2} ${cellH * 2}"><rect width="${cellW * 2}" height="${cellH * 2}" fill="#fff"/>${el}</svg>`
-    return {
-      condition_text:
-        "В таблице приведена стоимость перевозок между соседними железнодорожными станциями. " +
-        "Укажите схему, соответствующую таблице.\n" +
-        tableBlock([["", ...labels], ...w.map((row, i) => [labels[i], ...row.map((x) => (x ? String(x) : ""))])]) + "\n" +
-        "Варианты ответа приведены на рисунке. В ответе укажите номер схемы.",
-      image_url: svgUrl(svg),
-      answer: String(order.findIndex((o) => o.right) + 1),
-    }
-  }
-  return null
-}
-
-
 // ── №26: сюжеты с симуляцией (эталон — 47 задач, механики разные) ──────────
 // Конференц-зал: из заявок (начало, конец) выбрать максимум непересекающихся
 // мероприятий; второе число — либо самое позднее время окончания последнего,
@@ -5430,166 +4773,36 @@ export function t17PairRule() {
 }
 
 
-export function t3Records() {
-  for (let attempt = 0; attempt < 40; attempt++) {
-    const n = randInt(5, 7)
-    const rows = shuffle(T3_SURNAMES).slice(0, n).map((fam) => ({
-      fam, sex: pick(["м", "ж"]),
-      marks: Object.fromEntries(T3_SUBJECTS.map((sub) => [sub, randInt(20, 95)])),
-    }))
-    const [s1, s2] = shuffle(T3_SUBJECTS).slice(0, 2)
-    const sex = pick(["м", "ж"])
-    const or = Math.random() < 0.5
-    const test = (r) => or
-      ? (r.sex === sex || r.marks[s1] > r.marks[s2])
-      : (r.sex === sex && r.marks[s1] > r.marks[s2])
-    const count = rows.filter(test).length
-    if (count === 0 || count === n) continue
-    const options = shuffle([...new Set([count, count + 1, Math.max(0, count - 1), Math.min(n, count + 2)])]).slice(0, 4)
-    if (!options.includes(count)) options[0] = count
-    return {
-      condition_text:
-        "Ниже в табличной форме представлен фрагмент базы данных о результатах тестирования учащихся " +
-        "(используется стобалльная шкала):\n" +
-        tableBlock([["Фамилия", "Пол", ...T3_SUBJECTS],
-          ...rows.map((r) => [r.fam, r.sex, ...T3_SUBJECTS.map((sub) => String(r.marks[sub]))])]) + "\n" +
-        `Сколько записей в данном фрагменте удовлетворяют условию «Пол = '${sex}' ${or ? "ИЛИ" : "И"} ${s1} > ${s2}»?\n` +
-        tableBlock([["№", "Вариант"], ...options.map((o, i) => [`${i + 1})`, String(o)])]) + "\n" +
-        "В ответе укажите номер варианта.",
-      answer: String(options.indexOf(count) + 1),
-    }
-  }
-  return null
-}
 
 
 
-const T3_CITIES = ["Москва", "Тверь", "Казань", "Пермь", "Омск", "Курск", "Тула"]
-
-export function t3TwoTables() {
-  for (let attempt = 0; attempt < 60; attempt++) {
-    const n = randInt(12, 18)
-    const people = shuffle(T3_PEOPLE).slice(0, Math.min(n, T3_PEOPLE.length)).map((name, i) => ({
-      id: 10 + i * randInt(2, 5),
-      name,
-      sex: /ова |ева |ина |ая /.test(name) || /а [А-Я]\.[А-Я]\.$/.test(name) ? "Ж" : pick(["М", "Ж"]),
-      year: randInt(1935, 1985),
-      city: pick(T3_CITIES),
-    }))
-    const links = []
-    for (const child of people) {
-      for (const parent of people) {
-        if (parent === child) continue
-        const diff = child.year - parent.year
-        if (diff >= 16 && diff <= 45 && Math.random() < 0.3) links.push({ parent: parent.id, child: child.id })
-      }
-    }
-    if (links.length < 8) continue
-    const byId = Object.fromEntries(people.map((p) => [p.id, p]))
-    const limit = pick([21, 22, 23, 24, 25])
-    const sex = pick(["М", "Ж"])
-    // Четыре вопроса из банка на одном наборе данных.
-    const youngParents = new Set()
-    for (const l of links) {
-      const p = byId[l.parent], c = byId[l.child]
-      if (p.sex === sex && c.year - p.year < limit) youngParents.add(c.id)
-    }
-    // Самая молодая мать: минимальная разница лет среди женщин-родителей.
-    let youngest = null, youngestAge = Infinity
-    for (const l of links) {
-      const p = byId[l.parent], c = byId[l.child]
-      if (p.sex !== "Ж") continue
-      const age = c.year - p.year
-      if (age < youngestAge) { youngestAge = age; youngest = p.id }
-    }
-    // Жители, родившиеся в том же городе, что и их родитель.
-    const sameCity = new Set(links.filter((l) => byId[l.parent].city === byId[l.child].city).map((l) => l.child))
-    // Жители, у которых в таблице есть и мать, и отец.
-    const parentsOf = new Map()
-    links.forEach((l) => {
-      if (!parentsOf.has(l.child)) parentsOf.set(l.child, [])
-      parentsOf.get(l.child).push(byId[l.parent].sex)
-    })
-    const bothParents = [...parentsOf.values()].filter((v) => v.includes("М") && v.includes("Ж")).length
-    const ask = randInt(0, 3)
-    const answers = [String(youngParents.size), String(youngest), String(sameCity.size), String(bothParents)]
-    if (!answers[ask] || answers[ask] === "null" || answers[ask] === "0") continue
-    const questions = [
-      `определите, у скольких детей на момент их рождения ${sex === "М" ? "отцам" : "матерям"} было меньше ${limit} полных лет`,
-      "определите ID женщины, ставшей матерью в наиболее молодом возрасте",
-      "определите, сколько жителей родились в том же городе, что и их родитель",
-      "определите, для скольких жителей в таблице указаны оба родителя",
-    ]
-    return {
-      condition_text:
-        "Ниже представлены два фрагмента таблиц из базы данных о жителях микрорайона. " +
-        "Каждая строка таблицы 2 содержит информацию о ребёнке и об одном из его родителей. " +
-        "Информация представлена значением поля ID в соответствующей строке таблицы 1.\n" +
-        "Таблица 1:\n" +
-        tableBlock([["ID", "Фамилия И.О.", "Пол", "Год рождения", "Город рождения"],
-          ...people.map((p) => [String(p.id), p.name, p.sex, String(p.year), p.city])]) + "\n" +
-        "Таблица 2:\n" +
-        tableBlock([["ID родителя", "ID ребёнка"], ...links.map((l) => [String(l.parent), String(l.child)])]) + "\n" +
-        `На основании приведённых данных ${questions[ask]}. ` +
-        "При вычислении ответа учитывайте только информацию из приведённых фрагментов таблиц.",
-      answer: answers[ask],
-    }
-  }
-  return null
-}
-
-// №17 без файла: множество чисел из отрезка с условиями делимости.
-export function t17Range() {
-  for (let attempt = 0; attempt < 40; attempt++) {
-    const lo = randInt(10000, 20000), hi = randInt(40000, 60000)
-    const m = pick([7, 11, 13, 17, 19]), r = randInt(1, m - 1)
-    const [d1, d2] = shuffle([3, 4, 5, 6, 8, 9, 12]).slice(0, 2)
-    const found = []
-    for (let v = lo; v <= hi; v++) if (v % m === r && v % d1 !== 0 && v % d2 !== 0) found.push(v)
-    if (found.length < 50) continue
-    const askMin = Math.random() < 0.5
-    return {
-      condition_text:
-        `Рассматривается множество целых чисел, принадлежащих числовому отрезку [${lo.toLocaleString("ru-RU").replace(/\s/g, "\u00A0")}; ` +
-        `${hi.toLocaleString("ru-RU").replace(/\s/g, "\u00A0")}], остаток от деления которых на ${m} равен ${r}, ` +
-        `и при этом они не делятся ни на ${d1}, ни на ${d2}. ` +
-        `Найдите количество таких чисел и ${askMin ? "минимальное" : "максимальное"} из них. ` +
-        `В ответе запишите два целых числа: сначала количество, затем ${askMin ? "минимальное" : "максимальное"} число.`,
-      answer: `${found.length} ${askMin ? found[0] : found[found.length - 1]}`,
-    }
-  }
-  return null
-}
 
 
-const T3_SURNAMES = ["Аганян", "Воронин", "Григорчук", "Роднина", "Сергеенко", "Черепанова",
-  "Титов", "Мельник", "Ерохин", "Кузьмина", "Панов", "Савельева"]
-const T3_SUBJECTS = ["Математика", "Русский язык", "Химия", "Информатика", "Биология"]
-const T3_PEOPLE = ["Петрова Н.А.", "Иваненко И.М.", "Соколов П.Р.", "Кузьмина А.В.", "Лебедев О.С.",
-  "Морозова Т.Н.", "Волков Д.А.", "Зайцева Е.П.", "Орлов К.М.", "Белова Л.И.", "Гусев Н.Н.", "Ткачук В.С."]
+
+
 
 export const GENERATORS_EGE_INF = {
-  2: [t2Misha, t2AllRows, t2ChooseExpr],
-  4: [t4FanoShortest, t4FanoColors, t4FanoSumLen, t4FanoWord, t4SeqHex, t4UniqueDecode],
-  5: [t5Bin, t5Parity, t5Ternary, t5Calc, t5Automat],
-  1: [t1GraphTable, t1ShortestPath, t1LongestPath, t1MatchScheme],
-  6: [t6Print, t6Input, t6Turtle],
-  7: [t7Transfer, t7Colors, t7ColorsCompressed, t7Volume, t7Packet, t7Sound, t7Modem, t7Traffic, t7Reserve, t7Adsl, t7Rgb, t7Unicode],
-  8: [t8WordIndex, t8FirstLetter, t8Filter, t8Parity, t8CountOnce, t8CountDigits, t8Lamps, t8DistinctAlternating],
-  11: [t11PassExtra, t11Volume, t11Plate, t11Split, t11Power, t11MinLength, t11Message, t11Catalogs],
-  12: [t12EditorMinN, t12EditorSum, t12EditorResult, t12EditorMaxSum, t12Turing, t12StringAlg],
-  13: [t13Graph, t13MaskByte, t13HostAddress, t13NetAddress, t13CountOnes, t13MaskBits, t13Url],
+  2: [t2Misha],
+  4: [t4FanoShortest, t4FanoColors, t4FanoSumLen, t4FanoWord],
+  5: [t5Bin, t5Parity, t5Ternary],
+  1: [t1GraphTable, t1StarsAmbiguous],
+  6: [t6Turtle],
+  7: [t7Transfer, t7Colors, t7ColorsCompressed, t7Volume, t7Packet, t7Sound, t7Modem, t7Traffic, t7Reserve, t7Adsl, t7Rgb],
+  8: [t8WordIndex, t8FirstLetter, t8Filter, t8Parity, t8CountOnce, t8CountDigits, t8DistinctAlternating],
+  11: [t11PassExtra, t11Volume, t11Plate, t11Split, t11Power, t11MinLength, t11Message],
+  12: [t12EditorMinN, t12EditorSum, t12EditorResult, t12EditorMaxSum, t12Turing],
+  13: [t13MaskByte, t13HostAddress, t13NetAddress, t13CountOnes, t13MaskBits],
   14: [t14PowerSum, t14UnknownDigit, t14MinusX, t14BinOnes],
   15: [t15Inequality, t15Segments, t15DelSegment, t15DelMax, t15DelMin, t15BitAnd],
-  16: [t16Formula, t16FG, t16Print, t16Stars],
-  3: [t3Database, t3Filter, t3Records, t3TwoTables],
+  16: [t16Formula, t16FG],
+  3: [t3Database],
   9: [t9Temperature, t9Rows],
-  10: [t10WordCount, t10FilePath],
-  17: [t17Sequence, t17Range, t17PairRule],
+  10: [t10WordCount],
+  17: [t17Sequence, t17PairRule],
   18: [t18Robot],
   19: [t19FirstMove],
-  23: [t23Programs],
-  22: [t22Processes],
+  23: [t23Up, t23Down, t23Via, t23Ban],
+  22: [t22Processes, t22Parallel],
   24: [t24MaxRun, t24Substring, t24Frequency, t24Pairs, t24Expression, t24MaxNumber, t24MaxRunClass],
   26: [t26Containers, t26Students, t26Conference, t26Seats, t26Storage, t26Cakes, t26Rating, t26Sales, t26Server],
   27: [t27MaxPair, t27Control, t27Triples, t27ThreeReadings, t27PeakTriple, t27MaxSubseq, t27Placement, t27Clusters],
@@ -5601,39 +4814,23 @@ export const GENERATORS_EGE_INF = {
 export const GEN_META_EGE_INF = {
   2: [["Таблицы истинности", [
     ["misha", "Фрагмент из трёх строк с пропусками", t2Misha],
-    ["allrows", "Все наборы, где F ложна/истинна", t2AllRows],
-    ["choose", "Выбрать выражение по фрагменту", t2ChooseExpr],
   ]]],
   4: [["Условие Фано", [
     ["shortest", "Кратчайшее кодовое слово для буквы", t4FanoShortest],
     ["colors", "Кратчайший код для цвета рисунка", t4FanoColors],
     ["sumlen", "Наименьшая суммарная длина кодов", t4FanoSumLen],
     ["word", "Минимальная длина кодировки слова", t4FanoWord],
-  ]],
-  ["Кодирование последовательностей", [
-    ["seq-hex", "Двухразрядные коды → шестнадцатеричная запись", t4SeqHex],
-    ["unique", "Какое сообщение декодируется однозначно", t4UniqueDecode],
   ]]],
   5: [["Алгоритм над записью числа", [
     ["bin", "Дописывание разрядов к двоичной записи", t5Bin],
     ["parity", "Контроль чётности (сумма цифр)", t5Parity],
     ["ternary", "Троичная запись (остаток × 5)", t5Ternary],
-  ]],
-  ["Исполнители и автоматы", [
-    ["calc", "Калькулятор/Квадратор: собрать программу", t5Calc],
-    ["automat", "Автомат: произведения цифр", t5Automat],
   ]]],
   1: [["Схема дорог и таблица", [
     ["pair", "Граф + таблица: сумма длин дорог", t1GraphTable],
-    ["short", "Кратчайший путь по таблице", t1ShortestPath],
-    ["long", "Ориентированный граф: длина/число путей", t1LongestPath],
-    ["scheme", "Выбрать схему по таблице", t1MatchScheme],
+    ["stars", "Звёздочки: какие номера могут соответствовать", t1StarsAmbiguous],
   ]]],
-  6: [["Результат работы программы", [
-    ["print", "Что напечатает программа", t6Print],
-    ["input", "Наибольшее/наименьшее введённое s", t6Input],
-  ]],
-  ["Исполнитель Черепаха", [
+  6: [["Исполнитель Черепаха", [
     ["turtle", "Точки в пересечении фигур", t6Turtle],
   ]]],
   7: [["Передача данных", [
@@ -5649,7 +4846,6 @@ export const GEN_META_EGE_INF = {
     ["traffic", "Экономия трафика при пересжатии", t7Traffic],
     ["reserve", "Сколько памяти зарезервировать", t7Reserve],
     ["adsl", "Размер файла по скорости и времени", t7Adsl],
-    ["unicode", "Объём предложения в Unicode", t7Unicode],
   ]],
   ["Звук", [
     ["sound", "Оцифровка: частота, глубина, каналы", t7Sound],
@@ -5663,7 +4859,6 @@ export const GEN_META_EGE_INF = {
   ["Комбинаторика слов", [
     ["count-once", "Буква ровно один раз (Вася/Игорь)", t8CountOnce],
     ["count-digits", "Числа в системе счисления с условием", t8CountDigits],
-    ["lamps", "Световое табло: сколько лампочек", t8Lamps],
     ["distinct", "Все цифры различны, чётность чередуется", t8DistinctAlternating],
   ]]],
   11: [["Объём памяти при посимвольном кодировании", [
@@ -5678,9 +4873,6 @@ export const GEN_META_EGE_INF = {
   ]],
   ["Объём сообщения", [
     ["message", "Секретное сообщение из N символов", t11Message],
-  ]],
-  ["Файловая система", [
-    ["catalogs", "Путь по каталогам вверх-вниз", t11Catalogs],
   ]]],
   12: [["Исполнитель Редактор", [
     ["min-n", "Наименьшее n по сумме цифр", t12EditorMinN],
@@ -5690,22 +4882,13 @@ export const GEN_META_EGE_INF = {
   ]],
   ["Исполнитель МТ", [
     ["turing", "Машина Тьюринга над двоичным числом", t12Turing],
-  ]],
-  ["Строковые функции", [
-    ["string", "Длина/Извлечь/Склеить: значение b", t12StringAlg],
   ]]],
-  13: [["Схема дорог (граф)", [
-    ["graph", "Пути из А в М через город", t13Graph],
-  ]],
-  ["Маски сетей TCP/IP", [
+  13: [["Маски сетей TCP/IP", [
     ["mask-byte", "Байт маски по адресу сети", t13MaskByte],
     ["host", "Наибольший/наименьший адрес узла", t13HostAddress],
     ["net", "Адрес сети по IP и маске", t13NetAddress],
     ["count-ones", "Адреса с условием на число единиц", t13CountOnes],
     ["mask-bits", "Число единиц/нулей в маске", t13MaskBits],
-  ]],
-  ["Адрес файла в Интернете", [
-    ["url", "Собрать адрес из фрагментов А–Ж", t13Url],
   ]]],
   14: [["Запись значения выражения", [
     ["powsum", "Нули/цифры в записи суммы степеней", t14PowerSum],
@@ -5730,7 +4913,10 @@ export const GEN_META_EGE_INF = {
     ["del-min", "Наименьшее A", t15DelMin],
   ]]],
   23: [["Исполнитель: число программ", [
-    ["programs", "Сколько программ переводит A в B", t23Programs],
+    ["up", "От меньшего к большему", t23Up],
+    ["down", "От большего к меньшему", t23Down],
+    ["via", "С обязательным пунктом траектории", t23Via],
+    ["ban", "С исключаемым пунктом траектории", t23Ban],
   ]]],
   25: [["Маски чисел", [
     ["mask", "Числа по маске, делящиеся на D", t25Mask],
@@ -5743,13 +4929,9 @@ export const GEN_META_EGE_INF = {
   ]]],
   3: [["Реляционная база данных", [
     ["db", "Три таблицы: агрегат по связям", t3Database],
-    ["filter", "Условие отбора при фильтрации", t3Filter],
-    ["records", "Сколько записей удовлетворяют условию", t3Records],
-    ["two-tables", "Две связанные таблицы (родители и дети)", t3TwoTables],
   ]]],
   10: [["Поиск в текстовом документе", [
     ["words", "Сколько раз встречается слово", t10WordCount],
-    ["path", "Полное имя каталога до перемещения", t10FilePath],
   ]]],
   9: [["Электронная таблица измерений", [
     ["temp", "Максимум и среднее по диапазону часов", t9Temperature],
@@ -5760,11 +4942,11 @@ export const GEN_META_EGE_INF = {
   ]]],
   17: [["Числовая последовательность из файла", [
     ["seq", "Пары/тройки с условием на сумму", t17Sequence],
-    ["range", "Числа отрезка с условиями делимости", t17Range],
     ["pair-rule", "Пары: остатки и делимость", t17PairRule],
   ]]],
   22: [["Многопроцессорные системы", [
     ["proc", "Критический путь / успевшие процессы", t22Processes],
+    ["parallel", "Параллельные процессы: сколько и как долго", t22Parallel],
   ]]],
   26: [["Обработка целочисленной информации", [
     ["containers", "Контейнеры и грузоподъёмность", t26Containers],
@@ -5810,9 +4992,5 @@ export const GEN_META_EGE_INF = {
   16: [["Рекуррентные соотношения", [
     ["formula", "Выражение (F(a) − F(b))/F(c)", t16Formula],
     ["fg", "Две функции F и G", t16FG],
-  ]],
-  ["Рекурсивные алгоритмы", [
-    ["print", "Какие числа выведет F(k)", t16Print],
-    ["stars", "Сколько звёздочек напечатает F(k)", t16Stars],
   ]]],
 }
