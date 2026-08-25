@@ -46,12 +46,6 @@ function getDaysUntilExam(student) {
   return diff >= 0 ? diff : null
 }
 
-function getProgressTrend(student) {
-  const r = student.results || []
-  if (r.length < 2) return null
-  return r[r.length - 1] - r[r.length - 2]
-}
-
 const GOAL_STYLE = {
   "ОГЭ":          { cls: "bg-blue-100 text-blue-700",   label: "ОГЭ" },
   "ЕГЭ":          { cls: "bg-purple-100 text-purple-700", label: "ЕГЭ" },
@@ -483,27 +477,22 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
         /* Desktop table */
         <div className="glass overflow-hidden">
           <div className="grid px-4 py-2.5 glass-table-header text-xs text-gray-500 font-medium"
-            style={{ gridTemplateColumns: "1fr 180px 140px 130px" }}>
+            style={{ gridTemplateColumns: "1fr 180px 140px 36px" }}>
             <span>Ученик</span>
             <span className="flex items-center gap-1"><Icon name="calendar" size={11} />Следующий урок</span>
             <span className="flex items-center gap-1"><Icon name="dollar" size={11} />Оплата</span>
-            <span className="flex items-center gap-1"><Icon name="target" size={11} />Статус</span>
+            <span />
           </div>
 
           {filtered.map((student) => {
             const status = getPaymentStatus(student)
             const next = getNextLesson(student)
-            const examDays = getDaysUntilExam(student)
-            const trend = getProgressTrend(student)
             const goal = GOAL_STYLE[student.goal]
-            const avg = student.results?.length > 0
-              ? Math.round(student.results.reduce((a, b) => a + b, 0) / student.results.length)
-              : null
 
             return (
               <div key={student.id} onClick={() => setSelectedStudent(student.id)}
                 className="group grid border-t border-white/40 px-4 py-3 items-center cursor-pointer hover:bg-white/30 active:bg-white/50 transition-colors"
-                style={{ gridTemplateColumns: "1fr 180px 140px 130px" }}>
+                style={{ gridTemplateColumns: "1fr 180px 140px 36px" }}>
 
                 {/* Student */}
                 <div className="flex items-center gap-3 min-w-0">
@@ -552,34 +541,10 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
                   )}
                 </div>
 
-                {/* Status: exam countdown or score trend */}
-                <div className="flex items-center justify-between">
-                  {examDays !== null ? (
-                    <span className={`inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-lg ${
-                      examDays <= 7  ? "bg-red-50 text-red-700" :
-                      examDays <= 30 ? "bg-amber-50 text-amber-700" :
-                      "bg-gray-100 text-gray-500"
-                    }`}>
-                      <Icon name="target" size={11} />
-                      {examDays === 0 ? "Сегодня!" : `${examDays} дн.`}
-                    </span>
-                  ) : avg !== null ? (
-                    <span className="inline-flex items-center gap-1.5 text-xs text-gray-600">
-                      {trend !== null && (
-                        <Icon
-                          name={trend >= 0 ? "trending-up" : "trending-down"}
-                          size={13}
-                          className={trend > 0 ? "text-green-500" : trend < 0 ? "text-red-400" : "text-gray-400"}
-                        />
-                      )}
-                      <span className="font-medium">{avg}</span>
-                      <span className="text-gray-400">баллов</span>
-                    </span>
-                  ) : (
-                    <span className="text-gray-300 text-xs">—</span>
-                  )}
+                {/* Delete */}
+                <div className="flex justify-end">
                   <button onClick={(e) => handleDelete(student.id, e)}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500">
+                    className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500 active:scale-90">
                     <Icon name="x" size={14} />
                   </button>
                 </div>
