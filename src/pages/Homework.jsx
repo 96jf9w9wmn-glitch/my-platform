@@ -54,6 +54,47 @@ function buildUploadPath(tutorId, name) {
   return tutorId + "/" + Date.now() + "." + ext
 }
 
+// Локальная дата в формате YYYY-MM-DD. toISOString() отдал бы UTC и вечером по
+// Москве сдвинул бы срок на день назад.
+function isoDay(offsetDays = 0) {
+  const d = new Date()
+  d.setDate(d.getDate() + offsetDays)
+  const p = (n) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
+// Срок сдачи выбирается одним нажатием: календарь остаётся для редкого случая.
+const DEADLINE_CHIPS = [
+  { label: "Без срока", days: null },
+  { label: "Завтра", days: 1 },
+  { label: "Через 3 дня", days: 3 },
+  { label: "Через неделю", days: 7 },
+]
+
+const TIME_CHIPS = [0, 20, 30, 45, 60]
+
+const chipCls = (on) =>
+  `px-3 py-1.5 rounded-full text-xs transition-all active:scale-[0.94] ${
+    on
+      ? "bg-blue-600 text-white shadow-sm"
+      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+  }`
+
+// Переключатель «тумблер + подпись»: одинаковый во всей форме.
+function Toggle({ on, onClick, title, note }) {
+  return (
+    <button type="button" onClick={onClick} className="w-full flex items-start gap-3 text-left active:scale-[0.99] transition-transform">
+      <div className={`mt-0.5 w-10 h-6 rounded-full transition-colors relative flex-shrink-0 ${on ? "bg-blue-600" : "bg-gray-200"}`}>
+        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${on ? "left-5" : "left-1"}`} />
+      </div>
+      <div className="min-w-0">
+        <div className="text-sm text-gray-700">{title}</div>
+        {note && <div className="text-xs text-gray-400 leading-snug">{note}</div>}
+      </div>
+    </button>
+  )
+}
+
 function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw }) {
   const isEditing = !!editingHw
   const [studentId, setStudentId] = useState(editingHw?.student_id ? String(editingHw.student_id) : "")
@@ -62,9 +103,18 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
   const [deadline, setDeadline] = useState(editingHw?.deadline || "")
   // Ограничение по времени в минутах: пусто — без таймера (как было раньше).
   const [timeLimit, setTimeLimit] = useState(editingHw?.time_limit_min ? String(editingHw.time_limit_min) : "")
+  // Календарь показываем только если срок не попал в быстрые чипы.
+  const [pickDate, setPickDate] = useState(
+    !!editingHw?.deadline && !DEADLINE_CHIPS.some((c) => c.days != null && isoDay(c.days) === editingHw.deadline)
+  )
   const [file, setFile] = useState(null)
   const [saving, setSaving] = useState(false)
-  const [hwType, setHwType] = useState(editingHw?.hw_type || "written")
+  const [formError, setFormError] = useState("")
+  // Тип задания больше не выбирается вручную: работа становится тестом ровно
+  // тогда, когда у неё появляются ответы для автопроверки (тумблер в форме).
+  // «Комбинированное» сохраняем только у старых заданий, чтобы правка не меняла
+  // ученику способ сдачи.
+  const [autoCheck, setAutoCheck] = useState(editingHw ? editingHw.hw_type !== "written" : false)
   const [requireSolution, setRequireSolution] = useState(editingHw?.require_solution || false)
   const [answersInput, setAnswersInput] = useState(editingHw?.correct_answers?.join(" ") || "")
   // Интерактивный тест с выбором ответа: варианты по вопросам + правильный на каждый.
@@ -198,7 +248,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
       })
 
     if (mcqOk) {
-      setHwType("test")
+      setAutoCheck(true)
       setTestOptions(tasks.map((t) => cleanOpts(t)))
       setMcqCorrect(tasks.map((t) => t.answer.trim()))
       setAnswersInput("")
@@ -214,15 +264,27 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
         answers.length > 0 &&
         answers.every((a) => a.length > 0 && !/[\s,\\{}]/.test(a))
       if (allTestable) {
-        setHwType("test")
+        setAutoCheck(true)
         setAnswersInput(answers.join(" "))
+      } else {
+        // Ответы не годятся для автопроверки (формулы, перечисления) — работа
+        // остаётся письменной, репетитор проверит руками.
+        setAutoCheck(false)
+        setAnswersInput("")
       }
     }
     setPreview(null)
     setShowGen(false)
   }
 
+  // Уже выставленное нестандартное время (например, у старого задания) не должно
+  // пропадать из чипов — иначе правка молча его сбросит.
+  const timeChips = timeLimit && !TIME_CHIPS.includes(Number(timeLimit))
+    ? [...TIME_CHIPS, Number(timeLimit)].sort((a, b) => a - b)
+    : TIME_CHIPS
+
   const isMcq = Array.isArray(testOptions) && testOptions.length > 0
+  const hwType = !autoCheck ? "written" : editingHw?.hw_type === "combined" ? "combined" : "test"
   const freeAnswers = answersInput
     .trim()
     .split(/\s+/)
@@ -231,14 +293,14 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
   const questionCount = correctAnswers.length
 
   async function handleSubmit() {
-    if (!studentId || !title) {
-      alert("Выбери ученика и заполни название")
-      return
+    // Ошибку показываем в самой форме, у кнопки: alert прерывает заполнение и
+    // не подсказывает, какое поле пустое.
+    if (!studentId) return setFormError("Выбери, кому задать")
+    if (!title.trim()) return setFormError("Напиши, что задать")
+    if (hwType !== "written" && questionCount === 0) {
+      return setFormError("Впиши ответы — по ним работа проверится сама")
     }
-    if ((hwType === "test" || hwType === "combined") && questionCount === 0) {
-      alert("Введи правильные ответы для теста")
-      return
-    }
+    setFormError("")
     setSaving(true)
 
     let fileUrl = isEditing ? editingHw.file_url : null
@@ -309,51 +371,54 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
       <div className="glass-modal p-6 w-full max-w-md max-h-[90dvh] overflow-y-auto">
         <div className="flex justify-between items-center mb-5">
           <h2 className="text-lg font-medium">{isEditing ? "Редактировать задание" : "Новое задание"}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><Icon name="x" size={18} /></button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 active:scale-90 transition-transform"><Icon name="x" size={18} /></button>
         </div>
 
-        <div className="flex flex-col gap-4">
-          <div>
-            <label className="text-sm text-gray-500 mb-1 block">Ученик</label>
-            <select value={studentId} onChange={(e) => setStudentId(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400">
-              <option value="">Выбери ученика...</option>
-              {students.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
+        <div className="flex flex-col gap-5">
+          {/* 1. Кому. Подпись не нужна — вопрос стоит прямо в поле. */}
+          <select value={studentId} onChange={(e) => setStudentId(e.target.value)}
+            aria-label="Ученик" className="input-glass">
+            <option value="">Кому задать?</option>
+            {students.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+
+          {/* 2. Что задать: название, текст заданий и файл — одним блоком. */}
+          <div className="flex flex-col gap-2">
+            <input value={title} onChange={(e) => setTitle(e.target.value)}
+              placeholder="Что задать? Например: Параграф 5, №1–10"
+              className="input-glass" />
+
+            <textarea value={description} onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+              placeholder="Сами задания или пояснения — необязательно"
+              className="input-glass resize-none" />
+
+            <input ref={fileRef} type="file" className="hidden" onChange={(e) => setFile(e.target.files[0])} />
+            <button
+              type="button"
+              onClick={() => fileRef.current.click()}
+              className="self-start inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-blue-600 active:scale-[0.96] transition-all max-w-full"
+            >
+              <Icon name="paperclip" size={13} />
+              <span className="truncate">
+                {file ? file.name : isEditing && editingHw.file_url ? "Заменить файл" : "Прикрепить файл"}
+              </span>
+            </button>
           </div>
 
-          <div>
-            <label className="text-sm text-gray-500 mb-2 block">Тип задания</label>
-            <div className="flex gap-2">
-              {Object.entries(TYPE_LABELS).map(([key, val]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setHwType(key)}
-                  className={`flex-1 py-2.5 px-1 rounded-lg border transition-colors flex flex-col items-center gap-0.5 ${
-                    hwType === key ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                  }`}
-                >
-                  <Icon name={val.iconName} size={14} />
-                  <span className="text-[10px] leading-tight text-center">{val.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Генерация ДЗ по теме через ИИ */}
-          <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-3">
+          {/* 3. Генерация ДЗ по теме через ИИ — строкой, панель разворачивается. */}
+          <div className={showGen ? "rounded-2xl bg-blue-500/[0.06] ring-1 ring-blue-500/15 p-3" : ""}>
             <button
               type="button"
               onClick={() => setShowGen((v) => !v)}
-              className="w-full flex items-center justify-between text-sm font-medium text-blue-700 rounded-lg"
+              className={`w-full flex items-center justify-between text-sm font-medium text-blue-600 rounded-lg active:scale-[0.99] transition-transform ${showGen ? "" : "py-0.5"}`}
             >
-              <span className="flex items-center gap-1.5"><Icon name="sparkles" size={15} />Сгенерировать по теме</span>
+              <span className="flex items-center gap-1.5"><Icon name="sparkles" size={15} />Придумать задания за меня</span>
               <span className="flex items-center gap-2">
                 {aiLeft !== null && !aiBlocked && (
                   <span className="text-[11px] font-normal text-blue-500/80 tabular-nums">осталось {aiLeft}</span>
                 )}
-                <Icon name={showGen ? "chevron-up" : "chevron-down"} size={16} />
+                <Icon name="chevron-down" size={16} className={`transition-transform duration-300 ${showGen ? "rotate-180" : ""}`} />
               </span>
             </button>
 
@@ -371,19 +436,19 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
                   value={genTopic}
                   onChange={(e) => setGenTopic(e.target.value)}
                   placeholder="Тема, например: Квадратные уравнения"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400"
+                  className="input-glass"
                 />
                 <div className="flex gap-2">
                   <input
                     value={genSubject}
                     onChange={(e) => setGenSubject(e.target.value)}
                     placeholder="Предмет (необяз.)"
-                    className="flex-1 min-w-0 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400"
+                    className="input-glass flex-1 min-w-0 px-3 py-2"
                   />
                   <select
                     value={genLevel}
                     onChange={(e) => setGenLevel(e.target.value)}
-                    className="border border-gray-200 rounded-lg px-2 py-2 text-sm outline-none focus:border-blue-400"
+                    className="input-glass w-auto px-2 py-2"
                   >
                     <option value="лёгкий">Лёгкий</option>
                     <option value="средний">Средний</option>
@@ -392,26 +457,19 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
                   <select
                     value={genCount}
                     onChange={(e) => setGenCount(Number(e.target.value))}
-                    className="border border-gray-200 rounded-lg px-2 py-2 text-sm outline-none focus:border-blue-400"
+                    className="input-glass w-auto px-2 py-2"
                     title="Количество заданий"
                   >
                     {[3, 5, 8, 10, 15].map((n) => <option key={n} value={n}>{n} зад.</option>)}
                   </select>
                 </div>
 
-                <button
-                  type="button"
+                <Toggle
+                  on={genAsTest}
                   onClick={() => setGenAsTest((v) => !v)}
-                  className="flex items-center gap-2.5 text-left active:scale-[0.99] transition-transform"
-                >
-                  <div className={`w-10 h-6 rounded-full transition-colors relative flex-shrink-0 ${genAsTest ? "bg-blue-600" : "bg-gray-200"}`}>
-                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${genAsTest ? "left-5" : "left-1"}`} />
-                  </div>
-                  <div>
-                    <div className="text-sm text-gray-700">Тест с выбором ответа</div>
-                    <div className="text-xs text-gray-400">Ученик выбирает вариант, проверка автоматическая</div>
-                  </div>
-                </button>
+                  title="Тест с выбором ответа"
+                  note="Ученик выбирает вариант, проверка автоматическая"
+                />
 
                 {genError && <div className="text-xs text-red-500" title={genError}>{humanGenError(genError)}</div>}
 
@@ -419,7 +477,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
                   type="button"
                   onClick={handleGenerate}
                   disabled={generating || aiLeft === 0}
-                  className="bg-blue-600 text-white rounded-lg py-2 text-sm hover:bg-blue-700 disabled:opacity-50 active:scale-[0.99] transition-transform flex items-center justify-center gap-1.5"
+                  className="bg-blue-600 text-white rounded-xl py-2 text-sm hover:bg-blue-700 disabled:opacity-50 active:scale-[0.99] transition-transform flex items-center justify-center gap-1.5"
                 >
                   {generating
                     ? <><span className="loader-dots"><i /><i /><i /></span>Генерирую — это до минуты</>
@@ -429,26 +487,26 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
                 </button>
 
                 {preview && (
-                  <div className="mt-1 rounded-xl border border-blue-200 bg-white p-3 flex flex-col gap-2.5 max-h-[45dvh] overflow-y-auto no-scrollbar">
+                  <div className="mt-1 rounded-xl border border-blue-200 bg-white dark:bg-white/5 p-3 flex flex-col gap-2.5 max-h-[45dvh] overflow-y-auto no-scrollbar">
                     <input
                       value={preview.title}
                       onChange={(e) => setPreview((p) => ({ ...p, title: e.target.value }))}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm font-medium outline-none focus:border-blue-400"
+                      className="input-glass font-medium py-1.5"
                     />
                     {preview.tasks.map((t, i) => (
-                      <div key={i} className="rounded-lg bg-gray-50 p-2 flex flex-col gap-1.5">
+                      <div key={i} className="rounded-lg bg-gray-100 p-2 flex flex-col gap-1.5">
                         <div className="flex items-start gap-2">
                           <span className="text-xs text-gray-400 pt-2 w-4 flex-shrink-0">{i + 1}.</span>
                           <textarea
                             value={t.question}
                             onChange={(e) => updatePreviewTask(i, "question", e.target.value)}
                             rows={2}
-                            className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2 py-1.5 text-sm outline-none focus:border-blue-400 resize-none"
+                            className="input-glass flex-1 min-w-0 px-2 py-1.5 resize-none"
                           />
                           <button
                             type="button"
                             onClick={() => removePreviewTask(i)}
-                            className="text-gray-300 hover:text-red-500 pt-1.5"
+                            className="text-gray-300 hover:text-red-500 pt-1.5 active:scale-90 transition-transform"
                             title="Удалить задание"
                           >
                             <Icon name="x" size={14} />
@@ -471,7 +529,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
                                       type="button"
                                       onClick={() => setPreviewCorrect(i, o)}
                                       title="Правильный ответ"
-                                      className={`w-4 h-4 rounded-full border flex-shrink-0 flex items-center justify-center ${
+                                      className={`w-4 h-4 rounded-full border flex-shrink-0 flex items-center justify-center active:scale-90 transition-transform ${
                                         correct ? "border-green-500 bg-green-500 text-white" : "border-gray-300"
                                       }`}
                                     >
@@ -493,27 +551,27 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
                             <input
                               value={t.answer}
                               onChange={(e) => updatePreviewTask(i, "answer", e.target.value)}
-                              className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2 py-1 text-sm outline-none focus:border-blue-400"
+                              className="input-glass flex-1 min-w-0 px-2 py-1"
                             />
                           </div>
                         )}
                       </div>
                     ))}
                     <div className="text-[11px] text-gray-400 leading-snug">
-                      Проверь вопросы и ответы — ИИ может ошибаться. При применении вопросы уйдут в описание, а варианты и правильные ответы оформятся как интерактивный тест с автопроверкой.
+                      Проверь вопросы и ответы — ИИ может ошибаться. Вопросы уйдут в описание, а варианты станут тестом с автопроверкой.
                     </div>
                     <div className="flex gap-2">
                       <button
                         type="button"
                         onClick={() => setPreview(null)}
-                        className="flex-1 border border-gray-200 rounded-lg py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+                        className="flex-1 border border-gray-200 rounded-xl py-1.5 text-sm text-gray-600 hover:bg-gray-100 active:scale-[0.98] transition-all"
                       >
                         Отклонить
                       </button>
                       <button
                         type="button"
                         onClick={applyPreview}
-                        className="flex-1 bg-green-600 text-white rounded-lg py-1.5 text-sm hover:bg-green-700 active:scale-[0.99] transition-transform"
+                        className="flex-1 bg-green-600 text-white rounded-xl py-1.5 text-sm hover:bg-green-700 active:scale-[0.98] transition-transform"
                       >
                         Применить
                       </button>
@@ -524,152 +582,137 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
             )}
           </div>
 
+          {/* 4. Срок сдачи: чипы вместо календаря — одно нажатие вместо трёх. */}
           <div>
-            <label className="text-sm text-gray-500 mb-1 block">Название</label>
-            <input value={title} onChange={(e) => setTitle(e.target.value)}
-              placeholder="Параграф 5, упражнения 1-10"
-              className="input-glass" />
-          </div>
-
-          <div>
-            <label className="text-sm text-gray-500 mb-1 block">Описание (необязательно)</label>
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-              placeholder="Дополнительные пояснения..."
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400 resize-none" />
-          </div>
-
-          <div>
-            <label className="text-sm text-gray-500 mb-1 block">Дедлайн (необязательно)</label>
-            <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400" />
-          </div>
-
-          {/* Таймер имеет смысл там, где есть что сдать автоматически — то есть
-              в работах с тестом. У чисто письменной работы автосдавать нечего. */}
-          {hwType !== "written" && (
-          <div>
-            <label className="text-sm text-gray-500 mb-1 block">Ограничение по времени (необязательно)</label>
-            <input
-              type="number"
-              inputMode="numeric"
-              min="1"
-              max="600"
-              placeholder="например, 45 минут"
-              value={timeLimit}
-              onChange={(e) => setTimeLimit(e.target.value.replace(/\D/g, ""))}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400"
-            />
-            <div className="text-[11px] text-gray-400 mt-1 leading-snug">
-              Отсчёт начнётся, когда ученик откроет работу. По истечении времени работа отправится на проверку сама.
+            <div className="text-sm text-gray-500 mb-2">Когда сдать</div>
+            <div className="flex flex-wrap gap-1.5">
+              {DEADLINE_CHIPS.map((c) => {
+                const value = c.days == null ? "" : isoDay(c.days)
+                return (
+                  <button key={c.label} type="button" onClick={() => { setDeadline(value); setPickDate(false) }}
+                    className={chipCls(!pickDate && deadline === value)}>
+                    {c.label}
+                  </button>
+                )
+              })}
+              <button type="button" onClick={() => setPickDate(true)} className={chipCls(pickDate)}>
+                Другая дата
+              </button>
             </div>
-          </div>
-          )}
-
-          <div>
-            <label className="text-sm text-gray-500 mb-1 block">
-              Файл {hwType === "written" ? "(необязательно)" : "с заданиями/тестом"}
-            </label>
-            <input ref={fileRef} type="file" className="hidden" onChange={(e) => setFile(e.target.files[0])} />
-            <button
-              onClick={() => fileRef.current.click()}
-              className="w-full border border-dashed border-gray-200 rounded-lg py-2.5 text-sm text-gray-500 hover:bg-gray-50"
-            >
-              <span className="flex items-center justify-center gap-1.5"><Icon name="paperclip" size={14} />{file ? file.name : "Прикрепить файл"}</span>
-            </button>
+            <Collapse open={pickDate}>
+              <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)}
+                className="input-glass mt-2" />
+            </Collapse>
           </div>
 
-          {(hwType === "test" || hwType === "combined") && (
-            <label className="flex items-center gap-3 cursor-pointer select-none">
-              <div
-                onClick={() => setRequireSolution(!requireSolution)}
-                className={`w-10 h-6 rounded-full transition-colors relative flex-shrink-0 ${requireSolution ? "bg-blue-600" : "bg-gray-200"}`}
-              >
-                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${requireSolution ? "left-5" : "left-1"}`} />
-              </div>
-              <div>
-                <div className="text-sm text-gray-700">Требовать прикрепить решение</div>
-                <div className="text-xs text-gray-400">Ученик должен сфотографировать или загрузить файл с решением</div>
-              </div>
-            </label>
-          )}
+          {/* 5. Автопроверка. Тип задания отсюда и берётся: есть ответы — тест. */}
+          <div className="rounded-2xl ring-1 ring-gray-500/15 p-3">
+            <Toggle
+              on={autoCheck}
+              onClick={() => setAutoCheck((v) => !v)}
+              title="Ученик отвечает прямо в приложении"
+              note={autoCheck ? "Ответы сверятся сами, ученик сразу увидит результат" : "Иначе он просто пришлёт фото или файл с работой"}
+            />
 
-          {(hwType === "test" || hwType === "combined") && isMcq && (
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-sm text-gray-500 block">
-                  Тест с выбором ответа — {questionCount} вопр.
-                </label>
-                <button
-                  type="button"
-                  onClick={() => { setTestOptions(null); setMcqCorrect([]) }}
-                  className="text-xs text-gray-400 hover:text-gray-600"
-                >
-                  Ввести ответы вручную
-                </button>
-              </div>
-              <div className="text-xs text-gray-400 mb-2">Правильные ответы уже отмечены — тест проверится автоматически. Можно поменять.</div>
-              <div className="flex flex-col gap-2.5">
-                {testOptions.map((opts, i) => (
-                  <div key={i} className="rounded-lg bg-gray-50 p-2">
-                    <div className="text-xs text-gray-400 mb-1.5">Вопрос {i + 1}</div>
-                    <div className="flex flex-col items-start gap-1.5">
-                      {opts.map((o, j) => {
-                        const sel = mcqCorrect[i] === o
-                        return (
-                          <button
-                            key={j}
-                            type="button"
-                            onClick={() => setMcqCorrect((prev) => prev.map((c, k) => (k === i ? o : c)))}
-                            className={`rounded-lg px-3 py-1.5 text-sm border text-left transition-all active:scale-[0.96] ${
-                              sel ? "bg-green-600 text-white border-green-600" : "border-gray-200 text-gray-700 hover:bg-gray-50"
-                            }`}
-                          >
-                            {o}
-                          </button>
-                        )
-                      })}
+            <Collapse open={autoCheck}>
+              <div className="pt-3 flex flex-col gap-3">
+                {isMcq ? (
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-sm text-gray-500">Правильные ответы — {questionCount} вопр.</span>
+                      <button
+                        type="button"
+                        onClick={() => { setTestOptions(null); setMcqCorrect([]) }}
+                        className="text-xs text-gray-400 hover:text-gray-600 active:scale-95 transition-all"
+                      >
+                        Ввести вручную
+                      </button>
+                    </div>
+                    <div className="flex flex-col gap-2.5">
+                      {testOptions.map((opts, i) => (
+                        <div key={i} className="rounded-xl bg-gray-100 p-2">
+                          <div className="text-xs text-gray-400 mb-1.5">Вопрос {i + 1}</div>
+                          <div className="flex flex-wrap items-start gap-1.5">
+                            {opts.map((o, j) => {
+                              const sel = mcqCorrect[i] === o
+                              return (
+                                <button
+                                  key={j}
+                                  type="button"
+                                  onClick={() => setMcqCorrect((prev) => prev.map((c, k) => (k === i ? o : c)))}
+                                  className={`rounded-lg px-3 py-1.5 text-sm border text-left transition-all active:scale-[0.96] ${
+                                    sel ? "bg-green-600 text-white border-green-600" : "border-gray-200 text-gray-700 hover:bg-gray-100"
+                                  }`}
+                                >
+                                  {o}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
+                ) : (
+                  <div>
+                    <div className="text-sm text-gray-500 mb-1.5">Ответы по порядку, через пробел</div>
+                    <textarea
+                      value={answersInput}
+                      onChange={(e) => setAnswersInput(e.target.value)}
+                      placeholder="1 3 2 4 1 5 2 3 4 1"
+                      rows={2}
+                      className="input-glass resize-none"
+                    />
+                    {questionCount > 0 && (
+                      <div className="grid grid-cols-7 gap-1 mt-2">
+                        {correctAnswers.map((a, i) => (
+                          <div key={i} className="text-center rounded-lg py-1 text-xs bg-blue-100 text-blue-700 font-medium">
+                            <div style={{ fontSize: "10px" }}>{i + 1}</div>
+                            <div className="truncate px-0.5">{a}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
-          {(hwType === "test" || hwType === "combined") && !isMcq && (
-            <div>
-              <label className="text-sm text-gray-500 mb-1 block">
-                Ответы к тесту — введи все через пробел
-              </label>
-              <textarea
-                value={answersInput}
-                onChange={(e) => setAnswersInput(e.target.value)}
-                placeholder="1 3 2 4 1 5 2 3 4 1"
-                rows={2}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400 resize-none"
-              />
-              <div className="text-xs text-gray-400 mt-1">Введено: {questionCount}</div>
-
-              {questionCount > 0 && (
-                <div className="grid grid-cols-7 gap-1 mt-2">
-                  {correctAnswers.map((a, i) => (
-                    <div key={i} className="text-center rounded-lg py-1 text-xs bg-blue-100 text-blue-700 font-medium">
-                      <div style={{ fontSize: "10px" }}>{i + 1}</div>
-                      <div>{a}</div>
+                {/* Время на работу — тоже чипами: отсчёт пойдёт с открытия. */}
+                <div>
+                  <div className="text-sm text-gray-500 mb-2">Сколько времени на работу</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {timeChips.map((n) => (
+                      <button key={n} type="button" onClick={() => setTimeLimit(n ? String(n) : "")}
+                        className={chipCls(String(n) === (timeLimit || "0"))}>
+                        {n ? `${n} мин` : "Без лимита"}
+                      </button>
+                    ))}
+                  </div>
+                  {timeLimit && (
+                    <div className="text-[11px] text-gray-400 mt-1.5 leading-snug">
+                      Время пойдёт, когда ученик откроет работу. Как выйдет — работа уйдёт на проверку сама.
                     </div>
-                  ))}
+                  )}
                 </div>
-              )}
-            </div>
-          )}
+
+                <Toggle
+                  on={requireSolution}
+                  onClick={() => setRequireSolution(!requireSolution)}
+                  title="Ещё и фото решения"
+                  note="Без него тест не отправится"
+                />
+              </div>
+            </Collapse>
+          </div>
         </div>
 
-        <div className="flex gap-3 mt-6">
-          <button onClick={onClose} className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">
+        {formError && <div className="text-xs text-red-500 mt-4 text-center">{formError}</div>}
+
+        <div className="flex gap-3 mt-5">
+          <button onClick={onClose} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-gray-100 active:scale-[0.98] transition-all">
             Отмена
           </button>
-          <button onClick={handleSubmit} disabled={saving} className="flex-1 bg-blue-600 text-white rounded-lg py-2 text-sm hover:bg-blue-700 disabled:opacity-50">
-            {saving ? "Сохраняем..." : isEditing ? "Сохранить" : "Создать"}
+          <button onClick={handleSubmit} disabled={saving} className="flex-1 bg-blue-600 text-white rounded-xl py-2.5 text-sm hover:bg-blue-700 disabled:opacity-50 active:scale-[0.98] transition-transform">
+            {saving ? "Сохраняем..." : isEditing ? "Сохранить" : "Задать"}
           </button>
         </div>
       </div>

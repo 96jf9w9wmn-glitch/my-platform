@@ -19,6 +19,9 @@ const BoardTaskModal = lazy(() => import("./BoardTaskModal"))
 const WIDTHS = [3, 6, 12]
 const MIN_SCALE = 0.15, MAX_SCALE = 8
 
+const HISTORY_MAX = 100      // шагов «отменить» держим столько же, сколько привычно в редакторах
+// Копия штриха для истории: points — массив массивов, поверхностная копия его бы разделила
+const cloneStroke = (s) => s && { ...s, points: s.points.map((p) => p.slice()) }
 const SHEET_MAX_DIM = 4000   // лист с заданием: длинные условия не должны терять чёткость
 const BG_LIGHT = "#ffffff", BG_DARK = "#1c1c1e"
 const BG_COLORS = ["#ffffff", "#f2f2f7", "#fdf6e3", "#1c1c1e", "#0f172a", "#123a2e"]
@@ -208,6 +211,9 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const [bg, setBg] = useState("plain")      // plain | grid | dots — узор
   const [bgColor, setBgColor] = useState(theme === "dark" ? BG_DARK : BG_LIGHT) // цвет фона
   const [shapeTool, setShapeTool] = useState("rect") // последняя выбранная фигура
+  // Ластик умеет стирать след (как мел) и объекты целиком: второе удобнее, когда на
+  // доске лежат готовые фигуры и листы с заданиями — их стирают одним движением.
+  const [eraserMode, setEraserMode] = useState("stroke")   // stroke | object
   const [online, setOnline] = useState([])
   const [saveState, setSaveState] = useState("idle")
   const [loaded, setLoaded] = useState(false)
@@ -232,6 +238,11 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const wrapRef = useRef(null)
   const canvasRef = useRef(null)
   const strokes = useRef(new Map())
+  // История действий: шаг = список изменений { id, before, after }, где before/after —
+  // копия штриха или null (не существовал). Раньше «отменить» просто удаляла последний
+  // свой штрих, поэтому после сжатия или перемещения объект ИСЧЕЗАЛ вместо возврата формы,
+  // а удаление нельзя было отменить вовсе.
+  const history = useRef([])
   const redoStack = useRef([])
   const drawing = useRef(null)
   const cursors = useRef(new Map())   // userId -> {x, y, name} в МИРОВЫХ координатах
@@ -263,6 +274,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const loadedRef = useRef(false)     // сцена успешно загружена (иначе не сохраняем — чтобы не затереть)
   const modalOpen = useRef(false)     // поверх доски открыт диалог (глушим горячие клавиши)
   const taskShift = useRef(0)         // лесенка для подряд вставленных заданий
+  const erasing = useRef(null)        // текущий проход объектного ластика: [{id, before, after}]
 
   const dark = isDarkColor(bgColor)      // светлость доски определяется цветом фона
   const baseBg = bgColor
@@ -740,11 +752,18 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       const p = toWorld(e.clientX, e.clientY)
       const bb = selectionBBox()
       if (bb && pointInBBox(p[0], p[1], bb)) {
-        movingSel.current = { x: p[0], y: p[1] }   // клик по выделению → двигаем
+        movingSel.current = { x: p[0], y: p[1], before: snapshotSelection() }   // клик по выделению → двигаем
       } else {
         marquee.current = { x0: p[0], y0: p[1], x1: p[0], y1: p[1] } // иначе — рамка
       }
       scheduleDraw()
+      return
+    }
+
+    // Ластик в режиме «объект целиком» ничего не рисует — он удаляет то, чего коснулся
+    if (tool === "eraser" && eraserMode === "object") {
+      erasing.current = []
+      eraseObjectsAt(e.clientX, e.clientY)
       return
     }
 
@@ -767,6 +786,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       panning.current = { x: e.clientX, y: e.clientY }
       scheduleDraw(); return
     }
+    if (erasing.current) { eraseObjectsAt(e.clientX, e.clientY); return }
     // Перетаскивание выделенного
     if (movingSel.current) {
       const p = toWorld(e.clientX, e.clientY)
@@ -775,7 +795,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         const s = strokes.current.get(id)
         if (s) s.points = s.points.map((pt) => [pt[0] + dx, pt[1] + dy, ...pt.slice(2)])
       }
-      movingSel.current = { x: p[0], y: p[1] }
+      movingSel.current = { ...movingSel.current, x: p[0], y: p[1] }
       scheduleDraw()
       return
     }
@@ -814,14 +834,17 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     if (pointers.current.size < 2) gesture.current = null
     panning.current = null
 
+    // Конец прохода объектным ластиком — весь проход одним шагом истории
+    if (erasing.current) {
+      pushHistory(erasing.current)
+      erasing.current = null
+      return
+    }
     // Завершение перемещения выделенного — рассылаем сдвинутые штрихи и сохраняем
     if (movingSel.current) {
+      const before = movingSel.current.before
       movingSel.current = null
-      for (const id of selection.current) {
-        const s = strokes.current.get(id)
-        if (s) channelRef.current?.send({ type: "broadcast", event: "draw", payload: s })
-      }
-      scheduleSave()
+      commitSelection(before)
       return
     }
     // Завершение рамки — выбираем штрихи, попавшие в неё (крошечная рамка = клик = снять выделение)
@@ -847,34 +870,82 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     const s = drawing.current
     drawing.current = null
     strokes.current.set(s.id, s)
-    redoStack.current = []
+    pushHistory([{ id: s.id, before: null, after: cloneStroke(s) }])
     broadcastDrawing(true)
     scheduleDraw(); scheduleSave()
   }
 
+  // Объектный ластик: всё, чего коснулись, удаляется целиком. Собственный след
+  // пиксельного ластика пропускаем — стирать «дырку» как объект бессмысленно.
+  function eraseObjectsAt(clientX, clientY) {
+    if (!erasing.current) return
+    const p = toWorld(clientX, clientY)
+    const tol = Math.max(4, (width || 3) * 1.2) / view.current.scale
+    let hit = false
+    for (const [id, st] of [...strokes.current]) {
+      if (st.tool === "eraser" || !hitStroke(st, p[0], p[1], tol)) continue
+      erasing.current.push({ id, before: cloneStroke(st), after: null })
+      strokes.current.delete(id)
+      channelRef.current?.send({ type: "broadcast", event: "remove", payload: { id } })
+      hit = true
+    }
+    if (hit) { scheduleDraw(); scheduleSave() }
+  }
+
+  function pushHistory(step) {
+    if (!step?.length) return
+    history.current.push(step)
+    if (history.current.length > HISTORY_MAX) history.current.shift()
+    redoStack.current = []   // новая ветка действий — «вернуть» больше некуда
+  }
+
+  // Состояние выделенных штрихов ДО правки: с ним «отменить» возвращает форму,
+  // а не удаляет объект.
+  function snapshotSelection() {
+    const out = []
+    for (const id of selection.current) {
+      const s = strokes.current.get(id)
+      if (s) out.push({ id, before: cloneStroke(s) })
+    }
+    return out
+  }
+  // Шаг истории из снимка «до» и текущего состояния тех же штрихов.
+  function stepFromSnapshot(before) {
+    return before
+      .map((b) => ({ id: b.id, before: b.before, after: cloneStroke(strokes.current.get(b.id)) }))
+      .filter((ch) => ch.after)
+  }
+
   function deleteSelection() {
     if (!selection.current.size) return
+    const step = []
     for (const id of selection.current) {
+      const s = strokes.current.get(id)
+      if (s) step.push({ id, before: cloneStroke(s), after: null })
       strokes.current.delete(id)
       channelRef.current?.send({ type: "broadcast", event: "remove", payload: { id } })
     }
+    pushHistory(step)
     selection.current.clear(); applySelCount(0)
     scheduleDraw(); scheduleSave()
   }
 
-  // Рассылка изменённых штрихов после трансформации/правки + сохранение
-  function commitSelection() {
+  // Рассылка изменённых штрихов после трансформации/правки + сохранение.
+  // before — снимок из snapshotSelection(): без него правка не попадёт в историю.
+  function commitSelection(before = null) {
     for (const id of selection.current) {
       const s = strokes.current.get(id)
       if (s) channelRef.current?.send({ type: "broadcast", event: "draw", payload: s })
     }
-    redoStack.current = []; scheduleSave()
+    if (before) pushHistory(stepFromSnapshot(before))
+    scheduleSave()
   }
 
   // Масштабирование (углы nw/ne/se/sw — обе оси, рёбра n/e/s/w — одна ось) или поворот "rotate"
   function startTransform(handle, e) {
     e.preventDefault(); e.stopPropagation()
     const bb = selectionBBox(); if (!bb) return
+    const before = snapshotSelection()   // «отменить» вернёт форму, а не сотрёт объект
     const mode = handle === "rotate" ? "rotate" : "resize"
     const center = [(bb.minX + bb.maxX) / 2, (bb.minY + bb.maxY) / 2]
     // Знаки ручки: угол = обе оси, ребро = одна ось
@@ -956,7 +1027,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       window.removeEventListener("pointermove", move)
       window.removeEventListener("pointerup", end)
       transform.current = null
-      commitSelection(); scheduleDraw()
+      commitSelection(before); scheduleDraw()
     }
     window.addEventListener("pointermove", move)
     window.addEventListener("pointerup", end)
@@ -985,7 +1056,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     getImage(src) // начать загрузку/кэшировать для мгновенной отрисовки
     strokes.current.set(id, s)
     channelRef.current?.send({ type: "broadcast", event: "draw", payload: s })
-    redoStack.current = []
+    pushHistory([{ id, before: null, after: cloneStroke(s) }])
     setTool("cursor"); selection.current = new Set([id]); setSelCount(1)
     scheduleDraw(); scheduleSave()
   }
@@ -1033,54 +1104,74 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       next.add(ns.id)
     }
     selection.current = next; applySelCount(next.size)
-    redoStack.current = []; scheduleDraw(); scheduleSave()
+    pushHistory([...next].map((nid) => ({ id: nid, before: null, after: cloneStroke(strokes.current.get(nid)) })))
+    scheduleDraw(); scheduleSave()
   }
 
   function setSelectionColor(c) {
     if (!selection.current.size) return
+    const before = snapshotSelection()
     for (const id of selection.current) { const s = strokes.current.get(id); if (s && s.tool !== "eraser") s.color = c }
-    commitSelection(); scheduleDraw()
+    commitSelection(before); scheduleDraw()
   }
   function setSelectionWidth(w) {
     if (!selection.current.size) return
+    const before = snapshotSelection()
     for (const id of selection.current) {
       const s = strokes.current.get(id); if (!s || s.tool === "eraser") continue
       const cur = s.width || 3, k = w / cur
       s.width = w
       s.points = s.points.map((p) => p.length > 2 ? [p[0], p[1], p[2] * k, ...p.slice(3)] : p)
     }
-    commitSelection(); scheduleDraw()
+    commitSelection(before); scheduleDraw()
   }
   function setSelectionDash(d) {
     if (!selection.current.size) return
+    const before = snapshotSelection()
     for (const id of selection.current) { const s = strokes.current.get(id); if (s && s.tool !== "eraser") s.dash = d }
-    commitSelection(); scheduleDraw()
+    commitSelection(before); scheduleDraw()
   }
   function setSelectionCorner(cn) {
     if (!selection.current.size) return
+    const before = snapshotSelection()
     for (const id of selection.current) { const s = strokes.current.get(id); if (s && s.tool !== "eraser") s.corner = cn }
-    commitSelection(); scheduleDraw()
+    commitSelection(before); scheduleDraw()
   }
 
   // --- Действия -----------------------------------------------------------
-  function undo() {
-    let lastId = null
-    for (const [id, s] of strokes.current) if (s.author === userId) lastId = id
-    if (!lastId) return
-    redoStack.current.push(strokes.current.get(lastId))
-    strokes.current.delete(lastId)
-    channelRef.current?.send({ type: "broadcast", event: "remove", payload: { id: lastId } })
+  // Применяет одну сторону шага истории: null — штриха не было, значит удалить.
+  function applyStep(step, side) {
+    for (const ch of step) {
+      const s = ch[side]
+      if (s) {
+        const copy = cloneStroke(s)
+        strokes.current.set(ch.id, copy)
+        channelRef.current?.send({ type: "broadcast", event: "draw", payload: copy })
+      } else {
+        strokes.current.delete(ch.id)
+        channelRef.current?.send({ type: "broadcast", event: "remove", payload: { id: ch.id } })
+      }
+    }
+    // Выделение после отмены может указывать на исчезнувшие штрихи — снимаем его
+    selection.current.clear(); applySelCount(0)
     scheduleDraw(); scheduleSave()
+  }
+  function undo() {
+    const step = history.current.pop()
+    if (!step) return
+    redoStack.current.push(step)
+    applyStep(step, "before")
   }
   function redo() {
-    const s = redoStack.current.pop()
-    if (!s) return
-    strokes.current.set(s.id, s)
-    channelRef.current?.send({ type: "broadcast", event: "draw", payload: s })
-    scheduleDraw(); scheduleSave()
+    const step = redoStack.current.pop()
+    if (!step) return
+    history.current.push(step)
+    applyStep(step, "after")
   }
   function clearAll() {
-    strokes.current.clear(); redoStack.current = []
+    const step = [...strokes.current.values()].map((s) => ({ id: s.id, before: cloneStroke(s), after: null }))
+    strokes.current.clear()
+    pushHistory(step)                       // очистку доски тоже можно отменить
     channelRef.current?.send({ type: "broadcast", event: "clear", payload: {} })
     scheduleDraw(); scheduleSave()
   }
@@ -1166,7 +1257,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     { id: "pen", icon: "pencil", label: "Перо", key: "P" },
     { id: "line", icon: "line", label: "Линия", key: "L" },
     { id: "shapes", shapes: true },
-    { id: "eraser", icon: "eraser", label: "Ластик", key: "E" },
+    { id: "eraser", icon: "eraser", label: "Ластик", key: "E", erasers: true },
     { id: "hand", icon: "move", label: "Двигать полотно", key: "H" },
   ]
   const SHAPES_2D = [
@@ -1376,14 +1467,41 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         <div className="absolute bottom-4 left-0 right-0 flex justify-center px-3 pointer-events-none">
         <div className="flex flex-wrap items-center justify-center gap-1.5 rounded-2xl px-2 py-1.5 shadow-lg relative pointer-events-auto max-w-full"
           style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
-          {TOOLS.map((t) => t.shapes ? (
+          {TOOLS.map((t) => t.erasers ? (
+            <div key="eraser" className="relative" data-menu>
+              {/* Клик берёт ластик и сразу показывает выбор режима: иначе про «стирать
+                  объект целиком» никто бы не узнал */}
+              <button onClick={() => { const was = tool === "eraser"; setTool("eraser"); was ? toggleMenu("eraser") : openMenu("eraser") }}
+                className={`group relative press-tap w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
+                  tool === "eraser" ? "bg-blue-500 text-white" : "text-gray-500 hover:bg-black/5 dark:hover:bg-white/10"
+                }`}>
+                <Icon name="eraser" size={17} />
+                {!menuShown("eraser") && (
+                  <Tip label={eraserMode === "object" ? "Ластик · объект целиком" : "Ластик · след"} hotkey="E" dark={dark} />
+                )}
+              </button>
+              {menuShown("eraser") && (
+                <div className={`absolute bottom-11 left-1/2 -translate-x-1/2 flex gap-1 p-2 rounded-xl shadow-lg ${menuAnim("eraser")}`}
+                  style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
+                  {[["stroke", "След"], ["object", "Объект целиком"]].map(([mode, label]) => (
+                    <button key={mode} onClick={() => { setEraserMode(mode); setTool("eraser"); closeMenu("eraser") }}
+                      className={`press-tap px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap ${
+                        eraserMode === mode ? "bg-blue-500 text-white" : "text-gray-500 hover:bg-black/5 dark:hover:bg-white/10"
+                      }`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : t.shapes ? (
             <div key="shapes" className="relative" data-menu>
               <button onClick={() => toggleMenu("shapes")}
                 className={`group relative press-tap w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
                   shapeMenuIds.has(tool) ? "bg-blue-500 text-white" : "text-gray-500 hover:bg-black/5 dark:hover:bg-white/10"
                 }`}>
                 <Icon name={shapeIconOf(shapeTool)} size={17} />
-                <Tip label="Фигуры" dark={dark} />
+                {!menuShown("shapes") && <Tip label="Фигуры" dark={dark} />}
               </button>
               {menuShown("shapes") && (
                 <div className={`absolute bottom-11 left-1/2 -translate-x-1/2 flex flex-col gap-2 p-2 rounded-xl shadow-lg ${menuAnim("shapes")}`}
