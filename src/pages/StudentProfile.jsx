@@ -6,6 +6,7 @@ import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
 import WeakTypes from "../components/WeakTypes"
 import BoardHistory from "../components/BoardHistory"
+import Collapse from "../components/Collapse"
 import ReportComposer from "../components/ReportComposer"
 import { parseLocalDate, isLessonConducted, getInitials, formatPhone } from "../utils"
 import { usePlan } from "../subscription"
@@ -310,6 +311,7 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
   const [remarkDraft, setRemarkDraft] = useState("")
   const [copiedCode, setCopiedCode] = useState(false)
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+  const [archiveOpen, setArchiveOpen] = useState(false)
 
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 768)
@@ -630,8 +632,27 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
           )}
         </div>
 
+        {/* Проведённые занятия убраны под «Архив»: за учебный год их набираются
+            десятки, и карточка ученика превращалась в бесконечную ленту.
+            Счётчик на кнопке показывает, сколько внутри, не открывая её. */}
         <div className="glass p-4">
-          <h2 className="text-sm font-medium mb-3">Прошедшие занятия</h2>
+          <button
+            onClick={() => setArchiveOpen((v) => !v)}
+            className="press-fill w-full flex items-center justify-between gap-2 rounded-lg text-left"
+          >
+            <span className="flex items-center gap-2 text-sm font-medium">
+              <Icon name="archive" size={15} className="text-gray-400" />
+              Архив занятий
+              <span className="text-[11px] font-normal text-gray-500 bg-gray-100 ring-1 ring-gray-200/70 px-1.5 py-0.5 rounded-full tabular-nums">
+                {past.length}
+              </span>
+            </span>
+            <Icon name="chevron-down" size={14}
+              className={`text-gray-400 transition-transform duration-300 ${archiveOpen ? "rotate-180" : ""}`} />
+          </button>
+
+          <Collapse open={archiveOpen}>
+          <div className="pt-3">
           {past.length === 0 ? (
             <div className="text-sm text-gray-400 py-4 text-center">Занятий ещё не было</div>
           ) : (
@@ -695,6 +716,8 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
               ))}
             </div>
           )}
+          </div>
+          </Collapse>
         </div>
       </div>
       </div>
