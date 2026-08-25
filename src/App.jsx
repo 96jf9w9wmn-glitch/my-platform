@@ -262,7 +262,13 @@ function App() {
   const [activePage, setActivePage] = useState(startPage)
   const [visitedPages, setVisitedPages] = useState(() => new Set([startPage]))
   const [chatUnread, setChatUnread] = useState(0)
-  const [board, setBoard] = useState(null) // { roomId, title } — открытая доска ученика
+  // Открытая доска живёт в адресе (?board=<ученик>), а не только в памяти: иначе
+  // перезагрузка страницы закрывала её, а «назад» в браузере (и свайп на телефоне)
+  // уводил из кабинета вместо того, чтобы закрыть доску.
+  const [board, setBoard] = useState(() => {
+    const id = new URLSearchParams(window.location.search).get("board")
+    return id ? { roomId: id, title: "" } : null
+  })
   // Лендинг показывается первым для неавторизованного гостя; из него уходим
   // в Auth с предвыбранной ролью/режимом. null → показываем лендинг.
   // Ссылка-приглашение от репетитора: ?invite=<token>. Токен запоминаем до
@@ -287,8 +293,32 @@ function App() {
   }, [user])
 
   function openBoard(studentId, title) {
-    if (studentId) setBoard({ roomId: studentId, title })
+    if (!studentId) return
+    setBoard({ roomId: studentId, title })
+    const url = new URL(window.location.href)
+    url.searchParams.set("board", String(studentId))
+    window.history.pushState({ board: String(studentId) }, "", url)
   }
+
+  // Закрытие СТИРАЕТ запись о доске из истории (replace, не push): иначе «назад»
+  // после закрытия открывала бы её снова.
+  function closeBoard() {
+    setBoard(null)
+    const url = new URL(window.location.href)
+    if (!url.searchParams.has("board")) return
+    url.searchParams.delete("board")
+    window.history.replaceState({}, "", url)
+  }
+
+  // «Назад»/«вперёд» в браузере: состояние доски берём из адреса, он тут главный.
+  useEffect(() => {
+    const onPop = () => {
+      const id = new URLSearchParams(window.location.search).get("board")
+      setBoard(id ? { roomId: id, title: "" } : null)
+    }
+    window.addEventListener("popstate", onPop)
+    return () => window.removeEventListener("popstate", onPop)
+  }, [])
 
   const pageTitles = {
     dashboard: "Главная",
@@ -690,7 +720,7 @@ function App() {
             userId={`t:${user.id}`}
             userName={user.profile?.name || user.email}
             theme={document.documentElement.classList.contains("dark") ? "dark" : "light"}
-            onClose={() => setBoard(null)}
+            onClose={closeBoard}
             /* Задание из банка кладёт на доску репетитор; у ученика такой кнопки нет */
             canAddTasks
           />

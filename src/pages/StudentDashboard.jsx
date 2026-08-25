@@ -1148,7 +1148,28 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
 
   const [tutorName, setTutorName] = useState("")
   const [chatUnread, setChatUnread] = useState(0)
-  const [boardOpen, setBoardOpen] = useState(false)
+  // Доска держится в адресе (?board=1) по той же причине, что и у репетитора:
+  // перезагрузка страницы не должна её закрывать, а «назад» — закрывает именно её,
+  // а не выкидывает из кабинета.
+  const [boardOpen, setBoardOpen] = useState(() => new URLSearchParams(window.location.search).has("board"))
+  const openBoard = () => {
+    setBoardOpen(true)
+    const url = new URL(window.location.href)
+    url.searchParams.set("board", "1")
+    window.history.pushState({ board: "1" }, "", url)
+  }
+  const closeBoard = () => {
+    setBoardOpen(false)
+    const url = new URL(window.location.href)
+    if (!url.searchParams.has("board")) return
+    url.searchParams.delete("board")
+    window.history.replaceState({}, "", url)
+  }
+  useEffect(() => {
+    const onPop = () => setBoardOpen(new URLSearchParams(window.location.search).has("board"))
+    window.addEventListener("popstate", onPop)
+    return () => window.removeEventListener("popstate", onPop)
+  }, [])
 
   // Опросник онбординга: показываем один раз, пока onboarded !== true.
   // Статус тянем прямо из student_accounts (в сессионных RPC его нет).
@@ -1602,7 +1623,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
             userId={`s:${user.id}`}
             userName={user.profile?.name || "Ученик"}
             theme={dark ? "dark" : "light"}
-            onClose={() => setBoardOpen(false)}
+            onClose={closeBoard}
             /* Снимок занятия ученик пишет только через RPC с токеном сессии:
                прямой записи в board_snapshots у него нет (RLS включён). */
             account={user.id}
@@ -1717,7 +1738,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                   </div>
 
                   <div className="flex gap-2 flex-shrink-0 justify-center">
-                    <button onClick={() => setBoardOpen(true)} className="press-tap btn-glass px-4 py-2 text-sm">
+                    <button onClick={openBoard} className="press-tap btn-glass px-4 py-2 text-sm">
                       <span className="flex items-center gap-1.5"><Icon name="clipboard" size={14} />Доска</span>
                     </button>
                     {student.callUrl && (
@@ -1871,7 +1892,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                   maxScore={student.goal === "ЕГЭ" ? 100 : 32}
                 />
 
-                <StudentScheduleCalendar student={student} onOpenBoard={() => setBoardOpen(true)} />
+                <StudentScheduleCalendar student={student} onOpenBoard={openBoard} />
 
                 {/* Доски прошлых занятий — можно вернуться к разобранному (только чтение) */}
                 <BoardHistory studentId={student.id} studentName={user.profile?.name} account={user.id} token={user.token} />
