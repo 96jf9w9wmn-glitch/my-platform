@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react"
+import { useClosing } from "../useClosing"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import Icon from "./Icon"
@@ -65,6 +66,10 @@ function TutorOnboardingModal({ tutorId, onComplete }) {
   const [examFocus, setExamFocus] = useState([])
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState("")
+  // Куда уйти после анкеты; закрывается плавно, как и остальные модалки.
+  const finishRef = useRef(null)
+  const { cls: closingCls, close } = useClosing(() => onComplete(finishRef.current?.fields, finishRef.current?.goTo))
+  const leave = (fields, goTo) => { finishRef.current = { fields, goTo }; close() }
   // Анкета сохранена — вместо мгновенного закрытия показываем маршрут первого
   // занятия: сразу после регистрации кабинет пуст, и без подсказки непонятно,
   // с чего начинать. Те же три шага обещал лендинг (TUTOR_STEPS).
@@ -133,8 +138,8 @@ function TutorOnboardingModal({ tutorId, onComplete }) {
   // Экран маршрута: анкета уже сохранена, дальше — куда идти в пустом кабинете
   if (done) {
     return createPortal(
-      <div className="fixed inset-0 glass-overlay flex items-center justify-center z-50 p-4">
-        <div className="glass-modal w-full max-w-md flex flex-col overflow-hidden step-enter-forward">
+      <div className={`fixed inset-0 glass-overlay flex items-center justify-center z-50 p-4 ${closingCls}`}>
+        <div className={`glass-modal w-full max-w-md flex flex-col overflow-hidden step-enter-forward ${closingCls}`}>
           <div className="px-6 pt-7 pb-2 flex flex-col items-center text-center gap-1">
             <div className="w-12 h-12 rounded-2xl bg-green-50 dark:bg-green-500/15 flex items-center justify-center text-green-600 dark:text-green-400 mb-2">
               <Icon name="check" size={22} />
@@ -158,11 +163,11 @@ function TutorOnboardingModal({ tutorId, onComplete }) {
           </div>
 
           <div className="px-6 pb-6 pt-4 flex flex-col gap-2">
-            <button onClick={() => onComplete(done, "students")}
+            <button onClick={() => leave(done, "students")}
               className="press-fill w-full h-[50px] rounded-full font-semibold text-white bg-gradient-to-r from-blue-500 to-blue-600 shadow-lg shadow-blue-500/25 hover:opacity-95 transition-opacity">
               Пригласить первого ученика
             </button>
-            <button onClick={() => onComplete(done)} className="press-fill w-full py-2 rounded-xl text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 transition-colors">
+            <button onClick={() => leave(done)} className="press-fill w-full py-2 rounded-xl text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 transition-colors">
               Осмотрюсь сам
             </button>
           </div>
@@ -173,8 +178,8 @@ function TutorOnboardingModal({ tutorId, onComplete }) {
   }
 
   return createPortal(
-    <div className="fixed inset-0 glass-overlay flex items-center justify-center z-50 p-4">
-      <div className="glass-modal w-full max-w-md flex flex-col overflow-hidden">
+    <div className={`fixed inset-0 glass-overlay flex items-center justify-center z-50 p-4 ${closingCls}`}>
+      <div className={`glass-modal w-full max-w-md flex flex-col overflow-hidden ${closingCls}`}>
         <div className="px-6 pt-5 pb-1 flex-shrink-0">
           <div className="flex items-center justify-between mb-3">
             <button onClick={() => goTo(step - 1, "back")} disabled={step === 0}

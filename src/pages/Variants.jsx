@@ -11,6 +11,7 @@ import { generateWorkbookPdf } from "./workbookPdf"
 import { usePlan } from "../subscription"
 import { PlanHint } from "../components/PlanLock"
 import ConfirmModal from "../components/ConfirmModal"
+import { useClosing } from "../useClosing"
 // Тетрадь тянет генераторы заданий — грузим только когда её открыли.
 const WorkbookModal = lazy(() => import("./WorkbookModal"))
 
@@ -126,6 +127,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
   const [recipientId, setRecipientId] = useState("all")
   // Ошибки формы показываем рядом с кнопкой, а не системным alert.
   const [formError, setFormError] = useState("")
+  const { cls: closingCls, close } = useClosing(onClose)
   // Источник условий: свой файл или собранные из банка заданий
   const [source, setSource] = useState("file")
   const [bankPicked, setBankPicked] = useState([])
@@ -266,17 +268,17 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
     }
 
     onAdd(data)
-    onClose()
+    close()
     setLoading(false)
   }
 
   return createPortal(
-    <div className="fixed inset-0 glass-overlay z-50 overflow-y-auto">
+    <div className={`fixed inset-0 glass-overlay z-50 overflow-y-auto ${closingCls}`}>
       <div className="min-h-full flex items-center justify-center p-4">
-        <div className="glass-modal p-6 w-full max-w-md">
+        <div className={`glass-modal p-6 w-full max-w-md ${closingCls}`}>
           <div className="flex justify-between items-center mb-5">
             <h2 className="text-lg font-medium">Новый вариант</h2>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><Icon name="x" size={18} /></button>
+            <button onClick={close} aria-label="Закрыть" className="text-gray-400 hover:text-gray-600"><Icon name="x" size={18} /></button>
           </div>
           <div className="flex flex-col gap-4">
 
@@ -480,7 +482,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
           {formError && <div className="text-sm text-red-500 mt-4 text-center">{formError}</div>}
 
           <div className="flex gap-3 mt-4">
-            <button onClick={onClose} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-gray-50">Отмена</button>
+            <button onClick={close} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-gray-50">Отмена</button>
             <button onClick={handleSubmit} disabled={loading || uploading} className="flex-1 btn-primary py-2.5 disabled:opacity-50">
               {uploading ? (source === "bank" ? "Готовим PDF..." : "Загружаем...") : loading ? "Отправляем..." : recipientId === "all" ? "Отправить ученикам" : "Отправить ученику"}
             </button>
@@ -493,6 +495,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
 }
 
 function EgeReview({ submission, variant, onClose, onSave }) {
+  const { cls: closingCls, close } = useClosing(onClose)
   const EGE_PART2_MAX_SCORES = { 13:2, 14:3, 15:2, 16:2, 17:3, 18:4, 19:4 }
   // задания части 2, реально вошедшие в вариант (в профильном ЕГЭ пока только №13)
   const snap = [...new Set((variant?.tasks_snapshot || []).map((t) => t.number).filter((n) => EGE_PART2_MAX_SCORES[n]))].sort((a, b) => a - b)
@@ -522,18 +525,18 @@ function EgeReview({ submission, variant, onClose, onSave }) {
         user_id: submission.student_id, title: "Вариант ЕГЭ проверен",
         body: "Первичный балл: " + primaryTotal + ", тестовый: " + testScore,
       })
-      onSave(); onClose()
+      onSave(); close()
     }
     setLoading(false)
   }
 
   return createPortal(
-    <div className="fixed inset-0 glass-overlay z-50 overflow-y-auto">
+    <div className={`fixed inset-0 glass-overlay z-50 overflow-y-auto ${closingCls}`}>
       <div className="min-h-full flex items-center justify-center p-4">
-        <div className="glass-modal p-6 w-full max-w-md">
+        <div className={`glass-modal p-6 w-full max-w-md ${closingCls}`}>
           <div className="flex justify-between items-center mb-5">
             <h2 className="text-lg font-medium">Проверка ЕГЭ</h2>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">X</button>
+            <button onClick={close} aria-label="Закрыть" className="text-gray-400 hover:text-gray-600"><Icon name="x" size={18} /></button>
           </div>
           <div className="bg-blue-50 rounded-lg p-3 mb-4">
             <div className="text-sm font-medium text-blue-700">Часть 1: {part1Score} / 12 баллов</div>
@@ -577,7 +580,7 @@ function EgeReview({ submission, variant, onClose, onSave }) {
             </div>
           </div>
           <div className="flex gap-3">
-            <button onClick={onClose} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-gray-50">Отмена</button>
+            <button onClick={close} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-gray-50">Отмена</button>
             <button onClick={handleSave} disabled={loading} className="flex-1 btn-primary py-2.5 disabled:opacity-50">
               {loading ? "Сохраняем..." : "Сохранить и уведомить"}
             </button>
@@ -590,6 +593,7 @@ function EgeReview({ submission, variant, onClose, onSave }) {
 }
 
 function SubmissionReview({ submission, variant, onClose, onSave }) {
+  const { cls: closingCls, close } = useClosing(onClose)
   const [scores, setScores] = useState(OGE_PART2_TASKS.reduce((acc, n) => ({ ...acc, [n]: submission.part2_score_detail?.[n] ?? "" }), {}))
   const [loading, setLoading] = useState(false)
 
@@ -611,7 +615,7 @@ function SubmissionReview({ submission, variant, onClose, onSave }) {
           ) : (
             <div className="text-gray-400">ответ не выбран</div>
           )}
-          {!hasFile && <div className="text-amber-600">нет фото решения</div>}
+          {!hasFile && <div className="text-amber-600">нет фотографии решения</div>}
         </div>
         <span className="text-xs text-gray-400 flex-shrink-0">макс. {OGE_PART2_MAX[n]}</span>
         <input type="number" min="0" max={OGE_PART2_MAX[n]} value={scores[n]}
@@ -636,18 +640,18 @@ function SubmissionReview({ submission, variant, onClose, onSave }) {
         user_id: submission.student_id, title: "Вариант проверен",
         body: "Результат: " + total + " баллов, оценка " + getOgeGrade(total, geomScore),
       })
-      onSave(); onClose()
+      onSave(); close()
     }
     setLoading(false)
   }
 
   return createPortal(
-    <div className="fixed inset-0 glass-overlay z-50 overflow-y-auto">
+    <div className={`fixed inset-0 glass-overlay z-50 overflow-y-auto ${closingCls}`}>
       <div className="min-h-full flex items-center justify-center p-4">
-        <div className="glass-modal p-6 w-full max-w-md">
+        <div className={`glass-modal p-6 w-full max-w-md ${closingCls}`}>
           <div className="flex justify-between items-center mb-5">
             <h2 className="text-lg font-medium">Проверка части 2 (ОГЭ)</h2>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">X</button>
+            <button onClick={close} aria-label="Закрыть" className="text-gray-400 hover:text-gray-600"><Icon name="x" size={18} /></button>
           </div>
           <div className="bg-blue-50 rounded-lg p-3 mb-4">
             <div className="text-sm font-medium text-blue-700">Часть 1: {part1Score} / 19 баллов</div>
@@ -696,7 +700,7 @@ function SubmissionReview({ submission, variant, onClose, onSave }) {
             </div>
           </div>
           <div className="flex gap-3">
-            <button onClick={onClose} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-gray-50">Отмена</button>
+            <button onClick={close} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-gray-50">Отмена</button>
             <button onClick={handleSave} disabled={loading} className="flex-1 btn-primary py-2.5 disabled:opacity-50">
               {loading ? "Сохраняем..." : "Сохранить и уведомить"}
             </button>
@@ -735,6 +739,7 @@ function Variants({ user, students = [] }) {
   // «Банка заданий», а он виден одному владельцу платформы.
   const [workbookType, setWorkbookType] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
+  const { cls: previewCls, close: closePreview } = useClosing(() => setPreviewFile(null))
 
   // Сборка вариантов — возможность платных тарифов. Уже выданные варианты
   // остаются доступными: тариф ограничивает создание нового, а не историю.
@@ -941,7 +946,7 @@ function Variants({ user, students = [] }) {
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
         <div>
           <h1 className="text-xl font-medium">Варианты</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Пробники ОГЭ и ЕГЭ: соберите из банка заданий или приложите свой файл — ученик решит их прямо в кабинете.</p>
+          <p className="text-sm text-gray-500 mt-0.5">Пробные варианты ОГЭ и ЕГЭ: соберите из банка заданий или приложите свой файл — ученик решит вариант в кабинете.</p>
         </div>
         <button onClick={() => (canVariants ? setShowAdd(true) : openPlans())} className="btn-primary text-sm px-4 py-2 flex items-center justify-center gap-1.5 self-stretch sm:self-auto shrink-0">
           + Новый вариант
@@ -1114,8 +1119,8 @@ function Variants({ user, students = [] }) {
       )}
 
       {previewFile && createPortal(
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-end md:items-center justify-center" onClick={() => setPreviewFile(null)}>
-          <div className="glass-modal sheet-modal w-full md:max-w-lg p-6" onClick={(e) => e.stopPropagation()}>
+        <div className={`fixed inset-0 glass-overlay z-50 flex items-end md:items-center justify-center ${previewCls}`} onClick={closePreview}>
+          <div className={`glass-modal sheet-modal w-full md:max-w-lg p-6 ${previewCls}`} onClick={(e) => e.stopPropagation()}>
             <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-5 md:hidden" />
             <h3 className="text-base font-medium mb-4 text-center">Просмотр варианта</h3>
             <div className="flex flex-col gap-3">
@@ -1126,7 +1131,7 @@ function Variants({ user, students = [] }) {
               {previewFile.match(/\.(jpg|jpeg|png|gif|webp)/i) && (
                 <img src={previewFile} alt="variant" className="w-full max-h-64 object-contain rounded-xl bg-gray-50" />
               )}
-              <button onClick={() => setPreviewFile(null)} className="w-full border border-gray-200 rounded-xl py-3 text-sm text-gray-600 hover:bg-gray-50">
+              <button onClick={closePreview} className="w-full border border-gray-200 rounded-xl py-3 text-sm text-gray-600 hover:bg-gray-50">
                 Закрыть
               </button>
 

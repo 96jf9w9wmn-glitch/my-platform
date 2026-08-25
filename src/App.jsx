@@ -23,6 +23,7 @@ import Profile from "./pages/Profile"
 import { SubscriptionProvider } from "./subscriptionProvider"
 import { isOwner } from "./owner"
 import { navFor } from "./nav"
+import { useClosing } from "./useClosing"
 import TutorOnboardingModal from "./components/TutorOnboardingModal"
 // Excalidraw тяжёлый (mermaid/katex) — грузим доску только при открытии
 const Board = lazy(() => import("./components/Board"))
@@ -265,6 +266,7 @@ function App() {
   const [chatUnread, setChatUnread] = useState(0)
   // Лист «Ещё» на телефоне: разделы, не влезшие в нижнюю панель.
   const [moreOpen, setMoreOpen] = useState(false)
+  const { cls: moreCls, close: closeMore } = useClosing(() => setMoreOpen(false))
   // Сбой сохранения ученика показываем полосой в кабинете, а не системным alert.
   const [saveError, setSaveError] = useState("")
   // Открытая доска живёт в адресе (?board=<ученик>), а не только в памяти: иначе
@@ -837,15 +839,15 @@ function App() {
 
         {/* Лист «Ещё»: остальные разделы кабинета — списком с названиями. */}
         {moreOpen && createPortal(
-          <div className="md:hidden fixed inset-0 z-[60] flex flex-col justify-end" onClick={() => setMoreOpen(false)}>
-            <div className="absolute inset-0 glass-overlay" />
-            <div className="relative glass-modal sheet-modal p-4 slide-up" style={{ paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom))" }} onClick={(e) => e.stopPropagation()}>
+          <div className="md:hidden fixed inset-0 z-[60] flex flex-col justify-end" onClick={closeMore}>
+            <div className={`absolute inset-0 glass-overlay ${moreCls}`} />
+            <div className={`relative glass-modal sheet-modal p-4 ${moreCls || "slide-up"}`} style={{ paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom))" }} onClick={(e) => e.stopPropagation()}>
               <div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-white/20 mx-auto mb-4" />
               <div className="flex flex-col gap-1">
                 {[...moreNav, { id: "profile", label: "Профиль" }].map((item) => (
                   <button
                     key={item.id}
-                    onClick={() => { navigateTo(item.id); setMoreOpen(false) }}
+                    onClick={() => { navigateTo(item.id); closeMore() }}
                     className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left transition-colors ${
                       activePage === item.id ? "nav-active font-medium" : "text-gray-600 hover:bg-black/[0.04]"
                     }`}
@@ -856,7 +858,7 @@ function App() {
                 ))}
               </div>
               <button
-                onClick={() => setMoreOpen(false)}
+                onClick={closeMore}
                 className="mt-3 w-full rounded-xl py-2.5 text-sm font-medium text-gray-500 bg-black/[0.04] dark:bg-white/[0.08] active:scale-[0.98] transition"
               >
                 Закрыть

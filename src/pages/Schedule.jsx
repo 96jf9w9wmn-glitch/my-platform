@@ -1,5 +1,6 @@
 import { Fragment, useState } from "react"
 import { createPortal } from "react-dom"
+import { useClosing } from "../useClosing"
 import Icon from "../components/Icon"
 
 const HOURS = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00"]
@@ -42,6 +43,8 @@ function Schedule({ students, setStudents }) {
   const [newLesson, setNewLesson] = useState({ studentId: "", date: "", time: "", duration: "" })
   const [view, setView] = useState("month")
   const [formError, setFormError] = useState("")
+  // Плавное закрытие: без этого модалка исчезала рывком.
+  const { cls: closingCls, close: closeForm } = useClosing(() => { setShowForm(false); setFormError("") })
   const [selectedDay, setSelectedDay] = useState(formatDate(new Date()))
 
   function openExtraForm(dateStr) {
@@ -104,7 +107,7 @@ function Schedule({ students, setStudents }) {
         }
       })
     )
-    setShowForm(false)
+    closeForm()
     setNewLesson({ studentId: "", date: "", time: "", duration: "" })
   }
 
@@ -337,11 +340,11 @@ function Schedule({ students, setStudents }) {
       )}
 
       {showForm && createPortal(
-        <div className="fixed inset-0 glass-overlay flex items-center justify-center z-50 p-4">
-          <div className="glass-modal w-full max-w-sm flex flex-col" style={{ maxHeight: "90dvh" }}>
+        <div className={`fixed inset-0 glass-overlay flex items-center justify-center z-50 p-4 ${closingCls}`}>
+          <div className={`glass-modal w-full max-w-sm flex flex-col ${closingCls}`} style={{ maxHeight: "90dvh" }}>
             <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100/60 flex-shrink-0">
               <h2 className="text-lg font-medium">Новое занятие</h2>
-              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600"><Icon name="x" size={18} /></button>
+              <button onClick={closeForm} aria-label="Закрыть" className="text-gray-400 hover:text-gray-600"><Icon name="x" size={18} /></button>
             </div>
             <div className="overflow-y-auto flex-1 min-h-0 px-6 py-5 flex flex-col gap-4">
               <div>
@@ -384,7 +387,7 @@ function Schedule({ students, setStudents }) {
               {formError && <div className="text-sm text-red-500 text-center">{formError}</div>}
             </div>
             <div className="flex gap-3 px-6 py-4 border-t border-gray-100/60 flex-shrink-0">
-              <button onClick={() => { setShowForm(false); setFormError("") }} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-gray-50">Отмена</button>
+              <button onClick={closeForm} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-gray-50">Отмена</button>
               <button onClick={handleAddLesson} className="flex-1 btn-primary py-2.5">Добавить</button>
             </div>
           </div>

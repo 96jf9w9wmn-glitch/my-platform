@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react"
 import { createPortal } from "react-dom"
+import { useClosing } from "../useClosing"
 import { supabase } from "../supabase"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
@@ -65,6 +66,7 @@ function EditModal({ student, onClose, onSave }) {
   const [recurringDuration, setRecurringDuration] = useState(student.lessonDuration || 60)
   const [recurringWeeks, setRecurringWeeks] = useState(8)
   const [formError, setFormError] = useState("")
+  const { cls: closingCls, close } = useClosing(onClose)
 
   function handleChange(e) {
     const { name, value } = e.target
@@ -127,15 +129,15 @@ function EditModal({ student, onClose, onSave }) {
     }
 
     onSave(data)
-    onClose()
+    close()
   }
 
   return createPortal(
-    <div className="fixed inset-0 glass-overlay flex items-center justify-center z-50 p-4">
-      <div className="glass-modal p-6 w-full max-w-md max-h-[90dvh] overflow-y-auto">
+    <div className={`fixed inset-0 glass-overlay flex items-center justify-center z-50 p-4 ${closingCls}`}>
+      <div className={`glass-modal p-6 w-full max-w-md max-h-[90dvh] overflow-y-auto ${closingCls}`}>
         <div className="flex justify-between items-center mb-5">
           <h2 className="text-lg font-medium">Редактировать</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><Icon name="x" size={18} /></button>
+          <button onClick={close} aria-label="Закрыть" className="text-gray-400 hover:text-gray-600"><Icon name="x" size={18} /></button>
         </div>
 
         <div className="flex flex-col gap-4">
@@ -285,7 +287,7 @@ function EditModal({ student, onClose, onSave }) {
         {formError && <div className="text-sm text-red-500 mt-4 text-center">{formError}</div>}
 
         <div className="flex gap-3 mt-4">
-          <button onClick={onClose} className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">
+          <button onClick={close} className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">
             Отмена
           </button>
           <button onClick={handleSave} className="flex-1 bg-blue-600 text-white rounded-lg py-2 text-sm hover:bg-blue-700">

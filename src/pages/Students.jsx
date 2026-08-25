@@ -64,8 +64,8 @@ function EmptyStudents({ onInvite, inviting }) {
       <div>
         <div className="text-sm font-medium text-gray-700 dark:text-gray-200">Пока нет учеников</div>
         <p className="text-xs text-gray-400 mt-1 max-w-xs mx-auto leading-relaxed">
-          Ученик заводится сам: регистрируется, привязывает вас по ссылке или коду —
-          и вы получаете заявку. Карточку заполните, когда её примете.
+          Ученик регистрируется сам: переходит по вашей ссылке или вводит ваш код —
+          и вам приходит заявка. Карточку вы заполните при её приёме.
         </p>
       </div>
       <button onClick={onInvite} disabled={inviting} className="btn-primary px-4 py-2 text-sm disabled:opacity-50">

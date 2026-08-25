@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import Icon from "./Icon"
+import { CLOSE_MS } from "../useClosing"
 
 // Кастомный glass-подтверждатель вместо нативного window.confirm — единый стиль с
 // остальными модалками (createPortal + glass-overlay/glass-modal). Danger-вариант красит
@@ -17,6 +18,23 @@ function ConfirmModal({
   onCancel,
 }) {
   const confirmRef = useRef(null)
+  // Модалку нельзя снять сразу: пока идёт анимация ухода, она остаётся в дереве
+  // с классом .is-closing (см. src/useClosing.js — здесь та же логика, но от
+  // внешнего пропа open, а не от нажатия).
+  const [prevOpen, setPrevOpen] = useState(open)
+  const [visible, setVisible] = useState(open)
+  const [closing, setClosing] = useState(false)
+  if (open !== prevOpen) {
+    setPrevOpen(open)
+    if (open) { setVisible(true); setClosing(false) }
+    else if (visible) setClosing(true)
+  }
+
+  useEffect(() => {
+    if (!closing) return
+    const t = setTimeout(() => { setVisible(false); setClosing(false) }, CLOSE_MS)
+    return () => clearTimeout(t)
+  }, [closing])
 
   useEffect(() => {
     if (!open) return
@@ -29,7 +47,7 @@ function ConfirmModal({
     return () => window.removeEventListener("keydown", onKey)
   }, [open, onCancel, onConfirm])
 
-  if (!open) return null
+  if (!visible) return null
 
   const tint = danger ? "text-red-500 bg-red-500/12" : "text-blue-500 bg-blue-500/12"
   const confirmBtn = danger
@@ -38,14 +56,14 @@ function ConfirmModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 glass-overlay flex items-center justify-center z-50 p-4"
+      className={`fixed inset-0 glass-overlay flex items-center justify-center z-50 p-4 ${closing ? "is-closing" : ""}`}
       onClick={onCancel}
       role="dialog"
       aria-modal="true"
       aria-label={title}
     >
       <div
-        className="glass-modal w-full max-w-sm p-6 flex flex-col items-center text-center"
+        className={`glass-modal w-full max-w-sm p-6 flex flex-col items-center text-center ${closing ? "is-closing" : ""}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className={`w-14 h-14 rounded-full flex items-center justify-center mb-4 ${tint}`}>

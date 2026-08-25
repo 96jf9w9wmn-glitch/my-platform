@@ -576,6 +576,32 @@ body::before {
   animation: overlay-fade 0.2s ease both;
 }
 
+/* Закрытие. Раньше модалка появлялась с анимацией, а исчезала мгновенно —
+   размонтировалась вместе с нажатием. Теперь на время ухода вешается
+   .is-closing (см. src/useClosing.js), и только потом компонент снимается. */
+@keyframes modal-leave {
+  from { opacity: 1; transform: scale(1) translateY(0); }
+  to   { opacity: 0; transform: scale(0.96) translateY(8px); }
+}
+@keyframes sheet-leave {
+  from { opacity: 1; transform: translateY(0); }
+  to   { opacity: 0; transform: translateY(24px); }
+}
+.glass-modal.is-closing {
+  animation: modal-leave 0.18s cubic-bezier(0.4, 0, 1, 1) both;
+}
+.glass-modal.sheet-modal.is-closing {
+  animation: sheet-leave 0.18s cubic-bezier(0.4, 0, 1, 1) both;
+}
+.glass-overlay.is-closing {
+  animation: overlay-fade 0.18s ease both reverse;
+}
+@media (prefers-reduced-motion: reduce) {
+  .glass-modal.is-closing,
+  .glass-modal.sheet-modal.is-closing,
+  .glass-overlay.is-closing { animation-duration: 0.01s; }
+}
+
 /* Скрытый скроллбар — прокрутка остаётся, но системная полоса не портит
    стеклянные модалки и внутренние области. iOS и так прячет её overlay-ем,
    а на desktop/Android она выглядела инородно (см. «странный ползунок справа»). */
@@ -1001,7 +1027,9 @@ button.w-full:not([disabled]):not(.no-press):active::after,
 
 /* Inputs */
 .input-glass {
-  background: #ffffff;
+  /* background-color, а НЕ shorthand background: у <select class="input-glass">
+     shorthand стирал фоновый шеврон (и сбрасывал его no-repeat в плитку). */
+  background-color: #ffffff;
   border: 1px solid rgba(60, 60, 67, 0.22);
   border-radius: 12px;
   padding: 10px 14px;
@@ -1019,13 +1047,13 @@ button.w-full:not([disabled]):not(.no-press):active::after,
 }
 
 .dark .input-glass {
-  background: rgba(255, 255, 255, 0.08);
+  background-color: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.12);
   color: white;
 }
 
 .dark .input-glass:focus {
-  background: rgba(255, 255, 255, 0.12);
+  background-color: rgba(255, 255, 255, 0.12);
   border-color: rgba(0, 122, 255, 0.6);
 }
 
@@ -1372,9 +1400,16 @@ button.w-full:not([disabled]):not(.no-press):active::after,
 
 /* Сегмент-контрол роли на лендинге: «палец» едет к выбранному сегменту
    (приём umschool.net / webium.ru). Движение — только transform. */
-.seg-finger { transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+/* «Палец» сегмент-контрола. Кривая выбрана по замеру пути, а не по названию:
+   прежняя cubic-bezier(0.2,0.8,0.2,1) за первую четверть времени проходила 77%
+   расстояния (и «модная» 0.32,0.72,0,1 — те же 78%), поэтому ход был почти
+   мгновенным и читался как скачок. Эта кривая идёт ровно — 24% пути за четверть
+   времени, 78% за половину — и мягко причаливает. Подпись красится синхронно
+   с ходом пальца (.seg-label). */
+.seg-finger { transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1); }
+.seg-label { transition: color 300ms cubic-bezier(0.4, 0, 0.2, 1); }
 @media (prefers-reduced-motion: reduce) {
-  .seg-finger { transition: none; }
+  .seg-finger, .seg-label { transition: none; }
 }
 
 /* ── Фон из формул «мелом» (FormulaBackdrop) ──────────────────────────────

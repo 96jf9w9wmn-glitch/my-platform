@@ -581,11 +581,11 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
 
   async function handleSubmitTest() {
     if (testAnswers.every((a) => !a.trim())) {
-      setSubmitError("Впиши хотя бы один ответ — пока пусто.")
+      setSubmitError("Впиши хотя бы один ответ.")
       return
     }
     if (requireSolution && !solutionFile) {
-      setSubmitError("Нужно ещё фото решения: нажми «Камера» или «Файл» выше.")
+      setSubmitError("Прикрепи фотографию решения — кнопки «Камера» и «Файл» выше.")
       return
     }
     setSubmitError("")
@@ -1067,14 +1067,14 @@ function SubmitResultDialog({ score, max, onClose }) {
     score === max
       ? { ring: "#34c759", text: "text-green-600", icon: "party", title: "Идеально!", msg: "Все ответы верные — так держать!" }
     : ratio >= 0.8
-      ? { ring: "#34c759", text: "text-green-600", icon: "sparkles", title: "Отличный результат!", msg: "Ты почти у цели — совсем немного до максимума." }
+      ? { ring: "#34c759", text: "text-green-600", icon: "sparkles", title: "Отличный результат!", msg: "До максимума остаётся совсем немного." }
     : ratio >= 0.6
-      ? { ring: "#007AFF", text: "text-blue-600", icon: "check", title: "Хорошая работа!", msg: "Крепкий результат. Разбери спорные задания — и будет ещё лучше." }
+      ? { ring: "#007AFF", text: "text-blue-600", icon: "check", title: "Хорошая работа!", msg: "Хороший результат. Разбери спорные задания — и он станет выше." }
     : ratio >= 0.4
-      ? { ring: "#007AFF", text: "text-blue-600", icon: "book", title: "Неплохо!", msg: "Ты на верном пути. Повтори темы, где ошибся, — прогресс близко." }
+      ? { ring: "#007AFF", text: "text-blue-600", icon: "book", title: "Уже неплохо", msg: "Повтори темы, где были ошибки, — результат заметно вырастет." }
     : score > 0
-      ? { ring: "#ff9500", text: "text-amber-600", icon: "target", title: "Есть над чем поработать", msg: "Каждая ошибка — это тема для роста. Разбери их с репетитором." }
-      : { ring: "#ff9500", text: "text-amber-600", icon: "leaf", title: "Не сдавайся!", msg: "Начало положено. Разбери решения — в следующий раз будет лучше." }
+      ? { ring: "#ff9500", text: "text-amber-600", icon: "target", title: "Есть над чем поработать", msg: "Разбери ошибки с репетитором — это и есть самая полезная часть работы." }
+      : { ring: "#ff9500", text: "text-amber-600", icon: "leaf", title: "Есть куда расти", msg: "Начало положено. Разбери решения — в следующий раз результат будет выше." }
   const R = 42, C = 2 * Math.PI * R
   return createPortal(
     <div
@@ -1524,7 +1524,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
 
   async function submitPart1() {
     if (part1Answers.every((a) => !a)) {
-      setVariantError("Впиши хотя бы один ответ — пока все поля пустые.")
+      setVariantError("Впиши хотя бы один ответ.")
       return
     }
     setVariantError("")
@@ -1693,8 +1693,8 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                   <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600 mb-4">
                     <Icon name="link" size={26} />
                   </div>
-                  <div className="text-lg font-semibold mb-1">Привяжись к репетитору</div>
-                  <div className="text-sm text-gray-500 mb-5">Введи код, который дал репетитор — и здесь появятся занятия, задания, варианты и оплата.</div>
+                  <div className="text-lg font-semibold mb-1">Подключись к репетитору</div>
+                  <div className="text-sm text-gray-500 mb-5">Введи код, который дал репетитор, — и здесь появятся занятия, задания, варианты и оплата.</div>
                   <div className="w-full max-w-xs flex flex-col gap-2.5">
                     <input
                       value={tutorCode}
@@ -2140,7 +2140,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                             )}
                             {isPart2 && !choices?.length && (
                               <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
-                                Задание с развёрнутым решением — запиши его на листе, фото прикрепишь после отправки
+                                Задание с развёрнутым решением: запиши его на листе, фотографию прикрепишь после отправки
                               </div>
                             )}
                           </div>
@@ -2148,7 +2148,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       })}
                     </div>
                     <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700 my-4">
-                      <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />После отправки обязательно прикрепи фото решений части 2 — без них репетитор не начислит баллы. Балл за часть 2 появится после его проверки.</span>
+                      <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />После отправки обязательно прикрепи фотографии решений части 2 — без них репетитор не начислит баллы. Балл за часть 2 появится после проверки.</span>
                     </div>
                     {variantError && <div className="text-sm text-red-500 mb-2 text-center">{variantError}</div>}
                     <button
@@ -2222,7 +2222,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       </div>
                     )}
                     <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700 mb-4">
-                      <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />После отправки обязательно прикрепи фото решений части 2 — без них репетитор не начислит баллы</span>
+                      <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />После отправки обязательно прикрепи фотографии решений части 2 — без них репетитор не начислит баллы</span>
                     </div>
                     {variantError && <div className="text-sm text-red-500 mb-2 text-center">{variantError}</div>}
                     <button

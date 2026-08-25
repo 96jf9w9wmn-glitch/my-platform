@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react"
+import { useClosing } from "../useClosing"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import Icon from "./Icon"
@@ -51,6 +52,9 @@ function PillGroup({ options, value, onChange, autoFocus }) {
 }
 
 function StudentOnboardingModal({ studentId, onComplete, demo = false }) {
+  const payloadRef = useRef(null)
+  const { cls: closingCls, close } = useClosing(() => onComplete(payloadRef.current))
+  const leave = (payload) => { payloadRef.current = payload; close() }
   const [step, setStep] = useState(0)
   const [direction, setDirection] = useState("forward")
   const [exam, setExam] = useState(null)
@@ -114,7 +118,7 @@ function StudentOnboardingModal({ studentId, onComplete, demo = false }) {
     // Предметы храним локально — привязка к репетитору по коду происходит уже
     // в кабинете (заметный блок), и там предмет подставляется из этого выбора.
     try { localStorage.setItem(`student_subjects_${studentId}`, JSON.stringify(subjects)) } catch { /* переполнение localStorage не критично */ }
-    if (demo) { onComplete(payload); return }
+    if (demo) { leave(payload); return }
     setSaving(true)
     const { error: err } = await supabase.from("student_accounts").update({
       exam_goal: exam,
@@ -124,12 +128,12 @@ function StudentOnboardingModal({ studentId, onComplete, demo = false }) {
     }).eq("id", studentId)
     setSaving(false)
     if (err) { setError("Не удалось сохранить: " + err.message); return }
-    onComplete(payload)
+    leave(payload)
   }
 
   return createPortal(
-    <div className="fixed inset-0 glass-overlay flex items-center justify-center z-50 p-4">
-      <div className="glass-modal w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden">
+    <div className={`fixed inset-0 glass-overlay flex items-center justify-center z-50 p-4 ${closingCls}`}>
+      <div className={`glass-modal w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden ${closingCls}`}>
         <div className="px-6 pt-5 pb-1 flex-shrink-0">
           <div className="flex items-center justify-between mb-3">
             <button onClick={() => goTo(step - 1, "back")} disabled={safeStep === 0}

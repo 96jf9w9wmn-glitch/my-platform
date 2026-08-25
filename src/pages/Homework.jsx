@@ -9,6 +9,7 @@ import { parseLocalDate, renderHomeworkMath, parseHomeworkTasks, plural } from "
 import { usePlan } from "../subscription"
 import { PlanHint, PlanLock } from "../components/PlanLock"
 import ConfirmModal from "../components/ConfirmModal"
+import { useClosing } from "../useClosing"
 
 const STATUS_LABELS = {
   assigned: { label: "Выдано", cls: "bg-gray-100 text-gray-600" },
@@ -122,6 +123,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
     editingHw?.test_options ? editingHw?.correct_answers || [] : []
   )
   const fileRef = useRef()
+  const { cls: closingCls, close } = useClosing(onClose)
 
   // --- Генерация ДЗ по теме через DeepSeek (серверный прокси /api/generate-hw) ---
   const [showGen, setShowGen] = useState(false)
@@ -146,8 +148,8 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
   // Сырой код ошибки («DeepSeek: 400») репетитору ничего не говорит — показываем
   // человеческий текст, а исходный оставляем в title для диагностики.
   function humanGenError(err) {
-    if (/^DeepSeek: \d+/.test(err)) return "Сервис генерации не ответил. Попробуй ещё раз."
-    if (/Некорректный ответ модели/.test(err)) return "Модель ответила невнятно. Попробуй ещё раз."
+    if (/^DeepSeek: \d+/.test(err)) return "Сервис генерации не ответил. Попробуйте ещё раз."
+    if (/Некорректный ответ модели/.test(err)) return "Не удалось разобрать ответ сервиса. Попробуйте ещё раз."
     return err
   }
 
@@ -296,7 +298,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
     if (!studentId) return setFormError("Выберите, кому задать")
     if (!title.trim()) return setFormError("Напишите, что задать")
     if (hwType !== "written" && questionCount === 0) {
-      return setFormError("Впишите ответы — по ним работа проверится сама")
+      return setFormError("Впишите ответы — по ним работа проверится автоматически")
     }
     setFormError("")
     setSaving(true)
@@ -356,7 +358,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
 
     if (!error) {
       onCreated()
-      onClose()
+      close()
     } else if (/time_limit_min/.test(error.message || "")) {
       // Колонки ещё нет: миграция supabase/homework_timer.sql не выполнена.
       setFormError("Ограничение по времени пока недоступно: выполните supabase/homework_timer.sql в SQL Editor. Пока оставьте «Без лимита».")
@@ -367,30 +369,30 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
   }
 
   return createPortal(
-    <div className="fixed inset-0 glass-overlay flex items-center justify-center z-50 p-4">
-      <div className="glass-modal p-6 w-full max-w-md max-h-[90dvh] overflow-y-auto">
+    <div className={`fixed inset-0 glass-overlay flex items-center justify-center z-50 p-4 ${closingCls}`}>
+      <div className={`glass-modal p-6 w-full max-w-md max-h-[90dvh] overflow-y-auto ${closingCls}`}>
         <div className="flex justify-between items-center mb-5">
           <h2 className="text-lg font-medium">{isEditing ? "Редактировать задание" : "Новое задание"}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 active:scale-90 transition-transform"><Icon name="x" size={18} /></button>
+          <button onClick={close} aria-label="Закрыть" className="text-gray-400 hover:text-gray-600 active:scale-90 transition-transform"><Icon name="x" size={18} /></button>
         </div>
 
         <div className="flex flex-col gap-5">
-          {/* 1. Кому. Подпись не нужна — вопрос стоит прямо в поле. */}
+          {/* 1. Кому. Отдельная подпись не нужна — она стоит первым пунктом списка. */}
           <select value={studentId} onChange={(e) => setStudentId(e.target.value)}
             aria-label="Ученик" className="input-glass">
-            <option value="">Кому задать?</option>
+            <option value="">Выберите ученика</option>
             {students.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
 
           {/* 2. Что задать: название, текст заданий и файл — одним блоком. */}
           <div className="flex flex-col gap-2">
             <input value={title} onChange={(e) => setTitle(e.target.value)}
-              placeholder="Что задать? Например: §5, №1–10"
+              placeholder="Название задания. Например: параграф 5, № 1–10"
               className="input-glass" />
 
             <textarea value={description} onChange={(e) => setDescription(e.target.value)}
               rows={3}
-              placeholder="Сами задания или пояснения — необязательно"
+              placeholder="Текст заданий или пояснение (необязательно)"
               className="input-glass resize-none" />
 
             <input ref={fileRef} type="file" className="hidden" onChange={(e) => setFile(e.target.files[0])} />
@@ -406,14 +408,14 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
             </button>
           </div>
 
-          {/* 3. Генерация ДЗ по теме через ИИ — строкой, панель разворачивается. */}
+          {/* 3. Составление заданий по теме через ИИ — строкой, панель разворачивается. */}
           <div className={showGen ? "rounded-2xl bg-blue-500/[0.06] ring-1 ring-blue-500/15 p-3" : ""}>
             <button
               type="button"
               onClick={() => setShowGen((v) => !v)}
               className={`w-full flex items-center justify-between text-sm font-medium text-blue-600 rounded-lg active:scale-[0.99] transition-transform ${showGen ? "" : "py-0.5"}`}
             >
-              <span className="flex items-center gap-1.5"><Icon name="sparkles" size={15} />Придумать задания за меня</span>
+              <span className="flex items-center gap-1.5"><Icon name="sparkles" size={15} />Составить задания по теме</span>
               <span className="flex items-center gap-2">
                 {aiLeft !== null && !aiBlocked && (
                   <span className="text-[11px] font-normal text-blue-500/80 tabular-nums">осталось {aiLeft}</span>
@@ -425,7 +427,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
             {showGen && aiBlocked && (
               <div className="mt-3">
                 <PlanHint feature="aiHomework">
-                  ИИ придумает задания по теме и оформит их тестом с автопроверкой.
+                  ИИ составит задания по теме и оформит их тестом с автоматической проверкой.
                 </PlanHint>
               </div>
             )}
@@ -435,40 +437,47 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
                 <input
                   value={genTopic}
                   onChange={(e) => setGenTopic(e.target.value)}
-                  placeholder="Тема, например: Квадратные уравнения"
+                  placeholder="Тема. Например: квадратные уравнения"
+                  className="input-glass"
+                />
+                {/* Предмет — своей строкой: рядом с двумя списками поле сжималось
+                    до пустого прямоугольника, в котором не было видно даже подписи. */}
+                <input
+                  value={genSubject}
+                  onChange={(e) => setGenSubject(e.target.value)}
+                  placeholder="Предмет (необязательно)"
                   className="input-glass"
                 />
                 <div className="flex gap-2">
-                  <input
-                    value={genSubject}
-                    onChange={(e) => setGenSubject(e.target.value)}
-                    placeholder="Предмет (необяз.)"
-                    className="input-glass flex-1 min-w-0 px-3 py-2"
-                  />
-                  <select
-                    value={genLevel}
-                    onChange={(e) => setGenLevel(e.target.value)}
-                    className="input-glass w-auto px-2 py-2"
-                  >
-                    <option value="лёгкий">Лёгкий</option>
-                    <option value="средний">Средний</option>
-                    <option value="сложный">Сложный</option>
-                  </select>
-                  <select
-                    value={genCount}
-                    onChange={(e) => setGenCount(Number(e.target.value))}
-                    className="input-glass w-auto px-2 py-2"
-                    title="Количество заданий"
-                  >
-                    {[3, 5, 8, 10, 15].map((n) => <option key={n} value={n}>{n} зад.</option>)}
-                  </select>
+                  <label className="flex-1 min-w-0">
+                    <span className="block text-xs text-gray-500 mb-1">Сложность</span>
+                    <select
+                      value={genLevel}
+                      onChange={(e) => setGenLevel(e.target.value)}
+                      className="input-glass w-full px-3 py-2"
+                    >
+                      <option value="лёгкий">Лёгкий</option>
+                      <option value="средний">Средний</option>
+                      <option value="сложный">Сложный</option>
+                    </select>
+                  </label>
+                  <label className="flex-1 min-w-0">
+                    <span className="block text-xs text-gray-500 mb-1">Количество заданий</span>
+                    <select
+                      value={genCount}
+                      onChange={(e) => setGenCount(Number(e.target.value))}
+                      className="input-glass w-full px-3 py-2"
+                    >
+                      {[3, 5, 8, 10, 15].map((n) => <option key={n} value={n}>{n} зад.</option>)}
+                    </select>
+                  </label>
                 </div>
 
                 <Toggle
                   on={genAsTest}
                   onClick={() => setGenAsTest((v) => !v)}
                   title="Тест с выбором ответа"
-                  note="Ученик выбирает вариант, проверка автоматическая"
+                  note="Ученик выбирает один из вариантов, проверка автоматическая"
                 />
 
                 {genError && <div className="text-xs text-red-500" title={genError}>{humanGenError(genError)}</div>}
@@ -480,10 +489,10 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
                   className="bg-blue-600 text-white rounded-xl py-2 text-sm hover:bg-blue-700 disabled:opacity-50 active:scale-[0.99] transition-transform flex items-center justify-center gap-1.5"
                 >
                   {generating
-                    ? <><span className="loader-dots"><i /><i /><i /></span>Генерирую — это до минуты</>
+                    ? <><span className="loader-dots"><i /><i /><i /></span>Составляем задания, это займёт до минуты</>
                     : aiLeft === 0
                     ? <>Лимит на этот месяц исчерпан</>
-                    : <><Icon name="sparkles" size={14} />Сгенерировать</>}
+                    : <><Icon name="sparkles" size={14} />Составить задания</>}
                 </button>
 
                 {preview && (
@@ -514,7 +523,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
                         </div>
                         {t.options && t.options.length > 0 ? (
                           <div className="pl-6 flex flex-col gap-1">
-                            <span className="text-xs text-gray-400">Варианты (нажми на правильный):</span>
+                            <span className="text-xs text-gray-400">Варианты ответа — отметьте правильный</span>
                             <div className="flex flex-col gap-1.5">
                               {t.options.map((o, j) => {
                                 const correct = o === t.answer
@@ -558,7 +567,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
                       </div>
                     ))}
                     <div className="text-[11px] text-gray-400 leading-snug">
-                      Проверьте вопросы и ответы — ИИ может ошибаться. Вопросы уйдут в описание, а варианты станут тестом с автопроверкой.
+                      Проверьте вопросы и ответы: ИИ может ошибаться. Вопросы попадут в описание задания, а варианты ответов — в тест с автоматической проверкой.
                     </div>
                     <div className="flex gap-2">
                       <button
@@ -584,7 +593,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
 
           {/* 4. Срок сдачи: чипы вместо календаря — одно нажатие вместо трёх. */}
           <div>
-            <div className="text-sm text-gray-500 mb-2">Когда сдать</div>
+            <div className="text-sm text-gray-500 mb-2">Срок сдачи</div>
             <div className="flex flex-wrap gap-1.5">
               {DEADLINE_CHIPS.map((c) => {
                 const value = c.days == null ? "" : isoDay(c.days)
@@ -596,7 +605,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
                 )
               })}
               <button type="button" onClick={() => setPickDate(true)} className={chipCls(pickDate)}>
-                Своя дата
+                Другая дата
               </button>
             </div>
             <Collapse open={pickDate}>
@@ -611,7 +620,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
               on={autoCheck}
               onClick={() => setAutoCheck((v) => !v)}
               title="Ученик отвечает в приложении"
-              note={autoCheck ? "Проверится само, оценка сразу" : "Иначе пришлёт фото или файл с работой"}
+              note={autoCheck ? "Ответы сверятся автоматически, оценка появится сразу" : "Иначе ученик прикрепит фотографию или файл с работой"}
             />
 
             <Collapse open={autoCheck}>
@@ -678,7 +687,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
 
                 {/* Время на работу — тоже чипами: отсчёт пойдёт с открытия. */}
                 <div>
-                  <div className="text-sm text-gray-500 mb-2">Сколько времени на работу</div>
+                  <div className="text-sm text-gray-500 mb-2">Время на работу</div>
                   <div className="flex flex-wrap gap-1.5">
                     {timeChips.map((n) => (
                       <button key={n} type="button" onClick={() => setTimeLimit(n ? String(n) : "")}
@@ -689,7 +698,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
                   </div>
                   {timeLimit && (
                     <div className="text-[11px] text-gray-400 mt-1.5 leading-snug">
-                      Время пойдёт, когда ученик откроет работу. Как выйдет — работа уйдёт на проверку сама.
+                      Отсчёт начнётся, когда ученик откроет работу. По истечении времени она автоматически уйдёт на проверку.
                     </div>
                   )}
                 </div>
@@ -697,8 +706,8 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
                 <Toggle
                   on={requireSolution}
                   onClick={() => setRequireSolution(!requireSolution)}
-                  title="Ещё и фото решения"
-                  note="Без него тест не отправится"
+                  title="Дополнительно — фотография решения"
+                  note="Без неё отправить тест нельзя"
                 />
               </div>
             </Collapse>
@@ -708,7 +717,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
         {formError && <div className="text-xs text-red-500 mt-4 text-center">{formError}</div>}
 
         <div className="flex gap-3 mt-5">
-          <button onClick={onClose} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-gray-100 active:scale-[0.98] transition-all">
+          <button onClick={close} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-gray-100 active:scale-[0.98] transition-all">
             Отмена
           </button>
           <button onClick={handleSubmit} disabled={saving} className="flex-1 bg-blue-600 text-white rounded-xl py-2.5 text-sm hover:bg-blue-700 disabled:opacity-50 active:scale-[0.98] transition-transform">

@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react"
+import { useClosing } from "../useClosing"
 import { createPortal } from "react-dom"
 import Icon from "./Icon"
 import MorphIcon from "./MorphIcon"
+import SegmentSwitch from "./SegmentSwitch"
 import { renderTaskMath } from "../utils"
 import { taskThemes } from "../pages/taskGenerators"
 import { EXAM_GROUPS, levelOf, numbersWithGen, subjectLabel, genTask, genThemeTask } from "../pages/examSubjects"
@@ -23,6 +25,7 @@ function loadPref() {
 }
 
 export default function BoardTaskModal({ dark = false, onInsert, onClose }) {
+  const { cls: closingCls, close } = useClosing(onClose)
   const pref = loadPref()
   const [examType, setExamType] = useState(pref?.examType || "ОГЭ")
   const [number, setNumber] = useState(pref?.number || null)
@@ -46,10 +49,10 @@ export default function BoardTaskModal({ dark = false, onInsert, onClose }) {
   // Esc закрывает выбор. Горячие клавиши доски на это время заглушены (Board), поэтому
   // без своего обработчика клавиша не делала бы ничего.
   useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") onClose() }
+    const onKey = (e) => { if (e.key === "Escape") close() }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [onClose])
+  }, [close])
 
   // Задание генерируется только по явному выбору (номер/типаж/«другое»), а не эффектом:
   // набор случайный, и эффект на каждый рендер выдавал бы новую задачу сам по себе.
@@ -86,7 +89,7 @@ export default function BoardTaskModal({ dark = false, onInsert, onClose }) {
       const file = await taskToImageFile(task, { label: subjectLabel(examType) })
       // ширину листа задаёт снимок: доска кладёт картинку в неё, а не вписывает как фото
       await onInsert(file, SHEET_WIDTH)
-      onClose()
+      close()
     } catch {
       setErr("Не получилось перенести задание на доску")
       setBusy(false)
@@ -108,9 +111,9 @@ export default function BoardTaskModal({ dark = false, onInsert, onClose }) {
     } ${extra}`
 
   return createPortal(
-    <div className="fixed inset-0 glass-overlay z-[100010] overflow-y-auto" onPointerDown={(e) => e.stopPropagation()}>
+    <div className={`fixed inset-0 glass-overlay z-[100010] overflow-y-auto ${closingCls}`} onPointerDown={(e) => e.stopPropagation()}>
       <div className="min-h-full flex items-center justify-center p-4">
-        <div className="glass-modal p-6 w-full max-w-lg max-h-[90dvh] overflow-y-auto">
+        <div className={`glass-modal p-6 w-full max-w-lg max-h-[90dvh] overflow-y-auto ${closingCls}`}>
           <div className="flex justify-between items-start mb-4">
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center flex-shrink-0">
@@ -121,20 +124,17 @@ export default function BoardTaskModal({ dark = false, onInsert, onClose }) {
                 <div className="text-xs text-gray-400">{subjectLabel(examType)}</div>
               </div>
             </div>
-            <button onClick={onClose} className="press-tap text-gray-400 hover:text-gray-600 mt-1"><Icon name="x" size={18} /></button>
+            <button onClick={close} aria-label="Закрыть" className="press-tap text-gray-400 hover:text-gray-600 mt-1"><Icon name="x" size={18} /></button>
           </div>
 
           {/* уровень и предмет */}
-          <div className="inline-flex p-1 mb-3 rounded-2xl bg-gray-100 border border-gray-200/70">
-            {EXAM_GROUPS.map((g) => (
-              <button key={g.key} onClick={() => pickLevel(g.key)}
-                className={`px-6 py-1.5 rounded-xl text-sm font-semibold transition-all active:scale-95 ${
-                  level === g.key ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
-                }`}>
-                {g.key}
-              </button>
-            ))}
-          </div>
+          <SegmentSwitch
+            items={EXAM_GROUPS.map((g) => ({ key: g.key }))}
+            value={level}
+            onChange={pickLevel}
+            ariaLabel="Уровень экзамена"
+            className="mb-3"
+          />
           <div className="flex flex-wrap gap-2 mb-4">
             {group.subjects.map((s) => {
               const has = numbersWithGen(s.type).length > 0

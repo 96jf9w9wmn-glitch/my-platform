@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react"
 import { createPortal } from "react-dom"
+import { useClosing } from "../useClosing"
 import Icon from "./Icon"
 import PhoneInput, { isValidPhoneNumber } from "react-phone-number-input"
 import "react-phone-number-input/style.css"
@@ -127,6 +128,7 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
   const [onboardingPulled, setOnboardingPulled] = useState(false)
   const [hasStudentConsent, setHasStudentConsent] = useState(false)
   const [formError, setFormError] = useState("")
+  const { cls: closingCls, close } = useClosing(onClose)
 
   // Если ученик уже прошёл анкету в своём кабинете — при добавлении его репетитором
   // подтягиваем результаты анкеты (цель, целевой балл) по совпадению телефона.
@@ -245,8 +247,8 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
   }
 
   return createPortal(
-    <div className="fixed inset-0 glass-overlay flex items-center justify-center z-50 p-4">
-      <div className="glass-modal w-full max-w-lg flex flex-col" style={{ maxHeight: "90dvh" }}>
+    <div className={`fixed inset-0 glass-overlay flex items-center justify-center z-50 p-4 ${closingCls}`}>
+      <div className={`glass-modal w-full max-w-lg flex flex-col ${closingCls}`} style={{ maxHeight: "90dvh" }}>
         {/* Липкий хедер */}
         <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100/60 flex-shrink-0">
           <div>
@@ -255,7 +257,7 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
             <h2 className="text-lg font-medium">Данные ученика</h2>
             <p className="text-xs text-gray-400 mt-0.5">Заявка от ученика — заполните карточку и примите</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1"><Icon name="x" size={18} /></button>
+          <button onClick={close} aria-label="Закрыть" className="text-gray-400 hover:text-gray-600 p-1"><Icon name="x" size={18} /></button>
         </div>
 
         {/* Скроллящийся контент */}
@@ -517,7 +519,7 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
           <div className="px-6 pt-3 flex-shrink-0 text-sm text-red-500 text-center">{formError}</div>
         )}
         <div className="flex gap-3 px-6 py-4 border-t border-gray-100/60 flex-shrink-0">
-          <button onClick={onClose} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-gray-50">Отмена</button>
+          <button onClick={close} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-gray-50">Отмена</button>
           <button onClick={handleSubmit} disabled={submitting} className="flex-1 btn-primary py-2.5 disabled:opacity-50">
             {submitting ? "Принимаем..." : "Принять ученика"}
           </button>

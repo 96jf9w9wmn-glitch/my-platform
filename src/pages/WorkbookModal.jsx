@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { createPortal } from "react-dom"
+import { useClosing } from "../useClosing"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
 import { plural } from "../utils"
@@ -53,6 +54,7 @@ export default function WorkbookModal({ examType, examLabel = "", focus = null, 
   const [title, setTitle] = useState("Рабочая тетрадь")
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState("")
+  const { cls: closingCls, close } = useClosing(onClose)
 
   // в варианте, кроме части 1, идут номера части 2 (ОГЭ 20–25, профиль 13)
   const allCount = canVariant
@@ -98,7 +100,7 @@ export default function WorkbookModal({ examType, examLabel = "", focus = null, 
       a.download = `${title.trim() || "Рабочая тетрадь"} — ${subject}.pdf`
       a.click()
       URL.revokeObjectURL(url)
-      onClose()
+      close()
     } catch (e) {
       setErr(e?.message === "нет заданий" ? "Для этого выбора заданий не нашлось" : "Не получилось собрать PDF")
     } finally {
@@ -114,9 +116,9 @@ export default function WorkbookModal({ examType, examLabel = "", focus = null, 
     }`
 
   return createPortal(
-    <div className="fixed inset-0 glass-overlay z-50 overflow-y-auto">
+    <div className={`fixed inset-0 glass-overlay z-50 overflow-y-auto ${closingCls}`}>
       <div className="min-h-full flex items-center justify-center p-4">
-        <div className="glass-modal p-6 w-full max-w-md max-h-[90dvh] overflow-y-auto">
+        <div className={`glass-modal p-6 w-full max-w-md max-h-[90dvh] overflow-y-auto ${closingCls}`}>
           <div className="flex justify-between items-start mb-1">
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center flex-shrink-0">
@@ -127,7 +129,7 @@ export default function WorkbookModal({ examType, examLabel = "", focus = null, 
                 <div className="text-xs text-gray-400">{subject}</div>
               </div>
             </div>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 mt-1"><Icon name="x" size={18} /></button>
+            <button onClick={close} aria-label="Закрыть" className="text-gray-400 hover:text-gray-600 mt-1"><Icon name="x" size={18} /></button>
           </div>
 
           <p className="text-xs text-gray-400 mt-3 mb-4 leading-snug">

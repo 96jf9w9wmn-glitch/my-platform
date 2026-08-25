@@ -67,7 +67,7 @@ export const PLANS = [
     name: "Про",
     tagline: "Рабочий тариф для практикующего репетитора",
     price: { month: 1990, year: 19900 },
-    limits: { students: 25, aiHomework: 150 },
+    limits: { students: 15, aiHomework: 150 },
     features: {
       homework: true,
       finance: true,
@@ -83,7 +83,7 @@ export const PLANS = [
     },
     popular: true,
     highlights: [
-      "До 25 учеников",
+      "До 15 учеников",
       "Домашние задания, финансы, доска",
       "Банк заданий, варианты и печатные тетради",
       "Результаты и аналитика по ученикам",
