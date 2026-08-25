@@ -1,6 +1,6 @@
 import jsPDF from "jspdf"
 import html2canvas from "html2canvas"
-import { renderTaskMathPdf, renderBlock, svgUrlToPng, CONTAINER_W } from "./variantPdf"
+import { renderTaskMathPdf, renderBlock, taskImage, CONTAINER_W } from "./variantPdf"
 
 // Рабочая тетрадь: условие задания, а под ним — поле в клетку, где ученик пишет решение
 // от руки. Печатается на обычном принтере, поэтому вся геометрия считается в миллиметрах
@@ -45,47 +45,6 @@ function fieldHeightFor(space, examType, task) {
   if (typeof space === "number") return space
   if (space === "auto") return isLongTask(examType, task.number) ? FIELD_PRESETS.large : FIELD_PRESETS.medium
   return FIELD_PRESETS[space] || FIELD_PRESETS.medium
-}
-
-// Картинка задания. Генераторы отдают SVG (data-URL) — его надо растеризовать самим,
-// html2canvas живые SVG рисует ненадёжно; готовый растр из банка вставляем как есть.
-//
-// Высота известна ЗДЕСЬ и проставляется в <img> явным атрибутом. Без неё высота блока
-// зависит от того, успел ли браузер декодировать картинку: html2canvas снимает не сам
-// документ, а его клон, и недекодированная картинка в клоне даёт нулевую высоту — блок
-// в снимке выходит короче, чем в DOM, и чертёж пропадает из задания (у ученика остаётся
-// «на рисунке изображён график» без графика).
-const capped = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(r, ms))])
-
-// Размер растровой картинки из банка (у SVG он известен после растеризации, мерить нечего).
-async function measure(dataUrl, width) {
-  const img = new Image()
-  try {
-    await new Promise((resolve, reject) => {
-      img.onload = resolve
-      img.onerror = () => reject(new Error("картинка не загрузилась"))
-      img.src = dataUrl
-    })
-    if (!img.naturalWidth) return null
-    return Math.round((width * img.naturalHeight) / img.naturalWidth)
-  } catch {
-    return null
-  }
-}
-
-async function taskImage(url) {
-  if (!url) return null
-  const isSvg = url.startsWith("data:image/svg") || /\.svg($|\?)/i.test(url)
-  if (isSvg) {
-    try {
-      const png = await svgUrlToPng(url)
-      return { dataUrl: png.dataUrl, width: png.width, height: png.height }
-    } catch {
-      // растеризовать не вышло — отдаём исходный адрес: пусть попробует html2canvas.
-      // Молча терять чертёж нельзя, задание без него нерешаемо.
-    }
-  }
-  return { dataUrl: url, width: 380, height: await measure(url, 380) }
 }
 
 // Сетка в клетку + рамка. Возвращает фактическую высоту (кратна клетке, чтобы у поля
@@ -209,6 +168,10 @@ function cropStripe(canvas, data, top, bot) {
   out.clipped = !!ink && (ink.first - top < edge || bot - ink.last < edge)
   return out
 }
+
+// Ждём картинку не дольше срока: у не показанного на экране контейнера событие загрузки
+// иногда не приходит вовсе, и пачка стояла бы впустую.
+const capped = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(r, ms))])
 
 // Снимает пачку условий одним html2canvas и возвращает по картинке на задание.
 async function snapBatch(htmls) {

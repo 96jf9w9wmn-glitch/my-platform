@@ -3,21 +3,14 @@ import { createPortal } from "react-dom"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
 import { plural } from "../utils"
-import { hasGenerators, generateTask, taskThemes } from "./taskGenerators"
+import { taskThemes } from "./taskGenerators"
+import { numbersWithGen, genTask, genThemeTask } from "./examSubjects"
 import { assembleFromBank, TASK_NUMBERS_BY_TYPE, PART2_NUMBERS } from "./taskBankApi"
 import { generateWorkbookPdf } from "./workbookPdf"
 
 // «Рабочая тетрадь» — лист для печати: условие, а под ним поле в клетку для решения от руки.
 // Настроек ровно столько, сколько нужно: что вошло, сколько заданий и сколько места под
 // решение. Всё остальное подставляется само, чтобы тетрадь собиралась одним нажатием.
-
-const MAX_NUMBER = 38
-
-function numbersWithGen(examType) {
-  const out = []
-  for (let n = 1; n <= MAX_NUMBER; n++) if (hasGenerators(examType, n)) out.push(n)
-  return out
-}
 
 // focus из «Банка заданий»: число | "gen:номер:типаж" | "fam:номер:тема" | "mod:…" | "read…"
 function parseFocus(focus) {
@@ -50,17 +43,6 @@ const SPACES = [
   { key: "large", label: "Много" },
 ]
 
-function genSafe(examType, number, genKey) {
-  try { return generateTask(examType, number, genKey) } catch { return null }
-}
-
-// Случайный типаж внутри семейства — чтобы тетрадь по теме не была из одной и той же задачи.
-function genFam(examType, number, theme) {
-  const g = (taskThemes(examType, number) || []).find((t) => t.theme === theme)
-  if (!g?.items.length) return null
-  return genSafe(examType, number, g.items[Math.floor(Math.random() * g.items.length)].key)
-}
-
 export default function WorkbookModal({ examType, examLabel = "", focus = null, onClose }) {
   const f = parseFocus(focus)
   const canVariant = !!TASK_NUMBERS_BY_TYPE[examType]
@@ -83,9 +65,9 @@ export default function WorkbookModal({ examType, examLabel = "", focus = null, 
     if (scope === "focus" && f) {
       const out = []
       for (let i = 0; i < count; i++) {
-        const t = f.genKey ? genSafe(examType, f.number, f.genKey)
-          : f.theme ? genFam(examType, f.number, f.theme)
-            : genSafe(examType, f.number)
+        const t = f.genKey ? genTask(examType, f.number, f.genKey)
+          : f.theme ? genThemeTask(examType, f.number, f.theme)
+            : genTask(examType, f.number)
         if (t) out.push(t)
       }
       return out
@@ -94,7 +76,7 @@ export default function WorkbookModal({ examType, examLabel = "", focus = null, 
       const { picked } = await assembleFromBank(examType)
       return picked.filter(Boolean)
     }
-    return numbersWithGen(examType).map((n) => genSafe(examType, n)).filter(Boolean)
+    return numbersWithGen(examType).map((n) => genTask(examType, n)).filter(Boolean)
   }
 
   async function download() {

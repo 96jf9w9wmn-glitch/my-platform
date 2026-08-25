@@ -1,5 +1,6 @@
 import { useState, lazy, Suspense } from "react"
-import { hasGenerators, generateTask, taskThemes } from "./taskGenerators"
+import { generateTask, taskThemes } from "./taskGenerators"
+import { EXAM_GROUPS, levelOf, numbersWithGen, subjectLabel } from "./examSubjects"
 import { hasModules, generateModule, moduleScenarios } from "./taskModules"
 import { genReadingModule, genMatchingModule, TFN } from "./readingEng"
 import { renderTaskMath } from "../utils"
@@ -16,49 +17,8 @@ const WorkbookModal = lazy(() => import("./WorkbookModal"))
 // Временный раздел: быстрый предпросмотр сгенерированных заданий (проверить вид/опечатки).
 // Работает целиком на клиентских генераторах (taskGenerators.js), без Supabase.
 
-// Двухуровневая навигация: уровень экзамена (ЕГЭ / ОГЭ) → предмет внутри уровня.
-// type — ключ генераторов (не менять), label — короткая подпись, dot — цвет акцента.
-const EXAM_GROUPS = [
-  {
-    key: "ЕГЭ",
-    subjects: [
-      { type: "ЕГЭ", label: "Математика база", dot: "bg-blue-500" },
-      { type: "ЕГЭ Профиль", label: "Математика профиль", dot: "bg-indigo-500" },
-      { type: "ЕГЭ Информатика", label: "Информатика", dot: "bg-cyan-500" },
-    ],
-  },
-  {
-    key: "ОГЭ",
-    subjects: [
-      { type: "ОГЭ", label: "Математика", dot: "bg-blue-500" },
-      { type: "ОГЭ Русский", label: "Русский", dot: "bg-rose-500" },
-      { type: "ОГЭ Английский", label: "Английский", dot: "bg-red-500" },
-      { type: "ОГЭ Информатика", label: "Информатика", dot: "bg-cyan-500" },
-      { type: "ОГЭ Физика", label: "Физика", dot: "bg-violet-500" },
-      { type: "ОГЭ Химия", label: "Химия", dot: "bg-emerald-500" },
-      { type: "ОГЭ Биология", label: "Биология", dot: "bg-green-500" },
-      { type: "ОГЭ Обществознание", label: "Обществознание", dot: "bg-amber-500" },
-      { type: "ОГЭ История", label: "История", dot: "bg-orange-500" },
-      { type: "ОГЭ Литература", label: "Литература", dot: "bg-fuchsia-500" },
-      { type: "ОГЭ География", label: "География", dot: "bg-teal-500" },
-    ],
-  },
-]
-
-// Уровень (ЕГЭ / ОГЭ), к которому относится предмет.
-function levelOf(type) {
-  const g = EXAM_GROUPS.find((grp) => grp.subjects.some((s) => s.type === type))
-  return g ? g.key : "ОГЭ"
-}
-const MAX_NUMBER = 38   // англ. идёт до №38 (устная часть); фильтр numbersWithGen отсекает пустые
 const BATCH = 8   // сколько вариантов одного номера показывать за раз
 const MOD_BATCH = 3   // модули №1–5 крупнее — показываем меньше за раз
-
-function numbersWithGen(examType) {
-  const out = []
-  for (let n = 1; n <= MAX_NUMBER; n++) if (hasGenerators(examType, n)) out.push(n)
-  return out
-}
 
 // Генерация с перехватом ошибок — упавший генератор показывается карточкой-ошибкой,
 // а не роняет всю страницу (удобно ловить баги при просмотре). genKey — конкретный типаж.
@@ -462,8 +422,6 @@ function TaskGenPreview() {
   const numbers = numbersWithGen(examType)
   const level = levelOf(examType)
   const currentGroup = EXAM_GROUPS.find((g) => g.key === level) || EXAM_GROUPS[1]
-  // подпись предмета для обложки тетради: «ОГЭ Математика», «ЕГЭ Математика профиль»
-  const subjectLabel = `${level} ${currentGroup.subjects.find((s) => s.type === examType)?.label || examType}`
   const hasReading = examType === "ОГЭ Английский"
   const isReading = focus === "read12" || focus === "read13"
   const rerollReading = () => setReading({ matching: genMatchingModule(), module: genReadingModule() })
@@ -527,7 +485,7 @@ function TaskGenPreview() {
         <Suspense fallback={null}>
           <WorkbookModal
             examType={examType}
-            examLabel={subjectLabel}
+            examLabel={subjectLabel(examType)}
             focus={focus}
             onClose={() => setWorkbook(false)}
           />

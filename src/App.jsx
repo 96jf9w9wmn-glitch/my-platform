@@ -683,6 +683,8 @@ function App() {
             userName={user.profile?.name || user.email}
             theme={document.documentElement.classList.contains("dark") ? "dark" : "light"}
             onClose={() => setBoard(null)}
+            /* Задание из банка кладёт на доску репетитор; у ученика такой кнопки нет */
+            canAddTasks
           />
         </Suspense>
       )}

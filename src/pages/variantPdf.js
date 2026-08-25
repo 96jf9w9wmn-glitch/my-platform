@@ -35,6 +35,16 @@ const stripRootMarker = (s) => String(s)
   .replace(/⁅([^⁆]*)⁆/g, "$1")
   .replace(/⦃([^¦⦄]*)¦([^⦄]*)⦄/g, "$1/$2")
   .replace(/⦉([^⦊]*)⦊/g, "$1")
+// Маркеры ВНУТРИ над/подстрочника условия. Настоящую стопку там не построить: дробь в
+// PDF — картинка фиксированного кегля, в индексе она была бы ростом со строку. Поэтому
+// дробь пишем в строку (log с основанием 1/15), а корень — знаком с чертой над числом.
+// Молча оставлять маркеры нельзя: в условии видны сырые «⦃1¦15⦄» и «√{15}».
+const flatMarks = (s) => String(s)
+  .replace(/⦃([^¦⦄]*)¦([^⦄]*)⦄/g, "$1/$2")
+  .replace(/√(?:\[([^\]{}]+)\])?\{([^{}]+)\}/g,
+    (_, i, x) => `${i ? `<sup style="font-size:.7em;">${i}</sup>` : ""}√<span style="text-decoration:overline;">${x}</span>`)
+  .replace(/⁅([^⁆]*)⁆/g, `<sup style="font-size:0.72em; line-height:0; vertical-align:0.55em;">$1</sup>`)
+
 // ⁅x⁆ внутри числителя/знаменателя дроби (степень: 2ˣ, 4ˣ⁻³) — SVG-надстрочник.
 const supInSvg = (s) => String(s)
   .replace(/⁅([^⁆]*)⁆/g, (_, x) => `<tspan baseline-shift="super" font-size="0.72em">${x}</tspan>`)
@@ -263,20 +273,23 @@ export async function renderTaskMathPdf(text, mf = MATH_ARIAL) {
     .replace(/⟦match⟧([\s\S]*?)⟦endmatch⟧/g, (_, body) => matchTablePdf(body, mf.plain))
     .replace(/⟦tbl⟧([\s\S]*?)⟦endtbl⟧/g, (_, body) => dataTablePdf(body, mf.plain))
     .replace(/⟦list⟧([\s\S]*?)⟦endlist⟧/g, (_, body) => orderedListPdf(body, mf.plain))
-  const re = /⟦rf:([^⟧]*)⟧|⟦f:([^:⟧]+):([^:⟧]+)⟧|⟦r:([^⟧]+)⟧|⟦b:([^⟧]+)⟧|⟦iso:([^:⟧]+):([^:⟧]+):([^⟧]+)⟧|⟦sup:([^⟧]+)⟧|⟦rn:([^:⟧]+):([^⟧]+)⟧|⟦pf:([^:⟧]+):([^:⟧]+)⟧|⁅([^⁆]*)⁆|⦃([^¦⦄]*)¦([^⦄]*)⦄|⦉([^⦊]*)⦊|⦅([^¦⦆]*)¦([^⦆]*)⦆/g
+  const re = /⟦rf:([^⟧]*)⟧|⟦f:([^:⟧]+):([^:⟧]+)⟧|⟦r:([^⟧]+)⟧|⟦b:([^⟧]+)⟧|⟦iso:([^:⟧]+):([^:⟧]+):([^⟧]+)⟧|⟦sup:([^⟧]+)⟧|⟦rn:([^:⟧]+):([^⟧]+)⟧|⟦pf:([^:⟧]+):([^:⟧]+)⟧|⁅([^⁆]*)⁆|⦃([^¦⦄]*)¦([^⦄]*)⦄|⦉([^⦊]*)⦊|⦅([^¦⦆]*)¦([^⦆]*)⦆|√(?:\[([^\]{}]+)\])?\{([^{}]+)\}|⟦code:([^⟧]*)⟧/g
   let out = "", last = 0, m
   while ((m = re.exec(esc)) !== null) {
     out += esc.slice(last, m.index)
     if (m[1] !== undefined) { const [pre, n, d, post] = m[1].split("¦"); out += await svgToInlineImg(rootFracSvg(pre || "", n || "", d || "", post || "", mf), FRAC_VALIGN) }
     else if (m[4] !== undefined) out += await svgToInlineImg(rootSvg(m[4], "", mf), ROOT_VALIGN)
-    else if (m[5] !== undefined) out += `<sub>${m[5]}</sub>`
+    else if (m[5] !== undefined) out += `<sub>${flatMarks(m[5])}</sub>`
     else if (m[6] !== undefined) out += `<span style="white-space:nowrap;"><span style="display:inline-flex; flex-direction:column; align-items:flex-end; text-align:right; vertical-align:-0.35em; font-size:0.62em; line-height:1.05; margin-right:0.05em;"><span>${m[6]}</span><span>${m[7]}</span></span>${m[8]}</span>`
-    else if (m[9] !== undefined) out += `<sup style="font-size:0.72em; line-height:0; vertical-align:0.55em;">${m[9]}</sup>`
+    else if (m[9] !== undefined) out += `<sup style="font-size:0.72em; line-height:0; vertical-align:0.55em;">${flatMarks(m[9])}</sup>`
     else if (m[10] !== undefined) out += await svgToInlineImg(rootSvg(m[11], m[10], mf), ROOT_VALIGN)
     else if (m[12] !== undefined) out += await svgToInlineImg(pfracSvg(m[12], m[13], mf), FRAC_VALIGN)
-    else if (m[14] !== undefined) out += `<sup style="font-size:0.72em; line-height:0; vertical-align:0.55em;">${m[14]}</sup>`
+    else if (m[14] !== undefined) out += `<sup style="font-size:0.72em; line-height:0; vertical-align:0.55em;">${flatMarks(m[14])}</sup>`
     else if (m[15] !== undefined) out += await svgToInlineImg(fracSvg(m[15], m[16], mf), FRAC_VALIGN)
-    else if (m[17] !== undefined) out += `<sub>${m[17]}</sub>`
+    else if (m[17] !== undefined) out += `<sub>${flatMarks(m[17])}</sub>`
+    // √{X} и √[i]{X} в самом условии (внутри дробей их разворачивает rootInPdf)
+    else if (m[21] !== undefined) out += await svgToInlineImg(rootSvg(m[21], m[20] || "", mf), ROOT_VALIGN)
+    else if (m[22] !== undefined) out += `<code style="font-family:Menlo,Consolas,monospace; font-size:0.92em; white-space:pre-wrap;">${m[22]}</code>`
     else if (m[18] !== undefined) out += `<span style="display:inline-flex; flex-direction:column; align-items:flex-start; text-align:left; vertical-align:-0.35em; font-size:0.62em; line-height:1.05; margin-right:0.05em;"><span>${m[18]}</span><span>${m[19]}</span></span>`
     else out += await svgToInlineImg(fracSvg(m[2], m[3], mf), FRAC_VALIGN)
     last = m.index + m[0].length
@@ -318,6 +331,46 @@ export async function svgUrlToPng(url, maxWidth = 380) {
   } finally {
     URL.revokeObjectURL(blobUrl)
   }
+}
+
+// Картинка задания. Генераторы отдают SVG (data-URL) — его надо растеризовать самим,
+// html2canvas живые SVG рисует ненадёжно; готовый растр из банка вставляем как есть.
+//
+// Высота известна ЗДЕСЬ и проставляется в <img> явным атрибутом. Без неё высота блока
+// зависит от того, успел ли браузер декодировать картинку: html2canvas снимает не сам
+// документ, а его клон, и недекодированная картинка в клоне даёт нулевую высоту — блок
+// в снимке выходит короче, чем в DOM, и чертёж пропадает из задания (у ученика остаётся
+// «на рисунке изображён график» без графика).
+
+// Размер растровой картинки из банка (у SVG он известен после растеризации, мерить нечего).
+async function measure(dataUrl, width) {
+  const img = new Image()
+  try {
+    await new Promise((resolve, reject) => {
+      img.onload = resolve
+      img.onerror = () => reject(new Error("картинка не загрузилась"))
+      img.src = dataUrl
+    })
+    if (!img.naturalWidth) return null
+    return Math.round((width * img.naturalHeight) / img.naturalWidth)
+  } catch {
+    return null
+  }
+}
+
+export async function taskImage(url) {
+  if (!url) return null
+  const isSvg = url.startsWith("data:image/svg") || /\.svg($|\?)/i.test(url)
+  if (isSvg) {
+    try {
+      const png = await svgUrlToPng(url)
+      return { dataUrl: png.dataUrl, width: png.width, height: png.height }
+    } catch {
+      // растеризовать не вышло — отдаём исходный адрес: пусть попробует html2canvas.
+      // Молча терять чертёж нельзя, задание без него нерешаемо.
+    }
+  }
+  return { dataUrl: url, width: 380, height: await measure(url, 380) }
 }
 
 export const CONTAINER_W = 750   // ширина offscreen-контейнера в px; блоки масштабируются на ширину страницы

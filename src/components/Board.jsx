@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react"
 import { supabase } from "../supabase"
 import { signBoardScene } from "../storageUrl"
 import Icon from "./Icon"
@@ -6,6 +6,9 @@ import {
   GRID, ENCLOSED_SHAPES, SHAPE_TOOLS, DASHABLE_SHAPES,
   isDarkColor, resolveColor, strokeBBox, paintStroke, scenePreview,
 } from "./boardPaint"
+// Выбор задания тянет за собой генераторы всех предметов и html2canvas — грузим
+// только когда репетитор открыл выбор, иначе доска стала бы тяжелее на мегабайты.
+const BoardTaskModal = lazy(() => import("./BoardTaskModal"))
 
 // Совместная доска платформы (свой движок на HTML5 Canvas, без внешних библиотек).
 // БЕСКОНЕЧНЫЙ холст на весь экран: штрихи хранятся в МИРОВЫХ координатах, у каждого
@@ -166,7 +169,7 @@ function widthAt(base, speed, pressure) {
   return clamp(base * vMul * pMul, base * 0.5, base * 1.7)
 }
 
-export default function Board({ roomId, userId, userName, theme = "light", onClose, account = null, token = null }) {
+export default function Board({ roomId, userId, userName, theme = "light", onClose, account = null, token = null, canAddTasks = false }) {
   const colors = palette()
   const [tool, setTool] = useState("pen")   // pen | line | rect | eraser | hand
   const [color, setColor] = useState("ink")
@@ -212,6 +215,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const [selBox, setSelBox] = useState(null)   // ориентированная рамка выделения (экранные координаты)
   const [selProps, setSelProps] = useState(null) // свойства первого выделенного штриха {width,dash,corner}
   const [dragActive, setDragActive] = useState(false) // перетаскивание файла над доской
+  const [taskPick, setTaskPick] = useState(false)     // открыт выбор задания из банка
 
   // Клик мимо открытого попапа закрывает его. Всё, что должно считаться «своим»
   // (кнопка попапа + сам попап), обёрнуто в контейнер с data-menu.
@@ -253,6 +257,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const imgCache = useRef(new Map())  // src -> HTMLImageElement (ленивая загрузка картинок)
   const fileInputRef = useRef(null)   // скрытый input для загрузки картинки кнопкой
   const loadedRef = useRef(false)     // сцена успешно загружена (иначе не сохраняем — чтобы не затереть)
+  const modalOpen = useRef(false)     // поверх доски открыт диалог (глушим горячие клавиши)
+  const taskShift = useRef(0)         // лесенка для подряд вставленных заданий
 
   const dark = isDarkColor(bgColor)      // светлость доски определяется цветом фона
   const baseBg = bgColor
@@ -929,8 +935,10 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     window.addEventListener("pointerup", end)
   }
 
-  // Добавить картинку из файла в точке (мировые координаты)
-  async function addImageAt(file, worldX, worldY) {
+  // Добавить картинку из файла в точке (мировые координаты).
+  // fitWidth — положить в заданную ШИРИНУ (лист с заданием: длинное условие иначе
+  // ужалось бы по высоте и стало нечитаемым), иначе вписываем по большей стороне.
+  async function addImageAt(file, worldX, worldY, { fitWidth = null, maxSide = 360 } = {}) {
     if (!file || !file.type?.startsWith("image/")) return
     let info
     try { info = await processImageFile(file) } catch { return }
@@ -941,8 +949,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       const { error } = await supabase.storage.from(IMG_BUCKET).upload(path, info.blob, { upsert: true, contentType: info.type })
       if (!error) src = supabase.storage.from(IMG_BUCKET).getPublicUrl(path).data.publicUrl
     } catch { /* остаётся data URL как запасной вариант */ }
-    // Вписываем в ~360 world-px по большей стороне
-    const k = Math.min(1, 360 / Math.max(info.w, info.h))
+    const k = fitWidth ? fitWidth / info.w : Math.min(1, maxSide / Math.max(info.w, info.h))
     const ww = info.w * k, hh = info.h * k
     const s = { id, author: userId, tool: "image", src, points: [[worldX - ww / 2, worldY - hh / 2], [worldX + ww / 2, worldY + hh / 2]] }
     getImage(src) // начать загрузку/кэшировать для мгновенной отрисовки
@@ -973,6 +980,16 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     const r = c.getBoundingClientRect()
     const [wx, wy] = toWorld(r.left + c.clientWidth / 2, r.top + c.clientHeight / 2)
     addImageAt(file, wx, wy)
+  }
+
+  // Лист с заданием из банка — в центр видимой области. Каждое следующее смещаем
+  // лесенкой: иначе задания легли бы ровно друг на друга и выглядели бы как одно.
+  async function insertTaskSheet(file, sheetWidth) {
+    const c = canvasRef.current; if (!c) return
+    const r = c.getBoundingClientRect()
+    const step = (taskShift.current++ % 6) * 26
+    const [wx, wy] = toWorld(r.left + c.clientWidth / 2 + step, r.top + c.clientHeight / 2 + step)
+    await addImageAt(file, wx, wy, { fitWidth: sheetWidth })
   }
 
   function duplicateSelection() {
@@ -1092,6 +1109,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     // По e.code (физическая клавиша) — иначе на русской раскладке e.key = «з/у/…» и не совпадает
     const TOOL_CODES = { KeyP: "pen", KeyE: "eraser", KeyL: "line", KeyR: "rect", KeyH: "hand", KeyV: "cursor" }
     function onKeyDown(e) {
+      if (modalOpen.current) return   // поверх доски открыт выбор задания — клавиши не наши
       if (e.code === "Space" && !e.repeat && e.target === document.body) { spaceHeld.current = true }
       if (e.metaKey || e.ctrlKey) {
         if (e.code === "KeyZ") { e.preventDefault(); e.shiftKey ? actions.current.redo() : actions.current.undo() }
@@ -1412,6 +1430,17 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
           </button>
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onPickImage} />
 
+          {/* Задание из банка листом на доску */}
+          {canAddTasks && (
+            <button onClick={() => { modalOpen.current = true; setTaskPick(true) }}
+              className={`group relative press-tap w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
+                taskPick ? "bg-blue-500 text-white" : "text-gray-500 hover:bg-black/5 dark:hover:bg-white/10"
+              }`}>
+              <Icon name="book" size={17} />
+              <Tip label="Задание из банка" dark={dark} />
+            </button>
+          )}
+
           {divider}
 
           {/* Фон */}
@@ -1470,6 +1499,17 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         </div>
         </div>
       </div>
+
+      {/* Банк заданий грузится отдельным куском — без заглушки клик выглядел бы
+          как «ничего не произошло» */}
+      {taskPick && (
+        <Suspense fallback={<div className="fixed inset-0 z-[100010] flex items-center justify-center" style={{ background: "rgba(0,0,0,.15)" }}><div className="loader-logo" /></div>}>
+          <BoardTaskModal
+            onInsert={insertTaskSheet}
+            onClose={() => { modalOpen.current = false; setTaskPick(false) }}
+          />
+        </Suspense>
+      )}
     </div>
   )
 }
