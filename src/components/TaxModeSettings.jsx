@@ -16,7 +16,8 @@ const NPD_RATES = [
 ]
 
 export default function TaxModeSettings({ tutorId, surface = "glass p-5" }) {
-  const { mode, rate, effRate, save } = useTaxSettings(tutorId)
+  const { mode: saved, rate, effRate, save } = useTaxSettings(tutorId)
+  const mode = TAX_MODES[saved] ? saved : "none"
 
   return (
     <div className={`${surface} flex flex-col`}>
@@ -37,7 +38,9 @@ export default function TaxModeSettings({ tutorId, surface = "glass p-5" }) {
         size="sm"
         ariaLabel="Налоговый режим"
         value={mode}
-        onChange={(key) => save(key, key === "npd" ? rate : TAX_MODES[key].rate)}
+        // Возврат к НПД с другого режима — со ставки по умолчанию: 6% в поле
+        // осталось бы от УСН и молча завысило налог.
+        onChange={(key) => save(key, key === "npd" && mode === "npd" ? rate : TAX_MODES[key].rate)}
         className="w-full"
         items={Object.entries(TAX_MODES).map(([key, m]) => ({ key, label: m.label }))}
       />
