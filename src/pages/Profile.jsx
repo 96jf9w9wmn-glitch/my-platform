@@ -18,6 +18,7 @@ import { effectivePlan, isActive } from "../plans"
 import Subscription from "./Subscription"
 import AutoInvoiceSettings from "../components/AutoInvoiceSettings"
 import OnlinePaySettings from "../components/OnlinePaySettings"
+import TaxModeSettings from "../components/TaxModeSettings"
 import TelegramSettings from "../components/TelegramSettings"
 
 // Инициал в цветном кружке: аватара у репетитора в базе нет, а пустой серый
@@ -74,7 +75,7 @@ export default function Profile({ user, students = [], studentsCount = 0, onLogo
     <div className="p-4 sm:p-6">
       <h1 className="text-xl font-medium mb-1">Профиль</h1>
       <p className="text-sm text-gray-500 mb-5 sm:mb-6">
-        Аккаунт и код для учеников, приём денег, телеграм-бот и подписка на платформу.
+        Аккаунт и код для учеников, приём денег и налоги, телеграм-бот и подписка на платформу.
       </p>
 
       {/* Аккаунт */}
@@ -158,9 +159,16 @@ export default function Profile({ user, students = [], studentsCount = 0, onLogo
       </div>
 
       {/* Приём денег с учеников: квитанции после занятия и онлайн-оплата. */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4 items-stretch">
         <AutoInvoiceSettings tutorId={user.id} students={students} />
-        <OnlinePaySettings tutorId={user.id} />
+        {/* Колонка тянется на высоту соседа, нижняя карточка добирает остаток —
+            иначе под короткой колонкой висит пустота. */}
+        <div className="flex flex-col gap-4">
+          <OnlinePaySettings tutorId={user.id} />
+          {/* Налоговый режим спрашивается при регистрации; оформление со временем
+              меняется, поэтому здесь же его и переключают. */}
+          <TaxModeSettings tutorId={user.id} surface="glass p-5 flex-1" />
+        </div>
       </div>
 
       {/* Подписка со всем содержимым: статус, лимиты, тарифы. */}

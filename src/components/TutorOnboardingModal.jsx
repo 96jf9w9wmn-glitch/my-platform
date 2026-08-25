@@ -4,7 +4,7 @@ import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import Icon from "./Icon"
 import { TUTOR_STEPS } from "../onboardingSteps"
-import { TAX_MODES } from "../taxModes"
+import { TAX_MODES, saveTaxMode } from "../taxModes"
 
 const SUBJECTS = ["Математика", "Русский язык", "Английский язык", "Физика", "Химия", "Обществознание", "Информатика", "Другое"]
 const EXPERIENCE_OPTIONS = ["До 1 года", "1–3 года", "3–5 лет", "5+ лет"]
@@ -118,25 +118,15 @@ function TutorOnboardingModal({ tutorId, onComplete }) {
   }
 
   // Налоговый режим живёт не в анкете тьютора, а в tutor_finance_settings —
-  // там же, откуда его читают «Финансы», поэтому пишем отдельной строкой.
-  // Ошибку глушим: до прогона finance.sql таблицы может не быть, и это не
-  // повод не пустить репетитора в кабинет — режим переключается в «Финансах».
-  async function persistTax(mode) {
-    if (!mode) return
-    try {
-      await supabase.from("tutor_finance_settings").upsert({
-        tutor_id: tutorId,
-        tax_mode: mode,
-        tax_rate: TAX_MODES[mode].rate,
-        updated_at: new Date().toISOString(),
-      })
-    } catch { /* таблицы ещё нет — молча */ }
-  }
+  // там же, откуда его читают «Финансы», поэтому пишем отдельной строкой
+  // (saveTaxMode заодно глушит ошибку: до прогона finance.sql таблицы может не
+  // быть, и это не повод не пустить репетитора в кабинет). Позже режим
+  // меняется в «Профиле».
 
   async function persist(fields, mode) {
     setSaving(true)
     const { error } = await supabase.from("tutors").update({ ...fields, onboarding_completed: true }).eq("id", tutorId)
-    if (!error) await persistTax(mode)
+    if (!error && mode) await saveTaxMode(tutorId, mode, TAX_MODES[mode].rate)
     setSaving(false)
     if (error) { setSaveError("Не удалось сохранить: " + error.message); return }
     setDone({ ...fields, onboarding_completed: true })

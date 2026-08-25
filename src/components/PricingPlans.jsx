@@ -4,48 +4,16 @@
 // Собран по образцу pricing-section из shadcn-блоков, но на своих токенах:
 // стекло, акцент #007AFF, тонированная карточка старшего тарифа вместо
 // bg-foreground (чёрная карточка в светлой теме слишком выбивалась),
-// свой хук вместо NumberFlow и CSS-переход вместо framer-motion (лишние
-// зависимости ради одного блока не тянем). Стили — в index.css, раздел
+// общий хук useAnimatedNumber вместо NumberFlow и CSS-переход вместо
+// framer-motion (лишние зависимости ради одного блока не тянем). Стили — в index.css, раздел
 // «Блок тарифов».
 //
 // Цены и состав тарифов сюда НЕ попадают: они живут в src/plans.js, общем
 // с серверными функциями.
 
-import { useEffect, useRef, useState } from "react"
 import Icon from "./Icon"
 import { PLANS, PERIODS, priceOf, formatPrice } from "../plans"
-
-// Плавная смена цифр цены при переключении периода (аналог NumberFlow из
-// исходного блока): считаем промежуточные значения на rAF, а не показываем
-// новую сумму рывком. Уважает «уменьшенное движение» в системе.
-function useAnimatedNumber(value, dur = 520) {
-  const [shown, setShown] = useState(value)
-  const from = useRef(value)
-  const raf = useRef(0)
-
-  useEffect(() => {
-    const start = from.current
-    const still = start === value ||
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    if (still) {
-      from.current = value
-      setShown(value)
-      return
-    }
-    const t0 = performance.now()
-    const tick = (now) => {
-      const p = Math.min(1, (now - t0) / dur)
-      const eased = 1 - Math.pow(1 - p, 3)
-      setShown(Math.round(start + (value - start) * eased))
-      if (p < 1) raf.current = requestAnimationFrame(tick)
-      else from.current = value
-    }
-    raf.current = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf.current)
-  }, [value, dur])
-
-  return shown
-}
+import { useAnimatedNumber } from "../useAnimatedNumber"
 
 // Переключатель периода: «таблетка» едет под кнопками, а не перекрашивается
 // скачком. Две колонки одинаковой ширины — поэтому сдвиг ровно на 100%.

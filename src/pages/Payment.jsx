@@ -7,7 +7,8 @@ import Collapse from "../components/Collapse"
 import SegmentSwitch from "../components/SegmentSwitch"
 import { supabase } from "../supabase"
 import { isLessonConducted, getInitials, parsePaymentDate, plural } from "../utils"
-import { TAX_MODES } from "../taxModes"
+import { TAX_MODES, useTaxSettings } from "../taxModes"
+import { useAnimatedNumber } from "../useAnimatedNumber"
 
 // Подсказки для быстрого добавления при пустом списке расходов.
 const EXPENSE_SUGGESTIONS = ["Онлайн-доска", "Подписка Precettore", "Реклама", "Связь"]
@@ -83,7 +84,7 @@ const fmt = (n) => Math.round(n || 0).toLocaleString("ru-RU").replace(/\s/g, "�
 // сверху, под ней ряд высоких скруглённых столбцов. Тап по столбцу выбирает
 // месяц — сумма и подпись обновляются. Читается за счёт большого числа и
 // высоких столбцов, а не мелких подписей на каждом.
-function IncomeChart({ buckets, forecast, mounted }) {
+export function IncomeChart({ buckets, forecast, mounted }) {
   const lastIdx = buckets.length - 1
   const [sel, setSel] = useState(lastIdx)
   const projectedLast = buckets[lastIdx].total + forecast
@@ -102,6 +103,9 @@ function IncomeChart({ buckets, forecast, mounted }) {
   const cur = buckets[sel]
   const isCurrentMonth = sel === lastIdx
   const received = cur.total
+  // При переключении месяца сумма не подменяется рывком, а досчитывается до
+  // нового значения — видно, что цифра относится к другому месяцу.
+  const shownReceived = useAnimatedNumber(received)
   const prevTotal = sel > 0 ? buckets[sel - 1].total : 0
   const deltaPct = prevTotal > 0 ? Math.round((received - prevTotal) / prevTotal * 100) : null
 
@@ -128,8 +132,8 @@ function IncomeChart({ buckets, forecast, mounted }) {
           </div>
         )}
       </div>
-      <div className="text-4xl md:text-5xl font-semibold leading-none bg-gradient-to-r from-[#007AFF] to-[#5856D6] bg-clip-text text-transparent">
-        {fmt(received)} ₽
+      <div className="text-4xl md:text-5xl font-semibold leading-none tabular-nums bg-gradient-to-r from-[#007AFF] to-[#5856D6] bg-clip-text text-transparent">
+        {fmt(shownReceived)} ₽
       </div>
       <div className="text-xs text-gray-400 mt-1.5 h-4">
         {isCurrentMonth && forecast > 0
@@ -183,7 +187,7 @@ function IncomeChart({ buckets, forecast, mounted }) {
   )
 }
 
-function Payment({ students, setStudents, tutorId }) {
+function Payment({ students, setStudents, tutorId, setActivePage }) {
   const [tab, setTab] = useState("debts")
   const [filter, setFilter] = useState("debt")
   const [expandedId, setExpandedId] = useState(null)
@@ -192,8 +196,6 @@ function Payment({ students, setStudents, tutorId }) {
   const [customAmount, setCustomAmount] = useState("")
   const [mounted, setMounted] = useState(false)
   const [undoStudent, setUndoStudent] = useState(null)
-  const [taxMode, setTaxMode] = useState("none")
-  const [taxRate, setTaxRate] = useState(4)
   const [expenses, setExpenses] = useState([])
   const [newExpName, setNewExpName] = useState("")
   const [newExpAmount, setNewExpAmount] = useState("")
@@ -203,31 +205,21 @@ function Payment({ students, setStudents, tutorId }) {
     return () => cancelAnimationFrame(id)
   }, [])
 
-  // Загрузка налоговых настроек и расходов тьютора (RLS ограничивает своими строками).
-  // До прогона миграции таблиц может не быть — ошибку глушим, работаем локально.
+  // Налоговый режим сюда только приходит: выбирают его при регистрации и в
+  // «Профиле», здесь он лишь применяется к доходу.
+  const { mode: taxMode, effRate } = useTaxSettings(tutorId)
+
+  // Загрузка расходов тьютора (RLS ограничивает своими строками).
+  // До прогона миграции таблицы может не быть — ошибку глушим, работаем локально.
   useEffect(() => {
     if (!tutorId) return
     let alive = true
-    ;(async () => {
-      const [{ data: settings }, { data: exp }] = await Promise.all([
-        supabase.from("tutor_finance_settings").select("tax_mode, tax_rate").eq("tutor_id", tutorId).maybeSingle(),
-        supabase.from("tutor_expenses").select("id, name, amount").eq("tutor_id", tutorId).order("created_at"),
-      ]).catch(() => [{ data: null }, { data: null }])
-      if (!alive) return
-      if (settings) { setTaxMode(settings.tax_mode); setTaxRate(Number(settings.tax_rate) || 4) }
-      if (exp) setExpenses(exp.map((e) => ({ ...e, amount: Number(e.amount) })))
-    })()
+    supabase.from("tutor_expenses").select("id, name, amount").eq("tutor_id", tutorId).order("created_at")
+      .then(({ data }) => {
+        if (alive && data) setExpenses(data.map((e) => ({ ...e, amount: Number(e.amount) })))
+      }, () => { /* таблицы ещё нет — остаётся локально */ })
     return () => { alive = false }
   }, [tutorId])
-
-  async function saveTaxSettings(mode, rate) {
-    setTaxMode(mode); setTaxRate(rate)
-    if (!tutorId) return
-    try {
-      await supabase.from("tutor_finance_settings")
-        .upsert({ tutor_id: tutorId, tax_mode: mode, tax_rate: rate, updated_at: new Date().toISOString() })
-    } catch { /* таблицы ещё нет — молча */ }
-  }
 
   async function addExpense(name, amount) {
     const trimmed = (name || "").trim()
@@ -337,7 +329,6 @@ function Payment({ students, setStudents, tutorId }) {
   // Расходы / налог / чистая прибыль за текущий месяц.
   // НПД и УСН «Доходы» считают налог от дохода (расходы базу не уменьшают).
   const expenseTotal = expenses.reduce((sum, e) => sum + (e.amount || 0), 0)
-  const effRate = taxMode === "usn6" ? 6 : taxMode === "npd" ? taxRate : 0
   const taxAmount = Math.round(monthTotal * effRate / 100)
   const netProfit = monthTotal - expenseTotal - taxAmount
 
@@ -617,35 +608,23 @@ function Payment({ students, setStudents, tutorId }) {
           <div className="glass p-5 flex flex-col">
             <h2 className="text-base font-medium mb-4">Налог и прибыль</h2>
 
-            <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] mb-4">
-              {Object.entries(TAX_MODES).map(([key, m]) => (
-                <button key={key}
-                  onClick={() => saveTaxSettings(key, key === "npd" ? (taxMode === "npd" ? taxRate : 4) : m.rate)}
-                  className={`text-xs font-medium py-2 rounded-lg transition active:scale-[0.97] ${
-                    taxMode === key
-                      ? "bg-white dark:bg-white/15 shadow-sm text-gray-900 dark:text-white"
-                      : "text-gray-500 dark:text-gray-400 hover:text-gray-700"
-                  }`}>
-                  {m.label}
-                </button>
-              ))}
-            </div>
-
-            {taxMode === "npd" && (
-              <div className="flex items-center gap-2 mb-4 -mt-1">
-                <span className="text-xs text-gray-500 dark:text-gray-400">Ставка НПД:</span>
-                {[4, 6].map((r) => (
-                  <button key={r} onClick={() => saveTaxSettings("npd", r)}
-                    className={`text-xs font-medium px-2.5 py-1 rounded-full transition active:scale-95 ${
-                      taxRate === r
-                        ? "bg-blue-500/12 text-blue-600 dark:text-blue-300 ring-1 ring-inset ring-blue-500/25"
-                        : "text-gray-400 hover:text-gray-600"
-                    }`}>
-                    {r}% {r === 4 ? "с физлиц" : "с юрлиц"}
-                  </button>
-                ))}
+            {/* Режим здесь показывается, а не выбирается: он спрашивается при
+                регистрации и меняется в «Профиле» — это настройка аккаунта, а
+                не рабочее число месяца. */}
+            <div className="flex items-center justify-between gap-3 mb-4 px-3 py-2.5 rounded-xl bg-black/[0.03] dark:bg-white/[0.06]">
+              <div className="min-w-0">
+                <div className="text-sm font-medium truncate">{TAX_MODES[taxMode]?.label || TAX_MODES.none.label}</div>
+                <div className="text-[11px] text-gray-500 dark:text-gray-400">
+                  {effRate > 0 ? `Налог ${effRate}% с дохода` : TAX_MODES.none.hint}
+                </div>
               </div>
-            )}
+              <button
+                onClick={() => setActivePage?.("profile")}
+                className="shrink-0 text-xs font-medium px-3 py-1.5 rounded-full text-[#007AFF] bg-[#007AFF]/10 ring-1 ring-inset ring-[#007AFF]/25 transition-all active:scale-95"
+              >
+                Изменить
+              </button>
+            </div>
 
             <div className="flex flex-col gap-2 text-sm">
               <div className="flex justify-between items-center">

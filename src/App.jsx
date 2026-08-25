@@ -776,7 +776,7 @@ function App() {
           <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="loader-logo" /></div>}>
           <div className={activePage !== "dashboard" ? "hidden" : "page-active"}>{visitedPages.has("dashboard") && <Dashboard students={students} setActivePage={navigateTo} onOpenBoard={openBoard} />}</div>
           <div className={activePage !== "students" ? "hidden" : "page-active"}>{visitedPages.has("students") && <Students students={students} setStudents={handleSetStudents} tutorId={user.id} onOpenBoard={openBoard} />}</div>
-<div className={activePage !== "payment" ? "hidden" : "page-active"}>{visitedPages.has("payment") && <Payment students={students} setStudents={handleSetStudents} tutorId={user.id} />}</div>
+<div className={activePage !== "payment" ? "hidden" : "page-active"}>{visitedPages.has("payment") && <Payment students={students} setStudents={handleSetStudents} tutorId={user.id} setActivePage={navigateTo} />}</div>
           <div className={activePage !== "variants" ? "hidden" : "page-active"}>{visitedPages.has("variants") && <Variants user={user} students={students} />}</div>
           <div className={activePage !== "schedule" ? "hidden" : "page-active"}>{visitedPages.has("schedule") && <Schedule students={students} setStudents={handleSetStudents} />}</div>
           <div className={activePage !== "homework" ? "hidden" : "page-active"}>{visitedPages.has("homework") && <Homework user={user} students={students} />}</div>
