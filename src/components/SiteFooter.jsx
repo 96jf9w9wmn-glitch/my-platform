@@ -46,7 +46,7 @@ const LEGAL = [
   { href: "/privacy", label: "Политика конфиденциальности" },
   { href: "/consent", label: "Согласие на обработку ПДн" },
   { href: "/cookie", label: "Cookie" },
-  { href: "/rules", label: "Правила чата" },
+  { href: "/rules", label: "Пользовательское соглашение" },
   { href: "/requisites", label: "Реквизиты" },
 ]
 

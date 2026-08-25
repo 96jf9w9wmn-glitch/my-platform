@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react"
 import { supabase } from "../supabase"
-import { signBoardScene } from "../storageUrl"
+import { signBoardScene, signStorageUrl } from "../storageUrl"
 import Icon from "./Icon"
 import {
   GRID, ENCLOSED_SHAPES, SHAPE_TOOLS, DASHABLE_SHAPES,
@@ -465,15 +465,24 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Картинка по src (кэш + ленивая загрузка, перерисовка по onload)
+  // Картинка по src (кэш + ленивая загрузка, перерисовка по onload).
+  //
+  // Адрес ОБЯЗАТЕЛЬНО подписываем: бакет приватный, и по голому публичному адресу
+  // хранилище отвечает 400 — картинка не рисуется вовсе. Сцену при открытии доски
+  // подписывает signBoardScene, поэтому только что вставленное задание (и своё, и
+  // прилетевшее от собеседника) не появлялось до перезахода на доску, а после
+  // перезахода появлялось. Для data-URL и чужих адресов подпись возвращает их же.
   function getImage(src) {
     if (!src) return null
     let img = imgCache.current.get(src)
     if (!img) {
       img = new Image()
       img.onload = () => scheduleDraw()
-      img.src = src
       imgCache.current.set(src, img)
+      signStorageUrl(src, IMG_BUCKET).then(
+        (url) => { img.src = url || src },
+        () => { img.src = src },     // подписать не вышло — пробуем как есть
+      )
     }
     return img
   }
@@ -952,6 +961,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     const k = fitWidth ? fitWidth / info.w : Math.min(1, maxSide / Math.max(info.w, info.h))
     const ww = info.w * k, hh = info.h * k
     const s = { id, author: userId, tool: "image", src, points: [[worldX - ww / 2, worldY - hh / 2], [worldX + ww / 2, worldY + hh / 2]] }
+    // Своя картинка уже в памяти — кладём её в кэш под итоговым адресом, чтобы лист
+    // появился мгновенно, не дожидаясь подписи и сети.
     getImage(src) // начать загрузку/кэшировать для мгновенной отрисовки
     strokes.current.set(id, s)
     channelRef.current?.send({ type: "broadcast", event: "draw", payload: s })
