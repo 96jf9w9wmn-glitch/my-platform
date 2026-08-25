@@ -1769,12 +1769,13 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
                     <div key={title}>
                       <div className="text-[10px] uppercase tracking-wide px-1 mb-1" style={{ color: dark ? "#8e8e93" : "#9ca3af" }}>{title}</div>
                       <div className="flex gap-1">
+                        {/* Подписи не нужны: фигуру видно по значку, а название
+                            остаётся во всплывающей подсказке. */}
                         {list.map((sh) => (
-                          <button key={sh.id} onClick={() => pickShape(sh.id)} title={sh.label}
-                            className={`press-tap min-w-[52px] px-1.5 py-1.5 rounded-lg flex flex-col items-center justify-center gap-0.5 ${tool === sh.id ? "bg-blue-500 text-white" : "hover:bg-black/5 dark:hover:bg-white/10"}`}
+                          <button key={sh.id} onClick={() => pickShape(sh.id)} title={sh.label} aria-label={sh.label}
+                            className={`press-tap w-10 h-10 rounded-lg flex items-center justify-center ${tool === sh.id ? "bg-blue-500 text-white" : "hover:bg-black/5 dark:hover:bg-white/10"}`}
                             style={tool === sh.id ? undefined : idleStyle}>
-                            <Icon name={sh.icon} size={18} />
-                            <span className="text-[9px] leading-none whitespace-nowrap">{sh.label}</span>
+                            <Icon name={sh.icon} size={20} />
                           </button>
                         ))}
                       </div>
