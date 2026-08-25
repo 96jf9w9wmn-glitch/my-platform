@@ -521,9 +521,12 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
           <div className="text-xs text-gray-500 mb-1">Долг</div>
           {(() => {
             const conducted = (student.lessons || []).filter((l) => isLessonConducted(l))
-            const debt = conducted.length * (student.lessonPrice || 0) - (student.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
+            const price = student.lessonPrice || 0
+            const debt = conducted.length * price - (student.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
             if (conducted.length === 0) return <div className="text-xl font-medium text-gray-400">—</div>
-            if (debt <= 0) return <div className="text-xl font-medium text-green-600">Оплачено</div>
+            // Без цены занятия долг посчитать не из чего: показывать «Оплачено» здесь — обман.
+            if (!price) return <div className="text-sm font-medium text-gray-400 pt-1.5">Цена не указана</div>
+            if (debt <= 0) return <div className="text-xl font-medium text-green-600">Нет</div>
             return <div className="text-xl font-medium text-amber-600">{debt.toLocaleString("ru-RU")} ₽</div>
           })()}
         </div>

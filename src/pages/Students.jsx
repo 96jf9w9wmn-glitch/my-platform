@@ -20,14 +20,38 @@ function formatDate(date) {
   return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`
 }
 
+// Столбец отвечает на один вопрос: сколько ученик должен за проведённые занятия.
+// Поэтому нулевая цена больше не выдаётся за оплату (раньше ученик без указанной
+// стоимости получал зелёное «Оплачено»), а вместо неё видно, чего не хватает.
 function getPaymentStatus(student) {
   const conducted = (student.lessons || []).filter((l) => isLessonConducted(l))
-  const owed = conducted.length * (student.lessonPrice || 0)
+  const price = student.lessonPrice || 0
   const paid = (student.payments || []).reduce((s, p) => s + (p.amount || 0), 0)
-  const debt = owed - paid
-  if (conducted.length === 0) return { label: "Нет занятий", debt: 0 }
-  if (debt <= 0) return { label: "Оплачено", debt: 0 }
-  return { label: `${debt.toLocaleString("ru-RU")} ₽`, debt }
+  if (conducted.length === 0) return { kind: "empty", label: "Занятий не было", debt: 0 }
+  if (!price) return { kind: "noprice", label: "Цена не указана", debt: 0 }
+  const debt = conducted.length * price - paid
+  if (debt > 0) return { kind: "debt", label: `${debt.toLocaleString("ru-RU")} ₽`, debt }
+  return { kind: "clear", label: "Долга нет", debt: 0 }
+}
+
+// Одна и та же метка в таблице и в мобильной карточке. В карточке заголовка
+// столбца нет, поэтому сумма подписана словом «Долг».
+function DebtBadge({ status, standalone = false }) {
+  if (status.kind === "debt") return (
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-300 bg-amber-500/12 ring-1 ring-inset ring-amber-500/20 px-2.5 py-1 rounded-lg">
+      <Icon name="warning" size={11} />{standalone ? "Долг " : ""}{status.label}
+    </span>
+  )
+  if (status.kind === "clear") return (
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 dark:text-green-300 bg-green-500/12 ring-1 ring-inset ring-green-500/20 px-2.5 py-1 rounded-lg">
+      <Icon name="check" size={11} />Долга нет
+    </span>
+  )
+  return (
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 bg-black/[0.04] dark:bg-white/[0.08] ring-1 ring-inset ring-black/[0.05] dark:ring-white/[0.1] px-2.5 py-1 rounded-lg">
+      {status.label}
+    </span>
+  )
 }
 
 function getNextLesson(student) {
@@ -472,15 +496,7 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
                   ) : (
                     <span className="text-xs text-gray-300 bg-white/30 px-2 py-1 rounded-lg">Нет урока</span>
                   )}
-                  {status.debt > 0 ? (
-                    <span className="flex items-center gap-1 text-xs font-medium text-amber-700 bg-amber-50 px-2 py-1 rounded-lg">
-                      <Icon name="warning" size={11} />−{status.label}
-                    </span>
-                  ) : status.label === "Оплачено" && (
-                    <span className="flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 px-2 py-1 rounded-lg">
-                      <Icon name="check" size={11} />Оплачено
-                    </span>
-                  )}
+                  <DebtBadge status={status} standalone />
                   {examDays !== null && (
                     <span className={`flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-lg ml-auto ${
                       examDays <= 7 ? "bg-red-50 text-red-700" : examDays <= 30 ? "bg-amber-50 text-amber-700" : "bg-gray-100 text-gray-500"
@@ -512,7 +528,7 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
             style={{ gridTemplateColumns: "1fr 180px 140px 36px" }}>
             <span>Ученик</span>
             <span className="flex items-center gap-1"><Icon name="calendar" size={11} />Следующий урок</span>
-            <span className="flex items-center gap-1"><Icon name="dollar" size={11} />Оплата</span>
+            <span className="flex items-center gap-1"><Icon name="dollar" size={11} />Долг за занятия</span>
             <span />
           </div>
 
@@ -560,17 +576,7 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
 
                 {/* Payment */}
                 <div>
-                  {status.debt > 0 ? (
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg">
-                      <Icon name="warning" size={11} />−{status.label}
-                    </span>
-                  ) : status.label === "Оплачено" ? (
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 px-2.5 py-1 rounded-lg">
-                      <Icon name="check" size={11} />Оплачено
-                    </span>
-                  ) : (
-                    <span className="text-xs text-gray-300">—</span>
-                  )}
+                  <DebtBadge status={status} />
                 </div>
 
                 {/* Delete */}

@@ -1787,9 +1787,11 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                     <div className="text-xs text-gray-400">Оплата</div>
                     {(() => {
                       const conducted = (student.lessons || []).filter((l) => isLessonConducted(l))
-                      const debt = conducted.length * (student.lessonPrice || 0) - (student.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
+                      const price = student.lessonPrice || 0
+                      const debt = conducted.length * price - (student.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
                       if (conducted.length === 0) return <div className="text-lg font-semibold text-gray-400">Нет занятий</div>
-                      if (debt <= 0) return <div className="text-lg font-semibold text-green-600">Оплачено</div>
+                      if (!price) return <div className="text-sm font-medium text-gray-400">Стоимость не указана</div>
+                      if (debt <= 0) return <div className="text-lg font-semibold text-green-600">Долга нет</div>
                       return <div className="text-lg font-semibold text-amber-600">Долг {debt.toLocaleString("ru-RU")} ₽</div>
                     })()}
                   </div>
@@ -1964,12 +1966,12 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       {debt > 0 ? (
                         <div className="text-2xl font-medium text-amber-600">{debt.toLocaleString("ru-RU")} ₽</div>
                       ) : (
-                        <div className="text-2xl font-medium text-green-600">Оплачено</div>
+                        <div className="text-2xl font-medium text-green-600">Долга нет</div>
                       )}
                     </div>
                   </div>
 
-                  {student.lessonPrice && (
+                  {student.lessonPrice > 0 && (
                     <div className="glass-sm px-4 py-3 text-sm text-gray-600">
                       Стоимость занятия: <span className="font-medium text-gray-800">{student.lessonPrice.toLocaleString("ru-RU")} ₽</span>
                     </div>
