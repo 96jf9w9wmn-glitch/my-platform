@@ -217,7 +217,10 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
           const account = rows?.[0]
           if (!account) throw new Error("Неверный телефон или пароль")
 
-          const { session_token, ...profile } = account
+          // token — это JWT роли app_user: без него запросы кабинета идут под
+          // anon, которому после включения RLS не доступно ничего.
+          const { session_token, token: jwt, ...profile } = account
+          setAppToken(jwt || null)
           const sessionData = { id: account.id, role: "student", profile, token: session_token }
           localStorage.setItem("student_session", JSON.stringify(sessionData))
           onLogin(sessionData)
@@ -239,7 +242,8 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
           const newAccount = rows?.[0]
           if (!newAccount) throw new Error("Не удалось создать аккаунт")
 
-          const { session_token, ...profile } = newAccount
+          const { session_token, token: jwt, ...profile } = newAccount
+          setAppToken(jwt || null)
           await saveConsent(newAccount.id, phone)
           const sessionData = { id: newAccount.id, role: "student", profile, token: session_token }
           localStorage.setItem("student_session", JSON.stringify(sessionData))
@@ -563,8 +567,18 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
                 onChange={(v) => setConsent((p) => ({ ...p, terms: v }))}
                 accent={roleConfig[role].grad}
               >
-                Принимаю <ConsentLink href="/offer">договор-оферту</ConsentLink> и{" "}
-                <ConsentLink href="/rules">Правила чата</ConsentLink>, ознакомлен(а) с{" "}
+                {/* Оферта адресована только репетитору: он единственный заказчик
+                    платных услуг (п. 1.4 Правил, п. 4.6 оферты). Ученик принимает
+                    пользовательское соглашение — предлагать ему принять оферту
+                    значит расходиться с опубликованными документами. */}
+                Принимаю{" "}
+                {role === "tutor" && (
+                  <>
+                    <ConsentLink href="/offer">договор-оферту</ConsentLink> и{" "}
+                  </>
+                )}
+                <ConsentLink href="/rules">Пользовательское соглашение</ConsentLink>,
+                ознакомлен(а) с{" "}
                 <ConsentLink href="/privacy">Политикой конфиденциальности</ConsentLink>
               </ConsentRow>
 
@@ -597,7 +611,7 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
                 accent={roleConfig.parent.grad}
               >
                 Я законный представитель ученика: принимаю{" "}
-                <ConsentLink href="/offer">договор-оферту</ConsentLink>, ознакомлен(а) с{" "}
+                <ConsentLink href="/rules">Пользовательское соглашение</ConsentLink>, ознакомлен(а) с{" "}
                 <ConsentLink href="/privacy">Политикой конфиденциальности</ConsentLink> и даю{" "}
                 <ConsentLink href="/consent">согласие на обработку персональных данных</ConsentLink> — своих и ребёнка
               </ConsentRow>

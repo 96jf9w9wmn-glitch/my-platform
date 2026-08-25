@@ -323,7 +323,12 @@ function Offer() {
 // сюда цены не вписывать: разъехавшийся с интерфейсом прейскурант — это цена,
 // объявленная публично, но не та, что списывается.
 function PriceList() {
-  const cell = "px-3 py-2 text-[13px] border-b border-gray-100 dark:border-white/10"
+  // Серые токены в тёмной теме перевёрнуты (см. index.css): dark:-варианты тут
+  // дали бы тёмный текст на тёмном фоне, поэтому классы только базовые.
+  const cell = "px-3 py-2 text-[13px] border-b border-gray-100"
+  // Колонки тарифов не переносим: «1 990 ₽» в две строки читается как две суммы.
+  // Таблица уезжает вбок внутри своего контейнера, страница при этом не едет.
+  const val = `${cell} whitespace-nowrap`
   const mark = (v) => (v ? "✓" : "—")
   const limit = (v) => (v === UNLIMITED ? "без ограничений" : v === 0 ? "—" : String(v))
 
@@ -335,12 +340,12 @@ function PriceList() {
         сведения размещены на странице «Подписка» Сервиса.
       </p>
       <div className="overflow-x-auto -mx-1">
-        <table className="min-w-full text-left text-gray-600 dark:text-gray-300">
+        <table className="min-w-full text-left text-gray-600">
           <thead>
             <tr>
-              <th className={`${cell} font-semibold text-gray-800 dark:text-gray-100`}>Тариф</th>
+              <th className={`${cell} font-semibold text-gray-800`}>Тариф</th>
               {PLANS.map((p) => (
-                <th key={p.id} className={`${cell} font-semibold text-gray-800 dark:text-gray-100`}>
+                <th key={p.id} className={`${val} font-semibold text-gray-800`}>
                   «{p.name}»
                 </th>
               ))}
@@ -350,7 +355,7 @@ function PriceList() {
             <tr>
               <td className={cell}>Стоимость, месяц</td>
               {PLANS.map((p) => (
-                <td key={p.id} className={cell}>
+                <td key={p.id} className={val}>
                   {p.price.month === 0 ? "бесплатно" : `${p.price.month.toLocaleString("ru-RU")} ₽`}
                 </td>
               ))}
@@ -358,7 +363,7 @@ function PriceList() {
             <tr>
               <td className={cell}>Стоимость, 12 месяцев</td>
               {PLANS.map((p) => (
-                <td key={p.id} className={cell}>
+                <td key={p.id} className={val}>
                   {p.price.year === 0 ? "бесплатно" : `${p.price.year.toLocaleString("ru-RU")} ₽`}
                 </td>
               ))}
@@ -367,7 +372,7 @@ function PriceList() {
               <tr key={row.key}>
                 <td className={cell}>{row.label}</td>
                 {PLANS.map((p) => (
-                  <td key={p.id} className={cell}>
+                  <td key={p.id} className={val}>
                     {row.kind === "always"
                       ? "✓"
                       : row.kind === "limit"
