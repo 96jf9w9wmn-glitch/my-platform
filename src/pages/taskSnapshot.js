@@ -10,7 +10,10 @@ import { renderTaskMathPdf, renderBlock, taskImage } from "./variantPdf"
 const SHEET_W = 620
 const FS = 17
 const RADIUS = 18          // скругление листа, css-px
-const SCALE = 2            // renderBlock снимает в двойном разрешении
+// Лист снимается ВТРОЕ крупнее своей ширины на доске: доску увеличивают, и при
+// двойном разрешении (как в PDF, где лист печатают в натуральную величину) чертёж
+// на зуме расплывался. Больше трёх не берём — вес картинки растёт квадратично.
+const SCALE = 3
 
 const escapeHtml = (s) => {
   const div = document.createElement("div")
@@ -131,7 +134,7 @@ function roundSheet(canvas) {
  * Возвращает File — его принимает вставка картинки на доску, как и файл с диска.
  */
 export async function taskToImageFile(task, { label = "" } = {}) {
-  const img = await trimImage(await taskImage(task.image_url))
+  const img = await trimImage(await taskImage(task.image_url, { scale: SCALE }))
   const caption = [task.number ? `№${task.number}` : "", label].filter(Boolean).join(" · ")
   const text = (v) => `<div style="font-size:${FS}px; line-height:1.55; white-space:pre-wrap;">${v}</div>`
 
@@ -149,8 +152,8 @@ export async function taskToImageFile(task, { label = "" } = {}) {
   // Шрифты обязаны быть готовы: html2canvas снимает клон документа, и на неготовом
   // шрифте лист выходит пустым.
   await document.fonts?.ready
-  let shot = await renderBlock(html, { width: SHEET_W })
-  if (!hasInk(shot)) shot = await renderBlock(html, { width: SHEET_W })   // одна честная попытка ещё
+  let shot = await renderBlock(html, { width: SHEET_W, scale: SCALE })
+  if (!hasInk(shot)) shot = await renderBlock(html, { width: SHEET_W, scale: SCALE })   // одна честная попытка ещё
   if (!hasInk(shot)) throw new Error("снимок задания вышел пустым")
 
   const canvas = roundSheet(shot)

@@ -303,7 +303,7 @@ export async function renderTaskMathPdf(text, mf = MATH_ARIAL) {
 // canvas и вставляем уже готовую растровую картинку, это html2canvas снимает без проблем.
 // Маленькие SVG (формулы вроде дроби №6) НЕ растягиваем до maxWidth — иначе формула
 // раздувается на всю страницу; берём их натуральную ширину. Возвращает { dataUrl, width }.
-export async function svgUrlToPng(url, maxWidth = 380) {
+export async function svgUrlToPng(url, maxWidth = 380, scale = 2) {
   // Иллюстрация задания бывает и растровой (модуль «Шины» — /tire-fig1.png): её нельзя
   // заворачивать в SVG-блоб, иначе картинка не загружается и падает ВЕСЬ экспорт варианта.
   const raw = await (await fetch(url)).blob()
@@ -319,8 +319,8 @@ export async function svgUrlToPng(url, maxWidth = 380) {
     const width = Math.min(maxWidth, img.naturalWidth || maxWidth)
     const aspect = (img.naturalHeight || 300) / (img.naturalWidth || 400)
     const canvas = document.createElement("canvas")
-    canvas.width = width * 2
-    canvas.height = Math.round(width * 2 * aspect)
+    canvas.width = Math.round(width * scale)
+    canvas.height = Math.round(width * scale * aspect)
     const ctx = canvas.getContext("2d")
     ctx.fillStyle = "#ffffff"
     ctx.fillRect(0, 0, canvas.width, canvas.height)
@@ -358,12 +358,12 @@ async function measure(dataUrl, width) {
   }
 }
 
-export async function taskImage(url) {
+export async function taskImage(url, { scale = 2 } = {}) {
   if (!url) return null
   const isSvg = url.startsWith("data:image/svg") || /\.svg($|\?)/i.test(url)
   if (isSvg) {
     try {
-      const png = await svgUrlToPng(url)
+      const png = await svgUrlToPng(url, 380, scale)
       return { dataUrl: png.dataUrl, width: png.width, height: png.height }
     } catch {
       // растеризовать не вышло — отдаём исходный адрес: пусть попробует html2canvas.
@@ -380,7 +380,7 @@ export const CONTAINER_W = 750   // ширина offscreen-контейнера 
 // width/font/fontSize задаются печатным листом варианта (Times, ширина колонки); значения по
 // умолчанию оставлены прежними — на них рассчитана рабочая тетрадь (workbookPdf.js).
 export async function renderBlock(innerHtml, opts = {}) {
-  const { width = CONTAINER_W, font = "Arial,sans-serif", fontSize = null, lineHeight = null } = opts
+  const { width = CONTAINER_W, font = "Arial,sans-serif", fontSize = null, lineHeight = null, scale = 2 } = opts
   const el = document.createElement("div")
   el.style.cssText = `position:fixed; left:-9999px; top:0; width:${width}px; background:#fff; font-family:${font}; color:#1c1c1e;`
     + (fontSize ? ` font-size:${fontSize}px;` : "") + (lineHeight ? ` line-height:${lineHeight};` : "")
@@ -391,7 +391,7 @@ export async function renderBlock(innerHtml, opts = {}) {
     ? Promise.resolve()
     : new Promise((resolve) => { img.onload = resolve; img.onerror = resolve })))
   try {
-    return await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: "#ffffff" })
+    return await html2canvas(el, { scale, useCORS: true, backgroundColor: "#ffffff" })
   } finally {
     document.body.removeChild(el)
   }

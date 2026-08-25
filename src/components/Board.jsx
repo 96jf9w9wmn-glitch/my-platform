@@ -19,6 +19,7 @@ const BoardTaskModal = lazy(() => import("./BoardTaskModal"))
 const WIDTHS = [3, 6, 12]
 const MIN_SCALE = 0.15, MAX_SCALE = 8
 
+const SHEET_MAX_DIM = 4000   // лист с заданием: длинные условия не должны терять чёткость
 const BG_LIGHT = "#ffffff", BG_DARK = "#1c1c1e"
 const BG_COLORS = ["#ffffff", "#f2f2f7", "#fdf6e3", "#1c1c1e", "#0f172a", "#123a2e"]
 
@@ -92,11 +93,13 @@ function readFileAsDataURL(file) {
 function loadImg(src) {
   return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = src })
 }
-// Ужимаем до разумного размера + получаем blob и data URL
-async function processImageFile(file) {
+// Ужимаем до разумного размера + получаем blob и data URL.
+// maxDim — потолок по большей стороне: фотографии с телефона хватает 1400, а лист с
+// заданием снят втрое крупнее своей ширины ради зума, и ужимать его — значит вернуть
+// то самое мыло, ради которого он снимался крупным.
+async function processImageFile(file, maxDim = 1400) {
   const dataUrl = await readFileAsDataURL(file)
   const im = await loadImg(dataUrl)
-  const maxDim = 1400
   const scale = Math.min(1, maxDim / Math.max(im.naturalWidth, im.naturalHeight))
   const cw = Math.max(1, Math.round(im.naturalWidth * scale)), ch = Math.max(1, Math.round(im.naturalHeight * scale))
   const cnv = document.createElement("canvas"); cnv.width = cw; cnv.height = ch
@@ -965,7 +968,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   async function addImageAt(file, worldX, worldY, { fitWidth = null, maxSide = 360, sheet = false } = {}) {
     if (!file || !file.type?.startsWith("image/")) return
     let info
-    try { info = await processImageFile(file) } catch { return }
+    try { info = await processImageFile(file, sheet ? SHEET_MAX_DIM : 1400) } catch { return }
     const id = makeId(userId)
     let src = info.dataUrl
     try {
