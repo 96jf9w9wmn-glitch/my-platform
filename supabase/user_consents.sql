@@ -55,3 +55,14 @@ ALTER TABLE public.student_accounts
   ADD COLUMN IF NOT EXISTS marketing_opt_in boolean NOT NULL DEFAULT false;
 
 NOTIFY pgrst, 'reload schema';
+
+-- Колонка добавлена в таблицы, доступ к которым выдан ПОИМЁННО (rls_step3),
+-- поэтому без гранта она невидима ролям кабинета. Хуже того: `select *` из
+-- tutors при восстановлении сессии начинал возвращать 42501, репетитора не
+-- пускало в кабинет после перезагрузки страницы, и это выглядело как выход
+-- из аккаунта. Новую колонку в этих таблицах всегда сопровождать грантом.
+GRANT SELECT (marketing_opt_in) ON public.tutors TO authenticated;
+GRANT SELECT (marketing_opt_in), UPDATE (marketing_opt_in)
+  ON public.student_accounts TO app_user, authenticated;
+
+NOTIFY pgrst, 'reload schema';

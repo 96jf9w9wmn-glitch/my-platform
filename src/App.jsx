@@ -480,13 +480,17 @@ function App() {
     async function restoreSession(session) {
       const minDelay = new Promise(r => setTimeout(r, 600))
       if (!session) { await minDelay; setLoadingAuth(false); return }
-      const [{ data: tutor }] = await Promise.all([
+      const [{ data: tutor, error }] = await Promise.all([
         supabase.from("tutors").select("*").eq("id", session.user.id).single(),
         minDelay,
       ])
-      if (tutor) {
-        setUser({ ...session.user, role: "tutor", profile: tutor })
-      }
+      // Сессия уже подтверждена GoTrue, поэтому в кабинет пускаем даже если
+      // профиль не прочитался: раньше любая ошибка этого запроса выглядела как
+      // выход из аккаунта при перезагрузке страницы, хотя вход был живой. Так
+      // сломала кабинет колонка marketing_opt_in без гранта — `select *` начал
+      // отдавать 42501 (см. supabase/user_consents.sql).
+      if (error) console.error("Профиль репетитора не загрузился:", error)
+      setUser({ ...session.user, role: "tutor", profile: tutor || null })
       setLoadingAuth(false)
     }
 

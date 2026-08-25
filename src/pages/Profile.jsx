@@ -63,7 +63,7 @@ export default function Profile({ user, students = [], studentsCount = 0, onLogo
   }
 
   function copyCode() {
-    navigator.clipboard?.writeText(user.profile.code).then(() => {
+    navigator.clipboard?.writeText(user.profile?.code || "").then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     })
@@ -137,7 +137,7 @@ export default function Profile({ user, students = [], studentsCount = 0, onLogo
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <span className="font-mono text-lg font-medium tracking-wider px-4 py-2 rounded-xl bg-black/[0.04] dark:bg-white/[0.08]">
-              {user.profile.code}
+              {user.profile?.code || "—"}
             </span>
             <button
               onClick={copyCode}
