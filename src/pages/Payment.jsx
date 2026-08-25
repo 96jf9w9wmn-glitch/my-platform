@@ -4,6 +4,7 @@ import { PlanLock } from "../components/PlanLock"
 import { usePlan } from "../subscription"
 import ConfirmModal from "../components/ConfirmModal"
 import Collapse from "../components/Collapse"
+import SegmentSwitch from "../components/SegmentSwitch"
 import { supabase } from "../supabase"
 import { isLessonConducted, getInitials, parsePaymentDate, plural } from "../utils"
 
@@ -14,6 +15,10 @@ const TAX_MODES = {
 }
 // Подсказки для быстрого добавления при пустом списке расходов.
 const EXPENSE_SUGGESTIONS = ["Онлайн-доска", "Подписка Precettore", "Реклама", "Связь"]
+
+// Периоды истории оплат — списком, чтобы сегмент-контрол не пересоздавал items
+// на каждый рендер (иначе замер «пальца» дёргается).
+const PERIODS = [{ key: "all", label: "Все" }, { key: "month", label: "Месяц" }, { key: "week", label: "Неделя" }]
 
 function getWeekRange() {
   const now = new Date()
@@ -377,26 +382,26 @@ function Payment({ students, setStudents, tutorId }) {
       </div>
 
       {/* Вкладки */}
-      <div className="flex gap-1 p-1 rounded-2xl bg-black/[0.04] dark:bg-white/[0.06] mb-4 w-full sm:w-auto sm:inline-flex">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 sm:px-6 py-2 rounded-xl text-sm font-medium transition active:scale-[0.97] ${
-              tab === t.id
-                ? "bg-white dark:bg-white/15 shadow-sm text-gray-900 dark:text-white"
-                : "text-gray-500 dark:text-gray-400 hover:text-gray-700"
-            }`}
-          >
-            {t.label}
-            {t.badge > 0 && (
-              <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-300 tabular-nums">
-                {t.badge}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
+      <SegmentSwitch
+        block
+        ariaLabel="Раздел финансов"
+        value={tab}
+        onChange={setTab}
+        className="mb-4 w-full sm:w-auto"
+        items={TABS.map((t) => ({
+          key: t.id,
+          label: (
+            <>
+              {t.label}
+              {t.badge > 0 && (
+                <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-300 tabular-nums">
+                  {t.badge}
+                </span>
+              )}
+            </>
+          ),
+        }))}
+      />
 
       {/* ── ДОЛГИ: рабочий список. Одна строка на ученика, одно действие ── */}
       {tab === "debts" && (
@@ -571,14 +576,16 @@ function Payment({ students, setStudents, tutorId }) {
               <h2 className="text-base font-medium">История оплат</h2>
               <span className="text-xs text-gray-400 tabular-nums whitespace-nowrap">{fmt(allTotal)} ₽ за всё время</span>
             </div>
-            <div className="flex gap-1">
-              {[{ id: "all", label: "Все" }, { id: "month", label: "Месяц" }, { id: "week", label: "Неделя" }].map((p) => (
-                <button key={p.id} onClick={() => setPeriod(p.id)}
-                  className={p.id === period ? "px-3 py-1 rounded-lg text-xs border bg-blue-600 text-white border-blue-600 transition active:scale-95" : "px-3 py-1 rounded-lg text-xs border border-gray-200 dark:border-white/10 text-gray-600 hover:bg-gray-50 dark:hover:bg-white/5 transition active:scale-95"}>
-                  {p.label}
-                </button>
-              ))}
-            </div>
+            {/* период — сегмент-контролом: «палец» едет к выбранному, вместо того
+                чтобы кнопки просто перекрашивались рывком */}
+            <SegmentSwitch
+              size="sm"
+              ariaLabel="Период"
+              value={period}
+              onChange={setPeriod}
+              items={PERIODS}
+              className="shrink-0"
+            />
           </div>
           {filteredPayments.length === 0 ? (
             <div className="flex-1 flex items-center justify-center text-sm text-gray-400 text-center py-8">Оплат за этот период нет</div>

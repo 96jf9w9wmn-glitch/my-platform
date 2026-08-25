@@ -8,6 +8,7 @@ import { downloadZip } from "./zipWriter"
 import { downloadXlsx } from "./xlsxWriter"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
+import SegmentSwitch from "../components/SegmentSwitch"
 import { PlanLock } from "../components/PlanLock"
 import { usePlan } from "../subscription"
 // Тетрадь тянет за собой jsPDF и html2canvas — грузим только когда её открыли,
@@ -493,22 +494,13 @@ function TaskGenPreview() {
       )}
 
       {/* уровень экзамена — сегмент-контрол ЕГЭ / ОГЭ */}
-      <div className="inline-flex p-1 mb-4 rounded-2xl bg-gray-100 border border-gray-200/70">
-        {EXAM_GROUPS.map((g) => {
-          const active = level === g.key
-          return (
-            <button
-              key={g.key}
-              onClick={() => selectLevel(g.key)}
-              className={`px-7 py-1.5 rounded-xl text-sm font-semibold transition-all active:scale-95 ${
-                active ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              {g.key}
-            </button>
-          )
-        })}
-      </div>
+      <SegmentSwitch
+        items={EXAM_GROUPS.map((g) => ({ key: g.key }))}
+        value={level}
+        onChange={selectLevel}
+        ariaLabel="Уровень экзамена"
+        className="mb-4"
+      />
 
       {/* предметы выбранного уровня */}
       <div className="flex flex-wrap gap-2 mb-4">

@@ -2,6 +2,9 @@ import { Fragment, useState } from "react"
 import { createPortal } from "react-dom"
 import { useClosing } from "../useClosing"
 import Icon from "../components/Icon"
+import SegmentSwitch from "../components/SegmentSwitch"
+
+const VIEWS = [{ key: "month", label: "Месяц" }, { key: "week", label: "Неделя" }]
 
 const HOURS = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00"]
 const DAY_NAMES = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
@@ -153,20 +156,7 @@ function Schedule({ students, setStudents }) {
           <span className="text-sm font-medium text-gray-700">{view === "week" ? weekLabel : monthLabel}</span>
           <button onClick={nextPeriod} className="text-gray-400 hover:text-gray-600 text-xl px-2">›</button>
         </div>
-        <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-          <button
-            onClick={() => setView("month")}
-            className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${view === "month" ? "bg-white dark:bg-white/15 text-blue-600 dark:text-blue-400 shadow-sm" : "text-gray-500"}`}
-          >
-            Месяц
-          </button>
-          <button
-            onClick={() => setView("week")}
-            className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${view === "week" ? "bg-white dark:bg-white/15 text-blue-600 dark:text-blue-400 shadow-sm" : "text-gray-500"}`}
-          >
-            Неделя
-          </button>
-        </div>
+        <SegmentSwitch size="sm" ariaLabel="Вид расписания" value={view} onChange={setView} items={VIEWS} />
       </div>
 
       {view === "month" && (

@@ -1411,7 +1411,9 @@ button.w-full:not([disabled]):not(.no-press):active::after,
    мгновенным и читался как скачок. Эта кривая идёт ровно — 24% пути за четверть
    времени, 78% за половину — и мягко причаливает. Подпись красится синхронно
    с ходом пальца (.seg-label). */
-.seg-finger { transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1); }
+/* «Палец» едет и подстраивается по размеру: сегменты бывают неравной ширины
+   (подпись со счётчиком), поэтому width/height анимируются вместе с transform. */
+.seg-finger { transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1), width 300ms cubic-bezier(0.4, 0, 0.2, 1), height 300ms cubic-bezier(0.4, 0, 0.2, 1); }
 .seg-label { transition: color 300ms cubic-bezier(0.4, 0, 0.2, 1); }
 @media (prefers-reduced-motion: reduce) {
   .seg-finger, .seg-label { transition: none; }
