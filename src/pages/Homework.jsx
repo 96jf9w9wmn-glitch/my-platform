@@ -1116,29 +1116,40 @@ function Homework({ user, students }) {
 
       {(
         <>
-          <div className="flex gap-2 mb-4 flex-wrap">
+          {/* Фильтры — сводкой одной полосой: сразу видно, сколько заданий в каждом
+              состоянии, и та же полоса переключает список. */}
+          <div className="glass no-scrollbar flex overflow-x-auto divide-x divide-gray-500/12 dark:divide-white/10 mb-4">
             {[
-              { id: "all", label: "Все" },
-              { id: "assigned", label: "Выдано" },
-              { id: "submitted", label: "На проверке" },
-              { id: "done", label: "Выполнено" },
-              { id: "revision", label: "На доработку" },
+              { id: "all", label: "Все", icon: "clipboard", tint: "text-blue-600 bg-blue-500/10", count: homework.length },
+              { id: "assigned", label: "Выдано", icon: "file-text", tint: "text-blue-600 bg-blue-500/10" },
+              { id: "submitted", label: "На проверке", icon: "clock", tint: "text-amber-600 bg-amber-500/12" },
+              { id: "done", label: "Выполнено", icon: "check", tint: "text-green-600 bg-green-500/12" },
+              { id: "revision", label: "На доработку", icon: "repeat", tint: "text-orange-600 bg-orange-500/12" },
               // Просрочку показываем отдельной кнопкой и только когда она есть —
               // пустой фильтр в списке ни к чему.
-              ...(overdueCount ? [{ id: "overdue", label: `Просрочено · ${overdueCount}` }] : []),
-            ].map((f) => (
-              <button
-                key={f.id}
-                onClick={() => setFilter(f.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs transition-all duration-200 ${
-                  f.id === filter
-                    ? "bg-blue-600 text-white"
-                    : "border border-gray-200 text-gray-600 hover:bg-gray-50"
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
+              ...(overdueCount ? [{ id: "overdue", label: "Просрочено", icon: "alert-triangle", tint: "text-red-600 bg-red-500/12", count: overdueCount }] : []),
+            ].map((f) => {
+              const on = f.id === filter
+              const count = f.count ?? homework.filter((h) => h.status === f.id).length
+              return (
+                <button
+                  key={f.id}
+                  onClick={() => setFilter(f.id)}
+                  className={`press-fill flex-1 min-w-[7.5rem] sm:min-w-[9rem] flex items-center gap-3 px-3 sm:px-4 py-3.5 text-left transition-colors ${
+                    on ? "bg-blue-500/[0.07] dark:bg-blue-400/10" : "hover:bg-black/[0.02] dark:hover:bg-white/[0.04]"
+                  }`}
+                >
+                  <div className={`w-9 h-9 rounded-xl hidden sm:flex items-center justify-center flex-shrink-0 ${count > 0 ? f.tint : "text-gray-400 bg-gray-500/8"}`}>
+                    <Icon name={f.icon} size={16} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className={`text-xl font-semibold leading-none ${count > 0 ? f.tint.split(" ")[0] : "text-gray-400"}`}>{count}</div>
+                    <div className={`text-[11px] mt-1.5 truncate ${on ? "text-gray-600 font-medium" : "text-gray-400"}`}>{f.label}</div>
+                  </div>
+                  {on && <span className="absolute inset-x-0 bottom-0 h-[3px] bg-gradient-to-r from-blue-500 to-blue-600" />}
+                </button>
+              )
+            })}
           </div>
 
           {groupNames.length === 0 ? (
