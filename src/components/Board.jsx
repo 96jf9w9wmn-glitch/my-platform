@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react"
 import { supabase } from "../supabase"
 import { signBoardScene, signStorageUrl } from "../storageUrl"
 import Icon from "./Icon"
+import ConfirmModal from "./ConfirmModal"
+import { recognizeShape } from "./boardSmartDraw"
 import {
   GRID, ENCLOSED_SHAPES, SHAPE_TOOLS, DASHABLE_SHAPES,
   isDarkColor, resolveColor, strokeBBox, paintStroke, scenePreview, tintSheet,
@@ -27,7 +29,24 @@ const BG_LIGHT = "#ffffff", BG_DARK = "#1c1c1e"
 const BG_COLORS = ["#ffffff", "#f2f2f7", "#fdf6e3", "#1c1c1e", "#0f172a", "#123a2e"]
 
 // «Чернила» — первый цвет палитры; хранится как маркер "ink" и адаптируется под фон.
-const palette = () => ["ink", "#007AFF", "#FF3B30", "#34C759", "#FF9500", "#AF52DE"]
+// Остальные взяты насыщенными (не пастельными): на тёмной доске бледный цвет
+// сливался с фоном, и кружок в панели было не различить.
+const BASE_INKS = ["ink", "#0A84FF", "#FF3B30", "#30D158", "#FF9F0A", "#BF5AF2"]
+const CUSTOM_MAX = 4                                   // сколько своих цветов помним
+const INK_KEY = "board-ink-colors", BGC_KEY = "board-bg-colors"
+const SMART_KEY = "board-smart-draw"
+
+function loadColors(key) {
+  try {
+    const arr = JSON.parse(localStorage.getItem(key) || "[]")
+    return Array.isArray(arr) ? arr.filter((c) => /^#[0-9a-f]{6}$/i.test(c)).slice(0, CUSTOM_MAX) : []
+  } catch { return [] }
+}
+// Новый цвет встаёт первым, дубли убираются, хвост обрезается
+function pushColor(list, hex) {
+  const next = [hex, ...list.filter((c) => c.toLowerCase() !== hex.toLowerCase())].slice(0, CUSTOM_MAX)
+  return next
+}
 
 const CURSOR_COLORS = ["#007AFF", "#34C759", "#FF9500", "#AF52DE", "#FF3B30"]
 function colorFor(id) {
@@ -168,6 +187,55 @@ function StrokeSettings({ dark, tool, curWidth, curDash, curCorner, onWidth, onD
   )
 }
 
+// Кружок цвета. Обводка контрастная к доске: на тёмной доске тёмный цвет без неё
+// сливался с панелью, и палитра читалась как несколько пустых мест.
+function Swatch({ hex, active, dark, title, onClick, size = 24 }) {
+  const d = active ? size + 4 : size
+  return (
+    <button onClick={onClick} title={title} aria-label={title}
+      className="press-tap rounded-full flex items-center justify-center"
+      style={{ width: size + 10, height: size + 10 }}>
+      <span className="rounded-full" style={{
+        width: d, height: d, background: hex,
+        boxShadow: active
+          ? `0 0 0 2px ${dark ? "#0A84FF" : "#007AFF"}, 0 0 0 3.5px ${dark ? "rgba(255,255,255,.25)" : "rgba(0,0,0,.08)"}`
+          : `0 0 0 1.5px ${dark ? "rgba(255,255,255,.4)" : "rgba(0,0,0,.22)"}`,
+        transition: "all .12s",
+      }} />
+    </button>
+  )
+}
+
+// Свой цвет из системной палитры. input[type=color] в React шлёт onChange на каждое
+// движение ползунка — поэтому предпросмотр и запоминание разведены: onChange красит,
+// onBlur кладёт цвет в список своих.
+function ColorPick({ value, dark, title, onPreview, onCommit, size = 24 }) {
+  const hex = /^#[0-9a-f]{6}$/i.test(value) ? value : "#007AFF"
+  // Цвет, с которого палитру открыли: если её закрыли ничего не выбрав, запоминать
+  // нечего — иначе в своих цветах оседал бы текущий цвет пера при каждом открытии.
+  const opened = useRef(hex)
+  return (
+    <label title={title} aria-label={title}
+      className="press-tap relative rounded-full flex items-center justify-center cursor-pointer"
+      style={{ width: size + 10, height: size + 10 }}>
+      <span className="rounded-full flex items-center justify-center" style={{
+        width: size, height: size,
+        background: "conic-gradient(#FF3B30,#FF9F0A,#FFD60A,#30D158,#0A84FF,#BF5AF2,#FF3B30)",
+        boxShadow: `0 0 0 1.5px ${dark ? "rgba(255,255,255,.4)" : "rgba(0,0,0,.22)"}`,
+      }}>
+        <span className="rounded-full flex items-center justify-center"
+          style={{ width: size - 11, height: size - 11, background: dark ? "#2c2c2e" : "#fff", color: dark ? "#f5f5f7" : "#1c1c1e" }}>
+          <Icon name="plus" size={size - 15} />
+        </span>
+      </span>
+      <input type="color" value={hex} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+        onFocus={(e) => { opened.current = e.target.value }}
+        onChange={(e) => onPreview(e.target.value)}
+        onBlur={(e) => { if (e.target.value.toLowerCase() !== opened.current.toLowerCase()) onCommit(e.target.value) }} />
+    </label>
+  )
+}
+
 // Ширина в точке = базовая × множитель от СКОРОСТИ и (если есть) НАЖАТИЯ.
 // Мышь не передаёт нажатие → главный драйвер скорость: медленно=толще, быстро=тоньше.
 const SPEED_SLOW = 4, SPEED_FAST = 60
@@ -178,8 +246,11 @@ function widthAt(base, speed, pressure) {
   return clamp(base * vMul * pMul, base * 0.5, base * 1.7)
 }
 
-export default function Board({ roomId, userId, userName, theme = "light", onClose, account = null, token = null, canAddTasks = false }) {
-  const colors = palette()
+export default function Board({ roomId, userId, userName, theme = "light", onClose, account = null, token = null, canAddTasks = false, tutorSubject = null, tutorExamFocus = null }) {
+  // Свои цвета живут рядом с базовыми и переживают перезагрузку
+  const [customInks, setCustomInks] = useState(() => loadColors(INK_KEY))
+  const [customBgs, setCustomBgs] = useState(() => loadColors(BGC_KEY))
+  const colors = [...BASE_INKS, ...customInks]
   const [tool, setTool] = useState("pen")   // pen | line | rect | eraser | hand
   const [color, setColor] = useState("ink")
   const [width, setWidth] = useState(WIDTHS[1])
@@ -210,7 +281,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const menuAnim = (id) => (menu === id ? "popup-bubble" : "popup-bubble-out")
   const closeMenuRef = useRef(closeMenu)
   useEffect(() => { closeMenuRef.current = closeMenu })
-  useEffect(() => () => clearTimeout(closeTimer.current), [])
+  useEffect(() => () => { clearTimeout(closeTimer.current); clearTimeout(bgSendTimer.current) }, [])
   const [bg, setBg] = useState("plain")      // plain | grid | dots — узор
   const [bgColor, setBgColor] = useState(theme === "dark" ? BG_DARK : BG_LIGHT) // цвет фона
   const [shapeTool, setShapeTool] = useState("rect") // последняя выбранная фигура
@@ -225,9 +296,17 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // Число выделенных штрихов: пропало выделение — закрываем попап его настроек
   const applySelCount = (n) => { setSelCount(n); if (!n && menu === "selStroke") closeMenu("selStroke") }
   const [selBox, setSelBox] = useState(null)   // ориентированная рамка выделения (экранные координаты)
-  const [selProps, setSelProps] = useState(null) // свойства первого выделенного штриха {width,dash,corner}
+  const [selProps, setSelProps] = useState(null) // свойства первого стилизуемого штриха {width,dash,corner}; null — выделены только картинки
   const [dragActive, setDragActive] = useState(false) // перетаскивание файла над доской
   const [taskPick, setTaskPick] = useState(false)     // открыт выбор задания из банка
+  const [confirmClear, setConfirmClear] = useState(false) // спрашиваем перед очисткой доски
+  // SmartDraw: набросок пером превращается в ровную фигуру (см. boardSmartDraw.js)
+  const [smart, setSmart] = useState(() => localStorage.getItem(SMART_KEY) === "1")
+  // Есть ли картинка в буфере обмена: "image" — есть (кнопка «Вставить» появляется),
+  // "none" — нет или буфер недоступен (кнопки нет), "unknown" — браузер не даёт
+  // заглянуть в буфер без нажатия. В последнем случае кнопку показываем и проверяем
+  // уже по клику: чтение буфера по нажатию разрешено везде.
+  const [clipState, setClipState] = useState("none")
   // Какая подсказка сейчас показана после нажатия (на сенсорном экране навести
   // мышь нельзя, а без названий панель — набор непонятных значков).
   const [tapped, setTapped] = useState("")
@@ -276,6 +355,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const channelRef = useRef(null)
   const teardownTimer = useRef(null)
   const saveTimer = useRef(null)
+  const bgSendTimer = useRef(null)    // троттлинг рассылки цвета фона (см. changeBgColor)
   const sendTimer = useRef(null)
   const dirty = useRef(false)
   const rafId = useRef(0)
@@ -420,11 +500,18 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     const near = (a, b) => a && b && Math.abs(a.cx - b.cx) < 0.5 && Math.abs(a.cy - b.cy) < 0.5 &&
       Math.abs(a.ax.x - b.ax.x) < 0.5 && Math.abs(a.ax.y - b.ax.y) < 0.5 && Math.abs(a.ay.x - b.ay.x) < 0.5 && Math.abs(a.ay.y - b.ay.y) < 0.5
     if ((!prev) !== (!frame) || (frame && prev && !near(frame, prev))) { lastSelBox.current = frame; setSelBox(frame) }
-    // Свойства первого выделенного штриха → для попапа «Настройки обводки»
+    // Свойства первого выделенного ШТРИХА → для цвета и попапа «Настройки обводки».
+    // У картинок и листов с заданием (tool "image") ни цвет, ни толщина ничего не меняют,
+    // поэтому такие объекты пропускаем: если стилизовать нечего, props = null и панель
+    // показывает только «Дублировать» и «Удалить».
     let props = null
     if (frame && selection.current.size) {
-      const s0 = strokes.current.get([...selection.current][0])
-      if (s0) props = { tool: s0.tool, width: s0.width, dash: s0.dash || "solid", corner: s0.corner || "sharp" }
+      for (const id of selection.current) {
+        const s0 = strokes.current.get(id)
+        if (!s0 || s0.tool === "image" || s0.tool === "eraser") continue
+        props = { tool: s0.tool, width: s0.width, dash: s0.dash || "solid", corner: s0.corner || "sharp" }
+        break
+      }
     }
     const pp = lastSelProps.current
     if ((!pp) !== (!props) || (pp && props && (pp.tool !== props.tool || pp.width !== props.width || pp.dash !== props.dash || pp.corner !== props.corner))) {
@@ -879,11 +966,23 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     }
 
     if (!drawing.current) return
-    const s = drawing.current
+    let s = drawing.current
     drawing.current = null
+    // SmartDraw: набросок пером, уверенно похожий на фигуру, заменяем ровной фигурой.
+    // id сохраняем — у собеседника уже лежит рукописный вариант с тем же id, и
+    // рассылка ровной фигуры просто заменяет его, а не кладёт вторую поверх.
+    if (smart && s.tool === "pen") {
+      const shape = recognizeShape(s.points, { minSize: 30 / view.current.scale })
+      if (shape) {
+        s = { ...s, tool: shape.tool, points: [shape.a.slice(0, 2), shape.b.slice(0, 2)],
+          width: s.width, dash, corner }
+      }
+    }
     strokes.current.set(s.id, s)
-    pushHistory([{ id: s.id, before: null, after: cloneStroke(s) }])
+    drawing.current = s          // broadcastDrawing шлёт именно его
     broadcastDrawing(true)
+    drawing.current = null
+    pushHistory([{ id: s.id, before: null, after: cloneStroke(s) }])
     scheduleDraw(); scheduleSave()
   }
 
@@ -1084,15 +1183,36 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     const file = Array.from(e.dataTransfer.files || []).find((f) => f.type.startsWith("image/"))
     if (file) { const [wx, wy] = toWorld(e.clientX, e.clientY); addImageAt(file, wx, wy) }
   }
+  // Центр видимой области в мировых координатах — куда кладём всё, что пришло не мышью
+  function centerWorld() {
+    const c = canvasRef.current; if (!c) return null
+    const r = c.getBoundingClientRect()
+    return toWorld(r.left + c.clientWidth / 2, r.top + c.clientHeight / 2)
+  }
   // Выбор картинки через кнопку → в центр видимой области
   function onPickImage(e) {
     const file = e.target.files?.[0]
     e.target.value = "" // позволяем выбрать тот же файл повторно
     if (!file) return
-    const c = canvasRef.current; if (!c) return
-    const r = c.getBoundingClientRect()
-    const [wx, wy] = toWorld(r.left + c.clientWidth / 2, r.top + c.clientHeight / 2)
-    addImageAt(file, wx, wy)
+    const p = centerWorld(); if (!p) return
+    addImageAt(file, p[0], p[1])
+  }
+
+  // Кнопка «Вставить»: читаем буфер уже по нажатию — это действие пользователя,
+  // поэтому чтение разрешено даже там, где фоновая проверка запрещена.
+  async function pasteFromClipboard() {
+    let blob = null
+    try {
+      for (const item of await navigator.clipboard.read()) {
+        const type = item.types.find((t) => t.startsWith("image/"))
+        if (type) { blob = await item.getType(type); break }
+      }
+    } catch { /* отказ в доступе или пустой буфер — ниже подсказка */ }
+    if (!blob) { setClipState("none"); flashTip("paste"); return }
+    const p = centerWorld(); if (!p) return
+    const ext = blob.type === "image/png" ? "png" : "jpg"
+    await addImageAt(new File([blob], `clipboard.${ext}`, { type: blob.type }), p[0], p[1])
+    setClipState("none")   // вставили — кнопка уходит до следующего копирования
   }
 
   // Лист с заданием из банка — в центр видимой области. Каждое следующее смещаем
@@ -1180,7 +1300,17 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     history.current.push(step)
     applyStep(step, "after")
   }
+  // Очистка стирает всё разом, поэтому идёт через подтверждение: промах по кнопке
+  // рядом с «Вернуть» уносил доску целиком.
+  function askClear() {
+    if (!strokes.current.size) return
+    modalOpen.current = true
+    setConfirmClear(true)
+  }
+  function cancelClear() { modalOpen.current = false; setConfirmClear(false) }
   function clearAll() {
+    modalOpen.current = false
+    setConfirmClear(false)
     const step = [...strokes.current.values()].map((s) => ({ id: s.id, before: cloneStroke(s), after: null }))
     strokes.current.clear()
     pushHistory(step)                       // очистку доски тоже можно отменить
@@ -1192,13 +1322,47 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     channelRef.current?.send({ type: "broadcast", event: "bg", payload: { bg: mode } })
     scheduleSave()
   }
+  // Ползунок системной палитры шлёт событие на каждое движение — рассылку прижимаем
+  // к 120 мс, иначе один подбор цвета фона забивает общий realtime-канал сотней сообщений.
   function changeBgColor(hex) {
     setBgColor(hex)
-    channelRef.current?.send({ type: "broadcast", event: "bg", payload: { bgColor: hex } })
+    if (!bgSendTimer.current) {
+      bgSendTimer.current = setTimeout(() => {
+        bgSendTimer.current = null
+        channelRef.current?.send({ type: "broadcast", event: "bg", payload: { bgColor: bgColorRef.current } })
+      }, 120)
+    }
     scheduleSave()
   }
   function toggleTheme() {
     changeBgColor(isDarkColor(bgColor) ? BG_LIGHT : BG_DARK)
+  }
+  // Свой цвет пера из системной палитры. Пока пользователь ведёт ползунок, событие
+  // сыплется десятками — в список запоминаем только на закрытии палитры (onBlur/change
+  // у input[type=color] в React приходит на каждое движение, поэтому список пишем
+  // отдельной функцией commitInk).
+  function previewInk(hex) {
+    setColor(hex)
+    if (tool === "eraser" || tool === "hand" || tool === "cursor") setTool("pen")
+  }
+  function commitInk(hex) {
+    if (BASE_INKS.includes(hex)) return
+    setCustomInks((prev) => {
+      const next = pushColor(prev, hex)
+      localStorage.setItem(INK_KEY, JSON.stringify(next))
+      return next
+    })
+  }
+  function commitBgColor(hex) {
+    if (BG_COLORS.includes(hex)) return
+    setCustomBgs((prev) => {
+      const next = pushColor(prev, hex)
+      localStorage.setItem(BGC_KEY, JSON.stringify(next))
+      return next
+    })
+  }
+  function toggleSmart() {
+    setSmart((v) => { localStorage.setItem(SMART_KEY, v ? "0" : "1"); return !v })
   }
   function pickShape(id) {
     setShapeTool(id); setTool(id); closeMenu()
@@ -1229,6 +1393,38 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     }
     window.addEventListener("paste", onPaste)
     return () => window.removeEventListener("paste", onPaste)
+  }, [])
+
+  // Слежение за буфером обмена: скопировали картинку в другом окне — вернулись на
+  // доску и увидели кнопку «Вставить». Читать буфер фоном браузер разрешает только
+  // при выданном разрешении clipboard-read; сами его не запрашиваем (это выскочило
+  // бы окном ни с того ни с сего) — до выдачи держим состояние "unknown" и
+  // проверяем буфер уже по нажатию кнопки.
+  useEffect(() => {
+    let alive = true
+    async function check() {
+      if (!navigator.clipboard?.read) { if (alive) setClipState("none"); return }
+      let state = null
+      try { state = (await navigator.permissions.query({ name: "clipboard-read" })).state }
+      catch { /* Safari такого разрешения не знает */ }
+      if (!alive) return
+      if (state === "denied") { setClipState("none"); return }
+      if (state !== "granted") { setClipState("unknown"); return }
+      try {
+        const items = await navigator.clipboard.read()
+        if (alive) setClipState(items.some((i) => i.types.some((t) => t.startsWith("image/"))) ? "image" : "none")
+      } catch { if (alive) setClipState("unknown") }
+    }
+    check()
+    const onFocus = () => check()
+    const onVisible = () => { if (document.visibilityState === "visible") check() }
+    window.addEventListener("focus", onFocus)
+    document.addEventListener("visibilitychange", onVisible)
+    return () => {
+      alive = false
+      window.removeEventListener("focus", onFocus)
+      document.removeEventListener("visibilitychange", onVisible)
+    }
   }, [])
   // Смена инструмента сбрасывает выделение
   useEffect(() => {
@@ -1293,9 +1489,18 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     { id: "grid", label: "Клетка" },
     { id: "dots", label: "Точки" },
   ]
-  const divider = <div className="w-px h-6 mx-0.5" style={{ background: dark ? "rgba(255,255,255,.12)" : "rgba(0,0,0,.1)" }} />
+  const divider = <div className="w-px h-7 mx-0.5" style={{ background: dark ? "rgba(255,255,255,.14)" : "rgba(0,0,0,.1)" }} />
   const panelBg = dark ? "#2c2c2e" : "#fff"
   const panelBorder = dark ? "rgba(255,255,255,.08)" : "rgba(0,0,0,.06)"
+  // Кнопки панели: один размер на все, значок крупный, подписи заменены подсказками.
+  // Цвет значка задаём стилем по светлости ДОСКИ, а не темы кабинета: на тёмной доске
+  // серые токены Tailwind давали почти невидимые значки.
+  const btnBase = "group relative press-tap w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center transition-colors"
+  const btnOn = "bg-blue-500 text-white"
+  const btnIdle = "hover:bg-black/10 dark:hover:bg-white/10"
+  const idleStyle = { color: dark ? "#d1d1d6" : "#3f4652" }
+  // Цвет и обводка нужны только тем инструментам, которые оставляют линию
+  const stylingTool = tool === "pen" || SHAPE_TOOLS.has(tool)
   const cursor = tool === "cursor" ? "default" : tool === "hand" ? "grab" : "crosshair"
 
   // Ручки выделения из ОРИЕНТИРОВАННОЙ рамки {cx,cy,ax,ay,angle} (экранные координаты)
@@ -1331,8 +1536,48 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       {/* Шапка */}
       <div className="flex items-center justify-between px-3 h-12 border-b flex-shrink-0"
         style={{ borderColor: dark ? "rgba(255,255,255,.1)" : "rgba(0,0,0,.08)" }}>
-        <div className="flex items-center gap-2 text-sm font-medium" style={{ color: dark ? "#e5e5ea" : "#374151" }}>
-          <Icon name="clipboard" size={16} /> Доска
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="flex items-center gap-2 text-sm font-medium" style={{ color: dark ? "#e5e5ea" : "#374151" }}>
+            <Icon name="clipboard" size={16} /> Доска
+          </div>
+          {/* Фон доски — в верхней панели: это настройка листа, а не инструмент рисования */}
+          <div className="relative" data-menu>
+            <button onClick={() => toggleMenu("bg")}
+              className={`press-tap flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs font-medium transition-colors ${
+                menuShown("bg") ? "bg-blue-500/15 text-blue-500" : "hover:bg-black/5 dark:hover:bg-white/10"
+              }`}
+              style={menuShown("bg") ? undefined : { color: dark ? "#a1a1aa" : "#6b7280" }}>
+              <span className="w-3.5 h-3.5 rounded-[5px] shrink-0" style={{
+                background: bgColor,
+                boxShadow: `0 0 0 1.5px ${dark ? "rgba(255,255,255,.35)" : "rgba(0,0,0,.2)"}`,
+              }} />
+              Фон
+              <Icon name="chevron-down" size={12} />
+            </button>
+            {menuShown("bg") && (
+              <div className={`absolute top-full mt-2 left-0 flex flex-col gap-2 p-2 rounded-xl shadow-lg z-20 ${menuAnim("bg")}`}
+                style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
+                {/* Узор */}
+                <div className="flex gap-1">
+                  {BGS.map((b) => (
+                    <button key={b.id} onClick={() => changeBg(b.id)} title={b.label}
+                      className={`press-tap px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap ${bg === b.id ? "bg-blue-500 text-white" : "text-gray-500 hover:bg-black/5 dark:hover:bg-white/10"}`}>
+                      {b.label}
+                    </button>
+                  ))}
+                </div>
+                {/* Цвет фона: готовые + свои + системная палитра */}
+                <div className="flex gap-1 items-center flex-wrap max-w-[16rem] pt-0.5">
+                  {[...BG_COLORS, ...customBgs].map((hex) => (
+                    <Swatch key={hex} hex={hex} active={bgColor === hex} dark={dark} title="Цвет фона"
+                      onClick={() => changeBgColor(hex)} />
+                  ))}
+                  <ColorPick value={bgColor} dark={dark} title="Свой цвет фона"
+                    onPreview={changeBgColor} onCommit={commitBgColor} />
+                </div>
+              </div>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <button onClick={toggleTheme} title={dark ? "Светлая доска" : "Тёмная доска"}
@@ -1419,15 +1664,16 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
             {/* Панель свойств — по центру над рамкой */}
             <div className="absolute flex items-center gap-1 px-2 py-1.5 rounded-2xl shadow-lg popup-bubble pointer-events-auto"
               style={{ left: barX, top: barY, transform: "translateX(-50%)", background: panelBg, border: `1px solid ${panelBorder}`, maxWidth: "92vw", flexWrap: "wrap" }}>
-              {colors.map((c) => (
+              {selProps && colors.map((c) => (
                 <button key={c} onClick={() => setSelectionColor(c)} title={c === "ink" ? "Чернила" : "Цвет"}
                   className="press-tap w-6 h-6 rounded-full flex items-center justify-center">
                   <span className="rounded-full" style={{ width: 17, height: 17, background: resolveColor(c, dark),
                     boxShadow: `0 0 0 1px ${dark ? "rgba(255,255,255,.15)" : "rgba(0,0,0,.12)"}` }} />
                 </button>
               ))}
-              {divider}
+              {selProps && divider}
               {/* Настройки обводки для выделения */}
+              {selProps && (
               <div className="relative" data-menu>
                 <button onClick={() => toggleMenu("selStroke")} title="Настройки обводки"
                   className="press-tap w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:bg-black/5 dark:hover:bg-white/10">
@@ -1441,7 +1687,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
                   </div>
                 )}
               </div>
-              {divider}
+              )}
+              {selProps && divider}
               <button onClick={duplicateSelection} title="Дублировать"
                 className="press-tap w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:bg-black/5 dark:hover:bg-white/10">
                 <Icon name="copy" size={15} />
@@ -1475,32 +1722,32 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
           </button>
         </div>
 
-        {/* Панель инструментов — плавает поверх холста, чтобы вся область была доской */}
+        {/* Панель инструментов — плавает поверх холста, чтобы вся область была доской.
+            Подписей у кнопок нет намеренно: панель стала крупнее и читается значками,
+            а название показывает подсказка — по наведению и по нажатию на сенсорном экране. */}
         <div className="absolute bottom-4 left-0 right-0 flex justify-center px-3 pointer-events-none">
-        <div className="flex flex-wrap items-center justify-center gap-1.5 rounded-2xl px-2 py-1.5 shadow-lg relative pointer-events-auto max-w-full"
+        <div className="flex flex-wrap items-center justify-center gap-1 rounded-2xl px-2.5 py-2 shadow-xl relative pointer-events-auto max-w-full"
           style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
           {TOOLS.map((t) => t.erasers ? (
             <div key="eraser" className="relative" data-menu>
               {/* Клик берёт ластик и сразу показывает выбор режима: иначе про «стирать
                   объект целиком» никто бы не узнал */}
               <button onPointerDown={() => flashTip("eraser")} onClick={() => { const was = tool === "eraser"; setTool("eraser"); was ? toggleMenu("eraser") : openMenu("eraser") }}
-                className={`group relative press-tap min-w-9 h-9 sm:h-auto sm:min-w-[52px] px-1.5 sm:py-1 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-colors ${
-                  tool === "eraser" ? "bg-blue-500 text-white" : "text-gray-500 hover:bg-black/5 dark:hover:bg-white/10"
-                }`}>
-                <Icon name="eraser" size={17} />
-                <span className="hidden sm:block text-[9px] leading-none">Ластик</span>
+                className={`${btnBase} ${tool === "eraser" ? btnOn : btnIdle}`}
+                style={tool === "eraser" ? undefined : idleStyle}>
+                <Icon name="eraser" size={21} />
                 {!menuShown("eraser") && (
                   <Tip label={eraserMode === "object" ? "Ластик · объект целиком" : "Ластик · след"} hotkey="E" dark={dark} show={tapped === "eraser"} />
                 )}
               </button>
               {menuShown("eraser") && (
-                <div className={`absolute bottom-11 left-1/2 -translate-x-1/2 flex gap-1 p-2 rounded-xl shadow-lg ${menuAnim("eraser")}`}
+                <div className={`absolute bottom-full mb-2 left-1/2 -translate-x-1/2 flex gap-1 p-2 rounded-xl shadow-lg ${menuAnim("eraser")}`}
                   style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
                   {[["stroke", "След"], ["object", "Объект целиком"]].map(([mode, label]) => (
                     <button key={mode} onClick={() => { setEraserMode(mode); setTool("eraser"); closeMenu("eraser") }}
                       className={`press-tap px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap ${
-                        eraserMode === mode ? "bg-blue-500 text-white" : "text-gray-500 hover:bg-black/5 dark:hover:bg-white/10"
-                      }`}>
+                        eraserMode === mode ? "bg-blue-500 text-white" : "hover:bg-black/5 dark:hover:bg-white/10"
+                      }`} style={eraserMode === mode ? undefined : idleStyle}>
                       {label}
                     </button>
                   ))}
@@ -1510,25 +1757,24 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
           ) : t.shapes ? (
             <div key="shapes" className="relative" data-menu>
               <button onPointerDown={() => flashTip("shapes")} onClick={() => toggleMenu("shapes")}
-                className={`group relative press-tap min-w-9 h-9 sm:h-auto sm:min-w-[52px] px-1.5 sm:py-1 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-colors ${
-                  shapeMenuIds.has(tool) ? "bg-blue-500 text-white" : "text-gray-500 hover:bg-black/5 dark:hover:bg-white/10"
-                }`}>
-                <Icon name={shapeIconOf(shapeTool)} size={17} />
-                <span className="hidden sm:block text-[9px] leading-none">Фигуры</span>
+                className={`${btnBase} ${shapeMenuIds.has(tool) ? btnOn : btnIdle}`}
+                style={shapeMenuIds.has(tool) ? undefined : idleStyle}>
+                <Icon name={shapeIconOf(shapeTool)} size={21} />
                 {!menuShown("shapes") && <Tip label="Фигуры" dark={dark} show={tapped === "shapes"} />}
               </button>
               {menuShown("shapes") && (
-                <div className={`absolute bottom-11 left-1/2 -translate-x-1/2 flex flex-col gap-2 p-2 rounded-xl shadow-lg ${menuAnim("shapes")}`}
+                <div className={`absolute bottom-full mb-2 left-1/2 -translate-x-1/2 flex flex-col gap-2 p-2 rounded-xl shadow-lg ${menuAnim("shapes")}`}
                   style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
                   {[["Плоские", SHAPES_2D], ["Объёмные", SHAPES_3D]].map(([title, list]) => (
                     <div key={title}>
                       <div className="text-[10px] uppercase tracking-wide px-1 mb-1" style={{ color: dark ? "#8e8e93" : "#9ca3af" }}>{title}</div>
                       <div className="flex gap-1">
-                        {list.map((s) => (
-                          <button key={s.id} onClick={() => pickShape(s.id)} title={s.label}
-                            className={`press-tap min-w-[52px] px-1.5 py-1.5 rounded-lg flex flex-col items-center justify-center gap-0.5 ${tool === s.id ? "bg-blue-500 text-white" : "text-gray-500 hover:bg-black/5 dark:hover:bg-white/10"}`}>
-                            <Icon name={s.icon} size={18} />
-                            <span className="text-[9px] leading-none whitespace-nowrap">{s.label}</span>
+                        {list.map((sh) => (
+                          <button key={sh.id} onClick={() => pickShape(sh.id)} title={sh.label}
+                            className={`press-tap min-w-[52px] px-1.5 py-1.5 rounded-lg flex flex-col items-center justify-center gap-0.5 ${tool === sh.id ? "bg-blue-500 text-white" : "hover:bg-black/5 dark:hover:bg-white/10"}`}
+                            style={tool === sh.id ? undefined : idleStyle}>
+                            <Icon name={sh.icon} size={18} />
+                            <span className="text-[9px] leading-none whitespace-nowrap">{sh.label}</span>
                           </button>
                         ))}
                       </div>
@@ -1539,134 +1785,102 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
             </div>
           ) : (
             <button key={t.id} onPointerDown={() => flashTip(t.id)} onClick={() => setTool(t.id)}
-              className={`group relative press-tap min-w-9 h-9 sm:h-auto sm:min-w-[52px] px-1.5 sm:py-1 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-colors ${
-                tool === t.id ? "bg-blue-500 text-white" : "text-gray-500 hover:bg-black/5 dark:hover:bg-white/10"
-              }`}>
-              <Icon name={t.icon} size={17} />
-              {/* Подпись видна там, где хватает места; на телефоне её заменяет
-                  всплывающая подсказка после нажатия. */}
-              <span className="hidden sm:block text-[9px] leading-none">{t.short || t.label}</span>
+              className={`${btnBase} ${tool === t.id ? btnOn : btnIdle}`}
+              style={tool === t.id ? undefined : idleStyle}>
+              <Icon name={t.icon} size={21} />
               <Tip label={t.label} hotkey={t.key} dark={dark} show={tapped === t.id} />
             </button>
           ))}
 
           {divider}
 
-          {colors.map((c) => {
-            const shown = resolveColor(c, dark) // «чернила» показываем реальным цветом
-            const active = color === c && tool !== "eraser"
-            return (
-              <button key={c} onClick={() => { setColor(c); if (tool === "eraser" || tool === "hand" || tool === "cursor") setTool("pen") }}
-                className="press-tap w-7 h-7 rounded-full flex items-center justify-center" title={c === "ink" ? "Чернила" : "Цвет"}>
-                <span className="rounded-full" style={{
-                  width: active ? 22 : 18,
-                  height: active ? 22 : 18,
-                  background: shown,
-                  boxShadow: active ? "0 0 0 2px #007AFF" : `0 0 0 1px ${dark ? "rgba(255,255,255,.15)" : "rgba(0,0,0,.12)"}`,
-                  transition: "all .12s",
-                }} />
-              </button>
-            )
-          })}
+          {/* SmartDraw: набросок пером сам становится ровной фигурой */}
+          <button onPointerDown={() => flashTip("smart")} onClick={toggleSmart}
+            className={`${btnBase} ${smart ? btnOn : btnIdle}`} style={smart ? undefined : idleStyle}>
+            <Icon name="sparkles" size={21} />
+            <Tip label={smart ? "Ровные фигуры включены" : "Ровные фигуры выключены"} dark={dark} show={tapped === "smart"} />
+          </button>
 
-          {divider}
+          {/* Цвет и обводка — только для инструментов, которые рисуют линию.
+              У ластика, курсора и руки они ничего не меняли и сбивали с толку. */}
+          {stylingTool && divider}
+          {stylingTool && [...colors.map((c) => {
+            const shown = resolveColor(c, dark) // «чернила» показываем реальным цветом
+            return (
+              <Swatch key={c} hex={shown} active={color === c} dark={dark}
+                title={c === "ink" ? "Чернила" : "Цвет"}
+                onClick={() => { setColor(c); if (tool === "eraser" || tool === "hand" || tool === "cursor") setTool("pen") }} />
+            )
+          }),
+            <ColorPick key="pick" value={resolveColor(color, dark)} dark={dark} title="Свой цвет"
+              onPreview={previewInk} onCommit={commitInk} />,
+          ]}
+
+          {stylingTool && divider}
 
           {/* Настройки обводки */}
-          <div className="relative" data-menu>
-            <button onPointerDown={() => flashTip("stroke")} onClick={() => toggleMenu("stroke")}
-              className="group relative press-tap min-w-9 h-9 sm:h-auto sm:min-w-[52px] px-1.5 sm:py-1 rounded-xl flex flex-col items-center justify-center gap-0.5 text-gray-500 hover:bg-black/5 dark:hover:bg-white/10">
-              <Icon name="stroke" size={17} />
-              <span className="hidden sm:block text-[9px] leading-none">Обводка</span>
-              <Tip label="Настройки обводки" dark={dark} show={tapped === "stroke"} />
-            </button>
-            {menuShown("stroke") && (
-              <div className={`absolute bottom-11 left-1/2 -translate-x-1/2 p-2 rounded-xl shadow-lg ${menuAnim("stroke")}`}
-                style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
-                <StrokeSettings dark={dark} tool={tool} curWidth={width} curDash={dash} curCorner={corner} onWidth={setWidth} onDash={setDash} onCorner={setCorner} />
-              </div>
-            )}
-          </div>
+          {stylingTool && (
+            <div className="relative" data-menu>
+              <button onPointerDown={() => flashTip("stroke")} onClick={() => toggleMenu("stroke")}
+                className={`${btnBase} ${menuShown("stroke") ? "bg-blue-500/15 text-blue-500" : btnIdle}`}
+                style={menuShown("stroke") ? undefined : idleStyle}>
+                <Icon name="stroke" size={21} />
+                <Tip label="Настройки обводки" dark={dark} show={tapped === "stroke"} />
+              </button>
+              {menuShown("stroke") && (
+                <div className={`absolute bottom-full mb-2 left-1/2 -translate-x-1/2 p-2 rounded-xl shadow-lg ${menuAnim("stroke")}`}
+                  style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
+                  <StrokeSettings dark={dark} tool={tool} curWidth={width} curDash={dash} curCorner={corner} onWidth={setWidth} onDash={setDash} onCorner={setCorner} />
+                </div>
+              )}
+            </div>
+          )}
 
           {divider}
 
           {/* Загрузить картинку */}
           <button onPointerDown={() => flashTip("image")} onClick={() => fileInputRef.current?.click()}
-            className="group relative press-tap min-w-9 h-9 sm:h-auto sm:min-w-[52px] px-1.5 sm:py-1 rounded-xl flex flex-col items-center justify-center gap-0.5 text-gray-500 hover:bg-black/5 dark:hover:bg-white/10">
-            <Icon name="image" size={17} />
-            <span className="hidden sm:block text-[9px] leading-none">Картинка</span>
+            className={`${btnBase} ${btnIdle}`} style={idleStyle}>
+            <Icon name="image" size={21} />
             <Tip label="Добавить картинку" dark={dark} show={tapped === "image"} />
           </button>
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onPickImage} />
 
+          {/* Вставить картинку из буфера обмена — кнопка появляется, когда там картинка */}
+          {clipState !== "none" && (
+            <button onPointerDown={() => flashTip("paste")} onClick={pasteFromClipboard}
+              className={`${btnBase} ${clipState === "image" ? "bg-blue-500/15 text-blue-500" : btnIdle}`}
+              style={clipState === "image" ? undefined : idleStyle}>
+              <Icon name="clipboard" size={21} />
+              <Tip label={clipState === "image" ? "Вставить изображение из буфера" : "Проверить буфер обмена"}
+                hotkey="⌘V" dark={dark} show={tapped === "paste"} />
+            </button>
+          )}
+
           {/* Задание из банка листом на доску */}
           {canAddTasks && (
             <button onPointerDown={() => flashTip("task")} onClick={() => { modalOpen.current = true; setTaskPick(true) }}
-              className={`group relative press-tap min-w-9 h-9 sm:h-auto sm:min-w-[52px] px-1.5 sm:py-1 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-colors ${
-                taskPick ? "bg-blue-500 text-white" : "text-gray-500 hover:bg-black/5 dark:hover:bg-white/10"
-              }`}>
-              <Icon name="book" size={17} />
-              <span className="hidden sm:block text-[9px] leading-none">Задание</span>
+              className={`${btnBase} ${taskPick ? btnOn : btnIdle}`} style={taskPick ? undefined : idleStyle}>
+              <Icon name="book" size={21} />
               <Tip label="Задание из банка" dark={dark} show={tapped === "task"} />
             </button>
           )}
 
           {divider}
 
-          {/* Фон */}
-          <div className="relative" data-menu>
-            <button onPointerDown={() => flashTip("bg")} onClick={() => toggleMenu("bg")}
-              className={`group relative press-tap min-w-9 h-9 sm:h-auto sm:min-w-[52px] px-1.5 sm:py-1 rounded-xl flex flex-col items-center justify-center gap-0.5 ${bg !== "plain" ? "text-blue-500" : "text-gray-500"} hover:bg-black/5 dark:hover:bg-white/10`}>
-              <Icon name="grid" size={17} />
-              <span className="hidden sm:block text-[9px] leading-none">Фон</span>
-              <Tip label="Фон доски" dark={dark} show={tapped === "bg"} />
-            </button>
-            {menuShown("bg") && (
-              <div className={`absolute bottom-11 left-1/2 -translate-x-1/2 flex flex-col gap-2 p-2 rounded-xl shadow-lg ${menuAnim("bg")}`}
-                style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
-                {/* Узор */}
-                <div className="flex gap-1">
-                  {BGS.map((b) => (
-                    <button key={b.id} onClick={() => changeBg(b.id)} title={b.label}
-                      className={`press-tap px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap ${bg === b.id ? "bg-blue-500 text-white" : "text-gray-500 hover:bg-black/5 dark:hover:bg-white/10"}`}>
-                      {b.label}
-                    </button>
-                  ))}
-                </div>
-                {/* Цвет фона */}
-                <div className="flex gap-1.5 justify-center pt-0.5">
-                  {BG_COLORS.map((hex) => (
-                    <button key={hex} onClick={() => changeBgColor(hex)} title="Цвет фона"
-                      className="press-tap w-6 h-6 rounded-full flex items-center justify-center">
-                      <span className="rounded-full" style={{
-                        width: bgColor === hex ? 22 : 18, height: bgColor === hex ? 22 : 18, background: hex,
-                        boxShadow: bgColor === hex ? "0 0 0 2px #007AFF" : `0 0 0 1px ${dark ? "rgba(255,255,255,.2)" : "rgba(0,0,0,.15)"}`,
-                        transition: "all .12s",
-                      }} />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {divider}
-
           <button onPointerDown={() => flashTip("undo")} onClick={undo}
-            className="group relative press-tap min-w-9 h-9 sm:h-auto sm:min-w-[52px] px-1.5 sm:py-1 rounded-xl flex flex-col items-center justify-center gap-0.5 text-gray-500 hover:bg-black/5 dark:hover:bg-white/10">
-            <Icon name="undo" size={17} />
-            <span className="hidden sm:block text-[9px] leading-none">Отменить</span>
+            className={`${btnBase} ${btnIdle}`} style={idleStyle}>
+            <Icon name="undo" size={21} />
             <Tip label="Отменить" hotkey="⌘Z" dark={dark} show={tapped === "undo"} />
           </button>
           <button onPointerDown={() => flashTip("redo")} onClick={redo}
-            className="group relative press-tap min-w-9 h-9 sm:h-auto sm:min-w-[52px] px-1.5 sm:py-1 rounded-xl flex flex-col items-center justify-center gap-0.5 text-gray-500 hover:bg-black/5 dark:hover:bg-white/10">
-            <Icon name="redo" size={17} />
-            <span className="hidden sm:block text-[9px] leading-none">Вернуть</span>
+            className={`${btnBase} ${btnIdle}`} style={idleStyle}>
+            <Icon name="redo" size={21} />
             <Tip label="Вернуть" hotkey="⌘⇧Z" dark={dark} show={tapped === "redo"} />
           </button>
-          <button onPointerDown={() => flashTip("clear")} onClick={clearAll}
-            className="group relative press-tap min-w-9 h-9 sm:h-auto sm:min-w-[52px] px-1.5 sm:py-1 rounded-xl flex flex-col items-center justify-center gap-0.5 text-red-500 hover:bg-red-500/10">
-            <Icon name="trash" size={17} />
-            <span className="hidden sm:block text-[9px] leading-none">Очистить</span>
+          <button onPointerDown={() => flashTip("clear")} onClick={askClear}
+            className={`${btnBase} text-red-500 hover:bg-red-500/10`}>
+            <Icon name="trash" size={21} />
             <Tip label="Очистить всё" dark={dark} show={tapped === "clear"} />
           </button>
         </div>
@@ -1679,11 +1893,26 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         <Suspense fallback={<div className="fixed inset-0 z-[100010] flex items-center justify-center" style={{ background: "rgba(0,0,0,.15)" }}><div className="loader-logo" /></div>}>
           <BoardTaskModal
             dark={dark}
+            roomId={roomId}
+            tutorSubject={tutorSubject}
+            tutorExamFocus={tutorExamFocus}
             onInsert={insertTaskSheet}
             onClose={() => { modalOpen.current = false; setTaskPick(false) }}
           />
         </Suspense>
       )}
+
+      <ConfirmModal
+        open={confirmClear}
+        title="Очистить доску?"
+        message="С доски исчезнут все рисунки, картинки и листы с заданиями. Действие можно отменить кнопкой «Отменить»."
+        confirmLabel="Очистить"
+        cancelLabel="Отмена"
+        danger
+        zIndex={100010}
+        onConfirm={clearAll}
+        onCancel={cancelClear}
+      />
     </div>
   )
 }

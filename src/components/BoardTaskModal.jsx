@@ -6,7 +6,7 @@ import MorphIcon from "./MorphIcon"
 import SegmentSwitch from "./SegmentSwitch"
 import { renderTaskMath } from "../utils"
 import { taskThemes } from "../pages/taskGenerators"
-import { EXAM_GROUPS, levelOf, numbersWithGen, subjectLabel, genTask, genThemeTask } from "../pages/examSubjects"
+import { EXAM_GROUPS, levelOf, numbersWithGen, subjectLabel, genTask, genThemeTask, examTypeForSubject } from "../pages/examSubjects"
 import { taskToImageFile, attachmentsOf, SHEET_WIDTH } from "../pages/taskSnapshot"
 
 // Выбор задания из банка прямо на доске: предмет → номер → (необязательно) типаж,
@@ -14,21 +14,34 @@ import { taskToImageFile, attachmentsOf, SHEET_WIDTH } from "../pages/taskSnapsh
 // как обычный объект доски: двигается, масштабируется, уходит в realtime и в снимок
 // занятия. Ответ виден только здесь и в снимок не попадает — доску видит ученик.
 
-const PREF_KEY = "board-task-pick"   // последний предмет и номер: репетитор ведёт свой предмет
+// Предмет привязан к доске: у каждого ученика свой (roomId), общая запись — запасная.
+// Репетитор ведёт один предмет, и выбирать его заново при каждой вставке задания
+// было лишним шагом.
+const PREF_KEY = "board-task-pick"
+const roomKey = (roomId) => (roomId ? `${PREF_KEY}:${roomId}` : PREF_KEY)
 
-function loadPref() {
+function readPref(key) {
   try {
-    const p = JSON.parse(localStorage.getItem(PREF_KEY) || "null")
+    const p = JSON.parse(localStorage.getItem(key) || "null")
     if (p && numbersWithGen(p.examType).length) return p
   } catch { /* испорченная запись — берём значения по умолчанию */ }
   return null
 }
+// Предмет: привязка этой доски → общая привязка → предмет из анкеты репетитора → ОГЭ
+function loadPref(roomId, fallbackExam) {
+  const pref = readPref(roomKey(roomId)) || readPref(PREF_KEY)
+  if (pref) return pref
+  return fallbackExam ? { examType: fallbackExam, number: null } : null
+}
 
-export default function BoardTaskModal({ dark = false, onInsert, onClose }) {
+export default function BoardTaskModal({ dark = false, roomId = null, tutorSubject = null, tutorExamFocus = null, onInsert, onClose }) {
   const { cls: closingCls, close } = useClosing(onClose)
-  const pref = loadPref()
+  const pref = loadPref(roomId, examTypeForSubject(tutorSubject, tutorExamFocus))
   const [examType, setExamType] = useState(pref?.examType || "ОГЭ")
   const [number, setNumber] = useState(pref?.number || null)
+  // Привязанный предмет показывается строкой, а списки уровня и предметов
+  // раскрываются кнопкой «Сменить» — обычно менять его не нужно.
+  const [pickSubject, setPickSubject] = useState(false)
   const [genKey, setGenKey] = useState(null)     // конкретный типаж
   const [theme, setTheme] = useState(null)       // тема (случайный типаж внутри)
   const [openTheme, setOpenTheme] = useState(null)
@@ -43,8 +56,16 @@ export default function BoardTaskModal({ dark = false, onInsert, onClose }) {
   const themes = number != null ? taskThemes(examType, number) : null
 
   useEffect(() => {
-    if (number != null) localStorage.setItem(PREF_KEY, JSON.stringify({ examType, number }))
-  }, [examType, number])
+    const rec = JSON.stringify({ examType, number })
+    localStorage.setItem(roomKey(roomId), rec)
+    localStorage.setItem(PREF_KEY, rec)
+  }, [examType, number, roomId])
+
+  // Предмет и номер уже привязаны к доске — сразу показываем задание, не заставляя
+  // повторять вчерашний выбор. Ровно один раз при открытии (пустой список зависимостей):
+  // на каждый рендер это выдавало бы новую задачу само по себе.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (number != null) make(number, null, null) }, [])
 
   // Esc закрывает выбор. Горячие клавиши доски на это время заглушены (Board), поэтому
   // без своего обработчика клавиша не делала бы ничего.
@@ -68,7 +89,7 @@ export default function BoardTaskModal({ dark = false, onInsert, onClose }) {
 
   function pickExam(type) {
     setExamType(type); setNumber(null); setGenKey(null); setTheme(null)
-    setOpenTheme(null); setTask(null); setErr("")
+    setOpenTheme(null); setTask(null); setErr(""); setPickSubject(false)
   }
   function pickLevel(key) {
     if (key === level) return
@@ -119,34 +140,45 @@ export default function BoardTaskModal({ dark = false, onInsert, onClose }) {
               <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center flex-shrink-0">
                 <Icon name="book" size={18} />
               </div>
-              <div>
-                <h2 className="text-lg font-medium leading-tight">Задание на доску</h2>
-                <div className="text-xs text-gray-400">{subjectLabel(examType)}</div>
-              </div>
+              <h2 className="text-lg font-medium leading-tight">Задание на доску</h2>
             </div>
             <button onClick={close} aria-label="Закрыть" className="press-tap text-gray-400 hover:text-gray-600 mt-1"><Icon name="x" size={18} /></button>
           </div>
 
-          {/* уровень и предмет */}
-          <SegmentSwitch
-            items={EXAM_GROUPS.map((g) => ({ key: g.key }))}
-            value={level}
-            onChange={pickLevel}
-            ariaLabel="Уровень экзамена"
-            className="mb-3"
-          />
-          <div className="flex flex-wrap gap-2 mb-4">
-            {group.subjects.map((s) => {
-              const has = numbersWithGen(s.type).length > 0
-              return (
-                <button key={s.type} disabled={!has} onClick={() => pickExam(s.type)}
-                  className={`${chip(examType === s.type, !has ? "opacity-40 cursor-not-allowed" : "")} inline-flex items-center gap-2`}>
-                  <span className={`w-2 h-2 rounded-full ${examType === s.type ? "bg-white/90" : s.dot}`} />
-                  {s.label}
-                </button>
-              )
-            })}
+          {/* Предмет уже привязан к доске — строкой, а не списком на пол-экрана */}
+          <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10">
+            <span className={`w-2 h-2 rounded-full shrink-0 ${group.subjects.find((s) => s.type === examType)?.dot || "bg-blue-500"}`} />
+            <span className="text-sm font-medium truncate">{subjectLabel(examType)}</span>
+            <button onClick={() => setPickSubject((v) => !v)}
+              className="press-tap ml-auto shrink-0 text-xs text-blue-600 hover:text-blue-700">
+              {pickSubject ? "Свернуть" : "Сменить"}
+            </button>
           </div>
+
+          {/* уровень и предмет — только когда предмет меняют */}
+          {pickSubject && (
+            <>
+              <SegmentSwitch
+                items={EXAM_GROUPS.map((g) => ({ key: g.key }))}
+                value={level}
+                onChange={pickLevel}
+                ariaLabel="Уровень экзамена"
+                className="mb-3"
+              />
+              <div className="flex flex-wrap gap-2 mb-4">
+                {group.subjects.map((s) => {
+                  const has = numbersWithGen(s.type).length > 0
+                  return (
+                    <button key={s.type} disabled={!has} onClick={() => pickExam(s.type)}
+                      className={`${chip(examType === s.type, !has ? "opacity-40 cursor-not-allowed" : "")} inline-flex items-center gap-2`}>
+                      <span className={`w-2 h-2 rounded-full ${examType === s.type ? "bg-white/90" : s.dot}`} />
+                      {s.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </>
+          )}
 
           {/* номер */}
           <div className="text-xs text-gray-500 mb-1.5">Номер задания</div>

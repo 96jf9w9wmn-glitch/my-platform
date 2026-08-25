@@ -14,6 +14,10 @@ function ConfirmModal({
   cancelLabel = "Отмена",
   danger = false,
   icon = danger ? "alert-triangle" : "check",
+  // Слой. По умолчанию обычный модальный, но поверх полноэкранных панелей
+  // (доска живёт на z-100000) подтверждение иначе оказывается ПОД ними и
+  // выглядит как «кнопка не сработала».
+  zIndex = 50,
   onConfirm,
   onCancel,
 }) {
@@ -56,7 +60,8 @@ function ConfirmModal({
 
   return createPortal(
     <div
-      className={`fixed inset-0 glass-overlay flex items-center justify-center z-50 p-4 ${closing ? "is-closing" : ""}`}
+      className={`fixed inset-0 glass-overlay flex items-center justify-center p-4 ${closing ? "is-closing" : ""}`}
+      style={{ zIndex }}
       onClick={onCancel}
       role="dialog"
       aria-modal="true"

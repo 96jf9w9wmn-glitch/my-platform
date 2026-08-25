@@ -730,6 +730,11 @@ function App() {
             onClose={closeBoard}
             /* Задание из банка кладёт на доску репетитор; у ученика такой кнопки нет */
             canAddTasks
+            /* Предмет из анкеты — чтобы выбор задания открывался сразу на своём банке.
+               Разбирает его сама модалка выбора: examSubjects тянет за собой генераторы
+               всех предметов, и импорт здесь затащил бы их в главный бандл. */
+            tutorSubject={user.profile?.subject}
+            tutorExamFocus={user.profile?.exam_focus}
           />
         </Suspense>
       )}

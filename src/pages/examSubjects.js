@@ -66,3 +66,26 @@ export function genThemeTask(examType, number, theme) {
   if (!g?.items.length) return null
   return genTask(examType, number, g.items[Math.floor(Math.random() * g.items.length)].key)
 }
+
+// Предмет из анкеты репетитора («Математика», «Физика», …) + к каким экзаменам он
+// готовит → тип банка. Нужно, чтобы выбор задания на доске открывался сразу на своём
+// предмете, а не на «ОГЭ Математика» по умолчанию: репетитор ведёт один предмет и
+// каждый раз выбирал его заново.
+const SUBJECT_TO_TYPE = {
+  "Математика": { "ОГЭ": "ОГЭ", "ЕГЭ": "ЕГЭ Профиль" },
+  "Русский язык": { "ОГЭ": "ОГЭ Русский" },
+  "Английский язык": { "ОГЭ": "ОГЭ Английский" },
+  "Физика": { "ОГЭ": "ОГЭ Физика" },
+  "Химия": { "ОГЭ": "ОГЭ Химия" },
+  "Обществознание": { "ОГЭ": "ОГЭ Обществознание" },
+  "Информатика": { "ОГЭ": "ОГЭ Информатика", "ЕГЭ": "ЕГЭ Информатика" },
+}
+export function examTypeForSubject(subject, examFocus = []) {
+  const byLevel = SUBJECT_TO_TYPE[subject]
+  if (!byLevel) return null
+  const focus = Array.isArray(examFocus) ? examFocus : []
+  // «Успеваемость» уровня банка не задаёт — берём тот, к которому готовят
+  const level = focus.includes("ЕГЭ") && byLevel["ЕГЭ"] ? "ЕГЭ" : "ОГЭ"
+  const type = byLevel[level] || byLevel["ОГЭ"] || byLevel["ЕГЭ"]
+  return type && numbersWithGen(type).length ? type : null
+}
