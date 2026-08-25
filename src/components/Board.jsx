@@ -4,7 +4,7 @@ import { signBoardScene, signStorageUrl } from "../storageUrl"
 import Icon from "./Icon"
 import {
   GRID, ENCLOSED_SHAPES, SHAPE_TOOLS, DASHABLE_SHAPES,
-  isDarkColor, resolveColor, strokeBBox, paintStroke, scenePreview,
+  isDarkColor, resolveColor, strokeBBox, paintStroke, scenePreview, tintSheet,
 } from "./boardPaint"
 // Выбор задания тянет за собой генераторы всех предметов и html2canvas — грузим
 // только когда репетитор открыл выбор, иначе доска стала бы тяжелее на мегабайты.
@@ -255,6 +255,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const rafId = useRef(0)
   const actions = useRef({})
   const imgCache = useRef(new Map())  // src -> HTMLImageElement (ленивая загрузка картинок)
+  const tintCache = useRef(new Map()) // src -> холст листа, перекрашенный под тёмную доску
   const fileInputRef = useRef(null)   // скрытый input для загрузки картинки кнопкой
   const loadedRef = useRef(false)     // сцена успешно загружена (иначе не сохраняем — чтобы не затереть)
   const modalOpen = useRef(false)     // поверх доски открыт диалог (глушим горячие клавиши)
@@ -472,19 +473,33 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // подписывает signBoardScene, поэтому только что вставленное задание (и своё, и
   // прилетевшее от собеседника) не появлялось до перезахода на доску, а после
   // перезахода появлялось. Для data-URL и чужих адресов подпись возвращает их же.
-  function getImage(src) {
+  function getImage(src, wantTint = false) {
     if (!src) return null
     let img = imgCache.current.get(src)
     if (!img) {
       img = new Image()
+      // crossOrigin обязателен, чтобы холст не «портился»: без него перекрасить лист
+      // под тёмную доску нельзя (getImageData кидает SecurityError). Хранилище отдаёт
+      // Access-Control-Allow-Origin, но если какой-то адрес его не отдаст — картинка
+      // перезагрузится без CORS и просто останется неперекрашиваемой.
+      if (!src.startsWith("data:")) img.crossOrigin = "anonymous"
       img.onload = () => scheduleDraw()
+      img.onerror = () => {
+        if (!img.crossOrigin) return
+        const plain = new Image()
+        plain.onload = () => scheduleDraw()
+        plain.src = img.src
+        imgCache.current.set(src, plain)
+      }
       imgCache.current.set(src, img)
       signStorageUrl(src, IMG_BUCKET).then(
         (url) => { img.src = url || src },
         () => { img.src = src },     // подписать не вышло — пробуем как есть
       )
     }
-    return img
+    if (!wantTint || !img.complete || !img.naturalWidth) return img
+    if (!tintCache.current.has(src)) tintCache.current.set(src, tintSheet(img))
+    return tintCache.current.get(src) || img
   }
 
   // --- Загрузка снапшота --------------------------------------------------
@@ -947,7 +962,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // Добавить картинку из файла в точке (мировые координаты).
   // fitWidth — положить в заданную ШИРИНУ (лист с заданием: длинное условие иначе
   // ужалось бы по высоте и стало нечитаемым), иначе вписываем по большей стороне.
-  async function addImageAt(file, worldX, worldY, { fitWidth = null, maxSide = 360 } = {}) {
+  async function addImageAt(file, worldX, worldY, { fitWidth = null, maxSide = 360, sheet = false } = {}) {
     if (!file || !file.type?.startsWith("image/")) return
     let info
     try { info = await processImageFile(file) } catch { return }
@@ -961,6 +976,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     const k = fitWidth ? fitWidth / info.w : Math.min(1, maxSide / Math.max(info.w, info.h))
     const ww = info.w * k, hh = info.h * k
     const s = { id, author: userId, tool: "image", src, points: [[worldX - ww / 2, worldY - hh / 2], [worldX + ww / 2, worldY + hh / 2]] }
+    if (sheet) s.sheet = 1   // лист с заданием: рисуется в цветах доски, а не как фото
     // Своя картинка уже в памяти — кладём её в кэш под итоговым адресом, чтобы лист
     // появился мгновенно, не дожидаясь подписи и сети.
     getImage(src) // начать загрузку/кэшировать для мгновенной отрисовки
@@ -1000,7 +1016,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     const r = c.getBoundingClientRect()
     const step = (taskShift.current++ % 6) * 26
     const [wx, wy] = toWorld(r.left + c.clientWidth / 2 + step, r.top + c.clientHeight / 2 + step)
-    await addImageAt(file, wx, wy, { fitWidth: sheetWidth })
+    await addImageAt(file, wx, wy, { fitWidth: sheetWidth, sheet: true })
   }
 
   function duplicateSelection() {

@@ -12,11 +12,6 @@ const FS = 17
 const RADIUS = 18          // скругление листа, css-px
 const SCALE = 2            // renderBlock снимает в двойном разрешении
 
-// Цвет тёмного листа — тот же, что у панели доски, чтобы задание выглядело её частью,
-// а не наклейкой. Светлота 0.17 в долях единицы (см. toDarkSheet).
-const DARK_BG_L = 44 / 255
-const DARK_INK_L = 0.96    // куда уезжает бывший чёрный текст: почти белый, но не чистый
-
 const escapeHtml = (s) => {
   const div = document.createElement("div")
   div.textContent = String(s ?? "")
@@ -46,58 +41,11 @@ function hasInk(canvas) {
   return false
 }
 
-// Светлый снимок → тёмный лист. Переворачивается только СВЕТЛОТА пикселя, а оттенок и
-// насыщенность остаются: чёрный текст и линии чертежа становятся светлыми, белый фон —
-// цветом листа, а цветные куски чертежа (оранжевые стены Робота, синий пруд) остаются
-// собой, тогда как обычная инверсия превратила бы оранжевый в голубой.
-//
-// Снимок всегда делается светлым и перекрашивается здесь — так тёмный лист и печатный
-// PDF гарантированно собраны из одного и того же, и правка формул не может разъехаться
-// между ними.
-function toDarkSheet(canvas) {
-  const ctx = canvas.getContext("2d")
-  const img = ctx.getImageData(0, 0, canvas.width, canvas.height)
-  const d = img.data
-  const span = DARK_INK_L - DARK_BG_L
-  for (let i = 0; i < d.length; i += 4) {
-    const r = d[i] / 255, g = d[i + 1] / 255, b = d[i + 2] / 255
-    const max = Math.max(r, g, b), min = Math.min(r, g, b)
-    const l = (max + min) / 2
-    const nl = DARK_BG_L + (1 - l) * span
-    if (max === min) {                       // серый — светлота и есть весь цвет
-      const v = Math.round(nl * 255)
-      d[i] = v; d[i + 1] = v; d[i + 2] = v
-      continue
-    }
-    const dmax = max - min
-    const sat = l > 0.5 ? dmax / (2 - max - min) : dmax / (max + min)
-    let h
-    if (max === r) h = (g - b) / dmax + (g < b ? 6 : 0)
-    else if (max === g) h = (b - r) / dmax + 2
-    else h = (r - g) / dmax + 4
-    h /= 6
-    const q = nl < 0.5 ? nl * (1 + sat) : nl + sat - nl * sat
-    const pp = 2 * nl - q
-    d[i] = Math.round(hueToRgb(pp, q, h + 1 / 3) * 255)
-    d[i + 1] = Math.round(hueToRgb(pp, q, h) * 255)
-    d[i + 2] = Math.round(hueToRgb(pp, q, h - 1 / 3) * 255)
-  }
-  ctx.putImageData(img, 0, 0)
-  return canvas
-}
-
-function hueToRgb(p, q, t) {
-  if (t < 0) t += 1
-  if (t > 1) t -= 1
-  if (t < 1 / 6) return p + (q - p) * 6 * t
-  if (t < 1 / 2) return q
-  if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6
-  return p
-}
-
-// Лист с заданием: мягкие скруглённые углы и волосяная рамка — на тёмной доске он
-// читается как лист, на белой не сливается с фоном.
-function roundSheet(canvas, dark) {
+// Лист с заданием: мягкие скруглённые углы и волосяная рамка, чтобы на белой доске он
+// не сливался с фоном. Лист снимается СВЕТЛЫМ всегда: под тёмную доску его перекрашивает
+// сама доска при отрисовке (tintSheet в boardPaint.js), поэтому переключение темы
+// перекрашивает и уже лежащие задания.
+function roundSheet(canvas) {
   const r = RADIUS * SCALE
   const out = document.createElement("canvas")
   out.width = canvas.width
@@ -113,7 +61,7 @@ function roundSheet(canvas, dark) {
   ctx.drawImage(canvas, 0, 0)
   ctx.restore()
   ctx.lineWidth = SCALE
-  ctx.strokeStyle = dark ? "rgba(255,255,255,.14)" : "rgba(0,0,0,.10)"
+  ctx.strokeStyle = "rgba(0,0,0,.10)"
   ctx.stroke(path)
   return out
 }
@@ -121,11 +69,10 @@ function roundSheet(canvas, dark) {
 /**
  * Снимает задание банка в картинку для доски.
  * task — задание в формате генераторов ({ number, condition_text, condition_tail,
- * image_url, program }); label — подпись предмета в углу листа; dark — доска сейчас
- * тёмная, значит и лист должен быть тёмным.
+ * image_url, program }); label — подпись предмета в углу листа.
  * Возвращает File — его принимает вставка картинки на доску, как и файл с диска.
  */
-export async function taskToImageFile(task, { label = "", dark = false } = {}) {
+export async function taskToImageFile(task, { label = "" } = {}) {
   const img = await taskImage(task.image_url)
   const caption = [task.number ? `№${task.number}` : "", label].filter(Boolean).join(" · ")
   const text = (v) => `<div style="font-size:${FS}px; line-height:1.55; white-space:pre-wrap;">${v}</div>`
@@ -148,7 +95,7 @@ export async function taskToImageFile(task, { label = "", dark = false } = {}) {
   if (!hasInk(shot)) shot = await renderBlock(html, { width: SHEET_W })   // одна честная попытка ещё
   if (!hasInk(shot)) throw new Error("снимок задания вышел пустым")
 
-  const canvas = roundSheet(dark ? toDarkSheet(shot) : shot, dark)
+  const canvas = roundSheet(shot)
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"))
   if (!blob) throw new Error("не удалось снять задание")
   return new File([blob], `task-${task.number || "x"}.png`, { type: "image/png" })

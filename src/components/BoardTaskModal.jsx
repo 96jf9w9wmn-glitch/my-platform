@@ -83,7 +83,7 @@ export default function BoardTaskModal({ dark = false, onInsert, onClose }) {
     if (!task) return
     setBusy(true); setErr("")
     try {
-      const file = await taskToImageFile(task, { label: subjectLabel(examType), dark })
+      const file = await taskToImageFile(task, { label: subjectLabel(examType) })
       // ширину листа задаёт снимок: доска кладёт картинку в неё, а не вписывает как фото
       await onInsert(file, SHEET_WIDTH)
       onClose()

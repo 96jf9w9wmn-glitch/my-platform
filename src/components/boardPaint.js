@@ -150,9 +150,12 @@ export function paintStroke(ctx, s, { darkBg = false, getImage = () => null } = 
   if (s.tool === "image") {
     const a = pts[0], b = pts[pts.length - 1]
     const ix = Math.min(a[0], b[0]), iy = Math.min(a[1], b[1]), iw = Math.abs(b[0] - a[0]), ih = Math.abs(b[1] - a[1])
-    const img = getImage(s.src)
+    // s.sheet — лист с заданием из банка: на тёмной доске рисуем его перекрашенным
+    const img = getImage(s.src, !!s.sheet && darkBg)
+    // готовность: у <img> её показывает complete, у перекрашенного холста — размер
+    const ready = img && (img.naturalWidth ? img.complete : img.width > 0)
     const drawIt = () => {
-      if (img && img.complete && img.naturalWidth) ctx.drawImage(img, ix, iy, iw, ih)
+      if (ready) ctx.drawImage(img, ix, iy, iw, ih)
       else { ctx.save(); ctx.fillStyle = darkBg ? "#3a3a3c" : "#e5e5ea"; ctx.fillRect(ix, iy, iw, ih); ctx.restore() }
     }
     if (s.angle) {
@@ -232,6 +235,67 @@ export function paintStroke(ctx, s, { darkBg = false, getImage = () => null } = 
   ctx.lineTo(last[0], last[1]); ctx.stroke()
 }
 
+// Лист с заданием под тёмную доску. Лист всегда ХРАНИТСЯ светлым (белая бумага), а
+// тёмный вид считается здесь — поэтому переключение темы доски перекрашивает и уже
+// лежащие задания, а не только новые.
+//
+// Переворачивается только СВЕТЛОТА пикселя, оттенок и насыщенность остаются: обычная
+// инверсия сделала бы оранжевые стены Робота голубыми, а синюю точку жёлтой.
+// Возвращает null, если холст «испорчен» картинкой без CORS — тогда рисуем как есть.
+const SHEET_BG_L = 44 / 255    // цвет тёмного листа = панель доски (#2c2c2e)
+const SHEET_INK_L = 0.96       // куда уезжает бывший чёрный текст
+
+function hueToRgb(p, q, t) {
+  if (t < 0) t += 1
+  if (t > 1) t -= 1
+  if (t < 1 / 6) return p + (q - p) * 6 * t
+  if (t < 1 / 2) return q
+  if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6
+  return p
+}
+
+export function tintSheet(source) {
+  const w = source.naturalWidth || source.width, h = source.naturalHeight || source.height
+  if (!w || !h) return null
+  const out = document.createElement("canvas")
+  out.width = w; out.height = h
+  const ctx = out.getContext("2d")
+  ctx.drawImage(source, 0, 0, w, h)
+  let img
+  try {
+    img = ctx.getImageData(0, 0, w, h)
+  } catch {
+    return null      // картинка без CORS — холст читать нельзя
+  }
+  const d = img.data
+  const span = SHEET_INK_L - SHEET_BG_L
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i] / 255, g = d[i + 1] / 255, b = d[i + 2] / 255
+    const max = Math.max(r, g, b), min = Math.min(r, g, b)
+    const nl = SHEET_BG_L + (1 - (max + min) / 2) * span
+    if (max === min) {                       // серый — светлота и есть весь цвет
+      const v = Math.round(nl * 255)
+      d[i] = v; d[i + 1] = v; d[i + 2] = v
+      continue
+    }
+    const dmax = max - min
+    const l = (max + min) / 2
+    const sat = l > 0.5 ? dmax / (2 - max - min) : dmax / (max + min)
+    let hue
+    if (max === r) hue = (g - b) / dmax + (g < b ? 6 : 0)
+    else if (max === g) hue = (b - r) / dmax + 2
+    else hue = (r - g) / dmax + 4
+    hue /= 6
+    const q = nl < 0.5 ? nl * (1 + sat) : nl + sat - nl * sat
+    const pp = 2 * nl - q
+    d[i] = Math.round(hueToRgb(pp, q, hue + 1 / 3) * 255)
+    d[i + 1] = Math.round(hueToRgb(pp, q, hue) * 255)
+    d[i + 2] = Math.round(hueToRgb(pp, q, hue - 1 / 3) * 255)
+  }
+  ctx.putImageData(img, 0, 0)
+  return out
+}
+
 // Габарит всей сцены (по видимым штрихам; ластик сам по себе площадь не занимает)
 export function sceneBBox(strokes) {
   let bb = null
@@ -304,7 +368,13 @@ export function renderScene(canvas, scene, { width, height, padding = 24, images
   }
 
   ctx.setTransform(scale * dpr, 0, 0, scale * dpr, ox * dpr, oy * dpr)
-  const getImage = (src) => images.get(src) || null
+  const tinted = new Map()
+  const getImage = (src, wantTint) => {
+    const im = images.get(src) || null
+    if (!im || !wantTint) return im
+    if (!tinted.has(src)) tinted.set(src, tintSheet(im))
+    return tinted.get(src) || im
+  }
   for (const s of strokes) paintStroke(ctx, s, { darkBg, getImage })
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   ctx.globalCompositeOperation = "source-over"
