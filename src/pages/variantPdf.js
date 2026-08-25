@@ -410,6 +410,9 @@ const COL_GAP = 38
 const SHEET_FS = 15            // кегль условия
 const SHEET_LH = 1.45
 const NUM_W = 32               // вынос под номер задания
+// Отступ между блоками в колонке: снимок обрезан по чернилам (см. snapBatch), поэтому
+// воздух между заданиями задаётся здесь, а не полями в вёрстке блока.
+const BLOCK_GAP = 12
 const IMG_MAX = 300            // ширина чертежа в колонке
 const FLOAT_MAX = 240          // до этой ширины чертёж обтекается текстом (как в КИМ)
 const INK = "#1c1c1e"
@@ -470,9 +473,155 @@ function splitModuleIntro(task) {
   return { intro: text.slice(0, i).trim(), rest: text.slice(i + 2).trim() }
 }
 
+// Чертёж вставляем с ЯВНОЙ высотой: высота известна после растеризации, а без неё
+// геометрия блока зависит от того, успел ли браузер декодировать картинку — в снимке
+// пачки это сдвинуло бы границы всех следующих блоков.
+const sheetImg = (img, style) =>
+  `<img src="${img.dataUrl}" width="${img.width}"${img.height ? ` height="${img.height}"` : ""}`
+  + ` style="display:block; width:${img.width}px;${img.height ? ` height:${img.height}px;` : ""} ${style}" />`
+
 const boxed = (html) => `<div style="border:1px solid ${INK}; padding:5px 10px; margin:6px 0 8px;">${html}</div>`
 const centered = (html, style = "") => `<div style="text-align:center; font-weight:bold; ${style}">${html}</div>`
 const answerRule = `<div style="margin:5px 0 0;">Ответ:<span style="display:inline-block; width:62%; border-bottom:1px solid ${INK}; height:0.85em; margin-left:2px;"></span></div>`
+
+// ── Снимок листа пачками ─────────────────────────────────────────────────────
+// Один вызов html2canvas стоит около секунды независимо от размера блока: библиотека
+// клонирует документ и разбирает весь CSS (проверено: вынести блок в чистый iframe не
+// помогает, цена та же). В листе варианта блоков три-четыре десятка — поблочно он
+// собирался минутами, поэтому блоки снимаются пачкой, а снимок режется на блоки.
+//
+// Режем НЕ по DOM-боксам: html2canvas разводит строки шире, чем браузер (у кегля 15
+// строка выходит на ~3 px выше), поэтому текст блока не умещается в свой бокс, и рез по
+// боксу отрезал бы у задания последнюю строку — ту самую «Ответ:». Между блоками в
+// контейнере оставляется широкий зазор SEP, граница ищется по самой длинной белой полосе
+// внутри него, а сама полоса снимка обрезается по чернилам. Поэтому отступы между блоками
+// в лист приходят не из вёрстки, а одинаковым BLOCK_GAP при раскладке.
+const SHEET_SCALE = 2
+const SEP = 80                  // зазор между блоками в снимке, px: в нём ищется рез
+const BATCH_MAX_H = 2400        // максимум CSS-px на один снимок (иначе холст раздувается)
+const INK_PAD = 4               // сколько белого оставить вокруг чернил, px снимка
+
+// Ждём картинку не дольше срока: у контейнера, уехавшего за край экрана, событие загрузки
+// иногда не приходит вовсе, и пачка стояла бы впустую.
+const capped = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(r, ms))])
+
+const containerCss = ({ width, font, fontSize, lineHeight }) =>
+  `position:fixed; left:-9999px; top:0; width:${width}px; background:#fff; font-family:${font}; color:${INK};`
+  + (fontSize ? ` font-size:${fontSize}px;` : "") + (lineHeight ? ` line-height:${lineHeight};` : "")
+
+// Профиль снимка: для каждой строки пикселей — есть ли в ней чернила.
+function inkRows(canvas) {
+  const { width: w, height: h } = canvas
+  const d = canvas.getContext("2d").getImageData(0, 0, w, h).data
+  const rows = new Uint8Array(h)
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4
+      if (d[i] < 245 && d[i + 1] < 245 && d[i + 2] < 245) { rows[y] = 1; break }
+    }
+  }
+  return rows
+}
+
+// Середина самой длинной белой полосы в окне [from, to) — по ней и режем.
+function whiteCut(rows, from, to) {
+  let best = -1, bestLen = -1, run = -1
+  for (let y = from; y <= to; y++) {
+    const white = y < to && !rows[y]
+    if (white && run < 0) run = y
+    if (!white && run >= 0) {
+      if (y - run > bestLen) { bestLen = y - run; best = (run + y) >> 1 }
+      run = -1
+    }
+  }
+  return best < 0 ? (from + to) >> 1 : best
+}
+
+// Полоса снимка [top, bot) → картинка блока, обрезанная по чернилам, и её высота в CSS-px.
+function stripe(canvas, rows, top, bot, k, fallbackH) {
+  let y0 = top, y1 = bot
+  while (y0 < bot && !rows[y0]) y0++
+  while (y1 > y0 && !rows[y1 - 1]) y1--
+  if (y0 >= y1) return null                       // блок без чернил — снимать нечего
+  y0 = Math.max(top, y0 - INK_PAD); y1 = Math.min(bot, y1 + INK_PAD)
+  const out = document.createElement("canvas")
+  out.width = canvas.width
+  out.height = Math.max(1, y1 - y0)
+  const ctx = out.getContext("2d")
+  ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, out.width, out.height)
+  ctx.drawImage(canvas, 0, -y0)
+  return { dataUrl: out.toDataURL("image/jpeg", 0.95), h: out.height / k, fallbackH }
+}
+
+// Снимает пачку блоков одним html2canvas и возвращает по картинке на блок.
+async function snapBatch(htmls, opts) {
+  const el = document.createElement("div")
+  el.style.cssText = containerCss(opts)
+  el.innerHTML = htmls.map((h) => `<div style="padding-bottom:${SEP}px;">${h}</div>`).join("")
+  document.body.appendChild(el)
+  try {
+    const imgs = [...el.querySelectorAll("img")]
+    await Promise.all(imgs.map((img) => img.complete
+      ? Promise.resolve()
+      : capped(new Promise((resolve) => { img.onload = resolve; img.onerror = resolve }), 5000)))
+    // боксы читаем ПОСЛЕ загрузки картинок — иначе чертёж нулевой высоты сдвинет все границы
+    const kids = [...el.children]
+    const boxes = kids.map((kid) => ({ top: kid.offsetTop, bot: kid.offsetTop + kid.offsetHeight - SEP }))
+    const totalCss = el.offsetHeight
+    const canvas = await html2canvas(el, { scale: SHEET_SCALE, useCORS: true, backgroundColor: "#ffffff" })
+    const k = canvas.height / totalCss
+    const rows = inkRows(canvas)
+    const px = (v) => Math.max(0, Math.min(canvas.height, Math.round(v * k)))
+    const cuts = [0]
+    for (let i = 0; i < kids.length - 1; i++) cuts.push(whiteCut(rows, px(boxes[i].bot), px(boxes[i + 1].top)))
+    cuts.push(canvas.height)
+    return kids.map((_, i) => stripe(canvas, rows, cuts[i], cuts[i + 1], k, boxes[i].bot - boxes[i].top))
+  } finally {
+    document.body.removeChild(el)
+  }
+}
+
+// Все блоки листа → картинки. Пачка набирается по высоте (холст в десяток тысяч пикселей
+// на телефоне просто не создастся); не снялась пачка — блоки честно доснимаются по одному.
+async function snapSheet(htmls, opts) {
+  const probe = document.createElement("div")
+  probe.style.cssText = containerCss(opts)
+  probe.innerHTML = htmls.map((h) => `<div>${h}</div>`).join("")
+  document.body.appendChild(probe)
+  const heights = [...probe.children].map((kid) => kid.offsetHeight)
+  document.body.removeChild(probe)
+
+  const batches = []
+  let cur = [], curH = 0
+  htmls.forEach((h, i) => {
+    if (cur.length && curH + heights[i] + SEP > BATCH_MAX_H) { batches.push(cur); cur = []; curH = 0 }
+    cur.push(h); curH += heights[i] + SEP
+  })
+  if (cur.length) batches.push(cur)
+
+  // Одиночный снимок — запасной путь: своё поле снизу (иначе html2canvas срежет последнюю
+  // строку) и та же обрезка по чернилам, чтобы блок встал в лист так же, как из пачки.
+  const snapOne = async (html) => {
+    const c = await renderBlock(`<div style="padding-bottom:${SEP / 2}px;">${html}</div>`, opts)
+    const k = SHEET_SCALE
+    return stripe(c, inkRows(c), 0, c.height, k, c.height / k)
+  }
+
+  const out = []
+  for (const batch of batches) {
+    let shots
+    try {
+      shots = await snapBatch(batch, opts)
+    } catch {
+      shots = null
+    }
+    for (let i = 0; i < batch.length; i++) {
+      // блок без чернил (такого на листе быть не должно) остаётся пустым местом своей высоты
+      out.push(shots?.[i] || await snapOne(batch[i]) || { dataUrl: null, h: heights[out.length] })
+    }
+  }
+  return out
+}
 
 // Рендерит каждый блок листа отдельным снимком и раскладывает по колонкам так, чтобы
 // задание НИКОГДА не разрывалось: не влезло в остаток колонки — целиком уходит в следующую.
@@ -502,22 +651,25 @@ export async function generateVariantPdf({ title, examType, tasks, mode = "blank
     tasks.map((t) => t.image_url ? svgUrlToPng(t.image_url, IMG_MAX) : Promise.resolve(null))
   )
 
-  // ── Поток блоков: {canvas, glue} + разрывы колонки/страницы ────────────────
+  // ── Поток блоков: {html, glue} + разрывы колонки/страницы ──────────────────
+  // Снимки делаются не здесь, а одной пачкой после сборки всего листа (snapSheet).
   const flow = []
-  const push = async (html, glue = false) => { flow.push({ canvas: await renderBlock(html, opts), glue }) }
+  const push = (html, glue = false) => { flow.push({ html, glue }) }
   const brk = (kind) => flow.push({ break: kind })
 
-  // Титул + инструкция — первая колонка целиком (дальше принудительный переход в колонку 2)
-  await push(
+  // Титул + инструкция — первая колонка целиком, ОДНИМ блоком (дальше принудительный
+  // переход в колонку 2). Одним — потому что раскладка разделяет блоки зазором, а абзацы
+  // инструкции идут подряд, отделяясь красной строкой, как в КИМ.
+  const paras = instructionParas({ examType, total: tasks.length, p1: part1.length, p2: part2.length })
+  push(
     centered(escapeHtml(examHeading(examType)), "margin-bottom:4px;") +
     centered(escapeHtml(title || "Тренировочный вариант"), "margin-bottom:8px;") +
-    centered("Инструкция по выполнению работы", "margin-bottom:4px;"), true)
-  const paras = instructionParas({ examType, total: tasks.length, p1: part1.length, p2: part2.length })
-  for (const p of paras) await push(`<div style="text-align:justify; text-indent:1.6em;">${escapeHtml(p)}</div>`)
-  await push(`<div style="text-align:center; font-weight:bold; font-style:italic; margin-top:10px;">Желаем успеха!</div>`)
+    centered("Инструкция по выполнению работы", "margin-bottom:4px;") +
+    paras.map((p) => `<div style="text-align:justify; text-indent:1.6em;">${escapeHtml(p)}</div>`).join("") +
+    `<div style="text-align:center; font-weight:bold; font-style:italic; margin-top:10px;">Желаем успеха!</div>`)
   brk("col")
 
-  if (hasPart2) await push(centered("Часть 1", "margin-bottom:4px;"), true)
+  if (hasPart2) push(centered("Часть 1", "margin-bottom:4px;"), true)
 
   // Общий текст практического модуля №1–5 — в рамке-заголовке, чертёж обтекается текстом
   const mod = splitModuleIntro(tasks[0])
@@ -525,10 +677,10 @@ export async function generateVariantPdf({ title, examType, tasks, mode = "blank
   let introImg = null
   if (mod) {
     if (images[0] && images[0].width <= IMG_MAX) introImg = images[0]
-    await push(boxed(`<div style="text-align:center; font-weight:bold; font-style:italic;">Прочитайте внимательно текст и выполните задания ${range(modTasks.length ? modTasks : part1)}.</div>`), true)
-    await push(
-      `<div style="overflow:hidden;">` +
-      (introImg ? `<img src="${introImg.dataUrl}" style="display:block; float:right; width:${introImg.width}px; margin:2px 0 6px 12px;" />` : "") +
+    push(boxed(`<div style="text-align:center; font-weight:bold; font-style:italic;">Прочитайте внимательно текст и выполните задания ${range(modTasks.length ? modTasks : part1)}.</div>`), true)
+    push(
+      `<div style="display:flow-root;">` +
+      (introImg ? sheetImg(introImg, "float:right; margin:2px 0 6px 12px;") : "") +
       `<div style="text-align:justify; white-space:pre-wrap;">${await renderTaskMathPdf(mod.intro, MATH_TIMES)}</div></div>`)
   }
 
@@ -538,35 +690,37 @@ export async function generateVariantPdf({ title, examType, tasks, mode = "blank
     const isPart2 = part2From != null && t.number >= part2From
     if (isPart2 && !part2Started) {
       part2Started = true
-      await push(boxed(`Не забудьте перенести все ответы в бланк ответов № 1 в соответствии с инструкцией по выполнению работы.`))
-      await push(centered("Часть 2", "margin-bottom:4px;"), true)
-      await push(boxed(`Для выполнения ${plu(part2.length, "задания", "заданий", "заданий")} ${range(part2)} используйте отдельный лист. Сначала укажите номер задания, а затем запишите его решение и ответ. Пишите чётко и разборчиво.`), true)
+      push(boxed(`Не забудьте перенести все ответы в бланк ответов № 1 в соответствии с инструкцией по выполнению работы.`))
+      push(centered("Часть 2", "margin-bottom:4px;"), true)
+      push(boxed(`Для выполнения ${plu(part2.length, "задания", "заданий", "заданий")} ${range(part2)} используйте отдельный лист. Сначала укажите номер задания, а затем запишите его решение и ответ. Пишите чётко и разборчиво.`), true)
     }
     // Модули части 2 ОГЭ по математике — как в КИМ: 20–22 алгебра, 23–25 геометрия
     if (examType === "ОГЭ" && (t.number === 20 || t.number === 23)) {
-      await push(boxed(centered(t.number === 20 ? "Модуль «Алгебра»" : "Модуль «Геометрия»")), true)
+      push(boxed(centered(t.number === 20 ? "Модуль «Алгебра»" : "Модуль «Геометрия»")), true)
     }
 
     const cond = mod && i === 0 ? mod.rest : t.condition_text
     const img = introImg && i === 0 ? null : images[i]
     const float = img && img.width <= FLOAT_MAX && String(cond || "").length >= 110
-    await push(
+    push(
       `<div style="display:flex; align-items:flex-start; padding:5px 0 8px;">` +
         `<div style="flex:0 0 ${NUM_W}px;">${t.number}.</div>` +
-        `<div style="flex:1; min-width:0; overflow:hidden;">` +
-          (float ? `<img src="${img.dataUrl}" style="display:block; float:right; width:${img.width}px; margin:0 0 6px 12px;" />` : "") +
+        `<div style="flex:1; min-width:0; display:flow-root;">` +
+          (float ? sheetImg(img, "float:right; margin:0 0 6px 12px;") : "") +
           (cond ? `<div style="text-align:justify; white-space:pre-wrap;">${await renderTaskMathPdf(cond, MATH_TIMES)}</div>` : "") +
-          (img && !float ? `<img src="${img.dataUrl}" style="display:block; width:${img.width}px; margin:8px auto 0;" />` : "") +
+          (img && !float ? sheetImg(img, "margin:8px auto 0;") : "") +
           (t.condition_tail ? `<div style="text-align:justify; white-space:pre-wrap; margin-top:6px;">${await renderTaskMathPdf(t.condition_tail, MATH_TIMES)}</div>` : "") +
           (isPart2 ? `<div style="height:30px;"></div>` : answerRule) +
         `</div>` +
       `</div>`)
   }
-  if (!hasPart2) await push(boxed(`Не забудьте перенести все ответы в бланк ответов № 1 в соответствии с инструкцией по выполнению работы.`))
+  if (!hasPart2) push(boxed(`Не забудьте перенести все ответы в бланк ответов № 1 в соответствии с инструкцией по выполнению работы.`))
 
   // ── Ответы (лист проверяющего) ────────────────────────────────────────────
   const answerRows = async (list) => {
-    const cell = `border:1px solid ${INK}; padding:2px 10px; text-align:center;`
+    // запас снизу: html2canvas рисует строку ниже бокса, и без него ответ ложится на
+    // нижнюю линию ячейки
+    const cell = `border:1px solid ${INK}; padding:2px 10px 7px; text-align:center;`
     const rows = []
     for (const t of list) {
       if (t.answer == null || String(t.answer).trim() === "") continue
@@ -579,19 +733,28 @@ export async function generateVariantPdf({ title, examType, tasks, mode = "blank
   if (mode === "answers") {
     brk("page")
     // название варианта не дублируем — оно в колонтитуле на каждой странице
-    await push(`<div style="font-weight:bold;">ОТВЕТЫ</div>`
+    push(`<div style="font-weight:bold;">ОТВЕТЫ</div>`
       + `<div style="font-size:13px; margin:2px 0 10px;">Лист для проверяющего — ученику не выдавать.</div>`, true)
     const t1 = await answerRows(part1)
-    if (t1) await push(t1)
+    if (t1) push(t1)
     const t2 = await answerRows(part2)
-    if (t2) { brk("col"); await push(t2) }
+    if (t2) { brk("col"); push(t2) }
   }
+
+  // ── Снимки: одна пачка на весь лист ───────────────────────────────────────
+  const shots = await snapSheet(flow.filter((it) => !it.break).map((it) => it.html), opts)
+  let shotAt = 0
+  for (const it of flow) if (!it.break) Object.assign(it, shots[shotAt++])
 
   // ── Раскладка по колонкам ─────────────────────────────────────────────────
   const dateStr = new Date().toLocaleDateString("ru-RU")
+  const name = title || "Тренировочный вариант"
+  // Название по умолчанию — сегодняшняя дата, поэтому дату отдельно не приписываем.
+  const stamp = [name, name.includes(dateStr) ? null : dateStr, examType]
+    .filter(Boolean).map(escapeHtml).join(" &nbsp; ")
   const headerCanvas = await renderBlock(
-    `<div style="display:flex;">` +
-      `<div style="width:50%; text-align:center;">${escapeHtml(title || "Тренировочный вариант")} &nbsp; ${dateStr} &nbsp; ${escapeHtml(examType)}</div>` +
+    `<div style="display:flex; padding-bottom:7px;">` +
+      `<div style="width:50%; text-align:center;">${stamp}</div>` +
       `<div style="width:50%; text-align:center;">precettore.ru</div>` +
     `</div>`, { width: contentW, font: SHEET_FONT, fontSize: 14, lineHeight: 1.2 })
   const headerUrl = headerCanvas.toDataURL("image/jpeg", 0.95)
@@ -599,7 +762,6 @@ export async function generateVariantPdf({ title, examType, tasks, mode = "blank
 
   let col = 0, y = SHEET_TOP
   const stampHeader = () => pdf.addImage(headerUrl, "JPEG", SHEET_MX * K, 26 * K, contentW * K, headerH * K)
-  const heightOf = (c) => (c.height * colW) / c.width
   const nextCol = () => {
     if (col === 0) { col = 1; y = SHEET_TOP } else { pdf.addPage(); stampHeader(); col = 0; y = SHEET_TOP }
   }
@@ -612,16 +774,16 @@ export async function generateVariantPdf({ title, examType, tasks, mode = "blank
       else if (y !== SHEET_TOP) nextCol()
       continue
     }
-    let h = heightOf(it.canvas), w = colW
+    let h = it.h, w = colW
     // «клей»: заголовок раздела не должен остаться внизу колонки без своего блока
     let need = h, j = i
-    while (flow[j]?.glue && flow[j + 1] && !flow[j + 1].break) { need += heightOf(flow[j + 1].canvas); j++ }
+    while (flow[j]?.glue && flow[j + 1] && !flow[j + 1].break) { need += flow[j + 1].h + BLOCK_GAP; j++ }
     if (need > colH) need = h
     if (h > colH) { w = colW * (colH / h); h = colH }   // блок выше колонки — ужимаем целиком
     if (y + need > SHEET_TOP + colH && y > SHEET_TOP) nextCol()
     const x = SHEET_MX + col * (colW + COL_GAP)
-    pdf.addImage(it.canvas.toDataURL("image/jpeg", 0.95), "JPEG", x * K, y * K, w * K, h * K)
-    y += h
+    if (it.dataUrl) pdf.addImage(it.dataUrl, "JPEG", x * K, y * K, w * K, h * K)
+    y += h + BLOCK_GAP
   }
 
   return pdf.output("blob")

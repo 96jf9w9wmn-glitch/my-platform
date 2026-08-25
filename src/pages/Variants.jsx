@@ -112,6 +112,11 @@ function getEgeTestScore(primary) {
 // чтобы react-hooks/purity не считал Date.now() вызовом в рендере)
 const storageFileName = (tutorId, ext) => `${tutorId}/${Date.now()}.${ext}`
 
+// Название по умолчанию — сегодняшняя дата: вариант собирают к занятию, и дата отличает
+// варианты друг от друга лучше, чем «Вариант 1» (переименовать по-прежнему можно).
+// Вне компонента по той же причине, что и storageFileName.
+const todayTitle = () => new Date().toLocaleDateString("ru-RU")
+
 function getGeomScore(part1Answers, correctAnswers, part2ScoreDetail) {
   let geom = 0
   OGE_PART1_GEOMETRY.forEach((n) => {
@@ -125,7 +130,7 @@ function getGeomScore(part1Answers, correctAnswers, part2ScoreDetail) {
 }
 
 function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) {
-  const [title, setTitle] = useState("")
+  const [title, setTitle] = useState(todayTitle)
   const [examType, setExamType] = useState(() => defaultExamType(examFocus))
   const [answers, setAnswers] = useState(() => Array(defaultExamType(examFocus) === "ОГЭ" ? 19 : 12).fill(""))
   // Ответы части 2 (ОГЭ: 20–25) — объект { номер: ответ }; при сборке из банка заполняется сам
@@ -321,7 +326,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
 
             <div>
               <label className="text-sm text-gray-500 mb-1 block">Название варианта</label>
-              <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Например: Вариант 1 - Июнь 2026"
+              <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Например: Пробник перед экзаменом"
                 className="input-glass" />
             </div>
 
