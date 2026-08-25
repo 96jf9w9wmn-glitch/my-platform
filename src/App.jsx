@@ -22,6 +22,7 @@ import { LEGAL_PATHS } from "./legalPaths"
 import Profile from "./pages/Profile"
 import { SubscriptionProvider } from "./subscriptionProvider"
 import { isOwner } from "./owner"
+import { navFor } from "./nav"
 import TutorOnboardingModal from "./components/TutorOnboardingModal"
 // Excalidraw тяжёлый (mermaid/katex) — грузим доску только при открытии
 const Board = lazy(() => import("./components/Board"))
@@ -262,6 +263,10 @@ function App() {
   const [activePage, setActivePage] = useState(startPage)
   const [visitedPages, setVisitedPages] = useState(() => new Set([startPage]))
   const [chatUnread, setChatUnread] = useState(0)
+  // Лист «Ещё» на телефоне: разделы, не влезшие в нижнюю панель.
+  const [moreOpen, setMoreOpen] = useState(false)
+  // Сбой сохранения ученика показываем полосой в кабинете, а не системным alert.
+  const [saveError, setSaveError] = useState("")
   // Открытая доска живёт в адресе (?board=<ученик>), а не только в памяти: иначе
   // перезагрузка страницы закрывала её, а «назад» в браузере (и свайп на телефоне)
   // уводил из кабинета вместо того, чтобы закрыть доску.
@@ -324,7 +329,7 @@ function App() {
     dashboard: "Главная",
     students: "Ученики",
     homework: "Задания",
-    payment: "Оплата",
+    payment: "Финансы",
     results: "Результаты",
     variants: "Варианты",
     schedule: "Расписание",
@@ -482,7 +487,7 @@ function App() {
       // Молчать тут нельзя: ровно так полтора месяца незаметно не создавались
       // карточки — ошибка вставки уходила в консоль, а репетитор видел «сохранено».
       console.error("saveStudent failed:", error.message, error)
-      alert("Не удалось сохранить ученика: " + error.message)
+      setSaveError("Не удалось сохранить ученика: " + error.message)
       return null
     }
     return data?.id ?? student.id
@@ -691,13 +696,13 @@ function App() {
     .filter(s => s.studentAccountId)
     .map(s => ({ id: `s:${s.studentAccountId}`, name: s.name, avatar: s.avatar || null, role: "Ученик" }))
 
-  const mobileNav = [
-    { label: "Главная", id: "dashboard" },
-    { label: "Ученики", id: "students" },
-    { label: "Задания", id: "homework" },
-    { label: "Чат", id: "chat" },
-    { label: "Оплата", id: "payment" },
-  ]
+  // Нижняя панель телефона: пять разделов помещаются подписями, остальные
+  // открываются кнопкой «Ещё» — списком, где у каждого раздела есть название.
+  // Прятать их совсем нельзя: бокового меню на телефоне нет.
+  const allNav = navFor(isOwner(user.email))
+  const mobileNav = allNav.filter((i) => i.mobile)
+  const moreNav = allNav.filter((i) => !i.mobile)
+  const moreActive = moreNav.some((i) => i.id === activePage)
 
   return (
     <SubscriptionProvider tutorId={user.id} onOpenPlans={() => navigateTo("profile")}>
@@ -751,6 +756,14 @@ function App() {
             </button>
           </div>
         </div>
+
+        {saveError && (
+          <div className="mx-4 mt-3 glass-tint-amber px-4 py-3 flex items-start gap-2">
+            <Icon name="warning" size={15} className="text-amber-600 flex-shrink-0 mt-0.5" />
+            <span className="text-sm text-amber-700 flex-1">{saveError}</span>
+            <button onClick={() => setSaveError("")} className="text-amber-600/70 hover:text-amber-700"><Icon name="x" size={14} /></button>
+          </div>
+        )}
 
         <div className={`flex-1 min-h-0 overflow-x-hidden ${activePage === "chat" ? "flex flex-col overflow-hidden" : "page-scroll overflow-y-auto pb-20 md:pb-0"}`}>
           <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="loader-logo" /></div>}>
@@ -810,8 +823,48 @@ function App() {
                 </button>
               )
             })}
+            <button
+              onClick={() => setMoreOpen(true)}
+              className={`relative flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-all min-w-[48px] ${
+                moreActive ? "text-blue-600 bg-blue-500/10 font-semibold" : "text-gray-400"
+              }`}
+            >
+              <NavIcon id="more" size={22} />
+              <span className="text-[10px]">Ещё</span>
+            </button>
           </div>
         </div>
+
+        {/* Лист «Ещё»: остальные разделы кабинета — списком с названиями. */}
+        {moreOpen && createPortal(
+          <div className="md:hidden fixed inset-0 z-[60] flex flex-col justify-end" onClick={() => setMoreOpen(false)}>
+            <div className="absolute inset-0 glass-overlay" />
+            <div className="relative glass-modal sheet-modal p-4 slide-up" style={{ paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom))" }} onClick={(e) => e.stopPropagation()}>
+              <div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-white/20 mx-auto mb-4" />
+              <div className="flex flex-col gap-1">
+                {[...moreNav, { id: "profile", label: "Профиль" }].map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => { navigateTo(item.id); setMoreOpen(false) }}
+                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left transition-colors ${
+                      activePage === item.id ? "nav-active font-medium" : "text-gray-600 hover:bg-black/[0.04]"
+                    }`}
+                  >
+                    <NavIcon id={item.id} size={20} />
+                    <span className="text-sm flex-1">{item.label}</span>
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => setMoreOpen(false)}
+                className="mt-3 w-full rounded-xl py-2.5 text-sm font-medium text-gray-500 bg-black/[0.04] dark:bg-white/[0.08] active:scale-[0.98] transition"
+              >
+                Закрыть
+              </button>
+            </div>
+          </div>,
+          document.body
+        )}
       </div>
     </div>
     </SubscriptionProvider>

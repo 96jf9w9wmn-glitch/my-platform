@@ -41,6 +41,7 @@ function Schedule({ students, setStudents }) {
   const [showForm, setShowForm] = useState(false)
   const [newLesson, setNewLesson] = useState({ studentId: "", date: "", time: "", duration: "" })
   const [view, setView] = useState("month")
+  const [formError, setFormError] = useState("")
   const [selectedDay, setSelectedDay] = useState(formatDate(new Date()))
 
   function openExtraForm(dateStr) {
@@ -89,9 +90,10 @@ function Schedule({ students, setStudents }) {
 
   function handleAddLesson() {
     if (!newLesson.studentId || !newLesson.date || !newLesson.time) {
-      alert("Заполни все поля!")
+      setFormError("Выберите ученика, дату и время.")
       return
     }
+    setFormError("")
     setStudents((prev) =>
       prev.map((s) => {
         if (String(s.id) !== String(newLesson.studentId)) return s
@@ -127,10 +129,18 @@ function Schedule({ students, setStudents }) {
 
   return (
     <div className="p-4">
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-xl font-medium">Расписание</h1>
-        <button onClick={() => openExtraForm("")} className="btn-primary px-3 py-2 text-sm">
-          + Доп занятие
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-4">
+        <div>
+          <h1 className="text-xl font-medium">Расписание</h1>
+          {/* Постоянные дни задаются в карточке ученика, и человек, пришедший
+              сюда ставить занятия, раньше об этом ниоткуда не узнавал. */}
+          <p className="text-sm text-gray-500 mt-0.5">
+            Разовые занятия добавляйте здесь. Постоянные дни и время — в карточке ученика,
+            раздел «Ученики» → «Редактировать».
+          </p>
+        </div>
+        <button onClick={() => openExtraForm("")} className="btn-primary px-3 py-2 text-sm self-stretch sm:self-auto shrink-0">
+          + Занятие
         </button>
       </div>
 
@@ -330,7 +340,7 @@ function Schedule({ students, setStudents }) {
         <div className="fixed inset-0 glass-overlay flex items-center justify-center z-50 p-4">
           <div className="glass-modal w-full max-w-sm flex flex-col" style={{ maxHeight: "90dvh" }}>
             <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100/60 flex-shrink-0">
-              <h2 className="text-lg font-medium">Доп. занятие</h2>
+              <h2 className="text-lg font-medium">Новое занятие</h2>
               <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600"><Icon name="x" size={18} /></button>
             </div>
             <div className="overflow-y-auto flex-1 min-h-0 px-6 py-5 flex flex-col gap-4">
@@ -338,7 +348,7 @@ function Schedule({ students, setStudents }) {
                 <label className="text-sm text-gray-500 mb-1 block">Ученик</label>
                 <select value={newLesson.studentId} onChange={(e) => setNewLesson((p) => ({ ...p, studentId: e.target.value }))}
                   className="input-glass">
-                  <option value="">Выбери ученика...</option>
+                  <option value="">Выберите ученика</option>
                   {students.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </div>
@@ -370,8 +380,11 @@ function Schedule({ students, setStudents }) {
                 </div>
               </div>
             </div>
+            <div className="px-6 pt-1 flex-shrink-0">
+              {formError && <div className="text-sm text-red-500 text-center">{formError}</div>}
+            </div>
             <div className="flex gap-3 px-6 py-4 border-t border-gray-100/60 flex-shrink-0">
-              <button onClick={() => setShowForm(false)} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-gray-50">Отмена</button>
+              <button onClick={() => { setShowForm(false); setFormError("") }} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-gray-50">Отмена</button>
               <button onClick={handleAddLesson} className="flex-1 btn-primary py-2.5">Добавить</button>
             </div>
           </div>

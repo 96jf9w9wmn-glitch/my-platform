@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react"
 import AddStudentModal from "../components/AddStudentModal"
+import ConfirmModal from "../components/ConfirmModal"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
 import FormulaBackdrop from "../components/FormulaBackdrop"
@@ -85,6 +86,10 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
   const [pending, setPending] = useState([])
   const [linkedAccounts, setLinkedAccounts] = useState([])
   const [acceptingRequest, setAcceptingRequest] = useState(null)
+  // Подтверждения — своей модалкой вместо системного window.confirm: он выглядит
+  // как ошибка браузера и не говорит, о ком речь.
+  const [confirm, setConfirm] = useState(null)   // { kind, ... }
+  const [notice, setNotice] = useState("")       // ошибка полосой вверху списка
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
 
   // Лимит учеников по тарифу. Уже заведённых не трогаем и не прячем — упирается
@@ -134,7 +139,7 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
   }, [pending, linkedAccounts, students])
 
   async function handleReject(req) {
-    if (!window.confirm("Отклонить заявку? Ученик будет отвязан от вас.")) return
+    setConfirm(null)
     // Одной RPC (student_link_cleanup.sql): снимает заявку И отвязывает аккаунт.
     // Раньше удалялась только строка заявки, а привязка оставалась — ученик
     // возвращался в список при следующем заходе. Карточку, если по ней уже вели
@@ -143,7 +148,7 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
       p_account: req.accountId || null,
       p_pending: req.pendingId || null,
     })
-    if (error) { alert("Не удалось отклонить заявку: " + error.message); return }
+    if (error) { setNotice("Не удалось отклонить заявку: " + error.message); return }
     if (req.pendingId) setPending((prev) => prev.filter((p) => p.id !== req.pendingId))
     if (req.accountId) {
       setPending((prev) => prev.filter((p) => p.student_account_id !== req.accountId))
@@ -188,10 +193,10 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
     setAcceptingRequest(null)
   }
 
-  async function handleDelete(studentId, e) {
-    e.stopPropagation()
-    if (!window.confirm("Удалить ученика?")) return
-    await supabase.from("students").delete().eq("id", studentId)
+  async function handleDelete(studentId) {
+    setConfirm(null)
+    const { error } = await supabase.from("students").delete().eq("id", studentId)
+    if (error) { setNotice("Не удалось удалить ученика: " + error.message); return }
     setStudents((prev) => prev.filter((s) => s.id !== studentId))
   }
 
@@ -228,13 +233,14 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
       .single()
     setInviting(false)
     if (error || !data) {
-      alert(
+      setNotice(
         /student_invites/.test(error?.message || "")
-          ? "Приглашения по ссылке пока недоступны: выполните supabase/student_invites.sql в Supabase → SQL Editor."
+          ? "Приглашения по ссылке пока недоступны: выполните supabase/student_invites.sql в SQL Editor."
           : "Не удалось создать приглашение: " + (error?.message || "")
       )
       return
     }
+    setNotice("")
     const link = `${window.location.origin}/?invite=${data.token}`
     setInvite({
       link,
@@ -277,6 +283,27 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
           </button>
         </div>
       </div>
+
+      <ConfirmModal
+        open={!!confirm}
+        danger
+        title={confirm?.kind === "delete" ? "Удалить ученика?" : "Отклонить заявку?"}
+        message={confirm?.kind === "delete"
+          ? `Карточка ${confirm?.name || "ученика"} и всё, что в ней — занятия, оплаты, оценки — удалятся без возврата.`
+          : `${confirm?.name || "Ученик"} будет отвязан от вас и пропадёт из списка заявок.`}
+        confirmLabel={confirm?.kind === "delete" ? "Удалить" : "Отклонить"}
+        cancelLabel="Отмена"
+        onConfirm={() => (confirm?.kind === "delete" ? handleDelete(confirm.id) : handleReject(confirm.req))}
+        onCancel={() => setConfirm(null)}
+      />
+
+      {notice && (
+        <div className="glass-tint-amber px-4 py-3 mb-4 flex items-start gap-2">
+          <Icon name="warning" size={15} className="text-amber-600 flex-shrink-0 mt-0.5" />
+          <span className="text-sm text-amber-700 flex-1">{notice}</span>
+          <button onClick={() => setNotice("")} className="text-amber-600/70 hover:text-amber-700"><Icon name="x" size={14} /></button>
+        </div>
+      )}
 
       {!canAddStudent && (
         <div className="mb-4">
@@ -342,7 +369,7 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button onClick={() => (canAddStudent ? setAcceptingRequest(req) : openPlans())} className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 font-medium">Принять</button>
-                  <button onClick={() => handleReject(req)} className="text-sm text-gray-400 hover:text-red-600 px-2 py-1.5">Отклонить</button>
+                  <button onClick={() => setConfirm({ kind: "reject", req, name: req.name })} className="text-sm text-gray-400 hover:text-red-600 px-2 py-1.5">Отклонить</button>
                 </div>
               </div>
             ))}
@@ -427,7 +454,12 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
                     </div>
                     <div className="text-xs text-gray-400">{formatPhone(student.phone)}</div>
                   </div>
-                  <button onClick={(e) => handleDelete(student.id, e)} className="text-gray-300 hover:text-red-500 px-1">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setConfirm({ kind: "delete", id: student.id, name: student.name }) }}
+                    aria-label={`Удалить ученика ${student.name}`}
+                    title="Удалить ученика"
+                    className="text-gray-300 hover:text-red-500 px-1"
+                  >
                     <Icon name="x" size={14} />
                   </button>
                 </div>
@@ -543,7 +575,10 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
 
                 {/* Delete */}
                 <div className="flex justify-end">
-                  <button onClick={(e) => handleDelete(student.id, e)}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setConfirm({ kind: "delete", id: student.id, name: student.name }) }}
+                    aria-label={`Удалить ученика ${student.name}`}
+                    title="Удалить ученика"
                     className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500 active:scale-90">
                     <Icon name="x" size={14} />
                   </button>

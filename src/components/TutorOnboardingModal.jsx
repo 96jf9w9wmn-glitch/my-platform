@@ -19,11 +19,11 @@ const EXAM_FOCUS_OPTIONS = [
 ]
 
 const STEPS = [
-  { key: "subject", icon: "book", title: "Какой предмет ты преподаёшь?" },
-  { key: "experience", icon: "clock", title: "Какой у тебя стаж репетиторства?" },
+  { key: "subject", icon: "book", title: "Какой предмет вы преподаёте?" },
+  { key: "experience", icon: "clock", title: "Какой у вас стаж репетиторства?" },
   { key: "studentCountRange", icon: "users", title: "Сколько сейчас учеников?" },
-  { key: "teachingFormat", icon: "video", title: "В каком формате занимаешься?" },
-  { key: "examFocus", icon: "target", title: "К каким экзаменам готовишь?" },
+  { key: "teachingFormat", icon: "video", title: "В каком формате занимаетесь?" },
+  { key: "examFocus", icon: "target", title: "К каким экзаменам готовите?" },
 ]
 
 function PillGroup({ options, value, onChange, multi = false, autoFocus }) {
@@ -64,6 +64,7 @@ function TutorOnboardingModal({ tutorId, onComplete }) {
   const [teachingFormat, setTeachingFormat] = useState(null)
   const [examFocus, setExamFocus] = useState([])
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState("")
   // Анкета сохранена — вместо мгновенного закрытия показываем маршрут первого
   // занятия: сразу после регистрации кабинет пуст, и без подсказки непонятно,
   // с чего начинать. Те же три шага обещал лендинг (TUTOR_STEPS).
@@ -108,7 +109,7 @@ function TutorOnboardingModal({ tutorId, onComplete }) {
     setSaving(true)
     const { error } = await supabase.from("tutors").update({ ...fields, onboarding_completed: true }).eq("id", tutorId)
     setSaving(false)
-    if (error) { alert("Не удалось сохранить: " + error.message); return }
+    if (error) { setSaveError("Не удалось сохранить: " + error.message); return }
     setDone({ ...fields, onboarding_completed: true })
   }
 
@@ -200,7 +201,7 @@ function TutorOnboardingModal({ tutorId, onComplete }) {
               <Icon name={current.icon} size={22} />
             </div>
             <h2 className="text-base font-medium">{current.title}</h2>
-            {step === 0 && <p className="text-xs text-gray-400">Поможет платформе подстроиться под тебя</p>}
+            {step === 0 && <p className="text-xs text-gray-400">Поможет платформе подстроиться под вас</p>}
           </div>
 
           {current.key === "subject" && (
@@ -242,6 +243,7 @@ function TutorOnboardingModal({ tutorId, onComplete }) {
 
         {isLast && (
           <div className="px-6 pb-6 pt-1 flex-shrink-0">
+            {saveError && <div className="text-sm text-red-500 mb-2 text-center">{saveError}</div>}
             <button onClick={handleFinish} disabled={saving} className="w-full btn-primary py-2.5 disabled:opacity-50">
               {saving ? "Сохраняем..." : "Готово"}
             </button>

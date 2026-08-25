@@ -114,10 +114,13 @@ async function processImageFile(file, maxDim = 1400) {
 }
 
 // Всплывающая подсказка над кнопкой (родитель должен иметь класс group + relative)
-function Tip({ label, hotkey, dark }) {
+// Подсказка к иконке. Показывается по наведению И на 1,6 с после нажатия:
+// на планшете и телефоне наведения нет вовсе, и все 15 инструментов доски
+// оставались безымянными картинками.
+function Tip({ label, hotkey, dark, show = false }) {
   return (
     <span
-      className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 whitespace-nowrap rounded-lg px-2 py-1 text-xs flex items-center gap-1.5 shadow-lg"
+      className={`pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 ${show ? "opacity-100" : "opacity-0"} group-hover:opacity-100 transition-opacity duration-150 whitespace-nowrap rounded-lg px-2 py-1 text-xs flex items-center gap-1.5 shadow-lg`}
       style={{ background: dark ? "#f5f5f7" : "#1f2937", color: dark ? "#1c1c1e" : "#fff", zIndex: 30 }}>
       {label}
       {hotkey && (
@@ -225,6 +228,15 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const [selProps, setSelProps] = useState(null) // свойства первого выделенного штриха {width,dash,corner}
   const [dragActive, setDragActive] = useState(false) // перетаскивание файла над доской
   const [taskPick, setTaskPick] = useState(false)     // открыт выбор задания из банка
+  // Какая подсказка сейчас показана после нажатия (на сенсорном экране навести
+  // мышь нельзя, а без названий панель — набор непонятных значков).
+  const [tapped, setTapped] = useState("")
+  const tipTimer = useRef(null)
+  function flashTip(key) {
+    clearTimeout(tipTimer.current)
+    setTapped(key)
+    tipTimer.current = setTimeout(() => setTapped(""), 1600)
+  }
 
   // Клик мимо открытого попапа закрывает его. Всё, что должно считаться «своим»
   // (кнопка попапа + сам попап), обёрнуто в контейнер с data-menu.
@@ -1258,7 +1270,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     { id: "line", icon: "line", label: "Линия", key: "L" },
     { id: "shapes", shapes: true },
     { id: "eraser", icon: "eraser", label: "Ластик", key: "E", erasers: true },
-    { id: "hand", icon: "move", label: "Двигать полотно", key: "H" },
+    { id: "hand", icon: "move", label: "Двигать полотно", short: "Двигать", key: "H" },
   ]
   const SHAPES_2D = [
     { id: "rect", icon: "square", label: "Прямоугольник" },
@@ -1471,13 +1483,14 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
             <div key="eraser" className="relative" data-menu>
               {/* Клик берёт ластик и сразу показывает выбор режима: иначе про «стирать
                   объект целиком» никто бы не узнал */}
-              <button onClick={() => { const was = tool === "eraser"; setTool("eraser"); was ? toggleMenu("eraser") : openMenu("eraser") }}
-                className={`group relative press-tap w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
+              <button onPointerDown={() => flashTip("eraser")} onClick={() => { const was = tool === "eraser"; setTool("eraser"); was ? toggleMenu("eraser") : openMenu("eraser") }}
+                className={`group relative press-tap min-w-9 h-9 sm:h-auto sm:min-w-[52px] px-1.5 sm:py-1 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-colors ${
                   tool === "eraser" ? "bg-blue-500 text-white" : "text-gray-500 hover:bg-black/5 dark:hover:bg-white/10"
                 }`}>
                 <Icon name="eraser" size={17} />
+                <span className="hidden sm:block text-[9px] leading-none">Ластик</span>
                 {!menuShown("eraser") && (
-                  <Tip label={eraserMode === "object" ? "Ластик · объект целиком" : "Ластик · след"} hotkey="E" dark={dark} />
+                  <Tip label={eraserMode === "object" ? "Ластик · объект целиком" : "Ластик · след"} hotkey="E" dark={dark} show={tapped === "eraser"} />
                 )}
               </button>
               {menuShown("eraser") && (
@@ -1496,12 +1509,13 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
             </div>
           ) : t.shapes ? (
             <div key="shapes" className="relative" data-menu>
-              <button onClick={() => toggleMenu("shapes")}
-                className={`group relative press-tap w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
+              <button onPointerDown={() => flashTip("shapes")} onClick={() => toggleMenu("shapes")}
+                className={`group relative press-tap min-w-9 h-9 sm:h-auto sm:min-w-[52px] px-1.5 sm:py-1 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-colors ${
                   shapeMenuIds.has(tool) ? "bg-blue-500 text-white" : "text-gray-500 hover:bg-black/5 dark:hover:bg-white/10"
                 }`}>
                 <Icon name={shapeIconOf(shapeTool)} size={17} />
-                {!menuShown("shapes") && <Tip label="Фигуры" dark={dark} />}
+                <span className="hidden sm:block text-[9px] leading-none">Фигуры</span>
+                {!menuShown("shapes") && <Tip label="Фигуры" dark={dark} show={tapped === "shapes"} />}
               </button>
               {menuShown("shapes") && (
                 <div className={`absolute bottom-11 left-1/2 -translate-x-1/2 flex flex-col gap-2 p-2 rounded-xl shadow-lg ${menuAnim("shapes")}`}
@@ -1512,8 +1526,9 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
                       <div className="flex gap-1">
                         {list.map((s) => (
                           <button key={s.id} onClick={() => pickShape(s.id)} title={s.label}
-                            className={`press-tap w-9 h-9 rounded-lg flex items-center justify-center ${tool === s.id ? "bg-blue-500 text-white" : "text-gray-500 hover:bg-black/5 dark:hover:bg-white/10"}`}>
+                            className={`press-tap min-w-[52px] px-1.5 py-1.5 rounded-lg flex flex-col items-center justify-center gap-0.5 ${tool === s.id ? "bg-blue-500 text-white" : "text-gray-500 hover:bg-black/5 dark:hover:bg-white/10"}`}>
                             <Icon name={s.icon} size={18} />
+                            <span className="text-[9px] leading-none whitespace-nowrap">{s.label}</span>
                           </button>
                         ))}
                       </div>
@@ -1523,12 +1538,15 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
               )}
             </div>
           ) : (
-            <button key={t.id} onClick={() => setTool(t.id)}
-              className={`group relative press-tap w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
+            <button key={t.id} onPointerDown={() => flashTip(t.id)} onClick={() => setTool(t.id)}
+              className={`group relative press-tap min-w-9 h-9 sm:h-auto sm:min-w-[52px] px-1.5 sm:py-1 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-colors ${
                 tool === t.id ? "bg-blue-500 text-white" : "text-gray-500 hover:bg-black/5 dark:hover:bg-white/10"
               }`}>
               <Icon name={t.icon} size={17} />
-              <Tip label={t.label} hotkey={t.key} dark={dark} />
+              {/* Подпись видна там, где хватает места; на телефоне её заменяет
+                  всплывающая подсказка после нажатия. */}
+              <span className="hidden sm:block text-[9px] leading-none">{t.short || t.label}</span>
+              <Tip label={t.label} hotkey={t.key} dark={dark} show={tapped === t.id} />
             </button>
           ))}
 
@@ -1555,10 +1573,11 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
 
           {/* Настройки обводки */}
           <div className="relative" data-menu>
-            <button onClick={() => toggleMenu("stroke")}
-              className="group relative press-tap w-9 h-9 rounded-xl flex items-center justify-center text-gray-500 hover:bg-black/5 dark:hover:bg-white/10">
+            <button onPointerDown={() => flashTip("stroke")} onClick={() => toggleMenu("stroke")}
+              className="group relative press-tap min-w-9 h-9 sm:h-auto sm:min-w-[52px] px-1.5 sm:py-1 rounded-xl flex flex-col items-center justify-center gap-0.5 text-gray-500 hover:bg-black/5 dark:hover:bg-white/10">
               <Icon name="stroke" size={17} />
-              <Tip label="Настройки обводки" dark={dark} />
+              <span className="hidden sm:block text-[9px] leading-none">Обводка</span>
+              <Tip label="Настройки обводки" dark={dark} show={tapped === "stroke"} />
             </button>
             {menuShown("stroke") && (
               <div className={`absolute bottom-11 left-1/2 -translate-x-1/2 p-2 rounded-xl shadow-lg ${menuAnim("stroke")}`}
@@ -1571,21 +1590,23 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
           {divider}
 
           {/* Загрузить картинку */}
-          <button onClick={() => fileInputRef.current?.click()}
-            className="group relative press-tap w-9 h-9 rounded-xl flex items-center justify-center text-gray-500 hover:bg-black/5 dark:hover:bg-white/10">
+          <button onPointerDown={() => flashTip("image")} onClick={() => fileInputRef.current?.click()}
+            className="group relative press-tap min-w-9 h-9 sm:h-auto sm:min-w-[52px] px-1.5 sm:py-1 rounded-xl flex flex-col items-center justify-center gap-0.5 text-gray-500 hover:bg-black/5 dark:hover:bg-white/10">
             <Icon name="image" size={17} />
-            <Tip label="Добавить картинку" dark={dark} />
+            <span className="hidden sm:block text-[9px] leading-none">Картинка</span>
+            <Tip label="Добавить картинку" dark={dark} show={tapped === "image"} />
           </button>
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onPickImage} />
 
           {/* Задание из банка листом на доску */}
           {canAddTasks && (
-            <button onClick={() => { modalOpen.current = true; setTaskPick(true) }}
-              className={`group relative press-tap w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
+            <button onPointerDown={() => flashTip("task")} onClick={() => { modalOpen.current = true; setTaskPick(true) }}
+              className={`group relative press-tap min-w-9 h-9 sm:h-auto sm:min-w-[52px] px-1.5 sm:py-1 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-colors ${
                 taskPick ? "bg-blue-500 text-white" : "text-gray-500 hover:bg-black/5 dark:hover:bg-white/10"
               }`}>
               <Icon name="book" size={17} />
-              <Tip label="Задание из банка" dark={dark} />
+              <span className="hidden sm:block text-[9px] leading-none">Задание</span>
+              <Tip label="Задание из банка" dark={dark} show={tapped === "task"} />
             </button>
           )}
 
@@ -1593,10 +1614,11 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
 
           {/* Фон */}
           <div className="relative" data-menu>
-            <button onClick={() => toggleMenu("bg")}
-              className={`group relative press-tap w-9 h-9 rounded-xl flex items-center justify-center ${bg !== "plain" ? "text-blue-500" : "text-gray-500"} hover:bg-black/5 dark:hover:bg-white/10`}>
+            <button onPointerDown={() => flashTip("bg")} onClick={() => toggleMenu("bg")}
+              className={`group relative press-tap min-w-9 h-9 sm:h-auto sm:min-w-[52px] px-1.5 sm:py-1 rounded-xl flex flex-col items-center justify-center gap-0.5 ${bg !== "plain" ? "text-blue-500" : "text-gray-500"} hover:bg-black/5 dark:hover:bg-white/10`}>
               <Icon name="grid" size={17} />
-              <Tip label="Фон доски" dark={dark} />
+              <span className="hidden sm:block text-[9px] leading-none">Фон</span>
+              <Tip label="Фон доски" dark={dark} show={tapped === "bg"} />
             </button>
             {menuShown("bg") && (
               <div className={`absolute bottom-11 left-1/2 -translate-x-1/2 flex flex-col gap-2 p-2 rounded-xl shadow-lg ${menuAnim("bg")}`}
@@ -1629,20 +1651,23 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
 
           {divider}
 
-          <button onClick={undo}
-            className="group relative press-tap w-9 h-9 rounded-xl flex items-center justify-center text-gray-500 hover:bg-black/5 dark:hover:bg-white/10">
+          <button onPointerDown={() => flashTip("undo")} onClick={undo}
+            className="group relative press-tap min-w-9 h-9 sm:h-auto sm:min-w-[52px] px-1.5 sm:py-1 rounded-xl flex flex-col items-center justify-center gap-0.5 text-gray-500 hover:bg-black/5 dark:hover:bg-white/10">
             <Icon name="undo" size={17} />
-            <Tip label="Отменить" hotkey="⌘Z" dark={dark} />
+            <span className="hidden sm:block text-[9px] leading-none">Отменить</span>
+            <Tip label="Отменить" hotkey="⌘Z" dark={dark} show={tapped === "undo"} />
           </button>
-          <button onClick={redo}
-            className="group relative press-tap w-9 h-9 rounded-xl flex items-center justify-center text-gray-500 hover:bg-black/5 dark:hover:bg-white/10">
+          <button onPointerDown={() => flashTip("redo")} onClick={redo}
+            className="group relative press-tap min-w-9 h-9 sm:h-auto sm:min-w-[52px] px-1.5 sm:py-1 rounded-xl flex flex-col items-center justify-center gap-0.5 text-gray-500 hover:bg-black/5 dark:hover:bg-white/10">
             <Icon name="redo" size={17} />
-            <Tip label="Вернуть" hotkey="⌘⇧Z" dark={dark} />
+            <span className="hidden sm:block text-[9px] leading-none">Вернуть</span>
+            <Tip label="Вернуть" hotkey="⌘⇧Z" dark={dark} show={tapped === "redo"} />
           </button>
-          <button onClick={clearAll}
-            className="group relative press-tap w-9 h-9 rounded-xl flex items-center justify-center text-red-500 hover:bg-red-500/10">
+          <button onPointerDown={() => flashTip("clear")} onClick={clearAll}
+            className="group relative press-tap min-w-9 h-9 sm:h-auto sm:min-w-[52px] px-1.5 sm:py-1 rounded-xl flex flex-col items-center justify-center gap-0.5 text-red-500 hover:bg-red-500/10">
             <Icon name="trash" size={17} />
-            <Tip label="Очистить всё" dark={dark} />
+            <span className="hidden sm:block text-[9px] leading-none">Очистить</span>
+            <Tip label="Очистить всё" dark={dark} show={tapped === "clear"} />
           </button>
         </div>
         </div>

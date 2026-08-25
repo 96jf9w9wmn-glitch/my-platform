@@ -64,6 +64,7 @@ function EditModal({ student, onClose, onSave }) {
   )
   const [recurringDuration, setRecurringDuration] = useState(student.lessonDuration || 60)
   const [recurringWeeks, setRecurringWeeks] = useState(8)
+  const [formError, setFormError] = useState("")
 
   function handleChange(e) {
     const { name, value } = e.target
@@ -94,8 +95,9 @@ function EditModal({ student, onClose, onSave }) {
   }
 
   function handleSave() {
-    if (!form.name || !form.phone) { alert("Заполни имя и телефон!"); return }
-    if (form.isRecurring && recurringDays.length === 0) { alert("Выбери хотя бы один день недели!"); return }
+    if (!form.name || !form.phone) { setFormError("Заполните имя и телефон."); return }
+    if (form.isRecurring && recurringDays.length === 0) { setFormError("Выберите хотя бы один день недели."); return }
+    setFormError("")
 
     const data = { ...form, lessonDuration: recurringDuration }
 
@@ -280,7 +282,9 @@ function EditModal({ student, onClose, onSave }) {
           </div>
         </div>
 
-        <div className="flex gap-3 mt-6">
+        {formError && <div className="text-sm text-red-500 mt-4 text-center">{formError}</div>}
+
+        <div className="flex gap-3 mt-4">
           <button onClick={onClose} className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">
             Отмена
           </button>
@@ -455,9 +459,15 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
             </div>
           )}
 
-          {/* Код для родителей */}
-          <div className="flex items-center justify-between pt-2 border-t border-gray-100 mt-1">
-            <span className="text-xs text-gray-400">Код для родителей</span>
+          {/* Код для родителей. Раньше был просто код без единого слова о том,
+              что с ним делать, — родитель не догадывался, куда его вводить. */}
+          <div className="pt-2 border-t border-gray-100 mt-1">
+            <p className="text-[11px] text-gray-400 leading-relaxed mb-2">
+              Код для родителей: с ним родитель заходит на сайт, выбирает «Родитель»
+              и видит занятия, оценки и отчёты — без пароля и своей регистрации.
+            </p>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-gray-400">Код</span>
             <div className="flex items-center gap-2">
               {student.parent_code ? (
                 <>
@@ -481,6 +491,7 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
                 </button>
               )}
             </div>
+          </div>
           </div>
         </div>
       </div>

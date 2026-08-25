@@ -344,7 +344,7 @@ function Payment({ students, setStudents, tutorId }) {
   const TABS = [
     { id: "debts", label: "Долги", badge: debtors.length },
     { id: "payments", label: "Платежи", badge: 0 },
-    { id: "report", label: "Отчёт", badge: 0 },
+    { id: "report", label: "Доход и налог", badge: 0 },
   ]
 
   // Статусы работают фильтрами списка, а не декоративными плитками: так же
@@ -364,7 +364,10 @@ function Payment({ students, setStudents, tutorId }) {
 
   return (
     <div className="p-4 sm:p-6">
-      <h1 className="text-xl font-medium mb-4 sm:mb-6">Финансы</h1>
+      <div className="mb-4 sm:mb-6">
+        <h1 className="text-xl font-medium">Финансы</h1>
+        <p className="text-sm text-gray-500 mt-0.5">Кто сколько должен, история оплат и доход за месяц. Настройки квитанций и онлайн-оплаты — в «Профиле».</p>
+      </div>
 
       {/* HERO — доход по месяцам. Цели по доходу здесь нет намеренно: у
           Teachworks, TutorBird и TutorCruncher на финансовом экране только
@@ -763,7 +766,7 @@ function PaymentGate(props) {
   if (allows("finance")) return <Payment {...props} />
   return (
     <div className="p-4 sm:p-6">
-      <h1 className="text-xl font-medium mb-1">Оплата</h1>
+      <h1 className="text-xl font-medium mb-1">Финансы</h1>
       <p className="text-sm text-gray-500 mb-5">Оплаты, долги и доход по занятиям.</p>
       <PlanLock feature="finance" title="Финансы" text="Учёт оплат и долгов по каждому ученику, расходы, налог и чистая прибыль." />
     </div>

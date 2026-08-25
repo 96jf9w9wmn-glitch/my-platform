@@ -161,47 +161,54 @@ function Dashboard({ students, setActivePage, onOpenBoard }) {
         <p className="text-sm text-gray-400 mt-0.5">Добро пожаловать</p>
       </div>
 
-      {/* Stats row */}
+      {/* Пока учеников нет, весь экран — нули без объяснений. Показываем
+          первый шаг прямо здесь. */}
+      {students.length === 0 && (
+        <div className="glass p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="w-11 h-11 rounded-2xl bg-blue-50 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center flex-shrink-0">
+            <Icon name="users" size={20} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-medium">Начните с первого ученика</div>
+            <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
+              Отправьте ему ссылку-приглашение или продиктуйте свой код — он зарегистрируется сам,
+              а вам придёт заявка. Дальше появятся расписание, задания и оплата.
+            </p>
+          </div>
+          <button onClick={() => setActivePage("students")} className="btn-primary px-4 py-2 text-sm shrink-0 self-stretch sm:self-auto">
+            Пригласить ученика
+          </button>
+        </div>
+      )}
+
+      {/* Stats row. Каждая плитка — вход в свой раздел: на телефоне это
+          единственный способ попасть в «Расписание» и «Результаты» помимо
+          кнопки «Ещё», да и на большом экране так короче. */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="glass px-4 py-3 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
-            <Icon name="users" size={16} className="text-blue-600" />
-          </div>
-          <div>
-            <div className="text-xl font-semibold leading-none">{countStudents}</div>
-            <div className="text-xs text-gray-400 mt-0.5">учеников</div>
-          </div>
-        </div>
-        <div className="glass px-4 py-3 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
-            <Icon name="calendar" size={16} className="text-purple-600" />
-          </div>
-          <div>
-            <div className="text-xl font-semibold leading-none">{countToday}</div>
-            <div className="text-xs text-gray-400 mt-0.5">сегодня</div>
-          </div>
-        </div>
-        <div className="glass px-4 py-3 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-green-100 flex items-center justify-center flex-shrink-0">
-            <Icon name="check" size={16} className="text-green-600" />
-          </div>
-          <div>
-            <div className="text-xl font-semibold leading-none">{countWeek}</div>
-            <div className="text-xs text-gray-400 mt-0.5">за неделю</div>
-          </div>
-        </div>
-        <button
-          onClick={() => debtors.length > 0 && setActivePage("payment")}
-          className={`no-press glass px-4 py-3 flex items-center gap-3 text-left ${debtors.length > 0 ? "cursor-pointer" : "cursor-default"}`}
-        >
-          <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${debtors.length > 0 ? "bg-amber-100" : "bg-gray-100"}`}>
-            <Icon name="warning" size={16} className={debtors.length > 0 ? "text-amber-600" : "text-gray-400"} />
-          </div>
-          <div>
-            <div className={`text-xl font-semibold leading-none ${debtors.length > 0 ? "text-amber-600" : ""}`}>{countDebtors}</div>
-            <div className="text-xs text-gray-400 mt-0.5">должников</div>
-          </div>
-        </button>
+        {[
+          { id: "students", icon: "users",    tint: "bg-blue-100 text-blue-600",     value: countStudents, label: "учеников",   go: "students" },
+          { id: "today",    icon: "calendar", tint: "bg-purple-100 text-purple-600", value: countToday,    label: "сегодня",    go: "schedule" },
+          { id: "week",     icon: "check",    tint: "bg-green-100 text-green-600",   value: countWeek,     label: "за неделю",  go: "results" },
+          {
+            id: "debt", icon: "warning", value: countDebtors, label: "должников", go: "payment",
+            tint: debtors.length > 0 ? "bg-amber-100 text-amber-600" : "bg-gray-100 text-gray-400",
+            valueCls: debtors.length > 0 ? "text-amber-600" : "",
+          },
+        ].map((st) => (
+          <button
+            key={st.id}
+            onClick={() => setActivePage(st.go)}
+            className="no-press glass px-4 py-3 flex items-center gap-3 text-left cursor-pointer hover:bg-white/60 dark:hover:bg-white/[0.08] transition-colors"
+          >
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${st.tint}`}>
+              <Icon name={st.icon} size={16} />
+            </div>
+            <div className="min-w-0">
+              <div className={`text-xl font-semibold leading-none ${st.valueCls || ""}`}>{st.value}</div>
+              <div className="text-xs text-gray-400 mt-0.5 truncate">{st.label}</div>
+            </div>
+          </button>
+        ))}
       </div>
 
       {/* Main grid */}
@@ -256,9 +263,16 @@ function Dashboard({ students, setActivePage, onOpenBoard }) {
                 </div>
             </div>
           ) : (
-            <div className="glass p-5 flex items-center gap-3 text-gray-400">
-              <Icon name="calendar" size={20} />
-              <span className="text-sm">Занятий не запланировано</span>
+            <div className="glass p-5 flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="flex items-center gap-3 flex-1 text-gray-400">
+                <Icon name="calendar" size={20} />
+                <span className="text-sm">Занятий не запланировано</span>
+              </div>
+              {students.length > 0 && (
+                <button onClick={() => setActivePage("schedule")} className="btn-primary px-4 py-2 text-sm shrink-0">
+                  Поставить занятие
+                </button>
+              )}
             </div>
           )}
 
@@ -271,7 +285,12 @@ function Dashboard({ students, setActivePage, onOpenBoard }) {
               )}
             </div>
             {todayLessons.length === 0 ? (
-              <div className="text-sm text-gray-400 text-center py-6">Занятий сегодня нет</div>
+              <div className="flex flex-col items-center gap-2.5 py-6">
+                <span className="text-sm text-gray-400">Занятий сегодня нет</span>
+                <button onClick={() => setActivePage("schedule")} className="text-sm text-blue-600 hover:opacity-70 transition-opacity">
+                  Открыть расписание
+                </button>
+              </div>
             ) : (
               <div className="flex flex-col gap-0.5 stagger">
                 {todayLessons.map((l, i) => {

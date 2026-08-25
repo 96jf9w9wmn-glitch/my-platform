@@ -126,6 +126,7 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
   const [recurringWeeks, setRecurringWeeks] = useState(4)
   const [onboardingPulled, setOnboardingPulled] = useState(false)
   const [hasStudentConsent, setHasStudentConsent] = useState(false)
+  const [formError, setFormError] = useState("")
 
   // Если ученик уже прошёл анкету в своём кабинете — при добавлении его репетитором
   // подтягиваем результаты анкеты (цель, целевой балл) по совпадению телефона.
@@ -209,10 +210,11 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
 
   function handleSubmit() {
     if (submitting) return
-    if (!form.name || !phone) { alert("Заполни имя и телефон!"); return }
-    if (!hasStudentConsent) { alert("Подтверди, что согласие ученика или его родителя на внесение данных получено"); return }
-    if (mode === "single" && lessons.length === 0) { alert("Выбери даты занятий!"); return }
-    if (mode === "recurring" && (!recurringStartDate || recurringDays.length === 0)) { alert("Укажи дату начала и дни недели!"); return }
+    if (!form.name || !phone) { setFormError("Заполните имя и телефон."); return }
+    if (!hasStudentConsent) { setFormError("Отметьте, что согласие ученика или его родителя на внесение данных получено."); return }
+    if (mode === "single" && lessons.length === 0) { setFormError("Выберите даты занятий."); return }
+    if (mode === "recurring" && (!recurringStartDate || recurringDays.length === 0)) { setFormError("Укажите дату начала и дни недели."); return }
+    setFormError("")
 
     setSubmitting(true)
 
@@ -280,7 +282,7 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
               </>
             ) : (
               <div className="phone-input-wrapper">
-                <PhoneInput international defaultCountry="RU" value={phone} onChange={setPhone} placeholder="Введи номер телефона" />
+                <PhoneInput international defaultCountry="RU" value={phone} onChange={setPhone} placeholder="Номер телефона" />
               </div>
             )}
           </div>
@@ -511,6 +513,9 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
         </div>
 
         {/* Липкий футер */}
+        {formError && (
+          <div className="px-6 pt-3 flex-shrink-0 text-sm text-red-500 text-center">{formError}</div>
+        )}
         <div className="flex gap-3 px-6 py-4 border-t border-gray-100/60 flex-shrink-0">
           <button onClick={onClose} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-gray-50">Отмена</button>
           <button onClick={handleSubmit} disabled={submitting} className="flex-1 btn-primary py-2.5 disabled:opacity-50">

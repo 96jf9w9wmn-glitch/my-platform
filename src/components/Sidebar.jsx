@@ -2,22 +2,12 @@ import NavIcon from "./NavIcon"
 import { useSubscription } from "../subscription"
 import { effectivePlan } from "../plans"
 import { isOwner } from "../owner"
+import { navFor } from "../nav"
 
-// Только рабочие разделы. Всё про сам аккаунт (подписка, код для учеников,
-// выход) живёт в «Профиле» — он открывается из блока внизу меню, поэтому
-// список вкладок не растёт от каждой такой мелочи.
-const navItems = [
-  { label: "Главная", id: "dashboard" },
-  { label: "Ученики", id: "students" },
-  { label: "Расписание", id: "schedule" },
-  { label: "Задания", id: "homework" },
-  { label: "Чат", id: "chat" },
-  { label: "Оплата", id: "payment" },
-  { label: "Результаты", id: "results" },
-  // Виден только владельцу платформы: это просмотр генераторов, а не
-  // возможность тарифа (см. src/owner.js).
-  { label: "Банк заданий", id: "taskgen", ownerOnly: true },
-]
+// Список разделов — общий с нижней панелью на телефоне (src/nav.js). Всё про
+// сам аккаунт (подписка, код для учеников, выход) живёт в «Профиле» — он
+// открывается из блока внизу меню, поэтому список вкладок не растёт от
+// каждой такой мелочи.
 
 function Sidebar({ activePage, setActivePage, badges = {}, name, email }) {
   const { sub } = useSubscription()
@@ -33,7 +23,7 @@ function Sidebar({ activePage, setActivePage, badges = {}, name, email }) {
         <span className="text-sm font-semibold text-gray-600 tracking-wide">Precettore</span>
       </div>
       <div className="flex flex-col gap-1">
-        {navItems.filter((item) => !item.ownerOnly || isOwner(email)).map((item) => (
+        {navFor(isOwner(email)).map((item) => (
           <button
             key={item.id}
             onClick={() => setActivePage(item.id)}

@@ -512,6 +512,9 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
   const [uploading, setUploading] = useState(false)
   const [testAnswers, setTestAnswers] = useState(Array(hw.question_count || 0).fill(""))
   const [submittingTest, setSubmittingTest] = useState(false)
+  // Ошибку показываем прямо над кнопкой: системный alert ученику не объясняет,
+  // что именно не так, и выглядит как сбой сайта.
+  const [submitError, setSubmitError] = useState("")
   const [solutionFile, setSolutionFile] = useState(null)
   const [answersOpen, setAnswersOpen] = useState(false)   // разбор ответов свёрнут по умолчанию
   const fileRef = useRef()
@@ -578,13 +581,14 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
 
   async function handleSubmitTest() {
     if (testAnswers.every((a) => !a.trim())) {
-      alert("Введи хотя бы один ответ!")
+      setSubmitError("Впиши хотя бы один ответ — пока пусто.")
       return
     }
     if (requireSolution && !solutionFile) {
-      alert("Прикрепи фото или файл своего решения!")
+      setSubmitError("Нужно ещё фото решения: нажми «Камера» или «Файл» выше.")
       return
     }
+    setSubmitError("")
     setSubmittingTest(true)
     await onSubmitTest(hw.id, testAnswers, solutionFile)
     setSolutionFile(null)
@@ -778,6 +782,7 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
               )}
             </div>
           )}
+          {submitError && <div className="text-sm text-red-500 mb-2 text-center">{submitError}</div>}
           <button
             onClick={handleSubmitTest}
             disabled={submittingTest || (requireSolution && !solutionFile)}
@@ -1132,6 +1137,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   // Часть 2 (ОГЭ 20–25): выбранный вариант ответа по номеру задания { 20: "…", … }
   const [part2Choices, setPart2Choices] = useState({})
   const [submitting, setSubmitting] = useState(false)
+  const [variantError, setVariantError] = useState("")
   const [resultDialog, setResultDialog] = useState(null)
   // Пришёл по ссылке-приглашению — код репетитора уже получен в App.jsx,
   // подставляем его в поле, ученику остаётся нажать «Привязать».
@@ -1518,9 +1524,10 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
 
   async function submitPart1() {
     if (part1Answers.every((a) => !a)) {
-      alert("Введи хотя бы один ответ!")
+      setVariantError("Впиши хотя бы один ответ — пока все поля пустые.")
       return
     }
+    setVariantError("")
     setSubmitting(true)
 
     const variant = selectedVariant
@@ -1545,7 +1552,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     if (error && hasChoices) {
       ({ error } = await supabase.from("variant_submissions").update(base).eq("id", variant.submission.id))
     }
-    if (error) { alert("Не получилось отправить: " + error.message); setSubmitting(false); return }
+    if (error) { setVariantError("Не получилось отправить: " + error.message); setSubmitting(false); return }
 
     // Попытки по каждому заданию части 1 — основа работы над ошибками, аналитики
     // слабых типажей и повторений. Тип задания берём из снимка варианта: там с
@@ -1594,10 +1601,13 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   }
 
   const navItems = [
-    { id: "schedule", label: "Профиль", icon: "profile" },
-    { id: "chat", label: "Чат", icon: "chat" },
-    { id: "variants", label: "Варианты", icon: "variants" },
+    // Первая вкладка — главный экран (занятия, оценки, доска), поэтому
+    // «Главная», а не «Профиль»: профилем называется карточка с именем и
+    // телефоном во вкладке «Настройки», и два «Профиля» в одном меню сбивали.
+    { id: "schedule", label: "Главная", icon: "dashboard" },
     { id: "homework", label: "Задания", icon: "homework" },
+    { id: "variants", label: "Варианты", icon: "variants" },
+    { id: "chat", label: "Чат", icon: "chat" },
     { id: "payment", label: "Оплата", icon: "payment" },
     { id: "settings", label: "Настройки", icon: "settings" },
   ]
@@ -1999,7 +2009,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
           <div className="flex flex-col gap-4">
             <div className="glass p-5">
               <h2 className="text-base font-medium mb-1">Подключить репетитора</h2>
-              <p className="text-xs text-gray-500 mb-4">Введи код репетитора чтобы подключиться к нему</p>
+              <p className="text-xs text-gray-500 mb-4">Если начал заниматься ещё с одним репетитором — попроси у него код из шести знаков и введи сюда.</p>
               <div className="flex flex-col gap-3">
                 <input
                   value={tutorCode}
@@ -2024,18 +2034,19 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
             </div>
 
             <div className="glass p-5">
-              <h2 className="text-base font-medium mb-1">Профиль</h2>
+              <h2 className="text-base font-medium mb-1">Мои данные</h2>
+              <p className="text-xs text-gray-500 mb-1">Их видит твой репетитор. Изменить может он — попроси в чате.</p>
               <div className="flex flex-col gap-2 mt-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-400 w-20">Имя</span>
+                  <span className="text-xs text-gray-400 w-32 shrink-0">Имя</span>
                   <span className="text-sm">{user.profile?.name}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-400 w-20">Телефон</span>
+                  <span className="text-xs text-gray-400 w-32 shrink-0">Телефон</span>
                   <span className="text-sm">{formatPhone(user.profile?.phone)}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-400 w-20">Код</span>
+                  <span className="text-xs text-gray-400 w-32 shrink-0">Код репетитора</span>
                   <span className="text-sm font-mono">{user.profile?.tutor_code || "—"}</span>
                 </div>
               </div>
@@ -2139,6 +2150,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                     <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700 my-4">
                       <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />После отправки обязательно прикрепи фото решений части 2 — без них репетитор не начислит баллы. Балл за часть 2 появится после его проверки.</span>
                     </div>
+                    {variantError && <div className="text-sm text-red-500 mb-2 text-center">{variantError}</div>}
                     <button
                       onClick={submitPart1}
                       disabled={submitting}
@@ -2212,6 +2224,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                     <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700 mb-4">
                       <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />После отправки обязательно прикрепи фото решений части 2 — без них репетитор не начислит баллы</span>
                     </div>
+                    {variantError && <div className="text-sm text-red-500 mb-2 text-center">{variantError}</div>}
                     <button
                       onClick={submitPart1}
                       disabled={submitting}

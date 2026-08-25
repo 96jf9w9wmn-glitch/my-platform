@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Fragment } from "react"
+import { useState, useEffect, useRef, Fragment, lazy, Suspense } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import { signRows } from "../storageUrl"
@@ -10,6 +10,9 @@ import { generateVariantPdf } from "./variantPdf"
 import { generateWorkbookPdf } from "./workbookPdf"
 import { usePlan } from "../subscription"
 import { PlanHint } from "../components/PlanLock"
+import ConfirmModal from "../components/ConfirmModal"
+// Тетрадь тянет генераторы заданий — грузим только когда её открыли.
+const WorkbookModal = lazy(() => import("./WorkbookModal"))
 
 // Лист варианта в двух видах (приём Kuta Software): ученику — без ответов,
 // проверяющему — с ответами. Пересобираем из tasks_snapshot, поэтому числа те же,
@@ -121,6 +124,8 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
   const [previewUrl, setPreviewUrl] = useState(null)
   const [accounts, setAccounts] = useState([])
   const [recipientId, setRecipientId] = useState("all")
+  // Ошибки формы показываем рядом с кнопкой, а не системным alert.
+  const [formError, setFormError] = useState("")
   // Источник условий: свой файл или собранные из банка заданий
   const [source, setSource] = useState("file")
   const [bankPicked, setBankPicked] = useState([])
@@ -191,9 +196,13 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
   }
 
   async function handleSubmit() {
-    if (!title) { alert("Введи название!"); return }
-    if (source === "bank" && bankPicked.length === 0) { alert("Сначала собери вариант из банка"); return }
-    if (answers.filter(Boolean).length < answerCount) { alert(`Заполни все ответы (${answers.filter(Boolean).length} / ${answerCount})`); return }
+    if (!title) { setFormError("Дайте варианту название — по нему ученик найдёт его в списке."); return }
+    if (source === "bank" && bankPicked.length === 0) { setFormError("Сначала соберите вариант из банка заданий."); return }
+    if (answers.filter(Boolean).length < answerCount) {
+      setFormError(`Заполнены не все ответы части 1: ${answers.filter(Boolean).length} из ${answerCount}.`)
+      return
+    }
+    setFormError("")
     setLoading(true)
 
     let fileUrl = null
@@ -241,7 +250,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
       file_url: fileUrl, tasks_snapshot: tasksSnapshot,
     }).select().single()
 
-    if (error) { alert(error.message); setLoading(false); return }
+    if (error) { setFormError("Не получилось сохранить: " + error.message); setLoading(false); return }
 
     // Кому отправить: конкретному ученику или всем с подходящей целью экзамена
     const recipients = recipientId === "all"
@@ -374,7 +383,9 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
 
             <div>
               <label className="text-sm text-gray-500 mb-1 block">
-                Ответы к части 1 — введи все {answerCount} через пробел
+                {source === "bank" && bankPicked.length > 0
+                  ? `Ответы части 1 — подставлены из банка, проверьте (${answerCount} шт.)`
+                  : `Ответы к части 1 — введите все ${answerCount} через пробел`}
               </label>
               <textarea
                 value={answers.filter(Boolean).join(" ")}
@@ -391,7 +402,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
 
             {part2Numbers.length > 0 && (
               <div>
-                <label className="text-sm text-gray-500 mb-1 block">Ответы к части 2 (20–25)</label>
+                <label className="text-sm text-gray-500 mb-1 block">Ответы к части 2 (20–25){source === "bank" && bankPicked.length > 0 ? " — подставлены из банка" : ""}</label>
                 <div className="grid grid-cols-2 gap-2">
                   {part2Numbers.map((n) => (
                     <div key={n} className="flex items-center gap-2">
@@ -461,12 +472,14 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
 
             <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700">
               {examType === "ОГЭ"
-                ? "Часть 2 (20–25): ученик выбирает ответ из четырёх и прикрепляет фото решения. Баллы начисляются только после твоей проверки."
-                : "Часть 2 (задания 13–19) проверяется вручную после загрузки решений учеником"}
+                ? "Часть 2 (20–25): ученик выбирает ответ из четырёх и прикрепляет фото решения. Баллы начисляются только после вашей проверки."
+                : "Часть 2 (задания 13–19) проверяется вручную после загрузки решений учеником."}
             </div>
           </div>
 
-          <div className="flex gap-3 mt-6">
+          {formError && <div className="text-sm text-red-500 mt-4 text-center">{formError}</div>}
+
+          <div className="flex gap-3 mt-4">
             <button onClick={onClose} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-gray-50">Отмена</button>
             <button onClick={handleSubmit} disabled={loading || uploading} className="flex-1 btn-primary py-2.5 disabled:opacity-50">
               {uploading ? (source === "bank" ? "Готовим PDF..." : "Загружаем...") : loading ? "Отправляем..." : recipientId === "all" ? "Отправить ученикам" : "Отправить ученику"}
@@ -714,14 +727,14 @@ function useGridCols() {
   return cols
 }
 
-function Variants({ user, students = [], embedded = false, addOpen, onAddOpenChange }) {
+function Variants({ user, students = [] }) {
   const [variants, setVariants] = useState([])
   const [submissions, setSubmissions] = useState([])
-  // Модалка добавления может управляться извне (кнопка в шапке блока «Задания»)
-  const [showAddInternal, setShowAddInternal] = useState(false)
-  const controlled = typeof onAddOpenChange === "function"
-  const showAdd = controlled ? addOpen : showAddInternal
-  const setShowAdd = controlled ? onAddOpenChange : setShowAddInternal
+  const [showAdd, setShowAdd] = useState(false)
+  // Печатная тетрадь по номерам экзамена. Раньше открывалась только из
+  // «Банка заданий», а он виден одному владельцу платформы.
+  const [workbookType, setWorkbookType] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(null)
 
   // Сборка вариантов — возможность платных тарифов. Уже выданные варианты
   // остаются доступными: тариф ограничивает создание нового, а не историю.
@@ -750,7 +763,7 @@ function Variants({ user, students = [], embedded = false, addOpen, onAddOpenCha
   }
 
   async function deleteVariant(v) {
-    if (!window.confirm("Удалить вариант " + v.title + "?")) return
+    setConfirmDelete(null)
     await supabase.from("variant_submissions").delete().eq("variant_id", v.id)
     await supabase.from("variants").delete().eq("id", v.id)
     setVariants((prev) => prev.filter((x) => x.id !== v.id))
@@ -924,20 +937,64 @@ function Variants({ user, students = [], embedded = false, addOpen, onAddOpenCha
   ) : null
 
   return (
-    <div className={`flex flex-col gap-5 ${embedded ? "" : "p-4 md:p-6"}`}>
-      {!controlled && (
-        <div className="flex justify-between items-center">
-          {!embedded && <h1 className="text-xl font-medium">Варианты</h1>}
-          <button onClick={() => (canVariants ? setShowAdd(true) : openPlans())} className="btn-primary text-sm px-4 py-2 flex items-center gap-1.5 ml-auto">
-            + Новый вариант
-          </button>
+    <div className="flex flex-col gap-5 p-4 md:p-6">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+        <div>
+          <h1 className="text-xl font-medium">Варианты</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Пробники ОГЭ и ЕГЭ: соберите из банка заданий или приложите свой файл — ученик решит их прямо в кабинете.</p>
         </div>
-      )}
+        <button onClick={() => (canVariants ? setShowAdd(true) : openPlans())} className="btn-primary text-sm px-4 py-2 flex items-center justify-center gap-1.5 self-stretch sm:self-auto shrink-0">
+          + Новый вариант
+        </button>
+      </div>
 
       {!canVariants && (
         <PlanHint feature="variants">
           Сборка вариантов ОГЭ/ЕГЭ из банка заданий и выдача их ученикам с PDF.
         </PlanHint>
+      )}
+
+      {/* Печатная тетрадь — отдельно от вариантов: её берут на офлайн-занятие,
+          ученику в кабинет она не выдаётся. */}
+      <div className="glass p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium mb-0.5">Рабочая тетрадь для печати</div>
+          <p className="text-xs text-gray-500 leading-relaxed">
+            Задания с полем в клетку под решение от руки — PDF на A4, ответы отдельной страницей.
+          </p>
+        </div>
+        <div className="flex gap-2 shrink-0">
+          {["ОГЭ", "ЕГЭ"].map((t) => (
+            <button
+              key={t}
+              onClick={() => (canVariants ? setWorkbookType(t) : openPlans())}
+              className="press-fill text-sm px-3.5 py-2 rounded-xl ring-1 ring-blue-200 dark:ring-blue-400/25 text-blue-600 bg-blue-500/8 flex items-center gap-1.5"
+            >
+              <MorphIcon from="grid" to="download" size={14} />
+              {t}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <ConfirmModal
+        open={!!confirmDelete}
+        danger
+        title="Удалить вариант?"
+        message={`«${confirmDelete?.title || ""}» пропадёт вместе с работами учеников по нему.`}
+        confirmLabel="Удалить"
+        onConfirm={() => deleteVariant(confirmDelete)}
+        onCancel={() => setConfirmDelete(null)}
+      />
+
+      {workbookType && (
+        <Suspense fallback={null}>
+          <WorkbookModal
+            examType={workbookType}
+            examLabel={`${workbookType}, математика`}
+            onClose={() => setWorkbookType(null)}
+          />
+        </Suspense>
       )}
 
       {/* Сводка одной полосой: три отдельные карточки на такие короткие числа
@@ -1028,7 +1085,7 @@ function Variants({ user, students = [], embedded = false, addOpen, onAddOpenCha
                           <Icon name="paperclip" size={15} />
                         </button>
                       )}
-                      <button onClick={() => deleteVariant(v)} title="Удалить вариант"
+                      <button onClick={() => setConfirmDelete(v)} aria-label="Удалить вариант" title="Удалить вариант"
                         className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-500/10 transition-colors">
                         <Icon name="trash" size={15} />
                       </button>

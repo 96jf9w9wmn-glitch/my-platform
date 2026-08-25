@@ -356,8 +356,11 @@ function Results({ students, user }) {
   }
 
   return (
-    <div className="p-6">
-      <h1 className="text-xl font-medium mb-6">Результаты</h1>
+    <div className="p-4 md:p-6">
+      <div className="mb-5 md:mb-6">
+        <h1 className="text-xl font-medium">Результаты</h1>
+        <p className="text-sm text-gray-500 mt-0.5">Баллы за варианты и слабые типы заданий по каждому ученику — видно, что подтянуть к экзамену.</p>
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="col-span-1">
@@ -414,14 +417,16 @@ function Results({ students, user }) {
           )}
 
           {students.length === 0 && (
-            <div className="text-sm text-gray-400 text-center py-8">Нет учеников</div>
+            <div className="glass p-5 text-sm text-gray-400 text-center">
+              Учеников пока нет — результаты появятся, когда ученик решит первый вариант.
+            </div>
           )}
         </div>
 
         <div className="md:col-span-2">
           {!selected ? (
             <div className="glass p-5 text-sm text-gray-400 text-center py-16">
-              Выбери ученика слева
+              Выберите ученика — увидите его баллы и слабые темы
             </div>
           ) : (
             <div className="flex flex-col gap-4">

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, lazy, Suspense } from "react"
+import { useState, useEffect, useRef } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import { signRows } from "../storageUrl"
@@ -8,9 +8,7 @@ import FormulaBackdrop from "../components/FormulaBackdrop"
 import { parseLocalDate, renderHomeworkMath, parseHomeworkTasks, plural } from "../utils"
 import { usePlan } from "../subscription"
 import { PlanHint, PlanLock } from "../components/PlanLock"
-// Лениво: Variants тянет весь банк заданий (генераторы на 34k строк) + jspdf.
-// Нужен только во вкладке «варианты», незачем держать его в стартовом бандле.
-const Variants = lazy(() => import("./Variants"))
+import ConfirmModal from "../components/ConfirmModal"
 
 const STATUS_LABELS = {
   assigned: { label: "Выдано", cls: "bg-gray-100 text-gray-600" },
@@ -67,11 +65,11 @@ function isoDay(offsetDays = 0) {
 const DEADLINE_CHIPS = [
   { label: "Без срока", days: null },
   { label: "Завтра", days: 1 },
-  { label: "Через 3 дня", days: 3 },
-  { label: "Через неделю", days: 7 },
+  { label: "3 дня", days: 3 },
+  { label: "Неделя", days: 7 },
 ]
 
-const TIME_CHIPS = [0, 20, 30, 45, 60]
+const TIME_CHIPS = [0, 20, 45, 60]
 
 const chipCls = (on) =>
   `px-3 py-1.5 rounded-full text-xs transition-all active:scale-[0.94] ${
@@ -155,7 +153,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
 
   async function handleGenerate() {
     if (!genTopic.trim()) {
-      setGenError("Введи тему")
+      setGenError("Напишите тему — по ней ИИ придумает задания")
       return
     }
     setGenError("")
@@ -295,10 +293,10 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
   async function handleSubmit() {
     // Ошибку показываем в самой форме, у кнопки: alert прерывает заполнение и
     // не подсказывает, какое поле пустое.
-    if (!studentId) return setFormError("Выбери, кому задать")
-    if (!title.trim()) return setFormError("Напиши, что задать")
+    if (!studentId) return setFormError("Выберите, кому задать")
+    if (!title.trim()) return setFormError("Напишите, что задать")
     if (hwType !== "written" && questionCount === 0) {
-      return setFormError("Впиши ответы — по ним работа проверится сама")
+      return setFormError("Впишите ответы — по ним работа проверится сама")
     }
     setFormError("")
     setSaving(true)
@@ -309,7 +307,9 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
       const { error: uploadError } = await supabase.storage.from("homework").upload(fileName, file)
       if (uploadError) {
         console.error("Upload error:", uploadError)
-        alert("Ошибка загрузки файла: " + uploadError.message)
+        setFormError("Файл не загрузился: " + uploadError.message)
+        setSaving(false)
+        return
       } else {
         const { data } = supabase.storage.from("homework").getPublicUrl(fileName)
         fileUrl = data.publicUrl
@@ -359,9 +359,9 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
       onClose()
     } else if (/time_limit_min/.test(error.message || "")) {
       // Колонки ещё нет: миграция supabase/homework_timer.sql не выполнена.
-      alert("Ограничение по времени пока недоступно: выполните supabase/homework_timer.sql в Supabase → SQL Editor. Пока что оставьте поле пустым.")
+      setFormError("Ограничение по времени пока недоступно: выполните supabase/homework_timer.sql в SQL Editor. Пока оставьте «Без лимита».")
     } else {
-      alert("Ошибка: " + error.message)
+      setFormError("Не получилось сохранить: " + error.message)
     }
     setSaving(false)
   }
@@ -385,7 +385,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
           {/* 2. Что задать: название, текст заданий и файл — одним блоком. */}
           <div className="flex flex-col gap-2">
             <input value={title} onChange={(e) => setTitle(e.target.value)}
-              placeholder="Что задать? Например: Параграф 5, №1–10"
+              placeholder="Что задать? Например: §5, №1–10"
               className="input-glass" />
 
             <textarea value={description} onChange={(e) => setDescription(e.target.value)}
@@ -558,7 +558,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
                       </div>
                     ))}
                     <div className="text-[11px] text-gray-400 leading-snug">
-                      Проверь вопросы и ответы — ИИ может ошибаться. Вопросы уйдут в описание, а варианты станут тестом с автопроверкой.
+                      Проверьте вопросы и ответы — ИИ может ошибаться. Вопросы уйдут в описание, а варианты станут тестом с автопроверкой.
                     </div>
                     <div className="flex gap-2">
                       <button
@@ -596,7 +596,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
                 )
               })}
               <button type="button" onClick={() => setPickDate(true)} className={chipCls(pickDate)}>
-                Другая дата
+                Своя дата
               </button>
             </div>
             <Collapse open={pickDate}>
@@ -610,8 +610,8 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
             <Toggle
               on={autoCheck}
               onClick={() => setAutoCheck((v) => !v)}
-              title="Ученик отвечает прямо в приложении"
-              note={autoCheck ? "Ответы сверятся сами, ученик сразу увидит результат" : "Иначе он просто пришлёт фото или файл с работой"}
+              title="Ученик отвечает в приложении"
+              note={autoCheck ? "Проверится само, оценка сразу" : "Иначе пришлёт фото или файл с работой"}
             />
 
             <Collapse open={autoCheck}>
@@ -811,6 +811,7 @@ function HomeworkTasks({ hw }) {
 }
 
 function HomeworkCard({ hw, studentName, studentPhone, studentAccountId, onUpdate, onEdit }) {
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const [grading, setGrading] = useState(false)
   const [comment, setComment] = useState(hw.comment || "")
   const [selectedGrade, setSelectedGrade] = useState(hw.grade || null)
@@ -861,13 +862,22 @@ function HomeworkCard({ hw, studentName, studentPhone, studentAccountId, onUpdat
   }
 
   async function handleDelete() {
-    if (!window.confirm("Удалить задание «" + hw.title + "»?")) return
+    setConfirmDelete(false)
     await supabase.from("homework").delete().eq("id", hw.id)
     onUpdate()
   }
 
   return (
     <div className="glass p-4">
+      <ConfirmModal
+        open={confirmDelete}
+        danger
+        title="Удалить задание?"
+        message={`«${hw.title}» пропадёт и у вас, и у ученика — вместе с его ответами и оценкой.`}
+        confirmLabel="Удалить"
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDelete(false)}
+      />
       <div className="flex justify-between items-start mb-2">
         <div>
           <div className="flex items-center gap-2">
@@ -881,7 +891,7 @@ function HomeworkCard({ hw, studentName, studentPhone, studentAccountId, onUpdat
           <button onClick={() => onEdit(hw)} className="text-gray-400 hover:text-blue-600 w-6 h-6 flex items-center justify-center rounded-lg hover:bg-blue-50" title="Редактировать">
             <Icon name="edit" size={14} />
           </button>
-          <button onClick={handleDelete} className="text-gray-400 hover:text-red-600 w-6 h-6 flex items-center justify-center rounded-lg hover:bg-red-50" title="Удалить">
+          <button onClick={() => setConfirmDelete(true)} className="text-gray-400 hover:text-red-600 w-6 h-6 flex items-center justify-center rounded-lg hover:bg-red-50" aria-label="Удалить задание" title="Удалить">
             <Icon name="x" size={14} />
           </button>
         </div>
@@ -1047,14 +1057,9 @@ function StudentHomeworkGroup({ studentName, studentPhone, studentAccountId, ite
   )
 }
 
-function Homework({ user, students, embedded = false }) {
-  const [tab, setTab] = useState("homework")
+function Homework({ user, students }) {
   const [homework, setHomework] = useState([])
   const [showModal, setShowModal] = useState(false)
-  const [showAddVariant, setShowAddVariant] = useState(false)
-  // Сборку вариантов открываем только на тарифе, где она включена.
-  const { allows, openPlans } = usePlan()
-  const canVariants = allows("variants")
   const [filter, setFilter] = useState("all")
   const [editingHw, setEditingHw] = useState(null)
 
@@ -1089,38 +1094,18 @@ function Homework({ user, students, embedded = false }) {
   const groupNames = Object.keys(grouped).sort()
 
   return (
-    <div className={embedded ? "" : "p-4 md:p-6"}>
+    <div className="p-4 md:p-6">
+      {/* Варианты ОГЭ/ЕГЭ — свой раздел меню, а не вкладка внутри этого:
+          у ученика они тоже отдельным пунктом, и в боковом меню репетитора
+          слова «Варианты» раньше не было вовсе. */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
-        {/* На мобильном кнопка добавления — первой, во всю ширину; на десктопе — справа */}
-        <div className="flex gap-1 bg-gray-100/70 p-1 rounded-xl self-start order-2 sm:order-1">
-          {[{ id: "homework", label: "Домашние задания" }, { id: "variants", label: "Варианты" }].map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-all ${tab === t.id ? "bg-white shadow-sm font-medium text-gray-800" : "text-gray-500 hover:text-gray-700"}`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-        {tab === "homework" ? (
-          <button onClick={() => setShowModal(true)} className="btn-primary px-4 py-2 text-sm self-end sm:self-auto order-1 sm:order-2">
-            + Задание
-          </button>
-        ) : (
-          <button onClick={() => (canVariants ? setShowAddVariant(true) : openPlans())} className="btn-primary px-4 py-2 text-sm self-end sm:self-auto order-1 sm:order-2">
-            + Новый вариант
-          </button>
-        )}
+        <h1 className="text-xl font-medium">Домашние задания</h1>
+        <button onClick={() => setShowModal(true)} className="btn-primary px-4 py-2 text-sm self-stretch sm:self-auto">
+          + Задание
+        </button>
       </div>
 
-      {tab === "variants" && (
-        <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="loader-logo" /></div>}>
-          <Variants user={user} embedded addOpen={showAddVariant} onAddOpenChange={setShowAddVariant} />
-        </Suspense>
-      )}
-
-      {tab === "homework" && (
+      {(
         <>
           <div className="flex gap-2 mb-4 flex-wrap">
             {[
@@ -1148,11 +1133,23 @@ function Homework({ user, students, embedded = false }) {
           </div>
 
           {groupNames.length === 0 ? (
-            <div className="relative overflow-hidden text-sm text-gray-400 text-center py-12 border border-dashed border-white/50 glass-sm">
+            <div className="relative overflow-hidden text-center py-12 border border-dashed border-white/50 glass-sm">
               <FormulaBackdrop variant="panel" />
-              <span className="relative z-10">
-                {filter === "all" ? "Заданий пока нет" : filter === "overdue" ? "Просроченных заданий нет" : "Нет заданий с таким статусом"}
-              </span>
+              <div className="relative z-10 flex flex-col items-center gap-3 px-4">
+                <span className="text-sm text-gray-400">
+                  {filter === "all" ? "Заданий пока нет" : filter === "overdue" ? "Просроченных заданий нет" : "Нет заданий с таким статусом"}
+                </span>
+                {filter === "all" && (
+                  <>
+                    <p className="text-xs text-gray-400 max-w-xs leading-relaxed">
+                      Задайте первое: текстом, файлом или тестом с автопроверкой — ученик увидит его в своём кабинете.
+                    </p>
+                    <button onClick={() => setShowModal(true)} className="btn-primary px-4 py-2 text-sm">
+                      + Задание
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           ) : (
             <div className="flex flex-col gap-3">

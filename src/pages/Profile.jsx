@@ -1,5 +1,5 @@
 // Раздел «Профиль»: всё про аккаунт репетитора в одном месте — карточка
-// аккаунта, код для учеников, настройки приёма денег и подписка на платформу.
+// аккаунта, код для учеников, телеграм-бот, настройки приёма денег и подписка.
 //
 // Появился, чтобы разгрузить боковое меню: «Подписка» была отдельной вкладкой
 // наравне с рабочими разделами, хотя относится не к работе с учениками, а к
@@ -18,6 +18,7 @@ import { effectivePlan, isActive } from "../plans"
 import Subscription from "./Subscription"
 import AutoInvoiceSettings from "../components/AutoInvoiceSettings"
 import OnlinePaySettings from "../components/OnlinePaySettings"
+import TelegramSettings from "../components/TelegramSettings"
 
 // Инициал в цветном кружке: аватара у репетитора в базе нет, а пустой серый
 // круг выглядит как незагрузившаяся картинка.
@@ -73,7 +74,7 @@ export default function Profile({ user, students = [], studentsCount = 0, onLogo
     <div className="p-4 sm:p-6">
       <h1 className="text-xl font-medium mb-1">Профиль</h1>
       <p className="text-sm text-gray-500 mb-5 sm:mb-6">
-        Аккаунт, код для учеников и подписка на платформу.
+        Аккаунт и код для учеников, приём денег, телеграм-бот и подписка на платформу.
       </p>
 
       {/* Аккаунт */}
@@ -150,13 +151,19 @@ export default function Profile({ user, students = [], studentsCount = 0, onLogo
         </div>
       )}
 
+      {/* Телеграм-бот: второй вход в тот же кабинет. Раньше лежал внутри блока
+          «Подписка» в самом низу страницы — о нём никто не знал. */}
+      <div className="mb-4">
+        <TelegramSettings />
+      </div>
+
       {/* Приём денег с учеников: квитанции после занятия и онлайн-оплата. */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4 items-start">
         <AutoInvoiceSettings tutorId={user.id} students={students} />
         <OnlinePaySettings tutorId={user.id} />
       </div>
 
-      {/* Подписка со всем содержимым: статус, лимиты, телеграм-бот, тарифы. */}
+      {/* Подписка со всем содержимым: статус, лимиты, тарифы. */}
       <Subscription studentsCount={studentsCount} tutorId={user.id} />
     </div>
   )

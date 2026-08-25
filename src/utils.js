@@ -568,7 +568,7 @@ export function formatPhone(raw) {
 }
 
 // Tutor's onboarding answer (exam_focus) suggests which exam type to
-// pre-select in Variants/TaskBank instead of always defaulting to ОГЭ.
+// pre-select in Variants instead of always defaulting to ОГЭ.
 export function defaultExamType(examFocus) {
   if (examFocus?.includes("ОГЭ")) return "ОГЭ"
   if (examFocus?.includes("ЕГЭ")) return "ЕГЭ"
