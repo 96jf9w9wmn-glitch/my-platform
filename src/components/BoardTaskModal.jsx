@@ -22,7 +22,7 @@ function loadPref() {
   return null
 }
 
-export default function BoardTaskModal({ onInsert, onClose }) {
+export default function BoardTaskModal({ dark = false, onInsert, onClose }) {
   const pref = loadPref()
   const [examType, setExamType] = useState(pref?.examType || "ОГЭ")
   const [number, setNumber] = useState(pref?.number || null)
@@ -83,7 +83,7 @@ export default function BoardTaskModal({ onInsert, onClose }) {
     if (!task) return
     setBusy(true); setErr("")
     try {
-      const file = await taskToImageFile(task, { label: subjectLabel(examType) })
+      const file = await taskToImageFile(task, { label: subjectLabel(examType), dark })
       // ширину листа задаёт снимок: доска кладёт картинку в неё, а не вписывает как фото
       await onInsert(file, SHEET_WIDTH)
       onClose()
@@ -94,6 +94,12 @@ export default function BoardTaskModal({ onInsert, onClose }) {
   }
 
   const attachments = task ? attachmentsOf(task) : []
+  // Цвета карточки предпросмотра задаются явно, а не токенами gray-*: в тёмной теме
+  // приложения токены инвертируются, и «светлый текст» стал бы тёмным. А карточка
+  // повторяет доску, а не тему кабинета.
+  const sheet = dark
+    ? { bg: "#2c2c2e", border: "rgba(255,255,255,.10)", ink: "#f5f5f7", meta: "#8e8e93", code: "rgba(255,255,255,.06)" }
+    : { bg: "#ffffff", border: "rgba(0,0,0,.08)", ink: "#1c1c1e", meta: "#9ca3af", code: "#f5f5f7" }
   const chip = (active, extra = "") =>
     `px-3 py-1.5 rounded-xl text-sm border transition-all active:scale-95 ${
       active
@@ -198,24 +204,30 @@ export default function BoardTaskModal({ onInsert, onClose }) {
                   <Icon name="repeat" size={13} /> Другое задание
                 </button>
               </div>
-              <div className="rounded-2xl border border-gray-100 bg-white p-4 mb-3">
-                <div className="text-[10px] uppercase tracking-wide text-gray-400 mb-1.5">
+              <div className="rounded-2xl border p-4 mb-3" style={{ background: sheet.bg, borderColor: sheet.border }}>
+                <div className="text-[10px] uppercase tracking-wide mb-1.5" style={{ color: sheet.meta }}>
                   №{task.number} · {subjectLabel(examType)}
                 </div>
                 {task.condition_text && (
-                  <div className="text-[15px] text-gray-800 leading-relaxed break-words whitespace-pre-wrap"
+                  <div className="text-[15px] leading-relaxed break-words whitespace-pre-wrap" style={{ color: sheet.ink }}
                     dangerouslySetInnerHTML={{ __html: renderTaskMath(task.condition_text) }} />
                 )}
+                {/* На тёмном листе чертёж перекрашивается тем же приёмом, что и в снимке:
+                    инверсия с сохранением оттенка, а screen поверх фона карточки поднимает
+                    получившийся чёрный до цвета листа — иначе в предпросмотре была бы
+                    чёрная плашка, а на доске чертёж сливается с листом без неё */}
                 {task.image_url && (
                   <img src={task.image_url} alt={`Задание ${task.number}`}
-                    className="max-w-full h-auto rounded-lg border border-gray-100 bg-white mt-2" />
+                    className="max-w-full h-auto rounded-lg mt-2"
+                    style={dark ? { filter: "invert(1) hue-rotate(180deg)", mixBlendMode: "screen" } : undefined} />
                 )}
                 {task.condition_tail && (
-                  <div className="text-[15px] text-gray-800 leading-relaxed break-words whitespace-pre-wrap mt-2"
+                  <div className="text-[15px] leading-relaxed break-words whitespace-pre-wrap mt-2" style={{ color: sheet.ink }}
                     dangerouslySetInnerHTML={{ __html: renderTaskMath(task.condition_tail) }} />
                 )}
                 {(task.program || []).map((b) => (
-                  <pre key={b.name} className="mt-2 px-3 py-2 rounded-lg bg-gray-50 text-xs font-mono text-gray-700 whitespace-pre-wrap">{b.code}</pre>
+                  <pre key={b.name} className="mt-2 px-3 py-2 rounded-lg text-xs font-mono whitespace-pre-wrap"
+                    style={{ background: sheet.code, color: sheet.ink }}>{b.code}</pre>
                 ))}
               </div>
 

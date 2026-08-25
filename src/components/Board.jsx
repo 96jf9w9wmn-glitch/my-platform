@@ -1516,6 +1516,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       {taskPick && (
         <Suspense fallback={<div className="fixed inset-0 z-[100010] flex items-center justify-center" style={{ background: "rgba(0,0,0,.15)" }}><div className="loader-logo" /></div>}>
           <BoardTaskModal
+            dark={dark}
             onInsert={insertTaskSheet}
             onClose={() => { modalOpen.current = false; setTaskPick(false) }}
           />
