@@ -187,6 +187,38 @@ export function paintStroke(ctx, s, { darkBg = false, getImage = () => null } = 
     }
     return
   }
+  // Многоугольник, узнанный SmartDraw: замкнутая ломаная по НАСТОЯЩИМ углам штриха.
+  // Отдельный тип нужен потому, что готовые фигуры строятся по габариту (a→b) и
+  // умеют только правильные формы: произвольный треугольник габарит превращал бы
+  // в равнобедренный, то есть в другой чертёж.
+  if (s.tool === "poly") {
+    ctx.lineJoin = s.corner === "round" ? "round" : "miter"
+    ctx.lineCap = s.corner === "round" ? "round" : "butt"
+    if (s.dash === "dotted") { ctx.setLineDash([0.01, s.width * 2]); ctx.lineCap = "round" }
+    else if (s.dash === "dashed") ctx.setLineDash([s.width * 2.4, s.width * 1.8])
+    ctx.beginPath()
+    ctx.moveTo(pts[0][0], pts[0][1])
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1])
+    ctx.stroke()
+    return
+  }
+
+  // Многоугольник, узнанный SmartDraw: замкнутая ломаная по НАСТОЯЩИМ углам штриха.
+  // Отдельный тип нужен потому, что готовые фигуры строятся по габариту (a→b) и
+  // умеют только правильные формы: произвольный треугольник габарит превращал бы
+  // в равнобедренный, то есть в другой чертёж.
+  if (s.tool === "poly") {
+    ctx.lineJoin = s.corner === "round" ? "round" : "miter"
+    ctx.lineCap = s.corner === "round" ? "round" : "butt"
+    if (s.dash === "dotted") { ctx.setLineDash([0.01, s.width * 2]); ctx.lineCap = "round" }
+    else if (s.dash === "dashed") ctx.setLineDash([s.width * 2.4, s.width * 1.8])
+    ctx.beginPath()
+    ctx.moveTo(pts[0][0], pts[0][1])
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1])
+    ctx.stroke()
+    return
+  }
+
   const wOf = (pt) => (pt[2] != null && pt[2] > 2.5 ? pt[2] : s.width)
   if (pts.length === 1) {
     ctx.beginPath(); ctx.arc(pts[0][0], pts[0][1], wOf(pts[0]) / 2, 0, Math.PI * 2); ctx.fill()

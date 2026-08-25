@@ -3,8 +3,11 @@
 // возвращает null и рисунок остаётся рукописным. Порог намеренно строгий: ложное
 // срабатывание посреди объяснения хуже, чем несработавшее «умное» распознавание.
 //
-// Возвращает { tool, a, b } в МИРОВЫХ координатах — то же, что даёт обычная фигура,
-// поэтому дальше штрих живёт как нарисованный инструментом «Фигуры».
+// Возвращает либо готовую фигуру { tool, a, b } (габарит, как у инструмента
+// «Фигуры»), либо произвольный многоугольник { tool: "poly", points } — по
+// НАСТОЯЩИМ углам штриха. Второе обязательно: габарит умеет только правильные
+// формы, и прямоугольный треугольник он превратил бы в равнобедренный, то есть
+// в другой чертёж.
 
 const dist = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1])
 
@@ -36,6 +39,42 @@ function thin(pts, step) {
   if (dist(out[out.length - 1], last) > 1e-6) out.push(last)
   return out
 }
+
+// Убирает «углы», которых нет: вершины, где ломаная идёт почти прямо. Такие даёт
+// и сам RDP на дрожащей стороне, и место, где человек начал вести штрих.
+const STRAIGHT = (155 * Math.PI) / 180
+function dropStraight(poly) {
+  const out = poly.slice()
+  let again = true
+  while (again && out.length > 3) {
+    again = false
+    for (let i = 0; i < out.length; i++) {
+      const p = out[(i - 1 + out.length) % out.length], v = out[i], q = out[(i + 1) % out.length]
+      let d = Math.abs(Math.atan2(p[1] - v[1], p[0] - v[0]) - Math.atan2(q[1] - v[1], q[0] - v[0]))
+      if (d > Math.PI) d = 2 * Math.PI - d
+      if (d > STRAIGHT) { out.splice(i, 1); again = true; break }
+    }
+  }
+  return out
+}
+
+// Средний промах штриха мимо предполагаемого многоугольника
+function polyError(pts, poly) {
+  let sum = 0
+  for (const p of pts) {
+    let best = Infinity
+    for (let i = 0; i < poly.length; i++) {
+      const d = distToSeg(p, poly[i], poly[(i + 1) % poly.length])
+      if (d < best) best = d
+    }
+    sum += best
+  }
+  return sum / pts.length
+}
+
+// Замкнутая ломаная: первую точку повторяем в конце — так её рисует paintStroke
+// и так же по ней считается попадание курсором (последняя сторона не теряется).
+const closeRing = (poly) => [...poly.map((p) => [p[0], p[1]]), [poly[0][0], poly[0][1]]]
 
 export function recognizeShape(rawPoints, { minSize = 30 } = {}) {
   if (!rawPoints || rawPoints.length < 8) return null
@@ -84,32 +123,65 @@ export function recognizeShape(rawPoints, { minSize = 30 } = {}) {
     const d = (w + h) / 2
     return { tool: "circle", a: [cx - d / 2, cy - d / 2], b: [cx + d / 2, cy + d / 2] }
   }
-  // Все точки лежат на (x/rx)² + (y/ry)² = 1
+  // Насколько точки легли на (x/rx)² + (y/ry)² = 1. Решение о круге принимается НЕ
+  // здесь: правильный многоугольник тоже неплохо садится на овал, и ранний ответ
+  // превращал начерченный пятиугольник в круг. Сначала считаем обе версии, потом
+  // сравниваем промахи.
   let ellErr = 1
   if (rx > 3 && ry > 3) {
     let sum = 0
     for (const p of pts) sum += Math.abs(Math.hypot((p[0] - cx) / rx, (p[1] - cy) / ry) - 1)
     ellErr = sum / pts.length
-    if (ellErr < 0.1) return round()
   }
 
-  // Углы замкнутой ломаной. Контур замыкаем явно, иначе стык первой и последней
-  // точки RDP считает концом пути и всегда оставляет там «угол».
-  const ring = thin([...pts, first], step)
-  const corners = rdp(ring, diag * 0.06)
-  const n = corners.length - 1               // последняя точка = первая
-
-  if (n === 3) return { tool: "triangle", a: box.a, b: box.b }
-  if (n === 4) {
-    // Ромб или прямоугольник: у ромба вершины сидят на серединах сторон габарита,
-    // у прямоугольника — в его углах.
-    const mids = [[cx, minY], [maxX, cy], [cx, maxY], [minX, cy]]
-    const corns = [[minX, minY], [maxX, minY], [maxX, maxY], [minX, maxY]]
-    const near = (list) => corners.slice(0, 4)
-      .reduce((acc, p) => acc + Math.min(...list.map((q) => dist(p, q))), 0)
-    return { tool: near(mids) < near(corns) ? "diamond" : "rect", a: box.a, b: box.b }
+  // Углы. Контур ПЕРЕКЛАДЫВАЕМ так, чтобы он начинался с настоящего угла — самой
+  // удалённой от центра точки. Иначе место, где человек начал вести штрих, само
+  // считается углом: треугольник, начатый с середины стороны, выходил
+  // четырёхугольником и распознавался прямоугольником.
+  const ring0 = thin(pts, step)
+  let far = 0, farD = -1
+  for (let i = 0; i < ring0.length; i++) {
+    const d = Math.hypot(ring0[i][0] - cx, ring0[i][1] - cy)
+    if (d > farD) { farD = d; far = i }
   }
-  // Много мелких углов и приличная посадка на овал — всё-таки круглая фигура
-  if (n >= 6 && ellErr < 0.18) return round()
-  return null
+  const ring = [...ring0.slice(far), ...ring0.slice(0, far)]
+  ring.push(ring[0])
+  const poly = dropStraight(rdp(ring, diag * 0.06).slice(0, -1))   // без повтора первой точки
+  const n = poly.length
+
+  // Многоугольник должен реально лежать на штрихе, а не «примерно рядом»: без этой
+  // проверки размашистая петля становилась треугольником. Больше шести углов — это
+  // почти всегда неровно обведённый круг, а не семиугольник: на дрожащем контуре
+  // RDP насаживает углы где попало.
+  const pErr = n >= 3 ? polyError(pts, poly) : Infinity
+  const polyOk = n >= 3 && n <= 6 && pErr <= diag * 0.045
+  const roundOk = rx > 3 && ry > 3 && ellErr < 0.16
+  // Круг и многоугольник спорят по промаху: у круга ломаная срезает дуги и мажет
+  // заметно сильнее овала, у пятиугольника — наоборот.
+  const ellDist = ellErr * (rx + ry) / 2
+  if (!polyOk || (roundOk && pErr >= ellDist * 0.8)) return roundOk ? round() : null
+  if (n >= 5) return { tool: "poly", points: closeRing(poly) }
+
+  if (n === 3) {
+    // Равнобедренный с вершиной вверх строится готовой фигурой — она ровнее.
+    // Любой другой треугольник кладём как начерчен: подменять его правильным
+    // значит рисовать другой чертёж.
+    const top = poly.reduce((a, b) => (a[1] <= b[1] ? a : b))
+    const base = poly.filter((p) => p !== top)
+    const flatBase = Math.abs(base[0][1] - base[1][1]) < h * 0.08
+    const apexMid = Math.abs(top[0] - (base[0][0] + base[1][0]) / 2) < w * 0.08
+    const baseDown = Math.min(base[0][1], base[1][1]) > top[1] + h * 0.8
+    if (flatBase && apexMid && baseDown) return { tool: "triangle", a: box.a, b: box.b }
+    return { tool: "poly", points: closeRing(poly) }
+  }
+
+  // Четырёхугольник: ровный прямоугольник и ромб строим готовой фигурой,
+  // произвольный (трапеция, параллелограмм) оставляем как начерчен.
+  const near = (list) => poly.reduce((acc, p) => acc + Math.min(...list.map((q) => dist(p, q))), 0) / 4
+  const eRect = near([[minX, minY], [maxX, minY], [maxX, maxY], [minX, maxY]])
+  const eDia = near([[cx, minY], [maxX, cy], [cx, maxY], [minX, cy]])
+  const tol = diag * 0.06
+  if (eRect < eDia && eRect < tol) return { tool: "rect", a: box.a, b: box.b }
+  if (eDia < tol) return { tool: "diamond", a: box.a, b: box.b }
+  return { tool: "poly", points: closeRing(poly) }
 }

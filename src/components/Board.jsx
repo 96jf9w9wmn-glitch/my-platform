@@ -302,11 +302,13 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const [confirmClear, setConfirmClear] = useState(false) // спрашиваем перед очисткой доски
   // SmartDraw: набросок пером превращается в ровную фигуру (см. boardSmartDraw.js)
   const [smart, setSmart] = useState(() => localStorage.getItem(SMART_KEY) === "1")
-  // Есть ли картинка в буфере обмена: "image" — есть (кнопка «Вставить» появляется),
-  // "none" — нет или буфер недоступен (кнопки нет), "unknown" — браузер не даёт
-  // заглянуть в буфер без нажатия. В последнем случае кнопку показываем и проверяем
-  // уже по клику: чтение буфера по нажатию разрешено везде.
-  const [clipState, setClipState] = useState("none")
+  // Скриншот из буфера обмена. Режимы слежения:
+  //   "off"  — браузер буфер не отдаёт, остаётся ⌘V (кнопки нет);
+  //   "ask"  — разрешение ещё не выдано, в панели одна кнопка «включить»;
+  //   "auto" — разрешение есть, доска сама замечает скриншот и предлагает вставить.
+  const [clipMode, setClipMode] = useState("off")
+  const [clipShot, setClipShot] = useState(null)   // {blob, url, key} — что предлагаем
+  const clipSkip = useRef(null)                    // ключ снимка, от которого отказались
   // Какая подсказка сейчас показана после нажатия (на сенсорном экране навести
   // мышь нельзя, а без названий панель — набор непонятных значков).
   const [tapped, setTapped] = useState("")
@@ -974,8 +976,10 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     if (smart && s.tool === "pen") {
       const shape = recognizeShape(s.points, { minSize: 30 / view.current.scale })
       if (shape) {
-        s = { ...s, tool: shape.tool, points: [shape.a.slice(0, 2), shape.b.slice(0, 2)],
-          width: s.width, dash, corner }
+        // Готовая фигура задаётся габаритом (a→b), произвольный многоугольник — своими
+        // вершинами; ширина/стиль линии берутся текущие, как у нарисованной фигуры.
+        const points = shape.points || [shape.a.slice(0, 2), shape.b.slice(0, 2)]
+        s = { ...s, tool: shape.tool, points, width: s.width, dash, corner }
       }
     }
     strokes.current.set(s.id, s)
@@ -1198,21 +1202,38 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     addImageAt(file, p[0], p[1])
   }
 
-  // Кнопка «Вставить»: читаем буфер уже по нажатию — это действие пользователя,
-  // поэтому чтение разрешено даже там, где фоновая проверка запрещена.
-  async function pasteFromClipboard() {
-    let blob = null
-    try {
-      for (const item of await navigator.clipboard.read()) {
-        const type = item.types.find((t) => t.startsWith("image/"))
-        if (type) { blob = await item.getType(type); break }
-      }
-    } catch { /* отказ в доступе или пустой буфер — ниже подсказка */ }
-    if (!blob) { setClipState("none"); flashTip("paste"); return }
+  // Кладём картинку из буфера в центр видимой области
+  async function insertBlob(blob) {
     const p = centerWorld(); if (!p) return
     const ext = blob.type === "image/png" ? "png" : "jpg"
     await addImageAt(new File([blob], `clipboard.${ext}`, { type: blob.type }), p[0], p[1])
-    setClipState("none")   // вставили — кнопка уходит до следующего копирования
+  }
+  function dropShot(skip = false) {
+    setClipShot((cur) => {
+      if (!cur) return null
+      if (skip) clipSkip.current = cur.key
+      URL.revokeObjectURL(cur.url)
+      return null
+    })
+  }
+  async function insertShot() {
+    const shot = clipShot
+    if (!shot) return
+    clipSkip.current = shot.key    // тот же снимок предлагать заново не нужно
+    dropShot()
+    await insertBlob(shot.blob)
+  }
+  // Разрешение на чтение буфера спрашиваем ТОЛЬКО по нажатию: браузер показывает
+  // своё окно лишь в ответ на действие пользователя, а выскочить само оно не должно.
+  // Согласие превращает слежение в автоматическое — дальше кнопка не нужна.
+  async function enableClipboard() {
+    const shot = await readClipboardShot()
+    let granted
+    try { granted = (await navigator.permissions.query({ name: "clipboard-read" })).state === "granted" }
+    catch { granted = false }   // Safari про такое разрешение не знает — только по нажатию
+    setClipMode(granted ? "auto" : "ask")
+    if (shot) offerShot(shot)
+    else flashTip("paste")
   }
 
   // Лист с заданием из банка — в центр видимой области. Каждое следующее смещаем
@@ -1395,37 +1416,79 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     return () => window.removeEventListener("paste", onPaste)
   }, [])
 
-  // Слежение за буфером обмена: скопировали картинку в другом окне — вернулись на
-  // доску и увидели кнопку «Вставить». Читать буфер фоном браузер разрешает только
-  // при выданном разрешении clipboard-read; сами его не запрашиваем (это выскочило
-  // бы окном ни с того ни с сего) — до выдачи держим состояние "unknown" и
-  // проверяем буфер уже по нажатию кнопки.
+  // Один снимок из буфера: {blob, key}. Ключ — тип и размер: скриншот, снятый
+  // заново, почти всегда весит иначе, а читать байты каждые пару секунд накладно.
+  async function readClipboardShot() {
+    if (!navigator.clipboard?.read) return null
+    try {
+      for (const item of await navigator.clipboard.read()) {
+        const type = item.types.find((t) => t.startsWith("image/"))
+        if (!type) continue
+        const blob = await item.getType(type)
+        return { blob, key: `${blob.type}:${blob.size}` }
+      }
+    } catch { /* нет разрешения или буфер пуст */ }
+    return null
+  }
+  // Показать предложение, если это не тот же снимок, что уже показан или отвергнут
+  function offerShot(shot) {
+    setClipShot((cur) => {
+      if (cur && cur.key === shot.key) return cur
+      if (clipSkip.current === shot.key) return cur
+      if (cur) URL.revokeObjectURL(cur.url)
+      return { ...shot, url: URL.createObjectURL(shot.blob) }
+    })
+  }
+
+  // Слежение за буфером: сняли скриншот — доска сама предлагает положить его на лист.
+  // Фоном читать буфер браузер разрешает только при выданном clipboard-read, поэтому
+  // до согласия сидим в режиме "ask" (одна кнопка в панели), а после — опрашиваем
+  // буфер, пока вкладка на экране. Интервал нужен вдобавок к focus: скриншот на macOS
+  // снимается поверх окна, и события фокуса при возврате может не быть вовсе.
   useEffect(() => {
     let alive = true
-    async function check() {
-      if (!navigator.clipboard?.read) { if (alive) setClipState("none"); return }
-      let state = null
+    async function detectMode() {
+      if (!navigator.clipboard?.read) return setClipMode("off")
+      let state
       try { state = (await navigator.permissions.query({ name: "clipboard-read" })).state }
-      catch { /* Safari такого разрешения не знает */ }
+      catch { return alive && setClipMode("ask") }   // Safari: только по нажатию
       if (!alive) return
-      if (state === "denied") { setClipState("none"); return }
-      if (state !== "granted") { setClipState("unknown"); return }
-      try {
-        const items = await navigator.clipboard.read()
-        if (alive) setClipState(items.some((i) => i.types.some((t) => t.startsWith("image/"))) ? "image" : "none")
-      } catch { if (alive) setClipState("unknown") }
+      setClipMode(state === "denied" ? "off" : state === "granted" ? "auto" : "ask")
+    }
+    detectMode()
+    const onPerm = () => detectMode()
+    let sub = null
+    navigator.permissions?.query?.({ name: "clipboard-read" })
+      .then((p) => { if (alive) { sub = p; p.addEventListener("change", onPerm) } })
+      .catch(() => { /* разрешения нет в этом браузере */ })
+    return () => { alive = false; sub?.removeEventListener("change", onPerm) }
+  }, [])
+
+  useEffect(() => {
+    if (clipMode !== "auto") return
+    let alive = true
+    const check = async () => {
+      if (!alive || document.visibilityState !== "visible" || !document.hasFocus()) return
+      const shot = await readClipboardShot()
+      if (alive && shot) offerShot(shot)
     }
     check()
-    const onFocus = () => check()
-    const onVisible = () => { if (document.visibilityState === "visible") check() }
+    const timer = setInterval(check, 2500)
+    // Вернулись на доску из другого окна — прежний отказ забываем: скорее всего
+    // человек уходил именно за новым снимком.
+    const onFocus = () => { clipSkip.current = null; check() }
     window.addEventListener("focus", onFocus)
-    document.addEventListener("visibilitychange", onVisible)
+    document.addEventListener("visibilitychange", check)
     return () => {
       alive = false
+      clearInterval(timer)
       window.removeEventListener("focus", onFocus)
-      document.removeEventListener("visibilitychange", onVisible)
+      document.removeEventListener("visibilitychange", check)
     }
-  }, [])
+  }, [clipMode])
+
+  // Отданный наружу адрес превью надо освободить, иначе снимок висит в памяти
+  useEffect(() => () => { if (clipShot) URL.revokeObjectURL(clipShot.url) }, [clipShot])
   // Смена инструмента сбрасывает выделение
   useEffect(() => {
     if (tool === "cursor") return
@@ -1725,7 +1788,25 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         {/* Панель инструментов — плавает поверх холста, чтобы вся область была доской.
             Подписей у кнопок нет намеренно: панель стала крупнее и читается значками,
             а название показывает подсказка — по наведению и по нажатию на сенсорном экране. */}
-        <div className="absolute bottom-4 left-0 right-0 flex justify-center px-3 pointer-events-none">
+        <div className="absolute bottom-4 left-0 right-0 flex flex-col items-center gap-2 px-3 pointer-events-none">
+        {/* Заметили снимок в буфере — предлагаем положить его на доску одним нажатием */}
+        {clipShot && (
+          <div className="flex items-center gap-2.5 pl-2 pr-1.5 py-1.5 rounded-2xl shadow-xl popup-bubble pointer-events-auto max-w-full"
+            style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
+            <button onClick={insertShot} className="press-tap flex items-center gap-2.5 min-w-0 rounded-xl pr-1">
+              <img src={clipShot.url} alt="" className="w-9 h-9 rounded-lg object-cover shrink-0"
+                style={{ boxShadow: `0 0 0 1px ${panelBorder}` }} />
+              <span className="text-sm font-medium truncate" style={{ color: dark ? "#f5f5f7" : "#1c1c1e" }}>
+                Вставить снимок
+              </span>
+            </button>
+            <button onClick={() => dropShot(true)} aria-label="Не вставлять"
+              className="press-tap w-8 h-8 rounded-lg flex items-center justify-center shrink-0 hover:bg-black/10 dark:hover:bg-white/10"
+              style={idleStyle}>
+              <Icon name="x" size={16} />
+            </button>
+          </div>
+        )}
         <div className="flex flex-wrap items-center justify-center gap-1 rounded-2xl px-2.5 py-2 shadow-xl relative pointer-events-auto max-w-full"
           style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
           {TOOLS.map((t) => t.erasers ? (
@@ -1847,14 +1928,13 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
           </button>
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onPickImage} />
 
-          {/* Вставить картинку из буфера обмена — кнопка появляется, когда там картинка */}
-          {clipState !== "none" && (
-            <button onPointerDown={() => flashTip("paste")} onClick={pasteFromClipboard}
-              className={`${btnBase} ${clipState === "image" ? "bg-blue-500/15 text-blue-500" : btnIdle}`}
-              style={clipState === "image" ? undefined : idleStyle}>
+          {/* Разрешить доске замечать скриншоты. Кнопка живёт только до согласия:
+              дальше снимок предлагается сам, и место в панели ей ни к чему. */}
+          {clipMode === "ask" && (
+            <button onPointerDown={() => flashTip("paste")} onClick={enableClipboard}
+              className={`${btnBase} ${btnIdle}`} style={idleStyle}>
               <Icon name="clipboard" size={21} />
-              <Tip label={clipState === "image" ? "Вставить изображение из буфера" : "Проверить буфер обмена"}
-                hotkey="⌘V" dark={dark} show={tapped === "paste"} />
+              <Tip label="Замечать скриншоты из буфера" hotkey="⌘V" dark={dark} show={tapped === "paste"} />
             </button>
           )}
 
