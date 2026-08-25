@@ -14,6 +14,28 @@ function syncAppHeight() {
   if (vv && vv.scale > 1) return // пользователь зумит — не трогаем
   document.documentElement.style.setProperty("--app-h", `${vv ? vv.height : window.innerHeight}px`)
 }
+// Ширина полосы прокрутки: её место всегда зарезервировано (scrollbar-gutter:
+// stable), а под открытым полноэкранным оверлеем резерв снимается — иначе
+// оверлей не доходил бы до правого края. Чтобы страница под оверлеем при этом
+// не расширялась на ширину полосы (дёргалась вправо), CSS возвращает эти
+// пиксели паддингом по --sbw. Меряем только когда оверлея нет: при открытом
+// резерв уже снят и получился бы 0.
+function syncScrollbarWidth() {
+  // Меряем отдельным пробником, а не разницей innerWidth и clientWidth: разница
+  // зависит от того, скроллится ли документ прямо сейчас и применился ли уже
+  // scrollbar-gutter, и на старте давала 0 там, где полоса на самом деле есть.
+  const probe = document.createElement("div")
+  probe.style.cssText = "position:absolute;top:-9999px;width:100px;height:100px;overflow:scroll"
+  document.body.appendChild(probe)
+  const w = probe.offsetWidth - probe.clientWidth
+  probe.remove()
+  document.documentElement.style.setProperty("--sbw", `${w > 0 ? w : 0}px`)
+}
+syncScrollbarWidth()
+// Полоса может смениться на ходу: подключили мышь, сменили системную настройку,
+// перетащили окно на другой монитор.
+window.addEventListener("resize", syncScrollbarWidth)
+
 syncAppHeight()
 if (window.visualViewport) {
   window.visualViewport.addEventListener("resize", syncAppHeight)
