@@ -917,8 +917,23 @@ button.w-full:not([disabled]):not(.no-press):active::after,
 }
 .pill-pop { animation: pill-pop 0.26s cubic-bezier(0.25, 0.8, 0.25, 1) both; }
 
+/* «Финансы»: при смене месяца сумма не подменяется на месте, а сдвигается
+   в ту же сторону, куда переключили столбец — вправо взяли месяц, число
+   приезжает справа. Мягкое размытие на входе снимает ощущение подмены. */
+@keyframes money-swap-next {
+  from { opacity: 0; transform: translateX(18px); filter: blur(4px); }
+  to   { opacity: 1; transform: translateX(0); filter: blur(0); }
+}
+@keyframes money-swap-prev {
+  from { opacity: 0; transform: translateX(-18px); filter: blur(4px); }
+  to   { opacity: 1; transform: translateX(0); filter: blur(0); }
+}
+.money-swap-next { animation: money-swap-next 0.34s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.money-swap-prev { animation: money-swap-prev 0.34s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
 @media (prefers-reduced-motion: reduce) {
-  .step-enter-forward, .step-enter-back, .pill-pop { animation: none; }
+  .step-enter-forward, .step-enter-back, .pill-pop,
+  .money-swap-next, .money-swap-prev { animation: none; }
 }
 
 .dark .stat-card {

@@ -8,7 +8,6 @@ import SegmentSwitch from "../components/SegmentSwitch"
 import { supabase } from "../supabase"
 import { isLessonConducted, getInitials, parsePaymentDate, plural } from "../utils"
 import { TAX_MODES, useTaxSettings } from "../taxModes"
-import { useAnimatedNumber } from "../useAnimatedNumber"
 
 // Подсказки для быстрого добавления при пустом списке расходов.
 const EXPENSE_SUGGESTIONS = ["Онлайн-доска", "Подписка Precettore", "Реклама", "Связь"]
@@ -84,9 +83,14 @@ const fmt = (n) => Math.round(n || 0).toLocaleString("ru-RU").replace(/\s/g, "�
 // сверху, под ней ряд высоких скруглённых столбцов. Тап по столбцу выбирает
 // месяц — сумма и подпись обновляются. Читается за счёт большого числа и
 // высоких столбцов, а не мелких подписей на каждом.
-export function IncomeChart({ buckets, forecast, mounted }) {
+function IncomeChart({ buckets, forecast, mounted }) {
   const lastIdx = buckets.length - 1
   const [sel, setSel] = useState(lastIdx)
+  // Смена месяца — не подмена цифр на месте: блок с суммой переезжает с той
+  // стороны, куда переключили столбец. Направление запоминаем вместе с
+  // выбором, а key={sel} пересоздаёт блок, чтобы анимация шла заново.
+  const [dir, setDir] = useState(1)
+  const pickMonth = (i) => { setDir(i >= sel ? 1 : -1); setSel(i) }
   const projectedLast = buckets[lastIdx].total + forecast
   const maxVal = Math.max(...buckets.map((b) => b.total), projectedLast, 1)
   // Высота зоны столбцов. На телефоне ниже: там график и так занимает
@@ -103,9 +107,7 @@ export function IncomeChart({ buckets, forecast, mounted }) {
   const cur = buckets[sel]
   const isCurrentMonth = sel === lastIdx
   const received = cur.total
-  // При переключении месяца сумма не подменяется рывком, а досчитывается до
-  // нового значения — видно, что цифра относится к другому месяцу.
-  const shownReceived = useAnimatedNumber(received)
+  const swapClass = dir > 0 ? "money-swap-next" : "money-swap-prev"
   const prevTotal = sel > 0 ? buckets[sel - 1].total : 0
   const deltaPct = prevTotal > 0 ? Math.round((received - prevTotal) / prevTotal * 100) : null
 
@@ -118,7 +120,7 @@ export function IncomeChart({ buckets, forecast, mounted }) {
     // карточка растянулась во всю ширину и под суммой оставалась пустота в
     // половину экрана. На телефоне колонки схлопываются в одну.
     <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,240px)_minmax(0,1fr)] lg:gap-8 lg:items-center">
-      <div>
+      <div key={sel} className={swapClass}>
       <div className="flex items-center gap-2 mb-1">
         <div className="text-sm text-gray-500">{fullLabel}</div>
         {deltaPct !== null && (
@@ -132,8 +134,8 @@ export function IncomeChart({ buckets, forecast, mounted }) {
           </div>
         )}
       </div>
-      <div className="text-4xl md:text-5xl font-semibold leading-none tabular-nums bg-gradient-to-r from-[#007AFF] to-[#5856D6] bg-clip-text text-transparent">
-        {fmt(shownReceived)} ₽
+      <div className="text-4xl md:text-5xl font-semibold leading-none bg-gradient-to-r from-[#007AFF] to-[#5856D6] bg-clip-text text-transparent">
+        {fmt(received)} ₽
       </div>
       <div className="text-xs text-gray-400 mt-1.5 h-4">
         {isCurrentMonth && forecast > 0
@@ -153,7 +155,7 @@ export function IncomeChart({ buckets, forecast, mounted }) {
           const fcPx = (fc / maxVal) * AREA
           const delay = i * 70
           return (
-            <button key={i} type="button" onClick={() => setSel(i)}
+            <button key={i} type="button" onClick={() => pickMonth(i)}
               className="flex-1 flex flex-col items-center gap-2 focus:outline-none active:scale-[0.96] transition-transform">
               <div className="w-full flex flex-col justify-end items-center" style={{ height: AREA }}>
                 {solidPx + fcPx === 0 ? (
