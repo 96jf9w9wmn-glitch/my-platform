@@ -364,221 +364,228 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
   return createPortal(
     <div className={`fixed inset-0 glass-overlay z-50 overflow-y-auto ${closingCls}`}>
       <div className="min-h-full flex items-center justify-center p-4">
-        <div className={`glass-modal p-6 w-full max-w-md ${closingCls}`}>
+        <div className={`glass-modal p-6 sm:p-7 w-full max-w-4xl ${closingCls}`}>
           <div className="flex justify-between items-center mb-5">
             <h2 className="text-lg font-medium">Новый вариант</h2>
             <button onClick={close} aria-label="Закрыть" className="text-gray-400 hover:text-gray-600"><Icon name="x" size={18} /></button>
           </div>
-          <div className="flex flex-col gap-4">
+          {/* Широкое окно в две колонки: слева — из чего собирается вариант,
+              справа — ответы и их сверка. В одну колонку всё это не помещалось. */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-4 items-stretch">
+            <div className="flex flex-col gap-4">
 
-            <div>
-              <label className="text-sm text-gray-500 mb-1 block">Ученик</label>
-              <select value={recipientId} onChange={(e) => setRecipientId(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400">
-                <option value="all">Все ученики ({examType})</option>
-                {accounts.map((a) => <option key={a.id} value={String(a.id)}>{a.name}</option>)}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-sm text-gray-500 mb-2 block">Тип экзамена</label>
-              <div className="flex gap-2">
-                {["ОГЭ", "ЕГЭ"].map((t) => (
-                  <button key={t} type="button"
-                    onClick={() => { setExamType(t); setAnswers(Array(t === "ОГЭ" ? 19 : 12).fill("")); setPart2Answers({}); setBankPicked([]); setBankMissing([]) }}
-                    className={`flex-1 py-2 rounded-xl text-sm border transition-colors ${examType === t ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
-                    <span className="flex items-center justify-center gap-1"><Icon name={t === "ОГЭ" ? "file-text" : "book"} size={14} />{t}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label className="text-sm text-gray-500 mb-1 block">Название варианта</label>
-              <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Например: Пробник перед экзаменом"
-                className="input-glass" />
-            </div>
-
-            <div>
-              <label className="text-sm text-gray-500 mb-2 block">Условия варианта</label>
-              <div className="flex gap-2 mb-3">
-                {[{ id: "file", label: "Свой файл" }, { id: "bank", label: "Из банка заданий" }].map((s) => (
-                  <button key={s.id} type="button"
-                    onClick={() => setSource(s.id)}
-                    className={`flex-1 py-2 rounded-xl text-sm border transition-colors ${source === s.id ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
-                    {s.label}
-                  </button>
-                ))}
-              </div>
-
-              {source === "file" ? (
-                <>
-                  <input ref={fileRef} type="file" accept=".pdf,image/*" className="hidden" onChange={handleFileUpload} />
-                  {!variantFile ? (
-                    <button onClick={() => fileRef.current.click()} className="w-full border-2 border-dashed border-gray-200 rounded-lg py-4 text-sm text-gray-500 hover:bg-gray-50">
-                      Прикрепить файл с вариантом
-                    </button>
-                  ) : (
-                    <div className="border border-gray-200 rounded-lg overflow-hidden">
-                      {previewUrl && <img src={previewUrl} alt="preview" className="w-full max-h-48 object-contain bg-gray-50" />}
-                      {!previewUrl && <div className="bg-gray-50 px-4 py-3"><span className="text-sm text-gray-700 truncate">{variantFile.name}</span></div>}
-                      <div className="flex border-t border-gray-100">
-                        <button onClick={() => fileRef.current.click()} className="flex-1 text-xs text-blue-600 py-2 hover:bg-blue-50">Заменить</button>
-                        <div className="w-px bg-gray-100" />
-                        <button onClick={removeFile} className="flex-1 text-xs text-red-500 py-2 hover:bg-red-50">Удалить</button>
-                      </div>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  <button onClick={handleAssemble} disabled={assembling}
-                    className="w-full border-2 border-dashed border-blue-200 rounded-lg py-3 text-sm text-blue-600 hover:bg-blue-50 disabled:opacity-50">
-                    {assembling ? "Собираем..." : bankPicked.length > 0 ? "Собрать заново" : "Собрать вариант из банка"}
-                  </button>
-
-                  {bankPicked.length > 0 && (
-                    <>
-                      <div className="text-xs mb-1">
-                        Собрано заданий: <span className={bankMissing.length === 0 ? "text-green-600 font-medium" : "text-amber-600 font-medium"}>
-                          {bankPicked.length} / {answerCount + part2Numbers.length}
-                        </span>
-                        {bankMissing.length > 0 && (
-                          <span className="text-amber-600"> · нет в банке: {bankMissing.join(", ")}</span>
-                        )}
-                      </div>
-                      <div className="text-[11px] text-gray-400 mb-1 leading-snug">
-                        Ученик решит вариант прямо в кабинете. Печатный лист PDF собирается отдельно —
-                        кнопкой в карточке варианта, чтобы отправка не ждала сборки файла.
-                      </div>
-                    </>
-                  )}
-
-                  {bankPicked.length > 0 && (
-                    <div className="flex flex-col gap-1.5 max-h-56 overflow-y-auto">
-                      {bankPicked.map((t) => (
-                        <div key={t.number} className="border border-gray-100 rounded-lg px-3 py-2 flex items-start justify-between gap-2">
-                          <div className="min-w-0 flex-1">
-                            <div className="text-xs font-medium text-gray-500 mb-0.5">Задание {t.number}</div>
-                            {t.condition_text && <div className="text-xs text-gray-600 truncate">{plainTaskMath(t.condition_text)}</div>}
-                            {t.image_url && (
-                              <a href={t.image_url} target="_blank" rel="noreferrer">
-                                <img src={t.image_url} alt={`Задание ${t.number}`} className="mt-1 h-16 rounded border border-gray-100 bg-white" />
-                              </a>
-                            )}
-                          </div>
-                          <button onClick={() => handleReroll(t.number)} className="text-xs text-blue-600 hover:opacity-70 transition-opacity flex-shrink-0">
-                            {isModuleNumber(examType, t.number) ? "Заменить блок 1–5" : "Заменить"}
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div>
-              <label className="text-sm text-gray-500 mb-1 block">
-                {source === "bank" && bankPicked.length > 0
-                  ? `Ответы части 1 — подставлены из банка, проверьте (${answerCount} шт.)`
-                  : `Ответы к части 1 — введите все ${answerCount} через пробел`}
-              </label>
-              <textarea
-                value={answers.filter(Boolean).join(" ")}
-                onChange={(e) => {
-                  const vals = e.target.value.trim().split(/\s+/).filter(Boolean).slice(0, answerCount)
-                  setAnswers([...vals, ...Array(answerCount).fill("")].slice(0, answerCount))
-                }}
-                placeholder={examType === "ОГЭ" ? "3 12 4 -5 2 0.5 8 16 3 7 4 2 6 9 45 8 12 3 7" : "3 12 4 -5 2 0.5 8 16 3 7 4 2"}
-                rows={2}
-                className="input-glass resize-none"
-              />
-              <div className="text-xs text-gray-400 mt-1">Введено: {answers.filter((a) => a).length} / {answerCount}</div>
-            </div>
-
-            {part2Numbers.length > 0 && (
               <div>
-                <label className="text-sm text-gray-500 mb-1 block">Ответы к части 2 (20–25){source === "bank" && bankPicked.length > 0 ? " — подставлены из банка" : ""}</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {part2Numbers.map((n) => (
-                    <div key={n} className="flex items-center gap-2">
-                      <span className="text-xs text-gray-400 w-5 flex-shrink-0">{n}</span>
-                      <input
-                        value={part2Answers[n] || ""}
-                        onChange={(e) => setPart2Answers((prev) => ({ ...prev, [n]: e.target.value }))}
-                        placeholder={n === 24 ? "Доказано." : "Ответ"}
-                        className="input-glass flex-1 px-2 py-1.5 text-sm min-w-0"
-                      />
-                    </div>
+                <label className="text-sm text-gray-500 mb-1 block">Ученик</label>
+                <select value={recipientId} onChange={(e) => setRecipientId(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400">
+                  <option value="all">Все ученики ({examType})</option>
+                  {accounts.map((a) => <option key={a.id} value={String(a.id)}>{a.name}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-sm text-gray-500 mb-2 block">Тип экзамена</label>
+                <div className="flex gap-2">
+                  {["ОГЭ", "ЕГЭ"].map((t) => (
+                    <button key={t} type="button"
+                      onClick={() => { setExamType(t); setAnswers(Array(t === "ОГЭ" ? 19 : 12).fill("")); setPart2Answers({}); setBankPicked([]); setBankMissing([]) }}
+                      className={`flex-1 py-2 rounded-xl text-sm border transition-colors ${examType === t ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
+                      <span className="flex items-center justify-center gap-1"><Icon name={t === "ОГЭ" ? "file-text" : "book"} size={14} />{t}</span>
+                    </button>
                   ))}
                 </div>
-                <div className="text-xs text-gray-400 mt-1">
-                  Ученик выберет ответ из четырёх вариантов; для доказательства (№24) — только фото решения
-                </div>
               </div>
-            )}
 
-            {answers.some((a) => a) && (
               <div>
-                {examType === "ОГЭ" ? (
+                <label className="text-sm text-gray-500 mb-1 block">Название варианта</label>
+                <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Например: Пробник перед экзаменом"
+                  className="input-glass" />
+              </div>
+
+              {/* Растягиваем по высоте: иначе под короткой левой колонкой зияет пустота. */}
+              <div className="flex-1 flex flex-col">
+                <label className="text-sm text-gray-500 mb-2 block">Условия варианта</label>
+                <div className="flex gap-2 mb-3">
+                  {[{ id: "file", label: "Свой файл" }, { id: "bank", label: "Из банка заданий" }].map((s) => (
+                    <button key={s.id} type="button"
+                      onClick={() => setSource(s.id)}
+                      className={`flex-1 py-2 rounded-xl text-sm border transition-colors ${source === s.id ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+
+                {source === "file" ? (
                   <>
-                    <div className="text-xs font-medium text-blue-600 mb-1 bg-blue-50 px-2 py-1 rounded">Алгебра 1–14</div>
-                    <div className="grid grid-cols-7 gap-1 mb-2">
-                      {answers.slice(0, 14).map((a, i) => (
-                        <div key={i} className={a ? "text-center rounded-lg py-1 text-xs bg-blue-100 text-blue-700 font-medium" : "text-center rounded-lg py-1 text-xs bg-gray-100 text-gray-400"}>
-                          <div style={{fontSize:"10px"}}>{i+1}</div><div>{a||"-"}</div>
+                    <input ref={fileRef} type="file" accept=".pdf,image/*" className="hidden" onChange={handleFileUpload} />
+                    {!variantFile ? (
+                      <button onClick={() => fileRef.current.click()} className="w-full flex-1 min-h-28 border-2 border-dashed border-gray-200 rounded-lg py-4 text-sm text-gray-500 hover:bg-gray-50">
+                        Прикрепить файл с вариантом
+                      </button>
+                    ) : (
+                      <div className="border border-gray-200 rounded-lg overflow-hidden">
+                        {previewUrl && <img src={previewUrl} alt="preview" className="w-full max-h-48 object-contain bg-gray-50" />}
+                        {!previewUrl && <div className="bg-gray-50 px-4 py-3"><span className="text-sm text-gray-700 truncate">{variantFile.name}</span></div>}
+                        <div className="flex border-t border-gray-100">
+                          <button onClick={() => fileRef.current.click()} className="flex-1 text-xs text-blue-600 py-2 hover:bg-blue-50">Заменить</button>
+                          <div className="w-px bg-gray-100" />
+                          <button onClick={removeFile} className="flex-1 text-xs text-red-500 py-2 hover:bg-red-50">Удалить</button>
                         </div>
-                      ))}
-                    </div>
-                    <div className="text-xs font-medium text-purple-600 mb-1 bg-purple-50 px-2 py-1 rounded">Геометрия 15–19</div>
-                    <div className="grid grid-cols-5 gap-1">
-                      {answers.slice(14, 19).map((a, i) => (
-                        <div key={i} className={a ? "text-center rounded-lg py-1 text-xs bg-purple-100 text-purple-700 font-medium" : "text-center rounded-lg py-1 text-xs bg-gray-100 text-gray-400"}>
-                          <div style={{fontSize:"10px"}}>{i+15}</div><div>{a||"-"}</div>
-                        </div>
-                      ))}
-                    </div>
-                    {part2Numbers.some((n) => part2Answers[n]) && (
-                      <>
-                        <div className="text-xs font-medium text-green-600 mb-1 mt-2 bg-green-50 px-2 py-1 rounded">Часть 2 · 20–25</div>
-                        <div className="grid grid-cols-3 gap-1">
-                          {part2Numbers.map((n) => (
-                            <div key={n} className={part2Answers[n] ? "text-center rounded-lg py-1 text-xs bg-green-100 text-green-700 font-medium" : "text-center rounded-lg py-1 text-xs bg-gray-100 text-gray-400"}>
-                              <div style={{fontSize:"10px"}}>{n}</div><div className="truncate px-1">{part2Answers[n]||"-"}</div>
-                            </div>
-                          ))}
-                        </div>
-                      </>
+                      </div>
                     )}
                   </>
                 ) : (
-                  <>
-                    <div className="text-xs font-medium text-blue-600 mb-1 bg-blue-50 px-2 py-1 rounded">Задания 1–12 (часть 1 ЕГЭ)</div>
-                    <div className="grid grid-cols-6 gap-1">
-                      {answers.slice(0, 12).map((a, i) => (
-                        <div key={i} className={a ? "text-center rounded-lg py-1 text-xs bg-blue-100 text-blue-700 font-medium" : "text-center rounded-lg py-1 text-xs bg-gray-100 text-gray-400"}>
-                          <div style={{fontSize:"10px"}}>{i+1}</div><div>{a||"-"}</div>
+                  <div className="flex flex-col gap-2 flex-1">
+                    <button onClick={handleAssemble} disabled={assembling}
+                      className="w-full border-2 border-dashed border-blue-200 rounded-lg py-3 text-sm text-blue-600 hover:bg-blue-50 disabled:opacity-50">
+                      {assembling ? "Собираем..." : bankPicked.length > 0 ? "Собрать заново" : "Собрать вариант из банка"}
+                    </button>
+
+                    {bankPicked.length > 0 && (
+                      <>
+                        <div className="text-xs mb-1">
+                          Собрано заданий: <span className={bankMissing.length === 0 ? "text-green-600 font-medium" : "text-amber-600 font-medium"}>
+                            {bankPicked.length} / {answerCount + part2Numbers.length}
+                          </span>
+                          {bankMissing.length > 0 && (
+                            <span className="text-amber-600"> · нет в банке: {bankMissing.join(", ")}</span>
+                          )}
                         </div>
-                      ))}
-                    </div>
-                  </>
+                        <div className="text-[11px] text-gray-400 mb-1 leading-snug">
+                          Ученик решит вариант прямо в кабинете. Печатный лист PDF собирается отдельно —
+                          кнопкой в карточке варианта, чтобы отправка не ждала сборки файла.
+                        </div>
+                      </>
+                    )}
+
+                    {bankPicked.length > 0 && (
+                      <div className="flex flex-col gap-1.5 max-h-72 overflow-y-auto">
+                        {bankPicked.map((t) => (
+                          <div key={t.number} className="border border-gray-100 rounded-lg px-3 py-2 flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <div className="text-xs font-medium text-gray-500 mb-0.5">Задание {t.number}</div>
+                              {t.condition_text && <div className="text-xs text-gray-600 truncate">{plainTaskMath(t.condition_text)}</div>}
+                              {t.image_url && (
+                                <a href={t.image_url} target="_blank" rel="noreferrer">
+                                  <img src={t.image_url} alt={`Задание ${t.number}`} className="mt-1 h-16 rounded border border-gray-100 bg-white" />
+                                </a>
+                              )}
+                            </div>
+                            <button onClick={() => handleReroll(t.number)} className="text-xs text-blue-600 hover:opacity-70 transition-opacity flex-shrink-0">
+                              {isModuleNumber(examType, t.number) ? "Заменить блок 1–5" : "Заменить"}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
-            )}
+            </div>
 
-            <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700">
-              {examType === "ОГЭ"
-                ? "Часть 2 (20–25): ученик выбирает ответ из четырёх и прикрепляет фото решения. Баллы начисляются только после вашей проверки."
-                : "Часть 2 (задания 13–19) проверяется вручную после загрузки решений учеником."}
+            <div className="flex flex-col gap-4">
+              <div>
+                <label className="text-sm text-gray-500 mb-1 block">
+                  {source === "bank" && bankPicked.length > 0
+                    ? `Ответы части 1 — подставлены из банка, проверьте (${answerCount} шт.)`
+                    : `Ответы к части 1 — введите все ${answerCount} через пробел`}
+                </label>
+                <textarea
+                  value={answers.filter(Boolean).join(" ")}
+                  onChange={(e) => {
+                    const vals = e.target.value.trim().split(/\s+/).filter(Boolean).slice(0, answerCount)
+                    setAnswers([...vals, ...Array(answerCount).fill("")].slice(0, answerCount))
+                  }}
+                  placeholder={examType === "ОГЭ" ? "3 12 4 -5 2 0.5 8 16 3 7 4 2 6 9 45 8 12 3 7" : "3 12 4 -5 2 0.5 8 16 3 7 4 2"}
+                  rows={2}
+                  className="input-glass resize-none"
+                />
+                <div className="text-xs text-gray-400 mt-1">Введено: {answers.filter((a) => a).length} / {answerCount}</div>
+              </div>
+
+              {part2Numbers.length > 0 && (
+                <div>
+                  <label className="text-sm text-gray-500 mb-1 block">Ответы к части 2 (20–25){source === "bank" && bankPicked.length > 0 ? " — подставлены из банка" : ""}</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {part2Numbers.map((n) => (
+                      <div key={n} className="flex items-center gap-2">
+                        <span className="text-xs text-gray-400 w-5 flex-shrink-0">{n}</span>
+                        <input
+                          value={part2Answers[n] || ""}
+                          onChange={(e) => setPart2Answers((prev) => ({ ...prev, [n]: e.target.value }))}
+                          placeholder={n === 24 ? "Доказано." : "Ответ"}
+                          className="input-glass flex-1 px-2 py-1.5 text-sm min-w-0"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    Ученик выберет ответ из четырёх вариантов; для доказательства (№24) — только фото решения
+                  </div>
+                </div>
+              )}
+
+              {answers.some((a) => a) && (
+                <div>
+                  {examType === "ОГЭ" ? (
+                    <>
+                      <div className="text-xs font-medium text-blue-600 mb-1 bg-blue-50 px-2 py-1 rounded">Алгебра 1–14</div>
+                      <div className="grid grid-cols-7 gap-1 mb-2">
+                        {answers.slice(0, 14).map((a, i) => (
+                          <div key={i} className={a ? "text-center rounded-lg py-1 text-xs bg-blue-100 text-blue-700 font-medium" : "text-center rounded-lg py-1 text-xs bg-gray-100 text-gray-400"}>
+                            <div style={{fontSize:"10px"}}>{i+1}</div><div>{a||"-"}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="text-xs font-medium text-purple-600 mb-1 bg-purple-50 px-2 py-1 rounded">Геометрия 15–19</div>
+                      <div className="grid grid-cols-5 gap-1">
+                        {answers.slice(14, 19).map((a, i) => (
+                          <div key={i} className={a ? "text-center rounded-lg py-1 text-xs bg-purple-100 text-purple-700 font-medium" : "text-center rounded-lg py-1 text-xs bg-gray-100 text-gray-400"}>
+                            <div style={{fontSize:"10px"}}>{i+15}</div><div>{a||"-"}</div>
+                          </div>
+                        ))}
+                      </div>
+                      {part2Numbers.some((n) => part2Answers[n]) && (
+                        <>
+                          <div className="text-xs font-medium text-green-600 mb-1 mt-2 bg-green-50 px-2 py-1 rounded">Часть 2 · 20–25</div>
+                          <div className="grid grid-cols-3 gap-1">
+                            {part2Numbers.map((n) => (
+                              <div key={n} className={part2Answers[n] ? "text-center rounded-lg py-1 text-xs bg-green-100 text-green-700 font-medium" : "text-center rounded-lg py-1 text-xs bg-gray-100 text-gray-400"}>
+                                <div style={{fontSize:"10px"}}>{n}</div><div className="truncate px-1">{part2Answers[n]||"-"}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-xs font-medium text-blue-600 mb-1 bg-blue-50 px-2 py-1 rounded">Задания 1–12 (часть 1 ЕГЭ)</div>
+                      <div className="grid grid-cols-6 gap-1">
+                        {answers.slice(0, 12).map((a, i) => (
+                          <div key={i} className={a ? "text-center rounded-lg py-1 text-xs bg-blue-100 text-blue-700 font-medium" : "text-center rounded-lg py-1 text-xs bg-gray-100 text-gray-400"}>
+                            <div style={{fontSize:"10px"}}>{i+1}</div><div>{a||"-"}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700 mt-auto">
+                {examType === "ОГЭ"
+                  ? "Часть 2 (20–25): ученик выбирает ответ из четырёх и прикрепляет фото решения. Баллы начисляются только после вашей проверки."
+                  : "Часть 2 (задания 13–19) проверяется вручную после загрузки решений учеником."}
+              </div>
             </div>
           </div>
 
           {formError && <div className="text-sm text-red-500 mt-4 text-center">{formError}</div>}
 
-          <div className="flex gap-3 mt-4">
-            <button onClick={close} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-gray-50">Отмена</button>
-            <button onClick={handleSubmit} disabled={loading || uploading} className="flex-1 btn-primary py-2.5 disabled:opacity-50">
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 mt-5">
+            <button onClick={close} className="press-fill border border-gray-200 rounded-xl px-5 py-2.5 text-sm text-gray-600">Отмена</button>
+            <button onClick={handleSubmit} disabled={loading || uploading} className="btn-primary px-6 py-2.5 disabled:opacity-50">
               {uploading ? "Загружаем файл..." : loading ? "Отправляем..." : recipientId === "all" ? "Отправить ученикам" : "Отправить ученику"}
             </button>
           </div>
