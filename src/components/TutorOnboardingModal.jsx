@@ -149,7 +149,7 @@ function TutorOnboardingModal({ tutorId, onComplete }) {
       // Предметы банка выводим из анкеты сразу: иначе банк заданий открывался бы
       // на всех предметах подряд, пока репетитор не дойдёт до «Профиля».
       // Предмет вне карты («Другое») даёт пустой список — это и значит «не выбрано».
-      bank_subjects: typesFromProfile(value, examFocus),
+      bank_subjects: typesFromProfile(value),
     }, taxMode)
   }
 

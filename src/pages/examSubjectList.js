@@ -21,18 +21,18 @@ export const EXAM_GROUPS = [
   {
     key: "ЕГЭ",
     subjects: [
-      { type: "ЕГЭ", label: "Математика база", dot: "bg-blue-500", open: true },
-      { type: "ЕГЭ Профиль", label: "Математика профиль", dot: "bg-indigo-500", open: true },
-      { type: "ЕГЭ Информатика", label: "Информатика", dot: "bg-cyan-500", open: true },
+      { type: "ЕГЭ", label: "Математика база", dot: "bg-blue-500", open: true, family: "Математика" },
+      { type: "ЕГЭ Профиль", label: "Математика профиль", dot: "bg-indigo-500", open: true, family: "Математика" },
+      { type: "ЕГЭ Информатика", label: "Информатика", dot: "bg-cyan-500", open: true, family: "Информатика" },
     ],
   },
   {
     key: "ОГЭ",
     subjects: [
-      { type: "ОГЭ", label: "Математика", dot: "bg-blue-500", open: true },
+      { type: "ОГЭ", label: "Математика", dot: "bg-blue-500", open: true, family: "Математика" },
       { type: "ОГЭ Русский", label: "Русский", dot: "bg-rose-500" },
       { type: "ОГЭ Английский", label: "Английский", dot: "bg-red-500" },
-      { type: "ОГЭ Информатика", label: "Информатика", dot: "bg-cyan-500", open: true },
+      { type: "ОГЭ Информатика", label: "Информатика", dot: "bg-cyan-500", open: true, family: "Информатика" },
       { type: "ОГЭ Физика", label: "Физика", dot: "bg-violet-500" },
       { type: "ОГЭ Химия", label: "Химия", dot: "bg-emerald-500" },
       { type: "ОГЭ Биология", label: "Биология", dot: "bg-green-500" },
@@ -88,10 +88,31 @@ export function subjectGroups({ picked = null, owner = false } = {}) {
   return kept.length ? kept : base.filter((g) => g.subjects.length)
 }
 
-// Первый предмет из групп — значение по умолчанию для выбора предмета.
+// Первый предмет из групп — значение по умолчанию для выбора предмета. ОГЭ
+// вперёд намеренно: к нему готовят чаще, и до появления привязки предметов
+// выбор по умолчанию был именно такой.
 export function firstType(groups, fallback = "ОГЭ") {
-  return groups?.[0]?.subjects?.[0]?.type || fallback
+  const g = groups?.find((x) => x.key === "ОГЭ") || groups?.[0]
+  return g?.subjects?.[0]?.type || fallback
 }
+
+// Плоский список предметов — для «Профиля». Репетитор ведёт ПРЕДМЕТ, а не
+// «ОГЭ Математику» отдельно от «ЕГЭ Математики»: уровень экзамена — свойство
+// ученика, и выбирается он там, где правда важен (сборка задания). Поэтому одна
+// отметка «Математика» открывает все математические банки сразу.
+//
+// Собирается из EXAM_GROUPS по полю family, чтобы список не разъехался со
+// списком банков: добавили предмет туда — он появится и здесь.
+export const BANK_SUBJECTS = EXAM_GROUPS.reduce((out, g) => {
+  for (const s of g.subjects) {
+    const label = s.family || s.label
+    let item = out.find((x) => x.label === label)
+    if (!item) { item = { label, dot: s.dot, open: false, types: [] }; out.push(item) }
+    item.types.push(s.type)
+    item.open = item.open || !!s.open
+  }
+  return out
+}, [])
 
 // Предмет из анкеты репетитора («Математика», «Физика», …) + к каким экзаменам он
 // готовит → тип банка. Нужно, чтобы выбор задания открывался сразу на своём
@@ -107,14 +128,22 @@ export const SUBJECT_TO_TYPE = {
   "Информатика": { "ОГЭ": "ОГЭ Информатика", "ЕГЭ": "ЕГЭ Информатика" },
 }
 
-// Что предложить отметить тому, кто предметы ещё не выбирал: тип банка по анкете
-// (предмет + экзамены). Проверки генераторов здесь нет намеренно — это подсказка
-// в интерфейсе, а не выдача задания.
-export function typesFromProfile(subject, examFocus = []) {
-  const byLevel = SUBJECT_TO_TYPE[subject]
-  if (!byLevel) return []
-  const focus = Array.isArray(examFocus) ? examFocus : []
-  // «Успеваемость» уровня банка не задаёт — берём только те, к которым готовят
-  const levels = ["ОГЭ", "ЕГЭ"].filter((l) => focus.includes(l) && byLevel[l])
-  return (levels.length ? levels : Object.keys(byLevel)).map((l) => byLevel[l]).filter(Boolean)
+// Предмет из анкеты («Математика», «Физика», …) → все банки этого предмета.
+// Экзамен здесь не сужает намеренно: отметка в профиле — про предмет целиком,
+// иначе профиль говорил бы «Математика», а в сборке задания половины банков не
+// было бы. Проверки генераторов тоже нет — это привязка, а не выдача задания.
+export function typesFromProfile(subject) {
+  const label = PROFILE_SUBJECT[subject]
+  return BANK_SUBJECTS.find((x) => x.label === label)?.types.slice() || []
+}
+
+// Названия из анкеты репетитора → названия предметов банка.
+const PROFILE_SUBJECT = {
+  "Математика": "Математика",
+  "Информатика": "Информатика",
+  "Русский язык": "Русский",
+  "Английский язык": "Английский",
+  "Физика": "Физика",
+  "Химия": "Химия",
+  "Обществознание": "Обществознание",
 }
