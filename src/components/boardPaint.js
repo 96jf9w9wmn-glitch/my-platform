@@ -17,6 +17,10 @@ export const DASHABLE_SHAPES = new Set(["line", "arrow", "rect", "circle", "tria
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
 
+// Шаг квантования толщины пера при отрисовке (см. paintStroke): соседние участки
+// одинаковой толщины рисуются одним путём вместо отдельного stroke() на каждый.
+const WIDTH_STEP = 0.25
+
 export function isDarkColor(hex) {
   const h = (hex || "").replace("#", "")
   if (h.length < 6) return false
@@ -239,7 +243,17 @@ export function paintStroke(ctx, s, { darkBg = false, getImage = () => null } = 
       const t2 = t * t, t3 = t2 * t
       return 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3)
     }
+    // Толщина меняется вдоль штриха, а один ctx.stroke() умеет только одну lineWidth,
+    // поэтому раньше КАЖДЫЙ шажок сплайна рисовался своим beginPath+stroke: длинный
+    // штрих — тысячи вызовов на кадр, и доска у собеседника заметно тормозила.
+    // Теперь толщина квантуется до WIDTH_STEP, а соседние шажки с одинаковой
+    // толщиной идут одним путём: вызовов остаётся десятки. Разницы не видно —
+    // шаг мельче, чем полпикселя на экране.
     let px = P[0][0], py = P[0][1], pw = wOf(P[0])
+    let segW = null
+    ctx.beginPath()
+    ctx.moveTo(px, py)
+    const flush = () => { if (segW != null) { ctx.lineWidth = segW; ctx.stroke() } }
     for (let i = 0; i < P.length - 1; i++) {
       const p0 = P[i - 1] || P[i], p1 = P[i], p2 = P[i + 1], p3 = P[i + 2] || P[i + 1]
       const segLen = Math.hypot(p2[0] - p1[0], p2[1] - p1[1])
@@ -250,11 +264,14 @@ export function paintStroke(ctx, s, { darkBg = false, getImage = () => null } = 
         const x = cr(p0[0], p1[0], p2[0], p3[0], t)
         const y = cr(p0[1], p1[1], p2[1], p3[1], t)
         const w = w1 + (w2 - w1) * t
-        ctx.lineWidth = (pw + w) / 2
-        ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(x, y); ctx.stroke()
+        const q = Math.round((pw + w) / 2 / WIDTH_STEP) * WIDTH_STEP
+        if (segW == null) segW = q
+        else if (q !== segW) { flush(); ctx.beginPath(); ctx.moveTo(px, py); segW = q }
+        ctx.lineTo(x, y)
         px = x; py = y; pw = w
       }
     }
+    flush()
     return
   }
   // Ластик — ровная сглаженная кривая

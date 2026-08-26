@@ -67,6 +67,13 @@ const pointInBBox = (x, y, b) => x >= b.minX && x <= b.maxX && y >= b.minY && y 
 // Курсор собеседника держится CURSOR_HOLD мс после последнего движения, потом гаснет
 const CURSOR_HOLD = 3000, CURSOR_FADE = 400
 const POINTER_RATE = 60 // не чаще 1 посылки в 60 мс (~16/сек) — экономим realtime
+const STROKE_RATE = 60  // не чаще 1 посылки дописанных точек в 60 мс
+// Точки штриха округляются до сотых мировой единицы: на экране это доли пикселя
+// даже при максимальном увеличении, зато и по сети, и в снапшоте сцены каждая
+// точка занимает втрое меньше места, чем сырой double.
+const q2 = (n) => Math.round(n * 100) / 100
+const q1 = (n) => Math.round(n * 10) / 10
+const packPoints = (pts) => pts.map((p) => (p[2] == null ? [q2(p[0]), q2(p[1])] : [q2(p[0]), q2(p[1]), q1(p[2])]))
 const DASH_STYLES = ["solid", "dashed", "dotted"]
 // Длительность анимации ухода попапа — синхронно с .popup-bubble-out в index.css
 const POPUP_OUT_MS = 200
@@ -352,6 +359,16 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const saveTimer = useRef(null)
   const bgSendTimer = useRef(null)    // троттлинг рассылки цвета фона (см. changeBgColor)
   const sendTimer = useRef(null)
+  // Незаконченные штрихи собеседников: держим их ОТДЕЛЬНО от strokes.current.
+  // Пока штрих растёт, он меняется по многу раз в секунду, и будь он в общей
+  // сцене — на каждую дописанную точку пришлось бы заново рисовать всю доску.
+  // Здесь же он рисуется поверх готового слоя (см. redraw), а в сцену попадает
+  // одним куском, когда автор оторвал перо.
+  const live = useRef(new Map())      // id -> штрих, который прямо сейчас рисует собеседник
+  const sentId = useRef(null)         // id штриха, чьи точки уже разосланы
+  const sentN = useRef(0)             // сколько точек этого штриха разослано
+  const sceneCanvas = useRef(null)    // закадровый слой: фон + завершённые штрихи
+  const sceneValid = useRef(false)    // слой актуален (иначе перерисовать)
   const dirty = useRef(false)
   const rafId = useRef(0)
   const actions = useRef({})
@@ -456,17 +473,38 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     const dpr = window.devicePixelRatio || 1
     const cw = canvas.clientWidth, ch = canvas.clientHeight
     const bw = Math.round(cw * dpr), bh = Math.round(ch * dpr)
-    if (canvas.width !== bw || canvas.height !== bh) { canvas.width = bw; canvas.height = bh }
-
-    // Фон (в экранных координатах)
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    ctx.clearRect(0, 0, cw, ch)
-    drawBackground(ctx, cw, ch)
-
-    // Штрихи (в мировых координатах через view-трансформ)
+    if (canvas.width !== bw || canvas.height !== bh) { canvas.width = bw; canvas.height = bh; sceneValid.current = false }
     const v = view.current
+
+    // Готовая часть доски (фон + завершённые штрихи) живёт закадровым слоем и
+    // перерисовывается только когда действительно изменилась: пока собеседник
+    // ведёт линию или двигается чужой курсор, кадр — это блиттинг готового слоя
+    // плюс один растущий штрих. Раньше каждая пришедшая точка перерисовывала
+    // всю сцену целиком, и на слабом устройстве доска захлёбывалась.
+    let cache = sceneCanvas.current
+    if (!cache) { cache = document.createElement("canvas"); sceneCanvas.current = cache }
+    if (cache.width !== bw || cache.height !== bh) { cache.width = bw; cache.height = bh; sceneValid.current = false }
+    if (!sceneValid.current) {
+      const sx = cache.getContext("2d")
+      sx.setTransform(1, 0, 0, 1, 0, 0)
+      sx.globalCompositeOperation = "source-over"
+      sx.clearRect(0, 0, bw, bh)
+      sx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      drawBackground(sx, cw, ch)
+      sx.setTransform(v.scale * dpr, 0, 0, v.scale * dpr, v.x * dpr, v.y * dpr)
+      for (const st of strokes.current.values()) drawStroke(sx, st)
+      sceneValid.current = true
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.globalCompositeOperation = "source-over"
+    ctx.clearRect(0, 0, bw, bh)
+    ctx.drawImage(cache, 0, 0)
+
+    // Штрихи в работе — свой и чужие (в мировых координатах через view-трансформ).
+    // Ластик рисуется в destination-out и стирает уже положенный слой сцены — то
+    // же самое, что было, когда всё рисовалось одним проходом.
     ctx.setTransform(v.scale * dpr, 0, 0, v.scale * dpr, v.x * dpr, v.y * dpr)
-    for (const s of strokes.current.values()) drawStroke(ctx, s)
+    for (const st of live.current.values()) drawStroke(ctx, st)
     if (drawing.current) drawStroke(ctx, drawing.current)
 
     // Курсоры (обратно в экранные координаты, постоянный размер)
@@ -560,10 +598,12 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       ctx.restore()
     }
     // Пока курсор гаснет, кадры нужны сами по себе — событий больше не будет
-    if (fading) scheduleDraw()
+    if (fading) scheduleLive()
   }
 
-  const scheduleDraw = useCallback(() => {
+  // Кадр, в котором готовый слой сцены остаётся годным: растущий штрих, чужой
+  // курсор, рамка выделения. Всё остальное зовёт scheduleDraw и слой пересобирается.
+  const scheduleLive = useCallback(() => {
     dirty.current = true
     if (rafId.current) return
     rafId.current = requestAnimationFrame(() => {
@@ -574,6 +614,11 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const scheduleDraw = useCallback(() => {
+    sceneValid.current = false
+    scheduleLive()
+  }, [scheduleLive])
 
   // Картинка по src (кэш + ленивая загрузка, перерисовка по onload).
   //
@@ -652,9 +697,27 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     channelRef.current = channel
 
     channel
-      .on("broadcast", { event: "draw" }, ({ payload }) => { strokes.current.set(payload.id, payload); scheduleDraw() })
-      .on("broadcast", { event: "remove" }, ({ payload }) => { strokes.current.delete(payload.id); selection.current.delete(payload.id); scheduleDraw() })
-      .on("broadcast", { event: "clear" }, () => { strokes.current.clear(); selection.current.clear(); scheduleDraw() })
+      // Готовый штрих: кладём в сцену и убираем из «в работе».
+      .on("broadcast", { event: "draw" }, ({ payload }) => {
+        live.current.delete(payload.id)
+        strokes.current.set(payload.id, payload)
+        scheduleDraw()
+      })
+      // Штрих в работе: приходят только ДОПИСАННЫЕ точки (from — сколько их уже
+      // было). Пропуск в нумерации не добираем: собеседник в конце пришлёт штрих
+      // целиком событием draw, и оно всё вылечит.
+      .on("broadcast", { event: "drawp" }, ({ payload }) => {
+        const { from, ...st } = payload
+        if (!from) { live.current.set(payload.id, st); scheduleLive(); return }
+        const cur = live.current.get(payload.id)
+        if (!cur || from > cur.points.length) return  // пробел — ждём финальный draw
+        const tail = payload.points.slice(cur.points.length - from)
+        if (!tail.length) return                      // дубль
+        cur.points.push(...tail)
+        scheduleLive()
+      })
+      .on("broadcast", { event: "remove" }, ({ payload }) => { live.current.delete(payload.id); strokes.current.delete(payload.id); selection.current.delete(payload.id); scheduleDraw() })
+      .on("broadcast", { event: "clear" }, () => { live.current.clear(); strokes.current.clear(); selection.current.clear(); scheduleDraw() })
       .on("broadcast", { event: "bg" }, ({ payload }) => {
         if (payload.bg != null) setBg(payload.bg)
         if (payload.bgColor != null) setBgColor(payload.bgColor)
@@ -665,9 +728,9 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         // разбудить отрисовку, когда событий больше не приходит.
         clearTimeout(cursorTimers.current.get(payload.id))
         cursorTimers.current.set(payload.id, setTimeout(() => {
-          cursorTimers.current.delete(payload.id); scheduleDraw()
+          cursorTimers.current.delete(payload.id); scheduleLive()
         }, CURSOR_HOLD))
-        scheduleDraw()
+        scheduleLive()
       })
       .on("presence", { event: "sync" }, () => {
         const people = Object.values(channel.presenceState()).flat()
@@ -677,7 +740,9 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
           cursors.current.delete(id)
           clearTimeout(cursorTimers.current.get(id)); cursorTimers.current.delete(id)
         }
-        scheduleDraw()
+        // Ушёл посреди штриха — его недорисованная линия иначе висела бы вечно
+        for (const [id, st] of live.current) if (!ids.has(st.author)) live.current.delete(id)
+        scheduleLive()
       })
       .subscribe((status) => { if (status === "SUBSCRIBED") channel.track({ userId, name: userName }) })
 
@@ -788,16 +853,60 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       : widthAt(drawing.current.width, speed, pressure)
     const prevW = prev[2] ?? drawing.current.width
     const w = prevW + (target - prevW) * 0.15
-    pts.push([p[0], p[1], w])
+    pts.push([q2(p[0]), q2(p[1]), q1(w)])
   }
 
+  // Рассылка штриха, который сейчас ведут.
+  //
+  // Раньше каждые 60 мс уходил ВЕСЬ штрих целиком, и чем дольше вели линию, тем
+  // толще становилось каждое сообщение: десять секунд письма — это сотня посылок
+  // по два-три десятка килобайт, то есть мегабайты на одну строчку. Канал
+  // захлёбывался, сообщения копились, и у собеседника линия ползла рывками.
+  // Теперь в промежуточных посылках едут только дописанные точки, а целиком штрих
+  // уходит ровно один раз — когда оторвали перо (заодно лечит потерю посылки).
   function broadcastDrawing(final) {
     if (!drawing.current) return
     const s = drawing.current
-    const send = () => channelRef.current?.send({ type: "broadcast", event: "draw", payload: s })
-    if (final) { clearTimeout(sendTimer.current); sendTimer.current = null; send(); return }
+    if (final) {
+      clearTimeout(sendTimer.current); sendTimer.current = null
+      sentId.current = null; sentN.current = 0
+      channelRef.current?.send({ type: "broadcast", event: "draw", payload: s })
+      return
+    }
     if (sendTimer.current) return
-    sendTimer.current = setTimeout(() => { sendTimer.current = null; send() }, 60)
+    sendTimer.current = setTimeout(() => {
+      sendTimer.current = null
+      const cur = drawing.current
+      const ch = channelRef.current
+      if (!cur || !ch) return
+      // Фигура задаётся двумя точками, которые всё время переставляются, —
+      // дописывать нечего, шлём её целиком (это и так две точки).
+      if (SHAPE_TOOLS.has(cur.tool)) {
+        ch.send({ type: "broadcast", event: "drawp", payload: { ...cur, from: 0, points: packPoints(cur.points) } })
+        return
+      }
+      const from = sentId.current === cur.id ? sentN.current : 0
+      if (from >= cur.points.length) return
+      const points = packPoints(cur.points.slice(from))
+      ch.send({
+        type: "broadcast", event: "drawp",
+        payload: from ? { id: cur.id, from, points } : { ...cur, from: 0, points },
+      })
+      sentId.current = cur.id; sentN.current = cur.points.length
+    }, STROKE_RATE)
+  }
+
+  // Штрих брошен, не завершившись (второй палец превратил рисование в жест).
+  // Часть точек уже разослана drawp-посылками, и без отзыва собеседник видел бы
+  // обрывок линии, которой у автора нет, пока автор не выйдет с доски.
+  function dropDrawing() {
+    const cur = drawing.current
+    drawing.current = null
+    clearTimeout(sendTimer.current); sendTimer.current = null
+    if (cur && sentId.current === cur.id) {
+      channelRef.current?.send({ type: "broadcast", event: "remove", payload: { id: cur.id } })
+    }
+    sentId.current = null; sentN.current = 0
   }
 
   function beginGesture() {
@@ -831,7 +940,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
 
     // Два ОДНОВРЕМЕННЫХ касания (только touch) → жест панорама/зум
     if (e.pointerType === "touch" && pointers.current.size >= 2) {
-      drawing.current = null; beginGesture(); scheduleDraw(); return
+      dropDrawing(); beginGesture(); scheduleDraw(); return
     }
     // Правая/боковая кнопка (её же выдаёт боковая кнопка пера планшета — button 2 /
     // бит 2 в buttons) или средняя кнопка → ВЫБИРАЕМ инструмент «Двигать полотно».
@@ -897,14 +1006,14 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     if (marquee.current) {
       const p = toWorld(e.clientX, e.clientY)
       marquee.current.x1 = p[0]; marquee.current.y1 = p[1]
-      scheduleDraw()
+      scheduleLive()
       return
     }
     // курсор собеседникам (в мировых координатах), не чаще POINTER_RATE:
     // pointermove сыплется сотнями в секунду, а канал у нас общий с рисованием.
     const w = toWorld(e.clientX, e.clientY)
     const nowMs = performance.now()
-    if (nowMs - lastPointerSend.current >= POINTER_RATE) {
+    if (!drawing.current && nowMs - lastPointerSend.current >= POINTER_RATE) {
       lastPointerSend.current = nowMs
       channelRef.current?.send({ type: "broadcast", event: "pointer", payload: { id: userId, name: userName, x: w[0], y: w[1] } })
     }
@@ -919,7 +1028,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       if (evts.length) evts.forEach((ev) => addPoint(ev.clientX, ev.clientY, ev.pressure))
       else addPoint(e.clientX, e.clientY, e.pressure)
     }
-    scheduleDraw()
+    scheduleLive()
     broadcastDrawing(false)
   }
 
