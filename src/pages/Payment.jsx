@@ -517,15 +517,19 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <div className="text-sm font-medium text-green-600 tabular-nums">+{fmt(p.amount)} ₽</div>
+                    <div className="text-sm font-medium text-green-600 tabular-nums min-w-[6.5rem] text-left">+{fmt(p.amount)} ₽</div>
                     {/* Ошибочную оплату откатывают здесь: у ученика снимается
-                        только последняя запись, поэтому кнопка есть у неё одной. */}
-                    {p.isLast && (
+                        только последняя запись, поэтому кнопка есть у неё одной.
+                        У остальных строк её место всё равно резервируется, иначе
+                        суммы съезжают то влево, то вправо. */}
+                    {p.isLast ? (
                       <button
                         onClick={() => setUndoStudent(students.find((s) => s.id === p.studentId))}
                         className="w-7 h-7 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-500/10 transition active:scale-90 md:opacity-0 md:group-hover:opacity-100"
                         title="Отменить эту оплату"
                       ><Icon name="x" size={14} /></button>
+                    ) : (
+                      <div className="w-7 h-7 shrink-0" aria-hidden="true" />
                     )}
                   </div>
                 </div>
@@ -535,7 +539,10 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
           {filteredPayments.length > 0 && (
             <div className="pt-3 mt-4 border-t border-gray-200 dark:border-white/10 flex justify-between">
               <span className="text-sm text-gray-500">Итого за период</span>
-              <span className="text-sm font-semibold text-green-600 tabular-nums">{fmt(filteredPayments.reduce((s, p) => s + p.amount, 0))} ₽</span>
+              <span className="flex items-center gap-1.5">
+                <span className="text-sm font-semibold text-green-600 tabular-nums min-w-[6.5rem] text-left">{fmt(filteredPayments.reduce((s, p) => s + p.amount, 0))} ₽</span>
+                <span className="w-7 shrink-0" aria-hidden="true" />
+              </span>
             </div>
           )}
         </div>
