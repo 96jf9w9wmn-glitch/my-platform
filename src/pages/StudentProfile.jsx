@@ -616,25 +616,6 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
           )}
         </div>
 
-        <div className="glass p-4">
-          <h2 className="text-sm font-medium mb-3">История оплат</h2>
-          {(student.payments || []).length === 0 ? (
-            <div className="text-sm text-gray-400 py-4 text-center">Оплат пока нет</div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {(student.payments || []).map((p, i) => (
-                <div key={i} className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0">
-                  <div>
-                    <div className="text-sm font-medium">{p.date}</div>
-                    {p.note && <div className="text-xs text-gray-400">{p.note}</div>}
-                  </div>
-                  <div className="text-sm font-medium text-green-600">+{p.amount.toLocaleString("ru-RU")} ₽</div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
         {/* Проведённые занятия убраны под «Архив»: за учебный год их набираются
             десятки, и карточка ученика превращалась в бесконечную ленту.
             Счётчик на кнопке показывает, сколько внутри, не открывая её. */}
