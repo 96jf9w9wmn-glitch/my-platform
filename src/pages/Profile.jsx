@@ -16,6 +16,7 @@ import { supabase } from "../supabase"
 import { useSubscription } from "../subscription"
 import { effectivePlan, isActive } from "../plans"
 import AutoInvoiceSettings from "../components/AutoInvoiceSettings"
+import AutoReportSettings from "../components/AutoReportSettings"
 import OnlinePaySettings from "../components/OnlinePaySettings"
 import TaxModeSettings from "../components/TaxModeSettings"
 import TelegramSettings from "../components/TelegramSettings"
@@ -169,6 +170,11 @@ export default function Profile({ user, students = [], onLogout, onProfileChange
           «Подписка» в самом низу страницы — о нём никто не знал. */}
       <div className="mb-4">
         <TelegramSettings />
+      </div>
+
+      {/* Отчёты родителям уходят сами — здесь только расписание. */}
+      <div className="mb-4">
+        <AutoReportSettings tutorId={user.id} students={students} />
       </div>
 
       {/* Приём денег с учеников: квитанции после занятия и онлайн-оплата. */}

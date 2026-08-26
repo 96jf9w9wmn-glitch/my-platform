@@ -83,6 +83,49 @@ function buildPrompt({ period, notes, results, weakTypes }) {
   ].join("\n")
 }
 
+// Отчёт, собранный платформой автоматически (src/reportData.js). Здесь модель
+// НЕ решает, какие темы разобраны и как они идут: и то и другое уже посчитано
+// по фактам — занятиям, домашним работам и попыткам решения. Её работа —
+// только связный человеческий текст поверх этих чисел, иначе отчёт родителю
+// разошёлся бы с тем, что видно в кабинете.
+function buildAutoPrompt({ period, stats, topics, notes }) {
+  const s = stats || {}
+  const facts = [
+    s.lessons ? `занятий проведено: ${s.lessons}` : null,
+    s.homeworkGiven ? `домашних работ выдано: ${s.homeworkGiven}` : null,
+    s.homeworkDone ? `из них сдано: ${s.homeworkDone}` : null,
+    s.avgGrade ? `средний балл за домашние работы: ${s.avgGrade} из 5` : null,
+    s.tasksSolved ? `задач решено: ${s.tasksSolved}` : null,
+    s.accuracy != null ? `верных ответов: ${s.accuracy}%` : null,
+  ].filter(Boolean).join("; ")
+
+  const list = (topics || []).map((t, i) => {
+    const conf = { struggling: "даётся тяжело", progress: "в процессе", confident: "получается уверенно" }[t.confidence]
+    const acc = t.attempts ? `, верно ${t.correct ?? "?"} из ${t.attempts}` : ""
+    return `${i + 1}. ${t.title}${conf ? ` — ${conf}` : ""}${acc}`
+  }).join("\n")
+
+  return [
+    "Ты — помощник репетитора. Напиши текст отчёта РОДИТЕЛЮ по готовым фактам.",
+    "Пиши по-русски, спокойно и по делу, обращаясь к родителю на «вы». Без рекламы,",
+    "без обращения к ученику, без восклицаний и без оценок личности («молодец», «ленится»).",
+    "",
+    "ЖЁСТКО: пользуйся только фактами ниже. Не добавляй тем, оценок и событий, которых в них нет.",
+    "Не меняй статусы тем: они посчитаны по доле верных ответов.",
+    "",
+    `Имя ученика не передаётся. Там, где по смыслу нужно имя, пиши ровно ${NAME_TOKEN} —`,
+    "эту метку подставят вместо имени уже после тебя. Не придумывай имя сам.",
+    "",
+    `Период: ${period || "последние занятия"}`,
+    `Цифры: ${facts || "нет"}`,
+    `Темы: \n${list || "нет"}`,
+    `Заметки репетитора с занятий: ${notes || "нет"}`,
+    "",
+    "Ответь СТРОГО одним JSON-объектом без пояснений:",
+    '{"summary":"2-4 предложения: что разобрали и как идут дела","comments":["по одному короткому предложению на каждую тему, В ТОМ ЖЕ ПОРЯДКЕ"],"next_steps":"1-2 предложения: над чем работаем дальше"}',
+  ].join("\n")
+}
+
 export default async function handler(req, res) {
   const apiKey = process.env.DEEPSEEK_API_KEY
 
@@ -143,7 +186,11 @@ export default async function handler(req, res) {
   }
 
   const body = req.body || {}
-  if (!body.notes && !body.results) {
+  // Новый (автоматический) режим узнаётся по присланным темам и цифрам: их
+  // считает платформа. Старое тело (только заметки) продолжает работать —
+  // на боевом может стоять предыдущий билд фронтенда.
+  const auto = Array.isArray(body.topics) || !!body.stats
+  if (!auto && !body.notes && !body.results) {
     res.status(400).json({ error: "Нет данных для отчёта: нужны хотя бы заметки или результаты" })
     return
   }
@@ -155,7 +202,21 @@ export default async function handler(req, res) {
     notes: scrubContacts(body.notes),
     results: scrubContacts(body.results),
     weakTypes: scrubContacts(body.weakTypes),
+    stats: body.stats || null,
+    // Названия тем приходят из банка заданий («Площадь трапеции») либо из тем
+    // занятий, которые репетитор пишет свободным текстом, — второй случай так
+    // же чистим от телефонов и почты, как и заметки.
+    topics: Array.isArray(body.topics)
+      ? body.topics.slice(0, 8).map((t) => ({
+          title: scrubContacts(t?.title).slice(0, 120),
+          confidence: ["struggling", "progress", "confident"].includes(t?.confidence) ? t.confidence : null,
+          attempts: Number(t?.attempts) || 0,
+          correct: Number(t?.correct) || 0,
+        }))
+      : [],
   }
+
+  const prompt = auto ? buildAutoPrompt(safe) : buildPrompt(safe)
 
   let { model } = await pickModel(apiKey).catch(() => ({ model: MODEL_PREFERENCE[0] }))
 
@@ -165,7 +226,7 @@ export default async function handler(req, res) {
     body: JSON.stringify({
       model: m,
       temperature: 0.3,
-      messages: [{ role: "user", content: buildPrompt(safe) }],
+      messages: [{ role: "user", content: prompt }],
     }),
   })
 
@@ -191,7 +252,10 @@ export default async function handler(req, res) {
 
   res.status(200).json({
     summary: parsed.summary || "",
+    // В автоматическом режиме темы задаёт платформа, модель возвращает только
+    // комментарии к ним; в старом — темы приходят от модели целиком.
     topics: Array.isArray(parsed.topics) ? parsed.topics : [],
+    comments: Array.isArray(parsed.comments) ? parsed.comments.map((c) => String(c || "")) : [],
     next_steps: parsed.next_steps || "",
     homework_hint: parsed.homework_hint || "",
     model,
