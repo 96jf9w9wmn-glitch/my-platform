@@ -831,6 +831,7 @@ function Variants({ user, students = [] }) {
   const [selectedSubmission, setSelectedSubmission] = useState(null)
   const [loading, setLoading] = useState(true)
   const [previewFile, setPreviewFile] = useState(null)
+  const [group, setGroup] = useState("all")
   // Сколько карточек в ряду прямо сейчас — нужно, чтобы вставить разбор ПОСЛЕ
   // ряда выбранной карточки. Пороги обязаны совпадать с классами сетки ниже
   // (sm:grid-cols-2 xl:grid-cols-3), иначе панель разорвёт ряд.
@@ -865,6 +866,18 @@ function Variants({ user, students = [] }) {
   const totalPending = submissions.filter((s) => s.status === "submitted").length
   const totalGraded = submissions.filter((s) => s.status === "graded").length
 
+  // Фильтр по экзамену — как на «Результатах». Базовый и профильный ЕГЭ идут
+  // одной группой: в списке они помечены одним и тем же типом «ЕГЭ».
+  // Кнопки показываем только когда в списке есть оба экзамена: с одним
+  // «Все» и «ОГЭ» выбирали бы одно и то же.
+  const groupOf = (v) => (isEgeType(v.type) ? "ЕГЭ" : "ОГЭ")
+  const GROUPS = [
+    { key: "all", label: "Все" },
+    { key: "ОГЭ", label: "ОГЭ" },
+    { key: "ЕГЭ", label: "ЕГЭ" },
+  ].filter((g) => g.key === "all" || variants.some((v) => groupOf(v) === g.key))
+  const visible = variants.filter((v) => group === "all" || groupOf(v) === group)
+
   const AVATAR_COLORS = [
     { bg: "bg-blue-100", text: "text-blue-700" },
     { bg: "bg-purple-100", text: "text-purple-700" },
@@ -892,10 +905,10 @@ function Variants({ user, students = [] }) {
   // Разбор выбранного варианта раскрывается прямо под его рядом карточек:
   // так он всегда рядом с тем, что открыли, и не нужно ни второй колонки,
   // ни прокрутки к панели в конце списка.
-  const selectedIndex = selectedVariant ? variants.findIndex((v) => v.id === selectedVariant.id) : -1
+  const selectedIndex = selectedVariant ? visible.findIndex((v) => v.id === selectedVariant.id) : -1
   const detailRowEnd = selectedIndex < 0
     ? -1
-    : Math.min(Math.floor(selectedIndex / cols) * cols + cols - 1, variants.length - 1)
+    : Math.min(Math.floor(selectedIndex / cols) * cols + cols - 1, visible.length - 1)
 
   const detailPanel = selectedVariant ? (
     <div className={`col-span-full glass overflow-hidden slide-up ${detailCls}`}>
@@ -1061,15 +1074,29 @@ function Variants({ user, students = [] }) {
         <div className="text-sm text-gray-400 text-center py-8">Загрузка...</div>
       ) : (
         <div className="flex flex-col gap-4">
+          {GROUPS.length > 2 && (
+            <SegmentSwitch
+              size="sm" equal={false} items={GROUPS} value={group} ariaLabel="Фильтр по экзамену"
+              className="self-start"
+              onChange={(g) => {
+                setGroup(g)
+                // Разбор открытого варианта скрывать нельзя молча: если он не
+                // попадает в выбранную группу, закрываем его той же анимацией.
+                if (selectedVariant && g !== "all" && groupOf(selectedVariant) !== g) closeDetail()
+              }}
+            />
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 items-stretch">
-            {variants.length === 0 ? (
+            {visible.length === 0 ? (
               <div className="sm:col-span-2 xl:col-span-3 flex flex-col items-center gap-2 text-center py-12 px-4 border border-dashed border-gray-200 dark:border-white/15 rounded-xl">
                 <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center">
                   <Icon name="clipboard" size={18} />
                 </div>
-                <div className="text-sm text-gray-400">Вариантов пока нет</div>
+                <div className="text-sm text-gray-400">
+                  {variants.length === 0 ? "Вариантов пока нет" : `Вариантов ${group} пока нет`}
+                </div>
               </div>
-            ) : variants.map((v, i) => {
+            ) : visible.map((v, i) => {
               const subs = submissions.filter((s) => s.variant_id === v.id)
               const graded = subs.filter((s) => s.status === "graded").length
               const submitted = subs.filter((s) => s.status === "submitted").length
