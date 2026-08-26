@@ -13,7 +13,22 @@ if (localStorage.getItem("theme") === "dark") {
 function syncAppHeight() {
   const vv = window.visualViewport
   if (vv && vv.scale > 1) return // пользователь зумит — не трогаем
-  document.documentElement.style.setProperty("--app-h", `${vv ? vv.height : window.innerHeight}px`)
+  const h = vv ? vv.height : window.innerHeight
+  document.documentElement.style.setProperty("--app-h", `${h}px`)
+  // Пока клавиатура выезжает, Safari успевает «доскроллить» страницу к
+  // сфокусированному полю (документ и/или пан visualViewport) — ужатый каркас
+  // уезжает вверх, fixed-навигация повисает посреди экрана. После ужатия поле
+  // и так видно, поэтому возвращаем страницу на место. Только когда фокус в
+  // потоке каркаса: в fixed-оверлеях (модалки) прокрутка Safari — единственное,
+  // что показывает поле из-под клавиатуры, её не трогаем. Страницы без каркаса
+  // (вход, лендинг) не трогаем тоже — там документ прокручивается по-настоящему.
+  const ae = document.activeElement
+  const inShellFlow = !ae || ae === document.body
+    || (ae.closest?.(".app-shell") && !ae.closest(".fixed"))
+  if (inShellFlow && document.querySelector(".app-shell")
+      && (window.scrollY || (vv && vv.offsetTop))) {
+    window.scrollTo(0, 0)
+  }
 }
 // Ширина полосы прокрутки: её место всегда зарезервировано (scrollbar-gutter:
 // stable), а под открытым полноэкранным оверлеем резерв снимается — иначе

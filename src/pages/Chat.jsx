@@ -67,6 +67,9 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
   const [searching, setSearching] = useState(false)
   const [unreadByContact, setUnreadByContact] = useState({})
   const bottomRef = useRef(null)
+  // Был ли пользователь у низа переписки (обновляется в onScroll ленты) —
+  // по этому флагу лента прижимается к низу при появлении клавиатуры.
+  const nearBottomRef = useRef(true)
   const channelRef = useRef(null)
   const incomingChannelRef = useRef(null)
   const initialLoadDone = useRef(false)
@@ -170,6 +173,21 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
     prevMsgCount.current = messages.length
     bottomRef.current?.scrollIntoView({ behavior: isNew ? "smooth" : "auto" })
   }, [messages.length])
+
+  // Клавиатура открылась/закрылась (resize visualViewport) — лента ужимается,
+  // и последние сообщения ушли бы под поле ввода. Если пользователь был у низа
+  // переписки, держим его у низа; если читал историю выше — не дёргаем.
+  // «Был ли у низа» меряем в onScroll, ДО ужатия: после resize расстояние до
+  // низа уже включает высоту клавиатуры и сравнивать его с порогом поздно.
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const keepBottom = () => {
+      if (nearBottomRef.current) bottomRef.current?.scrollIntoView({ block: "end" })
+    }
+    vv.addEventListener("resize", keepBottom)
+    return () => vv.removeEventListener("resize", keepBottom)
+  }, [])
 
   // Load messages when conversation changes
   useEffect(() => {
@@ -509,7 +527,13 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
 
             {/* Сообщения + Ввод */}
             <div className="flex-1 min-h-0 relative">
-              <div className="absolute inset-0 overflow-y-auto overflow-x-hidden px-4 pt-3 pb-[68px] flex flex-col gap-1.5 chat-bg">
+              <div
+                className="absolute inset-0 overflow-y-auto overflow-x-hidden px-4 pt-3 pb-[68px] flex flex-col gap-1.5 chat-bg"
+                onScroll={e => {
+                  const el = e.currentTarget
+                  nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120
+                }}
+              >
                 {messages.length === 0 && (
                   <div className="text-center text-gray-400 dark:text-gray-600 text-sm mt-10 select-none">
                     Начни переписку
