@@ -26,6 +26,20 @@ export function numberInfo(examType, number) {
 const isSelfContained = (t) =>
   t && !t.image_url && !t.archive && !t.spreadsheet && !t.textFile && !t.program && !t.source_text
 
+// Чем именно задание не помещается в текст домашней работы. Подпись короткая:
+// она стоит прямо в строке номера, чтобы «почему серый» читалось на месте, а не
+// в сноске под списком.
+const BLOCK_LABEL = [
+  ["image_url", "с чертежом"],
+  ["archive", "с архивом"],
+  ["spreadsheet", "с таблицей"],
+  ["textFile", "с файлом"],
+  ["program", "с программой"],
+  ["source_text", "с текстом"],
+]
+
+const blockLabel = (t) => BLOCK_LABEL.find(([field]) => t?.[field])?.[1] || null
+
 // Условие целиком: у части заданий вопрос вынесен в отдельную строку под картинкой.
 export const taskText = (t) =>
   [t.condition_text, t.condition_tail].filter(Boolean).map((x) => String(x).trim()).join(" ")
@@ -45,13 +59,34 @@ export function pickTextTask(examType, number, themes, seen) {
   return null
 }
 
-// Темы номера, из которых нельзя собрать текстовое задание (всё с чертежом или
-// файлом). Проверяем пробой генераторов, когда номер раскрыли: тема сразу видна
+// Почему номер (или его тема) не годится для домашней работы: null — годится,
+// иначе короткая причина «с чертежом», «с архивом», «с таблицей». Пробуем
+// собрать задание; не вышло — смотрим, что именно приложено к последнему
+// сгенерированному, и им объясняем отказ.
+function blockReason(examType, number, themes) {
+  if (pickTextTask(examType, number, themes, new Set())) return null
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const t = themes?.length
+      ? genThemeTask(examType, number, themes[Math.floor(Math.random() * themes.length)])
+      : genTask(examType, number)
+    const label = blockLabel(t)
+    if (label) return label
+  }
+  return "недоступно"
+}
+
+export const numberBlock = (examType, number) => blockReason(examType, number, null)
+
+// Темы номера, из которых нельзя собрать текстовое задание: { тема: причина }.
+// Проверяем пробой генераторов, когда номер раскрыли, — тема сразу видна
 // недоступной, а не молча выпадает из сборки.
-export function badThemes(examType, number) {
-  return (taskThemes(examType, number) || [])
-    .map((g) => g.theme)
-    .filter((theme) => !pickTextTask(examType, number, [theme], new Set()))
+export function themeBlocks(examType, number) {
+  const out = {}
+  for (const g of taskThemes(examType, number) || []) {
+    const why = blockReason(examType, number, [g.theme])
+    if (why) out[g.theme] = why
+  }
+  return out
 }
 
 // Задания по выбору репетитора: picks — [{ number, themes, count }], сколько

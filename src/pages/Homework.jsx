@@ -162,8 +162,8 @@ function BankNumberRow({ info, pick, off, open, badThemes, onCount, onTheme, onO
         <button
           type="button"
           onClick={expandable ? onOpen : off ? undefined : () => onCount(count + 1)}
-          disabled={off}
-          title={off ? "Задания этого номера идут с чертежом или файлом — в текст домашней работы они не помещаются" : undefined}
+          disabled={!!off}
+          title={off ? `Задания этого номера идут ${off} — в текст домашней работы они не помещаются` : undefined}
           className={`press-fill min-w-0 flex-1 text-left rounded-lg px-1.5 py-1 flex items-baseline gap-1.5 ${
             off ? "cursor-not-allowed" : ""
           }`}
@@ -175,25 +175,27 @@ function BankNumberRow({ info, pick, off, open, badThemes, onCount, onTheme, onO
               · {picked.length} {plural(picked.length, "тема", "темы", "тем")}
             </span>
           )}
-          {expandable && (
+          {off ? (
+            <span className="ml-auto shrink-0 text-[11px] text-gray-400">{off}</span>
+          ) : expandable ? (
             <span className={`ml-auto shrink-0 text-gray-400 transition-transform ${open ? "-rotate-90" : "rotate-90"}`}>
               <Icon name="arrow" size={11} />
             </span>
-          )}
+          ) : null}
         </button>
       </div>
       {themes.length > 1 && (
         <Collapse open={open}>
           <div className="pl-9 pr-2 pb-2 flex flex-col gap-0.5">
             {themes.map((g) => {
-              const bad = badThemes?.includes(g.theme)
+              const bad = badThemes?.[g.theme]
               const on = picked.includes(g.theme)
               return (
                 <button
                   key={g.theme}
                   type="button"
-                  disabled={bad}
-                  title={bad ? "Задания этой темы идут с чертежом — в текст домашней работы они не помещаются" : undefined}
+                  disabled={!!bad}
+                  title={bad ? `Задания этой темы идут ${bad} — в текст домашней работы они не помещаются` : undefined}
                   onClick={() => onTheme(g.theme)}
                   className="press-fill rounded-lg px-1.5 py-1 flex items-center gap-2 text-left disabled:cursor-not-allowed"
                 >
@@ -206,7 +208,7 @@ function BankNumberRow({ info, pick, off, open, badThemes, onCount, onTheme, onO
                     {g.theme}
                   </span>
                   <span className="text-[11px] text-gray-400 shrink-0 ml-auto">
-                    {bad ? "с чертежом" : `${g.items.length} ${plural(g.items.length, "типаж", "типажа", "типажей")}`}
+                    {bad || `${g.items.length} ${plural(g.items.length, "типаж", "типажа", "типажей")}`}
                   </span>
                 </button>
               )
@@ -301,17 +303,19 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
   // файлами). Проверяем пробой генераторов при выборе предмета — весь предмет
   // укладывается в доли секунды, зато номер видно НЕДОСТУПНЫМ сразу, а не после
   // нажатия «Собрать».
-  const [bankBad, setBankBad] = useState([])
+  const [bankBad, setBankBad] = useState({})
   // Номера с подписью раздела и темами — список, из которого выбирают.
   const [bankList, setBankList] = useState([])
-  // Недоступные темы по номерам: { 17: ["Квадрат"] }. Проверяются лениво, при
-  // раскрытии номера — гонять генераторы всех тем предмета сразу незачем.
+  // Недоступные темы по номерам: { 17: { "Квадрат": "с чертежом" } }. Проверяются
+  // лениво, при раскрытии номера — гонять генераторы всех тем предмета сразу незачем.
   const [bankBadThemes, setBankBadThemes] = useState({})
 
   function probeBank(mod, type) {
     const nums = mod.numbersWithGen(type)
     setBankList(nums.map((n) => mod.numberInfo(type, n)))
-    setBankBad(nums.filter((n) => !mod.pickTextTask(type, n, null, new Set())))
+    // { 4: "с чертежом", 11: "с архивом" } — номера, которые в текст домашней
+    // работы не помещаются, и причина прямо в строке.
+    setBankBad(Object.fromEntries(nums.map((n) => [n, mod.numberBlock(type, n)]).filter(([, why]) => why)))
     setBankBadThemes({})
   }
 
@@ -584,7 +588,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
   function toggleBankOpen(n) {
     setBankOpen((prev) => (prev === n ? null : n))
     if (bank && !(n in bankBadThemes)) {
-      setBankBadThemes((prev) => ({ ...prev, [n]: bank.badThemes(bankType, n) }))
+      setBankBadThemes((prev) => ({ ...prev, [n]: bank.themeBlocks(bankType, n) }))
     }
   }
 
@@ -957,7 +961,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                                   key={info.number}
                                   info={info}
                                   pick={bankPick[info.number]}
-                                  off={bankBad.includes(info.number)}
+                                  off={bankBad[info.number]}
                                   open={bankOpen === info.number}
                                   badThemes={bankBadThemes[info.number]}
                                   onCount={(next) => setBankCount(info.number, next)}
@@ -967,9 +971,10 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                               ))}
                             </div>
                           )}
-                          {bankBad.length > 0 && bankList.length > 0 && (
+                          {Object.keys(bankBad).length > 0 && bankList.length > 0 && (
                             <div className="text-[11px] text-gray-400 mt-1.5 leading-snug">
-                              Бледные номера недоступны: их задания идут с чертежом или отдельным файлом, а домашняя работа хранит только текст.
+                              Бледные номера собрать нельзя: их задания идут с чертежом, архивом или таблицей,
+                              а домашняя работа хранит только текст условия.
                             </div>
                           )}
                         </div>
