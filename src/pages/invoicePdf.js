@@ -5,7 +5,7 @@
 // реквизитами. Этот же файл удобно переслать в мессенджере.
 //
 // Кириллицу встроенный шрифт jsPDF не умеет, поэтому лист собирается как HTML
-// и снимается html2canvas — тот же приём, что в variantPdf/workbookPdf.
+// и снимается html2canvas — тот же приём, что в variantPdf.
 
 import jsPDF from "jspdf"
 import html2canvas from "html2canvas"

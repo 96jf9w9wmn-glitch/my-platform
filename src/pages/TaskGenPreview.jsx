@@ -1,6 +1,6 @@
-import { useState, lazy, Suspense } from "react"
+import { useState } from "react"
 import { generateTask, taskThemes } from "./taskGenerators"
-import { EXAM_GROUPS, levelOf, numbersWithGen, subjectLabel } from "./examSubjects"
+import { EXAM_GROUPS, levelOf, numbersWithGen } from "./examSubjects"
 import { hasModules, generateModule, moduleScenarios } from "./taskModules"
 import { genReadingModule, genMatchingModule, TFN } from "./readingEng"
 import { renderTaskMath } from "../utils"
@@ -13,7 +13,6 @@ import { PlanLock } from "../components/PlanLock"
 import { usePlan } from "../subscription"
 // Тетрадь тянет за собой jsPDF и html2canvas — грузим только когда её открыли,
 // иначе просмотр банка стал бы на полмегабайта тяжелее.
-const WorkbookModal = lazy(() => import("./WorkbookModal"))
 
 // Временный раздел: быстрый предпросмотр сгенерированных заданий (проверить вид/опечатки).
 // Работает целиком на клиентских генераторах (taskGenerators.js), без Supabase.
@@ -418,7 +417,6 @@ function TaskGenPreview() {
   const [tasks, setTasks] = useState(() => buildTasks("ОГЭ", null))
   const [reading, setReading] = useState(null)      // {matching, module} для блока чтения №12–19
   const [openTheme, setOpenTheme] = useState(null)  // раскрытое семейство типажей (аккордеон)
-  const [workbook, setWorkbook] = useState(false)   // открыта сборка рабочей тетради
 
   const numbers = numbersWithGen(examType)
   const level = levelOf(examType)
@@ -468,30 +466,9 @@ function TaskGenPreview() {
           превью генератора
         </span>
       </div>
-      <div className="flex items-start justify-between gap-3 mb-5">
-        <p className="text-sm text-gray-400">
-          Быстрый просмотр сгенерированных заданий — проверить вид и опечатки. Временный раздел.
-        </p>
-        {/* Печатная тетрадь по тому, что сейчас выбрано: условие + поле в клетку под решение */}
-        <button
-          onClick={() => setWorkbook(true)}
-          className="press-fill flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm text-white bg-gradient-to-b from-blue-500 to-blue-600 shadow-sm shadow-blue-600/25"
-        >
-          <MorphIcon from="grid" to="download" size={14} />
-          Рабочая тетрадь
-        </button>
-      </div>
-
-      {workbook && (
-        <Suspense fallback={null}>
-          <WorkbookModal
-            examType={examType}
-            examLabel={subjectLabel(examType)}
-            focus={focus}
-            onClose={() => setWorkbook(false)}
-          />
-        </Suspense>
-      )}
+      <p className="text-sm text-gray-400 mb-5">
+        Быстрый просмотр сгенерированных заданий — проверить вид и опечатки. Временный раздел.
+      </p>
 
       {/* уровень экзамена — сегмент-контрол ЕГЭ / ОГЭ */}
       <SegmentSwitch

@@ -19,68 +19,45 @@ import { useClosing } from "../useClosing"
 // так что к нажатию «Собрать вариант» он обычно уже в кэше.
 const loadBank = () => import("./taskBankApi")
 const loadVariantPdf = () => import("./variantPdf")
-const loadWorkbookPdf = () => import("./workbookPdf")
 function prefetchBank() {
   const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1500))
   idle(() => { loadBank(); loadVariantPdf() })
 }
 
-// Лист варианта в двух видах (приём Kuta Software): ученику — без ответов,
-// проверяющему — с ответами. Пересобираем из tasks_snapshot, поэтому числа те же,
-// что получил ученик, а не новые.
+// Лист варианта для проверяющего — тот же вариант, но с ответами (приём Kuta Software).
+// Пересобираем из tasks_snapshot, поэтому числа те же, что получил ученик, а не новые.
 function ExtraPdfButtons({ variant }) {
-  const [busy, setBusy] = useState(null)
+  const [busy, setBusy] = useState(false)
   const [err, setErr] = useState("")
 
-  async function download(mode) {
-    setBusy(mode); setErr("")
+  async function download() {
+    setBusy(true); setErr("")
     try {
-      // «Тетрадь» — тот же вариант, но с полем в клетку под каждым заданием (для письма от руки).
-      const blob = mode === "workbook"
-        ? await (await loadWorkbookPdf()).generateWorkbookPdf({
-            title: variant.title || "Рабочая тетрадь",
-            subtitle: variant.type,
-            examType: variant.type,
-            tasks: variant.tasks_snapshot,
-            space: "auto",
-            answersPage: false,
-          })
-        : await (await loadVariantPdf()).generateVariantPdf({
-            title: variant.title, examType: variant.type, tasks: variant.tasks_snapshot, mode,
-          })
+      const blob = await (await loadVariantPdf()).generateVariantPdf({
+        title: variant.title, examType: variant.type, tasks: variant.tasks_snapshot, mode: "answers",
+      })
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
-      const suffix = mode === "workbook" ? "рабочая тетрадь" : "с ответами"
-      a.download = `${variant.title || "Вариант"} — ${suffix}.pdf`
+      a.download = `${variant.title || "Вариант"} — с ответами.pdf`
       a.click()
       URL.revokeObjectURL(url)
     } catch {
       setErr("Не получилось собрать PDF")
     } finally {
-      setBusy(null)
+      setBusy(false)
     }
   }
 
   return (
     <div className="px-5 py-4 border-t border-gray-100/60">
       <div className="section-label mb-2.5">Печатные листы</div>
-      <div className="flex flex-wrap gap-2">
-        <button onClick={() => download("workbook")} disabled={busy}
-          className="press-fill text-xs px-3 py-2 rounded-xl ring-1 ring-blue-200 dark:ring-blue-400/25 text-blue-600 bg-blue-500/8 disabled:opacity-50 flex items-center gap-1.5">
-          <MorphIcon from="grid" to="download" size={13} />
-          {busy === "workbook" ? "Собираем…" : "Рабочая тетрадь"}
-        </button>
-        <button onClick={() => download("answers")} disabled={busy}
-          className="press-fill text-xs px-3 py-2 rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 disabled:opacity-50 flex items-center gap-1.5">
-          <MorphIcon from="download" size={13} />
-          {busy === "answers" ? "Собираем…" : "С ответами"}
-        </button>
-      </div>
+      <button onClick={download} disabled={busy}
+        className="press-fill text-xs px-3 py-2 rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 disabled:opacity-50 flex items-center gap-1.5">
+        <MorphIcon from="download" size={13} />
+        {busy ? "Собираем…" : "С ответами"}
+      </button>
       {err && <div className="text-xs text-red-500 mt-2">{err}</div>}
-      <div className="text-[11px] text-gray-400 mt-2.5 leading-snug">
-        В тетради под каждым заданием — поле в клетку, ответы отдельной страницей в конце.
-      </div>
     </div>
   )
 }

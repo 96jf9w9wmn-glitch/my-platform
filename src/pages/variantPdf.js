@@ -325,7 +325,7 @@ export async function svgUrlToPng(url, maxWidth = 380, scale = 2) {
     ctx.fillStyle = "#ffffff"
     ctx.fillRect(0, 0, canvas.width, canvas.height)
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-    // height нужен рабочей тетради: там <img> получает явные размеры, чтобы высота блока
+    // height отдаём вместе с шириной: <img> получает явные размеры, чтобы высота блока
     // не зависела от того, успел ли браузер декодировать картинку
     return { dataUrl: canvas.toDataURL("image/png"), width, height: Math.round(width * aspect) }
   } finally {
@@ -377,8 +377,7 @@ export const CONTAINER_W = 750   // ширина offscreen-контейнера 
 
 // Снимает один HTML-блок в canvas (кириллица рендерится браузером как есть — иначе пришлось бы
 // вшивать в PDF отдельный кириллический шрифт). Ждёт загрузки картинок перед снимком.
-// width/font/fontSize задаются печатным листом варианта (Times, ширина колонки); значения по
-// умолчанию оставлены прежними — на них рассчитана рабочая тетрадь (workbookPdf.js).
+// width/font/fontSize задаются печатным листом варианта (Times, ширина колонки).
 export async function renderBlock(innerHtml, opts = {}) {
   const { width = CONTAINER_W, font = "Arial,sans-serif", fontSize = null, lineHeight = null, scale = 2 } = opts
   const el = document.createElement("div")
