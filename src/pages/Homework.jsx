@@ -118,7 +118,108 @@ const HW_METHODS = [
   { id: "ai", icon: "sparkles", title: "Составить ИИ", note: "Задания по любой теме, готовы за минуту" },
 ]
 
-const BANK_COUNTS = [3, 5, 8, 10, 15]
+// Потолок счётчика у одного номера. Не про технику, а про смысл: домашняя
+// работа из двадцати задач одного номера — это уже не домашняя работа.
+const BANK_MAX_PER_NUMBER = 10
+
+// Ключ вон из объекта выбора: номер без количества и без тем в нём не хранится,
+// иначе «сбросить» перестало бы быть отличимым от «выбрано ноль заданий».
+const dropKey = (obj, key) => Object.fromEntries(Object.entries(obj).filter(([k]) => k !== String(key)))
+
+// Кружок «−» / «+» у счётчика заданий.
+function StepBtn({ icon, onClick, disabled, title }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className="no-press w-6 h-6 shrink-0 rounded-full grid place-items-center text-gray-500 ring-1 ring-gray-500/20
+        hover:bg-gray-500/10 active:scale-90 transition-all disabled:opacity-30 disabled:hover:bg-transparent"
+    >
+      <Icon name={icon} size={11} />
+    </button>
+  )
+}
+
+// Строка номера в сборке из банка: слева счётчик заданий, дальше название
+// раздела, внутри — темы с числом типажей. Раньше номера были сеткой квадратов
+// с одним общим количеством на всю работу: по «17» не понять, что это за
+// задание, а «пять любых» — не то, что репетитор задаёт на самом деле.
+function BankNumberRow({ info, pick, off, open, badThemes, onCount, onTheme, onOpen }) {
+  const count = pick?.count || 0
+  const picked = pick?.themes || []
+  const themes = info.themes || []
+  const expandable = !off && themes.length > 1
+  return (
+    <div className={count ? "bg-blue-500/[0.05]" : ""}>
+      <div className="flex items-center gap-1.5 px-2 py-1">
+        <StepBtn icon="minus" onClick={() => onCount(count - 1)} disabled={off || !count} title="Меньше заданий" />
+        <span className={`w-5 text-center text-xs tabular-nums ${count ? "text-blue-600 dark:text-blue-400 font-semibold" : "text-gray-400"}`}>
+          {count}
+        </span>
+        <StepBtn icon="plus" onClick={() => onCount(count + 1)} disabled={off || count >= BANK_MAX_PER_NUMBER} title="Больше заданий" />
+        <button
+          type="button"
+          onClick={expandable ? onOpen : off ? undefined : () => onCount(count + 1)}
+          disabled={off}
+          title={off ? "Задания этого номера идут с чертежом или файлом — в текст домашней работы они не помещаются" : undefined}
+          className={`press-fill min-w-0 flex-1 text-left rounded-lg px-1.5 py-1 flex items-baseline gap-1.5 ${
+            off ? "cursor-not-allowed" : ""
+          }`}
+        >
+          <span className={`text-xs tabular-nums shrink-0 ${off ? "text-gray-300" : "text-gray-400"}`}>{info.number}.</span>
+          <span className={`text-sm truncate ${off ? "text-gray-300" : "text-gray-700"}`}>{info.title}</span>
+          {picked.length > 0 && (
+            <span className="text-[11px] text-blue-600 dark:text-blue-400 shrink-0">
+              · {picked.length} {plural(picked.length, "тема", "темы", "тем")}
+            </span>
+          )}
+          {expandable && (
+            <span className={`ml-auto shrink-0 text-gray-400 transition-transform ${open ? "-rotate-90" : "rotate-90"}`}>
+              <Icon name="arrow" size={11} />
+            </span>
+          )}
+        </button>
+      </div>
+      {themes.length > 1 && (
+        <Collapse open={open}>
+          <div className="pl-9 pr-2 pb-2 flex flex-col gap-0.5">
+            {themes.map((g) => {
+              const bad = badThemes?.includes(g.theme)
+              const on = picked.includes(g.theme)
+              return (
+                <button
+                  key={g.theme}
+                  type="button"
+                  disabled={bad}
+                  title={bad ? "Задания этой темы идут с чертежом — в текст домашней работы они не помещаются" : undefined}
+                  onClick={() => onTheme(g.theme)}
+                  className="press-fill rounded-lg px-1.5 py-1 flex items-center gap-2 text-left disabled:cursor-not-allowed"
+                >
+                  <span className={`w-4 h-4 shrink-0 rounded-[6px] grid place-items-center transition-colors ${
+                    bad ? "ring-1 ring-gray-500/15" : on ? "bg-blue-600 text-white" : "ring-1 ring-gray-500/25"
+                  }`}>
+                    {on && <Icon name="check" size={9} />}
+                  </span>
+                  <span className={`text-xs truncate ${bad ? "text-gray-300" : on ? "text-gray-800" : "text-gray-600"}`}>
+                    {g.theme}
+                  </span>
+                  <span className="text-[11px] text-gray-400 shrink-0 ml-auto">
+                    {bad ? "с чертежом" : `${g.items.length} ${plural(g.items.length, "типаж", "типажа", "типажей")}`}
+                  </span>
+                </button>
+              )
+            })}
+            <div className="text-[11px] text-gray-400 px-1.5 pt-0.5 leading-snug">
+              {picked.length ? "Задания берутся только из отмеченных тем." : "Тема не отмечена — задания берутся из любой."}
+            </div>
+          </div>
+        </Collapse>
+      )}
+    </div>
+  )
+}
 
 // Условие в одну строку: описание ДЗ разбирается по строкам («1. …», «2. …»),
 // и перенос внутри задания превратил бы его в два.
@@ -187,9 +288,11 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
   const genSubjects = BANK_SUBJECTS
     .filter((s) => (owner || s.open) && (!bankSubjects?.length || s.types.some((t) => bankSubjects.includes(t))))
     .map((s) => s.label)
-  const [bankNums, setBankNums] = useState([])
-  const [bankThemes, setBankThemes] = useState([])
-  const [bankCount, setBankCount] = useState(5)
+  // Выбор репетитора: сколько заданий и по каким темам взять с КАЖДОГО номера —
+  // { 6: { count: 3, themes: ["Десятичные дроби"] } }. Одного общего количества
+  // мало: работа обычно собирается «два таких, три таких», а не «пять любых».
+  const [bankPick, setBankPick] = useState({})
+  const [bankOpen, setBankOpen] = useState(null)   // раскрытый номер (темы)
   const [bankTasks, setBankTasks] = useState([])
   const [bankSkipped, setBankSkipped] = useState([])
   const [bankBusy, setBankBusy] = useState(false)
@@ -199,9 +302,17 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
   // укладывается в доли секунды, зато номер видно НЕДОСТУПНЫМ сразу, а не после
   // нажатия «Собрать».
   const [bankBad, setBankBad] = useState([])
+  // Номера с подписью раздела и темами — список, из которого выбирают.
+  const [bankList, setBankList] = useState([])
+  // Недоступные темы по номерам: { 17: ["Квадрат"] }. Проверяются лениво, при
+  // раскрытии номера — гонять генераторы всех тем предмета сразу незачем.
+  const [bankBadThemes, setBankBadThemes] = useState({})
 
   function probeBank(mod, type) {
-    setBankBad(mod.numbersWithGen(type).filter((n) => !mod.pickTextTask(type, n, null, new Set())))
+    const nums = mod.numbersWithGen(type)
+    setBankList(nums.map((n) => mod.numberInfo(type, n)))
+    setBankBad(nums.filter((n) => !mod.pickTextTask(type, n, null, new Set())))
+    setBankBadThemes({})
   }
 
   // Модуль банка подгружаем по нажатию на карточку, а не эффектом: генераторы
@@ -413,19 +524,14 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
 
   function handleAssemble() {
     if (!bank) return
-    if (!bankNums.length) return setBankError("Выберите хотя бы один номер")
+    if (!bankPicks.length) return setBankError("Поставьте количество хотя бы одному номеру")
     setBankError("")
     setBankBusy(true)
     // Генераторы работают синхронно и не мгновенно — отдаём кадр, чтобы кнопка
     // успела показать «Собираем…», а не подвисла молча.
     setTimeout(() => {
-      const { tasks, skipped } = bank.assembleHomework({
-        examType: bankType,
-        numbers: bankNums,
-        themes: bankNums.length === 1 ? bankThemes : null,
-        count: bankCount,
-      })
-      setBankSkipped(skipped)
+      const { tasks, short } = bank.assembleHomework({ examType: bankType, picks: bankPicks })
+      setBankSkipped(short)
       if (tasks.length) applyBank(tasks)
       else {
         setBankTasks([])
@@ -437,21 +543,62 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
 
   function rerollBankTask(idx) {
     const seen = new Set(bankTasks.map((t) => bank.taskText(t)))
-    const fresh = bank.pickTextTask(bankType, bankTasks[idx].number, bankNums.length === 1 ? bankThemes : null, seen)
-    if (fresh) applyBank(bankTasks.map((t, i) => (i === idx ? fresh : t)))
+    const t = bankTasks[idx]
+    const fresh = bank.pickTextTask(bankType, t.number, bankPick[t.number]?.themes || null, seen)
+    if (fresh) applyBank(bankTasks.map((x, i) => (i === idx ? fresh : x)))
   }
 
   function removeBankTask(idx) {
     applyBank(bankTasks.filter((_, i) => i !== idx))
   }
 
-  function toggleBankNum(n) {
-    setBankThemes([])
-    setBankNums((prev) => (prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n].sort((a, b) => a - b)))
+  // Количество заданий номера. 0 — номер просто не входит в работу, отдельной
+  // «галочки номера» нет намеренно: счётчик и есть выбор.
+  function setBankCount(n, next) {
+    const count = Math.max(0, Math.min(BANK_MAX_PER_NUMBER, next))
+    setBankError("")
+    setBankPick((prev) => {
+      const cur = prev[n] || { count: 0, themes: [] }
+      if (!count && !cur.themes.length) return dropKey(prev, n)
+      return { ...prev, [n]: { ...cur, count } }
+    })
   }
 
-  const bankNumbers = bank ? bank.numbersWithGen(bankType) : []
-  const themeGroups = bank && bankNums.length === 1 ? bank.taskThemes(bankType, bankNums[0]) : null
+  // Тема номера: выбрана хотя бы одна — задания берутся только из них, ни одной
+  // — из любой. Первая отметка сама ставит номеру одно задание, иначе тема
+  // выбрана, а в работу ничего не пойдёт.
+  function toggleBankTheme(n, theme) {
+    setBankError("")
+    setBankPick((prev) => {
+      const cur = prev[n] || { count: 0, themes: [] }
+      const themes = cur.themes.includes(theme)
+        ? cur.themes.filter((x) => x !== theme)
+        : [...cur.themes, theme]
+      if (!themes.length && !cur.count) return dropKey(prev, n)
+      return { ...prev, [n]: { count: Math.max(cur.count, themes.length ? 1 : 0), themes } }
+    })
+  }
+
+  // Раскрытие номера: темы проверяем здесь же — какие из них дают текстовое
+  // задание, а какие идут только с чертежом.
+  function toggleBankOpen(n) {
+    setBankOpen((prev) => (prev === n ? null : n))
+    if (bank && !(n in bankBadThemes)) {
+      setBankBadThemes((prev) => ({ ...prev, [n]: bank.badThemes(bankType, n) }))
+    }
+  }
+
+  function resetBankPick() {
+    setBankPick({})
+    setBankOpen(null)
+    setBankError("")
+  }
+
+  const bankPicks = Object.entries(bankPick)
+    .map(([n, v]) => ({ number: Number(n), count: v.count, themes: v.themes.length ? v.themes : null }))
+    .filter((p) => p.count > 0)
+    .sort((a, b) => a.number - b.number)
+  const bankTotal = bankPicks.reduce((s, p) => s + p.count, 0)
 
   // Уже выставленное нестандартное время (например, у старого задания) не должно
   // пропадать из чипов — иначе правка молча его сбросит.
@@ -776,7 +923,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                             value={bankType}
                             onChange={(e) => {
                               setBankType(e.target.value)
-                              setBankNums([]); setBankThemes([]); setBankTasks([]); setBankSkipped([]); setBankError("")
+                              resetBankPick(); setBankTasks([]); setBankSkipped([])
                               probeBank(bank, e.target.value)
                             }}
                             className="input-glass"
@@ -792,78 +939,39 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                         <div>
                           <div className="flex items-baseline justify-between mb-1.5">
                             <span className="text-xs text-gray-500">
-                              Номера заданий{bankNums.length > 0 ? ` — выбрано ${bankNums.length}` : ""}
+                              Номера и темы{bankTotal > 0 ? ` — ${bankTotal} ${plural(bankTotal, "задание", "задания", "заданий")}` : ""}
                             </span>
-                            {bankNums.length > 0 && (
-                              <button type="button" onClick={() => { setBankNums([]); setBankThemes([]) }}
-                                className="text-[11px] text-gray-400 hover:text-gray-600 active:scale-95 transition-all">
+                            {bankTotal > 0 && (
+                              <button type="button" onClick={resetBankPick}
+                                className="no-press text-[11px] text-gray-400 hover:text-gray-600 active:scale-95 transition-all">
                                 сбросить
                               </button>
                             )}
                           </div>
-                          {bankNumbers.length === 0 ? (
+                          {bankList.length === 0 ? (
                             <div className="text-xs text-gray-400">Для этого предмета генераторов пока нет</div>
                           ) : (
-                            <div className="flex flex-wrap gap-1.5">
-                              {bankNumbers.map((n) => {
-                                const off = bankBad.includes(n)
-                                return (
-                                  <button
-                                    key={n}
-                                    type="button"
-                                    disabled={off}
-                                    title={off ? "Задания этого номера идут с чертежом или файлом — в текст домашней работы они не помещаются" : undefined}
-                                    onClick={() => toggleBankNum(n)}
-                                    className={`w-9 h-9 rounded-xl text-xs transition-all ${
-                                      off
-                                        ? "bg-gray-500/[0.06] text-gray-300 cursor-not-allowed"
-                                        : bankNums.includes(n)
-                                        ? "bg-blue-600 text-white shadow-sm active:scale-[0.94]"
-                                        : "bg-gray-100 text-gray-600 hover:bg-gray-200 active:scale-[0.94]"
-                                    }`}
-                                  >
-                                    {n}
-                                  </button>
-                                )
-                              })}
+                            <div className="rounded-2xl ring-1 ring-gray-500/12 divide-y divide-gray-500/10 overflow-hidden">
+                              {bankList.map((info) => (
+                                <BankNumberRow
+                                  key={info.number}
+                                  info={info}
+                                  pick={bankPick[info.number]}
+                                  off={bankBad.includes(info.number)}
+                                  open={bankOpen === info.number}
+                                  badThemes={bankBadThemes[info.number]}
+                                  onCount={(next) => setBankCount(info.number, next)}
+                                  onTheme={(theme) => toggleBankTheme(info.number, theme)}
+                                  onOpen={() => toggleBankOpen(info.number)}
+                                />
+                              ))}
                             </div>
                           )}
-                          {bankBad.length > 0 && bankNumbers.length > 0 && (
+                          {bankBad.length > 0 && bankList.length > 0 && (
                             <div className="text-[11px] text-gray-400 mt-1.5 leading-snug">
                               Бледные номера недоступны: их задания идут с чертежом или отдельным файлом, а домашняя работа хранит только текст.
                             </div>
                           )}
-                        </div>
-
-                        {themeGroups && themeGroups.length > 0 && (
-                          <div>
-                            <div className="text-xs text-gray-500 mb-1.5">
-                              Темы №{bankNums[0]} — {bankThemes.length ? `выбрано ${bankThemes.length}` : "любая"}
-                            </div>
-                            <div className="flex flex-wrap gap-1.5">
-                              {themeGroups.map((g) => (
-                                <button
-                                  key={g.theme}
-                                  type="button"
-                                  onClick={() => setBankThemes((prev) => prev.includes(g.theme) ? prev.filter((x) => x !== g.theme) : [...prev, g.theme])}
-                                  className={chipCls(bankThemes.includes(g.theme))}
-                                >
-                                  {g.theme}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        <div>
-                          <div className="text-xs text-gray-500 mb-1.5">Сколько заданий</div>
-                          <div className="flex flex-wrap gap-1.5">
-                            {BANK_COUNTS.map((n) => (
-                              <button key={n} type="button" onClick={() => setBankCount(n)} className={chipCls(bankCount === n)}>
-                                {n}
-                              </button>
-                            ))}
-                          </div>
                         </div>
 
                         {bankError && <div className="text-xs text-red-500">{bankError}</div>}
@@ -871,17 +979,22 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                         <button
                           type="button"
                           onClick={handleAssemble}
-                          disabled={bankBusy || !bankNums.length}
+                          disabled={bankBusy || !bankTotal}
                           className="bg-blue-600 text-white rounded-xl py-2 text-sm hover:bg-blue-700 disabled:opacity-50 active:scale-[0.99] transition-transform flex items-center justify-center gap-1.5"
                         >
                           {bankBusy
                             ? <><span className="loader-dots"><i /><i /><i /></span>Собираем задания</>
-                            : <><Icon name="grid" size={14} />{bankTasks.length ? "Собрать заново" : "Собрать задания"}</>}
+                            : <>
+                                <Icon name="grid" size={14} />
+                                {bankTasks.length ? "Собрать заново" : "Собрать задания"}
+                                {bankTotal > 0 && <span className="opacity-70">· {bankTotal}</span>}
+                              </>}
                         </button>
 
                         {bankSkipped.length > 0 && (
                           <div className="text-[11px] text-amber-600 leading-snug">
-                            № {bankSkipped.join(", ")} пропущены: их задания идут с чертежом, а в тексте домашней работы картинке взяться неоткуда.
+                            Заданий хватило не на всё: {bankSkipped.map((s) => `№${s.number} — ${s.got} из ${s.want}`).join(", ")}.
+                            Свежие условия этой темы кончились или идут с чертежом.
                           </div>
                         )}
 

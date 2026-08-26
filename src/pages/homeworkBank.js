@@ -6,8 +6,16 @@
 // вкладку — иначе бы вес генераторов попал в основной бандл кабинета.
 import { EXAM_GROUPS, numbersWithGen, subjectLabel, genTask, genThemeTask } from "./examSubjects"
 import { taskThemes } from "./taskGenerators"
+import { numberTitle } from "./numberTitles"
 
 export { EXAM_GROUPS, numbersWithGen, subjectLabel, taskThemes }
+
+// Номер целиком: подпись раздела и его темы с количеством типажей — из этого
+// собран список номеров в сборке ДЗ.
+export function numberInfo(examType, number) {
+  const themes = taskThemes(examType, number) || []
+  return { number, title: numberTitle(examType, number, themes), themes }
+}
 
 // Домашнее задание хранит условия ОДНОЙ строкой текста, поэтому в сборку идут
 // только самодостаточные задания: без чертежа (image_url), без прилагаемых файлов
@@ -37,26 +45,36 @@ export function pickTextTask(examType, number, themes, seen) {
   return null
 }
 
-// Набор заданий по кругу из выбранных номеров: 3 номера и 6 заданий → по два на
-// каждый. Номер, у которого не нашлось ни одного текстового задания, выбывает и
-// попадает в skipped — интерфейс перечислит такие номера.
-export function assembleHomework({ examType, numbers, themes, count }) {
-  const live = numbers.filter((n) => Number.isFinite(n))
-  const skipped = []
+// Темы номера, из которых нельзя собрать текстовое задание (всё с чертежом или
+// файлом). Проверяем пробой генераторов, когда номер раскрыли: тема сразу видна
+// недоступной, а не молча выпадает из сборки.
+export function badThemes(examType, number) {
+  return (taskThemes(examType, number) || [])
+    .map((g) => g.theme)
+    .filter((theme) => !pickTextTask(examType, number, [theme], new Set()))
+}
+
+// Задания по выбору репетитора: picks — [{ number, themes, count }], сколько
+// заданий каждого номера. Порядок сохраняется: сначала все задания первого
+// номера, потом второго — так же, как они перечислены в списке.
+//
+// Номер, который дал меньше запрошенного (все задания оказались с чертежом или
+// свежие условия кончились), попадает в short — интерфейс скажет об этом
+// честно, а не подсунет молча работу короче заказанной.
+export function assembleHomework({ examType, picks }) {
   const tasks = []
+  const short = []
   const seen = new Set()
-  let i = 0
-  while (tasks.length < count && live.length) {
-    const n = live[i % live.length]
-    const t = pickTextTask(examType, n, themes, seen)
-    if (!t) {
-      skipped.push(n)
-      live.splice(live.indexOf(n), 1)
-      i = 0
-      continue
+  for (const p of picks || []) {
+    if (!Number.isFinite(p.number) || !(p.count > 0)) continue
+    let got = 0
+    while (got < p.count) {
+      const t = pickTextTask(examType, p.number, p.themes, seen)
+      if (!t) break
+      tasks.push(t)
+      got++
     }
-    tasks.push(t)
-    i++
+    if (got < p.count) short.push({ number: p.number, got, want: p.count })
   }
-  return { tasks, skipped }
+  return { tasks, short }
 }
