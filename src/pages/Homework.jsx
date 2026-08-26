@@ -633,8 +633,10 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
               <Toggle
                 on={autoCheck}
                 onClick={() => setAutoCheck((v) => !v)}
-                title="Ученик отвечает в приложении"
-                note={autoCheck ? "Ответы сверятся автоматически, оценка появится сразу" : "Иначе ученик прикрепит фотографию или файл с работой"}
+                title="Автоматическая проверка ответов"
+                note={autoCheck
+                  ? "Ученик впишет ответы в кабинете, оценка выставится сразу"
+                  : "Ученик прикрепит фотографию или файл с работой, оценку поставите вы"}
               />
 
               <Collapse open={autoCheck}>
