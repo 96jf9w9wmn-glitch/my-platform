@@ -19,8 +19,12 @@ const Board = lazy(() => import("../components/Board"))
 import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, parseHomeworkTasks, formatPhone, answersEqual, plural } from "../utils"
 import { notifyTutor } from "../telegramNotify"
 import { useClosing } from "../useClosing"
+// Состав варианта (какие номера в части 1, какие — во второй) знает банк заданий:
+// у математики номера идут подряд, у информатики — с пропусками, и «номер больше
+// двенадцати» там означало бы не то.
+import { part1SlotsOf, part1CountOf, part2NumbersOf, isPart2Number, examLevelOf } from "./taskBankMeta"
 // ЕГЭ (профиль и база) — единый поток части 2 (13–19); ОГЭ — свой (20–25).
-const isEgeType = (t) => t === "ЕГЭ" || t === "ЕГЭ Профиль"
+const isEgeType = (t) => examLevelOf(t) === "ЕГЭ"
 
 function Part2Upload({ taskNum, submissionId, existingUrl, chosen, onUpload }) {
   const [uploading, setUploading] = useState(false)
@@ -1350,15 +1354,19 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   const isGeneratedVariant = (selectedVariant?.tasks_snapshot?.length || 0) > 0
   // Часть 2 у варианта: номера заданий и 4 варианта ответа на каждый (см. Variants.jsx).
   // У №24 (доказательство) вариантов нет — только фото решения.
-  const part1Count = isEgeType(selectedVariant?.type) ? 12 : 19
+  const part1Count = part1CountOf(selectedVariant?.type)
   const variantChoices = selectedVariant?.answers?.part2_choices || {}
   // Номера части 2 берём из фактического состава варианта (в профильном ЕГЭ пока входит
   // только №13); fallback на полный список — для старых вариантов без tasks_snapshot.
   const part2FromSnapshot = [...new Set((selectedVariant?.tasks_snapshot || [])
-    .map((t) => t.number).filter((n) => n > part1Count))].sort((a, b) => a - b)
+    .map((t) => t.number).filter((n) => isPart2Number(selectedVariant?.type, n)))].sort((a, b) => a - b)
   const part2TaskNums = part2FromSnapshot.length
     ? part2FromSnapshot
-    : (isEgeType(selectedVariant?.type) ? [13, 14, 15, 16, 17, 18, 19] : [20, 21, 22, 23, 24, 25])
+    : (part2NumbersOf(selectedVariant?.type).length
+        ? part2NumbersOf(selectedVariant?.type)
+        // Старые варианты без снимка: у них часть 2 полная, а состав по типу
+        // экзамена тогда был жёстким.
+        : (isEgeType(selectedVariant?.type) ? [13, 14, 15, 16, 17, 18, 19] : []))
   // ?download → Supabase отдаёт файл с Content-Disposition: attachment (скачивание, а не открытие)
   const variantDownloadUrl = selectedVariant?.file_url
     ? selectedVariant.file_url + (selectedVariant.file_url.includes("?") ? "&" : "?") + "download"
@@ -1598,7 +1606,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     setSubmitting(true)
 
     const variant = selectedVariant
-    const maxCount = isEgeType(variant.type) ? 12 : 19
+    const maxCount = part1SlotsOf(variant.type)
     const correctAnswers = variant.answers?.part1 || []
     let score = 0
     part1Answers.forEach((ans, i) => {
@@ -1629,7 +1637,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     const attempts = []
     part1Answers.forEach((ans, i) => {
       const num = i + 1
-      if (num > maxCount) return
+      if (num > maxCount || isPart2Number(variant.type, num)) return
       const given = (ans || "").trim()
       if (!given) return // не отвечал — это не попытка, а пропуск
       const task = snap.find((t) => t.number === num)
@@ -2182,7 +2190,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                     <p className="text-xs text-gray-500 mb-4">{isEgeType(selectedVariant?.type) ? "В части 1 впиши ответ. Часть 2 реши на листе — фото решений загрузишь после отправки." : "В части 1 впиши ответ, в части 2 выбери один из четырёх. Фото решений части 2 загрузишь после отправки."}</p>
                     <div className="flex flex-col gap-3">
                       {selectedVariant.tasks_snapshot.map((t) => {
-                        const isPart2 = t.number > part1Count
+                        const isPart2 = isPart2Number(selectedVariant?.type, t.number)
                         const choices = isPart2 ? variantChoices[t.number] : null
                         return (
                           <div key={t.number} className="border border-gray-100 rounded-xl p-3">
@@ -2370,7 +2378,9 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       <div className="text-sm font-medium text-green-700">Вариант проверен!</div>
                       <div className="text-3xl font-medium text-green-600 mt-2">{selectedVariant.submission.total_score} баллов</div>
                       <div className="text-sm text-green-500 mt-1">
-                        Часть 1: {selectedVariant.submission.part1_score} / {part1Count} · Часть 2: {selectedVariant.submission.part2_score} / {isEgeType(selectedVariant.type) ? 20 : 12}
+                        Часть 1: {selectedVariant.submission.part1_score} / {part1Count}
+                        {/* Части 2 нет у базового ЕГЭ и у информатики — строка о ней там лишняя */}
+                        {part2TaskNums.length > 0 && ` · Часть 2: ${selectedVariant.submission.part2_score} / ${isEgeType(selectedVariant.type) ? 20 : 12}`}
                       </div>
                     </div>
 
@@ -2448,7 +2458,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                     {variants.map((v) => (
                       <button
                         key={v.id}
-                        onClick={() => { setSelectedVariant(v); setPart1Answers(Array(isEgeType(v.type) ? 12 : 19).fill("")); setPart2Choices({}) }}
+                        onClick={() => { setSelectedVariant(v); setPart1Answers(Array(part1SlotsOf(v.type)).fill("")); setPart2Choices({}) }}
                         className="text-left glass p-4 hover:bg-white/80 transition-colors w-full no-press press-tap"
                       >
                         <div className="flex justify-between items-center">

@@ -14,7 +14,7 @@ import { isOwner } from "../owner"
 import { useClosing } from "../useClosing"
 // Список предметов — из лёгкого модуля: сами генераторы приезжают отдельно
 // (homeworkBank), и тащить их в бандл раздела ради подписей нельзя.
-import { subjectGroups, firstType } from "./examSubjectList"
+import { subjectGroups, firstType, BANK_SUBJECTS } from "./examSubjectList"
 
 const STATUS_LABELS = {
   assigned: { label: "Выдано", cls: "bg-gray-100 text-gray-600" },
@@ -180,6 +180,11 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
   // Ничего не отмечено — все открытые предметы, как было раньше.
   const bankGroups = subjectGroups({ picked: bankSubjects, owner })
   const [bankType, setBankType] = useState(() => firstType(bankGroups))
+  // Предметы репетитора для ИИ-генерации: там нужно НАЗВАНИЕ предмета, а не банк,
+  // поэтому список плоский — «Математика», «Информатика».
+  const genSubjects = BANK_SUBJECTS
+    .filter((s) => (owner || s.open) && (!bankSubjects?.length || s.types.some((t) => bankSubjects.includes(t))))
+    .map((s) => s.label)
   const [bankNums, setBankNums] = useState([])
   const [bankThemes, setBankThemes] = useState([])
   const [bankCount, setBankCount] = useState(5)
@@ -211,7 +216,8 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
 
   // --- Генерация ДЗ по теме через DeepSeek (серверный прокси /api/generate-hw) ---
   const [genTopic, setGenTopic] = useState("")
-  const [genSubject, setGenSubject] = useState("")
+  // Предмет для ИИ: если репетитор ведёт один — он и подставлен, выбирать нечего.
+  const [genSubject, setGenSubject] = useState(() => (genSubjects.length === 1 ? genSubjects[0] : ""))
   const [genLevel, setGenLevel] = useState("средний")
   const [genCount, setGenCount] = useState(5)
   const [genAsTest, setGenAsTest] = useState(true) // тест с выбором ответа
@@ -928,12 +934,19 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                           placeholder="Тема. Например: квадратные уравнения"
                           className="input-glass"
                         />
-                        <input
-                          value={genSubject}
-                          onChange={(e) => setGenSubject(e.target.value)}
-                          placeholder="Предмет (необязательно)"
-                          className="input-glass"
-                        />
+                        {/* Предмет — выбором из тех, что отмечены в «Профиле»:
+                            вводить его руками при каждой генерации незачем. */}
+                        <label className="block">
+                          <span className="block text-xs text-gray-500 mb-1">Предмет</span>
+                          <select
+                            value={genSubject}
+                            onChange={(e) => setGenSubject(e.target.value)}
+                            className="input-glass w-full px-3 py-2"
+                          >
+                            <option value="">Не указывать</option>
+                            {genSubjects.map((name) => <option key={name} value={name}>{name}</option>)}
+                          </select>
+                        </label>
                         <div className="flex gap-2">
                           <label className="flex-1 min-w-0">
                             <span className="block text-xs text-gray-500 mb-1">Сложность</span>

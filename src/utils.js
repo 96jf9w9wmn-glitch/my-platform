@@ -582,13 +582,6 @@ export function formatPhone(raw) {
   return `+7 (${body.slice(0, 3)}) ${body.slice(3, 6)}-${body.slice(6, 8)}-${body.slice(8, 10)}`
 }
 
-// Tutor's onboarding answer (exam_focus) suggests which exam type to
-// pre-select in Variants instead of always defaulting to ОГЭ.
-export function defaultExamType(examFocus) {
-  if (examFocus?.includes("ОГЭ")) return "ОГЭ"
-  if (examFocus?.includes("ЕГЭ")) return "ЕГЭ"
-  return "ОГЭ"
-}
 
 // Число в русском виде: округление до сотых и десятичная ЗАПЯТАЯ
 // (используется в подписях чертежей интерактивной практики).

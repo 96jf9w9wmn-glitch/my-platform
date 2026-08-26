@@ -21,8 +21,8 @@ export const EXAM_GROUPS = [
   {
     key: "ЕГЭ",
     subjects: [
-      { type: "ЕГЭ", label: "Математика база", dot: "bg-blue-500", open: true, family: "Математика" },
-      { type: "ЕГЭ Профиль", label: "Математика профиль", dot: "bg-indigo-500", open: true, family: "Математика" },
+      { type: "ЕГЭ", label: "Математика база", dot: "bg-blue-500", open: true, family: "Математика", exam: "ЕГЭ база" },
+      { type: "ЕГЭ Профиль", label: "Математика профиль", dot: "bg-indigo-500", open: true, family: "Математика", exam: "ЕГЭ профиль" },
       { type: "ЕГЭ Информатика", label: "Информатика", dot: "bg-cyan-500", open: true, family: "Информатика" },
     ],
   },
@@ -65,6 +65,12 @@ export function subjectOf(type) {
 export function subjectLabel(type) {
   const s = subjectOf(type)
   return s ? `${levelOf(type)} ${s.label}` : type
+}
+
+// Подпись экзамена внутри предмета: обычно это просто уровень, но у математики
+// два разных ЕГЭ — базовый и профильный, и «ЕГЭ» рядом с «ЕГЭ» ничего не значит.
+export function examLabel(type) {
+  return subjectOf(type)?.exam || levelOf(type)
 }
 
 // Предметы, которые доступны этому репетитору: из открытых оставляем отмеченные
@@ -111,6 +117,9 @@ export const BANK_SUBJECTS = EXAM_GROUPS.reduce((out, g) => {
     item.types.push(s.type)
     item.open = item.open || !!s.open
   }
+  // ОГЭ вперёд: в EXAM_GROUPS первым идёт ЕГЭ, а выбор экзамена внутри предмета
+  // читается сверху вниз по возрасту ученика.
+  for (const item of out) item.types.sort((a, b) => (levelOf(a) === "ОГЭ" ? 0 : 1) - (levelOf(b) === "ОГЭ" ? 0 : 1))
   return out
 }, [])
 

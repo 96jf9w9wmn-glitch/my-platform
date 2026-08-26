@@ -2,13 +2,12 @@ import { supabase } from "../supabase"
 import { hasGenerators, generateTask } from "./taskGenerators"
 import { hasModules, generateModule, moduleExamTypes } from "./taskModules"
 import { normalizeTaskImage } from "../utils"
-import { TASK_NUMBERS_BY_TYPE, PART2_NUMBERS, MODULE_EXAM_TYPES } from "./taskBankMeta"
+import { PART2_NUMBERS, MODULE_EXAM_TYPES, part1NumbersOf, part2NumbersOf, VARIANT_TYPES } from "./taskBankMeta"
 
 // «Лечит» image_url строк банка, сохранённых до разворота мат-токенов (иначе в подписи чертежа
 // виден сырой «4⟦r:2⟧»). Идемпотентно для новых строк без токенов.
 const healImages = (rows) => (rows || []).map((t) => t?.image_url ? { ...t, image_url: normalizeTaskImage(t.image_url) } : t)
 
-const NUMBERS_BY_TYPE = TASK_NUMBERS_BY_TYPE
 const PART2_NUMBERS_BY_TYPE = PART2_NUMBERS
 
 const shuffle = (arr) => {
@@ -133,15 +132,30 @@ export function buildModuleTasks(examType) {
   return tasks
 }
 
+// Задание для печатного листа: без прилагаемых файлов. Такие задания есть в
+// информатике (архив, таблица, файл с текстом), и без файла их не решить — в
+// вариант они попасть не должны. Номера, где ВСЕ задания такие, отсеяны заранее
+// (VARIANT_PART1), эта проверка ловит отдельные случайные попадания: генератор
+// одного номера может выдавать и то, и другое.
+const needsFile = (t) => !!(t?.archive || t?.spreadsheet || t?.textFile)
+function printable(examType, number) {
+  for (let i = 0; i < 12; i++) {
+    const t = generateTask(examType, number)
+    if (t && !needsFile(t)) return t
+  }
+  return null
+}
+
 // Собирает один вариант из банка: по одному случайному заданию на каждый номер части 1
 // и (для ОГЭ) части 2. Задания 1–5 (для ОГЭ) — единый практический модуль (buildModuleTasks).
 // Номера с генераторами собираются кодом; остальные берутся из таблицы `tasks`. Заданиям
 // части 2 добавляются 4 варианта ответа (withChoices). missing — номера, для которых нет
 // ни модуля, ни генератора, ни строк в банке.
 export async function assembleFromBank(examType) {
-  const count = NUMBERS_BY_TYPE[examType]
-  if (!count) throw new Error(`Неизвестный тип экзамена: ${examType}`)
-  const part2Numbers = PART2_NUMBERS_BY_TYPE[examType] || []
+  if (!VARIANT_TYPES.includes(examType)) throw new Error(`Неизвестный тип экзамена: ${examType}`)
+  const part1Numbers = part1NumbersOf(examType)
+  const count = part1Numbers.length
+  const part2Numbers = part2NumbersOf(examType)
   const { data: pool } = await supabase.from("tasks").select("*").eq("exam_type", examType)
   const byNumber = {}
   for (const t of healImages(pool)) {
@@ -151,15 +165,20 @@ export async function assembleFromBank(examType) {
   const moduleByNum = new Map((moduleTasks || []).map((t) => [t.number, t]))
   const picked = []
   const missing = []
-  const numbers = [...Array.from({ length: count }, (_, i) => i + 1), ...part2Numbers]
+  const numbers = [...part1Numbers, ...part2Numbers]
   for (const n of numbers) {
     if (moduleByNum.has(n)) { picked.push(moduleByNum.get(n)); continue }
-    if (hasGenerators(examType, n)) { picked.push(withChoices(examType, generateTask(examType, n))); continue }
+    if (hasGenerators(examType, n)) {
+      const t = printable(examType, n)
+      if (t) { picked.push(withChoices(examType, t)); continue }
+      missing.push(n)
+      continue
+    }
     const options = byNumber[n]
     if (!options?.length) { missing.push(n); continue }
     picked.push(withChoices(examType, options[Math.floor(Math.random() * options.length)]))
   }
-  return { picked, missing, count, part2Numbers }
+  return { picked, missing, count, part1Numbers, part2Numbers }
 }
 
 // Пересобирает весь практический модуль 1–5 (задания взаимозависимы — нельзя менять одно).
@@ -176,4 +195,4 @@ export async function rerollTask(examType, number, excludeId) {
   return withChoices(examType, pool[Math.floor(Math.random() * pool.length)])
 }
 
-export { TASK_NUMBERS_BY_TYPE, PART2_NUMBERS } from "./taskBankMeta"
+export { PART2_NUMBERS } from "./taskBankMeta"

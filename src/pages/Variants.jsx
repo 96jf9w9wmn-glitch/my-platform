@@ -2,10 +2,13 @@ import { useState, useEffect, useRef, Fragment } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import { signRows } from "../storageUrl"
-import { plural, getInitials, defaultExamType, renderTaskMath, plainTaskMath } from "../utils"
+import { plural, getInitials, renderTaskMath, plainTaskMath } from "../utils"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
-import { isModuleNumber, PART2_NUMBERS } from "./taskBankMeta"
+import { isModuleNumber, part1NumbersOf, part1SlotsOf, part2NumbersOf, isPart2Number, examLevelOf, VARIANT_TYPES } from "./taskBankMeta"
+// Список предметов — из лёгкого модуля: генераторы приезжают отдельно, по кнопке.
+import { BANK_SUBJECTS, subjectOf, examLabel } from "./examSubjectList"
+import { isOwner } from "../owner"
 import { usePlan } from "../subscription"
 import { PlanHint } from "../components/PlanLock"
 import ConfirmModal from "../components/ConfirmModal"
@@ -152,7 +155,10 @@ const OGE_PART2_GEOMETRY = [23, 24, 25]
 
 const EGE_SCORES = [0,6,11,17,22,27,34,40,46,52,58,64,70,72,74,76,78,80,82,84,86,88,90,92,94,95,96,97,98,99,100,100,100]
 // Профиль и базовый ЕГЭ используют единый поток части 2 (13–19, шкала EGE_SCORES); ОГЭ — свой.
-const isEgeType = (t) => t === "ЕГЭ" || t === "ЕГЭ Профиль"
+const isEgeType = (t) => examLevelOf(t) === "ЕГЭ"
+// Шкала оценок и разбивка «алгебра/геометрия» — про математику. У информатики
+// свой перевод баллов, и показывать ей математическую оценку нельзя.
+const isMathType = (t) => t === "ОГЭ" || t === "ЕГЭ" || t === "ЕГЭ Профиль"
 
 function getOgeGrade(total, geomScore) {
   if (total < 8 || geomScore < 2) return 2
@@ -186,10 +192,34 @@ function getGeomScore(part1Answers, correctAnswers, part2ScoreDetail) {
   return geom
 }
 
-function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) {
+// Предметы, из которых репетитор может собрать вариант: отмеченные в «Профиле»
+// (ничего не отмечено — все открытые) и такие, для которых вариант вообще
+// собирается. Владельцу платформы — всё, что есть.
+function variantSubjectsFor(bankSubjects, owner) {
+  const picked = (Array.isArray(bankSubjects) ? bankSubjects : []).filter((t) => subjectOf(t))
+  const out = []
+  for (const item of BANK_SUBJECTS) {
+    if (!owner && !item.open) continue
+    const types = item.types.filter((t) => VARIANT_TYPES.includes(t) && (!picked.length || picked.includes(t)))
+    if (types.length) out.push({ ...item, types })
+  }
+  return out
+}
+
+// Первый предмет и экзамен: уровень берём из анкеты («готовлю к ЕГЭ» — открываем
+// ЕГЭ), иначе ОГЭ, как было до появления выбора предмета.
+function defaultVariantType(subjects, examFocus) {
+  const all = subjects.flatMap((s) => s.types)
+  if (!all.length) return "ОГЭ"
+  const wantEge = Array.isArray(examFocus) && examFocus.includes("ЕГЭ") && !examFocus.includes("ОГЭ")
+  return all.find((t) => examLevelOf(t) === (wantEge ? "ЕГЭ" : "ОГЭ")) || all[0]
+}
+
+function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = null, owner = false, onClose, onAdd }) {
+  const subjects = variantSubjectsFor(bankSubjects, owner)
   const [title, setTitle] = useState(todayTitle)
-  const [examType, setExamType] = useState(() => defaultExamType(examFocus))
-  const [answers, setAnswers] = useState(() => Array(defaultExamType(examFocus) === "ОГЭ" ? 19 : 12).fill(""))
+  const [examType, setExamType] = useState(() => defaultVariantType(subjects, examFocus))
+  const [answers, setAnswers] = useState(() => Array(part1SlotsOf(defaultVariantType(subjects, examFocus))).fill(""))
   // Ответы части 2 (ОГЭ: 20–25) — объект { номер: ответ }; при сборке из банка заполняется сам
   const [part2Answers, setPart2Answers] = useState({})
   const [loading, setLoading] = useState(false)
@@ -220,8 +250,20 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
     if (s.studentAccountId && s.goal) goalByAccountId[s.studentAccountId] = s.goal
   }
 
-  const answerCount = examType === "ОГЭ" ? 19 : 12
-  const part2Numbers = PART2_NUMBERS[examType] || []
+  // Номера части 1 идут подряд только в математике: в информатике из варианта
+  // выпадают задания, которые без компьютера не решить (см. VARIANT_PART1).
+  const p1Numbers = part1NumbersOf(examType)
+  const answerCount = p1Numbers.length
+  const answerSlots = part1SlotsOf(examType)          // ответы лежат по индексу «номер − 1»
+  const inOrder = answerSlots === answerCount         // можно вводить строкой через пробел
+  const part2Numbers = part2NumbersOf(examType)
+  const subjectOfType = subjects.find((s) => s.types.includes(examType)) || subjects[0]
+
+  function pickExamType(next) {
+    setExamType(next)
+    setAnswers(Array(part1SlotsOf(next)).fill(""))
+    setPart2Answers({}); setBankPicked([]); setBankMissing([]); setFormError("")
+  }
 
   function handleFileUpload(e) {
     const file = e.target.files[0]
@@ -239,14 +281,14 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
   async function handleAssemble() {
     setAssembling(true)
     const { assembleFromBank } = await loadBank()
-    const { picked, missing, count } = await assembleFromBank(examType)
+    const { picked, missing } = await assembleFromBank(examType)
     setBankPicked(picked)
     setBankMissing(missing)
-    const filled = Array(count).fill("")
+    const filled = Array(answerSlots).fill("")
     const p2 = {}
     picked.forEach((t) => {
-      if (t.number <= count) filled[t.number - 1] = t.answer
-      else p2[t.number] = t.answer
+      if (isPart2Number(examType, t.number)) p2[t.number] = t.answer
+      else filled[t.number - 1] = t.answer
     })
     setAnswers(filled)
     setPart2Answers(p2)
@@ -268,15 +310,16 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
     const next = await rerollTask(examType, number, current?.id)
     if (!next) return
     setBankPicked((prev) => prev.map((t) => (t.number === number ? next : t)))
-    if (number > answerCount) setPart2Answers((prev) => ({ ...prev, [number]: next.answer }))
+    if (isPart2Number(examType, number)) setPart2Answers((prev) => ({ ...prev, [number]: next.answer }))
     else setAnswers((prev) => { const upd = [...prev]; upd[number - 1] = next.answer; return upd })
   }
 
   async function handleSubmit() {
     if (!title) { setFormError("Дайте варианту название — по нему ученик найдёт его в списке."); return }
     if (source === "bank" && bankPicked.length === 0) { setFormError("Сначала соберите вариант из банка заданий."); return }
-    if (answers.filter(Boolean).length < answerCount) {
-      setFormError(`Заполнены не все ответы части 1: ${answers.filter(Boolean).length} из ${answerCount}.`)
+    const filledCount = p1Numbers.filter((n) => answers[n - 1]).length
+    if (filledCount < answerCount) {
+      setFormError(`Заполнены не все ответы части 1: ${filledCount} из ${answerCount}.`)
       return
     }
     setFormError("")
@@ -325,7 +368,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
     const recipients = recipientId === "all"
       ? accounts.filter((a) => {
           const goal = goalByAccountId[a.id]
-          return !goal || goal === examType
+          return !goal || goal === examLevelOf(examType)
         })
       : accounts.filter((a) => String(a.id) === recipientId)
 
@@ -356,24 +399,44 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
                 <label className="text-sm text-gray-500 mb-1 block">Ученик</label>
                 <select value={recipientId} onChange={(e) => setRecipientId(e.target.value)}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400">
-                  <option value="all">Все ученики ({examType})</option>
+                  <option value="all">Все ученики ({examLevelOf(examType)})</option>
                   {accounts.map((a) => <option key={a.id} value={String(a.id)}>{a.name}</option>)}
                 </select>
               </div>
 
-              <div>
-                <label className="text-sm text-gray-500 mb-2 block">Тип экзамена</label>
-                <SegmentSwitch
-                  block
-                  ariaLabel="Тип экзамена"
-                  value={examType}
-                  onChange={(t) => { setExamType(t); setAnswers(Array(t === "ОГЭ" ? 19 : 12).fill("")); setPart2Answers({}); setBankPicked([]); setBankMissing([]) }}
-                  items={["ОГЭ", "ЕГЭ"].map((t) => ({
-                    key: t,
-                    label: <><Icon name={t === "ОГЭ" ? "file-text" : "book"} size={14} />{t}</>,
-                  }))}
-                />
-              </div>
+              {/* Предмет — только те, что отмечены в «Профиле». Один предмет —
+                  переключателя нет: выбирать не из чего. */}
+              {subjects.length > 1 && (
+                <div>
+                  <label className="text-sm text-gray-500 mb-2 block">Предмет</label>
+                  <SegmentSwitch
+                    block
+                    ariaLabel="Предмет"
+                    value={subjectOfType?.label}
+                    onChange={(label) => {
+                      const next = subjects.find((s) => s.label === label)
+                      if (next) pickExamType(next.types[0])
+                    }}
+                    items={subjects.map((s) => ({ key: s.label, label: s.label }))}
+                  />
+                </div>
+              )}
+
+              {(subjectOfType?.types.length || 0) > 1 && (
+                <div>
+                  <label className="text-sm text-gray-500 mb-2 block">Тип экзамена</label>
+                  <SegmentSwitch
+                    block
+                    ariaLabel="Тип экзамена"
+                    value={examType}
+                    onChange={pickExamType}
+                    items={subjectOfType.types.map((t) => ({
+                      key: t,
+                      label: <><Icon name={examLevelOf(t) === "ОГЭ" ? "file-text" : "book"} size={14} />{examLabel(t)}</>,
+                    }))}
+                  />
+                </div>
+              )}
 
               <div>
                 <label className="text-sm text-gray-500 mb-1 block">Название варианта</label>
@@ -466,24 +529,53 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
                 <label className="text-sm text-gray-500 mb-1 block">
                   {source === "bank" && bankPicked.length > 0
                     ? `Ответы части 1 — подставлены из банка, проверьте (${answerCount} шт.)`
-                    : `Ответы к части 1 — введите все ${answerCount} через пробел`}
+                    : inOrder
+                      ? `Ответы к части 1 — введите все ${answerCount} через пробел`
+                      : `Ответы к части 1 — по номерам заданий (${answerCount} шт.)`}
                 </label>
-                <textarea
-                  value={answers.filter(Boolean).join(" ")}
-                  onChange={(e) => {
-                    const vals = e.target.value.trim().split(/\s+/).filter(Boolean).slice(0, answerCount)
-                    setAnswers([...vals, ...Array(answerCount).fill("")].slice(0, answerCount))
-                  }}
-                  placeholder={examType === "ОГЭ" ? "3 12 4 -5 2 0.5 8 16 3 7 4 2 6 9 45 8 12 3 7" : "3 12 4 -5 2 0.5 8 16 3 7 4 2"}
-                  rows={2}
-                  className="input-glass resize-none"
-                />
-                <div className="text-xs text-gray-400 mt-1">Введено: {answers.filter((a) => a).length} / {answerCount}</div>
+                {/* Номера подряд (математика, ОГЭ информатика) — строкой через пробел:
+                    так ответы переносят из готового ключа одним движением. Где номера
+                    идут с пропусками, строка обманывала бы: третье число легло бы не в
+                    то задание — там сетка с номерами. */}
+                {inOrder ? (
+                  <>
+                    <textarea
+                      value={answers.filter(Boolean).join(" ")}
+                      onChange={(e) => {
+                        const vals = e.target.value.trim().split(/\s+/).filter(Boolean).slice(0, answerCount)
+                        setAnswers([...vals, ...Array(answerCount).fill("")].slice(0, answerCount))
+                      }}
+                      placeholder={examType === "ОГЭ" ? "3 12 4 -5 2 0.5 8 16 3 7 4 2 6 9 45 8 12 3 7" : "3 12 4 -5 2 0.5 8 16 3 7"}
+                      rows={2}
+                      className="input-glass resize-none"
+                    />
+                    <div className="text-xs text-gray-400 mt-1">Введено: {answers.filter((a) => a).length} / {answerCount}</div>
+                  </>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {p1Numbers.map((n) => (
+                        <div key={n} className="flex items-center gap-2">
+                          <span className="text-xs text-gray-400 w-5 flex-shrink-0">{n}</span>
+                          <input
+                            value={answers[n - 1] || ""}
+                            onChange={(e) => setAnswers((prev) => { const upd = [...prev]; upd[n - 1] = e.target.value; return upd })}
+                            placeholder="Ответ"
+                            className="input-glass flex-1 px-2 py-1.5 text-sm min-w-0"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      Введено: {p1Numbers.filter((n) => answers[n - 1]).length} / {answerCount}
+                    </div>
+                  </>
+                )}
               </div>
 
               {part2Numbers.length > 0 && (
                 <div>
-                  <label className="text-sm text-gray-500 mb-1 block">Ответы к части 2 (20–25){source === "bank" && bankPicked.length > 0 ? " — подставлены из банка" : ""}</label>
+                  <label className="text-sm text-gray-500 mb-1 block">Ответы к части 2 ({part2Numbers.length === 1 ? `№${part2Numbers[0]}` : `${part2Numbers[0]}–${part2Numbers[part2Numbers.length - 1]}`}){source === "bank" && bankPicked.length > 0 ? " — подставлены из банка" : ""}</label>
                   <div className="grid grid-cols-2 gap-2">
                     {part2Numbers.map((n) => (
                       <div key={n} className="flex items-center gap-2">
@@ -538,11 +630,15 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
                     </>
                   ) : (
                     <>
-                      <div className="text-xs font-medium text-blue-600 mb-1 bg-blue-50 px-2 py-1 rounded">Задания 1–12 (часть 1 ЕГЭ)</div>
+                      {/* Разбивка «алгебра/геометрия» — только у ОГЭ по математике;
+                          остальным показываем ровно те номера, что вошли в вариант. */}
+                      <div className="text-xs font-medium text-blue-600 mb-1 bg-blue-50 px-2 py-1 rounded">
+                        {isMathType(examType) ? "Задания 1–12 (часть 1 ЕГЭ)" : `Часть 1 · ${answerCount} ${plural(answerCount, "задание", "задания", "заданий")}`}
+                      </div>
                       <div className="grid grid-cols-6 gap-1">
-                        {answers.slice(0, 12).map((a, i) => (
-                          <div key={i} className={a ? "text-center rounded-lg py-1 text-xs bg-blue-100 text-blue-700 font-medium" : "text-center rounded-lg py-1 text-xs bg-gray-100 text-gray-400"}>
-                            <div style={{fontSize:"10px"}}>{i+1}</div><div>{a||"-"}</div>
+                        {p1Numbers.map((n) => (
+                          <div key={n} className={answers[n - 1] ? "text-center rounded-lg py-1 text-xs bg-blue-100 text-blue-700 font-medium" : "text-center rounded-lg py-1 text-xs bg-gray-100 text-gray-400"}>
+                            <div style={{fontSize:"10px"}}>{n}</div><div className="truncate px-1">{answers[n - 1] || "-"}</div>
                           </div>
                         ))}
                       </div>
@@ -554,7 +650,11 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
               <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700 mt-auto">
                 {examType === "ОГЭ"
                   ? "Часть 2 (20–25): ученик выбирает ответ из четырёх и прикрепляет фото решения. Баллы начисляются только после вашей проверки."
-                  : "Часть 2 (задания 13–19) проверяется вручную после загрузки решений учеником."}
+                  : part2Numbers.length > 0
+                    ? "Часть 2 (задания 13–19) проверяется вручную после загрузки решений учеником."
+                    : isMathType(examType)
+                      ? "Все задания — с кратким ответом: вариант проверяется автоматически."
+                      : "В вариант входят только задания, которые решаются без компьютера: практическая часть (работа с файлами и таблицами) в печатный лист не помещается."}
               </div>
             </div>
           </div>
@@ -1164,7 +1264,7 @@ function Variants({ user, students = [] }) {
         </div>
       )}
       {showAdd && canVariants && (
-        <AddVariantModal tutorId={user.id} students={students} examFocus={user.profile?.exam_focus} onClose={() => setShowAdd(false)} onAdd={(v) => { setVariants((prev) => [v, ...prev]); setShowAdd(false) }} />
+        <AddVariantModal tutorId={user.id} students={students} examFocus={user.profile?.exam_focus} bankSubjects={user.profile?.bank_subjects} owner={isOwner(user.email)} onClose={() => setShowAdd(false)} onAdd={(v) => { setVariants((prev) => [v, ...prev]); setShowAdd(false) }} />
       )}
 
       {selectedSubmission && isEgeType(selectedVariant?.type) && (
