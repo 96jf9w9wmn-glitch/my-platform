@@ -3,6 +3,7 @@ import { createPortal } from "react-dom"
 import { useClosing } from "../useClosing"
 import Icon from "../components/Icon"
 import SegmentSwitch from "../components/SegmentSwitch"
+import ConfirmModal from "../components/ConfirmModal"
 
 const VIEWS = [{ key: "month", label: "Месяц" }, { key: "week", label: "Неделя" }]
 
@@ -49,6 +50,9 @@ function Schedule({ students, setStudents }) {
   // Плавное закрытие: без этого модалка исчезала рывком.
   const { cls: closingCls, close: closeForm } = useClosing(() => { setShowForm(false); setFormError("") })
   const [selectedDay, setSelectedDay] = useState(formatDate(new Date()))
+  // Занятие удаляется одним нажатием на крестик, а отменить это нечем —
+  // поэтому сначала спрашиваем.
+  const [confirmDel, setConfirmDel] = useState(null)
 
   function openExtraForm(dateStr) {
     setNewLesson({ studentId: "", date: dateStr || "", time: "", duration: "" })
@@ -126,6 +130,12 @@ function Schedule({ students, setStudents }) {
           : s
       )
     )
+  }
+
+  function confirmRemove() {
+    if (!confirmDel) return
+    removeLesson(confirmDel.studentId, confirmDel.date, confirmDel.time)
+    setConfirmDel(null)
   }
 
   const weekLabel = `${weekDates[0].toLocaleDateString("ru-RU", { day: "numeric", month: "short" })} — ${weekDates[6].toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" })}`
@@ -255,8 +265,9 @@ function Schedule({ students, setStudents }) {
                               </a>
                             )}
                             <button
-                              onClick={() => removeLesson(l.studentId, selectedDay, l.time)}
-                              className={`${isExtra ? "text-green-300" : "text-blue-300"} hover:text-red-500`}
+                              onClick={() => setConfirmDel({ studentId: l.studentId, date: selectedDay, time: l.time, name: l.studentName })}
+                              aria-label="Удалить занятие"
+                              className={`${isExtra ? "text-green-300" : "text-blue-300"} hover:text-red-500 transition-transform active:scale-90`}
                             >
                               <Icon name="x" size={16} />
                             </button>
@@ -316,7 +327,7 @@ function Schedule({ students, setStudents }) {
                                 </div>
                               )}
                             </div>
-                            <button onClick={() => removeLesson(s.id, dateStr, hour)} className={`${isExtra ? "text-green-400" : "text-blue-400"} hover:text-red-500 opacity-0 group-hover:opacity-100 ml-1 flex-shrink-0`}><Icon name="x" size={12} /></button>
+                            <button onClick={() => setConfirmDel({ studentId: s.id, date: dateStr, time: hour, name: s.name })} aria-label="Удалить занятие" className={`${isExtra ? "text-green-400" : "text-blue-400"} hover:text-red-500 opacity-0 group-hover:opacity-100 ml-1 flex-shrink-0 transition-transform active:scale-90`}><Icon name="x" size={12} /></button>
                           </div>
                         )
                       })}
@@ -328,6 +339,19 @@ function Schedule({ students, setStudents }) {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        open={!!confirmDel}
+        danger
+        title="Удалить занятие?"
+        message={confirmDel
+          ? `${confirmDel.name}, ${new Date(confirmDel.date + "T00:00:00").toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}, ${confirmDel.time}. Занятие пропадёт из расписания — вернуть его можно будет только добавив заново.`
+          : ""}
+        confirmLabel="Удалить"
+        cancelLabel="Отмена"
+        onConfirm={confirmRemove}
+        onCancel={() => setConfirmDel(null)}
+      />
 
       {showForm && createPortal(
         <div className={`fixed inset-0 glass-overlay flex items-center justify-center z-50 p-4 ${closingCls}`}>
