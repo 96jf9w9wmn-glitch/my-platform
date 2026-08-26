@@ -155,9 +155,11 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
   const [formError, setFormError] = useState("")
   // Тип задания больше не выбирается вручную: работа становится тестом ровно
   // тогда, когда у неё появляются ответы для автопроверки (тумблер в форме).
+  // Новое задание всегда начинается с автопроверки — письменная сдача остаётся
+  // осознанным исключением, а не тем, что получается само собой.
   // «Комбинированное» сохраняем только у старых заданий, чтобы правка не меняла
   // ученику способ сдачи.
-  const [autoCheck, setAutoCheck] = useState(editingHw ? editingHw.hw_type !== "written" : false)
+  const [autoCheck, setAutoCheck] = useState(editingHw ? editingHw.hw_type !== "written" : true)
   const [requireSolution, setRequireSolution] = useState(editingHw?.require_solution || false)
   const [answersInput, setAnswersInput] = useState(editingHw?.correct_answers?.join(" ") || "")
   // Интерактивный тест с выбором ответа: варианты по вопросам + правильный на каждый.
@@ -382,7 +384,8 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
     setAnswersInput("")
     setTestOptions(null)
     setMcqCorrect([])
-    setAutoCheck(false)
+    // Возврат к исходному состоянию формы, а оно — с автопроверкой.
+    setAutoCheck(true)
   }
 
   // Собранные задания сразу становятся содержанием работы: текст — в описание,
