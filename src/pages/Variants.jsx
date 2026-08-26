@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Fragment, lazy, Suspense } from "react"
+import { useState, useEffect, useRef, Fragment } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import { signRows } from "../storageUrl"
@@ -11,7 +11,6 @@ import { PlanHint } from "../components/PlanLock"
 import ConfirmModal from "../components/ConfirmModal"
 import { useClosing } from "../useClosing"
 // Тетрадь тянет генераторы заданий — грузим только когда её открыли.
-const WorkbookModal = lazy(() => import("./WorkbookModal"))
 
 // Банк заданий и сборка PDF — самые тяжёлые модули приложения: генераторы всех предметов
 // весят около 3,3 МБ, jsPDF с html2canvas — ещё около 0,2 МБ. Разделу они нужны только по
@@ -833,7 +832,6 @@ function Variants({ user, students = [] }) {
   const [showAdd, setShowAdd] = useState(false)
   // Печатная тетрадь по номерам экзамена. Раньше открывалась только из
   // «Банка заданий», а он виден одному владельцу платформы.
-  const [workbookType, setWorkbookType] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
   const { cls: previewCls, close: closePreview } = useClosing(() => setPreviewFile(null))
 
@@ -1036,29 +1034,6 @@ function Variants({ user, students = [] }) {
         </PlanHint>
       )}
 
-      {/* Печатная тетрадь — отдельно от вариантов: её берут на офлайн-занятие,
-          ученику в кабинет она не выдаётся. */}
-      <div className="glass p-4 flex flex-col sm:flex-row sm:items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium mb-0.5">Рабочая тетрадь для печати</div>
-          <p className="text-xs text-gray-500 leading-relaxed">
-            Задания с полем в клетку под решение от руки — PDF на A4, ответы отдельной страницей.
-          </p>
-        </div>
-        <div className="flex gap-2 shrink-0">
-          {["ОГЭ", "ЕГЭ"].map((t) => (
-            <button
-              key={t}
-              onClick={() => (canVariants ? setWorkbookType(t) : openPlans())}
-              className="press-fill text-sm px-3.5 py-2 rounded-xl ring-1 ring-blue-200 dark:ring-blue-400/25 text-blue-600 bg-blue-500/8 flex items-center gap-1.5"
-            >
-              <MorphIcon from="grid" to="download" size={14} />
-              {t}
-            </button>
-          ))}
-        </div>
-      </div>
-
       <ConfirmModal
         open={!!confirmDelete}
         danger
@@ -1068,16 +1043,6 @@ function Variants({ user, students = [] }) {
         onConfirm={() => deleteVariant(confirmDelete)}
         onCancel={() => setConfirmDelete(null)}
       />
-
-      {workbookType && (
-        <Suspense fallback={null}>
-          <WorkbookModal
-            examType={workbookType}
-            examLabel={`${workbookType}, математика`}
-            onClose={() => setWorkbookType(null)}
-          />
-        </Suspense>
-      )}
 
       {/* Сводка одной полосой: три отдельные карточки на такие короткие числа
           давали больше пустоты, чем данных. */}
