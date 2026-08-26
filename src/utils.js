@@ -529,6 +529,9 @@ const SUPERSCRIPT_MAP = {
 function toSup(str) {
   return Array.from(str).map((c) => SUPERSCRIPT_MAP[c] || c).join("")
 }
+// Показатель целиком раскладывается в юникод? Половинчатый («x²ᵏ» вместо «x^{2k}»)
+// читался бы хуже, поэтому либо все символы, либо ни одного.
+const canSup = (str) => !!str && Array.from(str).every((c) => SUPERSCRIPT_MAP[c])
 export function superscriptPowers(text) {
   if (!text) return text
   return text
@@ -632,6 +635,11 @@ function convFracRoot(s) {
     if ((s[i] === "^" || s[i] === "_") && s[i + 1] === "{") {
       const a = takeBrace(s, i + 1)
       if (a) {
+        // Короткий числовой показатель (x^{2}, x^{-3}, x^{n+1}) — юникодом, как и «плоский»
+        // x^2 из того же текста: <sup class="tmath-sup"> задуман под ДЛИННЫЙ показатель
+        // с переменной ((1/5)^{x+6}) и потому крупный и высоко поднятый — над обычным
+        // квадратом он выглядит великаном, висящим над строкой.
+        if (s[i] === "^" && canSup(a.content)) { out += toSup(a.content); i = a.next; continue }
         const tag = s[i] === "^" ? ["sup", "tmath-sup"] : ["sub", "tmath-sub"]
         out += `<${tag[0]} class="${tag[1]}">${convFracRoot(a.content)}</${tag[0]}>`
         i = a.next
