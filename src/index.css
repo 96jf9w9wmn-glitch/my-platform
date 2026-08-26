@@ -369,10 +369,13 @@ select {
    все колонки одной ширины, иначе пустой столбец выходит уже заполненного. */
 .tmath-table.tmath-grid { table-layout: fixed; }
 .tmath-table.tmath-grid th, .tmath-table.tmath-grid td { width: 2.5em; }
+/* Первый столбец — подпись строк («Номер пункта»), ему своя ширина; остальные равны. */
+.tmath-table.tmath-rowhead th:first-child, .tmath-table.tmath-rowhead td:first-child { width: 7em; }
 @media (max-width: 720px) {
   .tmath-table { font-size: 0.8em; }
   .tmath-table th, .tmath-table td { padding: 4px 6px; }
   .tmath-table.tmath-grid th, .tmath-table.tmath-grid td { width: 2.2em; }
+  .tmath-table.tmath-rowhead th:first-child, .tmath-table.tmath-rowhead td:first-child { width: 5.5em; }
 }
 .dark .tmath-table th, .dark .tmath-table td { border-color: rgba(255,255,255,0.12); }
 .dark .tmath-table thead th { background: rgba(255,255,255,0.06); color: #e5e7eb; }

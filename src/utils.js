@@ -72,9 +72,15 @@ function dataTableHtml(body) {
   // Таблица-сетка: все ячейки короткие (фрагмент таблицы истинности, звёздочки в
   // схеме дорог). Ширина колонок по содержимому делала бы её кривой — пустой
   // столбец уже заполненного, — поэтому колонки выравниваются по одной ширине.
-  const cells = rows.flat().map((c) => c.replace(/<[^>]*>/g, "").trim())
+  const plain = (c) => c.replace(/<[^>]*>/g, "").trim()
+  const cells = rows.flat().map(plain)
   const grid = cells.every((c) => c.length <= 3)
-  return `<div class="tmath-tblwrap"><table class="tmath-table${grid ? " tmath-grid" : ""}"><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table></div>`
+  // Тот же случай, но с подписью строк в первом столбце («Номер пункта | 1 | 2 …»):
+  // данные короткие, а первый столбец — текст. Колонки данных всё равно равняем,
+  // подпись строк получает свою ширину.
+  const rowhead = !grid && rows.every((r) => r.slice(1).every((c) => plain(c).length <= 3))
+  const cls = grid ? " tmath-grid" : rowhead ? " tmath-grid tmath-rowhead" : ""
+  return `<div class="tmath-tblwrap"><table class="tmath-table${cls}"><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table></div>`
 }
 
 // ── Нумерованный список вариантов (задания «на последовательность» и «вставьте элементы») ──
