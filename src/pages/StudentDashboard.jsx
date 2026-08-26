@@ -17,6 +17,7 @@ import { MarketingToggle } from "../components/ConsentChecks"
 
 const Board = lazy(() => import("../components/Board"))
 import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, parseHomeworkTasks, formatPhone, answersEqual, plural } from "../utils"
+import TaskAttachments from "../components/TaskAttachments"
 import { notifyTutor } from "../telegramNotify"
 import { useClosing } from "../useClosing"
 // Состав варианта (какие номера в части 1, какие — во второй) знает банк заданий:
@@ -403,6 +404,33 @@ function hwPreview(text) {
 }
 
 // Дедлайн со срочностью: просрочено/сегодня/завтра — цветом, иначе дата.
+// Тело одного задания домашней работы. Обычно это строка текста, разобранная
+// из описания; у работы, собранной из банка, к ней прилагается то, чего в
+// строке не выразить, — чертёж, программа, архив, таблица. Условие в этом
+// случае берём из самого задания, а не из описания: вопрос под чертежом
+// («Какое из утверждений верно?») должен стоять ПОД ним, как на бланке ФИПИ, а
+// в описании обе половины склеены в одну строку.
+function HwTaskBody({ text, bankTask, className = "" }) {
+  const body = "text-sm text-gray-700 leading-relaxed break-words"
+  if (!bankTask) {
+    return <div className={`${body} min-w-0 flex-1 ${className}`} dangerouslySetInnerHTML={{ __html: renderHomeworkMath(text) }} />
+  }
+  return (
+    <div className={`min-w-0 flex-1 flex flex-col gap-1.5 ${className}`}>
+      {bankTask.condition_text && (
+        <div className={body} dangerouslySetInnerHTML={{ __html: renderHomeworkMath(bankTask.condition_text) }} />
+      )}
+      <TaskAttachments
+        task={bankTask}
+        imageAlt={`Задание №${bankTask.number}`}
+        tail={bankTask.condition_tail ? (
+          <div className={body} dangerouslySetInnerHTML={{ __html: renderHomeworkMath(bankTask.condition_tail) }} />
+        ) : null}
+      />
+    </div>
+  )
+}
+
 function deadlineInfo(hw) {
   if (!hw.deadline) return null
   const d = parseLocalDate(hw.deadline)
@@ -665,6 +693,12 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
   // Вся карточка результата красится в цвет оценки — один акцент, без «зелёное + красное».
   const look = (hw.grade && GRADE_LOOK[hw.grade]) || GRADE_NEUTRAL
   const { intro, tasks } = parseHomeworkTasks(hw.description)
+  // Работа, собранная из банка, везёт задания целиком (homework.bank_tasks):
+  // чертёж, программу, архив, таблицу. Соответствие с разобранными из описания
+  // строками — по порядку, поэтому берём их только когда счёт сходится: иначе
+  // к заданию прилип бы чужой рисунок. Нет колонки или работа собрана иначе —
+  // всё показывается текстом, ровно как раньше.
+  const bankTasks = Array.isArray(hw.bank_tasks) && hw.bank_tasks.length === tasks.length ? hw.bank_tasks : null
 
   return (
     <div className="page-active">
@@ -712,7 +746,7 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
                 className="item-enter glass-sm rounded-2xl px-3 py-2.5 flex items-start gap-2.5"
               >
                 <span className="shrink-0 w-6 h-6 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-300 text-xs font-semibold flex items-center justify-center mt-0.5">{t.n}</span>
-                <div className="text-sm text-gray-700 min-w-0 flex-1 pt-0.5" dangerouslySetInnerHTML={{ __html: renderHomeworkMath(t.text) }} />
+                <HwTaskBody text={t.text} bankTask={bankTasks?.[i]} className="pt-0.5" />
               </div>
             ))}
           </div>
@@ -756,11 +790,9 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
             <div className="flex flex-col gap-4 mb-4">
               {testAnswers.map((a, i) => (
                 <div key={i}>
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="flex items-start gap-2 mb-2">
                     <span className="shrink-0 w-6 h-6 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-300 text-xs font-semibold flex items-center justify-center">{i + 1}</span>
-                    {tasks[i]?.text && (
-                      <div className="text-sm text-gray-700 min-w-0 flex-1" dangerouslySetInnerHTML={{ __html: renderHomeworkMath(tasks[i].text) }} />
-                    )}
+                    {tasks[i]?.text && <HwTaskBody text={tasks[i].text} bankTask={bankTasks?.[i]} />}
                   </div>
                   <div className="flex flex-col items-start gap-2">
                     {(hw.test_options[i] || []).map((o, j) => {

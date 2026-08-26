@@ -1,6 +1,120 @@
 // Ширина строки в долях em (надстрочные ⁰¹²…⁻ уже) — для длины черты радикала.
 const glyphW = (s) => { let w = 0; for (const ch of s) w += /[⁰¹²³⁴⁵⁶⁷⁸⁹⁻]/.test(ch) ? 0.42 : 0.58; return w }
 
+// ── Мини-раскладка математики ВНУТРИ SVG ─────────────────────────────────────
+// Под корнем встречается не только текст: ⁵√(32^{4x−3}), √(16^{(x+3)/x}) — показатель
+// ⁅…⁆, а в нём стоячая дробь ⦃n¦d⦄. Разворачивать их в HTML (<sup>, .tmath-frac) внутри
+// <svg><text> НЕЛЬЗЯ: по правилам разбора foreign content парсер выбрасывает <sup> из
+// SVG наружу — степень уезжала за конец черты, а сама черта считалась по служебным
+// символам ⁅⁆ и торчала далеко вправо. Поэтому внутри радикала показатель и дробь
+// рисуются средствами SVG (<tspan>, <text>, <line>).
+// svgMathBody меряет содержимое (ширина + границы над и под базовой линией) и умеет его
+// нарисовать; тем же пользуется PDF (rootSvg в variantPdf.js), поэтому цвет, шрифт и
+// толщину штриха задаёт вызывающий.
+const SUP_K = 0.72     // кегль показателя относительно основания
+const FRAC_K = 0.86    // кегль стопки дроби
+const TOP_K = 0.78     // высота прописной над базовой линией, в долях кегля
+const BOT_K = 0.24     // свес скобок/запятых под базовой линией
+
+// Маркеры, которым в SVG нет стопочного эквивалента (индекс, стопка степень-основание,
+// вложенный корень): текст для ширины и разметка тем же <tspan>, что и в PDF.
+const svgFlatPlain = (s) => String(s)
+  .replace(/⦉([^⦊]*)⦊/g, "$1")
+  .replace(/⦅([^¦⦆]*)¦([^⦆]*)⦆/g, "$1$2")
+  .replace(/√(?:\[([^\]{}]+)\])?\{([^{}]+)\}/g, (_, i, x) => `${i || ""}√${x}`)
+const svgFlatMarkup = (s) => String(s)
+  .replace(/⦉([^⦊]*)⦊/g, (_, x) => `<tspan baseline-shift="sub" font-size="0.75em">${x}</tspan>`)
+  .replace(/⦅([^¦⦆]*)¦([^⦆]*)⦆/g, (_, a, b) =>
+    `<tspan baseline-shift="super" font-size="0.7em">${a}</tspan><tspan baseline-shift="sub" font-size="0.7em">${b}</tspan>`)
+  .replace(/√(?:\[([^\]{}]+)\])?\{([^{}]+)\}/g, (_, i, x) =>
+    `${i ? `<tspan baseline-shift="super" font-size="0.7em">${i}</tspan>` : ""}√<tspan text-decoration="overline">${x}</tspan>`)
+
+// Разбор содержимого на прогоны: текст, показатель ⁅…⁆ (внутри снова прогоны) и дробь ⦃n¦d⦄.
+function svgRuns(src) {
+  const re = /⁅([^⁆]*)⁆|⦃([^¦⦄]*)¦([^⦄]*)⦄/g   // своя копия: разбор рекурсивный, lastIndex общим быть не может
+  const out = []
+  let last = 0, m
+  while ((m = re.exec(src))) {
+    if (m.index > last) out.push({ t: "t", s: src.slice(last, m.index) })
+    if (m[1] !== undefined) out.push({ t: "s", r: svgRuns(m[1]) })
+    else out.push({ t: "f", n: m[2], d: m[3] })
+    last = re.lastIndex
+  }
+  if (last < src.length) out.push({ t: "t", s: src.slice(last) })
+  return out
+}
+
+// Раскладка прогонов: координаты относительно точки (0, базовая линия).
+function svgLay(runs, fs, gw) {
+  const parts = []
+  let x = 0, top = 0, bot = 0
+  for (const r of runs) {
+    if (r.t === "t") {
+      parts.push({ k: "t", s: r.s, x, fs })
+      x += gw(svgFlatPlain(r.s)) * fs
+      top = Math.min(top, -TOP_K * fs); bot = Math.max(bot, BOT_K * fs)
+    } else if (r.t === "f") {
+      const f = fs * FRAC_K
+      const w = Math.max(gw(svgFlatPlain(r.n)), gw(svgFlatPlain(r.d))) * f + 6
+      const ay = -0.32 * fs                       // черта дроби — чуть выше базовой линии
+      parts.push({ k: "f", n: r.n, d: r.d, x, w, ay, fs: f })
+      top = Math.min(top, ay - 3 - TOP_K * f)
+      bot = Math.max(bot, ay + 0.95 * f + BOT_K * f)
+      x += w
+    } else {
+      const sub = svgLay(r.r, fs * SUP_K, gw)
+      // Подъём показателя: обычный — на 0.46 кегля; если в показателе стоячая дробь
+      // (√(16^{(x+3)/x})), поднимаем настолько, чтобы её низ не опускался к основанию.
+      const dy = Math.min(-0.46 * fs, -0.25 * fs - sub.bot)
+      parts.push({ k: "g", x, dy, sub })
+      top = Math.min(top, dy + sub.top); bot = Math.max(bot, dy + sub.bot)
+      x += sub.w
+    }
+  }
+  return { w: x, top, bot, parts }
+}
+
+function svgPaint(lay, x0, y0, o) {
+  const f = (v) => v.toFixed(2)
+  let g = ""
+  for (const p of lay.parts) {
+    if (p.k === "t") {
+      g += `<text x="${f(x0 + p.x)}" y="${f(y0)}" font-size="${f(p.fs)}"${o.family ? ` font-family="${o.family}"` : ""} fill="${o.fill}">${svgFlatMarkup(p.s)}</text>`
+    } else if (p.k === "f") {
+      const cx = x0 + p.x + p.w / 2, ay = y0 + p.ay
+      const fam = o.family ? ` font-family="${o.family}"` : ""
+      g += `<text x="${f(cx)}" y="${f(ay - 3)}" font-size="${f(p.fs)}"${fam} text-anchor="middle" fill="${o.fill}">${svgFlatMarkup(p.n)}</text>` +
+        `<line x1="${f(x0 + p.x + 1)}" y1="${f(ay)}" x2="${f(x0 + p.x + p.w - 1)}" y2="${f(ay)}" stroke="${o.fill}" stroke-width="${o.sw}"/>` +
+        `<text x="${f(cx)}" y="${f(ay + 0.95 * p.fs)}" font-size="${f(p.fs)}"${fam} text-anchor="middle" fill="${o.fill}">${svgFlatMarkup(p.d)}</text>`
+    } else {
+      g += svgPaint(p.sub, x0 + p.x, y0 + p.dy, o)
+    }
+  }
+  return g
+}
+
+// Публичная обёртка: { w, top, bot, paint(x, y, {fill, family, sw}) } для содержимого корня.
+export function svgMathBody(content, fs, gw = glyphW) {
+  const lay = svgLay(svgRuns(String(content)), fs, gw)
+  return { w: lay.w, top: lay.top, bot: lay.bot, paint: (x, y, o) => svgPaint(lay, x, y, o) }
+}
+
+// Геометрия радикала (общая с PDF): по границам содержимого считаем, насколько высоко
+// поднять черту. by — базовая линия подкоренного, BAR — черта, hk — растяжение крючка
+// (у высокого корня узкая «галочка» смотрелась бы иглой).
+export function rootGeom(body, index, idxFS, gw = glyphW) {
+  const BAR = 2.8
+  const by = Math.max(17, Math.ceil(BAR + 2.6 - body.top))
+  const H = Math.ceil(by + Math.max(4.4, body.bot + 1))
+  const hk = Math.min(1.6, by / 17)
+  const ox = index ? Math.ceil(gw(String(index)) * idxFS) + 1 : 0
+  const tx = 13 * hk + ox
+  const W = Math.ceil(tx + body.w + 2.5)
+  const d = `M${(1.5 * hk + ox).toFixed(2)},${by - 4} L${(4 * hk + ox).toFixed(2)},${by - 5.5} ` +
+    `L${(7.5 * hk + ox).toFixed(2)},${by + 2} L${(11.5 * hk + ox).toFixed(2)},${BAR} L${W - 1.5},${BAR}`
+  return { W, H, by, ox, tx, d, idxY: by - 6.5 }
+}
+
 // Радикал одним НЕПРЕРЫВНЫМ SVG-path (знак √ + верхняя черта — единый штрих, стыка нет
 // по построению). Инлайновый SVG (не <img>): stroke/fill = currentColor → адаптируется к
 // тёмной теме; размер в em → масштабируется вместе со шрифтом. Геометрия совпадает с
@@ -8,22 +122,23 @@ const glyphW = (s) => { let w = 0; for (const ch of s) w += /[⁰¹²³⁴⁵⁶
 // index — показатель степени корня (∛ → index="3"): цифра сидит В КРЮЧКЕ радикала
 // (как у ФИПИ), а не висит высоким надстрочником слева. Радикал сдвигается вправо на ox,
 // освобождая слева место под индекс.
+// vertical-align задаётся инлайном (а не только классом): у корня с показателем-дробью
+// картинка выше, и постоянный сдвиг посадил бы её мимо строки.
 // Маркер корня, который можно класть ВНУТРЬ дроби/степени: √{X} и √[i]{X} (со степенью).
 // В отличие от токенов ⟦r⟧/⟦rn⟧ не содержит «⟧» и «:», поэтому не рвёт захват ⟦f:n:d⟧.
 const RE_ROOT_MARK = /√(?:\[([^\]{}]+)\])?\{([^{}]+)\}/g
 function rootMarkup(content, index = "") {
   const FS = 14
   const idxFS = 10
-  const ox = index ? Math.ceil(glyphW(String(index)) * idxFS) + 1 : 0
-  const W = Math.ceil(13 + glyphW(content) * FS + 2.5) + ox, H = 22
-  const d = `M${1.5 + ox},13 L${4 + ox},11.5 L${7.5 + ox},19 L${11.5 + ox},2.8 L${W - 1.5},2.8`
+  const body = svgMathBody(content, FS)
+  const { W, H, by, ox, tx, d, idxY } = rootGeom(body, index, idxFS)
   const idx = index
-    ? `<text x="${ox - 1}" y="10.5" font-size="${idxFS}" text-anchor="middle" fill="currentColor">${index}</text>`
+    ? `<text x="${ox - 1}" y="${idxY}" font-size="${idxFS}" text-anchor="middle" fill="currentColor">${index}</text>`
     : ""
-  return `<svg class="tmath-radical" viewBox="0 0 ${W} ${H}" width="${(W / FS).toFixed(3)}em" height="${(H / FS).toFixed(3)}em" xmlns="http://www.w3.org/2000/svg">` +
+  return `<svg class="tmath-radical" style="vertical-align:-${((H - by) / FS).toFixed(3)}em" viewBox="0 0 ${W} ${H}" width="${(W / FS).toFixed(3)}em" height="${(H / FS).toFixed(3)}em" xmlns="http://www.w3.org/2000/svg">` +
     `<path d="${d}" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round"/>` +
     idx +
-    `<text x="${13 + ox}" y="17" font-size="${FS}" fill="currentColor">${content}</text></svg>`
+    body.paint(tx, by, { fill: "currentColor", sw: 1.2 }) + `</svg>`
 }
 
 // Корень НАД дробью одним SVG: знак √, верхняя черта и черта дроби — единый stroke-width
@@ -263,6 +378,11 @@ function renderTaskMathRaw(text) {
     // ⟦rn:i:x⟧ — корень степени i (∛ → i=3): индекс сидит в крючке радикала
     .replace(/⟦rn:([^:⟧]+):([^⟧]+)⟧/g, (_, i, x) => rootMarkup(x, i))
     .replace(/⟦r:([^⟧]+)⟧/g, (_, x) => rootMarkup(x))
+    // Корень вне дроби, записанный маркером √{X} (внутри ⟦sup⟧ токен ⟦r⟧ применить нельзя —
+    // он содержит «⟧»): разворачиваем в радикал, иначе фигурные скобки видны в условии.
+    // Обязательно ДО ⁅⁆/⦃¦⦄ (но после ⟦f⟧, чьи ячейки не терпят «:» от разметки): иначе под
+    // корень попадал уже готовый <sup>, черта считалась по его тегу и уезжала на пол-строки.
+    .replace(RE_ROOT_MARK, (_, i, x) => rootMarkup(x, i || ""))
     .replace(/⟦b:([^⟧]+)⟧/g, (_, x) => `<sub class="tmath-sub">${x}</sub>`)
     // ⟦sup:x⟧ — надстрочник (степень с переменным показателем, напр. 2^(1−4x))
     .replace(/⟦sup:([^⟧]+)⟧/g, (_, x) => `<sup class="tmath-sup">${x}</sup>`)
@@ -280,9 +400,6 @@ function renderTaskMathRaw(text) {
     // положить внутрь другой дроби (log₅(x/25) в знаменателе большой дроби).
     .replace(/⦃([^¦⦄]*)¦([^⦄]*)⦄/g, (_, n, d) =>
       `<span class="tmath-frac"><span class="tmath-num">${n}</span><span class="tmath-den">${d}</span></span>`)
-    // Корень вне дроби, записанный маркером √{X} (внутри ⟦sup⟧ токен ⟦r⟧ применить нельзя —
-    // он содержит «⟧»): разворачиваем в радикал, иначе фигурные скобки видны в условии.
-    .replace(RE_ROOT_MARK, (_, i, x) => rootMarkup(x, i || ""))
     // ⟦iso:A:Z:Sym⟧ — символ нуклида: массовое число A над зарядовым Z (стопкой),
     // прижаты вправо и стоят слева от символа элемента (¹⁴₇N).
     .replace(/⟦iso:([^:⟧]+):([^:⟧]+):([^⟧]+)⟧/g, (_, a, z, s) =>
@@ -519,6 +636,14 @@ export function renderHomeworkMath(text) {
   s = superscriptPowers(s)          // оставшиеся ^2, ^n → ², ⁿ
   return noBreakMath(s.replace(/\n/g, "<br>"))
 }
+
+// Есть ли у задания банка что-то, кроме текста условия: чертёж, программа,
+// архив, таблица, файл с данными, общий текст для чтения. По этому признаку
+// решается, обязательна ли для работы колонка homework.bank_tasks — задание
+// без приложений полностью описано текстом в description и переживёт базу без
+// миграции. Рисует всё это components/TaskAttachments.jsx.
+export const hasAttachment = (t) =>
+  !!(t && (t.image_url || t.program || t.archive || t.spreadsheet || t.textFile || t.source_text))
 
 // Разбивает описание ДЗ на вступление и отдельные пронумерованные задания
 // («1. …», «2. …»), чтобы показать каждое своей карточкой, а не сплошным абзацем.

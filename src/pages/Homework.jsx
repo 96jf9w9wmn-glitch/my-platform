@@ -6,11 +6,12 @@ import Icon from "../components/Icon"
 import Collapse from "../components/Collapse"
 import AutoHeight from "../components/AutoHeight"
 import FormulaBackdrop from "../components/FormulaBackdrop"
-import { parseLocalDate, renderHomeworkMath, parseHomeworkTasks, plural } from "../utils"
+import { parseLocalDate, renderHomeworkMath, parseHomeworkTasks, plural, hasAttachment } from "../utils"
 import { usePlan } from "../subscription"
 import { PlanHint, PlanLock } from "../components/PlanLock"
 import ConfirmModal from "../components/ConfirmModal"
 import { isOwner } from "../owner"
+import TaskAttachments from "../components/TaskAttachments"
 import { useClosing } from "../useClosing"
 // Список предметов — из лёгкого модуля: сами генераторы приезжают отдельно
 // (homeworkBank), и тащить их в бандл раздела ради подписей нельзя.
@@ -146,69 +147,60 @@ function StepBtn({ icon, onClick, disabled, title }) {
 // раздела, внутри — темы с числом типажей. Раньше номера были сеткой квадратов
 // с одним общим количеством на всю работу: по «17» не понять, что это за
 // задание, а «пять любых» — не то, что репетитор задаёт на самом деле.
-function BankNumberRow({ info, pick, off, open, badThemes, onCount, onTheme, onOpen }) {
+function BankNumberRow({ info, pick, open, onCount, onTheme, onOpen }) {
   const count = pick?.count || 0
   const picked = pick?.themes || []
   const themes = info.themes || []
-  const expandable = !off && themes.length > 1
+  const expandable = themes.length > 1
   return (
     <div className={count ? "bg-blue-500/[0.05]" : ""}>
       <div className="flex items-center gap-1.5 px-2 py-1">
-        <StepBtn icon="minus" onClick={() => onCount(count - 1)} disabled={off || !count} title="Меньше заданий" />
+        <StepBtn icon="minus" onClick={() => onCount(count - 1)} disabled={!count} title="Меньше заданий" />
         <span className={`w-5 text-center text-xs tabular-nums ${count ? "text-blue-600 dark:text-blue-400 font-semibold" : "text-gray-400"}`}>
           {count}
         </span>
-        <StepBtn icon="plus" onClick={() => onCount(count + 1)} disabled={off || count >= BANK_MAX_PER_NUMBER} title="Больше заданий" />
+        <StepBtn icon="plus" onClick={() => onCount(count + 1)} disabled={count >= BANK_MAX_PER_NUMBER} title="Больше заданий" />
         <button
           type="button"
-          onClick={expandable ? onOpen : off ? undefined : () => onCount(count + 1)}
-          disabled={!!off}
-          title={off ? `Задания этого номера идут ${off} — в текст домашней работы они не помещаются` : undefined}
-          className={`press-fill min-w-0 flex-1 text-left rounded-lg px-1.5 py-1 flex items-baseline gap-1.5 ${
-            off ? "cursor-not-allowed" : ""
-          }`}
+          onClick={expandable ? onOpen : () => onCount(count + 1)}
+          className="press-fill min-w-0 flex-1 text-left rounded-lg px-1.5 py-1 flex items-baseline gap-1.5"
         >
-          <span className={`text-xs tabular-nums shrink-0 ${off ? "text-gray-300" : "text-gray-400"}`}>{info.number}.</span>
-          <span className={`text-sm truncate ${off ? "text-gray-300" : "text-gray-700"}`}>{info.title}</span>
+          <span className="text-xs tabular-nums shrink-0 text-gray-400">{info.number}.</span>
+          <span className="text-sm truncate text-gray-700">{info.title}</span>
           {picked.length > 0 && (
             <span className="text-[11px] text-blue-600 dark:text-blue-400 shrink-0">
               · {picked.length} {plural(picked.length, "тема", "темы", "тем")}
             </span>
           )}
-          {off ? (
-            <span className="ml-auto shrink-0 text-[11px] text-gray-400">{off}</span>
-          ) : expandable ? (
+          {expandable && (
             <span className={`ml-auto shrink-0 text-gray-400 transition-transform ${open ? "-rotate-90" : "rotate-90"}`}>
               <Icon name="arrow" size={11} />
             </span>
-          ) : null}
+          )}
         </button>
       </div>
-      {themes.length > 1 && (
+      {expandable && (
         <Collapse open={open}>
           <div className="pl-9 pr-2 pb-2 flex flex-col gap-0.5">
             {themes.map((g) => {
-              const bad = badThemes?.[g.theme]
               const on = picked.includes(g.theme)
               return (
                 <button
                   key={g.theme}
                   type="button"
-                  disabled={!!bad}
-                  title={bad ? `Задания этой темы идут ${bad} — в текст домашней работы они не помещаются` : undefined}
                   onClick={() => onTheme(g.theme)}
-                  className="press-fill rounded-lg px-1.5 py-1 flex items-center gap-2 text-left disabled:cursor-not-allowed"
+                  className="press-fill rounded-lg px-1.5 py-1 flex items-center gap-2 text-left"
                 >
                   <span className={`w-4 h-4 shrink-0 rounded-[6px] grid place-items-center transition-colors ${
-                    bad ? "ring-1 ring-gray-500/15" : on ? "bg-blue-600 text-white" : "ring-1 ring-gray-500/25"
+                    on ? "bg-blue-600 text-white" : "ring-1 ring-gray-500/25"
                   }`}>
                     {on && <Icon name="check" size={9} />}
                   </span>
-                  <span className={`text-xs truncate ${bad ? "text-gray-300" : on ? "text-gray-800" : "text-gray-600"}`}>
+                  <span className={`text-xs truncate ${on ? "text-gray-800" : "text-gray-600"}`}>
                     {g.theme}
                   </span>
                   <span className="text-[11px] text-gray-400 shrink-0 ml-auto">
-                    {bad || `${g.items.length} ${plural(g.items.length, "типаж", "типажа", "типажей")}`}
+                    {g.items.length} {plural(g.items.length, "типаж", "типажа", "типажей")}
                   </span>
                 </button>
               )
@@ -303,20 +295,11 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
   // файлами). Проверяем пробой генераторов при выборе предмета — весь предмет
   // укладывается в доли секунды, зато номер видно НЕДОСТУПНЫМ сразу, а не после
   // нажатия «Собрать».
-  const [bankBad, setBankBad] = useState({})
   // Номера с подписью раздела и темами — список, из которого выбирают.
   const [bankList, setBankList] = useState([])
-  // Недоступные темы по номерам: { 17: { "Квадрат": "с чертежом" } }. Проверяются
-  // лениво, при раскрытии номера — гонять генераторы всех тем предмета сразу незачем.
-  const [bankBadThemes, setBankBadThemes] = useState({})
 
-  function probeBank(mod, type) {
-    const nums = mod.numbersWithGen(type)
-    setBankList(nums.map((n) => mod.numberInfo(type, n)))
-    // { 4: "с чертежом", 11: "с архивом" } — номера, которые в текст домашней
-    // работы не помещаются, и причина прямо в строке.
-    setBankBad(Object.fromEntries(nums.map((n) => [n, mod.numberBlock(type, n)]).filter(([, why]) => why)))
-    setBankBadThemes({})
+  function loadBankList(mod, type) {
+    setBankList(mod.numbersWithGen(type).map((n) => mod.numberInfo(type, n)))
   }
 
   // Модуль банка подгружаем по нажатию на карточку, а не эффектом: генераторы
@@ -326,7 +309,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
     if (id !== "bank" || bank || bankLoading) return
     setBankLoading(true)
     import("./homeworkBank")
-      .then((m) => { setBank(m); probeBank(m, bankType) })
+      .then((m) => { setBank(m); loadBankList(m, bankType) })
       .catch(() => setBankError("Не удалось загрузить банк заданий"))
       .finally(() => setBankLoading(false))
   }
@@ -546,9 +529,8 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
   }
 
   function rerollBankTask(idx) {
-    const seen = new Set(bankTasks.map((t) => bank.taskText(t)))
     const t = bankTasks[idx]
-    const fresh = bank.pickTextTask(bankType, t.number, bankPick[t.number]?.themes || null, seen)
+    const fresh = bank.pickTask(bankType, t.number, bankPick[t.number]?.themes || null, new Set())
     if (fresh) applyBank(bankTasks.map((x, i) => (i === idx ? fresh : x)))
   }
 
@@ -583,13 +565,8 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
     })
   }
 
-  // Раскрытие номера: темы проверяем здесь же — какие из них дают текстовое
-  // задание, а какие идут только с чертежом.
   function toggleBankOpen(n) {
     setBankOpen((prev) => (prev === n ? null : n))
-    if (bank && !(n in bankBadThemes)) {
-      setBankBadThemes((prev) => ({ ...prev, [n]: bank.themeBlocks(bankType, n) }))
-    }
   }
 
   function resetBankPick() {
@@ -663,12 +640,39 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
     if (timeLimit) payload.time_limit_min = Number(timeLimit)
     else if (editingHw?.time_limit_min != null) payload.time_limit_min = null
 
+    // Собранное из банка едет к ученику целиком: чертёж, программа, архив,
+    // таблица. В description те же условия лежат текстом, поэтому список работ,
+    // бот и старые записи ничего не замечают. Колонку добавляет
+    // supabase/homework_bank_tasks.sql; при правке работы, собранной раньше,
+    // поля в payload нет — и записанное тогда остаётся нетронутым.
+    if (bankTasks.length) payload.bank_tasks = bankTasks.map(bank.packTask)
+
+    // Миграции homework_bank_tasks.sql может не быть на этой базе. Тогда работу
+    // всё равно выдаём — но только если терять нечего: задания без чертежей и
+    // файлов полностью описаны текстом в description. Если же терять есть что,
+    // выдача останавливается с понятной просьбой, иначе ученик получил бы
+    // «На рисунке изображён график» без самого рисунка.
+    const richTasks = bankTasks.filter((t) => hasAttachment(t)).length
+    const save = async (body) => {
+      const res = isEditing
+        ? await supabase.from("homework").update(body).eq("id", editingHw.id)
+        : await supabase.from("homework").insert({ ...body, status: "assigned" })
+      if (res.error && /bank_tasks/.test(res.error.message || "") && !richTasks) {
+        const plain = { ...body }
+        delete plain.bank_tasks
+        return isEditing
+          ? await supabase.from("homework").update(plain).eq("id", editingHw.id)
+          : await supabase.from("homework").insert({ ...plain, status: "assigned" })
+      }
+      return res
+    }
+
     let error
     if (isEditing) {
-      const res = await supabase.from("homework").update(payload).eq("id", editingHw.id)
+      const res = await save(payload)
       error = res.error
     } else {
-      const res = await supabase.from("homework").insert({ ...payload, status: "assigned" })
+      const res = await save(payload)
       error = res.error
       if (!res.error) {
         const targetStudent = students.find(s => String(s.id) === studentId)
@@ -686,6 +690,8 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
     if (!error) {
       onCreated()
       close()
+    } else if (/bank_tasks/.test(error.message || "")) {
+      setFormError("Задания с чертежом и файлами пока негде хранить: выполните supabase/homework_bank_tasks.sql в SQL Editor.")
     } else if (/time_limit_min/.test(error.message || "")) {
       // Колонки ещё нет: миграция supabase/homework_timer.sql не выполнена.
       setFormError("Ограничение по времени пока недоступно: выполните supabase/homework_timer.sql в SQL Editor. Пока оставьте «Без лимита».")
@@ -928,7 +934,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                             onChange={(e) => {
                               setBankType(e.target.value)
                               resetBankPick(); setBankTasks([]); setBankSkipped([])
-                              probeBank(bank, e.target.value)
+                              loadBankList(bank, e.target.value)
                             }}
                             className="input-glass"
                           >
@@ -961,20 +967,12 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                                   key={info.number}
                                   info={info}
                                   pick={bankPick[info.number]}
-                                  off={bankBad[info.number]}
                                   open={bankOpen === info.number}
-                                  badThemes={bankBadThemes[info.number]}
                                   onCount={(next) => setBankCount(info.number, next)}
                                   onTheme={(theme) => toggleBankTheme(info.number, theme)}
                                   onOpen={() => toggleBankOpen(info.number)}
                                 />
                               ))}
-                            </div>
-                          )}
-                          {Object.keys(bankBad).length > 0 && bankList.length > 0 && (
-                            <div className="text-[11px] text-gray-400 mt-1.5 leading-snug">
-                              Бледные номера собрать нельзя: их задания идут с чертежом, архивом или таблицей,
-                              а домашняя работа хранит только текст условия.
                             </div>
                           )}
                         </div>
@@ -999,7 +997,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                         {bankSkipped.length > 0 && (
                           <div className="text-[11px] text-amber-600 leading-snug">
                             Заданий хватило не на всё: {bankSkipped.map((s) => `№${s.number} — ${s.got} из ${s.want}`).join(", ")}.
-                            Свежие условия этой темы кончились или идут с чертежом.
+                            У этой темы кончились непохожие условия — возьмите меньше или добавьте тему.
                           </div>
                         )}
 
@@ -1010,9 +1008,12 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                                 <span className="shrink-0 w-5 h-5 rounded-full bg-blue-500/12 text-blue-600 dark:text-blue-400 text-[10px] font-semibold flex items-center justify-center">
                                   {i + 1}
                                 </span>
-                                <div className="min-w-0 flex-1">
+                                <div className="min-w-0 flex-1 flex flex-col gap-1">
                                   <div className="text-xs text-gray-700 leading-relaxed"
                                     dangerouslySetInnerHTML={{ __html: renderHomeworkMath(bank.taskText(t)) }} />
+                                  {/* Чертёж и файлы — те же, что увидит ученик: репетитор собирает
+                                      работу вслепую, если чертежа в предпросмотре нет. */}
+                                  <TaskAttachments task={t} compact imageAlt={`Задание №${t.number}`} />
                                   <div className="text-[11px] text-gray-400 mt-0.5 flex items-center gap-1">
                                     <span>№{t.number} · ответ:</span>
                                     <span dangerouslySetInnerHTML={{ __html: renderHomeworkMath(String(t.answer ?? "—")) }} />
@@ -1247,17 +1248,21 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
 const TASKS_PREVIEW = 3
 
 // Одно задание строкой: номер кружком, условие, правильный ответ справа.
-function TaskLine({ t, options, answer }) {
+function TaskLine({ t, options, answer, bankTask }) {
   return (
     <div className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 px-2.5 py-2">
       <div className="flex items-start gap-2.5">
         <span className="shrink-0 w-5 h-5 rounded-full bg-blue-500/12 text-blue-600 dark:text-blue-400 text-[10px] font-semibold flex items-center justify-center">
           {t.n}
         </span>
-        <div
-          className="text-xs text-gray-700 leading-relaxed min-w-0 flex-1"
-          dangerouslySetInnerHTML={{ __html: renderHomeworkMath(t.text) }}
-        />
+        <div className="min-w-0 flex-1 flex flex-col gap-1">
+          <div
+            className="text-xs text-gray-700 leading-relaxed"
+            dangerouslySetInnerHTML={{ __html: renderHomeworkMath(t.text) }}
+          />
+          {/* Чертёж и файлы выданной работы: репетитор смотрит ровно то, что у ученика. */}
+          {bankTask && <TaskAttachments task={bankTask} compact imageAlt={`Задание №${bankTask.number}`} />}
+        </div>
         {answer && !options && (
           <span className="shrink-0 text-[11px] px-2 py-0.5 rounded-full bg-green-500/15 text-green-700 ring-1 ring-green-500/30">
             <span dangerouslySetInnerHTML={{ __html: renderHomeworkMath(answer) }} />
@@ -1296,9 +1301,12 @@ function HomeworkTasks({ hw }) {
   const options = Array.isArray(hw.test_options) ? hw.test_options : null
   const answers = Array.isArray(hw.correct_answers) ? hw.correct_answers : []
   const hidden = Math.max(0, tasks.length - TASKS_PREVIEW)
+  // Задания из банка приезжают целиком (чертёж, файлы). Счёт должен сходиться со
+  // строками описания, иначе к заданию прилипнет чужой рисунок.
+  const bankTasks = Array.isArray(hw.bank_tasks) && hw.bank_tasks.length === tasks.length ? hw.bank_tasks : null
 
   const line = (t, i) => (
-    <TaskLine key={i} t={t} options={options?.[i] || null} answer={answers[i] ?? null} />
+    <TaskLine key={i} t={t} options={options?.[i] || null} answer={answers[i] ?? null} bankTask={bankTasks?.[i]} />
   )
 
   return (
@@ -1314,7 +1322,7 @@ function HomeworkTasks({ hw }) {
           {hidden > 0 && (
             <>
               <Collapse open={showAll}>
-                <div className="flex flex-col gap-1.5 pb-1.5">{tasks.slice(TASKS_PREVIEW).map(line)}</div>
+                <div className="flex flex-col gap-1.5 pb-1.5">{tasks.slice(TASKS_PREVIEW).map((t, i) => line(t, i + TASKS_PREVIEW))}</div>
               </Collapse>
               <button
                 onClick={() => setShowAll((v) => !v)}

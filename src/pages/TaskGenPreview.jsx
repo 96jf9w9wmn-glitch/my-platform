@@ -4,10 +4,8 @@ import { EXAM_GROUPS, levelOf, numbersWithGen } from "./examSubjects"
 import { hasModules, generateModule, moduleScenarios } from "./taskModules"
 import { genReadingModule, genMatchingModule, TFN } from "./readingEng"
 import { renderTaskMath } from "../utils"
-import { downloadZip } from "./zipWriter"
-import { downloadXlsx } from "./xlsxWriter"
 import Icon from "../components/Icon"
-import MorphIcon from "../components/MorphIcon"
+import TaskAttachments, { ProgramGrid, Expandable } from "../components/TaskAttachments"
 import SegmentSwitch from "../components/SegmentSwitch"
 import { PlanLock } from "../components/PlanLock"
 import { usePlan } from "../subscription"
@@ -90,105 +88,6 @@ function buildTasks(examType, focus) {
   return Array.from({ length: BATCH }, () => genSafe(examType, focus))
 }
 
-// Копирование текста: сперва Clipboard API (secure context + жест), иначе — execCommand.
-function copyText(text) {
-  try {
-    const ta = document.createElement("textarea")
-    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0"
-    document.body.appendChild(ta); ta.select()
-    const ok = document.execCommand("copy")
-    document.body.removeChild(ta)
-    return ok
-  } catch { return false }
-}
-// Блок кода одного языка с кнопкой «Копировать» (как на решуОГЭ). C++ — во всю ширину.
-function CodeBlock({ name, code, wide }) {
-  const [copied, setCopied] = useState(false)
-  const copy = () => {
-    const done = () => { setCopied(true); setTimeout(() => setCopied(false), 1200) }
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(code).then(done).catch(() => { if (copyText(code)) done() })
-    } else if (copyText(code)) { done() }
-  }
-  return (
-    <div className={`rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1c1c1e] overflow-hidden ${wide ? "sm:col-span-2" : ""}`}>
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-200 dark:border-white/10">
-        <span className="text-xs font-semibold text-gray-600">{name}</span>
-        <button onClick={copy} title="Скопировать код"
-          className="flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-blue-600 transition active:scale-95">
-          <MorphIcon from="clipboard" size={13} active={copied} />
-          {copied ? "Скопировано" : "Копировать"}
-        </button>
-      </div>
-      {/* Длинные строки (C++, Паскаль) переносим, а не прячем за горизонтальным скроллом:
-          в колонке шириной в половину карточки скроллилась почти каждая программа. */}
-      <pre className="px-3 py-2.5 text-xs font-mono text-gray-800 whitespace-pre-wrap break-words leading-relaxed">{code}</pre>
-    </div>
-  )
-}
-function ProgramGrid({ blocks }) {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-1">
-      {blocks.map((b, i) => <CodeBlock key={b.name} name={b.name} code={b.code} wide={i === blocks.length - 1} />)}
-    </div>
-  )
-}
-
-// №11: кнопка скачивания прилагаемого архива (.zip собирается на клиенте из дерева файлов).
-function ArchiveButton({ archive }) {
-  const totalFiles = Object.keys(archive.files).length
-  return (
-    <button
-      onClick={() => downloadZip(archive.name, archive.files)}
-      className="self-start flex items-center gap-2 mt-1 px-3 py-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 text-sm font-medium hover:bg-blue-100 transition active:scale-95">
-      <Icon name="download" size={15} />
-      {archive.name}
-      <span className="text-[11px] text-blue-400">({totalFiles} файлов)</span>
-    </button>
-  )
-}
-
-// №14: кнопка скачивания прилагаемой электронной таблицы (.xlsx собирается на клиенте).
-function SpreadsheetButton({ spreadsheet }) {
-  // Книга может быть многолистовой (КЕГЭ №3): тогда в rows лежит массив листов.
-  const sheets = Array.isArray(spreadsheet.sheets) ? spreadsheet.sheets : null
-  const rows = sheets ? sheets.reduce((a, sh) => a + sh.rows.length - 1, 0) : spreadsheet.rows.length - 1
-  return (
-    <button
-      onClick={() => downloadXlsx(spreadsheet.name, sheets || spreadsheet.sheetName, spreadsheet.rows)}
-      className="self-start flex items-center gap-2 mt-1 px-3 py-2 rounded-xl border border-green-200 bg-green-50 text-green-700 text-sm font-medium hover:bg-green-100 transition active:scale-95">
-      <Icon name="download" size={15} />
-      {spreadsheet.name}
-      <span className="text-[11px] text-green-500">({rows} строк)</span>
-    </button>
-  )
-}
-
-// КЕГЭ №17, №24, №26, №27: кнопка скачивания прилагаемого текстового файла с данными.
-// Файл генерируется вместе с задачей, поэтому ответ всегда соответствует его содержимому.
-function TextFileButton({ textFile }) {
-  const lines = textFile.content.split("\n").length
-  const download = () => {
-    const url = URL.createObjectURL(new Blob([textFile.content], { type: "text/plain;charset=utf-8" }))
-    const a = document.createElement("a")
-    a.href = url
-    a.download = textFile.name
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
-  }
-  return (
-    <button
-      onClick={download}
-      className="self-start flex items-center gap-2 mt-1 px-3 py-2 rounded-xl border border-amber-200 bg-amber-50 text-amber-700 text-sm font-medium hover:bg-amber-100 transition active:scale-95">
-      <Icon name="download" size={15} />
-      {textFile.name}
-      <span className="text-[11px] text-amber-500">({lines > 1 ? `${lines} строк` : `${textFile.content.length} символов`})</span>
-    </button>
-  )
-}
-
 function TaskCard({ task, showAnswer }) {
   return (
     <div className="bg-white dark:bg-[#1c1c1e] rounded-2xl border border-gray-100 dark:border-white/10 p-4 shadow-sm flex flex-col gap-2">
@@ -206,31 +105,16 @@ function TaskCard({ task, showAnswer }) {
               dangerouslySetInnerHTML={{ __html: renderTaskMath(task.condition_text) }}
             />
           )}
-          {task.source_text && (
-            <Expandable label={task.source_title ? `Развернуть текст «${task.source_title}»` : "Развернуть текст"}>
-              <div className="whitespace-pre-line">{task.source_text}</div>
-            </Expandable>
-          )}
-          {task.archive && <ArchiveButton archive={task.archive} />}
-          {task.program ? (
-            <ProgramGrid blocks={task.program} />
-          ) : task.image_url && (
-            <img
-              src={task.image_url}
-              alt={`Задание ${task.number}`}
-              className="max-w-full h-auto self-start rounded-lg border border-gray-100 bg-white mt-1"
-            />
-          )}
-          {task.condition_tail && (
-            <div
-              className="text-base text-gray-700 leading-relaxed break-words"
-              dangerouslySetInnerHTML={{ __html: renderTaskMath(task.condition_tail) }}
-            />
-          )}
-          {task.spreadsheet && <SpreadsheetButton spreadsheet={task.spreadsheet} />}
-          {/* №27 приходит с ДВУМЯ входными файлами (A и B) — тогда task.textFile массив. */}
-          {task.textFile && (Array.isArray(task.textFile) ? task.textFile : [task.textFile])
-            .map((f) => <TextFileButton key={f.name} textFile={f} />)}
+          <TaskAttachments
+            task={task}
+            imageAlt={`Задание ${task.number}`}
+            tail={task.condition_tail ? (
+              <div
+                className="text-base text-gray-700 leading-relaxed break-words"
+                dangerouslySetInnerHTML={{ __html: renderTaskMath(task.condition_tail) }}
+              />
+            ) : null}
+          />
           {showAnswer && (
             <div className="text-xs text-gray-400 mt-1 pt-2 border-t border-gray-50">
               Ответ: <span className="font-mono text-gray-600 whitespace-pre-line">{String(task.answer)}</span>
@@ -314,26 +198,6 @@ function ModuleCard({ module, showAnswer }) {
 }
 
 // Разворачиваемая панель с текстом (кнопка «Развернуть текст» → показывает пассаж/тексты).
-function Expandable({ label, children }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <div className="mt-1">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 text-sm font-medium hover:bg-blue-100 transition active:scale-95"
-      >
-        <Icon name="book" size={15} className={`transition-transform ${open ? "rotate-6" : ""}`} />
-        {open ? "Свернуть текст" : label}
-      </button>
-      <Reveal value={open}>{() => (
-        <div className="mt-2 rounded-xl border border-gray-100 dark:border-white/10 p-3 text-sm text-gray-700 leading-relaxed">
-          {children}
-        </div>
-      )}</Reveal>
-    </div>
-  )
-}
-
 // № 12 — понимание основного содержания (matching, 6 текстов A–F, 7 вопросов, 1 лишний).
 // Отдельное задание, не связано с №13–19.
 function MatchingCard({ matching, showAnswer }) {
