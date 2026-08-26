@@ -2006,72 +2006,86 @@ const T19_PARAMS = () => {
   return { add, mul, N, first }
 }
 
-export function t19FirstMove() {
-  for (let attempt = 0; attempt < 40; attempt++) {
+// В КИМ №19–21 — ОДНА игра на три задания: №20 и №21 говорят «для игры, описанной в
+// задании 19». Поэтому параметры выбираются один раз на тройку, и подбираются сразу
+// так, чтобы у всех трёх вопросов был корректный ответ (иначе один из номеров не
+// собрался бы и в варианте оказалась бы ДРУГАЯ игра). Тройка хранится до тех пор,
+// пока каждый номер не возьмёт её по разу; следующий вариант получит новую игру.
+let T19_TRIPLE = null
+
+function t19MakeTriple() {
+  for (let attempt = 0; attempt < 200; attempt++) {
     const { add, mul, N, first } = T19_PARAMS()
     const G = t19Game(add, mul, N)
-    const good = []
-    for (let S = 1; S <= N - first - 1; S++) if (G.loseNext([first, S])) good.push(S)
-    if (!good.length) continue
-    const askMin = Math.random() < 0.5
+    const lose1 = [], win2 = [], vanya2 = []
+    for (let S = 1; S <= N - first - 1; S++) {
+      const p = [first, S]
+      if (G.loseNext(p)) lose1.push(S)
+      if (!G.win1(p) && G.winIn(p, 2)) win2.push(S)
+      if (!G.win1(p) && !G.winIn(p, 1)) {
+        const in2 = G.moves(p).every((q) => !G.over(q) && G.winIn(q, 2))
+        const in1 = G.moves(p).every((q) => !G.over(q) && G.win1(q))
+        if (in2 && !in1) vanya2.push(S)
+      }
+    }
+    // №19 — есть хотя бы одно S; №20 — не меньше двух («два наименьших значения»,
+    // самая частая формулировка банка); №21 — есть S. Все три условия обязаны
+    // выполняться на ОДНИХ параметрах, иначе тройка развалится на разные игры.
+    if (!lose1.length || win2.length < 2 || !vanya2.length) continue
     return {
-      condition_text: T19_PREAMBLE(add, mul, N, first) +
-        "Известно, что Ваня выиграл своим первым ходом при любом ходе Пети. " +
-        `Укажите ${askMin ? "минимальное" : "максимальное"} значение S, когда такая ситуация возможна.`,
-      answer: String(askMin ? Math.min(...good) : Math.max(...good)),
+      params: { add, mul, N, first },
+      preamble: T19_PREAMBLE(add, mul, N, first),
+      lose1, win2, vanya2,
+      askMin: Math.random() < 0.5,
+      taken: new Set(),
     }
   }
   return null
+}
+
+// Отдать тройку этому номеру: ту же, если он её ещё не брал, иначе завести новую.
+function t19Triple(number) {
+  if (!T19_TRIPLE || T19_TRIPLE.taken.has(number)) T19_TRIPLE = t19MakeTriple()
+  if (!T19_TRIPLE) return null
+  T19_TRIPLE.taken.add(number)
+  return T19_TRIPLE
+}
+
+export function t19FirstMove() {
+  const t = t19Triple(19)
+  if (!t) return null
+  return {
+    condition_text: t.preamble +
+      "Известно, что Ваня выиграл своим первым ходом при любом ходе Пети. " +
+      `Укажите ${t.askMin ? "минимальное" : "максимальное"} значение S, когда такая ситуация возможна.`,
+    answer: String(t.askMin ? Math.min(...t.lose1) : Math.max(...t.lose1)),
+  }
 }
 
 export function t20SecondMove() {
-  for (let attempt = 0; attempt < 40; attempt++) {
-    const { add, mul, N, first } = T19_PARAMS()
-    const G = t19Game(add, mul, N)
-    const good = []
-    for (let S = 1; S <= N - first - 1; S++) {
-      const p = [first, S]
-      if (!G.win1(p) && G.winIn(p, 2)) good.push(S)
-    }
-    // Формулировка «найдите ДВА значения» обязывает, чтобы их было ровно два.
-    if (good.length !== 2) continue
-    return {
-      condition_text: T19_PREAMBLE(add, mul, N, first) +
-        "Найдите два таких значения S, при которых у Пети есть выигрышная стратегия, причём одновременно выполняются два условия:\n" +
-        "— Петя не может выиграть за один ход;\n" +
-        "— Петя может выиграть своим вторым ходом независимо от того, как будет ходить Ваня.\n" +
-        "Найденные значения запишите в ответе в порядке возрастания без разделителей.",
-      answer: good.join(""),
-    }
+  const t = t19Triple(20)
+  if (!t) return null
+  return {
+    condition_text: t.preamble +
+      "Найдите два наименьших значения S, при которых у Пети есть выигрышная стратегия, причём одновременно выполняются два условия:\n" +
+      "— Петя не может выиграть за один ход;\n" +
+      "— Петя может выиграть своим вторым ходом независимо от того, как будет ходить Ваня.\n" +
+      "Найденные значения запишите в ответе в порядке возрастания без разделителей.",
+    answer: t.win2.slice(0, 2).join(""),
   }
-  return null
 }
 
 export function t21VanyaSecond() {
-  for (let attempt = 0; attempt < 40; attempt++) {
-    const { add, mul, N, first } = T19_PARAMS()
-    const G = t19Game(add, mul, N)
-    const good = []
-    for (let S = 1; S <= N - first - 1; S++) {
-      const p = [first, S]
-      if (G.win1(p) || G.winIn(p, 1)) continue                    // у Пети есть быстрый выигрыш
-      // У Вани есть выигрыш первым или вторым ходом при любой игре Пети,
-      // но нет гарантии выиграть именно первым ходом.
-      const vanyaWinsIn2 = G.moves(p).every((q) => !G.over(q) && G.winIn(q, 2))
-      const vanyaWinsIn1 = G.moves(p).every((q) => !G.over(q) && G.win1(q))
-      if (vanyaWinsIn2 && !vanyaWinsIn1) good.push(S)
-    }
-    if (!good.length) continue
-    return {
-      condition_text: T19_PREAMBLE(add, mul, N, first) +
-        "Найдите значение S, при котором одновременно выполняются два условия:\n" +
-        "— у Вани есть выигрышная стратегия, позволяющая ему выиграть первым или вторым ходом при любой игре Пети;\n" +
-        "— у Вани нет стратегии, которая позволит ему гарантированно выиграть первым ходом.\n" +
-        "Если найдено несколько значений S, в ответе запишите минимальное из них.",
-      answer: String(Math.min(...good)),
-    }
+  const t = t19Triple(21)
+  if (!t) return null
+  return {
+    condition_text: t.preamble +
+      "Найдите значение S, при котором одновременно выполняются два условия:\n" +
+      "— у Вани есть выигрышная стратегия, позволяющая ему выиграть первым или вторым ходом при любой игре Пети;\n" +
+      "— у Вани нет стратегии, которая позволит ему гарантированно выиграть первым ходом.\n" +
+      "Если найдено несколько значений S, в ответе запишите минимальное из них.",
+    answer: String(Math.min(...t.vanya2)),
   }
-  return null
 }
 
 

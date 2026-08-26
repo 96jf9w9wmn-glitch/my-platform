@@ -17,6 +17,14 @@ const pick = (arr) => arr[Math.floor(Math.random() * arr.length)]
 const shuffle = (arr) => { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = randInt(0, i);[a[i], a[j]] = [a[j], a[i]] } return a }
 const svgUrl = (svg) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
 const escXml = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+// Рамка вокруг готовой картинки шириной W×H с полем p по краям. Обводка рамок таблиц
+// рисуется ПО линии контура, то есть половина её толщины уходит наружу — при viewBox
+// «впритык» этот наружный волосок срезается, и у таблицы пропадает угол/крайняя линия.
+// Сдвигаем начало viewBox в минус, чтобы внутренние координаты остались прежними.
+const svgPad = (W, H, el, p = 2) =>
+  svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="${W + 2 * p}" height="${H + 2 * p}" ` +
+    `viewBox="${-p} ${-p} ${W + 2 * p} ${H + 2 * p}">` +
+    `<rect x="${-p}" y="${-p}" width="${W + 2 * p}" height="${H + 2 * p}" fill="#fff"/>${el}</svg>`)
 
 const toBase = (n, b) => n.toString(b).toUpperCase()
 const SUBS = { "0": "₀", "1": "₁", "2": "₂", "3": "₃", "4": "₄", "5": "₅", "6": "₆", "7": "₇", "8": "₈", "9": "₉" }
@@ -398,7 +406,8 @@ function sheetSampleSvg(headers, dataRows) {
   const W = xs[xs.length - 1], H = rowH * (disp.length + 1)
   const rect = (x, y, w, h, fill) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="#c8ccd4"/>`
   const txt = (x, y, s, opts = "") => `<text x="${x}" y="${y}" font-family="Arial,sans-serif" font-size="13" ${opts}>${s}</text>`
-  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">`
+  // viewBox с полем 2 px: обводка клеток идёт по контуру, впритык её край срезается
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 ${W + 4} ${H + 4}" width="${W + 4}" height="${H + 4}">`
   // строка буквенных меток колонок
   svg += rect(0, 0, numW, rowH, "#eef0f4")
   for (let c = 0; c < cols; c++) {
@@ -1363,7 +1372,7 @@ function twoColTableSvg(h1, h2, rows) {
   const rowRects = (y, fill) => `<rect x="0" y="${y}" width="${w1}" height="${rowH}" fill="${fill}" stroke="#333"/><rect x="${w1}" y="${y}" width="${w2}" height="${rowH}" fill="${fill}" stroke="#333"/>`
   let el = rowRects(0, "#dcdcdc") + txt(0, w1, rowH / 2 + 6, h1, true) + txt(w1, w2, rowH / 2 + 6, h2, true)
   rows.forEach((r, i) => { const y = rowH * (i + 1); el += rowRects(y, "#fff") + txt(0, w1, y + rowH / 2 + 6, r[0]) + txt(w1, w2, y + rowH / 2 + 6, r[1]) })
-  return svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${el}</svg>`)
+  return svgPad(W, H, el)
 }
 const INTRO8 =
   "В языке запросов поискового сервера для обозначения логической операции «ИЛИ» используется " +
@@ -1512,20 +1521,21 @@ function progGridSvg(blocks) {
     })
     y += rowH[ri] + gap
   })
-  return svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${el}</svg>`)
+  return svgPad(W, H, el)
 }
 const half6 = (v) => ({ neg: Math.random() < 0.22, cmp: { v, op: pick([">", "<"]), operand: randInt(-12, 12) } })
 const pair6 = (a, b) => `(${a < 0 ? "−" + -a : a}, ${b < 0 ? "−" + -b : b})`
 const INTRO6 = "Ниже приведена программа, записанная на пяти языках программирования."
 
-// Типаж A: 9 пар (s,t) — сколько запусков напечатают YES.
+// Типаж A: 9 пар (s,t) — сколько запусков напечатают YES (в банке ФИПИ спрашивают и про NO).
 function t6Count() {
   for (let tries = 0; tries < 200; tries++) {
     const [v1, v2] = pick([["s", "t"], ["s", "k"]])
     const f = { left: half6(v1), conn: pick(["и", "или"]), right: half6(v2) }
     const pairs = Array.from({ length: 9 }, () => [randInt(-12, 14), randInt(-12, 14)])
-    const cnt = pairs.filter(([a, b]) => evalCond6(f, { [v1]: a, [v2]: b })).length
-    if (cnt < 2 || cnt > 7) continue
+    const yes = pairs.filter(([a, b]) => evalCond6(f, { [v1]: a, [v2]: b })).length
+    if (yes < 2 || yes > 7) continue
+    const word = pick(["YES", "NO"])
     const blocks = progBlocks6(v1, v2, false, condStrings6(f))
     return {
       condition_text: INTRO6,
@@ -1534,8 +1544,8 @@ function t6Count() {
       condition_tail:
         `Было проведено 9 запусков программы, при которых в качестве значений переменных ${v1} и ${v2} ` +
         `вводились следующие пары чисел: ${pairs.map(([a, b]) => pair6(a, b)).join("; ")}. ` +
-        `Сколько было запусков, при которых программа напечатала «YES»?`,
-      answer: String(cnt),
+        `Сколько было запусков, при которых программа напечатала «${word}»?`,
+      answer: String(word === "YES" ? yes : 9 - yes),
     }
   }
   return t6Count()
@@ -1544,24 +1554,48 @@ function t6Count() {
 const NUM_WORD6 = { 0: "ноль", 1: "один", 2: "два", 3: "три", 4: "четыре", 5: "пять", 6: "шесть", 7: "семь", 8: "восемь", 9: "девять" }
 const timesWord6 = (n) => { const m10 = n % 10, m100 = n % 100; const suf = (m10 === 1 && m100 !== 11) ? "раз" : (m10 >= 2 && m10 <= 4 && !(m100 >= 12 && m100 <= 14)) ? "раза" : "раз"; return `${NUM_WORD6[n]} ${suf}` }
 
-// Типаж B: программа читает s, t, A; при скольких целых A из 9 пар YES напечатается ровно N раз.
-function t6ParamA() {
-  for (let tries = 0; tries < 300; tries++) {
+// Типаж B: программа читает s, t, A; вопрос — про целые значения параметра А, при которых
+// из 9 запусков ровно N напечатают «YES» (в банке ФИПИ так же часто спрашивают про «NO»).
+// Четыре формулировки эталона: количество значений, наибольшее, наименьшее и единственное.
+// В прозе ФИПИ параметр набран русской «А», хотя в самой программе он латинский A.
+//
+// Множество подходящих A ищем перебором в окне [-60; 60]: при |A| > 15 все сравнения с s
+// уже «насыщены», поэтому значения на краях окна = поведение на бесконечности. Отсюда
+// отбраковка: для «количества» и «единственного» множество должно быть конечным с обеих
+// сторон, для «наибольшего» — ограничено сверху, для «наименьшего» — снизу.
+const A6_LO = -60, A6_HI = 60
+function t6ParamAKind(kind) {
+  for (let tries = 0; tries < 400; tries++) {
     const left = { neg: Math.random() < 0.2, cmp: { v: "s", op: pick([">", "<"]), operand: "A" } }
     const right = { neg: Math.random() < 0.15, cmp: { v: "t", op: pick([">", "<"]), operand: randInt(-12, 12) } }
     const f = { left, conn: pick(["и", "или"]), right }
     const pairs = Array.from({ length: 9 }, () => [randInt(-12, 14), randInt(-12, 14)])
-    const fA = (A) => pairs.filter(([s, t]) => evalCond6(f, { s, t, A })).length
-    const lo = -60, hi = 60, inf1 = fA(lo), inf2 = fA(hi)
+    const word = pick(["YES", "NO"])
+    const yesAt = (A) => pairs.filter(([s, t]) => evalCond6(f, { s, t, A })).length
+    const fA = (A) => (word === "YES" ? yesAt(A) : 9 - yesAt(A))
+    const infLo = fA(A6_LO), infHi = fA(A6_HI)
     const targets = []
     for (let N = 1; N <= 9; N++) {
-      if (N === inf1 || N === inf2) continue
-      let c = 0
-      for (let A = lo; A <= hi; A++) if (fA(A) === N) c++
-      if (c >= 1 && c <= 9) targets.push([N, c])
+      if ((kind !== "max" && N === infLo) || (kind !== "min" && N === infHi)) continue
+      const As = []
+      for (let A = A6_LO; A <= A6_HI; A++) if (fA(A) === N) As.push(A)
+      if (!As.length) continue
+      const min = As[0], max = As[As.length - 1]
+      if (kind !== "max" && min <= A6_LO + 2) continue      // множество упирается в край окна
+      if (kind !== "min" && max >= A6_HI - 2) continue
+      if (kind === "count" && (As.length < 2 || As.length > 9)) continue
+      if (kind === "single" && As.length !== 1) continue
+      targets.push([N, kind === "count" ? As.length : kind === "min" ? min : max])
     }
     if (!targets.length) continue
     const [N, ans] = pick(targets)
+    const ask = kind === "count"
+      ? "Укажите количество целых значений параметра А, при которых для указанных входных данных"
+      : kind === "max"
+        ? "Укажите наибольшее целое значение параметра А, при котором для указанных входных данных"
+        : kind === "min"
+          ? "Укажите наименьшее целое значение параметра А, при котором для указанных входных данных"
+          : "Укажите целое значение параметра А, при котором для указанных входных данных"
     const blocks = progBlocks6("s", "t", true, condStrings6(f))
     return {
       condition_text: INTRO6,
@@ -1570,13 +1604,16 @@ function t6ParamA() {
       condition_tail:
         `Было проведено 9 запусков программы, при которых в качестве значений переменных s и t ` +
         `вводились следующие пары чисел: ${pairs.map(([a, b]) => pair6(a, b)).join("; ")}. ` +
-        `Укажите количество целых значений параметра A, при которых для указанных входных данных ` +
-        `программа напечатает «YES» ${timesWord6(N)}.`,
+        `${ask} программа напечатает «${word}» ${timesWord6(N)}.`,
       answer: String(ans),
     }
   }
-  return t6ParamA()
+  return t6ParamAKind(kind)
 }
+const t6ParamA = () => t6ParamAKind("count")
+const t6ParamAMax = () => t6ParamAKind("max")
+const t6ParamAMin = () => t6ParamAKind("min")
+const t6ParamAOne = () => t6ParamAKind("single")
 
 // ── №02 «Декодирование» (КЭС 2.1), 77 задач банка → 4 типажа ──────────────────
 // Кодовую таблицу рисуем настоящей таблицей (SVG в image_url), как в банке ФИПИ: буквы в
@@ -1591,7 +1628,7 @@ function codeTableSvg(letters, codes) {
     `<text x="${cx + w / 2}" y="${y + rowH / 2 + 5}" text-anchor="middle" font-size="16" font-family="Arial, sans-serif" fill="#111"${head ? ' font-weight="bold"' : ""}>${txt}</text>`
   let el = ""
   for (let i = 0; i < n; i++) el += cell(xs[i], 1, colW[i], letters[i], true) + cell(xs[i], 1 + rowH, colW[i], codes[i], false)
-  return svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${el}</svg>`)
+  return svgPad(W, H, el)
 }
 const spaced2 = (s) => [...s].join(" ")   // «+~+@» → «+ ~ + @»
 
@@ -1767,7 +1804,7 @@ function matrixTableSvg(nodes, W) {
   for (let i = 0; i < N; i++) el += rectAt(i + 1, 0, "#dcdcdc") + textAt(i + 1, 0, nodes[i], true) + rectAt(0, i + 1, "#dcdcdc") + textAt(0, i + 1, nodes[i], true)
   for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) el += rectAt(c + 1, r + 1, r === c ? "#c9c9c9" : "#fff") + textAt(c + 1, r + 1, W[r][c] > 0 ? String(W[r][c]) : "", false)
   const P = (N + 1) * S
-  return svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="${P}" height="${P}" viewBox="0 0 ${P} ${P}"><rect width="${P}" height="${P}" fill="#fff"/>${el}</svg>`)
+  return svgPad(P, P, el)
 }
 // Все простые пути start→end (каждый узел не более одного раза): [{cost, path:[индексы]}].
 function allSimplePaths(adj, start, end) {
@@ -2141,7 +2178,7 @@ export const GENERATORS_INF = {
   16: [t16Program],
   3: [t3Natural, t3MinMaxDigits, t3CountDigits, t3ChooseList],
   5: [t5Executor],
-  6: [t6Count, t6ParamA],
+  6: [t6Count, t6ParamA, t6ParamAMax, t6ParamAMin, t6ParamAOne],
   7: [t7Url],
   8: [t8Query2, t8QueryAnd, t8Sites],
   10: [t10Ones, t10ToDec, t10FromDec, t10Expr, t10MinMax],
@@ -2194,8 +2231,11 @@ export const GEN_META_INF = {
     ["executor", "Две команды: получить B из A", t5Executor],
   ]]],
   6: [["Исполнение программы", [
-    ["count", "9 пар (s, t): сколько YES", t6Count],
-    ["param-a", "Параметр A: сколько значений", t6ParamA],
+    ["count", "9 пар (s, t): сколько YES / NO", t6Count],
+    ["param-a", "Параметр А: количество значений", t6ParamA],
+    ["param-a-max", "Параметр А: наибольшее значение", t6ParamAMax],
+    ["param-a-min", "Параметр А: наименьшее значение", t6ParamAMin],
+    ["param-a-one", "Параметр А: единственное значение", t6ParamAOne],
   ]]],
   7: [["Адресация в Интернете", [
     ["url", "Порядок фрагментов адреса", t7Url],

@@ -5061,7 +5061,7 @@ export function generateTask(examType, number, genKey) {
 function buildTask(examType, number, fn) {
   const out = fn()
   if (!out) return null                     // скин отказался от этого набора параметров
-  const { condition_text, condition_tail, answer, image_url, solution_image, solution, program, archive, spreadsheet, answerProgram, source_text, source_title } = out
+  const { condition_text, condition_tail, answer, image_url, solution_image, solution, program, archive, spreadsheet, textFile, answerProgram, source_text, source_title } = out
   const id = `gen-${number}-${Math.random().toString(36).slice(2, 10)}`
   // №23/№24 (часть 2, геометрия): чертёж строит сам ученик, поэтому в условие он не идёт —
   // прячем его в solution_image (пригодится для будущего разбора решения). Полное решение
@@ -5101,6 +5101,7 @@ function buildTask(examType, number, fn) {
     program: program ?? null,                 // блоки кода на 5 языках (интерактивный вывод с копированием)
     archive: archive ?? null,                 // №11/№12: дерево файлов { name, files } для скачивания .zip
     spreadsheet: spreadsheet ?? null,         // №14: данные таблицы { name, sheetName, rows } для .xlsx
+    textFile: textFile ?? null,               // КЕГЭ №17/24/26/27: прилагаемый .txt (или массив файлов)
     answerProgram: answerProgram ?? null,     // №16: эталонное решение [{name,code}] — под «Ответ»
     image_url: image_url ?? null,
     // график РЕШЕНИЯ (строит ученик, поэтому в условие не идёт) — прячем до реализации
