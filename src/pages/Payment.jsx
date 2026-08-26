@@ -191,7 +191,6 @@ function IncomeChart({ buckets, forecast, mounted }) {
 
 function Payment({ students, setStudents, tutorId, setActivePage }) {
   const [tab, setTab] = useState("debts")
-  const [filter, setFilter] = useState("debt")
   const [expandedId, setExpandedId] = useState(null)
   const [period, setPeriod] = useState("all")
   const [confirmId, setConfirmId] = useState(null)
@@ -301,10 +300,6 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
     }))
   }
 
-  function hasConductedLessons(student) {
-    return (student.lessons || []).some((l) => isLessonConducted(l))
-  }
-
   const allPayments = students
     // isLast — самая свежая оплата ученика: только её можно откатить,
     // потому что handleUndo снимает последнюю запись из его массива.
@@ -325,8 +320,6 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
   const forecast = getMonthForecast(students)
 
   const debtors = students.filter((s) => getStudentDebt(s) > 0)
-  const totalDebt = debtors.reduce((sum, s) => sum + getStudentDebt(s), 0)
-  const noLessons = students.filter((s) => !hasConductedLessons(s))
 
   // Расходы / налог / чистая прибыль за текущий месяц.
   // НПД и УСН «Доходы» считают налог от дохода (расходы базу не уменьшают).
@@ -343,21 +336,6 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
     { id: "payments", label: "Платежи", badge: 0 },
     { id: "report", label: "Доход и налог", badge: 0 },
   ]
-
-  // Статусы работают фильтрами списка, а не декоративными плитками: так же
-  // устроены Overdue / Outstanding у FreshBooks — по счётчику кликают.
-  // Рассчитавшихся отдельным фильтром нет намеренно: вкладка «Долги» —
-  // рабочий список, а кто уже заплатил, видно во вкладке «Платежи».
-  const FILTERS = [
-    { id: "debt", label: "Должны", count: debtors.length, sum: totalDebt, tone: "amber" },
-    { id: "none", label: "Без занятий", count: noLessons.length, tone: "gray" },
-  ]
-  const shownList = filter === "debt" ? debtors : noLessons
-
-  const chipTone = {
-    amber: "bg-amber-500/12 text-amber-700 dark:text-amber-300 ring-amber-500/25",
-    gray: "bg-black/[0.05] dark:bg-white/[0.08] text-gray-500 ring-black/[0.05] dark:ring-white/[0.1]",
-  }
 
   return (
     <div className="p-4 sm:p-6">
@@ -398,98 +376,56 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
       {/* ── ДОЛГИ: рабочий список. Одна строка на ученика, одно действие ── */}
       {tab === "debts" && (
         <div className="flex flex-col gap-3">
-          <div className="flex flex-wrap gap-2">
-            {FILTERS.map((f) => (
-              <button
-                key={f.id}
-                onClick={() => setFilter(f.id)}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-full text-sm font-medium ring-1 ring-inset transition active:scale-[0.96] ${
-                  filter === f.id
-                    ? chipTone[f.tone]
-                    : "bg-white/50 dark:bg-white/[0.04] text-gray-500 ring-black/[0.06] dark:ring-white/[0.08] hover:bg-white/80"
-                }`}
-              >
-                {f.label}
-                <span className="tabular-nums opacity-70">{f.count}</span>
-                {f.sum > 0 && filter === f.id && (
-                  <span className="tabular-nums font-semibold">· {fmt(f.sum)} ₽</span>
-                )}
-              </button>
-            ))}
-          </div>
-
-          {shownList.length === 0 ? (
+          {debtors.length === 0 ? (
             <div className="glass p-6 flex items-center gap-3">
               <div className="w-10 h-10 rounded-full grid place-items-center shrink-0 bg-green-500/12 text-green-600 dark:text-green-300">
                 <Icon name="check" size={18} />
               </div>
               <div>
-                <div className="text-sm font-medium">
-                  {filter === "debt" ? "Никто не должен" : "Здесь пусто"}
-                </div>
-                <div className="text-xs text-gray-400 mt-0.5">
-                  {filter === "debt" ? "Все проведённые занятия оплачены" : "Выберите другой фильтр"}
-                </div>
+                <div className="text-sm font-medium">Никто не должен</div>
+                <div className="text-xs text-gray-400 mt-0.5">Все проведённые занятия оплачены</div>
               </div>
             </div>
           ) : (
             <div className="glass overflow-hidden">
-              {shownList.map((s) => {
+              {debtors.map((s) => {
                 const debt = getStudentDebt(s)
-                const unpaid = filter === "debt" ? getUnpaidLessons(s) : []
+                const unpaid = getUnpaidLessons(s)
                 const open = expandedId === s.id
                 const paying = confirmId === s.id
                 return (
                   <div key={s.id} className="border-t border-black/[0.06] dark:border-white/[0.08] first:border-t-0">
                     <div className="flex items-center gap-3 px-4 py-3 flex-wrap sm:flex-nowrap">
-                      <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 ${
-                        filter === "debt"
-                          ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
-                          : "bg-black/[0.05] dark:bg-white/[0.08] text-gray-400"
-                      }`}>
+                      <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 bg-amber-500/15 text-amber-700 dark:text-amber-300">
                         {getInitials(s.name)}
                       </div>
 
                       <div className="min-w-0 flex-1">
                         <div className="text-sm font-medium truncate">{s.name}</div>
-                        {filter === "debt" ? (
-                          <button
-                            onClick={() => setExpandedId(open ? null : s.id)}
-                            className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition"
-                          >
-                            <span className="whitespace-nowrap">
-                              {unpaid.length} {plural(unpaid.length, "занятие", "занятия", "занятий")} не оплачено
-                            </span>
-                            <Icon name={open ? "chevron-up" : "chevron-down"} size={13} className="shrink-0" />
-                          </button>
-                        ) : (
-                          <div className="text-xs text-gray-400 tabular-nums">
-                            {s.lessonPrice ? fmt(s.lessonPrice) + " ₽ / занятие" : "Стоимость не указана"}
-                          </div>
-                        )}
+                        <button
+                          onClick={() => setExpandedId(open ? null : s.id)}
+                          className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition"
+                        >
+                          <span className="whitespace-nowrap">
+                            {unpaid.length} {plural(unpaid.length, "занятие", "занятия", "занятий")} не оплачено
+                          </span>
+                          <Icon name={open ? "chevron-up" : "chevron-down"} size={13} className="shrink-0" />
+                        </button>
                       </div>
 
-                      {filter === "debt" && (
-                        <div className="flex items-center gap-3 shrink-0 w-full sm:w-auto justify-end">
-                          <div className="text-sm font-semibold tabular-nums text-amber-600 dark:text-amber-300">
-                            {fmt(debt)} ₽
-                          </div>
-                          {!paying && (
-                            <button
-                              onClick={() => { setConfirmId(s.id); setCustomAmount(String(Math.round(debt) || "")) }}
-                              className="shrink-0 inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold text-white bg-gradient-to-b from-[#34C759] to-[#28A745] shadow-[0_2px_10px_rgba(52,199,89,0.35)] transition hover:brightness-105 active:scale-[0.97]"
-                            >
-                              <Icon name="check" size={14} /> Оплата
-                            </button>
-                          )}
+                      <div className="flex items-center gap-3 shrink-0 w-full sm:w-auto justify-end">
+                        <div className="text-sm font-semibold tabular-nums text-amber-600 dark:text-amber-300">
+                          {fmt(debt)} ₽
                         </div>
-                      )}
-
-                      {filter === "none" && (
-                        <span className="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-gray-500 bg-black/[0.04] dark:bg-white/[0.08] ring-1 ring-inset ring-black/[0.05] dark:ring-white/[0.1] px-2.5 py-1 rounded-full">
-                          <Icon name="clock" size={12} /> Ожидает
-                        </span>
-                      )}
+                        {!paying && (
+                          <button
+                            onClick={() => { setConfirmId(s.id); setCustomAmount(String(Math.round(debt) || "")) }}
+                            className="shrink-0 inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold text-white bg-gradient-to-b from-[#34C759] to-[#28A745] shadow-[0_2px_10px_rgba(52,199,89,0.35)] transition hover:brightness-105 active:scale-[0.97]"
+                          >
+                            <Icon name="check" size={14} /> Оплата
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     {/* Ввод суммы: предзаполнен всем долгом — обычный случай,
@@ -524,7 +460,7 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
                     )}
 
                     {/* За что именно долг — по запросу, а не всегда на экране */}
-                    <Collapse open={open && filter === "debt"}>
+                    <Collapse open={open}>
                       <div className="px-4 pb-3 pl-16 divide-y divide-black/[0.06] dark:divide-white/[0.08]">
                         {unpaid.map((l, i) => (
                           <div key={i} className="flex items-center justify-between gap-3 py-2">
