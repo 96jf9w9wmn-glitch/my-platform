@@ -833,7 +833,7 @@ function Results({ students, user }) {
     })
 
   return (
-    <div className="p-4 md:p-6 max-w-6xl">
+    <div className="p-4 md:p-6">
       <div className="mb-5">
         <h1 className="text-xl font-medium">Результаты</h1>
         <p className="text-sm text-gray-500 mt-0.5">
@@ -907,7 +907,7 @@ function Results({ students, user }) {
             <div className="flex items-center gap-3 flex-wrap">
               {GROUPS.length > 2 && (
                 <SegmentSwitch
-                  size="sm" items={GROUPS} value={group} onChange={setGroup} ariaLabel="Фильтр по цели"
+                  size="sm" equal={false} items={GROUPS} value={group} onChange={setGroup} ariaLabel="Фильтр по цели"
                 />
               )}
               {onlyAttention && (

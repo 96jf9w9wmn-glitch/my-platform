@@ -15,7 +15,10 @@ const SIZES = {
   sm: { wrap: "p-[3px] rounded-xl", btn: "px-3 py-1 text-xs font-medium", finger: "rounded-lg" },
 }
 
-export default function SegmentSwitch({ items, value, onChange, className = "", ariaLabel, size = "md", block = false }) {
+// equal=false — сегменты по ширине текста, а не поровну. Нужно, когда одна
+// подпись заметно длиннее прочих: при равных долях длинное слово вылезало
+// за пределы «пальца» (случай «Все / ОГЭ / ЕГЭ / Успеваемость»).
+export default function SegmentSwitch({ items, value, onChange, className = "", ariaLabel, size = "md", block = false, equal = true }) {
   const s = SIZES[size] || SIZES.md
   const wrapRef = useRef(null)
   const btnRefs = useRef([])
@@ -64,7 +67,7 @@ export default function SegmentSwitch({ items, value, onChange, className = "", 
           role="tab"
           aria-selected={value === it.key}
           onClick={() => onChange(it.key)}
-          className={`seg-label relative z-10 flex-1 basis-0 min-w-0 flex items-center justify-center gap-2 whitespace-nowrap ${s.btn} ${s.finger} ${
+          className={`seg-label relative z-10 ${equal ? "flex-1 basis-0" : "flex-none"} min-w-0 flex items-center justify-center gap-2 whitespace-nowrap ${s.btn} ${s.finger} ${
             value === it.key ? "text-blue-600 dark:text-blue-300" : "text-gray-500 hover:text-gray-700"
           }`}
         >
