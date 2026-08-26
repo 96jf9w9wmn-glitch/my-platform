@@ -1,25 +1,8 @@
 import { useEffect, useState } from "react"
 import Icon from "../components/Icon"
 import { usePlan } from "../subscription"
+import useCountUp from "../components/useCountUp"
 import { isLessonConducted, getInitials } from "../utils"
-
-function useCountUp(target, duration = 700) {
-  const [val, setVal] = useState(0)
-  useEffect(() => {
-    let raf
-    const start = performance.now()
-    const step = (now) => {
-      if (!target) { setVal(0); return }
-      const p = Math.min((now - start) / duration, 1)
-      const ease = 1 - Math.pow(1 - p, 3)
-      setVal(Math.round(target * ease))
-      if (p < 1) raf = requestAnimationFrame(step)
-    }
-    raf = requestAnimationFrame(step)
-    return () => cancelAnimationFrame(raf)
-  }, [target, duration])
-  return val
-}
 
 const MONTH_NAMES = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"]
 const DAY_SHORT = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]

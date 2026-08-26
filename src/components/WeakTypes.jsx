@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../supabase"
+import useTypeLabels from "./typeLabels"
 
 // Слабые типажи ученика: по каким разновидностям заданий он ошибается чаще
 // всего. Читает вьюху v_student_weak_types (свод по task_attempts) — она
@@ -21,8 +22,8 @@ const DRILL_SIZE = 8
 
 function WeakTypes({ studentId, studentName }) {
   const [rows, setRows] = useState([])
-  const [labels, setLabels] = useState({})
   const [drilling, setDrilling] = useState(null)
+  const labels = useTypeLabels(rows)
 
   useEffect(() => {
     if (!studentId) return
@@ -58,27 +59,6 @@ function WeakTypes({ studentId, studentName }) {
       })
     return () => { alive = false }
   }, [studentId])
-
-  // Человеческие названия типажей берём из банка. Он большой, поэтому грузим
-  // его лениво и только когда есть что подписывать.
-  useEffect(() => {
-    if (!rows.length) return
-    let alive = true
-    import("../pages/taskGenerators").then(({ taskThemes }) => {
-      if (!alive) return
-      const map = {}
-      for (const r of rows) {
-        if (!r.gen_key) continue
-        let themes
-        try { themes = taskThemes(r.exam_type, r.number) } catch { /* предмета/номера нет — подписи не будет */ }
-        for (const t of themes || []) {
-          for (const it of t.items) if (it.key === r.gen_key) map[r.gen_key] = it.label
-        }
-      }
-      setLabels(map)
-    })
-    return () => { alive = false }
-  }, [rows])
 
   // Лист-тренировка по одному типажу: тот же genKey, свежие числа. Ровно то,
   // ради чего ключ типажа вообще появился — «ещё восемь таких же».
