@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react"
-import { supabase, setAppToken } from "../supabase"
+import { supabase, setAppToken, clearAppSession } from "../supabase"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
 import { ConsentRow, ConsentLink } from "../components/ConsentChecks"
@@ -257,6 +257,9 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
             password: form.password,
           })
           if (error) throw error
+          // Сессия ученика или родителя из этого же браузера теперь не нужна, а
+          // её токен подменял бы авторизацию репетитора (см. supabase.js).
+          clearAppSession()
           const { data: tutor } = await supabase.from("tutors").select("*").eq("id", data.user.id).single()
           onLogin({ ...data.user, role: "tutor", profile: tutor })
 

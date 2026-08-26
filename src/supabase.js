@@ -29,7 +29,12 @@ export const isPasswordRecovery =
 // доступно ничего. См. supabase/rls_step2_identity.sql
 const APP_TOKEN_KEY = "app_jwt"
 
+// Токен, выданный в этой загрузке страницы, действителен сразу: при входе
+// родителя карточка ребёнка читается ещё до записи parent_session.
+let appTokenIssued = false
+
 export function setAppToken(token) {
+  appTokenIssued = !!token
   if (token) localStorage.setItem(APP_TOKEN_KEY, token)
   else localStorage.removeItem(APP_TOKEN_KEY)
   // Realtime держит отдельное соединение и свой заголовок — подмена fetch его
@@ -41,6 +46,32 @@ export function getAppToken() {
   try { return localStorage.getItem(APP_TOKEN_KEY) } catch { return null }
 }
 
+// Токен ученика или родителя действителен только вместе с его сессией. Раньше
+// он переживал её: стоило в этом же браузере войти репетитору (вход через
+// GoTrue чужой ключ не трогает), и его запросы уходили с ученическим токеном —
+// под ролью app_user. RLS отдавала пустоту без единой ошибки, поэтому кабинет
+// открывался живым, но пустым: 0 учеников, тариф «Старт» вместо оплаченного,
+// email вместо имени. Осиротевший токен игнорируем, а не доверяем ему.
+function hasAppSession() {
+  if (appTokenIssued) return true
+  try {
+    return !!(localStorage.getItem("student_session") || localStorage.getItem("parent_session"))
+  } catch { return false }
+}
+
+// Вход репетитора чужие ключи не трогает (GoTrue знает только про свою
+// сессию), поэтому убираем их сами — иначе следы кабинета ученика остаются в
+// том же браузере. Realtime здесь не переключаем: свой токен ему сразу после
+// входа выдаст сам клиент по событию SIGNED_IN.
+export function clearAppSession() {
+  appTokenIssued = false
+  try {
+    localStorage.removeItem(APP_TOKEN_KEY)
+    localStorage.removeItem("student_session")
+    localStorage.removeItem("parent_session")
+  } catch { /* приватный режим — чистить нечего */ }
+}
+
 // Вход и восстановление сессии обязаны идти под anon, БЕЗ токена ученика.
 // Причина: JWT живёт 12 часов, а PostgREST отвергает просроченный токен (401
 // PGRST301) ещё ДО вызова функции. То есть с истёкшим токеном в заголовке не
@@ -50,14 +81,14 @@ export function getAppToken() {
 const ANON_ONLY_RPC = /\/rpc\/(student_login|student_register|student_validate_session|student_reset_password|parent_login)(\?|$)/
 
 // Подменяем Authorization на лету, а не через опцию accessToken: та отключает
-// собственный auth клиента, а он нужен репетитору. Репетитор и ученик никогда
-// не залогинены одновременно, поэтому конфликта нет: если токен ученика лежит
-// в хранилище, он и уходит в заголовке.
+// собственный auth клиента, а он нужен репетитору. Токен ученика уходит в
+// заголовке только пока жива его сессия (см. hasAppSession) — иначе запросы
+// репетитора шли бы под чужой ролью.
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   global: {
     fetch: (input, init = {}) => {
       const url = typeof input === "string" ? input : input?.url || ""
-      const token = ANON_ONLY_RPC.test(url) ? null : getAppToken()
+      const token = ANON_ONLY_RPC.test(url) || !hasAppSession() ? null : getAppToken()
       if (token) {
         init.headers = { ...(init.headers || {}), Authorization: `Bearer ${token}` }
       }
