@@ -585,7 +585,7 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
       return
     }
     if (requireSolution && !solutionFile) {
-      setSubmitError("Прикрепи фотографию решения — кнопки «Камера» и «Файл» выше.")
+      setSubmitError("Прикрепи фото решения — кнопки «Камера» и «Файл» выше.")
       return
     }
     setSubmitError("")
@@ -2142,7 +2142,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                             )}
                             {isPart2 && !choices?.length && (
                               <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
-                                Задание с развёрнутым решением: запиши его на листе, фотографию прикрепишь после отправки
+                                Задание с развёрнутым решением: запиши его на листе, фото прикрепишь после отправки
                               </div>
                             )}
                           </div>
@@ -2150,7 +2150,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       })}
                     </div>
                     <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700 my-4">
-                      <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />После отправки обязательно прикрепи фотографии решений части 2 — без них репетитор не начислит баллы. Балл за часть 2 появится после проверки.</span>
+                      <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />После отправки обязательно прикрепи фото решений части 2 — без них репетитор не начислит баллы. Балл за часть 2 появится после проверки.</span>
                     </div>
                     {variantError && <div className="text-sm text-red-500 mb-2 text-center">{variantError}</div>}
                     <button
@@ -2224,7 +2224,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       </div>
                     )}
                     <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700 mb-4">
-                      <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />После отправки обязательно прикрепи фотографии решений части 2 — без них репетитор не начислит баллы</span>
+                      <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />После отправки обязательно прикрепи фото решений части 2 — без них репетитор не начислит баллы</span>
                     </div>
                     {variantError && <div className="text-sm text-red-500 mb-2 text-center">{variantError}</div>}
                     <button

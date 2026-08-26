@@ -694,7 +694,7 @@ function SubmissionReview({ submission, variant, onClose, onSave }) {
           ) : (
             <div className="text-gray-400">ответ не выбран</div>
           )}
-          {!hasFile && <div className="text-amber-600">нет фотографии решения</div>}
+          {!hasFile && <div className="text-amber-600">нет фото решения</div>}
         </div>
         <span className="text-xs text-gray-400 flex-shrink-0">макс. {OGE_PART2_MAX[n]}</span>
         <input type="number" min="0" max={OGE_PART2_MAX[n]} value={scores[n]}

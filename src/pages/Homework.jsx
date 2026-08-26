@@ -98,7 +98,7 @@ function Toggle({ on, onClick, title, note }) {
 // Три способа собрать домашнее задание. Карточками, а не спрятанной строкой:
 // раньше сборка ИИ пряталась за узкой ссылкой, и о ней никто не догадывался.
 const HW_METHODS = [
-  { id: "file", icon: "paperclip", title: "Свой файл", note: "PDF или фотография задания, ответы вписываете сами" },
+  { id: "file", icon: "paperclip", title: "Свой файл", note: "PDF или фото задания, ответы вписываете сами" },
   { id: "bank", icon: "grid", title: "Из банка заданий", note: "Номера и темы ОГЭ/ЕГЭ — соберём с ответами" },
   { id: "ai", icon: "sparkles", title: "Составить ИИ", note: "Задания по любой теме, готовы за минуту" },
 ]
@@ -628,15 +628,18 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
               </Collapse>
             </div>
 
-            {/* Как ученик сдаёт. Тип задания берётся отсюда: есть ответы — тест. */}
-            <div className="rounded-2xl ring-1 ring-gray-500/15 p-3 lg:mt-auto">
+            {/* Как ученик сдаёт. Тип задания берётся отсюда: есть ответы — тест.
+                Карточка тянется до низа колонки (flex-1), а не отталкивается
+                от него (mt-auto): иначе между чипами срока и ею зияет пустота,
+                когда правая колонка выше. */}
+            <div className="rounded-2xl ring-1 ring-gray-500/15 p-3 lg:flex-1">
               <Toggle
                 on={autoCheck}
                 onClick={() => setAutoCheck((v) => !v)}
                 title="Автопроверка"
                 note={autoCheck
                   ? "Ученик впишет ответы в кабинете, оценка выставится сразу"
-                  : "Ученик прикрепит фотографию или файл с работой, оценку поставите вы"}
+                  : "Ученик прикрепит фото или файл с работой, оценку поставите вы"}
               />
 
               <Collapse open={autoCheck}>
@@ -661,7 +664,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
                   <Toggle
                     on={requireSolution}
                     onClick={() => setRequireSolution(!requireSolution)}
-                    title="Дополнительно — фотография решения"
+                    title="Дополнительно — фото решения"
                     note="Без неё отправить тест нельзя"
                   />
                 </div>
@@ -716,7 +719,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
                       <span className="text-sm truncate max-w-full">
                         {file ? file.name : isEditing && editingHw.file_url ? "Заменить файл" : "Перетащите файл или нажмите"}
                       </span>
-                      <span className="text-[11px] text-gray-400">PDF, фотография или документ</span>
+                      <span className="text-[11px] text-gray-400">PDF, фото или документ</span>
                     </button>
                     {file && (
                       <button type="button" onClick={() => setFile(null)} className="self-start text-xs text-gray-400 hover:text-red-500 active:scale-95 transition-all">
