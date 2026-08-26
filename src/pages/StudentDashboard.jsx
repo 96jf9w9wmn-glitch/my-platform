@@ -5,8 +5,8 @@ import { signRows, signStorageUrl } from "../storageUrl"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
-import NavIcon from "../components/NavIcon"
 import StudentSidebar from "../components/StudentSidebar"
+import MobileMenu from "../components/MobileMenu"
 import FormulaBackdrop from "../components/FormulaBackdrop"
 import Chat from "./Chat"
 import StudentOnboardingModal from "../components/StudentOnboardingModal"
@@ -1249,6 +1249,8 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
 
   const [tutorName, setTutorName] = useState("")
   const [chatUnread, setChatUnread] = useState(0)
+  // Бургер-меню на телефоне: шторка с теми же вкладками, что в боковом меню.
+  const [menuOpen, setMenuOpen] = useState(false)
   // Доска держится в адресе (?board=1) по той же причине, что и у репетитора:
   // перезагрузка страницы не должна её закрывать, а «назад» — закрывает именно её,
   // а не выкидывает из кабинета.
@@ -1754,7 +1756,19 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
 
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <div className="topbar-glass px-4 md:px-6 py-3 flex justify-between items-center flex-shrink-0">
-          <div className="flex items-center gap-2.5 md:hidden">
+          <div className="flex items-center gap-1.5 md:hidden">
+            {/* Бургер — единственный вход во вкладки на телефоне; точка на нём
+                дублирует счётчик чата, который иначе не виден до открытия меню. */}
+            <button
+              onClick={() => setMenuOpen(true)}
+              aria-label="Меню"
+              className="relative p-2 -ml-2 rounded-xl text-gray-600 transition-all"
+            >
+              <Icon name="menu" size={20} />
+              {chatUnread > 0 && (
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
+              )}
+            </button>
             <img src="/logo.webp" alt="Логотип" className="w-8 h-8 rounded-xl object-cover" />
             <span className="text-sm font-semibold text-gray-700">Мой кабинет</span>
           </div>
@@ -1774,7 +1788,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
           </div>
         </div>
 
-        <div className={`flex-1 min-h-0 overflow-x-hidden ${activeTab === "chat" ? "flex flex-col overflow-hidden" : "page-scroll overflow-y-auto pb-20 md:pb-0"}`}>
+        <div className={`flex-1 min-h-0 overflow-x-hidden ${activeTab === "chat" ? "flex flex-col overflow-hidden" : "page-scroll overflow-y-auto"}`}>
           {activeTab === "chat" ? (
             <div className="flex-1 min-h-0 flex flex-col overflow-hidden page-active">
               <Chat
@@ -2522,32 +2536,16 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
           )}
         </div>
 
-        <div className="mobile-nav-glass md:hidden fixed bottom-0 left-0 right-0 z-50">
-          <div className="flex justify-around items-center px-1 pt-2 pb-2">
-            {navItems.map((item) => {
-              const badge = item.id === "chat" ? chatUnread : 0
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => goTab(item.id)}
-                  className={`relative flex-1 min-w-0 flex flex-col items-center gap-0.5 px-0.5 py-1 rounded-xl transition-all ${
-                    activeTab === item.id
-                      ? "text-blue-600 bg-blue-500/10 font-semibold"
-                      : "text-gray-400"
-                  }`}
-                >
-                  <NavIcon id={item.icon} size={22} />
-                  {badge > 0 && (
-                    <span className="absolute -top-0.5 right-1 w-4 h-4 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center font-medium">
-                      {badge > 9 ? "9+" : badge}
-                    </span>
-                  )}
-                  <span className="text-[10px] max-w-full truncate">{item.label}</span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
+        {menuOpen && (
+          <MobileMenu
+            title="Мой кабинет"
+            items={navItems}
+            activeId={activeTab}
+            badges={{ chat: chatUnread }}
+            onSelect={goTab}
+            onClose={() => setMenuOpen(false)}
+          />
+        )}
       </div>
 
       {needsOnboard && (

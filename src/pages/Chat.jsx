@@ -367,7 +367,7 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
   const totalUnread = Object.values(unreadByContact).reduce((a, b) => a + b, 0)
 
   return (
-    <div className="flex-1 min-h-0 flex overflow-hidden pb-20 md:pb-0 bg-white">
+    <div className="flex-1 min-h-0 flex overflow-hidden bg-white">
 
       {/* Контакты: полный экран на мобильном (когда нет активного диалога) */}
       <div className={`flex-col border-r border-gray-100 bg-white ${

@@ -4,19 +4,43 @@ import { effectivePlan } from "../plans"
 import { isOwner } from "../owner"
 import { navFor } from "../nav"
 
-// Список разделов — общий с нижней панелью на телефоне (src/nav.js). Всё про
+// Список разделов — общий с бургер-меню на телефоне (src/nav.js). Всё про
 // сам аккаунт (код для учеников, приём денег, выход) живёт в «Профиле» — он
 // открывается из блока внизу меню, поэтому список вкладок не растёт от
 // каждой такой мелочи. Подписка — своя вкладка, но и она не в этом списке:
 // её открывает звёздочка в верхней панели.
 
-function Sidebar({ activePage, setActivePage, badges = {}, name, email }) {
+// Профиль репетитора: аккаунт и подписка. Прижат к низу — так же, как в почте
+// и мессенджерах, где «это я» всегда в нижнем углу. Кнопка общая с бургер-меню
+// телефона (MobileMenu, подвал шторки), поэтому вынесена из Sidebar.
+export function TutorProfileButton({ name, email, active, onClick }) {
   const { sub } = useSubscription()
   const plan = effectivePlan(sub)
   const title = name || email || "Профиль"
   const letter = title.trim().charAt(0).toUpperCase()
-  const active = activePage === "profile"
 
+  return (
+    <button
+      onClick={onClick}
+      className={`mt-auto w-full flex items-center gap-2.5 p-2 rounded-xl text-left transition-all duration-200 focus:outline-none border border-transparent ${
+        active ? "nav-active" : "hover:bg-white/40"
+      }`}
+    >
+      <span
+        className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium flex-shrink-0"
+        style={{ background: "linear-gradient(135deg, #0A84FF 0%, #5E5CE6 100%)" }}
+      >
+        {letter}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className={`block text-sm truncate ${active ? "font-medium" : "text-gray-600"}`}>{title}</span>
+        <span className="block text-[11px] text-gray-400 truncate">Тариф «{plan.name}»</span>
+      </span>
+    </button>
+  )
+}
+
+function Sidebar({ activePage, setActivePage, badges = {}, name, email }) {
   return (
     <div className="sidebar-glass w-52 h-dvh sticky top-0 p-4 flex flex-col">
       <div className="flex items-center gap-2.5 mb-5 px-1">
@@ -45,25 +69,12 @@ function Sidebar({ activePage, setActivePage, badges = {}, name, email }) {
         ))}
       </div>
 
-      {/* Профиль репетитора: аккаунт и подписка. Прижат к низу — так же, как
-          в почте и мессенджерах, где «это я» всегда в нижнем углу. */}
-      <button
+      <TutorProfileButton
+        name={name}
+        email={email}
+        active={activePage === "profile"}
         onClick={() => setActivePage("profile")}
-        className={`mt-auto w-full flex items-center gap-2.5 p-2 rounded-xl text-left transition-all duration-200 focus:outline-none border border-transparent ${
-          active ? "nav-active" : "hover:bg-white/40"
-        }`}
-      >
-        <span
-          className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium flex-shrink-0"
-          style={{ background: "linear-gradient(135deg, #0A84FF 0%, #5E5CE6 100%)" }}
-        >
-          {letter}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className={`block text-sm truncate ${active ? "font-medium" : "text-gray-600"}`}>{title}</span>
-          <span className="block text-[11px] text-gray-400 truncate">Тариф «{plan.name}»</span>
-        </span>
-      </button>
+      />
     </div>
   )
 }

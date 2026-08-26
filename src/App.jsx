@@ -2,8 +2,8 @@ import { useState, useEffect, useRef, lazy, Suspense } from "react"
 import { createPortal } from "react-dom"
 import { supabase, isPasswordRecovery, setAppToken } from "./supabase"
 import { signRows } from "./storageUrl"
-import Sidebar from "./components/Sidebar"
-import NavIcon from "./components/NavIcon"
+import Sidebar, { TutorProfileButton } from "./components/Sidebar"
+import MobileMenu from "./components/MobileMenu"
 import Icon from "./components/Icon"
 import MorphIcon from "./components/MorphIcon"
 import Students from "./pages/Students"
@@ -26,7 +26,6 @@ import { useSubscription } from "./subscription"
 import { effectivePlan, isActive } from "./plans"
 import { isOwner } from "./owner"
 import { navFor } from "./nav"
-import { useClosing } from "./useClosing"
 import Reveal from "./components/Reveal"
 import TutorOnboardingModal from "./components/TutorOnboardingModal"
 // Excalidraw тяжёлый (mermaid/katex) — грузим доску только при открытии
@@ -296,9 +295,8 @@ function App() {
   const [activePage, setActivePage] = useState(startPage)
   const [visitedPages, setVisitedPages] = useState(() => new Set([startPage]))
   const [chatUnread, setChatUnread] = useState(0)
-  // Лист «Ещё» на телефоне: разделы, не влезшие в нижнюю панель.
-  const [moreOpen, setMoreOpen] = useState(false)
-  const { cls: moreCls, close: closeMore } = useClosing(() => setMoreOpen(false))
+  // Бургер-меню на телефоне: шторка с тем же списком разделов, что в боковом меню.
+  const [menuOpen, setMenuOpen] = useState(false)
   // Сбой сохранения ученика показываем полосой в кабинете, а не системным alert.
   const [saveError, setSaveError] = useState("")
   // Открытая доска живёт в адресе (?board=<ученик>), а не только в памяти: иначе
@@ -741,13 +739,9 @@ function App() {
     .filter(s => s.studentAccountId)
     .map(s => ({ id: `s:${s.studentAccountId}`, name: s.name, avatar: s.avatar || null, role: "Ученик" }))
 
-  // Нижняя панель телефона: пять разделов помещаются подписями, остальные
-  // открываются кнопкой «Ещё» — списком, где у каждого раздела есть название.
-  // Прятать их совсем нельзя: бокового меню на телефоне нет.
+  // Бургер-меню телефона показывает список разделов целиком — тот же, что
+  // боковое меню десктопа (src/nav.js).
   const allNav = navFor(isOwner(user.email))
-  const mobileNav = allNav.filter((i) => i.mobile)
-  const moreNav = allNav.filter((i) => !i.mobile)
-  const moreActive = moreNav.some((i) => i.id === activePage)
 
   return (
     <SubscriptionProvider tutorId={user.id} onOpenPlans={() => navigateTo("subscription")}>
@@ -791,7 +785,21 @@ function App() {
 
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <div className="topbar-glass flex justify-between items-center px-4 py-3">
-          <div className="md:hidden text-sm font-semibold text-gray-700">Precettore</div>
+          <div className="md:hidden flex items-center gap-1.5">
+            {/* Бургер — единственный вход в разделы на телефоне; точка на нём
+                дублирует счётчик чата, который иначе не виден до открытия меню. */}
+            <button
+              onClick={() => setMenuOpen(true)}
+              aria-label="Меню"
+              className="relative p-2 -ml-2 rounded-xl text-gray-600 transition-all"
+            >
+              <Icon name="menu" size={20} />
+              {chatUnread > 0 && (
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
+              )}
+            </button>
+            <span className="text-sm font-semibold text-gray-700">Precettore</span>
+          </div>
           <div className="flex items-center gap-2 ml-auto">
             <ThemeToggle />
             <NotificationBell userId={user.id} onNavigate={navigateTo} />
@@ -822,7 +830,7 @@ function App() {
           </div>
         )}</Reveal>
 
-        <div className={`flex-1 min-h-0 overflow-x-hidden ${activePage === "chat" ? "flex flex-col overflow-hidden" : "page-scroll overflow-y-auto pb-20 md:pb-0"}`}>
+        <div className={`flex-1 min-h-0 overflow-x-hidden ${activePage === "chat" ? "flex flex-col overflow-hidden" : "page-scroll overflow-y-auto"}`}>
           <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="loader-logo" /></div>}>
           <div className={activePage !== "dashboard" ? "hidden" : "page-active"}>{visitedPages.has("dashboard") && <Dashboard students={students} setActivePage={navigateTo} onOpenBoard={openBoard} />}</div>
           <div className={activePage !== "students" ? "hidden" : "page-active"}>{visitedPages.has("students") && <Students students={students} setStudents={handleSetStudents} tutorId={user.id} onOpenBoard={openBoard} />}</div>
@@ -858,71 +866,23 @@ function App() {
           </Suspense>
         </div>
 
-        <div className="mobile-nav-glass md:hidden fixed bottom-0 left-0 right-0 z-50">
-          <div className="flex justify-around items-center px-1 pt-2 pb-2">
-            {mobileNav.map((item) => {
-              const badge = item.id === "chat" ? chatUnread : 0
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => { navigateTo(item.id); if (item.id === "chat") setChatUnread(0) }}
-                  className={`relative flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-all min-w-[48px] ${
-                    activePage === item.id
-                      ? "text-blue-600 bg-blue-500/10 font-semibold"
-                      : "text-gray-400"
-                  }`}
-                >
-                  <NavIcon id={item.id} size={22} />
-                  {badge > 0 && (
-                    <span className="absolute -top-0.5 right-1 w-4 h-4 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center font-medium">
-                      {badge > 9 ? "9+" : badge}
-                    </span>
-                  )}
-                  <span className="text-[10px]">{item.label}</span>
-                </button>
-              )
-            })}
-            <button
-              onClick={() => setMoreOpen(true)}
-              className={`relative flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-all min-w-[48px] ${
-                moreActive ? "text-blue-600 bg-blue-500/10 font-semibold" : "text-gray-400"
-              }`}
-            >
-              <NavIcon id="more" size={22} />
-              <span className="text-[10px]">Ещё</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Лист «Ещё»: остальные разделы кабинета — списком с названиями. */}
-        {moreOpen && createPortal(
-          <div className="md:hidden fixed inset-0 z-[60] flex flex-col justify-end" onClick={closeMore}>
-            <div className={`absolute inset-0 glass-overlay ${moreCls}`} />
-            <div className={`relative glass-modal sheet-modal p-4 ${moreCls || "slide-up"}`} style={{ paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom))" }} onClick={(e) => e.stopPropagation()}>
-              <div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-white/20 mx-auto mb-4" />
-              <div className="flex flex-col gap-1">
-                {[...moreNav, { id: "profile", label: "Профиль" }, { id: "subscription", label: "Подписка" }].map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => { navigateTo(item.id); closeMore() }}
-                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left transition-colors ${
-                      activePage === item.id ? "nav-active font-medium" : "text-gray-600 hover:bg-black/[0.04]"
-                    }`}
-                  >
-                    <NavIcon id={item.id} size={20} />
-                    <span className="text-sm flex-1">{item.label}</span>
-                  </button>
-                ))}
-              </div>
-              <button
-                onClick={closeMore}
-                className="mt-3 w-full rounded-xl py-2.5 text-sm font-medium text-gray-500 bg-black/[0.04] dark:bg-white/[0.08] active:scale-[0.98] transition"
-              >
-                Закрыть
-              </button>
-            </div>
-          </div>,
-          document.body
+        {menuOpen && (
+          <MobileMenu
+            title="Precettore"
+            items={allNav}
+            activeId={activePage}
+            badges={{ chat: chatUnread }}
+            onSelect={(id) => { navigateTo(id); if (id === "chat") setChatUnread(0) }}
+            onClose={() => setMenuOpen(false)}
+            footer={(close) => (
+              <TutorProfileButton
+                name={user.profile?.name}
+                email={user.email}
+                active={activePage === "profile"}
+                onClick={() => { navigateTo("profile"); close() }}
+              />
+            )}
+          />
         )}
       </div>
     </div>
