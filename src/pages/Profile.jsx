@@ -1,9 +1,9 @@
 // Раздел «Профиль»: всё про аккаунт репетитора в одном месте — карточка
-// аккаунта, код для учеников, телеграм-бот, настройки приёма денег и подписка.
+// аккаунта, код для учеников, телеграм-бот и настройки приёма денег.
 //
-// Появился, чтобы разгрузить боковое меню: «Подписка» была отдельной вкладкой
-// наравне с рабочими разделами, хотя относится не к работе с учениками, а к
-// самому аккаунту. Теперь она — секция этой страницы.
+// Подписка отсюда ушла обратно на свою вкладку (звёздочка в верхней панели,
+// рядом с аватаром): внизу страницы аккаунта тариф никто не находил.
+// Ярлык тарифа в карточке ниже — ссылка туда же.
 //
 // Сюда же переехали настройки квитанций и онлайн-оплаты: на «Финансах» они
 // стояли наравне с долгами и историей, хотя трогают их раз в жизни. Так же
@@ -15,7 +15,6 @@ import Icon from "../components/Icon"
 import { supabase } from "../supabase"
 import { useSubscription } from "../subscription"
 import { effectivePlan, isActive } from "../plans"
-import Subscription from "./Subscription"
 import AutoInvoiceSettings from "../components/AutoInvoiceSettings"
 import OnlinePaySettings from "../components/OnlinePaySettings"
 import TaxModeSettings from "../components/TaxModeSettings"
@@ -41,8 +40,8 @@ function Avatar({ name, email, size = 56 }) {
   )
 }
 
-export default function Profile({ user, students = [], studentsCount = 0, onLogout, onProfileChange }) {
-  const { sub } = useSubscription()
+export default function Profile({ user, students = [], onLogout, onProfileChange }) {
+  const { sub, openPlans } = useSubscription()
   const plan = effectivePlan(sub)
   const paid = isActive(sub)
 
@@ -75,7 +74,7 @@ export default function Profile({ user, students = [], studentsCount = 0, onLogo
     <div className="p-4 sm:p-6">
       <h1 className="text-xl font-medium mb-1">Профиль</h1>
       <p className="text-sm text-gray-500 mb-5 sm:mb-6">
-        Аккаунт и код для учеников, приём денег и налоги, телеграм-бот и подписка на платформу.
+        Аккаунт и код для учеников, приём денег и налоги, телеграм-бот.
       </p>
 
       {/* Аккаунт */}
@@ -85,13 +84,19 @@ export default function Profile({ user, students = [], studentsCount = 0, onLogo
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-lg font-medium break-words">{user.profile?.name || "Без имени"}</span>
-              <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ring-1 ring-inset ${
-                paid
-                  ? "bg-[#007AFF]/10 text-[#007AFF] ring-[#007AFF]/25"
-                  : "bg-gray-500/10 text-gray-500 ring-gray-500/20"
-              }`}>
+              {/* Ярлык тарифа кликабелен: раз подписка живёт на своей вкладке,
+                  отсюда должен быть переход, а не тупик. */}
+              <button
+                onClick={openPlans}
+                className={`text-[11px] font-medium px-2 py-0.5 rounded-full ring-1 ring-inset flex items-center gap-1 transition-all hover:brightness-105 active:scale-95 ${
+                  paid
+                    ? "bg-[#007AFF]/10 text-[#007AFF] ring-[#007AFF]/25"
+                    : "bg-gray-500/10 text-gray-500 ring-gray-500/20"
+                }`}
+              >
                 Тариф «{plan.name}»
-              </span>
+                <Icon name="chevron-right" size={11} />
+              </button>
             </div>
             <div className="text-xs text-gray-500 mt-1 break-all">{user.email}</div>
             {user.profile?.subject && (
@@ -170,9 +175,6 @@ export default function Profile({ user, students = [], studentsCount = 0, onLogo
           <TaxModeSettings tutorId={user.id} surface="glass p-5 flex-1" />
         </div>
       </div>
-
-      {/* Подписка со всем содержимым: статус, лимиты, тарифы. */}
-      <Subscription studentsCount={studentsCount} tutorId={user.id} />
     </div>
   )
 }

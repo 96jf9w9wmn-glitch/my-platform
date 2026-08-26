@@ -20,7 +20,10 @@ import Chat from "./pages/Chat"
 import Legal from "./pages/Legal"
 import { LEGAL_PATHS } from "./legalPaths"
 import Profile from "./pages/Profile"
+import Subscription from "./pages/Subscription"
 import { SubscriptionProvider } from "./subscriptionProvider"
+import { useSubscription } from "./subscription"
+import { effectivePlan, isActive } from "./plans"
 import { isOwner } from "./owner"
 import { navFor } from "./nav"
 import { useClosing } from "./useClosing"
@@ -247,6 +250,34 @@ function NotificationBell({ userId, onNavigate }) {
   )
 }
 
+// Звёздочка подписки в верхней панели. Оплаченный тариф — звезда залита
+// золотом: состояние аккаунта видно, не заходя внутрь.
+function PlanStar({ active, onClick }) {
+  const { sub } = useSubscription()
+  const plan = effectivePlan(sub)
+  const paid = isActive(sub)
+  return (
+    <button
+      onClick={onClick}
+      aria-label="Подписка"
+      title={`Подписка · тариф «${plan.name}»`}
+      className={`p-2 rounded-lg transition-all duration-200 active:scale-90 ${
+        paid
+          ? "text-amber-500 hover:bg-amber-500/10"
+          : "text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-white/[0.08]"
+      } ${active ? "bg-[#007AFF]/10 text-[#007AFF] ring-1 ring-inset ring-[#007AFF]/30" : ""}`}
+    >
+      <svg
+        width="16" height="16" viewBox="0 0 24 24"
+        fill={paid && !active ? "currentColor" : "none"}
+        stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"
+      >
+        <polygon points="12 2.6 15.09 8.86 22 9.87 17 14.73 18.18 21.6 12 18.35 5.82 21.6 7 14.73 2 9.87 8.91 8.86" />
+      </svg>
+    </button>
+  )
+}
+
 function App() {
   // Родительская сессия по-прежнему доверяется мгновенно (без сервeрной проверки —
   // это отдельный, ещё не закрытый пробел, см. supabase/auth_hardening.sql).
@@ -258,9 +289,9 @@ function App() {
   // src/supabase.js до создания клиента — к моменту первого рендера hash уже
   // вычищен клиентом, здесь его проверять поздно.
   const [recovery, setRecovery] = useState(isPasswordRecovery)
-  // Возврат с оплаты подписки (?sub=<заказ>) должен открыть «Профиль»: там
-  // живёт секция подписки, которая ждёт подтверждения платежа.
-  const startPage = new URLSearchParams(window.location.search).get("sub") ? "profile" : "dashboard"
+  // Возврат с оплаты подписки (?sub=<заказ>) должен открыть «Подписку»: там
+  // ждёт подтверждения платежа проверка заказа.
+  const startPage = new URLSearchParams(window.location.search).get("sub") ? "subscription" : "dashboard"
   const [activePage, setActivePage] = useState(startPage)
   const [visitedPages, setVisitedPages] = useState(() => new Set([startPage]))
   const [chatUnread, setChatUnread] = useState(0)
@@ -338,6 +369,7 @@ function App() {
     chat: "Чат",
     taskgen: "Банк заданий",
     profile: "Профиль",
+    subscription: "Подписка",
   }
 
   // «Банк заданий» — внутренний раздел владельца платформы (src/owner.js).
@@ -707,7 +739,7 @@ function App() {
   const moreActive = moreNav.some((i) => i.id === activePage)
 
   return (
-    <SubscriptionProvider tutorId={user.id} onOpenPlans={() => navigateTo("profile")}>
+    <SubscriptionProvider tutorId={user.id} onOpenPlans={() => navigateTo("subscription")}>
     <div className="flex app-shell overflow-clip">
       {user.profile && !user.profile.onboarding_completed && (
         <TutorOnboardingModal
@@ -749,7 +781,11 @@ function App() {
           <div className="flex items-center gap-2 ml-auto">
             <ThemeToggle />
             <NotificationBell userId={user.id} onNavigate={navigateTo} />
-            {/* Аватар — вход в «Профиль»: аккаунт, код для учеников, подписка
+            {/* Звёздочка — вход в «Подписку». Стоит рядом с аватаром, потому что
+                тариф относится к аккаунту, а не к работе с учениками; в боковом
+                меню его нет, зато он виден с любого экрана и на телефоне. */}
+            <PlanStar active={activePage === "subscription"} onClick={() => navigateTo("subscription")} />
+            {/* Аватар — вход в «Профиль»: аккаунт, код для учеников, приём денег
                 и выход. На телефоне это единственная точка входа туда. */}
             <button
               onClick={() => navigateTo("profile")}
@@ -786,10 +822,12 @@ function App() {
             <Profile
               user={user}
               students={students}
-              studentsCount={students.length}
               onLogout={handleLogout}
               onProfileChange={(fields) => setUser((prev) => ({ ...prev, profile: { ...prev.profile, ...fields } }))}
             />
+          )}</div>
+          <div className={activePage !== "subscription" ? "hidden" : "page-active"}>{visitedPages.has("subscription") && (
+            <Subscription studentsCount={students.length} tutorId={user.id} />
           )}</div>
           <div className={activePage !== "chat" ? "hidden" : "flex-1 min-h-0 flex flex-col page-active"}>{visitedPages.has("chat") && (
             <Chat
@@ -849,7 +887,7 @@ function App() {
             <div className={`relative glass-modal sheet-modal p-4 ${moreCls || "slide-up"}`} style={{ paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom))" }} onClick={(e) => e.stopPropagation()}>
               <div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-white/20 mx-auto mb-4" />
               <div className="flex flex-col gap-1">
-                {[...moreNav, { id: "profile", label: "Профиль" }].map((item) => (
+                {[...moreNav, { id: "profile", label: "Профиль" }, { id: "subscription", label: "Подписка" }].map((item) => (
                   <button
                     key={item.id}
                     onClick={() => { navigateTo(item.id); closeMore() }}

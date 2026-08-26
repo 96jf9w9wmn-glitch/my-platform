@@ -28,6 +28,11 @@ function NavIcon({ id, size = 20 }) {
   if (id === "taskgen") return (
     <svg {...s}><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
   )
+  // Звёздочка — подписка на платформу. Отдельная вкладка рядом с профилем:
+  // тариф трогают редко, но искать его внутри «Профиля» никто не догадывался.
+  if (id === "subscription") return (
+    <svg {...s}><polygon points="12 2.6 15.09 8.86 22 9.87 17 14.73 18.18 21.6 12 18.35 5.82 21.6 7 14.73 2 9.87 8.91 8.86"/></svg>
+  )
   if (id === "profile") return (
     <svg {...s}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
   )
