@@ -74,8 +74,11 @@
   --color-gray-100: #2c2c2e;
   --color-gray-200: #3a3a3c;
   --color-gray-300: #52525a;
-  --color-gray-400: #98989f;
-  --color-gray-500: #98989f;
+  /* Вторичный текст (text-gray-400/500 — почти все подписи в приложении).
+     Был #98989f: на карточках со стеклянным фоном подписи сливались с фоном,
+     поэтому оттенки подняты до iOS-secondaryLabel. Ниже опускать нельзя. */
+  --color-gray-400: #b2b2ba;
+  --color-gray-500: #c6c6ce;
   --color-gray-600: #ebebf0;
   --color-gray-700: #ebebf0;
   --color-gray-800: #f2f2f7;
