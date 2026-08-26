@@ -1,6 +1,6 @@
 import jsPDF from "jspdf"
 import html2canvas from "html2canvas"
-import { noBreakMath } from "../utils"
+import { noBreakMath, svgMathBody, rootGeom } from "../utils"
 
 function escapeHtml(s) {
   const div = document.createElement("div")
@@ -83,17 +83,24 @@ function pfracSvg(num0, den0, mf = MATH_ARIAL) {
     `<text x="${fx + inner + 1}" y="${pb}" font-size="${pfs}" font-weight="300" font-family="${mf.family}" fill="#1c1c1e" transform="${pt}">)</text></svg>` }
 }
 
+// Радикал для PDF: содержимое (в т.ч. показатель ⁅…⁆ и стоячая дробь ⦃n¦d⦄ в нём)
+// раскладывает общий с экраном svgMathBody — иначе служебные маркеры попадали в SVG
+// сырыми и растягивали черту. Высота зависит от содержимого, поэтому картинка несёт
+// свой vertical-align: он держит базовую линию подкоренного там же, где была при
+// постоянной высоте (прежнее ROOT_VALIGN = −10px при H = 22 и базовой линии 17).
 function rootSvg(content, index = "", mf = MATH_ARIAL) {
-  const tw = chW(content, mf.k) * FS
+  const gw = (str) => chW(str, mf.k)
   const idxFS = 10
-  const ox = index ? Math.ceil(chW(String(index), mf.k) * idxFS) + 1 : 0
-  const W = Math.ceil(13 + tw + 2.5) + ox, H = 22
-  const d = `M${1.5 + ox},13 L${4 + ox},11.5 L${7.5 + ox},19 L${11.5 + ox},2.8 L${W - 1.5},2.8`
-  const idx = index ? `<text x="${ox - 1}" y="10.5" font-size="${idxFS}" font-family="${mf.family}" text-anchor="middle" fill="#1c1c1e">${index}</text>` : ""
-  return { W, H, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">` +
-    `<path d="${d}" fill="none" stroke="#1c1c1e" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>` +
-    idx +
-    `<text x="${13 + ox}" y="17" font-size="${FS}" font-family="${mf.family}" fill="#1c1c1e">${content}</text></svg>` }
+  const body = svgMathBody(content, FS, gw)
+  const { W, H, by, ox, tx, d, idxY } = rootGeom(body, index, idxFS, gw)
+  const idx = index
+    ? `<text x="${ox - 1}" y="${idxY}" font-size="${idxFS}" font-family="${mf.family}" text-anchor="middle" fill="#1c1c1e">${index}</text>`
+    : ""
+  return { W, H, valign: `${-(H - by + 5)}px`,
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">` +
+      `<path d="${d}" fill="none" stroke="#1c1c1e" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>` +
+      idx +
+      body.paint(tx, by, { fill: "#1c1c1e", family: mf.family, sw: 1.3 }) + `</svg>` }
 }
 
 // Корень НАД дробью (√ с чертой на всю дробь) — единый SVG: знак √, черта сверху,
@@ -118,7 +125,7 @@ function rootFracSvg(pre, num, den, post, mf = MATH_ARIAL) {
 // preflight ставит img{display:block}, и формула выпадает из строки. vertical-align
 // откалиброван ПОД html2canvas (он рисует inline-img выше, чем браузер; смотреть в
 // браузере этот скрытый блок никто не будет — важен только снимок).
-async function svgToInlineImg({ W, H, svg }, valign) {
+async function svgToInlineImg({ W, H, svg, valign: own }, valign) {
   const blobUrl = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }))
   const img = new Image()
   try {
@@ -128,7 +135,7 @@ async function svgToInlineImg({ W, H, svg }, valign) {
     const ctx = c.getContext("2d")
     ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, c.width, c.height)
     ctx.drawImage(img, 0, 0, c.width, c.height)
-    return `<img src="${c.toDataURL("image/png")}" style="display:inline; width:${W}px; height:${H}px; vertical-align:${valign};" />`
+    return `<img src="${c.toDataURL("image/png")}" style="display:inline; width:${W}px; height:${H}px; vertical-align:${own || valign};" />`
   } finally {
     URL.revokeObjectURL(blobUrl)
   }

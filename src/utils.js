@@ -13,6 +13,7 @@ const glyphW = (s) => { let w = 0; for (const ch of s) w += /[⁰¹²³⁴⁵⁶
 // толщину штриха задаёт вызывающий.
 const SUP_K = 0.72     // кегль показателя относительно основания
 const FRAC_K = 0.86    // кегль стопки дроби
+const PAREN_K = 1.8    // скобка вокруг стоячей дроби — во столько раз крупнее основания
 const TOP_K = 0.78     // высота прописной над базовой линией, в долях кегля
 const BOT_K = 0.24     // свес скобок/запятых под базовой линией
 
@@ -41,6 +42,24 @@ function svgRuns(src) {
     last = re.lastIndex
   }
   if (last < src.length) out.push({ t: "t", s: src.slice(last) })
+  return svgParens(out)
+}
+
+// Скобки вокруг стоячей дроби ((1/16)^x) вынимаем из текста в отдельный прогон: обычная
+// скобка ростом с цифру рядом с двухъярусной дробью выглядит обрезанной, растянутая —
+// как в ФИПИ.
+function svgParens(runs) {
+  const out = []
+  for (let i = 0; i < runs.length; i++) {
+    const r = runs[i]
+    if (r.t === "t" && r.s.endsWith("(") && runs[i + 1] && runs[i + 1].t === "f") {
+      if (r.s.length > 1) out.push({ t: "t", s: r.s.slice(0, -1) })
+      out.push({ t: "p", c: "(" })
+    } else if (r.t === "t" && r.s.startsWith(")") && runs[i - 1] && runs[i - 1].t === "f") {
+      out.push({ t: "p", c: ")" })
+      if (r.s.length > 1) out.push({ t: "t", s: r.s.slice(1) })
+    } else out.push(r)
+  }
   return out
 }
 
@@ -61,6 +80,12 @@ function svgLay(runs, fs, gw) {
       top = Math.min(top, ay - 3 - TOP_K * f)
       bot = Math.max(bot, ay + 0.95 * f + BOT_K * f)
       x += w
+    } else if (r.t === "p") {
+      const f = fs * PAREN_K
+      const dy = 0.13 * fs                        // скобка садится по центру черты дроби
+      parts.push({ k: "p", c: r.c, x, dy, fs: f })
+      x += 0.34 * f
+      top = Math.min(top, dy - 0.75 * f); bot = Math.max(bot, dy + 0.22 * f)
     } else {
       const sub = svgLay(r.r, fs * SUP_K, gw)
       // Подъём показателя: обычный — на 0.46 кегля; если в показателе стоячая дробь
@@ -79,13 +104,15 @@ function svgPaint(lay, x0, y0, o) {
   let g = ""
   for (const p of lay.parts) {
     if (p.k === "t") {
-      g += `<text x="${f(x0 + p.x)}" y="${f(y0)}" font-size="${f(p.fs)}"${o.family ? ` font-family="${o.family}"` : ""} fill="${o.fill}">${svgFlatMarkup(p.s)}</text>`
+      g += `<text xml:space="preserve" x="${f(x0 + p.x)}" y="${f(y0)}" font-size="${f(p.fs)}"${o.family ? ` font-family="${o.family}"` : ""} fill="${o.fill}">${svgFlatMarkup(p.s)}</text>`
+    } else if (p.k === "p") {
+      g += `<text x="${f(x0 + p.x)}" y="${f(y0 + p.dy)}" font-size="${f(p.fs)}"${o.family ? ` font-family="${o.family}"` : ""} font-weight="300" fill="${o.fill}">${p.c}</text>`
     } else if (p.k === "f") {
       const cx = x0 + p.x + p.w / 2, ay = y0 + p.ay
       const fam = o.family ? ` font-family="${o.family}"` : ""
-      g += `<text x="${f(cx)}" y="${f(ay - 3)}" font-size="${f(p.fs)}"${fam} text-anchor="middle" fill="${o.fill}">${svgFlatMarkup(p.n)}</text>` +
+      g += `<text xml:space="preserve" x="${f(cx)}" y="${f(ay - 3)}" font-size="${f(p.fs)}"${fam} text-anchor="middle" fill="${o.fill}">${svgFlatMarkup(p.n)}</text>` +
         `<line x1="${f(x0 + p.x + 1)}" y1="${f(ay)}" x2="${f(x0 + p.x + p.w - 1)}" y2="${f(ay)}" stroke="${o.fill}" stroke-width="${o.sw}"/>` +
-        `<text x="${f(cx)}" y="${f(ay + 0.95 * p.fs)}" font-size="${f(p.fs)}"${fam} text-anchor="middle" fill="${o.fill}">${svgFlatMarkup(p.d)}</text>`
+        `<text xml:space="preserve" x="${f(cx)}" y="${f(ay + 0.95 * p.fs)}" font-size="${f(p.fs)}"${fam} text-anchor="middle" fill="${o.fill}">${svgFlatMarkup(p.d)}</text>`
     } else {
       g += svgPaint(p.sub, x0 + p.x, y0 + p.dy, o)
     }
