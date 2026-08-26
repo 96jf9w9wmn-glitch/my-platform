@@ -119,7 +119,9 @@ function CodeBlock({ name, code, wide }) {
           {copied ? "Скопировано" : "Копировать"}
         </button>
       </div>
-      <pre className="px-3 py-2.5 text-xs font-mono text-gray-800 overflow-x-auto whitespace-pre leading-relaxed">{code}</pre>
+      {/* Длинные строки (C++, Паскаль) переносим, а не прячем за горизонтальным скроллом:
+          в колонке шириной в половину карточки скроллилась почти каждая программа. */}
+      <pre className="px-3 py-2.5 text-xs font-mono text-gray-800 whitespace-pre-wrap break-words leading-relaxed">{code}</pre>
     </div>
   )
 }

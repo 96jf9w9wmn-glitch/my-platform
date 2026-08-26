@@ -10,6 +10,7 @@
 //   expr    23 — выражение в смешанных системах (+/−)       ответ: десятичное
 //   minMax  31 — наиб./наим. среди чисел в 2, 8, 16          ответ: десятичное
 
+import { tableBlock } from "../utils.js"
 import { TEXTDOCS, PRESENTATIONS } from "./task13Data.js"
 
 const randInt = (min, max) => min + Math.floor(Math.random() * (max - min + 1))
@@ -611,6 +612,11 @@ const t16Cpp = (agg, c) => {
   return `${head}    int x, n, m = ${init};\n    cin >> n;\n    for (int i = 0; i < n; i++) {\n        cin >> x;\n        if ((${c.cpp}) && x ${cmp} m) m = x;\n    }\n    cout << m;\n    return 0;\n}`
 }
 
+// «Пример работы программы» — таблицей «Входные данные | Выходные данные», как в КИМ 2026.
+const T16_EXAMPLE_HEAD = "Пример работы программы:\n"
+const t16ExampleTable = ({ inp, out }) => tableBlock([["Входные данные", "Выходные данные"], [inp, out]])
+const T16_ANSWER_NOTE = "Развёрнутый ответ — программа. Эталонное решение на трёх языках:"
+
 // Небольшой разобранный пример: гарантируем ≥1 подходящий элемент, считаем ответ на JS.
 function t16Example(agg, c, styleA) {
   const seq = Array.from({ length: randInt(6, 9) }, () => randInt(1, 200))
@@ -628,8 +634,8 @@ function t16Example(agg, c, styleA) {
   else if (agg === "avg") out = hit.length ? (hit.reduce((a, b) => a + b, 0) / hit.length).toFixed(2) : "NO"
   else if (agg === "max") out = hit.length ? String(Math.max(...hit)) : "NO"
   else out = hit.length ? String(Math.min(...hit)) : "NO"
-  const inp = styleA ? `${seq.length}, затем ${seq.join(", ")}` : `${seq.join(", ")}, 0`
-  return `Пример. Ввод: ${inp} → вывод программы: ${out}`
+  const inp = styleA ? `${seq.length} ${seq.join(" ")}` : `${seq.join(" ")} 0`
+  return { inp, out }
 }
 
 function t16Program() {
@@ -647,16 +653,110 @@ function t16Program() {
   const inputSentence = styleA
     ? "Программа получает на вход натуральное число N — количество чисел в последовательности, а затем сами N чисел. Гарантируется, что в последовательности есть хотя бы один такой элемент. Значения чисел не превышают 30 000."
     : "Программа получает на вход натуральные числа; количество введённых чисел неизвестно, последовательность заканчивается числом 0 (0 — признак окончания ввода, в последовательность не входит). Значения чисел не превышают 30 000."
+  const ex = t16Example(agg, c, styleA)
   return {
     condition_text:
-      `Дайте развёрнутый ответ.\n\nНапишите программу, которая в последовательности натуральных чисел определяет ${aggPhrase}.${avgNo}\n\n${inputSentence}`,
-    answer: t16Example(agg, c, styleA),
+      `Дайте развёрнутый ответ.\n\nНапишите программу, которая в последовательности натуральных чисел определяет ${aggPhrase}.${avgNo}\n\n${inputSentence}\n\n` +
+      T16_EXAMPLE_HEAD + t16ExampleTable(ex),
+    answer: T16_ANSWER_NOTE,
     answerProgram: [
       { name: "Python", code: t16Py(agg, c) },
       { name: "Паскаль", code: t16Pas(agg, c) },
       { name: "C++", code: t16Cpp(agg, c) },
     ],
   }
+}
+
+// ── №16, тип 2026 года: на входе ОДНО натуральное число, обрабатываем его цифры ──
+// («Напишите программу, которая печатает максимальную цифру в записи натурального числа».)
+// Цифры снимаем стандартным циклом d = n mod 10; n = n div 10 — общий скелет для всех
+// вопросов семейства, различаются только начальное значение, обновление и печать.
+const ind = (s, n) => s.split("\n").map((l) => " ".repeat(n) + l).join("\n")
+const t16DigitPy = (init, upd, out) =>
+  `n = int(input())\n${init.py}\nwhile n > 0:\n    d = n % 10\n${ind(upd.py, 4)}\n    n = n // 10\n${out.py}`
+const t16DigitPas = (init, upd, out) =>
+  `var n, d, ${init.pasVars}: integer;\nbegin\n    read(n);\n    ${init.pas}\n    while n > 0 do\n    begin\n        d := n mod 10;\n${ind(upd.pas, 8)}\n        n := n div 10;\n    end;\n${ind(out.pas, 4)}\nend.`
+const t16DigitCpp = (init, upd, out) =>
+  `#include <iostream>\nusing namespace std;\nint main() {\n    int n, d, ${init.cpp};\n    cin >> n;\n    while (n > 0) {\n        d = n % 10;\n${ind(upd.cpp, 8)}\n        n = n / 10;\n    }\n${ind(out.cpp, 4)}\n    return 0;\n}`
+
+const T16_DIGIT_KINDS = [
+  {
+    ask: "максимальную цифру в записи натурального числа", tail: "Программа должна напечатать только искомую цифру.",
+    js: (ds) => Math.max(...ds),
+    init: { py: "m = 0", pas: "m := 0;", pasVars: "m", cpp: "m = 0" },
+    upd: { py: "if d > m:\n    m = d", pas: "if d > m then\n    m := d;", cpp: "if (d > m) m = d;" },
+    out: { py: "print(m)", pas: "writeln(m);", cpp: "cout << m;" },
+  },
+  {
+    ask: "минимальную цифру в записи натурального числа", tail: "Программа должна напечатать только искомую цифру.",
+    js: (ds) => Math.min(...ds),
+    init: { py: "m = 9", pas: "m := 9;", pasVars: "m", cpp: "m = 9" },
+    upd: { py: "if d < m:\n    m = d", pas: "if d < m then\n    m := d;", cpp: "if (d < m) m = d;" },
+    out: { py: "print(m)", pas: "writeln(m);", cpp: "cout << m;" },
+  },
+  {
+    ask: "сумму цифр натурального числа", tail: "Программа должна напечатать только одно число — эту сумму.",
+    js: (ds) => ds.reduce((a, b) => a + b, 0),
+    init: { py: "s = 0", pas: "s := 0;", pasVars: "s", cpp: "s = 0" },
+    upd: { py: "s += d", pas: "s := s + d;", cpp: "s += d;" },
+    out: { py: "print(s)", pas: "writeln(s);", cpp: "cout << s;" },
+  },
+  {
+    ask: "количество чётных цифр в записи натурального числа", tail: "Программа должна напечатать только одно число — это количество.",
+    js: (ds) => ds.filter((d) => d % 2 === 0).length,
+    init: { py: "cnt = 0", pas: "cnt := 0;", pasVars: "cnt", cpp: "cnt = 0" },
+    upd: { py: "if d % 2 == 0:\n    cnt += 1", pas: "if d mod 2 = 0 then\n    cnt := cnt + 1;", cpp: "if (d % 2 == 0) cnt++;" },
+    out: { py: "print(cnt)", pas: "writeln(cnt);", cpp: "cout << cnt;" },
+  },
+  {
+    ask: "количество нечётных цифр в записи натурального числа", tail: "Программа должна напечатать только одно число — это количество.",
+    js: (ds) => ds.filter((d) => d % 2 === 1).length,
+    init: { py: "cnt = 0", pas: "cnt := 0;", pasVars: "cnt", cpp: "cnt = 0" },
+    upd: { py: "if d % 2 == 1:\n    cnt += 1", pas: "if d mod 2 = 1 then\n    cnt := cnt + 1;", cpp: "if (d % 2 == 1) cnt++;" },
+    out: { py: "print(cnt)", pas: "writeln(cnt);", cpp: "cout << cnt;" },
+  },
+  {
+    ask: "сумму чётных цифр натурального числа", tail: "Программа должна напечатать только одно число — эту сумму. Если чётных цифр в записи числа нет, программа должна напечатать 0.",
+    js: (ds) => ds.filter((d) => d % 2 === 0).reduce((a, b) => a + b, 0),
+    init: { py: "s = 0", pas: "s := 0;", pasVars: "s", cpp: "s = 0" },
+    upd: { py: "if d % 2 == 0:\n    s += d", pas: "if d mod 2 = 0 then\n    s := s + d;", cpp: "if (d % 2 == 0) s += d;" },
+    out: { py: "print(s)", pas: "writeln(s);", cpp: "cout << s;" },
+  },
+  {
+    ask: "наибольшую чётную цифру в записи натурального числа",
+    tail: "Программа должна напечатать только искомую цифру. Если чётных цифр в записи числа нет, программа должна напечатать «NO».",
+    js: (ds) => { const e = ds.filter((d) => d % 2 === 0); return e.length ? Math.max(...e) : "NO" },
+    init: { py: "m = -1", pas: "m := -1;", pasVars: "m", cpp: "m = -1" },
+    upd: { py: "if d % 2 == 0 and d > m:\n    m = d", pas: "if (d mod 2 = 0) and (d > m) then\n    m := d;", cpp: "if (d % 2 == 0 && d > m) m = d;" },
+    out: {
+      py: 'if m >= 0:\n    print(m)\nelse:\n    print("NO")',
+      pas: "if m >= 0 then\n    writeln(m)\nelse\n    writeln('NO');",
+      cpp: 'if (m >= 0) cout << m;\nelse cout << "NO";',
+    },
+  },
+]
+
+function t16Digits() {
+  const k = pick(T16_DIGIT_KINDS)
+  for (let tries = 0; tries < 200; tries++) {
+    const n = randInt(1000, 999999)
+    const ds = String(n).split("").map(Number)
+    const out = k.js(ds)
+    if (out === "NO" && Math.random() < 0.8) continue      // «NO» показываем в примере редко
+    return {
+      condition_text:
+        `Дайте развёрнутый ответ.\n\nНапишите программу, которая печатает ${k.ask}. ` +
+        `На вход программе подаётся натуральное число.\n\n${k.tail}\n\n` +
+        T16_EXAMPLE_HEAD + t16ExampleTable({ inp: String(n), out: String(out) }),
+      answer: T16_ANSWER_NOTE,
+      answerProgram: [
+        { name: "Python", code: t16DigitPy(k.init, k.upd, k.out) },
+        { name: "Паскаль", code: t16DigitPas(k.init, k.upd, k.out) },
+        { name: "C++", code: t16DigitCpp(k.init, k.upd, k.out) },
+      ],
+    }
+  }
+  return t16Digits()
 }
 
 // ── №15 «Программа для исполнителя Робот» (КЭС 3.1), развёрнутый, с рисунком поля ─
@@ -1148,6 +1248,44 @@ function t7Url() {
       `адрес указанного файла в сети Интернет.\n${list}`,
     answer,
   }
+}
+
+// Типаж B: файл переместили в созданный подкаталог — закодировать НОВЫЙ адрес.
+// Отличия от типажа A (по образцу задания «Тип 7 № 18246»): протокол и «//» разбиты на
+// «ftp:/» и «/», среди фрагментов есть лишний протокол-обманка, а единственная «/» служит
+// всеми разделителями сразу — поэтому в ответе цифры ПОВТОРЯЮТСЯ, и это правильно.
+const NET_DIR = ["foto", "photo", "arch", "docs", "images", "media", "text", "new", "video",
+  "sound", "2019", "2020", "2021", "2024", "2025"]
+function t7Move() {
+  for (let tries = 0; tries < 200; tries++) {
+    const proto = pick(NET_PROTO)
+    const decoy = pick(NET_PROTO.filter((p) => p !== proto))
+    const server = pick(NET_SERVER)
+    const dom = pick(NET_DOMAIN)
+    const ext = pick(NET_EXT)
+    const file = pick(NET_FILE)
+    const depth = pick([1, 2, 2])
+    const dirs = shuffle(NET_DIR).slice(0, depth)
+    const frags = [`${proto}:/`, `${decoy}:/`, "/", server, dom, ...dirs, file, ext]
+    if (new Set(frags).size !== frags.length) continue      // метка фрагмента должна быть однозначной
+    const display = shuffle(frags)
+    const label = new Map(display.map((frag, i) => [frag, i + 1]))
+    const seq = [`${proto}:/`, "/", server, dom, ...dirs.flatMap((d) => ["/", d]), "/", file, ext]
+    const oldUrl = `${proto}://${server}${dom}/${file}${ext}`
+    const story = depth === 1
+      ? `Потом на сайте создали подкаталог ${dirs[0]} и файл переместили в него.`
+      : `Потом на сайте создали подкаталог ${dirs[0]}, а в нём — подкаталог ${dirs[1]}, ` +
+        `и файл переместили в подкаталог ${dirs[1]}.`
+    return {
+      condition_text:
+        `Файл ${file}${ext} был выложен в Интернете по адресу ${oldUrl}. ${story} ` +
+        `Фрагменты нового и старого адресов файла закодированы цифрами от 1 до ${frags.length}. ` +
+        `Запишите последовательность этих цифр, кодирующую адрес файла в сети Интернет ` +
+        `после перемещения.\n${display.map((frag, i) => `${i + 1}) ${frag}`).join("\n")}`,
+      answer: seq.map((frag) => label.get(frag)).join(""),
+    }
+  }
+  return t7Move()
 }
 
 // ── №03 «Логические высказывания» (КЭС 2.8), 85 задач банка → 4 типажа ─────────
@@ -1972,8 +2110,31 @@ const wordTspans = (frags) => frags.map((f) => {
 }).join("")
 const T13_TEXT = (x, y, inner, extra = "") => `<text x="${x}" y="${y}" font-family="Arial,sans-serif" font-size="${T13_FS}" fill="#111"${extra}>${inner}</text>`
 
-// Абзац по ширине. Строку рисуем ОДНИМ <text> и растягиваем нативным textLength/lengthAdjust —
-// браузер сам выравнивает по ширине точно, оценка нужна лишь для разбиения на строки.
+// Строка целиком: соседние куски с ОДИНАКОВЫМ стилем склеиваем вместе с пробелом между ними,
+// иначе подчёркивание рвётся на каждом пробеле («держать форму» подчёркивалось двумя кусками).
+function lineTspans(words) {
+  const frags = []
+  const put = (f) => {
+    const prev = frags[frags.length - 1]
+    if (prev && prev.b === f.b && prev.i === f.i && prev.u === f.u) prev.text += f.text
+    else frags.push({ ...f })
+  }
+  words.forEach((w, wi) => w.frags.forEach((f, fi) => {
+    if (fi === 0 && wi > 0) {
+      // Пробел между словами наследует ТОЛЬКО общие признаки соседей: подчёркивание
+      // тянется через пробел лишь внутри подчёркнутой фразы, а не выпирает наружу.
+      const p = frags[frags.length - 1] || {}
+      put({ text: " ", b: !!p.b && !!f.b, i: !!p.i && !!f.i, u: !!p.u && !!f.u })
+    }
+    put(f)
+  }))
+  return wordTspans(frags)
+}
+
+// Абзац по ширине. Растягиваем строку не textLength'ом, а word-spacing: textLength на <text>
+// с разностильными tspan'ами WebKit раскладывает по-своему — куски наезжали друг на друга
+// («и се⟨тонкими дольками⟩резать»). word-spacing двигает только пробелы, наложение исключено;
+// оценка ширины символов приблизительная, поэтому правый край может «дышать» на пару пикселей.
 function paragraphSvg(str, x0, width, yStart, indent, lineH) {
   const words = wordsFromRuns(parseRuns(str))
   const lines = []
@@ -1981,18 +2142,19 @@ function paragraphSvg(str, x0, width, yStart, indent, lineH) {
   words.forEach((w) => {
     const ww = wordW(w)
     const avail = width - (firstLine ? indent : 0)
-    if (line.length && lw + T13_SPACE + ww > avail) { lines.push({ words: line, first: firstLine }); firstLine = false; line = []; lw = 0 }
+    if (line.length && lw + T13_SPACE + ww > avail) { lines.push({ words: line, first: firstLine, w: lw }); firstLine = false; line = []; lw = 0 }
     lw += (line.length ? T13_SPACE : 0) + ww
     line.push(w)
   })
-  if (line.length) lines.push({ words: line, first: firstLine, last: true })
+  if (line.length) lines.push({ words: line, first: firstLine, w: lw, last: true })
   let svg = "", y = yStart
   lines.forEach((L) => {
     const startX = x0 + (L.first ? indent : 0)
     const avail = width - (L.first ? indent : 0)
-    const inner = L.words.map((w) => wordTspans(w.frags)).join(" ")
-    const tl = (!L.last && L.words.length > 1) ? ` textLength="${avail.toFixed(0)}" lengthAdjust="spacing"` : ""
-    svg += T13_TEXT(startX, y, inner, tl)
+    const gaps = L.words.length - 1
+    const extra = (!L.last && gaps > 0) ? Math.min((avail - L.w) / gaps, 6) : 0
+    const ws = extra > 0.2 ? ` word-spacing="${extra.toFixed(2)}"` : ""
+    svg += T13_TEXT(startX, y, lineTspans(L.words), ws)
     y += lineH
   })
   return { svg, y }
@@ -2012,7 +2174,14 @@ function textDocBody(doc, ox, oy) {
   const rect = (x, y, w, h, fill) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="#c8ccd4"/>`
   let body = "", y = oy + 42
   body += `<text x="${ox + M + CW / 2}" y="${y}" text-anchor="middle" font-family="Arial,sans-serif" font-size="15" font-weight="bold" fill="#111">${escXml(doc.title)}</text>`
-  y += 30
+  y += 28
+  // Порядок как в образцах ФИПИ: сначала основной текст (по ширине, отступ первой строки
+  // ≈ 1 см = 38 px при CW = 600), под ним — таблица с интервалом ≈ 18 пт.
+  doc.paragraphs.forEach((p) => {
+    const r = paragraphSvg(p, ox + M, CW, y, 38, 20)
+    body += r.svg; y = r.y + 8
+  })
+  y += 16
   // Таблица (уже текста, по центру): шапка по центру, 1-й столбец по левому краю, 2-й — по центру.
   const tW = Math.round(CW * 0.62), tX = ox + M + (CW - tW) / 2, col1 = Math.round(tW * 0.62), col2 = tW - col1, rowH = 28
   const rows = [doc.tableHead, ...doc.tableRows]
@@ -2024,13 +2193,8 @@ function textDocBody(doc, ox, oy) {
     body += cellSvg(header ? `**${r[0]}**` : r[0], tX, ty, col1, header ? "center" : "left")
     body += cellSvg(header ? `**${r[1]}**` : r[1], tX + col1, ty, col2, "center")
   })
-  y += rows.length * rowH + 24
-  // Абзацы основного текста (по ширине, отступ первой строки ≈ 1 см = 38 px при CW=600)
-  doc.paragraphs.forEach((p) => {
-    const r = paragraphSvg(p, ox + M, CW, y, 38, 20)
-    body += r.svg; y = r.y + 8
-  })
-  const H = Math.ceil(y + 18 - oy)
+  y += rows.length * rowH
+  const H = Math.ceil(y + 30 - oy)
   return { svg: rect(ox, oy, W, H, "#fff") + body, w: W, h: H }
 }
 
@@ -2105,27 +2269,27 @@ function slidesMockupBody(ox, oy) {
   return { svg, w: W, h: H }
 }
 
-// Одна картинка на всю задачу №13: сверху — макеты слайдов (к 13.1), снизу — образец
-// текстового документа (к 13.2), каждый под своим заголовком-подписью.
-function t13ImageSvg(doc) {
-  const P = 18, capH = 24, slidesW = 720, docW = 660
-  const W = P * 2 + Math.max(slidesW, docW)
-  const cap = (y, text) => `<text x="${W / 2}" y="${y}" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" font-weight="bold" fill="#555">${escXml(text)}</text>`
-  let y = P, parts = ""
-  parts += cap(y + 14, "Макеты слайдов — к заданию 13.1"); y += capH
-  const sl = slidesMockupBody((W - slidesW) / 2, y); parts += sl.svg; y += sl.h + 22
-  parts += cap(y + 14, "Образец — к заданию 13.2"); y += capH
-  const db = textDocBody(doc, (W - docW) / 2, y); parts += db.svg; y += db.h + P
-  const H = Math.ceil(y)
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">` +
-    `<rect x="0" y="0" width="${W}" height="${H}" fill="#f7f8fa"/>${parts}</svg>`
+// Картинки к подзаданиям: макеты слайдов (13.1) и образец документа (13.2) — каждая своя,
+// потому что 13.1 и 13.2 теперь отдельные задания и лишний рисунок в условии только мешает.
+const t13Frame = (W, H, parts) =>
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">` +
+  `<rect x="0" y="0" width="${W}" height="${H}" fill="#f7f8fa"/>${parts}</svg>`
+function t13SlidesSvg() {
+  const P = 18, slidesW = 720, W = P * 2 + slidesW
+  const sl = slidesMockupBody(P, P)
+  return t13Frame(W, Math.ceil(P * 2 + sl.h), sl.svg)
+}
+function t13DocSvg(doc) {
+  const P = 18, docW = 660, W = P * 2 + docW
+  const db = textDocBody(doc, P, P)
+  return t13Frame(W, Math.ceil(P * 2 + db.h), db.svg)
 }
 
-// ── №13 целиком: одна карточка с ОБОИМИ подзаданиями (как в ФИПИ: «выберите 13.1 или 13.2») ──
-// Выбираем случайную тему презентации (13.1) и случайный образец документа (13.2). К 13.1
-// прикладываем каталог материалов .zip; картинка задачи объединяет макеты слайдов и образец.
-function t13Task() {
-  const p = pick(PRESENTATIONS), doc = pick(TEXTDOCS)
+// ── №13: два САМОСТОЯТЕЛЬНЫХ задания ────────────────────────────────────────────
+// В КИМ ученик выбирает одно из двух, но тренировать их удобнее по отдельности: у 13.1 своя
+// картинка (макеты слайдов) и приложенный каталог .zip, у 13.2 — только образец документа.
+function t13Presentation() {
+  const p = pick(PRESENTATIONS)
   const catalog = p.topic
   const textFile =
     `Тема презентации: ${p.topic}\n\n` +
@@ -2136,31 +2300,46 @@ function t13Task() {
   return {
     number: 13,
     condition_text:
-      `Выберите ОДНО из предложенных ниже заданий: 13.1 или 13.2.\n\n` +
+      `Дайте развёрнутый ответ.\n\n` +
       `13.1. Используя информацию и иллюстративный материал, содержащийся в каталоге «${p.topic}», ` +
       `создайте презентацию из трёх слайдов на тему «${p.topic}». В презентации должны содержаться ` +
       `${p.theme} ${p.kind}. Все слайды должны быть выполнены в едином стиле, каждый слайд должен быть ` +
       `озаглавлен. Презентацию сохраните в файле, имя которого Вам сообщат организаторы. Файл ответа ` +
-      `необходимо сохранить в формате *.odp.\nТребования к оформлению презентации: ровно три слайда ` +
+      `необходимо сохранить в формате *.odp.\n\nТребования к оформлению презентации: ровно три слайда ` +
       `без анимации, ориентация альбомная (16:9); слайд 1 — титульный (название и в подзаголовке — ` +
       `идентификатор участника); слайд 2 — заголовок, два изображения и два блока текста; слайд 3 — ` +
       `заголовок, три изображения и три блока текста (по макетам ниже). Единый тип шрифта; размеры: ` +
-      `название на титульном — 40 пт, заголовки слайдов — 24 пт, основной текст на слайдах — 20 пт.\n\n` +
+      `название на титульном — 40 пт, заголовки слайдов — 24 пт, основной текст на слайдах — 20 пт.`,
+    archive: { name: `${catalog}.zip`, files },
+    image_url: svgUrl(t13SlidesSvg()),
+    answer:
+      "Развёрнутый ответ — файл *.odp: 3 слайда в едином стиле, заголовок на каждом, " +
+      "шрифты 40/24/20 пт, содержимое и расположение объектов по макетам.",
+    generated: true,
+  }
+}
+
+function t13TextDoc() {
+  const doc = pick(TEXTDOCS)
+  return {
+    number: 13,
+    condition_text:
+      `Дайте развёрнутый ответ.\n\n` +
       `13.2. Создайте в текстовом редакторе документ и напишите в нём следующий текст, точно ` +
       `воспроизведя всё оформление текста, имеющееся в образце. Данный текст должен быть набран шрифтом ` +
       `размером 14 пунктов обычного начертания. Абзацный отступ первой строки основного текста — 1 см. ` +
-      `Расстояние между строками — не менее одинарного, но не более полуторного интервала. Основной ` +
-      `текст выровнен по ширине; заголовок таблицы — по центру, в ячейках первого столбца — по левому ` +
-      `краю, второго — по центру. Ширина таблицы меньше ширины основного текста, таблица выровнена на ` +
-      `странице по центру горизонтали. В основном тексте и таблице есть слова, выделенные полужирным ` +
-      `шрифтом, курсивом и подчёркиванием, — выделение сохраните. Текст сохраните в файле, имя которого ` +
-      `Вам сообщат организаторы. Файл ответа необходимо сохранить в формате *.odt.`,
-    archive: { name: `${catalog}.zip`, files },
-    image_url: svgUrl(t13ImageSvg(doc)),
+      `Расстояние между строками — не менее одинарного, но не более полуторного интервала.\n\n` +
+      `Основной текст выровнен по ширине; заголовок таблицы — по центру, в ячейках первого столбца — ` +
+      `по левому краю, второго — по центру. Ширина таблицы меньше ширины основного текста, таблица ` +
+      `выровнена на странице по центру горизонтали. Интервал между текстом и таблицей — не менее ` +
+      `12 пунктов, но не более 24 пунктов. В основном тексте и таблице есть слова, выделенные ` +
+      `полужирным шрифтом, курсивом и подчёркиванием, — выделение сохраните.\n\n` +
+      `Текст сохраните в файле, имя которого Вам сообщат организаторы. Файл ответа необходимо ` +
+      `сохранить в формате *.odt.`,
+    image_url: svgUrl(t13DocSvg(doc)),
     answer:
-      "Развёрнутый ответ (выполняется ОДНО из двух). 13.1 — файл *.odp: 3 слайда в едином стиле, " +
-      "заголовки на каждом, шрифты 40/24/20 пт, содержимое по макетам. 13.2 — файл *.odt: точное " +
-      "воспроизведение образца (14 пт, таблица по центру уже текста, выделения сохранены).",
+      "Развёрнутый ответ — файл *.odt: точное воспроизведение образца (14 пт, отступ первой строки " +
+      "1 см, текст по ширине, таблица по центру и уже текста, выделения сохранены).",
     generated: true,
   }
 }
@@ -2172,14 +2351,14 @@ export const GENERATORS_INF = {
   9: [t9CountPaths],
   11: [t11FileSearch],
   12: [t12FileCount],
-  13: [t13Task],
+  13: [t13Presentation, t13TextDoc],
   14: [t14Spreadsheet],
   15: [t15Program],
-  16: [t16Program],
+  16: [t16Program, t16Digits],
   3: [t3Natural, t3MinMaxDigits, t3CountDigits, t3ChooseList],
   5: [t5Executor],
   6: [t6Count, t6ParamA, t6ParamAMax, t6ParamAMin, t6ParamAOne],
-  7: [t7Url],
+  7: [t7Url, t7Move],
   8: [t8Query2, t8QueryAnd, t8Sites],
   10: [t10Ones, t10ToDec, t10FromDec, t10Expr, t10MinMax],
 }
@@ -2210,7 +2389,8 @@ export const GEN_META_INF = {
     ["file-count", "Сколько файлов заданного расширения", t12FileCount],
   ]]],
   13: [["Создание информационного объекта", [
-    ["combined", "13.1 презентация + 13.2 документ (одна карточка, «выберите одно»)", t13Task],
+    ["presentation", "13.1 Презентация из трёх слайдов (каталог .zip + макеты)", t13Presentation],
+    ["textdoc", "13.2 Текстовый документ по образцу", t13TextDoc],
   ]]],
   14: [["Электронная таблица", [
     ["spreadsheet", "Счёт и среднее по таблице (.xlsx)", t14Spreadsheet],
@@ -2220,6 +2400,7 @@ export const GEN_META_INF = {
   ]]],
   16: [["Программирование", [
     ["sequence", "Обработка последовательности (эталон на 3 языках)", t16Program],
+    ["digits", "Цифры одного числа (тип 2026 года)", t16Digits],
   ]]],
   3: [["Логические высказывания", [
     ["min-max-nat", "Наим./наиб. натуральное x", t3Natural],
@@ -2239,6 +2420,7 @@ export const GEN_META_INF = {
   ]]],
   7: [["Адресация в Интернете", [
     ["url", "Порядок фрагментов адреса", t7Url],
+    ["move", "Файл переместили в подкаталог (новый адрес)", t7Move],
   ]]],
   8: [["Поиск в Интернете", [
     ["query2", "Два слова (найти 4-е значение)", t8Query2],
