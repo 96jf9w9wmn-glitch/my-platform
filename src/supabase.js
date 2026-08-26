@@ -41,6 +41,14 @@ export function getAppToken() {
   try { return localStorage.getItem(APP_TOKEN_KEY) } catch { return null }
 }
 
+// Вход и восстановление сессии обязаны идти под anon, БЕЗ токена ученика.
+// Причина: JWT живёт 12 часов, а PostgREST отвергает просроченный токен (401
+// PGRST301) ещё ДО вызова функции. То есть с истёкшим токеном в заголовке не
+// проходил и student_validate_session — тот самый запрос, который должен был
+// выдать свежий. Клиент видел пустой ответ, считал сессию невалидной и чистил
+// localStorage: ученик «вылетал» на экран входа при обновлении страницы.
+const ANON_ONLY_RPC = /\/rpc\/(student_login|student_register|student_validate_session|student_reset_password|parent_login)(\?|$)/
+
 // Подменяем Authorization на лету, а не через опцию accessToken: та отключает
 // собственный auth клиента, а он нужен репетитору. Репетитор и ученик никогда
 // не залогинены одновременно, поэтому конфликта нет: если токен ученика лежит
@@ -48,7 +56,8 @@ export function getAppToken() {
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   global: {
     fetch: (input, init = {}) => {
-      const token = getAppToken()
+      const url = typeof input === "string" ? input : input?.url || ""
+      const token = ANON_ONLY_RPC.test(url) ? null : getAppToken()
       if (token) {
         init.headers = { ...(init.headers || {}), Authorization: `Bearer ${token}` }
       }

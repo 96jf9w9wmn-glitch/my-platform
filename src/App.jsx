@@ -588,8 +588,18 @@ function App() {
         // user ещё не установлен (см. инициализатор выше) — ждём подтверждения.
         // Токена нет (сессия ещё до этой миграции) или он не совпал с текущим —
         // считаем сессию невалидной и разлогиниваем, а не доверяем голому id.
-        supabase.rpc("student_validate_session", { p_id: parsed.id, p_token: parsed.token }).then(({ data }) => {
+        supabase.rpc("student_validate_session", { p_id: parsed.id, p_token: parsed.token }).then(({ data, error }) => {
           const account = data?.[0]
+          if (error) {
+            // Сбой связи, лимит запросов или ошибка базы — это НЕ «сессия
+            // недействительна». Раньше любой такой ответ чистил localStorage,
+            // и ученик оказывался на экране входа с пропавшим аккаунтом.
+            // Оставляем сессию как есть: следующая загрузка попробует снова.
+            console.error("Сессия ученика не проверена:", error)
+            setUser(parsed)
+            setLoadingAuth(false)
+            return
+          }
           if (!account) {
             localStorage.removeItem("student_session")
             setUser(null)
