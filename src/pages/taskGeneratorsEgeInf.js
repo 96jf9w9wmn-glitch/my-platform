@@ -3025,7 +3025,10 @@ export function t1StarsAmbiguous() {
     if (!svg) continue
     const nums = [rowOf[u] + 1, rowOf[t] + 1].sort((a, b) => a - b)
     const [la, lb] = [T1_LAT[u], T1_LAT[t]].sort()
-    const head = ["Номер пункта", ...Array.from({ length: n }, (_, i) => String(i + 1))]
+    // Угловая клетка короткая («№»): в таблице ФИПИ «Номер пункта» — это подпись
+    // над всей шапкой, а не содержимое первого столбца; с длинным текстом внутри
+    // его колонка выходила шире остальных.
+    const head = ["№", ...Array.from({ length: n }, (_, i) => String(i + 1))]
     const rows = Array.from({ length: n }, (_, i) => [
       String(i + 1),
       ...Array.from({ length: n }, (_, j) => (g[perm[i]][perm[j]] ? "*" : "")),

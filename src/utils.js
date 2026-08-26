@@ -75,12 +75,12 @@ function dataTableHtml(body) {
   const plain = (c) => c.replace(/<[^>]*>/g, "").trim()
   const cells = rows.flat().map(plain)
   const grid = cells.every((c) => c.length <= 3)
-  // Тот же случай, но с подписью строк в первом столбце («Номер пункта | 1 | 2 …»):
-  // данные короткие, а первый столбец — текст. Колонки данных всё равно равняем,
-  // подпись строк получает свою ширину.
-  const rowhead = !grid && rows.every((r) => r.slice(1).every((c) => plain(c).length <= 3))
-  const cls = grid ? " tmath-grid" : rowhead ? " tmath-grid tmath-rowhead" : ""
-  return `<div class="tmath-tblwrap"><table class="tmath-table${cls}"><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table></div>`
+  const cls = grid ? " tmath-grid" : ""
+  // Ширину сетки задаём явно (число колонок × ширина клетки): без определённой ширины
+  // раскладка table-layout: fixed раздаёт остаток неравномерно и первый столбец
+  // получается на пару пикселей шире.
+  const style = grid ? ` style="--tmath-cols:${head.length}"` : ""
+  return `<div class="tmath-tblwrap"><table class="tmath-table${cls}"${style}><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table></div>`
 }
 
 // ── Нумерованный список вариантов (задания «на последовательность» и «вставьте элементы») ──
