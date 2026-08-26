@@ -10,6 +10,9 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 // то есть до отрисовки, поэтому на первом кадре «палец» уже стоит на месте и
 // ниоткуда не выезжает. Плавность и уважение к prefers-reduced-motion —
 // в классе .seg-finger (index.css).
+// В тёмной теме активной подписи нужен ЯРКИЙ синий (blue-400 = #5ac8fa):
+// blue-300 там полупрозрачный (rgba(0,122,255,0.5)) и на «пальце» читался хуже
+// неактивных соседей — выбранный сегмент выглядел выключенным.
 // Мельче этого не делать: подписи сегментов — основной способ переключения
 // раздела, и на 12px они читались как служебная подпись, а не как кнопки.
 const SIZES = {
@@ -70,7 +73,7 @@ export default function SegmentSwitch({ items, value, onChange, className = "", 
           aria-selected={value === it.key}
           onClick={() => onChange(it.key)}
           className={`seg-label relative z-10 ${equal ? "flex-1 basis-0" : "flex-none"} min-w-0 flex items-center justify-center gap-2 whitespace-nowrap ${s.btn} ${s.finger} ${
-            value === it.key ? "text-blue-600 dark:text-blue-300" : "text-gray-600 hover:text-gray-900"
+            value === it.key ? "text-blue-600 dark:text-blue-400" : "text-gray-600 hover:text-gray-900"
           }`}
         >
           {it.label ?? it.key}
