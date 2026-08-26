@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react"
 import AddStudentModal from "../components/AddStudentModal"
 import ConfirmModal from "../components/ConfirmModal"
+import Reveal from "../components/Reveal"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
 import FormulaBackdrop from "../components/FormulaBackdrop"
@@ -321,13 +322,13 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
         onCancel={() => setConfirm(null)}
       />
 
-      {notice && (
+      <Reveal value={notice}>{(text) => (
         <div className="glass-tint-amber px-4 py-3 mb-4 flex items-start gap-2">
           <Icon name="warning" size={15} className="text-amber-600 flex-shrink-0 mt-0.5" />
-          <span className="text-sm text-amber-700 flex-1">{notice}</span>
+          <span className="text-sm text-amber-700 flex-1">{text}</span>
           <button onClick={() => setNotice("")} className="text-amber-600/70 hover:text-amber-700"><Icon name="x" size={14} /></button>
         </div>
-      )}
+      )}</Reveal>
 
       {!canAddStudent && (
         <div className="mb-4">
@@ -338,7 +339,9 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
         </div>
       )}
 
-      {invite && (
+      {/* Пока блок уезжает, invite уже null — Reveal передаёт сюда последнее
+          непустое значение, поэтому ссылка не мигает пустотой. */}
+      <Reveal value={invite}>{(inv) => (
         <div className="glass rounded-2xl p-4 mb-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -352,7 +355,7 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
             </button>
           </div>
           <div className="mt-3 text-xs text-gray-500 dark:text-gray-400 break-all bg-black/[0.03] dark:bg-white/[0.06] rounded-xl px-3 py-2">
-            {invite.link}
+            {inv.link}
           </div>
           <div className="flex flex-wrap gap-2 mt-3">
             <button onClick={copyInvite} className="press-fill px-3 py-2 text-sm rounded-xl bg-blue-600 text-white flex items-center gap-1.5">
@@ -360,14 +363,14 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
               {copied ? "Скопировано" : "Скопировать текст"}
             </button>
             <a
-              href={`https://wa.me/?text=${encodeURIComponent(invite.text)}`}
+              href={`https://wa.me/?text=${encodeURIComponent(inv.text)}`}
               target="_blank" rel="noreferrer"
               className="px-3 py-2 text-sm rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700"
             >
               WhatsApp
             </a>
             <a
-              href={`https://t.me/share/url?url=${encodeURIComponent(invite.link)}&text=${encodeURIComponent("Занимаемся через Precettore — регистрация по ссылке:")}`}
+              href={`https://t.me/share/url?url=${encodeURIComponent(inv.link)}&text=${encodeURIComponent("Занимаемся через Precettore — регистрация по ссылке:")}`}
               target="_blank" rel="noreferrer"
               className="px-3 py-2 text-sm rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700"
             >
@@ -375,7 +378,7 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
             </a>
           </div>
         </div>
-      )}
+      )}</Reveal>
 
       {/* Pending requests */}
       {requests.length > 0 && (

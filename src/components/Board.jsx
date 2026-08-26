@@ -3,6 +3,7 @@ import { supabase } from "../supabase"
 import { signBoardScene, signStorageUrl } from "../storageUrl"
 import Icon from "./Icon"
 import ConfirmModal from "./ConfirmModal"
+import { useClosing } from "../useClosing"
 import { recognizeShape } from "./boardSmartDraw"
 import {
   GRID, ENCLOSED_SHAPES, SHAPE_TOOLS, DASHABLE_SHAPES,
@@ -247,6 +248,9 @@ function widthAt(base, speed, pressure) {
 }
 
 export default function Board({ roomId, userId, userName, theme = "light", onClose, account = null, token = null, canAddTasks = false, tutorSubject = null, tutorExamFocus = null }) {
+  // Доска занимает весь экран, поэтому её уход тоже должен быть плавным:
+  // класс .is-closing держится, пока идёт затухание, и лишь потом зовётся onClose.
+  const { cls: closingCls, close: leave } = useClosing(onClose)
   // Свои цвета живут рядом с базовыми и переживают перезагрузку
   const [customInks, setCustomInks] = useState(() => loadColors(INK_KEY))
   const [customBgs, setCustomBgs] = useState(() => loadColors(BGC_KEY))
@@ -781,7 +785,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     // Снимок кладём в фоне и не ждём его: закрытие доски должно быть мгновенным,
     // а превью ещё догружает картинки. Промис держит ref'ы и доживает после размонтирования.
     archiveSnapshot().catch(() => {})  // истории может не быть (миграция не выполнена) — выход это не ломает
-    onClose?.()
+    leave()
   }
 
   // --- Рисование ----------------------------------------------------------
@@ -1595,7 +1599,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const barX = H ? H.cx : 0
 
   return (
-    <div data-board-version="12" className="fixed inset-0 z-[100000] flex flex-col" style={{ background: baseBg }}>
+    <div data-board-version="12" className={`fixed inset-0 z-[100000] flex flex-col screen-fade ${closingCls}`} style={{ background: baseBg }}>
       {/* Шапка */}
       <div className="flex items-center justify-between px-3 h-12 border-b flex-shrink-0"
         style={{ borderColor: dark ? "rgba(255,255,255,.1)" : "rgba(0,0,0,.08)" }}>

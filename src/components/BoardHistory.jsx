@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react"
 import { supabase } from "../supabase"
 import { signBoardScene } from "../storageUrl"
 import Icon from "./Icon"
+import { useClosing } from "../useClosing"
 import { renderScene, preloadSceneImages, isDarkColor } from "./boardPaint"
 
 // История досок по ученику: что разбирали на прошлых занятиях. Живая доска одна
@@ -32,6 +33,9 @@ export function BoardSnapshotView({ scene, date, studentName, onClose }) {
   const imagesRef = useRef(new Map())
   const [zoom, setZoom] = useState(1)
   const [ready, setReady] = useState(false)
+  // Снимок открывается поверх всего экрана — уходить он должен так же плавно,
+  // как пришёл, поэтому закрытие идёт через .is-closing (см. src/useClosing.js).
+  const { cls: closingCls, close } = useClosing(onClose)
 
   useEffect(() => {
     let alive = true
@@ -59,10 +63,10 @@ export function BoardSnapshotView({ scene, date, studentName, onClose }) {
     return () => ro.disconnect()
   }, [draw])
   useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") onClose() }
+    const onKey = (e) => { if (e.key === "Escape") close() }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [onClose])
+  }, [close])
 
   function download() {
     const canvas = canvasRef.current
@@ -82,7 +86,7 @@ export function BoardSnapshotView({ scene, date, studentName, onClose }) {
   const ink = darkBg ? "#e5e5ea" : "#374151"
   const btn = `press-tap p-1.5 rounded-lg ${darkBg ? "hover:bg-white/10" : "hover:bg-black/5"}`
   return (
-    <div className="fixed inset-0 z-[100001] flex flex-col" style={{ background: bg }}>
+    <div className={`fixed inset-0 z-[100001] flex flex-col screen-fade ${closingCls}`} style={{ background: bg }}>
       <div className="flex items-center justify-between px-3 h-12 border-b flex-shrink-0"
         style={{ borderColor: darkBg ? "rgba(255,255,255,.1)" : "rgba(0,0,0,.08)" }}>
         <div className="flex items-center gap-2 text-sm font-medium min-w-0" style={{ color: ink }}>
@@ -103,7 +107,7 @@ export function BoardSnapshotView({ scene, date, studentName, onClose }) {
           <button onClick={download} title="Скачать PNG" className={btn}>
             <Icon name="download" size={16} />
           </button>
-          <button onClick={onClose} title="Закрыть" className={btn}>
+          <button onClick={close} title="Закрыть" className={btn}>
             <Icon name="x" size={18} />
           </button>
         </div>

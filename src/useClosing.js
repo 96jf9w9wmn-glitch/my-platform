@@ -31,5 +31,14 @@ export function useClosing(onClose, ms = CLOSE_MS) {
     }, ms)
   }, [onClose, ms])
 
-  return { closing, close, cls: closing ? "is-closing" : "" }
+  // Отмена ухода. Нужна там, где закрытие можно «перебить»: например, разбор
+  // варианта сворачивается, а по дороге открыли соседний — иначе отложенный
+  // onClose через 180 мс закрыл бы уже другой, только что открытый блок.
+  const cancel = useCallback(() => {
+    clearTimeout(timer.current)
+    timer.current = null
+    setClosing(false)
+  }, [])
+
+  return { closing, close, cancel, cls: closing ? "is-closing" : "" }
 }

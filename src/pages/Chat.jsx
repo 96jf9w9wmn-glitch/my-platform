@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, Fragment } from "react"
 import { supabase } from "../supabase"
 import { signStorageUrl } from "../storageUrl"
 import { notifyTutor } from "../telegramNotify"
+import Reveal from "../components/Reveal"
 
 // Один ли это календарный день у двух сообщений
 function isSameDay(a, b) {
@@ -374,7 +375,7 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
           )}
         </div>
 
-        {adding && (
+        <Reveal value={adding}>{() => (
           <div className="m-3 p-3 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/40">
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Код ученика (6 символов)</p>
             <input
@@ -401,7 +402,7 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
               >Отмена</button>
             </div>
           </div>
-        )}
+        )}</Reveal>
 
         <div className="flex-1 overflow-y-auto">
           {contacts.length === 0 ? (

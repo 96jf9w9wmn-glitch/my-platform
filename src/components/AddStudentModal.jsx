@@ -243,7 +243,9 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
       targetScore: form.targetScore || null,
       parent_code: generateParentCode(),
     })
-    onClose()
+    // close(), а не onClose(): иначе после сохранения окно исчезало рывком,
+    // хотя по крестику уходило плавно.
+    close()
   }
 
   return createPortal(

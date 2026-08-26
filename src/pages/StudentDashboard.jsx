@@ -18,6 +18,7 @@ import { MarketingToggle } from "../components/ConsentChecks"
 const Board = lazy(() => import("../components/Board"))
 import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, parseHomeworkTasks, formatPhone, answersEqual, plural } from "../utils"
 import { notifyTutor } from "../telegramNotify"
+import { useClosing } from "../useClosing"
 // ЕГЭ (профиль и база) — единый поток части 2 (13–19); ОГЭ — свой (20–25).
 const isEgeType = (t) => t === "ЕГЭ" || t === "ЕГЭ Профиль"
 
@@ -1008,7 +1009,7 @@ function StudentNotificationBell({ userId, onNavigate }) {
 
       {open && createPortal(
         <div
-          className={`fixed z-[9999] w-80 glass-modal shadow-2xl rounded-2xl overflow-hidden ${isClosing ? "animate-out" : "popup-bubble"}`}
+          className={`fixed z-[9999] w-80 glass-modal shadow-2xl rounded-2xl overflow-hidden ${isClosing ? "popup-bubble-out" : "popup-bubble"}`}
           style={{ top: pos.top, right: pos.right }}
           onClick={e => e.stopPropagation()}
         >
@@ -1060,6 +1061,9 @@ function StudentNotificationBell({ userId, onNavigate }) {
 // Результат сдачи части 1 — вместо системного alert() показываем модалку в стиле
 // приложения: кольцо-прогресс с долей верных, ободряющая подпись, кнопка закрытия.
 function SubmitResultDialog({ score, max, onClose }) {
+  // Окно появлялось с анимацией, а пропадало щелчком — уводим его через
+  // .is-closing (см. src/useClosing.js), как и остальные модалки.
+  const { cls: closingCls, close } = useClosing(onClose)
   const ratio = max > 0 ? score / max : 0
   const pct = Math.round(ratio * 100)
   // Мотивационное сообщение по доле верных ответов — от «идеально» до «не сдавайся».
@@ -1078,11 +1082,11 @@ function SubmitResultDialog({ score, max, onClose }) {
   const R = 42, C = 2 * Math.PI * R
   return createPortal(
     <div
-      className="fixed inset-0 z-[100000] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm dialog-fade"
-      onClick={onClose}
+      className={`fixed inset-0 z-[100000] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm dialog-fade ${closingCls}`}
+      onClick={close}
     >
       <div
-        className="glass-modal rounded-3xl shadow-2xl w-full max-w-xs p-6 flex flex-col items-center text-center popup-bubble"
+        className={`glass-modal rounded-3xl shadow-2xl w-full max-w-xs p-6 flex flex-col items-center text-center ${closingCls ? "popup-bubble-out" : "popup-bubble"}`}
         style={{ transformOrigin: "center" }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -1110,7 +1114,7 @@ function SubmitResultDialog({ score, max, onClose }) {
         <p className="mt-1 text-sm text-gray-500 leading-snug">{tone.msg}</p>
         <p className="mt-2 text-xs text-gray-400">Часть 1 · {score} из {max} баллов</p>
         <button
-          onClick={onClose}
+          onClick={close}
           className="mt-5 w-full py-2.5 rounded-xl bg-gradient-to-b from-[#0a84ff] to-[#0060df] text-white text-sm font-medium shadow-sm hover:opacity-95 transition"
         >
           Готово

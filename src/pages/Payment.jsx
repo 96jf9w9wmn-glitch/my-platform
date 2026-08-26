@@ -3,6 +3,7 @@ import Icon from "../components/Icon"
 import { PlanLock } from "../components/PlanLock"
 import { usePlan } from "../subscription"
 import ConfirmModal from "../components/ConfirmModal"
+import Reveal from "../components/Reveal"
 import Collapse from "../components/Collapse"
 import SegmentSwitch from "../components/SegmentSwitch"
 import { supabase } from "../supabase"
@@ -430,7 +431,7 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
 
                     {/* Ввод суммы: предзаполнен всем долгом — обычный случай,
                         когда платят целиком, закрывается одним нажатием. */}
-                    {paying && (
+                    <Reveal value={paying}>{() => (
                       <div className="flex items-center gap-2 px-4 pb-3">
                         <div className="relative flex-1">
                           <input
@@ -457,7 +458,7 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
                           <Icon name="x" size={16} />
                         </button>
                       </div>
-                    )}
+                    )}</Reveal>
 
                     {/* За что именно долг — по запросу, а не всегда на экране */}
                     <Collapse open={open}>

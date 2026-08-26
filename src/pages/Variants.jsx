@@ -824,6 +824,9 @@ function Variants({ user, students = [] }) {
   const { allows, openPlans } = usePlan()
   const canVariants = allows("variants")
   const [selectedVariant, setSelectedVariant] = useState(null)
+  // Разбор сворачивается плавно: панель уезжает вниз и только потом снимается
+  // (см. src/useClosing.js). Раньше она пропадала в тот же кадр, что и нажатие.
+  const { cls: detailCls, close: closeDetail, cancel: cancelDetailClose } = useClosing(() => setSelectedVariant(null))
   const [selectedSubmission, setSelectedSubmission] = useState(null)
   const [loading, setLoading] = useState(true)
   const [previewFile, setPreviewFile] = useState(null)
@@ -894,7 +897,7 @@ function Variants({ user, students = [] }) {
     : Math.min(Math.floor(selectedIndex / cols) * cols + cols - 1, variants.length - 1)
 
   const detailPanel = selectedVariant ? (
-    <div className="col-span-full glass overflow-hidden slide-up">
+    <div className={`col-span-full glass overflow-hidden slide-up ${detailCls}`}>
               <div className="flex items-center justify-between gap-3 px-5 py-4">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="font-medium text-base truncate">{selectedVariant.title}</span>
@@ -905,7 +908,7 @@ function Variants({ user, students = [] }) {
                     <Icon name="users" size={12} />
                     {variantSubmissions.length} {plural(variantSubmissions.length, "ученик", "ученика", "учеников")}
                   </span>
-                  <button onClick={() => setSelectedVariant(null)} title="Свернуть"
+                  <button onClick={closeDetail} title="Свернуть"
                     className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-500/10 transition-colors">
                     <Icon name="x" size={15} />
                   </button>
@@ -1077,7 +1080,7 @@ function Variants({ user, students = [] }) {
                 <div className={`glass-sm overflow-hidden transition-all flex flex-col ${isSelected ? "!border-blue-400/70 ring-2 ring-blue-400/35" : "hover:!border-blue-300/60"}`}>
                   {/* Повторный клик сворачивает разбор: карточки стоят строкой,
                       и закрывать панель под ними больше нечем. */}
-                  <button onClick={() => setSelectedVariant(isSelected ? null : v)} className="w-full text-left px-4 pt-3.5 pb-3 flex-1">
+                  <button onClick={() => { if (isSelected) closeDetail(); else { cancelDetailClose(); setSelectedVariant(v) } }} className="w-full text-left px-4 pt-3.5 pb-3 flex-1">
                     <div className="flex items-baseline justify-between gap-2 mb-1.5">
                       <div className="font-medium text-sm truncate">{v.title}</div>
                       <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ring-1 ${isEgeType(v.type) ? "text-purple-600 bg-purple-500/10 ring-purple-500/20" : "text-blue-600 bg-blue-500/10 ring-blue-500/20"}`}>{v.type}</span>

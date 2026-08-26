@@ -27,6 +27,7 @@ import { effectivePlan, isActive } from "./plans"
 import { isOwner } from "./owner"
 import { navFor } from "./nav"
 import { useClosing } from "./useClosing"
+import Reveal from "./components/Reveal"
 import TutorOnboardingModal from "./components/TutorOnboardingModal"
 // Excalidraw тяжёлый (mermaid/katex) — грузим доску только при открытии
 const Board = lazy(() => import("./components/Board"))
@@ -800,13 +801,13 @@ function App() {
           </div>
         </div>
 
-        {saveError && (
+        <Reveal value={saveError}>{(msg) => (
           <div className="mx-4 mt-3 glass-tint-amber px-4 py-3 flex items-start gap-2">
             <Icon name="warning" size={15} className="text-amber-600 flex-shrink-0 mt-0.5" />
-            <span className="text-sm text-amber-700 flex-1">{saveError}</span>
+            <span className="text-sm text-amber-700 flex-1">{msg}</span>
             <button onClick={() => setSaveError("")} className="text-amber-600/70 hover:text-amber-700"><Icon name="x" size={14} /></button>
           </div>
-        )}
+        )}</Reveal>
 
         <div className={`flex-1 min-h-0 overflow-x-hidden ${activePage === "chat" ? "flex flex-col overflow-hidden" : "page-scroll overflow-y-auto pb-20 md:pb-0"}`}>
           <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="loader-logo" /></div>}>

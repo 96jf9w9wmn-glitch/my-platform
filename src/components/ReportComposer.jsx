@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { supabase } from "../supabase"
 import Icon from "../components/Icon"
+import Reveal from "./Reveal"
 
 // Кнопка «Отчёт родителю»: собирает данные занятия, просит модель составить
 // черновик и показывает его РЕПЕТИТОРУ на правку. Родителю ничего не уходит,
@@ -165,7 +166,7 @@ function ReportComposer({ student }) {
         </span>
       </button>
 
-      {open && (
+      <Reveal value={open}>{() => (
         <div className="glass p-4 rounded-2xl flex flex-col gap-3">
           {loading && <div className="text-sm text-gray-400 text-center py-6">Составляем черновик…</div>}
           {error && <div className="text-xs text-amber-600">{error}</div>}
@@ -233,7 +234,7 @@ function ReportComposer({ student }) {
             </>
           )}
         </div>
-      )}
+      )}</Reveal>
     </>
   )
 }

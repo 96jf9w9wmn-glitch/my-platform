@@ -11,6 +11,7 @@ import MorphIcon from "../components/MorphIcon"
 import SegmentSwitch from "../components/SegmentSwitch"
 import { PlanLock } from "../components/PlanLock"
 import { usePlan } from "../subscription"
+import Reveal from "../components/Reveal"
 // Тетрадь тянет за собой jsPDF и html2canvas — грузим только когда её открыли,
 // иначе просмотр банка стал бы на полмегабайта тяжелее.
 
@@ -324,11 +325,11 @@ function Expandable({ label, children }) {
         <Icon name="book" size={15} className={`transition-transform ${open ? "rotate-6" : ""}`} />
         {open ? "Свернуть текст" : label}
       </button>
-      {open && (
+      <Reveal value={open}>{() => (
         <div className="mt-2 rounded-xl border border-gray-100 bg-gray-50/70 p-3 text-sm text-gray-700 leading-relaxed">
           {children}
         </div>
-      )}
+      )}</Reveal>
     </div>
   )
 }
@@ -579,7 +580,7 @@ function TaskGenPreview() {
                     Смотреть
                   </button>
                 </div>
-                {open && (
+                <Reveal value={open}>{() => (
                   <div className="flex flex-wrap gap-2 px-2.5 pb-2.5 pt-2 border-t border-gray-100">
                     {g.items.map((it) => {
                       const key = `gen:${focusNumber(focus)}:${it.key}`
@@ -588,7 +589,7 @@ function TaskGenPreview() {
                       )
                     })}
                   </div>
-                )}
+                )}</Reveal>
               </div>
             )
           })}

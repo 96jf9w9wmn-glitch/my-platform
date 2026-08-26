@@ -3,6 +3,7 @@ import Icon from "./Icon"
 import { supabase } from "../supabase"
 import { withPaymentState, totalDue, fmtMoney, invoiceNumber, shortDate, longDate } from "../invoices"
 import { downloadInvoicePdf } from "../pages/invoicePdf"
+import Reveal from "./Reveal"
 
 // Квитанции за проведённые занятия — в кабинете ученика и в кабинете родителя.
 //
@@ -68,8 +69,35 @@ export function InvoiceView({ rows, payee, student, tutorName, className = "" })
 
   if (!invoices.length) return null
 
-  const shown = expanded ? invoices : invoices.slice(0, 5)
   const details = payee?.payee_details || payee?.payee_name
+
+  const row = (inv) => {
+    const tone = STATUS[inv.status]
+    return (
+            <div key={inv.id} className="flex items-center justify-between gap-3 py-2.5">
+              <div className="min-w-0">
+                <div className="text-sm font-medium">
+                  Занятие {shortDate(inv.lesson_date)}
+                  {inv.lesson_time && <span className="text-gray-400 font-normal"> · {inv.lesson_time}</span>}
+                </div>
+                <div className="text-[11px] text-gray-400">№ {invoiceNumber(inv)}</div>
+              </div>
+              <div className="flex items-center gap-2.5 shrink-0">
+                <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ring-1 ring-inset ${tone.cls}`}>{tone.label}</span>
+                <span className="text-sm font-medium w-[74px] text-right">{fmtMoney(inv.amount)} ₽</span>
+                <button
+                  type="button"
+                  onClick={() => download([inv])}
+                  title={`Квитанция за ${longDate(inv.lesson_date)}`}
+                  aria-label="Скачать квитанцию"
+                  className="no-press w-8 h-8 rounded-full grid place-items-center text-gray-400 ring-1 ring-gray-200 bg-white/60 transition-all active:scale-[0.9] hover:text-gray-600 dark:bg-white/5 dark:ring-white/10"
+                >
+                  <Icon name="download" size={14} />
+                </button>
+              </div>
+            </div>
+    )
+  }
 
   async function download(list) {
     if (busy) return
@@ -152,35 +180,19 @@ export function InvoiceView({ rows, payee, student, tutorName, className = "" })
         </div>
       )}
 
-      <div className="flex flex-col divide-y divide-gray-100 dark:divide-white/5">
-        {shown.map((inv) => {
-          const tone = STATUS[inv.status]
-          return (
-            <div key={inv.id} className="flex items-center justify-between gap-3 py-2.5 first:pt-0">
-              <div className="min-w-0">
-                <div className="text-sm font-medium">
-                  Занятие {shortDate(inv.lesson_date)}
-                  {inv.lesson_time && <span className="text-gray-400 font-normal"> · {inv.lesson_time}</span>}
-                </div>
-                <div className="text-[11px] text-gray-400">№ {invoiceNumber(inv)}</div>
-              </div>
-              <div className="flex items-center gap-2.5 shrink-0">
-                <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ring-1 ring-inset ${tone.cls}`}>{tone.label}</span>
-                <span className="text-sm font-medium w-[74px] text-right">{fmtMoney(inv.amount)} ₽</span>
-                <button
-                  type="button"
-                  onClick={() => download([inv])}
-                  title={`Квитанция за ${longDate(inv.lesson_date)}`}
-                  aria-label="Скачать квитанцию"
-                  className="no-press w-8 h-8 rounded-full grid place-items-center text-gray-400 ring-1 ring-gray-200 bg-white/60 transition-all active:scale-[0.9] hover:text-gray-600 dark:bg-white/5 dark:ring-white/10"
-                >
-                  <Icon name="download" size={14} />
-                </button>
-              </div>
-            </div>
-          )
-        })}
+      <div className="flex flex-col divide-y divide-gray-100 dark:divide-white/5 [&>*:first-child]:pt-0">
+        {invoices.slice(0, 5).map(row)}
       </div>
+
+      {/* Хвост списка раскрывается и сворачивается плавно: «Свернуть» — та же
+          кнопка закрытия, а список исчезал рывком. */}
+      {invoices.length > 5 && (
+        <Reveal value={expanded}>{() => (
+          <div className="flex flex-col divide-y divide-gray-100 dark:divide-white/5 border-t border-gray-100 dark:border-white/5">
+            {invoices.slice(5).map(row)}
+          </div>
+        )}</Reveal>
+      )}
 
       {invoices.length > 5 && (
         <button
