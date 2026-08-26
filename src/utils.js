@@ -69,7 +69,12 @@ function dataTableHtml(body) {
   const [head, ...rest] = rows
   const th = head.map((c) => `<th>${c}</th>`).join("")
   const trs = rest.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")
-  return `<div class="tmath-tblwrap"><table class="tmath-table"><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table></div>`
+  // Таблица-сетка: все ячейки короткие (фрагмент таблицы истинности, звёздочки в
+  // схеме дорог). Ширина колонок по содержимому делала бы её кривой — пустой
+  // столбец уже заполненного, — поэтому колонки выравниваются по одной ширине.
+  const cells = rows.flat().map((c) => c.replace(/<[^>]*>/g, "").trim())
+  const grid = cells.every((c) => c.length <= 3)
+  return `<div class="tmath-tblwrap"><table class="tmath-table${grid ? " tmath-grid" : ""}"><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table></div>`
 }
 
 // ── Нумерованный список вариантов (задания «на последовательность» и «вставьте элементы») ──

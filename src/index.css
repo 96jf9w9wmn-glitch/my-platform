@@ -365,9 +365,14 @@ select {
   white-space: nowrap;
 }
 .tmath-table thead th { background: #f5f5f7; font-weight: 600; color: #374151; white-space: normal; }
+/* Сетка из коротких ячеек (фрагмент таблицы истинности, таблица со звёздочками):
+   все колонки одной ширины, иначе пустой столбец выходит уже заполненного. */
+.tmath-table.tmath-grid { table-layout: fixed; }
+.tmath-table.tmath-grid th, .tmath-table.tmath-grid td { width: 2.5em; }
 @media (max-width: 720px) {
   .tmath-table { font-size: 0.8em; }
   .tmath-table th, .tmath-table td { padding: 4px 6px; }
+  .tmath-table.tmath-grid th, .tmath-table.tmath-grid td { width: 2.2em; }
 }
 .dark .tmath-table th, .dark .tmath-table td { border-color: rgba(255,255,255,0.12); }
 .dark .tmath-table thead th { background: rgba(255,255,255,0.06); color: #e5e7eb; }
