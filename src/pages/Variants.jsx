@@ -9,6 +9,7 @@ import { isModuleNumber, PART2_NUMBERS } from "./taskBankMeta"
 import { usePlan } from "../subscription"
 import { PlanHint } from "../components/PlanLock"
 import ConfirmModal from "../components/ConfirmModal"
+import SegmentSwitch from "../components/SegmentSwitch"
 import { useClosing } from "../useClosing"
 // Тетрадь тянет генераторы заданий — грузим только когда её открыли.
 
@@ -362,15 +363,16 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
 
               <div>
                 <label className="text-sm text-gray-500 mb-2 block">Тип экзамена</label>
-                <div className="flex gap-2">
-                  {["ОГЭ", "ЕГЭ"].map((t) => (
-                    <button key={t} type="button"
-                      onClick={() => { setExamType(t); setAnswers(Array(t === "ОГЭ" ? 19 : 12).fill("")); setPart2Answers({}); setBankPicked([]); setBankMissing([]) }}
-                      className={`flex-1 py-2 rounded-xl text-sm border transition-colors ${examType === t ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
-                      <span className="flex items-center justify-center gap-1"><Icon name={t === "ОГЭ" ? "file-text" : "book"} size={14} />{t}</span>
-                    </button>
-                  ))}
-                </div>
+                <SegmentSwitch
+                  block
+                  ariaLabel="Тип экзамена"
+                  value={examType}
+                  onChange={(t) => { setExamType(t); setAnswers(Array(t === "ОГЭ" ? 19 : 12).fill("")); setPart2Answers({}); setBankPicked([]); setBankMissing([]) }}
+                  items={["ОГЭ", "ЕГЭ"].map((t) => ({
+                    key: t,
+                    label: <><Icon name={t === "ОГЭ" ? "file-text" : "book"} size={14} />{t}</>,
+                  }))}
+                />
               </div>
 
               <div>
@@ -382,15 +384,14 @@ function AddVariantModal({ tutorId, students = [], examFocus, onClose, onAdd }) 
               {/* Растягиваем по высоте: иначе под короткой левой колонкой зияет пустота. */}
               <div className="flex-1 flex flex-col">
                 <label className="text-sm text-gray-500 mb-2 block">Условия варианта</label>
-                <div className="flex gap-2 mb-3">
-                  {[{ id: "file", label: "Свой файл" }, { id: "bank", label: "Из банка заданий" }].map((s) => (
-                    <button key={s.id} type="button"
-                      onClick={() => setSource(s.id)}
-                      className={`flex-1 py-2 rounded-xl text-sm border transition-colors ${source === s.id ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
-                      {s.label}
-                    </button>
-                  ))}
-                </div>
+                <SegmentSwitch
+                  block
+                  className="mb-3"
+                  ariaLabel="Условия варианта"
+                  value={source}
+                  onChange={setSource}
+                  items={[{ key: "file", label: "Свой файл" }, { key: "bank", label: "Из банка заданий" }]}
+                />
 
                 {source === "file" ? (
                   <>
