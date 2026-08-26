@@ -81,10 +81,14 @@ const chipCls = (on) =>
   }`
 
 // Переключатель «тумблер + подпись»: одинаковый во всей форме.
+// Нажатие показывает сам переключатель (щелчок рычажка + лёгкое сжатие), а не
+// серая заливка во всю строку: .no-press снимает общий overlay для широких
+// кнопок — на строке с подписью в две строки он читался как выделение текста.
 function Toggle({ on, onClick, title, note }) {
   return (
-    <button type="button" onClick={onClick} className="w-full flex items-start gap-3 text-left active:scale-[0.99] transition-transform">
-      <div className={`mt-0.5 w-10 h-6 rounded-full transition-colors relative flex-shrink-0 ${on ? "bg-blue-600" : "bg-gray-200"}`}>
+    <button type="button" onClick={onClick}
+      className="no-press group w-full flex items-start gap-3 text-left">
+      <div className={`mt-0.5 w-10 h-6 rounded-full transition relative flex-shrink-0 group-active:scale-95 ${on ? "bg-blue-600" : "bg-gray-200"}`}>
         <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${on ? "left-5" : "left-1"}`} />
       </div>
       <div className="min-w-0">
