@@ -1475,7 +1475,7 @@ export default function Legal({ path }) {
                 className={`press-fill rounded-full px-3 py-1.5 text-[12px] font-medium transition-colors ${
                   d.path === current
                     ? "bg-[#007AFF] text-white"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    : "text-gray-600 ring-1 ring-gray-200 dark:ring-white/15 hover:ring-gray-300"
                 }`}
               >
                 {d.short}

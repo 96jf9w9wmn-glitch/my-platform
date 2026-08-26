@@ -526,7 +526,7 @@ function StudentHomeworkList({ homework, onSelect }) {
                   on ? "bg-blue-500/[0.07] dark:bg-blue-400/10" : "hover:bg-black/[0.02] dark:hover:bg-white/[0.04]"
                 }`}
               >
-                <div className={`w-9 h-9 rounded-xl hidden sm:flex items-center justify-center flex-shrink-0 transition-colors duration-200 ${count > 0 ? f.tint : "text-gray-400 bg-gray-500/8"}`}>
+                <div className={`w-9 h-9 rounded-xl hidden sm:flex items-center justify-center flex-shrink-0 transition-colors duration-200 ${count > 0 ? f.tint : "text-gray-400 ring-1 ring-gray-200/70 dark:ring-white/10"}`}>
                   <Icon name={f.icon} size={16} />
                 </div>
                 <div className="min-w-0">
@@ -811,7 +811,7 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
             </div>
           )}
           {requireSolution && (
-            <div className="mb-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
+            <div className="mb-4 p-4 rounded-xl border border-gray-100 dark:border-white/10">
               <div className="text-sm font-medium mb-1">Прикрепи решение</div>
               <div className="text-xs text-gray-400 mb-3">Сфотографируй или загрузи файл с черновиком — репетитор его увидит</div>
               <input ref={solutionCameraRef} type="file" accept="image/*" capture="environment" className="hidden"
@@ -882,7 +882,7 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
             <div className="mt-3 rounded-xl border border-gray-100 overflow-hidden slide-up">
               <table className="w-full text-sm border-collapse">
                 <thead>
-                  <tr className="bg-gray-50 text-xs text-gray-400">
+                  <tr className="text-xs text-gray-400 border-b border-gray-100 dark:border-white/10">
                     <th className="w-8 py-2 px-3 font-normal text-left">№</th>
                     <th className="py-2 px-3 font-normal text-left">Мой ответ</th>
                     <th className="py-2 px-3 font-normal text-left">Правильный ответ</th>
@@ -956,7 +956,7 @@ function CopyCodeBlock({ code }) {
   }
   return (
     <div className="flex items-center gap-2">
-      <code className="text-sm font-mono bg-gray-100 px-2.5 py-1 rounded-lg tracking-widest text-gray-700 flex-1 text-center">
+      <code className="text-sm font-mono ring-1 ring-gray-200 dark:ring-white/15 px-2.5 py-1 rounded-lg tracking-widest text-gray-700 flex-1 text-center">
         {code}
       </code>
       <button
@@ -2159,7 +2159,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                 {!isGeneratedVariant && selectedVariant.file_url && (
                   <div className="mb-4 glass-sm overflow-hidden">
                     {selectedVariant.file_url.match(/\.(jpg|jpeg|png|gif|webp)/i) ? (
-                      <img src={selectedVariant.file_url} alt="вариант" className="w-full max-w-2xl object-contain bg-gray-50" />
+                      <img src={selectedVariant.file_url} alt="вариант" className="w-full max-w-2xl object-contain bg-white" />
                     ) : (
                       <iframe src={selectedVariant.file_url} className="w-full h-96 bg-white" title="вариант" />
                     )}
@@ -2178,7 +2178,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       <div key={t.number} className="glass-sm p-3">
                         <div className="text-sm font-medium text-blue-600 mb-1">Задание {t.number}</div>
                         {t.condition_text && <div className="text-base whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_text) }} />}
-                        {t.image_url && <img src={t.image_url} alt={`Задание ${t.number}`} className="max-w-full h-auto object-contain rounded-lg mt-2 bg-gray-50" />}
+                        {t.image_url && <img src={t.image_url} alt={`Задание ${t.number}`} className="max-w-full h-auto object-contain rounded-lg mt-2 bg-white" />}
                       </div>
                     ))}
                   </div>
@@ -2198,7 +2198,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                               Задание {t.number}{isPart2 ? " · часть 2" : ""}
                             </div>
                             {t.condition_text && <div className="text-base whitespace-pre-wrap mb-2" dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_text) }} />}
-                            {t.image_url && <img src={t.image_url} alt={`Задание ${t.number}`} className="max-w-full h-auto object-contain rounded-lg mb-2 bg-gray-50" />}
+                            {t.image_url && <img src={t.image_url} alt={`Задание ${t.number}`} className="max-w-full h-auto object-contain rounded-lg mb-2 bg-white" />}
                             {t.condition_tail && <div className="text-base whitespace-pre-wrap mb-2" dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_tail) }} />}
                             {!isPart2 && (
                               <input
@@ -2216,7 +2216,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                               />
                             )}
                             {isPart2 && !choices?.length && (
-                              <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
+                              <div className="text-xs text-gray-500 ring-1 ring-gray-200/70 dark:ring-white/10 rounded-lg px-3 py-2">
                                 Задание с развёрнутым решением: запиши его на листе, фото прикрепишь после отправки
                               </div>
                             )}

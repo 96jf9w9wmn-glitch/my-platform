@@ -385,7 +385,7 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
             <>
               <div>
                 <label className="text-sm text-gray-500 mb-2 block">Даты занятий {lessons.length > 0 && <span className="ml-2 text-blue-600">({lessons.length} выбрано)</span>}</label>
-                <div className="border border-gray-100 rounded-xl p-3 bg-gray-50/50">
+                <div className="border border-gray-100 dark:border-white/10 rounded-xl p-3">
                   <MiniCalendar lessons={lessons} onToggleDate={toggleDate} />
                 </div>
               </div>
@@ -393,7 +393,7 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
                 <div className="flex flex-col gap-3">
                   <label className="text-sm text-gray-500">Время для каждого занятия</label>
                   {lessons.map((lesson) => (
-                    <div key={lesson.date} className="border border-gray-100 rounded-xl p-3 bg-gray-50/50">
+                    <div key={lesson.date} className="border border-gray-100 dark:border-white/10 rounded-xl p-3">
                       <div className="text-sm font-medium text-gray-700 mb-3">
                         {parseLocalDate(lesson.date).toLocaleDateString("ru-RU", {
                           weekday: "short", day: "numeric", month: "long"

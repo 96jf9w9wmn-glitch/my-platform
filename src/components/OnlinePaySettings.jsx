@@ -19,7 +19,7 @@ const fmt = (n) => Math.round(n || 0).toLocaleString("ru-RU")
 const STATUS = {
   succeeded: { label: "Оплачен", cls: "bg-green-500/12 text-green-700 dark:text-green-300 ring-green-500/20" },
   pending:   { label: "Ожидает", cls: "bg-blue-500/12 text-blue-600 dark:text-blue-400 ring-blue-500/20" },
-  canceled:  { label: "Отменён", cls: "bg-gray-500/10 text-gray-500 ring-gray-500/20" },
+  canceled:  { label: "Отменён", cls: "text-gray-500 ring-gray-300/70 dark:ring-white/15" },
 }
 
 export default function OnlinePaySettings({ tutorId, surface = "glass p-5" }) {

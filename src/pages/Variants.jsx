@@ -103,7 +103,7 @@ function VariantFileBlock({ variant, tutorId, onBuilt, onPreview }) {
       <div className="section-label mb-2.5">Файл варианта</div>
       {url ? (
         <div className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 overflow-hidden">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-3 py-2 bg-gray-500/[0.04]">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-3 py-2 border-b border-gray-100/70 dark:border-white/10">
             <div className="flex items-center gap-2 text-xs text-gray-500 min-w-0">
               <Icon name="paperclip" size={12} />
               {/* адрес подписанный — отрезаем хвост с токеном, иначе он попадёт в имя */}
@@ -119,7 +119,7 @@ function VariantFileBlock({ variant, tutorId, onBuilt, onPreview }) {
                 Открыть ↗
               </a>
               <button onClick={() => onPreview(url)} title="На весь экран"
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-500/10 transition-colors">
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-500/10 transition-colors">
                 <Icon name="maximize" size={13} />
               </button>
             </div>
@@ -129,7 +129,7 @@ function VariantFileBlock({ variant, tutorId, onBuilt, onPreview }) {
           )}
         </div>
       ) : (
-        <div className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 bg-gray-500/[0.04] px-3 py-3 flex flex-col sm:flex-row sm:items-center gap-2.5">
+        <div className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 px-3 py-3 flex flex-col sm:flex-row sm:items-center gap-2.5">
           <div className="min-w-0 flex-1 text-[11px] text-gray-500 leading-snug">
             Печатный лист ещё не собран. Ученик решает вариант в кабинете, файл нужен для печати
             и для кнопки «Скачать PDF» у ученика. Сборка занимает несколько секунд.
@@ -460,16 +460,16 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
                   <>
                     <input ref={fileRef} type="file" accept=".pdf,image/*" className="hidden" onChange={handleFileUpload} />
                     {!variantFile ? (
-                      <button onClick={() => fileRef.current.click()} className="w-full flex-1 min-h-28 border-2 border-dashed border-gray-200 rounded-lg py-4 text-sm text-gray-500 hover:bg-gray-50">
+                      <button onClick={() => fileRef.current.click()} className="w-full flex-1 min-h-28 border-2 border-dashed border-gray-200 dark:border-white/15 rounded-lg py-4 text-sm text-gray-500 hover:border-blue-300 hover:text-blue-600">
                         Прикрепить файл с вариантом
                       </button>
                     ) : (
                       <div className="border border-gray-200 rounded-lg overflow-hidden">
-                        {previewUrl && <img src={previewUrl} alt="preview" className="w-full max-h-48 object-contain bg-gray-50" />}
-                        {!previewUrl && <div className="bg-gray-50 px-4 py-3"><span className="text-sm text-gray-700 truncate">{variantFile.name}</span></div>}
+                        {previewUrl && <img src={previewUrl} alt="preview" className="w-full max-h-48 object-contain bg-white" />}
+                        {!previewUrl && <div className="px-4 py-3"><span className="text-sm text-gray-700 truncate">{variantFile.name}</span></div>}
                         <div className="flex border-t border-gray-100">
                           <button onClick={() => fileRef.current.click()} className="flex-1 text-xs text-blue-600 py-2 hover:bg-blue-50">Заменить</button>
-                          <div className="w-px bg-gray-100" />
+                          <div className="w-px bg-gray-200/70 dark:bg-white/10" />
                           <button onClick={removeFile} className="flex-1 text-xs text-red-500 py-2 hover:bg-red-50">Удалить</button>
                         </div>
                       </div>
@@ -602,7 +602,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
                       <div className="text-xs font-medium text-blue-600 mb-1 bg-blue-50 px-2 py-1 rounded">Алгебра 1–14</div>
                       <div className="grid grid-cols-7 gap-1 mb-2">
                         {answers.slice(0, 14).map((a, i) => (
-                          <div key={i} className={a ? "text-center rounded-lg py-1 text-xs bg-blue-100 text-blue-700 font-medium" : "text-center rounded-lg py-1 text-xs bg-gray-100 text-gray-400"}>
+                          <div key={i} className={a ? "text-center rounded-lg py-1 text-xs bg-blue-100 text-blue-700 font-medium" : "text-center rounded-lg py-1 text-xs ring-1 ring-gray-200/70 dark:ring-white/10 text-gray-400"}>
                             <div style={{fontSize:"10px"}}>{i+1}</div><div>{a||"-"}</div>
                           </div>
                         ))}
@@ -610,7 +610,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
                       <div className="text-xs font-medium text-purple-600 mb-1 bg-purple-50 px-2 py-1 rounded">Геометрия 15–19</div>
                       <div className="grid grid-cols-5 gap-1">
                         {answers.slice(14, 19).map((a, i) => (
-                          <div key={i} className={a ? "text-center rounded-lg py-1 text-xs bg-purple-100 text-purple-700 font-medium" : "text-center rounded-lg py-1 text-xs bg-gray-100 text-gray-400"}>
+                          <div key={i} className={a ? "text-center rounded-lg py-1 text-xs bg-purple-100 text-purple-700 font-medium" : "text-center rounded-lg py-1 text-xs ring-1 ring-gray-200/70 dark:ring-white/10 text-gray-400"}>
                             <div style={{fontSize:"10px"}}>{i+15}</div><div>{a||"-"}</div>
                           </div>
                         ))}
@@ -620,7 +620,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
                           <div className="text-xs font-medium text-green-600 mb-1 mt-2 bg-green-50 px-2 py-1 rounded">Часть 2 · 20–25</div>
                           <div className="grid grid-cols-3 gap-1">
                             {part2Numbers.map((n) => (
-                              <div key={n} className={part2Answers[n] ? "text-center rounded-lg py-1 text-xs bg-green-100 text-green-700 font-medium" : "text-center rounded-lg py-1 text-xs bg-gray-100 text-gray-400"}>
+                              <div key={n} className={part2Answers[n] ? "text-center rounded-lg py-1 text-xs bg-green-100 text-green-700 font-medium" : "text-center rounded-lg py-1 text-xs ring-1 ring-gray-200/70 dark:ring-white/10 text-gray-400"}>
                                 <div style={{fontSize:"10px"}}>{n}</div><div className="truncate px-1">{part2Answers[n]||"-"}</div>
                               </div>
                             ))}
@@ -637,7 +637,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
                       </div>
                       <div className="grid grid-cols-6 gap-1">
                         {p1Numbers.map((n) => (
-                          <div key={n} className={answers[n - 1] ? "text-center rounded-lg py-1 text-xs bg-blue-100 text-blue-700 font-medium" : "text-center rounded-lg py-1 text-xs bg-gray-100 text-gray-400"}>
+                          <div key={n} className={answers[n - 1] ? "text-center rounded-lg py-1 text-xs bg-blue-100 text-blue-700 font-medium" : "text-center rounded-lg py-1 text-xs ring-1 ring-gray-200/70 dark:ring-white/10 text-gray-400"}>
                             <div style={{fontSize:"10px"}}>{n}</div><div className="truncate px-1">{answers[n - 1] || "-"}</div>
                           </div>
                         ))}
@@ -747,7 +747,7 @@ function EgeReview({ submission, variant, onClose, onSave }) {
               ))}
             </div>
           </div>
-          <div className="bg-gray-50 rounded-lg p-4 mb-4">
+          <div className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 p-4 mb-4">
             <div className="flex justify-between mb-2"><span className="text-sm text-gray-600">Часть 1 (1–12)</span><span className="text-sm font-medium">{part1Score} / 12</span></div>
             <div className="flex justify-between mb-2"><span className="text-sm text-gray-600">Часть 2 (13–19)</span><span className="text-sm font-medium">{part2Total} / 20</span></div>
             <div className="border-t border-gray-200 pt-2 mt-2 flex justify-between">
@@ -760,7 +760,7 @@ function EgeReview({ submission, variant, onClose, onSave }) {
             </div>
           </div>
           <div className="flex gap-3">
-            <button onClick={close} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-gray-50">Отмена</button>
+            <button onClick={close} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600">Отмена</button>
             <button onClick={handleSave} disabled={loading} className="flex-1 btn-primary py-2.5 disabled:opacity-50">
               {loading ? "Сохраняем..." : "Сохранить и уведомить"}
             </button>
@@ -863,7 +863,7 @@ function SubmissionReview({ submission, variant, onClose, onSave }) {
               </div>
             </div>
           </div>
-          <div className="bg-gray-50 rounded-lg p-4 mb-4">
+          <div className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 p-4 mb-4">
             <div className="flex justify-between mb-2"><span className="text-sm text-gray-600">Часть 1</span><span className="text-sm font-medium">{part1Score} / 19</span></div>
             <div className="flex justify-between mb-2"><span className="text-sm text-gray-600">Часть 2</span><span className="text-sm font-medium">{part2Total} / 12</span></div>
             <div className="flex justify-between mb-2">
@@ -880,7 +880,7 @@ function SubmissionReview({ submission, variant, onClose, onSave }) {
             </div>
           </div>
           <div className="flex gap-3">
-            <button onClick={close} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-gray-50">Отмена</button>
+            <button onClick={close} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600">Отмена</button>
             <button onClick={handleSave} disabled={loading} className="flex-1 btn-primary py-2.5 disabled:opacity-50">
               {loading ? "Сохраняем..." : "Сохранить и уведомить"}
             </button>
@@ -1023,7 +1023,7 @@ function Variants({ user, students = [] }) {
                     {variantSubmissions.length} {plural(variantSubmissions.length, "ученик", "ученика", "учеников")}
                   </span>
                   <button onClick={closeDetail} title="Свернуть"
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-500/10 transition-colors">
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-500/10 transition-colors">
                     <Icon name="x" size={15} />
                   </button>
                 </div>
@@ -1046,15 +1046,15 @@ function Variants({ user, students = [] }) {
               {selectedVariant.tasks_snapshot?.length > 0 && (
                 <div className="px-5 py-4 border-t border-gray-100/60">
                   <details className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 overflow-hidden group">
-                    <summary className="px-3 py-2.5 bg-gray-500/[0.04] text-xs text-gray-500 cursor-pointer flex items-center gap-2 select-none hover:text-gray-700 transition-colors">
+                    <summary className="px-3 py-2.5 text-xs text-gray-500 cursor-pointer flex items-center gap-2 select-none hover:text-gray-700 transition-colors">
                       <Icon name="book" size={12} />
                       Задания из банка
-                      <span className="text-[11px] text-gray-400 bg-gray-500/10 px-1.5 py-0.5 rounded-full">{selectedVariant.tasks_snapshot.length}</span>
+                      <span className="text-[11px] text-blue-600 bg-blue-500/10 ring-1 ring-blue-500/20 px-1.5 py-0.5 rounded-full">{selectedVariant.tasks_snapshot.length}</span>
                       <span className="ml-auto text-gray-400 transition-transform group-open:rotate-90">›</span>
                     </summary>
                     <div className="flex flex-col gap-1.5 p-2.5">
                       {selectedVariant.tasks_snapshot.map((t) => (
-                        <div key={t.number} className="text-xs rounded-lg bg-gray-500/[0.05] px-2.5 py-2 flex items-start gap-2.5">
+                        <div key={t.number} className="text-xs rounded-lg ring-1 ring-gray-200/70 dark:ring-white/10 px-2.5 py-2 flex items-start gap-2.5">
                           <span className="shrink-0 w-5 h-5 rounded-full bg-blue-500/12 text-blue-600 dark:text-blue-400 text-[10px] font-semibold flex items-center justify-center">
                             {t.number}
                           </span>
@@ -1084,7 +1084,7 @@ function Variants({ user, students = [] }) {
                   const name = sub.student_accounts?.name || sub.student_accounts?.email || ""
                   const color = getAvatarColor(name)
                   return (
-                    <div key={sub.id} className="flex items-center gap-3 bg-gray-500/[0.04] rounded-xl px-3 py-2.5">
+                    <div key={sub.id} className="flex items-center gap-3 ring-1 ring-gray-200/70 dark:ring-white/10 rounded-xl px-3 py-2.5">
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 ${color.bg} ${color.text}`}>
                         {getInitials(name)}
                       </div>
@@ -1094,7 +1094,7 @@ function Variants({ user, students = [] }) {
                       </div>
                       <div className="flex-shrink-0">
                         {sub.status === "pending" && (
-                          <span className="text-[11px] text-gray-400 bg-gray-500/8 ring-1 ring-gray-500/15 px-2.5 py-1 rounded-full">Ожидает</span>
+                          <span className="text-[11px] text-gray-500 ring-1 ring-gray-200 dark:ring-white/15 px-2.5 py-1 rounded-full">Ожидает</span>
                         )}
                         {sub.status === "submitted" && (
                           <button onClick={() => setSelectedSubmission(sub)} className="text-[11px] text-amber-600 bg-amber-500/12 ring-1 ring-amber-500/25 px-2.5 py-1 rounded-full hover:bg-amber-500/20 transition-colors font-medium">
@@ -1154,7 +1154,7 @@ function Variants({ user, students = [] }) {
           { icon: "check", label: "Проверено работ", short: "Проверено", value: totalGraded, tint: "text-green-600 bg-green-500/12", active: totalGraded > 0 },
         ].map((st) => (
           <div key={st.label} className="flex items-center gap-3 px-3 sm:px-4 py-3.5 min-w-0">
-            <div className={`w-9 h-9 rounded-xl hidden sm:flex items-center justify-center flex-shrink-0 ${st.active ? st.tint : "text-gray-400 bg-gray-500/8"}`}>
+            <div className={`w-9 h-9 rounded-xl hidden sm:flex items-center justify-center flex-shrink-0 ${st.active ? st.tint : "text-gray-400 ring-1 ring-gray-200/70 dark:ring-white/10"}`}>
               <Icon name={st.icon} size={16} />
             </div>
             <div className="min-w-0">
@@ -1222,7 +1222,7 @@ function Variants({ user, students = [] }) {
                     {total > 0 && (
                       <div className="mt-2.5 flex items-center gap-2">
                         <span className="text-[11px] text-gray-400 flex-shrink-0">Проверено</span>
-                        <div className="h-1 flex-1 bg-gray-500/10 rounded-full overflow-hidden">
+                        <div className="h-1 flex-1 bg-blue-500/12 rounded-full overflow-hidden">
                           <div
                             className={`h-full rounded-full transition-all duration-500 ${graded === total ? "bg-green-500" : "bg-blue-500"}`}
                             style={{ width: progressPct + "%" }}
@@ -1286,9 +1286,9 @@ function Variants({ user, students = [] }) {
                 Открыть файл ↗
               </a>
               {previewFile.match(/\.(jpg|jpeg|png|gif|webp)/i) && (
-                <img src={previewFile} alt="variant" className="w-full max-h-64 object-contain rounded-xl bg-gray-50" />
+                <img src={previewFile} alt="variant" className="w-full max-h-64 object-contain rounded-xl bg-white" />
               )}
-              <button onClick={closePreview} className="w-full border border-gray-200 rounded-xl py-3 text-sm text-gray-600 hover:bg-gray-50">
+              <button onClick={closePreview} className="w-full border border-gray-200 dark:border-white/15 rounded-xl py-3 text-sm text-gray-600">
                 Закрыть
               </button>
 

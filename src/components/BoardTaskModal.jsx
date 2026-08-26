@@ -155,7 +155,7 @@ export default function BoardTaskModal({ dark = false, roomId = null, tutorSubje
           </div>
 
           {/* Предмет уже привязан к доске — строкой, а не списком на пол-экрана */}
-          <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10">
+          <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-xl border border-gray-100 dark:border-white/10">
             <span className={`w-2 h-2 rounded-full shrink-0 ${group?.subjects.find((s) => s.type === examType)?.dot || "bg-blue-500"}`} />
             <span className="text-sm font-medium truncate">{subjectLabel(examType)}</span>
             {allowed.length > 1 && (
@@ -206,7 +206,7 @@ export default function BoardTaskModal({ dark = false, roomId = null, tutorSubje
 
           {/* типажи выбранного номера — свёрнуты, как в банке: их бывает под сотню */}
           {number != null && themes?.length > 0 && (
-            <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50/60 p-2.5 flex flex-col gap-2">
+            <div className="mb-4 rounded-xl border border-gray-100 dark:border-white/10 p-2.5 flex flex-col gap-2">
               <button onClick={pickAnyType} className={`${chip(!genKey && !theme)} self-start`}>Любой типаж</button>
               {themes.map((g) => {
                 const open = openTheme === g.theme
@@ -220,7 +220,7 @@ export default function BoardTaskModal({ dark = false, roomId = null, tutorSubje
                         <Icon name="chevron-right" size={13}
                           className={`shrink-0 text-gray-400 transition-transform duration-200 ${open ? "rotate-90" : ""}`} />
                         <span className="truncate">{g.theme}</span>
-                        <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-gray-100 text-[11px] font-medium text-gray-500">{g.items.length}</span>
+                        <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-blue-500/10 ring-1 ring-blue-500/20 text-[11px] font-medium text-blue-600">{g.items.length}</span>
                       </button>
                       <button onClick={() => { setOpenTheme(g.theme); pickTheme(g.theme) }}
                         className={`ml-auto shrink-0 px-2.5 py-1 rounded-lg text-xs border transition-all active:scale-95 ${

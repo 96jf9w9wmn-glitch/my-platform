@@ -126,7 +126,7 @@ export function InvoiceView({ rows, payee, student, tutorName, className = "" })
     <div className={`glass p-5 ${className}`}>
       <div className="flex items-center gap-2 mb-1">
         <h2 className="text-base font-medium">Квитанции</h2>
-        <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-500/10 text-gray-500 ring-1 ring-inset ring-gray-500/15">
+        <span className="text-[11px] font-medium px-2 py-0.5 rounded-full text-gray-500 ring-1 ring-inset ring-gray-300/70 dark:ring-white/15">
           после каждого занятия
         </span>
       </div>

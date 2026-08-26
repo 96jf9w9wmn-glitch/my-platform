@@ -502,7 +502,7 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
                   <DebtBadge status={status} standalone />
                   {examDays !== null && (
                     <span className={`flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-lg ml-auto ${
-                      examDays <= 7 ? "bg-red-50 text-red-700" : examDays <= 30 ? "bg-amber-50 text-amber-700" : "bg-gray-100 text-gray-500"
+                      examDays <= 7 ? "bg-red-50 text-red-700" : examDays <= 30 ? "bg-amber-50 text-amber-700" : "text-gray-500 ring-1 ring-gray-200/70 dark:ring-white/15"
                     }`}>
                       <Icon name="target" size={11} />{examDays === 0 ? "Сегодня!" : `${examDays} дн.`}
                     </span>

@@ -174,7 +174,7 @@ function Dashboard({ students, setActivePage, onOpenBoard }) {
           { id: "week",     icon: "check",    tint: "bg-green-100 text-green-600",   value: countWeek,     label: "за неделю",  go: "results" },
           {
             id: "debt", icon: "warning", value: countDebtors, label: "должников", go: "payment",
-            tint: debtors.length > 0 ? "bg-amber-100 text-amber-600" : "bg-gray-100 text-gray-400",
+            tint: debtors.length > 0 ? "bg-amber-100 text-amber-600" : "text-gray-400 ring-1 ring-gray-200/70 dark:ring-white/10",
             valueCls: debtors.length > 0 ? "text-amber-600" : "",
           },
         ].map((st) => (

@@ -74,7 +74,7 @@ const TONE = {
   amber:  "bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-amber-500/25",
   red:    "bg-red-500/10 text-red-600 dark:text-red-300 ring-red-500/20",
   purple: "bg-purple-500/10 text-purple-700 dark:text-purple-300 ring-purple-500/20",
-  gray:   "bg-gray-500/10 text-gray-500 ring-gray-500/15",
+  gray:   "text-gray-500 ring-gray-300/70 dark:ring-white/15",
 }
 const LINE = { blue: "#007aff", green: "#34c759", amber: "#ff9f0a", red: "#ff3b30", purple: "#af52de", gray: "#9ca3af" }
 
@@ -256,7 +256,7 @@ function TargetBar({ value, target, className = "" }) {
         </span>
         <span className="text-gray-500 font-medium tabular-nums">{value} / {target}</span>
       </div>
-      <div className="h-1.5 rounded-full bg-gray-500/15 overflow-hidden">
+      <div className="h-1.5 rounded-full bg-blue-500/12 overflow-hidden">
         <div
           className="h-full rounded-full transition-[width] duration-700 ease-out"
           style={{
@@ -316,7 +316,7 @@ function AnswerCell({ n, correct, student }) {
     <div className={`text-center rounded-xl py-1.5 px-1 ring-1 ${
       isRight ? "bg-green-500/10 text-green-700 dark:text-green-300 ring-green-500/20" :
       isWrong ? "bg-red-500/10 text-red-600 dark:text-red-300 ring-red-500/20" :
-      "bg-gray-500/10 text-gray-400 ring-gray-500/15"
+      "text-gray-400 ring-gray-300/70 dark:ring-white/15"
     }`}>
       <div className="text-[10px] text-gray-400 leading-tight">{n}</div>
       <div className="text-xs font-medium truncate">{has ? student : "—"}</div>
@@ -636,7 +636,7 @@ function CohortWeakTypes({ studentIds }) {
                   <span className="text-sm truncate">{labels[r.gen_key] || r.gen_key || "Задание без типажа"}</span>
                   <span className="text-xs font-medium tabular-nums shrink-0" style={{ color: LINE[tone] }}>{r.accuracy}%</span>
                 </div>
-                <div className="mt-1 h-1.5 rounded-full bg-gray-500/15 overflow-hidden">
+                <div className="mt-1 h-1.5 rounded-full bg-blue-500/12 overflow-hidden">
                   <div className="h-full rounded-full transition-[width] duration-700 ease-out"
                     style={{ width: `${Math.max(r.accuracy, 3)}%`, background: LINE[tone] }} />
                 </div>

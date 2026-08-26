@@ -425,7 +425,7 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
                 <div className={`w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-bold overflow-hidden ${
                   isActive
                     ? "bg-white/25 text-white"
-                    : "bg-gray-100 text-gray-600"
+                    : "bg-blue-500/12 text-blue-600 ring-1 ring-blue-500/15"
                 }`}>
                   {c.avatar
                     ? <img src={c.avatar} alt="" className="w-full h-full object-cover" />

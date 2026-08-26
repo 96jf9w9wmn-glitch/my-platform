@@ -93,7 +93,7 @@ export default function Profile({ user, students = [], onLogout, onProfileChange
                 className={`text-[11px] font-medium px-2 py-0.5 rounded-full ring-1 ring-inset flex items-center gap-1 transition-all hover:brightness-105 active:scale-95 ${
                   paid
                     ? "bg-[#007AFF]/10 text-[#007AFF] ring-[#007AFF]/25"
-                    : "bg-gray-500/10 text-gray-500 ring-gray-500/20"
+                    : "text-gray-500 ring-gray-300/70 dark:ring-white/15"
                 }`}
               >
                 Тариф «{plan.name}»

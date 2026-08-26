@@ -11,7 +11,7 @@ import useTypeLabels from "./typeLabels"
 const MIN_ATTEMPTS = 3
 
 function tone(row) {
-  if (row.attempts < MIN_ATTEMPTS) return { cls: "bg-gray-100 text-gray-500 dark:bg-white/10", note: "мало данных" }
+  if (row.attempts < MIN_ATTEMPTS) return { cls: "text-gray-500 ring-1 ring-gray-200/70 dark:ring-white/15", note: "мало данных" }
   if (row.accuracy < 40) return { cls: "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300", note: null }
   if (row.accuracy < 70) return { cls: "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300", note: null }
   return { cls: "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300", note: null }

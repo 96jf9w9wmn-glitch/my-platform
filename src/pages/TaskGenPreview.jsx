@@ -112,7 +112,7 @@ function CodeBlock({ name, code, wide }) {
   }
   return (
     <div className={`rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-[#1c1c1e] overflow-hidden ${wide ? "sm:col-span-2" : ""}`}>
-      <div className="flex items-center justify-between px-3 py-1.5 bg-gray-100 border-b border-gray-200">
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-200 dark:border-white/10">
         <span className="text-xs font-semibold text-gray-600">{name}</span>
         <button onClick={copy} title="Скопировать код"
           className="flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-blue-600 transition active:scale-95">
@@ -326,7 +326,7 @@ function Expandable({ label, children }) {
         {open ? "Свернуть текст" : label}
       </button>
       <Reveal value={open}>{() => (
-        <div className="mt-2 rounded-xl border border-gray-100 bg-gray-50/70 p-3 text-sm text-gray-700 leading-relaxed">
+        <div className="mt-2 rounded-xl border border-gray-100 dark:border-white/10 p-3 text-sm text-gray-700 leading-relaxed">
           {children}
         </div>
       )}</Reveal>
@@ -533,7 +533,7 @@ function TaskGenPreview() {
           типажей), поэтому список свёрнут: видны названия семейств, раскрывается одно.
           «Смотреть» рядом с названием листает случайные типажи всего семейства. */}
       {focusNumber(focus) != null && themes && (
-        <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50/60 p-3 flex flex-col gap-2">
+        <div className="mb-4 rounded-xl border border-gray-100 dark:border-white/10 p-3 flex flex-col gap-2">
           <div className="flex items-center gap-2 flex-wrap">
             <button onClick={() => selectFocus(focusNumber(focus))} className={chip(typeof focus === "number")}>
               Все типажи №{focusNumber(focus)}
@@ -565,7 +565,7 @@ function TaskGenPreview() {
                       className={`shrink-0 text-gray-400 transition-transform duration-200 ${open ? "rotate-90" : ""}`}
                     />
                     <span className="truncate">{g.theme}</span>
-                    <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-gray-100 text-[11px] font-medium text-gray-500">
+                    <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-blue-500/10 ring-1 ring-blue-500/20 text-[11px] font-medium text-blue-600">
                       {g.items.length}
                     </span>
                   </button>

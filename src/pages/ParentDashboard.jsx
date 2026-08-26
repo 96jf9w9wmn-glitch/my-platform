@@ -30,7 +30,7 @@ function GradeBar({ label, count, max, color }) {
   return (
     <div className="flex items-center gap-2">
       <div className={`w-5 text-xs font-semibold text-center ${color}`}>{label}</div>
-      <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+      <div className="flex-1 h-2 bg-blue-500/12 rounded-full overflow-hidden">
         <div className={`h-full rounded-full transition-all ${color.replace("text-", "bg-")}`} style={{ width: pct + "%" }} />
       </div>
       <div className="text-xs text-gray-500 w-6 text-right">{count}</div>
@@ -422,7 +422,7 @@ function ParentDashboard({ user, onLogout }) {
                     ) : hw.status === "done" ? (
                       <span className="text-xs bg-blue-50 text-blue-500 px-2.5 py-1 rounded-full flex-shrink-0">На проверке</span>
                     ) : (
-                      <span className="text-xs bg-gray-100 text-gray-400 px-2.5 py-1 rounded-full flex-shrink-0">Задано</span>
+                      <span className="text-xs text-gray-500 ring-1 ring-gray-200/70 dark:ring-white/15 px-2.5 py-1 rounded-full flex-shrink-0">Задано</span>
                     )}
                   </div>
                 ))}
@@ -444,7 +444,7 @@ function ParentDashboard({ user, onLogout }) {
               {/* Прогресс */}
               <div className="border-t border-gray-100 pt-3">
                 <div className="text-xs text-gray-400 mb-2">Выполнение ({doneCount} / {homework.length})</div>
-                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-2 bg-blue-500/12 rounded-full overflow-hidden">
                   <div
                     className="h-full bg-blue-500 rounded-full transition-all"
                     style={{ width: homework.length > 0 ? Math.round((doneCount / homework.length) * 100) + "%" : "0%" }}

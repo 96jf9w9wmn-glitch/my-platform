@@ -17,7 +17,7 @@ import { useClosing } from "../useClosing"
 import { subjectGroups, firstType, BANK_SUBJECTS } from "./examSubjectList"
 
 const STATUS_LABELS = {
-  assigned: { label: "Выдано", cls: "bg-gray-100 text-gray-600" },
+  assigned: { label: "Выдано", cls: "text-gray-600 ring-1 ring-gray-200 dark:ring-white/15" },
   submitted: { label: "На проверке", cls: "bg-blue-100 text-blue-700" },
   done: { label: "Выполнено", cls: "bg-green-100 text-green-700" },
   revision: { label: "На доработку", cls: "bg-amber-100 text-amber-700" },
@@ -88,7 +88,7 @@ const chipCls = (on) =>
   `px-3 py-1.5 rounded-full text-xs transition-all active:scale-[0.94] ${
     on
       ? "bg-blue-600 text-white shadow-sm"
-      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+      : "text-gray-600 ring-1 ring-gray-200 dark:ring-white/15 hover:ring-gray-300"
   }`
 
 // Переключатель «тумблер + подпись»: одинаковый во всей форме.
@@ -709,7 +709,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
           </div>
           <div className="flex flex-col gap-2.5">
             {testOptions.map((opts, i) => (
-              <div key={i} className="rounded-xl bg-gray-500/[0.06] p-2">
+              <div key={i} className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 p-2">
                 <div className="text-xs text-gray-400 mb-1.5">Вопрос {i + 1}</div>
                 <div className="flex flex-wrap items-start gap-1.5">
                   {opts.map((o, j) => {
@@ -869,7 +869,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                       }`}
                     >
                       <span className={`w-8 h-8 rounded-xl flex items-center justify-center mb-2 ${
-                        on ? "bg-blue-500/15 text-blue-600" : "bg-gray-500/10 text-gray-500"
+                        on ? "bg-blue-500/15 text-blue-600" : "text-gray-500 ring-1 ring-gray-200/70 dark:ring-white/15"
                       }`}>
                         <Icon name={m.icon} size={15} />
                       </span>
@@ -1001,7 +1001,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                         {bankTasks.length > 0 && (
                           <div className="flex flex-col gap-1.5">
                             {bankTasks.map((t, i) => (
-                              <div key={t.id || i} className="rounded-xl bg-gray-500/[0.06] dark:bg-white/[0.05] px-2.5 py-2 flex items-start gap-2.5">
+                              <div key={t.id || i} className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 px-2.5 py-2 flex items-start gap-2.5">
                                 <span className="shrink-0 w-5 h-5 rounded-full bg-blue-500/12 text-blue-600 dark:text-blue-400 text-[10px] font-semibold flex items-center justify-center">
                                   {i + 1}
                                 </span>
@@ -1114,7 +1114,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                               <div className="text-xs text-gray-600 leading-relaxed">{preview.description.trim()}</div>
                             )}
                             {preview.tasks.map((t, i) => (
-                              <div key={i} className="rounded-lg bg-gray-500/[0.06] p-2 flex flex-col gap-1.5">
+                              <div key={i} className="rounded-lg ring-1 ring-gray-200/70 dark:ring-white/10 p-2 flex flex-col gap-1.5">
                                 <div className="flex items-start gap-2">
                                   <span className="text-xs text-gray-400 pt-2 w-4 flex-shrink-0">{i + 1}.</span>
                                   <textarea
@@ -1244,7 +1244,7 @@ const TASKS_PREVIEW = 3
 // Одно задание строкой: номер кружком, условие, правильный ответ справа.
 function TaskLine({ t, options, answer }) {
   return (
-    <div className="rounded-xl bg-gray-500/[0.06] dark:bg-white/[0.05] px-2.5 py-2">
+    <div className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 px-2.5 py-2">
       <div className="flex items-start gap-2.5">
         <span className="shrink-0 w-5 h-5 rounded-full bg-blue-500/12 text-blue-600 dark:text-blue-400 text-[10px] font-semibold flex items-center justify-center">
           {t.n}
@@ -1557,7 +1557,7 @@ function StudentHomeworkGroup({ studentName, studentPhone, studentAccountId, ite
             <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{pending} на проверке</span>
           )}
           {needsAttention > 0 && (
-            <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{needsAttention} активных</span>
+            <span className="text-xs text-gray-500 ring-1 ring-gray-200/70 dark:ring-white/15 px-2 py-0.5 rounded-full">{needsAttention} активных</span>
           )}
         </div>
       </button>
@@ -1683,7 +1683,7 @@ function Homework({ user, students }) {
                       on ? "bg-blue-500/[0.07] dark:bg-blue-400/10" : "hover:bg-black/[0.02] dark:hover:bg-white/[0.04]"
                     }`}
                   >
-                    <div className={`w-9 h-9 rounded-xl hidden sm:flex items-center justify-center flex-shrink-0 transition-colors duration-200 ${count > 0 ? f.tint : "text-gray-400 bg-gray-500/8"}`}>
+                    <div className={`w-9 h-9 rounded-xl hidden sm:flex items-center justify-center flex-shrink-0 transition-colors duration-200 ${count > 0 ? f.tint : "text-gray-400 ring-1 ring-gray-200/70 dark:ring-white/10"}`}>
                       <Icon name={f.icon} size={16} />
                     </div>
                     <div className="min-w-0">

@@ -440,7 +440,7 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
               </button>
               {student.boardUrl && (
                 <a href={student.boardUrl} target="_blank" rel="noreferrer"
-                  className="flex items-center gap-1.5 text-xs bg-gray-50 text-gray-500 dark:text-gray-400 border border-gray-100 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+                  className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-white/15 px-3 py-1.5 rounded-lg hover:border-blue-300 hover:text-blue-600 transition-colors">
                   <Icon name="external-link" size={12} />Внешняя
                 </a>
               )}
@@ -475,7 +475,7 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
             <div className="flex items-center gap-2">
               {student.parent_code ? (
                 <>
-                  <code className="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded tracking-wider text-gray-700">
+                  <code className="text-xs font-mono ring-1 ring-gray-200 dark:ring-white/15 px-2 py-0.5 rounded tracking-wider text-gray-700">
                     {student.parent_code}
                   </code>
                   <button
@@ -627,7 +627,7 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
             <span className="flex items-center gap-2 text-sm font-medium">
               <Icon name="archive" size={15} className="text-gray-400" />
               Архив занятий
-              <span className="text-[11px] font-normal text-gray-500 bg-gray-100 ring-1 ring-gray-200/70 px-1.5 py-0.5 rounded-full tabular-nums">
+              <span className="text-[11px] font-normal text-gray-500 ring-1 ring-gray-200/70 dark:ring-white/15 px-1.5 py-0.5 rounded-full tabular-nums">
                 {past.length}
               </span>
             </span>

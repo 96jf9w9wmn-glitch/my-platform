@@ -145,7 +145,7 @@ function StudentOnboardingModal({ studentId, onComplete, demo = false }) {
           </div>
           <div className="flex gap-1.5">
             {STEPS.map((_, i) => (
-              <div key={i} className="h-1 flex-1 rounded-full bg-gray-100 overflow-hidden">
+              <div key={i} className="h-1 flex-1 rounded-full bg-blue-500/12 overflow-hidden">
                 <div className={`h-full bg-blue-600 rounded-full transition-transform duration-300 ease-out origin-left ${i <= safeStep ? "scale-x-100" : "scale-x-0"}`} />
               </div>
             ))}
