@@ -517,7 +517,7 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <div className="text-sm font-medium text-green-600 tabular-nums min-w-[6.5rem] text-left">+{fmt(p.amount)} ₽</div>
+                    <div className="text-sm font-medium text-green-600 tabular-nums min-w-[6.5rem] text-right">+{fmt(p.amount)} ₽</div>
                     {/* Ошибочную оплату откатывают здесь: у ученика снимается
                         только последняя запись, поэтому кнопка есть у неё одной.
                         У остальных строк её место всё равно резервируется, иначе
@@ -540,7 +540,7 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
             <div className="pt-3 mt-4 border-t border-gray-200 dark:border-white/10 flex justify-between">
               <span className="text-sm text-gray-500">Итого за период</span>
               <span className="flex items-center gap-1.5">
-                <span className="text-sm font-semibold text-green-600 tabular-nums min-w-[6.5rem] text-left">{fmt(filteredPayments.reduce((s, p) => s + p.amount, 0))} ₽</span>
+                <span className="text-sm font-semibold text-green-600 tabular-nums min-w-[6.5rem] text-right">{fmt(filteredPayments.reduce((s, p) => s + p.amount, 0))} ₽</span>
                 <span className="w-7 shrink-0" aria-hidden="true" />
               </span>
             </div>
