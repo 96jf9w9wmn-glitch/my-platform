@@ -86,8 +86,8 @@ function pfracSvg(num0, den0, mf = MATH_ARIAL) {
 // Радикал для PDF: содержимое (в т.ч. показатель ⁅…⁆ и стоячая дробь ⦃n¦d⦄ в нём)
 // раскладывает общий с экраном svgMathBody — иначе служебные маркеры попадали в SVG
 // сырыми и растягивали черту. Высота зависит от содержимого, поэтому картинка несёт
-// свой vertical-align: он держит базовую линию подкоренного там же, где была при
-// постоянной высоте (прежнее ROOT_VALIGN = −10px при H = 22 и базовой линии 17).
+// свой vertical-align: базовая линия подкоренного ложится на базовую линию строки при
+// любой высоте картинки.
 function rootSvg(content, index = "", mf = MATH_ARIAL) {
   const gw = (str) => chW(str, mf.k)
   const idxFS = 10
@@ -96,7 +96,7 @@ function rootSvg(content, index = "", mf = MATH_ARIAL) {
   const idx = index
     ? `<text x="${ox - 1}" y="${idxY}" font-size="${idxFS}" font-family="${mf.family}" text-anchor="middle" fill="#1c1c1e">${index}</text>`
     : ""
-  return { W, H, valign: `${-(H - by + 5)}px`,
+  return { W, H, valign: `${-(H - by)}px`,
     svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">` +
       `<path d="${d}" fill="none" stroke="#1c1c1e" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>` +
       idx +
@@ -118,7 +118,9 @@ function rootFracSvg(pre, num, den, post, mf = MATH_ARIAL) {
   g += `<line x1="${x0 + preW + 1}" y1="${bar}" x2="${x0 + preW + fracW - 1}" y2="${bar}" stroke="#1c1c1e" stroke-width="1.3"/>`
   g += `<text x="${fcx}" y="${bar + 12}" font-size="${fs}" font-family="${mf.family}" text-anchor="middle" fill="#1c1c1e">${rootInPdf(den)}</text>`
   if (post) g += `<text x="${x0 + preW + fracW + 1}" y="${bar + 4}" font-size="${FS}" font-family="${mf.family}" fill="#1c1c1e">${rootInPdf(post)}</text>`
-  return { W, H, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${g}</svg>` }
+  // Своё выравнивание: у этой картинки черта на 0,5px дальше от низа, чем у обычной
+  // дроби (H − bar = 18 против 17,5), иначе корень над дробью встал бы чуть ниже её.
+  return { W, H, valign: "-14.5px", svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${g}</svg>` }
 }
 
 // SVG-примитив → PNG data-URL (2x) → inline <img>. display:inline обязателен — Tailwind
@@ -141,10 +143,13 @@ async function svgToInlineImg({ W, H, svg, valign: own }, valign) {
   }
 }
 
-// vertical-align PNG-картинок ПОД html2canvas (он рисует inline-img выше браузера) —
-// подобраны так, чтобы центр дроби/черта корня легли на матось (вровень с − и скобками).
-const FRAC_VALIGN = "-20px"
-const ROOT_VALIGN = "-10px"
+// vertical-align PNG-картинок. Черта дроби должна лечь на матось — ровно посередине
+// знаков −, =, > (замерено на снимке html2canvas: при −20px черта уходила на 6px ниже
+// центра «=», из-за чего знак висел над дробью). Корень выравнивается иначе: его
+// подкоренное стоит на общей базовой линии строки, поэтому картинка опускается ровно на
+// свой «подвал» (H − базовая линия), а не на глаз.
+const FRAC_VALIGN = "-14px"
+const ROOT_VALIGN = "-5px"
 
 // PDF-аналог renderTaskMath из utils.js: тот же порядок (сначала экранирование, потом
 // токены). Дробь/корень — PNG-картинками, нижний индекс — обычным <sub> (html2canvas

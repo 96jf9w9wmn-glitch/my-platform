@@ -176,7 +176,9 @@ function rootFracMarkup(pre, num, den, post) {
   const fracW = Math.max(glyphW(num), glyphW(den)) * fs + 8
   const signW = 10, x0 = signW + 3, bar = 20
   const fcx = x0 + preW + fracW / 2
-  const W = Math.ceil(signW + preW + fracW + postW + 7), H = 38
+  // H = 2 × bar: черта дроби приходится ровно на центр картинки, а vertical-align:middle
+  // сажает центр на матось — так корень над дробью встаёт вровень с обычными дробями.
+  const W = Math.ceil(signW + preW + fracW + postW + 7), H = 2 * bar
   const d = `M0.8 24 L3.4 26 L6 36 L${signW} 2 L${W - 1} 2`   // √ + верхняя черта — единый путь
   let g = `<path d="${d}" fill="none" stroke="currentColor" stroke-width="${SW}" stroke-linejoin="miter" stroke-linecap="butt"/>`
   if (pre) g += `<text x="${x0}" y="${bar + 4}" font-size="${FS}" fill="currentColor">${pre}</text>`
