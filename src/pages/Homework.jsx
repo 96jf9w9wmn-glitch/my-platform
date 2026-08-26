@@ -222,6 +222,51 @@ const oneLine = (s) => String(s || "").replace(/\s*\n+\s*/g, " ").trim()
 // Запятая внутри числа при этом разрешена — «3,75» это обычный ответ ОГЭ.
 const isSimpleAnswer = (a) => a.length > 0 && !/[\s\\{}]/.test(a)
 
+// Поле правки, которое вне редактирования показывает то же, что увидит ученик:
+// ИИ отдаёт математику простым LaTeX (\frac{1}{3}), и без рендера репетитор
+// проверял бы варианты по сырому исходнику. Клик (или фокус с клавиатуры)
+// превращает строку в поле ввода, потеря фокуса возвращает формулу.
+function MathField({ value, onChange, multiline = false, rows = 2, className = "", viewClassName = "", placeholder = "" }) {
+  const [editing, setEditing] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!editing || !el) return
+    el.focus()
+    // Курсор в конец, а не в начало: правят обычно хвост формулы.
+    el.setSelectionRange(el.value.length, el.value.length)
+  }, [editing])
+
+  if (editing) {
+    const common = {
+      ref,
+      value,
+      onChange: (e) => onChange(e.target.value),
+      onBlur: () => setEditing(false),
+      // Enter в однострочном поле и Escape в любом — выход из правки, а не отправка формы.
+      onKeyDown: (e) => { if (e.key === "Escape" || (e.key === "Enter" && !multiline)) { e.preventDefault(); e.currentTarget.blur() } },
+      className,
+    }
+    return multiline ? <textarea {...common} rows={rows} /> : <input {...common} />
+  }
+
+  const shown = String(value ?? "").trim()
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => setEditing(true)}
+      onFocus={() => setEditing(true)}
+      title="Нажмите, чтобы изменить"
+      className={`${viewClassName} cursor-text transition-colors hover:bg-blue-500/[0.06] focus:outline-none`}
+      {...(shown
+        ? { dangerouslySetInnerHTML: { __html: renderHomeworkMath(shown) } }
+        : { children: <span className="text-gray-400">{placeholder}</span> })}
+    />
+  )
+}
+
 // Непустые варианты ответа одного задания.
 const cleanOpts = (t) => (t.options || []).map((o) => o.trim()).filter(Boolean)
 
@@ -1088,11 +1133,14 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                               <div key={i} className="rounded-lg ring-1 ring-gray-200/70 dark:ring-white/10 p-2 flex flex-col gap-1.5">
                                 <div className="flex items-start gap-2">
                                   <span className="text-xs text-gray-400 pt-2 w-4 flex-shrink-0">{i + 1}.</span>
-                                  <textarea
+                                  <MathField
                                     value={t.question}
-                                    onChange={(e) => updatePreviewTask(i, "question", e.target.value)}
+                                    onChange={(v) => updatePreviewTask(i, "question", v)}
+                                    multiline
                                     rows={2}
-                                    className="input-glass flex-1 min-w-0 px-2 py-1.5 resize-none"
+                                    placeholder="Текст задания"
+                                    className="input-glass flex-1 min-w-0 px-2 py-1.5 resize-none min-h-[4rem]"
+                                    viewClassName="input-glass flex-1 min-w-0 px-2 py-1.5 min-h-[4rem] leading-relaxed"
                                   />
                                   <button
                                     type="button"
@@ -1126,10 +1174,12 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                                             >
                                               {correct && <Icon name="check" size={10} />}
                                             </button>
-                                            <input
+                                            <MathField
                                               value={o}
-                                              onChange={(e) => updatePreviewOption(i, j, e.target.value)}
-                                              className="flex-1 min-w-0 bg-transparent text-sm outline-none"
+                                              onChange={(v) => updatePreviewOption(i, j, v)}
+                                              placeholder="Вариант ответа"
+                                              className="flex-1 min-w-0 bg-transparent text-sm outline-none min-h-[2rem]"
+                                              viewClassName="flex-1 min-w-0 text-sm min-h-[2rem] flex items-center rounded-md px-1 -mx-1"
                                             />
                                           </div>
                                         )
@@ -1139,10 +1189,12 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                                 ) : (
                                   <div className="flex items-center gap-2 pl-6">
                                     <span className="text-xs text-gray-400 flex-shrink-0">Ответ:</span>
-                                    <input
+                                    <MathField
                                       value={t.answer}
-                                      onChange={(e) => updatePreviewTask(i, "answer", e.target.value)}
-                                      className="input-glass flex-1 min-w-0 px-2 py-1"
+                                      onChange={(v) => updatePreviewTask(i, "answer", v)}
+                                      placeholder="Ответ"
+                                      className="input-glass flex-1 min-w-0 px-2 py-1 min-h-[3.2rem]"
+                                      viewClassName="input-glass flex-1 min-w-0 px-2 py-1 min-h-[3.2rem] flex items-center"
                                     />
                                   </div>
                                 )}
