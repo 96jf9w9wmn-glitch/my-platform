@@ -660,6 +660,19 @@ html:has(.fixed.inset-0) {
   padding-right: var(--sbw, 0px);
 }
 
+/* Смена вкладки-фильтра: список не подменяется рывком, а всплывает.
+   Держать короче .page-active — переключение фильтра мельче смены раздела. */
+@keyframes tab-swap {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+.tab-swap {
+  animation: tab-swap 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tab-swap { animation: none; }
+}
+
 /* Slide up — for bottom sheets on mobile */
 @keyframes slide-up {
   from { opacity: 0; transform: translateY(20px); }
