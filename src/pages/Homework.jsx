@@ -83,8 +83,6 @@ const DEADLINE_CHIPS = [
   { label: "Неделя", days: 7 },
 ]
 
-const TIME_CHIPS = [0, 20, 45, 60]
-
 const chipCls = (on) =>
   `px-3 py-1.5 rounded-full text-xs transition-all active:scale-[0.94] ${
     on
@@ -239,8 +237,6 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
   const isAutoTitle = !title.trim() || title === defaultTitle
   const [description, setDescription] = useState(editingHw?.description || "")
   const [deadline, setDeadline] = useState(editingHw?.deadline || "")
-  // Ограничение по времени в минутах: пусто — без таймера (как было раньше).
-  const [timeLimit, setTimeLimit] = useState(editingHw?.time_limit_min ? String(editingHw.time_limit_min) : "")
   // Календарь показываем только если срок не попал в быстрые чипы.
   const [pickDate, setPickDate] = useState(
     !!editingHw?.deadline && !DEADLINE_CHIPS.some((c) => c.days != null && isoDay(c.days) === editingHw.deadline)
@@ -581,12 +577,6 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
     .sort((a, b) => a.number - b.number)
   const bankTotal = bankPicks.reduce((s, p) => s + p.count, 0)
 
-  // Уже выставленное нестандартное время (например, у старого задания) не должно
-  // пропадать из чипов — иначе правка молча его сбросит.
-  const timeChips = timeLimit && !TIME_CHIPS.includes(Number(timeLimit))
-    ? [...TIME_CHIPS, Number(timeLimit)].sort((a, b) => a - b)
-    : TIME_CHIPS
-
   const isMcq = Array.isArray(testOptions) && testOptions.length > 0
   const hwType = !autoCheck ? "written" : editingHw?.hw_type === "combined" ? "combined" : "test"
   const freeAnswers = answersInput
@@ -635,11 +625,6 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
       test_options: hwType !== "written" && isMcq ? testOptions : null,
       require_solution: hwType !== "written" ? requireSolution : false,
     }
-    // Колонку добавляет supabase/homework_timer.sql. Пока миграция не выполнена,
-    // поля в payload нет вовсе — выдача ДЗ работает как раньше.
-    if (timeLimit) payload.time_limit_min = Number(timeLimit)
-    else if (editingHw?.time_limit_min != null) payload.time_limit_min = null
-
     // Собранное из банка едет к ученику целиком: чертёж, программа, архив,
     // таблица. В description те же условия лежат текстом, поэтому список работ,
     // бот и старые записи ничего не замечают. Колонку добавляет
@@ -692,9 +677,6 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
       close()
     } else if (/bank_tasks/.test(error.message || "")) {
       setFormError("Задания с чертежом и файлами пока негде хранить: выполните supabase/homework_bank_tasks.sql в SQL Editor.")
-    } else if (/time_limit_min/.test(error.message || "")) {
-      // Колонки ещё нет: миграция supabase/homework_timer.sql не выполнена.
-      setFormError("Ограничение по времени пока недоступно: выполните supabase/homework_timer.sql в SQL Editor. Пока оставьте «Без лимита».")
     } else {
       setFormError("Не получилось сохранить: " + error.message)
     }
@@ -835,23 +817,6 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
 
               <Collapse open={autoCheck}>
                 <div className="pt-3 flex flex-col gap-3">
-                  <div>
-                    <div className="text-sm text-gray-500 mb-2">Время на работу</div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {timeChips.map((n) => (
-                        <button key={n} type="button" onClick={() => setTimeLimit(n ? String(n) : "")}
-                          className={chipCls(String(n) === (timeLimit || "0"))}>
-                          {n ? `${n} мин` : "Без лимита"}
-                        </button>
-                      ))}
-                    </div>
-                    {timeLimit && (
-                      <div className="text-[11px] text-gray-400 mt-1.5 leading-snug">
-                        Отсчёт начнётся, когда ученик откроет работу. По истечении времени она автоматически уйдёт на проверку.
-                      </div>
-                    )}
-                  </div>
-
                   <Toggle
                     on={requireSolution}
                     onClick={() => setRequireSolution(!requireSolution)}
