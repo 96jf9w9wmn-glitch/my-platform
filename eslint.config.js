@@ -7,7 +7,10 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   // `.claude` — чужие скрипты навыков, а не код приложения; они тянут за собой
   // два десятка ошибок и роняли бы линтер в деплое (.github/workflows/deploy.yml).
-  globalIgnores(['dist', 'ios', 'build', '.claude']),
+  // `.deploy` — временный бандл ручной раскатки (scripts/deploy.sh): внутри
+  // копия собранного dist, из-за которой локальный `npm run lint` падал сотнями
+  // ошибок, хотя в CI на чистом клоне этой папки нет.
+  globalIgnores(['dist', 'ios', 'build', '.claude', '.deploy']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [

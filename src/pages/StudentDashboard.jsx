@@ -1260,12 +1260,20 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   // Аватар из кэша — это ссылка, снятая в прошлой сессии. Бакет приватный,
   // подпись живёт ограниченное время, поэтому выписываем её заново.
   const [cachedAvatar, setCachedAvatar] = useState(null)
+  const avatarPath = cachedStudent?.avatar || null
+  const [signedFor, setSignedFor] = useState(avatarPath)
+  // Сброс делается в рендере, а не в эффекте: пока эффект не отработал, старая
+  // подпись указывала бы уже на другой файл — и кадр показывал бы чужой аватар.
+  if (signedFor !== avatarPath) {
+    setSignedFor(avatarPath)
+    setCachedAvatar(null)
+  }
   useEffect(() => {
+    if (!avatarPath) return
     let alive = true
-    if (!cachedStudent?.avatar) { setCachedAvatar(null); return }
-    signStorageUrl(cachedStudent.avatar, "homework").then((url) => { if (alive) setCachedAvatar(url) })
+    signStorageUrl(avatarPath, "homework").then((url) => { if (alive) setCachedAvatar(url) })
     return () => { alive = false }
-  }, [cachedStudent?.avatar])
+  }, [avatarPath])
 
   // Живые данные с сохранением аватарки из кэша если она не дошла до students таблицы
   const student = liveStudent

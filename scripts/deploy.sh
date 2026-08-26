@@ -29,14 +29,21 @@ cp portfolio/index.html portfolio/arman.webp .deploy/dist/me/
 # dist/crm и раскатывается своим скриптом. Без исключения rsync --delete снёс
 # бы её первым же деплоем сайта: ровно так 19.08.2026 погибла страница /me.
 # Правка парная с .github/workflows/deploy.yml — состав должен совпадать.
+# --chown=deploy:deploy обязателен. Ходим мы root'ом, и `rsync -a` от root
+# переносит на сервер ЛОКАЛЬНОГО владельца (uid 501 с макбука). Каталоги
+# current/{api,dist,src,server} становились чужими для пользователя deploy, и
+# автодеплой GitHub Actions, который ходит именно им, падал бы на записи.
+# --exclude .DS_Store — чтобы служебный файл macOS не уезжал в веб-корень.
+RS=(-az --delete --chown=deploy:deploy --exclude '.DS_Store' -e ssh)
+
 echo "→ статика"
-rsync -az --delete --exclude '/crm/' -e ssh .deploy/dist/ "$HOST:$ROOT/dist/"
+rsync "${RS[@]}" --exclude '/crm/' .deploy/dist/ "$HOST:$ROOT/dist/"
 
 echo "→ функции и общий код"
-rsync -az --delete -e ssh api/ "$HOST:$ROOT/api/"
-rsync -az --delete -e ssh src/ "$HOST:$ROOT/src/"
-rsync -az -e ssh server/ "$HOST:$ROOT/server/"
-rsync -az -e ssh package.json "$HOST:$ROOT/package.json"
+rsync "${RS[@]}" api/ "$HOST:$ROOT/api/"
+rsync "${RS[@]}" src/ "$HOST:$ROOT/src/"
+rsync -az --chown=deploy:deploy --exclude '.DS_Store' -e ssh server/ "$HOST:$ROOT/server/"
+rsync -az --chown=deploy:deploy -e ssh package.json "$HOST:$ROOT/package.json"
 
 # Статику Caddy подхватывает сразу, а Node держит модули в памяти.
 echo "→ перезапуск функций"
