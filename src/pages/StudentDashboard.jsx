@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, lazy, Suspense } from "react"
+import { useState, useEffect, useRef, useMemo, useLayoutEffect, lazy, Suspense } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import { signRows, signStorageUrl } from "../storageUrl"
@@ -466,42 +466,97 @@ function StudentHomeworkList({ homework, onSelect }) {
     submitted: (h) => h.status === "submitted",
     done: (h) => h.status === "done",
   }
+  // Полоса-сводка как в кабинете репетитора: сразу видно, сколько заданий
+  // в каждом состоянии, и та же полоса переключает список.
   const FILTERS = [
-    { key: "all", label: "Все" },
-    { key: "active", label: "Активные" },
-    { key: "submitted", label: "Проверка" },
-    { key: "done", label: "Готово" },
+    { key: "all", label: "Все", icon: "clipboard", tint: "text-blue-600 bg-blue-500/10" },
+    { key: "active", label: "Активные", icon: "file-text", tint: "text-blue-600 bg-blue-500/10" },
+    { key: "submitted", label: "Проверка", icon: "clock", tint: "text-amber-600 bg-amber-500/12" },
+    { key: "done", label: "Готово", icon: "check", tint: "text-green-600 bg-green-500/12" },
   ]
   const counts = Object.fromEntries(FILTERS.map((f) => [f.key, homework.filter(match[f.key]).length]))
   const list = homework.filter(match[filter])
+
+  // Подчёркивание активной вкладки — одна полоска, которая переезжает с кнопки
+  // на кнопку: ширины у вкладок разные и на узком экране полоса ещё скроллится.
+  const tabsRef = useRef(null)
+  const tabsScrollRef = useRef(null)
+  const [ind, setInd] = useState(null)
+  const indAnimated = useRef(false)
+
+  useLayoutEffect(() => {
+    const wrap = tabsRef.current
+    if (!wrap) return
+    const measure = () => {
+      const el = wrap.querySelector(`[data-filter="${filter}"]`)
+      if (!el) return
+      setInd({ left: el.offsetLeft, width: el.offsetWidth })
+      const sc = tabsScrollRef.current
+      if (sc && indAnimated.current && sc.scrollWidth > sc.clientWidth) {
+        const left = el.offsetLeft - 16
+        const right = el.offsetLeft + el.offsetWidth - sc.clientWidth + 16
+        const to = sc.scrollLeft > left ? left : sc.scrollLeft < right ? right : null
+        if (to !== null) sc.scrollTo({ left: Math.max(0, to), behavior: "smooth" })
+      }
+      indAnimated.current = true
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(wrap)
+    return () => ro.disconnect()
+  }, [filter])
+
   return (
     <div>
-      <div className="flex flex-wrap gap-2 mb-4">
-        {FILTERS.map((f) => {
-          const on = filter === f.key
-          return (
-            <button
-              key={f.key}
-              onClick={() => setFilter(f.key)}
-              className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all active:scale-[0.96] ${
-                on ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-sm" : "glass-sm text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              {f.label}
-              <span className={`inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full text-[10px] ${on ? "bg-white/25" : "bg-black/5 dark:bg-white/10"}`}>{counts[f.key]}</span>
-            </button>
-          )
-        })}
+      <div ref={tabsScrollRef} className="glass no-scrollbar overflow-x-auto mb-4">
+        <div ref={tabsRef} className="relative flex min-w-full divide-x divide-gray-500/12 dark:divide-white/10">
+          {FILTERS.map((f) => {
+            const on = filter === f.key
+            const count = counts[f.key]
+            return (
+              <button
+                key={f.key}
+                data-filter={f.key}
+                onClick={() => setFilter(f.key)}
+                className={`press-fill flex-1 min-w-[7.5rem] sm:min-w-[9rem] flex items-center gap-3 px-3 sm:px-4 py-3.5 text-left transition-colors duration-200 ${
+                  on ? "bg-blue-500/[0.07] dark:bg-blue-400/10" : "hover:bg-black/[0.02] dark:hover:bg-white/[0.04]"
+                }`}
+              >
+                <div className={`w-9 h-9 rounded-xl hidden sm:flex items-center justify-center flex-shrink-0 transition-colors duration-200 ${count > 0 ? f.tint : "text-gray-400 bg-gray-500/8"}`}>
+                  <Icon name={f.icon} size={16} />
+                </div>
+                <div className="min-w-0">
+                  <div className={`text-xl font-semibold leading-none transition-colors duration-200 ${count > 0 ? f.tint.split(" ")[0] : "text-gray-400"}`}>{count}</div>
+                  <div className={`text-[11px] mt-1.5 truncate transition-colors duration-200 ${on ? "text-gray-600 font-medium" : "text-gray-400"}`}>{f.label}</div>
+                </div>
+              </button>
+            )
+          })}
+          {ind && (
+            <span
+              aria-hidden
+              className="pointer-events-none absolute bottom-0 left-0 h-[3px] rounded-full bg-gradient-to-r from-blue-500 to-blue-600 transition-[transform,width] duration-300 ease-out motion-reduce:transition-none"
+              style={{ width: ind.width, transform: `translateX(${ind.left}px)` }}
+            />
+          )}
+        </div>
       </div>
       {list.length === 0 ? (
-        <div className="relative overflow-hidden text-sm text-gray-400 text-center py-10 border border-dashed border-white/50 glass-sm">
+        <div key={filter} className="tab-swap relative overflow-hidden text-center py-12 border border-dashed border-white/50 glass-sm">
           <FormulaBackdrop variant="panel" />
-          <span className="relative z-10">
-            {filter === "all" ? "Заданий пока нет" : "В этой категории пусто"}
-          </span>
+          <div className="relative z-10 flex flex-col items-center gap-3 px-4">
+            <span className="text-sm text-gray-400">
+              {filter === "all" ? "Заданий пока нет" : "В этой категории пусто"}
+            </span>
+            {filter === "all" && (
+              <p className="text-xs text-gray-400 max-w-xs leading-relaxed">
+                Как только репетитор выдаст задание, оно появится здесь.
+              </p>
+            )}
+          </div>
         </div>
       ) : (
-        <div className="flex flex-col gap-2.5">
+        <div key={filter} className="tab-swap flex flex-col gap-2.5">
           {list.map((hw, i) => <StudentHomeworkCard key={hw.id} hw={hw} index={i} onSelect={onSelect} />)}
         </div>
       )}
