@@ -503,6 +503,10 @@ function convFracRoot(s) {
 // разворачивается в разметку — вставляется через dangerouslySetInnerHTML безопасно.
 export function renderHomeworkMath(text) {
   if (!text) return ""
+  // Задания, собранные из банка, приходят с токенами ⟦…⟧ (дроби, корни, таблицы):
+  // их разворачивает только рендерер банка. Прогонять текст через оба прохода
+  // нельзя — второй портит уже готовую разметку, поэтому выбираем ветку по токену.
+  if (String(text).includes("⟦")) return renderTaskMath(String(text)).replace(/\n/g, "<br>")
   let s = String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
   s = convFracRoot(s)
   s = latexSymbols(s)
