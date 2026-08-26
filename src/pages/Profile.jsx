@@ -19,6 +19,8 @@ import AutoInvoiceSettings from "../components/AutoInvoiceSettings"
 import OnlinePaySettings from "../components/OnlinePaySettings"
 import TaxModeSettings from "../components/TaxModeSettings"
 import TelegramSettings from "../components/TelegramSettings"
+import SubjectsSettings from "../components/SubjectsSettings"
+import { isOwner } from "../owner"
 
 // Инициал в цветном кружке: аватара у репетитора в базе нет, а пустой серый
 // круг выглядит как незагрузившаяся картинка.
@@ -74,7 +76,7 @@ export default function Profile({ user, students = [], onLogout, onProfileChange
     <div className="p-4 sm:p-6">
       <h1 className="text-xl font-medium mb-1">Профиль</h1>
       <p className="text-sm text-gray-500 mb-5 sm:mb-6">
-        Аккаунт и код для учеников, приём денег и налоги, телеграм-бот.
+        Аккаунт и код для учеников, предметы, приём денег и налоги, телеграм-бот.
       </p>
 
       {/* Аккаунт */}
@@ -99,9 +101,6 @@ export default function Profile({ user, students = [], onLogout, onProfileChange
               </button>
             </div>
             <div className="text-xs text-gray-500 mt-1 break-all">{user.email}</div>
-            {user.profile?.subject && (
-              <div className="text-xs text-gray-400 mt-0.5">Предмет: {user.profile.subject}</div>
-            )}
           </div>
           <button
             onClick={onLogout}
@@ -131,6 +130,15 @@ export default function Profile({ user, students = [], onLogout, onProfileChange
           </button>
         </div>
       </div>
+
+      {/* Предметы репетитора: от них зависит, какие генераторы банка ему
+          открываются в сборке ДЗ и на доске. */}
+      <SubjectsSettings
+        tutorId={user.id}
+        profile={user.profile}
+        owner={isOwner(user.email)}
+        onChange={onProfileChange}
+      />
 
       {/* Код для учеников: раньше жил в верхней панели — здесь он рядом с
           остальными данными аккаунта и с кнопкой копирования. */}

@@ -6,7 +6,7 @@ import MorphIcon from "./MorphIcon"
 import SegmentSwitch from "./SegmentSwitch"
 import { renderTaskMath } from "../utils"
 import { taskThemes } from "../pages/taskGenerators"
-import { EXAM_GROUPS, levelOf, numbersWithGen, subjectLabel, genTask, genThemeTask, examTypeForSubject } from "../pages/examSubjects"
+import { levelOf, numbersWithGen, subjectLabel, genTask, genThemeTask, examTypeForSubject, subjectGroups, firstTypeWithGen } from "../pages/examSubjects"
 import { taskToImageFile, attachmentsOf, SHEET_WIDTH } from "../pages/taskSnapshot"
 
 // Выбор задания из банка прямо на доске: предмет → номер → (необязательно) типаж,
@@ -34,10 +34,19 @@ function loadPref(roomId, fallbackExam) {
   return fallbackExam ? { examType: fallbackExam, number: null } : null
 }
 
-export default function BoardTaskModal({ dark = false, roomId = null, tutorSubject = null, tutorExamFocus = null, onInsert, onClose }) {
+export default function BoardTaskModal({ dark = false, roomId = null, tutorSubject = null, tutorExamFocus = null, tutorSubjects = null, owner = false, onInsert, onClose }) {
   const { cls: closingCls, close } = useClosing(onClose)
-  const pref = loadPref(roomId, examTypeForSubject(tutorSubject, tutorExamFocus))
-  const [examType, setExamType] = useState(pref?.examType || "ОГЭ")
+  // Предметы, отмеченные репетитором в «Профиле». Ничего не отмечено — все
+  // открытые предметы, как было раньше.
+  const groups = subjectGroups({ picked: tutorSubjects, owner })
+  const allowed = groups.flatMap((g) => g.subjects.map((s) => s.type))
+  // Вчерашний выбор берём, только если предмет всё ещё доступен: иначе доска
+  // открылась бы на предмете, которого нет ни в одном списке.
+  const remembered = loadPref(roomId, examTypeForSubject(tutorSubject, tutorExamFocus))
+  const pref = remembered && allowed.includes(remembered.examType) ? remembered : null
+  // Ленивый инициализатор: подбор предмета с генераторами перебирает номера, и
+  // на каждый рендер этого делать незачем.
+  const [examType, setExamType] = useState(() => pref?.examType || firstTypeWithGen(groups))
   const [number, setNumber] = useState(pref?.number || null)
   // Привязанный предмет показывается строкой, а списки уровня и предметов
   // раскрываются кнопкой «Сменить» — обычно менять его не нужно.
@@ -51,7 +60,7 @@ export default function BoardTaskModal({ dark = false, roomId = null, tutorSubje
   const [err, setErr] = useState("")
 
   const level = levelOf(examType)
-  const group = EXAM_GROUPS.find((g) => g.key === level) || EXAM_GROUPS[1]
+  const group = groups.find((g) => g.key === level) || groups[0]
   const numbers = numbersWithGen(examType)
   const themes = number != null ? taskThemes(examType, number) : null
 
@@ -93,7 +102,7 @@ export default function BoardTaskModal({ dark = false, roomId = null, tutorSubje
   }
   function pickLevel(key) {
     if (key === level) return
-    const g = EXAM_GROUPS.find((x) => x.key === key)
+    const g = groups.find((x) => x.key === key)
     pickExam((g.subjects.find((s) => numbersWithGen(s.type).length) || g.subjects[0]).type)
   }
   function pickNumber(n) {
@@ -147,26 +156,32 @@ export default function BoardTaskModal({ dark = false, roomId = null, tutorSubje
 
           {/* Предмет уже привязан к доске — строкой, а не списком на пол-экрана */}
           <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10">
-            <span className={`w-2 h-2 rounded-full shrink-0 ${group.subjects.find((s) => s.type === examType)?.dot || "bg-blue-500"}`} />
+            <span className={`w-2 h-2 rounded-full shrink-0 ${group?.subjects.find((s) => s.type === examType)?.dot || "bg-blue-500"}`} />
             <span className="text-sm font-medium truncate">{subjectLabel(examType)}</span>
-            <button onClick={() => setPickSubject((v) => !v)}
-              className="press-tap ml-auto shrink-0 text-xs text-blue-600 hover:text-blue-700">
-              {pickSubject ? "Свернуть" : "Сменить"}
-            </button>
+            {allowed.length > 1 && (
+              <button onClick={() => setPickSubject((v) => !v)}
+                className="press-tap ml-auto shrink-0 text-xs text-blue-600 hover:text-blue-700">
+                {pickSubject ? "Свернуть" : "Сменить"}
+              </button>
+            )}
           </div>
 
           {/* уровень и предмет — только когда предмет меняют */}
           {pickSubject && (
             <>
-              <SegmentSwitch
-                items={EXAM_GROUPS.map((g) => ({ key: g.key }))}
-                value={level}
-                onChange={pickLevel}
-                ariaLabel="Уровень экзамена"
-                className="mb-3"
-              />
+              {/* Уровень показываем, только когда есть из чего выбирать: у
+                  репетитора одного уровня переключатель был бы обманкой. */}
+              {groups.length > 1 && (
+                <SegmentSwitch
+                  items={groups.map((g) => ({ key: g.key }))}
+                  value={level}
+                  onChange={pickLevel}
+                  ariaLabel="Уровень экзамена"
+                  className="mb-3"
+                />
+              )}
               <div className="flex flex-wrap gap-2 mb-4">
-                {group.subjects.map((s) => {
+                {group?.subjects.map((s) => {
                   const has = numbersWithGen(s.type).length > 0
                   return (
                     <button key={s.type} disabled={!has} onClick={() => pickExam(s.type)}

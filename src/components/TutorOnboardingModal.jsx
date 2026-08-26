@@ -5,6 +5,7 @@ import { supabase } from "../supabase"
 import Icon from "./Icon"
 import { TUTOR_STEPS } from "../onboardingSteps"
 import { TAX_MODES, saveTaxMode } from "../taxModes"
+import { typesFromProfile } from "../pages/examSubjectList"
 
 const SUBJECTS = ["Математика", "Русский язык", "Английский язык", "Физика", "Химия", "Обществознание", "Информатика", "Другое"]
 const EXPERIENCE_OPTIONS = ["До 1 года", "1–3 года", "3–5 лет", "5+ лет"]
@@ -138,12 +139,17 @@ function TutorOnboardingModal({ tutorId, onComplete }) {
   }
 
   function handleFinish() {
+    const value = subject === "Другое" ? (customSubject.trim() || "Другое") : subject
     persist({
-      subject: subject === "Другое" ? (customSubject.trim() || "Другое") : subject,
+      subject: value,
       experience,
       student_count_range: studentCountRange,
       teaching_format: teachingFormat,
       exam_focus: examFocus,
+      // Предметы банка выводим из анкеты сразу: иначе банк заданий открывался бы
+      // на всех предметах подряд, пока репетитор не дойдёт до «Профиля».
+      // Предмет вне карты («Другое») даёт пустой список — это и значит «не выбрано».
+      bank_subjects: typesFromProfile(value, examFocus),
     }, taxMode)
   }
 

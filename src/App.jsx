@@ -778,6 +778,9 @@ function App() {
                всех предметов, и импорт здесь затащил бы их в главный бандл. */
             tutorSubject={user.profile?.subject}
             tutorExamFocus={user.profile?.exam_focus}
+            /* Предметы, отмеченные в «Профиле»: банк на доске открывается на них */
+            tutorSubjects={user.profile?.bank_subjects}
+            tutorOwner={isOwner(user.email)}
           />
         </Suspense>
       )}

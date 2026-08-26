@@ -10,7 +10,11 @@ import { parseLocalDate, renderHomeworkMath, parseHomeworkTasks, plural } from "
 import { usePlan } from "../subscription"
 import { PlanHint, PlanLock } from "../components/PlanLock"
 import ConfirmModal from "../components/ConfirmModal"
+import { isOwner } from "../owner"
 import { useClosing } from "../useClosing"
+// Список предметов — из лёгкого модуля: сами генераторы приезжают отдельно
+// (homeworkBank), и тащить их в бандл раздела ради подписей нельзя.
+import { subjectGroups, firstType } from "./examSubjectList"
 
 const STATUS_LABELS = {
   assigned: { label: "Выдано", cls: "bg-gray-100 text-gray-600" },
@@ -121,7 +125,7 @@ const isSimpleAnswer = (a) => a.length > 0 && !/[\s\\{}]/.test(a)
 // Непустые варианты ответа одного задания.
 const cleanOpts = (t) => (t.options || []).map((o) => o.trim()).filter(Boolean)
 
-function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw }) {
+function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw, bankSubjects = null, owner = false }) {
   const isEditing = !!editingHw
   const [studentId, setStudentId] = useState(editingHw?.student_id ? String(editingHw.student_id) : "")
   const [title, setTitle] = useState(editingHw?.title || "")
@@ -159,7 +163,10 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
   // --- Сборка из банка заданий (генераторы грузятся лениво: они тяжёлые) ---
   const [bank, setBank] = useState(null)
   const [bankLoading, setBankLoading] = useState(false)
-  const [bankType, setBankType] = useState("ОГЭ")
+  // Предметы, отмеченные репетитором в «Профиле»: банк открывается сразу на них.
+  // Ничего не отмечено — все открытые предметы, как было раньше.
+  const bankGroups = subjectGroups({ picked: bankSubjects, owner })
+  const [bankType, setBankType] = useState(() => firstType(bankGroups))
   const [bankNums, setBankNums] = useState([])
   const [bankThemes, setBankThemes] = useState([])
   const [bankCount, setBankCount] = useState(5)
@@ -751,7 +758,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw 
                             }}
                             className="input-glass"
                           >
-                            {bank.EXAM_GROUPS.map((g) => (
+                            {bankGroups.map((g) => (
                               <optgroup key={g.key} label={g.key}>
                                 {g.subjects.map((s) => <option key={s.type} value={s.type}>{g.key} · {s.label}</option>)}
                               </optgroup>
@@ -1597,6 +1604,8 @@ function Homework({ user, students }) {
         <CreateHomeworkModal
           students={students}
           tutorId={user.id}
+          bankSubjects={user.profile?.bank_subjects}
+          owner={isOwner(user.email)}
           onClose={() => setShowModal(false)}
           onCreated={loadHomework}
         />
@@ -1606,6 +1615,8 @@ function Homework({ user, students }) {
         <CreateHomeworkModal
           students={students}
           tutorId={user.id}
+          bankSubjects={user.profile?.bank_subjects}
+          owner={isOwner(user.email)}
           editingHw={editingHw}
           onClose={() => setEditingHw(null)}
           onCreated={loadHomework}

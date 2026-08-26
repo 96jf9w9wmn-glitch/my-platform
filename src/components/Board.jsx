@@ -151,15 +151,14 @@ function Tip({ label, hotkey, dark, show = false }) {
   )
 }
 
-// Содержимое попапа «Настройки обводки»: толщина + стиль линии + углы (в одну строку).
-// Стиль линии и углы применяются только к фигурам (см. paintStroke): у пера и ластика
-// штрих всегда сплошной и со скруглёнными стыками — для них эти группы не показываем.
-function StrokeSettings({ dark, tool, curWidth, curDash, curCorner, onWidth, onDash, onCorner }) {
+// Содержимое попапа «Настройки обводки»: толщина + стиль линии (в одну строку).
+// Стиль линии применяется только к фигурам (см. paintStroke): у пера и ластика
+// штрих всегда сплошной — для него эту группу не показываем.
+function StrokeSettings({ dark, tool, curWidth, curDash, onWidth, onDash }) {
   const swatch = dark ? "#e5e5ea" : "#1c1c1e"
   const sep = <div className="w-px h-7 mx-0.5 flex-shrink-0" style={{ background: dark ? "rgba(255,255,255,.12)" : "rgba(0,0,0,.1)" }} />
   const dashArr = (d) => d === "dashed" ? "5,4" : d === "dotted" ? "0.1,5" : ""
   const showDash = DASHABLE_SHAPES.has(tool)
-  const showCorner = SHAPE_TOOLS.has(tool)
   return (
     <div className="flex items-center gap-1">
       {WIDTHS.map((w) => (
@@ -173,15 +172,6 @@ function StrokeSettings({ dark, tool, curWidth, curDash, curCorner, onWidth, onD
         <button key={d} onClick={() => onDash(d)} title={d === "solid" ? "Сплошная" : d === "dashed" ? "Пунктир" : "Точки"}
           className={`press-tap w-11 h-9 rounded-xl flex items-center justify-center ${curDash === d ? "bg-blue-500/15" : "hover:bg-black/5 dark:hover:bg-white/10"}`}>
           <svg width="34" height="12" viewBox="0 0 34 12"><line x1="2" y1="6" x2="32" y2="6" stroke={swatch} strokeWidth="2.5" strokeLinecap="round" strokeDasharray={dashArr(d)} /></svg>
-        </button>
-      ))}
-      {showCorner && sep}
-      {showCorner && [["round", true], ["sharp", false]].map(([id, round]) => (
-        <button key={id} onClick={() => onCorner(id)} title={round ? "Скруглённые углы" : "Острые углы"}
-          className={`press-tap w-11 h-9 rounded-xl flex items-center justify-center ${curCorner === id ? "bg-blue-500/15" : "hover:bg-black/5 dark:hover:bg-white/10"}`}>
-          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke={swatch} strokeWidth="2">
-            {round ? <path d="M4 15 V9 A5 5 0 0 1 9 4 H15" strokeLinecap="round" /> : <path d="M4 15 V4 H15" strokeLinecap="butt" />}
-          </svg>
         </button>
       ))}
     </div>
@@ -247,7 +237,7 @@ function widthAt(base, speed, pressure) {
   return clamp(base * vMul * pMul, base * 0.5, base * 1.7)
 }
 
-export default function Board({ roomId, userId, userName, theme = "light", onClose, account = null, token = null, canAddTasks = false, tutorSubject = null, tutorExamFocus = null }) {
+export default function Board({ roomId, userId, userName, theme = "light", onClose, account = null, token = null, canAddTasks = false, tutorSubject = null, tutorExamFocus = null, tutorSubjects = null, tutorOwner = false }) {
   // Доска занимает весь экран, поэтому её уход тоже должен быть плавным:
   // класс .is-closing держится, пока идёт затухание, и лишь потом зовётся onClose.
   const { cls: closingCls, close: leave } = useClosing(onClose)
@@ -259,7 +249,6 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const [color, setColor] = useState("ink")
   const [width, setWidth] = useState(WIDTHS[1])
   const [dash, setDash] = useState("solid")     // solid | dashed | dotted
-  const [corner, setCorner] = useState("sharp") // round | sharp
   // Открытый попап панели — ОДИН на всех: "stroke" | "selStroke" | "shapes" | "bg" | null.
   // Поэтому открытие любого попапа автоматически закрывает предыдущий, а клик мимо
   // (по холсту или где-то ещё) закрывает открытый — см. эффект ниже и onPointerDown.
@@ -300,7 +289,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // Число выделенных штрихов: пропало выделение — закрываем попап его настроек
   const applySelCount = (n) => { setSelCount(n); if (!n && menu === "selStroke") closeMenu("selStroke") }
   const [selBox, setSelBox] = useState(null)   // ориентированная рамка выделения (экранные координаты)
-  const [selProps, setSelProps] = useState(null) // свойства первого стилизуемого штриха {width,dash,corner}; null — выделены только картинки
+  const [selProps, setSelProps] = useState(null) // свойства первого стилизуемого штриха {width,dash}; null — выделены только картинки
   const [dragActive, setDragActive] = useState(false) // перетаскивание файла над доской
   const [taskPick, setTaskPick] = useState(false)     // открыт выбор задания из банка
   const [confirmClear, setConfirmClear] = useState(false) // спрашиваем перед очисткой доски
@@ -515,12 +504,12 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       for (const id of selection.current) {
         const s0 = strokes.current.get(id)
         if (!s0 || s0.tool === "image" || s0.tool === "eraser") continue
-        props = { tool: s0.tool, width: s0.width, dash: s0.dash || "solid", corner: s0.corner || "sharp" }
+        props = { tool: s0.tool, width: s0.width, dash: s0.dash || "solid" }
         break
       }
     }
     const pp = lastSelProps.current
-    if ((!pp) !== (!props) || (pp && props && (pp.tool !== props.tool || pp.width !== props.width || pp.dash !== props.dash || pp.corner !== props.corner))) {
+    if ((!pp) !== (!props) || (pp && props && (pp.tool !== props.tool || pp.width !== props.width || pp.dash !== props.dash))) {
       lastSelProps.current = props; setSelProps(props)
     }
     if (marquee.current) {
@@ -877,7 +866,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     drawing.current = {
       id: makeId(userId), author: userId, tool,
       color: tool === "eraser" ? "#000" : color,
-      width: base, dash, corner, points: [[p[0], p[1], base]],
+      width: base, dash, points: [[p[0], p[1], base]],
     }
     scheduleDraw()
   }
@@ -983,7 +972,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         // Готовая фигура задаётся габаритом (a→b), произвольный многоугольник — своими
         // вершинами; ширина/стиль линии берутся текущие, как у нарисованной фигуры.
         const points = shape.points || [shape.a.slice(0, 2), shape.b.slice(0, 2)]
-        s = { ...s, tool: shape.tool, points, width: s.width, dash, corner }
+        s = { ...s, tool: shape.tool, points, width: s.width, dash }
       }
     }
     strokes.current.set(s.id, s)
@@ -1286,12 +1275,6 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     if (!selection.current.size) return
     const before = snapshotSelection()
     for (const id of selection.current) { const s = strokes.current.get(id); if (s && s.tool !== "eraser") s.dash = d }
-    commitSelection(before); scheduleDraw()
-  }
-  function setSelectionCorner(cn) {
-    if (!selection.current.size) return
-    const before = snapshotSelection()
-    for (const id of selection.current) { const s = strokes.current.get(id); if (s && s.tool !== "eraser") s.corner = cn }
     commitSelection(before); scheduleDraw()
   }
 
@@ -1749,8 +1732,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
                 {menuShown("selStroke") && (
                   <div className={`absolute bottom-full mb-2 left-1/2 -translate-x-1/2 p-2 rounded-xl shadow-lg z-10 ${menuAnim("selStroke")}`}
                     style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
-                    <StrokeSettings dark={dark} tool={selProps?.tool} curWidth={selProps?.width} curDash={selProps?.dash || "solid"} curCorner={selProps?.corner || "sharp"}
-                      onWidth={setSelectionWidth} onDash={setSelectionDash} onCorner={setSelectionCorner} />
+                    <StrokeSettings dark={dark} tool={selProps?.tool} curWidth={selProps?.width} curDash={selProps?.dash || "solid"}
+                      onWidth={setSelectionWidth} onDash={setSelectionDash} />
                   </div>
                 )}
               </div>
@@ -1916,7 +1899,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
               {menuShown("stroke") && (
                 <div className={`absolute bottom-full mb-2 left-1/2 -translate-x-1/2 p-2 rounded-xl shadow-lg ${menuAnim("stroke")}`}
                   style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
-                  <StrokeSettings dark={dark} tool={tool} curWidth={width} curDash={dash} curCorner={corner} onWidth={setWidth} onDash={setDash} onCorner={setCorner} />
+                  <StrokeSettings dark={dark} tool={tool} curWidth={width} curDash={dash} onWidth={setWidth} onDash={setDash} />
                 </div>
               )}
             </div>
@@ -1981,6 +1964,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
             roomId={roomId}
             tutorSubject={tutorSubject}
             tutorExamFocus={tutorExamFocus}
+            tutorSubjects={tutorSubjects}
+            owner={tutorOwner}
             onInsert={insertTaskSheet}
             onClose={() => { modalOpen.current = false; setTaskPick(false) }}
           />
