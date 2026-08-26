@@ -38,9 +38,12 @@ function GradeBar({ label, count, max, color }) {
   )
 }
 
+// Подписи те же, что на печатном листе (pages/reportSheet.js): родитель видит
+// один и тот же отчёт в кабинете и в PDF — разные слова для одного статуса
+// читались бы как разные оценки.
 const CONF_TONE = {
-  struggling: { label: "тяжело", cls: "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300" },
-  progress: { label: "движемся", cls: "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300" },
+  struggling: { label: "нужна помощь", cls: "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300" },
+  progress: { label: "в процессе", cls: "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300" },
   confident: { label: "уверенно", cls: "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300" },
 }
 

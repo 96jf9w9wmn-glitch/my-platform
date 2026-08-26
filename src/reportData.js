@@ -61,9 +61,11 @@ export function aggregateAttempts(attempts) {
   return [...map.values()].map((r) => ({ ...r, accuracy: Math.round((r.correct / r.attempts) * 100) }))
 }
 
-// Подписи типажей: «Площадь трапеции» вместо t17ParaArea. Банк тяжёлый,
-// поэтому грузим лениво и только когда есть что подписывать — так же, как
-// это делает useTypeLabels для слабых типажей.
+// Подписи из банка заданий. Родителю нужен не типаж («ax² = bx»), а тема
+// («Квадратные уравнения»), поэтому берём и то и другое: имя раздела темы для
+// заголовка строки и подпись типажа — на случай, если раздела нет.
+// Банк тяжёлый, поэтому грузим лениво и только когда есть что подписывать —
+// так же, как это делает useTypeLabels для слабых типажей.
 export async function typeLabels(rows) {
   const keyed = (rows || []).filter((r) => r.gen_key)
   if (!keyed.length) return {}
@@ -74,7 +76,7 @@ export async function typeLabels(rows) {
       let themes
       try { themes = taskThemes(r.exam_type, r.number) } catch { continue }
       for (const t of themes || []) {
-        for (const it of t.items) if (it.key === r.gen_key) map[r.gen_key] = it.label
+        for (const it of t.items) if (it.key === r.gen_key) map[r.gen_key] = { label: it.label, theme: t.theme }
       }
     }
     return map
@@ -84,7 +86,24 @@ export async function typeLabels(rows) {
 }
 
 function topicTitle(row, labels) {
-  return labels[row.gen_key] || `Задание №${row.number}`
+  const hit = labels[row.gen_key]
+  return hit?.theme || hit?.label || `Задание №${row.number}`
+}
+
+// Типажи внутри одной темы складываем: родителю важно, как идут «Квадратные
+// уравнения» целиком, а не каждый из шести генераторов по отдельности. Заодно
+// в бакете набирается достаточно попыток, чтобы процент что-то значил.
+export function groupByTheme(aggregated, labels) {
+  const map = new Map()
+  for (const r of aggregated || []) {
+    const title = topicTitle(r, labels)
+    const key = `${r.exam_type}|${title}`
+    const row = map.get(key) || { ...r, title, attempts: 0, correct: 0 }
+    row.attempts += r.attempts
+    row.correct += r.correct
+    map.set(key, row)
+  }
+  return [...map.values()].map((r) => ({ ...r, accuracy: Math.round((r.correct / r.attempts) * 100) }))
 }
 
 // Одна строка отчёта — своими словами, без модели. Она же остаётся, если
@@ -98,7 +117,7 @@ function factComment(row) {
 // Темы отчёта. Сначала то, что получается, потом то, над чем работаем:
 // родитель должен увидеть успехи, а не только список провалов.
 export function pickTopics(aggregated, labels) {
-  const enough = (aggregated || []).filter((r) => r.attempts >= MIN_ATTEMPTS)
+  const enough = groupByTheme(aggregated, labels).filter((r) => r.attempts >= MIN_ATTEMPTS)
   const strong = enough.filter((r) => r.accuracy >= 70).sort((a, b) => b.accuracy - a.accuracy)
   const weak = enough.filter((r) => r.accuracy < 70).sort((a, b) => a.accuracy - b.accuracy)
 
@@ -110,7 +129,7 @@ export function pickTopics(aggregated, labels) {
   return [...strongTake, ...weakTake]
     .sort((a, b) => b.accuracy - a.accuracy)
     .map((r) => ({
-      title: topicTitle(r, labels),
+      title: r.title,
       confidence: confidenceByAccuracy(r.accuracy),
       comment: factComment(r),
       accuracy: r.accuracy,
