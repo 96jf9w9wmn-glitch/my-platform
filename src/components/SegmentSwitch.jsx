@@ -10,9 +10,11 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 // то есть до отрисовки, поэтому на первом кадре «палец» уже стоит на месте и
 // ниоткуда не выезжает. Плавность и уважение к prefers-reduced-motion —
 // в классе .seg-finger (index.css).
+// Мельче этого не делать: подписи сегментов — основной способ переключения
+// раздела, и на 12px они читались как служебная подпись, а не как кнопки.
 const SIZES = {
-  md: { wrap: "p-1 rounded-2xl", btn: "px-6 py-1.5 text-sm font-semibold", finger: "rounded-xl" },
-  sm: { wrap: "p-[3px] rounded-xl", btn: "px-3 py-1 text-xs font-medium", finger: "rounded-lg" },
+  md: { wrap: "p-1 rounded-2xl", btn: "px-6 py-2 text-[15px] font-semibold", finger: "rounded-xl" },
+  sm: { wrap: "p-1 rounded-2xl", btn: "px-4 py-1.5 text-sm font-semibold", finger: "rounded-xl" },
 }
 
 // equal=false — сегменты по ширине текста, а не поровну. Нужно, когда одна
@@ -68,7 +70,7 @@ export default function SegmentSwitch({ items, value, onChange, className = "", 
           aria-selected={value === it.key}
           onClick={() => onChange(it.key)}
           className={`seg-label relative z-10 ${equal ? "flex-1 basis-0" : "flex-none"} min-w-0 flex items-center justify-center gap-2 whitespace-nowrap ${s.btn} ${s.finger} ${
-            value === it.key ? "text-blue-600 dark:text-blue-300" : "text-gray-500 hover:text-gray-700"
+            value === it.key ? "text-blue-600 dark:text-blue-300" : "text-gray-600 hover:text-gray-900"
           }`}
         >
           {it.label ?? it.key}
