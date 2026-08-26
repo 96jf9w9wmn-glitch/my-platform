@@ -53,6 +53,13 @@ function isOverdue(hw) {
   return parseLocalDate(hw.deadline) < today
 }
 
+// Название по умолчанию — сегодняшняя дата: чаще всего задание выдаётся на
+// текущем занятии, и репетитору остаётся только переименовать при желании.
+function todayTitle() {
+  const d = new Date()
+  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long" }) + " " + d.getFullYear()
+}
+
 function buildUploadPath(tutorId, name) {
   const ext = name.split(".").pop()
   return tutorId + "/" + Date.now() + "." + ext
@@ -128,7 +135,13 @@ const cleanOpts = (t) => (t.options || []).map((o) => o.trim()).filter(Boolean)
 function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw, bankSubjects = null, owner = false }) {
   const isEditing = !!editingHw
   const [studentId, setStudentId] = useState(editingHw?.student_id ? String(editingHw.student_id) : "")
-  const [title, setTitle] = useState(editingHw?.title || "")
+  // Дату подставляем один раз при открытии — иначе перерисовка вернула бы
+  // подстановку поверх того, что репетитор уже написал.
+  const [defaultTitle] = useState(todayTitle)
+  const [title, setTitle] = useState(editingHw?.title || defaultTitle)
+  // Подставленную дату банк и ИИ вправе заменить своим названием, набранное
+  // вручную — нет.
+  const isAutoTitle = !title.trim() || title === defaultTitle
   const [description, setDescription] = useState(editingHw?.description || "")
   const [deadline, setDeadline] = useState(editingHw?.deadline || "")
   // Ограничение по времени в минутах: пусто — без таймера (как было раньше).
@@ -314,7 +327,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
     if (mode !== "mcq") { setTestOptions(null); setMcqCorrect([]) }
     if (mode !== "free") setAnswersInput("")
     // Название репетитора важнее предложенного моделью — своё не затираем.
-    if (!title.trim()) setTitle(p.title.trim() || genTopic)
+    if (isAutoTitle) setTitle(p.title.trim() || genTopic)
     syncPreview(p, mode)
   }
 
@@ -383,7 +396,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
       setAutoCheck(false)
       setAnswersInput("")
     }
-    if (tasks.length && !title.trim()) {
+    if (tasks.length && isAutoTitle) {
       const nums = [...new Set(tasks.map((t) => t.number))].sort((a, b) => a - b)
       setTitle(`${bank.subjectLabel(bankType)}: № ${nums.join(", ")}`)
     }
@@ -640,10 +653,11 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
             </div>
 
             {/* Как ученик сдаёт. Тип задания берётся отсюда: есть ответы — тест.
-                Карточка тянется до низа колонки (flex-1), а не отталкивается
-                от него (mt-auto): иначе между чипами срока и ею зияет пустота,
-                когда правая колонка выше. */}
-            <div className="rounded-2xl ring-1 ring-gray-500/15 p-3 lg:flex-1">
+                Карточка ровно по содержимому: ни flex-1 (растягивал рамку до низа
+                колонки, и внутри зияла пустая коробка), ни mt-auto (отрывал её от
+                чипов срока). Незанятое место под колонкой — просто фон, его не
+                видно, в отличие от пустоты внутри рамки. */}
+            <div className="rounded-2xl ring-1 ring-gray-500/15 p-3">
               <Toggle
                 on={autoCheck}
                 onClick={() => setAutoCheck((v) => !v)}

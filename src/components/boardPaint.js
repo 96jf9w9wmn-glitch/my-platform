@@ -51,7 +51,10 @@ export function strokeBBox(s) {
   return { minX: minX - pad, minY: minY - pad, maxX: maxX + pad, maxY: maxY + pad }
 }
 
-// Рисует фигуру заданного типа в габарите между точками a и b (мировые координаты)
+// Рисует фигуру заданного типа в габарите между точками a и b (мировые координаты).
+// corner ("round" | иное) читается только у СТАРЫХ штрихов: выбор скругления убран из
+// панели 26.08.2026, новые фигуры всегда с острыми углами — но снимки досок, снятые до
+// этого, должны открываться такими же, какими их закрыли.
 export function drawShape(ctx, tool, a, b, corner) {
   const x0 = a[0], y0 = a[1], x1 = b[0], y1 = b[1]
   const x = Math.min(x0, x1), y = Math.min(y0, y1), w = Math.abs(x1 - x0), h = Math.abs(y1 - y0)
