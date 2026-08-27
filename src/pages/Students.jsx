@@ -73,10 +73,18 @@ function getDaysUntilExam(student) {
 }
 
 const GOAL_STYLE = {
-  "ОГЭ":          { cls: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",       label: "ОГЭ" },
-  "ЕГЭ":          { cls: "bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300", label: "ЕГЭ" },
-  "Успеваемость": { cls: "bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300",    label: "Успев." },
+  "ОГЭ":          { cls: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",       label: "ОГЭ",    full: "ОГЭ" },
+  "ЕГЭ":          { cls: "bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300", label: "ЕГЭ",    full: "ЕГЭ" },
+  "Успеваемость": { cls: "bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300",    label: "Успев.", full: "Успеваемость" },
 }
+
+// Раскладка таблицы учеников. Цель и телефон — отдельными столбцами, иначе
+// строка выглядит пустой справа. Столбцы убираются по мере сужения окна, и
+// порядок шаблона обязан совпадать с порядком видимых ячеек в разметке
+// (до lg столбца «Следующий урок» нет — он самый широкий и уходит первым).
+const COLS =
+  "grid-cols-[minmax(120px,1.5fr)_minmax(100px,0.9fr)_minmax(120px,1fr)_minmax(110px,1fr)_36px] " +
+  "lg:grid-cols-[minmax(160px,1.6fr)_minmax(110px,0.9fr)_minmax(140px,1fr)_minmax(160px,1.2fr)_minmax(120px,1fr)_36px]"
 
 // Пустой список: карточку ученика вручную не заводят, поэтому объясняем, откуда
 // ученик берётся, и даём единственное действие — пригласить.
@@ -513,10 +521,11 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
       ) : (
         /* Desktop table */
         <div className="glass overflow-hidden">
-          <div className="grid px-4 py-2.5 glass-table-header text-xs text-gray-500 font-medium"
-            style={{ gridTemplateColumns: "1fr 180px 140px 36px" }}>
+          <div className={"grid px-4 py-2.5 glass-table-header text-xs text-gray-500 font-medium " + COLS}>
             <span>Ученик</span>
-            <span className="flex items-center gap-1"><Icon name="calendar" size={11} />Следующий урок</span>
+            <span>Цель</span>
+            <span>Телефон</span>
+            <span className="hidden lg:flex items-center gap-1"><Icon name="calendar" size={11} />Следующий урок</span>
             <span className="flex items-center gap-1"><Icon name="dollar" size={11} />Долг за занятия</span>
             <span />
           </div>
@@ -528,31 +537,34 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
 
             return (
               <div key={student.id} onClick={() => setSelectedStudent(student.id)}
-                className="group grid border-t border-white/40 px-4 py-3 items-center cursor-pointer hover:bg-white/30 active:bg-white/50 transition-colors"
-                style={{ gridTemplateColumns: "1fr 180px 140px 36px" }}>
+                className={"group grid border-t border-white/40 px-4 py-3 items-center cursor-pointer hover:bg-white/30 active:bg-white/50 transition-colors " + COLS}>
 
                 {/* Student */}
-                <div className="flex items-center gap-3 min-w-0">
+                <div className="flex items-center gap-3 min-w-0 pr-3">
                   <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-500/15 flex items-center justify-center text-xs font-medium text-blue-600 dark:text-blue-300 flex-shrink-0 overflow-hidden">
                     {student.avatar
                       ? <img src={student.avatar} alt={student.name} className="w-full h-full object-cover" />
                       : getInitials(student.name)}
                   </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm truncate">{student.name}</span>
-                      {goal && (
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-semibold flex-shrink-0 ${goal.cls}`}>
-                          {goal.label}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-gray-400">{formatPhone(student.phone)}</div>
-                  </div>
+                  <span className="font-medium text-sm truncate">{student.name}</span>
+                </div>
+
+                {/* Goal */}
+                <div>
+                  {goal ? (
+                    <span className={`text-[11px] px-2 py-0.5 rounded-md font-semibold ${goal.cls}`}>{goal.full}</span>
+                  ) : (
+                    <span className="text-xs text-gray-300">—</span>
+                  )}
+                </div>
+
+                {/* Phone */}
+                <div className="text-xs text-gray-500 truncate">
+                  {student.phone ? formatPhone(student.phone) : <span className="text-gray-300">—</span>}
                 </div>
 
                 {/* Next lesson */}
-                <div className="text-xs text-gray-600">
+                <div className="hidden lg:block text-xs text-gray-600">
                   {next ? (
                     <span className="flex items-center gap-1.5">
                       <Icon name="calendar" size={12} className="text-blue-400 flex-shrink-0" />
