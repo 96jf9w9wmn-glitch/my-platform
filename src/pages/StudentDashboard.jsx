@@ -1550,18 +1550,17 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   // У №24 (доказательство) вариантов нет — только фото решения.
   const part1Count = part1CountOf(selectedVariant?.type)
   const variantChoices = selectedVariant?.answers?.part2_choices || {}
-  // Номера части 2 берём из фактического состава варианта (в профильном ЕГЭ пока входит
-  // только №13); fallback на полный список — для старых вариантов без tasks_snapshot.
+  // Номера части 2 берём из фактического состава варианта; запасной путь —
+  // штатный состав ВАРИАНТА (не экзамена), для старых записей без tasks_snapshot.
+  // По спецификации экзамена его брать нельзя: часть 2 есть и у ОГЭ по
+  // информатике (13–16 сдают файлами эксперту), но в наши варианты эти номера
+  // не идут — им нужен компьютер. Ученик получал бы требование прикрепить
+  // решения четырёх заданий, которых в работе нет.
   const part2FromSnapshot = [...new Set((selectedVariant?.tasks_snapshot || [])
     .map((t) => t.number).filter((n) => isPart2Number(selectedVariant?.type, n)))].sort((a, b) => a - b)
   const part2TaskNums = part2FromSnapshot.length
     ? part2FromSnapshot
-    : (part2NumbersOf(selectedVariant?.type).length
-        ? part2NumbersOf(selectedVariant?.type)
-        // Старые варианты без снимка: у них часть 2 полная по спецификации
-        // экзамена. Раньше здесь стояло жёсткое 13–19 на любой ЕГЭ, и у КЕГЭ,
-        // где части 2 нет вовсе, появлялись поля семи несуществующих заданий.
-        : Object.keys(part2MaxOf(selectedVariant?.type)).map(Number))
+    : part2NumbersOf(selectedVariant?.type)
   // Максимум первичного балла этого варианта и перевод во вторичный (тестовый
   // балл или отметку) — общей шкалой из examScales.js.
   const variantMax = variantMaxPrimary(selectedVariant?.type, [...part1NumbersOf(selectedVariant?.type), ...part2TaskNums])
