@@ -67,9 +67,11 @@ function periodLine(period, lessonsCount) {
 
 // Плитка с числом. Показываем только те, для которых данные реально есть:
 // пустой прочерк в отчёте родителю читается как «репетитор не следит».
-function statTile({ value, label, accent }) {
+// Ширину делим на число плиток: пустые ячейки-заглушки оставляли единственную
+// плитку висеть в четверть листа, и лист читался как съехавший.
+function statTile({ value, label, accent }, count) {
   return `
-    <td style="padding:0 6px;" width="25%">
+    <td style="padding:0 6px;" width="${Math.round(100 / (count || 1))}%">
       <div style="border:1px solid ${LINE}; border-radius:16px; padding:14px 16px; background:#fbfcfd;">
         <div style="font-size:26px; font-weight:700; letter-spacing:-0.5px; color:${accent || INK}; line-height:1.1;">${esc(value)}</div>
         <div style="font-size:11.5px; color:${MUTED}; margin-top:6px; line-height:1.3;">${esc(label)}</div>
@@ -177,12 +179,14 @@ export function reportSheetHtml({ report, studentName, tutorName, stats = {}, le
       </table>
 
       ${tiles.length ? `
-      <table style="width:100%; border-collapse:separate; border-spacing:0; margin:22px -6px 0; table-layout:fixed;">
-        <tr>${tiles.map(statTile).join("")}${
-          // Пустые ячейки, чтобы три плитки не растягивались на всю ширину неровно.
-          Array.from({ length: Math.max(0, 4 - tiles.length) }, () => '<td style="padding:0 6px;" width="25%"></td>').join("")
-        }</tr>
-      </table>` : ""}
+      <!-- Зазор между плитками сделан внутренними отступами ячеек, поэтому ряд
+           расширен обёрткой на те же 6px с каждой стороны: без неё таблица
+           оставалась шириной листа, а крайние плитки не доходили до его краёв. -->
+      <div style="margin:22px -6px 0; overflow:hidden;">
+        <table style="width:100%; border-collapse:separate; border-spacing:0; table-layout:fixed;">
+          <tr>${tiles.map((t) => statTile(t, tiles.length)).join("")}</tr>
+        </table>
+      </div>` : ""}
 
       ${report?.summary ? `
       <div style="margin-top:26px;">

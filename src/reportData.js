@@ -343,7 +343,10 @@ export async function generateReport(student, { accessToken } = {}) {
     stats: facts.stats,
     lessons: facts.lessons,
     summary: restoreName(ai?.summary, firstName) || fallback.summary,
-    next_steps: restoreName(ai?.next_steps, firstName) || fallback.next_steps,
+    // Без разобранных тем модели не из чего строить «что дальше»: она пишет
+    // служебное «в предоставленных данных не определены», и это уходит
+    // родителю. В таком отчёте раздела лучше не будет вовсе.
+    next_steps: (facts.topics.length ? restoreName(ai?.next_steps, firstName) : "") || fallback.next_steps,
     topics: facts.topics.map((t, i) => ({
       title: t.title,
       confidence: t.confidence,
