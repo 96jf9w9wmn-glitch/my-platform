@@ -7,6 +7,9 @@ import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
 import { isModuleNumber, part1NumbersOf, part1SlotsOf, part2NumbersOf, isPart2Number, examLevelOf, VARIANT_TYPES } from "./taskBankMeta"
 import { scaleOf, part2MaxOf, variantMaxPrimary, examResult, secondaryLabel } from "../examScales"
+import { criteriaOf, gradingNotesOf } from "../examCriteria"
+// Вариант ученик решает столько же, сколько длится настоящий экзамен.
+import { examMinutesOf, formatExamDuration } from "./examTiming"
 // Список предметов — из лёгкого модуля: генераторы приезжают отдельно, по кнопке.
 import { BANK_SUBJECTS, subjectOf, examLabel } from "./examSubjectList"
 import { isOwner } from "../owner"
@@ -15,6 +18,7 @@ import { PlanHint } from "../components/PlanLock"
 import ConfirmModal from "../components/ConfirmModal"
 import SegmentSwitch from "../components/SegmentSwitch"
 import { useClosing } from "../useClosing"
+import Reveal from "../components/Reveal"
 // Тетрадь тянет генераторы заданий — грузим только когда её открыли.
 
 // Банк заданий и сборка PDF — самые тяжёлые модули приложения: генераторы всех предметов
@@ -443,6 +447,13 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
                 </div>
               )}
 
+              {examMinutesOf(examType) && (
+                <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                  <Icon name="clock" size={12} />
+                  Ученик решает на время: {formatExamDuration(examMinutesOf(examType))} — столько же длится экзамен
+                </div>
+              )}
+
               <div>
                 <label className="text-sm text-gray-500 mb-1 block">Название варианта</label>
                 <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Например: Пробник перед экзаменом"
@@ -693,6 +704,11 @@ function VariantReview({ submission, variant, onClose, onSave }) {
   const part2Tasks = variantPart2Tasks(variant)
   const [scores, setScores] = useState(part2Tasks.reduce((acc, n) => ({ ...acc, [n]: submission.part2_score_detail?.[n] ?? "" }), {}))
   const [loading, setLoading] = useState(false)
+  // Критерии ФИПИ по одному номеру за раз: развёрнутые сразу все занимают
+  // больше экрана, чем сама форма, а сверяются всё равно по очереди.
+  const [openCriteria, setOpenCriteria] = useState(null)
+  const [showNotes, setShowNotes] = useState(false)
+  const notes = gradingNotesOf(type)
 
   const part1Numbers = part1NumbersOf(type)
   const part1Max = part1Numbers.length
@@ -721,23 +737,49 @@ function VariantReview({ submission, variant, onClose, onSave }) {
     const correct = variant.answers?.part2?.[n]
     const hasFile = !!submission.part2_files?.[n]
     const match = chosen != null && correct != null && String(chosen).trim() === String(correct).trim()
+    // Критерии ФИПИ для этого номера: по ним эксперт на экзамене и решает,
+    // сколько ставить за неполное решение. Без них балл ставится на глаз.
+    const criteria = criteriaOf(type, n)
+    const open = openCriteria === n
     return (
-      <div key={n} className="flex items-center gap-3">
-        <span className="text-sm text-gray-600 w-24 flex-shrink-0">Задание {n}</span>
-        <div className="flex-1 min-w-0 text-xs leading-snug">
-          {chosen != null ? (
-            <div className={match ? "text-green-600" : "text-red-500"}>
-              выбран: {chosen} {match ? "✓" : correct ? `· верный: ${correct}` : ""}
-            </div>
+      <div key={n}>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-gray-600 w-24 flex-shrink-0">Задание {n}</span>
+          <div className="flex-1 min-w-0 text-xs leading-snug">
+            {chosen != null ? (
+              <div className={match ? "text-green-600" : "text-red-500"}>
+                выбран: {chosen} {match ? "✓" : correct ? `· верный: ${correct}` : ""}
+              </div>
+            ) : (
+              <div className="text-gray-400">ответ не выбран</div>
+            )}
+            {!hasFile && <div className="text-amber-600">нет фото решения</div>}
+          </div>
+          {criteria ? (
+            <button type="button" onClick={() => setOpenCriteria(open ? null : n)}
+              aria-expanded={open}
+              className={`press-fill flex-shrink-0 text-[11px] rounded-lg px-2 py-1 ring-1 transition-colors ${open ? "bg-blue-500 text-white ring-blue-500" : "bg-blue-50 text-blue-600 ring-blue-100"}`}>
+              из {part2Max[n]}
+            </button>
           ) : (
-            <div className="text-gray-400">ответ не выбран</div>
+            <span className="text-xs text-gray-400 flex-shrink-0">макс. {part2Max[n]}</span>
           )}
-          {!hasFile && <div className="text-amber-600">нет фото решения</div>}
+          <input type="number" min="0" max={part2Max[n]} value={scores[n]}
+            onChange={(e) => setScores((prev) => ({ ...prev, [n]: e.target.value }))}
+            className="w-16 border border-gray-200 rounded-lg px-2 py-1 text-sm outline-none focus:border-blue-400 flex-shrink-0" />
         </div>
-        <span className="text-xs text-gray-400 flex-shrink-0">макс. {part2Max[n]}</span>
-        <input type="number" min="0" max={part2Max[n]} value={scores[n]}
-          onChange={(e) => setScores((prev) => ({ ...prev, [n]: e.target.value }))}
-          className="w-16 border border-gray-200 rounded-lg px-2 py-1 text-sm outline-none focus:border-blue-400 flex-shrink-0" />
+        <Reveal value={open && criteria ? n : null}>
+          {() => (
+            <div className="mt-2 rounded-xl bg-gray-50 ring-1 ring-gray-100 p-3 flex flex-col gap-2">
+              {criteria.map((c) => (
+                <div key={c.score} className="flex items-start gap-2.5">
+                  <span className="mt-px w-5 h-5 flex-shrink-0 rounded-md bg-white ring-1 ring-gray-200 text-[11px] font-medium text-gray-600 flex items-center justify-center">{c.score}</span>
+                  <span className="text-[11px] leading-relaxed text-gray-500">{c.text}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Reveal>
       </div>
     )
   }
@@ -774,6 +816,12 @@ function VariantReview({ submission, variant, onClose, onSave }) {
           <div className="bg-blue-50 rounded-lg p-3 mb-4">
             <div className="text-sm font-medium text-blue-700">Часть 1: {part1Score} / {part1Max} {plural(part1Max, "балл", "балла", "баллов")}</div>
           </div>
+          {submission.auto_submitted && (
+            <div className="flex items-start gap-1.5 text-xs text-amber-600 mb-4">
+              <Icon name="clock" size={12} className="mt-0.5 flex-shrink-0" />
+              Работа ушла на проверку автоматически: время экзамена вышло, часть ответов ученик мог не успеть вписать.
+            </div>
+          )}
           {submission.part2_files && Object.keys(submission.part2_files).length > 0 && (
             <div className="mb-4">
               <label className="text-sm text-gray-500 mb-2 block">Файлы ученика</label>
@@ -788,7 +836,24 @@ function VariantReview({ submission, variant, onClose, onSave }) {
           )}
           {part2Tasks.length > 0 && (
             <div className="mb-4">
-              <label className="text-sm text-gray-500 mb-2 block">Баллы за часть 2</label>
+              <div className="flex items-baseline justify-between gap-3 mb-2">
+                <label className="text-sm text-gray-500">Баллы за часть 2</label>
+                {notes && (
+                  <button type="button" onClick={() => setShowNotes((v) => !v)} aria-expanded={showNotes}
+                    className="press-fill text-[11px] text-gray-400 hover:text-gray-600 rounded-lg px-1.5 py-0.5">
+                    {showNotes ? "скрыть требования" : "общие требования"}
+                  </button>
+                )}
+              </div>
+              <Reveal value={showNotes && notes ? notes : null}>
+                {(list) => (
+                  <ul className="mb-3 rounded-xl bg-gray-50 ring-1 ring-gray-100 p-3 flex flex-col gap-1.5">
+                    {list.map((t) => (
+                      <li key={t} className="text-[11px] leading-relaxed text-gray-500">{t}</li>
+                    ))}
+                  </ul>
+                )}
+              </Reveal>
               {geometry.length > 0 ? (
                 <>
                   <div className="mb-3">
@@ -954,8 +1019,9 @@ function Variants({ user, students = [] }) {
   }
 
   function renderScore(sub) {
-    if (sub.status === "pending") return "Ещё не выполнял"
-    if (sub.status === "submitted") return "Часть 1 сдана · ждёт проверки"
+    // opened_at ставится при старте таймера — значит, ученик уже сидит за вариантом.
+    if (sub.status === "pending") return sub.opened_at ? "Решает — время идёт" : "Ещё не выполнял"
+    if (sub.status === "submitted") return "Часть 1 сдана · ждёт проверки" + (sub.auto_submitted ? " · время вышло" : "")
     const res = submissionResult(selectedVariant, sub)
     return `Первичный: ${sub.total_score} из ${res.variantMax} · ${secondaryLabel(res)}`
   }
