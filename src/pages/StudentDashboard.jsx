@@ -21,7 +21,10 @@ import TaskAttachments from "../components/TaskAttachments"
 import { notifyTutor } from "../telegramNotify"
 import { useClosing } from "../useClosing"
 import RescheduleModal from "../components/RescheduleModal"
-import { setMoveRequest, findSlotConflict, formatLessonWhen, formatLessonShort } from "../lessonMove"
+import {
+  applyMoveToStudent, setMoveRequest, findSlotConflict,
+  formatLessonWhen, formatLessonShort, MOVE_BY_STUDENT, MOVE_BY_TUTOR,
+} from "../lessonMove"
 // Состав варианта (какие номера в части 1, какие — во второй) знает банк заданий:
 // у математики номера идут подряд, у информатики — с пропусками, и «номер больше
 // двенадцати» там означало бы не то.
@@ -127,7 +130,52 @@ function formatLocalDate(date) {
   return `${y}-${m}-${d}`
 }
 
-function StudentScheduleCalendar({ student, onOpenBoard, onRequestMove, onCancelMove }) {
+// Что сейчас с переносом занятия — одинаково в календаре и в карточке «Занятия».
+// Предложение репетитора ученик подтверждает: без его ответа занятие не двигается.
+function LessonMoveNote({ lesson, onAccept, onDecline, onCounter, onCancel, className = "" }) {
+  const req = lesson.moveRequest
+  if (!req) return null
+
+  if (req.by === MOVE_BY_TUTOR) {
+    return (
+      <div className={`text-xs text-amber-600 bg-amber-500/10 rounded-xl px-3 py-2 flex flex-col gap-2 ${className}`}>
+        <div className="leading-relaxed">
+          Репетитор предлагает перенести {formatLessonShort(lesson.date, lesson.time)} на{" "}
+          <span className="font-medium">{formatLessonShort(req.date, req.time)}</span>
+          {req.comment ? ` — «${req.comment}»` : ""}
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={() => onAccept?.(lesson)}
+            className="press-tap text-xs text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg transition">
+            Согласиться
+          </button>
+          <button onClick={() => onCounter?.(lesson)}
+            className="press-tap text-xs text-gray-600 border border-gray-200 bg-white px-2.5 py-1.5 rounded-lg hover:bg-gray-50 transition">
+            Другое время
+          </button>
+          <button onClick={() => onDecline?.(lesson)}
+            className="press-tap text-xs text-gray-500 px-2 py-1.5 rounded-lg hover:text-red-500 transition">
+            Не могу
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className={`text-xs text-amber-600 bg-amber-500/10 rounded-xl px-3 py-2 flex items-center justify-between gap-2 ${className}`}>
+      <span className="min-w-0 leading-relaxed">
+        Просишь перенести {formatLessonShort(lesson.date, lesson.time)} на {formatLessonShort(req.date, req.time)} — репетитор ещё не ответил
+      </span>
+      <button onClick={() => onCancel?.(lesson)}
+        className="press-tap text-gray-500 border border-gray-200 bg-white px-2 py-1 rounded-lg hover:bg-gray-50 transition-colors flex-shrink-0">
+        Отменить
+      </button>
+    </div>
+  )
+}
+
+function StudentScheduleCalendar({ student, onOpenBoard, onRequestMove, onCancelMove, onAcceptMove, onDeclineMove }) {
   const [baseDate, setBaseDate] = useState(new Date())
   const [selectedDay, setSelectedDay] = useState(null)
 
@@ -249,18 +297,15 @@ function StudentScheduleCalendar({ student, onOpenBoard, onRequestMove, onCancel
                       )}
                     </div>
                   </div>
-                  {/* Просьба уже отправлена — вместо кнопки видно, чего ждём. */}
-                  {l.moveRequest && (
-                    <div className="mt-2 pt-2 border-t border-blue-100 flex items-center justify-between gap-2">
-                      <div className="text-xs text-amber-600 min-w-0">
-                        Просишь перенести на {formatLessonShort(l.moveRequest.date, l.moveRequest.time)} — репетитор ещё не ответил
-                      </div>
-                      <button onClick={() => onCancelMove?.(l)}
-                        className="press-tap text-xs text-gray-500 border border-gray-200 bg-white px-2 py-1 rounded-lg hover:bg-gray-50 transition-colors flex-shrink-0">
-                        Отменить
-                      </button>
-                    </div>
-                  )}
+                  {/* Перенос ещё согласовывается — вместо кнопки видно, чего ждём. */}
+                  <LessonMoveNote
+                    lesson={l}
+                    className="mt-2"
+                    onAccept={onAcceptMove}
+                    onDecline={onDeclineMove}
+                    onCounter={onRequestMove}
+                    onCancel={onCancelMove}
+                  />
                 </div>
               ))}
             </div>
@@ -1442,12 +1487,12 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     .filter((l) => isLessonConducted(l))
     .sort((a, b) => b.date.localeCompare(a.date))
 
-  // Перенос занятия. Ученик расписание сам не двигает — он просит, и просьба
-  // живёт в самом занятии, пока репетитор не ответит (см. src/lessonMove.js).
+  // Перенос занятия согласуют обе стороны: любая предлагает, вторая
+  // подтверждает. Предложение живёт в самом занятии (см. src/lessonMove.js).
   const [movingLesson, setMovingLesson] = useState(null)
   const [moveBusy, setMoveBusy] = useState(false)
   const [moveError, setMoveError] = useState("")
-  const pendingMove = (student?.lessons || []).find((l) => l.moveRequest) || null
+  const pendingMoves = (student?.lessons || []).filter((l) => l.moveRequest)
 
   async function saveLessons(nextLessons) {
     const { error } = await supabase.from("students").update({ lessons: nextLessons }).eq("id", student.id)
@@ -1460,7 +1505,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     setMoveError("")
     const target = { date: movingLesson.date, time: movingLesson.time }
     const next = setMoveRequest(student.lessons || [], target, {
-      by: "student",
+      by: MOVE_BY_STUDENT,
       date,
       time,
       comment: comment || "",
@@ -1493,6 +1538,40 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     setMoveError("")
     const error = await saveLessons(setMoveRequest(student.lessons || [], lesson, null))
     if (error) { setMoveError("Не удалось отменить просьбу: " + error.message); return }
+    onReloadStudents?.()
+  }
+
+  // Согласие с предложением репетитора — тот момент, когда занятие двигается.
+  async function acceptLessonMove(lesson) {
+    if (!student || !lesson.moveRequest) return
+    setMoveError("")
+    const to = { date: lesson.moveRequest.date, time: lesson.moveRequest.time }
+    const patch = applyMoveToStudent(student, lesson, to)
+    const error = await saveLessons(patch.lessons)
+    if (error) { setMoveError("Не удалось подтвердить перенос: " + error.message); return }
+    supabase.from("notifications").insert({
+      user_id: student.tutor_id,
+      title: "Ученик согласился на перенос",
+      body: `${user.profile?.name || "Ученик"}: ${formatLessonWhen(lesson.date, lesson.time)} → ${formatLessonWhen(to.date, to.time)}`,
+    }).then(({ error: notifyError }) => {
+      if (notifyError) console.error("Уведомление о переносе не ушло:", notifyError.message)
+    })
+    onReloadStudents?.()
+  }
+
+  // Отказ: занятие остаётся на месте, предложение снимается.
+  async function declineLessonMove(lesson) {
+    if (!student) return
+    setMoveError("")
+    const error = await saveLessons(setMoveRequest(student.lessons || [], lesson, null))
+    if (error) { setMoveError("Не удалось отправить ответ: " + error.message); return }
+    supabase.from("notifications").insert({
+      user_id: student.tutor_id,
+      title: "Ученик не может перенести занятие",
+      body: `${user.profile?.name || "Ученик"}: занятие ${formatLessonWhen(lesson.date, lesson.time)} остаётся на прежнем месте.`,
+    }).then(({ error: notifyError }) => {
+      if (notifyError) console.error("Уведомление о переносе не ушло:", notifyError.message)
+    })
     onReloadStudents?.()
   }
 
@@ -2083,7 +2162,11 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                                 key={i}
                                 onClick={() => { setMoveError(""); setMovingLesson(l) }}
                                 disabled={asked}
-                                title={asked ? "Просьба о переносе уже отправлена" : "Попросить о переносе"}
+                                title={asked
+                                  ? (l.moveRequest.by === MOVE_BY_TUTOR
+                                      ? "Репетитор предложил перенос — ответь ниже"
+                                      : "Просьба о переносе уже отправлена")
+                                  : "Попросить о переносе"}
                                 className={`press-tap inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
                                   asked
                                     ? "bg-amber-500/15 text-amber-600"
@@ -2098,22 +2181,22 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       )}
                       {/* Перенос — вещь, которую ищут в первую очередь, поэтому он
                           подписан прямо здесь, а не спрятан в календаре ниже. */}
-                      {upcoming.length > 0 && !pendingMove && (
+                      {upcoming.length > 0 && !pendingMoves.length && (
                         <div className="text-xs text-gray-400 mt-2">
                           Нажми на занятие, чтобы попросить о переносе.
                         </div>
                       )}
-                      {pendingMove && (
-                        <div className="mt-3 text-xs text-amber-600 bg-amber-500/10 rounded-xl px-3 py-2 flex items-center justify-between gap-2">
-                          <span className="min-w-0">
-                            Просишь перенести {formatLessonShort(pendingMove.date, pendingMove.time)} на {formatLessonShort(pendingMove.moveRequest.date, pendingMove.moveRequest.time)} — ждём ответа репетитора
-                          </span>
-                          <button onClick={() => cancelLessonMove(pendingMove)}
-                            className="press-tap text-gray-500 border border-gray-200 bg-white px-2 py-1 rounded-lg hover:bg-gray-50 transition-colors flex-shrink-0">
-                            Отменить
-                          </button>
-                        </div>
-                      )}
+                      {pendingMoves.map((l, i) => (
+                        <LessonMoveNote
+                          key={i}
+                          lesson={l}
+                          className="mt-3"
+                          onAccept={acceptLessonMove}
+                          onDecline={declineLessonMove}
+                          onCounter={(x) => { setMoveError(""); setMovingLesson(x) }}
+                          onCancel={cancelLessonMove}
+                        />
+                      ))}
                       {moveError && !movingLesson && (
                         <div className="mt-2 text-xs text-red-500">{moveError}</div>
                       )}
@@ -2169,6 +2252,8 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                     onOpenBoard={openBoard}
                     onRequestMove={(l) => { setMoveError(""); setMovingLesson(l) }}
                     onCancelMove={cancelLessonMove}
+                    onAcceptMove={acceptLessonMove}
+                    onDeclineMove={declineLessonMove}
                   />
 
                   {/* Доски прошлых занятий — можно вернуться к разобранному (только чтение) */}
@@ -2713,8 +2798,11 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
         {movingLesson && (
           <RescheduleModal
             lesson={movingLesson}
-            title="Попросить о переносе"
+            title={movingLesson.moveRequest?.by === MOVE_BY_TUTOR ? "Предложить другое время" : "Попросить о переносе"}
             hint="Занятие сдвинется, только когда репетитор согласится. Пока он не ответил, оно остаётся на прежнем месте."
+            initial={movingLesson.moveRequest?.by === MOVE_BY_TUTOR
+              ? { date: movingLesson.moveRequest.date, time: movingLesson.moveRequest.time }
+              : null}
             commentLabel="Причина (по желанию)"
             commentPlaceholder="Например: в это время школьная олимпиада"
             submitLabel="Отправить просьбу"

@@ -7,8 +7,8 @@ import ConfirmModal from "../components/ConfirmModal"
 import RescheduleModal from "../components/RescheduleModal"
 import { supabase } from "../supabase"
 import {
-  applyMoveToStudent, setMoveRequest, pendingMoveRequests,
-  formatLessonWhen, formatLessonShort, isSameLesson,
+  applyMoveToStudent, proposeMoveOnStudent, setMoveRequest, pendingMoveRequests,
+  formatLessonWhen, formatLessonShort, isSameLesson, MOVE_BY_STUDENT, MOVE_BY_TUTOR,
 } from "../lessonMove"
 
 const VIEWS = [{ key: "month", label: "Месяц" }, { key: "week", label: "Неделя" }]
@@ -59,11 +59,14 @@ function Schedule({ students, setStudents }) {
   // Занятие удаляется одним нажатием на крестик, а отменить это нечем —
   // поэтому сначала спрашиваем.
   const [confirmDel, setConfirmDel] = useState(null)
-  // Перенос. Репетитор двигает занятие сразу — расписание ведёт он, ученику
-  // уходит уведомление. Просьбы учеников о переносе ждут ответа здесь же.
+  // Перенос согласуют обе стороны: репетитор занятие не двигает, а предлагает
+  // новое время — переезжает оно только после согласия ученика. Ответные
+  // просьбы учеников ждут здесь же.
   const [moving, setMoving] = useState(null)
   const [confirmDecline, setConfirmDecline] = useState(null)
-  const moveRequests = pendingMoveRequests(students)
+  const [confirmCancel, setConfirmCancel] = useState(null)
+  const incomingMoves = pendingMoveRequests(students, MOVE_BY_STUDENT)
+  const outgoingMoves = pendingMoveRequests(students, MOVE_BY_TUTOR)
 
   function notifyStudentOf(student, title, body) {
     // Пока ученик не завёл аккаунт, доставить уведомление некому — сам перенос
@@ -74,25 +77,57 @@ function Schedule({ students, setStudents }) {
       .then(({ error }) => { if (error) console.error("Уведомление о переносе не ушло:", error.message) })
   }
 
-  function applyMove(studentId, from, to) {
-    const student = students.find((s) => String(s.id) === String(studentId))
+  // Согласие с просьбой ученика — единственный случай, когда занятие двигается
+  // прямо отсюда: вторая сторона уже высказалась.
+  function acceptMove(entry) {
+    const student = students.find((s) => String(s.id) === String(entry.studentId))
     if (!student) return
+    const to = { date: entry.request.date, time: entry.request.time }
     setStudents((prev) => prev.map((s) => (
-      String(s.id) === String(studentId) ? { ...s, ...applyMoveToStudent(s, from, to) } : s
+      String(s.id) === String(entry.studentId) ? { ...s, ...applyMoveToStudent(s, entry.lesson, to) } : s
     )))
-    notifyStudentOf(student, "Занятие перенесено",
-      `${formatLessonWhen(from.date, from.time)} → ${formatLessonWhen(to.date, to.time)}`)
+    notifyStudentOf(student, "Перенос согласован",
+      `${formatLessonWhen(entry.lesson.date, entry.lesson.time)} → ${formatLessonWhen(to.date, to.time)}`)
   }
 
-  function declineRequest(entry) {
-    const student = students.find((s) => String(s.id) === String(entry.studentId))
+  // Предложение репетитора. Занятие остаётся на месте, пока ученик не ответит.
+  function proposeMove(studentId, from, to, comment) {
+    const student = students.find((s) => String(s.id) === String(studentId))
+    if (!student) return
+    const request = {
+      by: MOVE_BY_TUTOR,
+      date: to.date,
+      time: to.time,
+      comment: comment || "",
+      at: new Date().toISOString(),
+    }
+    setStudents((prev) => prev.map((s) => (
+      String(s.id) === String(studentId) ? { ...s, ...proposeMoveOnStudent(s, from, request) } : s
+    )))
+    notifyStudentOf(student, "Репетитор предлагает перенести занятие",
+      `${formatLessonWhen(from.date, from.time)} → ${formatLessonWhen(to.date, to.time)}. Подтверди перенос в кабинете.`
+      + (comment ? ` «${comment}»` : ""))
+  }
+
+  function clearRequest(entry) {
     setStudents((prev) => prev.map((s) => (
       String(s.id) === String(entry.studentId)
         ? { ...s, lessons: setMoveRequest(s.lessons, entry.lesson, null) }
         : s
     )))
+    return students.find((s) => String(s.id) === String(entry.studentId))
+  }
+
+  function declineRequest(entry) {
+    const student = clearRequest(entry)
     notifyStudentOf(student, "Перенос не согласован",
       `Занятие ${formatLessonWhen(entry.lesson.date, entry.lesson.time)} остаётся в расписании. Напиши репетитору, чтобы договориться о другом времени.`)
+  }
+
+  function cancelOwnRequest(entry) {
+    const student = clearRequest(entry)
+    notifyStudentOf(student, "Предложение о переносе отменено",
+      `Занятие ${formatLessonWhen(entry.lesson.date, entry.lesson.time)} остаётся на прежнем месте.`)
   }
 
   // Занят ли слот у самого репетитора: он не может вести двоих сразу. Перенос
@@ -220,19 +255,20 @@ function Schedule({ students, setStudents }) {
         </button>
       </div>
 
-      {/* Просьбы учеников о переносе. Держим наверху расписания: ученик ждёт
-          ответа, и найти этот список должно быть негде больше, кроме как здесь. */}
-      {moveRequests.length > 0 && (
+      {/* Переносы, ждущие ответа. Держим наверху расписания: пока стороны не
+          договорились, занятие стоит на прежнем месте, и найти этот список
+          должно быть негде больше, кроме как здесь. */}
+      {incomingMoves.length > 0 && (
         <div className="glass-tint-amber p-4 mb-4 slide-up">
           <div className="flex items-center gap-2 mb-3">
             <span className="text-amber-600"><Icon name="repeat" size={15} /></span>
             <span className="text-sm font-medium">Просьбы о переносе</span>
             <span className="text-[11px] text-amber-700 bg-amber-500/15 px-1.5 py-0.5 rounded-full tabular-nums">
-              {moveRequests.length}
+              {incomingMoves.length}
             </span>
           </div>
           <div className="flex flex-col gap-2">
-            {moveRequests.map((r) => (
+            {incomingMoves.map((r) => (
               <div key={`${r.studentId}-${r.lesson.date}-${r.lesson.time}`} className="glass-sm px-3 py-2.5 flex flex-col sm:flex-row sm:items-center gap-2.5">
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium truncate">{r.studentName}</div>
@@ -248,10 +284,7 @@ function Schedule({ students, setStudents }) {
                   )}
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <button
-                    onClick={() => applyMove(r.studentId, r.lesson, { date: r.request.date, time: r.request.time })}
-                    className="btn-primary px-3 py-1.5 text-xs"
-                  >
+                  <button onClick={() => acceptMove(r)} className="btn-primary px-3 py-1.5 text-xs">
                     Согласиться
                   </button>
                   <button
@@ -268,6 +301,59 @@ function Schedule({ students, setStudents }) {
                     onClick={() => setConfirmDecline(r)}
                     aria-label="Отклонить просьбу"
                     title="Отклонить"
+                    className="text-gray-400 hover:text-red-500 transition-transform active:scale-90"
+                  >
+                    <Icon name="x" size={16} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Предложения, отправленные ученикам: занятие ещё не переехало. */}
+      {outgoingMoves.length > 0 && (
+        <div className="glass p-4 mb-4 slide-up">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-gray-400"><Icon name="clock" size={15} /></span>
+            <span className="text-sm font-medium">Ждут ответа ученика</span>
+            <span className="text-[11px] text-gray-500 ring-1 ring-gray-200/70 dark:ring-white/15 px-1.5 py-0.5 rounded-full tabular-nums">
+              {outgoingMoves.length}
+            </span>
+          </div>
+          <div className="flex flex-col gap-2">
+            {outgoingMoves.map((r) => (
+              <div key={`${r.studentId}-${r.lesson.date}-${r.lesson.time}`} className="glass-sm px-3 py-2.5 flex flex-col sm:flex-row sm:items-center gap-2.5">
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium truncate">{r.studentName}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    {formatLessonShort(r.lesson.date, r.lesson.time)}
+                    <span className="mx-1.5 text-gray-400">→</span>
+                    <span className="text-blue-600 dark:text-blue-400 font-medium">
+                      {formatLessonShort(r.request.date, r.request.time)}
+                    </span>
+                    <span className="text-gray-400"> · вы предложили</span>
+                  </div>
+                  {r.request.comment && (
+                    <div className="text-xs text-gray-500 mt-1 leading-relaxed">«{r.request.comment}»</div>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    onClick={() => openMove({
+                      studentId: r.studentId, studentName: r.studentName,
+                      date: r.lesson.date, time: r.lesson.time, duration: r.lesson.duration,
+                      suggested: { date: r.request.date, time: r.request.time, comment: r.request.comment },
+                    })}
+                    className="text-xs border border-gray-200 dark:border-white/15 px-2.5 py-1.5 rounded-lg text-gray-600 hover:bg-white/60 dark:hover:bg-white/[0.08] transition active:scale-95"
+                  >
+                    Изменить
+                  </button>
+                  <button
+                    onClick={() => setConfirmCancel(r)}
+                    aria-label="Отменить предложение"
+                    title="Отменить предложение"
                     className="text-gray-400 hover:text-red-500 transition-transform active:scale-90"
                   >
                     <Icon name="x" size={16} />
@@ -365,7 +451,11 @@ function Schedule({ students, setStudents }) {
                             <div className={`text-sm font-medium flex items-center gap-1.5 flex-wrap ${isExtra ? "text-green-700" : "text-blue-700"}`}>
                               {l.studentName}
                               {isExtra && <span className="text-xs bg-green-100 text-green-600 px-1.5 py-0.5 rounded-full font-normal">доп</span>}
-                              {l.moveRequest && <span className="text-xs bg-amber-500/15 text-amber-600 px-1.5 py-0.5 rounded-full font-normal">просит перенос</span>}
+                              {l.moveRequest && (
+                                <span className="text-xs bg-amber-500/15 text-amber-600 px-1.5 py-0.5 rounded-full font-normal">
+                                  {l.moveRequest.by === MOVE_BY_TUTOR ? "ждёт ответа ученика" : "просит перенос"}
+                                </span>
+                              )}
                             </div>
                             <div className={`text-xs ${isExtra ? "text-green-500" : "text-blue-500"}`}>
                               {l.time} · {l.duration} мин
@@ -490,15 +580,17 @@ function Schedule({ students, setStudents }) {
         <RescheduleModal
           lesson={{ date: moving.date, time: moving.time, duration: moving.duration }}
           who={moving.studentName}
-          title="Перенести занятие"
+          title="Предложить перенос"
           hint={moving.suggested
-            ? "Ученик просит другое время — оно уже подставлено. Поправьте, если не подходит: ученику придёт уведомление о новых дате и времени."
-            : "Занятие сразу переедет в расписании, а ученику придёт уведомление."}
+            ? "Время, которое просит ученик, уже подставлено. Поправьте, если не подходит, — ученику уйдёт встречное предложение, и занятие переедет, когда он согласится."
+            : "Занятие переедет, когда ученик подтвердит перенос. До этого оно остаётся на прежнем месте."}
           initial={moving.suggested}
+          commentLabel="Комментарий ученику (по желанию)"
+          commentPlaceholder="Например: в это время у меня появилось окно"
           conflictCheck={slotBusy(moving.studentId, { date: moving.date, time: moving.time })}
-          submitLabel="Перенести"
-          onSubmit={({ date, time }) => {
-            applyMove(moving.studentId, { date: moving.date, time: moving.time, duration: moving.duration }, { date, time })
+          submitLabel="Предложить"
+          onSubmit={({ date, time, comment }) => {
+            proposeMove(moving.studentId, { date: moving.date, time: moving.time, duration: moving.duration }, { date, time }, comment)
             setMoving(null)
           }}
           onClose={() => setMoving(null)}
@@ -516,6 +608,19 @@ function Schedule({ students, setStudents }) {
         cancelLabel="Отмена"
         onConfirm={() => { declineRequest(confirmDecline); setConfirmDecline(null) }}
         onCancel={() => setConfirmDecline(null)}
+      />
+
+      <ConfirmModal
+        open={!!confirmCancel}
+        danger
+        title="Отменить предложение?"
+        message={confirmCancel
+          ? `Занятие ${formatLessonWhen(confirmCancel.lesson.date, confirmCancel.lesson.time)} останется на прежнем месте, а ${confirmCancel.studentName} получит уведомление.`
+          : ""}
+        confirmLabel="Отменить перенос"
+        cancelLabel="Оставить"
+        onConfirm={() => { cancelOwnRequest(confirmCancel); setConfirmCancel(null) }}
+        onCancel={() => setConfirmCancel(null)}
       />
 
       <ConfirmModal

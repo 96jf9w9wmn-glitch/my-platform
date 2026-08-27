@@ -3,7 +3,7 @@ import Icon from "../components/Icon"
 import { usePlan } from "../subscription"
 import useCountUp from "../components/useCountUp"
 import { isLessonConducted, getInitials } from "../utils"
-import { pendingMoveRequests, formatLessonShort } from "../lessonMove"
+import { pendingMoveRequests, formatLessonShort, MOVE_BY_STUDENT } from "../lessonMove"
 import { useAutoReports } from "../reportAuto"
 
 const MONTH_NAMES = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"]
@@ -136,8 +136,9 @@ function Dashboard({ students, setActivePage, onOpenBoard }) {
   const selectedDate = selectedDay ? new Date(selectedDay + "T00:00:00") : null
 
   // Просьбы учеников о переносе. Ученик ждёт ответа, поэтому на главной они
-  // видны сразу, а не только в расписании.
-  const moveRequests = pendingMoveRequests(students)
+  // видны сразу, а не только в расписании. Свои предложения, ждущие ответа
+  // ученика, сюда не идут: отвечать по ним нечего.
+  const moveRequests = pendingMoveRequests(students, MOVE_BY_STUDENT)
 
   const countStudents = useCountUp(students.length)
   const countToday = useCountUp(todayLessons.length)

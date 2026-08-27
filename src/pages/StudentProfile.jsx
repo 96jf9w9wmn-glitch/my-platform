@@ -10,7 +10,10 @@ import Collapse from "../components/Collapse"
 import ReportComposer from "../components/ReportComposer"
 import { parseLocalDate, isLessonConducted, getInitials, formatPhone } from "../utils"
 import RescheduleModal from "../components/RescheduleModal"
-import { applyMoveToStudent, findSlotConflict, formatLessonWhen, formatLessonShort } from "../lessonMove"
+import {
+  applyMoveToStudent, proposeMoveOnStudent, setMoveRequest, findSlotConflict,
+  formatLessonWhen, formatLessonShort, MOVE_BY_TUTOR,
+} from "../lessonMove"
 import { usePlan } from "../subscription"
 import { PlanLock } from "../components/PlanLock"
 
@@ -359,17 +362,42 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
     onUpdate(student.id, data)
   }
 
-  // Перенос занятия прямо из карточки: репетитор двигает занятие сразу, ученику
-  // уходит уведомление (тот же порядок, что и в расписании).
-  function moveLesson(from, to) {
-    onUpdate(student.id, applyMoveToStudent(student, from, to))
-    if (student.studentAccountId) {
-      supabase.from("notifications").insert({
-        user_id: student.studentAccountId,
-        title: "Занятие перенесено",
-        body: `${formatLessonWhen(from.date, from.time)} → ${formatLessonWhen(to.date, to.time)}`,
-      }).then(({ error }) => { if (error) console.error("Уведомление о переносе не ушло:", error.message) })
+  function notifyStudent(title, body) {
+    // Пока ученик не завёл аккаунт, доставить уведомление некому.
+    if (!student.studentAccountId) return
+    supabase.from("notifications").insert({ user_id: student.studentAccountId, title, body })
+      .then(({ error }) => { if (error) console.error("Уведомление о переносе не ушло:", error.message) })
+  }
+
+  // Перенос из карточки — тот же порядок, что и в расписании: репетитор
+  // предлагает, занятие переезжает после согласия ученика.
+  function proposeMove(from, to, comment) {
+    const request = {
+      by: MOVE_BY_TUTOR,
+      date: to.date,
+      time: to.time,
+      comment: comment || "",
+      at: new Date().toISOString(),
     }
+    onUpdate(student.id, proposeMoveOnStudent(student, from, request))
+    notifyStudent("Репетитор предлагает перенести занятие",
+      `${formatLessonWhen(from.date, from.time)} → ${formatLessonWhen(to.date, to.time)}. Подтверди перенос в кабинете.`
+      + (comment ? ` «${comment}»` : ""))
+  }
+
+  // Согласие с просьбой ученика: вторая сторона уже высказалась — двигаем.
+  function acceptMove(lesson) {
+    const to = { date: lesson.moveRequest.date, time: lesson.moveRequest.time }
+    onUpdate(student.id, applyMoveToStudent(student, lesson, to))
+    notifyStudent("Перенос согласован",
+      `${formatLessonWhen(lesson.date, lesson.time)} → ${formatLessonWhen(to.date, to.time)}`)
+  }
+
+  function withdrawMove(lesson) {
+    const own = lesson.moveRequest?.by === MOVE_BY_TUTOR
+    onUpdate(student.id, { lessons: setMoveRequest(student.lessons || [], lesson, null) })
+    notifyStudent(own ? "Предложение о переносе отменено" : "Перенос не согласован",
+      `Занятие ${formatLessonWhen(lesson.date, lesson.time)} остаётся на прежнем месте.`)
   }
 
   function saveNote(origIdx) {
@@ -630,23 +658,43 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     {l.moveRequest ? (
-                      <button
-                        onClick={() => setMovingLesson({ date: l.date, time: l.time, duration: l.duration, suggested: { date: l.moveRequest.date, time: l.moveRequest.time }, comment: l.moveRequest.comment })}
-                        className="press-tap text-xs bg-amber-500/12 text-amber-600 px-2 py-1 rounded-full"
-                      >
-                        Просит перенос
-                      </button>
+                      <span className="text-xs bg-amber-500/12 text-amber-600 px-2 py-1 rounded-full">
+                        {l.moveRequest.by === MOVE_BY_TUTOR ? "Ждёт ответа" : "Просит перенос"}
+                        {" · "}{formatLessonShort(l.moveRequest.date, l.moveRequest.time)}
+                      </span>
                     ) : (
                       <span className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded-full">Запланировано</span>
                     )}
+                    {l.moveRequest && l.moveRequest.by !== MOVE_BY_TUTOR && (
+                      <button
+                        onClick={() => acceptMove(l)}
+                        className="text-xs text-white bg-blue-600 hover:bg-blue-700 px-2.5 py-1 rounded-lg transition active:scale-95"
+                      >
+                        Согласиться
+                      </button>
+                    )}
                     <button
-                      onClick={() => setMovingLesson({ date: l.date, time: l.time, duration: l.duration })}
-                      aria-label="Перенести занятие"
-                      title="Перенести"
+                      onClick={() => setMovingLesson({
+                        date: l.date, time: l.time, duration: l.duration,
+                        suggested: l.moveRequest ? { date: l.moveRequest.date, time: l.moveRequest.time, comment: l.moveRequest.comment } : null,
+                        fromStudent: l.moveRequest && l.moveRequest.by !== MOVE_BY_TUTOR,
+                      })}
+                      aria-label="Предложить перенос"
+                      title="Предложить перенос"
                       className="text-gray-400 hover:text-blue-600 transition-transform active:scale-90"
                     >
                       <Icon name="repeat" size={15} />
                     </button>
+                    {l.moveRequest && (
+                      <button
+                        onClick={() => withdrawMove(l)}
+                        aria-label={l.moveRequest.by === MOVE_BY_TUTOR ? "Отменить предложение" : "Отклонить просьбу"}
+                        title={l.moveRequest.by === MOVE_BY_TUTOR ? "Отменить предложение" : "Отклонить"}
+                        className="text-gray-400 hover:text-red-500 transition-transform active:scale-90"
+                      >
+                        <Icon name="x" size={15} />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -756,19 +804,21 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
         <RescheduleModal
           lesson={movingLesson}
           who={student.name}
-          title="Перенести занятие"
-          hint={movingLesson.suggested
-            ? `Ученик просит перенести на ${formatLessonWhen(movingLesson.suggested.date, movingLesson.suggested.time)}${movingLesson.comment ? ` — «${movingLesson.comment}»` : ""}. Время уже подставлено, поправьте, если не подходит.`
-            : "Занятие сразу переедет в расписании, а ученику придёт уведомление."}
+          title="Предложить перенос"
+          hint={movingLesson.fromStudent
+            ? "Время, которое просит ученик, уже подставлено. Поправьте, если не подходит, — ученику уйдёт встречное предложение."
+            : "Занятие переедет, когда ученик подтвердит перенос. До этого оно остаётся на прежнем месте."}
           initial={movingLesson.suggested}
+          commentLabel="Комментарий ученику (по желанию)"
+          commentPlaceholder="Например: в это время у меня появилось окно"
           conflictCheck={(date, time) => (
             findSlotConflict(student.lessons || [], { date, time }, movingLesson)
               ? "На это время у ученика уже стоит другое занятие."
               : null
           )}
-          submitLabel="Перенести"
-          onSubmit={({ date, time }) => {
-            moveLesson({ date: movingLesson.date, time: movingLesson.time, duration: movingLesson.duration }, { date, time })
+          submitLabel="Предложить"
+          onSubmit={({ date, time, comment }) => {
+            proposeMove({ date: movingLesson.date, time: movingLesson.time, duration: movingLesson.duration }, { date, time }, comment)
             setMovingLesson(null)
           }}
           onClose={() => setMovingLesson(null)}

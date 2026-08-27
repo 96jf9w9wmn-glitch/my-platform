@@ -4,13 +4,13 @@
 // единственный ключ занятия — пара «дата + время». Поэтому переносим, сравнивая
 // эту пару, а не индекс в массиве: индекс меняется от любой сортировки.
 //
-// Две стороны переносят по-разному, и это намеренно:
-//   репетитор — двигает занятие сразу (расписание ведёт он), ученику уходит
-//               уведомление;
-//   ученик    — просит о переносе: просьба живёт в самом занятии
-//               (`moveRequest`), пока репетитор не примет или не отклонит её.
-// Отдельной таблицы у просьбы нет — иначе фича не работала бы до выполнения
-// очередной миграции, а занятие и просьба разъезжались бы при правке расписания.
+// Переносит не тот, кто захотел, а тот, кто согласился: любая сторона лишь
+// ПРЕДЛАГАЕТ перенос, и занятие переезжает лишь после ответа второй стороны.
+// Предложение живёт в самом занятии (`moveRequest` с пометкой `by`), пока его
+// не примут, не отклонят или не заменят встречным.
+// Отдельной таблицы у предложения нет — иначе фича не работала бы до выполнения
+// очередной миграции, а занятие и предложение разъезжались бы при правке
+// расписания.
 
 export function isSameLesson(lesson, ref) {
   return !!lesson && !!ref && lesson.date === ref.date && lesson.time === ref.time
@@ -45,7 +45,10 @@ export function findSlotConflict(lessons, to, from) {
   return (lessons || []).find((l) => !isSameLesson(l, from) && l.date === to.date && l.time === to.time) || null
 }
 
-// Просьба о переносе: ставится ученику в занятие, снимается передачей null.
+export const MOVE_BY_STUDENT = "student"
+export const MOVE_BY_TUTOR = "tutor"
+
+// Предложение переноса: ставится в занятие, снимается передачей null.
 export function setMoveRequest(lessons, target, request) {
   return (lessons || []).map((l) => {
     if (!isSameLesson(l, target)) return l
@@ -55,7 +58,25 @@ export function setMoveRequest(lessons, target, request) {
   })
 }
 
-// Патч для карточки ученика: занятие переезжает, просьба снимается, а откуда
+// Патч для карточки ученика: предложение переноса. Занятие, которое живёт
+// только легаси-датой (`lesson_dates`, без объекта в `lessons`), при этом
+// материализуется — иначе предложению негде было бы храниться.
+export function proposeMoveOnStudent(student, from, request) {
+  const lessons = student?.lessons || []
+  if (lessons.some((l) => isSameLesson(l, from))) {
+    return { lessons: setMoveRequest(lessons, from, request) }
+  }
+  return {
+    lessons: [...lessons, {
+      date: from.date,
+      time: from.time,
+      duration: from.duration || student?.lessonDuration || 60,
+      moveRequest: request,
+    }].sort(byDateTime),
+  }
+}
+
+// Патч для карточки ученика: занятие переезжает, предложение снимается, а откуда
 // оно переехало — остаётся видно в расписании.
 //
 // `lessonDates` — легаси-список дат: по нему занятие показывается у тех, кого
@@ -84,12 +105,13 @@ export function applyMoveToStudent(student, from, to) {
   return { lessons: nextLessons, lessonDates: nextDates }
 }
 
-// Просьбы, ожидающие ответа репетитора — по всем ученикам, ближайшие сверху.
-export function pendingMoveRequests(students) {
+// Предложения переноса по всем ученикам, ближайшие сверху. `by` отбирает, чьи:
+// "student" — ждут ответа репетитора, "tutor" — ответа ученика.
+export function pendingMoveRequests(students, by = null) {
   return (students || [])
     .flatMap((s) =>
       (s.lessons || [])
-        .filter((l) => l.moveRequest)
+        .filter((l) => l.moveRequest && (!by || l.moveRequest.by === by))
         .map((l) => ({
           student: s,
           studentId: s.id,
