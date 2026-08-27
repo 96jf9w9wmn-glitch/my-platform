@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, lazy, Suspense } from "react"
+import { isMoveNotification, revealBlock, MOVE_ANCHOR_TUTOR } from "./notifTarget"
 import { createPortal } from "react-dom"
 import { supabase, isPasswordRecovery, setAppToken } from "./supabase"
 import { signRows } from "./storageUrl"
@@ -73,6 +74,7 @@ function ThemeToggle() {
 // чтобы можно было сразу открыть детали (сданный вариант, ДЗ, заявку, чат).
 function tutorNotifTarget(title) {
   const t = (title || "").toLowerCase()
+  if (isMoveNotification(t)) return "schedule"
   if (t.startsWith("сообщение от")) return "chat"
   if (t.includes("заявк")) return "students"
   if (t.includes("вариант") || t.includes("часть 1")) return "variants"
@@ -96,7 +98,10 @@ function NotificationItem({ notification: n, onDelete, onRead, onNavigate }) {
       await supabase.from("notifications").update({ read: true }).eq("id", n.id)
       onRead(n.id)
     }
-    if (target) onNavigate(target)
+    if (target) {
+      onNavigate(target)
+      if (isMoveNotification(n.title)) revealBlock(MOVE_ANCHOR_TUTOR)
+    }
   }
 
   return (

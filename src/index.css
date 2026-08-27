@@ -1815,3 +1815,20 @@ html.kb-open .kb-collapse { padding-bottom: 0; }
 @media (prefers-reduced-motion: reduce) {
   .board-strip { transition: none; transform: none; }
 }
+
+/* Мигание блока, к которому привело уведомление: без него человек попадает на
+   длинный экран и не понимает, ради чего его сюда перенесли. Кольцо рисуем
+   через outline — он идёт поверх и не режется чужим overflow, в отличие от
+   тени, которую стеклянные карточки перекрывали своей. */
+@keyframes attention-flash {
+  0%   { outline-color: rgba(0, 122, 255, 0); }
+  12%  { outline-color: rgba(0, 122, 255, 0.7); }
+  70%  { outline-color: rgba(0, 122, 255, 0.45); }
+  100% { outline-color: rgba(0, 122, 255, 0); }
+}
+.attention-flash {
+  outline: 2.5px solid rgba(0, 122, 255, 0);
+  outline-offset: 3px;
+  border-radius: inherit;
+  animation: attention-flash 1.8s ease-out;
+}

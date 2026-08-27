@@ -6,6 +6,7 @@ import SegmentSwitch from "../components/SegmentSwitch"
 import ConfirmModal from "../components/ConfirmModal"
 import RescheduleModal from "../components/RescheduleModal"
 import { supabase } from "../supabase"
+import { MOVE_ANCHOR_TUTOR } from "../notifTarget"
 import {
   applyMoveToStudent, proposeMoveOnStudent, setMoveRequest, pendingMoveRequests,
   formatLessonWhen, formatLessonShort, isSameLesson, MOVE_BY_STUDENT, MOVE_BY_TUTOR,
@@ -259,7 +260,7 @@ function Schedule({ students, setStudents }) {
           договорились, занятие стоит на прежнем месте, и найти этот список
           должно быть негде больше, кроме как здесь. */}
       {incomingMoves.length > 0 && (
-        <div className="glass-tint-amber p-4 mb-4 slide-up">
+        <div id={MOVE_ANCHOR_TUTOR} className="glass-tint-amber p-4 mb-4 slide-up">
           <div className="flex items-center gap-2 mb-3">
             <span className="text-amber-600"><Icon name="repeat" size={15} /></span>
             <span className="text-sm font-medium">Просьбы о переносе</span>

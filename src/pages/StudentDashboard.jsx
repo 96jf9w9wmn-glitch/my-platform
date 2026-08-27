@@ -20,6 +20,7 @@ import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderH
 import TaskAttachments from "../components/TaskAttachments"
 import { notifyTutor } from "../telegramNotify"
 import { useClosing } from "../useClosing"
+import { isMoveNotification, revealBlock, MOVE_ANCHOR_STUDENT } from "../notifTarget"
 import RescheduleModal from "../components/RescheduleModal"
 import {
   applyMoveToStudent, setMoveRequest, findSlotConflict,
@@ -1075,6 +1076,8 @@ function CopyCodeBlock({ code }) {
 // чтобы сразу открыть детали (проверенный вариант, ДЗ, сообщение в чате).
 function studentNotifTarget(title) {
   const t = (title || "").toLowerCase()
+  // Перенос живёт в карточке «Занятия» на главной.
+  if (isMoveNotification(t)) return "schedule"
   if (t.startsWith("сообщение от")) return "chat"
   if (t.includes("вариант")) return "variants"
   if (t.includes("задани") || t.includes("дз")) return "homework"
@@ -1135,7 +1138,11 @@ function StudentNotificationBell({ userId, onNavigate }) {
   function handleNotifClick(n) {
     if (!n.read) markRead(n.id)
     const target = studentNotifTarget(n.title)
-    if (target) { closePanel(); onNavigate?.(target) }
+    if (target) {
+      closePanel()
+      onNavigate?.(target)
+      if (isMoveNotification(n.title)) revealBlock(MOVE_ANCHOR_STUDENT)
+    }
   }
 
   async function deleteNotification(id) {
@@ -2146,7 +2153,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                     </div>
 
                     {/* Занятия + расписание */}
-                    <div className="glass p-5">
+                    <div id={MOVE_ANCHOR_STUDENT} className="glass p-5">
                       <div className="text-base font-medium mb-4">Занятия</div>
                       <div className="text-xs text-gray-400 mb-2">Ближайшие</div>
                       {upcoming.length === 0 ? (
