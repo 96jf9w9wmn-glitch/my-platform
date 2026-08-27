@@ -1771,9 +1771,11 @@ html.kb-open .kb-collapse { padding-bottom: 0; }
   min-width: 0;
   opacity: 0;
   transform: scale(0.94);
-  /* Схлопнутая секция всё ещё съедала бы два зазора панели — гасим их отрицательным
-     полем, тоже плавно, иначе панель дёрнулась бы на 8px в конце съезда. */
-  margin-inline: -0.25rem;
+  /* Зазор внутри секции держим равным зазору панели (на телефоне он плотнее).
+     Схлопнутая секция всё ещё съедала бы два зазора — гасим их отрицательным
+     полем, тоже плавно, иначе панель дёрнулась бы в конце съезда. */
+  --strip-gap: 0.125rem;
+  margin-inline: calc(-1 * var(--strip-gap));
   transition:
     width 0.3s cubic-bezier(0.32, 0.72, 0, 1),
     margin 0.3s cubic-bezier(0.32, 0.72, 0, 1),
@@ -1788,8 +1790,12 @@ html.kb-open .kb-collapse { padding-bottom: 0; }
 .board-strip-in {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: var(--strip-gap);
   width: max-content;
+}
+/* Тот же порог, что у варианта big: в разметке панели */
+@media (min-width: 640px) and (min-height: 520px) {
+  .board-strip { --strip-gap: 0.25rem; }
 }
 .board-strip:not(.is-open),
 .board-strip.is-anim { overflow: hidden; }

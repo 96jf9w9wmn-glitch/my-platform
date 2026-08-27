@@ -236,6 +236,29 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // Поэтому открытие любого попапа автоматически закрывает предыдущий, а клик мимо
   // (по холсту или где-то ещё) закрывает открытый — см. эффект ниже и onPointerDown.
   const [menu, setMenu] = useState(null)
+  // «Просторный» экран (см. вариант big: в index.css). На телефоне панель
+  // инструментов по просьбе владельца спрятана за кнопку-бургер: экран мал,
+  // и даже компактная панель отъедала у доски заметную полосу.
+  const BIG_MQ = "(min-width: 640px) and (min-height: 520px)"
+  const [isBig, setIsBig] = useState(() => window.matchMedia(BIG_MQ).matches)
+  useEffect(() => {
+    const mq = window.matchMedia(BIG_MQ)
+    const onChange = () => setIsBig(mq.matches)
+    mq.addEventListener("change", onChange)
+    return () => mq.removeEventListener("change", onChange)
+  }, [])
+  const [panelOpen, setPanelOpen] = useState(false)
+  const [panelClosing, setPanelClosing] = useState(false)
+  const panelTimer = useRef(null)
+  useEffect(() => () => clearTimeout(panelTimer.current), [])
+  function closePanel() {
+    if (panelTimer.current) return
+    setPanelClosing(true)
+    panelTimer.current = setTimeout(() => {
+      panelTimer.current = null
+      setPanelOpen(false); setPanelClosing(false)
+    }, POPUP_OUT_MS)
+  }
   // Закрывающийся попап держим смонтированным, пока играет анимация ухода
   const [closingMenu, setClosingMenu] = useState(null)
   const closeTimer = useRef(null)
@@ -946,6 +969,9 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   function onPointerDown(e) {
     // Открыт попап панели → первый тык по холсту просто закрывает его, не рисуя
     if (menu) { closeMenu(); return }
+    // На телефоне открыта развёрнутая панель → тык по холсту сворачивает её:
+    // выбрал инструмент, начал рисовать — панель не должна заслонять доску
+    if (!isBig && panelOpen && !panelClosing) closePanel()
     // Новый первичный указатель = начало нового жеста → сбрасываем возможные
     // «зависшие» указатели (недоснятое касание и т.п.), иначе рисование
     // навсегда уходит в режим жеста. Это самовосстановление.
@@ -1884,7 +1910,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
             </button>
           </div>
         )}
-        <div className="flex flex-wrap items-center justify-center gap-0.5 big:gap-1 rounded-2xl px-1.5 py-1 big:px-2.5 big:py-2 shadow-xl relative pointer-events-auto max-w-full"
+        {(isBig || panelOpen) && (
+        <div className={`flex flex-wrap items-center justify-center gap-0.5 big:gap-1 rounded-2xl px-1.5 py-1 big:px-2.5 big:py-2 shadow-xl relative pointer-events-auto max-w-full ${isBig ? "" : panelClosing ? "popup-bubble-out" : "popup-bubble"}`}
           style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
           {TOOLS.map((t) => t.erasers ? (
             <div key="eraser" className="relative" data-menu>
@@ -1967,7 +1994,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
               подрезается (`is-anim`), в покое подрезки нет — иначе всплывающее
               меню обводки обрезалось бы панелью. */}
           <div className={`board-strip ${stylingTool ? "is-open" : ""} ${stripAnim ? "is-anim" : ""}`}
-            aria-hidden={!stylingTool} style={{ width: stylingTool ? stripW || "auto" : 0 }}>
+            aria-hidden={!stylingTool} inert={!stylingTool}
+            style={{ width: stylingTool ? stripW || "auto" : 0 }}>
             <div className="board-strip-in" ref={stripRef}>
               {divider}
               {BASE_INKS.map((c) => {
@@ -1985,7 +2013,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
               <div className="relative" data-menu>
                 <button onPointerDown={() => flashTip("stroke")} onClick={() => toggleMenu("stroke")}
                   className={`${btnBase} ${menuShown("stroke") ? "bg-blue-500/15 text-blue-500" : btnIdle}`}
-                  style={menuShown("stroke") ? undefined : idleStyle} tabIndex={stylingTool ? undefined : -1}>
+                  style={menuShown("stroke") ? undefined : idleStyle}>
                   <Icon name="stroke" size={21} />
                   <Tip label="Настройки обводки" dark={dark} show={tapped === "stroke"} />
                 </button>
@@ -2036,7 +2064,18 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
             <Tip label="Очистить всё" dark={dark} show={tapped === "clear"} />
           </button>
         </div>
+        )}
         </div>
+
+        {/* Телефон: панель свёрнута в кнопку-бургер, чтобы вся высота экрана
+            оставалась доской. Тап разворачивает панель, тап по холсту сворачивает. */}
+        {!isBig && !panelOpen && (
+          <button onClick={() => setPanelOpen(true)} aria-label="Инструменты"
+            className="absolute bottom-2 left-2 press-tap w-11 h-11 rounded-full shadow-xl flex items-center justify-center popup-bubble"
+            style={{ background: panelBg, border: `1px solid ${panelBorder}`, ...idleStyle }}>
+            <Icon name="menu" size={20} />
+          </button>
+        )}
       </div>
 
       {/* Банк заданий грузится отдельным куском — без заглушки клик выглядел бы
