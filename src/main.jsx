@@ -15,6 +15,10 @@ function syncAppHeight() {
   if (vv && vv.scale > 1) return // пользователь зумит — не трогаем
   const h = vv ? vv.height : window.innerHeight
   document.documentElement.style.setProperty("--app-h", `${h}px`)
+  // Видимая область заметно ниже layout-вьюпорта — открыта экранная клавиатура
+  // (на iOS innerHeight её не учитывает). CSS по этому классу прячет нижнюю
+  // навигацию и её зарезервированный отступ (.kb-collapse).
+  document.documentElement.classList.toggle("kb-open", window.innerHeight - h > 120)
   // Пока клавиатура выезжает, Safari успевает «доскроллить» страницу к
   // сфокусированному полю (документ и/или пан visualViewport) — ужатый каркас
   // уезжает вверх, fixed-навигация повисает посреди экрана. После ужатия поле

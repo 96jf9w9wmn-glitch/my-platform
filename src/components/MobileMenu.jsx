@@ -2,29 +2,26 @@ import { createPortal } from "react-dom"
 import NavIcon from "./NavIcon"
 import { useClosing } from "../useClosing"
 
-// Бургер-меню телефона: шторка с полным списком разделов, выезжает слева по
-// кнопке в верхней панели. Заменила нижнюю панель вкладок: разделов стало
-// больше, чем помещалось внизу подписями, и половина пряталась за листом
-// «Ещё». Разметка пунктов повторяет боковое меню десктопа — меню одно и то
-// же, просто в другой подаче.
+// Лист «Меню» на телефоне: шторка снизу со ВСЕМИ разделами кабинета — полная
+// карта, а не остаток, как прежнее «Ещё». Открывается кнопкой-бургером в
+// нижней панели, поэтому и выезжает снизу, из-под пальца, а не сбоку: боковую
+// шторку пользователь счёл неудобной — до верхнего бургера тянуться далеко.
+// Разметка пунктов повторяет боковое меню десктопа.
 //
 // footer — render-prop, а не элемент: пункту внизу (профиль репетитора) нужен
 // close(), чтобы шторка ушла с анимацией, а не пропала при размонтировании.
-function MobileMenu({ title, items, activeId, badges = {}, onSelect, onClose, footer }) {
+function MobileMenu({ items, activeId, badges = {}, onSelect, onClose, footer }) {
   const { cls, close } = useClosing(onClose)
 
   return createPortal(
-    <div className="md:hidden fixed inset-0 z-[60]" onClick={close}>
+    <div className="md:hidden fixed inset-0 z-[60] flex flex-col justify-end" onClick={close}>
       <div className={`absolute inset-0 glass-overlay ${cls}`} />
       <div
-        className={`absolute inset-y-0 left-0 w-64 max-w-[85vw] drawer-glass p-4 flex flex-col overflow-y-auto no-scrollbar ${cls}`}
-        style={{ paddingTop: "calc(1rem + env(safe-area-inset-top))", paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}
+        className={`relative glass-modal sheet-modal p-4 max-h-[85dvh] overflow-y-auto ${cls || "slide-up"}`}
+        style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-2.5 mb-5 px-1">
-          <img src="/logo.webp" alt="Логотип" className="w-8 h-8 rounded-xl object-cover flex-shrink-0" />
-          <span className="text-sm font-semibold text-gray-600 tracking-wide">{title}</span>
-        </div>
+        <div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-white/20 mx-auto mb-4" />
         <div className="flex flex-col gap-1">
           {items.map((item) => (
             <button
@@ -44,7 +41,11 @@ function MobileMenu({ title, items, activeId, badges = {}, onSelect, onClose, fo
             </button>
           ))}
         </div>
-        {footer ? footer(close) : null}
+        {footer && (
+          <div className="mt-3 pt-3 border-t border-black/[0.06] dark:border-white/[0.08]">
+            {footer(close)}
+          </div>
+        )}
       </div>
     </div>,
     document.body
