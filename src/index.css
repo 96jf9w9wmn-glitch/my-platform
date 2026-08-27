@@ -228,11 +228,21 @@ select {
    сверху у знаменателя — чтобы в неё не упирались степени (4ˣ) и стопка log²₄x. */
 .tmath-num { align-self: end; border-bottom: 1.2px solid currentColor; padding: 0 0.3em 0.08em; }
 .tmath-den { align-self: start; padding: 0.16em 0.3em 0; }
-/* Скобки вокруг дроби-основания степени ((1/4)^x): по высоте самой дроби — начинаются у
-   числителя, кончаются у знаменателя (scaleY тянет ввысь, НЕ утолщая штрих; translateY
-   центрирует — у глифа «(» оптический центр выше базовой линии, иначе скобка висит низко).
-   font-weight 300 — тоньше; line-height:0 — не раздувать строку. */
-.tmath-paren { display: inline-block; font-size: 1.5em; line-height: 0; vertical-align: middle; transform: translateY(-0.10em) scaleY(1.35); font-weight: 300; }
+/* Скобки вокруг дроби ((1/4)^x, (1/14 + 1/18)): растянуты по высоте содержимого. Раньше
+   это был увеличенный глиф со scaleY на фиксированные 1.35 — рядом с дробью он всё равно
+   оставался вдвое ниже её. Теперь пары скобок, внутри которых оказалась дробь, собирает
+   stretchParens (utils.js), а рисует их SVG-дуга в АБСОЛЮТЕ (height:100% контейнера, чью
+   высоту задаёт само выражение) — тем же приёмом, что фигурная скобка системы ниже.
+   Флексом со stretch не выйдет: у SVG с viewBox есть собственная пропорция, и при
+   height:auto он растягивает строку до 10:100. preserveAspectRatio="none" тянет дугу,
+   non-scaling-stroke оставляет штрих тонким при любой высоте.
+   line-height:1.05 у содержимого обязателен — иначе высоту бокса задаёт строка карточки
+   (1.5–1.9) и скобка торчит над дробью и под ней. */
+.tmath-parens { position: relative; display: inline-block; vertical-align: middle; padding: 0 0.42em; }
+.tmath-parens > .tmath-pbr { position: absolute; top: 0; height: 100%; width: 0.34em; overflow: visible; }
+.tmath-parens > .tmath-pbr:first-child { left: 0.03em; }
+.tmath-parens > .tmath-pbr:last-child { right: 0.03em; }
+.tmath-pbody { display: inline-block; line-height: 1.05; }
 /* Символ нуклида ⟦iso⟧: массовое число над зарядовым, стопкой, прижаты вправо и стоят
    слева от символа элемента (¹⁴₇N). Без черты — это не дробь. */
 .tmath-iso { white-space: nowrap; }

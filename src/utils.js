@@ -364,13 +364,93 @@ export function noBreakMath(html) {
   ).join("")
 }
 
+// ── Скобки по высоте того, что обнимают ──────────────────────────────────────
+// «(» и «)» — обычные глифы высотой в строку, а рядом с ними стоит дробь высотой в два
+// яруса: скобка выглядит вдвое ниже своего содержимого (·(1/14 + 1/18)·). Поэтому после
+// разворота токенов пары скобок, ВНУТРИ которых оказалась дробь, заменяются на
+// растянутые: SVG-дуга тянется по высоте содержимого (тем же приёмом, что фигурная
+// скобка системы), preserveAspectRatio="none" + non-scaling-stroke держат штрих тонким
+// при любой высоте. Скобки вокруг обычного текста и корня остаются глифами — растягивать
+// там нечего, а глиф всегда красивее дуги.
+const PAREN_TALL = /class="tmath-(frac|rootfrac)/
+const parenSvg = (d) => '<svg class="tmath-pbr" viewBox="0 0 10 100" preserveAspectRatio="none" aria-hidden="true">'
+  + `<path d="${d}" fill="none" stroke="currentColor" stroke-width="1.1" vector-effect="non-scaling-stroke" stroke-linecap="round"/></svg>`
+const PAREN_L = parenSvg("M8.2 1C3.4 24 3.4 76 8.2 99")
+const PAREN_R = parenSvg("M1.8 1C6.6 24 6.6 76 1.8 99")
+const parenGroup = (inner) => `<span class="tmath-parens">${PAREN_L}<span class="tmath-pbody">${inner}</span>${PAREN_R}</span>`
+
+// Конец парного </tag> (с учётом вложенности) — чтобы целиком перепрыгнуть содержимое
+// <svg> и <code>: там скобки принадлежат картинке или коду, а не формуле.
+function closeTagEnd(html, from, tag) {
+  const re = new RegExp(`<(/?)${tag}\\b[^>]*>`, "gi")
+  re.lastIndex = from
+  let d = 0, m
+  while ((m = re.exec(html)) !== null) {
+    if (m[1]) { d -= 1; if (d <= 0) return re.lastIndex }
+    else if (!/\/>$/.test(m[0])) d += 1
+  }
+  return html.length
+}
+
+// Индекс парной «)» для скобки в позиции i или −1. Теги пропускаются целиком, а пара
+// принимается только если открывающая и закрывающая скобки лежат на ОДНОМ уровне
+// вложенности тегов (иначе обёртка порвала бы разметку: «(» в числителе, «)» снаружи).
+function matchParen(html, i) {
+  let depth = 0, par = 0
+  for (let k = i; k < html.length; k++) {
+    const c = html[k]
+    if (c === "<") {
+      const t = /^<(\/?)([a-zA-Z0-9]+)([^>]*)>/.exec(html.slice(k))
+      const j = html.indexOf(">", k)
+      if (j < 0) return -1
+      if (t && !t[1] && /^(svg|code)$/i.test(t[2])) { k = closeTagEnd(html, k, t[2]) - 1; continue }
+      if (t && !(/\/$/.test(t[3]) || NB_VOID.test(t[2]))) depth += t[1] ? -1 : 1
+      if (depth < 0) return -1
+      k = j
+      continue
+    }
+    if (c === "(") par += 1
+    else if (c === ")") { par -= 1; if (par === 0) return depth === 0 ? k : -1 }
+  }
+  return -1
+}
+
+function stretchParens(html) {
+  if (html.indexOf("(") < 0 || !PAREN_TALL.test(html)) return html
+  let out = "", i = 0
+  while (i < html.length) {
+    const c = html[i]
+    if (c === "<") {
+      const t = /^<(\/?)([a-zA-Z0-9]+)/.exec(html.slice(i))
+      const j = html.indexOf(">", i)
+      if (j < 0) { out += html.slice(i); break }
+      if (t && !t[1] && /^(svg|code)$/i.test(t[2])) {
+        const end = closeTagEnd(html, i, t[2])
+        out += html.slice(i, end); i = end; continue
+      }
+      out += html.slice(i, j + 1); i = j + 1; continue
+    }
+    if (c === "(") {
+      const j = matchParen(html, i)
+      if (j > 0) {
+        const inner = stretchParens(html.slice(i + 1, j))
+        out += PAREN_TALL.test(inner) ? parenGroup(inner) : "(" + inner + ")"
+        i = j + 1; continue
+      }
+    }
+    out += c
+    i += 1
+  }
+  return out
+}
+
 // Условие задания рендерится как HTML, чтобы дроби были СТОЛБИКОМ (не «в строчку»),
 // а корень — с верхней чертой над подкоренным. Генераторы вставляют токены
 // ⟦f:n:d⟧ (дробь) и ⟦r:x⟧ (корень); здесь текст сначала ЭКРАНИРУЕТСЯ (защита от XSS
 // в задачах, введённых репетитором), и только потом токены разворачиваются в разметку.
 export function renderTaskMath(text) {
   if (!text) return ""
-  return noBreakMath(renderTaskMathRaw(text))
+  return noBreakMath(stretchParens(renderTaskMathRaw(text)))
 }
 function renderTaskMathRaw(text) {
   const esc = String(text)
@@ -398,9 +478,10 @@ function renderTaskMathRaw(text) {
       return rootFracMarkup(pre || "", num || "", den || "", post || "")
     })
     // ⟦pf:n:d⟧ — дробь в скобках, растянутых по её высоте (основание степени: (1/4)^x).
-    // Скобки — отдельные глиф-спаны крупнее строки; раскрываем ДО ⟦f⟧, т.к. содержат ⟦f⟧ внутри.
+    // Скобки отдаём голыми — их растянет общий проход stretchParens в самом конце, тот же,
+    // что и для скобок, написанных в условии руками. Раскрываем ДО ⟦f⟧: содержат ⟦f⟧ внутри.
     .replace(/⟦pf:([^:⟧]+):([^:⟧]+)⟧/g,
-      (_, n, d) => `<span class="tmath-paren">(</span><span class="tmath-frac"><span class="tmath-num">${rootIn(n)}</span><span class="tmath-den">${rootIn(d)}</span></span><span class="tmath-paren">)</span>`)
+      (_, n, d) => `(<span class="tmath-frac"><span class="tmath-num">${rootIn(n)}</span><span class="tmath-den">${rootIn(d)}</span></span>)`)
     // числитель/знаменатель — любой текст без «:» (числа, степени вида 7⁴), уже экранированный
     .replace(/⟦f:([^:⟧]+):([^:⟧]+)⟧/g,
       (_, n, d) => `<span class="tmath-frac"><span class="tmath-num">${rootIn(n)}</span><span class="tmath-den">${rootIn(d)}</span></span>`)
