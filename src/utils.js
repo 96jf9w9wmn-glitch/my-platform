@@ -367,7 +367,7 @@ export function noBreakMath(html) {
 // ── Скобки по высоте того, что обнимают ──────────────────────────────────────
 // «(» и «)» — обычные глифы высотой в строку, а рядом с ними стоит дробь высотой в два
 // яруса: скобка выглядит вдвое ниже своего содержимого (·(1/14 + 1/18)·). Поэтому после
-// разворота токенов пары скобок, ВНУТРИ которых оказалась дробь, заменяются на
+// разворота токенов пары скобок (круглых и квадратных), ВНУТРИ которых оказалась дробь, заменяются на
 // растянутые: SVG-дуга тянется по высоте содержимого (тем же приёмом, что фигурная
 // скобка системы), preserveAspectRatio="none" + non-scaling-stroke держат штрих тонким
 // при любой высоте. Скобки вокруг обычного текста и корня остаются глифами — растягивать
@@ -375,9 +375,19 @@ export function noBreakMath(html) {
 const PAREN_TALL = /class="tmath-(frac|rootfrac)/
 const parenSvg = (d) => '<svg class="tmath-pbr" viewBox="0 0 10 100" preserveAspectRatio="none" aria-hidden="true">'
   + `<path d="${d}" fill="none" stroke="currentColor" stroke-width="1.1" vector-effect="non-scaling-stroke" stroke-linecap="round"/></svg>`
-const PAREN_L = parenSvg("M8.2 1C3.4 24 3.4 76 8.2 99")
-const PAREN_R = parenSvg("M1.8 1C6.6 24 6.6 76 1.8 99")
-const parenGroup = (inner) => `<span class="tmath-parens">${PAREN_L}<span class="tmath-pbody">${inner}</span>${PAREN_R}</span>`
+// Квадратная скобка нужна не для симметрии, а для промежутков: −8/7 ≤ x ≤ 8/7 записывают
+// как [−8/7; 8/7], и полуинтервал (−∞; −8/7] закрывается скобкой ДРУГОГО вида — поэтому
+// пара ищется по позиции, а вид каждой стороны берётся из своего символа.
+const PAREN_GLYPH = {
+  "(": parenSvg("M8.2 1C3.4 24 3.4 76 8.2 99"),
+  ")": parenSvg("M1.8 1C6.6 24 6.6 76 1.8 99"),
+  "[": parenSvg("M8.2 1H3.2V99H8.2"),
+  "]": parenSvg("M1.8 1H6.8V99H1.8"),
+}
+const PAREN_OPEN = "(["
+const PAREN_CLOSE = ")]"
+const parenGroup = (inner, l, r) =>
+  `<span class="tmath-parens">${PAREN_GLYPH[l]}<span class="tmath-pbody">${inner}</span>${PAREN_GLYPH[r]}</span>`
 
 // Конец парного </tag> (с учётом вложенности) — чтобы целиком перепрыгнуть содержимое
 // <svg> и <code>: там скобки принадлежат картинке или коду, а не формуле.
@@ -392,10 +402,12 @@ function closeTagEnd(html, from, tag) {
   return html.length
 }
 
-// Индекс парной «)» для скобки в позиции i или −1. Теги пропускаются целиком, а пара
-// принимается только если открывающая и закрывающая скобки лежат на ОДНОМ уровне
-// вложенности тегов (иначе обёртка порвала бы разметку: «(» в числителе, «)» снаружи).
-function matchParen(html, i) {
+// Индекс парной «)» для скобки в позиции i или −1. Тем же пользуется PDF-рендер
+// (variantPdf.js): там дробь — картинка, но пары скобок ищутся по той же логике.
+// Теги пропускаются целиком, а пара принимается, только если открывающая и закрывающая
+// скобки лежат на ОДНОМ уровне вложенности тегов (иначе обёртка порвала бы разметку:
+// «(» в числителе дроби, «)» снаружи неё).
+export function matchParen(html, i) {
   let depth = 0, par = 0
   for (let k = i; k < html.length; k++) {
     const c = html[k]
@@ -409,14 +421,14 @@ function matchParen(html, i) {
       k = j
       continue
     }
-    if (c === "(") par += 1
-    else if (c === ")") { par -= 1; if (par === 0) return depth === 0 ? k : -1 }
+    if (PAREN_OPEN.includes(c)) par += 1
+    else if (PAREN_CLOSE.includes(c)) { par -= 1; if (par === 0) return depth === 0 ? k : -1 }
   }
   return -1
 }
 
 function stretchParens(html) {
-  if (html.indexOf("(") < 0 || !PAREN_TALL.test(html)) return html
+  if (!/[([]/.test(html) || !PAREN_TALL.test(html)) return html
   let out = "", i = 0
   while (i < html.length) {
     const c = html[i]
@@ -430,11 +442,11 @@ function stretchParens(html) {
       }
       out += html.slice(i, j + 1); i = j + 1; continue
     }
-    if (c === "(") {
+    if (PAREN_OPEN.includes(c)) {
       const j = matchParen(html, i)
       if (j > 0) {
         const inner = stretchParens(html.slice(i + 1, j))
-        out += PAREN_TALL.test(inner) ? parenGroup(inner) : "(" + inner + ")"
+        out += PAREN_TALL.test(inner) ? parenGroup(inner, c, html[j]) : c + inner + html[j]
         i = j + 1; continue
       }
     }

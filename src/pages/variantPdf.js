@@ -1,6 +1,6 @@
 import jsPDF from "jspdf"
 import html2canvas from "html2canvas"
-import { noBreakMath, svgMathBody, rootGeom } from "../utils"
+import { noBreakMath, svgMathBody, rootGeom, matchParen } from "../utils"
 
 function escapeHtml(s) {
   const div = document.createElement("div")
@@ -64,25 +64,6 @@ function fracSvg(num0, den0, mf = MATH_ARIAL) {
     `<text x="${cx}" y="30" font-size="${fs}" font-family="${mf.family}" text-anchor="middle" fill="#1c1c1e">${den}</text></svg>` }
 }
 
-// Дробь в скобках по её высоте ((1/4)^x) — единым SVG, чтобы скобки точно совпали с
-// дробью (в PDF дробь — растровая картинка, отдельные текст-скобки рядом не выровнять).
-// Скобки тянутся по высоте вертикальным scale (тоньше штрих, чем крупный шрифт) + weight 300;
-// translate компенсирует сдвиг базовой линии от scale, чтобы скобка осталась по центру дроби.
-function pfracSvg(num0, den0, mf = MATH_ARIAL) {
-  const num = rootInPdf(num0), den = rootInPdf(den0)
-  const fs = FS * 0.95, pfs = 21, sy = 1.35, pb = 25.6, pw = 8
-  const pt = `translate(0,${(-(sy - 1) * pb).toFixed(2)}) scale(1,${sy})`
-  const w = Math.max(chW(stripRootMarker(num0), mf.k), chW(stripRootMarker(den0), mf.k)) * fs + 8
-  const inner = Math.ceil(w + 6), H = 34
-  const fx = pw + 2, cx = fx + inner / 2, W = fx + inner + pw + 2
-  return { W, H, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">` +
-    `<text x="1" y="${pb}" font-size="${pfs}" font-weight="300" font-family="${mf.family}" fill="#1c1c1e" transform="${pt}">(</text>` +
-    `<text x="${cx}" y="13" font-size="${fs}" font-family="${mf.family}" text-anchor="middle" fill="#1c1c1e">${num}</text>` +
-    `<line x1="${cx - w / 2 - 2}" y1="16.5" x2="${cx + w / 2 + 2}" y2="16.5" stroke="#1c1c1e" stroke-width="1.3"/>` +
-    `<text x="${cx}" y="30" font-size="${fs}" font-family="${mf.family}" text-anchor="middle" fill="#1c1c1e">${den}</text>` +
-    `<text x="${fx + inner + 1}" y="${pb}" font-size="${pfs}" font-weight="300" font-family="${mf.family}" fill="#1c1c1e" transform="${pt}">)</text></svg>` }
-}
-
 // Радикал для PDF: содержимое (в т.ч. показатель ⁅…⁆ и стоячая дробь ⦃n¦d⦄ в нём)
 // раскладывает общий с экраном svgMathBody — иначе служебные маркеры попадали в SVG
 // сырыми и растягивали черту. Высота зависит от содержимого, поэтому картинка несёт
@@ -127,7 +108,7 @@ function rootFracSvg(pre, num, den, post, mf = MATH_ARIAL) {
 // preflight ставит img{display:block}, и формула выпадает из строки. vertical-align
 // откалиброван ПОД html2canvas (он рисует inline-img выше, чем браузер; смотреть в
 // браузере этот скрытый блок никто не будет — важен только снимок).
-async function svgToInlineImg({ W, H, svg, valign: own }, valign) {
+async function svgToInlineImg({ W, H, svg, valign: own }, valign, fh = false) {
   const blobUrl = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }))
   const img = new Image()
   try {
@@ -137,7 +118,9 @@ async function svgToInlineImg({ W, H, svg, valign: own }, valign) {
     const ctx = c.getContext("2d")
     ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, c.width, c.height)
     ctx.drawImage(img, 0, 0, c.width, c.height)
-    return `<img src="${c.toDataURL("image/png")}" style="display:inline; width:${W}px; height:${H}px; vertical-align:${own || valign};" />`
+    // data-fh — высота картинки ДРОБИ: по ней parensPdf ниже считает, до какой высоты
+    // тянуть скобки, оказавшиеся вокруг неё.
+    return `<img src="${c.toDataURL("image/png")}"${fh ? ` data-fh="${H}"` : ""} style="display:inline; width:${W}px; height:${H}px; vertical-align:${own || valign};" />`
   } finally {
     URL.revokeObjectURL(blobUrl)
   }
@@ -280,6 +263,60 @@ async function casesPdf(html, mf = MATH_ARIAL) {
   return out + html.slice(last)
 }
 
+// Скобки по высоте дроби в PDF — то же, что stretchParens делает на экране (utils.js),
+// но здесь дробь растровая, поэтому и скобка растеризуется в PNG нужной высоты: тянутый
+// SVG html2canvas снимает бледной ниткой (см. braceSvg выше). Пары скобок ищутся общей с
+// экраном matchParen, растягиваются только те, внутри которых оказалась дробь (data-fh);
+// скобки вокруг текста и корня остаются обычными глифами.
+const PAREN_PAD = 2                      // насколько скобка выше дроби сверху и снизу
+// ch — сам символ: скобка бывает круглой и квадратной, а у промежутка (−∞; −8/7] стороны
+// РАЗНЫЕ, поэтому вид считается для каждой стороны отдельно.
+function parenSvgPdf(H, ch) {
+  const right = ch === ")" || ch === "]"
+  const W = Math.max(7, Math.round(H * 0.22)), x = W - 1.4, n = (v) => v.toFixed(1)
+  const bow = right
+    ? `M${n(W - x)},1 C${n(x)},${n(H * 0.24)} ${n(x)},${n(H * 0.76)} ${n(W - x)},${n(H - 1)}`
+    : `M${n(x)},1 C${n(W - x)},${n(H * 0.24)} ${n(W - x)},${n(H * 0.76)} ${n(x)},${n(H - 1)}`
+  const sq = right
+    ? `M${n(W - x)},1 H${n(x)} V${n(H - 1)} H${n(W - x)}`
+    : `M${n(x)},1 H${n(W - x)} V${n(H - 1)} H${n(x)}`
+  const d = ch === "[" || ch === "]" ? sq : bow
+  return { W, H, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">` +
+    `<path d="${d}" fill="none" stroke="#1c1c1e" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round"/></svg>` }
+}
+
+async function parensPdf(html) {
+  if (!/[([]/.test(html) || html.indexOf("data-fh") < 0) return html
+  let out = "", i = 0
+  while (i < html.length) {
+    const c = html[i]
+    if (c === "<") {
+      const j = html.indexOf(">", i)
+      if (j < 0) { out += html.slice(i); break }
+      out += html.slice(i, j + 1); i = j + 1; continue
+    }
+    if (c === "(" || c === "[") {
+      const j = matchParen(html, i)
+      if (j > 0) {
+        const inner = await parensPdf(html.slice(i + 1, j))
+        const hs = [...inner.matchAll(/data-fh="([\d.]+)"/g)].map((m) => parseFloat(m[1]))
+        if (hs.length) {
+          // низ картинки дроби сидит на FRAC_VALIGN ниже базовой линии — скобку сажаем
+          // туда же (с запасом PAREN_PAD), тогда она ровно накрывает дробь по вертикали.
+          const H = Math.round(Math.max(...hs)) + 2 * PAREN_PAD
+          const va = `${parseFloat(FRAC_VALIGN) - PAREN_PAD}px`
+          out += await svgToInlineImg(parenSvgPdf(H, c), va) + inner
+            + await svgToInlineImg(parenSvgPdf(H, html[j]), va)
+        } else out += c + inner + html[j]
+        i = j + 1; continue
+      }
+    }
+    out += c
+    i += 1
+  }
+  return out
+}
+
 export async function renderTaskMathPdf(text, mf = MATH_ARIAL) {
   const esc = escapeHtml(String(text ?? ""))
     .replace(/⟦match⟧([\s\S]*?)⟦endmatch⟧/g, (_, body) => matchTablePdf(body, mf.plain))
@@ -289,25 +326,27 @@ export async function renderTaskMathPdf(text, mf = MATH_ARIAL) {
   let out = "", last = 0, m
   while ((m = re.exec(esc)) !== null) {
     out += esc.slice(last, m.index)
-    if (m[1] !== undefined) { const [pre, n, d, post] = m[1].split("¦"); out += await svgToInlineImg(rootFracSvg(pre || "", n || "", d || "", post || "", mf), FRAC_VALIGN) }
+    if (m[1] !== undefined) { const [pre, n, d, post] = m[1].split("¦"); out += await svgToInlineImg(rootFracSvg(pre || "", n || "", d || "", post || "", mf), FRAC_VALIGN, true) }
     else if (m[4] !== undefined) out += await svgToInlineImg(rootSvg(m[4], "", mf), ROOT_VALIGN)
     else if (m[5] !== undefined) out += `<sub>${flatMarks(m[5])}</sub>`
     else if (m[6] !== undefined) out += `<span style="white-space:nowrap;"><span style="display:inline-flex; flex-direction:column; align-items:flex-end; text-align:right; vertical-align:-0.35em; font-size:0.62em; line-height:1.05; margin-right:0.05em;"><span>${m[6]}</span><span>${m[7]}</span></span>${m[8]}</span>`
     else if (m[9] !== undefined) out += `<sup style="font-size:0.72em; line-height:0; vertical-align:0.55em;">${flatMarks(m[9])}</sup>`
     else if (m[10] !== undefined) out += await svgToInlineImg(rootSvg(m[11], m[10], mf), ROOT_VALIGN)
-    else if (m[12] !== undefined) out += await svgToInlineImg(pfracSvg(m[12], m[13], mf), FRAC_VALIGN)
+    // ⟦pf⟧ — та же дробь, но в скобках: отдаём их голыми, чтобы parensPdf растянул их
+    // тем же способом, что и скобки из самого условия (иначе две разные скобки в PDF).
+    else if (m[12] !== undefined) out += "(" + await svgToInlineImg(fracSvg(m[12], m[13], mf), FRAC_VALIGN, true) + ")"
     else if (m[14] !== undefined) out += `<sup style="font-size:0.72em; line-height:0; vertical-align:0.55em;">${flatMarks(m[14])}</sup>`
-    else if (m[15] !== undefined) out += await svgToInlineImg(fracSvg(m[15], m[16], mf), FRAC_VALIGN)
+    else if (m[15] !== undefined) out += await svgToInlineImg(fracSvg(m[15], m[16], mf), FRAC_VALIGN, true)
     else if (m[17] !== undefined) out += `<sub>${flatMarks(m[17])}</sub>`
     // √{X} и √[i]{X} в самом условии (внутри дробей их разворачивает rootInPdf)
     else if (m[21] !== undefined) out += await svgToInlineImg(rootSvg(m[21], m[20] || "", mf), ROOT_VALIGN)
     else if (m[22] !== undefined) out += `<code style="font-family:Menlo,Consolas,monospace; font-size:0.92em; white-space:pre-wrap;">${m[22]}</code>`
     else if (m[18] !== undefined) out += `<span style="display:inline-flex; flex-direction:column; align-items:flex-start; text-align:left; vertical-align:-0.35em; font-size:0.62em; line-height:1.05; margin-right:0.05em;"><span>${m[18]}</span><span>${m[19]}</span></span>`
-    else out += await svgToInlineImg(fracSvg(m[2], m[3], mf), FRAC_VALIGN)
+    else out += await svgToInlineImg(fracSvg(m[2], m[3], mf), FRAC_VALIGN, true)
     last = m.index + m[0].length
   }
   // формула не должна рваться переносом строки и в PDF (см. noBreakMath в utils.js)
-  return noBreakMath(await casesPdf(out + esc.slice(last), mf))
+  return noBreakMath(await casesPdf(await parensPdf(out + esc.slice(last)), mf))
 }
 
 // html2canvas ненадёжно рисует живые <img src="*.svg"> (известное ограничение библиотеки,
