@@ -2069,12 +2069,15 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
 
         {/* Телефон: панель свёрнута в кнопку-бургер, чтобы вся высота экрана
             оставалась доской. Тап разворачивает панель, тап по холсту сворачивает. */}
+        {/* press-tap и popup-bubble сами ставят position, поэтому позиционирует обёртка */}
         {!isBig && !panelOpen && (
-          <button onClick={() => setPanelOpen(true)} aria-label="Инструменты"
-            className="absolute bottom-2 left-2 press-tap w-11 h-11 rounded-full shadow-xl flex items-center justify-center popup-bubble"
-            style={{ background: panelBg, border: `1px solid ${panelBorder}`, ...idleStyle }}>
-            <Icon name="menu" size={20} />
-          </button>
+          <div className="absolute bottom-2 left-2">
+            <button onClick={() => setPanelOpen(true)} aria-label="Инструменты"
+              className="press-tap w-11 h-11 rounded-full shadow-xl flex items-center justify-center popup-bubble"
+              style={{ background: panelBg, border: `1px solid ${panelBorder}`, ...idleStyle }}>
+              <Icon name="menu" size={20} />
+            </button>
+          </div>
         )}
       </div>
 
