@@ -2798,56 +2798,172 @@ export function t6Turtle() {
 
 const T1_LETTERS = ["А", "Б", "В", "Г", "Д", "Е", "Ж"]
 
-// Случайный связный неориентированный граф на n вершинах с весами.
-function t1RandomGraph(n, extraEdges) {
-  const w = Array.from({ length: n }, () => Array(n).fill(0))
-  const order = shuffle([...Array(n).keys()])
-  for (let i = 1; i < n; i++) {                       // остовное дерево — связность
-    const a = order[i], b = order[randInt(0, i - 1)]
-    w[a][b] = w[b][a] = randInt(1, 30)
-  }
-  for (let k = 0; k < extraEdges; k++) {
-    const a = randInt(0, n - 1), b = randInt(0, n - 1)
-    if (a !== b && !w[a][b]) w[a][b] = w[b][a] = randInt(1, 30)
-  }
-  return w
+// ── Плоская схема дорог: сначала чертёж, потом граф ─────────────────────────
+// В настоящих КИМ дороги на схеме НИКОГДА не пересекаются: чертёж читают глазами,
+// и лишний перекрёсток линий выглядит как пункт, которого нет в таблице. Поэтому
+// граф не рисуется по готовой матрице (при раскладке по кругу рёбра переплетаются
+// неизбежно), а СТРОИТСЯ ИЗ ЧЕРТЕЖА: сначала точки в общем положении, потом жадная
+// триангуляция — набор рёбер, которые заведомо друг друга не пересекают, — и уже
+// её подграф становится графом задачи. Любой подграф непересекающегося набора тоже
+// непересекающийся, поэтому дальше можно свободно прореживать рёбра.
+
+// Расстояние от точки до отрезка — нужно, чтобы дорога не проходила вплотную к
+// чужой вершине: иначе на чертеже видна «дорога», которой в таблице нет.
+function t1PointSegDist(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1
+  const len2 = dx * dx + dy * dy || 1
+  let t = ((px - x1) * dx + (py - y1) * dy) / len2
+  t = Math.max(0, Math.min(1, t))
+  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy))
 }
 
-// Раскладка вершин по кругу + подписи. labels — что писать у вершин.
-function t1GraphSvg(w, labels) {
-  const n = labels.length
-  const R = 110, cx = 150, cy = 135, W = 300, H = 275
-  const pos = labels.map((_, i) => {
-    const a = -Math.PI / 2 + (2 * Math.PI * i) / n
-    return [cx + R * Math.cos(a), cy + R * Math.sin(a)]
-  })
-  let el = ""
-  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
-    if (!w[i][j]) continue
-    el += `<line x1="${pos[i][0].toFixed(1)}" y1="${pos[i][1].toFixed(1)}" x2="${pos[j][0].toFixed(1)}" y2="${pos[j][1].toFixed(1)}" stroke="#111" stroke-width="1.4"/>`
+// Строгое пересечение отрезков (общая вершина пересечением не считается).
+function t1SegCross(a, b, c, d) {
+  const side = (p, q, r) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
+  const d1 = side(a, b, c), d2 = side(a, b, d), d3 = side(c, d, a), d4 = side(c, d, b)
+  return (d1 > 0) !== (d2 > 0) && (d3 > 0) !== (d4 > 0)
+}
+
+// Точки + все рёбра, которые можно провести между ними без пересечений.
+function t1PlanarBase(n) {
+  const W = 430, H = 300, PAD = 32, MIN_D = 82
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const pts = []
+    let guard = 0
+    while (pts.length < n && guard++ < 400) {
+      // «Лучший из кандидатов»: точки ложатся вольно, но не сбиваются в кучу.
+      let best = null
+      for (let k = 0; k < 24; k++) {
+        const p = [PAD + Math.random() * (W - 2 * PAD), PAD + Math.random() * (H - 2 * PAD)]
+        const d = pts.length ? Math.min(...pts.map((q) => Math.hypot(p[0] - q[0], p[1] - q[1]))) : Infinity
+        if (!best || d > best.d) best = { p, d }
+      }
+      if (best.d >= MIN_D) pts.push(best.p)
+    }
+    if (pts.length < n) continue
+    // Жадная триангуляция: короткие рёбра вперёд; ребро принимается, только если
+    // не пересекает уже принятые и не задевает чужую вершину.
+    const cand = []
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+      cand.push([i, j, Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1])])
+    }
+    cand.sort((a, b) => a[2] - b[2])
+    const edges = []
+    for (const [i, j] of cand) {
+      let ok = true
+      for (let k = 0; k < n && ok; k++) {
+        if (k === i || k === j) continue
+        if (t1PointSegDist(pts[k][0], pts[k][1], pts[i][0], pts[i][1], pts[j][0], pts[j][1]) < 26) ok = false
+      }
+      for (const [p, q] of edges) {
+        if (!ok) break
+        if (p === i || p === j || q === i || q === j) continue
+        if (t1SegCross(pts[i], pts[j], pts[p], pts[q])) ok = false
+      }
+      if (ok) edges.push([i, j])
+    }
+    if (edges.length < n + 3) continue
+    return { pts, edges }
   }
+  return null
+}
+
+const t1Degrees = (n, edges) => {
+  const d = Array(n).fill(0)
+  edges.forEach(([i, j]) => { d[i]++; d[j]++ })
+  return d
+}
+
+function t1Connected(n, edges) {
+  const adj = Array.from({ length: n }, () => [])
+  edges.forEach(([i, j]) => { adj[i].push(j); adj[j].push(i) })
+  const seen = Array(n).fill(false)
+  const st = [0]
+  seen[0] = true
+  let cnt = 1
+  while (st.length) {
+    const v = st.pop()
+    for (const u of adj[v]) if (!seen[u]) { seen[u] = true; cnt++; st.push(u) }
+  }
+  return cnt === n
+}
+
+// Прореживание до нужного числа дорог: граф остаётся связным, у каждого пункта
+// не меньше двух дорог (тупики в КИМ встречаются, но с ними чертёж выглядит бедно).
+// locked — рёбра, которые трогать нельзя (на них держится замысел задачи).
+function t1Sparsify(n, edges, target, locked) {
+  const alive = edges.map(() => true)
+  let count = edges.length
+  for (const k of shuffle([...edges.keys()])) {
+    if (count <= target) break
+    if (locked && locked(edges[k])) continue
+    alive[k] = false
+    const rest = edges.filter((_, i) => alive[i])
+    if (t1Connected(n, rest) && Math.min(...t1Degrees(n, rest)) >= 2) count--
+    else alive[k] = true
+  }
+  return edges.filter((_, i) => alive[i])
+}
+
+// Чертёж как в КИМ: тонкие чёрные линии, залитые точки, буквы РЯДОМ с точкой
+// (внутрь кружка их не пишут). Место для подписи выбирается там, где она никому
+// не мешает: перебираются направления вокруг вершины и берётся самое свободное.
+function t1DrawGraph(pts, edges, labels) {
+  const n = pts.length
+  const OFF = 17
+  const placed = []
+  const marks = pts.map(([x, y], i) => {
+    let best = null
+    for (let k = 0; k < 24; k++) {
+      const a = (2 * Math.PI * k) / 24
+      const lx = x + OFF * Math.cos(a), ly = y + OFF * Math.sin(a)
+      let score = Infinity
+      for (const [p, q] of edges) {
+        score = Math.min(score, t1PointSegDist(lx, ly, pts[p][0], pts[p][1], pts[q][0], pts[q][1]))
+      }
+      for (let m = 0; m < n; m++) if (m !== i) score = Math.min(score, Math.hypot(lx - pts[m][0], ly - pts[m][1]) / 1.5)
+      for (const [px, py] of placed) score = Math.min(score, Math.hypot(lx - px, ly - py) / 1.5)
+      if (!best || score > best.score) best = { x: lx, y: ly, score }
+    }
+    placed.push([best.x, best.y])
+    return best
+  })
+  const xs = [...pts.map((p) => p[0] - 7), ...marks.map((m) => m.x - 11)]
+  const ys = [...pts.map((p) => p[1] - 7), ...marks.map((m) => m.y - 12)]
+  const xe = [...pts.map((p) => p[0] + 7), ...marks.map((m) => m.x + 11)]
+  const ye = [...pts.map((p) => p[1] + 7), ...marks.map((m) => m.y + 12)]
+  const dx = 6 - Math.min(...xs), dy = 6 - Math.min(...ys)
+  const W = Math.round(Math.max(...xe) - Math.min(...xs) + 12)
+  const H = Math.round(Math.max(...ye) - Math.min(...ys) + 12)
+  let el = ""
+  for (const [i, j] of edges) {
+    el += `<line x1="${(pts[i][0] + dx).toFixed(1)}" y1="${(pts[i][1] + dy).toFixed(1)}" x2="${(pts[j][0] + dx).toFixed(1)}" y2="${(pts[j][1] + dy).toFixed(1)}" stroke="#111" stroke-width="1.6"/>`
+  }
+  pts.forEach(([x, y]) => {
+    el += `<circle cx="${(x + dx).toFixed(1)}" cy="${(y + dy).toFixed(1)}" r="4.2" fill="#111"/>`
+  })
   labels.forEach((lbl, i) => {
-    const [x, y] = pos[i]
-    el += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="13" fill="#fff" stroke="#111" stroke-width="1.4"/>`
-    el += `<text x="${x.toFixed(1)}" y="${(y + 5).toFixed(1)}" text-anchor="middle" font-size="15" font-family="Arial, sans-serif" font-weight="bold" fill="#111">${lbl}</text>`
+    el += `<text x="${(marks[i].x + dx).toFixed(1)}" y="${(marks[i].y + dy + 6).toFixed(1)}" text-anchor="middle" font-size="18" font-family="Times New Roman, serif" fill="#111">${lbl}</text>`
   })
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${el}</svg>`
 }
 
 // Схема (буквы) + таблица (П1…Пn) нарисованы независимо: найти сумму длин двух дорог.
 export function t1GraphTable() {
-  for (let attempt = 0; attempt < 120; attempt++) {
+  for (let attempt = 0; attempt < 200; attempt++) {
     const n = pick([6, 7])
-    const w = t1RandomGraph(n, randInt(2, 4))
+    const base = t1PlanarBase(n)
+    if (!base) continue
+    const edges = t1Sparsify(n, base.edges, n + randInt(1, 3))
+    if (edges.length < 6) continue
+    const w = Array.from({ length: n }, () => Array(n).fill(0))
+    for (const [i, j] of edges) w[i][j] = w[j][i] = randInt(1, 30)
     // Перестановка «пункт таблицы → вершина графа» (скрытая от ученика).
     const perm = shuffle([...Array(n).keys()])
     // Таблица строится по перестановке: строка i — пункт Пi, вершина perm[i].
     const table = Array.from({ length: n }, (_, i) =>
       Array.from({ length: n }, (_, j) => w[perm[i]][perm[j]]))
     // Спрашиваем сумму длин двух дорог, заданных БУКВАМИ на графе.
-    const edges = []
-    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) if (w[i][j]) edges.push([i, j])
-    if (edges.length < 6) continue
     const [e1, e2] = shuffle(edges).slice(0, 2)
     const answer = w[e1[0]][e1[1]] + w[e2[0]][e2[1]]
     // Проверка однозначности: любая биекция «пункты таблицы → вершины графа»,
@@ -2889,7 +3005,7 @@ export function t1GraphTable() {
       condition_text:
         "На рисунке схема дорог N-ского района изображена в виде графа, в таблице содержатся сведения о протяжённости " +
         "каждой из этих дорог (в километрах).",
-      image_url: svgUrl(t1GraphSvg(w, labels)),
+      image_url: svgUrl(t1DrawGraph(base.pts, edges, labels)),
       condition_tail:
         tableBlock([head, ...rows]) + "\n" +
         "Так как таблицу и схему рисовали независимо друг от друга, то нумерация населённых пунктов в таблице никак " +
@@ -2934,97 +3050,50 @@ function t1Automorphisms(g) {
   return res
 }
 
-// Расстояние от точки до отрезка — нужно, чтобы ребро не проходило через чужую
-// вершину: иначе на чертеже видна «дорога», которой в таблице нет.
-function t1PointSegDist(px, py, x1, y1, x2, y2) {
-  const dx = x2 - x1, dy = y2 - y1
-  const len2 = dx * dx + dy * dy || 1
-  let t = ((px - x1) * dx + (py - y1) * dy) / len2
-  t = Math.max(0, Math.min(1, t))
-  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy))
-}
-
-// Схема дорог без длин: вершины по кругу со случайным порядком и разбросом радиуса,
-// раскладка принимается только если ни одно ребро не задевает чужую вершину.
-function t1StarsSvg(g, labels) {
-  const n = labels.length
-  const W = 330, H = 310, cx = 165, cy = 152
-  for (let attempt = 0; attempt < 240; attempt++) {
-    const slots = shuffle([...Array(n).keys()])
-    const rot = Math.random() * Math.PI * 2
-    const pos = labels.map((_, i) => {
-      const a = rot + (2 * Math.PI * slots[i]) / n
-      const R = 118 + randInt(-18, 12)
-      return [cx + R * Math.cos(a), cy + R * Math.sin(a)]
-    })
-    let clean = true
-    for (let i = 0; i < n && clean; i++) for (let j = i + 1; j < n && clean; j++) {
-      if (!g[i][j]) continue
-      for (let k = 0; k < n; k++) {
-        if (k === i || k === j) continue
-        if (t1PointSegDist(pos[k][0], pos[k][1], pos[i][0], pos[i][1], pos[j][0], pos[j][1]) < 24) { clean = false; break }
-      }
-    }
-    if (!clean) continue
-    // Вершины не должны и просто слипаться.
-    for (let i = 0; i < n && clean; i++) for (let j = i + 1; j < n; j++) {
-      if (Math.hypot(pos[i][0] - pos[j][0], pos[i][1] - pos[j][1]) < 44) { clean = false; break }
-    }
-    if (!clean) continue
-    let el = ""
-    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
-      if (!g[i][j]) continue
-      el += `<line x1="${pos[i][0].toFixed(1)}" y1="${pos[i][1].toFixed(1)}" x2="${pos[j][0].toFixed(1)}" y2="${pos[j][1].toFixed(1)}" stroke="#111" stroke-width="1.4"/>`
-    }
-    labels.forEach((lbl, i) => {
-      const [x, y] = pos[i]
-      el += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="13" fill="#fff" stroke="#111" stroke-width="1.4"/>`
-      el += `<text x="${x.toFixed(1)}" y="${(y + 5).toFixed(1)}" text-anchor="middle" font-size="15" font-family="Arial, sans-serif" font-weight="bold" fill="#111">${lbl}</text>`
-    })
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${el}</svg>`
-  }
-  return null
-}
-
 export function t1StarsAmbiguous() {
-  for (let attempt = 0; attempt < 400; attempt++) {
+  for (let attempt = 0; attempt < 300; attempt++) {
     const n = pick([7, 7, 8])
-    // Каркас на n−1 вершинах: дерево (связность) + случайные хорды.
+    const base = t1PlanarBase(n)
+    if (!base) continue
+    const adj = Array.from({ length: n }, () => Array(n).fill(0))
+    base.edges.forEach(([i, j]) => { adj[i][j] = adj[j][i] = 1 })
+    // Пара «близнецов» — две вершины с общими соседями НА ЧЕРТЕЖЕ: только тогда
+    // одинаковое окружение рисуется без пересечений. Их и нельзя будет различить.
+    const pairs = []
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+      const common = []
+      for (let k = 0; k < n; k++) if (k !== i && k !== j && adj[i][k] && adj[j][k]) common.push(k)
+      if (common.length >= 2) pairs.push([i, j, common])
+    }
+    if (!pairs.length) continue
+    const [u, t, common] = pick(pairs)
+    const [a, b] = shuffle(common).slice(0, 2)
+    const twin = [[u, a], [u, b], [t, a], [t, b]]
+    if (adj[u][t] && randInt(0, 1)) twin.push([u, t])   // близнецы бывают и соседями
+    // Все прочие дороги — из той же триангуляции, но ни одна не касается близнецов:
+    // иначе их окружения разойдутся и неоднозначность пропадёт.
+    const rest = base.edges.filter(([i, j]) => i !== u && i !== t && j !== u && j !== t)
+    const all = [...rest, ...twin]
+    if (!t1Connected(n, all)) continue
+    const edges = t1Sparsify(n, all, n + randInt(2, 4), (e) => twin.includes(e))
     const g = Array.from({ length: n }, () => Array(n).fill(0))
-    const base = n - 1
-    const order = shuffle([...Array(base).keys()])
-    for (let i = 1; i < base; i++) {
-      const a = order[i], b = order[randInt(0, i - 1)]
-      g[a][b] = g[b][a] = 1
-    }
-    for (let k = 0, add = randInt(3, 5); k < add; k++) {
-      const a = randInt(0, base - 1), b = randInt(0, base - 1)
-      if (a !== b) g[a][b] = g[b][a] = 1
-    }
-    // Вершина-близнец: то же окружение, что у выбранной вершины. Она и создаёт
-    // единственную симметрию графа — и вместе с ней неоднозначность.
-    const twin = randInt(0, base - 1)
-    for (let v = 0; v < base; v++) if (g[twin][v]) g[n - 1][v] = g[v][n - 1] = 1
-    if (randInt(0, 1)) g[twin][n - 1] = g[n - 1][twin] = 1   // близнецы бывают и соседями
-    const deg = g.map((row) => row.reduce((s, x) => s + x, 0))
+    edges.forEach(([i, j]) => { g[i][j] = g[j][i] = 1 })
+    const deg = t1Degrees(n, edges)
     if (Math.min(...deg) < 2 || Math.max(...deg) > n - 2) continue
-    const edges = deg.reduce((s, d) => s + d, 0) / 2
-    if (edges < n + 2 || edges > n + 6) continue
+    if (edges.length < n + 1 || edges.length > n + 6) continue
     // Ровно одна нетривиальная симметрия, и она — перестановка ровно двух вершин.
     const autos = t1Automorphisms(g)
     if (autos.length !== 2) continue
     const nonId = autos.find((m) => m.some((v, i) => v !== i))
     const moved = nonId.map((v, i) => (v === i ? -1 : i)).filter((i) => i >= 0)
     if (moved.length !== 2) continue
-    const [u, t] = moved
+    const [p1, p2] = moved
     // Нумерация в таблице своя, со схемой не связана.
     const perm = shuffle([...Array(n).keys()])          // строка i таблицы → вершина perm[i]
     const rowOf = Array(n)
     perm.forEach((v, i) => { rowOf[v] = i })
-    const svg = t1StarsSvg(g, T1_LAT.slice(0, n))
-    if (!svg) continue
-    const nums = [rowOf[u] + 1, rowOf[t] + 1].sort((a, b) => a - b)
-    const [la, lb] = [T1_LAT[u], T1_LAT[t]].sort()
+    const nums = [rowOf[p1] + 1, rowOf[p2] + 1].sort((x, y) => x - y)
+    const [la, lb] = [T1_LAT[p1], T1_LAT[p2]].sort()
     // Угловая клетка короткая («№»): в таблице ФИПИ «Номер пункта» — это подпись
     // над всей шапкой, а не содержимое первого столбца; с длинным текстом внутри
     // его колонка выходила шире остальных.
@@ -3037,7 +3106,7 @@ export function t1StarsAmbiguous() {
       condition_text:
         "На рисунке изображена схема дорог N-ского района, в таблице звёздочкой обозначено наличие дороги " +
         "из одного населённого пункта в другой. Отсутствие звёздочки означает, что такой дороги нет.",
-      image_url: svgUrl(svg),
+      image_url: svgUrl(t1DrawGraph(base.pts, edges, T1_LAT.slice(0, n))),
       condition_tail:
         tableBlock([head, ...rows]) + "\n" +
         "Каждому населённому пункту на схеме соответствует его номер в таблице, но неизвестно, какой именно номер. " +
