@@ -183,7 +183,10 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
     const vv = window.visualViewport
     if (!vv) return
     const keepBottom = () => {
-      if (nearBottomRef.current) bottomRef.current?.scrollIntoView({ block: "end" })
+      // НЕ block:"end": он ровняет по видимому низу ленты БЕЗ её padding-bottom,
+      // и последнее сообщение остаётся на 68px под полем ввода. Дефолтный вызов
+      // упирается в настоящий низ (scrollTop клампится с учётом паддинга).
+      if (nearBottomRef.current) bottomRef.current?.scrollIntoView()
     }
     vv.addEventListener("resize", keepBottom)
     return () => vv.removeEventListener("resize", keepBottom)
