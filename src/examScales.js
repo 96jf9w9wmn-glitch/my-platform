@@ -107,9 +107,6 @@ export const taskMaxOf = (examType, number) => TASK_MAX[examType]?.[number] || 0
 export const part2MaxOf = (examType) =>
   Object.fromEntries((PART2_NUMBERS[examType] || []).map((n) => [n, taskMaxOf(examType, n)]))
 
-export const part2TotalOf = (examType) =>
-  (PART2_NUMBERS[examType] || []).reduce((s, n) => s + taskMaxOf(examType, n), 0)
-
 // Первичный балл → тестовый. null — у экзамена тестового балла не бывает.
 export function testScoreOf(examType, primary) {
   const sc = scaleOf(examType)

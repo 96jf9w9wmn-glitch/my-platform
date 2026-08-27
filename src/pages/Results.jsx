@@ -9,8 +9,8 @@ import useTypeLabels from "../components/typeLabels"
 import { plural, getInitials } from "../utils"
 import { PlanLock } from "../components/PlanLock"
 import { usePlan } from "../subscription"
-import { part1NumbersOf } from "./taskBankMeta"
-import { scaleOf, part2MaxOf, part2TotalOf, variantMaxPrimary, examResult, secondaryLabel, testScoreOf } from "../examScales"
+import { part1NumbersOf, part2NumbersOf } from "./taskBankMeta"
+import { scaleOf, part2MaxOf, variantMaxPrimary, examResult, secondaryLabel, testScoreOf } from "../examScales"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Шкалы экзаменов
@@ -38,7 +38,10 @@ function buildLayout(type) {
     : [{ label: `Часть 1 — ${p1.length} ${plural(p1.length, "задание", "задания", "заданий")}`, nums: p1, tone: "blue", cols: gridCols(p1.length) }]
 
   const part2Max = part2MaxOf(type)
-  const p2 = Object.keys(part2Max).map(Number).sort((a, b) => a - b)
+  // Номера части 2 берём из состава ВАРИАНТА, а баллы — из шкалы экзамена.
+  // Обратный порядок рисовал бы клетки под задания, которых в варианте нет
+  // (у профиля в банке пока нет №14 и №17).
+  const p2 = part2NumbersOf(type).filter((n) => part2Max[n])
   const part2 = !p2.length ? []
     : geomNums.length
       ? [
@@ -47,7 +50,7 @@ function buildLayout(type) {
         ]
       : [{ label: "Часть 2", nums: p2 }]
 
-  return { part1, part2, part2Max, part1Max: p1.length, part2Total: part2TotalOf(type) }
+  return { part1, part2, part2Max, part1Max: p1.length, part2Total: p2.reduce((s, n) => s + part2Max[n], 0) }
 }
 
 const LAYOUTS = {}

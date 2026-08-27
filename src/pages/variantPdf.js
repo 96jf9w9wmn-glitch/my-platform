@@ -1,6 +1,7 @@
 import jsPDF from "jspdf"
 import html2canvas from "html2canvas"
 import { noBreakMath, svgMathBody, rootGeom, matchParen } from "../utils"
+import { numbersLabel } from "./taskBankMeta"
 
 function escapeHtml(s) {
   const div = document.createElement("div")
@@ -701,7 +702,9 @@ export async function generateVariantPdf({ title, examType, tasks, mode = "blank
   const part1 = tasks.filter((t) => part2From == null || t.number < part2From)
   const part2 = part2From == null ? [] : tasks.filter((t) => t.number >= part2From)
   const hasPart2 = part2.length > 0
-  const range = (arr) => arr.length === 1 ? `${arr[0].number}` : `${arr[0].number}–${arr[arr.length - 1].number}`
+  // Номера с пропусками (часть 2 профиля — 13, 15–16, 18–19) пишем перечислением:
+  // «13–19» пообещало бы ученику задания, которых в листе нет.
+  const range = (arr) => numbersLabel(arr.map((t) => t.number), { hash: false })
 
   const images = await Promise.all(
     tasks.map((t) => t.image_url ? svgUrlToPng(t.image_url, IMG_MAX) : Promise.resolve(null))

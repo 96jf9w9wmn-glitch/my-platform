@@ -32,8 +32,10 @@ import {
 // Состав варианта (какие номера в части 1, какие — во второй) знает банк заданий:
 // у математики номера идут подряд, у информатики — с пропусками, и «номер больше
 // двенадцати» там означало бы не то.
-import { part1SlotsOf, part1CountOf, part1NumbersOf, part2NumbersOf, isPart2Number, examLevelOf } from "./taskBankMeta"
-import { part2MaxOf, part2TotalOf, variantMaxPrimary, examResult, secondaryLabel, scaleOf } from "../examScales"
+import { part1SlotsOf, part1CountOf, part1NumbersOf, part2NumbersOf, isPart2Number, examLevelOf, numbersLabel } from "./taskBankMeta"
+import { part2MaxOf, variantMaxPrimary, examResult, secondaryLabel, scaleOf } from "../examScales"
+// Сколько времени даётся на экзамен — вариант решается ровно столько же.
+import { examMinutesOf, formatExamDuration, formatCountdown } from "./examTiming"
 // ЕГЭ (профиль и база) — единый поток части 2 (13–19); ОГЭ — свой (20–25).
 const isEgeType = (t) => examLevelOf(t) === "ЕГЭ"
 
@@ -1230,7 +1232,7 @@ function StudentNotificationBell({ userId, onNavigate }) {
 
 // Результат сдачи части 1 — вместо системного alert() показываем модалку в стиле
 // приложения: кольцо-прогресс с долей верных, ободряющая подпись, кнопка закрытия.
-function SubmitResultDialog({ score, max, onClose }) {
+function SubmitResultDialog({ score, max, auto = false, onClose }) {
   // Окно появлялось с анимацией, а пропадало щелчком — уводим его через
   // .is-closing (см. src/useClosing.js), как и остальные модалки.
   const { cls: closingCls, close } = useClosing(onClose)
@@ -1283,6 +1285,11 @@ function SubmitResultDialog({ score, max, onClose }) {
         <h3 className="mt-1 text-base font-semibold text-gray-800">{tone.title}</h3>
         <p className="mt-1 text-sm text-gray-500 leading-snug">{tone.msg}</p>
         <p className="mt-2 text-xs text-gray-400">Часть 1 · {score} из {max} баллов</p>
+        {auto && (
+          <p className="mt-1 text-xs text-amber-600 leading-snug">
+            Время экзамена вышло — работа отправлена с теми ответами, что были вписаны.
+          </p>
+        )}
         <button
           onClick={close}
           className="mt-5 w-full py-2.5 rounded-xl bg-gradient-to-b from-[#0a84ff] to-[#0060df] text-white text-sm font-medium shadow-sm hover:opacity-95 transition"
@@ -1293,6 +1300,82 @@ function SubmitResultDialog({ score, max, onClose }) {
     </div>,
     document.body
   )
+}
+
+// ── Таймер решения варианта ────────────────────────────────────────────────
+// Вариант ученик решает столько же, сколько длится настоящий экзамен
+// (продолжительности — src/pages/examTiming.js). Отсчёт держит СЕРВЕР: момент
+// старта ставит RPC variant_open и ровно один раз, поэтому перезагрузка
+// страницы, второй таб и вход с другого устройства время не возвращают.
+// Пока миграция supabase/variant_timer.sql не выполнена, RPC нет — тогда
+// опираемся на локальную отметку старта: таймер у ученика должен быть в любом
+// случае, пусть на своём устройстве его и можно обмануть переводом часов.
+function useVariantTimer(variant, onExpire) {
+  const submission = variant?.submission || null
+  const minutes = examMinutesOf(variant?.type)
+  const active = !!submission && submission.status === "pending" && !!minutes
+  const submissionId = submission?.id || null
+  const localKey = submissionId ? `variant_started_${submissionId}` : null
+
+  // Момент старта, полученный в этой сессии (ответ RPC или локальная отметка).
+  // Держим вместе с id работы: при переходе к другому варианту чужой старт
+  // не должен подхватиться.
+  const [localStart, setLocalStart] = useState(null)
+  const [starting, setStarting] = useState(false)
+  const [nowTs, setNowTs] = useState(() => Date.now())
+
+  // Отметка старта, пережившая перезагрузку без выполненной миграции.
+  const resumed = useMemo(() => {
+    if (!active || !localKey) return null
+    try { return localStorage.getItem(localKey) } catch { return null }  // приватный режим
+  }, [active, localKey])
+
+  // Начатый вариант продолжает отсчёт сам: момент старта приходит вместе со
+  // строкой сдачи, спрашивать «Начать?» второй раз нельзя.
+  const mine = localStart && localStart.id === submissionId ? localStart : null
+  const startedAt = submission?.opened_at || mine?.startedAt || resumed || null
+  const limitMin = submission?.time_limit_min || mine?.limit || minutes
+  const endsAt = active && startedAt ? new Date(startedAt).getTime() + limitMin * 60000 : null
+  const msLeft = endsAt ? Math.max(0, endsAt - nowTs) : null
+
+  // Тикаем текущим временем, остаток считаем на рендере.
+  useEffect(() => {
+    if (!endsAt) return
+    const t = setInterval(() => setNowTs(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [endsAt])
+
+  // Колбэк автосдачи пересоздаётся на каждом рендере, а сработать должен один
+  // раз — поэтому и он, и отметка «уже сдали» живут в ref.
+  const expireRef = useRef(onExpire)
+  useEffect(() => { expireRef.current = onExpire })
+  const expiredForRef = useRef(null)
+
+  // Время вышло — сдаём то, что ученик успел вписать.
+  useEffect(() => {
+    if (msLeft !== 0 || !submissionId || expiredForRef.current === submissionId) return
+    expiredForRef.current = submissionId
+    expireRef.current?.()
+  }, [msLeft, submissionId])
+
+  async function start() {
+    if (!active || starting || endsAt) return
+    setStarting(true)
+    const { data, error } = await supabase.rpc("variant_open", { p_id: submissionId, p_minutes: minutes })
+    const row = Array.isArray(data) ? data[0] : data
+    if (!error && row?.started_at) {
+      setLocalStart({ id: submissionId, startedAt: row.started_at, limit: row.limit_min || minutes })
+    } else {
+      // Нет функции (миграция supabase/variant_timer.sql не выполнена) —
+      // отсчитываем от локальной отметки, чтобы таймер был в любом случае.
+      const now = new Date().toISOString()
+      try { if (localKey) localStorage.setItem(localKey, now) } catch { /* не критично */ }
+      setLocalStart({ id: submissionId, startedAt: now, limit: minutes })
+    }
+    setStarting(false)
+  }
+
+  return { active, minutes, started: !!endsAt, msLeft, starting, start }
 }
 
 function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadStudents }) {
@@ -1490,6 +1573,16 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   const variantDownloadUrl = selectedVariant?.file_url
     ? selectedVariant.file_url + (selectedVariant.file_url.includes("?") ? "&" : "?") + "download"
     : null
+
+  // Экзамен идёт на время, поэтому и вариант тоже: отсчёт стартует по кнопке
+  // «Начать» и по нулю сам отправляет работу на проверку.
+  const variantTimer = useVariantTimer(selectedVariant, () => submitPart1({ auto: true }))
+  // Пока не нажато «Начать», задания и файл варианта закрыты: иначе время
+  // экзамена можно было бы обойти, прочитав всё заранее.
+  const variantLocked = variantTimer.active && !variantTimer.started
+  // Одна сдача на вариант: ручная и автоматическая по таймеру не должны
+  // наложиться — иначе попытки уедут в журнал дважды.
+  const submitLockRef = useRef(false)
 
   const upcoming = (student?.lessons || [])
     .filter((l) => {
@@ -1847,11 +1940,16 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
       try { localStorage.setItem(variantsCacheKey, JSON.stringify(mapped)) } catch { /* переполнение localStorage — кэш не критичен */ }
     }
 
-    async function submitPart1() {
-      if (part1Answers.every((a) => !a)) {
+    // auto = время вышло: работа уходит на проверку сама, поэтому проверка
+    // «впиши хотя бы один ответ» на этом пути не действует — на экзамене
+    // бланк забирают и пустым.
+    async function submitPart1({ auto = false } = {}) {
+      if (submitLockRef.current) return
+      if (!auto && part1Answers.every((a) => !a)) {
         setVariantError("Впиши хотя бы один ответ.")
         return
       }
+      submitLockRef.current = true
       setVariantError("")
       setSubmitting(true)
 
@@ -1868,16 +1966,24 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
         part1_score: score,
         status: "submitted",
       }
-      const hasChoices = Object.keys(part2Choices).length > 0
+      const extra = {}
+      if (Object.keys(part2Choices).length > 0) extra.part2_choices = part2Choices
+      if (auto) extra.auto_submitted = true
       let { error } = await supabase.from("variant_submissions")
-        .update(hasChoices ? { ...base, part2_choices: part2Choices } : base)
+        .update({ ...base, ...extra })
         .eq("id", variant.submission.id)
-      // Колонка part2_choices появляется миграцией supabase/variant_part2.sql — если её ещё
-      // нет, не роняем сдачу целиком, сохраняем хотя бы часть 1.
-      if (error && hasChoices) {
+      // part2_choices приходит миграцией supabase/variant_part2.sql, auto_submitted —
+      // supabase/variant_timer.sql. Если колонок ещё нет, не роняем сдачу целиком:
+      // сохраняем хотя бы часть 1, как было до этих миграций.
+      if (error && Object.keys(extra).length > 0) {
         ({ error } = await supabase.from("variant_submissions").update(base).eq("id", variant.submission.id))
       }
-      if (error) { setVariantError("Не получилось отправить: " + error.message); setSubmitting(false); return }
+      if (error) {
+        setVariantError("Не получилось отправить: " + error.message)
+        setSubmitting(false)
+        submitLockRef.current = false
+        return
+      }
 
       // Попытки по каждому заданию части 1 — основа работы над ошибками, аналитики
       // слабых типажей и повторений. Тип задания берём из снимка варианта: там с
@@ -1913,16 +2019,18 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
 
       await supabase.from("notifications").insert({
         user_id: variant.tutor_id,
-        title: "Ученик сдал часть 1",
-        body: user.profile?.name + " выполнил вариант «" + variant.title + "». Часть 1: " + score + " / " + maxCount,
+        title: auto ? "Время вышло — вариант сдан автоматически" : "Ученик сдал часть 1",
+        body: user.profile?.name + (auto ? " не успел завершить вариант «" : " выполнил вариант «")
+          + variant.title + "». Часть 1: " + score + " / " + maxCount,
       })
       notifyTutor("variant_submitted", variant.submission.id)
 
       setSubmitting(false)
+      submitLockRef.current = false
       setSelectedVariant(null)
       setPart2Choices({})
       loadVariants()
-      setResultDialog({ score, max: maxCount })
+      setResultDialog({ score, max: maxCount, auto })
     }
 
     const navItems = [
@@ -1948,6 +2056,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
           <SubmitResultDialog
             score={resultDialog.score}
             max={resultDialog.max}
+            auto={resultDialog.auto}
             onClose={() => setResultDialog(null)}
           />
         )}
@@ -2438,9 +2547,31 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                     ← Назад
                   </button>
 
+                  {/* Часы видно с любого места работы, поэтому полоса липкая:
+                      в варианте из 19 заданий таймер, оставшийся наверху,
+                      не выполняет своей задачи. */}
+                  {variantTimer.started && variantTimer.msLeft != null && (
+                    <div className="sticky top-0 z-30 mb-3">
+                      <div className={`glass px-4 py-2.5 flex items-center justify-between gap-3 ${
+                        variantTimer.msLeft <= 300000 ? "ring-1 ring-red-300/70 dark:ring-red-400/40" : ""
+                      }`}>
+                        <span className="flex items-center gap-1.5 text-xs text-gray-500">
+                          <Icon name="clock" size={13} />До конца работы
+                        </span>
+                        <span className={`text-lg font-semibold tabular-nums ${
+                          variantTimer.msLeft <= 300000 ? "text-red-500"
+                          : variantTimer.msLeft <= 900000 ? "text-amber-600"
+                          : "text-gray-800"
+                        }`}>
+                          {formatCountdown(variantTimer.msLeft)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <h2 className="text-lg font-medium">{selectedVariant.title}</h2>
-                    {variantDownloadUrl && (
+                    {variantDownloadUrl && !variantLocked && (
                       <a href={variantDownloadUrl} download
                         className="flex-shrink-0 flex items-center gap-1.5 text-xs text-blue-600 border border-blue-200 rounded-lg px-3 py-1.5 hover:bg-blue-50 transition-colors active:scale-95">
                         <MorphIcon from="download" size={14} />Скачать PDF
@@ -2450,7 +2581,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
 
                   {/* Свой файл репетитора (без tasks_snapshot) показываем как файл; сгенерированный
                       вариант решается интерактивно ниже, поэтому его PDF не встраиваем. */}
-                  {!isGeneratedVariant && selectedVariant.file_url && (
+                  {!isGeneratedVariant && selectedVariant.file_url && !variantLocked && (
                     <div className="mb-4 glass-sm overflow-hidden">
                       {selectedVariant.file_url.match(/\.(jpg|jpeg|png|gif|webp)/i) ? (
                         <img src={selectedVariant.file_url} alt="вариант" className="w-full max-w-2xl object-contain bg-white" />
@@ -2478,7 +2609,34 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                     </div>
                   )}
 
-                  {selectedVariant.submission.status === "pending" && isGeneratedVariant && (
+                  {/* Экзамен идёт на время — вариант тоже. Время пошло по кнопке,
+                      а не по открытию карточки: открыть её можно и случайно. */}
+                  {variantLocked && (
+                    <div className="glass p-6 md:p-7 flex flex-col items-center text-center">
+                      <div className="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-500/15 text-blue-600 dark:text-blue-300 flex items-center justify-center mb-4">
+                        <Icon name="clock" size={26} />
+                      </div>
+                      <div className="text-lg font-semibold mb-1">Вариант решается на время</div>
+                      <p className="text-sm text-gray-500 leading-snug max-w-md mb-2">
+                        На настоящем экзамене на эту работу даётся {formatExamDuration(variantTimer.minutes)} —
+                        столько же будет и здесь. Время пойдёт, как только нажмёшь «Начать»,
+                        и не остановится, если закрыть страницу.
+                      </p>
+                      <p className="text-sm text-gray-500 leading-snug max-w-md mb-5">
+                        Когда оно закончится, работа уйдёт на проверку сама — с теми ответами,
+                        которые ты успел вписать. Приготовь черновик и ручку.
+                      </p>
+                      <button
+                        onClick={variantTimer.start}
+                        disabled={variantTimer.starting}
+                        className="press-fill px-6 py-2.5 rounded-xl bg-gradient-to-b from-[#0a84ff] to-[#0060df] text-white text-sm font-medium shadow-sm hover:opacity-95 transition disabled:opacity-50"
+                      >
+                        {variantTimer.starting ? "Начинаем..." : `Начать · ${formatExamDuration(variantTimer.minutes)}`}
+                      </button>
+                    </div>
+                  )}
+
+                  {selectedVariant.submission.status === "pending" && !variantLocked && isGeneratedVariant && (
                     <div className="glass p-5">
                       <h3 className="text-base font-medium mb-1">Реши вариант</h3>
                       <p className="text-xs text-gray-500 mb-4">{isEgeType(selectedVariant?.type) ? "В части 1 впиши ответ. Часть 2 реши на листе — фото решений загрузишь после отправки." : "В части 1 впиши ответ, в части 2 выбери один из четырёх. Фото решений части 2 загрузишь после отправки."}</p>
@@ -2523,7 +2681,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       </div>
                       {variantError && <div className="text-sm text-red-500 mb-2 text-center">{variantError}</div>}
                       <button
-                        onClick={submitPart1}
+                        onClick={() => submitPart1()}
                         disabled={submitting}
                         className="w-full bg-blue-600 text-white rounded-lg py-2.5 text-sm hover:bg-blue-700 disabled:opacity-50"
                       >
@@ -2532,7 +2690,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                     </div>
                   )}
 
-                  {selectedVariant.submission.status === "pending" && !isGeneratedVariant && (
+                  {selectedVariant.submission.status === "pending" && !variantLocked && !isGeneratedVariant && (
                     <div className="glass p-5">
                       <h3 className="text-base font-medium mb-4">Часть 1 — введи ответы</h3>
                       <div className="mb-3">
@@ -2597,7 +2755,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       </div>
                       {variantError && <div className="text-sm text-red-500 mb-2 text-center">{variantError}</div>}
                       <button
-                        onClick={submitPart1}
+                        onClick={() => submitPart1()}
                         disabled={submitting}
                         className="w-full bg-blue-600 text-white rounded-lg py-2.5 text-sm hover:bg-blue-700 disabled:opacity-50"
                       >
@@ -2647,7 +2805,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       <div className="glass p-5">
                         <h3 className="text-base font-medium mb-3">Часть 2 — загрузи решения</h3>
                         <div className="text-xs text-gray-500 mb-4">
-                          Обязательно прикрепи фото или файл решения каждого задания ({part2TaskNums.length === 1 ? `№${part2TaskNums[0]}` : `${part2TaskNums[0]}–${part2TaskNums[part2TaskNums.length - 1]}`}) — без него балл не начисляется
+                          Обязательно прикрепи фото или файл решения каждого задания ({numbersLabel(part2TaskNums)}) — без него балл не начисляется
                         </div>
                         <div className="flex flex-col gap-3">
                           {part2TaskNums.map((taskNum) => (
@@ -2682,7 +2840,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                         <div className="text-sm text-green-500 mt-1">
                           Часть 1: {selectedVariant.submission.part1_score} / {part1Count}
                           {/* Части 2 нет у базового ЕГЭ и у информатики — строка о ней там лишняя */}
-                          {part2TaskNums.length > 0 && ` · Часть 2: ${selectedVariant.submission.part2_score} / ${part2TotalOf(selectedVariant.type)}`}
+                          {part2TaskNums.length > 0 && ` · Часть 2: ${selectedVariant.submission.part2_score} / ${part2TaskNums.reduce((sum, n) => sum + (part2MaxOf(selectedVariant.type)[n] || 0), 0)}`}
                         </div>
                         {variantResult.projected && (
                           <div className="text-[11px] text-green-600/70 mt-2 leading-snug">
@@ -2766,7 +2924,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       {variants.map((v) => (
                         <button
                           key={v.id}
-                          onClick={() => { setSelectedVariant(v); setPart1Answers(Array(part1SlotsOf(v.type)).fill("")); setPart2Choices({}) }}
+                          onClick={() => { submitLockRef.current = false; setSelectedVariant(v); setPart1Answers(Array(part1SlotsOf(v.type)).fill("")); setPart2Choices({}) }}
                           className="text-left glass p-4 hover:bg-white/80 transition-colors w-full no-press press-tap"
                         >
                           <div className="flex justify-between items-center">
@@ -2784,6 +2942,14 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                           {v.submission.status === "graded" && (
                             <div className="text-xs text-gray-500 mt-1">
                               Итого: {v.submission.total_score} баллов
+                            </div>
+                          )}
+                          {/* Нерешённый вариант сразу говорит, сколько времени
+                              на него уйдёт: садиться за него между делом нельзя. */}
+                          {v.submission.status === "pending" && examMinutesOf(v.type) && (
+                            <div className="text-xs text-gray-500 mt-1 flex items-center gap-1.5">
+                              <Icon name="clock" size={11} />
+                              {v.submission.opened_at ? "Время уже идёт" : `На решение: ${formatExamDuration(examMinutesOf(v.type))}`}
                             </div>
                           )}
                         </button>

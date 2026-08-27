@@ -5,7 +5,7 @@ import { signRows } from "../storageUrl"
 import { plural, getInitials, renderTaskMath, plainTaskMath, answersEqual } from "../utils"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
-import { isModuleNumber, part1NumbersOf, part1SlotsOf, part2NumbersOf, isPart2Number, examLevelOf, VARIANT_TYPES } from "./taskBankMeta"
+import { isModuleNumber, part1NumbersOf, part1SlotsOf, part2NumbersOf, isPart2Number, examLevelOf, numbersLabel, VARIANT_TYPES } from "./taskBankMeta"
 import { scaleOf, part2MaxOf, variantMaxPrimary, examResult, secondaryLabel } from "../examScales"
 import { criteriaOf, gradingNotesOf } from "../examCriteria"
 // Вариант ученик решает столько же, сколько длится настоящий экзамен.
@@ -591,7 +591,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
 
               {part2Numbers.length > 0 && (
                 <div>
-                  <label className="text-sm text-gray-500 mb-1 block">Ответы к части 2 ({part2Numbers.length === 1 ? `№${part2Numbers[0]}` : `${part2Numbers[0]}–${part2Numbers[part2Numbers.length - 1]}`}){source === "bank" && bankPicked.length > 0 ? " — подставлены из банка" : ""}</label>
+                  <label className="text-sm text-gray-500 mb-1 block">Ответы к части 2 ({numbersLabel(part2Numbers)}){source === "bank" && bankPicked.length > 0 ? " — подставлены из банка" : ""}</label>
                   <div className="grid grid-cols-2 gap-2">
                     {part2Numbers.map((n) => (
                       <div key={n} className="flex items-center gap-2">
