@@ -1,49 +1,55 @@
 // На сколько недель вперёд расставить регулярные занятия.
 //
-// Был нативный <input type="range"> с подписями «1 нед — 26 нед — 52 нед»:
-// выглядел он как системный элемент из чужого интерфейса, а попасть мышью в
-// нужную неделю всё равно не получалось. Репетитор и не мыслит неделями — он
-// держит ученика «месяц», «до конца полугодия», «весь учебный год», поэтому
-// здесь готовые сроки, подписанные по-человечески. Их ровно шесть: сетка
-// заполняется без огрызка последней строки.
-const PRESETS = [
-  { weeks: 4, label: "Месяц" },
-  { weeks: 8, label: "2 месяца" },
-  { weeks: 12, label: "3 месяца" },
-  { weeks: 26, label: "Полгода" },
-  { weeks: 36, label: "Учебный год" },
-  { weeks: 52, label: "Год" },
-]
+// Ползунок, но не системный: нативный <input type="range"> рисуется по-своему
+// в каждом браузере и выглядит деталью чужого интерфейса. Внешний вид задаёт
+// класс .ios-range в index.css — тонкий трек, синяя заливка до бегунка и
+// крупный белый бегунок с мягкой тенью, как у ползунков в iOS.
+//
+// Заливку рисует градиент по переменной --p: `::-webkit-slider-runnable-track`
+// не умеет «прогресс», в отличие от `::-moz-range-progress`, поэтому долю
+// считаем здесь и отдаём в CSS.
+const MIN = 1
+const MAX = 52
+
+// Недели репетитор переводит в привычный срок, поэтому подписываем значение:
+// «26 нед.» само по себе ни о чём не говорит, «полгода» — говорит.
+function humanTerm(weeks) {
+  if (weeks === 1) return "неделя"
+  if (weeks < 4) return `${weeks} недели`
+  if (weeks === 4) return "месяц"
+  if (weeks === 26) return "полгода"
+  if (weeks === 36) return "учебный год"
+  if (weeks === 52) return "год"
+  const months = Math.round(weeks / 4.345)
+  return months === 1 ? "около месяца" : `около ${months} месяцев`
+}
 
 export default function WeeksPicker({ value, onChange }) {
-  // Старая карточка могла хранить произвольное число недель (ползунок давал
-  // любое от 1 до 52). Показываем его отдельной плиткой, иначе выбор молча
-  // сбросился бы на ближайший срок при первом же открытии.
-  const items = PRESETS.some((p) => p.weeks === value)
-    ? PRESETS
-    : [...PRESETS, { weeks: value, label: "Свой срок" }]
+  const safe = Math.min(MAX, Math.max(MIN, value || MIN))
+  const percent = ((safe - MIN) / (MAX - MIN)) * 100
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-      {items.map((p) => {
-        const selected = p.weeks === value
-        return (
-          <button
-            key={p.weeks}
-            type="button"
-            onClick={() => onChange(p.weeks)}
-            aria-pressed={selected}
-            className={`flex flex-col items-center justify-center gap-0.5 px-3 py-2.5 rounded-xl border text-sm transition-all duration-200 active:scale-95 ${
-              selected
-                ? "bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-500/30"
-                : "border-gray-200 dark:border-white/12 text-gray-600 hover:bg-gray-50 hover:border-gray-300"
-            }`}
-          >
-            <span className="font-medium">{p.label}</span>
-            <span className={`text-xs ${selected ? "text-white/70" : "text-gray-400"}`}>{p.weeks} нед.</span>
-          </button>
-        )
-      })}
+    <div>
+      <div className="flex items-baseline justify-between mb-2.5">
+        <span className="text-sm font-medium text-gray-700">{safe} нед.</span>
+        <span className="text-xs text-gray-400">{humanTerm(safe)}</span>
+      </div>
+      <input
+        type="range"
+        min={MIN}
+        max={MAX}
+        value={safe}
+        onChange={(e) => onChange(Number(e.target.value))}
+        aria-label="На сколько недель вперёд расставить занятия"
+        className="ios-range"
+        style={{ "--p": `${percent}%` }}
+      />
+      {/* Только края: срок словами уже стоит справа над треком, и посередине
+          он повторялся бы сам с собой («полгода» дважды в одном блоке). */}
+      <div className="flex justify-between text-[11px] text-gray-400 mt-1">
+        <span>1 нед.</span>
+        <span>год</span>
+      </div>
     </div>
   )
 }
