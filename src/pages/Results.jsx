@@ -104,9 +104,12 @@ function shareTone(pct) {
   return "red"
 }
 
+// Пилюля стоит в колонке шириной 74 px под последним баллом, поэтому она
+// обязана быть короткой: словами «без изменений» она вылезала влево и
+// наезжала на чип с оценкой. Знак «±0» читается так же и держится в колонке.
 function DeltaPill({ delta }) {
   if (delta === null || delta === undefined) return null
-  if (delta === 0) return <Chip tone="gray">без изменений</Chip>
+  if (delta === 0) return <Chip tone="gray">±0</Chip>
   const up = delta > 0
   return (
     <Chip tone={up ? "green" : "red"}>
@@ -496,6 +499,9 @@ function StudentDetail({ student, stats }) {
 function StudentCard({ student, stats, open, onToggle }) {
   const perf = !stats.hasData && !stats.isExam
   const tone = perf ? "purple" : "blue"
+  const summary = stats.hasData
+    ? `${stats.rows.length} ${plural(stats.rows.length, "работа", "работы", "работ")} · средний ${stats.avg} · лучший ${stats.best}`
+    : "Проверенных работ пока нет"
 
   return (
     <div className={`glass overflow-hidden transition-shadow ${open ? "shadow-lg" : ""}`}>
@@ -509,19 +515,28 @@ function StudentCard({ student, stats, open, onToggle }) {
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline gap-2 min-w-0">
               <span className="text-[15px] font-medium truncate min-w-0">{student.name}</span>
-              <Chip tone={perf ? "purple" : "blue"} className="self-center">{student.goal || "Успеваемость"}</Chip>
+              {/* На телефоне чип цели съедал у имени почти полсотни точек, и
+                  «София Лебедева» превращалась в «София Лебе…». Поэтому там он
+                  уходит во вторую строку, к остальным пометкам. */}
+              {/* Прятать сам чип классом нельзя: у него в базовых классах уже есть
+                  inline-flex, и display-утилиты конфликтуют. Поэтому видимостью
+                  управляет обёртка. */}
+              <span className="hidden sm:flex shrink-0 self-center">
+                <Chip tone={perf ? "purple" : "blue"}>{student.goal || "Успеваемость"}</Chip>
+              </span>
             </div>
             <div className="flex items-center gap-2 mt-1 min-w-0">
+              <span className="flex sm:hidden shrink-0">
+                <Chip tone={perf ? "purple" : "blue"}>{student.goal || "Успеваемость"}</Chip>
+              </span>
               {stats.attention && (
                 <Chip tone="red">
                   <Icon name="alert-triangle" size={11} />{stats.attention}
                 </Chip>
               )}
-              <span className="text-xs text-gray-400 truncate min-w-0">
-                {stats.hasData
-                  ? `${stats.rows.length} ${plural(stats.rows.length, "работа", "работы", "работ")} · средний ${stats.avg} · лучший ${stats.best}`
-                  : "Проверенных работ пока нет"}
-              </span>
+              {/* Рядом с двумя чипами на телефоне от сводки оставался огрызок
+                  («3.»), поэтому там она вынесена под шапку целой строкой. */}
+              <span className="hidden sm:block text-xs text-gray-400 truncate min-w-0">{summary}</span>
             </div>
           </div>
 
@@ -546,6 +561,8 @@ function StudentCard({ student, stats, open, onToggle }) {
             <Icon name="chevron-down" size={16} />
           </span>
         </div>
+
+        <div className="sm:hidden mt-2 text-xs text-gray-400 truncate">{summary}</div>
 
         {stats.hasData && stats.target > 0 && <TargetBar value={stats.last.total} target={stats.target} className="mt-3" />}
       </button>
