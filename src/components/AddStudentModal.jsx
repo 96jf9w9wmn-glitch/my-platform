@@ -4,6 +4,7 @@ import { useClosing } from "../useClosing"
 import Icon from "./Icon"
 import Reveal from "./Reveal"
 import SegmentSwitch from "./SegmentSwitch"
+import WeeksPicker from "./WeeksPicker"
 import PhoneInput, { isValidPhoneNumber } from "react-phone-number-input"
 import "react-phone-number-input/style.css"
 import { plural, parseLocalDate, formatPhone } from "../utils"
@@ -471,11 +472,8 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
                       className="input-glass" />
                   </div>
                   <div>
-                    <label className="text-sm text-gray-500 mb-1.5 block">На сколько недель вперёд — {recurringWeeks} нед.</label>
-                    <input type="range" min="1" max="52" value={recurringWeeks} onChange={(e) => setRecurringWeeks(Number(e.target.value))} className="w-full" />
-                    <div className="flex justify-between text-xs text-gray-400 mt-1">
-                      <span>1 нед</span><span>26 нед</span><span>52 нед (1 год)</span>
-                    </div>
+                    <label className="text-sm text-gray-500 mb-2 block">На сколько вперёд расставить</label>
+                    <WeeksPicker value={recurringWeeks} onChange={setRecurringWeeks} />
                   </div>
                   <Reveal value={previewLessons.length || null}>
                     {() => (

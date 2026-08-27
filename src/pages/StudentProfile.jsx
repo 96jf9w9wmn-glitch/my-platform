@@ -7,6 +7,7 @@ import MorphIcon from "../components/MorphIcon"
 import WeakTypes from "../components/WeakTypes"
 import BoardHistory from "../components/BoardHistory"
 import Collapse from "../components/Collapse"
+import WeeksPicker from "../components/WeeksPicker"
 import ReportComposer from "../components/ReportComposer"
 import { parseLocalDate, isLessonConducted, getInitials, formatPhone } from "../utils"
 import RescheduleModal from "../components/RescheduleModal"
@@ -256,15 +257,8 @@ function EditModal({ student, onClose, onSave }) {
                 </div>
               </div>
               <div>
-                <div className="text-sm text-gray-500 mb-1">На сколько недель вперёд — {recurringWeeks} нед.</div>
-                <input
-                  type="range" min="1" max="52" value={recurringWeeks}
-                  onChange={(e) => setRecurringWeeks(Number(e.target.value))}
-                  className="w-full"
-                />
-                <div className="flex justify-between text-xs text-gray-400 mt-1">
-                  <span>1 нед</span><span>26 нед</span><span>52 нед (1 год)</span>
-                </div>
+                <div className="text-sm text-gray-500 mb-2">На сколько вперёд расставить</div>
+                <WeeksPicker value={recurringWeeks} onChange={setRecurringWeeks} />
               </div>
             </div>
           )}
