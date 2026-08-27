@@ -27,7 +27,10 @@ export const taskText = (t) =>
 // поимённо: у сгенерированного задания есть и служебное (id, generated), и
 // решение с ответом на будущее (solution, solution_image, answerProgram) —
 // ученику это отдавать нельзя, он увидел бы ответ в исходном коде страницы.
-const KEEP = ["number", "condition_text", "condition_tail", "answer", "gen_key",
+// exam_type нужен не для показа, а для журнала попыток: без предмета строку в
+// task_attempts не записать, а без неё тема не попадёт ни в «Слабые типажи»,
+// ни в отчёт родителю.
+const KEEP = ["number", "exam_type", "condition_text", "condition_tail", "answer", "gen_key",
   "image_url", "program", "archive", "spreadsheet", "textFile", "source_text", "source_title"]
 
 export const packTask = (t) =>

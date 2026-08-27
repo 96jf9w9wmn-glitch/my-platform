@@ -1531,6 +1531,49 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
 
     await supabase.from("homework").update(updates).eq("id", hwId)
 
+    // Попытки по заданиям из банка — тот же журнал, что после сдачи варианта
+    // (task_attempts). Без него аналитика слабых типажей и отчёт родителю
+    // видели бы только варианты, хотя решают дома в основном домашние работы:
+    // у ученика, который вариантов не сдавал, тем с процентами не было вовсе.
+    //
+    // Пишем только когда задания приехали из банка И их столько же, сколько
+    // правильных ответов: соответствие ответа заданию тут держится на порядке,
+    // и при расхождении попытка приписалась бы чужому типажу.
+    try {
+      const bank = Array.isArray(hw.bank_tasks) ? hw.bank_tasks : []
+      if (bank.length && bank.length === correct.length) {
+        // Повторная сдача — вторая попытка. Доля верных в аналитике считается по
+        // первым: иначе режим «решай до верного ответа» показывал бы 50% там, где
+        // тема на самом деле освоена.
+        const attemptNo = Array.isArray(hw.student_answers) && hw.student_answers.length ? 2 : 1
+        const attempts = []
+        answers.forEach((ans, i) => {
+          const given = String(ans || "").trim()
+          const task = bank[i]
+          // Не отвечал — это пропуск, а не ошибка. Задание без предмета и номера
+          // (старая работа, собранная до этой правки) в журнал не идёт.
+          if (!given || !task?.exam_type || task.number == null) return
+          attempts.push({
+            p_account: user.id,
+            p_token: user.token,
+            // Нужен id ученика У РЕПЕТИТОРА: по нему джойнит и RLS, и вся аналитика.
+            p_student_id: student?.id != null ? String(student.id) : null,
+            p_source: "homework",
+            p_source_id: hwId,
+            p_exam_type: task.exam_type,
+            p_number: task.number,
+            p_gen_key: task.gen_key || null,
+            p_is_correct: answersEqual(given, correct[i]),
+            p_answer: given,
+            p_attempt_no: attemptNo,
+          })
+        })
+        // Сдачу это блокировать не должно: аналитика — не критичный путь, а
+        // таблицы может не быть на базе без миграции task_attempts.sql.
+        Promise.all(attempts.map((a) => supabase.rpc("task_attempt_log", a))).catch(() => {})
+      }
+    } catch { /* журнал попыток не должен мешать сдаче работы */ }
+
     if (!isPureTest) {
       await supabase.from("notifications").insert({
         user_id: hw.tutor_id,
@@ -1581,996 +1624,996 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     setTutorLinkSuccess("")
     setTutorLinking(true)
     try {
-      const code = tutorCode.trim().toLowerCase()
-      if (!code) throw new Error("Введи код репетитора")
+        const code = tutorCode.trim().toLowerCase()
+        if (!code) throw new Error("Введи код репетитора")
 
-      // Предметы, выбранные в анкете — подставляем их в карточку у репетитора.
-      let subjectStr = null
-      try {
-        const arr = JSON.parse(localStorage.getItem(`student_subjects_${user.id}`) || "[]")
-        if (Array.isArray(arr) && arr.length) subjectStr = arr.join(", ")
-      } catch { /* нет сохранённых предметов — не критично */ }
+        // Предметы, выбранные в анкете — подставляем их в карточку у репетитора.
+        let subjectStr = null
+        try {
+          const arr = JSON.parse(localStorage.getItem(`student_subjects_${user.id}`) || "[]")
+          if (Array.isArray(arr) && arr.length) subjectStr = arr.join(", ")
+        } catch { /* нет сохранённых предметов — не критично */ }
 
-      // Вся привязка — одной серверной функцией (student_link_cleanup.sql): она
-      // проверяет сессию, заводит карточку в ростере, ставит основного репетитора,
-      // создаёт заявку и уведомление. Раньше это делалось четырьмя запросами
-      // отсюда, и вставка карточки была обречена: прав на students у роли ученика
-      // нет, а id таблица не выдаёт сама.
-      const { data, error } = await supabase.rpc("student_link_tutor", {
-        p_student_id: user.id,
-        p_token: user.token,
-        p_code: code,
-        p_subject: subjectStr,
+        // Вся привязка — одной серверной функцией (student_link_cleanup.sql): она
+        // проверяет сессию, заводит карточку в ростере, ставит основного репетитора,
+        // создаёт заявку и уведомление. Раньше это делалось четырьмя запросами
+        // отсюда, и вставка карточки была обречена: прав на students у роли ученика
+        // нет, а id таблица не выдаёт сама.
+        const { data, error } = await supabase.rpc("student_link_tutor", {
+          p_student_id: user.id,
+          p_token: user.token,
+          p_code: code,
+          p_subject: subjectStr,
+        })
+        if (error) throw new Error(error.message)
+        const linked = data?.[0]
+        if (!linked) throw new Error("Репетитор с таким кодом не найден")
+
+        localStorage.removeItem("pending_tutor_code")
+        setTutorLinkSuccess("Подключено к репетитору " + linked.tutor_name + "!")
+        setTutorCode("")
+        if (onReloadStudents) onReloadStudents(linked.tutor_id)
+      } catch (err) {
+        setTutorLinkError(err.message)
+      } finally {
+        setTutorLinking(false)
+      }
+    }
+
+    async function loadVariants() {
+      const { data: subs } = await supabase
+        .from("variant_submissions")
+        .select("*, variants(*)")
+        .eq("student_id", user.id)
+        .order("created_at", { ascending: false })
+      const signedSubs = await signRows(subs || [], { part2_files: "variants" })
+      const mapped = (await signRows(signedSubs.map((s) => ({ ...s.variants, submission: s })), { file_url: "variants" }))
+        .sort((a, b) => String(b.submission?.created_at || "").localeCompare(String(a.submission?.created_at || "")))
+      setVariants(mapped)
+      try { localStorage.setItem(variantsCacheKey, JSON.stringify(mapped)) } catch { /* переполнение localStorage — кэш не критичен */ }
+    }
+
+    async function submitPart1() {
+      if (part1Answers.every((a) => !a)) {
+        setVariantError("Впиши хотя бы один ответ.")
+        return
+      }
+      setVariantError("")
+      setSubmitting(true)
+
+      const variant = selectedVariant
+      const maxCount = part1SlotsOf(variant.type)
+      const correctAnswers = variant.answers?.part1 || []
+      let score = 0
+      part1Answers.forEach((ans, i) => {
+        if (answersEqual(ans, correctAnswers[i])) score++
       })
-      if (error) throw new Error(error.message)
-      const linked = data?.[0]
-      if (!linked) throw new Error("Репетитор с таким кодом не найден")
 
-      localStorage.removeItem("pending_tutor_code")
-      setTutorLinkSuccess("Подключено к репетитору " + linked.tutor_name + "!")
-      setTutorCode("")
-      if (onReloadStudents) onReloadStudents(linked.tutor_id)
-    } catch (err) {
-      setTutorLinkError(err.message)
-    } finally {
-      setTutorLinking(false)
-    }
-  }
+      const base = {
+        part1_answers: part1Answers,
+        part1_score: score,
+        status: "submitted",
+      }
+      const hasChoices = Object.keys(part2Choices).length > 0
+      let { error } = await supabase.from("variant_submissions")
+        .update(hasChoices ? { ...base, part2_choices: part2Choices } : base)
+        .eq("id", variant.submission.id)
+      // Колонка part2_choices появляется миграцией supabase/variant_part2.sql — если её ещё
+      // нет, не роняем сдачу целиком, сохраняем хотя бы часть 1.
+      if (error && hasChoices) {
+        ({ error } = await supabase.from("variant_submissions").update(base).eq("id", variant.submission.id))
+      }
+      if (error) { setVariantError("Не получилось отправить: " + error.message); setSubmitting(false); return }
 
-  async function loadVariants() {
-    const { data: subs } = await supabase
-      .from("variant_submissions")
-      .select("*, variants(*)")
-      .eq("student_id", user.id)
-      .order("created_at", { ascending: false })
-    const signedSubs = await signRows(subs || [], { part2_files: "variants" })
-    const mapped = (await signRows(signedSubs.map((s) => ({ ...s.variants, submission: s })), { file_url: "variants" }))
-      .sort((a, b) => String(b.submission?.created_at || "").localeCompare(String(a.submission?.created_at || "")))
-    setVariants(mapped)
-    try { localStorage.setItem(variantsCacheKey, JSON.stringify(mapped)) } catch { /* переполнение localStorage — кэш не критичен */ }
-  }
-
-  async function submitPart1() {
-    if (part1Answers.every((a) => !a)) {
-      setVariantError("Впиши хотя бы один ответ.")
-      return
-    }
-    setVariantError("")
-    setSubmitting(true)
-
-    const variant = selectedVariant
-    const maxCount = part1SlotsOf(variant.type)
-    const correctAnswers = variant.answers?.part1 || []
-    let score = 0
-    part1Answers.forEach((ans, i) => {
-      if (answersEqual(ans, correctAnswers[i])) score++
-    })
-
-    const base = {
-      part1_answers: part1Answers,
-      part1_score: score,
-      status: "submitted",
-    }
-    const hasChoices = Object.keys(part2Choices).length > 0
-    let { error } = await supabase.from("variant_submissions")
-      .update(hasChoices ? { ...base, part2_choices: part2Choices } : base)
-      .eq("id", variant.submission.id)
-    // Колонка part2_choices появляется миграцией supabase/variant_part2.sql — если её ещё
-    // нет, не роняем сдачу целиком, сохраняем хотя бы часть 1.
-    if (error && hasChoices) {
-      ({ error } = await supabase.from("variant_submissions").update(base).eq("id", variant.submission.id))
-    }
-    if (error) { setVariantError("Не получилось отправить: " + error.message); setSubmitting(false); return }
-
-    // Попытки по каждому заданию части 1 — основа работы над ошибками, аналитики
-    // слабых типажей и повторений. Тип задания берём из снимка варианта: там с
-    // недавних пор лежит gen_key, по которому типаж воспроизводится свежими числами.
-    // Пишем через RPC с session_token: прямой записи в task_attempts у ученика нет.
-    const snap = variant.tasks_snapshot || []
-    const attempts = []
-    part1Answers.forEach((ans, i) => {
-      const num = i + 1
-      if (num > maxCount || isPart2Number(variant.type, num)) return
-      const given = (ans || "").trim()
-      if (!given) return // не отвечал — это не попытка, а пропуск
-      const task = snap.find((t) => t.number === num)
-      attempts.push({
-        p_account: user.id,
-        p_token: user.token,
-        // ВАЖНО: тут нужен id ученика У РЕПЕТИТОРА (students.id), а не id аккаунта.
-        // В variant_submissions.student_id лежит именно аккаунт — по нему ни RLS
-        // (политика джойнит students), ни блок слабых типажей ничего не найдут.
-        p_student_id: student?.id != null ? String(student.id) : null,
-        p_source: "variant",
-        p_source_id: variant.submission.id,
-        p_exam_type: task?.exam_type || variant.type,
-        p_number: num,
-        p_gen_key: task?.gen_key || null,
-        p_is_correct: answersEqual(given, correctAnswers[i]),
-        p_answer: given,
+      // Попытки по каждому заданию части 1 — основа работы над ошибками, аналитики
+      // слабых типажей и повторений. Тип задания берём из снимка варианта: там с
+      // недавних пор лежит gen_key, по которому типаж воспроизводится свежими числами.
+      // Пишем через RPC с session_token: прямой записи в task_attempts у ученика нет.
+      const snap = variant.tasks_snapshot || []
+      const attempts = []
+      part1Answers.forEach((ans, i) => {
+        const num = i + 1
+        if (num > maxCount || isPart2Number(variant.type, num)) return
+        const given = (ans || "").trim()
+        if (!given) return // не отвечал — это не попытка, а пропуск
+        const task = snap.find((t) => t.number === num)
+        attempts.push({
+          p_account: user.id,
+          p_token: user.token,
+          // ВАЖНО: тут нужен id ученика У РЕПЕТИТОРА (students.id), а не id аккаунта.
+          // В variant_submissions.student_id лежит именно аккаунт — по нему ни RLS
+          // (политика джойнит students), ни блок слабых типажей ничего не найдут.
+          p_student_id: student?.id != null ? String(student.id) : null,
+          p_source: "variant",
+          p_source_id: variant.submission.id,
+          p_exam_type: task?.exam_type || variant.type,
+          p_number: num,
+          p_gen_key: task?.gen_key || null,
+          p_is_correct: answersEqual(given, correctAnswers[i]),
+          p_answer: given,
+        })
       })
-    })
-    // Сдачу это блокировать не должно: аналитика — не критичный путь, а таблица
-    // может ещё не существовать на базе без миграции task_attempts.sql.
-    Promise.all(attempts.map((a) => supabase.rpc("task_attempt_log", a))).catch(() => {})
+      // Сдачу это блокировать не должно: аналитика — не критичный путь, а таблица
+      // может ещё не существовать на базе без миграции task_attempts.sql.
+      Promise.all(attempts.map((a) => supabase.rpc("task_attempt_log", a))).catch(() => {})
 
-    await supabase.from("notifications").insert({
-      user_id: variant.tutor_id,
-      title: "Ученик сдал часть 1",
-      body: user.profile?.name + " выполнил вариант «" + variant.title + "». Часть 1: " + score + " / " + maxCount,
-    })
-    notifyTutor("variant_submitted", variant.submission.id)
+      await supabase.from("notifications").insert({
+        user_id: variant.tutor_id,
+        title: "Ученик сдал часть 1",
+        body: user.profile?.name + " выполнил вариант «" + variant.title + "». Часть 1: " + score + " / " + maxCount,
+      })
+      notifyTutor("variant_submitted", variant.submission.id)
 
-    setSubmitting(false)
-    setSelectedVariant(null)
-    setPart2Choices({})
-    loadVariants()
-    setResultDialog({ score, max: maxCount })
-  }
+      setSubmitting(false)
+      setSelectedVariant(null)
+      setPart2Choices({})
+      loadVariants()
+      setResultDialog({ score, max: maxCount })
+    }
 
-  const navItems = [
-    // Первая вкладка — главный экран (занятия, оценки, доска), поэтому
-    // «Главная», а не «Профиль»: профилем называется карточка с именем и
-    // телефоном во вкладке «Настройки», и два «Профиля» в одном меню сбивали.
-    { id: "schedule", label: "Главная", icon: "dashboard" },
-    { id: "homework", label: "Задания", icon: "homework" },
-    { id: "variants", label: "Варианты", icon: "variants" },
-    { id: "chat", label: "Чат", icon: "chat" },
-    { id: "payment", label: "Оплата", icon: "payment" },
-    { id: "settings", label: "Настройки", icon: "settings" },
-  ]
+    const navItems = [
+      // Первая вкладка — главный экран (занятия, оценки, доска), поэтому
+      // «Главная», а не «Профиль»: профилем называется карточка с именем и
+      // телефоном во вкладке «Настройки», и два «Профиля» в одном меню сбивали.
+      { id: "schedule", label: "Главная", icon: "dashboard" },
+      { id: "homework", label: "Задания", icon: "homework" },
+      { id: "variants", label: "Варианты", icon: "variants" },
+      { id: "chat", label: "Чат", icon: "chat" },
+      { id: "payment", label: "Оплата", icon: "payment" },
+      { id: "settings", label: "Настройки", icon: "settings" },
+    ]
 
-  function goTab(id) {
-    setActiveTab(id)
-    if (id === "chat") setChatUnread(0)
-  }
+    function goTab(id) {
+      setActiveTab(id)
+      if (id === "chat") setChatUnread(0)
+    }
 
-  return (
-    <div className="flex app-shell overflow-clip">
-      {resultDialog && (
-        <SubmitResultDialog
-          score={resultDialog.score}
-          max={resultDialog.max}
-          onClose={() => setResultDialog(null)}
-        />
-      )}
-      {boardOpen && student?.id && (
-        <Suspense fallback={<div className="fixed inset-0 z-[100000] bg-white dark:bg-[#1c1c1e] flex items-center justify-center"><div className="loader-logo" /></div>}>
-          <Board
-            roomId={student.id}
-            userId={`s:${user.id}`}
-            userName={user.profile?.name || "Ученик"}
-            theme={dark ? "dark" : "light"}
-            onClose={closeBoard}
-            /* Снимок занятия ученик пишет только через RPC с токеном сессии:
-               прямой записи в board_snapshots у него нет (RLS включён). */
-            account={user.id}
-            token={user.token}
+    return (
+      <div className="flex app-shell overflow-clip">
+        {resultDialog && (
+          <SubmitResultDialog
+            score={resultDialog.score}
+            max={resultDialog.max}
+            onClose={() => setResultDialog(null)}
           />
-        </Suspense>
-      )}
-      <div className="hidden md:block">
-        <StudentSidebar activeTab={activeTab} setActiveTab={goTab} items={navItems} badges={{ chat: chatUnread }} />
-      </div>
-
-      <div className="flex-1 flex flex-col min-w-0 min-h-0">
-        <div className="topbar-glass px-4 md:px-6 py-3 flex justify-between items-center flex-shrink-0">
-          <div className="flex items-center gap-2.5 md:hidden">
-            <img src="/logo.webp" alt="Логотип" className="w-8 h-8 rounded-xl object-cover" />
-            <span className="text-sm font-semibold text-gray-700">Мой кабинет</span>
-          </div>
-          <div className="flex items-center gap-3 ml-auto">
-            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-sm font-medium text-blue-600">
-              {initials}
-            </div>
-            <span className="hidden md:block text-sm text-gray-600">{user.profile?.name}</span>
-            <button
-              onClick={() => setDark(!dark)}
-              className="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
-            >
-              <MorphIcon from="moon" to="sun" size={16} active={dark} hover={false} rotate />
-            </button>
-            <StudentNotificationBell userId={user.id} onNavigate={goTab} />
-            <button onClick={onLogout} className="text-sm text-gray-400 hover:text-gray-600">Выйти</button>
-          </div>
+        )}
+        {boardOpen && student?.id && (
+          <Suspense fallback={<div className="fixed inset-0 z-[100000] bg-white dark:bg-[#1c1c1e] flex items-center justify-center"><div className="loader-logo" /></div>}>
+            <Board
+              roomId={student.id}
+              userId={`s:${user.id}`}
+              userName={user.profile?.name || "Ученик"}
+              theme={dark ? "dark" : "light"}
+              onClose={closeBoard}
+              /* Снимок занятия ученик пишет только через RPC с токеном сессии:
+                 прямой записи в board_snapshots у него нет (RLS включён). */
+              account={user.id}
+              token={user.token}
+            />
+          </Suspense>
+        )}
+        <div className="hidden md:block">
+          <StudentSidebar activeTab={activeTab} setActiveTab={goTab} items={navItems} badges={{ chat: chatUnread }} />
         </div>
 
-        <div className={`flex-1 min-h-0 overflow-x-hidden ${activeTab === "chat" ? "flex flex-col overflow-hidden" : "page-scroll overflow-y-auto pb-20 md:pb-0 kb-collapse"}`}>
-          {activeTab === "chat" ? (
-            <div className="flex-1 min-h-0 flex flex-col overflow-hidden page-active">
-              <Chat
-                myId={`s:${user.id}`}
-                myName={user.profile?.name || "Ученик"}
-                initialContacts={user.profile?.tutor_id ? [{ id: `t:${user.profile.tutor_id}`, name: tutorName || "Репетитор", role: "Репетитор" }] : []}
-                canAddByCode={true}
-                onUnreadChange={(delta, isInit) => {
-                  if (isInit) setChatUnread(delta)
-                  else setChatUnread(n => Math.max(0, n + delta))
-                }}
-              />
+        <div className="flex-1 flex flex-col min-w-0 min-h-0">
+          <div className="topbar-glass px-4 md:px-6 py-3 flex justify-between items-center flex-shrink-0">
+            <div className="flex items-center gap-2.5 md:hidden">
+              <img src="/logo.webp" alt="Логотип" className="w-8 h-8 rounded-xl object-cover" />
+              <span className="text-sm font-semibold text-gray-700">Мой кабинет</span>
             </div>
-          ) : (
-            <div key={activeTab} className="page-active p-4 md:p-6">
-        {activeTab === "schedule" && (
-          <>
-            {!student ? (
-              !studentsLoaded ? (
-                <div className="text-center py-16 text-gray-400 text-sm">Загрузка...</div>
-              ) : students.length === 0 ? (
-                <div className="glass p-6 md:p-8 flex flex-col items-center text-center max-w-md mx-auto">
-                  <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600 mb-4">
-                    <Icon name="link" size={26} />
-                  </div>
-                  <div className="text-lg font-semibold mb-1">Подключись к репетитору</div>
-                  <div className="text-sm text-gray-500 mb-5">Введи код, который дал репетитор, — и здесь появятся занятия, задания, варианты и оплата.</div>
-                  <div className="w-full max-w-xs flex flex-col gap-2.5">
-                    <input
-                      value={tutorCode}
-                      onChange={(e) => { setTutorCode(e.target.value); setTutorLinkError("") }}
-                      onKeyDown={(e) => { if (e.key === "Enter" && !tutorLinking) linkTutor() }}
-                      placeholder="Код репетитора"
-                      className="input-glass text-center tracking-widest"
-                    />
-                    {tutorLinkError && <div className="text-sm text-red-500">{tutorLinkError}</div>}
-                    {tutorLinkSuccess && <div className="text-sm text-green-600">{tutorLinkSuccess}</div>}
-                    <button
-                      onClick={linkTutor}
-                      disabled={tutorLinking || !tutorCode.trim()}
-                      className="btn-primary py-2.5 disabled:opacity-50 active:scale-[0.99] transition-transform"
-                    >
-                      {tutorLinking ? "Привязываем..." : "Привязать"}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="glass-tint-amber p-6 text-center">
-                  <div className="text-sm text-amber-700 font-medium mb-1">Имя в системе не совпадает</div>
-                  <div className="text-xs text-amber-600">Ты зарегистрирован как <b>{user.profile?.name}</b>, но репетитор добавил тебя под другим именем или телефоном. Попроси репетитора проверить карточку.</div>
-                </div>
-              )
-            ) : (
-              <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-3 ml-auto">
+              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-sm font-medium text-blue-600">
+                {initials}
+              </div>
+              <span className="hidden md:block text-sm text-gray-600">{user.profile?.name}</span>
+              <button
+                onClick={() => setDark(!dark)}
+                className="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+              >
+                <MorphIcon from="moon" to="sun" size={16} active={dark} hover={false} rotate />
+              </button>
+              <StudentNotificationBell userId={user.id} onNavigate={goTab} />
+              <button onClick={onLogout} className="text-sm text-gray-400 hover:text-gray-600">Выйти</button>
+            </div>
+          </div>
 
-                {/* HERO — аватар + имя + цель + телефон + действия, на всю ширину */}
-                <div className="glass p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-5">
-                  <div className="relative flex-shrink-0 self-center sm:self-auto cursor-pointer active:scale-95 transition-transform" onClick={() => studentAvatarRef.current.click()}>
-                    {(avatarOverride || student.avatar) ? (
-                      <img src={avatarOverride || student.avatar} alt="" className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover" />
-                    ) : (
-                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-3xl font-semibold text-white">
-                        {initials}
-                      </div>
-                    )}
-                    <div className="absolute -bottom-1 -right-1 w-7 h-7 bg-blue-600 rounded-full flex items-center justify-center shadow-md pointer-events-none">
-                      <Icon name="camera" size={13} className="text-white" />
+          <div className={`flex-1 min-h-0 overflow-x-hidden ${activeTab === "chat" ? "flex flex-col overflow-hidden" : "page-scroll overflow-y-auto pb-20 md:pb-0 kb-collapse"}`}>
+            {activeTab === "chat" ? (
+              <div className="flex-1 min-h-0 flex flex-col overflow-hidden page-active">
+                <Chat
+                  myId={`s:${user.id}`}
+                  myName={user.profile?.name || "Ученик"}
+                  initialContacts={user.profile?.tutor_id ? [{ id: `t:${user.profile.tutor_id}`, name: tutorName || "Репетитор", role: "Репетитор" }] : []}
+                  canAddByCode={true}
+                  onUnreadChange={(delta, isInit) => {
+                    if (isInit) setChatUnread(delta)
+                    else setChatUnread(n => Math.max(0, n + delta))
+                  }}
+                />
+              </div>
+            ) : (
+              <div key={activeTab} className="page-active p-4 md:p-6">
+          {activeTab === "schedule" && (
+            <>
+              {!student ? (
+                !studentsLoaded ? (
+                  <div className="text-center py-16 text-gray-400 text-sm">Загрузка...</div>
+                ) : students.length === 0 ? (
+                  <div className="glass p-6 md:p-8 flex flex-col items-center text-center max-w-md mx-auto">
+                    <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600 mb-4">
+                      <Icon name="link" size={26} />
+                    </div>
+                    <div className="text-lg font-semibold mb-1">Подключись к репетитору</div>
+                    <div className="text-sm text-gray-500 mb-5">Введи код, который дал репетитор, — и здесь появятся занятия, задания, варианты и оплата.</div>
+                    <div className="w-full max-w-xs flex flex-col gap-2.5">
+                      <input
+                        value={tutorCode}
+                        onChange={(e) => { setTutorCode(e.target.value); setTutorLinkError("") }}
+                        onKeyDown={(e) => { if (e.key === "Enter" && !tutorLinking) linkTutor() }}
+                        placeholder="Код репетитора"
+                        className="input-glass text-center tracking-widest"
+                      />
+                      {tutorLinkError && <div className="text-sm text-red-500">{tutorLinkError}</div>}
+                      {tutorLinkSuccess && <div className="text-sm text-green-600">{tutorLinkSuccess}</div>}
+                      <button
+                        onClick={linkTutor}
+                        disabled={tutorLinking || !tutorCode.trim()}
+                        className="btn-primary py-2.5 disabled:opacity-50 active:scale-[0.99] transition-transform"
+                      >
+                        {tutorLinking ? "Привязываем..." : "Привязать"}
+                      </button>
                     </div>
                   </div>
-                  <input ref={studentAvatarRef} type="file" accept="image/*" className="hidden" onChange={handleStudentAvatarChange} />
+                ) : (
+                  <div className="glass-tint-amber p-6 text-center">
+                    <div className="text-sm text-amber-700 font-medium mb-1">Имя в системе не совпадает</div>
+                    <div className="text-xs text-amber-600">Ты зарегистрирован как <b>{user.profile?.name}</b>, но репетитор добавил тебя под другим именем или телефоном. Попроси репетитора проверить карточку.</div>
+                  </div>
+                )
+              ) : (
+                <div className="flex flex-col gap-4">
 
-                  <div className="flex-1 min-w-0 text-center sm:text-left">
-                    <div className="text-2xl font-semibold">{user.profile?.name}</div>
-                    <div className="text-sm text-gray-500">Ученик{student.goal ? ` · Готовлюсь к ${student.goal}` : ""}</div>
-                    {user.profile?.phone && (
-                      <div className="text-sm text-gray-400 mt-1">{formatPhone(user.profile.phone)}</div>
-                    )}
+                  {/* HERO — аватар + имя + цель + телефон + действия, на всю ширину */}
+                  <div className="glass p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-5">
+                    <div className="relative flex-shrink-0 self-center sm:self-auto cursor-pointer active:scale-95 transition-transform" onClick={() => studentAvatarRef.current.click()}>
+                      {(avatarOverride || student.avatar) ? (
+                        <img src={avatarOverride || student.avatar} alt="" className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover" />
+                      ) : (
+                        <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-3xl font-semibold text-white">
+                          {initials}
+                        </div>
+                      )}
+                      <div className="absolute -bottom-1 -right-1 w-7 h-7 bg-blue-600 rounded-full flex items-center justify-center shadow-md pointer-events-none">
+                        <Icon name="camera" size={13} className="text-white" />
+                      </div>
+                    </div>
+                    <input ref={studentAvatarRef} type="file" accept="image/*" className="hidden" onChange={handleStudentAvatarChange} />
+
+                    <div className="flex-1 min-w-0 text-center sm:text-left">
+                      <div className="text-2xl font-semibold">{user.profile?.name}</div>
+                      <div className="text-sm text-gray-500">Ученик{student.goal ? ` · Готовлюсь к ${student.goal}` : ""}</div>
+                      {user.profile?.phone && (
+                        <div className="text-sm text-gray-400 mt-1">{formatPhone(user.profile.phone)}</div>
+                      )}
+                    </div>
+
+                    <div className="flex gap-2 flex-shrink-0 justify-center">
+                      <button onClick={openBoard} className="press-tap btn-glass px-4 py-2 text-sm">
+                        <span className="flex items-center gap-1.5"><Icon name="clipboard" size={14} />Доска</span>
+                      </button>
+                      {student.callUrl && (
+                        <a href={student.callUrl} target="_blank" rel="noreferrer" className="press-tap btn-glass px-4 py-2 text-sm">
+                          <span className="flex items-center gap-1.5"><Icon name="video" size={14} />Звонок</span>
+                        </a>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="flex gap-2 flex-shrink-0 justify-center">
-                    <button onClick={openBoard} className="press-tap btn-glass px-4 py-2 text-sm">
-                      <span className="flex items-center gap-1.5"><Icon name="clipboard" size={14} />Доска</span>
-                    </button>
-                    {student.callUrl && (
-                      <a href={student.callUrl} target="_blank" rel="noreferrer" className="press-tap btn-glass px-4 py-2 text-sm">
-                        <span className="flex items-center gap-1.5"><Icon name="video" size={14} />Звонок</span>
+                  {/* KPI-ряд — успеваемость плитками, всегда 4 плитки (нет данных → «—»), без пустот */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="glass p-4 flex flex-col gap-1">
+                      <div className="text-xs text-gray-400">Средняя оценка ДЗ</div>
+                      {hwAvg != null ? (
+                        <>
+                          <div className={`text-2xl font-semibold ${hwAvg >= 4.5 ? "text-green-600" : hwAvg >= 3.5 ? "text-blue-600" : hwAvg >= 2.5 ? "text-amber-600" : "text-red-600"}`}>{hwAvg}<span className="text-sm font-normal text-gray-400"> / 5</span></div>
+                          <div className="text-xs text-gray-400">{gradedHw.length} оценок</div>
+                        </>
+                      ) : <div className="text-2xl font-semibold text-gray-300">—</div>}
+                    </div>
+                    <div className="glass p-4 flex flex-col gap-1">
+                      <div className="text-xs text-gray-400">Средний балл вариантов</div>
+                      {variantAvg != null ? (
+                        <>
+                          <div className={`text-2xl font-semibold ${variantAvg >= 24 ? "text-green-600" : variantAvg >= 18 ? "text-blue-600" : "text-amber-600"}`}>{variantAvg}</div>
+                          <div className="text-xs text-gray-400">{gradedVariants.length} вар.</div>
+                        </>
+                      ) : <div className="text-2xl font-semibold text-gray-300">—</div>}
+                    </div>
+                    <div className="glass p-4 flex flex-col gap-1">
+                      <div className="text-xs text-gray-400">Проведено занятий</div>
+                      <div className="text-2xl font-semibold text-gray-700">{past.length}<span className="text-sm font-normal text-gray-400"> из {(student.lessons || []).length}</span></div>
+                    </div>
+                    <div className="glass p-4 flex flex-col gap-1 justify-between">
+                      <div className="text-xs text-gray-400">Оплата</div>
+                      {(() => {
+                        const conducted = (student.lessons || []).filter((l) => isLessonConducted(l))
+                        const price = student.lessonPrice || 0
+                        const debt = conducted.length * price - (student.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
+                        if (conducted.length === 0) return <div className="text-lg font-semibold text-gray-400">Нет занятий</div>
+                        if (!price) return <div className="text-sm font-medium text-gray-400">Стоимость не указана</div>
+                        if (debt <= 0) return <div className="text-lg font-semibold text-green-600">Долга нет</div>
+                        return <div className="text-lg font-semibold text-amber-600">Долг {debt.toLocaleString("ru-RU")} ₽</div>
+                      })()}
+                    </div>
+                  </div>
+
+                  {/* Информация и занятия+расписание — два плотных блока в ряд, равной высоты */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+
+                    {/* Информация — репетитор + контакты + код родителя */}
+                    <div className="glass p-5">
+                      <div className="text-base font-medium mb-4">Информация</div>
+                      <div className="flex items-center gap-2 pb-3 mb-3 border-b border-white/30">
+                        <div className="w-9 h-9 rounded-full bg-purple-100 flex items-center justify-center text-sm font-medium text-purple-600 flex-shrink-0">Р</div>
+                        <div>
+                          <div className="text-xs text-gray-400">Репетитор</div>
+                          <div className="text-sm text-gray-700 leading-tight">Ваш репетитор</div>
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-2.5">
+                        {user.profile?.phone && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-400 flex-shrink-0"><Icon name="phone" size={14} /></span>
+                            <span className="text-sm text-gray-700">{formatPhone(user.profile.phone)}</span>
+                          </div>
+                        )}
+                        {student.goal && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-400 flex-shrink-0"><Icon name="target" size={14} /></span>
+                            <span className="text-sm text-gray-700">{student.goal}</span>
+                          </div>
+                        )}
+                        {student.lessonPrice > 0 && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-400 flex-shrink-0"><Icon name="dollar" size={14} /></span>
+                            <span className="text-sm text-gray-700">{student.lessonPrice.toLocaleString("ru-RU")} ₽/занятие</span>
+                          </div>
+                        )}
+                        {student.parent_code?.trim() && (
+                          <div className="mt-1 pt-3 border-t border-white/30">
+                            <div className="text-xs text-gray-400 font-medium mb-2">Код для родителей</div>
+                            <CopyCodeBlock code={student.parent_code.trim()} />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Занятия + расписание */}
+                    <div className="glass p-5">
+                      <div className="text-base font-medium mb-4">Занятия</div>
+                      <div className="text-xs text-gray-400 mb-2">Ближайшие</div>
+                      {upcoming.length === 0 ? (
+                        <div className="text-sm text-gray-400">Занятий не запланировано</div>
+                      ) : (
+                        <div className="flex flex-wrap gap-2">
+                          {upcoming.slice(0, 6).map((l, i) => {
+                            const date = new Date(l.date + "T00:00:00")
+                            const dateStr = date.toLocaleDateString("ru-RU", { day: "numeric", month: "short" })
+                            return (
+                              <span key={i} className="inline-flex items-center gap-1.5 bg-blue-100 text-blue-700 text-xs px-3 py-1.5 rounded-full font-medium">
+                                <Icon name="calendar" size={12} />{dateStr} в {l.time}
+                              </span>
+                            )
+                          })}
+                        </div>
+                      )}
+                      {(student.schedule || student.examDate) && (
+                        <div className="mt-4 pt-4 border-t border-white/30 flex flex-col gap-3">
+                          {student.schedule && (
+                            <div className="flex items-start gap-3">
+                              <span className="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-full flex-shrink-0 font-medium">Регулярные</span>
+                              <div className="text-sm text-gray-600 pt-0.5">{student.schedule}</div>
+                            </div>
+                          )}
+                          {student.examDate && (
+                            <div className="flex items-start gap-3">
+                              <span className={`text-xs px-3 py-1.5 rounded-full flex-shrink-0 font-medium ${
+                                student.goal === "ЕГЭ" ? "bg-red-50 text-red-600" : "bg-amber-50 text-amber-600"
+                              }`}>{student.goal || "Экзамен"}</span>
+                              <div>
+                                <div className="text-sm text-gray-700">
+                                  {parseLocalDate(student.examDate).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}
+                                </div>
+                                {(() => {
+                                  const today = new Date(); today.setHours(0,0,0,0)
+                                  const examDate = parseLocalDate(student.examDate)
+                                  const daysLeft = Math.ceil((examDate - today) / (1000*60*60*24))
+                                  if (daysLeft <= 0) return null
+                                  return <div className="text-xs text-gray-400 mt-0.5">{daysLeft} {daysLeft === 1 ? "день" : daysLeft >= 2 && daysLeft <= 4 ? "дня" : "дней"} до экзамена</div>
+                                })()}
+                                {student.targetScore && (
+                                  <div className="text-xs text-gray-400 mt-0.5">
+                                    Цель: {student.targetScore} {student.goal === "ЕГЭ" ? "/ 100" : "/ 32"} баллов
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                  </div>
+
+                  {/* Широкие блоки — на всю ширину, заполняют пространство горизонтально */}
+                  <StreakBadge homework={homework} />
+
+                  <ProgressChart
+                    variants={variants}
+                    targetScore={student.targetScore}
+                    maxScore={student.goal === "ЕГЭ" ? 100 : 32}
+                  />
+
+                  <StudentScheduleCalendar student={student} onOpenBoard={openBoard} />
+
+                  {/* Доски прошлых занятий — можно вернуться к разобранному (только чтение) */}
+                  <BoardHistory studentId={student.id} studentName={user.profile?.name} account={user.id} token={user.token} />
+
+                </div>
+              )}
+            </>
+          )}
+
+          {activeTab === "homework" && (
+            <div>
+              {selectedHomework ? (
+                <HomeworkDetail
+                  hw={selectedHomework}
+                  onBack={() => { setSelectedHomework(null); setReturning(true) }}
+                  onUpload={uploadHomeworkSubmission}
+                  onSubmitTest={submitHomeworkTest}
+                />
+              ) : (
+                <div
+                  className={returning ? "view-back" : ""}
+                  onAnimationEnd={(e) => { if (e.animationName === "view-back") setReturning(false) }}
+                >
+                  <h2 className="text-base font-medium mb-4">Мои задания</h2>
+                  <StudentHomeworkList homework={homework} onSelect={setSelectedHomework} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === "payment" && (
+            <div>
+              {!student ? (
+                <div className="text-sm text-gray-400 text-center py-8 border border-dashed border-white/50 glass-sm">
+                  Сначала подключись к репетитору
+                </div>
+              ) : (() => {
+                const conducted = (student.lessons || []).filter((l) => isLessonConducted(l))
+                const totalOwed = conducted.length * (student.lessonPrice || 0)
+                const totalPaid = (student.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
+                const debt = totalOwed - totalPaid
+                const payments = [...(student.payments || [])].sort((a, b) => {
+                  const parseDate = (d) => {
+                    const parts = d.split(".")
+                    return parts.length === 3 ? new Date(parts[2], parts[1] - 1, parts[0]) : new Date(d)
+                  }
+                  return parseDate(b.date) - parseDate(a.date)
+                })
+
+                return (
+                  <div className="flex flex-col gap-4">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="stat-card">
+                        <div className="text-sm text-gray-500 mb-1">Всего оплачено</div>
+                        <div className="text-2xl font-medium text-green-600">{totalPaid.toLocaleString("ru-RU")} ₽</div>
+                      </div>
+                      <div className="stat-card">
+                        <div className="text-sm text-gray-500 mb-1">{debt > 0 ? "Текущий долг" : "Статус"}</div>
+                        {debt > 0 ? (
+                          <div className="text-2xl font-medium text-amber-600">{debt.toLocaleString("ru-RU")} ₽</div>
+                        ) : (
+                          <div className="text-2xl font-medium text-green-600">Долга нет</div>
+                        )}
+                      </div>
+                    </div>
+
+                    {student.lessonPrice > 0 && (
+                      <div className="glass-sm px-4 py-3 text-sm text-gray-600">
+                        Стоимость занятия: <span className="font-medium text-gray-800">{student.lessonPrice.toLocaleString("ru-RU")} ₽</span>
+                      </div>
+                    )}
+
+                    {/* Квитанции за проведённые занятия — приходят сами после каждого занятия */}
+                    <InvoiceCard student={student} tutorId={user.profile?.tutor_id} tutorName={tutorName} />
+
+                    {/* Онлайн-оплата: карточки нет, пока репетитор не включил приём (см. supabase/yookassa.sql) */}
+                    <OnlinePayCard user={user} student={student} debt={debt} />
+
+                    <div className="glass p-5">
+                      <h2 className="text-base font-medium mb-4">История платежей</h2>
+                      {payments.length === 0 ? (
+                        <div className="text-sm text-gray-400 text-center py-8">Платежей пока нет</div>
+                      ) : (
+                        <div className="flex flex-col gap-2">
+                          {payments.map((p, i) => (
+                            <div key={i} className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0">
+                              <div>
+                                <div className="text-sm font-medium">{p.date}</div>
+                                {p.note && <div className="text-xs text-gray-400">{p.note}</div>}
+                              </div>
+                              <div className="text-sm font-medium text-green-600">+{p.amount.toLocaleString("ru-RU")} ₽</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
+          )}
+
+          {activeTab === "settings" && (
+            <div className="flex flex-col gap-4">
+              <div className="glass p-5">
+                <h2 className="text-base font-medium mb-1">Подключить репетитора</h2>
+                <p className="text-xs text-gray-500 mb-4">Если начал заниматься ещё с одним репетитором — попроси у него код из шести знаков и введи сюда.</p>
+                <div className="flex flex-col gap-3">
+                  <input
+                    value={tutorCode}
+                    onChange={(e) => setTutorCode(e.target.value)}
+                    placeholder="Введи 6-значный код"
+                    className="input-glass"
+                  />
+                  {tutorLinkError && (
+                    <div className="bg-red-50 text-red-600 text-sm px-3 py-2 rounded-lg">{tutorLinkError}</div>
+                  )}
+                  {tutorLinkSuccess && (
+                    <div className="bg-green-50 text-green-600 text-sm px-3 py-2 rounded-lg">{tutorLinkSuccess}</div>
+                  )}
+                  <button
+                    onClick={linkTutor}
+                    disabled={tutorLinking}
+                    className="btn-primary py-2.5 text-sm disabled:opacity-50"
+                  >
+                    {tutorLinking ? "Подключаем..." : "Подключить"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="glass p-5">
+                <h2 className="text-base font-medium mb-1">Мои данные</h2>
+                <p className="text-xs text-gray-500 mb-1">Их видит твой репетитор. Изменить может он — попроси в чате.</p>
+                <div className="flex flex-col gap-2 mt-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400 w-32 shrink-0">Имя</span>
+                    <span className="text-sm">{user.profile?.name}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400 w-32 shrink-0">Телефон</span>
+                    <span className="text-sm">{formatPhone(user.profile?.phone)}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400 w-32 shrink-0">Код репетитора</span>
+                    <span className="text-sm font-mono">{user.profile?.tutor_code || "—"}</span>
+                  </div>
+                </div>
+              </div>
+
+              <MarketingToggle table="student_accounts" id={user.id} role="student" />
+            </div>
+          )}
+
+          {activeTab === "variants" && (
+            <div>
+              {selectedVariant ? (
+                <div className="page-active">
+                  <button
+                    onClick={() => { setSelectedVariant(null); setPart1Answers(Array(19).fill("")); setPart2Choices({}); setReturning(true) }}
+                    className="text-sm text-gray-500 hover:text-gray-700 mb-4 flex items-center gap-1"
+                  >
+                    ← Назад
+                  </button>
+
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <h2 className="text-lg font-medium">{selectedVariant.title}</h2>
+                    {variantDownloadUrl && (
+                      <a href={variantDownloadUrl} download
+                        className="flex-shrink-0 flex items-center gap-1.5 text-xs text-blue-600 border border-blue-200 rounded-lg px-3 py-1.5 hover:bg-blue-50 transition-colors active:scale-95">
+                        <MorphIcon from="download" size={14} />Скачать PDF
                       </a>
                     )}
                   </div>
-                </div>
 
-                {/* KPI-ряд — успеваемость плитками, всегда 4 плитки (нет данных → «—»), без пустот */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="glass p-4 flex flex-col gap-1">
-                    <div className="text-xs text-gray-400">Средняя оценка ДЗ</div>
-                    {hwAvg != null ? (
-                      <>
-                        <div className={`text-2xl font-semibold ${hwAvg >= 4.5 ? "text-green-600" : hwAvg >= 3.5 ? "text-blue-600" : hwAvg >= 2.5 ? "text-amber-600" : "text-red-600"}`}>{hwAvg}<span className="text-sm font-normal text-gray-400"> / 5</span></div>
-                        <div className="text-xs text-gray-400">{gradedHw.length} оценок</div>
-                      </>
-                    ) : <div className="text-2xl font-semibold text-gray-300">—</div>}
-                  </div>
-                  <div className="glass p-4 flex flex-col gap-1">
-                    <div className="text-xs text-gray-400">Средний балл вариантов</div>
-                    {variantAvg != null ? (
-                      <>
-                        <div className={`text-2xl font-semibold ${variantAvg >= 24 ? "text-green-600" : variantAvg >= 18 ? "text-blue-600" : "text-amber-600"}`}>{variantAvg}</div>
-                        <div className="text-xs text-gray-400">{gradedVariants.length} вар.</div>
-                      </>
-                    ) : <div className="text-2xl font-semibold text-gray-300">—</div>}
-                  </div>
-                  <div className="glass p-4 flex flex-col gap-1">
-                    <div className="text-xs text-gray-400">Проведено занятий</div>
-                    <div className="text-2xl font-semibold text-gray-700">{past.length}<span className="text-sm font-normal text-gray-400"> из {(student.lessons || []).length}</span></div>
-                  </div>
-                  <div className="glass p-4 flex flex-col gap-1 justify-between">
-                    <div className="text-xs text-gray-400">Оплата</div>
-                    {(() => {
-                      const conducted = (student.lessons || []).filter((l) => isLessonConducted(l))
-                      const price = student.lessonPrice || 0
-                      const debt = conducted.length * price - (student.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
-                      if (conducted.length === 0) return <div className="text-lg font-semibold text-gray-400">Нет занятий</div>
-                      if (!price) return <div className="text-sm font-medium text-gray-400">Стоимость не указана</div>
-                      if (debt <= 0) return <div className="text-lg font-semibold text-green-600">Долга нет</div>
-                      return <div className="text-lg font-semibold text-amber-600">Долг {debt.toLocaleString("ru-RU")} ₽</div>
-                    })()}
-                  </div>
-                </div>
-
-                {/* Информация и занятия+расписание — два плотных блока в ряд, равной высоты */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
-
-                  {/* Информация — репетитор + контакты + код родителя */}
-                  <div className="glass p-5">
-                    <div className="text-base font-medium mb-4">Информация</div>
-                    <div className="flex items-center gap-2 pb-3 mb-3 border-b border-white/30">
-                      <div className="w-9 h-9 rounded-full bg-purple-100 flex items-center justify-center text-sm font-medium text-purple-600 flex-shrink-0">Р</div>
-                      <div>
-                        <div className="text-xs text-gray-400">Репетитор</div>
-                        <div className="text-sm text-gray-700 leading-tight">Ваш репетитор</div>
+                  {/* Свой файл репетитора (без tasks_snapshot) показываем как файл; сгенерированный
+                      вариант решается интерактивно ниже, поэтому его PDF не встраиваем. */}
+                  {!isGeneratedVariant && selectedVariant.file_url && (
+                    <div className="mb-4 glass-sm overflow-hidden">
+                      {selectedVariant.file_url.match(/\.(jpg|jpeg|png|gif|webp)/i) ? (
+                        <img src={selectedVariant.file_url} alt="вариант" className="w-full max-w-2xl object-contain bg-white" />
+                      ) : (
+                        <iframe src={selectedVariant.file_url} className="w-full h-96 bg-white" title="вариант" />
+                      )}
+                      <div className="border-t border-gray-100 p-2 text-center">
+                        <a href={selectedVariant.file_url} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:opacity-70 transition-opacity">
+                          Открыть в новой вкладке
+                        </a>
                       </div>
                     </div>
-                    <div className="flex flex-col gap-2.5">
-                      {user.profile?.phone && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-400 flex-shrink-0"><Icon name="phone" size={14} /></span>
-                          <span className="text-sm text-gray-700">{formatPhone(user.profile.phone)}</span>
-                        </div>
-                      )}
-                      {student.goal && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-400 flex-shrink-0"><Icon name="target" size={14} /></span>
-                          <span className="text-sm text-gray-700">{student.goal}</span>
-                        </div>
-                      )}
-                      {student.lessonPrice > 0 && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-400 flex-shrink-0"><Icon name="dollar" size={14} /></span>
-                          <span className="text-sm text-gray-700">{student.lessonPrice.toLocaleString("ru-RU")} ₽/занятие</span>
-                        </div>
-                      )}
-                      {student.parent_code?.trim() && (
-                        <div className="mt-1 pt-3 border-t border-white/30">
-                          <div className="text-xs text-gray-400 font-medium mb-2">Код для родителей</div>
-                          <CopyCodeBlock code={student.parent_code.trim()} />
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                  )}
 
-                  {/* Занятия + расписание */}
-                  <div className="glass p-5">
-                    <div className="text-base font-medium mb-4">Занятия</div>
-                    <div className="text-xs text-gray-400 mb-2">Ближайшие</div>
-                    {upcoming.length === 0 ? (
-                      <div className="text-sm text-gray-400">Занятий не запланировано</div>
-                    ) : (
-                      <div className="flex flex-wrap gap-2">
-                        {upcoming.slice(0, 6).map((l, i) => {
-                          const date = new Date(l.date + "T00:00:00")
-                          const dateStr = date.toLocaleDateString("ru-RU", { day: "numeric", month: "short" })
+                  {/* Сгенерированный вариант уже сдан — показываем задания только для просмотра (ответы уже в разборе) */}
+                  {isGeneratedVariant && selectedVariant.submission.status !== "pending" && (
+                    <div className="mb-4 flex flex-col gap-2">
+                      {selectedVariant.tasks_snapshot.map((t) => (
+                        <div key={t.number} className="glass-sm p-3">
+                          <div className="text-sm font-medium text-blue-600 mb-1">Задание {t.number}</div>
+                          {t.condition_text && <div className="text-base whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_text) }} />}
+                          {t.image_url && <img src={t.image_url} alt={`Задание ${t.number}`} className="max-w-full h-auto object-contain rounded-lg mt-2 bg-white" />}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {selectedVariant.submission.status === "pending" && isGeneratedVariant && (
+                    <div className="glass p-5">
+                      <h3 className="text-base font-medium mb-1">Реши вариант</h3>
+                      <p className="text-xs text-gray-500 mb-4">{isEgeType(selectedVariant?.type) ? "В части 1 впиши ответ. Часть 2 реши на листе — фото решений загрузишь после отправки." : "В части 1 впиши ответ, в части 2 выбери один из четырёх. Фото решений части 2 загрузишь после отправки."}</p>
+                      <div className="flex flex-col gap-3">
+                        {selectedVariant.tasks_snapshot.map((t) => {
+                          const isPart2 = isPart2Number(selectedVariant?.type, t.number)
+                          const choices = isPart2 ? variantChoices[t.number] : null
                           return (
-                            <span key={i} className="inline-flex items-center gap-1.5 bg-blue-100 text-blue-700 text-xs px-3 py-1.5 rounded-full font-medium">
-                              <Icon name="calendar" size={12} />{dateStr} в {l.time}
-                            </span>
-                          )
-                        })}
-                      </div>
-                    )}
-                    {(student.schedule || student.examDate) && (
-                      <div className="mt-4 pt-4 border-t border-white/30 flex flex-col gap-3">
-                        {student.schedule && (
-                          <div className="flex items-start gap-3">
-                            <span className="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-full flex-shrink-0 font-medium">Регулярные</span>
-                            <div className="text-sm text-gray-600 pt-0.5">{student.schedule}</div>
-                          </div>
-                        )}
-                        {student.examDate && (
-                          <div className="flex items-start gap-3">
-                            <span className={`text-xs px-3 py-1.5 rounded-full flex-shrink-0 font-medium ${
-                              student.goal === "ЕГЭ" ? "bg-red-50 text-red-600" : "bg-amber-50 text-amber-600"
-                            }`}>{student.goal || "Экзамен"}</span>
-                            <div>
-                              <div className="text-sm text-gray-700">
-                                {parseLocalDate(student.examDate).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}
+                            <div key={t.number} className="border border-gray-100 rounded-xl p-3">
+                              <div className="text-sm font-medium text-blue-600 mb-1">
+                                Задание {t.number}{isPart2 ? " · часть 2" : ""}
                               </div>
-                              {(() => {
-                                const today = new Date(); today.setHours(0,0,0,0)
-                                const examDate = parseLocalDate(student.examDate)
-                                const daysLeft = Math.ceil((examDate - today) / (1000*60*60*24))
-                                if (daysLeft <= 0) return null
-                                return <div className="text-xs text-gray-400 mt-0.5">{daysLeft} {daysLeft === 1 ? "день" : daysLeft >= 2 && daysLeft <= 4 ? "дня" : "дней"} до экзамена</div>
-                              })()}
-                              {student.targetScore && (
-                                <div className="text-xs text-gray-400 mt-0.5">
-                                  Цель: {student.targetScore} {student.goal === "ЕГЭ" ? "/ 100" : "/ 32"} баллов
+                              {t.condition_text && <div className="text-base whitespace-pre-wrap mb-2" dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_text) }} />}
+                              {t.image_url && <img src={t.image_url} alt={`Задание ${t.number}`} className="max-w-full h-auto object-contain rounded-lg mb-2 bg-white" />}
+                              {t.condition_tail && <div className="text-base whitespace-pre-wrap mb-2" dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_tail) }} />}
+                              {!isPart2 && (
+                                <input
+                                  value={part1Answers[t.number - 1] || ""}
+                                  onChange={(e) => { const u = [...part1Answers]; u[t.number - 1] = e.target.value; setPart1Answers(u) }}
+                                  placeholder="Твой ответ"
+                                  className="input-glass w-full px-3 py-2"
+                                />
+                              )}
+                              {isPart2 && choices?.length > 0 && (
+                                <ChoiceChips
+                                  choices={choices}
+                                  value={part2Choices[t.number]}
+                                  onSelect={(c) => setPart2Choices((prev) => ({ ...prev, [t.number]: c ?? undefined }))}
+                                />
+                              )}
+                              {isPart2 && !choices?.length && (
+                                <div className="text-xs text-gray-500 ring-1 ring-gray-200/70 dark:ring-white/10 rounded-lg px-3 py-2">
+                                  Задание с развёрнутым решением: запиши его на листе, фото прикрепишь после отправки
                                 </div>
                               )}
                             </div>
-                          </div>
-                        )}
+                          )
+                        })}
                       </div>
-                    )}
-                  </div>
-
-                </div>
-
-                {/* Широкие блоки — на всю ширину, заполняют пространство горизонтально */}
-                <StreakBadge homework={homework} />
-
-                <ProgressChart
-                  variants={variants}
-                  targetScore={student.targetScore}
-                  maxScore={student.goal === "ЕГЭ" ? 100 : 32}
-                />
-
-                <StudentScheduleCalendar student={student} onOpenBoard={openBoard} />
-
-                {/* Доски прошлых занятий — можно вернуться к разобранному (только чтение) */}
-                <BoardHistory studentId={student.id} studentName={user.profile?.name} account={user.id} token={user.token} />
-
-              </div>
-            )}
-          </>
-        )}
-
-        {activeTab === "homework" && (
-          <div>
-            {selectedHomework ? (
-              <HomeworkDetail
-                hw={selectedHomework}
-                onBack={() => { setSelectedHomework(null); setReturning(true) }}
-                onUpload={uploadHomeworkSubmission}
-                onSubmitTest={submitHomeworkTest}
-              />
-            ) : (
-              <div
-                className={returning ? "view-back" : ""}
-                onAnimationEnd={(e) => { if (e.animationName === "view-back") setReturning(false) }}
-              >
-                <h2 className="text-base font-medium mb-4">Мои задания</h2>
-                <StudentHomeworkList homework={homework} onSelect={setSelectedHomework} />
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === "payment" && (
-          <div>
-            {!student ? (
-              <div className="text-sm text-gray-400 text-center py-8 border border-dashed border-white/50 glass-sm">
-                Сначала подключись к репетитору
-              </div>
-            ) : (() => {
-              const conducted = (student.lessons || []).filter((l) => isLessonConducted(l))
-              const totalOwed = conducted.length * (student.lessonPrice || 0)
-              const totalPaid = (student.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
-              const debt = totalOwed - totalPaid
-              const payments = [...(student.payments || [])].sort((a, b) => {
-                const parseDate = (d) => {
-                  const parts = d.split(".")
-                  return parts.length === 3 ? new Date(parts[2], parts[1] - 1, parts[0]) : new Date(d)
-                }
-                return parseDate(b.date) - parseDate(a.date)
-              })
-
-              return (
-                <div className="flex flex-col gap-4">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="stat-card">
-                      <div className="text-sm text-gray-500 mb-1">Всего оплачено</div>
-                      <div className="text-2xl font-medium text-green-600">{totalPaid.toLocaleString("ru-RU")} ₽</div>
-                    </div>
-                    <div className="stat-card">
-                      <div className="text-sm text-gray-500 mb-1">{debt > 0 ? "Текущий долг" : "Статус"}</div>
-                      {debt > 0 ? (
-                        <div className="text-2xl font-medium text-amber-600">{debt.toLocaleString("ru-RU")} ₽</div>
-                      ) : (
-                        <div className="text-2xl font-medium text-green-600">Долга нет</div>
-                      )}
-                    </div>
-                  </div>
-
-                  {student.lessonPrice > 0 && (
-                    <div className="glass-sm px-4 py-3 text-sm text-gray-600">
-                      Стоимость занятия: <span className="font-medium text-gray-800">{student.lessonPrice.toLocaleString("ru-RU")} ₽</span>
+                      <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700 my-4">
+                        <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />После отправки обязательно прикрепи фото решений части 2 — без них репетитор не начислит баллы. Балл за часть 2 появится после проверки.</span>
+                      </div>
+                      {variantError && <div className="text-sm text-red-500 mb-2 text-center">{variantError}</div>}
+                      <button
+                        onClick={submitPart1}
+                        disabled={submitting}
+                        className="w-full bg-blue-600 text-white rounded-lg py-2.5 text-sm hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {submitting ? "Отправляем..." : "Отправить ответы"}
+                      </button>
                     </div>
                   )}
 
-                  {/* Квитанции за проведённые занятия — приходят сами после каждого занятия */}
-                  <InvoiceCard student={student} tutorId={user.profile?.tutor_id} tutorName={tutorName} />
-
-                  {/* Онлайн-оплата: карточки нет, пока репетитор не включил приём (см. supabase/yookassa.sql) */}
-                  <OnlinePayCard user={user} student={student} debt={debt} />
-
-                  <div className="glass p-5">
-                    <h2 className="text-base font-medium mb-4">История платежей</h2>
-                    {payments.length === 0 ? (
-                      <div className="text-sm text-gray-400 text-center py-8">Платежей пока нет</div>
-                    ) : (
-                      <div className="flex flex-col gap-2">
-                        {payments.map((p, i) => (
-                          <div key={i} className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0">
-                            <div>
-                              <div className="text-sm font-medium">{p.date}</div>
-                              {p.note && <div className="text-xs text-gray-400">{p.note}</div>}
-                            </div>
-                            <div className="text-sm font-medium text-green-600">+{p.amount.toLocaleString("ru-RU")} ₽</div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )
-            })()}
-          </div>
-        )}
-
-        {activeTab === "settings" && (
-          <div className="flex flex-col gap-4">
-            <div className="glass p-5">
-              <h2 className="text-base font-medium mb-1">Подключить репетитора</h2>
-              <p className="text-xs text-gray-500 mb-4">Если начал заниматься ещё с одним репетитором — попроси у него код из шести знаков и введи сюда.</p>
-              <div className="flex flex-col gap-3">
-                <input
-                  value={tutorCode}
-                  onChange={(e) => setTutorCode(e.target.value)}
-                  placeholder="Введи 6-значный код"
-                  className="input-glass"
-                />
-                {tutorLinkError && (
-                  <div className="bg-red-50 text-red-600 text-sm px-3 py-2 rounded-lg">{tutorLinkError}</div>
-                )}
-                {tutorLinkSuccess && (
-                  <div className="bg-green-50 text-green-600 text-sm px-3 py-2 rounded-lg">{tutorLinkSuccess}</div>
-                )}
-                <button
-                  onClick={linkTutor}
-                  disabled={tutorLinking}
-                  className="btn-primary py-2.5 text-sm disabled:opacity-50"
-                >
-                  {tutorLinking ? "Подключаем..." : "Подключить"}
-                </button>
-              </div>
-            </div>
-
-            <div className="glass p-5">
-              <h2 className="text-base font-medium mb-1">Мои данные</h2>
-              <p className="text-xs text-gray-500 mb-1">Их видит твой репетитор. Изменить может он — попроси в чате.</p>
-              <div className="flex flex-col gap-2 mt-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-400 w-32 shrink-0">Имя</span>
-                  <span className="text-sm">{user.profile?.name}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-400 w-32 shrink-0">Телефон</span>
-                  <span className="text-sm">{formatPhone(user.profile?.phone)}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-400 w-32 shrink-0">Код репетитора</span>
-                  <span className="text-sm font-mono">{user.profile?.tutor_code || "—"}</span>
-                </div>
-              </div>
-            </div>
-
-            <MarketingToggle table="student_accounts" id={user.id} role="student" />
-          </div>
-        )}
-
-        {activeTab === "variants" && (
-          <div>
-            {selectedVariant ? (
-              <div className="page-active">
-                <button
-                  onClick={() => { setSelectedVariant(null); setPart1Answers(Array(19).fill("")); setPart2Choices({}); setReturning(true) }}
-                  className="text-sm text-gray-500 hover:text-gray-700 mb-4 flex items-center gap-1"
-                >
-                  ← Назад
-                </button>
-
-                <div className="flex items-start justify-between gap-3 mb-3">
-                  <h2 className="text-lg font-medium">{selectedVariant.title}</h2>
-                  {variantDownloadUrl && (
-                    <a href={variantDownloadUrl} download
-                      className="flex-shrink-0 flex items-center gap-1.5 text-xs text-blue-600 border border-blue-200 rounded-lg px-3 py-1.5 hover:bg-blue-50 transition-colors active:scale-95">
-                      <MorphIcon from="download" size={14} />Скачать PDF
-                    </a>
-                  )}
-                </div>
-
-                {/* Свой файл репетитора (без tasks_snapshot) показываем как файл; сгенерированный
-                    вариант решается интерактивно ниже, поэтому его PDF не встраиваем. */}
-                {!isGeneratedVariant && selectedVariant.file_url && (
-                  <div className="mb-4 glass-sm overflow-hidden">
-                    {selectedVariant.file_url.match(/\.(jpg|jpeg|png|gif|webp)/i) ? (
-                      <img src={selectedVariant.file_url} alt="вариант" className="w-full max-w-2xl object-contain bg-white" />
-                    ) : (
-                      <iframe src={selectedVariant.file_url} className="w-full h-96 bg-white" title="вариант" />
-                    )}
-                    <div className="border-t border-gray-100 p-2 text-center">
-                      <a href={selectedVariant.file_url} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:opacity-70 transition-opacity">
-                        Открыть в новой вкладке
-                      </a>
-                    </div>
-                  </div>
-                )}
-
-                {/* Сгенерированный вариант уже сдан — показываем задания только для просмотра (ответы уже в разборе) */}
-                {isGeneratedVariant && selectedVariant.submission.status !== "pending" && (
-                  <div className="mb-4 flex flex-col gap-2">
-                    {selectedVariant.tasks_snapshot.map((t) => (
-                      <div key={t.number} className="glass-sm p-3">
-                        <div className="text-sm font-medium text-blue-600 mb-1">Задание {t.number}</div>
-                        {t.condition_text && <div className="text-base whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_text) }} />}
-                        {t.image_url && <img src={t.image_url} alt={`Задание ${t.number}`} className="max-w-full h-auto object-contain rounded-lg mt-2 bg-white" />}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {selectedVariant.submission.status === "pending" && isGeneratedVariant && (
-                  <div className="glass p-5">
-                    <h3 className="text-base font-medium mb-1">Реши вариант</h3>
-                    <p className="text-xs text-gray-500 mb-4">{isEgeType(selectedVariant?.type) ? "В части 1 впиши ответ. Часть 2 реши на листе — фото решений загрузишь после отправки." : "В части 1 впиши ответ, в части 2 выбери один из четырёх. Фото решений части 2 загрузишь после отправки."}</p>
-                    <div className="flex flex-col gap-3">
-                      {selectedVariant.tasks_snapshot.map((t) => {
-                        const isPart2 = isPart2Number(selectedVariant?.type, t.number)
-                        const choices = isPart2 ? variantChoices[t.number] : null
-                        return (
-                          <div key={t.number} className="border border-gray-100 rounded-xl p-3">
-                            <div className="text-sm font-medium text-blue-600 mb-1">
-                              Задание {t.number}{isPart2 ? " · часть 2" : ""}
-                            </div>
-                            {t.condition_text && <div className="text-base whitespace-pre-wrap mb-2" dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_text) }} />}
-                            {t.image_url && <img src={t.image_url} alt={`Задание ${t.number}`} className="max-w-full h-auto object-contain rounded-lg mb-2 bg-white" />}
-                            {t.condition_tail && <div className="text-base whitespace-pre-wrap mb-2" dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_tail) }} />}
-                            {!isPart2 && (
+                  {selectedVariant.submission.status === "pending" && !isGeneratedVariant && (
+                    <div className="glass p-5">
+                      <h3 className="text-base font-medium mb-4">Часть 1 — введи ответы</h3>
+                      <div className="mb-3">
+                        <div className="text-xs font-medium text-blue-600 mb-2 bg-blue-50 px-2 py-1 rounded">Алгебра — задания 1–14</div>
+                        <div className="grid grid-cols-3 gap-2">
+                          {part1Answers.slice(0, 14).map((a, i) => (
+                            <div key={i} className="flex items-center gap-2">
+                              <span className="text-xs text-gray-400 w-5">{i + 1}</span>
                               <input
-                                value={part1Answers[t.number - 1] || ""}
-                                onChange={(e) => { const u = [...part1Answers]; u[t.number - 1] = e.target.value; setPart1Answers(u) }}
-                                placeholder="Твой ответ"
-                                className="input-glass w-full px-3 py-2"
-                              />
-                            )}
-                            {isPart2 && choices?.length > 0 && (
-                              <ChoiceChips
-                                choices={choices}
-                                value={part2Choices[t.number]}
-                                onSelect={(c) => setPart2Choices((prev) => ({ ...prev, [t.number]: c ?? undefined }))}
-                              />
-                            )}
-                            {isPart2 && !choices?.length && (
-                              <div className="text-xs text-gray-500 ring-1 ring-gray-200/70 dark:ring-white/10 rounded-lg px-3 py-2">
-                                Задание с развёрнутым решением: запиши его на листе, фото прикрепишь после отправки
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                    <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700 my-4">
-                      <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />После отправки обязательно прикрепи фото решений части 2 — без них репетитор не начислит баллы. Балл за часть 2 появится после проверки.</span>
-                    </div>
-                    {variantError && <div className="text-sm text-red-500 mb-2 text-center">{variantError}</div>}
-                    <button
-                      onClick={submitPart1}
-                      disabled={submitting}
-                      className="w-full bg-blue-600 text-white rounded-lg py-2.5 text-sm hover:bg-blue-700 disabled:opacity-50"
-                    >
-                      {submitting ? "Отправляем..." : "Отправить ответы"}
-                    </button>
-                  </div>
-                )}
-
-                {selectedVariant.submission.status === "pending" && !isGeneratedVariant && (
-                  <div className="glass p-5">
-                    <h3 className="text-base font-medium mb-4">Часть 1 — введи ответы</h3>
-                    <div className="mb-3">
-                      <div className="text-xs font-medium text-blue-600 mb-2 bg-blue-50 px-2 py-1 rounded">Алгебра — задания 1–14</div>
-                      <div className="grid grid-cols-3 gap-2">
-                        {part1Answers.slice(0, 14).map((a, i) => (
-                          <div key={i} className="flex items-center gap-2">
-                            <span className="text-xs text-gray-400 w-5">{i + 1}</span>
-                            <input
-                              value={a}
-                              onChange={(e) => {
-                                const updated = [...part1Answers]
-                                updated[i] = e.target.value
-                                setPart1Answers(updated)
-                              }}
-                              placeholder="Ответ"
-                              className="input-glass flex-1 px-2 py-1.5"
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="mb-4">
-                      <div className="text-xs font-medium text-purple-600 mb-2 bg-purple-50 px-2 py-1 rounded">Геометрия — задания 15–19</div>
-                      <div className="grid grid-cols-3 gap-2">
-                        {part1Answers.slice(14, 19).map((a, i) => (
-                          <div key={i} className="flex items-center gap-2">
-                            <span className="text-xs text-gray-400 w-5">{i + 15}</span>
-                            <input
-                              value={a}
-                              onChange={(e) => {
-                                const updated = [...part1Answers]
-                                updated[i + 14] = e.target.value
-                                setPart1Answers(updated)
-                              }}
-                              placeholder="Ответ"
-                              className="input-glass flex-1 px-2 py-1.5"
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    {Object.keys(variantChoices).length > 0 && (
-                      <div className="mb-4">
-                        <div className="text-xs font-medium text-green-600 mb-2 bg-green-50 px-2 py-1 rounded">Часть 2 — выбери ответ</div>
-                        <div className="flex flex-col gap-3">
-                          {part2TaskNums.filter((n) => variantChoices[n]?.length).map((n) => (
-                            <div key={n}>
-                              <div className="text-xs text-gray-500 mb-1">Задание {n}</div>
-                              <ChoiceChips
-                                choices={variantChoices[n]}
-                                value={part2Choices[n]}
-                                onSelect={(c) => setPart2Choices((prev) => ({ ...prev, [n]: c ?? undefined }))}
+                                value={a}
+                                onChange={(e) => {
+                                  const updated = [...part1Answers]
+                                  updated[i] = e.target.value
+                                  setPart1Answers(updated)
+                                }}
+                                placeholder="Ответ"
+                                className="input-glass flex-1 px-2 py-1.5"
                               />
                             </div>
                           ))}
                         </div>
                       </div>
-                    )}
-                    <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700 mb-4">
-                      <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />После отправки обязательно прикрепи фото решений части 2 — без них репетитор не начислит баллы</span>
-                    </div>
-                    {variantError && <div className="text-sm text-red-500 mb-2 text-center">{variantError}</div>}
-                    <button
-                      onClick={submitPart1}
-                      disabled={submitting}
-                      className="w-full bg-blue-600 text-white rounded-lg py-2.5 text-sm hover:bg-blue-700 disabled:opacity-50"
-                    >
-                      {submitting ? "Отправляем..." : "Отправить ответы"}
-                    </button>
-                  </div>
-                )}
-
-                {selectedVariant.submission.status === "submitted" && (
-                  <div className="flex flex-col gap-4">
-                    <div className="glass-tint-blue p-4">
-                      <div className="text-sm font-medium text-blue-700 flex items-center gap-1"><Icon name="check" size={14} />Часть 1 сдана</div>
-                      <div className="text-sm text-blue-600 mt-1">Балл: {selectedVariant.submission.part1_score} / {part1Count}</div>
-                      <div className="text-xs text-blue-500 mt-1">Балл за часть 2 появится после проверки репетитором</div>
-                    </div>
-
-                    {selectedVariant.submission.part1_answers && selectedVariant.answers?.part1 && (
-                      <div className="glass p-5">
-                        <h3 className="text-sm font-medium mb-3">Разбор части 1</h3>
-                        <div className="flex flex-col gap-1">
-                          {selectedVariant.answers.part1.map((correct, i) => {
-                            const studentAns = selectedVariant.submission.part1_answers[i] || "—"
-                            const isCorrect = studentAns.trim() === correct.trim()
-                            return (
-                              <div
-                                key={i}
-                                className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm ${
-                                  isCorrect ? "bg-green-50" : "bg-red-50"
-                                }`}
-                              >
-                                <span className="text-gray-500 w-6">{i + 1}</span>
-                                <span className={isCorrect ? "text-green-700 font-medium flex-1" : "text-red-700 font-medium flex-1"}>
-                                  {studentAns}
-                                </span>
-                                {!isCorrect && (
-                                  <span className="text-gray-400 text-xs">
-                                    правильно: <span className="text-gray-700 font-medium">{correct}</span>
-                                  </span>
-                                )}
-                                {isCorrect && <Icon name="check" size={12} className="text-green-500" />}
+                      <div className="mb-4">
+                        <div className="text-xs font-medium text-purple-600 mb-2 bg-purple-50 px-2 py-1 rounded">Геометрия — задания 15–19</div>
+                        <div className="grid grid-cols-3 gap-2">
+                          {part1Answers.slice(14, 19).map((a, i) => (
+                            <div key={i} className="flex items-center gap-2">
+                              <span className="text-xs text-gray-400 w-5">{i + 15}</span>
+                              <input
+                                value={a}
+                                onChange={(e) => {
+                                  const updated = [...part1Answers]
+                                  updated[i + 14] = e.target.value
+                                  setPart1Answers(updated)
+                                }}
+                                placeholder="Ответ"
+                                className="input-glass flex-1 px-2 py-1.5"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      {Object.keys(variantChoices).length > 0 && (
+                        <div className="mb-4">
+                          <div className="text-xs font-medium text-green-600 mb-2 bg-green-50 px-2 py-1 rounded">Часть 2 — выбери ответ</div>
+                          <div className="flex flex-col gap-3">
+                            {part2TaskNums.filter((n) => variantChoices[n]?.length).map((n) => (
+                              <div key={n}>
+                                <div className="text-xs text-gray-500 mb-1">Задание {n}</div>
+                                <ChoiceChips
+                                  choices={variantChoices[n]}
+                                  value={part2Choices[n]}
+                                  onSelect={(c) => setPart2Choices((prev) => ({ ...prev, [n]: c ?? undefined }))}
+                                />
                               </div>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )}
-                    <div className="glass p-5">
-                      <h3 className="text-base font-medium mb-3">Часть 2 — загрузи решения</h3>
-                      <div className="text-xs text-gray-500 mb-4">
-                        Обязательно прикрепи фото или файл решения каждого задания ({part2TaskNums.length === 1 ? `№${part2TaskNums[0]}` : `${part2TaskNums[0]}–${part2TaskNums[part2TaskNums.length - 1]}`}) — без него балл не начисляется
-                      </div>
-                      <div className="flex flex-col gap-3">
-                        {part2TaskNums.map((taskNum) => (
-                          <Part2Upload
-                            key={taskNum}
-                            taskNum={taskNum}
-                            submissionId={selectedVariant.submission.id}
-                            existingUrl={selectedVariant.submission.part2_files?.[taskNum]}
-                            chosen={selectedVariant.submission.part2_choices?.[taskNum]}
-                            onUpload={loadVariants}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {selectedVariant.submission.status === "graded" && (
-                  <div className="flex flex-col gap-4">
-                    <div className="glass-tint-green p-5 text-center">
-                      <div className="text-green-600 mb-2 flex justify-center"><Icon name="check" size={28} /></div>
-                      <div className="text-sm font-medium text-green-700">Вариант проверен!</div>
-                      <div className="text-3xl font-medium text-green-600 mt-2">{selectedVariant.submission.total_score} баллов</div>
-                      <div className="text-sm text-green-500 mt-1">
-                        Часть 1: {selectedVariant.submission.part1_score} / {part1Count}
-                        {/* Части 2 нет у базового ЕГЭ и у информатики — строка о ней там лишняя */}
-                        {part2TaskNums.length > 0 && ` · Часть 2: ${selectedVariant.submission.part2_score} / ${isEgeType(selectedVariant.type) ? 20 : 12}`}
-                      </div>
-                    </div>
-
-                    {selectedVariant.submission.part1_answers && selectedVariant.answers?.part1 && (
-                      <div className="glass p-5">
-                        <h3 className="text-sm font-medium mb-3">Разбор части 1</h3>
-                        <div className="flex flex-col gap-1">
-                          {selectedVariant.answers.part1.map((correct, i) => {
-                            const studentAns = selectedVariant.submission.part1_answers[i] || "—"
-                            const isCorrect = studentAns.trim() === correct.trim()
-                            return (
-                              <div
-                                key={i}
-                                className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm ${
-                                  isCorrect ? "bg-green-50" : "bg-red-50"
-                                }`}
-                              >
-                                <span className="text-gray-500 w-6">{i + 1}</span>
-                                <span className={isCorrect ? "text-green-700 font-medium flex-1" : "text-red-700 font-medium flex-1"}>
-                                  {studentAns}
-                                </span>
-                                {!isCorrect && (
-                                  <span className="text-gray-400 text-xs">
-                                    правильно: <span className="text-gray-700 font-medium">{correct}</span>
-                                  </span>
-                                )}
-                                {isCorrect && <Icon name="check" size={12} className="text-green-500" />}
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {(selectedVariant.answers?.part2 || selectedVariant.submission.part2_score_detail) && (
-                      <div className="glass p-5">
-                        <h3 className="text-sm font-medium mb-3">Разбор части 2</h3>
-                        <div className="flex flex-col gap-1">
-                          {part2TaskNums.map((n) => {
-                            const chosen = selectedVariant.submission.part2_choices?.[n]
-                            const correct = selectedVariant.answers?.part2?.[n]
-                            const score = Number(selectedVariant.submission.part2_score_detail?.[n] || 0)
-                            const max = isEgeType(selectedVariant.type) ? ({ 13: 2, 14: 3, 15: 2, 16: 2, 17: 3, 18: 4, 19: 4 })[n] : 2
-                            return (
-                              <div key={n} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${score >= max ? "bg-green-50" : score > 0 ? "bg-amber-50" : "bg-red-50"}`}>
-                                <span className="text-gray-500 w-6 flex-shrink-0">{n}</span>
-                                <span className="flex-1 min-w-0 truncate text-gray-700">{chosen ?? "—"}</span>
-                                {correct != null && String(chosen ?? "").trim() !== String(correct).trim() && (
-                                  <span className="text-gray-400 text-xs flex-shrink-0">
-                                    правильно: <span className="text-gray-700 font-medium">{correct}</span>
-                                  </span>
-                                )}
-                                <span className={`text-xs font-medium flex-shrink-0 ${score >= max ? "text-green-600" : score > 0 ? "text-amber-600" : "text-red-500"}`}>{score} / {max}</span>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div
-                className={returning ? "view-back" : ""}
-                onAnimationEnd={(e) => { if (e.animationName === "view-back") setReturning(false) }}
-              >
-                <h2 className="text-base font-medium mb-4">Мои варианты</h2>
-                {variants.length === 0 ? (
-                  <div className="text-sm text-gray-400 text-center py-8 border border-dashed border-white/50 glass-sm">
-                    Репетитор ещё не отправил варианты
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-3">
-                    {variants.map((v) => (
-                      <button
-                        key={v.id}
-                        onClick={() => { setSelectedVariant(v); setPart1Answers(Array(part1SlotsOf(v.type)).fill("")); setPart2Choices({}) }}
-                        className="text-left glass p-4 hover:bg-white/80 transition-colors w-full no-press press-tap"
-                      >
-                        <div className="flex justify-between items-center">
-                          <div className="font-medium text-sm">{v.title}</div>
-                          <span className={`text-xs px-2 py-1 rounded-full ${
-                            v.submission.status === "graded" ? "bg-green-100 text-green-700" :
-                            v.submission.status === "submitted" ? "bg-blue-100 text-blue-700" :
-                            "bg-amber-100 text-amber-700"
-                          }`}>
-                            {v.submission.status === "graded" ? "Проверено" :
-                             v.submission.status === "submitted" ? "На проверке" :
-                             "Не сдан"}
-                          </span>
-                        </div>
-                        {v.submission.status === "graded" && (
-                          <div className="text-xs text-gray-500 mt-1">
-                            Итого: {v.submission.total_score} баллов
+                            ))}
                           </div>
-                        )}
+                        </div>
+                      )}
+                      <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700 mb-4">
+                        <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />После отправки обязательно прикрепи фото решений части 2 — без них репетитор не начислит баллы</span>
+                      </div>
+                      {variantError && <div className="text-sm text-red-500 mb-2 text-center">{variantError}</div>}
+                      <button
+                        onClick={submitPart1}
+                        disabled={submitting}
+                        className="w-full bg-blue-600 text-white rounded-lg py-2.5 text-sm hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {submitting ? "Отправляем..." : "Отправить ответы"}
                       </button>
-                    ))}
-                  </div>
-                )}
+                    </div>
+                  )}
+
+                  {selectedVariant.submission.status === "submitted" && (
+                    <div className="flex flex-col gap-4">
+                      <div className="glass-tint-blue p-4">
+                        <div className="text-sm font-medium text-blue-700 flex items-center gap-1"><Icon name="check" size={14} />Часть 1 сдана</div>
+                        <div className="text-sm text-blue-600 mt-1">Балл: {selectedVariant.submission.part1_score} / {part1Count}</div>
+                        <div className="text-xs text-blue-500 mt-1">Балл за часть 2 появится после проверки репетитором</div>
+                      </div>
+
+                      {selectedVariant.submission.part1_answers && selectedVariant.answers?.part1 && (
+                        <div className="glass p-5">
+                          <h3 className="text-sm font-medium mb-3">Разбор части 1</h3>
+                          <div className="flex flex-col gap-1">
+                            {selectedVariant.answers.part1.map((correct, i) => {
+                              const studentAns = selectedVariant.submission.part1_answers[i] || "—"
+                              const isCorrect = studentAns.trim() === correct.trim()
+                              return (
+                                <div
+                                  key={i}
+                                  className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm ${
+                                    isCorrect ? "bg-green-50" : "bg-red-50"
+                                  }`}
+                                >
+                                  <span className="text-gray-500 w-6">{i + 1}</span>
+                                  <span className={isCorrect ? "text-green-700 font-medium flex-1" : "text-red-700 font-medium flex-1"}>
+                                    {studentAns}
+                                  </span>
+                                  {!isCorrect && (
+                                    <span className="text-gray-400 text-xs">
+                                      правильно: <span className="text-gray-700 font-medium">{correct}</span>
+                                    </span>
+                                  )}
+                                  {isCorrect && <Icon name="check" size={12} className="text-green-500" />}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      <div className="glass p-5">
+                        <h3 className="text-base font-medium mb-3">Часть 2 — загрузи решения</h3>
+                        <div className="text-xs text-gray-500 mb-4">
+                          Обязательно прикрепи фото или файл решения каждого задания ({part2TaskNums.length === 1 ? `№${part2TaskNums[0]}` : `${part2TaskNums[0]}–${part2TaskNums[part2TaskNums.length - 1]}`}) — без него балл не начисляется
+                        </div>
+                        <div className="flex flex-col gap-3">
+                          {part2TaskNums.map((taskNum) => (
+                            <Part2Upload
+                              key={taskNum}
+                              taskNum={taskNum}
+                              submissionId={selectedVariant.submission.id}
+                              existingUrl={selectedVariant.submission.part2_files?.[taskNum]}
+                              chosen={selectedVariant.submission.part2_choices?.[taskNum]}
+                              onUpload={loadVariants}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedVariant.submission.status === "graded" && (
+                    <div className="flex flex-col gap-4">
+                      <div className="glass-tint-green p-5 text-center">
+                        <div className="text-green-600 mb-2 flex justify-center"><Icon name="check" size={28} /></div>
+                        <div className="text-sm font-medium text-green-700">Вариант проверен!</div>
+                        <div className="text-3xl font-medium text-green-600 mt-2">{selectedVariant.submission.total_score} баллов</div>
+                        <div className="text-sm text-green-500 mt-1">
+                          Часть 1: {selectedVariant.submission.part1_score} / {part1Count}
+                          {/* Части 2 нет у базового ЕГЭ и у информатики — строка о ней там лишняя */}
+                          {part2TaskNums.length > 0 && ` · Часть 2: ${selectedVariant.submission.part2_score} / ${isEgeType(selectedVariant.type) ? 20 : 12}`}
+                        </div>
+                      </div>
+
+                      {selectedVariant.submission.part1_answers && selectedVariant.answers?.part1 && (
+                        <div className="glass p-5">
+                          <h3 className="text-sm font-medium mb-3">Разбор части 1</h3>
+                          <div className="flex flex-col gap-1">
+                            {selectedVariant.answers.part1.map((correct, i) => {
+                              const studentAns = selectedVariant.submission.part1_answers[i] || "—"
+                              const isCorrect = studentAns.trim() === correct.trim()
+                              return (
+                                <div
+                                  key={i}
+                                  className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm ${
+                                    isCorrect ? "bg-green-50" : "bg-red-50"
+                                  }`}
+                                >
+                                  <span className="text-gray-500 w-6">{i + 1}</span>
+                                  <span className={isCorrect ? "text-green-700 font-medium flex-1" : "text-red-700 font-medium flex-1"}>
+                                    {studentAns}
+                                  </span>
+                                  {!isCorrect && (
+                                    <span className="text-gray-400 text-xs">
+                                      правильно: <span className="text-gray-700 font-medium">{correct}</span>
+                                    </span>
+                                  )}
+                                  {isCorrect && <Icon name="check" size={12} className="text-green-500" />}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {(selectedVariant.answers?.part2 || selectedVariant.submission.part2_score_detail) && (
+                        <div className="glass p-5">
+                          <h3 className="text-sm font-medium mb-3">Разбор части 2</h3>
+                          <div className="flex flex-col gap-1">
+                            {part2TaskNums.map((n) => {
+                              const chosen = selectedVariant.submission.part2_choices?.[n]
+                              const correct = selectedVariant.answers?.part2?.[n]
+                              const score = Number(selectedVariant.submission.part2_score_detail?.[n] || 0)
+                              const max = isEgeType(selectedVariant.type) ? ({ 13: 2, 14: 3, 15: 2, 16: 2, 17: 3, 18: 4, 19: 4 })[n] : 2
+                              return (
+                                <div key={n} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${score >= max ? "bg-green-50" : score > 0 ? "bg-amber-50" : "bg-red-50"}`}>
+                                  <span className="text-gray-500 w-6 flex-shrink-0">{n}</span>
+                                  <span className="flex-1 min-w-0 truncate text-gray-700">{chosen ?? "—"}</span>
+                                  {correct != null && String(chosen ?? "").trim() !== String(correct).trim() && (
+                                    <span className="text-gray-400 text-xs flex-shrink-0">
+                                      правильно: <span className="text-gray-700 font-medium">{correct}</span>
+                                    </span>
+                                  )}
+                                  <span className={`text-xs font-medium flex-shrink-0 ${score >= max ? "text-green-600" : score > 0 ? "text-amber-600" : "text-red-500"}`}>{score} / {max}</span>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div
+                  className={returning ? "view-back" : ""}
+                  onAnimationEnd={(e) => { if (e.animationName === "view-back") setReturning(false) }}
+                >
+                  <h2 className="text-base font-medium mb-4">Мои варианты</h2>
+                  {variants.length === 0 ? (
+                    <div className="text-sm text-gray-400 text-center py-8 border border-dashed border-white/50 glass-sm">
+                      Репетитор ещё не отправил варианты
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                      {variants.map((v) => (
+                        <button
+                          key={v.id}
+                          onClick={() => { setSelectedVariant(v); setPart1Answers(Array(part1SlotsOf(v.type)).fill("")); setPart2Choices({}) }}
+                          className="text-left glass p-4 hover:bg-white/80 transition-colors w-full no-press press-tap"
+                        >
+                          <div className="flex justify-between items-center">
+                            <div className="font-medium text-sm">{v.title}</div>
+                            <span className={`text-xs px-2 py-1 rounded-full ${
+                              v.submission.status === "graded" ? "bg-green-100 text-green-700" :
+                              v.submission.status === "submitted" ? "bg-blue-100 text-blue-700" :
+                              "bg-amber-100 text-amber-700"
+                            }`}>
+                              {v.submission.status === "graded" ? "Проверено" :
+                               v.submission.status === "submitted" ? "На проверке" :
+                               "Не сдан"}
+                            </span>
+                          </div>
+                          {v.submission.status === "graded" && (
+                            <div className="text-xs text-gray-500 mt-1">
+                              Итого: {v.submission.total_score} баллов
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
               </div>
             )}
           </div>
-        )}
-            </div>
-          )}
-        </div>
 
-        {/* Все шесть вкладок помещаются в нижнюю панель, поэтому листа «Меню»,
-            как у репетитора, здесь нет. */}
-        <div className="mobile-nav-glass md:hidden fixed bottom-0 left-0 right-0 z-50">
-          <div className="flex justify-around items-center px-1 pt-2 pb-2">
-            {navItems.map((item) => {
-              const badge = item.id === "chat" ? chatUnread : 0
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => goTab(item.id)}
-                  className={`relative flex-1 min-w-0 flex flex-col items-center gap-0.5 px-0.5 py-1 rounded-xl transition-all ${
-                    activeTab === item.id
-                      ? "text-blue-600 bg-blue-500/10 font-semibold"
-                      : "text-gray-400"
-                  }`}
-                >
-                  <NavIcon id={item.icon} size={22} />
-                  {badge > 0 && (
-                    <span className="absolute -top-0.5 right-1 w-4 h-4 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center font-medium">
-                      {badge > 9 ? "9+" : badge}
-                    </span>
-                  )}
-                  <span className="text-[10px] max-w-full truncate">{item.label}</span>
-                </button>
-              )
-            })}
+          {/* Все шесть вкладок помещаются в нижнюю панель, поэтому листа «Меню»,
+              как у репетитора, здесь нет. */}
+          <div className="mobile-nav-glass md:hidden fixed bottom-0 left-0 right-0 z-50">
+            <div className="flex justify-around items-center px-1 pt-2 pb-2">
+              {navItems.map((item) => {
+                const badge = item.id === "chat" ? chatUnread : 0
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => goTab(item.id)}
+                    className={`relative flex-1 min-w-0 flex flex-col items-center gap-0.5 px-0.5 py-1 rounded-xl transition-all ${
+                      activeTab === item.id
+                        ? "text-blue-600 bg-blue-500/10 font-semibold"
+                        : "text-gray-400"
+                    }`}
+                  >
+                    <NavIcon id={item.icon} size={22} />
+                    {badge > 0 && (
+                      <span className="absolute -top-0.5 right-1 w-4 h-4 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center font-medium">
+                        {badge > 9 ? "9+" : badge}
+                      </span>
+                    )}
+                    <span className="text-[10px] max-w-full truncate">{item.label}</span>
+                  </button>
+                )
+              })}
+            </div>
           </div>
         </div>
+
+        {needsOnboard && (
+          <StudentOnboardingModal
+            studentId={user.id}
+            onComplete={() => {
+              setNeedsOnboard(false)
+              // Обновляем кэш сессии, чтобы опросник не всплыл снова после перезагрузки
+              try {
+                const s = JSON.parse(localStorage.getItem("student_session") || "{}")
+                s.profile = { ...(s.profile || {}), onboarded: true }
+                localStorage.setItem("student_session", JSON.stringify(s))
+              } catch { /* кэш не критичен */ }
+              // Привязка к репетитору теперь происходит в кабинете (заметный блок),
+              // а не в анкете — поэтому здесь ничего перечитывать не нужно.
+            }}
+          />
+        )}
       </div>
+    )
+  }
 
-      {needsOnboard && (
-        <StudentOnboardingModal
-          studentId={user.id}
-          onComplete={() => {
-            setNeedsOnboard(false)
-            // Обновляем кэш сессии, чтобы опросник не всплыл снова после перезагрузки
-            try {
-              const s = JSON.parse(localStorage.getItem("student_session") || "{}")
-              s.profile = { ...(s.profile || {}), onboarded: true }
-              localStorage.setItem("student_session", JSON.stringify(s))
-            } catch { /* кэш не критичен */ }
-            // Привязка к репетитору теперь происходит в кабинете (заметный блок),
-            // а не в анкете — поэтому здесь ничего перечитывать не нужно.
-          }}
-        />
-      )}
-    </div>
-  )
-}
-
-export default StudentDashboard
+  export default StudentDashboard

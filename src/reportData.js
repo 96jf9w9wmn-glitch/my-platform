@@ -49,6 +49,10 @@ export function periodStart(lastReportDate, fallbackDays = 30) {
 export function aggregateAttempts(attempts) {
   const map = new Map()
   for (const a of attempts || []) {
+    // Только ПЕРВЫЕ попытки. Домашнюю работу можно пересдать, а задание —
+    // решать до верного ответа; если считать все подходы, ученик, который
+    // исправился со второго раза, выглядел бы как решивший половину.
+    if ((a.attempt_no ?? 1) > 1) continue
     const key = `${a.exam_type}|${a.number}|${a.gen_key || ""}`
     const row = map.get(key) || {
       exam_type: a.exam_type, number: a.number, gen_key: a.gen_key || null,
@@ -220,7 +224,7 @@ export async function loadFacts(student, { fallbackDays = 30 } = {}) {
   const since = periodStart(last?.period_to || last?.lesson_date, fallbackDays)
 
   const { data: attempts } = await supabase.from("task_attempts")
-    .select("exam_type, number, gen_key, is_correct, created_at")
+    .select("exam_type, number, gen_key, is_correct, attempt_no, created_at")
     .eq("student_id", id)
     .gte("created_at", `${since}T00:00:00`)
     .limit(2000)
