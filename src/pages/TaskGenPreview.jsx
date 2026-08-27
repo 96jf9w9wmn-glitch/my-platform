@@ -395,7 +395,8 @@ function TaskGenPreview() {
 
       {/* Темы выбранного номера. Семейств бывает много (№13 профиля — 20 семейств / 89
           типажей), поэтому список свёрнут: видны названия семейств, раскрывается одно.
-          «Смотреть» рядом с названием листает случайные типажи всего семейства. */}
+          Раскрытие темы сразу листает случайные типажи всего семейства — отдельной
+          кнопки для этого нет, она дублировала клик по названию. */}
       {focusNumber(focus) != null && themes && (
         <div className="mb-4 rounded-xl border border-gray-100 dark:border-white/10 p-3 flex flex-col gap-2">
           <div className="flex items-center gap-2 flex-wrap">
@@ -418,32 +419,20 @@ function TaskGenPreview() {
                   open || inside || focus === fam ? "border-blue-200 bg-white" : "border-gray-200/70 bg-white/60"
                 }`}
               >
-                <div className="flex items-center gap-2 px-2.5 py-1.5">
-                  <button
-                    onClick={() => setOpenTheme(open ? null : g.theme)}
-                    className="flex items-center gap-1.5 min-w-0 text-left text-[13px] font-semibold text-gray-600 hover:text-gray-800 transition-colors active:scale-[0.98]"
-                  >
-                    <Icon
-                      name="chevron-right"
-                      size={13}
-                      className={`shrink-0 text-gray-400 transition-transform duration-200 ${open ? "rotate-90" : ""}`}
-                    />
-                    <span className="truncate">{g.theme}</span>
-                    <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-blue-500/10 ring-1 ring-blue-500/20 text-[11px] font-medium text-blue-600">
-                      {g.items.length}
-                    </span>
-                  </button>
-                  <button
-                    onClick={() => { setOpenTheme(g.theme); selectFocus(fam) }}
-                    className={`ml-auto shrink-0 px-2.5 py-1 rounded-lg text-xs border transition-all active:scale-95 ${
-                      focus === fam
-                        ? "bg-blue-600 text-white border-blue-600"
-                        : "border-gray-200 text-gray-500 hover:bg-gray-50"
-                    }`}
-                  >
-                    Смотреть
-                  </button>
-                </div>
+                <button
+                  onClick={() => (open ? setOpenTheme(null) : (setOpenTheme(g.theme), selectFocus(fam)))}
+                  className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-left text-[13px] font-semibold text-gray-600 hover:text-gray-800 transition-colors active:scale-[0.99]"
+                >
+                  <Icon
+                    name="chevron-right"
+                    size={13}
+                    className={`shrink-0 text-gray-400 transition-transform duration-200 ${open ? "rotate-90" : ""}`}
+                  />
+                  <span className="truncate">{g.theme}</span>
+                  <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-blue-500/10 ring-1 ring-blue-500/20 text-[11px] font-medium text-blue-600">
+                    {g.items.length}
+                  </span>
+                </button>
                 <Reveal value={open}>{() => (
                   <div className="flex flex-wrap gap-2 px-2.5 pb-2.5 pt-2 border-t border-gray-100">
                     {g.items.map((it) => {
