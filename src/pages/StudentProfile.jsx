@@ -478,96 +478,99 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
           )}
         </div>
 
-        {/* Проведённые занятия убраны под «Архив»: за учебный год их набираются
-            десятки, и карточка ученика превращалась в бесконечную ленту.
-            Счётчик на кнопке показывает, сколько внутри, не открывая её. */}
-        <div className="glass p-4">
-          <button
-            onClick={() => setArchiveOpen((v) => !v)}
-            className="press-fill w-full flex items-center justify-between gap-2 rounded-lg text-left"
-          >
-            <span className="flex items-center gap-2 text-sm font-medium">
-              <Icon name="archive" size={15} className="text-gray-400" />
-              Архив занятий
-              <span className="text-[11px] font-normal text-gray-500 ring-1 ring-gray-200/70 dark:ring-white/15 px-1.5 py-0.5 rounded-full tabular-nums">
-                {past.length}
-              </span>
-            </span>
-            <Icon name="chevron-down" size={14}
-              className={`text-gray-400 transition-transform duration-300 ${archiveOpen ? "rotate-180" : ""}`} />
-          </button>
-
-          <Collapse open={archiveOpen}>
-          <div className="pt-3">
-          {past.length === 0 ? (
-            <div className="text-sm text-gray-400 py-4 text-center">Занятий ещё не было</div>
-          ) : (
-            <div className={`grid gap-2 ${(editingNote !== null || isMobile) ? "grid-cols-1" : "grid-cols-2"}`}>
-              {past.map((l) => (
-                <div key={l._origIdx} className="flex flex-col py-2 px-3 glass-sm gap-1">
-                  <div className="flex justify-between items-start gap-2">
-                    <div>
-                      <div className="text-sm">
-                        {parseLocalDate(l.date).toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" })}
-                      </div>
-                      <div className="text-xs text-gray-400">{l.time} · {l.duration} мин</div>
-                    </div>
-                    {l.note && editingNote !== l._origIdx && (
-                      <button
-                        className="no-press text-blue-400 hover:text-blue-600 transition-colors mt-0.5 flex-shrink-0"
-                        onClick={() => { setEditingNote(l._origIdx); setNoteDraft(l.note || "") }}
-                      >
-                        <Icon name="clipboard" size={15} />
-                      </button>
-                    )}
-                  </div>
-                  {l.note && editingNote !== l._origIdx && (
-                    <div className="text-xs text-gray-500 leading-relaxed">{l.note}</div>
-                  )}
-                  {!l.note && editingNote !== l._origIdx && (
-                    <button
-                      /* Серым по светлому «+ заметка» не читалась вовсе — теперь
-                         это видимое действие, а не призрак. */
-                      className="no-press text-xs text-blue-500/80 hover:text-blue-600 transition-colors text-left"
-                      onClick={() => { setEditingNote(l._origIdx); setNoteDraft("") }}
-                    >
-                      + заметка
-                    </button>
-                  )}
-                  {editingNote === l._origIdx && (
-                    <div className="mt-1">
-                      <textarea
-                        value={noteDraft}
-                        onChange={(e) => setNoteDraft(e.target.value)}
-                        placeholder="Что прошли, комментарий после урока..."
-                        className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-blue-400 resize-none bg-white/80"
-                        rows={3}
-                        autoFocus
-                      />
-                      <div className="flex gap-2 mt-1.5">
-                        <button
-                          onClick={() => setEditingNote(null)}
-                          className="no-press text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5 border border-gray-200 rounded-lg"
-                        >
-                          Отмена
-                        </button>
-                        <button
-                          onClick={() => saveNote(l._origIdx)}
-                          className="no-press text-xs text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg"
-                        >
-                          Сохранить
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-          </div>
-          </Collapse>
-        </div>
       </div>
+      </div>
+
+      {/* Архив — во всю ширину под колонками и со своей прокруткой. В колонке
+          он вытягивал страницу на десятки занятий, а соседняя колонка
+          растягивалась вслед за ним пустой рамкой. Счётчик на кнопке
+          показывает, сколько внутри, не открывая её. */}
+      <div className="glass p-4 mt-4">
+        <button
+          onClick={() => setArchiveOpen((v) => !v)}
+          className="press-fill w-full flex items-center justify-between gap-2 rounded-lg text-left"
+        >
+          <span className="flex items-center gap-2 text-sm font-medium">
+            <Icon name="archive" size={15} className="text-gray-400" />
+            Архив занятий
+            <span className="text-[11px] font-normal text-gray-500 ring-1 ring-gray-200/70 dark:ring-white/15 px-1.5 py-0.5 rounded-full tabular-nums">
+              {past.length}
+            </span>
+          </span>
+          <Icon name="chevron-down" size={14}
+            className={`text-gray-400 transition-transform duration-300 ${archiveOpen ? "rotate-180" : ""}`} />
+        </button>
+
+        <Collapse open={archiveOpen}>
+          {/* Своя прокрутка, а не весь список наружу: занятий за год — десятки. */}
+          <div className="pt-3 max-h-[24rem] overflow-y-auto pr-1">
+            {past.length === 0 ? (
+              <div className="text-sm text-gray-400 py-4 text-center">Занятий ещё не было</div>
+            ) : (
+              <div className={`grid gap-2 ${(editingNote !== null || isMobile) ? "grid-cols-1" : "grid-cols-2 xl:grid-cols-3"}`}>
+          {past.map((l) => (
+            <div key={l._origIdx} className="flex flex-col py-2 px-3 glass-sm gap-1">
+              <div className="flex justify-between items-start gap-2">
+                <div>
+                  <div className="text-sm">
+                    {parseLocalDate(l.date).toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" })}
+                  </div>
+                  <div className="text-xs text-gray-400">{l.time} · {l.duration} мин</div>
+                </div>
+                {l.note && editingNote !== l._origIdx && (
+                  <button
+                    className="no-press text-blue-400 hover:text-blue-600 transition-colors mt-0.5 flex-shrink-0"
+                    onClick={() => { setEditingNote(l._origIdx); setNoteDraft(l.note || "") }}
+                  >
+                    <Icon name="clipboard" size={15} />
+                  </button>
+                )}
+              </div>
+              {l.note && editingNote !== l._origIdx && (
+                <div className="text-xs text-gray-500 leading-relaxed">{l.note}</div>
+              )}
+              {!l.note && editingNote !== l._origIdx && (
+                <button
+                  /* Серым по светлому «+ заметка» не читалась вовсе — теперь
+                     это видимое действие, а не призрак. */
+                  className="no-press text-xs text-blue-500/80 hover:text-blue-600 transition-colors text-left"
+                  onClick={() => { setEditingNote(l._origIdx); setNoteDraft("") }}
+                >
+                  + заметка
+                </button>
+              )}
+              {editingNote === l._origIdx && (
+                <div className="mt-1">
+                  <textarea
+                    value={noteDraft}
+                    onChange={(e) => setNoteDraft(e.target.value)}
+                    placeholder="Что прошли, комментарий после урока..."
+                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:border-blue-400 resize-none bg-white/80"
+                    rows={3}
+                    autoFocus
+                  />
+                  <div className="flex gap-2 mt-1.5">
+                    <button
+                      onClick={() => setEditingNote(null)}
+                      className="no-press text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5 border border-gray-200 rounded-lg"
+                    >
+                      Отмена
+                    </button>
+                    <button
+                      onClick={() => saveNote(l._origIdx)}
+                      className="no-press text-xs text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg"
+                    >
+                      Сохранить
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+              </div>
+            )}
+          </div>
+        </Collapse>
       </div>
 
       {showEdit && (
