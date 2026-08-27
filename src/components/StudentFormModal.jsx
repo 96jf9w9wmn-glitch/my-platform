@@ -3,11 +3,12 @@ import { createPortal } from "react-dom"
 import { useClosing } from "../useClosing"
 import Icon from "./Icon"
 import Reveal from "./Reveal"
+import Collapse from "./Collapse"
 import SegmentSwitch from "./SegmentSwitch"
 import WeeksPicker from "./WeeksPicker"
 import PhoneInput, { isValidPhoneNumber } from "react-phone-number-input"
 import "react-phone-number-input/style.css"
-import { plural, parseLocalDate, formatPhone } from "../utils"
+import { plural, parseLocalDate, formatPhone, isLessonConducted } from "../utils"
 import { ConsentRow, ConsentLink } from "./ConsentChecks"
 import { logConsent } from "../consents"
 import { supabase } from "../supabase"
@@ -21,6 +22,7 @@ function generateParentCode() {
 const MONTH_NAMES = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"]
 const DAY_NAMES_SHORT = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"]
 const WEEK_DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+const DAY_INDEX = { "Пн": 1, "Вт": 2, "Ср": 3, "Чт": 4, "Пт": 5, "Сб": 6, "Вс": 0 }
 const MESSENGERS = [
   { id: "telegram", label: "Telegram", placeholder: "https://t.me/username" },
   { id: "whatsapp", label: "WhatsApp", placeholder: "https://wa.me/79001234567" },
@@ -46,6 +48,44 @@ function formatDate(date) {
   return `${y}-${m}-${d}`
 }
 
+function byDateTime(a, b) {
+  return a.date.localeCompare(b.date) || (a.time || "").localeCompare(b.time || "")
+}
+
+function uniqueLessons(list) {
+  return list.filter((l, i, arr) => arr.findIndex((x) => x.date === l.date && x.time === l.time) === i)
+}
+
+// Расписание для правки собираем из САМИХ будущих занятий, а не из строки
+// `schedule`: строка — витрина, а занятия — факт, и после переносов эти двое
+// расходятся. Открыв окно, репетитор должен увидеть то, что стоит в календаре.
+function daysFromLessons(lessons) {
+  const byDay = new Map()
+  for (const l of lessons) {
+    const name = WEEK_DAYS[(parseLocalDate(l.date).getDay() + 6) % 7]
+    if (!byDay.has(name)) byDay.set(name, { name, time: l.time || "09:00", duration: l.duration || 60 })
+  }
+  return WEEK_DAYS.filter((d) => byDay.has(d)).map((d) => byDay.get(d))
+}
+
+// На сколько недель вперёд расписание расставлено сейчас: чтобы окно, открытое
+// и сохранённое без правок, вернуло то же расписание, а не обрезало его.
+function weeksAhead(lessons) {
+  if (!lessons.length) return 4
+  const last = parseLocalDate(lessons[lessons.length - 1].date)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const weeks = Math.ceil((last - today) / (7 * 24 * 3600 * 1000))
+  return Math.min(52, Math.max(1, weeks))
+}
+
+function parseScheduleToDays(schedule) {
+  if (!schedule) return []
+  return schedule.split(", ").map((p) => {
+    const match = p.match(/^([А-Яа-я]{2})\s+(\d{2}:\d{2})/)
+    return match ? { name: match[1], time: match[2] } : null
+  }).filter(Boolean)
+}
 
 // Время и длительность — нативные поля вместо самодельной крутилки ▲▼: та
 // занимала три строки на КАЖДОЕ занятие (часы, минуты, пять кнопок длительности),
@@ -115,27 +155,61 @@ function MiniCalendar({ lessons, onToggleDate }) {
   )
 }
 
-function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
-  const [form, setForm] = useState({ name: initialName || "", goal: "" })
-  const [phone, setPhone] = useState(initialPhone || "")
+// Одно окно и на приём заявки, и на правку карточки. Раньше правка жила своей
+// копией внутри StudentProfile: у́же, без стоимости, без длительности по дням и
+// без календаря разовых занятий — то есть репетитор видел два разных
+// представления одной и той же карточки.
+function StudentFormModal({ student, onClose, onSubmit, initialName, initialPhone }) {
+  const editing = !!student
+
+  // Прошедшие занятия здесь не редактируются: это история с заметками, оплатами
+  // и оценками. Правим только будущее, прошлое переносим в сохранение как есть.
+  const [{ pastLessons, futureLessons }] = useState(() => {
+    const all = [...(student?.lessons || [])].sort(byDateTime)
+    return {
+      pastLessons: all.filter((l) => isLessonConducted(l)),
+      futureLessons: all.filter((l) => !isLessonConducted(l)),
+    }
+  })
+
+  const [form, setForm] = useState({
+    name: student?.name || initialName || "",
+    goal: "",
+    lessonPrice: student?.lessonPrice ?? "",
+    boardUrl: student?.boardUrl || "",
+    callUrl: student?.callUrl || "",
+  })
+  const [phone, setPhone] = useState(student?.phone || initialPhone || "")
   const [submitting, setSubmitting] = useState(false)
-  const [contacts, setContacts] = useState([])
+  const [contacts, setContacts] = useState(student?.contacts || [])
   // Регулярные занятия — обычный случай: ученика ведут неделями, разовые
   // встречи скорее исключение. Поэтому режим открыт сразу на них.
-  const [mode, setMode] = useState("recurring")
-  const [lessons, setLessons] = useState([])
+  const [mode, setMode] = useState(editing ? (student.isRecurring ? "recurring" : "single") : "recurring")
+  const [lessons, setLessons] = useState(editing ? futureLessons : [])
   // Общее время и длительность: их получает каждая новая выбранная дата, и ими
   // же правится сразу всё расписание. Отдельный день можно поправить в списке.
-  const [bulkTime, setBulkTime] = useState("09:00")
-  const [bulkDuration, setBulkDuration] = useState(60)
-  const [recurringDays, setRecurringDays] = useState([])
+  const [bulkTime, setBulkTime] = useState(futureLessons[0]?.time || "09:00")
+  const [bulkDuration, setBulkDuration] = useState(futureLessons[0]?.duration || 60)
+  const [recurringDays, setRecurringDays] = useState(() => {
+    if (!editing || !student.isRecurring) return []
+    const fromLessons = daysFromLessons(futureLessons)
+    return fromLessons.length ? fromLessons : parseScheduleToDays(student.schedule)
+  })
   const [recurringDuration] = useState(60)
-  const [recurringStartDate, setRecurringStartDate] = useState("")
-  const [recurringWeeks, setRecurringWeeks] = useState(4)
+  const [recurringStartDate, setRecurringStartDate] = useState(editing ? formatDate(new Date()) : "")
+  const [recurringWeeks, setRecurringWeeks] = useState(editing ? weeksAhead(futureLessons) : 4)
+  const [weeksTouched, setWeeksTouched] = useState(false)
+  // Доска: наша встроенная или ссылка на чужую (Miro и подобные). Выбор не
+  // хранится отдельным полем — он и есть «есть ссылка или нет».
+  const [boardMode, setBoardMode] = useState(student?.boardUrl ? "external" : "own")
   const [onboardingPulled, setOnboardingPulled] = useState(false)
   const [hasStudentConsent, setHasStudentConsent] = useState(false)
   const [formError, setFormError] = useState("")
   const { cls: closingCls, close } = useClosing(onClose)
+
+  // Номер сшивает карточку с аккаунтом ученика (current_student_rows в RLS):
+  // изменив его, репетитор молча отрежет ученику доступ к собственной карточке.
+  const phoneLocked = editing ? !!student.studentAccountId : !!initialPhone
 
   // Если ученик уже прошёл анкету в своём кабинете — при добавлении его репетитором
   // подтягиваем результаты анкеты (цель, целевой балл) по совпадению телефона.
@@ -176,7 +250,7 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
     setLessons((prev) => {
       const exists = prev.find((l) => l.date === dateStr)
       if (exists) return prev.filter((l) => l.date !== dateStr)
-      return [...prev, { date: dateStr, time: bulkTime, duration: bulkDuration }].sort((a, b) => a.date.localeCompare(b.date))
+      return [...prev, { date: dateStr, time: bulkTime, duration: bulkDuration }].sort(byDateTime)
     })
   }
 
@@ -208,54 +282,89 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
 
   function generateRecurringLessons() {
     if (!recurringStartDate || recurringDays.length === 0) return []
-    const dayIndexMap = { "Пн": 1, "Вт": 2, "Ср": 3, "Чт": 4, "Пт": 5, "Сб": 6, "Вс": 0 }
     const result = []
     const start = parseLocalDate(recurringStartDate)
     for (let week = 0; week < recurringWeeks; week++) {
       for (const day of recurringDays) {
-        const targetDay = dayIndexMap[day.name]
         const base = new Date(start)
         base.setDate(start.getDate() + week * 7)
-        const diff = (targetDay - base.getDay() + 7) % 7
+        const diff = (DAY_INDEX[day.name] - base.getDay() + 7) % 7
         const lessonDate = new Date(base)
         lessonDate.setDate(base.getDate() + diff)
         result.push({ date: formatDate(lessonDate), time: day.time, duration: day.duration || recurringDuration })
       }
     }
-    return result.filter((l, i, arr) => arr.findIndex((x) => x.date === l.date && x.time === l.time) === i).sort((a, b) => a.date.localeCompare(b.date))
+    // Пока срок не трогали, расписание не удлиняется само: зайти поправить имя
+    // и молча получить лишние занятия за горизонтом — не то, о чём просили.
+    const horizon = editing && !weeksTouched && futureLessons.length
+      ? futureLessons[futureLessons.length - 1].date
+      : null
+    return uniqueLessons(result).filter((l) => !horizon || l.date <= horizon).sort(byDateTime)
   }
 
   const previewLessons = mode === "recurring" ? generateRecurringLessons() : lessons
+  // Сколько уже стоявших в календаре занятий уйдёт: убрали день недели —
+  // будущие занятия по нему исчезнут, и это должно быть видно ДО сохранения.
+  const droppedLessons = editing
+    ? futureLessons.filter((l) => !previewLessons.some((p) => p.date === l.date && p.time === l.time))
+    : []
 
   function handleSubmit() {
     if (submitting) return
     if (!form.name || !phone) { setFormError("Заполните имя и телефон."); return }
-    if (!hasStudentConsent) { setFormError("Отметьте, что согласие ученика или его родителя на внесение данных получено."); return }
-    if (mode === "single" && lessons.length === 0) { setFormError("Выберите даты занятий."); return }
+    if (!editing && !hasStudentConsent) { setFormError("Отметьте, что согласие ученика или его родителя на внесение данных получено."); return }
+    if (mode === "single" && previewLessons.length === 0) { setFormError("Выберите даты занятий."); return }
     if (mode === "recurring" && (!recurringStartDate || recurringDays.length === 0)) { setFormError("Укажите дату начала и дни недели."); return }
     setFormError("")
 
     setSubmitting(true)
 
+    // Прошлое сохраняем как есть, будущее — то, что видно в окне. Совпавшие по
+    // дате и времени занятия сохраняют свои заметки, перенос и пометки о проверке.
+    const merged = editing
+      ? uniqueLessons([
+        ...pastLessons,
+        ...previewLessons.map((p) => {
+          const was = futureLessons.find((l) => l.date === p.date && l.time === p.time)
+          return was ? { ...was, ...p } : p
+        }),
+      ]).sort(byDateTime)
+      : previewLessons
+
+    const schedule = mode === "recurring"
+      ? recurringDays.map((d) => `${d.name} ${d.time} (${d.duration || recurringDuration} мин)`).join(", ")
+      : previewLessons.map((l) => parseLocalDate(l.date).toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) + " " + l.time + " (" + l.duration + " мин)").join(", ")
+
+    const common = {
+      name: form.name,
+      phone,
+      contacts,
+      lessonPrice: form.lessonPrice === "" ? null : Number(form.lessonPrice),
+      boardUrl: boardMode === "external" ? form.boardUrl.trim() : "",
+      callUrl: form.callUrl.trim(),
+      lessons: merged,
+      lessonDates: merged.map((l) => l.date),
+      lessonDuration: mode === "recurring" ? recurringDuration : bulkDuration,
+      isRecurring: mode === "recurring",
+      schedule,
+    }
+
+    if (editing) {
+      onSubmit(common)
+      close()
+      return
+    }
+
     logConsent({ role: "tutor_for_student", contact: phone, guardian: true })
 
-    const finalLessons = previewLessons
-    onAdd({
-      ...form,
-      phone, contacts,
+    onSubmit({
+      ...common,
+      goal: form.goal,
       // Временный id — только чтобы карточка дожила до вставки: настоящий выдаёт
       // база (student_link_cleanup.sql). Раньше клиент клал сюда UUID, а колонка —
       // bigint, и вставка молча падала: карточки не создавались полтора месяца.
       id: `tmp:${crypto.randomUUID()}`,
-      balance: 0, results: [],
-      lessons: finalLessons,
-      lessonDates: finalLessons.map((l) => l.date),
-      lessonDuration: mode === "recurring" ? recurringDuration : bulkDuration,
-      isRecurring: mode === "recurring",
-      schedule: mode === "recurring"
-        ? recurringDays.map((d) => `${d.name} ${d.time} (${d.duration || recurringDuration} мин)`).join(", ")
-        : finalLessons.map((l) => parseLocalDate(l.date).toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) + " " + l.time + " (" + l.duration + " мин)").join(", "),
-      payments: [],
+      balance: 0, results: [], payments: [],
       targetScore: form.targetScore || null,
       parent_code: generateParentCode(),
     })
@@ -273,10 +382,14 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
         <div className={`glass-modal p-6 sm:p-7 w-full max-w-4xl ${closingCls}`}>
           <div className="flex justify-between items-start gap-4 mb-6">
             <div>
-              {/* Модалка открывается только при приёме заявки: ученик уже привязался
-                  сам, репетитор лишь дозаполняет карточку. */}
+              {/* В режиме приёма ученик уже привязался сам — репетитор лишь
+                  дозаполняет карточку. */}
               <h2 className="text-lg font-medium">Данные ученика</h2>
-              <p className="text-xs text-gray-400 mt-0.5">Заявка от ученика — заполните карточку и примите</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {editing
+                  ? "Прошедшие занятия остаются нетронутыми — правится только расписание вперёд"
+                  : "Заявка от ученика — заполните карточку и примите"}
+              </p>
             </div>
             <button onClick={close} aria-label="Закрыть" className="text-gray-400 hover:text-gray-600 p-1"><Icon name="x" size={18} /></button>
           </div>
@@ -292,16 +405,13 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
 
               <div>
                 <label className="text-sm text-gray-500 mb-1.5 block">Телефон</label>
-                {initialPhone ? (
-                  // Номер пришёл из аккаунта ученика. Именно по нему база сшивает карточку
-                  // с аккаунтом (current_student_rows в RLS), поэтому править его нельзя:
-                  // изменив номер, репетитор молча отрежет ученику доступ к своей карточке.
+                {phoneLocked ? (
                   <>
                     <div className="input-glass flex items-center justify-between gap-2 text-gray-500">
-                      <span>{formatPhone(initialPhone)}</span>
+                      <span>{formatPhone(phone)}</span>
                       <Icon name="check" size={14} className="text-green-600 flex-shrink-0" />
                     </div>
-                    <p className="text-xs text-gray-400 mt-1.5">Номер подтверждён при регистрации ученика — по нему карточка связана с его кабинетом.</p>
+                    <p className="text-xs text-gray-400 mt-1.5">Номер из кабинета ученика — по нему карточка связана с его аккаунтом, менять может только он сам.</p>
                   </>
                 ) : (
                   <div className="phone-input-wrapper">
@@ -336,6 +446,38 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
                     className="input-glass pr-8" />
                   <span className="absolute right-3 top-2.5 text-sm text-gray-400">₽</span>
                 </div>
+              </div>
+
+              {/* Доска: своя или наша. Раньше поле «Ссылка на доску» стояло молча,
+                  и было не понять, что доска у платформы вообще есть. */}
+              <div>
+                <label className="text-sm text-gray-500 mb-2 block">Доска для занятий</label>
+                <SegmentSwitch
+                  block
+                  size="sm"
+                  ariaLabel="Доска для занятий"
+                  value={boardMode}
+                  onChange={setBoardMode}
+                  items={[
+                    { key: "own", label: <><Icon name="clipboard" size={14} />Наша</> },
+                    { key: "external", label: <><Icon name="link" size={14} />Своя ссылка</> },
+                  ]}
+                />
+                <Collapse open={boardMode === "external"}>
+                  <input name="boardUrl" value={form.boardUrl} onChange={handleChange}
+                    placeholder="https://miro.com/..." className="input-glass mt-2" />
+                </Collapse>
+                <p className="text-xs text-gray-400 mt-2">
+                  {boardMode === "own"
+                    ? "Открывается прямо в кабинете, ученику ссылка не нужна."
+                    : "Кнопка «Доска» будет вести на этот адрес."}
+                </p>
+              </div>
+
+              <div>
+                <label className="text-sm text-gray-500 mb-1.5 block">Ссылка на звонок (необязательно)</label>
+                <input name="callUrl" value={form.callUrl} onChange={handleChange}
+                  placeholder="https://meet.google.com/..." className="input-glass" />
               </div>
 
               {/* Растягиваем последний блок: иначе под короткой левой колонкой
@@ -475,12 +617,14 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
                   </div>
                   <div>
                     <label className="text-sm text-gray-500 mb-2 block">На сколько вперёд расставить</label>
-                    <WeeksPicker value={recurringWeeks} onChange={setRecurringWeeks} />
+                    <WeeksPicker value={recurringWeeks} onChange={(w) => { setWeeksTouched(true); setRecurringWeeks(w) }} />
                   </div>
                   <Reveal value={previewLessons.length || null}>
                     {() => (
                       <div className="bg-blue-50 dark:bg-blue-500/10 rounded-xl p-3.5">
-                        <div className="text-xs font-medium text-blue-700 mb-2">Будет создано {previewLessons.length} {plural(previewLessons.length, "занятие", "занятия", "занятий")}:</div>
+                        <div className="text-xs font-medium text-blue-700 mb-2">
+                          {editing ? "В расписании будет" : "Будет создано"} {previewLessons.length} {plural(previewLessons.length, "занятие", "занятия", "занятий")}:
+                        </div>
                         <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
                           {previewLessons.map((l, i) => (
                             <div key={i} className="text-xs text-blue-600">
@@ -488,6 +632,11 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
                             </div>
                           ))}
                         </div>
+                        {droppedLessons.length > 0 && (
+                          <div className="text-xs text-amber-600 mt-2 pt-2 border-t border-blue-100 dark:border-white/10">
+                            {droppedLessons.length} {plural(droppedLessons.length, "занятие", "занятия", "занятий")} из прежнего расписания будет убрано.
+                          </div>
+                        )}
                       </div>
                     )}
                   </Reveal>
@@ -498,20 +647,22 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
 
           {/* Данные ученика вносит репетитор, а согласие даёт сам ученик или его
               родитель — поэтому здесь подтверждение, что оно уже получено. */}
-          <div className="mt-6 pt-5 border-t border-gray-100/70 dark:border-white/10">
-            <ConsentRow checked={hasStudentConsent} onChange={setHasStudentConsent}>
-              У меня есть согласие ученика или его законного представителя на внесение
-              этих данных в сервис и на обработку по{" "}
-              <ConsentLink href="/privacy">Политике конфиденциальности</ConsentLink>
-            </ConsentRow>
-          </div>
+          {!editing && (
+            <div className="mt-6 pt-5 border-t border-gray-100/70 dark:border-white/10">
+              <ConsentRow checked={hasStudentConsent} onChange={setHasStudentConsent}>
+                У меня есть согласие ученика или его законного представителя на внесение
+                этих данных в сервис и на обработку по{" "}
+                <ConsentLink href="/privacy">Политике конфиденциальности</ConsentLink>
+              </ConsentRow>
+            </div>
+          )}
 
           {formError && <div className="text-sm text-red-500 mt-4 text-center">{formError}</div>}
 
           <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 mt-5">
             <button onClick={close} className="press-fill border border-gray-200 rounded-xl px-5 py-2.5 text-sm text-gray-600">Отмена</button>
             <button onClick={handleSubmit} disabled={submitting} className="btn-primary px-6 py-2.5 disabled:opacity-50">
-              {submitting ? "Принимаем..." : "Принять ученика"}
+              {editing ? "Сохранить" : submitting ? "Принимаем..." : "Принять ученика"}
             </button>
           </div>
         </div>
@@ -521,4 +672,4 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
   )
 }
 
-export default AddStudentModal
+export default StudentFormModal

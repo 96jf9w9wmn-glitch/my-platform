@@ -1,16 +1,14 @@
 import { useState, useEffect } from "react"
-import { createPortal } from "react-dom"
-import { useClosing } from "../useClosing"
 import { supabase } from "../supabase"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
 import WeakTypes from "../components/WeakTypes"
 import BoardHistory from "../components/BoardHistory"
 import Collapse from "../components/Collapse"
-import WeeksPicker from "../components/WeeksPicker"
 import ReportComposer from "../components/ReportComposer"
 import { parseLocalDate, isLessonConducted, getInitials, formatPhone } from "../utils"
 import RescheduleModal from "../components/RescheduleModal"
+import StudentFormModal from "../components/StudentFormModal"
 import {
   applyMoveToStudent, proposeMoveOnStudent, setMoveRequest, findSlotConflict,
   formatLessonWhen, formatLessonShort, MOVE_BY_TUTOR,
@@ -26,279 +24,12 @@ const MESSENGER_LABELS = {
   other: "Другое",
 }
 
-const MESSENGERS = [
-  { id: "telegram", label: "Telegram", placeholder: "https://t.me/username" },
-  { id: "whatsapp", label: "WhatsApp", placeholder: "https://wa.me/79001234567" },
-  { id: "instagram", label: "Instagram", placeholder: "https://instagram.com/username" },
-  { id: "vk", label: "ВКонтакте", placeholder: "https://vk.com/username" },
-  { id: "other", label: "Другое", placeholder: "https://..." },
-]
-
-const WEEK_DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
-const DURATIONS = [30, 45, 60, 90, 120]
-const DAY_INDEX = { "Пн": 1, "Вт": 2, "Ср": 3, "Чт": 4, "Пт": 5, "Сб": 6, "Вс": 0 }
-
-function formatDate(date) {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, "0")
-  const d = String(date.getDate()).padStart(2, "0")
-  return `${y}-${m}-${d}`
-}
 
 function generateParentCode() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
   return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("")
 }
 
-function parseScheduleToDays(schedule) {
-  if (!schedule) return []
-  return schedule.split(", ").map((p) => {
-    const match = p.match(/^([А-Яа-я]{2})\s+(\d{2}:\d{2})/)
-    return match ? { name: match[1], time: match[2] } : null
-  }).filter(Boolean)
-}
-
-function EditModal({ student, onClose, onSave }) {
-  const [form, setForm] = useState({
-    name: student.name || "",
-    phone: student.phone || "",
-    contacts: student.contacts || [],
-    boardUrl: student.boardUrl || "",
-    callUrl: student.callUrl || "",
-    isRecurring: student.isRecurring || false,
-  })
-  const [recurringDays, setRecurringDays] = useState(() =>
-    student.isRecurring ? parseScheduleToDays(student.schedule) : []
-  )
-  const [recurringDuration, setRecurringDuration] = useState(student.lessonDuration || 60)
-  const [recurringWeeks, setRecurringWeeks] = useState(8)
-  const [formError, setFormError] = useState("")
-  const { cls: closingCls, close } = useClosing(onClose)
-
-  function handleChange(e) {
-    const { name, value } = e.target
-    setForm((prev) => ({ ...prev, [name]: value }))
-  }
-
-  function addContact() {
-    setForm((prev) => ({ ...prev, contacts: [...prev.contacts, { messenger: "telegram", url: "" }] }))
-  }
-
-  function updateContact(i, field, value) {
-    setForm((prev) => ({
-      ...prev,
-      contacts: prev.contacts.map((c, idx) => idx === i ? { ...c, [field]: value } : c),
-    }))
-  }
-
-  function removeContact(i) {
-    setForm((prev) => ({ ...prev, contacts: prev.contacts.filter((_, idx) => idx !== i) }))
-  }
-
-  function toggleRecurringDay(day) {
-    setRecurringDays((prev) => {
-      const exists = prev.find((d) => d.name === day)
-      if (exists) return prev.filter((d) => d.name !== day)
-      return [...prev, { name: day, time: "09:00" }]
-    })
-  }
-
-  function handleSave() {
-    if (!form.name || !form.phone) { setFormError("Заполните имя и телефон."); return }
-    if (form.isRecurring && recurringDays.length === 0) { setFormError("Выберите хотя бы один день недели."); return }
-    setFormError("")
-
-    const data = { ...form, lessonDuration: recurringDuration }
-
-    if (form.isRecurring && recurringDays.length > 0) {
-      data.schedule = recurringDays.map((d) => `${d.name} ${d.time}`).join(", ") + ` (${recurringDuration} мин)`
-      // Генерируем занятия на выбранное количество недель вперёд
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-      const newLessons = []
-      for (let week = 0; week < recurringWeeks; week++) {
-        for (const day of recurringDays) {
-          const base = new Date(today)
-          base.setDate(today.getDate() + week * 7)
-          const diff = (DAY_INDEX[day.name] - base.getDay() + 7) % 7
-          const lessonDate = new Date(base)
-          lessonDate.setDate(base.getDate() + diff)
-          const dateStr = formatDate(lessonDate)
-          const alreadyExists = (student.lessons || []).some((l) => l.date === dateStr && l.time === day.time)
-          if (!alreadyExists) newLessons.push({ date: dateStr, time: day.time, duration: recurringDuration })
-        }
-      }
-      const merged = [...(student.lessons || []), ...newLessons]
-        .filter((l, i, arr) => arr.findIndex((x) => x.date === l.date && x.time === l.time) === i)
-        .sort((a, b) => a.date.localeCompare(b.date))
-      data.lessons = merged
-      data.lessonDates = merged.map((l) => l.date)
-    }
-
-    onSave(data)
-    close()
-  }
-
-  return createPortal(
-    <div className={`fixed inset-0 glass-overlay flex items-center justify-center z-50 p-4 ${closingCls}`}>
-      <div className={`glass-modal p-6 w-full max-w-md max-h-[90dvh] overflow-y-auto ${closingCls}`}>
-        <div className="flex justify-between items-center mb-5">
-          <h2 className="text-lg font-medium">Редактировать</h2>
-          <button onClick={close} aria-label="Закрыть" className="text-gray-400 hover:text-gray-600"><Icon name="x" size={18} /></button>
-        </div>
-
-        <div className="flex flex-col gap-4">
-          <div>
-            <label className="text-sm text-gray-500 mb-1 block">Имя и фамилия</label>
-            <input name="name" value={form.name} onChange={handleChange} className="input-glass" />
-          </div>
-          <div>
-            <label className="text-sm text-gray-500 mb-1 block">Телефон</label>
-            {student.studentAccountId ? (
-              // Ученик уже привязал кабинет, и база сшивает карточку с его аккаунтом
-              // именно по номеру (current_student_rows в RLS). Изменённый здесь номер
-              // молча отрезал бы ученику доступ к собственной карточке, поэтому только
-              // сам ученик меняет его у себя в кабинете.
-              <>
-                <div className="input-glass flex items-center justify-between gap-2 text-gray-500 dark:text-gray-300">
-                  <span>{formatPhone(form.phone)}</span>
-                  <Icon name="check" size={14} className="text-green-600 flex-shrink-0" />
-                </div>
-                <p className="text-xs text-gray-400 mt-1">Номер из кабинета ученика — менять его может только он сам.</p>
-              </>
-            ) : (
-              <input name="phone" value={form.phone} onChange={handleChange} className="input-glass" />
-            )}
-          </div>
-          <div>
-            <div className="flex justify-between items-center mb-2">
-              <label className="text-sm text-gray-500">Мессенджеры</label>
-              <button onClick={addContact} className="text-xs text-blue-600 hover:opacity-70 transition-opacity">+ Добавить</button>
-            </div>
-            {form.contacts.map((c, i) => (
-              <div key={i} className="flex gap-2 mb-2 items-center">
-                <select
-                  value={c.messenger}
-                  onChange={(e) => updateContact(i, "messenger", e.target.value)}
-                  className="border border-gray-200 rounded-lg px-2 py-2 text-sm outline-none"
-                >
-                  {MESSENGERS.map((m) => (
-                    <option key={m.id} value={m.id}>{m.label}</option>
-                  ))}
-                </select>
-                <input
-                  value={c.url}
-                  onChange={(e) => updateContact(i, "url", e.target.value)}
-                  placeholder={MESSENGERS.find((m) => m.id === c.messenger)?.placeholder}
-                  className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400"
-                />
-                <button onClick={() => removeContact(i)} className="text-gray-400 hover:text-red-500"><Icon name="x" size={16} /></button>
-              </div>
-            ))}
-          </div>
-          <div className="flex items-center justify-between py-2">
-            <div>
-              <div className="text-sm text-gray-700 font-medium">Тип занятий</div>
-              <div className="text-xs text-gray-400 mt-0.5">{form.isRecurring ? "Регулярные занятия" : "Разовые занятия"}</div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setForm((p) => ({ ...p, isRecurring: !p.isRecurring }))}
-              className={`relative w-12 h-6 rounded-full transition-colors ${form.isRecurring ? "bg-blue-600" : "bg-gray-200"}`}
-            >
-              <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all duration-200 ${form.isRecurring ? "left-7" : "left-1"}`} />
-            </button>
-          </div>
-
-          {form.isRecurring && (
-            <div className="flex flex-col gap-3 pt-1">
-              <div>
-                <div className="text-sm text-gray-500 mb-2">Дни недели и время</div>
-                <div className="flex flex-col gap-1.5">
-                  {WEEK_DAYS.map((day) => {
-                    const selected = recurringDays.find((d) => d.name === day)
-                    return (
-                      <div key={day} className={`border rounded-xl transition-colors ${selected ? "border-blue-200 bg-blue-50" : "border-gray-100"}`}>
-                        <div className="flex items-center gap-3 px-3 py-2 cursor-pointer rounded-xl active:bg-black/5 transition-colors" onClick={() => toggleRecurringDay(day)}>
-                          <div className={`w-5 h-5 rounded border flex items-center justify-center text-xs transition-colors flex-shrink-0 ${selected ? "bg-blue-600 border-blue-600 text-white" : "border-gray-300"}`}>
-                            {selected ? <Icon name="check" size={12} /> : null}
-                          </div>
-                          <span className="text-sm font-medium text-gray-700">{day}</span>
-                          {selected?.time && <span className="ml-auto text-xs text-blue-600 font-medium">{selected.time}</span>}
-                        </div>
-                        {selected && (
-                          <div className="px-3 pb-3 border-t border-blue-100 pt-2">
-                            <input
-                              type="time"
-                              value={selected.time}
-                              onChange={(e) => setRecurringDays((prev) => prev.map((d) => d.name === day ? { ...d, time: e.target.value } : d))}
-                              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-blue-400 w-full"
-                            />
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-500 mb-2">Длительность занятия</div>
-                <div className="flex gap-2 flex-wrap">
-                  {DURATIONS.map((d) => (
-                    <button
-                      key={d}
-                      type="button"
-                      onClick={() => setRecurringDuration(d)}
-                      className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${recurringDuration === d ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}
-                    >
-                      {d} мин
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-500 mb-2">На сколько вперёд расставить</div>
-                <WeeksPicker value={recurringWeeks} onChange={setRecurringWeeks} />
-              </div>
-            </div>
-          )}
-          <div>
-            <label className="text-sm text-gray-500 mb-1 block">Ссылка на доску</label>
-            <input
-              name="boardUrl"
-              value={form.boardUrl}
-              onChange={handleChange}
-              placeholder="https://miro.com/..."
-              className="input-glass"
-            />
-          </div>
-          <div>
-            <label className="text-sm text-gray-500 mb-1 block">Ссылка на звонок</label>
-            <input
-              name="callUrl"
-              value={form.callUrl}
-              onChange={handleChange}
-              placeholder="https://meet.google.com/..."
-              className="input-glass"
-            />
-          </div>
-        </div>
-
-        {formError && <div className="text-sm text-red-500 mt-4 text-center">{formError}</div>}
-
-        <div className="flex gap-3 mt-4">
-          <button onClick={close} className="flex-1 border border-gray-200 rounded-lg py-2 text-sm text-gray-600 hover:bg-gray-50">
-            Отмена
-          </button>
-          <button onClick={handleSave} className="flex-1 bg-blue-600 text-white rounded-lg py-2 text-sm hover:bg-blue-700">
-            Сохранить
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body
-  )
-}
 
 function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
   const { allows, openPlans } = usePlan()
@@ -412,7 +143,9 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
       return new Date(y, m - 1, d, h, min + (l.duration || 60)) >= new Date()
     })
     .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(0, 5)
+    // «Ближайшие» — это два-три занятия. Пять уже превращали блок в ленту,
+    // а всё расписание целиком живёт в «Расписании».
+    .slice(0, 3)
 
   const past = (student.lessons || [])
     .map((l, origIdx) => ({ ...l, _origIdx: origIdx }))
@@ -459,7 +192,22 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
         ← Назад к ученикам
       </button>
 
-      <div className="grid md:grid-cols-[300px_1fr] gap-4 items-start">
+      {/* Отчёт родителю — во всю ширину над колонками: он про ученика целиком,
+          а не про левую или правую половину карточки. Заодно обе колонки
+          начинаются на одном уровне, а не уступом. */}
+      <div className="mb-4">
+        {allows("parentReports")
+          ? <ReportComposer student={student} />
+          : <PlanLock
+              feature="parentReports"
+              title="Отчёт родителю"
+              text="Отчёт об уроке с темами, ошибками и рекомендациями — родитель открывает его по коду."
+            />}
+      </div>
+
+      {/* items-stretch: колонки одной высоты, и нижняя карточка левой тянется
+          до конца — иначе под короткой колонкой зияла пустота в пол-экрана. */}
+      <div className="grid md:grid-cols-[300px_1fr] gap-4 items-stretch">
       {/* Левая колонка: профиль + статистика */}
       <div className="flex flex-col gap-3">
 
@@ -505,16 +253,19 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
             </div>
           ))}
 
+          {/* Доска одна — та, что выбрана в карточке: наша или своя ссылка.
+              Две кнопки рядом заставляли гадать, на какой из них занятие. */}
           <div className="flex items-center gap-2 pt-1">
-              <button onClick={() => (allows("board") ? onOpenBoard?.(student.id, student.name) : openPlans())}
-                className="press-tap flex items-center gap-1.5 text-xs bg-blue-50 text-blue-600 dark:text-blue-400 border border-blue-100 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">
-                <Icon name="clipboard" size={12} />Доска
-              </button>
-              {student.boardUrl && (
+              {student.boardUrl ? (
                 <a href={student.boardUrl} target="_blank" rel="noreferrer"
-                  className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-white/15 px-3 py-1.5 rounded-lg hover:border-blue-300 hover:text-blue-600 transition-colors">
-                  <Icon name="external-link" size={12} />Внешняя
+                  className="press-tap flex items-center gap-1.5 text-xs bg-blue-50 text-blue-600 dark:text-blue-400 border border-blue-100 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">
+                  <Icon name="external-link" size={12} />Доска
                 </a>
+              ) : (
+                <button onClick={() => (allows("board") ? onOpenBoard?.(student.id, student.name) : openPlans())}
+                  className="press-tap flex items-center gap-1.5 text-xs bg-blue-50 text-blue-600 dark:text-blue-400 border border-blue-100 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">
+                  <Icon name="clipboard" size={12} />Доска
+                </button>
               )}
               {student.callUrl && (
                 <a href={student.callUrl} target="_blank" rel="noreferrer"
@@ -572,33 +323,31 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
         </div>
       </div>
 
-      {/* Статистика. Показываем только то, о чём есть данные: плитка с прочерком
-          занимает место и не говорит ничего. «Занятий всего» отдельной цифрой
-          не нужно — это знаменатель у «Проведено». Нечётную плитку растягиваем
-          на всю ширину, чтобы не оставалось пустой ячейки. */}
-      <div className="grid grid-cols-2 gap-2">
-        {statTiles.map((tile, i) => (
-          <div key={tile.label}
-            className={`stat-card ${statTiles.length % 2 === 1 && i === statTiles.length - 1 ? "col-span-2" : ""}`}>
-            <div className="text-xs text-gray-500 mb-1">{tile.label}</div>
-            {tile.value}
-          </div>
-        ))}
-      </div>
-
       {/* Замечания. Поле ввода спрятано за кнопкой: пишут их редко, а открытая
           форма занимала треть карточки на каждом заходе. */}
-      <div className="glass p-4">
+      <div className="glass p-4 flex-1 flex flex-col min-h-0">
         <div className="flex items-center justify-between gap-2">
           <div className="text-sm font-medium">Замечания для родителей</div>
-          <button
-            onClick={() => setRemarkOpen((v) => !v)}
-            className="press-tap text-xs text-blue-500 hover:text-blue-700 transition-colors"
-          >
-            {remarkOpen ? "Отмена" : "+ Замечание"}
-          </button>
+          {((student.remarks || []).length > 0 || remarkOpen) && (
+            <button
+              onClick={() => setRemarkOpen((v) => !v)}
+              className="press-tap text-xs text-blue-500 hover:text-blue-700 transition-colors"
+            >
+              {remarkOpen ? "Отмена" : "+ Замечание"}
+            </button>
+          )}
         </div>
-        <div className={`flex flex-col gap-2 ${(student.remarks || []).length > 0 ? "mt-3" : ""}`}>
+        {/* Пока замечаний нет, поле для первого занимает всю оставшуюся высоту:
+            под короткой левой колонкой иначе оставалась пустота в пол-экрана. */}
+        {(student.remarks || []).length === 0 && !remarkOpen && (
+          <button
+            onClick={() => setRemarkOpen(true)}
+            className="mt-3 flex-1 min-h-24 w-full border-2 border-dashed border-gray-200 dark:border-white/15 rounded-xl text-sm text-gray-400 hover:border-blue-300 hover:text-blue-600 transition-colors"
+          >
+            Что передать родителям
+          </button>
+        )}
+        <div className={`flex flex-col gap-2 min-h-0 overflow-y-auto ${(student.remarks || []).length > 0 ? "mt-3 flex-1" : ""}`}>
           {(student.remarks || []).length > 0 && (
             [...(student.remarks || [])].reverse().map((r) => (
               <div key={r.id} className="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2">
@@ -638,14 +387,19 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
 
       {/* Правая колонка: занятия + оплата */}
       <div className="flex flex-col gap-3">
-        {/* Блок появляется, только когда по ученику накопились попытки */}
-        {allows("parentReports")
-          ? <ReportComposer student={student} />
-          : <PlanLock
-              feature="parentReports"
-              title="Отчёт родителю"
-              text="Отчёт об уроке с темами, ошибками и рекомендациями — родитель открывает его по коду."
-            />}
+        {/* Статистика стоит над занятиями, а не в колонке профиля: слева она
+            делала колонку длиннее правой, и внизу опять появлялась пустота.
+            Плитки без данных не показываются вовсе, поэтому их бывает от одной
+            до трёх — ряд строится по их числу. */}
+        <div className={`grid gap-2 ${statTiles.length === 1 ? "grid-cols-1" : statTiles.length === 2 ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-3"}`}>
+          {statTiles.map((tile, i) => (
+            <div key={tile.label}
+              className={`stat-card ${statTiles.length === 3 && i === 2 ? "col-span-2 sm:col-span-1" : ""}`}>
+              <div className="text-xs text-gray-500 mb-1">{tile.label}</div>
+              {tile.value}
+            </div>
+          ))}
+        </div>
 
         <WeakTypes studentId={student.id} studentName={student.name} />
 
@@ -658,12 +412,15 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
               text="Снимки доски за каждое занятие: можно вернуться к разобранной задаче через месяц."
             />}
 
-        <div className="glass p-4">
+        {/* Занятия тянутся на остаток высоты колонки: колонка профиля слева
+            обычно длиннее, и без этого правая обрывалась выше — блоки стояли
+            на разных уровнях. */}
+        <div className="glass p-4 flex-1 flex flex-col min-h-0">
           <h2 className="text-sm font-medium mb-3">Ближайшие занятия</h2>
           {upcoming.length === 0 ? (
-            <div className="text-sm text-gray-400 py-4 text-center">Нет предстоящих занятий</div>
+            <div className="flex-1 flex items-center justify-center text-sm text-gray-400 py-4">Нет предстоящих занятий</div>
           ) : (
-            <div className="flex flex-col gap-2">
+            <div className="flex-1 flex flex-col justify-between gap-2">
               {upcoming.map((l, i) => (
                 <div key={i} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0 gap-2">
                   <div className="min-w-0">
@@ -769,7 +526,9 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
                   )}
                   {!l.note && editingNote !== l._origIdx && (
                     <button
-                      className="no-press text-xs text-gray-300 hover:text-blue-500 transition-colors text-left"
+                      /* Серым по светлому «+ заметка» не читалась вовсе — теперь
+                         это видимое действие, а не призрак. */
+                      className="no-press text-xs text-blue-500/80 hover:text-blue-600 transition-colors text-left"
                       onClick={() => { setEditingNote(l._origIdx); setNoteDraft("") }}
                     >
                       + заметка
@@ -812,10 +571,10 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
       </div>
 
       {showEdit && (
-        <EditModal
+        <StudentFormModal
           student={student}
           onClose={() => setShowEdit(false)}
-          onSave={handleSave}
+          onSubmit={handleSave}
         />
       )}
 

@@ -266,15 +266,18 @@ function Dashboard({ students, setActivePage, onOpenBoard }) {
                 </div>
               </div>
               <div className="relative flex gap-2">
-                  <button onClick={() => openBoard(nextLesson.studentId, nextLesson.studentName)}
-                    className="press-tap flex items-center gap-1.5 bg-[rgba(255,255,255,0.2)] hover:bg-[rgba(255,255,255,0.3)] transition-colors rounded-xl px-3.5 py-1.5 text-sm font-medium backdrop-blur-sm">
-                    <Icon name="clipboard" size={14} />Доска
-                  </button>
-                  {nextLesson.boardUrl && (
+                  {/* Доска у ученика одна: своя ссылка, если она указана в карточке,
+                      иначе наша. */}
+                  {nextLesson.boardUrl ? (
                     <a href={nextLesson.boardUrl} target="_blank" rel="noreferrer"
                       className="press-tap flex items-center gap-1.5 bg-[rgba(255,255,255,0.2)] hover:bg-[rgba(255,255,255,0.3)] transition-colors rounded-xl px-3.5 py-1.5 text-sm font-medium backdrop-blur-sm">
-                      <Icon name="link" size={14} />Внешняя
+                      <Icon name="link" size={14} />Доска
                     </a>
+                  ) : (
+                    <button onClick={() => openBoard(nextLesson.studentId, nextLesson.studentName)}
+                      className="press-tap flex items-center gap-1.5 bg-[rgba(255,255,255,0.2)] hover:bg-[rgba(255,255,255,0.3)] transition-colors rounded-xl px-3.5 py-1.5 text-sm font-medium backdrop-blur-sm">
+                      <Icon name="clipboard" size={14} />Доска
+                    </button>
                   )}
                   {nextLesson.callUrl && (
                     <a href={nextLesson.callUrl} target="_blank" rel="noreferrer"

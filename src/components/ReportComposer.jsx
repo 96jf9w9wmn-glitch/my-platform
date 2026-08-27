@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
+import { useClosing } from "../useClosing"
 import Icon from "../components/Icon"
-import Reveal from "./Reveal"
 import { generateReport, sendReport, worthSending } from "../reportData"
 import { reportSheetHtml } from "../pages/reportSheet"
 
@@ -15,7 +16,15 @@ import { reportSheetHtml } from "../pages/reportSheet"
 //
 // Ширина листа фиксированная (780px — пропорция A4 без полей), поэтому
 // превью просто масштабируется под колонку.
+//
+// Масштаб считается по ПОЛНОЙ ширине листа вместе с белыми полями: лист шире
+// самого содержимого на два поля, и если делить только на 780, он вылезает за
+// карточку и правый край срезается — вместе с датой, аватаром и подписями
+// уверенности.
 const SHEET_W = 780
+const SHEET_PAD_X = 24
+const SHEET_PAD_Y = 26
+const FULL_W = SHEET_W + SHEET_PAD_X * 2
 
 function SheetPreview({ html }) {
   const box = useRef(null)
@@ -25,7 +34,7 @@ function SheetPreview({ html }) {
   useEffect(() => {
     const el = box.current
     if (!el) return
-    const fit = () => setScale(Math.min(1, el.clientWidth / SHEET_W))
+    const fit = () => setScale(Math.min(1, el.clientWidth / FULL_W))
     fit()
     const ro = new ResizeObserver(fit)
     ro.observe(el)
@@ -43,7 +52,12 @@ function SheetPreview({ html }) {
     <div ref={box} className="rounded-2xl overflow-hidden ring-1 ring-gray-200 dark:ring-white/10 bg-white" style={{ height }}>
       <div
         ref={sheet}
-        style={{ width: SHEET_W, transform: `scale(${scale})`, transformOrigin: "top left", padding: "26px 24px" }}
+        style={{
+          width: SHEET_W,
+          transform: `scale(${scale})`,
+          transformOrigin: "top left",
+          padding: `${SHEET_PAD_Y}px ${SHEET_PAD_X}px`,
+        }}
         dangerouslySetInnerHTML={{ __html: html }}
       />
     </div>
@@ -128,78 +142,116 @@ function ReportComposer({ student }) {
         <span className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-300 flex items-center justify-center shrink-0">
           <Icon name="file-text" size={17} />
         </span>
-        <span className="min-w-0">
+        <span className="min-w-0 flex-1">
           <span className="block text-sm font-medium">Отчёт родителю</span>
           <span className="block text-xs text-gray-400">
             {sent ? "Отчёт отправлен родителю" : "Собирается сам по занятиям, работам и решённым задачам"}
           </span>
         </span>
+        <Icon name="chevron-right" size={16} className="text-gray-300 shrink-0" />
       </button>
 
-      <Reveal value={open}>{() => (
-        <div className="glass p-4 rounded-2xl flex flex-col gap-3">
-          {loading && <div className="text-sm text-gray-400 text-center py-6">Собираем отчёт…</div>}
-          {error && <div className="text-xs text-amber-600">{error}</div>}
-
-          {report && !loading && (
-            <>
-              <SheetPreview html={reportSheetHtml(sheetParams)} />
-
-              <Reveal value={editing}>{() => (
-                <div className="flex flex-col gap-3">
-                  <div>
-                    <label className="text-xs text-gray-400 mb-1 block">Коротко о главном</label>
-                    <textarea
-                      rows={4}
-                      value={report.summary}
-                      onChange={(e) => setReport((r) => ({ ...r, summary: e.target.value }))}
-                      className="w-full border border-gray-200 dark:border-white/15 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-400 resize-none bg-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-400 mb-1 block">Что дальше</label>
-                    <textarea
-                      rows={2}
-                      value={report.next_steps || ""}
-                      onChange={(e) => setReport((r) => ({ ...r, next_steps: e.target.value }))}
-                      className="w-full border border-gray-200 dark:border-white/15 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-400 resize-none bg-transparent"
-                    />
-                  </div>
-                </div>
-              )}</Reveal>
-
-              <div className="flex gap-2">
-                <button onClick={send} disabled={saving} className="press-fill flex-1 h-11 rounded-full text-white text-sm font-semibold bg-gradient-to-r from-blue-500 to-blue-600 disabled:opacity-50">
-                  {saving ? "Отправляем…" : "Отправить родителю"}
-                </button>
-                <button
-                  onClick={savePdf}
-                  title="Скачать PDF"
-                  className="press-fill w-11 h-11 rounded-full ring-1 ring-gray-200 dark:ring-white/15 flex items-center justify-center"
-                >
-                  <Icon name="download" size={16} />
-                </button>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <button onClick={() => setEditing((v) => !v)} className="press-fill text-xs text-blue-600 dark:text-blue-300 px-2 py-1 rounded-lg">
-                  {editing ? "Скрыть правку" : "Изменить текст"}
-                </button>
-                <button onClick={() => { setOpen(false); setReport(null); setEditing(false) }} className="press-fill text-xs text-gray-400 px-2 py-1 rounded-lg">
-                  Отмена
-                </button>
-              </div>
-            </>
-          )}
-
-          {!report && !loading && (
-            <button onClick={() => { setOpen(false); setError("") }} className="press-fill h-10 rounded-full text-sm ring-1 ring-gray-200 dark:ring-white/15">
-              Закрыть
-            </button>
-          )}
-        </div>
-      )}</Reveal>
+      {/* Лист открывается ОТДЕЛЬНЫМ экраном, а не разворачивается в карточке:
+          в карточке он занимал экран целиком и уводил вниз всё остальное. */}
+      {open && (
+        <ReportScreen
+          studentName={student.name}
+          loading={loading}
+          error={error}
+          report={report}
+          sheetParams={sheetParams}
+          editing={editing}
+          saving={saving}
+          onField={(field, value) => setReport((r) => ({ ...r, [field]: value }))}
+          onToggleEdit={() => setEditing((v) => !v)}
+          onSend={send}
+          onSavePdf={savePdf}
+          onClose={() => { setOpen(false); setReport(null); setEditing(false); setError("") }}
+        />
+      )}
     </>
+  )
+}
+
+function ReportScreen({
+  studentName, loading, error, report, sheetParams, editing, saving,
+  onField, onToggleEdit, onSend, onSavePdf, onClose,
+}) {
+  const { cls, close } = useClosing(onClose)
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") close() }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [close])
+
+  return createPortal(
+    <div className={`fixed inset-0 z-[100000] overflow-y-auto bg-gray-50 dark:bg-[#1c1c1e] ${cls}`}>
+      <div className="max-w-3xl mx-auto p-4 md:p-6 flex flex-col gap-4">
+        <div className="flex items-center justify-between gap-3">
+          <button onClick={close} className="press-fill text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1 rounded-lg">
+            ← Назад к ученику
+          </button>
+          <span className="text-sm font-medium truncate">Отчёт родителю · {studentName}</span>
+        </div>
+
+        {loading && <div className="text-sm text-gray-400 text-center py-16">Собираем отчёт…</div>}
+        {error && <div className="text-xs text-amber-600">{error}</div>}
+
+        {report && !loading && (
+          <>
+            <SheetPreview html={reportSheetHtml(sheetParams)} />
+
+            {editing && (
+              <div className="flex flex-col gap-3">
+                <div>
+                  <label className="text-xs text-gray-400 mb-1 block">Коротко о главном</label>
+                  <textarea
+                    rows={4}
+                    value={report.summary}
+                    onChange={(e) => onField("summary", e.target.value)}
+                    className="w-full border border-gray-200 dark:border-white/15 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-400 resize-none bg-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-400 mb-1 block">Что дальше</label>
+                  <textarea
+                    rows={2}
+                    value={report.next_steps || ""}
+                    onChange={(e) => onField("next_steps", e.target.value)}
+                    className="w-full border border-gray-200 dark:border-white/15 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-400 resize-none bg-transparent"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button onClick={onSend} disabled={saving} className="press-fill flex-1 h-11 rounded-full text-white text-sm font-semibold bg-gradient-to-r from-blue-500 to-blue-600 disabled:opacity-50">
+                {saving ? "Отправляем…" : "Отправить родителю"}
+              </button>
+              <button
+                onClick={onSavePdf}
+                title="Скачать PDF"
+                className="press-fill w-11 h-11 rounded-full ring-1 ring-gray-200 dark:ring-white/15 flex items-center justify-center"
+              >
+                <Icon name="download" size={16} />
+              </button>
+            </div>
+
+            <button onClick={onToggleEdit} className="press-fill self-start text-xs text-blue-600 dark:text-blue-300 px-2 py-1 rounded-lg">
+              {editing ? "Скрыть правку" : "Изменить текст"}
+            </button>
+          </>
+        )}
+
+        {!report && !loading && (
+          <button onClick={close} className="press-fill h-10 rounded-full text-sm ring-1 ring-gray-200 dark:ring-white/15">
+            Закрыть
+          </button>
+        )}
+      </div>
+    </div>,
+    document.body
   )
 }
 

@@ -48,7 +48,7 @@ function formatDate(date) {
   return `${y}-${m}-${d}`
 }
 
-function Schedule({ students, setStudents }) {
+function Schedule({ students, setStudents, onOpenBoard }) {
   const [baseDate, setBaseDate] = useState(new Date())
   const [showForm, setShowForm] = useState(false)
   const [newLesson, setNewLesson] = useState({ studentId: "", date: "", time: "", duration: "" })
@@ -466,13 +466,20 @@ function Schedule({ students, setStudents }) {
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            {stu?.boardUrl && (
+                            {/* Доска у ученика одна: своя ссылка либо наша. */}
+                            {stu?.boardUrl ? (
                               <a href={stu.boardUrl} target="_blank" rel="noreferrer"
-                                className="flex items-center text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-400/30 px-2 py-1 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-400/10 transition-colors bg-white dark:bg-white/5"
+                                className="press-tap flex items-center text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-400/30 px-2 py-1 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-400/10 transition-colors bg-white dark:bg-white/5"
+                                title="Доска">
+                                <Icon name="link" size={14} />
+                              </a>
+                            ) : stu && onOpenBoard ? (
+                              <button onClick={() => onOpenBoard(stu.id, stu.name)}
+                                className="press-tap flex items-center text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-400/30 px-2 py-1 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-400/10 transition-colors bg-white dark:bg-white/5"
                                 title="Доска">
                                 <Icon name="clipboard" size={14} />
-                              </a>
-                            )}
+                              </button>
+                            ) : null}
                             {stu?.callUrl && (
                               <a href={stu.callUrl} target="_blank" rel="noreferrer"
                                 className="flex items-center text-green-600 dark:text-green-400 border border-green-200 dark:border-green-400/30 px-2 py-1 rounded-lg hover:bg-green-50 dark:hover:bg-green-400/10 transition-colors bg-white dark:bg-white/5"
@@ -550,11 +557,13 @@ function Schedule({ students, setStudents }) {
                             <div className="min-w-0 flex-1">
                               <div className="font-medium truncate">{s.name.split(" ")[0]}{isExtra && <span className="ml-1 opacity-60">доп</span>}{lesson.moveRequest && <span className="ml-1 text-amber-600">•</span>}</div>
                               <div className={`${isExtra ? "text-green-500" : "text-blue-500"} opacity-70`}>{duration} мин</div>
-                              {(s.boardUrl || s.callUrl) && (
+                              {(s.boardUrl || s.callUrl || onOpenBoard) && (
                                 <div className="flex gap-0.5 mt-0.5">
-                                  {s.boardUrl && (
-                                    <a href={s.boardUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} title="Доска" className="opacity-60 hover:opacity-100 text-blue-600"><Icon name="clipboard" size={10} /></a>
-                                  )}
+                                  {s.boardUrl ? (
+                                    <a href={s.boardUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} title="Доска" className="opacity-60 hover:opacity-100 text-blue-600"><Icon name="link" size={10} /></a>
+                                  ) : onOpenBoard ? (
+                                    <button onClick={(e) => { e.stopPropagation(); onOpenBoard(s.id, s.name) }} title="Доска" className="opacity-60 hover:opacity-100 text-blue-600"><Icon name="clipboard" size={10} /></button>
+                                  ) : null}
                                   {s.callUrl && (
                                     <a href={s.callUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} title="Звонок" className="opacity-60 hover:opacity-100 text-green-600"><Icon name="video" size={10} /></a>
                                   )}

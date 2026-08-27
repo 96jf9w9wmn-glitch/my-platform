@@ -837,7 +837,7 @@ function App() {
           <div className={activePage !== "students" ? "hidden" : "page-active"}>{visitedPages.has("students") && <Students students={students} setStudents={handleSetStudents} tutorId={user.id} onOpenBoard={openBoard} />}</div>
 <div className={activePage !== "payment" ? "hidden" : "page-active"}>{visitedPages.has("payment") && <Payment students={students} setStudents={handleSetStudents} tutorId={user.id} setActivePage={navigateTo} />}</div>
           <div className={activePage !== "variants" ? "hidden" : "page-active"}>{visitedPages.has("variants") && <Variants user={user} students={students} />}</div>
-          <div className={activePage !== "schedule" ? "hidden" : "page-active"}>{visitedPages.has("schedule") && <Schedule students={students} setStudents={handleSetStudents} />}</div>
+          <div className={activePage !== "schedule" ? "hidden" : "page-active"}>{visitedPages.has("schedule") && <Schedule students={students} setStudents={handleSetStudents} onOpenBoard={openBoard} />}</div>
           <div className={activePage !== "homework" ? "hidden" : "page-active"}>{visitedPages.has("homework") && <Homework user={user} students={students} />}</div>
           <div className={activePage !== "results" ? "hidden" : "page-active"}>{visitedPages.has("results") && <Results students={students} user={user} />}</div>
           <div className={activePage !== "taskgen" ? "hidden" : "page-active"}>{pageAllowed("taskgen") && visitedPages.has("taskgen") && <TaskGenPreview />}</div>

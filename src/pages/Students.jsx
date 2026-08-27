@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react"
-import AddStudentModal from "../components/AddStudentModal"
+import StudentFormModal from "../components/StudentFormModal"
 import ConfirmModal from "../components/ConfirmModal"
 import Reveal from "../components/Reveal"
 import Icon from "../components/Icon"
@@ -598,9 +598,9 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
       )}
 
       {acceptingRequest && (
-        <AddStudentModal
+        <StudentFormModal
           onClose={() => setAcceptingRequest(null)}
-          onAdd={(s) => handleAcceptComplete(s, acceptingRequest)}
+          onSubmit={(s) => handleAcceptComplete(s, acceptingRequest)}
           initialName={acceptingRequest.name}
           initialPhone={acceptingRequest.phone}
         />
