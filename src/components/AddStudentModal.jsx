@@ -3,6 +3,7 @@ import { createPortal } from "react-dom"
 import { useClosing } from "../useClosing"
 import Icon from "./Icon"
 import Reveal from "./Reveal"
+import SegmentSwitch from "./SegmentSwitch"
 import PhoneInput, { isValidPhoneNumber } from "react-phone-number-input"
 import "react-phone-number-input/style.css"
 import { plural, parseLocalDate, formatPhone } from "../utils"
@@ -261,233 +262,258 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
   }
 
   return createPortal(
-    <div className={`fixed inset-0 glass-overlay flex items-center justify-center z-50 p-4 ${closingCls}`}>
-      <div className={`glass-modal w-full max-w-lg flex flex-col ${closingCls}`} style={{ maxHeight: "90dvh" }}>
-        {/* Липкий хедер */}
-        <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100/60 flex-shrink-0">
-          <div>
-            {/* Модалка открывается только при приёме заявки: ученик уже привязался
-                сам, репетитор лишь дозаполняет карточку. */}
-            <h2 className="text-lg font-medium">Данные ученика</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Заявка от ученика — заполните карточку и примите</p>
-          </div>
-          <button onClick={close} aria-label="Закрыть" className="text-gray-400 hover:text-gray-600 p-1"><Icon name="x" size={18} /></button>
-        </div>
-
-        {/* Скроллящийся контент */}
-        <div className="overflow-y-auto flex-1 min-h-0 px-6 py-5">
-        <div className="flex flex-col gap-4">
-          <div>
-            <label className="text-sm text-gray-500 mb-1 block">Имя и фамилия</label>
-            <input name="name" value={form.name} onChange={handleChange} placeholder="Например: Иван Иванов"
-              className="input-glass" />
-          </div>
-
-          <div>
-            <label className="text-sm text-gray-500 mb-1 block">Телефон</label>
-            {initialPhone ? (
-              // Номер пришёл из аккаунта ученика. Именно по нему база сшивает карточку
-              // с аккаунтом (current_student_rows в RLS), поэтому править его нельзя:
-              // изменив номер, репетитор молча отрежет ученику доступ к своей карточке.
-              <>
-                <div className="input-glass flex items-center justify-between gap-2 text-gray-500">
-                  <span>{formatPhone(initialPhone)}</span>
-                  <Icon name="check" size={14} className="text-green-600 flex-shrink-0" />
-                </div>
-                <p className="text-xs text-gray-400 mt-1">Номер подтверждён при регистрации ученика — по нему карточка связана с его кабинетом.</p>
-              </>
-            ) : (
-              <div className="phone-input-wrapper">
-                <PhoneInput international defaultCountry="RU" value={phone} onChange={setPhone} placeholder="Номер телефона" />
-              </div>
-            )}
-          </div>
-
-          {/* Цель и целевой балл ученик выбирает сам в своей анкете — репетитор их
-              здесь не заполняет, только видит. Дублировать выбор значило спорить
-              с анкетой: два источника расходились уже на второй правке. */}
-          {onboardingPulled && (
-            <div className="flex items-start gap-2 rounded-xl bg-blue-50 dark:bg-blue-500/10 px-3 py-2.5">
-              <Icon name="check" size={14} className="text-blue-600 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-gray-600">
-                Из анкеты ученика: <span className="font-medium">{form.goal}</span>
-                {form.targetScore ? <>, цель — {form.targetScore} {plural(form.targetScore, "балл", "балла", "баллов")}</> : null}
-              </p>
+    // Раскладка та же, что у «Нового варианта»: широкое окно в две колонки и
+    // прокрутка всей подложки. В узком окне с внутренним скроллом карточка
+    // выглядела тесной — поля жались друг к другу, а расписание уезжало вниз.
+    <div className={`fixed inset-0 glass-overlay z-50 overflow-y-auto ${closingCls}`}>
+      <div className="min-h-full flex items-center justify-center p-4">
+        <div className={`glass-modal p-6 sm:p-7 w-full max-w-4xl ${closingCls}`}>
+          <div className="flex justify-between items-start gap-4 mb-6">
+            <div>
+              {/* Модалка открывается только при приёме заявки: ученик уже привязался
+                  сам, репетитор лишь дозаполняет карточку. */}
+              <h2 className="text-lg font-medium">Данные ученика</h2>
+              <p className="text-xs text-gray-400 mt-0.5">Заявка от ученика — заполните карточку и примите</p>
             </div>
-          )}
-
-          <div>
-            <label className="text-sm text-gray-500 mb-1 block">Стоимость занятия</label>
-            <div className="relative">
-              <input name="lessonPrice" type="text"
-                value={form.lessonPrice ? Number(form.lessonPrice).toLocaleString("ru-RU").replace(/\s/g, "\u2009") : ""}
-                onChange={(e) => {
-                  const raw = e.target.value.replace(/\s/g, "")
-                  if (/^\d*$/.test(raw)) setForm((prev) => ({ ...prev, lessonPrice: raw ? Number(raw) : "" }))
-                }}
-                placeholder="Например: 2 000"
-                className="input-glass pr-8" />
-              <span className="absolute right-3 top-2 text-sm text-gray-400">₽</span>
-            </div>
+            <button onClick={close} aria-label="Закрыть" className="text-gray-400 hover:text-gray-600 p-1"><Icon name="x" size={18} /></button>
           </div>
 
-          <div>
-            <div className="flex justify-between items-center mb-2">
-              <label className="text-sm text-gray-500">Мессенджеры (необязательно)</label>
-              <button onClick={addContact} className="text-xs text-blue-600 hover:opacity-70 transition-opacity">+ Добавить</button>
-            </div>
-            {contacts.map((c, i) => (
-              <div key={i} className="flex gap-2 mb-2 items-center">
-                <select value={c.messenger} onChange={(e) => updateContact(i, "messenger", e.target.value)}
-                  className="border border-gray-200 rounded-lg px-2 py-2 text-sm outline-none focus:border-blue-400">
-                  {MESSENGERS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-                </select>
-                <input value={c.url} onChange={(e) => updateContact(i, "url", e.target.value)}
-                  placeholder={MESSENGERS.find((m) => m.id === c.messenger)?.placeholder}
-                  className="input-glass flex-1 !w-auto min-w-0" />
-                <button onClick={() => removeContact(i)} className="text-gray-400 hover:text-red-500"><Icon name="x" size={16} /></button>
-              </div>
-            ))}
-          </div>
-
-          <div>
-            <label className="text-sm text-gray-500 mb-2 block">Тип занятий</label>
-            <div className="flex gap-2">
-              <button onClick={() => setMode("single")}
-                className={`flex-1 py-2 rounded-lg text-sm border transition-colors ${mode === "single" ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
-                <span className="flex items-center justify-center gap-1.5"><Icon name="calendar" size={14} />Разовые</span>
-              </button>
-              <button onClick={() => setMode("recurring")}
-                className={`flex-1 py-2 rounded-lg text-sm border transition-colors ${mode === "recurring" ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
-                <span className="flex items-center justify-center gap-1.5"><Icon name="repeat" size={14} />Регулярные</span>
-              </button>
-            </div>
-          </div>
-
-          {mode === "single" && (
-            <>
+          {/* Слева — кто ученик и почём занятия, справа — когда заниматься. */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-7 gap-y-5 items-stretch">
+            <div className="flex flex-col gap-5">
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm text-gray-500">Даты занятий</label>
-                  {lessons.length > 0 && (
-                    <span className="text-xs font-medium text-blue-600">
-                      {lessons.length} {plural(lessons.length, "дата", "даты", "дат")}
-                    </span>
-                  )}
-                </div>
-                <div className="border border-gray-100 dark:border-white/10 rounded-xl p-3">
-                  <MiniCalendar lessons={lessons} onToggleDate={toggleDate} />
-                </div>
+                <label className="text-sm text-gray-500 mb-1.5 block">Имя и фамилия</label>
+                <input name="name" value={form.name} onChange={handleChange} placeholder="Например: Иван Иванов"
+                  className="input-glass" />
               </div>
-              {/* Одна строка на занятие: дата, время, длительность. Раньше на
-                  каждую дату разворачивалась отдельная карточка на пол-экрана. */}
-              <Reveal value={lessons.length || null}>
-                {() => (
-                  <div>
-                    <label className="text-sm text-gray-500 mb-2 block">Время и длительность</label>
-                    <div className="border border-gray-100 dark:border-white/10 rounded-xl overflow-hidden">
-                      <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 bg-gray-50 dark:bg-white/5">
-                        <span className="basis-full sm:basis-auto sm:flex-1 min-w-0 text-sm text-gray-500">Для всех дат</span>
-                        <TimeField value={bulkTime} onChange={applyTimeToAll} />
-                        <DurationField value={bulkDuration} onChange={applyDurationToAll} />
-                        <span className="w-6 flex-shrink-0" />
-                      </div>
-                      {lessons.map((lesson) => (
-                        <div key={lesson.date} className="flex flex-wrap items-center gap-2 px-3 py-2 border-t border-gray-100 dark:border-white/10">
-                          <span className="basis-full sm:basis-auto sm:flex-1 min-w-0 truncate text-sm text-gray-700">
-                            {parseLocalDate(lesson.date).toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" })}
-                          </span>
-                          <TimeField value={lesson.time} onChange={(time) => setFieldForDate(lesson.date, "time", time)} />
-                          <DurationField value={lesson.duration} onChange={(d) => setFieldForDate(lesson.date, "duration", d)} />
-                          <button type="button" onClick={() => toggleDate(lesson.date)} aria-label="Убрать дату"
-                            className="w-6 h-6 flex-shrink-0 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 active:scale-90 transition-all">
-                            <Icon name="x" size={14} />
-                          </button>
-                        </div>
-                      ))}
+
+              <div>
+                <label className="text-sm text-gray-500 mb-1.5 block">Телефон</label>
+                {initialPhone ? (
+                  // Номер пришёл из аккаунта ученика. Именно по нему база сшивает карточку
+                  // с аккаунтом (current_student_rows в RLS), поэтому править его нельзя:
+                  // изменив номер, репетитор молча отрежет ученику доступ к своей карточке.
+                  <>
+                    <div className="input-glass flex items-center justify-between gap-2 text-gray-500">
+                      <span>{formatPhone(initialPhone)}</span>
+                      <Icon name="check" size={14} className="text-green-600 flex-shrink-0" />
                     </div>
-                    <p className="text-xs text-gray-400 mt-1.5">Верхняя строка задаёт время сразу всем занятиям; отдельный день можно поправить в списке.</p>
+                    <p className="text-xs text-gray-400 mt-1.5">Номер подтверждён при регистрации ученика — по нему карточка связана с его кабинетом.</p>
+                  </>
+                ) : (
+                  <div className="phone-input-wrapper">
+                    <PhoneInput international defaultCountry="RU" value={phone} onChange={setPhone} placeholder="Номер телефона" />
                   </div>
                 )}
-              </Reveal>
-            </>
-          )}
+              </div>
 
-          {mode === "recurring" && (
-            <div className="flex flex-col gap-4">
+              {/* Цель и целевой балл ученик выбирает сам в своей анкете — репетитор их
+                  здесь не заполняет, только видит. Дублировать выбор значило спорить
+                  с анкетой: два источника расходились уже на второй правке. */}
+              {onboardingPulled && (
+                <div className="flex items-start gap-2 rounded-xl bg-blue-50 dark:bg-blue-500/10 px-3.5 py-3">
+                  <Icon name="check" size={14} className="text-blue-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-gray-600">
+                    Из анкеты ученика: <span className="font-medium">{form.goal}</span>
+                    {form.targetScore ? <>, цель — {form.targetScore} {plural(form.targetScore, "балл", "балла", "баллов")}</> : null}
+                  </p>
+                </div>
+              )}
+
               <div>
-                <label className="text-sm text-gray-500 mb-2 block">Дни недели и время</label>
-                <div className="flex flex-col gap-2">
-                  {WEEK_DAYS.map((day) => {
-                    const selected = recurringDays.find((d) => d.name === day)
-                    return (
-                      <div key={day} className={`border rounded-lg transition-colors ${selected ? "border-blue-200 bg-blue-50" : "border-gray-100"}`}>
-                        <div className="flex items-center gap-3 px-3 py-2 cursor-pointer rounded-lg active:bg-black/5 transition-colors" onClick={() => toggleRecurringDay(day)}>
-                          <div className={`w-5 h-5 rounded border flex items-center justify-center text-xs transition-colors ${selected ? "bg-blue-600 border-blue-600 text-white" : "border-gray-300"}`}>
-                            {selected ? <Icon name="check" size={12} /> : null}
-                          </div>
-                          <span className="text-sm font-medium text-gray-700">{day}</span>
-                          {selected?.time && <span className="ml-auto text-xs text-blue-600 font-medium">{selected.time}</span>}
-                        </div>
-                        {selected && (
-                          <div className="px-3 pb-3 border-t border-blue-100 pt-2.5 flex items-center gap-2">
-                            <TimeField value={selected.time} onChange={(time) => setTimeForDay(day, time)} />
-                            <DurationField
-                              value={selected.duration || recurringDuration}
-                              onChange={(d) => setRecurringDays((prev) => prev.map((rd) => rd.name === day ? { ...rd, duration: d } : rd))} />
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
+                <label className="text-sm text-gray-500 mb-1.5 block">Стоимость занятия</label>
+                <div className="relative">
+                  <input name="lessonPrice" type="text"
+                    value={form.lessonPrice ? Number(form.lessonPrice).toLocaleString("ru-RU").replace(/\s/g, "\u2009") : ""}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\s/g, "")
+                      if (/^\d*$/.test(raw)) setForm((prev) => ({ ...prev, lessonPrice: raw ? Number(raw) : "" }))
+                    }}
+                    placeholder="Например: 2 000"
+                    className="input-glass pr-8" />
+                  <span className="absolute right-3 top-2.5 text-sm text-gray-400">₽</span>
                 </div>
               </div>
-              <div>
-                <label className="text-sm text-gray-500 mb-1 block">Дата начала</label>
-                <input type="date" value={recurringStartDate} onChange={(e) => setRecurringStartDate(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400" />
-              </div>
-              <div>
-                <label className="text-sm text-gray-500 mb-1 block">На сколько недель вперёд — {recurringWeeks} нед.</label>
-                <input type="range" min="1" max="52" value={recurringWeeks} onChange={(e) => setRecurringWeeks(Number(e.target.value))} className="w-full" />
-                <div className="flex justify-between text-xs text-gray-400 mt-1">
-                  <span>1 нед</span><span>26 нед</span><span>52 нед (1 год)</span>
+
+              {/* Растягиваем последний блок: иначе под короткой левой колонкой
+                  зияет пустота — расписание справа заметно длиннее. */}
+              <div className="flex-1 flex flex-col">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-sm text-gray-500">Мессенджеры (необязательно)</label>
+                  <button onClick={addContact} className="text-xs text-blue-600 hover:opacity-70 transition-opacity">+ Добавить</button>
                 </div>
-              </div>
-              {previewLessons.length > 0 && (
-                <div className="bg-blue-50 rounded-lg p-3">
-                  <div className="text-xs font-medium text-blue-700 mb-2">Будет создано {previewLessons.length} {plural(previewLessons.length, "занятие", "занятия", "занятий")}:</div>
-                  <div className="flex flex-col gap-1 max-h-36 overflow-y-auto">
-                    {previewLessons.map((l, i) => (
-                      <div key={i} className="text-xs text-blue-600">
-                        {parseLocalDate(l.date).toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" })} в {l.time} · {l.duration} мин
+                {contacts.length === 0 ? (
+                  <button onClick={addContact}
+                    className="w-full flex-1 min-h-20 max-h-32 border-2 border-dashed border-gray-200 dark:border-white/15 rounded-xl py-4 text-sm text-gray-400 hover:border-blue-300 hover:text-blue-600 transition-colors">
+                    Telegram, WhatsApp или другой способ связи
+                  </button>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {contacts.map((c, i) => (
+                      <div key={i} className="flex gap-2 items-center">
+                        <select value={c.messenger} onChange={(e) => updateContact(i, "messenger", e.target.value)}
+                          className="input-glass !w-auto flex-shrink-0 px-2.5 py-1.5 text-sm">
+                          {MESSENGERS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+                        </select>
+                        <input value={c.url} onChange={(e) => updateContact(i, "url", e.target.value)}
+                          placeholder={MESSENGERS.find((m) => m.id === c.messenger)?.placeholder}
+                          className="input-glass flex-1 !w-auto min-w-0 px-2.5 py-1.5 text-sm" />
+                        <button onClick={() => removeContact(i)} aria-label="Убрать способ связи"
+                          className="w-6 h-6 flex-shrink-0 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 active:scale-90 transition-all">
+                          <Icon name="x" size={14} />
+                        </button>
                       </div>
                     ))}
                   </div>
-                </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-5">
+              <div>
+                <label className="text-sm text-gray-500 mb-2 block">Тип занятий</label>
+                {/* size="sm": с крупными сегментами подпись «Регулярные» вместе с
+                    иконкой не помещалась в узкую колонку — иконка обрезалась. */}
+                <SegmentSwitch
+                  block
+                  size="sm"
+                  ariaLabel="Тип занятий"
+                  value={mode}
+                  onChange={setMode}
+                  items={[
+                    { key: "single", label: <><Icon name="calendar" size={14} />Разовые</> },
+                    { key: "recurring", label: <><Icon name="repeat" size={14} />Регулярные</> },
+                  ]}
+                />
+              </div>
+
+              {mode === "single" && (
+                <>
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-sm text-gray-500">Даты занятий</label>
+                      {lessons.length > 0 && (
+                        <span className="text-xs font-medium text-blue-600">
+                          {lessons.length} {plural(lessons.length, "дата", "даты", "дат")}
+                        </span>
+                      )}
+                    </div>
+                    <div className="border border-gray-100 dark:border-white/10 rounded-xl p-3.5">
+                      <MiniCalendar lessons={lessons} onToggleDate={toggleDate} />
+                    </div>
+                  </div>
+                  {/* Одна строка на занятие: дата, время, длительность. Раньше на
+                      каждую дату разворачивалась отдельная карточка на пол-экрана. */}
+                  <Reveal value={lessons.length || null}>
+                    {() => (
+                      <div>
+                        <label className="text-sm text-gray-500 mb-2 block">Время и длительность</label>
+                        <div className="border border-gray-100 dark:border-white/10 rounded-xl overflow-hidden">
+                          <div className="flex flex-wrap items-center gap-2 px-3.5 py-3 bg-gray-50 dark:bg-white/5">
+                            <span className="basis-full sm:basis-auto sm:flex-1 min-w-0 text-sm text-gray-500">Для всех дат</span>
+                            <TimeField value={bulkTime} onChange={applyTimeToAll} />
+                            <DurationField value={bulkDuration} onChange={applyDurationToAll} />
+                            <span className="w-6 flex-shrink-0" />
+                          </div>
+                          {lessons.map((lesson) => (
+                            <div key={lesson.date} className="flex flex-wrap items-center gap-2 px-3.5 py-2.5 border-t border-gray-100 dark:border-white/10">
+                              <span className="basis-full sm:basis-auto sm:flex-1 min-w-0 truncate text-sm text-gray-700">
+                                {parseLocalDate(lesson.date).toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" })}
+                              </span>
+                              <TimeField value={lesson.time} onChange={(time) => setFieldForDate(lesson.date, "time", time)} />
+                              <DurationField value={lesson.duration} onChange={(d) => setFieldForDate(lesson.date, "duration", d)} />
+                              <button type="button" onClick={() => toggleDate(lesson.date)} aria-label="Убрать дату"
+                                className="w-6 h-6 flex-shrink-0 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 active:scale-90 transition-all">
+                                <Icon name="x" size={14} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-xs text-gray-400 mt-2">Верхняя строка задаёт время сразу всем занятиям; отдельный день можно поправить в списке.</p>
+                      </div>
+                    )}
+                  </Reveal>
+                </>
+              )}
+
+              {mode === "recurring" && (
+                <>
+                  <div>
+                    <label className="text-sm text-gray-500 mb-2 block">Дни недели и время</label>
+                    <div className="flex flex-col gap-2">
+                      {WEEK_DAYS.map((day) => {
+                        const selected = recurringDays.find((d) => d.name === day)
+                        return (
+                          <div key={day} className={`border rounded-xl transition-colors ${selected ? "border-blue-200 bg-blue-50" : "border-gray-100 dark:border-white/10"}`}>
+                            <div className="flex items-center gap-3 px-3.5 py-2.5 cursor-pointer rounded-xl active:bg-black/5 transition-colors" onClick={() => toggleRecurringDay(day)}>
+                              <div className={`w-5 h-5 rounded border flex items-center justify-center text-xs transition-colors ${selected ? "bg-blue-600 border-blue-600 text-white" : "border-gray-300"}`}>
+                                {selected ? <Icon name="check" size={12} /> : null}
+                              </div>
+                              <span className="text-sm font-medium text-gray-700">{day}</span>
+                              {selected?.time && <span className="ml-auto text-xs text-blue-600 font-medium">{selected.time}</span>}
+                            </div>
+                            {selected && (
+                              <div className="px-3.5 pb-3 border-t border-blue-100 pt-3 flex items-center gap-2">
+                                <TimeField value={selected.time} onChange={(time) => setTimeForDay(day, time)} />
+                                <DurationField
+                                  value={selected.duration || recurringDuration}
+                                  onChange={(d) => setRecurringDays((prev) => prev.map((rd) => rd.name === day ? { ...rd, duration: d } : rd))} />
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-500 mb-1.5 block">Дата начала</label>
+                    <input type="date" value={recurringStartDate} onChange={(e) => setRecurringStartDate(e.target.value)}
+                      className="input-glass" />
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-500 mb-1.5 block">На сколько недель вперёд — {recurringWeeks} нед.</label>
+                    <input type="range" min="1" max="52" value={recurringWeeks} onChange={(e) => setRecurringWeeks(Number(e.target.value))} className="w-full" />
+                    <div className="flex justify-between text-xs text-gray-400 mt-1">
+                      <span>1 нед</span><span>26 нед</span><span>52 нед (1 год)</span>
+                    </div>
+                  </div>
+                  <Reveal value={previewLessons.length || null}>
+                    {() => (
+                      <div className="bg-blue-50 dark:bg-blue-500/10 rounded-xl p-3.5">
+                        <div className="text-xs font-medium text-blue-700 mb-2">Будет создано {previewLessons.length} {plural(previewLessons.length, "занятие", "занятия", "занятий")}:</div>
+                        <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
+                          {previewLessons.map((l, i) => (
+                            <div key={i} className="text-xs text-blue-600">
+                              {parseLocalDate(l.date).toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" })} в {l.time} · {l.duration} мин
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </Reveal>
+                </>
               )}
             </div>
-          )}
+          </div>
 
           {/* Данные ученика вносит репетитор, а согласие даёт сам ученик или его
               родитель — поэтому здесь подтверждение, что оно уже получено. */}
-          <ConsentRow checked={hasStudentConsent} onChange={setHasStudentConsent}>
-            У меня есть согласие ученика или его законного представителя на внесение
-            этих данных в сервис и на обработку по{" "}
-            <ConsentLink href="/privacy">Политике конфиденциальности</ConsentLink>
-          </ConsentRow>
-        </div>
-        </div>
+          <div className="mt-6 pt-5 border-t border-gray-100/70 dark:border-white/10">
+            <ConsentRow checked={hasStudentConsent} onChange={setHasStudentConsent}>
+              У меня есть согласие ученика или его законного представителя на внесение
+              этих данных в сервис и на обработку по{" "}
+              <ConsentLink href="/privacy">Политике конфиденциальности</ConsentLink>
+            </ConsentRow>
+          </div>
 
-        {/* Липкий футер */}
-        {formError && (
-          <div className="px-6 pt-3 flex-shrink-0 text-sm text-red-500 text-center">{formError}</div>
-        )}
-        <div className="flex gap-3 px-6 py-4 border-t border-gray-100/60 flex-shrink-0">
-          <button onClick={close} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-gray-50">Отмена</button>
-          <button onClick={handleSubmit} disabled={submitting} className="flex-1 btn-primary py-2.5 disabled:opacity-50">
-            {submitting ? "Принимаем..." : "Принять ученика"}
-          </button>
+          {formError && <div className="text-sm text-red-500 mt-4 text-center">{formError}</div>}
+
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 mt-5">
+            <button onClick={close} className="press-fill border border-gray-200 rounded-xl px-5 py-2.5 text-sm text-gray-600">Отмена</button>
+            <button onClick={handleSubmit} disabled={submitting} className="btn-primary px-6 py-2.5 disabled:opacity-50">
+              {submitting ? "Принимаем..." : "Принять ученика"}
+            </button>
+          </div>
         </div>
       </div>
     </div>,
