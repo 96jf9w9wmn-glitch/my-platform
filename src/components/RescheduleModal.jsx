@@ -1,0 +1,158 @@
+import { useState } from "react"
+import { createPortal } from "react-dom"
+import { useClosing } from "../useClosing"
+import Icon from "./Icon"
+import { formatLessonWhen, todayDateStr } from "../lessonMove"
+
+// Часы, на которые чаще всего ставят занятия. Всё остальное набирается в поле
+// «другое время» — без него перенос на 8:30 был бы невозможен.
+const QUICK_HOURS = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00"]
+
+// Общая модалка переноса: одна и та же и у репетитора (двигает занятие), и у
+// ученика (просит о переносе) — меняются только подписи и проверка занятости.
+function RescheduleModal({
+  lesson,
+  title = "Перенести занятие",
+  who = "",
+  hint = "",
+  initial = null,
+  commentLabel = "",
+  commentPlaceholder = "",
+  submitLabel = "Перенести",
+  conflictCheck,
+  busy = false,
+  error = "",
+  onSubmit,
+  onClose,
+}) {
+  const [date, setDate] = useState(initial?.date || lesson?.date || "")
+  const [time, setTime] = useState(initial?.time || lesson?.time || "")
+  const [comment, setComment] = useState(initial?.comment || "")
+  const [localError, setLocalError] = useState("")
+  const { cls: closingCls, close } = useClosing(onClose)
+
+  const unchanged = date === lesson?.date && time === lesson?.time
+  const conflict = !unchanged && date && time ? conflictCheck?.(date, time) : null
+
+  function handleSubmit() {
+    if (!date || !time) { setLocalError("Выберите дату и время."); return }
+    if (unchanged) { setLocalError("Это те же дата и время, что и сейчас."); return }
+    setLocalError("")
+    onSubmit({ date, time, comment: comment.trim() })
+  }
+
+  return createPortal(
+    <div className={`fixed inset-0 glass-overlay flex items-center justify-center z-50 p-4 ${closingCls}`} onClick={close}>
+      <div
+        className={`glass-modal w-full max-w-sm flex flex-col ${closingCls}`}
+        style={{ maxHeight: "90dvh" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100/60 flex-shrink-0">
+          <h2 className="text-lg font-medium">{title}</h2>
+          <button onClick={close} aria-label="Закрыть" className="text-gray-400 hover:text-gray-600 transition-transform active:scale-90">
+            <Icon name="x" size={18} />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 min-h-0 px-6 py-5 flex flex-col gap-4">
+          <div className="glass-sm px-3 py-2.5 flex items-center gap-3">
+            <span className="w-8 h-8 rounded-xl bg-blue-500/12 text-blue-500 flex items-center justify-center flex-shrink-0">
+              <Icon name="repeat" size={15} />
+            </span>
+            <div className="min-w-0">
+              {who && <div className="text-sm font-medium truncate">{who}</div>}
+              <div className="text-xs text-gray-500">
+                Сейчас: {formatLessonWhen(lesson?.date, lesson?.time)}
+                {lesson?.duration ? ` · ${lesson.duration} мин` : ""}
+              </div>
+            </div>
+          </div>
+
+          {hint && <p className="text-xs text-gray-500 leading-relaxed">{hint}</p>}
+
+          <div>
+            <label className="text-sm text-gray-500 mb-1 block">Новая дата</label>
+            <input
+              type="date"
+              value={date}
+              min={todayDateStr()}
+              onChange={(e) => setDate(e.target.value)}
+              className="input-glass"
+            />
+          </div>
+
+          <div>
+            <label className="text-sm text-gray-500 mb-2 block">Новое время</label>
+            <div className="flex gap-2 flex-wrap">
+              {QUICK_HOURS.map((h) => (
+                <button
+                  key={h}
+                  onClick={() => setTime(h)}
+                  className={`px-3 py-1.5 rounded-lg text-sm border transition-colors active:scale-95 ${
+                    time === h
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "border-gray-200 text-gray-600 hover:bg-gray-50 dark:hover:bg-white/[0.06]"
+                  }`}
+                >
+                  {h}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 mt-2.5">
+              <span className="text-xs text-gray-400 flex-shrink-0">Другое время</span>
+              <input
+                type="time"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                className="input-glass !py-1.5 !w-auto"
+              />
+            </div>
+          </div>
+
+          {commentLabel && (
+            <div>
+              <label className="text-sm text-gray-500 mb-1 block">{commentLabel}</label>
+              <textarea
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                rows={2}
+                maxLength={300}
+                placeholder={commentPlaceholder}
+                className="input-glass resize-none"
+              />
+            </div>
+          )}
+
+          {conflict && (
+            <div className="flex items-start gap-2 text-xs text-amber-600 bg-amber-500/10 rounded-xl px-3 py-2">
+              <span className="flex-shrink-0 mt-0.5"><Icon name="warning" size={13} /></span>
+              <span className="leading-relaxed">{conflict}</span>
+            </div>
+          )}
+        </div>
+
+        {(localError || error) && (
+          <div className="px-6 pt-1 flex-shrink-0">
+            <div className="text-sm text-red-500 text-center">{localError || error}</div>
+          </div>
+        )}
+
+        <div className="flex gap-3 px-6 py-4 border-t border-gray-100/60 flex-shrink-0">
+          <button
+            onClick={close}
+            className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition active:scale-[0.97]"
+          >
+            Отмена
+          </button>
+          <button onClick={handleSubmit} disabled={busy} className="flex-1 btn-primary py-2.5 disabled:opacity-60">
+            {busy ? "Сохраняем…" : submitLabel}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
+export default RescheduleModal

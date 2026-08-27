@@ -9,6 +9,8 @@ import BoardHistory from "../components/BoardHistory"
 import Collapse from "../components/Collapse"
 import ReportComposer from "../components/ReportComposer"
 import { parseLocalDate, isLessonConducted, getInitials, formatPhone } from "../utils"
+import RescheduleModal from "../components/RescheduleModal"
+import { applyMoveToStudent, findSlotConflict, formatLessonWhen, formatLessonShort } from "../lessonMove"
 import { usePlan } from "../subscription"
 import { PlanLock } from "../components/PlanLock"
 
@@ -312,6 +314,7 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
   const [copiedCode, setCopiedCode] = useState(false)
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
   const [archiveOpen, setArchiveOpen] = useState(false)
+  const [movingLesson, setMovingLesson] = useState(null)
 
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 768)
@@ -354,6 +357,19 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
 
   function handleSave(data) {
     onUpdate(student.id, data)
+  }
+
+  // Перенос занятия прямо из карточки: репетитор двигает занятие сразу, ученику
+  // уходит уведомление (тот же порядок, что и в расписании).
+  function moveLesson(from, to) {
+    onUpdate(student.id, applyMoveToStudent(student, from, to))
+    if (student.studentAccountId) {
+      supabase.from("notifications").insert({
+        user_id: student.studentAccountId,
+        title: "Занятие перенесено",
+        body: `${formatLessonWhen(from.date, from.time)} → ${formatLessonWhen(to.date, to.time)}`,
+      }).then(({ error }) => { if (error) console.error("Уведомление о переносе не ушло:", error.message) })
+    }
   }
 
   function saveNote(origIdx) {
@@ -607,9 +623,31 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
                     <div className="text-sm font-medium">
                       {parseLocalDate(l.date).toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" })}
                     </div>
-                    <div className="text-xs text-gray-400">{l.time} · {l.duration} мин</div>
+                    <div className="text-xs text-gray-400">
+                      {l.time} · {l.duration} мин
+                      {l.movedFrom && <span> · перенесено с {formatLessonShort(l.movedFrom.date, l.movedFrom.time)}</span>}
+                    </div>
                   </div>
-                  <span className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded-full flex-shrink-0">Запланировано</span>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {l.moveRequest ? (
+                      <button
+                        onClick={() => setMovingLesson({ date: l.date, time: l.time, duration: l.duration, suggested: { date: l.moveRequest.date, time: l.moveRequest.time }, comment: l.moveRequest.comment })}
+                        className="press-tap text-xs bg-amber-500/12 text-amber-600 px-2 py-1 rounded-full"
+                      >
+                        Просит перенос
+                      </button>
+                    ) : (
+                      <span className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded-full">Запланировано</span>
+                    )}
+                    <button
+                      onClick={() => setMovingLesson({ date: l.date, time: l.time, duration: l.duration })}
+                      aria-label="Перенести занятие"
+                      title="Перенести"
+                      className="text-gray-400 hover:text-blue-600 transition-transform active:scale-90"
+                    >
+                      <Icon name="repeat" size={15} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -711,6 +749,29 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
           student={student}
           onClose={() => setShowEdit(false)}
           onSave={handleSave}
+        />
+      )}
+
+      {movingLesson && (
+        <RescheduleModal
+          lesson={movingLesson}
+          who={student.name}
+          title="Перенести занятие"
+          hint={movingLesson.suggested
+            ? `Ученик просит перенести на ${formatLessonWhen(movingLesson.suggested.date, movingLesson.suggested.time)}${movingLesson.comment ? ` — «${movingLesson.comment}»` : ""}. Время уже подставлено, поправьте, если не подходит.`
+            : "Занятие сразу переедет в расписании, а ученику придёт уведомление."}
+          initial={movingLesson.suggested}
+          conflictCheck={(date, time) => (
+            findSlotConflict(student.lessons || [], { date, time }, movingLesson)
+              ? "На это время у ученика уже стоит другое занятие."
+              : null
+          )}
+          submitLabel="Перенести"
+          onSubmit={({ date, time }) => {
+            moveLesson({ date: movingLesson.date, time: movingLesson.time, duration: movingLesson.duration }, { date, time })
+            setMovingLesson(null)
+          }}
+          onClose={() => setMovingLesson(null)}
         />
       )}
     </div>

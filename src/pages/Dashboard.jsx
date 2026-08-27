@@ -3,6 +3,7 @@ import Icon from "../components/Icon"
 import { usePlan } from "../subscription"
 import useCountUp from "../components/useCountUp"
 import { isLessonConducted, getInitials } from "../utils"
+import { pendingMoveRequests, formatLessonShort } from "../lessonMove"
 import { useAutoReports } from "../reportAuto"
 
 const MONTH_NAMES = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"]
@@ -134,6 +135,10 @@ function Dashboard({ students, setActivePage, onOpenBoard }) {
   const selectedLessons = selectedDay ? getLessonsForDate(selectedDay) : []
   const selectedDate = selectedDay ? new Date(selectedDay + "T00:00:00") : null
 
+  // Просьбы учеников о переносе. Ученик ждёт ответа, поэтому на главной они
+  // видны сразу, а не только в расписании.
+  const moveRequests = pendingMoveRequests(students)
+
   const countStudents = useCountUp(students.length)
   const countToday = useCountUp(todayLessons.length)
   const countWeek = useCountUp(weekCount)
@@ -203,6 +208,29 @@ function Dashboard({ students, setActivePage, onOpenBoard }) {
           </button>
         ))}
       </div>
+
+      {moveRequests.length > 0 && (
+        <button
+          onClick={() => setActivePage("schedule")}
+          className="no-press glass-tint-amber w-full px-4 py-3 flex items-center gap-3 text-left hover:brightness-[1.02] transition"
+        >
+          <span className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-600 flex items-center justify-center flex-shrink-0">
+            <Icon name="repeat" size={16} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-medium">
+              {moveRequests.length === 1 ? "Просьба о переносе занятия" : `Просьбы о переносе: ${moveRequests.length}`}
+            </span>
+            <span className="block text-xs text-gray-500 truncate">
+              {moveRequests[0].studentName}: {formatLessonShort(moveRequests[0].lesson.date, moveRequests[0].lesson.time)}
+              {" → "}
+              {formatLessonShort(moveRequests[0].request.date, moveRequests[0].request.time)}
+              {moveRequests.length > 1 ? " и другие" : ""}
+            </span>
+          </span>
+          <span className="text-xs text-amber-600 flex-shrink-0">Ответить</span>
+        </button>
+      )}
 
       {/* Main grid */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">

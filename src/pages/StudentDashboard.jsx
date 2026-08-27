@@ -20,6 +20,8 @@ import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderH
 import TaskAttachments from "../components/TaskAttachments"
 import { notifyTutor } from "../telegramNotify"
 import { useClosing } from "../useClosing"
+import RescheduleModal from "../components/RescheduleModal"
+import { setMoveRequest, findSlotConflict, formatLessonWhen, formatLessonShort } from "../lessonMove"
 // Состав варианта (какие номера в части 1, какие — во второй) знает банк заданий:
 // у математики номера идут подряд, у информатики — с пропусками, и «номер больше
 // двенадцати» там означало бы не то.
@@ -125,7 +127,7 @@ function formatLocalDate(date) {
   return `${y}-${m}-${d}`
 }
 
-function StudentScheduleCalendar({ student, onOpenBoard }) {
+function StudentScheduleCalendar({ student, onOpenBoard, onRequestMove, onCancelMove }) {
   const [baseDate, setBaseDate] = useState(new Date())
   const [selectedDay, setSelectedDay] = useState(null)
 
@@ -220,12 +222,15 @@ function StudentScheduleCalendar({ student, onOpenBoard }) {
             <div className="flex flex-col gap-2">
               {selectedDayLessons.map((l, i) => (
                 <div key={i} className="bg-blue-50 rounded-xl px-3 py-2.5">
-                  <div className="flex items-center justify-between">
-                    <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
                       <div className="text-sm font-medium text-blue-700">{l.time}</div>
-                      <div className="text-xs text-blue-500">{l.duration} мин</div>
+                      <div className="text-xs text-blue-500">
+                        {l.duration} мин
+                        {l.movedFrom && <span className="text-gray-400"> · перенесено с {formatLessonShort(l.movedFrom.date, l.movedFrom.time)}</span>}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-shrink-0">
                       <button onClick={() => onOpenBoard?.()}
                         className="press-tap text-xs bg-white text-blue-600 dark:text-blue-400 border border-blue-200 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors">
                         <span className="flex items-center gap-1"><Icon name="clipboard" size={12} />Доска</span>
@@ -236,8 +241,26 @@ function StudentScheduleCalendar({ student, onOpenBoard }) {
                           <span className="flex items-center gap-1"><Icon name="video" size={12} />Звонок</span>
                         </a>
                       )}
+                      {!l.moveRequest && (
+                        <button onClick={() => onRequestMove?.(l)}
+                          className="press-tap text-xs bg-white text-gray-600 border border-gray-200 px-2 py-1 rounded-lg hover:bg-gray-50 transition-colors">
+                          <span className="flex items-center gap-1"><Icon name="repeat" size={12} />Перенести</span>
+                        </button>
+                      )}
                     </div>
                   </div>
+                  {/* Просьба уже отправлена — вместо кнопки видно, чего ждём. */}
+                  {l.moveRequest && (
+                    <div className="mt-2 pt-2 border-t border-blue-100 flex items-center justify-between gap-2">
+                      <div className="text-xs text-amber-600 min-w-0">
+                        Просишь перенести на {formatLessonShort(l.moveRequest.date, l.moveRequest.time)} — репетитор ещё не ответил
+                      </div>
+                      <button onClick={() => onCancelMove?.(l)}
+                        className="press-tap text-xs text-gray-500 border border-gray-200 bg-white px-2 py-1 rounded-lg hover:bg-gray-50 transition-colors flex-shrink-0">
+                        Отменить
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -1419,6 +1442,60 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     .filter((l) => isLessonConducted(l))
     .sort((a, b) => b.date.localeCompare(a.date))
 
+  // Перенос занятия. Ученик расписание сам не двигает — он просит, и просьба
+  // живёт в самом занятии, пока репетитор не ответит (см. src/lessonMove.js).
+  const [movingLesson, setMovingLesson] = useState(null)
+  const [moveBusy, setMoveBusy] = useState(false)
+  const [moveError, setMoveError] = useState("")
+  const pendingMove = (student?.lessons || []).find((l) => l.moveRequest) || null
+
+  async function saveLessons(nextLessons) {
+    const { error } = await supabase.from("students").update({ lessons: nextLessons }).eq("id", student.id)
+    return error
+  }
+
+  async function requestLessonMove({ date, time, comment }) {
+    if (!student || !movingLesson) return
+    setMoveBusy(true)
+    setMoveError("")
+    const target = { date: movingLesson.date, time: movingLesson.time }
+    const next = setMoveRequest(student.lessons || [], target, {
+      by: "student",
+      date,
+      time,
+      comment: comment || "",
+      at: new Date().toISOString(),
+    })
+    const error = await saveLessons(next)
+    setMoveBusy(false)
+    if (error) {
+      // Модалку не закрываем: иначе ошибка исчезла бы вместе с ней, и ученик
+      // считал бы, что просьба ушла.
+      setMoveError("Не удалось отправить просьбу: " + error.message)
+      return
+    }
+    // Уведомление репетитору — по мере возможности: сама просьба уже сохранена
+    // в занятии и видна ему в расписании, даже если уведомление не дойдёт.
+    supabase.from("notifications").insert({
+      user_id: student.tutor_id,
+      title: "Ученик просит перенести занятие",
+      body: `${user.profile?.name || "Ученик"}: ${formatLessonWhen(target.date, target.time)} → ${formatLessonWhen(date, time)}`
+        + (comment ? ` · «${comment}»` : ""),
+    }).then(({ error: notifyError }) => {
+      if (notifyError) console.error("Уведомление о переносе не ушло:", notifyError.message)
+    })
+    setMovingLesson(null)
+    onReloadStudents?.()
+  }
+
+  async function cancelLessonMove(lesson) {
+    if (!student) return
+    setMoveError("")
+    const error = await saveLessons(setMoveRequest(student.lessons || [], lesson, null))
+    if (error) { setMoveError("Не удалось отменить просьбу: " + error.message); return }
+    onReloadStudents?.()
+  }
+
   const initials = getInitials(user.profile?.name)
 
   // Если студент загружен, строки в students нет И нет кэша — создаём строку автоматически
@@ -2000,13 +2077,45 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                           {upcoming.slice(0, 6).map((l, i) => {
                             const date = new Date(l.date + "T00:00:00")
                             const dateStr = date.toLocaleDateString("ru-RU", { day: "numeric", month: "short" })
+                            const asked = !!l.moveRequest
                             return (
-                              <span key={i} className="inline-flex items-center gap-1.5 bg-blue-100 text-blue-700 text-xs px-3 py-1.5 rounded-full font-medium">
-                                <Icon name="calendar" size={12} />{dateStr} в {l.time}
-                              </span>
+                              <button
+                                key={i}
+                                onClick={() => { setMoveError(""); setMovingLesson(l) }}
+                                disabled={asked}
+                                title={asked ? "Просьба о переносе уже отправлена" : "Попросить о переносе"}
+                                className={`press-tap inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
+                                  asked
+                                    ? "bg-amber-500/15 text-amber-600"
+                                    : "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                                }`}
+                              >
+                                <Icon name={asked ? "repeat" : "calendar"} size={12} />{dateStr} в {l.time}
+                              </button>
                             )
                           })}
                         </div>
+                      )}
+                      {/* Перенос — вещь, которую ищут в первую очередь, поэтому он
+                          подписан прямо здесь, а не спрятан в календаре ниже. */}
+                      {upcoming.length > 0 && !pendingMove && (
+                        <div className="text-xs text-gray-400 mt-2">
+                          Нажми на занятие, чтобы попросить о переносе.
+                        </div>
+                      )}
+                      {pendingMove && (
+                        <div className="mt-3 text-xs text-amber-600 bg-amber-500/10 rounded-xl px-3 py-2 flex items-center justify-between gap-2">
+                          <span className="min-w-0">
+                            Просишь перенести {formatLessonShort(pendingMove.date, pendingMove.time)} на {formatLessonShort(pendingMove.moveRequest.date, pendingMove.moveRequest.time)} — ждём ответа репетитора
+                          </span>
+                          <button onClick={() => cancelLessonMove(pendingMove)}
+                            className="press-tap text-gray-500 border border-gray-200 bg-white px-2 py-1 rounded-lg hover:bg-gray-50 transition-colors flex-shrink-0">
+                            Отменить
+                          </button>
+                        </div>
+                      )}
+                      {moveError && !movingLesson && (
+                        <div className="mt-2 text-xs text-red-500">{moveError}</div>
                       )}
                       {(student.schedule || student.examDate) && (
                         <div className="mt-4 pt-4 border-t border-white/30 flex flex-col gap-3">
@@ -2055,7 +2164,12 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                     maxScore={student.goal === "ЕГЭ" ? 100 : 32}
                   />
 
-                  <StudentScheduleCalendar student={student} onOpenBoard={openBoard} />
+                  <StudentScheduleCalendar
+                    student={student}
+                    onOpenBoard={openBoard}
+                    onRequestMove={(l) => { setMoveError(""); setMovingLesson(l) }}
+                    onCancelMove={cancelLessonMove}
+                  />
 
                   {/* Доски прошлых занятий — можно вернуться к разобранному (только чтение) */}
                   <BoardHistory studentId={student.id} studentName={user.profile?.name} account={user.id} token={user.token} />
@@ -2595,6 +2709,26 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
             </div>
           </div>
         </div>
+
+        {movingLesson && (
+          <RescheduleModal
+            lesson={movingLesson}
+            title="Попросить о переносе"
+            hint="Занятие сдвинется, только когда репетитор согласится. Пока он не ответил, оно остаётся на прежнем месте."
+            commentLabel="Причина (по желанию)"
+            commentPlaceholder="Например: в это время школьная олимпиада"
+            submitLabel="Отправить просьбу"
+            busy={moveBusy}
+            error={moveError}
+            conflictCheck={(date, time) => (
+              findSlotConflict(student?.lessons || [], { date, time }, movingLesson)
+                ? "В это время у тебя уже стоит другое занятие."
+                : null
+            )}
+            onSubmit={requestLessonMove}
+            onClose={() => { setMovingLesson(null); setMoveError("") }}
+          />
+        )}
 
         {needsOnboard && (
           <StudentOnboardingModal
