@@ -120,7 +120,9 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
   const [phone, setPhone] = useState(initialPhone || "")
   const [submitting, setSubmitting] = useState(false)
   const [contacts, setContacts] = useState([])
-  const [mode, setMode] = useState("single")
+  // Регулярные занятия — обычный случай: ученика ведут неделями, разовые
+  // встречи скорее исключение. Поэтому режим открыт сразу на них.
+  const [mode, setMode] = useState("recurring")
   const [lessons, setLessons] = useState([])
   // Общее время и длительность: их получает каждая новая выбранная дата, и ими
   // же правится сразу всё расписание. Отдельный день можно поправить в списке.
@@ -382,8 +384,8 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
                   value={mode}
                   onChange={setMode}
                   items={[
-                    { key: "single", label: <><Icon name="calendar" size={14} />Разовые</> },
                     { key: "recurring", label: <><Icon name="repeat" size={14} />Регулярные</> },
+                    { key: "single", label: <><Icon name="calendar" size={14} />Разовые</> },
                   ]}
                 />
               </div>
