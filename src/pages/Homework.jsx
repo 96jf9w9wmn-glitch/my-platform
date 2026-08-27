@@ -4,6 +4,7 @@ import { supabase } from "../supabase"
 import { signRows } from "../storageUrl"
 import Icon from "../components/Icon"
 import Collapse from "../components/Collapse"
+import Reveal from "../components/Reveal"
 import AutoHeight from "../components/AutoHeight"
 import FormulaBackdrop from "../components/FormulaBackdrop"
 import { parseLocalDate, renderHomeworkMath, parseHomeworkTasks, plural, hasAttachment } from "../utils"
@@ -1243,15 +1244,26 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
           </div>
         </div>
 
-        {formError && <div className="text-xs text-red-500 mt-4 text-center">{formError}</div>}
-
-        <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 mt-5">
-          <button onClick={close} className="press-fill border border-gray-200 rounded-xl px-5 py-2.5 text-sm text-gray-600">
-            Отмена
-          </button>
-          <button onClick={handleSubmit} disabled={saving} className="bg-blue-600 text-white rounded-xl px-6 py-2.5 text-sm hover:bg-blue-700 disabled:opacity-50 active:scale-[0.98] transition-transform">
-            {saving ? "Сохраняем..." : isEditing ? "Сохранить" : "Задать"}
-          </button>
+        {/* Ошибка стоит в одном ряду с кнопками, слева от «Задать»: строка по
+            центру пустого ряда терялась и не связывалась с нажатием. На узком
+            экране плашка ложится над кнопками — там же, куда смотрит палец. */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 mt-5">
+          <Reveal value={formError} className="min-w-0">
+            {(msg) => (
+              <div className="flex items-start gap-2 rounded-xl bg-red-500/10 ring-1 ring-red-500/20 px-3 py-2 text-xs text-red-600 dark:text-red-300">
+                <Icon name="alert-triangle" size={14} className="mt-px flex-shrink-0" />
+                <span className="leading-snug">{msg}</span>
+              </div>
+            )}
+          </Reveal>
+          <div className="flex flex-col-reverse sm:flex-row gap-3 sm:ml-auto">
+            <button onClick={close} className="press-fill border border-gray-200 rounded-xl px-5 py-2.5 text-sm text-gray-600">
+              Отмена
+            </button>
+            <button onClick={handleSubmit} disabled={saving} className="bg-blue-600 text-white rounded-xl px-6 py-2.5 text-sm hover:bg-blue-700 disabled:opacity-50 active:scale-[0.98] transition-transform">
+              {saving ? "Сохраняем..." : isEditing ? "Сохранить" : "Задать"}
+            </button>
+          </div>
         </div>
       </div>
     </div>,
