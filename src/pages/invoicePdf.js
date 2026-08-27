@@ -112,7 +112,7 @@ export function invoiceSheetHtml({ invoices, studentName, tutorName, payee, note
 
       <div style="margin-top:26px; font-size:11.5px; line-height:1.6; color:#8e8e93;">
         Занятия оказывает и оплату получает репетитор. Квитанция сформирована
-        автоматически сервисом Precettore и не является кассовым чеком.
+        автоматически сервисом Precettore (бета-версия) и не является кассовым чеком.
       </div>
     </div>`
 }

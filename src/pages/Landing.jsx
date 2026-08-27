@@ -6,6 +6,7 @@ import FormulaBackdrop from "../components/FormulaBackdrop"
 import { TUTOR_STEPS } from "../onboardingSteps"
 import { Highlight } from "../components/Mark"
 import SiteFooter from "../components/SiteFooter"
+import BetaBadge, { BetaNotice } from "../components/BetaBadge"
 import { ConsentRow, ConsentLink } from "../components/ConsentChecks"
 import { logConsent } from "../consents"
 import { supabase } from "../supabase"
@@ -845,6 +846,7 @@ function Landing({ onStart }) {
               <img src="/logo.webp" alt="Precettore" className="w-full h-full object-cover" />
             </div>
             <span className="font-bold tracking-tight text-gray-900">Precettore</span>
+            <BetaBadge />
           </div>
           <div className="flex items-center gap-1.5">
             <button
@@ -933,6 +935,10 @@ function Landing({ onStart }) {
                 <div className="mt-1 text-center text-sm text-gray-400 dark:text-gray-500">
                   Регистрация за минуту · без привязки карты
                 </div>
+                {/* Про бету говорим сразу на первом экране, рядом с кнопкой
+                    входа: человек должен знать это ДО регистрации, а не найти
+                    потом в подвале. */}
+                <BetaNotice className="mt-3" />
               </div>
             </div>
           </div>

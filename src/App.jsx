@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, lazy, Suspense } from "react"
 import { isMoveNotification, revealBlock, MOVE_ANCHOR_TUTOR } from "./notifTarget"
+import { dropdownPos } from "./dropdownPos"
 import { createPortal } from "react-dom"
 import { supabase, isPasswordRecovery, setAppToken } from "./supabase"
 import { signRows } from "./storageUrl"
@@ -8,6 +9,8 @@ import NavIcon from "./components/NavIcon"
 import MobileMenu from "./components/MobileMenu"
 import Icon from "./components/Icon"
 import MorphIcon from "./components/MorphIcon"
+import BetaBadge from "./components/BetaBadge"
+import { BETA_SUFFIX } from "./beta"
 import Students from "./pages/Students"
 import Payment from "./pages/Payment"
 import Auth from "./pages/Auth"
@@ -136,7 +139,7 @@ function NotificationBell({ userId, onNavigate }) {
   const [notifications, setNotifications] = useState([])
   const [open, setOpen] = useState(false)
   const [isClosing, setIsClosing] = useState(false)
-  const [pos, setPos] = useState({ top: 0, right: 0 })
+  const [pos, setPos] = useState({ top: 0, right: 0, width: 320, maxHeight: 400 })
   const [ringKey, setRingKey] = useState(0)
   const btnRef = useRef(null)
   const closeTimer = useRef(null)
@@ -178,8 +181,7 @@ function NotificationBell({ userId, onNavigate }) {
     }
     clearTimeout(closeTimer.current)
     setIsClosing(false)
-    const rect = btnRef.current.getBoundingClientRect()
-    setPos({ top: rect.bottom + 12, right: window.innerWidth - rect.right })
+    setPos(dropdownPos(btnRef.current))
     loadNotifications()
     setOpen(true)
   }
@@ -212,11 +214,11 @@ function NotificationBell({ userId, onNavigate }) {
 
       {open && createPortal(
         <div
-          className={`fixed w-80 bg-white dark:bg-[#1c1c1e] border border-gray-200 dark:border-white/10 rounded-xl shadow-xl ${isClosing ? "popup-bubble-out" : "popup-bubble"}`}
-          style={{ top: pos.top, right: pos.right, zIndex: 99999 }}
+          className={`fixed flex flex-col bg-white dark:bg-[#1c1c1e] border border-gray-200 dark:border-white/10 rounded-xl shadow-xl ${isClosing ? "popup-bubble-out" : "popup-bubble"}`}
+          style={{ top: pos.top, right: pos.right, width: pos.width, maxHeight: pos.maxHeight, zIndex: 99999 }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex justify-between items-center px-4 py-3 border-b border-gray-100">
+          <div className="flex justify-between items-center gap-2 px-4 py-3 border-b border-gray-100 flex-shrink-0">
             <span className="text-sm font-medium">Уведомления</span>
             <div className="flex items-center gap-3">
               {unread > 0 && (
@@ -236,7 +238,7 @@ function NotificationBell({ userId, onNavigate }) {
               <button onClick={closePanel} className="text-gray-400 hover:text-gray-600"><Icon name="x" size={16} /></button>
             </div>
           </div>
-          <div className="max-h-80 overflow-y-auto">
+          <div className="flex-1 min-h-0 max-h-80 overflow-y-auto">
             {notifications.length === 0 ? (
               <div className="text-sm text-gray-400 text-center py-8">Уведомлений нет</div>
             ) : notifications.map((n) => (
@@ -413,7 +415,7 @@ function App() {
 
   useEffect(() => {
     if (user?.role === "tutor") {
-      document.title = `${pageTitles[activePage] || "Precettore"} — Precettore`
+      document.title = `${pageTitles[activePage] || "Precettore"} — Precettore${BETA_SUFFIX}`
     }
   }, [activePage, user])
   const [students, setStudents] = useState([])
@@ -692,7 +694,7 @@ function App() {
         <div className="loader-wrap flex flex-col items-center gap-5">
           <img src="/logo.webp" alt="Precettore" className="loader-breathe w-16 h-16 rounded-2xl object-cover shadow-xl shadow-blue-500/30" />
           <div className="loader-label text-[11px] text-gray-400 uppercase font-medium">
-            Precettore
+            Precettore{BETA_SUFFIX}
           </div>
         </div>
       </div>
@@ -795,7 +797,10 @@ function App() {
 
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <div className="topbar-glass flex justify-between items-center px-4 py-3">
-          <div className="md:hidden text-sm font-semibold text-gray-700">Precettore</div>
+          <div className="md:hidden flex items-center gap-2">
+            <span className="text-sm font-semibold text-gray-700">Precettore</span>
+            <BetaBadge />
+          </div>
           <div className="flex items-center gap-2 ml-auto">
             <ThemeToggle />
             <NotificationBell userId={user.id} onNavigate={navigateTo} />

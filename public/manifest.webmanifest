@@ -1,7 +1,7 @@
 {
-  "name": "Precettore",
+  "name": "Precettore · бета",
   "short_name": "Precettore",
-  "description": "Репетиторская платформа: ученики, расписание, задания, оплата",
+  "description": "Репетиторская платформа (бета-версия): ученики, расписание, задания, оплата",
   "lang": "ru",
   "dir": "ltr",
   "start_url": "/",

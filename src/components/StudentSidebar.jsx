@@ -1,4 +1,5 @@
 import NavIcon from "./NavIcon"
+import BetaBadge from "./BetaBadge"
 
 function StudentSidebar({ activeTab, setActiveTab, items, badges = {} }) {
   return (
@@ -6,6 +7,7 @@ function StudentSidebar({ activeTab, setActiveTab, items, badges = {} }) {
       <div className="flex items-center gap-2.5 mb-5 px-1">
         <img src="/logo.webp" alt="Логотип" className="w-8 h-8 rounded-xl object-cover flex-shrink-0" />
         <span className="text-sm font-semibold text-gray-600 tracking-wide">Мой кабинет</span>
+        <BetaBadge size="xs" />
       </div>
       <div className="flex flex-col gap-1">
         {items.map((item) => (

@@ -572,6 +572,7 @@ export async function handleUpdate(db, update) {
         parse_mode: "HTML",
         text: [
           "<b>Precettore</b> — бот репетитора.",
+          "<i>Сервис работает в режиме бета-тестирования.</i>",
           "",
           "Чтобы связать бота с вашим кабинетом:",
           `1. откройте ${APP_URL} → «Подписка»;`,

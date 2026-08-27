@@ -4,6 +4,8 @@ import { signRows } from "../storageUrl"
 import Chat from "./Chat"
 import { getInitials, plural } from "../utils"
 import MorphIcon from "../components/MorphIcon"
+import BetaBadge from "../components/BetaBadge"
+import { BETA_SUFFIX } from "../beta"
 import InvoiceCard from "../components/InvoiceCard"
 
 function SvgIcon({ d, size = 16 }) {
@@ -182,8 +184,8 @@ function ParentDashboard({ user, onLogout }) {
   }, [user.student.id])
 
   useEffect(() => {
-    document.title = `${student.name} — Precettore`
-    return () => { document.title = "Precettore" }
+    document.title = `${student.name} — Precettore${BETA_SUFFIX}`
+    return () => { document.title = `Precettore${BETA_SUFFIX}` }
   }, [student.name])
 
   useEffect(() => {
@@ -278,7 +280,10 @@ function ParentDashboard({ user, onLogout }) {
                 <img src="/logo.webp" alt="" className="w-5 h-5 rounded-md object-cover" />
                 <div className="font-semibold text-gray-800">{student.name}</div>
               </div>
-              <div className="text-xs text-gray-400 mt-0.5">Кабинет родителя</div>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="text-xs text-gray-400">Кабинет родителя</span>
+                <BetaBadge size="xs" />
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-2">

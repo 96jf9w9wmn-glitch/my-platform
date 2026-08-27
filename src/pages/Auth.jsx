@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react"
 import { supabase, setAppToken, clearAppSession } from "../supabase"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
+import BetaBadge from "../components/BetaBadge"
 import { ConsentRow, ConsentLink } from "../components/ConsentChecks"
 import { logConsent } from "../consents"
 
@@ -370,7 +371,10 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
             <div className="w-12 h-12 rounded-2xl overflow-hidden bg-white/25 backdrop-blur-sm mx-auto mb-2 shadow-lg">
               <img src="/logo.webp" alt="Логотип" className="w-full h-full object-cover" />
             </div>
-            <div className="text-lg font-bold tracking-tight">Precettore</div>
+            <div className="flex items-center justify-center gap-2">
+              <div className="text-lg font-bold tracking-tight">Precettore</div>
+              <BetaBadge tone="onColor" />
+            </div>
             <div className="text-[13px] text-white/75 mt-0.5">
               {mode === "login" ? "Войдите в аккаунт" : "Создайте аккаунт"}
             </div>

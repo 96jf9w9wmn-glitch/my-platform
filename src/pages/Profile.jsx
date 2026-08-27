@@ -20,6 +20,7 @@ import AutoReportSettings from "../components/AutoReportSettings"
 import OnlinePaySettings from "../components/OnlinePaySettings"
 import TaxModeSettings from "../components/TaxModeSettings"
 import TelegramSettings from "../components/TelegramSettings"
+import { BetaNotice } from "../components/BetaBadge"
 import SubjectsSettings from "../components/SubjectsSettings"
 import { isOwner } from "../owner"
 
@@ -189,6 +190,10 @@ export default function Profile({ user, students = [], onLogout, onProfileChange
           <TaxModeSettings tutorId={user.id} surface="glass p-5 flex-1" />
         </div>
       </div>
+
+      {/* Статус сервиса — в самом низу «Профиля»: это про платформу целиком,
+          а не про конкретную настройку. */}
+      <BetaNotice />
     </div>
   )
 }

@@ -1,4 +1,6 @@
 import Icon from "./Icon"
+import BetaBadge from "./BetaBadge"
+import { BETA_NOTE } from "../beta"
 
 // Подвал публичных страниц (лендинг, вход, юр-документы): контакт для сообщений
 // об ошибках, соцсети и юр-ссылки. Ссылки на соцсети пока МАКЕТЫ — реальные
@@ -144,10 +146,14 @@ function SiteFooter() {
                 <img src="/logo.webp" alt="Precettore" className="w-full h-full object-cover" />
               </div>
               <span className="font-bold tracking-tight text-gray-900">Precettore</span>
+              <BetaBadge />
             </div>
             <p className="mt-3 text-sm text-gray-500 dark:text-gray-400 leading-snug max-w-xs">
               Кабинет репетитора и его учеников: занятия, домашние задания и
               тренировочные варианты ОГЭ и ЕГЭ в одном месте.
+            </p>
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 leading-snug max-w-xs">
+              {BETA_NOTE}
             </p>
           </div>
 

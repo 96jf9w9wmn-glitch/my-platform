@@ -16,6 +16,7 @@ import { supabase } from "../supabase"
 import { useSubscription } from "../subscription"
 import { MarketingToggle } from "../components/ConsentChecks"
 import PricingPlans from "../components/PricingPlans"
+import { BetaNotice } from "../components/BetaBadge"
 import {
   PLANS, FEATURE_ROWS, UNLIMITED,
   effectivePlanId, isActive, formatLimit, planById,
@@ -169,6 +170,10 @@ export default function Subscription({ studentsCount = 0, tutorId }) {
       <p className="text-sm text-gray-500 mb-5 sm:mb-6">
         Тариф определяет, сколько у вас может быть учеников и какие возможности платформы включены.
       </p>
+
+      {/* Про бету на странице оплаты говорим отдельно: человек здесь решает,
+          платить ли, и должен знать, что сервис ещё тестируется. */}
+      <BetaNotice className="mb-4" />
 
       {/* Результат возврата с оплаты */}
       {checking && (

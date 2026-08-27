@@ -226,7 +226,7 @@ export function reportSheetHtml({ report, studentName, tutorName, stats = {}, le
               ${tutorName ? `Репетитор — <b style="font-weight:600;">${esc(tutorName)}</b>` : "Репетитор"}
             </td>
             <td style="text-align:right; font-size:11px; color:${MUTED};">
-              Отчёт сформирован в Precettore · precettore.ru
+              Отчёт сформирован в Precettore (бета-версия) · precettore.ru
             </td>
           </tr>
         </table>

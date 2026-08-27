@@ -1,4 +1,5 @@
 import NavIcon from "./NavIcon"
+import BetaBadge from "./BetaBadge"
 import { useSubscription } from "../subscription"
 import { effectivePlan } from "../plans"
 import { isOwner } from "../owner"
@@ -47,6 +48,7 @@ function Sidebar({ activePage, setActivePage, badges = {}, name, email }) {
       <div className="flex items-center gap-2.5 mb-5 px-1">
         <img src="/logo.webp" alt="Логотип" className="w-8 h-8 rounded-xl object-cover flex-shrink-0" />
         <span className="text-sm font-semibold text-gray-600 tracking-wide">Precettore</span>
+        <BetaBadge size="xs" />
       </div>
       <div className="flex flex-col gap-1">
         {navFor(isOwner(email)).map((item) => (

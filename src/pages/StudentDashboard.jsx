@@ -2,11 +2,14 @@ import { useState, useEffect, useRef, useMemo, useLayoutEffect, lazy, Suspense }
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import { signRows, signStorageUrl } from "../storageUrl"
+import { dropdownPos } from "../dropdownPos"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
 import NavIcon from "../components/NavIcon"
 import StudentSidebar from "../components/StudentSidebar"
+import BetaBadge from "../components/BetaBadge"
+import { BETA_SUFFIX } from "../beta"
 import FormulaBackdrop from "../components/FormulaBackdrop"
 import Chat from "./Chat"
 import StudentOnboardingModal from "../components/StudentOnboardingModal"
@@ -1088,7 +1091,7 @@ function StudentNotificationBell({ userId, onNavigate }) {
   const [notifications, setNotifications] = useState([])
   const [open, setOpen] = useState(false)
   const [isClosing, setIsClosing] = useState(false)
-  const [pos, setPos] = useState({ top: 0, right: 0 })
+  const [pos, setPos] = useState({ top: 0, right: 0, width: 320, maxHeight: 400 })
   const [ringKey, setRingKey] = useState(0)
   const btnRef = useRef(null)
   const closeTimer = useRef(null)
@@ -1117,8 +1120,7 @@ function StudentNotificationBell({ userId, onNavigate }) {
     if (open) { closePanel(); return }
     clearTimeout(closeTimer.current)
     setIsClosing(false)
-    const rect = btnRef.current.getBoundingClientRect()
-    setPos({ top: rect.bottom + 12, right: window.innerWidth - rect.right })
+    setPos(dropdownPos(btnRef.current))
     loadNotifications()
     setOpen(true)
   }
@@ -1176,11 +1178,11 @@ function StudentNotificationBell({ userId, onNavigate }) {
 
       {open && createPortal(
         <div
-          className={`fixed z-[9999] w-80 glass-modal shadow-2xl rounded-2xl overflow-hidden ${isClosing ? "popup-bubble-out" : "popup-bubble"}`}
-          style={{ top: pos.top, right: pos.right }}
+          className={`fixed z-[9999] flex flex-col glass-modal shadow-2xl rounded-2xl overflow-hidden ${isClosing ? "popup-bubble-out" : "popup-bubble"}`}
+          style={{ top: pos.top, right: pos.right, width: pos.width, maxHeight: pos.maxHeight }}
           onClick={e => e.stopPropagation()}
         >
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+          <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-100 flex-shrink-0">
             <span className="text-sm font-semibold text-gray-700">Уведомления</span>
             {unread > 0 && (
               <button onClick={markAllRead} className="text-xs text-blue-500 hover:text-blue-700">
@@ -1188,7 +1190,7 @@ function StudentNotificationBell({ userId, onNavigate }) {
               </button>
             )}
           </div>
-          <div className="max-h-80 overflow-y-auto">
+          <div className="flex-1 min-h-0 max-h-80 overflow-y-auto">
             {notifications.length === 0 ? (
               <div className="text-sm text-gray-400 text-center py-8">Нет уведомлений</div>
             ) : notifications.map(n => (
@@ -1359,8 +1361,8 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   }, [user.id])
 
   useEffect(() => {
-    document.title = "Мой кабинет — Precettore"
-    return () => { document.title = "Precettore" }
+    document.title = `Мой кабинет — Precettore${BETA_SUFFIX}`
+    return () => { document.title = `Precettore${BETA_SUFFIX}` }
   }, [])
 
   useEffect(() => {
@@ -1964,6 +1966,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
             <div className="flex items-center gap-2.5 md:hidden">
               <img src="/logo.webp" alt="Логотип" className="w-8 h-8 rounded-xl object-cover" />
               <span className="text-sm font-semibold text-gray-700">Мой кабинет</span>
+              <BetaBadge size="xs" />
             </div>
             <div className="flex items-center gap-3 ml-auto">
               <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-sm font-medium text-blue-600">
