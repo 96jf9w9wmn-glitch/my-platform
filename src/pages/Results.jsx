@@ -9,59 +9,51 @@ import useTypeLabels from "../components/typeLabels"
 import { plural, getInitials } from "../utils"
 import { PlanLock } from "../components/PlanLock"
 import { usePlan } from "../subscription"
+import { part1NumbersOf } from "./taskBankMeta"
+import { scaleOf, part2MaxOf, part2TotalOf, variantMaxPrimary, examResult, secondaryLabel } from "../examScales"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Шкалы экзаменов
 // ─────────────────────────────────────────────────────────────────────────────
-
-function getOgeGrade(total, geomScore) {
-  if (total < 8 || geomScore < 2) return 2
-  if (total <= 14) return 3
-  if (total <= 21) return 4
-  return 5
-}
-
-const EGE_SCORES = [0,6,11,17,22,27,34,40,46,52,58,64,70,72,74,76,78,80,82,84,86,88,90,92,94,95,96,97,98,99,100,100,100]
-function getEgeTestScore(primary) {
-  return EGE_SCORES[Math.min(primary, EGE_SCORES.length - 1)] || 0
-}
-
-// Максимальный первичный балл: ОГЭ 19 + 12, ЕГЭ профиль 12 + 20.
-const MAX_PRIMARY = { "ОГЭ": 31, "ЕГЭ": 32 }
-const maxPrimaryOf = (type) => MAX_PRIMARY[type] || 31
+// Перевод первичного балла во вторичный (тестовый балл ЕГЭ или отметку) живёт
+// в src/examScales.js — одном файле на всё приложение. Здесь остаётся только
+// разметка разбора работы.
 
 const range = (from, to) => Array.from({ length: to - from + 1 }, (_, i) => from + i)
 
-// Разбор работы по заданиям зависит от экзамена: у ОГЭ первая часть 1–19 и
-// делится на алгебру и геометрию, у ЕГЭ профиля — 1–12 без деления. Раньше
-// ЕГЭ рисовался по разметке ОГЭ и показывал несуществующие задания.
-// Каждое задание части 2 ОГЭ стоит 2 балла — столько же принимает форма
-// проверки в «Вариантах», иначе сумма по заданиям не сошлась бы с итогом.
-const PART_LAYOUT = {
-  "ОГЭ": {
-    part1: [
-      { label: "Алгебра — задания 1–14", nums: range(1, 14), tone: "blue", cols: "grid-cols-7" },
-      { label: "Геометрия — задания 15–19", nums: range(15, 19), tone: "purple", cols: "grid-cols-5" },
-    ],
-    part2: [
-      { label: "Алгебра", nums: [20, 21, 22] },
-      { label: "Геометрия", nums: [23, 24, 25] },
-    ],
-    part2Max: { 20: 2, 21: 2, 22: 2, 23: 2, 24: 2, 25: 2 },
-    part1Max: 19,
-    part2Total: 12,
-  },
-  "ЕГЭ": {
-    part1: [
-      { label: "Часть 1 — задания 1–12", nums: range(1, 12), tone: "blue", cols: "grid-cols-6" },
-    ],
-    part2: [{ label: "Часть 2", nums: range(13, 19) }],
-    part2Max: { 13: 2, 14: 3, 15: 2, 16: 2, 17: 3, 18: 4, 19: 4 },
-    part1Max: 12,
-    part2Total: 20,
-  },
+// Разбор работы по заданиям строится по составу самого экзамена: номера части 1
+// берём из банка (в информатике они идут не подряд), баллы части 2 — из шкалы.
+// Раньше здесь лежали две жёстких разметки, ОГЭ и «ЕГЭ», и информатика рисовалась
+// по чужой: показывались несуществующие задания 13–19 и деление на геометрию.
+const gridCols = (n) => (n <= 5 ? "grid-cols-5" : n <= 12 ? "grid-cols-6" : "grid-cols-7")
+
+function buildLayout(type) {
+  const p1 = part1NumbersOf(type)
+  const geomNums = scaleOf(type)?.geometryNumbers || []
+  const p1Geom = p1.filter((n) => geomNums.includes(n))
+  // Деление «алгебра / геометрия» есть только у ОГЭ по математике.
+  const part1 = p1Geom.length
+    ? [
+        { label: `Алгебра — задания ${p1[0]}–${p1Geom[0] - 1}`, nums: p1.filter((n) => !geomNums.includes(n)), tone: "blue", cols: "grid-cols-7" },
+        { label: `Геометрия — задания ${p1Geom[0]}–${p1Geom[p1Geom.length - 1]}`, nums: p1Geom, tone: "purple", cols: "grid-cols-5" },
+      ]
+    : [{ label: `Часть 1 — ${p1.length} ${plural(p1.length, "задание", "задания", "заданий")}`, nums: p1, tone: "blue", cols: gridCols(p1.length) }]
+
+  const part2Max = part2MaxOf(type)
+  const p2 = Object.keys(part2Max).map(Number).sort((a, b) => a - b)
+  const part2 = !p2.length ? []
+    : geomNums.length
+      ? [
+          { label: "Алгебра", nums: p2.filter((n) => !geomNums.includes(n)) },
+          { label: "Геометрия", nums: p2.filter((n) => geomNums.includes(n)) },
+        ]
+      : [{ label: "Часть 2", nums: p2 }]
+
+  return { part1, part2, part2Max, part1Max: p1.length, part2Total: part2TotalOf(type) }
 }
-const layoutOf = (type) => PART_LAYOUT[type] || PART_LAYOUT["ОГЭ"]
+
+const LAYOUTS = {}
+const layoutOf = (type) => (LAYOUTS[type] ||= buildLayout(type))
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Мелкие детали оформления
@@ -87,9 +79,11 @@ function Chip({ tone = "gray", className = "", children }) {
 }
 
 // Доля от максимума — единственная величина, сопоставимая между ОГЭ и ЕГЭ:
-// первичные баллы у них по разным шкалам.
-function share(total, type) {
-  return Math.round((total / maxPrimaryOf(type)) * 100)
+// первичные баллы у них по разным шкалам. Считается от максимума ВАРИАНТА:
+// в него входит не весь экзамен, и делить на экзаменационный максимум значило
+// бы занижать всех подряд.
+function share(row) {
+  return row.max ? Math.round((row.total / row.max) * 100) : 0
 }
 
 // Порог тестового балла ЕГЭ: 73 — «отлично» у большинства вузов, 50 — рубеж
@@ -330,7 +324,7 @@ function AnswerCell({ n, correct, student }) {
 
 function VariantRow({ variant: v }) {
   const [expanded, setExpanded] = useState(false)
-  const isEge = v.type === "ЕГЭ"
+  const isTest = v.res.kind === "test"
   const L = layoutOf(v.type)
   const correctAnswers = v.answers?.part1 || []
   const studentAnswers = v.submission?.part1_answers || []
@@ -338,10 +332,10 @@ function VariantRow({ variant: v }) {
   // У ЕГЭ вторая часть у каждого варианта своя (что собрали, то и проверяли) —
   // показываем только реально оценённые задания, иначе «0 из 4» появлялось бы
   // там, где задания просто не было.
-  const part2Groups = isEge
+  const part2Groups = L.part2.length && v.type !== "ОГЭ"
     ? L.part2.map((g) => ({ ...g, nums: g.nums.filter((n) => part2Detail[n] !== undefined) })).filter((g) => g.nums.length)
     : L.part2
-  const scoreTone = isEge
+  const scoreTone = isTest
     ? egeTone(v.testScore)
     : (v.grade >= 4 ? "green" : v.grade === 3 ? "amber" : "red")
 
@@ -356,9 +350,9 @@ function VariantRow({ variant: v }) {
           <span className="truncate">{v.title}</span>
         </span>
         <span className="text-gray-500 tabular-nums">{v.part1} / {L.part1Max}</span>
-        <span className="text-gray-500 tabular-nums">{v.part2} / {L.part2Total}</span>
-        <span className="font-medium tabular-nums">{v.total}</span>
-        <span className="justify-self-start"><Chip tone={scoreTone}>{isEge ? v.testScore : v.grade}</Chip></span>
+        <span className="text-gray-500 tabular-nums">{L.part2Total ? `${v.part2} / ${L.part2Total}` : "—"}</span>
+        <span className="font-medium tabular-nums">{v.total} <span className="text-gray-400 font-normal">/ {v.max}</span></span>
+        <span className="justify-self-start"><Chip tone={scoreTone}>{secondaryLabel(v.res, { short: true })}</Chip></span>
       </button>
 
       <Collapse open={expanded}>
@@ -418,8 +412,8 @@ function VariantRow({ variant: v }) {
 
 function StudentDetail({ student, stats }) {
   const { rows, last, avg, best, bestRow, target } = stats
-  const isEge = last.type === "ЕГЭ"
-  const max = maxPrimaryOf(last.type)
+  const isTest = last.res.kind === "test"
+  const max = last.max
   const L = layoutOf(last.type)
 
   return (
@@ -429,9 +423,9 @@ function StudentDetail({ student, stats }) {
           <div className="text-[11px] text-gray-400">Последняя работа</div>
           <div className="text-xl font-semibold mt-1 tabular-nums">{last.total} <span className="text-sm font-normal text-gray-400">/ {max}</span></div>
           <div className="mt-1.5">
-            {isEge
-              ? <Chip tone="blue">тестовый {last.testScore}</Chip>
-              : <Chip tone={last.grade >= 4 ? "green" : last.grade === 3 ? "amber" : "red"}>оценка {last.grade}</Chip>}
+            {isTest
+              ? <Chip tone={egeTone(last.testScore)}>{secondaryLabel(last.res)}</Chip>
+              : <Chip tone={last.grade >= 4 ? "green" : last.grade === 3 ? "amber" : "red"}>{secondaryLabel(last.res)}</Chip>}
           </div>
         </div>
         <div className="glass-sm p-3">
@@ -443,13 +437,13 @@ function StudentDetail({ student, stats }) {
           <div className="text-[11px] text-gray-400">Лучший результат</div>
           <div className="text-xl font-semibold mt-1 tabular-nums text-green-600 dark:text-green-400">{best}</div>
           <div className="text-[11px] text-gray-400 mt-1.5">
-            {isEge ? `тестовый ${bestRow.testScore}` : `оценка ${bestRow.grade}`}
+            {secondaryLabel(bestRow.res)}
           </div>
         </div>
         <div className="glass-sm p-3">
-          <div className="text-[11px] text-gray-400">Часть 1 / часть 2</div>
-          <div className="text-xl font-semibold mt-1 tabular-nums">{last.part1} <span className="text-gray-300 dark:text-gray-600">·</span> {last.part2}</div>
-          <div className="text-[11px] text-gray-400 mt-1.5">из {L.part1Max} и {L.part2Total}</div>
+          <div className="text-[11px] text-gray-400">{L.part2Total ? "Часть 1 / часть 2" : "Часть 1"}</div>
+          <div className="text-xl font-semibold mt-1 tabular-nums">{last.part1}{L.part2Total ? <> <span className="text-gray-300 dark:text-gray-600">·</span> {last.part2}</> : null}</div>
+          <div className="text-[11px] text-gray-400 mt-1.5">{L.part2Total ? `из ${L.part1Max} и ${L.part2Total}` : `из ${L.part1Max}`}</div>
         </div>
       </div>
 
@@ -675,17 +669,32 @@ function CohortWeakTypes({ studentIds }) {
 
 function toRow(variant, submission, fallbackType) {
   const type = variant.type || fallbackType || "ОГЭ"
-  const isEge = type === "ЕГЭ"
+  const L = layoutOf(type)
+  const total = submission.total_score || 0
+  // Задания части 2, реально вошедшие в вариант: у ЕГЭ их состав свой у каждой
+  // работы, поэтому максимум считается по снимку, а не по всему экзамену.
+  const p2 = [...new Set((variant.tasks_snapshot || []).map((t) => t.number).filter((n) => L.part2Max[n]))]
+  const p2Nums = p2.length ? p2 : Object.keys(L.part2Max).map(Number)
+  const max = variantMaxPrimary(type, [...part1NumbersOf(type), ...p2Nums])
+  // geom_score хранит либо баллы за геометрию (ОГЭ по математике), либо
+  // тестовый балл — как это записала форма проверки. Как геометрию читаем
+  // только там, где геометрия вообще есть.
+  const geomNums = scaleOf(type)?.geometryNumbers
+  const res = examResult(type, total, {
+    geometry: geomNums ? (submission.geom_score ?? null) : null,
+    variantMax: max,
+  })
   return {
     title: variant.title,
     type,
     date: variant.created_at,
-    total: submission.total_score || 0,
+    total,
+    max,
     part1: submission.part1_score || 0,
     part2: submission.part2_score || 0,
-    grade: isEge ? null : getOgeGrade(submission.total_score || 0, submission.geom_score || 0),
-    // У ЕГЭ в geom_score лежит тестовый балл — так его пишет форма проверки.
-    testScore: isEge ? (submission.geom_score ?? getEgeTestScore(submission.total_score || 0)) : null,
+    res,
+    grade: res.grade,
+    testScore: res.testScore,
     answers: variant.answers,
     submission,
   }
@@ -695,15 +704,18 @@ function toRow(variant, submission, fallbackType) {
 // Разбивку по частям такая запись не хранит, поэтому раскладываем по типовой
 // пропорции — это оценка, а не данные проверки.
 function synthesizeRows(student) {
+  // Старые записи не помнят предмет: у цели «ЕГЭ» считаем профильную математику —
+  // единственный ЕГЭ, по которому эти баллы и выставляли.
   const isEge = student.goal === "ЕГЭ"
+  const legacyType = isEge ? "ЕГЭ Профиль" : "ОГЭ"
   const now = Date.now()
   return student.results.map((total, i) => {
     const part1 = isEge ? Math.min(12, Math.round(total * 0.45)) : Math.min(19, Math.round(total * 0.68))
-    const geomOrTest = isEge ? getEgeTestScore(total) : Math.max(2, Math.round(total * 0.22))
+    const geomOrTest = isEge ? testScoreOf("ЕГЭ Профиль", total) : Math.max(2, Math.round(total * 0.22))
     return toRow(
       {
         title: `Вариант ${i + 1}`,
-        type: isEge ? "ЕГЭ" : "ОГЭ",
+        type: legacyType,
         created_at: new Date(now - (student.results.length - i) * 14 * 24 * 60 * 60 * 1000).toISOString(),
         answers: { part1: [] },
       },
@@ -716,7 +728,7 @@ function synthesizeRows(student) {
         part1_answers: [],
         part2_score_detail: {},
       },
-      isEge ? "ЕГЭ" : "ОГЭ",
+      legacyType,
     )
   })
 }
@@ -729,7 +741,7 @@ function computeStats(student, rows) {
   const last = sorted[sorted.length - 1]
   const prev = sorted.length > 1 ? sorted[sorted.length - 2] : null
   const delta = prev ? last.total - prev.total : null
-  const pct = share(last.total, last.type)
+  const pct = share(last)
   const target = student.targetScore || 0
   const bestRow = sorted.reduce((a, b) => (b.total > a.total ? b : a), sorted[0])
 
@@ -822,7 +834,7 @@ function Results({ students, user }) {
     if (!arr.length) return null
     return Math.round(arr.reduce((s, c) => {
       const prev = c.stats.rows[c.stats.rows.length - 2]
-      return s + share(prev.total, prev.type)
+      return s + share(prev)
     }, 0) / arr.length)
   })()
   const shareDelta = prevShare === null ? null : avgShare - prevShare
