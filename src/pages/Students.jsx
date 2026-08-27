@@ -81,10 +81,12 @@ const GOAL_STYLE = {
 // Раскладка таблицы учеников. Цель и телефон — отдельными столбцами, иначе
 // строка выглядит пустой справа. Столбцы убираются по мере сужения окна, и
 // порядок шаблона обязан совпадать с порядком видимых ячеек в разметке
-// (до lg столбца «Следующий урок» нет — он самый широкий и уходит первым).
+// (до lg нет «Следующего урока» — он самый широкий и уходит первым, до xl нет
+// «Занятий»).
 const COLS =
   "grid-cols-[minmax(120px,1.5fr)_minmax(100px,0.9fr)_minmax(120px,1fr)_minmax(110px,1fr)_36px] " +
-  "lg:grid-cols-[minmax(160px,1.6fr)_minmax(110px,0.9fr)_minmax(140px,1fr)_minmax(160px,1.2fr)_minmax(120px,1fr)_36px]"
+  "lg:grid-cols-[minmax(160px,1.6fr)_minmax(110px,0.9fr)_minmax(140px,1fr)_minmax(160px,1.2fr)_minmax(120px,1fr)_36px] " +
+  "xl:grid-cols-[minmax(160px,1.6fr)_minmax(110px,0.9fr)_minmax(140px,1fr)_minmax(160px,1.2fr)_minmax(120px,0.9fr)_minmax(120px,1fr)_36px]"
 
 // Пустой список: карточку ученика вручную не заводят, поэтому объясняем, откуда
 // ученик берётся, и даём единственное действие — пригласить.
@@ -526,6 +528,7 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
             <span>Цель</span>
             <span>Телефон</span>
             <span className="hidden lg:flex items-center gap-1"><Icon name="calendar" size={11} />Следующий урок</span>
+            <span className="hidden xl:flex items-center gap-1"><Icon name="check" size={11} />Занятий</span>
             <span className="flex items-center gap-1"><Icon name="dollar" size={11} />Долг за занятия</span>
             <span />
           </div>
@@ -534,6 +537,8 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
             const status = getPaymentStatus(student)
             const next = getNextLesson(student)
             const goal = GOAL_STYLE[student.goal]
+            const conducted = (student.lessons || []).filter((l) => isLessonConducted(l)).length
+            const upcoming = (student.lessons || []).length - conducted
 
             return (
               <div key={student.id} onClick={() => setSelectedStudent(student.id)}
@@ -572,6 +577,22 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
                     </span>
                   ) : (
                     <span className="text-gray-300">Не запланировано</span>
+                  )}
+                </div>
+
+                {/* Проведено занятий: объём работы с учеником, которого не видно
+                    ни по долгу (он обнуляется оплатой), ни по ближайшему уроку. */}
+                <div className="hidden xl:block text-xs text-gray-600">
+                  {conducted > 0 ? (
+                    <>
+                      <span className="font-medium text-gray-700">{conducted}</span>
+                      <span className="text-gray-400"> {plural(conducted, "занятие", "занятия", "занятий")}</span>
+                      {upcoming > 0 && <span className="text-gray-300"> · +{upcoming}</span>}
+                    </>
+                  ) : upcoming > 0 ? (
+                    <span className="text-gray-400">{upcoming} впереди</span>
+                  ) : (
+                    <span className="text-gray-300">—</span>
                   )}
                 </div>
 
