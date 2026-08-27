@@ -284,7 +284,7 @@ function ParentDashboard({ user, onLogout }) {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setDark(!dark)}
-              className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-white/40 transition-colors"
+              className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 rounded-lg hover:bg-white/40 transition-colors"
             >
               <MorphIcon from="moon" to="sun" size={16} active={dark} hover={false} rotate />
             </button>

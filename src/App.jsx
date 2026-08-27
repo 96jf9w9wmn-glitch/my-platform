@@ -62,7 +62,7 @@ function ThemeToggle() {
   return (
     <button
       onClick={() => setDark(!dark)}
-      className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg text-sm"
+      className="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
     >
       <MorphIcon from="moon" to="sun" size={16} active={dark} hover={false} rotate />
     </button>
@@ -193,7 +193,7 @@ function NotificationBell({ userId, onNavigate }) {
       <button
         ref={btnRef}
         onClick={handleOpen}
-        className="relative p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+        className="relative w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
       >
         <span key={ringKey} className={ringKey > 0 ? "bell-ringing" : "inline-flex"}>
           <MorphIcon from="bell" to="bell-ring" size={16} active={unread > 0} rotate toClassName="text-orange-500" />
@@ -262,7 +262,7 @@ function PlanStar({ active, onClick }) {
       onClick={onClick}
       aria-label="Подписка"
       title={`Подписка · тариф «${plan.name}»`}
-      className={`p-2 rounded-lg transition-all duration-200 active:scale-90 ${
+      className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all duration-200 active:scale-90 ${
         paid
           ? "text-amber-500 hover:bg-amber-500/10"
           : "text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-white/[0.08]"

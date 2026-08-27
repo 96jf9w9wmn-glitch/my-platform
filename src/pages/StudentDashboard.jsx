@@ -1086,7 +1086,7 @@ function StudentNotificationBell({ userId, onNavigate }) {
       <button
         ref={btnRef}
         onClick={handleOpen}
-        className="relative p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+        className="relative w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
       >
         <span key={ringKey} className={ringKey > 0 ? "bell-ringing" : "inline-flex"}>
           <MorphIcon from="bell" to="bell-ring" size={16} active={unread > 0} rotate toClassName="text-orange-500" />
@@ -1765,7 +1765,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
             <span className="hidden md:block text-sm text-gray-600">{user.profile?.name}</span>
             <button
               onClick={() => setDark(!dark)}
-              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg text-sm"
+              className="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
             >
               <MorphIcon from="moon" to="sun" size={16} active={dark} hover={false} rotate />
             </button>
@@ -1904,8 +1904,46 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                   </div>
                 </div>
 
-                {/* Занятия+расписание и Информация — два плотных блока в ряд, равной высоты */}
+                {/* Информация и занятия+расписание — два плотных блока в ряд, равной высоты */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+
+                  {/* Информация — репетитор + контакты + код родителя */}
+                  <div className="glass p-5">
+                    <div className="text-base font-medium mb-4">Информация</div>
+                    <div className="flex items-center gap-2 pb-3 mb-3 border-b border-white/30">
+                      <div className="w-9 h-9 rounded-full bg-purple-100 flex items-center justify-center text-sm font-medium text-purple-600 flex-shrink-0">Р</div>
+                      <div>
+                        <div className="text-xs text-gray-400">Репетитор</div>
+                        <div className="text-sm text-gray-700 leading-tight">Ваш репетитор</div>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-2.5">
+                      {user.profile?.phone && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-400 flex-shrink-0"><Icon name="phone" size={14} /></span>
+                          <span className="text-sm text-gray-700">{formatPhone(user.profile.phone)}</span>
+                        </div>
+                      )}
+                      {student.goal && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-400 flex-shrink-0"><Icon name="target" size={14} /></span>
+                          <span className="text-sm text-gray-700">{student.goal}</span>
+                        </div>
+                      )}
+                      {student.lessonPrice > 0 && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-400 flex-shrink-0"><Icon name="dollar" size={14} /></span>
+                          <span className="text-sm text-gray-700">{student.lessonPrice.toLocaleString("ru-RU")} ₽/занятие</span>
+                        </div>
+                      )}
+                      {student.parent_code?.trim() && (
+                        <div className="mt-1 pt-3 border-t border-white/30">
+                          <div className="text-xs text-gray-400 font-medium mb-2">Код для родителей</div>
+                          <CopyCodeBlock code={student.parent_code.trim()} />
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
                   {/* Занятия + расписание */}
                   <div className="glass p-5">
@@ -1960,44 +1998,6 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                         )}
                       </div>
                     )}
-                  </div>
-
-                  {/* Информация — репетитор + контакты + код родителя */}
-                  <div className="glass p-5">
-                    <div className="text-base font-medium mb-4">Информация</div>
-                    <div className="flex items-center gap-2 pb-3 mb-3 border-b border-white/30">
-                      <div className="w-9 h-9 rounded-full bg-purple-100 flex items-center justify-center text-sm font-medium text-purple-600 flex-shrink-0">Р</div>
-                      <div>
-                        <div className="text-xs text-gray-400">Репетитор</div>
-                        <div className="text-sm text-gray-700 leading-tight">Ваш репетитор</div>
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-2.5">
-                      {user.profile?.phone && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-400 flex-shrink-0"><Icon name="phone" size={14} /></span>
-                          <span className="text-sm text-gray-700">{formatPhone(user.profile.phone)}</span>
-                        </div>
-                      )}
-                      {student.goal && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-400 flex-shrink-0"><Icon name="target" size={14} /></span>
-                          <span className="text-sm text-gray-700">{student.goal}</span>
-                        </div>
-                      )}
-                      {student.lessonPrice > 0 && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-400 flex-shrink-0"><Icon name="dollar" size={14} /></span>
-                          <span className="text-sm text-gray-700">{student.lessonPrice.toLocaleString("ru-RU")} ₽/занятие</span>
-                        </div>
-                      )}
-                      {student.parent_code?.trim() && (
-                        <div className="mt-1 pt-3 border-t border-white/30">
-                          <div className="text-xs text-gray-400 font-medium mb-2">Код для родителей</div>
-                          <CopyCodeBlock code={student.parent_code.trim()} />
-                        </div>
-                      )}
-                    </div>
                   </div>
 
                 </div>
