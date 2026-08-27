@@ -3,6 +3,10 @@
 /* Without this, Tailwind's dark: variant defaults to @media (prefers-color-scheme),
    ignoring the .dark class this app's ThemeToggle actually applies to <html>. */
 @custom-variant dark (&:where(.dark, .dark *));
+/* «Просторный» экран: и широкий, и высокий. Ландшафтный телефон широкий (852px),
+   но высотой ~390px — обычный sm: считал бы его десктопом, и панель доски
+   занимала бы полэкрана. */
+@custom-variant big (@media (min-width: 640px) and (min-height: 520px));
 
 @layer base {
   button, a {
@@ -1753,4 +1757,45 @@ html.kb-open .kb-collapse { padding-bottom: 0; }
 
 @media (prefers-reduced-motion: reduce) {
   .quiz-panel, .quiz-panel[data-pos="active"] { transition: none; transform: none; }
+}
+
+/* Панель доски: секция цвета и обводки при смене инструмента не пропадает рывком,
+   а съезжает по ширине. Ширину меряет сам компонент (ResizeObserver по содержимому):
+   анимировать `auto` браузер не умеет, а grid 0fr не сжимает элемент внутри flex —
+   панель считает его ширину по содержимому и съезда не видно.
+   Подрезка содержимого висит только на время съезда (класс .is-anim) и в закрытом
+   состоянии: в покое она обрезала бы всплывающее меню обводки над панелью. */
+.board-strip {
+  /* Без этого flex не даёт элементу стать уже содержимого (min-width: auto) —
+     ширина осталась бы прежней, и съезда не было бы видно. */
+  min-width: 0;
+  opacity: 0;
+  transform: scale(0.94);
+  /* Схлопнутая секция всё ещё съедала бы два зазора панели — гасим их отрицательным
+     полем, тоже плавно, иначе панель дёрнулась бы на 8px в конце съезда. */
+  margin-inline: -0.25rem;
+  transition:
+    width 0.3s cubic-bezier(0.32, 0.72, 0, 1),
+    margin 0.3s cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 0.2s ease,
+    transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.board-strip.is-open {
+  opacity: 1;
+  transform: none;
+  margin-inline: 0;
+}
+.board-strip-in {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  width: max-content;
+}
+.board-strip:not(.is-open),
+.board-strip.is-anim { overflow: hidden; }
+.board-strip:not(.is-open) { pointer-events: none; }
+.board-strip-in > * { flex: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .board-strip { transition: none; transform: none; }
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react"
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, lazy, Suspense } from "react"
 import { supabase } from "../supabase"
 import { signBoardScene, signStorageUrl } from "../storageUrl"
 import Icon from "./Icon"
@@ -33,21 +33,7 @@ const BG_COLORS = ["#ffffff", "#f2f2f7", "#fdf6e3", "#1c1c1e", "#0f172a", "#123a
 // Остальные взяты насыщенными (не пастельными): на тёмной доске бледный цвет
 // сливался с фоном, и кружок в панели было не различить.
 const BASE_INKS = ["ink", "#0A84FF", "#FF3B30", "#30D158", "#FF9F0A", "#BF5AF2"]
-const CUSTOM_MAX = 4                                   // сколько своих цветов помним
-const INK_KEY = "board-ink-colors", BGC_KEY = "board-bg-colors"
 const SMART_KEY = "board-smart-draw"
-
-function loadColors(key) {
-  try {
-    const arr = JSON.parse(localStorage.getItem(key) || "[]")
-    return Array.isArray(arr) ? arr.filter((c) => /^#[0-9a-f]{6}$/i.test(c)).slice(0, CUSTOM_MAX) : []
-  } catch { return [] }
-}
-// Новый цвет встаёт первым, дубли убираются, хвост обрезается
-function pushColor(list, hex) {
-  const next = [hex, ...list.filter((c) => c.toLowerCase() !== hex.toLowerCase())].slice(0, CUSTOM_MAX)
-  return next
-}
 
 const CURSOR_COLORS = ["#007AFF", "#34C759", "#FF9500", "#AF52DE", "#FF3B30"]
 function colorFor(id) {
@@ -204,14 +190,10 @@ function Swatch({ hex, active, dark, title, onClick, size = 24 }) {
   )
 }
 
-// Свой цвет из системной палитры. input[type=color] в React шлёт onChange на каждое
-// движение ползунка — поэтому предпросмотр и запоминание разведены: onChange красит,
-// onBlur кладёт цвет в список своих.
-function ColorPick({ value, dark, title, onPreview, onCommit, size = 24 }) {
+// Свой цвет из системной палитры. Выбранный цвет только КРАСИТ и в ряд кружков не
+// добавляется: ряд и так забит базовыми цветами, лишний кружок туда не помещался.
+function ColorPick({ value, dark, title, onPreview, size = 24 }) {
   const hex = /^#[0-9a-f]{6}$/i.test(value) ? value : "#007AFF"
-  // Цвет, с которого палитру открыли: если её закрыли ничего не выбрав, запоминать
-  // нечего — иначе в своих цветах оседал бы текущий цвет пера при каждом открытии.
-  const opened = useRef(hex)
   return (
     <label title={title} aria-label={title}
       className="press-tap relative rounded-full flex items-center justify-center cursor-pointer"
@@ -227,9 +209,7 @@ function ColorPick({ value, dark, title, onPreview, onCommit, size = 24 }) {
         </span>
       </span>
       <input type="color" value={hex} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-        onFocus={(e) => { opened.current = e.target.value }}
-        onChange={(e) => onPreview(e.target.value)}
-        onBlur={(e) => { if (e.target.value.toLowerCase() !== opened.current.toLowerCase()) onCommit(e.target.value) }} />
+        onChange={(e) => onPreview(e.target.value)} />
     </label>
   )
 }
@@ -248,10 +228,6 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // Доска занимает весь экран, поэтому её уход тоже должен быть плавным:
   // класс .is-closing держится, пока идёт затухание, и лишь потом зовётся onClose.
   const { cls: closingCls, close: leave } = useClosing(onClose)
-  // Свои цвета живут рядом с базовыми и переживают перезагрузку
-  const [customInks, setCustomInks] = useState(() => loadColors(INK_KEY))
-  const [customBgs, setCustomBgs] = useState(() => loadColors(BGC_KEY))
-  const colors = [...BASE_INKS, ...customInks]
   const [tool, setTool] = useState("pen")   // pen | line | rect | eraser | hand
   const [color, setColor] = useState("ink")
   const [width, setWidth] = useState(WIDTHS[1])
@@ -304,11 +280,38 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const [smart, setSmart] = useState(() => localStorage.getItem(SMART_KEY) === "1")
   // Скриншот из буфера обмена. Режимы слежения:
   //   "off"  — браузер буфер не отдаёт, остаётся ⌘V (кнопки нет);
-  //   "ask"  — разрешение ещё не выдано, в панели одна кнопка «включить»;
+  //   "ask"  — разрешение ещё не выдано, слежение не ведём;
   //   "auto" — разрешение есть, доска сама замечает скриншот и предлагает вставить.
   const [clipMode, setClipMode] = useState("off")
   const [clipShot, setClipShot] = useState(null)   // {blob, url, key} — что предлагаем
   const clipSkip = useRef(null)                    // ключ снимка, от которого отказались
+  // Цвет и обводка нужны только тем инструментам, которые оставляют линию
+  const stylingTool = tool === "pen" || SHAPE_TOOLS.has(tool)
+  // Секция цвета и обводки при смене инструмента съезжает по ширине, а не пропадает
+  // рывком. Ширину берём с самого содержимого: `auto` не анимируется, а сумма
+  // кнопок зависит от размера экрана и набора значков, поэтому числом её не задать.
+  const stripRef = useRef(null)
+  const [stripW, setStripW] = useState(0)
+  useLayoutEffect(() => {
+    const el = stripRef.current
+    if (!el) return
+    const measure = () => setStripW(el.getBoundingClientRect().width)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  // Подрезка содержимого нужна только на время съезда: в покое она обрезала бы
+  // всплывающее меню обводки, которое рисуется над панелью.
+  const [stripAnim, setStripAnim] = useState(false)
+  const stylingWas = useRef(stylingTool)
+  useEffect(() => {
+    if (stylingWas.current === stylingTool) return   // при первом заходе анимировать нечего
+    stylingWas.current = stylingTool
+    setStripAnim(true)
+    const t = setTimeout(() => setStripAnim(false), 320)
+    return () => clearTimeout(t)
+  }, [stylingTool])
   // Какая подсказка сейчас показана после нажатия (на сенсорном экране навести
   // мышь нельзя, а без названий панель — набор непонятных значков).
   const [tapped, setTapped] = useState("")
@@ -1337,19 +1340,6 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     dropShot()
     await insertBlob(shot.blob)
   }
-  // Разрешение на чтение буфера спрашиваем ТОЛЬКО по нажатию: браузер показывает
-  // своё окно лишь в ответ на действие пользователя, а выскочить само оно не должно.
-  // Согласие превращает слежение в автоматическое — дальше кнопка не нужна.
-  async function enableClipboard() {
-    const shot = await readClipboardShot()
-    let granted
-    try { granted = (await navigator.permissions.query({ name: "clipboard-read" })).state === "granted" }
-    catch { granted = false }   // Safari про такое разрешение не знает — только по нажатию
-    setClipMode(granted ? "auto" : "ask")
-    if (shot) offerShot(shot)
-    else flashTip("paste")
-  }
-
   // Лист с заданием из банка — в центр видимой области. Каждое следующее смещаем
   // лесенкой: иначе задания легли бы ровно друг на друга и выглядели бы как одно.
   async function insertTaskSheet(file, sheetWidth) {
@@ -1466,29 +1456,10 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   function toggleTheme() {
     changeBgColor(isDarkColor(bgColor) ? BG_LIGHT : BG_DARK)
   }
-  // Свой цвет пера из системной палитры. Пока пользователь ведёт ползунок, событие
-  // сыплется десятками — в список запоминаем только на закрытии палитры (onBlur/change
-  // у input[type=color] в React приходит на каждое движение, поэтому список пишем
-  // отдельной функцией commitInk).
+  // Свой цвет пера из системной палитры: красит сразу, пока ведут ползунок.
   function previewInk(hex) {
     setColor(hex)
     if (tool === "eraser" || tool === "hand" || tool === "cursor") setTool("pen")
-  }
-  function commitInk(hex) {
-    if (BASE_INKS.includes(hex)) return
-    setCustomInks((prev) => {
-      const next = pushColor(prev, hex)
-      localStorage.setItem(INK_KEY, JSON.stringify(next))
-      return next
-    })
-  }
-  function commitBgColor(hex) {
-    if (BG_COLORS.includes(hex)) return
-    setCustomBgs((prev) => {
-      const next = pushColor(prev, hex)
-      localStorage.setItem(BGC_KEY, JSON.stringify(next))
-      return next
-    })
   }
   function toggleSmart() {
     setSmart((v) => { localStorage.setItem(SMART_KEY, v ? "0" : "1"); return !v })
@@ -1666,12 +1637,10 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // Кнопки панели: один размер на все, значок крупный, подписи заменены подсказками.
   // Цвет значка задаём стилем по светлости ДОСКИ, а не темы кабинета: на тёмной доске
   // серые токены Tailwind давали почти невидимые значки.
-  const btnBase = "group relative press-tap w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center transition-colors"
+  const btnBase = "group relative press-tap w-9 h-9 big:w-11 big:h-11 rounded-xl flex items-center justify-center transition-colors"
   const btnOn = "bg-blue-500 text-white"
   const btnIdle = "hover:bg-black/10 dark:hover:bg-white/10"
   const idleStyle = { color: dark ? "#d1d1d6" : "#3f4652" }
-  // Цвет и обводка нужны только тем инструментам, которые оставляют линию
-  const stylingTool = tool === "pen" || SHAPE_TOOLS.has(tool)
   const cursor = tool === "cursor" ? "default" : tool === "hand" ? "grab" : "crosshair"
 
   // Ручки выделения из ОРИЕНТИРОВАННОЙ рамки {cx,cy,ax,ay,angle} (экранные координаты)
@@ -1739,12 +1708,12 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
                 </div>
                 {/* Цвет фона: готовые + свои + системная палитра */}
                 <div className="flex gap-1 items-center flex-wrap max-w-[16rem] pt-0.5">
-                  {[...BG_COLORS, ...customBgs].map((hex) => (
+                  {BG_COLORS.map((hex) => (
                     <Swatch key={hex} hex={hex} active={bgColor === hex} dark={dark} title="Цвет фона"
                       onClick={() => changeBgColor(hex)} />
                   ))}
                   <ColorPick value={bgColor} dark={dark} title="Свой цвет фона"
-                    onPreview={changeBgColor} onCommit={commitBgColor} />
+                    onPreview={changeBgColor} />
                 </div>
               </div>
             )}
@@ -1835,7 +1804,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
             {/* Панель свойств — по центру над рамкой */}
             <div className="absolute flex items-center gap-1 px-2 py-1.5 rounded-2xl shadow-lg popup-bubble pointer-events-auto"
               style={{ left: barX, top: barY, transform: "translateX(-50%)", background: panelBg, border: `1px solid ${panelBorder}`, maxWidth: "92vw", flexWrap: "wrap" }}>
-              {selProps && colors.map((c) => (
+              {selProps && BASE_INKS.map((c) => (
                 <button key={c} onClick={() => setSelectionColor(c)} title={c === "ink" ? "Чернила" : "Цвет"}
                   className="press-tap w-6 h-6 rounded-full flex items-center justify-center">
                   <span className="rounded-full" style={{ width: 17, height: 17, background: resolveColor(c, dark),
@@ -1875,8 +1844,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><div className="loader-logo" /></div>
         )}
 
-        {/* Зум-контролы */}
-        <div className="absolute bottom-4 right-4 flex flex-col rounded-xl shadow-lg overflow-hidden"
+        {/* Зум-контролы. На телефоне скрыты: зум там — щипок, а угол занят панелью */}
+        <div className="absolute bottom-4 right-4 hidden big:flex flex-col rounded-xl shadow-lg overflow-hidden"
           style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
           <button onClick={() => zoomBy(1.2)} title="Приблизить"
             className="press-tap w-9 h-9 flex items-center justify-center text-gray-500 hover:bg-black/5 dark:hover:bg-white/10">
@@ -1896,7 +1865,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         {/* Панель инструментов — плавает поверх холста, чтобы вся область была доской.
             Подписей у кнопок нет намеренно: панель стала крупнее и читается значками,
             а название показывает подсказка — по наведению и по нажатию на сенсорном экране. */}
-        <div className="absolute bottom-4 left-0 right-0 flex flex-col items-center gap-2 px-3 pointer-events-none">
+        <div className="absolute bottom-2 big:bottom-4 left-0 right-0 flex flex-col items-center gap-2 px-2 big:px-3 pointer-events-none">
         {/* Заметили снимок в буфере — предлагаем положить его на доску одним нажатием */}
         {clipShot && (
           <div className="flex items-center gap-2.5 pl-2 pr-1.5 py-1.5 rounded-2xl shadow-xl popup-bubble pointer-events-auto max-w-full"
@@ -1915,7 +1884,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
             </button>
           </div>
         )}
-        <div className="flex flex-wrap items-center justify-center gap-1 rounded-2xl px-2.5 py-2 shadow-xl relative pointer-events-auto max-w-full"
+        <div className="flex flex-wrap items-center justify-center gap-0.5 big:gap-1 rounded-2xl px-1.5 py-1 big:px-2.5 big:py-2 shadow-xl relative pointer-events-auto max-w-full"
           style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
           {TOOLS.map((t) => t.erasers ? (
             <div key="eraser" className="relative" data-menu>
@@ -1992,39 +1961,43 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
           </button>
 
           {/* Цвет и обводка — только для инструментов, которые рисуют линию.
-              У ластика, курсора и руки они ничего не меняли и сбивали с толку. */}
-          {stylingTool && divider}
-          {stylingTool && [...colors.map((c) => {
-            const shown = resolveColor(c, dark) // «чернила» показываем реальным цветом
-            return (
-              <Swatch key={c} hex={shown} active={color === c} dark={dark}
-                title={c === "ink" ? "Чернила" : "Цвет"}
-                onClick={() => { setColor(c); if (tool === "eraser" || tool === "hand" || tool === "cursor") setTool("pen") }} />
-            )
-          }),
-            <ColorPick key="pick" value={resolveColor(color, dark)} dark={dark} title="Свой цвет"
-              onPreview={previewInk} onCommit={commitInk} />,
-          ]}
-
-          {stylingTool && divider}
-
-          {/* Настройки обводки */}
-          {stylingTool && (
-            <div className="relative" data-menu>
-              <button onPointerDown={() => flashTip("stroke")} onClick={() => toggleMenu("stroke")}
-                className={`${btnBase} ${menuShown("stroke") ? "bg-blue-500/15 text-blue-500" : btnIdle}`}
-                style={menuShown("stroke") ? undefined : idleStyle}>
-                <Icon name="stroke" size={21} />
-                <Tip label="Настройки обводки" dark={dark} show={tapped === "stroke"} />
-              </button>
-              {menuShown("stroke") && (
-                <div className={`absolute bottom-full mb-2 left-1/2 -translate-x-1/2 p-2 rounded-xl shadow-lg ${menuAnim("stroke")}`}
-                  style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
-                  <StrokeSettings dark={dark} tool={tool} curWidth={width} curDash={dash} onWidth={setWidth} onDash={setDash} />
-                </div>
-              )}
+              У ластика, курсора и руки они ничего не меняли и сбивали с толку.
+              Секция не пропадает рывком, а съезжает по ширине: панель при смене
+              инструмента должна уменьшаться плавно. Пока идёт съезд, содержимое
+              подрезается (`is-anim`), в покое подрезки нет — иначе всплывающее
+              меню обводки обрезалось бы панелью. */}
+          <div className={`board-strip ${stylingTool ? "is-open" : ""} ${stripAnim ? "is-anim" : ""}`}
+            aria-hidden={!stylingTool} style={{ width: stylingTool ? stripW || "auto" : 0 }}>
+            <div className="board-strip-in" ref={stripRef}>
+              {divider}
+              {BASE_INKS.map((c) => {
+                const shown = resolveColor(c, dark) // «чернила» показываем реальным цветом
+                return (
+                  <Swatch key={c} hex={shown} active={color === c} dark={dark}
+                    title={c === "ink" ? "Чернила" : "Цвет"}
+                    onClick={() => { setColor(c); if (tool === "eraser" || tool === "hand" || tool === "cursor") setTool("pen") }} />
+                )
+              })}
+              <ColorPick value={resolveColor(color, dark)} dark={dark} title="Свой цвет"
+                onPreview={previewInk} />
+              {divider}
+              {/* Настройки обводки */}
+              <div className="relative" data-menu>
+                <button onPointerDown={() => flashTip("stroke")} onClick={() => toggleMenu("stroke")}
+                  className={`${btnBase} ${menuShown("stroke") ? "bg-blue-500/15 text-blue-500" : btnIdle}`}
+                  style={menuShown("stroke") ? undefined : idleStyle} tabIndex={stylingTool ? undefined : -1}>
+                  <Icon name="stroke" size={21} />
+                  <Tip label="Настройки обводки" dark={dark} show={tapped === "stroke"} />
+                </button>
+                {menuShown("stroke") && (
+                  <div className={`absolute bottom-full mb-2 left-1/2 -translate-x-1/2 p-2 rounded-xl shadow-lg ${menuAnim("stroke")}`}
+                    style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
+                    <StrokeSettings dark={dark} tool={tool} curWidth={width} curDash={dash} onWidth={setWidth} onDash={setDash} />
+                  </div>
+                )}
+              </div>
             </div>
-          )}
+          </div>
 
           {divider}
 
@@ -2035,16 +2008,6 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
             <Tip label="Добавить картинку" dark={dark} show={tapped === "image"} />
           </button>
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onPickImage} />
-
-          {/* Разрешить доске замечать скриншоты. Кнопка живёт только до согласия:
-              дальше снимок предлагается сам, и место в панели ей ни к чему. */}
-          {clipMode === "ask" && (
-            <button onPointerDown={() => flashTip("paste")} onClick={enableClipboard}
-              className={`${btnBase} ${btnIdle}`} style={idleStyle}>
-              <Icon name="clipboard" size={21} />
-              <Tip label="Замечать скриншоты из буфера" hotkey="⌘V" dark={dark} show={tapped === "paste"} />
-            </button>
-          )}
 
           {/* Задание из банка листом на доску */}
           {canAddTasks && (
