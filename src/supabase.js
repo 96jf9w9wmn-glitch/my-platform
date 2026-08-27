@@ -84,15 +84,26 @@ const ANON_ONLY_RPC = /\/rpc\/(student_login|student_register|student_validate_s
 // собственный auth клиента, а он нужен репетитору. Токен ученика уходит в
 // заголовке только пока жива его сессия (см. hasAppSession) — иначе запросы
 // репетитора шли бы под чужой ролью.
+//
+// Заголовки обязательно правим через Headers, а НЕ разбором объекта. Клиент
+// отдаёт сюда готовый экземпляр Headers, а `{ ...headers }` у него даёт пустой
+// объект: вместе с Authorization терялись apikey (Kong отвечал 401 на каждый
+// запрос ученика и родителя) и Content-Type (storage не понимал тело и отвечал
+// 400 — подписанных ссылок не было, вместо аватара и файлов оставался крестик).
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   global: {
     fetch: (input, init = {}) => {
       const url = typeof input === "string" ? input : input?.url || ""
       const token = ANON_ONLY_RPC.test(url) || !hasAppSession() ? null : getAppToken()
-      if (token) {
-        init.headers = { ...(init.headers || {}), Authorization: `Bearer ${token}` }
-      }
-      return fetch(input, init)
+      if (!token) return fetch(input, init)
+      // Заголовки бывают и на самом запросе (input — Request), и в init;
+      // берём оба, иначе потеряем те, что пришли не тем путём.
+      const headers = new Headers(
+        init.headers || (typeof input === "object" && input?.headers) || undefined
+      )
+      headers.set("Authorization", `Bearer ${token}`)
+      if (!headers.has("apikey")) headers.set("apikey", SUPABASE_ANON_KEY)
+      return fetch(input, { ...init, headers })
     },
   },
 })
