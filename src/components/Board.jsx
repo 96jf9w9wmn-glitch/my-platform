@@ -236,9 +236,10 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // Поэтому открытие любого попапа автоматически закрывает предыдущий, а клик мимо
   // (по холсту или где-то ещё) закрывает открытый — см. эффект ниже и onPointerDown.
   const [menu, setMenu] = useState(null)
-  // «Просторный» экран (см. вариант big: в index.css). На телефоне панель
-  // инструментов по просьбе владельца спрятана за кнопку-бургер: экран мал,
-  // и даже компактная панель отъедала у доски заметную полосу.
+  // «Просторный» экран (см. вариант big: в index.css). На телефоне вместо
+  // широкой панели — узкая строка по образцу мобильных tldraw и Excalidraw:
+  // главные инструменты видны всегда, цвет и обводка — за кнопкой-кружком
+  // текущего цвета, редкие действия — за «⋯».
   const BIG_MQ = "(min-width: 640px) and (min-height: 520px)"
   const [isBig, setIsBig] = useState(() => window.matchMedia(BIG_MQ).matches)
   useEffect(() => {
@@ -247,18 +248,6 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     mq.addEventListener("change", onChange)
     return () => mq.removeEventListener("change", onChange)
   }, [])
-  const [panelOpen, setPanelOpen] = useState(false)
-  const [panelClosing, setPanelClosing] = useState(false)
-  const panelTimer = useRef(null)
-  useEffect(() => () => clearTimeout(panelTimer.current), [])
-  function closePanel() {
-    if (panelTimer.current) return
-    setPanelClosing(true)
-    panelTimer.current = setTimeout(() => {
-      panelTimer.current = null
-      setPanelOpen(false); setPanelClosing(false)
-    }, POPUP_OUT_MS)
-  }
   // Закрывающийся попап держим смонтированным, пока играет анимация ухода
   const [closingMenu, setClosingMenu] = useState(null)
   const closeTimer = useRef(null)
@@ -969,15 +958,15 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   function onPointerDown(e) {
     // Открыт попап панели → первый тык по холсту просто закрывает его, не рисуя
     if (menu) { closeMenu(); return }
-    // На телефоне открыта развёрнутая панель → тык по холсту сворачивает её:
-    // выбрал инструмент, начал рисовать — панель не должна заслонять доску
-    if (!isBig && panelOpen && !panelClosing) closePanel()
     // Новый первичный указатель = начало нового жеста → сбрасываем возможные
     // «зависшие» указатели (недоснятое касание и т.п.), иначе рисование
     // навсегда уходит в режим жеста. Это самовосстановление.
     if (e.isPrimary) { pointers.current.clear(); gesture.current = null; panning.current = null }
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
-    canvasRef.current.setPointerCapture?.(e.pointerId)
+    // Захват может кинуть NotFoundError (Safari с уже отменённым касанием) —
+    // это не повод не рисовать: без захвата штрих просто оборвётся на выходе
+    // указателя за холст.
+    try { canvasRef.current.setPointerCapture?.(e.pointerId) } catch { /* рисуем без захвата */ }
 
     // Два ОДНОВРЕМЕННЫХ касания (только touch) → жест панорама/зум
     if (e.pointerType === "touch" && pointers.current.size >= 2) {
@@ -1667,6 +1656,43 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const btnOn = "bg-blue-500 text-white"
   const btnIdle = "hover:bg-black/10 dark:hover:bg-white/10"
   const idleStyle = { color: dark ? "#d1d1d6" : "#3f4652" }
+  // Попапы ластика и фигур — общие для широкой (big) и мобильной панелей,
+  // поэтому собраны один раз здесь, а не инлайном в каждой раскладке.
+  const eraserPopup = menuShown("eraser") && (
+    <div className={`absolute bottom-full mb-2 left-1/2 -translate-x-1/2 flex gap-1 p-2 rounded-xl shadow-lg ${menuAnim("eraser")}`}
+      style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
+      {[["stroke", "След"], ["object", "Объект целиком"]].map(([mode, label]) => (
+        <button key={mode} onClick={() => { setEraserMode(mode); setTool("eraser"); closeMenu("eraser") }}
+          className={`press-tap px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap ${
+            eraserMode === mode ? "bg-blue-500 text-white" : "hover:bg-black/5 dark:hover:bg-white/10"
+          }`} style={eraserMode === mode ? undefined : idleStyle}>
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+  const shapesPopup = menuShown("shapes") && (
+    <div className={`absolute bottom-full mb-2 left-1/2 -translate-x-1/2 flex flex-col gap-2 p-2 rounded-xl shadow-lg ${menuAnim("shapes")}`}
+      style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
+      {[["Плоские", SHAPES_2D], ["Объёмные", SHAPES_3D]].map(([title, list]) => (
+        <div key={title}>
+          <div className="text-[10px] uppercase tracking-wide px-1 mb-1" style={{ color: dark ? "#8e8e93" : "#9ca3af" }}>{title}</div>
+          <div className="flex gap-1">
+            {/* Подписи не нужны: фигуру видно по значку, а название
+                остаётся во всплывающей подсказке. */}
+            {list.map((sh) => (
+              <button key={sh.id} onClick={() => pickShape(sh.id)} title={sh.label} aria-label={sh.label}
+                className={`press-tap w-10 h-10 rounded-lg flex items-center justify-center ${tool === sh.id ? "bg-blue-500 text-white" : "hover:bg-black/5 dark:hover:bg-white/10"}`}
+                style={tool === sh.id ? undefined : idleStyle}>
+                <Icon name={sh.icon} size={20} />
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+
   const cursor = tool === "cursor" ? "default" : tool === "hand" ? "grab" : "crosshair"
 
   // Ручки выделения из ОРИЕНТИРОВАННОЙ рамки {cx,cy,ax,ay,angle} (экранные координаты)
@@ -1910,8 +1936,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
             </button>
           </div>
         )}
-        {(isBig || panelOpen) && (
-        <div className={`flex flex-wrap items-center justify-center gap-0.5 big:gap-1 rounded-2xl px-1.5 py-1 big:px-2.5 big:py-2 shadow-xl relative pointer-events-auto max-w-full ${isBig ? "" : panelClosing ? "popup-bubble-out" : "popup-bubble"}`}
+        {isBig && (
+        <div className="flex flex-wrap items-center justify-center gap-1 rounded-2xl px-2.5 py-2 shadow-xl relative pointer-events-auto max-w-full"
           style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
           {TOOLS.map((t) => t.erasers ? (
             <div key="eraser" className="relative" data-menu>
@@ -1925,19 +1951,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
                   <Tip label={eraserMode === "object" ? "Ластик · объект целиком" : "Ластик · след"} hotkey="E" dark={dark} show={tapped === "eraser"} />
                 )}
               </button>
-              {menuShown("eraser") && (
-                <div className={`absolute bottom-full mb-2 left-1/2 -translate-x-1/2 flex gap-1 p-2 rounded-xl shadow-lg ${menuAnim("eraser")}`}
-                  style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
-                  {[["stroke", "След"], ["object", "Объект целиком"]].map(([mode, label]) => (
-                    <button key={mode} onClick={() => { setEraserMode(mode); setTool("eraser"); closeMenu("eraser") }}
-                      className={`press-tap px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap ${
-                        eraserMode === mode ? "bg-blue-500 text-white" : "hover:bg-black/5 dark:hover:bg-white/10"
-                      }`} style={eraserMode === mode ? undefined : idleStyle}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              )}
+              {eraserPopup}
             </div>
           ) : t.shapes ? (
             <div key="shapes" className="relative" data-menu>
@@ -1947,27 +1961,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
                 <Icon name={shapeIconOf(shapeTool)} size={21} />
                 {!menuShown("shapes") && <Tip label="Фигуры" dark={dark} show={tapped === "shapes"} />}
               </button>
-              {menuShown("shapes") && (
-                <div className={`absolute bottom-full mb-2 left-1/2 -translate-x-1/2 flex flex-col gap-2 p-2 rounded-xl shadow-lg ${menuAnim("shapes")}`}
-                  style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
-                  {[["Плоские", SHAPES_2D], ["Объёмные", SHAPES_3D]].map(([title, list]) => (
-                    <div key={title}>
-                      <div className="text-[10px] uppercase tracking-wide px-1 mb-1" style={{ color: dark ? "#8e8e93" : "#9ca3af" }}>{title}</div>
-                      <div className="flex gap-1">
-                        {/* Подписи не нужны: фигуру видно по значку, а название
-                            остаётся во всплывающей подсказке. */}
-                        {list.map((sh) => (
-                          <button key={sh.id} onClick={() => pickShape(sh.id)} title={sh.label} aria-label={sh.label}
-                            className={`press-tap w-10 h-10 rounded-lg flex items-center justify-center ${tool === sh.id ? "bg-blue-500 text-white" : "hover:bg-black/5 dark:hover:bg-white/10"}`}
-                            style={tool === sh.id ? undefined : idleStyle}>
-                            <Icon name={sh.icon} size={20} />
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+              {shapesPopup}
             </div>
           ) : (
             <button key={t.id} onPointerDown={() => flashTip(t.id)} onClick={() => setTool(t.id)}
@@ -2035,7 +2029,6 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
             <Icon name="image" size={21} />
             <Tip label="Добавить картинку" dark={dark} show={tapped === "image"} />
           </button>
-          <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onPickImage} />
 
           {/* Задание из банка листом на доску */}
           {canAddTasks && (
@@ -2065,20 +2058,116 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
           </button>
         </div>
         )}
+
+        {/* Телефон: раскладка по образцу мобильных tldraw и Excalidraw.
+            Главные инструменты — узкой строкой, всегда видны; цвет и обводка —
+            за кнопкой-кружком текущего цвета; картинка, задание, ровные фигуры
+            и очистка — за «⋯». Отмена и возврат — приглушённым лотком над
+            строкой: на телефоне нет ⌘Z, ими пользуются постоянно. */}
+        {!isBig && (
+          <>
+            <div className="flex gap-0.5 rounded-xl px-1 py-0.5 shadow-md pointer-events-auto"
+              style={{ background: panelBg, border: `1px solid ${panelBorder}`, opacity: 0.92 }}>
+              <button onClick={undo} aria-label="Отменить"
+                className="press-tap w-9 h-8 rounded-lg flex items-center justify-center" style={idleStyle}>
+                <Icon name="undo" size={18} />
+              </button>
+              <button onClick={redo} aria-label="Вернуть"
+                className="press-tap w-9 h-8 rounded-lg flex items-center justify-center" style={idleStyle}>
+                <Icon name="redo" size={18} />
+              </button>
+            </div>
+            <div className="flex items-center gap-0.5 rounded-2xl px-1.5 py-1 shadow-xl relative pointer-events-auto max-w-full"
+              style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
+              {TOOLS.map((t) => t.erasers ? (
+                <div key="eraser" className="relative" data-menu>
+                  <button onClick={() => { const was = tool === "eraser"; setTool("eraser"); was ? toggleMenu("eraser") : openMenu("eraser") }}
+                    className={`${btnBase} ${tool === "eraser" ? btnOn : btnIdle}`}
+                    style={tool === "eraser" ? undefined : idleStyle} aria-label="Ластик">
+                    <Icon name="eraser" size={21} />
+                  </button>
+                  {eraserPopup}
+                </div>
+              ) : t.shapes ? (
+                <div key="shapes" className="relative" data-menu>
+                  <button onClick={() => toggleMenu("shapes")} aria-label="Фигуры"
+                    className={`${btnBase} ${shapeMenuIds.has(tool) ? btnOn : btnIdle}`}
+                    style={shapeMenuIds.has(tool) ? undefined : idleStyle}>
+                    <Icon name={shapeIconOf(shapeTool)} size={21} />
+                  </button>
+                  {shapesPopup}
+                </div>
+              ) : (
+                <button key={t.id} onClick={() => setTool(t.id)} aria-label={t.label}
+                  className={`${btnBase} ${tool === t.id ? btnOn : btnIdle}`}
+                  style={tool === t.id ? undefined : idleStyle}>
+                  <Icon name={t.icon} size={21} />
+                </button>
+              ))}
+
+              {divider}
+
+              {/* Текущий цвет: кружок открывает свотчи и настройки обводки */}
+              <div className="relative" data-menu>
+                <button onClick={() => { toggleMenu("mColor"); if (!stylingTool) setTool("pen") }} aria-label="Цвет и обводка"
+                  className={`${btnBase} ${btnIdle}`}>
+                  <span className="rounded-full" style={{ width: 22, height: 22, background: resolveColor(color, dark),
+                    boxShadow: `0 0 0 1.5px ${dark ? "rgba(255,255,255,.4)" : "rgba(0,0,0,.22)"}` }} />
+                </button>
+                {menuShown("mColor") && (
+                  <div className={`absolute bottom-full mb-2 right-0 p-2.5 rounded-xl shadow-lg ${menuAnim("mColor")}`}
+                    style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
+                    <div className="grid grid-cols-4 gap-0.5 mb-2">
+                      {BASE_INKS.map((c) => (
+                        <Swatch key={c} hex={resolveColor(c, dark)} active={color === c} dark={dark}
+                          title={c === "ink" ? "Чернила" : "Цвет"}
+                          onClick={() => { setColor(c); if (!stylingTool) setTool("pen") }} />
+                      ))}
+                      <ColorPick value={resolveColor(color, dark)} dark={dark} title="Свой цвет" onPreview={previewInk} />
+                    </div>
+                    <StrokeSettings dark={dark} tool={stylingTool ? tool : "pen"} curWidth={width} curDash={dash} onWidth={setWidth} onDash={setDash} />
+                  </div>
+                )}
+              </div>
+
+              {/* Остальное — за «⋯»: пункты редкие, подписи важнее скорости */}
+              <div className="relative" data-menu>
+                <button onClick={() => toggleMenu("mMore")} aria-label="Ещё"
+                  className={`${btnBase} ${menuShown("mMore") ? "bg-blue-500/15 text-blue-500" : btnIdle}`}
+                  style={menuShown("mMore") ? undefined : idleStyle}>
+                  <Icon name="dots" size={21} />
+                </button>
+                {menuShown("mMore") && (
+                  <div className={`absolute bottom-full mb-2 right-0 flex flex-col p-1.5 rounded-xl shadow-lg whitespace-nowrap ${menuAnim("mMore")}`}
+                    style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
+                    <button onClick={toggleSmart}
+                      className={`press-tap flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm ${smart ? "text-blue-500" : "hover:bg-black/5 dark:hover:bg-white/10"}`}
+                      style={smart ? undefined : idleStyle}>
+                      <Icon name="sparkles" size={18} />Ровные фигуры{smart && <Icon name="check" size={15} />}
+                    </button>
+                    <button onClick={() => { closeMenu("mMore"); fileInputRef.current?.click() }}
+                      className="press-tap flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm hover:bg-black/5 dark:hover:bg-white/10" style={idleStyle}>
+                      <Icon name="image" size={18} />Добавить картинку
+                    </button>
+                    {canAddTasks && (
+                      <button onClick={() => { closeMenu("mMore"); modalOpen.current = true; setTaskPick(true) }}
+                        className="press-tap flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm hover:bg-black/5 dark:hover:bg-white/10" style={idleStyle}>
+                        <Icon name="book" size={18} />Задание из банка
+                      </button>
+                    )}
+                    <button onClick={() => { closeMenu("mMore"); askClear() }}
+                      className="press-tap flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-red-500 hover:bg-red-500/10">
+                      <Icon name="trash" size={18} />Очистить всё
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+        <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onPickImage} />
         </div>
 
-        {/* Телефон: панель свёрнута в кнопку-бургер, чтобы вся высота экрана
-            оставалась доской. Тап разворачивает панель, тап по холсту сворачивает. */}
-        {/* press-tap и popup-bubble сами ставят position, поэтому позиционирует обёртка */}
-        {!isBig && !panelOpen && (
-          <div className="absolute bottom-2 left-2">
-            <button onClick={() => setPanelOpen(true)} aria-label="Инструменты"
-              className="press-tap w-11 h-11 rounded-full shadow-xl flex items-center justify-center popup-bubble"
-              style={{ background: panelBg, border: `1px solid ${panelBorder}`, ...idleStyle }}>
-              <Icon name="menu" size={20} />
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Банк заданий грузится отдельным куском — без заглушки клик выглядел бы
