@@ -308,6 +308,7 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
   const [editingNote, setEditingNote] = useState(null)
   const [noteDraft, setNoteDraft] = useState("")
   const [remarkDraft, setRemarkDraft] = useState("")
+  const [remarkOpen, setRemarkOpen] = useState(false)
   const [copiedCode, setCopiedCode] = useState(false)
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
   const [archiveOpen, setArchiveOpen] = useState(false)
@@ -331,6 +332,7 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
     const newRemark = { id: Date.now().toString(), text, date: new Date().toISOString().slice(0, 10) }
     onUpdate(student.id, { remarks: [...(student.remarks || []), newRemark] })
     setRemarkDraft("")
+    setRemarkOpen(false)
   }
 
   function deleteRemark(id) {
@@ -419,6 +421,38 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
 
   const initials = getInitials(student.name)
 
+  const statTiles = [{
+    label: "Проведено",
+    value: (
+      <div className="flex items-end gap-1.5">
+        <div className="text-2xl font-medium">{past.length}</div>
+        <div className="text-xs text-gray-400 mb-0.5">из {(student.lessons || []).length}</div>
+      </div>
+    ),
+  }]
+  if (hwAvg) statTiles.push({
+    label: "Ср. оценка ДЗ",
+    value: (
+      <div className="flex items-end gap-1.5">
+        <div className="text-2xl font-medium">{hwAvg}</div>
+        <div className="text-xs text-gray-400 mb-0.5">/ 5 ({hwCount} зад.)</div>
+      </div>
+    ),
+  })
+  // Долг появляется, только когда есть с чего его считать: до первого
+  // проведённого занятия платить не за что.
+  if (past.length > 0) {
+    const price = student.lessonPrice || 0
+    const debt = past.length * price - (student.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
+    statTiles.push({
+      label: "Долг",
+      // Без цены занятия долг посчитать не из чего: показывать «Оплачено» здесь — обман.
+      value: !price ? <div className="text-sm font-medium text-gray-400 pt-1.5">Цена не указана</div>
+        : debt <= 0 ? <div className="text-xl font-medium text-green-600">Нет</div>
+        : <div className="text-xl font-medium text-amber-600">{debt.toLocaleString("ru-RU")} ₽</div>,
+    })
+  }
+
   return (
     <div className="p-4 md:p-6 page-active">
       <button onClick={onBack} className="text-sm text-gray-500 hover:text-gray-700 mb-4 flex items-center gap-1">
@@ -501,15 +535,12 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
             </div>
           )}
 
-          {/* Код для родителей. Раньше был просто код без единого слова о том,
-              что с ним делать, — родитель не догадывался, куда его вводить. */}
+          {/* Код для родителей. Пояснение оставлено одной строкой: без него
+              родитель не догадывается, куда вводить код, но абзац на три строки
+              в карточке — уже шум. */}
           <div className="pt-2 border-t border-gray-100 mt-1">
-            <p className="text-[11px] text-gray-400 leading-relaxed mb-2">
-              Код для родителей: с ним родитель заходит на сайт, выбирает «Родитель»
-              и видит занятия, оценки и отчёты — без пароля и своей регистрации.
-            </p>
           <div className="flex items-center justify-between">
-            <span className="text-xs text-gray-400">Код</span>
+            <span className="text-xs text-gray-400">Код родителя</span>
             <div className="flex items-center gap-2">
               {student.parent_code ? (
                 <>
@@ -534,49 +565,41 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
               )}
             </div>
           </div>
+          <p className="text-[11px] text-gray-400 mt-1.5">
+            Вход для родителя на сайте — без пароля и регистрации.
+          </p>
           </div>
         </div>
       </div>
 
-      {/* Статистика */}
+      {/* Статистика. Показываем только то, о чём есть данные: плитка с прочерком
+          занимает место и не говорит ничего. «Занятий всего» отдельной цифрой
+          не нужно — это знаменатель у «Проведено». Нечётную плитку растягиваем
+          на всю ширину, чтобы не оставалось пустой ячейки. */}
       <div className="grid grid-cols-2 gap-2">
-        <div className="stat-card">
-          <div className="text-xs text-gray-500 mb-1">Занятий всего</div>
-          <div className="text-2xl font-medium">{(student.lessons || []).length}</div>
-        </div>
-        <div className="stat-card">
-          <div className="text-xs text-gray-500 mb-1">Проведено</div>
-          <div className="text-2xl font-medium">{past.length}</div>
-        </div>
-        <div className="stat-card">
-          <div className="text-xs text-gray-500 mb-1">Ср. оценка ДЗ</div>
-          <div className="flex items-end gap-1.5">
-            <div className="text-2xl font-medium">{hwAvg ?? "—"}</div>
-            {hwAvg && <div className="text-xs text-gray-400 mb-0.5">/ 5 ({hwCount} зад.)</div>}
+        {statTiles.map((tile, i) => (
+          <div key={tile.label}
+            className={`stat-card ${statTiles.length % 2 === 1 && i === statTiles.length - 1 ? "col-span-2" : ""}`}>
+            <div className="text-xs text-gray-500 mb-1">{tile.label}</div>
+            {tile.value}
           </div>
-        </div>
-        <div className="stat-card">
-          <div className="text-xs text-gray-500 mb-1">Долг</div>
-          {(() => {
-            const conducted = (student.lessons || []).filter((l) => isLessonConducted(l))
-            const price = student.lessonPrice || 0
-            const debt = conducted.length * price - (student.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
-            if (conducted.length === 0) return <div className="text-xl font-medium text-gray-400">—</div>
-            // Без цены занятия долг посчитать не из чего: показывать «Оплачено» здесь — обман.
-            if (!price) return <div className="text-sm font-medium text-gray-400 pt-1.5">Цена не указана</div>
-            if (debt <= 0) return <div className="text-xl font-medium text-green-600">Нет</div>
-            return <div className="text-xl font-medium text-amber-600">{debt.toLocaleString("ru-RU")} ₽</div>
-          })()}
-        </div>
+        ))}
       </div>
 
-      {/* Замечания */}
+      {/* Замечания. Поле ввода спрятано за кнопкой: пишут их редко, а открытая
+          форма занимала треть карточки на каждом заходе. */}
       <div className="glass p-4">
-        <div className="text-sm font-medium mb-3">Замечания для родителей</div>
-        <div className="flex flex-col gap-2 mb-3">
-          {(student.remarks || []).length === 0 ? (
-            <div className="text-xs text-gray-400 text-center py-2">Замечаний нет</div>
-          ) : (
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-sm font-medium">Замечания для родителей</div>
+          <button
+            onClick={() => setRemarkOpen((v) => !v)}
+            className="press-tap text-xs text-blue-500 hover:text-blue-700 transition-colors"
+          >
+            {remarkOpen ? "Отмена" : "+ Замечание"}
+          </button>
+        </div>
+        <div className={`flex flex-col gap-2 ${(student.remarks || []).length > 0 ? "mt-3" : ""}`}>
+          {(student.remarks || []).length > 0 && (
             [...(student.remarks || [])].reverse().map((r) => (
               <div key={r.id} className="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2">
                 <div className="flex-1 min-w-0">
@@ -591,22 +614,24 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
             ))
           )}
         </div>
-        <div className="flex gap-2">
-          <textarea
-            value={remarkDraft}
-            onChange={(e) => setRemarkDraft(e.target.value)}
-            placeholder="Написать замечание..."
-            rows={2}
-            className="flex-1 text-sm rounded-lg border border-gray-200 bg-white px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-blue-400"
-          />
-          <button
-            onClick={addRemark}
-            disabled={!remarkDraft.trim()}
-            className="px-3 py-2 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 disabled:opacity-40 self-end"
-          >
-            Добавить
-          </button>
-        </div>
+        <Collapse open={remarkOpen}>
+          <div className="flex flex-col gap-2 pt-3">
+            <textarea
+              value={remarkDraft}
+              onChange={(e) => setRemarkDraft(e.target.value)}
+              placeholder="Написать замечание..."
+              rows={2}
+              className="w-full text-sm rounded-lg border border-gray-200 bg-white px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-blue-400"
+            />
+            <button
+              onClick={addRemark}
+              disabled={!remarkDraft.trim()}
+              className="press-tap px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 disabled:opacity-40 self-end"
+            >
+              Добавить
+            </button>
+          </div>
+        </Collapse>
       </div>
 
       </div> {/* конец левой колонки */}
