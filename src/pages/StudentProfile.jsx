@@ -436,7 +436,7 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
             {student.avatar ? (
               <img src={student.avatar} alt={student.name} className="w-full h-full object-cover" />
             ) : (
-              <div className="w-full h-full bg-blue-100 flex items-center justify-center text-xl font-medium text-blue-600">
+              <div className="w-full h-full bg-blue-100 dark:bg-blue-500/15 flex items-center justify-center text-xl font-medium text-blue-600 dark:text-blue-300">
                 {initials}
               </div>
             )}

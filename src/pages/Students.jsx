@@ -73,9 +73,9 @@ function getDaysUntilExam(student) {
 }
 
 const GOAL_STYLE = {
-  "ОГЭ":          { cls: "bg-blue-100 text-blue-700",   label: "ОГЭ" },
-  "ЕГЭ":          { cls: "bg-purple-100 text-purple-700", label: "ЕГЭ" },
-  "Успеваемость": { cls: "bg-green-100 text-green-700",  label: "Успев." },
+  "ОГЭ":          { cls: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",       label: "ОГЭ" },
+  "ЕГЭ":          { cls: "bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300", label: "ЕГЭ" },
+  "Успеваемость": { cls: "bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300",    label: "Успев." },
 }
 
 // Пустой список: карточку ученика вручную не заводят, поэтому объясняем, откуда
@@ -456,7 +456,7 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
             return (
               <div key={student.id} onClick={() => setSelectedStudent(student.id)} className="glass press-tap px-4 py-3 cursor-pointer">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-xs font-medium text-blue-600 flex-shrink-0 overflow-hidden">
+                  <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-500/15 flex items-center justify-center text-xs font-medium text-blue-600 dark:text-blue-300 flex-shrink-0 overflow-hidden">
                     {student.avatar ? <img src={student.avatar} alt={student.name} className="w-full h-full object-cover" /> :
                       getInitials(student.name)}
                   </div>
@@ -533,7 +533,7 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
 
                 {/* Student */}
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-xs font-medium text-blue-600 flex-shrink-0 overflow-hidden">
+                  <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-500/15 flex items-center justify-center text-xs font-medium text-blue-600 dark:text-blue-300 flex-shrink-0 overflow-hidden">
                     {student.avatar
                       ? <img src={student.avatar} alt={student.name} className="w-full h-full object-cover" />
                       : getInitials(student.name)}

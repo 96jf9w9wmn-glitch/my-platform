@@ -1969,7 +1969,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
               <BetaBadge size="xs" />
             </div>
             <div className="flex items-center gap-3 ml-auto">
-              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-sm font-medium text-blue-600">
+              <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-500/15 flex items-center justify-center text-sm font-medium text-blue-600 dark:text-blue-300">
                 {initials}
               </div>
               <span className="hidden md:block text-sm text-gray-600">{user.profile?.name}</span>
@@ -2007,7 +2007,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                   <div className="text-center py-16 text-gray-400 text-sm">Загрузка...</div>
                 ) : students.length === 0 ? (
                   <div className="glass p-6 md:p-8 flex flex-col items-center text-center max-w-md mx-auto">
-                    <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600 mb-4">
+                    <div className="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-500/15 flex items-center justify-center text-blue-600 dark:text-blue-300 mb-4">
                       <Icon name="link" size={26} />
                     </div>
                     <div className="text-lg font-semibold mb-1">Подключись к репетитору</div>
@@ -2121,7 +2121,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                     <div className="glass p-5">
                       <div className="text-base font-medium mb-4">Информация</div>
                       <div className="flex items-center gap-2 pb-3 mb-3 border-b border-white/30">
-                        <div className="w-9 h-9 rounded-full bg-purple-100 flex items-center justify-center text-sm font-medium text-purple-600 flex-shrink-0">Р</div>
+                        <div className="w-9 h-9 rounded-full bg-purple-100 dark:bg-purple-500/15 flex items-center justify-center text-sm font-medium text-purple-600 dark:text-purple-300 flex-shrink-0">Р</div>
                         <div>
                           <div className="text-xs text-gray-400">Репетитор</div>
                           <div className="text-sm text-gray-700 leading-tight">Ваш репетитор</div>
@@ -2749,9 +2749,9 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                           <div className="flex justify-between items-center">
                             <div className="font-medium text-sm">{v.title}</div>
                             <span className={`text-xs px-2 py-1 rounded-full ${
-                              v.submission.status === "graded" ? "bg-green-100 text-green-700" :
-                              v.submission.status === "submitted" ? "bg-blue-100 text-blue-700" :
-                              "bg-amber-100 text-amber-700"
+                              v.submission.status === "graded" ? "bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300" :
+                              v.submission.status === "submitted" ? "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300" :
+                              "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"
                             }`}>
                               {v.submission.status === "graded" ? "Проверено" :
                                v.submission.status === "submitted" ? "На проверке" :

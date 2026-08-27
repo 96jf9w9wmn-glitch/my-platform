@@ -185,12 +185,12 @@ function Dashboard({ students, setActivePage, onOpenBoard }) {
           кнопки «Ещё», да и на большом экране так короче. */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { id: "students", icon: "users",    tint: "bg-blue-100 text-blue-600",     value: countStudents, label: "учеников",   go: "students" },
-          { id: "today",    icon: "calendar", tint: "bg-purple-100 text-purple-600", value: countToday,    label: "сегодня",    go: "schedule" },
-          { id: "week",     icon: "check",    tint: "bg-green-100 text-green-600",   value: countWeek,     label: "за неделю",  go: "results" },
+          { id: "students", icon: "users",    tint: "bg-blue-100 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300",       value: countStudents, label: "учеников",   go: "students" },
+          { id: "today",    icon: "calendar", tint: "bg-purple-100 text-purple-600 dark:bg-purple-500/15 dark:text-purple-300", value: countToday,    label: "сегодня",    go: "schedule" },
+          { id: "week",     icon: "check",    tint: "bg-green-100 text-green-600 dark:bg-green-500/15 dark:text-green-300",     value: countWeek,     label: "за неделю",  go: "results" },
           {
             id: "debt", icon: "warning", value: countDebtors, label: "должников", go: "payment",
-            tint: debtors.length > 0 ? "bg-amber-100 text-amber-600" : "text-gray-400 ring-1 ring-gray-200/70 dark:ring-white/10",
+            tint: debtors.length > 0 ? "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300" : "text-gray-400 ring-1 ring-gray-200/70 dark:ring-white/10",
             valueCls: debtors.length > 0 ? "text-amber-600" : "",
           },
         ].map((st) => (
@@ -323,7 +323,7 @@ function Dashboard({ students, setActivePage, onOpenBoard }) {
                       isNext ? "bg-blue-50" : isPast ? "opacity-45" : "hover:bg-white/40"
                     }`}>
                       <div className="text-sm font-medium text-blue-600 w-12 flex-shrink-0">{l.time}</div>
-                      <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-xs font-medium text-blue-600 flex-shrink-0 overflow-hidden">
+                      <div className="w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-500/15 flex items-center justify-center text-xs font-medium text-blue-600 dark:text-blue-300 flex-shrink-0 overflow-hidden">
                         {l.avatar
                           ? <img src={l.avatar} alt={l.studentName} className="w-full h-full object-cover" />
                           : getInitials(l.studentName)

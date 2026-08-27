@@ -222,7 +222,7 @@ function TutorOnboardingModal({ tutorId, onComplete }) {
 
         <div key={step} className={`px-6 pt-6 pb-7 ${direction === "forward" ? "step-enter-forward" : "step-enter-back"}`}>
           <div className="flex flex-col items-center text-center gap-1 mb-6">
-            <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600 mb-2">
+            <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-500/15 flex items-center justify-center text-blue-600 dark:text-blue-300 mb-2">
               <Icon name={current.icon} size={22} />
             </div>
             <h2 className="text-base font-medium">{current.title}</h2>

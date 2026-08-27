@@ -271,7 +271,7 @@ function ParentDashboard({ user, onLogout }) {
             {student.avatar ? (
               <img src={student.avatar} alt="" className="w-11 h-11 rounded-full object-cover border-2 border-white shadow-sm" />
             ) : (
-              <div className="w-11 h-11 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-semibold text-sm border-2 border-white shadow-sm">
+              <div className="w-11 h-11 rounded-full bg-blue-100 dark:bg-blue-500/15 flex items-center justify-center text-blue-700 dark:text-blue-300 font-semibold text-sm border-2 border-white dark:border-white/15 shadow-sm">
                 {initials}
               </div>
             )}
@@ -477,12 +477,12 @@ function ParentDashboard({ user, onLogout }) {
                     </div>
                     {hw.grade != null ? (
                       <span className={`text-xs font-semibold px-2.5 py-1 rounded-full flex-shrink-0 ${
-                        hw.grade >= 4 ? "bg-green-100 text-green-700" :
-                        hw.grade === 3 ? "bg-amber-100 text-amber-700" :
-                        "bg-red-100 text-red-700"
+                        hw.grade >= 4 ? "bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300" :
+                        hw.grade === 3 ? "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300" :
+                        "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300"
                       }`}>{hw.grade}</span>
                     ) : hw.status === "done" ? (
-                      <span className="text-xs bg-blue-50 text-blue-500 px-2.5 py-1 rounded-full flex-shrink-0">На проверке</span>
+                      <span className="text-xs bg-blue-50 dark:bg-blue-500/15 text-blue-500 dark:text-blue-300 px-2.5 py-1 rounded-full flex-shrink-0">На проверке</span>
                     ) : (
                       <span className="text-xs text-gray-500 ring-1 ring-gray-200/70 dark:ring-white/15 px-2.5 py-1 rounded-full flex-shrink-0">Задано</span>
                     )}
