@@ -357,25 +357,11 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
           <div className="mt-3 text-xs text-gray-500 dark:text-gray-400 break-all bg-black/[0.03] dark:bg-white/[0.06] rounded-xl px-3 py-2">
             {inv.link}
           </div>
-          <div className="flex flex-wrap gap-2 mt-3">
-            <button onClick={copyInvite} className="press-fill px-3 py-2 text-sm rounded-xl bg-blue-600 text-white flex items-center gap-1.5">
+          <div className="mt-3">
+            <button onClick={copyInvite} className="press-fill px-3 py-2 text-sm rounded-xl bg-blue-600 text-white inline-flex items-center gap-1.5">
               <MorphIcon from="clipboard" size={14} active={copied} />
               {copied ? "Скопировано" : "Скопировать текст"}
             </button>
-            <a
-              href={`https://wa.me/?text=${encodeURIComponent(inv.text)}`}
-              target="_blank" rel="noreferrer"
-              className="px-3 py-2 text-sm rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700"
-            >
-              WhatsApp
-            </a>
-            <a
-              href={`https://t.me/share/url?url=${encodeURIComponent(inv.link)}&text=${encodeURIComponent("Занимаемся через Precettore — регистрация по ссылке:")}`}
-              target="_blank" rel="noreferrer"
-              className="px-3 py-2 text-sm rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700"
-            >
-              Telegram
-            </a>
           </div>
         </div>
       )}</Reveal>
