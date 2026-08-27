@@ -121,6 +121,8 @@ const HW_METHODS = [
 // Потолок счётчика у одного номера. Не про технику, а про смысл: домашняя
 // работа из двадцати задач одного номера — это уже не домашняя работа.
 const BANK_MAX_PER_NUMBER = 10
+// Практических блоков — меньше: в каждом сразу пять заданий с общим чертежом.
+const BANK_MAX_MODULES = 3
 
 // Ключ вон из объекта выбора: номер без количества и без тем в нём не хранится,
 // иначе «сбросить» перестало бы быть отличимым от «выбрано ноль заданий».
@@ -151,6 +153,10 @@ function BankNumberRow({ info, pick, open, onCount, onTheme, onOpen }) {
   const picked = pick?.themes || []
   const themes = info.themes || []
   const expandable = themes.length > 1
+  // Практический блок считается блоками: за каждым стоит пять связанных заданий,
+  // и репетитор должен видеть это прямо в строке, а не после сборки.
+  const isModule = !!info.module
+  const max = isModule ? BANK_MAX_MODULES : BANK_MAX_PER_NUMBER
   return (
     <div className={count ? "bg-blue-500/[0.05]" : ""}>
       <div className="flex items-center gap-1.5 px-2 py-1">
@@ -158,17 +164,25 @@ function BankNumberRow({ info, pick, open, onCount, onTheme, onOpen }) {
         <span className={`w-5 text-center text-xs tabular-nums ${count ? "text-blue-600 dark:text-blue-400 font-semibold" : "text-gray-400"}`}>
           {count}
         </span>
-        <StepBtn icon="plus" onClick={() => onCount(count + 1)} disabled={count >= BANK_MAX_PER_NUMBER} title="Больше заданий" />
+        <StepBtn icon="plus" onClick={() => onCount(count + 1)} disabled={count >= max}
+          title={isModule ? "Больше блоков" : "Больше заданий"} />
         <button
           type="button"
           onClick={expandable ? onOpen : () => onCount(count + 1)}
           className="press-fill min-w-0 flex-1 text-left rounded-lg px-1.5 py-1 flex items-baseline gap-1.5"
         >
-          <span className="text-xs tabular-nums shrink-0 text-gray-400">{info.number}.</span>
+          <span className="text-xs tabular-nums shrink-0 text-gray-400">{info.label || info.number}.</span>
           <span className="text-sm truncate text-gray-700">{info.title}</span>
+          {isModule && count > 0 && (
+            <span className="text-[11px] text-gray-400 shrink-0">
+              · {count * 5} {plural(count * 5, "задание", "задания", "заданий")}
+            </span>
+          )}
           {picked.length > 0 && (
             <span className="text-[11px] text-blue-600 dark:text-blue-400 shrink-0">
-              · {picked.length} {plural(picked.length, "тема", "темы", "тем")}
+              · {picked.length} {isModule
+                ? plural(picked.length, "сценарий", "сценария", "сценариев")
+                : plural(picked.length, "тема", "темы", "тем")}
             </span>
           )}
           {expandable && (
@@ -198,14 +212,20 @@ function BankNumberRow({ info, pick, open, onCount, onTheme, onOpen }) {
                   <span className={`text-xs truncate ${on ? "text-gray-800" : "text-gray-600"}`}>
                     {g.theme}
                   </span>
-                  <span className="text-[11px] text-gray-400 shrink-0 ml-auto">
-                    {g.items.length} {plural(g.items.length, "типаж", "типажа", "типажей")}
-                  </span>
+                  {g.items.length > 0 && (
+                    <span className="text-[11px] text-gray-400 shrink-0 ml-auto">
+                      {g.items.length} {plural(g.items.length, "типаж", "типажа", "типажей")}
+                    </span>
+                  )}
                 </button>
               )
             })}
             <div className="text-[11px] text-gray-400 px-1.5 pt-0.5 leading-snug">
-              {picked.length ? "Задания берутся только из отмеченных тем." : "Тема не отмечена — задания берутся из любой."}
+              {isModule
+                ? (picked.length
+                  ? "Блок собирается только по отмеченным сценариям."
+                  : "Сценарий не отмечен — блок берётся из любого. В блоке пять заданий с общим условием и чертежом.")
+                : (picked.length ? "Задания берутся только из отмеченных тем." : "Тема не отмечена — задания берутся из любой.")}
             </div>
           </div>
         </Collapse>
@@ -341,7 +361,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
   const [bankList, setBankList] = useState([])
 
   function loadBankList(mod, type) {
-    setBankList(mod.numbersWithGen(type).map((n) => mod.numberInfo(type, n)))
+    setBankList(mod.bankNumbers(type))
   }
 
   // Модуль банка подгружаем по нажатию на карточку, а не эффектом: генераторы
@@ -546,8 +566,14 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
       setAnswersInput("")
     }
     if (tasks.length && isAutoTitle) {
-      const nums = [...new Set(tasks.map((t) => t.number))].sort((a, b) => a - b)
-      setTitle(`${bank.subjectLabel(bankType)}: № ${nums.join(", ")}`)
+      // Практический блок в названии — одним диапазоном «1–5», а не пятёркой
+      // номеров подряд: так работа и называется у самих школьников.
+      const hasModule = tasks.some((t) => t.module)
+      const nums = [...new Set(tasks.map((t) => t.number))]
+        .filter((n) => !(hasModule && n <= 5))
+        .sort((a, b) => a - b)
+        .map(String)
+      setTitle(`${bank.subjectLabel(bankType)}: № ${(hasModule ? ["1–5", ...nums] : nums).join(", ")}`)
     }
   }
 
@@ -570,20 +596,32 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
     }, 30)
   }
 
+  // Задания практического блока взаимозависимы: без общего условия и чертежа
+  // отдельный вопрос не решается, поэтому блок меняется и убирается целиком.
   function rerollBankTask(idx) {
     const t = bankTasks[idx]
+    if (t.module) {
+      const fresh = bank.pickModule(bankType, [t.scenario])
+      if (!fresh?.length) return
+      const before = bankTasks.slice(0, idx).filter((x) => x.moduleId !== t.moduleId)
+      const after = bankTasks.slice(idx).filter((x) => x.moduleId !== t.moduleId)
+      return applyBank([...before, ...fresh, ...after])
+    }
     const fresh = bank.pickTask(bankType, t.number, bankPick[t.number]?.themes || null, new Set())
     if (fresh) applyBank(bankTasks.map((x, i) => (i === idx ? fresh : x)))
   }
 
   function removeBankTask(idx) {
+    const t = bankTasks[idx]
+    if (t.module) return applyBank(bankTasks.filter((x) => x.moduleId !== t.moduleId))
     applyBank(bankTasks.filter((_, i) => i !== idx))
   }
 
   // Количество заданий номера. 0 — номер просто не входит в работу, отдельной
   // «галочки номера» нет намеренно: счётчик и есть выбор.
   function setBankCount(n, next) {
-    const count = Math.max(0, Math.min(BANK_MAX_PER_NUMBER, next))
+    const limit = bank && n === bank.MODULE_NUMBER ? BANK_MAX_MODULES : BANK_MAX_PER_NUMBER
+    const count = Math.max(0, Math.min(limit, next))
     setBankError("")
     setBankPick((prev) => {
       const cur = prev[n] || { count: 0, themes: [] }
@@ -621,7 +659,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
     .map(([n, v]) => ({ number: Number(n), count: v.count, themes: v.themes.length ? v.themes : null }))
     .filter((p) => p.count > 0)
     .sort((a, b) => a.number - b.number)
-  const bankTotal = bankPicks.reduce((s, p) => s + p.count, 0)
+  const bankTotal = bankPicks.reduce((s, p) => s + (bank ? bank.rowTaskCount(p.number, p.count) : p.count), 0)
 
   const isMcq = Array.isArray(testOptions) && testOptions.length > 0
   const hwType = !autoCheck ? "written" : editingHw?.hw_type === "combined" ? "combined" : "test"
@@ -1007,7 +1045,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
 
                         {bankSkipped.length > 0 && (
                           <div className="text-[11px] text-amber-600 leading-snug">
-                            Заданий хватило не на всё: {bankSkipped.map((s) => `№${s.number} — ${s.got} из ${s.want}`).join(", ")}.
+                            Заданий хватило не на всё: {bankSkipped.map((s) => `№${s.label || s.number} — ${s.got} из ${s.want}`).join(", ")}.
                             У этой темы кончились непохожие условия — возьмите меньше или добавьте тему.
                           </div>
                         )}
@@ -1026,7 +1064,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                                       работу вслепую, если чертежа в предпросмотре нет. */}
                                   <TaskAttachments task={t} compact imageAlt={`Задание №${t.number}`} />
                                   <div className="text-[11px] text-gray-400 mt-0.5 flex items-center gap-1">
-                                    <span>№{t.number} · ответ:</span>
+                                    <span>№{t.number}{t.module ? " · блок 1–5" : ""} · ответ:</span>
                                     <span dangerouslySetInnerHTML={{ __html: renderHomeworkMath(String(t.answer ?? "—")) }} />
                                   </div>
                                 </div>

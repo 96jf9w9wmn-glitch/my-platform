@@ -2,10 +2,11 @@ import { useState, useEffect, useRef, Fragment } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import { signRows } from "../storageUrl"
-import { plural, getInitials, renderTaskMath, plainTaskMath } from "../utils"
+import { plural, getInitials, renderTaskMath, plainTaskMath, answersEqual } from "../utils"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
 import { isModuleNumber, part1NumbersOf, part1SlotsOf, part2NumbersOf, isPart2Number, examLevelOf, VARIANT_TYPES } from "./taskBankMeta"
+import { scaleOf, part2MaxOf, variantMaxPrimary, examResult, secondaryLabel } from "../examScales"
 // Список предметов — из лёгкого модуля: генераторы приезжают отдельно, по кнопке.
 import { BANK_SUBJECTS, subjectOf, examLabel } from "./examSubjectList"
 import { isOwner } from "../owner"
@@ -146,29 +147,34 @@ function VariantFileBlock({ variant, tutorId, onBuilt, onPreview }) {
   )
 }
 
-const OGE_PART1_GEOMETRY = [15,16,17,18,19]
-const OGE_PART2_TASKS = [20, 21, 22, 23, 24, 25]
-// По спецификации ФИПИ все задания части 2 ОГЭ оцениваются в 2 балла (максимум 12).
-const OGE_PART2_MAX = { 20: 2, 21: 2, 22: 2, 23: 2, 24: 2, 25: 2 }
-const OGE_PART2_ALGEBRA = [20, 21, 22]
-const OGE_PART2_GEOMETRY = [23, 24, 25]
-
-const EGE_SCORES = [0,6,11,17,22,27,34,40,46,52,58,64,70,72,74,76,78,80,82,84,86,88,90,92,94,95,96,97,98,99,100,100,100]
-// Профиль и базовый ЕГЭ используют единый поток части 2 (13–19, шкала EGE_SCORES); ОГЭ — свой.
 const isEgeType = (t) => examLevelOf(t) === "ЕГЭ"
-// Шкала оценок и разбивка «алгебра/геометрия» — про математику. У информатики
-// свой перевод баллов, и показывать ей математическую оценку нельзя.
+// Разбивка «алгебра/геометрия» и подпись «задания 1–12» — про математику.
+// У информатики их нет: там ни геометрии, ни части 2.
 const isMathType = (t) => t === "ОГЭ" || t === "ЕГЭ" || t === "ЕГЭ Профиль"
 
-function getOgeGrade(total, geomScore) {
-  if (total < 8 || geomScore < 2) return 2
-  if (total <= 14) return 3
-  if (total <= 21) return 4
-  return 5
+// Задания части 2, реально вошедшие в вариант. У старых вариантов снимка нет —
+// берём штатный состав экзамена.
+function variantPart2Tasks(variant) {
+  const max = part2MaxOf(variant?.type)
+  const snap = [...new Set((variant?.tasks_snapshot || []).map((t) => t.number).filter((n) => max[n]))].sort((a, b) => a - b)
+  return snap.length ? snap : part2NumbersOf(variant?.type).filter((n) => max[n])
 }
 
-function getEgeTestScore(primary) {
-  return EGE_SCORES[Math.min(primary, EGE_SCORES.length - 1)] || 0
+// Максимум первичного балла этого варианта. Он меньше экзаменационного: в
+// вариант идёт только то, что решается на бумаге, поэтому вторичный балл по
+// нему — прогноз (см. examScales.js).
+const variantMaxOf = (variant) =>
+  variantMaxPrimary(variant?.type, [...part1NumbersOf(variant?.type), ...variantPart2Tasks(variant)])
+
+// Результат сданной работы по шкале её экзамена. geom_score — колонка с двойным
+// смыслом: у ОГЭ по математике там баллы за геометрию, у экзаменов с тестовым
+// баллом — он сам, поэтому как геометрию её читаем только для математики.
+function submissionResult(variant, sub) {
+  const geomNums = scaleOf(variant?.type)?.geometryNumbers
+  return examResult(variant?.type, sub?.total_score || 0, {
+    geometry: geomNums ? (sub?.geom_score ?? null) : null,
+    variantMax: variantMaxOf(variant),
+  })
 }
 
 // Имя файла в Storage: непредсказуемая часть пути — метка времени (вне компонента,
@@ -180,16 +186,15 @@ const storageFileName = (tutorId, ext) => `${tutorId}/${Date.now()}.${ext}`
 // Вне компонента по той же причине, что и storageFileName.
 const todayTitle = () => new Date().toLocaleDateString("ru-RU")
 
-function getGeomScore(part1Answers, correctAnswers, part2ScoreDetail) {
-  let geom = 0
-  OGE_PART1_GEOMETRY.forEach((n) => {
-    const i = n - 1
-    if (part1Answers?.[i]?.trim() === correctAnswers?.part1?.[i]?.trim()) geom++
-  })
-  OGE_PART2_GEOMETRY.forEach((n) => {
-    geom += Number(part2ScoreDetail?.[n] || 0)
-  })
-  return geom
+// Баллы за геометрию — условие отметки на ОГЭ по математике: без двух баллов
+// за задания 15–19 и 23–25 ставится «2» при любой сумме. Номера приходят из
+// шкалы экзамена, чтобы список не разъехался с examScales.js.
+function getGeomScore(part1Answers, correctAnswers, part2ScoreDetail, geomNumbers) {
+  return geomNumbers.reduce((geom, n) => {
+    const inPart2 = part2ScoreDetail && part2ScoreDetail[n] !== undefined
+    if (inPart2) return geom + Number(part2ScoreDetail[n] || 0)
+    return geom + (answersEqual(part1Answers?.[n - 1], correctAnswers?.part1?.[n - 1]) ? 1 : 0)
+  }, 0)
 }
 
 // Предметы, из которых репетитор может собрать вариант: отмеченные в «Профиле»
@@ -674,108 +679,40 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
   )
 }
 
-function EgeReview({ submission, variant, onClose, onSave }) {
+// Проверка сданного варианта — одна форма на все экзамены.
+//
+// Раньше форм было две: «ЕГЭ» с жёсткими заданиями 13–19 и «ОГЭ» с жёсткими
+// 20–25 и геометрией. Информатика попадала то в одну, то в другую и получала
+// поля несуществующих заданий: у КЕГЭ и ОГЭ по информатике части 2 нет вовсе.
+// Теперь состав части 2 берётся из самого варианта, а перевод балла — из
+// examScales.js.
+function VariantReview({ submission, variant, onClose, onSave }) {
   const { cls: closingCls, close } = useClosing(onClose)
-  const EGE_PART2_MAX_SCORES = { 13:2, 14:3, 15:2, 16:2, 17:3, 18:4, 19:4 }
-  // задания части 2, реально вошедшие в вариант (в профильном ЕГЭ пока только №13)
-  const snap = [...new Set((variant?.tasks_snapshot || []).map((t) => t.number).filter((n) => EGE_PART2_MAX_SCORES[n]))].sort((a, b) => a - b)
-  const EGE_PART2_TASKS = snap.length ? snap : [13, 14, 15, 16, 17, 18, 19]
-  const [scores, setScores] = useState(EGE_PART2_TASKS.reduce((acc, n) => ({ ...acc, [n]: submission.part2_score_detail?.[n] ?? "" }), {}))
+  const type = variant?.type || "ОГЭ"
+  const part2Max = part2MaxOf(type)
+  const part2Tasks = variantPart2Tasks(variant)
+  const [scores, setScores] = useState(part2Tasks.reduce((acc, n) => ({ ...acc, [n]: submission.part2_score_detail?.[n] ?? "" }), {}))
   const [loading, setLoading] = useState(false)
 
-  const part1Answers = submission.part1_answers || []
-  const correctAnswers = variant.answers?.part1 || []
-  let part1Score = 0
-  part1Answers.forEach((ans, i) => {
-    if (ans?.trim() === correctAnswers[i]?.trim()) part1Score++
-  })
+  const part1Numbers = part1NumbersOf(type)
+  const part1Max = part1Numbers.length
+  // Балл части 1 считает ученик при сдаче тем же answersEqual. Пересчитываем
+  // только для старых записей, где его не сохранили.
+  const part1Score = submission.part1_score ?? part1Numbers.reduce(
+    (n, num) => n + (answersEqual(submission.part1_answers?.[num - 1], variant.answers?.part1?.[num - 1]) ? 1 : 0), 0)
 
   const part2Total = Object.values(scores).reduce((s, v) => s + (Number(v) || 0), 0)
-  const primaryTotal = part1Score + part2Total
-  const testScore = getEgeTestScore(primaryTotal)
+  const part2MaxTotal = part2Tasks.reduce((s, n) => s + part2Max[n], 0)
+  const total = part1Score + part2Total
 
-  async function handleSave() {
-    setLoading(true)
-    const { error } = await supabase.from("variant_submissions").update({
-      part2_score: part2Total, part2_score_detail: scores,
-      total_score: primaryTotal, geom_score: testScore, status: "graded",
-    }).eq("id", submission.id)
-    if (!error) {
-      await supabase.from("notifications").insert({
-        user_id: submission.student_id, title: "Вариант ЕГЭ проверен",
-        body: "Первичный балл: " + primaryTotal + ", тестовый: " + testScore,
-      })
-      onSave(); close()
-    }
-    setLoading(false)
-  }
+  const scale = scaleOf(type)
+  const geomNums = scale?.geometryNumbers || null
+  const geomScore = geomNums ? getGeomScore(submission.part1_answers, variant.answers, scores, geomNums) : null
+  const variantMax = variantMaxOf(variant)
+  const res = examResult(type, total, { geometry: geomScore, variantMax })
 
-  return createPortal(
-    <div className={`fixed inset-0 glass-overlay z-50 overflow-y-auto ${closingCls}`}>
-      <div className="min-h-full flex items-center justify-center p-4">
-        <div className={`glass-modal p-6 w-full max-w-md ${closingCls}`}>
-          <div className="flex justify-between items-center mb-5">
-            <h2 className="text-lg font-medium">Проверка ЕГЭ</h2>
-            <button onClick={close} aria-label="Закрыть" className="text-gray-400 hover:text-gray-600"><Icon name="x" size={18} /></button>
-          </div>
-          <div className="bg-blue-50 rounded-lg p-3 mb-4">
-            <div className="text-sm font-medium text-blue-700">Часть 1: {part1Score} / 12 баллов</div>
-          </div>
-          {submission.part2_files && Object.keys(submission.part2_files).length > 0 && (
-            <div className="mb-4">
-              <label className="text-sm text-gray-500 mb-2 block">Файлы ученика</label>
-              <div className="flex flex-col gap-2">
-                {Object.entries(submission.part2_files).map(([task, url]) => (
-                  <a key={task} href={url} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:opacity-70 transition-opacity border border-gray-100 rounded-lg px-3 py-2">
-                    Задание {task}
-                  </a>
-                ))}
-              </div>
-            </div>
-          )}
-          <div className="mb-4">
-            <label className="text-sm text-gray-500 mb-2 block">Баллы за задания {EGE_PART2_TASKS.length === 1 ? `№${EGE_PART2_TASKS[0]}` : `${EGE_PART2_TASKS[0]}–${EGE_PART2_TASKS[EGE_PART2_TASKS.length - 1]}`}</label>
-            <div className="flex flex-col gap-2">
-              {EGE_PART2_TASKS.map((n) => (
-                <div key={n} className="flex items-center gap-3">
-                  <span className="text-sm text-gray-600 w-24">Задание {n}</span>
-                  <span className="text-xs text-gray-400">макс. {EGE_PART2_MAX_SCORES[n]}</span>
-                  <input type="number" min="0" max={EGE_PART2_MAX_SCORES[n]} value={scores[n]}
-                    onChange={(e) => setScores((prev) => ({ ...prev, [n]: e.target.value }))}
-                    className="w-16 border border-gray-200 rounded-lg px-2 py-1 text-sm outline-none focus:border-blue-400" />
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 p-4 mb-4">
-            <div className="flex justify-between mb-2"><span className="text-sm text-gray-600">Часть 1 (1–12)</span><span className="text-sm font-medium">{part1Score} / 12</span></div>
-            <div className="flex justify-between mb-2"><span className="text-sm text-gray-600">Часть 2 (13–19)</span><span className="text-sm font-medium">{part2Total} / 20</span></div>
-            <div className="border-t border-gray-200 pt-2 mt-2 flex justify-between">
-              <span className="text-sm font-medium">Первичный балл</span>
-              <span className="text-xl font-medium">{primaryTotal}</span>
-            </div>
-            <div className="flex justify-between mt-2">
-              <span className="text-xs text-gray-400">Тестовый балл</span>
-              <span className="text-sm font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">{testScore}</span>
-            </div>
-          </div>
-          <div className="flex gap-3">
-            <button onClick={close} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600">Отмена</button>
-            <button onClick={handleSave} disabled={loading} className="flex-1 btn-primary py-2.5 disabled:opacity-50">
-              {loading ? "Сохраняем..." : "Сохранить и уведомить"}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>,
-    document.body
-  )
-}
-
-function SubmissionReview({ submission, variant, onClose, onSave }) {
-  const { cls: closingCls, close } = useClosing(onClose)
-  const [scores, setScores] = useState(OGE_PART2_TASKS.reduce((acc, n) => ({ ...acc, [n]: submission.part2_score_detail?.[n] ?? "" }), {}))
-  const [loading, setLoading] = useState(false)
+  const algebra = part2Tasks.filter((n) => !geomNums || !geomNums.includes(n))
+  const geometry = geomNums ? part2Tasks.filter((n) => geomNums.includes(n)) : []
 
   // Строка задания части 2: выбранный учеником ответ против верного, наличие фото решения
   // и поле балла. Балл ставит только репетитор — совпадение ответа лишь подсказка.
@@ -797,28 +734,29 @@ function SubmissionReview({ submission, variant, onClose, onSave }) {
           )}
           {!hasFile && <div className="text-amber-600">нет фото решения</div>}
         </div>
-        <span className="text-xs text-gray-400 flex-shrink-0">макс. {OGE_PART2_MAX[n]}</span>
-        <input type="number" min="0" max={OGE_PART2_MAX[n]} value={scores[n]}
+        <span className="text-xs text-gray-400 flex-shrink-0">макс. {part2Max[n]}</span>
+        <input type="number" min="0" max={part2Max[n]} value={scores[n]}
           onChange={(e) => setScores((prev) => ({ ...prev, [n]: e.target.value }))}
           className="w-16 border border-gray-200 rounded-lg px-2 py-1 text-sm outline-none focus:border-blue-400 flex-shrink-0" />
       </div>
     )
   }
 
-  const part1Score = submission.part1_score ?? 0
-  const part2Total = Object.values(scores).reduce((s, v) => s + (Number(v) || 0), 0)
-  const total = part1Score + part2Total
-  const geomScore = getGeomScore(submission.part1_answers, variant.answers, scores)
-
   async function handleSave() {
     setLoading(true)
+    // geom_score — колонка с двойным смыслом: у экзаменов с тестовым баллом в
+    // ней лежит он (так её читают «Результаты» и кабинет ученика), у ОГЭ по
+    // математике — баллы за геометрию. Отдельная колонка потребовала бы
+    // миграции ради значения, которое и так однозначно выводится по типу.
+    const secondary = res.kind === "test" ? res.testScore : (geomScore ?? 0)
     const { error } = await supabase.from("variant_submissions").update({
-      part2_score: part2Total, part2_score_detail: scores, total_score: total, geom_score: geomScore, status: "graded",
+      part1_score: part1Score, part2_score: part2Total, part2_score_detail: scores,
+      total_score: total, geom_score: secondary, status: "graded",
     }).eq("id", submission.id)
     if (!error) {
       await supabase.from("notifications").insert({
         user_id: submission.student_id, title: "Вариант проверен",
-        body: "Результат: " + total + " баллов, оценка " + getOgeGrade(total, geomScore),
+        body: `Первичный балл: ${total} из ${variantMax}, ${secondaryLabel(res)}`,
       })
       onSave(); close()
     }
@@ -830,11 +768,11 @@ function SubmissionReview({ submission, variant, onClose, onSave }) {
       <div className="min-h-full flex items-center justify-center p-4">
         <div className={`glass-modal p-6 w-full max-w-md ${closingCls}`}>
           <div className="flex justify-between items-center mb-5">
-            <h2 className="text-lg font-medium">Проверка части 2 (ОГЭ)</h2>
+            <h2 className="text-lg font-medium">Проверка · {type}</h2>
             <button onClick={close} aria-label="Закрыть" className="text-gray-400 hover:text-gray-600"><Icon name="x" size={18} /></button>
           </div>
           <div className="bg-blue-50 rounded-lg p-3 mb-4">
-            <div className="text-sm font-medium text-blue-700">Часть 1: {part1Score} / 19 баллов</div>
+            <div className="text-sm font-medium text-blue-700">Часть 1: {part1Score} / {part1Max} {plural(part1Max, "балл", "балла", "баллов")}</div>
           </div>
           {submission.part2_files && Object.keys(submission.part2_files).length > 0 && (
             <div className="mb-4">
@@ -848,36 +786,56 @@ function SubmissionReview({ submission, variant, onClose, onSave }) {
               </div>
             </div>
           )}
-          <div className="mb-4">
-            <label className="text-sm text-gray-500 mb-2 block">Баллы за часть 2</label>
-            <div className="mb-3">
-              <div className="text-xs font-medium text-blue-600 mb-2 bg-blue-50 px-2 py-1 rounded">Алгебра 20–22</div>
-              <div className="flex flex-col gap-2">
-                {OGE_PART2_ALGEBRA.map(renderPart2Row)}
-              </div>
+          {part2Tasks.length > 0 && (
+            <div className="mb-4">
+              <label className="text-sm text-gray-500 mb-2 block">Баллы за часть 2</label>
+              {geometry.length > 0 ? (
+                <>
+                  <div className="mb-3">
+                    <div className="text-xs font-medium text-blue-600 mb-2 bg-blue-50 px-2 py-1 rounded">Алгебра {algebra[0]}–{algebra[algebra.length - 1]}</div>
+                    <div className="flex flex-col gap-2">{algebra.map(renderPart2Row)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-medium text-purple-600 mb-2 bg-purple-50 px-2 py-1 rounded">Геометрия {geometry[0]}–{geometry[geometry.length - 1]}</div>
+                    <div className="flex flex-col gap-2">{geometry.map(renderPart2Row)}</div>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col gap-2">{part2Tasks.map(renderPart2Row)}</div>
+              )}
             </div>
-            <div>
-              <div className="text-xs font-medium text-purple-600 mb-2 bg-purple-50 px-2 py-1 rounded">Геометрия 23–25</div>
-              <div className="flex flex-col gap-2">
-                {OGE_PART2_GEOMETRY.map(renderPart2Row)}
-              </div>
-            </div>
-          </div>
+          )}
           <div className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 p-4 mb-4">
-            <div className="flex justify-between mb-2"><span className="text-sm text-gray-600">Часть 1</span><span className="text-sm font-medium">{part1Score} / 19</span></div>
-            <div className="flex justify-between mb-2"><span className="text-sm text-gray-600">Часть 2</span><span className="text-sm font-medium">{part2Total} / 12</span></div>
-            <div className="flex justify-between mb-2">
-              <span className="text-sm text-gray-600">Геометрия итого</span>
-              <span className={geomScore < 2 ? "text-sm font-medium text-red-600" : "text-sm font-medium text-green-600"}>{geomScore} {geomScore < 2 ? "!" : "ok"}</span>
-            </div>
+            <div className="flex justify-between mb-2"><span className="text-sm text-gray-600">Часть 1</span><span className="text-sm font-medium">{part1Score} / {part1Max}</span></div>
+            {part2Tasks.length > 0 && (
+              <div className="flex justify-between mb-2"><span className="text-sm text-gray-600">Часть 2</span><span className="text-sm font-medium">{part2Total} / {part2MaxTotal}</span></div>
+            )}
+            {geomScore !== null && (
+              <div className="flex justify-between mb-2">
+                <span className="text-sm text-gray-600">Геометрия итого</span>
+                <span className={geomScore < scale.geometryMin ? "text-sm font-medium text-red-600" : "text-sm font-medium text-green-600"}>
+                  {geomScore} {geomScore < scale.geometryMin ? "!" : "ok"}
+                </span>
+              </div>
+            )}
             <div className="border-t border-gray-200 pt-2 mt-2 flex justify-between">
-              <span className="text-sm font-medium">Итого</span>
-              <span className="text-xl font-medium">{total} баллов</span>
+              <span className="text-sm font-medium">Первичный балл</span>
+              <span className="text-xl font-medium">{total} <span className="text-sm font-normal text-gray-400">/ {variantMax}</span></span>
             </div>
-            <div className="flex justify-between mt-2">
-              <span className="text-xs text-gray-400">Оценка</span>
-              <span className="text-sm font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">{getOgeGrade(total, geomScore)}</span>
-            </div>
+            {res.kind !== "none" && (
+              <div className="flex justify-between items-center mt-2">
+                <span className="text-xs text-gray-400">{res.kind === "test" ? "Тестовый балл" : "Оценка"}</span>
+                <span className="text-sm font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                  {secondaryLabel(res, { short: true })}
+                </span>
+              </div>
+            )}
+            {res.projected && (
+              <div className="text-[11px] text-gray-400 mt-2 leading-snug">
+                Прогноз: в варианте {variantMax} {plural(variantMax, "балл", "балла", "баллов")} из {res.examMax} экзаменационных,
+                поэтому {res.kind === "test" ? "тестовый балл" : "оценка"} пересчитан по доле выполнения.
+              </div>
+            )}
           </div>
           <div className="flex gap-3">
             <button onClick={close} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600">Отмена</button>
@@ -891,6 +849,8 @@ function SubmissionReview({ submission, variant, onClose, onSave }) {
     document.body
   )
 }
+
+
 
 // Число колонок в сетке вариантов: 1 / 2 / 3 — теми же порогами, что и
 // классы Tailwind у самой сетки. Нужно, чтобы разбор раскрывался целой
@@ -996,10 +956,8 @@ function Variants({ user, students = [] }) {
   function renderScore(sub) {
     if (sub.status === "pending") return "Ещё не выполнял"
     if (sub.status === "submitted") return "Часть 1 сдана · ждёт проверки"
-    if (isEgeType(selectedVariant?.type)) {
-      return "Первичный: " + sub.total_score + " · тестовый: " + getEgeTestScore(sub.total_score)
-    }
-    return "Итого: " + sub.total_score + " баллов · оценка " + getOgeGrade(sub.total_score, sub.geom_score || 0)
+    const res = submissionResult(selectedVariant, sub)
+    return `Первичный: ${sub.total_score} из ${res.variantMax} · ${secondaryLabel(res)}`
   }
 
   // Разбор выбранного варианта раскрывается прямо под его рядом карточек:
@@ -1103,9 +1061,7 @@ function Variants({ user, students = [] }) {
                         )}
                         {sub.status === "graded" && (
                           <span className="text-[11px] px-2.5 py-1 rounded-full text-green-600 bg-green-500/12 ring-1 ring-green-500/25 font-medium">
-                            {isEgeType(selectedVariant.type)
-                              ? getEgeTestScore(sub.total_score) + " б"
-                              : "Оценка " + getOgeGrade(sub.total_score, sub.geom_score || 0)}
+                            {secondaryLabel(submissionResult(selectedVariant, sub), { short: true })}
                           </span>
                         )}
                       </div>
@@ -1267,12 +1223,8 @@ function Variants({ user, students = [] }) {
         <AddVariantModal tutorId={user.id} students={students} examFocus={user.profile?.exam_focus} bankSubjects={user.profile?.bank_subjects} owner={isOwner(user.email)} onClose={() => setShowAdd(false)} onAdd={(v) => { setVariants((prev) => [v, ...prev]); setShowAdd(false) }} />
       )}
 
-      {selectedSubmission && isEgeType(selectedVariant?.type) && (
-        <EgeReview submission={selectedSubmission} variant={selectedVariant} onClose={() => setSelectedSubmission(null)} onSave={loadData} />
-      )}
-
-      {selectedSubmission && !isEgeType(selectedVariant?.type) && (
-        <SubmissionReview submission={selectedSubmission} variant={selectedVariant} onClose={() => setSelectedSubmission(null)} onSave={loadData} />
+      {selectedSubmission && (
+        <VariantReview submission={selectedSubmission} variant={selectedVariant} onClose={() => setSelectedSubmission(null)} onSave={loadData} />
       )}
 
       {previewFile && createPortal(

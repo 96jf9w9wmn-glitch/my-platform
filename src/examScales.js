@@ -1,0 +1,180 @@
+// Системы оценивания экзаменов: первичный балл → вторичный (тестовый балл ЕГЭ
+// или школьная отметка ОГЭ и базового ЕГЭ).
+//
+// Единая точка правды. До 28.08.2026 шкалы были продублированы в «Вариантах» и
+// «Результатах», и обе копии знали только про математику: базовый ЕГЭ считался
+// по шкале профиля (там нет тестового балла вовсе), а информатика — по шкале
+// ОГЭ по математике вместе с несуществующими баллами за геометрию.
+//
+// ─── Что такое первичный и вторичный балл ───────────────────────────────────
+// Первичный — сумма баллов за задания по спецификации ФИПИ. Он ни о чём не
+// говорит вне своего экзамена: 20 первичных в ОГЭ и в ЕГЭ — разные вещи.
+// Вторичный — то, что человек получает на руки:
+//   • ЕГЭ профиль и ЕГЭ информатика — тестовый балл из 100 по таблице
+//     Рособрнадзора (шкала неравномерная, её нельзя считать процентом);
+//   • ОГЭ и базовый ЕГЭ — отметка от 2 до 5, тестового балла у них не бывает.
+//
+// Шкалы 2026 года; таблицы перевода Рособрнадзор утверждает ежегодно весной.
+// При смене года править надо ТОЛЬКО этот файл. Разбор источников и сверка —
+// docs/scales.md.
+
+// ─── Баллы за каждое задание (спецификации ФИПИ 2026) ───────────────────────
+// Каждая строка сверена по двум независимым источникам (docs/scales.md).
+//   ОГЭ математика:   1–19 по 1, 20–25 по 2                         → 31
+//   ОГЭ информатика:  1–12 по 1, 13 — 2, 14 — 3, 15 — 2, 16 — 2     → 21
+//   ЕГЭ база:         1–21 по 1                                     → 21
+//   ЕГЭ профиль:      1–12 по 1, 13 — 2, 14 — 3, 15 — 2, 16 — 2,
+//                     17 — 3, 18 — 4, 19 — 4                        → 32
+//   ЕГЭ информатика:  1–25 по 1, 26–27 по 2                         → 29
+const ones = (from, to) => Object.fromEntries(Array.from({ length: to - from + 1 }, (_, i) => [from + i, 1]))
+
+export const TASK_MAX = {
+  "ОГЭ": { ...ones(1, 19), 20: 2, 21: 2, 22: 2, 23: 2, 24: 2, 25: 2 },
+  "ОГЭ Информатика": { ...ones(1, 12), 13: 2, 14: 3, 15: 2, 16: 2 },
+  "ЕГЭ": ones(1, 21),
+  "ЕГЭ Профиль": { ...ones(1, 12), 13: 2, 14: 3, 15: 2, 16: 2, 17: 3, 18: 4, 19: 4 },
+  "ЕГЭ Информатика": { ...ones(1, 25), 26: 2, 27: 2 },
+}
+
+// Номера с развёрнутым ответом: их балл ставит человек, а не сверка с ключом.
+// У информатики обоих уровней таких заданий нет — всё проверяется автоматически
+// (в КЕГЭ даже задания 25–27, где пишут программу: в ответ идёт её результат).
+export const PART2_NUMBERS = {
+  "ОГЭ": [20, 21, 22, 23, 24, 25],
+  "ЕГЭ Профиль": [13, 14, 15, 16, 17, 18, 19],
+  "ЕГЭ": [],
+  "ОГЭ Информатика": [],
+  "ЕГЭ Информатика": [],
+}
+
+// Таблицы перевода первичного балла в тестовый: индекс — первичный балл.
+const TEST_TABLE_PROF = [0, 6, 11, 17, 22, 27, 34, 40, 46, 52, 58, 64, 70, 72, 74, 76, 78, 80, 82, 84, 86, 88, 90, 92, 94, 95, 96, 97, 98, 99, 100, 100, 100]
+const TEST_TABLE_INF = [0, 7, 14, 20, 27, 34, 40, 43, 46, 48, 51, 54, 56, 59, 62, 64, 67, 70, 72, 75, 78, 80, 83, 85, 88, 90, 93, 95, 98, 100]
+
+export const EXAM_SCALES = {
+  "ОГЭ": {
+    kind: "grade",
+    maxPrimary: 31,
+    // Нижние границы отметок «3», «4», «5».
+    gradeCuts: [8, 15, 22],
+    // Без двух баллов за геометрию отметка «2» при любой сумме.
+    geometryMin: 2,
+    geometryNumbers: [15, 16, 17, 18, 19, 23, 24, 25],
+  },
+  "ОГЭ Информатика": {
+    kind: "grade",
+    maxPrimary: 21,
+    gradeCuts: [5, 11, 17],
+  },
+  // Базовый ЕГЭ: тестового балла нет, результат — только отметка.
+  "ЕГЭ": {
+    kind: "grade",
+    maxPrimary: 21,
+    gradeCuts: [7, 12, 17],
+  },
+  "ЕГЭ Профиль": {
+    kind: "test",
+    maxPrimary: 32,
+    table: TEST_TABLE_PROF,
+    minTest: 27,
+  },
+  "ЕГЭ Информатика": {
+    kind: "test",
+    maxPrimary: 29,
+    table: TEST_TABLE_INF,
+    minTest: 40,
+  },
+}
+
+export const scaleOf = (examType) => EXAM_SCALES[examType] || null
+
+// Экзамен даёт тестовый балл (ЕГЭ профиль, ЕГЭ информатика), а не отметку.
+export const isTestScored = (examType) => scaleOf(examType)?.kind === "test"
+
+// Максимум первичного балла на настоящем экзамене — не путать с максимумом
+// нашего варианта: он может быть меньше (см. variantMaxPrimary).
+export const examMaxPrimary = (examType) => scaleOf(examType)?.maxPrimary || 0
+
+export const taskMaxOf = (examType, number) => TASK_MAX[examType]?.[number] || 0
+
+// Баллы за задания части 2 — {номер: максимум}. Пустой объект: части 2 нет.
+export const part2MaxOf = (examType) =>
+  Object.fromEntries((PART2_NUMBERS[examType] || []).map((n) => [n, taskMaxOf(examType, n)]))
+
+export const part2TotalOf = (examType) =>
+  (PART2_NUMBERS[examType] || []).reduce((s, n) => s + taskMaxOf(examType, n), 0)
+
+// Первичный балл → тестовый. null — у экзамена тестового балла не бывает.
+export function testScoreOf(examType, primary) {
+  const sc = scaleOf(examType)
+  if (sc?.kind !== "test") return null
+  const i = Math.max(0, Math.min(Math.round(primary) || 0, sc.table.length - 1))
+  return sc.table[i]
+}
+
+// Первичный балл → отметка 2–5. null — у экзамена отметки не бывает.
+// geometry — баллы за геометрию (нужны только ОГЭ по математике).
+export function gradeOf(examType, primary, { geometry = null } = {}) {
+  const sc = scaleOf(examType)
+  if (sc?.kind !== "grade") return null
+  const p = Math.round(primary) || 0
+  // Условие про геометрию проверяем только когда балл за неё известен: у старых
+  // записей его нет, и молча ставить «2» отличнику нельзя.
+  if (sc.geometryMin && geometry !== null && geometry < sc.geometryMin) return 2
+  const [three, four, five] = sc.gradeCuts
+  if (p >= five) return 5
+  if (p >= four) return 4
+  if (p >= three) return 3
+  return 2
+}
+
+// Максимум первичного балла НАШЕГО варианта. Он почти всегда меньше
+// экзаменационного: в вариант идут только задания, решаемые на бумаге (у
+// информатики это часть номеров), а часть 2 профиля собрана не целиком.
+// numbers — номера заданий, реально вошедших в вариант.
+export function variantMaxPrimary(examType, numbers = []) {
+  return numbers.reduce((s, n) => s + taskMaxOf(examType, n), 0)
+}
+
+// Полный результат работы: первичный балл и то, во что он превращается.
+//
+// projected — вариант короче настоящего экзамена, поэтому вторичный балл
+// посчитан по доле выполнения и является ПРОГНОЗОМ. Показывать его без этой
+// пометки нельзя: 17 из 17 в нашем варианте КЕГЭ — это не 29 первичных.
+export function examResult(examType, primary, { geometry = null, variantMax = 0 } = {}) {
+  const sc = scaleOf(examType)
+  const total = Math.max(0, Math.round(primary) || 0)
+  if (!sc) return { kind: "none", primary: total, variantMax, examMax: 0, projected: false, testScore: null, grade: null }
+
+  const examMax = sc.maxPrimary
+  const vMax = variantMax > 0 ? Math.min(variantMax, examMax) : examMax
+  const projected = vMax < examMax
+  // Приводим к шкале экзамена по доле выполнения — другого честного способа
+  // оценить неполную работу нет.
+  const scaled = projected && vMax > 0 ? Math.round((total / vMax) * examMax) : total
+  // Долю геометрии масштабируем так же, иначе полный вариант и укороченный
+  // судили бы по разным меркам.
+  const geomScaled = geometry === null ? null
+    : projected && vMax > 0 ? Math.round((geometry / vMax) * examMax) : geometry
+
+  return {
+    kind: sc.kind,
+    primary: total,
+    variantMax: vMax,
+    examMax,
+    projected,
+    scaledPrimary: scaled,
+    testScore: testScoreOf(examType, scaled),
+    grade: gradeOf(examType, scaled, { geometry: geomScaled }),
+    minTest: sc.minTest || null,
+  }
+}
+
+// Короткая подпись вторичного балла для чипа и уведомления: «тестовый 78»
+// либо «оценка 4», со знаком ≈ у прогноза по неполному варианту.
+export function secondaryLabel(res, { short = false } = {}) {
+  if (!res || res.kind === "none") return ""
+  const mark = res.projected ? "≈" : ""
+  if (res.kind === "test") return short ? `${mark}${res.testScore}` : `тестовый ${mark}${res.testScore}`
+  return short ? `${mark}${res.grade}` : `оценка ${mark}${res.grade}`
+}

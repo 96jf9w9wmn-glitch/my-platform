@@ -1,6 +1,6 @@
 import { supabase } from "../supabase"
 import { hasGenerators, generateTask } from "./taskGenerators"
-import { hasModules, generateModule, moduleExamTypes } from "./taskModules"
+import { hasModules, buildModuleTasks, moduleExamTypes } from "./taskModules"
 import { normalizeTaskImage } from "../utils"
 import { PART2_NUMBERS, MODULE_EXAM_TYPES, part1NumbersOf, part2NumbersOf, VARIANT_TYPES } from "./taskBankMeta"
 
@@ -96,40 +96,6 @@ if (import.meta.env?.DEV) {
   const real = moduleExamTypes()
   if (real.length !== MODULE_EXAM_TYPES.length || real.some((t) => !MODULE_EXAM_TYPES.includes(t)))
     console.warn("MODULE_EXAM_TYPES в taskBankMeta.js разошёлся с MODULES:", real, MODULE_EXAM_TYPES)
-}
-
-// Генерирует модуль №1–5 (случайный сценарий) и разворачивает его в 5 «плоских» заданий,
-// совместимых со схемой банка (number/condition_text/image_url/answer). Формат «5 отдельных»:
-// общий вводный текст приклеивается к заданию 1, общие иллюстрации сценария раскидываются по
-// первым заданиям без собственной картинки (график→1, таблица→2 и т.п.), чтобы у «Тарифов»/
-// «Шин» не терялась вторая картинка и вариант оставался решаемым.
-export function buildModuleTasks(examType) {
-  let mod = null
-  for (let i = 0; i < 5 && !mod; i++) {
-    try { mod = generateModule(examType) } catch { mod = null }
-  }
-  if (!mod || !mod.tasks?.length) return null
-  // общий вводный текст (у «Шин» он в двух частях — intro + introRest) идёт перед заданием 1
-  const preamble = [mod.intro, mod.introRest].filter(Boolean).join("\n")
-  const tasks = mod.tasks.map((q, i) => ({
-    id: `mod-${mod.scenario}-${q.number}-${Math.random().toString(36).slice(2, 8)}`,
-    number: q.number,
-    exam_type: examType,
-    condition_text: i === 0 && preamble ? `${preamble}\n\n${q.condition_text}` : q.condition_text,
-    image_url: q.image_url ?? null,
-    answer: q.answer,
-    generated: true,
-    module: true,
-  }))
-  const shared = [mod.image_url, mod.image_url2].filter(Boolean)
-  let si = 0
-  for (const img of shared) {
-    while (si < tasks.length && tasks[si].image_url) si++
-    if (si >= tasks.length) break
-    tasks[si].image_url = img
-    si++
-  }
-  return tasks
 }
 
 // Задание для печатного листа: без прилагаемых файлов. Такие задания есть в

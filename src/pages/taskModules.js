@@ -1261,6 +1261,47 @@ export function moduleScenarios(examType) {
 
 // Собирает один модуль №1–5. scenarioKey задаёт конкретный сценарий (для вкладок);
 // без него — случайный.
+// Модуль №1–5, развёрнутый в 5 «плоских» заданий, совместимых со схемой банка
+// (number/condition_text/image_url/answer). Формат «5 отдельных»: общий вводный
+// текст приклеивается к заданию 1, общие иллюстрации сценария раскидываются по
+// первым заданиям без собственной картинки (график→1, таблица→2 и т.п.), чтобы у
+// «Тарифов»/«Шин» не терялась вторая картинка и блок оставался решаемым.
+//
+// scenarioKey задаёт сценарий (без него — случайный). Все пять заданий помечены
+// общим moduleId: они взаимозависимы, и убирать или пересобирать их можно только
+// целиком — без вводного текста и чертежа задание 3 ничего не значит.
+export function buildModuleTasks(examType, scenarioKey) {
+  let mod = null
+  for (let i = 0; i < 5 && !mod; i++) {
+    try { mod = generateModule(examType, scenarioKey) } catch { mod = null }
+  }
+  if (!mod || !mod.tasks?.length) return null
+  // общий вводный текст (у «Шин» он в двух частях — intro + introRest) идёт перед заданием 1
+  const preamble = [mod.intro, mod.introRest].filter(Boolean).join("\n")
+  const moduleId = mod.id
+  const tasks = mod.tasks.map((q, i) => ({
+    id: `mod-${mod.scenario}-${q.number}-${Math.random().toString(36).slice(2, 8)}`,
+    number: q.number,
+    exam_type: examType,
+    condition_text: i === 0 && preamble ? `${preamble}\n\n${q.condition_text}` : q.condition_text,
+    image_url: q.image_url ?? null,
+    answer: q.answer,
+    generated: true,
+    module: true,
+    moduleId,
+    scenario: mod.scenario,
+  }))
+  const shared = [mod.image_url, mod.image_url2].filter(Boolean)
+  let si = 0
+  for (const img of shared) {
+    while (si < tasks.length && tasks[si].image_url) si++
+    if (si >= tasks.length) break
+    tasks[si].image_url = img
+    si++
+  }
+  return tasks
+}
+
 export function generateModule(examType, scenarioKey) {
   const list = MODULES[examType]
   if (!list?.length) return null

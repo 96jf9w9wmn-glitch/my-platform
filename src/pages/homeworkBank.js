@@ -7,6 +7,7 @@
 import { EXAM_GROUPS, numbersWithGen, subjectLabel, genTask, genThemeTask } from "./examSubjects"
 import { taskThemes } from "./taskGenerators"
 import { numberTitle } from "./numberTitles"
+import { hasModules, moduleScenarios, buildModuleTasks } from "./taskModules"
 
 export { EXAM_GROUPS, numbersWithGen, subjectLabel, taskThemes }
 
@@ -15,6 +16,46 @@ export { EXAM_GROUPS, numbersWithGen, subjectLabel, taskThemes }
 export function numberInfo(examType, number) {
   const themes = taskThemes(examType, number) || []
   return { number, title: numberTitle(examType, number, themes), themes }
+}
+
+// Задания №1–5 ОГЭ — не пять самостоятельных номеров, а один практический блок:
+// общий текст-легенда, чертёж и пять вопросов к одной ситуации. Поэтому в списке
+// они стоят ОДНОЙ строкой, счётчик считает блоки, а «темы» — это сценарии
+// (участок, квартира, шины…). Псевдономер 0 держит блок первым в списке и не
+// пересекается с настоящими номерами.
+export const MODULE_NUMBER = 0
+export const MODULE_TASKS = 5
+
+const moduleInfo = (examType) => ({
+  number: MODULE_NUMBER,
+  label: "1–5",
+  title: "Практические задачи (блок)",
+  module: true,
+  // items пуст намеренно: у сценария нет «типажей», и строка не должна врать числом
+  themes: moduleScenarios(examType).map((s) => ({ theme: s.label, key: s.key, items: [] })),
+})
+
+// Весь список для конструктора: практический блок (если он есть у предмета) и
+// номера с генераторами.
+export function bankNumbers(examType) {
+  const rows = hasModules(examType) ? [moduleInfo(examType)] : []
+  return rows.concat(numbersWithGen(examType).map((n) => numberInfo(examType, n)))
+}
+
+// Сколько заданий стоит за строкой списка: блок — это сразу пять заданий.
+export const rowTaskCount = (number, count) =>
+  number === MODULE_NUMBER ? count * MODULE_TASKS : count
+
+// Один блок №1–5 нужного сценария (или любого, если сценарии не отмечены).
+export function pickModule(examType, themes) {
+  const all = moduleScenarios(examType)
+  // themes приходят и подписями (отметки в списке), и ключами (пересборка блока
+  // тем же сценарием) — принимаем оба, чтобы вызывающему не пришлось их сводить.
+  const keys = themes?.length
+    ? all.filter((s) => themes.includes(s.label) || themes.includes(s.key)).map((s) => s.key)
+    : all.map((s) => s.key)
+  if (!keys.length) return null
+  return buildModuleTasks(examType, keys[Math.floor(Math.random() * keys.length)])
 }
 
 // Условие целиком: у части заданий вопрос вынесен в отдельную строку под
@@ -73,6 +114,18 @@ export function assembleHomework({ examType, picks }) {
   const seen = new Set()
   for (const p of picks || []) {
     if (!Number.isFinite(p.number) || !(p.count > 0)) continue
+    if (p.number === MODULE_NUMBER) {
+      let blocks = 0
+      while (blocks < p.count) {
+        const part = pickModule(examType, p.themes)
+        if (!part?.length) break
+        part.forEach((t) => seen.add(taskKey(t)))
+        tasks.push(...part)
+        blocks++
+      }
+      if (blocks < p.count) short.push({ number: MODULE_NUMBER, label: "1–5", got: blocks, want: p.count })
+      continue
+    }
     let got = 0
     while (got < p.count) {
       const t = pickTask(examType, p.number, p.themes, seen)
