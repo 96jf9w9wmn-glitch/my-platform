@@ -2943,7 +2943,7 @@ function t1DrawGraph(pts, edges, labels) {
     el += `<circle cx="${(x + dx).toFixed(1)}" cy="${(y + dy).toFixed(1)}" r="4.2" fill="#111"/>`
   })
   labels.forEach((lbl, i) => {
-    el += `<text x="${(marks[i].x + dx).toFixed(1)}" y="${(marks[i].y + dy + 6).toFixed(1)}" text-anchor="middle" font-size="18" font-family="Times New Roman, serif" fill="#111">${lbl}</text>`
+    el += `<text x="${(marks[i].x + dx).toFixed(1)}" y="${(marks[i].y + dy + 5.5).toFixed(1)}" text-anchor="middle" font-size="16" font-family="Arial, sans-serif" fill="#111">${lbl}</text>`
   })
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${el}</svg>`
 }
