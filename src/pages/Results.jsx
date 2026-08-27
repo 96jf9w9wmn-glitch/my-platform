@@ -10,7 +10,7 @@ import { plural, getInitials } from "../utils"
 import { PlanLock } from "../components/PlanLock"
 import { usePlan } from "../subscription"
 import { part1NumbersOf } from "./taskBankMeta"
-import { scaleOf, part2MaxOf, part2TotalOf, variantMaxPrimary, examResult, secondaryLabel } from "../examScales"
+import { scaleOf, part2MaxOf, part2TotalOf, variantMaxPrimary, examResult, secondaryLabel, testScoreOf } from "../examScales"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Шкалы экзаменов
@@ -18,8 +18,6 @@ import { scaleOf, part2MaxOf, part2TotalOf, variantMaxPrimary, examResult, secon
 // Перевод первичного балла во вторичный (тестовый балл ЕГЭ или отметку) живёт
 // в src/examScales.js — одном файле на всё приложение. Здесь остаётся только
 // разметка разбора работы.
-
-const range = (from, to) => Array.from({ length: to - from + 1 }, (_, i) => from + i)
 
 // Разбор работы по заданиям строится по составу самого экзамена: номера части 1
 // берём из банка (в информатике они идут не подряд), баллы части 2 — из шкалы.
@@ -474,8 +472,8 @@ function StudentDetail({ student, stats }) {
           <span>Работа</span>
           <span>Часть 1</span>
           <span>Часть 2</span>
-          <span>{isEge ? "Первичный" : "Итого"}</span>
-          <span>{isEge ? "Тестовый" : "Оценка"}</span>
+          <span>Первичный</span>
+          <span>{isTest ? "Тестовый" : "Оценка"}</span>
         </div>
         {[...rows].reverse().map((v, i) => <VariantRow key={i} variant={v} />)}
       </div>
@@ -540,9 +538,9 @@ function StudentCard({ student, stats, open, onToggle }) {
                 <Sparkline values={stats.rows.map((r) => r.total)} tone={stats.trendTone} />
               </div>
               <div className="hidden md:flex shrink-0">
-                {stats.last.type === "ЕГЭ"
-                  ? <Chip tone={egeTone(stats.last.testScore)}>тест {stats.last.testScore}</Chip>
-                  : <Chip tone={stats.last.grade >= 4 ? "green" : stats.last.grade === 3 ? "amber" : "red"}>оценка {stats.last.grade}</Chip>}
+                {stats.last.res.kind === "test"
+                  ? <Chip tone={egeTone(stats.last.testScore)}>тест {secondaryLabel(stats.last.res, { short: true })}</Chip>
+                  : <Chip tone={stats.last.grade >= 4 ? "green" : stats.last.grade === 3 ? "amber" : "red"}>{secondaryLabel(stats.last.res)}</Chip>}
               </div>
               <div className="shrink-0 text-right w-[74px]">
                 <div className="text-[22px] leading-none font-semibold tabular-nums">{stats.last.total}</div>

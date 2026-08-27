@@ -32,7 +32,8 @@ import {
 // Состав варианта (какие номера в части 1, какие — во второй) знает банк заданий:
 // у математики номера идут подряд, у информатики — с пропусками, и «номер больше
 // двенадцати» там означало бы не то.
-import { part1SlotsOf, part1CountOf, part2NumbersOf, isPart2Number, examLevelOf } from "./taskBankMeta"
+import { part1SlotsOf, part1CountOf, part1NumbersOf, part2NumbersOf, isPart2Number, examLevelOf } from "./taskBankMeta"
+import { part2MaxOf, part2TotalOf, variantMaxPrimary, examResult, secondaryLabel, scaleOf } from "../examScales"
 // ЕГЭ (профиль и база) — единый поток части 2 (13–19); ОГЭ — свой (20–25).
 const isEgeType = (t) => examLevelOf(t) === "ЕГЭ"
 
@@ -1474,9 +1475,17 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     ? part2FromSnapshot
     : (part2NumbersOf(selectedVariant?.type).length
         ? part2NumbersOf(selectedVariant?.type)
-        // Старые варианты без снимка: у них часть 2 полная, а состав по типу
-        // экзамена тогда был жёстким.
-        : (isEgeType(selectedVariant?.type) ? [13, 14, 15, 16, 17, 18, 19] : []))
+        // Старые варианты без снимка: у них часть 2 полная по спецификации
+        // экзамена. Раньше здесь стояло жёсткое 13–19 на любой ЕГЭ, и у КЕГЭ,
+        // где части 2 нет вовсе, появлялись поля семи несуществующих заданий.
+        : Object.keys(part2MaxOf(selectedVariant?.type)).map(Number))
+  // Максимум первичного балла этого варианта и перевод во вторичный (тестовый
+  // балл или отметку) — общей шкалой из examScales.js.
+  const variantMax = variantMaxPrimary(selectedVariant?.type, [...part1NumbersOf(selectedVariant?.type), ...part2TaskNums])
+  const variantResult = examResult(selectedVariant?.type, selectedVariant?.submission?.total_score || 0, {
+    geometry: scaleOf(selectedVariant?.type)?.geometryNumbers ? (selectedVariant?.submission?.geom_score ?? null) : null,
+    variantMax,
+  })
   // ?download → Supabase отдаёт файл с Content-Disposition: attachment (скачивание, а не открытие)
   const variantDownloadUrl = selectedVariant?.file_url
     ? selectedVariant.file_url + (selectedVariant.file_url.includes("?") ? "&" : "?") + "download"
@@ -2661,12 +2670,26 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       <div className="glass-tint-green p-5 text-center">
                         <div className="text-green-600 mb-2 flex justify-center"><Icon name="check" size={28} /></div>
                         <div className="text-sm font-medium text-green-700">Вариант проверен!</div>
-                        <div className="text-3xl font-medium text-green-600 mt-2">{selectedVariant.submission.total_score} баллов</div>
+                        <div className="text-3xl font-medium text-green-600 mt-2">
+                          {selectedVariant.submission.total_score} <span className="text-lg text-green-500/70">/ {variantMax}</span>
+                        </div>
+                        {variantResult.kind !== "none" && (
+                          <div className="text-sm font-medium text-green-700 mt-1">
+                            {variantResult.kind === "test" ? "Тестовый балл" : "Оценка"}: {secondaryLabel(variantResult, { short: true })}
+                            {variantResult.projected && <span className="text-green-500/80"> — прогноз</span>}
+                          </div>
+                        )}
                         <div className="text-sm text-green-500 mt-1">
                           Часть 1: {selectedVariant.submission.part1_score} / {part1Count}
                           {/* Части 2 нет у базового ЕГЭ и у информатики — строка о ней там лишняя */}
-                          {part2TaskNums.length > 0 && ` · Часть 2: ${selectedVariant.submission.part2_score} / ${isEgeType(selectedVariant.type) ? 20 : 12}`}
+                          {part2TaskNums.length > 0 && ` · Часть 2: ${selectedVariant.submission.part2_score} / ${part2TotalOf(selectedVariant.type)}`}
                         </div>
+                        {variantResult.projected && (
+                          <div className="text-[11px] text-green-600/70 mt-2 leading-snug">
+                            В этом варианте {variantMax} из {variantResult.examMax} экзаменационных баллов, поэтому
+                            {variantResult.kind === "test" ? " тестовый балл" : " оценка"} посчитан по доле верных ответов.
+                          </div>
+                        )}
                       </div>
 
                       {selectedVariant.submission.part1_answers && selectedVariant.answers?.part1 && (
