@@ -365,6 +365,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // Здесь же он рисуется поверх готового слоя (см. redraw), а в сцену попадает
   // одним куском, когда автор оторвал перо.
   const live = useRef(new Map())      // id -> штрих, который прямо сейчас рисует собеседник
+  const legacyPeer = useRef(false)    // на доске есть клиент старой сборки (см. presence sync)
   const sentId = useRef(null)         // id штриха, чьи точки уже разосланы
   const sentN = useRef(0)             // сколько точек этого штриха разослано
   const sceneCanvas = useRef(null)    // закадровый слой: фон + завершённые штрихи
@@ -734,6 +735,11 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       })
       .on("presence", { event: "sync" }, () => {
         const people = Object.values(channel.presenceState()).flat()
+        // Клиент старой сборки (открытая до раскатки вкладка, кэш PWA) события
+        // drawp не слушает вовсе — линия появлялась бы у него только целиком в
+        // конце штриха. Замечаем такого по отсутствию метки proto и шлём ему
+        // штрихи по-старому: медленно, но одинаково для всех участников.
+        legacyPeer.current = people.some((p) => p.userId !== userId && !(p.proto >= 2))
         setOnline(people)
         const ids = new Set(people.map((p) => p.userId))
         for (const id of cursors.current.keys()) if (!ids.has(id)) {
@@ -744,7 +750,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         for (const [id, st] of live.current) if (!ids.has(st.author)) live.current.delete(id)
         scheduleLive()
       })
-      .subscribe((status) => { if (status === "SUBSCRIBED") channel.track({ userId, name: userName }) })
+      .subscribe((status) => { if (status === "SUBSCRIBED") channel.track({ userId, name: userName, proto: 2 }) })
 
     return scheduleTeardown
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -879,6 +885,12 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       const cur = drawing.current
       const ch = channelRef.current
       if (!cur || !ch) return
+      // Совместимость: собеседник старой сборки понимает только событие draw
+      // с целым штрихом — шлём как до оптимизации, пока он не обновится.
+      if (legacyPeer.current) {
+        ch.send({ type: "broadcast", event: "draw", payload: cur })
+        return
+      }
       // Фигура задаётся двумя точками, которые всё время переставляются, —
       // дописывать нечего, шлём её целиком (это и так две точки).
       if (SHAPE_TOOLS.has(cur.tool)) {

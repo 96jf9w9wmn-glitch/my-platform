@@ -171,11 +171,11 @@ function StudentScheduleCalendar({ student, onOpenBoard }) {
             <div key={d} className="text-center text-xs text-gray-400 font-medium py-1">{d}</div>
           ))}
         </div>
-        <div className="grid grid-cols-7 gap-0.5">
+        <div key={`${year}-${month}`} className="grid grid-cols-7 gap-0.5">
           {Array(emptyDays).fill(null).map((_, i) => (
             <div key={"e" + i} />
           ))}
-          {monthDays.map((day) => {
+          {monthDays.map((day, i) => {
             const dateStr = formatLocalDate(day)
             const dayLessons = getLessonsForDate(dateStr)
             const isToday = dateStr === todayStr
@@ -186,9 +186,10 @@ function StudentScheduleCalendar({ student, onOpenBoard }) {
               <button
                 key={dateStr}
                 onClick={() => setSelectedDay(isSelected ? null : dateStr)}
-                className={`relative flex flex-col items-center py-1 rounded-xl transition-all ${
+                className={`cal-day relative flex flex-col items-center py-1 rounded-xl ${
                   isSelected ? "bg-blue-600 text-white" : isToday ? "bg-blue-100" : ""
                 }`}
+                style={{ animationDelay: `${(emptyDays + i) * 8}ms` }}
               >
                 <span className={`text-sm font-medium ${
                   isSelected ? "text-white" : isToday ? "text-blue-600" : isWeekend ? "text-gray-400" : "text-gray-700"
@@ -209,7 +210,7 @@ function StudentScheduleCalendar({ student, onOpenBoard }) {
       </div>
 
       {selectedDay && (
-        <div className="glass p-4">
+        <div key={selectedDay} className="glass p-4 slide-up">
           <div className="text-sm font-medium mb-3 text-gray-700">
             {new Date(selectedDay + "T00:00:00").toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" })}
           </div>
@@ -245,7 +246,7 @@ function StudentScheduleCalendar({ student, onOpenBoard }) {
       )}
 
       {!selectedDay && (
-        <div className="glass p-4">
+        <div key={`${year}-${month}`} className="glass p-4 slide-up">
           <div className="text-sm font-medium mb-3 text-gray-700">Занятия в {MONTH_NAMES[month].toLowerCase()}</div>
           {monthDays.flatMap((day) => getLessonsForDate(formatLocalDate(day))).length === 0 ? (
             <div className="text-sm text-gray-400 text-center py-4">Занятий нет</div>
