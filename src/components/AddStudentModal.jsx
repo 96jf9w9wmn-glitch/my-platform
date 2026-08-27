@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import { createPortal } from "react-dom"
 import { useClosing } from "../useClosing"
 import Icon from "./Icon"
+import Reveal from "./Reveal"
 import PhoneInput, { isValidPhoneNumber } from "react-phone-number-input"
 import "react-phone-number-input/style.css"
 import { plural, parseLocalDate, formatPhone } from "../utils"
@@ -44,29 +45,28 @@ function formatDate(date) {
 }
 
 
-function TimePicker({ value, onChange }) {
-  const [hours, setHours] = useState(value ? value.split(":")[0] : "09")
-  const [minutes, setMinutes] = useState(value ? value.split(":")[1] : "00")
-
-  function update(h, m) {
-    onChange(`${h}:${m}`)
-  }
-
+// Время и длительность — нативные поля вместо самодельной крутилки ▲▼: та
+// занимала три строки на КАЖДОЕ занятие (часы, минуты, пять кнопок длительности),
+// и расписание из пяти дат превращалось в экран прокрутки. Минуты крутились
+// шагом в пять, поэтому «17:20» набиралось четырьмя нажатиями.
+function TimeField({ value, onChange }) {
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex flex-col items-center">
-        <button onClick={() => { const h = String((Number(hours) + 1) % 24).padStart(2, "0"); setHours(h); update(h, minutes) }} className="text-gray-400 hover:text-gray-600 text-xs px-2 py-0.5">▲</button>
-        <div className="text-xl font-medium w-10 text-center">{hours}</div>
-        <button onClick={() => { const h = String((Number(hours) - 1 + 24) % 24).padStart(2, "0"); setHours(h); update(h, minutes) }} className="text-gray-400 hover:text-gray-600 text-xs px-2 py-0.5">▼</button>
-      </div>
-      <div className="text-xl font-medium">:</div>
-      <div className="flex flex-col items-center">
-        <button onClick={() => { const m = String((Number(minutes) + 5) % 60).padStart(2, "0"); setMinutes(m); update(hours, m) }} className="text-gray-400 hover:text-gray-600 text-xs px-2 py-0.5">▲</button>
-        <div className="text-xl font-medium w-10 text-center">{minutes}</div>
-        <button onClick={() => { const m = String((Number(minutes) - 5 + 60) % 60).padStart(2, "0"); setMinutes(m); update(hours, m) }} className="text-gray-400 hover:text-gray-600 text-xs px-2 py-0.5">▼</button>
-      </div>
-      <div className="ml-2 text-sm text-blue-600 font-medium bg-blue-50 px-3 py-1.5 rounded-lg">{hours}:{minutes}</div>
-    </div>
+    <input
+      type="time"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="input-glass !w-auto flex-shrink-0 px-2.5 py-1.5 text-sm tabular-nums" />
+  )
+}
+
+function DurationField({ value, onChange }) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(Number(e.target.value))}
+      className="input-glass !w-auto flex-shrink-0 px-2.5 py-1.5 text-sm">
+      {DURATIONS.map((d) => <option key={d} value={d}>{d} мин</option>)}
+    </select>
   )
 }
 
@@ -120,7 +120,10 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
   const [contacts, setContacts] = useState([])
   const [mode, setMode] = useState("single")
   const [lessons, setLessons] = useState([])
-  const [globalDuration] = useState(60)
+  // Общее время и длительность: их получает каждая новая выбранная дата, и ими
+  // же правится сразу всё расписание. Отдельный день можно поправить в списке.
+  const [bulkTime, setBulkTime] = useState("09:00")
+  const [bulkDuration, setBulkDuration] = useState(60)
   const [recurringDays, setRecurringDays] = useState([])
   const [recurringDuration] = useState(60)
   const [recurringStartDate, setRecurringStartDate] = useState("")
@@ -169,8 +172,18 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
     setLessons((prev) => {
       const exists = prev.find((l) => l.date === dateStr)
       if (exists) return prev.filter((l) => l.date !== dateStr)
-      return [...prev, { date: dateStr, time: "09:00", duration: globalDuration }].sort((a, b) => a.date.localeCompare(b.date))
+      return [...prev, { date: dateStr, time: bulkTime, duration: bulkDuration }].sort((a, b) => a.date.localeCompare(b.date))
     })
+  }
+
+  function applyTimeToAll(time) {
+    setBulkTime(time)
+    setLessons((prev) => prev.map((l) => ({ ...l, time })))
+  }
+
+  function applyDurationToAll(duration) {
+    setBulkDuration(duration)
+    setLessons((prev) => prev.map((l) => ({ ...l, duration })))
   }
 
   function setFieldForDate(dateStr, field, value) {
@@ -233,13 +246,12 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
       balance: 0, results: [],
       lessons: finalLessons,
       lessonDates: finalLessons.map((l) => l.date),
-      lessonDuration: mode === "recurring" ? recurringDuration : globalDuration,
+      lessonDuration: mode === "recurring" ? recurringDuration : bulkDuration,
       isRecurring: mode === "recurring",
       schedule: mode === "recurring"
-        ? recurringDays.map((d) => `${d.name} ${d.time}`).join(", ") + ` (${recurringDuration} мин)`
+        ? recurringDays.map((d) => `${d.name} ${d.time} (${d.duration || recurringDuration} мин)`).join(", ")
         : finalLessons.map((l) => parseLocalDate(l.date).toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) + " " + l.time + " (" + l.duration + " мин)").join(", "),
       payments: [],
-      examDate: form.examDate || null,
       targetScore: form.targetScore || null,
       parent_code: generateParentCode(),
     })
@@ -278,7 +290,7 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
               // с аккаунтом (current_student_rows в RLS), поэтому править его нельзя:
               // изменив номер, репетитор молча отрежет ученику доступ к своей карточке.
               <>
-                <div className="input-glass flex items-center justify-between gap-2 text-gray-500 dark:text-gray-300">
+                <div className="input-glass flex items-center justify-between gap-2 text-gray-500">
                   <span>{formatPhone(initialPhone)}</span>
                   <Icon name="check" size={14} className="text-green-600 flex-shrink-0" />
                 </div>
@@ -291,45 +303,16 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
             )}
           </div>
 
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <label className="text-sm text-gray-500">Цель занятий</label>
-              {onboardingPulled && phone && isValidPhoneNumber(phone) && (
-                <span className="inline-flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
-                  <Icon name="check" size={11} />Из анкеты ученика
-                </span>
-              )}
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              {[
-                { id: "ОГЭ", iconName: "file-text" },
-                { id: "ЕГЭ", iconName: "book" },
-                { id: "Успеваемость", iconName: "trending-up" },
-              ].map((goal) => (
-                <button key={goal.id} type="button"
-                  onClick={() => setForm((prev) => ({ ...prev, goal: goal.id }))}
-                  className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm border transition-colors ${form.goal === goal.id ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
-                  <Icon name={goal.iconName} size={14} />{goal.id}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {(form.goal === "ОГЭ" || form.goal === "ЕГЭ") && (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-sm text-gray-500 mb-1 block">Дата экзамена</label>
-                <input type="date" value={form.examDate || ""}
-                  onChange={(e) => setForm((prev) => ({ ...prev, examDate: e.target.value }))}
-                  className="input-glass" />
-              </div>
-              <div>
-                <label className="text-sm text-gray-500 mb-1 block">Целевой балл</label>
-                <input type="number" min="0" max={form.goal === "ЕГЭ" ? 100 : 32} value={form.targetScore || ""}
-                  onChange={(e) => setForm((prev) => ({ ...prev, targetScore: e.target.value ? Number(e.target.value) : "" }))}
-                  placeholder={form.goal === "ЕГЭ" ? "Например: 80" : "Например: 28"}
-                  className="input-glass" />
-              </div>
+          {/* Цель и целевой балл ученик выбирает сам в своей анкете — репетитор их
+              здесь не заполняет, только видит. Дублировать выбор значило спорить
+              с анкетой: два источника расходились уже на второй правке. */}
+          {onboardingPulled && (
+            <div className="flex items-start gap-2 rounded-xl bg-blue-50 dark:bg-blue-500/10 px-3 py-2.5">
+              <Icon name="check" size={14} className="text-blue-600 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-gray-600">
+                Из анкеты ученика: <span className="font-medium">{form.goal}</span>
+                {form.targetScore ? <>, цель — {form.targetScore} {plural(form.targetScore, "балл", "балла", "баллов")}</> : null}
+              </p>
             </div>
           )}
 
@@ -384,48 +367,49 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
           {mode === "single" && (
             <>
               <div>
-                <label className="text-sm text-gray-500 mb-2 block">Даты занятий {lessons.length > 0 && <span className="ml-2 text-blue-600">({lessons.length} выбрано)</span>}</label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm text-gray-500">Даты занятий</label>
+                  {lessons.length > 0 && (
+                    <span className="text-xs font-medium text-blue-600">
+                      {lessons.length} {plural(lessons.length, "дата", "даты", "дат")}
+                    </span>
+                  )}
+                </div>
                 <div className="border border-gray-100 dark:border-white/10 rounded-xl p-3">
                   <MiniCalendar lessons={lessons} onToggleDate={toggleDate} />
                 </div>
               </div>
-              {lessons.length > 0 && (
-                <div className="flex flex-col gap-3">
-                  <label className="text-sm text-gray-500">Время для каждого занятия</label>
-                  {lessons.map((lesson) => (
-                    <div key={lesson.date} className="border border-gray-100 dark:border-white/10 rounded-xl p-3">
-                      <div className="text-sm font-medium text-gray-700 mb-3">
-                        {parseLocalDate(lesson.date).toLocaleDateString("ru-RU", {
-                          weekday: "short", day: "numeric", month: "long"
-                        })}
+              {/* Одна строка на занятие: дата, время, длительность. Раньше на
+                  каждую дату разворачивалась отдельная карточка на пол-экрана. */}
+              <Reveal value={lessons.length || null}>
+                {() => (
+                  <div>
+                    <label className="text-sm text-gray-500 mb-2 block">Время и длительность</label>
+                    <div className="border border-gray-100 dark:border-white/10 rounded-xl overflow-hidden">
+                      <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 bg-gray-50 dark:bg-white/5">
+                        <span className="basis-full sm:basis-auto sm:flex-1 min-w-0 text-sm text-gray-500">Для всех дат</span>
+                        <TimeField value={bulkTime} onChange={applyTimeToAll} />
+                        <DurationField value={bulkDuration} onChange={applyDurationToAll} />
+                        <span className="w-6 flex-shrink-0" />
                       </div>
-                      <TimePicker
-                        value={lesson.time}
-                        onChange={(time) => setFieldForDate(lesson.date, "time", time)}
-                      />
-                      <div className="mt-3">
-                        <div className="text-xs text-gray-400 mb-2">Длительность</div>
-                        <div className="flex gap-1.5 flex-wrap">
-                          {DURATIONS.map((d) => (
-                            <button
-                              key={d}
-                              type="button"
-                              onClick={() => setFieldForDate(lesson.date, "duration", d)}
-                              className={`px-2.5 py-1 rounded-lg text-xs border transition-colors ${
-                                lesson.duration === d
-                                  ? "bg-blue-600 text-white border-blue-600"
-                                  : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                              }`}
-                            >
-                              {d} мин
-                            </button>
-                          ))}
+                      {lessons.map((lesson) => (
+                        <div key={lesson.date} className="flex flex-wrap items-center gap-2 px-3 py-2 border-t border-gray-100 dark:border-white/10">
+                          <span className="basis-full sm:basis-auto sm:flex-1 min-w-0 truncate text-sm text-gray-700">
+                            {parseLocalDate(lesson.date).toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" })}
+                          </span>
+                          <TimeField value={lesson.time} onChange={(time) => setFieldForDate(lesson.date, "time", time)} />
+                          <DurationField value={lesson.duration} onChange={(d) => setFieldForDate(lesson.date, "duration", d)} />
+                          <button type="button" onClick={() => toggleDate(lesson.date)} aria-label="Убрать дату"
+                            className="w-6 h-6 flex-shrink-0 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 active:scale-90 transition-all">
+                            <Icon name="x" size={14} />
+                          </button>
                         </div>
-                      </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              )}
+                    <p className="text-xs text-gray-400 mt-1.5">Верхняя строка задаёт время сразу всем занятиям; отдельный день можно поправить в списке.</p>
+                  </div>
+                )}
+              </Reveal>
             </>
           )}
 
@@ -446,32 +430,11 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
                           {selected?.time && <span className="ml-auto text-xs text-blue-600 font-medium">{selected.time}</span>}
                         </div>
                         {selected && (
-                          <div className="px-3 pb-3 border-t border-blue-100 pt-3 flex flex-col gap-3">
-                            <TimePicker
-                              value={selected.time}
-                              onChange={(time) => setTimeForDay(day, time)}
-                            />
-                            <div>
-                              <div className="text-xs text-gray-400 mb-2">Длительность</div>
-                              <div className="flex gap-1.5 flex-wrap">
-                                {DURATIONS.map((d) => (
-                                  <button
-                                    key={d}
-                                    type="button"
-                                    onClick={() => setRecurringDays((prev) =>
-                                      prev.map((rd) => rd.name === day ? { ...rd, duration: d } : rd)
-                                    )}
-                                    className={`px-2.5 py-1 rounded-lg text-xs border transition-colors ${
-                                      (selected.duration || recurringDuration) === d
-                                        ? "bg-blue-600 text-white border-blue-600"
-                                        : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                                    }`}
-                                  >
-                                    {d} мин
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
+                          <div className="px-3 pb-3 border-t border-blue-100 pt-2.5 flex items-center gap-2">
+                            <TimeField value={selected.time} onChange={(time) => setTimeForDay(day, time)} />
+                            <DurationField
+                              value={selected.duration || recurringDuration}
+                              onChange={(d) => setRecurringDays((prev) => prev.map((rd) => rd.name === day ? { ...rd, duration: d } : rd))} />
                           </div>
                         )}
                       </div>
@@ -493,7 +456,7 @@ function AddStudentModal({ onClose, onAdd, initialName, initialPhone }) {
               </div>
               {previewLessons.length > 0 && (
                 <div className="bg-blue-50 rounded-lg p-3">
-                  <div className="text-xs font-medium text-blue-700 mb-2">Будет создано {previewLessons.length} {plural(previewLessons.length, "занятие", "занятия", "занятий")} по {recurringDuration} мин:</div>
+                  <div className="text-xs font-medium text-blue-700 mb-2">Будет создано {previewLessons.length} {plural(previewLessons.length, "занятие", "занятия", "занятий")}:</div>
                   <div className="flex flex-col gap-1 max-h-36 overflow-y-auto">
                     {previewLessons.map((l, i) => (
                       <div key={i} className="text-xs text-blue-600">
