@@ -54,13 +54,44 @@ const flatMarks = (s) => String(s)
   .replace(/⁅([^⁆]*)⁆/g, `<sup style="font-size:0.72em; line-height:0; vertical-align:0.55em;">$1</sup>`)
 
 // ⁅x⁆ внутри числителя/знаменателя дроби (степень: 2ˣ, 4ˣ⁻³) — SVG-надстрочник.
-const supInSvg = (s) => String(s)
+const supInSvg = (s) => unicodeSupToTspan(String(s))
   .replace(/⁅([^⁆]*)⁆/g, (_, x) => `<tspan baseline-shift="super" font-size="0.72em">${x}</tspan>`)
   // вложенная дробь внутри SVG-дроби — в строку («x/25»): второй ярус черты не рисуем
   .replace(/⦃([^¦⦄]*)¦([^⦄]*)⦄/g, "$1/$2")
   .replace(/⦉([^⦊]*)⦊/g, (_, x) => `<tspan baseline-shift="sub" font-size="0.75em">${x}</tspan>`)
   .replace(/⦅([^¦⦆]*)¦([^⦆]*)⦆/g, (_, a, b) =>
     `<tspan baseline-shift="super" font-size="0.7em">${a}</tspan><tspan baseline-shift="sub" font-size="0.7em">${b}</tspan>`)
+// Юникодные надстрочники (x², cos¹⁰x) в печатном листе рисовать нельзя: в Times New
+// Roman есть ¹²³, а ⁰⁴⁵⁶⁷⁸⁹ подставляются из ЗАПАСНОГО шрифта — цифры показателя
+// выходят разного кегля и на разной высоте («cos¹⁰x» с провалившимся нулём). Поэтому
+// перед вставкой в HTML разворачиваем их в обычный <sup> теми же цифрами.
+const SUP_BACK = { "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4", "⁵": "5", "⁶": "6", "⁷": "7",
+  "⁸": "8", "⁹": "9", "⁺": "+", "⁻": "−", "⁼": "=", "⁽": "(", "⁾": ")", "ⁿ": "n", "ⁱ": "i" }
+const RE_SUP_UNI = /[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿⁱ]+/g
+const unicodeSupToTag = (html) => String(html).replace(RE_SUP_UNI, (run) =>
+  `<sup style="font-size:0.72em; line-height:0; vertical-align:0.55em;">${Array.from(run).map((c) => SUP_BACK[c] || c).join("")}</sup>`)
+// Заменяем только в тексте: внутрь тегов (стили, data-URL картинок) лезть нельзя.
+function supOutsideTags(html) {
+  let out = "", i = 0
+  while (i < html.length) {
+    const lt = html.indexOf("<", i)
+    if (lt < 0) { out += unicodeSupToTag(html.slice(i)); break }
+    out += unicodeSupToTag(html.slice(i, lt))
+    const gt = html.indexOf(">", lt)
+    if (gt < 0) { out += html.slice(lt); break }
+    out += html.slice(lt, gt + 1)
+    i = gt + 1
+  }
+  return out
+}
+// Под корнем содержимое раскладывает svgMathBody — ему юникодный показатель тоже
+// не годится, поэтому переводим его в маркер степени ⁅…⁆, который тот понимает.
+const unicodeSupToMark = (str) => String(str).replace(RE_SUP_UNI, (run) =>
+  `⁅${Array.from(run).map((c) => SUP_BACK[c] || c).join("")}⁆`)
+// Внутри SVG (под корнем, в дроби) тот же разбор, но средствами SVG.
+const unicodeSupToTspan = (svgText) => String(svgText).replace(RE_SUP_UNI, (run) =>
+  `<tspan baseline-shift="super" font-size="0.72em">${Array.from(run).map((c) => SUP_BACK[c] || c).join("")}</tspan>`)
+
 function fracSvg(num0, den0, mf = MATH_ARIAL) {
   const num = supInSvg(rootInPdf(num0)), den = supInSvg(rootInPdf(den0))
   const fs = FS * 0.95
@@ -77,7 +108,8 @@ function fracSvg(num0, den0, mf = MATH_ARIAL) {
 // сырыми и растягивали черту. Высота зависит от содержимого, поэтому картинка несёт
 // свой vertical-align: базовая линия подкоренного ложится на базовую линию строки при
 // любой высоте картинки.
-function rootSvg(content, index = "", mf = MATH_ARIAL) {
+function rootSvg(content0, index = "", mf = MATH_ARIAL) {
+  const content = unicodeSupToMark(content0)
   const gw = (str) => chW(str, mf.k, mf.family)
   const idxFS = 10
   const body = svgMathBody(content, FS, gw)
@@ -141,8 +173,7 @@ async function svgToInlineImg({ W, H, svg, valign: own }, valign, fh = false) {
 // центра «=», из-за чего знак висел над дробью). Корень выравнивается иначе: его
 // подкоренное стоит на общей базовой линии строки, поэтому картинка опускается ровно на
 // свой «подвал» (H − базовая линия), а не на глаз.
-// Замерено на снимке html2canvas: черта дроби стояла на 1,8 px выше середины «=».
-const FRAC_VALIGN = "-15.8px"
+const FRAC_VALIGN = "-14px"
 const ROOT_VALIGN = "-6.5px"
 const ROOT_FIX = 1.5
 
@@ -358,7 +389,7 @@ export async function renderTaskMathPdf(text, mf = MATH_ARIAL) {
     last = m.index + m[0].length
   }
   // формула не должна рваться переносом строки и в PDF (см. noBreakMath в utils.js)
-  return noBreakMath(await casesPdf(await parensPdf(out + esc.slice(last)), mf))
+  return supOutsideTags(noBreakMath(await casesPdf(await parensPdf(out + esc.slice(last)), mf)))
 }
 
 // Содержимое картинки — блобом. Генераторы отдают чертёж data-URL'ом, и fetch по

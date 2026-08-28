@@ -131,7 +131,7 @@ function VariantFileBlock({ variant, tutorId, onBuilt, onPreview }) {
           <div className="text-sm font-medium truncate">Печатный лист варианта</div>
           {/* адрес подписанный — имя берём без хвоста с токеном */}
           <div className={`text-[11px] mt-0.5 truncate ${err ? "text-red-500" : "text-gray-400"}`}>
-            {err || (url ? fileName : "Ещё не собран — нужен для печати")}
+            {err || (busy ? "Собираем…" : url ? fileName : "Ещё не собран — нужен для печати")}
           </div>
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -141,6 +141,14 @@ function VariantFileBlock({ variant, tutorId, onBuilt, onPreview }) {
                 className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200 flex items-center gap-1.5">
                 <MorphIcon from="download" size={13} />Скачать
               </a>
+              {/* Лист уже собран, но вёрстка формул с тех пор могла поправиться —
+                  пересобрать его надо уметь, не удаляя вариант. */}
+              {variant.tasks_snapshot?.length > 0 && (
+                <button onClick={build} disabled={busy} title="Собрать лист заново"
+                  className="press-tap w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-500/10 transition-colors disabled:opacity-50">
+                  <Icon name="repeat" size={14} />
+                </button>
+              )}
               <button onClick={() => onPreview(url)} title="На весь экран"
                 className="press-tap w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-500/10 transition-colors">
                 <Icon name="maximize" size={14} />
