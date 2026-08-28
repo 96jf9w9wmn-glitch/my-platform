@@ -45,8 +45,16 @@ function ExtraPdfButtons({ variant }) {
   async function download() {
     setBusy(true); setErr("")
     try {
+      // В снимке варианта ответов НЕТ намеренно: ученик решает его в кабинете и прочитал
+      // бы их прямо в данных страницы. Для листа проверяющего подставляем их из самой
+      // строки варианта: часть 1 — массив по номеру−1, часть 2 — по номеру.
+      const p1 = variant.answers?.part1 || []
+      const p2 = variant.answers?.part2 || {}
+      const tasks = (variant.tasks_snapshot || []).map((t) => ({
+        ...t, answer: t.answer ?? p1[t.number - 1] ?? p2[t.number] ?? null,
+      }))
       const blob = await (await loadVariantPdf()).generateVariantPdf({
-        title: variant.title, examType: variant.type, tasks: variant.tasks_snapshot, mode: "answers",
+        title: variant.title, examType: variant.type, tasks, mode: "answers",
       })
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
