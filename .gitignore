@@ -54,3 +54,4 @@ CLAUDE.md
 # репозиторий публичный, им место вне его: ~/precettore-legal/internal/
 legal/internal/
 .deploy/
+__hwtest*

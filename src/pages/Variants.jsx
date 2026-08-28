@@ -21,6 +21,8 @@ import StatTabs from "../components/StatTabs"
 import MethodCards from "../components/MethodCards"
 import AutoHeight from "../components/AutoHeight"
 import { useClosing } from "../useClosing"
+import useGridCols, { detailRowEndOf } from "../useGridCols"
+import getAvatarColor from "../avatarColor"
 import Reveal from "../components/Reveal"
 // Тетрадь тянет генераторы заданий — грузим только когда её открыли.
 
@@ -1006,25 +1008,6 @@ function VariantReview({ submission, variant, onClose, onSave }) {
 
 
 
-// Число колонок в сетке вариантов: 1 / 2 / 3 — теми же порогами, что и
-// классы Tailwind у самой сетки. Нужно, чтобы разбор раскрывался целой
-// строкой под рядом выбранной карточки, а не разрывал ряд посередине.
-function useGridCols() {
-  const read = () =>
-    typeof window === "undefined" ? 1
-      : window.matchMedia("(min-width: 1280px)").matches ? 3
-      : window.matchMedia("(min-width: 640px)").matches ? 2
-      : 1
-  const [cols, setCols] = useState(read)
-  useEffect(() => {
-    const mqs = [window.matchMedia("(min-width: 640px)"), window.matchMedia("(min-width: 1280px)")]
-    const onChange = () => setCols(read())
-    mqs.forEach((m) => m.addEventListener("change", onChange))
-    return () => mqs.forEach((m) => m.removeEventListener("change", onChange))
-  }, [])
-  return cols
-}
-
 function Variants({ user, students = [] }) {
   const [variants, setVariants] = useState([])
   const [submissions, setSubmissions] = useState([])
@@ -1102,21 +1085,6 @@ function Variants({ user, students = [] }) {
   )
   const visible = variants.filter((v) => (group === "all" || groupOf(v) === group) && matchStat(v))
 
-  const AVATAR_COLORS = [
-    { bg: "bg-blue-100 dark:bg-blue-500/15", text: "text-blue-700 dark:text-blue-300" },
-    { bg: "bg-purple-100 dark:bg-purple-500/15", text: "text-purple-700 dark:text-purple-300" },
-    { bg: "bg-amber-100 dark:bg-amber-500/15", text: "text-amber-700 dark:text-amber-300" },
-    { bg: "bg-green-100 dark:bg-green-500/15", text: "text-green-700 dark:text-green-300" },
-    { bg: "bg-pink-100 dark:bg-pink-500/15", text: "text-pink-700 dark:text-pink-300" },
-  ]
-
-  function getAvatarColor(name) {
-    if (!name) return AVATAR_COLORS[0]
-    let sum = 0
-    for (const c of name) sum += c.charCodeAt(0)
-    return AVATAR_COLORS[sum % AVATAR_COLORS.length]
-  }
-
   function renderScore(sub) {
     // opened_at ставится при старте таймера — значит, ученик уже сидит за вариантом.
     if (sub.status === "pending") return sub.opened_at ? "Решает — время идёт" : "Ещё не выполнял"
@@ -1129,9 +1097,7 @@ function Variants({ user, students = [] }) {
   // так он всегда рядом с тем, что открыли, и не нужно ни второй колонки,
   // ни прокрутки к панели в конце списка.
   const selectedIndex = selectedVariant ? visible.findIndex((v) => v.id === selectedVariant.id) : -1
-  const detailRowEnd = selectedIndex < 0
-    ? -1
-    : Math.min(Math.floor(selectedIndex / cols) * cols + cols - 1, visible.length - 1)
+  const detailRowEnd = detailRowEndOf(selectedIndex, visible.length, cols)
 
   const detailPanel = selectedVariant ? (
     <div className={`col-span-full glass overflow-hidden slide-up ${detailCls}`}>

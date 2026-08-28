@@ -21,6 +21,8 @@ import { MarketingToggle } from "../components/ConsentChecks"
 const Board = lazy(() => import("../components/Board"))
 import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, parseHomeworkTasks, formatPhone, answersEqual, plural } from "../utils"
 import TaskAttachments from "../components/TaskAttachments"
+import DateTile from "../components/DateTile"
+import { TILE_TINTS, dueTintKey } from "../dueTint"
 import { notifyTutor } from "../telegramNotify"
 import { useClosing } from "../useClosing"
 import { isMoveNotification, revealBlock, MOVE_ANCHOR_STUDENT } from "../notifTarget"
@@ -467,10 +469,16 @@ const HW_STATUS = {
   done:      { label: "Выполнено",   icon: "check",     tile: "from-green-400/25 to-green-500/10 text-green-600 dark:text-green-300",   chip: "bg-green-500/10 text-green-600 dark:text-green-300 ring-1 ring-green-500/20" },
 }
 
-// Плоский короткий текст описания для превью в карточке (без LaTeX-разметки).
+// Плоский короткий текст описания для превью в карточке (без LaTeX-разметки
+// и без токенов рендера ⟦…⟧ — в одну строку они не рисуются, поэтому дробь
+// упрощается до «a/b», а служебные скобки просто снимаются).
 function hwPreview(text) {
   if (!text) return ""
   return text
+    .replace(/⟦f:([^:⟧]*):([^⟧]*)⟧/g, "$1/$2")
+    .replace(/⟦r:([^⟧]*)⟧/g, "√$1")
+    .replace(/⟦sup:([^⟧]*)⟧/g, "^$1")
+    .replace(/⟦[a-z]+:/g, "").replace(/[⟧⁅⁆]/g, "")
     .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, "$1/$2")
     .replace(/\\sqrt(?:\[[^\]]*\])?\{([^{}]+)\}/g, "√$1")
     // имена функций сохраняем (иначе «\log_{2} 8» превратится в «_2 8»)
@@ -518,17 +526,22 @@ function deadlineInfo(hw) {
   if (days === 0) return { text: "Сегодня", cls: "text-amber-600", icon: "clock" }
   if (days === 1) return { text: "Завтра", cls: "text-amber-600", icon: "clock" }
   if (days <= 3) return { text: `Через ${days} дн.`, cls: "text-amber-600", icon: "clock" }
-  return { text: dateStr, cls: "text-gray-400", icon: "calendar" }
+  // Дальний срок написан на самой плитке-дате — второй раз в строке не нужен.
+  return null
 }
 
 function StudentHomeworkCard({ hw, index, onSelect }) {
   const meta = HW_STATUS[hw.status] || HW_STATUS.assigned
   const dl = deadlineInfo(hw)
   const isDone = hw.status === "done"
+  const active = hw.status === "assigned" || hw.status === "revision"
   const typeLabel = hw.hw_type === "test" ? `Тест · ${hw.question_count || 0} вопр.`
     : hw.hw_type === "combined" ? "Тест + письменное" : "Письменное"
   const preview = hw.hw_type !== "test" ? hwPreview(hw.description) : ""
-  const icon = isDone ? "check" : hw.hw_type === "test" ? "clipboard" : hw.hw_type === "combined" ? "file-text" : "edit"
+  // Плитка кодирует этап жизни работы: срок → часы «на проверке» → галка.
+  // Иконка типа осталась только у работ без срока — тип и так написан строкой.
+  const icon = isDone ? "check" : hw.status === "submitted" ? "clock"
+    : hw.hw_type === "test" ? "clipboard" : hw.hw_type === "combined" ? "file-text" : "edit"
   // Проверенная работа: плитка и балл — в одном цвете оценки, а не «зелёная плитка + красный балл».
   const gradeLook = isDone && hw.grade ? (GRADE_LOOK[hw.grade] || GRADE_NEUTRAL) : null
   return (
@@ -537,9 +550,16 @@ function StudentHomeworkCard({ hw, index, onSelect }) {
       style={{ animationDelay: `${Math.min(index, 8) * 45}ms` }}
       className="item-enter press-tap text-left w-full glass rounded-2xl p-3.5 flex items-center gap-3"
     >
+      {/* У несданной работы плитка — срок, как у школьных сервисов: дата
+          читается раньше названия, цвет — срочность. Иконка типа тут ничего
+          не говорила — тип и так написан строкой ниже. */}
+      {active && hw.deadline ? (
+        <DateTile date={hw.deadline} tint={TILE_TINTS[dueTintKey(hw.deadline)]} className="w-11 h-11" />
+      ) : (
       <div className={`shrink-0 w-11 h-11 rounded-2xl flex items-center justify-center bg-gradient-to-br ${gradeLook ? gradeLook.tile : meta.tile}`}>
         <Icon name={icon} size={18} />
       </div>
+      )}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <div className="font-medium text-sm truncate flex-1">{hw.title}</div>
@@ -566,7 +586,7 @@ function StudentHomeworkCard({ hw, index, onSelect }) {
   )
 }
 
-function StudentHomeworkList({ homework, onSelect }) {
+export function StudentHomeworkList({ homework, onSelect }) {
   const [filter, setFilter] = useState("all")
   const match = {
     all: () => true,
@@ -583,7 +603,17 @@ function StudentHomeworkList({ homework, onSelect }) {
     { key: "done", label: "Готово", icon: "check", tint: "text-green-600 bg-green-500/12" },
   ]
   const counts = Object.fromEntries(FILTERS.map((f) => [f.key, homework.filter(match[f.key]).length]))
-  const list = homework.filter(match[filter])
+  // Порядок — по срочности, как у школьных сервисов: сначала несданные по
+  // близости срока (просроченные первыми), затем работы на проверке,
+  // проверенные — в конце. Просто «по дате выдачи» просроченное тонуло внизу.
+  const statusRank = { assigned: 0, revision: 0, submitted: 1, done: 2 }
+  const dueTime = (h) => (h.deadline ? parseLocalDate(h.deadline).getTime() : Infinity)
+  const list = homework.filter(match[filter]).slice().sort((a, b) => {
+    const r = (statusRank[a.status] ?? 0) - (statusRank[b.status] ?? 0)
+    if (r) return r
+    if ((statusRank[a.status] ?? 0) === 0 && dueTime(a) !== dueTime(b)) return dueTime(a) - dueTime(b)
+    return new Date(b.created_at) - new Date(a.created_at)
+  })
 
   // Подчёркивание активной вкладки — одна полоска, которая переезжает с кнопки
   // на кнопку: ширины у вкладок разные и на узком экране полоса ещё скроллится.

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, Fragment } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import { signRows } from "../storageUrl"
@@ -9,13 +9,17 @@ import Collapse from "../components/Collapse"
 import Reveal from "../components/Reveal"
 import AutoHeight from "../components/AutoHeight"
 import FormulaBackdrop from "../components/FormulaBackdrop"
-import { parseLocalDate, renderHomeworkMath, parseHomeworkTasks, plural, hasAttachment } from "../utils"
+import { parseLocalDate, renderHomeworkMath, parseHomeworkTasks, plural, hasAttachment, getInitials } from "../utils"
 import { usePlan } from "../subscription"
 import { PlanHint, PlanLock } from "../components/PlanLock"
 import ConfirmModal from "../components/ConfirmModal"
 import { isOwner } from "../owner"
 import TaskAttachments from "../components/TaskAttachments"
 import { useClosing } from "../useClosing"
+import useGridCols, { detailRowEndOf } from "../useGridCols"
+import getAvatarColor from "../avatarColor"
+import DateTile from "../components/DateTile"
+import { TILE_TINTS, dueTintKey } from "../dueTint"
 // Список предметов — из лёгкого модуля: сами генераторы приезжают отдельно
 // (homeworkBank), и тащить их в бандл раздела ради подписей нельзя.
 import { subjectGroups, firstType, BANK_SUBJECTS } from "./examSubjectList"
@@ -1388,14 +1392,77 @@ function HomeworkTasks({ hw }) {
   )
 }
 
-function HomeworkCard({ hw, studentName, studentPhone, studentAccountId, onUpdate, onEdit }) {
-  const [confirmDelete, setConfirmDelete] = useState(false)
+// Карточка задания в списке. Якорь — плитка срока слева, как у школьных
+// сервисов (Satchel, Google Classroom): дата читается раньше названия, цвет
+// плитки — срочность. Статус написан один раз, а кнопки правки и удаления
+// живут в развороте, а не на каждой карточке — раньше статус повторялся
+// дважды («На проверке» чипом и «Ждёт проверки» плашкой), и карточка шумела.
+function HomeworkCard({ hw, selected, onOpen }) {
+  const typeInfo = TYPE_LABELS[hw.hw_type] || TYPE_LABELS.written
+  const taskCount = parseHomeworkTasks(hw.description).tasks.length
+  const overdue = isOverdue(hw)
+  const done = hw.status === "done"
+
+  // У проверенной работы статус и есть оценка — отдельного «Выполнено» рядом
+  // с ней не нужно.
+  const chip = done && hw.grade
+    ? { label: `Оценка ${hw.grade}`, cls: GRADE_COLORS[hw.grade] }
+    : STATUS_LABELS[hw.status] || STATUS_LABELS.assigned
+
+  // Плитка кодирует этап жизни работы: срок → часы «на проверке» → галка.
+  const tileBox = "w-12 h-12 shrink-0 rounded-2xl flex items-center justify-center bg-gradient-to-br"
+  const tile = done
+    ? <div className={`${tileBox} ${TILE_TINTS.green}`}><Icon name="check" size={18} /></div>
+    : hw.status === "submitted"
+    ? <div className={`${tileBox} ${TILE_TINTS.indigo}`}><Icon name="clock" size={18} /></div>
+    : hw.deadline
+    ? <DateTile date={hw.deadline} tint={TILE_TINTS[dueTintKey(hw.deadline)]} className="w-12 h-12" />
+    : <div className="w-12 h-12 shrink-0 rounded-2xl flex items-center justify-center text-gray-400 ring-1 ring-gray-200/70 dark:ring-white/10"><Icon name="calendar" size={17} /></div>
+
+  return (
+    // Повторное нажатие сворачивает разбор: карточки стоят рядом, и закрывать
+    // панель под ними больше нечем.
+    <button
+      onClick={onOpen}
+      className={`glass-sm press-tap text-left w-full p-3.5 flex items-center gap-3 transition-all ${selected ? "!border-blue-400/70 ring-2 ring-blue-400/35" : "hover:!border-blue-300/60"}`}
+    >
+      {tile}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-sm truncate flex-1">{hw.title}</span>
+          <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${chip.cls}`}>{chip.label}</span>
+        </div>
+        <div className="text-[11px] text-gray-400 mt-1.5 flex items-center gap-1.5 flex-wrap">
+          <span>{typeInfo.label}</span>
+          {taskCount > 0 && <><span className="opacity-50">·</span><span>{taskCount} {plural(taskCount, "задание", "задания", "заданий")}</span></>}
+          {hw.file_url && <><span className="opacity-50">·</span><span className="inline-flex items-center gap-1"><Icon name="paperclip" size={11} />файл</span></>}
+          {hw.test_score != null && <><span className="opacity-50">·</span><span className="text-blue-600 dark:text-blue-400 font-medium">{hw.test_score} из {hw.question_count}</span></>}
+          {overdue && <><span className="opacity-50">·</span><span className="text-red-500 font-medium">просрочено</span></>}
+        </div>
+      </div>
+    </button>
+  )
+}
+
+// Блок внутри разбора: одинаковая подложка у файла, результата и комментария.
+function DetailBlock({ children, className = "" }) {
+  return (
+    <div className={`rounded-2xl ring-1 ring-gray-200/70 dark:ring-white/10 bg-white/45 dark:bg-white/[0.03] p-3 ${className}`}>
+      {children}
+    </div>
+  )
+}
+
+// Разбор выбранного задания — целой строкой под рядом карточек, как разбор
+// варианта: слева условия, справа работа ученика и проверка.
+export function HomeworkDetail({ hw, studentName, studentPhone, studentAccountId, onUpdate, onEdit, onDelete, onClose, cls }) {
   const [grading, setGrading] = useState(false)
   const [comment, setComment] = useState(hw.comment || "")
   const [selectedGrade, setSelectedGrade] = useState(hw.grade || null)
   const status = STATUS_LABELS[hw.status] || STATUS_LABELS.assigned
   const typeInfo = TYPE_LABELS[hw.hw_type] || TYPE_LABELS.written
   const isPureTest = hw.hw_type === "test"
+  const overdue = isOverdue(hw)
 
   const testPercent = hw.test_score != null && hw.question_count
     ? Math.round((hw.test_score / hw.question_count) * 100)
@@ -1434,204 +1501,230 @@ function HomeworkCard({ hw, studentName, studentPhone, studentAccountId, onUpdat
   }
 
   async function finishPureTest() {
-    const grade = suggestedGrade
-    await supabase.from("homework").update({ status: "done", grade }).eq("id", hw.id)
-    onUpdate()
-  }
-
-  async function handleDelete() {
-    setConfirmDelete(false)
-    await supabase.from("homework").delete().eq("id", hw.id)
+    await supabase.from("homework").update({ status: "done", grade: suggestedGrade }).eq("id", hw.id)
     onUpdate()
   }
 
   return (
-    <div className="glass p-4">
-      <ConfirmModal
-        open={confirmDelete}
-        danger
-        title="Удалить задание?"
-        message={`«${hw.title}» пропадёт и у вас, и у ученика — вместе с его ответами и оценкой.`}
-        confirmLabel="Удалить"
-        onConfirm={handleDelete}
-        onCancel={() => setConfirmDelete(false)}
-      />
-      <div className="flex justify-between items-start mb-2">
-        <div>
-          <div className="flex items-center gap-2">
-            <div className="text-sm font-medium">{hw.title}</div>
-            <span className="flex items-center gap-1 text-xs text-gray-400"><Icon name={typeInfo.iconName} size={12} />{typeInfo.label}</span>
-          </div>
-          <div className="text-xs text-gray-500 mt-0.5">{studentName}</div>
+    <div className={`col-span-full glass overflow-hidden slide-up ${cls}`}>
+      <div className="flex items-center justify-between gap-3 px-5 py-3.5">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="font-medium text-base truncate">{hw.title}</span>
+          <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${status.cls}`}>{status.label}</span>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <span className={`text-xs px-2 py-1 rounded-full ${status.cls}`}>{status.label}</span>
-          <button onClick={() => onEdit(hw)} className="text-gray-400 hover:text-blue-600 w-6 h-6 flex items-center justify-center rounded-lg hover:bg-blue-50" title="Редактировать">
-            <Icon name="edit" size={14} />
+        <div className="flex items-center gap-0.5 flex-shrink-0">
+          <span className="text-[11px] text-gray-400 flex items-center gap-1.5 mr-1.5">
+            <Icon name={typeInfo.iconName} size={12} />
+            <span className="hidden sm:inline">{typeInfo.label}</span>
+          </span>
+          <button onClick={() => onEdit(hw)} title="Редактировать задание" aria-label="Редактировать задание"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-500/10 transition-colors">
+            <Icon name="edit" size={15} />
           </button>
-          <button onClick={() => setConfirmDelete(true)} className="text-gray-400 hover:text-red-600 w-6 h-6 flex items-center justify-center rounded-lg hover:bg-red-50" aria-label="Удалить задание" title="Удалить">
-            <Icon name="x" size={14} />
+          <button onClick={() => onDelete(hw)} title="Удалить задание" aria-label="Удалить задание"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-500/10 transition-colors">
+            <Icon name="trash" size={15} />
+          </button>
+          <button onClick={onClose} title="Свернуть" aria-label="Свернуть"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-500/10 transition-colors">
+            <Icon name="x" size={15} />
           </button>
         </div>
       </div>
 
-      <HomeworkTasks hw={hw} />
-
-      {hw.deadline && (
-        <div className={`text-xs mt-2 inline-flex items-center gap-1 ${isOverdue(hw) ? "text-red-500 font-medium" : "text-gray-400"}`}>
-          {isOverdue(hw) && <Icon name="alert-triangle" size={12} />}
-          {isOverdue(hw) ? "Просрочено · " : "Дедлайн: "}
-          {parseLocalDate(hw.deadline).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}
-        </div>
-      )}
-
-      {hw.file_url && (
-        <a href={hw.file_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-blue-600 hover:opacity-70 transition-opacity mt-2">
-          <Icon name="paperclip" size={12} />Файл задания
-        </a>
-      )}
-
-      {hw.test_score != null && (
-        <div className="mt-3 pt-3 border-t border-gray-100">
-          <div className="text-xs text-gray-500">Результат теста</div>
-          <div className="text-sm font-medium text-blue-700">{hw.test_score} / {hw.question_count}</div>
-        </div>
-      )}
-
-      {hw.submission_url && (
-        <div className="mt-3 pt-3 border-t border-gray-100">
-          <div className="text-xs text-gray-500 mb-1">{hw.hw_type === "test" ? "Решение ученика:" : "Письменная работа:"}</div>
-          <a href={hw.submission_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-blue-600 hover:opacity-70 transition-opacity">
-            <Icon name="paperclip" size={12} />Открыть файл
-          </a>
-        </div>
-      )}
-
-      {hw.status === "submitted" && isPureTest && (
-        <div className="mt-3 pt-3 border-t border-gray-100">
-          <div className="flex items-center justify-between">
-            <div className="text-xs text-gray-500">
-              {testPercent}% — рекомендуется оценка <span className="font-medium">{suggestedGrade}</span>
-            </div>
-            <button onClick={finishPureTest} className="text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700">
-              Завершить
-            </button>
-          </div>
-        </div>
-      )}
-
-      {hw.status === "submitted" && !isPureTest && (
-        <div className="mt-3 pt-3 border-t border-gray-100">
-          {!grading ? (
-            <button onClick={() => setGrading(true)} className="text-xs text-blue-600 hover:opacity-70 transition-opacity">
-              Проверить и оценить
-            </button>
+      {/* Две колонки: условия отдельно от проверки — иначе каждая секция шла бы
+          полосой во всю ширину, а справа от неё оставалось пустое поле. */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 px-5 py-4 border-t border-gray-100/60 dark:border-white/10 items-start">
+        <div className="flex flex-col gap-2">
+          <div className="section-label mb-0.5">Задания</div>
+          {hw.description ? (
+            <HomeworkTasks hw={hw} />
           ) : (
-            <div className="flex flex-col gap-3">
-              {testPercent != null && (
-                <div className="bg-blue-50 rounded-lg px-3 py-2 text-xs text-blue-700">
-                  Тестовая часть: {testPercent}% (рекомендуется {suggestedGrade})
-                </div>
-              )}
-
-              <div>
-                <div className="text-xs text-gray-500 mb-1">Оценка</div>
-                <div className="flex gap-1.5">
-                  {[2, 3, 4, 5].map((g) => (
-                    <button
-                      key={g}
-                      onClick={() => setSelectedGrade(g)}
-                      className={`flex-1 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
-                        selectedGrade === g
-                          ? GRADE_COLORS[g] + " border-transparent"
-                          : "border-gray-200 text-gray-500 hover:bg-blue-500/[0.06]"
-                      }`}
-                    >
-                      {g}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <textarea
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                placeholder="Комментарий (необязательно)"
-                rows={2}
-                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs outline-none resize-none"
-              />
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setStatus("done", selectedGrade)}
-                  disabled={!selectedGrade}
-                  className="flex-1 bg-green-600 text-white rounded-lg py-1.5 text-xs hover:bg-green-700 disabled:opacity-40"
-                >
-                  Выполнено
-                </button>
-                <button
-                  onClick={() => setStatus("revision", selectedGrade)}
-                  className="flex-1 bg-amber-500 text-white rounded-lg py-1.5 text-xs hover:bg-amber-600"
-                >
-                  На доработку
-                </button>
-              </div>
+            <div className="rounded-2xl ring-1 ring-dashed ring-gray-200/80 dark:ring-white/10 text-sm text-gray-400 text-center py-8">
+              {hw.file_url ? "Условия — в приложенном файле" : "Условий нет"}
             </div>
           )}
+          {hw.file_url && (
+            <DetailBlock className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-blue-500/12 text-blue-600 flex items-center justify-center flex-shrink-0">
+                <Icon name="paperclip" size={16} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium truncate">Файл задания</div>
+                <div className="text-[11px] text-gray-400 mt-0.5 truncate">То же, что видит ученик</div>
+              </div>
+              <a href={hw.file_url} target="_blank" rel="noreferrer"
+                className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200 flex-shrink-0">
+                Открыть
+              </a>
+            </DetailBlock>
+          )}
         </div>
-      )}
 
-      {hw.grade && hw.status === "done" && (
-        <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
-          <span className="text-xs text-gray-500">Итоговая оценка</span>
-          <span className={`text-sm font-medium px-2.5 py-0.5 rounded-full ${GRADE_COLORS[hw.grade]}`}>{hw.grade}</span>
-        </div>
-      )}
+        <div className="flex flex-col gap-2">
+          <div className="section-label mb-0.5">Ученик и проверка</div>
 
-      {hw.comment && hw.status !== "submitted" && (
-        <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500 flex items-start gap-1">
-          <Icon name="message" size={12} className="mt-0.5 flex-shrink-0" />{hw.comment}
+          <DetailBlock className="flex items-center gap-3">
+            <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 ${getAvatarColor(studentName).bg} ${getAvatarColor(studentName).text}`}>
+              {getInitials(studentName)}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-medium truncate">{studentName}</div>
+              <div className={`text-[11px] mt-0.5 truncate ${overdue ? "text-red-500 font-medium" : "text-gray-400"}`}>
+                {hw.deadline
+                  ? `${overdue ? "Просрочено · " : "Срок: "}${parseLocalDate(hw.deadline).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}`
+                  : "Без срока сдачи"}
+              </div>
+            </div>
+            {hw.grade && hw.status === "done" && (
+              <span className={`text-[11px] px-2.5 py-1 rounded-full font-medium flex-shrink-0 ${GRADE_COLORS[hw.grade]}`}>{hw.grade}</span>
+            )}
+          </DetailBlock>
+
+          {hw.test_score != null && (
+            <DetailBlock className="flex items-center justify-between gap-3">
+              <div className="text-xs text-gray-500">Результат теста</div>
+              <div className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                {hw.test_score} / {hw.question_count}{testPercent != null ? ` · ${testPercent}%` : ""}
+              </div>
+            </DetailBlock>
+          )}
+
+          {hw.submission_url && (
+            <DetailBlock className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-green-500/12 text-green-600 flex items-center justify-center flex-shrink-0">
+                <Icon name="check" size={16} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium truncate">{isPureTest ? "Решение ученика" : "Письменная работа"}</div>
+                <div className="text-[11px] text-gray-400 mt-0.5 truncate">Прислано учеником</div>
+              </div>
+              <a href={hw.submission_url} target="_blank" rel="noreferrer"
+                className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200 flex-shrink-0">
+                Открыть
+              </a>
+            </DetailBlock>
+          )}
+
+          {hw.status === "submitted" && isPureTest && (
+            <DetailBlock className="flex items-center justify-between gap-3">
+              <div className="text-xs text-gray-500">
+                {testPercent}% — рекомендуется оценка <span className="font-medium">{suggestedGrade}</span>
+              </div>
+              <button onClick={finishPureTest} className="press-fill text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg flex-shrink-0">
+                Завершить
+              </button>
+            </DetailBlock>
+          )}
+
+          {hw.status === "submitted" && !isPureTest && (
+            <DetailBlock>
+              {!grading ? (
+                <button onClick={() => setGrading(true)} className="text-xs text-blue-600 hover:opacity-70 transition-opacity">
+                  Проверить и оценить
+                </button>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {testPercent != null && (
+                    <div className="text-xs text-blue-700 dark:text-blue-300">
+                      Тестовая часть: {testPercent}% (рекомендуется {suggestedGrade})
+                    </div>
+                  )}
+
+                  <div>
+                    <div className="text-xs text-gray-500 mb-1">Оценка</div>
+                    <div className="flex gap-1.5">
+                      {[2, 3, 4, 5].map((g) => (
+                        <button
+                          key={g}
+                          onClick={() => setSelectedGrade(g)}
+                          className={`press-fill flex-1 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                            selectedGrade === g
+                              ? GRADE_COLORS[g]
+                              : "ring-1 ring-gray-200 dark:ring-white/15 text-gray-500"
+                          }`}
+                        >
+                          {g}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <textarea
+                    value={comment}
+                    onChange={(e) => setComment(e.target.value)}
+                    placeholder="Комментарий (необязательно)"
+                    rows={2}
+                    className="input-glass text-xs resize-none"
+                  />
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setStatus("done", selectedGrade)}
+                      disabled={!selectedGrade}
+                      className="press-fill flex-1 bg-green-600 text-white rounded-lg py-1.5 text-xs disabled:opacity-40"
+                    >
+                      Выполнено
+                    </button>
+                    <button
+                      onClick={() => setStatus("revision", selectedGrade)}
+                      className="press-fill flex-1 bg-amber-500 text-white rounded-lg py-1.5 text-xs"
+                    >
+                      На доработку
+                    </button>
+                  </div>
+                </div>
+              )}
+            </DetailBlock>
+          )}
+
+          {hw.comment && hw.status !== "submitted" && (
+            <DetailBlock className="text-xs text-gray-500 flex items-start gap-1.5">
+              <Icon name="message" size={12} className="mt-0.5 flex-shrink-0" />{hw.comment}
+            </DetailBlock>
+          )}
         </div>
-      )}
+      </div>
     </div>
   )
 }
 
-function StudentHomeworkGroup({ studentName, studentPhone, studentAccountId, items, onUpdate, onEdit }) {
-  const [expanded, setExpanded] = useState(true)
-
+// Задания одного ученика: подпись с именем и сетка карточек. Разбор встаёт
+// строкой после того ряда, в котором стоит выбранная карточка.
+export function StudentHomeworkGroup({ studentName, items, selectedId, cols, detailPanel, onOpen }) {
+  const color = getAvatarColor(studentName)
   const pending = items.filter((h) => h.status === "submitted").length
-  const needsAttention = items.filter((h) => h.status === "assigned" || h.status === "revision").length
+  const overdue = items.filter(isOverdue).length
+  const selectedIndex = selectedId ? items.findIndex((h) => h.id === selectedId) : -1
+  const detailRowEnd = detailRowEndOf(selectedIndex, items.length, cols)
 
   return (
-    <div className="glass overflow-hidden">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/30 transition-colors"
-      >
-        <div className="flex items-center gap-3">
-          <span className={`text-gray-400 transition-transform duration-300 ${expanded ? "rotate-90" : ""}`}>›</span>
-          <span className="text-sm font-medium">{studentName}</span>
-          <span className="text-xs text-gray-400">{items.length} {items.length === 1 ? "задание" : "заданий"}</span>
+    <section className="flex flex-col gap-2.5">
+      <div className="flex items-center gap-2.5 px-0.5">
+        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-medium flex-shrink-0 ${color.bg} ${color.text}`}>
+          {getInitials(studentName)}
         </div>
-        <div className="flex items-center gap-2">
-          {pending > 0 && (
-            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{pending} на проверке</span>
-          )}
-          {needsAttention > 0 && (
-            <span className="text-xs text-gray-500 ring-1 ring-gray-200/70 dark:ring-white/15 px-2 py-0.5 rounded-full">{needsAttention} активных</span>
-          )}
+        <span className="text-sm font-medium truncate">{studentName}</span>
+        <span className="text-xs text-gray-400 flex-shrink-0">{items.length} {plural(items.length, "задание", "задания", "заданий")}</span>
+        <div className="ml-auto flex items-center gap-1.5 flex-shrink-0">
+          {pending > 0 && <span className="text-[11px] text-amber-600 bg-amber-500/12 ring-1 ring-amber-500/20 px-2 py-0.5 rounded-full">{pending} на проверке</span>}
+          {overdue > 0 && <span className="text-[11px] text-red-600 bg-red-500/12 ring-1 ring-red-500/20 px-2 py-0.5 rounded-full">{overdue} просрочено</span>}
         </div>
-      </button>
+      </div>
 
-      <Collapse open={expanded}>
-        <div className="px-4 pb-4 pt-1 flex flex-col gap-3 border-t border-white/40">
-          {items.map((hw) => (
-            <HomeworkCard key={hw.id} hw={hw} studentName={studentName} studentPhone={studentPhone} studentAccountId={studentAccountId} onUpdate={onUpdate} onEdit={onEdit} />
-          ))}
-        </div>
-      </Collapse>
-    </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 items-stretch">
+        {items.map((hw, i) => (
+          <Fragment key={hw.id}>
+            <HomeworkCard
+              hw={hw}
+              selected={selectedId === hw.id}
+              onOpen={() => onOpen(hw)}
+            />
+            {detailPanel && i === detailRowEnd && detailPanel}
+          </Fragment>
+        ))}
+      </div>
+    </section>
   )
 }
 
@@ -1640,6 +1733,13 @@ function Homework({ user, students }) {
   const [showModal, setShowModal] = useState(false)
   const [filter, setFilter] = useState("all")
   const [editingHw, setEditingHw] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(null)
+  // Выбранное задание держим по id, а не объектом: после проверки список
+  // перечитывается, и объект-снимок показывал бы старый статус и оценку.
+  const [selectedId, setSelectedId] = useState(null)
+  // Разбор сворачивается плавно: панель уезжает вниз и только потом снимается.
+  const { cls: detailCls, close: closeDetail, cancel: cancelDetailClose } = useClosing(() => setSelectedId(null))
+  const cols = useGridCols()
 
   useEffect(() => {
     loadHomework()
@@ -1683,7 +1783,57 @@ function Homework({ user, students }) {
     if (!grouped[name]) grouped[name] = []
     grouped[name].push(hw)
   })
+  // Порядок внутри группы — по важности для репетитора, как у школьных
+  // сервисов: сначала работы, которые ждут его проверки, затем выданные по
+  // близости срока, проверенные — в конце. Свежая дата выдачи сама по себе
+  // очередность не задаёт.
+  const statusRank = { submitted: 0, assigned: 1, revision: 1, done: 2 }
+  const dueTime = (h) => (h.deadline ? parseLocalDate(h.deadline).getTime() : Infinity)
+  Object.values(grouped).forEach((items) =>
+    items.sort((a, b) => {
+      const r = (statusRank[a.status] ?? 1) - (statusRank[b.status] ?? 1)
+      if (r) return r
+      if ((statusRank[a.status] ?? 1) === 1 && dueTime(a) !== dueTime(b)) return dueTime(a) - dueTime(b)
+      return new Date(b.created_at) - new Date(a.created_at)
+    })
+  )
   const groupNames = Object.keys(grouped).sort()
+
+  // Разбор берём из полного списка: пока панель уезжает, задание уже могло
+  // выпасть из фильтра — иначе она пропала бы в тот же кадр.
+  const selectedHw = selectedId ? homework.find((h) => h.id === selectedId) : null
+  const selectedStudent = selectedHw ? students.find((s) => s.id === selectedHw.student_id) : null
+  const selectedName = selectedStudent?.name || "Неизвестный ученик"
+
+  // Повторное нажатие по карточке сворачивает разбор; нажатие по соседней
+  // перебивает уход, иначе отложенное закрытие погасило бы только что открытую.
+  function openHw(hw) {
+    if (selectedId === hw.id) closeDetail()
+    else { cancelDetailClose(); setSelectedId(hw.id) }
+  }
+
+  async function handleDelete() {
+    const hw = confirmDelete
+    setConfirmDelete(null)
+    await supabase.from("homework").delete().eq("id", hw.id)
+    if (selectedId === hw.id) setSelectedId(null)
+    loadHomework()
+  }
+
+  const detailPanel = selectedHw ? (
+    <HomeworkDetail
+      key={selectedHw.id}
+      hw={selectedHw}
+      studentName={selectedName}
+      studentPhone={selectedStudent?.phone || null}
+      studentAccountId={selectedStudent?.studentAccountId || null}
+      onUpdate={loadHomework}
+      onEdit={setEditingHw}
+      onDelete={setConfirmDelete}
+      onClose={closeDetail}
+      cls={detailCls}
+    />
+  ) : null
 
   return (
     <div className="p-4 md:p-6">
@@ -1703,7 +1853,14 @@ function Homework({ user, students }) {
             className="mb-4"
             items={FILTERS.map((f) => ({ ...f, count: f.count ?? homework.filter((h) => h.status === f.id).length }))}
             value={filter}
-            onChange={setFilter}
+            onChange={(next) => {
+              setFilter(next)
+              // Открытый разбор скрывать молча нельзя: если задание не попадает
+              // в выбранный фильтр, сворачиваем его той же анимацией.
+              const hw = selectedId ? homework.find((h) => h.id === selectedId) : null
+              const fits = !hw || next === "all" || (next === "overdue" ? isOverdue(hw) : hw.status === next)
+              if (hw && !fits) closeDetail()
+            }}
           />
 
           {groupNames.length === 0 ? (
@@ -1726,25 +1883,32 @@ function Homework({ user, students }) {
               </div>
             </div>
           ) : (
-            <div key={filter} className="tab-swap flex flex-col gap-3">
-              {groupNames.map((name) => {
-                const s = students.find(st => st.name === name)
-                return (
-                  <StudentHomeworkGroup
-                    key={name}
-                    studentName={name}
-                    studentPhone={s?.phone || null}
-                    studentAccountId={s?.studentAccountId || null}
-                    items={grouped[name]}
-                    onUpdate={loadHomework}
-                    onEdit={setEditingHw}
-                  />
-                )
-              })}
+            <div key={filter} className="tab-swap flex flex-col gap-5">
+              {groupNames.map((name) => (
+                <StudentHomeworkGroup
+                  key={name}
+                  studentName={name}
+                  items={grouped[name]}
+                  selectedId={grouped[name].some((h) => h.id === selectedId) ? selectedId : null}
+                  cols={cols}
+                  detailPanel={grouped[name].some((h) => h.id === selectedId) ? detailPanel : null}
+                  onOpen={openHw}
+                />
+              ))}
             </div>
           )}
         </>
       )}
+
+      <ConfirmModal
+        open={!!confirmDelete}
+        danger
+        title="Удалить задание?"
+        message={`«${confirmDelete?.title || ""}» пропадёт и у вас, и у ученика — вместе с его ответами и оценкой.`}
+        confirmLabel="Удалить"
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDelete(null)}
+      />
 
       {showModal && (
         <CreateHomeworkModal
