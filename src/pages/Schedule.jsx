@@ -672,7 +672,7 @@ function Schedule({ students, setStudents, onOpenBoard }) {
                 <div className="flex gap-2 flex-wrap">
                   {HOURS.map((time) => (
                     <button key={time} onClick={() => setNewLesson((p) => ({ ...p, time }))}
-                      className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${newLesson.time === time ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
+                      className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${newLesson.time === time ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-600 hover:bg-blue-500/[0.06]"}`}>
                       {time}
                     </button>
                   ))}
@@ -683,7 +683,7 @@ function Schedule({ students, setStudents, onOpenBoard }) {
                 <div className="flex gap-2 flex-wrap">
                   {[30, 45, 60, 90, 120].map((d) => (
                     <button key={d} onClick={() => setNewLesson((p) => ({ ...p, duration: String(d) }))}
-                      className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${String(newLesson.duration) === String(d) ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
+                      className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${String(newLesson.duration) === String(d) ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-600 hover:bg-blue-500/[0.06]"}`}>
                       {d}
                     </button>
                   ))}
@@ -694,7 +694,7 @@ function Schedule({ students, setStudents, onOpenBoard }) {
               {formError && <div className="text-sm text-red-500 text-center">{formError}</div>}
             </div>
             <div className="flex gap-3 px-6 py-4 border-t border-gray-100/60 flex-shrink-0">
-              <button onClick={closeForm} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-gray-50">Отмена</button>
+              <button onClick={closeForm} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-blue-500/[0.06]">Отмена</button>
               <button onClick={handleAddLesson} className="flex-1 btn-primary py-2.5">Добавить</button>
             </div>
           </div>

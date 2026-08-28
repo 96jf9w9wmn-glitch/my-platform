@@ -79,7 +79,7 @@ function ConfirmModal({
         <div className="flex gap-2.5 w-full">
           <button
             onClick={onCancel}
-            className="flex-1 rounded-xl py-2.5 text-sm font-medium text-gray-600 bg-black/[0.04] dark:bg-white/[0.08] hover:bg-black/[0.07] dark:hover:bg-white/[0.12] transition active:scale-[0.97]"
+            className="flex-1 rounded-xl py-2.5 text-sm font-medium text-gray-600 ring-1 ring-inset ring-gray-200/80 dark:ring-white/15 hover:bg-blue-500/10 dark:hover:bg-white/[0.12] transition active:scale-[0.97]"
           >
             {cancelLabel}
           </button>

@@ -142,7 +142,7 @@ export default function TelegramSettings() {
 
       {link ? (
         <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 bg-black/[0.03] dark:bg-white/[0.05]">
+          <div className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 bg-blue-500/[0.05] dark:bg-white/[0.05]">
             <span className="w-8 h-8 rounded-xl bg-[#007AFF]/12 text-[#007AFF] flex items-center justify-center shrink-0">
               <Icon name="message" size={15} />
             </span>

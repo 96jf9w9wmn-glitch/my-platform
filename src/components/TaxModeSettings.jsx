@@ -56,7 +56,7 @@ export default function TaxModeSettings({ tutorId, surface = "glass p-5" }) {
             className={`no-press px-3 py-1.5 rounded-full text-xs font-medium transition-all active:scale-[0.94] ring-1 ring-inset ${
               rate === r.value
                 ? "bg-[#007AFF]/12 text-[#007AFF] ring-[#007AFF]/25"
-                : "text-gray-500 ring-gray-200 dark:ring-white/10 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                : "text-gray-500 ring-gray-200 dark:ring-white/10 hover:bg-blue-500/[0.07] dark:hover:bg-white/[0.06]"
             }`}
           >
             {r.label}

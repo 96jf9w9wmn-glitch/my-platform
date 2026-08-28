@@ -840,7 +840,7 @@ button.w-full:not([disabled]):not(.no-press):active,
 button.w-full:not([disabled]):not(.no-press):active::after,
 .flex-col > button:not([disabled]):not(.no-press):not(.self-start):not(.self-center):not(.self-end):not(.w-auto):not(.mx-auto):active::after,
 .grid > button:not([disabled]):not(.no-press):not(.self-start):not(.self-center):not(.self-end):not(.w-auto):not(.mx-auto):active::after {
-  background: rgba(0, 0, 0, 0.06);
+  background: rgba(0, 122, 255, 0.10);
   transition-duration: 0.04s;
 }
 .dark .press-fill:not([disabled]):not(.no-press):active::after,
@@ -1255,8 +1255,19 @@ button.w-full:not([disabled]):not(.no-press):active::after,
 .dark .hover\:bg-white\/30:hover { background-color: rgba(255,255,255,0.05) !important; }
 .dark .hover\:bg-white\/40:hover { background-color: rgba(255,255,255,0.08) !important; }
 
-/* Schedule view switcher — active tab sits inside bg-gray-100 container */
-.dark .bg-gray-100 > .bg-white {
+/* Сегмент-контрол в тёмной теме: дорожка — стеклянная, «палец» — светлее её.
+   Раньше дорожка держалась на .bg-gray-100 (серая заливка), теперь она голубая
+   в светлой теме, поэтому перекрашиваем по своему классу .seg-track. */
+.dark .seg-track {
+  background: rgba(255,255,255,0.06) !important;
+  border-color: rgba(255,255,255,0.10) !important;
+}
+.dark .seg-track > .seg-finger {
+  background: rgba(255,255,255,0.14) !important;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4) !important;
+}
+/* Тот же приём у самодельных переключателей вкладок (кабинет родителя). */
+.dark .tab-track > .bg-white {
   background: rgba(255,255,255,0.14) !important;
   box-shadow: 0 2px 6px rgba(0,0,0,0.4) !important;
 }
@@ -1299,7 +1310,7 @@ button.w-full:not([disabled]):not(.no-press):active::after,
 .ios-range::-webkit-slider-runnable-track {
   height: 4px;
   border-radius: 999px;
-  background: linear-gradient(to right, #007aff 0 var(--p, 0%), rgba(120, 120, 128, 0.18) var(--p, 0%) 100%);
+  background: linear-gradient(to right, #007aff 0 var(--p, 0%), rgba(0, 122, 255, 0.16) var(--p, 0%) 100%);
 }
 
 .ios-range::-webkit-slider-thumb {
@@ -1320,7 +1331,7 @@ button.w-full:not([disabled]):not(.no-press):active::after,
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.10), 0 3px 8px rgba(0, 0, 0, 0.14), 0 0 0 4px rgba(0, 122, 255, 0.25);
 }
 
-.ios-range::-moz-range-track { height: 4px; border-radius: 999px; background: rgba(120, 120, 128, 0.18); }
+.ios-range::-moz-range-track { height: 4px; border-radius: 999px; background: rgba(0, 122, 255, 0.16); }
 .ios-range::-moz-range-progress { height: 4px; border-radius: 999px; background: #007aff; }
 .ios-range::-moz-range-thumb {
   width: 26px;
@@ -1441,7 +1452,7 @@ summary::-webkit-details-marker { display: none; }
   transition: background 0.18s ease;
   pointer-events: none;
 }
-.press-tap:active::after { background: rgba(0, 0, 0, 0.08); transition-duration: 0.04s; }
+.press-tap:active::after { background: rgba(0, 122, 255, 0.12); transition-duration: 0.04s; }
 .dark .press-tap:active::after { background: rgba(255, 255, 255, 0.08); }
 
 /* Chat background */
@@ -1469,7 +1480,7 @@ summary::-webkit-details-marker { display: none; }
 /* Разделитель дня по центру (как «4 июля» в Telegram). Отдельный класс,
    чтобы ремап серых токенов в .dark не гасил фон/текст. */
 .chat-date {
-  background: rgba(0, 0, 0, 0.06);
+  background: rgba(0, 122, 255, 0.10);
   color: #3c3c43;
 }
 .dark .chat-date {
@@ -1507,7 +1518,7 @@ html.kb-open .kb-collapse { padding-bottom: 0; }
    ничего не отвлекает (как в brilliant.org). Своё непрозрачное дно, потому
    что слой перекрывает и мобильную нижнюю навигацию. */
 .practice-shell {
-  background: #f5f5f7;
+  background: #eef0f8;
   padding-bottom: env(safe-area-inset-bottom);
 }
 .dark .practice-shell { background: #0d0d0f; }
@@ -1541,12 +1552,12 @@ html.kb-open .kb-collapse { padding-bottom: 0; }
 .practice-range::-webkit-slider-runnable-track {
   height: 5px;
   border-radius: 3px;
-  background: rgba(120, 120, 128, 0.22);
+  background: rgba(0, 122, 255, 0.18);
 }
 .practice-range::-moz-range-track {
   height: 5px;
   border-radius: 3px;
-  background: rgba(120, 120, 128, 0.22);
+  background: rgba(0, 122, 255, 0.18);
 }
 .practice-range::-webkit-slider-thumb {
   -webkit-appearance: none;

@@ -303,7 +303,7 @@ function ParentDashboard({ user, onLogout }) {
         </div>
 
         {/* Навигация */}
-        <div className="flex gap-1 mb-4 bg-gray-100 rounded-2xl p-1">
+        <div className="tab-track flex gap-1 mb-4 bg-blue-500/[0.06] border border-blue-500/15 rounded-2xl p-1">
           {[{ id: "home", label: "Кабинет" }, { id: "chat", label: "Чат", badge: chatUnread }].map(tab => (
             <button
               key={tab.id}
@@ -439,7 +439,7 @@ function ParentDashboard({ user, onLogout }) {
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm font-semibold text-gray-700">Домашние задания</div>
             {homework.length > 0 && (
-              <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
+              <div className="tab-track flex gap-1 bg-blue-500/[0.06] border border-blue-500/15 rounded-lg p-0.5">
                 <button
                   onClick={() => setHwTab("list")}
                   className={`text-xs px-2.5 py-1 rounded-md transition-colors ${hwTab === "list" ? "bg-white text-gray-700 shadow-sm" : "text-gray-500"}`}

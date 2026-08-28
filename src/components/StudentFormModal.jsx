@@ -145,7 +145,7 @@ function MiniCalendar({ lessons, onToggleDate }) {
           const isToday = key === formatDate(today)
           return (
             <button key={key} onClick={() => onToggleDate(key)}
-              className={`text-xs py-1.5 rounded-md transition-colors ${isSelected ? "bg-blue-600 text-white" : isToday ? "border border-blue-300 text-blue-600" : "text-gray-600 hover:bg-gray-100"}`}>
+              className={`text-xs py-1.5 rounded-md transition-colors ${isSelected ? "bg-blue-600 text-white" : isToday ? "border border-blue-300 text-blue-600" : "text-gray-600 hover:bg-blue-500/10"}`}>
               {day.getDate()}
             </button>
           )
@@ -554,7 +554,7 @@ function StudentFormModal({ student, onClose, onSubmit, initialName, initialPhon
                       <div>
                         <label className="text-sm text-gray-500 mb-2 block">Время и длительность</label>
                         <div className="border border-gray-100 dark:border-white/10 rounded-xl overflow-hidden">
-                          <div className="flex flex-wrap items-center gap-2 px-3.5 py-3 bg-gray-50 dark:bg-white/5">
+                          <div className="flex flex-wrap items-center gap-2 px-3.5 py-3 bg-blue-500/[0.05] dark:bg-white/5">
                             <span className="basis-full sm:basis-auto sm:flex-1 min-w-0 text-sm text-gray-500">Для всех дат</span>
                             <TimeField value={bulkTime} onChange={applyTimeToAll} />
                             <DurationField value={bulkDuration} onChange={applyDurationToAll} />
@@ -590,7 +590,7 @@ function StudentFormModal({ student, onClose, onSubmit, initialName, initialPhon
                         const selected = recurringDays.find((d) => d.name === day)
                         return (
                           <div key={day} className={`border rounded-xl transition-colors ${selected ? "border-blue-200 bg-blue-50" : "border-gray-100 dark:border-white/10"}`}>
-                            <div className="flex items-center gap-3 px-3.5 py-2.5 cursor-pointer rounded-xl active:bg-black/5 transition-colors" onClick={() => toggleRecurringDay(day)}>
+                            <div className="flex items-center gap-3 px-3.5 py-2.5 cursor-pointer rounded-xl active:bg-blue-500/10 transition-colors" onClick={() => toggleRecurringDay(day)}>
                               <div className={`w-5 h-5 rounded border flex items-center justify-center text-xs transition-colors ${selected ? "bg-blue-600 border-blue-600 text-white" : "border-gray-300"}`}>
                                 {selected ? <Icon name="check" size={12} /> : null}
                               </div>

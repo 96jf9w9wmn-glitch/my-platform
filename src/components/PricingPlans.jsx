@@ -23,7 +23,7 @@ function PeriodTabs({ period, onChange }) {
 
   return (
     <div
-      className="relative inline-grid grid-cols-2 p-1 rounded-full bg-black/[0.05] dark:bg-white/[0.08]"
+      className="relative inline-grid grid-cols-2 p-1 rounded-full bg-blue-500/[0.06] border border-blue-500/15 dark:bg-white/[0.08] dark:border-white/10"
       role="group"
       aria-label="Период оплаты"
     >

@@ -322,7 +322,7 @@ function TaskGenPreview() {
 
   const chip = (active, disabled = false) =>
     `px-3 py-1.5 rounded-xl text-sm border transition-all active:scale-95 ${
-      active ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-600 hover:bg-gray-50"
+      active ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-600 hover:bg-blue-500/[0.06]"
     } ${disabled ? "opacity-40 cursor-not-allowed" : ""}`
 
   return (
@@ -359,7 +359,7 @@ function TaskGenPreview() {
               className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm border transition-all active:scale-95 ${
                 active
                   ? "bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-600/20"
-                  : "bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50"
+                  : "bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-blue-500/[0.06]"
               } ${!has ? "opacity-40 cursor-not-allowed" : ""}`}
             >
               <span className={`w-2 h-2 rounded-full ${active ? "bg-white/90" : s.dot}`} />
@@ -460,7 +460,7 @@ function TaskGenPreview() {
         {focus != null && !isReading && (
           <button
             onClick={addMore}
-            className="px-4 py-2 rounded-xl border border-gray-200 text-gray-600 text-sm hover:bg-gray-50 active:scale-95 transition-all"
+            className="px-4 py-2 rounded-xl border border-gray-200 text-gray-600 text-sm hover:bg-blue-500/[0.06] active:scale-95 transition-all"
           >
             Ещё {isMod(focus) ? MOD_BATCH : BATCH}
           </button>

@@ -61,7 +61,7 @@ function UsageBar({ label, used, limit }) {
           {used} / {limit}
         </span>
       </div>
-      <div className="h-1.5 rounded-full bg-black/[0.06] dark:bg-white/[0.10] overflow-hidden">
+      <div className="h-1.5 rounded-full bg-blue-500/12 dark:bg-white/[0.10] overflow-hidden">
         <div
           className={`h-full rounded-full transition-[width] duration-500 ${tight ? "bg-amber-500" : "bg-[#007AFF]"}`}
           style={{ width: `${share}%` }}

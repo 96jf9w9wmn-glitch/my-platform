@@ -17,6 +17,7 @@ import { usePlan } from "../subscription"
 import { PlanHint } from "../components/PlanLock"
 import ConfirmModal from "../components/ConfirmModal"
 import SegmentSwitch from "../components/SegmentSwitch"
+import StatTabs from "../components/StatTabs"
 import { useClosing } from "../useClosing"
 import Reveal from "../components/Reveal"
 // Тетрадь тянет генераторы заданий — грузим только когда её открыли.
@@ -147,6 +148,53 @@ function VariantFileBlock({ variant, tutorId, onBuilt, onPreview }) {
       {url && url.match(/\.(jpg|jpeg|png|gif|webp)/i) && (
         <img src={url} alt="вариант" className="w-full max-h-48 object-contain bg-white cursor-pointer border-t border-gray-100/70 dark:border-white/10" onClick={() => onPreview(url)} />
       )}
+    </div>
+  )
+}
+
+// Состав варианта. Раньше это был <details>: он закрывается в тот же кадр,
+// без анимации, и панель дёргалась. Здесь раскрытие и сворачивание идут одним
+// и тем же плавным Reveal.
+function BankTasksBlock({ tasks }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="rounded-2xl ring-1 ring-gray-200/70 dark:ring-white/10 bg-white/45 dark:bg-white/[0.03] overflow-hidden">
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open}
+        className="press-fill w-full p-3 flex items-center gap-3 text-left">
+        <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center flex-shrink-0">
+          <Icon name="book" size={15} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium truncate">Задания из банка</div>
+          <div className="text-[11px] text-gray-400 mt-0.5">
+            {tasks.length} {plural(tasks.length, "задание", "задания", "заданий")}
+          </div>
+        </div>
+        <span className={`text-gray-400 flex-shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`}>
+          <Icon name="chevron-down" size={16} />
+        </span>
+      </button>
+      <Reveal value={open || null}>
+        {() => (
+          <div className="flex flex-col gap-1.5 p-2.5 pt-0">
+            {tasks.map((t) => (
+              <div key={t.number} className="text-xs rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 px-2.5 py-2 flex items-start gap-2.5">
+                <span className="shrink-0 w-5 h-5 rounded-full bg-blue-500/12 text-blue-600 dark:text-blue-400 text-[10px] font-semibold flex items-center justify-center">
+                  {t.number}
+                </span>
+                <div className="min-w-0">
+                  {t.condition_text && <span className="text-gray-600 leading-snug" dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_text) }} />}
+                  {t.image_url && (
+                    <a href={t.image_url} target="_blank" rel="noreferrer" className="block mt-1.5">
+                      <img src={t.image_url} alt={`Задание ${t.number}`} className="h-20 rounded-lg ring-1 ring-gray-200/70 bg-white" />
+                    </a>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Reveal>
     </div>
   )
 }
@@ -770,7 +818,7 @@ function VariantReview({ submission, variant, onClose, onSave }) {
         </div>
         <Reveal value={open && criteria ? n : null}>
           {() => (
-            <div className="mt-2 rounded-xl bg-gray-50 ring-1 ring-gray-100 p-3 flex flex-col gap-2">
+            <div className="mt-2 rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 p-3 flex flex-col gap-2">
               {criteria.map((c) => (
                 <div key={c.score} className="flex items-start gap-2.5">
                   <span className="mt-px w-5 h-5 flex-shrink-0 rounded-md bg-white ring-1 ring-gray-200 text-[11px] font-medium text-gray-600 flex items-center justify-center">{c.score}</span>
@@ -847,7 +895,7 @@ function VariantReview({ submission, variant, onClose, onSave }) {
               </div>
               <Reveal value={showNotes && notes ? notes : null}>
                 {(list) => (
-                  <ul className="mb-3 rounded-xl bg-gray-50 ring-1 ring-gray-100 p-3 flex flex-col gap-1.5">
+                  <ul className="mb-3 rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 p-3 flex flex-col gap-1.5">
                     {list.map((t) => (
                       <li key={t} className="text-[11px] leading-relaxed text-gray-500">{t}</li>
                     ))}
@@ -1084,37 +1132,7 @@ function Variants({ user, students = [] }) {
                 )}
 
                 {selectedVariant.tasks_snapshot?.length > 0 && (
-                  <details className="rounded-2xl ring-1 ring-gray-200/70 dark:ring-white/10 bg-white/45 dark:bg-white/[0.03] overflow-hidden group">
-                    <summary className="press-fill p-3 flex items-center gap-3 cursor-pointer select-none list-none">
-                      <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center flex-shrink-0">
-                        <Icon name="book" size={15} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-medium truncate">Задания из банка</div>
-                        <div className="text-[11px] text-gray-400 mt-0.5">
-                          {selectedVariant.tasks_snapshot.length} {plural(selectedVariant.tasks_snapshot.length, "задание", "задания", "заданий")}
-                        </div>
-                      </div>
-                      <span className="text-gray-400 transition-transform group-open:rotate-90 flex-shrink-0 pr-1">›</span>
-                    </summary>
-                    <div className="flex flex-col gap-1.5 p-2.5 pt-0">
-                      {selectedVariant.tasks_snapshot.map((t) => (
-                        <div key={t.number} className="text-xs rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 px-2.5 py-2 flex items-start gap-2.5">
-                          <span className="shrink-0 w-5 h-5 rounded-full bg-blue-500/12 text-blue-600 dark:text-blue-400 text-[10px] font-semibold flex items-center justify-center">
-                            {t.number}
-                          </span>
-                          <div className="min-w-0">
-                            {t.condition_text && <span className="text-gray-600 leading-snug" dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_text) }} />}
-                            {t.image_url && (
-                              <a href={t.image_url} target="_blank" rel="noreferrer" className="block mt-1.5">
-                                <img src={t.image_url} alt={`Задание ${t.number}`} className="h-20 rounded-lg ring-1 ring-gray-200/70 bg-white" />
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </details>
+                  <BankTasksBlock key={selectedVariant.id} tasks={selectedVariant.tasks_snapshot} />
                 )}
               </div>
 
@@ -1187,48 +1205,22 @@ function Variants({ user, students = [] }) {
         onCancel={() => setConfirmDelete(null)}
       />
 
-      {/* Сводка одной полосой: три отдельные карточки на такие короткие числа
-          давали больше пустоты, чем данных. */}
-      <div className="glass overflow-hidden grid grid-cols-3 divide-x divide-gray-500/12 dark:divide-white/10">
-        {[
-          { key: "all", icon: "clipboard", label: "Всего вариантов", short: "Всего", value: variants.length, tint: "text-blue-600 bg-blue-500/10", active: variants.length > 0 },
-          { key: "pending", icon: "clock", label: "Ждут проверки", short: "На проверке", value: totalPending, tint: "text-amber-600 bg-amber-500/12", active: totalPending > 0 },
-          { key: "graded", icon: "check", label: "Проверено работ", short: "Проверено", value: totalGraded, tint: "text-green-600 bg-green-500/12", active: totalGraded > 0 },
-        ].map((st) => {
-          const on = stat === st.key
-          // Пустую плитку не жмём: фильтр по ней дал бы пустой список.
-          const clickable = st.key === "all" ? stat !== "all" : st.value > 0
-          return (
-          <button
-            key={st.label}
-            type="button"
-            disabled={!clickable}
-            aria-pressed={on}
-            title={st.key === "all" ? "Показать все варианты" : `Показать варианты, где есть работы: ${st.label.toLowerCase()}`}
-            onClick={() => {
-              const next = on ? "all" : st.key
-              setStat(next)
-              // Открытый разбор скрывать молча нельзя — закрываем той же анимацией.
-              const fits = next === "all" || hasStatus(selectedVariant || {}, next === "pending" ? "submitted" : "graded")
-              if (selectedVariant && !fits) closeDetail()
-            }}
-            className={`press-fill flex items-center gap-3 px-3 sm:px-4 py-3.5 min-w-0 text-left transition-colors ${clickable ? "cursor-pointer" : "cursor-default"} ${on ? "bg-blue-500/8" : ""}`}
-          >
-            <div className={`w-9 h-9 rounded-xl hidden sm:flex items-center justify-center flex-shrink-0 ${st.active ? st.tint : "text-gray-400 ring-1 ring-gray-200/70 dark:ring-white/10"}`}>
-              <Icon name={st.icon} size={16} />
-            </div>
-            <div className="min-w-0">
-              <div className={`text-xl font-semibold leading-none ${st.active ? st.tint.split(" ")[0] : "text-gray-400"}`}>{st.value}</div>
-              {/* На узком экране подпись короче: полная не влезает и обрезалась многоточием */}
-              <div className={`text-[11px] mt-1.5 truncate ${on ? "text-gray-600 dark:text-gray-300" : "text-gray-400"}`}>
-                <span className="sm:hidden">{st.short}</span>
-                <span className="hidden sm:inline">{st.label}</span>
-              </div>
-            </div>
-          </button>
-          )
-        })}
-      </div>
+      {/* Та же полоса-фильтр, что на «Домашних заданиях»: одинаковые разделы
+          должны и выглядеть одинаково. */}
+      <StatTabs
+        items={[
+          { id: "all", icon: "clipboard", label: "Всего вариантов", short: "Всего", tint: "text-blue-600 bg-blue-500/10", count: variants.length },
+          { id: "pending", icon: "clock", label: "Ждут проверки", short: "На проверке", tint: "text-amber-600 bg-amber-500/12", count: totalPending },
+          { id: "graded", icon: "check", label: "Проверено работ", short: "Проверено", tint: "text-green-600 bg-green-500/12", count: totalGraded },
+        ]}
+        value={stat}
+        onChange={(next) => {
+          setStat(next)
+          // Открытый разбор скрывать молча нельзя — закрываем той же анимацией.
+          const fits = next === "all" || hasStatus(selectedVariant || {}, next === "pending" ? "submitted" : "graded")
+          if (selectedVariant && !fits) closeDetail()
+        }}
+      />
 
 
       {loading ? (
@@ -1339,7 +1331,7 @@ function Variants({ user, students = [] }) {
       {previewFile && createPortal(
         <div className={`fixed inset-0 glass-overlay z-50 flex items-end md:items-center justify-center ${previewCls}`} onClick={closePreview}>
           <div className={`glass-modal sheet-modal w-full md:max-w-lg p-6 ${previewCls}`} onClick={(e) => e.stopPropagation()}>
-            <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-5 md:hidden" />
+            <div className="w-10 h-1 bg-blue-500/25 rounded-full mx-auto mb-5 md:hidden" />
             <h3 className="text-base font-medium mb-4 text-center">Просмотр варианта</h3>
             <div className="flex flex-col gap-3">
               <a href={previewFile} target="_blank" rel="noreferrer"

@@ -84,7 +84,7 @@ export function BoardSnapshotView({ scene, date, studentName, onClose }) {
   const bg = scene?.bgColor || "#ffffff"
   const darkBg = isDarkColor(bg)
   const ink = darkBg ? "#e5e5ea" : "#374151"
-  const btn = `press-tap p-1.5 rounded-lg ${darkBg ? "hover:bg-white/10" : "hover:bg-black/5"}`
+  const btn = `press-tap p-1.5 rounded-lg ${darkBg ? "hover:bg-white/10" : "hover:bg-blue-500/[0.07]"}`
   return (
     <div className={`fixed inset-0 z-[100001] flex flex-col screen-fade ${closingCls}`} style={{ background: bg }}>
       <div className="flex items-center justify-between px-3 h-12 border-b flex-shrink-0"

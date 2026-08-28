@@ -350,6 +350,26 @@ export async function renderTaskMathPdf(text, mf = MATH_ARIAL) {
   return noBreakMath(await casesPdf(await parensPdf(out + esc.slice(last)), mf))
 }
 
+// Содержимое картинки — блобом. Генераторы отдают чертёж data-URL'ом, и fetch по
+// такому адресу БРАУЗЕР СЧИТАЕТ СЕТЕВЫМ ЗАПРОСОМ: боевой CSP (connect-src без data:)
+// его запрещает, и на сервере падала вся сборка PDF, хотя локально без заголовков
+// всё собиралось. Поэтому data-URL разбираем сами, а сеть трогаем только для
+// настоящих адресов.
+async function urlToBlob(url) {
+  if (!/^data:/i.test(url)) return (await fetch(url)).blob()
+  const comma = url.indexOf(",")
+  const head = url.slice(5, comma < 0 ? undefined : comma)
+  const body = comma < 0 ? "" : url.slice(comma + 1)
+  const mime = head.split(";")[0] || "text/plain"
+  if (/;base64/i.test(head)) {
+    const bin = atob(body)
+    const bytes = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+    return new Blob([bytes], { type: mime })
+  }
+  return new Blob([decodeURIComponent(body)], { type: mime })
+}
+
 // html2canvas ненадёжно рисует живые <img src="*.svg"> (известное ограничение библиотеки,
 // не чинится через crossorigin/CORS-заголовки) — растеризуем SVG в PNG сами через offscreen
 // canvas и вставляем уже готовую растровую картинку, это html2canvas снимает без проблем.
@@ -358,7 +378,7 @@ export async function renderTaskMathPdf(text, mf = MATH_ARIAL) {
 export async function svgUrlToPng(url, maxWidth = 380, scale = 2) {
   // Иллюстрация задания бывает и растровой (модуль «Шины» — /tire-fig1.png): её нельзя
   // заворачивать в SVG-блоб, иначе картинка не загружается и падает ВЕСЬ экспорт варианта.
-  const raw = await (await fetch(url)).blob()
+  const raw = await urlToBlob(url)
   const isSvg = /svg/i.test(raw.type) || /\.svg(\?|$)/i.test(url)
   const blobUrl = URL.createObjectURL(isSvg ? new Blob([await raw.text()], { type: "image/svg+xml" }) : raw)
   const img = new Image()

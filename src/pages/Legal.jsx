@@ -1451,7 +1451,7 @@ export default function Legal({ path }) {
   const Body = BODIES[current]
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 py-10 px-4">
+    <div className="min-h-screen bg-[#eef0f8] dark:bg-[#111113] py-10 px-4">
       <div className="max-w-3xl mx-auto">
         <a
           href="/"

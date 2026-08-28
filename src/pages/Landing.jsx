@@ -277,7 +277,7 @@ const NO_CHEATING = [
 
 // ── Мини-визуалы (декоративные макеты продукта) ──
 function Line({ w = "100%", h = 8, className = "" }) {
-  return <div className={`rounded-full bg-gray-200 ${className}`} style={{ width: w, height: h }} />
+  return <div className={`rounded-full bg-blue-500/15 ${className}`} style={{ width: w, height: h }} />
 }
 
 function MiniVariantCard({ cfg }) {
@@ -328,7 +328,7 @@ function DeepVisual({ kind, accent }) {
                 <span className="text-gray-500 dark:text-gray-400">{t}</span>
                 <span className="font-semibold text-gray-900">{p}%</span>
               </div>
-              <div className="h-2 rounded-full bg-gray-200 overflow-hidden">
+              <div className="h-2 rounded-full bg-blue-500/12 overflow-hidden">
                 <div className={`h-full rounded-full bg-gradient-to-r ${accent.grad}`} style={{ width: `${p}%` }} />
               </div>
             </div>
@@ -357,7 +357,7 @@ function DeepVisual({ kind, accent }) {
         <div className="border-t border-gray-200 pt-2.5 space-y-1.5">
           {hw.map(([t, done]) => (
             <div key={t} className="flex items-center gap-2 text-[11px]">
-              <span className={`w-4 h-4 shrink-0 rounded-full flex items-center justify-center ${done ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400" : "bg-gray-200 text-gray-400"}`}>
+              <span className={`w-4 h-4 shrink-0 rounded-full flex items-center justify-center ${done ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400" : "bg-blue-500/12 text-gray-400"}`}>
                 {done ? <Icon name="check" size={10} /> : <Icon name="clock" size={10} />}
               </span>
               <span className={done ? "text-gray-500 dark:text-gray-400 line-through" : "font-medium text-gray-900"}>{t}</span>
@@ -374,7 +374,7 @@ function DeepVisual({ kind, accent }) {
           <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${accent.soft} ${accent.text}`}><Icon name="edit" size={14} /></div>
           <span className="text-sm font-semibold">Онлайн-доска</span>
         </div>
-        <div className="relative h-28 rounded-xl bg-gray-100 overflow-hidden">
+        <div className="relative h-28 rounded-xl bg-blue-500/[0.06] ring-1 ring-inset ring-blue-500/12 overflow-hidden">
           <svg viewBox="0 0 200 100" className="w-full h-full">
             <path d="M15 70 Q40 20 70 55 T130 45" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className={accent.text} />
             <circle cx="150" cy="30" r="12" fill="none" stroke="currentColor" strokeWidth="3" className="text-purple-400" />
@@ -447,9 +447,10 @@ function RoleSwitch({ role, onChange }) {
     <div
       role="tablist"
       aria-label="Кому платформа"
-      /* в .dark серые токены инвертированы (gray-800 = светлый), поэтому
-         дорожка и «палец» здесь на белых прозрачностях, а не на gray-* */
-      className="relative flex p-1 rounded-full bg-gray-100 dark:bg-white/[0.06] ring-1 ring-black/5 dark:ring-white/10"
+      /* Дорожка не серая, а еле голубая (серые заливки на стекле читались как
+         выцветшие пятна); в .dark — белая прозрачность, а не gray-*, потому что
+         серые токены там инвертированы. */
+      className="relative flex p-1 rounded-full bg-blue-500/[0.06] dark:bg-white/[0.06] ring-1 ring-blue-500/15 dark:ring-white/10"
     >
       <span
         aria-hidden="true"
@@ -699,7 +700,7 @@ function RoleQuiz({ cfg, role }) {
       {/* Прогресс: видно, что вопросов немного и это не анкета на полчаса.
           На экране «спасибо» прячем, но место оставляем — иначе прыжок. */}
       <div className={`flex items-center gap-3 ${sent ? "invisible" : ""}`}>
-        <div className="flex-1 h-1.5 rounded-full bg-gray-100 dark:bg-white/10 overflow-hidden">
+        <div className="flex-1 h-1.5 rounded-full bg-blue-500/12 dark:bg-white/10 overflow-hidden">
           <div
             className={`h-full rounded-full bg-gradient-to-r ${cfg.grad} transition-[width] duration-300`}
             style={{ width: `${((step + (isContactStep ? 1 : 0)) / total) * 100}%` }}
@@ -852,7 +853,7 @@ function Landing({ onStart }) {
             <button
               onClick={() => setDark(!dark)}
               aria-label="Переключить тему"
-              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-blue-500/10 rounded-lg"
             >
               <MorphIcon from="moon" to="sun" size={16} active={dark} hover={false} rotate />
             </button>

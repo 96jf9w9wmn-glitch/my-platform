@@ -112,7 +112,7 @@ export function MarketingToggle({ table, id, role }) {
       >
         <span
           className={`w-11 h-6 rounded-full p-0.5 flex transition-colors ${
-            value ? "bg-[#007AFF]" : "bg-gray-300"
+            value ? "bg-[#007AFF]" : "bg-blue-500/15 ring-1 ring-inset ring-blue-500/25 dark:bg-white/[0.16] dark:ring-white/20"
           }`}
         >
           <span className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${value ? "translate-x-5" : ""}`} />

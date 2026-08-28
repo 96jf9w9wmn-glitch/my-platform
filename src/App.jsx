@@ -66,7 +66,7 @@ function ThemeToggle() {
   return (
     <button
       onClick={() => setDark(!dark)}
-      className="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+      className="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-blue-500/10 rounded-lg"
     >
       <MorphIcon from="moon" to="sun" size={16} active={dark} hover={false} rotate />
     </button>
@@ -110,7 +110,7 @@ function NotificationItem({ notification: n, onDelete, onRead, onNavigate }) {
   return (
     <div
       onClick={handleRead}
-      className={`group px-4 py-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 transition-colors ${!n.read ? "bg-blue-50" : ""}`}
+      className={`group px-4 py-3 border-b border-gray-50 cursor-pointer hover:bg-blue-500/[0.06] transition-colors ${!n.read ? "bg-blue-50" : ""}`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
@@ -200,7 +200,7 @@ function NotificationBell({ userId, onNavigate }) {
       <button
         ref={btnRef}
         onClick={handleOpen}
-        className="relative w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+        className="relative w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-blue-500/10 rounded-lg"
       >
         <span key={ringKey} className={ringKey > 0 ? "bell-ringing" : "inline-flex"}>
           <MorphIcon from="bell" to="bell-ring" size={16} active={unread > 0} rotate toClassName="text-orange-500" />
@@ -272,7 +272,7 @@ function PlanStar({ active, onClick }) {
       className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all duration-200 active:scale-90 ${
         paid
           ? "text-amber-500 hover:bg-amber-500/10"
-          : "text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-white/[0.08]"
+          : "text-gray-500 hover:text-gray-700 hover:bg-blue-500/10 dark:hover:bg-white/[0.08]"
       } ${active ? "bg-[#007AFF]/10 text-[#007AFF] ring-1 ring-inset ring-[#007AFF]/30" : ""}`}
     >
       <svg

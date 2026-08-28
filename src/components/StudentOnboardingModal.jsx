@@ -40,7 +40,7 @@ function PillGroup({ options, value, onChange, autoFocus }) {
             className={`pill-pop flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium border transition-all duration-200 active:scale-95 ${
               selected
                 ? "bg-blue-600 text-white border-blue-600 scale-105 shadow-sm shadow-blue-500/30"
-                : "border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300"
+                : "border-gray-200 text-gray-600 hover:bg-blue-500/[0.06] hover:border-gray-300"
             }`}
             autoFocus={autoFocus && i === 0}>
             {opt.iconName && <Icon name={opt.iconName} size={14} />}{label}
@@ -137,7 +137,7 @@ function StudentOnboardingModal({ studentId, onComplete, demo = false }) {
         <div className="px-6 pt-5 pb-1 flex-shrink-0">
           <div className="flex items-center justify-between mb-3">
             <button onClick={() => goTo(step - 1, "back")} disabled={safeStep === 0}
-              className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-0 disabled:pointer-events-none transition-all active:scale-90">
+              className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-blue-500/10 disabled:opacity-0 disabled:pointer-events-none transition-all active:scale-90">
               <Icon name="chevron-left" size={16} />
             </button>
             <span className="text-xs font-medium text-gray-400">Шаг {safeStep + 1} из {STEPS.length}</span>
@@ -195,7 +195,7 @@ function StudentOnboardingModal({ studentId, onComplete, demo = false }) {
                     <button key={s.name} type="button" onClick={() => toggleSubject(s.name)}
                       style={{ animationDelay: `${i * 25}ms` }}
                       className={`pill-pop flex flex-col items-center justify-center gap-1.5 rounded-xl border py-3 transition-all duration-200 active:scale-95 ${
-                        selected ? "border-blue-600 bg-blue-50 shadow-sm shadow-blue-500/20" : "border-gray-200 hover:bg-gray-50 hover:border-gray-300"
+                        selected ? "border-blue-600 bg-blue-50 shadow-sm shadow-blue-500/20" : "border-gray-200 hover:bg-blue-500/[0.06] hover:border-gray-300"
                       }`}>
                       <Icon name={s.icon} size={22} className={s.color} />
                       <span className={`text-[11px] leading-tight text-center ${selected ? "text-blue-700 font-medium" : "text-gray-600"}`}>{s.name}</span>

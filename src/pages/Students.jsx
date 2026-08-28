@@ -49,7 +49,7 @@ function DebtBadge({ status, standalone = false }) {
     </span>
   )
   return (
-    <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 bg-black/[0.04] dark:bg-white/[0.08] ring-1 ring-inset ring-black/[0.05] dark:ring-white/[0.1] px-2.5 py-1 rounded-lg">
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 bg-blue-500/[0.06] dark:bg-white/[0.08] ring-1 ring-inset ring-blue-500/15 dark:ring-white/[0.1] px-2.5 py-1 rounded-lg">
       {status.label}
     </span>
   )
@@ -364,7 +364,7 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
               <Icon name="x" size={16} />
             </button>
           </div>
-          <div className="mt-3 text-xs text-gray-500 dark:text-gray-400 break-all bg-black/[0.03] dark:bg-white/[0.06] rounded-xl px-3 py-2">
+          <div className="mt-3 text-xs text-gray-500 dark:text-gray-400 break-all bg-blue-500/[0.05] dark:bg-white/[0.06] rounded-xl px-3 py-2">
             {inv.link}
           </div>
           <div className="mt-3">

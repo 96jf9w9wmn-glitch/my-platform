@@ -55,9 +55,11 @@ export default function SegmentSwitch({ items, value, onChange, className = "", 
       ref={wrapRef}
       role="tablist"
       aria-label={ariaLabel}
-      className={`relative ${block ? "flex" : "inline-flex"} ${s.wrap} bg-gray-100 border border-gray-200/70 ${className}`}
+      className={`seg-track relative ${block ? "flex" : "inline-flex"} ${s.wrap} bg-blue-500/[0.06] border border-blue-500/15 ${className}`}
     >
-      {/* прямой ребёнок .bg-gray-100 — в тёмной теме его перекрашивает правило из index.css */}
+      {/* Дорожка — не серая, а еле голубая: серая заливка на стеклянных экранах
+          читалась как выцветшее пятно. В тёмной теме дорожку и «палец»
+          перекрашивают правила .dark .seg-track / .dark .seg-finger (index.css). */}
       {box && (
         <span
           aria-hidden="true"

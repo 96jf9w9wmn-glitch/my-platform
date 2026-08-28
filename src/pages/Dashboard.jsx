@@ -350,10 +350,10 @@ function Dashboard({ students, setActivePage, onOpenBoard }) {
           <div className="glass p-4">
             <div className="flex items-center justify-between mb-2">
               <button onClick={() => { const d = new Date(baseDate); d.setMonth(d.getMonth()-1); setBaseDate(d) }}
-                className="no-press w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-black/5">‹</button>
+                className="no-press w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-blue-500/[0.07]">‹</button>
               <span className="text-xs font-medium text-gray-600">{MONTH_NAMES[month]} {year}</span>
               <button onClick={() => { const d = new Date(baseDate); d.setMonth(d.getMonth()+1); setBaseDate(d) }}
-                className="no-press w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-black/5">›</button>
+                className="no-press w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-blue-500/[0.07]">›</button>
             </div>
             <div className="grid grid-cols-7 mb-0.5">
               {DAY_SHORT.map((d) => (

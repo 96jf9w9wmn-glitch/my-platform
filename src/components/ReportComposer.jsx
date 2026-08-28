@@ -186,7 +186,7 @@ function ReportScreen({
   }, [close])
 
   return createPortal(
-    <div className={`fixed inset-0 z-[100000] overflow-y-auto bg-gray-50 dark:bg-[#1c1c1e] ${cls}`}>
+    <div className={`fixed inset-0 z-[100000] overflow-y-auto bg-[#eef0f8] dark:bg-[#1c1c1e] ${cls}`}>
       <div className="max-w-3xl mx-auto p-4 md:p-6 flex flex-col gap-4">
         <div className="flex items-center justify-between gap-3">
           <button onClick={close} className="press-fill text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1 rounded-lg">

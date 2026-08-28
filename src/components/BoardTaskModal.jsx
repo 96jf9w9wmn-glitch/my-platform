@@ -137,7 +137,7 @@ export default function BoardTaskModal({ dark = false, roomId = null, tutorSubje
     `px-3 py-1.5 rounded-xl text-sm border transition-all active:scale-95 ${
       active
         ? "bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-600/20"
-        : "bg-white/70 dark:bg-white/5 border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50"
+        : "bg-white/70 dark:bg-white/5 border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-blue-500/[0.06]"
     } ${extra}`
 
   return createPortal(
@@ -224,7 +224,7 @@ export default function BoardTaskModal({ dark = false, roomId = null, tutorSubje
                       </button>
                       <button onClick={() => { setOpenTheme(g.theme); pickTheme(g.theme) }}
                         className={`ml-auto shrink-0 px-2.5 py-1 rounded-lg text-xs border transition-all active:scale-95 ${
-                          theme === g.theme ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-500 hover:bg-gray-50"
+                          theme === g.theme ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-500 hover:bg-blue-500/[0.06]"
                         }`}>
                         Любое из темы
                       </button>

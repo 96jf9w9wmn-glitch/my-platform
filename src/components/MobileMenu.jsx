@@ -21,7 +21,7 @@ function MobileMenu({ items, activeId, badges = {}, onSelect, onClose, footer })
         style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-white/20 mx-auto mb-4" />
+        <div className="w-10 h-1 rounded-full bg-blue-500/25 dark:bg-white/20 mx-auto mb-4" />
         <div className="flex flex-col gap-1">
           {items.map((item) => (
             <button

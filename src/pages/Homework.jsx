@@ -1,8 +1,9 @@
-import { useState, useEffect, useLayoutEffect, useRef } from "react"
+import { useState, useEffect, useRef } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import { signRows } from "../storageUrl"
 import Icon from "../components/Icon"
+import StatTabs from "../components/StatTabs"
 import Collapse from "../components/Collapse"
 import Reveal from "../components/Reveal"
 import AutoHeight from "../components/AutoHeight"
@@ -99,7 +100,7 @@ function Toggle({ on, onClick, title, note }) {
   return (
     <button type="button" onClick={onClick}
       className="no-press group w-full flex items-start gap-3 text-left">
-      <div className={`mt-0.5 w-10 h-6 rounded-full transition relative flex-shrink-0 group-active:scale-95 ${on ? "bg-blue-600" : "bg-gray-200"}`}>
+      <div className={`mt-0.5 w-10 h-6 rounded-full transition relative flex-shrink-0 group-active:scale-95 ${on ? "bg-blue-600" : "bg-blue-500/15 ring-1 ring-inset ring-blue-500/25 dark:bg-white/[0.16] dark:ring-white/20"}`}>
         <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${on ? "left-5" : "left-1"}`} />
       </div>
       <div className="min-w-0">
@@ -137,7 +138,7 @@ function StepBtn({ icon, onClick, disabled, title }) {
       disabled={disabled}
       title={title}
       className="no-press w-6 h-6 shrink-0 rounded-full grid place-items-center text-gray-500 ring-1 ring-gray-500/20
-        hover:bg-gray-500/10 active:scale-90 transition-all disabled:opacity-30 disabled:hover:bg-transparent"
+        hover:bg-blue-500/10 active:scale-90 transition-all disabled:opacity-30 disabled:hover:bg-transparent"
     >
       <Icon name={icon} size={11} />
     </button>
@@ -796,7 +797,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                         type="button"
                         onClick={() => setMcqCorrect((prev) => prev.map((c, k) => (k === i ? o : c)))}
                         className={`rounded-lg px-3 py-1.5 text-sm border text-left transition-all active:scale-[0.96] ${
-                          sel ? "bg-green-600 text-white border-green-600" : "border-gray-200 text-gray-700 hover:bg-gray-100"
+                          sel ? "bg-green-600 text-white border-green-600" : "border-gray-200 text-gray-700 hover:bg-blue-500/10"
                         }`}
                       >
                         {o}
@@ -924,7 +925,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                       type="button"
                       onClick={() => chooseMethod(m.id)}
                       className={`press-fill text-left rounded-2xl p-3 ring-1 transition-colors ${
-                        on ? "ring-blue-500/40 bg-blue-500/[0.08]" : "ring-gray-500/15 hover:bg-gray-500/[0.04]"
+                        on ? "ring-blue-500/40 bg-blue-500/[0.08]" : "ring-gray-500/15 hover:bg-blue-500/[0.06]"
                       }`}
                     >
                       <span className={`w-8 h-8 rounded-xl flex items-center justify-center mb-2 ${
@@ -1562,7 +1563,7 @@ function HomeworkCard({ hw, studentName, studentPhone, studentAccountId, onUpdat
                       className={`flex-1 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
                         selectedGrade === g
                           ? GRADE_COLORS[g] + " border-transparent"
-                          : "border-gray-200 text-gray-500 hover:bg-gray-50"
+                          : "border-gray-200 text-gray-500 hover:bg-blue-500/[0.06]"
                       }`}
                     >
                       {g}
@@ -1687,37 +1688,7 @@ function Homework({ user, students }) {
     ...(overdueCount ? [{ id: "overdue", label: "Просрочено", icon: "alert-triangle", tint: "text-red-600 bg-red-500/12", count: overdueCount }] : []),
   ]
 
-  // Подчёркивание активной вкладки — одна полоска, которая переезжает с кнопки
-  // на кнопку, а не появляется рывком в новом месте. Позицию берём с самой
-  // кнопки: ширины у вкладок разные и на узком экране полоса ещё и скроллится.
-  const tabsRef = useRef(null)
-  const tabsScrollRef = useRef(null)
-  const [ind, setInd] = useState(null)
-  const indAnimated = useRef(false)
-
-  useLayoutEffect(() => {
-    const wrap = tabsRef.current
-    if (!wrap) return
-    const measure = () => {
-      const el = wrap.querySelector(`[data-filter="${filter}"]`)
-      if (!el) return
-      setInd({ left: el.offsetLeft, width: el.offsetWidth })
-      // На узком экране выбранная вкладка может быть наполовину за краем —
-      // подтягиваем её в видимую часть, иначе полоска уезжает «в никуда».
-      const sc = tabsScrollRef.current
-      if (sc && indAnimated.current && sc.scrollWidth > sc.clientWidth) {
-        const left = el.offsetLeft - 16
-        const right = el.offsetLeft + el.offsetWidth - sc.clientWidth + 16
-        const to = sc.scrollLeft > left ? left : sc.scrollLeft < right ? right : null
-        if (to !== null) sc.scrollTo({ left: Math.max(0, to), behavior: "smooth" })
-      }
-      indAnimated.current = true
-    }
-    measure()
-    const ro = new ResizeObserver(measure)
-    ro.observe(wrap)
-    return () => ro.disconnect()
-  }, [filter, overdueCount])
+  // Полоса-сводка с фильтром — общий StatTabs (та же полоса на «Вариантах»).
 
   const filtered =
     filter === "all" ? homework :
@@ -1747,41 +1718,12 @@ function Homework({ user, students }) {
 
       {(
         <>
-          {/* Фильтры — сводкой одной полосой: сразу видно, сколько заданий в каждом
-              состоянии, и та же полоса переключает список. */}
-          <div ref={tabsScrollRef} className="glass no-scrollbar overflow-x-auto mb-4">
-            <div ref={tabsRef} className="relative flex min-w-full divide-x divide-gray-500/12 dark:divide-white/10">
-              {FILTERS.map((f) => {
-                const on = f.id === filter
-                const count = f.count ?? homework.filter((h) => h.status === f.id).length
-                return (
-                  <button
-                    key={f.id}
-                    data-filter={f.id}
-                    onClick={() => setFilter(f.id)}
-                    className={`press-fill flex-1 min-w-[7.5rem] sm:min-w-[9rem] flex items-center gap-3 px-3 sm:px-4 py-3.5 text-left transition-colors duration-200 ${
-                      on ? "bg-blue-500/[0.07] dark:bg-blue-400/10" : "hover:bg-black/[0.02] dark:hover:bg-white/[0.04]"
-                    }`}
-                  >
-                    <div className={`w-9 h-9 rounded-xl hidden sm:flex items-center justify-center flex-shrink-0 transition-colors duration-200 ${count > 0 ? f.tint : "text-gray-400 ring-1 ring-gray-200/70 dark:ring-white/10"}`}>
-                      <Icon name={f.icon} size={16} />
-                    </div>
-                    <div className="min-w-0">
-                      <div className={`text-xl font-semibold leading-none transition-colors duration-200 ${count > 0 ? f.tint.split(" ")[0] : "text-gray-400"}`}>{count}</div>
-                      <div className={`text-[11px] mt-1.5 truncate transition-colors duration-200 ${on ? "text-gray-600 font-medium" : "text-gray-400"}`}>{f.label}</div>
-                    </div>
-                  </button>
-                )
-              })}
-              {ind && (
-                <span
-                  aria-hidden
-                  className="pointer-events-none absolute bottom-0 left-0 h-[3px] rounded-full bg-gradient-to-r from-blue-500 to-blue-600 transition-[transform,width] duration-300 ease-out motion-reduce:transition-none"
-                  style={{ width: ind.width, transform: `translateX(${ind.left}px)` }}
-                />
-              )}
-            </div>
-          </div>
+          <StatTabs
+            className="mb-4"
+            items={FILTERS.map((f) => ({ ...f, count: f.count ?? homework.filter((h) => h.status === f.id).length }))}
+            value={filter}
+            onChange={setFilter}
+          />
 
           {groupNames.length === 0 ? (
             <div key={filter} className="tab-swap relative overflow-hidden text-center py-12 border border-dashed border-white/50 glass-sm">

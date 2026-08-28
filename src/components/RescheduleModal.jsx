@@ -92,7 +92,7 @@ function RescheduleModal({
                   className={`px-3 py-1.5 rounded-lg text-sm border transition-colors active:scale-95 ${
                     time === h
                       ? "bg-blue-600 text-white border-blue-600"
-                      : "border-gray-200 text-gray-600 hover:bg-gray-50 dark:hover:bg-white/[0.06]"
+                      : "border-gray-200 text-gray-600 hover:bg-blue-500/[0.06] dark:hover:bg-white/[0.06]"
                   }`}
                 >
                   {h}
@@ -141,7 +141,7 @@ function RescheduleModal({
         <div className="flex gap-3 px-6 py-4 border-t border-gray-100/60 flex-shrink-0">
           <button
             onClick={close}
-            className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition active:scale-[0.97]"
+            className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-blue-500/[0.06] dark:hover:bg-white/[0.06] transition active:scale-[0.97]"
           >
             Отмена
           </button>

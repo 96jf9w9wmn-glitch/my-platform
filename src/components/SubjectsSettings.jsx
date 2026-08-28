@@ -75,7 +75,7 @@ export default function SubjectsSettings({ tutorId, profile, owner = false, onCh
               className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm ring-1 ring-inset transition-all active:scale-95 ${
                 on
                   ? "bg-[#007AFF]/10 text-[#007AFF] ring-[#007AFF]/25"
-                  : "text-gray-600 ring-gray-200 dark:ring-white/[0.12] hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                  : "text-gray-600 ring-gray-200 dark:ring-white/[0.12] hover:bg-blue-500/[0.07] dark:hover:bg-white/[0.06]"
               }`}
             >
               <span className={`w-2 h-2 rounded-full shrink-0 ${on ? "bg-[#007AFF]" : item.dot}`} />

@@ -107,7 +107,7 @@ export default function AutoReportSettings({ tutorId, students = [], surface = "
           disabled={saving || !ready}
           aria-label={cfg.enabled ? "Выключить отчёты" : "Включить отчёты"}
           className={`no-press relative w-12 h-7 rounded-full transition-colors disabled:opacity-40 active:scale-[0.96] ${
-            cfg.enabled ? "bg-[#007AFF]" : "bg-black/[0.12] dark:bg-white/[0.16]"
+            cfg.enabled ? "bg-[#007AFF]" : "bg-blue-500/15 ring-1 ring-inset ring-blue-500/25 dark:bg-white/[0.16] dark:ring-white/20"
           }`}
         >
           <span className={`absolute top-0.5 left-0.5 w-6 h-6 rounded-full bg-white shadow-sm transition-transform ${cfg.enabled ? "translate-x-5" : ""}`} />

@@ -160,7 +160,7 @@ function IncomeChart({ buckets, forecast, mounted }) {
               className="flex-1 flex flex-col items-center gap-2 focus:outline-none active:scale-[0.96] transition-transform">
               <div className="w-full flex flex-col justify-end items-center" style={{ height: AREA }}>
                 {solidPx + fcPx === 0 ? (
-                  <div className="w-full max-w-[44px] h-2 rounded-full bg-black/[0.08] dark:bg-white/[0.12]" />
+                  <div className="w-full max-w-[44px] h-2 rounded-full bg-blue-500/12 dark:bg-white/[0.12]" />
                 ) : (
                   <div className="w-full max-w-[44px] flex flex-col justify-end rounded-lg overflow-hidden"
                     style={{ height: mounted ? solidPx + fcPx : 0, transition: `height .7s cubic-bezier(.22,1,.36,1) ${delay}ms` }}>
@@ -454,7 +454,7 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
                           Внести
                         </button>
                         <button onClick={() => setConfirmId(null)}
-                          className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition">
+                          className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-blue-500/[0.07] dark:hover:bg-white/[0.06] transition">
                           <Icon name="x" size={16} />
                         </button>
                       </div>
@@ -557,7 +557,7 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
             {/* Режим здесь показывается, а не выбирается: он спрашивается при
                 регистрации и меняется в «Профиле» — это настройка аккаунта, а
                 не рабочее число месяца. */}
-            <div className="flex items-center justify-between gap-3 mb-4 px-3 py-2.5 rounded-xl bg-black/[0.03] dark:bg-white/[0.06]">
+            <div className="flex items-center justify-between gap-3 mb-4 px-3 py-2.5 rounded-xl bg-blue-500/[0.05] dark:bg-white/[0.06]">
               <div className="min-w-0">
                 <div className="text-sm font-medium truncate">{TAX_MODES[taxMode]?.label || TAX_MODES.none.label}</div>
                 <div className="text-[11px] text-gray-500 dark:text-gray-400">
@@ -609,7 +609,7 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
                 {expenses.map((e) => (
                   <div key={e.id} className="group flex items-center justify-between py-2.5">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-8 h-8 rounded-lg bg-black/[0.04] dark:bg-white/[0.06] flex items-center justify-center text-gray-400 shrink-0">
+                      <div className="w-8 h-8 rounded-lg bg-blue-500/[0.07] dark:bg-white/[0.06] flex items-center justify-center text-gray-400 shrink-0">
                         <Icon name="repeat" size={14} />
                       </div>
                       <div className="text-sm font-medium truncate">{e.name}</div>
@@ -631,7 +631,7 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
               <div className="flex flex-wrap gap-2 mb-3">
                 {EXPENSE_SUGGESTIONS.filter((name) => !expenses.some((e) => e.name === name)).map((name) => (
                   <button key={name} onClick={() => setNewExpName(name)}
-                    className="text-xs font-medium text-gray-500 bg-black/[0.04] dark:bg-white/[0.08] ring-1 ring-inset ring-black/[0.05] dark:ring-white/[0.1] px-2.5 py-1.5 rounded-full hover:bg-black/[0.07] dark:hover:bg-white/[0.12] transition active:scale-95">
+                    className="text-xs font-medium text-gray-500 bg-blue-500/[0.06] dark:bg-white/[0.08] ring-1 ring-inset ring-blue-500/15 dark:ring-white/[0.1] px-2.5 py-1.5 rounded-full hover:bg-blue-500/10 dark:hover:bg-white/[0.12] transition active:scale-95">
                     + {name}
                   </button>
                 ))}

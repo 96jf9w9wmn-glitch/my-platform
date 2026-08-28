@@ -308,7 +308,7 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
   // gray-500 читается плохо (в тёмной теме это #98989f).
   const floatBtn = scrolled
     ? "text-gray-700 bg-white/80 hover:bg-white dark:bg-white/15 dark:hover:bg-white/25 backdrop-blur-xl shadow-sm"
-    : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+    : "text-gray-500 hover:text-gray-700 hover:bg-blue-500/10"
 
   const roleConfig = {
     tutor:   { icon: "user-teacher", label: "Репетитор", desc: "Управляй учениками",   grad: "from-blue-500 to-blue-600",   soft: "bg-blue-50 dark:bg-blue-900/30",   text: "text-blue-600 dark:text-blue-400",   border: "border-blue-200 dark:border-blue-700",   glow: "shadow-blue-500/40" },

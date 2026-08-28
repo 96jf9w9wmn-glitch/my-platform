@@ -87,7 +87,7 @@ function Part2Upload({ taskNum, submissionId, existingUrl, chosen, onUpload }) {
         <button
           onClick={() => fileRef.current.click()}
           disabled={uploading}
-          className="flex-1 border border-dashed border-gray-200 rounded-lg py-2 text-xs text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+          className="flex-1 border border-dashed border-gray-200 rounded-lg py-2 text-xs text-gray-500 hover:bg-blue-500/[0.06] disabled:opacity-50"
         >
           {uploading ? "Загружаем..." : <span className="flex items-center justify-center gap-1.5"><Icon name="paperclip" size={14} />Загрузить файл</span>}
         </button>
@@ -107,7 +107,7 @@ function ChoiceChips({ choices, value, onSelect }) {
             type="button"
             onClick={() => onSelect(sel ? null : c)}
             className={`rounded-xl px-3 py-2 text-sm border text-center transition-all active:scale-[0.96] ${
-              sel ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "border-gray-200 text-gray-700 hover:bg-gray-50"
+              sel ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "border-gray-200 text-gray-700 hover:bg-blue-500/[0.06]"
             }`}
           >
             {c}
@@ -157,7 +157,7 @@ function LessonMoveNote({ lesson, onAccept, onDecline, onCounter, onCancel, clas
             Согласиться
           </button>
           <button onClick={() => onCounter?.(lesson)}
-            className="press-tap text-xs text-gray-600 border border-gray-200 bg-white px-2.5 py-1.5 rounded-lg hover:bg-gray-50 transition">
+            className="press-tap text-xs text-gray-600 border border-gray-200 bg-white px-2.5 py-1.5 rounded-lg hover:bg-blue-500/[0.06] transition">
             Другое время
           </button>
           <button onClick={() => onDecline?.(lesson)}
@@ -175,7 +175,7 @@ function LessonMoveNote({ lesson, onAccept, onDecline, onCounter, onCancel, clas
         Просишь перенести {formatLessonShort(lesson.date, lesson.time)} на {formatLessonShort(req.date, req.time)} — репетитор ещё не ответил
       </span>
       <button onClick={() => onCancel?.(lesson)}
-        className="press-tap text-gray-500 border border-gray-200 bg-white px-2 py-1 rounded-lg hover:bg-gray-50 transition-colors flex-shrink-0">
+        className="press-tap text-gray-500 border border-gray-200 bg-white px-2 py-1 rounded-lg hover:bg-blue-500/[0.06] transition-colors flex-shrink-0">
         Отменить
       </button>
     </div>
@@ -298,7 +298,7 @@ function StudentScheduleCalendar({ student, onOpenBoard, onRequestMove, onCancel
                       )}
                       {!l.moveRequest && (
                         <button onClick={() => onRequestMove?.(l)}
-                          className="press-tap text-xs bg-white text-gray-600 border border-gray-200 px-2 py-1 rounded-lg hover:bg-gray-50 transition-colors">
+                          className="press-tap text-xs bg-white text-gray-600 border border-gray-200 px-2 py-1 rounded-lg hover:bg-blue-500/[0.06] transition-colors">
                           <span className="flex items-center gap-1"><Icon name="repeat" size={12} />Перенести</span>
                         </button>
                       )}
@@ -627,7 +627,7 @@ function StudentHomeworkList({ homework, onSelect }) {
                 data-filter={f.key}
                 onClick={() => setFilter(f.key)}
                 className={`press-fill flex-1 min-w-[7.5rem] sm:min-w-[9rem] flex items-center gap-3 px-3 sm:px-4 py-3.5 text-left transition-colors duration-200 ${
-                  on ? "bg-blue-500/[0.07] dark:bg-blue-400/10" : "hover:bg-black/[0.02] dark:hover:bg-white/[0.04]"
+                  on ? "bg-blue-500/[0.07] dark:bg-blue-400/10" : "hover:bg-blue-500/[0.05] dark:hover:bg-white/[0.04]"
                 }`}
               >
                 <div className={`w-9 h-9 rounded-xl hidden sm:flex items-center justify-center flex-shrink-0 transition-colors duration-200 ${count > 0 ? f.tint : "text-gray-400 ring-1 ring-gray-200/70 dark:ring-white/10"}`}>
@@ -883,7 +883,7 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
                             setTestAnswers(updated)
                           }}
                           className={`rounded-xl px-4 py-2 text-sm border text-left transition-all active:scale-[0.96] ${
-                            sel ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "border-gray-200 dark:border-white/10 text-gray-700 hover:bg-gray-50 dark:hover:bg-white/5"
+                            sel ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "border-gray-200 dark:border-white/10 text-gray-700 hover:bg-blue-500/[0.06] dark:hover:bg-white/5"
                           }`}
                           dangerouslySetInnerHTML={{ __html: renderHomeworkMath(o) }}
                         />
@@ -942,7 +942,7 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
                     <span className="text-xs font-medium">Камера</span>
                   </button>
                   <button onClick={() => solutionFileRef.current.click()}
-                    className="flex-1 flex flex-col items-center gap-1.5 border border-dashed border-gray-200 rounded-xl py-3 text-gray-500 hover:bg-gray-50 transition-colors">
+                    className="flex-1 flex flex-col items-center gap-1.5 border border-dashed border-gray-200 rounded-xl py-3 text-gray-500 hover:bg-blue-500/[0.06] transition-colors">
                     <Icon name="paperclip" size={18} />
                     <span className="text-xs font-medium">Файл</span>
                   </button>
@@ -1033,7 +1033,7 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
           <button
             onClick={() => fileRef.current.click()}
             disabled={uploading}
-            className="w-full border border-dashed border-gray-200 rounded-lg py-3 text-sm text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+            className="w-full border border-dashed border-gray-200 rounded-lg py-3 text-sm text-gray-500 hover:bg-blue-500/[0.06] disabled:opacity-50"
           >
             {uploading ? "Загружаем..." : <span className="flex items-center justify-center gap-1.5"><Icon name="paperclip" size={14} />Загрузить файл</span>}
           </button>
@@ -1167,7 +1167,7 @@ function StudentNotificationBell({ userId, onNavigate }) {
       <button
         ref={btnRef}
         onClick={handleOpen}
-        className="relative w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+        className="relative w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-blue-500/10 rounded-lg"
       >
         <span key={ringKey} className={ringKey > 0 ? "bell-ringing" : "inline-flex"}>
           <MorphIcon from="bell" to="bell-ring" size={16} active={unread > 0} rotate toClassName="text-orange-500" />
@@ -1200,7 +1200,7 @@ function StudentNotificationBell({ userId, onNavigate }) {
               <div
                 key={n.id}
                 onClick={() => handleNotifClick(n)}
-                className={`group px-4 py-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 transition-colors ${!n.read ? "bg-blue-50 dark:bg-blue-900/20" : ""}`}
+                className={`group px-4 py-3 border-b border-gray-50 cursor-pointer hover:bg-blue-500/[0.06] dark:hover:bg-white/5 transition-colors ${!n.read ? "bg-blue-50 dark:bg-blue-900/20" : ""}`}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
@@ -2092,7 +2092,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
               <span className="hidden md:block text-sm text-gray-600">{user.profile?.name}</span>
               <button
                 onClick={() => setDark(!dark)}
-                className="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+                className="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-blue-500/10 rounded-lg"
               >
                 <MorphIcon from="moon" to="sun" size={16} active={dark} hover={false} rotate />
               </button>

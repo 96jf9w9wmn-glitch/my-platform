@@ -440,7 +440,7 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
                 className={`no-press press-tap w-full flex items-center gap-3 px-3 py-3 transition-colors text-left ${
                   isActive
                     ? "bg-blue-500 dark:bg-blue-600"
-                    : "hover:bg-gray-50 dark:hover:bg-white/5"
+                    : "hover:bg-blue-500/[0.06] dark:hover:bg-white/5"
                 }`}
               >
                 <div className={`w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-bold overflow-hidden ${
@@ -483,9 +483,9 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
         {!activeContact ? (
           <div className="relative flex-1 flex flex-col items-center justify-center gap-4 overflow-hidden">
             {/* Базовый тон — РОВНЫЙ, без цветных пятен (решено: мягкий однотонный фон).
-                bg-gray-50 сам remap-ается в тёмный под .dark (см. index.css) —
-                светлая тема = светло-серый, тёмная = почти чёрный. dark:-override НЕ нужен. */}
-            <div className="pointer-events-none absolute inset-0 bg-gray-50" />
+                Тот же .chat-bg, что и у ленты сообщений: холодный светлый тон
+                вместо серой заливки, в тёмной теме — почти чёрный (index.css). */}
+            <div className="pointer-events-none absolute inset-0 chat-bg" />
             {/* Еле заметные точки для текстуры */}
             <div
               className="pointer-events-none absolute inset-0 opacity-[0.5] dark:opacity-[0.15]"
@@ -598,13 +598,13 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
                   onKeyDown={handleKeyDown}
                   placeholder="Сообщение..."
                   rows={1}
-                  className="flex-1 px-4 py-2.5 text-sm rounded-2xl border border-gray-200 bg-gray-50 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30 resize-none leading-5"
+                  className="flex-1 px-4 py-2.5 text-sm rounded-2xl border border-gray-200 bg-white/70 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30 resize-none leading-5"
                   style={{ minHeight: 42, maxHeight: 120, overflowY: "auto" }}
                 />
                 <button
                   onClick={sendMessage}
                   disabled={!input.trim()}
-                  className="chat-send-btn w-10 h-10 self-end bg-blue-600 hover:bg-blue-700 disabled:bg-gray-200 dark:disabled:bg-gray-700 text-white disabled:text-gray-400 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-sm transition-colors"
+                  className="chat-send-btn w-10 h-10 self-end bg-blue-600 hover:bg-blue-700 disabled:bg-blue-500/15 dark:disabled:bg-white/10 text-white disabled:text-gray-400 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-sm transition-colors"
                 >
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>

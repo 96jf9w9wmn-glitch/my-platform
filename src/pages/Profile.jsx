@@ -106,7 +106,7 @@ export default function Profile({ user, students = [], onLogout, onProfileChange
           </div>
           <button
             onClick={onLogout}
-            className="self-start shrink-0 px-3.5 py-1.5 rounded-full text-sm text-gray-500 ring-1 ring-inset ring-gray-200 dark:ring-white/[0.12] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:scale-95 transition-all"
+            className="self-start shrink-0 px-3.5 py-1.5 rounded-full text-sm text-gray-500 ring-1 ring-inset ring-gray-200 dark:ring-white/[0.12] hover:bg-blue-500/[0.07] dark:hover:bg-white/[0.06] active:scale-95 transition-all"
           >
             Выйти
           </button>
@@ -119,7 +119,7 @@ export default function Profile({ user, students = [], onLogout, onProfileChange
               value={name}
               onChange={(e) => { setName(e.target.value); setSaved(false) }}
               placeholder="Имя и фамилия"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-black/[0.03] dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] text-sm outline-none focus:border-[#007AFF]/50 transition-colors"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-white/60 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] text-sm outline-none focus:border-[#007AFF]/50 transition-colors"
             />
           </label>
           <button
@@ -153,7 +153,7 @@ export default function Profile({ user, students = [], onLogout, onProfileChange
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <span className="font-mono text-lg font-medium tracking-wider px-4 py-2 rounded-xl bg-black/[0.04] dark:bg-white/[0.08]">
+            <span className="font-mono text-lg font-medium tracking-wider px-4 py-2 rounded-xl bg-blue-500/[0.08] dark:bg-white/[0.08]">
               {user.profile?.code || "—"}
             </span>
             <button
