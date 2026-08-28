@@ -47,11 +47,28 @@ const stripRootMarker = (s) => String(s)
 // PDF — картинка фиксированного кегля, в индексе она была бы ростом со строку. Поэтому
 // дробь пишем в строку (log с основанием 1/15), а корень — знаком с чертой над числом.
 // Молча оставлять маркеры нельзя: в условии видны сырые «⦃1¦15⦄» и «√{15}».
+const SUP_CSS = "font-size:0.72em; line-height:0; vertical-align:0.55em;"
+const SUB_CSS = "font-size:0.72em; line-height:0; vertical-align:-0.25em;"
 const flatMarks = (s) => String(s)
+  // Внутри показателя и индекса встречаются и полные токены: 3⁅log⟦b:9⟧(3x+4)⁆,
+  // log⦉⟦rn:3:27⟧⦊. Общий проход их не видит (он уже внутри своей ветки), поэтому
+  // разворачиваем здесь — иначе в печатный лист уходил сырой «⟦b:9⟧».
+  .replace(/⟦f:([^:⟧]+):([^:⟧]+)⟧/g, "$1/$2")
+  .replace(/⟦pf:([^:⟧]+):([^:⟧]+)⟧/g, "($1/$2)")
+  .replace(/⟦rn:([^:⟧]+):([^⟧]+)⟧/g,
+    (_, i, x) => `<sup style="font-size:.7em;">${i}</sup>√<span style="text-decoration:overline;">${x}</span>`)
+  .replace(/⟦r:([^⟧]+)⟧/g, (_, x) => `√<span style="text-decoration:overline;">${x}</span>`)
+  .replace(/⟦b:([^⟧]+)⟧/g, (_, x) => `<sub style="${SUB_CSS}">${x}</sub>`)
+  .replace(/⟦sup:([^⟧]+)⟧/g, (_, x) => `<sup style="${SUP_CSS}">${x}</sup>`)
   .replace(/⦃([^¦⦄]*)¦([^⦄]*)⦄/g, "$1/$2")
   .replace(/√(?:\[([^\]{}]+)\])?\{([^{}]+)\}/g,
     (_, i, x) => `${i ? `<sup style="font-size:.7em;">${i}</sup>` : ""}√<span style="text-decoration:overline;">${x}</span>`)
-  .replace(/⁅([^⁆]*)⁆/g, `<sup style="font-size:0.72em; line-height:0; vertical-align:0.55em;">$1</sup>`)
+  // ⦅k¦b⦆ — степень над основанием логарифма: в уменьшенном контексте стопку не
+  // построить, поэтому пишем подряд (log²₂ → log с надстрочником и подстрочником).
+  .replace(/⦅([^¦⦆]*)¦([^⦆]*)⦆/g,
+    (_, a, b) => `<sup style="${SUP_CSS}">${a}</sup><sub style="${SUB_CSS}">${b}</sub>`)
+  .replace(/⦉([^⦊]*)⦊/g, (_, x) => `<sub style="${SUB_CSS}">${x}</sub>`)
+  .replace(/⁅([^⁆]*)⁆/g, `<sup style="${SUP_CSS}">$1</sup>`)
 
 // ⁅x⁆ внутри числителя/знаменателя дроби (степень: 2ˣ, 4ˣ⁻³) — SVG-надстрочник.
 const supInSvg = (s) => unicodeSupToTspan(String(s))
@@ -61,6 +78,43 @@ const supInSvg = (s) => unicodeSupToTspan(String(s))
   .replace(/⦉([^⦊]*)⦊/g, (_, x) => `<tspan baseline-shift="sub" font-size="0.75em">${x}</tspan>`)
   .replace(/⦅([^¦⦆]*)¦([^⦆]*)⦆/g, (_, a, b) =>
     `<tspan baseline-shift="super" font-size="0.7em">${a}</tspan><tspan baseline-shift="sub" font-size="0.7em">${b}</tspan>`)
+// Вложенные токены внутри показателя и основания: «9⟦sup:x − ⟦f:1:2⟧⟧», «log⟦b:⟦r:2⟧⟧».
+// Экранный рендер разбирает токены каскадом (сначала ⟦f⟧/⟦r⟧, потом ⟦sup⟧/⟦b⟧), поэтому
+// вложенность там работает сама. PDF-рендер идёт ОДНИМ проходом: захват ⟦sup:([^⟧]+)⟧
+// обрывается на первом «⟧», и в печатный лист попадал сырой «⟦f:1:2⟧» — ученик видел
+// служебный токен вместо дроби. Переводим вложенные токены в равнозначные маркеры
+// (⦃n¦d⦄, √{x}, ⦉x⦊, ⁅x⁆) — их и показатель, и индекс разворачивают у себя внутри.
+const nestedToMarks = (body) => body
+  .replace(/⟦f:([^:⟧]+):([^:⟧]+)⟧/g, (_, n, d) => `⦃${n}¦${d}⦄`)
+  .replace(/⟦pf:([^:⟧]+):([^:⟧]+)⟧/g, (_, n, d) => `(⦃${n}¦${d}⦄)`)
+  .replace(/⟦rn:([^:⟧]+):([^⟧]+)⟧/g, (_, i, x) => `√[${i}]{${x}}`)
+  .replace(/⟦r:([^⟧]+)⟧/g, (_, x) => `√{${x}}`)
+  .replace(/⟦b:([^⟧]+)⟧/g, (_, x) => `⦉${x}⦊`)
+  .replace(/⟦sup:([^⟧]+)⟧/g, (_, x) => `⁅${x}⁆`)
+
+// Разбирает ⟦sup:…⟧ / ⟦b:…⟧ со СЧЁТОМ вложенных скобок и приводит их начинку к маркерам.
+function flattenNestedTokens(text) {
+  const src = String(text)
+  let out = "", i = 0
+  while (i < src.length) {
+    const start = src.indexOf("⟦", i)
+    if (start < 0) { out += src.slice(i); break }
+    out += src.slice(i, start)
+    let depth = 0, j = start
+    for (; j < src.length; j++) {
+      if (src[j] === "⟦") depth++
+      else if (src[j] === "⟧" && --depth === 0) break
+    }
+    if (j >= src.length) { out += src.slice(start); break }
+    const body = src.slice(start + 1, j)
+    const nested = body.includes("⟦")
+    // Разворачиваем только у показателя и индекса: у таблиц и систем свой разбор ячеек.
+    out += "⟦" + (nested && /^(sup|b):/.test(body) ? nestedToMarks(flattenNestedTokens(body)) : body) + "⟧"
+    i = j + 1
+  }
+  return out
+}
+
 // Юникодные надстрочники (x², cos¹⁰x) в печатном листе рисовать нельзя: в Times New
 // Roman есть ¹²³, а ⁰⁴⁵⁶⁷⁸⁹ подставляются из ЗАПАСНОГО шрифта — цифры показателя
 // выходят разного кегля и на разной высоте («cos¹⁰x» с провалившимся нулём). Поэтому
@@ -361,7 +415,7 @@ async function parensPdf(html) {
 }
 
 export async function renderTaskMathPdf(text, mf = MATH_ARIAL) {
-  const esc = escapeHtml(String(text ?? ""))
+  const esc = escapeHtml(flattenNestedTokens(String(text ?? "")))
     .replace(/⟦match⟧([\s\S]*?)⟦endmatch⟧/g, (_, body) => matchTablePdf(body, mf.plain))
     .replace(/⟦tbl⟧([\s\S]*?)⟦endtbl⟧/g, (_, body) => dataTablePdf(body, mf.plain))
     .replace(/⟦list⟧([\s\S]*?)⟦endlist⟧/g, (_, body) => orderedListPdf(body, mf.plain))
