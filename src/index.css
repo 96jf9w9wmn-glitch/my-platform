@@ -1361,7 +1361,9 @@ button.w-full:not([disabled]):not(.no-press):active::after,
 
 /* Mobile bottom navigation */
 .mobile-nav-glass {
-  background: rgba(242, 242, 247, 0.9);
+  /* Тон бара — холодный (в цвет html #eef0f8), а не серый: серая полоса внизу
+     экрана читалась как выцветшее пятно под стеклянными карточками. */
+  background: rgba(238, 240, 248, 0.9);
   backdrop-filter: blur(30px);
   -webkit-backdrop-filter: blur(30px);
   border-top: 1px solid rgba(255, 255, 255, 0.6);
