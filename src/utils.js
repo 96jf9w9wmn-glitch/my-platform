@@ -1,6 +1,36 @@
 // Ширина строки в долях em (надстрочные ⁰¹²…⁻ уже) — для длины черты радикала.
 const glyphW = (s) => { let w = 0; for (const ch of s) w += /[⁰¹²³⁴⁵⁶⁷⁸⁹⁻]/.test(ch) ? 0.42 : 0.58; return w }
 
+// Точная ширина строки в долях кегля — меряем настоящим шрифтом через canvas.
+// Оценка «каждый символ ≈ 0.58 кегля» врала тем сильнее, чем длиннее подкоренное:
+// у «4ˣ − 17a + 60» черта корня уезжала на 15 px правее содержимого, у «√3» — на 3 px.
+// Без canvas (тесты, сборка вне браузера) возвращаемся к прежней оценке.
+const measureEm = (() => {
+  let ctx
+  const cache = new Map()
+  return (s, family) => {
+    if (typeof document === "undefined") return null
+    const key = family + "\u0000" + s
+    const hit = cache.get(key)
+    if (hit !== undefined) return hit
+    if (!ctx) ctx = document.createElement("canvas").getContext("2d")
+    if (!ctx) return null
+    ctx.font = `100px ${family}`
+    const w = ctx.measureText(s).width / 100
+    cache.set(key, w)
+    return w
+  }
+})()
+
+// Мерка ширины для конкретного шрифта — её ждут svgMathBody и rootGeom.
+export function glyphWFor(family) {
+  return (s) => {
+    const str = String(s)
+    const w = measureEm(str, family)
+    return w == null ? glyphW(str) : w
+  }
+}
+
 // ── Мини-раскладка математики ВНУТРИ SVG ─────────────────────────────────────
 // Под корнем встречается не только текст: ⁵√(32^{4x−3}), √(16^{(x+3)/x}) — показатель
 // ⁅…⁆, а в нём стоячая дробь ⦃n¦d⦄. Разворачивать их в HTML (<sup>, .tmath-frac) внутри

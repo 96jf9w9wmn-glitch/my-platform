@@ -1,6 +1,6 @@
 import jsPDF from "jspdf"
 import html2canvas from "html2canvas"
-import { noBreakMath, svgMathBody, rootGeom, matchParen } from "../utils"
+import { noBreakMath, svgMathBody, rootGeom, matchParen, glyphWFor } from "../utils"
 import { numbersLabel } from "./taskBankMeta"
 
 function escapeHtml(s) {
@@ -18,8 +18,15 @@ function escapeHtml(s) {
 // path, что и знак, непрерывность гарантирована построением), затем canvas → data-URL.
 
 const FS = 14                                  // размер шрифта условия в PDF-блоке
-// приближённая ширина строки в долях em (надстрочные ⁰¹²…⁻ уже)
-const chW = (s, k = 0.58) => { let w = 0; for (const ch of s) w += /[⁰¹²³⁴⁵⁶⁷⁸⁹⁻]/.test(ch) ? k * 0.724 : k; return w }
+// Ширина строки в долях кегля. Меряем настоящим шрифтом (glyphWFor), а не «по k на
+// символ»: от прикидки черта корня и дроби выходила заметно длиннее содержимого.
+// k остаётся запасным путём, если измерить нечем.
+const chW = (s, k = 0.58, family = null) => {
+  if (family) return glyphWFor(family)(s)
+  let w = 0
+  for (const ch of String(s)) w += /[⁰¹²³⁴⁵⁶⁷⁸⁹⁻]/.test(ch) ? k * 0.724 : k
+  return w
+}
 
 // Шрифт формул: у печатного варианта весь лист — Times New Roman (как в КИМ ФИПИ),
 // поэтому дроби и корни рисуются тем же шрифтом. k — средняя ширина символа в долях em,
@@ -57,7 +64,7 @@ const supInSvg = (s) => String(s)
 function fracSvg(num0, den0, mf = MATH_ARIAL) {
   const num = supInSvg(rootInPdf(num0)), den = supInSvg(rootInPdf(den0))
   const fs = FS * 0.95
-  const w = Math.max(chW(stripRootMarker(num0), mf.k), chW(stripRootMarker(den0), mf.k)) * fs + 8
+  const w = Math.max(chW(stripRootMarker(num0), mf.k, mf.family), chW(stripRootMarker(den0), mf.k, mf.family)) * fs + 8
   const W = Math.ceil(w + 6), H = 34, cx = W / 2
   return { W, H, svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">` +
     `<text x="${cx}" y="13" font-size="${fs}" font-family="${mf.family}" text-anchor="middle" fill="#1c1c1e">${num}</text>` +
@@ -71,14 +78,16 @@ function fracSvg(num0, den0, mf = MATH_ARIAL) {
 // свой vertical-align: базовая линия подкоренного ложится на базовую линию строки при
 // любой высоте картинки.
 function rootSvg(content, index = "", mf = MATH_ARIAL) {
-  const gw = (str) => chW(str, mf.k)
+  const gw = (str) => chW(str, mf.k, mf.family)
   const idxFS = 10
   const body = svgMathBody(content, FS, gw)
   const { W, H, by, ox, tx, d, idxY } = rootGeom(body, index, idxFS, gw)
   const idx = index
     ? `<text x="${ox - 1}" y="${idxY}" font-size="${idxFS}" font-family="${mf.family}" text-anchor="middle" fill="#1c1c1e">${index}</text>`
     : ""
-  return { W, H, valign: `${-(H - by)}px`,
+  // ROOT_FIX — поправка под html2canvas: он ставит inline-картинку выше, чем браузер,
+  // и подкоренное вставало над строкой (замерено на снимке: 1,5 px при кегле 15).
+  return { W, H, valign: `${-(H - by) - ROOT_FIX}px`,
     svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">` +
       `<path d="${d}" fill="none" stroke="#1c1c1e" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>` +
       idx +
@@ -89,8 +98,8 @@ function rootSvg(content, index = "", mf = MATH_ARIAL) {
 // стоячая дробь (num/den) и опциональные pre/post по бокам от неё.
 function rootFracSvg(pre, num, den, post, mf = MATH_ARIAL) {
   const fs = FS * 0.92, sign = 12
-  const preW = chW(stripRootMarker(pre), mf.k) * FS, postW = chW(stripRootMarker(post), mf.k) * FS
-  const fracW = Math.max(chW(stripRootMarker(num), mf.k), chW(stripRootMarker(den), mf.k)) * fs + 8
+  const preW = chW(stripRootMarker(pre), mf.k, mf.family) * FS, postW = chW(stripRootMarker(post), mf.k, mf.family) * FS
+  const fracW = Math.max(chW(stripRootMarker(num), mf.k, mf.family), chW(stripRootMarker(den), mf.k, mf.family)) * fs + 8
   const W = Math.ceil(sign + preW + fracW + postW + 8), H = 40
   const bar = 22, x0 = sign + 3, fcx = x0 + preW + fracW / 2
   const d = `M2,26 L6,38 L${sign},3 L${W - 1.5},3`   // √ + верхняя черта на всю ширину
@@ -132,8 +141,10 @@ async function svgToInlineImg({ W, H, svg, valign: own }, valign, fh = false) {
 // центра «=», из-за чего знак висел над дробью). Корень выравнивается иначе: его
 // подкоренное стоит на общей базовой линии строки, поэтому картинка опускается ровно на
 // свой «подвал» (H − базовая линия), а не на глаз.
-const FRAC_VALIGN = "-14px"
-const ROOT_VALIGN = "-5px"
+// Замерено на снимке html2canvas: черта дроби стояла на 1,8 px выше середины «=».
+const FRAC_VALIGN = "-15.8px"
+const ROOT_VALIGN = "-6.5px"
+const ROOT_FIX = 1.5
 
 // PDF-аналог renderTaskMath из utils.js: тот же порядок (сначала экранирование, потом
 // токены). Дробь/корень — PNG-картинками, нижний индекс — обычным <sub> (html2canvas
