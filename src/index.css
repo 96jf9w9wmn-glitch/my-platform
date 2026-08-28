@@ -1427,6 +1427,10 @@ button.w-full:not([disabled]):not(.no-press):active::after,
    полупрозрачный оверлей на всю площадь. Размер не меняется — поэтому нет
    пустот по краям (в отличие от scale на широких элементах). border-radius
    наследуется, чтобы совпадать со скруглением карточки/строки. */
+/* Свой шеврон вместо системного треугольника: в Safari он остаётся даже при
+   list-style: none и ломает выравнивание строки-карточки. */
+summary::-webkit-details-marker { display: none; }
+
 .press-tap { position: relative; }
 .press-tap::after {
   content: "";

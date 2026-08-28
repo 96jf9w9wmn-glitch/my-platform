@@ -59,14 +59,19 @@ function ExtraPdfButtons({ variant }) {
   }
 
   return (
-    <div className="px-5 py-4 border-t border-gray-100/60">
-      <div className="section-label mb-2.5">Печатные листы</div>
+    <div className="rounded-2xl ring-1 ring-gray-200/70 dark:ring-white/10 bg-white/45 dark:bg-white/[0.03] p-3 flex items-center gap-3">
+      <div className="w-9 h-9 rounded-xl bg-green-500/12 text-green-600 flex items-center justify-center flex-shrink-0">
+        <Icon name="check" size={16} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium truncate">Лист с ответами</div>
+        <div className={`text-[11px] mt-0.5 truncate ${err ? "text-red-500" : "text-gray-400"}`}>{err || "Тот же вариант — для проверки"}</div>
+      </div>
       <button onClick={download} disabled={busy}
-        className="press-fill text-xs px-3 py-2 rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 disabled:opacity-50 flex items-center gap-1.5">
+        className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200 disabled:opacity-50 flex items-center gap-1.5 flex-shrink-0">
         <MorphIcon from="download" size={13} />
-        {busy ? "Собираем…" : "С ответами"}
+        {busy ? "Собираем…" : "Скачать"}
       </button>
-      {err && <div className="text-xs text-red-500 mt-2">{err}</div>}
     </div>
   )
 }
@@ -103,50 +108,45 @@ function VariantFileBlock({ variant, tutorId, onBuilt, onPreview }) {
 
   if (!url && !(variant.tasks_snapshot?.length > 0)) return null
 
+  const fileName = url ? (url.split("?")[0].split("/").pop() || "Файл варианта") : ""
+
   return (
-    <div className="px-5 py-4 border-t border-gray-100/60">
-      <div className="section-label mb-2.5">Файл варианта</div>
-      {url ? (
-        <div className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 overflow-hidden">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-3 py-2 border-b border-gray-100/70 dark:border-white/10">
-            <div className="flex items-center gap-2 text-xs text-gray-500 min-w-0">
-              <Icon name="paperclip" size={12} />
-              {/* адрес подписанный — отрезаем хвост с токеном, иначе он попадёт в имя */}
-              <span className="truncate">{url.split("?")[0].split("/").pop() || "Файл варианта"}</span>
-            </div>
-            <div className="flex items-center gap-1.5 flex-shrink-0">
+    <div className="rounded-2xl ring-1 ring-gray-200/70 dark:ring-white/10 bg-white/45 dark:bg-white/[0.03] overflow-hidden">
+      <div className="p-3 flex items-center gap-3">
+        <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center flex-shrink-0">
+          <Icon name={url ? "paperclip" : "file-text"} size={15} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium truncate">Печатный лист варианта</div>
+          {/* адрес подписанный — имя берём без хвоста с токеном */}
+          <div className={`text-[11px] mt-0.5 truncate ${err ? "text-red-500" : "text-gray-400"}`}>
+            {err || (url ? fileName : "Ещё не собран — нужен для печати")}
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {url ? (
+            <>
               <a href={url + (url.includes("?") ? "&" : "?") + "download"} download
-                className="press-fill text-[11px] px-2.5 py-1.5 rounded-lg ring-1 ring-blue-200 dark:ring-blue-400/25 text-blue-600 bg-blue-500/8 flex items-center gap-1.5">
-                <MorphIcon from="download" size={12} />Скачать
-              </a>
-              <a href={url} target="_blank" rel="noreferrer"
-                className="press-fill text-[11px] px-2.5 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-600">
-                Открыть ↗
+                className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200 flex items-center gap-1.5">
+                <MorphIcon from="download" size={13} />Скачать
               </a>
               <button onClick={() => onPreview(url)} title="На весь экран"
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-500/10 transition-colors">
-                <Icon name="maximize" size={13} />
+                className="press-tap w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-500/10 transition-colors">
+                <Icon name="maximize" size={14} />
               </button>
-            </div>
-          </div>
-          {url.match(/\.(jpg|jpeg|png|gif|webp)/i) && (
-            <img src={url} alt="вариант" className="w-full max-h-48 object-contain bg-white cursor-pointer" onClick={() => onPreview(url)} />
+            </>
+          ) : (
+            <button onClick={build} disabled={busy}
+              className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-blue-200 dark:ring-blue-400/25 text-blue-600 bg-blue-500/8 disabled:opacity-50 flex items-center gap-1.5">
+              <MorphIcon from="file-text" to="download" size={13} />
+              {busy ? "Собираем…" : "Собрать"}
+            </button>
           )}
         </div>
-      ) : (
-        <div className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 px-3 py-3 flex flex-col sm:flex-row sm:items-center gap-2.5">
-          <div className="min-w-0 flex-1 text-[11px] text-gray-500 leading-snug">
-            Печатный лист ещё не собран. Ученик решает вариант в кабинете, файл нужен для печати
-            и для кнопки «Скачать PDF» у ученика. Сборка занимает несколько секунд.
-          </div>
-          <button onClick={build} disabled={busy}
-            className="press-fill text-xs px-3 py-2 rounded-xl ring-1 ring-blue-200 dark:ring-blue-400/25 text-blue-600 bg-blue-500/8 disabled:opacity-50 flex items-center justify-center gap-1.5 flex-shrink-0">
-            <MorphIcon from="file-text" to="download" size={13} />
-            {busy ? "Собираем…" : "Собрать PDF"}
-          </button>
-        </div>
+      </div>
+      {url && url.match(/\.(jpg|jpeg|png|gif|webp)/i) && (
+        <img src={url} alt="вариант" className="w-full max-h-48 object-contain bg-white cursor-pointer border-t border-gray-100/70 dark:border-white/10" onClick={() => onPreview(url)} />
       )}
-      {err && <div className="text-xs text-red-500 mt-2">{err}</div>}
     </div>
   )
 }
@@ -1046,7 +1046,7 @@ function Variants({ user, students = [] }) {
 
   const detailPanel = selectedVariant ? (
     <div className={`col-span-full glass overflow-hidden slide-up ${detailCls}`}>
-              <div className="flex items-center justify-between gap-3 px-5 py-4">
+              <div className="flex items-center justify-between gap-3 px-5 py-3.5">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="font-medium text-base truncate">{selectedVariant.title}</span>
                   <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ring-1 ${isEgeType(selectedVariant.type) ? "text-purple-600 bg-purple-500/10 ring-purple-500/20" : "text-blue-600 bg-blue-500/10 ring-blue-500/20"}`}>{selectedVariant.type}</span>
@@ -1063,32 +1063,43 @@ function Variants({ user, students = [] }) {
                 </div>
               </div>
 
-              {selectedVariant.tasks_snapshot?.length > 0 && (
-                <ExtraPdfButtons variant={selectedVariant} />
-              )}
+              {/* Две колонки: раньше каждая секция шла полосой во всю ширину,
+                  и справа от короткого содержимого оставалось пустое поле. */}
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 px-5 py-4 border-t border-gray-100/60 dark:border-white/10 items-start">
+              <div className="flex flex-col gap-2">
+                <div className="section-label mb-0.5">Материалы</div>
 
-              <VariantFileBlock
-                variant={selectedVariant}
-                tutorId={user.id}
-                onPreview={setPreviewFile}
-                onBuilt={(url) => {
-                  setVariants((prev) => prev.map((x) => (x.id === selectedVariant.id ? { ...x, file_url: url } : x)))
-                  setSelectedVariant((prev) => (prev ? { ...prev, file_url: url } : prev))
-                }}
-              />
+                <VariantFileBlock
+                  variant={selectedVariant}
+                  tutorId={user.id}
+                  onPreview={setPreviewFile}
+                  onBuilt={(url) => {
+                    setVariants((prev) => prev.map((x) => (x.id === selectedVariant.id ? { ...x, file_url: url } : x)))
+                    setSelectedVariant((prev) => (prev ? { ...prev, file_url: url } : prev))
+                  }}
+                />
 
-              {selectedVariant.tasks_snapshot?.length > 0 && (
-                <div className="px-5 py-4 border-t border-gray-100/60">
-                  <details className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 overflow-hidden group">
-                    <summary className="px-3 py-2.5 text-xs text-gray-500 cursor-pointer flex items-center gap-2 select-none hover:text-gray-700 transition-colors">
-                      <Icon name="book" size={12} />
-                      Задания из банка
-                      <span className="text-[11px] text-blue-600 bg-blue-500/10 ring-1 ring-blue-500/20 px-1.5 py-0.5 rounded-full">{selectedVariant.tasks_snapshot.length}</span>
-                      <span className="ml-auto text-gray-400 transition-transform group-open:rotate-90">›</span>
+                {selectedVariant.tasks_snapshot?.length > 0 && (
+                  <ExtraPdfButtons variant={selectedVariant} />
+                )}
+
+                {selectedVariant.tasks_snapshot?.length > 0 && (
+                  <details className="rounded-2xl ring-1 ring-gray-200/70 dark:ring-white/10 bg-white/45 dark:bg-white/[0.03] overflow-hidden group">
+                    <summary className="press-fill p-3 flex items-center gap-3 cursor-pointer select-none list-none">
+                      <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center flex-shrink-0">
+                        <Icon name="book" size={15} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium truncate">Задания из банка</div>
+                        <div className="text-[11px] text-gray-400 mt-0.5">
+                          {selectedVariant.tasks_snapshot.length} {plural(selectedVariant.tasks_snapshot.length, "задание", "задания", "заданий")}
+                        </div>
+                      </div>
+                      <span className="text-gray-400 transition-transform group-open:rotate-90 flex-shrink-0 pr-1">›</span>
                     </summary>
-                    <div className="flex flex-col gap-1.5 p-2.5">
+                    <div className="flex flex-col gap-1.5 p-2.5 pt-0">
                       {selectedVariant.tasks_snapshot.map((t) => (
-                        <div key={t.number} className="text-xs rounded-lg ring-1 ring-gray-200/70 dark:ring-white/10 px-2.5 py-2 flex items-start gap-2.5">
+                        <div key={t.number} className="text-xs rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 px-2.5 py-2 flex items-start gap-2.5">
                           <span className="shrink-0 w-5 h-5 rounded-full bg-blue-500/12 text-blue-600 dark:text-blue-400 text-[10px] font-semibold flex items-center justify-center">
                             {t.number}
                           </span>
@@ -1104,34 +1115,32 @@ function Variants({ user, students = [] }) {
                       ))}
                     </div>
                   </details>
-                </div>
-              )}
+                )}
+              </div>
 
-              <div className="px-5 py-4 border-t border-gray-100/60">
-                <div className="section-label mb-2.5">Ученики</div>
-                {/* Панель теперь во всю ширину: на широком экране строка ученика
-                    растягивалась на метр, поэтому раскладываем в две колонки. */}
-                <div className={`grid grid-cols-1 gap-1.5 ${variantSubmissions.length > 3 ? "xl:grid-cols-2" : ""}`}>
+              <div className="flex flex-col gap-2">
+                <div className="section-label mb-0.5">Ученики</div>
+                <div className="flex flex-col gap-2">
                 {variantSubmissions.length === 0 ? (
-                  <div className="xl:col-span-2 text-sm text-gray-400 text-center py-8">Вариант ещё никому не выдан</div>
+                  <div className="rounded-2xl ring-1 ring-dashed ring-gray-200/80 dark:ring-white/10 text-sm text-gray-400 text-center py-8">Вариант ещё никому не выдан</div>
                 ) : variantSubmissions.map((sub) => {
                   const name = sub.student_accounts?.name || sub.student_accounts?.email || ""
                   const color = getAvatarColor(name)
                   return (
-                    <div key={sub.id} className="flex items-center gap-3 ring-1 ring-gray-200/70 dark:ring-white/10 rounded-xl px-3 py-2.5">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 ${color.bg} ${color.text}`}>
+                    <div key={sub.id} className="flex items-center gap-3 ring-1 ring-gray-200/70 dark:ring-white/10 bg-white/45 dark:bg-white/[0.03] rounded-2xl p-3">
+                      <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 ${color.bg} ${color.text}`}>
                         {getInitials(name)}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium truncate">{name}</div>
-                        <div className="text-xs text-gray-400 mt-0.5">{renderScore(sub)}</div>
+                        <div className="text-[11px] text-gray-400 mt-0.5 truncate">{renderScore(sub)}</div>
                       </div>
                       <div className="flex-shrink-0">
                         {sub.status === "pending" && (
                           <span className="text-[11px] text-gray-500 ring-1 ring-gray-200 dark:ring-white/15 px-2.5 py-1 rounded-full">Ожидает</span>
                         )}
                         {sub.status === "submitted" && (
-                          <button onClick={() => setSelectedSubmission(sub)} className="text-[11px] text-amber-600 bg-amber-500/12 ring-1 ring-amber-500/25 px-2.5 py-1 rounded-full hover:bg-amber-500/20 transition-colors font-medium">
+                          <button onClick={() => setSelectedSubmission(sub)} className="press-fill text-[11px] text-amber-600 bg-amber-500/12 ring-1 ring-amber-500/25 px-2.5 py-1 rounded-full hover:bg-amber-500/20 transition-colors font-medium">
                             Проверить →
                           </button>
                         )}
@@ -1145,6 +1154,7 @@ function Variants({ user, students = [] }) {
                   )
                 })}
                 </div>
+              </div>
               </div>
           </div>
   ) : null
