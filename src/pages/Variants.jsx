@@ -18,6 +18,8 @@ import { PlanHint } from "../components/PlanLock"
 import ConfirmModal from "../components/ConfirmModal"
 import SegmentSwitch from "../components/SegmentSwitch"
 import StatTabs from "../components/StatTabs"
+import MethodCards from "../components/MethodCards"
+import AutoHeight from "../components/AutoHeight"
 import { useClosing } from "../useClosing"
 import Reveal from "../components/Reveal"
 // Тетрадь тянет генераторы заданий — грузим только когда её открыли.
@@ -198,6 +200,12 @@ function BankTasksBlock({ tasks }) {
     </div>
   )
 }
+
+// Способы сборки варианта — теми же карточками, что у «Нового задания».
+const VARIANT_METHODS = [
+  { id: "file", icon: "paperclip", title: "Свой файл", note: "PDF или фото варианта, ответы вписываете сами" },
+  { id: "bank", icon: "grid", title: "Из банка заданий", note: "Соберём состав экзамена с ответами" },
+]
 
 const isEgeType = (t) => examLevelOf(t) === "ЕГЭ"
 // Разбивка «алгебра/геометрия» и подпись «задания 1–12» — про математику.
@@ -455,7 +463,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
               <div>
                 <label className="text-sm text-gray-500 mb-1 block">Ученик</label>
                 <select value={recipientId} onChange={(e) => setRecipientId(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400">
+                  aria-label="Ученик" className="input-glass">
                   <option value="all">Все ученики ({examLevelOf(examType)})</option>
                   {accounts.map((a) => <option key={a.id} value={String(a.id)}>{a.name}</option>)}
                 </select>
@@ -510,22 +518,31 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
 
               {/* Растягиваем по высоте: иначе под короткой левой колонкой зияет пустота. */}
               <div className="flex-1 flex flex-col">
-                <label className="text-sm text-gray-500 mb-2 block">Условия варианта</label>
-                <SegmentSwitch
-                  block
+                <MethodCards
                   className="mb-3"
-                  ariaLabel="Условия варианта"
+                  label="Из чего собрать вариант"
+                  items={VARIANT_METHODS}
                   value={source}
                   onChange={setSource}
-                  items={[{ key: "file", label: "Свой файл" }, { key: "bank", label: "Из банка заданий" }]}
                 />
 
+                {/* Панель способа: высота едет плавно, иначе окно скачет при
+                    переключении карточек — куски разной длины (как в «Новом задании»). */}
+                <AutoHeight className="flex-1">
+                <div key={source} className="tab-swap flex flex-col h-full">
                 {source === "file" ? (
                   <>
                     <input ref={fileRef} type="file" accept=".pdf,image/*" className="hidden" onChange={handleFileUpload} />
                     {!variantFile ? (
-                      <button onClick={() => fileRef.current.click()} className="w-full flex-1 min-h-28 border-2 border-dashed border-gray-200 dark:border-white/15 rounded-lg py-4 text-sm text-gray-500 hover:border-blue-300 hover:text-blue-600">
-                        Прикрепить файл с вариантом
+                      <button
+                        onClick={() => fileRef.current.click()}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files?.[0]) handleFileUpload({ target: { files: e.dataTransfer.files } }) }}
+                        className="w-full flex-1 min-h-28 rounded-2xl border-2 border-dashed border-gray-300 dark:border-white/15 py-6 px-4 flex flex-col items-center justify-center gap-1.5 text-gray-500 hover:border-blue-400 hover:text-blue-600 transition-colors"
+                      >
+                        <Icon name="upload" size={18} />
+                        <span className="text-sm">Перетащите файл или нажмите</span>
+                        <span className="text-[11px] text-gray-400">PDF или фото варианта</span>
                       </button>
                     ) : (
                       <div className="border border-gray-200 rounded-lg overflow-hidden">
@@ -542,8 +559,10 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
                 ) : (
                   <div className="flex flex-col gap-2 flex-1">
                     <button onClick={handleAssemble} disabled={assembling}
-                      className="w-full border-2 border-dashed border-blue-200 rounded-lg py-3 text-sm text-blue-600 hover:bg-blue-50 disabled:opacity-50">
-                      {assembling ? "Собираем..." : bankPicked.length > 0 ? "Собрать заново" : "Собрать вариант из банка"}
+                      className="bg-blue-600 text-white rounded-xl py-2 text-sm hover:bg-blue-700 disabled:opacity-50 active:scale-[0.99] transition-transform flex items-center justify-center gap-1.5">
+                      {assembling
+                        ? <><span className="loader-dots"><i /><i /><i /></span>Собираем задания</>
+                        : <><Icon name="grid" size={14} />{bankPicked.length > 0 ? "Собрать заново" : "Собрать вариант из банка"}</>}
                     </button>
 
                     {bankPicked.length > 0 && (
@@ -566,18 +585,22 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
                     {bankPicked.length > 0 && (
                       <div className="flex flex-col gap-1.5 max-h-72 overflow-y-auto">
                         {bankPicked.map((t) => (
-                          <div key={t.number} className="border border-gray-100 rounded-lg px-3 py-2 flex items-start justify-between gap-2">
+                          <div key={t.number} className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 px-2.5 py-2 flex items-start gap-2.5">
+                            <span className="shrink-0 w-5 h-5 rounded-full bg-blue-500/12 text-blue-600 dark:text-blue-400 text-[10px] font-semibold flex items-center justify-center">
+                              {t.number}
+                            </span>
                             <div className="min-w-0 flex-1">
-                              <div className="text-xs font-medium text-gray-500 mb-0.5">Задание {t.number}</div>
-                              {t.condition_text && <div className="text-xs text-gray-600 truncate">{plainTaskMath(t.condition_text)}</div>}
+                              {t.condition_text && <div className="text-xs text-gray-600 leading-relaxed line-clamp-2">{plainTaskMath(t.condition_text)}</div>}
                               {t.image_url && (
                                 <a href={t.image_url} target="_blank" rel="noreferrer">
-                                  <img src={t.image_url} alt={`Задание ${t.number}`} className="mt-1 h-16 rounded border border-gray-100 bg-white" />
+                                  <img src={t.image_url} alt={`Задание ${t.number}`} className="mt-1 h-16 rounded-lg ring-1 ring-gray-200/70 bg-white" />
                                 </a>
                               )}
                             </div>
-                            <button onClick={() => handleReroll(t.number)} className="text-xs text-blue-600 hover:opacity-70 transition-opacity flex-shrink-0">
-                              {isModuleNumber(examType, t.number) ? "Заменить блок 1–5" : "Заменить"}
+                            <button onClick={() => handleReroll(t.number)}
+                              title={isModuleNumber(examType, t.number) ? "Другой блок 1–5" : "Другое задание этого номера"}
+                              className="text-gray-400 hover:text-blue-600 active:scale-90 transition-transform flex-shrink-0">
+                              <Icon name="repeat" size={13} />
                             </button>
                           </div>
                         ))}
@@ -585,6 +608,8 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
                     )}
                   </div>
                 )}
+                </div>
+                </AutoHeight>
               </div>
             </div>
 
@@ -663,7 +688,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
                 <div>
                   {examType === "ОГЭ" ? (
                     <>
-                      <div className="text-xs font-medium text-blue-600 mb-1 bg-blue-50 px-2 py-1 rounded">Алгебра 1–14</div>
+                      <div className="text-xs font-medium text-blue-600 mb-1 bg-blue-500/10 ring-1 ring-blue-500/20 px-2 py-1 rounded-lg">Алгебра 1–14</div>
                       <div className="grid grid-cols-7 gap-1 mb-2">
                         {answers.slice(0, 14).map((a, i) => (
                           <div key={i} className={a ? "text-center rounded-lg py-1 text-xs bg-blue-100 text-blue-700 font-medium" : "text-center rounded-lg py-1 text-xs ring-1 ring-gray-200/70 dark:ring-white/10 text-gray-400"}>
@@ -671,7 +696,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
                           </div>
                         ))}
                       </div>
-                      <div className="text-xs font-medium text-purple-600 mb-1 bg-purple-50 px-2 py-1 rounded">Геометрия 15–19</div>
+                      <div className="text-xs font-medium text-purple-600 mb-1 bg-purple-500/10 ring-1 ring-purple-500/20 px-2 py-1 rounded-lg">Геометрия 15–19</div>
                       <div className="grid grid-cols-5 gap-1">
                         {answers.slice(14, 19).map((a, i) => (
                           <div key={i} className={a ? "text-center rounded-lg py-1 text-xs bg-purple-100 text-purple-700 font-medium" : "text-center rounded-lg py-1 text-xs ring-1 ring-gray-200/70 dark:ring-white/10 text-gray-400"}>
@@ -681,7 +706,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
                       </div>
                       {part2Numbers.some((n) => part2Answers[n]) && (
                         <>
-                          <div className="text-xs font-medium text-green-600 mb-1 mt-2 bg-green-50 px-2 py-1 rounded">Часть 2 · 20–25</div>
+                          <div className="text-xs font-medium text-green-600 mb-1 mt-2 bg-green-500/10 ring-1 ring-green-500/20 px-2 py-1 rounded-lg">Часть 2 · 20–25</div>
                           <div className="grid grid-cols-3 gap-1">
                             {part2Numbers.map((n) => (
                               <div key={n} className={part2Answers[n] ? "text-center rounded-lg py-1 text-xs bg-green-100 text-green-700 font-medium" : "text-center rounded-lg py-1 text-xs ring-1 ring-gray-200/70 dark:ring-white/10 text-gray-400"}>
@@ -696,7 +721,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
                     <>
                       {/* Разбивка «алгебра/геометрия» — только у ОГЭ по математике;
                           остальным показываем ровно те номера, что вошли в вариант. */}
-                      <div className="text-xs font-medium text-blue-600 mb-1 bg-blue-50 px-2 py-1 rounded">
+                      <div className="text-xs font-medium text-blue-600 mb-1 bg-blue-500/10 ring-1 ring-blue-500/20 px-2 py-1 rounded-lg">
                         {isMathType(examType) ? "Задания 1–12 (часть 1 ЕГЭ)" : `Часть 1 · ${answerCount} ${plural(answerCount, "задание", "задания", "заданий")}`}
                       </div>
                       <div className="grid grid-cols-6 gap-1">
@@ -711,7 +736,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
                 </div>
               )}
 
-              <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700 mt-auto">
+              <div className="bg-amber-500/10 ring-1 ring-amber-500/20 rounded-xl p-3 text-xs text-amber-700 dark:text-amber-300 mt-auto">
                 {examType === "ОГЭ"
                   ? "Часть 2 (20–25): ученик выбирает ответ из четырёх и прикрепляет фото решения. Баллы начисляются только после вашей проверки."
                   : part2Numbers.length > 0

@@ -4,6 +4,7 @@ import { supabase } from "../supabase"
 import { signRows } from "../storageUrl"
 import Icon from "../components/Icon"
 import StatTabs from "../components/StatTabs"
+import MethodCards from "../components/MethodCards"
 import Collapse from "../components/Collapse"
 import Reveal from "../components/Reveal"
 import AutoHeight from "../components/AutoHeight"
@@ -914,32 +915,12 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
           </div>
 
           <div className="flex flex-col gap-4">
-            <div>
-              <div className="text-sm text-gray-500 mb-2">Из чего собрать задание</div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                {HW_METHODS.map((m) => {
-                  const on = method === m.id
-                  return (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => chooseMethod(m.id)}
-                      className={`press-fill text-left rounded-2xl p-3 ring-1 transition-colors ${
-                        on ? "ring-blue-500/40 bg-blue-500/[0.08]" : "ring-gray-500/15 hover:bg-blue-500/[0.06]"
-                      }`}
-                    >
-                      <span className={`w-8 h-8 rounded-xl flex items-center justify-center mb-2 ${
-                        on ? "bg-blue-500/15 text-blue-600" : "text-gray-500 ring-1 ring-gray-200/70 dark:ring-white/15"
-                      }`}>
-                        <Icon name={m.icon} size={15} />
-                      </span>
-                      <span className={`block text-sm ${on ? "text-blue-700 dark:text-blue-300 font-medium" : "text-gray-700"}`}>{m.title}</span>
-                      <span className="block text-[11px] text-gray-400 leading-snug mt-0.5">{m.note}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
+            <MethodCards
+              label="Из чего собрать задание"
+              items={HW_METHODS}
+              value={method}
+              onChange={chooseMethod}
+            />
 
             {/* Панель способа: высота едет плавно, иначе окно скачет при
                 переключении карточек — куски разной длины. */}
