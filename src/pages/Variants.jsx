@@ -957,6 +957,7 @@ function Variants({ user, students = [] }) {
   const [loading, setLoading] = useState(true)
   const [previewFile, setPreviewFile] = useState(null)
   const [group, setGroup] = useState("all")
+  const [stat, setStat] = useState("all")
   // Сколько карточек в ряду прямо сейчас — нужно, чтобы вставить разбор ПОСЛЕ
   // ряда выбранной карточки. Пороги обязаны совпадать с классами сетки ниже
   // (sm:grid-cols-2 xl:grid-cols-3), иначе панель разорвёт ряд.
@@ -1001,7 +1002,16 @@ function Variants({ user, students = [] }) {
     { key: "ОГЭ", label: "ОГЭ" },
     { key: "ЕГЭ", label: "ЕГЭ" },
   ].filter((g) => g.key === "all" || variants.some((v) => groupOf(v) === g.key))
-  const visible = variants.filter((v) => group === "all" || groupOf(v) === group)
+  // Плитки сводки работают как фильтр: «Ждут проверки» оставляет варианты,
+  // где есть несданная работа. Иначе число в плитке видно, а дойти до этих
+  // работ можно только перебором карточек.
+  const hasStatus = (v, st) => submissions.some((s) => s.variant_id === v.id && s.status === st)
+  const matchStat = (v) => (
+    stat === "pending" ? hasStatus(v, "submitted")
+      : stat === "graded" ? hasStatus(v, "graded")
+        : true
+  )
+  const visible = variants.filter((v) => (group === "all" || groupOf(v) === group) && matchStat(v))
 
   const AVATAR_COLORS = [
     { bg: "bg-blue-100 dark:bg-blue-500/15", text: "text-blue-700 dark:text-blue-300" },
@@ -1169,26 +1179,45 @@ function Variants({ user, students = [] }) {
 
       {/* Сводка одной полосой: три отдельные карточки на такие короткие числа
           давали больше пустоты, чем данных. */}
-      <div className="glass grid grid-cols-3 divide-x divide-gray-500/12 dark:divide-white/10">
+      <div className="glass overflow-hidden grid grid-cols-3 divide-x divide-gray-500/12 dark:divide-white/10">
         {[
-          { icon: "clipboard", label: "Всего вариантов", short: "Всего", value: variants.length, tint: "text-blue-600 bg-blue-500/10", active: variants.length > 0 },
-          { icon: "clock", label: "Ждут проверки", short: "На проверке", value: totalPending, tint: "text-amber-600 bg-amber-500/12", active: totalPending > 0 },
-          { icon: "check", label: "Проверено работ", short: "Проверено", value: totalGraded, tint: "text-green-600 bg-green-500/12", active: totalGraded > 0 },
-        ].map((st) => (
-          <div key={st.label} className="flex items-center gap-3 px-3 sm:px-4 py-3.5 min-w-0">
+          { key: "all", icon: "clipboard", label: "Всего вариантов", short: "Всего", value: variants.length, tint: "text-blue-600 bg-blue-500/10", active: variants.length > 0 },
+          { key: "pending", icon: "clock", label: "Ждут проверки", short: "На проверке", value: totalPending, tint: "text-amber-600 bg-amber-500/12", active: totalPending > 0 },
+          { key: "graded", icon: "check", label: "Проверено работ", short: "Проверено", value: totalGraded, tint: "text-green-600 bg-green-500/12", active: totalGraded > 0 },
+        ].map((st) => {
+          const on = stat === st.key
+          // Пустую плитку не жмём: фильтр по ней дал бы пустой список.
+          const clickable = st.key === "all" ? stat !== "all" : st.value > 0
+          return (
+          <button
+            key={st.label}
+            type="button"
+            disabled={!clickable}
+            aria-pressed={on}
+            title={st.key === "all" ? "Показать все варианты" : `Показать варианты, где есть работы: ${st.label.toLowerCase()}`}
+            onClick={() => {
+              const next = on ? "all" : st.key
+              setStat(next)
+              // Открытый разбор скрывать молча нельзя — закрываем той же анимацией.
+              const fits = next === "all" || hasStatus(selectedVariant || {}, next === "pending" ? "submitted" : "graded")
+              if (selectedVariant && !fits) closeDetail()
+            }}
+            className={`press-fill flex items-center gap-3 px-3 sm:px-4 py-3.5 min-w-0 text-left transition-colors ${clickable ? "cursor-pointer" : "cursor-default"} ${on ? "bg-blue-500/8" : ""}`}
+          >
             <div className={`w-9 h-9 rounded-xl hidden sm:flex items-center justify-center flex-shrink-0 ${st.active ? st.tint : "text-gray-400 ring-1 ring-gray-200/70 dark:ring-white/10"}`}>
               <Icon name={st.icon} size={16} />
             </div>
             <div className="min-w-0">
               <div className={`text-xl font-semibold leading-none ${st.active ? st.tint.split(" ")[0] : "text-gray-400"}`}>{st.value}</div>
               {/* На узком экране подпись короче: полная не влезает и обрезалась многоточием */}
-              <div className="text-[11px] text-gray-400 mt-1.5 truncate">
+              <div className={`text-[11px] mt-1.5 truncate ${on ? "text-gray-600 dark:text-gray-300" : "text-gray-400"}`}>
                 <span className="sm:hidden">{st.short}</span>
                 <span className="hidden sm:inline">{st.label}</span>
               </div>
             </div>
-          </div>
-        ))}
+          </button>
+          )
+        })}
       </div>
 
 
@@ -1215,7 +1244,11 @@ function Variants({ user, students = [] }) {
                   <Icon name="clipboard" size={18} />
                 </div>
                 <div className="text-sm text-gray-400">
-                  {variants.length === 0 ? "Вариантов пока нет" : `Вариантов ${group} пока нет`}
+                  {variants.length === 0
+                    ? "Вариантов пока нет"
+                    : stat === "pending" ? "Здесь нет вариантов с работами на проверке"
+                      : stat === "graded" ? "Здесь нет вариантов с проверенными работами"
+                        : `Вариантов ${group} пока нет`}
                 </div>
               </div>
             ) : visible.map((v, i) => {
