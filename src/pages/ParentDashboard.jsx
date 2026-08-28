@@ -2,40 +2,103 @@ import { useState, useEffect } from "react"
 import { supabase } from "../supabase"
 import { signRows } from "../storageUrl"
 import Chat from "./Chat"
-import { getInitials, plural } from "../utils"
+import { getInitials, plural, isLessonConducted } from "../utils"
+import { studentDebt, fmtMoney } from "../invoices"
+import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
 import BetaBadge from "../components/BetaBadge"
+import SegmentSwitch from "../components/SegmentSwitch"
 import { BETA_SUFFIX } from "../beta"
 import InvoiceCard from "../components/InvoiceCard"
 
-function SvgIcon({ d, size = 16 }) {
-  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d={d}/></svg>
-}
-
 const MONTH_SHORT = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"]
-const WEEKDAY = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"]
+// Родительный падеж: toLocaleDateString с одним только месяцем даёт «июнь»,
+// и дата собиралась как «1 июнь 2027».
+const MONTH_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"]
+const WEEKDAY_FULL = ["Воскресенье", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"]
 
-function fmt(dateStr) {
-  const d = new Date(dateStr + "T00:00:00")
-  return `${WEEKDAY[d.getDay()]}, ${d.getDate()} ${MONTH_SHORT[d.getMonth()]}`
+function parseDay(dateStr) {
+  const [y, m, d] = String(dateStr).split("-").map(Number)
+  return new Date(y, m - 1, d)
 }
 
-function parseDate(l) {
+// Конец занятия: по нему решается, прошло оно или ещё впереди.
+function lessonEnd(l) {
   if (!l.date) return new Date(0)
   const [y, m, d] = l.date.split("-").map(Number)
   const [h, min] = (l.time || "00:00").split(":").map(Number)
   return new Date(y, m - 1, d, h, min + (l.duration || 60))
 }
 
+// «Сегодня» и «Завтра» родитель считывает быстрее даты — но только для двух
+// ближайших дней: дальше подпись перестаёт помогать и начинает шуметь.
+function relDay(dateStr) {
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const diff = Math.round((parseDay(dateStr) - today) / 86400000)
+  return diff === 0 ? "Сегодня" : diff === 1 ? "Завтра" : null
+}
+
+function longDate(iso) {
+  return parseDay(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })
+}
+
+// Короткая дата для подписей, где строка обязана поместиться в одну строку.
+function shortDate(iso) {
+  const d = parseDay(iso)
+  return `${d.getDate()} ${MONTH_SHORT[d.getMonth()]}`
+}
+
+const TONE_TILE = {
+  blue: "bg-blue-500/12 text-blue-600 dark:text-blue-300",
+  amber: "bg-amber-500/15 text-amber-600 dark:text-amber-300",
+  green: "bg-green-500/15 text-green-600 dark:text-green-300",
+  purple: "bg-purple-500/15 text-purple-600 dark:text-purple-300",
+}
+
+// Панель раздела: иконка в цветной плитке + заголовок + место под действие
+// справа. Один и тот же каркас у всех блоков — иначе кабинет распадается на
+// разнородные карточки.
+function Panel({ icon, title, tone = "blue", action, children, className = "" }) {
+  return (
+    <div className={`glass p-4 sm:p-5 ${className}`}>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${TONE_TILE[tone]}`}>
+            <Icon name={icon} size={16} />
+          </span>
+          <div className="text-[15px] font-semibold text-gray-800 truncate">{title}</div>
+        </div>
+        {action}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+// Плитка сводки. Показывается только тогда, когда за ней есть данные:
+// плитка с прочерком занимает место и ничего не сообщает.
+function StatTile({ icon, label, value, hint, color = "text-gray-800", className = "" }) {
+  return (
+    <div className={`glass rounded-2xl p-3.5 flex flex-col gap-1 ${className}`}>
+      <div className="flex items-center gap-1.5 text-gray-400">
+        <Icon name={icon} size={13} />
+        <span className="text-[11px] leading-tight">{label}</span>
+      </div>
+      <div className={`text-[22px] leading-none font-semibold ${color}`}>{value}</div>
+      {hint && <div className="text-[11px] text-gray-400 leading-tight">{hint}</div>}
+    </div>
+  )
+}
+
 function GradeBar({ label, count, max, color }) {
   const pct = max > 0 ? Math.round((count / max) * 100) : 0
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2.5">
       <div className={`w-5 text-xs font-semibold text-center ${color}`}>{label}</div>
       <div className="flex-1 h-2 bg-blue-500/12 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full transition-all ${color.replace("text-", "bg-")}`} style={{ width: pct + "%" }} />
+        <div className={`h-full rounded-full transition-all duration-500 ${color.replace("text-", "bg-")}`} style={{ width: pct + "%" }} />
       </div>
-      <div className="text-xs text-gray-500 w-6 text-right">{count}</div>
+      <div className="text-xs text-gray-400 w-6 text-right">{count}</div>
     </div>
   )
 }
@@ -44,16 +107,13 @@ function GradeBar({ label, count, max, color }) {
 // один и тот же отчёт в кабинете и в PDF — разные слова для одного статуса
 // читались бы как разные оценки.
 const CONF_TONE = {
-  struggling: { label: "нужна помощь", cls: "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300" },
-  progress: { label: "в процессе", cls: "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300" },
-  confident: { label: "уверенно", cls: "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300" },
+  struggling: { label: "нужна помощь", cls: "bg-red-500/12 text-red-700 dark:text-red-300 ring-1 ring-red-500/25" },
+  progress: { label: "в процессе", cls: "bg-amber-500/12 text-amber-700 dark:text-amber-300 ring-1 ring-amber-500/25" },
+  confident: { label: "уверенно", cls: "bg-green-500/12 text-green-700 dark:text-green-300 ring-1 ring-green-500/25" },
 }
 
-// Лента отчётов о занятиях. Родителю показываются только ОТПРАВЛЕННЫЕ отчёты —
-// это гарантирует функция в базе, а не фильтр здесь: черновик репетитора и
-// сырые данные, которые скармливались модели, наружу не уходят вовсе.
-// Период отчёта: он теперь не про одно занятие, а про промежуток между
-// отчётами. Старые записи промежутка не хранят — у них остаётся одна дата.
+// Период отчёта: он не про одно занятие, а про промежуток между отчётами.
+// Старые записи промежутка не хранят — у них остаётся одна дата.
 function reportPeriod(r) {
   const day = (iso) => new Date(String(iso).slice(0, 10) + "T00:00:00")
     .toLocaleDateString("ru-RU", { day: "numeric", month: "long" })
@@ -72,6 +132,9 @@ function reportStatsLine(r) {
   ].filter(Boolean).join(" · ")
 }
 
+// Лента отчётов о занятиях. Родителю показываются только ОТПРАВЛЕННЫЕ отчёты —
+// это гарантирует функция в базе, а не фильтр здесь: черновик репетитора и
+// сырые данные, которые скармливались модели, наружу не уходят вовсе.
 function ReportsFeed({ parentCode, studentName, tutorName }) {
   const [reports, setReports] = useState([])
   const [busy, setBusy] = useState(null)
@@ -108,49 +171,55 @@ function ReportsFeed({ parentCode, studentName, tutorName }) {
   if (!reports.length) return null
 
   return (
-    <div className="glass p-4 mb-3 rounded-2xl">
-      <div className="text-sm font-semibold text-gray-700 mb-3">Отчёты о занятиях</div>
+    <Panel icon="mail" title="Отчёты о занятиях" tone="purple">
       <div className="flex flex-col gap-3">
         {reports.map((r) => (
-          <div key={r.id} className="glass-sm rounded-2xl px-3 py-3">
-            <div className="flex items-start justify-between gap-3 mb-1">
-              <div className="text-[11px] text-gray-400">
-                {reportPeriod(r)}
+          <div key={r.id} className="glass-sm rounded-2xl px-3.5 py-3">
+            <div className="flex items-start justify-between gap-3 mb-1.5">
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-gray-700">{reportPeriod(r)}</div>
+                {reportStatsLine(r) && (
+                  <div className="text-[11px] text-gray-400 mt-0.5">{reportStatsLine(r)}</div>
+                )}
               </div>
               <button
                 onClick={() => savePdf(r)}
                 disabled={busy === r.id}
                 title="Сохранить отчёт в PDF"
-                className="press-fill shrink-0 -mt-0.5 text-[11px] font-medium text-blue-600 dark:text-blue-300 px-2 py-1 rounded-lg ring-1 ring-blue-500/20 disabled:opacity-50"
+                className="press-fill shrink-0 flex items-center gap-1.5 text-[12px] font-medium text-blue-600 dark:text-blue-300 px-2.5 py-1.5 rounded-xl ring-1 ring-blue-500/25 disabled:opacity-50"
               >
+                <Icon name="download" size={13} />
                 {busy === r.id ? "Готовим…" : "PDF"}
               </button>
             </div>
-            {reportStatsLine(r) && (
-              <div className="text-[11px] text-gray-400 mb-1.5">{reportStatsLine(r)}</div>
-            )}
-            {r.summary && <div className="text-sm text-gray-700 leading-snug">{r.summary}</div>}
+            {r.summary && <div className="text-sm text-gray-700 leading-relaxed">{r.summary}</div>}
             {Array.isArray(r.topics) && r.topics.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-2">
+              <div className="flex flex-wrap gap-1.5 mt-2.5">
                 {r.topics.map((t, i) => {
-                  const tone = CONF_TONE[t.confidence] || CONF_TONE.progress
+                  const tone = CONF_TONE[t.confidence]
                   return (
-                    <span key={i} className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${tone.cls}`} title={t.comment || ""}>
-                      {t.title} · {tone.label}
+                    <span
+                      key={i}
+                      title={t.comment || ""}
+                      className={`text-[11px] px-2.5 py-1 rounded-full font-medium ${
+                        tone ? tone.cls : "text-gray-500 ring-1 ring-gray-200/70 dark:ring-white/12"
+                      }`}
+                    >
+                      {t.title}{tone ? ` · ${tone.label}` : ""}
                     </span>
                   )
                 })}
               </div>
             )}
             {r.next_steps && (
-              <div className="text-[12px] text-gray-500 dark:text-gray-400 mt-2 leading-snug">
+              <div className="text-[12px] text-gray-500 mt-2.5 leading-relaxed">
                 Дальше: {r.next_steps}
               </div>
             )}
           </div>
         ))}
       </div>
-    </div>
+    </Panel>
   )
 }
 
@@ -232,17 +301,19 @@ function ParentDashboard({ user, onLogout }) {
       })
   }, [student.id])
 
-  const now = new Date()
+  const lessons = student.lessons || []
+  // Счётчик считает ВСЕ будущие занятия, а список показывает ближайшие: раньше
+  // в плитку попадала длина обрезанного списка, и «занятий впереди» упиралось в 6.
+  const upcomingAll = lessons
+    .filter((l) => l.date && lessonEnd(l) >= new Date())
+    .sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || "")))
+  const upcoming = upcomingAll.slice(0, 4)
 
-  const upcoming = (student.lessons || [])
-    .filter((l) => l.date && parseDate(l) >= now)
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(0, 6)
-
-  const conducted = (student.lessons || []).filter((l) => l.date && parseDate(l) < now)
-  const totalOwed = conducted.length * (student.lessonPrice || student.lesson_price || 0)
-  const totalPaid = (student.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
-  const debt = totalOwed - totalPaid
+  const conducted = lessons.filter((l) => isLessonConducted(l))
+  const price = Number(student.lessonPrice ?? student.lesson_price ?? 0)
+  const totalPaid = (student.payments || []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+  // Долг считает общий помощник — то же число, что видят репетитор и квитанции.
+  const debt = studentDebt({ ...student, lessonPrice: price })
 
   const graded = homework.filter((h) => h.grade != null)
   const avg = graded.length > 0
@@ -250,82 +321,128 @@ function ParentDashboard({ user, onLogout }) {
     : null
   const doneCount = homework.filter((h) => h.status === "done" || h.grade != null).length
 
-  // Grade distribution
   const gradeDist = [5, 4, 3, 2, 1].map((g) => ({ g, count: graded.filter((h) => h.grade === g).length }))
   const maxGradeCount = Math.max(...gradeDist.map((d) => d.count), 1)
   const gradeColors = { 5: "text-green-500", 4: "text-blue-500", 3: "text-amber-500", 2: "text-orange-500", 1: "text-red-500" }
-
-  // Trend: last 8 graded homeworks
   const recentGraded = [...graded].reverse().slice(0, 8)
+
+  const examDate = student.examDate || student.exam_date
+  const targetScore = student.targetScore || student.target_score
+  const daysToExam = examDate
+    ? Math.ceil((parseDay(examDate) - new Date().setHours(0, 0, 0, 0)) / 86400000)
+    : null
+  // Без « г.» в хвосте: в узкой колонке эти две буквы утаскивали дату на вторую строку.
+  const examDateLabel = examDate
+    ? `${parseDay(examDate).getDate()} ${MONTH_GEN[parseDay(examDate).getMonth()]} ${parseDay(examDate).getFullYear()}`
+    : ""
 
   const initials = getInitials(student.name)
   const remarks = [...(student.remarks || [])].reverse()
 
+  // Сводка сверху: только плитки с настоящими данными. Пустая плитка
+  // с прочерком занимала треть экрана и не сообщала ничего.
+  const tiles = []
+  if (upcomingAll.length) {
+    tiles.push({
+      id: "next", icon: "calendar", label: "Занятий впереди",
+      value: upcomingAll.length, color: "text-blue-600",
+      hint: `${relDay(upcoming[0].date) || shortDate(upcoming[0].date)}, ${upcoming[0].time}`,
+    })
+  }
+  if (conducted.length && price > 0) {
+    tiles.push(debt > 0
+      ? { id: "debt", icon: "ruble", label: "К оплате", value: `${fmtMoney(debt)} ₽`, color: "text-amber-500", hint: `за ${conducted.length} ${plural(conducted.length, "занятие", "занятия", "занятий")}` }
+      : { id: "debt", icon: "ruble", label: "Оплата", value: "Долга нет", color: "text-green-600 text-[18px]", hint: `оплачено ${fmtMoney(totalPaid)} ₽` })
+  }
+  if (avg != null) {
+    tiles.push({
+      id: "avg", icon: "bar-chart", label: "Средний балл",
+      value: String(avg).replace(".", ","),
+      color: avg >= 4.5 ? "text-green-600" : avg >= 3.5 ? "text-blue-600" : avg >= 2.5 ? "text-amber-500" : "text-red-500",
+      hint: `${graded.length} ${plural(graded.length, "оценка", "оценки", "оценок")}`,
+    })
+  }
+  // Три плитки в ряд помещаются только начиная с планшета: на телефоне
+  // подписи в них ломались на три строки.
+  const tilesCols = tiles.length >= 3 ? "grid-cols-2 sm:grid-cols-3" : tiles.length === 2 ? "grid-cols-2" : "grid-cols-1"
+
   return (
     <div className="min-h-screen p-4 pt-[calc(env(safe-area-inset-top)+1rem)]">
-      <div className="max-w-lg mx-auto">
+      {/* Ширина растёт вместе с экраном: на ноутбуке кабинет не должен
+          оставаться телефонной колонкой посреди пустого поля. */}
+      <div className="max-w-lg md:max-w-3xl lg:max-w-5xl xl:max-w-6xl mx-auto flex flex-col gap-4">
 
         {/* Шапка */}
-        <div className="flex items-center justify-between mb-5">
-          <div className="flex items-center gap-3">
-            {student.avatar ? (
-              <img src={student.avatar} alt="" className="w-11 h-11 rounded-full object-cover border-2 border-white shadow-sm" />
-            ) : (
-              <div className="w-11 h-11 rounded-full bg-blue-100 dark:bg-blue-500/15 flex items-center justify-center text-blue-700 dark:text-blue-300 font-semibold text-sm border-2 border-white dark:border-white/15 shadow-sm">
-                {initials}
-              </div>
-            )}
-            <div>
-              <div className="flex items-center gap-1.5">
-                <img src="/logo.webp" alt="" className="w-5 h-5 rounded-md object-cover" />
-                <div className="font-semibold text-gray-800">{student.name}</div>
-              </div>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="text-xs text-gray-400">Кабинет родителя</span>
-                <BetaBadge size="xs" />
-              </div>
+        <div className="glass p-3.5 sm:p-4 flex items-center gap-3">
+          {student.avatar ? (
+            <img src={student.avatar} alt="" className="w-11 h-11 rounded-full object-cover ring-2 ring-white/70 dark:ring-white/15 shrink-0" />
+          ) : (
+            <div className="w-11 h-11 rounded-full shrink-0 bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold">
+              {initials}
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              {/* Логотип — только там, где он не отъедает ширину у имени:
+                  на телефоне из-за него имя обрывалось многоточием. */}
+              <img src="/logo.webp" alt="" className="hidden sm:block w-4 h-4 rounded object-cover shrink-0" />
+              <div className="font-semibold text-gray-800 truncate">{student.name}</div>
+            </div>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="text-xs text-gray-400 truncate">
+                Кабинет родителя{tutorName ? ` · репетитор ${tutorName}` : ""}
+              </span>
+              <BetaBadge size="xs" />
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          {/* На телефоне «Выйти» остаётся значком: подписью оно отъедало ширину
+              у имени ученика, и то обрывалось многоточием. */}
+          <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={() => setDark(!dark)}
-              className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 rounded-lg hover:bg-white/40 transition-colors"
+              title={dark ? "Светлая тема" : "Тёмная тема"}
+              className="press-tap w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-600 rounded-xl"
             >
-              <MorphIcon from="moon" to="sun" size={16} active={dark} hover={false} rotate />
+              <MorphIcon from="moon" to="sun" size={17} active={dark} hover={false} rotate />
             </button>
             <button
               onClick={onLogout}
-              className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
+              title="Выйти"
+              aria-label="Выйти"
+              className="press-fill flex items-center gap-1.5 text-sm text-gray-500 h-9 px-2.5 sm:px-3 rounded-xl sm:ring-1 sm:ring-gray-200/70 sm:dark:ring-white/12"
             >
-              Выйти
+              <Icon name="logout" size={17} />
+              <span className="hidden sm:inline">Выйти</span>
             </button>
           </div>
         </div>
 
         {/* Навигация */}
-        <div className="tab-track flex gap-1 mb-4 bg-blue-500/[0.06] border border-blue-500/15 rounded-2xl p-1">
-          {[{ id: "home", label: "Кабинет" }, { id: "chat", label: "Чат", badge: chatUnread }].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => { setMainTab(tab.id); if (tab.id === "chat") setChatUnread(0) }}
-              className={`flex-1 py-2 text-sm rounded-xl transition-all font-medium flex items-center justify-center gap-1.5 ${
-                mainTab === tab.id
-                  ? "bg-white text-gray-800 shadow-sm"
-                  : "text-gray-400 hover:text-gray-600"
-              }`}
-            >
-              {tab.label}
-              {tab.badge > 0 && (
-                <span className="w-4 h-4 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center font-medium">
-                  {tab.badge > 9 ? "9+" : tab.badge}
+        <SegmentSwitch
+          block
+          ariaLabel="Разделы кабинета"
+          value={mainTab}
+          onChange={(k) => { setMainTab(k); if (k === "chat") setChatUnread(0) }}
+          items={[
+            { key: "home", label: "Кабинет" },
+            {
+              key: "chat",
+              label: (
+                <span className="flex items-center gap-1.5">
+                  Чат
+                  {chatUnread > 0 && (
+                    <span className="min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center font-semibold">
+                      {chatUnread > 9 ? "9+" : chatUnread}
+                    </span>
+                  )}
                 </span>
-              )}
-            </button>
-          ))}
-        </div>
+              ),
+            },
+          ]}
+        />
 
         {mainTab === "chat" && (
-          <div className="glass rounded-2xl overflow-hidden" style={{ height: "calc(100vh - 220px)", minHeight: 400 }}>
+          <div className="glass rounded-2xl overflow-hidden" style={{ height: "calc(var(--app-h, 100dvh) - 230px)", minHeight: 400 }}>
             <Chat
               myId={`p:${student.id}`}
               myName={`Родитель ${student.name.split(" ")[0]}`}
@@ -341,227 +458,274 @@ function ParentDashboard({ user, onLogout }) {
 
         {mainTab === "home" && <>
 
-        {/* Статистика */}
-        <div className="grid grid-cols-3 gap-3 mb-4">
-          <div className="glass p-3 text-center rounded-2xl">
-            <div className="text-xl font-bold text-blue-600">{upcoming.length}</div>
-            <div className="text-xs text-gray-500 mt-0.5">занятий<br/>впереди</div>
+        {tiles.length > 0 && (
+          <div className={`grid gap-3 ${tilesCols}`}>
+            {/* Третья плитка на телефоне занимает всю строку: вторым в ряду
+                она оставляла рядом с собой пустое место. */}
+            {tiles.map((t, i) => (
+              <StatTile
+                key={t.id}
+                icon={t.icon}
+                label={t.label}
+                value={t.value}
+                hint={t.hint}
+                color={t.color}
+                className={tiles.length === 3 && i === 2 ? "col-span-2 sm:col-span-1" : ""}
+              />
+            ))}
           </div>
-          <div className="glass p-3 text-center rounded-2xl">
-            <div className={`text-xl font-bold ${debt > 0 ? "text-amber-500" : "text-green-500"}`}>
-              {debt > 0 ? debt.toLocaleString("ru-RU") + " ₽" : "✓"}
-            </div>
-            <div className="text-xs text-gray-500 mt-0.5">{debt > 0 ? "долг" : "оплата в порядке"}</div>
-          </div>
-          <div className="glass p-3 text-center rounded-2xl">
-            <div className="text-xl font-bold text-purple-600">{avg ?? "—"}</div>
-            <div className="text-xs text-gray-500 mt-0.5">средний<br/>балл</div>
-          </div>
-        </div>
+        )}
 
-        {/* Замечания от репетитора */}
+        {/* Замечания репетитора — над всем остальным: это то, ради чего родитель
+            заходит в кабинет чаще всего. */}
         {remarks.length > 0 && (
-          <div className="glass p-4 mb-3 rounded-2xl border border-amber-200 dark:border-amber-800">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-amber-500"><SvgIcon d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" size={18}/></span>
-              <div className="text-sm font-semibold text-gray-700">Замечания репетитора</div>
+          <div className="glass-tint-amber p-4 sm:p-5 rounded-2xl">
+            <div className="flex items-center gap-2.5 mb-3.5">
+              <span className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 bg-amber-500/15 text-amber-600 dark:text-amber-300">
+                <Icon name="warning" size={16} />
+              </span>
+              <div className="text-[15px] font-semibold text-gray-800">Замечания репетитора</div>
             </div>
             <div className="flex flex-col gap-2">
               {remarks.map((r) => (
-                <div key={r.id} className="bg-amber-50 dark:bg-amber-900/30 rounded-xl px-3 py-2.5">
-                  <div className="text-sm text-gray-700">{r.text}</div>
-                  <div className="text-xs text-gray-400 mt-1">{r.date}</div>
+                <div key={r.id} className="rounded-xl px-3.5 py-2.5 ring-1 ring-amber-500/25">
+                  <div className="text-sm text-gray-700 leading-relaxed">{r.text}</div>
+                  <div className="text-[11px] text-gray-400 mt-1">{r.date}</div>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* Расписание */}
-        <div className="glass p-4 mb-3 rounded-2xl">
-          <div className="text-sm font-semibold text-gray-700 mb-3">Ближайшие занятия</div>
-          {upcoming.length === 0 ? (
-            <div className="text-sm text-gray-400 text-center py-3">Нет запланированных занятий</div>
-          ) : (
-            <div className="flex flex-col divide-y divide-gray-100">
-              {upcoming.map((l, i) => (
-                <div key={i} className="flex items-center justify-between py-2.5 first:pt-0 last:pb-0">
-                  <div>
-                    <div className="text-sm font-medium text-gray-700">{fmt(l.date)}</div>
-                    <div className="text-xs text-gray-400">{l.time} · {l.duration || 60} мин</div>
-                  </div>
-                  {l.extra && (
-                    <span className="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded-full">доп</span>
+        <div className="grid md:grid-cols-2 gap-4 items-start">
+
+          {/* Левая колонка — расписание и деньги. min-w-0 обязателен: без него
+              ячейка грида растягивается по самому широкому неразрывному
+              элементу и на телефоне уезжает вправо. */}
+          <div className="min-w-0 flex flex-col gap-4">
+
+            <Panel icon="calendar" title="Ближайшие занятия">
+              {upcoming.length === 0 ? (
+                <div className="text-sm text-gray-400 text-center py-6 rounded-2xl ring-1 ring-gray-200/70 dark:ring-white/10">
+                  Занятия пока не назначены
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {upcoming.map((l, i) => {
+                    const d = parseDay(l.date)
+                    const rel = relDay(l.date)
+                    return (
+                      <div
+                        key={`${l.date}-${l.time}-${i}`}
+                        className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 ${
+                          i === 0 ? "bg-blue-500/[0.07] ring-1 ring-blue-500/25" : "ring-1 ring-gray-200/70 dark:ring-white/10"
+                        }`}
+                      >
+                        <div className="w-11 h-11 rounded-xl shrink-0 flex flex-col items-center justify-center bg-blue-500/12 text-blue-600 dark:text-blue-300">
+                          <div className="text-[15px] font-semibold leading-none">{d.getDate()}</div>
+                          <div className="text-[10px] leading-none mt-1 uppercase tracking-wide">{MONTH_SHORT[d.getMonth()]}</div>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-medium text-gray-700">{WEEKDAY_FULL[d.getDay()]}</span>
+                            {rel && (
+                              <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-blue-500/12 text-blue-600 dark:text-blue-300">{rel}</span>
+                            )}
+                            {l.extra && (
+                              <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-green-500/12 text-green-700 dark:text-green-300">дополнительное</span>
+                            )}
+                          </div>
+                          <div className="text-xs text-gray-400 mt-0.5">{l.time} · {l.duration || 60} мин</div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {upcomingAll.length > upcoming.length && (
+                    <div className="text-xs text-gray-400 text-center pt-1">
+                      И ещё {upcomingAll.length - upcoming.length} {plural(upcomingAll.length - upcoming.length, "занятие", "занятия", "занятий")} впереди
+                    </div>
                   )}
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+              )}
+            </Panel>
 
-        {/* Оплата */}
-        <div className="glass p-4 mb-3 rounded-2xl">
-          <div className="text-sm font-semibold text-gray-700 mb-3">Оплата</div>
-          <div className="flex flex-col gap-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Проведено занятий</span>
-              <span className="font-medium">{conducted.length}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Стоимость занятия</span>
-              <span className="font-medium">{(student.lessonPrice || student.lesson_price || 0).toLocaleString("ru-RU")} ₽</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Оплачено</span>
-              <span className="font-medium text-green-600">{totalPaid.toLocaleString("ru-RU")} ₽</span>
-            </div>
-            <div className="flex justify-between text-sm font-semibold border-t border-gray-100 pt-2 mt-0.5">
-              <span>Задолженность</span>
-              <span className={debt > 0 ? "text-amber-500" : "text-green-600"}>
-                {debt > 0 ? debt.toLocaleString("ru-RU") + " ₽" : "Нет"}
-              </span>
-            </div>
-          </div>
-        </div>
+            <Panel icon="ruble" title="Оплата" tone="green">
+              {price === 0 ? (
+                <div className="text-sm text-gray-500 leading-relaxed">
+                  Стоимость занятия ещё не указана — суммы появятся, когда репетитор её заполнит.
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2.5">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Проведено занятий</span>
+                    <span className="font-medium">{conducted.length}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Стоимость занятия</span>
+                    <span className="font-medium">{fmtMoney(price)} ₽</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Оплачено</span>
+                    <span className="font-medium text-green-600">{fmtMoney(totalPaid)} ₽</span>
+                  </div>
+                  <div className={`flex justify-between items-center rounded-xl px-3 py-2.5 mt-0.5 ring-1 ${
+                    debt > 0 ? "ring-amber-500/25 bg-amber-500/[0.07]" : "ring-green-500/25 bg-green-500/[0.07]"
+                  }`}>
+                    <span className="text-sm font-medium text-gray-700">{debt > 0 ? "К оплате" : "Задолженности нет"}</span>
+                    <span className={`text-sm font-semibold ${debt > 0 ? "text-amber-600 dark:text-amber-300" : "text-green-600 dark:text-green-300"}`}>
+                      {debt > 0 ? `${fmtMoney(debt)} ₽` : "✓"}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </Panel>
 
-        {/* Квитанции за проведённые занятия: приходят сами, платить можно переводом */}
-        <InvoiceCard
-          student={{ ...student, lessonPrice: student.lessonPrice || student.lesson_price }}
-          tutorId={student.tutor_id}
-          tutorName={tutorName}
-          className="mb-3 rounded-2xl"
-        />
+            {/* Квитанции за проведённые занятия: приходят сами, платить можно переводом */}
+            <InvoiceCard
+              student={{ ...student, lessonPrice: price }}
+              tutorId={student.tutor_id}
+              tutorName={tutorName}
+              className="rounded-2xl"
+            />
 
-        <ReportsFeed parentCode={student.parent_code} studentName={student.name} tutorName={tutorName} />
-
-        {/* Домашние задания */}
-        <div className="glass p-4 mb-3 rounded-2xl">
-          <div className="flex items-center justify-between mb-3">
-            <div className="text-sm font-semibold text-gray-700">Домашние задания</div>
-            {homework.length > 0 && (
-              <div className="tab-track flex gap-1 bg-blue-500/[0.06] border border-blue-500/15 rounded-lg p-0.5">
-                <button
-                  onClick={() => setHwTab("list")}
-                  className={`text-xs px-2.5 py-1 rounded-md transition-colors ${hwTab === "list" ? "bg-white text-gray-700 shadow-sm" : "text-gray-500"}`}
-                >
-                  Список
-                </button>
-                <button
-                  onClick={() => setHwTab("analytics")}
-                  className={`text-xs px-2.5 py-1 rounded-md transition-colors ${hwTab === "analytics" ? "bg-white text-gray-700 shadow-sm" : "text-gray-500"}`}
-                >
-                  Аналитика
-                </button>
-              </div>
-            )}
-          </div>
-
-          {loading ? (
-            <div className="text-sm text-gray-400 text-center py-3">Загрузка...</div>
-          ) : homework.length === 0 ? (
-            <div className="text-sm text-gray-400 text-center py-3">Нет заданий</div>
-          ) : hwTab === "list" ? (
-            <>
-              <div className="flex justify-between text-xs text-gray-400 mb-2 px-0.5">
-                <span>Выполнено: {doneCount} / {homework.length}</span>
-                {avg && <span>Средний балл: {avg}</span>}
-              </div>
-              <div className="flex flex-col divide-y divide-gray-100">
-                {homework.slice(0, 10).map((hw) => (
-                  <div key={hw.id} className="flex items-center justify-between py-2.5 first:pt-0 last:pb-0">
-                    <div className="min-w-0 flex-1 mr-3">
-                      <div className="text-sm text-gray-700 truncate">{hw.title}</div>
-                      <div className="text-xs text-gray-400">
-                        {hw.hw_type === "test" ? "Тест" : hw.hw_type === "written" ? "Письменное" : "Комбинированное"}
-                      </div>
+            {(examDate || targetScore) && (
+              <Panel icon="target" title="Цель" tone="purple">
+                <div className="flex flex-col gap-2.5">
+                  {examDate && (
+                    <div className="flex justify-between items-center text-sm gap-3">
+                      <span className="text-gray-500">Экзамен</span>
+                      <span className="font-medium text-right">{examDateLabel}</span>
                     </div>
-                    {hw.grade != null ? (
-                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full flex-shrink-0 ${
-                        hw.grade >= 4 ? "bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300" :
-                        hw.grade === 3 ? "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300" :
-                        "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300"
-                      }`}>{hw.grade}</span>
-                    ) : hw.status === "done" ? (
-                      <span className="text-xs bg-blue-50 dark:bg-blue-500/15 text-blue-500 dark:text-blue-300 px-2.5 py-1 rounded-full flex-shrink-0">На проверке</span>
+                  )}
+                  {targetScore && (
+                    <div className="flex justify-between items-center text-sm gap-3">
+                      <span className="text-gray-500">Целевой балл</span>
+                      <span className="font-semibold text-blue-600 dark:text-blue-300">{targetScore}</span>
+                    </div>
+                  )}
+                  {daysToExam > 0 && (
+                    <div className="text-[12px] font-medium text-purple-600 dark:text-purple-300 bg-purple-500/10 rounded-xl px-3 py-2 text-center mt-0.5">
+                      До экзамена {daysToExam} {plural(daysToExam, "день", "дня", "дней")}
+                    </div>
+                  )}
+                </div>
+              </Panel>
+            )}
+
+          </div>
+
+          {/* Правая колонка — учёба */}
+          <div className="min-w-0 flex flex-col gap-4">
+
+            <ReportsFeed parentCode={student.parent_code} studentName={student.name} tutorName={tutorName} />
+
+            <Panel
+              icon="book"
+              title="Домашние задания"
+              // На узком экране переключатель уходит на свою строку целиком:
+              // рядом с заголовком он не помещался и вылезал за карточку.
+              action={homework.length > 0 && (
+                <SegmentSwitch
+                  block
+                  size="sm"
+                  className="w-full sm:w-auto"
+                  ariaLabel="Вид домашних заданий"
+                  value={hwTab}
+                  onChange={setHwTab}
+                  items={[{ key: "list", label: "Список" }, { key: "analytics", label: "Аналитика" }]}
+                />
+              )}
+            >
+              {loading ? (
+                <div className="text-sm text-gray-400 text-center py-6">Загружаем…</div>
+              ) : homework.length === 0 ? (
+                <div className="text-sm text-gray-400 text-center py-6 rounded-2xl ring-1 ring-gray-200/70 dark:ring-white/10">
+                  Заданий пока нет
+                </div>
+              ) : hwTab === "list" ? (
+                <>
+                  <div className="flex justify-between text-xs text-gray-400 mb-2.5 px-0.5">
+                    <span>Выполнено: {doneCount} из {homework.length}</span>
+                    {avg != null && <span>Средний балл: {String(avg).replace(".", ",")}</span>}
+                  </div>
+                  <div className="flex flex-col divide-y divide-gray-100">
+                    {homework.slice(0, 10).map((hw) => (
+                      <div key={hw.id} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm text-gray-700 truncate">{hw.title}</div>
+                          <div className="text-xs text-gray-400">
+                            {hw.hw_type === "test" ? "Тест" : hw.hw_type === "written" ? "Письменное" : "Комбинированное"}
+                            {hw.deadline ? ` · до ${longDate(hw.deadline)}` : ""}
+                          </div>
+                        </div>
+                        {hw.grade != null ? (
+                          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full shrink-0 ring-1 ${
+                            hw.grade >= 4 ? "bg-green-500/12 text-green-700 dark:text-green-300 ring-green-500/25" :
+                            hw.grade === 3 ? "bg-amber-500/12 text-amber-700 dark:text-amber-300 ring-amber-500/25" :
+                            "bg-red-500/12 text-red-700 dark:text-red-300 ring-red-500/25"
+                          }`}>{hw.grade}</span>
+                        ) : hw.status === "done" ? (
+                          <span className="text-xs px-2.5 py-1 rounded-full shrink-0 bg-blue-500/12 text-blue-600 dark:text-blue-300 ring-1 ring-blue-500/25">На проверке</span>
+                        ) : (
+                          <span className="text-xs text-gray-500 ring-1 ring-gray-200/70 dark:ring-white/15 px-2.5 py-1 rounded-full shrink-0">Задано</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  <div>
+                    <div className="text-xs text-gray-400 mb-2.5">
+                      Распределение оценок · проверено {graded.length}
+                    </div>
+                    {graded.length === 0 ? (
+                      <div className="text-sm text-gray-400">Проверенных работ пока нет</div>
                     ) : (
-                      <span className="text-xs text-gray-500 ring-1 ring-gray-200/70 dark:ring-white/15 px-2.5 py-1 rounded-full flex-shrink-0">Задано</span>
+                      <div className="flex flex-col gap-1.5">
+                        {gradeDist.map(({ g, count }) => (
+                          <GradeBar key={g} label={g} count={count} max={maxGradeCount} color={gradeColors[g]} />
+                        ))}
+                      </div>
                     )}
                   </div>
-                ))}
-              </div>
-            </>
-          ) : (
-            /* Аналитика */
-            <div className="flex flex-col gap-4">
-              {/* Распределение оценок */}
-              <div>
-                <div className="text-xs text-gray-400 mb-2">Распределение оценок ({graded.length} проверено)</div>
-                <div className="flex flex-col gap-1.5">
-                  {gradeDist.map(({ g, count }) => (
-                    <GradeBar key={g} label={g} count={count} max={maxGradeCount} color={gradeColors[g]} />
-                  ))}
-                </div>
-              </div>
 
-              {/* Прогресс */}
-              <div className="border-t border-gray-100 pt-3">
-                <div className="text-xs text-gray-400 mb-2">Выполнение ({doneCount} / {homework.length})</div>
-                <div className="h-2 bg-blue-500/12 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-blue-500 rounded-full transition-all"
-                    style={{ width: homework.length > 0 ? Math.round((doneCount / homework.length) * 100) + "%" : "0%" }}
-                  />
-                </div>
-                <div className="text-xs text-gray-400 mt-1 text-right">
-                  {homework.length > 0 ? Math.round((doneCount / homework.length) * 100) : 0}%
-                </div>
-              </div>
-
-              {/* Последние оценки */}
-              {recentGraded.length > 0 && (
-                <div className="border-t border-gray-100 pt-3">
-                  <div className="text-xs text-gray-400 mb-2">Последние оценки</div>
-                  <div className="flex items-end gap-1.5 h-12">
-                    {recentGraded.map((hw, i) => {
-                      const h = Math.round((hw.grade / 5) * 100)
-                      const color = hw.grade >= 4 ? "bg-green-400" : hw.grade === 3 ? "bg-amber-400" : "bg-red-400"
-                      return (
-                        <div key={i} className="flex-1 flex flex-col items-center justify-end gap-0.5">
-                          <div className={`w-full rounded-t-sm ${color}`} style={{ height: h + "%" }} />
-                          <div className="text-xs text-gray-400">{hw.grade}</div>
-                        </div>
-                      )
-                    })}
+                  <div className="border-t border-gray-100 pt-3.5">
+                    <div className="text-xs text-gray-400 mb-2.5">Выполнение · {doneCount} из {homework.length}</div>
+                    <div className="h-2 bg-blue-500/12 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-blue-500 rounded-full transition-all duration-500"
+                        style={{ width: homework.length > 0 ? Math.round((doneCount / homework.length) * 100) + "%" : "0%" }}
+                      />
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1.5 text-right">
+                      {homework.length > 0 ? Math.round((doneCount / homework.length) * 100) : 0}%
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
 
-        {/* Цель */}
-        {(student.examDate || student.exam_date || student.targetScore || student.target_score) && (
-          <div className="glass p-4 rounded-2xl">
-            <div className="text-sm font-semibold text-gray-700 mb-3">Цель</div>
-            <div className="flex flex-col gap-2">
-              {(student.examDate || student.exam_date) && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Дата экзамена</span>
-                  <span className="font-medium">
-                    {new Date((student.examDate || student.exam_date) + "T00:00:00")
-                      .toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}
-                  </span>
+                  {recentGraded.length > 0 && (
+                    <div className="border-t border-gray-100 pt-3.5">
+                      <div className="text-xs text-gray-400 mb-2.5">Последние оценки</div>
+                      <div className="flex items-end gap-1.5 h-14">
+                        {recentGraded.map((hw, i) => {
+                          const h = Math.round((hw.grade / 5) * 100)
+                          const color = hw.grade >= 4 ? "bg-green-400" : hw.grade === 3 ? "bg-amber-400" : "bg-red-400"
+                          return (
+                            <div key={i} className="flex-1 flex flex-col items-center justify-end gap-1">
+                              <div className={`w-full rounded-t-md ${color}`} style={{ height: h + "%" }} />
+                              <div className="text-[11px] text-gray-400">{hw.grade}</div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
-              {(student.targetScore || student.target_score) && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Целевой балл</span>
-                  <span className="font-semibold text-blue-600">{student.targetScore || student.target_score}</span>
-                </div>
-              )}
-            </div>
+            </Panel>
+
           </div>
-        )}
+        </div>
 
         </>}
 

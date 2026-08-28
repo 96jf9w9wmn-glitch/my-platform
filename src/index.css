@@ -1259,17 +1259,16 @@ button.w-full:not([disabled]):not(.no-press):active::after,
    Раньше дорожка держалась на .bg-gray-100 (серая заливка), теперь она голубая
    в светлой теме, поэтому перекрашиваем по своему классу .seg-track. */
 .dark .seg-track {
-  background: rgba(255,255,255,0.06) !important;
-  border-color: rgba(255,255,255,0.10) !important;
+  background: rgba(0,122,255,0.10) !important;
+  border-color: rgba(90,200,250,0.20) !important;
 }
+/* «Палец» в тёмной теме — акцентный, а не белесый: rgba(255,255,255,.14)
+   на тёмном фоне читалась ровно как серая заливка, которой в интерфейсе
+   быть не должно (см. правило в CLAUDE.md). Синий заодно яснее говорит,
+   какой сегмент выбран. */
 .dark .seg-track > .seg-finger {
-  background: rgba(255,255,255,0.14) !important;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.4) !important;
-}
-/* Тот же приём у самодельных переключателей вкладок (кабинет родителя). */
-.dark .tab-track > .bg-white {
-  background: rgba(255,255,255,0.14) !important;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.4) !important;
+  background: rgba(0,122,255,0.32) !important;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(90,200,250,0.35) !important;
 }
 
 /* ── Dark mode: native form elements ── */
