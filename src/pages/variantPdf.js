@@ -807,6 +807,23 @@ export async function generateVariantPdf({ title, examType, tasks, mode = "blank
   if (!hasPart2) push(boxed(`Не забудьте перенести все ответы в бланк ответов № 1 в соответствии с инструкцией по выполнению работы.`))
 
   // ── Ответы (лист проверяющего) ────────────────────────────────────────────
+  // Ответ части 2 состоит из пунктов («а) … б) … в) …») и в одну строку по центру
+  // читается как сплошной текст. Каждый пункт — своей строкой и по левому краю;
+  // короткий ответ части 1 остаётся по центру ячейки.
+  // Метка пункта считается только в начале строки или после пробела: иначе разрыв
+  // поймал бы скобку внутри самого выражения.
+  const answerCell = async (text) => {
+    const parts = String(text)
+      .replace(/(^|\s)([абвгд]\)\s)/g, "\u0000$2")
+      .split("\u0000").map((s) => s.trim()).filter(Boolean)
+    const html = []
+    for (const p of parts) html.push(await renderTaskMathPdf(p, MATH_TIMES))
+    if (html.length < 2) return html[0] || ""
+    return `<div style="text-align:left;">`
+      + html.map((h) => `<div style="white-space:pre-wrap;">${h}</div>`).join("")
+      + `</div>`
+  }
+
   const answerRows = async (list) => {
     // запас снизу: html2canvas рисует строку ниже бокса, и без него ответ ложится на
     // нижнюю линию ячейки
@@ -815,7 +832,7 @@ export async function generateVariantPdf({ title, examType, tasks, mode = "blank
     for (const t of list) {
       if (t.answer == null || String(t.answer).trim() === "") continue
       rows.push(`<tr><td style="${cell} width:44px;">${t.number}</td>`
-        + `<td style="${cell} min-width:150px;">${await renderTaskMathPdf(String(t.answer), MATH_TIMES)}</td></tr>`)
+        + `<td style="${cell} min-width:150px;">${await answerCell(String(t.answer))}</td></tr>`)
     }
     return rows.length ? `<table style="border-collapse:collapse;">${rows.join("")}</table>` : ""
   }
