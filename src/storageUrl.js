@@ -118,6 +118,17 @@ export async function signStorageUrl(value, defaultBucket) {
   return map.get(value) || value
 }
 
+// Обратная операция для мест ЗАПИСИ: в базу должен уходить постоянный адрес,
+// а не подписанный. Кабинет держит в стейте подписанные ссылки (см. выше), и
+// diff-upsert карточки ученика утаскивал их в students.avatar — через 4 часа
+// подпись протухала, и до перевыписки все видели битую картинку.
+export function permanentStorageUrl(value, defaultBucket) {
+  const ref = parseStorageRef(value, defaultBucket)
+  if (!ref) return value
+  const { data } = supabase.storage.from(ref.bucket).getPublicUrl(ref.path)
+  return data?.publicUrl || value
+}
+
 // Возвращает копии строк, где перечисленные поля заменены подписанными
 // ссылками. Так весь UI ниже продолжает читать те же поля и ничего не знает
 // о подписи. spec: { поле: бакет-по-умолчанию }.

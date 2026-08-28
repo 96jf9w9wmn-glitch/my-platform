@@ -77,7 +77,21 @@ function Panel({ icon, title, tone = "blue", action, children, className = "" })
 
 // Плитка сводки. Показывается только тогда, когда за ней есть данные:
 // плитка с прочерком занимает место и ничего не сообщает.
-function StatTile({ icon, label, value, hint, color = "text-gray-800", className = "" }) {
+// wide — когда плитка одна и занимает всю ширину: столбиком она превращалась
+// в почти пустое поле, строкой (подпись слева, число справа) смотрится собранно.
+function StatTile({ icon, label, value, hint, color = "text-gray-800", wide = false, className = "" }) {
+  if (wide) return (
+    <div className={`glass rounded-2xl px-4 py-3.5 flex items-center justify-between gap-3 ${className}`}>
+      <div className="min-w-0">
+        <div className="flex items-center gap-1.5 text-gray-400">
+          <Icon name={icon} size={13} />
+          <span className="text-[11px] leading-tight">{label}</span>
+        </div>
+        {hint && <div className="text-[11px] text-gray-400 leading-tight mt-1">{hint}</div>}
+      </div>
+      <div className={`text-[22px] leading-none font-semibold shrink-0 ${color}`}>{value}</div>
+    </div>
+  )
   return (
     <div className={`glass rounded-2xl p-3.5 flex flex-col gap-1 ${className}`}>
       <div className="flex items-center gap-1.5 text-gray-400">
@@ -374,18 +388,26 @@ function ParentDashboard({ user, onLogout }) {
 
         {/* Шапка */}
         <div className="glass p-3.5 sm:p-4 flex items-center gap-3">
-          {student.avatar ? (
-            <img src={student.avatar} alt="" className="w-11 h-11 rounded-full object-cover ring-2 ring-white/70 dark:ring-white/15 shrink-0" />
-          ) : (
-            <div className="w-11 h-11 rounded-full shrink-0 bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold">
-              {initials}
-            </div>
-          )}
+          {/* Инициалы — всегда подложкой, фото поверх. Ссылка на фото временная
+              (подписанная) и в кэше могла протухнуть: битая картинка прячется,
+              и родитель видит инициалы, а не значок сломанного изображения. */}
+          <div className="relative w-11 h-11 rounded-full shrink-0 overflow-hidden bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold ring-2 ring-white/70 dark:ring-white/15">
+            {initials}
+            {student.avatar && (
+              <img
+                src={student.avatar}
+                alt=""
+                className="absolute inset-0 w-full h-full object-cover"
+                onError={(e) => { e.currentTarget.style.display = "none" }}
+                onLoad={(e) => { e.currentTarget.style.display = "" }}
+              />
+            )}
+          </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
               {/* Логотип — только там, где он не отъедает ширину у имени:
                   на телефоне из-за него имя обрывалось многоточием. */}
-              <img src="/logo.webp" alt="" className="hidden sm:block w-4 h-4 rounded object-cover shrink-0" />
+              <img src="/logo.webp" alt="" className="hidden sm:block w-4 h-4 rounded object-cover shrink-0" onError={(e) => { e.currentTarget.style.display = "none" }} />
               <div className="font-semibold text-gray-800 truncate">{student.name}</div>
             </div>
             <div className="flex items-center gap-1.5 mt-0.5">
@@ -442,7 +464,9 @@ function ParentDashboard({ user, onLogout }) {
         />
 
         {mainTab === "chat" && (
-          <div className="glass rounded-2xl overflow-hidden" style={{ height: "calc(var(--app-h, 100dvh) - 230px)", minHeight: 400 }}>
+          // flex обязателен: Chat растягивается через flex-1, и без flex-контейнера
+          // он сжимался до высоты списка контактов, оставляя под собой пустоту.
+          <div className="glass rounded-2xl overflow-hidden flex flex-col" style={{ height: "calc(var(--app-h, 100dvh) - 230px)", minHeight: 400 }}>
             <Chat
               myId={`p:${student.id}`}
               myName={`Родитель ${student.name.split(" ")[0]}`}
@@ -470,6 +494,7 @@ function ParentDashboard({ user, onLogout }) {
                 value={t.value}
                 hint={t.hint}
                 color={t.color}
+                wide={tiles.length === 1}
                 className={tiles.length === 3 && i === 2 ? "col-span-2 sm:col-span-1" : ""}
               />
             ))}
@@ -497,12 +522,14 @@ function ParentDashboard({ user, onLogout }) {
           </div>
         )}
 
-        <div className="grid md:grid-cols-2 gap-4 items-start">
+        {/* Колонки растянуты на одну высоту, последняя карточка каждой добирает
+            остаток (flex-1): короткая колонка не оставляет под собой пустого поля. */}
+        <div className="grid md:grid-cols-2 gap-4">
 
           {/* Левая колонка — расписание и деньги. min-w-0 обязателен: без него
               ячейка грида растягивается по самому широкому неразрывному
               элементу и на телефоне уезжает вправо. */}
-          <div className="min-w-0 flex flex-col gap-4">
+          <div className="min-w-0 flex flex-col gap-4 [&>*:last-child]:flex-1">
 
             <Panel icon="calendar" title="Ближайшие занятия">
               {upcoming.length === 0 ? (
@@ -615,7 +642,7 @@ function ParentDashboard({ user, onLogout }) {
           </div>
 
           {/* Правая колонка — учёба */}
-          <div className="min-w-0 flex flex-col gap-4">
+          <div className="min-w-0 flex flex-col gap-4 [&>*:last-child]:flex-1">
 
             <ReportsFeed parentCode={student.parent_code} studentName={student.name} tutorName={tutorName} />
 

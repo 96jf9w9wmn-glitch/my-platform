@@ -443,15 +443,23 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
                     : "hover:bg-blue-500/[0.06] dark:hover:bg-white/5"
                 }`}
               >
-                <div className={`w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-bold overflow-hidden ${
+                <div className={`relative w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-bold overflow-hidden ${
                   isActive
                     ? "bg-white/25 text-white"
                     : "bg-blue-500/12 text-blue-600 ring-1 ring-blue-500/15"
                 }`}>
-                  {c.avatar
-                    ? <img src={c.avatar} alt="" className="w-full h-full object-cover" />
-                    : (c.name || "?").charAt(0).toUpperCase()
-                  }
+                  {/* Буква — всегда подложкой: подписанная ссылка на фото могла
+                      протухнуть, и вместо битой картинки остаётся инициал. */}
+                  {(c.name || "?").charAt(0).toUpperCase()}
+                  {c.avatar && (
+                    <img
+                      src={c.avatar}
+                      alt=""
+                      className="absolute inset-0 w-full h-full object-cover"
+                      onError={(e) => { e.currentTarget.style.display = "none" }}
+                      onLoad={(e) => { e.currentTarget.style.display = "" }}
+                    />
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className={`text-sm font-semibold truncate ${
@@ -516,11 +524,17 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
                   <path d="M8 1L1 7.5L8 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               </button>
-              <div className="w-9 h-9 rounded-full bg-blue-500 text-white flex items-center justify-center text-sm font-bold flex-shrink-0 overflow-hidden">
-                {activeContact.avatar
-                  ? <img src={activeContact.avatar} alt="" className="w-full h-full object-cover" />
-                  : activeContact.name.charAt(0).toUpperCase()
-                }
+              <div className="relative w-9 h-9 rounded-full bg-blue-500 text-white flex items-center justify-center text-sm font-bold flex-shrink-0 overflow-hidden">
+                {activeContact.name.charAt(0).toUpperCase()}
+                {activeContact.avatar && (
+                  <img
+                    src={activeContact.avatar}
+                    alt=""
+                    className="absolute inset-0 w-full h-full object-cover"
+                    onError={(e) => { e.currentTarget.style.display = "none" }}
+                    onLoad={(e) => { e.currentTarget.style.display = "" }}
+                  />
+                )}
               </div>
               <div>
                 <div className="text-sm font-semibold text-gray-900 dark:text-white">{activeContact.name}</div>

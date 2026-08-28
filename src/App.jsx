@@ -3,7 +3,7 @@ import { isMoveNotification, revealBlock, MOVE_ANCHOR_TUTOR } from "./notifTarge
 import { dropdownPos } from "./dropdownPos"
 import { createPortal } from "react-dom"
 import { supabase, isPasswordRecovery, setAppToken } from "./supabase"
-import { signRows } from "./storageUrl"
+import { signRows, permanentStorageUrl } from "./storageUrl"
 import Sidebar, { TutorProfileButton } from "./components/Sidebar"
 import NavIcon from "./components/NavIcon"
 import MobileMenu from "./components/MobileMenu"
@@ -514,7 +514,9 @@ function App() {
       payments: student.payments || [],
       paid: student.paid || false,
       balance: student.balance || 0,
-      avatar: student.avatar || null,
+      // В стейте ссылка подписанная (см. загрузку), в базе — постоянная:
+      // подписанная протухает за 4 часа и до перевыписки выглядит битой.
+      avatar: student.avatar ? permanentStorageUrl(student.avatar, "homework") : null,
       exam_date: student.examDate || null,
       target_score: student.targetScore || null,
       parent_code: student.parent_code || null,
