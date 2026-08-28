@@ -11,7 +11,7 @@ export const LEGAL_DOCS = [
   { path: "/offer", short: "Оферта", title: "Оферта об оказании услуг доступа к сервису «Precettore»" },
   { path: "/privacy", short: "Политика", title: "Политика конфиденциальности" },
   { path: "/consent", short: "Согласия", title: "Согласия на обработку персональных данных" },
-  { path: "/cookie", short: "Cookie", title: "Использование файлов cookie" },
+  { path: "/cookie", short: "Cookie", title: "Политика в отношении использования файлов cookie" },
   { path: "/rules", short: "Соглашение", title: "Пользовательское соглашение (правила использования Сервиса)" },
   { path: "/requisites", short: "Реквизиты", title: "Реквизиты и сведения об исполнителе" },
 ]
