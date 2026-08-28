@@ -767,14 +767,20 @@ function RoleQuiz({ cfg, role }) {
               className="input-glass"
             />
             <ConsentRow checked={agreed} onChange={setAgreed} accent={cfg.grad}>
-              Ознакомлен(а) с <ConsentLink href="/privacy">Политикой конфиденциальности</ConsentLink> и даю{" "}
+              Ознакомлен(а) с <ConsentLink href="/privacy">Политикой конфиденциальности</ConsentLink> и{" "}
+              <ConsentLink href="/cookie">Политикой в отношении файлов cookie</ConsentLink>, даю{" "}
               <ConsentLink href="/consent">согласие на обработку персональных данных</ConsentLink> для
               ответа на заявку
             </ConsentRow>
             {error && <div className="text-sm text-red-500">{error}</div>}
+            {!agreed && (
+              <p className="text-[12px] text-center text-gray-400 dark:text-gray-500">
+                Отметьте согласие выше, чтобы отправить заявку
+              </p>
+            )}
             <button
               type="submit"
-              disabled={sending}
+              disabled={sending || !agreed}
               className={`press-fill w-full h-[52px] rounded-full text-white font-semibold bg-gradient-to-r ${cfg.grad} shadow-lg ${cfg.glow} disabled:opacity-50`}
             >
               {sending ? "Отправляем…" : "Отправить"}

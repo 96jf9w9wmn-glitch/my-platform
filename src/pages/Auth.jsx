@@ -157,10 +157,23 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
       if (!consent.pd) throw new Error("Подтвердите согласие на обработку данных — без него доступ к кабинету ребёнка открыть нельзя")
       return
     }
-    if (!consent.terms) throw new Error("Подтвердите принятие договора-оферты и Правил чата — без этого договор не считается заключённым")
+    if (!consent.terms) throw new Error("Подтвердите принятие документов сервиса — без этого договор не считается заключённым")
     if (!consent.pd) throw new Error("Без согласия на обработку персональных данных зарегистрировать аккаунт нельзя")
     if (role === "student" && !consent.guardian) throw new Error("Подтвердите возраст или согласие законного представителя")
   }
+
+  // Те же условия, что и в requireConsent(), но до нажатия: юрист просил, чтобы
+  // без галочек зарегистрироваться было НЕЛЬЗЯ, а не чтобы человек получал
+  // ошибку после отправки формы. Кнопка гаснет, под ней появляется подсказка.
+  // requireConsent() при этом остаётся: он страхует отправку в обход кнопки.
+  const consentReady =
+    mode === "reset"
+      ? true
+      : role === "parent"
+        ? consent.pd
+        : mode === "register"
+          ? consent.terms && consent.pd && (role !== "student" || consent.guardian)
+          : true
 
   function saveConsent(subjectId, contact) {
     return logConsent({
@@ -390,7 +403,17 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
               return (
                 <button
                   key={r}
-                  onClick={() => { setRole(r); localStorage.setItem("preferred_role", r); setError("") }}
+                  // Галочки сбрасываем при смене роли: текст согласия у ролей
+                  // разный (родитель отвечает ещё и за данные ребёнка), и
+                  // отметка, поставленная в форме репетитора, его согласием не
+                  // является. Согласие даётся активным действием под тем
+                  // текстом, который человек видит.
+                  onClick={() => {
+                    setRole(r)
+                    localStorage.setItem("preferred_role", r)
+                    setError("")
+                    setConsent({ terms: false, pd: false, guardian: false })
+                  }}
                   className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-2xl border-2 transition-all duration-200 ${
                     active
                       ? `bg-gradient-to-br ${cfg.grad} text-white border-transparent shadow-lg ${cfg.glow}`
@@ -586,7 +609,8 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
                 )}
                 <ConsentLink href="/rules">Пользовательское соглашение</ConsentLink>,
                 ознакомлен(а) с{" "}
-                <ConsentLink href="/privacy">Политикой конфиденциальности</ConsentLink>
+                <ConsentLink href="/privacy">Политикой конфиденциальности</ConsentLink> и{" "}
+                <ConsentLink href="/cookie">Политикой в отношении файлов cookie</ConsentLink>
               </ConsentRow>
 
               <ConsentRow
@@ -619,7 +643,8 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
               >
                 Я законный представитель ученика: принимаю{" "}
                 <ConsentLink href="/rules">Пользовательское соглашение</ConsentLink>, ознакомлен(а) с{" "}
-                <ConsentLink href="/privacy">Политикой конфиденциальности</ConsentLink> и даю{" "}
+                <ConsentLink href="/privacy">Политикой конфиденциальности</ConsentLink> и{" "}
+                <ConsentLink href="/cookie">Политикой в отношении файлов cookie</ConsentLink>, даю{" "}
                 <ConsentLink href="/consent">согласие на обработку персональных данных</ConsentLink> — своих и ребёнка
               </ConsentRow>
             </div>
@@ -631,10 +656,18 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
             </div>
           )}
 
+          {!(mode === "reset" && resetSent) && !consentReady && (
+            <p className="text-[12px] text-center text-gray-400 dark:text-gray-500 -mb-0.5">
+              {role === "parent"
+                ? "Отметьте согласие выше, чтобы открыть кабинет"
+                : "Отметьте согласия выше, чтобы продолжить"}
+            </p>
+          )}
+
           {!(mode === "reset" && resetSent) && (
             <button
               onClick={mode === "reset" ? handleResetPassword : handleSubmit}
-              disabled={loading || cooldownLeft > 0}
+              disabled={loading || cooldownLeft > 0 || !consentReady}
               className={`w-full h-[52px] text-[15px] text-white font-semibold rounded-full disabled:opacity-50 mt-1 transition-all bg-gradient-to-r ${roleConfig[role].grad}`}
             >
               {loading
@@ -672,6 +705,7 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
                 setMode(mode === "login" ? "register" : "login")
                 setError("")
                 setResetSent(false)
+                setConsent({ terms: false, pd: false, guardian: false })
               }}
               className="text-sm text-blue-600 hover:opacity-70 transition-opacity"
             >
