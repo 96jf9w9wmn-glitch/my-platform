@@ -1115,8 +1115,13 @@ function Variants({ user, students = [] }) {
   const selectedIndex = selectedVariant ? visible.findIndex((v) => v.id === selectedVariant.id) : -1
   const detailRowEnd = detailRowEndOf(selectedIndex, visible.length, cols)
 
+  // Обёртка .detail-row сворачивает ВЫСОТУ ряда теми же кадрами, что панель
+  // гаснет: без неё карточки под разбором стояли на месте и прыгали вверх
+  // одним кадром после его снятия.
   const detailPanel = selectedVariant ? (
-    <div className={`col-span-full glass overflow-hidden slide-up ${detailCls}`}>
+    <div className={`col-span-full detail-row ${detailCls}`}>
+    <div className="min-h-0 overflow-hidden">
+    <div className={`glass overflow-hidden slide-up ${detailCls}`}>
               <div className="flex items-center justify-between gap-3 px-5 py-3.5">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="font-medium text-base truncate">{selectedVariant.title}</span>
@@ -1194,6 +1199,8 @@ function Variants({ user, students = [] }) {
               </div>
               </div>
           </div>
+    </div>
+    </div>
   ) : null
 
   return (

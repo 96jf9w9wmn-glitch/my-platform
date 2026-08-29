@@ -1387,7 +1387,7 @@ function DetailBlock({ children, className = "" }) {
 
 // Разбор выбранного задания — целой строкой под рядом карточек, как разбор
 // варианта: слева условия, справа работа ученика и проверка.
-export function HomeworkDetail({ hw, studentName, studentPhone, studentAccountId, onUpdate, onEdit, onDelete, onClose, cls }) {
+export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, onEdit, onDelete, onClose, cls }) {
   const [grading, setGrading] = useState(false)
   const [showTasks, setShowTasks] = useState(false)
   const [comment, setComment] = useState(hw.comment || "")
@@ -1450,7 +1450,7 @@ export function HomeworkDetail({ hw, studentName, studentPhone, studentAccountId
   }
 
   return (
-    <div className={`col-span-full glass overflow-hidden slide-up ${cls}`}>
+    <div className={`glass overflow-hidden slide-up ${cls}`}>
       <div className="flex items-center justify-between gap-3 px-5 py-3.5">
         <div className="flex items-center gap-2 min-w-0">
           <span className="font-medium text-base truncate">{hw.title}</span>
@@ -1526,19 +1526,24 @@ export function HomeworkDetail({ hw, studentName, studentPhone, studentAccountId
         </div>
 
         <div className="flex flex-col gap-2">
-          <div className="section-label mb-0.5">Ученик и проверка</div>
+          <div className="section-label mb-0.5">Проверка</div>
 
+          {/* Ученика тут не повторяем: разбор открывается под его же группой
+              карточек, имя и аватар уже стоят строкой выше. Здесь только то,
+              что относится к проверке: срок и оценка. */}
           <DetailBlock className="flex items-center gap-3">
-            <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 ${getAvatarColor(studentName).bg} ${getAvatarColor(studentName).text}`}>
-              {getInitials(studentName)}
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${overdue ? "bg-red-500/12 text-red-500" : "bg-blue-500/12 text-blue-600"}`}>
+              <Icon name="calendar" size={16} />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium truncate">{studentName}</div>
-              <div className={`text-[11px] mt-0.5 truncate ${overdue ? "text-red-500 font-medium" : "text-gray-400"}`}>
-                {hw.deadline
-                  ? `${overdue ? "Просрочено · " : "Срок: "}${parseLocalDate(hw.deadline).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}`
-                  : "Без срока сдачи"}
+              <div className={`text-sm font-medium truncate ${overdue ? "text-red-500" : ""}`}>
+                {hw.deadline ? (overdue ? "Просрочено" : "Срок сдачи") : "Без срока сдачи"}
               </div>
+              {hw.deadline && (
+                <div className={`text-[11px] mt-0.5 truncate ${overdue ? "text-red-500" : "text-gray-400"}`}>
+                  {parseLocalDate(hw.deadline).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}
+                </div>
+              )}
             </div>
             {hw.grade && hw.status === "done" && (
               <span className={`text-[11px] px-2.5 py-1 rounded-full font-medium flex-shrink-0 ${GRADE_COLORS[hw.grade]}`}>{hw.grade}</span>
@@ -1777,7 +1782,6 @@ function Homework({ user, students }) {
   // выпасть из фильтра — иначе она пропала бы в тот же кадр.
   const selectedHw = selectedId ? homework.find((h) => h.id === selectedId) : null
   const selectedStudent = selectedHw ? students.find((s) => s.id === selectedHw.student_id) : null
-  const selectedName = selectedStudent?.name || "Неизвестный ученик"
 
   // Повторное нажатие по карточке сворачивает разбор; нажатие по соседней
   // перебивает уход, иначе отложенное закрытие погасило бы только что открытую.
@@ -1794,19 +1798,25 @@ function Homework({ user, students }) {
     loadHomework()
   }
 
+  // Обёртка .detail-row сворачивает ВЫСОТУ ряда теми же кадрами, что панель
+  // гаснет: без неё карточки под разбором стояли на месте и прыгали вверх
+  // одним кадром после его снятия.
   const detailPanel = selectedHw ? (
-    <HomeworkDetail
-      key={selectedHw.id}
-      hw={selectedHw}
-      studentName={selectedName}
-      studentPhone={selectedStudent?.phone || null}
-      studentAccountId={selectedStudent?.studentAccountId || null}
-      onUpdate={loadHomework}
-      onEdit={setEditingHw}
-      onDelete={setConfirmDelete}
-      onClose={closeDetail}
-      cls={detailCls}
-    />
+    <div className={`col-span-full detail-row ${detailCls}`}>
+      <div className="min-h-0 overflow-hidden">
+        <HomeworkDetail
+          key={selectedHw.id}
+          hw={selectedHw}
+          studentPhone={selectedStudent?.phone || null}
+          studentAccountId={selectedStudent?.studentAccountId || null}
+          onUpdate={loadHomework}
+          onEdit={setEditingHw}
+          onDelete={setConfirmDelete}
+          onClose={closeDetail}
+          cls={detailCls}
+        />
+      </div>
+    </div>
   ) : null
 
   return (

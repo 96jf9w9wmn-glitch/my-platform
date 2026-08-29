@@ -719,6 +719,27 @@ body::before {
   .reveal.is-closing { animation-duration: 0.01s; }
 }
 
+/* Разбор-строка в сетке карточек («Домашние задания», «Варианты»): панель
+   занимает целый ряд, поэтому уходить обязана вместе с высотой. Сама панель
+   гаснет слайдом (.slide-up.is-closing), а эта обёртка в те же кадры
+   сворачивает ряд через grid-template-rows (приём .reveal) — без неё панель
+   растворялась на месте, а карточки ниже стояли и прыгали вверх одним кадром
+   после её снятия. Уход = 0.18s, как CLOSE_MS в useClosing.js: обе анимации
+   заканчиваются к моменту размонтирования. */
+.detail-row {
+  display: grid;
+  grid-template-rows: 1fr;
+  animation: reveal-in 0.26s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+.detail-row.is-closing {
+  animation: reveal-out 0.18s cubic-bezier(0.4, 0, 1, 1) both;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .detail-row,
+  .detail-row.is-closing { animation-duration: 0.01s; }
+}
+
 /* Скрытый скроллбар — прокрутка остаётся, но системная полоса не портит
    стеклянные модалки и внутренние области. iOS и так прячет её overlay-ем,
    а на desktop/Android она выглядела инородно (см. «странный ползунок справа»). */

@@ -55,3 +55,4 @@ CLAUDE.md
 legal/internal/
 .deploy/
 __hwtest*
+__closetest*
