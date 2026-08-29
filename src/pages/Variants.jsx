@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, Fragment } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import { signRows } from "../storageUrl"
-import { plural, getInitials, renderTaskMath, plainTaskMath, answersEqual } from "../utils"
+import { plural, getInitials, plainTaskMath, answersEqual } from "../utils"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
 import { isModuleNumber, part1NumbersOf, part1SlotsOf, part2NumbersOf, isPart2Number, examLevelOf, numbersLabel, VARIANT_TYPES } from "./taskBankMeta"
@@ -16,6 +16,7 @@ import { isOwner } from "../owner"
 import { usePlan } from "../subscription"
 import { PlanHint } from "../components/PlanLock"
 import ConfirmModal from "../components/ConfirmModal"
+import TasksModal from "../components/TasksModal"
 import SegmentSwitch from "../components/SegmentSwitch"
 import StatTabs from "../components/StatTabs"
 import MethodCards from "../components/MethodCards"
@@ -38,14 +39,23 @@ function prefetchBank() {
   idle(() => { loadBank(); loadVariantPdf() })
 }
 
-// Лист варианта для проверяющего — тот же вариант, но с ответами (приём Kuta Software).
-// Пересобираем из tasks_snapshot, поэтому числа те же, что получил ученик, а не новые.
-function ExtraPdfButtons({ variant }) {
+// Файл варианта: свой PDF/фото репетитора или печатный лист, собранный из банка.
+// Лист СОБИРАЕТСЯ ЗДЕСЬ, а не при сохранении варианта: html2canvas снимает страницу
+// секундами, и отправка ученикам не должна их ждать — вариант из банка ученик решает
+// в кабинете, файл нужен только для печати и для скачивания.
+function VariantFileBlock({ variant, tutorId, onBuilt, onPreview }) {
   const [busy, setBusy] = useState(false)
+  const [ansBusy, setAnsBusy] = useState(false)
   const [err, setErr] = useState("")
+  const url = variant.file_url
+  const fromBank = variant.tasks_snapshot?.length > 0
 
-  async function download() {
-    setBusy(true); setErr("")
+  // Тот же лист, но с ответами — для проверки (приём Kuta Software). Отдельной
+  // карточкой он только дублировал строку файла, поэтому это просто вторая кнопка:
+  // скачать вариант с ответами или без. Лист пересобирается из tasks_snapshot,
+  // так что числа те же, что получил ученик, а не новые.
+  async function downloadAnswers() {
+    setAnsBusy(true); setErr("")
     try {
       // В снимке варианта ответов НЕТ намеренно: ученик решает его в кабинете и прочитал
       // бы их прямо в данных страницы. Для листа проверяющего подставляем их из самой
@@ -58,45 +68,18 @@ function ExtraPdfButtons({ variant }) {
       const blob = await (await loadVariantPdf()).generateVariantPdf({
         title: variant.title, examType: variant.type, tasks, mode: "answers",
       })
-      const url = URL.createObjectURL(blob)
+      const objUrl = URL.createObjectURL(blob)
       const a = document.createElement("a")
-      a.href = url
+      a.href = objUrl
       a.download = `${variant.title || "Вариант"} — с ответами.pdf`
       a.click()
-      URL.revokeObjectURL(url)
+      URL.revokeObjectURL(objUrl)
     } catch {
-      setErr("Не получилось собрать PDF")
+      setErr("Не получилось собрать лист с ответами")
     } finally {
-      setBusy(false)
+      setAnsBusy(false)
     }
   }
-
-  return (
-    <div className="rounded-2xl ring-1 ring-gray-200/70 dark:ring-white/10 bg-white/45 dark:bg-white/[0.03] p-3 flex items-center gap-3">
-      <div className="w-9 h-9 rounded-xl bg-green-500/12 text-green-600 flex items-center justify-center flex-shrink-0">
-        <Icon name="check" size={16} />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium truncate">Лист с ответами</div>
-        <div className={`text-[11px] mt-0.5 truncate ${err ? "text-red-500" : "text-gray-400"}`}>{err || "Тот же вариант — для проверки"}</div>
-      </div>
-      <button onClick={download} disabled={busy}
-        className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200 disabled:opacity-50 flex items-center gap-1.5 flex-shrink-0">
-        <MorphIcon from="download" size={13} />
-        {busy ? "Собираем…" : "Скачать"}
-      </button>
-    </div>
-  )
-}
-
-// Файл варианта: свой PDF/фото репетитора или печатный лист, собранный из банка.
-// Лист СОБИРАЕТСЯ ЗДЕСЬ, а не при сохранении варианта: html2canvas снимает страницу
-// секундами, и отправка ученикам не должна их ждать — вариант из банка ученик решает
-// в кабинете, файл нужен только для печати и для скачивания.
-function VariantFileBlock({ variant, tutorId, onBuilt, onPreview }) {
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState("")
-  const url = variant.file_url
 
   async function build() {
     setBusy(true); setErr("")
@@ -138,14 +121,30 @@ function VariantFileBlock({ variant, tutorId, onBuilt, onPreview }) {
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
           {url ? (
+            <a href={url + (url.includes("?") ? "&" : "?") + "download"} download
+              className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200 flex items-center gap-1.5">
+              <MorphIcon from="download" size={13} />Скачать
+            </a>
+          ) : (
+            <button onClick={build} disabled={busy}
+              className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-blue-200 dark:ring-blue-400/25 text-blue-600 bg-blue-500/8 disabled:opacity-50 flex items-center gap-1.5">
+              <MorphIcon from="file-text" to="download" size={13} />
+              {busy ? "Собираем…" : "Собрать"}
+            </button>
+          )}
+          {/* Тот же лист, но с ответами: вариант из банка скачивается с ключами или без. */}
+          {fromBank && (
+            <button onClick={downloadAnswers} disabled={ansBusy}
+              className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200 disabled:opacity-50 flex items-center gap-1.5">
+              <MorphIcon from="check" to="download" size={13} />
+              {ansBusy ? "Собираем…" : "С ответами"}
+            </button>
+          )}
+          {url && (
             <>
-              <a href={url + (url.includes("?") ? "&" : "?") + "download"} download
-                className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200 flex items-center gap-1.5">
-                <MorphIcon from="download" size={13} />Скачать
-              </a>
               {/* Лист уже собран, но вёрстка формул с тех пор могла поправиться —
                   пересобрать его надо уметь, не удаляя вариант. */}
-              {variant.tasks_snapshot?.length > 0 && (
+              {fromBank && (
                 <button onClick={build} disabled={busy} title="Собрать лист заново"
                   className="press-tap w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-500/10 transition-colors disabled:opacity-50">
                   <Icon name="repeat" size={14} />
@@ -156,12 +155,6 @@ function VariantFileBlock({ variant, tutorId, onBuilt, onPreview }) {
                 <Icon name="maximize" size={14} />
               </button>
             </>
-          ) : (
-            <button onClick={build} disabled={busy}
-              className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-blue-200 dark:ring-blue-400/25 text-blue-600 bg-blue-500/8 disabled:opacity-50 flex items-center gap-1.5">
-              <MorphIcon from="file-text" to="download" size={13} />
-              {busy ? "Собираем…" : "Собрать"}
-            </button>
           )}
         </div>
       </div>
@@ -172,52 +165,42 @@ function VariantFileBlock({ variant, tutorId, onBuilt, onPreview }) {
   )
 }
 
-// Состав варианта. Раньше это был <details>: он закрывается в тот же кадр,
-// без анимации, и панель дёргалась. Здесь раскрытие и сворачивание идут одним
-// и тем же плавным Reveal.
-function BankTasksBlock({ tasks }) {
+// Состав варианта. Условия открываются окном, а не разворотом внутри колонки:
+// задание банка везёт систему, дробь и чертёж, а карточка стоит в колонке
+// шириной в половину разбора — формула там переносилась посреди предложения.
+function BankTasksBlock({ tasks, title }) {
   const [open, setOpen] = useState(false)
   return (
-    <div className="rounded-2xl ring-1 ring-gray-200/70 dark:ring-white/10 bg-white/45 dark:bg-white/[0.03] overflow-hidden">
-      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open}
-        className="press-fill w-full p-3 flex items-center gap-3 text-left">
+    <>
+      <button type="button" onClick={() => setOpen(true)}
+        className="glass-sm press-tap w-full p-3.5 flex items-center gap-3 text-left">
         <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center flex-shrink-0">
           <Icon name="book" size={15} />
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium truncate">Задания из банка</div>
           <div className="text-[11px] text-gray-400 mt-0.5">
-            {tasks.length} {plural(tasks.length, "задание", "задания", "заданий")}
+            {tasks.length} {plural(tasks.length, "задание", "задания", "заданий")} · условия и чертежи
           </div>
         </div>
-        <span className={`text-gray-400 flex-shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`}>
-          <Icon name="chevron-down" size={16} />
-        </span>
+        <span className="text-xs text-blue-600 flex-shrink-0">Посмотреть</span>
       </button>
-      <Reveal value={open || null}>
-        {() => (
-          <div className="flex flex-col gap-1.5 p-2.5 pt-0">
-            {tasks.map((t) => (
-              <div key={t.number} className="text-xs rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 px-2.5 py-2 flex items-start gap-2.5">
-                <span className="shrink-0 w-5 h-5 rounded-full bg-blue-500/12 text-blue-600 dark:text-blue-400 text-[10px] font-semibold flex items-center justify-center">
-                  {t.number}
-                </span>
-                <div className="min-w-0">
-                  {t.condition_text && <span className="text-gray-600 leading-snug" dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_text) }} />}
-                  {t.image_url && (
-                    <a href={t.image_url} target="_blank" rel="noreferrer" className="block mt-1.5">
-                      <img src={t.image_url} alt={`Задание ${t.number}`} className="h-20 rounded-lg ring-1 ring-gray-200/70 bg-white" />
-                    </a>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </Reveal>
-    </div>
+      {open && (
+        <TasksModal
+          title={title || "Задания варианта"}
+          note="то же, что видит ученик"
+          items={variantTaskItems(tasks)}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </>
   )
 }
+
+// Задания варианта → список для окна. Номер задания в варианте и есть его
+// номер на экзамене, поэтому нумеруем им, а не порядком в списке.
+const variantTaskItems = (tasks) =>
+  tasks.map((t, i) => ({ n: t.number ?? i + 1, text: t.condition_text || "", bankTask: t, answer: t.answer ?? null, options: null }))
 
 // Способы сборки варианта — теми же карточками, что у «Нового задания».
 const VARIANT_METHODS = [
@@ -317,6 +300,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
   // Источник условий: свой файл или собранные из банка заданий
   const [source, setSource] = useState("file")
   const [bankPicked, setBankPicked] = useState([])
+  const [showPicked, setShowPicked] = useState(false)  // собранный вариант окном
   const [bankMissing, setBankMissing] = useState([])
   const [assembling, setAssembling] = useState(false)
   const fileRef = useRef()
@@ -601,6 +585,14 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
                     )}
 
                     {bankPicked.length > 0 && (
+                      <>
+                      {/* Список рядом с настройками тесный, условия в нём обрезаны
+                          одной строкой. Вариант целиком смотрится окном — тем же,
+                          каким он открывается из карточки. */}
+                      <button type="button" onClick={() => setShowPicked(true)}
+                        className="no-press self-start inline-flex items-center gap-1 text-[11px] text-blue-600 hover:opacity-70 active:scale-95 transition-all mb-1">
+                        <Icon name="maximize" size={11} />Посмотреть целиком
+                      </button>
                       <div className="flex flex-col gap-1.5 max-h-72 overflow-y-auto">
                         {bankPicked.map((t) => (
                           <div key={t.number} className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 px-2.5 py-2 flex items-start gap-2.5">
@@ -623,6 +615,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
                           </div>
                         ))}
                       </div>
+                      </>
                     )}
                   </div>
                 )}
@@ -776,6 +769,15 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
           </div>
         </div>
       </div>
+
+      {showPicked && (
+        <TasksModal
+          title={title.trim() || "Собранный вариант"}
+          note="то же, что увидит ученик"
+          items={variantTaskItems(bankPicked)}
+          onClose={() => setShowPicked(false)}
+        />
+      )}
     </div>,
     document.body
   )
@@ -1135,11 +1137,7 @@ function Variants({ user, students = [] }) {
                 />
 
                 {selectedVariant.tasks_snapshot?.length > 0 && (
-                  <ExtraPdfButtons variant={selectedVariant} />
-                )}
-
-                {selectedVariant.tasks_snapshot?.length > 0 && (
-                  <BankTasksBlock key={selectedVariant.id} tasks={selectedVariant.tasks_snapshot} />
+                  <BankTasksBlock key={selectedVariant.id} tasks={selectedVariant.tasks_snapshot} title={selectedVariant.title} />
                 )}
               </div>
 
