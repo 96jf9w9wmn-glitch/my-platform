@@ -245,10 +245,13 @@ function BankNumberRow({ info, pick, open, onCount, onTheme, onOpen }) {
 // и перенос внутри задания превратил бы его в два.
 const oneLine = (s) => String(s || "").replace(/\s*\n+\s*/g, " ").trim()
 
-// Ответ годится для автопроверки, только если это одно значение без пробелов:
-// поле ответов делит строку по пробелам, и «x₁ = 2, x₂ = 0.5» рассыпалось бы.
-// Запятая внутри числа при этом разрешена — «3,75» это обычный ответ ОГЭ.
-const isSimpleAnswer = (a) => a.length > 0 && !/[\s\\{}]/.test(a)
+// Ответ годится для автопроверки, если ученик способен набрать его с
+// клавиатуры. Пробел этому не мешает: «0; 4» и «нет корней» answersEqual()
+// сверяет как обычные ответы (пробелы при сравнении убираются). Не годятся
+// сырой LaTeX от модели (\frac{1}{3} ученик не наберёт) и развёрнутый ответ —
+// у заданий части 2 в «ответе» лежит целое доказательство, его не сверить.
+const ANSWER_MAX = 40
+const isSimpleAnswer = (a) => a.length > 0 && a.length <= ANSWER_MAX && !/[\n\\{}]/.test(a)
 
 // Поле правки, которое вне редактирования показывает то же, что увидит ученик:
 // ИИ отдаёт математику простым LaTeX (\frac{1}{3}), и без рендера репетитор
@@ -326,6 +329,17 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
   const [autoCheck, setAutoCheck] = useState(editingHw ? editingHw.hw_type !== "written" : true)
   const [requireSolution, setRequireSolution] = useState(editingHw?.require_solution || false)
   const [answersInput, setAnswersInput] = useState(editingHw?.correct_answers?.join(" ") || "")
+  // Ответы, собранные ВМЕСТЕ с заданиями (банк или ИИ), живут массивом, а не
+  // строкой поля: «0; 4» и «нет корней» — обычные ответы, а поле делит строку по
+  // пробелам и разорвало бы такой ответ на два. Тогда ответов становилось больше
+  // вопросов, а стёртый пробелами ответ («нет корней» на последнем задании)
+  // оставлял работу вовсе без ответов — и «Задать» упиралось в требование их
+  // вписать, хотя вписывать было некуда. null — ответы берутся из поля.
+  const [answersList, setAnswersList] = useState(
+    editingHw?.correct_answers?.some((a) => /\s/.test(String(a)))
+      ? editingHw.correct_answers.map((a) => String(a))
+      : null
+  )
   // Интерактивный тест с выбором ответа: варианты по вопросам + правильный на каждый.
   // null — обычный тест со свободным вводом ответа.
   const [testOptions, setTestOptions] = useState(editingHw?.test_options || null)
@@ -476,7 +490,8 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
       setTestOptions(tasks.map((t) => cleanOpts(t)))
       setMcqCorrect(tasks.map((t) => t.answer.trim()))
     } else if (mode === "free") {
-      setAnswersInput(tasks.map((t) => t.answer.trim()).join(" "))
+      const answers = tasks.map((t) => t.answer.trim())
+      setAnswersList(answers.length ? answers : null)
     }
   }
 
@@ -493,15 +508,15 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
         const opts = cleanOpts(t)
         return opts.length >= 2 && opts.includes(t.answer.trim())
       })
-    // Фолбэк: свободный ввод ответа. Ответы с пробелами и формулами для
-    // автопроверки не годятся — такая работа остаётся письменной.
+    // Фолбэк: свободный ввод ответа. Не годятся для сверки только ответы
+    // формулами (сырой LaTeX от модели) — такая работа остаётся письменной.
     const answers = tasks.map((t) => t.answer.trim())
     const mode = mcqOk ? "mcq" : answers.length > 0 && answers.every(isSimpleAnswer) ? "free" : null
 
     setAiMode(mode)
     setAutoCheck(mode !== null)
     if (mode !== "mcq") { setTestOptions(null); setMcqCorrect([]) }
-    if (mode !== "free") setAnswersInput("")
+    if (mode !== "free") { setAnswersInput(""); setAnswersList(null) }
     // Название репетитора важнее предложенного моделью — своё не затираем.
     if (isAutoTitle) setTitle(p.title.trim() || genTopic)
     syncPreview(p, mode)
@@ -550,6 +565,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
     setAiMode(null)
     setDescription("")
     setAnswersInput("")
+    setAnswersList(null)
     setTestOptions(null)
     setMcqCorrect([])
     // Возврат к исходному состоянию формы, а оно — с автопроверкой.
@@ -568,11 +584,12 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
     setMcqCorrect([])
     if (testable) {
       setAutoCheck(true)
-      setAnswersInput(answers.join(" "))
+      setAnswersList(answers.length ? answers : null)
     } else {
       setAutoCheck(false)
-      setAnswersInput("")
+      setAnswersList(null)
     }
+    setAnswersInput("")
     if (tasks.length && isAutoTitle) {
       // Практический блок в названии — одним диапазоном «1–5», а не пятёркой
       // номеров подряд: так работа и называется у самих школьников.
@@ -675,7 +692,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
     .trim()
     .split(/\s+/)
     .filter((a) => a.length > 0)
-  const correctAnswers = isMcq ? mcqCorrect : freeAnswers
+  const correctAnswers = isMcq ? mcqCorrect : answersList ?? freeAnswers
   const questionCount = correctAnswers.length
 
   async function handleSubmit() {
@@ -685,6 +702,12 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
     if (!title.trim()) return setFormError("Напишите, что задать")
     if (hwType !== "written" && questionCount === 0) {
       return setFormError("Впишите ответы — по ним работа проверится автоматически")
+    }
+    // Пустой ответ засчитал бы ученику ошибку всегда — называем номер задания,
+    // а не молчим о нём.
+    if (hwType !== "written") {
+      const blank = correctAnswers.findIndex((a) => !String(a).trim())
+      if (blank >= 0) return setFormError(`Ответ на задание ${blank + 1} не заполнен`)
     }
     setFormError("")
     setSaving(true)
@@ -775,8 +798,9 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
     setSaving(false)
   }
 
-  // Блок ответов нужен только «своему файлу»: у банка и ИИ ответы проставлены
-  // и показаны рядом с самими заданиями.
+  // Блок ответов нужен «своему файлу», а ещё — как запасной путь, когда
+  // автопроверка включена, а ответов у работы нет: без него репетитор упирался
+  // в «впишите ответы», не имея ни одного поля, куда их вписать.
   const answersBlock = (
     <div>
       {isMcq ? (
@@ -812,6 +836,36 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                     )
                   })}
                 </div>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : answersList ? (
+        // Ответы пришли вместе с заданиями. Правим их по одному: ответ бывает
+        // с пробелом («0; 4»), и общее поле склеило бы его с соседним.
+        <>
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-sm text-gray-500">Ответы — {answersList.length} зад.</span>
+            <button
+              type="button"
+              onClick={() => { setAnswersInput(""); setAnswersList(null) }}
+              className="text-xs text-gray-400 hover:text-gray-600 active:scale-95 transition-all"
+            >
+              Ввести вручную
+            </button>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {answersList.map((a, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <span className="text-xs text-gray-400 w-5 flex-shrink-0 text-right">{i + 1}.</span>
+                <input
+                  value={a}
+                  onChange={(e) =>
+                    setAnswersList((prev) => prev.map((x, j) => (j === i ? e.target.value : x)))
+                  }
+                  placeholder="Ответ"
+                  className="input-glass flex-1 min-w-0 px-2 py-1.5 text-sm"
+                />
               </div>
             ))}
           </div>
@@ -1277,7 +1331,11 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                   </div>
                 )}
 
-                {autoCheck && method === "file" && answersBlock}
+                {/* У банка и ИИ ответы стоят рядом с самими заданиями — второй
+                    раз их не показываем. Но если автопроверка включена, а
+                    ответов нет (модель отдала их формулами, и для сверки они не
+                    годятся), поле нужно: иначе задание не отправить. */}
+                {autoCheck && (method === "file" || correctAnswers.length === 0) && answersBlock}
               </div>
             </AutoHeight>
           </div>
