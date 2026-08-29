@@ -41,7 +41,10 @@ import { examMinutesOf, formatExamDuration, formatCountdown } from "./examTiming
 // ЕГЭ (профиль и база) — единый поток части 2 (13–19); ОГЭ — свой (20–25).
 const isEgeType = (t) => examLevelOf(t) === "ЕГЭ"
 
-function Part2Upload({ taskNum, submissionId, existingUrl, chosen, onUpload }) {
+// Загрузка решения задания части 2. Доступна и во время решения варианта, и
+// после отправки: решение пишется на листе по ходу работы, и фотографировать
+// его удобнее сразу, а не вспоминать про это в конце.
+function Part2Upload({ taskNum, submissionId, existingUrl, chosen, onUpload, showLabel = true }) {
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef(null)
 
@@ -64,17 +67,22 @@ function Part2Upload({ taskNum, submissionId, existingUrl, chosen, onUpload }) {
 
       const updatedFiles = { ...(sub?.part2_files || {}), [taskNum]: urlData.publicUrl }
       await supabase.from("variant_submissions").update({ part2_files: updatedFiles }).eq("id", submissionId)
-      onUpload()
+      // Бакет приватный: в базу уходит постоянный адрес, а показать только что
+      // загруженный файл можно лишь по подписанной ссылке.
+      const signed = await signStorageUrl(urlData.publicUrl, "variants")
+      onUpload(taskNum, signed || urlData.publicUrl)
     }
     setUploading(false)
   }
 
   return (
     <div className="flex items-center gap-3">
-      <div className="w-24 flex-shrink-0">
-        <div className="text-sm text-gray-600">Задание {taskNum}</div>
-        {chosen != null && <div className="text-xs text-gray-400 truncate">ответ: {chosen}</div>}
-      </div>
+      {showLabel && (
+        <div className="w-24 flex-shrink-0">
+          <div className="text-sm text-gray-600">Задание {taskNum}</div>
+          {chosen != null && <div className="text-xs text-gray-400 truncate">ответ: {chosen}</div>}
+        </div>
+      )}
       <input ref={fileRef} type="file" accept="image/*,.pdf" className="hidden" onChange={handleUpload} />
       {existingUrl ? (
         <div className="flex items-center gap-2 flex-1">
@@ -1981,6 +1989,18 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
       try { localStorage.setItem(variantsCacheKey, JSON.stringify(mapped)) } catch { /* переполнение localStorage — кэш не критичен */ }
     }
 
+    // Файл части 2 загружен. Открытая карточка живёт своим объектом и из
+    // loadVariants не обновляется, поэтому ссылку дописываем в неё сами —
+    // иначе во время решения кнопка так и осталась бы «Загрузить файл».
+    function handlePart2Uploaded(taskNum, url) {
+      setSelectedVariant((v) => (v ? {
+        ...v,
+        submission: { ...v.submission, part2_files: { ...(v.submission?.part2_files || {}), [taskNum]: url } },
+      } : v))
+      setVariantError("")
+      loadVariants()
+    }
+
     // auto = время вышло: работа уходит на проверку сама, поэтому проверка
     // «впиши хотя бы один ответ» на этом пути не действует — на экзамене
     // бланк забирают и пустым.
@@ -1988,6 +2008,18 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
       if (submitLockRef.current) return
       if (!auto && part1Answers.every((a) => !a)) {
         setVariantError("Впиши хотя бы один ответ.")
+        return
+      }
+      // Фото решения обязательно ровно там, где ученик заявил ответ части 2:
+      // выбранный ответ без решения репетитор всё равно не оценит, а задание,
+      // за которое ученик не брался, держать работу не должно. При автосдаче
+      // (время вышло) не проверяем — на экзамене бланк забирают как есть.
+      const uploadedFiles = selectedVariant.submission?.part2_files || {}
+      const missingSolutions = part2TaskNums.filter((n) => part2Choices[n] != null && !uploadedFiles[n])
+      if (!auto && missingSolutions.length) {
+        setVariantError(
+          "Прикрепи решение к заданиям, где выбран ответ: " + numbersLabel(missingSolutions, { hash: false })
+        )
         return
       }
       submitLockRef.current = true
@@ -2683,7 +2715,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                   {selectedVariant.submission.status === "pending" && !variantLocked && isGeneratedVariant && (
                     <div className="glass p-5">
                       <h3 className="text-base font-medium mb-1">Реши вариант</h3>
-                      <p className="text-xs text-gray-500 mb-4">{isEgeType(selectedVariant?.type) ? "В части 1 впиши ответ. Часть 2 реши на листе — фото решений загрузишь после отправки." : "В части 1 впиши ответ, в части 2 выбери один из четырёх. Фото решений части 2 загрузишь после отправки."}</p>
+                      <p className="text-xs text-gray-500 mb-4">{isEgeType(selectedVariant?.type) ? "В части 1 впиши ответ. Часть 2 реши на листе и прикрепи фото решения к заданию." : "В части 1 впиши ответ, в части 2 выбери один из четырёх и прикрепи фото решения."}</p>
                       <div className="flex flex-col gap-3">
                         {selectedVariant.tasks_snapshot.map((t) => {
                           const isPart2 = part2TaskSet.has(t.number)
@@ -2711,9 +2743,22 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                                   onSelect={(c) => setPart2Choices((prev) => ({ ...prev, [t.number]: c ?? undefined }))}
                                 />
                               )}
-                              {isPart2 && !choices?.length && (
-                                <div className="text-xs text-gray-500 ring-1 ring-gray-200/70 dark:ring-white/10 rounded-lg px-3 py-2">
-                                  Задание с развёрнутым решением: запиши его на листе, фото прикрепишь после отправки
+                              {/* Решение прикрепляется здесь же, по ходу работы: оно пишется на
+                                  листе прямо сейчас, и фотографировать его удобнее сразу. */}
+                              {isPart2 && (
+                                <div className="mt-2 flex flex-col gap-1.5">
+                                  <div className="text-xs text-gray-500">
+                                    {choices?.length > 0
+                                      ? "Реши на листе и прикрепи фото — без него выбранный ответ не оценивается"
+                                      : "Задание с развёрнутым решением: запиши его на листе и прикрепи фото"}
+                                  </div>
+                                  <Part2Upload
+                                    taskNum={t.number}
+                                    showLabel={false}
+                                    submissionId={selectedVariant.submission.id}
+                                    existingUrl={selectedVariant.submission.part2_files?.[t.number]}
+                                    onUpload={handlePart2Uploaded}
+                                  />
                                 </div>
                               )}
                             </div>
@@ -2721,7 +2766,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                         })}
                       </div>
                       <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700 my-4">
-                        <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />После отправки обязательно прикрепи фото решений части 2 — без них репетитор не начислит баллы. Балл за часть 2 появится после проверки.</span>
+                        <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />К каждому заданию части 2, где выбран ответ, нужно фото решения — без него балл не начисляется. Балл за часть 2 появится после проверки.</span>
                       </div>
                       {variantError && <div className="text-sm text-red-500 mb-2 text-center">{variantError}</div>}
                       <button
@@ -2777,25 +2822,37 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                           ))}
                         </div>
                       </div>
-                      {Object.keys(variantChoices).length > 0 && (
+                      {part2TaskNums.length > 0 && (
                         <div className="mb-4">
-                          <div className="text-xs font-medium text-green-600 mb-2 bg-green-50 px-2 py-1 rounded">Часть 2 — выбери ответ</div>
+                          <div className="text-xs font-medium text-green-600 mb-2 bg-green-50 px-2 py-1 rounded">Часть 2 — ответ и решение</div>
                           <div className="flex flex-col gap-3">
-                            {part2TaskNums.filter((n) => variantChoices[n]?.length).map((n) => (
+                            {part2TaskNums.map((n) => (
                               <div key={n}>
                                 <div className="text-xs text-gray-500 mb-1">Задание {n}</div>
-                                <ChoiceChips
-                                  choices={variantChoices[n]}
-                                  value={part2Choices[n]}
-                                  onSelect={(c) => setPart2Choices((prev) => ({ ...prev, [n]: c ?? undefined }))}
-                                />
+                                {variantChoices[n]?.length > 0 && (
+                                  <ChoiceChips
+                                    choices={variantChoices[n]}
+                                    value={part2Choices[n]}
+                                    onSelect={(c) => setPart2Choices((prev) => ({ ...prev, [n]: c ?? undefined }))}
+                                  />
+                                )}
+                                {/* Фото решения прикрепляется по ходу работы, а не после отправки. */}
+                                <div className="mt-1.5">
+                                  <Part2Upload
+                                    taskNum={n}
+                                    showLabel={false}
+                                    submissionId={selectedVariant.submission.id}
+                                    existingUrl={selectedVariant.submission.part2_files?.[n]}
+                                    onUpload={handlePart2Uploaded}
+                                  />
+                                </div>
                               </div>
                             ))}
                           </div>
                         </div>
                       )}
                       <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700 mb-4">
-                        <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />После отправки обязательно прикрепи фото решений части 2 — без них репетитор не начислит баллы</span>
+                        <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />К каждому заданию части 2, где выбран ответ, нужно фото решения — без него балл не начисляется</span>
                       </div>
                       {variantError && <div className="text-sm text-red-500 mb-2 text-center">{variantError}</div>}
                       <button
@@ -2810,12 +2867,6 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
 
                   {selectedVariant.submission.status === "submitted" && (
                     <div className="flex flex-col gap-4">
-                      <div className="glass-tint-blue p-4">
-                        <div className="text-sm font-medium text-blue-700 flex items-center gap-1"><Icon name="check" size={14} />Часть 1 сдана</div>
-                        <div className="text-sm text-blue-600 mt-1">Балл: {selectedVariant.submission.part1_score} / {part1Count}</div>
-                        <div className="text-xs text-blue-500 mt-1">Балл за часть 2 появится после проверки репетитором</div>
-                      </div>
-
                       {selectedVariant.submission.part1_answers && selectedVariant.answers?.part1 && (
                         <div className="glass p-5">
                           <h3 className="text-sm font-medium mb-3">Разбор части 1</h3>
@@ -2826,74 +2877,68 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                               return (
                                 <div
                                   key={i}
-                                  className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm ${
+                                  className={`flex items-start gap-2 px-3 py-2 rounded-lg text-sm ${
                                     isCorrect ? "bg-green-50" : "bg-red-50"
                                   }`}
                                 >
-                                  <span className="text-gray-500 w-6">{i + 1}</span>
-                                  <span className={isCorrect ? "text-green-700 font-medium flex-1" : "text-red-700 font-medium flex-1"}>
-                                    {studentAns}
-                                  </span>
-                                  {!isCorrect && (
-                                    <span className="text-gray-400 text-xs">
-                                      правильно: <span className="text-gray-700 font-medium">{correct}</span>
+                                  <span className="text-gray-500 w-6 flex-shrink-0">{i + 1}</span>
+                                  {/* min-w-0 + break-words: развёрнутый ответ бывает в несколько
+                                      строк и без этого вылезал за карточку. */}
+                                  <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+                                    <span className={`font-medium break-words ${isCorrect ? "text-green-700" : "text-red-700"}`}>
+                                      {studentAns}
                                     </span>
-                                  )}
-                                  {isCorrect && <Icon name="check" size={12} className="text-green-500" />}
+                                    {!isCorrect && (
+                                      <span className="text-gray-400 text-xs break-words">
+                                        правильно: <span className="text-gray-700 font-medium">{correct}</span>
+                                      </span>
+                                    )}
+                                  </div>
+                                  {isCorrect && <Icon name="check" size={12} className="text-green-500 flex-shrink-0 mt-1" />}
                                 </div>
                               )
                             })}
                           </div>
                         </div>
                       )}
-                      <div className="glass p-5">
-                        <h3 className="text-base font-medium mb-3">Часть 2 — загрузи решения</h3>
-                        <div className="text-xs text-gray-500 mb-4">
-                          Обязательно прикрепи фото или файл решения каждого задания ({numbersLabel(part2TaskNums)}) — без него балл не начисляется
+                      {part2TaskNums.length > 0 && (
+                        <div className="glass p-5">
+                          <h3 className="text-base font-medium mb-3">Часть 2 — решения</h3>
+                          <div className="text-xs text-gray-500 mb-4">
+                            Решение к заданиям с ответом ({numbersLabel(part2TaskNums)}) уже прикреплено при решении — здесь его можно дозагрузить или заменить
+                          </div>
+                          <div className="flex flex-col gap-3">
+                            {part2TaskNums.map((taskNum) => (
+                              <Part2Upload
+                                key={taskNum}
+                                taskNum={taskNum}
+                                submissionId={selectedVariant.submission.id}
+                                existingUrl={selectedVariant.submission.part2_files?.[taskNum]}
+                                chosen={selectedVariant.submission.part2_choices?.[taskNum]}
+                                onUpload={handlePart2Uploaded}
+                              />
+                            ))}
+                          </div>
                         </div>
-                        <div className="flex flex-col gap-3">
-                          {part2TaskNums.map((taskNum) => (
-                            <Part2Upload
-                              key={taskNum}
-                              taskNum={taskNum}
-                              submissionId={selectedVariant.submission.id}
-                              existingUrl={selectedVariant.submission.part2_files?.[taskNum]}
-                              chosen={selectedVariant.submission.part2_choices?.[taskNum]}
-                              onUpload={loadVariants}
-                            />
-                          ))}
-                        </div>
+                      )}
+
+                      {/* Итог — последним блоком: сначала работа над ошибками, потом счёт. */}
+                      <div className="glass-tint-blue p-4 flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <span className="text-sm font-medium text-blue-700 flex items-center gap-1.5">
+                          <Icon name="check" size={14} />Работа на проверке
+                        </span>
+                        <span className="ml-auto text-sm text-blue-600 tabular-nums">
+                          Часть 1: {selectedVariant.submission.part1_score} / {part1Count}
+                        </span>
+                        {part2TaskNums.length > 0 && (
+                          <span className="w-full text-xs text-blue-500">Балл за часть 2 поставит репетитор</span>
+                        )}
                       </div>
                     </div>
                   )}
 
                   {selectedVariant.submission.status === "graded" && (
                     <div className="flex flex-col gap-4">
-                      <div className="glass-tint-green p-5 text-center">
-                        <div className="text-green-600 mb-2 flex justify-center"><Icon name="check" size={28} /></div>
-                        <div className="text-sm font-medium text-green-700">Вариант проверен!</div>
-                        <div className="text-3xl font-medium text-green-600 mt-2">
-                          {selectedVariant.submission.total_score} <span className="text-lg text-green-500/70">/ {variantMax}</span>
-                        </div>
-                        {variantResult.kind !== "none" && (
-                          <div className="text-sm font-medium text-green-700 mt-1">
-                            {variantResult.kind === "test" ? "Тестовый балл" : "Оценка"}: {secondaryLabel(variantResult, { short: true })}
-                            {variantResult.projected && <span className="text-green-500/80"> — прогноз</span>}
-                          </div>
-                        )}
-                        <div className="text-sm text-green-500 mt-1">
-                          Часть 1: {selectedVariant.submission.part1_score} / {part1Count}
-                          {/* Части 2 нет у базового ЕГЭ и у информатики — строка о ней там лишняя */}
-                          {part2TaskNums.length > 0 && ` · Часть 2: ${selectedVariant.submission.part2_score} / ${part2TaskNums.reduce((sum, n) => sum + (variantP2Max[n] || 0), 0)}`}
-                        </div>
-                        {variantResult.projected && (
-                          <div className="text-[11px] text-green-600/70 mt-2 leading-snug">
-                            В этом варианте {variantMax} из {variantResult.examMax} экзаменационных баллов, поэтому
-                            {variantResult.kind === "test" ? " тестовый балл" : " оценка"} посчитан по доле верных ответов.
-                          </div>
-                        )}
-                      </div>
-
                       {selectedVariant.submission.part1_answers && selectedVariant.answers?.part1 && (
                         <div className="glass p-5">
                           <h3 className="text-sm font-medium mb-3">Разбор части 1</h3>
@@ -2904,20 +2949,24 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                               return (
                                 <div
                                   key={i}
-                                  className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm ${
+                                  className={`flex items-start gap-2 px-3 py-2 rounded-lg text-sm ${
                                     isCorrect ? "bg-green-50" : "bg-red-50"
                                   }`}
                                 >
-                                  <span className="text-gray-500 w-6">{i + 1}</span>
-                                  <span className={isCorrect ? "text-green-700 font-medium flex-1" : "text-red-700 font-medium flex-1"}>
-                                    {studentAns}
-                                  </span>
-                                  {!isCorrect && (
-                                    <span className="text-gray-400 text-xs">
-                                      правильно: <span className="text-gray-700 font-medium">{correct}</span>
+                                  <span className="text-gray-500 w-6 flex-shrink-0">{i + 1}</span>
+                                  {/* min-w-0 + break-words: развёрнутый ответ бывает в несколько
+                                      строк и без этого вылезал за карточку. */}
+                                  <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+                                    <span className={`font-medium break-words ${isCorrect ? "text-green-700" : "text-red-700"}`}>
+                                      {studentAns}
                                     </span>
-                                  )}
-                                  {isCorrect && <Icon name="check" size={12} className="text-green-500" />}
+                                    {!isCorrect && (
+                                      <span className="text-gray-400 text-xs break-words">
+                                        правильно: <span className="text-gray-700 font-medium">{correct}</span>
+                                      </span>
+                                    )}
+                                  </div>
+                                  {isCorrect && <Icon name="check" size={12} className="text-green-500 flex-shrink-0 mt-1" />}
                                 </div>
                               )
                             })}
@@ -2935,21 +2984,57 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                               const score = Number(selectedVariant.submission.part2_score_detail?.[n] || 0)
                               const max = isEgeType(selectedVariant.type) ? ({ 13: 2, 14: 3, 15: 2, 16: 2, 17: 3, 18: 4, 19: 4 })[n] : 2
                               return (
-                                <div key={n} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${score >= max ? "bg-green-50" : score > 0 ? "bg-amber-50" : "bg-red-50"}`}>
+                                <div key={n} className={`flex items-start gap-2 px-3 py-2 rounded-lg text-sm ${score >= max ? "bg-green-50" : score > 0 ? "bg-amber-50" : "bg-red-50"}`}>
                                   <span className="text-gray-500 w-6 flex-shrink-0">{n}</span>
-                                  <span className="flex-1 min-w-0 truncate text-gray-700">{chosen ?? "—"}</span>
-                                  {correct != null && String(chosen ?? "").trim() !== String(correct).trim() && (
-                                    <span className="text-gray-400 text-xs flex-shrink-0">
-                                      правильно: <span className="text-gray-700 font-medium">{correct}</span>
-                                    </span>
-                                  )}
-                                  <span className={`text-xs font-medium flex-shrink-0 ${score >= max ? "text-green-600" : score > 0 ? "text-amber-600" : "text-red-500"}`}>{score} / {max}</span>
+                                  {/* Ответ части 2 бывает развёрнутым на несколько строк — переносим,
+                                      а не обрезаем: обрезанный текст вылезал за карточку. */}
+                                  <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+                                    <span className="text-gray-700 break-words">{chosen ?? "—"}</span>
+                                    {correct != null && String(chosen ?? "").trim() !== String(correct).trim() && (
+                                      <span className="text-gray-400 text-xs break-words">
+                                        правильно: <span className="text-gray-700 font-medium">{correct}</span>
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className={`text-xs font-medium flex-shrink-0 mt-0.5 tabular-nums ${score >= max ? "text-green-600" : score > 0 ? "text-amber-600" : "text-red-500"}`}>{score} / {max}</span>
                                 </div>
                               )
                             })}
                           </div>
                         </div>
                       )}
+
+                      {/* Итог — последним блоком и в одну-две строки: ученику важнее разбор,
+                          а счёт нужен коротко. Пояснение про прогноз ушло в подсказку. */}
+                      <div className="glass-tint-green p-4">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <span className="text-sm font-medium text-green-700 flex items-center gap-1.5">
+                            <Icon name="check" size={14} />Вариант проверен
+                          </span>
+                          <span className="ml-auto text-2xl font-semibold text-green-600 tabular-nums">
+                            {selectedVariant.submission.total_score}
+                            <span className="text-base font-medium text-green-500/70"> / {variantMax}</span>
+                          </span>
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-green-600/90 tabular-nums">
+                          <span>Часть 1: {selectedVariant.submission.part1_score} / {part1Count}</span>
+                          {/* Части 2 нет у базового ЕГЭ и у информатики — строка о ней там лишняя */}
+                          {part2TaskNums.length > 0 && (
+                            <span>Часть 2: {selectedVariant.submission.part2_score} / {part2TaskNums.reduce((sum, n) => sum + (variantP2Max[n] || 0), 0)}</span>
+                          )}
+                          {variantResult.kind !== "none" && (
+                            <span
+                              className="font-medium text-green-700"
+                              title={variantResult.projected
+                                ? `В этом варианте ${variantMax} из ${variantResult.examMax} баллов экзамена — пересчёт по доле верных ответов`
+                                : undefined}
+                            >
+                              {variantResult.kind === "test" ? "Тестовый балл" : "Оценка"}: {secondaryLabel(variantResult, { short: true })}
+                              {variantResult.projected && <span className="font-normal text-green-500/80"> · прогноз</span>}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
