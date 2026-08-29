@@ -32,3 +32,7 @@ alter table public.homework add column if not exists bank_tasks jsonb;
 
 comment on column public.homework.bank_tasks is
   'Задания, собранные из банка: [{number, condition_text, condition_tail, answer, gen_key, image_url, program, archive, spreadsheet, textFile, source_text, source_title}]. Дополняет description (там те же условия текстом), нужно ради чертежей и прилагаемых файлов. null — работа собрана не из банка.';
+
+-- Кэш схемы PostgREST: pgrst_ddl_watch делает это сам, строка нужна для
+-- случая, когда миграцию гоняют там, где событийного триггера нет.
+NOTIFY pgrst, 'reload schema';
