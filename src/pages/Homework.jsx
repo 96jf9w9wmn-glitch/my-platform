@@ -266,13 +266,11 @@ function plainAnswer(raw) {
     .replace(/\\left|\\right/g, "")
     .replace(/\\[,;:!]/g, "")
     .replace(/\\ /g, " ")
-  // Дроби разворачиваем изнутри наружу: \frac{\frac{1}{2}}{3} — редкость, но
-  // одного прохода на неё не хватит.
-  for (let i = 0; i < 4; i++) {
-    const next = a.replace(/\\[dt]?frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, "$1/$2")
-    if (next === a) break
-    a = next
-  }
+  // Дробь разворачиваем в одну черту: \frac{1}{3} → 1/3. Дробь в дроби так не
+  // записать — «1/2/3» читается двояко, и такой ответ лучше оставить
+  // формулой: работа уйдёт письменной, а не со сверкой по кривому ответу.
+  const flat = a.replace(/\\[dt]?frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, "$1/$2")
+  if (flat !== a && !/\\[dt]?frac/.test(flat) && (flat.match(/\//g) || []).length <= 1) a = flat
   return a.replace(/\s+/g, " ").trim()
 }
 
@@ -734,6 +732,11 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
     .filter((a) => a.length > 0)
   const correctAnswers = isMcq ? mcqCorrect : answersList ?? freeAnswers
   const questionCount = correctAnswers.length
+  // Сверять нечем: работа собрана ИИ или банком, а пригодных для автопроверки
+  // ответов у неё нет. Включённый тумблер обещал бы то, чего не будет, и
+  // упирался бы в «впишите ответы» без единого поля для них.
+  const autoCheckLocked =
+    !autoCheck && method !== "file" && !isMcq && !answersList && (!!preview || bankTasks.length > 0)
 
   async function handleSubmit() {
     // Ошибку показываем в самой форме, у кнопки: alert прерывает заполнение и
@@ -741,7 +744,11 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
     if (!studentId) return setFormError("Выберите, кому задать")
     if (!title.trim()) return setFormError("Напишите, что задать")
     if (hwType !== "written" && questionCount === 0) {
-      return setFormError("Впишите ответы — по ним работа проверится автоматически")
+      // Ответов нет и вписать их негде — у банка и ИИ они приходят вместе с
+      // заданиями. Просим то, что репетитор действительно может сделать.
+      return setFormError(method === "file"
+        ? "Впишите ответы — по ним работа проверится автоматически"
+        : "Соберите задания — ответы подставятся сами. Или выключите автопроверку")
     }
     // Пустой ответ засчитал бы ученику ошибку всегда — называем номер задания,
     // а не молчим о нём.
@@ -1024,12 +1031,19 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
           </div>
 
           <div className="flex flex-col gap-4">
-            <MethodCards
-              label="Из чего собрать задание"
-              items={HW_METHODS}
-              value={method}
-              onChange={chooseMethod}
-            />
+            {/* Способ сборки выбирается только у НОВОГО задания. Правится
+                уже собранная работа: её текст, ответы и файл лежат в полях
+                «своего файла», а пересборка банком или ИИ переписала бы
+                ученику задание целиком — не «редактирование», а другая
+                работа под тем же номером. */}
+            {!isEditing && (
+              <MethodCards
+                label="Из чего собрать задание"
+                items={HW_METHODS}
+                value={method}
+                onChange={chooseMethod}
+              />
+            )}
 
             {/* Панель способа: высота едет плавно, иначе окно скачет при
                 переключении карточек — куски разной длины. */}
