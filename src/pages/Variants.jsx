@@ -126,7 +126,7 @@ function VariantFileBlock({ variant, tutorId, onBuilt, onPreview }) {
         <div className="flex items-center gap-1.5 flex-shrink-0">
           {url ? (
             <a href={url + (url.includes("?") ? "&" : "?") + "download"} download
-              className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200 flex items-center gap-1.5">
+              className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 flex items-center gap-1.5">
               <MorphIcon from="download" size={13} />Скачать
             </a>
           ) : (
@@ -139,7 +139,7 @@ function VariantFileBlock({ variant, tutorId, onBuilt, onPreview }) {
           {/* Тот же лист, но с ответами: вариант из банка скачивается с ключами или без. */}
           {fromBank && (
             <button onClick={downloadAnswers} disabled={ansBusy}
-              className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200 disabled:opacity-50 flex items-center gap-1.5">
+              className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 disabled:opacity-50 flex items-center gap-1.5">
               <MorphIcon from="check" to="download" size={13} />
               {ansBusy ? "Собираем…" : "С ответами"}
             </button>

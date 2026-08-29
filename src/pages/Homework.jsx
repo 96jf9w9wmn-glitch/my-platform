@@ -1518,7 +1518,7 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
                 <div className="text-[11px] text-gray-400 mt-0.5 truncate">То же, что видит ученик</div>
               </div>
               <a href={hw.file_url} target="_blank" rel="noreferrer"
-                className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200 flex-shrink-0">
+                className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 flex-shrink-0">
                 Открыть
               </a>
             </DetailBlock>
@@ -1569,7 +1569,7 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
                 <div className="text-[11px] text-gray-400 mt-0.5 truncate">Прислано учеником</div>
               </div>
               <a href={hw.submission_url} target="_blank" rel="noreferrer"
-                className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 dark:text-gray-200 flex-shrink-0">
+                className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 flex-shrink-0">
                 Открыть
               </a>
             </DetailBlock>

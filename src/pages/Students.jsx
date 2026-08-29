@@ -97,7 +97,7 @@ function EmptyStudents({ onInvite, inviting }) {
         <Icon name="users" size={22} />
       </div>
       <div>
-        <div className="text-sm font-medium text-gray-700 dark:text-gray-200">Пока нет учеников</div>
+        <div className="text-sm font-medium text-gray-700">Пока нет учеников</div>
         <p className="text-xs text-gray-400 mt-1 max-w-xs mx-auto leading-relaxed">
           Ученик регистрируется сам: переходит по вашей ссылке или вводит ваш код —
           и вам приходит заявка. Карточку вы заполните при её приёме.

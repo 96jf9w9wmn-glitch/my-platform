@@ -34,8 +34,8 @@ export function BetaNotice({ className = "" }) {
       <span className="mt-px flex-shrink-0 w-7 h-7 rounded-xl flex items-center justify-center bg-[#007AFF]/10 text-[#007AFF] dark:bg-[#0A84FF]/20 dark:text-[#4DA3FF]">
         <Icon name="flask" size={15} />
       </span>
-      <p className="text-[13px] leading-snug text-gray-600 dark:text-gray-300">
-        <span className="font-semibold text-gray-800 dark:text-gray-100">Идёт бета-тестирование. </span>
+      <p className="text-[13px] leading-snug text-gray-600">
+        <span className="font-semibold text-gray-800">Идёт бета-тестирование. </span>
         {BETA_NOTE} {BETA_ASK}
       </p>
     </div>

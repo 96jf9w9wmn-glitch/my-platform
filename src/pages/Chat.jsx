@@ -612,7 +612,7 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
                   onKeyDown={handleKeyDown}
                   placeholder="Сообщение..."
                   rows={1}
-                  className="flex-1 px-4 py-2.5 text-sm rounded-2xl border border-gray-200 bg-white/70 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30 resize-none leading-5"
+                  className="flex-1 px-4 py-2.5 text-sm rounded-2xl border border-gray-200 bg-white/70 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 resize-none leading-5"
                   style={{ minHeight: 42, maxHeight: 120, overflowY: "auto" }}
                 />
                 <button

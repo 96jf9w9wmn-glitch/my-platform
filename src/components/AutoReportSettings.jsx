@@ -157,7 +157,7 @@ export default function AutoReportSettings({ tutorId, students = [], surface = "
           <div className="flex flex-col gap-1.5">
             {rows.map((r) => (
               <div key={r.id} className="flex items-center justify-between gap-3 text-xs">
-                <span className="truncate text-gray-700 dark:text-gray-200">
+                <span className="truncate text-gray-700">
                   {nameById.get(String(r.student_id)) || "Ученик"}
                 </span>
                 <span className="shrink-0 text-gray-400">
