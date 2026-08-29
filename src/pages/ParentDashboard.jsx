@@ -329,6 +329,23 @@ function ParentDashboard({ user, onLogout }) {
   // Долг считает общий помощник — то же число, что видят репетитор и квитанции.
   const debt = studentDebt({ ...student, lessonPrice: price })
 
+  // Раскладка долга по занятиям — по тем же правилам, что у квитанций
+  // (invoices.js): непогашенный остаток закрывает занятия от новых к старым,
+  // «оплачено» отдельным флагом не хранится — иначе разъедется с долгом.
+  const conductedDesc = [...conducted].sort((a, b) =>
+    (String(b.date) + (b.time || "")).localeCompare(String(a.date) + (a.time || "")))
+  const unpaidLessons = []
+  let debtLeft = Math.max(0, debt)
+  for (const l of conductedDesc) {
+    if (debtLeft <= 0 || price <= 0) break
+    const due = Math.min(price, debtLeft)
+    unpaidLessons.push({ ...l, due, partial: due < price })
+    debtLeft -= due
+  }
+  // Оплаты дописываются в конец массива, поэтому разворот даёт «новые первыми»
+  // без разбора даты: она хранится локализованной строкой («29.08.2026»).
+  const paymentsDesc = [...(student.payments || [])].reverse()
+
   const graded = homework.filter((h) => h.grade != null)
   const avg = graded.length > 0
     ? Math.round(graded.reduce((s, h) => s + h.grade, 0) / graded.length * 10) / 10
@@ -382,9 +399,9 @@ function ParentDashboard({ user, onLogout }) {
 
   return (
     <div className="min-h-screen p-4 pt-[calc(env(safe-area-inset-top)+1rem)]">
-      {/* Кабинет разложен по вкладкам, контент одноколоночный — широкий
-          контейнер оставлял бы карточки растянутыми на пол-экрана. */}
-      <div className="max-w-lg md:max-w-2xl lg:max-w-3xl mx-auto flex flex-col gap-4">
+      {/* Ширина растёт вместе с экраном: на ноутбуке кабинет не должен
+          оставаться узкой колонкой посреди пустого поля. */}
+      <div className="max-w-lg md:max-w-3xl lg:max-w-5xl xl:max-w-6xl mx-auto flex flex-col gap-4">
 
         {/* Шапка */}
         <div className="glass p-3.5 sm:p-4 flex items-center gap-3">
@@ -630,6 +647,79 @@ function ParentDashboard({ user, onLogout }) {
                 </div>
               )}
             </Panel>
+
+            {/* Долги и оплаты — двумя списками рядом. Показываются, когда есть
+                цена занятия (без неё долг не посчитать) либо уже есть оплаты. */}
+            {(price > 0 || paymentsDesc.length > 0) && (
+              <div className="grid md:grid-cols-2 gap-4">
+                {/* flex flex-col + flex-1 у пустого состояния: карточки в паре
+                    одной высоты, и короткая не оставляет пустоты под текстом. */}
+                <Panel icon="clock" title="Ждут оплаты" tone="amber" className="flex flex-col"
+                  action={debt > 0 && (
+                    <span className="text-sm font-semibold text-amber-600 dark:text-amber-300">{fmtMoney(debt)} ₽</span>
+                  )}>
+                  {unpaidLessons.length === 0 ? (
+                    <div className="flex-1 flex items-center justify-center text-sm text-gray-400 text-center py-6 rounded-2xl ring-1 ring-gray-200/70 dark:ring-white/10">
+                      Все занятия оплачены
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex flex-col divide-y divide-gray-100 dark:divide-white/10">
+                        {unpaidLessons.slice(0, 12).map((l, i) => (
+                          <div key={`${l.date}-${l.time}-${i}`} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium text-gray-700">Занятие {shortDate(l.date)}</div>
+                              <div className="text-xs text-gray-400">{[l.time, `${l.duration || 60} мин`].filter(Boolean).join(" · ")}</div>
+                            </div>
+                            <div className="flex items-center gap-2.5 shrink-0">
+                              {l.partial && (
+                                <span className="text-[11px] font-medium px-2 py-0.5 rounded-full ring-1 ring-inset bg-amber-500/12 text-amber-600 dark:text-amber-300 ring-amber-500/25">Частично</span>
+                              )}
+                              <span className="text-sm font-semibold text-gray-800">{fmtMoney(l.due)} ₽</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {unpaidLessons.length > 12 && (
+                        <div className="text-xs text-gray-400 text-center pt-2">
+                          И ещё {unpaidLessons.length - 12} {plural(unpaidLessons.length - 12, "занятие", "занятия", "занятий")}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </Panel>
+
+                <Panel icon="check" title="Оплаты" tone="green" className="flex flex-col"
+                  action={totalPaid > 0 && (
+                    <span className="text-sm font-semibold text-green-600 dark:text-green-300">{fmtMoney(totalPaid)} ₽</span>
+                  )}>
+                  {paymentsDesc.length === 0 ? (
+                    <div className="flex-1 flex items-center justify-center text-sm text-gray-400 text-center py-6 rounded-2xl ring-1 ring-gray-200/70 dark:ring-white/10">
+                      Оплат пока нет
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex flex-col divide-y divide-gray-100 dark:divide-white/10">
+                        {paymentsDesc.slice(0, 12).map((p, i) => (
+                          <div key={p.id ?? i} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium text-gray-700">{p.date || "Оплата"}</div>
+                              {p.note && <div className="text-xs text-gray-400 truncate">{p.note}</div>}
+                            </div>
+                            <span className="text-sm font-semibold text-green-600 dark:text-green-300 shrink-0">+{fmtMoney(p.amount)} ₽</span>
+                          </div>
+                        ))}
+                      </div>
+                      {paymentsDesc.length > 12 && (
+                        <div className="text-xs text-gray-400 text-center pt-2">
+                          И ещё {paymentsDesc.length - 12} {plural(paymentsDesc.length - 12, "оплата", "оплаты", "оплат")}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </Panel>
+              </div>
+            )}
 
             {/* Квитанции за проведённые занятия: приходят сами, платить можно переводом */}
             <InvoiceCard
