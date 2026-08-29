@@ -542,7 +542,7 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
 
             return (
               <div key={student.id} onClick={() => setSelectedStudent(student.id)}
-                className={"group grid border-t border-white/40 px-4 py-3 items-center cursor-pointer hover:bg-white/30 active:bg-white/50 transition-colors " + COLS}>
+                className={"group grid border-t border-white/40 px-4 py-3 items-center cursor-pointer hover:bg-white/30 active:opacity-70 transition-[background-color,opacity] " + COLS}>
 
                 {/* Student */}
                 <div className="flex items-center gap-3 min-w-0 pr-3">

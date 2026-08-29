@@ -9,9 +9,14 @@
 @custom-variant big (@media (min-width: 640px) and (min-height: 520px));
 
 @layer base {
+  /* Никакой системной подсветки нажатия: серо-синий флеш Chrome/Safari на
+     тапе — это «выделение» элемента, которого в интерфейсе быть не должно.
+     Правило на *, а не на button/a: кликают и по div-строкам, и по label. */
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
   button, a {
     outline: none;
-    -webkit-tap-highlight-color: transparent;
   }
   button:focus, button:focus-visible,
   a:focus, a:focus-visible {
@@ -830,7 +835,8 @@ button:not([disabled]):not(.no-press):active {
 }
 
 /* Широкие кнопки НЕ масштабируем: сжатие длинной строки читается как уродливая
-   «пульсация» и рвёт края. Им — мягкая заливка на всю площадь (как .press-tap).
+   «пульсация» и рвёт края. Им — короткое затухание (как .press-tap): цветной
+   заливки при нажатии нет намеренно — она читалась как выделение карточки.
    «Широкая» = w-full, ручной .press-fill, либо кнопка, растянутая колоночным
    flex- или grid-контейнером (кроме явно ужатых self-start, w-auto, mx-auto). */
 .press-fill:not([disabled]):not(.no-press),
@@ -838,37 +844,15 @@ button.w-full:not([disabled]):not(.no-press),
 .flex-col > button:not([disabled]):not(.no-press):not(.self-start):not(.self-center):not(.self-end):not(.w-auto):not(.mx-auto),
 .grid > button:not([disabled]):not(.no-press):not(.self-start):not(.self-center):not(.self-end):not(.w-auto):not(.mx-auto) {
   position: relative;
-}
-.press-fill:not([disabled]):not(.no-press)::after,
-button.w-full:not([disabled]):not(.no-press)::after,
-.flex-col > button:not([disabled]):not(.no-press):not(.self-start):not(.self-center):not(.self-end):not(.w-auto):not(.mx-auto)::after,
-.grid > button:not([disabled]):not(.no-press):not(.self-start):not(.self-center):not(.self-end):not(.w-auto):not(.mx-auto)::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: rgba(0, 0, 0, 0);
-  transition: background 0.18s ease;
-  pointer-events: none;
+  transition: opacity 0.14s ease;
 }
 .press-fill:not([disabled]):not(.no-press):active,
 button.w-full:not([disabled]):not(.no-press):active,
 .flex-col > button:not([disabled]):not(.no-press):not(.self-start):not(.self-center):not(.self-end):not(.w-auto):not(.mx-auto):active,
 .grid > button:not([disabled]):not(.no-press):not(.self-start):not(.self-center):not(.self-end):not(.w-auto):not(.mx-auto):active {
   transform: none;
-}
-.press-fill:not([disabled]):not(.no-press):active::after,
-button.w-full:not([disabled]):not(.no-press):active::after,
-.flex-col > button:not([disabled]):not(.no-press):not(.self-start):not(.self-center):not(.self-end):not(.w-auto):not(.mx-auto):active::after,
-.grid > button:not([disabled]):not(.no-press):not(.self-start):not(.self-center):not(.self-end):not(.w-auto):not(.mx-auto):active::after {
-  background: rgba(0, 122, 255, 0.10);
+  opacity: 0.6;
   transition-duration: 0.04s;
-}
-.dark .press-fill:not([disabled]):not(.no-press):active::after,
-.dark button.w-full:not([disabled]):not(.no-press):active::after,
-.dark .flex-col > button:not([disabled]):not(.no-press):not(.self-start):not(.self-center):not(.self-end):not(.w-auto):not(.mx-auto):active::after,
-.dark .grid > button:not([disabled]):not(.no-press):not(.self-start):not(.self-center):not(.self-end):not(.w-auto):not(.mx-auto):active::after {
-  background: rgba(255, 255, 255, 0.08);
 }
 
 /* Витринный заголовок: serif поверх sans-подзаголовка (приём brilliant.org).
@@ -1456,26 +1440,16 @@ button.w-full:not([disabled]):not(.no-press):active::after,
 .chat-send-btn { transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1); }
 .chat-send-btn:active { transform: scale(0.82); }
 
-/* Универсальный отклик на нажатие для кликабельных не-кнопок:
-   полупрозрачный оверлей на всю площадь. Размер не меняется — поэтому нет
-   пустот по краям (в отличие от scale на широких элементах). border-radius
-   наследуется, чтобы совпадать со скруглением карточки/строки. */
+/* Универсальный отклик на нажатие для кликабельных не-кнопок: короткое
+   затухание. Размер не меняется — поэтому нет пустот по краям (в отличие от
+   scale на широких элементах), и нет цветной подложки: любая заливка под
+   пальцем/курсором читается как выделение элемента. */
 /* Свой шеврон вместо системного треугольника: в Safari он остаётся даже при
    list-style: none и ломает выравнивание строки-карточки. */
 summary::-webkit-details-marker { display: none; }
 
-.press-tap { position: relative; }
-.press-tap::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: rgba(0, 0, 0, 0);
-  transition: background 0.18s ease;
-  pointer-events: none;
-}
-.press-tap:active::after { background: rgba(0, 122, 255, 0.12); transition-duration: 0.04s; }
-.dark .press-tap:active::after { background: rgba(255, 255, 255, 0.08); }
+.press-tap { position: relative; transition: opacity 0.14s ease; }
+.press-tap:active { opacity: 0.55; transition-duration: 0.04s; }
 
 /* Chat background */
 .chat-bg {
