@@ -382,9 +382,9 @@ function ParentDashboard({ user, onLogout }) {
 
   return (
     <div className="min-h-screen p-4 pt-[calc(env(safe-area-inset-top)+1rem)]">
-      {/* Ширина растёт вместе с экраном: на ноутбуке кабинет не должен
-          оставаться телефонной колонкой посреди пустого поля. */}
-      <div className="max-w-lg md:max-w-3xl lg:max-w-5xl xl:max-w-6xl mx-auto flex flex-col gap-4">
+      {/* Кабинет разложен по вкладкам, контент одноколоночный — широкий
+          контейнер оставлял бы карточки растянутыми на пол-экрана. */}
+      <div className="max-w-lg md:max-w-2xl lg:max-w-3xl mx-auto flex flex-col gap-4">
 
         {/* Шапка */}
         <div className="glass p-3.5 sm:p-4 flex items-center gap-3">
@@ -446,7 +446,9 @@ function ParentDashboard({ user, onLogout }) {
           value={mainTab}
           onChange={(k) => { setMainTab(k); if (k === "chat") setChatUnread(0) }}
           items={[
-            { key: "home", label: "Кабинет" },
+            { key: "home", label: "Главная" },
+            { key: "study", label: "Учёба" },
+            { key: "money", label: "Оплата" },
             {
               key: "chat",
               label: (
@@ -522,15 +524,6 @@ function ParentDashboard({ user, onLogout }) {
           </div>
         )}
 
-        {/* Колонки растянуты на одну высоту, последняя карточка каждой добирает
-            остаток (flex-1): короткая колонка не оставляет под собой пустого поля. */}
-        <div className="grid md:grid-cols-2 gap-4">
-
-          {/* Левая колонка — расписание и деньги. min-w-0 обязателен: без него
-              ячейка грида растягивается по самому широкому неразрывному
-              элементу и на телефоне уезжает вправо. */}
-          <div className="min-w-0 flex flex-col gap-4 [&>*:last-child]:flex-1">
-
             <Panel icon="calendar" title="Ближайшие занятия">
               {upcoming.length === 0 ? (
                 <div className="text-sm text-gray-400 text-center py-6 rounded-2xl ring-1 ring-gray-200/70 dark:ring-white/10">
@@ -576,6 +569,34 @@ function ParentDashboard({ user, onLogout }) {
               )}
             </Panel>
 
+            {(examDate || targetScore) && (
+              <Panel icon="target" title="Цель" tone="purple">
+                <div className="flex flex-col gap-2.5">
+                  {examDate && (
+                    <div className="flex justify-between items-center text-sm gap-3">
+                      <span className="text-gray-500">Экзамен</span>
+                      <span className="font-medium text-right">{examDateLabel}</span>
+                    </div>
+                  )}
+                  {targetScore && (
+                    <div className="flex justify-between items-center text-sm gap-3">
+                      <span className="text-gray-500">Целевой балл</span>
+                      <span className="font-semibold text-blue-600 dark:text-blue-300">{targetScore}</span>
+                    </div>
+                  )}
+                  {daysToExam > 0 && (
+                    <div className="text-[12px] font-medium text-purple-600 dark:text-purple-300 bg-purple-500/10 rounded-xl px-3 py-2 text-center mt-0.5">
+                      До экзамена {daysToExam} {plural(daysToExam, "день", "дня", "дней")}
+                    </div>
+                  )}
+                </div>
+              </Panel>
+            )}
+
+        </>}
+
+        {mainTab === "money" && <>
+
             <Panel icon="ruble" title="Оплата" tone="green">
               {price === 0 ? (
                 <div className="text-sm text-gray-500 leading-relaxed">
@@ -615,34 +636,9 @@ function ParentDashboard({ user, onLogout }) {
               className="rounded-2xl"
             />
 
-            {(examDate || targetScore) && (
-              <Panel icon="target" title="Цель" tone="purple">
-                <div className="flex flex-col gap-2.5">
-                  {examDate && (
-                    <div className="flex justify-between items-center text-sm gap-3">
-                      <span className="text-gray-500">Экзамен</span>
-                      <span className="font-medium text-right">{examDateLabel}</span>
-                    </div>
-                  )}
-                  {targetScore && (
-                    <div className="flex justify-between items-center text-sm gap-3">
-                      <span className="text-gray-500">Целевой балл</span>
-                      <span className="font-semibold text-blue-600 dark:text-blue-300">{targetScore}</span>
-                    </div>
-                  )}
-                  {daysToExam > 0 && (
-                    <div className="text-[12px] font-medium text-purple-600 dark:text-purple-300 bg-purple-500/10 rounded-xl px-3 py-2 text-center mt-0.5">
-                      До экзамена {daysToExam} {plural(daysToExam, "день", "дня", "дней")}
-                    </div>
-                  )}
-                </div>
-              </Panel>
-            )}
+        </>}
 
-          </div>
-
-          {/* Правая колонка — учёба */}
-          <div className="min-w-0 flex flex-col gap-4 [&>*:last-child]:flex-1">
+        {mainTab === "study" && <>
 
             <ReportsFeed parentCode={student.parent_code} studentName={student.name} tutorName={tutorName} />
 
@@ -750,9 +746,6 @@ function ParentDashboard({ user, onLogout }) {
                 </div>
               )}
             </Panel>
-
-          </div>
-        </div>
 
         </>}
 
