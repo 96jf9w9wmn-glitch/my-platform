@@ -1518,6 +1518,14 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
   const typeInfo = TYPE_LABELS[hw.hw_type] || TYPE_LABELS.written
   const isPureTest = hw.hw_type === "test"
   const overdue = isOverdue(hw)
+  // Работу, которую ученик уже решал, править нельзя: правка условия разошлась бы
+  // с уже данными ответами и сданным файлом. Смотрим не только на статус: у
+  // комбинированной работы ответы теста сохраняются ещё до сдачи файла, статус
+  // при этом остаётся «Выдано». Возврат на доработку эти следы стирает
+  // (см. setStatus ниже) — там правка снова открывается.
+  const attempted = hw.status === "submitted" || hw.status === "done"
+    || (Array.isArray(hw.student_answers) && hw.student_answers.length > 0)
+    || !!hw.submission_url
 
   const testPercent = hw.test_score != null && hw.question_count
     ? Math.round((hw.test_score / hw.question_count) * 100)
@@ -1583,10 +1591,12 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
             <Icon name={typeInfo.iconName} size={12} />
             <span className="hidden sm:inline">{typeInfo.label}</span>
           </span>
-          <button onClick={() => onEdit(hw)} title="Редактировать задание" aria-label="Редактировать задание"
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-500/10 transition-colors">
-            <Icon name="edit" size={15} />
-          </button>
+          {!attempted && (
+            <button onClick={() => onEdit(hw)} title="Редактировать задание" aria-label="Редактировать задание"
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-500/10 transition-colors">
+              <Icon name="edit" size={15} />
+            </button>
+          )}
           <button onClick={() => onDelete(hw)} title="Удалить задание" aria-label="Удалить задание"
             className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-500/10 transition-colors">
             <Icon name="trash" size={15} />
