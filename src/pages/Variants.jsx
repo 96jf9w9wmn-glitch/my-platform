@@ -849,19 +849,9 @@ function VariantReview({ submission, variant, onClose, onSave }) {
     const criteria = criteriaOf(type, n, { legacyProf })
     const open = openCriteria === n
     return (
-      <div key={n}>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-600 w-24 flex-shrink-0">Задание {n}</span>
-          <div className="flex-1 min-w-0 text-xs leading-snug">
-            {chosen != null ? (
-              <div className={match ? "text-green-600" : "text-red-500"}>
-                выбран: {chosen} {match ? "✓" : correct ? `· верный: ${correct}` : ""}
-              </div>
-            ) : (
-              <div className="text-gray-400">ответ не выбран</div>
-            )}
-            {!hasFile && <div className="text-amber-600">нет фото решения</div>}
-          </div>
+      <div key={n} className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 px-3 py-2.5">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-600 flex-1 min-w-0">Задание {n}</span>
           {criteria ? (
             <button type="button" onClick={() => setOpenCriteria(open ? null : n)}
               aria-expanded={open}
@@ -873,11 +863,43 @@ function VariantReview({ submission, variant, onClose, onSave }) {
           )}
           <input type="number" min="0" max={part2Max[n]} value={scores[n]}
             onChange={(e) => setScores((prev) => ({ ...prev, [n]: e.target.value }))}
-            className="w-16 border border-gray-200 rounded-lg px-2 py-1 text-sm outline-none focus:border-blue-400 flex-shrink-0" />
+            className="w-14 border border-gray-200 rounded-lg px-2 py-1 text-sm text-center outline-none focus:border-blue-400 flex-shrink-0" />
+        </div>
+        {/* Ответ ученика и верный — двумя подписанными строками, а не одной
+            красной фразой: длинные ответы («{0} ∪ [3; +∞)») переносились и
+            слипались с «верный:», прочесть было нельзя. */}
+        <div className="mt-2 flex flex-col gap-1 text-xs leading-relaxed">
+          {chosen == null ? (
+            <div className="text-gray-400">ответ не выбран</div>
+          ) : match ? (
+            <div className="flex items-start gap-1.5 text-green-600">
+              <Icon name="check" size={13} className="mt-0.5 flex-shrink-0" />
+              <span className="min-w-0 break-words">{chosen}</span>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-start gap-2">
+                <span className="w-14 flex-shrink-0 text-gray-400">ответ</span>
+                <span className="min-w-0 break-words text-red-500">{chosen}</span>
+              </div>
+              {correct != null && (
+                <div className="flex items-start gap-2">
+                  <span className="w-14 flex-shrink-0 text-gray-400">верный</span>
+                  <span className="min-w-0 break-words text-green-600">{correct}</span>
+                </div>
+              )}
+            </>
+          )}
+          {!hasFile && (
+            <div className="flex items-center gap-1.5 text-amber-600">
+              <Icon name="image" size={12} className="flex-shrink-0" />
+              нет фото решения
+            </div>
+          )}
         </div>
         <Reveal value={open && criteria ? n : null}>
           {() => (
-            <div className="mt-2 rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 p-3 flex flex-col gap-2">
+            <div className="mt-2.5 pt-2.5 border-t border-gray-200/70 dark:border-white/10 flex flex-col gap-2">
               {criteria.map((c) => (
                 <div key={c.score} className="flex items-start gap-2.5">
                   <span className="mt-px w-5 h-5 flex-shrink-0 rounded-md bg-white ring-1 ring-gray-200 text-[11px] font-medium text-gray-600 flex items-center justify-center">{c.score}</span>
