@@ -26,6 +26,10 @@ const HISTORY_MAX = 100      // шагов «отменить» держим с�
 // Копия штриха для истории: points — массив массивов, поверхностная копия его бы разделила
 const cloneStroke = (s) => s && { ...s, points: s.points.map((p) => p.slice()) }
 const SHEET_MAX_DIM = 4000   // лист с заданием: длинные условия не должны терять чёткость
+// Доска занимает весь экран, поэтому гаснет чуть дольше обычной модалки —
+// мгновенный уход такого слоя выглядит как щелчок. Держим в паре с длительностью
+// .screen-fade.is-closing в index.css: хук снимает доску, когда затухание кончилось.
+const BOARD_CLOSE_MS = 240
 const BG_LIGHT = "#ffffff", BG_DARK = "#1c1c1e"
 const BG_COLORS = ["#ffffff", "#f2f2f7", "#fdf6e3", "#1c1c1e", "#0f172a", "#123a2e"]
 
@@ -263,7 +267,7 @@ function BoardStrip({ open, children }) {
 export default function Board({ roomId, userId, userName, theme = "light", onClose, account = null, token = null, canAddTasks = false, tutorSubject = null, tutorExamFocus = null, tutorSubjects = null, tutorOwner = false }) {
   // Доска занимает весь экран, поэтому её уход тоже должен быть плавным:
   // класс .is-closing держится, пока идёт затухание, и лишь потом зовётся onClose.
-  const { cls: closingCls, close: leave } = useClosing(onClose)
+  const { cls: closingCls, close: leave } = useClosing(onClose, BOARD_CLOSE_MS)
   const [tool, setTool] = useState("pen")   // pen | line | rect | eraser | hand
   const [color, setColor] = useState("ink")
   const [width, setWidth] = useState(WIDTHS[1])
@@ -313,7 +317,6 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // доске лежат готовые фигуры и листы с заданиями — их стирают одним движением.
   const [eraserMode, setEraserMode] = useState("stroke")   // stroke | object
   const [online, setOnline] = useState([])
-  const [saveState, setSaveState] = useState("idle")
   const [loaded, setLoaded] = useState(false)
   const [zoomPct, setZoomPct] = useState(100)
   const [selCount, setSelCount] = useState(0)
@@ -828,17 +831,18 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   }, [])
 
   // --- Сохранение ---------------------------------------------------------
+  // Доска сохраняется сама и молча: отметки «сохр…/сохранено» в шапке нет — она
+  // мигала при каждом штрихе и отвлекала от занятия. Сбой сохранения остаётся
+  // виден в консоли, чтобы молчание не прятало настоящую ошибку.
   const persist = useCallback(() => {
-    setSaveState("saving")
     const scene = { strokes: Array.from(strokes.current.values()), bg: bgRef.current, bgColor: bgColorRef.current }
     supabase.from("boards")
       .upsert({ student_id: String(roomId), scene, updated_by: userId, updated_at: new Date().toISOString() })
-      .then(({ error }) => setSaveState(error ? "idle" : "saved"))
+      .then(({ error }) => { if (error) console.error("board save", error) })
   }, [roomId, userId])
   function scheduleSave() {
     if (!loadedRef.current) return // не сохраняем до успешной загрузки сцены — иначе затрём её пустой
     clearTimeout(saveTimer.current)
-    setSaveState("saving")
     saveTimer.current = setTimeout(persist, 1200)
   }
 
@@ -871,10 +875,14 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     // Живую доску дописываем сразу: отложенное сохранение могло ещё не сработать.
     clearTimeout(saveTimer.current)
     if (loadedRef.current) persist()
-    // Снимок кладём в фоне и не ждём его: закрытие доски должно быть мгновенным,
-    // а превью ещё догружает картинки. Промис держит ref'ы и доживает после размонтирования.
-    archiveSnapshot().catch(() => {})  // истории может не быть (миграция не выполнена) — выход это не ломает
     leave()
+    // Снимок кладём в фоне и не ждём его: закрытие доски должно быть мгновенным,
+    // а превью ещё догружает картинки. Промис держит ref'ы и доживает после
+    // размонтирования, поэтому запускаем его ПОСЛЕ ухода: рисование превью
+    // занимает главный поток и рвало бы затухание доски.
+    setTimeout(() => {
+      archiveSnapshot().catch(() => {})  // истории может не быть (миграция не выполнена) — выход это не ломает
+    }, BOARD_CLOSE_MS)
   }
 
   // --- Рисование ----------------------------------------------------------
@@ -1800,9 +1808,6 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
             ))}
             {others.length > 0 && <span className="pl-3 text-xs text-gray-400">в сети</span>}
           </div>
-          <span className="text-xs text-gray-400 w-16 text-right">
-            {saveState === "saving" ? "сохр…" : saveState === "saved" ? "сохранено" : ""}
-          </span>
           <button onClick={closeBoard}
             className="press-tap p-1.5 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-blue-500/[0.07] dark:hover:bg-white/10">
             <Icon name="x" size={18} />

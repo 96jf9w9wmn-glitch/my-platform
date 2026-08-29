@@ -666,14 +666,26 @@ body::before {
 .screen-fade {
   animation: screen-enter 0.2s ease both;
 }
+/* У ухода СВОИ кадры, а не `screen-enter … reverse`: имя анимации то же — браузер
+   не запускает её заново, а лишь меняет свойства уже доигравшей, и слой пропадал
+   мгновенно, будто анимации закрытия нет вовсе. */
+@keyframes screen-exit {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
 .screen-fade.is-closing {
-  animation: screen-enter 0.18s ease both reverse;
+  animation: screen-exit 0.24s ease both;
   pointer-events: none;
 }
 
-/* Затемнение под диалогом уходит так же, как приходило */
+/* Затемнение под диалогом уходит так же, как приходило (по той же причине —
+   отдельными кадрами, иначе оно просто исчезало бы) */
+@keyframes dialog-fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
 .dialog-fade.is-closing {
-  animation: dialog-fade 0.18s ease both reverse;
+  animation: dialog-fade-out 0.18s ease both;
 }
 
 /* Блок, раскрытый под карточкой (разбор варианта), уезжает вниз, а не гаснет

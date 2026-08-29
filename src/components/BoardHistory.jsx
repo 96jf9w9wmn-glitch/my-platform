@@ -5,6 +5,9 @@ import Icon from "./Icon"
 import { useClosing } from "../useClosing"
 import { renderScene, preloadSceneImages, isDarkColor } from "./boardPaint"
 
+// Полноэкранный слой гаснет дольше модалки — в паре с .screen-fade.is-closing
+const SCREEN_CLOSE_MS = 240
+
 // История досок по ученику: что разбирали на прошлых занятиях. Живая доска одна
 // (таблица boards), а сюда при закрытии откладывается снимок сцены за день —
 // см. supabase/board_snapshots.sql. Открывается только на чтение: прошлый урок
@@ -35,7 +38,7 @@ export function BoardSnapshotView({ scene, date, studentName, onClose }) {
   const [ready, setReady] = useState(false)
   // Снимок открывается поверх всего экрана — уходить он должен так же плавно,
   // как пришёл, поэтому закрытие идёт через .is-closing (см. src/useClosing.js).
-  const { cls: closingCls, close } = useClosing(onClose)
+  const { cls: closingCls, close } = useClosing(onClose, SCREEN_CLOSE_MS)
 
   useEffect(() => {
     let alive = true
