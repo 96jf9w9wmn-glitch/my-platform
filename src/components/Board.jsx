@@ -224,6 +224,42 @@ function widthAt(base, speed, pressure) {
   return clamp(base * vMul * pMul, base * 0.5, base * 1.7)
 }
 
+// Секция панели инструментов, нужная не всем инструментам (цвет и обводка, ровные
+// фигуры). Ненужная секция не пропадает рывком, а съезжает по ширине. Ширину берём
+// с самого содержимого: `auto` не анимируется, а сумма кнопок зависит от размера
+// экрана и набора значков, поэтому числом её не задать.
+function BoardStrip({ open, children }) {
+  const inner = useRef(null)
+  const [w, setW] = useState(0)
+  useLayoutEffect(() => {
+    const el = inner.current
+    if (!el) return
+    const measure = () => setW(el.getBoundingClientRect().width)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  // Подрезка содержимого нужна только на время съезда: в покое она обрезала бы
+  // всплывающее меню обводки, которое рисуется над панелью.
+  const [anim, setAnim] = useState(false)
+  const was = useRef(open)
+  useEffect(() => {
+    if (was.current === open) return   // при первом заходе анимировать нечего
+    was.current = open
+    setAnim(true)
+    const t = setTimeout(() => setAnim(false), 320)
+    return () => clearTimeout(t)
+  }, [open])
+  return (
+    <div className={`board-strip ${open ? "is-open" : ""} ${anim ? "is-anim" : ""}`}
+      aria-hidden={!open} inert={!open}
+      style={{ width: open ? w || "auto" : 0 }}>
+      <div className="board-strip-in" ref={inner}>{children}</div>
+    </div>
+  )
+}
+
 export default function Board({ roomId, userId, userName, theme = "light", onClose, account = null, token = null, canAddTasks = false, tutorSubject = null, tutorExamFocus = null, tutorSubjects = null, tutorOwner = false }) {
   // Доска занимает весь экран, поэтому её уход тоже должен быть плавным:
   // класс .is-closing держится, пока идёт затухание, и лишь потом зовётся onClose.
@@ -299,31 +335,9 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const clipSkip = useRef(null)                    // ключ снимка, от которого отказались
   // Цвет и обводка нужны только тем инструментам, которые оставляют линию
   const stylingTool = tool === "pen" || SHAPE_TOOLS.has(tool)
-  // Секция цвета и обводки при смене инструмента съезжает по ширине, а не пропадает
-  // рывком. Ширину берём с самого содержимого: `auto` не анимируется, а сумма
-  // кнопок зависит от размера экрана и набора значков, поэтому числом её не задать.
-  const stripRef = useRef(null)
-  const [stripW, setStripW] = useState(0)
-  useLayoutEffect(() => {
-    const el = stripRef.current
-    if (!el) return
-    const measure = () => setStripW(el.getBoundingClientRect().width)
-    measure()
-    const ro = new ResizeObserver(measure)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-  // Подрезка содержимого нужна только на время съезда: в покое она обрезала бы
-  // всплывающее меню обводки, которое рисуется над панелью.
-  const [stripAnim, setStripAnim] = useState(false)
-  const stylingWas = useRef(stylingTool)
-  useEffect(() => {
-    if (stylingWas.current === stylingTool) return   // при первом заходе анимировать нечего
-    stylingWas.current = stylingTool
-    setStripAnim(true)
-    const t = setTimeout(() => setStripAnim(false), 320)
-    return () => clearTimeout(t)
-  }, [stylingTool])
+  // «Ровные фигуры» распрямляют набросок пером — другим инструментам кнопка
+  // ничего не меняет, поэтому показываем её только при пере.
+  const smartTool = tool === "pen"
   // Какая подсказка сейчас показана после нажатия (на сенсорном экране навести
   // мышь нельзя, а без названий панель — набор непонятных значков).
   const [tapped, setTapped] = useState("")
@@ -1972,25 +1986,20 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
             </button>
           ))}
 
-          {divider}
-
-          {/* SmartDraw: набросок пером сам становится ровной фигурой */}
-          <button onPointerDown={() => flashTip("smart")} onClick={toggleSmart}
-            className={`${btnBase} ${smart ? btnOn : btnIdle}`} style={smart ? undefined : idleStyle}>
-            <Icon name="sparkles" size={21} />
-            <Tip label={smart ? "Ровные фигуры включены" : "Ровные фигуры выключены"} dark={dark} show={tapped === "smart"} />
-          </button>
+          {/* SmartDraw: набросок пером сам становится ровной фигурой. Кнопка есть
+              только у пера — остальным инструментам она ничего не меняла. */}
+          <BoardStrip open={smartTool}>
+            {divider}
+            <button onPointerDown={() => flashTip("smart")} onClick={toggleSmart}
+              className={`${btnBase} ${smart ? btnOn : btnIdle}`} style={smart ? undefined : idleStyle}>
+              <Icon name="sparkles" size={21} />
+              <Tip label={smart ? "Ровные фигуры включены" : "Ровные фигуры выключены"} dark={dark} show={tapped === "smart"} />
+            </button>
+          </BoardStrip>
 
           {/* Цвет и обводка — только для инструментов, которые рисуют линию.
-              У ластика, курсора и руки они ничего не меняли и сбивали с толку.
-              Секция не пропадает рывком, а съезжает по ширине: панель при смене
-              инструмента должна уменьшаться плавно. Пока идёт съезд, содержимое
-              подрезается (`is-anim`), в покое подрезки нет — иначе всплывающее
-              меню обводки обрезалось бы панелью. */}
-          <div className={`board-strip ${stylingTool ? "is-open" : ""} ${stripAnim ? "is-anim" : ""}`}
-            aria-hidden={!stylingTool} inert={!stylingTool}
-            style={{ width: stylingTool ? stripW || "auto" : 0 }}>
-            <div className="board-strip-in" ref={stripRef}>
+              У ластика, курсора и руки они ничего не меняли и сбивали с толку. */}
+          <BoardStrip open={stylingTool}>
               {divider}
               {BASE_INKS.map((c) => {
                 const shown = resolveColor(c, dark) // «чернила» показываем реальным цветом
@@ -2018,8 +2027,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
                   </div>
                 )}
               </div>
-            </div>
-          </div>
+          </BoardStrip>
 
           {divider}
 
@@ -2140,11 +2148,15 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
                 {menuShown("mMore") && (
                   <div className={`absolute bottom-full mb-2 right-0 flex flex-col p-1.5 rounded-xl shadow-lg whitespace-nowrap ${menuAnim("mMore")}`}
                     style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
-                    <button onClick={toggleSmart}
-                      className={`press-tap flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm ${smart ? "text-blue-500" : "hover:bg-blue-500/[0.07] dark:hover:bg-white/10"}`}
-                      style={smart ? undefined : idleStyle}>
-                      <Icon name="sparkles" size={18} />Ровные фигуры{smart && <Icon name="check" size={15} />}
-                    </button>
+                    {/* Ровные фигуры распрямляют набросок пером — другим инструментам
+                        пункт ничего не меняет, поэтому его там нет */}
+                    {smartTool && (
+                      <button onClick={toggleSmart}
+                        className={`press-tap flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm ${smart ? "text-blue-500" : "hover:bg-blue-500/[0.07] dark:hover:bg-white/10"}`}
+                        style={smart ? undefined : idleStyle}>
+                        <Icon name="sparkles" size={18} />Ровные фигуры{smart && <Icon name="check" size={15} />}
+                      </button>
+                    )}
                     <button onClick={() => { closeMenu("mMore"); fileInputRef.current?.click() }}
                       className="press-tap flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm hover:bg-blue-500/[0.07] dark:hover:bg-white/10" style={idleStyle}>
                       <Icon name="image" size={18} />Добавить картинку
