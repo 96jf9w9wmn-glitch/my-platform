@@ -102,11 +102,11 @@ const chipCls = (on) =>
 // Нажатие показывает сам переключатель (щелчок рычажка + лёгкое сжатие), а не
 // серая заливка во всю строку: .no-press снимает общий overlay для широких
 // кнопок — на строке с подписью в две строки он читался как выделение текста.
-function Toggle({ on, onClick, title, note }) {
+function Toggle({ on, onClick, title, note, disabled = false }) {
   return (
-    <button type="button" onClick={onClick}
-      className="no-press group w-full flex items-start gap-3 text-left">
-      <div className={`mt-0.5 w-10 h-6 rounded-full transition relative flex-shrink-0 group-active:scale-95 ${on ? "bg-blue-600" : "bg-blue-500/15 ring-1 ring-inset ring-blue-500/25 dark:bg-white/[0.16] dark:ring-white/20"}`}>
+    <button type="button" onClick={disabled ? undefined : onClick} aria-disabled={disabled || undefined}
+      className={`no-press group w-full flex items-start gap-3 text-left ${disabled ? "opacity-60 cursor-default" : ""}`}>
+      <div className={`mt-0.5 w-10 h-6 rounded-full transition relative flex-shrink-0 ${disabled ? "" : "group-active:scale-95"} ${on ? "bg-blue-600" : "bg-blue-500/15 ring-1 ring-inset ring-blue-500/25 dark:bg-white/[0.16] dark:ring-white/20"}`}>
         <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${on ? "left-5" : "left-1"}`} />
       </div>
       <div className="min-w-0">
@@ -252,6 +252,29 @@ const oneLine = (s) => String(s || "").replace(/\s*\n+\s*/g, " ").trim()
 // у заданий части 2 в «ответе» лежит целое доказательство, его не сверить.
 const ANSWER_MAX = 40
 const isSimpleAnswer = (a) => a.length > 0 && a.length <= ANSWER_MAX && !/[\n\\{}]/.test(a)
+
+// Модель пишет математику в LaTeX — и норовит писать его же в ответе, хотя
+// ответ ученик НАБИРАЕТ с клавиатуры. Переводим то, что переводится
+// однозначно: обёртки, тонкие пробелы и дроби (\frac{1}{3} → 1/3). Корни,
+// степени и прочее оставляем как есть — работа уйдёт письменной, и это
+// честнее, чем подсунуть ученику ответ, который он не наберёт.
+function plainAnswer(raw) {
+  let a = String(raw ?? "").trim()
+  if (!a) return ""
+  a = a
+    .replace(/\$+/g, "")
+    .replace(/\\left|\\right/g, "")
+    .replace(/\\[,;:!]/g, "")
+    .replace(/\\ /g, " ")
+  // Дроби разворачиваем изнутри наружу: \frac{\frac{1}{2}}{3} — редкость, но
+  // одного прохода на неё не хватит.
+  for (let i = 0; i < 4; i++) {
+    const next = a.replace(/\\[dt]?frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, "$1/$2")
+    if (next === a) break
+    a = next
+  }
+  return a.replace(/\s+/g, " ").trim()
+}
 
 // Поле правки, которое вне редактирования показывает то же, что увидит ученик:
 // ИИ отдаёт математику простым LaTeX (\frac{1}{3}), и без рендера репетитор
@@ -463,9 +486,13 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
       const fresh = {
         title: data.title || genTopic,
         description: data.description || "",
+        // Ответ свободной работы приводим к тому виду, в котором его вводит
+        // ученик, ЗДЕСЬ — тогда репетитор в карточке видит ровно то, что уйдёт
+        // на проверку. В тесте ответ обязан дословно совпадать с вариантом,
+        // поэтому его не трогаем.
         tasks: (data.tasks || []).map((t) => ({
           question: t.question || "",
-          answer: t.answer || "",
+          answer: genAsTest ? t.answer || "" : plainAnswer(t.answer),
           options: Array.isArray(t.options) ? t.options.map((o) => String(o)) : [],
         })),
       }
@@ -522,10 +549,23 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
     syncPreview(p, mode)
   }
 
+  // Правка карточки. Способ проверки при этом можно только ПОВЫСИТЬ: репетитор
+  // переписал ответ формулой на тот, что ученик наберёт, — работа сама
+  // становится тестом. Обратно (стёр ответ, чтобы вписать свой) не сбрасываем,
+  // иначе блок проверки исчезал бы из-под рук на полуслове.
   function editPreview(fn) {
     const next = fn(preview)
     setPreview(next)
-    syncPreview(next)
+    let mode = aiMode
+    if (mode === null) {
+      const answers = next.tasks.filter((t) => t.question.trim()).map((t) => t.answer.trim())
+      if (answers.length > 0 && answers.every(isSimpleAnswer)) {
+        mode = "free"
+        setAiMode(mode)
+        setAutoCheck(true)
+      }
+    }
+    syncPreview(next, mode)
   }
 
   function updatePreviewTask(idx, field, value) {
@@ -952,11 +992,20 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                 чипов срока). Незанятое место под колонкой — просто фон, его не
                 видно, в отличие от пустоты внутри рамки. */}
             <div className="rounded-2xl ring-1 ring-gray-500/15 p-3">
+              {/* Автопроверку нельзя включить там, где сверять нечем: у работы,
+                  собранной ИИ или банком, ответы приходят вместе с заданиями, и
+                  если они не годятся для сверки (формула, развёрнутое решение),
+                  включённый тумблер вёл в тупик — «впишите ответы» без единого
+                  поля, куда их вписать. Поправьте ответ в карточке задания, и
+                  автопроверка включится сама. */}
               <Toggle
                 on={autoCheck}
+                disabled={autoCheckLocked}
                 onClick={() => setAutoCheck((v) => !v)}
                 title="Автопроверка"
-                note={autoCheck
+                note={autoCheckLocked
+                  ? "Ответы этих заданий для сверки не годятся — работу проверите вы. Впишите ответ так, как его наберёт ученик, и проверка включится"
+                  : autoCheck
                   ? "Ученик впишет ответы в кабинете, оценка выставится сразу"
                   : "Ученик прикрепит фото или файл с работой, оценку поставите вы"}
               />
@@ -1332,10 +1381,10 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                 )}
 
                 {/* У банка и ИИ ответы стоят рядом с самими заданиями — второй
-                    раз их не показываем. Но если автопроверка включена, а
-                    ответов нет (модель отдала их формулами, и для сверки они не
-                    годятся), поле нужно: иначе задание не отправить. */}
-                {autoCheck && (method === "file" || correctAnswers.length === 0) && answersBlock}
+                    раз их не показываем. Включить автопроверку без ответов там
+                    нельзя (тумблер заблокирован), так что задание без ответов не
+                    упрётся в требование их вписать. */}
+                {autoCheck && method === "file" && answersBlock}
               </div>
             </AutoHeight>
           </div>

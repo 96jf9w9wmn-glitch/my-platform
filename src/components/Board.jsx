@@ -1124,16 +1124,16 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     if (!drawing.current) return
     let s = drawing.current
     drawing.current = null
-    // SmartDraw: набросок пером, уверенно похожий на фигуру, заменяем ровной фигурой.
+    // SmartDraw: набросок пером, уверенно похожий на прямую, круг, квадрат или
+    // прямоугольник, заменяем ровной фигурой; остальное остаётся рукописным.
     // id сохраняем — у собеседника уже лежит рукописный вариант с тем же id, и
     // рассылка ровной фигуры просто заменяет его, а не кладёт вторую поверх.
     if (smart && s.tool === "pen") {
       const shape = recognizeShape(s.points, { minSize: 30 / view.current.scale })
       if (shape) {
-        // Готовая фигура задаётся габаритом (a→b), произвольный многоугольник — своими
-        // вершинами; ширина/стиль линии берутся текущие, как у нарисованной фигуры.
-        const points = shape.points || [shape.a.slice(0, 2), shape.b.slice(0, 2)]
-        s = { ...s, tool: shape.tool, points, width: s.width, dash }
+        // Фигура задаётся габаритом (a→b), как у инструмента «Фигуры»; ширина и
+        // стиль линии берутся текущие, как у нарисованной от руки.
+        s = { ...s, tool: shape.tool, points: [shape.a.slice(0, 2), shape.b.slice(0, 2)], width: s.width, dash }
       }
     }
     strokes.current.set(s.id, s)
