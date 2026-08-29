@@ -468,7 +468,8 @@ function ParentDashboard({ user, onLogout }) {
         {mainTab === "chat" && (
           // flex обязателен: Chat растягивается через flex-1, и без flex-контейнера
           // он сжимался до высоты списка контактов, оставляя под собой пустоту.
-          <div className="glass rounded-2xl overflow-hidden flex flex-col" style={{ height: "calc(var(--app-h, 100dvh) - 230px)", minHeight: 400 }}>
+          // page-active — общий въезд раздела, как у репетитора и ученика.
+          <div className="page-active glass rounded-2xl overflow-hidden flex flex-col" style={{ height: "calc(var(--app-h, 100dvh) - 230px)", minHeight: 400 }}>
             <Chat
               myId={`p:${student.id}`}
               myName={`Родитель ${student.name.split(" ")[0]}`}
@@ -482,7 +483,9 @@ function ParentDashboard({ user, onLogout }) {
           </div>
         )}
 
-        {mainTab === "home" && <>
+        {/* Контент вкладки въезжает (page-active), а не появляется рывком —
+            тот же переход, что при смене раздела у репетитора и ученика. */}
+        {mainTab === "home" && <div className="page-active flex flex-col gap-4">
 
         {tiles.length > 0 && (
           <div className={`grid gap-3 ${tilesCols}`}>
@@ -593,9 +596,9 @@ function ParentDashboard({ user, onLogout }) {
               </Panel>
             )}
 
-        </>}
+        </div>}
 
-        {mainTab === "money" && <>
+        {mainTab === "money" && <div className="page-active flex flex-col gap-4">
 
             <Panel icon="ruble" title="Оплата" tone="green">
               {price === 0 ? (
@@ -636,9 +639,9 @@ function ParentDashboard({ user, onLogout }) {
               className="rounded-2xl"
             />
 
-        </>}
+        </div>}
 
-        {mainTab === "study" && <>
+        {mainTab === "study" && <div className="page-active flex flex-col gap-4">
 
             <ReportsFeed parentCode={student.parent_code} studentName={student.name} tutorName={tutorName} />
 
@@ -747,7 +750,7 @@ function ParentDashboard({ user, onLogout }) {
               )}
             </Panel>
 
-        </>}
+        </div>}
 
       </div>
     </div>
