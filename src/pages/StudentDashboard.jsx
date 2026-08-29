@@ -34,8 +34,8 @@ import {
 // Состав варианта (какие номера в части 1, какие — во второй) знает банк заданий:
 // у математики номера идут подряд, у информатики — с пропусками, и «номер больше
 // двенадцати» там означало бы не то.
-import { part1SlotsOf, part1CountOf, part1NumbersOf, part2NumbersOf, isPart2Number, examLevelOf, numbersLabel } from "./taskBankMeta"
-import { part2MaxOf, variantMaxPrimary, examResult, secondaryLabel, scaleOf } from "../examScales"
+import { part1SlotsOf, part1CountOf, part1NumbersOf, part2NumbersOf, examLevelOf, numbersLabel } from "./taskBankMeta"
+import { variantPart2MaxOf, variantMaxPrimary, examResult, secondaryLabel, scaleOf } from "../examScales"
 // Сколько времени даётся на экзамен — вариант решается ровно столько же.
 import { examMinutesOf, formatExamDuration, formatCountdown } from "./examTiming"
 // ЕГЭ (профиль и база) — единый поток части 2 (13–19); ОГЭ — свой (20–25).
@@ -1578,8 +1578,15 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   const isGeneratedVariant = (selectedVariant?.tasks_snapshot?.length || 0) > 0
   // Часть 2 у варианта: номера заданий и 4 варианта ответа на каждый (см. Variants.jsx).
   // У №24 (доказательство) вариантов нет — только фото решения.
-  const part1Count = part1CountOf(selectedVariant?.type)
+  // Число заданий части 1 — по сохранённым ответам самого варианта: у выданных
+  // до перенумерации КИМ-2027 профилей состав части 1 другой (12 заданий, а не 11).
+  const storedPart1 = selectedVariant?.answers?.part1 || []
+  const part1Count = storedPart1.filter((a) => a != null && a !== "").length || part1CountOf(selectedVariant?.type)
   const variantChoices = selectedVariant?.answers?.part2_choices || {}
+  // Номера и баллы части 2 — с учётом нумерации самого варианта: выданные до
+  // перенумерации КИМ-2027 профили живут по раскладке 2026 года («№13» у них —
+  // тригонометрия части 2, а не экономическая задача части 1).
+  const variantP2Max = variantPart2MaxOf(selectedVariant)
   // Номера части 2 берём из фактического состава варианта; запасной путь —
   // штатный состав ВАРИАНТА (не экзамена), для старых записей без tasks_snapshot.
   // По спецификации экзамена его брать нельзя: часть 2 есть и у ОГЭ по
@@ -1587,13 +1594,18 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   // не идут — им нужен компьютер. Ученик получал бы требование прикрепить
   // решения четырёх заданий, которых в работе нет.
   const part2FromSnapshot = [...new Set((selectedVariant?.tasks_snapshot || [])
-    .map((t) => t.number).filter((n) => isPart2Number(selectedVariant?.type, n)))].sort((a, b) => a - b)
+    .map((t) => t.number).filter((n) => variantP2Max[n]))].sort((a, b) => a - b)
   const part2TaskNums = part2FromSnapshot.length
     ? part2FromSnapshot
     : part2NumbersOf(selectedVariant?.type)
+  const part2TaskSet = new Set(part2TaskNums)
   // Максимум первичного балла этого варианта и перевод во вторичный (тестовый
-  // балл или отметку) — общей шкалой из examScales.js.
-  const variantMax = variantMaxPrimary(selectedVariant?.type, [...part1NumbersOf(selectedVariant?.type), ...part2TaskNums])
+  // балл или отметку) — общей шкалой из examScales.js. Состав — из снимка
+  // самого варианта, чтобы старые работы считались по своей раскладке.
+  const snapshotNums = [...new Set((selectedVariant?.tasks_snapshot || []).map((t) => t.number))]
+  const variantMax = variantMaxPrimary(selectedVariant?.type,
+    snapshotNums.length ? snapshotNums : [...part1NumbersOf(selectedVariant?.type), ...part2TaskNums],
+    variantP2Max)
   const variantResult = examResult(selectedVariant?.type, selectedVariant?.submission?.total_score || 0, {
     geometry: scaleOf(selectedVariant?.type)?.geometryNumbers ? (selectedVariant?.submission?.geom_score ?? null) : null,
     variantMax,
@@ -2019,10 +2031,13 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
       // недавних пор лежит gen_key, по которому типаж воспроизводится свежими числами.
       // Пишем через RPC с session_token: прямой записи в task_attempts у ученика нет.
       const snap = variant.tasks_snapshot || []
+      // Часть 2 — по раскладке самого варианта (см. variantPart2MaxOf): у выданных
+      // до перенумерации КИМ-2027 профилей это старые номера.
+      const p2max = variantPart2MaxOf(variant)
       const attempts = []
       part1Answers.forEach((ans, i) => {
         const num = i + 1
-        if (num > maxCount || isPart2Number(variant.type, num)) return
+        if (num > maxCount || p2max[num]) return
         const given = (ans || "").trim()
         if (!given) return // не отвечал — это не попытка, а пропуск
         const task = snap.find((t) => t.number === num)
@@ -2671,7 +2686,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       <p className="text-xs text-gray-500 mb-4">{isEgeType(selectedVariant?.type) ? "В части 1 впиши ответ. Часть 2 реши на листе — фото решений загрузишь после отправки." : "В части 1 впиши ответ, в части 2 выбери один из четырёх. Фото решений части 2 загрузишь после отправки."}</p>
                       <div className="flex flex-col gap-3">
                         {selectedVariant.tasks_snapshot.map((t) => {
-                          const isPart2 = isPart2Number(selectedVariant?.type, t.number)
+                          const isPart2 = part2TaskSet.has(t.number)
                           const choices = isPart2 ? variantChoices[t.number] : null
                           return (
                             <div key={t.number} className="border border-gray-100 rounded-xl p-3">
@@ -2869,7 +2884,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                         <div className="text-sm text-green-500 mt-1">
                           Часть 1: {selectedVariant.submission.part1_score} / {part1Count}
                           {/* Части 2 нет у базового ЕГЭ и у информатики — строка о ней там лишняя */}
-                          {part2TaskNums.length > 0 && ` · Часть 2: ${selectedVariant.submission.part2_score} / ${part2TaskNums.reduce((sum, n) => sum + (part2MaxOf(selectedVariant.type)[n] || 0), 0)}`}
+                          {part2TaskNums.length > 0 && ` · Часть 2: ${selectedVariant.submission.part2_score} / ${part2TaskNums.reduce((sum, n) => sum + (variantP2Max[n] || 0), 0)}`}
                         </div>
                         {variantResult.projected && (
                           <div className="text-[11px] text-green-600/70 mt-2 leading-snug">

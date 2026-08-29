@@ -590,7 +590,9 @@ const SUBJECT_OF = {
   "История": "ИСТОРИИ", "Литература": "ЛИТЕРАТУРЕ", "География": "ГЕОГРАФИИ",
 }
 // Номер, с которого начинается часть 2 (развёрнутый ответ) — по типу экзамена.
-const PART2_FROM = { "ОГЭ": 20, "ЕГЭ Профиль": 13 }
+// Профиль — по КИМ-2027; лист старого варианта (часть 2 с №13) печатается с
+// явным part2Numbers, иначе тригонометрия уехала бы в часть 1.
+const PART2_FROM = { "ОГЭ": 20, "ЕГЭ Профиль": 14 }
 const EXAM_TIME = {
   "ОГЭ": "3 часа 55 минут (235 минут)",
   "ЕГЭ": "3 часа (180 минут)",
@@ -801,7 +803,7 @@ async function snapSheet(htmls, opts) {
 // mode: "blank" — лист ученику, "answers" — плюс страница ответов. Разбор в лист не
 // подшивается: печатный вариант — это КИМ, а не методичка. Ответы идут ОТДЕЛЬНОЙ
 // страницей в конце, а не рядом с заданием: иначе лист нельзя дать ученику, не засветив их.
-export async function generateVariantPdf({ title, examType, tasks, mode = "blank" }) {
+export async function generateVariantPdf({ title, examType, tasks, mode = "blank", part2Numbers = null }) {
   const pdf = new jsPDF({ unit: "px", format: "a4", orientation: "landscape" })
   // «px» у jsPDF — НЕ CSS-пиксель (A4-ландшафт = 631 единица, а не 1122): считаем всю
   // раскладку в CSS-пикселях (96 dpi, как рисует html2canvas), а на страницу кладём с
@@ -814,12 +816,16 @@ export async function generateVariantPdf({ title, examType, tasks, mode = "blank
   const contentW = colW * 2 + COL_GAP
   const opts = { width: colW, font: SHEET_FONT, fontSize: SHEET_FS, lineHeight: SHEET_LH }
 
+  // Часть 2 листа: явный список номеров варианта (у выданных до перенумерации
+  // КИМ-2027 он старый), без списка — порог по типу экзамена.
+  const p2set = part2Numbers ? new Set(part2Numbers) : null
   const part2From = PART2_FROM[examType] ?? null
-  const part1 = tasks.filter((t) => part2From == null || t.number < part2From)
-  const part2 = part2From == null ? [] : tasks.filter((t) => t.number >= part2From)
+  const isP2 = (t) => p2set ? p2set.has(t.number) : (part2From != null && t.number >= part2From)
+  const part1 = tasks.filter((t) => !isP2(t))
+  const part2 = tasks.filter(isP2)
   const hasPart2 = part2.length > 0
-  // Номера с пропусками (часть 2 профиля — 13, 15–16, 18–19) пишем перечислением:
-  // «13–19» пообещало бы ученику задания, которых в листе нет.
+  // Номера с пропусками (часть 2 профиля — 14, 16, 19–20) пишем перечислением:
+  // «14–20» пообещало бы ученику задания, которых в листе нет.
   const range = (arr) => numbersLabel(arr.map((t) => t.number), { hash: false })
 
   const images = await Promise.all(

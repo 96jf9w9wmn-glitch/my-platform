@@ -5107,7 +5107,7 @@ function buildTask(examType, number, fn) {
     exam_type: examType,
     condition_text: dash(condition_text),
     condition_tail: condition_tail ?? null,   // текст ПОД картинкой (напр. вопрос ниже таблицы/программы)
-    solution: solution ?? null,               // развёрнутое обоснование для репетитора (ЕГЭ Профиль №19)
+    solution: solution ?? null,               // развёрнутое обоснование для репетитора (ЕГЭ Профиль №20)
     program: program ?? null,                 // блоки кода на 5 языках (интерактивный вывод с копированием)
     archive: archive ?? null,                 // №11/№12: дерево файлов { name, files } для скачивания .zip
     spreadsheet: spreadsheet ?? null,         // №14: данные таблицы { name, sheetName, rows } для .xlsx

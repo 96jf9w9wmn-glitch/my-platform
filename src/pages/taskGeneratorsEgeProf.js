@@ -4,13 +4,17 @@
 // воспроизводит реальный тип задания банка (та же формулировка, свои числа); правильный
 // ответ считается кодом (или РЕШАЕТСЯ из показанных чисел), поэтому гарантированно верен.
 //
-// Этап 1 — задания без чертежей (номера 2,4,5,6,7,9,10,12).
-// №1 планиметрия — со своими SVG-чертежами.
+// НУМЕРАЦИЯ — по проекту КИМ-2027 (перенумеровано 29.08.2026): старые 6→7,
+// 7→8, 8+12→9 (слиты), 9→10, 10→11, 11→12, 13→14, 15→16, 16→13 (экономическая
+// теперь часть 1), 18→19, 19→20. Имена функций (t06*, t12*…), gen_key и файлы
+// модулей хранят СТАРЫЕ номера: на gen_key держится аналитика task_attempts,
+// а эталоны в fipi_bank_ege_prof лежат под старыми именами.
+//
 // Формат объекта генератора: { condition_text, answer }.
 // Мат-токены: дробь ⟦f:n:d⟧, корень ⟦r:x⟧, индекс ⟦b:x⟧, надстрочник ⟦sup:x⟧ — разворачивает
 // renderTaskMath(). Юникод-степени ² ³ — через sup().
 //
-// №13 (развёрнутое, часть 2: а) решить уравнение, б) корни на отрезке) — в отдельном модуле
+// №14 (развёрнутое, часть 2: а) решить уравнение, б) корни на отрезке) — в отдельном модуле
 // taskGeneratorsEgeProf13.js (свой решатель тригонометрии + численная самопроверка).
 
 import { GEN13, META13 } from "./taskGeneratorsEgeProf13"
@@ -6431,10 +6435,13 @@ export const GENERATORS_EGE_PROF = {
   3: [t03BoxTetra, t03BoxPyramid, t03BoxPyramidC1, t03BoxPyramidA1, t03BoxPrism, t03BoxTriPrism, t03BoxPrismADA1, t03PrismRightVol, t03PrismRightEdge, t03SqPrismAngle, t03TriPrismAngle, t03HexPrismAngle, t03HexPrismTri, t03HexPrismTrap, t03CylLatHeight, t03CylLatDiameter, t03MugRatio, t03TwoCylindersTaller, t03LiquidWider, t03LiquidNarrower, t03Submerge, t03SubmergeAbs, t03ConeHeight, t03ConeDiameter, t03ConeAxialFromBase, t03ConeAxialFromSlant, t03ConeLatScale, t03ConeLatScaleDown, t03ConeParSect, t03ConeFullSurfSect, t03ConeVessel, t03PrismTetraTop, t03PyrMidEdge, t03PyrSqDiagBD, t03PyrSqDiagSO, t03PyrSqVol, t03PyrSqHeight, t03PyrSqVolHL, t03PyrTriHeight, t03PyrMidSect, t03PyrMidlineCut, t03SqPrismPoly, t03PrismTetra4, t03HexPrismPyr, t03HexPrismTetra, t03PyrHexHeight, t03SphereGreatCircle, t03TwoSpheresSurf, t03TwoSpheresVol, t03SphereSumSurf, t03CubeInSphere, t03CubeInSphereVol, t03CubeInSphereVolPi, t03BoxInSphere, t03SphereInCylSurfInv, t03BoxCylHeight, t03CylCircumPrism, t03StepSolidSurface, t03CylSphereVolInv, t03PrismTetraC1, t03PrismTetraB1, t03PrismPenta, t03PrismMidline, t03PrismCut, t03PrismCutRegular, t03PrismLateral, t03PrismLateralInv, t03CylConeLateral, t03CylConeLatInverse, t03CylConeVolume, t03CylConeVolInverse, t03ConeInSphere, t03ConeInSphereInv, t03ConeSphereRadius, t03ConeSphereSlant, t03SphereInCyl, t03SphereInCylVol, t03TwoCylinders, t03CylInBox, t03CubeCut, t03CubeCutInverse, t03CubeDiagonal, t03CubeAngle, t03BoxDiagonal, t03BoxLineSin, t03BoxSection, t03BoxDiagSection, t03StepSolid, t03LSolid, t03TSolidSurface, t03SphereSection, t03ConeScale, t03ConeHeightScale],
   4: [t04ShotPut, t04Gymnastics, t04Diving, t04Tickets, t04Markers, t04Defect, t04Lottery, t04CoinTwice, t04Rooms, t04FootballCoin],
   5: [t05Lamps, t05Between, t05Shooter4, t05Coffee, t05Battery, t05ShooterN, t05DiceCond, t05TwoThemes, t05Exact],
-  6: [t06ExpReduce, t06ExpBothSides, t06ExpSqBase, t06LogEqLog, t06LogEqNum, t06LgEqNum,
+  // Ключи — номера КИМ-2027; имена функций и gen_key хранят старые номера
+  // (t06* — уравнения, ныне №7): на gen_key держится аналитика task_attempts,
+  // переименовывать их нельзя.
+  7: [t06ExpReduce, t06ExpBothSides, t06ExpSqBase, t06LogEqLog, t06LogEqNum, t06LgEqNum,
     t06LogBaseX, t06LogOfPow, t06LogBaseLin, t06PowLog, t06Rational, t06RecipRecip,
     t06Cube, t06Sqrt, t06CubeRoot, t06SqrtEqX, t06LinMixed, t06SqEqSq, t06SqEqLin],
-  7: [t07PowPowDiv, t07PowFracExp, t07PowRatioBase, t07PowProdPow, t07PowFactorize,
+  8: [t07PowPowDiv, t07PowFracExp, t07PowRatioBase, t07PowProdPow, t07PowFactorize,
     t07PowThreeBases, t07PowDecFrac, t07PowLetter,
     t07SqCoefRoot, t07DistribRoot, t07RootProdDiv, t07RootSqSum, t07RootDiffSq,
     t07RootDegrees, t07RootSameDeg,
@@ -6444,7 +6451,9 @@ export const GENERATORS_EGE_PROF = {
     t07TrigPeriod, t07TrigCofunc, t07TrigTgTg, t07TrigSin2Cofunc, t07TrigSinSqSum,
     t07LogSum, t07LogDiff, t07LogRatio, t07LogAPowLog, t07LogRatioPowBase, t07LogRecipSum,
     t07LogRootBase, t07LogChain, t07LogKRoot, t07LogFracBaseRoot, t07LogRecipProd],
-  8: [
+  // КИМ-2027 слил график производной (старое №8) и исследование функции
+  // (старое №12) в одну позицию №9 — оба списка типажей живут под одним номером.
+  9: [
     () => t8fSignCount(true), () => t8fSignCount(false), () => t8fIntSign(true), () => t8fIntSign(false),
     () => t8fDerivExtreme(true), () => t8fDerivExtreme(false),
     t8fZeroCountAll, t8fZeroPointSeg, t8fZeroCountSeg, t8fHorizTangent,
@@ -6455,24 +6464,28 @@ export const GENERATORS_EGE_PROF = {
     () => t8dDerivEqPoint(0), () => t8dDerivEqPoint(3), t8dDerivEqCount,
     t8tangentSlope, t8kinVelocityAt, t8kinTimeForVelocity, t8tangentParabC,
     () => t8Fsign(true), () => t8Fsign(false), t8FzeroCountSeg, t8integralTwoRays, t8areaGivenF,
-  ],
-  9: GEN9,
-  10: [t10SteamboatSpeed, t10SteamboatCurrent, t10SteamboatDist, t10AvgTime, t10AvgDist, t10TwoCyclists,
-    t10Barge, t10BoatCurrent, t10BoatSpeed, t10Meeting, t10TwoBoats, t10Alloy, t10Workers, t10Pipes,
-    t10JointWork, t10Weed, t10TrainLength],
-  // Только задания с источником ФИПИ (старый банк). Прочие (MATHEGE/Демо) исключены.
-  11: [t11LinValue, t11QuadRead, t11HypBasic, t11ExpValue, t11LogValue,
-    () => t11TwoLines(false), t11ParabLineK, () => t11HypLine(false), t11RootLineK],
-  12: [t12CubicPoint, t12LnPoint, t12X32Point, t12QuadLnPoint, t12LnMaxValue, t12X32MinValue,
+    t12CubicPoint, t12LnPoint, t12X32Point, t12QuadLnPoint, t12LnMaxValue, t12X32MinValue,
     t12CubicSegment, t12QuinticSegment, t12ProductLinSegment, t12ProductTwoRoots, t12PowSegment,
     t12LnKxSegment, t12LnPowSegment, t12QuadLnSegment, t12TrigLinSegment, t12TrigPiSegment,
     t12TrigRootSegment, t12TanSegment, t12TrigProductPoint, t12ExpQuadInEx, t12QuadExpPoint,
-    t12QuadExpSegment, t12LinExpSegment, t12RationalNegPoint, t12RationalRecipPoint, t12RationalSegment],
-  13: GEN13,
-  15: GEN15,
-  16: GEN16,
-  18: GEN18,
-  19: GEN19,
+    t12QuadExpSegment, t12LinExpSegment, t12RationalNegPoint, t12RationalRecipPoint, t12RationalSegment,
+  ],
+  10: GEN9,
+  11: [t10SteamboatSpeed, t10SteamboatCurrent, t10SteamboatDist, t10AvgTime, t10AvgDist, t10TwoCyclists,
+    t10Barge, t10BoatCurrent, t10BoatSpeed, t10Meeting, t10TwoBoats, t10Alloy, t10Workers, t10Pipes,
+    t10JointWork, t10Weed, t10TrainLength],
+  // Только задания с источником ФИПИ (старый банк). Прочие (MATHEGE/Демо) исключены.
+  12: [t11LinValue, t11QuadRead, t11HypBasic, t11ExpValue, t11LogValue,
+    () => t11TwoLines(false), t11ParabLineK, () => t11HypLine(false), t11RootLineK],
+  // Модули части 2 названы по старым номерам (файлы и эталоны fipi_bank_ege_prof
+  // тоже лежат под ними): GEN13 — тригонометрия (№14), GEN15 — неравенства (№16),
+  // GEN16 — экономическая (теперь №13 ЧАСТИ 1), GEN18 — параметр (№19),
+  // GEN19 — теория чисел (№20).
+  13: GEN16,
+  14: GEN13,
+  16: GEN15,
+  19: GEN18,
+  20: GEN19,
 }
 
 export const GEN_META_EGE_PROF = {
@@ -6686,7 +6699,7 @@ export const GEN_META_EGE_PROF = {
       ["exact", "Ровно k задач", t05Exact],
     ]],
     ["Условная", [["dice-cond", "Кость дважды (условие)", t05DiceCond]]]],
-  6: [["Показательные", [
+  7: [["Показательные", [
     ["exp-reduce", "Свести к основанию", t06ExpReduce],
     ["exp-both", "Обе части — степени", t06ExpBothSides],
     ["exp-sqbase", "Основание-степень: 36^(x−s)=1/6", t06ExpSqBase],
@@ -6715,7 +6728,7 @@ export const GEN_META_EGE_PROF = {
       ["rational", "1/(ax+b)=c", t06Rational],
       ["recip-recip", "1/(ax+b)=1/(cx+d)", t06RecipRecip],
     ]]],
-  7: [["Степени", [
+  8: [["Степени", [
     ["pow-div", "Степень степени (частное)", t07PowPowDiv],
     ["pow-frac", "Дробные показатели", t07PowFracExp],
     ["pow-ratio-base", "81^a / 9^b — основания одной степени", t07PowRatioBase],
@@ -6768,7 +6781,7 @@ export const GEN_META_EGE_PROF = {
       ["trig-sin2-cofunc", "k·sin2A/(cosA·cos(90°−A))", t07TrigSin2Cofunc],
       ["trig-sinsq-sum", "N/(sin²A+c+sin²(A+90°))", t07TrigSinSqSum],
     ]]],
-  8: [["График f(x): знак производной", [
+  9: [["График f(x): знак производной", [
     ["f-pos", "Сколько точек f′>0", () => t8fSignCount(true)],
     ["f-neg", "Сколько точек f′<0", () => t8fSignCount(false)],
     ["f-int-pos", "Целые точки f′>0", () => t8fIntSign(true)],
@@ -6821,46 +6834,8 @@ export const GEN_META_EGE_PROF = {
     ["Первообразная и площадь", [
       ["rays", "F(β)−F(α) по ломаной", t8integralTwoRays],
       ["area", "Площадь по первообразной", t8areaGivenF],
-    ]]],
-  9: META9,
-  10: [["Движение по воде", [
-    ["steam-speed", "Теплоход: скорость в воде", t10SteamboatSpeed],
-    ["steam-current", "Теплоход: скорость течения", t10SteamboatCurrent],
-    ["steam-dist", "Теплоход: путь за рейс", t10SteamboatDist],
-    ["boat-current", "Лодка: течение", t10BoatCurrent],
-    ["boat-speed", "Лодка: скорость в воде", t10BoatSpeed],
-    ["barge", "Баржа (обратно +1 км/ч)", t10Barge],
-  ]],
-    ["Движение по суше", [
-      ["avg-time", "Средняя скорость (время)", t10AvgTime],
-      ["avg-dist", "Средняя скорость (расстояние)", t10AvgDist],
-      ["cyclists", "Два велосипедиста", t10TwoCyclists],
-      ["meeting", "Встречное движение", t10Meeting],
-      ["two-boats", "Два теплохода (вдогонку)", t10TwoBoats],
-      ["train-len", "Длина поезда", t10TrainLength],
     ]],
-    ["Работа и смеси", [
-      ["alloy", "Сплавы (медь)", t10Alloy],
-      ["workers", "Рабочие (детали)", t10Workers],
-      ["pipes", "Трубы (резервуар)", t10Pipes],
-      ["joint", "Совместная работа", t10JointWork],
-      ["weed", "Прополка грядки", t10Weed],
-    ]]],
-  // Только типажи с источником ФИПИ (старый банк) — 9 шт.
-  11: [["Чтение значения f(x₀)", [
-    ["lin-val", "Линейная kx+b", t11LinValue],
-    ["quad-read", "Парабола ax²+bx+c", t11QuadRead],
-    ["hyp-basic", "Гипербола k/x", t11HypBasic],
-    ["exp-val", "Показательная aˣ", t11ExpValue],
-    ["log-val", "Логарифм logₐx", t11LogValue],
-  ]],
-    ["Пересечения графиков", [
-      ["2lines-x", "Две прямые: абсцисса", () => t11TwoLines(false)],
-      ["par-kx", "Парабола + g=kx: абсцисса B", t11ParabLineK],
-      ["hyp-line-x", "Гипербола + g=ax+b: абсцисса B", () => t11HypLine(false)],
-      ["root-kx", "Корень + g=kx: абсцисса B", t11RootLineK],
-    ]]],
-  12: [["Точка экстремума", [
+    ["Точка экстремума", [
     ["cubic", "Кубическая", t12CubicPoint],
     ["ln-point", "Логарифм со сдвигом", t12LnPoint],
     ["x32-point", "Степенная x√x", t12X32Point],
@@ -6890,9 +6865,47 @@ export const GEN_META_EGE_PROF = {
       ["lin-exp-seg", "Линейная × eˣ на отрезке", t12LinExpSegment],
       ["rat-seg", "(x²+a)/x на отрезке", t12RationalSegment],
     ]]],
-  13: META13,
-  15: META15,
-  16: META16,
-  18: META18,
-  19: META19,
+  10: META9,
+  11: [["Движение по воде", [
+    ["steam-speed", "Теплоход: скорость в воде", t10SteamboatSpeed],
+    ["steam-current", "Теплоход: скорость течения", t10SteamboatCurrent],
+    ["steam-dist", "Теплоход: путь за рейс", t10SteamboatDist],
+    ["boat-current", "Лодка: течение", t10BoatCurrent],
+    ["boat-speed", "Лодка: скорость в воде", t10BoatSpeed],
+    ["barge", "Баржа (обратно +1 км/ч)", t10Barge],
+  ]],
+    ["Движение по суше", [
+      ["avg-time", "Средняя скорость (время)", t10AvgTime],
+      ["avg-dist", "Средняя скорость (расстояние)", t10AvgDist],
+      ["cyclists", "Два велосипедиста", t10TwoCyclists],
+      ["meeting", "Встречное движение", t10Meeting],
+      ["two-boats", "Два теплохода (вдогонку)", t10TwoBoats],
+      ["train-len", "Длина поезда", t10TrainLength],
+    ]],
+    ["Работа и смеси", [
+      ["alloy", "Сплавы (медь)", t10Alloy],
+      ["workers", "Рабочие (детали)", t10Workers],
+      ["pipes", "Трубы (резервуар)", t10Pipes],
+      ["joint", "Совместная работа", t10JointWork],
+      ["weed", "Прополка грядки", t10Weed],
+    ]]],
+  // Только типажи с источником ФИПИ (старый банк) — 9 шт.
+  12: [["Чтение значения f(x₀)", [
+    ["lin-val", "Линейная kx+b", t11LinValue],
+    ["quad-read", "Парабола ax²+bx+c", t11QuadRead],
+    ["hyp-basic", "Гипербола k/x", t11HypBasic],
+    ["exp-val", "Показательная aˣ", t11ExpValue],
+    ["log-val", "Логарифм logₐx", t11LogValue],
+  ]],
+    ["Пересечения графиков", [
+      ["2lines-x", "Две прямые: абсцисса", () => t11TwoLines(false)],
+      ["par-kx", "Парабола + g=kx: абсцисса B", t11ParabLineK],
+      ["hyp-line-x", "Гипербола + g=ax+b: абсцисса B", () => t11HypLine(false)],
+      ["root-kx", "Корень + g=kx: абсцисса B", t11RootLineK],
+    ]]],
+  13: META16,
+  14: META13,
+  16: META15,
+  19: META18,
+  20: META19,
 }

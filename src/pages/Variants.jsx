@@ -6,7 +6,7 @@ import { plural, getInitials, plainTaskMath, answersEqual } from "../utils"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
 import { isModuleNumber, part1NumbersOf, part1SlotsOf, part2NumbersOf, isPart2Number, examLevelOf, numbersLabel, VARIANT_TYPES } from "./taskBankMeta"
-import { scaleOf, part2MaxOf, variantMaxPrimary, examResult, secondaryLabel } from "../examScales"
+import { scaleOf, variantPart2MaxOf, isLegacyProfVariant, variantMaxPrimary, examResult, secondaryLabel } from "../examScales"
 import { criteriaOf, gradingNotesOf } from "../examCriteria"
 // Вариант ученик решает столько же, сколько длится настоящий экзамен.
 import { examMinutesOf, formatExamDuration } from "./examTiming"
@@ -67,6 +67,7 @@ function VariantFileBlock({ variant, tutorId, onBuilt, onPreview }) {
       }))
       const blob = await (await loadVariantPdf()).generateVariantPdf({
         title: variant.title, examType: variant.type, tasks, mode: "answers",
+        part2Numbers: variantPart2Tasks(variant),
       })
       const objUrl = URL.createObjectURL(blob)
       const a = document.createElement("a")
@@ -85,7 +86,10 @@ function VariantFileBlock({ variant, tutorId, onBuilt, onPreview }) {
     setBusy(true); setErr("")
     try {
       const { generateVariantPdf } = await loadVariantPdf()
-      const blob = await generateVariantPdf({ title: variant.title, examType: variant.type, tasks: variant.tasks_snapshot })
+      const blob = await generateVariantPdf({
+        title: variant.title, examType: variant.type, tasks: variant.tasks_snapshot,
+        part2Numbers: variantPart2Tasks(variant),
+      })
       const fileName = storageFileName(tutorId, "pdf")
       const { error: upErr } = await supabase.storage.from("variants").upload(fileName, blob, { contentType: "application/pdf" })
       if (upErr) throw upErr
@@ -188,7 +192,7 @@ function BankTasksBlock({ tasks, title }) {
       {open && (
         <TasksModal
           title={title || "Задания варианта"}
-          note="то же, что видит ученик"
+          note="состав варианта"
           items={variantTaskItems(tasks)}
           onClose={() => setOpen(false)}
         />
@@ -214,18 +218,23 @@ const isEgeType = (t) => examLevelOf(t) === "ЕГЭ"
 const isMathType = (t) => t === "ОГЭ" || t === "ЕГЭ" || t === "ЕГЭ Профиль"
 
 // Задания части 2, реально вошедшие в вариант. У старых вариантов снимка нет —
-// берём штатный состав экзамена.
+// берём штатный состав экзамена. Баллы и набор — через variantPart2MaxOf:
+// варианты, выданные до перенумерации КИМ-2027, живут по раскладке 2026 года.
 function variantPart2Tasks(variant) {
-  const max = part2MaxOf(variant?.type)
+  const max = variantPart2MaxOf(variant)
   const snap = [...new Set((variant?.tasks_snapshot || []).map((t) => t.number).filter((n) => max[n]))].sort((a, b) => a - b)
   return snap.length ? snap : part2NumbersOf(variant?.type).filter((n) => max[n])
 }
 
 // Максимум первичного балла этого варианта. Он меньше экзаменационного: в
 // вариант идёт только то, что решается на бумаге, поэтому вторичный балл по
-// нему — прогноз (см. examScales.js).
-const variantMaxOf = (variant) =>
-  variantMaxPrimary(variant?.type, [...part1NumbersOf(variant?.type), ...variantPart2Tasks(variant)])
+// нему — прогноз (см. examScales.js). Состав берём из снимка самого варианта:
+// у выданных до перенумерации профилей часть 1 и часть 2 старые.
+const variantMaxOf = (variant) => {
+  const snapNums = [...new Set((variant?.tasks_snapshot || []).map((t) => t.number))]
+  const nums = snapNums.length ? snapNums : [...part1NumbersOf(variant?.type), ...variantPart2Tasks(variant)]
+  return variantMaxPrimary(variant?.type, nums, variantPart2MaxOf(variant))
+}
 
 // Результат сданной работы по шкале её экзамена. geom_score — колонка с двойным
 // смыслом: у ОГЭ по математике там баллы за геометрию, у экзаменов с тестовым
@@ -773,7 +782,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
       {showPicked && (
         <TasksModal
           title={title.trim() || "Собранный вариант"}
-          note="то же, что увидит ученик"
+          note="условия и ответы"
           items={variantTaskItems(bankPicked)}
           onClose={() => setShowPicked(false)}
         />
@@ -793,8 +802,11 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
 function VariantReview({ submission, variant, onClose, onSave }) {
   const { cls: closingCls, close } = useClosing(onClose)
   const type = variant?.type || "ОГЭ"
-  const part2Max = part2MaxOf(type)
+  const part2Max = variantPart2MaxOf(variant)
   const part2Tasks = variantPart2Tasks(variant)
+  // Вариант выдан до перенумерации КИМ-2027: критерии показываем по его
+  // старой раскладке («№13» в такой работе — тригонометрия, «№16» — экономическая).
+  const legacyProf = isLegacyProfVariant(variant)
   const [scores, setScores] = useState(part2Tasks.reduce((acc, n) => ({ ...acc, [n]: submission.part2_score_detail?.[n] ?? "" }), {}))
   const [loading, setLoading] = useState(false)
   // Критерии ФИПИ по одному номеру за раз: развёрнутые сразу все занимают
@@ -803,12 +815,14 @@ function VariantReview({ submission, variant, onClose, onSave }) {
   const [showNotes, setShowNotes] = useState(false)
   const notes = gradingNotesOf(type)
 
-  const part1Numbers = part1NumbersOf(type)
-  const part1Max = part1Numbers.length
+  // Часть 1 — по сохранённым ответам самого варианта, а не по текущему списку
+  // номеров: у выданных до перенумерации профилей состав части 1 другой.
+  const part1Answers = variant.answers?.part1 || []
+  const part1Max = part1Answers.length ? part1Answers.filter((a) => a != null && a !== "").length : part1NumbersOf(type).length
   // Балл части 1 считает ученик при сдаче тем же answersEqual. Пересчитываем
   // только для старых записей, где его не сохранили.
-  const part1Score = submission.part1_score ?? part1Numbers.reduce(
-    (n, num) => n + (answersEqual(submission.part1_answers?.[num - 1], variant.answers?.part1?.[num - 1]) ? 1 : 0), 0)
+  const part1Score = submission.part1_score ?? part1Answers.reduce(
+    (n, ans, i) => n + (answersEqual(submission.part1_answers?.[i], ans) ? 1 : 0), 0)
 
   const part2Total = Object.values(scores).reduce((s, v) => s + (Number(v) || 0), 0)
   const part2MaxTotal = part2Tasks.reduce((s, n) => s + part2Max[n], 0)
@@ -832,7 +846,7 @@ function VariantReview({ submission, variant, onClose, onSave }) {
     const match = chosen != null && correct != null && String(chosen).trim() === String(correct).trim()
     // Критерии ФИПИ для этого номера: по ним эксперт на экзамене и решает,
     // сколько ставить за неполное решение. Без них балл ставится на глаз.
-    const criteria = criteriaOf(type, n)
+    const criteria = criteriaOf(type, n, { legacyProf })
     const open = openCriteria === n
     return (
       <div key={n}>

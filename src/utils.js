@@ -231,7 +231,7 @@ export function matchBlock({ leftHdr, rightHdr, left, right, letters }) {
   return `⟦match⟧${leftHdr}‖${rightHdr}‖${L.join("")}‖${left.join("⁞")}‖${right.join("⁞")}⟦endmatch⟧`
 }
 
-// ── Простая таблица данных (график погашения долга в №16 ЕГЭ Профиль и т.п.) ──
+// ── Простая таблица данных (график погашения долга в №13 ЕГЭ Профиль и т.п.) ──
 // В эталоне ФИПИ график долга напечатан именно ТАБЛИЦЕЙ («Дата | 15.01 | 15.02 …»,
 // «Долг (в млн руб) | 1 | 0,6 …»), а не строкой текста, — повторяем один в один.
 // rows — массив строк, каждая строка массив ячеек; ПЕРВАЯ строка = шапка.
@@ -822,6 +822,26 @@ export function parseHomeworkTasks(desc) {
   }
   if (cur) tasks.push(cur)
   return { intro: intro.join("\n"), tasks }
+}
+
+// Строки описания + приложения из банка → единый список для окна.
+// Счёт заданий банка должен сходиться со строками описания, иначе к заданию
+// прилипнет чужой чертёж (то же условие, что и в списке разбора).
+export function homeworkTaskItems(hw) {
+  const { intro, tasks } = parseHomeworkTasks(hw.description || "")
+  const options = Array.isArray(hw.test_options) ? hw.test_options : null
+  const answers = Array.isArray(hw.correct_answers) ? hw.correct_answers : []
+  const bank = Array.isArray(hw.bank_tasks) && hw.bank_tasks.length === tasks.length ? hw.bank_tasks : null
+  return {
+    intro,
+    items: tasks.map((t, i) => ({
+      n: t.n ?? i + 1,
+      text: t.text,
+      bankTask: bank?.[i] || null,
+      answer: answers[i] ?? null,
+      options: options?.[i] || null,
+    })),
+  }
 }
 
 // new Date("YYYY-MM-DD") parses as UTC midnight, which shifts a day back in
