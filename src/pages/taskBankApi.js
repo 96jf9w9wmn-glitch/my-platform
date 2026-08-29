@@ -3,6 +3,10 @@ import { hasGenerators, generateTask } from "./taskGenerators"
 import { hasModules, buildModuleTasks, moduleExamTypes } from "./taskModules"
 import { normalizeTaskImage } from "../utils"
 import { PART2_NUMBERS, MODULE_EXAM_TYPES, part1NumbersOf, part2NumbersOf, VARIANT_TYPES } from "./taskBankMeta"
+import { makeAnswerChoices, choiceBaseOf } from "./answerChoices"
+// Реэкспорт: «Варианты» берут построитель вариантов ответа из банка и не знают,
+// что он живёт отдельным лёгким модулем.
+export { makeAnswerChoices, choiceBaseOf } from "./answerChoices"
 
 // «Лечит» image_url строк банка, сохранённых до разворота мат-токенов (иначе в подписи чертежа
 // виден сырой «4⟦r:2⟧»). Идемпотентно для новых строк без токенов.
@@ -10,83 +14,19 @@ const healImages = (rows) => (rows || []).map((t) => t?.image_url ? { ...t, imag
 
 const PART2_NUMBERS_BY_TYPE = PART2_NUMBERS
 
-const shuffle = (arr) => {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[arr[i], arr[j]] = [arr[j], arr[i]]
-  }
-  return arr
+// Заданию части 2 добавляются варианты ответа: балл всё равно ставит репетитор по
+// фотографии решения, но выбор фиксирует, к чему ученик пришёл, и даёт ему сверку.
+// Раньше это делалось только для ОГЭ, и у части 2 ЕГЭ выбора не было вовсе. У ЕГЭ
+// ответ двухчастный, поэтому выбор строится по пункту б) (choiceBaseOf), а его буква
+// едет вместе с вариантами — иначе ученик не поймёт, что именно выбирает.
+// Ответ без чисел (доказательства ОГЭ №24, «да/нет» с обоснованием) вариантов не
+// получает — makeAnswerChoices вернёт null, и задание остаётся только с фото.
+const withChoices = (examType, t) => {
+  if (!t || t.choices || !PART2_NUMBERS_BY_TYPE[examType]?.includes(t.number)) return t
+  const choices = makeAnswerChoices(t.answer)
+  if (!choices) return t
+  return { ...t, choices, choices_part: choiceBaseOf(t.answer).part }
 }
-
-const NUM_RE = /[−-]?\d+(?:[.,]\d+)?/g
-
-// Шаг возмущения числа в ответе: у десятичных — последний разряд («0,6» → ±0,1),
-// у целых — 1, у крупных целых (скорости, площади) — 5, чтобы дистрактор был правдоподобен.
-function perturbStep(tok) {
-  const frac = (tok.split(/[.,]/)[1] || "").length
-  if (frac > 0) return Math.pow(10, -frac)
-  return Math.abs(parseFloat(tok.replace(",", ".").replace("−", "-"))) >= 30 ? 5 : 1
-}
-
-// Сдвигает числовой токен на delta, сохраняя формат: десятичную запятую, число знаков
-// после запятой и стиль минуса исходного ответа (в №20 — математический U+2212).
-function perturbToken(tok, delta, minus) {
-  const frac = (tok.split(/[.,]/)[1] || "").length
-  const comma = tok.includes(",")
-  const v = parseFloat(tok.replace(",", ".").replace("−", "-")) + delta
-  let out = Math.abs(v).toFixed(frac)
-  if (comma) out = out.replace(".", ",")
-  return (v < 0 ? minus : "") + out
-}
-
-// Дистрактор не должен выдавать себя: отсеиваем вырожденные варианты — двойное неравенство
-// с перевёрнутыми границами («2 < m < 1» — пустое множество) и повтор части составного
-// ответа («m = −5; m = −5»).
-function plausibleChoice(cand) {
-  for (const m of cand.matchAll(/([−-]?\d+(?:[.,]\d+)?)\s*[<⩽≤]\s*[a-zа-яё]+\s*[<⩽≤]\s*([−-]?\d+(?:[.,]\d+)?)/gi)) {
-    const a = parseFloat(m[1].replace(",", ".").replace("−", "-"))
-    const b = parseFloat(m[2].replace(",", ".").replace("−", "-"))
-    if (!(a < b)) return false
-  }
-  const parts = cand.split(/;\s*/)
-  if (parts.length > 1 && new Set(parts.map((p) => p.trim())).size !== parts.length) return false
-  return true
-}
-
-// Четыре варианта ответа для задания части 2: правильный + три правдоподобных дистрактора
-// (возмущение чисел правильного ответа). Работает и для составных ответов («−4; 1», «12/5»,
-// «3√2», «6 и 4»). Текстовые ответы без чисел (доказательства №24) вариантов не получают — null.
-export function makeAnswerChoices(answer) {
-  const src = String(answer ?? "").trim()
-  if (!src || src.length > 60) return null
-  const tokens = [...src.matchAll(NUM_RE)]
-  if (!tokens.length) return null
-  const minus = src.includes("−") ? "−" : "-"
-  const seen = new Set([src])
-  const cands = []
-  outer: for (const k of [1, -1, 2, -2, 3, -3]) {
-    for (const m of tokens) {
-      const orig = parseFloat(m[0].replace(",", ".").replace("−", "-"))
-      const shifted = orig + k * perturbStep(m[0])
-      // положительное число (длина, скорость, площадь) не делаем отрицательным — такой
-      // дистрактор неправдоподобен и выдаёт себя
-      if (orig >= 0 && shifted < 0) continue
-      const next = perturbToken(m[0], k * perturbStep(m[0]), minus)
-      const cand = src.slice(0, m.index) + next + src.slice(m.index + m[0].length)
-      if (!seen.has(cand) && plausibleChoice(cand)) { seen.add(cand); cands.push(cand) }
-      if (cands.length >= 6) break outer
-    }
-  }
-  if (cands.length < 3) return null
-  return shuffle([src, ...shuffle(cands).slice(0, 3)])
-}
-
-// Заданию части 2 ОГЭ добавляются варианты ответа (ученик выбирает один из четырёх).
-// У ЕГЭ Профиль часть 2 — развёрнутое решение (фото + балл репетитора), выбора ответа нет.
-const withChoices = (examType, t) =>
-  t && examType === "ОГЭ" && PART2_NUMBERS_BY_TYPE[examType]?.includes(t.number) && !t.choices
-    ? { ...t, choices: makeAnswerChoices(t.answer) }
-    : t
 
 export { isModuleNumber } from "./taskBankMeta"
 

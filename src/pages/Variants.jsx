@@ -6,6 +6,7 @@ import { plural, getInitials, plainTaskMath, answersEqual } from "../utils"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
 import { isModuleNumber, part1NumbersOf, part1SlotsOf, part2NumbersOf, isPart2Number, examLevelOf, numbersLabel, VARIANT_TYPES } from "./taskBankMeta"
+import { choiceBaseOf } from "./answerChoices"
 import { scaleOf, variantPart2MaxOf, isLegacyProfVariant, variantMaxPrimary, examResult, secondaryLabel } from "../examScales"
 import { criteriaOf, gradingNotesOf } from "../examCriteria"
 // Вариант ученик решает столько же, сколько длится настоящий экзамен.
@@ -419,12 +420,18 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
 
     // Варианты ответа части 2 (ученик выбирает один из четырёх): у собранного из банка
     // берутся у сгенерированных заданий, у своего файла строятся из введённых ответов.
+    // Ответ ЕГЭ двухчастный, и выбор идёт по пункту б) — букву пункта храним рядом,
+    // иначе ученик не поймёт, к чему относятся четыре варианта.
     const { makeAnswerChoices } = await loadBank()
     const part2Choices = {}
+    const part2ChoicesPart = {}
     for (const n of part2Numbers) {
-      const fromBank = source === "bank" ? bankPicked.find((t) => t.number === n)?.choices : null
-      const choices = fromBank || makeAnswerChoices(part2Answers[n])
-      if (choices) part2Choices[n] = choices
+      const picked = source === "bank" ? bankPicked.find((t) => t.number === n) : null
+      const choices = picked?.choices || makeAnswerChoices(part2Answers[n])
+      if (!choices) continue
+      part2Choices[n] = choices
+      const part = picked ? picked.choices_part : choiceBaseOf(part2Answers[n]).part
+      if (part) part2ChoicesPart[n] = part
     }
 
     // PDF собранного варианта здесь НЕ делается: сборка листа занимает секунды, и всё это
@@ -434,7 +441,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
 
     const { data, error } = await supabase.from("variants").insert({
       tutor_id: tutorId, title, type: examType,
-      answers: { part1: answers, part2: part2Answers, part2_choices: part2Choices },
+      answers: { part1: answers, part2: part2Answers, part2_choices: part2Choices, part2_choices_part: part2ChoicesPart },
       file_url: fileUrl, tasks_snapshot: tasksSnapshot,
     }).select().single()
 
@@ -843,7 +850,9 @@ function VariantReview({ submission, variant, onClose, onSave }) {
     const chosen = submission.part2_choices?.[n]
     const correct = variant.answers?.part2?.[n]
     const hasFile = !!submission.part2_files?.[n]
-    const match = chosen != null && correct != null && String(chosen).trim() === String(correct).trim()
+    // Ученик выбирал ответ по пункту б) (ответ ЕГЭ двухчастный) — сверяем с той же
+    // частью, иначе верный выбор всегда показывался бы как несовпавший.
+    const match = chosen != null && correct != null && String(chosen).trim() === choiceBaseOf(correct).text.trim()
     // Критерии ФИПИ для этого номера: по ним эксперт на экзамене и решает,
     // сколько ставить за неполное решение. Без них балл ставится на глаз.
     const criteria = criteriaOf(type, n, { legacyProf })

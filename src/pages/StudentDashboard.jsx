@@ -35,6 +35,7 @@ import {
 // у математики номера идут подряд, у информатики — с пропусками, и «номер больше
 // двенадцати» там означало бы не то.
 import { part1SlotsOf, part1CountOf, part1NumbersOf, part2NumbersOf, examLevelOf, numbersLabel } from "./taskBankMeta"
+import { choiceBaseOf } from "./answerChoices"
 import { variantPart2MaxOf, variantMaxPrimary, examResult, secondaryLabel, scaleOf } from "../examScales"
 // Сколько времени даётся на экзамен — вариант решается ровно столько же.
 import { examMinutesOf, formatExamDuration, formatCountdown } from "./examTiming"
@@ -1591,6 +1592,11 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   const storedPart1 = selectedVariant?.answers?.part1 || []
   const part1Count = storedPart1.filter((a) => a != null && a !== "").length || part1CountOf(selectedVariant?.type)
   const variantChoices = selectedVariant?.answers?.part2_choices || {}
+  // Ответ задания части 2 у ЕГЭ двухчастный, и выбирается пункт б) — подписываем,
+  // какой именно. У вариантов, собранных до появления подписи, карты нет: букву
+  // достаём из самого ответа, если он ученику уже виден (разбор после проверки).
+  const variantChoicesPart = selectedVariant?.answers?.part2_choices_part || {}
+  const choicePartOf = (n) => variantChoicesPart[n] || choiceBaseOf(selectedVariant?.answers?.part2?.[n]).part
   // Номера и баллы части 2 — с учётом нумерации самого варианта: выданные до
   // перенумерации КИМ-2027 профили живут по раскладке 2026 года («№13» у них —
   // тригонометрия части 2, а не экономическая задача части 1).
@@ -2737,11 +2743,16 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                                 />
                               )}
                               {isPart2 && choices?.length > 0 && (
-                                <ChoiceChips
-                                  choices={choices}
-                                  value={part2Choices[t.number]}
-                                  onSelect={(c) => setPart2Choices((prev) => ({ ...prev, [t.number]: c ?? undefined }))}
-                                />
+                                <>
+                                  <div className="text-xs text-gray-500 mb-1.5">
+                                    {choicePartOf(t.number) ? `Выбери ответ пункта ${choicePartOf(t.number)})` : "Выбери ответ"}
+                                  </div>
+                                  <ChoiceChips
+                                    choices={choices}
+                                    value={part2Choices[t.number]}
+                                    onSelect={(c) => setPart2Choices((prev) => ({ ...prev, [t.number]: c ?? undefined }))}
+                                  />
+                                </>
                               )}
                               {/* Решение прикрепляется здесь же, по ходу работы: оно пишется на
                                   листе прямо сейчас, и фотографировать его удобнее сразу. */}
@@ -2828,7 +2839,10 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                           <div className="flex flex-col gap-3">
                             {part2TaskNums.map((n) => (
                               <div key={n}>
-                                <div className="text-xs text-gray-500 mb-1">Задание {n}</div>
+                                <div className="text-xs text-gray-500 mb-1">
+                                  Задание {n}
+                                  {variantChoices[n]?.length > 0 && choicePartOf(n) && ` · ответ пункта ${choicePartOf(n)})`}
+                                </div>
                                 {variantChoices[n]?.length > 0 && (
                                   <ChoiceChips
                                     choices={variantChoices[n]}
@@ -2981,6 +2995,9 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                             {part2TaskNums.map((n) => {
                               const chosen = selectedVariant.submission.part2_choices?.[n]
                               const correct = selectedVariant.answers?.part2?.[n]
+                              // Выбор шёл по пункту б), а хранится полный ответ — сверяем с той
+                              // же частью, иначе верный выбор показался бы ошибкой.
+                              const correctChoice = choiceBaseOf(correct).text
                               const score = Number(selectedVariant.submission.part2_score_detail?.[n] || 0)
                               const max = isEgeType(selectedVariant.type) ? ({ 13: 2, 14: 3, 15: 2, 16: 2, 17: 3, 18: 4, 19: 4 })[n] : 2
                               return (
@@ -2990,9 +3007,9 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                                       а не обрезаем: обрезанный текст вылезал за карточку. */}
                                   <div className="flex-1 min-w-0 flex flex-col gap-0.5">
                                     <span className="text-gray-700 break-words">{chosen ?? "—"}</span>
-                                    {correct != null && String(chosen ?? "").trim() !== String(correct).trim() && (
+                                    {correct != null && String(chosen ?? "").trim() !== correctChoice.trim() && (
                                       <span className="text-gray-400 text-xs break-words">
-                                        правильно: <span className="text-gray-700 font-medium">{correct}</span>
+                                        правильно: <span className="text-gray-700 font-medium">{correctChoice}</span>
                                       </span>
                                     )}
                                   </div>
