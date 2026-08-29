@@ -39,7 +39,10 @@ CREATE POLICY tutor_report_settings_owner ON public.tutor_report_settings
 
 -- Читающие функции отдают те же поля, что и раньше, плюс новые: печатный лист
 -- у родителя и ученика собирается ровно из того, что сохранено при отправке.
-CREATE OR REPLACE FUNCTION public.lesson_report_list(p_account uuid, p_token uuid, p_student_id text)
+-- Список колонок в RETURNS TABLE меняется, поэтому CREATE OR REPLACE поверх
+-- прежней версии падает («cannot change return type») — сначала снимаем старую.
+DROP FUNCTION IF EXISTS public.lesson_report_list(uuid, uuid, text);
+CREATE FUNCTION public.lesson_report_list(p_account uuid, p_token uuid, p_student_id text)
 RETURNS TABLE (id uuid, lesson_date date, topics jsonb, summary text, next_steps text,
                sent_at timestamptz, period_from date, period_to date, stats jsonb, lessons jsonb)
 LANGUAGE plpgsql
@@ -66,7 +69,8 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.lesson_report_list(uuid, uuid, text) TO anon, authenticated;
 
-CREATE OR REPLACE FUNCTION public.lesson_report_list_parent(p_parent_code text)
+DROP FUNCTION IF EXISTS public.lesson_report_list_parent(text);
+CREATE FUNCTION public.lesson_report_list_parent(p_parent_code text)
 RETURNS TABLE (id uuid, lesson_date date, topics jsonb, summary text, next_steps text,
                period_from date, period_to date, stats jsonb, lessons jsonb)
 LANGUAGE plpgsql
