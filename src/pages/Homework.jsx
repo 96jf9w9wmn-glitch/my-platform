@@ -9,12 +9,13 @@ import Collapse from "../components/Collapse"
 import Reveal from "../components/Reveal"
 import AutoHeight from "../components/AutoHeight"
 import FormulaBackdrop from "../components/FormulaBackdrop"
-import { parseLocalDate, renderHomeworkMath, parseHomeworkTasks, plural, hasAttachment, getInitials } from "../utils"
+import { parseLocalDate, renderHomeworkMath, plainTaskMath, superscriptPowers, parseHomeworkTasks, homeworkTaskItems, plural, hasAttachment, getInitials } from "../utils"
 import { usePlan } from "../subscription"
 import { PlanHint, PlanLock } from "../components/PlanLock"
 import ConfirmModal from "../components/ConfirmModal"
 import { isOwner } from "../owner"
 import TaskAttachments from "../components/TaskAttachments"
+import TasksModal from "../components/TasksModal"
 import { useClosing } from "../useClosing"
 import useGridCols, { detailRowEndOf } from "../useGridCols"
 import getAvatarColor from "../avatarColor"
@@ -356,6 +357,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
   const [bankPick, setBankPick] = useState({})
   const [bankOpen, setBankOpen] = useState(null)   // раскрытый номер (темы)
   const [bankTasks, setBankTasks] = useState([])
+  const [showBankPreview, setShowBankPreview] = useState(false) // собранная работа окном
   const [bankSkipped, setBankSkipped] = useState([])
   const [bankBusy, setBankBusy] = useState(false)
   const [bankError, setBankError] = useState("")
@@ -1038,6 +1040,19 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
 
                         {bankTasks.length > 0 && (
                           <div className="flex flex-col gap-1.5">
+                            {/* Список рядом с настройками тесный: длинные условия
+                                с системой и дробью в нём переносятся посреди
+                                формулы. Целиком работа смотрится окном — тем же,
+                                каким репетитор открывает её из разбора. */}
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-gray-500">
+                                Собрано {bankTasks.length} {plural(bankTasks.length, "задание", "задания", "заданий")}
+                              </span>
+                              <button type="button" onClick={() => setShowBankPreview(true)}
+                                className="no-press inline-flex items-center gap-1 text-[11px] text-blue-600 hover:opacity-70 active:scale-95 transition-all">
+                                <Icon name="maximize" size={11} />Посмотреть целиком
+                              </button>
+                            </div>
                             {bankTasks.map((t, i) => (
                               <div key={t.id || i} className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 px-2.5 py-2 flex items-start gap-2.5">
                                 <span className="shrink-0 w-5 h-5 rounded-full bg-blue-500/12 text-blue-600 dark:text-blue-400 text-[10px] font-semibold flex items-center justify-center">
@@ -1290,105 +1305,22 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
           </div>
         </div>
       </div>
+      {showBankPreview && bank && (
+        <TasksModal
+          title={title.trim() || "Собранная работа"}
+          note="условия и ответы"
+          items={bankTasks.map((t, i) => ({
+            n: i + 1,
+            text: bank.taskText(t),
+            bankTask: t,
+            answer: t.answer ?? null,
+            options: null,
+          }))}
+          onClose={() => setShowBankPreview(false)}
+        />
+      )}
     </div>,
     document.body
-  )
-}
-
-
-// Сколько заданий видно до разворота: карточек в списке много, полный текст
-// теста на 15 вопросов превращает страницу в простыню.
-const TASKS_PREVIEW = 3
-
-// Одно задание строкой: номер кружком, условие, правильный ответ справа.
-function TaskLine({ t, options, answer, bankTask }) {
-  return (
-    <div className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 px-2.5 py-2">
-      <div className="flex items-start gap-2.5">
-        <span className="shrink-0 w-5 h-5 rounded-full bg-blue-500/12 text-blue-600 dark:text-blue-400 text-[10px] font-semibold flex items-center justify-center">
-          {t.n}
-        </span>
-        <div className="min-w-0 flex-1 flex flex-col gap-1">
-          <div
-            className="text-xs text-gray-700 leading-relaxed"
-            dangerouslySetInnerHTML={{ __html: renderHomeworkMath(t.text) }}
-          />
-          {/* Чертёж и файлы выданной работы: репетитор смотрит ровно то, что у ученика. */}
-          {bankTask && <TaskAttachments task={bankTask} compact imageAlt={`Задание №${bankTask.number}`} />}
-        </div>
-        {answer && !options && (
-          <span className="shrink-0 text-[11px] px-2 py-0.5 rounded-full bg-green-500/15 text-green-700 ring-1 ring-green-500/30">
-            <span dangerouslySetInnerHTML={{ __html: renderHomeworkMath(answer) }} />
-          </span>
-        )}
-      </div>
-      {options && (
-        <div className="flex flex-wrap gap-1.5 mt-1.5 pl-[30px]">
-          {options.map((o, j) => {
-            const correct = answer != null && o === answer
-            return (
-              <span
-                key={j}
-                className={`text-[11px] px-2 py-0.5 rounded-full ring-1 ${
-                  correct
-                    ? "bg-green-500/15 text-green-700 ring-green-500/30"
-                    : "text-gray-500 ring-gray-500/20"
-                }`}
-                dangerouslySetInnerHTML={{ __html: renderHomeworkMath(o) }}
-              />
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// Описание ДЗ: вступление + пронумерованные задания карточками (как видит ученик),
-// а не сплошной абзац. Если разбить не удалось — показываем текст как есть.
-function HomeworkTasks({ hw }) {
-  const [showAll, setShowAll] = useState(false)
-  if (!hw.description) return null
-
-  const { intro, tasks } = parseHomeworkTasks(hw.description)
-  const options = Array.isArray(hw.test_options) ? hw.test_options : null
-  const answers = Array.isArray(hw.correct_answers) ? hw.correct_answers : []
-  const hidden = Math.max(0, tasks.length - TASKS_PREVIEW)
-  // Задания из банка приезжают целиком (чертёж, файлы). Счёт должен сходиться со
-  // строками описания, иначе к заданию прилипнет чужой рисунок.
-  const bankTasks = Array.isArray(hw.bank_tasks) && hw.bank_tasks.length === tasks.length ? hw.bank_tasks : null
-
-  const line = (t, i) => (
-    <TaskLine key={i} t={t} options={options?.[i] || null} answer={answers[i] ?? null} bankTask={bankTasks?.[i]} />
-  )
-
-  return (
-    <div className="mt-2">
-      {intro && (
-        <div className="text-xs text-gray-600 leading-relaxed" dangerouslySetInnerHTML={{ __html: renderHomeworkMath(intro) }} />
-      )}
-
-      {tasks.length > 0 && (
-        <div className={`flex flex-col gap-1.5 ${intro ? "mt-2" : ""}`}>
-          {tasks.slice(0, TASKS_PREVIEW).map(line)}
-
-          {hidden > 0 && (
-            <>
-              <Collapse open={showAll}>
-                <div className="flex flex-col gap-1.5 pb-1.5">{tasks.slice(TASKS_PREVIEW).map((t, i) => line(t, i + TASKS_PREVIEW))}</div>
-              </Collapse>
-              <button
-                onClick={() => setShowAll((v) => !v)}
-                className="self-start inline-flex items-center gap-1 text-xs text-blue-600 hover:opacity-70 active:scale-[0.97] transition-all"
-              >
-                {showAll ? "Свернуть" : `Ещё ${hidden} ${plural(hidden, "задание", "задания", "заданий")}`}
-                <Icon name="chevron-down" size={12} className={`transition-transform duration-300 ${showAll ? "rotate-180" : ""}`} />
-              </button>
-            </>
-          )}
-        </div>
-      )}
-    </div>
   )
 }
 
@@ -1457,6 +1389,7 @@ function DetailBlock({ children, className = "" }) {
 // варианта: слева условия, справа работа ученика и проверка.
 export function HomeworkDetail({ hw, studentName, studentPhone, studentAccountId, onUpdate, onEdit, onDelete, onClose, cls }) {
   const [grading, setGrading] = useState(false)
+  const [showTasks, setShowTasks] = useState(false)
   const [comment, setComment] = useState(hw.comment || "")
   const [selectedGrade, setSelectedGrade] = useState(hw.grade || null)
   const status = STATUS_LABELS[hw.status] || STATUS_LABELS.assigned
@@ -1468,6 +1401,17 @@ export function HomeworkDetail({ hw, studentName, studentPhone, studentAccountId
     ? Math.round((hw.test_score / hw.question_count) * 100)
     : null
   const suggestedGrade = testPercent != null ? getGradeFromPercent(testPercent) : null
+
+  // Задания для окна и строка-подсказка: токены дробей и корней в одну строку
+  // не рисуются, поэтому в подсказке они разворачиваются текстом.
+  const { intro: tasksIntro, items: taskItems } = homeworkTaskItems(hw)
+  const taskCount = taskItems.length
+  // Степень plainTaskMath отдаёт как «x^(2)» — в строке это лишний шум, поэтому
+  // раскладываем её в юникод (x²): скобки степени та же функция уже понимает
+  // в фигурном виде.
+  const tasksPreview = superscriptPowers(
+    plainTaskMath(taskItems[0]?.text || tasksIntro || hw.description || "").replace(/\^\(([^()]*)\)/g, "^{$1}")
+  )
 
   async function setStatus(newStatus, grade) {
     const updates = { status: newStatus, comment, grade: grade ?? null }
@@ -1538,7 +1482,27 @@ export function HomeworkDetail({ hw, studentName, studentPhone, studentAccountId
         <div className="flex flex-col gap-2">
           <div className="section-label mb-0.5">Задания</div>
           {hw.description ? (
-            <HomeworkTasks hw={hw} />
+            // Условия открываются окном: система, дробь и чертёж не помещаются
+            // в колонку шириной в половину карточки — предложение переносилось
+            // посреди формулы. В строке — первое задание, чтобы работа
+            // узнавалась не открывая окна.
+            <button
+              onClick={() => setShowTasks(true)}
+              className="glass-sm press-tap w-full p-3.5 flex items-center gap-3 text-left"
+            >
+              <div className="w-9 h-9 rounded-xl bg-blue-500/12 text-blue-600 flex items-center justify-center flex-shrink-0">
+                <Icon name="file-text" size={16} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium">
+                  {taskCount > 0
+                    ? `${taskCount} ${plural(taskCount, "задание", "задания", "заданий")}`
+                    : "Условия работы"}
+                </div>
+                <div className="text-[11px] text-gray-400 mt-0.5 truncate">{tasksPreview}</div>
+              </div>
+              <span className="text-xs text-blue-600 flex-shrink-0">Посмотреть</span>
+            </button>
           ) : (
             <div className="rounded-2xl ring-1 ring-dashed ring-gray-200/80 dark:ring-white/10 text-sm text-gray-400 text-center py-8">
               {hw.file_url ? "Условия — в приложенном файле" : "Условий нет"}
@@ -1685,6 +1649,16 @@ export function HomeworkDetail({ hw, studentName, studentPhone, studentAccountId
           )}
         </div>
       </div>
+
+      {showTasks && (
+        <TasksModal
+          title={hw.title}
+          note="условия и ответы"
+          intro={tasksIntro}
+          items={taskItems}
+          onClose={() => setShowTasks(false)}
+        />
+      )}
     </div>
   )
 }
