@@ -711,58 +711,6 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
                 </div>
               )}
 
-              {answers.some((a) => a) && (
-                <div>
-                  {examType === "ОГЭ" ? (
-                    <>
-                      <div className="text-xs font-medium text-blue-600 mb-1 bg-blue-500/10 ring-1 ring-blue-500/20 px-2 py-1 rounded-lg">Алгебра 1–14</div>
-                      <div className="grid grid-cols-7 gap-1 mb-2">
-                        {answers.slice(0, 14).map((a, i) => (
-                          <div key={i} className={a ? "text-center rounded-lg py-1 text-xs bg-blue-100 text-blue-700 font-medium" : "text-center rounded-lg py-1 text-xs ring-1 ring-gray-200/70 dark:ring-white/10 text-gray-400"}>
-                            <div style={{fontSize:"10px"}}>{i+1}</div><div>{a||"-"}</div>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="text-xs font-medium text-purple-600 mb-1 bg-purple-500/10 ring-1 ring-purple-500/20 px-2 py-1 rounded-lg">Геометрия 15–19</div>
-                      <div className="grid grid-cols-5 gap-1">
-                        {answers.slice(14, 19).map((a, i) => (
-                          <div key={i} className={a ? "text-center rounded-lg py-1 text-xs bg-purple-100 text-purple-700 font-medium" : "text-center rounded-lg py-1 text-xs ring-1 ring-gray-200/70 dark:ring-white/10 text-gray-400"}>
-                            <div style={{fontSize:"10px"}}>{i+15}</div><div>{a||"-"}</div>
-                          </div>
-                        ))}
-                      </div>
-                      {part2Numbers.some((n) => part2Answers[n]) && (
-                        <>
-                          <div className="text-xs font-medium text-green-600 mb-1 mt-2 bg-green-500/10 ring-1 ring-green-500/20 px-2 py-1 rounded-lg">Часть 2 · 20–25</div>
-                          <div className="grid grid-cols-3 gap-1">
-                            {part2Numbers.map((n) => (
-                              <div key={n} className={part2Answers[n] ? "text-center rounded-lg py-1 text-xs bg-green-100 text-green-700 font-medium" : "text-center rounded-lg py-1 text-xs ring-1 ring-gray-200/70 dark:ring-white/10 text-gray-400"}>
-                                <div style={{fontSize:"10px"}}>{n}</div><div className="truncate px-1">{part2Answers[n]||"-"}</div>
-                              </div>
-                            ))}
-                          </div>
-                        </>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      {/* Разбивка «алгебра/геометрия» — только у ОГЭ по математике;
-                          остальным показываем ровно те номера, что вошли в вариант. */}
-                      <div className="text-xs font-medium text-blue-600 mb-1 bg-blue-500/10 ring-1 ring-blue-500/20 px-2 py-1 rounded-lg">
-                        {isMathType(examType) ? "Задания 1–12 (часть 1 ЕГЭ)" : `Часть 1 · ${answerCount} ${plural(answerCount, "задание", "задания", "заданий")}`}
-                      </div>
-                      <div className="grid grid-cols-6 gap-1">
-                        {p1Numbers.map((n) => (
-                          <div key={n} className={answers[n - 1] ? "text-center rounded-lg py-1 text-xs bg-blue-100 text-blue-700 font-medium" : "text-center rounded-lg py-1 text-xs ring-1 ring-gray-200/70 dark:ring-white/10 text-gray-400"}>
-                            <div style={{fontSize:"10px"}}>{n}</div><div className="truncate px-1">{answers[n - 1] || "-"}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-
               <div className="bg-amber-500/10 ring-1 ring-amber-500/20 rounded-xl p-3 text-xs text-amber-700 dark:text-amber-300 mt-auto">
                 {examType === "ОГЭ"
                   ? "Часть 2 (20–25): ученик выбирает ответ из четырёх и прикрепляет фото решения. Баллы начисляются только после вашей проверки."
