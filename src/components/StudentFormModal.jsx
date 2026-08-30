@@ -23,11 +23,13 @@ const MONTH_NAMES = ["Январь", "Февраль", "Март", "Апрель
 const DAY_NAMES_SHORT = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"]
 const WEEK_DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 const DAY_INDEX = { "Пн": 1, "Вт": 2, "Ср": 3, "Чт": 4, "Пт": 5, "Сб": 6, "Вс": 0 }
+// Подсказка — по имени пользователя, а не по полному адресу: его и вписывают
+// на самом деле, а ссылку достраивает contactHref() в utils.js.
 const MESSENGERS = [
-  { id: "telegram", label: "Telegram", placeholder: "https://t.me/username" },
-  { id: "whatsapp", label: "WhatsApp", placeholder: "https://wa.me/79001234567" },
-  { id: "instagram", label: "Instagram", placeholder: "https://instagram.com/username" },
-  { id: "vk", label: "ВКонтакте", placeholder: "https://vk.com/username" },
+  { id: "telegram", label: "Telegram", placeholder: "@username или ссылка" },
+  { id: "whatsapp", label: "WhatsApp", placeholder: "+7 900 123-45-67 или ссылка" },
+  { id: "instagram", label: "Instagram", placeholder: "@username или ссылка" },
+  { id: "vk", label: "ВКонтакте", placeholder: "username или ссылка" },
   { id: "other", label: "Другое", placeholder: "https://..." },
 ]
 

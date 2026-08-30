@@ -6,7 +6,7 @@ import WeakTypes from "../components/WeakTypes"
 import BoardHistory from "../components/BoardHistory"
 import Collapse from "../components/Collapse"
 import ReportComposer from "../components/ReportComposer"
-import { parseLocalDate, isLessonConducted, getInitials, formatPhone } from "../utils"
+import { parseLocalDate, isLessonConducted, getInitials, formatPhone, contactHref, contactLabel } from "../utils"
 import RescheduleModal from "../components/RescheduleModal"
 import StudentFormModal from "../components/StudentFormModal"
 import {
@@ -246,12 +246,20 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
             <a href={`tel:${student.phone}`} className="text-sm text-blue-600 hover:opacity-70 transition-opacity">{formatPhone(student.phone)}</a>
           </div>
 
-          {(student.contacts || []).map((c, i) => (
-            <div key={i} className="flex items-start gap-2">
-              <span className="text-gray-400 text-xs w-20 flex-shrink-0 pt-0.5">{MESSENGER_LABELS[c.messenger] || c.messenger}</span>
-              <a href={c.url} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:opacity-70 transition-opacity truncate">{c.url}</a>
-            </div>
-          ))}
+          {(student.contacts || []).map((c, i) => {
+            const href = contactHref(c.messenger, c.url)
+            const label = contactLabel(c.messenger, c.url)
+            return (
+              <div key={i} className="flex items-start gap-2">
+                <span className="text-gray-400 text-xs w-20 flex-shrink-0 pt-0.5">{MESSENGER_LABELS[c.messenger] || c.messenger}</span>
+                {href ? (
+                  <a href={href} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:opacity-70 transition-opacity truncate">{label}</a>
+                ) : (
+                  <span className="text-sm text-gray-600 truncate">{label}</span>
+                )}
+              </div>
+            )
+          })}
 
           {/* Доска одна — та, что выбрана в карточке: наша или своя ссылка.
               Две кнопки рядом заставляли гадать, на какой из них занятие. */}

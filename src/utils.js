@@ -982,3 +982,51 @@ export function answersEqual(given, expected, { allowFractions = false } = {}) {
   }
   return false
 }
+
+
+// Контакт-мессенджер репетитор вписывает как придётся: «@user», «user»,
+// «t.me/user», номер телефона или полный адрес. Голое «@user» в href браузер
+// считает ОТНОСИТЕЛЬНЫМ путём внутри сайта — ссылка никуда не ведёт, поэтому
+// адрес всегда достраиваем сами по выбранному мессенджеру.
+const MESSENGER_BASE = {
+  telegram: "https://t.me/",
+  instagram: "https://instagram.com/",
+  vk: "https://vk.com/",
+}
+
+export function contactHref(messenger, raw) {
+  const value = String(raw || "").trim()
+  if (!value) return ""
+  if (/^https?:\/\//i.test(value)) return value
+  // Домен без схемы: «t.me/user», «vk.com/user», «wa.me/7900…».
+  if (/^[a-z0-9-]+(\.[a-z0-9-]+)+\//i.test(value)) return `https://${value}`
+
+  const digits = value.replace(/\D/g, "")
+  const isPhone = /^[+\d][\d\s()-]*$/.test(value) && digits.length >= 10
+  if (messenger === "whatsapp") {
+    if (!isPhone) return `https://wa.me/${value.replace(/^@/, "")}`
+    return `https://wa.me/${digits.length === 11 && digits[0] === "8" ? `7${digits.slice(1)}` : digits}`
+  }
+  if (messenger === "telegram" && isPhone) {
+    return `https://t.me/+${digits.length === 11 && digits[0] === "8" ? `7${digits.slice(1)}` : digits}`
+  }
+  const base = MESSENGER_BASE[messenger]
+  if (base) return base + value.replace(/^@/, "")
+  // «Другое»: без схемы и без домена ссылку строить не из чего — отдаём пустоту,
+  // чтобы показать значение текстом, а не мёртвой ссылкой.
+  return ""
+}
+
+// Как показать контакт: «https://t.me/user» читается хуже, чем «@user».
+export function contactLabel(messenger, raw) {
+  const value = String(raw || "").trim()
+  if (!value) return ""
+  const path = value
+    .replace(/^https?:\/\//i, "")
+    .replace(/^(t\.me|telegram\.me|wa\.me|instagram\.com|www\.instagram\.com|vk\.com|m\.vk\.com)\//i, "")
+    .replace(/\/$/, "")
+  if (!path) return value
+  if (messenger === "whatsapp") return formatPhone(path) || path
+  if (messenger === "other") return path
+  return path.startsWith("@") || path.startsWith("+") ? path : `@${path}`
+}
