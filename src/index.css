@@ -1920,8 +1920,8 @@ html.kb-open .kb-collapse { padding-bottom: 0; }
   background: transparent;
   transition: background-color 0.15s ease;
 }
-.board-edge-grip:hover { background: rgba(0, 122, 255, 0.18); }
-.board-edge-grip:active { background: rgba(0, 122, 255, 0.3); }
+.board-edge-grip:hover { background: rgba(0, 122, 255, 0.28); }
+.board-edge-grip:active { background: rgba(0, 122, 255, 0.42); }
 @media (prefers-reduced-motion: reduce) {
   .board-edge-grip { transition: none; }
 }

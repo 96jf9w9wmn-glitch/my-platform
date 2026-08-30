@@ -1880,8 +1880,10 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
               <div key={h.k} onPointerDown={(e) => startTransform(h.k, e)}
                 className="absolute board-edge-grip"
                 style={{ left: h.x, top: h.y,
-                  width: h.k === "n" || h.k === "s" ? Math.max(frameW - 14, 8) : 12,
-                  height: h.k === "n" || h.k === "s" ? 12 : Math.max(frameH - 14, 8),
+                  // Толщину полосы ужимаем на мелкой картинке: иначе четыре полосы
+                  // накрыли бы её целиком и перетащить объект стало бы нечем
+                  width: h.k === "n" || h.k === "s" ? Math.max(frameW - 14, 8) : Math.min(12, Math.max(4, frameW / 3)),
+                  height: h.k === "n" || h.k === "s" ? Math.min(12, Math.max(4, frameH / 3)) : Math.max(frameH - 14, 8),
                   transform: `translate(-50%, -50%) rotate(${H.angle}rad)`,
                   cursor: h.c, touchAction: "none" }} />
             ) : (
