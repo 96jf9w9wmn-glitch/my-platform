@@ -163,7 +163,18 @@ export function paintStroke(ctx, s, { darkBg = false, getImage = () => null } = 
     const ready = img && (img.naturalWidth ? img.complete : img.width > 0)
     const drawIt = () => {
       if (ready) ctx.drawImage(img, ix, iy, iw, ih)
-      else { ctx.save(); ctx.fillStyle = darkBg ? "#3a3a3c" : "#e5e5ea"; ctx.fillRect(ix, iy, iw, ih); ctx.restore() }
+      else {
+        // Картинка ещё грузится (или адрес недоступен) — помечаем место акцентной
+        // рамкой: серой плашки в интерфейсе быть не может, да и «выцветшее пятно»
+        // на снимке читалось как настоящее содержимое доски
+        ctx.save()
+        ctx.fillStyle = darkBg ? "rgba(0,122,255,.14)" : "rgba(0,122,255,.06)"
+        ctx.fillRect(ix, iy, iw, ih)
+        ctx.strokeStyle = darkBg ? "rgba(0,122,255,.5)" : "rgba(0,122,255,.35)"
+        ctx.lineWidth = 1.5
+        ctx.strokeRect(ix, iy, iw, ih)
+        ctx.restore()
+      }
     }
     if (s.angle) {
       const ccx = ix + iw / 2, ccy = iy + ih / 2

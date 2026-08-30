@@ -859,7 +859,11 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     const list = Array.from(strokes.current.values())
     if (!list.length) return                  // пустая доска в историю занятий не попадает
     const scene = { strokes: list, bg: bgRef.current, bgColor: bgColorRef.current }
-    const preview = await scenePreview(scene) // null, если холст «испорчен» картинкой без CORS
+    // Превью рисуем по ПОДПИСАННОЙ копии сцены: картинки доски лежат в приватном
+    // бакете, по постоянному адресу они не отдаются — без подписи на месте
+    // картинки запекалась пустая плашка, и снимок расходился с самой доской.
+    // В базу при этом уходит исходная сцена: подпись живёт 4 часа и протухла бы.
+    const preview = await scenePreview(await signBoardScene(scene)) // null, если холст «испорчен» картинкой без CORS
     const d = new Date()
     const lessonDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
     // Ученику прямой записи в таблицу нет — только RPC с session_token (RLS включён).
