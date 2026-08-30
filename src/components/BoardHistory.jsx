@@ -19,18 +19,22 @@ const SCREEN_CLOSE_MS = 240
 const MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня",
   "июля", "августа", "сентября", "октября", "ноября", "декабря"]
 
+function todayIso() {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
+}
+
 function humanDate(iso) {
   const [y, m, d] = String(iso).split("-").map(Number)
   if (!y || !m || !d) return String(iso)
   const now = new Date()
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
-  if (iso === today) return "Сегодня"
+  if (iso === todayIso()) return "Сегодня"
   const suffix = y === now.getFullYear() ? "" : ` ${y}`
   return `${d} ${MONTHS[m - 1]}${suffix}`
 }
 
 // Просмотр снимка: сцена вписана в окно, зум — кнопками (холст едет в скролле).
-export function BoardSnapshotView({ scene, date, studentName, onClose }) {
+export function BoardSnapshotView({ scene, date, studentName, onClose, onOpenBoard = null }) {
   const wrapRef = useRef(null)
   const canvasRef = useRef(null)
   const imagesRef = useRef(new Map())
@@ -107,6 +111,14 @@ export function BoardSnapshotView({ scene, date, studentName, onClose }) {
             className={`${btn} disabled:opacity-30`} disabled={zoom >= 4}>
             <Icon name="plus" size={16} />
           </button>
+          {onOpenBoard && (
+            // Из прошлого занятия можно уйти на живую доску: разбор продолжают
+            // на ней, а снимок правкам не поддаётся
+            <button onClick={() => { close(); setTimeout(onOpenBoard, SCREEN_CLOSE_MS) }}
+              title="Открыть доску" className={btn}>
+              <Icon name="clipboard" size={16} />
+            </button>
+          )}
           <button onClick={download} title="Скачать PNG" className={btn}>
             <Icon name="download" size={16} />
           </button>
@@ -122,7 +134,10 @@ export function BoardSnapshotView({ scene, date, studentName, onClose }) {
   )
 }
 
-function BoardHistory({ studentId, studentName, account = null, token = null }) {
+// onOpenBoard — открыть ЖИВУЮ доску ученика. Снимок за сегодня и есть живая
+// доска, поэтому его карточка ведёт прямо на неё, а не в просмотр «только
+// чтение»: разбор продолжают карандашом, а не разглядыванием картинки.
+function BoardHistory({ studentId, studentName, account = null, token = null, onOpenBoard = null }) {
   const [rows, setRows] = useState([])
   const [open, setOpen] = useState(null)     // { date, scene }
   const [loadingDate, setLoadingDate] = useState(null)
@@ -169,7 +184,9 @@ function BoardHistory({ studentId, studentName, account = null, token = null }) 
       <h2 className="text-sm font-medium mb-3">Доски занятий</h2>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {rows.map((r) => (
-          <button key={r.lesson_date} onClick={() => openDate(r.lesson_date)}
+          <button key={r.lesson_date}
+            onClick={() => (onOpenBoard && r.lesson_date === todayIso() ? onOpenBoard() : openDate(r.lesson_date))}
+            title={onOpenBoard && r.lesson_date === todayIso() ? "Открыть доску" : "Посмотреть снимок"}
             className="press-fill glass-sm rounded-2xl overflow-hidden text-left">
             <div className="aspect-[16/10] bg-white dark:bg-white/5 flex items-center justify-center overflow-hidden">
               {r.preview
@@ -186,7 +203,8 @@ function BoardHistory({ studentId, studentName, account = null, token = null }) 
         ))}
       </div>
       {open && (
-        <BoardSnapshotView scene={open.scene} date={open.date} studentName={studentName} onClose={() => setOpen(null)} />
+        <BoardSnapshotView scene={open.scene} date={open.date} studentName={studentName}
+          onOpenBoard={onOpenBoard} onClose={() => setOpen(null)} />
       )}
     </div>
   )

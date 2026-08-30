@@ -405,7 +405,8 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
 
         {/* Доски прошлых занятий — блока нет, пока ни одной не сохранено */}
         {allows("boardHistory")
-          ? <BoardHistory studentId={student.id} studentName={student.name} />
+          ? <BoardHistory studentId={student.id} studentName={student.name}
+              onOpenBoard={() => (allows("board") ? onOpenBoard?.(student.id, student.name) : openPlans())} />
           : <PlanLock
               feature="boardHistory"
               title="Доски занятий"

@@ -2567,7 +2567,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                   />
 
                   {/* Доски прошлых занятий — можно вернуться к разобранному (только чтение) */}
-                  <BoardHistory studentId={student.id} studentName={user.profile?.name} account={user.id} token={user.token} />
+                  <BoardHistory studentId={student.id} studentName={user.profile?.name} account={user.id} token={user.token} onOpenBoard={openBoard} />
 
                 </div>
               )}
