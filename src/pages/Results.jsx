@@ -10,6 +10,7 @@ import { plural, getInitials } from "../utils"
 import { PlanLock } from "../components/PlanLock"
 import { usePlan } from "../subscription"
 import { part1NumbersOf, part2NumbersOf } from "./taskBankMeta"
+import { numberTitle } from "./numberTitles"
 import { scaleOf, part2MaxOf, variantMaxPrimary, examResult, secondaryLabel, testScoreOf } from "../examScales"
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -70,6 +71,10 @@ const TONE = {
   gray:   "text-gray-500 ring-gray-300/70 dark:ring-white/15",
 }
 const LINE = { blue: "#007aff", green: "#34c759", amber: "#ff9f0a", red: "#ff3b30", purple: "#af52de", gray: "#9ca3af" }
+
+// Дата работы короткой строкой: «12 авг». Без неё «лучший результат 12» не
+// говорит, за какую именно работу он получен, — а это первое, что спрашивают.
+const fmtDay = (d) => (d ? new Date(d).toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) : "")
 
 function Chip({ tone = "gray", className = "", children }) {
   return (
@@ -349,6 +354,8 @@ function VariantRow({ variant: v }) {
         <span className="text-gray-700 truncate flex items-center gap-1.5 min-w-0">
           <Icon name="chevron-right" size={13} className={`text-gray-400 shrink-0 transition-transform duration-300 ${expanded ? "rotate-90" : ""}`} />
           <span className="truncate">{v.title}</span>
+          {/* Без даты список работ не даёт понять, какая из них когда решалась. */}
+          <span className="hidden sm:inline text-[11px] text-gray-400 shrink-0">{fmtDay(v.date)}</span>
         </span>
         <span className="text-gray-500 tabular-nums">{v.part1} / {L.part1Max}</span>
         <span className="text-gray-500 tabular-nums">{L.part2Total ? `${v.part2} / ${L.part2Total}` : "—"}</span>
@@ -416,35 +423,56 @@ function StudentDetail({ student, stats }) {
   const isTest = last.res.kind === "test"
   const max = last.max
   const L = layoutOf(last.type)
+  // При единственной работе «средний» и «лучший» — это она же. Три плитки с
+  // одним и тем же числом читаются как поломка, поэтому их просто нет.
+  const many = rows.length >= 2
 
   return (
     <div className="flex flex-col gap-3 px-3.5 pb-3.5 sm:px-4 sm:pb-4">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+      <div className={`grid grid-cols-2 ${many ? "md:grid-cols-4" : "md:grid-cols-2"} gap-2.5`}>
         <div className="glass-sm p-3">
           <div className="text-[11px] text-gray-400">Последняя работа</div>
           <div className="text-xl font-semibold mt-1 tabular-nums">{last.total} <span className="text-sm font-normal text-gray-400">/ {max}</span></div>
-          <div className="mt-1.5">
+          <div className="mt-1.5 flex items-center gap-1.5 min-w-0">
             {isTest
               ? <Chip tone={egeTone(last.testScore)}>{secondaryLabel(last.res)}</Chip>
               : <Chip tone={last.grade >= 4 ? "green" : last.grade === 3 ? "amber" : "red"}>{secondaryLabel(last.res)}</Chip>}
+            <span className="text-[11px] text-gray-400 truncate">{fmtDay(last.date)}</span>
           </div>
         </div>
-        <div className="glass-sm p-3">
-          <div className="text-[11px] text-gray-400">Средний балл</div>
-          <div className="text-xl font-semibold mt-1 tabular-nums">{avg}</div>
-          <div className="text-[11px] text-gray-400 mt-1.5">{rows.length} {plural(rows.length, "работа", "работы", "работ")}</div>
-        </div>
-        <div className="glass-sm p-3">
-          <div className="text-[11px] text-gray-400">Лучший результат</div>
-          <div className="text-xl font-semibold mt-1 tabular-nums text-green-600 dark:text-green-400">{best}</div>
-          <div className="text-[11px] text-gray-400 mt-1.5">
-            {secondaryLabel(bestRow.res)}
+        {many && (
+          <div className="glass-sm p-3">
+            <div className="text-[11px] text-gray-400">Средний балл</div>
+            <div className="text-xl font-semibold mt-1 tabular-nums">{avg} <span className="text-sm font-normal text-gray-400">/ {max}</span></div>
+            <div className="text-[11px] text-gray-400 mt-1.5">по {rows.length} {plural(rows.length, "работе", "работам", "работам")}</div>
           </div>
-        </div>
+        )}
+        {many && (
+          <div className="glass-sm p-3">
+            <div className="text-[11px] text-gray-400">Лучший результат</div>
+            <div className="text-xl font-semibold mt-1 tabular-nums text-green-600 dark:text-green-400">{best} <span className="text-sm font-normal text-gray-400">/ {bestRow.max}</span></div>
+            {/* «Лучший 12» без имени работы не отвечает на вопрос «за что» —
+                поэтому рядом стоит сама работа и её дата. */}
+            <div className="text-[11px] text-gray-400 mt-1.5 truncate">{bestRow.title} · {fmtDay(bestRow.date)}</div>
+          </div>
+        )}
         <div className="glass-sm p-3">
-          <div className="text-[11px] text-gray-400">{L.part2Total ? "Часть 1 / часть 2" : "Часть 1"}</div>
-          <div className="text-xl font-semibold mt-1 tabular-nums">{last.part1}{L.part2Total ? <> <span className="text-gray-300 dark:text-gray-600">·</span> {last.part2}</> : null}</div>
-          <div className="text-[11px] text-gray-400 mt-1.5">{L.part2Total ? `из ${L.part1Max} и ${L.part2Total}` : `из ${L.part1Max}`}</div>
+          <div className="text-[11px] text-gray-400">Последняя работа по частям</div>
+          {/* Было «4 · 8» с подписью «из 19 и 12» — чтобы понять, что к чему,
+              приходилось сопоставлять два ряда чисел. Теперь каждая часть
+              названа и несёт свой максимум. */}
+          <div className="mt-1.5 flex flex-col gap-1 text-xs">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-gray-500">Часть 1</span>
+              <span className="font-semibold tabular-nums">{last.part1} <span className="text-gray-400 font-normal">/ {L.part1Max}</span></span>
+            </div>
+            {L.part2Total > 0 && (
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-gray-500">Часть 2</span>
+                <span className="font-semibold tabular-nums">{last.part2} <span className="text-gray-400 font-normal">/ {L.part2Total}</span></span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -494,8 +522,11 @@ function StudentDetail({ student, stats }) {
 function StudentCard({ student, stats, open, onToggle }) {
   const perf = !stats.hasData && !stats.isExam
   const tone = perf ? "purple" : "blue"
+  // Средний и лучший балл отсюда убраны намеренно: при одной работе строка
+  // трижды повторяла одно число рядом с ним же справа. В свёрнутом виде важно
+  // другое — сколько работ и насколько свежая последняя.
   const summary = stats.hasData
-    ? `${stats.rows.length} ${plural(stats.rows.length, "работа", "работы", "работ")} · средний ${stats.avg} · лучший ${stats.best}`
+    ? `${stats.rows.length} ${plural(stats.rows.length, "работа", "работы", "работ")} · последняя ${fmtDay(stats.last.date)}`
     : "Проверенных работ пока нет"
 
   return (
@@ -537,16 +568,24 @@ function StudentCard({ student, stats, open, onToggle }) {
 
           {stats.hasData && (
             <>
-              <div className="hidden sm:block shrink-0">
-                <Sparkline values={stats.rows.map((r) => r.total)} tone={stats.trendTone} />
-              </div>
+              {/* По одной работе линия вырождается в точку — она ничего не
+                  показывает и читается как случайная метка. */}
+              {stats.rows.length >= 2 && (
+                <div className="hidden sm:block shrink-0">
+                  <Sparkline values={stats.rows.map((r) => r.total)} tone={stats.trendTone} />
+                </div>
+              )}
               <div className="hidden md:flex shrink-0">
                 {stats.last.res.kind === "test"
                   ? <Chip tone={egeTone(stats.last.testScore)}>тест {secondaryLabel(stats.last.res, { short: true })}</Chip>
                   : <Chip tone={stats.last.grade >= 4 ? "green" : stats.last.grade === 3 ? "amber" : "red"}>{secondaryLabel(stats.last.res)}</Chip>}
               </div>
-              <div className="shrink-0 text-right w-[74px]">
-                <div className="text-[22px] leading-none font-semibold tabular-nums">{stats.last.total}</div>
+              <div className="shrink-0 text-right w-[88px]">
+                {/* Голое «12» не говорит, из скольких. Максимум рядом — и балл
+                    сразу читается без раскрытия карточки. */}
+                <div className="text-[22px] leading-none font-semibold tabular-nums">
+                  {stats.last.total}<span className="text-xs font-normal text-gray-400"> / {stats.last.max}</span>
+                </div>
                 <div className="mt-1.5 flex justify-end"><DeltaPill delta={stats.delta} /></div>
               </div>
             </>
@@ -587,6 +626,7 @@ function StudentCard({ student, stats, open, onToggle }) {
 // Порог показа: по одной-двум попыткам тема не «провальная», это просто
 // неудачный день. Для сводки по группе порог выше, чем у отдельного ученика.
 const COHORT_MIN_ATTEMPTS = 5
+const COHORT_WEAK_ACCURACY = 70
 
 function CohortWeakTypes({ studentIds }) {
   const [rows, setRows] = useState([])
@@ -619,6 +659,9 @@ function CohortWeakTypes({ studentIds }) {
         const list = Object.values(agg)
           .filter((r) => r.attempts >= COHORT_MIN_ATTEMPTS)
           .map((r) => ({ ...r, accuracy: Math.round((r.correct / r.attempts) * 100) }))
+          // Раздел называется «слабые»: тема, где почти не ошибаются, в нём
+          // только отнимает место у настоящей проблемы.
+          .filter((r) => r.accuracy < COHORT_WEAK_ACCURACY)
           .sort((a, b) => a.accuracy - b.accuracy || b.attempts - a.attempts)
           .slice(0, 6)
         setRows(list)
@@ -645,7 +688,7 @@ function CohortWeakTypes({ studentIds }) {
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-sm truncate">{labels[r.gen_key] || r.gen_key || "Задание без типажа"}</span>
+                  <span className="text-sm truncate">{labels[r.gen_key] || numberTitle(r.exam_type, r.number)}</span>
                   <span className="text-xs font-medium tabular-nums shrink-0" style={{ color: LINE[tone] }}>{r.accuracy}%</span>
                 </div>
                 <div className="mt-1 h-1.5 rounded-full bg-blue-500/12 overflow-hidden">
