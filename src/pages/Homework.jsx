@@ -9,7 +9,7 @@ import Collapse from "../components/Collapse"
 import Reveal from "../components/Reveal"
 import AutoHeight from "../components/AutoHeight"
 import FormulaBackdrop from "../components/FormulaBackdrop"
-import { parseLocalDate, renderHomeworkMath, plainTaskMath, superscriptPowers, parseHomeworkTasks, homeworkTaskItems, plural, hasAttachment, getInitials } from "../utils"
+import { parseLocalDate, renderHomeworkMath, plainTaskMath, superscriptPowers, parseHomeworkTasks, homeworkTaskItems, plural, hasAttachment, getInitials, answersEqual } from "../utils"
 import { usePlan } from "../subscription"
 import { PlanHint, PlanLock } from "../components/PlanLock"
 import ConfirmModal from "../components/ConfirmModal"
@@ -1540,6 +1540,24 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
   // не рисуются, поэтому в подсказке они разворачиваются текстом.
   const { intro: tasksIntro, items: taskItems } = homeworkTaskItems(hw)
   const taskCount = taskItems.length
+  // Разбор по номерам: репетитору важно не «сколько», а «где» — иначе к ошибке
+  // не вернуться на занятии. Считаем по тем же правилам, что и оценку теста
+  // (answersEqual, а не сравнение строк), поэтому чипы не разойдутся со счётом.
+  // Номер берём из описания работы (taskItems), а не из индекса: у работы из
+  // банка нумерация описания и есть та, что видит ученик.
+  const answerRows = Array.isArray(hw.student_answers) && Array.isArray(hw.correct_answers)
+    ? hw.correct_answers.map((correct, i) => {
+        const raw = hw.student_answers[i]
+        const gave = raw == null || String(raw).trim() === "" ? null : String(raw)
+        return {
+          n: taskItems[i]?.n ?? i + 1,
+          // Задание без эталона (развёрнутый ответ) не верное и не неверное:
+          // его смотрит репетитор, чип у него нейтральный.
+          ok: correct == null || correct === "" ? null : answersEqual(gave ?? "", correct),
+        }
+      })
+    : []
+  const wrongNums = answerRows.filter((r) => r.ok === false).map((r) => r.n)
   // Степень plainTaskMath отдаёт как «x^(2)» — в строке это лишний шум, поэтому
   // раскладываем её в юникод (x²): скобки степени та же функция уже понимает
   // в фигурном виде.
@@ -1691,11 +1709,46 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
           </DetailBlock>
 
           {hw.test_score != null && (
-            <DetailBlock className="flex items-center justify-between gap-3">
-              <div className="text-xs text-gray-500">Результат теста</div>
-              <div className="text-sm font-medium text-blue-700 dark:text-blue-300">
-                {hw.test_score} / {hw.question_count}{testPercent != null ? ` · ${testPercent}%` : ""}
+            <DetailBlock>
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-xs text-gray-500">Результат теста</div>
+                <div className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                  {hw.test_score} / {hw.question_count}{testPercent != null ? ` · ${testPercent}%` : ""}
+                </div>
               </div>
+              {answerRows.length > 0 && (
+                <>
+                  {/* Номера заданий цветом: сразу видно, где ошибка. Нажатие
+                      открывает то же окно с условиями — уже с ответами ученика
+                      и его фото решения. */}
+                  <div className="flex flex-wrap gap-1.5 mt-2.5">
+                    {answerRows.map((r, i) => (
+                      // Кнопкой чип становится только когда есть что открыть:
+                      // у работы без разбитого на задания описания окно пустое.
+                      <button
+                        key={i}
+                        onClick={taskItems.length ? () => setShowTasks(true) : undefined}
+                        disabled={!taskItems.length}
+                        title={r.ok === false ? `Задание ${r.n} — ошибка` : r.ok ? `Задание ${r.n} — верно` : `Задание ${r.n} — проверяет репетитор`}
+                        className={`${taskItems.length ? "press-tap" : "cursor-default"} w-7 h-7 rounded-lg text-xs font-medium flex items-center justify-center ring-1 ${
+                          r.ok === false ? "bg-red-500/12 text-red-600 ring-red-500/25"
+                            : r.ok ? "bg-green-500/12 text-green-700 dark:text-green-300 ring-green-500/25"
+                            : "text-gray-500 ring-gray-200 dark:ring-white/15"
+                        }`}
+                      >
+                        {r.n}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="text-[11px] text-gray-400 mt-2">
+                    {wrongNums.length === 0
+                      ? "Ошибок нет"
+                      : wrongNums.length === 1
+                      ? `Ошибка в задании №${wrongNums[0]}`
+                      : `Ошибки в заданиях ${wrongNums.map((n) => "№" + n).join(", ")}`}
+                  </div>
+                </>
+              )}
             </DetailBlock>
           )}
 
@@ -1815,7 +1868,7 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
       {showTasks && (
         <TasksModal
           title={hw.title}
-          note="условия и ответы"
+          note={answerRows.length > 0 ? "разбор ответов" : "условия и ответы"}
           intro={tasksIntro}
           items={taskItems}
           onClose={() => setShowTasks(false)}

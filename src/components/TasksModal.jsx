@@ -9,7 +9,7 @@ import { useEffect } from "react"
 import { createPortal } from "react-dom"
 import Icon from "./Icon"
 import TaskAttachments from "./TaskAttachments"
-import { renderHomeworkMath, plural } from "../utils"
+import { renderHomeworkMath, plural, answersEqual } from "../utils"
 import { useClosing } from "../useClosing"
 
 // Одно задание в окне: номер кружком, условие во всю ширину, под ним — чертёж и
@@ -17,6 +17,11 @@ import { useClosing } from "../useClosing"
 // он отъедал у формулы ту самую ширину, из-за которой всё и переносилось.
 function TaskBlock({ item }) {
   const { bankTask } = item
+  // Работа уже решена — значит окно показывает не условия, а разбор: у каждого
+  // задания видно, что написал ученик и сошлось ли это с эталоном. `given`
+  // приходит только у решённой работы (undefined — работа ещё не сдана),
+  // а null внутри неё — задание, которое ученик пропустил.
+  const reviewed = item.given !== undefined
   // Серые токены в тёмной теме перевёрнуты: `dark:`-вариант дал бы тёмный
   // текст на тёмном фоне (см. комментарий у шкалы в index.css).
   const body = "text-[15px] text-gray-700 leading-relaxed break-words"
@@ -49,23 +54,63 @@ function TaskBlock({ item }) {
           <div className="flex flex-wrap gap-1.5">
             {item.options.map((o, j) => {
               const correct = item.answer != null && o === item.answer
+              // В разборе видно и то, что выбрал ученик: верный вариант зелёный,
+              // выбранный им неверный — красный, остальные без заливки.
+              const chosen = reviewed && item.given != null && answersEqual(item.given, o)
+              const cls = correct ? "bg-green-500/15 text-green-700 dark:text-green-300 ring-green-500/30"
+                : chosen ? "bg-red-500/15 text-red-700 dark:text-red-300 ring-red-500/30"
+                : "text-gray-500 ring-gray-500/20"
               return (
-                <span key={j}
-                  className={`text-xs px-2.5 py-1 rounded-full ring-1 ${
-                    correct ? "bg-green-500/15 text-green-700 dark:text-green-300 ring-green-500/30" : "text-gray-500 ring-gray-500/20"
-                  }`}
+                <span key={j} className={`text-xs px-2.5 py-1 rounded-full ring-1 ${cls}`}
                   dangerouslySetInnerHTML={{ __html: renderHomeworkMath(String(o)) }} />
               )
             })}
           </div>
         )}
 
-        {item.answer != null && item.answer !== "" && !item.options && (
+        {/* Эталон без разбора: работу ещё не решали, показываем только ответ. */}
+        {!reviewed && item.answer != null && item.answer !== "" && !item.options && (
           <div className="flex items-center gap-1.5 text-xs">
             <span className="text-gray-400">Ответ:</span>
             <span className="px-2 py-0.5 rounded-full bg-green-500/15 text-green-700 dark:text-green-300 ring-1 ring-green-500/30"
               dangerouslySetInnerHTML={{ __html: renderHomeworkMath(String(item.answer)) }} />
           </div>
+        )}
+
+        {reviewed && (
+          <div className="flex items-center gap-1.5 text-xs flex-wrap">
+            <span className="text-gray-400">Ответ ученика:</span>
+            {item.given == null ? (
+              <span className="px-2 py-0.5 rounded-full text-gray-500 ring-1 ring-gray-500/20">не отвечено</span>
+            ) : (
+              <span className={`px-2 py-0.5 rounded-full ring-1 inline-flex items-center gap-1 ${
+                item.ok === false ? "bg-red-500/15 text-red-700 dark:text-red-300 ring-red-500/30"
+                  : item.ok ? "bg-green-500/15 text-green-700 dark:text-green-300 ring-green-500/30"
+                  : "text-gray-500 ring-gray-500/20"
+              }`}>
+                {item.ok != null && <Icon name={item.ok ? "check" : "x"} size={11} />}
+                <span dangerouslySetInnerHTML={{ __html: renderHomeworkMath(String(item.given)) }} />
+              </span>
+            )}
+            {/* Верный ответ дописываем только там, где ученик ошибся: у верного
+                он тот же самый, и вторая плашка была бы дублем. */}
+            {item.ok === false && item.answer != null && item.answer !== "" && (
+              <>
+                <span className="text-gray-400">верный:</span>
+                <span className="px-2 py-0.5 rounded-full bg-green-500/15 text-green-700 dark:text-green-300 ring-1 ring-green-500/30"
+                  dangerouslySetInnerHTML={{ __html: renderHomeworkMath(String(item.answer)) }} />
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Фото решения стоит у своего задания: ошибку ищут в ходе решения, а не
+            в одном ответе. Общий список фото в разборе остаётся для старых работ. */}
+        {item.solutionUrl && (
+          <a href={item.solutionUrl} target="_blank" rel="noreferrer"
+            className="press-fill self-start text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-600 inline-flex items-center gap-1.5">
+            <Icon name="camera" size={12} />Фото решения
+          </a>
         )}
 
         {/* Номер задания на экзамене. В варианте им же подписан кружок, и второй

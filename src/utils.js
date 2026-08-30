@@ -832,15 +832,35 @@ export function homeworkTaskItems(hw) {
   const options = Array.isArray(hw.test_options) ? hw.test_options : null
   const answers = Array.isArray(hw.correct_answers) ? hw.correct_answers : []
   const bank = Array.isArray(hw.bank_tasks) && hw.bank_tasks.length === tasks.length ? hw.bank_tasks : null
+  // Ответы ученика (есть только у решённой работы) — чтобы окно показывало не
+  // просто условия, а разбор: где ответ сошёлся с эталоном, а где нет.
+  const given = Array.isArray(hw.student_answers) ? hw.student_answers : null
+  // Фото решения ученик снимает к каждому заданию, ключ — НОМЕР задания (1..N),
+  // а не индекс: так их пишет кабинет ученика (homework.solution_files).
+  const shots = hw.solution_files && typeof hw.solution_files === "object" ? hw.solution_files : null
   return {
     intro,
-    items: tasks.map((t, i) => ({
-      n: t.n ?? i + 1,
-      text: t.text,
-      bankTask: bank?.[i] || null,
-      answer: answers[i] ?? null,
-      options: options?.[i] || null,
-    })),
+    items: tasks.map((t, i) => {
+      const n = t.n ?? i + 1
+      const ans = answers[i] ?? null
+      // Пустая строка — не ответ, а пропуск: показываем его прочерком, но не
+      // считаем неверным ответом «—», иначе разбор врал бы про то, что ученик
+      // написал.
+      const raw = given ? given[i] : undefined
+      const gave = raw == null || String(raw).trim() === "" ? null : String(raw)
+      return {
+        n,
+        text: t.text,
+        bankTask: bank?.[i] || null,
+        answer: ans,
+        options: options?.[i] || null,
+        given: given ? gave : undefined,
+        // Верность считаем только когда есть с чем сверять: у задания без
+        // эталона (развёрнутый ответ) её ставит репетитор, а не сверка строк.
+        ok: given && ans != null && ans !== "" ? answersEqual(gave ?? "", ans) : null,
+        solutionUrl: shots?.[n] || shots?.[String(n)] || null,
+      }
+    }),
   }
 }
 
