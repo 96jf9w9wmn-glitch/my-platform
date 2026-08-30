@@ -106,25 +106,40 @@ function Part2Upload({ taskNum, submissionId, existingUrl, chosen, onUpload, sho
     </div>
   )
 }
-// Выбор ответа части 2 из четырёх вариантов. Повторное нажатие снимает выбор.
+// Выбор ответа части 2 из четырёх вариантов. Повторное нажатие снимает выбор —
+// но догадаться до этого нельзя, поэтому у выбранного ответа есть явная кнопка
+// «Убрать ответ». Без неё ученик, ткнувший вариант наугад в задании, которое не
+// решает, попадал в тупик: работа не отправлялась, пока он не приложит фото
+// решения, которого у него нет.
 function ChoiceChips({ choices, value, onSelect }) {
   return (
-    <div className="grid grid-cols-2 gap-2">
-      {choices.map((c) => {
-        const sel = value === c
-        return (
-          <button
-            key={c}
-            type="button"
-            onClick={() => onSelect(sel ? null : c)}
-            className={`rounded-xl px-3 py-2 text-sm border text-center transition-all active:scale-[0.96] ${
-              sel ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "border-gray-200 text-gray-700 hover:bg-blue-500/[0.06]"
-            }`}
-          >
-            {c}
-          </button>
-        )
-      })}
+    <div className="flex flex-col gap-2">
+      <div className="grid grid-cols-2 gap-2">
+        {choices.map((c) => {
+          const sel = value === c
+          return (
+            <button
+              key={c}
+              type="button"
+              onClick={() => onSelect(sel ? null : c)}
+              className={`rounded-xl px-3 py-2 text-sm border text-center transition-all active:scale-[0.96] ${
+                sel ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "border-gray-200 text-gray-700 hover:bg-blue-500/[0.06]"
+              }`}
+            >
+              {c}
+            </button>
+          )
+        })}
+      </div>
+      {value != null && (
+        <button
+          type="button"
+          onClick={() => onSelect(null)}
+          className="press-tap self-start flex items-center gap-1 text-xs text-gray-500 hover:text-red-500 px-2 py-1 -ml-2 rounded-lg transition-colors"
+        >
+          <Icon name="x" size={12} />Убрать ответ
+        </button>
+      )}
     </div>
   )
 }
@@ -2124,7 +2139,8 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
       const missingSolutions = part2TaskNums.filter((n) => part2Choices[n] != null && !uploadedFiles[n])
       if (!auto && missingSolutions.length) {
         setVariantError(
-          "Прикрепи решение к заданиям, где выбран ответ: " + numbersLabel(missingSolutions, { hash: false })
+          "Прикрепи решение к заданиям, где выбран ответ: " + numbersLabel(missingSolutions, { hash: false }) +
+          ". Если за задание не брался — нажми «Убрать ответ», и фото не понадобится."
         )
         return
       }
@@ -2860,7 +2876,9 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                                 <div className="mt-2 flex flex-col gap-1.5">
                                   <div className="text-xs text-gray-500">
                                     {choices?.length > 0
-                                      ? "Реши на листе и прикрепи фото — без него выбранный ответ не оценивается"
+                                      ? part2Choices[t.number] != null
+                                        ? "Реши на листе и прикрепи фото — без него выбранный ответ не оценивается. За задание не брался — убери ответ, тогда и фото не нужно."
+                                        : "Пока ответ не выбран, задание не оценивается и фото не требуется."
                                       : "Задание с развёрнутым решением: запиши его на листе и прикрепи фото"}
                                   </div>
                                   <Part2Upload
@@ -2877,7 +2895,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                         })}
                       </div>
                       <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700 my-4">
-                        <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />К каждому заданию части 2, где выбран ответ, нужно фото решения — без него балл не начисляется. Балл за часть 2 появится после проверки.</span>
+                        <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />К каждому заданию части 2, где выбран ответ, нужно фото решения — без него балл не начисляется. Задание, за которое не брался, оставь без ответа или убери выбранный: фото тогда не нужно. Балл за часть 2 появится после проверки.</span>
                       </div>
                       {variantError && <div className="text-sm text-red-500 mb-2 text-center">{variantError}</div>}
                       <button
@@ -2966,7 +2984,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                         </div>
                       )}
                       <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700 mb-4">
-                        <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />К каждому заданию части 2, где выбран ответ, нужно фото решения — без него балл не начисляется</span>
+                        <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />К каждому заданию части 2, где выбран ответ, нужно фото решения — без него балл не начисляется. Задание, за которое не брался, оставь без ответа или убери выбранный: фото тогда не нужно.</span>
                       </div>
                       {variantError && <div className="text-sm text-red-500 mb-2 text-center">{variantError}</div>}
                       <button
