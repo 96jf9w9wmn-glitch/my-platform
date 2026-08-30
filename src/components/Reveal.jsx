@@ -46,7 +46,10 @@ export default function Reveal({ value, children, className = "" }) {
 
   return (
     <div className={`reveal ${closing ? "is-closing" : "reveal-in"} ${className}`}>
-      <div className="overflow-hidden min-h-0">{children(open ? value : kept)}</div>
+      {/* Пиксель запаса с компенсирующим отрицательным полем: кольца (ring-*)
+          рисуются box-shadow'ом СНАРУЖИ элемента, а обрезка содержимого при
+          сворачивании срезала им края — обводка панели выглядела надрезанной. */}
+      <div className="overflow-hidden min-h-0 p-px -m-px">{children(open ? value : kept)}</div>
     </div>
   )
 }
