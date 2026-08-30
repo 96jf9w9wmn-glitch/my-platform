@@ -894,7 +894,7 @@ function VariantReview({ submission, variant, onClose, onSave }) {
   return createPortal(
     <div className={`fixed inset-0 glass-overlay z-50 overflow-y-auto ${closingCls}`}>
       <div className="min-h-full flex items-center justify-center p-4">
-        <div className={`glass-modal p-6 w-full max-w-md ${closingCls}`}>
+        <div className={`glass-modal p-6 w-full max-w-2xl ${closingCls}`}>
           <div className="flex justify-between items-center mb-5">
             <h2 className="text-lg font-medium">Проверка · {type}</h2>
             <button onClick={close} aria-label="Закрыть" className="text-gray-400 hover:text-gray-600"><Icon name="x" size={18} /></button>
@@ -911,7 +911,7 @@ function VariantReview({ submission, variant, onClose, onSave }) {
           {submission.part2_files && Object.keys(submission.part2_files).length > 0 && (
             <div className="mb-4">
               <label className="text-sm text-gray-500 mb-2 block">Файлы ученика</label>
-              <div className="flex flex-col gap-2">
+              <div className="grid gap-2 sm:grid-cols-3">
                 {Object.entries(submission.part2_files).map(([task, url]) => (
                   <a key={task} href={url} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:opacity-70 transition-opacity border border-gray-100 rounded-lg px-3 py-2">
                     Задание {task}
@@ -944,15 +944,15 @@ function VariantReview({ submission, variant, onClose, onSave }) {
                 <>
                   <div className="mb-3">
                     <div className="text-xs font-medium text-blue-600 mb-2 bg-blue-50 px-2 py-1 rounded">Алгебра {algebra[0]}–{algebra[algebra.length - 1]}</div>
-                    <div className="flex flex-col gap-2">{algebra.map(renderPart2Row)}</div>
+                    <div className="grid gap-2 sm:grid-cols-2 items-start">{algebra.map(renderPart2Row)}</div>
                   </div>
                   <div>
                     <div className="text-xs font-medium text-purple-600 mb-2 bg-purple-50 px-2 py-1 rounded">Геометрия {geometry[0]}–{geometry[geometry.length - 1]}</div>
-                    <div className="flex flex-col gap-2">{geometry.map(renderPart2Row)}</div>
+                    <div className="grid gap-2 sm:grid-cols-2 items-start">{geometry.map(renderPart2Row)}</div>
                   </div>
                 </>
               ) : (
-                <div className="flex flex-col gap-2">{part2Tasks.map(renderPart2Row)}</div>
+                <div className="grid gap-2 sm:grid-cols-2 items-start">{part2Tasks.map(renderPart2Row)}</div>
               )}
             </div>
           )}
@@ -988,9 +988,9 @@ function VariantReview({ submission, variant, onClose, onSave }) {
               </div>
             )}
           </div>
-          <div className="flex gap-3">
-            <button onClick={close} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600">Отмена</button>
-            <button onClick={handleSave} disabled={loading} className="flex-1 btn-primary py-2.5 disabled:opacity-50">
+          <div className="flex gap-3 sm:justify-end">
+            <button onClick={close} className="flex-1 sm:flex-none sm:px-6 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600">Отмена</button>
+            <button onClick={handleSave} disabled={loading} className="flex-1 sm:flex-none sm:px-6 btn-primary py-2.5 disabled:opacity-50">
               {loading ? "Сохраняем..." : "Сохранить и уведомить"}
             </button>
           </div>
