@@ -324,6 +324,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const applySelCount = (n) => { setSelCount(n); if (!n && menu === "selStroke") closeMenu("selStroke") }
   const [selBox, setSelBox] = useState(null)   // ориентированная рамка выделения (экранные координаты)
   const [selProps, setSelProps] = useState(null) // свойства первого стилизуемого штриха {width,dash}; null — выделены только картинки
+  // В выделении есть картинка → формат при масштабировании держим и рёберные ручки не показываем
+  const [selHasImage, setSelHasImage] = useState(false)
   const [dragActive, setDragActive] = useState(false) // перетаскивание файла над доской
   const [taskPick, setTaskPick] = useState(false)     // открыт выбор задания из банка
   const [confirmClear, setConfirmClear] = useState(false) // спрашиваем перед очисткой доски
@@ -383,6 +385,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const transform = useRef(null)      // активное масштабирование/поворот выделения
   const lastSelBox = useRef(null)     // предыдущий экранный габарит (защита от лишних setState)
   const lastSelProps = useRef(null)   // предыдущие свойства выделения (защита от лишних setState)
+  const lastSelHasImage = useRef(false)
   const spaceHeld = useRef(false)
   const bgRef = useRef(bg)
   const bgColorRef = useRef(bgColor)
@@ -570,15 +573,17 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     // У картинок и листов с заданием (tool "image") ни цвет, ни толщина ничего не меняют,
     // поэтому такие объекты пропускаем: если стилизовать нечего, props = null и панель
     // показывает только «Дублировать» и «Удалить».
-    let props = null
+    let props = null, hasImg = false
     if (frame && selection.current.size) {
       for (const id of selection.current) {
         const s0 = strokes.current.get(id)
-        if (!s0 || s0.tool === "image" || s0.tool === "eraser") continue
-        props = { tool: s0.tool, width: s0.width, dash: s0.dash || "solid" }
-        break
+        if (!s0 || s0.tool === "eraser") continue
+        if (s0.tool === "image") { hasImg = true }
+        else if (!props) props = { tool: s0.tool, width: s0.width, dash: s0.dash || "solid" }
+        if (props && hasImg) break
       }
     }
+    if (hasImg !== lastSelHasImage.current) { lastSelHasImage.current = hasImg; setSelHasImage(hasImg) }
     const pp = lastSelProps.current
     if ((!pp) !== (!props) || (pp && props && (pp.tool !== props.tool || pp.width !== props.width || pp.dash !== props.dash))) {
       lastSelProps.current = props; setSelProps(props)
@@ -1223,6 +1228,11 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     const hx = handle.includes("e") ? 1 : handle.includes("w") ? -1 : 0
     const hy = handle.includes("s") ? 1 : handle.includes("n") ? -1 : 0
     const enc = mode === "resize" ? singleEnclosed() : null
+    // Картинку (фото и лист с заданием) тянем только пропорционально: сплюснутое
+    // фото и растянутое условие читаются как брак, а вернуть исходный формат
+    // «на глаз» уже нельзя. Пропорция держится и на углах, и на рёбрах.
+    let keepRatio = false
+    if (mode === "resize") for (const id of selection.current) { if (strokes.current.get(id)?.tool === "image") { keepRatio = true; break } }
     const startW = toWorld(e.clientX, e.clientY)
     const snapshot = new Map()
     for (const id of selection.current) {
@@ -1254,7 +1264,17 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         const dot = (p, ax) => (p[0] - L.pv[0]) * ax[0] + (p[1] - L.pv[1]) * ax[1]
         let scaleU = hx !== 0 && L.startU ? dot(w, L.u) / L.startU : 1
         let scaleV = hy !== 0 && L.startV ? dot(w, L.vv) / L.startV : 1
-        if (ev.shiftKey && hx !== 0 && hy !== 0) { const k = Math.max(Math.abs(scaleU), Math.abs(scaleV)); scaleU = Math.sign(scaleU || 1) * k; scaleV = Math.sign(scaleV || 1) * k }
+        if (keepRatio || (ev.shiftKey && hx !== 0 && hy !== 0)) {
+          // Ребро задаёт масштаб одной осью, угол — большей из двух
+          const k = hx !== 0 && hy !== 0 ? Math.max(Math.abs(scaleU), Math.abs(scaleV)) : hx !== 0 ? Math.abs(scaleU) : Math.abs(scaleV)
+          scaleU = Math.sign(scaleU || 1) * k; scaleV = Math.sign(scaleV || 1) * k
+        }
+        // Нижний предел габарита 2px берём общим множителем, иначе на самом
+        // маленьком размере пропорция сорвалась бы «в квадрат»
+        if (keepRatio) {
+          const kmin = Math.max(2 / L.hw0, 2 / L.hh0)
+          if (Math.abs(scaleU) < kmin) { scaleU = Math.sign(scaleU || 1) * kmin; scaleV = Math.sign(scaleV || 1) * kmin }
+        }
         const nhw = Math.max(2, L.hw0 * Math.abs(scaleU)), nhh = Math.max(2, L.hh0 * Math.abs(scaleV))
         const cU = hx !== 0 ? hx * L.hw0 * scaleU : 0, cV = hy !== 0 ? hy * L.hh0 * scaleV : 0
         const ncx = L.pv[0] + cU * L.u[0] + cV * L.vv[0], ncy = L.pv[1] + cU * L.u[1] + cV * L.vv[1]
@@ -1265,7 +1285,10 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         const lockX = hx === 0, lockY = hy === 0
         let sx = lockX ? 1 : ((startW[0] - px) ? (w[0] - px) / (startW[0] - px) : 1)
         let sy = lockY ? 1 : ((startW[1] - py) ? (w[1] - py) / (startW[1] - py) : 1)
-        if (ev.shiftKey && !lockX && !lockY) { const k = Math.max(Math.abs(sx), Math.abs(sy)); sx = Math.sign(sx || 1) * k; sy = Math.sign(sy || 1) * k }
+        if (keepRatio || (ev.shiftKey && !lockX && !lockY)) {
+          const k = !lockX && !lockY ? Math.max(Math.abs(sx), Math.abs(sy)) : !lockX ? Math.abs(sx) : Math.abs(sy)
+          sx = Math.sign(sx || 1) * k; sy = Math.sign(sy || 1) * k
+        }
         for (const [id, snap] of snapshot) {
           const s = strokes.current.get(id); if (!s) continue
           s.points = snap.points.map((p) => [px + (p[0] - px) * sx, py + (p[1] - py) * sy, ...p.slice(2)])
@@ -1727,7 +1750,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     { k: "nw", c: "nwse-resize", ...framePt(-1, -1) }, { k: "ne", c: "nesw-resize", ...framePt(1, -1) },
     { k: "se", c: "nwse-resize", ...framePt(1, 1) }, { k: "sw", c: "nesw-resize", ...framePt(-1, 1) },
   ] : []
-  const edgeHandles = H ? [
+  const edgeHandles = H && !selHasImage ? [
     { k: "n", c: "ns-resize", ...framePt(0, -1) }, { k: "s", c: "ns-resize", ...framePt(0, 1) },
     { k: "e", c: "ew-resize", ...framePt(1, 0) }, { k: "w", c: "ew-resize", ...framePt(-1, 0) },
   ] : []
