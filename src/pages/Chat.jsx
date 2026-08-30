@@ -215,7 +215,11 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
       .eq("recipient_id", myId)
       .eq("read", false)
       .select("id")
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        // Ошибку не глотаем: пометка «прочитано» упирается в RLS (так висел
+        // счётчик у репетитора до chat_tutor_mark_read.sql), а молчащий сбой
+        // виден только тем, что бейдж не гаснет.
+        if (error) { console.error("Failed to mark chat messages read:", error); return }
         if (data?.length && onUnreadChange) onUnreadChange(-data.length)
       })
   }, [convId])
@@ -236,8 +240,13 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
         setMessages(prev => prev.find(m => m.id === msg.id) ? prev : [...prev, msg])
         setNewMsgIds(prev => new Set([...prev, msg.id]))
         if (msg.recipient_id === myId && !msg.read) {
-          supabase.from("chat_messages").update({ read: true }).eq("id", msg.id)
-          if (onUnreadChange) onUnreadChange(-1)
+          // Счётчик уменьшаем по факту записи, а не оптимистично: иначе при
+          // отказе базы бейдж гаснет и возвращается после перезагрузки.
+          supabase.from("chat_messages").update({ read: true }).eq("id", msg.id).select("id")
+            .then(({ data, error }) => {
+              if (error) { console.error("Failed to mark chat message read:", error); return }
+              if (data?.length && onUnreadChange) onUnreadChange(-data.length)
+            })
         }
       })
       .on("postgres_changes", {

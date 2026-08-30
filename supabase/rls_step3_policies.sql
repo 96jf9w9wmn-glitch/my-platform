@@ -90,12 +90,27 @@ create policy notifications_send on public.notifications for insert to app_user
 -- chat_messages
 -- ---------------------------------------------------------------------------
 drop policy if exists chat_select on public.chat_messages;
+drop policy if exists chat_tutor_select on public.chat_messages;
+drop policy if exists chat_tutor_insert on public.chat_messages;
+drop policy if exists chat_tutor_mark_read on public.chat_messages;
 drop policy if exists chat_insert on public.chat_messages;
 drop policy if exists chat_update on public.chat_messages;
 
-create policy chat_tutor on public.chat_messages for all to authenticated
-  using (sender_id = 't:' || auth.uid()::text or recipient_id = 't:' || auth.uid()::text)
+-- ВНИМАНИЕ: одной политикой FOR ALL тут не обойтись. WITH CHECK у неё
+-- проверяет и строку ПОСЛЕ UPDATE, а у входящего сообщения отправитель —
+-- ученик, поэтому пометка «прочитано» у репетитора отклонялась (см.
+-- chat_tutor_mark_read.sql, 30.08.2026).
+drop policy if exists chat_tutor on public.chat_messages;
+create policy chat_tutor_select on public.chat_messages for select to authenticated
+  using (
+    sender_id    = 't:' || auth.uid()::text or
+    recipient_id = 't:' || auth.uid()::text
+  );
+create policy chat_tutor_insert on public.chat_messages for insert to authenticated
   with check (sender_id = 't:' || auth.uid()::text);
+create policy chat_tutor_mark_read on public.chat_messages for update to authenticated
+  using (recipient_id = 't:' || auth.uid()::text)
+  with check (recipient_id = 't:' || auth.uid()::text);
 create policy chat_read_own on public.chat_messages for select to app_user
   using (
     sender_id    = 's:' || public.current_account_id()::text or
