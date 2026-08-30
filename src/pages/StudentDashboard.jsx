@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useLayoutEffect, lazy, Suspense } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
-import { signRows, signStorageUrl } from "../storageUrl"
+import { signRows, signStorageUrl, permanentStorageUrl } from "../storageUrl"
 import { dropdownPos } from "../dropdownPos"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import Icon from "../components/Icon"
@@ -524,6 +524,78 @@ function HwTaskBody({ text, bankTask, className = "" }) {
   )
 }
 
+// Фото решения к ОТДЕЛЬНОМУ заданию домашней работы. Стоит прямо под заданием:
+// решение пишется на листе сейчас, и сфотографировать его удобнее сразу, а не
+// вспоминать про это внизу страницы (так же сделано в части 2 варианта).
+// Файл уходит в хранилище сразу при выборе, а не при отправке работы: иначе
+// автосдача по таймеру унесла бы работу без фотографий.
+// Карта фотографий в том виде, в каком она хранится в работе:
+// { "1": "<постоянный адрес>" } — подписанные ссылки в базу не пишем, они живут
+// четыре часа и через сутки вели бы на «файл не найден».
+function solutionMapOf(files) {
+  const out = {}
+  for (const [k, v] of Object.entries(files || {})) if (v?.url) out[k] = v.url
+  return out
+}
+
+function HwSolutionUpload({ hwId, index, existingUrl, onUploaded }) {
+  const [uploading, setUploading] = useState(false)
+  const cameraRef = useRef(null)
+  const fileRef = useRef(null)
+
+  async function handleFile(e) {
+    const file = e.target.files[0]
+    // Сбрасываем значение поля: без этого повторный выбор ТОГО ЖЕ файла
+    // (переснял и сохранил под тем же именем) не вызывает change.
+    e.target.value = ""
+    if (!file) return
+    setUploading(true)
+    const ext = (file.name.split(".").pop() || "jpg").toLowerCase()
+    // upsert: замена фото пишется поверх, чтобы в бакете не копились черновики.
+    const path = hwId + "/solution-" + (index + 1) + "." + ext
+    const { error } = await supabase.storage.from("homework").upload(path, file, { upsert: true })
+    if (!error) {
+      const { data } = supabase.storage.from("homework").getPublicUrl(path)
+      // Бакет приватный: в базу уходит постоянный адрес, а показать только что
+      // загруженный файл можно лишь по подписанной ссылке.
+      const signed = await signStorageUrl(data.publicUrl, "homework")
+      await onUploaded(index, data.publicUrl, signed || data.publicUrl)
+    }
+    setUploading(false)
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
+      <input ref={fileRef} type="file" accept="image/*,.pdf" className="hidden" onChange={handleFile} />
+      {existingUrl ? (
+        <div className="flex items-center gap-3 rounded-xl px-3 py-2 ring-1 ring-green-500/25">
+          <a href={existingUrl} target="_blank" rel="noreferrer"
+            className="press-fill text-xs text-green-700 dark:text-green-300 flex items-center gap-1.5 min-w-0">
+            <Icon name="check" size={12} className="flex-shrink-0" />
+            <span className="truncate">Фото решения прикреплено</span>
+          </a>
+          <button onClick={() => fileRef.current.click()} disabled={uploading}
+            className="press-fill text-xs text-gray-400 ml-auto flex-shrink-0 disabled:opacity-50">
+            {uploading ? "Загружаем..." : "Заменить"}
+          </button>
+        </div>
+      ) : (
+        <div className="flex gap-2">
+          <button onClick={() => cameraRef.current.click()} disabled={uploading}
+            className="press-fill flex-1 flex items-center justify-center gap-1.5 border border-dashed border-blue-200 dark:border-blue-400/30 rounded-xl py-2 text-blue-600 dark:text-blue-300 text-xs font-medium disabled:opacity-50">
+            <Icon name="camera" size={14} />{uploading ? "Загружаем..." : "Камера"}
+          </button>
+          <button onClick={() => fileRef.current.click()} disabled={uploading}
+            className="press-fill flex-1 flex items-center justify-center gap-1.5 border border-dashed border-gray-200 dark:border-white/15 rounded-xl py-2 text-gray-500 text-xs font-medium disabled:opacity-50">
+            <Icon name="paperclip" size={14} />Файл
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function deadlineInfo(hw) {
   if (!hw.deadline) return null
   const d = parseLocalDate(hw.deadline)
@@ -718,11 +790,23 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
   // Ошибку показываем прямо над кнопкой: системный alert ученику не объясняет,
   // что именно не так, и выглядит как сбой сайта.
   const [submitError, setSubmitError] = useState("")
-  const [solutionFile, setSolutionFile] = useState(null)
+  // Фото решения по заданиям: { "1": { url, view } }. Ключ — номер задания в
+  // работе, url — постоянный адрес (он уходит в базу), view — подписанный, по
+  // нему ссылка открывается: бакет homework приватный.
+  const [solutionFiles, setSolutionFiles] = useState(() => {
+    const src = hw.solution_files && typeof hw.solution_files === "object" ? hw.solution_files : {}
+    const out = {}
+    for (const [k, v] of Object.entries(src)) {
+      if (typeof v === "string" && v) out[k] = { url: permanentStorageUrl(v, "homework"), view: v }
+    }
+    return out
+  })
   const [answersOpen, setAnswersOpen] = useState(false)   // разбор ответов свёрнут по умолчанию
   const fileRef = useRef()
-  const solutionCameraRef = useRef()
-  const solutionFileRef = useRef()
+  // Автосдача по таймеру живёт в эффекте: читаем прикреплённое через ref,
+  // чтобы каждое новое фото не перезапускало эффект таймера.
+  const solutionFilesRef = useRef(solutionFiles)
+  useEffect(() => { solutionFilesRef.current = solutionFiles }, [solutionFiles])
 
   const hasTest = hw.hw_type === "test" || hw.hw_type === "combined"
   const hasWritten = hw.hw_type === "written" || hw.hw_type === "combined"
@@ -730,6 +814,11 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
   // Интерактивный тест: к каждому вопросу приложены варианты ответа для выбора.
   const isMcq = Array.isArray(hw.test_options) && hw.test_options.length > 0
   const requireSolution = !!hw.require_solution && hasTest
+  const solutionCount = Object.keys(solutionFiles).length
+  // Пока ученик решает тест, задания стоят рядом со своими полями ответа, и
+  // общего списка условий сверху в этот момент нет: иначе каждое условие было
+  // бы напечатано дважды.
+  const solvingTest = hasTest && !testDone && (hw.status === "assigned" || hw.status === "revision")
 
   // ── Таймер выполнения с автосдачей ────────────────────────────────────────
   // Отсчёт идёт от ВРЕМЕНИ СЕРВЕРА: момент открытия ставит RPC homework_open и
@@ -767,7 +856,7 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
   useEffect(() => {
     if (msLeft !== 0 || !timerActive || autoSentRef.current) return
     autoSentRef.current = true
-    onSubmitTest(hw.id, testAnswers, null, true)
+    onSubmitTest(hw.id, testAnswers, solutionMapOf(solutionFilesRef.current), true)
   }, [msLeft, timerActive, hw.id, testAnswers, onSubmitTest])
 
   const lastMinute = msLeft != null && msLeft <= 60000
@@ -782,19 +871,28 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
     setUploading(false)
   }
 
+  // Фото прикрепляются к заданиям по ходу решения и уходят в хранилище сразу.
+  // Здесь карта уже загруженного идёт вместе с ответами: если запись карты в
+  // работу не прошла (нет колонки solution_files), хотя бы первое фото уедет в
+  // submission_url — так репетитор увидит решение и на базе без миграции.
+  async function handleSolutionUploaded(index, url, view) {
+    const next = { ...solutionFiles, [index + 1]: { url, view } }
+    setSolutionFiles(next)
+    await supabase.from("homework").update({ solution_files: solutionMapOf(next) }).eq("id", hw.id)
+  }
+
   async function handleSubmitTest() {
     if (testAnswers.every((a) => !a.trim())) {
       setSubmitError("Впиши хотя бы один ответ.")
       return
     }
-    if (requireSolution && !solutionFile) {
-      setSubmitError("Прикрепи фото решения — кнопки «Камера» и «Файл» выше.")
+    if (requireSolution && !solutionCount) {
+      setSubmitError("Прикрепи фото решения — кнопки «Камера» и «Файл» стоят под каждым заданием.")
       return
     }
     setSubmitError("")
     setSubmittingTest(true)
-    await onSubmitTest(hw.id, testAnswers, solutionFile)
-    setSolutionFile(null)
+    await onSubmitTest(hw.id, testAnswers, solutionMapOf(solutionFiles))
     setSubmittingTest(false)
   }
 
@@ -814,6 +912,13 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
   // к заданию прилип бы чужой рисунок. Нет колонки или работа собрана иначе —
   // всё показывается текстом, ровно как раньше.
   const bankTasks = Array.isArray(hw.bank_tasks) && hw.bank_tasks.length === tasks.length ? hw.bank_tasks : null
+  // Строк при решении столько же, сколько заданий: у работы бывает больше
+  // условий, чем ответов (репетитор вписал ответы не ко всем), и такое задание
+  // должно остаться на экране — просто без поля ввода, как было в списке.
+  const solveRows = Array.from(
+    { length: Math.max(testAnswers.length, tasks.length) },
+    (_, i) => testAnswers[i] ?? ""
+  )
 
   return (
     <div className="page-active">
@@ -852,7 +957,7 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
 
         {intro && <div className="text-sm text-gray-600 mt-4" dangerouslySetInnerHTML={{ __html: renderHomeworkMath(intro) }} />}
 
-        {tasks.length > 0 && !(isMcq && !testDone) && (
+        {tasks.length > 0 && !solvingTest && (
           <div className="flex flex-col gap-2 mt-3">
             {tasks.map((t, i) => (
               <div
@@ -900,15 +1005,30 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
               <span className="flex items-start gap-1"><Icon name="message" size={12} className="mt-0.5 flex-shrink-0" />Комментарий репетитора: {hw.comment}</span>
             </div>
           )}
-          <h3 className="text-base font-medium mb-4">{isMcq ? "Тест — выбери ответ" : "Тест — введи ответы"}</h3>
-          {isMcq ? (
-            <div className="flex flex-col gap-4 mb-4">
-              {testAnswers.map((a, i) => (
-                <div key={i}>
-                  <div className="flex items-start gap-2 mb-2">
-                    <span className="shrink-0 w-6 h-6 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-300 text-xs font-semibold flex items-center justify-center">{i + 1}</span>
-                    {tasks[i]?.text && <HwTaskBody text={tasks[i].text} bankTask={bankTasks?.[i]} />}
-                  </div>
+          <h3 className="text-base font-medium mb-1">{isMcq ? "Реши работу — выбери ответы" : "Реши работу — впиши ответы"}</h3>
+          <p className="text-xs text-gray-500 mb-4">
+            {isMcq ? "Ответ выбирается прямо под заданием" : "Ответ вписывается прямо под заданием"}
+            {requireSolution ? ", там же прикрепляется фото решения." : "."}
+          </p>
+
+          {/* Задание, поле ответа и фото решения стоят вместе: раньше условия
+              были списком сверху, а поля ввода — сеткой в самом низу, и ученик
+              прокручивал страницу к каждому ответу, считая номера. */}
+          <div className="flex flex-col gap-2.5 mb-4">
+            {solveRows.map((a, i) => (
+              <div
+                key={i}
+                style={{ animationDelay: `${Math.min(i, 8) * 45}ms` }}
+                className="item-enter glass-sm rounded-2xl px-3.5 py-3 flex flex-col gap-2.5"
+              >
+                <div className="flex items-start gap-2.5">
+                  <span className="shrink-0 w-6 h-6 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-300 text-xs font-semibold flex items-center justify-center mt-0.5">{tasks[i]?.n || i + 1}</span>
+                  {tasks[i]?.text
+                    ? <HwTaskBody text={tasks[i].text} bankTask={bankTasks?.[i]} className="pt-0.5" />
+                    : <div className="text-sm text-gray-400 pt-0.5 min-w-0 flex-1">Вопрос {i + 1}</div>}
+                </div>
+
+                {i >= testAnswers.length ? null : isMcq ? (
                   <div className="flex flex-col items-start gap-2">
                     {(hw.test_options[i] || []).map((o, j) => {
                       const sel = a === o
@@ -929,20 +1049,7 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
                       )
                     })}
                   </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div
-              className="grid gap-2 mb-4"
-              style={{
-                gridTemplateRows: `repeat(${Math.ceil(testAnswers.length / 3)}, auto)`,
-                gridAutoFlow: "column",
-              }}
-            >
-              {testAnswers.map((a, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <span className="text-xs text-gray-400 w-5">{i + 1}</span>
+                ) : (
                   <input
                     value={a}
                     onChange={(e) => {
@@ -950,49 +1057,33 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
                       updated[i] = e.target.value
                       setTestAnswers(updated)
                     }}
-                    placeholder="Ответ"
-                    className="input-glass flex-1 px-2 py-1.5"
+                    placeholder="Твой ответ"
+                    className="input-glass w-full px-3 py-2"
                   />
-                </div>
-              ))}
-            </div>
-          )}
+                )}
+
+                {requireSolution && (
+                  <HwSolutionUpload
+                    hwId={hw.id}
+                    index={i}
+                    existingUrl={solutionFiles[i + 1]?.view}
+                    onUploaded={handleSolutionUploaded}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+
           {requireSolution && (
-            <div className="mb-4 p-4 rounded-xl border border-gray-100 dark:border-white/10">
-              <div className="text-sm font-medium mb-1">Прикрепи решение</div>
-              <div className="text-xs text-gray-400 mb-3">Сфотографируй или загрузи файл с черновиком — репетитор его увидит</div>
-              <input ref={solutionCameraRef} type="file" accept="image/*" capture="environment" className="hidden"
-                onChange={(e) => { if (e.target.files[0]) setSolutionFile(e.target.files[0]) }} />
-              <input ref={solutionFileRef} type="file" accept="image/*,.pdf" className="hidden"
-                onChange={(e) => { if (e.target.files[0]) setSolutionFile(e.target.files[0]) }} />
-              {solutionFile ? (
-                <div className="flex items-center justify-between bg-green-50 border border-green-100 rounded-xl px-4 py-3">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Icon name="check" size={14} className="text-green-600 flex-shrink-0" />
-                    <span className="text-sm text-green-700 truncate">{solutionFile.name}</span>
-                  </div>
-                  <button onClick={() => setSolutionFile(null)} className="text-xs text-gray-400 hover:text-red-500 ml-3 flex-shrink-0">Убрать</button>
-                </div>
-              ) : (
-                <div className="flex gap-2">
-                  <button onClick={() => solutionCameraRef.current.click()}
-                    className="flex-1 flex flex-col items-center gap-1.5 border border-dashed border-blue-200 bg-blue-50/50 rounded-xl py-3 text-blue-600 hover:bg-blue-50 transition-colors">
-                    <Icon name="camera" size={18} />
-                    <span className="text-xs font-medium">Камера</span>
-                  </button>
-                  <button onClick={() => solutionFileRef.current.click()}
-                    className="flex-1 flex flex-col items-center gap-1.5 border border-dashed border-gray-200 rounded-xl py-3 text-gray-500 hover:bg-blue-500/[0.06] transition-colors">
-                    <Icon name="paperclip" size={18} />
-                    <span className="text-xs font-medium">Файл</span>
-                  </button>
-                </div>
-              )}
+            <div className="text-xs text-gray-500 mb-3 flex items-start gap-1.5">
+              <Icon name="camera" size={12} className="mt-0.5 flex-shrink-0" />
+              Решение записывается на листе: сфотографируй его к тому заданию, которое решал, — репетитор проверит ход решения, а не только ответ.
             </div>
           )}
           {submitError && <div className="text-sm text-red-500 mb-2 text-center">{submitError}</div>}
           <button
             onClick={handleSubmitTest}
-            disabled={submittingTest || (requireSolution && !solutionFile)}
+            disabled={submittingTest || (requireSolution && !solutionCount)}
             className="w-full bg-blue-600 text-white rounded-lg py-2.5 text-sm hover:bg-blue-700 disabled:opacity-50"
           >
             {submittingTest ? "Проверяем..." : requireSolution ? "Отправить тест и решение" : "Отправить тест"}
@@ -1777,7 +1868,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
       .eq("student_id", student.id)
       .order("created_at", { ascending: false })
     // Бакет приватный — ссылки на файл задания и своё решение подписываем.
-    setHomework(await signRows(data || [], { file_url: "homework", submission_url: "homework" }))
+    setHomework(await signRows(data || [], { file_url: "homework", submission_url: "homework", solution_files: "homework" }))
   }
 
   async function handleStudentAvatarChange(e) {
@@ -1818,7 +1909,10 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   }
 
   // auto = true — работу отправил таймер по истечении времени, а не ученик.
-  async function submitHomeworkTest(hwId, answers, solutionFile, auto = false) {
+  // solutionFiles — карта «номер задания → постоянный адрес фото». Файлы уже
+  // лежат в хранилище: их грузит HwSolutionUpload по ходу решения, чтобы
+  // автосдача по таймеру не унесла работу без решения.
+  async function submitHomeworkTest(hwId, answers, solutionFiles, auto = false) {
     const hw = homework.find((h) => h.id === hwId)
     if (!hw) return
     const correct = hw.correct_answers || []
@@ -1841,17 +1935,23 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
       updates.grade = percent >= 90 ? 5 : percent >= 75 ? 4 : percent >= 50 ? 3 : 2
     }
 
-    if (solutionFile) {
-      const ext = solutionFile.name.split(".").pop()
-      const fileName = hwId + "/solution-" + Date.now() + "." + ext
-      const { error: uploadError } = await supabase.storage.from("homework").upload(fileName, solutionFile)
-      if (!uploadError) {
-        const { data } = supabase.storage.from("homework").getPublicUrl(fileName)
-        updates.submission_url = data.publicUrl
-      }
+    // Первое фото дублируем в submission_url: на нём держатся карточка
+    // «Решение ученика» у репетитора и кабинет родителя, и оно же остаётся
+    // единственным следом решения на базе без миграции homework_solution_files.sql.
+    const solutionUrls = Object.values(solutionFiles || {}).filter(Boolean)
+    if (solutionUrls.length) {
+      updates.solution_files = solutionFiles
+      updates.submission_url = solutionUrls[0]
     }
 
-    await supabase.from("homework").update(updates).eq("id", hwId)
+    const { error: saveError } = await supabase.from("homework").update(updates).eq("id", hwId)
+    // Колонки solution_files может не быть (миграция не выполнена) — повторяем
+    // запись без неё, иначе ответы ученика пропали бы вместе с ошибкой.
+    if (saveError && /solution_files/.test(saveError.message || "")) {
+      const plain = { ...updates }
+      delete plain.solution_files
+      await supabase.from("homework").update(plain).eq("id", hwId)
+    }
 
     // Попытки по заданиям из банка — тот же журнал, что после сдачи варианта
     // (task_attempts). Без него аналитика слабых типажей и отчёт родителю
@@ -1910,7 +2010,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     loadHomework()
     const updated = await supabase.from("homework").select("*").eq("id", hwId).single()
     if (updated.data) {
-      const [signed] = await signRows([updated.data], { file_url: "homework", submission_url: "homework" })
+      const [signed] = await signRows([updated.data], { file_url: "homework", submission_url: "homework", solution_files: "homework" })
       setSelectedHomework(signed)
     }
   }

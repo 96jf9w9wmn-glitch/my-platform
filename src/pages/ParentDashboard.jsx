@@ -310,7 +310,7 @@ function ParentDashboard({ user, onLogout }) {
       .eq("student_id", student.id)
       .order("created_at", { ascending: false })
       .then(async ({ data }) => {
-        setHomework(await signRows(data || [], { file_url: "homework", submission_url: "homework" }))
+        setHomework(await signRows(data || [], { file_url: "homework", submission_url: "homework", solution_files: "homework" }))
         setLoading(false)
       })
   }, [student.id])

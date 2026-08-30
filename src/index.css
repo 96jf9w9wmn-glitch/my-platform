@@ -1912,6 +1912,20 @@ html.kb-open .kb-collapse { padding-bottom: 0; }
   .board-strip { transition: none; transform: none; }
 }
 
+/* Захват стороны картинки на доске: сама полоса прозрачная и лежит вдоль ребра —
+   видно её только по курсору-стрелке, а при наведении ребро подсвечивается
+   акцентом, чтобы было понятно, за что тянешь. Квадратной ручки тут нет
+   намеренно: формат картинки не меняется, тянуть можно как за угол. */
+.board-edge-grip {
+  background: transparent;
+  transition: background-color 0.15s ease;
+}
+.board-edge-grip:hover { background: rgba(0, 122, 255, 0.18); }
+.board-edge-grip:active { background: rgba(0, 122, 255, 0.3); }
+@media (prefers-reduced-motion: reduce) {
+  .board-edge-grip { transition: none; }
+}
+
 /* Мигание блока, к которому привело уведомление: без него человек попадает на
    длинный экран и не понимает, ради чего его сюда перенесли. Кольцо рисуем
    через outline — он идёт поверх и не режется чужим overflow, в отличие от

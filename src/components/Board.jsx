@@ -1750,7 +1750,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     { k: "nw", c: "nwse-resize", ...framePt(-1, -1) }, { k: "ne", c: "nesw-resize", ...framePt(1, -1) },
     { k: "se", c: "nwse-resize", ...framePt(1, 1) }, { k: "sw", c: "nesw-resize", ...framePt(-1, 1) },
   ] : []
-  const edgeHandles = H && !selHasImage ? [
+  const edgeHandles = H ? [
     { k: "n", c: "ns-resize", ...framePt(0, -1) }, { k: "s", c: "ns-resize", ...framePt(0, 1) },
     { k: "e", c: "ew-resize", ...framePt(1, 0) }, { k: "w", c: "ew-resize", ...framePt(-1, 0) },
   ] : []
@@ -1873,13 +1873,23 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
               style={{ left: H.cx, top: H.cy, width: frameW, height: frameH,
                 transform: `translate(-50%, -50%) rotate(${H.angle}rad)`, border: "1.5px solid #007AFF", borderRadius: 2 }} />
 
-            {/* Рёбра (масштаб по одной оси) */}
-            {edgeHandles.map((h) => (
+            {/* Рёбра: у фигур — ручка (масштаб по одной оси), у картинки —
+                прозрачная полоса вдоль всей стороны: формат не меняется, поэтому
+                ручка не нужна, нужен только курсор-стрелка под рукой. */}
+            {edgeHandles.map((h) => (selHasImage ? (
+              <div key={h.k} onPointerDown={(e) => startTransform(h.k, e)}
+                className="absolute board-edge-grip"
+                style={{ left: h.x, top: h.y,
+                  width: h.k === "n" || h.k === "s" ? Math.max(frameW - 14, 8) : 12,
+                  height: h.k === "n" || h.k === "s" ? 12 : Math.max(frameH - 14, 8),
+                  transform: `translate(-50%, -50%) rotate(${H.angle}rad)`,
+                  cursor: h.c, touchAction: "none" }} />
+            ) : (
               <div key={h.k} onPointerDown={(e) => startTransform(h.k, e)}
                 className="absolute rounded-full"
                 style={{ left: h.x - 5, top: h.y - 5, width: 10, height: 10, cursor: h.c, touchAction: "none",
                   background: dark ? "#5c5c60" : "#c7c7cc", boxShadow: "0 0 0 1.5px #fff" }} />
-            ))}
+            )))}
 
             {/* Углы (масштаб по обеим осям) */}
             {cornerHandles.map((h) => (

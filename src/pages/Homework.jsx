@@ -1523,9 +1523,13 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
   // комбинированной работы ответы теста сохраняются ещё до сдачи файла, статус
   // при этом остаётся «Выдано». Возврат на доработку эти следы стирает
   // (см. setStatus ниже) — там правка снова открывается.
+  const solutionShots = hw.solution_files && typeof hw.solution_files === "object"
+    ? Object.entries(hw.solution_files).filter(([, url]) => typeof url === "string" && url)
+        .sort((a, b) => Number(a[0]) - Number(b[0]))
+    : []
   const attempted = hw.status === "submitted" || hw.status === "done"
     || (Array.isArray(hw.student_answers) && hw.student_answers.length > 0)
-    || !!hw.submission_url
+    || !!hw.submission_url || solutionShots.length > 0
 
   const testPercent = hw.test_score != null && hw.question_count
     ? Math.round((hw.test_score / hw.question_count) * 100)
@@ -1549,6 +1553,10 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
       updates.test_score = null
       updates.student_answers = null
       updates.submission_url = null
+      // Колонку трогаем только когда она в строке есть: на базе без миграции
+      // homework_solution_files.sql запись с этим полем упала бы целиком и
+      // работа осталась бы не возвращённой.
+      if (hw.solution_files !== undefined) updates.solution_files = null
     }
     await supabase.from("homework").update(updates).eq("id", hw.id)
 
@@ -1704,6 +1712,23 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
                 className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 flex-shrink-0">
                 Открыть
               </a>
+            </DetailBlock>
+          )}
+
+          {/* Решение ученик фотографирует к каждому заданию отдельно, поэтому и
+              открывается оно по заданиям: одна ссылка «Решение ученика» выше —
+              это первое из этих же фото, оставленное ради старых работ. */}
+          {solutionShots.length > 1 && (
+            <DetailBlock>
+              <div className="text-sm font-medium mb-2">Решение по заданиям</div>
+              <div className="flex flex-wrap gap-2">
+                {solutionShots.map(([num, url]) => (
+                  <a key={num} href={url} target="_blank" rel="noreferrer"
+                    className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 flex items-center gap-1.5">
+                    <Icon name="paperclip" size={12} />№{num}
+                  </a>
+                ))}
+              </div>
             </DetailBlock>
           )}
 
@@ -1864,7 +1889,7 @@ function Homework({ user, students }) {
       .order("created_at", { ascending: false })
     // Бакет `homework` приватный — файл задания и присланное решение
     // открываются по временной подписанной ссылке.
-    setHomework(await signRows(data || [], { file_url: "homework", submission_url: "homework" }))
+    setHomework(await signRows(data || [], { file_url: "homework", submission_url: "homework", solution_files: "homework" }))
   }
 
   const overdueCount = homework.filter(isOverdue).length
