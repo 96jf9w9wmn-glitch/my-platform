@@ -1499,9 +1499,15 @@ function HomeworkCard({ hw, selected, onOpen }) {
 }
 
 // Блок внутри разбора: одинаковая подложка у файла, результата и комментария.
+//
+// Геометрия ровно как у карточки слева (.glass-sm): скругление 14px, отступ
+// 14px и НАСТОЯЩАЯ рамка вместо кольца. Иначе соседние блоки первого ряда
+// («5 заданий» и «Срок сдачи») при одинаковом содержимом расходились по высоте
+// на 6px: отступ был меньше на 2px с каждой стороны, а ring — это тень, она
+// места не занимает, тогда как border у карточки слева добавляет ещё 2px.
 function DetailBlock({ children, className = "" }) {
   return (
-    <div className={`rounded-2xl ring-1 ring-gray-200/70 dark:ring-white/10 bg-white/45 dark:bg-white/[0.03] p-3 ${className}`}>
+    <div className={`rounded-[14px] border border-gray-200/70 dark:border-white/10 bg-white/45 dark:bg-white/[0.03] p-3.5 ${className}`}>
       {children}
     </div>
   )
