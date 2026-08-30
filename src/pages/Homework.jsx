@@ -1564,6 +1564,48 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
       })
     : []
   const wrongNums = answerRows.filter((r) => r.ok === false).map((r) => r.n)
+
+  // Результат теста стоит в карточке заданий, а не отдельной плашкой в колонке
+  // «Проверка»: ошибки — это про сами задания, и вся карточка открывает разбор.
+  // Плашкой справа он вклинивался в ход проверки, а под заданиями оставалось
+  // пустое поле в половину ширины. Номера — не кнопки: они внутри кнопки-карточки.
+  const resultRow = hw.test_score == null ? null : (
+    <div className="w-full border-t border-gray-100/80 dark:border-white/10 pt-3 flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs text-gray-500">Результат теста</span>
+        <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+          {hw.test_score} / {hw.question_count}{testPercent != null ? ` · ${testPercent}%` : ""}
+        </span>
+      </div>
+      {answerRows.length > 0 && (
+        <>
+          {/* Номера заданий цветом: сразу видно, где ошибка. */}
+          <div className="flex flex-wrap gap-1.5">
+            {answerRows.map((r, i) => (
+              <span
+                key={i}
+                title={r.ok === false ? `Задание ${r.n} — ошибка` : r.ok ? `Задание ${r.n} — верно` : `Задание ${r.n} — проверяет репетитор`}
+                className={`w-7 h-7 rounded-lg text-xs font-medium flex items-center justify-center ring-1 ${
+                  r.ok === false ? "bg-red-500/12 text-red-600 ring-red-500/25"
+                    : r.ok ? "bg-green-500/12 text-green-700 dark:text-green-300 ring-green-500/25"
+                    : "text-gray-500 ring-gray-200 dark:ring-white/15"
+                }`}
+              >
+                {r.n}
+              </span>
+            ))}
+          </div>
+          <div className="text-[11px] text-gray-400">
+            {wrongNums.length === 0
+              ? "Ошибок нет"
+              : wrongNums.length === 1
+              ? `Ошибка в задании №${wrongNums[0]}`
+              : `Ошибки в заданиях ${wrongNums.map((n) => "№" + n).join(", ")}`}
+          </div>
+        </>
+      )}
+    </div>
+  )
   // Степень plainTaskMath отдаёт как «x^(2)» — в строке это лишний шум, поэтому
   // раскладываем её в юникод (x²): скобки степени та же функция уже понимает
   // в фигурном виде.
@@ -1652,26 +1694,32 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
             // узнавалась не открывая окна.
             <button
               onClick={() => setShowTasks(true)}
-              className="glass-sm press-tap w-full p-3.5 flex items-center gap-3 text-left"
+              className="glass-sm press-tap w-full p-3.5 flex flex-col gap-3 text-left"
             >
-              <div className="w-9 h-9 rounded-xl bg-blue-500/12 text-blue-600 flex items-center justify-center flex-shrink-0">
-                <Icon name="file-text" size={16} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium">
-                  {taskCount > 0
-                    ? `${taskCount} ${plural(taskCount, "задание", "задания", "заданий")}`
-                    : "Условия работы"}
+              <div className="flex items-center gap-3 w-full">
+                <div className="w-9 h-9 rounded-xl bg-blue-500/12 text-blue-600 flex items-center justify-center flex-shrink-0">
+                  <Icon name="file-text" size={16} />
                 </div>
-                <div className="text-[11px] text-gray-400 mt-0.5 truncate">{tasksPreview}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium">
+                    {taskCount > 0
+                      ? `${taskCount} ${plural(taskCount, "задание", "задания", "заданий")}`
+                      : "Условия работы"}
+                  </div>
+                  <div className="text-[11px] text-gray-400 mt-0.5 truncate">{tasksPreview}</div>
+                </div>
+                <span className="text-xs text-blue-600 flex-shrink-0">Посмотреть</span>
               </div>
-              <span className="text-xs text-blue-600 flex-shrink-0">Посмотреть</span>
+              {resultRow}
             </button>
           ) : (
             <div className="rounded-2xl ring-1 ring-dashed ring-gray-200/80 dark:ring-white/10 text-sm text-gray-400 text-center py-8">
               {hw.file_url ? "Условия — в приложенном файле" : "Условий нет"}
             </div>
           )}
+          {/* Условий в работе нет (задания в файле) — результату всё равно нужно
+              место, и это по-прежнему колонка заданий, а не колонка проверки. */}
+          {!hw.description && resultRow && <DetailBlock>{resultRow}</DetailBlock>}
           {hw.file_url && (
             <DetailBlock className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-blue-500/12 text-blue-600 flex items-center justify-center flex-shrink-0">
@@ -1714,49 +1762,6 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
             )}
           </DetailBlock>
 
-          {hw.test_score != null && (
-            <DetailBlock>
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-xs text-gray-500">Результат теста</div>
-                <div className="text-sm font-medium text-blue-700 dark:text-blue-300">
-                  {hw.test_score} / {hw.question_count}{testPercent != null ? ` · ${testPercent}%` : ""}
-                </div>
-              </div>
-              {answerRows.length > 0 && (
-                <>
-                  {/* Номера заданий цветом: сразу видно, где ошибка. Нажатие
-                      открывает то же окно с условиями — уже с ответами ученика
-                      и его фото решения. */}
-                  <div className="flex flex-wrap gap-1.5 mt-2.5">
-                    {answerRows.map((r, i) => (
-                      // Кнопкой чип становится только когда есть что открыть:
-                      // у работы без разбитого на задания описания окно пустое.
-                      <button
-                        key={i}
-                        onClick={taskItems.length ? () => setShowTasks(true) : undefined}
-                        disabled={!taskItems.length}
-                        title={r.ok === false ? `Задание ${r.n} — ошибка` : r.ok ? `Задание ${r.n} — верно` : `Задание ${r.n} — проверяет репетитор`}
-                        className={`${taskItems.length ? "press-tap" : "cursor-default"} w-7 h-7 rounded-lg text-xs font-medium flex items-center justify-center ring-1 ${
-                          r.ok === false ? "bg-red-500/12 text-red-600 ring-red-500/25"
-                            : r.ok ? "bg-green-500/12 text-green-700 dark:text-green-300 ring-green-500/25"
-                            : "text-gray-500 ring-gray-200 dark:ring-white/15"
-                        }`}
-                      >
-                        {r.n}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="text-[11px] text-gray-400 mt-2">
-                    {wrongNums.length === 0
-                      ? "Ошибок нет"
-                      : wrongNums.length === 1
-                      ? `Ошибка в задании №${wrongNums[0]}`
-                      : `Ошибки в заданиях ${wrongNums.map((n) => "№" + n).join(", ")}`}
-                  </div>
-                </>
-              )}
-            </DetailBlock>
-          )}
 
           {hw.submission_url && (
             <DetailBlock className="flex items-center gap-3">
