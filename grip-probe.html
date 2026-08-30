@@ -1,0 +1,53 @@
+<!doctype html><meta charset="utf-8"><title>Проба полос</title>
+<style>
+ body{margin:0;background:#111;font:13px -apple-system,sans-serif;color:#ddd}
+ .board-edge-grip{background:transparent;transition:background-color .15s ease}
+ .board-edge-grip:hover{background:rgba(0,122,255,.18)}
+ .board-edge-grip:active{background:rgba(0,122,255,.3)}
+ .img{position:absolute;background:#e8eaf2}
+</style>
+<div id="root" style="position:relative;height:100vh"></div>
+<script>
+// Те же формулы, что в Board.jsx: рамка {cx,cy,ax,ay,angle} → framePt/frameW/frameH
+function makeFrame(cx, cy, hw, hh, angle, scale = 1) {
+  const cos = Math.cos(angle), sin = Math.sin(angle)
+  return { cx, cy, angle,
+    ax: { x: cos*hw*scale, y: sin*hw*scale },
+    ay: { x: -sin*hh*scale, y: cos*hh*scale } }
+}
+function render(H, label) {
+  const framePt = (sx, sy) => ({ x: H.cx + sx*H.ax.x + sy*H.ay.x, y: H.cy + sx*H.ax.y + sy*H.ay.y })
+  const frameW = 2*Math.hypot(H.ax.x, H.ax.y), frameH = 2*Math.hypot(H.ay.x, H.ay.y)
+  const root = document.getElementById("root")
+  // сама «картинка»
+  const img = document.createElement("div")
+  img.className = "img"
+  Object.assign(img.style, { left: H.cx+"px", top: H.cy+"px", width: frameW+"px", height: frameH+"px",
+    transform: `translate(-50%,-50%) rotate(${H.angle}rad)` })
+  root.appendChild(img)
+  const frame = document.createElement("div")
+  Object.assign(frame.style, { position:"absolute", left:H.cx+"px", top:H.cy+"px", width:frameW+"px", height:frameH+"px",
+    transform:`translate(-50%,-50%) rotate(${H.angle}rad)`, border:"1.5px solid #007AFF", borderRadius:"2px", pointerEvents:"none" })
+  root.appendChild(frame)
+  const edges = [["n",0,-1,"ns-resize"],["s",0,1,"ns-resize"],["e",1,0,"ew-resize"],["w",-1,0,"ew-resize"]]
+  for (const [k,sx,sy,cur] of edges) {
+    const p = framePt(sx,sy), d = document.createElement("div")
+    d.className = "board-edge-grip"; d.title = label+" "+k
+    Object.assign(d.style, { position:"absolute", left:p.x+"px", top:p.y+"px",
+      width: (k==="n"||k==="s" ? Math.max(frameW-14,8) : 12)+"px",
+      height: (k==="n"||k==="s" ? 12 : Math.max(frameH-14,8))+"px",
+      transform:`translate(-50%,-50%) rotate(${H.angle}rad)`, cursor:cur })
+    root.appendChild(d)
+  }
+  for (const [sx,sy] of [[-1,-1],[1,-1],[1,1],[-1,1]]) {
+    const p = framePt(sx,sy), d = document.createElement("div")
+    Object.assign(d.style, { position:"absolute", left:(p.x-6)+"px", top:(p.y-6)+"px", width:"12px", height:"12px",
+      borderRadius:"3px", background:"#fff", boxShadow:"0 0 0 1.5px #007AFF" })
+    root.appendChild(d)
+  }
+}
+render(makeFrame(260, 200, 160, 110, 0), "прямая")
+render(makeFrame(680, 250, 150, 100, 0.5), "повёрнутая")
+// самопроверка: полоса должна лежать вдоль стороны и не выходить за рамку
+window.probe = () => [...document.querySelectorAll(".board-edge-grip")].map(d => d.getBoundingClientRect())
+</script>
