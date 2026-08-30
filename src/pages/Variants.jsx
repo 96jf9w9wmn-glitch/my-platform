@@ -789,6 +789,11 @@ function VariantReview({ submission, variant, onClose, onSave }) {
   const variantMax = variantMaxOf(variant)
   const res = examResult(type, total, { geometry: geomScore, variantMax })
 
+  // Файлы, которым не нашлось карточки задания (номер вне части 2 этого типа):
+  // их всё равно нужно показать, иначе решение ученика молча пропадёт.
+  const orphanFiles = Object.entries(submission.part2_files || {})
+    .filter(([task]) => !part2Tasks.some((n) => String(n) === String(task)))
+
   const algebra = part2Tasks.filter((n) => !geomNums || !geomNums.includes(n))
   const geometry = geomNums ? part2Tasks.filter((n) => geomNums.includes(n)) : []
 
@@ -797,7 +802,7 @@ function VariantReview({ submission, variant, onClose, onSave }) {
   const renderPart2Row = (n) => {
     const chosen = submission.part2_choices?.[n]
     const correct = variant.answers?.part2?.[n]
-    const hasFile = !!submission.part2_files?.[n]
+    const file = submission.part2_files?.[n]
     // Ученик выбирал ответ по пункту б) (ответ ЕГЭ двухчастный) — сверяем с той же
     // частью, иначе верный выбор всегда показывался бы как несовпавший.
     const match = chosen != null && correct != null && String(chosen).trim() === choiceBaseOf(correct).text.trim()
@@ -847,7 +852,16 @@ function VariantReview({ submission, variant, onClose, onSave }) {
               )}
             </>
           )}
-          {!hasFile && (
+          {/* Решение ученика — здесь же, в карточке своего задания: отдельным
+              списком «Файлы ученика» сверху приходилось держать в голове, к
+              какому номеру какой файл. */}
+          {file ? (
+            <a href={file} target="_blank" rel="noreferrer"
+              className="press-fill self-start inline-flex items-center gap-1.5 text-blue-600 rounded-lg -mx-1 px-1 py-0.5">
+              <Icon name="image" size={12} className="flex-shrink-0" />
+              фото решения
+            </a>
+          ) : (
             <div className="flex items-center gap-1.5 text-amber-600">
               <Icon name="image" size={12} className="flex-shrink-0" />
               нет фото решения
@@ -908,12 +922,12 @@ function VariantReview({ submission, variant, onClose, onSave }) {
               Работа ушла на проверку автоматически: время экзамена вышло, часть ответов ученик мог не успеть вписать.
             </div>
           )}
-          {submission.part2_files && Object.keys(submission.part2_files).length > 0 && (
+          {orphanFiles.length > 0 && (
             <div className="mb-4">
               <label className="text-sm text-gray-500 mb-2 block">Файлы ученика</label>
               <div className="grid gap-2 sm:grid-cols-3">
-                {Object.entries(submission.part2_files).map(([task, url]) => (
-                  <a key={task} href={url} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:opacity-70 transition-opacity border border-gray-100 rounded-lg px-3 py-2">
+                {orphanFiles.map(([task, url]) => (
+                  <a key={task} href={url} target="_blank" rel="noreferrer" className="press-fill text-sm text-blue-600 rounded-lg px-3 py-2 ring-1 ring-gray-200/70 dark:ring-white/10">
                     Задание {task}
                   </a>
                 ))}
