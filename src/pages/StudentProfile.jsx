@@ -7,10 +7,13 @@ import BoardHistory from "../components/BoardHistory"
 import Collapse from "../components/Collapse"
 import Reveal from "../components/Reveal"
 import ReportComposer from "../components/ReportComposer"
-import { parseLocalDate, isLessonPast, isLessonConducted, setLessonStatus, getInitials, formatPhone, contactHref, contactLabel, LESSON_EXCUSED } from "../utils"
+import { parseLocalDate, isLessonPast, isLessonConducted, setLessonStatus, getInitials, formatPhone, contactHref, contactLabel, plural, LESSON_EXCUSED } from "../utils"
 import RescheduleModal from "../components/RescheduleModal"
 import StudentFormModal from "../components/StudentFormModal"
 import LessonStatusModal, { LessonStatusBadge } from "../components/LessonStatusModal"
+import PackageModal from "../components/PackageModal"
+import { studentBilling, renewalState, periodLabel, dayMonth, PACKAGE_KIND } from "../billing"
+import { longDate } from "../invoices"
 import { lessonStatusNotice } from "../lessonStatus"
 import {
   applyMoveToStudent, proposeMoveOnStudent, setMoveRequest, findSlotConflict,
@@ -22,9 +25,12 @@ import { PlanLock } from "../components/PlanLock"
 const MESSENGER_LABELS = {
   telegram: "Telegram",
   whatsapp: "WhatsApp",
-  instagram: "Instagram",
+  max: "MAX",
   vk: "ВКонтакте",
   other: "Другое",
+  // Instagram из выбора убран, но у контактов, записанных раньше, в базе лежит
+  // «instagram» — без подписи карточка показала бы сырой идентификатор.
+  instagram: "Instagram",
 }
 
 
@@ -49,6 +55,7 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
   const [movingLesson, setMovingLesson] = useState(null)
   // Занятие из архива, которому выбирают пометку «не состоялось».
   const [statusFor, setStatusFor] = useState(null)
+  const [packageOpen, setPackageOpen] = useState(false)
 
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 768)
@@ -140,6 +147,25 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
     notifyStudent(title, body)
   }
 
+  // Абонемент — это оплата, а не отдельная сущность: он ложится в тот же
+  // массив payments, что и обычный платёж, только с полями периода.
+  function issuePackage(pkg) {
+    const payment = {
+      id: Date.now(),
+      kind: PACKAGE_KIND,
+      date: new Date().toLocaleDateString("ru-RU"),
+      note: "",
+      ...pkg,
+    }
+    onUpdate(student.id, {
+      payments: [...(student.payments || []), payment],
+      paid: true,
+      balance: (student.balance || 0) + pkg.amount,
+    })
+    notifyStudent("Абонемент оплачен",
+      `${pkg.lessons} ${plural(pkg.lessons, "занятие", "занятия", "занятий")} с ${longDate(pkg.from)} по ${longDate(pkg.until)} — они уже оплачены, платить за них отдельно не нужно.`)
+  }
+
   function saveNote(origIdx) {
     const updatedLessons = (student.lessons || []).map((l, i) =>
       i === origIdx ? { ...l, note: noteDraft.trim() || undefined } : l
@@ -168,6 +194,10 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
     .sort((a, b) => b.date.localeCompare(a.date))
   // Проведённые — те, за которые платят.
   const conducted = past.filter((l) => isLessonConducted(l))
+  // Деньги целиком — долг, абонементы, оплаченное вперёд (billing.js).
+  const billing = studentBilling(student)
+  const renew = renewalState(student)
+  const activePack = billing.active
 
   const initials = getInitials(student.name)
 
@@ -192,8 +222,7 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
   // Долг появляется, только когда есть с чего его считать: до первого
   // проведённого занятия платить не за что.
   if (conducted.length > 0) {
-    const price = student.lessonPrice || 0
-    const debt = conducted.length * price - (student.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
+    const { price, debt } = billing
     statTiles.push({
       label: "Долг",
       // Без цены занятия долг посчитать не из чего: показывать «Оплачено» здесь — обман.
@@ -348,6 +377,64 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
         </div>
       </div>
 
+      {/* Абонемент — оплата вперёд за неделю, две недели или месяц. Стоит в
+          колонке профиля, рядом с ценой занятия: это про деньги, а не про
+          успеваемость. Блок виден всегда, даже когда абонемента нет, — иначе
+          про эту возможность никто бы не узнал. */}
+      <div className="glass p-4">
+        <div className="flex items-center justify-between gap-2 mb-2.5">
+          <div className="text-sm font-medium">Абонемент</div>
+          {renew?.due && (
+            <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-300">
+              пора продлить
+            </span>
+          )}
+        </div>
+
+        {activePack ? (
+          <>
+            <div className="flex items-end gap-1.5">
+              <div className="text-2xl font-medium">{activePack.left}</div>
+              <div className="text-xs text-gray-400 mb-0.5">
+                из {activePack.lessons} {plural(activePack.lessons, "занятия", "занятий", "занятий")} осталось
+              </div>
+            </div>
+            {/* Дорожка — синим на просвет: серых заливок в интерфейсе нет. */}
+            <div className="mt-2 h-1.5 rounded-full bg-blue-500/12 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-blue-600 transition-[width] duration-500"
+                style={{ width: `${Math.round((activePack.used / Math.max(1, activePack.lessons)) * 100)}%` }}
+              />
+            </div>
+            {/* «Не сгорает» — состояние по умолчанию, объявлять его незачем;
+                сгорание, наоборот, надо видеть, не открывая абонемент. */}
+            <div className="text-xs text-gray-500 mt-2">
+              {periodLabel(activePack.period)} ·{" "}
+              {activePack.burn
+                ? <span className="text-amber-600 dark:text-amber-300">сгорает {dayMonth(activePack.until)}</span>
+                : <>по {dayMonth(activePack.until)}</>}
+            </div>
+          </>
+        ) : billing.packages.length > 0 ? (
+          <div className="text-sm text-gray-500 leading-relaxed">
+            Занятия по абонементу закончились
+            {billing.lastPackage?.until ? ` — срок был до ${dayMonth(billing.lastPackage.until)}` : ""}.
+          </div>
+        ) : (
+          <div className="text-xs text-gray-500 leading-relaxed">
+            Ученик платит вперёд за неделю, две недели или месяц. Оплаченные занятия
+            в долг больше не попадают.
+          </div>
+        )}
+
+        <button
+          onClick={() => setPackageOpen(true)}
+          className="press-fill mt-3 w-full rounded-xl py-2 text-sm font-medium text-blue-600 dark:text-blue-300 ring-1 ring-blue-500/30"
+        >
+          {billing.packages.length ? "Продлить" : "Выдать абонемент"}
+        </button>
+      </div>
+
       {/* Замечания. Поле ввода спрятано за кнопкой: пишут их редко, а открытая
           форма занимала треть карточки на каждом заходе. */}
       <div className="glass p-4 flex-1 flex flex-col min-h-0">
@@ -438,15 +525,17 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
               text="Снимки доски за каждое занятие: можно вернуться к разобранной задаче через месяц."
             />}
 
-        {/* Занятия тянутся на остаток высоты колонки: колонка профиля слева
-            обычно длиннее, и без этого правая обрывалась выше — блоки стояли
-            на разных уровнях. */}
+        {/* Карточка тянется на остаток высоты колонки (слева профиль обычно
+            длиннее, и без этого правая обрывалась выше), но СТРОКИ внутри
+            остаются вплотную друг к другу: раньше список разгонялся
+            justify-between, и три занятия висели на расстоянии экрана друг от
+            друга, а разделитель — в пустоте. */}
         <div className="glass p-4 flex-1 flex flex-col min-h-0">
           <h2 className="text-sm font-medium mb-3">Ближайшие занятия</h2>
           {upcoming.length === 0 ? (
             <div className="flex-1 flex items-center justify-center text-sm text-gray-400 py-4">Нет предстоящих занятий</div>
           ) : (
-            <div className="flex-1 flex flex-col justify-between gap-2">
+            <div className="flex flex-col gap-1">
               {upcoming.map((l, i) => (
                 <div key={i} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0 gap-2">
                   <div className="min-w-0">
@@ -623,6 +712,15 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
           student={student}
           onClose={() => setShowEdit(false)}
           onSubmit={handleSave}
+        />
+      )}
+
+      {packageOpen && (
+        <PackageModal
+          student={student}
+          previous={billing.lastPackage}
+          onSubmit={issuePackage}
+          onClose={() => setPackageOpen(false)}
         />
       )}
 
