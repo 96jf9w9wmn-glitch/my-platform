@@ -798,8 +798,9 @@ export function StudentHomeworkList({ homework, onSelect }) {
   )
 }
 
-function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
+function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten }) {
   const [uploading, setUploading] = useState(false)
+  const [submittingWritten, setSubmittingWritten] = useState(false)
   const [testAnswers, setTestAnswers] = useState(Array(hw.question_count || 0).fill(""))
   const [submittingTest, setSubmittingTest] = useState(false)
   // Ошибку показываем прямо над кнопкой: системный alert ученику не объясняет,
@@ -896,6 +897,21 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
     await supabase.from("homework").update({ solution_files: solutionMapOf(next) }).eq("id", hw.id)
   }
 
+  // Письменная работа сдаётся теми же фото: они уже в хранилище, здесь работа
+  // только меняет статус. Общей загрузки «одним файлом» внизу у такой работы
+  // нет — она осталась лишь там, где заданий в описании не разобрать и
+  // прикреплять фото не к чему.
+  async function handleSubmitWritten() {
+    if (!solutionCount) {
+      setSubmitError("Прикрепи фото решения — кнопки «Камера» и «Файл» стоят под каждым заданием.")
+      return
+    }
+    setSubmitError("")
+    setSubmittingWritten(true)
+    await onSubmitWritten(hw.id, solutionMapOf(solutionFiles))
+    setSubmittingWritten(false)
+  }
+
   async function handleSubmitTest() {
     if (testAnswers.every((a) => !a.trim())) {
       setSubmitError("Впиши хотя бы один ответ.")
@@ -934,6 +950,11 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
     { length: Math.max(testAnswers.length, tasks.length) },
     (_, i) => testAnswers[i] ?? ""
   )
+  // Письменную работу ученик тоже решает по заданиям: фото прикрепляется к
+  // тому заданию, которое решал, а не одним файлом в самом низу страницы.
+  // Когда заданий в описании нет (работа выдана файлом), остаётся прежняя
+  // загрузка целиком — прикреплять фото не к чему.
+  const solvingWritten = showWrittenUpload && tasks.length > 0
 
   return (
     <div className="page-active">
@@ -972,7 +993,7 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
 
         {intro && <div className="text-sm text-gray-600 mt-4" dangerouslySetInnerHTML={{ __html: renderHomeworkMath(intro) }} />}
 
-        {tasks.length > 0 && !solvingTest && (
+        {tasks.length > 0 && !solvingTest && !solvingWritten && (
           <div className="flex flex-col gap-2 mt-3">
             {tasks.map((t, i) => (
               <div
@@ -1173,15 +1194,56 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest }) {
               <span className="flex items-start gap-1"><Icon name="message" size={12} className="mt-0.5 flex-shrink-0" />Комментарий репетитора: {hw.comment}</span>
             </div>
           )}
-          <h3 className="text-base font-medium mb-3">Загрузи выполненную работу</h3>
-          <input ref={fileRef} type="file" className="hidden" onChange={handleFileChange} />
-          <button
-            onClick={() => fileRef.current.click()}
-            disabled={uploading}
-            className="w-full border border-dashed border-gray-200 rounded-lg py-3 text-sm text-gray-500 hover:bg-blue-500/[0.06] disabled:opacity-50"
-          >
-            {uploading ? "Загружаем..." : <span className="flex items-center justify-center gap-1.5"><Icon name="paperclip" size={14} />Загрузить файл</span>}
-          </button>
+          {solvingWritten ? (
+            <>
+              <h3 className="text-base font-medium mb-1">Реши работу — прикрепи решение</h3>
+              <p className="text-xs text-gray-500 mb-4">
+                Фотографируй решение к тому заданию, которое решал: репетитор проверит ход решения, а не только ответ.
+              </p>
+
+              <div className="flex flex-col gap-2.5 mb-4">
+                {tasks.map((t, i) => (
+                  <div
+                    key={i}
+                    style={{ animationDelay: `${Math.min(i, 8) * 45}ms` }}
+                    className="item-enter glass-sm rounded-2xl px-3.5 py-3 flex flex-col gap-2.5"
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <span className="shrink-0 w-6 h-6 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-300 text-xs font-semibold flex items-center justify-center mt-0.5">{t.n}</span>
+                      <HwTaskBody text={t.text} bankTask={bankTasks?.[i]} className="pt-0.5" />
+                    </div>
+                    <HwSolutionUpload
+                      hwId={hw.id}
+                      index={i}
+                      existingUrl={solutionFiles[i + 1]?.view}
+                      onUploaded={handleSolutionUploaded}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {submitError && <div className="text-sm text-red-500 mb-2 text-center">{submitError}</div>}
+              <button
+                onClick={handleSubmitWritten}
+                disabled={submittingWritten || !solutionCount}
+                className="w-full bg-blue-600 text-white rounded-lg py-2.5 text-sm hover:bg-blue-700 disabled:opacity-50"
+              >
+                {submittingWritten ? "Отправляем..." : "Отправить решение"}
+              </button>
+            </>
+          ) : (
+            <>
+              <h3 className="text-base font-medium mb-3">Загрузи выполненную работу</h3>
+              <input ref={fileRef} type="file" className="hidden" onChange={handleFileChange} />
+              <button
+                onClick={() => fileRef.current.click()}
+                disabled={uploading}
+                className="w-full border border-dashed border-gray-200 rounded-lg py-3 text-sm text-gray-500 hover:bg-blue-500/[0.06] disabled:opacity-50"
+              >
+                {uploading ? "Загружаем..." : <span className="flex items-center justify-center gap-1.5"><Icon name="paperclip" size={14} />Загрузить файл</span>}
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -2145,6 +2207,44 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     }
   }
 
+  // Сдача письменной работы, решённой по заданиям: файлы уже в хранилище (их
+  // грузит HwSolutionUpload сразу при выборе), поэтому здесь работа только
+  // меняет статус. Первое фото дублируем в submission_url — на нём держатся
+  // карточка «Письменная работа» у репетитора и кабинет родителя, и оно же
+  // остаётся единственным следом решения на базе без миграции
+  // homework_solution_files.sql.
+  async function submitHomeworkSolution(hwId, solutionFiles) {
+    const hw = homework.find((h) => h.id === hwId)
+    if (!hw) return
+    const urls = Object.values(solutionFiles || {}).filter(Boolean)
+    if (!urls.length) return
+
+    const updates = {
+      solution_files: solutionFiles,
+      submission_url: urls[0],
+      status: "submitted",
+      submitted_at: new Date().toISOString(),
+    }
+    const { error: saveError } = await supabase.from("homework").update(updates).eq("id", hwId)
+    // Колонки solution_files может не быть (миграция не выполнена) — повторяем
+    // запись без неё, иначе работа осталась бы несданной вместе с ошибкой.
+    if (saveError && /solution_files/.test(saveError.message || "")) {
+      const plain = { ...updates }
+      delete plain.solution_files
+      await supabase.from("homework").update(plain).eq("id", hwId)
+    }
+
+    await supabase.from("notifications").insert({
+      user_id: hw.tutor_id,
+      title: "Ученик сдал домашнее задание",
+      body: user.profile?.name + " сдал «" + hw.title + "»",
+    })
+    notifyTutor("hw_submitted", hwId)
+
+    loadHomework()
+    setSelectedHomework(null)
+  }
+
   async function uploadHomeworkSubmission(hwId, file) {
     const ext = file.name.split(".").pop()
     const fileName = hwId + "/" + Date.now() + "." + ext
@@ -2818,6 +2918,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                   onBack={() => { setSelectedHomework(null); setReturning(true) }}
                   onUpload={uploadHomeworkSubmission}
                   onSubmitTest={submitHomeworkTest}
+                  onSubmitWritten={submitHomeworkSolution}
                 />
               ) : (
                 <div
