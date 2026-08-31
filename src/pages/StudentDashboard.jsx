@@ -20,7 +20,7 @@ import { MarketingToggle } from "../components/ConsentChecks"
 
 const Board = lazy(() => import("../components/Board"))
 import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, parseHomeworkTasks, formatPhone, answersEqual, plural, timeUntilLesson } from "../utils"
-import { studentBilling } from "../billing"
+import { studentBilling, periodLabel } from "../billing"
 import { longDate } from "../invoices"
 import TaskAttachments from "../components/TaskAttachments"
 import DateTile from "../components/DateTile"
@@ -30,9 +30,10 @@ import { useClosing, POPUP_OUT_MS } from "../useClosing"
 import { isMoveNotification, revealBlock, MOVE_ANCHOR_STUDENT } from "../notifTarget"
 import RescheduleModal from "../components/RescheduleModal"
 import {
-  applyMoveToStudent, setMoveRequest, findSlotConflict,
+  applyMoveToStudent, setMoveRequest,
   formatLessonWhen, formatLessonShort, MOVE_BY_STUDENT, MOVE_BY_TUTOR,
 } from "../lessonMove"
+import { findClash } from "../lessonConflict"
 // Состав варианта (какие номера в части 1, какие — во второй) знает банк заданий:
 // у математики номера идут подряд, у информатики — с пропусками, и «номер больше
 // двенадцати» там означало бы не то.
@@ -2763,18 +2764,11 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                     <div className="glass p-4 flex flex-col gap-1 justify-between">
                       <div className="text-xs text-gray-400">Оплата</div>
                       {(() => {
-                        // Считает общий billing.js — то же число, что у репетитора,
-                        // с учётом занятий, оплаченных абонементом вперёд.
-                        const { price, debt, conducted, prepaid } = studentBilling(student)
-                        if (conducted.length === 0 && !prepaid) return <div className="text-lg font-semibold text-gray-400">Нет занятий</div>
+                        // Считает общий billing.js — то же число, что у репетитора.
+                        const { price, debt, accrued } = studentBilling(student)
+                        if (accrued.length === 0) return <div className="text-lg font-semibold text-gray-400">Нет занятий</div>
                         if (!price) return <div className="text-sm font-medium text-gray-400">Стоимость не указана</div>
                         if (debt > 0) return <div className="text-lg font-semibold text-amber-600">Долг {debt.toLocaleString("ru-RU")} ₽</div>
-                        if (prepaid > 0) return (
-                          <div>
-                            <div className="text-lg font-semibold text-green-600">Оплачено вперёд</div>
-                            <div className="text-xs text-gray-400">{prepaid} {plural(prepaid, "занятие", "занятия", "занятий")}</div>
-                          </div>
-                        )
                         return <div className="text-lg font-semibold text-green-600">Долга нет</div>
                       })()}
                     </div>
@@ -2981,7 +2975,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
               ) : (() => {
                 // Долг, абонементы и «оплачено вперёд» — из общего billing.js.
                 // Здесь же считается и сумма к оплате в карточке ЮKassa ниже.
-                const { debt, prepaid, active: activePack, pending, pendingAmount } = studentBilling(student)
+                const { debt, package: pack } = studentBilling(student)
                 const totalPaid = (student.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
                 const payments = [...(student.payments || [])].sort((a, b) => {
                   const parseDate = (d) => {
@@ -2999,41 +2993,24 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                         <div className="text-2xl font-medium text-green-600">{totalPaid.toLocaleString("ru-RU")} ₽</div>
                       </div>
                       <div className="stat-card">
-                        <div className="text-sm text-gray-500 mb-1">
-                          {debt > 0 ? "Текущий долг" : prepaid > 0 ? "Абонемент" : "Статус"}
-                        </div>
+                        <div className="text-sm text-gray-500 mb-1">{debt > 0 ? "К оплате" : "Статус"}</div>
                         {debt > 0 ? (
                           <div className="text-2xl font-medium text-amber-600">{debt.toLocaleString("ru-RU")} ₽</div>
-                        ) : prepaid > 0 ? (
-                          <div>
-                            <div className="text-2xl font-medium text-green-600">
-                              {prepaid} <span className="text-sm font-normal text-gray-400">
-                                {plural(prepaid, "занятие", "занятия", "занятий")} оплачено
-                              </span>
-                            </div>
-                            {activePack?.until && (
-                              <div className="text-xs text-gray-400 mt-0.5">до {longDate(activePack.until)}</div>
-                            )}
-                          </div>
                         ) : (
                           <div className="text-2xl font-medium text-green-600">Долга нет</div>
                         )}
                       </div>
                     </div>
 
-                    {/* Выставленный абонемент: репетитор ждёт оплату вперёд, и
-                        узнавать об этом только из уведомления неправильно. */}
-                    {pendingAmount > 0 && (
-                      <div className="glass-sm px-4 py-3 flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-sm font-medium">Абонемент к оплате</div>
-                          <div className="text-xs text-gray-500 mt-0.5">
-                            {pending[0].lessons} {plural(pending[0].lessons, "занятие", "занятия", "занятий")} по {longDate(pending[0].until)}
-                          </div>
-                        </div>
-                        <div className="text-lg font-semibold text-amber-600 dark:text-amber-300 shrink-0">
-                          {(Number(pendingAmount) || 0).toLocaleString("ru-RU")} ₽
-                        </div>
+                    {/* Абонемент: ученик платит вперёд за период, поэтому в
+                        сумме к оплате стоят и ещё не прошедшие занятия. Без
+                        этой строки цифра выглядела бы завышенной. */}
+                    {pack && (
+                      <div className="glass-sm px-4 py-3 text-sm text-gray-600">
+                        Абонемент: оплата вперёд за {periodLabel(pack.period).toLowerCase()} —
+                        {" "}<span className="font-medium text-gray-800">
+                          {pack.lessons} {plural(pack.lessons, "занятие", "занятия", "занятий")}
+                        </span>{" "}по {longDate(pack.until)}.
                       </div>
                     )}
 
@@ -3651,7 +3628,11 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
             busy={moveBusy}
             error={moveError}
             conflictCheck={(date, time) => (
-              findSlotConflict(student?.lessons || [], { date, time }, movingLesson)
+              findClash(
+                { date, time, duration: movingLesson.duration || 60 },
+                student?.lessons || [],
+                { skip: movingLesson },
+              )
                 ? "В это время у тебя уже стоит другое занятие."
                 : null
             )}

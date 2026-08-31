@@ -1,37 +1,28 @@
-// Деньги ученика: долг, оплаты и абонементы — одной арифметикой на всё
-// приложение.
+// Деньги ученика: что начислено, что оплачено и сколько он должен.
 //
 // До этого файла формула «проведённые занятия × цена − оплаты» была переписана
 // от руки в семи местах (страница «Финансы», карточка ученика, кабинет ученика,
-// кабинет родителя, карточка онлайн-оплаты, квитанции, телеграм-бот). Пока
-// правило было одно, это сходило с рук; с появлением абонемента разошлось бы на
-// первой же правке — поэтому считает теперь одна функция, а экраны только
-// показывают.
+// кабинет родителя, карточка онлайн-оплаты, квитанции, телеграм-бот). Теперь
+// считает одна функция, а экраны только показывают.
 //
-// АБОНЕМЕНТ — ЭТО ОПЛАТА ВПЕРЁД ЗА ПЕРИОД. Ученик платит сразу за неделю, две
-// недели или месяц; система считает, сколько занятий у него в этом периоде, и
-// эти занятия дальше не попадают в долг — они уже оплачены. Отдельной таблицы
-// у абонемента нет намеренно: это запись в том же `students.payments`, что и
-// обычная оплата, только с полями периода. Поэтому фича не ждёт миграции, а
-// история денег остаётся одним списком, а не двумя, которые надо сводить.
+// АБОНЕМЕНТ — ЭТО НЕ ОТДЕЛЬНЫЕ ДЕНЬГИ, А НАСТРОЙКА УЧЕНИКА. Денежный поток
+// остаётся один: начислено − оплачено = долг. Абонемент меняет только то,
+// КОГДА начисляется долг:
 //
-// Из этого следует главное правило: сумма абонемента НЕ входит в «оплачено» при
-// расчёте долга — вместо неё из долга выпадают сами покрытые занятия. Считать и
-// то, и другое значило бы зачесть одни деньги дважды.
+//   «за занятие»  — долг растёт по мере проведения занятий (как было всегда);
+//   «абонементом» — долг за весь период появляется сразу, как только период
+//                   начался, и гасится одной оплатой за несколько занятий.
+//
+// Поэтому у абонемента нет ни своей записи в оплатах, ни своего статуса
+// «оплачен»: оплата у него та же самая, что у всех, — обычная запись в
+// `students.payments`, которую репетитор вносит в «Финансах». Второй денежной
+// сущности здесь быть не должно: как только их становится две, у одного
+// ученика появляются два разных числа про деньги, и понять их нельзя.
 
 import { isLessonConducted, LESSON_EXCUSED } from "./utils.js"
 
-export const PACKAGE_KIND = "package"
-
-export const isPackage = (p) => p?.kind === PACKAGE_KIND && Number(p?.lessons) > 0
-
-// ВЫСТАВИТЬ АБОНЕМЕНТ И ПОЛУЧИТЬ ЗА НЕГО ДЕНЬГИ — РАЗНЫЕ СОБЫТИЯ. Абонемент без
-// отметки об оплате не считается деньгами: он не идёт в доход, не гасит долг и
-// не покрывает занятия периода — они начисляются как обычно, пока оплата не
-// пришла. Иначе договорённость «плачу за месяц» немедленно рисовала бы
-// репетитору доход, которого у него ещё нет.
-export const isPaidPackage = (p) => isPackage(p) && !!p.paidAt
-export const isPendingPackage = (p) => isPackage(p) && !p.paidAt
+export const MODE_LESSON = "lesson"
+export const MODE_PACKAGE = "package"
 
 // Периоды, за которые платят вперёд. Списком, а не свободным числом дней:
 // «неделя, две недели, месяц» — то, как об этом договариваются на самом деле.
@@ -52,28 +43,6 @@ export function fromIsoDate(iso) {
   return y ? new Date(y, m - 1, d) : null
 }
 
-// Последний день периода — ВКЛЮЧИТЕЛЬНО: «абонемент до 6 сентября» человек
-// понимает как «шестое ещё входит». Поэтому от конца отнимается день.
-export function periodEnd(fromIso, key) {
-  const start = fromIsoDate(fromIso)
-  if (!start) return ""
-  const p = PERIODS.find((x) => x.key === key) || PERIODS[0]
-  const end = new Date(start)
-  if (p.months) end.setMonth(end.getMonth() + p.months)
-  else end.setDate(end.getDate() + p.days)
-  end.setDate(end.getDate() - 1)
-  return toIso(end)
-}
-
-// Занятия, попадающие в период, — по ним считается, за сколько платить вперёд.
-// Берутся и прошедшие, и будущие: период может начинаться задним числом.
-// Занятие, снятое со счёта, в оплату не идёт (см. LESSON_EXCUSED в utils.js).
-export function lessonsInRange(student, fromIso, untilIso) {
-  return (student?.lessons || [])
-    .filter((l) => l.date && l.date >= fromIso && l.date <= untilIso && l.status !== LESSON_EXCUSED)
-    .sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || "")))
-}
-
 const MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня",
                 "июля", "августа", "сентября", "октября", "ноября", "декабря"]
 
@@ -86,102 +55,93 @@ export function dayMonth(iso) {
   return `${d} ${MONTHS[m - 1]}${y === now ? "" : ` ${y}`}`
 }
 
-const lessonKey = (l) => `${l.date}|${l.time || ""}`
+// Ученик на абонементе? Период без даты начала не считается: не от чего
+// отсчитывать, и «текущий период» посчитать не из чего.
+export function onPackage(student) {
+  return student?.paymentMode === MODE_PACKAGE
+    && !!student?.packageStart
+    && PERIODS.some((p) => p.key === student?.packagePeriod)
+}
 
-// Полная картина по деньгам ученика.
-//
-// Занятия раздаются по абонементам по порядку: каждое проведённое занятие
-// занимает место в самом раннем абонементе, который ещё не исчерпан и который
-// его покрывает. Что не покрыто ничем — оплачивается поштучно и составляет долг.
-// Без абонементов формула вырождается в прежнюю, поэтому все существующие
-// карточки считаются ровно как раньше.
+function addPeriod(date, key, times = 1) {
+  const p = PERIODS.find((x) => x.key === key) || PERIODS[0]
+  const d = new Date(date)
+  if (p.months) d.setMonth(d.getMonth() + p.months * times)
+  else d.setDate(d.getDate() + p.days * times)
+  return d
+}
+
+// Период, в котором мы сейчас: периоды идут подряд от даты начала абонемента.
+// Границы включительные с обеих сторон — «с 1 по 30 сентября» человек понимает
+// именно так.
+export function currentPeriod(student, now = new Date()) {
+  if (!onPackage(student)) return null
+  const start = fromIsoDate(student.packageStart)
+  if (!start) return null
+  const key = student.packagePeriod
+  let from = start
+  // Шагаем периодами, пока не накроем сегодняшний день. Ограничение на 500
+  // шагов — страховка от битой даты, а не бизнес-правило.
+  for (let i = 0; i < 500; i++) {
+    const next = addPeriod(from, key)
+    if (next > now) break
+    from = next
+  }
+  const until = new Date(addPeriod(from, key))
+  until.setDate(until.getDate() - 1)
+  return { from: toIso(from), until: toIso(until), period: key }
+}
+
+// Следующий период — им подписывается, что будет начислено дальше.
+export function nextPeriod(student, now = new Date()) {
+  const cur = currentPeriod(student, now)
+  if (!cur) return null
+  const from = addPeriod(fromIsoDate(cur.from), cur.period)
+  const until = new Date(addPeriod(from, cur.period))
+  until.setDate(until.getDate() - 1)
+  return { from: toIso(from), until: toIso(until), period: cur.period }
+}
+
+// Занятие, снятое со счёта, не начисляется никогда — ни поштучно, ни в
+// абонементе (см. LESSON_EXCUSED в utils.js).
+const countable = (l) => l?.date && l.status !== LESSON_EXCUSED
+
+export function lessonsInRange(student, fromIso, untilIso) {
+  return (student?.lessons || [])
+    .filter((l) => countable(l) && l.date >= fromIso && l.date <= untilIso)
+    .sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || "")))
+}
+
+// Что ученику НАЧИСЛЕНО на сегодня — занятия, за которые он должен заплатить.
+// Здесь и лежит вся разница между способами оплаты.
+export function accruedLessons(student, now = new Date()) {
+  const all = (student?.lessons || []).filter(countable)
+  if (!onPackage(student)) return all.filter((l) => isLessonConducted(l, now))
+
+  const cur = currentPeriod(student, now)
+  const start = student.packageStart
+  return all
+    .filter((l) => (l.date < start
+      // До абонемента ученик платил как все — по факту проведения.
+      ? isLessonConducted(l, now)
+      // С началом периода начисляются ВСЕ его занятия сразу, ещё до того, как
+      // они прошли: в этом и смысл оплаты вперёд.
+      : l.date <= cur.until))
+    .sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || "")))
+}
+
 export function studentBilling(student, now = new Date()) {
   const price = Number(student?.lessonPrice ?? student?.lesson_price ?? 0)
-  const all = student?.payments || []
-  const today = toIso(now)
-
-  const packs = all
-    .filter(isPaidPackage)
-    .map((p) => ({
-      ...p,
-      lessons: Number(p.lessons) || 0,
-      amount: Number(p.amount) || 0,
-      used: 0,
-      covers: [],
-    }))
-    .sort((a, b) => String(a.from || "").localeCompare(String(b.from || "")))
-
-  // Обычные оплаты — только они гасят долг деньгами. Сумма оплаченного
-  // абонемента сюда не входит: она уже «потрачена» на покрытые занятия.
-  const plainPaid = all
-    .filter((p) => !isPackage(p))
-    .reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
-
-  // Выставленные, но не оплаченные — деньгами ещё не стали.
-  const pending = all
-    .filter(isPendingPackage)
-    .sort((a, b) => String(a.from || "").localeCompare(String(b.from || "")))
-
-  const conducted = (student?.lessons || [])
-    .filter((l) => isLessonConducted(l, now))
-    .sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || "")))
-
-  const coveredKeys = new Set()
-  const uncovered = []
-  for (const l of conducted) {
-    // Занятие после начала абонемента. Верхняя граница проверяется, только если
-    // репетитор включил сгорание: по умолчанию оплаченное занятие не пропадает
-    // из-за того, что его перенесли за край периода.
-    const slot = packs.find((p) => p.used < p.lessons
-      && l.date >= String(p.from || "")
-      && (!p.burn || !p.until || l.date <= p.until))
-    if (slot) {
-      slot.used += 1
-      slot.covers.push(lessonKey(l))
-      coveredKeys.add(lessonKey(l))
-    } else {
-      uncovered.push(l)
-    }
-  }
-
-  const packages = packs.map((p) => {
-    const expired = !!(p.until && today > p.until)
-    const left = Math.max(0, p.lessons - p.used)
-    return {
-      ...p,
-      left,
-      expired,
-      // Сгоревшие места: срок вышел, сгорание включено — эти занятия уже не
-      // получить, и показывать их как «осталось» было бы обманом.
-      lost: expired && p.burn ? left : 0,
-      // Абонемент, которым сейчас платят: место есть и он ещё не сгорел.
-      live: left > 0 && !(expired && p.burn),
-    }
-  })
-
-  const owed = uncovered.length * price
-  const debt = owed - plainPaid
+  const paid = (student?.payments || []).reduce((sum, p) => sum + (Number(p?.amount) || 0), 0)
+  const accrued = accruedLessons(student, now)
+  const cur = currentPeriod(student, now)
 
   return {
     price,
-    debt,
-    plainPaid,
-    conducted,
-    uncovered,
-    coveredKeys,
-    packages,
-    // Действующий абонемент — самый ранний непотраченный: из него спишется
-    // следующее занятие.
-    active: packages.find((p) => p.live) || null,
-    // Сколько занятий оплачено вперёд по всем действующим абонементам.
-    prepaid: packages.reduce((sum, p) => sum + (p.live ? p.left : 0), 0),
-    pending,
-    pendingAmount: pending.reduce((sum, p) => sum + (Number(p.amount) || 0), 0),
-    // Для подстановки при продлении берём последний по началу периода —
-    // в том числе ещё не оплаченный, иначе продление предложило бы старые даты.
-    lastPackage: [...all.filter(isPackage)]
-      .sort((a, b) => String(a.from || "").localeCompare(String(b.from || "")))
-      .pop() || null,
+    paid,
+    accrued,
+    debt: accrued.length * price - paid,
+    package: cur ? { ...cur, lessons: lessonsInRange(student, cur.from, cur.until).length } : null,
   }
 }
 
@@ -190,37 +150,15 @@ export function studentDebt(student, now = new Date()) {
   return studentBilling(student, now).debt
 }
 
-// Занятия, за которые ещё не заплатили, — старые первыми. Покрытые абонементом
-// сюда не попадают: они оплачены вперёд.
+// Занятия, за которые ещё не заплатили, — старые первыми. У абонемента сюда
+// попадают и не проведённые занятия текущего периода: они уже начислены.
 export function unpaidLessons(student, now = new Date()) {
-  const { uncovered, price, plainPaid } = studentBilling(student, now)
+  const { accrued, price, paid } = studentBilling(student, now)
   if (price <= 0) return []
-  const paidCount = Math.floor(plainPaid / price)
-  const credit = plainPaid % price
-  return uncovered.slice(paidCount).map((l, i) => ({
+  const paidCount = Math.floor(paid / price)
+  const credit = paid % price
+  return accrued.slice(paidCount).map((l, i) => ({
     ...l,
     amountDue: i === 0 ? price - credit : price,
   }))
-}
-
-// Пора ли продлевать: занятий не осталось, осталось одно, или срок выходит на
-// днях. Это сигнал репетитору, а не ученику — деньги просит он.
-export const RENEW_SOON_DAYS = 5
-
-export function renewalState(student, now = new Date()) {
-  const { packages, active, prepaid } = studentBilling(student, now)
-  if (!packages.length) return null              // ученик не на абонементе
-  const today = toIso(now)
-  const limit = new Date(now)
-  limit.setDate(limit.getDate() + RENEW_SOON_DAYS)
-  const endingSoon = !!(active?.until && active.until >= today && active.until <= toIso(limit))
-  return {
-    active,
-    prepaid,
-    // «Кончился» — мест больше нет ни в одном действующем абонементе.
-    over: prepaid <= 0,
-    endingSoon,
-    due: prepaid <= 0 || prepaid === 1 || endingSoon,
-    last: packages[packages.length - 1],
-  }
 }

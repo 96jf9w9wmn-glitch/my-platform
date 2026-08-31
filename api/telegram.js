@@ -233,10 +233,9 @@ export function debtOf(student) {
   return studentDebt(student, mskNow())
 }
 
-// Абонемент ученика: сколько занятий оплачено вперёд и сколько ждёт оплаты.
+// Текущий период абонемента, если ученик на нём: за него уже начислено.
 export function packageOf(student) {
-  const { prepaid, pendingAmount } = studentBilling(student, mskNow())
-  return { prepaid, pendingAmount }
+  return studentBilling(student, mskNow()).package
 }
 
 const HW_ACTIVE = new Set(["assigned", "revision"])
@@ -421,7 +420,7 @@ export async function viewStudent(db, link, studentId) {
   const toCheck = mine.filter((h) => h.status === "submitted").length
   const activeHw = mine.filter((h) => HW_ACTIVE.has(h.status)).length
   const debt = debtOf(s)
-  const { prepaid, pendingAmount } = packageOf(s)
+  const pack = packageOf(s)
 
   const lines = [
     `<b>${esc(studentName(s.name, link.full_names))}</b>`,
@@ -434,11 +433,8 @@ export async function viewStudent(db, link, studentId) {
       ? `Ближайшее: ${humanDate(upcoming[0].date)} в ${esc(upcoming[0].time || "—")}`
       : "Ближайшее занятие не назначено",
     s.lesson_price ? `Цена занятия: ${money(s.lesson_price)}` : null,
-    debt > 0 ? `Долг: <b>${money(debt)}</b>`
-      : debt < 0 ? `Предоплата: ${money(-debt)}`
-      : prepaid > 0 ? `Абонемент: оплачено ${prepaid} ${plural(prepaid, "занятие", "занятия", "занятий")} вперёд`
-      : "Оплачено полностью",
-    pendingAmount > 0 ? `Абонемент ждёт оплаты: <b>${money(pendingAmount)}</b>` : null,
+    debt > 0 ? `Долг: <b>${money(debt)}</b>` : debt < 0 ? `Предоплата: ${money(-debt)}` : "Оплачено полностью",
+    pack ? `Абонемент: ${pack.lessons} ${plural(pack.lessons, "занятие", "занятия", "занятий")} по ${esc(shortDate(pack.until))}` : null,
     "",
     `ДЗ: ${activeHw} в работе, ${toCheck} на проверке`,
   ].filter((x) => x !== null)

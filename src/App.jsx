@@ -476,6 +476,9 @@ function App() {
       ...s,
       id: s.id,
       lessonPrice: s.lesson_price,
+      paymentMode: s.payment_mode || "lesson",
+      packagePeriod: s.package_period || null,
+      packageStart: s.package_start || null,
       lessonDuration: s.lesson_duration,
       lessonDates: s.lesson_dates || [],
       isRecurring: s.is_recurring,
@@ -528,6 +531,13 @@ function App() {
       phone: student.phone,
       goal: student.goal,
       lesson_price: student.lessonPrice,
+      // Способ оплаты: "lesson" — долг по факту занятия, "package" — вперёд за
+      // период (см. src/billing.js). Колонки добавляет
+      // supabase/student_payment_mode.sql; пока миграции нет, они отбрасываются
+      // при сохранении — см. saveStudent ниже.
+      payment_mode: student.paymentMode || "lesson",
+      package_period: student.packagePeriod || null,
+      package_start: student.packageStart || null,
       lessons: student.lessons || [],
       lesson_dates: student.lessonDates || [],
       lesson_duration: student.lessonDuration,
@@ -547,9 +557,20 @@ function App() {
       board_url: student.boardUrl || null,
       call_url: student.callUrl || null,
     }
-    const { data, error } = isNew
-      ? await supabase.from("students").insert(row).select("id").single()
-      : await supabase.from("students").upsert({ id: student.id, ...row }).select("id").single()
+    const write = (r) => (isNew
+      ? supabase.from("students").insert(r).select("id").single()
+      : supabase.from("students").upsert({ id: student.id, ...r }).select("id").single())
+
+    let { data, error } = await write(row)
+    // Колонок способа оплаты может ещё не быть: миграция
+    // supabase/student_payment_mode.sql выполняется вручную. Повторяем без них,
+    // чтобы забытая миграция не ломала сохранение учеников целиком — сам
+    // абонемент до неё просто не запомнится.
+    if (error && /payment_mode|package_period|package_start/.test(error.message || "")) {
+      const { payment_mode, package_period, package_start, ...rest } = row
+      void payment_mode; void package_period; void package_start
+      ;({ data, error } = await write(rest))
+    }
     if (error) {
       // Молчать тут нельзя: ровно так полтора месяца незаметно не создавались
       // карточки — ошибка вставки уходила в консоль, а репетитор видел «сохранено».

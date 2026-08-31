@@ -11,15 +11,14 @@ import { parseLocalDate, isLessonPast, isLessonConducted, setLessonStatus, getIn
 import RescheduleModal from "../components/RescheduleModal"
 import StudentFormModal from "../components/StudentFormModal"
 import LessonStatusModal, { LessonStatusBadge } from "../components/LessonStatusModal"
-import PackageModal from "../components/PackageModal"
-import ConfirmModal from "../components/ConfirmModal"
-import { studentBilling, renewalState, periodLabel, dayMonth, PACKAGE_KIND } from "../billing"
-import { longDate } from "../invoices"
+import PaymentModeModal from "../components/PaymentModeModal"
+import { studentBilling, periodLabel, dayMonth } from "../billing"
 import { lessonStatusNotice } from "../lessonStatus"
 import {
-  applyMoveToStudent, proposeMoveOnStudent, setMoveRequest, findSlotConflict,
+  applyMoveToStudent, proposeMoveOnStudent, setMoveRequest,
   formatLessonWhen, formatLessonShort, MOVE_BY_TUTOR,
 } from "../lessonMove"
+import { tutorLessons, findClash, formatSpan } from "../lessonConflict"
 import { usePlan } from "../subscription"
 import { PlanLock } from "../components/PlanLock"
 
@@ -41,7 +40,7 @@ function generateParentCode() {
 }
 
 
-function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
+function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard }) {
   const { allows, openPlans } = usePlan()
   const [showEdit, setShowEdit] = useState(false)
   const [hwAvg, setHwAvg] = useState(null)
@@ -57,7 +56,6 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
   // Занятие из архива, которому выбирают пометку «не состоялось».
   const [statusFor, setStatusFor] = useState(null)
   const [packageOpen, setPackageOpen] = useState(false)
-  const [cancelPack, setCancelPack] = useState(null)
 
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 768)
@@ -151,41 +149,11 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
 
   // Абонемент — это оплата, а не отдельная сущность: он ложится в тот же
   // массив payments, что и обычный платёж, только с полями периода.
-  // Выставление абонемента — ещё НЕ оплата: `paidAt` пустой, в доход сумма не
-  // идёт и занятия периода не покрывает. Деньги отмечаются отдельно, когда
-  // действительно пришли (markPackagePaid).
-  function issuePackage(pkg) {
-    const payment = {
-      id: Date.now(),
-      kind: PACKAGE_KIND,
-      date: new Date().toLocaleDateString("ru-RU"),
-      paidAt: null,
-      note: "",
-      ...pkg,
-    }
-    onUpdate(student.id, { payments: [...(student.payments || []), payment] })
-    notifyStudent("Выставлен абонемент",
-      `${pkg.lessons} ${plural(pkg.lessons, "занятие", "занятия", "занятий")} с ${longDate(pkg.from)} по ${longDate(pkg.until)} — к оплате ${pkg.amount.toLocaleString("ru-RU")} ₽.`)
-  }
-
-  // Деньги пришли: с этого момента абонемент считается оплатой и покрывает
-  // занятия периода. Дата платежа ставится сегодняшняя — именно она попадает в
-  // историю и в доход месяца.
-  function markPackagePaid(pkg) {
-    onUpdate(student.id, {
-      payments: (student.payments || []).map((p) => (p.id === pkg.id
-        ? { ...p, paidAt: new Date().toISOString(), date: new Date().toLocaleDateString("ru-RU") }
-        : p)),
-      paid: true,
-      balance: (student.balance || 0) + (Number(pkg.amount) || 0),
-    })
-    notifyStudent("Абонемент оплачен",
-      `${pkg.lessons} ${plural(pkg.lessons, "занятие", "занятия", "занятий")} с ${longDate(pkg.from)} по ${longDate(pkg.until)} оплачены — платить за них отдельно не нужно.`)
-  }
-
-  function cancelPackage(pkg) {
-    onUpdate(student.id, { payments: (student.payments || []).filter((p) => p.id !== pkg.id) })
-    setCancelPack(null)
+  // Способ оплаты — свойство ученика: сохраняется в его карточке, как цена
+  // занятия. Никаких денежных записей при этом не создаётся.
+  function savePaymentMode(next) {
+    onUpdate(student.id, next)
+    setPackageOpen(false)
   }
 
   function saveNote(origIdx) {
@@ -218,11 +186,7 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
   const conducted = past.filter((l) => isLessonConducted(l))
   // Деньги целиком — долг, абонементы, оплаченное вперёд (billing.js).
   const billing = studentBilling(student)
-  const renew = renewalState(student)
-  const activePack = billing.active
-  // Выставленный, но ещё не оплаченный — он важнее остатка: пока деньги не
-  // пришли, это единственное, что репетитору нужно сделать с абонементом.
-  const pendingPack = billing.pending[0] || null
+  const pack = billing.package
 
   const initials = getInitials(student.name)
 
@@ -402,92 +366,40 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
         </div>
       </div>
 
-      {/* Абонемент — оплата вперёд за неделю, две недели или месяц. Стоит в
-          колонке профиля, рядом с ценой занятия: это про деньги, а не про
-          успеваемость. Блок виден всегда, даже когда абонемента нет, — иначе
-          про эту возможность никто бы не узнал. */}
+      {/* Способ оплаты. Здесь он только НАСТРАИВАЕТСЯ — сами деньги живут в
+          «Финансах», как и у поштучной оплаты. Абонемент не заводит второй
+          денежный поток: он лишь меняет момент начисления долга, поэтому
+          никакого «остатка» и «ждёт оплаты» тут нет. */}
       <div className="glass p-4">
         <div className="flex items-center justify-between gap-2 mb-2.5">
-          <div className="text-sm font-medium">Абонемент</div>
-          {renew?.due && (
-            <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-300">
-              пора продлить
-            </span>
-          )}
-        </div>
-
-        {pendingPack ? (
-          <>
-            <div className="text-sm text-gray-600 dark:text-gray-300">
-              {pendingPack.lessons} {plural(pendingPack.lessons, "занятие", "занятия", "занятий")}
-              {" · "}{periodLabel(pendingPack.period)} · по {dayMonth(pendingPack.until)}
-            </div>
-            <div className="text-xl font-medium text-amber-600 dark:text-amber-300 mt-1">
-              Ждёт оплаты — {(Number(pendingPack.amount) || 0).toLocaleString("ru-RU")} ₽
-            </div>
-            <div className="text-xs text-gray-500 mt-1.5 leading-relaxed">
-              Пока деньги не отмечены, занятия периода начисляются в долг как обычно.
-            </div>
-            <div className="flex gap-2 mt-3">
-              <button
-                onClick={() => markPackagePaid(pendingPack)}
-                className="press-fill flex-1 rounded-xl py-2 text-sm font-medium text-white bg-gradient-to-b from-[#34C759] to-[#28A745] shadow-[0_2px_10px_rgba(52,199,89,0.35)]"
-              >
-                Отметить оплату
-              </button>
-              <button
-                onClick={() => setCancelPack(pendingPack)}
-                className="press-fill rounded-xl px-3 py-2 text-sm text-gray-600 ring-1 ring-gray-200/80 dark:ring-white/15"
-              >
-                Отменить
-              </button>
-            </div>
-          </>
-        ) : activePack ? (
-          <>
-            <div className="flex items-end gap-1.5">
-              <div className="text-2xl font-medium">{activePack.left}</div>
-              <div className="text-xs text-gray-400 mb-0.5">
-                из {activePack.lessons} {plural(activePack.lessons, "занятия", "занятий", "занятий")} осталось
-              </div>
-            </div>
-            {/* Дорожка — синим на просвет: серых заливок в интерфейсе нет. */}
-            <div className="mt-2 h-1.5 rounded-full bg-blue-500/12 overflow-hidden">
-              <div
-                className="h-full rounded-full bg-blue-600 transition-[width] duration-500"
-                style={{ width: `${Math.round((activePack.used / Math.max(1, activePack.lessons)) * 100)}%` }}
-              />
-            </div>
-            {/* «Не сгорает» — состояние по умолчанию, объявлять его незачем;
-                сгорание, наоборот, надо видеть, не открывая абонемент. */}
-            <div className="text-xs text-gray-500 mt-2">
-              {periodLabel(activePack.period)} ·{" "}
-              {activePack.burn
-                ? <span className="text-amber-600 dark:text-amber-300">сгорает {dayMonth(activePack.until)}</span>
-                : <>по {dayMonth(activePack.until)}</>}
-            </div>
-          </>
-        ) : billing.packages.length > 0 ? (
-          <div className="text-sm text-gray-500 leading-relaxed">
-            Занятия по абонементу закончились
-            {billing.lastPackage?.until ? ` — срок был до ${dayMonth(billing.lastPackage.until)}` : ""}.
-          </div>
-        ) : (
-          <div className="text-xs text-gray-500 leading-relaxed">
-            Ученик платит вперёд за неделю, две недели или месяц. Оплаченные занятия
-            в долг больше не попадают.
-          </div>
-        )}
-
-        {/* Пока предыдущий абонемент не оплачен, выставлять следующий незачем —
-            иначе неоплаченные копятся стопкой. */}
-        {!pendingPack && (
+          <div className="text-sm font-medium">Оплата</div>
           <button
             onClick={() => setPackageOpen(true)}
-            className="press-fill mt-3 w-full rounded-xl py-2 text-sm font-medium text-blue-600 dark:text-blue-300 ring-1 ring-blue-500/30"
+            className="press-tap text-xs text-blue-500 hover:text-blue-700 transition-colors"
           >
-            {billing.packages.length ? "Продлить" : "Выставить абонемент"}
+            Настроить
           </button>
+        </div>
+
+        {pack ? (
+          <>
+            <div className="text-sm text-gray-700 dark:text-gray-200">
+              Абонементом · {periodLabel(pack.period).toLowerCase()}
+            </div>
+            <div className="text-xs text-gray-500 mt-1 leading-relaxed">
+              Текущий период — {dayMonth(pack.from)} — {dayMonth(pack.until)},
+              {" "}{pack.lessons} {plural(pack.lessons, "занятие", "занятия", "занятий")}.
+              Долг за него начислен целиком, оплата вносится в «Финансах».
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="text-sm text-gray-700 dark:text-gray-200">За занятие</div>
+            <div className="text-xs text-gray-500 mt-1 leading-relaxed">
+              Долг растёт по мере проведения занятий. Абонементом ученик платит
+              вперёд — за неделю, две недели или месяц сразу.
+            </div>
+          </>
         )}
       </div>
 
@@ -766,29 +678,16 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
       {showEdit && (
         <StudentFormModal
           student={student}
+          students={students}
           onClose={() => setShowEdit(false)}
           onSubmit={handleSave}
         />
       )}
 
-      <ConfirmModal
-        open={!!cancelPack}
-        danger
-        title="Отменить абонемент?"
-        message={cancelPack
-          ? `Выставленный абонемент на ${cancelPack.lessons} ${plural(cancelPack.lessons, "занятие", "занятия", "занятий")} (${(Number(cancelPack.amount) || 0).toLocaleString("ru-RU")} ₽) будет удалён. Оплата по нему не отмечена, поэтому на деньги это не влияет.`
-          : ""}
-        confirmLabel="Отменить абонемент"
-        cancelLabel="Оставить"
-        onConfirm={() => cancelPackage(cancelPack)}
-        onCancel={() => setCancelPack(null)}
-      />
-
       {packageOpen && (
-        <PackageModal
+        <PaymentModeModal
           student={student}
-          previous={billing.lastPackage}
-          onSubmit={issuePackage}
+          onSubmit={savePaymentMode}
           onClose={() => setPackageOpen(false)}
         />
       )}
@@ -813,11 +712,19 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
           initial={movingLesson.suggested}
           commentLabel="Комментарий ученику (по желанию)"
           commentPlaceholder="Например: в это время у меня появилось окно"
-          conflictCheck={(date, time) => (
-            findSlotConflict(student.lessons || [], { date, time }, movingLesson)
-              ? "На это время у ученика уже стоит другое занятие."
-              : null
-          )}
+          conflictCheck={(date, time) => {
+            // Сравниваем отрезки времени, а не начало занятия: час с 14:30
+            // перекрывает 15:00. И смотрим расписание целиком — репетитор не
+            // ведёт двоих одновременно.
+            const hit = findClash(
+              { date, time, duration: movingLesson.duration || student.lessonDuration || 60 },
+              tutorLessons(students.length ? students : [student]),
+              { skip: movingLesson, skipStudentId: student.id },
+            )
+            if (!hit) return null
+            const who = String(hit.studentId) === String(student.id) ? "у ученика" : `у вас (${hit.studentName})`
+            return `На это время ${who} уже стоит занятие: ${formatSpan(hit)}.`
+          }}
           submitLabel="Предложить"
           onSubmit={({ date, time, comment }) => {
             proposeMove({ date: movingLesson.date, time: movingLesson.time, duration: movingLesson.duration }, { date, time }, comment)

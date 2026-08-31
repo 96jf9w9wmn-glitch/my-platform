@@ -9,6 +9,7 @@ import WeeksPicker from "./WeeksPicker"
 import PhoneInput, { isValidPhoneNumber } from "react-phone-number-input"
 import "react-phone-number-input/style.css"
 import { plural, parseLocalDate, formatPhone, isLessonPast } from "../utils"
+import { tutorLessons, findClashes, clashMessage, clashLine } from "../lessonConflict"
 import { supabase } from "../supabase"
 
 const DURATIONS = [30, 45, 60, 90, 120]
@@ -159,7 +160,7 @@ function MiniCalendar({ lessons, onToggleDate }) {
 // копией внутри StudentProfile: у́же, без стоимости, без длительности по дням и
 // без календаря разовых занятий — то есть репетитор видел два разных
 // представления одной и той же карточки.
-function StudentFormModal({ student, onClose, onSubmit, initialName, initialPhone }) {
+function StudentFormModal({ student, students = [], onClose, onSubmit, initialName, initialPhone }) {
   const editing = !!student
 
   // Прошедшие занятия здесь не редактируются: это история с заметками, оплатами
@@ -304,6 +305,23 @@ function StudentFormModal({ student, onClose, onSubmit, initialName, initialPhon
   }
 
   const previewLessons = mode === "recurring" ? generateRecurringLessons() : lessons
+
+  // Пересечения по времени. Репетитор не ведёт двоих сразу, поэтому сверяемся
+  // со всем его расписанием, а не только с карточкой, которую правим.
+  //
+  // Проверяем ТОЛЬКО новые и сдвинутые занятия: пересечение, уже стоящее в
+  // расписании, иначе заперло бы правку имени или цены — карточку стало бы не
+  // сохранить, пока не разобран старый завал.
+  const isFresh = (p) => !futureLessons.some((l) => (
+    l.date === p.date && l.time === p.time && (l.duration || 60) === (p.duration || 60)
+  ))
+  const freshLessons = previewLessons.filter(isFresh)
+  const clashes = findClashes(freshLessons, [
+    ...tutorLessons(students, { exceptStudentId: student?.id }),
+    // Занятия этого же ученика, которые остаются на месте: новое занятие может
+    // налезть и на них.
+    ...previewLessons.filter((p) => !isFresh(p)).map((l) => ({ ...l, studentName: form.name || student?.name })),
+  ])
   // Сколько уже стоявших в календаре занятий уйдёт: убрали день недели —
   // будущие занятия по нему исчезнут, и это должно быть видно ДО сохранения.
   const droppedLessons = editing
@@ -315,6 +333,10 @@ function StudentFormModal({ student, onClose, onSubmit, initialName, initialPhon
     if (!form.name || !phone) { setFormError("Заполните имя и телефон."); return }
     if (mode === "single" && previewLessons.length === 0) { setFormError("Выберите даты занятий."); return }
     if (mode === "recurring" && (!recurringStartDate || recurringDays.length === 0)) { setFormError("Укажите дату начала и дни недели."); return }
+    if (clashes.length) {
+      setFormError(`Занятия налезают на уже назначенные: ${clashMessage(clashes)} Поправьте время или дни.`)
+      return
+    }
     setFormError("")
 
     setSubmitting(true)
@@ -642,6 +664,17 @@ function StudentFormModal({ student, onClose, onSubmit, initialName, initialPhon
               )}
             </div>
           </div>
+
+          {clashes.length > 0 && (
+            <div className="flex items-start gap-2 text-xs text-amber-600 bg-amber-500/10 rounded-xl px-3 py-2 mt-4">
+              <span className="flex-shrink-0 mt-0.5"><Icon name="warning" size={13} /></span>
+              <div className="leading-relaxed flex flex-col gap-0.5">
+                <span className="font-medium">Занятия налезают друг на друга</span>
+                {clashes.slice(0, 3).map((hit, i) => <span key={i}>{clashLine(hit)}</span>)}
+                {clashes.length > 3 && <span>и ещё {clashes.length - 3}</span>}
+              </div>
+            </div>
+          )}
 
           {formError && <div className="text-sm text-red-500 mt-4 text-center">{formError}</div>}
 

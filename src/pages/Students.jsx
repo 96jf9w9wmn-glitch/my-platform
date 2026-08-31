@@ -242,6 +242,7 @@ function Students({ students, loaded = true, setStudents, tutorId, onOpenBoard }
     return (
       <StudentProfile
         student={student}
+        students={students}
         onBack={() => { setSelectedStudent(null); setReturning(true) }}
         onUpdate={(id, data) => setStudents((prev) => prev.map((s) => s.id === id ? { ...s, ...data } : s))}
         onOpenBoard={onOpenBoard}
@@ -618,6 +619,7 @@ function Students({ students, loaded = true, setStudents, tutorId, onOpenBoard }
 
       {acceptingRequest && (
         <StudentFormModal
+          students={students}
           onClose={() => setAcceptingRequest(null)}
           onSubmit={(s) => handleAcceptComplete(s, acceptingRequest)}
           initialName={acceptingRequest.name}

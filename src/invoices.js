@@ -3,7 +3,7 @@
 //
 // Главное правило: КВИТАНЦИЯ НЕ ХРАНИТ, ОПЛАЧЕНА ЛИ ОНА. Долг во всём
 // приложении считает одна функция — studentDebt() из billing.js (там же
-// учитываются занятия, оплаченные абонементом вперёд). Если бы
+// учитывается абонемент: он меняет не сумму, а момент начисления). Если бы
 // квитанция несла собственный флаг «оплачено», он бы разъезжался с этим числом
 // при правке цены, удалении занятия или платеже задним числом, и ученик видел
 // бы одно, а репетитор другое.
@@ -13,7 +13,7 @@
 // котором getUnpaidLessons() на «Финансах» показывает репетитору неоплаченные
 // занятия, — просто с другой стороны.
 
-import { studentDebt, studentBilling } from "./billing.js"
+import { studentDebt } from "./billing.js"
 
 export const fmtMoney = (n) => Math.round(Number(n) || 0).toLocaleString("ru-RU")
 
@@ -40,22 +40,15 @@ export function withPaymentState(invoices, student) {
     .sort((a, b) => String(b.lesson_date).localeCompare(String(a.lesson_date))
       || String(b.lesson_time || "").localeCompare(String(a.lesson_time || "")))
 
-  // Занятия, закрытые абонементом, оплачены вперёд — на них долг не ложится
-  // независимо от их места в очереди. Без этой проверки непогашенный остаток
-  // садился бы на самую свежую квитанцию, даже если именно она уже оплачена
-  // абонементом, а на самом деле не заплачено за старое занятие.
-  const { debt, coveredKeys } = studentBilling(student)
-  let left = Math.max(0, debt)
+  let left = Math.max(0, studentDebt(student))
   return active.map((invoice) => {
     const amount = Number(invoice.amount) || 0
-    const covered = coveredKeys.has(`${invoice.lesson_date}|${invoice.lesson_time || ""}`)
-    const due = covered ? 0 : Math.min(amount, left)
+    const due = Math.min(amount, left)
     left -= due
     return {
       ...invoice,
       amount,
       due,
-      covered,
       status: due <= 0 ? "paid" : due < amount ? "partial" : "unpaid",
     }
   })

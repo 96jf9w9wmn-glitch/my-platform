@@ -10,9 +10,10 @@ import { lessonStatusNotice } from "../lessonStatus"
 import { isLessonPast, setLessonStatus, LESSON_EXCUSED } from "../utils"
 import { supabase } from "../supabase"
 import { MOVE_ANCHOR_TUTOR } from "../notifTarget"
+import { tutorLessons, findClash, clashLine, formatSpan, lessonsClash } from "../lessonConflict"
 import {
   applyMoveToStudent, proposeMoveOnStudent, setMoveRequest, pendingMoveRequests,
-  formatLessonWhen, formatLessonShort, isSameLesson, MOVE_BY_STUDENT, MOVE_BY_TUTOR,
+  formatLessonWhen, formatLessonShort, MOVE_BY_STUDENT, MOVE_BY_TUTOR,
 } from "../lessonMove"
 
 const VIEWS = [{ key: "month", label: "Месяц" }, { key: "week", label: "Неделя" }]
@@ -150,19 +151,44 @@ function Schedule({ students, setStudents, onOpenBoard }) {
     notifyStudentOf(student, title, body)
   }
 
-  // Занят ли слот у самого репетитора: он не может вести двоих сразу. Перенос
-  // это не запрещает — только предупреждает.
+  // Занят ли слот у самого репетитора: он не может вести двоих сразу. Сравниваем
+  // ОТРЕЗКИ времени, а не начало: занятие в 14:30 на час перекрывает 15:00.
+  // Перенос это не запрещает — только предупреждает.
   function slotBusy(studentId, from) {
     return (date, time) => {
-      const busy = students.flatMap((s) =>
-        (s.lessons || [])
-          .filter((l) => l.date === date && l.time === time)
-          .filter((l) => !(String(s.id) === String(studentId) && isSameLesson(l, from)))
-          .map(() => s.name)
-      )
-      if (!busy.length) return null
-      return `На это время уже поставлено занятие: ${[...new Set(busy)].join(", ")}.`
+      const others = tutorLessons(students)
+      const duration = from?.duration || 60
+      const hit = findClash({ date, time, duration }, others, { skip: from, skipStudentId: studentId })
+      if (!hit) return null
+      const who = hit.studentName ? `${hit.studentName}, ` : ""
+      return `На это время уже поставлено занятие: ${who}${formatSpan(hit)}.`
     }
+  }
+
+  // Занятие, на которое налезает то, что сейчас набирается в форме «Новое
+  // занятие». Показываем ещё до нажатия «Добавить», чтобы время правилось
+  // сразу, а не после ошибки.
+  function newLessonClash() {
+    if (!newLesson.studentId || !newLesson.date || !newLesson.time) return null
+    const student = students.find((s) => String(s.id) === String(newLesson.studentId))
+    const duration = Number(newLesson.duration) || student?.lessonDuration || 60
+    const candidate = { date: newLesson.date, time: newLesson.time, duration }
+    const hit = findClash(candidate, tutorLessons(students))
+    return hit ? { lesson: candidate, other: hit } : null
+  }
+
+  // Занятие, на которое налезет просьба ученика, если её принять.
+  function requestClash(entry) {
+    const candidate = {
+      date: entry.request.date,
+      time: entry.request.time,
+      duration: entry.lesson.duration || 60,
+    }
+    const hit = findClash(candidate, tutorLessons(students), {
+      skip: entry.lesson,
+      skipStudentId: entry.studentId,
+    })
+    return hit ? { lesson: candidate, other: hit } : null
   }
 
   function openMove(lesson) {
@@ -218,6 +244,13 @@ function Schedule({ students, setStudents, onOpenBoard }) {
       setFormError("Выберите ученика, дату и время.")
       return
     }
+    // Два занятия в одно время — не опечатка, которую можно молча сохранить:
+    // репетитор физически не проведёт оба.
+    const clash = newLessonClash()
+    if (clash) {
+      setFormError(`Это время занято. ${clashLine(clash)}`)
+      return
+    }
     setFormError("")
     setStudents((prev) =>
       prev.map((s) => {
@@ -253,10 +286,20 @@ function Schedule({ students, setStudents, onOpenBoard }) {
     setConfirmDel(null)
   }
 
+  // Пересечение считаем на каждый рендер формы: время и длительность меняются
+  // кнопками, и предупреждение должно поспевать за ними.
+  const formClash = showForm ? newLessonClash() : null
+
   const weekLabel = `${weekDates[0].toLocaleDateString("ru-RU", { day: "numeric", month: "short" })} — ${weekDates[6].toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" })}`
   const monthLabel = `${MONTH_NAMES[month]} ${year}`
   const todayStr = formatDate(new Date())
   const selectedDayLessons = selectedDay ? getLessonsForDate(selectedDay) : []
+  // Занятия, идущие внахлёст. Раньше такую пару в дне не было видно вовсе:
+  // 14:30 на час и 15:00 выглядели как два обычных занятия подряд.
+  const dayOverlaps = selectedDayLessons.map((l, i) => (
+    l.status !== LESSON_EXCUSED
+    && selectedDayLessons.some((o, j) => j !== i && o.status !== LESSON_EXCUSED && lessonsClash(l, o))
+  ))
 
   return (
     <div className="p-4">
@@ -301,6 +344,14 @@ function Schedule({ students, setStudents, onOpenBoard }) {
                   </div>
                   {r.request.comment && (
                     <div className="text-xs text-gray-500 mt-1 leading-relaxed">«{r.request.comment}»</div>
+                  )}
+                  {/* Ученик видит только своё расписание, поэтому просьба может
+                      прийти на время, где у репетитора уже стоит другой ученик.
+                      Согласие не запрещаем — но показываем, на что соглашаемся. */}
+                  {requestClash(r) && (
+                    <div className="text-xs text-amber-700 mt-1 leading-relaxed">
+                      Это время занято: {clashLine(requestClash(r))}
+                    </div>
                   )}
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
@@ -481,6 +532,14 @@ function Schedule({ students, setStudents, onOpenBoard }) {
                                 </span>
                               )}
                               <LessonStatusBadge status={l.status} />
+                              {dayOverlaps[i] && (
+                                <span
+                                  title="Занятия идут внахлёст"
+                                  className="text-xs bg-amber-500/15 text-amber-600 px-1.5 py-0.5 rounded-full font-normal"
+                                >
+                                  наложение
+                                </span>
+                              )}
                             </div>
                             <div className={`text-xs ${isExtra ? "text-green-500" : "text-blue-500"}`}>
                               {l.time} · {l.duration} мин
@@ -738,6 +797,12 @@ function Schedule({ students, setStudents, onOpenBoard }) {
                   ))}
                 </div>
               </div>
+              {formClash && (
+                <div className="flex items-start gap-2 text-xs text-amber-600 bg-amber-500/10 rounded-xl px-3 py-2">
+                  <span className="flex-shrink-0 mt-0.5"><Icon name="warning" size={13} /></span>
+                  <span className="leading-relaxed">Это время занято. {clashLine(formClash)}</span>
+                </div>
+              )}
             </div>
             <div className="px-6 pt-1 flex-shrink-0">
               {formError && <div className="text-sm text-red-500 text-center">{formError}</div>}

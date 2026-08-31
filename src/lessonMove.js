@@ -39,12 +39,6 @@ export function todayDateStr() {
   return `${d.getFullYear()}-${m}-${day}`
 }
 
-// Занятие на этих дате и времени, кроме самого переносимого. Репетитору важны
-// занятия всех учеников (он не может вести двоих сразу), ученику — только свои.
-export function findSlotConflict(lessons, to, from) {
-  return (lessons || []).find((l) => !isSameLesson(l, from) && l.date === to.date && l.time === to.time) || null
-}
-
 export const MOVE_BY_STUDENT = "student"
 export const MOVE_BY_TUTOR = "tutor"
 
