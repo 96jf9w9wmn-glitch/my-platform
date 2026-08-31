@@ -83,12 +83,15 @@ function Dashboard({ students, setActivePage, onOpenBoard }) {
     }).sort((a, b) => a.time.localeCompare(b.time))
   }
 
-  // Next upcoming lesson
+  // Next upcoming lesson.
+  // Начавшееся занятие остаётся в карточке до конца: пока оно идёт, репетитор
+  // смотрит на него, а не на следующего ученика. Поэтому отбор — по времени
+  // окончания (isLessonConducted), а не по времени начала.
   const nextLesson = (() => {
     const todayUpcoming = students.flatMap((s) =>
       (s.lessons || [])
-        .filter((l) => l.date === todayStr && l.time >= currentTime)
-        .map((l) => ({ ...l, studentName: s.name, studentId: s.id, avatar: s.avatar, boardUrl: s.boardUrl, callUrl: s.callUrl, isToday: true }))
+        .filter((l) => l.date === todayStr && !isLessonConducted(l, now))
+        .map((l) => ({ ...l, studentName: s.name, studentId: s.id, avatar: s.avatar, boardUrl: s.boardUrl, callUrl: s.callUrl, isToday: true, inProgress: l.time <= currentTime }))
     ).sort((a, b) => a.time.localeCompare(b.time))
     if (todayUpcoming.length > 0) return todayUpcoming[0]
 
@@ -253,15 +256,21 @@ function Dashboard({ students, setActivePage, onOpenBoard }) {
                   </div>
                   <div className="min-w-0">
                     <div className="text-xs font-medium opacity-70 uppercase tracking-wide mb-0.5 truncate">
-                      {nextLesson.isToday ? "Следующее занятие" : `Следующее занятие · ${nextLessonDate}`}
+                      {nextLesson.inProgress
+                        ? "Текущее занятие"
+                        : nextLesson.isToday ? "Следующее занятие" : `Следующее занятие · ${nextLessonDate}`}
                     </div>
                     <div className="text-2xl font-semibold leading-tight truncate">{nextLesson.studentName}</div>
                     <div className="text-sm opacity-80 mt-0.5">{nextLesson.time} · {nextLesson.duration} мин</div>
                   </div>
                 </div>
                 <div className="text-right flex-shrink-0 ml-3">
+                  {/* Пока занятие идёт, отсчёта нет: считать до его начала уже нечего,
+                      а до следующего ученика — рано. В статусе просто «Идёт занятие». */}
                   <div className="text-sm font-medium tabular-nums bg-[rgba(255,255,255,0.2)] rounded-xl px-3 py-1.5 backdrop-blur-sm">
-                    {tick >= 0 && timeUntil(nextLesson.date, nextLesson.time)}
+                    {nextLesson.inProgress
+                      ? <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />Идёт занятие</span>
+                      : tick >= 0 && timeUntil(nextLesson.date, nextLesson.time)}
                   </div>
                 </div>
               </div>
@@ -334,7 +343,12 @@ function Dashboard({ students, setActivePage, onOpenBoard }) {
                       </div>
                       <div className="flex-1 text-sm font-medium">{l.studentName}</div>
                       <div className="text-xs text-gray-400">{l.duration} мин</div>
-                      {isNext && <div className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />}
+                      {/* Место под метку «следующее» есть в каждой строке: без
+                          неё длительность уезжала к самому краю, и столбец
+                          «60 мин» вставал зубцами. */}
+                      <div className="w-2 flex-shrink-0" aria-hidden="true">
+                        {isNext && <div className="w-2 h-2 rounded-full bg-blue-500" />}
+                      </div>
                     </div>
                   )
                 })}
