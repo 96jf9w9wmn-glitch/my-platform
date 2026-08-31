@@ -833,14 +833,23 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
+    // Колесо шлёт дельту в строках или страницах, тачпад — в пикселях: без
+    // приведения к пикселям один и тот же жест давал бы разный шаг в разных
+    // браузерах.
+    const px = (d, mode) => (mode === 1 ? d * 16 : mode === 2 ? d * 100 : d)
     const onWheel = (e) => {
       e.preventDefault()
       const rect = canvas.getBoundingClientRect()
       if (e.ctrlKey || e.metaKey) {
-        zoomAt(e.clientX - rect.left, e.clientY - rect.top, Math.exp(-e.deltaY * 0.01))
+        // Один щелчок мыши — это сразу 100+ пикселей дельты, тачпад же
+        // отдаёт по 1–10. Без ограничения щелчок менял масштаб в 2,7 раза,
+        // и доска прыгала. Предел в 20 пикселей держит шаг мыши около 22%,
+        // а плавное сведение пальцев на тачпаде не задевает вовсе.
+        const d = clamp(px(e.deltaY, e.deltaMode), -20, 20)
+        zoomAt(e.clientX - rect.left, e.clientY - rect.top, Math.exp(-d * 0.01))
       } else {
-        view.current.x -= e.deltaX
-        view.current.y -= e.deltaY
+        view.current.x -= px(e.deltaX, e.deltaMode)
+        view.current.y -= px(e.deltaY, e.deltaMode)
       }
       scheduleDraw()
     }
