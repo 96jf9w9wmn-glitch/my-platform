@@ -3,7 +3,8 @@ import { supabase } from "../supabase"
 import { signRows } from "../storageUrl"
 import Chat from "./Chat"
 import { getInitials, plural, isLessonConducted } from "../utils"
-import { studentDebt, fmtMoney } from "../invoices"
+import { fmtMoney } from "../invoices"
+import { studentBilling, dayMonth } from "../billing"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
 import BetaBadge from "../components/BetaBadge"
@@ -327,7 +328,7 @@ function ParentDashboard({ user, onLogout }) {
   const price = Number(student.lessonPrice ?? student.lesson_price ?? 0)
   const totalPaid = (student.payments || []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
   // Долг считает общий помощник — то же число, что видят репетитор и квитанции.
-  const debt = studentDebt({ ...student, lessonPrice: price })
+  const { debt, prepaid, active: activePack, pending, pendingAmount } = studentBilling({ ...student, lessonPrice: price })
 
   // Раскладка долга по занятиям — по тем же правилам, что у квитанций
   // (invoices.js): непогашенный остаток закрывает занятия от новых к старым,
@@ -383,7 +384,14 @@ function ParentDashboard({ user, onLogout }) {
   if (conducted.length && price > 0) {
     tiles.push(debt > 0
       ? { id: "debt", icon: "ruble", label: "К оплате", value: `${fmtMoney(debt)} ₽`, color: "text-amber-500", hint: `за ${conducted.length} ${plural(conducted.length, "занятие", "занятия", "занятий")}` }
-      : { id: "debt", icon: "ruble", label: "Оплата", value: "Долга нет", color: "text-green-600 text-[18px]", hint: `оплачено ${fmtMoney(totalPaid)} ₽` })
+      : prepaid > 0
+        // Абонемент: «долга нет» родителю мало — ему нужно знать, на сколько
+        // занятий вперёд хватит оплаты и когда платить снова.
+        ? { id: "debt", icon: "ruble", label: "Абонемент",
+            value: `${prepaid} ${plural(prepaid, "занятие", "занятия", "занятий")}`,
+            color: "text-green-600 text-[18px]",
+            hint: activePack?.until ? `оплачено по ${dayMonth(activePack.until)}` : "оплачено вперёд" }
+        : { id: "debt", icon: "ruble", label: "Оплата", value: "Долга нет", color: "text-green-600 text-[18px]", hint: `оплачено ${fmtMoney(totalPaid)} ₽` })
   }
   if (avg != null) {
     tiles.push({
@@ -639,9 +647,15 @@ function ParentDashboard({ user, onLogout }) {
                   <div className={`flex justify-between items-center rounded-xl px-3 py-2.5 mt-0.5 ring-1 ${
                     debt > 0 ? "ring-amber-500/25 bg-amber-500/[0.07]" : "ring-green-500/25 bg-green-500/[0.07]"
                   }`}>
-                    <span className="text-sm font-medium text-gray-700">{debt > 0 ? "К оплате" : "Задолженности нет"}</span>
-                    <span className={`text-sm font-semibold ${debt > 0 ? "text-amber-600 dark:text-amber-300" : "text-green-600 dark:text-green-300"}`}>
-                      {debt > 0 ? `${fmtMoney(debt)} ₽` : "✓"}
+                    <span className="text-sm font-medium text-gray-700">
+                      {debt > 0 ? "К оплате"
+                        : pendingAmount > 0
+                          ? `Абонемент к оплате: ${pending[0].lessons} ${plural(pending[0].lessons, "занятие", "занятия", "занятий")}`
+                        : prepaid > 0 ? `Оплачено вперёд: ${prepaid} ${plural(prepaid, "занятие", "занятия", "занятий")}`
+                        : "Задолженности нет"}
+                    </span>
+                    <span className={`text-sm font-semibold ${debt > 0 || pendingAmount > 0 ? "text-amber-600 dark:text-amber-300" : "text-green-600 dark:text-green-300"}`}>
+                      {debt > 0 ? `${fmtMoney(debt)} ₽` : pendingAmount > 0 ? `${fmtMoney(pendingAmount)} ₽` : "✓"}
                     </span>
                   </div>
                 </div>
@@ -770,7 +784,7 @@ function ParentDashboard({ user, onLogout }) {
                         <div className="min-w-0 flex-1">
                           <div className="text-sm text-gray-700 truncate">{hw.title}</div>
                           <div className="text-xs text-gray-400">
-                            {hw.hw_type === "test" ? "Тест" : hw.hw_type === "written" ? "Письменное" : "Комбинированное"}
+                            {hw.hw_type === "test" ? "С ответами" : hw.hw_type === "written" ? "Письменное" : "Комбинированное"}
                             {hw.deadline ? ` · до ${longDate(hw.deadline)}` : ""}
                           </div>
                         </div>

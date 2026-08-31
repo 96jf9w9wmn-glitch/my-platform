@@ -1076,8 +1076,11 @@ export function answersEqual(given, expected, { allowFractions = false } = {}) {
 // адрес всегда достраиваем сами по выбранному мессенджеру.
 const MESSENGER_BASE = {
   telegram: "https://t.me/",
-  instagram: "https://instagram.com/",
+  max: "https://max.ru/",
   vk: "https://vk.com/",
+  // Instagram больше не предлагается при вводе, но старые контакты должны
+  // остаться живыми ссылками, а не текстом.
+  instagram: "https://instagram.com/",
 }
 
 export function contactHref(messenger, raw) {
@@ -1109,7 +1112,7 @@ export function contactLabel(messenger, raw) {
   if (!value) return ""
   const path = value
     .replace(/^https?:\/\//i, "")
-    .replace(/^(t\.me|telegram\.me|wa\.me|instagram\.com|www\.instagram\.com|vk\.com|m\.vk\.com)\//i, "")
+    .replace(/^(t\.me|telegram\.me|wa\.me|max\.ru|instagram\.com|www\.instagram\.com|vk\.com|m\.vk\.com)\//i, "")
     .replace(/\/$/, "")
   if (!path) return value
   if (messenger === "whatsapp") return formatPhone(path) || path

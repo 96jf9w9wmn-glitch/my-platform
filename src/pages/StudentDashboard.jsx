@@ -20,6 +20,8 @@ import { MarketingToggle } from "../components/ConsentChecks"
 
 const Board = lazy(() => import("../components/Board"))
 import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, parseHomeworkTasks, formatPhone, answersEqual, plural, timeUntilLesson } from "../utils"
+import { studentBilling } from "../billing"
+import { longDate } from "../invoices"
 import TaskAttachments from "../components/TaskAttachments"
 import DateTile from "../components/DateTile"
 import { TILE_TINTS, dueTintKey } from "../dueTint"
@@ -657,8 +659,8 @@ function StudentHomeworkCard({ hw, index, onSelect }) {
   const dl = deadlineInfo(hw)
   const isDone = hw.status === "done"
   const active = hw.status === "assigned" || hw.status === "revision"
-  const typeLabel = hw.hw_type === "test" ? `Тест · ${hw.question_count || 0} вопр.`
-    : hw.hw_type === "combined" ? "Тест + письменное" : "Письменное"
+  const typeLabel = hw.hw_type === "test" ? `С ответами · ${hw.question_count || 0} зад.`
+    : hw.hw_type === "combined" ? "Ответы + письменное" : "Письменное"
   const preview = hw.hw_type !== "test" ? hwPreview(hw.description) : ""
   // Плитка кодирует этап жизни работы: срок → часы «на проверке» → галка.
   // Иконка типа осталась только у работ без срока — тип и так написан строкой.
@@ -963,8 +965,8 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten })
 
   const meta = HW_STATUS[hw.status] || HW_STATUS.assigned
   const dl = deadlineInfo(hw)
-  const typeLabel = hw.hw_type === "test" ? `Тест · ${hw.question_count || 0} вопр.`
-    : hw.hw_type === "combined" ? "Тест + письменное" : "Письменное"
+  const typeLabel = hw.hw_type === "test" ? `С ответами · ${hw.question_count || 0} зад.`
+    : hw.hw_type === "combined" ? "Ответы + письменное" : "Письменное"
   const headerIcon = hw.status === "done" ? "check" : hw.hw_type === "test" ? "clipboard" : hw.hw_type === "combined" ? "file-text" : "edit"
   // Вся карточка результата красится в цвет оценки — один акцент, без «зелёное + красное».
   const look = (hw.grade && GRADE_LOOK[hw.grade]) || GRADE_NEUTRAL
@@ -1154,14 +1156,14 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten })
             disabled={submittingTest || (requireSolution && !solutionCount)}
             className="w-full bg-blue-600 text-white rounded-lg py-2.5 text-sm hover:bg-blue-700 disabled:opacity-50"
           >
-            {submittingTest ? "Проверяем..." : requireSolution ? "Отправить тест и решение" : "Отправить тест"}
+            {submittingTest ? "Проверяем..." : requireSolution ? "Отправить ответы и решение" : "Отправить ответы"}
           </button>
         </div>
       )}
 
       {hasTest && testDone && (
         <div className="glass-tint-blue p-4 mb-4">
-          <div className="text-sm font-medium text-blue-700 flex items-center gap-1"><Icon name="check" size={14} />Тест проверен</div>
+          <div className="text-sm font-medium text-blue-700 flex items-center gap-1"><Icon name="check" size={14} />Ответы проверены</div>
           <div className="text-sm text-blue-600 mt-1">
             {hw.test_score} / {hw.question_count} ({Math.round((hw.test_score / hw.question_count) * 100)}%)
           </div>
@@ -2223,8 +2225,8 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     if (!isPureTest) {
       await supabase.from("notifications").insert({
         user_id: hw.tutor_id,
-        title: auto ? "Время вышло — работа сдана автоматически" : "Ученик прошёл тест в ДЗ",
-        body: user.profile?.name + (auto ? " не успел завершить «" : " прошёл тест в «") + hw.title + "»: " + score + " / " + hw.question_count,
+        title: auto ? "Время вышло — работа сдана автоматически" : "Ученик сдал домашнюю работу",
+        body: user.profile?.name + (auto ? " не успел завершить «" : " ответил в «") + hw.title + "»: " + score + " / " + hw.question_count,
       })
     }
     // Чистый тест проверяется сам и сразу получает оценку — в бот уходит и он,
@@ -2761,13 +2763,19 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                     <div className="glass p-4 flex flex-col gap-1 justify-between">
                       <div className="text-xs text-gray-400">Оплата</div>
                       {(() => {
-                        const conducted = (student.lessons || []).filter((l) => isLessonConducted(l))
-                        const price = student.lessonPrice || 0
-                        const debt = conducted.length * price - (student.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
-                        if (conducted.length === 0) return <div className="text-lg font-semibold text-gray-400">Нет занятий</div>
+                        // Считает общий billing.js — то же число, что у репетитора,
+                        // с учётом занятий, оплаченных абонементом вперёд.
+                        const { price, debt, conducted, prepaid } = studentBilling(student)
+                        if (conducted.length === 0 && !prepaid) return <div className="text-lg font-semibold text-gray-400">Нет занятий</div>
                         if (!price) return <div className="text-sm font-medium text-gray-400">Стоимость не указана</div>
-                        if (debt <= 0) return <div className="text-lg font-semibold text-green-600">Долга нет</div>
-                        return <div className="text-lg font-semibold text-amber-600">Долг {debt.toLocaleString("ru-RU")} ₽</div>
+                        if (debt > 0) return <div className="text-lg font-semibold text-amber-600">Долг {debt.toLocaleString("ru-RU")} ₽</div>
+                        if (prepaid > 0) return (
+                          <div>
+                            <div className="text-lg font-semibold text-green-600">Оплачено вперёд</div>
+                            <div className="text-xs text-gray-400">{prepaid} {plural(prepaid, "занятие", "занятия", "занятий")}</div>
+                          </div>
+                        )
+                        return <div className="text-lg font-semibold text-green-600">Долга нет</div>
                       })()}
                     </div>
                   </div>
@@ -2971,10 +2979,10 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                   Сначала подключись к репетитору
                 </div>
               ) : (() => {
-                const conducted = (student.lessons || []).filter((l) => isLessonConducted(l))
-                const totalOwed = conducted.length * (student.lessonPrice || 0)
+                // Долг, абонементы и «оплачено вперёд» — из общего billing.js.
+                // Здесь же считается и сумма к оплате в карточке ЮKassa ниже.
+                const { debt, prepaid, active: activePack, pending, pendingAmount } = studentBilling(student)
                 const totalPaid = (student.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
-                const debt = totalOwed - totalPaid
                 const payments = [...(student.payments || [])].sort((a, b) => {
                   const parseDate = (d) => {
                     const parts = d.split(".")
@@ -2991,14 +2999,43 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                         <div className="text-2xl font-medium text-green-600">{totalPaid.toLocaleString("ru-RU")} ₽</div>
                       </div>
                       <div className="stat-card">
-                        <div className="text-sm text-gray-500 mb-1">{debt > 0 ? "Текущий долг" : "Статус"}</div>
+                        <div className="text-sm text-gray-500 mb-1">
+                          {debt > 0 ? "Текущий долг" : prepaid > 0 ? "Абонемент" : "Статус"}
+                        </div>
                         {debt > 0 ? (
                           <div className="text-2xl font-medium text-amber-600">{debt.toLocaleString("ru-RU")} ₽</div>
+                        ) : prepaid > 0 ? (
+                          <div>
+                            <div className="text-2xl font-medium text-green-600">
+                              {prepaid} <span className="text-sm font-normal text-gray-400">
+                                {plural(prepaid, "занятие", "занятия", "занятий")} оплачено
+                              </span>
+                            </div>
+                            {activePack?.until && (
+                              <div className="text-xs text-gray-400 mt-0.5">до {longDate(activePack.until)}</div>
+                            )}
+                          </div>
                         ) : (
                           <div className="text-2xl font-medium text-green-600">Долга нет</div>
                         )}
                       </div>
                     </div>
+
+                    {/* Выставленный абонемент: репетитор ждёт оплату вперёд, и
+                        узнавать об этом только из уведомления неправильно. */}
+                    {pendingAmount > 0 && (
+                      <div className="glass-sm px-4 py-3 flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium">Абонемент к оплате</div>
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            {pending[0].lessons} {plural(pending[0].lessons, "занятие", "занятия", "занятий")} по {longDate(pending[0].until)}
+                          </div>
+                        </div>
+                        <div className="text-lg font-semibold text-amber-600 dark:text-amber-300 shrink-0">
+                          {(Number(pendingAmount) || 0).toLocaleString("ru-RU")} ₽
+                        </div>
+                      </div>
+                    )}
 
                     {student.lessonPrice > 0 && (
                       <div className="glass-sm px-4 py-3 text-sm text-gray-600">

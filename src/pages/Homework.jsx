@@ -34,7 +34,7 @@ const STATUS_LABELS = {
 
 const TYPE_LABELS = {
   written: { label: "Письменное", iconName: "edit" },
-  test: { label: "Тест", iconName: "file-text" },
+  test: { label: "С ответами", iconName: "file-text" },
   combined: { label: "Комбинированное", iconName: "clipboard" },
 }
 
@@ -1047,7 +1047,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                     on={requireSolution}
                     onClick={() => setRequireSolution(!requireSolution)}
                     title="Дополнительно — фото решения"
-                    note="Без неё отправить тест нельзя"
+                    note="Без фотографии ученик работу не сдаст"
                   />
                 </div>
               </Collapse>
@@ -1233,7 +1233,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                   <div className="flex flex-col gap-2.5">
                     {aiBlocked ? (
                       <PlanHint feature="aiHomework">
-                        ИИ составит задания по теме и оформит их тестом с автоматической проверкой.
+                        ИИ составит задания по теме и оформит их с автоматической проверкой ответов.
                       </PlanHint>
                     ) : (
                       <>
@@ -1378,7 +1378,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                               </div>
                             ))}
                             <div className="text-[11px] text-gray-400 leading-snug">
-                              Проверьте вопросы и ответы: ИИ может ошибаться. Правки сохраняются сразу — задание уйдёт ученику в этом виде.
+                              Проверьте задания и ответы: ИИ может ошибаться. Правки сохраняются сразу — задание уйдёт ученику в этом виде.
                               {aiMode === null && " Ответы для автоматической проверки не годятся, работу проверите вручную."}
                             </div>
                             <button
@@ -1591,7 +1591,7 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
   const resultRow = hw.test_score == null ? null : (
     <div className="w-full border-t border-gray-100/80 dark:border-white/10 pt-3 flex flex-col gap-2">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-xs text-gray-500">Результат теста</span>
+        <span className="text-xs text-gray-500">Результат</span>
         <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
           {hw.test_score} / {hw.question_count}{testPercent != null ? ` · ${testPercent}%` : ""}
         </span>
@@ -1836,7 +1836,7 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
                 <div className="flex flex-col gap-3">
                   {testPercent != null && (
                     <div className="text-xs text-blue-700 dark:text-blue-300">
-                      Тестовая часть: {testPercent}% (рекомендуется {suggestedGrade})
+                      Часть с ответами: {testPercent}% (рекомендуется {suggestedGrade})
                     </div>
                   )}
 
@@ -2097,7 +2097,7 @@ function Homework({ user, students }) {
                 {filter === "all" && (
                   <>
                     <p className="text-xs text-gray-400 max-w-xs leading-relaxed">
-                      Задайте первое: текстом, файлом или тестом с автопроверкой — ученик увидит его в своём кабинете.
+                      Задайте первое: текстом, файлом или с автопроверкой ответов — ученик увидит его в своём кабинете.
                     </p>
                     <button onClick={() => setShowModal(true)} className="btn-primary px-4 py-2 text-sm">
                       + Задание

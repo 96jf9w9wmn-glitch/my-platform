@@ -9,8 +9,6 @@ import WeeksPicker from "./WeeksPicker"
 import PhoneInput, { isValidPhoneNumber } from "react-phone-number-input"
 import "react-phone-number-input/style.css"
 import { plural, parseLocalDate, formatPhone, isLessonPast } from "../utils"
-import { ConsentRow, ConsentLink } from "./ConsentChecks"
-import { logConsent } from "../consents"
 import { supabase } from "../supabase"
 
 const DURATIONS = [30, 45, 60, 90, 120]
@@ -28,7 +26,7 @@ const DAY_INDEX = { "Пн": 1, "Вт": 2, "Ср": 3, "Чт": 4, "Пт": 5, "Сб
 const MESSENGERS = [
   { id: "telegram", label: "Telegram", placeholder: "@username или ссылка" },
   { id: "whatsapp", label: "WhatsApp", placeholder: "+7 900 123-45-67 или ссылка" },
-  { id: "instagram", label: "Instagram", placeholder: "@username или ссылка" },
+  { id: "max", label: "MAX", placeholder: "@username или ссылка" },
   { id: "vk", label: "ВКонтакте", placeholder: "username или ссылка" },
   { id: "other", label: "Другое", placeholder: "https://..." },
 ]
@@ -207,7 +205,6 @@ function StudentFormModal({ student, onClose, onSubmit, initialName, initialPhon
   // хранится отдельным полем — он и есть «есть ссылка или нет».
   const [boardMode, setBoardMode] = useState(student?.boardUrl ? "external" : "own")
   const [onboardingPulled, setOnboardingPulled] = useState(false)
-  const [hasStudentConsent, setHasStudentConsent] = useState(false)
   const [formError, setFormError] = useState("")
   const { cls: closingCls, close } = useClosing(onClose)
 
@@ -316,7 +313,6 @@ function StudentFormModal({ student, onClose, onSubmit, initialName, initialPhon
   function handleSubmit() {
     if (submitting) return
     if (!form.name || !phone) { setFormError("Заполните имя и телефон."); return }
-    if (!editing && !hasStudentConsent) { setFormError("Отметьте, что согласие ученика или его родителя на внесение данных получено."); return }
     if (mode === "single" && previewLessons.length === 0) { setFormError("Выберите даты занятий."); return }
     if (mode === "recurring" && (!recurringStartDate || recurringDays.length === 0)) { setFormError("Укажите дату начала и дни недели."); return }
     setFormError("")
@@ -358,8 +354,6 @@ function StudentFormModal({ student, onClose, onSubmit, initialName, initialPhon
       close()
       return
     }
-
-    logConsent({ role: "tutor_for_student", contact: phone, guardian: true })
 
     onSubmit({
       ...common,
@@ -648,18 +642,6 @@ function StudentFormModal({ student, onClose, onSubmit, initialName, initialPhon
               )}
             </div>
           </div>
-
-          {/* Данные ученика вносит репетитор, а согласие даёт сам ученик или его
-              родитель — поэтому здесь подтверждение, что оно уже получено. */}
-          {!editing && (
-            <div className="mt-6 pt-5 border-t border-gray-100/70 dark:border-white/10">
-              <ConsentRow checked={hasStudentConsent} onChange={setHasStudentConsent}>
-                У меня есть согласие ученика или его законного представителя на внесение
-                этих данных в сервис и на обработку по{" "}
-                <ConsentLink href="/privacy">Политике конфиденциальности</ConsentLink>
-              </ConsentRow>
-            </div>
-          )}
 
           {formError && <div className="text-sm text-red-500 mt-4 text-center">{formError}</div>}
 

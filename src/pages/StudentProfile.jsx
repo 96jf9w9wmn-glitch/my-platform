@@ -12,6 +12,7 @@ import RescheduleModal from "../components/RescheduleModal"
 import StudentFormModal from "../components/StudentFormModal"
 import LessonStatusModal, { LessonStatusBadge } from "../components/LessonStatusModal"
 import PackageModal from "../components/PackageModal"
+import ConfirmModal from "../components/ConfirmModal"
 import { studentBilling, renewalState, periodLabel, dayMonth, PACKAGE_KIND } from "../billing"
 import { longDate } from "../invoices"
 import { lessonStatusNotice } from "../lessonStatus"
@@ -56,6 +57,7 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
   // Занятие из архива, которому выбирают пометку «не состоялось».
   const [statusFor, setStatusFor] = useState(null)
   const [packageOpen, setPackageOpen] = useState(false)
+  const [cancelPack, setCancelPack] = useState(null)
 
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 768)
@@ -149,21 +151,41 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
 
   // Абонемент — это оплата, а не отдельная сущность: он ложится в тот же
   // массив payments, что и обычный платёж, только с полями периода.
+  // Выставление абонемента — ещё НЕ оплата: `paidAt` пустой, в доход сумма не
+  // идёт и занятия периода не покрывает. Деньги отмечаются отдельно, когда
+  // действительно пришли (markPackagePaid).
   function issuePackage(pkg) {
     const payment = {
       id: Date.now(),
       kind: PACKAGE_KIND,
       date: new Date().toLocaleDateString("ru-RU"),
+      paidAt: null,
       note: "",
       ...pkg,
     }
+    onUpdate(student.id, { payments: [...(student.payments || []), payment] })
+    notifyStudent("Выставлен абонемент",
+      `${pkg.lessons} ${plural(pkg.lessons, "занятие", "занятия", "занятий")} с ${longDate(pkg.from)} по ${longDate(pkg.until)} — к оплате ${pkg.amount.toLocaleString("ru-RU")} ₽.`)
+  }
+
+  // Деньги пришли: с этого момента абонемент считается оплатой и покрывает
+  // занятия периода. Дата платежа ставится сегодняшняя — именно она попадает в
+  // историю и в доход месяца.
+  function markPackagePaid(pkg) {
     onUpdate(student.id, {
-      payments: [...(student.payments || []), payment],
+      payments: (student.payments || []).map((p) => (p.id === pkg.id
+        ? { ...p, paidAt: new Date().toISOString(), date: new Date().toLocaleDateString("ru-RU") }
+        : p)),
       paid: true,
-      balance: (student.balance || 0) + pkg.amount,
+      balance: (student.balance || 0) + (Number(pkg.amount) || 0),
     })
     notifyStudent("Абонемент оплачен",
-      `${pkg.lessons} ${plural(pkg.lessons, "занятие", "занятия", "занятий")} с ${longDate(pkg.from)} по ${longDate(pkg.until)} — они уже оплачены, платить за них отдельно не нужно.`)
+      `${pkg.lessons} ${plural(pkg.lessons, "занятие", "занятия", "занятий")} с ${longDate(pkg.from)} по ${longDate(pkg.until)} оплачены — платить за них отдельно не нужно.`)
+  }
+
+  function cancelPackage(pkg) {
+    onUpdate(student.id, { payments: (student.payments || []).filter((p) => p.id !== pkg.id) })
+    setCancelPack(null)
   }
 
   function saveNote(origIdx) {
@@ -198,6 +220,9 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
   const billing = studentBilling(student)
   const renew = renewalState(student)
   const activePack = billing.active
+  // Выставленный, но ещё не оплаченный — он важнее остатка: пока деньги не
+  // пришли, это единственное, что репетитору нужно сделать с абонементом.
+  const pendingPack = billing.pending[0] || null
 
   const initials = getInitials(student.name)
 
@@ -391,7 +416,34 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
           )}
         </div>
 
-        {activePack ? (
+        {pendingPack ? (
+          <>
+            <div className="text-sm text-gray-600 dark:text-gray-300">
+              {pendingPack.lessons} {plural(pendingPack.lessons, "занятие", "занятия", "занятий")}
+              {" · "}{periodLabel(pendingPack.period)} · по {dayMonth(pendingPack.until)}
+            </div>
+            <div className="text-xl font-medium text-amber-600 dark:text-amber-300 mt-1">
+              Ждёт оплаты — {(Number(pendingPack.amount) || 0).toLocaleString("ru-RU")} ₽
+            </div>
+            <div className="text-xs text-gray-500 mt-1.5 leading-relaxed">
+              Пока деньги не отмечены, занятия периода начисляются в долг как обычно.
+            </div>
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={() => markPackagePaid(pendingPack)}
+                className="press-fill flex-1 rounded-xl py-2 text-sm font-medium text-white bg-gradient-to-b from-[#34C759] to-[#28A745] shadow-[0_2px_10px_rgba(52,199,89,0.35)]"
+              >
+                Отметить оплату
+              </button>
+              <button
+                onClick={() => setCancelPack(pendingPack)}
+                className="press-fill rounded-xl px-3 py-2 text-sm text-gray-600 ring-1 ring-gray-200/80 dark:ring-white/15"
+              >
+                Отменить
+              </button>
+            </div>
+          </>
+        ) : activePack ? (
           <>
             <div className="flex items-end gap-1.5">
               <div className="text-2xl font-medium">{activePack.left}</div>
@@ -427,12 +479,16 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
           </div>
         )}
 
-        <button
-          onClick={() => setPackageOpen(true)}
-          className="press-fill mt-3 w-full rounded-xl py-2 text-sm font-medium text-blue-600 dark:text-blue-300 ring-1 ring-blue-500/30"
-        >
-          {billing.packages.length ? "Продлить" : "Выдать абонемент"}
-        </button>
+        {/* Пока предыдущий абонемент не оплачен, выставлять следующий незачем —
+            иначе неоплаченные копятся стопкой. */}
+        {!pendingPack && (
+          <button
+            onClick={() => setPackageOpen(true)}
+            className="press-fill mt-3 w-full rounded-xl py-2 text-sm font-medium text-blue-600 dark:text-blue-300 ring-1 ring-blue-500/30"
+          >
+            {billing.packages.length ? "Продлить" : "Выставить абонемент"}
+          </button>
+        )}
       </div>
 
       {/* Замечания. Поле ввода спрятано за кнопкой: пишут их редко, а открытая
@@ -714,6 +770,19 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
           onSubmit={handleSave}
         />
       )}
+
+      <ConfirmModal
+        open={!!cancelPack}
+        danger
+        title="Отменить абонемент?"
+        message={cancelPack
+          ? `Выставленный абонемент на ${cancelPack.lessons} ${plural(cancelPack.lessons, "занятие", "занятия", "занятий")} (${(Number(cancelPack.amount) || 0).toLocaleString("ru-RU")} ₽) будет удалён. Оплата по нему не отмечена, поэтому на деньги это не влияет.`
+          : ""}
+        confirmLabel="Отменить абонемент"
+        cancelLabel="Оставить"
+        onConfirm={() => cancelPackage(cancelPack)}
+        onCancel={() => setCancelPack(null)}
+      />
 
       {packageOpen && (
         <PackageModal

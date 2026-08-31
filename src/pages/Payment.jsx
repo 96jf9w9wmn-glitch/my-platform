@@ -7,7 +7,9 @@ import Reveal from "../components/Reveal"
 import Collapse from "../components/Collapse"
 import SegmentSwitch from "../components/SegmentSwitch"
 import { supabase } from "../supabase"
-import { isLessonConducted, getInitials, parsePaymentDate, plural } from "../utils"
+import { isLessonPast, getInitials, parsePaymentDate, plural, LESSON_EXCUSED } from "../utils"
+import { studentDebt, unpaidLessons, studentBilling, renewalState, dayMonth, PACKAGE_KIND, isPackage, isPendingPackage } from "../billing"
+import PackageModal from "../components/PackageModal"
 import { TAX_MODES, useTaxSettings } from "../taxModes"
 
 // Подсказки для быстрого добавления при пустом списке расходов.
@@ -62,17 +64,27 @@ function getMonthlyIncome(payments, count = 6) {
 
 // Прогноз до конца месяца — сумма ещё не проведённых уроков, запланированных
 // в текущем календарном месяце (потенциальные деньги, которые вот-вот придут).
+//
+// Занятия, оплаченные абонементом вперёд, сюда не идут: эти деньги УЖЕ получены
+// и стоят в столбце дохода. Иначе один и тот же платёж попал бы в график дважды.
 function getMonthForecast(students) {
   const now = new Date()
   const y = now.getFullYear(), m = now.getMonth()
   let sum = 0
   for (const s of students) {
-    const price = s.lessonPrice || 0
+    const { price, prepaid } = studentBilling(s, now)
     if (!price) continue
-    for (const l of (s.lessons || [])) {
-      if (!l.date) continue
+    let free = prepaid
+    const ahead = (s.lessons || [])
+      .filter((l) => l.date && !isLessonPast(l, now) && l.status !== LESSON_EXCUSED)
+      .sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || "")))
+    for (const l of ahead) {
       const [ly, lm] = l.date.split("-").map(Number)
-      if (ly === y && lm - 1 === m && !isLessonConducted(l)) sum += price
+      const thisMonth = ly === y && lm - 1 === m
+      // Оплаченные вперёд места тратятся по порядку — в том числе на занятия
+      // этого месяца, которые из-за этого денег уже не принесут.
+      if (free > 0) { free -= 1; continue }
+      if (thisMonth) sum += price
     }
   }
   return sum
@@ -198,6 +210,9 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
   const [customAmount, setCustomAmount] = useState("")
   const [mounted, setMounted] = useState(false)
   const [undoStudent, setUndoStudent] = useState(null)
+  // Ученик, которому выдают или продлевают абонемент.
+  const [packageFor, setPackageFor] = useState(null)
+  const [cancelPack, setCancelPack] = useState(null)
   const [expenses, setExpenses] = useState([])
   const [newExpName, setNewExpName] = useState("")
   const [newExpAmount, setNewExpAmount] = useState("")
@@ -264,6 +279,45 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
     setCustomAmount("")
   }
 
+  // Выставление — ещё не оплата (`paidAt` пустой): в доход сумма не идёт и
+  // занятия периода не покрывает, пока деньги не отметили.
+  function issuePackage(student, pkg) {
+    setStudents((prev) => prev.map((s) => (
+      s.id === student.id ? {
+        ...s,
+        payments: [...(s.payments || []), {
+          id: Date.now(),
+          kind: PACKAGE_KIND,
+          date: new Date().toLocaleDateString("ru-RU"),
+          paidAt: null,
+          note: "",
+          ...pkg,
+        }],
+      } : s
+    )))
+    setPackageFor(null)
+  }
+
+  function markPackagePaid(student, pkg) {
+    setStudents((prev) => prev.map((s) => (
+      s.id === student.id ? {
+        ...s,
+        paid: true,
+        balance: (s.balance || 0) + (Number(pkg.amount) || 0),
+        payments: (s.payments || []).map((p) => (p.id === pkg.id
+          ? { ...p, paidAt: new Date().toISOString(), date: new Date().toLocaleDateString("ru-RU") }
+          : p)),
+      } : s
+    )))
+  }
+
+  function cancelPackage(student, pkg) {
+    setStudents((prev) => prev.map((s) => (
+      s.id === student.id ? { ...s, payments: (s.payments || []).filter((p) => p.id !== pkg.id) } : s
+    )))
+    setCancelPack(null)
+  }
+
   function handleUndo(student) {
     setStudents((prev) =>
       prev.map((s) => {
@@ -280,26 +334,10 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
     )
   }
 
-  function getStudentDebt(student) {
-    const conducted = (student.lessons || []).filter((l) => isLessonConducted(l))
-    const totalOwed = conducted.length * (student.lessonPrice || 0)
-    const totalPaid = (student.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
-    return totalOwed - totalPaid
-  }
-
-  function getUnpaidLessons(student) {
-    const conducted = (student.lessons || [])
-      .filter((l) => isLessonConducted(l))
-      .sort((a, b) => a.date.localeCompare(b.date))
-    const price = student.lessonPrice || 0
-    const totalPaid = (student.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
-    const paidCount = price > 0 ? Math.floor(totalPaid / price) : 0
-    const credit = price > 0 ? totalPaid % price : 0
-    return conducted.slice(paidCount).map((l, i) => ({
-      ...l,
-      amountDue: i === 0 ? price - credit : price,
-    }))
-  }
+  // Долг и неоплаченные занятия считает billing.js: там же учитываются
+  // абонементы, и оплаченное вперёд занятие в долг не попадает.
+  const getStudentDebt = (student) => studentDebt(student)
+  const getUnpaidLessons = (student) => unpaidLessons(student)
 
   const allPayments = students
     // isLast — самая свежая оплата ученика: только её можно откатить,
@@ -307,6 +345,9 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
     .flatMap((s) => (s.payments || []).map((p, i, arr) => ({
       ...p, studentName: s.name, studentId: s.id, isLast: i === arr.length - 1,
     })))
+    // Выставленный, но не оплаченный абонемент — не деньги: ни в историю, ни в
+    // доход, ни в налоговую базу он не идёт, пока оплату не отметили.
+    .filter((p) => !isPendingPackage(p))
     .sort((a, b) => parsePaymentDate(b.date) - parsePaymentDate(a.date))
 
   const weekRange = getWeekRange()
@@ -321,6 +362,16 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
   const forecast = getMonthForecast(students)
 
   const debtors = students.filter((s) => getStudentDebt(s) > 0)
+
+  // Ученики на абонементе, у которых он кончается. Это не долг: денег они не
+  // должны, но попросить оплату вперёд надо до занятия, а не после.
+  const renewals = students
+    .map((s) => ({ student: s, state: renewalState(s) }))
+    .filter((x) => x.state?.due)
+
+  // Выставленные абонементы, за которые ещё не заплатили.
+  const awaiting = students
+    .flatMap((s) => studentBilling(s).pending.map((pkg) => ({ student: s, pkg })))
 
   // Расходы / налог / чистая прибыль за текущий месяц.
   // НПД и УСН «Доходы» считают налог от дохода (расходы базу не уменьшают).
@@ -377,6 +428,96 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
       {/* ── ДОЛГИ: рабочий список. Одна строка на ученика, одно действие ── */}
       {tab === "debts" && (
         <div className="flex flex-col gap-3">
+          {/* Выставленные абонементы без оплаты — самое верхнее: это деньги,
+              которых ждут прямо сейчас, и одно нажатие их закрывает. */}
+          {awaiting.length > 0 && (
+            <div className="glass p-4 slide-up">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-amber-500"><Icon name="clock" size={15} /></span>
+                <span className="text-sm font-medium">Абонементы ждут оплаты</span>
+                <span className="text-[11px] text-amber-700 dark:text-amber-300 bg-amber-500/15 px-1.5 py-0.5 rounded-full tabular-nums">
+                  {awaiting.length}
+                </span>
+              </div>
+              <div className="flex flex-col gap-2">
+                {awaiting.map(({ student: s, pkg }) => (
+                  <div key={`${s.id}-${pkg.id}`} className="glass-sm px-3 py-2.5 flex flex-col sm:flex-row sm:items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                      {getInitials(s.name)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium truncate">{s.name}</div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {pkg.lessons} {plural(pkg.lessons, "занятие", "занятия", "занятий")}
+                        <span className="text-gray-400"> · по {dayMonth(pkg.until)}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="text-sm font-semibold tabular-nums text-amber-600 dark:text-amber-300">
+                        {fmt(pkg.amount)} ₽
+                      </div>
+                      <button
+                        onClick={() => markPackagePaid(s, pkg)}
+                        className="shrink-0 inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold text-white bg-gradient-to-b from-[#34C759] to-[#28A745] shadow-[0_2px_10px_rgba(52,199,89,0.35)] transition hover:brightness-105 active:scale-[0.97]"
+                      >
+                        <Icon name="check" size={14} /> Оплатил
+                      </button>
+                      <button
+                        onClick={() => setCancelPack({ student: s, pkg })}
+                        aria-label="Отменить абонемент"
+                        title="Отменить абонемент"
+                        className="w-7 h-7 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-500/10 transition active:scale-90"
+                      >
+                        <Icon name="x" size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Абонементы на исходе — отдельным блоком над должниками. Денег эти
+              ученики не должны (они платят вперёд), но попросить оплату надо
+              ДО занятия, иначе абонемент кончится молча. */}
+          {renewals.length > 0 && (
+            <div className="glass p-4 slide-up">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-blue-500"><Icon name="ruble" size={15} /></span>
+                <span className="text-sm font-medium">Пора продлить абонемент</span>
+                <span className="text-[11px] text-blue-600 dark:text-blue-300 bg-blue-500/12 px-1.5 py-0.5 rounded-full tabular-nums">
+                  {renewals.length}
+                </span>
+              </div>
+              <div className="flex flex-col gap-2">
+                {renewals.map(({ student: s, state }) => (
+                  <div key={s.id} className="glass-sm px-3 py-2.5 flex flex-col sm:flex-row sm:items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 bg-blue-500/12 text-blue-600 dark:text-blue-300">
+                      {getInitials(s.name)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium truncate">{s.name}</div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {state.over
+                          ? "Занятия по абонементу закончились"
+                          : `Осталось ${state.prepaid} ${plural(state.prepaid, "занятие", "занятия", "занятий")}`}
+                        {state.active?.until && (
+                          <span className="text-gray-400"> · срок по {dayMonth(state.active.until)}</span>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setPackageFor(s)}
+                      className="shrink-0 self-start sm:self-auto inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold text-white bg-gradient-to-b from-[#0A84FF] to-[#0060DF] shadow-[0_2px_10px_rgba(0,122,255,0.35)] transition hover:brightness-105 active:scale-[0.97]"
+                    >
+                      <Icon name="repeat" size={14} /> Продлить
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {debtors.length === 0 ? (
             <div className="glass p-6 flex items-center gap-3">
               <div className="w-10 h-10 rounded-full grid place-items-center shrink-0 bg-green-500/12 text-green-600 dark:text-green-300">
@@ -512,8 +653,19 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
                       {getInitials(p.studentName)}
                     </div>
                     <div className="min-w-0">
-                      <div className="text-sm font-medium truncate">{p.studentName}</div>
-                      <div className="text-xs text-gray-400">{p.date}{p.note ? " · " + p.note : ""}</div>
+                      <div className="text-sm font-medium truncate flex items-center gap-1.5">
+                        {p.studentName}
+                        {isPackage(p) && (
+                          <span className="text-[10px] font-normal px-1.5 py-0.5 rounded-full bg-blue-500/12 text-blue-600 dark:text-blue-300 whitespace-nowrap">
+                            абонемент
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-400 truncate">
+                        {p.date}
+                        {isPackage(p) && ` · ${p.lessons} ${plural(p.lessons, "занятие", "занятия", "занятий")} по ${dayMonth(p.until)}`}
+                        {p.note ? " · " + p.note : ""}
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
@@ -669,6 +821,28 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
             </div>
           </div>
         </div>
+      )}
+
+      <ConfirmModal
+        open={!!cancelPack}
+        danger
+        title="Отменить абонемент?"
+        message={cancelPack
+          ? `${cancelPack.student.name} — абонемент на ${cancelPack.pkg.lessons} ${plural(cancelPack.pkg.lessons, "занятие", "занятия", "занятий")} (${fmt(cancelPack.pkg.amount)} ₽) будет удалён. Оплата по нему не отмечена, поэтому на деньги это не влияет.`
+          : ""}
+        confirmLabel="Отменить абонемент"
+        cancelLabel="Оставить"
+        onConfirm={() => cancelPackage(cancelPack.student, cancelPack.pkg)}
+        onCancel={() => setCancelPack(null)}
+      />
+
+      {packageFor && (
+        <PackageModal
+          student={packageFor}
+          previous={studentBilling(packageFor).lastPackage}
+          onSubmit={(pkg) => issuePackage(packageFor, pkg)}
+          onClose={() => setPackageFor(null)}
+        />
       )}
 
       <ConfirmModal

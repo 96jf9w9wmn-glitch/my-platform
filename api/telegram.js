@@ -34,6 +34,7 @@ import { createClient } from "@supabase/supabase-js"
 import { admin, tutorFromRequest } from "./plan-gate.js"
 import { clientIp } from "./generate-hw.js"
 import { isLessonPast, isLessonConducted, LESSON_EXCUSED, parsePaymentDate, plural } from "../src/utils.js"
+import { studentDebt, studentBilling } from "../src/billing.js"
 import { can } from "../src/plans.js"
 
 const API = "https://api.telegram.org"
@@ -225,14 +226,17 @@ function nextLesson(students, fromIso) {
   return all.find((l) => !isLessonPast(l, now)) || null
 }
 
-// Долг ученика считается так же, как на странице «Финансы»: проведённые уроки
-// по цене занятия минус все внесённые платежи.
+// Долг ученика считает тот же код, что и страница «Финансы» (billing.js):
+// бот — второй вход в тот же кабинет, разойтись в цифрах он не имеет права.
+// Оттуда же берутся абонементы: занятие, оплаченное вперёд, в долг не идёт.
 export function debtOf(student) {
-  const now = mskNow()
-  const conducted = (student.lessons || []).filter((l) => isLessonConducted(l, now)).length
-  const owed = conducted * (student.lesson_price || 0)
-  const paid = (student.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
-  return owed - paid
+  return studentDebt(student, mskNow())
+}
+
+// Абонемент ученика: сколько занятий оплачено вперёд и сколько ждёт оплаты.
+export function packageOf(student) {
+  const { prepaid, pendingAmount } = studentBilling(student, mskNow())
+  return { prepaid, pendingAmount }
 }
 
 const HW_ACTIVE = new Set(["assigned", "revision"])
@@ -417,6 +421,7 @@ export async function viewStudent(db, link, studentId) {
   const toCheck = mine.filter((h) => h.status === "submitted").length
   const activeHw = mine.filter((h) => HW_ACTIVE.has(h.status)).length
   const debt = debtOf(s)
+  const { prepaid, pendingAmount } = packageOf(s)
 
   const lines = [
     `<b>${esc(studentName(s.name, link.full_names))}</b>`,
@@ -429,7 +434,11 @@ export async function viewStudent(db, link, studentId) {
       ? `Ближайшее: ${humanDate(upcoming[0].date)} в ${esc(upcoming[0].time || "—")}`
       : "Ближайшее занятие не назначено",
     s.lesson_price ? `Цена занятия: ${money(s.lesson_price)}` : null,
-    debt > 0 ? `Долг: <b>${money(debt)}</b>` : debt < 0 ? `Предоплата: ${money(-debt)}` : "Оплачено полностью",
+    debt > 0 ? `Долг: <b>${money(debt)}</b>`
+      : debt < 0 ? `Предоплата: ${money(-debt)}`
+      : prepaid > 0 ? `Абонемент: оплачено ${prepaid} ${plural(prepaid, "занятие", "занятия", "занятий")} вперёд`
+      : "Оплачено полностью",
+    pendingAmount > 0 ? `Абонемент ждёт оплаты: <b>${money(pendingAmount)}</b>` : null,
     "",
     `ДЗ: ${activeHw} в работе, ${toCheck} на проверке`,
   ].filter((x) => x !== null)
@@ -733,7 +742,7 @@ function notifyLimited(ip, now = Date.now()) {
 // сокращение имени — уже здесь.
 const NOTICE_LOOK = {
   hw_submitted: { icon: "📩", what: "сдал домашнее задание" },
-  hw_test:      { icon: "🧮", what: "прошёл тест" },
+  hw_test:      { icon: "🧮", what: "сдал ответы к работе" },
   variant_submitted: { icon: "🧾", what: "сдал вариант" },
   chat:         { icon: "💬", what: "написал в чат" },
 }
