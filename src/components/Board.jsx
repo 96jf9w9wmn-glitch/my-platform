@@ -1026,7 +1026,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
 
     // Два ОДНОВРЕМЕННЫХ касания (только touch) → жест панорама/зум
     if (e.pointerType === "touch" && pointers.current.size >= 2) {
-      dropDrawing(); beginGesture(); scheduleDraw(); return
+      dropDrawing(); beginGesture(); setPanDrag(true); scheduleDraw(); return
     }
     // Правая/боковая кнопка (её же выдаёт боковая кнопка пера планшета — button 2 /
     // бит 2 в buttons) или средняя кнопка → двигаем полотно, ПОКА кнопка зажата.
@@ -1123,7 +1123,9 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   function onPointerUp(e) {
     pointers.current.delete(e.pointerId)
     if (pointers.current.size < 2) gesture.current = null
-    if (panning.current) setPanDrag(false)
+    // Сдвиг кончился (кнопкой/пробелом или разъехавшимися пальцами) — гасим
+    // подсветку «Двигать полотно» в панели.
+    if (panning.current || !gesture.current) setPanDrag(false)
     panning.current = null
 
     // Конец прохода объектным ластиком — весь проход одним шагом истории
@@ -1790,6 +1792,9 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const cursor = panDrag ? "grabbing"
     : (panKey || tool === "hand") ? "grab"
     : tool === "cursor" ? "default" : "crosshair"
+  // …и в панели на это время загорается «Двигать полотно». Инструмент при этом
+  // не меняется: отпустил кнопку (пальцы, пробел) — и снова горит маркер.
+  const activeTool = panDrag || panKey ? "hand" : tool
 
   // Ручки выделения из ОРИЕНТИРОВАННОЙ рамки {cx,cy,ax,ay,angle} (экранные координаты)
   const H = selBox
@@ -2054,8 +2059,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
               {/* Клик берёт ластик и сразу показывает выбор режима: иначе про «стирать
                   объект целиком» никто бы не узнал */}
               <button onPointerDown={() => flashTip("eraser")} onClick={() => { const was = tool === "eraser"; setTool("eraser"); was ? toggleMenu("eraser") : openMenu("eraser") }}
-                className={`${btnBase} ${tool === "eraser" ? btnOn : btnIdle}`}
-                style={tool === "eraser" ? undefined : idleStyle}>
+                className={`${btnBase} ${activeTool === "eraser" ? btnOn : btnIdle}`}
+                style={activeTool === "eraser" ? undefined : idleStyle}>
                 <Icon name="eraser" size={21} />
                 {!menuShown("eraser") && (
                   <Tip label={eraserMode === "object" ? "Ластик · объект целиком" : "Ластик · след"} hotkey="E" dark={dark} show={tapped === "eraser"} />
@@ -2066,8 +2071,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
           ) : t.shapes ? (
             <div key="shapes" className="relative" data-menu>
               <button onPointerDown={() => flashTip("shapes")} onClick={() => toggleMenu("shapes")}
-                className={`${btnBase} ${shapeMenuIds.has(tool) ? btnOn : btnIdle}`}
-                style={shapeMenuIds.has(tool) ? undefined : idleStyle}>
+                className={`${btnBase} ${shapeMenuIds.has(activeTool) ? btnOn : btnIdle}`}
+                style={shapeMenuIds.has(activeTool) ? undefined : idleStyle}>
                 <Icon name={shapeIconOf(shapeTool)} size={21} />
                 {!menuShown("shapes") && <Tip label="Фигуры" dark={dark} show={tapped === "shapes"} />}
               </button>
@@ -2075,8 +2080,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
             </div>
           ) : (
             <button key={t.id} onPointerDown={() => flashTip(t.id)} onClick={() => setTool(t.id)}
-              className={`${btnBase} ${tool === t.id ? btnOn : btnIdle}`}
-              style={tool === t.id ? undefined : idleStyle}>
+              className={`${btnBase} ${activeTool === t.id ? btnOn : btnIdle}`}
+              style={activeTool === t.id ? undefined : idleStyle}>
               <Icon name={t.icon} size={21} />
               <Tip label={t.label} hotkey={t.key} dark={dark} show={tapped === t.id} />
             </button>
@@ -2186,8 +2191,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
               {TOOLS.map((t) => t.erasers ? (
                 <div key="eraser" className="relative" data-menu>
                   <button onClick={() => { const was = tool === "eraser"; setTool("eraser"); was ? toggleMenu("eraser") : openMenu("eraser") }}
-                    className={`${btnBase} ${tool === "eraser" ? btnOn : btnIdle}`}
-                    style={tool === "eraser" ? undefined : idleStyle} aria-label="Ластик">
+                    className={`${btnBase} ${activeTool === "eraser" ? btnOn : btnIdle}`}
+                    style={activeTool === "eraser" ? undefined : idleStyle} aria-label="Ластик">
                     <Icon name="eraser" size={21} />
                   </button>
                   {eraserPopup}
@@ -2195,16 +2200,16 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
               ) : t.shapes ? (
                 <div key="shapes" className="relative" data-menu>
                   <button onClick={() => toggleMenu("shapes")} aria-label="Фигуры"
-                    className={`${btnBase} ${shapeMenuIds.has(tool) ? btnOn : btnIdle}`}
-                    style={shapeMenuIds.has(tool) ? undefined : idleStyle}>
+                    className={`${btnBase} ${shapeMenuIds.has(activeTool) ? btnOn : btnIdle}`}
+                    style={shapeMenuIds.has(activeTool) ? undefined : idleStyle}>
                     <Icon name={shapeIconOf(shapeTool)} size={21} />
                   </button>
                   {shapesPopup}
                 </div>
               ) : (
                 <button key={t.id} onClick={() => setTool(t.id)} aria-label={t.label}
-                  className={`${btnBase} ${tool === t.id ? btnOn : btnIdle}`}
-                  style={tool === t.id ? undefined : idleStyle}>
+                  className={`${btnBase} ${activeTool === t.id ? btnOn : btnIdle}`}
+                  style={activeTool === t.id ? undefined : idleStyle}>
                   <Icon name={t.icon} size={21} />
                 </button>
               ))}
