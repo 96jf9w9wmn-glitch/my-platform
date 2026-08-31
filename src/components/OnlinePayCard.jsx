@@ -23,7 +23,9 @@ export default function OnlinePayCard({ user, student, debt = 0 }) {
   const [error, setError] = useState("")
   const [result, setResult] = useState(null)   // статус вернувшегося платежа
 
-  const tutorId = user?.profile?.tutor_id
+  // Репетитор — тот, чья карточка сейчас открыта: у ученика их может быть
+  // несколько, и магазин (как и долг) у каждого свой.
+  const tutorId = student?.tutor_id || user?.profile?.tutor_id
   const price = Number(student?.lessonPrice || 0)
 
   useEffect(() => {
@@ -80,7 +82,7 @@ export default function OnlinePayCard({ user, student, debt = 0 }) {
       const r = await fetch("/api/yookassa", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accountId: user.id, token: user.token, lessons }),
+        body: JSON.stringify({ accountId: user.id, token: user.token, lessons, tutorId }),
       })
       const j = await r.json().catch(() => ({}))
       if (!r.ok || !j.confirmationUrl) {

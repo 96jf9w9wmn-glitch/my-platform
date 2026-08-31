@@ -421,33 +421,46 @@ function App() {
   const [students, setStudents] = useState([])
   const [studentsLoaded, setStudentsLoaded] = useState(false)
 
-  const studentsTutorId = user?.role === "tutor" ? user.id
-    : user?.role === "student" ? user.profile?.tutor_id
+  // Чей это список: у репетитора — его ростер, у ученика — ЕГО СОБСТВЕННЫЕ
+  // карточки у всех репетиторов сразу (репетиторов может быть несколько, на
+  // каждого заводится своя карточка). Раньше ученик грузился по одному
+  // «основному» репетитору, и второй привязанный в кабинете не появлялся вовсе.
+  const rosterKey = user?.role === "tutor" ? `t:${user.id}`
+    : user?.role === "student" ? `s:${user.id}`
     : null
-  // У студента без репетитора грузить нечего — считаем загруженным без setState в эффекте
-  const studentsReady = studentsLoaded || (user?.role === "student" && !user.profile?.tutor_id)
+  // У ученика без основного репетитора карточек заведомо нет — показываем экран
+  // «подключись» сразу, не дожидаясь запроса (он может и не ответить).
+  const studentsReady = studentsLoaded || !rosterKey
+    || (user?.role === "student" && !user.profile?.tutor_id)
 
-  const loadedTutorRef = useRef(null)
+  const loadedRosterRef = useRef(null)
   useEffect(() => {
-    // Смена репетитора (другой аккаунт без перезагрузки) — сбрасываем чужой список
-    if (loadedTutorRef.current && loadedTutorRef.current !== studentsTutorId) {
-      loadedTutorRef.current = null
+    // Смена аккаунта без перезагрузки — сбрасываем чужой список
+    if (loadedRosterRef.current && loadedRosterRef.current !== rosterKey) {
+      loadedRosterRef.current = null
       setStudents([])
       setStudentsLoaded(false)
       return
     }
-    if (studentsTutorId && !studentsLoaded) {
-      loadedTutorRef.current = studentsTutorId
-      loadStudents(studentsTutorId)
+    if (rosterKey && !studentsLoaded) {
+      loadedRosterRef.current = rosterKey
+      loadStudents()
     }
-  }, [studentsTutorId, studentsLoaded])
+  }, [rosterKey, studentsLoaded])
 
-  async function loadStudents(tutorId) {
-    const { data, error } = await supabase
-      .from("students")
-      .select("*")
-      .eq("tutor_id", tutorId)
-      .order("created_at", { ascending: true })
+  async function loadStudents() {
+    let query = supabase.from("students").select("*").order("created_at", { ascending: true })
+    if (user.role === "tutor") {
+      query = query.eq("tutor_id", user.id)
+    } else {
+      // Тот же набор строк, что пускает RLS (current_student_rows): свой аккаунт
+      // либо свой телефон у старых карточек. Фильтр явный, чтобы кабинет вёл себя
+      // одинаково и на базе без RLS.
+      const ors = [`student_account_id.eq.${user.id}`]
+      if (user.profile?.phone) ors.push(`phone.eq."${user.profile.phone}"`)
+      query = query.or(ors.join(","))
+    }
+    const { data, error } = await query
     if (error || !data) return  // не помечаем как загружено — при следующем рендере повторится
     let mapped = data.map((s) => ({
       ...s,
@@ -730,15 +743,16 @@ function App() {
         studentsLoaded={studentsReady}
         onLogout={handleLogout}
         onReloadStudents={(newTutorId) => {
-          if (newTutorId && newTutorId !== user.profile?.tutor_id) {
-            // Студент только что привязался к репетитору — обновляем сессию и перегружаем
+          // Перезагружаем карточки в любом случае: привязка нового репетитора
+          // добавляет ещё одну, а не заменяет прежнюю.
+          setStudentsLoaded(false)
+          // tutor_id в сессии — это ПЕРВЫЙ (основной) репетитор: по нему кабинет
+          // работает, пока карточек ещё нет. Привязка второго его не двигает,
+          // иначе первый репетитор молча пропадал бы из кабинета.
+          if (newTutorId && !user.profile?.tutor_id) {
             const updated = { ...user, profile: { ...user.profile, tutor_id: newTutorId } }
             localStorage.setItem("student_session", JSON.stringify(updated))
-            setStudentsLoaded(false)
             setUser(updated)
-          } else {
-            setStudentsLoaded(false)
-            if (user.profile?.tutor_id) loadStudents(user.profile.tutor_id)
           }
         }}
       />

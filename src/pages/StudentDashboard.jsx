@@ -1523,6 +1523,58 @@ function useVariantTimer(variant, onExpire) {
   return { active, minutes, started: !!endsAt, msLeft, starting, start }
 }
 
+// Поле кода репетитора. Одно и то же и на пустом кабинете, и в «Настройках», и
+// в окне «Ещё репетитор»: код вводится одинаково, где бы его ни спросили.
+function TutorLinkForm({ code, onCode, onSubmit, busy, error, success, center = false, label = "Привязать", busyLabel = "Привязываем..." }) {
+  return (
+    <div className={`w-full flex flex-col gap-2.5 ${center ? "max-w-xs" : ""}`}>
+      <input
+        value={code}
+        onChange={(e) => onCode(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter" && !busy && code.trim()) onSubmit() }}
+        placeholder="Код репетитора"
+        className={`input-glass ${center ? "text-center tracking-widest" : ""}`}
+      />
+      {error && <div className="text-sm text-red-500">{error}</div>}
+      {success && <div className="text-sm text-green-600">{success}</div>}
+      <button
+        onClick={onSubmit}
+        disabled={busy || !code.trim()}
+        className="btn-primary py-2.5 disabled:opacity-50 active:scale-[0.99] transition-transform"
+      >
+        {busy ? busyLabel : label}
+      </button>
+    </div>
+  )
+}
+
+// Окно «Ещё репетитор» — вход в привязку с главной, чтобы за ним не надо было
+// идти в «Настройки».
+function AddTutorModal({ onClose, children }) {
+  const { cls: closingCls, close } = useClosing(onClose)
+  return createPortal(
+    <div className={`fixed inset-0 glass-overlay flex items-center justify-center z-50 p-4 ${closingCls}`} onClick={close}>
+      <div className={`glass-modal w-full max-w-sm flex flex-col ${closingCls}`} onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100/60 flex-shrink-0">
+          <h2 className="text-lg font-medium">Ещё репетитор</h2>
+          <button onClick={close} aria-label="Закрыть" className="text-gray-400 hover:text-gray-600 transition-transform active:scale-90">
+            <Icon name="x" size={18} />
+          </button>
+        </div>
+        <div className="px-6 py-5 flex flex-col gap-4">
+          <p className="text-sm text-gray-500 leading-relaxed">
+            Занимаешься ещё с одним репетитором — попроси у него код и введи сюда.
+            Занятия, задания, варианты и оплата у каждого репетитора свои,
+            переключаться между ними можно наверху кабинета.
+          </p>
+          {children}
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
 function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadStudents }) {
   // Возврат из ЮKassa приходит на /?pay=<id заказа> — открываем сразу «Оплату»,
   // иначе ученик увидит расписание и решит, что платёж потерялся.
@@ -1530,7 +1582,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     () => (new URLSearchParams(window.location.search).has("pay") ? "payment" : "schedule")
   )
   const variantsCacheKey = `variants_cache_${user.id}`
-  const [variants, setVariants] = useState(() => {
+  const [allVariants, setAllVariants] = useState(() => {
     try { return JSON.parse(localStorage.getItem(`variants_cache_${user.id}`)) || [] } catch { return [] }
   })
   const [selectedVariant, setSelectedVariant] = useState(null)
@@ -1554,8 +1606,42 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   const autoCreateRef = useRef(false)
   const studentAvatarRef = useRef()
 
-  const [tutorName, setTutorName] = useState("")
-  const [tutorSubject, setTutorSubject] = useState("")
+  // У ученика может быть несколько репетиторов: карточка заводится на каждого,
+  // и кабинет показывает данные того, кто выбран сейчас (занятия, задания,
+  // варианты, оплата и доска у каждого свои). Выбор помним между заходами.
+  const activeTutorKey = `active_tutor_${user.id}`
+  const [activeTutorId, setActiveTutorId] = useState(
+    () => localStorage.getItem(activeTutorKey) || user.profile?.tutor_id || null
+  )
+  // Выбранного могли отклонить или ученик зашёл впервые — держимся первой карточки.
+  const activeCard = students.find((s) => s.tutor_id === activeTutorId) || students[0] || null
+  const currentTutorId = activeCard?.tutor_id || activeTutorId || user.profile?.tutor_id || null
+  function selectTutor(id) {
+    if (!id) return
+    setActiveTutorId(id)
+    try { localStorage.setItem(activeTutorKey, id) } catch { /* приватный режим — не критично */ }
+  }
+  const [addTutorOpen, setAddTutorOpen] = useState(false)
+
+  // Имена всех своих репетиторов — по ним подписаны карточка занятия и переключатель.
+  const [tutors, setTutors] = useState({})
+  const tutorIds = useMemo(() => {
+    const ids = students.map((s) => s.tutor_id)
+    if (user.profile?.tutor_id) ids.push(user.profile.tutor_id)
+    return [...new Set(ids.filter(Boolean))]
+  }, [students, user.profile?.tutor_id])
+  const tutorIdsKey = tutorIds.join(",")
+  const tutorName = tutors[currentTutorId]?.name || ""
+  const tutorSubject = tutors[currentTutorId]?.subject || ""
+  const tutorNameOf = (id) => tutors[id]?.name || "Репетитор"
+  // В чат подставляем всех своих репетиторов, а не только основного.
+  const tutorContacts = tutorIds.map((id) => ({ id: `t:${id}`, name: tutorNameOf(id), role: "Репетитор" }))
+  // Варианты приходят на аккаунт целиком, а выдаёт их конкретный репетитор —
+  // показываем только его: чужие в разделе выглядели бы как забытая работа.
+  const variants = useMemo(
+    () => allVariants.filter((v) => !v.tutor_id || v.tutor_id === currentTutorId),
+    [allVariants, currentTutorId]
+  )
   // Отсчёт до занятия в карточке наверху пересчитывается раз в минуту.
   const [minuteTick, setMinuteTick] = useState(0)
   useEffect(() => {
@@ -1602,15 +1688,13 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   }, [])
 
   useEffect(() => {
-    if (user.profile?.tutor_id) {
-      supabase.from("tutors").select("name, subject").eq("id", user.profile.tutor_id).single()
-        .then(({ data }) => {
-          if (!data) return
-          setTutorName(data.name)
-          setTutorSubject(data.subject || "")
-        })
-    }
-  }, [user.profile?.tutor_id])
+    if (!tutorIdsKey) return
+    supabase.from("tutors").select("id, name, subject").in("id", tutorIdsKey.split(","))
+      .then(({ data }) => {
+        if (!data) return
+        setTutors(Object.fromEntries(data.map((t) => [t.id, { name: t.name, subject: t.subject || "" }])))
+      })
+  }, [tutorIdsKey])
 
   useEffect(() => {
     const myId = `s:${user.id}`
@@ -1642,18 +1726,20 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     }
   }, [dark])
 
-  const liveStudent = students.find((s) => {
-    const phone = user.profile?.phone
-    if (phone && s.phone && s.phone === phone) return true
-    const name = user.profile?.name?.toLowerCase().trim() || ""
-    const sName = s.name?.toLowerCase().trim() || ""
-    return name.length > 0 && sName === name
-  })
+  // Карточку ищем не по имени и телефону, а по выбранному репетитору: строки
+  // приходят уже отфильтрованными по аккаунту ученика (см. loadStudents в App.jsx).
+  const liveStudent = activeCard
 
-  // Кэш на случай если RLS блокирует чтение students (студент — anon пользователь)
-  const cachedStudentKey = `student_cache_${user.id}`
+  // Кэш на случай если RLS блокирует чтение students (студент — anon пользователь).
+  // Ключ с репетитором: у каждого своя карточка, общий ключ подставлял бы чужую.
+  const cachedStudentKey = `student_cache_${user.id}` + (currentTutorId ? `_${currentTutorId}` : "")
   const cachedStudent = useMemo(() => {
-    try { return JSON.parse(localStorage.getItem(cachedStudentKey)) } catch { return null }
+    try {
+      // Запасной путь — кэш прежних версий (он был один и хранил основного репетитора).
+      const legacy = currentTutorId && currentTutorId === user.profile?.tutor_id
+        ? localStorage.getItem(`student_cache_${user.id}`) : null
+      return JSON.parse(localStorage.getItem(cachedStudentKey) || legacy)
+    } catch { return null }
   }, [cachedStudentKey])
 
   // Сохраняем данные в кэш при успешной загрузке, сохраняя аватарку если она не в students таблице
@@ -2118,6 +2204,10 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
         localStorage.removeItem("pending_tutor_code")
         setTutorLinkSuccess("Подключено к репетитору " + linked.tutor_name + "!")
         setTutorCode("")
+        // Имя нужно сразу: карточка приедет со следующей загрузкой, а переключатель
+        // подписывается именем уже сейчас.
+        setTutors((prev) => ({ ...prev, [linked.tutor_id]: prev[linked.tutor_id] || { name: linked.tutor_name, subject: "" } }))
+        selectTutor(linked.tutor_id)
         if (onReloadStudents) onReloadStudents(linked.tutor_id)
       } catch (err) {
         setTutorLinkError(err.message)
@@ -2135,7 +2225,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
       const signedSubs = await signRows(subs || [], { part2_files: "variants" })
       const mapped = (await signRows(signedSubs.map((s) => ({ ...s.variants, submission: s })), { file_url: "variants" }))
         .sort((a, b) => String(b.submission?.created_at || "").localeCompare(String(a.submission?.created_at || "")))
-      setVariants(mapped)
+      setAllVariants(mapped)
       try { localStorage.setItem(variantsCacheKey, JSON.stringify(mapped)) } catch { /* переполнение localStorage — кэш не критичен */ }
     }
 
@@ -2279,6 +2369,20 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
 
     return (
       <div className="flex app-shell overflow-clip">
+        {addTutorOpen && (
+          <AddTutorModal onClose={() => setAddTutorOpen(false)}>
+            <TutorLinkForm
+              code={tutorCode}
+              onCode={(v) => { setTutorCode(v); setTutorLinkError("") }}
+              onSubmit={linkTutor}
+              busy={tutorLinking}
+              error={tutorLinkError}
+              success={tutorLinkSuccess}
+              label="Подключить"
+              busyLabel="Подключаем..."
+            />
+          </AddTutorModal>
+        )}
         {resultDialog && (
           <SubmitResultDialog
             score={resultDialog.score}
@@ -2329,13 +2433,48 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
             </div>
           </div>
 
+          {/* Переключатель репетиторов. Появляется, только когда их больше одного:
+              у кого репетитор один, лишней строки на экране не будет, а привязать
+              второго можно из «Информации» на главной и из «Настроек». */}
+          {students.length > 1 && (
+            <div className="flex-shrink-0 px-4 md:px-6 pt-3 flex gap-2 overflow-x-auto no-scrollbar">
+              {students.map((card) => {
+                const on = card.tutor_id === currentTutorId
+                return (
+                  <button
+                    key={card.id}
+                    onClick={() => selectTutor(card.tutor_id)}
+                    className={`press-tap flex-shrink-0 flex items-center gap-2 rounded-full pl-1.5 pr-3.5 py-1.5 text-sm transition-colors ring-1 ${
+                      on
+                        ? "bg-blue-500/10 ring-blue-500/40 text-blue-700 dark:text-blue-300 font-medium"
+                        : "ring-gray-200/70 dark:ring-white/10 text-gray-600 hover:bg-blue-500/[0.06]"
+                    }`}
+                  >
+                    <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold ${
+                      on ? "bg-blue-600 text-white" : "bg-blue-500/12 text-blue-600 dark:text-blue-300"
+                    }`}>
+                      {getInitials(tutorNameOf(card.tutor_id))}
+                    </span>
+                    <span className="truncate max-w-[9rem]">{tutorNameOf(card.tutor_id)}</span>
+                  </button>
+                )
+              })}
+              <button
+                onClick={() => { setTutorLinkError(""); setTutorLinkSuccess(""); setAddTutorOpen(true) }}
+                className="press-tap flex-shrink-0 flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm text-blue-600 dark:text-blue-300 ring-1 ring-blue-500/30 hover:bg-blue-500/[0.08] transition-colors"
+              >
+                <Icon name="plus" size={14} />Ещё
+              </button>
+            </div>
+          )}
+
           <div className={`flex-1 min-h-0 overflow-x-hidden ${activeTab === "chat" ? "flex flex-col overflow-hidden" : "page-scroll overflow-y-auto pb-20 md:pb-0 kb-collapse"}`}>
             {activeTab === "chat" ? (
               <div className="flex-1 min-h-0 flex flex-col overflow-hidden page-active">
                 <Chat
                   myId={`s:${user.id}`}
                   myName={user.profile?.name || "Ученик"}
-                  initialContacts={user.profile?.tutor_id ? [{ id: `t:${user.profile.tutor_id}`, name: tutorName || "Репетитор", role: "Репетитор" }] : []}
+                  initialContacts={tutorContacts}
                   canAddByCode={true}
                   onUnreadChange={(delta, isInit) => {
                     if (isInit) setChatUnread(delta)
@@ -2350,36 +2489,22 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
               {!student ? (
                 !studentsLoaded ? (
                   <div className="text-center py-16 text-gray-400 text-sm">Загрузка...</div>
-                ) : students.length === 0 ? (
+                ) : (
                   <div className="glass p-6 md:p-8 flex flex-col items-center text-center max-w-md mx-auto">
                     <div className="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-500/15 flex items-center justify-center text-blue-600 dark:text-blue-300 mb-4">
                       <Icon name="link" size={26} />
                     </div>
                     <div className="text-lg font-semibold mb-1">Подключись к репетитору</div>
                     <div className="text-sm text-gray-500 mb-5">Введи код, который дал репетитор, — и здесь появятся занятия, задания, варианты и оплата.</div>
-                    <div className="w-full max-w-xs flex flex-col gap-2.5">
-                      <input
-                        value={tutorCode}
-                        onChange={(e) => { setTutorCode(e.target.value); setTutorLinkError("") }}
-                        onKeyDown={(e) => { if (e.key === "Enter" && !tutorLinking) linkTutor() }}
-                        placeholder="Код репетитора"
-                        className="input-glass text-center tracking-widest"
-                      />
-                      {tutorLinkError && <div className="text-sm text-red-500">{tutorLinkError}</div>}
-                      {tutorLinkSuccess && <div className="text-sm text-green-600">{tutorLinkSuccess}</div>}
-                      <button
-                        onClick={linkTutor}
-                        disabled={tutorLinking || !tutorCode.trim()}
-                        className="btn-primary py-2.5 disabled:opacity-50 active:scale-[0.99] transition-transform"
-                      >
-                        {tutorLinking ? "Привязываем..." : "Привязать"}
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="glass-tint-amber p-6 text-center">
-                    <div className="text-sm text-amber-700 font-medium mb-1">Имя в системе не совпадает</div>
-                    <div className="text-xs text-amber-600">Ты зарегистрирован как <b>{user.profile?.name}</b>, но репетитор добавил тебя под другим именем или телефоном. Попроси репетитора проверить карточку.</div>
+                    <TutorLinkForm
+                      center
+                      code={tutorCode}
+                      onCode={(v) => { setTutorCode(v); setTutorLinkError("") }}
+                      onSubmit={linkTutor}
+                      busy={tutorLinking}
+                      error={tutorLinkError}
+                      success={tutorLinkSuccess}
+                    />
                   </div>
                 )
               ) : (
@@ -2529,6 +2654,14 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                           <div className="text-xs text-gray-400">Репетитор{lessonSubject ? ` · ${lessonSubject}` : ""}</div>
                           <div className="text-sm text-gray-700 leading-tight truncate">{tutorName || "Ваш репетитор"}</div>
                         </div>
+                        {/* Второй репетитор привязывается отсюда: занимаются часто
+                            с несколькими, и искать это в «Настройках» никто не будет. */}
+                        <button
+                          onClick={() => { setTutorLinkError(""); setTutorLinkSuccess(""); setAddTutorOpen(true) }}
+                          className="press-tap ml-auto flex-shrink-0 flex items-center gap-1 rounded-full px-2.5 py-1 text-xs text-blue-600 dark:text-blue-300 ring-1 ring-blue-500/30 hover:bg-blue-500/[0.08] transition-colors"
+                        >
+                          <Icon name="plus" size={12} />Ещё репетитор
+                        </button>
                       </div>
                       <div className="flex flex-col gap-2.5">
                         {user.profile?.phone && (
@@ -2741,7 +2874,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                     )}
 
                     {/* Квитанции за проведённые занятия — приходят сами после каждого занятия */}
-                    <InvoiceCard student={student} tutorId={user.profile?.tutor_id} tutorName={tutorName} />
+                    <InvoiceCard student={student} tutorId={currentTutorId} tutorName={tutorName} />
 
                     {/* Онлайн-оплата: карточки нет, пока репетитор не включил приём (см. supabase/yookassa.sql) */}
                     <OnlinePayCard user={user} student={student} debt={debt} />
@@ -2774,28 +2907,17 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
             <div className="flex flex-col gap-4">
               <div className="glass p-5">
                 <h2 className="text-base font-medium mb-1">Подключить репетитора</h2>
-                <p className="text-xs text-gray-500 mb-4">Если начал заниматься ещё с одним репетитором — попроси у него код из шести знаков и введи сюда.</p>
-                <div className="flex flex-col gap-3">
-                  <input
-                    value={tutorCode}
-                    onChange={(e) => setTutorCode(e.target.value)}
-                    placeholder="Введи 6-значный код"
-                    className="input-glass"
-                  />
-                  {tutorLinkError && (
-                    <div className="bg-red-50 text-red-600 text-sm px-3 py-2 rounded-lg">{tutorLinkError}</div>
-                  )}
-                  {tutorLinkSuccess && (
-                    <div className="bg-green-50 text-green-600 text-sm px-3 py-2 rounded-lg">{tutorLinkSuccess}</div>
-                  )}
-                  <button
-                    onClick={linkTutor}
-                    disabled={tutorLinking}
-                    className="btn-primary py-2.5 text-sm disabled:opacity-50"
-                  >
-                    {tutorLinking ? "Подключаем..." : "Подключить"}
-                  </button>
-                </div>
+                <p className="text-xs text-gray-500 mb-4">Если начал заниматься ещё с одним репетитором — попроси у него код и введи сюда. Прежний репетитор останется: между ними можно переключаться наверху кабинета.</p>
+                <TutorLinkForm
+                  code={tutorCode}
+                  onCode={(v) => { setTutorCode(v); setTutorLinkError("") }}
+                  onSubmit={linkTutor}
+                  busy={tutorLinking}
+                  error={tutorLinkError}
+                  success={tutorLinkSuccess}
+                  label="Подключить"
+                  busyLabel="Подключаем..."
+                />
               </div>
 
               <div className="glass p-5">

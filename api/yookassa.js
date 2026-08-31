@@ -53,9 +53,11 @@ function normPhone(phone) {
 }
 
 // Ученик в кабинете сопоставляется со строкой students так же, как на фронте
-// (StudentDashboard): сначала по телефону, потом по имени. Логику копируем
-// намеренно — иначе платёж прилетит не тому ученику.
+// (StudentDashboard): сначала явной колонкой аккаунта, потом телефоном, потом
+// именем. Логику копируем намеренно — иначе платёж прилетит не тому ученику.
 function matchStudent(rows, profile) {
+  const byAccount = profile?.id ? rows.find((s) => s.student_account_id === profile.id) : null
+  if (byAccount) return byAccount
   const phone = profile?.phone
   const byPhone = phone ? rows.find((s) => s.phone && s.phone === phone) : null
   if (byPhone) return byPhone
@@ -106,6 +108,9 @@ export default async function handler(req, res) {
   const accountId = String(body.accountId || "")
   const token = String(body.token || "")
   const lessons = Math.floor(Number(body.lessons))
+  // Кому платим. У ученика может быть несколько репетиторов, и кабинет присылает
+  // выбранного; без этого деньги за занятия второго уходили бы в магазин первого.
+  const wantTutor = String(body.tutorId || "") || null
 
   if (!accountId || !token) {
     res.status(401).json({ error: "Нужна авторизация ученика" })
@@ -132,11 +137,13 @@ export default async function handler(req, res) {
     return
   }
 
-  // 2. Настройки приёма оплаты у этого репетитора.
+  // 2. Настройки приёма оплаты у этого репетитора. Право платить именно ему
+  // подтверждает карточка ученика в его ростере — её ищем ниже (шаг 3).
+  const tutorId = wantTutor || account.tutor_id
   const { data: settings } = await db
     .from("tutor_payment_settings")
     .select("online_enabled, max_lessons")
-    .eq("tutor_id", account.tutor_id)
+    .eq("tutor_id", tutorId)
     .maybeSingle()
 
   if (!settings?.online_enabled) {
@@ -146,7 +153,7 @@ export default async function handler(req, res) {
   // Приём онлайн-оплаты — возможность платных тарифов репетитора. Тумблер в его
   // настройках мог остаться включённым с оплаченного периода, поэтому право
   // проверяем здесь, а не только в интерфейсе.
-  const access = await featureAllowed(db, account.tutor_id, "onlinePay")
+  const access = await featureAllowed(db, tutorId, "onlinePay")
   if (!access.ok) {
     res.status(403).json({ error: "Репетитор пока не подключил онлайн-оплату" })
     return
@@ -161,8 +168,8 @@ export default async function handler(req, res) {
   // 3. Цена занятия — из карточки ученика у репетитора, не из запроса.
   const { data: rows } = await db
     .from("students")
-    .select("id, name, phone, lesson_price")
-    .eq("tutor_id", account.tutor_id)
+    .select("id, name, phone, lesson_price, student_account_id")
+    .eq("tutor_id", tutorId)
 
   const student = matchStudent(rows || [], account)
   const price = Number(student?.lesson_price || 0)
@@ -189,7 +196,7 @@ export default async function handler(req, res) {
   const { data: order, error: orderErr } = await db
     .from("payment_orders")
     .insert({
-      tutor_id: account.tutor_id,
+      tutor_id: tutorId,
       student_id: student.id,
       account_id: account.id,
       student_name: student.name || account.name || null,
@@ -212,7 +219,7 @@ export default async function handler(req, res) {
     capture: true,                                  // деньги списываются сразу, без двухстадийности
     confirmation: { type: "redirect", return_url: `${site}/?pay=${order.id}` },
     description: description.slice(0, 128),
-    metadata: { order_id: order.id, tutor_id: account.tutor_id },
+    metadata: { order_id: order.id, tutor_id: tutorId },
   }
 
   // Чек по 54-ФЗ. Включается флагом: пока в личном кабинете ЮKassa не выдано
