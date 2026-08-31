@@ -269,6 +269,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // класс .is-closing держится, пока идёт затухание, и лишь потом зовётся onClose.
   const { cls: closingCls, close: leave } = useClosing(onClose, BOARD_CLOSE_MS)
   const [tool, setTool] = useState("pen")   // pen | line | rect | eraser | hand
+  const [panKey, setPanKey] = useState(false)   // зажат пробел → полотно можно тащить
+  const [panDrag, setPanDrag] = useState(false) // полотно тащат прямо сейчас
   const [color, setColor] = useState("ink")
   const [width, setWidth] = useState(WIDTHS[1])
   const [dash, setDash] = useState("solid")     // solid | dashed | dotted
@@ -1027,11 +1029,13 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       dropDrawing(); beginGesture(); scheduleDraw(); return
     }
     // Правая/боковая кнопка (её же выдаёт боковая кнопка пера планшета — button 2 /
-    // бит 2 в buttons) или средняя кнопка → ВЫБИРАЕМ инструмент «Двигать полотно».
+    // бит 2 в buttons) или средняя кнопка → двигаем полотно, ПОКА кнопка зажата.
+    // Инструмент при этом не меняется: раньше здесь стояло setTool("hand"), и
+    // после сдвига маркер оказывался выключен — приходилось брать его заново,
+    // хотя человек всего лишь подвинул доску.
     const secondaryBtn = e.button === 1 || e.button === 2 || (e.buttons & 2) === 2
-    if (secondaryBtn && tool !== "hand") setTool("hand")
     const wantPan = tool === "hand" || spaceHeld.current || secondaryBtn
-    if (wantPan) { panning.current = { x: e.clientX, y: e.clientY }; return }
+    if (wantPan) { panning.current = { x: e.clientX, y: e.clientY }; setPanDrag(true); return }
     if (e.pointerType === "mouse" && e.button != null && e.button !== 0) return
 
     // «Курсор» — выделение рамкой / перемещение выделенного (не рисует)
@@ -1119,6 +1123,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   function onPointerUp(e) {
     pointers.current.delete(e.pointerId)
     if (pointers.current.size < 2) gesture.current = null
+    if (panning.current) setPanDrag(false)
     panning.current = null
 
     // Конец прохода объектным ластиком — весь проход одним шагом истории
@@ -1670,7 +1675,16 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     const TOOL_CODES = { KeyP: "pen", KeyE: "eraser", KeyL: "line", KeyR: "rect", KeyH: "hand", KeyV: "cursor" }
     function onKeyDown(e) {
       if (modalOpen.current) return   // поверх доски открыт выбор задания — клавиши не наши
-      if (e.code === "Space" && !e.repeat && e.target === document.body) { spaceHeld.current = true }
+      // Пробел — временное «двигать полотно» при ЛЮБОМ инструменте: держим —
+      // тащим доску, отпустили — рисуем тем же маркером. Раньше отслеживался
+      // только тот пробел, что пришёл в document.body, поэтому после первого же
+      // клика по холсту (или по кнопке панели) он переставал работать.
+      const inField = e.target?.tagName === "INPUT" || e.target?.tagName === "TEXTAREA" || e.target?.isContentEditable
+      if (e.code === "Space" && !inField) {
+        e.preventDefault()                       // иначе страница прокручивается под доской
+        if (!e.repeat) { spaceHeld.current = true; setPanKey(true) }
+        return
+      }
       if (e.metaKey || e.ctrlKey) {
         if (e.code === "KeyZ") { e.preventDefault(); e.shiftKey ? actions.current.redo() : actions.current.undo() }
         else if (e.code === "KeyY") { e.preventDefault(); actions.current.redo() }
@@ -1684,10 +1698,14 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       const t = TOOL_CODES[e.code]
       if (t) { setTool(t); if (SHAPE_TOOLS.has(t)) setShapeTool(t) }
     }
-    function onKeyUp(e) { if (e.code === "Space") spaceHeld.current = false }
+    function onKeyUp(e) { if (e.code === "Space") { spaceHeld.current = false; setPanKey(false) } }
+    // Переключились в другое окно с зажатым пробелом — keyup не придёт, и доска
+    // осталась бы «в режиме руки», пока не нажмёшь пробел ещё раз.
+    function onBlur() { spaceHeld.current = false; setPanKey(false) }
     window.addEventListener("keydown", onKeyDown)
     window.addEventListener("keyup", onKeyUp)
-    return () => { window.removeEventListener("keydown", onKeyDown); window.removeEventListener("keyup", onKeyUp) }
+    window.addEventListener("blur", onBlur)
+    return () => { window.removeEventListener("keydown", onKeyDown); window.removeEventListener("keyup", onKeyUp); window.removeEventListener("blur", onBlur) }
   }, [])
 
   const others = online.filter((p) => p.userId !== userId)
@@ -1767,7 +1785,11 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     </div>
   )
 
-  const cursor = tool === "cursor" ? "default" : tool === "hand" ? "grab" : "crosshair"
+  // Пока полотно тащат (или держат пробел), курсор — рука, каким бы ни был
+  // выбранный инструмент: иначе неясно, что маркер никуда не делся.
+  const cursor = panDrag ? "grabbing"
+    : (panKey || tool === "hand") ? "grab"
+    : tool === "cursor" ? "default" : "crosshair"
 
   // Ручки выделения из ОРИЕНТИРОВАННОЙ рамки {cx,cy,ax,ay,angle} (экранные координаты)
   const H = selBox
