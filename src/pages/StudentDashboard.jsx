@@ -2385,6 +2385,32 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
               ) : (
                 <div className="flex flex-col gap-4">
 
+                  {/* HERO — аватар + имя + цель + телефон, на всю ширину */}
+                  <div className="glass p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-5">
+                    <div className="relative flex-shrink-0 self-center sm:self-auto cursor-pointer active:scale-95 transition-transform" onClick={() => studentAvatarRef.current.click()}>
+                      {(avatarOverride || student.avatar) ? (
+                        <img src={avatarOverride || student.avatar} alt="" className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover" />
+                      ) : (
+                        <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-3xl font-semibold text-white">
+                          {initials}
+                        </div>
+                      )}
+                      <div className="absolute -bottom-1 -right-1 w-7 h-7 bg-blue-600 rounded-full flex items-center justify-center shadow-md pointer-events-none">
+                        <Icon name="camera" size={13} className="text-white" />
+                      </div>
+                    </div>
+                    <input ref={studentAvatarRef} type="file" accept="image/*" className="hidden" onChange={handleStudentAvatarChange} />
+
+                    <div className="flex-1 min-w-0 text-center sm:text-left">
+                      <div className="text-2xl font-semibold">{user.profile?.name}</div>
+                      <div className="text-sm text-gray-500">Ученик{student.goal ? ` · Готовлюсь к ${student.goal}` : ""}</div>
+                      {user.profile?.phone && (
+                        <div className="text-sm text-gray-400 mt-1">{formatPhone(user.profile.phone)}</div>
+                      )}
+                    </div>
+
+                  </div>
+
                   {/* Ближайшее занятие — то же, что видит репетитор на своей главной:
                       к кому подключаться, по какому предмету и через сколько.
                       «Доска» и «Звонок» живут только здесь, чтобы вход в занятие
@@ -2450,32 +2476,6 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       </div>
                     </div>
                   )}
-
-                  {/* HERO — аватар + имя + цель + телефон, на всю ширину */}
-                  <div className="glass p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-5">
-                    <div className="relative flex-shrink-0 self-center sm:self-auto cursor-pointer active:scale-95 transition-transform" onClick={() => studentAvatarRef.current.click()}>
-                      {(avatarOverride || student.avatar) ? (
-                        <img src={avatarOverride || student.avatar} alt="" className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover" />
-                      ) : (
-                        <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-3xl font-semibold text-white">
-                          {initials}
-                        </div>
-                      )}
-                      <div className="absolute -bottom-1 -right-1 w-7 h-7 bg-blue-600 rounded-full flex items-center justify-center shadow-md pointer-events-none">
-                        <Icon name="camera" size={13} className="text-white" />
-                      </div>
-                    </div>
-                    <input ref={studentAvatarRef} type="file" accept="image/*" className="hidden" onChange={handleStudentAvatarChange} />
-
-                    <div className="flex-1 min-w-0 text-center sm:text-left">
-                      <div className="text-2xl font-semibold">{user.profile?.name}</div>
-                      <div className="text-sm text-gray-500">Ученик{student.goal ? ` · Готовлюсь к ${student.goal}` : ""}</div>
-                      {user.profile?.phone && (
-                        <div className="text-sm text-gray-400 mt-1">{formatPhone(user.profile.phone)}</div>
-                      )}
-                    </div>
-
-                  </div>
 
                   {/* KPI-ряд — успеваемость плитками, всегда 4 плитки (нет данных → «—»), без пустот */}
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
