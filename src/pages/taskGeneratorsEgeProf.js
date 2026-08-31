@@ -2599,8 +2599,9 @@ function t8tangentSlope() {
         marks: [{ x: x0, label: "x" + subU(0), below: y0 >= 0 }],
         guides: [{ x: x1, y: y1 }, { x: x2, y: y2 }],
         openEnds: false,
-        showUnitX: x1 !== 1 && x2 !== 1,
-        showUnitY: y1 !== 1 && y2 !== 1,
+        // «1» не рисуем, если это деление уже подписано узлом или прижато к краю
+        showUnitX: x1 !== 1 && x2 !== 1 && gx1 >= 2,
+        showUnitY: y1 !== 1 && y2 !== 1 && gy1 >= 2,
         label: tag,
       }),
       answer: ru(k),
