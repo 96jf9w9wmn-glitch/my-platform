@@ -2016,7 +2016,8 @@ const ptsWord = (n) => `${NUMW[n]} точек`
 // fn — кривая; marks — [{x,label}] штрихи-точки на оси; tangent — {k,x0,y0};
 // shade — {a,b} закрасить между кривой и осью; tickXvals — подписи делений оси x.
 function wave8Svg({ gx0, gx1, gy0, gy1, fn, xa, xb, label = null, marks = [], markBelow = true,
-  dashX = [], shade = null, tangent = null, dots = [], openEnds = true, showUnit = true, tickXvals = null }) {
+  dashX = [], shade = null, tangent = null, dots = [], openEnds = true, showUnit = true, tickXvals = null,
+  guides = [], showUnitX = null, showUnitY = null }) {
   const cell = 22, m = 16, axOv = 13 // axOv — вынос оси x за крайние точки (px): стрелка и открытые концы не впритык
   const padX = m + cell              // +1 клетка-поле слева/справа: сетка обрамляет вынос оси, а не пустое поле
   const W = 2 * padX + (gx1 - gx0) * cell, H = 2 * m + (gy1 - gy0) * cell
@@ -2033,6 +2034,11 @@ function wave8Svg({ gx0, gx1, gy0, gy1, fn, xa, xb, label = null, marks = [], ma
     g += `<path d="${d}" fill="#c9ced6" stroke="none"/>`
   }
   for (const x of dashX) g += `<line x1="${X(x)}" y1="${Y(0)}" x2="${X(x)}" y2="${clean(Y(fn(x)))}" stroke="${G_DASH}" stroke-width="1.2" stroke-dasharray="4 3"/>`
+  // guides — узлы сетки на касательной: пунктирные сноски к делениям обеих осей.
+  for (const p of guides) {
+    if (p.x !== 0) g += `<line x1="${clean(X(p.x))}" y1="${clean(Y(p.y))}" x2="${clean(X(p.x))}" y2="${Y(0)}" stroke="${G_DASH}" stroke-width="1.2" stroke-dasharray="4 3"/>`
+    if (p.y !== 0) g += `<line x1="${clean(X(p.x))}" y1="${clean(Y(p.y))}" x2="${X(0)}" y2="${clean(Y(p.y))}" stroke="${G_DASH}" stroke-width="1.2" stroke-dasharray="4 3"/>`
+  }
   if (tangent) {
     const { k, x0, y0 } = tangent
     const ln = (x) => k * (x - x0) + y0
@@ -2047,8 +2053,10 @@ function wave8Svg({ gx0, gx1, gy0, gy1, fn, xa, xb, label = null, marks = [], ma
   g += `<text x="${X(gx1) + axOv - 4}" y="${Y(0) - 6}" ${HALO} font-size="15" font-style="italic" font-weight="bold" fill="${G_AX}" text-anchor="end">x</text>`
   g += `<text x="${X(0) + 7}" y="${Y(gy1) + 13}" ${HALO} font-size="15" font-style="italic" font-weight="bold" fill="${G_AX}">y</text>`
   g += `<text x="${X(0) - 5}" y="${Y(0) + 16}" ${HALO} font-size="12" font-weight="bold" fill="${G_AX}" text-anchor="end">0</text>`
-  if (showUnit && gy0 <= 1 && gy1 >= 1) g += `<text x="${X(0) - 6}" y="${Y(1) + 4}" ${HALO} font-size="12" fill="${G_AX}" text-anchor="end">1</text>`
-  if (showUnit && !tickXvals && gx0 <= 1 && gx1 >= 1) g += `<text x="${X(1)}" y="${Y(0) + 16}" ${HALO} font-size="12" fill="${G_AX}" text-anchor="middle">1</text>`
+  const unitY = showUnitY === null ? showUnit : showUnitY
+  const unitX = showUnitX === null ? showUnit : showUnitX
+  if (unitY && gy0 <= 1 && gy1 >= 1) g += `<text x="${X(0) - 6}" y="${Y(1) + 4}" ${HALO} font-size="12" fill="${G_AX}" text-anchor="end">1</text>`
+  if (unitX && !tickXvals && gx0 <= 1 && gx1 >= 1) g += `<text x="${X(1)}" y="${Y(0) + 16}" ${HALO} font-size="12" fill="${G_AX}" text-anchor="middle">1</text>`
   if (tickXvals) for (const t of tickXvals) if (t.x >= gx0 && t.x <= gx1 && t.x !== 0) g += `<text x="${X(t.x)}" y="${Y(0) + 16}" ${HALO} font-size="12" fill="${G_AX}" text-anchor="middle">${t.text}</text>`
   if (openEnds) for (const xe of [xa, xb]) { const ye = fn(xe); if (ye >= gy0 - 0.4 && ye <= gy1 + 0.4) g += `<circle cx="${X(xe)}" cy="${clean(Y(ye))}" r="3" fill="#fff" stroke="${G_CURVE}" stroke-width="1.6"/>` }
   for (const [x, y] of dots) g += `<circle cx="${X(x)}" cy="${clean(Y(y))}" r="3" fill="${G_AX}"/>`
@@ -2058,6 +2066,19 @@ function wave8Svg({ gx0, gx1, gy0, gy1, fn, xa, xb, label = null, marks = [], ma
     g += `<line x1="${X(mk.x)}" y1="${Y(0) - 4}" x2="${X(mk.x)}" y2="${Y(0) + 4}" stroke="${G_AX}" stroke-width="1.4"/>`
     g += `<text x="${X(mk.x)}" y="${below ? Y(0) + 16 : Y(0) - 8}" ${HALO} font-size="12" font-style="italic" fill="${G_AX}" text-anchor="middle">${mk.label}</text>`
   }
+  for (const p of guides) {
+    // подпись деления — по ДРУГУЮ сторону оси от узла: иначе её перечёркивает пунктир
+    if (p.x !== 0) {
+      g += `<line x1="${clean(X(p.x))}" y1="${Y(0) - 4}" x2="${clean(X(p.x))}" y2="${Y(0) + 4}" stroke="${G_AX}" stroke-width="1.4"/>`
+      g += `<text x="${clean(X(p.x))}" y="${p.y >= 0 ? Y(0) + 16 : Y(0) - 8}" ${HALO} font-size="12" fill="${G_AX}" text-anchor="middle">${ru(p.x)}</text>`
+    }
+    if (p.y !== 0) {
+      const left = p.x >= 0                       // узел справа от оси y ⇒ подпись слева от неё
+      g += `<line x1="${X(0) - 4}" y1="${clean(Y(p.y))}" x2="${X(0) + 4}" y2="${clean(Y(p.y))}" stroke="${G_AX}" stroke-width="1.4"/>`
+      g += `<text x="${X(0) + (left ? -6 : 6)}" y="${clean(Y(p.y)) + 4}" ${HALO} font-size="12" fill="${G_AX}" text-anchor="${left ? "end" : "start"}">${ru(p.y)}</text>`
+    }
+    g += `<circle cx="${clean(X(p.x))}" cy="${clean(Y(p.y))}" r="3" fill="${G_AX}"/>`
+  }
   if (label) g += `<text x="${X(label.x)}" y="${Y(label.y)}" ${HALO} font-size="13" font-style="italic" fill="${G_AX}" text-anchor="${label.anchor || "middle"}">${label.text}</text>`
   return svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" font-family="Arial, sans-serif" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${g}</svg>`)
 }
@@ -2065,7 +2086,8 @@ function wave8Svg({ gx0, gx1, gy0, gy1, fn, xa, xb, label = null, marks = [], ma
 // Место для подписи «y = f(x)»: угол с максимальным вертикальным зазором до кривой.
 // Центр подписи держим на halfW+margin от оси y (x=0), чтобы текст не наезжал на
 // вертикальную ось и её стрелку; по горизонтали подпись целиком внутри поля.
-function label8(fn, gx0, gx1, gy0, gy1, text) {
+function label8(fn, gx0, gx1, gy0, gy1, text, avoid = []) {
+  const fns = Array.isArray(fn) ? fn : [fn]   // подпись обходит и кривую, и касательную
   const halfW = 1.25, gap = 0.4
   // допустимые центры слева/справа от оси y (пусто, если ось у самого края)
   const cxs = []
@@ -2079,9 +2101,10 @@ function label8(fn, gx0, gx1, gy0, gy1, text) {
   for (const cx of cxs) for (const cy of ys) {
     let clr = Infinity
     for (let x = cx - halfW; x <= cx + halfW; x += 0.1) {
-      const xx = Math.min(gx1, Math.max(gx0, x)), y = fn(xx)
-      if (isFinite(y)) clr = Math.min(clr, Math.abs(y - cy))
+      const xx = Math.min(gx1, Math.max(gx0, x))
+      for (const f of fns) { const y = f(xx); if (isFinite(y)) clr = Math.min(clr, Math.abs(y - cy)) }
     }
+    for (const [px, py] of avoid) if (Math.abs(px - cx) <= halfW + 0.5) clr = Math.min(clr, Math.abs(py - cy))
     if (clr > bs) { bs = clr; best = { x: cx, y: cy } }
   }
   return { ...best, text, anchor: "middle" }
@@ -2488,22 +2511,102 @@ function t8dDerivEqCount() {
 // ============================================================================
 // Группа C — касательная на графике f(x): значение f′(x₀) = угловой коэффициент
 // ============================================================================
+// Строго по виду ФИПИ: наклон снимается по ДВУМ узлам сетки, лежащим на
+// касательной, — у каждого свой пунктир к подписанному делению оси (точка на самой
+// оси подписывается без пунктира). Точка касания отмечена своим пунктиром и
+// подписью x₀, её абсцисса НЕцелая: по ней наклон не снимешь, читать надо узлы.
+// k = Δy/Δx строится кодом — ответ гарантированно совпадает с чертежом.
+
+// Наклоны из реальных заданий: ответ — короткая десятичная запись.
+const TAN_SLOPES = [0.2, 0.25, 0.4, 0.5, 0.6, 0.75, 0.8, 1, 1.25, 1.5, 2, 3]
+// Три формулировки открытого банка — различаются только вводным оборотом.
+const TAN_TEXTS = [
+  "На рисунке изображены график функции y = f(x) и касательная к нему в точке с абсциссой x₀. Найдите значение производной функции f(x) в точке x₀.",
+  "На рисунке изображены график функции y = f(x) и касательная к этому графику, проведённая в точке с абсциссой x₀. Найдите значение производной функции f(x) в точке x₀.",
+  "На рисунке изображены график дифференцируемой функции y = f(x) и касательная к нему в точке с абсциссой x₀. Найдите значение производной функции f(x) в точке x₀.",
+]
+
 function t8tangentSlope() {
-  const gx0 = -6, gx1 = 6, gy0 = -6, gy1 = 8
-  const rats = [[1, 2], [1, 4], [2, 5], [3, 2], [1, 1], [2, 1], [3, 1], [3, 4], [4, 5]]  // только конечные десятичные
-  const [p0, q] = pick(rats)
-  const k = clean(p0 / q * pick([1, -1]))
-  // y0 ≥ 2 (точка касания заметно выше оси): касательная, кривая и штриховая линия
-  // к точке идут ВВЕРХ от оси, поэтому подпись x₀ под осью ничем не перечёркивается.
-  let x0, y0, tries = 0
-  do { x0 = randInt(-2, 2); y0 = randInt(2, 4) } while ((Math.abs(x0 + q) > gx1 || Math.abs(y0 + k * q) > gy1) && ++tries < 30)
-  const A = 0.2, w = 1
-  const fn = (x) => { const u = x - x0; return y0 + k * u + A * (u - Math.sin(w * u) / w) }
-  return {
-    condition_text: `На рисунке изображены график функции y = f(x) и касательная к нему в точке с абсциссой x₀. Найдите значение производной функции f(x) в точке x₀.`,
-    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn, xa: gx0, xb: gx1, tangent: { k, x0, y0 }, dashX: [x0], dots: [[x0, y0]], marks: [{ x: x0, label: "x" + subU(0) }], openEnds: false, showUnit: true, label: label8(fn, gx0, gx1, gy0, gy1, "y = f(x)") }),
-    answer: ru(k),
+  for (let att = 0; att < 400; att++) {
+    const k = clean(pick(TAN_SLOPES) * pick([1, -1]))
+    let dx = 1
+    while (!Number.isInteger(clean(k * dx))) dx++          // Δx, при котором Δy целое: оба узла — на сетке
+    dx *= pick(dx >= 5 ? [1] : dx >= 3 ? [1, 2] : dx === 2 ? [1, 2, 3] : [2, 3, 4])
+    const dy = clean(k * dx)                               // узлы разнесены минимум на 2 клетки: наклон снимается точно
+    if (dx > 10 || Math.abs(dy) > 12) continue
+    const x1 = randInt(-6, 2), x2 = x1 + dx
+    const y1 = randInt(-5, 4), y2 = clean(y1 + dy)
+    // Абсцисса касания — нецелая и в стороне от узлов, от нуля и от единичного
+    // деления (иначе подписи наезжают). Держим её там, где касательная ещё не ушла
+    // из окна по вертикали: у крутых наклонов это узкая полоса вокруг узлов.
+    const span = Math.max(1.7, 1 / Math.abs(k))
+    const x0 = clean(randInt(Math.ceil(x1 - span), Math.floor(x2 + span)) + pick([-0.6, -0.5, -0.4, 0.4, 0.5, 0.6]))
+    if ([x1, x2].some((t) => Math.abs(x0 - t) < 1.2) || Math.abs(x0) < 1.2 || Math.abs(x0 - 1) < 1.2) continue
+    const y0 = clean(y1 + k * (x0 - x1))
+    // окно: целые границы (иначе сетка съедет с решётки), обе оси внутри с полем
+    const gx0 = Math.min(x1, 0, Math.floor(x0)) - randInt(1, 2)
+    const gx1 = Math.max(x2, 0, Math.ceil(x0)) + randInt(1, 2)
+    const gy0 = Math.min(y1, y2, 0, Math.floor(y0)) - randInt(1, 2)
+    const gy1 = Math.max(y1, y2, 0, Math.ceil(y0)) + randInt(1, 2)
+    if (gx1 - gx0 < 8 || gx1 - gx0 > 13 || gy1 - gy0 < 8 || gy1 - gy0 > 15) continue
+
+    // Кривая = касательная + отклонение с двойным нулём в x₀: касание там и только
+    // там (отклонение обращается в ноль лишь при u=0). Нечётное отклонение даёт
+    // перегиб (кривая переходит на другую сторону касательной), чётное — касание
+    // с одной стороны. Множитель-волна (всегда > 0) добавляет горбы, как в ФИПИ,
+    // и лишнего касания создать не может.
+    const sgn = pick([1, -1]), inflect = Math.random() < 0.5
+    const L = 2.4 + Math.random() * 1.4                    // где отклонение переходит от параболы к росту
+    // у крутой касательной кривая видна лишь пару клеток — там отклонение должно
+    // расти быстрее, иначе кривая неотличима от прямой (и типаж k=±3 не собирается)
+    const D = (inflect ? 0.16 + Math.random() * 0.1 : 0.28 + Math.random() * 0.18) * Math.max(1, Math.abs(k))
+    const ph = Math.random() * 2 * Math.PI, wq = 0.5 + Math.random() * 0.35
+    const line = (x) => y0 + k * (x - x0)
+    const fn = (x) => {
+      const u = x - x0
+      const dev = (inflect ? u * u * u : u * u) / (1 + Math.abs(u) / L) * (1 + 0.3 * Math.sin(wq * u + ph))
+      return line(x) + sgn * D * dev
+    }
+    // у точки касания кривая должна идти в окне сплошным куском, а узлы — не залипать на ней
+    // Крутая касательная сама уходит из окна за три-четыре клетки, поэтому нужный
+    // кусок кривой считаем от наклона: иначе крутые типажи (k = ±2, ±3) отсеются целиком.
+    const need = Math.min(5.5, 0.8 * (gy1 - gy0) / Math.max(1, Math.abs(k)))
+    let lo = x0, hi = x0
+    while (lo > gx0 && fn(lo - 0.1) > gy0 + 0.3 && fn(lo - 0.1) < gy1 - 0.3) lo -= 0.1
+    while (hi < gx1 && fn(hi + 0.1) > gy0 + 0.3 && fn(hi + 0.1) < gy1 - 0.3) hi += 0.1
+    if (hi - lo < need || x0 - lo < need / 2.8 || hi - x0 < need / 2.8) continue
+    let near = Infinity, apart = 0
+    for (let x = gx0; x <= gx1 + 1e-9; x += 0.05) {
+      const y = fn(x)
+      if (y >= gy0 && y <= gy1) apart = Math.max(apart, Math.abs(y - line(x)))
+      for (const [px, py] of [[x1, y1], [x2, y2]]) near = Math.min(near, Math.hypot(x - px, y - py))
+    }
+    if (apart < Math.min(1.6, 0.4 * need) || near < 0.6) continue  // кривая слипается с касательной или с узлом
+
+    // подпись «y = f(x)»: обходит обе линии, узлы и подписи делений у обеих осей
+    const tag = label8([fn, line], gx0, gx1, gy0, gy1, "y = f(x)",
+      [[x1, y1], [x2, y2], [x0, y0], [0, y1], [0, y2], ...Array.from({ length: gx1 - gx0 + 1 }, (_, i) => [gx0 + i, 0])])
+    if (Math.abs(tag.y) < 1.3) continue                    // подпись легла бы в строку подписей оси x
+    // …или в подпись деления у оси y (она стоит с той стороны оси, где нет узла)
+    if ([[y1, x1 >= 0], [y2, x2 >= 0]].some(([yy, left]) =>
+      Math.abs(tag.y - yy) < 0.8 && left === (tag.x < 0) && Math.abs(tag.x) < 2.6)) continue
+
+    return {
+      condition_text: pick(TAN_TEXTS),
+      image_url: wave8Svg({
+        gx0, gx1, gy0, gy1, fn, xa: gx0, xb: gx1,
+        tangent: { k, x0, y0 }, dashX: [x0], dots: [[x0, y0]],
+        marks: [{ x: x0, label: "x" + subU(0), below: y0 >= 0 }],
+        guides: [{ x: x1, y: y1 }, { x: x2, y: y2 }],
+        openEnds: false,
+        showUnitX: x1 !== 1 && x2 !== 1,
+        showUnitY: y1 !== 1 && y2 !== 1,
+        label: tag,
+      }),
+      answer: ru(k),
+    }
   }
+  return t8tangentSlope()
 }
 
 // ============================================================================
