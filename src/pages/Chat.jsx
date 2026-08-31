@@ -554,7 +554,7 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
             {/* Сообщения + Ввод */}
             <div className="flex-1 min-h-0 relative">
               <div
-                className="absolute inset-0 overflow-y-auto overflow-x-hidden px-4 pt-3 pb-[68px] flex flex-col gap-1.5 chat-bg"
+                className="absolute inset-0 overflow-y-auto overflow-x-hidden px-4 pt-3 pb-[68px] flex flex-col gap-0.5 chat-bg"
                 onScroll={e => {
                   const el = e.currentTarget
                   nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120
@@ -569,7 +569,13 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
                   const isMe = msg.sender_id === myId
                   const isNew = newMsgIds.has(msg.id)
                   const prev = messages[i - 1]
+                  const next = messages[i + 1]
                   const showDate = !prev || !isSameDay(prev.created_at, msg.created_at)
+                  // Группа — подряд идущие сообщения одного отправителя за один
+                  // день. Хвостик рисуется только у последнего в группе.
+                  const startsGroup = showDate || !prev || prev.sender_id !== msg.sender_id
+                  const endsGroup = !next || next.sender_id !== msg.sender_id
+                    || !isSameDay(msg.created_at, next.created_at)
                   return (
                     <Fragment key={msg.id}>
                       {showDate && (
@@ -580,13 +586,13 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
                         </div>
                       )}
                     <div
-                      className={`flex ${isMe ? "justify-end" : "justify-start"} ${isNew ? (isMe ? "chat-msg-right" : "chat-msg-left") : ""}`}
+                      className={`flex ${isMe ? "justify-end" : "justify-start"} ${startsGroup && !showDate ? "mt-2" : ""} ${isNew ? (isMe ? "chat-msg-right" : "chat-msg-left") : ""}`}
                     >
-                      <div className={`max-w-[65%] px-3.5 py-2 rounded-2xl text-sm break-words ${
+                      <div className={`relative max-w-[65%] px-3.5 py-2 rounded-[18px] text-sm break-words ${
                         isMe
-                          ? "bg-blue-600 text-white rounded-tr-sm"
-                          : "chat-bubble-in rounded-tl-sm shadow-sm"
-                      }`}>
+                          ? "bg-blue-600 text-white"
+                          : "chat-bubble-in shadow-sm"
+                      } ${endsGroup ? (isMe ? "chat-tail chat-tail-out rounded-br-none" : "chat-tail chat-tail-in rounded-bl-none") : ""}`}>
                         <div className="leading-relaxed">{msg.text}</div>
                         <div className={`text-[10px] mt-0.5 flex items-center justify-end gap-1 ${
                           isMe ? "text-white/60" : "text-gray-400 dark:text-gray-400"

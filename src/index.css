@@ -1522,6 +1522,28 @@ summary::-webkit-details-marker { display: none; }
   border-color: transparent;
 }
 
+/* Хвостик у пузыря — только у последнего сообщения группы (как в Telegram).
+   Рисуется маской поверх `background: inherit`, поэтому берёт цвет самого
+   пузыря и не зависит ни от темы, ни от фона чата (никаких «стирающих»
+   элементов цветом подложки). */
+.chat-tail::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  width: 9px;
+  height: 14px;
+  background: inherit;
+  pointer-events: none;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 14'%3E%3Cpath d='M0 0C0 8 2.5 12.5 8.5 14L0 14Z'/%3E%3C/svg%3E");
+          mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 14'%3E%3Cpath d='M0 0C0 8 2.5 12.5 8.5 14L0 14Z'/%3E%3C/svg%3E");
+  -webkit-mask-size: 100% 100%;
+          mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+          mask-repeat: no-repeat;
+}
+.chat-tail-out::after { right: -8px; }
+.chat-tail-in::after  { left: -8px; transform: scaleX(-1); }
+
 /* Разделитель дня по центру (как «4 июля» в Telegram). Отдельный класс,
    чтобы ремап серых токенов в .dark не гасил фон/текст. */
 .chat-date {
