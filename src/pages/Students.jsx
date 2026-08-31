@@ -247,8 +247,7 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
     )
   }
 
-  // Attention lists
-  const debtors = students.filter((s) => getPaymentStatus(s).debt > 0)
+  // Attention lists. Долги здесь не дублируем — они и так подписаны в списке ниже.
   const examSoon = students
     .filter((s) => { const d = getDaysUntilExam(s); return d !== null && d <= 30 })
     .sort((a, b) => getDaysUntilExam(a) - getDaysUntilExam(b))
@@ -401,23 +400,8 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
       )}
 
       {/* Attention strips */}
-      {(debtors.length > 0 || examSoon.length > 0) && (
+      {examSoon.length > 0 && (
         <div className="flex flex-col gap-2 mb-4">
-          {debtors.length > 0 && (
-            <div className="glass-tint-amber px-4 py-3 flex items-center gap-3 overflow-x-auto">
-              <Icon name="warning" size={15} className="text-amber-600 flex-shrink-0" />
-              <span className="text-xs font-semibold text-amber-700 flex-shrink-0 uppercase tracking-wide">Долг</span>
-              <div className="flex gap-2">
-                {debtors.map((s) => (
-                  <button key={s.id} onClick={() => setSelectedStudent(s.id)}
-                    className="no-press flex items-center gap-1.5 bg-white/60 hover:bg-white/90 dark:bg-white/10 dark:hover:bg-white/20 transition-colors rounded-lg px-2.5 py-1 text-xs font-medium text-gray-800 flex-shrink-0">
-                    <span>{s.name.split(" ")[0]}</span>
-                    <span className="text-amber-600 font-semibold">−{getPaymentStatus(s).label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
           {examSoon.length > 0 && (
             <div className="glass-tint-blue px-4 py-3 flex items-center gap-3 overflow-x-auto">
               <Icon name="target" size={15} className="text-blue-600 flex-shrink-0" />
