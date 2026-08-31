@@ -19,7 +19,7 @@ import InvoiceCard from "../components/InvoiceCard"
 import { MarketingToggle } from "../components/ConsentChecks"
 
 const Board = lazy(() => import("../components/Board"))
-import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, parseHomeworkTasks, formatPhone, answersEqual, plural } from "../utils"
+import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, parseHomeworkTasks, formatPhone, answersEqual, plural, timeUntilLesson } from "../utils"
 import TaskAttachments from "../components/TaskAttachments"
 import DateTile from "../components/DateTile"
 import { TILE_TINTS, dueTintKey } from "../dueTint"
@@ -1555,6 +1555,13 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   const studentAvatarRef = useRef()
 
   const [tutorName, setTutorName] = useState("")
+  const [tutorSubject, setTutorSubject] = useState("")
+  // Отсчёт до занятия в карточке наверху пересчитывается раз в минуту.
+  const [minuteTick, setMinuteTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setMinuteTick((t) => t + 1), 60000)
+    return () => clearInterval(id)
+  }, [])
   const [chatUnread, setChatUnread] = useState(0)
   // Доска держится в адресе (?board=1) по той же причине, что и у репетитора:
   // перезагрузка страницы не должна её закрывать, а «назад» — закрывает именно её,
@@ -1596,8 +1603,12 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
 
   useEffect(() => {
     if (user.profile?.tutor_id) {
-      supabase.from("tutors").select("name").eq("id", user.profile.tutor_id).single()
-        .then(({ data }) => { if (data) setTutorName(data.name) })
+      supabase.from("tutors").select("name, subject").eq("id", user.profile.tutor_id).single()
+        .then(({ data }) => {
+          if (!data) return
+          setTutorName(data.name)
+          setTutorSubject(data.subject || "")
+        })
     }
   }, [user.profile?.tutor_id])
 
@@ -1752,8 +1763,26 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
       const [h, min] = (l.time || "00:00").split(":").map(Number)
       return new Date(y, m - 1, d, h, min + (l.duration || 60)) >= new Date()
     })
-    .sort((a, b) => a.date.localeCompare(b.date))
+    // По дате И времени: два занятия в один день иначе встали бы в порядке
+    // записи, и «ближайшим» показалось бы вечернее вместо утреннего.
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.time || "").localeCompare(b.time || ""))
     .slice(0, 10)
+
+  // Ближайшее занятие для карточки наверху. Начавшееся остаётся в ней до
+  // конца (upcoming отбирает по времени ОКОНЧАНИЯ), поэтому подключиться можно
+  // и с опозданием.
+  const nextLesson = upcoming[0] || null
+  const nowForNext = new Date()
+  const todayStrNext = `${nowForNext.getFullYear()}-${String(nowForNext.getMonth() + 1).padStart(2, "0")}-${String(nowForNext.getDate()).padStart(2, "0")}`
+  const nextIsToday = nextLesson?.date === todayStrNext
+  const nextInProgress = nextIsToday && (nextLesson.time || "00:00") <=
+    `${String(nowForNext.getHours()).padStart(2, "0")}:${String(nowForNext.getMinutes()).padStart(2, "0")}`
+  const nextLessonDate = nextLesson && !nextIsToday
+    ? parseLocalDate(nextLesson.date).toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" })
+    : null
+  // Чему учат: предмет карточки (его ученик указал при привязке), иначе —
+  // предмет самого репетитора из его профиля.
+  const lessonSubject = (student?.subject || tutorSubject || "").trim()
 
   const past = (student?.lessons || [])
     .filter((l) => isLessonConducted(l))
@@ -2356,7 +2385,73 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
               ) : (
                 <div className="flex flex-col gap-4">
 
-                  {/* HERO — аватар + имя + цель + телефон + действия, на всю ширину */}
+                  {/* Ближайшее занятие — то же, что видит репетитор на своей главной:
+                      к кому подключаться, по какому предмету и через сколько.
+                      «Доска» и «Звонок» живут только здесь, чтобы вход в занятие
+                      был в одном месте. */}
+                  {nextLesson ? (
+                    <div className="next-lesson-card relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/25">
+                      <div className="relative flex items-start justify-between mb-4">
+                        <div className="flex items-center gap-3.5 min-w-0">
+                          {/* bg-[rgba(...)] вместо bg-white/20: классы bg-white/N глобально
+                              гасятся под .dark, а карточка синяя в обеих темах */}
+                          <div className="w-12 h-12 rounded-full flex-shrink-0 flex items-center justify-center text-base font-semibold bg-[rgba(255,255,255,0.2)] ring-2 ring-white/30 backdrop-blur-sm">
+                            {getInitials(tutorName || "Репетитор")}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-xs font-medium opacity-70 uppercase tracking-wide mb-0.5 truncate">
+                              {nextInProgress
+                                ? "Текущее занятие"
+                                : nextIsToday ? "Следующее занятие" : `Следующее занятие · ${nextLessonDate}`}
+                            </div>
+                            <div className="text-2xl font-semibold leading-tight truncate">{tutorName || "Репетитор"}</div>
+                            <div className="text-sm opacity-80 mt-0.5 truncate">
+                              {lessonSubject ? `${lessonSubject} · ` : ""}{nextLesson.time} · {nextLesson.duration || 60} мин
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right flex-shrink-0 ml-3">
+                          {/* Пока занятие идёт, отсчёта нет: считать до его начала уже нечего */}
+                          <div className="text-sm font-medium tabular-nums bg-[rgba(255,255,255,0.2)] rounded-xl px-3 py-1.5 backdrop-blur-sm">
+                            {nextInProgress
+                              ? <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />Идёт занятие</span>
+                              : minuteTick >= 0 && timeUntilLesson(nextLesson.date, nextLesson.time)}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="relative flex gap-2">
+                        <button onClick={openBoard}
+                          className="press-tap flex items-center gap-1.5 bg-[rgba(255,255,255,0.2)] hover:bg-[rgba(255,255,255,0.3)] transition-colors rounded-xl px-3.5 py-1.5 text-sm font-medium backdrop-blur-sm">
+                          <Icon name="clipboard" size={14} />Доска
+                        </button>
+                        {student.callUrl && (
+                          <a href={student.callUrl} target="_blank" rel="noreferrer"
+                            className="press-tap flex items-center gap-1.5 bg-[rgba(255,255,255,0.2)] hover:bg-[rgba(255,255,255,0.3)] transition-colors rounded-xl px-3.5 py-1.5 text-sm font-medium backdrop-blur-sm">
+                            <Icon name="video" size={14} />Звонок
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="glass p-5 flex flex-col sm:flex-row sm:items-center gap-3">
+                      <div className="flex items-center gap-3 flex-1 text-gray-400">
+                        <Icon name="calendar" size={20} />
+                        <span className="text-sm">Занятий не запланировано</span>
+                      </div>
+                      <div className="flex gap-2 flex-shrink-0">
+                        <button onClick={openBoard} className="press-tap btn-glass px-4 py-2 text-sm">
+                          <span className="flex items-center gap-1.5"><Icon name="clipboard" size={14} />Доска</span>
+                        </button>
+                        {student.callUrl && (
+                          <a href={student.callUrl} target="_blank" rel="noreferrer" className="press-tap btn-glass px-4 py-2 text-sm">
+                            <span className="flex items-center gap-1.5"><Icon name="video" size={14} />Звонок</span>
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* HERO — аватар + имя + цель + телефон, на всю ширину */}
                   <div className="glass p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-5">
                     <div className="relative flex-shrink-0 self-center sm:self-auto cursor-pointer active:scale-95 transition-transform" onClick={() => studentAvatarRef.current.click()}>
                       {(avatarOverride || student.avatar) ? (
@@ -2380,16 +2475,6 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       )}
                     </div>
 
-                    <div className="flex gap-2 flex-shrink-0 justify-center">
-                      <button onClick={openBoard} className="press-tap btn-glass px-4 py-2 text-sm">
-                        <span className="flex items-center gap-1.5"><Icon name="clipboard" size={14} />Доска</span>
-                      </button>
-                      {student.callUrl && (
-                        <a href={student.callUrl} target="_blank" rel="noreferrer" className="press-tap btn-glass px-4 py-2 text-sm">
-                          <span className="flex items-center gap-1.5"><Icon name="video" size={14} />Звонок</span>
-                        </a>
-                      )}
-                    </div>
                   </div>
 
                   {/* KPI-ряд — успеваемость плитками, всегда 4 плитки (нет данных → «—»), без пустот */}
@@ -2437,10 +2522,12 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                     <div className="glass p-5">
                       <div className="text-base font-medium mb-4">Информация</div>
                       <div className="flex items-center gap-2 pb-3 mb-3 border-b border-white/30">
-                        <div className="w-9 h-9 rounded-full bg-purple-100 dark:bg-purple-500/15 flex items-center justify-center text-sm font-medium text-purple-600 dark:text-purple-300 flex-shrink-0">Р</div>
-                        <div>
-                          <div className="text-xs text-gray-400">Репетитор</div>
-                          <div className="text-sm text-gray-700 leading-tight">Ваш репетитор</div>
+                        <div className="w-9 h-9 rounded-full bg-purple-100 dark:bg-purple-500/15 flex items-center justify-center text-sm font-medium text-purple-600 dark:text-purple-300 flex-shrink-0">
+                          {tutorName ? getInitials(tutorName) : "Р"}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-xs text-gray-400">Репетитор{lessonSubject ? ` · ${lessonSubject}` : ""}</div>
+                          <div className="text-sm text-gray-700 leading-tight truncate">{tutorName || "Ваш репетитор"}</div>
                         </div>
                       </div>
                       <div className="flex flex-col gap-2.5">

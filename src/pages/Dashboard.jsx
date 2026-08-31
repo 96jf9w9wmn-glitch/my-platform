@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import Icon from "../components/Icon"
 import { usePlan } from "../subscription"
 import useCountUp from "../components/useCountUp"
-import { isLessonConducted, getInitials } from "../utils"
+import { isLessonConducted, getInitials, timeUntilLesson } from "../utils"
 import { pendingMoveRequests, formatLessonShort, MOVE_BY_STUDENT } from "../lessonMove"
 import { useAutoReports } from "../reportAuto"
 
@@ -18,21 +18,6 @@ function getDaysInMonth(year, month) {
 
 function formatDate(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
-}
-
-function timeUntil(dateStr, timeStr) {
-  const [h, m] = timeStr.split(":").map(Number)
-  const [y, mo, d] = dateStr.split("-").map(Number)
-  const diff = new Date(y, mo - 1, d, h, m) - new Date()
-  if (diff <= 0) return "Сейчас"
-  const mins = Math.floor(diff / 60000)
-  if (mins < 60) return `через ${mins} мин`
-  const totalHrs = Math.floor(mins / 60)
-  const rem = mins % 60
-  if (totalHrs < 24) return rem === 0 ? `через ${totalHrs} ч` : `через ${totalHrs} ч ${rem} мин`
-  const days = Math.floor(totalHrs / 24)
-  const hrs = totalHrs % 24
-  return hrs === 0 ? `через ${days} дн` : `через ${days} дн ${hrs} ч`
 }
 
 function Dashboard({ students, setActivePage, onOpenBoard }) {
@@ -270,7 +255,7 @@ function Dashboard({ students, setActivePage, onOpenBoard }) {
                   <div className="text-sm font-medium tabular-nums bg-[rgba(255,255,255,0.2)] rounded-xl px-3 py-1.5 backdrop-blur-sm">
                     {nextLesson.inProgress
                       ? <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />Идёт занятие</span>
-                      : tick >= 0 && timeUntil(nextLesson.date, nextLesson.time)}
+                      : tick >= 0 && timeUntilLesson(nextLesson.date, nextLesson.time)}
                   </div>
                 </div>
               </div>

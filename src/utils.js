@@ -1030,3 +1030,21 @@ export function contactLabel(messenger, raw) {
   if (messenger === "other") return path
   return path.startsWith("@") || path.startsWith("+") ? path : `@${path}`
 }
+
+// Отсчёт до занятия для карточки «Следующее занятие». Общий для кабинета
+// репетитора и кабинета ученика: формулировка отсчёта должна совпадать, иначе
+// две стороны одного занятия видят разное время до него.
+export function timeUntilLesson(dateStr, timeStr) {
+  const [h, m] = (timeStr || "00:00").split(":").map(Number)
+  const [y, mo, d] = dateStr.split("-").map(Number)
+  const diff = new Date(y, mo - 1, d, h, m) - new Date()
+  if (diff <= 0) return "Сейчас"
+  const mins = Math.floor(diff / 60000)
+  if (mins < 60) return `через ${mins} мин`
+  const totalHrs = Math.floor(mins / 60)
+  const rem = mins % 60
+  if (totalHrs < 24) return rem === 0 ? `через ${totalHrs} ч` : `через ${totalHrs} ч ${rem} мин`
+  const days = Math.floor(totalHrs / 24)
+  const hrs = totalHrs % 24
+  return hrs === 0 ? `через ${days} дн` : `через ${days} дн ${hrs} ч`
+}
