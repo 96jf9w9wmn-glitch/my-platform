@@ -430,7 +430,6 @@ export function renderScene(canvas, scene, { width, height, padding = 24, images
     }
   }
 
-  ctx.setTransform(scale * dpr, 0, 0, scale * dpr, ox * dpr, oy * dpr)
   const tinted = new Map()
   const getImage = (src, wantTint) => {
     const im = images.get(src) || null
@@ -438,9 +437,18 @@ export function renderScene(canvas, scene, { width, height, padding = 24, images
     if (!tinted.has(src)) tinted.set(src, tintSheet(im))
     return tinted.get(src) || im
   }
-  for (const s of strokes) paintStroke(ctx, s, { darkBg, getImage })
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  // Штрихи кладём отдельным прозрачным слоем и только потом накрываем им фон:
+  // ластик рисуется в destination-out и на общем холсте выел бы вместе со следом
+  // и клетку, и сам цвет фона — вместо стёртого места была бы дырка насквозь.
+  const ink = document.createElement("canvas")
+  ink.width = canvas.width; ink.height = canvas.height
+  const ix = ink.getContext("2d")
+  ix.setTransform(scale * dpr, 0, 0, scale * dpr, ox * dpr, oy * dpr)
+  for (const s of strokes) paintStroke(ix, s, { darkBg, getImage })
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
   ctx.globalCompositeOperation = "source-over"
+  ctx.drawImage(ink, 0, 0)
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   return scale
 }
 

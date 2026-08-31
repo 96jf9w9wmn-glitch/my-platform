@@ -313,9 +313,11 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const [bg, setBg] = useState("plain")      // plain | grid | dots — узор
   const [bgColor, setBgColor] = useState(theme === "dark" ? BG_DARK : BG_LIGHT) // цвет фона
   const [shapeTool, setShapeTool] = useState("rect") // последняя выбранная фигура
-  // Ластик умеет стирать след (как мел) и объекты целиком: второе удобнее, когда на
-  // доске лежат готовые фигуры и листы с заданиями — их стирают одним движением.
-  const [eraserMode, setEraserMode] = useState("stroke")   // stroke | object
+  // Ластик по умолчанию убирает объект целиком: на доске лежат готовые фигуры,
+  // линии и листы с заданиями, и от ластика ждут именно этого — одно касание,
+  // объекта нет. Стирание следа (как мелом, по частям) осталось вторым режимом
+  // в попапе — оно нужно редко, когда правят кусок своего же рисунка.
+  const [eraserMode, setEraserMode] = useState("object")   // object | stroke
   const [online, setOnline] = useState([])
   const [loaded, setLoaded] = useState(false)
   const [zoomPct, setZoomPct] = useState(100)
@@ -403,7 +405,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const legacyPeer = useRef(false)    // на доске есть клиент старой сборки (см. presence sync)
   const sentId = useRef(null)         // id штриха, чьи точки уже разосланы
   const sentN = useRef(0)             // сколько точек этого штриха разослано
-  const sceneCanvas = useRef(null)    // закадровый слой: фон + завершённые штрихи
+  const bgCanvasRef = useRef(null)    // холст узора фона (клетка/точки) — ПОД основным
+  const sceneCanvas = useRef(null)    // закадровый слой: завершённые штрихи
   const sceneValid = useRef(false)    // слой актуален (иначе перерисовать)
   const dirty = useRef(false)
   const rafId = useRef(0)
@@ -510,9 +513,14 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     const cw = canvas.clientWidth, ch = canvas.clientHeight
     const bw = Math.round(cw * dpr), bh = Math.round(ch * dpr)
     if (canvas.width !== bw || canvas.height !== bh) { canvas.width = bw; canvas.height = bh; sceneValid.current = false }
+    // Узор фона лежит ОТДЕЛЬНЫМ холстом под основным. Ластик стирает в
+    // destination-out, то есть выедает всё, что нарисовано на том же слое, —
+    // на общем холсте он вместе со штрихом выедал и клетку.
+    const bgc = bgCanvasRef.current
+    if (bgc && (bgc.width !== bw || bgc.height !== bh)) { bgc.width = bw; bgc.height = bh; sceneValid.current = false }
     const v = view.current
 
-    // Готовая часть доски (фон + завершённые штрихи) живёт закадровым слоем и
+    // Готовая часть доски (завершённые штрихи) живёт закадровым слоем и
     // перерисовывается только когда действительно изменилась: пока собеседник
     // ведёт линию или двигается чужой курсор, кадр — это блиттинг готового слоя
     // плюс один растущий штрих. Раньше каждая пришедшая точка перерисовывала
@@ -525,11 +533,17 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       sx.setTransform(1, 0, 0, 1, 0, 0)
       sx.globalCompositeOperation = "source-over"
       sx.clearRect(0, 0, bw, bh)
-      sx.setTransform(dpr, 0, 0, dpr, 0, 0)
-      drawBackground(sx, cw, ch)
       sx.setTransform(v.scale * dpr, 0, 0, v.scale * dpr, v.x * dpr, v.y * dpr)
       for (const st of strokes.current.values()) drawStroke(sx, st)
       sceneValid.current = true
+      if (bgc) {
+        const bx = bgc.getContext("2d")
+        bx.setTransform(1, 0, 0, 1, 0, 0)
+        bx.globalCompositeOperation = "source-over"
+        bx.clearRect(0, 0, bw, bh)
+        bx.setTransform(dpr, 0, 0, dpr, 0, 0)
+        drawBackground(bx, cw, ch)
+      }
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.globalCompositeOperation = "source-over"
@@ -1712,7 +1726,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const eraserPopup = menuShown("eraser") && (
     <div className={`absolute bottom-full mb-2 left-1/2 -translate-x-1/2 flex gap-1 p-2 rounded-xl shadow-lg ${menuAnim("eraser")}`}
       style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
-      {[["stroke", "След"], ["object", "Объект целиком"]].map(([mode, label]) => (
+      {[["object", "Объект целиком"], ["stroke", "След"]].map(([mode, label]) => (
         <button key={mode} onClick={() => { setEraserMode(mode); setTool("eraser"); closeMenu("eraser") }}
           className={`press-tap px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap ${
             eraserMode === mode ? "bg-blue-500 text-white" : "hover:bg-blue-500/[0.07] dark:hover:bg-white/10"
@@ -1847,8 +1861,13 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       {/* Холст на всю область */}
       <div ref={wrapRef} className="flex-1 min-h-0 relative overflow-hidden"
         onDragOver={onDragOver} onDragLeave={onDragLeaveWrap} onDrop={onDropWrap}>
+        {/* Узор фона — свой холст: ластик работает по слою штрихов и клетку не трогает */}
+        <canvas ref={bgCanvasRef} aria-hidden="true"
+          className="absolute inset-0 pointer-events-none"
+          style={{ width: "100%", height: "100%", display: "block" }} />
         <canvas
           ref={canvasRef}
+          className="relative"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
