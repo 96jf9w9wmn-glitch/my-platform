@@ -3463,7 +3463,7 @@ function figTangentRadius(throughCenter = false) {
   const O = [110, 120], R = 62, C = [252, 150]
   const A = tangPt(O, R, C, 1)                         // истинная точка касания (CA ⟂ OA)
   let g = pCircle(O, R) + pSeg(C, A) + pSeg(C, O, {})  // касательная и секущая
-  g += pSeg(O, A) + pRight(A, O, C, 8) + pDot(O)
+  g += pSeg(O, A) + pDot(O)                            // прямой угол OA⟂CA НЕ помечаем: это и есть то, до чего ученик должен додуматься
   // точка B — пересечение отрезка CO с окружностью (ближняя к C, на стороне C)
   const dOC = unit(O, C), B = [O[0] + dOC[0] * R, O[1] + dOC[1] * R]
   g += pV(B, "br", "B")
