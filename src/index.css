@@ -1560,9 +1560,42 @@ summary::-webkit-details-marker { display: none; }
           mask-size: 100% 100%;
   -webkit-mask-repeat: no-repeat;
           mask-repeat: no-repeat;
+  /* Хвостик есть у КАЖДОГО пузыря, просто спрятан: когда следующее сообщение
+     той же группы отбирает хвостик у предыдущего, тот убирается плавно —
+     удалить элемент из разметки и одновременно его анимировать нельзя. */
+  opacity: 0;
+  transform: scaleX(var(--tail-flip)) scale(0.25);
+  transition: opacity 0.18s ease, transform 0.24s cubic-bezier(0.34, 1.35, 0.64, 1);
 }
-.chat-tail-out::after { right: -8px; }
-.chat-tail-in::after  { left: -8px; transform: scaleX(-1); }
+.chat-tail.is-tailed::after {
+  opacity: 1;
+  transform: scaleX(var(--tail-flip)) scale(1);
+}
+/* Растёт и убирается из угла пузыря, а не из воздуха. */
+.chat-tail-out { --tail-flip: 1; }
+.chat-tail-in  { --tail-flip: -1; }
+.chat-tail-out::after { right: -8px; transform-origin: 0 100%; }
+.chat-tail-in::after  { left: -8px;  transform-origin: 100% 100%; }
+
+/* Только что пришедшее сообщение: хвостик выезжает чуть позже самого пузыря,
+   иначе он приезжает вместе с ним и движения не видно. Анимация с
+   fill-mode: backwards — после неё элемент возвращается к обычным стилям,
+   поэтому обратный переход (когда хвостик отбирают) снова плавный. */
+@keyframes chatTailPop {
+  from { opacity: 0; transform: scaleX(var(--tail-flip)) scale(0.25); }
+  to   { opacity: 1; transform: scaleX(var(--tail-flip)) scale(1); }
+}
+.chat-tail-new.is-tailed::after {
+  animation: chatTailPop 0.26s cubic-bezier(0.34, 1.4, 0.64, 1) 0.12s backwards;
+}
+
+/* Нижний угол со стороны хвостика распрямляется — тоже плавно, вместе с ним. */
+.chat-bubble {
+  transition: border-bottom-right-radius 0.24s cubic-bezier(0.34, 1.35, 0.64, 1),
+              border-bottom-left-radius  0.24s cubic-bezier(0.34, 1.35, 0.64, 1);
+}
+.chat-tail-out.is-tailed { border-bottom-right-radius: 0; }
+.chat-tail-in.is-tailed  { border-bottom-left-radius: 0; }
 
 /* Разделитель дня по центру (как «4 июля» в Telegram). Отдельный класс,
    чтобы ремап серых токенов в .dark не гасил фон/текст. */

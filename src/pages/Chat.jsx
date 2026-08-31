@@ -588,11 +588,11 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
                     <div
                       className={`flex ${isMe ? "justify-end" : "justify-start"} ${startsGroup && !showDate ? "mt-2" : ""} ${isNew ? (isMe ? "chat-msg-right" : "chat-msg-left") : ""}`}
                     >
-                      <div className={`relative max-w-[65%] px-3.5 py-2 rounded-[18px] text-sm break-words ${
+                      <div className={`chat-bubble chat-tail relative max-w-[65%] px-3.5 py-2 rounded-[13px] text-sm break-words ${
                         isMe
-                          ? "bg-blue-600 text-white"
-                          : "chat-bubble-in shadow-sm"
-                      } ${endsGroup ? (isMe ? "chat-tail chat-tail-out rounded-br-none" : "chat-tail chat-tail-in rounded-bl-none") : ""}`}>
+                          ? "bg-blue-600 text-white chat-tail-out"
+                          : "chat-bubble-in shadow-sm chat-tail-in"
+                      } ${endsGroup ? "is-tailed" : ""} ${isNew ? "chat-tail-new" : ""}`}>
                         <div className="leading-relaxed">
                           {msg.text}
                           {/* Время и галочки — в конце последней строки, как в
