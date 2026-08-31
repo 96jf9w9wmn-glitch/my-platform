@@ -2083,6 +2083,18 @@ function t11RootLineK() {
   }
 }
 
+// Типажи с параметром: ОДИН И ТОТ ЖЕ экземпляр функции должен стоять и в
+// GENERATORS, и в GEN_META — gen_key ищется по ТОЖДЕСТВУ функции (keyOfGen),
+// а две одинаковые стрелки это разные объекты. Иначе ключ не проставится и по
+// этим типажам не заработают «такая же задача с другими числами», тренировка
+// листом и аналитика слабых типажей.
+const t11HypPos = () => t11HypValue(1)
+const t11HypNeg = () => t11HypValue(-1)
+const t11ExpUp = () => t11ExpValue(true)
+const t11ExpDown = () => t11ExpValue(false)
+const t11LogUp = () => t11LogValue(true)
+const t11LogDown = () => t11LogValue(false)
+
 // ============================================================================
 // №8 — ПРОИЗВОДНАЯ И ПЕРВООБРАЗНАЯ (чтение графиков, физ. смысл, касательная)
 // ============================================================================
@@ -6157,10 +6169,8 @@ export const GENERATORS_EGE_PROF = {
     t10Barge, t10BoatCurrent, t10BoatSpeed, t10Meeting, t10TwoBoats, t10Alloy, t10Workers, t10Pipes,
     t10JointWork, t10Weed, t10TrainLength],
   // 13 типажей эталона «Задание11 Графики функций» (см. разбор над t11LinValue).
-  12: [t11LinValue, t11QuadRoots, t11QuadInt,
-    () => t11HypValue(1), () => t11HypValue(-1),
-    () => t11ExpValue(true), () => t11ExpValue(false),
-    () => t11LogValue(true), () => t11LogValue(false),
+  12: [t11LinValue, t11QuadRoots, t11QuadInt, t11HypPos, t11HypNeg,
+    t11ExpUp, t11ExpDown, t11LogUp, t11LogDown,
     t11TwoLines, t11ParabLineK, t11HypLine, t11RootLineK],
   // Модули части 2 названы по старым номерам (файлы и эталоны fipi_bank_ege_prof
   // тоже лежат под ними): GEN13 — тригонометрия (№14), GEN15 — неравенства (№16),
@@ -6549,12 +6559,12 @@ export const GEN_META_EGE_PROF = {
     ["lin-val", "Линейная kx+b", t11LinValue],
     ["quad-read", "Парабола ax²+bx+c (по корням)", t11QuadRoots],
     ["quad-int", "Парабола с целыми a, b, c", t11QuadInt],
-    ["hyp-basic", "Гипербола k/x, k>0", () => t11HypValue(1)],
-    ["hyp-neg", "Гипербола k/x, k<0", () => t11HypValue(-1)],
-    ["exp-val", "Показательная aˣ, a>1", () => t11ExpValue(true)],
-    ["exp-down", "Показательная aˣ, 0<a<1", () => t11ExpValue(false)],
-    ["log-val", "Логарифм logₐx, a>1", () => t11LogValue(true)],
-    ["log-down", "Логарифм logₐx, 0<a<1", () => t11LogValue(false)],
+    ["hyp-basic", "Гипербола k/x, k>0", t11HypPos],
+    ["hyp-neg", "Гипербола k/x, k<0", t11HypNeg],
+    ["exp-val", "Показательная aˣ, a>1", t11ExpUp],
+    ["exp-down", "Показательная aˣ, 0<a<1", t11ExpDown],
+    ["log-val", "Логарифм logₐx, a>1", t11LogUp],
+    ["log-down", "Логарифм logₐx, 0<a<1", t11LogDown],
   ]],
     ["Пересечения графиков", [
       ["2lines-x", "Две прямые: абсцисса A", t11TwoLines],
