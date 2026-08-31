@@ -1522,6 +1522,26 @@ summary::-webkit-details-marker { display: none; }
   border-color: transparent;
 }
 
+/* Время и галочки внутри пузыря — прижаты к правому краю последней строки
+   (как в Telegram). float, а не абсолют: если текст занял строку целиком,
+   метка переносится сама и не наезжает на слова. */
+.chat-meta {
+  float: right;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 10px;
+  /* −1px запаса: без него из-за округления при масштабировании
+     метка иногда срывается на новую строку. */
+  margin-right: -1px;
+  font-size: 10px;
+  line-height: 1;
+  white-space: nowrap;
+  position: relative;
+  top: 0.6em;
+  user-select: none;
+}
+
 /* Хвостик у пузыря — только у последнего сообщения группы (как в Telegram).
    Рисуется маской поверх `background: inherit`, поэтому берёт цвет самого
    пузыря и не зависит ни от темы, ни от фона чата (никаких «стирающих»

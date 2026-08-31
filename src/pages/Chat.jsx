@@ -554,7 +554,7 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
             {/* Сообщения + Ввод */}
             <div className="flex-1 min-h-0 relative">
               <div
-                className="absolute inset-0 overflow-y-auto overflow-x-hidden px-4 pt-3 pb-[68px] flex flex-col gap-0.5 chat-bg"
+                className="absolute inset-0 overflow-y-auto overflow-x-hidden px-4 pt-3 pb-[68px] flex flex-col gap-1 chat-bg"
                 onScroll={e => {
                   const el = e.currentTarget
                   nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120
@@ -593,23 +593,28 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
                           ? "bg-blue-600 text-white"
                           : "chat-bubble-in shadow-sm"
                       } ${endsGroup ? (isMe ? "chat-tail chat-tail-out rounded-br-none" : "chat-tail chat-tail-in rounded-bl-none") : ""}`}>
-                        <div className="leading-relaxed">{msg.text}</div>
-                        <div className={`text-[10px] mt-0.5 flex items-center justify-end gap-1 ${
-                          isMe ? "text-white/60" : "text-gray-400 dark:text-gray-400"
-                        }`}>
-                          {new Date(msg.created_at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
-                          {isMe && (
-                            msg.read ? (
-                              <svg width="15" height="8" viewBox="0 0 18 10" fill="none" className="opacity-75 flex-shrink-0">
-                                <path d="M1 5L5 9L13 1" stroke="white" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-                                <path d="M5 5L9 9L17 1" stroke="white" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            ) : (
-                              <svg width="10" height="8" viewBox="0 0 12 10" fill="none" className="opacity-45 flex-shrink-0">
-                                <path d="M1 5L5 9L11 1" stroke="white" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            )
-                          )}
+                        <div className="leading-relaxed">
+                          {msg.text}
+                          {/* Время и галочки — в конце последней строки, как в
+                              Telegram: float переносит их сами на новую строку,
+                              если текст занял всю ширину. */}
+                          <span className={`chat-meta ${
+                            isMe ? "text-white/65" : "text-gray-400 dark:text-gray-400"
+                          }`}>
+                            {new Date(msg.created_at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
+                            {isMe && (
+                              msg.read ? (
+                                <svg width="15" height="8" viewBox="0 0 18 10" fill="none" className="opacity-75 flex-shrink-0">
+                                  <path d="M1 5L5 9L13 1" stroke="white" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                                  <path d="M5 5L9 9L17 1" stroke="white" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              ) : (
+                                <svg width="10" height="8" viewBox="0 0 12 10" fill="none" className="opacity-45 flex-shrink-0">
+                                  <path d="M1 5L5 9L11 1" stroke="white" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              )
+                            )}
+                          </span>
                         </div>
                       </div>
                     </div>
