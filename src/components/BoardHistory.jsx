@@ -199,40 +199,48 @@ function BoardHistory({ studentId, studentName, account = null, token = null, on
   return (
     <div className="glass p-4">
       <h2 className="text-sm font-medium mb-3">Доски занятий</h2>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        {rows.map((r) => (
-          // Кнопка удаления не может лежать ВНУТРИ карточки-кнопки (вложенные
-          // button), поэтому карточка и крестик — соседи в общей обёртке.
-          <div key={r.lesson_date} className="relative">
-            <button
-              onClick={() => (onOpenBoard && r.lesson_date === todayIso() ? onOpenBoard() : openDate(r.lesson_date))}
-              title={onOpenBoard && r.lesson_date === todayIso() ? "Открыть доску" : "Посмотреть снимок"}
-              className="press-fill glass-sm rounded-2xl overflow-hidden text-left w-full block">
-              <div className="aspect-[16/10] bg-white dark:bg-white/5 flex items-center justify-center overflow-hidden">
-                {r.preview
-                  ? <img src={r.preview} alt="" className="w-full h-full object-cover" />
-                  : <Icon name="clipboard" size={20} className="text-gray-300" />}
-              </div>
-              <div className="px-2.5 py-2 flex items-center justify-between gap-2">
-                <span className="text-xs font-medium truncate">{humanDate(r.lesson_date)}</span>
-                {loadingDate === r.lesson_date
-                  ? <span className="loader-dots text-gray-400"><i /><i /><i /></span>
-                  : <span className="text-[11px] text-gray-400 tabular-nums">{r.strokes}</span>}
-              </div>
-            </button>
-            {canDelete && (
-              // Видна всегда, а не по наведению: на телефоне hover нет, а прятать
-              // единственный способ убрать доску за долгое нажатие нельзя.
-              <button onClick={() => setAskDelete(r.lesson_date)} title="Удалить доску"
-                aria-label={`Удалить доску за ${humanDate(r.lesson_date)}`}
-                className="press-tap absolute top-1.5 right-1.5 w-7 h-7 rounded-full flex items-center justify-center
-                  bg-white/85 dark:bg-[#1c1c1e]/85 backdrop-blur ring-1 ring-gray-200/70 dark:ring-white/10
-                  text-gray-400 hover:text-red-500">
-                <Icon name="trash" size={13} />
+      {/* Доски едут лентой вбок: занятий за год набирается много, и сеткой они
+          вытеснили бы со страницы всё остальное. Карточка фиксированной ширины,
+          скролл липнет к началу карточки. */}
+      <div className="no-scrollbar overflow-x-auto snap-x snap-mandatory -mx-4 px-4">
+        <div className="flex gap-3 w-max">
+          {rows.map((r) => (
+            // Кнопка удаления не может лежать ВНУТРИ карточки-кнопки (вложенные
+            // button), поэтому карточка и крестик — соседи в общей обёртке.
+            <div key={r.lesson_date} className="relative snap-start w-[46vw] max-w-[210px] sm:w-[210px]">
+              <button
+                onClick={() => (onOpenBoard && r.lesson_date === todayIso() ? onOpenBoard() : openDate(r.lesson_date))}
+                title={onOpenBoard && r.lesson_date === todayIso() ? "Открыть доску" : "Посмотреть снимок"}
+                className="press-fill glass-sm rounded-2xl overflow-hidden text-left w-full block">
+                <div className="aspect-[16/10] bg-white dark:bg-white/5 flex items-center justify-center overflow-hidden">
+                  {r.preview
+                    ? <img src={r.preview} alt="" className="w-full h-full object-cover" />
+                    : <Icon name="clipboard" size={20} className="text-gray-300" />}
+                </div>
+                <div className="px-2.5 py-2 flex items-center justify-between gap-2">
+                  <span className="text-xs font-medium truncate">{humanDate(r.lesson_date)}</span>
+                  {loadingDate === r.lesson_date
+                    ? <span className="loader-dots text-gray-400"><i /><i /><i /></span>
+                    : <span className="text-[11px] text-gray-400 tabular-nums">{r.strokes}</span>}
+                </div>
               </button>
-            )}
-          </div>
-        ))}
+              {canDelete && (
+                // Видна всегда, а не по наведению: на телефоне hover нет, а прятать
+                // единственный способ убрать доску за долгое нажатие нельзя.
+                // position — стилем: .press-tap в index.css ставит relative и
+                // перебивает утилиту absolute, кнопка уезжала под карточку.
+                <button onClick={() => setAskDelete(r.lesson_date)} title="Удалить доску"
+                  aria-label={`Удалить доску за ${humanDate(r.lesson_date)}`}
+                  style={{ position: "absolute" }}
+                  className="press-tap top-1.5 right-1.5 w-6 h-6 rounded-full flex items-center justify-center
+                    bg-white/80 dark:bg-[#1c1c1e]/80 backdrop-blur ring-1 ring-gray-200/70 dark:ring-white/10
+                    text-gray-400 hover:text-red-500">
+                  <Icon name="x" size={13} />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
       {open && (
         <BoardSnapshotView scene={open.scene} date={open.date} studentName={studentName}

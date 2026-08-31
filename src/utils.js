@@ -486,13 +486,47 @@ function stretchParens(html) {
   return out
 }
 
+// ── Юникодные степени → настоящий надстрочник ────────────────────────────────
+// Генераторы пишут короткую степень одним глифом (10³, 2⁻¹, с⁻¹): у шрифта интерфейса
+// такой глиф сидит низко и мельче соседних цифр — «10³» читается как множитель рядом
+// с числом, а не как степень. Печатный лист варианта разворачивает эти глифы в обычный
+// <sup> (unicodeSupToTag в pages/variantPdf.js) — тем же проходом выравниваем экран,
+// иначе одно и то же задание на бумаге и на экране стоит на разной высоте.
+const SUP_BACK = { "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4", "⁵": "5", "⁶": "6", "⁷": "7",
+  "⁸": "8", "⁹": "9", "⁺": "+", "⁻": "−", "⁼": "=", "⁽": "(", "⁾": ")", "ⁿ": "n", "ⁱ": "i" }
+const RE_SUP_UNI = /[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿⁱ]+/g
+const HAS_SUP_UNI = /[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿⁱ]/       // без /g: у глобального .test() сдвигается lastIndex
+const unicodeSupToTag = (s) => s.replace(RE_SUP_UNI, (run) =>
+  `<sup class="tmath-sup">${Array.from(run).map((c) => SUP_BACK[c] || c).join("")}</sup>`)
+// Только в тексте: внутрь тегов (стили, data-URL) лезть нельзя, внутрь <svg> (подкоренное,
+// скобка системы) — тем более: там <sup> не существует. Внутри уже готового <sup>/<sub>
+// глиф оставляем как есть — второй подъём унёс бы его над строкой.
+function supOutsideTags(html) {
+  if (!html || !HAS_SUP_UNI.test(html)) return html
+  let out = "", i = 0, skip = 0
+  while (i < html.length) {
+    const lt = html.indexOf("<", i)
+    const text = html.slice(i, lt < 0 ? html.length : lt)
+    out += skip ? text : unicodeSupToTag(text)
+    if (lt < 0) break
+    const gt = html.indexOf(">", lt)
+    if (gt < 0) { out += html.slice(lt); break }
+    const tag = html.slice(lt, gt + 1)
+    out += tag
+    const m = /^<(\/?)(svg|sup|sub)\b/i.exec(tag)
+    if (m && !tag.endsWith("/>")) skip = Math.max(0, skip + (m[1] ? -1 : 1))
+    i = gt + 1
+  }
+  return out
+}
+
 // Условие задания рендерится как HTML, чтобы дроби были СТОЛБИКОМ (не «в строчку»),
 // а корень — с верхней чертой над подкоренным. Генераторы вставляют токены
 // ⟦f:n:d⟧ (дробь) и ⟦r:x⟧ (корень); здесь текст сначала ЭКРАНИРУЕТСЯ (защита от XSS
 // в задачах, введённых репетитором), и только потом токены разворачиваются в разметку.
 export function renderTaskMath(text) {
   if (!text) return ""
-  return noBreakMath(stretchParens(renderTaskMathRaw(text)))
+  return supOutsideTags(noBreakMath(stretchParens(renderTaskMathRaw(text))))
 }
 function renderTaskMathRaw(text) {
   const esc = String(text)
@@ -794,7 +828,7 @@ export function renderHomeworkMath(text) {
     // одиночный индекс без скобок: x_1 (групповые ^{…}/_{…} уже развёрнуты выше)
     .replace(/_([0-9A-Za-zА-Яа-я])/g, (_, x) => `<sub class="tmath-sub">${x}</sub>`)
   s = superscriptPowers(s)          // оставшиеся ^2, ^n → ², ⁿ
-  return noBreakMath(s.replace(/\n/g, "<br>"))
+  return supOutsideTags(noBreakMath(s.replace(/\n/g, "<br>")))
 }
 
 // Есть ли у задания банка что-то, кроме текста условия: чертёж, программа,
