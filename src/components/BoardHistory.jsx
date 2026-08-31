@@ -154,7 +154,7 @@ function BoardHistory({ studentId, studentName, account = null, token = null, on
     const query = account && token
       ? supabase.rpc("board_snapshot_list", { p_account: account, p_token: token, p_student_id: String(studentId) })
       : supabase.from("board_snapshots")
-        .select("lesson_date, preview, strokes")
+        .select("lesson_date, preview")
         .eq("student_id", String(studentId))
         .order("lesson_date", { ascending: false })
         .limit(24)
@@ -218,11 +218,13 @@ function BoardHistory({ studentId, studentName, account = null, token = null, on
                     ? <img src={r.preview} alt="" className="w-full h-full object-cover" />
                     : <Icon name="clipboard" size={20} className="text-gray-300" />}
                 </div>
-                <div className="px-2.5 py-2 flex items-center justify-between gap-2">
+                {/* Справа только ожидание: число штрихов сцены пользователю
+                    ничего не говорит, а читалось как сумма или оценка. */}
+                <div className="px-2.5 py-2 flex items-center justify-between gap-2 min-h-[34px]">
                   <span className="text-xs font-medium truncate">{humanDate(r.lesson_date)}</span>
-                  {loadingDate === r.lesson_date
-                    ? <span className="loader-dots text-gray-400"><i /><i /><i /></span>
-                    : <span className="text-[11px] text-gray-400 tabular-nums">{r.strokes}</span>}
+                  {loadingDate === r.lesson_date && (
+                    <span className="loader-dots text-gray-400"><i /><i /><i /></span>
+                  )}
                 </div>
               </button>
               {canDelete && (
