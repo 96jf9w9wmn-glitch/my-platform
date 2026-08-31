@@ -641,27 +641,30 @@ function CohortWeakTypes({ studentIds }) {
     if (!ids.length) return
     let alive = true
     supabase
-      .from("v_student_weak_types")
-      .select("*")
+      .from("task_attempts")
+      .select("student_id, exam_type, number, gen_key, is_correct, attempt_no")
       .in("student_id", ids)
-      .limit(500)
-      // Вьюхи может не быть (миграция task_attempts.sql не выполнена) — тогда блока просто нет.
+      .limit(4000)
+      // Таблицы может не быть (миграция task_attempts.sql не выполнена) — тогда блока просто нет.
       .then(({ data }) => {
         if (!alive || !data) return
-        // PostgREST отдаёт numeric и count строками — приводим сами, иначе
-        // сложение попыток склеило бы «12» и «7» в «127».
+        // Считаем по самим попыткам, а не по вьюхе v_student_weak_types: она
+        // складывает все подходы, и «решай до верного» превращал исправленную
+        // ошибку в две неудачи. Первые ответы — та же арифметика, что в
+        // «Где ученик ошибается» и в отчёте родителю.
         const agg = {}
         for (const r of data) {
+          if ((r.attempt_no ?? 1) > 1) continue
           const k = `${r.exam_type}|${r.number}|${r.gen_key || ""}`
-          const cur = agg[k] || { exam_type: r.exam_type, number: r.number, gen_key: r.gen_key, attempts: 0, correct: 0, students: 0 }
-          cur.attempts += Number(r.attempts)
-          cur.correct += Number(r.correct)
-          cur.students += 1
+          const cur = agg[k] || { exam_type: r.exam_type, number: r.number, gen_key: r.gen_key, attempts: 0, correct: 0, students: new Set() }
+          cur.attempts += 1
+          if (r.is_correct) cur.correct += 1
+          cur.students.add(r.student_id)
           agg[k] = cur
         }
         const list = Object.values(agg)
           .filter((r) => r.attempts >= COHORT_MIN_ATTEMPTS)
-          .map((r) => ({ ...r, accuracy: Math.round((r.correct / r.attempts) * 100) }))
+          .map((r) => ({ ...r, students: r.students.size, accuracy: Math.round((r.correct / r.attempts) * 100) }))
           // Раздел называется «слабые»: тема, где почти не ошибаются, в нём
           // только отнимает место у настоящей проблемы.
           .filter((r) => r.accuracy < COHORT_WEAK_ACCURACY)

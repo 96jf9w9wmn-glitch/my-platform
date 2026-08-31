@@ -1,11 +1,17 @@
 import { useEffect, useState } from "react"
 import { supabase } from "../supabase"
+import Icon from "./Icon"
 import useTypeLabels from "./typeLabels"
+import { aggregateAttempts } from "../reportData"
 import { numberTitle } from "../pages/numberTitles"
 
-// Слабые типажи ученика: по каким разновидностям заданий он ошибается чаще
-// всего. Читает вьюху v_student_weak_types (свод по task_attempts) — она
-// исполняется правами вызывающего, поэтому репетитор видит только своих.
+// Слабые места ученика: по каким разновидностям заданий он ошибается чаще
+// всего. Считаем по самим попыткам (task_attempts, политика пускает репетитора
+// только к своим ученикам), а НЕ по вьюхе v_student_weak_types: вьюха
+// складывает все подходы подряд, и в режиме «решай до верного» три захода к
+// одной задаче превращались в «0 из 3 верно». Отчёт родителю считает первые
+// ответы (aggregateAttempts) — теперь тут ровно та же арифметика, иначе
+// кабинет и отчёт расходятся на одном и том же ученике.
 //
 // Главное правило показа: пока попыток мало, ничего не красим в красный.
 // Две ошибки из двух — это не «провальная тема», это два неудачных дня.
@@ -46,26 +52,17 @@ function WeakTypes({ studentId, studentName }) {
     if (!studentId) return
     let alive = true
     supabase
-      .from("v_student_weak_types")
-      .select("*")
+      .from("task_attempts")
+      .select("exam_type, number, gen_key, is_correct, attempt_no")
       .eq("student_id", String(studentId))
-      // Берём с запасом: сортировать нужно по правилу, которого нет в SQL (см. ниже).
-      .limit(60)
-      // Вьюхи может не быть (миграция task_attempts.sql не выполнена) — тогда блока просто нет.
+      .limit(2000)
+      // Таблицы может не быть (миграция task_attempts.sql не выполнена) — тогда блока просто нет.
       .then(({ data }) => {
         if (!alive || !data) return
         // Наверх — типажи, по которым данных достаточно, худшие первыми. Строки с
         // одной-двумя попытками уходят вниз: иначе единственная случайная ошибка
         // (точность 0%) вытеснила бы из десятки настоящую проблему с 40% из 12 попыток.
-        // PostgREST отдаёт numeric и count как СТРОКИ («40», «12»). Сравнения
-        // вроде accuracy < 40 на строках срабатывают только благодаря приведению
-        // типов, а «40.0%» в подписи уже выглядело бы неряшливо — приводим сами.
-        const norm = data.map((r) => ({
-          ...r,
-          attempts: Number(r.attempts),
-          correct: Number(r.correct),
-          accuracy: Math.round(Number(r.accuracy)),
-        }))
+        const norm = aggregateAttempts(data)
         const sorted = norm.filter(isWeak).sort((a, b) => {
           const aEnough = a.attempts >= MIN_ATTEMPTS, bEnough = b.attempts >= MIN_ATTEMPTS
           if (aEnough !== bEnough) return aEnough ? -1 : 1
@@ -129,7 +126,7 @@ function WeakTypes({ studentId, studentName }) {
     if (!hadData) return null
     return (
       <div className="glass p-4">
-        <h2 className="text-sm font-medium">Слабые типажи</h2>
+        <h2 className="text-sm font-medium">Где ученик ошибается</h2>
         <p className="text-xs text-gray-400 mt-1">Промахов пока нет: решённые задания идут без ошибок.</p>
       </div>
     )
@@ -137,8 +134,13 @@ function WeakTypes({ studentId, studentName }) {
 
   return (
     <div className="glass p-4">
-      <h2 className="text-sm font-medium">Слабые типажи</h2>
-      <p className="text-xs text-gray-400 mt-0.5 mb-3">Задания, где ученик ошибается. Точность — доля верных ответов.</p>
+      <h2 className="text-sm font-medium">Где ученик ошибается</h2>
+      {/* Раздел раньше назывался «Слабые типажи» и не объяснял ни откуда цифры,
+          ни что делает кнопка. Обе строки — ответ на эти два вопроса. */}
+      <p className="text-xs text-gray-400 mt-0.5 mb-3">
+        Считаем по первым ответам в вариантах и домашних работах из банка: процент — доля верных.
+        Кнопка собирает PDF — {DRILL_SIZE} таких же заданий с новыми числами и ответами для проверки.
+      </p>
       <div className="flex flex-col gap-2">
         {rows.map((r) => {
           const t = tone(r)
@@ -152,8 +154,10 @@ function WeakTypes({ studentId, studentName }) {
                 {/* «Задание без типажа» — это про наши данные, а не про ученика.
                     Когда ключа нет, называем сам раздел номера. */}
                 <div className="text-sm truncate">{labels[r.gen_key] || numberTitle(r.exam_type, r.number)}</div>
-                <div className="text-[11px] text-gray-400">
-                  {r.correct} из {r.attempts} верно{t.note ? " · " + t.note : ""}
+                {/* Голубой кружок с цифрой репетитор читал как «9 чего?» —
+                    поэтому номер задания назван и словами. */}
+                <div className="text-[11px] text-gray-400 truncate">
+                  задание №{r.number} · {r.correct} из {r.attempts} верно{t.note ? " · " + t.note : ""}
                 </div>
               </div>
               {/* Раньше при малом числе попыток тут стоял прочерк — пустая
@@ -165,10 +169,14 @@ function WeakTypes({ studentId, studentName }) {
               <button
                 onClick={() => drill(r)}
                 disabled={drilling === key}
-                title={`Лист из ${DRILL_SIZE} задач того же вида, числа новые`}
-                className="press-fill shrink-0 text-[11px] px-2.5 py-1.5 rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 disabled:opacity-50"
+                title={`Лист из ${DRILL_SIZE} задач того же вида: числа новые, ответы внизу листа`}
+                className="press-fill shrink-0 inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-xl ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 disabled:opacity-50"
               >
-                {drilling === key ? "Собираем…" : failed === key ? "Не собралось" : "Тренировка"}
+                {/* «Тренировка» не говорила, что произойдёт нажатие: файл
+                    скачивался молча. Теперь на кнопке видно и что внутри, и
+                    что это PDF. */}
+                <Icon name="download" size={12} className="text-gray-400" />
+                {drilling === key ? "Собираем…" : failed === key ? "Не собралось" : `${DRILL_SIZE} задач · PDF`}
               </button>
             </div>
           )
