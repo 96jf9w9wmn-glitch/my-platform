@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react"
 import { supabase } from "../supabase"
 import { signBoardScene } from "../storageUrl"
 import Icon from "./Icon"
+import ConfirmModal from "./ConfirmModal"
 import { useClosing } from "../useClosing"
 import { renderScene, preloadSceneImages, isDarkColor } from "./boardPaint"
 
@@ -141,6 +142,10 @@ function BoardHistory({ studentId, studentName, account = null, token = null, on
   const [rows, setRows] = useState([])
   const [open, setOpen] = useState(null)     // { date, scene }
   const [loadingDate, setLoadingDate] = useState(null)
+  const [askDelete, setAskDelete] = useState(null)   // дата снимка, который просят удалить
+  // Удаляет только репетитор: доски занятий — его летопись, и ученику не за чем
+  // стирать разобранное. У ученика и RPC такого нет, поэтому кнопки просто нет.
+  const canDelete = !(account && token)
 
   useEffect(() => {
     if (!studentId) return
@@ -177,6 +182,18 @@ function BoardHistory({ studentId, studentName, account = null, token = null, on
     }
   }
 
+  // Снимок за сегодня — это ЖИВАЯ доска: запись за день мы убираем, но холст
+  // не трогаем, иначе кнопка «удалить занятие из истории» стирала бы то, что
+  // сейчас на экране у ученика. Закроют доску снова — снимок появится заново.
+  async function removeDate(date) {
+    setAskDelete(null)
+    const { error } = await supabase.from("board_snapshots")
+      .delete().eq("student_id", String(studentId)).eq("lesson_date", date)
+    if (error) return
+    setRows((rs) => rs.filter((r) => r.lesson_date !== date))
+    setOpen((o) => (o && o.date === date ? null : o))
+  }
+
   if (!rows.length) return null
 
   return (
@@ -184,28 +201,58 @@ function BoardHistory({ studentId, studentName, account = null, token = null, on
       <h2 className="text-sm font-medium mb-3">Доски занятий</h2>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {rows.map((r) => (
-          <button key={r.lesson_date}
-            onClick={() => (onOpenBoard && r.lesson_date === todayIso() ? onOpenBoard() : openDate(r.lesson_date))}
-            title={onOpenBoard && r.lesson_date === todayIso() ? "Открыть доску" : "Посмотреть снимок"}
-            className="press-fill glass-sm rounded-2xl overflow-hidden text-left">
-            <div className="aspect-[16/10] bg-white dark:bg-white/5 flex items-center justify-center overflow-hidden">
-              {r.preview
-                ? <img src={r.preview} alt="" className="w-full h-full object-cover" />
-                : <Icon name="clipboard" size={20} className="text-gray-300" />}
-            </div>
-            <div className="px-2.5 py-2 flex items-center justify-between gap-2">
-              <span className="text-xs font-medium truncate">{humanDate(r.lesson_date)}</span>
-              {loadingDate === r.lesson_date
-                ? <span className="loader-dots text-gray-400"><i /><i /><i /></span>
-                : <span className="text-[11px] text-gray-400 tabular-nums">{r.strokes}</span>}
-            </div>
-          </button>
+          // Кнопка удаления не может лежать ВНУТРИ карточки-кнопки (вложенные
+          // button), поэтому карточка и крестик — соседи в общей обёртке.
+          <div key={r.lesson_date} className="relative">
+            <button
+              onClick={() => (onOpenBoard && r.lesson_date === todayIso() ? onOpenBoard() : openDate(r.lesson_date))}
+              title={onOpenBoard && r.lesson_date === todayIso() ? "Открыть доску" : "Посмотреть снимок"}
+              className="press-fill glass-sm rounded-2xl overflow-hidden text-left w-full block">
+              <div className="aspect-[16/10] bg-white dark:bg-white/5 flex items-center justify-center overflow-hidden">
+                {r.preview
+                  ? <img src={r.preview} alt="" className="w-full h-full object-cover" />
+                  : <Icon name="clipboard" size={20} className="text-gray-300" />}
+              </div>
+              <div className="px-2.5 py-2 flex items-center justify-between gap-2">
+                <span className="text-xs font-medium truncate">{humanDate(r.lesson_date)}</span>
+                {loadingDate === r.lesson_date
+                  ? <span className="loader-dots text-gray-400"><i /><i /><i /></span>
+                  : <span className="text-[11px] text-gray-400 tabular-nums">{r.strokes}</span>}
+              </div>
+            </button>
+            {canDelete && (
+              // Видна всегда, а не по наведению: на телефоне hover нет, а прятать
+              // единственный способ убрать доску за долгое нажатие нельзя.
+              <button onClick={() => setAskDelete(r.lesson_date)} title="Удалить доску"
+                aria-label={`Удалить доску за ${humanDate(r.lesson_date)}`}
+                className="press-tap absolute top-1.5 right-1.5 w-7 h-7 rounded-full flex items-center justify-center
+                  bg-white/85 dark:bg-[#1c1c1e]/85 backdrop-blur ring-1 ring-gray-200/70 dark:ring-white/10
+                  text-gray-400 hover:text-red-500">
+                <Icon name="trash" size={13} />
+              </button>
+            )}
+          </div>
         ))}
       </div>
       {open && (
         <BoardSnapshotView scene={open.scene} date={open.date} studentName={studentName}
           onOpenBoard={onOpenBoard} onClose={() => setOpen(null)} />
       )}
+      <ConfirmModal
+        open={!!askDelete}
+        title="Удалить доску?"
+        message={askDelete
+          ? (askDelete === todayIso()
+            ? "Снимок за сегодня исчезнет из истории. Сама доска останется — то, что на ней нарисовано, никуда не денется."
+            : `Доска за ${humanDate(askDelete)} исчезнет у вас и у ученика. Восстановить её будет нельзя.`)
+          : ""}
+        confirmLabel="Удалить"
+        cancelLabel="Отмена"
+        danger
+        zIndex={100002}
+        onConfirm={() => removeDate(askDelete)}
+        onCancel={() => setAskDelete(null)}
+      />
     </div>
   )
 }
