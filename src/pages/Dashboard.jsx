@@ -20,7 +20,12 @@ function formatDate(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`
 }
 
-function Dashboard({ students, setActivePage, onOpenBoard }) {
+// `loaded` — список учеников уже пришёл из базы. Пока идёт запрос, students
+// пуст, и без этого признака главная успевает показать кабинет новичка:
+// баннер «Начните с первого ученика», нули в плитках и «занятий нет». Такое
+// мелькание при каждой перезагрузке читается как потеря данных, поэтому до
+// загрузки утверждения не показываем — только каркас той же высоты.
+function Dashboard({ students, loaded = true, setActivePage, onOpenBoard }) {
   // Совместная доска включается с «Про». Кнопку не прячем: репетитор должен
   // видеть, что она есть, — нажатие ведёт к тарифам.
   const { allows, openPlans } = usePlan()
@@ -151,7 +156,7 @@ function Dashboard({ students, setActivePage, onOpenBoard }) {
 
       {/* Пока учеников нет, весь экран — нули без объяснений. Показываем
           первый шаг прямо здесь. */}
-      {students.length === 0 && (
+      {loaded && students.length === 0 && (
         <div className="glass p-5 flex flex-col sm:flex-row sm:items-center gap-4">
           <div className="w-11 h-11 rounded-2xl bg-blue-50 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center flex-shrink-0">
             <Icon name="users" size={20} />
@@ -192,7 +197,9 @@ function Dashboard({ students, setActivePage, onOpenBoard }) {
               <Icon name={st.icon} size={16} />
             </div>
             <div className="min-w-0">
-              <div className={`text-xl font-semibold leading-none ${st.valueCls || ""}`}>{st.value}</div>
+              {/* До загрузки — неразрывный пробел вместо нуля: цифра не соврёт,
+                  а высота плитки не прыгнет, когда число появится. */}
+              <div className={`text-xl font-semibold leading-none ${st.valueCls || ""}`}>{loaded ? st.value : "\u00A0"}</div>
               <div className="text-xs text-gray-400 mt-0.5 truncate">{st.label}</div>
             </div>
           </button>
@@ -284,11 +291,15 @@ function Dashboard({ students, setActivePage, onOpenBoard }) {
             </div>
           ) : (
             <div className="glass p-5 flex flex-col sm:flex-row sm:items-center gap-3">
-              <div className="flex items-center gap-3 flex-1 text-gray-400">
-                <Icon name="calendar" size={20} />
-                <span className="text-sm">Занятий не запланировано</span>
+              <div className="flex items-center gap-3 flex-1 text-gray-400 h-5">
+                {loaded && (
+                  <>
+                    <Icon name="calendar" size={20} />
+                    <span className="text-sm">Занятий не запланировано</span>
+                  </>
+                )}
               </div>
-              {students.length > 0 && (
+              {loaded && students.length > 0 && (
                 <button onClick={() => setActivePage("schedule")} className="btn-primary px-4 py-2 text-sm shrink-0">
                   Поставить занятие
                 </button>
@@ -305,11 +316,17 @@ function Dashboard({ students, setActivePage, onOpenBoard }) {
               )}
             </div>
             {todayLessons.length === 0 ? (
+              /* Тот же каркас и до загрузки: место занято, но пустых
+                 утверждений («занятий нет») ещё нет. */
               <div className="flex flex-col items-center gap-2.5 py-6">
-                <span className="text-sm text-gray-400">Занятий сегодня нет</span>
-                <button onClick={() => setActivePage("schedule")} className="text-sm text-blue-600 hover:opacity-70 transition-opacity">
-                  Открыть расписание
-                </button>
+                <span className="text-sm text-gray-400">{loaded ? "Занятий сегодня нет" : "\u00A0"}</span>
+                {loaded ? (
+                  <button onClick={() => setActivePage("schedule")} className="text-sm text-blue-600 hover:opacity-70 transition-opacity">
+                    Открыть расписание
+                  </button>
+                ) : (
+                  <span className="text-sm">&nbsp;</span>
+                )}
               </div>
             ) : (
               <div className="flex flex-col gap-0.5 stagger">

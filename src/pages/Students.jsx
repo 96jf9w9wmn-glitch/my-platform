@@ -110,7 +110,9 @@ function EmptyStudents({ onInvite, inviting }) {
   )
 }
 
-function Students({ students, setStudents, tutorId, onOpenBoard }) {
+// `loaded` — список уже пришёл из базы. До этого students пуст, и без признака
+// раздел успевал показать «Пока нет учеников» тому, у кого их десяток.
+function Students({ students, loaded = true, setStudents, tutorId, onOpenBoard }) {
   // Приглашение одной ссылкой: одноразовый токен на 7 дней (student_invites.sql).
   const [invite, setInvite] = useState(null)      // { link, text }
   const [inviting, setInviting] = useState(false)
@@ -491,7 +493,7 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
               </div>
             )
           })}
-          {filtered.length === 0 && (
+          {filtered.length === 0 && (loaded || query) && (
             <div className="relative overflow-hidden text-center py-10 px-4">
               <FormulaBackdrop variant="panel" />
               <div className="relative z-10">
@@ -599,7 +601,7 @@ function Students({ students, setStudents, tutorId, onOpenBoard }) {
             )
           })}
 
-          {filtered.length === 0 && (
+          {filtered.length === 0 && (loaded || query) && (
             <div className="relative overflow-hidden px-4 py-10 text-center border-t border-white/40">
               <FormulaBackdrop variant="panel" />
               <div className="relative z-10">

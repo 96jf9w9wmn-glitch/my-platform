@@ -821,7 +821,7 @@ function computeStats(student, rows) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-function Results({ students, user }) {
+function Results({ students, loaded = true, user }) {
   const [variants, setVariants] = useState([])
   const [accounts, setAccounts] = useState([])
   const [loading, setLoading] = useState(true)
@@ -942,7 +942,9 @@ function Results({ students, user }) {
         </p>
       </div>
 
-      {loading ? (
+      {/* Пока список учеников не пришёл, «Учеников пока нет» — неправда:
+          показываем те же карточки-заготовки, что и при загрузке работ. */}
+      {loading || !loaded ? (
         <div className="flex flex-col gap-2.5">
           {[0, 1, 2].map((i) => (
             <div key={i} className="glass h-[74px] animate-pulse" style={{ animationDelay: `${i * 120}ms` }} />

@@ -449,7 +449,7 @@ function App() {
     }
   }, [rosterKey, studentsLoaded])
 
-  async function loadStudents() {
+  async function loadStudents(attempt = 0) {
     let query = supabase.from("students").select("*").order("created_at", { ascending: true })
     if (user.role === "tutor") {
       query = query.eq("tutor_id", user.id)
@@ -462,7 +462,16 @@ function App() {
       query = query.or(ors.join(","))
     }
     const { data, error } = await query
-    if (error || !data) return  // не помечаем как загружено — при следующем рендере повторится
+    if (error || !data) {
+      // Сбой связи. Эффект сам не повторится (его зависимости не изменились),
+      // поэтому пробуем ещё раз руками, а после второй неудачи помечаем список
+      // загруженным: экраны ждут этого признака, и без него кабинет остался бы
+      // навсегда без цифр и без объяснений.
+      console.error("Список учеников не загрузился:", error)
+      if (attempt < 1) { setTimeout(() => loadStudents(attempt + 1), 1500); return }
+      setStudentsLoaded(true)
+      return
+    }
     let mapped = data.map((s) => ({
       ...s,
       id: s.id,
@@ -850,13 +859,13 @@ function App() {
 
         <div className={`flex-1 min-h-0 overflow-x-hidden ${activePage === "chat" ? "flex flex-col overflow-hidden" : "page-scroll overflow-y-auto pb-20 md:pb-0 kb-collapse"}`}>
           <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="loader-logo" /></div>}>
-          <div className={activePage !== "dashboard" ? "hidden" : "page-active"}>{visitedPages.has("dashboard") && <Dashboard students={students} setActivePage={navigateTo} onOpenBoard={openBoard} />}</div>
-          <div className={activePage !== "students" ? "hidden" : "page-active"}>{visitedPages.has("students") && <Students students={students} setStudents={handleSetStudents} tutorId={user.id} onOpenBoard={openBoard} />}</div>
+          <div className={activePage !== "dashboard" ? "hidden" : "page-active"}>{visitedPages.has("dashboard") && <Dashboard students={students} loaded={studentsReady} setActivePage={navigateTo} onOpenBoard={openBoard} />}</div>
+          <div className={activePage !== "students" ? "hidden" : "page-active"}>{visitedPages.has("students") && <Students students={students} loaded={studentsReady} setStudents={handleSetStudents} tutorId={user.id} onOpenBoard={openBoard} />}</div>
 <div className={activePage !== "payment" ? "hidden" : "page-active"}>{visitedPages.has("payment") && <Payment students={students} setStudents={handleSetStudents} tutorId={user.id} setActivePage={navigateTo} />}</div>
           <div className={activePage !== "variants" ? "hidden" : "page-active"}>{visitedPages.has("variants") && <Variants user={user} students={students} />}</div>
           <div className={activePage !== "schedule" ? "hidden" : "page-active"}>{visitedPages.has("schedule") && <Schedule students={students} setStudents={handleSetStudents} onOpenBoard={openBoard} />}</div>
           <div className={activePage !== "homework" ? "hidden" : "page-active"}>{visitedPages.has("homework") && <Homework user={user} students={students} />}</div>
-          <div className={activePage !== "results" ? "hidden" : "page-active"}>{visitedPages.has("results") && <Results students={students} user={user} />}</div>
+          <div className={activePage !== "results" ? "hidden" : "page-active"}>{visitedPages.has("results") && <Results students={students} loaded={studentsReady} user={user} />}</div>
           <div className={activePage !== "taskgen" ? "hidden" : "page-active"}>{pageAllowed("taskgen") && visitedPages.has("taskgen") && <TaskGenPreview />}</div>
           <div className={activePage !== "profile" ? "hidden" : "page-active"}>{visitedPages.has("profile") && (
             <Profile
