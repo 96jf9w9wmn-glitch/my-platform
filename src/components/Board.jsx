@@ -272,7 +272,10 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const [panKey, setPanKey] = useState(false)   // зажат пробел → полотно можно тащить
   const [panDrag, setPanDrag] = useState(false) // полотно тащат прямо сейчас
   const [color, setColor] = useState("ink")
-  const [width, setWidth] = useState(WIDTHS[1])
+  // Толщина при каждом входе на доску — самая тонкая: ею пишут формулы и мелкий
+  // разбор, а средняя годится разве что для выделения. Выбранная толщина живёт
+  // до закрытия доски и намеренно не запоминается между занятиями.
+  const [width, setWidth] = useState(WIDTHS[0])
   const [dash, setDash] = useState("solid")     // solid | dashed | dotted
   // Открытый попап панели — ОДИН на всех: "stroke" | "selStroke" | "shapes" | "bg" | null.
   // Поэтому открытие любого попапа автоматически закрывает предыдущий, а клик мимо
@@ -1749,6 +1752,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const btnBase = "group relative press-tap w-9 h-9 big:w-11 big:h-11 rounded-xl flex items-center justify-center transition-colors"
   const btnOn = "bg-blue-500 text-white"
   const btnIdle = "hover:bg-blue-500/12 dark:hover:bg-white/10"
+  // Временно включённое (не выбранное) — «Двигать полотно», пока тащат полотно
+  const btnHot = "bg-blue-500/15 text-blue-500"
   const idleStyle = { color: dark ? "#d1d1d6" : "#3f4652" }
   // Попапы ластика и фигур — общие для широкой (big) и мобильной панелей,
   // поэтому собраны один раз здесь, а не инлайном в каждой раскладке.
@@ -1792,9 +1797,12 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const cursor = panDrag ? "grabbing"
     : (panKey || tool === "hand") ? "grab"
     : tool === "cursor" ? "default" : "crosshair"
-  // …и в панели на это время загорается «Двигать полотно». Инструмент при этом
-  // не меняется: отпустил кнопку (пальцы, пробел) — и снова горит маркер.
-  const activeTool = panDrag || panKey ? "hand" : tool
+  // …и в панели на это время дополнительно загорается «Двигать полотно».
+  // Именно дополнительно: выбранный инструмент горит по-прежнему, потому что он
+  // и остаётся выбранным — отпустил кнопку (пальцы, пробел) и рисуешь дальше.
+  // Подсветка сдвига поэтому не сплошная, как у выбранного, а залитая тоном:
+  // два одинаково закрашенных инструмента читались бы как «выбраны оба».
+  const panLit = (id) => id === "hand" && (panDrag || panKey) && tool !== "hand"
 
   // Ручки выделения из ОРИЕНТИРОВАННОЙ рамки {cx,cy,ax,ay,angle} (экранные координаты)
   const H = selBox
@@ -2059,8 +2067,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
               {/* Клик берёт ластик и сразу показывает выбор режима: иначе про «стирать
                   объект целиком» никто бы не узнал */}
               <button onPointerDown={() => flashTip("eraser")} onClick={() => { const was = tool === "eraser"; setTool("eraser"); was ? toggleMenu("eraser") : openMenu("eraser") }}
-                className={`${btnBase} ${activeTool === "eraser" ? btnOn : btnIdle}`}
-                style={activeTool === "eraser" ? undefined : idleStyle}>
+                className={`${btnBase} ${tool === "eraser" ? btnOn : btnIdle}`}
+                style={tool === "eraser" ? undefined : idleStyle}>
                 <Icon name="eraser" size={21} />
                 {!menuShown("eraser") && (
                   <Tip label={eraserMode === "object" ? "Ластик · объект целиком" : "Ластик · след"} hotkey="E" dark={dark} show={tapped === "eraser"} />
@@ -2071,8 +2079,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
           ) : t.shapes ? (
             <div key="shapes" className="relative" data-menu>
               <button onPointerDown={() => flashTip("shapes")} onClick={() => toggleMenu("shapes")}
-                className={`${btnBase} ${shapeMenuIds.has(activeTool) ? btnOn : btnIdle}`}
-                style={shapeMenuIds.has(activeTool) ? undefined : idleStyle}>
+                className={`${btnBase} ${shapeMenuIds.has(tool) ? btnOn : btnIdle}`}
+                style={shapeMenuIds.has(tool) ? undefined : idleStyle}>
                 <Icon name={shapeIconOf(shapeTool)} size={21} />
                 {!menuShown("shapes") && <Tip label="Фигуры" dark={dark} show={tapped === "shapes"} />}
               </button>
@@ -2080,8 +2088,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
             </div>
           ) : (
             <button key={t.id} onPointerDown={() => flashTip(t.id)} onClick={() => setTool(t.id)}
-              className={`${btnBase} ${activeTool === t.id ? btnOn : btnIdle}`}
-              style={activeTool === t.id ? undefined : idleStyle}>
+              className={`${btnBase} ${tool === t.id ? btnOn : panLit(t.id) ? btnHot : btnIdle}`}
+              style={tool === t.id || panLit(t.id) ? undefined : idleStyle}>
               <Icon name={t.icon} size={21} />
               <Tip label={t.label} hotkey={t.key} dark={dark} show={tapped === t.id} />
             </button>
@@ -2191,8 +2199,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
               {TOOLS.map((t) => t.erasers ? (
                 <div key="eraser" className="relative" data-menu>
                   <button onClick={() => { const was = tool === "eraser"; setTool("eraser"); was ? toggleMenu("eraser") : openMenu("eraser") }}
-                    className={`${btnBase} ${activeTool === "eraser" ? btnOn : btnIdle}`}
-                    style={activeTool === "eraser" ? undefined : idleStyle} aria-label="Ластик">
+                    className={`${btnBase} ${tool === "eraser" ? btnOn : btnIdle}`}
+                    style={tool === "eraser" ? undefined : idleStyle} aria-label="Ластик">
                     <Icon name="eraser" size={21} />
                   </button>
                   {eraserPopup}
@@ -2200,16 +2208,16 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
               ) : t.shapes ? (
                 <div key="shapes" className="relative" data-menu>
                   <button onClick={() => toggleMenu("shapes")} aria-label="Фигуры"
-                    className={`${btnBase} ${shapeMenuIds.has(activeTool) ? btnOn : btnIdle}`}
-                    style={shapeMenuIds.has(activeTool) ? undefined : idleStyle}>
+                    className={`${btnBase} ${shapeMenuIds.has(tool) ? btnOn : btnIdle}`}
+                    style={shapeMenuIds.has(tool) ? undefined : idleStyle}>
                     <Icon name={shapeIconOf(shapeTool)} size={21} />
                   </button>
                   {shapesPopup}
                 </div>
               ) : (
                 <button key={t.id} onClick={() => setTool(t.id)} aria-label={t.label}
-                  className={`${btnBase} ${activeTool === t.id ? btnOn : btnIdle}`}
-                  style={activeTool === t.id ? undefined : idleStyle}>
+                  className={`${btnBase} ${tool === t.id ? btnOn : panLit(t.id) ? btnHot : btnIdle}`}
+                  style={tool === t.id || panLit(t.id) ? undefined : idleStyle}>
                   <Icon name={t.icon} size={21} />
                 </button>
               ))}
