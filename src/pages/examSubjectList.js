@@ -142,8 +142,38 @@ export const SUBJECT_TO_TYPE = {
 // иначе профиль говорил бы «Математика», а в сборке задания половины банков не
 // было бы. Проверки генераторов тоже нет — это привязка, а не выдача задания.
 export function typesFromProfile(subject) {
-  const label = PROFILE_SUBJECT[subject]
+  // Имя без записи в карте — уже название банка («Биология», «История»): так
+  // предметы называет и анкета ученика, а её ответы попадают в карточку.
+  const label = PROFILE_SUBJECT[subject] || subject
   return BANK_SUBJECTS.find((x) => x.label === label)?.types.slice() || []
+}
+
+// Тип банка для КОНКРЕТНОГО ученика: предмет — тот, которым с ним занимаются
+// (`students.subject`, его указал сам ученик при привязке), уровень — его цель
+// (`students.goal`, ОГЭ или ЕГЭ). Нужно, чтобы сборка задания открывалась сразу
+// на нужном банке: репетитор ведёт разных учеников по разным предметам и
+// экзаменам, а выбор по умолчанию был один на всех.
+//
+// groups — предметы, доступные этому репетитору (subjectGroups): предмет из
+// карточки, которого у него нет, не подставляем. null — подставить нечего,
+// остаётся выбор по умолчанию.
+export function typeForStudent(student, groups) {
+  const avail = new Set((groups || []).flatMap((g) => g.subjects.map((s) => s.type)))
+  if (!avail.size) return null
+  // Предметов в карточке может быть несколько («Математика, Информатика») —
+  // берём первый, который у репетитора есть.
+  const names = String(student?.subject || "").split(/[,;/]+/).map((x) => x.trim()).filter(Boolean)
+  const level = student?.goal === "ЕГЭ" ? "ЕГЭ" : "ОГЭ"
+  for (const name of names) {
+    const types = typesFromProfile(name).filter((t) => avail.has(t))
+    if (!types.length) continue
+    // У математики два ЕГЭ, и «ЕГЭ» рядом с «ЕГЭ» ничего не значит: по умолчанию
+    // профильный, как это уже сделано у задания на доску.
+    const preferred = SUBJECT_TO_TYPE[name]?.[level]
+    if (preferred && avail.has(preferred)) return preferred
+    return types.find((t) => levelOf(t) === level) || types[0]
+  }
+  return null
 }
 
 // Названия из анкеты репетитора → названия предметов банка.

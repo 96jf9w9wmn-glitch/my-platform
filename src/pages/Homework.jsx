@@ -23,7 +23,7 @@ import DateTile from "../components/DateTile"
 import { TILE_TINTS, dueTintKey } from "../dueTint"
 // Список предметов — из лёгкого модуля: сами генераторы приезжают отдельно
 // (homeworkBank), и тащить их в бандл раздела ради подписей нельзя.
-import { subjectGroups, firstType, BANK_SUBJECTS } from "./examSubjectList"
+import { subjectGroups, firstType, typeForStudent, BANK_SUBJECTS } from "./examSubjectList"
 
 const STATUS_LABELS = {
   assigned: { label: "Выдано", cls: "text-gray-600 ring-1 ring-gray-200 dark:ring-white/15" },
@@ -381,7 +381,14 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
   // Предметы, отмеченные репетитором в «Профиле»: банк открывается сразу на них.
   // Ничего не отмечено — все открытые предметы, как было раньше.
   const bankGroups = subjectGroups({ picked: bankSubjects, owner })
-  const [bankType, setBankType] = useState(() => firstType(bankGroups))
+  // Предмет банка следует за учеником: он указан в его карточке, а уровень —
+  // в его цели. Пока репетитор не выбрал предмет руками, смена ученика меняет и
+  // предмет; после ручного выбора — уже нет, иначе выбор сбрасывался бы под рукой.
+  const studentById = (id) => students.find((s) => String(s.id) === String(id)) || null
+  const [bankType, setBankType] = useState(
+    () => typeForStudent(studentById(editingHw?.student_id), bankGroups) || firstType(bankGroups)
+  )
+  const [bankTypeTouched, setBankTypeTouched] = useState(false)
   // Предметы репетитора для ИИ-генерации: там нужно НАЗВАНИЕ предмета, а не банк,
   // поэтому список плоский — «Математика», «Информатика».
   const genSubjects = BANK_SUBJECTS
@@ -639,6 +646,22 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
         .map(String)
       setTitle(`${bank.subjectLabel(bankType)}: № ${(hasModule ? ["1–5", ...nums] : nums).join(", ")}`)
     }
+  }
+
+  // Смена предмета: своя (репетитор выбрал в списке) или подставленная учеником.
+  // Собранное по прежнему предмету не переносим — номера у предметов разные.
+  function chooseBankType(next, byTutor = true) {
+    setBankType(next)
+    if (byTutor) setBankTypeTouched(true)
+    resetBankPick(); setBankTasks([]); setBankSkipped([]); setBankError("")
+    if (bank) loadBankList(bank, next)
+  }
+
+  function chooseStudent(id) {
+    setStudentId(id)
+    if (bankTypeTouched) return
+    const next = typeForStudent(studentById(id), bankGroups)
+    if (next && next !== bankType) chooseBankType(next, false)
   }
 
   function handleAssemble() {
@@ -958,7 +981,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
           <div className="flex flex-col gap-4">
             <div>
               <label className="text-sm text-gray-500 mb-1.5 block">Кому задать</label>
-              <select value={studentId} onChange={(e) => setStudentId(e.target.value)}
+              <select value={studentId} onChange={(e) => chooseStudent(e.target.value)}
                 aria-label="Ученик" className="input-glass">
                 <option value="">Выберите ученика</option>
                 {students.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -1086,11 +1109,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                           <label className="text-xs text-gray-500 mb-1 block">Предмет</label>
                           <select
                             value={bankType}
-                            onChange={(e) => {
-                              setBankType(e.target.value)
-                              resetBankPick(); setBankTasks([]); setBankSkipped([])
-                              loadBankList(bank, e.target.value)
-                            }}
+                            onChange={(e) => chooseBankType(e.target.value)}
                             className="input-glass"
                           >
                             {bankGroups.map((g) => (
