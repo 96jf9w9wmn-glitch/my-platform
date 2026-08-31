@@ -33,7 +33,7 @@
 import { createClient } from "@supabase/supabase-js"
 import { admin, tutorFromRequest } from "./plan-gate.js"
 import { clientIp } from "./generate-hw.js"
-import { isLessonConducted, parsePaymentDate, plural } from "../src/utils.js"
+import { isLessonPast, isLessonConducted, LESSON_EXCUSED, parsePaymentDate, plural } from "../src/utils.js"
 import { can } from "../src/plans.js"
 
 const API = "https://api.telegram.org"
@@ -110,7 +110,7 @@ export function mskToday() {
 }
 
 // Момент «сейчас» московскими компонентами, но в локальной зоне процесса —
-// чтобы сравнивать его с уроками, которые isLessonConducted() тоже собирает
+// чтобы сравнивать его с уроками, которые isLessonPast() тоже собирает
 // локальным конструктором из "YYYY-MM-DD" + "HH:MM".
 export function mskNow() {
   const p = new Intl.DateTimeFormat("en-CA", {
@@ -220,7 +220,9 @@ export function lessonsBetween(students, fromIso, toIso) {
 function nextLesson(students, fromIso) {
   const all = lessonsBetween(students, fromIso, shiftDay(fromIso, 60))
   const now = mskNow()
-  return all.find((l) => !isLessonConducted(l, now)) || null
+  // Past, а не Conducted: занятие, снятое со счёта, уже прошло — иначе бот
+  // назвал бы «следующим» то, которого не было.
+  return all.find((l) => !isLessonPast(l, now)) || null
 }
 
 // Долг ученика считается так же, как на странице «Финансы»: проведённые уроки
@@ -258,11 +260,15 @@ export async function viewToday(db, link) {
     }
   }
 
-  const sum = items.reduce((s, l) => s + (l.student.lesson_price || 0), 0)
+  // Снятое со счёта занятие не выдаём за проведённое и его денег не считаем:
+  // бот — второй вход в тот же кабинет, цифры обязаны совпадать.
+  const sum = items.reduce((s, l) => s + (isLessonConducted(l, now) || !isLessonPast(l, now)
+    ? (l.student.lesson_price || 0) : 0), 0)
   const lines = items.map((l) => {
-    const done = isLessonConducted(l, now)
-    return `${done ? "✅" : "🕐"} <b>${esc(l.time || "—")}</b> · ${esc(studentName(l.student.name, link.full_names))}` +
-      ` · ${l.duration || 60} мин`
+    const off = l.status === LESSON_EXCUSED
+    const done = isLessonPast(l, now)
+    return `${off ? "🚫" : done ? "✅" : "🕐"} <b>${esc(l.time || "—")}</b> · ${esc(studentName(l.student.name, link.full_names))}` +
+      ` · ${l.duration || 60} мин${off ? " · не в счёт" : ""}`
   })
 
   return {
@@ -405,7 +411,7 @@ export async function viewStudent(db, link, studentId) {
   const lessons = s.lessons || []
   const conducted = lessons.filter((l) => isLessonConducted(l, now))
   const upcoming = lessons
-    .filter((l) => !isLessonConducted(l, now) && l.date >= mskToday())
+    .filter((l) => !isLessonPast(l, now) && l.date >= mskToday())
     .sort((a, b) => a.date.localeCompare(b.date) || String(a.time || "").localeCompare(String(b.time || "")))
   const mine = homework.filter((h) => String(h.student_id) === String(s.id))
   const toCheck = mine.filter((h) => h.status === "submitted").length
@@ -456,7 +462,7 @@ export async function viewMoney(db, link) {
     return `${e.getFullYear()}-${String(e.getMonth() + 1).padStart(2, "0")}-${String(e.getDate()).padStart(2, "0")}`
   })()
   const ahead = lessonsBetween(students, mskToday(), monthEndIso)
-    .filter((l) => !isLessonConducted(l, now))
+    .filter((l) => !isLessonPast(l, now))
     .reduce((sum, l) => sum + (l.student.lesson_price || 0), 0)
 
   const parts = [

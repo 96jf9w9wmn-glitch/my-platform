@@ -7,7 +7,11 @@ export default function Collapse({ open, children }) {
         open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
       }`}
     >
-      <div className="overflow-hidden min-h-0">{children}</div>
+      {/* Пиксель запаса с компенсирующим отрицательным полем — как в <Reveal>:
+          кольца (ring-*) и тени рисуются СНАРУЖИ элемента, а обрезка содержимого
+          срезала их по бокам — у поля ввода в фокусе пропадала обводка слева и
+          справа. Положение содержимого не меняется. */}
+      <div className="overflow-hidden min-h-0 p-px -m-px">{children}</div>
     </div>
   )
 }

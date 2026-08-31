@@ -609,7 +609,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
                         className="no-press self-start inline-flex items-center gap-1 text-[11px] text-blue-600 hover:opacity-70 active:scale-95 transition-all mb-1">
                         <Icon name="maximize" size={11} />Посмотреть целиком
                       </button>
-                      <div className="flex flex-col gap-1.5 max-h-72 overflow-y-auto">
+                      <div className="flex flex-col gap-1.5 max-h-72 overflow-y-auto px-px -mx-px">
                         {bankPicked.map((t) => (
                           <div key={t.number} className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 px-2.5 py-2 flex items-start gap-2.5">
                             <span className="shrink-0 w-5 h-5 rounded-full bg-blue-500/12 text-blue-600 dark:text-blue-400 text-[10px] font-semibold flex items-center justify-center">

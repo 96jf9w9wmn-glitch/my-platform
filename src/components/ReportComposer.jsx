@@ -3,6 +3,7 @@ import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import { useClosing } from "../useClosing"
 import Icon from "../components/Icon"
+import Reveal from "./Reveal"
 import { generateReport, sendReport, worthSending } from "../reportData"
 import { reportSheetHtml } from "../pages/reportSheet"
 
@@ -202,7 +203,9 @@ function ReportScreen({
           <>
             <SheetPreview html={reportSheetHtml(sheetParams)} />
 
-            {editing && (
+            {/* Правка не только раскрывается, но и убирается плавно: «Скрыть
+                правку» снимала оба поля в тот же кадр, и лист под ними прыгал. */}
+            <Reveal value={editing}>{() => (
               <div className="flex flex-col gap-3">
                 <div>
                   <label className="text-xs text-gray-400 mb-1 block">Коротко о главном</label>
@@ -223,7 +226,7 @@ function ReportScreen({
                   />
                 </div>
               </div>
-            )}
+            )}</Reveal>
 
             <div className="flex gap-2">
               <button onClick={onSend} disabled={saving} className="press-fill flex-1 h-11 rounded-full text-white text-sm font-semibold bg-gradient-to-r from-blue-500 to-blue-600 disabled:opacity-50">

@@ -3,11 +3,12 @@ import { supabase } from "../supabase"
 import { signBoardScene } from "../storageUrl"
 import Icon from "./Icon"
 import ConfirmModal from "./ConfirmModal"
-import { useClosing } from "../useClosing"
+import { useClosing, CLOSE_MS } from "../useClosing"
 import { renderScene, preloadSceneImages, isDarkColor } from "./boardPaint"
 
-// Полноэкранный слой гаснет дольше модалки — в паре с .screen-fade.is-closing
-const SCREEN_CLOSE_MS = 240
+// Полноэкранный слой уходит той же «походкой», что и всё остальное
+// (CLOSE_MS ↔ --leave-ms) — в паре с .screen-fade.is-closing в index.css
+const SCREEN_CLOSE_MS = CLOSE_MS
 
 // История досок по ученику: что разбирали на прошлых занятиях. Живая доска одна
 // (таблица boards), а сюда при закрытии откладывается снимок сцены за день —

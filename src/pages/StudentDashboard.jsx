@@ -24,7 +24,7 @@ import TaskAttachments from "../components/TaskAttachments"
 import DateTile from "../components/DateTile"
 import { TILE_TINTS, dueTintKey } from "../dueTint"
 import { notifyTutor } from "../telegramNotify"
-import { useClosing } from "../useClosing"
+import { useClosing, POPUP_OUT_MS } from "../useClosing"
 import { isMoveNotification, revealBlock, MOVE_ANCHOR_STUDENT } from "../notifTarget"
 import RescheduleModal from "../components/RescheduleModal"
 import {
@@ -1353,7 +1353,7 @@ function StudentNotificationBell({ userId, onNavigate }) {
   function closePanel() {
     clearTimeout(closeTimer.current)
     setIsClosing(true)
-    closeTimer.current = setTimeout(() => { setOpen(false); setIsClosing(false) }, 200)
+    closeTimer.current = setTimeout(() => { setOpen(false); setIsClosing(false) }, POPUP_OUT_MS)
   }
 
   function handleOpen(e) {

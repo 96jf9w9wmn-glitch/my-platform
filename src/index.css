@@ -586,16 +586,20 @@ body::before {
   animation: dialog-fade 0.2s ease-out both;
 }
 
-/* Popup bubble close */
+/* Уход попапа (уведомления, меню доски). Приходит он пружиной, а уходит тем же
+   спокойным затуханием, что и всё остальное: подскок на 40% и падение до
+   scale .84 читались как захлопывание. */
 @keyframes popup-bubble-out {
-  0%   { opacity: 1; transform: scale(1) translateY(0); }
-  40%  { transform: scale(1.01) translateY(1px); }
-  100% { opacity: 0; transform: scale(0.84) translateY(-10px); }
+  from { opacity: 1; transform: scale(1) translateY(0); }
+  to   { opacity: 0; transform: scale(0.96) translateY(-6px); }
 }
 .popup-bubble-out {
   transform-origin: top right;
-  animation: popup-bubble-out 0.2s cubic-bezier(0.4, 0, 1, 1) both;
+  animation: popup-bubble-out var(--leave-ms) var(--leave-ease) both;
   pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .popup-bubble-out { animation-duration: 0.01s; }
 }
 
 /* ── Animations ── */
@@ -639,23 +643,47 @@ body::before {
 
 /* Закрытие. Раньше модалка появлялась с анимацией, а исчезала мгновенно —
    размонтировалась вместе с нажатием. Теперь на время ухода вешается
-   .is-closing (см. src/useClosing.js), и только потом компонент снимается. */
+   .is-closing (см. src/useClosing.js), и только потом компонент снимается.
+
+   ЕДИНАЯ «походка» ухода для всего сайта — та же, что у доски: спокойное
+   затухание 0.24s мягкой кривой. Раньше уход шёл за 0.18s кривой
+   cubic-bezier(.4,0,1,1) — это ease-in: блок сперва почти стоял, а последние
+   кадры пролетал рывком, и закрытие читалось как щелчок. Доска гасла ровно и
+   потому нравилась. Держим обе величины переменными, чтобы у крестика в любом
+   углу сайта был один характер, а не десять похожих. Длительность обязана
+   совпадать с CLOSE_MS в src/useClosing.js: по нему снимается компонент. */
+:root {
+  --leave-ms: 0.24s;
+  --leave-ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+/* Смещение и уменьшение — едва заметные: ведёт затухание, как на доске, а
+   transform лишь придаёт уходу направление (было scale .96 / 8px — карточка
+   заметно «схлопывалась»). */
 @keyframes modal-leave {
   from { opacity: 1; transform: scale(1) translateY(0); }
-  to   { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to   { opacity: 0; transform: scale(0.985) translateY(6px); }
 }
 @keyframes sheet-leave {
   from { opacity: 1; transform: translateY(0); }
-  to   { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 0; transform: translateY(18px); }
+}
+/* У затемнения СВОИ кадры, а не `overlay-fade … reverse`. Имя анимации то же,
+   что у появления, — браузер не запускает её заново, а лишь меняет свойства
+   уже доигравшей, поэтому фон под модалкой пропадал мгновенно: карточка
+   красиво уплывала по пустому экрану. Те же грабли раньше нашлись у
+   .screen-fade (см. ниже) — здесь они оставались. */
+@keyframes overlay-fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
 }
 .glass-modal.is-closing {
-  animation: modal-leave 0.18s cubic-bezier(0.4, 0, 1, 1) both;
+  animation: modal-leave var(--leave-ms) var(--leave-ease) both;
 }
 .glass-modal.sheet-modal.is-closing {
-  animation: sheet-leave 0.18s cubic-bezier(0.4, 0, 1, 1) both;
+  animation: sheet-leave var(--leave-ms) var(--leave-ease) both;
 }
 .glass-overlay.is-closing {
-  animation: overlay-fade 0.18s ease both reverse;
+  animation: overlay-fade-out var(--leave-ms) var(--leave-ease) both;
 }
 @media (prefers-reduced-motion: reduce) {
   .glass-modal.is-closing,
@@ -683,7 +711,7 @@ body::before {
   to   { opacity: 0; }
 }
 .screen-fade.is-closing {
-  animation: screen-exit 0.24s ease both;
+  animation: screen-exit var(--leave-ms) var(--leave-ease) both;
   pointer-events: none;
 }
 
@@ -694,7 +722,7 @@ body::before {
   to   { opacity: 0; }
 }
 .dialog-fade.is-closing {
-  animation: dialog-fade-out 0.18s ease both;
+  animation: dialog-fade-out var(--leave-ms) var(--leave-ease) both;
 }
 
 /* Блок, раскрытый под карточкой (разбор варианта), уезжает вниз, а не гаснет
@@ -702,10 +730,10 @@ body::before {
    раньше, чем ряд схлопнется. */
 @keyframes slide-down-out {
   from { opacity: 1; transform: translateY(0) scale(1); }
-  to   { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to   { opacity: 0; transform: translateY(8px) scale(0.99); }
 }
 .slide-up.is-closing {
-  animation: slide-down-out 0.18s cubic-bezier(0.4, 0, 1, 1) both;
+  animation: slide-down-out var(--leave-ms) var(--leave-ease) both;
   pointer-events: none;
 }
 
@@ -737,7 +765,7 @@ body::before {
   animation: reveal-in 0.26s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
 }
 .reveal.is-closing {
-  animation: reveal-out 0.24s cubic-bezier(0.4, 0, 1, 1) both;
+  animation: reveal-out var(--leave-ms) var(--leave-ease) both;
   pointer-events: none;
 }
 @media (prefers-reduced-motion: reduce) {
@@ -750,15 +778,15 @@ body::before {
    гаснет слайдом (.slide-up.is-closing), а эта обёртка в те же кадры
    сворачивает ряд через grid-template-rows (приём .reveal) — без неё панель
    растворялась на месте, а карточки ниже стояли и прыгали вверх одним кадром
-   после её снятия. Уход = 0.18s, как CLOSE_MS в useClosing.js: обе анимации
-   заканчиваются к моменту размонтирования. */
+   после её снятия. Уход = --leave-ms, как CLOSE_MS в useClosing.js: обе
+   анимации заканчиваются к моменту размонтирования. */
 .detail-row {
   display: grid;
   grid-template-rows: 1fr;
   animation: reveal-in 0.26s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
 }
 .detail-row.is-closing {
-  animation: reveal-out 0.18s cubic-bezier(0.4, 0, 1, 1) both;
+  animation: reveal-out var(--leave-ms) var(--leave-ease) both;
   pointer-events: none;
 }
 @media (prefers-reduced-motion: reduce) {

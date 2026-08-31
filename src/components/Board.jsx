@@ -3,7 +3,7 @@ import { supabase } from "../supabase"
 import { signBoardScene, signStorageUrl } from "../storageUrl"
 import Icon from "./Icon"
 import ConfirmModal from "./ConfirmModal"
-import { useClosing } from "../useClosing"
+import { useClosing, CLOSE_MS, POPUP_OUT_MS } from "../useClosing"
 import { recognizeShape } from "./boardSmartDraw"
 import {
   GRID, ENCLOSED_SHAPES, SHAPE_TOOLS, DASHABLE_SHAPES,
@@ -26,10 +26,10 @@ const HISTORY_MAX = 100      // шагов «отменить» держим с�
 // Копия штриха для истории: points — массив массивов, поверхностная копия его бы разделила
 const cloneStroke = (s) => s && { ...s, points: s.points.map((p) => p.slice()) }
 const SHEET_MAX_DIM = 4000   // лист с заданием: длинные условия не должны терять чёткость
-// Доска занимает весь экран, поэтому гаснет чуть дольше обычной модалки —
-// мгновенный уход такого слоя выглядит как щелчок. Держим в паре с длительностью
-// .screen-fade.is-closing в index.css: хук снимает доску, когда затухание кончилось.
-const BOARD_CLOSE_MS = 240
+// Затухание доски и стало общей «походкой» ухода для всего сайта: значение
+// живёт в CLOSE_MS (useClosing.js) и в --leave-ms (index.css), здесь только имя
+// для читаемости. Хук снимает доску, когда затухание кончилось.
+const BOARD_CLOSE_MS = CLOSE_MS
 const BG_LIGHT = "#ffffff", BG_DARK = "#1c1c1e"
 const BG_COLORS = ["#ffffff", "#f2f2f7", "#fdf6e3", "#1c1c1e", "#0f172a", "#123a2e"]
 
@@ -65,8 +65,6 @@ const q2 = (n) => Math.round(n * 100) / 100
 const q1 = (n) => Math.round(n * 10) / 10
 const packPoints = (pts) => pts.map((p) => (p[2] == null ? [q2(p[0]), q2(p[1])] : [q2(p[0]), q2(p[1]), q1(p[2])]))
 const DASH_STYLES = ["solid", "dashed", "dotted"]
-// Длительность анимации ухода попапа — синхронно с .popup-bubble-out в index.css
-const POPUP_OUT_MS = 200
 
 // Расстояние от точки до отрезка
 function distToSeg(px, py, ax, ay, bx, by) {
@@ -296,6 +294,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // Закрывающийся попап держим смонтированным, пока играет анимация ухода
   const [closingMenu, setClosingMenu] = useState(null)
   const closeTimer = useRef(null)
+  const shotTimer = useRef(null)   // уход предложения «вставить снимок»
   const beginClosing = (id) => {
     setClosingMenu(id)
     clearTimeout(closeTimer.current)
@@ -314,7 +313,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const menuAnim = (id) => (menu === id ? "popup-bubble" : "popup-bubble-out")
   const closeMenuRef = useRef(closeMenu)
   useEffect(() => { closeMenuRef.current = closeMenu })
-  useEffect(() => () => { clearTimeout(closeTimer.current); clearTimeout(bgSendTimer.current) }, [])
+  useEffect(() => () => { clearTimeout(closeTimer.current); clearTimeout(bgSendTimer.current); clearTimeout(shotTimer.current) }, [])
   const [bg, setBg] = useState("plain")      // plain | grid | dots — узор
   const [bgColor, setBgColor] = useState(theme === "dark" ? BG_DARK : BG_LIGHT) // цвет фона
   const [shapeTool, setShapeTool] = useState("rect") // последняя выбранная фигура
@@ -344,6 +343,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   //   "auto" — разрешение есть, доска сама замечает скриншот и предлагает вставить.
   const [clipMode, setClipMode] = useState("off")
   const [clipShot, setClipShot] = useState(null)   // {blob, url, key} — что предлагаем
+  const [shotOut, setShotOut] = useState(false)   // предложение уходит: держим кадр анимации
   const clipSkip = useRef(null)                    // ключ снимка, от которого отказались
   // Цвет и обводка нужны только тем инструментам, которые оставляют линию
   const stylingTool = tool === "pen" || SHAPE_TOOLS.has(tool)
@@ -1424,13 +1424,20 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     const ext = blob.type === "image/png" ? "png" : "jpg"
     await addImageAt(new File([blob], `clipboard.${ext}`, { type: blob.type }), p[0], p[1])
   }
+  // Предложение уходит с той же анимацией, что и остальные попапы: раньше оно
+  // пропадало в тот же кадр, что и нажатие на крестик. Снимок держим
+  // смонтированным, пока играет .popup-bubble-out, и только потом снимаем
+  // (адрес превью освобождает эффект по смене clipShot).
   function dropShot(skip = false) {
-    setClipShot((cur) => {
-      if (!cur) return null
-      if (skip) clipSkip.current = cur.key
-      URL.revokeObjectURL(cur.url)
-      return null
-    })
+    if (!clipShot || shotOut) return
+    if (skip) clipSkip.current = clipShot.key
+    setShotOut(true)
+    clearTimeout(shotTimer.current)
+    shotTimer.current = setTimeout(() => {
+      shotTimer.current = null
+      setShotOut(false)
+      setClipShot(null)
+    }, POPUP_OUT_MS)
   }
   async function insertShot() {
     const shot = clipShot
@@ -1610,6 +1617,11 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   }
   // Показать предложение, если это не тот же снимок, что уже показан или отвергнут
   function offerShot(shot) {
+    // Новый снимок перебивает уходящий: иначе отложенный setClipShot(null)
+    // снял бы только что показанное предложение.
+    clearTimeout(shotTimer.current)
+    shotTimer.current = null
+    setShotOut(false)
     setClipShot((cur) => {
       if (cur && cur.key === shot.key) return cur
       if (clipSkip.current === shot.key) return cur
@@ -2043,7 +2055,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         <div className="absolute bottom-2 big:bottom-4 left-0 right-0 flex flex-col items-center gap-2 px-2 big:px-3 pointer-events-none">
         {/* Заметили снимок в буфере — предлагаем положить его на доску одним нажатием */}
         {clipShot && (
-          <div className="flex items-center gap-2.5 pl-2 pr-1.5 py-1.5 rounded-2xl shadow-xl popup-bubble pointer-events-auto max-w-full"
+          <div className={`flex items-center gap-2.5 pl-2 pr-1.5 py-1.5 rounded-2xl shadow-xl max-w-full ${
+            shotOut ? "popup-bubble-out" : "popup-bubble pointer-events-auto"}`}
             style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
             <button onClick={insertShot} className="press-tap flex items-center gap-2.5 min-w-0 rounded-xl pr-1">
               <img src={clipShot.url} alt="" className="w-9 h-9 rounded-lg object-cover shrink-0"

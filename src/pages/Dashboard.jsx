@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import Icon from "../components/Icon"
 import { usePlan } from "../subscription"
 import useCountUp from "../components/useCountUp"
-import { isLessonConducted, getInitials, timeUntilLesson } from "../utils"
+import { isLessonPast, isLessonConducted, getInitials, timeUntilLesson } from "../utils"
 import { pendingMoveRequests, formatLessonShort, MOVE_BY_STUDENT } from "../lessonMove"
 import { useAutoReports } from "../reportAuto"
 
@@ -71,11 +71,12 @@ function Dashboard({ students, setActivePage, onOpenBoard }) {
   // Next upcoming lesson.
   // Начавшееся занятие остаётся в карточке до конца: пока оно идёт, репетитор
   // смотрит на него, а не на следующего ученика. Поэтому отбор — по времени
-  // окончания (isLessonConducted), а не по времени начала.
+  // окончания (isLessonPast), а не по времени начала. Именно Past, а не
+  // Conducted: занятие, снятое со счёта, уже прошло и в «сегодня» не всплывает.
   const nextLesson = (() => {
     const todayUpcoming = students.flatMap((s) =>
       (s.lessons || [])
-        .filter((l) => l.date === todayStr && !isLessonConducted(l, now))
+        .filter((l) => l.date === todayStr && !isLessonPast(l, now))
         .map((l) => ({ ...l, studentName: s.name, studentId: s.id, avatar: s.avatar, boardUrl: s.boardUrl, callUrl: s.callUrl, isToday: true, inProgress: l.time <= currentTime }))
     ).sort((a, b) => a.time.localeCompare(b.time))
     if (todayUpcoming.length > 0) return todayUpcoming[0]

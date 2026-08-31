@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 
 // Плавное закрытие модалок. Появление рисует CSS (.glass-modal → modal-enter),
 // а исчезновение так не сделать: компонент размонтируется в момент нажатия и
-// анимации проигрываться уже негде. Хук держит модалку лишние 180 мс с классом
+// анимации проигрываться уже негде. Хук держит модалку лишние CLOSE_MS мс с классом
 // .is-closing и только потом зовёт onClose.
 //
 // Использование:
@@ -10,7 +10,17 @@ import { useCallback, useEffect, useRef, useState } from "react"
 //   <div className={`... glass-overlay ${closing ? "is-closing" : ""}`} onClick={close}>
 //     <div className={`glass-modal ${closing ? "is-closing" : ""}`}>…
 // и все места, где раньше вызывался onClose(), зовут close().
-export const CLOSE_MS = 180
+// 240 мс с мягкой кривой — «походка» ухода доски, которую перенесли на весь
+// сайт (см. --leave-ms / --leave-ease в index.css). Прежние 180 мс с ease-in
+// давали щелчок: блок почти стоял, а последние кадры пролетал рывком.
+// Величина обязана совпадать с --leave-ms: по ней снимается компонент, и
+// более короткий таймер обрезал бы анимацию на полпути.
+export const CLOSE_MS = 240
+
+// Попапы (колокольчик уведомлений, меню на доске) уходят своей анимацией
+// (.popup-bubble-out), но по той же длительности — иначе у сайта было бы две
+// разные скорости закрытия.
+export const POPUP_OUT_MS = CLOSE_MS
 
 export function useClosing(onClose, ms = CLOSE_MS) {
   const [closing, setClosing] = useState(false)
@@ -33,7 +43,7 @@ export function useClosing(onClose, ms = CLOSE_MS) {
 
   // Отмена ухода. Нужна там, где закрытие можно «перебить»: например, разбор
   // варианта сворачивается, а по дороге открыли соседний — иначе отложенный
-  // onClose через 180 мс закрыл бы уже другой, только что открытый блок.
+  // onClose закрыл бы уже другой, только что открытый блок.
   const cancel = useCallback(() => {
     clearTimeout(timer.current)
     timer.current = null

@@ -917,11 +917,63 @@ export function parsePaymentDate(dateStr) {
   return new Date(dateStr)
 }
 
-export function isLessonConducted(lesson, now = new Date()) {
+// Что случилось с занятием, на которое ученик не пришёл. Пусто у обычного
+// занятия: его судьбу определяет одно только время.
+//   LESSON_MISSED  — не пришёл, но занятие идёт в счёт (репетитор оставляет
+//                    оплату себе); на счёт это не влияет — прошедшее занятие
+//                    и так считается проведённым, пометка лишь фиксирует, что
+//                    решение принято, и объясняет её всем сторонам;
+//   LESSON_EXCUSED — не состоялось и в счёт не идёт: оплата не начисляется,
+//                    время возвращается ученику.
+// Репетиторы работают с пропусками по-разному, поэтому решение принимается по
+// каждому занятию и ВМОРАЖИВАЕТСЯ в него. Хранить вместо этого одно правило и
+// применять его на лету нельзя: долг нигде не лежит, он собирается из lessons
+// при каждом рендере — и смена правила задним числом переписала бы всю историю
+// денег, включая уже выставленные квитанции.
+export const LESSON_MISSED = "missed"
+export const LESSON_EXCUSED = "excused"
+
+// Проставить (или снять, передав null) пометку занятию. Ключ занятия — пара
+// «дата + время», как и у переноса (isSameLesson в lessonMove.js): своего id у
+// занятия нет, а индекс в массиве меняется от любой сортировки.
+export function setLessonStatus(lessons, target, status) {
+  const list = lessons || []
+  const found = list.some((l) => l.date === target?.date && l.time === target?.time)
+  // Занятие, которое живёт только легаси-датой (`lesson_dates`, без объекта в
+  // `lessons`), материализуется — иначе пометке негде храниться и нажатие
+  // молча ничего не делало бы. Так же поступает перенос (proposeMoveOnStudent).
+  if (!found) {
+    if (!status || !target?.date) return list
+    return [...list, { date: target.date, time: target.time, duration: target.duration || 60, status }]
+      .sort((a, b) => (a.date || "").localeCompare(b.date || "")
+        || (a.time || "").localeCompare(b.time || ""))
+  }
+  return list.map((l) => {
+    if (l.date !== target.date || l.time !== target.time) return l
+    const rest = { ...l }
+    delete rest.status
+    return status ? { ...rest, status } : rest
+  })
+}
+
+// Время занятия прошло. Это НЕ то же самое, что «проведено»: занятие, снятое
+// со счёта, остаётся в прошлом — его видно в архиве, и решение можно
+// переиграть. Везде, где нужен смысл «ещё впереди», отрицать надо именно эту
+// функцию, а не isLessonConducted (иначе снятое занятие всплывёт в
+// «ближайших» и в «следующем занятии» у бота).
+export function isLessonPast(lesson, now = new Date()) {
   if (!lesson.date) return false
   const [y, m, d] = lesson.date.split("-").map(Number)
   const [h, min] = (lesson.time || "00:00").split(":").map(Number)
   return new Date(y, m - 1, d, h, min + (lesson.duration || 60)) < now
+}
+
+// Проведено — значит, за него платят. На этой функции держатся долг,
+// квитанции, статистика и отчёт родителю, поэтому снятие со счёта достаточно
+// учесть здесь один раз.
+export function isLessonConducted(lesson, now = new Date()) {
+  if (lesson.status === LESSON_EXCUSED) return false
+  return isLessonPast(lesson, now)
 }
 
 export function getInitials(name) {

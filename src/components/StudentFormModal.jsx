@@ -8,7 +8,7 @@ import SegmentSwitch from "./SegmentSwitch"
 import WeeksPicker from "./WeeksPicker"
 import PhoneInput, { isValidPhoneNumber } from "react-phone-number-input"
 import "react-phone-number-input/style.css"
-import { plural, parseLocalDate, formatPhone, isLessonConducted } from "../utils"
+import { plural, parseLocalDate, formatPhone, isLessonPast } from "../utils"
 import { ConsentRow, ConsentLink } from "./ConsentChecks"
 import { logConsent } from "../consents"
 import { supabase } from "../supabase"
@@ -169,8 +169,10 @@ function StudentFormModal({ student, onClose, onSubmit, initialName, initialPhon
   const [{ pastLessons, futureLessons }] = useState(() => {
     const all = [...(student?.lessons || [])].sort(byDateTime)
     return {
-      pastLessons: all.filter((l) => isLessonConducted(l)),
-      futureLessons: all.filter((l) => !isLessonConducted(l)),
+      // По времени, а не по «проведено»: снятое со счёта занятие — тоже
+      // история, редактировать его здесь нечего.
+      pastLessons: all.filter((l) => isLessonPast(l)),
+      futureLessons: all.filter((l) => !isLessonPast(l)),
     }
   })
 

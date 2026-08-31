@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, lazy, Suspense } from "react"
 import { isMoveNotification, revealBlock, MOVE_ANCHOR_TUTOR } from "./notifTarget"
 import { dropdownPos } from "./dropdownPos"
+import { POPUP_OUT_MS } from "./useClosing"
 import { createPortal } from "react-dom"
 import { supabase, isPasswordRecovery, setAppToken } from "./supabase"
 import { signRows, permanentStorageUrl } from "./storageUrl"
@@ -169,7 +170,7 @@ function NotificationBell({ userId, onNavigate }) {
     closeTimer.current = setTimeout(() => {
       setOpen(false)
       setIsClosing(false)
-    }, 200)
+    }, POPUP_OUT_MS)
   }
 
   function handleOpen(e) {

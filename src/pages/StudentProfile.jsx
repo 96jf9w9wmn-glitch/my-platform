@@ -5,10 +5,13 @@ import MorphIcon from "../components/MorphIcon"
 import WeakTypes from "../components/WeakTypes"
 import BoardHistory from "../components/BoardHistory"
 import Collapse from "../components/Collapse"
+import Reveal from "../components/Reveal"
 import ReportComposer from "../components/ReportComposer"
-import { parseLocalDate, isLessonConducted, getInitials, formatPhone, contactHref, contactLabel } from "../utils"
+import { parseLocalDate, isLessonPast, isLessonConducted, setLessonStatus, getInitials, formatPhone, contactHref, contactLabel, LESSON_EXCUSED } from "../utils"
 import RescheduleModal from "../components/RescheduleModal"
 import StudentFormModal from "../components/StudentFormModal"
+import LessonStatusModal, { LessonStatusBadge } from "../components/LessonStatusModal"
+import { lessonStatusNotice } from "../lessonStatus"
 import {
   applyMoveToStudent, proposeMoveOnStudent, setMoveRequest, findSlotConflict,
   formatLessonWhen, formatLessonShort, MOVE_BY_TUTOR,
@@ -44,6 +47,8 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
   const [archiveOpen, setArchiveOpen] = useState(false)
   const [movingLesson, setMovingLesson] = useState(null)
+  // Занятие из архива, которому выбирают пометку «не состоялось».
+  const [statusFor, setStatusFor] = useState(null)
 
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 768)
@@ -127,6 +132,14 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
       `Занятие ${formatLessonWhen(lesson.date, lesson.time)} остаётся на прежнем месте.`)
   }
 
+  // Пометка «не состоялось» — та же, что в расписании: решение принимается по
+  // каждому занятию, потому что репетиторы работают с пропусками по-разному.
+  function applyStatus(lesson, status) {
+    onUpdate(student.id, { lessons: setLessonStatus(student.lessons || [], lesson, status) })
+    const [title, body] = lessonStatusNotice(status, lesson.date, lesson.time)
+    notifyStudent(title, body)
+  }
+
   function saveNote(origIdx) {
     const updatedLessons = (student.lessons || []).map((l, i) =>
       i === origIdx ? { ...l, note: noteDraft.trim() || undefined } : l
@@ -147,10 +160,14 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
     // а всё расписание целиком живёт в «Расписании».
     .slice(0, 3)
 
+  // Архив — по времени, а не по «проведено»: занятие, снятое со счёта, из
+  // истории не исчезает, иначе решение нельзя было бы переиграть.
   const past = (student.lessons || [])
     .map((l, origIdx) => ({ ...l, _origIdx: origIdx }))
-    .filter((l) => isLessonConducted(l))
+    .filter((l) => isLessonPast(l))
     .sort((a, b) => b.date.localeCompare(a.date))
+  // Проведённые — те, за которые платят.
+  const conducted = past.filter((l) => isLessonConducted(l))
 
   const initials = getInitials(student.name)
 
@@ -158,7 +175,7 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
     label: "Проведено",
     value: (
       <div className="flex items-end gap-1.5">
-        <div className="text-2xl font-medium">{past.length}</div>
+        <div className="text-2xl font-medium">{conducted.length}</div>
         <div className="text-xs text-gray-400 mb-0.5">из {(student.lessons || []).length}</div>
       </div>
     ),
@@ -174,9 +191,9 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
   })
   // Долг появляется, только когда есть с чего его считать: до первого
   // проведённого занятия платить не за что.
-  if (past.length > 0) {
+  if (conducted.length > 0) {
     const price = student.lessonPrice || 0
-    const debt = past.length * price - (student.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
+    const debt = conducted.length * price - (student.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
     statTiles.push({
       label: "Долг",
       // Без цены занятия долг посчитать не из чего: показывать «Оплачено» здесь — обман.
@@ -518,22 +535,36 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
             ) : (
               <div className={`grid gap-2 ${(editingNote !== null || isMobile) ? "grid-cols-1" : "grid-cols-2 xl:grid-cols-3"}`}>
           {past.map((l) => (
-            <div key={l._origIdx} className="flex flex-col py-2 px-3 glass-sm gap-1">
+            <div key={l._origIdx} className={`flex flex-col py-2 px-3 glass-sm gap-1 ${l.status === LESSON_EXCUSED ? "opacity-70" : ""}`}>
               <div className="flex justify-between items-start gap-2">
-                <div>
-                  <div className="text-sm">
+                <div className="min-w-0">
+                  <div className="text-sm flex items-center gap-1.5 flex-wrap">
                     {parseLocalDate(l.date).toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" })}
+                    <LessonStatusBadge status={l.status} />
                   </div>
                   <div className="text-xs text-gray-400">{l.time} · {l.duration} мин</div>
                 </div>
-                {l.note && editingNote !== l._origIdx && (
+                {/* Обе иконки — одной группой у правого края: врозь justify-between
+                    растаскивал их по разным углам, и «не состоялось» оказывалась
+                    посреди карточки только у занятий с заметкой. */}
+                <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
                   <button
-                    className="no-press text-blue-400 hover:text-blue-600 transition-colors mt-0.5 flex-shrink-0"
-                    onClick={() => { setEditingNote(l._origIdx); setNoteDraft(l.note || "") }}
+                    onClick={() => setStatusFor({ date: l.date, time: l.time, duration: l.duration, status: l.status })}
+                    aria-label="Занятие не состоялось"
+                    title="Не состоялось"
+                    className={`no-press transition-colors ${l.status ? "text-amber-500 hover:text-amber-600" : "text-gray-300 dark:text-white/25 hover:text-amber-500"}`}
                   >
-                    <Icon name="clipboard" size={15} />
+                    <Icon name="user-x" size={15} />
                   </button>
-                )}
+                  {l.note && editingNote !== l._origIdx && (
+                    <button
+                      className="no-press text-blue-400 hover:text-blue-600 transition-colors"
+                      onClick={() => { setEditingNote(l._origIdx); setNoteDraft(l.note || "") }}
+                    >
+                      <Icon name="clipboard" size={15} />
+                    </button>
+                  )}
+                </div>
               </div>
               {l.note && editingNote !== l._origIdx && (
                 <div className="text-xs text-gray-500 leading-relaxed">{l.note}</div>
@@ -548,7 +579,12 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
                   + заметка
                 </button>
               )}
-              {editingNote === l._origIdx && (
+              {/* Поле заметки не только появляется, но и УХОДИТ плавно: «Отмена»
+                  и «Сохранить» раньше снимали его в тот же кадр, и строка
+                  занятия дёргалась. Значение — сам индекс, а не флаг: у первого
+                  занятия он 0, и `open` в Reveal считает пустыми только
+                  null/undefined/false/"" — ноль остаётся открытым. */}
+              <Reveal value={editingNote === l._origIdx ? l._origIdx : null}>{() => (
                 <div className="mt-1">
                   <textarea
                     value={noteDraft}
@@ -573,7 +609,7 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
                     </button>
                   </div>
                 </div>
-              )}
+              )}</Reveal>
             </div>
           ))}
               </div>
@@ -587,6 +623,15 @@ function StudentProfile({ student, onBack, onUpdate, onOpenBoard }) {
           student={student}
           onClose={() => setShowEdit(false)}
           onSubmit={handleSave}
+        />
+      )}
+
+      {statusFor && (
+        <LessonStatusModal
+          lesson={statusFor}
+          who={student.name}
+          onPick={(status) => applyStatus(statusFor, status)}
+          onClose={() => setStatusFor(null)}
         />
       )}
 

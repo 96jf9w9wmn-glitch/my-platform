@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react"
 import { useClosing } from "../useClosing"
+import Reveal from "./Reveal"
 import { createPortal } from "react-dom"
 import Icon from "./Icon"
 import MorphIcon from "./MorphIcon"
@@ -283,9 +284,10 @@ export default function BoardTaskModal({ dark = false, roomId = null, tutorSubje
                   className="press-tap text-xs text-gray-500 hover:text-gray-700 underline decoration-dotted underline-offset-4">
                   {showAnswer ? "Скрыть ответ" : "Показать ответ"}
                 </button>
-                {showAnswer && (
-                  <span className="text-xs text-gray-600 font-mono truncate">{String(task.answer ?? "—")}</span>
-                )}
+                {/* Ответ убирается тем же плавным движением, что и появляется */}
+                <Reveal value={showAnswer} className="min-w-0">{() => (
+                  <span className="block text-xs text-gray-600 font-mono truncate">{String(task.answer ?? "—")}</span>
+                )}</Reveal>
               </div>
 
               {attachments.length > 0 && (
