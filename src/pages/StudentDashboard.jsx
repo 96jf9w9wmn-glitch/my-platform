@@ -553,8 +553,27 @@ function solutionMapOf(files) {
   return out
 }
 
+// Камера есть только на телефоне и планшете: на компьютере `capture` открывает
+// тот же выбор файла, и кнопка «Камера» обещает то, чего не будет. Смотрим не
+// на ширину окна (её меняет узкое окно на ноутбуке), а на сам ввод: грубый
+// указатель без наведения — это тач-устройство со встроенной камерой.
+const TOUCH_MQ = "(pointer: coarse) and (hover: none)"
+
+function useHasCamera() {
+  const [touch, setTouch] = useState(() => window.matchMedia?.(TOUCH_MQ).matches ?? false)
+  useEffect(() => {
+    const mq = window.matchMedia?.(TOUCH_MQ)
+    if (!mq) return
+    const on = () => setTouch(mq.matches)
+    mq.addEventListener("change", on)
+    return () => mq.removeEventListener("change", on)
+  }, [])
+  return touch
+}
+
 function HwSolutionUpload({ hwId, index, existingUrl, onUploaded }) {
   const [uploading, setUploading] = useState(false)
+  const hasCamera = useHasCamera()
   const cameraRef = useRef(null)
   const fileRef = useRef(null)
 
@@ -581,7 +600,9 @@ function HwSolutionUpload({ hwId, index, existingUrl, onUploaded }) {
 
   return (
     <div className="flex flex-col gap-1.5">
-      <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
+      {hasCamera && (
+        <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
+      )}
       <input ref={fileRef} type="file" accept="image/*,.pdf" className="hidden" onChange={handleFile} />
       {existingUrl ? (
         <div className="flex items-center gap-3 rounded-xl px-3 py-2 ring-1 ring-green-500/25">
@@ -597,13 +618,18 @@ function HwSolutionUpload({ hwId, index, existingUrl, onUploaded }) {
         </div>
       ) : (
         <div className="flex gap-2">
-          <button onClick={() => cameraRef.current.click()} disabled={uploading}
-            className="press-fill flex-1 flex items-center justify-center gap-1.5 border border-dashed border-blue-200 dark:border-blue-400/30 rounded-xl py-2 text-blue-600 dark:text-blue-300 text-xs font-medium disabled:opacity-50">
-            <Icon name="camera" size={14} />{uploading ? "Загружаем..." : "Камера"}
-          </button>
+          {hasCamera && (
+            <button onClick={() => cameraRef.current.click()} disabled={uploading}
+              className="press-fill flex-1 flex items-center justify-center gap-1.5 border border-dashed border-blue-200 dark:border-blue-400/30 rounded-xl py-2 text-blue-600 dark:text-blue-300 text-xs font-medium disabled:opacity-50">
+              <Icon name="camera" size={14} />{uploading ? "Загружаем..." : "Камера"}
+            </button>
+          )}
           <button onClick={() => fileRef.current.click()} disabled={uploading}
             className="press-fill flex-1 flex items-center justify-center gap-1.5 border border-dashed border-gray-200 dark:border-white/15 rounded-xl py-2 text-gray-500 text-xs font-medium disabled:opacity-50">
-            <Icon name="paperclip" size={14} />Файл
+            <Icon name="paperclip" size={14} />
+            {/* На компьютере кнопка одна, и «Файл» рядом с пустым местом ничего
+                не объясняет — подписываем действием целиком. */}
+            {hasCamera ? "Файл" : uploading ? "Загружаем..." : "Прикрепить фото решения"}
           </button>
         </div>
       )}
@@ -831,6 +857,12 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten })
   const isMcq = Array.isArray(hw.test_options) && hw.test_options.length > 0
   const requireSolution = !!hw.require_solution && hasTest
   const solutionCount = Object.keys(solutionFiles).length
+  // На компьютере кнопки «Камера» нет — подсказки не должны звать к тому,
+  // чего ученик на экране не видит.
+  const hasCamera = useHasCamera()
+  const solutionHint = hasCamera
+    ? "Прикрепи фото решения — кнопки «Камера» и «Файл» стоят под каждым заданием."
+    : "Прикрепи фото решения — кнопка «Прикрепить фото решения» стоит под каждым заданием."
   // Пока ученик решает тест, задания стоят рядом со своими полями ответа, и
   // общего списка условий сверху в этот момент нет: иначе каждое условие было
   // бы напечатано дважды.
@@ -903,7 +935,7 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten })
   // прикреплять фото не к чему.
   async function handleSubmitWritten() {
     if (!solutionCount) {
-      setSubmitError("Прикрепи фото решения — кнопки «Камера» и «Файл» стоят под каждым заданием.")
+      setSubmitError(solutionHint)
       return
     }
     setSubmitError("")
@@ -918,7 +950,7 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten })
       return
     }
     if (requireSolution && !solutionCount) {
-      setSubmitError("Прикрепи фото решения — кнопки «Камера» и «Файл» стоят под каждым заданием.")
+      setSubmitError(solutionHint)
       return
     }
     setSubmitError("")
@@ -1112,8 +1144,8 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten })
 
           {requireSolution && (
             <div className="text-xs text-gray-500 mb-3 flex items-start gap-1.5">
-              <Icon name="camera" size={12} className="mt-0.5 flex-shrink-0" />
-              Решение записывается на листе: сфотографируй его к тому заданию, которое решал, — репетитор проверит ход решения, а не только ответ.
+              <Icon name={hasCamera ? "camera" : "paperclip"} size={12} className="mt-0.5 flex-shrink-0" />
+              Решение записывается на листе: {hasCamera ? "сфотографируй его" : "прикрепи его фотографию"} к тому заданию, которое решал, — репетитор проверит ход решения, а не только ответ.
             </div>
           )}
           {submitError && <div className="text-sm text-red-500 mb-2 text-center">{submitError}</div>}
@@ -1198,7 +1230,7 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten })
             <>
               <h3 className="text-base font-medium mb-1">Реши работу — прикрепи решение</h3>
               <p className="text-xs text-gray-500 mb-4">
-                Фотографируй решение к тому заданию, которое решал: репетитор проверит ход решения, а не только ответ.
+                {hasCamera ? "Фотографируй решение" : "Прикрепляй фотографию решения"} к тому заданию, которое решал: репетитор проверит ход решения, а не только ответ.
               </p>
 
               <div className="flex flex-col gap-2.5 mb-4">
