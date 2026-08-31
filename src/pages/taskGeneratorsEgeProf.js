@@ -2015,10 +2015,10 @@ const ptsWord = (n) => `${NUMW[n]} точек`
 // ── Рендер волнистого графика на координатной сетке ─────────────────────────
 // fn — кривая; marks — [{x,label}] штрихи-точки на оси; tangent — {k,x0,y0};
 // shade — {a,b} закрасить между кривой и осью; tickXvals — подписи делений оси x.
-function wave8Svg({ gx0, gx1, gy0, gy1, fn, xa, xb, label = null, marks = [], markBelow = true,
+function wave8Svg({ gx0, gx1, gy0, gy1, fn, xa, xb, label = null, marks = [], markBelow = true, markItalic = true,
   dashX = [], shade = null, tangent = null, dots = [], openEnds = true, showUnit = true, tickXvals = null,
-  guides = [], showUnitX = null, showUnitY = null }) {
-  const cell = 22, m = 16, axOv = 13 // axOv — вынос оси x за крайние точки (px): стрелка и открытые концы не впритык
+  guides = [], showUnitX = null, showUnitY = null, cell = 22, unitYRight = false }) {
+  const m = 16, axOv = 13 // axOv — вынос оси x за крайние точки (px): стрелка и открытые концы не впритык
   const padX = m + cell              // +1 клетка-поле слева/справа: сетка обрамляет вынос оси, а не пустое поле
   const W = 2 * padX + (gx1 - gx0) * cell, H = 2 * m + (gy1 - gy0) * cell
   const X = (u) => padX + (u - gx0) * cell
@@ -2055,7 +2055,8 @@ function wave8Svg({ gx0, gx1, gy0, gy1, fn, xa, xb, label = null, marks = [], ma
   g += `<text x="${X(0) - 5}" y="${Y(0) + 16}" ${HALO} font-size="12" font-weight="bold" fill="${G_AX}" text-anchor="end">0</text>`
   const unitY = showUnitY === null ? showUnit : showUnitY
   const unitX = showUnitX === null ? showUnit : showUnitX
-  if (unitY && gy0 <= 1 && gy1 >= 1) g += `<text x="${X(0) - 6}" y="${Y(1) + 4}" ${HALO} font-size="12" fill="${G_AX}" text-anchor="end">1</text>`
+  // подпись единичного деления по y: слева от оси, а если там кривая — справа
+  if (unitY && gy0 <= 1 && gy1 >= 1) g += `<text x="${X(0) + (unitYRight ? 6 : -6)}" y="${Y(1) + 4}" ${HALO} font-size="12" fill="${G_AX}" text-anchor="${unitYRight ? "start" : "end"}">1</text>`
   if (unitX && !tickXvals && gx0 <= 1 && gx1 >= 1) g += `<text x="${X(1)}" y="${Y(0) + 16}" ${HALO} font-size="12" fill="${G_AX}" text-anchor="middle">1</text>`
   if (tickXvals) for (const t of tickXvals) if (t.x >= gx0 && t.x <= gx1 && t.x !== 0) g += `<text x="${X(t.x)}" y="${Y(0) + 16}" ${HALO} font-size="12" fill="${G_AX}" text-anchor="middle">${t.text}</text>`
   if (openEnds) for (const xe of [xa, xb]) { const ye = fn(xe); if (ye >= gy0 - 0.4 && ye <= gy1 + 0.4) g += `<circle cx="${X(xe)}" cy="${clean(Y(ye))}" r="3" fill="#fff" stroke="${G_CURVE}" stroke-width="1.6"/>` }
@@ -2064,7 +2065,7 @@ function wave8Svg({ gx0, gx1, gy0, gy1, fn, xa, xb, label = null, marks = [], ma
     // подпись — на той стороне оси, где рядом нет кривой (иначе чёрная кривая перечёркивает xᵢ)
     const below = mk.below !== undefined ? mk.below : (fn ? fn(mk.x) >= 0 : markBelow)
     g += `<line x1="${X(mk.x)}" y1="${Y(0) - 4}" x2="${X(mk.x)}" y2="${Y(0) + 4}" stroke="${G_AX}" stroke-width="1.4"/>`
-    g += `<text x="${X(mk.x)}" y="${below ? Y(0) + 16 : Y(0) - 8}" ${HALO} font-size="12" font-style="italic" fill="${G_AX}" text-anchor="middle">${mk.label}</text>`
+    g += `<text x="${X(mk.x)}" y="${below ? Y(0) + 16 : Y(0) - 8}" ${HALO} font-size="12"${markItalic ? ' font-style="italic"' : ""} fill="${G_AX}" text-anchor="middle">${mk.label}</text>`
   }
   for (const p of guides) {
     // подпись деления — по ДРУГУЮ сторону оси от узла: иначе её перечёркивает пунктир
@@ -2319,20 +2320,118 @@ function t8fIntSign(positive) {
   }
 }
 
+// ── Волна «как на бланке»: горбы РАЗНОЙ высоты вокруг общей базовой линии ────
+// Экстремумы стоят через клетку, но НЕ в серединах между отмеченными целыми
+// точками (фаза сдвинута): иначе кривая пересекала бы ось ровно в отмеченной
+// точке и перечёркивала её подпись, чего на бланке ФИПИ не бывает.
+function buildWiggleWave(gx0, gx1, gy0, gy1, c) {
+  const lo = gy0 + 0.4, hi = gy1 - 0.4
+  const upA = hi - c, dnA = c - lo
+  const share = [0.35, 0.5, 0.65, 0.8, 1]                        // высота горба — своя у каждого
+  const ph = pick([0.25, 0.3, 0.7, 0.75])                        // сдвиг фазы: экстремумы не в серединах
+  const xs = []
+  for (let x = gx0 - 1 + ph; x <= gx1 + 1; x += pick([1, 1, 1, 1.5])) xs.push(clean(x))
+  let dir = pick([1, -1])
+  const anchors = xs.map((x) => {
+    const amp = Math.max(0.4, (dir > 0 ? upA : dnA) * pick(share))
+    const y = clean(c + dir * amp)
+    dir = -dir
+    return [x, y]
+  })
+  return mkWaveExtrema(anchors)
+}
+
+// Сторона оси, на которой подпись отметки не перечёркивается кривой.
+// Цифра при cell = 32 занимает полосу 0,12…0,62 клетки под осью (и 0,12…0,72 над
+// ней), в ширину — ±0,2 клетки; по умолчанию подпись под осью, как на бланке ФИПИ.
+function markSide8(fn, x) {
+  let okDn = true, okUp = true
+  for (let t = x - 0.2; t <= x + 0.2 + 1e-9; t += 0.04) {
+    const y = fn(t)
+    if (y > -0.62 && y < -0.12) okDn = false
+    if (y > 0.12 && y < 0.72) okUp = false
+  }
+  return { below: okDn || !okUp, ok: okDn || okUp }
+}
+
+// Зазор между подписью «y = f(x)» и кривой (в клетках): подпись не должна
+// ложиться на график — на бланке она всегда стоит в свободном месте поля.
+function labelClear8(fn, lab, gx0, gx1) {
+  let clr = Infinity
+  for (let x = lab.x - 1.3; x <= lab.x + 1.3; x += 0.1) {     // «y = f(x)» — ≈2,6 клетки при cell = 32
+    const y = fn(Math.min(gx1, Math.max(gx0, x)))
+    if (isFinite(y)) clr = Math.min(clr, Math.abs(y - lab.y))
+  }
+  return clr
+}
+
 // #28/#29 — в какой из отмеченных точек значение f′ наибольшее / наименьшее.
+// Рисунок строго по образцу ФИПИ: окно в шесть клеток по x, ЧЕТЫРЕ отмеченные
+// целые точки, подписанные своими значениями ПОД осью прямым шрифтом (курсив на
+// бланке только у xᵢ), единичное деление — лишь на оси y (подпись «1» у оси x
+// столкнулась бы с подписью самой отметки), концы кривой без белых кружков.
 function t8fDerivExtreme(greatest) {
-  const gx0 = -2, gx1 = 5, gy0 = -3, gy1 = 4
-  const marksX = [-1, 1, 2, 3, 4].filter((x) => x > gx0 && x < gx1)
-  let w, best, tries = 0
-  do {
-    w = buildExtremaWave(gx0, gx1, gy0, gy1, randInt(2, 3), pick([1, -1]))
-    const vals = marksX.map((x) => ({ x, d: (w.fn(x + 0.03) - w.fn(x - 0.03)) / 0.06 }))
-    vals.sort((p, q) => greatest ? q.d - p.d : p.d - q.d)
-    best = (Math.abs(vals[0].d - vals[1].d) > 0.4) ? vals[0].x : null
-  } while (best === null && ++tries < 80)
+  const gx0 = pick([-2, -2, -1]), gx1 = gx0 + 6   // уже — и подписи «y = f(x)» негде встать
+  const [gy0, gy1] = pick([[-3, 2], [-2, 3], [-3, 3]])
+  const sgn = greatest ? 1 : -1
+  const slope = (fn, x) => clean((fn(x + 0.02) - fn(x - 0.02)) / 0.04)
+  // базовая линия колебаний — ЧУТЬ ВЫШЕ оси, как на бланке: если вести её по самой
+  // оси, кривая всё время идёт по подписям отметок и рисунок не собрать
+  const c = clean(Math.min(gy1 - 1.5, 0.35 + Math.random() * 0.5))
+  let w = null, lab = null, marksX = null, best = null, unitRight = false
+  for (let tries = 0; tries < 400 && best === null; tries++) {
+    // на бланке ФИПИ ВСЕ подписи отметок стоят под осью; наверх пускаем точку,
+    // только если четырёх «нижних» не нашлось за первые 300 попыток
+    const strictBelow = tries < 300
+    w = buildWiggleWave(gx0, gx1, gy0, gy1, c)
+    // подпись «1» у оси y не должна оказаться под кривой: если слева занято —
+    // ставим её справа от оси (отбраковывать кривую нельзя, это перекашивает ответы)
+    const busy = (a, b) => { for (let x = a; x <= b + 1e-9; x += 0.04) if (w.fn(x) > 0.7 && w.fn(x) < 1.15) return true; return false }
+    unitRight = busy(-0.5, -0.12)
+    if (unitRight && busy(0.12, 0.5)) continue
+    // кандидаты — целые точки окна, кроме нуля (там подпись «0») и правого края;
+    // берём только те, у которых кривая не ложится на подпись отметки
+    const cands = []
+    for (let x = gx0; x <= gx1 - 1; x++) {
+      if (x === 0) continue
+      const side = markSide8(w.fn, x)
+      if (side.ok && (side.below || !strictBelow)) cands.push({ x, d: slope(w.fn, x), below: side.below })
+    }
+    if (cands.length < 4) continue
+    const top = cands.slice().sort((p, q) => sgn * (q.d - p.d))[0]
+    // остальные три — с запасом в 1,5 клетки наклона: ответ виден, а не угадывается
+    const rest = cands.filter((c2) => c2.x !== top.x && sgn * (top.d - c2.d) >= 1.5)
+    if (Math.abs(top.d) < 2 || rest.length < 3) continue
+    const three = []
+    while (three.length < 3) three.push(rest.splice(randInt(0, rest.length - 1), 1)[0].x)
+    const xs = [top.x, ...three].sort((a, b) => a - b)
+    if (xs[3] - xs[0] < 3) continue          // точки по всему окну, а не кучкой
+    // «y = f(x)» ставим туда, где кривой нет: перебираем оба ряда и всю полосу
+    // справа от оси y (левее подпись при таком окне не помещается)
+    lab = null
+    let bestClr = 0.6
+    for (const ly of [gy1 - 0.6, gy0 + 0.7]) {
+      for (let lx = 1.55; lx <= gx1 - 1.45 + 1e-9; lx += 0.1) {
+        const cand = { x: clean(lx), y: ly, text: "y = f(x)", anchor: "middle" }
+        const clr = labelClear8(w.fn, cand, gx0, gx1)
+        if (clr > bestClr) { bestClr = clr; lab = cand }
+      }
+    }
+    if (!lab) continue
+    marksX = xs; best = top.x
+  }
+  const fn = w.fn
+  if (best === null) {                       // страховка от вечного цикла: берём максимальный отрыв
+    const cands = []
+    for (let x = gx0; x <= gx1 - 1; x++) if (x !== 0) cands.push({ x, d: slope(fn, x) })
+    cands.sort((p, q) => sgn * (q.d - p.d))
+    best = cands[0].x
+    marksX = [cands[0].x, ...cands.slice(-3).map((c) => c.x)].sort((a, b) => a - b)
+  }
+  const marks = marksX.map((x) => ({ x, label: ru(x), below: markSide8(fn, x).below }))
   return {
     condition_text: `На рисунке изображён график функции y = f(x). На оси абсцисс отмечены точки ${marksX.map(ru).join(", ")}. В какой из этих точек значение производной функции ${greatest ? "наибольшее" : "наименьшее"}? В ответе укажите эту точку.`,
-    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn: w.fn, xa: gx0, xb: gx1, marks: marksX.map((x) => ({ x, label: ru(x) })), showUnit: true, label: label8(w.fn, gx0, gx1, gy0, gy1, "y = f(x)") }),
+    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn, xa: gx0, xb: gx1, marks, markItalic: false, openEnds: false, tickXvals: [], label: lab, cell: 32, unitYRight: unitRight }),
     answer: ru(best),
   }
 }
@@ -2599,9 +2698,8 @@ function t8tangentSlope() {
         marks: [{ x: x0, label: "x" + subU(0), below: y0 >= 0 }],
         guides: [{ x: x1, y: y1 }, { x: x2, y: y2 }],
         openEnds: false,
-        // «1» не рисуем, если это деление уже подписано узлом или прижато к краю
-        showUnitX: x1 !== 1 && x2 !== 1 && gx1 >= 2,
-        showUnitY: y1 !== 1 && y2 !== 1 && gy1 >= 2,
+        showUnitX: x1 !== 1 && x2 !== 1,
+        showUnitY: y1 !== 1 && y2 !== 1,
         label: tag,
       }),
       answer: ru(k),
