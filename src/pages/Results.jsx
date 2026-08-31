@@ -6,7 +6,7 @@ import Collapse from "../components/Collapse"
 import SegmentSwitch from "../components/SegmentSwitch"
 import useCountUp from "../components/useCountUp"
 import useTypeLabels from "../components/typeLabels"
-import { plural, getInitials } from "../utils"
+import { plural, getInitials, answersEqual } from "../utils"
 import { PlanLock } from "../components/PlanLock"
 import { usePlan } from "../subscription"
 import { part1NumbersOf, part2NumbersOf } from "./taskBankMeta"
@@ -278,7 +278,7 @@ function TargetBar({ value, target, className = "" }) {
 // Сводные плитки
 // ─────────────────────────────────────────────────────────────────────────────
 
-function StatTile({ icon, label, value, sub, tone = "blue", suffix, active, onClick }) {
+function StatTile({ icon, label, value, sub, tone = "blue", suffix, active, onClick, className = "" }) {
   const shown = useCountUp(typeof value === "number" ? value : 0)
   const body = (
     <>
@@ -296,11 +296,11 @@ function StatTile({ icon, label, value, sub, tone = "blue", suffix, active, onCl
     </>
   )
 
-  if (!onClick) return <div className="stat-card">{body}</div>
+  if (!onClick) return <div className={`stat-card ${className}`}>{body}</div>
   return (
     <button
       onClick={onClick}
-      className={`press-fill stat-card text-left ${active ? "ring-2 ring-blue-500/40" : ""}`}
+      className={`press-fill stat-card text-left ${className} ${active ? "ring-2 ring-blue-500/40" : ""}`}
     >
       {body}
     </button>
@@ -313,7 +313,10 @@ function StatTile({ icon, label, value, sub, tone = "blue", suffix, active, onCl
 
 function AnswerCell({ n, correct, student }) {
   const has = student !== undefined && student !== null && String(student).trim() !== ""
-  const isRight = has && correct && String(correct).trim() === String(student).trim()
+  // Сверка — тем же answersEqual, каким считался балл части 1 (Variants.jsx).
+  // Сравнение строк красило «0,5» при эталоне «0.5» в красный, и клетки
+  // расходились с числом рядом.
+  const isRight = has && correct && answersEqual(student, correct)
   const isWrong = has && correct && !isRight
   return (
     <div className={`text-center rounded-xl py-1.5 px-1 ring-1 ${
@@ -868,20 +871,42 @@ function Results({ students, user }) {
   const withTarget = withData.filter((c) => c.stats.target > 0)
   const reachedCount = withTarget.filter((c) => c.stats.reachedTarget).length
 
-  // Средний результат — в процентах от максимума: первичные баллы ОГЭ и ЕГЭ
-  // по разным шкалам, и их среднее арифметическое ничего не значило бы.
-  const avgShare = withData.length
-    ? Math.round(withData.reduce((s, c) => s + c.stats.pct, 0) / withData.length)
-    : 0
-  const prevShare = (() => {
-    const arr = withData.filter((c) => c.stats.rows.length > 1)
-    if (!arr.length) return null
-    return Math.round(arr.reduce((s, c) => {
-      const prev = c.stats.rows[c.stats.rows.length - 2]
-      return s + share(prev)
-    }, 0) / arr.length)
-  })()
-  const shareDelta = prevShare === null ? null : avgShare - prevShare
+  // Общего «среднего результата» здесь намеренно нет: одно число на всех
+  // смешивает разных людей и разные экзамены (первичные баллы ОГЭ и ЕГЭ — по
+  // разным шкалам) и ни к какому действию не ведёт. Вместо него — задание, на
+  // котором спотыкаются чаще всего: это и есть ответ на «что подтянуть».
+  const weakSpot = useMemo(() => {
+    const acc = new Map()
+    for (const c of cards) {
+      for (const r of c.stats.rows) {
+        const correct = r.answers?.part1 || []
+        const given = r.submission?.part1_answers || []
+        for (const n of part1NumbersOf(r.type)) {
+          const exp = correct[n - 1]
+          // Задания без эталона в варианте (и старые записи без разбора)
+          // пропускаем: по ним не видно, ошибся ученик или нет.
+          if (exp === undefined || exp === null || String(exp).trim() === "") continue
+          const key = `${r.type}|${n}`
+          let cell = acc.get(key)
+          if (!cell) acc.set(key, (cell = { type: r.type, n, works: 0, wrong: 0, students: new Set() }))
+          cell.works++
+          if (!answersEqual(given[n - 1] ?? "", exp)) {
+            cell.wrong++
+            cell.students.add(c.student.id)
+          }
+        }
+      }
+    }
+    // Один промах в одной работе — случайность, а не слабое место. Считаем
+    // проблемой номер, который встретился минимум дважды и провален чаще, чем
+    // в половине работ. Номера разных экзаменов не смешиваем: №11 ОГЭ и №11 ЕГЭ —
+    // разные темы.
+    const list = [...acc.values()].filter((x) => x.works >= 2 && x.wrong * 2 > x.works)
+    if (!list.length) return null
+    list.sort((a, b) => (b.wrong / b.works) - (a.wrong / a.works) || b.wrong - a.wrong || a.n - b.n)
+    const top = list[0]
+    return { ...top, manyTypes: new Set([...acc.values()].map((x) => x.type)).size > 1 }
+  }, [cards])
 
   const worksThisMonth = cards.reduce(
     (n, c) => n + c.stats.rows.filter((r) => new Date(r.date).getTime() >= monthAgo).length, 0)
@@ -933,25 +958,30 @@ function Results({ students, user }) {
       ) : (
         <div className="flex flex-col gap-4">
           {totalWorks > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3">
+            <div className={`grid grid-cols-2 ${weakSpot ? "md:grid-cols-4" : "md:grid-cols-3"} gap-2.5 sm:gap-3`}>
               <StatTile
                 icon="file-text" tone="blue" label="Проверено работ" value={totalWorks}
                 sub={worksThisMonth ? `${worksThisMonth} за последние 30 дней` : "за 30 дней — ни одной"}
               />
-              <StatTile
-                icon="bar-chart" tone={shareTone(avgShare)} label="Средний результат" value={avgShare} suffix="%"
-                sub={shareDelta === null
-                  ? "по последним работам"
-                  : `${shareDelta > 0 ? "+" : shareDelta < 0 ? "−" : "±"}${Math.abs(shareDelta)} п.п. к предыдущим`}
-              />
+              {weakSpot && (
+                <StatTile
+                  icon="book" tone="amber"
+                  label={weakSpot.manyTypes ? `Слабое место · ${weakSpot.type}` : "Слабое место"}
+                  value={`№${weakSpot.n}`}
+                  sub={`${numberTitle(weakSpot.type, weakSpot.n)} — ошибок ${weakSpot.wrong} из ${weakSpot.works}`}
+                />
+              )}
               <StatTile
                 icon="target" tone="green" label="Достигли цели" value={reachedCount}
                 suffix={withTarget.length ? ` из ${withTarget.length}` : ""}
                 sub={withTarget.length ? "цель — в карточке ученика" : "цель никому не задана"}
               />
+              {/* Нечётную плитку на телефоне растягиваем на всю строку: иначе
+                  рядом с ней остаётся пустая половина. */}
               <StatTile
                 icon="alert-triangle" tone={attentionCount ? "red" : "gray"} label="Требуют внимания"
                 value={attentionCount}
+                className={weakSpot ? "" : "col-span-2 md:col-span-1"}
                 sub={attentionCount ? (onlyAttention ? "показаны только они" : "показать только их") : "спадов и провалов нет"}
                 active={onlyAttention}
                 onClick={attentionCount ? () => setOnlyAttention((v) => !v) : undefined}
