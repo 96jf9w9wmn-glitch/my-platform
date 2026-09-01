@@ -248,14 +248,20 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
             <h1 className="text-lg font-medium truncate">{student.name}</h1>
             {/* Расписание — в подписи к имени: отдельной строкой поля оно
                 держало целую строку ради шести знаков. */}
-            <div className="text-xs text-gray-500 flex items-center gap-x-3 gap-y-0.5 flex-wrap">
+            <div className="text-xs text-gray-500">
               <span className="flex items-center gap-1">
                 <Icon name={student.isRecurring ? "repeat" : "calendar"} size={12} />
                 {student.isRecurring ? "Регулярные занятия" : "Разовые занятия"}
               </span>
-              {/* Разделителя между строчками нет намеренно: точка при переносе
-                  оставалась висеть в конце строки или начинала следующую. */}
-              {student.schedule && <span>{student.schedule}</span>}
+              {/* Каждый день (у разовых — каждая дата) своей строкой: в подбор
+                  через запятую расписание сливалось в одну длинную ленту. */}
+              {student.schedule && (
+                <div className="mt-0.5 flex flex-col gap-0.5">
+                  {student.schedule.split(", ").map((slot, i) => (
+                    <span key={i}>{slot}</span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
