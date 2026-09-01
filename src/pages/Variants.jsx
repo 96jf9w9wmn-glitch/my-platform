@@ -294,30 +294,85 @@ function defaultVariantType(subjects, examFocus) {
 // Ответы — ВЕЗДЕ одинаково: сетка «номер — поле», и в части 1, и в части 2.
 // Раньше часть 1 там, где номера идут подряд (математика), была одной строкой
 // через пробел, а часть 2 рядом — сеткой: в одной форме уживались два разных
-// вида ввода, и один экзамен не был похож на другой. Скорость строки никуда не
-// делась: готовый ключ, вставленный в любое поле, сам раскладывается по
-// номерам начиная с него.
-function AnswerGrid({ numbers, valueOf, onChange, placeholderOf }) {
-  function handlePaste(e, idx) {
-    const vals = (e.clipboardData?.getData("text") || "").trim().split(/\s+/).filter(Boolean)
-    if (vals.length < 2) return            // одиночный ответ вставляется как обычно
-    e.preventDefault()
+// вида ввода, и один экзамен не был похож на другой.
+//
+// Скорость строки осталась, но теперь у неё есть ВИДИМАЯ кнопка «Вставить
+// списком»: раскладка ключа по номерам — это то, ради чего строку и держали, а
+// подсказка мелким текстом («вставьте в первое поле») работой не была — про
+// такое не догадываются, пока не прочтут. Поле в сетке тоже принимает список
+// целиком, но это уже подспорье для тех, кто попробует, а не единственный путь.
+function AnswerGrid({ label, numbers, valueOf, onChange, placeholderOf, hint }) {
+  const [bulk, setBulk] = useState(null)      // null — панель вставки закрыта
+  // Номера читаются столбиками (1, 2, 3… вниз), а не строками: ключ переносят
+  // сверху вниз, и порядок обхода по Tab совпадает с порядком на экране —
+  // разметка идёт теми же номерами подряд, меняется только направление потока.
+  // Высоту столбца считает CSS (.answer-grid в index.css): столько же рядов,
+  // сколько колонок в этой ширине. Считать колонки в JS нельзя — свой
+  // matchMedia расходится с классами сетки, и на телефоне вместо двух колонок
+  // получалось четыре.
+  const colRows = { "--rows-2": Math.ceil(numbers.length / 2),
+                    "--rows-3": Math.ceil(numbers.length / 3),
+                    "--rows-4": Math.ceil(numbers.length / 4) }
+
+  // Разложить список по номерам, начиная с idx-го поля сетки.
+  function spread(text, idx = 0) {
+    const vals = String(text).trim().split(/\s+/).filter(Boolean)
     vals.slice(0, numbers.length - idx).forEach((v, k) => onChange(numbers[idx + k], v))
+    return vals.length
   }
+
+  function handlePaste(e, idx) {
+    const text = e.clipboardData?.getData("text") || ""
+    if (text.trim().split(/\s+/).filter(Boolean).length < 2) return   // одиночный ответ — как обычно
+    e.preventDefault()
+    spread(text, idx)
+  }
+
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-3 gap-2">
-      {numbers.map((n, idx) => (
-        <div key={n} className="flex items-center gap-2">
-          <span className="text-xs text-gray-400 w-5 flex-shrink-0">{n}</span>
-          <input
-            value={valueOf(n)}
-            onChange={(e) => onChange(n, e.target.value)}
-            onPaste={(e) => handlePaste(e, idx)}
-            placeholder={placeholderOf ? placeholderOf(n) : "Ответ"}
-            className="input-glass flex-1 px-2 py-1.5 text-sm min-w-0"
-          />
-        </div>
-      ))}
+    <div>
+      <div className="flex items-baseline justify-between gap-2 mb-1">
+        <label className="text-sm text-gray-500">{label}</label>
+        <button type="button" onClick={() => setBulk((v) => (v === null ? "" : null))}
+          className="no-press shrink-0 inline-flex items-center gap-1 text-[11px] text-blue-600 hover:opacity-70 active:scale-95 transition-all">
+          <Icon name={bulk === null ? "clipboard" : "chevron-up"} size={11} />
+          {bulk === null ? "Вставить списком" : "Свернуть"}
+        </button>
+      </div>
+
+      {/* Сетка заполняется прямо во время вставки — видно, что список разошёлся
+          по номерам, и закрывать панель можно, уже видя результат. */}
+      <Reveal value={bulk === null ? "" : "open"} className="mb-2">
+        {() => (
+          <div className="pb-1">
+            <textarea
+              autoFocus rows={2}
+              value={bulk || ""}
+              onChange={(e) => { setBulk(e.target.value); spread(e.target.value) }}
+              placeholder="3 12 4 -5 2 0.5 8 16 3 7"
+              className="input-glass resize-none w-full text-sm"
+            />
+            <div className="text-[11px] text-gray-400 mt-1">
+              Вставьте ответы через пробел — они разойдутся по номерам сверху вниз.
+            </div>
+          </div>
+        )}
+      </Reveal>
+
+      <div className="answer-grid grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-3 gap-2" style={colRows}>
+        {numbers.map((n, idx) => (
+          <div key={n} className="flex items-center gap-2">
+            <span className="text-xs text-gray-400 w-5 flex-shrink-0">{n}</span>
+            <input
+              value={valueOf(n)}
+              onChange={(e) => onChange(n, e.target.value)}
+              onPaste={(e) => handlePaste(e, idx)}
+              placeholder={placeholderOf ? placeholderOf(n) : "Ответ"}
+              className="input-glass flex-1 px-2 py-1.5 text-sm min-w-0"
+            />
+          </div>
+        ))}
+      </div>
+      {hint && <div className="text-xs text-gray-400 mt-1">{hint}</div>}
     </div>
   )
 }
@@ -654,7 +709,10 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
                       className="no-press self-start inline-flex items-center gap-1 text-[11px] text-blue-600 hover:opacity-70 active:scale-95 transition-all mb-1">
                       <Icon name="maximize" size={11} />Посмотреть целиком
                     </button>
-                    <div className="flex flex-col gap-1.5 max-h-[24rem] overflow-y-auto px-px -mx-px">
+                    {/* Пиксель запаса со всех сторон: кольцо (ring-*) рисуется
+                        box-shadow'ом СНАРУЖИ карточки, и прокрутка срезала его
+                        у первой и последней — рамка выглядела надрезанной. */}
+                    <div className="flex flex-col gap-1.5 max-h-[24rem] overflow-y-auto p-px -m-px">
                       {bankPicked.map((t) => (
                         <div key={t.number} className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 px-2.5 py-2 flex items-start gap-2.5">
                           <span className="shrink-0 w-5 h-5 rounded-full bg-blue-500/12 text-blue-600 dark:text-blue-400 text-[10px] font-semibold flex items-center justify-center">
@@ -686,35 +744,25 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
               </AutoHeight>
               {/* Ответы — под сборкой, в том же столбце: их сверяют последними. */}
               <div className="flex flex-col gap-4 mt-2">
-              <div>
-                <label className="text-sm text-gray-500 mb-1 block">
-                  {source === "bank" && bankPicked.length > 0
-                    ? `Ответы части 1 — подставлены из банка, проверьте (${answerCount} шт.)`
-                    : `Ответы к части 1 — по номерам заданий (${answerCount} шт.)`}
-                </label>
-                <AnswerGrid
-                  numbers={p1Numbers}
-                  valueOf={(n) => answers[n - 1] || ""}
-                  onChange={(n, v) => setAnswers((prev) => { const upd = [...prev]; upd[n - 1] = v; return upd })}
-                />
-                <div className="text-xs text-gray-400 mt-1">
-                  Введено: {p1Numbers.filter((n) => answers[n - 1]).length} / {answerCount} · весь список ответов вставляется в первое поле
-                </div>
-              </div>
+              <AnswerGrid
+                label={source === "bank" && bankPicked.length > 0
+                  ? `Ответы части 1 — подставлены из банка, проверьте (${answerCount} шт.)`
+                  : `Ответы к части 1 — по номерам заданий (${answerCount} шт.)`}
+                numbers={p1Numbers}
+                valueOf={(n) => answers[n - 1] || ""}
+                onChange={(n, v) => setAnswers((prev) => { const upd = [...prev]; upd[n - 1] = v; return upd })}
+                hint={`Введено: ${p1Numbers.filter((n) => answers[n - 1]).length} / ${answerCount}`}
+              />
 
               {part2Numbers.length > 0 && (
-                <div>
-                  <label className="text-sm text-gray-500 mb-1 block">Ответы к части 2 ({numbersLabel(part2Numbers)}){source === "bank" && bankPicked.length > 0 ? " — подставлены из банка" : ""}</label>
-                  <AnswerGrid
-                    numbers={part2Numbers}
-                    valueOf={(n) => part2Answers[n] || ""}
-                    onChange={(n, v) => setPart2Answers((prev) => ({ ...prev, [n]: v }))}
-                    placeholderOf={(n) => (n === 24 ? "Доказано." : "Ответ")}
-                  />
-                  <div className="text-xs text-gray-400 mt-1">
-                    Ученик выберет ответ из четырёх вариантов; для доказательства (№24) — только фото решения
-                  </div>
-                </div>
+                <AnswerGrid
+                  label={`Ответы к части 2 (${numbersLabel(part2Numbers)})${source === "bank" && bankPicked.length > 0 ? " — подставлены из банка" : ""}`}
+                  numbers={part2Numbers}
+                  valueOf={(n) => part2Answers[n] || ""}
+                  onChange={(n, v) => setPart2Answers((prev) => ({ ...prev, [n]: v }))}
+                  placeholderOf={(n) => (n === 24 ? "Доказано." : "Ответ")}
+                  hint="Ученик выберет ответ из четырёх вариантов; для доказательства (№24) — только фото решения"
+                />
               )}
               </div>
             </div>
