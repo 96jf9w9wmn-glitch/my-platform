@@ -20,12 +20,21 @@ alter table public.chat_messages replica identity full;
 
 grant delete on public.chat_messages to app_user;
 
+-- Право одинаковое у обеих сторон: любой участник разговора удаляет в нём что
+-- угодно и может очистить его целиком. Граница проходит по разговору, а не по
+-- отправителю — в ЧУЖУЮ переписку не залезть.
+--
+-- Разделение «своё сообщение удаляет любой, чужое — только репетитор» осталось
+-- в интерфейсе, но это удобство, а не запрет: подкрепить его базой нельзя, для
+-- неё удаление одной строки и очистка всей переписки неотличимы.
 drop policy if exists chat_delete_own on public.chat_messages;
 create policy chat_delete_own on public.chat_messages
   for delete to app_user
   using (
-    sender_id = ('s:' || current_account_id()::text)
-    or sender_id = ('p:' || current_parent_student_id()::text)
+    sender_id       = ('s:' || current_account_id()::text)
+    or recipient_id = ('s:' || current_account_id()::text)
+    or sender_id    = ('p:' || current_parent_student_id()::text)
+    or recipient_id = ('p:' || current_parent_student_id()::text)
   );
 
 drop policy if exists chat_tutor_delete on public.chat_messages;

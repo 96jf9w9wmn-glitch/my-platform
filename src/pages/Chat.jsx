@@ -324,8 +324,11 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
   // Удаление у ВСЕХ: строка уходит из базы, вторая сторона узнаёт об этом
   // realtime-событием. Своё состояние правим сразу — ждать эха от сервера в
   // собственном окне незачем.
-  // Своё сообщение удаляет любой, чужое — только репетитор. Ровно те же
-  // правила стоят политиками в базе, кнопка лишь не предлагает невозможного.
+  // Своё сообщение удаляет любой, чужое — только репетитор. Это разделение
+  // живёт ТОЛЬКО здесь: для базы удаление одной строки и очистка всей
+  // переписки неотличимы, поэтому политика пускает обе стороны на любое
+  // сообщение своего разговора (supabase/chat_delete.sql). То есть это
+  // удобство, а не запрет.
   function canDelete(msg) {
     return isTutor || msg.sender_id === myId
   }
@@ -652,10 +655,11 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
                 <div className="text-sm font-semibold text-gray-900 dark:text-white truncate">{activeContact.name}</div>
                 {activeContact.role && <div className="text-xs text-gray-400">{activeContact.role}</div>}
               </div>
-              {/* Очистка переписки — только у репетитора: это его рабочее
-                  пространство. Кнопка видимая, а не спрятанная в меню, но с
+              {/* Очистка переписки есть у обеих сторон: в кабинете ученика и
+                  родителя её не было вовсе, и удалить переписку они не могли
+                  никак. Кнопка видимая, а не спрятанная в меню, но с
                   подтверждением: восстановить переписку будет нечем. */}
-              {isTutor && messages.length > 0 && (
+              {messages.length > 0 && (
                 <button
                   onClick={() => { setDelError(""); setConfirmDel({ kind: "all" }) }}
                   title="Очистить переписку"
@@ -794,7 +798,7 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
         danger
         title={confirmDel?.kind === "all" ? "Очистить переписку?" : "Удалить сообщение?"}
         message={confirmDel?.kind === "all"
-          ? `Вся переписка с ${activeContact?.name || "собеседником"} пропадёт у обеих сторон — восстановить её будет нечем.`
+          ? `Вся переписка с ${activeContact?.name || "собеседником"} пропадёт и у ${isTutor ? "ученика" : "репетитора"} — восстановить её будет нечем.`
           : `Сообщение «${(confirmDel?.text || "").slice(0, 80)}${(confirmDel?.text || "").length > 80 ? "…" : ""}» пропадёт и у собеседника.`}
         confirmLabel={deleting ? "Удаляем…" : "Удалить"}
         cancelLabel="Отмена"
