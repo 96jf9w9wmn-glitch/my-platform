@@ -129,7 +129,10 @@ function TaskBlock({ item, onCredit }) {
             ученик прав, а работа показывает ошибку. Решает это репетитор: смотрит
             задание и, если ошибка подтвердилась, засчитывает номер. Ответ ученика
             при этом не подменяется — меняется только балл и разбор. */}
-        {(item.credited || (onCredit && item.ok === false)) && (
+        {/* Незаполненное задание засчитывать нечего: эталон тут ни при чём —
+            ученик просто не ответил. Кнопку показываем только там, где ответ
+            есть и он разошёлся с эталоном. */}
+        {(item.credited || (onCredit && item.ok === false && item.given != null)) && (
           <div className="flex items-center gap-2 flex-wrap text-[11px]">
             {item.credited && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500/12 text-green-700 dark:text-green-300 ring-1 ring-green-500/25">
