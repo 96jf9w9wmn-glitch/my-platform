@@ -403,6 +403,11 @@ export function noBreakMath(html) {
 // при любой высоте. Скобки вокруг обычного текста и корня остаются глифами — растягивать
 // там нечего, а глиф всегда красивее дуги.
 const PAREN_TALL = /class="tmath-(frac|rootfrac)/
+// Степень в степени, (aᵐ)ⁿ: скобки растягиваются не потому, что внутри что-то высокое,
+// а потому, что возводится в степень сама скобка — иначе внешний показатель садится
+// вровень с внутренним и читается как продолжение основания, а не как степень скобки.
+const PAREN_SUP_IN = /class="tmath-sup"/
+const PAREN_SUP_AFTER = /^<sup class="tmath-sup"/
 const parenSvg = (d) => '<svg class="tmath-pbr" viewBox="0 0 10 100" preserveAspectRatio="none" aria-hidden="true">'
   + `<path d="${d}" fill="none" stroke="currentColor" stroke-width="1.1" vector-effect="non-scaling-stroke" stroke-linecap="round"/></svg>`
 // Квадратная скобка нужна не для симметрии, а для промежутков: −8/7 ≤ x ≤ 8/7 записывают
@@ -458,7 +463,7 @@ export function matchParen(html, i) {
 }
 
 function stretchParens(html) {
-  if (!/[([]/.test(html) || !PAREN_TALL.test(html)) return html
+  if (!/[([]/.test(html) || !(PAREN_TALL.test(html) || PAREN_SUP_IN.test(html))) return html
   let out = "", i = 0
   while (i < html.length) {
     const c = html[i]
@@ -476,7 +481,9 @@ function stretchParens(html) {
       const j = matchParen(html, i)
       if (j > 0) {
         const inner = stretchParens(html.slice(i + 1, j))
-        out += PAREN_TALL.test(inner) ? parenGroup(inner, c, html[j]) : c + inner + html[j]
+        const tall = PAREN_TALL.test(inner)
+          || (PAREN_SUP_IN.test(inner) && PAREN_SUP_AFTER.test(html.slice(j + 1)))
+        out += tall ? parenGroup(inner, c, html[j]) : c + inner + html[j]
         i = j + 1; continue
       }
     }
@@ -540,7 +547,10 @@ function expandMarks(text, wrap) {
 // в задачах, введённых репетитором), и только потом токены разворачиваются в разметку.
 export function renderTaskMath(text) {
   if (!text) return ""
-  return supOutsideTags(noBreakMath(stretchParens(renderTaskMathRaw(text))))
+  // Юникодные степени (2⁻⁴, aᵐ) разворачиваем В ПЕРВУЮ очередь: дальше по цепочке
+  // stretchParens решает по разметке, растягивать ли скобки, и без этого «(2⁻⁴)²»
+  // выглядел бы как строчный текст — скобки в рост цифры, обе степени вразнобой.
+  return noBreakMath(stretchParens(supOutsideTags(renderTaskMathRaw(text))))
 }
 function renderTaskMathRaw(text) {
   const esc = String(text)

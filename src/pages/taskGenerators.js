@@ -473,7 +473,7 @@ function t8Roots() {
     s = randInt(3, 12); const sq = s * s
     // подкоренные — НЕ полные квадраты (иначе √4·√4 выглядит тривиально, не по-фипишному)
     const divs = []
-    for (let dd = 2; dd < sq; dd++) if (sq % dd === 0 && !isSq(dd) && !isSq(sq / dd)) divs.push(dd)
+    for (let dd = 2; dd < sq; dd++) if (sq % dd === 0 && dd !== sq / dd && !isSq(dd) && !isSq(sq / dd)) divs.push(dd)
     if (divs.length) { A = pick(divs); B = sq / A }
   } while (!A)
   return { condition_text: `Найдите значение выражения ${rT(A)} · ${rT(B)}.`, answer: String(s) }

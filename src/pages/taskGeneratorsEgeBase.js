@@ -250,14 +250,18 @@ function t16PowerNested() {
   return { condition_text: `Найдите значение выражения ${FF(`${a}${sup(-x)} ⋅ ${a}${sup(y)}`, `${a}${sup(-z)}`)}.`, answer: ru(a ** (-x + y + z)) }
 }
 
-// √a·√b, ab — точный квадрат.
+// √a·√b, ab — точный квадрат. Множители РАЗНЫЕ: √12 · √12 в банке не бывает.
 function t16RootProduct() {
-  const r = randInt(3, 12)
-  const sq = r * r
-  const divs = []
-  for (let d = 2; d < sq; d++) if (sq % d === 0) divs.push(d)
-  const a = divs.length ? pick(divs) : sq, b = sq / a
-  return { condition_text: `Найдите значение выражения ${rT(a)} ⋅ ${rT(b)}.`, answer: ru(r) }
+  for (let t = 0; t < 100; t++) {
+    const r = randInt(3, 12)
+    const sq = r * r
+    const divs = []
+    for (let d = 2; d < sq; d++) if (sq % d === 0 && d !== sq / d) divs.push(d)
+    if (!divs.length) continue
+    const a = pick(divs), b = sq / a
+    return { condition_text: `Найдите значение выражения ${rT(a)} ⋅ ${rT(b)}.`, answer: ru(r) }
+  }
+  return { condition_text: `Найдите значение выражения ${rT(2)} ⋅ ${rT(18)}.`, answer: "6" }
 }
 
 // √a/√b = √(a/b) и (k√a)/√b.
@@ -307,11 +311,7 @@ function t16LogDiff() {
   return { condition_text: `Найдите значение выражения log${sub(a)} ${x} − log${sub(a)} ${y}.`, answer: ru(k) }
 }
 
-// tg α · ctg α = 1.
-function t16TrigProduct() {
-  const ang = randInt(2, 88)
-  return { condition_text: `Найдите значение выражения tg ${ang}° ⋅ ctg ${ang}°.`, answer: "1" }
-}
+// Типаж «tg α · ctg α = 1» СНЯТ 02.09.2026 по решению владельца.
 
 // k·tg(45° + 360°·n) = k.
 function t16TrigReduction() {
@@ -379,7 +379,9 @@ function t16CoefRootProduct() {
   const q = pick([2, 3, 4, 5]), t2 = randInt(1, 4), S = q * t2, total = S * S
   const divs = divisorsOf(total)
   if (!divs.length) return t16CoefRootProduct()
-  const A = pick(divs), B = total / A, p = randInt(2, 9)
+  const pairs = divs.filter((d) => d !== total / d)
+  if (!pairs.length) return t16CoefRootProduct()
+  const A = pick(pairs), B = total / A, p = randInt(2, 9)
   return { condition_text: `Найдите значение выражения ${FF(String(p), String(q))}${rT(A)} ⋅ ${rT(B)}.`, answer: ru(p * t2) }
 }
 
@@ -668,9 +670,11 @@ function t16NegPowerSum() {
 // Линейное со скобкой: A(x − B) + C = D·x + E, целый корень x0.
 function t17Linear() {
   const x0 = randInt(-9, 9)
-  let A = randInt(2, 7), D = randInt(-5, 5)
-  if (A === D) D += 1
-  const B = randInt(-6, 6), C = randInt(-9, 9)
+  // Нулевых коэффициентов быть не должно: «0x», «(x − 0)», «+ 0» в условии не пишут.
+  let A = randInt(2, 7), D = pick([-5, -4, -3, -2, -1, 1, 2, 3, 4, 5])
+  if (A === D) D = -D
+  const B = pick([-6, -5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 6])
+  const C = pick([-9, -8, -7, -6, -5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 6, 7, 8, 9])
   const E = (A - D) * x0 - A * B + C
   const bSign = B < 0 ? `+ ${-B}` : `− ${B}`
   const cSign = C < 0 ? `− ${-C}` : `+ ${C}`
@@ -2390,7 +2394,7 @@ export const GENERATORS_EGE_BASE = {
   14: [t14Arith, t14FracChain, t14DivBracket, t14MixDecFrac, t14Decimals],
   15: [t15Discount, t15PercentChange, t15PercentOfWhole, t15Tax, t15Interest, t15Markup, t15MaxCount],
   16: [t16PowerQuotient, t16PowerNested, t16RootProduct, t16RootQuotient, t16Conjugate,
-    t16StandardForm, t16PlaceValue, t16LogDiff, t16TrigProduct, t16TrigReduction, t16TrigPythag,
+    t16StandardForm, t16PlaceValue, t16LogDiff, t16TrigReduction, t16TrigPythag,
     t16LogSum, t16CoefRootProduct, t16PowerTermsSum, t16LogInExp, t16ConjugateCoef,
     t16RootOfPowerProduct, t16DistributeRoot, t16SquareCoefRoot, t16NestedLog, t16LogBaseSqrt, t16TrigValue,
     t16PowerExpr, t16ConjugateGen, t16RootQuotientGen, t16RootProductDec, t16PowerOverRoot,
@@ -2554,7 +2558,6 @@ export const GEN_META_EGE_BASE = {
       ["log-base-sqrt", "Логарифм по основанию √a", t16LogBaseSqrt],
     ]],
     ["Тригонометрия", [
-      ["trig-prod", "tg·ctg", t16TrigProduct],
       ["trig-reduction", "Приведение углов (tg 45)", t16TrigReduction],
       ["trig-value", "Приведение со значением", t16TrigValue],
       ["trig-pythag", "sin ↔ cos по четверти", t16TrigPythag],
