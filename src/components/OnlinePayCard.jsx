@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react"
 import Icon from "./Icon"
 import { supabase } from "../supabase"
+import { fmtNum } from "../num"
 
 // Онлайн-оплата занятий в кабинете ученика.
 //
@@ -14,7 +15,7 @@ import { supabase } from "../supabase"
 // (tutor_payment_settings.online_enabled) — см. supabase/yookassa.sql.
 
 const PRESETS = [1, 2, 4, 8]
-const fmt = (n) => Math.round(n || 0).toLocaleString("ru-RU")
+const fmt = (n) => fmtNum(Math.round(n || 0))
 
 export default function OnlinePayCard({ user, student, debt = 0 }) {
   const [settings, setSettings] = useState(null)

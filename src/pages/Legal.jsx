@@ -24,6 +24,7 @@ import Icon from "../components/Icon"
 import SiteFooter from "../components/SiteFooter"
 import { LEGAL_DOCS } from "../legalPaths"
 import { PLANS, FEATURE_ROWS, UNLIMITED } from "../plans"
+import { fmtNum } from "../num"
 
 const OPERATOR = "Саркисян Арман Нверович"
 const INN = "262308648105"
@@ -357,7 +358,7 @@ function PriceList() {
               <td className={cell}>Стоимость, месяц</td>
               {PLANS.map((p) => (
                 <td key={p.id} className={val}>
-                  {p.price.month === 0 ? "бесплатно" : `${p.price.month.toLocaleString("ru-RU")} ₽`}
+                  {p.price.month === 0 ? "бесплатно" : `${fmtNum(p.price.month)} ₽`}
                 </td>
               ))}
             </tr>
@@ -365,7 +366,7 @@ function PriceList() {
               <td className={cell}>Стоимость, 12 месяцев</td>
               {PLANS.map((p) => (
                 <td key={p.id} className={val}>
-                  {p.price.year === 0 ? "бесплатно" : `${p.price.year.toLocaleString("ru-RU")} ₽`}
+                  {p.price.year === 0 ? "бесплатно" : `${fmtNum(p.price.year)} ₽`}
                 </td>
               ))}
             </tr>

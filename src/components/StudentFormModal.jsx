@@ -11,6 +11,7 @@ import "react-phone-number-input/style.css"
 import { plural, parseLocalDate, formatPhone, isLessonPast } from "../utils"
 import { tutorLessons, findClashes, clashMessage, clashLine } from "../lessonConflict"
 import { supabase } from "../supabase"
+import { fmtNum } from "../num"
 
 const DURATIONS = [30, 45, 60, 90, 120]
 
@@ -462,12 +463,12 @@ function StudentFormModal({ student, students = [], onClose, onSubmit, initialNa
                 <label className="text-sm text-gray-500 mb-1.5 block">Стоимость занятия</label>
                 <div className="relative">
                   <input name="lessonPrice" type="text"
-                    value={form.lessonPrice ? Number(form.lessonPrice).toLocaleString("ru-RU").replace(/\s/g, "\u2009") : ""}
+                    value={form.lessonPrice ? fmtNum(form.lessonPrice) : ""}
                     onChange={(e) => {
                       const raw = e.target.value.replace(/\s/g, "")
                       if (/^\d*$/.test(raw)) setForm((prev) => ({ ...prev, lessonPrice: raw ? Number(raw) : "" }))
                     }}
-                    placeholder="Например: 2 000"
+                    placeholder={`Например: ${fmtNum(2000)}`}
                     className="input-glass pr-8" />
                   <span className="absolute right-3 top-2.5 text-sm text-gray-400">₽</span>
                 </div>

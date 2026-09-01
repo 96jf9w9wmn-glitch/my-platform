@@ -20,6 +20,7 @@ import {
 } from "../lessonMove"
 import { tutorLessons, findClash, formatSpan } from "../lessonConflict"
 import { usePlan } from "../subscription"
+import { fmtNum } from "../num"
 import { PlanLock } from "../components/PlanLock"
 
 const MESSENGER_LABELS = {
@@ -218,7 +219,7 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
       // Без цены занятия долг посчитать не из чего: показывать «Оплачено» здесь — обман.
       value: !price ? <div className="text-sm font-medium text-gray-400 pt-1.5">Цена не указана</div>
         : debt <= 0 ? <div className="text-xl font-medium text-green-600">Нет</div>
-        : <div className="text-xl font-medium text-amber-600">{debt.toLocaleString("ru-RU")} ₽</div>,
+        : <div className="text-xl font-medium text-amber-600">{fmtNum(debt)} ₽</div>,
     })
   }
 
@@ -486,7 +487,7 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
           <div className="mt-auto pt-3 flex items-baseline justify-between gap-2">
             <span className="text-xs text-gray-400">Цена занятия</span>
             <span className="text-sm font-medium">
-              {billing.price ? `${billing.price.toLocaleString("ru-RU")} ₽` : "не указана"}
+              {billing.price ? `${fmtNum(billing.price)} ₽` : "не указана"}
             </span>
           </div>
         </div>

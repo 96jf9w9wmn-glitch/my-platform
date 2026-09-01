@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
 import Icon from "./Icon"
 import { supabase } from "../supabase"
+import { fmtNum } from "../num"
 import { usePlan } from "../subscription"
 import { PlanHint } from "./PlanLock"
 
@@ -14,7 +15,7 @@ import { PlanHint } from "./PlanLock"
 // в историю ученика, и они уже посчитаны в доходе выше. Этот журнал — про
 // статусы: что оплачено, что зависло, что отменено.
 
-const fmt = (n) => Math.round(n || 0).toLocaleString("ru-RU")
+const fmt = (n) => fmtNum(Math.round(n || 0))
 
 const STATUS = {
   succeeded: { label: "Оплачен", cls: "bg-green-500/12 text-green-700 dark:text-green-300 ring-green-500/20" },

@@ -21,6 +21,7 @@ import {
   PLANS, FEATURE_ROWS, UNLIMITED,
   effectivePlanId, isActive, formatLimit, planById,
 } from "../plans"
+import { fmtNum } from "../num"
 
 const fmtDate = (iso) =>
   iso ? new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" }) : ""
@@ -328,7 +329,7 @@ export default function Subscription({ studentsCount = 0, tutorId }) {
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ring-1 ring-inset ${s.cls}`}>{s.label}</span>
-                    <span className="text-sm font-medium tabular-nums">{Math.round(o.amount).toLocaleString("ru-RU")} ₽</span>
+                    <span className="text-sm font-medium tabular-nums">{fmtNum(Math.round(o.amount))} ₽</span>
                   </div>
                 </div>
               )

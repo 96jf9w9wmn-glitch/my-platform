@@ -14,6 +14,7 @@
 import Icon from "./Icon"
 import { PLANS, PERIODS, priceOf, formatPrice } from "../plans"
 import { useAnimatedNumber } from "../useAnimatedNumber"
+import { fmtNum } from "../num"
 
 // Переключатель периода: «таблетка» едет под кнопками, а не перекрашивается
 // скачком. Две колонки одинаковой ширины — поэтому сдвиг ровно на 100%.
@@ -96,7 +97,7 @@ function PlanCard({ plan, period, currentId, active, busy, onBuy }) {
         </div>
         {monthly && (
           <div className="text-xs text-gray-400 mt-0.5 tabular-nums">
-            ≈ {monthly.toLocaleString("ru-RU")} ₽ в месяц
+            ≈ {fmtNum(monthly)} ₽ в месяц
           </div>
         )}
       </div>

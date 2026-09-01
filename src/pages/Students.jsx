@@ -9,6 +9,7 @@ import StudentProfile from "./StudentProfile"
 import { supabase } from "../supabase"
 import { isLessonConducted, getInitials, plural, formatPhone } from "../utils"
 import { usePlan } from "../subscription"
+import { fmtNum } from "../num"
 import { PlanHint } from "../components/PlanLock"
 
 // Телефон — единственная связка карточки с аккаунтом ученика (по нему сшивает и
@@ -31,7 +32,7 @@ function getPaymentStatus(student) {
   if (conducted.length === 0) return { kind: "empty", label: "Занятий не было", debt: 0 }
   if (!price) return { kind: "noprice", label: "Цена не указана", debt: 0 }
   const debt = conducted.length * price - paid
-  if (debt > 0) return { kind: "debt", label: `${debt.toLocaleString("ru-RU")} ₽`, debt }
+  if (debt > 0) return { kind: "debt", label: `${fmtNum(debt)} ₽`, debt }
   return { kind: "clear", label: "Долга нет", debt: 0 }
 }
 

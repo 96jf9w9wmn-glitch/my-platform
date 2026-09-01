@@ -4,6 +4,7 @@ import { useClosing } from "../useClosing"
 import Icon from "./Icon"
 import SegmentSwitch from "./SegmentSwitch"
 import { plural } from "../utils"
+import { fmtNum } from "../num"
 import {
   PERIODS, dayMonth, todayIso, lessonsInRange,
   MODE_LESSON, MODE_PACKAGE,
@@ -64,7 +65,7 @@ function PaymentModeModal({ student, onSubmit, onClose }) {
             <div className="min-w-0">
               <div className="text-sm font-medium truncate">{student?.name}</div>
               <div className="text-xs text-gray-500">
-                {price ? `${price.toLocaleString("ru-RU")} ₽ за занятие` : "Стоимость занятия не указана"}
+                {price ? `${fmtNum(price)} ₽ за занятие` : "Стоимость занятия не указана"}
               </div>
             </div>
           </div>
@@ -112,7 +113,7 @@ function PaymentModeModal({ student, onSubmit, onClose }) {
                 }`}>
                   {preview.count ? (
                     <>Первый период — по {dayMonth(preview.until)}: <b>{preview.count} {plural(preview.count, "занятие", "занятия", "занятий")}</b>
-                      {price ? <>, к оплате {(preview.count * price).toLocaleString("ru-RU")} ₽</> : null}. Долг появится сразу.</>
+                      {price ? <>, к оплате {fmtNum(preview.count * price)} ₽</> : null}. Долг появится сразу.</>
                   ) : (
                     <>В этот период занятий пока нет — начислять будет нечего. Поставьте занятия в расписание.</>
                   )}

@@ -14,8 +14,9 @@
 // занятия, — просто с другой стороны.
 
 import { studentDebt } from "./billing.js"
+import { fmtNum } from "./num.js"
 
-export const fmtMoney = (n) => Math.round(Number(n) || 0).toLocaleString("ru-RU")
+export const fmtMoney = (n) => fmtNum(Math.round(Number(n) || 0))
 
 // Номер квитанции для печатного документа: дата занятия + хвост id. Короткий,
 // не подряд идущий (нумерация по порядку требовала бы блокировки на вставке) и

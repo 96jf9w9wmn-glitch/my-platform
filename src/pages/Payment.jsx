@@ -10,6 +10,7 @@ import { supabase } from "../supabase"
 import { isLessonPast, getInitials, parsePaymentDate, plural, LESSON_EXCUSED } from "../utils"
 import { studentDebt, unpaidLessons, studentBilling, dayMonth } from "../billing"
 import { TAX_MODES, useTaxSettings } from "../taxModes"
+import { fmtNum } from "../num"
 
 // Подсказки для быстрого добавления при пустом списке расходов.
 const EXPENSE_SUGGESTIONS = ["Онлайн-доска", "Подписка Precettore", "Реклама", "Связь"]
@@ -89,7 +90,7 @@ function getMonthForecast(students) {
   return sum
 }
 
-const fmt = (n) => Math.round(n || 0).toLocaleString("ru-RU").replace(/\s/g, " ")
+const fmt = (n) => fmtNum(Math.round(n || 0))
 
 // Доход по месяцам в стиле аналитики Т-Банка: крупная сумма выбранного месяца
 // сверху, под ней ряд высоких скруглённых столбцов. Тап по столбцу выбирает

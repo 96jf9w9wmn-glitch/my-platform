@@ -42,6 +42,7 @@ import { choiceBaseOf } from "./answerChoices"
 import { variantPart2MaxOf, variantMaxPrimary, examResult, secondaryLabel, scaleOf, taskMaxOf } from "../examScales"
 // Сколько времени даётся на экзамен — вариант решается ровно столько же.
 import { examMinutesOf, formatExamDuration, formatCountdown } from "./examTiming"
+import { fmtNum } from "../num"
 // ЕГЭ (профиль и база) — единый поток части 2 (13–19); ОГЭ — свой (20–25).
 const isEgeType = (t) => examLevelOf(t) === "ЕГЭ"
 
@@ -2774,7 +2775,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                         const { price, debt, accrued } = studentBilling(student)
                         if (accrued.length === 0) return <div className="text-lg font-semibold text-gray-400">Нет занятий</div>
                         if (!price) return <div className="text-sm font-medium text-gray-400">Стоимость не указана</div>
-                        if (debt > 0) return <div className="text-lg font-semibold text-amber-600">Долг {debt.toLocaleString("ru-RU")} ₽</div>
+                        if (debt > 0) return <div className="text-lg font-semibold text-amber-600">Долг {fmtNum(debt)} ₽</div>
                         return <div className="text-lg font-semibold text-green-600">Долга нет</div>
                       })()}
                     </div>
@@ -2819,7 +2820,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                         {student.lessonPrice > 0 && (
                           <div className="flex items-center gap-2">
                             <span className="text-gray-400 flex-shrink-0"><Icon name="dollar" size={14} /></span>
-                            <span className="text-sm text-gray-700">{student.lessonPrice.toLocaleString("ru-RU")} ₽/занятие</span>
+                            <span className="text-sm text-gray-700">{fmtNum(student.lessonPrice)} ₽/занятие</span>
                           </div>
                         )}
                         {student.parent_code?.trim() && (
@@ -2996,12 +2997,12 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                     <div className="grid grid-cols-2 gap-3">
                       <div className="stat-card">
                         <div className="text-sm text-gray-500 mb-1">Всего оплачено</div>
-                        <div className="text-2xl font-medium text-green-600">{totalPaid.toLocaleString("ru-RU")} ₽</div>
+                        <div className="text-2xl font-medium text-green-600">{fmtNum(totalPaid)} ₽</div>
                       </div>
                       <div className="stat-card">
                         <div className="text-sm text-gray-500 mb-1">{debt > 0 ? "К оплате" : "Статус"}</div>
                         {debt > 0 ? (
-                          <div className="text-2xl font-medium text-amber-600">{debt.toLocaleString("ru-RU")} ₽</div>
+                          <div className="text-2xl font-medium text-amber-600">{fmtNum(debt)} ₽</div>
                         ) : (
                           <div className="text-2xl font-medium text-green-600">Долга нет</div>
                         )}
@@ -3022,7 +3023,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
 
                     {student.lessonPrice > 0 && (
                       <div className="glass-sm px-4 py-3 text-sm text-gray-600">
-                        Стоимость занятия: <span className="font-medium text-gray-800">{student.lessonPrice.toLocaleString("ru-RU")} ₽</span>
+                        Стоимость занятия: <span className="font-medium text-gray-800">{fmtNum(student.lessonPrice)} ₽</span>
                       </div>
                     )}
 
@@ -3044,7 +3045,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                                 <div className="text-sm font-medium">{p.date}</div>
                                 {p.note && <div className="text-xs text-gray-400">{p.note}</div>}
                               </div>
-                              <div className="text-sm font-medium text-green-600">+{p.amount.toLocaleString("ru-RU")} ₽</div>
+                              <div className="text-sm font-medium text-green-600">+{fmtNum(p.amount)} ₽</div>
                             </div>
                           ))}
                         </div>
