@@ -248,7 +248,7 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
             <h1 className="text-lg font-medium page-title truncate">{student.name}</h1>
             {/* Расписание — в подписи к имени: отдельной строкой поля оно
                 держало целую строку ради шести знаков. */}
-            <div className="text-xs text-gray-500">
+            <div className="text-xs page-subtitle">
               <span className="flex items-center gap-1">
                 <Icon name={student.isRecurring ? "repeat" : "calendar"} size={12} />
                 {student.isRecurring ? "Регулярные занятия" : "Разовые занятия"}

@@ -2173,7 +2173,7 @@ function HomeworkGate(props) {
   return (
     <div className="p-4 sm:p-6">
       <h1 className="text-xl font-medium page-title mb-1">Задания</h1>
-      <p className="text-sm text-gray-500 mb-5">Домашние задания ученикам и их проверка.</p>
+      <p className="text-sm page-subtitle mb-5">Домашние задания ученикам и их проверка.</p>
       <PlanLock feature="homework" title="Домашние задания" text="Выдача заданий ученикам, таймер как на экзамене, проверка с комментариями и возврат на доработку." />
     </div>
   )

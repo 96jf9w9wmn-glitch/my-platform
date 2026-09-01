@@ -5,9 +5,9 @@ import { signRows } from "../storageUrl"
 import { plural, getInitials, plainTaskMath, answersEqual } from "../utils"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
-import { isModuleNumber, part1NumbersOf, part1SlotsOf, part2NumbersOf, isPart2Number, examLevelOf, numbersLabel, VARIANT_TYPES } from "./taskBankMeta"
+import { isModuleNumber, part1NumbersOf, part1SlotsOf, part2NumbersOf, isPart2Number, examLevelOf, numbersLabel, packVariantTask, VARIANT_TYPES } from "./taskBankMeta"
 import { choiceBaseOf } from "./answerChoices"
-import { scaleOf, variantPart2MaxOf, isLegacyProfVariant, variantMaxPrimary, examResult, secondaryLabel } from "../examScales"
+import { scaleOf, variantPart2MaxOf, isLegacyProfVariant, variantMaxPrimary, examResult, secondaryLabel, taskMaxOf } from "../examScales"
 import { criteriaOf, gradingNotesOf } from "../examCriteria"
 // Вариант ученик решает столько же, сколько длится настоящий экзамен.
 import { examMinutesOf, formatExamDuration } from "./examTiming"
@@ -414,9 +414,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
       setUploading(false)
     }
 
-    const tasksSnapshot = source === "bank"
-      ? bankPicked.map((t) => ({ number: t.number, condition_text: t.condition_text, condition_tail: t.condition_tail, image_url: t.image_url }))
-      : null
+    const tasksSnapshot = source === "bank" ? bankPicked.map(packVariantTask) : null
 
     // Варианты ответа части 2 (ученик выбирает один из четырёх): у собранного из банка
     // берутся у сгенерированных заданий, у своего файла строятся из введённых ответов.
@@ -773,11 +771,13 @@ function VariantReview({ submission, variant, onClose, onSave }) {
   // Часть 1 — по сохранённым ответам самого варианта, а не по текущему списку
   // номеров: у выданных до перенумерации профилей состав части 1 другой.
   const part1Answers = variant.answers?.part1 || []
-  const part1Max = part1Answers.length ? part1Answers.filter((a) => a != null && a !== "").length : part1NumbersOf(type).length
+  // Знаменатель — БАЛЛЫ части 1, а не число заданий: у КЕГЭ №26 и №27 по 2 балла.
+  const part1Nums = part1Answers.map((a, i) => (a != null && a !== "" ? i + 1 : null)).filter(Boolean)
+  const part1Max = variantMaxPrimary(type, part1Nums.length ? part1Nums : part1NumbersOf(type))
   // Балл части 1 считает ученик при сдаче тем же answersEqual. Пересчитываем
   // только для старых записей, где его не сохранили.
   const part1Score = submission.part1_score ?? part1Answers.reduce(
-    (n, ans, i) => n + (answersEqual(submission.part1_answers?.[i], ans) ? 1 : 0), 0)
+    (n, ans, i) => n + (answersEqual(submission.part1_answers?.[i], ans) ? taskMaxOf(type, i + 1) || 1 : 0), 0)
 
   const part2Total = Object.values(scores).reduce((s, v) => s + (Number(v) || 0), 0)
   const part2MaxTotal = part2Tasks.reduce((s, n) => s + part2Max[n], 0)
@@ -1201,7 +1201,7 @@ function Variants({ user, students = [] }) {
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
         <div>
           <h1 className="text-xl font-medium page-title">Варианты</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Пробные варианты ОГЭ и ЕГЭ: соберите из банка заданий или приложите свой файл — ученик решит вариант в кабинете.</p>
+          <p className="text-sm page-subtitle mt-0.5">Пробные варианты ОГЭ и ЕГЭ: соберите из банка заданий или приложите свой файл — ученик решит вариант в кабинете.</p>
         </div>
         <button onClick={() => (canVariants ? setShowAdd(true) : openPlans())} className="btn-primary text-sm px-4 py-2 flex items-center justify-center gap-1.5 self-stretch sm:self-auto shrink-0">
           + Новый вариант

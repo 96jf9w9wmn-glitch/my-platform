@@ -151,7 +151,7 @@ function Dashboard({ students, loaded = true, setActivePage, onOpenBoard }) {
         <h1 className="text-xl font-medium page-title capitalize">
           {today.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" })}
         </h1>
-        <p className="text-sm text-gray-400 mt-0.5">Добро пожаловать</p>
+        <p className="text-sm page-subtitle mt-0.5">Добро пожаловать</p>
       </div>
 
       {/* Пока учеников нет, весь экран — нули без объяснений. Показываем

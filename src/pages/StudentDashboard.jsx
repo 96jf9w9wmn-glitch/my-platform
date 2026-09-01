@@ -37,9 +37,9 @@ import { findClash } from "../lessonConflict"
 // Состав варианта (какие номера в части 1, какие — во второй) знает банк заданий:
 // у математики номера идут подряд, у информатики — с пропусками, и «номер больше
 // двенадцати» там означало бы не то.
-import { part1SlotsOf, part1CountOf, part1NumbersOf, part2NumbersOf, examLevelOf, numbersLabel } from "./taskBankMeta"
+import { part1SlotsOf, part1NumbersOf, part2NumbersOf, examLevelOf, numbersLabel } from "./taskBankMeta"
 import { choiceBaseOf } from "./answerChoices"
-import { variantPart2MaxOf, variantMaxPrimary, examResult, secondaryLabel, scaleOf } from "../examScales"
+import { variantPart2MaxOf, variantMaxPrimary, examResult, secondaryLabel, scaleOf, taskMaxOf } from "../examScales"
 // Сколько времени даётся на экзамен — вариант решается ровно столько же.
 import { examMinutesOf, formatExamDuration, formatCountdown } from "./examTiming"
 // ЕГЭ (профиль и база) — единый поток части 2 (13–19); ОГЭ — свой (20–25).
@@ -1887,10 +1887,14 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   const isGeneratedVariant = (selectedVariant?.tasks_snapshot?.length || 0) > 0
   // Часть 2 у варианта: номера заданий и 4 варианта ответа на каждый (см. Variants.jsx).
   // У №24 (доказательство) вариантов нет — только фото решения.
-  // Число заданий части 1 — по сохранённым ответам самого варианта: у выданных
-  // до перенумерации КИМ-2027 профилей состав части 1 другой (12 заданий, а не 11).
+  // Знаменатель части 1 — это БАЛЛЫ, а не число заданий: в КЕГЭ №26 и №27 стоят
+  // по 2 балла. Состав берём по сохранённым ответам самого варианта: у выданных
+  // до перенумерации КИМ-2027 профилей часть 1 другая (12 заданий, а не 11).
   const storedPart1 = selectedVariant?.answers?.part1 || []
-  const part1Count = storedPart1.filter((a) => a != null && a !== "").length || part1CountOf(selectedVariant?.type)
+  const part1Nums = storedPart1.map((a, i) => (a != null && a !== "" ? i + 1 : null)).filter(Boolean)
+  const part1Count = part1Nums.length
+    ? variantMaxPrimary(selectedVariant?.type, part1Nums)
+    : variantMaxPrimary(selectedVariant?.type, part1NumbersOf(selectedVariant?.type))
   const variantChoices = selectedVariant?.answers?.part2_choices || {}
   // Ответ задания части 2 у ЕГЭ двухчастный, и выбирается пункт б) — подписываем,
   // какой именно. У вариантов, собранных до появления подписи, карты нет: букву
@@ -2405,9 +2409,11 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
       const variant = selectedVariant
       const maxCount = part1SlotsOf(variant.type)
       const correctAnswers = variant.answers?.part1 || []
+      // Балл, а не число верных: у КЕГЭ №26 и №27 по 2 балла. У остальных
+      // экзаменов каждое задание части 1 стоит 1, поэтому счёт не меняется.
       let score = 0
       part1Answers.forEach((ans, i) => {
-        if (answersEqual(ans, correctAnswers[i])) score++
+        if (answersEqual(ans, correctAnswers[i])) score += taskMaxOf(variant.type, i + 1) || 1
       })
 
       const base = {
@@ -3157,7 +3163,15 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                         <div key={t.number} className="glass-sm p-3">
                           <div className="text-sm font-medium text-blue-600 mb-1">Задание {t.number}</div>
                           {t.condition_text && <div className="text-base whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_text) }} />}
-                          {t.image_url && <img src={t.image_url} alt={`Задание ${t.number}`} className="max-w-full h-auto object-contain rounded-lg mt-2 bg-white" />}
+                          <div className="flex flex-col gap-1.5 mt-2">
+                            <TaskAttachments
+                              task={t}
+                              imageAlt={`Задание ${t.number}`}
+                              tail={t.condition_tail ? (
+                                <div className="text-base whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_tail) }} />
+                              ) : null}
+                            />
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -3204,8 +3218,19 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                                 Задание {t.number}{isPart2 ? " · часть 2" : ""}
                               </div>
                               {t.condition_text && <div className="text-base whitespace-pre-wrap mb-2" dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_text) }} />}
-                              {t.image_url && <img src={t.image_url} alt={`Задание ${t.number}`} className="max-w-full h-auto object-contain rounded-lg mb-2 bg-white" />}
-                              {t.condition_tail && <div className="text-base whitespace-pre-wrap mb-2" dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_tail) }} />}
+                              {/* Чертёж, программа, архив, таблица, текстовый файл — тем же
+                                  компонентом, что и в домашней работе. Без него задания КЕГЭ
+                                  с приложенным файлом (№3, 9, 10, 17, 18, 22, 24, 26, 27)
+                                  были бы нерешаемы, и в вариант они не шли вовсе. */}
+                              <div className="flex flex-col gap-1.5 mb-2">
+                                <TaskAttachments
+                                  task={t}
+                                  imageAlt={`Задание ${t.number}`}
+                                  tail={t.condition_tail ? (
+                                    <div className="text-base whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_tail) }} />
+                                  ) : null}
+                                />
+                              </div>
                               {!isPart2 && (
                                 <input
                                   value={part1Answers[t.number - 1] || ""}

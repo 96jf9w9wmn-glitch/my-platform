@@ -338,7 +338,7 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
     <div className="p-4 sm:p-6">
       <div className="mb-4 sm:mb-6">
         <h1 className="text-xl font-medium page-title">Финансы</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Кто сколько должен, история оплат и доход за месяц. Настройки квитанций и онлайн-оплаты — в «Профиле».</p>
+        <p className="text-sm page-subtitle mt-0.5">Кто сколько должен, история оплат и доход за месяц. Настройки квитанций и онлайн-оплаты — в «Профиле».</p>
       </div>
 
       {/* HERO — доход по месяцам. Цели по доходу здесь нет намеренно: у
@@ -699,7 +699,7 @@ function PaymentGate(props) {
   return (
     <div className="p-4 sm:p-6">
       <h1 className="text-xl font-medium page-title mb-1">Финансы</h1>
-      <p className="text-sm text-gray-500 mb-5">Оплаты, долги и доход по занятиям.</p>
+      <p className="text-sm page-subtitle mb-5">Оплаты, долги и доход по занятиям.</p>
       <PlanLock feature="finance" title="Финансы" text="Учёт оплат и долгов по каждому ученику, расходы, налог и чистая прибыль." />
     </div>
   )

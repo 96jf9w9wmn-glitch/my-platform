@@ -38,16 +38,14 @@ if (import.meta.env?.DEV) {
     console.warn("MODULE_EXAM_TYPES в taskBankMeta.js разошёлся с MODULES:", real, MODULE_EXAM_TYPES)
 }
 
-// Задание для печатного листа: без прилагаемых файлов. Такие задания есть в
-// информатике (архив, таблица, файл с текстом), и без файла их не решить — в
-// вариант они попасть не должны. Номера, где ВСЕ задания такие, отсеяны заранее
-// (VARIANT_PART1), эта проверка ловит отдельные случайные попадания: генератор
-// одного номера может выдавать и то, и другое.
-const needsFile = (t) => !!(t?.archive || t?.spreadsheet || t?.textFile)
-function printable(examType, number) {
+// Одно задание номера. Прилагаемые файлы (архив, таблица, файл с текстом) больше
+// НЕ отсеиваются: вариант решается в кабинете, и файл там открывается так же, как
+// в домашней работе. До 01.09.2026 здесь стоял фильтр needsFile, из-за которого
+// вариант КЕГЭ выходил из 17 заданий вместо 27.
+function pickTask(examType, number) {
   for (let i = 0; i < 12; i++) {
     const t = generateTask(examType, number)
-    if (t && !needsFile(t)) return t
+    if (t) return t
   }
   return null
 }
@@ -75,7 +73,7 @@ export async function assembleFromBank(examType) {
   for (const n of numbers) {
     if (moduleByNum.has(n)) { picked.push(moduleByNum.get(n)); continue }
     if (hasGenerators(examType, n)) {
-      const t = printable(examType, n)
+      const t = pickTask(examType, n)
       if (t) { picked.push(withChoices(examType, t)); continue }
       missing.push(n)
       continue

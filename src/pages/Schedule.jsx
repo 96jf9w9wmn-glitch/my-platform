@@ -308,7 +308,7 @@ function Schedule({ students, setStudents, onOpenBoard }) {
           <h1 className="text-xl font-medium page-title">Расписание</h1>
           {/* Постоянные дни задаются в карточке ученика, и человек, пришедший
               сюда ставить занятия, раньше об этом ниоткуда не узнавал. */}
-          <p className="text-sm text-gray-500 mt-0.5">
+          <p className="text-sm page-subtitle mt-0.5">
             Разовые занятия добавляйте здесь. Постоянные дни и время — в карточке ученика,
             раздел «Ученики» → «Редактировать».
           </p>

@@ -499,7 +499,7 @@ export default function TaskGenPreviewGate(props) {
   return (
     <div className="p-4 sm:p-6">
       <h1 className="text-xl font-medium page-title mb-1">Банк заданий</h1>
-      <p className="text-sm text-gray-500 mb-5">
+      <p className="text-sm page-subtitle mb-5">
         Задания по образцу ФИПИ: 13 предметов ОГЭ и ЕГЭ, каждое генерируется заново.
       </p>
       <PlanLock
