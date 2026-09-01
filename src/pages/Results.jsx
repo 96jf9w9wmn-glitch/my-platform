@@ -70,6 +70,9 @@ const TONE = {
   purple: "bg-purple-500/10 text-purple-700 dark:text-purple-300 ring-purple-500/20",
   gray:   "text-gray-500 ring-gray-300/70 dark:ring-white/15",
 }
+// Классы сетки — картой, а не строкой: Tailwind сканирует исходник и класс,
+// собранный из переменной, в сборку не попадёт.
+const TILE_COLS = { 2: "md:grid-cols-2", 3: "md:grid-cols-3", 4: "md:grid-cols-4" }
 const LINE = { blue: "#007aff", green: "#34c759", amber: "#ff9f0a", red: "#ff3b30", purple: "#af52de", gray: "#9ca3af" }
 
 // Дата работы короткой строкой: «12 авг». Без неё «лучший результат 12» не
@@ -914,6 +917,16 @@ function Results({ students, loaded = true, user }) {
   const worksThisMonth = cards.reduce(
     (n, c) => n + c.stats.rows.filter((r) => new Date(r.date).getTime() >= monthAgo).length, 0)
 
+  // Третья плитка подстраивается под то, что есть на руках. «Достигли цели»
+  // без единой заданной цели — это ноль и подпись «цель никому не задана»:
+  // числа нет, действия нет, место занято. Поэтому пока цели не выставлены,
+  // на её месте стоит рост — сколько учеников написали последнюю работу лучше
+  // предыдущей; а если сравнивать ещё не с чем, плитки нет вовсе.
+  const withPrev = withData.filter((c) => c.stats.delta !== null)
+  const grewCount = withPrev.filter((c) => c.stats.delta > 0).length
+  const thirdTile = withTarget.length ? "target" : withPrev.length ? "growth" : null
+  const tileCount = 2 + (weakSpot ? 1 : 0) + (thirdTile ? 1 : 0)
+
   const GROUPS = [
     { key: "all", label: "Все" },
     { key: "ОГЭ", label: "ОГЭ" },
@@ -963,7 +976,7 @@ function Results({ students, loaded = true, user }) {
       ) : (
         <div className="flex flex-col gap-4">
           {totalWorks > 0 && (
-            <div className={`grid grid-cols-2 ${weakSpot ? "md:grid-cols-4" : "md:grid-cols-3"} gap-2.5 sm:gap-3`}>
+            <div className={`grid grid-cols-2 ${TILE_COLS[tileCount]} gap-2.5 sm:gap-3`}>
               <StatTile
                 icon="file-text" tone="blue" label="Проверено работ" value={totalWorks}
                 sub={worksThisMonth ? `${worksThisMonth} за последние 30 дней` : "за 30 дней — ни одной"}
@@ -976,17 +989,27 @@ function Results({ students, loaded = true, user }) {
                   sub={`${numberTitle(weakSpot.type, weakSpot.n)} — ошибок ${weakSpot.wrong} из ${weakSpot.works}`}
                 />
               )}
-              <StatTile
-                icon="target" tone="green" label="Достигли цели" value={reachedCount}
-                suffix={withTarget.length ? ` из ${withTarget.length}` : ""}
-                sub={withTarget.length ? "цель — в карточке ученика" : "цель никому не задана"}
-              />
+              {thirdTile === "target" && (
+                <StatTile
+                  icon="target" tone="green" label="Достигли цели" value={reachedCount}
+                  suffix={` из ${withTarget.length}`}
+                  sub="цель — в карточке ученика"
+                />
+              )}
+              {thirdTile === "growth" && (
+                <StatTile
+                  icon="trending-up" tone={grewCount ? "green" : "gray"} label="Прибавили в баллах"
+                  value={grewCount}
+                  suffix={` из ${withPrev.length}`}
+                  sub={grewCount ? "последняя работа лучше предыдущей" : "лучше предыдущей не написал никто"}
+                />
+              )}
               {/* Нечётную плитку на телефоне растягиваем на всю строку: иначе
                   рядом с ней остаётся пустая половина. */}
               <StatTile
                 icon="alert-triangle" tone={attentionCount ? "red" : "gray"} label="Требуют внимания"
                 value={attentionCount}
-                className={weakSpot ? "" : "col-span-2 md:col-span-1"}
+                className={tileCount % 2 ? "col-span-2 md:col-span-1" : ""}
                 sub={attentionCount ? (onlyAttention ? "показаны только они" : "показать только их") : "спадов и провалов нет"}
                 active={onlyAttention}
                 onClick={attentionCount ? () => setOnlyAttention((v) => !v) : undefined}
