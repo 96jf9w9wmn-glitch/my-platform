@@ -144,12 +144,19 @@ export default function Profile({ user, students = [], onLogout, onProfileChange
 
       {/* Код для учеников: раньше жил в верхней панели — здесь он рядом с
           остальными данными аккаунта и с кнопкой копирования. */}
-      {user.profile?.code && (
+      {/* Карточка стоит всегда, а не только при загруженном коде: без кода
+          репетитор не может привязать к себе ни одного ученика, и «блок просто
+          не показался» выглядит как отсутствие функции. Профиль подтягивается
+          с запасным путём (см. src/tutorProfile.js), поэтому пустой код —
+          признак сбоя, о котором надо сказать, а не молча спрятать блок. */}
+      {(
         <div className="glass p-5 mb-4 flex flex-col sm:flex-row sm:items-center gap-4">
           <div className="min-w-0 flex-1">
             <div className="text-sm font-medium mb-1">Код для учеников</div>
             <p className="text-xs text-gray-500 leading-relaxed">
-              Ученик вводит его при регистрации, чтобы попасть именно к вам.
+              {user.profile?.code
+                ? "Ученик вводит его при регистрации, чтобы попасть именно к вам. Он же продублирован в разделе «Ученики»."
+                : "Код не загрузился — обновите страницу. Без него ученик не сможет к вам привязаться."}
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -158,6 +165,7 @@ export default function Profile({ user, students = [], onLogout, onProfileChange
             </span>
             <button
               onClick={copyCode}
+              disabled={!user.profile?.code}
               className="px-3.5 py-2 rounded-xl text-sm font-medium text-[#007AFF] bg-[#007AFF]/10 ring-1 ring-inset ring-[#007AFF]/25 transition-all flex items-center gap-1.5"
             >
               <Icon name={copied ? "check" : "copy"} size={14} />

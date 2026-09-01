@@ -26,6 +26,7 @@ import Chat from "./pages/Chat"
 import Legal from "./pages/Legal"
 import { LEGAL_PATHS } from "./legalPaths"
 import Profile from "./pages/Profile"
+import { loadTutorProfile } from "./tutorProfile"
 import Subscription from "./pages/Subscription"
 import { SubscriptionProvider } from "./subscriptionProvider"
 import { useSubscription } from "./subscription"
@@ -603,8 +604,8 @@ function App() {
     async function restoreSession(session) {
       const minDelay = new Promise(r => setTimeout(r, 600))
       if (!session) { await minDelay; setLoadingAuth(false); return }
-      const [{ data: tutor, error }] = await Promise.all([
-        supabase.from("tutors").select("*").eq("id", session.user.id).single(),
+      const [tutor] = await Promise.all([
+        loadTutorProfile(session.user.id),
         minDelay,
       ])
       // Сессия уже подтверждена GoTrue, поэтому в кабинет пускаем даже если
@@ -612,7 +613,6 @@ function App() {
       // выход из аккаунта при перезагрузке страницы, хотя вход был живой. Так
       // сломала кабинет колонка marketing_opt_in без гранта — `select *` начал
       // отдавать 42501 (см. supabase/user_consents.sql).
-      if (error) console.error("Профиль репетитора не загрузился:", error)
       setUser({ ...session.user, role: "tutor", profile: tutor || null })
       setLoadingAuth(false)
     }
@@ -881,7 +881,7 @@ function App() {
         <div className={`flex-1 min-h-0 overflow-x-hidden ${activePage === "chat" ? "flex flex-col overflow-hidden" : "page-scroll overflow-y-auto pb-20 md:pb-0 kb-collapse"}`}>
           <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="loader-logo" /></div>}>
           <div className={activePage !== "dashboard" ? "hidden" : "page-active"}>{visitedPages.has("dashboard") && <Dashboard students={students} loaded={studentsReady} setActivePage={navigateTo} onOpenBoard={openBoard} />}</div>
-          <div className={activePage !== "students" ? "hidden" : "page-active"}>{visitedPages.has("students") && <Students students={students} loaded={studentsReady} setStudents={handleSetStudents} tutorId={user.id} onOpenBoard={openBoard} />}</div>
+          <div className={activePage !== "students" ? "hidden" : "page-active"}>{visitedPages.has("students") && <Students students={students} loaded={studentsReady} setStudents={handleSetStudents} tutorId={user.id} tutorCode={user.profile?.code || ""} onOpenBoard={openBoard} />}</div>
 <div className={activePage !== "payment" ? "hidden" : "page-active"}>{visitedPages.has("payment") && <Payment students={students} setStudents={handleSetStudents} tutorId={user.id} setActivePage={navigateTo} />}</div>
           <div className={activePage !== "variants" ? "hidden" : "page-active"}>{visitedPages.has("variants") && <Variants user={user} students={students} />}</div>
           <div className={activePage !== "schedule" ? "hidden" : "page-active"}>{visitedPages.has("schedule") && <Schedule students={students} setStudents={handleSetStudents} onOpenBoard={openBoard} />}</div>

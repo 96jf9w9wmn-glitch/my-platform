@@ -2804,13 +2804,10 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                           <Icon name="plus" size={12} />Ещё репетитор
                         </button>
                       </div>
+                      {/* Своего телефона здесь нет намеренно: строка с трубкой стояла
+                          сразу под именем репетитора и читалась как ЕГО номер, хотя
+                          это номер самого ученика (он же есть в шапке выше). */}
                       <div className="flex flex-col gap-2.5">
-                        {user.profile?.phone && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-gray-400 flex-shrink-0"><Icon name="phone" size={14} /></span>
-                            <span className="text-sm text-gray-700">{formatPhone(user.profile.phone)}</span>
-                          </div>
-                        )}
                         {student.goal && (
                           <div className="flex items-center gap-2">
                             <span className="text-gray-400 flex-shrink-0"><Icon name="target" size={14} /></span>

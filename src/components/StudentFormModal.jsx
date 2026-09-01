@@ -145,9 +145,17 @@ function MiniCalendar({ lessons, onToggleDate }) {
           const key = formatDate(day)
           const isSelected = selectedDates.includes(key)
           const isToday = key === formatDate(today)
+          // Занятие задним числом не назначается: оно тут же стало бы
+          // «проведённым» — попало в долг и в отчёт родителю.
+          const isPast = key < formatDate(today)
           return (
-            <button key={key} onClick={() => onToggleDate(key)}
-              className={`text-xs py-1.5 rounded-md transition-colors ${isSelected ? "bg-blue-600 text-white" : isToday ? "border border-blue-300 text-blue-600" : "text-gray-600 hover:bg-blue-500/10"}`}>
+            <button key={key} disabled={isPast} onClick={() => onToggleDate(key)}
+              title={isPast ? "Прошедший день" : undefined}
+              className={`text-xs py-1.5 rounded-md transition-colors ${
+                isSelected ? "bg-blue-600 text-white"
+                : isPast ? "text-gray-300 dark:text-white/20 cursor-default"
+                : isToday ? "border border-blue-300 text-blue-600"
+                : "text-gray-600 hover:bg-blue-500/10"}`}>
               {day.getDate()}
             </button>
           )
@@ -339,6 +347,8 @@ function StudentFormModal({ student, students = [], onClose, onSubmit, initialNa
     if (!form.name || !phone) { setFormError("Заполните имя и телефон."); return }
     if (mode === "single" && previewLessons.length === 0) { setFormError("Выберите даты занятий."); return }
     if (mode === "recurring" && (!recurringStartDate || recurringDays.length === 0)) { setFormError("Укажите дату начала и дни недели."); return }
+    if (mode === "recurring" && recurringStartDate < formatDate(new Date())) { setFormError("Дата начала не может быть в прошлом."); return }
+    if (mode === "single" && previewLessons.some((l) => l.date < formatDate(new Date()))) { setFormError("Занятие нельзя поставить на прошедший день."); return }
     if (clashes.length) {
       setFormError(`Занятия налезают на уже назначенные: ${clashMessage(clashes)} Поправьте время или дни.`)
       return
@@ -646,7 +656,8 @@ function StudentFormModal({ student, students = [], onClose, onSubmit, initialNa
                   </div>
                   <div>
                     <label className="text-sm text-gray-500 mb-1.5 block">Дата начала</label>
-                    <input type="date" value={recurringStartDate} onChange={(e) => setRecurringStartDate(e.target.value)}
+                    <input type="date" value={recurringStartDate} min={formatDate(new Date())}
+                      onChange={(e) => setRecurringStartDate(e.target.value)}
                       className="input-glass" />
                   </div>
                   <div>

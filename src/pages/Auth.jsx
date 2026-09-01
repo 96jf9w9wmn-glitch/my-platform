@@ -5,6 +5,7 @@ import MorphIcon from "../components/MorphIcon"
 import BetaBadge from "../components/BetaBadge"
 import { ConsentRow, ConsentLink } from "../components/ConsentChecks"
 import { logConsent } from "../consents"
+import { loadTutorProfile } from "../tutorProfile"
 
 function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
   const [mode, setMode] = useState(initialMode)
@@ -274,7 +275,7 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
           // Сессия ученика или родителя из этого же браузера теперь не нужна, а
           // её токен подменял бы авторизацию репетитора (см. supabase.js).
           clearAppSession()
-          const { data: tutor } = await supabase.from("tutors").select("*").eq("id", data.user.id).single()
+          const tutor = await loadTutorProfile(data.user.id)
           onLogin({ ...data.user, role: "tutor", profile: tutor })
 
         } else {
@@ -298,7 +299,7 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
 
           await saveConsent(data.user.id, form.email)
 
-          const { data: tutor } = await supabase.from("tutors").select("*").eq("id", data.user.id).single()
+          const tutor = await loadTutorProfile(data.user.id)
           onLogin({ ...data.user, role: "tutor", profile: tutor })
         }
       }

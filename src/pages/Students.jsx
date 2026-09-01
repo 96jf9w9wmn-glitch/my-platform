@@ -89,9 +89,33 @@ const COLS =
   "lg:grid-cols-[minmax(160px,1.6fr)_minmax(110px,0.9fr)_minmax(140px,1fr)_minmax(160px,1.2fr)_minmax(120px,1fr)_36px] " +
   "xl:grid-cols-[minmax(160px,1.6fr)_minmax(110px,0.9fr)_minmax(140px,1fr)_minmax(160px,1.2fr)_minmax(120px,0.9fr)_minmax(120px,1fr)_36px]"
 
+// Код репетитора: ученик вводит его при регистрации и привязывается сам.
+// Раньше жил только в «Профиле» — про него не знали и жаловались, что кода
+// «нигде нет». Здесь он рядом с приглашением, то есть там, где нужен.
+function TutorCodeChip({ code }) {
+  const [copied, setCopied] = useState(false)
+  if (!code) return null
+  function copy() {
+    navigator.clipboard?.writeText(code)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+  return (
+    <button
+      onClick={copy}
+      title="Код для привязки ученика — нажмите, чтобы скопировать"
+      className="press-fill flex items-center gap-2 rounded-xl px-3 py-2 text-sm ring-1 ring-inset ring-gray-200 dark:ring-white/[0.12] transition-all"
+    >
+      <span className="text-xs text-gray-500 hidden sm:inline">Ваш код</span>
+      <span className="font-mono font-medium tracking-widest">{code}</span>
+      <MorphIcon from="clipboard" size={13} active={copied} />
+    </button>
+  )
+}
+
 // Пустой список: карточку ученика вручную не заводят, поэтому объясняем, откуда
 // ученик берётся, и даём единственное действие — пригласить.
-function EmptyStudents({ onInvite, inviting }) {
+function EmptyStudents({ onInvite, inviting, code }) {
   return (
     <div className="flex flex-col items-center gap-3">
       <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-500/15 flex items-center justify-center text-blue-600 dark:text-blue-400">
@@ -107,13 +131,18 @@ function EmptyStudents({ onInvite, inviting }) {
       <button onClick={onInvite} disabled={inviting} className="btn-primary px-4 py-2 text-sm disabled:opacity-50">
         {inviting ? "Готовим…" : "Пригласить ученика"}
       </button>
+      {code && (
+        <div className="text-xs text-gray-400">
+          или продиктуйте код <span className="font-mono tracking-widest text-gray-600 dark:text-gray-300">{code}</span>
+        </div>
+      )}
     </div>
   )
 }
 
 // `loaded` — список уже пришёл из базы. До этого students пуст, и без признака
 // раздел успевал показать «Пока нет учеников» тому, у кого их десяток.
-function Students({ students, loaded = true, setStudents, tutorId, onOpenBoard }) {
+function Students({ students, loaded = true, setStudents, tutorId, tutorCode = "", onOpenBoard }) {
   // Приглашение одной ссылкой: одноразовый токен на 7 дней (student_invites.sql).
   const [invite, setInvite] = useState(null)      // { link, text }
   const [inviting, setInviting] = useState(false)
@@ -308,6 +337,10 @@ function Students({ students, loaded = true, setStudents, tutorId, onOpenBoard }
           <p className="text-xs page-subtitle mt-0.5">{students.length} {plural(students.length, "ученик", "ученика", "учеников")}</p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Код виден прямо здесь, а не только в «Профиле»: привязка ученика
+              начинается на этом экране, и второй способ (продиктовать код)
+              нельзя прятать за другим разделом — его просто не находили. */}
+          <TutorCodeChip code={tutorCode} />
           {/* Единственный способ завести ученика — он сам привязывается к репетитору
               (по ссылке или коду), после чего приходит заявка. Карточку заполняем
               при её приёме, вручную ученика не создаём. */}
@@ -502,7 +535,7 @@ function Students({ students, loaded = true, setStudents, tutorId, onOpenBoard }
                 {query ? (
                   <span className="text-sm text-gray-400">Ничего не найдено</span>
                 ) : (
-                  <EmptyStudents onInvite={() => (canAddStudent ? createInvite() : openPlans())} inviting={inviting} />
+                  <EmptyStudents onInvite={() => (canAddStudent ? createInvite() : openPlans())} inviting={inviting} code={tutorCode} />
                 )}
               </div>
             </div>
@@ -610,7 +643,7 @@ function Students({ students, loaded = true, setStudents, tutorId, onOpenBoard }
                 {query ? (
                   <span className="text-sm text-gray-400">Ничего не найдено</span>
                 ) : (
-                  <EmptyStudents onInvite={() => (canAddStudent ? createInvite() : openPlans())} inviting={inviting} />
+                  <EmptyStudents onInvite={() => (canAddStudent ? createInvite() : openPlans())} inviting={inviting} code={tutorCode} />
                 )}
               </div>
             </div>

@@ -13,7 +13,7 @@ import { MOVE_ANCHOR_TUTOR } from "../notifTarget"
 import { tutorLessons, findClash, clashLine, formatSpan, lessonsClash } from "../lessonConflict"
 import {
   applyMoveToStudent, proposeMoveOnStudent, setMoveRequest, pendingMoveRequests,
-  formatLessonWhen, formatLessonShort, MOVE_BY_STUDENT, MOVE_BY_TUTOR,
+  formatLessonWhen, formatLessonShort, todayDateStr, MOVE_BY_STUDENT, MOVE_BY_TUTOR,
 } from "../lessonMove"
 
 const VIEWS = [{ key: "month", label: "Месяц" }, { key: "week", label: "Неделя" }]
@@ -55,6 +55,8 @@ function formatDate(date) {
 function Schedule({ students, setStudents, onOpenBoard }) {
   const [baseDate, setBaseDate] = useState(new Date())
   const [showForm, setShowForm] = useState(false)
+  // Дата пришла из календаря и переспрашивать её незачем. Снимается «Изменить».
+  const [dateFixed, setDateFixed] = useState(false)
   const [newLesson, setNewLesson] = useState({ studentId: "", date: "", time: "", duration: "" })
   const [view, setView] = useState("month")
   const [formError, setFormError] = useState("")
@@ -195,8 +197,11 @@ function Schedule({ students, setStudents, onOpenBoard }) {
     setMoving(lesson)
   }
 
+  // Дата, пришедшая из календаря, уже выбрана — второй раз её не спрашиваем
+  // (`dateFixed`): день виден строкой, а поле открывается только по «Изменить».
   function openExtraForm(dateStr) {
     setNewLesson({ studentId: "", date: dateStr || "", time: "", duration: "" })
+    setDateFixed(!!dateStr)
     setShowForm(true)
   }
 
@@ -242,6 +247,12 @@ function Schedule({ students, setStudents, onOpenBoard }) {
   function handleAddLesson() {
     if (!newLesson.studentId || !newLesson.date || !newLesson.time) {
       setFormError("Выберите ученика, дату и время.")
+      return
+    }
+    // Занятие задним числом не ставится: расписание — это план, а прошедшее
+    // занятие сразу попало бы в долг и в отчёт родителю как проведённое.
+    if (newLesson.date < todayDateStr()) {
+      setFormError("Занятие нельзя поставить на прошедший день.")
       return
     }
     // Два занятия в одно время — не опечатка, которую можно молча сохранить:
@@ -501,12 +512,17 @@ function Schedule({ students, setStudents, onOpenBoard }) {
                 <div className="text-sm font-medium text-gray-700">
                   {new Date(selectedDay + "T00:00:00").toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" })}
                 </div>
-                <button
-                  onClick={() => openExtraForm(selectedDay)}
-                  className="text-xs text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg transition-colors"
-                >
-                  + Доп занятие
-                </button>
+                {/* На прошедший день занятие не ставится, поэтому и кнопки нет:
+                    предлагать действие, которое всё равно упрётся в ошибку, —
+                    хуже, чем не предлагать вовсе. */}
+                {selectedDay >= todayDateStr() && (
+                  <button
+                    onClick={() => openExtraForm(selectedDay)}
+                    className="press-fill text-xs text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg transition-colors"
+                  >
+                    + Доп занятие
+                  </button>
+                )}
               </div>
               {selectedDayLessons.length === 0 ? (
                 <div className="text-sm text-gray-400 text-center py-4">Занятий нет</div>
@@ -772,8 +788,22 @@ function Schedule({ students, setStudents, onOpenBoard }) {
               </div>
               <div>
                 <label className="text-sm text-gray-500 mb-1 block">Дата</label>
-                <input type="date" value={newLesson.date} onChange={(e) => setNewLesson((p) => ({ ...p, date: e.target.value }))}
-                  className="input-glass" />
+                {dateFixed ? (
+                  <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl ring-1 ring-inset ring-gray-200 dark:ring-white/[0.12]">
+                    <Icon name="calendar" size={15} className="text-blue-500 flex-shrink-0" />
+                    <span className="text-sm flex-1 min-w-0 truncate">
+                      {new Date(newLesson.date + "T00:00:00").toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" })}
+                    </span>
+                    <button onClick={() => setDateFixed(false)}
+                      className="press-fill text-xs text-blue-600 rounded-lg px-2 py-1 flex-shrink-0">
+                      Изменить
+                    </button>
+                  </div>
+                ) : (
+                  <input type="date" value={newLesson.date} min={todayDateStr()}
+                    onChange={(e) => setNewLesson((p) => ({ ...p, date: e.target.value }))}
+                    className="input-glass" />
+                )}
               </div>
               <div>
                 <label className="text-sm text-gray-500 mb-2 block">Время</label>
