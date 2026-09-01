@@ -5,6 +5,8 @@ import Icon from "../components/Icon"
 import SegmentSwitch from "../components/SegmentSwitch"
 import ConfirmModal from "../components/ConfirmModal"
 import RescheduleModal from "../components/RescheduleModal"
+import WheelPicker from "../components/WheelPicker"
+import DurationPicker from "../components/DurationPicker"
 import LessonStatusModal, { LessonStatusBadge } from "../components/LessonStatusModal"
 import { lessonStatusNotice } from "../lessonStatus"
 import { isLessonPast, setLessonStatus, LESSON_EXCUSED } from "../utils"
@@ -801,25 +803,21 @@ function Schedule({ students, setStudents, onOpenBoard }) {
               </div>
               <div>
                 <label className="text-sm text-gray-500 mb-2 block">Время</label>
-                <div className="flex gap-2 flex-wrap">
-                  {HOURS.map((time) => (
-                    <button key={time} onClick={() => setNewLesson((p) => ({ ...p, time }))}
-                      className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${newLesson.time === time ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-600 hover:bg-blue-500/[0.06]"}`}>
-                      {time}
-                    </button>
-                  ))}
-                </div>
+                {/* Колесо вместо сетки из двенадцати часов: та занимала треть
+                    окна и всё равно не давала поставить занятие на 8:30. */}
+                <WheelPicker value={newLesson.time || "09:00"}
+                  onChange={(time) => setNewLesson((p) => ({ ...p, time }))} />
               </div>
               <div>
-                <label className="text-sm text-gray-500 mb-2 block">Длительность (мин)</label>
-                <div className="flex gap-2 flex-wrap">
-                  {[30, 45, 60, 90, 120].map((d) => (
-                    <button key={d} onClick={() => setNewLesson((p) => ({ ...p, duration: String(d) }))}
-                      className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${String(newLesson.duration) === String(d) ? "bg-blue-600 text-white border-blue-600" : "border-gray-200 text-gray-600 hover:bg-blue-500/[0.06]"}`}>
-                      {d}
-                    </button>
-                  ))}
-                </div>
+                <label className="text-sm text-gray-500 mb-2 block">Длительность</label>
+                {/* Ползунком, а не пятью кнопками: занятие на 75 или 100 минут
+                    прежним набором было не поставить вовсе. */}
+                {/* Пока длительность не тронули, показываем ту, с которой этот
+                    ученик занимается обычно, — её же подставит сохранение. */}
+                <DurationPicker
+                  value={newLesson.duration}
+                  fallback={students.find((s) => String(s.id) === String(newLesson.studentId))?.lessonDuration || 60}
+                  onChange={(d) => setNewLesson((p) => ({ ...p, duration: String(d) }))} />
               </div>
               {formClash && (
                 <div className="flex items-start gap-2 text-xs text-amber-600 bg-amber-500/10 rounded-xl px-3 py-2">

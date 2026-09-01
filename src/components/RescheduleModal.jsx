@@ -2,11 +2,8 @@ import { useState } from "react"
 import { createPortal } from "react-dom"
 import { useClosing } from "../useClosing"
 import Icon from "./Icon"
+import WheelPicker from "./WheelPicker"
 import { formatLessonWhen, todayDateStr } from "../lessonMove"
-
-// Часы, на которые чаще всего ставят занятия. Всё остальное набирается в поле
-// «другое время» — без него перенос на 8:30 был бы невозможен.
-const QUICK_HOURS = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00"]
 
 // Общая модалка переноса: одна и та же и у репетитора (двигает занятие), и у
 // ученика (просит о переносе) — меняются только подписи и проверка занятости.
@@ -84,30 +81,9 @@ function RescheduleModal({
 
           <div>
             <label className="text-sm text-gray-500 mb-2 block">Новое время</label>
-            <div className="flex gap-2 flex-wrap">
-              {QUICK_HOURS.map((h) => (
-                <button
-                  key={h}
-                  onClick={() => setTime(h)}
-                  className={`px-3 py-1.5 rounded-lg text-sm border transition-colors active:scale-95 ${
-                    time === h
-                      ? "bg-blue-600 text-white border-blue-600"
-                      : "border-gray-200 text-gray-600 hover:bg-blue-500/[0.06] dark:hover:bg-white/[0.06]"
-                  }`}
-                >
-                  {h}
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center gap-2 mt-2.5">
-              <span className="text-xs text-gray-400 flex-shrink-0">Другое время</span>
-              <input
-                type="time"
-                value={time}
-                onChange={(e) => setTime(e.target.value)}
-                className="input-glass !py-1.5 !w-auto"
-              />
-            </div>
+            {/* Колесо вместо сетки часов и отдельного поля «другое время»:
+                любое время набирается в одном месте, как в iOS. */}
+            <WheelPicker value={time || lesson?.time || "09:00"} onChange={setTime} label="Новое время" />
           </div>
 
           {commentLabel && (

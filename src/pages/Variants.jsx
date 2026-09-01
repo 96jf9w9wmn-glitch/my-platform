@@ -22,7 +22,7 @@ import SegmentSwitch from "../components/SegmentSwitch"
 import StatTabs from "../components/StatTabs"
 import MethodCards from "../components/MethodCards"
 import AutoHeight from "../components/AutoHeight"
-import { useClosing } from "../useClosing"
+import { useClosing, POPUP_OUT_MS } from "../useClosing"
 import useGridCols, { detailRowEndOf } from "../useGridCols"
 import getAvatarColor from "../avatarColor"
 import Reveal from "../components/Reveal"
@@ -1025,6 +1025,95 @@ function VariantReview({ submission, variant, onClose, onSave }) {
 
 
 
+// Фильтр по ученику — ВЫПАДАЮЩИМ списком, а не лентой фишек: учеников бывают
+// десятки, лента прокручивалась вбок (часть имён была не видна вовсе) и своим
+// overflow срезала кольцо крайних фишек. В списке видно сразу всех.
+export function StudentFilter({ options, value, onChange }) {
+  const [open, setOpen] = useState(false)
+  const { closing, close, cancel } = useClosing(() => setOpen(false), POPUP_OUT_MS)
+  const wrapRef = useRef(null)
+  const current = options.find((o) => o.id === value) || options[0]
+
+  // Закрытие по клику мимо и по Escape: список перекрывает карточки, и уйти от
+  // него нужно тем же движением, что и от любого меню на сайте.
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e) => { if (!wrapRef.current?.contains(e.target)) close() }
+    const onKey = (e) => { if (e.key === "Escape") close() }
+    document.addEventListener("mousedown", onDoc)
+    document.addEventListener("keydown", onKey)
+    return () => {
+      document.removeEventListener("mousedown", onDoc)
+      document.removeEventListener("keydown", onKey)
+    }
+  }, [open, close])
+
+  const bubble = (o, size) => {
+    if (o.id === "all") {
+      return (
+        <span className={`${size} rounded-full flex items-center justify-center bg-blue-500/12 text-blue-600 flex-shrink-0`}>
+          <Icon name="users" size={13} />
+        </span>
+      )
+    }
+    const color = getAvatarColor(o.name)
+    return (
+      <span className={`${size} rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 ${color.bg} ${color.text}`}>
+        {getInitials(o.name)}
+      </span>
+    )
+  }
+
+  return (
+    <div ref={wrapRef} className="relative self-start">
+      <button
+        type="button"
+        onClick={() => { if (open) close(); else { cancel(); setOpen(true) } }}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className={`press-fill flex items-center gap-1.5 rounded-full ring-1 pl-1 pr-2 py-1 text-[13px] font-medium transition-colors ${
+          value === "all"
+            ? "text-gray-500 dark:text-gray-300 ring-gray-200/70 dark:ring-white/10 hover:text-blue-600 hover:ring-blue-500/25"
+            : "text-blue-600 bg-blue-500/12 ring-blue-500/25"
+        }`}
+      >
+        {bubble(current, "w-6 h-6")}
+        <span className="truncate max-w-[11rem]">{current.name}</span>
+        <Icon name="chevron-down" size={13} className={`transition-transform duration-300 ${open && !closing ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          style={{ transformOrigin: "top left" }}
+          className={`absolute left-0 top-full mt-2 z-30 w-64 max-h-80 overflow-y-auto glass-modal rounded-2xl shadow-xl p-1.5 flex flex-col gap-0.5 ${closing ? "popup-bubble-out" : "popup-bubble"}`}
+        >
+          {options.map((o) => {
+            const on = o.id === value
+            return (
+              <button
+                key={o.id}
+                type="button"
+                role="option"
+                aria-selected={on}
+                onClick={() => { onChange(o.id); close() }}
+                className={`press-fill flex items-center gap-2.5 rounded-xl px-2 py-1.5 text-left text-[13px] transition-colors ${
+                  on ? "text-blue-600 bg-blue-500/10" : "text-gray-600 dark:text-gray-200 hover:bg-blue-500/[0.06]"
+                }`}
+              >
+                {bubble(o, "w-7 h-7")}
+                <span className="flex-1 min-w-0 truncate font-medium">{o.name}</span>
+                {o.count != null && <span className="text-[11px] text-gray-400 tabular-nums flex-shrink-0">{o.count}</span>}
+                {on && <Icon name="check" size={14} className="flex-shrink-0" />}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function Variants({ user, students = [] }) {
   const [variants, setVariants] = useState([])
   const [submissions, setSubmissions] = useState([])
@@ -1108,7 +1197,9 @@ function Variants({ user, students = [] }) {
     const byId = new Map()
     for (const s of submissions) {
       const id = String(s.student_id)
-      if (!byId.has(id)) byId.set(id, { id, name: s.student_accounts?.name || s.student_accounts?.email || "Без имени" })
+      const cur = byId.get(id) || { id, name: s.student_accounts?.name || s.student_accounts?.email || "Без имени", count: 0 }
+      cur.count += 1
+      byId.set(id, cur)
     }
     return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, "ru"))
   })()
@@ -1283,41 +1374,19 @@ function Variants({ user, students = [] }) {
                   }}
                 />
               )}
-              {/* Ученики — не сегмент-контролом: имён бывает много, и «палец»
-                  сегментов на такой ленте не помещается. Фишки прокручиваются
-                  вбок, выбранная помечена акцентным тоном без серой заливки. */}
+              {/* Кому выдавали: выбор ученика оставляет в списке только его
+                  варианты. Счётчик рядом с именем — сколько всего выдано. */}
               {whoList.length > 1 && (
-                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar -my-1 py-1 min-w-0"
-                  role="group" aria-label="Фильтр по ученику">
-                  {[{ id: "all", name: "Все ученики" }, ...whoList].map((st) => {
-                    const on = who === st.id
-                    const color = st.id === "all" ? null : getAvatarColor(st.name)
-                    return (
-                      <button
-                        key={st.id}
-                        onClick={() => {
-                          setWho(st.id)
-                          // Открытый разбор не должен пережить свой вариант:
-                          // если он выпал из фильтра — закрываем анимацией.
-                          if (selectedVariant && st.id !== "all" && !hasStudent(selectedVariant, st.id)) closeDetail()
-                        }}
-                        aria-pressed={on}
-                        className={`press-fill flex items-center gap-1.5 flex-shrink-0 rounded-full ring-1 text-[13px] font-medium transition-colors ${color ? "pl-1 pr-3 py-1" : "px-3 py-1.5"} ${
-                          on
-                            ? "text-blue-600 bg-blue-500/12 ring-blue-500/25"
-                            : "text-gray-500 dark:text-gray-300 ring-gray-200/70 dark:ring-white/10 hover:text-blue-600 hover:ring-blue-500/25"
-                        }`}
-                      >
-                        {color && (
-                          <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-medium ${color.bg} ${color.text}`}>
-                            {getInitials(st.name)}
-                          </span>
-                        )}
-                        <span className="truncate max-w-[10rem]">{st.name}</span>
-                      </button>
-                    )
-                  })}
-                </div>
+                <StudentFilter
+                  value={who}
+                  options={[{ id: "all", name: "Все ученики" }, ...whoList]}
+                  onChange={(id) => {
+                    setWho(id)
+                    // Открытый разбор не должен пережить свой вариант: если он
+                    // выпал из фильтра — закрываем той же анимацией.
+                    if (selectedVariant && id !== "all" && !hasStudent(selectedVariant, id)) closeDetail()
+                  }}
+                />
               )}
             </div>
           )}
