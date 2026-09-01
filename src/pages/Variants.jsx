@@ -1028,10 +1028,12 @@ function VariantReview({ submission, variant, onClose, onSave }) {
 // Фильтр по ученику — ВЫПАДАЮЩИМ списком, а не лентой фишек: учеников бывают
 // десятки, лента прокручивалась вбок (часть имён была не видна вовсе) и своим
 // overflow срезала кольцо крайних фишек. В списке видно сразу всех.
-// Высота (h-10), скругление (rounded-2xl) и шрифт кнопки повторяют соседний
-// сегмент-контрол «Все / ОГЭ / ЕГЭ» (SegmentSwitch, размер sm): они стоят в
-// одной строке, и любая разница читается как съехавшая кнопка.
-export function StudentFilter({ options, value, onChange }) {
+// Кнопка сложена ТАК ЖЕ, как соседний сегмент-контрол «Все / ОГЭ / ЕГЭ»
+// (SegmentSwitch, размер sm): рамка + p-1 вокруг содержимого в 32px, скругление
+// rounded-2xl, шрифт text-sm font-semibold. Задавать вместо этого свою высоту
+// нельзя — она разошлась бы с соседом на пару пикселей, и кнопка читалась бы
+// съехавшей.
+function StudentFilter({ options, value, onChange }) {
   const [open, setOpen] = useState(false)
   const { closing, close, cancel } = useClosing(() => setOpen(false), POPUP_OUT_MS)
   const wrapRef = useRef(null)
@@ -1074,13 +1076,13 @@ export function StudentFilter({ options, value, onChange }) {
         onClick={() => { if (open) close(); else { cancel(); setOpen(true) } }}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className={`press-fill flex items-center gap-2 h-10 rounded-2xl ring-1 pl-1.5 pr-3 text-sm font-semibold transition-colors ${
+        className={`press-fill flex items-center gap-2 p-1 pr-3 rounded-2xl border text-sm font-semibold transition-colors ${
           value === "all"
-            ? "text-gray-500 dark:text-gray-300 ring-gray-200/70 dark:ring-white/10 hover:text-blue-600 hover:ring-blue-500/25"
-            : "text-blue-600 bg-blue-500/12 ring-blue-500/25"
+            ? "text-gray-500 dark:text-gray-300 border-gray-200/70 dark:border-white/10 hover:text-blue-600 hover:border-blue-500/25"
+            : "text-blue-600 bg-blue-500/12 border-blue-500/25"
         }`}
       >
-        {bubble(current, "w-7 h-7")}
+        {bubble(current, "w-8 h-8")}
         <span className="truncate max-w-[11rem]">{current.name}</span>
         <Icon name="chevron-down" size={14} className={`flex-shrink-0 transition-transform duration-300 ${open && !closing ? "rotate-180" : ""}`} />
       </button>

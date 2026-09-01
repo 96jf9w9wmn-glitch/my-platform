@@ -56,3 +56,8 @@ legal/internal/
 .deploy/
 __hwtest*
 __closetest*
+
+# Песочница для проверки отдельного компонента в браузере (vite dev,
+# preview.html + previewMain.jsx). Временная, в репозиторий не нужна.
+preview.html
+previewMain.jsx
