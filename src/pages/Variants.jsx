@@ -1028,7 +1028,10 @@ function VariantReview({ submission, variant, onClose, onSave }) {
 // Фильтр по ученику — ВЫПАДАЮЩИМ списком, а не лентой фишек: учеников бывают
 // десятки, лента прокручивалась вбок (часть имён была не видна вовсе) и своим
 // overflow срезала кольцо крайних фишек. В списке видно сразу всех.
-function StudentFilter({ options, value, onChange }) {
+// Высота (h-10), скругление (rounded-2xl) и шрифт кнопки повторяют соседний
+// сегмент-контрол «Все / ОГЭ / ЕГЭ» (SegmentSwitch, размер sm): они стоят в
+// одной строке, и любая разница читается как съехавшая кнопка.
+export function StudentFilter({ options, value, onChange }) {
   const [open, setOpen] = useState(false)
   const { closing, close, cancel } = useClosing(() => setOpen(false), POPUP_OUT_MS)
   const wrapRef = useRef(null)
@@ -1052,7 +1055,7 @@ function StudentFilter({ options, value, onChange }) {
     if (o.id === "all") {
       return (
         <span className={`${size} rounded-full flex items-center justify-center bg-blue-500/12 text-blue-600 flex-shrink-0`}>
-          <Icon name="users" size={13} />
+          <Icon name="users" size={14} />
         </span>
       )
     }
@@ -1071,15 +1074,15 @@ function StudentFilter({ options, value, onChange }) {
         onClick={() => { if (open) close(); else { cancel(); setOpen(true) } }}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className={`press-fill flex items-center gap-1.5 rounded-full ring-1 pl-1 pr-2 py-1 text-[13px] font-medium transition-colors ${
+        className={`press-fill flex items-center gap-2 h-10 rounded-2xl ring-1 pl-1.5 pr-3 text-sm font-semibold transition-colors ${
           value === "all"
             ? "text-gray-500 dark:text-gray-300 ring-gray-200/70 dark:ring-white/10 hover:text-blue-600 hover:ring-blue-500/25"
             : "text-blue-600 bg-blue-500/12 ring-blue-500/25"
         }`}
       >
-        {bubble(current, "w-6 h-6")}
+        {bubble(current, "w-7 h-7")}
         <span className="truncate max-w-[11rem]">{current.name}</span>
-        <Icon name="chevron-down" size={13} className={`transition-transform duration-300 ${open && !closing ? "rotate-180" : ""}`} />
+        <Icon name="chevron-down" size={14} className={`flex-shrink-0 transition-transform duration-300 ${open && !closing ? "rotate-180" : ""}`} />
       </button>
 
       {open && (
