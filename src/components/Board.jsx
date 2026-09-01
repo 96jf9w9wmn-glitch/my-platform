@@ -164,14 +164,14 @@ function StrokeSettings({ dark, tool, curWidth, curDash, onWidth, onDash }) {
     <div className="flex items-center gap-1">
       {WIDTHS.map((w) => (
         <button key={w} onClick={() => onWidth(w)} title="Толщина"
-          className={`press-tap w-9 h-9 rounded-xl flex items-center justify-center ${curWidth === w ? "bg-blue-500/15" : "hover:bg-blue-500/[0.07] dark:hover:bg-white/10"}`}>
+          className={`press-tap w-9 h-9 rounded-xl flex items-center justify-center ${curWidth === w ? "bg-blue-500/15" : "board-hover"}`}>
           <span className="rounded-full" style={{ width: w + 4, height: w + 4, background: swatch }} />
         </button>
       ))}
       {showDash && sep}
       {showDash && DASH_STYLES.map((d) => (
         <button key={d} onClick={() => onDash(d)} title={d === "solid" ? "Сплошная" : d === "dashed" ? "Пунктир" : "Точки"}
-          className={`press-tap w-11 h-9 rounded-xl flex items-center justify-center ${curDash === d ? "bg-blue-500/15" : "hover:bg-blue-500/[0.07] dark:hover:bg-white/10"}`}>
+          className={`press-tap w-11 h-9 rounded-xl flex items-center justify-center ${curDash === d ? "bg-blue-500/15" : "board-hover"}`}>
           <svg width="34" height="12" viewBox="0 0 34 12"><line x1="2" y1="6" x2="32" y2="6" stroke={swatch} strokeWidth="2.5" strokeLinecap="round" strokeDasharray={dashArr(d)} /></svg>
         </button>
       ))}
@@ -1994,7 +1994,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // серые токены Tailwind давали почти невидимые значки.
   const btnBase = "group relative press-tap w-9 h-9 big:w-11 big:h-11 rounded-xl flex items-center justify-center transition-colors"
   const btnOn = "bg-blue-500 text-white"
-  const btnIdle = "hover:bg-blue-500/12 dark:hover:bg-white/10"
+  const btnIdle = "board-hover"
   // Временно включённое (не выбранное) — «Двигать полотно», пока тащат полотно
   const btnHot = "bg-blue-500/15 text-blue-500"
   const idleStyle = { color: dark ? "#d1d1d6" : "#3f4652" }
@@ -2006,7 +2006,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       {[["object", "Объект целиком"], ["stroke", "След"]].map(([mode, label]) => (
         <button key={mode} onClick={() => { setEraserMode(mode); setTool("eraser"); closeMenu("eraser") }}
           className={`press-tap px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap ${
-            eraserMode === mode ? "bg-blue-500 text-white" : "hover:bg-blue-500/[0.07] dark:hover:bg-white/10"
+            eraserMode === mode ? "bg-blue-500 text-white" : "board-hover"
           }`} style={eraserMode === mode ? undefined : idleStyle}>
           {label}
         </button>
@@ -2024,7 +2024,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
                 остаётся во всплывающей подсказке. */}
             {list.map((sh) => (
               <button key={sh.id} onClick={() => pickShape(sh.id)} title={sh.label} aria-label={sh.label}
-                className={`press-tap w-10 h-10 rounded-lg flex items-center justify-center ${tool === sh.id ? "bg-blue-500 text-white" : "hover:bg-blue-500/[0.07] dark:hover:bg-white/10"}`}
+                className={`press-tap w-10 h-10 rounded-lg flex items-center justify-center ${tool === sh.id ? "bg-blue-500 text-white" : "board-hover"}`}
                 style={tool === sh.id ? undefined : idleStyle}>
                 <Icon name={sh.icon} size={20} />
               </button>
@@ -2076,7 +2076,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const barX = H ? H.cx : 0
 
   return (
-    <div data-board-version="12" className={`fixed inset-0 z-[100000] flex flex-col screen-fade ${closingCls}`} style={{ background: baseBg }}>
+    <div data-board-version="12" className={`fixed inset-0 z-[100000] flex flex-col screen-fade ${dark ? "board-dark" : ""} ${closingCls}`} style={{ background: baseBg }}>
       {/* Шапка */}
       <div className="flex items-center justify-between px-3 h-12 border-b flex-shrink-0"
         style={{ borderColor: dark ? "rgba(255,255,255,.1)" : "rgba(0,0,0,.08)" }}>
@@ -2088,7 +2088,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
           <div className="relative" data-menu>
             <button onClick={() => toggleMenu("bg")}
               className={`press-tap flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs font-medium transition-colors ${
-                menuShown("bg") ? "bg-blue-500/15 text-blue-500" : "hover:bg-blue-500/[0.07] dark:hover:bg-white/10"
+                menuShown("bg") ? "bg-blue-500/15 text-blue-500" : "board-hover"
               }`}
               style={menuShown("bg") ? undefined : { color: dark ? "#a1a1aa" : "#6b7280" }}>
               <span className="w-3.5 h-3.5 rounded-[5px] shrink-0" style={{
@@ -2105,7 +2105,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
                 <div className="flex gap-1">
                   {BGS.map((b) => (
                     <button key={b.id} onClick={() => changeBg(b.id)} title={b.label}
-                      className={`press-tap px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap ${bg === b.id ? "bg-blue-500 text-white" : "text-gray-500 hover:bg-blue-500/[0.07] dark:hover:bg-white/10"}`}>
+                      className={`press-tap px-2.5 py-1.5 rounded-lg text-xs whitespace-nowrap ${bg === b.id ? "bg-blue-500 text-white" : "board-hover"}`}
+                      style={bg === b.id ? undefined : idleStyle}>
                       {b.label}
                     </button>
                   ))}
@@ -2127,8 +2128,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
           {others.length > 0 && (
             <button onClick={toggleCursors} title={showCursors ? "Скрыть курсоры участников" : "Показать курсоры участников"}
               className={`press-tap p-1.5 rounded-lg transition-colors ${
-                showCursors ? "text-gray-500 hover:text-gray-700 hover:bg-blue-500/[0.07] dark:hover:bg-white/10" : "text-blue-500 bg-blue-500/12"
-              }`}>
+                showCursors ? "board-hover" : "text-blue-500 bg-blue-500/12"
+              }`} style={showCursors ? idleStyle : undefined}>
               <span className="relative flex items-center justify-center">
                 <Icon name="cursor" size={16} />
                 {/* Перечёркнутый значок понятнее подписи: курсоров на доске нет */}
@@ -2137,7 +2138,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
             </button>
           )}
           <button onClick={toggleTheme} title={dark ? "Светлая доска" : "Тёмная доска"}
-            className="press-tap p-1.5 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-blue-500/[0.07] dark:hover:bg-white/10">
+            className="press-tap p-1.5 rounded-lg board-hover" style={idleStyle}>
             <Icon name={dark ? "sun" : "moon"} size={16} />
           </button>
           {/* Аватар участника — кнопка слежения: обзор повторяет его обзор,
@@ -2160,10 +2161,10 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
                 </button>
               )
             })}
-            {others.length > 0 && <span className="pl-3 text-xs text-gray-400">в сети</span>}
+            {others.length > 0 && <span className="pl-3 text-xs" style={idleStyle}>в сети</span>}
           </div>
           <button onClick={closeBoard}
-            className="press-tap p-1.5 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-blue-500/[0.07] dark:hover:bg-white/10">
+            className="press-tap p-1.5 rounded-lg board-hover" style={idleStyle}>
             <Icon name="x" size={18} />
           </button>
         </div>
@@ -2270,7 +2271,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
               {selProps && (
               <div className="relative" data-menu>
                 <button onClick={() => toggleMenu("selStroke")} title="Настройки обводки"
-                  className="press-tap w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:bg-blue-500/[0.07] dark:hover:bg-white/10">
+                  className="press-tap w-8 h-8 rounded-lg flex items-center justify-center board-hover" style={idleStyle}>
                   <Icon name="stroke" size={16} />
                 </button>
                 {menuShown("selStroke") && (
@@ -2284,7 +2285,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
               )}
               {selProps && divider}
               <button onClick={duplicateSelection} title="Дублировать"
-                className="press-tap w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:bg-blue-500/[0.07] dark:hover:bg-white/10">
+                className="press-tap w-8 h-8 rounded-lg flex items-center justify-center board-hover" style={idleStyle}>
                 <Icon name="copy" size={15} />
               </button>
               <button onClick={deleteSelection} title="Удалить (Delete)"
@@ -2302,16 +2303,16 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         <div className="absolute bottom-4 right-4 hidden big:flex flex-col rounded-xl shadow-lg overflow-hidden"
           style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
           <button onClick={() => zoomBy(1.2)} title="Приблизить"
-            className="press-tap w-9 h-9 flex items-center justify-center text-gray-500 hover:bg-blue-500/[0.07] dark:hover:bg-white/10">
+            className="press-tap w-9 h-9 flex items-center justify-center board-hover" style={idleStyle}>
             <Icon name="plus" size={16} />
           </button>
           <button onClick={resetView} title="Сбросить масштаб"
-            className="press-tap h-7 flex items-center justify-center text-[10px] text-gray-400 hover:bg-blue-500/[0.07] dark:hover:bg-white/10 border-y"
-            style={{ borderColor: panelBorder }}>
+            className="press-tap h-7 flex items-center justify-center text-[10px] board-hover border-y"
+            style={{ ...idleStyle, borderColor: panelBorder }}>
             {zoomPct}%
           </button>
           <button onClick={() => zoomBy(1 / 1.2)} title="Отдалить"
-            className="press-tap w-9 h-9 flex items-center justify-center text-gray-500 hover:bg-blue-500/[0.07] dark:hover:bg-white/10">
+            className="press-tap w-9 h-9 flex items-center justify-center board-hover" style={idleStyle}>
             <Icon name="minus" size={16} />
           </button>
         </div>
@@ -2333,7 +2334,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
               </span>
             </button>
             <button onClick={() => dropShot(true)} aria-label="Не вставлять"
-              className="press-tap w-8 h-8 rounded-lg flex items-center justify-center shrink-0 hover:bg-blue-500/12 dark:hover:bg-white/10"
+              className="press-tap w-8 h-8 rounded-lg flex items-center justify-center shrink-0 board-hover"
               style={idleStyle}>
               <Icon name="x" size={16} />
             </button>
@@ -2541,18 +2542,18 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
                         пункт ничего не меняет, поэтому его там нет */}
                     {smartTool && (
                       <button onClick={toggleSmart}
-                        className={`press-tap flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm ${smart ? "text-blue-500" : "hover:bg-blue-500/[0.07] dark:hover:bg-white/10"}`}
+                        className={`press-tap flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm ${smart ? "text-blue-500" : "board-hover"}`}
                         style={smart ? undefined : idleStyle}>
                         <Icon name="sparkles" size={18} />Ровные фигуры{smart && <Icon name="check" size={15} />}
                       </button>
                     )}
                     <button onClick={() => { closeMenu("mMore"); fileInputRef.current?.click() }}
-                      className="press-tap flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm hover:bg-blue-500/[0.07] dark:hover:bg-white/10" style={idleStyle}>
+                      className="press-tap flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm board-hover" style={idleStyle}>
                       <Icon name="image" size={18} />Добавить картинку
                     </button>
                     {canAddTasks && (
                       <button onClick={() => { closeMenu("mMore"); modalOpen.current = true; setTaskPick(true) }}
-                        className="press-tap flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm hover:bg-blue-500/[0.07] dark:hover:bg-white/10" style={idleStyle}>
+                        className="press-tap flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm board-hover" style={idleStyle}>
                         <Icon name="book" size={18} />Задание из банка
                       </button>
                     )}
