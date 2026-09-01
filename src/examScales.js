@@ -112,6 +112,17 @@ export const taskMaxOf = (examType, number) => TASK_MAX[examType]?.[number] || 0
 export const part2MaxOf = (examType) =>
   Object.fromEntries((PART2_NUMBERS[examType] || []).map((n) => [n, taskMaxOf(examType, n)]))
 
+// Состав НАСТОЯЩЕГО экзамена: сколько в нём заданий и как они делятся на части.
+// Считается по TASK_MAX и PART2_NUMBERS — вторая копия этих чисел неизбежно
+// разошлась бы с разбаловкой. Нужен там, где лист описывает сам экзамен, а не
+// свой состав: наш вариант почти всегда короче (см. VARIANT_PART1), и печатать
+// «работа состоит из 17 заданий» на листе КЕГЭ, где заданий 27, нельзя.
+export function examComposition(examType) {
+  const total = Object.keys(TASK_MAX[examType] || {}).length
+  const p2 = (PART2_NUMBERS[examType] || []).length
+  return { total, p1: total - p2, p2 }
+}
+
 // ─── Часть 2 уже ВЫДАННОГО варианта (перенумерация КИМ-2027) ────────────────
 // 29.08.2026 профиль перенумерован по проекту КИМ-2027, но выданные до этого
 // варианты живут по старой раскладке: ученик решает по напечатанному листу, и
