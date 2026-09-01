@@ -6,7 +6,11 @@ import { answersEqual } from "../utils"
 // читался как сплошное красное полотно, а без заливки клетки рассыпались.
 // В таблице у каждой величины свой столбец, ошибка видна тем, что в столбце
 // «Верный» вообще что-то стоит, и цвет для этого не нужен.
-export default function AnswerTable({ nums, correct: correctAnswers, student: studentAnswers }) {
+export default function AnswerTable({ nums, correct: correctAnswers, student: studentAnswers, credited }) {
+  // Номера, засчитанные репетитором вручную: эталон банка бывает неверным, и
+  // тогда прав ученик (supabase/manual_credit.sql). В разборе такое задание —
+  // верное, иначе балл не сходился бы с таблицей.
+  const byHand = new Set(Array.isArray(credited) ? credited.map(Number) : [])
   const rows = nums.map((n) => {
     const correct = correctAnswers[n - 1]
     const raw = studentAnswers[n - 1]
@@ -15,8 +19,8 @@ export default function AnswerTable({ nums, correct: correctAnswers, student: st
     // Сравнение строк красило «0,5» при эталоне «0.5» в ошибку, и разбор
     // расходился с числом рядом.
     const known = correct !== undefined && correct !== null && String(correct).trim() !== ""
-    const isRight = has && known && answersEqual(raw, correct)
-    return { n, has, given: has ? String(raw) : "—", correct, known, isRight, isWrong: known && !isRight }
+    const isRight = byHand.has(Number(n)) || (has && known && answersEqual(raw, correct))
+    return { n, has, given: has ? String(raw) : "—", correct, known, isRight, isWrong: known && !isRight, byHand: byHand.has(Number(n)) }
   })
   // Двадцать семь строк в один столбец — простыня в половину экрана, поэтому
   // на широком экране таблица идёт двумя столбцами. Короткие группы (геометрия
@@ -48,7 +52,9 @@ export default function AnswerTable({ nums, correct: correctAnswers, student: st
                 {/* У верного ответа столбец пуст — заполнены ровно те строки,
                     где ученик ошибся, и промахи видны без единой заливки. */}
                 <td className="py-1 align-top break-words tabular-nums font-semibold text-gray-800">
-                  {r.isWrong ? r.correct : r.isRight
+                  {r.isWrong ? r.correct : r.byHand
+                    ? <span className="text-[11px] font-normal text-green-600 dark:text-green-300" title="Ответ засчитан репетитором: эталон оказался неверным">засчитано</span>
+                    : r.isRight
                     ? <Icon name="check" size={11} className="text-green-500/70" />
                     : null}
                 </td>

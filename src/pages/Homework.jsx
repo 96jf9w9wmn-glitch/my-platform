@@ -9,7 +9,7 @@ import Collapse from "../components/Collapse"
 import Reveal from "../components/Reveal"
 import AutoHeight from "../components/AutoHeight"
 import FormulaBackdrop from "../components/FormulaBackdrop"
-import { parseLocalDate, renderHomeworkMath, plainTaskMath, superscriptPowers, parseHomeworkTasks, homeworkTaskItems, plural, hasAttachment, getInitials, answersEqual } from "../utils"
+import { parseLocalDate, renderHomeworkMath, plainTaskMath, superscriptPowers, parseHomeworkTasks, homeworkTaskItems, homeworkTestScore, plural, hasAttachment, getInitials, answersEqual } from "../utils"
 import { usePlan } from "../subscription"
 import { PlanHint, PlanLock } from "../components/PlanLock"
 import ConfirmModal from "../components/ConfirmModal"
@@ -1539,6 +1539,14 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
   const [showTasks, setShowTasks] = useState(false)
   const [comment, setComment] = useState(hw.comment || "")
   const [selectedGrade, setSelectedGrade] = useState(hw.grade || null)
+  // Зачтённые вручную номера держим и в своём состоянии: список работ
+  // перезагружается запросом, а разбор с зачётом должен откликаться сразу.
+  // Сброс — правкой состояния на рендере (не эффектом): пришла новая строка
+  // работы — берём её список, он и есть истина.
+  const hwCredited = Array.isArray(hw.credited) ? hw.credited.map(Number) : []
+  const [credited, setCredited] = useState(hwCredited)
+  const [creditedSrc, setCreditedSrc] = useState(hw.credited)
+  if (creditedSrc !== hw.credited) { setCreditedSrc(hw.credited); setCredited(hwCredited) }
   const status = STATUS_LABELS[hw.status] || STATUS_LABELS.assigned
   const typeInfo = TYPE_LABELS[hw.hw_type] || TYPE_LABELS.written
   const isPureTest = hw.hw_type === "test"
@@ -1556,15 +1564,21 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
     || (Array.isArray(hw.student_answers) && hw.student_answers.length > 0)
     || !!hw.submission_url || solutionShots.length > 0
 
-  const testPercent = hw.test_score != null && hw.question_count
-    ? Math.round((hw.test_score / hw.question_count) * 100)
+  // Балл считаем на месте: сразу после зачёта он должен смениться, не дожидаясь
+  // перезагрузки списка. Правила те же, что у кабинета ученика при сдаче.
+  const testScore = hw.test_score == null ? null : homeworkTestScore({ ...hw, credited })
+  const testPercent = testScore != null && hw.question_count
+    ? Math.round((testScore / hw.question_count) * 100)
     : null
   const suggestedGrade = testPercent != null ? getGradeFromPercent(testPercent) : null
 
   // Задания для окна и строка-подсказка: токены дробей и корней в одну строку
   // не рисуются, поэтому в подсказке они разворачиваются текстом.
-  const { intro: tasksIntro, items: taskItems } = homeworkTaskItems(hw)
+  const { intro: tasksIntro, items: taskItems } = homeworkTaskItems({ ...hw, credited })
   const taskCount = taskItems.length
+  // Зачёт доступен, только когда колонка есть в строке: на базе без миграции
+  // manual_credit.sql запись упала бы, а кнопка обещала бы несуществующее.
+  const canCredit = hw.credited !== undefined && Array.isArray(hw.correct_answers) && Array.isArray(hw.student_answers)
   // Разбор по номерам: репетитору важно не «сколько», а «где» — иначе к ошибке
   // не вернуться на занятии. Считаем по тем же правилам, что и оценку теста
   // (answersEqual, а не сравнение строк), поэтому чипы не разойдутся со счётом.
@@ -1574,26 +1588,31 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
     ? hw.correct_answers.map((correct, i) => {
         const raw = hw.student_answers[i]
         const gave = raw == null || String(raw).trim() === "" ? null : String(raw)
+        const n = taskItems[i]?.n ?? i + 1
+        const byHand = credited.includes(Number(n))
         return {
-          n: taskItems[i]?.n ?? i + 1,
+          n,
           // Задание без эталона (развёрнутый ответ) не верное и не неверное:
-          // его смотрит репетитор, чип у него нейтральный.
-          ok: correct == null || correct === "" ? null : answersEqual(gave ?? "", correct),
+          // его смотрит репетитор, чип у него нейтральный. Зачтённое вручную —
+          // верное: эталон банка ошибся, а не ученик.
+          ok: byHand ? true : correct == null || correct === "" ? null : answersEqual(gave ?? "", correct),
+          credited: byHand,
         }
       })
     : []
   const wrongNums = answerRows.filter((r) => r.ok === false).map((r) => r.n)
+  const creditedNumsShown = answerRows.filter((r) => r.credited).map((r) => r.n)
 
   // Результат теста стоит в карточке заданий, а не отдельной плашкой в колонке
   // «Проверка»: ошибки — это про сами задания, и вся карточка открывает разбор.
   // Плашкой справа он вклинивался в ход проверки, а под заданиями оставалось
   // пустое поле в половину ширины. Номера — не кнопки: они внутри кнопки-карточки.
-  const resultRow = hw.test_score == null ? null : (
+  const resultRow = testScore == null ? null : (
     <div className="w-full border-t border-gray-100/80 dark:border-white/10 pt-3 flex flex-col gap-2">
       <div className="flex items-center justify-between gap-3">
         <span className="text-xs text-gray-500">Результат</span>
         <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
-          {hw.test_score} / {hw.question_count}{testPercent != null ? ` · ${testPercent}%` : ""}
+          {testScore} / {hw.question_count}{testPercent != null ? ` · ${testPercent}%` : ""}
         </span>
       </div>
       {answerRows.length > 0 && (
@@ -1603,7 +1622,7 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
             {answerRows.map((r, i) => (
               <span
                 key={i}
-                title={r.ok === false ? `Задание ${r.n} — ошибка` : r.ok ? `Задание ${r.n} — верно` : `Задание ${r.n} — проверяет репетитор`}
+                title={r.credited ? `Задание ${r.n} — засчитано вручную` : r.ok === false ? `Задание ${r.n} — ошибка` : r.ok ? `Задание ${r.n} — верно` : `Задание ${r.n} — проверяет репетитор`}
                 className={`w-7 h-7 rounded-lg text-xs font-medium flex items-center justify-center ring-1 ${
                   r.ok === false ? "bg-red-500/12 text-red-600 ring-red-500/25"
                     : r.ok ? "bg-green-500/12 text-green-700 dark:text-green-300 ring-green-500/25"
@@ -1620,6 +1639,11 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
               : wrongNums.length === 1
               ? `Ошибка в задании №${wrongNums[0]}`
               : `Ошибки в заданиях ${wrongNums.map((n) => "№" + n).join(", ")}`}
+            {/* Зачтённые руками номера называем прямо: иначе балл не сходится с
+                числом верных ответов, и понять почему — неоткуда. */}
+            {creditedNumsShown.length > 0 && (
+              <> · {creditedNumsShown.map((n) => "№" + n).join(", ")} {creditedNumsShown.length === 1 ? "засчитано" : "засчитаны"} вручную</>
+            )}
           </div>
         </>
       )}
@@ -1665,6 +1689,34 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
 
     onUpdate()
     setGrading(false)
+  }
+
+  // Зачесть задание руками. Ответ ученика не трогаем — он свидетельство; меняется
+  // список зачтённых номеров, а балл и оценка чистого теста пересчитываются из него.
+  async function toggleCredit(item, on) {
+    const n = Number(item.n)
+    const prev = credited
+    const next = on ? [...new Set([...credited, n])].sort((a, b) => a - b) : credited.filter((x) => x !== n)
+    setCredited(next)
+    const updates = { credited: next }
+    if (hw.test_score != null) {
+      const score = homeworkTestScore({ ...hw, credited: next })
+      updates.test_score = score
+      // У чистого теста оценка выведена из процента — иначе она разошлась бы с баллом.
+      if (isPureTest && hw.question_count) updates.grade = getGradeFromPercent(Math.round((score / hw.question_count) * 100))
+    }
+    const { error } = await supabase.from("homework").update(updates).eq("id", hw.id)
+    if (error) { setCredited(prev); return }
+    // Журнал попыток: иначе задание, где ошибся генератор, навсегда осталось бы у
+    // ученика слабым типажом (на task_attempts держатся «Слабые типажи» и отчёт).
+    // Не критичный путь: на базе без миграции функции нет, зачёт от этого не рвётся.
+    if (item.bankTask?.number != null) {
+      supabase.rpc("task_attempt_credit", {
+        p_source: "homework", p_source_id: hw.id, p_number: Number(item.bankTask.number),
+        p_answer: item.given ?? null, p_correct: on,
+      }).then(() => {}, () => {})
+    }
+    onUpdate()
   }
 
   async function finishPureTest() {
@@ -1906,6 +1958,7 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
           note={answerRows.length > 0 ? "разбор ответов" : "условия и ответы"}
           intro={tasksIntro}
           items={taskItems}
+          onCredit={canCredit ? toggleCredit : undefined}
           onClose={() => setShowTasks(false)}
         />
       )}

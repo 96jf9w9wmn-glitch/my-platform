@@ -25,7 +25,7 @@ const answerShape = (text) =>
   isLongAnswer(text) ? "px-2.5 py-1.5 rounded-xl whitespace-pre-line leading-relaxed"
     : "px-2 py-0.5 rounded-full"
 
-function TaskBlock({ item }) {
+function TaskBlock({ item, onCredit }) {
   const { bankTask } = item
   // Работа уже решена — значит окно показывает не условия, а разбор: у каждого
   // задания видно, что написал ученик и сошлось ли это с эталоном. `given`
@@ -111,6 +111,41 @@ function TaskBlock({ item }) {
                   dangerouslySetInnerHTML={{ __html: renderHomeworkMath(String(item.answer)) }} />
               </>
             )}
+            {/* У зачтённого задания ответ ученика уже зелёный, но эталон всё равно
+                показываем: именно он оказался неверным, и по нему видно, что
+                именно поправили. Плашка без заливки — эталон здесь под сомнением. */}
+            {item.credited && item.answer != null && item.answer !== "" && (
+              <>
+                <span className="text-gray-400">эталон:</span>
+                <span className={`text-gray-500 ring-1 ring-gray-500/20 ${answerShape(item.answer)}`}
+                  dangerouslySetInnerHTML={{ __html: renderHomeworkMath(String(item.answer)) }} />
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Зачёт задания руками репетитора. Эталон приходит из генератора банка и
+            иногда ошибается (два верных ответа, другая допустимая запись), и тогда
+            ученик прав, а работа показывает ошибку. Решает это репетитор: смотрит
+            задание и, если ошибка подтвердилась, засчитывает номер. Ответ ученика
+            при этом не подменяется — меняется только балл и разбор. */}
+        {(item.credited || (onCredit && item.ok === false)) && (
+          <div className="flex items-center gap-2 flex-wrap text-[11px]">
+            {item.credited && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500/12 text-green-700 dark:text-green-300 ring-1 ring-green-500/25">
+                <Icon name="check" size={10} />Засчитано репетитором
+              </span>
+            )}
+            {onCredit && (
+              <button type="button" onClick={() => onCredit(item, !item.credited)}
+                title={item.credited ? "Снять зачёт: задание снова считается ошибкой"
+                  : "Ответ ученика верен, а эталон банка ошибочен — засчитать задание"}
+                className={`press-fill rounded-lg px-2.5 py-1 ring-1 ${item.credited
+                  ? "text-gray-500 ring-gray-500/20 hover:text-red-500"
+                  : "text-blue-600 ring-blue-500/25 hover:bg-blue-500/[0.06]"}`}>
+                {item.credited ? "Отменить зачёт" : "Засчитать задание"}
+              </button>
+            )}
           </div>
         )}
 
@@ -135,7 +170,7 @@ function TaskBlock({ item }) {
   )
 }
 
-export default function TasksModal({ title, note, intro, items, onClose }) {
+export default function TasksModal({ title, note, intro, items, onClose, onCredit }) {
   const { cls: closingCls, close } = useClosing(onClose)
 
   useEffect(() => {
@@ -171,7 +206,7 @@ export default function TasksModal({ title, note, intro, items, onClose }) {
           )}
 
           <div className="flex flex-col gap-2.5">
-            {items.map((it, i) => <TaskBlock key={i} item={it} />)}
+            {items.map((it, i) => <TaskBlock key={i} item={it} onCredit={onCredit} />)}
             {items.length === 0 && !intro && (
               <div className="rounded-2xl ring-1 ring-dashed ring-gray-200/80 dark:ring-white/10 text-sm text-gray-400 text-center py-8">
                 Условий нет

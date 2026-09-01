@@ -354,7 +354,7 @@ function VariantRow({ variant: v }) {
             <div key={g.label}>
               <Chip tone={g.tone}>{g.label}</Chip>
               <div className="mt-2">
-                <AnswerTable nums={g.nums} correct={correctAnswers} student={studentAnswers} />
+                <AnswerTable nums={g.nums} correct={correctAnswers} student={studentAnswers} credited={v.submission?.part1_credited} />
               </div>
             </div>
           ))}
@@ -864,6 +864,9 @@ function Results({ students, loaded = true, user }) {
       for (const r of c.stats.rows) {
         const correct = r.answers?.part1 || []
         const given = r.submission?.part1_answers || []
+        // Задание, засчитанное репетитором вручную, ошибкой не считается: там
+        // ошибся эталон банка, а не ученик (supabase/manual_credit.sql).
+        const byHand = new Set(Array.isArray(r.submission?.part1_credited) ? r.submission.part1_credited.map(Number) : [])
         for (const n of part1NumbersOf(r.type)) {
           const exp = correct[n - 1]
           // Задания без эталона в варианте (и старые записи без разбора)
@@ -873,7 +876,7 @@ function Results({ students, loaded = true, user }) {
           let cell = acc.get(key)
           if (!cell) acc.set(key, (cell = { type: r.type, n, works: 0, wrong: 0, students: new Set() }))
           cell.works++
-          if (!answersEqual(given[n - 1] ?? "", exp)) {
+          if (!byHand.has(n) && !answersEqual(given[n - 1] ?? "", exp)) {
             cell.wrong++
             cell.students.add(c.student.id)
           }

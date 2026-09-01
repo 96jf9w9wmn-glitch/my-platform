@@ -831,10 +831,38 @@ function VariantReview({ submission, variant, onClose, onSave }) {
   // Знаменатель — БАЛЛЫ части 1, а не число заданий: у КЕГЭ №26 и №27 по 2 балла.
   const part1Nums = part1Answers.map((a, i) => (a != null && a !== "" ? i + 1 : null)).filter(Boolean)
   const part1Max = variantMaxPrimary(type, part1Nums.length ? part1Nums : part1NumbersOf(type))
-  // Балл части 1 считает ученик при сдаче тем же answersEqual. Пересчитываем
-  // только для старых записей, где его не сохранили.
-  const part1Score = submission.part1_score ?? part1Answers.reduce(
+  // Балл части 1 считает ученик при сдаче тем же answersEqual. Пересчитываем его
+  // здесь заново — иначе ручной зачёт (ниже) прибавлялся бы к уже сохранённому
+  // баллу второй раз при каждом открытии проверки. У старых записей, где ответов
+  // ученика нет вовсе, остаётся сохранённое число.
+  const part1Auto = part1Answers.reduce(
     (n, ans, i) => n + (answersEqual(submission.part1_answers?.[i], ans) ? taskMaxOf(type, i + 1) || 1 : 0), 0)
+  const part1Base = submission.part1_answers ? part1Auto : (submission.part1_score ?? 0)
+
+  // Задания части 1, которые репетитор засчитал вручную: эталон в банке бывает
+  // неверным (два верных ответа, другая допустимая запись), и тогда прав ученик.
+  // Ответ ученика не подменяем — храним отдельный список номеров.
+  const canCredit = submission.part1_credited !== undefined
+  const [credited, setCredited] = useState(() =>
+    (Array.isArray(submission.part1_credited) ? submission.part1_credited.map(Number) : []))
+  const part1Score = part1Base + credited.reduce((n, num) => n + (taskMaxOf(type, num) || 1), 0)
+
+  // Разбор части 1 — только там, где ученик ответил и не сошлось: зачитывать
+  // нечего у пропущенного задания, а верные и так верны.
+  const part1Wrong = part1Answers.map((correct, i) => {
+    const num = i + 1
+    const raw = submission.part1_answers?.[i]
+    const given = raw == null ? "" : String(raw).trim()
+    if (!given || correct == null || String(correct).trim() === "") return null
+    if (answersEqual(given, correct)) return null
+    return { num, given, correct: String(correct) }
+  }).filter(Boolean)
+
+  // Зачёт — часть проверки: он записывается вместе с баллами по «Сохранить», а не
+  // сам по себе. Иначе закрытая без сохранения проверка успела бы поправить журнал
+  // попыток, а балл варианта остался бы прежним.
+  const toggleCredit = (num, on) =>
+    setCredited((prev) => (on ? [...new Set([...prev, num])].sort((a, b) => a - b) : prev.filter((x) => x !== num)))
 
   const part2Total = Object.values(scores).reduce((s, v) => s + (Number(v) || 0), 0)
   const part2MaxTotal = part2Tasks.reduce((s, n) => s + part2Max[n], 0)
@@ -948,11 +976,27 @@ function VariantReview({ submission, variant, onClose, onSave }) {
     // математике — баллы за геометрию. Отдельная колонка потребовала бы
     // миграции ради значения, которое и так однозначно выводится по типу.
     const secondary = res.kind === "test" ? res.testScore : (geomScore ?? 0)
-    const { error } = await supabase.from("variant_submissions").update({
+    const base = {
       part1_score: part1Score, part2_score: part2Total, part2_score_detail: scores,
       total_score: total, geom_score: secondary, status: "graded",
-    }).eq("id", submission.id)
+    }
+    let { error } = await supabase.from("variant_submissions")
+      .update(canCredit ? { ...base, part1_credited: credited } : base).eq("id", submission.id)
+    // Колонка part1_credited приходит миграцией supabase/manual_credit.sql. Если
+    // её нет, проверку это ронять не должно — сохраняем баллы, как раньше.
+    if (error && canCredit) ({ error } = await supabase.from("variant_submissions").update(base).eq("id", submission.id))
     if (!error) {
+      // Журнал попыток: зачтённое задание перестаёт быть ошибкой и в аналитике —
+      // иначе типаж, в котором ошибся генератор, навсегда остался бы у ученика
+      // слабым. Правим только изменившиеся номера; отказ (нет миграции) молча
+      // пропускаем, проверку это ронять не должно.
+      const before = new Set(Array.isArray(submission.part1_credited) ? submission.part1_credited.map(Number) : [])
+      const after = new Set(credited)
+      const changed = [...new Set([...before, ...after])].filter((n) => before.has(n) !== after.has(n))
+      await Promise.all(changed.map((num) => supabase.rpc("task_attempt_credit", {
+        p_source: "variant", p_source_id: submission.id, p_number: num,
+        p_answer: part1Wrong.find((r) => r.num === num)?.given ?? null, p_correct: after.has(num),
+      }).then(() => {}, () => {})))
       await supabase.from("notifications").insert({
         user_id: submission.student_id, title: "Вариант проверен",
         body: `Первичный балл: ${total} из ${variantMax}, ${secondaryLabel(res)}`,
@@ -973,6 +1017,54 @@ function VariantReview({ submission, variant, onClose, onSave }) {
           <div className="bg-blue-50 rounded-lg p-3 mb-4">
             <div className="text-sm font-medium text-blue-700">Часть 1: {part1Score} / {part1Max} {plural(part1Max, "балл", "балла", "баллов")}</div>
           </div>
+
+          {/* Часть 1 проверяется сверкой строк, и до сих пор репетитор видел от неё
+              только итог. Ошибки нужно видеть по номерам: эталон приходит из
+              генератора банка и иногда сам неверен (у задания два верных ответа,
+              другая допустимая запись). Тогда прав ученик — и репетитор засчитывает
+              задание руками, а не спорит с автопроверкой. */}
+          {part1Wrong.length > 0 && (
+            <div className="mb-4">
+              <div className="flex items-baseline justify-between gap-3 mb-2">
+                <label className="text-sm text-gray-500">Ошибки части 1</label>
+                {canCredit && <span className="text-[11px] text-gray-400">эталон банка бывает неверным — такое задание можно засчитать</span>}
+              </div>
+              <div className="flex flex-col gap-2">
+                {part1Wrong.map(({ num, given, correct }) => {
+                  const byHand = credited.includes(num)
+                  return (
+                    <div key={num} className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 px-3 py-2.5 flex items-start gap-3">
+                      <div className="min-w-0 flex-1 flex flex-col gap-1">
+                        <div className="text-sm text-gray-600">Задание {num}</div>
+                        <div className="flex items-start gap-2 text-xs">
+                          <span className="w-14 flex-shrink-0 text-gray-400">ответ</span>
+                          <span className={`min-w-0 break-words ${byHand ? "text-green-600" : "text-red-500"}`}>{given}</span>
+                        </div>
+                        <div className="flex items-start gap-2 text-xs">
+                          <span className="w-14 flex-shrink-0 text-gray-400">эталон</span>
+                          <span className="min-w-0 break-words text-gray-700">{correct}</span>
+                        </div>
+                        {byHand && (
+                          <span className="self-start inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-green-500/12 text-green-700 dark:text-green-300 ring-1 ring-green-500/25">
+                            <Icon name="check" size={10} />Засчитано · {taskMaxOf(type, num) || 1} {plural(taskMaxOf(type, num) || 1, "балл", "балла", "баллов")}
+                          </span>
+                        )}
+                      </div>
+                      {canCredit && (
+                        <button type="button" onClick={() => toggleCredit(num, !byHand)}
+                          title={byHand ? "Снять зачёт: задание снова считается ошибкой" : "Ответ ученика верен, а эталон банка ошибочен — засчитать задание"}
+                          className={`press-fill flex-shrink-0 text-[11px] rounded-lg px-2.5 py-1 ring-1 ${byHand
+                            ? "text-gray-500 ring-gray-500/20 hover:text-red-500"
+                            : "text-blue-600 ring-blue-500/25 hover:bg-blue-500/[0.06]"}`}>
+                          {byHand ? "Отменить зачёт" : "Засчитать"}
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
           {submission.auto_submitted && (
             <div className="flex items-start gap-1.5 text-xs text-amber-600 mb-4">
               <Icon name="clock" size={12} className="mt-0.5 flex-shrink-0" />

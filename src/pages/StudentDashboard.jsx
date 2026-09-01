@@ -20,7 +20,7 @@ import InvoiceCard from "../components/InvoiceCard"
 import { MarketingToggle } from "../components/ConsentChecks"
 
 const Board = lazy(() => import("../components/Board"))
-import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, parseHomeworkTasks, formatPhone, answersEqual, plural, timeUntilLesson } from "../utils"
+import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, parseHomeworkTasks, creditedNums, formatPhone, answersEqual, plural, timeUntilLesson } from "../utils"
 import { studentBilling, periodLabel } from "../billing"
 import { longDate } from "../invoices"
 import TaskAttachments from "../components/TaskAttachments"
@@ -974,6 +974,11 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten })
   // Вся карточка результата красится в цвет оценки — один акцент, без «зелёное + красное».
   const look = (hw.grade && GRADE_LOOK[hw.grade]) || GRADE_NEUTRAL
   const { intro, tasks } = parseHomeworkTasks(hw.description)
+  // Задания, засчитанные репетитором вручную: эталон банка ошибся, ответ ученика
+  // приняли. В разборе они верные — иначе ученик видел бы «ошибку» там, где ему
+  // уже поставили балл (supabase/manual_credit.sql).
+  const credited = creditedNums(hw.credited)
+  const isCreditedTask = (i) => credited.has(Number(tasks[i]?.n ?? i + 1))
   // Работа, собранная из банка, везёт задания целиком (homework.bank_tasks):
   // чертёж, программу, архив, таблицу. Соответствие с разобранными из описания
   // строками — по порядку, поэтому берём их только когда счёт сходится: иначе
@@ -1182,7 +1187,7 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten })
             <span className="text-sm font-medium">Разбор ответов</span>
             <span className="flex items-center gap-2 text-xs text-gray-400">
               {(() => {
-                const wrong = hw.correct_answers.filter((c, i) => !answersEqual(hw.student_answers[i] || "—", c)).length
+                const wrong = hw.correct_answers.filter((c, i) => !isCreditedTask(i) && !answersEqual(hw.student_answers[i] || "—", c)).length
                 return wrong === 0 ? "все верно" : `${wrong} ${plural(wrong, "ошибка", "ошибки", "ошибок")}`
               })()}
               <Icon name="chevron-down" size={14}
@@ -1202,7 +1207,8 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten })
                 <tbody>
                   {hw.correct_answers.map((correct, i) => {
                     const studentAns = hw.student_answers[i] || "—"
-                    const isCorrect = answersEqual(studentAns, correct)
+                    const byHand = isCreditedTask(i)
+                    const isCorrect = byHand || answersEqual(studentAns, correct)
                     return (
                       // Строка не заливается цветом: сплошная зелёно-красная простыня
                       // режет глаз и ничего не выделяет. Цвет — только в галочке
@@ -1218,7 +1224,11 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten })
                             </span>
                           </span>
                         </td>
-                        <td className={`py-2 px-3 align-top ${isCorrect ? "text-gray-400" : "text-gray-800 font-medium"}`}>{correct}</td>
+                        {/* У зачтённого задания в столбце эталона стоит не ответ,
+                            а пометка: сам эталон и оказался неверным. */}
+                        <td className={`py-2 px-3 align-top ${isCorrect ? "text-gray-400" : "text-gray-800 font-medium"}`}>
+                          {byHand ? <span className="text-green-600 dark:text-green-300 text-xs">засчитано репетитором</span> : correct}
+                        </td>
                       </tr>
                     )
                   })}
@@ -3231,7 +3241,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                               {t.condition_text && <div className="text-base whitespace-pre-wrap mb-2" dangerouslySetInnerHTML={{ __html: renderTaskMath(t.condition_text) }} />}
                               {/* Чертёж, программа, архив, таблица, текстовый файл — тем же
                                   компонентом, что и в домашней работе. Без него задания КЕГЭ
-                                  с приложенным файлом (№3, 9, 10, 17, 18, 22, 24, 26, 27)
+                                  с приложенным файлом (№3, 9, 17, 18, 22, 23, 24, 26, 27)
                                   были бы нерешаемы, и в вариант они не шли вовсе. */}
                               <div className="flex flex-col gap-1.5 mb-2">
                                 <TaskAttachments
@@ -3404,6 +3414,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                             nums={selectedVariant.answers.part1.map((_, i) => i + 1)}
                             correct={selectedVariant.answers.part1}
                             student={selectedVariant.submission.part1_answers}
+                            credited={selectedVariant.submission.part1_credited}
                           />
                         </div>
                       )}
@@ -3454,6 +3465,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                             nums={selectedVariant.answers.part1.map((_, i) => i + 1)}
                             correct={selectedVariant.answers.part1}
                             student={selectedVariant.submission.part1_answers}
+                            credited={selectedVariant.submission.part1_credited}
                           />
                         </div>
                       )}

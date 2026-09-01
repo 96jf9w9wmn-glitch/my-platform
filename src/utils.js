@@ -884,6 +884,27 @@ export function parseHomeworkTasks(desc) {
   return { intro: intro.join("\n"), tasks }
 }
 
+// Номера заданий, засчитанных репетитором вручную. Автопроверка сверяет ответ с
+// эталоном, но эталон приходит из генератора банка и может быть неверным (у
+// задания два верных ответа, другая допустимая запись, чертёж расходится с
+// ответом). Тогда ученик прав, а работа показывает ошибку — и репетитор
+// засчитывает номер сам. Ответ ученика при этом НЕ подменяется: он свидетельство,
+// а зачёт — отдельная пометка (supabase/manual_credit.sql).
+export const creditedNums = (raw) => new Set(Array.isArray(raw) ? raw.map(Number) : [])
+
+// Балл теста с учётом ручного зачёта. Считается по тем же правилам, по каким его
+// посчитал кабинет ученика при сдаче (answersEqual), плюс зачтённые номера —
+// иначе балл разошёлся бы с разбором.
+export function homeworkTestScore(hw, credited = creditedNums(hw?.credited)) {
+  const given = Array.isArray(hw?.student_answers) ? hw.student_answers : []
+  const correct = Array.isArray(hw?.correct_answers) ? hw.correct_answers : []
+  const { items } = homeworkTaskItems(hw || {})
+  return correct.reduce((n, c, i) => {
+    const num = items[i]?.n ?? i + 1
+    return n + (credited.has(Number(num)) || answersEqual(given[i] ?? "", c) ? 1 : 0)
+  }, 0)
+}
+
 // Строки описания + приложения из банка → единый список для окна.
 // Счёт заданий банка должен сходиться со строками описания, иначе к заданию
 // прилипнет чужой чертёж (то же условие, что и в списке разбора).
@@ -898,6 +919,7 @@ export function homeworkTaskItems(hw) {
   // Фото решения ученик снимает к каждому заданию, ключ — НОМЕР задания (1..N),
   // а не индекс: так их пишет кабинет ученика (homework.solution_files).
   const shots = hw.solution_files && typeof hw.solution_files === "object" ? hw.solution_files : null
+  const credited = creditedNums(hw.credited)
   return {
     intro,
     items: tasks.map((t, i) => {
@@ -917,7 +939,11 @@ export function homeworkTaskItems(hw) {
         given: given ? gave : undefined,
         // Верность считаем только когда есть с чем сверять: у задания без
         // эталона (развёрнутый ответ) её ставит репетитор, а не сверка строк.
-        ok: given && ans != null && ans !== "" ? answersEqual(gave ?? "", ans) : null,
+        // Зачтённое вручную задание верно независимо от сверки — ошибка была
+        // в эталоне, а не в ответе.
+        ok: credited.has(Number(n)) ? true
+          : given && ans != null && ans !== "" ? answersEqual(gave ?? "", ans) : null,
+        credited: credited.has(Number(n)),
         solutionUrl: shots?.[n] || shots?.[String(n)] || null,
       }
     }),
