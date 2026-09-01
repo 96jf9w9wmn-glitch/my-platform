@@ -520,6 +520,20 @@ function supOutsideTags(html) {
   return out
 }
 
+// ── Курсив ⟦i:…⟧ и полужирный ⟦bf:…⟧ ────────────────────────────────────────
+// В КИМ ФИПИ переменные набраны курсивом, имена команд исполнителей — полужирным,
+// и одно вкладывается в другое («Вперёд n» целиком полужирное, n внутри — курсивом).
+// Поэтому разворот идёт ИЗНУТРИ НАРУЖУ: на каждом проходе берутся только токены без
+// вложенных ⟦…⟧, и так до тех пор, пока текст меняется. Один общий проход снаружи
+// («до первого ⟧») разорвал бы внешний токен на первом же внутреннем.
+const RE_MARKS_ALL = /⟦(?:i|bf):[\s\S]*⟧/
+const RE_MARKS = /⟦(i|bf):([^⟦⟧]*)⟧/g
+function expandMarks(text, wrap) {
+  let out = String(text), prev
+  do { prev = out; out = out.replace(RE_MARKS, (_, k, x) => wrap(k, x)) } while (out !== prev)
+  return out
+}
+
 // Условие задания рендерится как HTML, чтобы дроби были СТОЛБИКОМ (не «в строчку»),
 // а корень — с верхней чертой над подкоренным. Генераторы вставляют токены
 // ⟦f:n:d⟧ (дробь) и ⟦r:x⟧ (корень); здесь текст сначала ЭКРАНИРУЕТСЯ (защита от XSS
@@ -601,8 +615,7 @@ function renderTaskMathRaw(text) {
     // строки таблицы истинности): без них условие читается сплошным текстом. Разворачиваем
     // ПОСЛЕДНИМИ, поэтому внутрь можно положить любой мат-токен; вкладывать один в другой
     // нельзя (захват идёт до первого «⟧»), да и не нужно.
-    .replace(/⟦i:([^⟧]*)⟧/g, (_, x) => `<i>${x}</i>`)
-    .replace(/⟦bf:([^⟧]*)⟧/g, (_, x) => `<b>${x}</b>`)
+    .replace(RE_MARKS_ALL, (m) => expandMarks(m, (k, x) => (k === "i" ? `<i>${x}</i>` : `<b>${x}</b>`)))
     .replace(/\n/g, "<br>")
 }
 
@@ -622,6 +635,9 @@ export function plainTaskMath(text) {
       body.split("‖").map((r) => r.split("⁞").join(" | ")).join("; "))
     .replace(/⟦list⟧([\s\S]*?)⟦endlist⟧/g, (_, body) =>
       body.split("⁞").map((t, i) => `${i + 1}) ${t}`).join("; "))
+    // ⟦code:…⟧ — листинг программы (Черепаха, Редактор): в плоском виде остаётся
+    // самим текстом программы, иначе в превью работы видны сырые скобки токена.
+    .replace(/⟦code:([^⟧]*)⟧/g, "$1")
     .replace(/⟦rf:([^⟧]*)⟧/g, (_, b) => { const [pre, n, d, post] = b.split("¦"); return `√(${pre || ""}${n}/${d}${post || ""})` })
     .replace(RE_ROOT_MARK, (_, i, x) => (i ? `${i}√(${x})` : `√${x}`))
     .replace(/⟦pf:([^:⟧]+):([^:⟧]+)⟧/g, "($1/$2)")
@@ -637,7 +653,7 @@ export function plainTaskMath(text) {
     .replace(/⟦iso:([^:⟧]+):([^:⟧]+):([^⟧]+)⟧/g, (_, a, z, s) =>
       a.replace(/\d/g, (d) => "⁰¹²³⁴⁵⁶⁷⁸⁹"[+d]) + z.replace(/\d/g, (d) => "₀₁₂₃₄₅₆₇₈₉"[+d]) + s)
     .replace(/⟦cases:([^⟧]+)⟧/g, (_, b) => b.split(/[⁞¦]/).join("; "))
-    .replace(/⟦(?:i|bf):([^⟧]*)⟧/g, "$1")
+    .replace(RE_MARKS_ALL, (m) => expandMarks(m, (_, x) => x))
 }
 
 // Разворачивает мат-токены в SVG-РАЗМЕТКУ (корень — √ с чертой над подкоренным, дробь —
@@ -659,8 +675,8 @@ export function expandSvgMathTokens(svg) {
       `<tspan baseline-shift="super" font-size="0.7em">${a}</tspan><tspan baseline-shift="sub" font-size="0.7em">${b}</tspan>`)
     .replace(/⟦iso:([^:⟧]+):([^:⟧]+):([^⟧]+)⟧/g, (_, a, z, s) =>
       `<tspan baseline-shift="super" font-size="0.7em">${a}</tspan><tspan baseline-shift="sub" font-size="0.7em">${z}</tspan>${s}`)
-    .replace(/⟦i:([^⟧]*)⟧/g, (_, x) => `<tspan font-style="italic">${x}</tspan>`)
-    .replace(/⟦bf:([^⟧]*)⟧/g, (_, x) => `<tspan font-weight="600">${x}</tspan>`)
+    .replace(RE_MARKS_ALL, (m) => expandMarks(m, (k, x) =>
+      `<tspan font-${k === "i" ? "style=\"italic\"" : "weight=\"600\""}>${x}</tspan>`))
 }
 
 // Нормализует уже готовый data:image/svg+xml URL задания (напр. сохранённый в банке до фикса):

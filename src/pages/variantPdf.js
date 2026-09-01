@@ -421,9 +421,17 @@ async function parensPdf(html) {
 
 // ⟦i:x⟧ / ⟦bf:x⟧ — курсив и полужирный (переменные и названия полей в КЕГЭ №2, №3).
 // Разворачиваются ПОСЛЕ мат-токенов: внутри уже готовая разметка, «⟧» в ней не бывает.
-const marksPdf = (s) => String(s)
-  .replace(/⟦i:([^⟧]*)⟧/g, (_, x) => `<i>${x}</i>`)
-  .replace(/⟦bf:([^⟧]*)⟧/g, (_, x) => `<b>${x}</b>`)
+// Разворот идёт изнутри наружу — токены вкладываются друг в друга («Вперёд n»
+// полужирное целиком, n внутри курсивом), см. expandMarks в utils.js.
+const RE_MARKS_PDF = /⟦(i|bf):([^⟦⟧]*)⟧/g
+function marksPdf(text) {
+  let out = String(text), prev
+  do {
+    prev = out
+    out = out.replace(RE_MARKS_PDF, (_, k, x) => (k === "i" ? `<i>${x}</i>` : `<b>${x}</b>`))
+  } while (out !== prev)
+  return out
+}
 
 export async function renderTaskMathPdf(text, mf = MATH_ARIAL) {
   const esc = escapeHtml(flattenNestedTokens(String(text ?? "")))
@@ -448,7 +456,7 @@ export async function renderTaskMathPdf(text, mf = MATH_ARIAL) {
     else if (m[17] !== undefined) out += `<sub>${flatMarks(m[17])}</sub>`
     // √{X} и √[i]{X} в самом условии (внутри дробей их разворачивает rootInPdf)
     else if (m[21] !== undefined) out += await svgToInlineImg(rootSvg(m[21], m[20] || "", mf), ROOT_VALIGN)
-    else if (m[22] !== undefined) out += `<code style="font-family:Menlo,Consolas,monospace; font-size:0.92em; white-space:pre-wrap;">${m[22]}</code>`
+    else if (m[22] !== undefined) out += `<code style="display:block; font-family:Menlo,Consolas,monospace; font-size:0.92em; white-space:pre-wrap; margin:6px 0;">${m[22]}</code>`
     else if (m[18] !== undefined) out += `<span style="display:inline-flex; flex-direction:column; align-items:flex-start; text-align:left; vertical-align:-0.35em; font-size:0.62em; line-height:1.05; margin-right:0.05em;"><span>${m[18]}</span><span>${m[19]}</span></span>`
     else out += await svgToInlineImg(fracSvg(m[2], m[3], mf), FRAC_VALIGN, true)
     last = m.index + m[0].length
