@@ -1731,22 +1731,24 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
               </div>
               {resultRow}
             </button>
-          ) : (
+          ) : !hw.file_url ? (
             <div className="rounded-2xl ring-1 ring-dashed ring-gray-200/80 dark:ring-white/10 text-sm text-gray-400 text-center py-8">
-              {hw.file_url ? "Условия — в приложенном файле" : "Условий нет"}
+              Условий нет
             </div>
-          )}
-          {/* Условий в работе нет (задания в файле) — результату всё равно нужно
-              место, и это по-прежнему колонка заданий, а не колонка проверки. */}
-          {!hw.description && resultRow && <DetailBlock>{resultRow}</DetailBlock>}
+          ) : null}
+          {/* Условия в файле — сам файл и есть задание, поэтому он стоит первым,
+              на месте карточки условий. Пустая заглушка «условия в файле» тут
+              была бы дырой во весь блок, а файл уезжал бы под результат. */}
           {hw.file_url && (
             <DetailBlock className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-blue-500/12 text-blue-600 flex items-center justify-center flex-shrink-0">
                 <Icon name="paperclip" size={16} />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium truncate">Файл задания</div>
-                <div className="text-[11px] text-gray-400 mt-0.5 truncate">То же, что видит ученик</div>
+                <div className="text-sm font-medium truncate">{hw.description ? "Файл задания" : "Условия работы"}</div>
+                <div className="text-[11px] text-gray-400 mt-0.5 truncate">
+                  {hw.description ? "То же, что видит ученик" : "В приложенном файле — то же, что видит ученик"}
+                </div>
               </div>
               <a href={hw.file_url} target="_blank" rel="noreferrer"
                 className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 flex-shrink-0">
@@ -1754,6 +1756,9 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
               </a>
             </DetailBlock>
           )}
+          {/* Условий в работе нет (задания в файле) — результату всё равно нужно
+              место, и это по-прежнему колонка заданий, а не колонка проверки. */}
+          {!hw.description && resultRow && <DetailBlock>{resultRow}</DetailBlock>}
         </div>
 
         <div className="flex flex-col gap-2">
