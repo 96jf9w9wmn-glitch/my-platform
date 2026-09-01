@@ -642,8 +642,7 @@ function renderTaskMathRaw(text) {
     // раскрываем ПОСЛЕ дробей, чтобы внутренние ⟦f⟧ уже стали <span> (без ⟧ внутри).
     // Разделитель строк — ⁞ или ¦ (генераторы ЕГЭ №18 пишут ¦); к этому моменту все
     // токены со «своим» ¦ (⟦rf⟧, ⦃¦⦄, ⦅¦⦆) уже развёрнуты, так что путаницы нет.
-    .replace(/⟦cases:([^⟧]+)⟧/g, (_, b) =>
-      `<span class="tmath-cases"><svg class="tmath-brace" viewBox="0 0 10 100" preserveAspectRatio="none" aria-hidden="true"><path d="M9 1C5 1 5 6 5 25C5 44 4 49 1 50C4 51 5 56 5 75C5 94 5 99 9 99" fill="none" stroke="currentColor" stroke-width="1.2" vector-effect="non-scaling-stroke"/></svg><span class="tmath-lines">${b.split(/[⁞¦]/).map((l) => `<span>${l}</span>`).join("")}</span></span>`)
+    .replace(/⟦cases:([^⟧]+)⟧/g, (_, b) => casesMarkup(b))
     // ⟦i:x⟧ — курсив, ⟦bf:x⟧ — полужирный. В КИМ ФИПИ курсивом набраны переменные и
     // названия полей базы данных, полужирным — ключевое слово условия («неповторяющиеся»
     // строки таблицы истинности): без них условие читается сплошным текстом. Разворачиваем
@@ -688,6 +687,102 @@ export function plainTaskMath(text) {
       a.replace(/\d/g, (d) => "⁰¹²³⁴⁵⁶⁷⁸⁹"[+d]) + z.replace(/\d/g, (d) => "₀₁₂₃₄₅₆₇₈₉"[+d]) + s)
     .replace(/⟦cases:([^⟧]+)⟧/g, (_, b) => b.split(/[⁞¦]/).join("; "))
     .replace(RE_MARKS_ALL, (m) => expandMarks(m, (_, x) => x))
+}
+
+// Разметка системы: фигурная скобка (SVG тянется по высоте) и уравнения столбиком.
+// Общая для банка (токен ⟦cases⟧ из генераторов) и для описаний ДЗ, где систему
+// находит casesFromText, — две копии скобки разошлись бы при первой же правке.
+function casesMarkup(body) {
+  const lines = String(body).split(/[⁞¦]/).map((l) => `<span>${l}</span>`).join("")
+  return `<span class="tmath-cases"><svg class="tmath-brace" viewBox="0 0 10 100" preserveAspectRatio="none" aria-hidden="true"><path d="M9 1C5 1 5 6 5 25C5 44 4 49 1 50C4 51 5 56 5 75C5 94 5 99 9 99" fill="none" stroke="currentColor" stroke-width="1.2" vector-effect="non-scaling-stroke"/></svg><span class="tmath-lines">${lines}</span></span>`
+}
+
+// ── Система уравнений в описании домашней работы ────────────────────────────
+// Модель (и репетитор руками) пишет систему строкой через запятую: «Решите систему
+// уравнений: x + y = 7, x − y = 3». На бланке система стоит под фигурной скобкой
+// столбиком, поэтому перед рендером такую запись сворачиваем в тот же токен ⟦cases⟧,
+// которым пользуется банк, — разворачивает его в конце renderHomeworkMath.
+// Заголовок системы: «систему», «систему уравнений», «системы линейных неравенств»…
+const SYS_HEAD = /систем[а-яё]*(?:\s+(?:линейных\s+|квадратных\s+)?(?:уравнений|неравенств))?\s*:?\s*/i
+// Конец уравнения: «;», запятая С ПРОБЕЛОМ после неё (иначе «y = 7,5» разорвалось бы
+// по десятичной запятой), точка в конце предложения или конец строки.
+const SYS_SEP = /;|,(?=\s)|\.(?=\s|$)/g
+const sysClean = (t) => String(t ?? "").trim().replace(/[.,;]+$/, "").trim()
+// Строка системы — короткая, со знаком отношения и без слов (у слова две кириллицы
+// подряд; одиночная буква допустима: переменную вполне зовут «х» кириллицей).
+const isSysLine = (t) => !!t && t.length <= 60 && /[=≤≥<>≠]/.test(t) && !/[А-Яа-яЁё]{2}/.test(t)
+// Внутри уравнения дефис — всегда минус, а знаки пишутся так же, как в КИМ.
+const sysSigns = (t) => t.replace(/-/g, "−").replace(/>=/g, "≥").replace(/<=/g, "≤").replace(/!=|<>/g, "≠")
+const sysToken = (eqs) => `⟦cases:${eqs.map(sysSigns).join("⁞")}⟧`
+
+// Отрезает от текста подряд идущие уравнения; остаток предложения возвращается как есть
+// («…x − y = 3, где x и y — целые» не должно уехать под скобку).
+function sysScan(rest) {
+  const eqs = []
+  let p = 0, sep = ""
+  while (p < rest.length) {
+    SYS_SEP.lastIndex = p
+    const m = SYS_SEP.exec(rest)
+    const t = sysClean(rest.slice(p, m ? m.index : rest.length))
+    if (!isSysLine(t)) break
+    eqs.push(t)
+    if (!m) { p = rest.length; sep = ""; break }
+    p = m.index + m[0].length
+    sep = m[0]
+  }
+  const rem = rest.slice(p).trim()
+  // Запятая перед остатком принадлежит ему («…, где x и y — целые»), точка — уже
+  // закончившемуся предложению с системой.
+  return { eqs, tail: rem && sep !== "." ? `${sep} ${rem}`.trim() : rem }
+}
+
+function casesFromText(text) {
+  let s = String(text)
+  // 1) Система, записанная моделью в LaTeX: \begin{cases}…\end{cases} (и array/aligned
+  //    внутри \left\{ … \right.). Разбираем ДО latexSymbols — он съедает \left и \{.
+  if (/\\begin\{(?:cases|array|aligned)\}/.test(s)) {
+    s = s.replace(/\\left\s*\\?\{/g, "").replace(/\\right\s*\\?\./g, "")
+      .replace(/\\begin\{(?:cases|array|aligned)\}(?:\{[^{}]*\})?([\s\S]*?)\\end\{(?:cases|array|aligned)\}/g,
+        (m, body) => {
+          const eqs = body.split(/\\\\|\n/).map((l) => sysClean(l.replace(/&/g, " "))).filter(Boolean)
+          return eqs.length >= 2 ? sysToken(eqs) : m
+        })
+  }
+  if (/систем/i.test(s)) {
+    // 2) Система строкой: «…систему уравнений: eq, eq» — либо теми же словами, но
+    //    уравнениями со следующих строк.
+    const lines = s.split("\n")
+    const out = []
+    for (let li = 0; li < lines.length; li++) {
+      const line = lines[li]
+      const m = SYS_HEAD.exec(line)
+      if (!m) { out.push(line); continue }
+      const from = m.index + m[0].length
+      // Уравнения идут либо сразу за словами «систему уравнений», либо после двоеточия
+      // («…систему уравнений методом подстановки: x + y = 7, x − y = 3»).
+      const colon = line.indexOf(":", from)
+      let hit = null
+      for (const start of colon >= 0 ? [from, colon + 1] : [from]) {
+        const rest = line.slice(start).trim()
+        let taken = 0
+        let found = sysScan(rest)
+        if (!rest) {                                   // двоеточие в конце строки —
+          const next = []                              // система записана ниже
+          while (isSysLine(sysClean(lines[li + taken + 1]))) next.push(sysClean(lines[li + (++taken)]))
+          found = { eqs: next, tail: "" }
+        }
+        // Одно уравнение системой не бывает.
+        if (found.eqs.length >= 2) { hit = { start, taken, ...found }; break }
+      }
+      if (!hit) { out.push(line); continue }
+      li += hit.taken
+      const head = line.slice(0, hit.start).replace(/\s*:?\s*$/, "")
+      out.push(`${head} ${sysToken(hit.eqs)}${hit.tail ? ` ${hit.tail}` : ""}`)
+    }
+    s = out.join("\n")
+  }
+  // Двоеточие перед фигурной скобкой не ставится («Решите систему: {…}» → «Решите систему {…}»).
+  return s.replace(/\s*:\s*(?=⟦cases:)/g, " ")
 }
 
 // Разворачивает мат-токены в SVG-РАЗМЕТКУ (корень — √ с чертой над подкоренным, дробь —
@@ -878,7 +973,10 @@ export function renderHomeworkMath(text) {
   // их разворачивает только рендерер банка. Прогонять текст через оба прохода
   // нельзя — второй портит уже готовую разметку, поэтому выбираем ветку по токену.
   if (String(text).includes("⟦")) return renderTaskMath(String(text)).replace(/\n/g, "<br>")
-  let s = String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  // Систему уравнений находим ДО экранирования и разворачиваем в токен ⟦cases⟧: сами
+  // уравнения дальше идут общим проходом (дроби, степени, корни), а скобка ставится
+  // последней — иначе разметка скобки попала бы под мат-замены.
+  let s = casesFromText(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
   s = convFracRoot(s)
   s = latexSymbols(s)
     // корни без \ (юникод от модели): √{x}, √(x), √2, √x
@@ -888,6 +986,7 @@ export function renderHomeworkMath(text) {
     // одиночный индекс без скобок: x_1 (групповые ^{…}/_{…} уже развёрнуты выше)
     .replace(/_([0-9A-Za-zА-Яа-я])/g, (_, x) => `<sub class="tmath-sub">${x}</sub>`)
   s = superscriptPowers(s)          // оставшиеся ^2, ^n → ², ⁿ
+  s = s.replace(/⟦cases:([^⟧]+)⟧/g, (_, b) => casesMarkup(b))
   return supOutsideTags(noBreakMath(s.replace(/\n/g, "<br>")))
 }
 
