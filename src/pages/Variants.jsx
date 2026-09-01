@@ -1033,7 +1033,7 @@ function VariantReview({ submission, variant, onClose, onSave }) {
 // rounded-2xl, шрифт text-sm font-semibold. Задавать вместо этого свою высоту
 // нельзя — она разошлась бы с соседом на пару пикселей, и кнопка читалась бы
 // съехавшей.
-export function StudentFilter({ options, value, onChange }) {
+function StudentFilter({ options, value, onChange }) {
   const [open, setOpen] = useState(false)
   const { closing, close, cancel } = useClosing(() => setOpen(false), POPUP_OUT_MS)
   const wrapRef = useRef(null)
