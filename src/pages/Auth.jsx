@@ -5,6 +5,7 @@ import MorphIcon from "../components/MorphIcon"
 import BetaBadge from "../components/BetaBadge"
 import { ConsentRow, ConsentLink } from "../components/ConsentChecks"
 import { logConsent } from "../consents"
+import { isValidRuPhone, isValidEmail, isValidPersonName } from "../utils"
 import { loadTutorProfile } from "../tutorProfile"
 import { tutorSignIn } from "../tutorSignIn"
 import EmailCodeModal from "../components/EmailCodeModal"
@@ -151,6 +152,7 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
     try {
       if (role === "tutor") {
         if (!form.email) throw new Error("Введи email")
+        if (!isValidEmail(form.email)) throw new Error("Проверьте адрес почты: он записан с ошибкой")
         // redirectTo задаём явно: иначе ссылка ведёт на SITE_URL из настроек
         // сервера, а он один и тот же для прода и локальной разработки.
         // Адрес должен быть в ADDITIONAL_REDIRECT_URLS на сервере.
@@ -162,6 +164,7 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
       } else {
         const phone = form.phone.trim()
         if (!phone) throw new Error("Введи номер телефона")
+        if (!isValidRuPhone(phone)) throw new Error("Проверь номер: нужны все десять цифр после +7")
         if (!newPassword || newPassword.length < 6) throw new Error("Новый пароль минимум 6 символов")
 
         const { data: ok, error: resetError } = await supabase
@@ -309,6 +312,10 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
       } else if (role === "student") {
         const phone = form.phone.trim()
         if (!phone) throw new Error("Введи номер телефона")
+        // Телефон — это логин ученика и единственная связка его карточки с
+        // аккаунтом, поэтому «+7 12» пускать нельзя ни при регистрации, ни при
+        // входе: с кривым номером человек просто не найдёт свою запись.
+        if (!isValidRuPhone(phone)) throw new Error("Проверь номер: нужны все десять цифр после +7")
         if (!form.password) throw new Error("Введи пароль")
 
         if (mode === "login") {
@@ -328,6 +335,9 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
 
         } else {
           if (!form.name) throw new Error("Введи имя")
+          // «35235» именем не является: эту строку репетитор увидит в списке
+          // учеников, в отчёте родителю и в квитанции.
+          if (!isValidPersonName(form.name)) throw new Error("Впиши имя буквами — так тебя увидит репетитор")
           if (form.password.length < 6) throw new Error("Пароль минимум 6 символов")
           requireConsent()
 
@@ -357,6 +367,9 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
           // считаются попытки по конкретному аккаунту (пять — и вход закрыт на
           // 15 минут, см. api/auth-login.js). Ответ — та же сессия GoTrue,
           // поэтому дальше всё как раньше.
+          // Проверяем адрес ДО запроса: неверно набранная почта иначе съела бы
+          // одну из пяти попыток входа, которые считает сервер.
+          if (!isValidEmail(form.email)) throw new Error("Проверьте адрес почты: он записан с ошибкой")
           const data = await tutorSignIn(form.email, form.password)
           // Сессия ученика или родителя из этого же браузера теперь не нужна, а
           // её токен подменял бы авторизацию репетитора (см. supabase.js).
@@ -366,7 +379,9 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
 
         } else {
           if (!form.name) throw new Error("Введи имя")
+          if (!isValidPersonName(form.name)) throw new Error("Впишите имя буквами — его видят ученики")
           if (!form.email) throw new Error("Введи email")
+          if (!isValidEmail(form.email)) throw new Error("Проверьте адрес почты: он записан с ошибкой")
           if (form.password.length < 6) throw new Error("Пароль минимум 6 символов")
           requireConsent()
 
@@ -409,6 +424,7 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
   const phoneOk = isValidRuPhone(form.phone)
   const phoneStarted = form.phone.replace(/\D/g, "").length > 1
   const emailOk = isValidEmail(form.email)
+  const nameOk = isValidPersonName(form.name)
 
   // Подложка плавающих кнопок: появляется только при прокрутке. Цвет текста
   // тоже подтягиваем — на цветной шапке карточки, которая уезжает под кнопки,
@@ -602,9 +618,13 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
                 name="name"
                 value={form.name}
                 onChange={handleChange}
+                onBlur={() => setTouched((t) => ({ ...t, name: true }))}
                 placeholder="Иван Иванов"
                 className="input-glass"
               />
+              <FieldHint show={touched.name && !!form.name.trim() && !nameOk}>
+                Имя пишется буквами
+              </FieldHint>
             </div>
           )}
 

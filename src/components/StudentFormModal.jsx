@@ -345,6 +345,10 @@ function StudentFormModal({ student, students = [], onClose, onSubmit, initialNa
   function handleSubmit() {
     if (submitting) return
     if (!form.name || !phone) { setFormError("Заполните имя и телефон."); return }
+    // Телефон — единственная связка карточки с аккаунтом ученика (по нему сшивает
+    // и RLS, current_student_rows). Сохранить «+7 12» значит завести карточку, к
+    // которой ученик никогда не привяжется, и не заметить этого.
+    if (!isValidPhoneNumber(phone)) { setFormError("Проверьте номер телефона: он записан не полностью."); return }
     if (mode === "single" && previewLessons.length === 0) { setFormError("Выберите даты занятий."); return }
     if (mode === "recurring" && (!recurringStartDate || recurringDays.length === 0)) { setFormError("Укажите дату начала и дни недели."); return }
     if (mode === "recurring" && recurringStartDate < formatDate(new Date())) { setFormError("Дата начала не может быть в прошлом."); return }
