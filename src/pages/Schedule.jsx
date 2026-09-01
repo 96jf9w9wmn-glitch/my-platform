@@ -20,7 +20,26 @@ import {
 
 const VIEWS = [{ key: "month", label: "Месяц" }, { key: "week", label: "Неделя" }]
 
-const HOURS = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00"]
+// Сетка недели по умолчанию охватывает рабочий день, но не запирает его:
+// занятие можно поставить хоть на 07:30, хоть на 21:00, и строки под него
+// добавятся сами (см. `weekHours`). Раньше диапазон был жёстким, и вечернее
+// занятие стояло в расписании, а в неделе не показывалось вовсе.
+const BASE_FROM = 9
+const BASE_TO = 20
+
+// «ЧЧ:ММ» → часы и минуты. Плохое значение (пустое, «9», мусор) не должно
+// ронять сетку — считаем его началом суток.
+function hourOf(time) {
+  const h = Number(String(time || "").split(":")[0])
+  return Number.isFinite(h) ? h : 0
+}
+function minuteOf(time) {
+  const m = Number(String(time || "").split(":")[1])
+  return Number.isFinite(m) ? m : 0
+}
+function hourLabel(h) {
+  return `${String(h).padStart(2, "0")}:00`
+}
 const DAY_NAMES = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 const MONTH_NAMES = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"]
 
@@ -239,11 +258,39 @@ function Schedule({ students, setStudents, onOpenBoard }) {
     }).sort((a, b) => a.time.localeCompare(b.time))
   }
 
-  function getLessonsForSlot(dateStr, time) {
-    return students.filter((s) =>
-      (s.lessons || []).some((l) => l.date === dateStr && l.time === time) ||
-      ((s.lessonDates || []).includes(dateStr) && s.lessonTime === time)
-    )
+  // Занятия, попадающие в строку часа. Сравниваем час, а не строку времени:
+  // при точном сравнении занятие в 17:30 не попадало ни в одну строку и в
+  // неделе пропадало.
+  function getLessonsForSlot(dateStr, hourNum) {
+    return students.flatMap((s) => {
+      const own = (s.lessons || []).filter((l) => l.date === dateStr)
+      if (own.length > 0) {
+        return own.filter((l) => hourOf(l.time) === hourNum).map((lesson) => ({ student: s, lesson }))
+      }
+      if ((s.lessonDates || []).includes(dateStr) && hourOf(s.lessonTime) === hourNum) {
+        return [{ student: s, lesson: { date: dateStr, time: s.lessonTime, duration: s.lessonDuration || 60 } }]
+      }
+      return []
+    })
+  }
+
+  // Строки сетки: рабочий день плюс всё, что реально стоит на этой неделе, —
+  // включая занятие, которое началось в последнем часе и заходит за него.
+  function weekHours(dates) {
+    const days = new Set(dates.map(formatDate))
+    let from = BASE_FROM
+    let to = BASE_TO
+    const take = (time, duration) => {
+      const start = hourOf(time)
+      const end = Math.floor((start * 60 + minuteOf(time) + (Number(duration) || 60) - 1) / 60)
+      if (start < from) from = start
+      if (end > to) to = Math.min(23, end)
+    }
+    for (const s of students) {
+      for (const l of s.lessons || []) if (days.has(l.date)) take(l.time, l.duration || s.lessonDuration)
+      if (s.lessonTime) for (const d of s.lessonDates || []) if (days.has(d)) take(s.lessonTime, s.lessonDuration)
+    }
+    return Array.from({ length: to - from + 1 }, (_, i) => from + i)
   }
 
   function handleAddLesson() {

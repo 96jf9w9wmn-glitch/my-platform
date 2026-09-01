@@ -301,7 +301,7 @@ function defaultVariantType(subjects, examFocus) {
 // подсказка мелким текстом («вставьте в первое поле») работой не была — про
 // такое не догадываются, пока не прочтут. Поле в сетке тоже принимает список
 // целиком, но это уже подспорье для тех, кто попробует, а не единственный путь.
-function AnswerGrid({ label, numbers, valueOf, onChange, placeholderOf, hint }) {
+function AnswerGrid({ label, numbers, valueOf, onChange, placeholderOf, hint, allowBulk = true }) {
   const [bulk, setBulk] = useState(null)      // null — панель вставки закрыта
   // Номера читаются столбиками (1, 2, 3… вниз), а не строками: ключ переносят
   // сверху вниз, и порядок обхода по Tab совпадает с порядком на экране —
@@ -318,7 +318,6 @@ function AnswerGrid({ label, numbers, valueOf, onChange, placeholderOf, hint }) 
   function spread(text, idx = 0) {
     const vals = String(text).trim().split(/\s+/).filter(Boolean)
     vals.slice(0, numbers.length - idx).forEach((v, k) => onChange(numbers[idx + k], v))
-    return vals.length
   }
 
   function handlePaste(e, idx) {
@@ -332,16 +331,21 @@ function AnswerGrid({ label, numbers, valueOf, onChange, placeholderOf, hint }) 
     <div>
       <div className="flex items-baseline justify-between gap-2 mb-1">
         <label className="text-sm text-gray-500">{label}</label>
+        {/* Собранному из банка варианту вставка не нужна: ответы уже стоят в
+            полях, и кнопка предлагала бы затереть их тем, чего у репетитора
+            нет. */}
+        {allowBulk && (
         <button type="button" onClick={() => setBulk((v) => (v === null ? "" : null))}
           className="no-press shrink-0 inline-flex items-center gap-1 text-[11px] text-blue-600 hover:opacity-70 active:scale-95 transition-all">
           <Icon name={bulk === null ? "clipboard" : "chevron-up"} size={11} />
           {bulk === null ? "Вставить списком" : "Свернуть"}
         </button>
+        )}
       </div>
 
       {/* Сетка заполняется прямо во время вставки — видно, что список разошёлся
           по номерам, и закрывать панель можно, уже видя результат. */}
-      <Reveal value={bulk === null ? "" : "open"} className="mb-2">
+      <Reveal value={allowBulk && bulk !== null ? "open" : ""} className="mb-2">
         {() => (
           <div className="pb-1">
             <textarea
@@ -749,6 +753,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
                   ? `Ответы части 1 — подставлены из банка, проверьте (${answerCount} шт.)`
                   : `Ответы к части 1 — по номерам заданий (${answerCount} шт.)`}
                 numbers={p1Numbers}
+                allowBulk={!(source === "bank" && bankPicked.length > 0)}
                 valueOf={(n) => answers[n - 1] || ""}
                 onChange={(n, v) => setAnswers((prev) => { const upd = [...prev]; upd[n - 1] = v; return upd })}
                 hint={`Введено: ${p1Numbers.filter((n) => answers[n - 1]).length} / ${answerCount}`}
@@ -758,6 +763,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
                 <AnswerGrid
                   label={`Ответы к части 2 (${numbersLabel(part2Numbers)})${source === "bank" && bankPicked.length > 0 ? " — подставлены из банка" : ""}`}
                   numbers={part2Numbers}
+                  allowBulk={!(source === "bank" && bankPicked.length > 0)}
                   valueOf={(n) => part2Answers[n] || ""}
                   onChange={(n, v) => setPart2Answers((prev) => ({ ...prev, [n]: v }))}
                   placeholderOf={(n) => (n === 24 ? "Доказано." : "Ответ")}
