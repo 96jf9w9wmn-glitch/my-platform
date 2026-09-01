@@ -596,6 +596,13 @@ function renderTaskMathRaw(text) {
     // токены со «своим» ¦ (⟦rf⟧, ⦃¦⦄, ⦅¦⦆) уже развёрнуты, так что путаницы нет.
     .replace(/⟦cases:([^⟧]+)⟧/g, (_, b) =>
       `<span class="tmath-cases"><svg class="tmath-brace" viewBox="0 0 10 100" preserveAspectRatio="none" aria-hidden="true"><path d="M9 1C5 1 5 6 5 25C5 44 4 49 1 50C4 51 5 56 5 75C5 94 5 99 9 99" fill="none" stroke="currentColor" stroke-width="1.2" vector-effect="non-scaling-stroke"/></svg><span class="tmath-lines">${b.split(/[⁞¦]/).map((l) => `<span>${l}</span>`).join("")}</span></span>`)
+    // ⟦i:x⟧ — курсив, ⟦bf:x⟧ — полужирный. В КИМ ФИПИ курсивом набраны переменные и
+    // названия полей базы данных, полужирным — ключевое слово условия («неповторяющиеся»
+    // строки таблицы истинности): без них условие читается сплошным текстом. Разворачиваем
+    // ПОСЛЕДНИМИ, поэтому внутрь можно положить любой мат-токен; вкладывать один в другой
+    // нельзя (захват идёт до первого «⟧»), да и не нужно.
+    .replace(/⟦i:([^⟧]*)⟧/g, (_, x) => `<i>${x}</i>`)
+    .replace(/⟦bf:([^⟧]*)⟧/g, (_, x) => `<b>${x}</b>`)
     .replace(/\n/g, "<br>")
 }
 
@@ -630,6 +637,7 @@ export function plainTaskMath(text) {
     .replace(/⟦iso:([^:⟧]+):([^:⟧]+):([^⟧]+)⟧/g, (_, a, z, s) =>
       a.replace(/\d/g, (d) => "⁰¹²³⁴⁵⁶⁷⁸⁹"[+d]) + z.replace(/\d/g, (d) => "₀₁₂₃₄₅₆₇₈₉"[+d]) + s)
     .replace(/⟦cases:([^⟧]+)⟧/g, (_, b) => b.split(/[⁞¦]/).join("; "))
+    .replace(/⟦(?:i|bf):([^⟧]*)⟧/g, "$1")
 }
 
 // Разворачивает мат-токены в SVG-РАЗМЕТКУ (корень — √ с чертой над подкоренным, дробь —
@@ -651,6 +659,8 @@ export function expandSvgMathTokens(svg) {
       `<tspan baseline-shift="super" font-size="0.7em">${a}</tspan><tspan baseline-shift="sub" font-size="0.7em">${b}</tspan>`)
     .replace(/⟦iso:([^:⟧]+):([^:⟧]+):([^⟧]+)⟧/g, (_, a, z, s) =>
       `<tspan baseline-shift="super" font-size="0.7em">${a}</tspan><tspan baseline-shift="sub" font-size="0.7em">${z}</tspan>${s}`)
+    .replace(/⟦i:([^⟧]*)⟧/g, (_, x) => `<tspan font-style="italic">${x}</tspan>`)
+    .replace(/⟦bf:([^⟧]*)⟧/g, (_, x) => `<tspan font-weight="600">${x}</tspan>`)
 }
 
 // Нормализует уже готовый data:image/svg+xml URL задания (напр. сохранённый в банке до фикса):

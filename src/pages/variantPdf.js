@@ -419,6 +419,12 @@ async function parensPdf(html) {
   return out
 }
 
+// ⟦i:x⟧ / ⟦bf:x⟧ — курсив и полужирный (переменные и названия полей в КЕГЭ №2, №3).
+// Разворачиваются ПОСЛЕ мат-токенов: внутри уже готовая разметка, «⟧» в ней не бывает.
+const marksPdf = (s) => String(s)
+  .replace(/⟦i:([^⟧]*)⟧/g, (_, x) => `<i>${x}</i>`)
+  .replace(/⟦bf:([^⟧]*)⟧/g, (_, x) => `<b>${x}</b>`)
+
 export async function renderTaskMathPdf(text, mf = MATH_ARIAL) {
   const esc = escapeHtml(flattenNestedTokens(String(text ?? "")))
     .replace(/⟦match⟧([\s\S]*?)⟦endmatch⟧/g, (_, body) => matchTablePdf(body, mf.plain))
@@ -448,7 +454,7 @@ export async function renderTaskMathPdf(text, mf = MATH_ARIAL) {
     last = m.index + m[0].length
   }
   // формула не должна рваться переносом строки и в PDF (см. noBreakMath в utils.js)
-  return supOutsideTags(noBreakMath(await casesPdf(await parensPdf(out + esc.slice(last)), mf)))
+  return supOutsideTags(noBreakMath(marksPdf(await casesPdf(await parensPdf(out + esc.slice(last)), mf))))
 }
 
 // Содержимое картинки — блобом. Генераторы отдают чертёж data-URL'ом, и fetch по

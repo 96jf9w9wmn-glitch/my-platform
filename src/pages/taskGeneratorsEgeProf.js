@@ -2120,7 +2120,7 @@ const ptsWord = (n) => `${NUMW[n]} точек`
 // shade — {a,b} закрасить между кривой и осью; tickXvals — подписи делений оси x.
 function wave8Svg({ gx0, gx1, gy0, gy1, fn, xa, xb, label = null, marks = [], markBelow = true, markItalic = true,
   dashX = [], shade = null, tangent = null, dots = [], openEnds = true, showUnit = true, tickXvals = null,
-  guides = [], showUnitX = null, showUnitY = null, cell = 22, unitYRight = false }) {
+  guides = [], showUnitX = null, showUnitY = null, cell = 22, unitYRight = null }) {
   const m = 16, axOv = 13 // axOv — вынос оси x за крайние точки (px): стрелка и открытые концы не впритык
   const padX = m + cell              // +1 клетка-поле слева/справа: сетка обрамляет вынос оси, а не пустое поле
   const W = 2 * padX + (gx1 - gx0) * cell, H = 2 * m + (gy1 - gy0) * cell
@@ -2157,6 +2157,12 @@ function wave8Svg({ gx0, gx1, gy0, gy1, fn, xa, xb, label = null, marks = [], ma
   g += `<text x="${X(0) + 7}" y="${Y(gy1) + 13}" ${HALO} font-size="15" font-style="italic" font-weight="bold" fill="${G_AX}">y</text>`
   g += `<text x="${X(0) - 5}" y="${Y(0) + 16}" ${HALO} font-size="12" font-weight="bold" fill="${G_AX}" text-anchor="end">0</text>`
   const unitY = showUnitY === null ? showUnit : showUnitY
+  // сторона подписи «1» у оси y: по умолчанию слева, но если там проходит кривая —
+  // справа (иначе цифру перечёркивает график)
+  if (unitYRight === null) {
+    const busy = (x1, x2) => { if (!fn) return false; for (let x = x1; x <= x2 + 1e-9; x += 0.04) { const y = fn(x); if (y > 0.7 && y < 1.3) return true } return false }
+    unitYRight = busy(-0.7, -0.05) && !busy(0.05, 0.7)
+  }
   const unitX = showUnitX === null ? showUnit : showUnitX
   // подпись единичного деления по y: слева от оси, а если там кривая — справа
   if (unitY && gy0 <= 1 && gy1 >= 1) g += `<text x="${X(0) + (unitYRight ? 6 : -6)}" y="${Y(1) + 4}" ${HALO} font-size="12" fill="${G_AX}" text-anchor="${unitYRight ? "start" : "end"}">1</text>`
@@ -2276,16 +2282,22 @@ function pickMarksExtrema(w, gx0, gx1, N) {
 
 // ── Движок 2: кривая-производная (рисуемая кривая = f′), нули в целых roots ──
 // Гладкая волна из полусинусов, меняющая знак в каждом корне; знак на интервале i
-// = firstSign·(−1)^i; amps[i] — высота горба. Вне [roots0,rootsN] — хвосты того же
-// интервала (без лишних нулей, если окно не выходит за один горб).
-function mkDeriv(roots, amps, firstSign) {
+// = firstSign·(−1)^i; amps[i] — высота горба.
+// ХВОСТЫ (левее первого корня и правее последнего) — ОТДЕЛЬНЫЕ полугорбы шириной
+// wL / wR. Ширину задаёт buildDeriv так, чтобы хвост вернулся к оси уже ЗА окном:
+// иначе на рисунке появляются нули, которых нет в roots, а все типажи этой группы
+// считают экстремумы, максимумы и промежутки знакопостоянства именно по roots —
+// и ответ расходится с картинкой (у «точки максимума» их становилось две).
+function mkDeriv(roots, amps, firstSign, wL, wR) {
   const n = roots.length
   const sgn = (i) => firstSign * (i % 2 === 0 ? 1 : -1)
+  const wLeft = wL || (roots[1] - roots[0])
+  const wRight = wR || (roots[n - 1] - roots[n - 2])
   const fn = (x) => {
-    let i
-    if (x <= roots[0]) i = 0
-    else if (x >= roots[n - 1]) i = n - 2
-    else { i = 0; while (i < n - 1 && x > roots[i + 1]) i++ }
+    // хвосты: продолжение волны в противоположную сторону от крайнего интервала
+    if (x <= roots[0]) return -sgn(0) * amps[0] * Math.sin(Math.PI * Math.min(roots[0] - x, wLeft) / wLeft)
+    if (x >= roots[n - 1]) return -sgn(n - 2) * amps[n - 2] * Math.sin(Math.PI * Math.min(x - roots[n - 1], wRight) / wRight)
+    let i = 0; while (i < n - 1 && x > roots[i + 1]) i++
     const rL = roots[i], w = roots[i + 1] - roots[i]
     return sgn(i) * amps[i] * Math.sin(Math.PI * (x - rL) / w)
   }
@@ -2294,11 +2306,16 @@ function mkDeriv(roots, amps, firstSign) {
 }
 
 // Собрать f′ с корнями в целых точках. rootXs заданы; amps подобраны в окно.
+// Хвосты растянуты так, что их собственный нуль лежит за краем окна (см. mkDeriv),
+// а край окна кривая встречает вблизи вершины горба — не «почти на оси», где её
+// приняли бы за ещё один корень.
 function buildDeriv(gx0, gx1, gy1, rootXs, firstSign) {
   const amps = []
   for (let i = 0; i < rootXs.length - 1; i++) amps.push(clean(pick([1.6, 1.9, 2.2, 2.5, 2.8]).valueOf()))
-  const b = mkDeriv(rootXs, amps, firstSign)
-  return b
+  const stretch = () => 1 + Math.random() * 0.35                      // нуль хвоста — минимум вдвое дальше края
+  const wL = Math.max(1, 2 * (rootXs[0] - gx0)) * stretch()
+  const wR = Math.max(1, 2 * (gx1 - rootXs[rootXs.length - 1])) * stretch()
+  return mkDeriv(rootXs, amps, firstSign, wL, wR)
 }
 
 // Численный интеграл f′ от gx0 до x (для f = первообразной).
@@ -2393,9 +2410,14 @@ function t8fZeroPointSeg() {
 // #5 — количество решений уравнения f′(x)=0 на отрезке [a;b].
 function t8fZeroCountSeg() {
   const gx0 = -6, gx1 = 6, gy0 = -4, gy1 = 5
-  const w = buildExtremaWave(gx0, gx1, gy0, gy1, randInt(4, 6), pick([1, -1]))
-  const exs = w.ext.map((e) => e.x).filter((x) => x > gx0 && x < gx1)
   const a = -4.5, b = 2.5
+  // экстремум ближе 0,4 клетки к концу отрезка с рисунка не читается: ученик не
+  // видит, попал он в [a;b] или нет — такую волну перебираем заново
+  let w, exs, tries = 0
+  do {
+    w = buildExtremaWave(gx0, gx1, gy0, gy1, randInt(4, 6), pick([1, -1]))
+    exs = w.ext.map((e) => e.x).filter((x) => x > gx0 && x < gx1)
+  } while (exs.some((x) => Math.abs(x - a) < 0.4 || Math.abs(x - b) < 0.4) && ++tries < 60)
   const cnt = exs.filter((x) => x >= a && x <= b).length
   return {
     condition_text: `На рисунке изображён график функции y = f(x), определённой на интервале (${ru(gx0)}; ${ru(gx1)}). Найдите количество решений уравнения f′(x) = 0 на отрезке [${ru(a)}; ${ru(b)}].`,
@@ -2561,15 +2583,11 @@ function t8dIncDec(increasing) {
   const gx0 = -9, gx1 = 8, gy1 = 4, gy0 = -4
   let b, marks, want = 0, tries = 0
   do {
-    const nr = randInt(3, 5)
-    const roots = []
-    let x = gx0 + randInt(1, 2)
-    for (let i = 0; i < nr; i++) { roots.push(x); x += randInt(2, 3) }
-    if (roots[roots.length - 1] >= gx1 - 1) { tries++; continue }
-    b = buildDeriv(gx0, gx1, gy1, roots, pick([1, -1]))
+    b = makeDerivRoots(gx0, gx1, gy1, randInt(3, 5), pick([1, -1]))
+    if (!b) { tries++; continue }
     marks = pickMarksDeriv(b, gx0, gx1, randInt(6, 8))
     want = marks.filter((m) => (b.fn(m.x) > 0) === increasing).length
-  } while ((!marks || marks.length < 6 || want < 1 || want > marks.length - 1) && ++tries < 80)
+  } while ((!b || !marks || marks.length < 6 || want < 1 || want > marks.length - 1) && ++tries < 80)
   return {
     condition_text: `На рисунке изображён график y = f′(x) — производной функции f(x). На оси абсцисс отмечены ${ptsWord(marks.length)}: ${marks.map((m) => m.label).join(", ")}. Сколько из этих точек лежат на промежутках ${increasing ? "возрастания" : "убывания"} функции f(x)?`,
     image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn: b.fn, xa: gx0, xb: gx1, marks, showUnit: false, label: label8(b.fn, gx0, gx1, gy0, gy1, "y = f′(x)") }),
@@ -2577,13 +2595,27 @@ function t8dIncDec(increasing) {
   }
 }
 
-// Собрать f′ с целыми корнями внутри окна; вернуть {b, roots}.
+// Собрать f′ с nr целыми корнями внутри окна.
+// Крайние корни держатся у самых краёв окна (не дальше двух клеток): хвост за
+// последним корнем растягивается вдвое, и если корень стоит далеко от края,
+// хвост выходит почти горизонтальным — кривая «липнет» к оси и по рисунку не
+// понять, где она её пересекает. Промежутки между корнями — от 2 клеток
+// (у широкой волны из двух корней горб может занять и всё окно).
 function makeDerivRoots(gx0, gx1, gy1, nr, firstSign) {
-  const roots = []
-  let x = gx0 + randInt(1, 2)
-  for (let i = 0; i < nr; i++) { roots.push(x); x += randInt(2, 3) }
-  if (roots[roots.length - 1] > gx1 - 1) return null
-  return buildDeriv(gx0, gx1, gy1, roots, firstSign)
+  const cap = nr === 2 ? 9 : 7                       // ни один горб не шире cap клеток
+  for (let t = 0; t < 200; t++) {
+    const first = gx0 + randInt(1, 2), last = gx1 - randInt(1, 2)
+    let rest = last - first - 2 * (nr - 1)
+    if (rest < 0 || last - first > cap * (nr - 1)) continue
+    const gaps = new Array(nr - 1).fill(2)
+    let stuck = 0
+    while (rest > 0 && stuck < 200) { const i = randInt(0, nr - 2); if (gaps[i] < cap) { gaps[i]++; rest--; stuck = 0 } else stuck++ }
+    if (rest > 0) continue
+    const roots = [first]
+    for (const g of gaps) roots.push(roots[roots.length - 1] + g)
+    return buildDeriv(gx0, gx1, gy1, roots, firstSign)
+  }
+  return null
 }
 
 // #10/#14/#15 — количество точек экстремума / максимума / минимума f на отрезке [a;b].
@@ -2699,8 +2731,14 @@ function t8dDerivEqCount() {
   let w, cnt, tries = 0
   do {
     w = buildExtremaWave(gx0, gx1, gy0, gy1, randInt(4, 6), pick([1, -1]))
-    cnt = 0
-    for (let x = gx0 + 0.517; x < gx1 - 0.5; x += 0.05) if ((w.fn(x) - k) * (w.fn(x + 0.05) - k) < 0) cnt++
+    // считаем по ВСЕМУ окну: пересечение у самого края видно на рисунке и входит
+    // в ответ. Пересечение ближе 0,4 клетки к краю неразличимо — берём другую волну
+    cnt = 0; let edge = false
+    for (let x = gx0; x < gx1 - 0.001; x += 0.05) {
+      const x2 = Math.min(x + 0.05, gx1)
+      if ((w.fn(x) - k) * (w.fn(x2) - k) < 0) { cnt++; if (x - gx0 < 0.4 || gx1 - x2 < 0.4) edge = true }
+    }
+    if (edge) cnt = 0
   } while ((cnt < 2 || cnt > 6) && ++tries < 60)
   const b0 = randInt(3, 12) * (k < 0 ? 1 : -1)
   return {
@@ -2888,8 +2926,11 @@ function t8Fsign(positive) {
 // #41 — количество решений f(x)=0 на отрезке [a;b] (= экстремумы первообразной F).
 function t8FzeroCountSeg() {
   const gx0 = -7, gx1 = 5, gy0 = -4, gy1 = 4
-  const w = buildExtremaWave(gx0, gx1, gy0, gy1, randInt(3, 5), pick([1, -1]))
   const a = -5, b = 2
+  // экстремум у самого конца отрезка с рисунка не читается (см. t8fZeroCountSeg)
+  let w, tries = 0
+  do { w = buildExtremaWave(gx0, gx1, gy0, gy1, randInt(3, 5), pick([1, -1])) }
+  while (w.ext.some((e) => Math.abs(e.x - a) < 0.4 || Math.abs(e.x - b) < 0.4) && ++tries < 60)
   const cnt = w.ext.filter((e) => e.x >= a && e.x <= b).length
   return {
     condition_text: `На рисунке изображён график y = F(x) одной из первообразных некоторой функции f(x), определённой на интервале (${ru(gx0)}; ${ru(gx1)}). Пользуясь рисунком, определите количество решений уравнения f(x) = 0 на отрезке [${ru(a)}; ${ru(b)}].`,
