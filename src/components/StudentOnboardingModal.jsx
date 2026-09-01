@@ -10,6 +10,9 @@ const EXAM_OPTIONS = [
   { id: "Успеваемость", label: "Успеваемость", iconName: "trending-up" },
 ]
 const GRADE_OPTIONS = ["7", "8", "9", "10", "11"]
+// Оценка — не произвольное число, а одна из трёх: руками тут вводили «7».
+// Двойки в целях не бывает, поэтому выбор начинается с тройки.
+const MARK_OPTIONS = ["3", "4", "5"]
 // Лого предмета — линейные иконки со своим цветом (полные классы Tailwind,
 // иначе цвет не попадёт в сборку).
 const SUBJECTS = [
@@ -70,7 +73,7 @@ function StudentOnboardingModal({ studentId, onComplete, demo = false }) {
 
   // Класс спрашиваем ТОЛЬКО при подготовке к успеваемости; для ОГЭ/ЕГЭ он не нужен.
   const isPerf = exam === "Успеваемость"
-  // Балл (0–100) — только у ЕГЭ; у ОГЭ и успеваемости цель — оценка (2–5).
+  // Балл (0–100) — только у ЕГЭ; у ОГЭ и успеваемости цель — оценка (3–5).
   const isScore = exam === "ЕГЭ"
   const STEPS = [
     { key: "exam", icon: "target", title: "Какая у тебя цель?" },
@@ -93,7 +96,13 @@ function StudentOnboardingModal({ studentId, onComplete, demo = false }) {
       setStep((s) => s + 1)
     }, 320)
   }
-  function handleSelectExam(val) { setExam(val); setGrade(null); autoAdvance() }
+  // Цель сбрасываем: балл ЕГЭ и оценка живут в одном поле, 85 в роли оценки — мусор.
+  function handleSelectExam(val) { setExam(val); setGrade(null); setTarget(""); autoAdvance() }
+  function handleSelectMark(val) { setTarget(val); autoAdvance() }
+  function handleScoreInput(raw) {
+    const digits = raw.replace(/\D/g, "").slice(0, 3)
+    setTarget(digits ? String(Math.min(100, Number(digits))) : "")
+  }
   function handleSelectGrade(val) { setGrade(val); autoAdvance() }
 
   function toggleSubject(name) {
@@ -169,20 +178,22 @@ function StudentOnboardingModal({ studentId, onComplete, demo = false }) {
             <PillGroup options={GRADE_OPTIONS} value={grade} onChange={handleSelectGrade} autoFocus />
           )}
 
-          {current.key === "target" && (
+          {current.key === "target" && (isScore ? (
             <div className="flex flex-col items-center gap-4">
               <input
-                type="number" inputMode="numeric" value={target}
-                onChange={(e) => setTarget(e.target.value)}
-                placeholder={isScore ? "например, 85" : "например, 5"}
+                type="number" inputMode="numeric" min="0" max="100" value={target}
+                onChange={(e) => handleScoreInput(e.target.value)}
+                placeholder="например, 85"
                 autoFocus
                 className="input-glass max-w-[180px] text-left text-lg" />
-              <p className="text-xs text-gray-400">{isScore ? "Тестовый балл (0–100)" : "Желаемая оценка (2–5)"}</p>
+              <p className="text-xs text-gray-400">Тестовый балл (0–100)</p>
               <button onClick={() => goTo(step + 1, "forward")} className="btn-primary px-6 py-2 active:scale-95 transition-transform">
                 Далее
               </button>
             </div>
-          )}
+          ) : (
+            <PillGroup options={MARK_OPTIONS} value={target} onChange={handleSelectMark} autoFocus />
+          ))}
 
           {current.key === "subjects" && (
             <div className="flex flex-col gap-3">
