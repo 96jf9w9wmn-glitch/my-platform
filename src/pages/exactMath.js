@@ -140,7 +140,9 @@ export function exactSumOf(values) {
     const g = gcd(a, b) || 1
     byR.set(e.r, { a: a / g, b: b / g })
   }
-  const terms = [...byR.entries()].filter(([, q]) => q.a !== 0).sort((x, y) => x[0] - y[0])
+  // Положительные слагаемые печатаем первыми: «75√2 − 100», а не «−100 + 75√2».
+  const terms = [...byR.entries()].filter(([, q]) => q.a !== 0)
+    .sort((x, y) => (x[1].a < 0) - (y[1].a < 0) || x[0] - y[0])
   if (!terms.length) return { str: "0", num: 0, terms: 0 }
   let str = ""
   for (let i = 0; i < terms.length; i++) {

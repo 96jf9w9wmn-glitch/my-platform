@@ -85,7 +85,7 @@ export const part1CountOf = (examType) => part1NumbersOf(examType).length
 // №17 (прикладное моделирование — новое задание 2027 года) и №18 (планиметрия
 // с доказательством) в банке пока нет, и поставить их в список значит показать
 // репетитору «нет в банке» при каждой сборке.
-export const PART2_NUMBERS = { "ОГЭ": [20, 21, 22, 23, 24, 25], "ЕГЭ Профиль": [14, 15, 16, 19, 20] }
+export const PART2_NUMBERS = { "ОГЭ": [20, 21, 22, 23, 24, 25], "ЕГЭ Профиль": [14, 15, 16, 18, 19, 20] }
 
 export const part2NumbersOf = (examType) => PART2_NUMBERS[examType] || []
 
