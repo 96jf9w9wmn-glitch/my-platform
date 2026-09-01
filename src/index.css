@@ -456,6 +456,17 @@ body {
   color: #ffffff;
 }
 
+/* Заголовок страницы. Чёрный текст на голубоватом градиенте фона выглядит
+   чужеродно — заголовки уходят в тёмно-синий, в тон акценту #007AFF.
+   В тёмной теме чёрного нет, поэтому там остаётся белый. */
+.page-title {
+  color: #15264a;
+}
+
+.dark .page-title {
+  color: #ffffff;
+}
+
 /* Animated liquid gradient background */
 body::before {
   content: "";

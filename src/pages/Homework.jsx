@@ -2070,7 +2070,7 @@ function Homework({ user, students }) {
           у ученика они тоже отдельным пунктом, и в боковом меню репетитора
           слова «Варианты» раньше не было вовсе. */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
-        <h1 className="text-xl font-medium">Домашние задания</h1>
+        <h1 className="text-xl font-medium page-title">Домашние задания</h1>
         <button onClick={() => setShowModal(true)} className="btn-primary px-4 py-2 text-sm self-stretch sm:self-auto">
           + Задание
         </button>
@@ -2172,7 +2172,7 @@ function HomeworkGate(props) {
   if (allows("homework")) return <Homework {...props} />
   return (
     <div className="p-4 sm:p-6">
-      <h1 className="text-xl font-medium mb-1">Задания</h1>
+      <h1 className="text-xl font-medium page-title mb-1">Задания</h1>
       <p className="text-sm text-gray-500 mb-5">Домашние задания ученикам и их проверка.</p>
       <PlanLock feature="homework" title="Домашние задания" text="Выдача заданий ученикам, таймер как на экзамене, проверка с комментариями и возврат на доработку." />
     </div>

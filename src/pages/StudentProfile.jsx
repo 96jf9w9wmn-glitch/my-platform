@@ -245,7 +245,7 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
           </div>
 
           <div className="flex-1 min-w-[10rem]">
-            <h1 className="text-lg font-medium truncate">{student.name}</h1>
+            <h1 className="text-lg font-medium page-title truncate">{student.name}</h1>
             {/* Расписание — в подписи к имени: отдельной строкой поля оно
                 держало целую строку ради шести знаков. */}
             <div className="text-xs text-gray-500">

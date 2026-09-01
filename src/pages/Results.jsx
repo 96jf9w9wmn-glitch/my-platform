@@ -936,7 +936,7 @@ function Results({ students, loaded = true, user }) {
   return (
     <div className="p-4 md:p-6">
       <div className="mb-5">
-        <h1 className="text-xl font-medium">Результаты</h1>
+        <h1 className="text-xl font-medium page-title">Результаты</h1>
         <p className="text-sm text-gray-500 mt-0.5">
           Баллы за варианты, динамика и слабые типы заданий — видно, кого и что подтянуть к экзамену.
         </p>
@@ -1058,7 +1058,7 @@ function ResultsGate(props) {
   if (allows("analytics")) return <Results {...props} />
   return (
     <div className="p-4 sm:p-6">
-      <h1 className="text-xl font-medium mb-1">Результаты</h1>
+      <h1 className="text-xl font-medium page-title mb-1">Результаты</h1>
       <p className="text-sm text-gray-500 mb-5">
         Баллы за пробники, динамика и типы заданий, которые чаще всего не выходят.
       </p>

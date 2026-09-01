@@ -303,7 +303,7 @@ function Students({ students, loaded = true, setStudents, tutorId, onOpenBoard }
     >
       <div className="flex justify-between items-center mb-4">
         <div>
-          <h1 className="text-xl font-medium">Ученики</h1>
+          <h1 className="text-xl font-medium page-title">Ученики</h1>
           <p className="text-xs text-gray-400 mt-0.5">{students.length} {plural(students.length, "ученик", "ученика", "учеников")}</p>
         </div>
         <div className="flex items-center gap-2">

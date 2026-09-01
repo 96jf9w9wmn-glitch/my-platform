@@ -337,7 +337,7 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
   return (
     <div className="p-4 sm:p-6">
       <div className="mb-4 sm:mb-6">
-        <h1 className="text-xl font-medium">Финансы</h1>
+        <h1 className="text-xl font-medium page-title">Финансы</h1>
         <p className="text-sm text-gray-500 mt-0.5">Кто сколько должен, история оплат и доход за месяц. Настройки квитанций и онлайн-оплаты — в «Профиле».</p>
       </div>
 
@@ -698,7 +698,7 @@ function PaymentGate(props) {
   if (allows("finance")) return <Payment {...props} />
   return (
     <div className="p-4 sm:p-6">
-      <h1 className="text-xl font-medium mb-1">Финансы</h1>
+      <h1 className="text-xl font-medium page-title mb-1">Финансы</h1>
       <p className="text-sm text-gray-500 mb-5">Оплаты, долги и доход по занятиям.</p>
       <PlanLock feature="finance" title="Финансы" text="Учёт оплат и долгов по каждому ученику, расходы, налог и чистая прибыль." />
     </div>

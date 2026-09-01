@@ -1200,7 +1200,7 @@ function Variants({ user, students = [] }) {
     <div className="flex flex-col gap-5 p-4 md:p-6">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
         <div>
-          <h1 className="text-xl font-medium">Варианты</h1>
+          <h1 className="text-xl font-medium page-title">Варианты</h1>
           <p className="text-sm text-gray-500 mt-0.5">Пробные варианты ОГЭ и ЕГЭ: соберите из банка заданий или приложите свой файл — ученик решит вариант в кабинете.</p>
         </div>
         <button onClick={() => (canVariants ? setShowAdd(true) : openPlans())} className="btn-primary text-sm px-4 py-2 flex items-center justify-center gap-1.5 self-stretch sm:self-auto shrink-0">
