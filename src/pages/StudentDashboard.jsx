@@ -1219,19 +1219,17 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten })
                           <span className="flex items-start gap-1.5">
                             <Icon name={isCorrect ? "check" : "x"} size={12}
                               className={`mt-1 flex-shrink-0 ${isCorrect ? "text-green-500" : "text-red-400"}`} />
-                            {/* Неверный ответ помечен красным, а не зачёркнут:
-                                перечёркнутый текст плохо читается. */}
-                            <span className={isCorrect ? "text-gray-700 font-medium" : "text-red-600 dark:text-red-400 font-medium"}>
+                            {/* Ответ окрашен по результату: верный — зелёным,
+                                неверный — красным, а не зачёркнут (перечёркнутый
+                                текст плохо читается). */}
+                            <span className={`font-medium ${isCorrect ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
                               {studentAns}
                             </span>
                           </span>
                         </td>
                         {/* У зачтённого задания в столбце эталона стоит не ответ,
                             а пометка: сам эталон и оказался неверным. */}
-                        {/* Эталон — зелёным напротив красного ответа ученика.
-                            У верно решённого задания он не нужен вовсе и остаётся
-                            блёклым: там сверять нечего. */}
-                        <td className={`py-2 px-3 align-top ${isCorrect ? "text-gray-400" : "text-green-700 dark:text-green-400 font-medium"}`}>
+                        <td className={`py-2 px-3 align-top ${isCorrect ? "text-gray-400" : "text-gray-800 font-medium"}`}>
                           {byHand ? <span className="text-green-600 dark:text-green-300 text-xs">засчитано репетитором</span> : correct}
                         </td>
                       </tr>

@@ -4,10 +4,10 @@ import { answersEqual } from "../utils"
 // Разбор части 1 — таблица, а не сетка клеток. Клетка вмещала три строки
 // (номер, свой ответ, верный) и держалась на цвете: ряд из 27 залитых клеток
 // читался как сплошное красное полотно, а без заливки клетки рассыпались.
-// В таблице у каждой величины свой столбец, а неверный ответ помечен КРАСНЫМ
-// ТЕКСТОМ — не зачёркиванием: перечёркнутый ответ читается плохо (особенно
-// длинный или записанный словами), а найти в столбце ошибку нужно с одного
-// взгляда. Заливок по-прежнему нет, цвет живёт только в самом ответе.
+// В таблице у каждой величины свой столбец, а ответ ученика окрашен: решил
+// верно — зелёный, ошибся — красный. Зачёркивания нет: перечёркнутый ответ
+// читается плохо, особенно длинный или записанный словами. Заливок по-прежнему
+// нет — цвет живёт только в самом тексте ответа.
 export default function AnswerTable({ nums, correct: correctAnswers, student: studentAnswers, credited }) {
   // Номера, засчитанные репетитором вручную: эталон банка бывает неверным, и
   // тогда прав ученик (supabase/manual_credit.sql). В разборе такое задание —
@@ -46,16 +46,15 @@ export default function AnswerTable({ nums, correct: correctAnswers, student: st
               <tr key={r.n} className="border-t border-gray-100 dark:border-white/10">
                 <td className="py-1 pr-1 align-top text-gray-400 tabular-nums">{r.n}</td>
                 <td className={`py-1 pr-2 align-top break-words tabular-nums ${
-                  // Красным помечаем только написанное: у пропущенного задания
-                  // красный прочерк читался бы как ответ, которого нет.
-                  r.isWrong && r.has ? "text-red-600 dark:text-red-400 font-medium"
-                    : r.has ? "text-gray-700 font-medium" : "text-gray-400"
+                  // Цветом помечаем только НАПИСАННОЕ учеником: у пропущенного
+                  // задания цветной прочерк читался бы как ответ, которого нет.
+                  !r.has ? "text-gray-400"
+                    : r.isWrong ? "text-red-600 dark:text-red-400 font-medium"
+                    : "text-green-700 dark:text-green-400 font-medium"
                 }`}>{r.given}</td>
                 {/* У верного ответа столбец пуст — заполнены ровно те строки,
-                    где ученик ошибся, и промахи видны без единой заливки.
-                    Эталон стоит ЗЕЛЁНЫМ напротив красного ответа ученика: в
-                    строке сразу видно, что он написал и как было надо. */}
-                <td className="py-1 align-top break-words tabular-nums font-semibold text-green-700 dark:text-green-400">
+                    где ученик ошибся, и промахи видны без единой заливки. */}
+                <td className="py-1 align-top break-words tabular-nums font-semibold text-gray-800">
                   {r.isWrong ? r.correct : r.byHand
                     ? <span className="text-[11px] font-normal text-green-600 dark:text-green-300" title="Ответ засчитан репетитором: эталон оказался неверным">засчитано</span>
                     : r.isRight
