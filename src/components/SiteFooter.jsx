@@ -137,7 +137,7 @@ function SiteFooter() {
     <footer className="mt-6 border-t border-gray-200/70 dark:border-white/10">
       {/* @container, а не media-query: подвал стоит и в широком лендинге, и в
           узкой колонке юр-страниц — раскладку задаёт ширина самого подвала */}
-      <div className="@container max-w-6xl mx-auto w-full px-4 py-10">
+      <div className="@container page-wrap py-10">
         <div className="grid gap-8 @[720px]:grid-cols-3">
           {/* Бренд */}
           <div>

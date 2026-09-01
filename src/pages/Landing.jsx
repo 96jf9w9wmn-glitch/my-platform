@@ -847,7 +847,7 @@ function Landing({ onStart }) {
         className="sticky top-0 z-30 topbar-glass"
         style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.6rem)" }}
       >
-        <div className="max-w-6xl mx-auto w-full px-4 pb-2.5 flex items-center justify-between">
+        <div className="page-wrap pb-2.5 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl overflow-hidden shadow-md shadow-blue-500/20">
               <img src="/logo.webp" alt="Precettore" className="w-full h-full object-cover" />
@@ -875,14 +875,16 @@ function Landing({ onStart }) {
 
       <main className="flex-1 w-full">
         {/* ── Геро ── */}
-        {/* Фон из формул кладём на всю ширину экрана (а не внутрь max-w-6xl):
+        {/* Фон из формул кладём на всю ширину экрана (а не внутрь .page-wrap):
             формулы должны лежать в полях по краям, не под текстом. */}
         {/* min-h на широком экране: заголовки ролей разной длины (у «Ученикам»
             на строку больше), и без запаса высоты вся секция прыгала бы при
-            переключении роли — вместе с фоном-формулами и карточками входа. */}
-        <section className="relative overflow-hidden pt-10 sm:pt-16 pb-10 lg:min-h-[36rem]">
+            переключении роли — вместе с фоном-формулами и карточками входа.
+            justify-center: запас высоты делится сверху и снизу — иначе он
+            повисает одной дырой под карточками входа. */}
+        <section className="relative overflow-hidden pt-10 sm:pt-16 pb-10 lg:min-h-[36rem] lg:flex lg:flex-col lg:justify-center">
           <FormulaBackdrop variant="hero" />
-          <div className="relative z-10 max-w-6xl mx-auto w-full px-4 grid lg:grid-cols-2 gap-10 items-center">
+          <div className="relative z-10 page-wrap grid lg:grid-cols-2 gap-10 items-center">
             {/* Текст */}
             <div className="text-center lg:text-left">
               <div className="max-w-sm mx-auto lg:mx-0 mb-6">
@@ -915,7 +917,12 @@ function Landing({ onStart }) {
                       aria-hidden={!active}
                       className={`col-start-1 row-start-1 ${active ? "slide-up" : "invisible"}`}
                     >
-                      <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight text-gray-900 leading-[1.05] text-balance">
+                      {/* Кегль растёт не по «экрану», а по ШИРИНЕ КОЛОНКИ: с lg заголовок
+                          делит строку с карточками входа и получает половину
+                          ширины, поэтому на 1024px он мельче, чем на 768px, где
+                          занимает всю строку. Прежний lg:text-6xl рвал заголовок
+                          на четыре рваные строки ровно на ноутбуке. */}
+                      <h1 className="font-display text-4xl sm:text-5xl lg:text-[2.75rem] xl:text-[3.25rem] 2xl:text-6xl font-semibold tracking-tight text-gray-900 leading-[1.05] text-balance">
                         {ROLES[r].hero.title}{" "}
                         <span className={`text-transparent bg-clip-text bg-gradient-to-r ${ROLES[r].grad}`}>
                           {ROLES[r].hero.accent}
@@ -933,7 +940,7 @@ function Landing({ onStart }) {
             {/* Вход по роли: репетитор, ученик, родитель — родителю раньше
                 на первом экране места не было вовсе. Карточки стоят справа от
                 заголовка: это главное действие первого экрана, а не картинка. */}
-            <div className="relative w-full max-w-md mx-auto">
+            <div className="relative w-full max-w-md xl:max-w-lg mx-auto">
               <div className={`absolute -inset-6 rounded-[2rem] bg-gradient-to-br ${cfg.grad} opacity-10 blur-2xl`} />
               <div className="relative flex flex-col gap-2.5">
                 {["tutor", "student", "parent"].map((r) => (
@@ -952,11 +959,11 @@ function Landing({ onStart }) {
         </section>
 
         {/* ── Почему задания нельзя нагуглить ── */}
-        <section className="max-w-6xl mx-auto w-full px-4 py-8">
+        <section className="page-wrap py-8">
           <h2 className="font-display text-2xl sm:text-3xl font-semibold tracking-tight text-gray-900 text-center mb-6">
             <Highlight text="Эти задания нельзя нагуглить" mark="нельзя нагуглить" tone={cfg.mark} />
           </h2>
-          <div className="grid sm:grid-cols-3 gap-3">
+          <div className="grid md:grid-cols-3 gap-3">
             {NO_CHEATING.map((f) => (
               <div key={f.title} className="glass rounded-2xl p-5 flex flex-col gap-3">
                 <div className={`w-11 h-11 rounded-xl flex items-center justify-center ring-1 ${cfg.ring} ${cfg.soft} ${cfg.text}`}>
@@ -972,7 +979,7 @@ function Landing({ onStart }) {
         </section>
 
         {/* ── Что обычно мешает ── */}
-        <section className="max-w-6xl mx-auto w-full px-4 py-8">
+        <section className="page-wrap py-8">
           <div className="text-center mb-6">
             <h2 className="font-display text-2xl sm:text-3xl font-semibold tracking-tight text-gray-900">Что обычно мешает</h2>
             <p className="mt-2 text-gray-500 dark:text-gray-400">Нажмите на знакомое — покажем, как это решается.</p>
@@ -994,7 +1001,7 @@ function Landing({ onStart }) {
         </section>
 
         {/* ── Роли ── */}
-        <section className="max-w-6xl mx-auto w-full px-4 py-6">
+        <section className="page-wrap py-6">
           {/* Контент выбранной роли — key перезапускает stagger при переключении */}
           <div key={role} className="slide-up">
             <div className="text-center mb-7">
@@ -1023,7 +1030,7 @@ function Landing({ onStart }) {
               <div className="text-center text-sm font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-4">
                 Как это работает
               </div>
-              <div className="grid sm:grid-cols-3 gap-3">
+              <div className="grid md:grid-cols-3 gap-3">
                 {cfg.steps.map((s, i) => (
                   <div key={s.t} className="glass rounded-2xl p-4 flex gap-3">
                     <div className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-white text-sm font-bold bg-gradient-to-br ${cfg.grad} shadow ${cfg.glow}`}>
@@ -1063,7 +1070,7 @@ function Landing({ onStart }) {
         </section>
 
         {/* ── Разборы возможностей выбранной роли ── */}
-        <section key={`deep-${role}`} className="max-w-6xl mx-auto w-full px-4 py-6 space-y-6 slide-up">
+        <section key={`deep-${role}`} className="page-wrap py-6 space-y-6 slide-up">
           <div className="text-center">
             <h2 className="font-display text-2xl sm:text-3xl font-semibold tracking-tight text-gray-900">
               {role === "tutor" ? "Что получает репетитор" : role === "student" ? "Что получает ученик" : "Что видит родитель"}
@@ -1097,14 +1104,14 @@ function Landing({ onStart }) {
         </section>
 
         {/* ── Опросник выбранной роли ── */}
-        <section className="max-w-6xl mx-auto w-full px-4 py-8">
+        <section className="page-wrap py-8">
           {/* key по роли: смена вкладки — это другой опросник, и состояние надо
               начинать с нуля, иначе ответы репетитора уехали бы в заявку родителя. */}
           <RoleQuiz key={role} cfg={cfg} role={role} />
         </section>
 
         {/* ── Финальный призыв выбранной роли ── */}
-        <section className="max-w-6xl mx-auto w-full px-4 py-10">
+        <section className="page-wrap py-10">
           <div className={`relative overflow-hidden rounded-3xl bg-gradient-to-br ${cfg.grad} ${cfg.gradDark} px-6 sm:px-12 py-12 text-center text-white shadow-xl dark:shadow-lg ${cfg.glow} dark:ring-1 dark:ring-white/10`}>
             <div className="absolute inset-0 opacity-20 dark:opacity-10" style={{ backgroundImage: "radial-gradient(circle at 20% 30%, white 0%, transparent 45%), radial-gradient(circle at 85% 70%, white 0%, transparent 40%)" }} />
             <div key={`final-${role}`} className="relative slide-up">
