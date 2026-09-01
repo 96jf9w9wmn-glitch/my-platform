@@ -3211,7 +3211,14 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                   {selectedVariant.submission.status === "pending" && !variantLocked && isGeneratedVariant && (
                     <div className="glass p-5">
                       <h3 className="text-base font-medium mb-1">Реши вариант</h3>
-                      <p className="text-xs text-gray-500 mb-4">{isEgeType(selectedVariant?.type) ? "В части 1 впиши ответ. Часть 2 реши на листе и прикрепи фото решения к заданию." : "В части 1 впиши ответ, в части 2 выбери один из четырёх и прикрепи фото решения."}</p>
+                      {/* Части 2 у варианта может не быть вовсе (информатика — обе,
+                          и ОГЭ, и КЕГЭ): фото решения там не требуется ни к одному
+                          заданию, и обещать его ученику нельзя. */}
+                      <p className="text-xs text-gray-500 mb-4">{part2TaskNums.length === 0
+                        ? "Впиши ответ к каждому заданию."
+                        : isEgeType(selectedVariant?.type)
+                          ? "В части 1 впиши ответ. Часть 2 реши на листе и прикрепи фото решения к заданию."
+                          : "В части 1 впиши ответ, в части 2 выбери один из четырёх и прикрепи фото решения."}</p>
                       <div className="flex flex-col gap-3">
                         {selectedVariant.tasks_snapshot.map((t) => {
                           const isPart2 = part2TaskSet.has(t.number)
@@ -3279,14 +3286,16 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                           )
                         })}
                       </div>
-                      <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700 my-4">
-                        <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />К каждому заданию части 2, где выбран ответ, нужно фото решения — без него балл не начисляется. Задание, за которое не брался, оставь без ответа или убери выбранный: фото тогда не нужно. Балл за часть 2 появится после проверки.</span>
-                      </div>
+                      {part2TaskNums.length > 0 && (
+                        <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700 my-4">
+                          <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />К каждому заданию части 2, где выбран ответ, нужно фото решения — без него балл не начисляется. Задание, за которое не брался, оставь без ответа или убери выбранный: фото тогда не нужно. Балл за часть 2 появится после проверки.</span>
+                        </div>
+                      )}
                       {variantError && <div className="text-sm text-red-500 mb-2 text-center">{variantError}</div>}
                       <button
                         onClick={() => submitPart1()}
                         disabled={submitting}
-                        className="w-full bg-blue-600 text-white rounded-lg py-2.5 text-sm hover:bg-blue-700 disabled:opacity-50"
+                        className="w-full mt-4 bg-blue-600 text-white rounded-lg py-2.5 text-sm hover:bg-blue-700 disabled:opacity-50"
                       >
                         {submitting ? "Отправляем..." : "Отправить ответы"}
                       </button>
@@ -3368,14 +3377,16 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                           </div>
                         </div>
                       )}
-                      <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700 mb-4">
-                        <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />К каждому заданию части 2, где выбран ответ, нужно фото решения — без него балл не начисляется. Задание, за которое не брался, оставь без ответа или убери выбранный: фото тогда не нужно.</span>
-                      </div>
+                      {part2TaskNums.length > 0 && (
+                        <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700 mb-4">
+                          <span className="flex items-start gap-1"><Icon name="clipboard" size={12} className="mt-0.5 flex-shrink-0" />К каждому заданию части 2, где выбран ответ, нужно фото решения — без него балл не начисляется. Задание, за которое не брался, оставь без ответа или убери выбранный: фото тогда не нужно.</span>
+                        </div>
+                      )}
                       {variantError && <div className="text-sm text-red-500 mb-2 text-center">{variantError}</div>}
                       <button
                         onClick={() => submitPart1()}
                         disabled={submitting}
-                        className="w-full bg-blue-600 text-white rounded-lg py-2.5 text-sm hover:bg-blue-700 disabled:opacity-50"
+                        className="w-full mt-4 bg-blue-600 text-white rounded-lg py-2.5 text-sm hover:bg-blue-700 disabled:opacity-50"
                       >
                         {submitting ? "Отправляем..." : "Отправить ответы"}
                       </button>
