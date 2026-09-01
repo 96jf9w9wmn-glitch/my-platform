@@ -698,7 +698,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
                   onChange={(n, v) => setAnswers((prev) => { const upd = [...prev]; upd[n - 1] = v; return upd })}
                 />
                 <div className="text-xs text-gray-400 mt-1">
-                  Введено: {p1Numbers.filter((n) => answers[n - 1]).length} / {answerCount} · готовый ключ можно вставить целиком в любое поле
+                  Введено: {p1Numbers.filter((n) => answers[n - 1]).length} / {answerCount} · весь список ответов вставляется в первое поле
                 </div>
               </div>
 
