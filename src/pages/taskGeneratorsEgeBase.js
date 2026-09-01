@@ -715,7 +715,7 @@ function t17Quadratic() {
 function t17Logarithm() {
   for (let t = 0; t < 200; t++) {
     const a = pick([2, 3, 5, 7]), k = randInt(1, 3), p = pick([1, 2, 4, 5])
-    const q = randInt(-9, 9)
+    const q = pick([-9, -8, -7, -6, -5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 6, 7, 8, 9])
     const rhs = a ** k
     const x = (rhs - q) / p
     if (!Number.isInteger(x * 2) || p * x + q <= 0) continue
@@ -738,6 +738,8 @@ function t17Exponential() {
     const recip = Math.random() < 0.4     // основание 1/b
     const effExp = recip ? -E0 : E0       // value = b^effExp
     if (effExp < -3 || effExp > 8) continue
+    // Правая часть должна узнаваться с ходу: 7⁵ = 16807 ученик уже не опознаёт.
+    if (b ** Math.abs(effExp) > 1000) continue
     // линейный показатель px+q
     const px = p === 1 ? "x" : p === -1 ? "−x" : `${ru(p)}x`
     const lin = `${px}${q === 0 ? "" : q < 0 ? ` − ${-q}` : ` + ${q}`}`

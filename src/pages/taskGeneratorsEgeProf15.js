@@ -645,7 +645,7 @@ export function t15RatCommonDen() {
     const a2 = -k * (b * p + m * m + n2)
     const c0 = n1 + 2 * m * nn
     const w = -c0 * p - nn * nn - n0
-    if (a3 <= 0 || a2 === 0) continue   // как в ФИПИ: (8x³ − 73x²), ведущий коэффициент положителен
+    if (a3 <= 0 || a2 === 0 || w === 0) continue   // как в ФИПИ: (8x³ − 73x²), ведущий коэффициент положителен; w = 0 дало бы «+ 0»
     if (Math.abs(c0) > 60) continue
     if ([Math.abs(a3), Math.abs(a2), Math.abs(w)].some((v) => v > 200)) continue
     const cmp = pick(["≥", "≤", ">", "<"])
@@ -1540,7 +1540,7 @@ export function t15ExpMixedX() {
     const a = pick([3, 5, 7]), b = pick([2, 3])
     if (a === b) continue
     const jq = randInt(1, 3), q = Math.round(Math.pow(b, jq))
-    const p = randInt(-6, 6)
+    let p; do { p = randInt(-6, 6) } while (p === 0)   // p = 0 дало бы «− 0·2ˣ … + 0»
     const iA = randInt(0, 2), A = Math.round(Math.pow(a, iA))
     if (Math.abs(jq - p) < 1e-9 || iA === p) continue
     const cmp = pick(["≥", "≤", ">", "<"])
@@ -2204,7 +2204,7 @@ export function t15LogLinOverSq() {
 export function t15LogLinOverQuad() {
   for (let it = 0; it < 800; it++) {
     const b = pick([3, 6, 2, 5]), k = randInt(1, 2), m = pick([-4, -3, 3, 4])
-    const c = randInt(-14, 6)
+    let c; do { c = randInt(-14, 6) } while (c === 0)   // c = 0 дало бы «log₅(25x) + 0»
     const C = pick([0, 1])
     const cmp = pick(["≥", "≤", ">", "<"])
     // приведённая форма: ((y+k+c) − C(y²+my))/(y²+my)
@@ -2518,6 +2518,7 @@ export function t15LogProdShift() {
     const r1 = neg ? -randInt(4, 8) : randInt(2, 5)
     const r2 = neg ? r1 + randInt(5, 9) : r1 + randInt(2, 3)
     const p = r1 + r2, q1 = r1 * r2                    // x²−px+(q−1) = (x−r1)(x−r2)
+    if (q1 === 0) continue                             // иначе в правой части «+ 0»
     const q = q1 + 1
     const D = p * p - 4 * q
     if (D <= 0) continue                               // ОДЗ x²−px+q>0 — два промежутка
@@ -3248,6 +3249,7 @@ export function t15LogQuadOfQuad() {
     if (T2 >= c * c) continue
     const invStyle = Math.random() < 0.5
     const B = invStyle ? u1 + u2 : -(u1 + u2), C = u1 * u2
+    if (C === 0) continue                       // «… + 0» в условии не пишут
     const cmp = pick(["≥", "≤", ">", "<"])
     const P = h === 0 ? `${c * c} ${MINUS} x${SUPD[2]}` : polyStr([{ c: c * c - h * h, k: 0 }, { c: 2 * h, k: 1 }, { c: -1, k: 2 }])
     const lg2 = invStyle ? `log⦉${b === 2 ? "0,5" : `⦃1¦${b}⦄`}⦊` : logS(b, 1, "")

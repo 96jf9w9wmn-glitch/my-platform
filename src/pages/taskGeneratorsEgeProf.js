@@ -2878,7 +2878,7 @@ function t8kinTimeForVelocity() {
   let b, c, d, T, V, tries = 0
   do {
     T = pick([4, 6, 8, 10, 12, 14, 16, 18])   // чётное T ⇒ V целое
-    b = pick([-4, -3, -2, -1, 1, 2]); c = randInt(-9, 9); d = randInt(100, 300)
+    b = pick([-4, -3, -2, -1, 1, 2]); c = pick([-9, -8, -7, -6, -5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 6, 7, 8, 9]); d = randInt(100, 300)
     V = clean(T * T / 2 + 2 * b * T + c)
   } while ((V <= 0 || !Number.isInteger(V) || (c - V) >= 0) && ++tries < 80)
   // v=½t²+2b·t+c=V ⇒ ½t²+2b·t+(c−V)=0; произведение корней 2(c−V)<0 ⇒ ровно один t>0=T
@@ -2899,9 +2899,11 @@ function t8tangentParabC() {
   // Берём p−k=δ, кратное 2a ⇒ δ²/(4a) — целое ⇒ c целый. Всегда корректно.
   const delta = a === 1 ? pick([2, -2, 4, -4]) : pick([8, -8])
   let k, p, tries = 0
-  do { k = randInt(-8, 8); p = k + delta } while (Math.abs(p) > 8 && ++tries < 40)
-  if (Math.abs(p) > 8) { k = delta > 0 ? -8 : 8; p = k + delta }
-  const b = randInt(-9, 9), c = b + delta * delta / (4 * a)
+  // k и p не должны обнуляться: «y = 0x + 9» и «x² + 0x + c» в условии не пишут.
+  do { k = randInt(-8, 8); p = k + delta } while ((k === 0 || p === 0 || Math.abs(p) > 8) && ++tries < 60)
+  if (k === 0 || p === 0 || Math.abs(p) > 8) { k = delta > 0 ? -8 : 8; p = k + delta }
+  let b; do { b = randInt(-9, 9) } while (b === 0)
+  const c = b + delta * delta / (4 * a)
   const aStr = a === 1 ? "" : ru(a)
   return {
     condition_text: `Прямая y = ${k === 1 ? "" : k === -1 ? "−" : ru(k)}x ${signed(b)} является касательной к графику функции y = ${aStr}x² ${signed(p)}x + c. Найдите c.`,
@@ -3126,7 +3128,7 @@ function t01TwoAltitudes() {
   let g = pPolygon([Aa, Bb, P]) + pSeg(Bb, Dh) + pSeg(P, Eh)
   g += pRight(Dh, Aa, Bb, 8) + pRight(Eh, P, Bb, 8)   // прямой угол у E — между высотой EC и основанием (а не вдоль основания)
   g += pArc(O, Dh, Eh, 13) + pDot(O)
-  g += pV(Aa, "bl", "A") + pV(Bb, "br", "B") + pV(P, "t", "C") + pV(Dh, "r", "D") + pV(Eh, "l", "E") + pV(O, "b", "O")
+  g += pV(Aa, "bl", "A") + pV(Bb, "br", "B") + pV(P, "t", "C") + pV(Dh, "r", "D") + pV(Eh, "bl", "E") + pV(O, "b", "O")
   // две формулировки ФИПИ (#10 и #10_ДЗ) — одна с «углы B и C острые», вторая «в остроугольном»
   const txt = Math.random() < 0.5
     ? `В треугольнике ABC угол A равен ${deg(A)}, углы B и C острые, высоты BD и CE пересекаются в точке O. Найдите угол DOE. Ответ дайте в градусах.`

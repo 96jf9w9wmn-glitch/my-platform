@@ -3124,7 +3124,11 @@ const T48 = [
 export function t18LinePencilSemicircle() {
   const par = pick(T48), { m, r, p, q } = par
   const { set, solve } = build48(par)
-  const under = `${nS(r * r - m * m)} ${MINUS} ${2 * m === 1 ? "" : 2 * m}x ${MINUS} x${SUP[2]}`
+  // Свободный член может обнулиться (r = m) — «0 − 6x − x²» в условии не пишут.
+  const xTerm48 = `${2 * m === 1 ? "" : 2 * m}x`
+  const under = r * r === m * m
+    ? `${MINUS}${xTerm48} ${MINUS} x${SUP[2]}`
+    : `${nS(r * r - m * m)} ${MINUS} ${xTerm48} ${MINUS} x${SUP[2]}`
   return item({
     text: `${HEAD_A}\n\nax + ⟦r:${under}⟧ = ${p === 1 ? "" : p}a + ${q}\n\nимеет единственный корень.`,
     set,
@@ -5503,11 +5507,13 @@ for (const [p, q, d] of [[3, 2, 1], [4, 5, 1], [6, 4, 1], [8, 10, 1], [12, 19, 1
 export function t18RootGapGreater() {
   const par = pick(T106), { p, q, d } = par
   const { set, solve } = build106(par)
+  // Коэффициент при a может обнулиться — «0a + 16» не пишем.
+  const discStr = 2 * p - q === 0 ? `${p * p}` : `${nS(2 * p - q)}a${term(p * p, "")}`
   return item({
-    text: `${HEAD_A}\n\nax${SUP[2]} + 2(a + ${p})x + a + ${nS(q)} = 0\n\nимеет два различных корня, расстояние между которыми больше ${d}.`,
+    text: `${HEAD_A}\n\nax${SUP[2]} + 2(a${term(p, "")})x + a${term(q, "")} = 0\n\nимеет два различных корня, расстояние между которыми больше ${d}.`,
     set,
-    solution: `При a = 0 уравнение линейное, поэтому a ≠ 0. Четверть дискриминанта равна (a + ${p})${SUP[2]} ${MINUS} a(a + ${nS(q)}) = ${nS(2 * p - q)}a + ${p * p}.\n`
-      + `Квадрат расстояния между корнями равен ${fT(`4(${nS(2 * p - q)}a + ${p * p})`, `a${SUP[2]}`)}, и условие «больше ${d}» превращается в 4(${nS(2 * p - q)}a + ${p * p}) > ${d * d === 1 ? "" : d * d}a${SUP[2]} `
+    solution: `При a = 0 уравнение линейное, поэтому a ≠ 0. Четверть дискриминанта равна (a${term(p, "")})${SUP[2]} ${MINUS} a(a${term(q, "")}) = ${discStr}.\n`
+      + `Квадрат расстояния между корнями равен ${fT(`4(${discStr})`, `a${SUP[2]}`)}, и условие «больше ${d}» превращается в 4(${discStr}) > ${d * d === 1 ? "" : d * d}a${SUP[2]} `
       + `(она же автоматически даёт положительность дискриминанта).\n`
       + `Ответ: ${setToString(set)}.`,
     predicate: { type: "count", n: 1 },
@@ -9174,7 +9180,10 @@ export function t18SysTwoHalfCircles() {
   const { set, solve, al, be, ga, de } = build74(par)
   const aRange = spanRange(set)
   return item({
-    text: `${HEAD_SYS}\n⟦cases:x(x${SUP[2]} + y${SUP[2]}${term(al, "y")}${term(be, "")}) = |x|(${ga === 1 ? "" : ga === -1 ? MINUS : nS(ga)}y${term(de, "")})¦4y = 3x + a⟧\n\nимеет ровно три различных решения.`,
+    // γ = 0 — правая часть без y: «|x|(0y − 4)» превращается в «−4|x|».
+    text: `${HEAD_SYS}\n⟦cases:x(x${SUP[2]} + y${SUP[2]}${term(al, "y")}${term(be, "")}) = ${ga === 0
+      ? `${de === 1 ? "" : de === -1 ? MINUS : nS(de)}|x|`
+      : `|x|(${ga === 1 ? "" : ga === -1 ? MINUS : nS(ga)}y${term(de, "")})`}¦4y = 3x + a⟧\n\nимеет ровно три различных решения.`,
     set,
     solution: `При x = 0 первая строка обращается в 0 = 0, то есть ВСЯ ось Oy принадлежит кривой; прямая 4y = 3x + a пересекает её ровно в одной точке (0; ${fT("a", "4")}).\n`
       + `При x > 0 сокращаем на x: x${SUP[2]} + y${SUP[2]}${term(al - ga, "y")}${term(be - de, "")} = 0, то есть x${SUP[2]} + (y ${MINUS} ${nS(c1)})${SUP[2]} = ${r1 * r1} — правая половина окружности с центром (0; ${nS(c1)}) радиуса ${r1}.\n`
@@ -9315,12 +9324,12 @@ export function t18SysPetalPencil() {
   const aRange = spanRange(set)
   const line = y0 === 0 ? `y = a${shifted("x", term(-x0, ""))}` : `y${term(-y0, "")} = a${shifted("x", term(-x0, ""))}`
   return item({
-    text: `${HEAD_SYS}\n⟦cases:2x ${MINUS} 2y ${MINUS} ${2 * d === 1 ? "" : nS(2 * d)} = |x${SUP[2]} + y${SUP[2]} ${MINUS} ${rho2}|¦${line}⟧\n\nимеет более двух различных решений.`,
+    text: `${HEAD_SYS}\n⟦cases:2x ${MINUS} 2y${term(-2 * d, "")} = |x${SUP[2]} + y${SUP[2]} ${MINUS} ${rho2}|¦${line}⟧\n\nимеет более двух различных решений.`,
     set,
-    solution: `Раскроем модуль. Если x${SUP[2]} + y${SUP[2]} ≥ ${rho2}, то x${SUP[2]} + y${SUP[2]} ${MINUS} ${rho2} = 2x ${MINUS} 2y ${MINUS} ${nS(2 * d)}, то есть (x ${MINUS} 1)${SUP[2]} + (y + 1)${SUP[2]} = ${R1}.\n`
+    solution: `Раскроем модуль. Если x${SUP[2]} + y${SUP[2]} ≥ ${rho2}, то x${SUP[2]} + y${SUP[2]} ${MINUS} ${rho2} = 2x ${MINUS} 2y${term(-2 * d, "")}, то есть (x ${MINUS} 1)${SUP[2]} + (y + 1)${SUP[2]} = ${R1}.\n`
       + `Если же x${SUP[2]} + y${SUP[2]} < ${rho2}, получаем (x + 1)${SUP[2]} + (y ${MINUS} 1)${SUP[2]} = ${R2}.\n`
-      + `На первой окружности x${SUP[2]} + y${SUP[2]} ${MINUS} ${rho2} = 2(x ${MINUS} y ${MINUS} ${nS(d)}), на второй — ${MINUS}2(x ${MINUS} y ${MINUS} ${nS(d)}), поэтому первая берётся при x ${MINUS} y ≥ ${nS(d)}, вторая — при x ${MINUS} y > ${nS(d)}. Значит кривая состоит из двух дуг с общими концами (${nS(x0)}; ${nS(y0)}) и (${nS(d - x0)}; ${nS(-x0)}).\n`
-      + `Пучок ${line} проходит через вершину (${nS(x0)}; ${nS(y0)}), поэтому одна общая точка есть при любом a; условие x ${MINUS} y ⋛ ${nS(d)} на прямой равносильно (1 ${MINUS} a)(x ${MINUS} ${nS(x0)}) ⋛ 0, то есть отсекает луч.\n`
+      + `На первой окружности x${SUP[2]} + y${SUP[2]} ${MINUS} ${rho2} = 2(x ${MINUS} y${term(-d, "")}), на второй — ${MINUS}2(x ${MINUS} y${term(-d, "")}), поэтому первая берётся при x ${MINUS} y ≥ ${nS(d)}, вторая — при x ${MINUS} y > ${nS(d)}. Значит кривая состоит из двух дуг с общими концами (${nS(x0)}; ${nS(y0)}) и (${nS(d - x0)}; ${nS(-x0)}).\n`
+      + `Пучок ${line} проходит через вершину (${nS(x0)}; ${nS(y0)}), поэтому одна общая точка есть при любом a; условие x ${MINUS} y ⋛ ${nS(d)} на прямой равносильно (1 ${MINUS} a)${shifted("x", term(-x0, ""))} ⋛ 0, то есть отсекает луч.\n`
       + `Больше двух решений — когда прямая, кроме вершины, задевает дуги ещё хотя бы дважды; границы дают касания и значение a = 1 (прямая идёт вдоль хорды).\n`
       + `Ответ: ${setToString(set)}.`,
     predicate: { type: "atLeast", n: 3 },
@@ -9932,7 +9941,14 @@ export function t18RangeContainsSeg() {
   const par = pick(T112), { p, m, al, ga, h } = par
   const { set, solve } = build112(par)
   const aRange = spanRange(set)
-  const num = `${al + ga === 1 ? "" : al + ga === -1 ? MINUS : nS(al + ga)}a${term(p * ga, "x")} ${MINUS} ${p === 1 ? "" : p}ax`
+  // Коэффициент при a может обнулиться — тогда слагаемое «0a» просто не пишется.
+  const headTerm = (t) => (t.startsWith(" + ") ? t.slice(3) : `${MINUS}${t.slice(3)}`)
+  const aLead = al + ga === 0 ? "" : `${al + ga === 1 ? "" : al + ga === -1 ? MINUS : nS(al + ga)}a`
+  const gaX = term(p * ga, "x")
+  const numHead = aLead ? `${aLead}${gaX}` : gaX ? headTerm(gaX) : ""
+  const num = numHead
+    ? `${numHead} ${MINUS} ${p === 1 ? "" : p}ax`
+    : `${MINUS}${p === 1 ? "" : p}ax`
   const den = `${p * p === 1 ? "" : p * p}x${SUP[2]} + ${2 * p === 1 ? "" : 2 * p}ax + a${SUP[2]} + ${m * m}`
   return item({
     text: `Найдите все значения a, при каждом из которых множество значений функции\n\n`
@@ -10287,10 +10303,11 @@ export function t18TrigTangentSeg() {
   const { set, solve, q } = build131(par)
   const aRange = spanRange(set)
   return item({
-    text: `${HEAD_A}\n\n${fT(`sin x ${MINUS} a cos x`, `sin x + ${q === 1 ? "" : q}cos x`)} = ${fT("1", `a + ${r}`)}\n\nимеет хотя бы одно решение на отрезке ${seg.txt}.`,
+    // q = 0 — в знаменателе остаётся один sin x, «+ 0cos x» не пишем.
+    text: `${HEAD_A}\n\n${fT(`sin x ${MINUS} a cos x`, q === 0 ? "sin x" : `sin x + ${q === 1 ? "" : q}cos x`)} = ${fT("1", `a + ${r}`)}\n\nимеет хотя бы одно решение на отрезке ${seg.txt}.`,
     set,
-    solution: `ОДЗ: a ≠ ${MINUS}${r}. Разделим числитель и знаменатель на cos x (на данном отрезке знаменатель положителен) и обозначим u = tg x: получаем ${fT(`u ${MINUS} a`, `u + ${q === 1 ? "" : q}`)} = ${fT("1", `a + ${r}`)}.\n`
-      + `Отсюда (u ${MINUS} a)(a + ${r}) = u + ${q}, то есть u(a + ${r - 1}) = a${SUP[2]} + ${r === 1 ? "" : r}a + ${q}. Правая часть раскладывается: a${SUP[2]} + ${r === 1 ? "" : r}a + ${q} = (a + ${r - 1})(a + 1).\n`
+    solution: `ОДЗ: a ≠ ${MINUS}${r}. Разделим числитель и знаменатель на cos x (на данном отрезке знаменатель положителен) и обозначим u = tg x: получаем ${fT(`u ${MINUS} a`, q === 0 ? "u" : `u + ${q === 1 ? "" : q}`)} = ${fT("1", `a + ${r}`)}.\n`
+      + `Отсюда (u ${MINUS} a)(a + ${r}) = u${term(q, "")}, то есть u(a${term(r - 1, "")}) = a${SUP[2]} + ${r === 1 ? "" : r}a${term(q, "")}. Правая часть раскладывается: a${SUP[2]} + ${r === 1 ? "" : r}a${term(q, "")} = (a${term(r - 1, "")})(a + 1).\n`
       + `Значит при a ≠ ${nS(1 - r)} остаётся u = a + 1, а при a = ${nS(1 - r)} уравнение превращается в тождество и годится любое x из отрезка.\n`
       + `На отрезке ${seg.txt} тангенс пробегает ${seg.tan[1] === null ? `[${seg.tan[0]}; +∞)` : `[${seg.tan[0]}; ${seg.tan[1]}]`}, поэтому условие сводится к принадлежности a + 1 этому множеству.\n`
       + `Ответ: ${setToString(set)}.`,

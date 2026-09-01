@@ -778,7 +778,8 @@ function t9Linear() {
 }
 
 function t9LinearInt() {
-  const a = pick([2, 3, 4, 5, 6, 7, -2, -3, -4]), x = randInt(-9, 12), b = randInt(-20, 20)
+  const a = pick([2, 3, 4, 5, 6, 7, -2, -3, -4]), x = randInt(-9, 12)
+  let b; do { b = randInt(-20, 20) } while (b === 0)   // «3x + 0 = 18» не пишут
   const c = a * x + b
   const bs = b >= 0 ? ` + ${b}` : ` − ${-b}`
   return { condition_text: `Найдите корень уравнения ${a}x${bs} = ${c}.`, answer: String(x) }
@@ -3391,7 +3392,7 @@ function t20IneqQuadQuad() {
 }
 // D3: дробь ≤ 0 — квадрат числителя ИЛИ сокращение полюса
 function t20IneqRational() {
-  const K = randInt(-8, 6)
+  let K; do { K = randInt(-8, 6) } while (K === 0)   // K = 0 дало бы скобку «(x − 0)»
   if (Math.random() < 0.5) {                    // a(x−d)² / (x−K) ≤ 0, d>K
     const d = randInt(K + 1, 8), a = randInt(1, 3)
     const num = polyExpr([[a, X2], [-2 * a * d, "x"], [a * d * d, ""]])
