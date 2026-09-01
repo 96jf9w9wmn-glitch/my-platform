@@ -1551,6 +1551,11 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
   const typeInfo = TYPE_LABELS[hw.hw_type] || TYPE_LABELS.written
   const isPureTest = hw.hw_type === "test"
   const overdue = isOverdue(hw)
+  // Итог проверки: оценка стоит только у завершённой работы, комментарий
+  // репетитора виден и на доработке, но не пока работа ждёт проверки — там
+  // поле комментария открыто в форме и текст показывался бы дважды.
+  const graded = Boolean(hw.grade) && hw.status === "done"
+  const verdictComment = hw.status !== "submitted" ? hw.comment : ""
   // Работу, которую ученик уже решал, править нельзя: правка условия разошлась бы
   // с уже данными ответами и сданным файлом. Смотрим не только на статус: у
   // комбинированной работы ответы теста сохраняются ещё до сдачи файла, статус
@@ -1818,7 +1823,33 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
 
           {/* Ученика тут не повторяем: разбор открывается под его же группой
               карточек, имя и аватар уже стоят строкой выше. Здесь только то,
-              что относится к проверке: срок и оценка. */}
+              что относится к проверке: итог, срок и работа ученика.
+
+              Итог — оценка вместе с комментарием, одним блоком и первым: он и
+              есть ответ на вопрос «как проверено». Раньше оценка висела справа
+              от срока сдачи, где ей нечего делать (срок — про «когда сдать»),
+              и рядом они читались как оценка за срок. */}
+          {(graded || verdictComment) && (
+            <DetailBlock className="flex flex-col gap-2.5">
+              <div className="flex items-center gap-3">
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-sm font-semibold ${
+                  graded ? GRADE_COLORS[hw.grade] : "bg-blue-500/12 text-blue-600"
+                }`}>
+                  {graded ? hw.grade : <Icon name="message" size={16} />}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium truncate">{graded ? "Оценка" : "Комментарий"}</div>
+                  <div className="text-[11px] text-gray-400 mt-0.5 truncate">
+                    {graded ? "Работа проверена" : "От репетитора"}
+                  </div>
+                </div>
+              </div>
+              {verdictComment && (
+                <div className="text-xs text-gray-500">{verdictComment}</div>
+              )}
+            </DetailBlock>
+          )}
+
           <DetailBlock className="flex items-center gap-3">
             <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${overdue ? "bg-red-500/12 text-red-500" : "bg-blue-500/12 text-blue-600"}`}>
               <Icon name="calendar" size={16} />
@@ -1833,9 +1864,6 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
                 </div>
               )}
             </div>
-            {hw.grade && hw.status === "done" && (
-              <span className={`text-[11px] px-2.5 py-1 rounded-full font-medium flex-shrink-0 ${GRADE_COLORS[hw.grade]}`}>{hw.grade}</span>
-            )}
           </DetailBlock>
 
 
@@ -1944,11 +1972,6 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
             </DetailBlock>
           )}
 
-          {hw.comment && hw.status !== "submitted" && (
-            <DetailBlock className="text-xs text-gray-500 flex items-start gap-1.5">
-              <Icon name="message" size={12} className="mt-0.5 flex-shrink-0" />{hw.comment}
-            </DetailBlock>
-          )}
         </div>
       </div>
 

@@ -7,7 +7,7 @@ import AnswerTable from "../components/AnswerTable"
 import SegmentSwitch from "../components/SegmentSwitch"
 import useCountUp from "../components/useCountUp"
 import useTypeLabels from "../components/typeLabels"
-import { plural, getInitials, answersEqual } from "../utils"
+import { plural, getInitials, answersEqual, creditedNums } from "../utils"
 import { PlanLock } from "../components/PlanLock"
 import { usePlan } from "../subscription"
 import { part1NumbersOf, part2NumbersOf } from "./taskBankMeta"
@@ -761,6 +761,66 @@ function synthesizeRows(student) {
       legacyType,
     )
   })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Домашние работы
+// ─────────────────────────────────────────────────────────────────────────────
+// В результатах видно и решённые домашние работы, но отдельной дорожкой:
+// складывать их с вариантами нельзя. У варианта первичный балл по шкале
+// экзамена, у работы — доля верных ответов из скольких-то заданий; одно число
+// на двоих не значило бы ничего, а динамика по нему прыгала бы от длины работы.
+// Поэтому внутри карточки ученика стоит переключатель «Варианты / Домашние
+// работы», а не общий список.
+
+// Работа попала в результаты, если ученик её решал: одна выдача — ещё не результат.
+const hwSolved = (hw) =>
+  hw.status === "done" || hw.status === "submitted" ||
+  hw.test_score != null || (Array.isArray(hw.student_answers) && hw.student_answers.length > 0)
+
+function toHwRow(hw) {
+  const correct = Array.isArray(hw.correct_answers) ? hw.correct_answers : []
+  const given = Array.isArray(hw.student_answers) ? hw.student_answers : []
+  const byHand = creditedNums(hw.credited)
+  const max = hw.question_count || correct.length || 0
+  // Балл пересчитываем, а не берём test_score: он записан при сдаче и не знает
+  // про номера, зачтённые репетитором позже, — а разбор ниже про них знает.
+  // Сверка идёт answersEqual и по порядку заданий, ровно как при сдаче.
+  const score = correct.length
+    ? correct.reduce((n, c, i) => n + (byHand.has(i + 1) || answersEqual(given[i] ?? "", c) ? 1 : 0), 0)
+    : (hw.test_score ?? null)
+  return {
+    id: hw.id,
+    title: hw.title || "Домашняя работа",
+    date: hw.created_at,
+    status: hw.status,
+    written: hw.hw_type === "written",
+    grade: hw.grade || null,
+    score: score == null || !max ? null : score,
+    max,
+    percent: score == null || !max ? null : Math.round((score / max) * 100),
+    correct,
+    given,
+    credited: hw.credited,
+  }
+}
+
+function computeHwStats(rows) {
+  if (!rows.length) return { count: 0, rows: [] }
+  const sorted = [...rows].sort((a, b) => new Date(a.date) - new Date(b.date))
+  const scored = sorted.filter((r) => r.percent !== null)
+  const graded = sorted.filter((r) => r.grade)
+  return {
+    count: sorted.length,
+    rows: sorted,
+    last: sorted[sorted.length - 1],
+    lastScored: scored.length ? scored[scored.length - 1] : null,
+    avgPct: scored.length ? Math.round(scored.reduce((n, r) => n + r.percent, 0) / scored.length) : null,
+    scoredCount: scored.length,
+    avgGrade: graded.length ? Math.round((graded.reduce((n, r) => n + r.grade, 0) / graded.length) * 10) / 10 : null,
+    gradedCount: graded.length,
+    pending: sorted.filter((r) => r.status === "submitted").length,
+  }
 }
 
 function computeStats(student, rows) {
