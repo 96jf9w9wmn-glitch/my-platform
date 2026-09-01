@@ -164,7 +164,7 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
     setEditingNote(null)
   }
 
-  const upcoming = (student.lessons || [])
+  const future = (student.lessons || [])
     .filter((l) => {
       if (!l.date) return false
       const [y, m, d] = l.date.split("-").map(Number)
@@ -172,9 +172,10 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
       return new Date(y, m - 1, d, h, min + (l.duration || 60)) >= new Date()
     })
     .sort((a, b) => a.date.localeCompare(b.date))
-    // «Ближайшие» — это два-три занятия. Пять уже превращали блок в ленту,
-    // а всё расписание целиком живёт в «Расписании».
-    .slice(0, 3)
+  // «Ближайшие» — это два-три занятия. Пять уже превращали блок в ленту,
+  // а всё расписание целиком живёт в «Расписании»; сколько их всего впереди,
+  // говорит строка внизу карточки.
+  const upcoming = future.slice(0, 3)
 
   // Архив — по времени, а не по «проведено»: занятие, снятое со счёта, из
   // истории не исчезает, иначе решение нельзя было бы переиграть.
@@ -227,9 +228,128 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
         ← Назад к ученикам
       </button>
 
-      {/* Отчёт родителю — во всю ширину над колонками: он про ученика целиком,
-          а не про левую или правую половину карточки. Заодно обе колонки
-          начинаются на одном уровне, а не уступом. */}
+      {/* Шапка карточки — во всю ширину, а не колонкой в 300 px. Колонка с
+          профилем была вдвое выше соседней, и справа под ней зияла пустота в
+          пол-экрана; заодно сюда переехали цифры по ученику — одинокая плитка
+          «Проведено» занимала полосу во всю ширину ради двух знаков. */}
+      <div className="glass p-4 mb-4">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+          <div className="w-14 h-14 rounded-full overflow-hidden flex-shrink-0 border-2 border-gray-200 dark:border-white/15">
+            {student.avatar ? (
+              <img src={student.avatar} alt={student.name} className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full bg-blue-100 dark:bg-blue-500/15 flex items-center justify-center text-xl font-medium text-blue-600 dark:text-blue-300">
+                {initials}
+              </div>
+            )}
+          </div>
+
+          <div className="flex-1 min-w-[10rem]">
+            <h1 className="text-lg font-medium truncate">{student.name}</h1>
+            {/* Расписание — в подписи к имени: отдельной строкой поля оно
+                держало целую строку ради шести знаков. */}
+            <div className="text-xs text-gray-500 flex items-center gap-x-3 gap-y-0.5 flex-wrap">
+              <span className="flex items-center gap-1">
+                <Icon name={student.isRecurring ? "repeat" : "calendar"} size={12} />
+                {student.isRecurring ? "Регулярные занятия" : "Разовые занятия"}
+              </span>
+              {/* Разделителя между строчками нет намеренно: точка при переносе
+                  оставалась висеть в конце строки или начинала следующую. */}
+              {student.schedule && <span>{student.schedule}</span>}
+            </div>
+          </div>
+
+          {/* Цифры прижаты к правому краю строки с именем: так шапка занята по
+              всей ширине, а не обрывается на середине. */}
+          <div className="flex items-end gap-6 sm:gap-8 w-full sm:w-auto sm:ml-auto">
+            {statTiles.map((tile) => (
+              <div key={tile.label}>
+                <div className="text-[11px] text-gray-400 mb-0.5">{tile.label}</div>
+                {tile.value}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-3.5 pt-3.5 border-t border-gray-100 dark:border-white/10 flex flex-wrap items-end gap-x-6 gap-y-3">
+          <div>
+            <div className="text-[11px] text-gray-400 mb-0.5">Телефон</div>
+            <a href={`tel:${student.phone}`} className="text-sm text-blue-600 hover:opacity-70 transition-opacity">{formatPhone(student.phone)}</a>
+          </div>
+
+          {(student.contacts || []).map((c, i) => {
+            const href = contactHref(c.messenger, c.url)
+            const label = contactLabel(c.messenger, c.url)
+            return (
+              <div key={i} className="min-w-0">
+                <div className="text-[11px] text-gray-400 mb-0.5">{MESSENGER_LABELS[c.messenger] || c.messenger}</div>
+                {href ? (
+                  <a href={href} target="_blank" rel="noreferrer" className="block max-w-[12rem] truncate text-sm text-blue-600 hover:opacity-70 transition-opacity">{label}</a>
+                ) : (
+                  <span className="block max-w-[12rem] truncate text-sm text-gray-600">{label}</span>
+                )}
+              </div>
+            )
+          })}
+
+          {/* Пояснение про вход родителя стало подписью поля: абзацем в три
+              строки оно было самым заметным текстом карточки. */}
+          <div>
+            <div className="text-[11px] text-gray-400 mb-0.5">Код родителя · вход без пароля</div>
+            {student.parent_code ? (
+              <div className="flex items-center gap-2">
+                <code className="text-xs font-mono ring-1 ring-gray-200 dark:ring-white/15 px-2 py-0.5 rounded tracking-wider text-gray-700">
+                  {student.parent_code}
+                </code>
+                <button
+                  onClick={() => copyParentCode(student.parent_code)}
+                  className={`text-xs flex items-center gap-1.5 transition-colors ${copiedCode ? "text-green-500" : "text-blue-500 hover:text-blue-700"}`}
+                >
+                  <MorphIcon from="clipboard" size={13} active={copiedCode} />
+                  {copiedCode ? "Скопировано!" : "Копировать"}
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => onUpdate(student.id, { parent_code: generateParentCode() })}
+                className="text-sm text-blue-500 hover:text-blue-700"
+              >
+                Создать код
+              </button>
+            )}
+          </div>
+
+          {/* Действия — у правого края нижней строки. Доска одна: та, что
+              выбрана в карточке, наша или своя ссылка. */}
+          <div className="flex items-center gap-2 ml-auto">
+            {student.boardUrl ? (
+              <a href={student.boardUrl} target="_blank" rel="noreferrer"
+                className="press-tap flex items-center gap-1.5 text-xs bg-blue-50 text-blue-600 dark:text-blue-400 border border-blue-100 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">
+                <Icon name="external-link" size={12} />Доска
+              </a>
+            ) : (
+              <button onClick={() => (allows("board") ? onOpenBoard?.(student.id, student.name) : openPlans())}
+                className="press-tap flex items-center gap-1.5 text-xs bg-blue-50 text-blue-600 dark:text-blue-400 border border-blue-100 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">
+                <Icon name="clipboard" size={12} />Доска
+              </button>
+            )}
+            {student.callUrl && (
+              <a href={student.callUrl} target="_blank" rel="noreferrer"
+                className="press-tap flex items-center gap-1.5 text-xs bg-green-50 text-green-600 dark:text-green-400 border border-green-100 px-3 py-1.5 rounded-lg hover:bg-green-100 transition-colors">
+                <Icon name="video" size={12} />Звонок
+              </a>
+            )}
+            <button
+              onClick={() => setShowEdit(true)}
+              className="press-tap flex items-center gap-1.5 text-xs ring-1 ring-gray-200 dark:ring-white/15 text-gray-600 px-3 py-1.5 rounded-lg"
+            >
+              <Icon name="edit" size={12} />Редактировать
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Отчёт родителю — во всю ширину: он про ученика целиком. */}
       <div className="mb-4">
         {allows("parentReports")
           ? <ReportComposer student={student} />
@@ -240,265 +360,13 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
             />}
       </div>
 
-      {/* items-stretch: колонки одной высоты, и нижняя карточка левой тянется
-          до конца — иначе под короткой колонкой зияла пустота в пол-экрана. */}
-      <div className="grid md:grid-cols-[300px_1fr] gap-4 items-stretch">
-      {/* Левая колонка: профиль + статистика */}
-      <div className="flex flex-col gap-3">
-
-      {/* Карточка ученика */}
-      <div className="glass p-4">
-        <div className="flex items-start gap-3 mb-4">
-          <div className="w-14 h-14 rounded-full overflow-hidden flex-shrink-0 border-2 border-gray-200">
-            {student.avatar ? (
-              <img src={student.avatar} alt={student.name} className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full bg-blue-100 dark:bg-blue-500/15 flex items-center justify-center text-xl font-medium text-blue-600 dark:text-blue-300">
-                {initials}
-              </div>
-            )}
-          </div>
-
-          <div className="flex-1 min-w-0">
-            <h1 className="text-lg font-medium">{student.name}</h1>
-            <div className="text-xs text-gray-500 mt-0.5">
-              <span className="flex items-center gap-1"><Icon name={student.isRecurring ? "repeat" : "calendar"} size={12} />{student.isRecurring ? "Регулярные занятия" : "Разовые занятия"}</span>
-            </div>
-            <div className="flex items-center gap-2 mt-2">
-              <button
-                onClick={() => setShowEdit(true)}
-                className="text-xs border border-gray-200 px-2.5 py-1 rounded-lg text-gray-600"
-              >
-                <span className="flex items-center gap-1"><Icon name="edit" size={12} />Редактировать</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="border-t border-gray-100 pt-3 flex flex-col gap-2.5">
-          <div className="flex items-start gap-2">
-            <span className="text-gray-400 text-xs w-20 flex-shrink-0 pt-0.5">Телефон</span>
-            <a href={`tel:${student.phone}`} className="text-sm text-blue-600 hover:opacity-70 transition-opacity">{formatPhone(student.phone)}</a>
-          </div>
-
-          {(student.contacts || []).map((c, i) => {
-            const href = contactHref(c.messenger, c.url)
-            const label = contactLabel(c.messenger, c.url)
-            return (
-              <div key={i} className="flex items-start gap-2">
-                <span className="text-gray-400 text-xs w-20 flex-shrink-0 pt-0.5">{MESSENGER_LABELS[c.messenger] || c.messenger}</span>
-                {href ? (
-                  <a href={href} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:opacity-70 transition-opacity truncate">{label}</a>
-                ) : (
-                  <span className="text-sm text-gray-600 truncate">{label}</span>
-                )}
-              </div>
-            )
-          })}
-
-          {/* Доска одна — та, что выбрана в карточке: наша или своя ссылка.
-              Две кнопки рядом заставляли гадать, на какой из них занятие. */}
-          <div className="flex items-center gap-2 pt-1">
-              {student.boardUrl ? (
-                <a href={student.boardUrl} target="_blank" rel="noreferrer"
-                  className="press-tap flex items-center gap-1.5 text-xs bg-blue-50 text-blue-600 dark:text-blue-400 border border-blue-100 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">
-                  <Icon name="external-link" size={12} />Доска
-                </a>
-              ) : (
-                <button onClick={() => (allows("board") ? onOpenBoard?.(student.id, student.name) : openPlans())}
-                  className="press-tap flex items-center gap-1.5 text-xs bg-blue-50 text-blue-600 dark:text-blue-400 border border-blue-100 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">
-                  <Icon name="clipboard" size={12} />Доска
-                </button>
-              )}
-              {student.callUrl && (
-                <a href={student.callUrl} target="_blank" rel="noreferrer"
-                  className="flex items-center gap-1.5 text-xs bg-green-50 text-green-600 dark:text-green-400 border border-green-100 px-3 py-1.5 rounded-lg hover:bg-green-100 transition-colors">
-                  <Icon name="video" size={12} />Звонок
-                </a>
-              )}
-            </div>
-
-          {student.schedule && (
-            <div className="flex items-start gap-2">
-              <span className="text-gray-400 text-xs w-20 flex-shrink-0 pt-0.5">Расписание</span>
-              <div className="flex flex-col gap-0.5">
-                {student.schedule.split(", ").map((slot, i) => (
-                  <span key={i} className="text-sm text-gray-700">{slot}</span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Код для родителей. Пояснение оставлено одной строкой: без него
-              родитель не догадывается, куда вводить код, но абзац на три строки
-              в карточке — уже шум. */}
-          <div className="pt-2 border-t border-gray-100 mt-1">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-gray-400">Код родителя</span>
-            <div className="flex items-center gap-2">
-              {student.parent_code ? (
-                <>
-                  <code className="text-xs font-mono ring-1 ring-gray-200 dark:ring-white/15 px-2 py-0.5 rounded tracking-wider text-gray-700">
-                    {student.parent_code}
-                  </code>
-                  <button
-                    onClick={() => copyParentCode(student.parent_code)}
-                    className={`text-xs flex items-center gap-1.5 transition-colors ${copiedCode ? "text-green-500" : "text-blue-500 hover:text-blue-700"}`}
-                  >
-                    <MorphIcon from="clipboard" size={13} active={copiedCode} />
-                    {copiedCode ? "Скопировано!" : "Копировать"}
-                  </button>
-                </>
-              ) : (
-                <button
-                  onClick={() => onUpdate(student.id, { parent_code: generateParentCode() })}
-                  className="text-xs text-blue-500 hover:text-blue-700"
-                >
-                  Создать код
-                </button>
-              )}
-            </div>
-          </div>
-          <p className="text-[11px] text-gray-400 mt-1.5">
-            Вход для родителя на сайте — без пароля и регистрации.
-          </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Способ оплаты. Здесь он только НАСТРАИВАЕТСЯ — сами деньги живут в
-          «Финансах», как и у поштучной оплаты. Абонемент не заводит второй
-          денежный поток: он лишь меняет момент начисления долга, поэтому
-          никакого «остатка» и «ждёт оплаты» тут нет. */}
-      <div className="glass p-4">
-        <div className="flex items-center justify-between gap-2 mb-2.5">
-          <div className="text-sm font-medium">Оплата</div>
-          <button
-            onClick={() => setPackageOpen(true)}
-            className="press-tap text-xs text-blue-500 hover:text-blue-700 transition-colors"
-          >
-            Настроить
-          </button>
-        </div>
-
-        {pack ? (
-          <>
-            <div className="text-sm text-gray-700 dark:text-gray-200">
-              Абонементом · {periodLabel(pack.period).toLowerCase()}
-            </div>
-            <div className="text-xs text-gray-500 mt-1 leading-relaxed">
-              Текущий период — {dayMonth(pack.from)} — {dayMonth(pack.until)},
-              {" "}{pack.lessons} {plural(pack.lessons, "занятие", "занятия", "занятий")}.
-              Долг за него начислен целиком, оплата вносится в «Финансах».
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="text-sm text-gray-700 dark:text-gray-200">За занятие</div>
-            <div className="text-xs text-gray-500 mt-1 leading-relaxed">
-              Долг растёт по мере проведения занятий. Абонементом ученик платит
-              вперёд — за неделю, две недели или месяц сразу.
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Замечания. Поле ввода спрятано за кнопкой: пишут их редко, а открытая
-          форма занимала треть карточки на каждом заходе. */}
-      <div className="glass p-4 flex-1 flex flex-col min-h-0">
-        <div className="flex items-center justify-between gap-2">
-          <div className="text-sm font-medium">Замечания для родителей</div>
-          {((student.remarks || []).length > 0 || remarkOpen) && (
-            <button
-              onClick={() => setRemarkOpen((v) => !v)}
-              className="press-tap text-xs text-blue-500 hover:text-blue-700 transition-colors"
-            >
-              {remarkOpen ? "Отмена" : "+ Замечание"}
-            </button>
-          )}
-        </div>
-        {/* Пока замечаний нет, поле для первого занимает всю оставшуюся высоту:
-            под короткой левой колонкой иначе оставалась пустота в пол-экрана. */}
-        {(student.remarks || []).length === 0 && !remarkOpen && (
-          <button
-            onClick={() => setRemarkOpen(true)}
-            className="mt-3 flex-1 min-h-24 w-full border-2 border-dashed border-gray-200 dark:border-white/15 rounded-xl text-sm text-gray-400 hover:border-blue-300 hover:text-blue-600 transition-colors"
-          >
-            Что передать родителям
-          </button>
-        )}
-        <div className={`flex flex-col gap-2 min-h-0 overflow-y-auto ${(student.remarks || []).length > 0 ? "mt-3 flex-1" : ""}`}>
-          {(student.remarks || []).length > 0 && (
-            [...(student.remarks || [])].reverse().map((r) => (
-              <div key={r.id} className="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2">
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm text-gray-700">{r.text}</div>
-                  <div className="text-xs text-gray-400 mt-0.5">{r.date}</div>
-                </div>
-                <button
-                  onClick={() => deleteRemark(r.id)}
-                  className="text-gray-300 hover:text-red-400 text-xs flex-shrink-0 mt-0.5"
-                >✕</button>
-              </div>
-            ))
-          )}
-        </div>
-        <Collapse open={remarkOpen}>
-          <div className="flex flex-col gap-2 pt-3">
-            <textarea
-              value={remarkDraft}
-              onChange={(e) => setRemarkDraft(e.target.value)}
-              placeholder="Написать замечание..."
-              rows={2}
-              className="w-full text-sm rounded-lg border border-gray-200 bg-white px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-blue-400"
-            />
-            <button
-              onClick={addRemark}
-              disabled={!remarkDraft.trim()}
-              className="press-tap px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 disabled:opacity-40 self-end"
-            >
-              Добавить
-            </button>
-          </div>
-        </Collapse>
-      </div>
-
-      </div> {/* конец левой колонки */}
-
-      {/* Правая колонка: занятия + оплата */}
-      <div className="flex flex-col gap-3">
-        {/* Статистика стоит над занятиями, а не в колонке профиля: слева она
-            делала колонку длиннее правой, и внизу опять появлялась пустота.
-            Плитки без данных не показываются вовсе, поэтому их бывает от одной
-            до трёх — ряд строится по их числу. */}
-        <div className={`grid gap-2 ${statTiles.length === 1 ? "grid-cols-1" : statTiles.length === 2 ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-3"}`}>
-          {statTiles.map((tile, i) => (
-            <div key={tile.label}
-              className={`stat-card ${statTiles.length === 3 && i === 2 ? "col-span-2 sm:col-span-1" : ""}`}>
-              <div className="text-xs text-gray-500 mb-1">{tile.label}</div>
-              {tile.value}
-            </div>
-          ))}
-        </div>
-
-        <WeakTypes studentId={student.id} studentName={student.name} />
-
-        {/* Доски прошлых занятий — блока нет, пока ни одной не сохранено */}
-        {allows("boardHistory")
-          ? <BoardHistory studentId={student.id} studentName={student.name}
-              onOpenBoard={() => (allows("board") ? onOpenBoard?.(student.id, student.name) : openPlans())} />
-          : <PlanLock
-              feature="boardHistory"
-              title="Доски занятий"
-              text="Снимки доски за каждое занятие: можно вернуться к разобранной задаче через месяц."
-            />}
-
-        {/* Карточка тянется на остаток высоты колонки (слева профиль обычно
-            длиннее, и без этого правая обрывалась выше), но СТРОКИ внутри
-            остаются вплотную друг к другу: раньше список разгонялся
-            justify-between, и три занятия висели на расстоянии экрана друг от
-            друга, а разделитель — в пустоте. */}
-        <div className="glass p-4 flex-1 flex flex-col min-h-0">
+      {/* Три карточки одним рядом. Раньше это были две колонки разной длины:
+          «Ближайшие занятия» растягивались на высоту соседней колонки, и под
+          тремя строками оставалось пол-экрана пустоты. Здесь высоту задаёт
+          содержимое, а ряд заполнен целиком на любой ширине: на среднем экране
+          два столбца, и третья карточка занимает оставшийся ряд целиком. */}
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 items-stretch">
+        <div className="glass p-4 flex flex-col">
           <h2 className="text-sm font-medium mb-3">Ближайшие занятия</h2>
           {upcoming.length === 0 ? (
             <div className="flex-1 flex items-center justify-center text-sm text-gray-400 py-4">Нет предстоящих занятий</div>
@@ -559,15 +427,144 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
               ))}
             </div>
           )}
+          {/* Сколько занятий впереди всего: в списке их только три, и строка
+              заодно держит низ карточки, чтобы ряд оставался ровным. */}
+          <div className="mt-auto pt-3 flex items-baseline justify-between gap-2">
+            <span className="text-xs text-gray-400">Впереди занятий</span>
+            <span className="text-sm font-medium">{future.length}</span>
+          </div>
         </div>
 
-      </div>
+        {/* Способ оплаты. Здесь он только НАСТРАИВАЕТСЯ — сами деньги живут в
+            «Финансах», как и у поштучной оплаты. Абонемент не заводит второй
+            денежный поток: он лишь меняет момент начисления долга, поэтому
+            никакого «остатка» и «ждёт оплаты» тут нет. */}
+        <div className="glass p-4 flex flex-col">
+          <div className="flex items-center justify-between gap-2 mb-2.5">
+            <div className="text-sm font-medium">Оплата</div>
+            <button
+              onClick={() => setPackageOpen(true)}
+              className="press-tap text-xs text-blue-500 hover:text-blue-700 transition-colors"
+            >
+              Настроить
+            </button>
+          </div>
+
+          {pack ? (
+            <>
+              <div className="text-sm text-gray-700">
+                Абонементом · {periodLabel(pack.period).toLowerCase()}
+              </div>
+              <div className="text-xs text-gray-500 mt-1 leading-relaxed">
+                Текущий период — {dayMonth(pack.from)} — {dayMonth(pack.until)},
+                {" "}{pack.lessons} {plural(pack.lessons, "занятие", "занятия", "занятий")}.
+                Долг за него начислен целиком, оплата вносится в «Финансах».
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="text-sm text-gray-700">За занятие</div>
+              <div className="text-xs text-gray-500 mt-1 leading-relaxed">
+                Долг растёт по мере проведения занятий. Абонементом ученик платит
+                вперёд — за неделю, две недели или месяц сразу.
+              </div>
+            </>
+          )}
+
+          {/* Цена занятия — основа всего долга; mt-auto держит строку у нижнего
+              края, чтобы карточка ровно занимала высоту ряда. */}
+          <div className="mt-auto pt-3 flex items-baseline justify-between gap-2">
+            <span className="text-xs text-gray-400">Цена занятия</span>
+            <span className="text-sm font-medium">
+              {billing.price ? `${billing.price.toLocaleString("ru-RU")} ₽` : "не указана"}
+            </span>
+          </div>
+        </div>
+
+        {/* Замечания. Поле ввода спрятано за кнопкой: пишут их редко, а открытая
+            форма занимала треть карточки на каждом заходе. На среднем экране
+            карточка занимает оставшийся ряд целиком — иначе рядом с ней
+            оставалась бы пустая половина. */}
+        <div className="glass p-4 flex flex-col min-h-0 md:col-span-2 xl:col-span-1">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-sm font-medium">Замечания для родителей</div>
+            {((student.remarks || []).length > 0 || remarkOpen) && (
+              <button
+                onClick={() => setRemarkOpen((v) => !v)}
+                className="press-tap text-xs text-blue-500 hover:text-blue-700 transition-colors"
+              >
+                {remarkOpen ? "Отмена" : "+ Замечание"}
+              </button>
+            )}
+          </div>
+          {/* Пока замечаний нет, поле для первого занимает всю оставшуюся
+              высоту карточки — ряд остаётся ровным, без провала внизу. */}
+          {(student.remarks || []).length === 0 && !remarkOpen && (
+            <button
+              onClick={() => setRemarkOpen(true)}
+              className="mt-3 flex-1 min-h-20 w-full border-2 border-dashed border-gray-200 dark:border-white/15 rounded-xl text-sm text-gray-400 hover:border-blue-300 hover:text-blue-600 transition-colors"
+            >
+              Что передать родителям
+            </button>
+          )}
+          <div className={`flex flex-col gap-2 min-h-0 overflow-y-auto ${(student.remarks || []).length > 0 ? "mt-3 flex-1" : ""}`}>
+            {(student.remarks || []).length > 0 && (
+              [...(student.remarks || [])].reverse().map((r) => (
+                <div key={r.id} className="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm text-gray-700">{r.text}</div>
+                    <div className="text-xs text-gray-400 mt-0.5">{r.date}</div>
+                  </div>
+                  <button
+                    onClick={() => deleteRemark(r.id)}
+                    className="text-gray-300 hover:text-red-400 text-xs flex-shrink-0 mt-0.5"
+                  >✕</button>
+                </div>
+              ))
+            )}
+          </div>
+          <Collapse open={remarkOpen}>
+            <div className="flex flex-col gap-2 pt-3">
+              <textarea
+                value={remarkDraft}
+                onChange={(e) => setRemarkDraft(e.target.value)}
+                placeholder="Написать замечание..."
+                rows={2}
+                className="w-full text-sm rounded-lg border border-gray-200 bg-white px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-blue-400"
+              />
+              <button
+                onClick={addRemark}
+                disabled={!remarkDraft.trim()}
+                className="press-tap px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 disabled:opacity-40 self-end"
+              >
+                Добавить
+              </button>
+            </div>
+          </Collapse>
+        </div>
       </div>
 
-      {/* Архив — во всю ширину под колонками и со своей прокруткой. В колонке
-          он вытягивал страницу на десятки занятий, а соседняя колонка
-          растягивалась вслед за ним пустой рамкой. Счётчик на кнопке
-          показывает, сколько внутри, не открывая её. */}
+      {/* Разделы, которых у нового ученика ещё нет, идут во всю ширину ниже
+          ряда: пустой ячейкой в сетке они оставляли бы дыру, а сами по себе
+          просто не появляются, пока нечего показывать. */}
+      <div className="flex flex-col gap-4 mt-4">
+        <WeakTypes studentId={student.id} studentName={student.name} />
+
+        {/* Доски прошлых занятий — блока нет, пока ни одной не сохранено */}
+        {allows("boardHistory")
+          ? <BoardHistory studentId={student.id} studentName={student.name}
+              onOpenBoard={() => (allows("board") ? onOpenBoard?.(student.id, student.name) : openPlans())} />
+          : <PlanLock
+              feature="boardHistory"
+              title="Доски занятий"
+              text="Снимки доски за каждое занятие: можно вернуться к разобранной задаче через месяц."
+            />}
+      </div>
+
+      {/* Архив — во всю ширину и со своей прокруткой. В колонке он вытягивал
+          страницу на десятки занятий, а соседняя растягивалась вслед за ним
+          пустой рамкой. Счётчик на кнопке показывает, сколько внутри, не
+          открывая её. */}
       <div className="glass p-4 mt-4">
         <button
           onClick={() => setArchiveOpen((v) => !v)}
