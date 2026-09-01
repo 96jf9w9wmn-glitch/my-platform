@@ -1755,12 +1755,10 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // рядом с «Вернуть» уносил доску целиком.
   function askClear() {
     if (!strokes.current.size) return
-    modalOpen.current = true
     setConfirmClear(true)
   }
-  function cancelClear() { modalOpen.current = false; setConfirmClear(false) }
+  function cancelClear() { setConfirmClear(false) }
   function clearAll() {
-    modalOpen.current = false
     setConfirmClear(false)
     const step = [...strokes.current.values()].map((s) => ({ id: s.id, before: cloneStroke(s), after: null }))
     strokes.current.clear()
@@ -1813,6 +1811,11 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   }
 
   useEffect(() => { actions.current.undo = undo; actions.current.redo = redo; actions.current.del = deleteSelection; actions.current.paste = addImageAt })
+
+  // «Поверх доски открыт диалог» считается из самих состояний. Раньше флаг
+  // выставляли руками в пяти местах, и один пропущенный сброс глушил ВСЕ горячие
+  // клавиши доски — включая ⌘Z — до перезагрузки страницы.
+  useEffect(() => { modalOpen.current = taskPick || confirmClear }, [taskPick, confirmClear])
   // Вставка картинки из буфера обмена (Ctrl/Cmd+V) — в центр видимой области
   useEffect(() => {
     function onPaste(e) {
@@ -1933,8 +1936,21 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         return
       }
       if (e.metaKey || e.ctrlKey) {
-        if (e.code === "KeyZ") { e.preventDefault(); e.shiftKey ? actions.current.redo() : actions.current.undo() }
-        else if (e.code === "KeyY") { e.preventDefault(); actions.current.redo() }
+        // Ловим и по физической клавише, и по символу. Только e.code недостаточно:
+        // на части внешних клавиатур и переключателей раскладки он приходит пустым,
+        // и тогда ⌘Z уходил браузеру. Браузер выполняет своё «Отменить» — в Chrome
+        // это возвращает последнюю закрытую вкладку, то есть поверх доски внезапно
+        // открывается посторонняя страница. На русской раскладке та же клавиша
+        // даёт «я»/«н», поэтому символы проверяем в обеих раскладках.
+        const k = (e.key || "").toLowerCase()
+        const isZ = e.code === "KeyZ" || k === "z" || k === "я"
+        const isY = e.code === "KeyY" || k === "y" || k === "н"
+        if ((isZ || isY) && !inField) {
+          e.preventDefault()
+          e.stopPropagation()
+          if (isY || e.shiftKey) actions.current.redo()
+          else actions.current.undo()
+        }
         return
       }
       // Горячие клавиши инструментов (без модификаторов, не в поле ввода)
@@ -1949,10 +1965,10 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     // Переключились в другое окно с зажатым пробелом — keyup не придёт, и доска
     // осталась бы «в режиме руки», пока не нажмёшь пробел ещё раз.
     function onBlur() { spaceHeld.current = false; setPanKey(false) }
-    window.addEventListener("keydown", onKeyDown)
+    window.addEventListener("keydown", onKeyDown, true)
     window.addEventListener("keyup", onKeyUp)
     window.addEventListener("blur", onBlur)
-    return () => { window.removeEventListener("keydown", onKeyDown); window.removeEventListener("keyup", onKeyUp); window.removeEventListener("blur", onBlur) }
+    return () => { window.removeEventListener("keydown", onKeyDown, true); window.removeEventListener("keyup", onKeyUp); window.removeEventListener("blur", onBlur) }
   }, [])
 
   const others = online.filter((p) => p.userId !== userId)
@@ -2430,7 +2446,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
 
           {/* Задание из банка листом на доску */}
           {canAddTasks && (
-            <button onPointerDown={() => flashTip("task")} onClick={() => { modalOpen.current = true; setTaskPick(true) }}
+            <button onPointerDown={() => flashTip("task")} onClick={() => setTaskPick(true)}
               className={`${btnBase} ${taskPick ? btnOn : btnIdle}`} style={taskPick ? undefined : idleStyle}>
               <Icon name="book" size={21} />
               <Tip label="Задание из банка" dark={dark} show={tapped === "task"} />
@@ -2552,7 +2568,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
                       <Icon name="image" size={18} />Добавить картинку
                     </button>
                     {canAddTasks && (
-                      <button onClick={() => { closeMenu("mMore"); modalOpen.current = true; setTaskPick(true) }}
+                      <button onClick={() => { closeMenu("mMore"); setTaskPick(true) }}
                         className="press-tap flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm board-hover" style={idleStyle}>
                         <Icon name="book" size={18} />Задание из банка
                       </button>
@@ -2584,7 +2600,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
             tutorSubjects={tutorSubjects}
             owner={tutorOwner}
             onInsert={insertTaskSheet}
-            onClose={() => { modalOpen.current = false; setTaskPick(false) }}
+            onClose={() => setTaskPick(false)}
           />
         </Suspense>
       )}
