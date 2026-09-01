@@ -15,6 +15,16 @@ import { useClosing } from "../useClosing"
 // Одно задание в окне: номер кружком, условие во всю ширину, под ним — чертёж и
 // файлы, ответ и варианты. Ответ стоит ПОД условием, а не чипом справа: справа
 // он отъедал у формулы ту самую ширину, из-за которой всё и переносилось.
+// Ответ у задания части 2 — это не одно число: эталон занимает несколько строк
+// («а) да… б) нет… в) 1632»). Капсула (rounded-full), рассчитанная на «7» или
+// «−4; 1», растягивалась вокруг такого абзаца сплошным зелёным пятном — вид,
+// который читается как сбой вёрстки. Длинный ответ показываем блоком: обычные
+// поля, переносы строк на месте, подпись «Ответ:» встаёт над ним.
+const isLongAnswer = (text) => String(text).length > 48 || String(text).includes("\n")
+const answerShape = (text) =>
+  isLongAnswer(text) ? "px-2.5 py-1.5 rounded-xl whitespace-pre-line leading-relaxed"
+    : "px-2 py-0.5 rounded-full"
+
 function TaskBlock({ item }) {
   const { bankTask } = item
   // Работа уже решена — значит окно показывает не условия, а разбор: у каждого
@@ -70,9 +80,9 @@ function TaskBlock({ item }) {
 
         {/* Эталон без разбора: работу ещё не решали, показываем только ответ. */}
         {!reviewed && item.answer != null && item.answer !== "" && !item.options && (
-          <div className="flex items-center gap-1.5 text-xs">
+          <div className={`flex gap-1.5 text-xs ${isLongAnswer(item.answer) ? "flex-col items-start" : "items-center"}`}>
             <span className="text-gray-400">Ответ:</span>
-            <span className="px-2 py-0.5 rounded-full bg-green-500/15 text-green-700 dark:text-green-300 ring-1 ring-green-500/30"
+            <span className={`bg-green-500/15 text-green-700 dark:text-green-300 ring-1 ring-green-500/30 ${answerShape(item.answer)}`}
               dangerouslySetInnerHTML={{ __html: renderHomeworkMath(String(item.answer)) }} />
           </div>
         )}
@@ -97,7 +107,7 @@ function TaskBlock({ item }) {
             {item.ok === false && item.answer != null && item.answer !== "" && (
               <>
                 <span className="text-gray-400">верный:</span>
-                <span className="px-2 py-0.5 rounded-full bg-green-500/15 text-green-700 dark:text-green-300 ring-1 ring-green-500/30"
+                <span className={`bg-green-500/15 text-green-700 dark:text-green-300 ring-1 ring-green-500/30 ${answerShape(item.answer)}`}
                   dangerouslySetInnerHTML={{ __html: renderHomeworkMath(String(item.answer)) }} />
               </>
             )}
