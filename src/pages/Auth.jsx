@@ -19,6 +19,16 @@ function formatWait(sec) {
   return `${sec} сек.`
 }
 
+// Подсказка под полем: одна строка, появляется плавно и не двигает форму
+// рывком — карточка входа измеряет свою высоту и анимирует её.
+function FieldHint({ show, children }) {
+  return (
+    <div className={`overflow-hidden transition-all duration-200 ${show ? "max-h-8 mt-1 opacity-100" : "max-h-0 opacity-0"}`}>
+      <p className="text-xs text-red-500">{children}</p>
+    </div>
+  )
+}
+
 function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
   const [mode, setMode] = useState(initialMode)
   // Роль помним между заходами (её же выбирают карточками на лендинге):
@@ -28,6 +38,9 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [resetSent, setResetSent] = useState(false)
+  // Подсказку про формат показываем только после того, как поле покинули:
+  // ругаться на «+7 (9» посреди набора номера — значит мешать вводу.
+  const [touched, setTouched] = useState({})
   // Регистрация репетитора идёт в два шага: код на почту, потом аккаунт.
   const [codeSent, setCodeSent] = useState(false)
   const [codeBusy, setCodeBusy] = useState(false)
@@ -38,7 +51,7 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [failedAttempts, setFailedAttempts] = useState(0)
   const [cooldownLeft, setCooldownLeft] = useState(0)
-  // Кнопки «Обзор» и темы прибиты к вьюпорту, а страница под ними
+  // Кнопки «На главную» и темы прибиты к вьюпорту, а страница под ними
   // прокручивается. Как только прокрутка началась, под кнопками проявляется
   // матовая подложка — иначе на телефоне карточка (там она во всю ширину)
   // проезжает прямо сквозь них.
@@ -391,6 +404,12 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
     }
   }
 
+  // Что показывать под полями. phoneStarted — набор начат: на пустом поле
+  // подсказка не нужна, про пустоту скажет сама отправка.
+  const phoneOk = isValidRuPhone(form.phone)
+  const phoneStarted = form.phone.replace(/\D/g, "").length > 1
+  const emailOk = isValidEmail(form.email)
+
   // Подложка плавающих кнопок: появляется только при прокрутке. Цвет текста
   // тоже подтягиваем — на цветной шапке карточки, которая уезжает под кнопки,
   // gray-500 читается плохо (в тёмной теме это #98989f).
@@ -412,7 +431,7 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
     // только вниз. dvh, а не vh: на мобильном Safari 100vh врёт на высоту
     // адресной строки.
     // py-16 на узком экране: карточка там во всю ширину, и при меньшем
-    // отступе кнопки «Обзор» и темы легли бы на её шапку.
+    // отступе кнопки «На главную» и темы легли бы на её шапку.
     // Отступы сверху и снизу равны — иначе центр перекошен.
     // min-h (а не h) + items-center: когда форма выше экрана, документ растёт
     // и страница прокручивается, а не обрезает карточку сверху.
@@ -429,7 +448,7 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
           className={`fixed top-4 left-4 flex items-center gap-1 p-2 pr-3 rounded-lg text-sm z-50 transition-all duration-200 active:scale-95 ${floatBtn}`}
         >
           <Icon name="chevron-left" size={16} />
-          Обзор
+          На главную
         </button>
       )}
       <button
@@ -521,9 +540,13 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
                 type="email"
                 value={form.email}
                 onChange={handleChange}
+                onBlur={() => setTouched((t) => ({ ...t, email: true }))}
                 placeholder="example@mail.com"
                 className="input-glass"
               />
+              <FieldHint show={touched.email && !!form.email.trim() && !emailOk}>
+                Похоже, в адресе опечатка
+              </FieldHint>
             </div>
           )}
 
@@ -536,9 +559,13 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
                   type="tel"
                   value={formatPhone(form.phone)}
                   onChange={handlePhoneChange}
+                  onBlur={() => setTouched((t) => ({ ...t, phone: true }))}
                   placeholder="+7 (900) 123-45-67"
                   className="input-glass"
                 />
+                <FieldHint show={touched.phone && phoneStarted && !phoneOk}>
+                  Нужны все десять цифр после +7
+                </FieldHint>
               </div>
               <div>
                 <label className="text-sm text-gray-500 mb-1 block">Новый пароль</label>
@@ -620,9 +647,13 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
                 type="tel"
                 value={formatPhone(form.phone)}
                 onChange={handlePhoneChange}
+                onBlur={() => setTouched((t) => ({ ...t, phone: true }))}
                 placeholder="+7 (900) 123-45-67"
                 className="input-glass"
               />
+              <FieldHint show={touched.phone && phoneStarted && !phoneOk}>
+                Нужны все десять цифр после +7
+              </FieldHint>
             </div>
           ) : (
             <div>
@@ -632,9 +663,13 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
                 type="email"
                 value={form.email}
                 onChange={handleChange}
+                onBlur={() => setTouched((t) => ({ ...t, email: true }))}
                 placeholder="example@mail.com"
                 className="input-glass"
               />
+              <FieldHint show={touched.email && !!form.email.trim() && !emailOk}>
+                Похоже, в адресе опечатка
+              </FieldHint>
             </div>
           ))}
 
