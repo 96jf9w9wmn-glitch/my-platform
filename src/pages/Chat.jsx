@@ -37,12 +37,16 @@ function roleLabel(id) {
 export default function Chat({ myId, myName, initialContacts = [], canAddByCode = false, onUnreadChange }) {
   const initialContactIds = initialContacts.map(c => c.id).join(",")
 
-  // Кто удаляет и что. Своё сообщение удаляет любой — и удаляет по-настоящему,
-  // у обеих сторон: «удалить только у себя» развело бы одну переписку на два
-  // разных представления и породило спор «я это не писал». Чужие сообщения и
-  // переписку целиком чистит только репетитор — это его рабочее пространство.
-  // Те же правила стоят политиками в базе (supabase/chat_delete.sql), поэтому
-  // кнопкой мимо них не пройти.
+  // Удаление у ВСЕХ, а не «только у себя»: два разных представления одной
+  // переписки — это готовый спор «я такого не писал».
+  //
+  // Очистить переписку может любая сторона: в кабинете ученика и родителя
+  // такой кнопки не было вовсе. Отдельное сообщение в интерфейсе удаляет автор,
+  // а репетитор — любое. Это удобство, а не запрет: политика в базе
+  // (supabase/chat_delete.sql) пускает обоих участников на любое сообщение
+  // своего разговора, потому что для неё удаление одной строки и очистка всей
+  // переписки неотличимы. Роль нужна ещё и для текста подтверждения — сказать,
+  // у кого именно пропадёт переписка.
   const isTutor = String(myId || "").startsWith("t:")
 
   const [contacts, setContacts] = useState(() => {
@@ -731,7 +735,7 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
                           type="button"
                           onClick={() => { setDelError(""); setConfirmDel({ kind: "msg", id: msg.id, text: msg.text }) }}
                           aria-label="Удалить сообщение"
-                          className="chat-del order-first flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors"
+                          className="chat-del order-first flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-500/10 active:scale-90"
                         >
                           <Icon name="trash" size={13} />
                         </button>
@@ -780,7 +784,7 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
                         <button
                           onClick={() => { setDelError(""); setConfirmDel({ kind: "msg", id: msg.id, text: msg.text }) }}
                           aria-label="Удалить сообщение"
-                          className="chat-del flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors"
+                          className="chat-del flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-500/10 active:scale-90"
                         >
                           <Icon name="trash" size={13} />
                         </button>

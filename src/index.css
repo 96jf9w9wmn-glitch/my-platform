@@ -2175,13 +2175,19 @@ html.kb-open .kb-collapse { padding-bottom: 0; }
    сам пузырь (см. Chat.jsx), как в любом мессенджере. */
 .chat-del {
   opacity: 0;
+  transform: scale(.8);
   pointer-events: none;
-  transition: opacity .15s ease, color .15s ease;
+  /* Уход мягче появления: корзина не должна мигать, когда курсор просто
+     проходит над перепиской. Цвет переключается быстро — он реагирует на
+     наведение уже на саму кнопку, и там задержка читалась бы как залипание. */
+  transition: opacity .3s ease, transform .3s ease, color .12s ease;
 }
 .chat-row:hover .chat-del,
 .chat-del:focus-visible {
   opacity: 1;
+  transform: none;
   pointer-events: auto;
+  transition: opacity .14s ease-out, transform .14s ease-out, color .12s ease;
 }
 
 
