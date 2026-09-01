@@ -57,6 +57,12 @@ const pointInBBox = (x, y, b) => x >= b.minX && x <= b.maxX && y >= b.minY && y 
 // Курсор собеседника держится CURSOR_HOLD мс после последнего движения, потом гаснет
 const CURSOR_HOLD = 3000, CURSOR_FADE = 400
 const POINTER_RATE = 60 // не чаще 1 посылки в 60 мс (~16/сек) — экономим realtime
+const CURSORS_KEY = "board-cursors"   // личная настройка «показывать курсоры собеседников»
+const VIEW_RATE = 90    // не чаще 1 посылки своего обзора в 90 мс: за ним следят глазами
+// Прилипание при перетаскивании: допуск в ЭКРАННЫХ пикселях (в мировые переводим
+// делением на масштаб — иначе на приближённой доске объект липнул бы за версту).
+const SNAP_PX = 6
+const GUIDE_COLOR = "#FF2D55"  // направляющая заметно отличается от синей рамки выделения
 const STROKE_RATE = 60  // не чаще 1 посылки дописанных точек в 60 мс
 // Точки штриха округляются до сотых мировой единицы: на экране это доли пикселя
 // даже при максимальном увеличении, зато и по сети, и в снапшоте сцены каждая
@@ -323,6 +329,14 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // в попапе — оно нужно редко, когда правят кусок своего же рисунка.
   const [eraserMode, setEraserMode] = useState("object")   // object | stroke
   const [online, setOnline] = useState([])
+  // Курсоры собеседников можно убрать: чужая стрелка с подписью ходит поверх
+  // чертежа и мешает читать доску. Настройка ЛИЧНАЯ и только на просмотр — свой
+  // курсор при этом уходит собеседнику по-прежнему, иначе он терял бы нас, ничего
+  // об этом не зная.
+  const [showCursors, setShowCursors] = useState(() => localStorage.getItem(CURSORS_KEY) !== "off")
+  // Слежение за участником: наш обзор повторяет его обзор, пока мы сами не
+  // подвинем доску. Держим id, а не флаг: на доске может быть больше двоих.
+  const [followId, setFollowId] = useState(null)
   const [loaded, setLoaded] = useState(false)
   const [zoomPct, setZoomPct] = useState(100)
   const [selCount, setSelCount] = useState(0)
@@ -381,6 +395,15 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const drawing = useRef(null)
   const cursors = useRef(new Map())   // userId -> {x, y, name} в МИРОВЫХ координатах
   const cursorTimers = useRef(new Map()) // userId -> таймер авто-скрытия неподвижного курсора
+  const showCursorsRef = useRef(showCursors) // то же самое для отрисовки (она вне рендера)
+  const followRef = useRef(null)      // за кем следим (для обработчиков канала)
+  const followTarget = useRef(null)   // его обзор: мировой прямоугольник {x,y,w,h}
+  const followedBy = useRef(false)    // за НАМИ кто-то следит → шлём свой обзор
+  const lastViewSend = useRef(0)
+  const viewSendTimer = useRef(null)
+  const sentView = useRef(null)
+  const snapBoxes = useRef([])        // габариты чужих объектов на время перетаскивания
+  const guides = useRef([])           // направляющие прилипания {axis,v,from,to} (мир)
   const lastPointerSend = useRef(0)   // троттлинг рассылки своего курсора
   const view = useRef({ x: 0, y: 0, scale: 1 }) // экранное смещение (css px) + масштаб
   const pointers = useRef(new Map())  // активные указатели для мультитача
@@ -437,6 +460,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   }
   function zoomAt(sx, sy, factor) {
     if (!Number.isFinite(factor) || factor <= 0 || !Number.isFinite(sx) || !Number.isFinite(sy)) return
+    stopFollow()   // сами меняем обзор → перестаём повторять чужой
     const v = view.current
     const ns = clamp(v.scale * factor, MIN_SCALE, MAX_SCALE)
     if (!Number.isFinite(ns) || ns <= 0) return
@@ -445,6 +469,68 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     v.y = sy - (sy - v.y) * k
     v.scale = ns
     setZoomPct(Math.round(ns * 100))
+  }
+
+  // --- Слежение за участником ---------------------------------------------
+  // Экраны у всех разные, поэтому повторяем не сдвиг в пикселях, а ВИДИМЫЙ КУСОК
+  // доски: центр его в центр нашего холста и такой масштаб, чтобы кусок целиком
+  // поместился. Иначе на телефоне мы «следили» бы за краем чужого экрана.
+  function stopFollow() {
+    if (!followRef.current) return
+    followRef.current = null
+    followTarget.current = null
+    setFollowId(null)
+  }
+  function stepFollow() {
+    const t = followTarget.current
+    const canvas = canvasRef.current
+    if (!t || !followRef.current || !canvas) return
+    const cw = canvas.clientWidth, ch = canvas.clientHeight
+    if (!cw || !ch || !(t.w > 0) || !(t.h > 0)) return
+    const scale = clamp(Math.min(cw / t.w, ch / t.h), MIN_SCALE, MAX_SCALE)
+    const tx = cw / 2 - (t.x + t.w / 2) * scale
+    const ty = ch / 2 - (t.y + t.h / 2) * scale
+    const v = view.current
+    // Догоняем плавно: обзор приходит ~11 раз в секунду, и прыжок кадрами
+    // читался бы как рывки. Когда догнали — садимся ровно в цель.
+    const done = Math.abs(tx - v.x) < 0.4 && Math.abs(ty - v.y) < 0.4 && Math.abs(scale - v.scale) < 0.002
+    const k = 0.3
+    v.x = done ? tx : v.x + (tx - v.x) * k
+    v.y = done ? ty : v.y + (ty - v.y) * k
+    v.scale = done ? scale : v.scale + (scale - v.scale) * k
+    sceneValid.current = false          // обзор изменился → слой сцены пересобрать
+    const pct = Math.round(v.scale * 100)
+    setZoomPct((prev) => (prev === pct ? prev : pct))
+    if (!done) scheduleLive()
+  }
+  // Свой обзор — тем, кто за нами следит (и только им: без наблюдателей это был
+  // бы лишний поток событий в общем канале).
+  function sendView() {
+    const canvas = canvasRef.current
+    const ch = channelRef.current
+    if (!canvas || !ch) return
+    const v = view.current
+    const box = {
+      x: -v.x / v.scale, y: -v.y / v.scale,
+      w: canvas.clientWidth / v.scale, h: canvas.clientHeight / v.scale,
+    }
+    const p = sentView.current
+    if (p && Math.abs(p.x - box.x) < 0.5 && Math.abs(p.y - box.y) < 0.5 && Math.abs(p.w - box.w) < 0.5) return
+    sentView.current = box
+    lastViewSend.current = performance.now()
+    ch.send({ type: "broadcast", event: "view", payload: { id: userId, ...box } })
+  }
+  function maybeSendView() {
+    if (!followedBy.current) return
+    const wait = VIEW_RATE - (performance.now() - lastViewSend.current)
+    if (wait > 0) {
+      // Хвост движения обязательно досылаем таймером: иначе последний сдвиг —
+      // тот, на котором рука остановилась, — у наблюдателя не появился бы вовсе.
+      clearTimeout(viewSendTimer.current)
+      viewSendTimer.current = setTimeout(sendView, wait)
+      return
+    }
+    sendView()
   }
 
   // --- Рендер -------------------------------------------------------------
@@ -490,6 +576,58 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     }
     return bb
   }
+  // --- Прилипание при перетаскивании --------------------------------------
+  // Края и середина перетаскиваемого габарита ловятся на края и середины чужих
+  // объектов, и по месту совпадения рисуется пунктирная направляющая. Без неё
+  // две картинки рядом на глаз ровно не поставить: разницу в пару пикселей видно,
+  // а поймать её мышью нельзя.
+  function bestSnap(mine, others, tol) {
+    let best = null
+    for (const mv of mine) for (const ov of others) {
+      const d = Math.abs(ov - mv)
+      if (d <= tol && (!best || d < best.d)) best = { d, off: ov - mv, at: ov }
+    }
+    return best
+  }
+  // bb — габарит выделения на НАЧАЛО жеста, dx/dy — сдвиг мышью.
+  // Возвращает поправленный сдвиг и направляющие (мировые координаты).
+  function computeSnap(bb, dx, dy) {
+    if (!snapBoxes.current.length) return { dx, dy, guides: [] }
+    const tol = SNAP_PX / view.current.scale
+    const box = { minX: bb.minX + dx, maxX: bb.maxX + dx, minY: bb.minY + dy, maxY: bb.maxY + dy }
+    const cx = (box.minX + box.maxX) / 2, cy = (box.minY + box.maxY) / 2
+    const xs = [], ys = []
+    for (const o of snapBoxes.current) {
+      xs.push(o.minX, (o.minX + o.maxX) / 2, o.maxX)
+      ys.push(o.minY, (o.minY + o.maxY) / 2, o.maxY)
+    }
+    const bx = bestSnap([box.minX, cx, box.maxX], xs, tol)
+    const by = bestSnap([box.minY, cy, box.maxY], ys, tol)
+    const ox = bx ? bx.off : 0, oy = by ? by.off : 0
+    const fin = { minX: box.minX + ox, maxX: box.maxX + ox, minY: box.minY + oy, maxY: box.maxY + oy }
+    const eps = 0.5 / view.current.scale
+    const g = []
+    if (bx) {
+      // Линию тянем через все объекты, вставшие на эту же вертикаль, — видно, по
+      // чему именно выровнялись.
+      let from = fin.minY, to = fin.maxY
+      for (const o of snapBoxes.current) {
+        const on = Math.abs(o.minX - bx.at) < eps || Math.abs((o.minX + o.maxX) / 2 - bx.at) < eps || Math.abs(o.maxX - bx.at) < eps
+        if (on) { from = Math.min(from, o.minY); to = Math.max(to, o.maxY) }
+      }
+      g.push({ axis: "x", v: bx.at, from, to })
+    }
+    if (by) {
+      let from = fin.minX, to = fin.maxX
+      for (const o of snapBoxes.current) {
+        const on = Math.abs(o.minY - by.at) < eps || Math.abs((o.minY + o.maxY) / 2 - by.at) < eps || Math.abs(o.maxY - by.at) < eps
+        if (on) { from = Math.min(from, o.minX); to = Math.max(to, o.maxX) }
+      }
+      g.push({ axis: "y", v: by.at, from, to })
+    }
+    return { dx: dx + ox, dy: dy + oy, guides: g }
+  }
+
   // Одна выделенная фигура? (тогда рамка поворачивается вместе с ней)
   function singleEnclosed() {
     if (selection.current.size !== 1) return null
@@ -513,6 +651,10 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   function redraw() {
     const canvas = canvasRef.current
     if (!canvas) return
+    // Слежение двигает обзор ДО кадра, рассылка своего обзора идёт после сдвига:
+    // так наблюдатель получает ровно то, что мы сейчас видим.
+    stepFollow()
+    maybeSendView()
     const ctx = canvas.getContext("2d")
     const dpr = window.devicePixelRatio || 1
     const cw = canvas.clientWidth, ch = canvas.clientHeight
@@ -607,6 +749,28 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     if ((!pp) !== (!props) || (pp && props && (pp.tool !== props.tool || pp.width !== props.width || pp.dash !== props.dash))) {
       lastSelProps.current = props; setSelProps(props)
     }
+    // Направляющие прилипания: пунктир того же цвета, что и в чертёжных
+    // редакторах, но не синий — иначе он сливался бы с рамкой выделения.
+    if (guides.current.length) {
+      ctx.save()
+      ctx.strokeStyle = GUIDE_COLOR
+      ctx.lineWidth = 1
+      ctx.setLineDash([6, 4])
+      for (const g of guides.current) {
+        ctx.beginPath()
+        if (g.axis === "x") {
+          const [x, y0] = toScreen(g.v, g.from)
+          const [, y1] = toScreen(g.v, g.to)
+          ctx.moveTo(x, y0 - 12); ctx.lineTo(x, y1 + 12)
+        } else {
+          const [x0, y] = toScreen(g.from, g.v)
+          const [x1] = toScreen(g.to, g.v)
+          ctx.moveTo(x0 - 12, y); ctx.lineTo(x1 + 12, y)
+        }
+        ctx.stroke()
+      }
+      ctx.restore()
+    }
     if (marquee.current) {
       const m = marquee.current
       drawDashRect({ minX: Math.min(m.x0, m.x1), minY: Math.min(m.y0, m.y1), maxX: Math.max(m.x0, m.x1), maxY: Math.max(m.y0, m.y1) }, "#007AFF", [5, 4])
@@ -616,7 +780,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     // забытый чужой курсор посреди чертежа мешает читать доску.
     const now = performance.now()
     let fading = false
-    for (const [id, c] of cursors.current) {
+    if (showCursorsRef.current) for (const [id, c] of cursors.current) {
       const age = now - c.t
       if (age > CURSOR_HOLD + CURSOR_FADE) { cursors.current.delete(id); continue }
       const alpha = age <= CURSOR_HOLD ? 1 : 1 - (age - CURSOR_HOLD) / CURSOR_FADE
@@ -789,6 +953,13 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         }, CURSOR_HOLD))
         scheduleLive()
       })
+      // Обзор того, за кем следим. Чужие обзоры приходят всем, но повторяем мы
+      // ровно один — тот, что выбран.
+      .on("broadcast", { event: "view" }, ({ payload }) => {
+        if (!followRef.current || payload.id !== followRef.current) return
+        followTarget.current = payload
+        scheduleLive()
+      })
       .on("presence", { event: "sync" }, () => {
         const people = Object.values(channel.presenceState()).flat()
         // Клиент старой сборки (открытая до раскатки вкладка, кэш PWA) события
@@ -796,8 +967,19 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         // конце штриха. Замечаем такого по отсутствию метки proto и шлём ему
         // штрихи по-старому: медленно, но одинаково для всех участников.
         legacyPeer.current = people.some((p) => p.userId !== userId && !(p.proto >= 2))
+        // Наблюдателя видно по его же presence: пока за нами никто не следит,
+        // обзор не рассылается вовсе.
+        const watched = people.some((p) => p.userId !== userId && p.following === userId)
+        const gained = watched && !followedBy.current
+        followedBy.current = watched
+        // Только что начали следить — обзор нужен сразу, не дожидаясь, пока мы
+        // что-нибудь подвинем: иначе наблюдатель смотрел бы в пустоту.
+        if (gained) { sentView.current = null; maybeSendView() }
         setOnline(people)
         const ids = new Set(people.map((p) => p.userId))
+        // Ведущий ушёл с доски — слежение отпускаем, иначе обзор навсегда
+        // застыл бы на его последнем кадре.
+        if (followRef.current && !ids.has(followRef.current)) stopFollow()
         for (const id of cursors.current.keys()) if (!ids.has(id)) {
           cursors.current.delete(id)
           clearTimeout(cursorTimers.current.get(id)); cursorTimers.current.delete(id)
@@ -806,11 +988,22 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         for (const [id, st] of live.current) if (!ids.has(st.author)) live.current.delete(id)
         scheduleLive()
       })
-      .subscribe((status) => { if (status === "SUBSCRIBED") channel.track({ userId, name: userName, proto: 2 }) })
+      .subscribe((status) => { if (status === "SUBSCRIBED") channel.track({ userId, name: userName, proto: 2, following: followRef.current || null }) })
 
     return scheduleTeardown
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, userId, userName])
+
+  // О том, за кем мы следим, знает канал: presence — единственное место, где
+  // ведущий может узнать, что его обзор кому-то нужен.
+  useEffect(() => {
+    followRef.current = followId
+    if (!followId) followTarget.current = null
+    const ch = channelRef.current
+    if (ch?.state === "joined") ch.track({ userId, name: userName, proto: 2, following: followId || null })
+  }, [followId, userId, userName])
+
+  useEffect(() => { showCursorsRef.current = showCursors; scheduleLive() }, [showCursors, scheduleLive])
 
   useEffect(() => {
     const ro = new ResizeObserver(() => scheduleDraw())
@@ -822,7 +1015,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   useEffect(() => { bgColorRef.current = bgColor; scheduleDraw() }, [bgColor, scheduleDraw])
 
   useEffect(() => () => {
-    clearTimeout(saveTimer.current); clearTimeout(sendTimer.current)
+    clearTimeout(saveTimer.current); clearTimeout(sendTimer.current); clearTimeout(viewSendTimer.current)
     // ВАЖНО: НЕ отменяем teardownTimer — иначе канал board:${roomId} не удаляется
     // при выходе, остаётся подписанным, и при повторном входе новый канал не может
     // занять тот же топик (белый экран, «не грузит», лечится только F5). Таймер
@@ -853,6 +1046,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         const d = clamp(px(e.deltaY, e.deltaMode), -20, 20)
         zoomAt(e.clientX - rect.left, e.clientY - rect.top, Math.exp(-d * 0.01))
       } else {
+        stopFollow()
         view.current.x -= px(e.deltaX, e.deltaMode)
         view.current.y -= px(e.deltaY, e.deltaMode)
       }
@@ -996,6 +1190,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   }
 
   function beginGesture() {
+    stopFollow()
     const [a, b] = [...pointers.current.values()]
     gesture.current = { dist: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 }
   }
@@ -1038,7 +1233,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     // хотя человек всего лишь подвинул доску.
     const secondaryBtn = e.button === 1 || e.button === 2 || (e.buttons & 2) === 2
     const wantPan = tool === "hand" || spaceHeld.current || secondaryBtn
-    if (wantPan) { panning.current = { x: e.clientX, y: e.clientY }; setPanDrag(true); return }
+    if (wantPan) { stopFollow(); panning.current = { x: e.clientX, y: e.clientY }; setPanDrag(true); return }
     if (e.pointerType === "mouse" && e.button != null && e.button !== 0) return
 
     // «Курсор» — выделение рамкой / перемещение выделенного (не рисует)
@@ -1046,7 +1241,26 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       const p = toWorld(e.clientX, e.clientY)
       const bb = selectionBBox()
       if (bb && pointInBBox(p[0], p[1], bb)) {
-        movingSel.current = { x: p[0], y: p[1], before: snapshotSelection() }   // клик по выделению → двигаем
+        // Клик по выделению → двигаем. Габарит и габариты чужих объектов
+        // запоминаем на весь жест: прилипание считается от НАЧАЛЬНОГО положения,
+        // иначе поправка накапливалась бы сама на себя и объект «залипал» бы.
+        snapBoxes.current = []
+        const cv = canvasRef.current, vv = view.current
+        // Берём только то, что рядом с видимой областью: направляющая к объекту
+        // где-то за краем доски ничего не объясняет, а прилипание к нему мешает.
+        const seen = {
+          minX: -vv.x / vv.scale - cv.clientWidth / vv.scale / 2,
+          minY: -vv.y / vv.scale - cv.clientHeight / vv.scale / 2,
+          maxX: (-vv.x + cv.clientWidth * 1.5) / vv.scale,
+          maxY: (-vv.y + cv.clientHeight * 1.5) / vv.scale,
+        }
+        for (const [sid, so] of strokes.current) {
+          if (selection.current.has(sid) || so.tool === "eraser") continue
+          const sb = strokeBBox(so)
+          if (rectsIntersect(seen, sb)) snapBoxes.current.push(sb)
+        }
+        guides.current = []
+        movingSel.current = { x0: p[0], y0: p[1], bb0: bb, dx: 0, dy: 0, before: snapshotSelection() }
       } else {
         marquee.current = { x0: p[0], y0: p[1], x1: p[0], y1: p[1] } // иначе — рамка
       }
@@ -1083,13 +1297,24 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     if (erasing.current) { eraseObjectsAt(e.clientX, e.clientY); return }
     // Перетаскивание выделенного
     if (movingSel.current) {
+      const m = movingSel.current
       const p = toWorld(e.clientX, e.clientY)
-      const dx = p[0] - movingSel.current.x, dy = p[1] - movingSel.current.y
-      for (const id of selection.current) {
-        const s = strokes.current.get(id)
-        if (s) s.points = s.points.map((pt) => [pt[0] + dx, pt[1] + dy, ...pt.slice(2)])
+      let dx = p[0] - m.x0, dy = p[1] - m.y0
+      // Alt (⌥) отключает прилипание: иногда нужно поставить объект именно
+      // чуть-чуть мимо ровной линии.
+      if (e.altKey) guides.current = []
+      else {
+        const sn = computeSnap(m.bb0, dx, dy)
+        dx = sn.dx; dy = sn.dy; guides.current = sn.guides
       }
-      movingSel.current = { ...movingSel.current, x: p[0], y: p[1] }
+      // Двигаем на разницу с уже применённым сдвигом — сами штрихи хранят
+      // абсолютные координаты, и пересчитывать их от начала было бы дороже.
+      const ddx = dx - m.dx, ddy = dy - m.dy
+      if (ddx || ddy) for (const id of selection.current) {
+        const s = strokes.current.get(id)
+        if (s) s.points = s.points.map((pt) => [pt[0] + ddx, pt[1] + ddy, ...pt.slice(2)])
+      }
+      m.dx = dx; m.dy = dy
       scheduleDraw()
       return
     }
@@ -1141,6 +1366,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     if (movingSel.current) {
       const before = movingSel.current.before
       movingSel.current = null
+      guides.current = []; snapBoxes.current = []
       commitSelection(before)
       return
     }
@@ -1567,6 +1793,9 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     setColor(hex)
     if (tool === "eraser" || tool === "hand" || tool === "cursor") setTool("pen")
   }
+  function toggleCursors() {
+    setShowCursors((v) => { localStorage.setItem(CURSORS_KEY, v ? "off" : "on"); return !v })
+  }
   function toggleSmart() {
     setSmart((v) => { localStorage.setItem(SMART_KEY, v ? "0" : "1"); return !v })
   }
@@ -1579,6 +1808,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     scheduleDraw()
   }
   function resetView() {
+    stopFollow()
     view.current = { x: 0, y: 0, scale: 1 }; setZoomPct(100); scheduleDraw()
   }
 
@@ -1682,7 +1912,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // Смена инструмента сбрасывает выделение
   useEffect(() => {
     if (tool === "cursor") return
-    selection.current.clear(); marquee.current = null; movingSel.current = null
+    selection.current.clear(); marquee.current = null; movingSel.current = null; guides.current = []
     // eslint-disable-next-line react-hooks/set-state-in-effect
     applySelCount(0)
     scheduleDraw()
@@ -1726,6 +1956,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   }, [])
 
   const others = online.filter((p) => p.userId !== userId)
+  const followName = others.find((p) => p.userId === followId)?.name || "участник"
   const TOOLS = [
     { id: "cursor", icon: "cursor", label: "Курсор", key: "Esc" },
     { id: "pen", icon: "pencil", label: "Перо", key: "P" },
@@ -1893,18 +2124,42 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {others.length > 0 && (
+            <button onClick={toggleCursors} title={showCursors ? "Скрыть курсоры участников" : "Показать курсоры участников"}
+              className={`press-tap p-1.5 rounded-lg transition-colors ${
+                showCursors ? "text-gray-500 hover:text-gray-700 hover:bg-blue-500/[0.07] dark:hover:bg-white/10" : "text-blue-500 bg-blue-500/12"
+              }`}>
+              <span className="relative flex items-center justify-center">
+                <Icon name="cursor" size={16} />
+                {/* Перечёркнутый значок понятнее подписи: курсоров на доске нет */}
+                {!showCursors && <span className="absolute w-[19px] h-[1.5px] rotate-45 rounded-full" style={{ background: "currentColor" }} />}
+              </span>
+            </button>
+          )}
           <button onClick={toggleTheme} title={dark ? "Светлая доска" : "Тёмная доска"}
             className="press-tap p-1.5 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-blue-500/[0.07] dark:hover:bg-white/10">
             <Icon name={dark ? "sun" : "moon"} size={16} />
           </button>
+          {/* Аватар участника — кнопка слежения: обзор повторяет его обзор,
+              пока мы сами не подвинем доску. Точка на аватаре значит обратное —
+              этот участник сейчас смотрит нашими глазами. */}
           <div className="flex items-center -space-x-1.5">
-            {others.map((p) => (
-              <span key={p.userId} title={p.name}
-                className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold text-white"
-                style={{ background: colorFor(p.userId), boxShadow: `0 0 0 2px ${baseBg}` }}>
-                {(p.name || "?").slice(0, 1).toUpperCase()}
-              </span>
-            ))}
+            {others.map((p) => {
+              const on = followId === p.userId
+              return (
+                <button key={p.userId} onClick={() => setFollowId(on ? null : p.userId)}
+                  title={`${on ? "Не следить за экраном" : "Следить за экраном"}: ${p.name || "участник"}${p.following === userId ? " · следит за вами" : ""}`}
+                  className="press-tap relative w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold text-white"
+                  style={{ background: colorFor(p.userId),
+                    boxShadow: on ? `0 0 0 2px ${baseBg}, 0 0 0 4px #007AFF` : `0 0 0 2px ${baseBg}` }}>
+                  {(p.name || "?").slice(0, 1).toUpperCase()}
+                  {p.following === userId && (
+                    <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full"
+                      style={{ background: "#007AFF", boxShadow: `0 0 0 1.5px ${baseBg}` }} />
+                  )}
+                </button>
+              )
+            })}
             {others.length > 0 && <span className="pl-3 text-xs text-gray-400">в сети</span>}
           </div>
           <button onClick={closeBoard}
@@ -1932,6 +2187,18 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
           onContextMenu={(e) => e.preventDefault()}
           style={{ width: "100%", height: "100%", display: "block", touchAction: "none", cursor }}
         />
+
+        {/* Слежение включено — об этом надо помнить: доска будет ездить сама.
+            Любой свой сдвиг или зум слежение снимает, кнопка — запасной путь. */}
+        {followId && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 flex items-center gap-2 pl-3 pr-1.5 h-8 rounded-full text-xs font-medium shadow-lg popup-bubble"
+            style={{ background: panelBg, border: `1px solid ${panelBorder}`, color: dark ? "#e5e5ea" : "#374151" }}>
+            <span className="w-2 h-2 rounded-full" style={{ background: colorFor(followId) }} />
+            Следим за экраном: {followName}
+            <button onClick={stopFollow}
+              className="press-tap px-2 py-1 rounded-full text-blue-500 hover:bg-blue-500/[0.08]">Отпустить</button>
+          </div>
+        )}
 
         {/* Подсказка при перетаскивании файла */}
         {dragActive && (
