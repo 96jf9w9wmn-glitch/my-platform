@@ -23,6 +23,9 @@ import { GEN13, META13 } from "./taskGeneratorsEgeProf13"
 import { GEN16, META16 } from "./taskGeneratorsEgeProf16"
 // №15 («Решите неравенство») — свой движок метода интервалов + verify15 в отдельном модуле
 import { GEN15, META15 } from "./taskGeneratorsEgeProf15"
+// №14 (стереометрия, часть 2) — отдельный файл: координатная модель тела + общий
+// движок сечений/объёмов/углов, ответ распознаётся точно (verify14).
+import { GEN14, META14 } from "./taskGeneratorsEgeProf14"
 // №18 (задачи с параметром, часть 2) — отдельный файл: конструкция от ответа + точный
 // решатель (рациональная арифметика + Штурм) в verify18.
 import { GEN18, META18 } from "./taskGeneratorsEgeProf18"
@@ -6175,9 +6178,10 @@ export const GENERATORS_EGE_PROF = {
   // Модули части 2 названы по старым номерам (файлы и эталоны fipi_bank_ege_prof
   // тоже лежат под ними): GEN13 — тригонометрия (№14), GEN15 — неравенства (№16),
   // GEN16 — экономическая (теперь №13 ЧАСТИ 1), GEN18 — параметр (№19),
-  // GEN19 — теория чисел (№20).
+  // GEN19 — теория чисел (№20), GEN14 — стереометрия (№15).
   13: GEN16,
   14: GEN13,
+  15: GEN14,
   16: GEN15,
   19: GEN18,
   20: GEN19,
@@ -6574,6 +6578,7 @@ export const GEN_META_EGE_PROF = {
     ]]],
   13: META16,
   14: META13,
+  15: META14,
   16: META15,
   19: META18,
   20: META19,

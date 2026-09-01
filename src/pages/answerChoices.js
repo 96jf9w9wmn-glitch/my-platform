@@ -42,6 +42,8 @@ function plausibleChoice(cand) {
     const b = parseFloat(m[2].replace(",", ".").replace("−", "-"))
     if (!(a < b)) return false
   }
+  // Корень из 0 или 1 в дистракторе выдаёт подмену: так ответы не записывают.
+  if (/√\s*[01](?!\d)/.test(cand)) return false
   const parts = cand.split(/;\s*/)
   if (parts.length > 1 && new Set(parts.map((p) => p.trim())).size !== parts.length) return false
   return true
@@ -57,6 +59,12 @@ const PART_RE = /(?:^|\n)\s*([абвг])\)\s*/g
 export function choiceBaseOf(answer) {
   const src = String(answer ?? "").trim()
   const marks = [...src.matchAll(PART_RE)]
+  // Ответ из одного подпункта — так устроен №15 профиля (стереометрия части 2):
+  // пункт а — доказательство, ответ есть только у пункта б. Метку снимаем, иначе
+  // ученик выбирал бы из «б) 26 / б) 27», а лист ответов дублировал бы её.
+  if (marks.length === 1 && marks[0].index === 0) {
+    return { text: src.slice(marks[0][0].length).trim(), part: marks[0][1] }
+  }
   if (marks.length < 2) return { text: src, part: null }
   const last = marks[marks.length - 1]
   return { text: src.slice(last.index + last[0].length).trim(), part: last[1] }
@@ -88,8 +96,11 @@ export function makeAnswerChoices(answer) {
       // дистрактор неправдоподобен и выдаёт себя
       if (orig >= 0 && shifted < 0) continue
       const next = perturbToken(m[0], k * perturbStep(m[0]), minus)
-      const cand = src.slice(0, m.index) + next + src.slice(m.index + m[0].length)
-      if (!seen.has(cand) && plausibleChoice(cand)) { seen.add(cand); cands.push(cand) }
+      let cand = src.slice(0, m.index) + next + src.slice(m.index + m[0].length)
+      // «1√6/3» выдаёт дистрактор с головой: единичный множитель перед корнем не пишут.
+      // Приводим к обычной записи «√6/3» — это по-прежнему неверный, но правдоподобный ответ.
+      cand = cand.replace(/(^|[^\d.,])1√/g, "$1√")
+      if (cand !== src && !seen.has(cand) && plausibleChoice(cand)) { seen.add(cand); cands.push(cand) }
       if (cands.length >= 6) break outer
     }
   }
