@@ -1028,7 +1028,7 @@ function VariantReview({ submission, variant, onClose, onSave }) {
 // Фильтр по ученику — ВЫПАДАЮЩИМ списком, а не лентой фишек: учеников бывают
 // десятки, лента прокручивалась вбок (часть имён была не видна вовсе) и своим
 // overflow срезала кольцо крайних фишек. В списке видно сразу всех.
-export function StudentFilter({ options, value, onChange }) {
+function StudentFilter({ options, value, onChange }) {
   const [open, setOpen] = useState(false)
   const { closing, close, cancel } = useClosing(() => setOpen(false), POPUP_OUT_MS)
   const wrapRef = useRef(null)
