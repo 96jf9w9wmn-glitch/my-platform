@@ -44,6 +44,11 @@ export function periodStart(lastReportDate, fallbackDays = 30) {
   return since > iso(new Date()) ? iso(new Date()) : since
 }
 
+// Ключ типажа — одинаковый везде, где попытки группируются: и сам свод, и
+// источник данных рядом со строкой считаются по нему, разъехаться они не должны
+// (иначе к строке подписался бы источник соседнего типажа).
+export const attemptKey = (a) => `${a.exam_type}|${a.number}|${a.gen_key || ""}`
+
 // Свод попыток решения по типажам за период. Считаем сами, а не берём вьюху
 // v_student_weak_types: она агрегирует за всё время, а отчёт — про период.
 export function aggregateAttempts(attempts) {
@@ -53,7 +58,7 @@ export function aggregateAttempts(attempts) {
     // решать до верного ответа; если считать все подходы, ученик, который
     // исправился со второго раза, выглядел бы как решивший половину.
     if ((a.attempt_no ?? 1) > 1) continue
-    const key = `${a.exam_type}|${a.number}|${a.gen_key || ""}`
+    const key = attemptKey(a)
     const row = map.get(key) || {
       exam_type: a.exam_type, number: a.number, gen_key: a.gen_key || null,
       attempts: 0, correct: 0,

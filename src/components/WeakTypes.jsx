@@ -2,8 +2,9 @@ import { useEffect, useState } from "react"
 import { supabase } from "../supabase"
 import Icon from "./Icon"
 import useTypeLabels from "./typeLabels"
-import { aggregateAttempts } from "../reportData"
+import { aggregateAttempts, attemptKey } from "../reportData"
 import { numberTitle } from "../pages/numberTitles"
+import { plural } from "../utils"
 
 // Слабые места ученика: по каким разновидностям заданий он ошибается чаще
 // всего. Считаем по самим попыткам (task_attempts, политика пускает репетитора
@@ -13,26 +14,49 @@ import { numberTitle } from "../pages/numberTitles"
 // ответы (aggregateAttempts) — теперь тут ровно та же арифметика, иначе
 // кабинет и отчёт расходятся на одном и том же ученике.
 //
-// Главное правило показа: пока попыток мало, ничего не красим в красный.
-// Две ошибки из двух — это не «провальная тема», это два неудачных дня.
+// Главное правило показа: пока ответов мало, вывода не делаем. Две ошибки из
+// двух — это не «провальная тема», это два неудачных дня; такие строки не
+// попадают в список, а собираются в одну поясняющую фразу под ним.
 const MIN_ATTEMPTS = 3
 
 // Выше этой точности типаж уже не «слабый»: раздел обещает места, где ученик
 // ошибается, и строка «1 из 1 верно» в нём читается как сбой платформы.
 const WEAK_ACCURACY = 70
 
-// Слабым считаем то, где есть чему учиться: при достаточном числе попыток —
-// низкая точность, при малом — сам факт ошибок. Безошибочные типажи в раздел
-// не попадают ни при каком числе попыток.
-function isWeak(row) {
-  return row.attempts >= MIN_ATTEMPTS ? row.accuracy < WEAK_ACCURACY : row.correct < row.attempts
-}
+// В списке — только то, по чему вывод действительно есть: достаточно ответов И
+// точность ниже порога. Раньше сюда попадали и строки с одним ответом (просто
+// потому, что он был неверный), и после первого же сданного варианта раздел
+// превращался в десяток одинаковых «0 из 1 верно · мало данных» — по ним
+// непонятно ни что случилось, ни откуда взялись цифры.
+const isWeak = (row) => row.attempts >= MIN_ATTEMPTS && row.accuracy < WEAK_ACCURACY
+
+// Ответов мало, но ошибки есть: в список не берём, а сказать о них надо —
+// иначе выйдет «промахов нет» там, где ученик как раз ошибался.
+const isThin = (row) => row.attempts < MIN_ATTEMPTS && row.correct < row.attempts
 
 function tone(row) {
-  if (row.attempts < MIN_ATTEMPTS) return { cls: "text-gray-500 ring-1 ring-gray-200/70 dark:ring-white/15", note: "мало данных" }
-  if (row.accuracy < 40) return { cls: "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300", note: null }
-  return { cls: "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300", note: null }
+  if (row.accuracy < 40) return "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300"
+  return "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300"
 }
+
+// Откуда взялись цифры. Главный вопрос репетитора к этому разделу: он выдал
+// работу файлом, а строки появились — значит, посчитаны они по чему-то другому.
+const SOURCE = { variant: "вариант", homework: "домашняя работа", practice: "тренировка" }
+
+function sourceLabel(set) {
+  const names = [...(set || [])].map((s) => SOURCE[s]).filter(Boolean)
+  if (!names.length) return ""
+  if (names.length === 1) return names[0]
+  return names.slice(0, -1).join(", ") + " и " + names[names.length - 1]
+}
+
+// Одно и то же объяснение источника нужно и списку, и пустому разделу: вопрос
+// «работу я давал файлом — откуда строки?» возникает в обоих случаях.
+const SOURCE_NOTE = "Считаем по первым ответам в вариантах и домашних работах, собранных из банка: "
+  + "работа, прикреплённая файлом, сюда не попадает — что в файле, платформа не знает."
+
+const fmtDay = (iso) =>
+  iso ? new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "long" }) : ""
 
 // Сколько задач кладём в тренировочный лист по одному типажу.
 const DRILL_SIZE = 8
@@ -44,6 +68,8 @@ function WeakTypes({ studentId, studentName }) {
   // Были ли вообще данные: пустой раздел после отбора значит «промахов нет»,
   // а это другая новость, чем «ученик ничего не решал».
   const [hadData, setHadData] = useState(false)
+  // Ошибки, по которым ещё рано судить: сколько их и откуда они пришли.
+  const [thin, setThin] = useState({ count: 0, sources: new Set(), last: null })
   const [drilling, setDrilling] = useState(null)
   const [failed, setFailed] = useState(null)
   const labels = useTypeLabels(rows)
@@ -53,23 +79,37 @@ function WeakTypes({ studentId, studentName }) {
     let alive = true
     supabase
       .from("task_attempts")
-      .select("exam_type, number, gen_key, is_correct, attempt_no")
+      .select("exam_type, number, gen_key, is_correct, attempt_no, source, created_at")
       .eq("student_id", String(studentId))
       .limit(2000)
       // Таблицы может не быть (миграция task_attempts.sql не выполнена) — тогда блока просто нет.
       .then(({ data }) => {
         if (!alive || !data) return
-        // Наверх — типажи, по которым данных достаточно, худшие первыми. Строки с
-        // одной-двумя попытками уходят вниз: иначе единственная случайная ошибка
-        // (точность 0%) вытеснила бы из десятки настоящую проблему с 40% из 12 попыток.
-        const norm = aggregateAttempts(data)
-        const sorted = norm.filter(isWeak).sort((a, b) => {
-          const aEnough = a.attempts >= MIN_ATTEMPTS, bEnough = b.attempts >= MIN_ATTEMPTS
-          if (aEnough !== bEnough) return aEnough ? -1 : 1
-          if (a.accuracy !== b.accuracy) return a.accuracy - b.accuracy
-          return b.attempts - a.attempts
-        })
+        // Источник и дата — по тому же ключу типажа, что и сам свод: строка
+        // должна уметь ответить, из какой работы взялись её цифры.
+        const meta = new Map()
+        for (const a of data) {
+          if ((a.attempt_no ?? 1) > 1) continue
+          const k = attemptKey(a)
+          const m = meta.get(k) || { sources: new Set(), last: null }
+          if (a.source) m.sources.add(a.source)
+          if (a.created_at && (!m.last || a.created_at > m.last)) m.last = a.created_at
+          meta.set(k, m)
+        }
+        const norm = aggregateAttempts(data).map((r) => ({ ...r, ...(meta.get(attemptKey(r)) || {}) }))
+        // Худшие первыми, при равной точности — те, где ответов больше: сорок
+        // процентов из двенадцати ответов — проблема надёжнее, чем из трёх.
+        const sorted = norm.filter(isWeak).sort((a, b) =>
+          a.accuracy - b.accuracy || b.attempts - a.attempts)
+        const few = norm.filter(isThin)
+        const sources = new Set()
+        let last = null
+        for (const r of few) {
+          for (const s of r.sources || []) sources.add(s)
+          if (r.last && (!last || r.last > last)) last = r.last
+        }
         setHadData(norm.length > 0)
+        setThin({ count: few.length, sources, last })
         setRows(sorted.slice(0, 10))
       })
     return () => { alive = false }
@@ -122,12 +162,28 @@ function WeakTypes({ studentId, studentName }) {
     }
   }
 
+  // Откуда взялись цифры — одной фразой. Именно этого раздел и не говорил:
+  // репетитор выдал работу файлом, а список заполнился, и связать одно с другим
+  // было нечем.
+  const thinFrom = [
+    sourceLabel(thin.sources) && "источник — " + sourceLabel(thin.sources),
+    fmtDay(thin.last) && "последний ответ " + fmtDay(thin.last),
+  ].filter(Boolean).join(", ")
+  const thinCount = `${thin.count} ${plural(thin.count, "задании", "заданиях", "заданиях")}`
+  // Под списком фраза короче: источник там уже подписан у каждой строки.
+  const thinUnder = `Ошибки есть ещё в ${thinCount}, но там всего один-два ответа — для вывода этого мало.`
+  const thinAlone = `Судить пока не по чему: ошибки есть в ${thinCount}, но у каждого один-два ответа. `
+    + `Задание попадает в список с ${MIN_ATTEMPTS}-го ответа${thinFrom ? ` (${thinFrom})` : ""}.`
+
   if (!rows.length) {
     if (!hadData) return null
     return (
       <div className="glass p-4">
         <h2 className="text-sm font-medium">Где ученик ошибается</h2>
-        <p className="text-xs text-gray-400 mt-1">Промахов пока нет: решённые задания идут без ошибок.</p>
+        <p className="text-xs text-gray-400 mt-1">
+          {thin.count ? thinAlone : "Промахов пока нет: решённые задания идут без ошибок."}
+        </p>
+        <p className="text-[11px] text-gray-400 mt-1.5">{SOURCE_NOTE}</p>
       </div>
     )
   }
@@ -138,13 +194,13 @@ function WeakTypes({ studentId, studentName }) {
       {/* Раздел раньше назывался «Слабые типажи» и не объяснял ни откуда цифры,
           ни что делает кнопка. Обе строки — ответ на эти два вопроса. */}
       <p className="text-xs text-gray-400 mt-0.5 mb-3">
-        Считаем по первым ответам в вариантах и домашних работах из банка: процент — доля верных.
-        Кнопка собирает PDF — {DRILL_SIZE} таких же заданий с новыми числами и ответами для проверки.
+        {SOURCE_NOTE} Задание появляется в списке с {MIN_ATTEMPTS}-го ответа. Кнопка собирает
+        PDF — {DRILL_SIZE} таких же заданий с новыми числами и ответами для проверки.
       </p>
       <div className="flex flex-col gap-2">
         {rows.map((r) => {
-          const t = tone(r)
           const key = rowKey(r)
+          const from = [sourceLabel(r.sources), fmtDay(r.last)].filter(Boolean).join(", ")
           return (
             <div key={key} className="glass-sm rounded-2xl px-3 py-2.5 flex items-center gap-3">
               <span className="shrink-0 w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-300 text-xs font-semibold flex items-center justify-center">
@@ -157,13 +213,10 @@ function WeakTypes({ studentId, studentName }) {
                 {/* Голубой кружок с цифрой репетитор читал как «9 чего?» —
                     поэтому номер задания назван и словами. */}
                 <div className="text-[11px] text-gray-400 truncate">
-                  задание №{r.number} · {r.correct} из {r.attempts} верно{t.note ? " · " + t.note : ""}
+                  задание №{r.number} · {r.correct} из {r.attempts} верно{from ? " · " + from : ""}
                 </div>
               </div>
-              {/* Раньше при малом числе попыток тут стоял прочерк — пустая
-                  пилюля, из которой ничего не следует. Процент показываем
-                  всегда, а неуверенность передаёт спокойный тон и подпись. */}
-              <span className={`shrink-0 text-[11px] px-2 py-0.5 rounded-full font-medium tabular-nums ${t.cls}`}>
+              <span className={`shrink-0 text-[11px] px-2 py-0.5 rounded-full font-medium tabular-nums ${tone(r)}`}>
                 {r.accuracy}%
               </span>
               <button
@@ -182,6 +235,9 @@ function WeakTypes({ studentId, studentName }) {
           )
         })}
       </div>
+      {/* Ошибки, которых в списке нет: молча отбросить их нельзя — репетитор
+          увидит десять строк и решит, что остального не было. */}
+      {thin.count > 0 && <p className="text-[11px] text-gray-400 mt-3">{thinUnder}</p>}
     </div>
   )
 }
