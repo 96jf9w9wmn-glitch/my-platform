@@ -37,6 +37,13 @@ import { GEN19, META19 } from "./taskGeneratorsEgeProf19"
 // №9 («задачи с прикладным содержанием») — отдельный модуль: буквальный вычислитель
 // каждой формулы + verify09 (подстановка ответа, соседи по сетке, скан экстремума).
 import { GEN9, META9 } from "./taskGeneratorsEgeProf9"
+// №6 (случайные величины) и №17 (прикладное моделирование, часть 2) — НОВЫЕ задания
+// проекта КИМ-2027, старого номера у них нет. Файлы названы по содержанию, а не по
+// цифре: «6» и «17» в КИМ-2026 занимали уравнения (ныне №7) и планиметрия части 2
+// (ныне №18), и модули с такими именами уже существуют. Эталон обоих — только
+// демоверсия ФИПИ: открытого банка по этим номерам не бывает.
+import { GEN_RV, META_RV } from "./taskGeneratorsEgeProfRandVar"
+import { GEN_MODEL, META_MODEL } from "./taskGeneratorsEgeProfModel"
 
 const randInt = (min, max) => min + Math.floor(Math.random() * (max - min + 1))
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)]
@@ -6180,6 +6187,8 @@ export const GENERATORS_EGE_PROF = {
   3: [t03BoxTetra, t03BoxPyramid, t03BoxPyramidC1, t03BoxPyramidA1, t03BoxPrism, t03BoxTriPrism, t03BoxPrismADA1, t03PrismRightVol, t03PrismRightEdge, t03SqPrismAngle, t03TriPrismAngle, t03HexPrismAngle, t03HexPrismTri, t03HexPrismTrap, t03CylLatHeight, t03CylLatDiameter, t03MugRatio, t03TwoCylindersTaller, t03LiquidWider, t03LiquidNarrower, t03Submerge, t03SubmergeAbs, t03ConeHeight, t03ConeDiameter, t03ConeAxialFromBase, t03ConeAxialFromSlant, t03ConeLatScale, t03ConeLatScaleDown, t03ConeParSect, t03ConeFullSurfSect, t03ConeVessel, t03PrismTetraTop, t03PyrMidEdge, t03PyrSqDiagBD, t03PyrSqDiagSO, t03PyrSqVol, t03PyrSqHeight, t03PyrSqVolHL, t03PyrTriHeight, t03PyrMidSect, t03PyrMidlineCut, t03SqPrismPoly, t03PrismTetra4, t03HexPrismPyr, t03HexPrismTetra, t03PyrHexHeight, t03SphereGreatCircle, t03TwoSpheresSurf, t03TwoSpheresVol, t03SphereSumSurf, t03CubeInSphere, t03CubeInSphereVol, t03CubeInSphereVolPi, t03BoxInSphere, t03SphereInCylSurfInv, t03BoxCylHeight, t03CylCircumPrism, t03StepSolidSurface, t03CylSphereVolInv, t03PrismTetraC1, t03PrismTetraB1, t03PrismPenta, t03PrismMidline, t03PrismCut, t03PrismCutRegular, t03PrismLateral, t03PrismLateralInv, t03CylConeLateral, t03CylConeLatInverse, t03CylConeVolume, t03CylConeVolInverse, t03ConeInSphere, t03ConeInSphereInv, t03ConeSphereRadius, t03ConeSphereSlant, t03SphereInCyl, t03SphereInCylVol, t03TwoCylinders, t03CylInBox, t03CubeCut, t03CubeCutInverse, t03CubeDiagonal, t03CubeAngle, t03BoxDiagonal, t03BoxLineSin, t03BoxSection, t03BoxDiagSection, t03StepSolid, t03LSolid, t03TSolidSurface, t03SphereSection, t03ConeScale, t03ConeHeightScale],
   4: [t04ShotPut, t04Gymnastics, t04Diving, t04Tickets, t04Markers, t04Defect, t04Lottery, t04CoinTwice, t04Rooms, t04FootballCoin],
   5: [t05Lamps, t05Between, t05Shooter4, t05Coffee, t05Battery, t05ShooterN, t05DiceCond, t05TwoThemes, t05Exact],
+  // №6 — новое задание КИМ-2027 (случайные величины); в демоверсии один типаж.
+  6: GEN_RV,
   // Ключи — номера КИМ-2027; имена функций и gen_key хранят старые номера
   // (t06* — уравнения, ныне №7): на gen_key держится аналитика task_attempts,
   // переименовывать их нельзя.
@@ -6227,6 +6236,9 @@ export const GENERATORS_EGE_PROF = {
   14: GEN13,
   15: GEN14,
   16: GEN15,
+  // №17 — новое задание КИМ-2027 (прикладное моделирование, часть 2): оба типажа
+  // демоверсии. Модуль назван по содержанию, а не GEN17 — та цифра занята планиметрией.
+  17: GEN_MODEL,
   18: GEN17,
   19: GEN18,
   20: GEN19,
@@ -6443,6 +6455,7 @@ export const GEN_META_EGE_PROF = {
       ["exact", "Ровно k задач", t05Exact],
     ]],
     ["Условная", [["dice-cond", "Кость дважды (условие)", t05DiceCond]]]],
+  6: META_RV,
   7: [["Показательные", [
     ["exp-reduce", "Свести к основанию", t06ExpReduce],
     ["exp-both", "Обе части — степени", t06ExpBothSides],
@@ -6625,6 +6638,7 @@ export const GEN_META_EGE_PROF = {
   14: META13,
   15: META14,
   16: META15,
+  17: META_MODEL,
   18: META17,
   19: META18,
   20: META19,
