@@ -155,7 +155,6 @@ export const FEATURE_ROWS = [
   { key: "aiHomework", kind: "limit", label: "ИИ-генерация ДЗ", suffix: " / мес" },
   { key: "onlinePay", kind: "bool", label: "Онлайн-оплата занятий учениками" },
   { key: "boardHistory", kind: "bool", label: "История досок занятий" },
-  { key: "parentReports", kind: "bool", label: "Отчёты родителям об уроке" },
   { key: "telegramBot", kind: "bool", label: "Телеграм-бот репетитора" },
   { key: "prioritySupport", kind: "bool", label: "Приоритетная поддержка" },
 ]

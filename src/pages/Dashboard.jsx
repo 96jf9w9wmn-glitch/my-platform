@@ -4,7 +4,6 @@ import { usePlan } from "../subscription"
 import useCountUp from "../components/useCountUp"
 import { isLessonPast, isLessonConducted, getInitials, timeUntilLesson } from "../utils"
 import { pendingMoveRequests, formatLessonShort, MOVE_BY_STUDENT } from "../lessonMove"
-import { useAutoReports } from "../reportAuto"
 
 const MONTH_NAMES = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"]
 const DAY_SHORT = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]
@@ -31,14 +30,6 @@ function Dashboard({ students, loaded = true, setActivePage, onOpenBoard }) {
   const { allows, openPlans } = usePlan()
   const openBoard = (id, name) => (allows("board") ? onOpenBoard?.(id, name) : openPlans())
 
-  // Отчёты родителям уходят сами по расписанию. Отрабатывает его кабинет при
-  // заходе на главную: из базы во внешний DeepSeek не сходить, а расписание
-  // должно работать без участия репетитора (см. src/reportAuto.js).
-  useAutoReports({
-    tutorId: students[0]?.tutor_id,
-    students,
-    enabled: allows("parentReports"),
-  })
   const today = new Date()
   const todayStr = formatDate(today)
   const now = new Date()

@@ -6,7 +6,6 @@ import WeakTypes from "../components/WeakTypes"
 import BoardHistory from "../components/BoardHistory"
 import Collapse from "../components/Collapse"
 import Reveal from "../components/Reveal"
-import ReportComposer from "../components/ReportComposer"
 import { parseLocalDate, isLessonPast, isLessonConducted, setLessonStatus, getInitials, formatPhone, contactHref, contactLabel, plural, LESSON_EXCUSED } from "../utils"
 import RescheduleModal from "../components/RescheduleModal"
 import StudentFormModal from "../components/StudentFormModal"
@@ -360,16 +359,9 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
         </div>
       </div>
 
-      {/* Отчёт родителю — во всю ширину: он про ученика целиком. */}
-      <div className="mb-4">
-        {allows("parentReports")
-          ? <ReportComposer student={student} />
-          : <PlanLock
-              feature="parentReports"
-              title="Отчёт родителю"
-              text="Отчёт об уроке с темами, ошибками и рекомендациями — родитель открывает его по коду."
-            />}
-      </div>
+      {/* Отчёт родителю снят с интерфейса (01.09.2026, решение владельца).
+          Код цел: ReportComposer, reportAuto, reportData, reportSheet/reportPdf
+          и таблица lesson_reports на месте — возвращается этим же блоком. */}
 
       {/* Три карточки одним рядом. Раньше это были две колонки разной длины:
           «Ближайшие занятия» растягивались на высоту соседней колонки, и под

@@ -118,125 +118,10 @@ function GradeBar({ label, count, max, color }) {
   )
 }
 
-// Подписи те же, что на печатном листе (pages/reportSheet.js): родитель видит
-// один и тот же отчёт в кабинете и в PDF — разные слова для одного статуса
-// читались бы как разные оценки.
-const CONF_TONE = {
-  struggling: { label: "нужна помощь", cls: "bg-red-500/12 text-red-700 dark:text-red-300 ring-1 ring-red-500/25" },
-  progress: { label: "в процессе", cls: "bg-amber-500/12 text-amber-700 dark:text-amber-300 ring-1 ring-amber-500/25" },
-  confident: { label: "уверенно", cls: "bg-green-500/12 text-green-700 dark:text-green-300 ring-1 ring-green-500/25" },
-}
-
-// Период отчёта: он не про одно занятие, а про промежуток между отчётами.
-// Старые записи промежутка не хранят — у них остаётся одна дата.
-function reportPeriod(r) {
-  const day = (iso) => new Date(String(iso).slice(0, 10) + "T00:00:00")
-    .toLocaleDateString("ru-RU", { day: "numeric", month: "long" })
-  if (r.period_from && r.period_to && r.period_from !== r.period_to) {
-    return `${day(r.period_from)} — ${day(r.period_to)}`
-  }
-  return day(r.period_to || r.lesson_date)
-}
-
-function reportStatsLine(r) {
-  const s = r.stats || {}
-  return [
-    s.lessons ? `${s.lessons} ${plural(s.lessons, "занятие", "занятия", "занятий")}` : null,
-    s.homeworkDone ? `${s.homeworkDone} ${plural(s.homeworkDone, "работа", "работы", "работ")}` : null,
-    s.avgGrade ? `средний балл ${String(s.avgGrade).replace(".", ",")}` : null,
-  ].filter(Boolean).join(" · ")
-}
-
-// Лента отчётов о занятиях. Родителю показываются только ОТПРАВЛЕННЫЕ отчёты —
-// это гарантирует функция в базе, а не фильтр здесь: черновик репетитора и
-// сырые данные, которые скармливались модели, наружу не уходят вовсе.
-function ReportsFeed({ parentCode, studentName, tutorName }) {
-  const [reports, setReports] = useState([])
-  const [busy, setBusy] = useState(null)
-
-  useEffect(() => {
-    if (!parentCode) return
-    let alive = true
-    supabase.rpc("lesson_report_list_parent", { p_parent_code: parentCode })
-      // Нет функции (миграция не выполнена) — блока просто не будет.
-      .then(({ data }) => { if (alive && data) setReports(data) })
-    return () => { alive = false }
-  }, [parentCode])
-
-  // Печатный лист. Собирается из того, что сохранено при отправке, — родитель
-  // видит и печатает ровно тот отчёт, который отправил репетитор, а не
-  // пересчитанный сегодня.
-  async function savePdf(r) {
-    setBusy(r.id)
-    try {
-      const { downloadReportPdf } = await import("./reportPdf")
-      await downloadReportPdf({
-        report: { ...r, lesson_date: r.period_to || r.lesson_date },
-        studentName,
-        tutorName,
-        stats: r.stats || {},
-        lessons: Array.isArray(r.lessons) ? r.lessons : [],
-        period: { from: r.period_from, to: r.period_to || r.lesson_date },
-      })
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  if (!reports.length) return null
-
-  return (
-    <Panel icon="mail" title="Отчёты о занятиях" tone="purple">
-      <div className="flex flex-col gap-3">
-        {reports.map((r) => (
-          <div key={r.id} className="glass-sm rounded-2xl px-3.5 py-3">
-            <div className="flex items-start justify-between gap-3 mb-1.5">
-              <div className="min-w-0">
-                <div className="text-sm font-medium text-gray-700">{reportPeriod(r)}</div>
-                {reportStatsLine(r) && (
-                  <div className="text-[11px] text-gray-400 mt-0.5">{reportStatsLine(r)}</div>
-                )}
-              </div>
-              <button
-                onClick={() => savePdf(r)}
-                disabled={busy === r.id}
-                title="Сохранить отчёт в PDF"
-                className="press-fill shrink-0 flex items-center gap-1.5 text-[12px] font-medium text-blue-600 dark:text-blue-300 px-2.5 py-1.5 rounded-xl ring-1 ring-blue-500/25 disabled:opacity-50"
-              >
-                <Icon name="download" size={13} />
-                {busy === r.id ? "Готовим…" : "PDF"}
-              </button>
-            </div>
-            {r.summary && <div className="text-sm text-gray-700 leading-relaxed">{r.summary}</div>}
-            {Array.isArray(r.topics) && r.topics.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-2.5">
-                {r.topics.map((t, i) => {
-                  const tone = CONF_TONE[t.confidence]
-                  return (
-                    <span
-                      key={i}
-                      title={t.comment || ""}
-                      className={`text-[11px] px-2.5 py-1 rounded-full font-medium ${
-                        tone ? tone.cls : "text-gray-500 ring-1 ring-gray-200/70 dark:ring-white/12"
-                      }`}
-                    >
-                      {t.title}{tone ? ` · ${tone.label}` : ""}
-                    </span>
-                  )
-                })}
-              </div>
-            )}
-            {r.next_steps && (
-              <div className="text-[12px] text-gray-500 mt-2.5 leading-relaxed">
-                Дальше: {r.next_steps}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    </Panel>
-  )
-}
+// Лента отчётов о занятиях снята с кабинета родителя вместе со сборкой отчёта
+// у репетитора (01.09.2026, решение владельца). Отправленные ранее отчёты
+// остались в базе, RPC lesson_report_list_parent на месте — блок возвращается
+// целиком из истории git.
 
 function ParentDashboard({ user, onLogout }) {
   const [student, setStudent] = useState(user.student)
@@ -738,7 +623,6 @@ function ParentDashboard({ user, onLogout }) {
 
         {mainTab === "study" && <div className="page-active flex flex-col gap-4">
 
-            <ReportsFeed parentCode={student.parent_code} studentName={student.name} tutorName={tutorName} />
 
             <Panel
               icon="book"
