@@ -7,6 +7,7 @@ import { ConsentRow, ConsentLink } from "../components/ConsentChecks"
 import { logConsent } from "../consents"
 import { loadTutorProfile } from "../tutorProfile"
 import { tutorSignIn } from "../tutorSignIn"
+import EmailCodeModal from "../components/EmailCodeModal"
 
 // Столько же попыток считает сервер (supabase/login_guard.sql и
 // api/auth-login.js). Здесь число нужно ровно для подсказки «осталось N».
@@ -27,6 +28,10 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [resetSent, setResetSent] = useState(false)
+  // Регистрация репетитора идёт в два шага: код на почту, потом аккаунт.
+  const [codeSent, setCodeSent] = useState(false)
+  const [codeBusy, setCodeBusy] = useState(false)
+  const [codeError, setCodeError] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const [dark, setDark] = useState(() => localStorage.getItem("theme") === "dark")
   const [showPassword, setShowPassword] = useState(false)
@@ -198,6 +203,63 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
     })
   }
 
+  // Запрос кода. Ошибку пробрасываем наверх: её показывает та же форма.
+  async function requestEmailCode(email) {
+    const res = await fetch("/api/auth-signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "start", email }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data?.error || "Не удалось отправить код")
+    return true
+  }
+
+  async function resendEmailCode() {
+    try {
+      await requestEmailCode(form.email)
+      setCodeError("")
+      return true
+    } catch (err) {
+      setCodeError(err.message)
+      return false
+    }
+  }
+
+  // Проверка кода и создание аккаунта — одним запросом на сервер: без верного
+  // кода пользователя в GoTrue не появляется вовсе.
+  async function confirmEmailCode(code) {
+    setCodeBusy(true)
+    setCodeError("")
+    try {
+      const res = await fetch("/api/auth-signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "verify", email: form.email, code, password: form.password, name: form.name }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.error || "Не удалось подтвердить код")
+
+      clearAppSession()
+      if (data.access_token) {
+        const { error } = await supabase.auth.setSession({
+          access_token: data.access_token,
+          refresh_token: data.refresh_token,
+        })
+        if (error) throw error
+      }
+      const user = data.user
+      await saveConsent(user.id, form.email)
+      const tutor = await loadTutorProfile(user.id)
+      setCodeSent(false)
+      onLogin({ ...user, role: "tutor", profile: tutor })
+    } catch (err) {
+      setCodeError(err.message)
+    } finally {
+      setCodeBusy(false)
+    }
+  }
+
   async function handleSubmit() {
     setError("")
     if (cooldownLeft > 0) {
@@ -295,23 +357,12 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
           if (form.password.length < 6) throw new Error("Пароль минимум 6 символов")
           requireConsent()
 
-          const { data, error } = await supabase.auth.signUp({
-            email: form.email,
-            password: form.password,
-          })
-          if (error) throw error
-
-          const { error: profileError } = await supabase.from("tutors").insert({
-            id: data.user.id,
-            email: form.email,
-            name: form.name,
-          })
-          if (profileError) throw profileError
-
-          await saveConsent(data.user.id, form.email)
-
-          const tutor = await loadTutorProfile(data.user.id)
-          onLogin({ ...data.user, role: "tutor", profile: tutor })
+          // Второй фактор при регистрации: аккаунт создаётся ТОЛЬКО после кода
+          // с почты, и создаёт его сервер (api/auth-signup.js). Проверка кода на
+          // клиенте была бы не проверкой — запрос к GoTrue можно послать мимо.
+          await requestEmailCode(form.email)
+          setCodeSent(true)
+          setCodeError("")
         }
       }
     } catch (err) {
@@ -748,6 +799,19 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
         </div> {/* p-6 */}
        </div> {/* измеряемое содержимое */}
       </div>
+
+      {/* Второй шаг регистрации репетитора. Пока код не введён, аккаунта не
+          существует: закрыли окно — регистрация просто не состоялась. */}
+      {codeSent && (
+        <EmailCodeModal
+          email={form.email}
+          busy={codeBusy}
+          error={codeError}
+          onSubmit={confirmEmailCode}
+          onResend={resendEmailCode}
+          onClose={() => { setCodeSent(false); setCodeError("") }}
+        />
+      )}
     </div>
   )
 }

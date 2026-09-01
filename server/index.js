@@ -19,6 +19,7 @@
 import http from "node:http"
 
 import authLogin from "../api/auth-login.js"
+import authSignup from "../api/auth-signup.js"
 import generateHw from "../api/generate-hw.js"
 import lessonReport from "../api/lesson-report.js"
 import subscription from "../api/subscription.js"
@@ -34,6 +35,7 @@ import { startEmailQueue } from "./emailQueue.js"
 // контейнер сразу, а не на первом обращении репетитора.
 const ROUTES = {
   "/api/auth-login": authLogin,
+  "/api/auth-signup": authSignup,
   "/api/generate-hw": generateHw,
   "/api/lesson-report": lessonReport,
   "/api/subscription": subscription,
