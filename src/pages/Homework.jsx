@@ -29,7 +29,7 @@ const STATUS_LABELS = {
   assigned: { label: "Выдано", cls: "text-gray-600 ring-1 ring-gray-200 dark:ring-white/15" },
   submitted: { label: "На проверке", cls: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300" },
   done: { label: "Выполнено", cls: "bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300" },
-  revision: { label: "На доработку", cls: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300" },
+  revision: { label: "На доработке", cls: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300" },
 }
 
 const TYPE_LABELS = {
@@ -2101,7 +2101,7 @@ function Homework({ user, students }) {
     { id: "assigned", label: "Выдано", icon: "file-text", tint: "text-blue-600 bg-blue-500/10" },
     { id: "submitted", label: "На проверке", icon: "clock", tint: "text-amber-600 bg-amber-500/12" },
     { id: "done", label: "Выполнено", icon: "check", tint: "text-green-600 bg-green-500/12" },
-    { id: "revision", label: "На доработку", icon: "repeat", tint: "text-orange-600 bg-orange-500/12" },
+    { id: "revision", label: "На доработке", icon: "repeat", tint: "text-orange-600 bg-orange-500/12" },
     // Просрочку показываем отдельной кнопкой и только когда она есть —
     // пустой фильтр в списке ни к чему.
     ...(overdueCount ? [{ id: "overdue", label: "Просрочено", icon: "alert-triangle", tint: "text-red-600 bg-red-500/12", count: overdueCount }] : []),

@@ -503,7 +503,7 @@ function VariantsPane({ stats }) {
 // рядом с ней ничего не добавляет (тот же приём, что в разделе «Задания»).
 function hwChip(r) {
   if (r.status === "submitted") return { tone: "amber", label: "На проверке" }
-  if (r.status === "revision") return { tone: "red", label: "На доработку" }
+  if (r.status === "revision") return { tone: "red", label: "На доработке" }
   if (r.grade) return { tone: r.grade >= 4 ? "green" : r.grade === 3 ? "amber" : "red", label: `Оценка ${r.grade}` }
   if (r.status === "done") return { tone: "green", label: "Зачтено" }
   return { tone: "gray", label: "Решается" }
