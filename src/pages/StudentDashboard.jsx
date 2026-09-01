@@ -20,7 +20,7 @@ import InvoiceCard from "../components/InvoiceCard"
 import { MarketingToggle } from "../components/ConsentChecks"
 
 const Board = lazy(() => import("../components/Board"))
-import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, parseHomeworkTasks, creditedNums, formatPhone, answersEqual, plural, timeUntilLesson } from "../utils"
+import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, parseHomeworkTasks, creditedNums, formatPhone, answersEqual, homeworkTestScore, plural, timeUntilLesson } from "../utils"
 import { studentBilling, periodLabel } from "../billing"
 import { longDate } from "../invoices"
 import TaskAttachments from "../components/TaskAttachments"
@@ -832,7 +832,14 @@ export function StudentHomeworkList({ homework, onSelect }) {
 function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten }) {
   const [uploading, setUploading] = useState(false)
   const [submittingWritten, setSubmittingWritten] = useState(false)
-  const [testAnswers, setTestAnswers] = useState(Array(hw.question_count || 0).fill(""))
+  // Доработка приходит с уже принятыми ответами: репетитор оставил в работе те,
+  // что зачтены, и стёр только те задания, которые предстоит решить заново.
+  // Поэтому поля заполняются прежними ответами — при сдаче уедет весь список,
+  // и балл посчитается по всей работе, а не по одной доработке.
+  const [testAnswers, setTestAnswers] = useState(() => {
+    const prev = hw.status === "revision" && Array.isArray(hw.student_answers) ? hw.student_answers : null
+    return Array.from({ length: hw.question_count || 0 }, (_, i) => (prev?.[i] == null ? "" : String(prev[i])))
+  })
   const [submittingTest, setSubmittingTest] = useState(false)
   // Ошибку показываем прямо над кнопкой: системный alert ученику не объясняет,
   // что именно не так, и выглядит как сбой сайта.
@@ -950,8 +957,10 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten })
   }
 
   async function handleSubmitTest() {
-    if (testAnswers.every((a) => !a.trim())) {
-      setSubmitError("Впиши хотя бы один ответ.")
+    // В доработке прежние ответы уже стоят в полях — «хотя бы один ответ»
+    // выполнялось бы само собой, и работа уходила бы обратно нетронутой.
+    if (!testAnswers.some((a, i) => !isAccepted(i) && a.trim())) {
+      setSubmitError(redoOnly ? "Впиши ответ хотя бы к одному заданию из доработки." : "Впиши хотя бы один ответ.")
       return
     }
     if (requireSolution && !solutionCount) {
@@ -992,6 +1001,14 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten })
     { length: Math.max(testAnswers.length, tasks.length) },
     (_, i) => testAnswers[i] ?? ""
   )
+  // Доработка: заново решаются только задания с ошибкой и оставшиеся без
+  // ответа — принятые репетитор оставил в работе непустыми. Показываем ровно
+  // их: остальные ученик уже сдал, и повторять их незачем.
+  const prevAnswers = hw.status === "revision" && Array.isArray(hw.student_answers) ? hw.student_answers : null
+  const isAccepted = (i) => String(prevAnswers?.[i] ?? "").trim() !== ""
+  const redoOnly = !!prevAnswers && solveRows.some((_, i) => isAccepted(i))
+  const redoRows = redoOnly ? solveRows.map((a, i) => [a, i]).filter(([, i]) => !isAccepted(i)) : solveRows.map((a, i) => [a, i])
+  const keptCount = redoOnly ? solveRows.filter((_, i) => isAccepted(i)).length : 0
   // Письменную работу ученик тоже решает по заданиям: фото прикрепляется к
   // тому заданию, которое решал, а не одним файлом в самом низу страницы.
   // Когда заданий в описании нет (работа выдана файлом), остаётся прежняя
@@ -1083,8 +1100,16 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten })
               <span className="flex items-start gap-1"><Icon name="message" size={12} className="mt-0.5 flex-shrink-0" />Комментарий репетитора: {hw.comment}</span>
             </div>
           )}
-          <h3 className="text-base font-medium mb-1">{isMcq ? "Реши работу — выбери ответы" : "Реши работу — впиши ответы"}</h3>
+          <h3 className="text-base font-medium mb-1">
+            {redoOnly ? "Доработка — реши эти задания заново" : isMcq ? "Реши работу — выбери ответы" : "Реши работу — впиши ответы"}
+          </h3>
           <p className="text-xs text-gray-500 mb-4">
+            {redoOnly && (
+              <>
+                Здесь только то, где ты ошибся или не ответил; остальные {keptCount}{" "}
+                {plural(keptCount, "задание", "задания", "заданий")} репетитор принял.{" "}
+              </>
+            )}
             {isMcq ? "Ответ выбирается прямо под заданием" : "Ответ вписывается прямо под заданием"}
             {requireSolution ? ", там же прикрепляется фото решения." : "."}
           </p>
@@ -1093,10 +1118,10 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten })
               были списком сверху, а поля ввода — сеткой в самом низу, и ученик
               прокручивал страницу к каждому ответу, считая номера. */}
           <div className="flex flex-col gap-2.5 mb-4">
-            {solveRows.map((a, i) => (
+            {redoRows.map(([a, i], row) => (
               <div
                 key={i}
-                style={{ animationDelay: `${Math.min(i, 8) * 45}ms` }}
+                style={{ animationDelay: `${Math.min(row, 8) * 45}ms` }}
                 className="item-enter glass-sm rounded-2xl px-3.5 py-3 flex flex-col gap-2.5"
               >
                 <div className="flex items-start gap-2.5">
@@ -2167,10 +2192,11 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     const hw = homework.find((h) => h.id === hwId)
     if (!hw) return
     const correct = hw.correct_answers || []
-    let score = 0
-    answers.forEach((ans, i) => {
-      if (answersEqual(ans, correct[i])) score++
-    })
+    // Балл считает общая homeworkTestScore — та же, что у репетитора: она
+    // прибавляет и зачтённые вручную номера. Своим циклом по answersEqual
+    // пересдача доработки теряла бы зачтённое задание: ответ в нём прежний, а
+    // эталон банка так и остался неверным.
+    const score = homeworkTestScore({ ...hw, student_answers: answers, correct_answers: correct })
 
     const isPureTest = hw.hw_type === "test"
     const updates = {
@@ -2219,6 +2245,10 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
         // первым: иначе режим «решай до верного ответа» показывал бы 50% там, где
         // тема на самом деле освоена.
         const attemptNo = Array.isArray(hw.student_answers) && hw.student_answers.length ? 2 : 1
+        // Доработка присылает и принятые ответы — они уже записаны первой
+        // попыткой, второй раз в журнал не идут: иначе один ответ считался бы
+        // дважды и растянул бы историю по типажу.
+        const kept = hw.status === "revision" && Array.isArray(hw.student_answers) ? hw.student_answers : null
         const attempts = []
         answers.forEach((ans, i) => {
           const given = String(ans || "").trim()
@@ -2226,6 +2256,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
           // Не отвечал — это пропуск, а не ошибка. Задание без предмета и номера
           // (старая работа, собранная до этой правки) в журнал не идёт.
           if (!given || !task?.exam_type || task.number == null) return
+          if (String(kept?.[i] ?? "").trim() !== "") return
           attempts.push({
             p_account: user.id,
             p_token: user.token,

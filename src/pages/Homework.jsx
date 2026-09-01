@@ -1607,6 +1607,11 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
       })
     : []
   const wrongNums = answerRows.filter((r) => r.ok === false).map((r) => r.n)
+  // В доработку уходит всё, что не принято: ошибки, пустые ответы и задания без
+  // эталона (их автопроверка рассудить не может). Когда принято хотя бы одно и
+  // не всё — возврат частичный, и об этом надо предупредить прямо в вопросе.
+  const redoNums = answerRows.filter((r) => r.ok !== true).map((r) => r.n)
+  const partialRedo = redoNums.length > 0 && redoNums.length < answerRows.length
   const creditedNumsShown = answerRows.filter((r) => r.credited).map((r) => r.n)
 
   // Результат теста стоит в карточке заданий, а не отдельной плашкой в колонке
@@ -1669,17 +1674,44 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
   async function setStatus(newStatus, grade, note = comment) {
     const updates = { status: newStatus, comment: note, grade: grade ?? null }
     if (newStatus === "revision") {
+      // Доработка — это не «решить всё заново»: ученик возвращается к заданиям,
+      // где ошибся или не ответил вовсе. Принятые ответы остаются в работе,
+      // пустыми становятся только те, что предстоит переделать — по ним кабинет
+      // ученика и понимает, что ему показывать (см. redoOnly в StudentDashboard).
+      // Балл после пересдачи считается по всему списку, поэтому зачтённые
+      // вручную номера тоже сохраняются: их ответы никуда не делись.
+      const answers = Array.isArray(hw.student_answers) ? hw.student_answers : []
+      const keep = answerRows.map((r, i) => (r.ok === true ? answers[i] ?? "" : ""))
+      const isKept = (i) => String(keep[i] ?? "").trim() !== ""
+      // Частичный возврат имеет смысл, только когда часть заданий принята.
+      // Всё верно (репетитор недоволен ходом решения) или всё неверно —
+      // работа решается заново, как и раньше.
+      const partial = keep.some((_, i) => isKept(i)) && keep.some((_, i) => !isKept(i))
+
       updates.test_score = null
-      updates.student_answers = null
-      updates.submission_url = null
-      // Зачтённые вручную номера относились к СТЁРТЫМ ответам. Оставь их — и
-      // балл пересдачи вырастет сам собой, за задания, которых ученик ещё не
-      // решал: homeworkTestScore прибавляет зачтённый номер независимо от ответа.
-      if (hw.credited !== undefined) updates.credited = null
+      updates.student_answers = partial ? keep : null
+      if (hw.credited !== undefined) updates.credited = partial ? credited : null
       // Колонку трогаем только когда она в строке есть: на базе без миграции
       // homework_solution_files.sql запись с этим полем упала бы целиком и
-      // работа осталась бы не возвращённой.
-      if (hw.solution_files !== undefined) updates.solution_files = null
+      // работа осталась бы не возвращённой. Фото принятых заданий остаются —
+      // переделывать их ученику не нужно. Ключ карты — ПОЗИЦИЯ задания в работе
+      // (i + 1), так её пишет кабинет ученика.
+      const shots = hw.solution_files && typeof hw.solution_files === "object" ? hw.solution_files : null
+      const keptShots = partial && shots
+        ? Object.fromEntries(Object.entries(shots).filter(([num, url]) => url && isKept(Number(num) - 1)))
+        : null
+      const left = keptShots && Object.keys(keptShots).length ? keptShots : null
+      if (hw.solution_files !== undefined) updates.solution_files = left
+      // Ссылка «Решение ученика» — это первое из тех же фото.
+      updates.submission_url = left
+        ? Object.entries(left).sort((a, b) => Number(a[0]) - Number(b[0]))[0][1]
+        : null
+      // Отсчёт времени начинается заново: момент открытия ставится один раз
+      // (RPC homework_open, coalesce), и с прежней отметкой доработка сдалась бы
+      // сама в ту же секунду, что ученик её откроет. Колонки может не быть —
+      // миграция homework_timer.sql, — тогда таймера нет и сбрасывать нечего.
+      if (hw.opened_at !== undefined) updates.opened_at = null
+      if (hw.auto_submitted !== undefined) updates.auto_submitted = null
     }
     await supabase.from("homework").update(updates).eq("id", hw.id)
 
@@ -2007,7 +2039,9 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
         open={revising}
         icon="repeat"
         title="Вернуть на доработку?"
-        message={`«${hw.title}» снова станет активным у ученика. Ответы, оценка и фото решения сотрутся — работа решается заново.`}
+        message={partialRedo
+          ? `Ученик заново решит ${redoNums.length} ${plural(redoNums.length, "задание", "задания", "заданий")} — те, где ошибся или не ответил (${redoNums.map((n) => "№" + n).join(", ")}). Принятые ответы останутся, оценка снимется до пересдачи.`
+          : `«${hw.title}» снова станет активным у ученика. Ответы, оценка и фото решения сотрутся — работа решается заново.`}
         confirmLabel="Вернуть"
         onConfirm={() => { setRevising(false); setStatus("revision", null, "") }}
         onCancel={() => setRevising(false)}
