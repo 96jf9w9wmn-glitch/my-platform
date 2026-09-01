@@ -627,7 +627,7 @@ function sheetNote(examType, total, numbers) {
   const list = numbersLabel(numbers, { hash: false })
   const head = `В этот тренировочный лист вошли ${total} ${plu(total, "задание", "задания", "заданий")}${list ? `: ${list}` : ""}.`
   return isInformatics(examType)
-    ? `${head} Это задания, которые решаются без компьютера; остальные задания экзамена выполняются за компьютером — к ним прилагаются файлы (электронная таблица, текстовый файл, архив) или требуется написать программу.`
+    ? `${head} Остальные задания экзамена сдаются готовым файлом (презентация, электронная таблица, программа) и оцениваются экспертом — в тренировочный вариант они не входят.`
     : `${head} Остальные задания экзамена в него не включены.`
 }
 
@@ -637,7 +637,7 @@ function sheetNote(examType, total, numbers) {
 // состоит из 17 заданий», хотя на экзамене их 27: вариант берёт только то, что
 // решается без компьютера. Чем лист отличается от экзамена — отдельным абзацем
 // ниже, иначе ученик готовится не к тому экзамену.
-function instructionParas({ examType, total, p1, p2, numbers = [] }) {
+function instructionParas({ examType, total, p1, p2, numbers = [], withFiles = [] }) {
   const time = EXAM_TIME[examType]
   const inf = isInformatics(examType)
   const out = []
@@ -650,6 +650,13 @@ function instructionParas({ examType, total, p1, p2, numbers = [] }) {
     ? `Экзаменационная работа состоит из двух частей, включающих в себя ${exam.total} ${plu(exam.total, "задание", "задания", "заданий")}. Часть 1 содержит ${exam.p1} ${plu(exam.p1, "задание", "задания", "заданий")} с кратким ответом, часть 2 — ${exam.p2} ${plu(exam.p2, "задание", "задания", "заданий")}${part2Kind}.`
     : `Экзаменационная работа состоит из ${exam.total} ${plu(exam.total, "задания", "заданий", "заданий")} с кратким ответом${inf ? ", выполняемых с помощью компьютера" : ""}.`)
   if (total < exam.total) out.push(sheetNote(examType, total, numbers))
+  // На бумаге файл не выдать, поэтому лист прямо говорит, где его взять. Задания
+  // с файлом при этом остаются в варианте: он решается в кабинете, и там файл
+  // скачивается кнопкой под условием — как на самом экзамене, за компьютером.
+  if (withFiles.length) out.push(
+    `К ${plu(withFiles.length, "заданию", "заданиям", "заданиям")} ${numbersLabel(withFiles, { hash: false })} `
+    + `${plu(withFiles.length, "прилагается файл", "прилагаются файлы", "прилагаются файлы")} — электронная таблица, текстовый файл или архив. `
+    + `${withFiles.length > 1 ? "Они открываются" : "Он открывается"} в кабинете вместе с вариантом: эти задания выполняются на компьютере.`)
   if (time) out.push(`На выполнение экзаменационной работы${inf ? " по информатике" : ""} отводится ${time}.`)
   // Формулировка про ответ у информатики своя: в бланк идут и буквы («yxzw» в
   // №2), а «обыкновенная дробь → десятичная» — правило математики, у КЕГЭ
@@ -708,6 +715,15 @@ function splitModuleIntro(task) {
 const sheetImg = (img, style) =>
   `<img src="${img.dataUrl}" width="${img.width}"${img.height ? ` height="${img.height}"` : ""}`
   + ` style="display:block; width:${img.width}px;${img.height ? ` height:${img.height}px;` : ""} ${style}" />`
+
+// Имена файлов, приложенных к заданию (архив, таблица, текстовый файл — у КЕГЭ
+// их девять номеров). На бумаге файл не выдать, поэтому лист печатает условие
+// и строку, где файл взять; само задание выполняется в кабинете, где кнопка
+// скачивания стоит прямо под условием.
+function attachedNames(t) {
+  const files = t?.textFile ? (Array.isArray(t.textFile) ? t.textFile : [t.textFile]) : []
+  return [t?.archive?.name, t?.spreadsheet?.name, ...files.map((f) => f?.name)].filter(Boolean)
+}
 
 // Номер задания в КИМ стоит в рамке на левом поле, а не «1.» текстом.
 const numBox = (n) =>
@@ -903,7 +919,11 @@ export async function generateVariantPdf({ title, examType, tasks, mode = "blank
   // Титул + инструкция — первая колонка целиком, ОДНИМ блоком (дальше принудительный
   // переход в колонку 2). Одним — потому что раскладка разделяет блоки зазором, а абзацы
   // инструкции идут подряд, отделяясь красной строкой, как в КИМ.
-  const paras = instructionParas({ examType, total: tasks.length, p1: part1.length, p2: part2.length, numbers: tasks.map((t) => t.number) })
+  const paras = instructionParas({
+    examType, total: tasks.length, p1: part1.length, p2: part2.length,
+    numbers: tasks.map((t) => t.number),
+    withFiles: tasks.filter((t) => attachedNames(t).length).map((t) => t.number),
+  })
   push(
     centered(escapeHtml(examHeading(examType)), "margin-bottom:4px;") +
     centered(escapeHtml(title || "Тренировочный вариант"), "margin-bottom:8px;") +
@@ -951,6 +971,7 @@ export async function generateVariantPdf({ title, examType, tasks, mode = "blank
     const cond = mod && i === 0 ? mod.rest : t.condition_text
     const img = introImg && i === 0 ? null : images[i]
     const float = img && img.width <= FLOAT_MAX && String(cond || "").length >= 110
+    const attached = attachedNames(t)
     push(
       `<div style="display:flex; align-items:flex-start; padding:5px 0 8px;">` +
         `<div style="flex:0 0 ${NUM_W}px;">${numBox(t.number)}</div>` +
@@ -959,6 +980,9 @@ export async function generateVariantPdf({ title, examType, tasks, mode = "blank
           (cond ? `<div style="text-align:justify; white-space:pre-wrap;">${await renderTaskMathPdf(cond, MATH_TIMES)}</div>` : "") +
           (img && !float ? sheetImg(img, "margin:8px auto 0;") : "") +
           (t.condition_tail ? `<div style="text-align:justify; white-space:pre-wrap; margin-top:6px;">${await renderTaskMathPdf(t.condition_tail, MATH_TIMES)}</div>` : "") +
+          (attached.length
+            ? `<div style="margin-top:6px; font-style:italic;">К заданию ${plu(attached.length, "прилагается файл", "прилагаются файлы", "прилагаются файлы")} ${escapeHtml(attached.join(", "))} — ${attached.length > 1 ? "они открываются" : "он открывается"} в кабинете вместе с вариантом.</div>`
+            : "") +
           (isPart2 ? `<div style="height:30px;"></div>` : answerRule) +
         `</div>` +
       `</div>`)
