@@ -324,6 +324,20 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
   // Удаление у ВСЕХ: строка уходит из базы, вторая сторона узнаёт об этом
   // realtime-событием. Своё состояние правим сразу — ждать эха от сервера в
   // собственном окне незачем.
+  // Долгое нажатие по пузырю — то же удаление, но для касания: наведения на
+  // телефоне не бывает, а прятать функцию за жестом, который никто не угадает,
+  // нельзя. Полсекунды — привычный порог мессенджеров.
+  const pressTimer = useRef(null)
+  function startPress(msg) {
+    if (!canDelete(msg)) return
+    clearTimeout(pressTimer.current)
+    pressTimer.current = setTimeout(() => {
+      setDelError("")
+      setConfirmDel({ kind: "msg", id: msg.id, text: msg.text })
+    }, 500)
+  }
+  const endPress = () => clearTimeout(pressTimer.current)
+
   // Своё сообщение удаляет любой, чужое — только репетитор. Это разделение
   // живёт ТОЛЬКО здесь: для базы удаление одной строки и очистка всей
   // переписки неотличимы, поэтому политика пускает обе стороны на любое
@@ -714,6 +728,7 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
                           иначе на телефоне до неё никак не добраться. */}
                       {canDelete(msg) && isMe && (
                         <button
+                          type="button"
                           onClick={() => { setDelError(""); setConfirmDel({ kind: "msg", id: msg.id, text: msg.text }) }}
                           aria-label="Удалить сообщение"
                           className="chat-del order-first flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors"
@@ -721,7 +736,18 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
                           <Icon name="trash" size={13} />
                         </button>
                       )}
-                      <div className={`chat-bubble chat-tail relative max-w-[65%] px-3.5 py-2 rounded-[13px] text-sm break-words ${
+                      <div
+                        onPointerDown={() => startPress(msg)}
+                        onPointerUp={endPress}
+                        onPointerLeave={endPress}
+                        onPointerCancel={endPress}
+                        onContextMenu={(e) => {
+                          if (!canDelete(msg)) return
+                          e.preventDefault()
+                          setDelError("")
+                          setConfirmDel({ kind: "msg", id: msg.id, text: msg.text })
+                        }}
+                        className={`chat-bubble chat-tail relative max-w-[65%] px-3.5 py-2 rounded-[13px] text-sm break-words ${
                         isMe
                           ? "bg-blue-600 text-white chat-tail-out"
                           : "chat-bubble-in shadow-sm chat-tail-in"

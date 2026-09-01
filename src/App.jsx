@@ -476,6 +476,11 @@ function App() {
     let mapped = data.map((s) => ({
       ...s,
       id: s.id,
+      // Карточку заводит привязка ученика, а не репетитор, поэтому в ростер она
+      // попадает только после приёма заявки (supabase/student_accept.sql).
+      // Колонки может ещё не быть — тогда undefined, и карточка считается принятой:
+      // невыполненная миграция не должна прятать всех учеников разом.
+      accepted: s.accepted !== false,
       lessonPrice: s.lesson_price,
       paymentMode: s.payment_mode || "lesson",
       packagePeriod: s.package_period || null,
@@ -489,6 +494,12 @@ function App() {
       boardUrl: s.board_url || "",
       callUrl: s.call_url || "",
     }))
+
+    // Непринятые заявки — не ученики: их не должно быть ни в списке, ни в чате,
+    // ни в счётчике тарифа. Раздел «Ученики» подтягивает их отдельно, чтобы
+    // показать заявкой. У самого ученика фильтра нет — он видит свою карточку
+    // в любом случае, иначе кабинет опустел бы до приёма.
+    if (user.role === "tutor") mapped = mapped.filter((s) => s.accepted)
 
     // Подгружаем аватарки из student_accounts (студент пишет туда, т.к. students RLS может блокировать)
     const phones = mapped.filter((s) => s.phone).map((s) => s.phone)
@@ -557,6 +568,10 @@ function App() {
       remarks: student.remarks || [],
       board_url: student.boardUrl || null,
       call_url: student.callUrl || null,
+      // В ростере лежат только принятые, поэтому сохранение из него всегда
+      // подтверждает приём: именно так карточка, заведённая привязкой,
+      // становится настоящим учеником.
+      accepted: student.accepted !== false,
     }
     const write = (r) => (isNew
       ? supabase.from("students").insert(r).select("id").single()
@@ -567,9 +582,9 @@ function App() {
     // supabase/student_payment_mode.sql выполняется вручную. Повторяем без них,
     // чтобы забытая миграция не ломала сохранение учеников целиком — сам
     // абонемент до неё просто не запомнится.
-    if (error && /payment_mode|package_period|package_start/.test(error.message || "")) {
-      const { payment_mode, package_period, package_start, ...rest } = row
-      void payment_mode; void package_period; void package_start
+    if (error && /payment_mode|package_period|package_start|accepted/.test(error.message || "")) {
+      const { payment_mode, package_period, package_start, accepted, ...rest } = row
+      void payment_mode; void package_period; void package_start; void accepted
       ;({ data, error } = await write(rest))
     }
     if (error) {

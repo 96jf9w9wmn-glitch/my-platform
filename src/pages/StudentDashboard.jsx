@@ -5,6 +5,7 @@ import { signRows, signStorageUrl, permanentStorageUrl } from "../storageUrl"
 import { dropdownPos } from "../dropdownPos"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import Icon from "../components/Icon"
+import AnswerTable from "../components/AnswerTable"
 import MorphIcon from "../components/MorphIcon"
 import NavIcon from "../components/NavIcon"
 import StudentSidebar from "../components/StudentSidebar"
@@ -3386,36 +3387,13 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       {selectedVariant.submission.part1_answers && selectedVariant.answers?.part1 && (
                         <div className="glass p-5">
                           <h3 className="text-sm font-medium mb-3">Разбор части 1</h3>
-                          <div className="flex flex-col gap-1">
-                            {selectedVariant.answers.part1.map((correct, i) => {
-                              const studentAns = selectedVariant.submission.part1_answers[i] || "—"
-                              // Сверяем тем же answersEqual, каким считался балл: сравнение строк
-                              // красило «0,5» при эталоне «0.5» в ошибку, и разбор расходился со счётом.
-                              const isCorrect = answersEqual(studentAns, correct)
-                              return (
-                                <div
-                                  key={i}
-                                  className="flex items-start gap-2 px-3 py-2 rounded-lg text-sm border-b border-gray-100 dark:border-white/10 last:border-0"
-                                >
-                                  <span className="text-gray-400 w-6 flex-shrink-0">{i + 1}</span>
-                                  {/* min-w-0 + break-words: развёрнутый ответ бывает в несколько
-                                      строк и без этого вылезал за карточку. */}
-                                  <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-                                    <span className={`break-words ${isCorrect ? "text-gray-700 font-medium" : "text-gray-400 line-through decoration-red-400/70"}`}>
-                                      {studentAns}
-                                    </span>
-                                    {!isCorrect && (
-                                      <span className="text-gray-400 text-xs break-words">
-                                        правильно: <span className="text-gray-800 font-semibold">{correct}</span>
-                                      </span>
-                                    )}
-                                  </div>
-                                  <Icon name={isCorrect ? "check" : "x"} size={12}
-                                    className={`flex-shrink-0 mt-1 ${isCorrect ? "text-green-500" : "text-red-400"}`} />
-                                </div>
-                              )
-                            })}
-                          </div>
+                          {/* Та же таблица, что видит репетитор в «Результатах»:
+                              один разбор — один вид. */}
+                          <AnswerTable
+                            nums={selectedVariant.answers.part1.map((_, i) => i + 1)}
+                            correct={selectedVariant.answers.part1}
+                            student={selectedVariant.submission.part1_answers}
+                          />
                         </div>
                       )}
                       {part2TaskNums.length > 0 && (
@@ -3459,35 +3437,13 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       {selectedVariant.submission.part1_answers && selectedVariant.answers?.part1 && (
                         <div className="glass p-5">
                           <h3 className="text-sm font-medium mb-3">Разбор части 1</h3>
-                          <div className="flex flex-col gap-1">
-                            {selectedVariant.answers.part1.map((correct, i) => {
-                              const studentAns = selectedVariant.submission.part1_answers[i] || "—"
-                              const isCorrect = studentAns.trim() === correct.trim()
-                              return (
-                                <div
-                                  key={i}
-                                  className={`flex items-start gap-2 px-3 py-2 rounded-lg text-sm ${
-                                    isCorrect ? "bg-green-50" : "bg-red-50"
-                                  }`}
-                                >
-                                  <span className="text-gray-500 w-6 flex-shrink-0">{i + 1}</span>
-                                  {/* min-w-0 + break-words: развёрнутый ответ бывает в несколько
-                                      строк и без этого вылезал за карточку. */}
-                                  <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-                                    <span className={`font-medium break-words ${isCorrect ? "text-green-700" : "text-red-700"}`}>
-                                      {studentAns}
-                                    </span>
-                                    {!isCorrect && (
-                                      <span className="text-gray-400 text-xs break-words">
-                                        правильно: <span className="text-gray-700 font-medium">{correct}</span>
-                                      </span>
-                                    )}
-                                  </div>
-                                  {isCorrect && <Icon name="check" size={12} className="text-green-500 flex-shrink-0 mt-1" />}
-                                </div>
-                              )
-                            })}
-                          </div>
+                          {/* Та же таблица, что видит репетитор в «Результатах»:
+                              один разбор — один вид. */}
+                          <AnswerTable
+                            nums={selectedVariant.answers.part1.map((_, i) => i + 1)}
+                            correct={selectedVariant.answers.part1}
+                            student={selectedVariant.submission.part1_answers}
+                          />
                         </div>
                       )}
 

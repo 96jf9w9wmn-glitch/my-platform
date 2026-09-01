@@ -152,6 +152,9 @@ function Students({ students, loaded = true, setStudents, tutorId, tutorCode = "
   const [search, setSearch] = useState("")
   const [pending, setPending] = useState([])
   const [linkedAccounts, setLinkedAccounts] = useState([])
+  // Карточки, заведённые привязкой, но ещё не принятые. В ростер (проп students)
+  // они не попадают — там только принятые, — поэтому читаем их здесь.
+  const [pendingCards, setPendingCards] = useState([])
   const [acceptingRequest, setAcceptingRequest] = useState(null)
   // Подтверждения — своей модалкой вместо системного window.confirm: он выглядит
   // как ошибка браузера и не говорит, о ком речь.
@@ -183,6 +186,16 @@ function Students({ students, loaded = true, setStudents, tutorId, tutorCode = "
     // пускает репетитора к аккаунтам с tutor_id = auth.uid().
     supabase.from("student_accounts").select("id, name, phone").eq("tutor_id", tutorId)
       .then(({ data }) => { if (!cancelled) setLinkedAccounts(data || []) })
+    // Непринятые карточки. Это самый надёжный источник заявки: строка students
+    // создаётся той же функцией, что и привязка, тогда как pending_students
+    // пишется best-effort и может не появиться вовсе.
+    supabase.from("students").select("id, name, phone, student_account_id, subject")
+      .eq("tutor_id", tutorId).eq("accepted", false)
+      .then(({ data, error }) => {
+        // Колонки может ещё не быть (миграция student_accept.sql) — тогда
+        // заявки собираются по-старому, а не рушится весь раздел.
+        if (!cancelled && !error) setPendingCards(data || [])
+      })
     return () => { cancelled = true }
   }, [tutorId])
 
@@ -190,20 +203,38 @@ function Students({ students, loaded = true, setStudents, tutorId, tutorCode = "
   // карточки нет вовсе. Второе — страховка: без неё такой ученик не виден никому,
   // а завести его руками репетитор больше не может.
   const requests = useMemo(() => {
+    // cardId — та самая непринятая карточка. При приёме её ДОЗАПОЛНЯЕМ, а не
+    // заводим вторую: две строки на одного ученика RLS сшивает по телефону, и
+    // занятия с долгами разъехались бы по обеим.
+    const cardByKey = new Map()
+    pendingCards.forEach((c) => { if (phoneKey(c.phone)) cardByKey.set(phoneKey(c.phone), c) })
+
     const fromPending = pending.map((p) => ({
       key: `p:${p.id}`, pendingId: p.id, accountId: p.student_account_id || null,
+      cardId: cardByKey.get(phoneKey(p.phone))?.id || null,
       name: p.name, phone: p.phone, orphan: false,
     }))
     const claimed = new Set(pending.map((p) => phoneKey(p.phone)).filter(Boolean))
     const carded = new Set(students.map((s) => phoneKey(s.phone)).filter(Boolean))
+
+    // Карточка есть, а заявки нет — вставка pending_students сорвалась.
+    const fromCards = pendingCards
+      .filter((c) => phoneKey(c.phone) && !claimed.has(phoneKey(c.phone)))
+      .map((c) => ({
+        key: `c:${c.id}`, pendingId: null, accountId: c.student_account_id || null,
+        cardId: c.id, name: c.name, phone: c.phone, orphan: false,
+      }))
+    const withCard = new Set(pendingCards.map((c) => phoneKey(c.phone)).filter(Boolean))
+
+    // Ни карточки, ни заявки — только привязанный аккаунт.
     const fromAccounts = linkedAccounts
       .filter((a) => {
         const key = phoneKey(a.phone)
-        return key && !claimed.has(key) && !carded.has(key)
+        return key && !claimed.has(key) && !carded.has(key) && !withCard.has(key)
       })
-      .map((a) => ({ key: `a:${a.id}`, pendingId: null, accountId: a.id, name: a.name, phone: a.phone, orphan: true }))
-    return [...fromPending, ...fromAccounts]
-  }, [pending, linkedAccounts, students])
+      .map((a) => ({ key: `a:${a.id}`, pendingId: null, accountId: a.id, cardId: null, name: a.name, phone: a.phone, orphan: true }))
+    return [...fromPending, ...fromCards, ...fromAccounts]
+  }, [pending, pendingCards, linkedAccounts, students])
 
   async function handleReject(req) {
     setConfirm(null)
@@ -216,6 +247,13 @@ function Students({ students, loaded = true, setStudents, tutorId, tutorCode = "
       p_pending: req.pendingId || null,
     })
     if (error) { setNotice("Не удалось отклонить заявку: " + error.message); return }
+    // Непринятую карточку убираем совсем: занятий по ней не было (её завела
+    // привязка), а оставшись, она вечно висела бы заявкой. Принятые карточки
+    // функция не трогает — их удаляет человек.
+    if (req.cardId) {
+      await supabase.from("students").delete().eq("id", req.cardId).eq("accepted", false)
+      setPendingCards((prev) => prev.filter((c) => c.id !== req.cardId))
+    }
     if (req.pendingId) setPending((prev) => prev.filter((p) => p.id !== req.pendingId))
     if (req.accountId) {
       setPending((prev) => prev.filter((p) => p.student_account_id !== req.accountId))
@@ -232,7 +270,13 @@ function Students({ students, loaded = true, setStudents, tutorId, tutorCode = "
     // Сверяем по цифрам, а не по строке: если карточка старая и номер в ней записан
     // в другом формате, слияние заодно перепишет его на номер из аккаунта — той самой
     // строкой, по которой ученика пускает RLS.
-    const existing = students.find((s) => phoneKey(s.phone) && phoneKey(s.phone) === phoneKey(newStudent.phone))
+    // Непринятая карточка в ростере отсутствует (там только принятые), поэтому
+    // ищем её по id из заявки. Только если и его нет — по телефону среди принятых
+    // (случай, когда карточка уже была принята раньше и заявка пришла повторно).
+    const pendingCard = request?.cardId ? pendingCards.find((c) => c.id === request.cardId) : null
+    const existing = pendingCard
+      ? { ...pendingCard, id: pendingCard.id }
+      : students.find((s) => phoneKey(s.phone) && phoneKey(s.phone) === phoneKey(newStudent.phone))
     // setStudents is handleSetStudents from App.jsx — it diffs the new array against
     // the old one and upserts any added/changed student itself, so no separate insert here.
     if (existing) {
@@ -249,9 +293,18 @@ function Students({ students, loaded = true, setStudents, tutorId, tutorCode = "
         parent_code: existing.parent_code || newStudent.parent_code,
       }
       merged.lessonDates = merged.lessons.map((l) => l.date)
-      setStudents((prev) => prev.map((s) => (s.id === existing.id ? merged : s)))
+      // Приём — это и есть подтверждение: карточка становится принятой и с этого
+      // момента попадает в ростер, чат и счётчик тарифа.
+      merged.accepted = true
+      // Карточки из заявки в ростере ещё нет — её надо ДОБАВИТЬ. handleSetStudents
+      // увидит новый элемент, а числовой id уведёт сохранение в upsert по этому id,
+      // то есть строка обновится, а не задвоится.
+      setStudents((prev) => prev.some((s) => s.id === existing.id)
+        ? prev.map((s) => (s.id === existing.id ? merged : s))
+        : [...prev, merged])
+      setPendingCards((prev) => prev.filter((c) => c.id !== existing.id))
     } else {
-      setStudents((prev) => [...prev, newStudent])
+      setStudents((prev) => [...prev, { ...newStudent, accepted: true }])
     }
     if (request?.pendingId) {
       await supabase.from("pending_students").delete().eq("id", request.pendingId)

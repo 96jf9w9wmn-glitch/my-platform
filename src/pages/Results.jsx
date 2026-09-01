@@ -3,6 +3,7 @@ import { supabase } from "../supabase"
 import Icon from "../components/Icon"
 import WeakTypes from "../components/WeakTypes"
 import Collapse from "../components/Collapse"
+import AnswerTable from "../components/AnswerTable"
 import SegmentSwitch from "../components/SegmentSwitch"
 import useCountUp from "../components/useCountUp"
 import useTypeLabels from "../components/typeLabels"
@@ -24,8 +25,6 @@ import { scaleOf, part2MaxOf, variantMaxPrimary, examResult, secondaryLabel, tes
 // берём из банка (в информатике они идут не подряд), баллы части 2 — из шкалы.
 // Раньше здесь лежали две жёстких разметки, ОГЭ и «ЕГЭ», и информатика рисовалась
 // по чужой: показывались несуществующие задания 13–19 и деление на геометрию.
-const gridCols = (n) => (n <= 5 ? "grid-cols-5" : n <= 12 ? "grid-cols-6" : "grid-cols-7")
-
 function buildLayout(type) {
   const p1 = part1NumbersOf(type)
   const geomNums = scaleOf(type)?.geometryNumbers || []
@@ -33,10 +32,10 @@ function buildLayout(type) {
   // Деление «алгебра / геометрия» есть только у ОГЭ по математике.
   const part1 = p1Geom.length
     ? [
-        { label: `Алгебра — задания ${p1[0]}–${p1Geom[0] - 1}`, nums: p1.filter((n) => !geomNums.includes(n)), tone: "blue", cols: "grid-cols-7" },
-        { label: `Геометрия — задания ${p1Geom[0]}–${p1Geom[p1Geom.length - 1]}`, nums: p1Geom, tone: "purple", cols: "grid-cols-5" },
+        { label: `Алгебра — задания ${p1[0]}–${p1Geom[0] - 1}`, nums: p1.filter((n) => !geomNums.includes(n)), tone: "blue" },
+        { label: `Геометрия — задания ${p1Geom[0]}–${p1Geom[p1Geom.length - 1]}`, nums: p1Geom, tone: "purple" },
       ]
-    : [{ label: `Часть 1 — ${p1.length} ${plural(p1.length, "задание", "задания", "заданий")}`, nums: p1, tone: "blue", cols: gridCols(p1.length) }]
+    : [{ label: `Часть 1 — ${p1.length} ${plural(p1.length, "задание", "задания", "заданий")}`, nums: p1, tone: "blue" }]
 
   const part2Max = part2MaxOf(type)
   // Номера части 2 берём из состава ВАРИАНТА, а баллы — из шкалы экзамена.
@@ -314,31 +313,6 @@ function StatTile({ icon, label, value, sub, tone = "blue", suffix, active, onCl
 // Разбор одной работы
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Разбор не заливается цветом. Ряд из 27 залитых клеток читается как сплошное
-// красное полотно: смотреть больно, а нужную клетку в нём всё равно не найти —
-// выделено ведь всё. Цвет здесь сжат до точки-маркера и подчёркивания, а смысл
-// несёт вес шрифта: свой неверный ответ бледный и зачёркнут, верный — плотный.
-function AnswerCell({ n, correct, student }) {
-  const has = student !== undefined && student !== null && String(student).trim() !== ""
-  // Сверка — тем же answersEqual, каким считался балл части 1 (Variants.jsx).
-  // Сравнение строк красило «0,5» при эталоне «0.5» в красный, и клетки
-  // расходились с числом рядом.
-  const isRight = has && correct && answersEqual(student, correct)
-  const isWrong = has && correct && !isRight
-  return (
-    <div className="relative text-center rounded-xl py-1.5 px-1 ring-1 ring-gray-200/70 dark:ring-white/10">
-      {(isRight || isWrong) && (
-        <span className={`absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full ${isRight ? "bg-green-500/80" : "bg-red-500/80"}`} />
-      )}
-      <div className="text-[10px] text-gray-400 leading-tight">{n}</div>
-      <div className={`text-xs truncate ${isWrong ? "text-gray-400 font-normal line-through decoration-red-400/70" : "text-gray-700 font-medium"}`}>
-        {has ? student : "—"}
-      </div>
-      {isWrong && <div className="text-xs font-semibold text-gray-800 truncate">{correct}</div>}
-    </div>
-  )
-}
-
 function VariantRow({ variant: v }) {
   const [expanded, setExpanded] = useState(false)
   const isTest = v.res.kind === "test"
@@ -379,10 +353,8 @@ function VariantRow({ variant: v }) {
           {L.part1.map((g) => (
             <div key={g.label}>
               <Chip tone={g.tone}>{g.label}</Chip>
-              <div className={`grid ${g.cols} gap-1 mt-2`}>
-                {g.nums.map((n) => (
-                  <AnswerCell key={n} n={n} correct={correctAnswers[n - 1]} student={studentAnswers[n - 1]} />
-                ))}
+              <div className="mt-2">
+                <AnswerTable nums={g.nums} correct={correctAnswers} student={studentAnswers} />
               </div>
             </div>
           ))}
