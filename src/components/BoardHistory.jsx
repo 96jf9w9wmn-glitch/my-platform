@@ -136,9 +136,12 @@ export function BoardSnapshotView({ scene, date, studentName, onClose, onOpenBoa
   )
 }
 
-// onOpenBoard — открыть ЖИВУЮ доску ученика. Снимок за сегодня и есть живая
-// доска, поэтому его карточка ведёт прямо на неё, а не в просмотр «только
-// чтение»: разбор продолжают карандашом, а не разглядыванием картинки.
+// onOpenBoard — открыть ЖИВУЮ доску ученика. ПОСЛЕДНИЙ снимок и есть живая
+// доска: холст у ученика один и между занятиями не стирается, поэтому верхняя
+// карточка ведёт прямо на него, а не в просмотр «только чтение» — разбор
+// продолжают карандашом, а не разглядыванием картинки. Привязывать это к
+// «сегодня» нельзя: занятие было вчера, карточку открывают сегодня, и человек
+// ждёт ту же доску, а не картинку с неё.
 function BoardHistory({ studentId, studentName, account = null, token = null, onOpenBoard = null }) {
   const [rows, setRows] = useState([])
   const [open, setOpen] = useState(null)     // { date, scene }
@@ -197,6 +200,10 @@ function BoardHistory({ studentId, studentName, account = null, token = null, on
 
   if (!rows.length) return null
 
+  // Список приходит от новых к старым (и таблицей, и RPC), поэтому живая доска —
+  // это первая карточка.
+  const liveDate = rows[0]?.lesson_date || null
+
   return (
     <div className="glass p-4">
       <h2 className="text-sm font-medium mb-3">Доски занятий</h2>
@@ -210,8 +217,8 @@ function BoardHistory({ studentId, studentName, account = null, token = null, on
             // button), поэтому карточка и крестик — соседи в общей обёртке.
             <div key={r.lesson_date} className="relative snap-start w-[46vw] max-w-[210px] sm:w-[210px]">
               <button
-                onClick={() => (onOpenBoard && r.lesson_date === todayIso() ? onOpenBoard() : openDate(r.lesson_date))}
-                title={onOpenBoard && r.lesson_date === todayIso() ? "Открыть доску" : "Посмотреть снимок"}
+                onClick={() => (onOpenBoard && r.lesson_date === liveDate ? onOpenBoard() : openDate(r.lesson_date))}
+                title={onOpenBoard && r.lesson_date === liveDate ? "Открыть доску" : "Посмотреть снимок"}
                 className="press-fill glass-sm rounded-2xl overflow-hidden text-left w-full block">
                 <div className="aspect-[16/10] bg-white dark:bg-white/5 flex items-center justify-center overflow-hidden">
                   {r.preview
@@ -253,8 +260,8 @@ function BoardHistory({ studentId, studentName, account = null, token = null, on
         open={!!askDelete}
         title="Удалить доску?"
         message={askDelete
-          ? (askDelete === todayIso()
-            ? "Снимок за сегодня исчезнет из истории. Сама доска останется — то, что на ней нарисовано, никуда не денется."
+          ? (askDelete === liveDate
+            ? "Снимок исчезнет из истории. Сама доска останется — то, что на ней нарисовано, никуда не денется."
             : `Доска за ${humanDate(askDelete)} исчезнет у вас и у ученика. Восстановить её будет нельзя.`)
           : ""}
         confirmLabel="Удалить"
