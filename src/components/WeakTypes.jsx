@@ -50,10 +50,10 @@ function sourceLabel(set) {
   return names.slice(0, -1).join(", ") + " и " + names[names.length - 1]
 }
 
-// Одно и то же объяснение источника нужно и списку, и пустому разделу: вопрос
-// «работу я давал файлом — откуда строки?» возникает в обоих случаях.
-const SOURCE_NOTE = "Считаем по первым ответам в вариантах и домашних работах, собранных из банка: "
-  + "работа, прикреплённая файлом, сюда не попадает — что в файле, платформа не знает."
+// Откуда цифры — первый вопрос репетитора к разделу: он выдал работу файлом,
+// а строки появились. Ответ нужен, но одной строкой: работа, прикреплённая
+// файлом, сюда не попадает — что в файле, платформа не знает.
+const SOURCE_NOTE = "По первым ответам в вариантах и работах из банка"
 
 const fmtDay = (iso) =>
   iso ? new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "long" }) : ""
@@ -65,9 +65,6 @@ const rowKey = (r) => `${r.number}-${r.gen_key || "no-key"}`
 
 function WeakTypes({ studentId, studentName }) {
   const [rows, setRows] = useState([])
-  // Были ли вообще данные: пустой раздел после отбора значит «промахов нет»,
-  // а это другая новость, чем «ученик ничего не решал».
-  const [hadData, setHadData] = useState(false)
   // Ошибки, по которым ещё рано судить: сколько их и откуда они пришли.
   const [thin, setThin] = useState({ count: 0, sources: new Set(), last: null })
   const [drilling, setDrilling] = useState(null)
@@ -108,7 +105,6 @@ function WeakTypes({ studentId, studentName }) {
           for (const s of r.sources || []) sources.add(s)
           if (r.last && (!last || r.last > last)) last = r.last
         }
-        setHadData(norm.length > 0)
         setThin({ count: few.length, sources, last })
         setRows(sorted.slice(0, 10))
       })
@@ -162,31 +158,15 @@ function WeakTypes({ studentId, studentName }) {
     }
   }
 
-  // Откуда взялись цифры — одной фразой. Именно этого раздел и не говорил:
-  // репетитор выдал работу файлом, а список заполнился, и связать одно с другим
-  // было нечем.
-  const thinFrom = [
-    sourceLabel(thin.sources) && "источник — " + sourceLabel(thin.sources),
-    fmtDay(thin.last) && "последний ответ " + fmtDay(thin.last),
-  ].filter(Boolean).join(", ")
+  // Ошибки, не дотянувшие до порога: строкой под списком. Источник у них не
+  // называем — у каждой строки списка он и так подписан.
   const thinCount = `${thin.count} ${plural(thin.count, "задании", "заданиях", "заданиях")}`
-  // Под списком фраза короче: источник там уже подписан у каждой строки.
   const thinUnder = `Ошибки есть ещё в ${thinCount}, но там всего один-два ответа — для вывода этого мало.`
-  const thinAlone = `Судить пока не по чему: ошибки есть в ${thinCount}, но у каждого один-два ответа. `
-    + `Задание попадает в список с ${MIN_ATTEMPTS}-го ответа${thinFrom ? ` (${thinFrom})` : ""}.`
 
-  if (!rows.length) {
-    if (!hadData) return null
-    return (
-      <div className="glass p-4">
-        <h2 className="text-sm font-medium">Где ученик ошибается</h2>
-        <p className="text-xs text-gray-400 mt-1">
-          {thin.count ? thinAlone : "Промахов пока нет: решённые задания идут без ошибок."}
-        </p>
-        <p className="text-[11px] text-gray-400 mt-1.5">{SOURCE_NOTE}</p>
-      </div>
-    )
-  }
+  // Раздела нет, пока сказать нечего. Пустой блок объяснял двумя строками, что
+  // выводов не будет, — то есть занимал место ровно тем, что он бесполезен.
+  // Появятся ответы — появится и раздел, вместе со списком.
+  if (!rows.length) return null
 
   return (
     <div className="glass p-4">
@@ -194,8 +174,7 @@ function WeakTypes({ studentId, studentName }) {
       {/* Раздел раньше назывался «Слабые типажи» и не объяснял ни откуда цифры,
           ни что делает кнопка. Обе строки — ответ на эти два вопроса. */}
       <p className="text-xs text-gray-400 mt-0.5 mb-3">
-        {SOURCE_NOTE} Задание появляется в списке с {MIN_ATTEMPTS}-го ответа. Кнопка собирает
-        PDF — {DRILL_SIZE} таких же заданий с новыми числами и ответами для проверки.
+        {SOURCE_NOTE}, с {MIN_ATTEMPTS}-го ответа по заданию
       </p>
       <div className="flex flex-col gap-2">
         {rows.map((r) => {
