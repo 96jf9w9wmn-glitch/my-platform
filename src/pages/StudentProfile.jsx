@@ -271,9 +271,12 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
           </div>
         </div>
 
-        <div className="mt-3.5 pt-3.5 border-t border-gray-100 dark:border-white/10 flex flex-wrap items-end gap-x-6 gap-y-3">
-          <div>
-            <div className="text-[11px] text-gray-400 mb-0.5">Телефон</div>
+        {/* Сведения — столбиком по левому краю, как в прежней карточке: подпись
+            в колонку фиксированной ширины, значение рядом. Строкой в подбор
+            телефон, мессенджер и код читались как одна длинная лента. */}
+        <div className="mt-3.5 pt-3.5 border-t border-gray-100 dark:border-white/10 flex flex-col items-start gap-2.5">
+          <div className="flex items-start gap-2">
+            <span className="text-gray-400 text-xs w-24 flex-shrink-0 pt-0.5">Телефон</span>
             <a href={`tel:${student.phone}`} className="text-sm text-blue-600 hover:opacity-70 transition-opacity">{formatPhone(student.phone)}</a>
           </div>
 
@@ -281,23 +284,23 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
             const href = contactHref(c.messenger, c.url)
             const label = contactLabel(c.messenger, c.url)
             return (
-              <div key={i} className="min-w-0">
-                <div className="text-[11px] text-gray-400 mb-0.5">{MESSENGER_LABELS[c.messenger] || c.messenger}</div>
+              <div key={i} className="flex items-start gap-2 max-w-full">
+                <span className="text-gray-400 text-xs w-24 flex-shrink-0 pt-0.5">{MESSENGER_LABELS[c.messenger] || c.messenger}</span>
                 {href ? (
-                  <a href={href} target="_blank" rel="noreferrer" className="block max-w-[12rem] truncate text-sm text-blue-600 hover:opacity-70 transition-opacity">{label}</a>
+                  <a href={href} target="_blank" rel="noreferrer" className="truncate text-sm text-blue-600 hover:opacity-70 transition-opacity">{label}</a>
                 ) : (
-                  <span className="block max-w-[12rem] truncate text-sm text-gray-600">{label}</span>
+                  <span className="truncate text-sm text-gray-600">{label}</span>
                 )}
               </div>
             )
           })}
 
-          {/* Пояснение про вход родителя стало подписью поля: абзацем в три
-              строки оно было самым заметным текстом карточки. */}
-          <div>
-            <div className="text-[11px] text-gray-400 mb-0.5">Код родителя · вход без пароля</div>
+          {/* Пояснение про вход родителя — в той же строке, что и код: абзацем
+              под ним оно было самым заметным текстом карточки. */}
+          <div className="flex items-start gap-2">
+            <span className="text-gray-400 text-xs w-24 flex-shrink-0 pt-0.5">Код родителя</span>
             {student.parent_code ? (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center flex-wrap gap-x-2 gap-y-1">
                 <code className="text-xs font-mono ring-1 ring-gray-200 dark:ring-white/15 px-2 py-0.5 rounded tracking-wider text-gray-700">
                   {student.parent_code}
                 </code>
@@ -308,6 +311,7 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
                   <MorphIcon from="clipboard" size={13} active={copiedCode} />
                   {copiedCode ? "Скопировано!" : "Копировать"}
                 </button>
+                <span className="text-[11px] text-gray-400">Вход для родителя на сайте — без пароля и регистрации.</span>
               </div>
             ) : (
               <button
@@ -319,10 +323,9 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
             )}
           </div>
 
-          {/* Действия идут сразу за контактами, по левому краю: это часть того
-              же блока сведений об ученике, а не панель у правого края. Доска
-              одна: та, что выбрана в карточке, наша или своя ссылка. */}
-          <div className="flex items-center gap-2">
+          {/* Действия — последней строкой того же столбика, по левому краю.
+              Доска одна: та, что выбрана в карточке, наша или своя ссылка. */}
+          <div className="flex items-center flex-wrap gap-2 pt-0.5">
             {student.boardUrl ? (
               <a href={student.boardUrl} target="_blank" rel="noreferrer"
                 className="press-tap flex items-center gap-1.5 text-xs bg-blue-50 text-blue-600 dark:text-blue-400 border border-blue-100 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">
