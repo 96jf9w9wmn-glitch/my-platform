@@ -227,6 +227,7 @@ function Schedule({ students, setStudents, onOpenBoard }) {
   }
 
   const weekDates = getWeekDates(baseDate)
+  const weekHourRows = weekHours(weekDates)
   const year = baseDate.getFullYear()
   const month = baseDate.getMonth()
   const monthDays = getDaysInMonth(year, month)
@@ -686,34 +687,36 @@ function Schedule({ students, setStudents, onOpenBoard }) {
                 </div>
               )
             })}
-            {HOURS.map((hour) => (
-              <Fragment key={hour}>
-                <div className="border-b border-gray-100 p-2 text-xs text-gray-400 text-right pr-3 pt-3">{hour}</div>
+            {weekHourRows.map((hourNum) => (
+              <Fragment key={hourNum}>
+                <div className="border-b border-gray-100 p-2 text-xs text-gray-400 text-right pr-3 pt-3">{hourLabel(hourNum)}</div>
                 {weekDates.map((date) => {
                   const dateStr = formatDate(date)
-                  const lessons = getLessonsForSlot(dateStr, hour)
+                  const lessons = getLessonsForSlot(dateStr, hourNum)
                   const isToday = dateStr === todayStr
                   return (
-                    <div key={dateStr + hour} className={`border-b border-l border-gray-100 min-h-[52px] relative ${isToday ? "bg-blue-50/50" : ""}`}>
-                      {lessons.map((s, idx) => {
-                        const lesson = (s.lessons || []).find((l) => l.date === dateStr && l.time === hour) || { duration: s.lessonDuration || 60 }
-                        const duration = lesson.duration || 60
+                    <div key={dateStr + hourNum} className={`border-b border-l border-gray-100 min-h-[52px] relative ${isToday ? "bg-blue-50/50" : ""}`}>
+                      {lessons.map(({ student: s, lesson }, idx) => {
+                        const duration = lesson.duration || s.lessonDuration || 60
                         const isExtra = !!lesson.extra
                         const off = lesson.status === LESSON_EXCUSED
-                        const past = isLessonPast({ date: dateStr, time: hour, duration })
+                        const past = isLessonPast({ date: dateStr, time: lesson.time, duration })
                         const heightPx = (duration / 60) * 52
+                        // Занятие внутри часа стоит на своей минуте: без сдвига
+                        // 17:30 выглядело бы как 17:00.
+                        const topPx = (minuteOf(lesson.time) / 60) * 52
                         // Занятия в одном часе делят ячейку по ширине: после переноса
                         // на занятый слот они иначе легли бы друг на друга, и
                         // репетитор видел бы только одно из двух.
                         return (
-                          <div key={s.id} style={{
-                            height: heightPx + "px", position: "absolute", top: 0, zIndex: 1,
+                          <div key={`${s.id}-${lesson.time}`} style={{
+                            height: heightPx + "px", position: "absolute", top: topPx + "px", zIndex: 1,
                             left: `${(idx * 100) / lessons.length}%`, width: `${100 / lessons.length}%`,
                           }}
                             className={`week-lesson ${isExtra ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"} ${off ? "opacity-60" : ""} text-xs rounded-md px-2 py-1 flex justify-between items-start group overflow-hidden`}>
                             <div className="min-w-0 flex-1">
                               <div className={`font-medium truncate ${off ? "line-through" : ""}`} title={off ? "Занятие не идёт в счёт" : lesson.status ? "Ученик не пришёл, занятие идёт в счёт" : undefined}>{s.name.split(" ")[0]}{isExtra && <span className="ml-1 opacity-60">доп</span>}{lesson.moveRequest && <span className="ml-1 text-amber-600">•</span>}{lesson.status && !off && <span className="ml-1 text-amber-600">✕</span>}</div>
-                              <div className={`${isExtra ? "text-green-500" : "text-blue-500"} opacity-70`}>{duration} мин</div>
+                              <div className={`${isExtra ? "text-green-500" : "text-blue-500"} opacity-70`}>{minuteOf(lesson.time) ? `${lesson.time} · ` : ""}{duration} мин</div>
                               {(s.boardUrl || s.callUrl || onOpenBoard) && (
                                 <div className="flex gap-0.5 mt-0.5">
                                   {s.boardUrl ? (
@@ -728,9 +731,9 @@ function Schedule({ students, setStudents, onOpenBoard }) {
                               )}
                             </div>
                             <div className="flex flex-col items-center gap-0.5 flex-shrink-0 ml-1">
-                            <button onClick={() => openMove({ studentId: s.id, studentName: s.name, date: dateStr, time: hour, duration, suggested: lesson.moveRequest ? { date: lesson.moveRequest.date, time: lesson.moveRequest.time } : null })} aria-label="Перенести занятие" title="Перенести" className={`${isExtra ? "text-green-400" : "text-blue-400"} hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-transform active:scale-90`}><Icon name="repeat" size={12} /></button>
-                            {past && <button onClick={() => setStatusFor({ studentId: s.id, studentName: s.name, lesson: { date: dateStr, time: hour, duration, status: lesson.status } })} aria-label="Занятие не состоялось" title="Не состоялось" className={`${lesson.status ? "text-amber-500" : isExtra ? "text-green-400" : "text-blue-400"} hover:text-amber-600 opacity-0 group-hover:opacity-100 transition-transform active:scale-90`}><Icon name="user-x" size={12} /></button>}
-                            <button onClick={() => setConfirmDel({ studentId: s.id, date: dateStr, time: hour, name: s.name })} aria-label="Удалить занятие" className={`${isExtra ? "text-green-400" : "text-blue-400"} hover:text-red-500 opacity-0 group-hover:opacity-100 transition-transform active:scale-90`}><Icon name="x" size={12} /></button>
+                            <button onClick={() => openMove({ studentId: s.id, studentName: s.name, date: dateStr, time: lesson.time, duration, suggested: lesson.moveRequest ? { date: lesson.moveRequest.date, time: lesson.moveRequest.time } : null })} aria-label="Перенести занятие" title="Перенести" className={`${isExtra ? "text-green-400" : "text-blue-400"} hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-transform active:scale-90`}><Icon name="repeat" size={12} /></button>
+                            {past && <button onClick={() => setStatusFor({ studentId: s.id, studentName: s.name, lesson: { date: dateStr, time: lesson.time, duration, status: lesson.status } })} aria-label="Занятие не состоялось" title="Не состоялось" className={`${lesson.status ? "text-amber-500" : isExtra ? "text-green-400" : "text-blue-400"} hover:text-amber-600 opacity-0 group-hover:opacity-100 transition-transform active:scale-90`}><Icon name="user-x" size={12} /></button>}
+                            <button onClick={() => setConfirmDel({ studentId: s.id, date: dateStr, time: lesson.time, name: s.name })} aria-label="Удалить занятие" className={`${isExtra ? "text-green-400" : "text-blue-400"} hover:text-red-500 opacity-0 group-hover:opacity-100 transition-transform active:scale-90`}><Icon name="x" size={12} /></button>
                             </div>
                           </div>
                         )
