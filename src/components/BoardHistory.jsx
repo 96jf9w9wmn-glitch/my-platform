@@ -216,7 +216,7 @@ function BoardHistory({ studentId, studentName, account = null, token = null, on
                 <div className="aspect-[16/10] bg-white dark:bg-white/5 flex items-center justify-center overflow-hidden">
                   {r.preview
                     ? <img src={r.preview} alt="" className="w-full h-full object-cover" />
-                    : <Icon name="clipboard" size={20} className="text-gray-300" />}
+                    : <Icon name="clipboard" size={20} className="text-gray-400" />}
                 </div>
                 {/* Справа только ожидание: число штрихов сцены пользователю
                     ничего не говорит, а читалось как сумма или оценка. */}

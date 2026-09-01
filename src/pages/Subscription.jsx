@@ -299,7 +299,7 @@ export default function Subscription({ studentsCount = 0, tutorId }) {
                     ) : p.features[row.key] ? (
                       <Icon name="check" size={15} className="inline text-[#007AFF]" />
                     ) : (
-                      <span className="text-gray-300 dark:text-white/20">—</span>
+                      <span className="text-gray-400 dark:text-white/20">—</span>
                     )}
                   </td>
                 ))}

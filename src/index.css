@@ -54,6 +54,17 @@
   /* Чернила фоновых формул «мелом» (drfrost.org). В светлой теме белого мела
      не видно на светлом фоне — берём тёмно-синие чернила той же плотности. */
   --formula-ink: rgba(20, 40, 90, 0.13);
+
+  /* Вторичный текст светлой темы (text-gray-400/500 — почти все подписи в
+     приложении). Дефолтные #99a1af / #6a7282 задуманы для белого фона, а у нас
+     под ними голубоватый градиент: подписи, «Отклонить», «Нет урока» читались
+     как выключённые. Оттенки уведены в сине-серый (в тон .page-title) и
+     затемнены до контраста 4.6–5.4:1 на стекле. Ниже поднимать нельзя — та же
+     причина, по которой подняты оттенки тёмной темы. Иерархия сохранена:
+     400 светлее 500. Заливок этими токенами в разметке нет (запрет серого),
+     кольца и рамки берут их с альфой 0.12…0.25 — там сдвиг незаметен. */
+  --color-gray-400: #5d6987;
+  --color-gray-500: #4f5a76;
 }
 
 .dark {
@@ -954,8 +965,12 @@ button.w-full:not([disabled]):not(.no-press):active,
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #9ca3af;
+  /* Тот же сине-серый, что у подписей: 11px в разрядку и капителью и так на
+     грани читаемости, светло-серый добивал её окончательно. */
+  color: #5d6987;
 }
+
+.dark .section-label { color: #b2b2ba; }
 
 /* Stat card hover lift */
 .stat-card {
@@ -1533,21 +1548,8 @@ button.w-full:not([disabled]):not(.no-press):active,
               opacity 0.18s ease;
 }
 
-/* Сама переписка сменяется наплывом с той стороны, куда уехал выбор. */
-@keyframes chat-switch-down {
-  from { opacity: 0; transform: translateY(10px); }
-  to   { opacity: 1; transform: none; }
-}
-@keyframes chat-switch-up {
-  from { opacity: 0; transform: translateY(-10px); }
-  to   { opacity: 1; transform: none; }
-}
-.chat-switch { animation: chat-switch-down 0.26s cubic-bezier(0.22, 0.61, 0.36, 1) both; }
-.chat-switch.is-up { animation-name: chat-switch-up; }
-
 @media (prefers-reduced-motion: reduce) {
   .chat-pick.is-moving { transition-duration: 0.01s; }
-  .chat-switch { animation-duration: 0.01s; }
 }
 
 .chat-send-btn { transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1); }

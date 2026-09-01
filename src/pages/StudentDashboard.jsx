@@ -698,7 +698,7 @@ function StudentHomeworkCard({ hw, index, onSelect }) {
           <span className="text-gray-400 shrink-0">{typeLabel}</span>
           {dl && (
             <span className={`inline-flex items-center gap-1 shrink-0 ${dl.cls}`}>
-              <span className="text-gray-300">•</span>
+              <span className="text-gray-400">•</span>
               {dl.icon && <Icon name={dl.icon} size={10} />}
               {dl.text}
             </span>
@@ -706,7 +706,7 @@ function StudentHomeworkCard({ hw, index, onSelect }) {
         </div>
         {preview && <div className="text-[11px] text-gray-400 mt-1 line-clamp-1">{preview}</div>}
       </div>
-      <Icon name="chevron-right" size={16} className="shrink-0 text-gray-300" />
+      <Icon name="chevron-right" size={16} className="shrink-0 text-gray-400" />
     </button>
   )
 }
@@ -1453,10 +1453,10 @@ function StudentNotificationBell({ userId, onNavigate }) {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
-                    {studentNotifTarget(n.title) && <Icon name="chevron-right" size={14} className="text-gray-300 group-hover:text-gray-400 transition-colors" />}
+                    {studentNotifTarget(n.title) && <Icon name="chevron-right" size={14} className="text-gray-400 group-hover:text-gray-400 transition-colors" />}
                     <button
                       onClick={e => { e.stopPropagation(); deleteNotification(n.id) }}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500"
                     >
                       <Icon name="x" size={14} />
                     </button>
@@ -2752,7 +2752,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                           <div className={`text-2xl font-semibold ${hwAvg >= 4.5 ? "text-green-600" : hwAvg >= 3.5 ? "text-blue-600" : hwAvg >= 2.5 ? "text-amber-600" : "text-red-600"}`}>{hwAvg}<span className="text-sm font-normal text-gray-400"> / 5</span></div>
                           <div className="text-xs text-gray-400">{gradedHw.length} оценок</div>
                         </>
-                      ) : <div className="text-2xl font-semibold text-gray-300">—</div>}
+                      ) : <div className="text-2xl font-semibold text-gray-400">—</div>}
                     </div>
                     <div className="glass p-4 flex flex-col gap-1">
                       <div className="text-xs text-gray-400">Средний балл вариантов</div>
@@ -2761,7 +2761,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                           <div className={`text-2xl font-semibold ${variantAvg >= 24 ? "text-green-600" : variantAvg >= 18 ? "text-blue-600" : "text-amber-600"}`}>{variantAvg}</div>
                           <div className="text-xs text-gray-400">{gradedVariants.length} вар.</div>
                         </>
-                      ) : <div className="text-2xl font-semibold text-gray-300">—</div>}
+                      ) : <div className="text-2xl font-semibold text-gray-400">—</div>}
                     </div>
                     <div className="glass p-4 flex flex-col gap-1">
                       <div className="text-xs text-gray-400">Проведено занятий</div>

@@ -122,11 +122,11 @@ function NotificationItem({ notification: n, onDelete, onRead, onNavigate }) {
           </div>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
-          {target && <Icon name="chevron-right" size={14} className="text-gray-300 group-hover:text-gray-400 transition-colors" />}
+          {target && <Icon name="chevron-right" size={14} className="text-gray-400 group-hover:text-gray-400 transition-colors" />}
           <button
             onClick={handleDelete}
             disabled={deleting}
-            className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500"
+            className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500"
           >
             <Icon name="x" size={14} />
           </button>

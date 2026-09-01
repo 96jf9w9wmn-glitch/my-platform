@@ -58,17 +58,6 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
   }
 
   const [activeId, setActiveId] = useState(null)
-  // Куда «поехал» выбор: вниз по списку (1) или вверх (−1). Переписка
-  // наплывает с той же стороны, поэтому переключение читается как движение
-  // по списку, а не как случайная подмена экрана.
-  const [switchDir, setSwitchDir] = useState(1)
-  const [prevActiveId, setPrevActiveId] = useState(activeId)
-  if (prevActiveId !== activeId) {
-    setPrevActiveId(activeId)
-    const to = contacts.findIndex(c => c.id === activeId)
-    const from = contacts.findIndex(c => c.id === prevActiveId)
-    setSwitchDir(to >= 0 && from >= 0 && to < from ? -1 : 1)
-  }
   const [messages, setMessages] = useState([])
   const [newMsgIds, setNewMsgIds] = useState(new Set())
   const [input, setInput] = useState("")
@@ -88,6 +77,7 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
   const activeIdRef = useRef(null)
   // Строки списка контактов — по ним меряется, куда переехать подложке выбора.
   const rowRefs = useRef({})
+  const listRef = useRef(null)
   const [pick, setPick] = useState({ top: 0, height: 0, shown: false, moving: false })
 
   useEffect(() => { activeIdRef.current = activeId }, [activeId])
@@ -97,17 +87,28 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
   // только со второго раза — первое появление должно проступить на месте,
   // а не приехать сверху списка.
   useLayoutEffect(() => {
-    const el = activeId ? rowRefs.current[activeId] : null
-    // Список скрыт (мобильный: открыт диалог) — размеры нулевые, мерить нечего.
-    if (!el || !el.offsetHeight) {
-      setPick(p => (p.shown ? { ...p, shown: false } : p))
-      return
+    const measure = () => {
+      const el = activeId ? rowRefs.current[activeId] : null
+      // Список скрыт (мобильный: открыт диалог) — размеры нулевые, мерить нечего.
+      if (!el || !el.offsetHeight) {
+        setPick(p => (p.shown ? { ...p, shown: false } : p))
+        return
+      }
+      setPick(p => {
+        const next = { top: el.offsetTop, height: el.offsetHeight, shown: true, moving: p.shown }
+        return (p.top === next.top && p.height === next.height && p.shown && p.moving === next.moving)
+          ? p : next
+      })
     }
-    setPick(p => {
-      const next = { top: el.offsetTop, height: el.offsetHeight, shown: true, moving: p.shown }
-      return (p.top === next.top && p.height === next.height && p.shown && p.moving === next.moving)
-        ? p : next
-    })
+    measure()
+    // Список то скрывается, то возвращается (узкое окно, поворот экрана), и
+    // строки меняют высоту при переносе имени. Без пересчёта подложка осталась
+    // бы спрятанной или под чужой строкой до следующего переключения.
+    const box = listRef.current
+    if (!box || typeof ResizeObserver === "undefined") return
+    const ro = new ResizeObserver(measure)
+    ro.observe(box)
+    return () => ro.disconnect()
   }, [activeId, contacts, adding])
 
   // Добавляет собеседников, которые нам написали, но которых нет в списке
@@ -472,7 +473,7 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
               {canAddByCode ? 'Нажми "+" чтобы найти собеседника' : "Нет контактов"}
             </div>
           ) : (
-          <div className="relative">
+          <div ref={listRef} className="relative">
             {/* Выделение активного контакта — ОДНА подложка, которая переезжает
                 между строками, а не заливка, зажигающаяся на новой строке:
                 при переключении видно, куда именно ушёл выбор. */}
@@ -568,9 +569,7 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
             <span className="relative text-sm font-medium text-gray-400 dark:text-gray-500">Выбери контакт для начала чата</span>
           </div>
         ) : (
-          // key по контакту: переписка не подменяется на месте, а сменяется —
-          // короткий наплыв с той стороны, куда переехал выбор в списке.
-          <div key={activeId} className={`chat-switch flex-1 min-h-0 flex flex-col ${switchDir < 0 ? "is-up" : ""}`}>
+          <>
             {/* Шапка */}
             <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-3 bg-white">
               <button
@@ -695,7 +694,7 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
                 </button>
               </div>
             </div>
-          </div>
+          </>
         )}
       </div>
     </div>

@@ -468,7 +468,7 @@ function Students({ students, loaded = true, setStudents, tutorId, onOpenBoard }
                     onClick={(e) => { e.stopPropagation(); setConfirm({ kind: "delete", id: student.id, name: student.name }) }}
                     aria-label={`Удалить ученика ${student.name}`}
                     title="Удалить ученика"
-                    className="text-gray-300 hover:text-red-500 px-1"
+                    className="text-gray-400 hover:text-red-500 px-1"
                   >
                     <Icon name="x" size={14} />
                   </button>
@@ -480,7 +480,7 @@ function Students({ students, loaded = true, setStudents, tutorId, onOpenBoard }
                       {new Date(next.date + "T00:00:00").toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" })} · {next.time}
                     </span>
                   ) : (
-                    <span className="text-xs text-gray-300 bg-white/30 px-2 py-1 rounded-lg">Нет урока</span>
+                    <span className="text-xs text-gray-400 bg-white/30 px-2 py-1 rounded-lg">Нет урока</span>
                   )}
                   <DebtBadge status={status} standalone />
                   {examDays !== null && (
@@ -546,13 +546,13 @@ function Students({ students, loaded = true, setStudents, tutorId, onOpenBoard }
                   {goal ? (
                     <span className={`text-[11px] px-2 py-0.5 rounded-md font-semibold ${goal.cls}`}>{goal.full}</span>
                   ) : (
-                    <span className="text-xs text-gray-300">—</span>
+                    <span className="text-xs text-gray-400">—</span>
                   )}
                 </div>
 
                 {/* Phone */}
                 <div className="text-xs text-gray-500 truncate">
-                  {student.phone ? formatPhone(student.phone) : <span className="text-gray-300">—</span>}
+                  {student.phone ? formatPhone(student.phone) : <span className="text-gray-400">—</span>}
                 </div>
 
                 {/* Next lesson */}
@@ -563,7 +563,7 @@ function Students({ students, loaded = true, setStudents, tutorId, onOpenBoard }
                       {new Date(next.date + "T00:00:00").toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" })} · {next.time}
                     </span>
                   ) : (
-                    <span className="text-gray-300">Не запланировано</span>
+                    <span className="text-gray-400">Не запланировано</span>
                   )}
                 </div>
 
@@ -574,12 +574,12 @@ function Students({ students, loaded = true, setStudents, tutorId, onOpenBoard }
                     <>
                       <span className="font-medium text-gray-700">{conducted}</span>
                       <span className="text-gray-400"> {plural(conducted, "занятие", "занятия", "занятий")}</span>
-                      {upcoming > 0 && <span className="text-gray-300"> · +{upcoming}</span>}
+                      {upcoming > 0 && <span className="text-gray-400"> · +{upcoming}</span>}
                     </>
                   ) : upcoming > 0 ? (
                     <span className="text-gray-400">{upcoming} впереди</span>
                   ) : (
-                    <span className="text-gray-300">—</span>
+                    <span className="text-gray-400">—</span>
                   )}
                 </div>
 
@@ -594,7 +594,7 @@ function Students({ students, loaded = true, setStudents, tutorId, onOpenBoard }
                     onClick={(e) => { e.stopPropagation(); setConfirm({ kind: "delete", id: student.id, name: student.name }) }}
                     aria-label={`Удалить ученика ${student.name}`}
                     title="Удалить ученика"
-                    className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500 active:scale-90">
+                    className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500 active:scale-90">
                     <Icon name="x" size={14} />
                   </button>
                 </div>

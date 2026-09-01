@@ -149,7 +149,7 @@ function ReportComposer({ student }) {
             {sent ? "Отчёт отправлен родителю" : "Собирается сам по занятиям, работам и решённым задачам"}
           </span>
         </span>
-        <Icon name="chevron-right" size={16} className="text-gray-300 shrink-0" />
+        <Icon name="chevron-right" size={16} className="text-gray-400 shrink-0" />
       </button>
 
       {/* Лист открывается ОТДЕЛЬНЫМ экраном, а не разворачивается в карточке:

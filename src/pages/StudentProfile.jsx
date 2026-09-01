@@ -527,7 +527,7 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
                   </div>
                   <button
                     onClick={() => deleteRemark(r.id)}
-                    className="text-gray-300 hover:text-red-400 text-xs flex-shrink-0 mt-0.5"
+                    className="text-gray-400 hover:text-red-400 text-xs flex-shrink-0 mt-0.5"
                   >✕</button>
                 </div>
               ))
@@ -616,7 +616,7 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
                     onClick={() => setStatusFor({ date: l.date, time: l.time, duration: l.duration, status: l.status })}
                     aria-label="Занятие не состоялось"
                     title="Не состоялось"
-                    className={`no-press transition-colors ${l.status ? "text-amber-500 hover:text-amber-600" : "text-gray-300 dark:text-white/25 hover:text-amber-500"}`}
+                    className={`no-press transition-colors ${l.status ? "text-amber-500 hover:text-amber-600" : "text-gray-400 dark:text-white/25 hover:text-amber-500"}`}
                   >
                     <Icon name="user-x" size={15} />
                   </button>

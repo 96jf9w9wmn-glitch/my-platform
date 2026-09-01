@@ -1211,7 +1211,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                                   <Icon name="repeat" size={13} />
                                 </button>
                                 <button type="button" onClick={() => removeBankTask(i)} title="Убрать задание"
-                                  className="text-gray-300 hover:text-red-500 active:scale-90 transition-transform">
+                                  className="text-gray-400 hover:text-red-500 active:scale-90 transition-transform">
                                   <Icon name="x" size={13} />
                                 </button>
                               </div>
@@ -1322,7 +1322,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                                   <button
                                     type="button"
                                     onClick={() => removePreviewTask(i)}
-                                    className="text-gray-300 hover:text-red-500 pt-1.5 active:scale-90 transition-transform"
+                                    className="text-gray-400 hover:text-red-500 pt-1.5 active:scale-90 transition-transform"
                                     title="Удалить задание"
                                   >
                                     <Icon name="x" size={14} />

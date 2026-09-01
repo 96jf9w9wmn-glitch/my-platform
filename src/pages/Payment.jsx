@@ -530,7 +530,7 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
                     {p.isLast ? (
                       <button
                         onClick={() => setUndoStudent(students.find((s) => s.id === p.studentId))}
-                        className="w-7 h-7 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-500/10 transition active:scale-90 md:opacity-0 md:group-hover:opacity-100"
+                        className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-red-500 hover:bg-red-500/10 transition active:scale-90 md:opacity-0 md:group-hover:opacity-100"
                         title="Отменить эту оплату"
                       ><Icon name="x" size={14} /></button>
                     ) : (
@@ -622,7 +622,7 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
                     <div className="flex items-center gap-2 shrink-0">
                       <div className="text-sm font-semibold tabular-nums text-gray-600">{fmt(e.amount)} ₽</div>
                       <button onClick={() => removeExpense(e.id)}
-                        className="w-7 h-7 flex items-center justify-center rounded-full text-gray-300 hover:text-red-500 hover:bg-red-500/10 transition active:scale-90 md:opacity-0 md:group-hover:opacity-100"
+                        className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-red-500 hover:bg-red-500/10 transition active:scale-90 md:opacity-0 md:group-hover:opacity-100"
                         title="Удалить расход">
                         <Icon name="trash" size={14} />
                       </button>

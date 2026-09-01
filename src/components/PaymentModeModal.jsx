@@ -107,7 +107,7 @@ function PaymentModeModal({ student, onSubmit, onClose }) {
 
               {preview && (
                 <div className={`rounded-xl px-3 py-2.5 text-xs leading-relaxed ring-1 ${
-                  preview.count ? "ring-blue-500/25 bg-blue-500/[0.06] text-gray-600 dark:text-gray-300"
+                  preview.count ? "ring-blue-500/25 bg-blue-500/[0.06] text-gray-600"
                                 : "ring-amber-500/30 bg-amber-500/[0.07] text-amber-700 dark:text-amber-300"
                 }`}>
                   {preview.count ? (
