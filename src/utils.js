@@ -8,27 +8,45 @@ const glyphW = (s) => { let w = 0; for (const ch of s) w += /[⁰¹²³⁴⁵⁶
 const measureEm = (() => {
   let ctx
   const cache = new Map()
-  return (s, family) => {
+  return (s, family, px = 100) => {
     if (typeof document === "undefined") return null
-    const key = family + "\u0000" + s
+    const key = family + "\u0000" + px + "\u0000" + s
     const hit = cache.get(key)
     if (hit !== undefined) return hit
     if (!ctx) ctx = document.createElement("canvas").getContext("2d")
     if (!ctx) return null
-    ctx.font = `100px ${family}`
-    const w = ctx.measureText(s).width / 100
+    // Мерить НАДО тем же кеглем, каким текст потом рисуется: на мелком кегле браузер
+    // подгоняет глифы под пиксельную сетку, и строка выходит на 5–8% шире, чем «идеальная»
+    // метрика со 100px, делённая на 100. Именно этот процент и вылезал у корня за черту.
+    ctx.font = `${px}px ${family}`
+    const w = ctx.measureText(s).width / px
     cache.set(key, w)
     return w
   }
 })()
 
-// Мерка ширины для конкретного шрифта — её ждут svgMathBody и rootGeom.
-export function glyphWFor(family) {
+// Мерка ширины для конкретного шрифта — её ждут svgMathBody и rootGeom. px — кегль,
+// которым строка будет НАРИСОВАНА (по умолчанию 100: печатный лист рисует крупно).
+export function glyphWFor(family, px = 100) {
   return (s) => {
     const str = String(s)
-    const w = measureEm(str, family)
+    const w = measureEm(str, family, px)
     return w == null ? glyphW(str) : w
   }
+}
+
+// Мерка ширины шрифтом самого интерфейса — для радикалов на экране. Семейство берём
+// у <body> один раз: внутри SVG текст наследует шрифт условия, а он у всего приложения
+// один. Без браузера (SSR, тесты) возвращаем прежнюю оценку по числу символов.
+const ROOT_FS = 14
+let uiGw = null
+function uiGlyphW() {
+  if (uiGw) return uiGw
+  if (typeof document === "undefined" || !document.body) return glyphW
+  const family = getComputedStyle(document.body).fontFamily
+  if (!family) return glyphW
+  uiGw = glyphWFor(family, ROOT_FS)   // тот же кегль, каким радикал рисует текст
+  return uiGw
 }
 
 // ── Мини-раскладка математики ВНУТРИ SVG ─────────────────────────────────────
@@ -185,10 +203,16 @@ export function rootGeom(body, index, idxFS, gw = glyphW) {
 // В отличие от токенов ⟦r⟧/⟦rn⟧ не содержит «⟧» и «:», поэтому не рвёт захват ⟦f:n:d⟧.
 const RE_ROOT_MARK = /√(?:\[([^\]{}]+)\])?\{([^{}]+)\}/g
 function rootMarkup(content, index = "") {
-  const FS = 14
+  const FS = ROOT_FS
   const idxFS = 10
-  const body = svgMathBody(content, FS)
-  const { W, H, by, ox, tx, d, idxY } = rootGeom(body, index, idxFS)
+  // Ширину подкоренного меряем ТЕМ ЖЕ шрифтом, которым его нарисует браузер (текст внутри
+  // радикала наследует шрифт условия): оценка «0,58 кегля на символ» шире правды тем
+  // заметнее, чем длиннее выражение, и черта уезжала вправо на пустое место — у
+  // «√(2x + 16)» примерно на полтора знака. Печатный лист так меряет давно (glyphWFor
+  // в variantPdf.js), экран считал на глазок. Вне браузера мерки нет — остаётся оценка.
+  const gw = uiGlyphW()
+  const body = svgMathBody(content, FS, gw)
+  const { W, H, by, ox, tx, d, idxY } = rootGeom(body, index, idxFS, gw)
   const idx = index
     ? `<text x="${ox - 1}" y="${idxY}" font-size="${idxFS}" text-anchor="middle" fill="currentColor">${index}</text>`
     : ""
