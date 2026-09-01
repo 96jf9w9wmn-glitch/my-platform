@@ -319,9 +319,10 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
             )}
           </div>
 
-          {/* Действия — у правого края нижней строки. Доска одна: та, что
-              выбрана в карточке, наша или своя ссылка. */}
-          <div className="flex items-center gap-2 ml-auto">
+          {/* Действия идут сразу за контактами, по левому краю: это часть того
+              же блока сведений об ученике, а не панель у правого края. Доска
+              одна: та, что выбрана в карточке, наша или своя ссылка. */}
+          <div className="flex items-center gap-2">
             {student.boardUrl ? (
               <a href={student.boardUrl} target="_blank" rel="noreferrer"
                 className="press-tap flex items-center gap-1.5 text-xs bg-blue-50 text-blue-600 dark:text-blue-400 border border-blue-100 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">

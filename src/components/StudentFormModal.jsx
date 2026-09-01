@@ -188,7 +188,12 @@ function StudentFormModal({ student, students = [], onClose, onSubmit, initialNa
   // Регулярные занятия — обычный случай: ученика ведут неделями, разовые
   // встречи скорее исключение. Поэтому режим открыт сразу на них.
   const [mode, setMode] = useState(editing ? (student.isRecurring ? "recurring" : "single") : "recurring")
-  const [lessons, setLessons] = useState(editing ? futureLessons : [])
+  // Разовые даты набираются заново. У регулярного ученика будущие занятия —
+  // это выработка расписания, а не выбор репетитора: перенеси их в календарь
+  // разовых, и «разовый» ученик молча получил бы то же самое расписание,
+  // только вручную. Даты уже разового ученика, наоборот, остаются: это его
+  // собственный выбор, и правят его здесь же.
+  const [lessons, setLessons] = useState(editing && !student.isRecurring ? futureLessons : [])
   // Общее время и длительность: их получает каждая новая выбранная дата, и ими
   // же правится сразу всё расписание. Отдельный день можно поправить в списке.
   const [bulkTime, setBulkTime] = useState(futureLessons[0]?.time || "09:00")
@@ -566,6 +571,14 @@ function StudentFormModal({ student, students = [], onClose, onSubmit, initialNa
                     <div className="border border-gray-100 dark:border-white/10 rounded-xl p-3.5">
                       <MiniCalendar lessons={lessons} onToggleDate={toggleDate} />
                     </div>
+                    {/* Что будет с прежним расписанием — видно ДО сохранения, как
+                        и у регулярных занятий. */}
+                    {droppedLessons.length > 0 && (
+                      <p className="text-xs text-amber-600 mt-2">
+                        {droppedLessons.length} {plural(droppedLessons.length, "занятие", "занятия", "занятий")} из
+                        прежнего расписания будет убрано: даты разовых занятий выбираются заново.
+                      </p>
+                    )}
                   </div>
                   {/* Одна строка на занятие: дата, время, длительность. Раньше на
                       каждую дату разворачивалась отдельная карточка на пол-экрана. */}
