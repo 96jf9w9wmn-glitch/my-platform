@@ -1536,6 +1536,7 @@ function DetailBlock({ children, className = "" }) {
 // варианта: слева условия, справа работа ученика и проверка.
 export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, onEdit, onDelete, onClose, cls }) {
   const [grading, setGrading] = useState(false)
+  const [revising, setRevising] = useState(false)
   const [showTasks, setShowTasks] = useState(false)
   const [comment, setComment] = useState(hw.comment || "")
   const [selectedGrade, setSelectedGrade] = useState(hw.grade || null)
@@ -1667,6 +1668,10 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
       updates.test_score = null
       updates.student_answers = null
       updates.submission_url = null
+      // Зачтённые вручную номера относились к СТЁРТЫМ ответам. Оставь их — и
+      // балл пересдачи вырастет сам собой, за задания, которых ученик ещё не
+      // решал: homeworkTestScore прибавляет зачтённый номер независимо от ответа.
+      if (hw.credited !== undefined) updates.credited = null
       // Колонку трогаем только когда она в строке есть: на базе без миграции
       // homework_solution_files.sql запись с этим полем упала бы целиком и
       // работа осталась бы не возвращённой.
@@ -1905,9 +1910,54 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
               <div className="text-xs text-gray-500">
                 {testPercent}% — рекомендуется оценка <span className="font-medium">{suggestedGrade}</span>
               </div>
-              <button onClick={finishPureTest} className="press-fill text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg flex-shrink-0">
-                Завершить
-              </button>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button onClick={() => setStatus("revision")} className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-amber-500/35 text-amber-600 dark:text-amber-300">
+                  На доработку
+                </button>
+                <button onClick={finishPureTest} className="press-fill text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg">
+                  Завершить
+                </button>
+              </div>
+            </DetailBlock>
+          )}
+
+          {/* Возврат уже завершённой работы. Без него у работы с автопроверкой
+              возврата не было ВОВСЕ: кабинет ученика при сдаче теста сам ставит
+              «Выполнено» и оценку по проценту (submitHomeworkTest), состояния
+              «на проверке» такая работа не проходит, а у завершённой до сих пор
+              не было ни одной кнопки. Пересдача стирает ответы, балл, оценку и
+              фото решения — иначе ученик увидел бы свои прежние ответы. */}
+          {hw.status === "done" && (
+            <DetailBlock className="flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium truncate">Вернуть на доработку</div>
+                  <div className="text-[11px] text-gray-400 mt-0.5 truncate">Ученик решит работу заново</div>
+                </div>
+                <button
+                  onClick={() => setRevising((v) => !v)}
+                  className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-amber-500/35 text-amber-600 dark:text-amber-300 flex-shrink-0"
+                >
+                  {revising ? "Отмена" : "Вернуть"}
+                </button>
+              </div>
+              <Reveal value={revising}>{() => (
+                <div className="flex flex-col gap-2">
+                  <textarea
+                    value={comment}
+                    onChange={(e) => setComment(e.target.value)}
+                    placeholder="Что доработать (необязательно)"
+                    rows={2}
+                    className="input-glass text-xs resize-none"
+                  />
+                  <button
+                    onClick={() => setStatus("revision")}
+                    className="press-fill bg-amber-500 text-white rounded-lg py-1.5 text-xs"
+                  >
+                    Отправить на доработку
+                  </button>
+                </div>
+              )}</Reveal>
             </DetailBlock>
           )}
 

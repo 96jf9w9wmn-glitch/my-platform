@@ -1211,15 +1211,17 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten })
                     const isCorrect = byHand || answersEqual(studentAns, correct)
                     return (
                       // Строка не заливается цветом: сплошная зелёно-красная простыня
-                      // режет глаз и ничего не выделяет. Цвет — только в галочке
-                      // и в подчёркивании, верный ответ выделен весом шрифта.
+                      // режет глаз и ничего не выделяет. Цвет — в значке и в самом
+                      // неверном ответе, верный ответ выделен весом шрифта.
                       <tr key={i} className="border-t border-gray-100 dark:border-white/10">
                         <td className="py-2 px-3 text-gray-400 align-top">{i + 1}</td>
                         <td className="py-2 px-3 align-top">
                           <span className="flex items-start gap-1.5">
                             <Icon name={isCorrect ? "check" : "x"} size={12}
                               className={`mt-1 flex-shrink-0 ${isCorrect ? "text-green-500" : "text-red-400"}`} />
-                            <span className={isCorrect ? "text-gray-700 font-medium" : "text-gray-400 line-through decoration-red-400/70"}>
+                            {/* Неверный ответ помечен красным, а не зачёркнут:
+                                перечёркнутый текст плохо читается. */}
+                            <span className={isCorrect ? "text-gray-700 font-medium" : "text-red-600 dark:text-red-400 font-medium"}>
                               {studentAns}
                             </span>
                           </span>
