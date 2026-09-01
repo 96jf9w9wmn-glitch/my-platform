@@ -1047,6 +1047,7 @@ function Variants({ user, students = [] }) {
   const [previewFile, setPreviewFile] = useState(null)
   const [group, setGroup] = useState("all")
   const [stat, setStat] = useState("all")
+  const [who, setWho] = useState("all")
   // Сколько карточек в ряду прямо сейчас — нужно, чтобы вставить разбор ПОСЛЕ
   // ряда выбранной карточки. Пороги обязаны совпадать с классами сетки ниже
   // (sm:grid-cols-2 xl:grid-cols-3), иначе панель разорвёт ряд.
@@ -1100,7 +1101,21 @@ function Variants({ user, students = [] }) {
       : stat === "graded" ? hasStatus(v, "graded")
         : true
   )
-  const visible = variants.filter((v) => (group === "all" || groupOf(v) === group) && matchStat(v))
+  // Фильтр по ученику: «какие варианты я задавал вот этому». Список берём из
+  // самих работ, а не из карточек учеников, — тогда в нём нет тех, кому вариант
+  // ни разу не выдавали, и выбрать заведомо пустой фильтр невозможно.
+  const whoList = (() => {
+    const byId = new Map()
+    for (const s of submissions) {
+      const id = String(s.student_id)
+      if (!byId.has(id)) byId.set(id, { id, name: s.student_accounts?.name || s.student_accounts?.email || "Без имени" })
+    }
+    return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, "ru"))
+  })()
+  const hasStudent = (v, id) => submissions.some((s) => s.variant_id === v.id && String(s.student_id) === id)
+  const matchWho = (v) => who === "all" || hasStudent(v, who)
+  const whoName = whoList.find((s) => s.id === who)?.name || ""
+  const visible = variants.filter((v) => (group === "all" || groupOf(v) === group) && matchStat(v) && matchWho(v))
 
   function renderScore(sub) {
     // opened_at ставится при старте таймера — значит, ученик уже сидит за вариантом.
@@ -1254,17 +1269,57 @@ function Variants({ user, students = [] }) {
         <div className="text-sm text-gray-400 text-center py-8">Загрузка...</div>
       ) : (
         <div className="flex flex-col gap-4">
-          {GROUPS.length > 2 && (
-            <SegmentSwitch
-              size="sm" equal={false} items={GROUPS} value={group} ariaLabel="Фильтр по экзамену"
-              className="self-start"
-              onChange={(g) => {
-                setGroup(g)
-                // Разбор открытого варианта скрывать нельзя молча: если он не
-                // попадает в выбранную группу, закрываем его той же анимацией.
-                if (selectedVariant && g !== "all" && groupOf(selectedVariant) !== g) closeDetail()
-              }}
-            />
+          {(GROUPS.length > 2 || whoList.length > 1) && (
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
+              {GROUPS.length > 2 && (
+                <SegmentSwitch
+                  size="sm" equal={false} items={GROUPS} value={group} ariaLabel="Фильтр по экзамену"
+                  className="self-start flex-shrink-0"
+                  onChange={(g) => {
+                    setGroup(g)
+                    // Разбор открытого варианта скрывать нельзя молча: если он не
+                    // попадает в выбранную группу, закрываем его той же анимацией.
+                    if (selectedVariant && g !== "all" && groupOf(selectedVariant) !== g) closeDetail()
+                  }}
+                />
+              )}
+              {/* Ученики — не сегмент-контролом: имён бывает много, и «палец»
+                  сегментов на такой ленте не помещается. Фишки прокручиваются
+                  вбок, выбранная помечена акцентным тоном без серой заливки. */}
+              {whoList.length > 1 && (
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar -my-1 py-1 min-w-0"
+                  role="group" aria-label="Фильтр по ученику">
+                  {[{ id: "all", name: "Все ученики" }, ...whoList].map((st) => {
+                    const on = who === st.id
+                    const color = st.id === "all" ? null : getAvatarColor(st.name)
+                    return (
+                      <button
+                        key={st.id}
+                        onClick={() => {
+                          setWho(st.id)
+                          // Открытый разбор не должен пережить свой вариант:
+                          // если он выпал из фильтра — закрываем анимацией.
+                          if (selectedVariant && st.id !== "all" && !hasStudent(selectedVariant, st.id)) closeDetail()
+                        }}
+                        aria-pressed={on}
+                        className={`press-fill flex items-center gap-1.5 flex-shrink-0 rounded-full ring-1 text-[13px] font-medium transition-colors ${color ? "pl-1 pr-3 py-1" : "px-3 py-1.5"} ${
+                          on
+                            ? "text-blue-600 bg-blue-500/12 ring-blue-500/25"
+                            : "text-gray-500 dark:text-gray-300 ring-gray-200/70 dark:ring-white/10 hover:text-blue-600 hover:ring-blue-500/25"
+                        }`}
+                      >
+                        {color && (
+                          <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-medium ${color.bg} ${color.text}`}>
+                            {getInitials(st.name)}
+                          </span>
+                        )}
+                        <span className="truncate max-w-[10rem]">{st.name}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 items-stretch">
             {visible.length === 0 ? (
@@ -1277,7 +1332,8 @@ function Variants({ user, students = [] }) {
                     ? "Вариантов пока нет"
                     : stat === "pending" ? "Здесь нет вариантов с работами на проверке"
                       : stat === "graded" ? "Здесь нет вариантов с проверенными работами"
-                        : `Вариантов ${group} пока нет`}
+                        : who !== "all" ? `${whoName}: подходящих вариантов нет`
+                          : `Вариантов ${group} пока нет`}
                 </div>
               </div>
             ) : visible.map((v, i) => {
