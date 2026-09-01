@@ -476,7 +476,8 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
           </div>
           {/* Настройки слева, сама сборка — справа: собранный вариант это самая
               длинная часть окна, и рядом с полями он ужимался до узкой полосы.
-              Ответы уехали вниз во всю ширину — их проверяют последними. */}
+              Ответы идут следом за сборкой, в том же правом столбце: их сверяют
+              с заданиями, которые видно рядом. */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-4 items-stretch">
             <div className="flex flex-col gap-4">
 
@@ -542,6 +543,16 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
                 value={source}
                 onChange={setSource}
               />
+
+              <div className="bg-amber-500/10 ring-1 ring-amber-500/20 rounded-xl p-3 text-xs text-amber-700 dark:text-amber-300">
+                {examType === "ОГЭ"
+                  ? "Часть 2 (20–25): ученик выбирает ответ из четырёх и прикрепляет фото решения. Баллы начисляются только после вашей проверки."
+                  : part2Numbers.length > 0
+                    ? "Часть 2 (задания 13–19) проверяется вручную после загрузки решений учеником."
+                    : isMathType(examType)
+                      ? "Все задания — с кратким ответом: вариант проверяется автоматически."
+                      : "В вариант входят только задания, которые решаются без компьютера: практическая часть (работа с файлами и таблицами) в печатный лист не помещается."}
+              </div>
             </div>
 
             <div className="flex flex-col gap-2">
@@ -643,89 +654,78 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
               )}
               </div>
               </AutoHeight>
-            </div>
-          </div>
+              {/* Ответы — под сборкой, в том же столбце: их сверяют последними. */}
+              <div className="flex flex-col gap-4 mt-2">
+              <div>
+                <label className="text-sm text-gray-500 mb-1 block">
+                  {source === "bank" && bankPicked.length > 0
+                    ? `Ответы части 1 — подставлены из банка, проверьте (${answerCount} шт.)`
+                    : inOrder
+                      ? `Ответы к части 1 — введите все ${answerCount} через пробел`
+                      : `Ответы к части 1 — по номерам заданий (${answerCount} шт.)`}
+                </label>
+                {/* Номера подряд (математика, ОГЭ информатика) — строкой через пробел:
+                    так ответы переносят из готового ключа одним движением. Где номера
+                    идут с пропусками, строка обманывала бы: третье число легло бы не в
+                    то задание — там сетка с номерами. */}
+                {inOrder ? (
+                  <>
+                    <textarea
+                      value={answers.filter(Boolean).join(" ")}
+                      onChange={(e) => {
+                        const vals = e.target.value.trim().split(/\s+/).filter(Boolean).slice(0, answerCount)
+                        setAnswers([...vals, ...Array(answerCount).fill("")].slice(0, answerCount))
+                      }}
+                      placeholder={examType === "ОГЭ" ? "3 12 4 -5 2 0.5 8 16 3 7 4 2 6 9 45 8 12 3 7" : "3 12 4 -5 2 0.5 8 16 3 7"}
+                      rows={2}
+                      className="input-glass resize-none"
+                    />
+                    <div className="text-xs text-gray-400 mt-1">Введено: {answers.filter((a) => a).length} / {answerCount}</div>
+                  </>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-3 gap-2">
+                      {p1Numbers.map((n) => (
+                        <div key={n} className="flex items-center gap-2">
+                          <span className="text-xs text-gray-400 w-5 flex-shrink-0">{n}</span>
+                          <input
+                            value={answers[n - 1] || ""}
+                            onChange={(e) => setAnswers((prev) => { const upd = [...prev]; upd[n - 1] = e.target.value; return upd })}
+                            placeholder="Ответ"
+                            className="input-glass flex-1 px-2 py-1.5 text-sm min-w-0"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      Введено: {p1Numbers.filter((n) => answers[n - 1]).length} / {answerCount}
+                    </div>
+                  </>
+                )}
+              </div>
 
-          {/* Ответы — во всю ширину под сборкой: их сверяют в последнюю очередь. */}
-          <div className="flex flex-col gap-4 mt-4">
-            <div>
-              <label className="text-sm text-gray-500 mb-1 block">
-                {source === "bank" && bankPicked.length > 0
-                  ? `Ответы части 1 — подставлены из банка, проверьте (${answerCount} шт.)`
-                  : inOrder
-                    ? `Ответы к части 1 — введите все ${answerCount} через пробел`
-                    : `Ответы к части 1 — по номерам заданий (${answerCount} шт.)`}
-              </label>
-              {/* Номера подряд (математика, ОГЭ информатика) — строкой через пробел:
-                  так ответы переносят из готового ключа одним движением. Где номера
-                  идут с пропусками, строка обманывала бы: третье число легло бы не в
-                  то задание — там сетка с номерами. */}
-              {inOrder ? (
-                <>
-                  <textarea
-                    value={answers.filter(Boolean).join(" ")}
-                    onChange={(e) => {
-                      const vals = e.target.value.trim().split(/\s+/).filter(Boolean).slice(0, answerCount)
-                      setAnswers([...vals, ...Array(answerCount).fill("")].slice(0, answerCount))
-                    }}
-                    placeholder={examType === "ОГЭ" ? "3 12 4 -5 2 0.5 8 16 3 7 4 2 6 9 45 8 12 3 7" : "3 12 4 -5 2 0.5 8 16 3 7"}
-                    rows={2}
-                    className="input-glass resize-none"
-                  />
-                  <div className="text-xs text-gray-400 mt-1">Введено: {answers.filter((a) => a).length} / {answerCount}</div>
-                </>
-              ) : (
-                <>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
-                    {p1Numbers.map((n) => (
+              {part2Numbers.length > 0 && (
+                <div>
+                  <label className="text-sm text-gray-500 mb-1 block">Ответы к части 2 ({numbersLabel(part2Numbers)}){source === "bank" && bankPicked.length > 0 ? " — подставлены из банка" : ""}</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-3 gap-2">
+                    {part2Numbers.map((n) => (
                       <div key={n} className="flex items-center gap-2">
                         <span className="text-xs text-gray-400 w-5 flex-shrink-0">{n}</span>
                         <input
-                          value={answers[n - 1] || ""}
-                          onChange={(e) => setAnswers((prev) => { const upd = [...prev]; upd[n - 1] = e.target.value; return upd })}
-                          placeholder="Ответ"
+                          value={part2Answers[n] || ""}
+                          onChange={(e) => setPart2Answers((prev) => ({ ...prev, [n]: e.target.value }))}
+                          placeholder={n === 24 ? "Доказано." : "Ответ"}
                           className="input-glass flex-1 px-2 py-1.5 text-sm min-w-0"
                         />
                       </div>
                     ))}
                   </div>
                   <div className="text-xs text-gray-400 mt-1">
-                    Введено: {p1Numbers.filter((n) => answers[n - 1]).length} / {answerCount}
+                    Ученик выберет ответ из четырёх вариантов; для доказательства (№24) — только фото решения
                   </div>
-                </>
+                </div>
               )}
-            </div>
-
-            {part2Numbers.length > 0 && (
-              <div>
-                <label className="text-sm text-gray-500 mb-1 block">Ответы к части 2 ({numbersLabel(part2Numbers)}){source === "bank" && bankPicked.length > 0 ? " — подставлены из банка" : ""}</label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
-                  {part2Numbers.map((n) => (
-                    <div key={n} className="flex items-center gap-2">
-                      <span className="text-xs text-gray-400 w-5 flex-shrink-0">{n}</span>
-                      <input
-                        value={part2Answers[n] || ""}
-                        onChange={(e) => setPart2Answers((prev) => ({ ...prev, [n]: e.target.value }))}
-                        placeholder={n === 24 ? "Доказано." : "Ответ"}
-                        className="input-glass flex-1 px-2 py-1.5 text-sm min-w-0"
-                      />
-                    </div>
-                  ))}
-                </div>
-                <div className="text-xs text-gray-400 mt-1">
-                  Ученик выберет ответ из четырёх вариантов; для доказательства (№24) — только фото решения
-                </div>
               </div>
-            )}
-
-            <div className="bg-amber-500/10 ring-1 ring-amber-500/20 rounded-xl p-3 text-xs text-amber-700 dark:text-amber-300">
-              {examType === "ОГЭ"
-                ? "Часть 2 (20–25): ученик выбирает ответ из четырёх и прикрепляет фото решения. Баллы начисляются только после вашей проверки."
-                : part2Numbers.length > 0
-                  ? "Часть 2 (задания 13–19) проверяется вручную после загрузки решений учеником."
-                  : isMathType(examType)
-                    ? "Все задания — с кратким ответом: вариант проверяется автоматически."
-                    : "В вариант входят только задания, которые решаются без компьютера: практическая часть (работа с файлами и таблицами) в печатный лист не помещается."}
             </div>
           </div>
 
