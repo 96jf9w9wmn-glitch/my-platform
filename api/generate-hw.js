@@ -273,8 +273,11 @@ export default async function handler(req, res) {
             : []
           options = [...new Set(options)]
           // Гарантируем, что правильный ответ есть среди вариантов.
-          if (task.answer && !options.includes(task.answer)) options.unshift(task.answer)
-          task.options = options
+          if (task.answer && !options.includes(task.answer)) options.push(task.answer)
+          // Порядок вариантов задаём МЫ, а не модель: она почти всегда пишет
+          // верный ответ первым, и тест решается «жми первую кнопку» без
+          // единой мысли о теме. Перемешиваем каждый вопрос отдельно.
+          task.options = shuffle(options)
         }
         return task
       })
@@ -290,6 +293,18 @@ export default async function handler(req, res) {
     await refund()
     res.status(500).json({ error: "Сбой запроса к DeepSeek", detail: String(e).slice(0, 300) })
   }
+}
+
+// Перемешивание Фишера — Йейтса. Нужно ровно затем, чтобы верный вариант не
+// стоял на одном и том же месте: модель выдаёт его первым, а раньше и наш
+// разбор дописывал недостающий ответ в начало списка.
+export function shuffle(arr) {
+  const a = [...arr]
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[a[i], a[j]] = [a[j], a[i]]
+  }
+  return a
 }
 
 function chatCompletion(apiKey, model, messages) {
