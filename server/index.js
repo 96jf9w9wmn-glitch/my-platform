@@ -21,6 +21,7 @@ import http from "node:http"
 import authLogin from "../api/auth-login.js"
 import authSignup from "../api/auth-signup.js"
 import generateHw from "../api/generate-hw.js"
+import phoneVerify from "../api/phone-verify.js"
 import lessonReport from "../api/lesson-report.js"
 import subscription from "../api/subscription.js"
 import subscriptionWebhook from "../api/subscription-webhook.js"
@@ -37,6 +38,7 @@ const ROUTES = {
   "/api/auth-login": authLogin,
   "/api/auth-signup": authSignup,
   "/api/generate-hw": generateHw,
+  "/api/phone-verify": phoneVerify,
   "/api/lesson-report": lessonReport,
   "/api/subscription": subscription,
   "/api/subscription-webhook": subscriptionWebhook,

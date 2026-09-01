@@ -8,7 +8,7 @@ import { logConsent } from "../consents"
 import { isValidRuPhone, isValidEmail, isValidPersonName } from "../utils"
 import { loadTutorProfile } from "../tutorProfile"
 import { tutorSignIn } from "../tutorSignIn"
-import EmailCodeModal from "../components/EmailCodeModal"
+import CodeModal from "../components/CodeModal"
 
 // Столько же попыток считает сервер (supabase/login_guard.sql и
 // api/auth-login.js). Здесь число нужно ровно для подсказки «осталось N».
@@ -42,8 +42,10 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
   // Подсказку про формат показываем только после того, как поле покинули:
   // ругаться на «+7 (9» посреди набора номера — значит мешать вводу.
   const [touched, setTouched] = useState({})
-  // Регистрация репетитора идёт в два шага: код на почту, потом аккаунт.
-  const [codeSent, setCodeSent] = useState(false)
+  // Второй шаг: код подтверждения. У репетитора он приходит на почту при
+  // регистрации, у ученика — в SMS, и при регистрации, и при смене пароля.
+  // { channel: "email" | "sms", to, title, purpose }
+  const [codeStep, setCodeStep] = useState(null)
   const [codeBusy, setCodeBusy] = useState(false)
   const [codeError, setCodeError] = useState("")
   const [newPassword, setNewPassword] = useState("")
@@ -167,12 +169,16 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
         if (!isValidRuPhone(phone)) throw new Error("Проверь номер: нужны все десять цифр после +7")
         if (!newPassword || newPassword.length < 6) throw new Error("Новый пароль минимум 6 символов")
 
-        const { data: ok, error: resetError } = await supabase
-          .rpc("student_reset_password", { p_phone: phone, p_new_password: newPassword })
-        if (resetError) throw resetError
-        if (!ok) throw new Error("Аккаунт с таким номером не найден")
-
-        setResetSent(true)
+        // Пароль меняется только после кода из SMS. Раньше хватало одного
+        // знания номера — а его знает любой одноклассник, и вместе с паролем
+        // забирались переписка, домашние работы и данные родителя.
+        const data = await callPhoneVerify()
+        if (data.sms) {
+          setCodeStep({ channel: "sms", to: formatPhone(phone), title: "Подтверди номер" })
+          setCodeError("")
+        } else {
+          setResetSent(true)   // SMS у платформы не настроены — пароль уже сменён
+        }
       }
     } catch (err) {
       setError(err.message)
@@ -217,6 +223,73 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
       personalData: consent.pd,
       guardian: role === "student" ? consent.guardian : null,
     })
+  }
+
+  // ── Телефон ученика: код в SMS ───────────────────────────────────────────
+  // Регистрация и смена пароля идут через свой обработчик, а не через RPC:
+  // проверять код на клиенте бессмысленно — запрос можно послать мимо неё,
+  // поэтому грант на student_register/student_reset_password у anon снят.
+  //
+  // Тело запроса одно и то же на обоих шагах: на первом сервер шлёт код, на
+  // втором — сверяет его и тут же выполняет действие. Держать пароль на сервере
+  // между шагами было бы хуже: пришлось бы где-то его хранить.
+  function phoneBody(extra = {}) {
+    return {
+      phone: form.phone.trim(),
+      purpose: mode === "reset" ? "reset" : "register",
+      password: mode === "reset" ? newPassword : form.password,
+      name: form.name,
+      ...extra,
+    }
+  }
+
+  async function callPhoneVerify(extra) {
+    const res = await fetch("/api/phone-verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(phoneBody(extra)),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data?.error || "Не получилось. Попробуй ещё раз")
+    return data
+  }
+
+  // Ученик зарегистрирован — дальше как раньше: JWT роли app_user в клиент,
+  // сессия в localStorage.
+  async function finishStudentRegister(account, phone) {
+    if (!account) throw new Error("Не удалось создать аккаунт")
+    const { session_token, token: jwt, ...profile } = account
+    setAppToken(jwt || null)
+    await saveConsent(account.id, phone)
+    const sessionData = { id: account.id, role: "student", profile, token: session_token }
+    localStorage.setItem("student_session", JSON.stringify(sessionData))
+    onLogin(sessionData)
+  }
+
+  async function resendPhoneCode() {
+    try {
+      await callPhoneVerify()
+      setCodeError("")
+      return true
+    } catch (err) {
+      setCodeError(err.message)
+      return false
+    }
+  }
+
+  async function confirmPhoneCode(code) {
+    setCodeBusy(true)
+    setCodeError("")
+    try {
+      const data = await callPhoneVerify({ action: "verify", code })
+      setCodeStep(null)
+      if (data.account) await finishStudentRegister(data.account, form.phone.trim())
+      else setResetSent(true)
+    } catch (err) {
+      setCodeError(err.message)
+    } finally {
+      setCodeBusy(false)
+    }
   }
 
   // Запрос кода. Ошибку пробрасываем наверх: её показывает та же форма.
@@ -267,7 +340,7 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
       const user = data.user
       await saveConsent(user.id, form.email)
       const tutor = await loadTutorProfile(user.id)
-      setCodeSent(false)
+      setCodeStep(null)
       onLogin({ ...user, role: "tutor", profile: tutor })
     } catch (err) {
       setCodeError(err.message)
@@ -343,22 +416,17 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
 
           // Регистрация без кода репетитора — только аккаунт. Репетиторов ученик
           // привязывает по коду в опроснике/настройках (можно несколько).
-          const { data: rows, error: registerError } = await supabase
-            .rpc("student_register", {
-              p_phone: phone,
-              p_password: form.password,
-              p_name: form.name,
-            })
-          if (registerError) throw registerError
-          const newAccount = rows?.[0]
-          if (!newAccount) throw new Error("Не удалось создать аккаунт")
-
-          const { session_token, token: jwt, ...profile } = newAccount
-          setAppToken(jwt || null)
-          await saveConsent(newAccount.id, phone)
-          const sessionData = { id: newAccount.id, role: "student", profile, token: session_token }
-          localStorage.setItem("student_session", JSON.stringify(sessionData))
-          onLogin(sessionData)
+          //
+          // Номер подтверждается кодом из SMS: до этого зарегистрироваться можно
+          // было на ЧУЖОЙ телефон. Если SMS у платформы не настроены, сервер
+          // заводит аккаунт сразу и возвращает его — тогда шага с кодом нет.
+          const data = await callPhoneVerify()
+          if (data.sms) {
+            setCodeStep({ channel: "sms", to: formatPhone(phone), title: "Подтверди номер" })
+            setCodeError("")
+          } else {
+            await finishStudentRegister(data.account, phone)  // SMS не настроены
+          }
         }
 
       } else {
@@ -389,7 +457,7 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
           // с почты, и создаёт его сервер (api/auth-signup.js). Проверка кода на
           // клиенте была бы не проверкой — запрос к GoTrue можно послать мимо.
           await requestEmailCode(form.email)
-          setCodeSent(true)
+          setCodeStep({ channel: "email", to: form.email, title: "Подтвердите почту" })
           setCodeError("")
         }
       }
@@ -857,14 +925,16 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
 
       {/* Второй шаг регистрации репетитора. Пока код не введён, аккаунта не
           существует: закрыли окно — регистрация просто не состоялась. */}
-      {codeSent && (
-        <EmailCodeModal
-          email={form.email}
+      {codeStep && (
+        <CodeModal
+          channel={codeStep.channel}
+          to={codeStep.to}
+          title={codeStep.title}
           busy={codeBusy}
           error={codeError}
-          onSubmit={confirmEmailCode}
-          onResend={resendEmailCode}
-          onClose={() => { setCodeSent(false); setCodeError("") }}
+          onSubmit={(code) => (codeStep.channel === "sms" ? confirmPhoneCode(code) : confirmEmailCode(code))}
+          onResend={() => (codeStep.channel === "sms" ? resendPhoneCode() : resendEmailCode())}
+          onClose={() => { setCodeStep(null); setCodeError("") }}
         />
       )}
     </div>

@@ -1,14 +1,17 @@
-// Второй шаг регистрации репетитора: код с почты.
+// Ввод кода подтверждения — один и тот же экран для почты репетитора и для
+// SMS ученику.
 //
-// Отдельным окном, а не ещё одним полем в форме: пока код не введён, аккаунта
-// не существует вовсе, и остальные поля трогать уже нечего. Окно закрывается —
-// регистрация просто не состоялась, ничего чистить не нужно.
+// Отдельным окном, а не ещё одним полем в форме: пока код не введён, ничего не
+// произошло — ни аккаунта, ни смены пароля. Окно закрылось — действие просто не
+// состоялось, чистить нечего.
 import { useState, useEffect, useRef } from "react"
 import { createPortal } from "react-dom"
 import { useClosing } from "../useClosing"
 import Icon from "./Icon"
 
-export default function EmailCodeModal({ email, onSubmit, onResend, busy, error, resendAfter = 60, onClose }) {
+// channel: "email" — код ушёл письмом, "sms" — сообщением на телефон.
+export default function CodeModal({ channel = "email", to, title, onSubmit, onResend, busy, error, resendAfter = 60, onClose }) {
+  const isSms = channel === "sms"
   const [code, setCode] = useState("")
   const [left, setLeft] = useState(resendAfter)
   const [resending, setResending] = useState(false)
@@ -38,7 +41,7 @@ export default function EmailCodeModal({ email, onSubmit, onResend, busy, error,
     <div className={`fixed inset-0 glass-overlay flex items-center justify-center z-50 p-4 ${closingCls}`}>
       <div className={`glass-modal w-full max-w-sm flex flex-col ${closingCls}`}>
         <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100/60">
-          <h2 className="text-lg font-medium">Подтвердите почту</h2>
+          <h2 className="text-lg font-medium">{title || (isSms ? "Подтверди номер" : "Подтвердите почту")}</h2>
           <button onClick={close} aria-label="Закрыть" className="text-gray-500 hover:text-gray-700 transition-transform active:scale-90">
             <Icon name="x" size={18} />
           </button>
@@ -46,8 +49,9 @@ export default function EmailCodeModal({ email, onSubmit, onResend, busy, error,
 
         <div className="px-6 py-5 flex flex-col gap-4">
           <p className="text-sm text-gray-500 leading-relaxed">
-            Мы отправили код из шести цифр на <span className="text-gray-700 dark:text-gray-200 break-all">{email}</span>.
-            Он действует десять минут — без него аккаунт не создастся.
+            {isSms ? "Отправили код из шести цифр в SMS на " : "Мы отправили код из шести цифр на "}
+            <span className="text-gray-700 dark:text-gray-200 break-all">{to}</span>.
+            {isSms ? " Он действует десять минут." : " Он действует десять минут — без него аккаунт не создастся."}
           </p>
 
           <input
@@ -70,7 +74,7 @@ export default function EmailCodeModal({ email, onSubmit, onResend, busy, error,
             disabled={!ready || busy}
             className="btn-primary w-full py-2.5 disabled:opacity-50"
           >
-            {busy ? "Проверяем…" : "Подтвердить и войти"}
+            {busy ? "Проверяем…" : "Подтвердить"}
           </button>
 
           <button
@@ -82,7 +86,9 @@ export default function EmailCodeModal({ email, onSubmit, onResend, busy, error,
           </button>
 
           <p className="text-[11px] text-gray-400 text-center leading-relaxed">
-            Письмо приходит с адреса precettore@inbox.ru. Если его нет во «Входящих» — посмотрите в «Спаме».
+            {isSms
+              ? "Код никому не сообщай: по нему меняют пароль от твоего кабинета."
+              : "Письмо приходит с адреса precettore@inbox.ru. Если его нет во «Входящих» — посмотрите в «Спаме»."}
           </p>
         </div>
       </div>
