@@ -2135,3 +2135,18 @@ html.kb-open .kb-collapse { padding-bottom: 0; }
   border-radius: inherit;
   animation: attention-flash 1.8s ease-out;
 }
+
+/* ── Кнопка удаления сообщения в чате ───────────────────────────────────────
+   На мыши появляется по наведению на строку — иначе корзина висела бы у
+   каждого пузыря и превращала переписку в панель управления. На касании
+   наведения не бывает вовсе, поэтому там она видна всегда, только приглушённо:
+   спрятать её за долгим нажатием значит спрятать функцию совсем. */
+.chat-del {
+  opacity: 0;
+  transition: opacity .15s ease, color .15s ease;
+}
+.chat-row:hover .chat-del,
+.chat-del:focus-visible { opacity: 1; }
+@media (hover: none) {
+  .chat-del { opacity: .45; }
+}

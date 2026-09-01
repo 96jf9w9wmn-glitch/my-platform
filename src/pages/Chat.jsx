@@ -3,6 +3,8 @@ import { supabase } from "../supabase"
 import { signStorageUrl } from "../storageUrl"
 import { notifyTutor } from "../telegramNotify"
 import Reveal from "../components/Reveal"
+import Icon from "../components/Icon"
+import ConfirmModal from "../components/ConfirmModal"
 
 // Один ли это календарный день у двух сообщений
 function isSameDay(a, b) {
@@ -35,6 +37,14 @@ function roleLabel(id) {
 export default function Chat({ myId, myName, initialContacts = [], canAddByCode = false, onUnreadChange }) {
   const initialContactIds = initialContacts.map(c => c.id).join(",")
 
+  // Кто удаляет и что. Своё сообщение удаляет любой — и удаляет по-настоящему,
+  // у обеих сторон: «удалить только у себя» развело бы одну переписку на два
+  // разных представления и породило спор «я это не писал». Чужие сообщения и
+  // переписку целиком чистит только репетитор — это его рабочее пространство.
+  // Те же правила стоят политиками в базе (supabase/chat_delete.sql), поэтому
+  // кнопкой мимо них не пройти.
+  const isTutor = String(myId || "").startsWith("t:")
+
   const [contacts, setContacts] = useState(() => {
     const saved = JSON.parse(localStorage.getItem(`chat_contacts_${myId}`) || "[]")
     const merged = [...initialContacts]
@@ -60,6 +70,10 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
   const [activeId, setActiveId] = useState(null)
   const [messages, setMessages] = useState([])
   const [newMsgIds, setNewMsgIds] = useState(new Set())
+  // Подтверждение удаления: { kind: "msg" | "all", id?, text? }
+  const [confirmDel, setConfirmDel] = useState(null)
+  const [deleting, setDeleting] = useState(false)
+  const [delError, setDelError] = useState("")
   const [input, setInput] = useState("")
   const [adding, setAdding] = useState(false)
   const [codeInput, setCodeInput] = useState("")
@@ -290,11 +304,52 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
       }, ({ new: msg }) => {
         setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, read: msg.read } : m))
       })
+      // Удаление приходит без фильтра по разговору: в событии DELETE едет СТАРАЯ
+      // строка, и фильтр по ней Realtime не применяет. Поэтому просто выкидываем
+      // из ленты сообщение с таким id — чужого здесь и так нет.
+      .on("postgres_changes", {
+        event: "DELETE",
+        schema: "public",
+        table: "chat_messages",
+      }, ({ old: gone }) => {
+        if (!gone?.id) return
+        setMessages(prev => prev.filter(m => m.id !== gone.id))
+      })
       .subscribe()
 
     channelRef.current = channel
     return () => { supabase.removeChannel(channel); channelRef.current = null }
   }, [convId])
+
+  // Удаление у ВСЕХ: строка уходит из базы, вторая сторона узнаёт об этом
+  // realtime-событием. Своё состояние правим сразу — ждать эха от сервера в
+  // собственном окне незачем.
+  // Своё сообщение удаляет любой, чужое — только репетитор. Ровно те же
+  // правила стоят политиками в базе, кнопка лишь не предлагает невозможного.
+  function canDelete(msg) {
+    return isTutor || msg.sender_id === myId
+  }
+
+  async function deleteMessage(id) {
+    setDeleting(true)
+    const { error } = await supabase.from("chat_messages").delete().eq("id", id)
+    setDeleting(false)
+    if (error) { setDelError("Не удалось удалить сообщение"); return }
+    setDelError("")
+    setMessages(prev => prev.filter(m => m.id !== id))
+    setConfirmDel(null)
+  }
+
+  async function clearConversation() {
+    if (!convId) return
+    setDeleting(true)
+    const { error } = await supabase.from("chat_messages").delete().eq("conversation_id", convId)
+    setDeleting(false)
+    if (error) { setDelError("Не удалось очистить переписку"); return }
+    setDelError("")
+    setMessages([])
+    setConfirmDel(null)
+  }
 
   async function sendMessage() {
     const text = input.trim()
@@ -593,10 +648,23 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
                   />
                 )}
               </div>
-              <div>
-                <div className="text-sm font-semibold text-gray-900 dark:text-white">{activeContact.name}</div>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-gray-900 dark:text-white truncate">{activeContact.name}</div>
                 {activeContact.role && <div className="text-xs text-gray-400">{activeContact.role}</div>}
               </div>
+              {/* Очистка переписки — только у репетитора: это его рабочее
+                  пространство. Кнопка видимая, а не спрятанная в меню, но с
+                  подтверждением: восстановить переписку будет нечем. */}
+              {isTutor && messages.length > 0 && (
+                <button
+                  onClick={() => { setDelError(""); setConfirmDel({ kind: "all" }) }}
+                  title="Очистить переписку"
+                  aria-label="Очистить переписку"
+                  className="press-fill ml-auto flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors"
+                >
+                  <Icon name="trash" size={16} />
+                </button>
+              )}
             </div>
 
             {/* Сообщения + Ввод */}
@@ -634,8 +702,21 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
                         </div>
                       )}
                     <div
-                      className={`flex ${isMe ? "justify-end" : "justify-start"} ${startsGroup && !showDate ? "mt-2" : ""} ${isNew ? (isMe ? "chat-msg-right" : "chat-msg-left") : ""}`}
+                      className={`chat-row group flex items-center gap-1.5 ${isMe ? "justify-end" : "justify-start"} ${startsGroup && !showDate ? "mt-2" : ""} ${isNew ? (isMe ? "chat-msg-right" : "chat-msg-left") : ""}`}
                     >
+                      {/* Кнопка удаления стоит СНАРУЖИ пузыря, со стороны поля:
+                          внутри она перекрывала бы текст и время. На мыши
+                          появляется по наведению, на касании видна всегда —
+                          иначе на телефоне до неё никак не добраться. */}
+                      {canDelete(msg) && isMe && (
+                        <button
+                          onClick={() => { setDelError(""); setConfirmDel({ kind: "msg", id: msg.id, text: msg.text }) }}
+                          aria-label="Удалить сообщение"
+                          className="chat-del order-first flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors"
+                        >
+                          <Icon name="trash" size={13} />
+                        </button>
+                      )}
                       <div className={`chat-bubble chat-tail relative max-w-[65%] px-3.5 py-2 rounded-[13px] text-sm break-words ${
                         isMe
                           ? "bg-blue-600 text-white chat-tail-out"
@@ -665,6 +746,15 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
                           </span>
                         </div>
                       </div>
+                      {canDelete(msg) && !isMe && (
+                        <button
+                          onClick={() => { setDelError(""); setConfirmDel({ kind: "msg", id: msg.id, text: msg.text }) }}
+                          aria-label="Удалить сообщение"
+                          className="chat-del flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors"
+                        >
+                          <Icon name="trash" size={13} />
+                        </button>
+                      )}
                     </div>
                     </Fragment>
                   )
@@ -697,6 +787,25 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
           </>
         )}
       </div>
+
+      {/* Удаление — только через подтверждение: возвращать будет нечего. */}
+      <ConfirmModal
+        open={!!confirmDel}
+        danger
+        title={confirmDel?.kind === "all" ? "Очистить переписку?" : "Удалить сообщение?"}
+        message={confirmDel?.kind === "all"
+          ? `Вся переписка с ${activeContact?.name || "собеседником"} пропадёт у обеих сторон — восстановить её будет нечем.`
+          : `Сообщение «${(confirmDel?.text || "").slice(0, 80)}${(confirmDel?.text || "").length > 80 ? "…" : ""}» пропадёт и у собеседника.`}
+        confirmLabel={deleting ? "Удаляем…" : "Удалить"}
+        cancelLabel="Отмена"
+        onConfirm={() => (confirmDel?.kind === "all" ? clearConversation() : deleteMessage(confirmDel.id))}
+        onCancel={() => { setConfirmDel(null); setDelError("") }}
+      />
+      {delError && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 glass-tint-amber px-4 py-2.5 text-sm text-amber-700">
+          {delError}
+        </div>
+      )}
     </div>
   )
 }
