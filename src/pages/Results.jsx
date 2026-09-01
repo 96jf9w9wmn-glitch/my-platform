@@ -314,6 +314,10 @@ function StatTile({ icon, label, value, sub, tone = "blue", suffix, active, onCl
 // Разбор одной работы
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Разбор не заливается цветом. Ряд из 27 залитых клеток читается как сплошное
+// красное полотно: смотреть больно, а нужную клетку в нём всё равно не найти —
+// выделено ведь всё. Цвет здесь сжат до точки-маркера и подчёркивания, а смысл
+// несёт вес шрифта: свой неверный ответ бледный и зачёркнут, верный — плотный.
 function AnswerCell({ n, correct, student }) {
   const has = student !== undefined && student !== null && String(student).trim() !== ""
   // Сверка — тем же answersEqual, каким считался балл части 1 (Variants.jsx).
@@ -322,14 +326,15 @@ function AnswerCell({ n, correct, student }) {
   const isRight = has && correct && answersEqual(student, correct)
   const isWrong = has && correct && !isRight
   return (
-    <div className={`text-center rounded-xl py-1.5 px-1 ring-1 ${
-      isRight ? "bg-green-500/10 text-green-700 dark:text-green-300 ring-green-500/20" :
-      isWrong ? "bg-red-500/10 text-red-600 dark:text-red-300 ring-red-500/20" :
-      "text-gray-400 ring-gray-300/70 dark:ring-white/15"
-    }`}>
+    <div className="relative text-center rounded-xl py-1.5 px-1 ring-1 ring-gray-200/70 dark:ring-white/10">
+      {(isRight || isWrong) && (
+        <span className={`absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full ${isRight ? "bg-green-500/80" : "bg-red-500/80"}`} />
+      )}
       <div className="text-[10px] text-gray-400 leading-tight">{n}</div>
-      <div className="text-xs font-medium truncate">{has ? student : "—"}</div>
-      {isWrong && <div className="text-[9px] text-green-600 dark:text-green-400 truncate">{correct}</div>}
+      <div className={`text-xs truncate ${isWrong ? "text-gray-400 font-normal line-through decoration-red-400/70" : "text-gray-700 font-medium"}`}>
+        {has ? student : "—"}
+      </div>
+      {isWrong && <div className="text-xs font-semibold text-gray-800 truncate">{correct}</div>}
     </div>
   )
 }

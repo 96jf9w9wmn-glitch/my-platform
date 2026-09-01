@@ -1203,16 +1203,21 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten })
                     const studentAns = hw.student_answers[i] || "—"
                     const isCorrect = answersEqual(studentAns, correct)
                     return (
-                      <tr key={i} className={`border-t border-gray-100 ${isCorrect ? "bg-green-50" : "bg-red-50"}`}>
+                      // Строка не заливается цветом: сплошная зелёно-красная простыня
+                      // режет глаз и ничего не выделяет. Цвет — только в галочке
+                      // и в подчёркивании, верный ответ выделен весом шрифта.
+                      <tr key={i} className="border-t border-gray-100 dark:border-white/10">
                         <td className="py-2 px-3 text-gray-400 align-top">{i + 1}</td>
-                        <td className={`py-2 px-3 align-top font-medium ${isCorrect ? "text-green-700" : "text-red-700"}`}>
+                        <td className="py-2 px-3 align-top">
                           <span className="flex items-start gap-1.5">
                             <Icon name={isCorrect ? "check" : "x"} size={12}
-                              className={`mt-1 flex-shrink-0 ${isCorrect ? "text-green-500" : "text-red-500"}`} />
-                            {studentAns}
+                              className={`mt-1 flex-shrink-0 ${isCorrect ? "text-green-500" : "text-red-400"}`} />
+                            <span className={isCorrect ? "text-gray-700 font-medium" : "text-gray-400 line-through decoration-red-400/70"}>
+                              {studentAns}
+                            </span>
                           </span>
                         </td>
-                        <td className="py-2 px-3 align-top text-gray-700">{correct}</td>
+                        <td className={`py-2 px-3 align-top ${isCorrect ? "text-gray-400" : "text-gray-800 font-medium"}`}>{correct}</td>
                       </tr>
                     )
                   })}
@@ -3384,28 +3389,29 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                           <div className="flex flex-col gap-1">
                             {selectedVariant.answers.part1.map((correct, i) => {
                               const studentAns = selectedVariant.submission.part1_answers[i] || "—"
-                              const isCorrect = studentAns.trim() === correct.trim()
+                              // Сверяем тем же answersEqual, каким считался балл: сравнение строк
+                              // красило «0,5» при эталоне «0.5» в ошибку, и разбор расходился со счётом.
+                              const isCorrect = answersEqual(studentAns, correct)
                               return (
                                 <div
                                   key={i}
-                                  className={`flex items-start gap-2 px-3 py-2 rounded-lg text-sm ${
-                                    isCorrect ? "bg-green-50" : "bg-red-50"
-                                  }`}
+                                  className="flex items-start gap-2 px-3 py-2 rounded-lg text-sm border-b border-gray-100 dark:border-white/10 last:border-0"
                                 >
-                                  <span className="text-gray-500 w-6 flex-shrink-0">{i + 1}</span>
+                                  <span className="text-gray-400 w-6 flex-shrink-0">{i + 1}</span>
                                   {/* min-w-0 + break-words: развёрнутый ответ бывает в несколько
                                       строк и без этого вылезал за карточку. */}
                                   <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-                                    <span className={`font-medium break-words ${isCorrect ? "text-green-700" : "text-red-700"}`}>
+                                    <span className={`break-words ${isCorrect ? "text-gray-700 font-medium" : "text-gray-400 line-through decoration-red-400/70"}`}>
                                       {studentAns}
                                     </span>
                                     {!isCorrect && (
                                       <span className="text-gray-400 text-xs break-words">
-                                        правильно: <span className="text-gray-700 font-medium">{correct}</span>
+                                        правильно: <span className="text-gray-800 font-semibold">{correct}</span>
                                       </span>
                                     )}
                                   </div>
-                                  {isCorrect && <Icon name="check" size={12} className="text-green-500 flex-shrink-0 mt-1" />}
+                                  <Icon name={isCorrect ? "check" : "x"} size={12}
+                                    className={`flex-shrink-0 mt-1 ${isCorrect ? "text-green-500" : "text-red-400"}`} />
                                 </div>
                               )
                             })}
@@ -3498,8 +3504,8 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                               const score = Number(selectedVariant.submission.part2_score_detail?.[n] || 0)
                               const max = isEgeType(selectedVariant.type) ? ({ 13: 2, 14: 3, 15: 2, 16: 2, 17: 3, 18: 4, 19: 4 })[n] : 2
                               return (
-                                <div key={n} className={`flex items-start gap-2 px-3 py-2 rounded-lg text-sm ${score >= max ? "bg-green-50" : score > 0 ? "bg-amber-50" : "bg-red-50"}`}>
-                                  <span className="text-gray-500 w-6 flex-shrink-0">{n}</span>
+                                <div key={n} className="flex items-start gap-2 px-3 py-2 rounded-lg text-sm border-b border-gray-100 dark:border-white/10 last:border-0">
+                                  <span className="text-gray-400 w-6 flex-shrink-0">{n}</span>
                                   {/* Ответ части 2 бывает развёрнутым на несколько строк — переносим,
                                       а не обрезаем: обрезанный текст вылезал за карточку. */}
                                   <div className="flex-1 min-w-0 flex flex-col gap-0.5">
