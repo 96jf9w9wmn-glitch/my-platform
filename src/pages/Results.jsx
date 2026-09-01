@@ -401,7 +401,7 @@ function VariantRow({ variant: v }) {
 // Раскрытая карточка ученика
 // ─────────────────────────────────────────────────────────────────────────────
 
-function StudentDetail({ student, stats }) {
+function VariantsPane({ stats }) {
   const { rows, last, avg, best, bestRow, target } = stats
   const isTest = last.res.kind === "test"
   const max = last.max
@@ -411,7 +411,7 @@ function StudentDetail({ student, stats }) {
   const many = rows.length >= 2
 
   return (
-    <div className="flex flex-col gap-3 px-3.5 pb-3.5 sm:px-4 sm:pb-4">
+    <div className="flex flex-col gap-3">
       <div className={`grid grid-cols-2 ${many ? "md:grid-cols-4" : "md:grid-cols-2"} gap-2.5`}>
         <div className="glass-sm p-3">
           <div className="text-[11px] text-gray-400">Последняя работа</div>
@@ -491,8 +491,185 @@ function StudentDetail({ student, stats }) {
         </div>
         {[...rows].reverse().map((v, i) => <VariantRow key={i} variant={v} />)}
       </div>
+    </div>
+  )
+}
 
-      {/* Общий балл говорит «72%», а репетитору нужно знать, КАКОЙ типаж проседает. */}
+// ─────────────────────────────────────────────────────────────────────────────
+// Разбор домашних работ
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Чип статуса работы. У проверенной работы статус и есть оценка — «Выполнено»
+// рядом с ней ничего не добавляет (тот же приём, что в разделе «Задания»).
+function hwChip(r) {
+  if (r.status === "submitted") return { tone: "amber", label: "На проверке" }
+  if (r.status === "revision") return { tone: "red", label: "На доработку" }
+  if (r.grade) return { tone: r.grade >= 4 ? "green" : r.grade === 3 ? "amber" : "red", label: `Оценка ${r.grade}` }
+  if (r.status === "done") return { tone: "green", label: "Зачтено" }
+  return { tone: "gray", label: "Решается" }
+}
+
+// Раскладка таблицы работ: на телефоне без столбца «Верно» (см. заголовок).
+const HW_COLS_CLS = "grid-cols-[1.4fr_minmax(0,1fr)_auto] sm:grid-cols-[1.6fr_repeat(3,minmax(0,1fr))]"
+
+function HomeworkRow({ row: r }) {
+  const [expanded, setExpanded] = useState(false)
+  const chip = hwChip(r)
+  // Разбор есть только у работы с ответами: письменную смотрит репетитор, и
+  // раскрывать в ней нечего.
+  const canOpen = r.correct.length > 0
+  // Номера в таблице — это порядок заданий в работе: и эталон, и ответы ученика
+  // лежат массивами в этом же порядке.
+  const nums = r.correct.map((_, i) => i + 1)
+
+  return (
+    <div className="border-t border-gray-100 dark:border-white/10">
+      <button
+        onClick={() => canOpen && setExpanded(!expanded)}
+        className={`${canOpen ? "press-fill" : "cursor-default"} w-full grid ${HW_COLS_CLS} gap-2 px-4 py-2.5 text-sm items-center text-left`}
+      >
+        <span className="text-gray-700 truncate flex items-center gap-1.5 min-w-0">
+          <Icon
+            name="chevron-right" size={13}
+            className={`shrink-0 transition-transform duration-300 ${canOpen ? "text-gray-400" : "text-transparent"} ${expanded ? "rotate-90" : ""}`}
+          />
+          <span className="truncate">{r.title}</span>
+          <span className="hidden sm:inline text-[11px] text-gray-400 shrink-0">{fmtDay(r.date)}</span>
+        </span>
+        <span className="hidden sm:block text-gray-500 tabular-nums">{r.score === null ? "—" : `${r.score} / ${r.max}`}</span>
+        <span className="font-medium tabular-nums">
+          {r.percent === null ? "—" : `${r.percent}%`}
+        </span>
+        <span className="justify-self-start min-w-0"><Chip tone={chip.tone} className="whitespace-nowrap">{chip.label}</Chip></span>
+      </button>
+
+      <Collapse open={expanded}>
+        <div className="px-4 pb-4 pt-3 glass-table-header border-t border-white/30">
+          <AnswerTable nums={nums} correct={r.correct} student={r.given} credited={r.credited} />
+        </div>
+      </Collapse>
+    </div>
+  )
+}
+
+function HomeworkPane({ hw, noVariants }) {
+  const { rows, last, avgPct, scoredCount, avgGrade, gradedCount, pending } = hw
+  const lastChip = hwChip(last)
+  // Плитки собираем списком: их от одной до четырёх, и нечётную последнюю на
+  // телефоне надо растянуть на всю строку — иначе рядом остаётся пустая
+  // половина (то же правило, что у плиток наверху страницы).
+  const tiles = [
+    {
+      key: "last",
+      label: "Последняя работа",
+      value: last.percent !== null
+        ? <>{last.percent}<span className="text-sm font-normal text-gray-400">% · {last.score} из {last.max}</span></>
+        : last.grade ? `Оценка ${last.grade}` : <span className="text-base font-normal text-gray-400">Без автопроверки</span>,
+      // Статус повторял бы оценку, уже стоящую крупно, поэтому у проверенной
+      // работы под числом идёт её название, а чип остаётся для «На проверке».
+      foot: (
+        <div className="mt-1.5 flex items-center gap-1.5 min-w-0">
+          {(last.status === "submitted" || last.status === "revision") && <Chip tone={lastChip.tone}>{lastChip.label}</Chip>}
+          <span className="text-[11px] text-gray-400 truncate">{last.title} · {fmtDay(last.date)}</span>
+        </div>
+      ),
+    },
+    scoredCount >= 2 && {
+      key: "avg",
+      label: "Верных ответов",
+      value: <>{avgPct}<span className="text-sm font-normal text-gray-400">%</span></>,
+      foot: <div className="text-[11px] text-gray-400 mt-1.5">в среднем по {scoredCount} {plural(scoredCount, "работе", "работам", "работам")}</div>,
+    },
+    gradedCount >= 2 && {
+      key: "grade",
+      label: "Средняя оценка",
+      value: avgGrade,
+      foot: <div className="text-[11px] text-gray-400 mt-1.5">по {gradedCount} {plural(gradedCount, "проверенной работе", "проверенным работам", "проверенным работам")}</div>,
+    },
+    pending > 0 && {
+      key: "pending",
+      label: "Ждут проверки",
+      value: pending,
+      foot: <div className="text-[11px] text-gray-400 mt-1.5">проверить — в разделе «Задания»</div>,
+    },
+  ].filter(Boolean)
+
+  return (
+    <div className="flex flex-col gap-3">
+      {noVariants && (
+        <div className="glass-sm p-3 text-xs text-gray-500">
+          Баллов за варианты пока нет — ниже то, как ученик решает домашние работы.
+          Первичный балл появится, когда он решит вариант и вы его проверите.
+        </div>
+      )}
+
+      <div className={`grid ${tiles.length === 1 ? "grid-cols-1" : `grid-cols-2 ${TILE_COLS[tiles.length] || ""}`} gap-2.5`}>
+        {tiles.map((t, i) => (
+          <div
+            key={t.key}
+            className={`glass-sm p-3 ${tiles.length % 2 && i === tiles.length - 1 && tiles.length > 1 ? "col-span-2 md:col-span-1" : ""}`}
+          >
+            <div className="text-[11px] text-gray-400">{t.label}</div>
+            <div className="text-xl font-semibold mt-1 tabular-nums">{t.value}</div>
+            {t.foot}
+          </div>
+        ))}
+      </div>
+
+      {/* График по домашним работам не строим намеренно: их «процент верных»
+          зависит от того, из чего собрана работа, и линия показывала бы разницу
+          между работами, а не рост ученика. Для роста есть варианты. */}
+
+      <div className="glass-sm overflow-hidden">
+        <div className={`grid ${HW_COLS_CLS} gap-2 px-4 py-2 glass-table-header text-[11px] text-gray-500 font-medium`}>
+          <span>Работа</span>
+          {/* На телефоне «5 из 6» и «83%» — одно и то же дважды, и от них
+              статусу не оставалось ширины: чип «Оценка 4» ломался на две
+              строки. Поэтому там остаётся процент. */}
+          <span className="hidden sm:block">Верно</span>
+          <span>Процент</span>
+          <span>Статус</span>
+        </div>
+        {[...rows].reverse().map((r) => <HomeworkRow key={r.id} row={r} />)}
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Раскрытая карточка: варианты и домашние работы — разными дорожками
+// ─────────────────────────────────────────────────────────────────────────────
+
+function StudentDetail({ student, stats, hw }) {
+  const both = stats.hasData && hw.count > 0
+  const [tab, setTab] = useState(stats.hasData ? "variants" : "homework")
+  // Работы могли догрузиться уже после открытия карточки — вкладка, которой
+  // больше нечего показать, не должна остаться выбранной.
+  const shown = tab === "variants" && !stats.hasData ? "homework"
+    : tab === "homework" && !hw.count ? "variants" : tab
+
+  return (
+    <div className="flex flex-col gap-3 px-3.5 pb-3.5 sm:px-4 sm:pb-4">
+      {both && (
+        <SegmentSwitch
+          size="sm" equal={false} value={shown} onChange={setTab} ariaLabel="Какие работы показать"
+          className="self-start"
+          items={[
+            { key: "variants", label: `Варианты · ${stats.rows.length}` },
+            { key: "homework", label: `Домашние работы · ${hw.count}` },
+          ]}
+        />
+      )}
+
+      <div key={shown} className="slide-up">
+        {shown === "variants"
+          ? <VariantsPane stats={stats} />
+          : <HomeworkPane hw={hw} noVariants={!stats.hasData} />}
+      </div>
+
+      {/* Общий балл говорит «72%», а репетитору нужно знать, КАКОЙ типаж
+          проседает. Считается и по вариантам, и по работам из банка сразу,
+          поэтому блок общий для обеих дорожек. */}
       <WeakTypes studentId={student.id} studentName={student.name} />
     </div>
   )
@@ -502,15 +679,23 @@ function StudentDetail({ student, stats }) {
 // Строка ученика в дашборде
 // ─────────────────────────────────────────────────────────────────────────────
 
-function StudentCard({ student, stats, open, onToggle }) {
+function StudentCard({ student, stats, hw, open, onToggle }) {
   const perf = !stats.hasData && !stats.isExam
   const tone = perf ? "purple" : "blue"
   // Средний и лучший балл отсюда убраны намеренно: при одной работе строка
   // трижды повторяла одно число рядом с ним же справа. В свёрнутом виде важно
   // другое — сколько работ и насколько свежая последняя.
-  const summary = stats.hasData
-    ? `${stats.rows.length} ${plural(stats.rows.length, "работа", "работы", "работ")} · последняя ${fmtDay(stats.last.date)}`
-    : "Проверенных работ пока нет"
+  // Варианты и домашние работы считаются по отдельности: «7 работ» без деления
+  // обещало бы семь баллов за варианты, которых нет.
+  const parts = []
+  if (stats.hasData) parts.push(`${stats.rows.length} ${plural(stats.rows.length, "вариант", "варианта", "вариантов")}`)
+  if (hw.count) parts.push(`${hw.count} ${plural(hw.count, "домашняя работа", "домашние работы", "домашних работ")}`)
+  const lastDate = [stats.hasData ? stats.last.date : null, hw.count ? hw.last.date : null]
+    .filter(Boolean)
+    .sort((a, b) => new Date(b) - new Date(a))[0]
+  const summary = parts.length
+    ? `${parts.join(" · ")} · последняя ${fmtDay(lastDate)}`
+    : "Решённых работ пока нет"
 
   return (
     <div className={`glass overflow-hidden transition-shadow ${open ? "shadow-lg" : ""}`}>
@@ -549,6 +734,18 @@ function StudentCard({ student, stats, open, onToggle }) {
             </div>
           </div>
 
+          {/* Вариантов нет, а работы решались — в строке всё равно должно стоять
+              число, иначе ученик выглядит как «ничего не делал». Процент верных
+              подписан, чтобы его не приняли за первичный балл. */}
+          {!stats.hasData && hw.count > 0 && (
+            <div className="shrink-0 text-right w-[92px]">
+              <div className="text-[22px] leading-none font-semibold tabular-nums">
+                {hw.avgPct === null ? "—" : <>{hw.avgPct}<span className="text-xs font-normal text-gray-400">%</span></>}
+              </div>
+              <div className="mt-1.5 text-[11px] text-gray-400">верных в ДЗ</div>
+            </div>
+          )}
+
           {stats.hasData && (
             <>
               {/* По одной работе линия вырождается в точку — она ничего не
@@ -585,14 +782,14 @@ function StudentCard({ student, stats, open, onToggle }) {
       </button>
 
       <Collapse open={open}>
-        {stats.hasData
-          ? <StudentDetail student={student} stats={stats} />
+        {stats.hasData || hw.count
+          ? <StudentDetail student={student} stats={stats} hw={hw} />
           : (
             <div className="px-3.5 pb-3.5 sm:px-4 sm:pb-4 flex flex-col gap-3">
               <div className="glass-sm p-4 text-sm text-gray-500">
                 {stats.isExam
-                  ? "Баллы появятся, как только ученик решит вариант и вы его проверите — раздел «Варианты». Ниже — типы заданий из домашних работ и тренировок, если они уже решались."
-                  : "Ученик готовится не к экзамену, поэтому баллов за варианты нет. Ниже — типы заданий из домашних работ и тренировок, если они уже решались."}
+                  ? "Баллы появятся, как только ученик решит вариант и вы его проверите — раздел «Варианты», а решённые домашние работы попадут сюда отдельной дорожкой."
+                  : "Ученик готовится не к экзамену, поэтому баллов за варианты нет. Здесь появятся его домашние работы и типы заданий, в которых он ошибается."}
               </div>
               <WeakTypes studentId={student.id} studentName={student.name} />
             </div>
@@ -791,6 +988,7 @@ function toHwRow(hw) {
     : (hw.test_score ?? null)
   return {
     id: hw.id,
+    studentId: hw.student_id,
     title: hw.title || "Домашняя работа",
     date: hw.created_at,
     status: hw.status,
@@ -814,7 +1012,6 @@ function computeHwStats(rows) {
     count: sorted.length,
     rows: sorted,
     last: sorted[sorted.length - 1],
-    lastScored: scored.length ? scored[scored.length - 1] : null,
     avgPct: scored.length ? Math.round(scored.reduce((n, r) => n + r.percent, 0) / scored.length) : null,
     scoredCount: scored.length,
     avgGrade: graded.length ? Math.round((graded.reduce((n, r) => n + r.grade, 0) / graded.length) * 10) / 10 : null,
@@ -864,6 +1061,7 @@ function computeStats(student, rows) {
 function Results({ students, loaded = true, user }) {
   const [variants, setVariants] = useState([])
   const [accounts, setAccounts] = useState([])
+  const [homework, setHomework] = useState([])
   const [loading, setLoading] = useState(true)
   const [openId, setOpenId] = useState(null)
   const [group, setGroup] = useState("all")
@@ -877,13 +1075,25 @@ function Results({ students, loaded = true, user }) {
   useEffect(() => {
     if (!user?.id) return
     let alive = true
+    // Домашние работы берём поимённо перечисленными колонками, а не «*»:
+    // в строке лежат условия и приложения из банка (чертежи внутри data-URI),
+    // и на весь список учеников это мегабайты, которые тут не нужны.
+    const HW_COLS = "id, student_id, title, hw_type, status, grade, test_score, question_count, correct_answers, student_answers, created_at"
+    const loadHw = async () => {
+      const res = await supabase.from("homework").select(`${HW_COLS}, credited`).eq("tutor_id", user.id)
+      // Колонки credited нет на базе без manual_credit.sql — работы всё равно
+      // нужны, зачёт вручную там просто не с чего показывать.
+      return res.error ? supabase.from("homework").select(HW_COLS).eq("tutor_id", user.id) : res
+    }
     Promise.all([
       supabase.from("variants").select("*, variant_submissions(*)").eq("tutor_id", user.id),
       supabase.from("student_accounts").select("id, name").eq("tutor_id", user.id),
-    ]).then(([v, a]) => {
+      loadHw(),
+    ]).then(([v, a, h]) => {
       if (!alive) return
       setVariants(v.data || [])
       setAccounts(a.data || [])
+      setHomework((h.data || []).filter(hwSolved).map(toHwRow))
       setLoading(false)
     })
     return () => { alive = false }
@@ -895,6 +1105,11 @@ function Results({ students, loaded = true, user }) {
     const idByName = {}
     for (const a of accounts) if (a.name) idByName[a.name.toLowerCase()] = a.id
 
+    // Домашняя работа привязана к КАРТОЧКЕ ученика (students.id), а не к его
+    // аккаунту, — поэтому раскладывается по ней напрямую.
+    const hwByStudent = {}
+    for (const r of homework) (hwByStudent[String(r.studentId)] ||= []).push(r)
+
     return students.map((s) => {
       const accId = s.studentAccountId || idByName[(s.name || "").toLowerCase()] || null
       let rows = accId
@@ -904,11 +1119,18 @@ function Results({ students, loaded = true, user }) {
               .map((sub) => toRow(v, sub, s.goal)))
         : []
       if (!rows.length && s.results?.length) rows = synthesizeRows(s)
-      return { student: s, stats: computeStats(s, rows) }
+      return {
+        student: s,
+        stats: computeStats(s, rows),
+        hw: computeHwStats(hwByStudent[String(s.id)] || []),
+      }
     })
-  }, [students, variants, accounts])
+  }, [students, variants, accounts, homework])
 
-  const totalWorks = cards.reduce((n, c) => n + c.stats.rows.length, 0)
+  // «Проверено работ» — варианты и решённые домашние вместе: обе дорожки
+  // приводят человека на эту страницу, и ноль при десятке сданных работ читался
+  // бы как поломка.
+  const totalWorks = cards.reduce((n, c) => n + c.stats.rows.length + c.hw.count, 0)
   const withData = cards.filter((c) => c.stats.hasData)
   const attentionCount = withData.filter((c) => c.stats.attention).length
   const withTarget = withData.filter((c) => c.stats.target > 0)
@@ -955,7 +1177,9 @@ function Results({ students, loaded = true, user }) {
   }, [cards])
 
   const worksThisMonth = cards.reduce(
-    (n, c) => n + c.stats.rows.filter((r) => new Date(r.date).getTime() >= monthAgo).length, 0)
+    (n, c) => n
+      + c.stats.rows.filter((r) => new Date(r.date).getTime() >= monthAgo).length
+      + c.hw.rows.filter((r) => new Date(r.date).getTime() >= monthAgo).length, 0)
 
   // Третья плитка подстраивается под то, что есть на руках. «Достигли цели»
   // без единой заданной цели — это ноль и подпись «цель никому не задана»:
@@ -983,6 +1207,9 @@ function Results({ students, loaded = true, user }) {
       if (!!a.stats.attention !== !!b.stats.attention) return a.stats.attention ? -1 : 1
       if (a.stats.hasData !== b.stats.hasData) return a.stats.hasData ? -1 : 1
       if (a.stats.hasData && b.stats.hasData) return b.stats.pct - a.stats.pct
+      // Без вариантов сравнивать по баллам нечего, но ученик с решёнными
+      // домашними работами стоит выше того, у кого нет вообще ничего.
+      if (!a.stats.hasData && (a.hw.count > 0) !== (b.hw.count > 0)) return a.hw.count ? -1 : 1
       return (a.student.name || "").localeCompare(b.student.name || "", "ru")
     })
 
@@ -991,7 +1218,7 @@ function Results({ students, loaded = true, user }) {
       <div className="mb-5">
         <h1 className="text-xl font-medium page-title">Результаты</h1>
         <p className="text-sm page-subtitle mt-0.5">
-          Баллы за варианты, динамика и слабые типы заданий — видно, кого и что подтянуть к экзамену.
+          Баллы за варианты, домашние работы и слабые типы заданий — видно, кого и что подтянуть к экзамену.
         </p>
       </div>
 
@@ -1065,9 +1292,9 @@ function Results({ students, loaded = true, user }) {
               <div>
                 <div className="text-sm font-medium">Проверенных работ пока нет</div>
                 <p className="text-sm text-gray-400 mt-1">
-                  Баллы и динамику между пробниками дают проверенные варианты: соберите вариант в разделе
-                  «Варианты» и выдайте его ученику. Разбор слабых типов заданий собирается ещё и по домашним
-                  работам, выданным из банка заданий.
+                  Баллы и динамику между пробниками дают проверенные варианты, а рядом с ними отдельной
+                  дорожкой идут решённые домашние работы. Выдайте ученику вариант или задание — и результат
+                  появится здесь.
                 </p>
               </div>
             </div>
@@ -1091,11 +1318,12 @@ function Results({ students, loaded = true, user }) {
           )}
 
           <div className="flex flex-col gap-2.5">
-            {visible.map(({ student, stats }) => (
+            {visible.map(({ student, stats, hw }) => (
               <StudentCard
                 key={student.id}
                 student={student}
                 stats={stats}
+                hw={hw}
                 open={openId === student.id}
                 onToggle={() => setOpenId(openId === student.id ? null : student.id)}
               />
