@@ -6,6 +6,17 @@ import BetaBadge from "../components/BetaBadge"
 import { ConsentRow, ConsentLink } from "../components/ConsentChecks"
 import { logConsent } from "../consents"
 import { loadTutorProfile } from "../tutorProfile"
+import { tutorSignIn } from "../tutorSignIn"
+
+// Столько же попыток считает сервер (supabase/login_guard.sql и
+// api/auth-login.js). Здесь число нужно ровно для подсказки «осталось N».
+const LOGIN_MAX_TRIES = 5
+
+// Блокировка длится 15 минут, и «Подождите 900 сек.» читается как ошибка.
+function formatWait(sec) {
+  if (sec >= 90) return `${Math.ceil(sec / 60)} мин.`
+  return `${sec} сек.`
+}
 
 function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
   const [mode, setMode] = useState(initialMode)
@@ -190,7 +201,7 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
   async function handleSubmit() {
     setError("")
     if (cooldownLeft > 0) {
-      setError(`Слишком много попыток. Подождите ${cooldownLeft} сек.`)
+      setError(`Слишком много попыток. Подождите ${formatWait(cooldownLeft)}.`)
       return
     }
     setLoading(true)
@@ -267,11 +278,11 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
 
       } else {
         if (mode === "login") {
-          const { data, error } = await supabase.auth.signInWithPassword({
-            email: form.email,
-            password: form.password,
-          })
-          if (error) throw error
+          // Вход идёт через свой обработчик, а не напрямую в GoTrue: только там
+          // считаются попытки по конкретному аккаунту (пять — и вход закрыт на
+          // 15 минут, см. api/auth-login.js). Ответ — та же сессия GoTrue,
+          // поэтому дальше всё как раньше.
+          const data = await tutorSignIn(form.email, form.password)
           // Сессия ученика или родителя из этого же браузера теперь не нужна, а
           // её токен подменял бы авторизацию репетитора (см. supabase.js).
           clearAppSession()
@@ -304,13 +315,25 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
         }
       }
     } catch (err) {
-      setError(err.message)
-      const next = failedAttempts + 1
-      setFailedAttempts(next)
-      if (next >= 5) {
-        setCooldownLeft(30)
+      // Настоящий предел попыток теперь держит сервер: у ученика и родителя его
+      // считает база (supabase/login_guard.sql), у репетитора — обработчик
+      // /api/auth-login. Здесь только подсказка «сколько осталось» и обратный
+      // отсчёт по времени, которое назвал сервер: счётчик в браузере всё равно
+      // обнулялся перезагрузкой страницы и защитой не был.
+      const wait = Number(err.retryAfter) || 0
+      if (wait > 0) {
+        setCooldownLeft(wait)
         setFailedAttempts(0)
-        setError("Слишком много попыток. Подождите 30 секунд.")
+        setError(err.message)
+      } else if (mode === "login" && /парол|логин|неверн|не найден/i.test(err.message || "")) {
+        const next = failedAttempts + 1
+        setFailedAttempts(next)
+        const left = LOGIN_MAX_TRIES - next
+        setError(left > 0 && left <= 2
+          ? `${err.message}. Осталось попыток: ${left}`
+          : err.message)
+      } else {
+        setError(err.message)
       }
     } finally {
       setLoading(false)
@@ -674,7 +697,7 @@ function Auth({ onLogin, initialRole, initialMode = "login", onBack }) {
               {loading
                 ? "Загрузка..."
                 : cooldownLeft > 0
-                ? `Подождите ${cooldownLeft} сек.`
+                ? `Подождите ${formatWait(cooldownLeft)}`
                 : mode === "reset"
                 ? "Сбросить пароль"
                 : mode === "login"

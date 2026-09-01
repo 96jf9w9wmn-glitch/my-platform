@@ -34,6 +34,9 @@ const nS = (n) => String(n).replace("-", MINUS)
 // Слагаемое «+ 3x», «− y», «+ 1». ВАЖНО: при пустой переменной (свободный член) единицу
 // печатать обязательно — иначе «x² + 1» превращалось в «x² +» и слагаемое пропадало.
 const term = (k, v) => (k === 0 ? "" : ` ${k > 0 ? "+" : MINUS} ${Math.abs(k) === 1 && v ? "" : Math.abs(k)}${v}`)
+// Скобки вокруг сдвинутой переменной нужны, только когда сдвиг есть: при нулевом сдвиге
+// «(x − 0)» вырождалось в одинокое «(x)» — «(x)(y + 3x) = |x|³» вместо «x(y + 3x) = |x|³».
+const shifted = (v, tail) => (tail ? `(${v}${tail})` : v)
 const EPS = 1e-9
 const sqrtSafe = (v) => Math.sqrt(Math.max(0, v))     // подкоренное, равное нулю с точностью до float
 const svgUrl = (svg) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
@@ -3334,7 +3337,7 @@ export function t18SysDiskNoSol() {
   const lineTxt = h === 0 ? `y = ax + ${g}` : `y = a(x ${MINUS} ${h}) + ${g}`
   return item({
     text: `Найдите все значения параметра a, при каждом из которых система\n`
-      + `⟦cases:((x ${MINUS} ${u})${SUP[2]} + (y ${MINUS} ${v})${SUP[2]} ${MINUS} ${r * r})((x ${MINUS} ${w})${SUP[2]} + (y${term(-z, "")})${SUP[2]}) ≤ 0¦${lineTxt}⟧\n\nне имеет решений.`,
+      + `⟦cases:((x ${MINUS} ${u})${SUP[2]} + (y ${MINUS} ${v})${SUP[2]} ${MINUS} ${r * r})((x ${MINUS} ${w})${SUP[2]} + ${shifted("y", term(-z, ""))}${SUP[2]}) ≤ 0¦${lineTxt}⟧\n\nне имеет решений.`,
     set,
     solution: `Второй множитель неотрицателен, поэтому произведение ≤ 0 только если первый множитель ≤ 0 (это круг с центром (${u}; ${v}) радиуса ${r}) `
       + `или второй множитель равен нулю (это точка (${w}; ${nS(z)})).\n`
@@ -3615,7 +3618,7 @@ export function t18SysCurveVert() {
   return itemH2(par, {
     num: `(y${SUP[2]} ${MINUS} xy${term(h, "x")}${term(-(h + b), "y")}${term(h * b, "")})√{x${term(-v, "")}} = 0`,
     line: `a ${MINUS} x ${MINUS} y = 0`,
-    split: `(y ${MINUS} ${h})(y ${MINUS} x${term(-b, "")}) · √(x${term(-v, "")}) = 0`,
+    split: `(y ${MINUS} ${h})(y ${MINUS} x${term(-b, "")}) · √${shifted("x", term(-v, ""))} = 0`,
     odz: `x ≥ ${nS(v)} (в точке x = ${nS(v)} корень обращается в нуль, поэтому подходит вся вертикаль)`,
   })
 }
@@ -3642,7 +3645,7 @@ export function t18SysCurveTwoSqrt() {
   return itemH2(par, {
     num: `${fT(`(y${SUP[2]} ${MINUS} xy${term(h, "x")}${term(-(h + b), "y")}${term(h * b, "")})√{x${term(-v, "")}}`, `√{${xHi} ${MINUS} x}`)} = 0`,
     line: `a = x + y`,
-    split: `(y ${MINUS} ${h})(y ${MINUS} x${term(-b, "")}) · √(x${term(-v, "")}) = 0`,
+    split: `(y ${MINUS} ${h})(y ${MINUS} x${term(-b, "")}) · √${shifted("x", term(-v, ""))} = 0`,
     odz: `${nS(v)} ≤ x < ${xHi} (корень в числителе даёт вертикаль x = ${nS(v)}, корень в знаменателе — строгую границу справа)`,
   })
 }
@@ -3659,7 +3662,7 @@ export function t18SysCurveYBound() {
   return itemH2(par, {
     num: `${fT(`(y${SUP[2]} ${MINUS} xy${term(h, "x")}${term(-(h + b), "y")}${term(h * b, "")})√{x${term(-v, "")}}`, `√{${yHi} ${MINUS} y}`)} = 0`,
     line: `a = x + y`,
-    split: `(y ${MINUS} ${h})(y ${MINUS} x${term(-b, "")}) · √(x${term(-v, "")}) = 0`,
+    split: `(y ${MINUS} ${h})(y ${MINUS} x${term(-b, "")}) · √${shifted("x", term(-v, ""))} = 0`,
     odz: `x ≥ ${nS(v)} и y < ${yHi}`,
   })
 }
@@ -3686,7 +3689,7 @@ export function t18SysCurveNegShift() {
   return itemH2(par, {
     num: `${fT(`(y${SUP[2]} ${MINUS} xy${term(h, "x")}${term(-(h + b), "y")}${term(h * b, "")})√{x${term(-v, "")}}`, `√{${xHi} ${MINUS} x}`)} = 0`,
     line: `x + y ${MINUS} a = 0`,
-    split: `(y ${MINUS} ${h})(y ${MINUS} x${term(-b, "")}) · √(x${term(-v, "")}) = 0`,
+    split: `(y ${MINUS} ${h})(y ${MINUS} x${term(-b, "")}) · √${shifted("x", term(-v, ""))} = 0`,
     odz: `${nS(v)} ≤ x < ${xHi}`,
   })
 }
@@ -3808,7 +3811,7 @@ export function t18SysPencilHoriz() {
   const par = pick(T63), { h, k, yLo } = par
   return itemPencil(par, {
     num: `(xy${SUP[2]}${term(-h, "xy")}${term(-k, "y")}${term(h * k, "")})√{y${term(-yLo, "")}} = 0`,
-    extra: `, а множитель √(y${term(-yLo, "")}) добавляет горизонталь y = ${nS(yLo)}`, odz: `y ≥ ${nS(yLo)}`,
+    extra: `, а множитель √${shifted("y", term(-yLo, ""))} добавляет горизонталь y = ${nS(yLo)}`, odz: `y ≥ ${nS(yLo)}`,
   })
 }
 
@@ -9110,7 +9113,7 @@ export function t18SysCubicAbsLine() {
   const inner = `y${term(k, "x")}${term(-k * h, "")}`
   const absPart = `|x${term(-h, "")}|${SUP[3]}`
   return item({
-    text: `${HEAD_SYS}\n⟦cases:(x${term(-h, "")})(${inner}) = ${absPart}¦y = ${m === 1 ? "" : m}x + a⟧\n\nимеет ровно четыре различных решения.`,
+    text: `${HEAD_SYS}\n⟦cases:${shifted("x", term(-h, ""))}(${inner}) = ${absPart}¦y = ${m === 1 ? "" : m}x + a⟧\n\nимеет ровно четыре различных решения.`,
     set,
     solution: `Обозначим t = x${term(-h, "")}. Первая строка принимает вид t(y + ${k === 1 ? "" : k}t) = |t|${SUP[3]}.\n`
       + `При t = 0 (то есть на всей вертикальной прямой x = ${nS(h)}) она выполняется тождественно — это целая прямая точек кривой.\n`
@@ -9240,9 +9243,9 @@ export function t18SysTwoLinesArc() {
     text: `${HEAD_SYS}\n⟦cases:y${SUP[2]}${term(-al, "x")}${term(-c, "")} = |x${SUP[2]}${term(-p, "x")}${term(-q, "")}|¦x ${MINUS} 2y = a⟧\n\nимеет более двух различных решений.`,
     set,
     solution: `Корни подмодульного трёхчлена — x = ${Rstr(xm)} и x = ${Rstr(xp)}.\n`
-      + `Вне отрезка [${Rstr(xm)}; ${Rstr(xp)}] модуль раскрывается со знаком «+», и первая строка даёт y${SUP[2]} = x${SUP[2]}${term(2 * w, "x")}${term(w * w, "")} = (x${term(w, "")})${SUP[2]}, то есть ДВЕ прямые y = ±(x${term(w, "")}).\n`
+      + `Вне отрезка [${Rstr(xm)}; ${Rstr(xp)}] модуль раскрывается со знаком «+», и первая строка даёт y${SUP[2]} = x${SUP[2]}${term(2 * w, "x")}${term(w * w, "")} = ${shifted("x", term(w, ""))}${SUP[2]}, то есть ДВЕ прямые y = ±${shifted("x", term(w, ""))}.\n`
       + `Внутри отрезка знак противоположный: y${SUP[2]} = ${MINUS}x${SUP[2]}${term(al + p, "x")}${term(c + q, "")}, то есть дуга окружности (x ${MINUS} ${nS(x0)})${SUP[2]} + y${SUP[2]} = ${rho2}. В концах отрезка обе записи дают одно и то же — кривая непрерывна.\n`
-      + `Прямая x ${MINUS} 2y = a пересекает прямую y = x${term(w, "")} в точке x = ${MINUS}a${term(-2 * w, "")}, прямую y = ${MINUS}(x${term(w, "")}) — в точке x = ${fT(`a${term(-2 * w, "")}`, "3")}; засчитываются они только если попали ВНЕ отрезка.\n`
+      + `Прямая x ${MINUS} 2y = a пересекает прямую y = x${term(w, "")} в точке x = ${MINUS}a${term(-2 * w, "")}, прямую y = ${MINUS}${shifted("x", term(w, ""))} — в точке x = ${fT(`a${term(-2 * w, "")}`, "3")}; засчитываются они только если попали ВНЕ отрезка.\n`
       + `Точки на дуге ищутся из 5x${SUP[2]} ${MINUS} (${8 * x0} + 2a)x + ${4 * x0 * x0 - 4 * rho2} + a${SUP[2]} = 0; касание происходит при a = ${nS(x0)} ± ${isSq(5 * rho2)}.\n`
       + `Ответ: ${setToString(set)}.`,
     predicate: { type: "atLeast", n: 3 },
@@ -9310,7 +9313,7 @@ export function t18SysPetalPencil() {
   const par = pick(T70), { rho2, d } = par
   const { set, solve, x0, y0, R1, R2 } = build70(par)
   const aRange = spanRange(set)
-  const line = y0 === 0 ? `y = a(x${term(-x0, "")})` : `y${term(-y0, "")} = a(x${term(-x0, "")})`
+  const line = y0 === 0 ? `y = a${shifted("x", term(-x0, ""))}` : `y${term(-y0, "")} = a${shifted("x", term(-x0, ""))}`
   return item({
     text: `${HEAD_SYS}\n⟦cases:2x ${MINUS} 2y ${MINUS} ${2 * d === 1 ? "" : nS(2 * d)} = |x${SUP[2]} + y${SUP[2]} ${MINUS} ${rho2}|¦${line}⟧\n\nимеет более двух различных решений.`,
     set,
@@ -9444,12 +9447,12 @@ export function t18SysRadicalPencil() {
   const P = par.P
   // подмодульное выражение печатаем как обычную сумму, без ведущего «+»
   const AL = absLineStr(al, be, ga), Lstr = AL.inner
-  const xs = P[0] === 0 ? "ax" : `a(x${term(-P[0], "")})`
+  const xs = P[0] === 0 ? "ax" : `a${shifted("x", term(-P[0], ""))}`
   const line = P[1] === 0 ? `y = ${xs}` : `y${term(-P[1], "")} = ${xs}`
   return item({
     text: `${HEAD_SYS}\n⟦cases:x${SUP[2]}${term(p, "x")} + y${SUP[2]}${term(q, "y")}${term(rr, "")} = ${AL.txt}¦${line}⟧\n\nимеет ровно два различных решения.`,
     set,
-    solution: `Раскроем модуль. При ${Lstr} ≥ 0 получаем окружность (x${term(-c1.O[0], "")})${SUP[2]} + (y${term(-c1.O[1], "")})${SUP[2]} = ${c1.rho2}, при противоположном знаке — (x${term(-c2.O[0], "")})${SUP[2]} + (y${term(-c2.O[1], "")})${SUP[2]} = ${c2.rho2}.\n`
+    solution: `Раскроем модуль. При ${Lstr} ≥ 0 получаем окружность ${shifted("x", term(-c1.O[0], ""))}${SUP[2]} + ${shifted("y", term(-c1.O[1], ""))}${SUP[2]} = ${c1.rho2}, при противоположном знаке — ${shifted("x", term(-c2.O[0], ""))}${SUP[2]} + ${shifted("y", term(-c2.O[1], ""))}${SUP[2]} = ${c2.rho2}.\n`
       + `Прямая ${Lstr} = 0 — радикальная ось этих окружностей, поэтому она проходит через ОБЕ их общие точки (${nS(P[0])}; ${nS(P[1])}) и (${nS(par.Q[0])}; ${nS(par.Q[1])}), и кривая склеивается из двух дуг с этими концами.\n`
       + `Пучок ${line} проходит через точку стыка (${nS(P[0])}; ${nS(P[1])}), значит одно решение есть всегда. Число остальных меняется только когда прямая касается одной из окружностей в этой самой точке (то есть идёт перпендикулярно радиусу) или когда она проходит через вторую точку стыка.\n`
       + `Ответ: ${setToString(set)}.`,
@@ -9559,7 +9562,7 @@ export function t18SysRadicalParallel() {
   return item({
     text: `${HEAD_SYS}\n⟦cases:x${SUP[2]}${term(p, "x")} + y${SUP[2]}${term(q, "y")}${term(r, "")} = ${AL.txt}¦${lineStr} = a⟧\n\nимеет более двух различных решений.`,
     set,
-    solution: `Раскроем модуль: при ${Lstr} ≥ 0 получаем окружность (x${term(-c1.O[0], "")})${SUP[2]} + (y${term(-c1.O[1], "")})${SUP[2]} = ${c1.rho2}, при ${Lstr} < 0 — окружность (x${term(-c2.O[0], "")})${SUP[2]} + (y${term(-c2.O[1], "")})${SUP[2]} = ${c2.rho2}.\n`
+    solution: `Раскроем модуль: при ${Lstr} ≥ 0 получаем окружность ${shifted("x", term(-c1.O[0], ""))}${SUP[2]} + ${shifted("y", term(-c1.O[1], ""))}${SUP[2]} = ${c1.rho2}, при ${Lstr} < 0 — окружность ${shifted("x", term(-c2.O[0], ""))}${SUP[2]} + ${shifted("y", term(-c2.O[1], ""))}${SUP[2]} = ${c2.rho2}.\n`
       + `Прямая ${Lstr} = 0 — радикальная ось этих окружностей, поэтому она проходит через их общие точки (${nS(P[0])}; ${nS(P[1])}) и (${nS(Q[0])}; ${nS(Q[1])}), и кривая склеена из двух дуг с этими концами.\n`
       + `Вторая строка задаёт семейство ПАРАЛЛЕЛЬНЫХ прямых с нормалью (${nS(n1)}; ${nS(n2)}). Прямая ${lineStr} = a касается первой окружности при a = ${n1 * c1.O[0] + n2 * c1.O[1]} ± ${c1.t}, второй — при a = ${n1 * c2.O[0] + n2 * c2.O[1]} ± ${c2.t}, а через точки стыка проходит при a = ${n1 * P[0] + n2 * P[1]} и a = ${n1 * Q[0] + n2 * Q[1]}.\n`
       + `Между соседними критическими значениями число общих точек постоянно; больше двух их оказывается только на ${setToString(set)}.\n`
@@ -9693,15 +9696,15 @@ export function t18SysArcFourRays() {
   const { set, solve, r1, r2, cx, rho2, c, d } = build72(par)
   const aRange = spanRange(set)
   const lead = (t) => t.replace(/^ \+ /, "").replace(/^ − /, MINUS)
-  const yk = k === 0 ? "y" : `(y${term(-k, "")})`
+  const yk = k === 0 ? "y" : `${shifted("y", term(-k, ""))}`
   const rhs = `${yk}${SUP[2]}${term(c, "x")}${term(d, "")}`
   const lineStr = lead(`${term(n1, "x")}${term(n2, "y")}`)
   return item({
     text: `${HEAD_SYS}\n⟦cases:|x${SUP[2]}${term(p, "x")}${term(q, "")}| = ${rhs}¦${lineStr} = a⟧\n\nимеет одно или два различных решения.`,
     set,
     solution: `Корни подмодульного трёхчлена — x = ${nS(r1)} и x = ${nS(r2)}.\n`
-      + `Вне отрезка [${nS(r1)}; ${nS(r2)}] модуль раскрывается со знаком «+», и получается ${yk}${SUP[2]} = (x${term(w, "")})${SUP[2]}, то есть ЧЕТЫРЕ луча на прямых y = ${k === 0 ? "" : `${nS(k)} + `}(x${term(w, "")}) и y = ${k === 0 ? "" : `${nS(k)} ${MINUS} `}(x${term(w, "")}).\n`
-      + `Внутри отрезка знак противоположный: (x${term(-cx, "")})${SUP[2]} + ${yk}${SUP[2]} = ${rho2} — дуга окружности. В концах отрезка обе записи дают одни и те же точки, кривая непрерывна.\n`
+      + `Вне отрезка [${nS(r1)}; ${nS(r2)}] модуль раскрывается со знаком «+», и получается ${yk}${SUP[2]} = ${shifted("x", term(w, ""))}${SUP[2]}, то есть ЧЕТЫРЕ луча на прямых y = ${k === 0 ? "" : `${nS(k)} + `}${shifted("x", term(w, ""))} и y = ${k === 0 ? "" : `${nS(k)} ${MINUS} `}${shifted("x", term(w, ""))}.\n`
+      + `Внутри отрезка знак противоположный: ${shifted("x", term(-cx, ""))}${SUP[2]} + ${yk}${SUP[2]} = ${rho2} — дуга окружности. В концах отрезка обе записи дают одни и те же точки, кривая непрерывна.\n`
       + `Прямая ${lineStr} = a бежит параллельно самой себе. Её касание с окружностью происходит при a = ${n1 * cx + n2 * k} ± ${rho2} (радиус подобран так, что ρ${SUP[2]} = ${n1}${SUP[2]} + ${nS(n2)}${SUP[2]}), а через концы дуги она проходит при a = ${[...new Set([r1, r2].flatMap((x) => [1, -1].map((s) => n1 * x + n2 * (k + s * (x + w)))))].sort((x, y) => x - y).map(nS).join(", ")}.\n`
       + `Между соседними критическими значениями число общих точек постоянно; одно или два решения получается на ${setToString(set)}.\n`
       + `Ответ: ${setToString(set)}.`,

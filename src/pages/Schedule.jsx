@@ -324,7 +324,14 @@ function Schedule({ students, setStudents, onOpenBoard }) {
             раздел «Ученики» → «Редактировать».
           </p>
         </div>
-        <button onClick={() => openExtraForm("")} className="btn-primary px-3 py-2 text-sm self-stretch sm:self-auto shrink-0">
+        {/* Единственная кнопка добавления. Вторая, «+ Доп занятие» в карточке
+            дня, делала ровно то же самое — осталась одна, а выбранный в
+            календаре день она подхватывает сама, чтобы не спрашивать дату
+            второй раз. */}
+        <button
+          onClick={() => openExtraForm(selectedDay && selectedDay >= todayDateStr() ? selectedDay : "")}
+          className="btn-primary px-3 py-2 text-sm self-stretch sm:self-auto shrink-0"
+        >
           + Занятие
         </button>
       </div>
@@ -508,21 +515,8 @@ function Schedule({ students, setStudents, onOpenBoard }) {
 
           {selectedDay && (
             <div key={selectedDay} className="glass p-4 slide-up">
-              <div className="flex items-center justify-between mb-3">
-                <div className="text-sm font-medium text-gray-700">
-                  {new Date(selectedDay + "T00:00:00").toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" })}
-                </div>
-                {/* На прошедший день занятие не ставится, поэтому и кнопки нет:
-                    предлагать действие, которое всё равно упрётся в ошибку, —
-                    хуже, чем не предлагать вовсе. */}
-                {selectedDay >= todayDateStr() && (
-                  <button
-                    onClick={() => openExtraForm(selectedDay)}
-                    className="press-fill text-xs text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg transition-colors"
-                  >
-                    + Доп занятие
-                  </button>
-                )}
+              <div className="text-sm font-medium text-gray-700 mb-3">
+                {new Date(selectedDay + "T00:00:00").toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" })}
               </div>
               {selectedDayLessons.length === 0 ? (
                 <div className="text-sm text-gray-400 text-center py-4">Занятий нет</div>

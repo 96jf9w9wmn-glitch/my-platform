@@ -18,6 +18,7 @@
 
 import http from "node:http"
 
+import authLogin from "../api/auth-login.js"
 import generateHw from "../api/generate-hw.js"
 import lessonReport from "../api/lesson-report.js"
 import subscription from "../api/subscription.js"
@@ -31,6 +32,7 @@ import yookassaWebhook from "../api/yookassa-webhook.js"
 // Заодно все модули грузятся на старте, поэтому опечатка в импорте валит
 // контейнер сразу, а не на первом обращении репетитора.
 const ROUTES = {
+  "/api/auth-login": authLogin,
   "/api/generate-hw": generateHw,
   "/api/lesson-report": lessonReport,
   "/api/subscription": subscription,
