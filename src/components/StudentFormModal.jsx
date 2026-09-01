@@ -203,10 +203,6 @@ function StudentFormModal({ student, students = [], onClose, onSubmit, initialNa
   // только вручную. Даты уже разового ученика, наоборот, остаются: это его
   // собственный выбор, и правят его здесь же.
   const [lessons, setLessons] = useState(editing && !student.isRecurring ? futureLessons : [])
-  // Общее время и длительность: их получает каждая новая выбранная дата, и ими
-  // же правится сразу всё расписание. Отдельный день можно поправить в списке.
-  const [bulkTime, setBulkTime] = useState(futureLessons[0]?.time || "09:00")
-  const [bulkDuration, setBulkDuration] = useState(futureLessons[0]?.duration || 60)
   const [recurringDays, setRecurringDays] = useState(() => {
     if (!editing || !student.isRecurring) return []
     const fromLessons = daysFromLessons(futureLessons)
@@ -266,18 +262,11 @@ function StudentFormModal({ student, students = [], onClose, onSubmit, initialNa
     setLessons((prev) => {
       const exists = prev.find((l) => l.date === dateStr)
       if (exists) return prev.filter((l) => l.date !== dateStr)
-      return [...prev, { date: dateStr, time: bulkTime, duration: bulkDuration }].sort(byDateTime)
+      // Новая дата берёт время и длительность у последней выбранной: обычно
+      // занятия идут в одно и то же время, а отдельный день правится в списке.
+      const last = prev[prev.length - 1]
+      return [...prev, { date: dateStr, time: last?.time || "09:00", duration: last?.duration || 60 }].sort(byDateTime)
     })
-  }
-
-  function applyTimeToAll(time) {
-    setBulkTime(time)
-    setLessons((prev) => prev.map((l) => ({ ...l, time })))
-  }
-
-  function applyDurationToAll(duration) {
-    setBulkDuration(duration)
-    setLessons((prev) => prev.map((l) => ({ ...l, duration })))
   }
 
   function setFieldForDate(dateStr, field, value) {
@@ -386,7 +375,7 @@ function StudentFormModal({ student, students = [], onClose, onSubmit, initialNa
       callUrl: form.callUrl.trim(),
       lessons: merged,
       lessonDates: merged.map((l) => l.date),
-      lessonDuration: mode === "recurring" ? recurringDuration : bulkDuration,
+      lessonDuration: mode === "recurring" ? recurringDuration : (merged[merged.length - 1]?.duration || 60),
       isRecurring: mode === "recurring",
       schedule,
     }
@@ -602,14 +591,8 @@ function StudentFormModal({ student, students = [], onClose, onSubmit, initialNa
                       <div>
                         <label className="text-sm text-gray-500 mb-2 block">Время и длительность</label>
                         <div className="border border-gray-100 dark:border-white/10 rounded-xl overflow-hidden">
-                          <div className="flex flex-wrap items-center gap-2 px-3.5 py-3 bg-blue-500/[0.05] dark:bg-white/5">
-                            <span className="basis-full sm:basis-auto sm:flex-1 min-w-0 text-sm text-gray-500">Для всех дат</span>
-                            <TimeField value={bulkTime} onChange={applyTimeToAll} />
-                            <DurationField value={bulkDuration} onChange={applyDurationToAll} />
-                            <span className="w-6 flex-shrink-0" />
-                          </div>
-                          {lessons.map((lesson) => (
-                            <div key={lesson.date} className="flex flex-wrap items-center gap-2 px-3.5 py-2.5 border-t border-gray-100 dark:border-white/10">
+                          {lessons.map((lesson, idx) => (
+                            <div key={lesson.date} className={`flex flex-wrap items-center gap-2 px-3.5 py-2.5 ${idx ? "border-t border-gray-100 dark:border-white/10" : ""}`}>
                               <span className="basis-full sm:basis-auto sm:flex-1 min-w-0 truncate text-sm text-gray-700">
                                 {parseLocalDate(lesson.date).toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" })}
                               </span>
@@ -622,7 +605,6 @@ function StudentFormModal({ student, students = [], onClose, onSubmit, initialNa
                             </div>
                           ))}
                         </div>
-                        <p className="text-xs text-gray-400 mt-2">Верхняя строка задаёт время сразу всем занятиям; отдельный день можно поправить в списке.</p>
                       </div>
                     )}
                   </Reveal>

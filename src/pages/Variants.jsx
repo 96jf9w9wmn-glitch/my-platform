@@ -291,6 +291,37 @@ function defaultVariantType(subjects, examFocus) {
   return all.find((t) => examLevelOf(t) === (wantEge ? "ЕГЭ" : "ОГЭ")) || all[0]
 }
 
+// Ответы — ВЕЗДЕ одинаково: сетка «номер — поле», и в части 1, и в части 2.
+// Раньше часть 1 там, где номера идут подряд (математика), была одной строкой
+// через пробел, а часть 2 рядом — сеткой: в одной форме уживались два разных
+// вида ввода, и один экзамен не был похож на другой. Скорость строки никуда не
+// делась: готовый ключ, вставленный в любое поле, сам раскладывается по
+// номерам начиная с него.
+function AnswerGrid({ numbers, valueOf, onChange, placeholderOf }) {
+  function handlePaste(e, idx) {
+    const vals = (e.clipboardData?.getData("text") || "").trim().split(/\s+/).filter(Boolean)
+    if (vals.length < 2) return            // одиночный ответ вставляется как обычно
+    e.preventDefault()
+    vals.slice(0, numbers.length - idx).forEach((v, k) => onChange(numbers[idx + k], v))
+  }
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-3 gap-2">
+      {numbers.map((n, idx) => (
+        <div key={n} className="flex items-center gap-2">
+          <span className="text-xs text-gray-400 w-5 flex-shrink-0">{n}</span>
+          <input
+            value={valueOf(n)}
+            onChange={(e) => onChange(n, e.target.value)}
+            onPaste={(e) => handlePaste(e, idx)}
+            placeholder={placeholderOf ? placeholderOf(n) : "Ответ"}
+            className="input-glass flex-1 px-2 py-1.5 text-sm min-w-0"
+          />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = null, owner = false, onClose, onAdd }) {
   const subjects = variantSubjectsFor(bankSubjects, owner)
   const [title, setTitle] = useState(todayTitle)
@@ -332,7 +363,6 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
   const p1Numbers = part1NumbersOf(examType)
   const answerCount = p1Numbers.length
   const answerSlots = part1SlotsOf(examType)          // ответы лежат по индексу «номер − 1»
-  const inOrder = answerSlots === answerCount         // можно вводить строкой через пробел
   const part2Numbers = part2NumbersOf(examType)
   const subjectOfType = subjects.find((s) => s.types.includes(examType)) || subjects[0]
 
@@ -660,66 +690,27 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
                 <label className="text-sm text-gray-500 mb-1 block">
                   {source === "bank" && bankPicked.length > 0
                     ? `Ответы части 1 — подставлены из банка, проверьте (${answerCount} шт.)`
-                    : inOrder
-                      ? `Ответы к части 1 — введите все ${answerCount} через пробел`
-                      : `Ответы к части 1 — по номерам заданий (${answerCount} шт.)`}
+                    : `Ответы к части 1 — по номерам заданий (${answerCount} шт.)`}
                 </label>
-                {/* Номера подряд (математика, ОГЭ информатика) — строкой через пробел:
-                    так ответы переносят из готового ключа одним движением. Где номера
-                    идут с пропусками, строка обманывала бы: третье число легло бы не в
-                    то задание — там сетка с номерами. */}
-                {inOrder ? (
-                  <>
-                    <textarea
-                      value={answers.filter(Boolean).join(" ")}
-                      onChange={(e) => {
-                        const vals = e.target.value.trim().split(/\s+/).filter(Boolean).slice(0, answerCount)
-                        setAnswers([...vals, ...Array(answerCount).fill("")].slice(0, answerCount))
-                      }}
-                      placeholder={examType === "ОГЭ" ? "3 12 4 -5 2 0.5 8 16 3 7 4 2 6 9 45 8 12 3 7" : "3 12 4 -5 2 0.5 8 16 3 7"}
-                      rows={2}
-                      className="input-glass resize-none"
-                    />
-                    <div className="text-xs text-gray-400 mt-1">Введено: {answers.filter((a) => a).length} / {answerCount}</div>
-                  </>
-                ) : (
-                  <>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-3 gap-2">
-                      {p1Numbers.map((n) => (
-                        <div key={n} className="flex items-center gap-2">
-                          <span className="text-xs text-gray-400 w-5 flex-shrink-0">{n}</span>
-                          <input
-                            value={answers[n - 1] || ""}
-                            onChange={(e) => setAnswers((prev) => { const upd = [...prev]; upd[n - 1] = e.target.value; return upd })}
-                            placeholder="Ответ"
-                            className="input-glass flex-1 px-2 py-1.5 text-sm min-w-0"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                    <div className="text-xs text-gray-400 mt-1">
-                      Введено: {p1Numbers.filter((n) => answers[n - 1]).length} / {answerCount}
-                    </div>
-                  </>
-                )}
+                <AnswerGrid
+                  numbers={p1Numbers}
+                  valueOf={(n) => answers[n - 1] || ""}
+                  onChange={(n, v) => setAnswers((prev) => { const upd = [...prev]; upd[n - 1] = v; return upd })}
+                />
+                <div className="text-xs text-gray-400 mt-1">
+                  Введено: {p1Numbers.filter((n) => answers[n - 1]).length} / {answerCount} · готовый ключ можно вставить целиком в любое поле
+                </div>
               </div>
 
               {part2Numbers.length > 0 && (
                 <div>
                   <label className="text-sm text-gray-500 mb-1 block">Ответы к части 2 ({numbersLabel(part2Numbers)}){source === "bank" && bankPicked.length > 0 ? " — подставлены из банка" : ""}</label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-3 gap-2">
-                    {part2Numbers.map((n) => (
-                      <div key={n} className="flex items-center gap-2">
-                        <span className="text-xs text-gray-400 w-5 flex-shrink-0">{n}</span>
-                        <input
-                          value={part2Answers[n] || ""}
-                          onChange={(e) => setPart2Answers((prev) => ({ ...prev, [n]: e.target.value }))}
-                          placeholder={n === 24 ? "Доказано." : "Ответ"}
-                          className="input-glass flex-1 px-2 py-1.5 text-sm min-w-0"
-                        />
-                      </div>
-                    ))}
-                  </div>
+                  <AnswerGrid
+                    numbers={part2Numbers}
+                    valueOf={(n) => part2Answers[n] || ""}
+                    onChange={(n, v) => setPart2Answers((prev) => ({ ...prev, [n]: v }))}
+                    placeholderOf={(n) => (n === 24 ? "Доказано." : "Ответ")}
+                  />
                   <div className="text-xs text-gray-400 mt-1">
                     Ученик выберет ответ из четырёх вариантов; для доказательства (№24) — только фото решения
                   </div>
