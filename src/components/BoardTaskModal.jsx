@@ -152,7 +152,7 @@ export default function BoardTaskModal({ dark = false, roomId = null, tutorSubje
               </div>
               <h2 className="text-lg font-medium leading-tight">Задание на доску</h2>
             </div>
-            <button onClick={close} aria-label="Закрыть" className="press-tap text-gray-400 hover:text-gray-600 mt-1"><Icon name="x" size={18} /></button>
+            <button onClick={close} aria-label="Закрыть" className="press-tap text-gray-500 hover:text-gray-700 mt-1"><Icon name="x" size={18} /></button>
           </div>
 
           {/* Предмет уже привязан к доске — строкой, а не списком на пол-экрана */}

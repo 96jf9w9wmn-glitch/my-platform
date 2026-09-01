@@ -438,9 +438,9 @@ function Schedule({ students, setStudents, onOpenBoard }) {
 
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <button onClick={prevPeriod} className="text-gray-400 hover:text-gray-600 text-xl px-2">‹</button>
+          <button onClick={prevPeriod} className="text-gray-500 hover:text-gray-700 text-xl px-2">‹</button>
           <span className="text-sm font-medium text-gray-700">{view === "week" ? weekLabel : monthLabel}</span>
-          <button onClick={nextPeriod} className="text-gray-400 hover:text-gray-600 text-xl px-2">›</button>
+          <button onClick={nextPeriod} className="text-gray-500 hover:text-gray-700 text-xl px-2">›</button>
         </div>
         <SegmentSwitch size="sm" ariaLabel="Вид расписания" value={view} onChange={setView} items={VIEWS} />
       </div>
@@ -759,7 +759,7 @@ function Schedule({ students, setStudents, onOpenBoard }) {
           <div className={`glass-modal w-full max-w-sm flex flex-col ${closingCls}`} style={{ maxHeight: "90dvh" }}>
             <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100/60 flex-shrink-0">
               <h2 className="text-lg font-medium">Новое занятие</h2>
-              <button onClick={closeForm} aria-label="Закрыть" className="text-gray-400 hover:text-gray-600"><Icon name="x" size={18} /></button>
+              <button onClick={closeForm} aria-label="Закрыть" className="text-gray-500 hover:text-gray-700"><Icon name="x" size={18} /></button>
             </div>
             <div className="overflow-y-auto flex-1 min-h-0 px-6 py-5 flex flex-col gap-4">
               <div>

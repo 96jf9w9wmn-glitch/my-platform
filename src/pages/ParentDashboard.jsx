@@ -445,7 +445,7 @@ function ParentDashboard({ user, onLogout }) {
             <button
               onClick={() => setDark(!dark)}
               title={dark ? "Светлая тема" : "Тёмная тема"}
-              className="press-tap w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-600 rounded-xl"
+              className="press-tap w-9 h-9 flex items-center justify-center text-gray-500 hover:text-gray-700 rounded-xl"
             >
               <MorphIcon from="moon" to="sun" size={17} active={dark} hover={false} rotate />
             </button>

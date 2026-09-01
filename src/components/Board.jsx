@@ -1894,7 +1894,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         </div>
         <div className="flex items-center gap-3">
           <button onClick={toggleTheme} title={dark ? "Светлая доска" : "Тёмная доска"}
-            className="press-tap p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-blue-500/[0.07] dark:hover:bg-white/10">
+            className="press-tap p-1.5 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-blue-500/[0.07] dark:hover:bg-white/10">
             <Icon name={dark ? "sun" : "moon"} size={16} />
           </button>
           <div className="flex items-center -space-x-1.5">

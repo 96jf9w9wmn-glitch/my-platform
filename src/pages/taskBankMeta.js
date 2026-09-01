@@ -122,6 +122,16 @@ export const examLevelOf = (examType) => (String(examType).startsWith("ЕГЭ") 
 export const MODULE_EXAM_TYPES = ["ОГЭ"]
 export const MODULE_COUNT = 5
 
+// Связки заданий с ОБЩИМ условием: в КИМ по информатике №19–21 — одна игра,
+// её описание стоит у №19, а №20 и №21 на него ссылаются (склейку делает
+// linkSharedIntros в taskBankApi.js). Менять такое задание можно только вместе
+// с соседями: заменишь одно — оно опишет ДРУГУЮ игру, а соседние продолжат
+// ссылаться на прежнюю, и ответы у них разойдутся с условием.
+const LINKED_GROUPS = { "ЕГЭ Информатика": [[19, 20, 21]] }
+
+export const linkedGroupOf = (examType, number) =>
+  (LINKED_GROUPS[examType] || []).find((g) => g.includes(number)) || null
+
 // Номер входит в практический модуль №1–5 (когда для типа экзамена есть модули).
 export function isModuleNumber(examType, number) {
   return MODULE_EXAM_TYPES.includes(examType) && number >= 1 && number <= MODULE_COUNT

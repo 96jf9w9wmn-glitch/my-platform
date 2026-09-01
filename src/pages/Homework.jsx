@@ -881,7 +881,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
             <button
               type="button"
               onClick={() => { setTestOptions(null); setMcqCorrect([]) }}
-              className="text-xs text-gray-400 hover:text-gray-600 active:scale-95 transition-all"
+              className="text-xs text-gray-500 hover:text-gray-700 active:scale-95 transition-all"
             >
               Ввести вручную
             </button>
@@ -920,7 +920,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
             <button
               type="button"
               onClick={() => { setAnswersInput(""); setAnswersList(null) }}
-              className="text-xs text-gray-400 hover:text-gray-600 active:scale-95 transition-all"
+              className="text-xs text-gray-500 hover:text-gray-700 active:scale-95 transition-all"
             >
               Ввести вручную
             </button>
@@ -971,7 +971,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
       <div className={`glass-modal p-6 sm:p-7 w-full max-w-4xl max-h-[92dvh] overflow-y-auto ${closingCls}`}>
         <div className="flex justify-between items-center mb-5">
           <h2 className="text-lg font-medium">{isEditing ? "Редактировать задание" : "Новое задание"}</h2>
-          <button onClick={close} aria-label="Закрыть" className="text-gray-400 hover:text-gray-600 active:scale-90 transition-transform"><Icon name="x" size={18} /></button>
+          <button onClick={close} aria-label="Закрыть" className="text-gray-500 hover:text-gray-700 active:scale-90 transition-transform"><Icon name="x" size={18} /></button>
         </div>
 
         {/* Две колонки: слева — кому и когда (это одинаково для любого способа),
@@ -1091,7 +1091,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                       <span className="text-[11px] text-gray-400">PDF, фото или документ</span>
                     </button>
                     {file && (
-                      <button type="button" onClick={() => setFile(null)} className="self-start text-xs text-gray-400 hover:text-red-500 active:scale-95 transition-all">
+                      <button type="button" onClick={() => setFile(null)} className="self-start text-xs btn-quiet hover:text-red-500 active:scale-95">
                         Убрать файл
                       </button>
                     )}
@@ -1127,7 +1127,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                             </span>
                             {bankTotal > 0 && (
                               <button type="button" onClick={resetBankPick}
-                                className="no-press text-[11px] text-gray-400 hover:text-gray-600 active:scale-95 transition-all">
+                                className="no-press text-[11px] text-gray-500 hover:text-gray-700 active:scale-95 transition-all">
                                 сбросить
                               </button>
                             )}

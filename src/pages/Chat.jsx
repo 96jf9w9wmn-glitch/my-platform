@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Fragment } from "react"
+import { useState, useEffect, useLayoutEffect, useRef, Fragment } from "react"
 import { supabase } from "../supabase"
 import { signStorageUrl } from "../storageUrl"
 import { notifyTutor } from "../telegramNotify"
@@ -58,6 +58,17 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
   }
 
   const [activeId, setActiveId] = useState(null)
+  // Куда «поехал» выбор: вниз по списку (1) или вверх (−1). Переписка
+  // наплывает с той же стороны, поэтому переключение читается как движение
+  // по списку, а не как случайная подмена экрана.
+  const [switchDir, setSwitchDir] = useState(1)
+  const [prevActiveId, setPrevActiveId] = useState(activeId)
+  if (prevActiveId !== activeId) {
+    setPrevActiveId(activeId)
+    const to = contacts.findIndex(c => c.id === activeId)
+    const from = contacts.findIndex(c => c.id === prevActiveId)
+    setSwitchDir(to >= 0 && from >= 0 && to < from ? -1 : 1)
+  }
   const [messages, setMessages] = useState([])
   const [newMsgIds, setNewMsgIds] = useState(new Set())
   const [input, setInput] = useState("")
@@ -75,8 +86,29 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
   const initialLoadDone = useRef(false)
   const prevMsgCount = useRef(0)
   const activeIdRef = useRef(null)
+  // Строки списка контактов — по ним меряется, куда переехать подложке выбора.
+  const rowRefs = useRef({})
+  const [pick, setPick] = useState({ top: 0, height: 0, shown: false, moving: false })
 
   useEffect(() => { activeIdRef.current = activeId }, [activeId])
+
+  // Подложка выбранного контакта: считаем её место ДО отрисовки кадра, иначе
+  // видно, как она прыгает из старого положения. `moving` включает переезд
+  // только со второго раза — первое появление должно проступить на месте,
+  // а не приехать сверху списка.
+  useLayoutEffect(() => {
+    const el = activeId ? rowRefs.current[activeId] : null
+    // Список скрыт (мобильный: открыт диалог) — размеры нулевые, мерить нечего.
+    if (!el || !el.offsetHeight) {
+      setPick(p => (p.shown ? { ...p, shown: false } : p))
+      return
+    }
+    setPick(p => {
+      const next = { top: el.offsetTop, height: el.offsetHeight, shown: true, moving: p.shown }
+      return (p.top === next.top && p.height === next.height && p.shown && p.moving === next.moving)
+        ? p : next
+    })
+  }, [activeId, contacts, adding])
 
   // Добавляет собеседников, которые нам написали, но которых нет в списке
   // (напр. родитель p:<ученик> — репетитору его никто не заводит в контакты).
@@ -428,7 +460,7 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
               </button>
               <button
                 onClick={() => { setAdding(false); setCodeError(""); setCodeInput("") }}
-                className="text-xs text-gray-400 hover:text-gray-600 px-2"
+                className="text-xs text-gray-500 hover:text-gray-700 px-2"
               >Отмена</button>
             </div>
           </div>
@@ -439,23 +471,36 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
             <div className="p-6 text-xs text-gray-400 dark:text-gray-500 text-center mt-4">
               {canAddByCode ? 'Нажми "+" чтобы найти собеседника' : "Нет контактов"}
             </div>
-          ) : contacts.map(c => {
+          ) : (
+          <div className="relative">
+            {/* Выделение активного контакта — ОДНА подложка, которая переезжает
+                между строками, а не заливка, зажигающаяся на новой строке:
+                при переключении видно, куда именно ушёл выбор. */}
+            <div
+              aria-hidden
+              className={`chat-pick pointer-events-none absolute left-0 right-0 top-0 bg-blue-500 dark:bg-blue-600 ${pick.moving ? "is-moving" : ""}`}
+              style={{
+                transform: `translateY(${pick.top}px)`,
+                height: pick.height,
+                opacity: pick.shown ? 1 : 0,
+              }}
+            />
+            {contacts.map(c => {
             const unread = unreadByContact[c.id] || 0
             const isActive = activeId === c.id
             return (
               <button
                 key={c.id}
+                ref={el => { if (el) rowRefs.current[c.id] = el; else delete rowRefs.current[c.id] }}
                 onClick={() => setActiveId(c.id)}
-                className={`no-press press-tap w-full flex items-center gap-3 px-3 py-3 transition-colors text-left ${
-                  isActive
-                    ? "bg-blue-500 dark:bg-blue-600"
-                    : "hover:bg-blue-500/[0.06] dark:hover:bg-white/5"
+                className={`no-press press-tap relative w-full flex items-center gap-3 px-3 py-3 transition-colors duration-200 text-left ${
+                  isActive ? "" : "hover:bg-blue-500/[0.06] dark:hover:bg-white/5"
                 }`}
               >
-                <div className={`relative w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-bold overflow-hidden ${
+                <div className={`relative w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-bold overflow-hidden ring-1 transition-colors duration-200 ${
                   isActive
-                    ? "bg-white/25 text-white"
-                    : "bg-blue-500/12 text-blue-600 ring-1 ring-blue-500/15"
+                    ? "bg-white/25 text-white ring-white/0"
+                    : "bg-blue-500/12 text-blue-600 ring-blue-500/15"
                 }`}>
                   {/* Буква — всегда подложкой: подписанная ссылка на фото могла
                       протухнуть, и вместо битой картинки остаётся инициал. */}
@@ -471,13 +516,13 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className={`text-sm font-semibold truncate ${
+                  <div className={`text-sm font-semibold truncate transition-colors duration-200 ${
                     isActive ? "text-white" : "text-gray-800 dark:text-white"
                   }`}>
                     {c.name}
                   </div>
                   {c.role && (
-                    <div className={`text-xs truncate ${isActive ? "text-white/70" : "text-gray-400"}`}>
+                    <div className={`text-xs truncate transition-colors duration-200 ${isActive ? "text-white/70" : "text-gray-400"}`}>
                       {c.role}
                     </div>
                   )}
@@ -489,7 +534,9 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
                 )}
               </button>
             )
-          })}
+            })}
+          </div>
+          )}
         </div>
       </div>
 
@@ -521,7 +568,9 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
             <span className="relative text-sm font-medium text-gray-400 dark:text-gray-500">Выбери контакт для начала чата</span>
           </div>
         ) : (
-          <>
+          // key по контакту: переписка не подменяется на месте, а сменяется —
+          // короткий наплыв с той стороны, куда переехал выбор в списке.
+          <div key={activeId} className={`chat-switch flex-1 min-h-0 flex flex-col ${switchDir < 0 ? "is-up" : ""}`}>
             {/* Шапка */}
             <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-3 bg-white">
               <button
@@ -646,7 +695,7 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
                 </button>
               </div>
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>

@@ -402,7 +402,7 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
                         <div className="text-sm font-medium truncate">{s.name}</div>
                         <button
                           onClick={() => setExpandedId(open ? null : s.id)}
-                          className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition"
+                          className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition"
                         >
                           <span className="whitespace-nowrap">
                             {unpaid.length} {plural(unpaid.length, "занятие", "занятия", "занятий")} не оплачено
@@ -459,7 +459,7 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
                           Внести
                         </button>
                         <button onClick={() => setConfirmId(null)}
-                          className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-blue-500/[0.07] dark:hover:bg-white/[0.06] transition">
+                          className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-500 hover:text-gray-700 hover:bg-blue-500/[0.07] dark:hover:bg-white/[0.06] transition">
                           <Icon name="x" size={16} />
                         </button>
                       </div>

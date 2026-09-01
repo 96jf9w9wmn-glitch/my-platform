@@ -690,7 +690,7 @@ function RoleQuiz({ cfg, role }) {
         tabIndex={canGoBack ? undefined : -1}
         aria-hidden={!canGoBack}
         onClick={() => setStep((s) => s - 1)}
-        className={`-ml-1 mb-3 px-1 py-1 text-sm text-gray-400 hover:text-gray-600 inline-flex items-center gap-1.5
+        className={`-ml-1 mb-3 px-1 py-1 text-sm text-gray-500 hover:text-gray-700 inline-flex items-center gap-1.5
           ${canGoBack ? "" : "invisible pointer-events-none"}`}
       >
         <Icon name="arrow" size={14} className="rotate-180" />

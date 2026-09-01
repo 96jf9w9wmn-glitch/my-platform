@@ -362,7 +362,7 @@ function Students({ students, loaded = true, setStudents, tutorId, onOpenBoard }
                 Одноразовая, действует 7 дней. Ученик по ней зарегистрируется и сразу привяжется к вам.
               </div>
             </div>
-            <button onClick={() => setInvite(null)} className="text-gray-400 hover:text-gray-600 shrink-0">
+            <button onClick={() => setInvite(null)} className="text-gray-500 hover:text-gray-700 shrink-0">
               <Icon name="x" size={16} />
             </button>
           </div>
@@ -394,7 +394,7 @@ function Students({ students, loaded = true, setStudents, tutorId, onOpenBoard }
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button onClick={() => (canAddStudent ? setAcceptingRequest(req) : openPlans())} className="text-sm bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 font-medium">Принять</button>
-                  <button onClick={() => setConfirm({ kind: "reject", req, name: req.name })} className="text-sm text-gray-400 hover:text-red-600 px-2 py-1.5">Отклонить</button>
+                  <button onClick={() => setConfirm({ kind: "reject", req, name: req.name })} className="text-sm btn-quiet hover:text-red-600 px-2 py-1.5">Отклонить</button>
                 </div>
               </div>
             ))}
@@ -436,7 +436,7 @@ function Students({ students, loaded = true, setStudents, tutorId, onOpenBoard }
           className="w-full pl-4 pr-9 py-2 text-sm rounded-xl bg-white/40 border border-white/40 focus:outline-none focus:ring-2 focus:ring-blue-400/40 placeholder-gray-400"
         />
         {search && (
-          <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+          <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700">
             <Icon name="x" size={14} />
           </button>
         )}

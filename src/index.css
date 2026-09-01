@@ -477,6 +477,18 @@ body {
   color: #aab4c8;
 }
 
+/* Вторичная кнопка без заливки («Отклонить», «Выйти», «Пропустить»).
+   text-gray-400 на светлом фоне читался как отключённая кнопка — берём тот же
+   сине-серый, что и подписи, и добавляем отклик на нажатие. */
+.btn-quiet {
+  color: #4f5f85;
+  transition: color 0.16s ease, opacity 0.14s ease;
+}
+
+.btn-quiet:active { opacity: 0.55; transition-duration: 0.04s; }
+
+.dark .btn-quiet { color: #aab4c8; }
+
 /* Animated liquid gradient background */
 body::before {
   content: "";
@@ -1507,6 +1519,37 @@ button.w-full:not([disabled]):not(.no-press):active,
   animation: chatBubbleLeft 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
   transform-origin: bottom left;
 }
+/* ── Переключение между чатами ── */
+/* Подложка выбранного контакта: одна на весь список, переезжает между
+   строками. Переезд включается классом .is-moving — первое появление должно
+   проступить на месте, иначе подложка приезжает из верха списка. */
+.chat-pick {
+  transition: opacity 0.18s ease;
+  will-change: transform;
+}
+.chat-pick.is-moving {
+  transition: transform 0.32s cubic-bezier(0.32, 0.72, 0.24, 1),
+              height 0.32s cubic-bezier(0.32, 0.72, 0.24, 1),
+              opacity 0.18s ease;
+}
+
+/* Сама переписка сменяется наплывом с той стороны, куда уехал выбор. */
+@keyframes chat-switch-down {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes chat-switch-up {
+  from { opacity: 0; transform: translateY(-10px); }
+  to   { opacity: 1; transform: none; }
+}
+.chat-switch { animation: chat-switch-down 0.26s cubic-bezier(0.22, 0.61, 0.36, 1) both; }
+.chat-switch.is-up { animation-name: chat-switch-up; }
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-pick.is-moving { transition-duration: 0.01s; }
+  .chat-switch { animation-duration: 0.01s; }
+}
+
 .chat-send-btn { transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1); }
 .chat-send-btn:active { transform: scale(0.82); }
 

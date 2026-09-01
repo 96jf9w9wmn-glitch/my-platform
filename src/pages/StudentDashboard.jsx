@@ -93,7 +93,7 @@ function Part2Upload({ taskNum, submissionId, existingUrl, chosen, onUpload, sho
           <a href={existingUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:opacity-70 transition-opacity">
             <span className="flex items-center gap-1"><Icon name="check" size={12} />Файл загружен</span>
           </a>
-          <button onClick={() => fileRef.current.click()} className="text-xs text-gray-400 hover:opacity-70 transition-opacity">
+          <button onClick={() => fileRef.current.click()} className="text-xs btn-quiet hover:text-blue-600">
             Заменить
           </button>
         </div>
@@ -246,9 +246,9 @@ function StudentScheduleCalendar({ student, onOpenBoard, onRequestMove, onCancel
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <button onClick={prevMonth} className="text-gray-400 hover:text-gray-600 text-xl px-2">‹</button>
+        <button onClick={prevMonth} className="text-gray-500 hover:text-gray-700 text-xl px-2">‹</button>
         <span className="text-sm font-medium text-gray-700">{monthLabel}</span>
-        <button onClick={nextMonth} className="text-gray-400 hover:text-gray-600 text-xl px-2">›</button>
+        <button onClick={nextMonth} className="text-gray-500 hover:text-gray-700 text-xl px-2">›</button>
       </div>
 
       <div className="glass p-3 mb-3">
@@ -1654,7 +1654,7 @@ function AddTutorModal({ onClose, children }) {
       <div className={`glass-modal w-full max-w-sm flex flex-col ${closingCls}`} onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100/60 flex-shrink-0">
           <h2 className="text-lg font-medium">Ещё репетитор</h2>
-          <button onClick={close} aria-label="Закрыть" className="text-gray-400 hover:text-gray-600 transition-transform active:scale-90">
+          <button onClick={close} aria-label="Закрыть" className="text-gray-500 hover:text-gray-700 transition-transform active:scale-90">
             <Icon name="x" size={18} />
           </button>
         </div>
@@ -2570,7 +2570,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                 <MorphIcon from="moon" to="sun" size={16} active={dark} hover={false} rotate />
               </button>
               <StudentNotificationBell userId={user.id} onNavigate={goTab} />
-              <button onClick={onLogout} className="text-sm text-gray-400 hover:text-gray-600">Выйти</button>
+              <button onClick={onLogout} className="text-sm btn-quiet hover:text-red-600">Выйти</button>
             </div>
           </div>
 

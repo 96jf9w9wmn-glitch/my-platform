@@ -131,9 +131,9 @@ function MiniCalendar({ lessons, onToggleDate }) {
   return (
     <div>
       <div className="flex justify-between items-center mb-2">
-        <button onClick={prevMonth} className="text-gray-400 hover:text-gray-600 px-2 text-lg">‹</button>
+        <button onClick={prevMonth} className="text-gray-500 hover:text-gray-700 px-2 text-lg">‹</button>
         <span className="text-sm font-medium">{MONTH_NAMES[viewMonth]} {viewYear}</span>
-        <button onClick={nextMonth} className="text-gray-400 hover:text-gray-600 px-2 text-lg">›</button>
+        <button onClick={nextMonth} className="text-gray-500 hover:text-gray-700 px-2 text-lg">›</button>
       </div>
       <div className="grid grid-cols-7 gap-0.5 text-center mb-1">
         {DAY_NAMES_SHORT.map((d) => <div key={d} className="text-xs text-gray-400 py-1">{d}</div>)}
@@ -416,7 +416,7 @@ function StudentFormModal({ student, students = [], onClose, onSubmit, initialNa
                   : "Заявка от ученика — заполните карточку и примите"}
               </p>
             </div>
-            <button onClick={close} aria-label="Закрыть" className="text-gray-400 hover:text-gray-600 p-1"><Icon name="x" size={18} /></button>
+            <button onClick={close} aria-label="Закрыть" className="text-gray-500 hover:text-gray-700 p-1"><Icon name="x" size={18} /></button>
           </div>
 
           {/* Слева — кто ученик и почём занятия, справа — когда заниматься. */}

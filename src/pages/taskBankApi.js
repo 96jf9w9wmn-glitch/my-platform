@@ -50,6 +50,32 @@ function pickTask(examType, number) {
   return null
 }
 
+// Связка заданий с общим условием: в КИМ по информатике №19–21 — ОДНА игра,
+// её описание стоит у №19, а №20 и №21 начинаются со ссылки «Для игры, описанной
+// в задании 19, …». В банке ФИПИ каждое задание самостоятельное и несёт описание
+// целиком — иначе его нельзя выдать по одному, — поэтому склейка делается здесь,
+// при сборке варианта, и уезжает уже в снимок: и печатный лист, и кабинет ученика
+// читают готовый текст и про связку ничего не знают.
+//
+// Задание объявляет связку тремя полями: intro (описание), introGroup (ключ этой
+// конкретной игры — у разных наборов чисел он разный) и introRef (начало ссылки).
+function linkSharedIntros(picked) {
+  const firstOf = new Map()
+  for (const t of picked) {
+    if (!t?.introGroup || !t.intro || !t.introRef) continue
+    const first = firstOf.get(t.introGroup)
+    if (first === undefined) { firstOf.set(t.introGroup, t.number); continue }
+    const text = String(t.condition_text || "")
+    // Хвост отрезаем по самой преамбуле, а не по её длине: если генератор её
+    // изменил, лучше оставить условие целиком, чем срезать половину вопроса.
+    if (!text.startsWith(t.intro)) continue
+    const rest = text.slice(t.intro.length).trim()
+    if (!rest) continue
+    t.condition_text = `${t.introRef} ${first}, ${rest.charAt(0).toLowerCase()}${rest.slice(1)}`
+  }
+  return picked
+}
+
 // Собирает один вариант из банка: по одному случайному заданию на каждый номер части 1
 // и (для ОГЭ) части 2. Задания 1–5 (для ОГЭ) — единый практический модуль (buildModuleTasks).
 // Номера с генераторами собираются кодом; остальные берутся из таблицы `tasks`. Заданиям
@@ -82,12 +108,23 @@ export async function assembleFromBank(examType) {
     if (!options?.length) { missing.push(n); continue }
     picked.push(withChoices(examType, options[Math.floor(Math.random() * options.length)]))
   }
-  return { picked, missing, count, part1Numbers, part2Numbers }
+  return { picked: linkSharedIntros(picked), missing, count, part1Numbers, part2Numbers }
 }
 
 // Пересобирает весь практический модуль 1–5 (задания взаимозависимы — нельзя менять одно).
 export function rerollModule(examType) {
   return buildModuleTasks(examType)
+}
+
+// Пересобрать связку целиком: №19–21 — одна игра, поодиночке их менять нельзя
+// (см. LINKED_GROUPS в taskBankMeta.js).
+export function rerollLinked(examType, numbers) {
+  const picked = []
+  for (const n of numbers) {
+    const t = pickTask(examType, n)
+    if (t) picked.push(t)
+  }
+  return linkSharedIntros(picked)
 }
 
 export async function rerollTask(examType, number, excludeId) {

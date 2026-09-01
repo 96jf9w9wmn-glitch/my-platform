@@ -5071,7 +5071,7 @@ export function generateTask(examType, number, genKey) {
 function buildTask(examType, number, fn) {
   const out = fn()
   if (!out) return null                     // скин отказался от этого набора параметров
-  const { condition_text, condition_tail, answer, image_url, solution_image, solution, program, archive, spreadsheet, textFile, answerProgram, source_text, source_title } = out
+  const { condition_text, condition_tail, answer, image_url, solution_image, solution, program, archive, spreadsheet, textFile, answerProgram, source_text, source_title, intro, introGroup, introRef } = out
   const id = `gen-${number}-${Math.random().toString(36).slice(2, 10)}`
   // №23/№24 (часть 2, геометрия): чертёж строит сам ученик, поэтому в условие он не идёт —
   // прячем его в solution_image (пригодится для будущего разбора решения). Полное решение
@@ -5119,6 +5119,12 @@ function buildTask(examType, number, fn) {
     solution_image: solution_image ?? null,
     source_text: source_text ?? null,         // ОГЭ русский №10–13: общий прочитанный текст (раскрывается в UI)
     source_title: source_title ?? null,
+    // Связка заданий с общим условием (КЕГЭ №19–21 — одна игра). Само условие
+    // самостоятельное, а эти поля нужны сборке варианта: там описание печатается
+    // один раз, у первого номера связки (linkSharedIntros в taskBankApi.js).
+    intro: intro ?? null,                     // описание, повторённое у всех заданий связки
+    introGroup: introGroup ?? null,           // ключ связки (у разных наборов чисел разный)
+    introRef: introRef ?? null,               // начало ссылки: «Для игры, описанной в задании»
     answer: dash(answer),
     generated: true,
   }

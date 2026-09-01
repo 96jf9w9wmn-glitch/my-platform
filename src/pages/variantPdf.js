@@ -48,7 +48,11 @@ const stripRootMarker = (s) => String(s)
 // PDF — картинка фиксированного кегля, в индексе она была бы ростом со строку. Поэтому
 // дробь пишем в строку (log с основанием 1/15), а корень — знаком с чертой над числом.
 // Молча оставлять маркеры нельзя: в условии видны сырые «⦃1¦15⦄» и «√{15}».
-const SUP_CSS = "font-size:0.72em; line-height:0; vertical-align:0.55em;"
+// Показатель поднят на 0.34em, а не на 0.55em, как было до 01.09.2026. При 0.55em
+// верх цифры уходил выше строчного бокса (line-height:0 запрещает боксу вырасти),
+// и в печатном листе «8³⁸» налезало на строку СВЕРХУ. 0.34em при кегле 0.7em
+// оставляет показатель внутри строки — как в КИМ.
+const SUP_CSS = "font-size:0.7em; line-height:0; vertical-align:0.34em;"
 const SUB_CSS = "font-size:0.72em; line-height:0; vertical-align:-0.25em;"
 const flatMarks = (s) => String(s)
   // Внутри показателя и индекса встречаются и полные токены: 3⁅log⟦b:9⟧(3x+4)⁆,
@@ -124,7 +128,7 @@ const SUP_BACK = { "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4", "⁵
   "⁸": "8", "⁹": "9", "⁺": "+", "⁻": "−", "⁼": "=", "⁽": "(", "⁾": ")", "ⁿ": "n", "ⁱ": "i" }
 const RE_SUP_UNI = /[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿⁱ]+/g
 const unicodeSupToTag = (html) => String(html).replace(RE_SUP_UNI, (run) =>
-  `<sup style="font-size:0.72em; line-height:0; vertical-align:0.55em;">${Array.from(run).map((c) => SUP_BACK[c] || c).join("")}</sup>`)
+  `<sup style="${SUP_CSS}">${Array.from(run).map((c) => SUP_BACK[c] || c).join("")}</sup>`)
 // Заменяем только в тексте: внутрь тегов (стили, data-URL картинок) лезть нельзя.
 function supOutsideTags(html) {
   let out = "", i = 0
@@ -428,12 +432,12 @@ export async function renderTaskMathPdf(text, mf = MATH_ARIAL) {
     else if (m[4] !== undefined) out += await svgToInlineImg(rootSvg(m[4], "", mf), ROOT_VALIGN)
     else if (m[5] !== undefined) out += `<sub>${flatMarks(m[5])}</sub>`
     else if (m[6] !== undefined) out += `<span style="white-space:nowrap;"><span style="display:inline-flex; flex-direction:column; align-items:flex-end; text-align:right; vertical-align:-0.35em; font-size:0.62em; line-height:1.05; margin-right:0.05em;"><span>${m[6]}</span><span>${m[7]}</span></span>${m[8]}</span>`
-    else if (m[9] !== undefined) out += `<sup style="font-size:0.72em; line-height:0; vertical-align:0.55em;">${flatMarks(m[9])}</sup>`
+    else if (m[9] !== undefined) out += `<sup style="${SUP_CSS}">${flatMarks(m[9])}</sup>`
     else if (m[10] !== undefined) out += await svgToInlineImg(rootSvg(m[11], m[10], mf), ROOT_VALIGN)
     // ⟦pf⟧ — та же дробь, но в скобках: отдаём их голыми, чтобы parensPdf растянул их
     // тем же способом, что и скобки из самого условия (иначе две разные скобки в PDF).
     else if (m[12] !== undefined) out += "(" + await svgToInlineImg(fracSvg(m[12], m[13], mf), FRAC_VALIGN, true) + ")"
-    else if (m[14] !== undefined) out += `<sup style="font-size:0.72em; line-height:0; vertical-align:0.55em;">${flatMarks(m[14])}</sup>`
+    else if (m[14] !== undefined) out += `<sup style="${SUP_CSS}">${flatMarks(m[14])}</sup>`
     else if (m[15] !== undefined) out += await svgToInlineImg(fracSvg(m[15], m[16], mf), FRAC_VALIGN, true)
     else if (m[17] !== undefined) out += `<sub>${flatMarks(m[17])}</sub>`
     // √{X} и √[i]{X} в самом условии (внутри дробей их разворачивает rootInPdf)
@@ -725,17 +729,25 @@ function attachedNames(t) {
   return [t?.archive?.name, t?.spreadsheet?.name, ...files.map((f) => f?.name)].filter(Boolean)
 }
 
-// Номер задания в КИМ стоит в рамке на левом поле, а не «1.» текстом.
+// Номер задания в КИМ стоит в рамке на левом поле, а не «1.» текстом. Ширина
+// РОВНАЯ, а не по содержимому: в КИМ рамка у №2 и у №27 одинаковая.
+//
+// Запас снизу (нижнее поле заметно больше верхнего) — не опечатка: html2canvas
+// рисует строку ниже её бокса, и при равных полях цифра ложилась на нижнюю линию
+// рамки и вылезала за неё. Тем же способом лечится ячейка таблицы ответов.
 const numBox = (n) =>
-  `<span style="display:inline-block; border:1px solid ${INK}; min-width:14px; padding:0 4px;`
-  + ` text-align:center; line-height:1.25; font-size:${SHEET_FS - 1}px;">${n}</span>`
+  `<span style="display:inline-block; border:1px solid ${INK}; width:22px; padding:1px 0 6px;`
+  + ` text-align:center; line-height:1; font-size:${SHEET_FS - 1}px;">${n}</span>`
 
 const boxed = (html) => `<div style="border:1px solid ${INK}; padding:5px 10px; margin:6px 0 8px;">${html}</div>`
 const centered = (html, style = "") => `<div style="text-align:center; font-weight:bold; ${style}">${html}</div>`
 // «Ответ: ______________.» — ровно как в КИМ ФИПИ: линия примерно на половину
 // колонки и точка сразу за ней (проверено по демоверсиям ЕГЭ-2025 математика и
 // ЕГЭ-2027 информатика). До 01.09.2026 линия шла на 62% и точки не было.
-const answerRule = `<div style="margin:5px 0 0;">Ответ:<span style="display:inline-block; width:52%; border-bottom:1px solid ${INK}; height:0.85em; margin:0 1px 0 4px;"></span>.</div>`
+// Сдвиг вниз на 0.26em — та же поправка на html2canvas: без неё пустой бокс
+// с нижней рамкой встаёт по CSS-базовой линии, а «Ответ:» рисуется НИЖЕ, и черта
+// повисает над текстом, как надчёркивание.
+const answerRule = `<div style="margin:5px 0 0;">Ответ:<span style="display:inline-block; width:52%; border-bottom:1px solid ${INK}; height:0.85em; margin:0 1px -0.26em 4px;"></span>.</div>`
 
 // ── Снимок листа пачками ─────────────────────────────────────────────────────
 // Один вызов html2canvas стоит около секунды независимо от размера блока: библиотека

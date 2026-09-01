@@ -236,7 +236,7 @@ function NotificationBell({ userId, onNavigate }) {
               >
                 Очистить
               </button>
-              <button onClick={closePanel} className="text-gray-400 hover:text-gray-600"><Icon name="x" size={16} /></button>
+              <button onClick={closePanel} className="text-gray-500 hover:text-gray-700"><Icon name="x" size={16} /></button>
             </div>
           </div>
           <div className="flex-1 min-h-0 max-h-80 overflow-y-auto">

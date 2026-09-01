@@ -137,7 +137,7 @@ function StudentOnboardingModal({ studentId, onComplete, demo = false }) {
         <div className="px-6 pt-5 pb-1 flex-shrink-0">
           <div className="flex items-center justify-between mb-3">
             <button onClick={() => goTo(step - 1, "back")} disabled={safeStep === 0}
-              className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-blue-500/10 disabled:opacity-0 disabled:pointer-events-none transition-all active:scale-90">
+              className="w-7 h-7 flex items-center justify-center rounded-full text-gray-500 hover:text-gray-700 hover:bg-blue-500/10 disabled:opacity-0 disabled:pointer-events-none transition-all active:scale-90">
               <Icon name="chevron-left" size={16} />
             </button>
             <span className="text-xs font-medium text-gray-400">Шаг {safeStep + 1} из {STEPS.length}</span>

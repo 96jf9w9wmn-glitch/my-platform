@@ -50,7 +50,7 @@ function RescheduleModal({
       >
         <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100/60 flex-shrink-0">
           <h2 className="text-lg font-medium">{title}</h2>
-          <button onClick={close} aria-label="Закрыть" className="text-gray-400 hover:text-gray-600 transition-transform active:scale-90">
+          <button onClick={close} aria-label="Закрыть" className="text-gray-500 hover:text-gray-700 transition-transform active:scale-90">
             <Icon name="x" size={18} />
           </button>
         </div>

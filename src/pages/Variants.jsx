@@ -5,7 +5,7 @@ import { signRows } from "../storageUrl"
 import { plural, getInitials, plainTaskMath, answersEqual } from "../utils"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
-import { isModuleNumber, part1NumbersOf, part1SlotsOf, part2NumbersOf, isPart2Number, examLevelOf, numbersLabel, packVariantTask, VARIANT_TYPES } from "./taskBankMeta"
+import { isModuleNumber, linkedGroupOf, part1NumbersOf, part1SlotsOf, part2NumbersOf, isPart2Number, examLevelOf, numbersLabel, packVariantTask, VARIANT_TYPES } from "./taskBankMeta"
 import { choiceBaseOf } from "./answerChoices"
 import { scaleOf, variantPart2MaxOf, isLegacyProfVariant, variantMaxPrimary, examResult, secondaryLabel, taskMaxOf } from "../examScales"
 import { criteriaOf, gradingNotesOf } from "../examCriteria"
@@ -373,10 +373,13 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
   }
 
   async function handleReroll(number) {
-    const { rerollModule, rerollTask } = await loadBank()
+    const { rerollModule, rerollTask, rerollLinked } = await loadBank()
     // Задания 1–5 — связанный модуль: замена любого пересобирает весь сценарий целиком.
-    if (isModuleNumber(examType, number)) {
-      const fresh = rerollModule(examType)
+    // Так же и со связкой КЕГЭ №19–21: там одна игра на три задания, и заменить
+    // одно значит оставить соседей со ссылкой на игру, которой в варианте больше нет.
+    const linked = linkedGroupOf(examType, number)
+    if (isModuleNumber(examType, number) || linked) {
+      const fresh = isModuleNumber(examType, number) ? rerollModule(examType) : rerollLinked(examType, linked)
       if (!fresh?.length) return
       const freshNums = new Set(fresh.map((t) => t.number))
       setBankPicked((prev) => [...prev.filter((t) => !freshNums.has(t.number)), ...fresh].sort((a, b) => a.number - b.number))
@@ -469,7 +472,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
         <div className={`glass-modal p-6 sm:p-7 w-full max-w-4xl ${closingCls}`}>
           <div className="flex justify-between items-center mb-5">
             <h2 className="text-lg font-medium">Новый вариант</h2>
-            <button onClick={close} aria-label="Закрыть" className="text-gray-400 hover:text-gray-600"><Icon name="x" size={18} /></button>
+            <button onClick={close} aria-label="Закрыть" className="text-gray-500 hover:text-gray-700"><Icon name="x" size={18} /></button>
           </div>
           {/* Широкое окно в две колонки: слева — из чего собирается вариант,
               справа — ответы и их сверка. В одну колонку всё это не помещалось. */}
@@ -622,7 +625,9 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
                               )}
                             </div>
                             <button onClick={() => handleReroll(t.number)}
-                              title={isModuleNumber(examType, t.number) ? "Другой блок 1–5" : "Другое задание этого номера"}
+                              title={isModuleNumber(examType, t.number) ? "Другой блок 1–5"
+                                : linkedGroupOf(examType, t.number) ? `Другая игра для ${numbersLabel(linkedGroupOf(examType, t.number), { hash: false })}`
+                                : "Другое задание этого номера"}
                               className="text-gray-400 hover:text-blue-600 active:scale-90 transition-transform flex-shrink-0">
                               <Icon name="repeat" size={13} />
                             </button>
@@ -911,7 +916,7 @@ function VariantReview({ submission, variant, onClose, onSave }) {
         <div className={`glass-modal p-6 w-full max-w-2xl ${closingCls}`}>
           <div className="flex justify-between items-center mb-5">
             <h2 className="text-lg font-medium">Проверка · {type}</h2>
-            <button onClick={close} aria-label="Закрыть" className="text-gray-400 hover:text-gray-600"><Icon name="x" size={18} /></button>
+            <button onClick={close} aria-label="Закрыть" className="text-gray-500 hover:text-gray-700"><Icon name="x" size={18} /></button>
           </div>
           <div className="bg-blue-50 rounded-lg p-3 mb-4">
             <div className="text-sm font-medium text-blue-700">Часть 1: {part1Score} / {part1Max} {plural(part1Max, "балл", "балла", "баллов")}</div>
@@ -940,7 +945,7 @@ function VariantReview({ submission, variant, onClose, onSave }) {
                 <label className="text-sm text-gray-500">Баллы за часть 2</label>
                 {notes && (
                   <button type="button" onClick={() => setShowNotes((v) => !v)} aria-expanded={showNotes}
-                    className="press-fill text-[11px] text-gray-400 hover:text-gray-600 rounded-lg px-1.5 py-0.5">
+                    className="press-fill text-[11px] text-gray-500 hover:text-gray-700 rounded-lg px-1.5 py-0.5">
                     {showNotes ? "скрыть требования" : "общие требования"}
                   </button>
                 )}

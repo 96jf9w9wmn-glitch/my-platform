@@ -88,7 +88,7 @@ export default function UpdateToast() {
         >
           Обновить
         </button>
-        <button onClick={close} aria-label="Закрыть" className="shrink-0 text-gray-400 hover:text-gray-600 transition-colors active:scale-90">
+        <button onClick={close} aria-label="Закрыть" className="shrink-0 text-gray-500 hover:text-gray-700 transition-colors active:scale-90">
           <Icon name="x" size={14} />
         </button>
       </div>
