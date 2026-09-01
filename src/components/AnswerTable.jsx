@@ -52,8 +52,10 @@ export default function AnswerTable({ nums, correct: correctAnswers, student: st
                     : r.has ? "text-gray-700 font-medium" : "text-gray-400"
                 }`}>{r.given}</td>
                 {/* У верного ответа столбец пуст — заполнены ровно те строки,
-                    где ученик ошибся, и промахи видны без единой заливки. */}
-                <td className="py-1 align-top break-words tabular-nums font-semibold text-gray-800">
+                    где ученик ошибся, и промахи видны без единой заливки.
+                    Эталон стоит ЗЕЛЁНЫМ напротив красного ответа ученика: в
+                    строке сразу видно, что он написал и как было надо. */}
+                <td className="py-1 align-top break-words tabular-nums font-semibold text-green-700 dark:text-green-400">
                   {r.isWrong ? r.correct : r.byHand
                     ? <span className="text-[11px] font-normal text-green-600 dark:text-green-300" title="Ответ засчитан репетитором: эталон оказался неверным">засчитано</span>
                     : r.isRight

@@ -1228,7 +1228,10 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten })
                         </td>
                         {/* У зачтённого задания в столбце эталона стоит не ответ,
                             а пометка: сам эталон и оказался неверным. */}
-                        <td className={`py-2 px-3 align-top ${isCorrect ? "text-gray-400" : "text-gray-800 font-medium"}`}>
+                        {/* Эталон — зелёным напротив красного ответа ученика.
+                            У верно решённого задания он не нужен вовсе и остаётся
+                            блёклым: там сверять нечего. */}
+                        <td className={`py-2 px-3 align-top ${isCorrect ? "text-gray-400" : "text-green-700 dark:text-green-400 font-medium"}`}>
                           {byHand ? <span className="text-green-600 dark:text-green-300 text-xs">засчитано репетитором</span> : correct}
                         </td>
                       </tr>

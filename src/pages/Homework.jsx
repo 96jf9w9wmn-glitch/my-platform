@@ -1662,8 +1662,12 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
     plainTaskMath(taskItems[0]?.text || tasksIntro || hw.description || "").replace(/\^\(([^()]*)\)/g, "^{$1}")
   )
 
-  async function setStatus(newStatus, grade) {
-    const updates = { status: newStatus, comment, grade: grade ?? null }
+  // Комментарий по умолчанию берётся из формы проверки, но возврат кнопкой в
+  // шапке передаёт пустой: прежний вердикт («молодец») относился к работе,
+  // которую ученик сейчас будет решать заново, и в уведомлении о пересдаче
+  // читался бы как издёвка.
+  async function setStatus(newStatus, grade, note = comment) {
+    const updates = { status: newStatus, comment: note, grade: grade ?? null }
     if (newStatus === "revision") {
       updates.test_score = null
       updates.student_answers = null
@@ -1693,7 +1697,7 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
       await supabase.from("notifications").insert({
         user_id: accountId,
         title: "Задание на доработке",
-        body: `«${hw.title}» — репетитор отправил на пересдачу${comment ? ": " + comment : ""}`,
+        body: `«${hw.title}» — репетитор отправил на пересдачу${note ? ": " + note : ""}`,
       })
     }
 
@@ -1740,6 +1744,20 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
         <div className="flex items-center gap-2 min-w-0">
           <span className="font-medium text-base truncate">{hw.title}</span>
           <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${status.cls}`}>{status.label}</span>
+          {/* Возврат стоит прямо у статуса «Выполнено» — это ответ на него, а
+              не отдельный раздел проверки. Без этой кнопки у работы с
+              автопроверкой возврата не было ВОВСЕ: кабинет ученика при сдаче
+              теста сам ставит «Выполнено» и оценку по проценту
+              (submitHomeworkTest), состояния «на проверке» такая работа не
+              проходит, а у завершённой не было ни одной кнопки. */}
+          {hw.status === "done" && (
+            <button
+              onClick={() => setRevising(true)}
+              className="press-fill text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ring-1 ring-amber-500/40 text-amber-600 dark:text-amber-300"
+            >
+              На доработку
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-0.5 flex-shrink-0">
           <span className="text-[11px] text-gray-400 flex items-center gap-1.5 mr-1.5">
@@ -1921,46 +1939,6 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
             </DetailBlock>
           )}
 
-          {/* Возврат уже завершённой работы. Без него у работы с автопроверкой
-              возврата не было ВОВСЕ: кабинет ученика при сдаче теста сам ставит
-              «Выполнено» и оценку по проценту (submitHomeworkTest), состояния
-              «на проверке» такая работа не проходит, а у завершённой до сих пор
-              не было ни одной кнопки. Пересдача стирает ответы, балл, оценку и
-              фото решения — иначе ученик увидел бы свои прежние ответы. */}
-          {hw.status === "done" && (
-            <DetailBlock className="flex flex-col gap-3">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium truncate">Вернуть на доработку</div>
-                  <div className="text-[11px] text-gray-400 mt-0.5 truncate">Ученик решит работу заново</div>
-                </div>
-                <button
-                  onClick={() => setRevising((v) => !v)}
-                  className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-amber-500/35 text-amber-600 dark:text-amber-300 flex-shrink-0"
-                >
-                  {revising ? "Отмена" : "Вернуть"}
-                </button>
-              </div>
-              <Reveal value={revising}>{() => (
-                <div className="flex flex-col gap-2">
-                  <textarea
-                    value={comment}
-                    onChange={(e) => setComment(e.target.value)}
-                    placeholder="Что доработать (необязательно)"
-                    rows={2}
-                    className="input-glass text-xs resize-none"
-                  />
-                  <button
-                    onClick={() => setStatus("revision")}
-                    className="press-fill bg-amber-500 text-white rounded-lg py-1.5 text-xs"
-                  >
-                    Отправить на доработку
-                  </button>
-                </div>
-              )}</Reveal>
-            </DetailBlock>
-          )}
-
           {hw.status === "submitted" && !isPureTest && (
             <DetailBlock>
               {!grading ? (
@@ -2024,6 +2002,16 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
 
         </div>
       </div>
+
+      <ConfirmModal
+        open={revising}
+        icon="repeat"
+        title="Вернуть на доработку?"
+        message={`«${hw.title}» снова станет активным у ученика. Ответы, оценка и фото решения сотрутся — работа решается заново.`}
+        confirmLabel="Вернуть"
+        onConfirm={() => { setRevising(false); setStatus("revision", null, "") }}
+        onCancel={() => setRevising(false)}
+      />
 
       {showTasks && (
         <TasksModal
