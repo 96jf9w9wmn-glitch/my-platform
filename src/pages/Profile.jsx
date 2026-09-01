@@ -20,6 +20,7 @@ import AutoReportSettings from "../components/AutoReportSettings"
 import OnlinePaySettings from "../components/OnlinePaySettings"
 import TaxModeSettings from "../components/TaxModeSettings"
 import TelegramSettings from "../components/TelegramSettings"
+import EmailNotifySettings from "../components/EmailNotifySettings"
 import { BetaNotice } from "../components/BetaBadge"
 import SubjectsSettings from "../components/SubjectsSettings"
 import { isOwner } from "../owner"
@@ -174,6 +175,11 @@ export default function Profile({ user, students = [], onLogout, onProfileChange
           </div>
         </div>
       )}
+
+      {/* Куда уведомления приходят, кроме колокольчика: почта и телеграм. */}
+      <div className="mb-4">
+        <EmailNotifySettings tutorId={user.id} email={user.email} onChange={onProfileChange} />
+      </div>
 
       {/* Телеграм-бот: второй вход в тот же кабинет. Раньше лежал внутри блока
           «Подписка» в самом низу страницы — о нём никто не знал. */}

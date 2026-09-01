@@ -26,6 +26,7 @@ import subscriptionWebhook from "../api/subscription-webhook.js"
 import telegram from "../api/telegram.js"
 import yookassa from "../api/yookassa.js"
 import yookassaWebhook from "../api/yookassa-webhook.js"
+import { startEmailQueue } from "./emailQueue.js"
 
 // Таблица адресов задана явно, а не сборкой пути из URL: путь из запроса,
 // подставленный в import, — это обход каталогов и запуск чужого файла.
@@ -190,6 +191,9 @@ server.keepAliveTimeout = 65_000
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`[api] слушаю :${PORT}, адресов: ${Object.keys(ROUTES).length}`)
+  // Дублирование уведомлений репетитора на почту: очередь наполняет база,
+  // разбираем её здесь — из базы наружу в SMTP не сходить.
+  startEmailQueue()
 })
 
 // Без этого `docker compose restart` ждёт 10 с и убивает процесс по SIGKILL,
