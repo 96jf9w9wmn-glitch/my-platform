@@ -1923,13 +1923,25 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   useEffect(() => {
     // По e.code (физическая клавиша) — иначе на русской раскладке e.key = «з/у/…» и не совпадает
     const TOOL_CODES = { KeyP: "pen", KeyE: "eraser", KeyL: "line", KeyR: "rect", KeyH: "hand", KeyV: "cursor" }
+    // Типы input, в которые не печатают: они не должны глушить горячие клавиши доски.
+    const NON_TEXT_INPUTS = new Set(["color", "file", "range", "checkbox", "radio", "button", "submit", "reset", "image"])
     function onKeyDown(e) {
       if (modalOpen.current) return   // поверх доски открыт выбор задания — клавиши не наши
+      // Поле ввода — только то, куда действительно печатают. Проверять по одному
+      // лишь тегу INPUT нельзя: у палитры цвета и у выбора файла на доске тоже
+      // input, и после того как ими один раз воспользовались, фокус остаётся на
+      // них. Тогда ⌘Z уходил браузеру, а тот выполнял своё «Отменить» —
+      // возвращал последнюю закрытую вкладку, то есть поверх доски открывалась
+      // посторонняя страница.
+      const el = e.target
+      const tagName = el?.tagName
+      const type = (el?.type || "").toLowerCase()
+      const inField = tagName === "TEXTAREA" || el?.isContentEditable ||
+        (tagName === "INPUT" && !NON_TEXT_INPUTS.has(type))
       // Пробел — временное «двигать полотно» при ЛЮБОМ инструменте: держим —
       // тащим доску, отпустили — рисуем тем же маркером. Раньше отслеживался
       // только тот пробел, что пришёл в document.body, поэтому после первого же
       // клика по холсту (или по кнопке панели) он переставал работать.
-      const inField = e.target?.tagName === "INPUT" || e.target?.tagName === "TEXTAREA" || e.target?.isContentEditable
       if (e.code === "Space" && !inField) {
         e.preventDefault()                       // иначе страница прокручивается под доской
         if (!e.repeat) { spaceHeld.current = true; setPanKey(true) }
@@ -1954,8 +1966,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         return
       }
       // Горячие клавиши инструментов (без модификаторов, не в поле ввода)
-      const tag = e.target?.tagName
-      if (tag === "INPUT" || tag === "TEXTAREA" || e.target?.isContentEditable) return
+      if (inField) return
       if (e.code === "Escape") { setTool("cursor"); closeMenuRef.current(); return }
       if (e.code === "Delete" || e.code === "Backspace") { e.preventDefault(); actions.current.del(); return }
       const t = TOOL_CODES[e.code]
