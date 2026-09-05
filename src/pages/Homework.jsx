@@ -135,7 +135,7 @@ function Toggle({ on, onClick, title, note, disabled = false }) {
 // Три способа собрать домашнее задание. Карточками, а не спрятанной строкой:
 // раньше сборка ИИ пряталась за узкой ссылкой, и о ней никто не догадывался.
 const HW_METHODS = [
-  { id: "file", icon: "paperclip", title: "Свой файл", note: "PDF или фото задания, ответы вписываете сами" },
+  { id: "file", icon: "paperclip", title: "Свой файл", note: "PDF или фото — разберём на отдельные задания" },
   { id: "bank", icon: "grid", title: "Из банка заданий", note: "Номера и темы ОГЭ/ЕГЭ — соберём с ответами" },
   { id: "ai", icon: "sparkles", title: "Составить ИИ", note: "Задания по любой теме, готовы за минуту" },
 ]
@@ -1160,7 +1160,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                       <span className="text-sm truncate max-w-full">
                         {file ? file.name : isEditing && editingHw.file_url ? "Заменить файл" : "Перетащите файл или нажмите"}
                       </span>
-                      <span className="text-[11px] text-gray-400">PDF, фото или документ</span>
+                      <span className="text-[11px] text-gray-400">PDF или фото разберём на задания, документ приложим как есть</span>
                     </button>
                     {file && (
                       <button type="button" onClick={() => { setFile(null); if (splitTasks.length) dropSplit() }}
