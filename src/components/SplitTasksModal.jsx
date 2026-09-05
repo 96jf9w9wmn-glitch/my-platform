@@ -167,8 +167,8 @@ export default function SplitTasksModal({ file, onDone, onClose }) {
             <div className="py-10 text-center">
               <div className="text-sm text-red-600 dark:text-red-300">{error}</div>
               <p className="text-xs text-gray-400 mt-2 leading-snug">
-                Разбираются PDF и фотографии. Файл Word сначала сохраните как PDF —
-                тогда задания и чертежи встанут на свои места.
+                Разбираются PDF, файлы Word (.docx) и фотографии. Документ в старом
+                формате .doc сначала пересохраните как .docx или PDF.
               </p>
             </div>
           )}

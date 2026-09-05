@@ -282,13 +282,167 @@ async function readImage(file, onProgress) {
   }
 }
 
+// --- документ Word ------------------------------------------------------------
+
+// .docx репетиторы приносят чаще, чем PDF, а нарисовать его в браузере нечем:
+// это zip с XML, а не страницы. Раскладывает его docx-preview — он же
+// восстанавливает формулы (OMML → MathML) и чертежи (картинки data-URI).
+// Дальше документ надо превратить в такие же страницы-картинки, как у PDF.
+//
+// Рисует их САМ БРАУЗЕР через <foreignObject>: html2canvas, который у нас уже
+// есть, рисует свою копию разметки и MathML не понимает — формулы из условий
+// просто исчезали, а это половина математики. Ограничение приёма: картинка
+// собирается из строки, и вся страница целиком в неё не влезает (документ на
+// полсотни заданий — это 16 МБ разметки, и браузер молча рисует пустоту).
+// Поэтому в каждый кусок кладутся только те блоки, что в него попали.
+const DOCX_WIDTH = 900
+const DOCX_CHUNK = 1500
+
+const serializer = typeof XMLSerializer !== "undefined" ? new XMLSerializer() : null
+const xmlEscape = (s) => s.replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]))
+
+// Абзацы, заголовки и таблицы документа с их положением — из них собираются и
+// куски страниц, и строки для поиска номеров заданий. Именно абзацы, а не дети
+// корня: docx-preview кладёт весь документ ОДНИМ <article>, и по детям корня
+// блок получался ровно один — на всю высоту, отчего не находилось ни одного
+// номера, а в каждую картинку уходил весь документ целиком.
+const BLOCK_SEL = "p, h1, h2, h3, h4, h5, h6, table, ul, ol, blockquote, figure"
+
+function docxBlocks(host) {
+  const base = host.getBoundingClientRect()
+  // Таблица и список идут целиком: их строки — не отдельные задания, а части
+  // одного, и резать между ними нельзя.
+  const nodes = Array.from(host.querySelectorAll(BLOCK_SEL))
+    .filter((el) => el.parentElement === host || !el.parentElement?.closest("table, ul, ol"))
+  const out = []
+  for (const el of nodes) {
+    const box = el.getBoundingClientRect()
+    if (box.height <= 0) continue
+    out.push({ el, top: box.top - base.top, height: box.height, left: box.left - base.left })
+  }
+  return out.sort((a, b) => a.top - b.top)
+}
+
+// Разметка куска: сами блоки плюс все их обёртки (секция, article, таблица
+// стилей документа). Без обёрток теряются поля страницы и ширина колонки —
+// текст в картинке расходится с тем, что репетитор видел в редакторе.
+function shellFor(host, blocks) {
+  const root = host.cloneNode(false)
+  // Сам контейнер живёт за экраном (position:absolute; left:-20000px). Внутри
+  // картинки это увезло бы страницу за её край — рисовалась чистая белизна.
+  root.setAttribute("style", `width:${DOCX_WIDTH}px;background:#fff`)
+  const made = new Map([[host, root]])
+  const shellOf = (el) => {
+    if (made.has(el)) return made.get(el)
+    const copy = el.cloneNode(false)
+    // Верхние поля страницы обёртка добавила бы ЗАНОВО: положение блоков уже
+    // посчитано с ними, и содержимое куска уезжало вниз на высоту полей —
+    // задание разрезалось не там, где стоит граница. Боковые поля оставляем:
+    // на них держится ширина колонки, а с ней и переносы строк.
+    copy.style.paddingTop = "0"
+    copy.style.marginTop = "0"
+    shellOf(el.parentElement).appendChild(copy)
+    made.set(el, copy)
+    return copy
+  }
+  for (const b of blocks) shellOf(b.el.parentElement).appendChild(b.el.cloneNode(true))
+  return root
+}
+
+async function svgToCanvas(html, width, height, offset, scale) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">` +
+    `<foreignObject x="0" y="${offset}" width="${width}" height="${Math.max(height, 1) + Math.abs(offset) + 4000}">` +
+    `<div xmlns="http://www.w3.org/1999/xhtml" style="width:${width}px;background:#fff">${html}</div>` +
+    `</foreignObject></svg>`
+  const img = await new Promise((resolve, reject) => {
+    const el = new Image()
+    el.onload = () => resolve(el)
+    el.onerror = () => reject(new Error("Страницу документа не удалось нарисовать"))
+    // Именно data-URI, а не blob: последний считается чужим источником, и
+    // снять с холста готовую картинку («холст испорчен») уже нельзя.
+    el.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg)
+  })
+  const canvas = canvasOf(Math.round(width * scale), Math.round(height * scale))
+  const ctx = canvas.getContext("2d")
+  ctx.fillStyle = "#fff"
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  ctx.scale(scale, scale)
+  ctx.drawImage(img, 0, 0)
+  return canvas
+}
+
+async function readDocx(file, onProgress) {
+  const dp = await import("docx-preview")
+  const host = document.createElement("div")
+  // За экраном, но в потоке: размеры блоков берутся у настоящей раскладки, а
+  // у display:none их нет вовсе.
+  host.style.cssText = `position:absolute;left:-20000px;top:0;width:${DOCX_WIDTH}px;background:#fff`
+  document.body.appendChild(host)
+  try {
+    await dp.renderAsync(file, host, null, {
+      className: "docx",
+      inWrapper: false,
+      breakPages: false,
+      ignoreHeight: true,
+      ignoreWidth: true,
+      useBase64URL: true,
+    })
+    // Стили документа docx-preview кладёт в <style> — без них в картинке будет
+    // голый текст без отступов и таблиц.
+    const styles = Array.from(document.querySelectorAll("style"))
+      .map((el) => el.textContent)
+      .join("\n")
+    const blocks = docxBlocks(host)
+    if (!blocks.length) throw new Error("В документе не нашлось ни одного абзаца")
+
+    const scale = PAGE_WIDTH / DOCX_WIDTH
+    const total = Math.min(Math.ceil(host.scrollHeight / DOCX_CHUNK), MAX_PAGES)
+    const pages = []
+    for (let i = 0; i < total; i++) {
+      const from = i * DOCX_CHUNK
+      const to = Math.min(from + DOCX_CHUNK, host.scrollHeight)
+      const inside = blocks.filter((b) => b.top + b.height > from && b.top < to)
+      const head = inside.length ? inside[0].top : from
+      // Сериализуем через XMLSerializer, а не outerHTML: внутри <foreignObject>
+      // разметка разбирается как XML, и первый же <br> без закрытия рушит
+      // картинку целиком (браузер молча отдаёт ошибку загрузки).
+      const html = `<style>${xmlEscape(styles)}</style>` + serializer.serializeToString(shellFor(host, inside))
+      const canvas = await svgToCanvas(html, DOCX_WIDTH, to - from, head - from, scale)
+      pages.push({
+        canvas,
+        width: canvas.width,
+        height: canvas.height,
+        // Строки страницы — сами блоки: у документа они известны точно, и
+        // номера заданий ищутся по ним же, что и в текстовом слое PDF.
+        lines: inside.map((b) => ({
+          y: (b.top - from + b.height) * scale,
+          h: Math.min(b.height, 40) * scale,
+          x: b.left * scale,
+          text: (b.el.textContent || "").replace(/\s+/g, " ").trim(),
+        })).filter((l) => l.text),
+      })
+      onProgress?.(i + 1, total)
+    }
+    return pages
+  } finally {
+    host.remove()
+  }
+}
+
+const isDocx = (file) =>
+  file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+  /\.docx$/i.test(file.name || "")
+
 export const canSplit = (file) =>
-  !!file && (file.type === "application/pdf" || /^image\//.test(file.type) || /\.pdf$/i.test(file.name || ""))
+  !!file && (file.type === "application/pdf" || /^image\//.test(file.type) ||
+    /\.pdf$/i.test(file.name || "") || isDocx(file))
 
 // Файл → страницы с картинкой и (для PDF) текстовым слоем, плюс предложенные
 // границы заданий. Границы — в координатах страницы: { page, y }.
 export async function splitSource(file, onProgress) {
-  const pages = /^image\//.test(file.type) ? await readImage(file, onProgress) : await readPdf(file, onProgress)
+  const pages = /^image\//.test(file.type) ? await readImage(file, onProgress)
+    : isDocx(file) ? await readDocx(file, onProgress)
+    : await readPdf(file, onProgress)
 
   // Сначала пробуем текстовый слой: он даёт и границу, и текст условия.
   const all = []
@@ -366,7 +520,10 @@ function textOf(pages, parts) {
   const out = []
   for (const part of parts) {
     for (const l of pages[part.page].lines) {
-      if (l.y >= part.top - l.h && l.y <= part.bottom) out.push(l.text)
+      // Строку относим к куску по её СЕРЕДИНЕ: послабление на всю высоту
+      // затягивало в задание последнюю строку предыдущего («Источник: …»).
+      const mid = l.y - l.h / 2
+      if (mid >= part.top && mid <= part.bottom) out.push(l.text)
     }
   }
   // Номер задания снимаем: он и так стоит перед строкой в описании работы, а
