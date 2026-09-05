@@ -162,10 +162,19 @@ export function chainStarts(all) {
 // промежуток между заданиями. Берём самые широкие промежутки: между заданиями
 // воздуха больше, чем между строками одного условия.
 export function blankGaps(gray, width, height, want = 12) {
+  // Порог «тёмного» считаем от самой страницы: у скана фон бывает серый или
+  // желтоватый, и фиксированные 170 объявляли тёмной всю страницу — пустых
+  // полос не находилось вовсе, а с ними и границ.
+  const hist = new Uint32Array(256)
+  for (let i = 0; i < gray.length; i++) hist[gray[i]]++
+  let seen = 0
+  let bg = 255
+  for (let v = 255; v >= 0; v--) { seen += hist[v]; if (seen > gray.length * 0.5) { bg = v; break } }
+  const darkLimit = Math.max(60, Math.min(200, bg - 45))
   const rowDark = new Float32Array(height)
   for (let y = 0; y < height; y++) {
     let dark = 0
-    for (let x = 0; x < width; x++) if (gray[y * width + x] < 170) dark++
+    for (let x = 0; x < width; x++) if (gray[y * width + x] < darkLimit) dark++
     rowDark[y] = dark / width
   }
   const gaps = []
@@ -460,6 +469,12 @@ export async function splitSource(file, onProgress) {
       blankGaps(gray, p.width, p.height).forEach((y) => starts.push({ page, y, guess: true }))
     })
   }
+
+  // Ни номеров, ни пустых полос — так бывает у плотной вёрстки и у скана с
+  // шумом. Пустой разбор выглядит как поломка, поэтому ставим границу в начале
+  // каждой страницы: «задание — страница» почти всегда неверно, но это
+  // понятная отправная точка, от которой репетитор двигает линии.
+  if (starts.length < 2) starts = pages.map((_, page) => ({ page, y: 0, guess: true }))
 
   return { pages, starts, guessed: starts.some((s) => s.guess) }
 }

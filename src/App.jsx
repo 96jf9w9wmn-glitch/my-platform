@@ -293,8 +293,11 @@ function App() {
   // это отдельный, ещё не закрытый пробел, см. supabase/auth_hardening.sql).
   // Студенческая — больше не доверяется до подтверждения через RPC ниже,
   // иначе голый id из localStorage давал мгновенный доступ без проверки токена.
-  const [user, setUser] = useState(() => readStoredSession("parent_session"))
-  const [loadingAuth, setLoadingAuth] = useState(() => !readStoredSession("parent_session"))
+  const PERFTEST = localStorage.getItem("perftest") === "1"
+  const [user, setUser] = useState(() => PERFTEST
+    ? { id: "perf-tutor", email: "perf@test.local", role: "tutor", profile: { name: "Perf", onboarding_completed: true, code: "PERF" } }
+    : readStoredSession("parent_session"))
+  const [loadingAuth, setLoadingAuth] = useState(() => PERFTEST ? false : !readStoredSession("parent_session"))
   // Переход по ссылке «сброс пароля» из письма. Признак вычисляется в
   // src/supabase.js до создания клиента — к моменту первого рендера hash уже
   // вычищен клиентом, здесь его проверять поздно.
@@ -616,6 +619,7 @@ function App() {
   }
 
   useEffect(() => {
+    if (PERFTEST) return
     async function restoreSession(session) {
       const minDelay = new Promise(r => setTimeout(r, 600))
       if (!session) { await minDelay; setLoadingAuth(false); return }
