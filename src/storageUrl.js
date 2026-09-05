@@ -150,6 +150,40 @@ export async function signBoardScene(scene) {
   return Array.isArray(scene) ? next : { ...scene, strokes: next }
 }
 
+// Значение поля бывает строкой (file_url), массивом строк (part2_files),
+// объектом «номер задания → адрес» (solution_files) и массивом объектов
+// (bank_tasks: у задания, нарезанного из файла репетитора, условие живёт
+// картинкой в приватном бакете). Внутри объекта подписываем ТОЛЬКО image_url:
+// пройтись по всем строкам подряд значило бы просить подпись и на текст
+// условия — лишние запросы за файлами, которых нет.
+const NESTED_KEY = "image_url"
+
+function collectValues(v, out) {
+  if (typeof v === "string") out.push(v)
+  else if (Array.isArray(v)) v.forEach((x) => collectValues(x, out))
+  else if (v && typeof v === "object") {
+    for (const [k, inner] of Object.entries(v)) {
+      if (typeof inner === "string") { if (k === NESTED_KEY || !isNaN(Number(k))) out.push(inner) }
+      else collectValues(inner, out)
+    }
+  }
+}
+
+function applyValues(v, map) {
+  if (typeof v === "string") return map.get(v) || v
+  if (Array.isArray(v)) return v.map((x) => applyValues(x, map))
+  if (v && typeof v === "object") {
+    const next = {}
+    for (const [k, inner] of Object.entries(v)) {
+      next[k] = typeof inner === "string"
+        ? (k === NESTED_KEY || !isNaN(Number(k)) ? map.get(inner) || inner : inner)
+        : applyValues(inner, map)
+    }
+    return next
+  }
+  return v
+}
+
 export async function signRows(rows, spec) {
   if (!Array.isArray(rows) || !rows.length) return rows
   const fields = Object.keys(spec)
@@ -157,14 +191,7 @@ export async function signRows(rows, spec) {
 
   for (const row of rows) {
     if (!row) continue
-    for (const field of fields) {
-      const v = row[field]
-      if (typeof v === "string") values.push(v)
-      else if (Array.isArray(v)) values.push(...v.filter((x) => typeof x === "string"))
-      else if (v && typeof v === "object") {
-        for (const inner of Object.values(v)) if (typeof inner === "string") values.push(inner)
-      }
-    }
+    for (const field of fields) collectValues(row[field], values)
   }
   if (!values.length) return rows
 
@@ -175,12 +202,7 @@ export async function signRows(rows, spec) {
     const fieldValues = []
     for (const row of rows) {
       if (!row) continue
-      const v = row[field]
-      if (typeof v === "string") fieldValues.push(v)
-      else if (Array.isArray(v)) fieldValues.push(...v.filter((x) => typeof x === "string"))
-      else if (v && typeof v === "object") {
-        for (const inner of Object.values(v)) if (typeof inner === "string") fieldValues.push(inner)
-      }
+      collectValues(row[field], fieldValues)
     }
     maps[field] = fieldValues.length ? await signStorageUrls(fieldValues, spec[field]) : new Map()
   }
@@ -189,15 +211,8 @@ export async function signRows(rows, spec) {
     if (!row) return row
     const copy = { ...row }
     for (const field of fields) {
-      const v = row[field]
-      const map = maps[field]
-      if (typeof v === "string") copy[field] = map.get(v) || v
-      else if (Array.isArray(v)) copy[field] = v.map((x) => (typeof x === "string" ? map.get(x) || x : x))
-      else if (v && typeof v === "object") {
-        const next = {}
-        for (const [k, inner] of Object.entries(v)) next[k] = typeof inner === "string" ? map.get(inner) || inner : inner
-        copy[field] = next
-      }
+      if (row[field] == null) continue
+      copy[field] = applyValues(row[field], maps[field])
     }
     return copy
   })

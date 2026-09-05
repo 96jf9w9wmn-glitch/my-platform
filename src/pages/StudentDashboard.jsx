@@ -535,7 +535,7 @@ function HwTaskBody({ text, bankTask, className = "" }) {
       )}
       <TaskAttachments
         task={bankTask}
-        imageAlt={`Задание №${bankTask.number}`}
+        imageAlt={bankTask.number != null ? `Задание №${bankTask.number}` : "Условие задания"}
         tail={bankTask.condition_tail ? (
           <div className={body} dangerouslySetInnerHTML={{ __html: renderHomeworkMath(bankTask.condition_tail) }} />
         ) : null}
@@ -2144,7 +2144,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
       .eq("student_id", student.id)
       .order("created_at", { ascending: false })
     // Бакет приватный — ссылки на файл задания и своё решение подписываем.
-    setHomework(await signRows(data || [], { file_url: "homework", submission_url: "homework", solution_files: "homework" }))
+    setHomework(await signRows(data || [], { file_url: "homework", submission_url: "homework", solution_files: "homework", bank_tasks: "homework" }))
   }
 
   async function handleStudentAvatarChange(e) {
@@ -2292,7 +2292,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     loadHomework()
     const updated = await supabase.from("homework").select("*").eq("id", hwId).single()
     if (updated.data) {
-      const [signed] = await signRows([updated.data], { file_url: "homework", submission_url: "homework", solution_files: "homework" })
+      const [signed] = await signRows([updated.data], { file_url: "homework", submission_url: "homework", solution_files: "homework", bank_tasks: "homework" })
       setSelectedHomework(signed)
     }
   }

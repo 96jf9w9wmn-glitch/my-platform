@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, Fragment } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import { signRows } from "../storageUrl"
+import SplitTasksModal from "../components/SplitTasksModal"
+import { canSplit } from "./homeworkSplit"
 import Icon from "../components/Icon"
 import StatTabs from "../components/StatTabs"
 import MethodCards from "../components/MethodCards"
@@ -72,6 +74,19 @@ function todayTitle() {
 function buildUploadPath(tutorId, name) {
   const ext = name.split(".").pop()
   return tutorId + "/" + Date.now() + "." + ext
+}
+
+// Картинка задания, нарезанного из файла. Хранится рядом с остальными файлами
+// репетитора (свой каталог по auth.uid — так разрешает политика бакета), а не
+// внутри строки задания: работа со скринами весит мегабайты, и список домашних
+// работ тянул бы их все разом при каждом открытии раздела.
+async function uploadTaskImage(tutorId, dataUrl, idx) {
+  const blob = await (await fetch(dataUrl)).blob()
+  const path = `${tutorId}/hw-tasks/${Date.now()}-${idx}.jpg`
+  const { error } = await supabase.storage.from("homework").upload(path, blob, { contentType: "image/jpeg" })
+  if (error) throw error
+  const { data } = supabase.storage.from("homework").getPublicUrl(path)
+  return data.publicUrl
 }
 
 // Локальная дата в формате YYYY-MM-DD. toISOString() отдал бы UTC и вечером по
@@ -340,6 +355,12 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
     !!editingHw?.deadline && !DEADLINE_CHIPS.some((c) => c.days != null && isoDay(c.days) === editingHw.deadline)
   )
   const [file, setFile] = useState(null)
+  // Задания, нарезанные из загруженного файла: картинка условия, текст (если у
+  // файла был текстовый слой) и ответ, который вписывает репетитор. Работа
+  // после этого ничем не отличается от собранной из банка — ученик решает её
+  // по заданиям, а не смотрит на PDF целиком.
+  const [splitTasks, setSplitTasks] = useState([])
+  const [splitOpen, setSplitOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState("")
   // Тип задания больше не выбирается вручную: работа становится тестом ровно
@@ -618,6 +639,39 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
     setAutoCheck(true)
   }
 
+  // --- Задания, нарезанные из своего файла ---
+
+  // Нарезка даёт условия картинками, а ответов в файле нет — их вписывает
+  // репетитор. Всё остальное устроено как у банка: описание работы собирается
+  // из текстов, ответы едут списком (в них бывают пробелы, и поле-строка
+  // разорвало бы такой ответ надвое).
+  function syncSplit(next) {
+    setSplitTasks(next)
+    setDescription(next.map((t, i) => `${i + 1}. ${oneLine(t.text) || `Задание ${i + 1}`}`).join("\n"))
+    setTestOptions(null)
+    setMcqCorrect([])
+    setAnswersInput("")
+    setAnswersList(next.length ? next.map((t) => t.answer) : null)
+  }
+
+  function applySplit(tasks) {
+    syncSplit(tasks.map((t) => ({ image: t.image, text: t.text, answer: "" })))
+  }
+
+  const setSplitAnswer = (idx, value) =>
+    syncSplit(splitTasks.map((t, i) => (i === idx ? { ...t, answer: value } : t)))
+
+  const removeSplitTask = (idx) => syncSplit(splitTasks.filter((_, i) => i !== idx))
+
+  // Убрать нарезку целиком: файл остаётся приложенным, работа снова становится
+  // обычной — файл плюс ответы, как было до разбора.
+  function dropSplit() {
+    setSplitTasks([])
+    setDescription("")
+    setAnswersList(null)
+    setAnswersInput("")
+  }
+
   // Собранные задания сразу становятся содержанием работы: текст — в описание,
   // ответы — в автопроверку. Отдельной кнопки «применить» нет намеренно, иначе
   // список в панели и то, что уйдёт ученику, живут отдельно и расходятся.
@@ -818,12 +872,30 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
     // поля в payload нет — и записанное тогда остаётся нетронутым.
     if (bankTasks.length) payload.bank_tasks = bankTasks.map(bank.packTask)
 
+    // Нарезанные из файла задания: картинки уезжают в хранилище, в строку
+    // работы идут ссылки на них и текст условия (он же лежит в description —
+    // на нём держатся список работ, бот и все записи, выданные раньше).
+    if (splitTasks.length) {
+      try {
+        // Только картинка: тот же текст уже лежит в description и показывается
+        // строкой задания. Положи его ещё и сюда — ученик увидел бы условие
+        // дважды, текстом и на картинке.
+        payload.bank_tasks = await Promise.all(
+          splitTasks.map(async (t, i) => ({ image_url: await uploadTaskImage(tutorId, t.image, i) }))
+        )
+      } catch (e) {
+        setFormError("Картинки заданий не загрузились: " + (e.message || e))
+        setSaving(false)
+        return
+      }
+    }
+
     // Миграции homework_bank_tasks.sql может не быть на этой базе. Тогда работу
     // всё равно выдаём — но только если терять нечего: задания без чертежей и
     // файлов полностью описаны текстом в description. Если же терять есть что,
     // выдача останавливается с понятной просьбой, иначе ученик получил бы
     // «На рисунке изображён график» без самого рисунка.
-    const richTasks = bankTasks.filter((t) => hasAttachment(t)).length
+    const richTasks = splitTasks.length || bankTasks.filter((t) => hasAttachment(t)).length
     const save = async (body) => {
       const res = isEditing
         ? await supabase.from("homework").update(body).eq("id", editingHw.id)
@@ -1091,9 +1163,76 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                       <span className="text-[11px] text-gray-400">PDF, фото или документ</span>
                     </button>
                     {file && (
-                      <button type="button" onClick={() => setFile(null)} className="self-start text-xs btn-quiet hover:text-red-500 active:scale-95">
+                      <button type="button" onClick={() => { setFile(null); if (splitTasks.length) dropSplit() }}
+                        className="self-start text-xs btn-quiet hover:text-red-500 active:scale-95">
                         Убрать файл
                       </button>
+                    )}
+
+                    {/* Файл целиком — это возврат к бумаге: ученик не может
+                        ответить по заданию, а кабинет не может ничего проверить.
+                        Поэтому у PDF и фотографии сразу предлагаем разобрать их
+                        на задания; отказаться можно, просто не нажав. */}
+                    {canSplit(file) && !splitTasks.length && (
+                      <button type="button" onClick={() => setSplitOpen(true)}
+                        className="press-fill w-full flex items-center gap-3 rounded-2xl ring-1 ring-blue-500/25 px-4 py-3 text-left">
+                        <span className="shrink-0 w-9 h-9 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center">
+                          <Icon name="scissors" size={17} />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-sm text-gray-700">Разбить файл на задания</span>
+                          <span className="block text-[11px] text-gray-400 leading-snug">
+                            Ученик решит их в кабинете по одному: своё поле ответа и фото решения к каждому
+                          </span>
+                        </span>
+                      </button>
+                    )}
+
+                    {splitTasks.length > 0 && (
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-sm text-gray-500">
+                            Заданий из файла — {splitTasks.length}
+                          </span>
+                          <button type="button" onClick={() => setSplitOpen(true)}
+                            className="no-press text-xs text-blue-600 hover:text-blue-700 active:scale-95 transition-transform">
+                            Разобрать заново
+                          </button>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          {splitTasks.map((t, i) => (
+                            <div key={i} className="flex items-start gap-3 rounded-2xl ring-1 ring-gray-200/70 dark:ring-white/10 p-2.5">
+                              <span className="shrink-0 w-6 h-6 rounded-full bg-blue-500/10 text-blue-600 text-xs font-semibold flex items-center justify-center">
+                                {i + 1}
+                              </span>
+                              <img src={t.image} alt={`Задание ${i + 1}`}
+                                className="w-28 sm:w-40 rounded-lg ring-1 ring-gray-200/70 dark:ring-white/10 bg-white" />
+                              <div className="min-w-0 flex-1 flex flex-col gap-1.5">
+                                <input
+                                  value={t.answer}
+                                  onChange={(e) => setSplitAnswer(i, e.target.value)}
+                                  placeholder="Ответ"
+                                  className="input-glass py-1.5 text-sm"
+                                />
+                                {!!t.text && (
+                                  <div className="text-[11px] text-gray-400 leading-snug line-clamp-2">{t.text}</div>
+                                )}
+                              </div>
+                              <button type="button" onClick={() => removeSplitTask(i)} title="Убрать задание"
+                                className="no-press shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-blue-500/[0.08] transition active:scale-90">
+                                <Icon name="x" size={13} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="text-[11px] text-gray-400 leading-snug">
+                          Ответы нужны для автоматической проверки. Если проверяете сами — выключите автопроверку ниже, задания всё равно останутся отдельными.
+                        </div>
+                        <button type="button" onClick={dropSplit}
+                          className="self-start text-xs text-gray-400 hover:text-red-500 active:scale-95 transition-all">
+                          Убрать задания
+                        </button>
+                      </div>
                     )}
                   </>
                 )}
@@ -1399,7 +1538,9 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                     выбранный способ — файл, банк или ИИ. У старого задания текст уже
                     есть, поэтому показываем его так, как его видит ученик (править
                     буквами нечего: в тексте живут токены дробей и корней). */}
-                {method === "file" && !!description.trim() && (
+                {/* Работа, нарезанная из файла, показана списком заданий выше —
+                    второй раз тем же текстом её не показываем. */}
+                {method === "file" && !splitTasks.length && !!description.trim() && (
                   <div>
                     <div className="text-sm text-gray-500 mb-1.5">Что увидит ученик</div>
                     <div className="rounded-xl ring-1 ring-gray-500/15 p-3 text-xs text-gray-700 leading-relaxed max-h-44 overflow-y-auto"
@@ -1418,11 +1559,18 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                     раз их не показываем. Включить автопроверку без ответов там
                     нельзя (тумблер заблокирован), так что задание без ответов не
                     упрётся в требование их вписать. */}
-                {autoCheck && method === "file" && answersBlock}
+                {/* У нарезанных заданий ответ стоит рядом с самим заданием —
+                    общего поля со списком ответов там быть не должно: два места
+                    для одних и тех же ответов расходятся при первой же правке. */}
+                {autoCheck && method === "file" && !splitTasks.length && answersBlock}
               </div>
             </AutoHeight>
           </div>
         </div>
+
+        {splitOpen && file && (
+          <SplitTasksModal file={file} onDone={applySplit} onClose={() => setSplitOpen(false)} />
+        )}
 
         {/* Ошибка стоит в одном ряду с кнопками, слева от «Задать»: строка по
             центру пустого ряда терялась и не связывалась с нажатием. На узком
@@ -2125,7 +2273,7 @@ function Homework({ user, students }) {
       .order("created_at", { ascending: false })
     // Бакет `homework` приватный — файл задания и присланное решение
     // открываются по временной подписанной ссылке.
-    setHomework(await signRows(data || [], { file_url: "homework", submission_url: "homework", solution_files: "homework" }))
+    setHomework(await signRows(data || [], { file_url: "homework", submission_url: "homework", solution_files: "homework", bank_tasks: "homework" }))
   }
 
   const overdueCount = homework.filter(isOverdue).length

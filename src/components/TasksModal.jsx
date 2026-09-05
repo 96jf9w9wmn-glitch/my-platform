@@ -50,7 +50,7 @@ function TaskBlock({ item, onCredit }) {
             )}
             <TaskAttachments
               task={bankTask}
-              imageAlt={`Задание №${bankTask.number}`}
+              imageAlt={bankTask.number != null ? `Задание №${bankTask.number}` : "Условие задания"}
               tail={bankTask.condition_tail ? (
                 <div className={body} dangerouslySetInnerHTML={{ __html: renderHomeworkMath(bankTask.condition_tail) }} />
               ) : null}

@@ -17,6 +17,7 @@
     "axios": "^1.18.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
+    "pdfjs-dist": "^6.3.289",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-phone-number-input": "^3.4.17",
