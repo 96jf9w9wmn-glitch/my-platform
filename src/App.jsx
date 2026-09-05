@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, lazy, Suspense } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo, memo, lazy, Suspense } from "react"
 import { isMoveNotification, revealBlock, MOVE_ANCHOR_TUTOR } from "./notifTarget"
 import { dropdownPos } from "./dropdownPos"
 import { POPUP_OUT_MS } from "./useClosing"
@@ -34,6 +34,7 @@ import { effectivePlan, isActive } from "./plans"
 import { isOwner } from "./owner"
 import { navFor } from "./nav"
 import Reveal from "./components/Reveal"
+import PageBoundary from "./components/PageBoundary"
 import TutorOnboardingModal from "./components/TutorOnboardingModal"
 // Excalidraw тяжёлый (mermaid/katex) — грузим доску только при открытии
 const Board = lazy(() => import("./components/Board"))
@@ -288,6 +289,24 @@ function PlanStar({ active, onClick }) {
   )
 }
 
+// Разделы кабинета остаются в дереве после первого захода (visitedPages ниже) —
+// так у них сохраняется состояние: фильтры, набранный текст, место прокрутки.
+// Расплата за это — любой рендер App перерисовывал ВСЕ открытые разделы разом,
+// а их девять и они тяжёлые (расписание, финансы, результаты считают заново по
+// всем ученикам). При быстром переключении вкладок кабинет из-за этого вставал.
+// memo + стабильные колбэки ниже: смена вкладки меняет только классы обёрток.
+const DashboardPage = memo(Dashboard)
+const StudentsPage = memo(Students)
+const PaymentPage = memo(Payment)
+const SchedulePage = memo(Schedule)
+const HomeworkPage = memo(Homework)
+const ResultsPage = memo(Results)
+const ProfilePage = memo(Profile)
+const SubscriptionPage = memo(Subscription)
+const ChatPage = memo(Chat)
+const VariantsPage = memo(Variants)
+const TaskGenPage = memo(TaskGenPreview)
+
 function App() {
   // Родительская сессия по-прежнему доверяется мгновенно (без сервeрной проверки —
   // это отдельный, ещё не закрытый пробел, см. supabase/auth_hardening.sql).
@@ -343,23 +362,23 @@ function App() {
     })
   }, [user])
 
-  function openBoard(studentId, title) {
+  const openBoard = useCallback(function openBoard(studentId, title) {
     if (!studentId) return
     setBoard({ roomId: studentId, title })
     const url = new URL(window.location.href)
     url.searchParams.set("board", String(studentId))
     window.history.pushState({ board: String(studentId) }, "", url)
-  }
+  }, [])
 
   // Закрытие СТИРАЕТ запись о доске из истории (replace, не push): иначе «назад»
   // после закрытия открывала бы её снова.
-  function closeBoard() {
+  const closeBoard = useCallback(function closeBoard() {
     setBoard(null)
     const url = new URL(window.location.href)
     if (!url.searchParams.has("board")) return
     url.searchParams.delete("board")
     window.history.replaceState({}, "", url)
-  }
+  }, [])
 
   // «Назад»/«вперёд» в браузере: состояние доски берём из адреса, он тут главный.
   useEffect(() => {
@@ -392,11 +411,13 @@ function App() {
   const ownerPages = { taskgen: isOwner(user?.email) }
   const pageAllowed = (page) => ownerPages[page] !== false
 
-  function navigateTo(page) {
-    if (!pageAllowed(page)) return
+  const navigateTo = useCallback((page) => {
+    if (ownerPages[page] === false) return
     setActivePage(page)
-    setVisitedPages((prev) => new Set([...prev, page]))
-  }
+    // Пересоздавать Set на каждый клик нельзя: новый объект — это лишний рендер
+    // всего кабинета даже при возврате в раздел, который давно открыт.
+    setVisitedPages((prev) => (prev.has(page) ? prev : new Set([...prev, page])))
+  }, [ownerPages.taskgen])
 
   useEffect(() => {
     if (!user || user.role !== "tutor") return

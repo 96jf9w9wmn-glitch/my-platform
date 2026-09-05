@@ -29,9 +29,35 @@ const PAGE_WIDTH = 1240
 // кладут, а память на телефоне кончится раньше, чем польза.
 export const MAX_PAGES = 40
 
+// Safari не умеет асинхронно перебирать поток (`for await … of ReadableStream`),
+// а pdf.js читает им текстовый слой страницы. Из-за этого РАЗБОР ЛЮБОГО PDF в
+// Safari падал сразу («undefined is not a function … value of readableStream»),
+// хотя в Chrome работал. Дописываем перебор сами — это ровно то, что делает
+// стандарт, и на браузерах с поддержкой ничего не меняется.
+function patchStreamIteration() {
+  if (typeof ReadableStream === "undefined") return
+  const proto = ReadableStream.prototype
+  if (proto[Symbol.asyncIterator]) return
+  const iterate = function ({ preventCancel = false } = {}) {
+    const reader = this.getReader()
+    return {
+      next: () => reader.read(),
+      async return(value) {
+        if (!preventCancel) await reader.cancel(value)
+        reader.releaseLock()
+        return { done: true, value }
+      },
+      [Symbol.asyncIterator]() { return this },
+    }
+  }
+  proto[Symbol.asyncIterator] = iterate
+  if (!proto.values) proto.values = iterate
+}
+
 let pdfLib = null
 async function loadPdfLib() {
   if (pdfLib) return pdfLib
+  patchStreamIteration()
   const lib = await import("pdfjs-dist/build/pdf.mjs")
   // Воркер собирает Vite (`?worker`), а не адрес в GlobalWorkerOptions: по
   // адресу браузер получил бы модуль с несобранными импортами и повис бы молча

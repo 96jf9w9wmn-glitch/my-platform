@@ -1,0 +1,24 @@
+<!doctype html><html><head><meta charset="utf-8"><title>safari check</title></head>
+<body style="font:14px system-ui;padding:16px"><pre id="out">идёт проверка…</pre>
+<script type="module">
+const say = (m) => { document.getElementById("out").textContent += "\n" + m; fetch("http://localhost:5198/", { method: "POST", body: m }).catch(()=>{}) }
+window.onerror = (m, s, l, c, e) => say("WINDOW ERROR: " + m + " | " + (e && e.stack || "").slice(0, 400))
+window.onunhandledrejection = (e) => say("REJECTION: " + (e.reason && (e.reason.stack || e.reason.message) || e.reason))
+say("ua: " + navigator.userAgent)
+try {
+  const m = await import("/src/pages/homeworkSplit.js")
+  say("модуль загружен")
+  for (const f of ["/t1.pdf", "/t2.pdf", "/t3.pdf", "/t4.docx"]) {
+    try {
+      const blob = await (await fetch(f)).blob()
+      const file = new File([blob], f.slice(1), { type: f.endsWith(".pdf") ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document" })
+      const t0 = performance.now()
+      const r = await m.splitSource(file)
+      const tasks = m.buildTasks(r.pages, r.starts)
+      const kb = Math.round(tasks.reduce((s, t) => s + t.image.length * .75, 0) / 1024)
+      say(`${f}: страниц ${r.pages.length}, границ ${r.starts.length}, заданий ${tasks.length}, догадка ${r.guessed}, ${Math.round(performance.now()-t0)} мс, ${kb} КБ`)
+    } catch (e) { say(`${f}: ОШИБКА ${e && e.message} | ${(e && e.stack || "").slice(0, 500)}`) }
+  }
+  say("готово")
+} catch (e) { say("ИМПОРТ ОШИБКА: " + (e && e.message) + " | " + (e && e.stack || "").slice(0,400)) }
+</script></body></html>
