@@ -7,7 +7,7 @@ import { useClosing, CLOSE_MS, POPUP_OUT_MS } from "../useClosing"
 import { recognizeShape } from "./boardSmartDraw"
 import {
   GRID, ENCLOSED_SHAPES, SHAPE_TOOLS, DASHABLE_SHAPES,
-  isDarkColor, resolveColor, strokeBBox, paintStroke, scenePreview, tintSheet,
+  isDarkColor, resolveColor, strokeBBox, sceneBBox, viewForBBox, paintStroke, scenePreview, tintSheet,
 } from "./boardPaint"
 // Выбор задания тянет за собой генераторы всех предметов и html2canvas — грузим
 // только когда репетитор открыл выбор, иначе доска стала бы тяжелее на мегабайты.
@@ -40,6 +40,14 @@ const BG_COLORS = ["#ffffff", "#f2f2f7", "#fdf6e3", "#1c1c1e", "#0f172a", "#123a
 // сливался с фоном, и кружок в панели было не различить.
 const BASE_INKS = ["ink", "#0A84FF", "#FF3B30", "#30D158", "#FF9F0A", "#BF5AF2"]
 const SMART_KEY = "board-smart-draw"
+// Где на бесконечном холсте лежит работа — вопрос не праздный: доска за учебный
+// год уезжает вниз на десятки экранов, а вход всегда открывал точку (0,0), то
+// есть самое начало. Написанное за время отсутствия оказывалось далеко за краем
+// экрана, и человек видел пустоту вместо чужой работы. Поэтому вход открывается
+// у СВЕЖИХ записей, а своё место запоминается на устройстве.
+const VIEW_KEY = "board-view"       // localStorage: последний обзор по каждой доске
+const FRESH_STROKES = 24            // «последние записи» — примерно последняя строка-две
+const OFFSCREEN_HINT_MS = 8000      // столько висит подсказка «пишут за краем экрана»
 
 const CURSOR_COLORS = ["#007AFF", "#34C759", "#FF9500", "#AF52DE", "#FF3B30"]
 function colorFor(id) {
@@ -382,6 +390,15 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   //   "ask"  — разрешение ещё не выдано, слежение не ведём;
   //   "auto" — разрешение есть, доска сама замечает скриншот и предлагает вставить.
   const [clipMode, setClipMode] = useState("off")
+  // Собеседник пишет за краем экрана. Холст бесконечный и обзор у каждого свой,
+  // поэтому чужая запись запросто оказывается там, куда мы не смотрим, — молча
+  // она бы просто не существовала для нас.
+  const [offscreen, setOffscreen] = useState(false)
+  const [offscreenOut, setOffscreenOut] = useState(false)
+  const offscreenRef = useRef(false)
+  const offscreenBB = useRef(null)      // габарит последней такой записи (мир)
+  const offscreenTimer = useRef(null)
+  const offscreenOutTimer = useRef(null)
   const [clipShot, setClipShot] = useState(null)   // {blob, url, key} — что предлагаем
   const [shotOut, setShotOut] = useState(false)   // предложение уходит: держим кадр анимации
   const clipSkip = useRef(null)                    // ключ снимка, от которого отказались
@@ -858,6 +875,9 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       }
       ctx.restore()
     }
+    // Подсказку «пишут за краем экрана» снимаем, как только это место видно —
+    // хоть по нажатию, хоть потому, что доску подвинули руками.
+    if (offscreenRef.current && bboxOnScreen(offscreenBB.current)) hideOffscreen()
     // Пока курсор гаснет, кадры нужны сами по себе — событий больше не будет
     if (fading) scheduleLive()
   }
@@ -925,12 +945,30 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         if (!alive) return
         // Бакет с картинками доски приватный — подписываем их ссылки.
         const scene = (await signBoardScene(data?.scene)) || {}
+        // Штрихи, прилетевшие по realtime, пока сцена грузилась, уже новее её —
+        // ставим их в конец, иначе «последними записями» окажется старое.
+        const early = [...strokes.current.entries()]
+        strokes.current.clear()
         for (const s of scene.strokes || []) strokes.current.set(s.id, s)
+        for (const [id, s] of early) { strokes.current.delete(id); strokes.current.set(id, s) }
         if (scene.bg) setBg(scene.bg)
         if (scene.bgColor) setBgColor(scene.bgColor)
         loadedRef.current = true   // сохранять можно только после успешной загрузки
         setLoaded(true)
-        scheduleDraw()
+        // Куда смотреть. Доска бесконечная и за год уезжает вниз на десятки
+        // экранов: открывать её в (0,0) значит показывать сентябрь вместо того,
+        // что написали сегодня. Своё место возвращаем, только если доска с тех
+        // пор не изменилась, — иначе едем к свежим записям.
+        const list = [...strokes.current.values()]
+        const saved = readSavedView()
+        const lastId = list.length ? list[list.length - 1].id : null
+        if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y) && saved.n === list.length && saved.last === lastId) {
+          view.current = { x: saved.x, y: saved.y, scale: clamp(saved.scale || 1, MIN_SCALE, MAX_SCALE) }
+          setZoomPct(Math.round(view.current.scale * 100))
+          scheduleDraw()
+        } else {
+          focusLatest()
+        }
       })
       .catch(() => { if (alive) setLoaded(true) })  // не зависаем на лоадере при сбое (но и не сохраняем)
     return () => { alive = false }
@@ -962,6 +1000,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       .on("broadcast", { event: "draw" }, ({ payload }) => {
         live.current.delete(payload.id)
         strokes.current.set(payload.id, payload)
+        noticeOffscreen(payload)
         scheduleDraw()
       })
       // Штрих в работе: приходят только ДОПИСАННЫЕ точки (from — сколько их уже
@@ -1055,7 +1094,9 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   useEffect(() => { bgColorRef.current = bgColor; scheduleDraw() }, [bgColor, scheduleDraw])
 
   useEffect(() => () => {
+    saveView()   // вернёмся на ту же доску — сядем на то же место
     clearTimeout(saveTimer.current); clearTimeout(sendTimer.current); clearTimeout(viewSendTimer.current)
+    clearTimeout(offscreenTimer.current); clearTimeout(offscreenOutTimer.current)
     // ВАЖНО: НЕ отменяем teardownTimer — иначе канал board:${roomId} не удаляется
     // при выходе, остаётся подписанным, и при повторном входе новый канал не может
     // занять тот же топик (белый экран, «не грузит», лечится только F5). Таймер
@@ -1861,9 +1902,107 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     zoomAt(c.clientWidth / 2, c.clientHeight / 2, factor)
     scheduleDraw()
   }
+  // «100%» возвращает масштаб, НЕ трогая место: на длинной доске прыжок в (0,0)
+  // уносил бы к самой первой странице за год.
   function resetView() {
     stopFollow()
-    view.current = { x: 0, y: 0, scale: 1 }; setZoomPct(100); scheduleDraw()
+    const canvas = canvasRef.current
+    if (canvas) zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, 1 / view.current.scale)
+    else { view.current = { x: 0, y: 0, scale: 1 }; setZoomPct(100) }
+    scheduleDraw()
+  }
+
+  // Подогнать обзор под габарит (мировые координаты). bottom — поставить габарит
+  // к нижнему краю: у свежей записи так видно и то, что писали перед ней.
+  function viewToBBox(bb, { bottom = false } = {}) {
+    const canvas = canvasRef.current
+    if (!canvas) return false
+    const nv = viewForBBox(bb, canvas.clientWidth, canvas.clientHeight, { bottom, minScale: MIN_SCALE })
+    if (!nv) return false
+    view.current = nv
+    setZoomPct(Math.round(nv.scale * 100))
+    sceneValid.current = false
+    scheduleDraw()
+    return true
+  }
+
+  // Габарит последних записей. Свежие штрихи — хвост сцены: она и хранится, и
+  // сохраняется в порядке появления. Хвост берём тем короче, чем меньше экран:
+  // целая строка доски в ширину телефона влезает только в 21%, а это уже не
+  // чтение — лучше показать самый конец работы, но разборчиво.
+  function latestBBox() {
+    const all = [...strokes.current.values()].filter((st) => st.tool !== "eraser")
+    if (!all.length) return null
+    const canvas = canvasRef.current
+    const cw = canvas?.clientWidth || 1200, ch = canvas?.clientHeight || 800
+    let bb = null
+    for (const n of [FRESH_STROKES, 12, 6, 3, 1]) {
+      bb = sceneBBox(all.slice(-Math.min(n, all.length)))
+      const nv = viewForBBox(bb, cw, ch, { bottom: true, minScale: MIN_SCALE })
+      if (!nv || nv.scale >= 0.5 || n === 1) break
+    }
+    return bb
+  }
+  // Показать последние записи (пустая доска — просто начало координат).
+  function focusLatest() {
+    stopFollow()
+    const bb = latestBBox()
+    if (!bb) { view.current = { x: 0, y: 0, scale: 1 }; setZoomPct(100); scheduleDraw(); return false }
+    return viewToBBox(bb, { bottom: true })
+  }
+
+  // Виден ли габарит на экране хотя бы частично
+  function bboxOnScreen(bb) {
+    const canvas = canvasRef.current
+    if (!bb || !canvas) return true
+    const v = view.current
+    return !(bb.maxX * v.scale + v.x < 0 || bb.minX * v.scale + v.x > canvas.clientWidth ||
+             bb.maxY * v.scale + v.y < 0 || bb.minY * v.scale + v.y > canvas.clientHeight)
+  }
+
+  // Показ/скрытие подсказки. Через ref — потому что redraw живёт в замыкании
+  // первого рендера (см. scheduleLive) и текущего состояния не видит.
+  function showOffscreen(on) {
+    if (offscreenRef.current === on) return
+    offscreenRef.current = on
+    if (on) { clearTimeout(offscreenOutTimer.current); setOffscreenOut(false); setOffscreen(true); return }
+    setOffscreenOut(true)               // уходит с той же анимацией, что и другие попапы
+    clearTimeout(offscreenOutTimer.current)
+    offscreenOutTimer.current = setTimeout(() => { setOffscreenOut(false); setOffscreen(false) }, POPUP_OUT_MS)
+  }
+  function hideOffscreen() { clearTimeout(offscreenTimer.current); showOffscreen(false) }
+  // Пришёл чужой штрих: если он лёг за экраном — зовём посмотреть.
+  function noticeOffscreen(st) {
+    if (!st || st.tool === "eraser" || !st.points?.length) return
+    const bb = strokeBBox(st)
+    if (bboxOnScreen(bb)) return
+    offscreenBB.current = bb
+    showOffscreen(true)
+    clearTimeout(offscreenTimer.current)
+    offscreenTimer.current = setTimeout(() => showOffscreen(false), OFFSCREEN_HINT_MS)
+  }
+  function goOffscreen() {
+    hideOffscreen()
+    if (offscreenBB.current) viewToBBox(offscreenBB.current, { bottom: false })
+  }
+
+  // Свой обзор запоминается ПО ДОСКЕ и только вместе с приметой сцены: вернулись,
+  // а доска та же — садимся ровно туда, где были; появилось новое — едем к нему.
+  function readSavedView() {
+    try {
+      const all = JSON.parse(localStorage.getItem(VIEW_KEY) || "{}")
+      return all[String(roomId)] || null
+    } catch { return null }
+  }
+  function saveView() {
+    if (!loadedRef.current) return
+    const list = [...strokes.current.values()]
+    const v = view.current
+    try {
+      const all = JSON.parse(localStorage.getItem(VIEW_KEY) || "{}")
+      all[String(roomId)] = { x: v.x, y: v.y, scale: v.scale, n: list.length, last: list.length ? list[list.length - 1].id : null }
+      localStorage.setItem(VIEW_KEY, JSON.stringify(all))
+    } catch { /* приватный режим — обзор просто не запомнится */ }
   }
 
   useEffect(() => { actions.current.undo = undo; actions.current.redo = redo; actions.current.del = deleteSelection; actions.current.paste = addImageAt })
@@ -2159,7 +2298,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const barX = H ? H.cx : 0
 
   return (
-    <div data-board-version="13" className={`fixed inset-0 z-[100000] flex flex-col screen-fade ${dark ? "board-dark" : ""} ${closingCls}`} style={{ background: baseBg }}>
+    <div data-board-version="14" className={`fixed inset-0 z-[100000] flex flex-col screen-fade ${dark ? "board-dark" : ""} ${closingCls}`} style={{ background: baseBg }}>
       {/* Шапка */}
       <div className="flex items-center justify-between px-3 h-12 border-b flex-shrink-0"
         style={{ borderColor: dark ? "rgba(255,255,255,.1)" : "rgba(0,0,0,.08)" }}>
@@ -2404,6 +2543,13 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
             className="press-tap w-9 h-9 flex items-center justify-center board-hover" style={idleStyle}>
             <Icon name="minus" size={16} />
           </button>
+          {/* Доска бесконечная, и найти на ней работу вручную — отдельный труд:
+              эта кнопка приводит к последним записям с любого места. */}
+          <button onClick={focusLatest} title="К последним записям"
+            className="press-tap w-9 h-9 flex items-center justify-center board-hover border-t"
+            style={{ ...idleStyle, borderColor: panelBorder }}>
+            <Icon name="target" size={16} />
+          </button>
         </div>
 
         {/* Панель инструментов — плавает поверх холста, чтобы вся область была доской.
@@ -2411,6 +2557,24 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
             а название показывает подсказка — по наведению и по нажатию на сенсорном экране. */}
         <div className="absolute bottom-2 big:bottom-4 left-0 right-0 flex flex-col items-center gap-2 px-2 big:px-3 pointer-events-none">
         {/* Заметили снимок в буфере — предлагаем положить его на доску одним нажатием */}
+        {offscreen && (
+          <div className={`flex items-center gap-1 pl-3 pr-1.5 py-1.5 rounded-2xl shadow-xl max-w-full ${
+            offscreenOut ? "popup-bubble-out" : "popup-bubble pointer-events-auto"}`}
+            style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
+            <button onClick={goOffscreen}
+              className="press-tap flex items-center gap-2 rounded-xl pr-2 text-sm font-medium"
+              style={{ color: dark ? "#f5f5f7" : "#1c1c1e" }}>
+              <Icon name="target" size={16} />
+              Пишут за краем экрана
+              <span className="text-blue-500">Показать</span>
+            </button>
+            <button onClick={hideOffscreen} aria-label="Скрыть"
+              className="press-tap w-8 h-8 rounded-lg flex items-center justify-center shrink-0 board-hover"
+              style={idleStyle}>
+              <Icon name="x" size={16} />
+            </button>
+          </div>
+        )}
         {clipShot && (
           <div className={`flex items-center gap-2.5 pl-2 pr-1.5 py-1.5 rounded-2xl shadow-xl max-w-full ${
             shotOut ? "popup-bubble-out" : "popup-bubble pointer-events-auto"}`}
@@ -2636,6 +2800,10 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
                         <Icon name="sparkles" size={18} />Ровные фигуры{smart && <Icon name="check" size={15} />}
                       </button>
                     )}
+                    <button onClick={() => { closeMenu("mMore"); focusLatest() }}
+                      className="press-tap flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm board-hover" style={idleStyle}>
+                      <Icon name="target" size={18} />К последним записям
+                    </button>
                     <button onClick={() => { closeMenu("mMore"); fileInputRef.current?.click() }}
                       className="press-tap flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm board-hover" style={idleStyle}>
                       <Icon name="image" size={18} />Добавить картинку

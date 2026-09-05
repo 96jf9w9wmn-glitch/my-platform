@@ -359,6 +359,20 @@ export function tintSheet(source) {
   return out
 }
 
+// Обзор (смещение + масштаб), при котором габарит bb виден в холсте cw×ch.
+// Крупнее натуральной величины не приближаем: одна короткая запись во весь экран
+// читается как обрывок неизвестно чего. bottom — поставить габарит к нижнему
+// краю: у свежей записи так видно и то, что писали перед ней.
+export function viewForBBox(bb, cw, ch, { bottom = false, pad = 48, minScale = 0.15 } = {}) {
+  if (!bb || !(cw > 0) || !(ch > 0)) return null
+  const w = Math.max(1, bb.maxX - bb.minX), h = Math.max(1, bb.maxY - bb.minY)
+  const scale = clamp(Math.min((cw - pad * 2) / w, (ch - pad * 2) / h), minScale, 1)
+  const x = cw / 2 - (bb.minX + bb.maxX) / 2 * scale
+  let y = bottom ? ch - pad - bb.maxY * scale : ch / 2 - (bb.minY + bb.maxY) / 2 * scale
+  if (bb.minY * scale + y < pad) y = pad - bb.minY * scale   // верх габарита за экран не уводим
+  return { x, y, scale }
+}
+
 // Габарит всей сцены (по видимым штрихам; ластик сам по себе площадь не занимает)
 export function sceneBBox(strokes) {
   let bb = null
