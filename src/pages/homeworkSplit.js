@@ -115,11 +115,11 @@ export function groupLines(items, pageHeight, scale = 1) {
 // отдельным фрагментом слева от текста (так номер стоит в раздатках, собранных
 // таблицей). Возвращает и остаток строки — он идёт в текст условия.
 const NUM_PATTERNS = [
-  /^(?:задание|задача|упражнение|упр\.?)\s*№?\s*(\d{1,2})\s*[.)]?\s*(.*)$/i,
-  /^[№#]\s*(\d{1,2})\s*[.)]?\s*(.*)$/,
-  /^(\d{1,2})\s*[.)]\s*(.*)$/,
-  /^(\d{1,2})\s+(\S.*)$/,
-  /^(\d{1,2})$/,
+  /^(?:задание|задача|упражнение|упр\.?)\s*№?\s*(\d{1,3})\s*[.)]?\s*(.*)$/i,
+  /^[№#]\s*(\d{1,3})\s*[.)]?\s*(.*)$/,
+  /^(\d{1,3})\s*[.)]\s*(.*)$/,
+  /^(\d{1,3})\s+(\S.*)$/,
+  /^(\d{1,3})$/,
 ]
 
 function numberAt(text) {
@@ -147,10 +147,10 @@ export function detectStarts(lines) {
   const cands = []
   for (const l of lines) {
     const hit = numberAt(l.text)
-    if (!hit || !(hit.n > 0) || hit.n > 60) continue
+    if (!hit || !(hit.n > 0) || hit.n > 200) continue
     // Строка с номером и длинным текстом годится и без отступа: «1. Найдите…».
     const indented = left == null || l.x <= left - 2
-    const explicit = /^(?:задание|задача|упражнение|упр\.?|[№#])/i.test(l.text) || /^\d{1,2}\s*[.)]/.test(l.text)
+    const explicit = /^(?:задание|задача|упражнение|упр\.?|[№#])/i.test(l.text) || /^\d{1,3}\s*[.)]/.test(l.text)
     if (!indented && !explicit) continue
     // y строки — это базовая линия, по ней буквы режутся пополам: в конец
     // предыдущего задания попадала шапка следующего. Поднимаем границу над
@@ -158,6 +158,23 @@ export function detectStarts(lines) {
     cands.push({ y: Math.max(0, l.y - l.h * 1.35), n: hit.n, tail: hit.tail })
   }
   return cands
+}
+
+// Ближе этого границы не ставим: задание короче трёх строк не бывает, а вот
+// варианты ответа («1) … 2) … 3) …») идут именно так — и каждый выглядит как
+// начало нового задания. Доля высоты страницы, а не пиксели: страницы бывают
+// разного размера.
+const MIN_GAP = 0.035
+
+// Убирает границы, стоящие вплотную друг к другу: из пачки остаётся первая.
+function spaced(starts, pageHeight) {
+  const out = []
+  for (const s of starts) {
+    const prev = out[out.length - 1]
+    if (prev && prev.page === s.page && s.y - prev.y < pageHeight * MIN_GAP) continue
+    out.push(s)
+  }
+  return out
 }
 
 // Из кандидатов всех страниц оставляем одну возрастающую цепочку — самую
@@ -482,7 +499,7 @@ export async function splitSource(file, onProgress) {
   // Сначала пробуем текстовый слой: он даёт и границу, и текст условия.
   const all = []
   pages.forEach((p, page) => detectStarts(p.lines).forEach((s) => all.push({ ...s, page })))
-  let starts = chainStarts(all)
+  let starts = spaced(chainStarts(all), pages[0]?.height || 1750)
 
   // Текста нет (фото, скан) или нумерация не нашлась — идём по пикселям.
   if (starts.length < 2) {
