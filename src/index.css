@@ -1416,6 +1416,72 @@ button.w-full:not([disabled]):not(.no-press):active,
 .dark input[type="number"] { color-scheme: dark; }
 .dark input[type="range"] { accent-color: #007aff; }
 
+/* ── Ползунок толщины линии на доске (.board-range) ───────────────────────
+   Отдельный от .ios-range намеренно: светлость доски задаёт ЕЁ фон (класс
+   .board-dark на слое доски), а не тема приложения — на светлой доске внутри
+   тёмной темы правила `.dark .ios-range` красили бы ползунок наоборот.
+   Незалитая часть дорожки — синий тон, а не серый (правило «никаких серых
+   заливок»); залитая — сплошной акцент, чтобы «тонко/толсто» читалось сразу. */
+.board-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 28px;          /* поле касания, а не толщина дорожки */
+  background: transparent;
+  outline: none;
+  cursor: pointer;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.board-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(to right, #007aff 0 var(--p, 0%), rgba(0, 122, 255, 0.16) var(--p, 0%) 100%);
+}
+.board-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: -8px;      /* центрируем бегунок на дорожке в 4px */
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.10), 0 2px 6px rgba(0, 0, 0, 0.18);
+  transition: transform 0.12s ease;
+}
+.board-range:hover::-webkit-slider-thumb { transform: scale(1.06); }
+.board-range:active::-webkit-slider-thumb { transform: scale(1.14); }
+.board-range:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.10), 0 2px 6px rgba(0, 0, 0, 0.18), 0 0 0 4px rgba(0, 122, 255, 0.25);
+}
+
+.board-range::-moz-range-track { height: 4px; border-radius: 999px; background: rgba(0, 122, 255, 0.16); }
+.board-range::-moz-range-progress { height: 4px; border-radius: 999px; background: #007aff; }
+.board-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.10), 0 2px 6px rgba(0, 0, 0, 0.18);
+}
+
+/* Тёмная доска: незалитая часть — светлая полупрозрачная, бегунок остаётся
+   белым (на тёмном он и должен быть самым светлым пятном). */
+.board-dark .board-range::-webkit-slider-runnable-track {
+  background: linear-gradient(to right, #0a84ff 0 var(--p, 0%), rgba(255, 255, 255, 0.18) var(--p, 0%) 100%);
+}
+.board-dark .board-range::-moz-range-track { background: rgba(255, 255, 255, 0.18); }
+.board-dark .board-range::-moz-range-progress { background: #0a84ff; }
+.board-dark .board-range::-webkit-slider-thumb,
+.board-dark .board-range::-moz-range-thumb {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.40), 0 3px 8px rgba(0, 0, 0, 0.35);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board-range::-webkit-slider-thumb { transition: none; }
+}
+
 /* ── Ползунок в духе iOS (.ios-range, компонент WeeksPicker) ──────────────
    Системный <input type="range"> рисуется по-своему в каждом браузере и
    выглядит деталью чужого интерфейса, поэтому трек и бегунок рисуем сами:

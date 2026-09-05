@@ -19,7 +19,9 @@ const BoardTaskModal = lazy(() => import("./BoardTaskModal"))
 // независимо, при этом рисунок общий. Одна комната = один ученик (roomId = student.id).
 // Синхронизация через Supabase Realtime broadcast; снапшот сцены — в таблицу boards.
 
-const WIDTHS = [3, 6, 12]
+// Толщина маркера задаётся ползунком: три готовые ступени не покрывали ни
+// тонкую подпись под чертежом, ни жирную линию, видную ученику с телефона.
+const WIDTH_MIN = 1, WIDTH_MAX = 30, WIDTH_DEFAULT = 3
 const MIN_SCALE = 0.15, MAX_SCALE = 8
 
 const HISTORY_MAX = 100      // шагов «отменить» держим столько же, сколько привычно в редакторах
@@ -56,14 +58,19 @@ const pointInBBox = (x, y, b) => x >= b.minX && x <= b.maxX && y >= b.minY && y 
 
 // Курсор собеседника держится CURSOR_HOLD мс после последнего движения, потом гаснет
 const CURSOR_HOLD = 3000, CURSOR_FADE = 400
-const POINTER_RATE = 60 // не чаще 1 посылки в 60 мс (~16/сек) — экономим realtime
+// Частота, с которой доска уходит собеседнику. Чем она выше, тем ровнее у него
+// растёт линия, но тем плотнее поток в общем канале; сервер realtime держит до
+// сотни сообщений в секунду на клиента, и суммы ниже в неё укладываются с
+// запасом (курсор и штрих не идут одновременно — курсор не шлётся, пока ведут
+// линию, а обзор — только когда за нами кто-то следит).
+const POINTER_RATE = 40 // не чаще 1 посылки в 40 мс (25/сек)
 const CURSORS_KEY = "board-cursors"   // личная настройка «показывать курсоры собеседников»
-const VIEW_RATE = 90    // не чаще 1 посылки своего обзора в 90 мс: за ним следят глазами
+const VIEW_RATE = 60    // не чаще 1 посылки своего обзора в 60 мс: за ним следят глазами
 // Прилипание при перетаскивании: допуск в ЭКРАННЫХ пикселях (в мировые переводим
 // делением на масштаб — иначе на приближённой доске объект липнул бы за версту).
 const SNAP_PX = 6
 const GUIDE_COLOR = "#FF2D55"  // направляющая заметно отличается от синей рамки выделения
-const STROKE_RATE = 60  // не чаще 1 посылки дописанных точек в 60 мс
+const STROKE_RATE = 30  // не чаще 1 посылки дописанных точек в 30 мс (33/сек)
 // Точки штриха округляются до сотых мировой единицы: на экране это доли пикселя
 // даже при максимальном увеличении, зато и по сети, и в снапшоте сцены каждая
 // точка занимает втрое меньше места, чем сырой double.
@@ -157,24 +164,43 @@ function Tip({ label, hotkey, dark, show = false }) {
 // штрих всегда сплошной — для него эту группу не показываем.
 function StrokeSettings({ dark, tool, curWidth, curDash, onWidth, onDash }) {
   const swatch = dark ? "#e5e5ea" : "#1c1c1e"
-  const sep = <div className="w-px h-7 mx-0.5 flex-shrink-0" style={{ background: dark ? "rgba(255,255,255,.12)" : "rgba(0,0,0,.1)" }} />
   const dashArr = (d) => d === "dashed" ? "5,4" : d === "dotted" ? "0.1,5" : ""
   const showDash = DASHABLE_SHAPES.has(tool)
+  const w = clamp(Math.round(curWidth || WIDTH_DEFAULT), WIDTH_MIN, WIDTH_MAX)
+  const pct = ((w - WIDTH_MIN) / (WIDTH_MAX - WIDTH_MIN)) * 100
+  // commit=false — тянут ползунок (правку видно сразу, но в историю она ещё не
+  // легла), commit=true — отпустили. Иначе каждое движение ползунка было бы
+  // отдельным шагом «отменить» и отдельной посылкой собеседнику.
+  const pick = (e, commit) => onWidth(clamp(+e.target.value, WIDTH_MIN, WIDTH_MAX), commit)
   return (
-    <div className="flex items-center gap-1">
-      {WIDTHS.map((w) => (
-        <button key={w} onClick={() => onWidth(w)} title="Толщина"
-          className={`press-tap w-9 h-9 rounded-xl flex items-center justify-center ${curWidth === w ? "bg-blue-500/15" : "board-hover"}`}>
-          <span className="rounded-full" style={{ width: w + 4, height: w + 4, background: swatch }} />
-        </button>
-      ))}
-      {showDash && sep}
-      {showDash && DASH_STYLES.map((d) => (
-        <button key={d} onClick={() => onDash(d)} title={d === "solid" ? "Сплошная" : d === "dashed" ? "Пунктир" : "Точки"}
-          className={`press-tap w-11 h-9 rounded-xl flex items-center justify-center ${curDash === d ? "bg-blue-500/15" : "board-hover"}`}>
-          <svg width="34" height="12" viewBox="0 0 34 12"><line x1="2" y1="6" x2="32" y2="6" stroke={swatch} strokeWidth="2.5" strokeLinecap="round" strokeDasharray={dashArr(d)} /></svg>
-        </button>
-      ))}
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-2.5 px-1.5 h-9">
+        {/* Кружок показывает выбранную толщину в натуральную величину */}
+        <span className="rounded-full flex-shrink-0" aria-hidden="true"
+          style={{ width: Math.min(w, 22), height: Math.min(w, 22), background: swatch, transition: "width .12s, height .12s" }} />
+        <input type="range" min={WIDTH_MIN} max={WIDTH_MAX} step={1} value={w}
+          className="board-range" style={{ "--p": `${pct}%`, width: 136 }}
+          aria-label="Толщина линии" title="Толщина линии"
+          onChange={(e) => pick(e, false)}
+          onPointerUp={(e) => pick(e, true)}
+          onKeyUp={(e) => pick(e, true)}
+          onBlur={(e) => pick(e, true)} />
+        <span className="w-5 text-right text-xs tabular-nums flex-shrink-0"
+          style={{ color: dark ? "#a1a1a6" : "#6b7280" }}>{w}</span>
+      </div>
+      {showDash && (
+        <>
+          <div className="h-px mx-1" style={{ background: dark ? "rgba(255,255,255,.12)" : "rgba(0,0,0,.1)" }} />
+          <div className="flex items-center gap-1">
+            {DASH_STYLES.map((d) => (
+              <button key={d} onClick={() => onDash(d)} title={d === "solid" ? "Сплошная" : d === "dashed" ? "Пунктир" : "Точки"}
+                className={`press-tap flex-1 h-9 rounded-xl flex items-center justify-center ${curDash === d ? "bg-blue-500/15" : "board-hover"}`}>
+                <svg width="34" height="12" viewBox="0 0 34 12"><line x1="2" y1="6" x2="32" y2="6" stroke={swatch} strokeWidth="2.5" strokeLinecap="round" strokeDasharray={dashArr(d)} /></svg>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   )
 }
@@ -279,7 +305,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // Толщина при каждом входе на доску — самая тонкая: ею пишут формулы и мелкий
   // разбор, а средняя годится разве что для выделения. Выбранная толщина живёт
   // до закрытия доски и намеренно не запоминается между занятиями.
-  const [width, setWidth] = useState(WIDTHS[0])
+  const [width, setWidth] = useState(WIDTH_DEFAULT)
   const [dash, setDash] = useState("solid")     // solid | dashed | dotted
   // Открытый попап панели — ОДИН на всех: "stroke" | "selStroke" | "shapes" | "bg" | null.
   // Поэтому открытие любого попапа автоматически закрывает предыдущий, а клик мимо
@@ -434,7 +460,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const sentId = useRef(null)         // id штриха, чьи точки уже разосланы
   const sentN = useRef(0)             // сколько точек этого штриха разослано
   const bgCanvasRef = useRef(null)    // холст узора фона (клетка/точки) — ПОД основным
-  const sceneCanvas = useRef(null)    // закадровый слой: завершённые штрихи
+  const imgCanvasRef = useRef(null)   // холст картинок и листов с заданиями — между фоном и чернилами
+  const sceneCanvas = useRef(null)    // закадровый слой: завершённые штрихи (без картинок)
   const sceneValid = useRef(false)    // слой актуален (иначе перерисовать)
   const dirty = useRef(false)
   const rafId = useRef(0)
@@ -660,11 +687,15 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     const cw = canvas.clientWidth, ch = canvas.clientHeight
     const bw = Math.round(cw * dpr), bh = Math.round(ch * dpr)
     if (canvas.width !== bw || canvas.height !== bh) { canvas.width = bw; canvas.height = bh; sceneValid.current = false }
-    // Узор фона лежит ОТДЕЛЬНЫМ холстом под основным. Ластик стирает в
-    // destination-out, то есть выедает всё, что нарисовано на том же слое, —
-    // на общем холсте он вместе со штрихом выедал и клетку.
+    // Доска собрана из ТРЁХ наложенных холстов, и порядок здесь не косметика:
+    // ластик стирает в destination-out, то есть выедает всё, что нарисовано на
+    // ЕГО холсте. Поэтому под чернилами лежат отдельными слоями узор фона
+    // (иначе стёрлась бы и клетка) и картинки с листами заданий (иначе ластик
+    // вместе со штрихом прогрызал бы дырку в самой картинке).
     const bgc = bgCanvasRef.current
     if (bgc && (bgc.width !== bw || bgc.height !== bh)) { bgc.width = bw; bgc.height = bh; sceneValid.current = false }
+    const imgc = imgCanvasRef.current
+    if (imgc && (imgc.width !== bw || imgc.height !== bh)) { imgc.width = bw; imgc.height = bh; sceneValid.current = false }
     const v = view.current
 
     // Готовая часть доски (завершённые штрихи) живёт закадровым слоем и
@@ -681,7 +712,16 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       sx.globalCompositeOperation = "source-over"
       sx.clearRect(0, 0, bw, bh)
       sx.setTransform(v.scale * dpr, 0, 0, v.scale * dpr, v.x * dpr, v.y * dpr)
-      for (const st of strokes.current.values()) drawStroke(sx, st)
+      let mx = null
+      if (imgc) {
+        mx = imgc.getContext("2d")
+        mx.setTransform(1, 0, 0, 1, 0, 0)
+        mx.globalCompositeOperation = "source-over"
+        mx.clearRect(0, 0, bw, bh)
+        mx.setTransform(v.scale * dpr, 0, 0, v.scale * dpr, v.x * dpr, v.y * dpr)
+      }
+      // Картинки — на нижний слой, всё остальное (перо, фигуры, ластик) — на верхний.
+      for (const st of strokes.current.values()) drawStroke(st.tool === "image" && mx ? mx : sx, st)
       sceneValid.current = true
       if (bgc) {
         const bx = bgc.getContext("2d")
@@ -701,7 +741,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     // Ластик рисуется в destination-out и стирает уже положенный слой сцены — то
     // же самое, что было, когда всё рисовалось одним проходом.
     ctx.setTransform(v.scale * dpr, 0, 0, v.scale * dpr, v.x * dpr, v.y * dpr)
-    for (const st of live.current.values()) drawStroke(ctx, st)
+    for (const st of live.current.values()) if (st.tool !== "image") drawStroke(ctx, st)
     if (drawing.current) drawStroke(ctx, drawing.current)
 
     // Курсоры (обратно в экранные координаты, постоянный размер)
@@ -1416,13 +1456,16 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
 
   // Объектный ластик: всё, чего коснулись, удаляется целиком. Собственный след
   // пиксельного ластика пропускаем — стирать «дырку» как объект бессмысленно.
+  // Картинки и листы с заданиями ластик не берёт вовсе (как и след ластика их не
+  // стирает): по листу пишут поверх, и случайный мазок рядом уносил бы всё
+  // задание целиком. Убрать картинку можно «Курсором» — выделить и удалить.
   function eraseObjectsAt(clientX, clientY) {
     if (!erasing.current) return
     const p = toWorld(clientX, clientY)
     const tol = Math.max(4, (width || 3) * 1.2) / view.current.scale
     let hit = false
     for (const [id, st] of [...strokes.current]) {
-      if (st.tool === "eraser" || !hitStroke(st, p[0], p[1], tol)) continue
+      if (st.tool === "eraser" || st.tool === "image" || !hitStroke(st, p[0], p[1], tol)) continue
       erasing.current.push({ id, before: cloneStroke(st), after: null })
       strokes.current.delete(id)
       channelRef.current?.send({ type: "broadcast", event: "remove", payload: { id } })
@@ -1703,16 +1746,29 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     for (const id of selection.current) { const s = strokes.current.get(id); if (s && s.tool !== "eraser") s.color = c }
     commitSelection(before); scheduleDraw()
   }
-  function setSelectionWidth(w) {
+  // Толщину выделенного тянут ползунком, поэтому правка идёт в два такта: пока
+  // ползунок ведут (commit=false) меняется только картинка на доске, а в историю
+  // и собеседнику уходит один раз — когда ползунок отпустили. Снимок «до» берём
+  // на первом же движении и держим до конца жеста.
+  const widthDrag = useRef(null)
+  function setSelectionWidth(w, commit = true) {
     if (!selection.current.size) return
-    const before = snapshotSelection()
+    if (!widthDrag.current) widthDrag.current = { before: snapshotSelection(), changed: false }
     for (const id of selection.current) {
       const s = strokes.current.get(id); if (!s || s.tool === "eraser") continue
-      const cur = s.width || 3, k = w / cur
+      const cur = s.width || 3
+      if (cur === w) continue
+      const k = w / cur
       s.width = w
       s.points = s.points.map((p) => p.length > 2 ? [p[0], p[1], p[2] * k, ...p.slice(3)] : p)
+      widthDrag.current.changed = true
     }
-    commitSelection(before); scheduleDraw()
+    if (commit) {
+      const d = widthDrag.current
+      widthDrag.current = null
+      if (d.changed) commitSelection(d.before)   // отпустили, ничего не изменив, — шага истории нет
+    }
+    scheduleDraw()
   }
   function setSelectionDash(d) {
     if (!selection.current.size) return
@@ -2103,7 +2159,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const barX = H ? H.cx : 0
 
   return (
-    <div data-board-version="12" className={`fixed inset-0 z-[100000] flex flex-col screen-fade ${dark ? "board-dark" : ""} ${closingCls}`} style={{ background: baseBg }}>
+    <div data-board-version="13" className={`fixed inset-0 z-[100000] flex flex-col screen-fade ${dark ? "board-dark" : ""} ${closingCls}`} style={{ background: baseBg }}>
       {/* Шапка */}
       <div className="flex items-center justify-between px-3 h-12 border-b flex-shrink-0"
         style={{ borderColor: dark ? "rgba(255,255,255,.1)" : "rgba(0,0,0,.08)" }}>
@@ -2202,6 +2258,12 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         onDragOver={onDragOver} onDragLeave={onDragLeaveWrap} onDrop={onDropWrap}>
         {/* Узор фона — свой холст: ластик работает по слою штрихов и клетку не трогает */}
         <canvas ref={bgCanvasRef} aria-hidden="true"
+          className="absolute inset-0 pointer-events-none"
+          style={{ width: "100%", height: "100%", display: "block" }} />
+        {/* Картинки и листы с заданиями — свой холст между фоном и чернилами:
+            ластик работает по слою чернил и картинку не задевает, а всё
+            нарисованное всегда ложится ПОВЕРХ листа. */}
+        <canvas ref={imgCanvasRef} aria-hidden="true"
           className="absolute inset-0 pointer-events-none"
           style={{ width: "100%", height: "100%", display: "block" }} />
         <canvas

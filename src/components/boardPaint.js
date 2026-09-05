@@ -437,16 +437,25 @@ export function renderScene(canvas, scene, { width, height, padding = 24, images
     if (!tinted.has(src)) tinted.set(src, tintSheet(im))
     return tinted.get(src) || im
   }
-  // Штрихи кладём отдельным прозрачным слоем и только потом накрываем им фон:
-  // ластик рисуется в destination-out и на общем холсте выел бы вместе со следом
-  // и клетку, и сам цвет фона — вместо стёртого места была бы дырка насквозь.
-  const ink = document.createElement("canvas")
-  ink.width = canvas.width; ink.height = canvas.height
-  const ix = ink.getContext("2d")
-  ix.setTransform(scale * dpr, 0, 0, scale * dpr, ox * dpr, oy * dpr)
-  for (const s of strokes) paintStroke(ix, s, { darkBg, getImage })
+  // Сцена кладётся ДВУМЯ прозрачными слоями поверх фона (тот же порядок, что на
+  // живой доске, — иначе снимок занятия расходился бы с ней):
+  //   низ — картинки и листы с заданиями, верх — чернила (перо, фигуры, ластик).
+  // Ластик рисуется в destination-out и выедает всё, что лежит на ЕГО слое,
+  // поэтому чернила отделены и от фона (иначе стёртое место было бы дыркой
+  // насквозь), и от картинок (иначе ластик стирал бы вместе со штрихом лист).
+  const layer = () => {
+    const c = document.createElement("canvas")
+    c.width = canvas.width; c.height = canvas.height
+    const cx2 = c.getContext("2d")
+    cx2.setTransform(scale * dpr, 0, 0, scale * dpr, ox * dpr, oy * dpr)
+    return [c, cx2]
+  }
+  const [base, bx2] = layer()
+  const [ink, ix] = layer()
+  for (const s of strokes) paintStroke(s.tool === "image" ? bx2 : ix, s, { darkBg, getImage })
   ctx.setTransform(1, 0, 0, 1, 0, 0)
   ctx.globalCompositeOperation = "source-over"
+  ctx.drawImage(base, 0, 0)
   ctx.drawImage(ink, 0, 0)
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   return scale
