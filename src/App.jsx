@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo, memo, lazy, Suspense } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo, memo, lazy } from "react"
 import { isMoveNotification, revealBlock, MOVE_ANCHOR_TUTOR } from "./notifTarget"
 import { dropdownPos } from "./dropdownPos"
 import { POPUP_OUT_MS } from "./useClosing"
@@ -312,11 +312,8 @@ function App() {
   // это отдельный, ещё не закрытый пробел, см. supabase/auth_hardening.sql).
   // Студенческая — больше не доверяется до подтверждения через RPC ниже,
   // иначе голый id из localStorage давал мгновенный доступ без проверки токена.
-  const PERFTEST = localStorage.getItem("perftest") === "1"
-  const [user, setUser] = useState(() => PERFTEST
-    ? { id: "perf-tutor", email: "perf@test.local", role: "tutor", profile: { name: "Perf", onboarding_completed: true, code: "PERF" } }
-    : readStoredSession("parent_session"))
-  const [loadingAuth, setLoadingAuth] = useState(() => PERFTEST ? false : !readStoredSession("parent_session"))
+  const [user, setUser] = useState(() => readStoredSession("parent_session"))
+  const [loadingAuth, setLoadingAuth] = useState(() => !readStoredSession("parent_session"))
   // Переход по ссылке «сброс пароля» из письма. Признак вычисляется в
   // src/supabase.js до создания клиента — к моменту первого рендера hash уже
   // вычищен клиентом, здесь его проверять поздно.
@@ -621,7 +618,7 @@ function App() {
     return data?.id ?? student.id
   }
 
-  async function handleSetStudents(updater) {
+  const handleSetStudents = useCallback(async function handleSetStudents(updater) {
     const newStudents = typeof updater === "function" ? updater(students) : updater
     setStudents(newStudents)
     const added = newStudents.filter((s) => !students.find((old) => old.id === s.id))
@@ -637,10 +634,9 @@ function App() {
         setStudents((prev) => prev.map((x) => (x.id === s.id ? { ...x, id: savedId } : x)))
       }
     }
-  }
+  }, [students])
 
   useEffect(() => {
-    if (PERFTEST) return
     async function restoreSession(session) {
       const minDelay = new Promise(r => setTimeout(r, 600))
       if (!session) { await minDelay; setLoadingAuth(false); return }
@@ -740,7 +736,7 @@ function App() {
     return () => listener.subscription.unsubscribe()
   }, [])
 
-  async function handleLogout() {
+  const handleLogout = useCallback(async function handleLogout() {
     localStorage.removeItem("student_session")
     localStorage.removeItem("parent_session")
     setAppToken(null)
@@ -751,7 +747,26 @@ function App() {
     // (studentsLoaded === true блокирует повторную загрузку).
     setStudents([])
     setStudentsLoaded(false)
-  }
+  }, [])
+
+  // Список собеседников репетитора и колбэки разделов держим неизменными между
+  // рендерами: иначе memo выше бесполезен — новый объект в пропсе перерисовывает
+  // раздел, даже если в нём ничего не изменилось.
+  const tutorChatContacts = useMemo(() => students
+    .filter(s => s.studentAccountId)
+    .map(s => ({ id: `s:${s.studentAccountId}`, name: s.name, avatar: s.avatar || null, role: "Ученик" })),
+  [students])
+
+  const handleChatUnread = useCallback((delta, isInit) => {
+    if (isInit) setChatUnread(delta)
+    else setChatUnread(n => Math.max(0, n + delta))
+  }, [])
+
+  const handleProfileChange = useCallback((fields) => {
+    setUser((prev) => ({ ...prev, profile: { ...prev.profile, ...fields } }))
+  }, [])
+
+  const openPlans = useCallback(() => navigateTo("subscription"), [navigateTo])
 
   // Публичные юр-страницы — доступны без авторизации и до загрузки сессии
   // (152-ФЗ требует свободного доступа к Политике обработки ПДн).
@@ -807,7 +822,7 @@ function App() {
 
   if (user.role === "student") {
     return (
-      <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center bg-white dark:bg-[#1c1c1e]"><div className="loader-logo" /></div>}>
+      <PageBoundary fallback={<div className="fixed inset-0 flex items-center justify-center bg-white dark:bg-[#1c1c1e]"><div className="loader-logo" /></div>}>
       <StudentDashboard
         user={user}
         students={students}
@@ -827,13 +842,9 @@ function App() {
           }
         }}
       />
-      </Suspense>
+      </PageBoundary>
     )
   }
-
-  const tutorChatContacts = students
-    .filter(s => s.studentAccountId)
-    .map(s => ({ id: `s:${s.studentAccountId}`, name: s.name, avatar: s.avatar || null, role: "Ученик" }))
 
   // Нижняя панель телефона: пять главных разделов, шестая кнопка — «Меню»,
   // лист со ВСЕМИ разделами (единый список с боковым меню, src/nav.js).
@@ -843,7 +854,7 @@ function App() {
   const menuActive = !mobileNav.some((i) => i.id === activePage)
 
   return (
-    <SubscriptionProvider tutorId={user.id} onOpenPlans={() => navigateTo("subscription")}>
+    <SubscriptionProvider tutorId={user.id} onOpenPlans={openPlans}>
     <div className="flex app-shell overflow-clip">
       {user.profile && !user.profile.onboarding_completed && (
         <TutorOnboardingModal
@@ -857,7 +868,7 @@ function App() {
       )}
 
       {board && (
-        <Suspense fallback={<div className="fixed inset-0 z-[100000] bg-white dark:bg-[#1c1c1e] flex items-center justify-center"><div className="loader-logo" /></div>}>
+        <PageBoundary fallback={<div className="fixed inset-0 z-[100000] bg-white dark:bg-[#1c1c1e] flex items-center justify-center"><div className="loader-logo" /></div>}>
           <Board
             roomId={board.roomId}
             userId={`t:${user.id}`}
@@ -875,7 +886,7 @@ function App() {
             tutorSubjects={user.profile?.bank_subjects}
             tutorOwner={isOwner(user.email)}
           />
-        </Suspense>
+        </PageBoundary>
       )}
 
       <div className="hidden md:block">
@@ -919,39 +930,42 @@ function App() {
         )}</Reveal>
 
         <div className={`flex-1 min-h-0 overflow-x-hidden ${activePage === "chat" ? "flex flex-col overflow-hidden" : "page-scroll overflow-y-auto pb-20 md:pb-0 kb-collapse"}`}>
-          <Suspense fallback={<div className="flex items-center justify-center py-20"><div className="loader-logo" /></div>}>
-          <div className={activePage !== "dashboard" ? "hidden" : "page-active"}>{visitedPages.has("dashboard") && <Dashboard students={students} loaded={studentsReady} setActivePage={navigateTo} onOpenBoard={openBoard} />}</div>
-          <div className={activePage !== "students" ? "hidden" : "page-active"}>{visitedPages.has("students") && <Students students={students} loaded={studentsReady} setStudents={handleSetStudents} tutorId={user.id} tutorCode={user.profile?.code || ""} onOpenBoard={openBoard} />}</div>
-<div className={activePage !== "payment" ? "hidden" : "page-active"}>{visitedPages.has("payment") && <Payment students={students} setStudents={handleSetStudents} tutorId={user.id} setActivePage={navigateTo} />}</div>
-          <div className={activePage !== "variants" ? "hidden" : "page-active"}>{visitedPages.has("variants") && <Variants user={user} students={students} />}</div>
-          <div className={activePage !== "schedule" ? "hidden" : "page-active"}>{visitedPages.has("schedule") && <Schedule students={students} setStudents={handleSetStudents} onOpenBoard={openBoard} />}</div>
-          <div className={activePage !== "homework" ? "hidden" : "page-active"}>{visitedPages.has("homework") && <Homework user={user} students={students} />}</div>
-          <div className={activePage !== "results" ? "hidden" : "page-active"}>{visitedPages.has("results") && <Results students={students} loaded={studentsReady} user={user} />}</div>
-          <div className={activePage !== "taskgen" ? "hidden" : "page-active"}>{pageAllowed("taskgen") && visitedPages.has("taskgen") && <TaskGenPreview />}</div>
+          {/* Каждый раздел под своей границей. Общая на всех была опасна вдвойне:
+              пока грузился файл тяжёлого раздела, Suspense гасил ВЕСЬ кабинет
+              до логотипа-загрузки, а сбой этой загрузки (после раскатки старых
+              файлов на сервере уже нет) ронял приложение в белый экран. */}
+          <div className={activePage !== "dashboard" ? "hidden" : "page-active"}>{visitedPages.has("dashboard") && <PageBoundary><DashboardPage students={students} loaded={studentsReady} setActivePage={navigateTo} onOpenBoard={openBoard} /></PageBoundary>}</div>
+          <div className={activePage !== "students" ? "hidden" : "page-active"}>{visitedPages.has("students") && <PageBoundary><StudentsPage students={students} loaded={studentsReady} setStudents={handleSetStudents} tutorId={user.id} tutorCode={user.profile?.code || ""} onOpenBoard={openBoard} /></PageBoundary>}</div>
+          <div className={activePage !== "payment" ? "hidden" : "page-active"}>{visitedPages.has("payment") && <PageBoundary><PaymentPage students={students} setStudents={handleSetStudents} tutorId={user.id} setActivePage={navigateTo} /></PageBoundary>}</div>
+          <div className={activePage !== "variants" ? "hidden" : "page-active"}>{visitedPages.has("variants") && <PageBoundary><VariantsPage user={user} students={students} /></PageBoundary>}</div>
+          <div className={activePage !== "schedule" ? "hidden" : "page-active"}>{visitedPages.has("schedule") && <PageBoundary><SchedulePage students={students} setStudents={handleSetStudents} onOpenBoard={openBoard} /></PageBoundary>}</div>
+          <div className={activePage !== "homework" ? "hidden" : "page-active"}>{visitedPages.has("homework") && <PageBoundary><HomeworkPage user={user} students={students} /></PageBoundary>}</div>
+          <div className={activePage !== "results" ? "hidden" : "page-active"}>{visitedPages.has("results") && <PageBoundary><ResultsPage students={students} loaded={studentsReady} user={user} /></PageBoundary>}</div>
+          <div className={activePage !== "taskgen" ? "hidden" : "page-active"}>{pageAllowed("taskgen") && visitedPages.has("taskgen") && <PageBoundary><TaskGenPage /></PageBoundary>}</div>
           <div className={activePage !== "profile" ? "hidden" : "page-active"}>{visitedPages.has("profile") && (
-            <Profile
-              user={user}
-              students={students}
-              onLogout={handleLogout}
-              onProfileChange={(fields) => setUser((prev) => ({ ...prev, profile: { ...prev.profile, ...fields } }))}
-            />
+            <PageBoundary>
+              <ProfilePage
+                user={user}
+                students={students}
+                onLogout={handleLogout}
+                onProfileChange={handleProfileChange}
+              />
+            </PageBoundary>
           )}</div>
           <div className={activePage !== "subscription" ? "hidden" : "page-active"}>{visitedPages.has("subscription") && (
-            <Subscription studentsCount={students.length} tutorId={user.id} />
+            <PageBoundary><SubscriptionPage studentsCount={students.length} tutorId={user.id} /></PageBoundary>
           )}</div>
           <div className={activePage !== "chat" ? "hidden" : "flex-1 min-h-0 flex flex-col page-active"}>{visitedPages.has("chat") && (
-            <Chat
-              myId={`t:${user.id}`}
-              myName={user.profile?.name || user.email}
-              initialContacts={tutorChatContacts}
-              canAddByCode={false}
-              onUnreadChange={(delta, isInit) => {
-                if (isInit) setChatUnread(delta)
-                else setChatUnread(n => Math.max(0, n + delta))
-              }}
-            />
+            <PageBoundary>
+              <ChatPage
+                myId={`t:${user.id}`}
+                myName={user.profile?.name || user.email}
+                initialContacts={tutorChatContacts}
+                canAddByCode={false}
+                onUnreadChange={handleChatUnread}
+              />
+            </PageBoundary>
           )}</div>
-          </Suspense>
         </div>
 
         <div className="mobile-nav-glass md:hidden fixed bottom-0 left-0 right-0 z-50">
