@@ -611,10 +611,12 @@ function App() {
     if (phones.length) {
       const pick = (cols) => supabase.from("student_accounts").select(cols).in("phone", phones)
       let { data: accounts, error: accErr } = await pick("phone, avatar, id, timezone")
-      // Колонки пояса может ещё не быть (миграция supabase/timezones.sql
-      // выполняется вручную). Без запасного пути весь запрос отдал бы ошибку, а
-      // вместе с ней пропали бы аватарки и связка карточки с аккаунтом.
-      if (accErr && /timezone/.test(accErr.message || "")) {
+      // Пояса может не быть по двум причинам: колонки ещё нет (миграция
+      // supabase/timezones.sql выполняется вручную) или на неё не выдан грант —
+      // и во втором случае Postgres колонку не называет («permission denied for
+      // table …»). Поэтому перечитываем без пояса на любую ошибку: без этого
+      // вместе с ним пропали бы аватарки и связка карточки с аккаунтом.
+      if (accErr) {
         ;({ data: accounts } = await pick("phone, avatar, id"))
       }
       if (accounts?.length) {

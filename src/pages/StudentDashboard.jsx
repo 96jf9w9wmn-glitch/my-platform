@@ -2069,11 +2069,13 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     // колонки (см. src/timezone.js).
     const pick = (cols) => supabase.from("tutors").select(cols).in("id", tutorIdsKey.split(","))
     pick("id, name, subject, timezone").then(async ({ data, error }) => {
-      // Колонки может ещё не быть: миграция supabase/timezones.sql выполняется
-      // руками, и без запасного пути пропали бы имя и предмет репетитора.
-      const rows = error && /timezone/.test(error.message || "")
-        ? (await pick("id, name, subject")).data
-        : data
+      // Пояс — единственное, без чего этот запрос имеет смысл, поэтому на ЛЮБУЮ
+      // ошибку перечитываем без него: иначе пропали бы имя и предмет репетитора.
+      // Отказать могут по двум причинам, и обе уже случались: колонки ещё нет
+      // (миграция supabase/timezones.sql выполняется руками) или на неё не выдан
+      // грант. Разбирать текст отказа тут нельзя — про грант Postgres пишет
+      // «permission denied for table tutors», не называя колонки.
+      const rows = error ? (await pick("id, name, subject")).data : data
       if (!rows) return
       setTutors(Object.fromEntries(rows.map((t) => [t.id, { name: t.name, subject: t.subject || "", timezone: t.timezone || null }])))
     })

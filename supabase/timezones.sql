@@ -41,6 +41,16 @@ alter table public.tutors add column if not exists timezone text;
 grant select (timezone) on public.student_accounts to anon, authenticated, app_user;
 grant update (timezone) on public.student_accounts to anon, authenticated, app_user;
 
+-- То же самое и у tutors, и по той же причине: rls_step3_policies.sql снял
+-- табличный SELECT и выдал права поимённо. Без этих двух строк (так и было с
+-- 06.09.2026 по 07.09.2026) отказ получают ОБЕ стороны: `select("*")` репетитора
+-- падает целиком на каждом входе, а кабинет ученика не читает пояс репетитора и
+-- остаётся вовсе без его имени и предмета. Причём в тексте отказа колонка НЕ
+-- называется — Postgres пишет «permission denied for table tutors», — поэтому
+-- запасные пути по имени колонки тут не срабатывают.
+grant select (timezone) on public.tutors to authenticated, app_user;
+grant update (timezone) on public.tutors to authenticated;
+
 commit;
 
 -- Проверка:
