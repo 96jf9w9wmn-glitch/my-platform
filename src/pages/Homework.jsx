@@ -361,6 +361,12 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
   // по заданиям, а не смотрит на PDF целиком.
   const [splitTasks, setSplitTasks] = useState([])
   const [splitOpen, setSplitOpen] = useState(false)
+  // Ответы к нарезанным заданиям у репетитора обычно уже есть одной строкой
+  // (ключ к варианту), а полей бывает под сотню. Строка раскладывается по
+  // заданиям по порядку; сколько слов из неё разошлось — держим отдельно,
+  // чтобы при укорачивании строки освободившиеся поля очищались.
+  const [bulkAnswers, setBulkAnswers] = useState("")
+  const [bulkCount, setBulkCount] = useState(0)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState("")
   // Тип задания больше не выбирается вручную: работа становится тестом ровно
@@ -655,13 +661,40 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
   }
 
   function applySplit(tasks) {
+    resetBulk()
     syncSplit(tasks.map((t) => ({ image: t.image, text: t.text, answer: "" })))
   }
 
   const setSplitAnswer = (idx, value) =>
     syncSplit(splitTasks.map((t, i) => (i === idx ? { ...t, answer: value } : t)))
 
-  const removeSplitTask = (idx) => syncSplit(splitTasks.filter((_, i) => i !== idx))
+  const removeSplitTask = (idx) => {
+    // Номера сдвинулись — строка ответов больше не соответствует списку, и
+    // управлять чужими полями ей нельзя. Уже разложенные ответы остаются.
+    resetBulk()
+    syncSplit(splitTasks.filter((_, i) => i !== idx))
+  }
+
+  function resetBulk() {
+    setBulkAnswers("")
+    setBulkCount(0)
+  }
+
+  // Строка задаёт ответы ровно своему префиксу заданий: слов стало меньше —
+  // хвост, который она занимала, очищается. Иначе стёртый ответ оставался бы
+  // в работе, и репетитор отправил бы ученику не то, что видит в строке.
+  function applyBulkAnswers(value) {
+    const parts = value.trim() ? value.trim().split(/\s+/) : []
+    const prev = bulkCount
+    setBulkAnswers(value)
+    setBulkCount(parts.length)
+    if (!parts.length && !prev) return
+    syncSplit(
+      splitTasks.map((t, i) =>
+        i < parts.length ? { ...t, answer: parts[i] } : i < prev ? { ...t, answer: "" } : t
+      )
+    )
+  }
 
   // Убрать нарезку целиком: файл остаётся приложенным, работа снова становится
   // обычной — файл плюс ответы, как было до разбора.
@@ -670,6 +703,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
     setDescription("")
     setAnswersList(null)
     setAnswersInput("")
+    resetBulk()
   }
 
   // Собранные задания сразу становятся содержанием работы: текст — в описание,
@@ -1199,6 +1233,28 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                             Разобрать заново
                           </button>
                         </div>
+
+                        {/* Ключ к работе почти всегда есть строкой, а полей
+                            бывает под сотню: вписывать их по одному — работа
+                            на полчаса. Поля заданий при этом остаются: ответ
+                            с пробелом внутри строкой не задать. */}
+                        <div className="flex flex-col gap-1">
+                          <input
+                            value={bulkAnswers}
+                            onChange={(e) => applyBulkAnswers(e.target.value)}
+                            placeholder="Все ответы через пробел: 12 3,5 25"
+                            className="input-glass py-2 text-sm"
+                          />
+                          <div className="text-[11px] text-gray-400 leading-snug">
+                            {bulkCount
+                              ? `Разложено по заданиям — ${Math.min(bulkCount, splitTasks.length)} из ${splitTasks.length}` +
+                                (bulkCount > splitTasks.length
+                                  ? `, лишние ${bulkCount - splitTasks.length} не использованы`
+                                  : "")
+                              : "Ответы разложатся по заданиям по порядку. Ответ с пробелом внутри впишите в поле задания."}
+                          </div>
+                        </div>
+
                         <div className="flex flex-col gap-2">
                           {splitTasks.map((t, i) => (
                             <div key={i} className="flex items-start gap-3 rounded-2xl ring-1 ring-gray-200/70 dark:ring-white/10 p-2.5">
