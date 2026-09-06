@@ -35,7 +35,7 @@ import {
   formatLessonWhen, formatLessonShort, MOVE_BY_STUDENT, MOVE_BY_TUTOR,
 } from "../lessonMove"
 import { findClash } from "../lessonConflict"
-import { convertWall, convertLessons, shiftScheduleString, zoneDiffMinutes } from "../timezone"
+import { convertWall, convertLessons } from "../timezone"
 // Состав варианта (какие номера в части 1, какие — во второй) знает банк заданий:
 // у математики номера идут подряд, у информатики — с пропусками, и «номер больше
 // двенадцати» там означало бы не то.
@@ -3000,11 +3000,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                           {student.schedule && (
                             <div className="flex items-start gap-3">
                               <span className="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-full flex-shrink-0 font-medium">Регулярные</span>
-                              {/* Строка лежит в поясе якоря — показываем её по
-                                  часам устройства, как и сами занятия. */}
-                              <div className="text-sm text-gray-600 pt-0.5">
-                                {shiftScheduleString(student.schedule, zoneDiffMinutes(student.timezone, student.tzFrame))}
-                              </div>
+                              <div className="text-sm text-gray-600 pt-0.5">{student.schedule}</div>
                             </div>
                           )}
                           {student.examDate && (

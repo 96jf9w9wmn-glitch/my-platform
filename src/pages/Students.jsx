@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react"
 import StudentFormModal from "../components/StudentFormModal"
+import { deviceTimezone } from "../timezone"
 import ConfirmModal from "../components/ConfirmModal"
 import Reveal from "../components/Reveal"
 import Icon from "../components/Icon"
@@ -184,18 +185,24 @@ function Students({ students, loaded = true, setStudents, tutorId, tutorCode = "
     // сделаны best-effort (auth_hardening.sql — при сбое только raise warning), да и
     // карточку могли удалить. Читать их RLS разрешает: политика accounts_tutor_read
     // пускает репетитора к аккаунтам с tutor_id = auth.uid().
-    supabase.from("student_accounts").select("id, name, phone").eq("tutor_id", tutorId)
-      .then(({ data }) => { if (!cancelled) setLinkedAccounts(data || []) })
+    const linked = (cols) => supabase.from("student_accounts").select(cols).eq("tutor_id", tutorId)
+    linked("id, name, phone, timezone").then(async ({ data, error }) => {
+      // Колонки пояса может ещё не быть (миграция supabase/timezones.sql) —
+      // без запасного пути пропал бы весь список привязанных учеников.
+      const rows = error && /timezone/.test(error.message || "") ? (await linked("id, name, phone")).data : data
+      if (!cancelled) setLinkedAccounts(rows || [])
+    })
     // Непринятые карточки. Это самый надёжный источник заявки: строка students
     // создаётся той же функцией, что и привязка, тогда как pending_students
     // пишется best-effort и может не появиться вовсе.
-    supabase.from("students").select("id, name, phone, student_account_id, subject")
+    const cards = (cols) => supabase.from("students").select(cols)
       .eq("tutor_id", tutorId).eq("accepted", false)
-      .then(({ data, error }) => {
-        // Колонки может ещё не быть (миграция student_accept.sql) — тогда
-        // заявки собираются по-старому, а не рушится весь раздел.
-        if (!cancelled && !error) setPendingCards(data || [])
-      })
+    cards("id, name, phone, student_account_id, subject, timezone").then(async ({ data, error }) => {
+      const res = error && /timezone/.test(error.message || "") ? await cards("id, name, phone, student_account_id, subject") : { data, error }
+      // Колонки может ещё не быть (миграция student_accept.sql) — тогда
+      // заявки собираются по-старому, а не рушится весь раздел.
+      if (!cancelled && !res.error) setPendingCards(res.data || [])
+    })
     return () => { cancelled = true }
   }, [tutorId])
 
@@ -293,6 +300,15 @@ function Students({ students, loaded = true, setStudents, tutorId, tutorCode = "
         parent_code: existing.parent_code || newStudent.parent_code,
       }
       merged.lessonDates = merged.lessons.map((l) => l.date)
+      // Часовые пояса. Карточка заявки собирается отдельно от ростера, и без
+      // этих двух полей её время записалось бы БЕЗ перевода: репетитор из
+      // Еревана ставит 12:00, а у ученика в Москве встают те же 12:00. Кадр —
+      // пояс устройства репетитора (в нём он только что вбил время), якорь —
+      // пояс ученика, если он уже входил, иначе фиксируется при записи.
+      merged.tzFrame = deviceTimezone()
+      merged.timezone = existing.timezone
+        || linkedAccounts.find((a) => a.id === (existing.student_account_id || newStudent.studentAccountId))?.timezone
+        || null
       // Приём — это и есть подтверждение: карточка становится принятой и с этого
       // момента попадает в ростер, чат и счётчик тарифа.
       merged.accepted = true
@@ -304,7 +320,12 @@ function Students({ students, loaded = true, setStudents, tutorId, tutorCode = "
         : [...prev, merged])
       setPendingCards((prev) => prev.filter((c) => c.id !== existing.id))
     } else {
-      setStudents((prev) => [...prev, { ...newStudent, accepted: true }])
+      setStudents((prev) => [...prev, {
+        ...newStudent,
+        accepted: true,
+        tzFrame: deviceTimezone(),
+        timezone: linkedAccounts.find((a) => a.id === newStudent.studentAccountId)?.timezone || null,
+      }])
     }
     if (request?.pendingId) {
       await supabase.from("pending_students").delete().eq("id", request.pendingId)

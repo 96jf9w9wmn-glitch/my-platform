@@ -5,7 +5,7 @@ import { POPUP_OUT_MS } from "./useClosing"
 import { createPortal } from "react-dom"
 import { supabase, isPasswordRecovery, setAppToken } from "./supabase"
 import { signRows, permanentStorageUrl } from "./storageUrl"
-import { deviceTimezone, convertLessons } from "./timezone"
+import { deviceTimezone, convertLessons, shiftScheduleString, zoneDiffMinutes } from "./timezone"
 import Sidebar, { TutorProfileButton } from "./components/Sidebar"
 import NavIcon from "./components/NavIcon"
 import MobileMenu from "./components/MobileMenu"
@@ -592,6 +592,10 @@ function App() {
         tzStored: !!s.timezone,
         tzFrame: frame,
         lessons: convertLessons(s.lessons || [], anchor, frame),
+        // Строка-витрина расписания живёт в том же поясе, что и занятия, и
+        // переводится вместе с ними: иначе в шапке карточки одно время, а в
+        // списке занятий рядом другое.
+        schedule: shiftScheduleString(s.schedule, zoneDiffMinutes(anchor, frame)),
       }
     })
 
@@ -649,7 +653,7 @@ function App() {
       timezone: student.timezone || student.tzFrame || null,
       lesson_duration: student.lessonDuration,
       is_recurring: student.isRecurring,
-      schedule: student.schedule,
+      schedule: shiftScheduleString(student.schedule, zoneDiffMinutes(student.tzFrame, student.timezone)),
       contacts: student.contacts || [],
       payments: student.payments || [],
       paid: student.paid || false,

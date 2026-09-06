@@ -6,7 +6,6 @@ import Reveal from "./Reveal"
 import Collapse from "./Collapse"
 import SegmentSwitch from "./SegmentSwitch"
 import WeeksPicker from "./WeeksPicker"
-import { zoneDiffMinutes, shiftDayTime, toStoredWall, shiftScheduleString } from "../timezone"
 import PhoneInput, { isValidPhoneNumber } from "react-phone-number-input"
 import "react-phone-number-input/style.css"
 import { plural, parseLocalDate, formatPhone, isLessonPast } from "../utils"
@@ -209,11 +208,7 @@ function StudentFormModal({ student, students = [], onClose, onSubmit, initialNa
   const [recurringDays, setRecurringDays] = useState(() => {
     if (!editing || !student.isRecurring) return []
     const fromLessons = daysFromLessons(futureLessons)
-    // Запасной путь — строка расписания; она лежит в поясе ученика, а форма
-    // работает по часам репетитора, как и весь его кабинет.
-    return fromLessons.length
-      ? fromLessons
-      : parseScheduleToDays(shiftScheduleString(student.schedule, zoneDiffMinutes(student.timezone, student.tzFrame)))
+    return fromLessons.length ? fromLessons : parseScheduleToDays(student.schedule)
   })
   const [recurringDuration] = useState(60)
   const [recurringStartDate, setRecurringStartDate] = useState(editing ? formatDate(new Date()) : "")
@@ -369,21 +364,12 @@ function StudentFormModal({ student, students = [], onClose, onSubmit, initialNa
       ]).sort(byDateTime)
       : previewLessons
 
-    // Строка расписания — витрина, и лежит она в базе в том же поясе, что и
-    // занятия (якорь). Оба кабинета показывают её по своим часам, поэтому здесь
-    // время переводится из кадра репетитора в якорь — ровно как занятия при
-    // сохранении карточки. Пояса совпадают — сдвиг нулевой и строка выходит
-    // прежней.
-    const tzShift = zoneDiffMinutes(student?.tzFrame, student?.timezone)
+    // Строка расписания — витрина. Она собирается в том же «настенном» времени,
+    // в каком форма показывает занятия, и о часовых поясах не знает: перевод в
+    // пояс хранения делает saveStudent, разом для занятий и для этой строки.
     const schedule = mode === "recurring"
-      ? recurringDays.map((d) => {
-        const at = shiftDayTime(WEEK_DAYS.indexOf(d.name), d.time, tzShift)
-        return `${WEEK_DAYS[at.dayIndex]} ${at.time} (${d.duration || recurringDuration} мин)`
-      }).join(", ")
-      : previewLessons.map((l) => {
-        const w = toStoredWall(student, l.date, l.time)
-        return parseLocalDate(w.date).toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) + " " + w.time + " (" + l.duration + " мин)"
-      }).join(", ")
+      ? recurringDays.map((d) => `${d.name} ${d.time} (${d.duration || recurringDuration} мин)`).join(", ")
+      : previewLessons.map((l) => parseLocalDate(l.date).toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) + " " + l.time + " (" + l.duration + " мин)").join(", ")
 
     const common = {
       name: form.name,
