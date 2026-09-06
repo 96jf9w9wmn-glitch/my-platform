@@ -35,7 +35,7 @@ import {
   formatLessonWhen, formatLessonShort, MOVE_BY_STUDENT, MOVE_BY_TUTOR,
 } from "../lessonMove"
 import { findClash } from "../lessonConflict"
-import { convertWall } from "../timezone"
+import { convertWall, convertLessons, shiftScheduleString, zoneDiffMinutes } from "../timezone"
 // Состав варианта (какие номера в части 1, какие — во второй) знает банк заданий:
 // у математики номера идут подряд, у информатики — с пропусками, и «номер больше
 // двенадцати» там означало бы не то.
@@ -2074,7 +2074,12 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   const pendingMoves = (student?.lessons || []).filter((l) => l.moveRequest)
 
   async function saveLessons(nextLessons) {
-    const { error } = await supabase.from("students").update({ lessons: nextLessons }).eq("id", student.id)
+    // Кабинет показывает время по часам устройства, а в базе оно лежит в поясе
+    // якоря — переводим обратно, как это делает и кабинет репетитора. Пояса
+    // совпали или якоря нет — перевод тождественный.
+    const { error } = await supabase.from("students")
+      .update({ lessons: convertLessons(nextLessons, student.tzFrame, student.timezone) })
+      .eq("id", student.id)
     return error
   }
 
@@ -2117,7 +2122,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   // другую страну, иначе прочитал бы в уведомлении время на час мимо того,
   // что стоит у него в расписании.
   function whenForTutor(date, time) {
-    const w = convertWall(date, time, student?.timezone, tutors[student?.tutor_id]?.timezone)
+    const w = convertWall(date, time, student?.tzFrame, tutors[student?.tutor_id]?.timezone)
     return formatLessonWhen(w.date, w.time)
   }
 
@@ -2995,7 +3000,11 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                           {student.schedule && (
                             <div className="flex items-start gap-3">
                               <span className="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-full flex-shrink-0 font-medium">Регулярные</span>
-                              <div className="text-sm text-gray-600 pt-0.5">{student.schedule}</div>
+                              {/* Строка лежит в поясе якоря — показываем её по
+                                  часам устройства, как и сами занятия. */}
+                              <div className="text-sm text-gray-600 pt-0.5">
+                                {shiftScheduleString(student.schedule, zoneDiffMinutes(student.timezone, student.tzFrame))}
+                              </div>
                             </div>
                           )}
                           {student.examDate && (

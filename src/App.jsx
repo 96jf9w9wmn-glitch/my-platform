@@ -573,9 +573,13 @@ function App() {
     const myTz = deviceTimezone()
     mapped = mapped.map((s) => {
       const anchor = s.timezone || (user.role === "tutor" ? s.accountTimezone : null) || null
-      // Ученику ничего не переводим: он видит то самое время, о котором
-      // договорились, — оно не должно меняться ни от чего.
-      const frame = user.role === "tutor" ? myTz : anchor
+      // Переводят ОБА кабинета, каждый в пояс своего устройства. Иначе якорь
+      // обязан был бы совпадать с поясом ученика, а он не всегда известен в
+      // момент записи: репетитор из Еревана заводит карточку и ставит время
+      // раньше, чем ученик впервые вошёл, — и его 12:00 молча объявлялось бы
+      // московским. Теперь время самоописано: якорь говорит, в каком поясе оно
+      // записано, и каждая сторона читает его по своим часам.
+      const frame = myTz || anchor
       return {
         ...s,
         timezone: anchor,
@@ -634,7 +638,11 @@ function App() {
       // его нечем, да и занятие в нём давно дублируется массивом `lessons`.
       lessons: convertLessons(student.lessons || [], student.tzFrame, student.timezone),
       lesson_dates: student.lessonDates || [],
-      timezone: student.timezone || null,
+      // Якоря ещё нет (ученик ни разу не входил, пояс его устройства неизвестен)
+      // — фиксируем тот, в котором время записывается сейчас, то есть пояс
+      // репетитора. Без этого запись осталась бы без пояса, и вошедший позже
+      // ученик прочитал бы ереванское время как своё.
+      timezone: student.timezone || student.tzFrame || null,
       lesson_duration: student.lessonDuration,
       is_recurring: student.isRecurring,
       schedule: student.schedule,
