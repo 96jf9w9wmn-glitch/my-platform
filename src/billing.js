@@ -13,6 +13,16 @@
 //   «абонементом» — долг за весь период появляется сразу, как только период
 //                   начался, и гасится одной оплатой за несколько занятий.
 //
+// ПЕРИОД АБОНЕМЕНТА СЧИТАЕТСЯ ЗАНЯТИЯМИ, А НЕ ДАТАМИ. «Месяц» у ученика,
+// который занимается дважды в неделю, — это восемь занятий, а не «с 4 сентября
+// по 3 октября»: именно так об абонементе договариваются, и именно столько
+// занятий человек ожидает получить за свои деньги. Календарное окно давало
+// другое число — тридцать дней с 4 сентября накрывают пять суббот и разовое
+// занятие в пятницу, и «месяц» молча превращался в десять занятий. Поэтому
+// периоды здесь — это подряд идущие куски списка занятий по N штук, а N
+// считается по расписанию: занятий в неделю × недель в периоде (см.
+// weeklyRate и packageSize).
+//
 // Поэтому у абонемента нет ни своей записи в оплатах, ни своего статуса
 // «оплачен»: оплата у него та же самая, что у всех, — обычная запись в
 // `students.payments`, которую репетитор вносит в «Финансах». Второй денежной
@@ -34,10 +44,12 @@ export const MODE_PACKAGE = "package"
 
 // Периоды, за которые платят вперёд. Списком, а не свободным числом дней:
 // «неделя, две недели, месяц» — то, как об этом договариваются на самом деле.
+// `weeks` — во сколько недель расписания обходится период: месяц это четыре
+// недели занятий, а не календарный месяц (см. шапку файла).
 export const PERIODS = [
-  { key: "week", label: "Неделя", days: 7 },
-  { key: "weeks2", label: "Две недели", days: 14 },
-  { key: "month", label: "Месяц", months: 1 },
+  { key: "week", label: "Неделя", weeks: 1 },
+  { key: "weeks2", label: "Две недели", weeks: 2 },
+  { key: "month", label: "Месяц", weeks: 4 },
 ]
 
 export const periodLabel = (key) => PERIODS.find((p) => p.key === key)?.label || "Период"
@@ -79,53 +91,84 @@ export function onPackage(student) {
     && PERIODS.some((p) => p.key === periodKeyOf(student))
 }
 
-function addPeriod(date, key, times = 1) {
-  const p = PERIODS.find((x) => x.key === key) || PERIODS[0]
-  const d = new Date(date)
-  if (p.months) d.setMonth(d.getMonth() + p.months * times)
-  else d.setDate(d.getDate() + p.days * times)
-  return d
-}
-
-// Период, в котором мы сейчас: периоды идут подряд от даты начала абонемента.
-// Границы включительные с обеих сторон — «с 1 по 30 сентября» человек понимает
-// именно так.
-export function currentPeriod(student, now = new Date()) {
-  if (!onPackage(student)) return null
-  const start = fromIsoDate(startOf(student))
-  if (!start) return null
-  const key = periodKeyOf(student)
-  let from = start
-  // Шагаем периодами, пока не накроем сегодняшний день. Ограничение на 500
-  // шагов — страховка от битой даты, а не бизнес-правило.
-  for (let i = 0; i < 500; i++) {
-    const next = addPeriod(from, key)
-    if (next > now) break
-    from = next
-  }
-  const until = new Date(addPeriod(from, key))
-  until.setDate(until.getDate() - 1)
-  return { from: toIso(from), until: toIso(until), period: key }
-}
-
-// Следующий период — им подписывается, что будет начислено дальше.
-export function nextPeriod(student, now = new Date()) {
-  const cur = currentPeriod(student, now)
-  if (!cur) return null
-  const from = addPeriod(fromIsoDate(cur.from), cur.period)
-  const until = new Date(addPeriod(from, cur.period))
-  until.setDate(until.getDate() - 1)
-  return { from: toIso(from), until: toIso(until), period: cur.period }
-}
-
 // Занятие, снятое со счёта, не начисляется никогда — ни поштучно, ни в
 // абонементе (см. LESSON_EXCUSED в utils.js).
 const countable = (l) => l?.date && l.status !== LESSON_EXCUSED
 
-export function lessonsInRange(student, fromIso, untilIso) {
-  return (student?.lessons || [])
-    .filter((l) => countable(l) && l.date >= fromIso && l.date <= untilIso)
-    .sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || "")))
+const byDateTime = (a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || ""))
+
+// Сколько занятий в неделю у ученика — по расписанию, а не по календарю.
+// Считаем повторяющиеся пары «день недели + время»: это и есть расписание
+// («Чт 16:00, Сб 12:00» — два занятия в неделю). Разовая встреча, которой в
+// расписании нет, в норму недели не входит — иначе одна пятница раздула бы
+// месячный абонемент на лишнее занятие.
+export function weeklyRate(student) {
+  const list = (student?.lessons || []).filter((l) => l?.date)
+  const slots = new Map()
+  for (const l of list) {
+    const d = fromIsoDate(l.date)
+    if (!d) continue
+    const key = `${d.getDay()} ${l.time || ""}`
+    slots.set(key, (slots.get(key) || 0) + 1)
+  }
+  const regular = [...slots.values()].filter((n) => n > 1).length
+  if (regular) return regular
+  // Расписание ещё не повторилось (занятия расставлены на одну неделю вперёд
+  // или ученик разовый) — считаем занятия первой недели абонемента.
+  const from = startOf(student) || list.map((l) => l.date).sort()[0]
+  const d = fromIsoDate(from)
+  if (!d) return 1
+  d.setDate(d.getDate() + 6)
+  const until = toIso(d)
+  return Math.max(1, list.filter((l) => l.date >= from && l.date <= until).length)
+}
+
+// Сколько занятий в одном периоде: занятий в неделю × недель в периоде.
+// Отдельного поля у ученика нет намеренно — число обязано следовать за
+// расписанием: стал ходить трижды в неделю, и «месяц» это уже двенадцать
+// занятий, а не восемь.
+export function packageSize(student) {
+  const weeks = PERIODS.find((p) => p.key === periodKeyOf(student))?.weeks || 1
+  return Math.max(1, weeklyRate(student) * weeks)
+}
+
+// Периоды абонемента: подряд идущие куски списка занятий по packageSize штук,
+// начиная с даты, с которой считается абонемент. Период НАЧАЛСЯ, когда пришёл
+// день его первого занятия, — с этого дня он и начисляется целиком.
+//
+// Границы периода — даты его первого и последнего занятия, а не календарное
+// окно: у периода, который меряется занятиями, другого начала и конца нет.
+export function packagePeriods(student, now = new Date()) {
+  if (!onPackage(student)) return []
+  const start = startOf(student)
+  const size = packageSize(student)
+  const list = (student?.lessons || [])
+    .filter((l) => countable(l) && l.date >= start)
+    .sort(byDateTime)
+  const today = toIso(now)
+  const out = []
+  for (let i = 0; i < list.length; i += size) {
+    const lessons = list.slice(i, i + size)
+    out.push({
+      period: periodKeyOf(student),
+      size,
+      from: lessons[0].date,
+      until: lessons[lessons.length - 1].date,
+      lessons,
+      started: lessons[0].date <= today,
+    })
+  }
+  return out
+}
+
+// Период, в котором мы сейчас, — последний начавшийся. Пока не начался ни
+// один, показываем первый: ученик уже на абонементе, и период у него есть,
+// просто он ещё впереди.
+export function currentPeriod(student, now = new Date()) {
+  const all = packagePeriods(student, now)
+  if (!all.length) return null
+  const started = all.filter((p) => p.started)
+  return started.length ? started[started.length - 1] : all[0]
 }
 
 // Сумма, вписанная руками за период. Пусто, ноль и мусор — это «считай по
@@ -135,32 +178,12 @@ export function packageAmount(student) {
   return Number.isFinite(v) && v > 0 ? v : null
 }
 
-// Периоды абонемента от даты начала до текущего включительно. Периоды, которые
-// уже прошли, начислены целиком — иначе долг за прошлый месяц исчезал бы с
-// началом следующего.
-export function elapsedPeriods(student, now = new Date()) {
-  const cur = currentPeriod(student, now)
-  if (!cur) return []
-  const key = periodKeyOf(student)
-  const out = []
-  let from = fromIsoDate(startOf(student))
-  for (let i = 0; i < 500; i++) {
-    const until = new Date(addPeriod(from, key))
-    until.setDate(until.getDate() - 1)
-    const iso = toIso(from)
-    out.push({ from: iso, until: toIso(until), period: key })
-    if (iso >= cur.from) break
-    from = addPeriod(from, key)
-  }
-  return out
-}
-
 // Сколько стоит один период: вписанная сумма важнее расчётной. Период без
 // занятий не стоит ничего даже при вписанной сумме — начислять не за что, а
 // деньги, ни к чему не привязанные, разошлись бы с квитанциями и списком
 // неоплаченных занятий.
 export function periodAmount(student, period, price = Number(student?.lessonPrice ?? student?.lesson_price ?? 0)) {
-  const lessons = lessonsInRange(student, period.from, period.until)
+  const lessons = period?.lessons || []
   if (!lessons.length) return { lessons, amount: 0 }
   const manual = packageAmount(student)
   return { lessons, amount: manual != null ? manual : lessons.length * price }
@@ -180,7 +203,7 @@ function spread(amount, count) {
 // оплаты. Старые — первыми.
 export function accrualEntries(student, now = new Date()) {
   const price = Number(student?.lessonPrice ?? student?.lesson_price ?? 0)
-  const byDate = (a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || ""))
+  const byDate = byDateTime
   const all = (student?.lessons || []).filter(countable)
 
   if (!onPackage(student)) {
@@ -195,19 +218,16 @@ export function accrualEntries(student, now = new Date()) {
 
   // С началом периода начисляются ВСЕ его занятия сразу, ещё до того, как они
   // прошли: в этом и смысл оплаты вперёд.
-  for (const p of elapsedPeriods(student, now)) {
+  for (const p of packagePeriods(student, now)) {
+    // Периоды идут по порядку, поэтому первый не начавшийся закрывает список:
+    // за то, что ещё не началось, не начисляют.
+    if (!p.started) break
     const { lessons, amount } = periodAmount(student, p, price)
     if (!lessons.length) continue
     const parts = spread(amount, lessons.length)
     lessons.forEach((l, i) => out.push({ ...l, charge: parts[i] }))
   }
   return out
-}
-
-// Тот же список без сумм — им пользуются экраны, которым нужно только «сколько
-// занятий уже начислено».
-export function accruedLessons(student, now = new Date()) {
-  return accrualEntries(student, now)
 }
 
 export function studentBilling(student, now = new Date()) {
@@ -226,8 +246,10 @@ export function studentBilling(student, now = new Date()) {
     // второй раз, в прогнозе дохода, их брать нельзя.
     prepaid: accrued.filter((l) => !isLessonConducted(l, now)).length,
     debt: charged - paid,
+    // Для экранов период — это подпись: сколько в нём занятий, с какой по
+    // какую дату и на какую сумму. Массив занятий тут схлопывается в число.
     package: cur
-      ? { ...cur, lessons: periodAmount(student, cur, price).lessons.length,
+      ? { ...cur, lessons: cur.lessons.length,
           amount: periodAmount(student, cur, price).amount,
           manual: packageAmount(student) != null }
       : null,

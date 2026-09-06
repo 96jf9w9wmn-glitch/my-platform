@@ -6,7 +6,7 @@ import SegmentSwitch from "./SegmentSwitch"
 import { plural } from "../utils"
 import { fmtNum } from "../num"
 import {
-  PERIODS, dayMonth, todayIso, lessonsInRange,
+  PERIODS, dayMonth, todayIso, packagePeriods, packageSize,
   MODE_LESSON, MODE_PACKAGE,
 } from "../billing"
 
@@ -26,24 +26,20 @@ function PaymentModeModal({ student, onSubmit, onClose }) {
   const [amount, setAmount] = useState(
     student?.packageAmount > 0 ? String(student.packageAmount) : "")
 
-  // Что будет начислено сразу после включения — считаем по расписанию, чтобы
-  // сумма не оказалась сюрпризом.
-  const preview = (() => {
-    if (mode !== MODE_PACKAGE) return null
-    const p = PERIODS.find((x) => x.key === period) || PERIODS[0]
-    const from = new Date(start + "T00:00:00")
-    if (Number.isNaN(from.getTime())) return null
-    const until = new Date(from)
-    if (p.months) until.setMonth(until.getMonth() + p.months)
-    else until.setDate(until.getDate() + p.days)
-    until.setDate(until.getDate() - 1)
-    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
-    const lessons = lessonsInRange(student, start, iso(until))
-    return { until: iso(until), count: lessons.length }
-  })()
+  // Что будет начислено сразу после включения. Период меряется ЗАНЯТИЯМИ
+  // (месяц у ученика с двумя занятиями в неделю — это восемь занятий, а не
+  // календарное окно), поэтому первый период здесь считает тот же код, что
+  // потом будет считать долг.
+  const draft = {
+    ...student,
+    paymentMode: MODE_PACKAGE, packagePeriod: period, packageStart: start,
+  }
+  const size = mode === MODE_PACKAGE ? packageSize(draft) : 0
+  const preview = mode === MODE_PACKAGE ? packagePeriods(draft)[0] || null : null
+  const count = preview ? preview.lessons.length : 0
 
   // Расчётная сумма — подсказка и значение по умолчанию. Вписанная важнее её.
-  const calc = preview ? preview.count * price : 0
+  const calc = count * price
   const manual = Number(String(amount).replace(",", ".").trim())
   const manualOk = Number.isFinite(manual) && manual > 0
   const due = manualOk ? manual : calc
@@ -102,6 +98,8 @@ function PaymentModeModal({ student, onSubmit, onClose }) {
               <p className="text-xs text-gray-500 leading-relaxed">
                 Ученик платит вперёд. Как только период начался, долг за все его
                 занятия начисляется сразу — и закрывается одной оплатой в «Финансах».
+                Период считается занятиями: месяц у того, кто занимается дважды
+                в неделю, — это восемь занятий.
               </p>
 
               <div>
@@ -152,22 +150,23 @@ function PaymentModeModal({ student, onSubmit, onClose }) {
                   {manualOk
                     ? <>Начисляем {fmtNum(manual)} ₽ за период{calc ? <> вместо расчётных {fmtNum(calc)} ₽</> : null}.</>
                     : calc
-                      ? <>Оставьте пустым — посчитаем по расписанию: {preview.count} × {fmtNum(price)} ₽ = {fmtNum(calc)} ₽.</>
+                      ? <>Оставьте пустым — посчитаем по расписанию: {count} × {fmtNum(price)} ₽ = {fmtNum(calc)} ₽.</>
                       : <>Оставьте пустым — посчитаем по расписанию.</>}
                 </p>
               </div>
 
-              {preview && (
-                <div className={`rounded-xl px-3 py-2.5 text-xs leading-relaxed ring-1 ${
-                  preview.count ? "ring-blue-500/25 bg-blue-500/[0.06] text-gray-600"
-                                : "ring-amber-500/30 bg-amber-500/[0.07] text-amber-700 dark:text-amber-300"
-                }`}>
-                  {preview.count ? (
-                    <>Первый период — по {dayMonth(preview.until)}: <b>{preview.count} {plural(preview.count, "занятие", "занятия", "занятий")}</b>
-                      {due ? <>, к оплате {fmtNum(due)} ₽</> : null}. Долг появится сразу.</>
-                  ) : (
-                    <>В этот период занятий пока нет — начислять будет нечего{manualOk ? <>, даже вписанную сумму</> : null}. Поставьте занятия в расписание.</>
+              {preview ? (
+                <div className="rounded-xl px-3 py-2.5 text-xs leading-relaxed ring-1 ring-blue-500/25 bg-blue-500/[0.06] text-gray-600">
+                  Первый период — <b>{count} {plural(count, "занятие", "занятия", "занятий")}</b>,
+                  {" "}{dayMonth(preview.from)} — {dayMonth(preview.until)}
+                  {due ? <>, к оплате {fmtNum(due)} ₽</> : null}. Долг появится сразу.
+                  {count < size && (
+                    <> В периоде их {size}: остальные ещё не стоят в расписании.</>
                   )}
+                </div>
+              ) : (
+                <div className="rounded-xl px-3 py-2.5 text-xs leading-relaxed ring-1 ring-amber-500/30 bg-amber-500/[0.07] text-amber-700 dark:text-amber-300">
+                  С этой даты занятий пока нет — начислять будет нечего{manualOk ? <>, даже вписанную сумму</> : null}. Поставьте занятия в расписание.
                 </div>
               )}
             </>

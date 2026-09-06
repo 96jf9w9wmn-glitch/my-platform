@@ -106,19 +106,47 @@ language sql immutable set search_path = public as $$
          + make_interval(mins => coalesce(p_minutes, 60))
 $$;
 
--- Следующая граница периода абонемента. Повторяет арифметику addPeriod() из
--- src/billing.js ВКЛЮЧАЯ переполнение месяца: у JS `setMonth` 31 января + месяц
--- даёт 3 марта, а не 28 февраля. Расходиться тут нельзя — по этим границам
--- кабинет показывает долг, а база выставляет квитанции.
-create or replace function public.package_next(p_date date, p_key text)
-returns date
-language sql immutable set search_path = public as $$
-  select case p_key
-    when 'week'   then p_date + 7
-    when 'weeks2' then p_date + 14
-    else ((date_trunc('month', p_date) + interval '1 month')::date
-            + (extract(day from p_date)::int - 1))
-  end
+-- Календарная граница периода больше не нужна: период абонемента меряется
+-- ЗАНЯТИЯМИ (см. ниже и шапку src/billing.js). Старую функцию убираем, чтобы
+-- по ней случайно не посчитали деньги.
+drop function if exists public.package_next(date, text);
+
+-- Сколько занятий в неделю у ученика — SQL-зеркало weeklyRate() из
+-- src/billing.js. Расписание — это повторяющиеся пары «день недели + время»;
+-- разовая встреча, которой в расписании нет, в норму недели не входит.
+create or replace function public.package_rate(p_student public.students)
+returns int
+language sql stable set search_path = public as $$
+  with l as (
+    select (x->>'date')::date as d, coalesce(x->>'time', '') as t
+      from jsonb_array_elements(coalesce(p_student.lessons, '[]'::jsonb)) x
+     where nullif(x->>'date', '') is not null
+  ),
+  slot as (
+    select count(*) as c from l group by extract(dow from d), t
+  ),
+  bounds as (
+    select coalesce(p_student.package_start, (select min(d) from l)) as first_day
+  )
+  select greatest(1, coalesce(
+    -- расписание: сколько слотов повторяется
+    nullif((select count(*)::int from slot where c > 1), 0),
+    -- расписание ещё не повторилось — занятия первой недели абонемента
+    (select count(*)::int from l, bounds
+      where l.d >= bounds.first_day and l.d <= bounds.first_day + 6)
+  ))
+$$;
+
+-- Сколько занятий в одном периоде: занятий в неделю × недель в периоде.
+-- Зеркало packageSize() из src/billing.js.
+create or replace function public.package_size(p_student public.students)
+returns int
+language sql stable set search_path = public as $$
+  select greatest(1, public.package_rate(p_student) * case p_student.package_period
+    when 'weeks2' then 2
+    when 'month'  then 4
+    else 1
+  end)
 $$;
 
 -- НАЧИСЛЕНИЯ УЧЕНИКА: одна строка на занятие, за которое он должен заплатить,
@@ -132,8 +160,9 @@ $$;
 -- Правила, все три взяты из billing.js:
 --   * занятие со статусом 'excused' не начисляется никогда;
 --   * поштучная оплата — начисляется прошедшее занятие по цене занятия;
---   * абонемент — с началом периода начисляются ВСЕ его занятия сразу, а сумма
---     периода (вписанная руками либо «занятий × цена») делится между ними;
+--   * абонемент — период это N подряд идущих занятий (package_size), и как
+--     только пришёл день первого из них, начисляются ВСЕ занятия периода сразу;
+--     сумма периода (вписанная руками либо «занятий × цена») делится между ними,
 --     остаток от деления кладётся на первое занятие периода.
 create or replace function public.student_accrual(p_student public.students)
 returns table (lesson_date date, lesson_time text, duration int, amount numeric)
@@ -143,12 +172,7 @@ declare
   v_key    text    := p_student.package_period;
   v_start  date    := p_student.package_start;
   v_manual numeric := nullif(p_student.package_amount, 0);
-  v_from   date;
-  v_until  date;
-  v_total  numeric;
-  v_base   numeric;
-  v_n      int;
-  i        int;
+  v_size   int;
 begin
   -- Поштучная оплата (и любая недонастроенная карточка абонемента: период без
   -- даты начала не от чего отсчитывать).
@@ -169,6 +193,8 @@ begin
     return;
   end if;
 
+  v_size := public.package_size(p_student);
+
   -- До абонемента ученик платил как все — по факту проведения.
   if v_price > 0 then
     return query
@@ -184,46 +210,44 @@ begin
                coalesce((l->>'duration')::int, p_student.lesson_duration, 60)) < now();
   end if;
 
-  -- Периоды от даты начала до текущего включительно. Прошедшие периоды
-  -- начислены целиком, иначе долг за прошлый месяц исчезал бы с началом
-  -- следующего. 500 шагов — страховка от битой даты, а не бизнес-правило.
-  v_from := v_start;
-  for i in 1..500 loop
-    v_until := public.package_next(v_from, v_key) - 1;
-
-    -- Сумма периода делится между его занятиями; занятия по порядку, остаток от
-    -- деления — первому. Период БЕЗ занятий не стоит ничего даже при вписанной
-    -- сумме: деньги, не привязанные ни к одному занятию, не легли бы ни в одну
-    -- квитанцию (то же правило, что в billing.js).
-    return query
-      with lesson as (
-        select (l->>'date')::date                       as d,
-               coalesce(l->>'time', '')                 as t,
-               coalesce((l->>'duration')::int, p_student.lesson_duration, 60) as dur
-          from jsonb_array_elements(coalesce(p_student.lessons, '[]'::jsonb)) l
-         where nullif(l->>'date', '') is not null
-           and coalesce(l->>'status', '') <> 'excused'
-           and (l->>'date')::date between v_from and v_until
-      ),
-      numbered as (
-        select d, t, dur,
-               row_number() over (order by d, t) as n,
-               count(*)     over ()              as cnt
-          from lesson
-      ),
-      priced as (
-        select d, t, dur, n, cnt, coalesce(v_manual, cnt * v_price) as total
-          from numbered
-      )
+  -- Периоды абонемента — подряд идущие куски списка занятий по package_size()
+  -- штук: «месяц» у ученика с двумя занятиями в неделю это восемь занятий, а не
+  -- календарное окно (см. шапку src/billing.js). Период начисляется целиком, как
+  -- только пришёл день его первого занятия.
+  --
+  -- Сумма периода делится между его занятиями, остаток от деления — первому.
+  -- Период БЕЗ занятий не стоит ничего даже при вписанной сумме: деньги, не
+  -- привязанные ни к одному занятию, не легли бы ни в одну квитанцию.
+  return query
+    with lesson as (
+      select (l->>'date')::date                       as d,
+             coalesce(l->>'time', '')                 as t,
+             coalesce((l->>'duration')::int, p_student.lesson_duration, 60) as dur
+        from jsonb_array_elements(coalesce(p_student.lessons, '[]'::jsonb)) l
+       where nullif(l->>'date', '') is not null
+         and coalesce(l->>'status', '') <> 'excused'
+         and (l->>'date')::date >= v_start
+    ),
+    numbered as (
+      select d, t, dur, (row_number() over (order by d, t) - 1) as i from lesson
+    ),
+    chunked as (
       select d, t, dur,
-             case when n = 1 then total - floor(total / cnt) * (cnt - 1)
-                             else floor(total / cnt) end
-        from priced
-       where total > 0;
-
-    exit when v_until >= current_date;
-    v_from := public.package_next(v_from, v_key);
-  end loop;
+             row_number() over (partition by i / v_size order by d, t) as n,
+             count(*)     over (partition by i / v_size)               as cnt,
+             min(d)       over (partition by i / v_size)               as first_d
+        from numbered
+    ),
+    priced as (
+      select d, t, dur, n, cnt, coalesce(v_manual, cnt * v_price) as total
+        from chunked
+       where first_d <= current_date
+    )
+    select d, t, dur,
+           case when n = 1 then total - floor(total / cnt) * (cnt - 1)
+                           else floor(total / cnt) end
+      from priced
+     where total > 0;
 end;
 $$;
 
@@ -448,7 +472,11 @@ revoke execute on function public.invoices_sync_for(uuid) from anon, authenticat
 -- Начисления — служебный расчёт для двух функций выше. Наружу не отдаём: строка
 -- ученика целиком в аргументе, а читать её вправе не каждый.
 revoke execute on function public.student_accrual(public.students) from anon, authenticated, app_user;
-grant  execute on function public.package_next(date, text) to anon, authenticated, app_user;
+-- Размер периода тоже принимает строку ученика целиком — наружу не отдаём по
+-- той же причине; в кабинете это считает src/billing.js по уже прочитанной
+-- карточке.
+revoke execute on function public.package_rate(public.students) from anon, authenticated, app_user;
+revoke execute on function public.package_size(public.students) from anon, authenticated, app_user;
 grant  execute on function public.invoices_sync_self()  to authenticated;
 grant  execute on function public.invoices_sync_mine()  to app_user;
 grant  execute on function public.invoice_payee(uuid)   to anon, authenticated, app_user;
