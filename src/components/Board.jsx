@@ -1749,7 +1749,9 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
 
     // «Текст» ничего не рисует: нажатие ставит поле ввода (или открывает то,
     // что уже написано в этом месте).
-    if (tool === "text") { beginTextAt(e.clientX, e.clientY); return }
+    // preventDefault — чтобы браузер не увёл фокус с только что открытого поля
+    // на холст своим mousedown: ровно из-за этого приходилось нажимать второй раз.
+    if (tool === "text") { e.preventDefault(); beginTextAt(e.clientX, e.clientY); return }
 
     // «Курсор» — выделение рамкой / перемещение выделенного (не рисует)
     if (tool === "cursor") {
@@ -2469,9 +2471,23 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     for (const st of strokes.current.values()) if (st.tool === "text" && hitStroke(st, p[0], p[1], tol)) hit = st
     return hit
   }
+  // ГЛАВНОЕ: фокус ставится ПРЯМО ЗДЕСЬ, внутри обработчика нажатия, и до того,
+  // как React перерисует доску. Иначе поле появляется, а курсора в нём нет:
+  // Safari и iOS ставят фокус (и показывают клавиатуру) только по ходу самого
+  // жеста, а в прочих браузерах фокус тут же уводит совместимостное mousedown по
+  // холсту. Поэтому же поле ввода ВСЕГДА живёт в разметке — создать его и
+  // сфокусировать одним жестом React не успевает.
   function openTextEditor(ed) {
     const next = { ...ed, seq: ++textSeq.current }
     editPos.current = next
+    const ta = editRef.current
+    if (ta) {
+      ta.value = ed.value || ""
+      layoutTextEditor()                  // сначала на место, иначе экран дёрнется к нулю
+      ta.focus({ preventScroll: true })
+      const n = ta.value.length
+      try { ta.setSelectionRange(n, n) } catch { /* поле ещё не готово — курсор встанет сам */ }
+    }
     setEditText(next)
     scheduleDraw()   // правимая надпись уходит с холста в поле ввода
   }
@@ -2499,6 +2515,9 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     const ed = editPos.current
     if (!ed) return
     const raw = editRef.current ? editRef.current.value : ed.value
+    // Поле остаётся в разметке, поэтому фокус надо снять руками: иначе он висит
+    // в невидимом поле и глушит горячие клавиши доски (P, E, ⌘Z считают, что печатают).
+    editRef.current?.blur()
     editPos.current = null
     setEditText(null)
     const text = raw.replace(/[ \t]+$/gm, "").replace(/\n+$/, "")
@@ -2733,15 +2752,10 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     scheduleLive()
   }, [color, textSize, scheduleLive])
 
-  // Поле ввода: встаём на место и берём фокус, курсор — в конец набранного
+  // Подстраховка: фокус и значение ставит openTextEditor (синхронно, в жесте), а
+  // здесь поле лишь встаёт по месту после перерисовки.
   useEffect(() => {
-    if (!editText) return
-    layoutTextEditor()
-    const ta = editRef.current
-    if (!ta) return
-    ta.focus({ preventScroll: true })
-    const n = ta.value.length
-    try { ta.setSelectionRange(n, n) } catch { /* поле ещё не готово — курсор встанет сам */ }
+    if (editText) layoutTextEditor()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editText?.seq])
 
@@ -3177,43 +3191,50 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
 
         {/* Поле ввода надписи — поверх холста, ровно на том месте и того кегля,
             каким текст ляжет на доску. Фон прозрачный: подписывают поверх чертежа,
-            и белая (тем более серая) подложка накрыла бы его собой. */}
-        {editText && (
-          <div ref={editBoxRef} className="absolute"
+            и белая (тем более серая) подложка накрыла бы его собой.
+
+            Поле ВСЕГДА в разметке, даже когда не пишут: сфокусировать можно только
+            то, что уже есть в документе, а фокус обязан встать в тот же миг, что и
+            нажатие (см. openTextEditor). Прятать его через display/visibility нельзя
+            — так элемент перестаёт быть фокусируемым, поэтому вне набора он просто
+            прозрачный и не ловит нажатия. Значение полю ставит openTextEditor, а не
+            React: перерисовка из-за смены цвета или кегля не должна стирать набранное. */}
+        <div ref={editBoxRef} className="absolute"
+          style={{
+            left: editText ? editText.x * view.current.scale + view.current.x : 0,
+            top: editText ? editText.y * view.current.scale + view.current.y : 0,
+            transformOrigin: "50% 50%",
+            opacity: editText ? 1 : 0,
+            pointerEvents: editText ? "auto" : "none",
+          }}>
+          <textarea
+            ref={editRef}
+            rows={1}
+            wrap="off"
+            spellCheck={false}
+            tabIndex={editText ? 0 : -1}
+            aria-hidden={!editText}
+            aria-label="Надпись на доске"
+            onInput={() => { layoutTextEditor(); scheduleLive() }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              // Esc и ⌘↵ заканчивают набор. Остальное — обычный ввод: Enter даёт
+              // новую строку, ⌘Z правит текст, а не откатывает доску.
+              if (e.key === "Escape" || (e.key === "Enter" && (e.metaKey || e.ctrlKey))) {
+                e.preventDefault(); e.stopPropagation(); commitTextEdit()
+              }
+            }}
             style={{
-              left: editText.x * view.current.scale + view.current.x,
-              top: editText.y * view.current.scale + view.current.y,
-              transformOrigin: "50% 50%",
-            }}>
-            <textarea
-              key={editText.seq}
-              ref={editRef}
-              defaultValue={editText.value}
-              rows={1}
-              wrap="off"
-              spellCheck={false}
-              aria-label="Надпись на доске"
-              onInput={() => { layoutTextEditor(); scheduleLive() }}
-              onPointerDown={(e) => e.stopPropagation()}
-              onKeyDown={(e) => {
-                // Esc и ⌘↵ заканчивают набор. Остальное — обычный ввод: Enter даёт
-                // новую строку, ⌘Z правит текст, а не откатывает доску.
-                if (e.key === "Escape" || (e.key === "Enter" && (e.metaKey || e.ctrlKey))) {
-                  e.preventDefault(); e.stopPropagation(); commitTextEdit()
-                }
-              }}
-              style={{
-                display: "block", margin: 0, padding: 0, border: 0, background: "transparent",
-                outline: "1px dashed rgba(0,122,255,.55)", outlineOffset: 4,
-                resize: "none", overflow: "hidden", whiteSpace: "pre", minWidth: 2,
-                font: `${editText.size * view.current.scale}px ${TEXT_FONT}`,
-                lineHeight: `${editText.size * view.current.scale * TEXT_LINE}px`,
-                color: resolveColor(editText.color, dark),
-                caretColor: resolveColor(editText.color, dark),
-              }}
-            />
-          </div>
-        )}
+              display: "block", margin: 0, padding: 0, border: 0, background: "transparent",
+              outline: editText ? "1px dashed rgba(0,122,255,.55)" : "none", outlineOffset: 4,
+              resize: "none", overflow: "hidden", whiteSpace: "pre", minWidth: 2,
+              font: `${(editText?.size || TEXT_DEFAULT) * view.current.scale}px ${TEXT_FONT}`,
+              lineHeight: `${(editText?.size || TEXT_DEFAULT) * view.current.scale * TEXT_LINE}px`,
+              color: resolveColor(editText?.color || "ink", dark),
+              caretColor: resolveColor(editText?.color || "ink", dark),
+            }}
+          />
+        </div>
 
         {/* Слежение включено — об этом надо помнить: доска будет ездить сама.
             Любой свой сдвиг или зум слежение снимает, кнопка — запасной путь. */}
