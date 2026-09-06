@@ -115,26 +115,32 @@ function hasInk(canvas) {
 // не сливался с фоном. Лист снимается СВЕТЛЫМ всегда: под тёмную доску его перекрашивает
 // сама доска при отрисовке (tintSheet в boardPaint.js), поэтому переключение темы
 // перекрашивает и уже лежащие задания.
-// Углы срезаются НА МЕСТЕ (destination-in по скруглённому контуру), а не копированием
-// листа во второй холст: у листа под три мегапикселя, и лишняя копия стоила заметного
-// времени ровно ради четырёх уголков.
+// Углы срезаются копированием во ВТОРОЙ холст, и это не расточительство: рисовать по
+// холсту html2canvas нельзя. Он оставляет на своём контексте свою систему координат
+// (масштаб съёмки и сдвиг на положение блока, а блок стоит за левым краем экрана, на
+// -9999px). Любой наш контур попадает при этом далеко за пределы холста, и обрезка по
+// нему (destination-in) стирает ЛИСТ ЦЕЛИКОМ — на доске оказывается пустое место.
+// Проверено на боевой: лист пропадал именно так. У нового холста система координат
+// своя и чистая.
 function roundSheet(canvas) {
   const r = RADIUS * SCALE
-  const ctx = canvas.getContext("2d")
+  const out = document.createElement("canvas")
+  out.width = canvas.width
+  out.height = canvas.height
+  const ctx = out.getContext("2d")
   const path = new Path2D()
   // roundRect появился в Safari только в 16.4 — на старых iPad лист остаётся прямоугольным,
   // но не пропадает
-  if (path.roundRect) path.roundRect(0.5, 0.5, canvas.width - 1, canvas.height - 1, r)
-  else path.rect(0.5, 0.5, canvas.width - 1, canvas.height - 1)
+  if (path.roundRect) path.roundRect(0.5, 0.5, out.width - 1, out.height - 1, r)
+  else path.rect(0.5, 0.5, out.width - 1, out.height - 1)
   ctx.save()
-  ctx.globalCompositeOperation = "destination-in"
-  ctx.fillStyle = "#000"
-  ctx.fill(path)
+  ctx.clip(path)
+  ctx.drawImage(canvas, 0, 0)
   ctx.restore()
   ctx.lineWidth = SCALE
   ctx.strokeStyle = "rgba(0,0,0,.10)"
   ctx.stroke(path)
-  return canvas
+  return out
 }
 
 /**

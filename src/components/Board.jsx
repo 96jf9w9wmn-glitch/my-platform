@@ -3252,8 +3252,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
                     boxShadow: `0 0 0 1.5px ${dark ? "rgba(255,255,255,.4)" : "rgba(0,0,0,.22)"}` }} />
                 </button>
                 {menuShown("txtColor") && (
-                  {/* width по содержимому обязателен: попап абсолютный, а опорная
-                      кнопка — 32 px, и без него колонки схлопывались в одну. */}
+                  // width по содержимому обязателен: попап абсолютный, а опорная
+                  // кнопка — 32 px, и без него колонки схлопывались в одну.
                   <div className={`absolute bottom-full mb-2 left-0 grid grid-cols-4 gap-0.5 p-2 rounded-xl shadow-lg z-10 ${menuAnim("txtColor")}`}
                     style={{ background: panelBg, border: `1px solid ${panelBorder}`, width: "max-content" }}>
                     {BASE_INKS.map((c) => (
