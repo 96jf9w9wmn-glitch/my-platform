@@ -140,6 +140,15 @@ export function TextFileButton({ textFile }) {
   )
 }
 
+// Ширина чертежа. У SVG из генератора она своя и осмысленная (300–600 px) —
+// картинка и так не растягивается, ограничивать нечего. А растровый рисунок
+// (сканы ФИПИ, /tire-fig1.png — 1833 px) по одному `max-w-full` разъезжается во
+// всю ширину карточки и вытесняет само задание, поэтому ему нужен потолок.
+const imageWidth = (url, compact) =>
+  compact || !url.startsWith("data:image/svg")
+    ? "max-w-full sm:max-w-sm"
+    : "max-w-full"
+
 // Всё приложенное к заданию разом, в том же порядке, в каком это стоит в
 // печатном варианте ФИПИ: текст для чтения, архив, чертёж или программа,
 // вопрос под чертежом, таблица, файлы с данными. Само условие рисует
@@ -163,7 +172,7 @@ export default function TaskAttachments({ task, tail = null, imageAlt = "Илл�
         <img
           src={task.image_url}
           alt={imageAlt}
-          className={`max-w-full h-auto self-start rounded-lg border border-gray-100 dark:border-white/10 bg-white mt-1 ${compact ? "sm:max-w-sm" : ""}`}
+          className={`h-auto self-start rounded-lg border border-gray-100 dark:border-white/10 bg-white mt-1 ${imageWidth(task.image_url, compact)}`}
         />
       )}
       {tail}
