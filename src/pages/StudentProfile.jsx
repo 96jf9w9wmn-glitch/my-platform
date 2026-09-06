@@ -467,11 +467,16 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
               <div className="text-sm text-gray-700">
                 Абонементом · {periodLabel(pack.period).toLowerCase()}
               </div>
+              {/* Период, который ещё не начался, в долг не входит: начисление
+                  проходит в день его первого занятия. Без этой оговорки сумма
+                  периода выглядит уже начисленной. */}
               <div className="text-xs text-gray-500 mt-1 leading-relaxed">
-                Текущий период — {dayMonth(pack.from)} — {dayMonth(pack.until)},
+                {pack.started ? "Текущий период" : "Следующий период"} — {dayMonth(pack.from)} — {dayMonth(pack.until)},
                 {" "}{pack.lessons} {plural(pack.lessons, "занятие", "занятия", "занятий")}
                 {pack.amount ? <> на {fmtNum(pack.amount)} ₽{pack.manual ? " (сумма задана)" : ""}</> : null}.
-                Долг за него начислен целиком, оплата вносится в «Финансах».
+                {pack.started
+                  ? " Долг за него начислен целиком, оплата вносится в «Финансах»."
+                  : ` Долг за него будет начислен ${dayMonth(pack.from)}, в день первого занятия.`}
               </div>
             </>
           ) : (

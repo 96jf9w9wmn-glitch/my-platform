@@ -410,10 +410,14 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
                           </span>
                           {/* У абонемента в сумму входят и ещё не прошедшие
                               занятия периода — без подписи цифра выглядит
-                              завышенной. */}
+                              завышенной. Не начавшийся период в долг НЕ входит,
+                              поэтому у него подписана дата начала: иначе «по
+                              19 сентября» читается как «уже начислено». */}
                           {pack && (
                             <span className="whitespace-nowrap text-blue-600 dark:text-blue-400">
-                              · абонемент по {dayMonth(pack.until)}
+                              {pack.started
+                                ? `· абонемент по ${dayMonth(pack.until)}`
+                                : `· абонемент с ${dayMonth(pack.from)}`}
                             </span>
                           )}
                           <Icon name={open ? "chevron-up" : "chevron-down"} size={13} className="shrink-0" />

@@ -333,6 +333,34 @@ const ChatPage = memo(Chat)
 const VariantsPage = memo(Variants)
 const TaskGenPage = memo(TaskGenPreview)
 
+// Раздел за экраном не пересчитывается.
+//
+// Разделы остаются в дереве после первого захода (visitedPages ниже), поэтому
+// ЛЮБОЕ изменение ростера перерисовывало все открытые разом — а считают они
+// тяжело: деньги, конфликты, расписание и результаты собираются по всем
+// ученикам прямо на рендере (useMemo в этих файлах почти нет). Девять таких
+// пересчётов на одно нажатие — это и есть замирание кабинета, когда быстро
+// нажимают кнопки и переключают разделы. memo на разделах тут не спасает: у
+// нового списка учеников другая ссылка, и он честно проходит сравнение.
+//
+// Скрытому разделу свежие данные не нужны — он их не показывает. Держим у него
+// ПРЕЖНИЙ элемент (React по совпадению ссылки пропускает поддерево целиком) и
+// подставляем новый в том же рендере, в котором раздел снова стал видимым, —
+// то есть раньше, чем человек его увидит.
+//
+// Собственная жизнь раздела от этого не меняется: подписки, таймеры и его
+// собственное состояние живут в эффектах и в самом компоненте, а их
+// заморозка пропсов не касается (чат за экраном по-прежнему считает
+// непрочитанные, «Главная» тикает минутами).
+function PageSlot({ active, className, children }) {
+  // Правка состояния прямо в рендере — тот же приём React, что в <Reveal> и в
+  // сбросе переписки при смене диалога: лишнего кадра со старым содержимым не
+  // будет. Видимый раздел рисуется как есть, скрытый — прежним элементом.
+  const [shown, setShown] = useState(children)
+  if (active && shown !== children) setShown(children)
+  return <div className={className}>{active ? children : shown}</div>
+}
+
 function App() {
   // Родительская сессия по-прежнему доверяется мгновенно (без сервeрной проверки —
   // это отдельный, ещё не закрытый пробел, см. supabase/auth_hardening.sql).
@@ -1138,15 +1166,15 @@ function App() {
               пока грузился файл тяжёлого раздела, Suspense гасил ВЕСЬ кабинет
               до логотипа-загрузки, а сбой этой загрузки (после раскатки старых
               файлов на сервере уже нет) ронял приложение в белый экран. */}
-          <div className={activePage !== "dashboard" ? "hidden" : "page-active"}>{visitedPages.has("dashboard") && <PageBoundary><DashboardPage students={students} loaded={studentsReady} setActivePage={navigateTo} onOpenBoard={openBoard} /></PageBoundary>}</div>
-          <div className={activePage !== "students" ? "hidden" : "page-active"}>{visitedPages.has("students") && <PageBoundary><StudentsPage students={students} loaded={studentsReady} setStudents={handleSetStudents} tutorId={user.id} tutorCode={user.profile?.code || ""} onOpenBoard={openBoard} /></PageBoundary>}</div>
-          <div className={activePage !== "payment" ? "hidden" : "page-active"}>{visitedPages.has("payment") && <PageBoundary><PaymentPage students={students} setStudents={handleSetStudents} tutorId={user.id} setActivePage={navigateTo} /></PageBoundary>}</div>
-          <div className={activePage !== "variants" ? "hidden" : "page-active"}>{visitedPages.has("variants") && <PageBoundary><VariantsPage user={user} students={students} /></PageBoundary>}</div>
-          <div className={activePage !== "schedule" ? "hidden" : "page-active"}>{visitedPages.has("schedule") && <PageBoundary><SchedulePage students={students} setStudents={handleSetStudents} onOpenBoard={openBoard} /></PageBoundary>}</div>
-          <div className={activePage !== "homework" ? "hidden" : "page-active"}>{visitedPages.has("homework") && <PageBoundary><HomeworkPage user={user} students={students} /></PageBoundary>}</div>
-          <div className={activePage !== "results" ? "hidden" : "page-active"}>{visitedPages.has("results") && <PageBoundary><ResultsPage students={students} loaded={studentsReady} user={user} /></PageBoundary>}</div>
-          <div className={activePage !== "taskgen" ? "hidden" : "page-active"}>{pageAllowed("taskgen") && visitedPages.has("taskgen") && <PageBoundary><TaskGenPage /></PageBoundary>}</div>
-          <div className={activePage !== "profile" ? "hidden" : "page-active"}>{visitedPages.has("profile") && (
+          <PageSlot active={activePage === "dashboard"} className={activePage !== "dashboard" ? "hidden" : "page-active"}>{visitedPages.has("dashboard") && <PageBoundary><DashboardPage students={students} loaded={studentsReady} setActivePage={navigateTo} onOpenBoard={openBoard} /></PageBoundary>}</PageSlot>
+          <PageSlot active={activePage === "students"} className={activePage !== "students" ? "hidden" : "page-active"}>{visitedPages.has("students") && <PageBoundary><StudentsPage students={students} loaded={studentsReady} setStudents={handleSetStudents} tutorId={user.id} tutorCode={user.profile?.code || ""} onOpenBoard={openBoard} /></PageBoundary>}</PageSlot>
+          <PageSlot active={activePage === "payment"} className={activePage !== "payment" ? "hidden" : "page-active"}>{visitedPages.has("payment") && <PageBoundary><PaymentPage students={students} setStudents={handleSetStudents} tutorId={user.id} setActivePage={navigateTo} /></PageBoundary>}</PageSlot>
+          <PageSlot active={activePage === "variants"} className={activePage !== "variants" ? "hidden" : "page-active"}>{visitedPages.has("variants") && <PageBoundary><VariantsPage user={user} students={students} /></PageBoundary>}</PageSlot>
+          <PageSlot active={activePage === "schedule"} className={activePage !== "schedule" ? "hidden" : "page-active"}>{visitedPages.has("schedule") && <PageBoundary><SchedulePage students={students} setStudents={handleSetStudents} onOpenBoard={openBoard} /></PageBoundary>}</PageSlot>
+          <PageSlot active={activePage === "homework"} className={activePage !== "homework" ? "hidden" : "page-active"}>{visitedPages.has("homework") && <PageBoundary><HomeworkPage user={user} students={students} /></PageBoundary>}</PageSlot>
+          <PageSlot active={activePage === "results"} className={activePage !== "results" ? "hidden" : "page-active"}>{visitedPages.has("results") && <PageBoundary><ResultsPage students={students} loaded={studentsReady} user={user} /></PageBoundary>}</PageSlot>
+          <PageSlot active={activePage === "taskgen"} className={activePage !== "taskgen" ? "hidden" : "page-active"}>{pageAllowed("taskgen") && visitedPages.has("taskgen") && <PageBoundary><TaskGenPage /></PageBoundary>}</PageSlot>
+          <PageSlot active={activePage === "profile"} className={activePage !== "profile" ? "hidden" : "page-active"}>{visitedPages.has("profile") && (
             <PageBoundary>
               <ProfilePage
                 user={user}
@@ -1155,11 +1183,11 @@ function App() {
                 onProfileChange={handleProfileChange}
               />
             </PageBoundary>
-          )}</div>
-          <div className={activePage !== "subscription" ? "hidden" : "page-active"}>{visitedPages.has("subscription") && (
+          )}</PageSlot>
+          <PageSlot active={activePage === "subscription"} className={activePage !== "subscription" ? "hidden" : "page-active"}>{visitedPages.has("subscription") && (
             <PageBoundary><SubscriptionPage studentsCount={students.length} tutorId={user.id} /></PageBoundary>
-          )}</div>
-          <div className={activePage !== "chat" ? "hidden" : "flex-1 min-h-0 flex flex-col page-active"}>{visitedPages.has("chat") && (
+          )}</PageSlot>
+          <PageSlot active={activePage === "chat"} className={activePage !== "chat" ? "hidden" : "flex-1 min-h-0 flex flex-col page-active"}>{visitedPages.has("chat") && (
             <PageBoundary>
               <ChatPage
                 myId={`t:${user.id}`}
@@ -1169,7 +1197,7 @@ function App() {
                 onUnreadChange={handleChatUnread}
               />
             </PageBoundary>
-          )}</div>
+          )}</PageSlot>
         </div>
 
         <div className="mobile-nav-glass md:hidden fixed bottom-0 left-0 right-0 z-50">

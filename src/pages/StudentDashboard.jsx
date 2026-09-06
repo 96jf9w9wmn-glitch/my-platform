@@ -3120,14 +3120,17 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
 
                     {/* Абонемент: ученик платит вперёд за период, поэтому в
                         сумме к оплате стоят и ещё не прошедшие занятия. Без
-                        этой строки цифра выглядела бы завышенной. */}
+                        этой строки цифра выглядела бы завышенной. Период, ещё
+                        не начавшийся, в сумму к оплате НЕ входит — иначе строка
+                        назовёт число, которого нет наверху карточки. */}
                     {pack && (
                       <div className="glass-sm px-4 py-3 text-sm text-gray-600">
                         Абонемент: оплата вперёд за {periodLabel(pack.period).toLowerCase()} —
                         {" "}<span className="font-medium text-gray-800">
                           {pack.lessons} {plural(pack.lessons, "занятие", "занятия", "занятий")}
                         </span>{" "}по {longDate(pack.until)}
-                        {pack.amount ? <>, к оплате <span className="font-medium text-gray-800">{fmtNum(pack.amount)} ₽</span></> : null}.
+                        {pack.amount ? <>, {pack.started ? "к оплате" : "сумма"} <span className="font-medium text-gray-800">{fmtNum(pack.amount)} ₽</span></> : null}.
+                        {!pack.started && <> Период начнётся {longDate(pack.from)} — тогда сумма и появится к оплате.</>}
                       </div>
                     )}
 
