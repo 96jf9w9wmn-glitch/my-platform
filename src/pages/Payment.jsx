@@ -10,7 +10,7 @@ import { supabase } from "../supabase"
 import { isLessonPast, getInitials, parsePaymentDate, plural, LESSON_EXCUSED } from "../utils"
 import { studentDebt, unpaidLessons, studentBilling, dayMonth } from "../billing"
 import { TAX_MODES, useTaxSettings } from "../taxModes"
-import { fmtNum } from "../num"
+import { fmtNum, groupInput } from "../num"
 
 // Подсказки для быстрого добавления при пустом списке расходов.
 const EXPENSE_SUGGESTIONS = ["Онлайн-доска", "Подписка Precettore", "Реклама", "Связь"]
@@ -444,7 +444,7 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
                             type="text"
                             inputMode="numeric"
                             autoFocus
-                            value={customAmount}
+                            value={groupInput(customAmount)}
                             onChange={(e) => setCustomAmount(e.target.value.replace(/\D/g, ""))}
                             onKeyDown={(e) => {
                               if (e.key === "Enter") handlePay(s, Number(customAmount))
@@ -657,7 +657,7 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
                 <input
                   type="text"
                   inputMode="numeric"
-                  value={newExpAmount}
+                  value={groupInput(newExpAmount)}
                   onChange={(e) => setNewExpAmount(e.target.value.replace(/\D/g, ""))}
                   onKeyDown={(e) => e.key === "Enter" && addExpense(newExpName, Number(newExpAmount))}
                   placeholder="Сумма"

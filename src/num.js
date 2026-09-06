@@ -7,3 +7,15 @@
 export const NUM_SPACE = "\u202f"
 
 export const fmtNum = (n) => (Number(n) || 0).toLocaleString("ru-RU").replace(/\s/g, NUM_SPACE)
+
+// То же разделение разрядов, но для поля ВВОДА: человек печатает «12500», а
+// видеть должен «12 500». Форматируется только целая часть — недописанная
+// дробная («12500,») числом ещё не является, и её нельзя гонять через
+// toLocaleString, иначе запятая пропадёт прямо под пальцами.
+export const groupInput = (raw) => {
+  const s = String(raw ?? "")
+  if (!s) return ""
+  const [int, ...rest] = s.split(/[.,]/)
+  const head = int ? fmtNum(Number(int)) : ""
+  return rest.length ? `${head},${rest.join("").slice(0, 2)}` : head
+}

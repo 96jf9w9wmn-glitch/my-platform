@@ -4,7 +4,7 @@ import { useClosing } from "../useClosing"
 import Icon from "./Icon"
 import SegmentSwitch from "./SegmentSwitch"
 import { plural } from "../utils"
-import { fmtNum } from "../num"
+import { fmtNum, groupInput } from "../num"
 import {
   PERIODS, dayMonth, todayIso, packagePeriods, packageSize,
   MODE_LESSON, MODE_PACKAGE,
@@ -139,7 +139,7 @@ function PaymentModeModal({ student, onSubmit, onClose }) {
                     id="package-amount"
                     type="text"
                     inputMode="decimal"
-                    value={amount}
+                    value={groupInput(amount)}
                     onChange={(e) => setAmount(e.target.value.replace(/[^\d.,]/g, ""))}
                     placeholder={calc ? fmtNum(calc) : "Своя сумма"}
                     className="input-glass pr-8"
