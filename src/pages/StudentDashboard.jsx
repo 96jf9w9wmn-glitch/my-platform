@@ -35,6 +35,7 @@ import {
   formatLessonWhen, formatLessonShort, MOVE_BY_STUDENT, MOVE_BY_TUTOR,
 } from "../lessonMove"
 import { findClash } from "../lessonConflict"
+import { convertWall } from "../timezone"
 // Состав варианта (какие номера в части 1, какие — во второй) знает банк заданий:
 // у математики номера идут подряд, у информатики — с пропусками, и «номер больше
 // двенадцати» там означало бы не то.
@@ -1867,11 +1868,20 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
 
   useEffect(() => {
     if (!tutorIdsKey) return
-    supabase.from("tutors").select("id, name, subject").in("id", tutorIdsKey.split(","))
-      .then(({ data }) => {
-        if (!data) return
-        setTutors(Object.fromEntries(data.map((t) => [t.id, { name: t.name, subject: t.subject || "" }])))
-      })
+    // Пояс репетитора нужен ровно для одного: составить текст уведомления о
+    // переносе так, чтобы он прочитал в нём СВОЁ время. Время самого занятия у
+    // ученика не меняется никогда — ни от переезда репетитора, ни от этой
+    // колонки (см. src/timezone.js).
+    const pick = (cols) => supabase.from("tutors").select(cols).in("id", tutorIdsKey.split(","))
+    pick("id, name, subject, timezone").then(async ({ data, error }) => {
+      // Колонки может ещё не быть: миграция supabase/timezones.sql выполняется
+      // руками, и без запасного пути пропали бы имя и предмет репетитора.
+      const rows = error && /timezone/.test(error.message || "")
+        ? (await pick("id, name, subject")).data
+        : data
+      if (!rows) return
+      setTutors(Object.fromEntries(rows.map((t) => [t.id, { name: t.name, subject: t.subject || "", timezone: t.timezone || null }])))
+    })
   }, [tutorIdsKey])
 
   useEffect(() => {
@@ -2093,13 +2103,22 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     supabase.from("notifications").insert({
       user_id: student.tutor_id,
       title: "Ученик просит перенести занятие",
-      body: `${user.profile?.name || "Ученик"}: ${formatLessonWhen(target.date, target.time)} → ${formatLessonWhen(date, time)}`
+      body: `${user.profile?.name || "Ученик"}: ${whenForTutor(target.date, target.time)} → ${whenForTutor(date, time)}`
         + (comment ? ` · «${comment}»` : ""),
     }).then(({ error: notifyError }) => {
       if (notifyError) console.error("Уведомление о переносе не ушло:", notifyError.message)
     })
     setMovingLesson(null)
     onReloadStudents?.()
+  }
+
+  // Время в тексте для репетитора — в ЕГО поясе. Занятие у ученика лежит в
+  // поясе, о котором договорились (якорь расписания), и репетитор, уехавший в
+  // другую страну, иначе прочитал бы в уведомлении время на час мимо того,
+  // что стоит у него в расписании.
+  function whenForTutor(date, time) {
+    const w = convertWall(date, time, student?.timezone, tutors[student?.tutor_id]?.timezone)
+    return formatLessonWhen(w.date, w.time)
   }
 
   async function cancelLessonMove(lesson) {
@@ -2121,7 +2140,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     supabase.from("notifications").insert({
       user_id: student.tutor_id,
       title: "Ученик согласился на перенос",
-      body: `${user.profile?.name || "Ученик"}: ${formatLessonWhen(lesson.date, lesson.time)} → ${formatLessonWhen(to.date, to.time)}`,
+      body: `${user.profile?.name || "Ученик"}: ${whenForTutor(lesson.date, lesson.time)} → ${whenForTutor(to.date, to.time)}`,
     }).then(({ error: notifyError }) => {
       if (notifyError) console.error("Уведомление о переносе не ушло:", notifyError.message)
     })
@@ -2137,7 +2156,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     supabase.from("notifications").insert({
       user_id: student.tutor_id,
       title: "Ученик не может перенести занятие",
-      body: `${user.profile?.name || "Ученик"}: занятие ${formatLessonWhen(lesson.date, lesson.time)} остаётся на прежнем месте.`,
+      body: `${user.profile?.name || "Ученик"}: занятие ${whenForTutor(lesson.date, lesson.time)} остаётся на прежнем месте.`,
     }).then(({ error: notifyError }) => {
       if (notifyError) console.error("Уведомление о переносе не ушло:", notifyError.message)
     })

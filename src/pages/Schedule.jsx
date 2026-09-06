@@ -13,6 +13,7 @@ import { isLessonPast, setLessonStatus, LESSON_EXCUSED } from "../utils"
 import { supabase } from "../supabase"
 import { MOVE_ANCHOR_TUTOR } from "../notifTarget"
 import { tutorLessons, findClash, clashLine, formatSpan, lessonsClash } from "../lessonConflict"
+import { toStudentWall, studentTimeNote, studentZoneDiffers, deviceTimezone, tzCity } from "../timezone"
 import {
   applyMoveToStudent, proposeMoveOnStudent, setMoveRequest, pendingMoveRequests,
   formatLessonWhen, formatLessonShort, todayDateStr, MOVE_BY_STUDENT, MOVE_BY_TUTOR,
@@ -98,6 +99,15 @@ function Schedule({ students, setStudents, onOpenBoard }) {
   const incomingMoves = pendingMoveRequests(students, MOVE_BY_STUDENT)
   const outgoingMoves = pendingMoveRequests(students, MOVE_BY_TUTOR)
 
+  // Время в тексте для ученика — в ЕГО поясе. В кабинете репетитора занятия
+  // лежат переведёнными в пояс его устройства (см. src/timezone.js), и без
+  // обратного перевода репетитор из Еревана прислал бы ученику в Москве
+  // приглашение на час позже, чем занятие стоит у самого ученика.
+  function whenForStudent(student, date, time) {
+    const w = toStudentWall(student, date, time)
+    return formatLessonWhen(w.date, w.time)
+  }
+
   function notifyStudentOf(student, title, body) {
     // Пока ученик не завёл аккаунт, доставить уведомление некому — сам перенос
     // от этого не отменяется.
@@ -117,7 +127,7 @@ function Schedule({ students, setStudents, onOpenBoard }) {
       String(s.id) === String(entry.studentId) ? { ...s, ...applyMoveToStudent(s, entry.lesson, to) } : s
     )))
     notifyStudentOf(student, "Перенос согласован",
-      `${formatLessonWhen(entry.lesson.date, entry.lesson.time)} → ${formatLessonWhen(to.date, to.time)}`)
+      `${whenForStudent(student, entry.lesson.date, entry.lesson.time)} → ${whenForStudent(student, to.date, to.time)}`)
   }
 
   // Предложение репетитора. Занятие остаётся на месте, пока ученик не ответит.
@@ -135,7 +145,7 @@ function Schedule({ students, setStudents, onOpenBoard }) {
       String(s.id) === String(studentId) ? { ...s, ...proposeMoveOnStudent(s, from, request) } : s
     )))
     notifyStudentOf(student, "Репетитор предлагает перенести занятие",
-      `${formatLessonWhen(from.date, from.time)} → ${formatLessonWhen(to.date, to.time)}. Подтверди перенос в кабинете.`
+      `${whenForStudent(student, from.date, from.time)} → ${whenForStudent(student, to.date, to.time)}. Подтверди перенос в кабинете.`
       + (comment ? ` «${comment}»` : ""))
   }
 
@@ -151,13 +161,13 @@ function Schedule({ students, setStudents, onOpenBoard }) {
   function declineRequest(entry) {
     const student = clearRequest(entry)
     notifyStudentOf(student, "Перенос не согласован",
-      `Занятие ${formatLessonWhen(entry.lesson.date, entry.lesson.time)} остаётся в расписании. Напиши репетитору, чтобы договориться о другом времени.`)
+      `Занятие ${whenForStudent(student, entry.lesson.date, entry.lesson.time)} остаётся в расписании. Напиши репетитору, чтобы договориться о другом времени.`)
   }
 
   function cancelOwnRequest(entry) {
     const student = clearRequest(entry)
     notifyStudentOf(student, "Предложение о переносе отменено",
-      `Занятие ${formatLessonWhen(entry.lesson.date, entry.lesson.time)} остаётся на прежнем месте.`)
+      `Занятие ${whenForStudent(student, entry.lesson.date, entry.lesson.time)} остаётся на прежнем месте.`)
   }
 
   // Пометка «не состоялось». Единого правила нет: одни репетиторы оставляют
@@ -170,7 +180,8 @@ function Schedule({ students, setStudents, onOpenBoard }) {
         ? { ...s, lessons: setLessonStatus(s.lessons || [], entry.lesson, status) }
         : s
     )))
-    const [title, body] = lessonStatusNotice(status, entry.lesson.date, entry.lesson.time)
+    const sw = toStudentWall(student, entry.lesson.date, entry.lesson.time)
+    const [title, body] = lessonStatusNotice(status, sw.date, sw.time)
     notifyStudentOf(student, title, body)
   }
 
@@ -373,6 +384,16 @@ function Schedule({ students, setStudents, onOpenBoard }) {
             Разовые занятия добавляйте здесь. Постоянные дни и время — в карточке ученика,
             раздел «Ученики» → «Редактировать».
           </p>
+          {/* Часы разъехались после переезда. Расписание идёт по часам
+              репетитора, а у занятия рядом стоит время ученика — сказать об
+              этом надо сразу, а не оставлять человека гадать, чьё время он
+              видит. Пояс нигде не выбирается: он берётся с устройства. */}
+          {students.some(studentZoneDiffers) && (
+            <p className="text-sm text-blue-500 mt-1 flex items-center gap-1.5">
+              <Icon name="globe" size={13} />
+              Время по вашим часам ({tzCity(deviceTimezone())}). У занятий, где ученик в другом поясе, рядом стоит его время.
+            </p>
+          )}
         </div>
         {/* Единственная кнопка добавления. Вторая, «+ Доп занятие» в карточке
             дня, делала ровно то же самое — осталась одна, а выбранный в
@@ -603,6 +624,12 @@ function Schedule({ students, setStudents, onOpenBoard }) {
                             </div>
                             <div className={`text-xs ${isExtra ? "text-green-500" : "text-blue-500"}`}>
                               {l.time} · {l.duration} мин
+                              {/* Часы репетитора и ученика разошлись после
+                                  переезда: в расписании стоит время репетитора,
+                                  и рядом — то, что в этот момент видит ученик. */}
+                              {studentTimeNote(stu, selectedDay, l.time) && (
+                                <span className="text-gray-400"> · {studentTimeNote(stu, selectedDay, l.time)}</span>
+                              )}
                               {l.movedFrom && (
                                 <span className="text-gray-400"> · перенесено с {formatLessonShort(l.movedFrom.date, l.movedFrom.time)}</span>
                               )}
@@ -759,6 +786,10 @@ function Schedule({ students, setStudents, onOpenBoard }) {
           commentLabel="Комментарий ученику (по желанию)"
           commentPlaceholder="Например: в это время у меня появилось окно"
           conflictCheck={slotBusy(moving.studentId, { date: moving.date, time: moving.time })}
+          otherTimeNote={(date, time) => {
+            const note = studentTimeNote(students.find((s) => String(s.id) === String(moving.studentId)), date, time)
+            return note ? `У ученика это ${note.replace("у ученика ", "")} — в приглашении уйдёт его время.` : ""
+          }}
           submitLabel="Предложить"
           onSubmit={({ date, time, comment }) => {
             proposeMove(moving.studentId, { date: moving.date, time: moving.time, duration: moving.duration }, { date, time }, comment)

@@ -13,6 +13,7 @@ import LessonStatusModal, { LessonStatusBadge } from "../components/LessonStatus
 import PaymentModeModal from "../components/PaymentModeModal"
 import { studentBilling, periodLabel, dayMonth } from "../billing"
 import { lessonStatusNotice } from "../lessonStatus"
+import { toStudentWall, studentTimeNote, studentZoneDiffers, tzCity, offsetLabel } from "../timezone"
 import {
   applyMoveToStudent, proposeMoveOnStudent, setMoveRequest,
   formatLessonWhen, formatLessonShort, MOVE_BY_TUTOR,
@@ -101,6 +102,13 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
     onUpdate(student.id, data)
   }
 
+  // Время в тексте для ученика — в ЕГО поясе: в кабинете занятия лежат
+  // переведёнными в пояс устройства репетитора (см. src/timezone.js).
+  function whenForStudent(date, time) {
+    const w = toStudentWall(student, date, time)
+    return formatLessonWhen(w.date, w.time)
+  }
+
   function notifyStudent(title, body) {
     // Пока ученик не завёл аккаунт, доставить уведомление некому.
     if (!student.studentAccountId) return
@@ -120,7 +128,7 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
     }
     onUpdate(student.id, proposeMoveOnStudent(student, from, request))
     notifyStudent("Репетитор предлагает перенести занятие",
-      `${formatLessonWhen(from.date, from.time)} → ${formatLessonWhen(to.date, to.time)}. Подтверди перенос в кабинете.`
+      `${whenForStudent(from.date, from.time)} → ${whenForStudent(to.date, to.time)}. Подтверди перенос в кабинете.`
       + (comment ? ` «${comment}»` : ""))
   }
 
@@ -129,21 +137,22 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
     const to = { date: lesson.moveRequest.date, time: lesson.moveRequest.time }
     onUpdate(student.id, applyMoveToStudent(student, lesson, to))
     notifyStudent("Перенос согласован",
-      `${formatLessonWhen(lesson.date, lesson.time)} → ${formatLessonWhen(to.date, to.time)}`)
+      `${whenForStudent(lesson.date, lesson.time)} → ${whenForStudent(to.date, to.time)}`)
   }
 
   function withdrawMove(lesson) {
     const own = lesson.moveRequest?.by === MOVE_BY_TUTOR
     onUpdate(student.id, { lessons: setMoveRequest(student.lessons || [], lesson, null) })
     notifyStudent(own ? "Предложение о переносе отменено" : "Перенос не согласован",
-      `Занятие ${formatLessonWhen(lesson.date, lesson.time)} остаётся на прежнем месте.`)
+      `Занятие ${whenForStudent(lesson.date, lesson.time)} остаётся на прежнем месте.`)
   }
 
   // Пометка «не состоялось» — та же, что в расписании: решение принимается по
   // каждому занятию, потому что репетиторы работают с пропусками по-разному.
   function applyStatus(lesson, status) {
     onUpdate(student.id, { lessons: setLessonStatus(student.lessons || [], lesson, status) })
-    const [title, body] = lessonStatusNotice(status, lesson.date, lesson.time)
+    const sw = toStudentWall(student, lesson.date, lesson.time)
+    const [title, body] = lessonStatusNotice(status, sw.date, sw.time)
     notifyStudent(title, body)
   }
 
@@ -261,6 +270,15 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
                     <span key={i}>{slot}</span>
                   ))}
                 </div>
+              )}
+              {/* Часы разошлись: ученик остался в своём поясе, репетитор уехал.
+                  Расписание показано по часам репетитора, у ученика оно своё —
+                  сказать об этом надо прямо, иначе созвон назначается мимо. */}
+              {studentZoneDiffers(student) && (
+                <span className="mt-1 flex items-center gap-1 text-blue-500">
+                  <Icon name="globe" size={12} />
+                  Ученик в поясе {tzCity(student.timezone)} ({offsetLabel(student.timezone)}) — время в расписании по вашим часам
+                </span>
               )}
             </div>
           </div>
@@ -383,6 +401,9 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
                     </div>
                     <div className="text-xs text-gray-400">
                       {l.time} · {l.duration} мин
+                      {/* Пояса разошлись после переезда: слева время
+                          репетитора, здесь — то, что видит ученик. */}
+                      {studentTimeNote(student, l.date, l.time) && <span> · {studentTimeNote(student, l.date, l.time)}</span>}
                       {l.movedFrom && <span> · перенесено с {formatLessonShort(l.movedFrom.date, l.movedFrom.time)}</span>}
                     </div>
                   </div>
@@ -713,6 +734,10 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
           initial={movingLesson.suggested}
           commentLabel="Комментарий ученику (по желанию)"
           commentPlaceholder="Например: в это время у меня появилось окно"
+          otherTimeNote={(date, time) => {
+            const note = studentTimeNote(student, date, time)
+            return note ? `У ученика это ${note.replace("у ученика ", "")} — в приглашении уйдёт его время.` : ""
+          }}
           conflictCheck={(date, time) => {
             // Сравниваем отрезки времени, а не начало занятия: час с 14:30
             // перекрывает 15:00. И смотрим расписание целиком — репетитор не

@@ -5,6 +5,7 @@ import { POPUP_OUT_MS } from "./useClosing"
 import { createPortal } from "react-dom"
 import { supabase, isPasswordRecovery, setAppToken } from "./supabase"
 import { signRows, permanentStorageUrl } from "./storageUrl"
+import { deviceTimezone, convertLessons } from "./timezone"
 import Sidebar, { TutorProfileButton } from "./components/Sidebar"
 import NavIcon from "./components/NavIcon"
 import MobileMenu from "./components/MobileMenu"
@@ -527,17 +528,24 @@ function App() {
     // Подгружаем аватарки из student_accounts (студент пишет туда, т.к. students RLS может блокировать)
     const phones = mapped.filter((s) => s.phone).map((s) => s.phone)
     if (phones.length) {
-      const { data: accounts } = await supabase
-        .from("student_accounts")
-        .select("phone, avatar, id")
-        .in("phone", phones)
+      const pick = (cols) => supabase.from("student_accounts").select(cols).in("phone", phones)
+      let { data: accounts, error: accErr } = await pick("phone, avatar, id, timezone")
+      // Колонки пояса может ещё не быть (миграция supabase/timezones.sql
+      // выполняется вручную). Без запасного пути весь запрос отдал бы ошибку, а
+      // вместе с ней пропали бы аватарки и связка карточки с аккаунтом.
+      if (accErr && /timezone/.test(accErr.message || "")) {
+        ;({ data: accounts } = await pick("phone, avatar, id"))
+      }
       if (accounts?.length) {
         const avatarByPhone = {}
         const avatarById = {}
         const idByPhone = {}
+        const tzByPhone = {}
+        const tzById = {}
         accounts.forEach((a) => {
           if (a.avatar) { avatarByPhone[a.phone] = a.avatar; avatarById[a.id] = a.avatar }
           if (a.id) idByPhone[a.phone] = a.id
+          if (a.timezone) { tzByPhone[a.phone] = a.timezone; tzById[a.id] = a.timezone }
         })
         mapped = mapped.map((s) => ({
           ...s,
@@ -545,6 +553,10 @@ function App() {
           // и раньше карточка из-за этого «отвязывалась» от аккаунта (student_link_cleanup.sql).
           avatar: s.avatar || avatarById[s.student_account_id] || avatarByPhone[s.phone] || null,
           studentAccountId: s.student_account_id || idByPhone[s.phone] || null,
+          // Пояс, о котором сообщило устройство ученика. Нужен только чтобы
+          // ЗАПОЛНИТЬ якорь у карточки, где его ещё нет: сам якорь потом не
+          // двигается, иначе поездка ученика переписала бы всё расписание.
+          accountTimezone: tzById[s.student_account_id] || tzByPhone[s.phone] || null,
         }))
       }
     }
@@ -552,8 +564,43 @@ function App() {
     // Бакет с аватарами приватный, поэтому адрес подписываем на время.
     mapped = await signRows(mapped, { avatar: "homework" })
 
+    // Часовые пояса. Время занятия лежит в базе в поясе УЧЕНИКА (якорь
+    // `students.timezone`) и в кабинете ученика показывается как есть. Кабинет
+    // репетитора переводит его в пояс своего устройства здесь, один раз на
+    // входе, — дальше всё расписание, конфликты и «занятие прошло» считаются
+    // обычным настенным временем, как и до переезда. Обратный перевод —
+    // в saveStudent и в текстах уведомлений (см. src/timezone.js).
+    const myTz = deviceTimezone()
+    mapped = mapped.map((s) => {
+      const anchor = s.timezone || (user.role === "tutor" ? s.accountTimezone : null) || null
+      // Ученику ничего не переводим: он видит то самое время, о котором
+      // договорились, — оно не должно меняться ни от чего.
+      const frame = user.role === "tutor" ? myTz : anchor
+      return {
+        ...s,
+        timezone: anchor,
+        // Записан ли якорь в базе. Отличать от `timezone` обязательно: якорь,
+        // только что взятый с устройства ученика, ещё не сохранён.
+        tzStored: !!s.timezone,
+        tzFrame: frame,
+        lessons: convertLessons(s.lessons || [], anchor, frame),
+      }
+    })
+
     setStudents(mapped)
     setStudentsLoaded(true)
+
+    // Якорь, которого ещё нет, проставляем сами — по поясу, о котором сообщило
+    // устройство ученика. Делается один раз на карточку и только тогда, когда
+    // известен реальный пояс: без якоря перевода нет и кабинет ведёт себя как
+    // раньше, поэтому забытая колонка (миграция timezones.sql) ничего не ломает.
+    if (user.role === "tutor") {
+      for (const s of mapped) {
+        if (s.tzStored || !s.accountTimezone) continue
+        supabase.from("students").update({ timezone: s.accountTimezone }).eq("id", s.id)
+          .then(({ error }) => { if (error) console.error("Пояс ученика не записан:", error.message) })
+      }
+    }
   }
 
   async function saveStudent(student) {
@@ -574,8 +621,13 @@ function App() {
       package_period: student.packagePeriod || null,
       package_start: student.packageStart || null,
       package_amount: student.packageAmount ?? null,
-      lessons: student.lessons || [],
+      // Обратно из пояса устройства репетитора в пояс ученика: в базе время
+      // лежит так, как его видит ученик, и от переезда репетитора не съезжает.
+      // `lesson_dates` — легаси-список одних только дат, без времени: перевести
+      // его нечем, да и занятие в нём давно дублируется массивом `lessons`.
+      lessons: convertLessons(student.lessons || [], student.tzFrame, student.timezone),
       lesson_dates: student.lessonDates || [],
+      timezone: student.timezone || null,
       lesson_duration: student.lessonDuration,
       is_recurring: student.isRecurring,
       schedule: student.schedule,
@@ -606,9 +658,9 @@ function App() {
     // supabase/student_payment_mode.sql выполняется вручную. Повторяем без них,
     // чтобы забытая миграция не ломала сохранение учеников целиком — сам
     // абонемент до неё просто не запомнится.
-    if (error && /payment_mode|package_period|package_start|package_amount|accepted/.test(error.message || "")) {
-      const { payment_mode, package_period, package_start, package_amount, accepted, ...rest } = row
-      void payment_mode; void package_period; void package_start; void package_amount; void accepted
+    if (error && /payment_mode|package_period|package_start|package_amount|accepted|timezone/.test(error.message || "")) {
+      const { payment_mode, package_period, package_start, package_amount, accepted, timezone, ...rest } = row
+      void payment_mode; void package_period; void package_start; void package_amount; void accepted; void timezone
       ;({ data, error } = await write(rest))
     }
     if (error) {
@@ -738,6 +790,24 @@ function App() {
 
     return () => listener.subscription.unsubscribe()
   }, [])
+
+  // Пояс устройства сообщаем сами, без единого вопроса пользователю: телефон и
+  // ноутбук и так знают, в какой стране находятся, а лишняя настройка «выберите
+  // часовой пояс» ничего не добавляет и устаревает при первой же поездке.
+  // Ученик пишет свой — по нему заполняется якорь расписания; репетитор пишет
+  // свой — по нему кабинет ученика составляет уведомления о переносе так, чтобы
+  // репетитор прочитал в них СВОЁ время.
+  useEffect(() => {
+    const tz = deviceTimezone()
+    if (!user?.id || !tz || user.profile?.timezone === tz) return
+    const table = user.role === "tutor" ? "tutors" : user.role === "student" ? "student_accounts" : null
+    if (!table) return
+    supabase.from(table).update({ timezone: tz }).eq("id", user.id).then(({ error }) => {
+      // Колонки может ещё не быть (миграция supabase/timezones.sql выполняется
+      // руками). Это не поломка: без пояса всё работает ровно как раньше.
+      if (error) console.error("Часовой пояс не записан:", error.message)
+    })
+  }, [user?.id, user?.role, user?.profile?.timezone])
 
   const handleLogout = useCallback(async function handleLogout() {
     localStorage.removeItem("student_session")

@@ -22,6 +22,7 @@ import TelegramSettings from "../components/TelegramSettings"
 import EmailNotifySettings from "../components/EmailNotifySettings"
 import { BetaNotice } from "../components/BetaBadge"
 import SubjectsSettings from "../components/SubjectsSettings"
+import TimezoneCard from "../components/TimezoneCard"
 import { isOwner } from "../owner"
 
 // Инициал в цветном кружке: аватара у репетитора в базе нет, а пустой серый
@@ -184,6 +185,13 @@ export default function Profile({ user, students = [], onLogout, onProfileChange
           «Подписка» в самом низу страницы — о нём никто не знал. */}
       <div className="mb-4">
         <TelegramSettings />
+      </div>
+
+      {/* Часовой пояс. Выбирать нечего — он берётся с устройства; карточка
+          показывает, по чьим часам идёт расписание, и называет учеников, у кого
+          время своё. */}
+      <div className="mb-4">
+        <TimezoneCard students={students} />
       </div>
 
       {/* Приём денег с учеников: квитанции после занятия и онлайн-оплата. */}

@@ -6,6 +6,7 @@ import Reveal from "./Reveal"
 import Collapse from "./Collapse"
 import SegmentSwitch from "./SegmentSwitch"
 import WeeksPicker from "./WeeksPicker"
+import { zoneDiffMinutes, shiftDayTime, toStudentWall } from "../timezone"
 import PhoneInput, { isValidPhoneNumber } from "react-phone-number-input"
 import "react-phone-number-input/style.css"
 import { plural, parseLocalDate, formatPhone, isLessonPast } from "../utils"
@@ -364,9 +365,21 @@ function StudentFormModal({ student, students = [], onClose, onSubmit, initialNa
       ]).sort(byDateTime)
       : previewLessons
 
+    // Строка расписания — витрина, и читает её в том числе САМ УЧЕНИК в своём
+    // кабинете. Поэтому время в ней переводится в его пояс, как и сами занятия
+    // при сохранении: иначе репетитор из Еревана показал бы ученику в Москве
+    // час, на который тот не приходит. Пояса совпадают — сдвиг нулевой и
+    // строка получается ровно прежней.
+    const tzShift = zoneDiffMinutes(student?.tzFrame, student?.timezone)
     const schedule = mode === "recurring"
-      ? recurringDays.map((d) => `${d.name} ${d.time} (${d.duration || recurringDuration} мин)`).join(", ")
-      : previewLessons.map((l) => parseLocalDate(l.date).toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) + " " + l.time + " (" + l.duration + " мин)").join(", ")
+      ? recurringDays.map((d) => {
+        const at = shiftDayTime(WEEK_DAYS.indexOf(d.name), d.time, tzShift)
+        return `${WEEK_DAYS[at.dayIndex]} ${at.time} (${d.duration || recurringDuration} мин)`
+      }).join(", ")
+      : previewLessons.map((l) => {
+        const w = toStudentWall(student, l.date, l.time)
+        return parseLocalDate(w.date).toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) + " " + w.time + " (" + l.duration + " мин)"
+      }).join(", ")
 
     const common = {
       name: form.name,
