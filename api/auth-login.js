@@ -40,6 +40,25 @@ async function guard(db, fn, key) {
   return Number(data) || 0
 }
 
+// GoTrue отвечает по-английски («Invalid login credentials», «Email not
+// confirmed»), и его ответ раньше уходил в форму как есть — человек у экрана
+// читал английскую строку вместо подсказки. Переводим известные случаи, а
+// незнакомую английскую строку не показываем вовсе: общая фраза понятнее.
+const UPSTREAM_TEXT = [
+  [/invalid login credentials/i, "Неверная почта или пароль"],
+  [/email not confirmed/i, "Почта ещё не подтверждена — откройте письмо со ссылкой"],
+  [/user not found/i, "Неверная почта или пароль"],
+  [/email.*(rate|limit)|too many requests/i, "Слишком много запросов. Попробуйте через минуту."],
+]
+
+function humanError(payload) {
+  const raw = String(payload?.error_description || payload?.msg || payload?.message || "")
+  for (const [re, text] of UPSTREAM_TEXT) if (re.test(raw)) return text
+  // Кириллица в ответе — это уже наш текст (например, из RPC), его и показываем.
+  if (/[А-Яа-яЁё]/.test(raw)) return raw
+  return "Неверная почта или пароль"
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.status(405).json({ error: "Method not allowed" })
@@ -120,6 +139,6 @@ export default async function handler(req, res) {
   }
 
   res.status(upstream.status || 400).json({
-    error: payload?.error_description || payload?.msg || payload?.message || "Неверная почта или пароль",
+    error: humanError(payload),
   })
 }
