@@ -26,6 +26,7 @@ import { TILE_TINTS, dueTintKey } from "../dueTint"
 // Список предметов — из лёгкого модуля: сами генераторы приезжают отдельно
 // (homeworkBank), и тащить их в бандл раздела ради подписей нельзя.
 import { subjectGroups, firstType, typeForStudent, BANK_SUBJECTS } from "./examSubjectList"
+import { lazyChunk } from "../lazyChunk"
 
 const STATUS_LABELS = {
   assigned: { label: "Выдано", cls: "text-gray-600 ring-1 ring-gray-200 dark:ring-white/15" },
@@ -451,9 +452,9 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
     setMethod(id)
     if (id !== "bank" || bank || bankLoading) return
     setBankLoading(true)
-    import("./homeworkBank")
+    lazyChunk(() => import("./homeworkBank"), "банк заданий")
       .then((m) => { setBank(m); loadBankList(m, bankType) })
-      .catch(() => setBankError("Не удалось загрузить банк заданий"))
+      .catch((e) => setBankError(e?.message || "Не удалось загрузить банк заданий"))
       .finally(() => setBankLoading(false))
   }
 

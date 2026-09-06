@@ -35,8 +35,19 @@ cp portfolio/index.html portfolio/arman.webp .deploy/dist/me/
 # отдельным шагом ниже — см. комментарий там.
 RS=(-az --delete --exclude '.DS_Store' -e ssh)
 
+# Хэшированные куски сборки (dist/assets) раскатываются БЕЗ --delete, и это не
+# небрежность. Имя такого файла содержит хэш содержимого, поэтому каждый деплой
+# порождает новые имена, а --delete в ту же секунду стирает старые. Страница,
+# открытая до деплоя, продолжает просить именно старое имя — и при первом же
+# ленивом куске (разбор PDF, печать варианта, доска) получает 404. Safari
+# сообщает об этом невнятно: «Importing a module script failed». Так и вышло
+# 06.09.2026 при разборе домашней работы. Старые куски поэтому оставляем лежать
+# и удаляем не раньше чем через месяц — к тому времени вкладок с ними не
+# остаётся. Правка парная с .github/workflows/deploy.yml.
 echo "→ статика"
-rsync "${RS[@]}" --exclude '/crm/' .deploy/dist/ "$HOST:$ROOT/dist/"
+rsync "${RS[@]}" --exclude '/crm/' --exclude '/assets/' .deploy/dist/ "$HOST:$ROOT/dist/"
+rsync -az --exclude '.DS_Store' -e ssh .deploy/dist/assets/ "$HOST:$ROOT/dist/assets/"
+ssh "$HOST" "find $ROOT/dist/assets -type f -mtime +30 -delete"
 
 echo "→ функции и общий код"
 rsync "${RS[@]}" api/ "$HOST:$ROOT/api/"

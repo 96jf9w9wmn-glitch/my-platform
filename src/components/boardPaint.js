@@ -31,19 +31,26 @@ export const TEXT_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
 export const TEXT_LINE = 1.3       // межстрочный интервал; ровно он же стоит в поле ввода
 export const TEXT_MIN = 10, TEXT_MAX = 160, TEXT_DEFAULT = 32
 
+// Начертание надписи одной строкой для ctx.font и для поля ввода. Жирность и
+// наклон меняют ШИРИНУ строки, поэтому и метрики, и отрисовка обязаны считаться
+// одним и тем же начертанием — иначе рамка разойдётся с самим текстом.
+export function textFont(size, { bold = false, italic = false } = {}) {
+  return `${italic ? "italic " : ""}${bold ? "700 " : "400 "}${size}px ${TEXT_FONT}`
+}
+
 let measureCanvas = null
-function measureCtx(size) {
+function measureCtx(size, style) {
   if (!measureCanvas) measureCanvas = document.createElement("canvas")
   const c = measureCanvas.getContext("2d")
-  c.font = `${size}px ${TEXT_FONT}`
+  c.font = textFont(size, style)
   return c
 }
 // Размеры текста в МИРОВЫХ единицах. baseline — куда ставить первую строку:
 // браузер центрирует строку в её интервале по метрикам шрифта, и холст должен
 // повторить это ровно, иначе набранное «прыгало» бы при выходе из поля ввода.
-export function textMetrics(text, size) {
+export function textMetrics(text, size, style) {
   const s = Math.max(1, size || TEXT_DEFAULT)
-  const c = measureCtx(s)
+  const c = measureCtx(s, style)
   const lines = String(text ?? "").split("\n")
   let w = 0
   for (const ln of lines) w = Math.max(w, c.measureText(ln).width)
@@ -54,8 +61,8 @@ export function textMetrics(text, size) {
   return { w: Math.max(w, s * 0.5), h: lines.length * lh, lh, baseline, lines }
 }
 // Габарит текста как две точки (левый верх → правый низ)
-export function textBoxPoints(x, y, text, size) {
-  const m = textMetrics(text, size)
+export function textBoxPoints(x, y, text, size, style) {
+  const m = textMetrics(text, size, style)
   return [[x, y], [x + m.w, y + m.h]]
 }
 
@@ -225,9 +232,9 @@ export function paintStroke(ctx, s, { darkBg = false, getImage = () => null } = 
     const a = pts[0], b = pts[pts.length - 1] || pts[0]
     const x = Math.min(a[0], b[0]), y = Math.min(a[1], b[1])
     const size = s.size || TEXT_DEFAULT
-    const m = textMetrics(s.text, size)
+    const m = textMetrics(s.text, size, s)
     const put = () => {
-      ctx.font = `${size}px ${TEXT_FONT}`
+      ctx.font = textFont(size, s)
       ctx.textAlign = "left"
       ctx.textBaseline = "alphabetic"
       m.lines.forEach((ln, i) => { if (ln) ctx.fillText(ln, x, y + i * m.lh + m.baseline) })

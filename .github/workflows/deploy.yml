@@ -96,11 +96,26 @@ jobs:
           # --exclude /dist/crm/ — панель владельца (отдельный репозиторий
           # ~/precettore-crm) лежит в dist/crm и раскатывается своим скриптом.
           # Без исключения rsync --delete сносил бы её каждым деплоем сайта.
+          # --exclude /dist/assets/ — хэшированные куски сборки едут следом
+          # отдельным rsync БЕЗ --delete: имя каждого содержит хэш содержимого,
+          # и --delete стирал бы куски предыдущей версии в тот же миг. Страница,
+          # открытая до деплоя, просит именно их — и при первом ленивом куске
+          # (разбор PDF, печать варианта, доска) получала 404, а Safari говорил
+          # «Importing a module script failed» (случилось 06.09.2026).
           # Правка парная со scripts/deploy.sh.
-          rsync -az --delete --checksum --exclude '/dist/crm/' \
-            -e "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes" \
+          SSH_CMD="ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes"
+          TARGET="${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}"
+          rsync -az --delete --checksum --exclude '/dist/crm/' --exclude '/dist/assets/' \
+            -e "$SSH_CMD" \
             bundle/ \
-            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/opt/precettore-web/current/"
+            "$TARGET:/opt/precettore-web/current/"
+          rsync -az --checksum -e "$SSH_CMD" \
+            bundle/dist/assets/ \
+            "$TARGET:/opt/precettore-web/current/dist/assets/"
+          # Куски старше месяца никому уже не нужны: вкладок той версии не
+          # осталось. Без чистки папка растёт с каждым деплоем.
+          $SSH_CMD "$TARGET" \
+            'find /opt/precettore-web/current/dist/assets -type f -mtime +30 -delete'
           # Статику Caddy подхватывает сразу, а Node держит модули в памяти —
           # его надо перезапустить. Право на эту одну команду выдано в sudoers
           # точечно: deploy-пользователь НЕ в группе docker, иначе утёкший

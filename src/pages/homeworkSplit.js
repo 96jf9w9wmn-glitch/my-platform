@@ -22,6 +22,8 @@
 // pdf.js подгружается динамически: он весит больше самого кабинета, а нужен
 // одному экрану из десятка.
 
+import { lazyChunk } from "../lazyChunk"
+
 // Ширина, до которой ужимается страница при разборе. Меньше — на чертеже
 // пропадают тонкие линии, больше — телефон не тянет несколько страниц разом.
 const PAGE_WIDTH = 1240
@@ -58,12 +60,15 @@ let pdfLib = null
 async function loadPdfLib() {
   if (pdfLib) return pdfLib
   patchStreamIteration()
-  const lib = await import("pdfjs-dist/build/pdf.mjs")
+  const lib = await lazyChunk(() => import("pdfjs-dist/build/pdf.mjs"), "разбор PDF")
   // Воркер собирает Vite (`?worker`), а не адрес в GlobalWorkerOptions: по
   // адресу браузер получил бы модуль с несобранными импортами и повис бы молча
   // (проверено — разбор просто не заканчивался). За CDN pdf.js при этом не
   // ходит, чего наш CSP всё равно не пустил бы.
-  const { default: PdfWorker } = await import("pdfjs-dist/build/pdf.worker.mjs?worker")
+  const { default: PdfWorker } = await lazyChunk(
+    () => import("pdfjs-dist/build/pdf.worker.mjs?worker"),
+    "разбор PDF"
+  )
   lib.GlobalWorkerOptions.workerPort = new PdfWorker()
   pdfLib = lib
   return lib
@@ -424,7 +429,7 @@ async function svgToCanvas(html, width, height, offset, scale) {
 }
 
 async function readDocx(file, onProgress) {
-  const dp = await import("docx-preview")
+  const dp = await lazyChunk(() => import("docx-preview"), "разбор Word")
   const host = document.createElement("div")
   // За экраном, но в потоке: размеры блоков берутся у настоящей раскладки, а
   // у display:none их нет вовсе.

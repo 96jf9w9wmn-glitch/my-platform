@@ -26,6 +26,7 @@ import { useClosing, POPUP_OUT_MS } from "../useClosing"
 import useGridCols, { detailRowEndOf } from "../useGridCols"
 import getAvatarColor from "../avatarColor"
 import Reveal from "../components/Reveal"
+import { lazyChunk } from "../lazyChunk"
 // Тетрадь тянет генераторы заданий — грузим только когда её открыли.
 
 // Банк заданий и сборка PDF — самые тяжёлые модули приложения: генераторы всех предметов
@@ -33,11 +34,13 @@ import Reveal from "../components/Reveal"
 // нажатию кнопки, поэтому подключаются в этот момент, а не при открытии раздела: список
 // вариантов появляется сразу. Сразу после отрисовки банк подтягивается фоном (prefetchBank),
 // так что к нажатию «Собрать вариант» он обычно уже в кэше.
-const loadBank = () => import("./taskBankApi")
-const loadVariantPdf = () => import("./variantPdf")
+const loadBank = () => lazyChunk(() => import("./taskBankApi"), "банк заданий")
+const loadVariantPdf = () => lazyChunk(() => import("./variantPdf"), "сборку листа варианта")
 function prefetchBank() {
   const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1500))
-  idle(() => { loadBank(); loadVariantPdf() })
+  // Фоновая подгрузка молчит: не доехало — значит подождём нажатия, там о сбое
+  // уже скажут словами.
+  idle(() => { loadBank().catch(() => {}); loadVariantPdf().catch(() => {}) })
 }
 
 // Файл варианта: свой PDF/фото репетитора или печатный лист, собранный из банка.

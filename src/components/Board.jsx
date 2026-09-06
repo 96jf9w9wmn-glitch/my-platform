@@ -8,7 +8,7 @@ import { recognizeShape } from "./boardSmartDraw"
 import { answersEqual } from "../utils"
 import {
   GRID, ENCLOSED_SHAPES, SHAPE_TOOLS, DASHABLE_SHAPES,
-  TEXT_FONT, TEXT_LINE, TEXT_MIN, TEXT_MAX, TEXT_DEFAULT, textMetrics, textBoxPoints,
+  TEXT_FONT, TEXT_LINE, TEXT_MIN, TEXT_MAX, TEXT_DEFAULT, textMetrics, textBoxPoints, textFont,
   isDarkColor, resolveColor, strokeBBox, sceneBBox, viewForBBox, paintStroke, scenePreview, tintSheet,
 } from "./boardPaint"
 // Выбор задания тянет за собой генераторы всех предметов и html2canvas — грузим
@@ -404,6 +404,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // Кегль текста живёт отдельно от толщины линии: у пера ходовые значения 1–5,
   // у надписи — десятки, и одна общая ручка каждый раз давала бы не то.
   const [textSize, setTextSize] = useState(TEXT_DEFAULT)
+  const [textBold, setTextBold] = useState(false)
+  const [textItalic, setTextItalic] = useState(false)
   // Идёт набор надписи: {id, x, y, size, color, angle, value, seq}. id = null —
   // надпись новая; x,y — левый верх в МИРОВЫХ координатах.
   const [editText, setEditText] = useState(null)
@@ -642,6 +644,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const editBoxRef = useRef(null)     // обёртка поля (её двигаем и поворачиваем)
   const editRef = useRef(null)        // само поле ввода
   const textSeq = useRef(0)           // номер сеанса набора: по нему поле пересоздаётся
+  const editBarRef = useRef(null)     // панель над полем: цвет, размер, начертание
 
   const dark = isDarkColor(bgColor)      // светлость доски определяется цветом фона
   const baseBg = bgColor
@@ -2088,7 +2091,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         let nhw, nhh
         if (s.tool === "text") {
           s.size = clamp(snapshot.get(L.id).size * Math.abs(scaleU), TEXT_MIN, TEXT_MAX)
-          const m = textMetrics(s.text, s.size)
+          const m = textMetrics(s.text, s.size, s)
           nhw = m.w / 2; nhh = m.h / 2
         } else {
           nhw = Math.max(2, L.hw0 * Math.abs(scaleU)); nhh = Math.max(2, L.hh0 * Math.abs(scaleV))
@@ -2113,7 +2116,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
             // В группе надпись тоже меняет кегль, а не растягивается
             s.size = clamp(snap.size * Math.min(Math.abs(sx), Math.abs(sy)), TEXT_MIN, TEXT_MAX)
             const a = s.points[0], b = s.points[s.points.length - 1]
-            s.points = textBoxPoints(Math.min(a[0], b[0]), Math.min(a[1], b[1]), s.text, s.size)
+            s.points = textBoxPoints(Math.min(a[0], b[0]), Math.min(a[1], b[1]), s.text, s.size, s)
           }
         }
       } else {
@@ -2410,7 +2413,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         const a = s.points[0], b = s.points[s.points.length - 1]
         const cx = (a[0] + b[0]) / 2, cy = (a[1] + b[1]) / 2
         s.size = w
-        const m = textMetrics(s.text, w)
+        const m = textMetrics(s.text, w, s)
         s.points = [[cx - m.w / 2, cy - m.h / 2], [cx + m.w / 2, cy + m.h / 2]]
         widthDrag.current.changed = true
         continue
@@ -2450,18 +2453,29 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     const box = editBoxRef.current, ta = editRef.current, p = editPos.current
     if (!box || !p) return
     const v = view.current
-    const m = textMetrics(ta ? ta.value : p.value, p.size)
+    const m = textMetrics(ta ? ta.value : p.value, p.size, p)
     box.style.left = `${p.x * v.scale + v.x}px`
     box.style.top = `${p.y * v.scale + v.y}px`
     box.style.transform = p.angle ? `rotate(${p.angle}rad)` : ""
     if (!ta) return
     const col = resolveColor(p.color, isDarkColor(bgColorRef.current))
-    ta.style.font = `${p.size * v.scale}px ${TEXT_FONT}`   // сокращённая запись сбрасывает интерлиньяж…
+    ta.style.font = textFont(p.size * v.scale, p)   // сокращённая запись сбрасывает интерлиньяж…
     ta.style.lineHeight = `${p.size * v.scale * TEXT_LINE}px`  // …поэтому он ставится следом
     ta.style.width = `${m.w * v.scale + TEXT_PAD}px`
     ta.style.height = `${m.h * v.scale}px`
     ta.style.color = col
     ta.style.caretColor = col
+    // Панель ставим НАД полем, а у самого верха экрана — под ним, иначе она уедет
+    // за край. Поворот надписи ей компенсируем: наклонённый ряд кнопок не читается.
+    const bar = editBarRef.current
+    if (!bar) return
+    const above = p.y * v.scale + v.y > 64
+    bar.style.bottom = above ? "100%" : "auto"
+    bar.style.top = above ? "auto" : "100%"
+    bar.style.marginBottom = above ? "8px" : "0"
+    bar.style.marginTop = above ? "0" : "8px"
+    bar.style.transformOrigin = above ? "0 100%" : "0 0"
+    bar.style.transform = p.angle ? `rotate(${-p.angle}rad)` : ""
   }
 
   // Надпись под точкой (мировые координаты) — по ней открывается правка
@@ -2497,7 +2511,9 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     setTool("text")
     setColor(st.color)
     setTextSize(st.size || TEXT_DEFAULT)
-    openTextEditor({ id: st.id, x: st.points[0][0], y: st.points[0][1], size: st.size || TEXT_DEFAULT, color: st.color, angle: st.angle || 0, value: st.text || "" })
+    setTextBold(!!st.bold); setTextItalic(!!st.italic)
+    openTextEditor({ id: st.id, x: st.points[0][0], y: st.points[0][1], size: st.size || TEXT_DEFAULT,
+      color: st.color, angle: st.angle || 0, value: st.text || "", bold: !!st.bold, italic: !!st.italic })
   }
   function beginTextAt(clientX, clientY) {
     const p = toWorld(clientX, clientY)
@@ -2505,8 +2521,9 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     if (st) { editTextStroke(st); return }
     // Ставим строку СЕРЕДИНОЙ на точку нажатия: так надпись оказывается там, куда
     // смотрели, а не свисает под курсор.
-    const m = textMetrics("", textSize)
-    openTextEditor({ id: null, x: p[0], y: p[1] - m.lh / 2, size: textSize, color, angle: 0, value: "" })
+    const m = textMetrics("", textSize, { bold: textBold, italic: textItalic })
+    openTextEditor({ id: null, x: p[0], y: p[1] - m.lh / 2, size: textSize, color, angle: 0, value: "",
+      bold: textBold, italic: textItalic })
   }
   // Набор окончен. Пустая надпись объекта не заводит, а стёртая — исчезает с доски:
   // прозрачный прямоугольник, который нельзя увидеть и можно случайно выделить,
@@ -2536,15 +2553,21 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     if (cur) {
       const before = cloneStroke(cur)
       cur.text = text; cur.size = ed.size; cur.color = ed.color
-      cur.points = textBoxPoints(ed.x, ed.y, text, ed.size)
+      // Обычное начертание — это ОТСУТСТВИЕ полей: сцена ходит по сети и лежит в
+      // базе целиком, и «bold:false» у каждой подписи там лишний.
+      if (ed.bold) cur.bold = 1; else delete cur.bold
+      if (ed.italic) cur.italic = 1; else delete cur.italic
+      cur.points = textBoxPoints(ed.x, ed.y, text, ed.size, ed)
       // Правка идёт НА МЕСТЕ (ссылка та же) — без пометки дельта её не заметит
       dirtyRef.current.add(cur.id)
       channelRef.current?.send({ type: "broadcast", event: "draw", payload: cur })
       pushHistory([{ id: cur.id, before, after: cloneStroke(cur) }])
     } else {
       const id = makeId(userId)
-      const st = { id, author: userId, tool: "text", color: ed.color, text, size: ed.size, points: textBoxPoints(ed.x, ed.y, text, ed.size) }
+      const st = { id, author: userId, tool: "text", color: ed.color, text, size: ed.size, points: textBoxPoints(ed.x, ed.y, text, ed.size, ed) }
       if (ed.angle) st.angle = ed.angle
+      if (ed.bold) st.bold = 1
+      if (ed.italic) st.italic = 1
       strokes.current.set(id, st)
       channelRef.current?.send({ type: "broadcast", event: "draw", payload: st })
       pushHistory([{ id, before: null, after: cloneStroke(st) }])
@@ -2747,10 +2770,14 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // Цвет и кегль меняют надпись прямо во время набора: панель для того и открыта.
   useEffect(() => {
     if (!editPos.current) return
-    editPos.current = { ...editPos.current, color, size: textSize }
-    setEditText((ed) => (ed && (ed.color !== color || ed.size !== textSize) ? { ...ed, color, size: textSize } : ed))
+    const next = { ...editPos.current, color, size: textSize, bold: textBold, italic: textItalic }
+    editPos.current = next
+    layoutTextEditor()   // начертание меняет ширину строки — поле подгоняем сразу
+    setEditText((ed) => (ed && (ed.color !== color || ed.size !== textSize || ed.bold !== textBold || ed.italic !== textItalic)
+      ? { ...ed, color, size: textSize, bold: textBold, italic: textItalic } : ed))
     scheduleLive()
-  }, [color, textSize, scheduleLive])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [color, textSize, textBold, textItalic, scheduleLive])
 
   // Подстраховка: фокус и значение ставит openTextEditor (синхронно, в жесте), а
   // здесь поле лишь встаёт по месту после перерисовки.
@@ -3207,6 +3234,71 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
             opacity: editText ? 1 : 0,
             pointerEvents: editText ? "auto" : "none",
           }}>
+          {/* Панель набора: цвет, размер, начертание. Стоит над самой надписью, а не
+              внизу экрана: правят то, что видят, и глазами уходить некуда.
+              onPointerDown с preventDefault — чтобы нажатие на кнопку не уводило
+              фокус из поля: курсор должен остаться там, где его оставили. */}
+          {editText && (
+            <div ref={editBarRef}
+              className="absolute left-0 flex items-center gap-1 px-1.5 py-1 rounded-2xl shadow-lg popup-bubble"
+              style={{ background: panelBg, border: `1px solid ${panelBorder}`, whiteSpace: "nowrap" }}>
+              {/* Цвет — кружком текущего: шесть кружков рядом с полем ввода заняли бы
+                  пол-экрана телефона и накрыли бы саму надпись. */}
+              <div className="relative" data-menu>
+                <button onPointerDown={(e) => e.preventDefault()} onClick={() => toggleMenu("txtColor")}
+                  aria-label="Цвет надписи" title="Цвет надписи"
+                  className={`press-tap w-8 h-8 rounded-lg flex items-center justify-center ${menuShown("txtColor") ? "bg-blue-500/15" : "board-hover"}`}>
+                  <span className="rounded-full" style={{ width: 18, height: 18, background: resolveColor(color, dark),
+                    boxShadow: `0 0 0 1.5px ${dark ? "rgba(255,255,255,.4)" : "rgba(0,0,0,.22)"}` }} />
+                </button>
+                {menuShown("txtColor") && (
+                  {/* width по содержимому обязателен: попап абсолютный, а опорная
+                      кнопка — 32 px, и без него колонки схлопывались в одну. */}
+                  <div className={`absolute bottom-full mb-2 left-0 grid grid-cols-4 gap-0.5 p-2 rounded-xl shadow-lg z-10 ${menuAnim("txtColor")}`}
+                    style={{ background: panelBg, border: `1px solid ${panelBorder}`, width: "max-content" }}>
+                    {BASE_INKS.map((c) => (
+                      <Swatch key={c} hex={resolveColor(c, dark)} active={color === c} dark={dark}
+                        title={c === "ink" ? "Чернила" : "Цвет"} onClick={() => setColor(c)} />
+                    ))}
+                    <ColorPick value={resolveColor(color, dark)} dark={dark} title="Свой цвет" onPreview={setColor} />
+                  </div>
+                )}
+              </div>
+
+              {divider}
+
+              {/* Ж и К — привычные буквы русских редакторов, значок тут ничего не добавит */}
+              <button onPointerDown={(e) => e.preventDefault()} onClick={() => setTextBold((v) => !v)}
+                aria-pressed={textBold} aria-label="Полужирный" title="Полужирный"
+                className={`press-tap w-8 h-8 rounded-lg flex items-center justify-center text-[15px] font-bold ${textBold ? "bg-blue-500 text-white" : "board-hover"}`}
+                style={textBold ? undefined : idleStyle}>Ж</button>
+              <button onPointerDown={(e) => e.preventDefault()} onClick={() => setTextItalic((v) => !v)}
+                aria-pressed={textItalic} aria-label="Курсив" title="Курсив"
+                className={`press-tap w-8 h-8 rounded-lg flex items-center justify-center text-[15px] italic ${textItalic ? "bg-blue-500 text-white" : "board-hover"}`}
+                style={textItalic ? undefined : idleStyle}>К</button>
+
+              {divider}
+
+              {/* Размер: буква и текущее число — понятнее значка, и видно, что стоит сейчас */}
+              <div className="relative" data-menu>
+                <button onPointerDown={(e) => e.preventDefault()} onClick={() => toggleMenu("txtSize")}
+                  aria-label="Размер надписи" title="Размер надписи"
+                  className={`press-tap h-8 px-2 rounded-lg flex items-center gap-1 ${menuShown("txtSize") ? "bg-blue-500/15 text-blue-500" : "board-hover"}`}
+                  style={menuShown("txtSize") ? undefined : idleStyle}>
+                  <span className="text-[15px] font-semibold leading-none" style={{ fontFamily: TEXT_FONT }}>А</span>
+                  <span className="text-[11px] tabular-nums leading-none">{textSize}</span>
+                </button>
+                {menuShown("txtSize") && (
+                  <div className={`absolute bottom-full mb-2 left-1/2 -translate-x-1/2 p-2 rounded-xl shadow-lg z-10 ${menuAnim("txtSize")}`}
+                    style={{ background: panelBg, border: `1px solid ${panelBorder}`, width: "max-content" }}>
+                    <StrokeSettings dark={dark} tool="text" curWidth={textSize} curDash="solid"
+                      onWidth={(w, commit) => { setTextSize(w); if (commit) editRef.current?.focus({ preventScroll: true }) }}
+                      onDash={() => {}} />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           <textarea
             ref={editRef}
             rows={1}
