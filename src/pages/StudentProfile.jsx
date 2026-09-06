@@ -460,7 +460,8 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
               </div>
               <div className="text-xs text-gray-500 mt-1 leading-relaxed">
                 Текущий период — {dayMonth(pack.from)} — {dayMonth(pack.until)},
-                {" "}{pack.lessons} {plural(pack.lessons, "занятие", "занятия", "занятий")}.
+                {" "}{pack.lessons} {plural(pack.lessons, "занятие", "занятия", "занятий")}
+                {pack.amount ? <> на {fmtNum(pack.amount)} ₽{pack.manual ? " (сумма задана)" : ""}</> : null}.
                 Долг за него начислен целиком, оплата вносится в «Финансах».
               </div>
             </>

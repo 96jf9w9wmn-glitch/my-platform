@@ -642,6 +642,18 @@ function HwSolutionUpload({ hwId, index, existingUrl, onUploaded }) {
   )
 }
 
+// «Решить на доске»: задание уезжает на доску ученика листом, и решение пишется
+// там — репетитор может подключиться к той же доске и помочь по ходу. Стоит рядом
+// с «Камерой» и «Файлом», потому что это третий способ решить то же задание.
+function SolveOnBoard({ onClick }) {
+  return (
+    <button onClick={onClick}
+      className="press-fill w-full flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-medium text-blue-600 dark:text-blue-300 ring-1 ring-blue-500/25">
+      <Icon name="clipboard" size={14} />Решить на доске
+    </button>
+  )
+}
+
 function deadlineInfo(hw) {
   if (!hw.deadline) return null
   const d = parseLocalDate(hw.deadline)
@@ -829,7 +841,7 @@ export function StudentHomeworkList({ homework, onSelect }) {
   )
 }
 
-function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten }) {
+function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten, onSolveOnBoard }) {
   const [uploading, setUploading] = useState(false)
   const [submittingWritten, setSubmittingWritten] = useState(false)
   // Доработка приходит с уже принятыми ответами: репетитор оставил в работе те,
@@ -994,6 +1006,19 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten })
   // к заданию прилип бы чужой рисунок. Нет колонки или работа собрана иначе —
   // всё показывается текстом, ровно как раньше.
   const bankTasks = Array.isArray(hw.bank_tasks) && hw.bank_tasks.length === tasks.length ? hw.bank_tasks : null
+  // Задание для доски. У работы из банка (и у нарезанного файла) берём его целиком —
+  // с чертежом и программой, иначе на доску уехало бы условие без рисунка. Номер
+  // ставим ТОТ ЖЕ, что видит ученик в работе, а не номер задания в экзамене.
+  // Ключ постоянный (работа + номер): по нему доска узнаёт уже перенесённый лист.
+  const boardTaskOf = (i) => {
+    const t = tasks[i]
+    const bank = bankTasks?.[i]
+    const num = t?.n ?? i + 1
+    const task = bank && (bank.condition_text || bank.image_url || bank.program)
+      ? { ...bank, number: num }
+      : { number: num, condition_text: t?.text || "" }
+    return { key: `hw:${hw.id}:${num}`, task, label: hw.title }
+  }
   // Строк при решении столько же, сколько заданий: у работы бывает больше
   // условий, чем ответов (репетитор вписал ответы не ко всем), и такое задание
   // должно остаться на экране — просто без поля ввода, как было в списке.
@@ -1165,6 +1190,8 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten })
                   />
                 )}
 
+                {onSolveOnBoard && <SolveOnBoard onClick={() => onSolveOnBoard(boardTaskOf(i))} />}
+
                 {requireSolution && (
                   <HwSolutionUpload
                     hwId={hw.id}
@@ -1292,6 +1319,7 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten })
                       <span className="shrink-0 w-6 h-6 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-300 text-xs font-semibold flex items-center justify-center mt-0.5">{t.n}</span>
                       <HwTaskBody text={t.text} bankTask={bankTasks?.[i]} className="pt-0.5" />
                     </div>
+                    {onSolveOnBoard && <SolveOnBoard onClick={() => onSolveOnBoard(boardTaskOf(i))} />}
                     <HwSolutionUpload
                       hwId={hw.id}
                       index={i}
@@ -1795,14 +1823,22 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   // перезагрузка страницы не должна её закрывать, а «назад» — закрывает именно её,
   // а не выкидывает из кабинета.
   const [boardOpen, setBoardOpen] = useState(() => new URLSearchParams(window.location.search).has("board"))
+  // Задание, с которым доску открыли из домашней работы («Решить на доске»).
+  // В адрес не пишется: лист уже лежит на доске и после перезагрузки никуда не
+  // денется, а переносить его второй раз незачем.
+  const [boardTask, setBoardTask] = useState(null)
   const openBoard = () => {
     setBoardOpen(true)
     const url = new URL(window.location.href)
     url.searchParams.set("board", "1")
     window.history.pushState({ board: "1" }, "", url)
   }
+  // Доска с конкретным заданием: та же доска ученика, только задание кладётся на
+  // неё листом. Открывается поверх работы, поэтому вписанные ответы не теряются.
+  const openBoardWithTask = (task) => { setBoardTask(task); openBoard() }
   const closeBoard = () => {
     setBoardOpen(false)
+    setBoardTask(null)
     const url = new URL(window.location.href)
     if (!url.searchParams.has("board")) return
     url.searchParams.delete("board")
@@ -2595,6 +2631,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                  прямой записи в board_snapshots у него нет (RLS включён). */
               account={user.id}
               token={user.token}
+              taskSheet={boardTask}
             />
           </Suspense>
         )}
@@ -3003,6 +3040,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
               {selectedHomework ? (
                 <HomeworkDetail
                   hw={selectedHomework}
+                  onSolveOnBoard={openBoardWithTask}
                   onBack={() => { setSelectedHomework(null); setReturning(true) }}
                   onUpload={uploadHomeworkSubmission}
                   onSubmitTest={submitHomeworkTest}
@@ -3064,7 +3102,8 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                         Абонемент: оплата вперёд за {periodLabel(pack.period).toLowerCase()} —
                         {" "}<span className="font-medium text-gray-800">
                           {pack.lessons} {plural(pack.lessons, "занятие", "занятия", "занятий")}
-                        </span>{" "}по {longDate(pack.until)}.
+                        </span>{" "}по {longDate(pack.until)}
+                        {pack.amount ? <>, к оплате <span className="font-medium text-gray-800">{fmtNum(pack.amount)} ₽</span></> : null}.
                       </div>
                     )}
 

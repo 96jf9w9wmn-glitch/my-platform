@@ -434,7 +434,7 @@ export async function viewStudent(db, link, studentId) {
       : "Ближайшее занятие не назначено",
     s.lesson_price ? `Цена занятия: ${money(s.lesson_price)}` : null,
     debt > 0 ? `Долг: <b>${money(debt)}</b>` : debt < 0 ? `Предоплата: ${money(-debt)}` : "Оплачено полностью",
-    pack ? `Абонемент: ${pack.lessons} ${plural(pack.lessons, "занятие", "занятия", "занятий")} по ${esc(shortDate(pack.until))}` : null,
+    pack ? `Абонемент: ${pack.lessons} ${plural(pack.lessons, "занятие", "занятия", "занятий")} по ${esc(shortDate(pack.until))}${pack.amount ? ` — ${money(pack.amount)}` : ""}` : null,
     "",
     `ДЗ: ${activeHw} в работе, ${toCheck} на проверке`,
   ].filter((x) => x !== null)

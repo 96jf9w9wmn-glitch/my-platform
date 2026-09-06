@@ -20,6 +20,11 @@ function PaymentModeModal({ student, onSubmit, onClose }) {
   const [mode, setMode] = useState(student?.paymentMode === MODE_PACKAGE ? MODE_PACKAGE : MODE_LESSON)
   const [period, setPeriod] = useState(student?.packagePeriod || "week")
   const [start, setStart] = useState(student?.packageStart || todayIso())
+  // Сумма за период. Пустая строка — «считать по расписанию»: договариваются
+  // чаще о круглом числе (скидка за оплату вперёд, «столько в месяц независимо
+  // от переносов»), но и расчёт по занятиям никуда не девается.
+  const [amount, setAmount] = useState(
+    student?.packageAmount > 0 ? String(student.packageAmount) : "")
 
   // Что будет начислено сразу после включения — считаем по расписанию, чтобы
   // сумма не оказалась сюрпризом.
@@ -37,10 +42,19 @@ function PaymentModeModal({ student, onSubmit, onClose }) {
     return { until: iso(until), count: lessons.length }
   })()
 
+  // Расчётная сумма — подсказка и значение по умолчанию. Вписанная важнее её.
+  const calc = preview ? preview.count * price : 0
+  const manual = Number(String(amount).replace(",", ".").trim())
+  const manualOk = Number.isFinite(manual) && manual > 0
+  const due = manualOk ? manual : calc
+
   function submit() {
     onSubmit(mode === MODE_PACKAGE
-      ? { paymentMode: MODE_PACKAGE, packagePeriod: period, packageStart: start }
-      : { paymentMode: MODE_LESSON, packagePeriod: null, packageStart: null })
+      ? {
+        paymentMode: MODE_PACKAGE, packagePeriod: period, packageStart: start,
+        packageAmount: manualOk ? manual : null,
+      }
+      : { paymentMode: MODE_LESSON, packagePeriod: null, packageStart: null, packageAmount: null })
   }
 
   return createPortal(
@@ -106,6 +120,43 @@ function PaymentModeModal({ student, onSubmit, onClose }) {
                 <input type="date" value={start} onChange={(e) => setStart(e.target.value)} className="input-glass" />
               </div>
 
+              {/* Сумма за период. Считается по расписанию сама, но вписать своё
+                  число можно всегда: договариваются о круглой сумме, а расчёт
+                  по занятиям её только предлагает. */}
+              <div>
+                <div className="flex items-baseline justify-between gap-2 mb-1.5">
+                  <label htmlFor="package-amount" className="text-sm text-gray-500">Сумма за период</label>
+                  {manualOk && (
+                    <button
+                      type="button"
+                      onClick={() => setAmount("")}
+                      className="press-tap text-xs text-blue-500 hover:text-blue-700 transition-colors"
+                    >
+                      Считать по расписанию
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <input
+                    id="package-amount"
+                    type="text"
+                    inputMode="decimal"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value.replace(/[^\d.,]/g, ""))}
+                    placeholder={calc ? fmtNum(calc) : "Своя сумма"}
+                    className="input-glass pr-8"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">₽</span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">
+                  {manualOk
+                    ? <>Начисляем {fmtNum(manual)} ₽ за период{calc ? <> вместо расчётных {fmtNum(calc)} ₽</> : null}.</>
+                    : calc
+                      ? <>Оставьте пустым — посчитаем по расписанию: {preview.count} × {fmtNum(price)} ₽ = {fmtNum(calc)} ₽.</>
+                      : <>Оставьте пустым — посчитаем по расписанию.</>}
+                </p>
+              </div>
+
               {preview && (
                 <div className={`rounded-xl px-3 py-2.5 text-xs leading-relaxed ring-1 ${
                   preview.count ? "ring-blue-500/25 bg-blue-500/[0.06] text-gray-600"
@@ -113,9 +164,9 @@ function PaymentModeModal({ student, onSubmit, onClose }) {
                 }`}>
                   {preview.count ? (
                     <>Первый период — по {dayMonth(preview.until)}: <b>{preview.count} {plural(preview.count, "занятие", "занятия", "занятий")}</b>
-                      {price ? <>, к оплате {fmtNum(preview.count * price)} ₽</> : null}. Долг появится сразу.</>
+                      {due ? <>, к оплате {fmtNum(due)} ₽</> : null}. Долг появится сразу.</>
                   ) : (
-                    <>В этот период занятий пока нет — начислять будет нечего. Поставьте занятия в расписание.</>
+                    <>В этот период занятий пока нет — начислять будет нечего{manualOk ? <>, даже вписанную сумму</> : null}. Поставьте занятия в расписание.</>
                   )}
                 </div>
               )}

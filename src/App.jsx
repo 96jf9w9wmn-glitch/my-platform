@@ -506,6 +506,8 @@ function App() {
       paymentMode: s.payment_mode || "lesson",
       packagePeriod: s.package_period || null,
       packageStart: s.package_start || null,
+      // Сумма за период, вписанная руками; null — «считать по расписанию».
+      packageAmount: s.package_amount != null ? Number(s.package_amount) : null,
       lessonDuration: s.lesson_duration,
       lessonDates: s.lesson_dates || [],
       isRecurring: s.is_recurring,
@@ -571,6 +573,7 @@ function App() {
       payment_mode: student.paymentMode || "lesson",
       package_period: student.packagePeriod || null,
       package_start: student.packageStart || null,
+      package_amount: student.packageAmount ?? null,
       lessons: student.lessons || [],
       lesson_dates: student.lessonDates || [],
       lesson_duration: student.lessonDuration,
@@ -603,9 +606,9 @@ function App() {
     // supabase/student_payment_mode.sql выполняется вручную. Повторяем без них,
     // чтобы забытая миграция не ломала сохранение учеников целиком — сам
     // абонемент до неё просто не запомнится.
-    if (error && /payment_mode|package_period|package_start|accepted/.test(error.message || "")) {
-      const { payment_mode, package_period, package_start, accepted, ...rest } = row
-      void payment_mode; void package_period; void package_start; void accepted
+    if (error && /payment_mode|package_period|package_start|package_amount|accepted/.test(error.message || "")) {
+      const { payment_mode, package_period, package_start, package_amount, accepted, ...rest } = row
+      void payment_mode; void package_period; void package_start; void package_amount; void accepted
       ;({ data, error } = await write(rest))
     }
     if (error) {

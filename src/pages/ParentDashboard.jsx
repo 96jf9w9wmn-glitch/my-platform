@@ -4,7 +4,7 @@ import { signRows } from "../storageUrl"
 import Chat from "./Chat"
 import { getInitials, plural, isLessonConducted } from "../utils"
 import { fmtMoney } from "../invoices"
-import { studentBilling, dayMonth } from "../billing"
+import { studentBilling, unpaidLessons as unpaidList, dayMonth } from "../billing"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
 import BetaBadge from "../components/BetaBadge"
@@ -215,19 +215,13 @@ function ParentDashboard({ user, onLogout }) {
   // Долг считает общий помощник — то же число, что видят репетитор и квитанции.
   const { debt, package: pack } = studentBilling({ ...student, lessonPrice: price })
 
-  // Раскладка долга по занятиям — по тем же правилам, что у квитанций
-  // (invoices.js): непогашенный остаток закрывает занятия от новых к старым,
-  // «оплачено» отдельным флагом не хранится — иначе разъедется с долгом.
-  const conductedDesc = [...conducted].sort((a, b) =>
-    (String(b.date) + (b.time || "")).localeCompare(String(a.date) + (a.time || "")))
-  const unpaidLessons = []
-  let debtLeft = Math.max(0, debt)
-  for (const l of conductedDesc) {
-    if (debtLeft <= 0 || price <= 0) break
-    const due = Math.min(price, debtLeft)
-    unpaidLessons.push({ ...l, due, partial: due < price })
-    debtLeft -= due
-  }
+  // Раскладку долга по занятиям считает общий billing.js — тот же список, что
+  // видит репетитор на «Финансах», и те же суммы, что стоят в квитанциях.
+  // Считать её здесь по цене занятия нельзя: у абонемента сумма периода может
+  // быть вписана рукой, и по цене список разошёлся бы с долгом.
+  const unpaidLessons = unpaidList({ ...student, lessonPrice: price })
+    .map((l) => ({ ...l, due: l.amountDue, partial: l.amountDue < l.charge }))
+    .reverse()
   // Оплаты дописываются в конец массива, поэтому разворот даёт «новые первыми»
   // без разбора даты: она хранится локализованной строкой («29.08.2026»).
   const paymentsDesc = [...(student.payments || [])].reverse()

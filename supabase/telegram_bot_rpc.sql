@@ -151,6 +151,10 @@ BEGIN
   RETURN COALESCE((
     SELECT jsonb_agg(to_jsonb(s) ORDER BY s.created_at)
       FROM (SELECT id, name, goal, lesson_price, lessons, payments,
+                   -- Способ оплаты: без него бот считал бы долг абонементного
+                   -- ученика поштучно и разошёлся бы с кабинетом (billing.js).
+                   -- Персональных данных тут нет — только настройка начисления.
+                   payment_mode, package_period, package_start, package_amount,
                    exam_date, target_score, created_at
               FROM students WHERE tutor_id = p_tutor) s
   ), '[]'::jsonb);
