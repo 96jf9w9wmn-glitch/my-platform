@@ -472,6 +472,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const channelRef = useRef(null)
   const teardownTimer = useRef(null)
   const saveTimer = useRef(null)
+  const joinedOnce = useRef(false)    // канал уже подключался: следующий SUBSCRIBED — после обрыва
+  const lastResync = useRef(0)        // когда в последний раз перечитывали сцену (см. resync)
   const bgSendTimer = useRef(null)    // троттлинг рассылки цвета фона (см. changeBgColor)
   const sendTimer = useRef(null)
   // Незаконченные штрихи собеседников: держим их ОТДЕЛЬНО от strokes.current.
@@ -982,6 +984,43 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId])
 
+  // Догнать пропущенное. Штрихи расходятся по realtime и нигде не повторяются:
+  // всё, что собеседник написал, пока связи не было (телефон уснул, вкладка ушла
+  // в фон, сеть моргнула, ноутбук закрыли), прошло мимо — и до этой правки не
+  // появлялось до перезахода на доску. Сцена же лежит в boards и обновляется при
+  // каждом штрихе, поэтому вернувшись мы просто перечитываем её.
+  //
+  // Слияние — ОБЪЕДИНЕНИЕМ: сохранённая сцена основой, наши штрихи поверх неё.
+  // Взять снимок как есть нельзя — его могли сохранить за секунду до нашего
+  // последнего штриха, и он бы пропал с экрана. Обратная сторона: стёртое, пока
+  // нас не было, вернётся — это заметно меньшая беда, чем ненаписанная работа.
+  const resync = useCallback(async () => {
+    if (!loadedRef.current) return                      // начальная загрузка ещё идёт — она и принесёт свежее
+    if (Date.now() - lastResync.current < 3000) return  // не дёргаем базу на каждый чих
+    lastResync.current = Date.now()
+    const { data } = await supabase.from("boards").select("scene").eq("student_id", String(roomId)).maybeSingle()
+    const scene = await signBoardScene(data?.scene)
+    if (!scene?.strokes?.length) return
+    const local = [...strokes.current.entries()]
+    strokes.current.clear()
+    for (const s of scene.strokes) strokes.current.set(s.id, s)
+    for (const [id, s] of local) if (!strokes.current.has(id)) strokes.current.set(id, s)
+    scheduleDraw()
+  }, [roomId, scheduleDraw])
+
+  // Обрыв сокета виден не сразу — heartbeat замечает его до полуминуты, и всё это
+  // время канал считается живым, а сообщения уже не идут. Поэтому ждать события
+  // канала нельзя: перечитываем сцену и по возвращении вкладки, и по подъёму сети.
+  useEffect(() => {
+    const onWake = () => { if (document.visibilityState === "visible") resync() }
+    document.addEventListener("visibilitychange", onWake)
+    window.addEventListener("online", onWake)
+    return () => {
+      document.removeEventListener("visibilitychange", onWake)
+      window.removeEventListener("online", onWake)
+    }
+  }, [resync])
+
   // --- Realtime -----------------------------------------------------------
   useEffect(() => {
     const scheduleTeardown = () => {
@@ -1047,7 +1086,13 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         scheduleLive()
       })
       .on("presence", { event: "sync" }, () => {
-        const people = Object.values(channel.presenceState()).flat()
+        // Вкладка, закрытая без выхода (телефон уснул, PWA убили, сеть оборвалась),
+        // остаётся в presence до таймаута сокета, а её ключ — тот же аккаунт: ученик,
+        // зашедший заново, светился бы вторым и третьим человеком. Оставляем по одному
+        // на аккаунт — последнего, он и есть живой.
+        const people = [...new Map(
+          Object.values(channel.presenceState()).flat().map((p) => [p.userId, p]),
+        ).values()]
         // Клиент старой сборки (открытая до раскатки вкладка, кэш PWA) события
         // drawp не слушает вовсе — линия появлялась бы у него только целиком в
         // конце штриха. Замечаем такого по отсутствию метки proto и шлём ему
@@ -1074,11 +1119,18 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         for (const [id, st] of live.current) if (!ids.has(st.author)) live.current.delete(id)
         scheduleLive()
       })
-      .subscribe((status) => { if (status === "SUBSCRIBED") channel.track({ userId, name: userName, proto: 2, following: followRef.current || null }) })
+      .subscribe((status) => {
+        if (status !== "SUBSCRIBED") return
+        channel.track({ userId, name: userName, proto: 2, following: followRef.current || null })
+        // Первое подключение сцену принесёт начальная загрузка; повторное — это
+        // подъём после обрыва, и вот тут надо догнать написанное без нас.
+        if (joinedOnce.current) resync()
+        joinedOnce.current = true
+      })
 
     return scheduleTeardown
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomId, userId, userName])
+  }, [roomId, userId, userName, resync])
 
   // О том, за кем мы следим, знает канал: presence — единственное место, где
   // ведущий может узнать, что его обзор кому-то нужен.
@@ -2614,13 +2666,6 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
           <button onClick={() => zoomBy(1 / 1.2)} title="Отдалить"
             className="press-tap w-9 h-9 flex items-center justify-center board-hover" style={idleStyle}>
             <Icon name="minus" size={16} />
-          </button>
-          {/* Доска бесконечная, и найти на ней работу вручную — отдельный труд:
-              эта кнопка приводит к последним записям с любого места. */}
-          <button onClick={focusLatest} title="К последним записям"
-            className="press-tap w-9 h-9 flex items-center justify-center board-hover border-t"
-            style={{ ...idleStyle, borderColor: panelBorder }}>
-            <Icon name="target" size={16} />
           </button>
         </div>
 
