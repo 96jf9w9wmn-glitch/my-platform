@@ -115,20 +115,23 @@ export default function AutoInvoiceSettings({ tutorId, students = [], surface = 
     return map
   }, [students])
 
-  // Ждут оплаты — по той же арифметике, что видит ученик: долг раскладывается
-  // по квитанциям от новых к старым.
-  const pending = useMemo(() => {
-    let sum = 0
-    let count = 0
+  // Долг раскладывается по квитанциям от новых к старым — по той же арифметике,
+  // что видит ученик. Из этого же разбора берётся и состояние каждой строки
+  // журнала: без него оплаченная квитанция выглядит как непогашенная.
+  const state = useMemo(() => {
+    const byId = new Map()
     for (const s of students) {
       const mine = rows.filter((r) => String(r.student_id) === String(s.id))
       if (!mine.length) continue
-      const state = withPaymentState(mine, s)
-      sum += totalDue(state)
-      count += state.filter((i) => i.due > 0).length
+      for (const inv of withPaymentState(mine, s)) byId.set(inv.id, inv)
     }
-    return { sum, count }
+    return byId
   }, [rows, students])
+
+  const pending = useMemo(() => {
+    const due = [...state.values()].filter((i) => i.due > 0)
+    return { sum: totalDue(due), count: due.length }
+  }, [state])
 
   const active = rows.filter((r) => !r.canceled_at)
   const sinceLabel = cfg.since
@@ -237,6 +240,10 @@ export default function AutoInvoiceSettings({ tutorId, students = [], surface = 
             <div className="flex flex-col divide-y divide-gray-100 dark:divide-white/5">
               {active.slice(0, 6).map((inv) => {
                 const student = byStudent.get(String(inv.student_id))
+                // Карточки ученика может не быть в списке (архив, другой репетитор) —
+                // тогда разложить долг не по чему, и статус честнее не показывать.
+                const paid = state.get(inv.id)
+                const due = paid?.due ?? 0
                 return (
                   <div key={inv.id} className="flex items-center justify-between gap-3 py-2.5 first:pt-0">
                     <div className="min-w-0">
@@ -246,7 +253,14 @@ export default function AutoInvoiceSettings({ tutorId, students = [], surface = 
                       </div>
                     </div>
                     <div className="flex items-center gap-2.5 shrink-0">
-                      <span className="text-sm font-medium">{fmtMoney(inv.amount)} ₽</span>
+                      <div className="text-right">
+                        <div className="text-sm font-medium">{fmtMoney(inv.amount)} ₽</div>
+                        {paid && (
+                          <div className={`text-[11px] ${due > 0 ? "text-amber-500" : "text-green-600 dark:text-green-400"}`}>
+                            {due <= 0 ? "Оплачено" : due < paid.amount ? `осталось ${fmtMoney(due)} ₽` : "ждёт оплаты"}
+                          </div>
+                        )}
+                      </div>
                       <button
                         type="button"
                         onClick={() => cancelInvoice(inv.id)}
