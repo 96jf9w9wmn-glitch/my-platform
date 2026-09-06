@@ -1312,6 +1312,11 @@ function Variants({ user, students = [] }) {
     await supabase.from("variant_submissions").delete().eq("variant_id", v.id)
     await supabase.from("variants").delete().eq("id", v.id)
     setVariants((prev) => prev.filter((x) => x.id !== v.id))
+    // Работы удалённого варианта убираем из стейта вместе с ним. Раньше они
+    // там оставались, и плитки продолжали считать их: «Ждут проверки 1» при
+    // пустом списке — вариант, к которому эта работа относилась, уже стёрт.
+    // По той же причине в фильтре учеников висели те, у кого работ не осталось.
+    setSubmissions((prev) => prev.filter((s) => s.variant_id !== v.id))
     if (selectedVariant && selectedVariant.id === v.id) setSelectedVariant(null)
   }
 
