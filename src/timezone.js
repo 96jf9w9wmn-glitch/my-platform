@@ -153,3 +153,25 @@ export function shiftDayTime(dayIndex, timeStr, minutes) {
     time: `${String(Math.floor(inDay / 60)).padStart(2, "0")}:${String(inDay % 60).padStart(2, "0")}`,
   }
 }
+
+// Та же витрина при ОБРАТНОМ показе: строка лежит в базе в поясе ученика, а
+// репетитору её надо показать по его часам — иначе в шапке карточки стоит
+// «Пн 13:00», а в списке занятий рядом 14:00.
+//
+// Сдвигается только время и, у регулярного расписания, день недели. Дату
+// («10 сент. 13:00») при переходе через полночь не трогаем: разбирать русское
+// сокращение месяца ради занятия, назначенного ровно на полночь, — цена выше
+// пользы, а факт всё равно лежит в самих занятиях, строка тут витрина.
+const WEEK = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+
+export function shiftScheduleString(schedule, minutes) {
+  if (!schedule || !minutes) return schedule || ""
+  return String(schedule).split(", ").map((part) => {
+    const time = part.match(/(\d{2}):(\d{2})/)
+    if (!time) return part
+    const day = WEEK.indexOf(part.slice(0, 2))
+    const at = shiftDayTime(day < 0 ? 0 : day, time[0], minutes)
+    const shifted = part.replace(time[0], at.time)
+    return day < 0 ? shifted : WEEK[at.dayIndex] + shifted.slice(2)
+  }).join(", ")
+}

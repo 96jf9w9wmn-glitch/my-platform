@@ -13,7 +13,7 @@ import LessonStatusModal, { LessonStatusBadge } from "../components/LessonStatus
 import PaymentModeModal from "../components/PaymentModeModal"
 import { studentBilling, periodLabel, dayMonth } from "../billing"
 import { lessonStatusNotice } from "../lessonStatus"
-import { toStudentWall } from "../timezone"
+import { toStudentWall, shiftScheduleString, zoneDiffMinutes } from "../timezone"
 import {
   applyMoveToStudent, proposeMoveOnStudent, setMoveRequest,
   formatLessonWhen, formatLessonShort, MOVE_BY_TUTOR,
@@ -266,9 +266,12 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
                   через запятую расписание сливалось в одну длинную ленту. */}
               {student.schedule && (
                 <div className="mt-0.5 flex flex-col gap-0.5">
-                  {student.schedule.split(", ").map((slot, i) => (
-                    <span key={i}>{slot}</span>
-                  ))}
+                  {/* Строка лежит в поясе ученика — показываем её по часам
+                      репетитора, как и сами занятия ниже. */}
+                  {shiftScheduleString(student.schedule, zoneDiffMinutes(student.timezone, student.tzFrame))
+                    .split(", ").map((slot, i) => (
+                      <span key={i}>{slot}</span>
+                    ))}
                 </div>
               )}
             </div>

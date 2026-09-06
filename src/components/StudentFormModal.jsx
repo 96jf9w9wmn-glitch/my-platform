@@ -6,7 +6,7 @@ import Reveal from "./Reveal"
 import Collapse from "./Collapse"
 import SegmentSwitch from "./SegmentSwitch"
 import WeeksPicker from "./WeeksPicker"
-import { zoneDiffMinutes, shiftDayTime, toStudentWall } from "../timezone"
+import { zoneDiffMinutes, shiftDayTime, toStudentWall, shiftScheduleString } from "../timezone"
 import PhoneInput, { isValidPhoneNumber } from "react-phone-number-input"
 import "react-phone-number-input/style.css"
 import { plural, parseLocalDate, formatPhone, isLessonPast } from "../utils"
@@ -209,7 +209,11 @@ function StudentFormModal({ student, students = [], onClose, onSubmit, initialNa
   const [recurringDays, setRecurringDays] = useState(() => {
     if (!editing || !student.isRecurring) return []
     const fromLessons = daysFromLessons(futureLessons)
-    return fromLessons.length ? fromLessons : parseScheduleToDays(student.schedule)
+    // Запасной путь — строка расписания; она лежит в поясе ученика, а форма
+    // работает по часам репетитора, как и весь его кабинет.
+    return fromLessons.length
+      ? fromLessons
+      : parseScheduleToDays(shiftScheduleString(student.schedule, zoneDiffMinutes(student.timezone, student.tzFrame)))
   })
   const [recurringDuration] = useState(60)
   const [recurringStartDate, setRecurringStartDate] = useState(editing ? formatDate(new Date()) : "")
