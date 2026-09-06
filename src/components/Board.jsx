@@ -337,6 +337,10 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const closeTimer = useRef(null)
   const shotTimer = useRef(null)   // уход предложения «вставить снимок»
   const beginClosing = (id) => {
+    // Подсказку кнопки гасим: попап уходит с анимацией, и всплывшая поверх него
+    // подпись накрыла бы его содержимое
+    clearTimeout(tipTimer.current)
+    setTapped("")
     setClosingMenu(id)
     clearTimeout(closeTimer.current)
     closeTimer.current = setTimeout(() => setClosingMenu(null), POPUP_OUT_MS)
@@ -2778,7 +2782,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
                   className={`${btnBase} ${menuShown("stroke") ? "bg-blue-500/15 text-blue-500" : btnIdle}`}
                   style={menuShown("stroke") ? undefined : idleStyle}>
                   <Icon name="stroke" size={21} />
-                  <Tip label="Настройки обводки" dark={dark} show={tapped === "stroke"} />
+                  {!menuShown("stroke") && <Tip label="Настройки обводки" dark={dark} show={tapped === "stroke"} />}
                 </button>
                 {menuShown("stroke") && (
                   <div className={`absolute bottom-full mb-2 left-1/2 -translate-x-1/2 p-2 rounded-xl shadow-lg ${menuAnim("stroke")}`}
