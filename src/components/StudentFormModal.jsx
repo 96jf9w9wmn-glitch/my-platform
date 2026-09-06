@@ -20,7 +20,7 @@ function generateParentCode() {
   return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("")
 }
 const MONTH_NAMES = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"]
-const DAY_NAMES_SHORT = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"]
+const DAY_NAMES_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 const WEEK_DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 const DAY_INDEX = { "Пн": 1, "Вт": 2, "Ср": 3, "Чт": 4, "Пт": 5, "Сб": 6, "Вс": 0 }
 // Подсказка — по имени пользователя, а не по полному адресу: его и вписывают
@@ -119,7 +119,9 @@ function MiniCalendar({ lessons, onToggleDate }) {
   const [viewYear, setViewYear] = useState(today.getFullYear())
   const [viewMonth, setViewMonth] = useState(today.getMonth())
   const days = getDaysInMonth(viewYear, viewMonth)
-  const firstDay = days[0].getDay()
+  // Неделя начинается с понедельника, как во всех остальных календарях
+  // кабинета: getDay() отдаёт воскресенье нулём, поэтому сдвигаем.
+  const firstDay = (days[0].getDay() + 6) % 7
   const selectedDates = lessons.map((l) => l.date)
 
   function prevMonth() {
