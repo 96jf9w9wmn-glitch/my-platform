@@ -25,6 +25,7 @@ import AutoHeight from "../components/AutoHeight"
 import { useClosing, POPUP_OUT_MS } from "../useClosing"
 import useGridCols, { detailRowEndOf } from "../useGridCols"
 import getAvatarColor from "../avatarColor"
+import { TILE_TINTS } from "../dueTint"
 import Reveal from "../components/Reveal"
 import { lazyChunk } from "../lazyChunk"
 // Тетрадь тянет генераторы заданий — грузим только когда её открыли.
@@ -1263,6 +1264,57 @@ function StudentFilter({ options, value, onChange }) {
   )
 }
 
+// Карточка варианта — того же склада, что карточка задания (Homework.jsx):
+// плитка слева кодирует, на каком этапе работа, состояние написано один раз
+// чипом, а действия (файл, удаление) живут в развороте, а не на каждой
+// карточке. Разделы кабинета отличаются содержимым, а не оформлением.
+function VariantCard({ variant: v, total, graded, submitted, selected, onOpen }) {
+  const tileBox = "w-12 h-12 shrink-0 rounded-2xl flex items-center justify-center bg-gradient-to-br"
+  // Этап жизни варианта: не выдан → выдан → работы ждут проверки → всё проверено.
+  const state = total === 0 ? "idle"
+    : submitted > 0 ? "review"
+      : graded === total ? "done"
+        : "given"
+  const tile = state === "done"
+    ? <div className={`${tileBox} ${TILE_TINTS.green}`}><Icon name="check" size={18} /></div>
+    : state === "review"
+      ? <div className={`${tileBox} ${TILE_TINTS.indigo}`}><Icon name="clock" size={18} /></div>
+      : state === "given"
+        ? <div className={`${tileBox} ${TILE_TINTS.blue}`}><Icon name="clipboard" size={18} /></div>
+        : <div className="w-12 h-12 shrink-0 rounded-2xl flex items-center justify-center text-gray-400 ring-1 ring-gray-200/70 dark:ring-white/10"><Icon name="clipboard" size={17} /></div>
+  const chip = state === "done" ? { label: "Проверено", cls: "text-green-600 bg-green-500/12 ring-1 ring-green-500/20" }
+    : state === "review" ? { label: `${submitted} на проверке`, cls: "text-amber-600 bg-amber-500/12 ring-1 ring-amber-500/20" }
+      : state === "given" ? { label: "Выдан", cls: "text-blue-600 bg-blue-500/10 ring-1 ring-blue-500/20" }
+        : { label: "Не выдан", cls: "text-gray-500 ring-1 ring-gray-200/80 dark:ring-white/15" }
+  return (
+    // Повторное нажатие сворачивает разбор: карточки стоят рядом, и закрывать
+    // панель под ними больше нечем.
+    <button
+      onClick={onOpen}
+      className={`glass-sm press-tap text-left w-full p-3.5 flex items-center gap-3 transition-all ${selected ? "!border-blue-400/70 ring-2 ring-blue-400/35" : "hover:!border-blue-300/60"}`}
+    >
+      {tile}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-sm truncate flex-1">{v.title}</span>
+          <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${chip.cls}`}>{chip.label}</span>
+        </div>
+        <div className="text-[11px] text-gray-400 mt-1.5 flex items-center gap-1.5 flex-wrap">
+          {/* Тип экзамена стоит первым: он и есть «что это за работа». */}
+          <span className={isEgeType(v.type) ? "text-purple-600 dark:text-purple-300 font-medium" : "text-blue-600 dark:text-blue-300 font-medium"}>{v.type}</span>
+          <span className="opacity-50">·</span>
+          <span>{new Date(v.created_at).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}</span>
+          {total > 0 && <><span className="opacity-50">·</span><span>{total} {plural(total, "ученик", "ученика", "учеников")}</span></>}
+          {v.file_url && <><span className="opacity-50">·</span><span className="inline-flex items-center gap-1"><Icon name="paperclip" size={11} />файл</span></>}
+          {/* «Проверено всё» уже сказано чипом — в строке остаётся только
+              незаконченная проверка. */}
+          {graded > 0 && graded < total && <><span className="opacity-50">·</span><span className="text-blue-600 dark:text-blue-400 font-medium">{graded} из {total} проверено</span></>}
+        </div>
+      </div>
+    </button>
+  )
+}
+
 function Variants({ user, students = [] }) {
   const [variants, setVariants] = useState([])
   const [submissions, setSubmissions] = useState([])
@@ -1393,11 +1445,24 @@ function Variants({ user, students = [] }) {
                   <span className="font-medium text-base truncate">{selectedVariant.title}</span>
                   <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ring-1 ${isEgeType(selectedVariant.type) ? "text-purple-600 bg-purple-500/10 ring-purple-500/20" : "text-blue-600 bg-blue-500/10 ring-blue-500/20"}`}>{selectedVariant.type}</span>
                 </div>
+                {/* Действия варианта живут здесь, а не на каждой карточке: в
+                    списке они шумели, а удалять вариант вслепую, не открыв его,
+                    и не нужно. Так же устроен разбор задания. */}
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className="text-[11px] text-gray-400 flex items-center gap-1.5">
+                  <span className="text-[11px] text-gray-400 hidden sm:flex items-center gap-1.5">
                     <Icon name="users" size={12} />
                     {variantSubmissions.length} {plural(variantSubmissions.length, "ученик", "ученика", "учеников")}
                   </span>
+                  {selectedVariant.file_url && (
+                    <button onClick={() => setPreviewFile(selectedVariant.file_url)} title="Файл варианта"
+                      className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-500/10 transition-colors">
+                      <Icon name="paperclip" size={15} />
+                    </button>
+                  )}
+                  <button onClick={() => setConfirmDelete(selectedVariant)} aria-label="Удалить вариант" title="Удалить вариант"
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-500/10 transition-colors">
+                    <Icon name="trash" size={15} />
+                  </button>
                   <button onClick={closeDetail} title="Свернуть"
                     className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-500/10 transition-colors">
                     <Icon name="x" size={15} />
@@ -1569,59 +1634,17 @@ function Variants({ user, students = [] }) {
               const graded = subs.filter((s) => s.status === "graded").length
               const submitted = subs.filter((s) => s.status === "submitted").length
               const total = subs.length
-              const progressPct = total > 0 ? Math.round((graded / total) * 100) : 0
               const isSelected = selectedVariant?.id === v.id
               return (
                 <Fragment key={v.id}>
-                <div className={`glass-sm overflow-hidden transition-all flex flex-col ${isSelected ? "!border-blue-400/70 ring-2 ring-blue-400/35" : "hover:!border-blue-300/60"}`}>
-                  {/* Повторный клик сворачивает разбор: карточки стоят строкой,
-                      и закрывать панель под ними больше нечем. */}
-                  <button onClick={() => { if (isSelected) closeDetail(); else { cancelDetailClose(); setSelectedVariant(v) } }} className="w-full text-left px-4 pt-3.5 pb-3 flex-1">
-                    <div className="flex items-baseline justify-between gap-2 mb-1.5">
-                      <div className="font-medium text-sm truncate">{v.title}</div>
-                      <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ring-1 ${isEgeType(v.type) ? "text-purple-600 bg-purple-500/10 ring-purple-500/20" : "text-blue-600 bg-blue-500/10 ring-blue-500/20"}`}>{v.type}</span>
-                    </div>
-                    {/* Дата и охват — одной строкой: раньше «5 учеников» жило только
-                        в правой панели, а под датой оставалась пустая полоса. */}
-                    <div className="text-[11px] text-gray-400 flex items-center gap-1.5">
-                      <span>{new Date(v.created_at).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}</span>
-                      {total > 0 && <><span className="opacity-50">·</span><span>{total} {plural(total, "ученик", "ученика", "учеников")}</span></>}
-                    </div>
-                    {total > 0 && (
-                      <div className="mt-2.5 flex items-center gap-2">
-                        <span className="text-[11px] text-gray-400 flex-shrink-0">Проверено</span>
-                        <div className="h-1 flex-1 bg-blue-500/12 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all duration-500 ${graded === total ? "bg-green-500" : "bg-blue-500"}`}
-                            style={{ width: progressPct + "%" }}
-                          />
-                        </div>
-                        <span className="text-[11px] text-gray-400 tabular-nums flex-shrink-0">{graded} / {total}</span>
-                      </div>
-                    )}
-                  </button>
-                  {/* Статус слева, действия справа: две половинчатые текстовые кнопки
-                      во всю ширину выглядели как футер объявления. */}
-                  <div className="flex items-center justify-between gap-2 pl-4 pr-2 py-1.5 border-t border-gray-100/60">
-                    <div className="flex gap-1.5 flex-wrap min-w-0">
-                      {submitted > 0 && <span className="text-[11px] text-amber-600 bg-amber-500/12 ring-1 ring-amber-500/20 px-2 py-0.5 rounded-full">{submitted} на проверке</span>}
-                      {graded > 0 && <span className="text-[11px] text-green-600 bg-green-500/12 ring-1 ring-green-500/20 px-2 py-0.5 rounded-full">{graded} проверено</span>}
-                      {total === 0 && <span className="text-[11px] text-gray-400">Ещё никому не выдан</span>}
-                    </div>
-                    <div className="flex items-center gap-0.5 flex-shrink-0">
-                      {v.file_url && (
-                        <button onClick={() => setPreviewFile(v.file_url)} title="Файл варианта"
-                          className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-500/10 transition-colors">
-                          <Icon name="paperclip" size={15} />
-                        </button>
-                      )}
-                      <button onClick={() => setConfirmDelete(v)} aria-label="Удалить вариант" title="Удалить вариант"
-                        className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-500/10 transition-colors">
-                        <Icon name="trash" size={15} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                <VariantCard
+                  variant={v}
+                  total={total}
+                  graded={graded}
+                  submitted={submitted}
+                  selected={isSelected}
+                  onOpen={() => { if (isSelected) closeDetail(); else { cancelDetailClose(); setSelectedVariant(v) } }}
+                />
                 {/* Разбор — целой строкой сразу после ряда, в котором стоит
                     выбранная карточка (на последнем ряду — после последней). */}
                 {detailPanel && (i === detailRowEnd) && detailPanel}
