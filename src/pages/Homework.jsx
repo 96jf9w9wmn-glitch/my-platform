@@ -1249,60 +1249,79 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                           </button>
                         </div>
 
-                        {/* Ключ к работе почти всегда есть строкой, а полей
-                            бывает под сотню: вписывать их по одному — работа
-                            на полчаса. Поля заданий при этом остаются: ответ
-                            с пробелом внутри строкой не задать. */}
-                        <div className="flex flex-col gap-1">
-                          <input
-                            value={bulkAnswers}
-                            onChange={(e) => applyBulkAnswers(e.target.value)}
-                            placeholder="Все ответы через пробел: 12 3,5 25"
-                            className="input-glass py-2 text-sm"
-                          />
-                          <div className="text-[11px] text-gray-400 leading-snug">
-                            {bulkCount
-                              ? `Разложено по заданиям — ${Math.min(bulkCount, splitTasks.length)} из ${splitTasks.length}` +
-                                (bulkCount > splitTasks.length
-                                  ? `, лишние ${bulkCount - splitTasks.length} не использованы`
-                                  : "")
-                              : "Ответы разложатся по заданиям по порядку. Ответ с пробелом внутри впишите в поле задания."}
+                        {/* Поля ответов есть только у работы, которую проверит
+                            кабинет. Выключена автопроверка — работу смотрит
+                            репетитор по фотографии, и эталон ему не нужен:
+                            пустые поля просили бы заполнить то, что никуда не
+                            пойдёт (при `written` ответы и не сохраняются).
+                            Вписанное не пропадает — вернут тумблер, вернутся и
+                            ответы. */}
+                        <div>
+                          <Collapse open={autoCheck}>
+                            {/* Ключ к работе почти всегда есть строкой, а полей
+                                бывает под сотню: вписывать их по одному — работа
+                                на полчаса. Поля заданий при этом остаются: ответ
+                                с пробелом внутри строкой не задать. */}
+                            <div className="flex flex-col gap-1 pb-2">
+                              <input
+                                value={bulkAnswers}
+                                onChange={(e) => applyBulkAnswers(e.target.value)}
+                                placeholder="Все ответы через пробел: 12 3,5 25"
+                                className="input-glass py-2 text-sm"
+                              />
+                              <div className="text-[11px] text-gray-400 leading-snug">
+                                {bulkCount
+                                  ? `Разложено по заданиям — ${Math.min(bulkCount, splitTasks.length)} из ${splitTasks.length}` +
+                                    (bulkCount > splitTasks.length
+                                      ? `, лишние ${bulkCount - splitTasks.length} не использованы`
+                                      : "")
+                                  : "Ответы разложатся по заданиям по порядку. Ответ с пробелом внутри впишите в поле задания."}
+                              </div>
+                            </div>
+                          </Collapse>
+
+                          <div className="flex flex-col gap-2">
+                            {splitTasks.map((t, i) => (
+                              <div key={i} className="flex items-start gap-3 rounded-2xl ring-1 ring-gray-200/70 dark:ring-white/10 p-2.5">
+                                <span className="shrink-0 w-6 h-6 rounded-full bg-blue-500/10 text-blue-600 text-xs font-semibold flex items-center justify-center">
+                                  {i + 1}
+                                </span>
+                                <img src={t.image} alt={`Задание ${i + 1}`}
+                                  className="w-28 sm:w-40 rounded-lg ring-1 ring-gray-200/70 dark:ring-white/10 bg-white" />
+                                <div className="min-w-0 flex-1 flex flex-col">
+                                  <Collapse open={autoCheck}>
+                                    <div className="pb-1.5">
+                                      <input
+                                        value={t.answer}
+                                        onChange={(e) => setSplitAnswer(i, e.target.value)}
+                                        placeholder="Ответ"
+                                        className="input-glass py-1.5 text-sm w-full"
+                                      />
+                                    </div>
+                                  </Collapse>
+                                  {!!t.text && (
+                                    <div className="text-[11px] text-gray-400 leading-snug line-clamp-2">{t.text}</div>
+                                  )}
+                                </div>
+                                <button type="button" onClick={() => removeSplitTask(i)} title="Убрать задание"
+                                  className="no-press shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-blue-500/[0.08] transition active:scale-90">
+                                  <Icon name="x" size={13} />
+                                </button>
+                              </div>
+                            ))}
                           </div>
                         </div>
-
-                        <div className="flex flex-col gap-2">
-                          {splitTasks.map((t, i) => (
-                            <div key={i} className="flex items-start gap-3 rounded-2xl ring-1 ring-gray-200/70 dark:ring-white/10 p-2.5">
-                              <span className="shrink-0 w-6 h-6 rounded-full bg-blue-500/10 text-blue-600 text-xs font-semibold flex items-center justify-center">
-                                {i + 1}
-                              </span>
-                              <img src={t.image} alt={`Задание ${i + 1}`}
-                                className="w-28 sm:w-40 rounded-lg ring-1 ring-gray-200/70 dark:ring-white/10 bg-white" />
-                              <div className="min-w-0 flex-1 flex flex-col gap-1.5">
-                                <input
-                                  value={t.answer}
-                                  onChange={(e) => setSplitAnswer(i, e.target.value)}
-                                  placeholder="Ответ"
-                                  className="input-glass py-1.5 text-sm"
-                                />
-                                {!!t.text && (
-                                  <div className="text-[11px] text-gray-400 leading-snug line-clamp-2">{t.text}</div>
-                                )}
-                              </div>
-                              <button type="button" onClick={() => removeSplitTask(i)} title="Убрать задание"
-                                className="no-press shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-blue-500/[0.08] transition active:scale-90">
-                                <Icon name="x" size={13} />
-                              </button>
+                        <div>
+                          <Collapse open={autoCheck}>
+                            <div className="text-[11px] text-gray-400 leading-snug pb-2">
+                              Ответы нужны для автоматической проверки. Если проверяете сами — выключите автопроверку ниже, задания всё равно останутся отдельными.
                             </div>
-                          ))}
+                          </Collapse>
+                          <button type="button" onClick={dropSplit}
+                            className="self-start text-xs text-gray-400 hover:text-red-500 active:scale-95 transition-all">
+                            Убрать задания
+                          </button>
                         </div>
-                        <div className="text-[11px] text-gray-400 leading-snug">
-                          Ответы нужны для автоматической проверки. Если проверяете сами — выключите автопроверку ниже, задания всё равно останутся отдельными.
-                        </div>
-                        <button type="button" onClick={dropSplit}
-                          className="self-start text-xs text-gray-400 hover:text-red-500 active:scale-95 transition-all">
-                          Убрать задания
-                        </button>
                       </div>
                     )}
                   </>
