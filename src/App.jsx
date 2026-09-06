@@ -458,6 +458,9 @@ function App() {
     || (user?.role === "student" && !user.profile?.tutor_id)
 
   const loadedRosterRef = useRef(null)
+  // Когда ростер читался последний раз — чтобы не дёргать базу на каждом
+  // переключении вкладки.
+  const lastRosterLoadRef = useRef(0)
   useEffect(() => {
     // Смена аккаунта без перезагрузки — сбрасываем чужой список
     if (loadedRosterRef.current && loadedRosterRef.current !== rosterKey) {
@@ -473,6 +476,7 @@ function App() {
   }, [rosterKey, studentsLoaded])
 
   async function loadStudents(attempt = 0) {
+    lastRosterLoadRef.current = Date.now()
     let query = supabase.from("students").select("*").order("created_at", { ascending: true })
     if (user.role === "tutor") {
       query = query.eq("tutor_id", user.id)
@@ -806,24 +810,30 @@ function App() {
     return () => listener.subscription.unsubscribe()
   }, [])
 
-  // Якорь мог появиться уже ПОСЛЕ того, как кабинет загрузился: ученик впервые
-  // вошёл, пока вкладка репетитора была открыта. Занятия в стейте лежат тогда в
-  // якорном кадре, а не в кадре репетитора, и сохранение записало бы время без
-  // перевода — молча, на час мимо. Конвертировать их на лету нельзя (сдвинулись
-  // бы и старые), поэтому просто перечитываем ростер при возврате к вкладке.
-  // Запрос делается только пока есть карточки без якоря, то есть считанные разы
-  // на ученика, и прекращается сам.
+  // Ростер перечитывается при возврате к вкладке. Кабинет держат открытым
+  // сутками (это PWA), а расписание за это время меняется не только тут: ученик
+  // просит перенос, и — что важнее для времени — у карточки появляется или
+  // уточняется ЯКОРЬ пояса. Со старым якорем в стейте кабинет показывает время
+  // мимо на час и, что хуже, так же его записывает.
+  //
+  // Карточки без якоря перечитываем сразу: там пояс появляется в первый же
+  // заход ученика, и ждать нельзя. Остальное — не чаще раза в пять минут, чтобы
+  // переключение вкладок не превращалось в поток запросов.
   useEffect(() => {
-    if (user?.role !== "tutor" || !studentsLoaded) return
-    if (!students.some((s) => !s.timezone && s.studentAccountId)) return
-    const recheck = () => { if (document.visibilityState === "visible") loadStudents() }
+    if (!user?.id || !studentsLoaded) return
+    const urgent = user.role === "tutor" && students.some((s) => !s.timezone && s.studentAccountId)
+    const recheck = () => {
+      if (document.visibilityState !== "visible") return
+      if (!urgent && Date.now() - lastRosterLoadRef.current < 5 * 60000) return
+      loadStudents()
+    }
     window.addEventListener("focus", recheck)
     document.addEventListener("visibilitychange", recheck)
     return () => {
       window.removeEventListener("focus", recheck)
       document.removeEventListener("visibilitychange", recheck)
     }
-  }, [user?.role, studentsLoaded, students])
+  }, [user?.id, user?.role, studentsLoaded, students])
 
   // Пояс устройства сообщаем сами, без единого вопроса пользователю: телефон и
   // ноутбук и так знают, в какой стране находятся, а лишняя настройка «выберите
