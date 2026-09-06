@@ -1152,6 +1152,16 @@ function App() {
             >
               {(user.profile?.name || user.email || "?").trim().charAt(0).toUpperCase()}
             </button>
+            {/* Выход стоит прямо в верхней панели, как у ученика и родителя:
+                искать его внутри «Профиля» приходилось не с первого раза. */}
+            <button
+              onClick={handleLogout}
+              title="Выйти"
+              aria-label="Выйти"
+              className="press-tap w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-700 hover:bg-blue-500/10 rounded-lg"
+            >
+              <Icon name="logout" size={16} />
+            </button>
           </div>
         </div>
 

@@ -23,6 +23,7 @@ import { useClosing } from "../useClosing"
 import useGridCols, { detailRowEndOf } from "../useGridCols"
 import getAvatarColor from "../avatarColor"
 import DateTile from "../components/DateTile"
+import DeadlinePicker from "../components/DeadlinePicker"
 import { TILE_TINTS, dueTintKey } from "../dueTint"
 // Список предметов — из лёгкого модуля: сами генераторы приезжают отдельно
 // (homeworkBank), и тащить их в бандл раздела ради подписей нельзя.
@@ -90,30 +91,6 @@ async function uploadTaskImage(tutorId, dataUrl, idx) {
   const { data } = supabase.storage.from("homework").getPublicUrl(path)
   return data.publicUrl
 }
-
-// Локальная дата в формате YYYY-MM-DD. toISOString() отдал бы UTC и вечером по
-// Москве сдвинул бы срок на день назад.
-function isoDay(offsetDays = 0) {
-  const d = new Date()
-  d.setDate(d.getDate() + offsetDays)
-  const p = (n) => String(n).padStart(2, "0")
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
-}
-
-// Срок сдачи выбирается одним нажатием: календарь остаётся для редкого случая.
-const DEADLINE_CHIPS = [
-  { label: "Без срока", days: null },
-  { label: "Завтра", days: 1 },
-  { label: "3 дня", days: 3 },
-  { label: "Неделя", days: 7 },
-]
-
-const chipCls = (on) =>
-  `px-3 py-1.5 rounded-full text-xs transition-all active:scale-[0.94] ${
-    on
-      ? "bg-blue-600 text-white shadow-sm"
-      : "text-gray-600 ring-1 ring-gray-200 dark:ring-white/15 hover:ring-gray-300"
-  }`
 
 // Переключатель «тумблер + подпись»: одинаковый во всей форме.
 // Нажатие показывает сам переключатель (щелчок рычажка + лёгкое сжатие), а не
@@ -352,10 +329,6 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
   const isAutoTitle = !title.trim() || title === defaultTitle
   const [description, setDescription] = useState(editingHw?.description || "")
   const [deadline, setDeadline] = useState(editingHw?.deadline || "")
-  // Календарь показываем только если срок не попал в быстрые чипы.
-  const [pickDate, setPickDate] = useState(
-    !!editingHw?.deadline && !DEADLINE_CHIPS.some((c) => c.days != null && isoDay(c.days) === editingHw.deadline)
-  )
   const [file, setFile] = useState(null)
   // Задания, нарезанные из загруженного файла: картинка условия, текст (если у
   // файла был текстовый слой) и ответ, который вписывает репетитор. Работа
@@ -1117,27 +1090,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                 className="input-glass" />
             </div>
 
-            <div>
-              <div className="text-sm text-gray-500 mb-2">Срок сдачи</div>
-              <div className="flex flex-wrap gap-1.5">
-                {DEADLINE_CHIPS.map((c) => {
-                  const value = c.days == null ? "" : isoDay(c.days)
-                  return (
-                    <button key={c.label} type="button" onClick={() => { setDeadline(value); setPickDate(false) }}
-                      className={chipCls(!pickDate && deadline === value)}>
-                      {c.label}
-                    </button>
-                  )
-                })}
-                <button type="button" onClick={() => setPickDate(true)} className={chipCls(pickDate)}>
-                  Другая дата
-                </button>
-              </div>
-              <Collapse open={pickDate}>
-                <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)}
-                  className="input-glass mt-2" />
-              </Collapse>
-            </div>
+            <DeadlinePicker value={deadline} onChange={setDeadline} />
 
             {/* Как ученик сдаёт. Тип задания берётся отсюда: есть ответы — тест.
                 Карточка ровно по содержимому: ни flex-1 (растягивал рамку до низа

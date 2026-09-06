@@ -898,6 +898,14 @@ function variantMaxOf(v, part2Nums = variantPart2Nums(v)) {
 // осталось. Остаток верен на момент отрисовки: точные часы идут в самой работе,
 // а списку достаточно ответить, успеваешь ли сесть за вариант сейчас.
 function variantTimeNote(v, state, minutes) {
+  // Срок важнее продолжительности: «до какого числа сдать» решает, когда за
+  // работу садиться, а сколько она идёт — написано внутри неё самой.
+  if (state === "pending" && v.deadline) {
+    const today = new Date(); today.setHours(0, 0, 0, 0)
+    return parseLocalDate(v.deadline) < today
+      ? "Просрочено"
+      : `Сдать до ${parseLocalDate(v.deadline).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}`
+  }
   if (!minutes) return state === "running" ? "Работа начата" : ""
   if (state !== "running") return `На решение: ${formatExamDuration(minutes)}`
   const left = Math.ceil((new Date(v.submission.opened_at).getTime() + minutes * 60000 - Date.now()) / 60000)
@@ -927,9 +935,15 @@ function StudentVariantCard({ variant: v, index, onSelect }) {
       style={{ animationDelay: `${Math.min(index, 8) * 45}ms` }}
       className="item-enter press-tap text-left w-full glass rounded-2xl p-3.5 flex items-center gap-3"
     >
-      <div className={`shrink-0 w-11 h-11 rounded-2xl flex items-center justify-center bg-gradient-to-br ${meta.tile}`}>
-        <Icon name={meta.icon} size={18} />
-      </div>
+      {/* Пока вариант не решён, на плитке стоит срок — как у домашней работы:
+          дата читается раньше названия, цвет говорит о срочности. */}
+      {state === "pending" && v.deadline ? (
+        <DateTile date={v.deadline} tint={TILE_TINTS[dueTintKey(v.deadline)]} className="w-11 h-11" />
+      ) : (
+        <div className={`shrink-0 w-11 h-11 rounded-2xl flex items-center justify-center bg-gradient-to-br ${meta.tile}`}>
+          <Icon name={meta.icon} size={18} />
+        </div>
+      )}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <div className="font-medium text-sm truncate flex-1">{v.title}</div>
@@ -944,7 +958,7 @@ function StudentVariantCard({ variant: v, index, onSelect }) {
         <div className="flex items-center gap-1.5 mt-1 text-[11px]">
           <span className="text-gray-400 shrink-0">{v.type}</span>
           {note && (
-            <span className={`inline-flex items-center gap-1 min-w-0 ${state === "running" ? "text-amber-600" : "text-gray-400"}`}>
+            <span className={`inline-flex items-center gap-1 min-w-0 ${note === "Просрочено" ? "text-red-500 font-medium" : state === "running" ? "text-amber-600" : "text-gray-400"}`}>
               <span className="text-gray-400">•</span>
               {(state === "pending" || state === "running") && <Icon name="clock" size={10} className="shrink-0" />}
               <span className="truncate">{note}</span>
@@ -975,9 +989,13 @@ export function StudentVariantList({ variants, onSelect }) {
   // Порядок — как в заданиях, по срочности: начатая работа первой (у неё идёт
   // время), затем нерешённые, работы на проверке и проверенные в конце.
   const rank = { running: 0, pending: 1, submitted: 2, graded: 3 }
+  const dueTime = (v) => (v.deadline ? parseLocalDate(v.deadline).getTime() : Infinity)
   const list = variants.filter(match[filter]).slice().sort((a, b) => {
     const r = rank[variantStateOf(a)] - rank[variantStateOf(b)]
     if (r) return r
+    // Внутри нерешённых — по сроку: работа, которую ждут завтра, стоит выше
+    // выданной позже, но без срока.
+    if (dueTime(a) !== dueTime(b)) return dueTime(a) - dueTime(b)
     return String(b.submission?.created_at || "").localeCompare(String(a.submission?.created_at || ""))
   })
 
@@ -3415,7 +3433,22 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                   )}
 
                   <div className="flex items-start justify-between gap-3 mb-3">
-                    <h2 className="text-lg font-medium">{selectedVariant.title}</h2>
+                    <div className="min-w-0">
+                      <h2 className="text-lg font-medium">{selectedVariant.title}</h2>
+                      {/* Срок сдачи — сразу под названием: он решает, садиться
+                          за вариант сегодня или можно позже. */}
+                      {selectedVariant.deadline && selectedVariant.submission.status === "pending" && (
+                        <div className={`text-xs mt-0.5 flex items-center gap-1 ${
+                          parseLocalDate(selectedVariant.deadline) < new Date(new Date().setHours(0, 0, 0, 0))
+                            ? "text-red-500 font-medium" : "text-gray-500"
+                        }`}>
+                          <Icon name="calendar" size={11} />
+                          {parseLocalDate(selectedVariant.deadline) < new Date(new Date().setHours(0, 0, 0, 0))
+                            ? "Срок сдачи прошёл"
+                            : `Сдать до ${parseLocalDate(selectedVariant.deadline).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}`}
+                        </div>
+                      )}
+                    </div>
                     {variantDownloadUrl && !variantLocked && (
                       <a href={variantDownloadUrl} download
                         className="flex-shrink-0 flex items-center gap-1.5 text-xs text-blue-600 border border-blue-200 rounded-lg px-3 py-1.5 hover:bg-blue-50 transition-colors active:scale-95">

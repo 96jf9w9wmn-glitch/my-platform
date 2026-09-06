@@ -2,9 +2,8 @@ import { useState, useEffect, useRef, Fragment } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import { signRows } from "../storageUrl"
-import { plural, getInitials, plainTaskMath, answersEqual } from "../utils"
+import { plural, getInitials, plainTaskMath, answersEqual, parseLocalDate } from "../utils"
 import Icon from "../components/Icon"
-import MorphIcon from "../components/MorphIcon"
 import { isModuleNumber, linkedGroupOf, part1NumbersOf, part1SlotsOf, part2NumbersOf, isPart2Number, examLevelOf, numbersLabel, packVariantTask, VARIANT_TYPES } from "./taskBankMeta"
 import { choiceBaseOf } from "./answerChoices"
 import { scaleOf, variantPart2MaxOf, isLegacyProfVariant, variantMaxPrimary, examResult, secondaryLabel, taskMaxOf } from "../examScales"
@@ -17,6 +16,7 @@ import { isOwner } from "../owner"
 import { usePlan } from "../subscription"
 import { PlanHint } from "../components/PlanLock"
 import ConfirmModal from "../components/ConfirmModal"
+import DeadlinePicker from "../components/DeadlinePicker"
 import TasksModal from "../components/TasksModal"
 import SegmentSwitch from "../components/SegmentSwitch"
 import StatTabs from "../components/StatTabs"
@@ -25,153 +25,22 @@ import AutoHeight from "../components/AutoHeight"
 import { useClosing, POPUP_OUT_MS } from "../useClosing"
 import useGridCols, { detailRowEndOf } from "../useGridCols"
 import getAvatarColor from "../avatarColor"
-import { TILE_TINTS } from "../dueTint"
+import DateTile from "../components/DateTile"
+import { TILE_TINTS, dueTintKey } from "../dueTint"
 import Reveal from "../components/Reveal"
 import { lazyChunk } from "../lazyChunk"
 // Тетрадь тянет генераторы заданий — грузим только когда её открыли.
 
-// Банк заданий и сборка PDF — самые тяжёлые модули приложения: генераторы всех предметов
-// весят около 3,3 МБ, jsPDF с html2canvas — ещё около 0,2 МБ. Разделу они нужны только по
-// нажатию кнопки, поэтому подключаются в этот момент, а не при открытии раздела: список
-// вариантов появляется сразу. Сразу после отрисовки банк подтягивается фоном (prefetchBank),
-// так что к нажатию «Собрать вариант» он обычно уже в кэше.
+// Банк заданий — самый тяжёлый модуль приложения: генераторы всех предметов весят около
+// 3,3 МБ. Разделу он нужен только по нажатию кнопки, поэтому подключается в этот момент,
+// а не при открытии раздела: список вариантов появляется сразу. Сразу после отрисовки банк
+// подтягивается фоном (prefetchBank), так что к нажатию «Собрать вариант» он обычно уже в кэше.
 const loadBank = () => lazyChunk(() => import("./taskBankApi"), "банк заданий")
-const loadVariantPdf = () => lazyChunk(() => import("./variantPdf"), "сборку листа варианта")
 function prefetchBank() {
   const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1500))
   // Фоновая подгрузка молчит: не доехало — значит подождём нажатия, там о сбое
   // уже скажут словами.
-  idle(() => { loadBank().catch(() => {}); loadVariantPdf().catch(() => {}) })
-}
-
-// Файл варианта: свой PDF/фото репетитора или печатный лист, собранный из банка.
-// Лист СОБИРАЕТСЯ ЗДЕСЬ, а не при сохранении варианта: html2canvas снимает страницу
-// секундами, и отправка ученикам не должна их ждать — вариант из банка ученик решает
-// в кабинете, файл нужен только для печати и для скачивания.
-function VariantFileBlock({ variant, tutorId, onBuilt, onPreview }) {
-  const [busy, setBusy] = useState(false)
-  const [ansBusy, setAnsBusy] = useState(false)
-  const [err, setErr] = useState("")
-  const url = variant.file_url
-  const fromBank = variant.tasks_snapshot?.length > 0
-
-  // Тот же лист, но с ответами — для проверки (приём Kuta Software). Отдельной
-  // карточкой он только дублировал строку файла, поэтому это просто вторая кнопка:
-  // скачать вариант с ответами или без. Лист пересобирается из tasks_snapshot,
-  // так что числа те же, что получил ученик, а не новые.
-  async function downloadAnswers() {
-    setAnsBusy(true); setErr("")
-    try {
-      // В снимке варианта ответов НЕТ намеренно: ученик решает его в кабинете и прочитал
-      // бы их прямо в данных страницы. Для листа проверяющего подставляем их из самой
-      // строки варианта: часть 1 — массив по номеру−1, часть 2 — по номеру.
-      const p1 = variant.answers?.part1 || []
-      const p2 = variant.answers?.part2 || {}
-      const tasks = (variant.tasks_snapshot || []).map((t) => ({
-        ...t, answer: t.answer ?? p1[t.number - 1] ?? p2[t.number] ?? null,
-      }))
-      const blob = await (await loadVariantPdf()).generateVariantPdf({
-        title: variant.title, examType: variant.type, tasks, mode: "answers",
-        part2Numbers: variantPart2Tasks(variant),
-      })
-      const objUrl = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = objUrl
-      a.download = `${variant.title || "Вариант"} — с ответами.pdf`
-      a.click()
-      URL.revokeObjectURL(objUrl)
-    } catch {
-      setErr("Не получилось собрать лист с ответами")
-    } finally {
-      setAnsBusy(false)
-    }
-  }
-
-  async function build() {
-    setBusy(true); setErr("")
-    try {
-      const { generateVariantPdf } = await loadVariantPdf()
-      const blob = await generateVariantPdf({
-        title: variant.title, examType: variant.type, tasks: variant.tasks_snapshot,
-        part2Numbers: variantPart2Tasks(variant),
-      })
-      const fileName = storageFileName(tutorId, "pdf")
-      const { error: upErr } = await supabase.storage.from("variants").upload(fileName, blob, { contentType: "application/pdf" })
-      if (upErr) throw upErr
-      const { data: urlData } = supabase.storage.from("variants").getPublicUrl(fileName)
-      const { error: rowErr } = await supabase.from("variants").update({ file_url: urlData.publicUrl }).eq("id", variant.id)
-      if (rowErr) throw rowErr
-      // бакет приватный — показываем по временной ссылке, как и остальные файлы списка
-      const [signed] = await signRows([{ file_url: urlData.publicUrl }], { file_url: "variants" })
-      onBuilt(signed.file_url)
-    } catch {
-      setErr("Не получилось собрать PDF. Попробуйте ещё раз.")
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  if (!url && !(variant.tasks_snapshot?.length > 0)) return null
-
-  const fileName = url ? (url.split("?")[0].split("/").pop() || "Файл варианта") : ""
-
-  return (
-    <div className="rounded-2xl ring-1 ring-gray-200/70 dark:ring-white/10 bg-white/45 dark:bg-white/[0.03] overflow-hidden">
-      <div className="p-3 flex items-center gap-3">
-        <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center flex-shrink-0">
-          <Icon name={url ? "paperclip" : "file-text"} size={15} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium truncate">Печатный лист варианта</div>
-          {/* адрес подписанный — имя берём без хвоста с токеном */}
-          <div className={`text-[11px] mt-0.5 truncate ${err ? "text-red-500" : "text-gray-400"}`}>
-            {err || (busy ? "Собираем…" : url ? fileName : "Ещё не собран — нужен для печати")}
-          </div>
-        </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          {url ? (
-            <a href={url + (url.includes("?") ? "&" : "?") + "download"} download
-              className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 flex items-center gap-1.5">
-              <MorphIcon from="download" size={13} />Скачать
-            </a>
-          ) : (
-            <button onClick={build} disabled={busy}
-              className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-blue-200 dark:ring-blue-400/25 text-blue-600 bg-blue-500/8 disabled:opacity-50 flex items-center gap-1.5">
-              <MorphIcon from="file-text" to="download" size={13} />
-              {busy ? "Собираем…" : "Собрать"}
-            </button>
-          )}
-          {/* Тот же лист, но с ответами: вариант из банка скачивается с ключами или без. */}
-          {fromBank && (
-            <button onClick={downloadAnswers} disabled={ansBusy}
-              className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 disabled:opacity-50 flex items-center gap-1.5">
-              <MorphIcon from="check" to="download" size={13} />
-              {ansBusy ? "Собираем…" : "С ответами"}
-            </button>
-          )}
-          {url && (
-            <>
-              {/* Лист уже собран, но вёрстка формул с тех пор могла поправиться —
-                  пересобрать его надо уметь, не удаляя вариант. */}
-              {fromBank && (
-                <button onClick={build} disabled={busy} title="Собрать лист заново"
-                  className="press-tap w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-500/10 transition-colors disabled:opacity-50">
-                  <Icon name="repeat" size={14} />
-                </button>
-              )}
-              <button onClick={() => onPreview(url)} title="На весь экран"
-                className="press-tap w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-500/10 transition-colors">
-                <Icon name="maximize" size={14} />
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-      {url && url.match(/\.(jpg|jpeg|png|gif|webp)/i) && (
-        <img src={url} alt="вариант" className="w-full max-h-48 object-contain bg-white cursor-pointer border-t border-gray-100/70 dark:border-white/10" onClick={() => onPreview(url)} />
-      )}
-    </div>
-  )
+  idle(() => { loadBank().catch(() => {}) })
 }
 
 // Состав варианта. Условия открываются окном, а не разворотом внутри колонки:
@@ -388,6 +257,9 @@ function AnswerGrid({ label, numbers, valueOf, onChange, placeholderOf, hint, al
 function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = null, owner = false, onClose, onAdd }) {
   const subjects = variantSubjectsFor(bankSubjects, owner)
   const [title, setTitle] = useState(todayTitle)
+  // Срок сдачи — на самом варианте: он выдаётся всем сразу, и «до воскресенья»
+  // это одно решение на всех (см. supabase/variant_deadline.sql).
+  const [deadline, setDeadline] = useState("")
   const [examType, setExamType] = useState(() => defaultVariantType(subjects, examFocus))
   const [answers, setAnswers] = useState(() => Array(part1SlotsOf(defaultVariantType(subjects, examFocus))).fill(""))
   // Ответы части 2 (ОГЭ: 20–25) — объект { номер: ответ }; при сборке из банка заполняется сам
@@ -528,16 +400,23 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
       if (part) part2ChoicesPart[n] = part
     }
 
-    // PDF собранного варианта здесь НЕ делается: сборка листа занимает секунды, и всё это
-    // время репетитор смотрел бы на «Сохраняем…» ради файла, который ученику для решения
-    // не нужен (вариант из банка он решает прямо в кабинете). Лист собирается потом,
-    // кнопкой в карточке варианта (VariantFileBlock).
+    // PDF собранного варианта не делается вовсе: вариант из банка ученик решает прямо
+    // в кабинете, печатный лист ему не нужен.
 
-    const { data, error } = await supabase.from("variants").insert({
+    const row = {
       tutor_id: tutorId, title, type: examType,
       answers: { part1: answers, part2: part2Answers, part2_choices: part2Choices, part2_choices_part: part2ChoicesPart },
       file_url: fileUrl, tasks_snapshot: tasksSnapshot,
-    }).select().single()
+      deadline: deadline || null,
+    }
+    let { data, error } = await supabase.from("variants").insert(row).select().single()
+    // База без миграции срока (supabase/variant_deadline.sql) — сохраняем
+    // вариант без него: забытая миграция не должна мешать выдать работу.
+    if (error?.code === "PGRST204" || /deadline/i.test(error?.message || "")) {
+      const { deadline: _skip, ...noDeadline } = row
+      void _skip
+      ;({ data, error } = await supabase.from("variants").insert(noDeadline).select().single())
+    }
 
     if (error) { setFormError("Не получилось сохранить: " + error.message); setLoading(false); return }
 
@@ -551,7 +430,12 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
 
     if (recipients.length > 0) {
       await supabase.from("variant_submissions").insert(recipients.map((s) => ({ variant_id: data.id, student_id: s.id, status: "pending" })))
-      await supabase.from("notifications").insert(recipients.map((s) => ({ user_id: s.id, title: "Новый вариант " + examType, body: "Репетитор отправил новый вариант: " + title })))
+      await supabase.from("notifications").insert(recipients.map((s) => ({
+        user_id: s.id,
+        title: "Новый вариант " + examType,
+        body: "Репетитор отправил новый вариант: " + title
+          + (deadline ? ". Сдать до " + dayMonth(deadline) : ""),
+      })))
     }
 
     onAdd(data)
@@ -629,6 +513,11 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
                 <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Например: Пробник перед экзаменом"
                   className="input-glass" />
               </div>
+
+              {/* Срок сдачи — теми же чипами, что у домашней работы. Он не про
+                  продолжительность работы (её задаёт таймер экзамена), а про
+                  дату, к которой вариант ждут решённым. */}
+              <DeadlinePicker value={deadline} onChange={setDeadline} />
 
               <MethodCards
                 label="Из чего собрать вариант"
@@ -1264,6 +1153,18 @@ function StudentFilter({ options, value, onChange }) {
   )
 }
 
+// Срок сдачи варианта: прошёл ли он и как назвать дату. Вариант «просрочен»
+// только пока его кто-то ещё не сдал: у сданной работы дата уже ничего не
+// решает, а красная метка на ней читалась бы как претензия.
+function variantOverdue(v, pending) {
+  if (!v.deadline || pending <= 0) return false
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  return parseLocalDate(v.deadline) < today
+}
+
+const dayMonth = (date) =>
+  parseLocalDate(date).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })
+
 // Карточка варианта — того же склада, что карточка задания (Homework.jsx):
 // плитка слева кодирует, на каком этапе работа, состояние написано один раз
 // чипом, а действия (файл, удаление) живут в развороте, а не на каждой
@@ -1275,13 +1176,19 @@ function VariantCard({ variant: v, total, graded, submitted, selected, onOpen })
     : submitted > 0 ? "review"
       : graded === total ? "done"
         : "given"
+  const pending = total - graded - submitted
+  const overdue = variantOverdue(v, pending)
+  // Плитка — тот же якорь, что у задания: пока работу ещё ждут, на ней стоит
+  // срок (цвет — срочность), дальше её место занимает этап проверки.
   const tile = state === "done"
     ? <div className={`${tileBox} ${TILE_TINTS.green}`}><Icon name="check" size={18} /></div>
     : state === "review"
       ? <div className={`${tileBox} ${TILE_TINTS.indigo}`}><Icon name="clock" size={18} /></div>
-      : state === "given"
-        ? <div className={`${tileBox} ${TILE_TINTS.blue}`}><Icon name="clipboard" size={18} /></div>
-        : <div className="w-12 h-12 shrink-0 rounded-2xl flex items-center justify-center text-gray-400 ring-1 ring-gray-200/70 dark:ring-white/10"><Icon name="clipboard" size={17} /></div>
+      : v.deadline && pending > 0
+        ? <DateTile date={v.deadline} tint={TILE_TINTS[dueTintKey(v.deadline)]} className="w-12 h-12" />
+        : state === "given"
+          ? <div className={`${tileBox} ${TILE_TINTS.blue}`}><Icon name="clipboard" size={18} /></div>
+          : <div className="w-12 h-12 shrink-0 rounded-2xl flex items-center justify-center text-gray-400 ring-1 ring-gray-200/70 dark:ring-white/10"><Icon name="clipboard" size={17} /></div>
   const chip = state === "done" ? { label: "Проверено", cls: "text-green-600 bg-green-500/12 ring-1 ring-green-500/20" }
     : state === "review" ? { label: `${submitted} на проверке`, cls: "text-amber-600 bg-amber-500/12 ring-1 ring-amber-500/20" }
       : state === "given" ? { label: "Выдан", cls: "text-blue-600 bg-blue-500/10 ring-1 ring-blue-500/20" }
@@ -1305,6 +1212,8 @@ function VariantCard({ variant: v, total, graded, submitted, selected, onOpen })
           <span className="opacity-50">·</span>
           <span>{new Date(v.created_at).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}</span>
           {total > 0 && <><span className="opacity-50">·</span><span>{total} {plural(total, "ученик", "ученика", "учеников")}</span></>}
+          {v.deadline && !overdue && state !== "done" && <><span className="opacity-50">·</span><span>до {dayMonth(v.deadline)}</span></>}
+          {overdue && <><span className="opacity-50">·</span><span className="text-red-500 font-medium">просрочено</span></>}
           {v.file_url && <><span className="opacity-50">·</span><span className="inline-flex items-center gap-1"><Icon name="paperclip" size={11} />файл</span></>}
           {/* «Проверено всё» уже сказано чипом — в строке остаётся только
               незаконченная проверка. */}
@@ -1357,6 +1266,18 @@ function Variants({ user, students = [] }) {
     setVariants(await signRows(v || [], { file_url: "variants" }))
     setSubmissions(await signRows(s || [], { part2_files: "variants" }))
     setLoading(false)
+  }
+
+  // Срок сдачи правится прямо в разборе. Пишем сразу в базу, стейт обновляем
+  // на месте: список перечитывается запросом, и ждать его ради одной даты
+  // незачем.
+  async function saveDeadline(value) {
+    if (!selectedVariant) return
+    const next = value || null
+    const id = selectedVariant.id
+    setVariants((prev) => prev.map((x) => (x.id === id ? { ...x, deadline: next } : x)))
+    setSelectedVariant((prev) => (prev && prev.id === id ? { ...prev, deadline: next } : prev))
+    await supabase.from("variants").update({ deadline: next }).eq("id", id)
   }
 
   async function deleteVariant(v) {
@@ -1474,20 +1395,23 @@ function Variants({ user, students = [] }) {
                   и справа от короткого содержимого оставалось пустое поле. */}
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 px-5 py-4 border-t border-gray-100/60 dark:border-white/10 items-start">
               <div className="flex flex-col gap-2">
-                <div className="section-label mb-0.5">Материалы</div>
-
-                <VariantFileBlock
-                  variant={selectedVariant}
-                  tutorId={user.id}
-                  onPreview={setPreviewFile}
-                  onBuilt={(url) => {
-                    setVariants((prev) => prev.map((x) => (x.id === selectedVariant.id ? { ...x, file_url: url } : x)))
-                    setSelectedVariant((prev) => (prev ? { ...prev, file_url: url } : prev))
-                  }}
-                />
+                {/* Срок правится здесь: пробник переносят вместе с занятием, и
+                    выдавать вариант заново ради даты не годится. */}
+                <div className="section-label mb-0.5">Срок сдачи</div>
+                <div className="rounded-2xl ring-1 ring-gray-200/70 dark:ring-white/10 bg-white/45 dark:bg-white/[0.03] p-3">
+                  <DeadlinePicker
+                    key={selectedVariant.id}
+                    value={selectedVariant.deadline || ""}
+                    onChange={saveDeadline}
+                    label={selectedVariant.deadline ? `Ученик видит: до ${dayMonth(selectedVariant.deadline)}` : "Без срока"}
+                  />
+                </div>
 
                 {selectedVariant.tasks_snapshot?.length > 0 && (
-                  <BankTasksBlock key={selectedVariant.id} tasks={selectedVariant.tasks_snapshot} title={selectedVariant.title} />
+                  <>
+                    <div className="section-label mb-0.5 mt-2">Материалы</div>
+                    <BankTasksBlock key={selectedVariant.id} tasks={selectedVariant.tasks_snapshot} title={selectedVariant.title} />
+                  </>
                 )}
               </div>
 
