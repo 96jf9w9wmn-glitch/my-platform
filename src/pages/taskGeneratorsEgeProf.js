@@ -3003,6 +3003,32 @@ function t8areaGivenF() {
   }
 }
 
+// Типажи №9 с параметром: ОДИН И ТОТ ЖЕ экземпляр функции обязан стоять и в
+// GENERATORS, и в GEN_META — gen_key ищется по ТОЖДЕСТВУ функции (keyOfGen), а
+// две одинаковые стрелки это разные объекты. Пока обёртки писались стрелками
+// прямо в обеих картах, двадцать из тридцати двух типажей номера уходили в
+// task_attempts БЕЗ ключа: не работали «такая же задача с другими числами»,
+// тренировка листом и «слабые типажи». Так же сделано в №12 (t11HypPos и др.).
+const t8fPosCount = () => t8fSignCount(true)
+const t8fNegCount = () => t8fSignCount(false)
+const t8fIntPos = () => t8fIntSign(true)
+const t8fIntNeg = () => t8fIntSign(false)
+const t8fDerivMax = () => t8fDerivExtreme(true)
+const t8fDerivMin = () => t8fDerivExtreme(false)
+const t8dInc = () => t8dIncDec(true)
+const t8dDec = () => t8dIncDec(false)
+const t8dExtCount = () => t8dExtremaCount("any")
+const t8dMaxCount = () => t8dExtremaCount("max")
+const t8dMinCount = () => t8dExtremaCount("min")
+const t8dMaxPoint = () => t8dOptPoint("max")
+const t8dMinPoint = () => t8dOptPoint("min")
+const t8dArgMax = () => t8dArgOpt(true)
+const t8dArgMin = () => t8dArgOpt(false)
+const t8dEqZero = () => t8dDerivEqPoint(0)
+const t8dEqK = () => t8dDerivEqPoint(3)
+const t8Fpos = () => t8Fsign(true)
+const t8Fneg = () => t8Fsign(false)
+
 // SVG-обёртка (используется чертежами планиметрии №1)
 function stWrap(W, H, body) {
   return `<svg xmlns="http://www.w3.org/2000/svg" font-family="Arial, sans-serif" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#fff"/>${body}</svg>`
@@ -6211,16 +6237,16 @@ export const GENERATORS_EGE_PROF = {
   // функции (старое №12) СНЯТО 31.08.2026 по решению владельца, см. комментарий
   // на месте удалённых генераторов t12*.
   9: [
-    () => t8fSignCount(true), () => t8fSignCount(false), () => t8fIntSign(true), () => t8fIntSign(false),
-    () => t8fDerivExtreme(true), () => t8fDerivExtreme(false),
+    t8fPosCount, t8fNegCount, t8fIntPos, t8fIntNeg,
+    t8fDerivMax, t8fDerivMin,
     t8fZeroCountAll, t8fZeroPointSeg, t8fZeroCountSeg, t8fHorizTangent,
-    () => t8dIncDec(true), () => t8dIncDec(false),
-    () => t8dExtremaCount("any"), () => t8dExtremaCount("max"), () => t8dExtremaCount("min"),
-    t8dExtremumPoint, () => t8dOptPoint("max"), () => t8dOptPoint("min"),
-    () => t8dArgOpt(true), () => t8dArgOpt(false),
-    () => t8dDerivEqPoint(0), () => t8dDerivEqPoint(3), t8dDerivEqCount,
+    t8dInc, t8dDec,
+    t8dExtCount, t8dMaxCount, t8dMinCount,
+    t8dExtremumPoint, t8dMaxPoint, t8dMinPoint,
+    t8dArgMax, t8dArgMin,
+    t8dEqZero, t8dEqK, t8dDerivEqCount,
     t8tangentSlope, t8kinVelocityAt, t8kinTimeForVelocity, t8tangentParabC,
-    () => t8Fsign(true), () => t8Fsign(false), t8FzeroCountSeg, t8integralTwoRays, t8areaGivenF,
+    t8Fpos, t8Fneg, t8FzeroCountSeg, t8integralTwoRays, t8areaGivenF,
   ],
   10: GEN9,
   11: [t10SteamboatSpeed, t10SteamboatCurrent, t10SteamboatDist, t10AvgTime, t10AvgDist, t10TwoCyclists,
@@ -6540,57 +6566,56 @@ export const GEN_META_EGE_PROF = {
       ["trig-sin2-cofunc", "k·sin2A/(cosA·cos(90°−A))", t07TrigSin2Cofunc],
       ["trig-sinsq-sum", "N/(sin²A+c+sin²(A+90°))", t07TrigSinSqSum],
     ]]],
-  9: [["График f(x): знак производной", [
-    ["f-pos", "Сколько точек f′>0", () => t8fSignCount(true)],
-    ["f-neg", "Сколько точек f′<0", () => t8fSignCount(false)],
-    ["f-int-pos", "Целые точки f′>0", () => t8fIntSign(true)],
-    ["f-int-neg", "Целые точки f′<0", () => t8fIntSign(false)],
-    ["f-dmax", "Где f′ наибольшее", () => t8fDerivExtreme(true)],
-    ["f-dmin", "Где f′ наименьшее", () => t8fDerivExtreme(false)],
+  // №9 — девять типажей по курсу репетитора (эталон «Задачи №8», 44 позиции).
+  // Группа определяется тем, ЧТО дано на рисунке и о чём спрашивают, а не тем,
+  // какой формулой это решается: у ученика на экзамене выбор идёт именно так.
+  9: [["Дана обычная функция", [
+    ["f-zero-all", "Количество точек f′=0", t8fZeroCountAll],
+    ["f-zero-pt", "Точка f′=0 на отрезке", t8fZeroPointSeg],
+    ["f-zero-seg", "Число решений f′=0 на отрезке", t8fZeroCountSeg],
+    ["f-int-pos", "Целые точки f′>0", t8fIntPos],
+    ["f-int-neg", "Целые точки f′<0", t8fIntNeg],
   ]],
-    ["График f(x): нули f′ / экстремумы", [
-      ["f-zero-all", "Количество точек f′=0", t8fZeroCountAll],
-      ["f-zero-pt", "Точка f′=0 на отрезке", t8fZeroPointSeg],
-      ["f-zero-seg", "Число решений f′=0 на отрезке", t8fZeroCountSeg],
-      ["f-horiz", "Касательная ∥ горизонтали", t8fHorizTangent],
-    ]],
-    ["График f′(x): возрастание / убывание f", [
-      ["d-inc", "Точки на возрастании f", () => t8dIncDec(true)],
-      ["d-dec", "Точки на убывании f", () => t8dIncDec(false)],
-    ]],
-    ["График f′(x): экстремумы f", [
-      ["d-ext-cnt", "Число экстремумов на отрезке", () => t8dExtremaCount("any")],
-      ["d-max-cnt", "Число максимумов на отрезке", () => t8dExtremaCount("max")],
-      ["d-min-cnt", "Число минимумов на отрезке", () => t8dExtremaCount("min")],
+    ["Дан график производной", [
+      ["d-inc", "Точки на возрастании f", t8dInc],
+      ["d-dec", "Точки на убывании f", t8dDec],
+      ["d-ext-cnt", "Число экстремумов на отрезке", t8dExtCount],
+      ["d-max-cnt", "Число максимумов на отрезке", t8dMaxCount],
+      ["d-min-cnt", "Число минимумов на отрезке", t8dMinCount],
       ["d-ext-pt", "Точка экстремума на отрезке", t8dExtremumPoint],
-      ["d-max-pt", "Точка максимума f", () => t8dOptPoint("max")],
-      ["d-min-pt", "Точка минимума f", () => t8dOptPoint("min")],
+      ["d-max-pt", "Точка максимума f", t8dMaxPoint],
+      ["d-min-pt", "Точка минимума f", t8dMinPoint],
+      ["d-argmax", "Точка наиб. значения f", t8dArgMax],
+      ["d-argmin", "Точка наим. значения f", t8dArgMin],
     ]],
-    ["График f′(x): наиб./наим. значение f", [
-      ["d-argmax", "Точка наиб. значения f", () => t8dArgOpt(true)],
-      ["d-argmin", "Точка наим. значения f", () => t8dArgOpt(false)],
+    ["Эскиз обычной функции", [
+      ["f-pos", "Сколько отмеченных точек f′>0", t8fPosCount],
+      ["f-neg", "Сколько отмеченных точек f′<0", t8fNegCount],
     ]],
-    ["График f′(x): касательная ∥ прямой", [
-      ["d-eq0", "f′=0: абсцисса", () => t8dDerivEqPoint(0)],
-      ["d-eqk", "f′=k: абсцисса", () => t8dDerivEqPoint(3)],
-      ["d-eqk-cnt", "f′=k: количество точек", t8dDerivEqCount],
-    ]],
-    ["Касательная на графике f(x)", [
+    ["Геометрический смысл", [
       ["tan-slope", "Значение f′(x₀) по касательной", t8tangentSlope],
     ]],
     ["Физический смысл производной", [
       ["kin-v", "Скорость v(t₀)", t8kinVelocityAt],
       ["kin-t", "Момент, когда v=V", t8kinTimeForVelocity],
     ]],
-    ["Касательная (аналитически)", [
+    ["Сравнение значений тангенсов", [
+      ["f-dmax", "Где f′ наибольшее", t8fDerivMax],
+      ["f-dmin", "Где f′ наименьшее", t8fDerivMin],
+    ]],
+    ["Касательная параллельна или совпадает", [
+      ["f-horiz", "График f(x): касательная ∥ горизонтали", t8fHorizTangent],
+      ["d-eq0", "График f′(x): касательная ∥ оси абсцисс", t8dEqZero],
+      ["d-eqk", "График f′(x): касательная ∥ y=kx — абсцисса", t8dEqK],
+      ["d-eqk-cnt", "График f′(x): касательная ∥ y=kx+b — количество точек", t8dDerivEqCount],
+    ]],
+    ["Условие касания", [
       ["tan-parab", "Прямая касается параболы: найти c", t8tangentParabC],
     ]],
-    ["График первообразной F(x)", [
-      ["F-pos", "Сколько точек f>0", () => t8Fsign(true)],
-      ["F-neg", "Сколько точек f<0", () => t8Fsign(false)],
-      ["F-zero", "Число решений f=0 на отрезке", t8FzeroCountSeg],
-    ]],
-    ["Первообразная и площадь", [
+    ["Первообразная", [
+      ["F-pos", "График F(x): сколько точек f>0", t8Fpos],
+      ["F-neg", "График F(x): сколько точек f<0", t8Fneg],
+      ["F-zero", "График F(x): число решений f=0 на отрезке", t8FzeroCountSeg],
       ["rays", "F(β)−F(α) по ломаной", t8integralTwoRays],
       ["area", "Площадь по первообразной", t8areaGivenF],
     ]]],
