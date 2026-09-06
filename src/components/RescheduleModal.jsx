@@ -17,9 +17,6 @@ function RescheduleModal({
   commentPlaceholder = "",
   submitLabel = "Перенести",
   conflictCheck,
-  // «у ученика будет 18:00» для выбранного времени. Пустая строка — пояса
-  // совпадают, и приписки быть не должно.
-  otherTimeNote,
   busy = false,
   error = "",
   onSubmit,
@@ -87,9 +84,6 @@ function RescheduleModal({
             {/* Колесо вместо сетки часов и отдельного поля «другое время»:
                 любое время набирается в одном месте, как в iOS. */}
             <WheelPicker value={time || lesson?.time || "09:00"} onChange={setTime} label="Новое время" />
-            {otherTimeNote?.(date, time || lesson?.time) && (
-              <div className="text-xs text-gray-500 mt-1.5">{otherTimeNote(date, time || lesson?.time)}</div>
-            )}
           </div>
 
           {commentLabel && (

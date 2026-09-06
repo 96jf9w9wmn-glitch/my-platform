@@ -7,7 +7,9 @@
 //
 // Пояс НИГДЕ не выбирается руками — он берётся с устройства (`deviceTimezone`)
 // и обновляется сам при переезде. Выбор из списка тут был бы лишней настройкой:
-// телефон и ноутбук и так знают, в какой стране находятся.
+// телефон и ноутбук и так знают, в какой стране находятся. По той же причине
+// перевод НИГДЕ не подписывается в интерфейсе: репетитор видит своё время,
+// ученик — своё, и объяснять это на экране незачем.
 //
 // ГЛАВНОЕ ПРАВИЛО: у расписания есть ЯКОРЬ — пояс, в котором время записано
 // (`students.timezone`, пояс ученика). Якорь не двигается ни от переезда
@@ -27,72 +29,6 @@ export function deviceTimezone() {
   } catch {
     return ""
   }
-}
-
-// Названия городов по-русски: «Asia/Yerevan» читается хуже, чем «Ереван».
-// Это таблица ПОДПИСЕЙ, а не список выбора — пояс может прийти любой, и
-// незнакомый показывается своим идентификатором, а не подменяется соседним.
-const CITY = {
-  "Europe/Kaliningrad": "Калининград",
-  "Europe/Moscow": "Москва",
-  "Europe/Simferopol": "Симферополь",
-  "Europe/Volgograd": "Волгоград",
-  "Europe/Kirov": "Киров",
-  "Europe/Astrakhan": "Астрахань",
-  "Europe/Saratov": "Саратов",
-  "Europe/Ulyanovsk": "Ульяновск",
-  "Europe/Samara": "Самара",
-  "Asia/Yekaterinburg": "Екатеринбург",
-  "Asia/Omsk": "Омск",
-  "Asia/Novosibirsk": "Новосибирск",
-  "Asia/Barnaul": "Барнаул",
-  "Asia/Tomsk": "Томск",
-  "Asia/Novokuznetsk": "Новокузнецк",
-  "Asia/Krasnoyarsk": "Красноярск",
-  "Asia/Irkutsk": "Иркутск",
-  "Asia/Chita": "Чита",
-  "Asia/Yakutsk": "Якутск",
-  "Asia/Khandyga": "Хандыга",
-  "Asia/Vladivostok": "Владивосток",
-  "Asia/Ust-Nera": "Усть-Нера",
-  "Asia/Magadan": "Магадан",
-  "Asia/Sakhalin": "Южно-Сахалинск",
-  "Asia/Srednekolymsk": "Среднеколымск",
-  "Asia/Kamchatka": "Петропавловск-Камчатский",
-  "Asia/Anadyr": "Анадырь",
-  "Asia/Yerevan": "Ереван",
-  "Asia/Tbilisi": "Тбилиси",
-  "Asia/Baku": "Баку",
-  "Europe/Minsk": "Минск",
-  "Europe/Kyiv": "Киев",
-  "Europe/Chisinau": "Кишинёв",
-  "Asia/Almaty": "Алматы",
-  "Asia/Aqtobe": "Актобе",
-  "Asia/Tashkent": "Ташкент",
-  "Asia/Bishkek": "Бишкек",
-  "Asia/Dushanbe": "Душанбе",
-  "Asia/Ashgabat": "Ашхабад",
-  "Europe/Istanbul": "Стамбул",
-  "Asia/Nicosia": "Никосия",
-  "Asia/Jerusalem": "Тель-Авив",
-  "Asia/Dubai": "Дубай",
-  "Asia/Bangkok": "Бангкок",
-  "Asia/Shanghai": "Шанхай",
-  "Europe/Belgrade": "Белград",
-  "Europe/Berlin": "Берлин",
-  "Europe/Warsaw": "Варшава",
-  "Europe/Prague": "Прага",
-  "Europe/Lisbon": "Лиссабон",
-  "Europe/Madrid": "Мадрид",
-  "Europe/Paris": "Париж",
-  "Europe/London": "Лондон",
-  "America/New_York": "Нью-Йорк",
-  "America/Los_Angeles": "Лос-Анджелес",
-}
-
-export function tzCity(tz) {
-  if (!tz) return ""
-  return CITY[tz] || String(tz).split("/").pop().replace(/_/g, " ")
 }
 
 // Смещение пояса от UTC в минутах в указанный момент. Считается через Intl:
@@ -116,19 +52,6 @@ export function tzOffsetMinutes(tz, date = new Date()) {
     // время как есть честнее, чем сдвинуть его наугад.
     return 0
   }
-}
-
-// «UTC+4», «UTC−3:30».
-export function offsetLabel(tz, date = new Date()) {
-  const min = tzOffsetMinutes(tz, date)
-  const sign = min < 0 ? "−" : "+"
-  const abs = Math.abs(min)
-  return `UTC${sign}${Math.floor(abs / 60)}${abs % 60 ? `:${String(abs % 60).padStart(2, "0")}` : ""}`
-}
-
-// «Ереван (UTC+4)».
-export function tzLabel(tz) {
-  return tz ? `${tzCity(tz)} (${offsetLabel(tz)})` : ""
 }
 
 // Разница поясов в минутах на указанный день: сколько прибавить ко времени в
@@ -210,29 +133,10 @@ export function convertLessons(lessons, fromTz, toTz) {
 // загрузке; у ученика без аккаунта и на устройстве без пояса они пустые, и
 // тогда все функции ниже — тождественные.
 
-// Разошлись ли часы репетитора и ученика.
-export function studentZoneDiffers(student) {
-  return !!student?.tzFrame && !!student?.timezone && student.tzFrame !== student.timezone
-    && zoneDiffMinutes(student.timezone, student.tzFrame) !== 0
-}
-
 // Время из кадра репетитора в кадр ученика — для записи в базу и для ЛЮБОГО
 // текста, который прочитает ученик.
 export function toStudentWall(student, dateStr, timeStr) {
   return convertWall(dateStr, timeStr, student?.tzFrame, student?.timezone)
-}
-
-// Обратный перевод: время ученика на экран репетитора.
-export function toTutorWall(student, dateStr, timeStr) {
-  return convertWall(dateStr, timeStr, student?.timezone, student?.tzFrame)
-}
-
-// «у ученика 18:00» — короткая подпись под временем занятия. Пустая строка,
-// когда пояса совпадают: лишней приписки в расписании быть не должно.
-export function studentTimeNote(student, dateStr, timeStr) {
-  if (!timeStr || !studentZoneDiffers(student)) return ""
-  const w = toStudentWall(student, dateStr, timeStr)
-  return `у ученика ${w.time}`
 }
 
 // Витрина расписания («Пн 18:00, Ср 18:00») — строка, которую читает ученик,

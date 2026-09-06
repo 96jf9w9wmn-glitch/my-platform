@@ -4,7 +4,6 @@ import { usePlan } from "../subscription"
 import useCountUp from "../components/useCountUp"
 import { isLessonPast, isLessonConducted, getInitials, timeUntilLesson } from "../utils"
 import { pendingMoveRequests, formatLessonShort, MOVE_BY_STUDENT } from "../lessonMove"
-import { studentTimeNote } from "../timezone"
 
 const MONTH_NAMES = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"]
 const DAY_SHORT = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]
@@ -131,10 +130,6 @@ function Dashboard({ students, loaded = true, setActivePage, onOpenBoard }) {
   const countWeek = useCountUp(weekCount)
   const countDebtors = useCountUp(debtors.length)
 
-  // «у ученика 18:00»: пусто, пока часы репетитора и ученика совпадают.
-  const nextLessonNote = nextLesson
-    ? studentTimeNote(students.find((s) => s.id === nextLesson.studentId), nextLesson.date, nextLesson.time)
-    : ""
   const nextLessonDate = nextLesson && !nextLesson.isToday
     ? new Date(nextLesson.date + "T00:00:00").toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" })
     : null
@@ -250,13 +245,7 @@ function Dashboard({ students, loaded = true, setActivePage, onOpenBoard }) {
                         : nextLesson.isToday ? "Следующее занятие" : `Следующее занятие · ${nextLessonDate}`}
                     </div>
                     <div className="text-2xl font-semibold leading-tight truncate">{nextLesson.studentName}</div>
-                    {/* Время репетитора. Если он уехал, а ученик остался,
-                        рядом стоит время ученика — иначе созвон назначается
-                        на час мимо. */}
-                    <div className="text-sm opacity-80 mt-0.5">
-                      {nextLesson.time} · {nextLesson.duration} мин
-                      {nextLessonNote && <span className="opacity-80"> · {nextLessonNote}</span>}
-                    </div>
+                    <div className="text-sm opacity-80 mt-0.5">{nextLesson.time} · {nextLesson.duration} мин</div>
                   </div>
                 </div>
                 <div className="text-right flex-shrink-0 ml-3">
