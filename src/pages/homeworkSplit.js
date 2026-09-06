@@ -522,6 +522,18 @@ export async function splitSource(file, onProgress) {
   return { pages, starts, guessed: starts.some((s) => s.guess) }
 }
 
+// Картинка задания как файл. Через `fetch(dataUrl)` было бы короче, но Safari
+// таких запросов не делает вовсе — выдача работы падала на «Load failed», и
+// картинки заданий не доезжали до хранилища.
+export function dataUrlToBlob(dataUrl) {
+  const [head, body] = String(dataUrl).split(",")
+  const mime = /:(.*?)[;,]/.exec(head)?.[1] || "image/jpeg"
+  const bin = atob(body)
+  const bytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+  return new Blob([bytes], { type: mime })
+}
+
 // --- сборка заданий ---------------------------------------------------------
 
 // Кусок страницы от границы до следующей. Задание, переехавшее через разрыв

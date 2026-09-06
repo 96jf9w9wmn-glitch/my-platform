@@ -3,7 +3,7 @@ import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import { signRows } from "../storageUrl"
 import SplitTasksModal from "../components/SplitTasksModal"
-import { canSplit } from "./homeworkSplit"
+import { canSplit, dataUrlToBlob } from "./homeworkSplit"
 import Icon from "../components/Icon"
 import StatTabs from "../components/StatTabs"
 import MethodCards from "../components/MethodCards"
@@ -81,7 +81,7 @@ function buildUploadPath(tutorId, name) {
 // внутри строки задания: работа со скринами весит мегабайты, и список домашних
 // работ тянул бы их все разом при каждом открытии раздела.
 async function uploadTaskImage(tutorId, dataUrl, idx) {
-  const blob = await (await fetch(dataUrl)).blob()
+  const blob = dataUrlToBlob(dataUrl)
   const path = `${tutorId}/hw-tasks/${Date.now()}-${idx}.jpg`
   const { error } = await supabase.storage.from("homework").upload(path, blob, { contentType: "image/jpeg" })
   if (error) throw error
@@ -368,6 +368,9 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
   const [bulkAnswers, setBulkAnswers] = useState("")
   const [bulkCount, setBulkCount] = useState(0)
   const [saving, setSaving] = useState(false)
+  // Что именно сейчас происходит при сохранении: картинки заданий уезжают в
+  // хранилище по одной, и на полусотне это заметно дольше нажатия кнопки.
+  const [savingNote, setSavingNote] = useState("")
   const [formError, setFormError] = useState("")
   // Тип задания больше не выбирается вручную: работа становится тестом ровно
   // тогда, когда у неё появляются ответы для автопроверки (тумблер в форме).
@@ -914,14 +917,24 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
         // Только картинка: тот же текст уже лежит в description и показывается
         // строкой задания. Положи его ещё и сюда — ученик увидел бы условие
         // дважды, текстом и на картинке.
-        payload.bank_tasks = await Promise.all(
-          splitTasks.map(async (t, i) => ({ image_url: await uploadTaskImage(tutorId, t.image, i) }))
-        )
+        //
+        // Пачками, а не все разом: работа из файла бывает и на полсотни
+        // заданий, и полсотни одновременных загрузок обрываются целиком.
+        const out = []
+        for (let i = 0; i < splitTasks.length; i += 4) {
+          const part = splitTasks.slice(i, i + 4)
+          const urls = await Promise.all(part.map((t, j) => uploadTaskImage(tutorId, t.image, i + j)))
+          urls.forEach((image_url) => out.push({ image_url }))
+          setSavingNote(`Загружаем ${Math.min(i + part.length, splitTasks.length)} из ${splitTasks.length}`)
+        }
+        payload.bank_tasks = out
       } catch (e) {
         setFormError("Картинки заданий не загрузились: " + (e.message || e))
+        setSavingNote("")
         setSaving(false)
         return
       }
+      setSavingNote("")
     }
 
     // Миграции homework_bank_tasks.sql может не быть на этой базе. Тогда работу
@@ -972,6 +985,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
     } else {
       setFormError("Не получилось сохранить: " + error.message)
     }
+    setSavingNote("")
     setSaving(false)
   }
 
@@ -1645,7 +1659,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
               Отмена
             </button>
             <button onClick={handleSubmit} disabled={saving} className="bg-blue-600 text-white rounded-xl px-6 py-2.5 text-sm hover:bg-blue-700 disabled:opacity-50 active:scale-[0.98] transition-transform">
-              {saving ? "Сохраняем..." : isEditing ? "Сохранить" : "Задать"}
+              {saving ? savingNote || "Сохраняем..." : isEditing ? "Сохранить" : "Задать"}
             </button>
           </div>
         </div>
