@@ -531,8 +531,11 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const [clipShot, setClipShot] = useState(null)   // {blob, url, key} — что предлагаем
   const [shotOut, setShotOut] = useState(false)   // предложение уходит: держим кадр анимации
   const clipSkip = useRef(null)                    // ключ снимка, от которого отказались
-  // Цвет и обводка нужны только тем инструментам, которые оставляют линию
-  const stylingTool = tool === "pen" || tool === "text" || SHAPE_TOOLS.has(tool)
+  // Цвет и обводка нужны только тем инструментам, которые оставляют линию.
+  // «Текст» сюда НЕ входит: у надписи цвет, размер и начертание стоят в панели
+  // над самим полем ввода, и вторая такая же полоса внизу — лишний повтор,
+  // который к тому же уводит взгляд от того места, где правят.
+  const stylingTool = tool === "pen" || SHAPE_TOOLS.has(tool)
   // «Ровные фигуры» распрямляют набросок пером — другим инструментам кнопка
   // ничего не меняет, поэтому показываем её только при пере.
   const smartTool = tool === "pen"
@@ -3083,10 +3086,6 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // Подсветка сдвига поэтому не сплошная, как у выбранного, а залитая тоном:
   // два одинаково закрашенных инструмента читались бы как «выбраны оба».
   const panLit = (id) => id === "hand" && (panDrag || panKey) && tool !== "hand"
-  // Один и тот же попап «обводки» показывает толщину линии или кегль текста —
-  // смотря чем сейчас пишут.
-  const styleWidth = tool === "text" ? textSize : width
-  const setStyleWidth = tool === "text" ? setTextSize : setWidth
 
   // Ручки выделения из ОРИЕНТИРОВАННОЙ рамки {cx,cy,ax,ay,angle} (экранные координаты)
   const H = selBox
@@ -3646,7 +3645,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
                 {menuShown("stroke") && (
                   <div className={`absolute bottom-full mb-2 left-1/2 -translate-x-1/2 p-2 rounded-xl shadow-lg ${menuAnim("stroke")}`}
                     style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
-                    <StrokeSettings dark={dark} tool={tool} curWidth={styleWidth} curDash={dash} onWidth={setStyleWidth} onDash={setDash} />
+                    <StrokeSettings dark={dark} tool={tool} curWidth={width} curDash={dash} onWidth={setWidth} onDash={setDash} />
                   </div>
                 )}
               </div>
@@ -3738,9 +3737,11 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
                 </button>
               ))}
 
-              {divider}
+              {tool !== "text" && divider}
 
-              {/* Текущий цвет: кружок открывает свотчи и настройки обводки */}
+              {/* Текущий цвет: кружок открывает свотчи и настройки обводки.
+                  У «Текста» их показывает панель над надписью. */}
+              {tool !== "text" && (
               <div className="relative" data-menu>
                 <button onClick={() => { toggleMenu("mColor"); if (!stylingTool) setTool("pen") }} aria-label="Цвет и обводка"
                   className={`${btnBase} ${btnIdle}`}>
@@ -3758,10 +3759,11 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
                       ))}
                       <ColorPick value={resolveColor(color, dark)} dark={dark} title="Свой цвет" onPreview={previewInk} />
                     </div>
-                    <StrokeSettings dark={dark} tool={stylingTool ? tool : "pen"} curWidth={styleWidth} curDash={dash} onWidth={setStyleWidth} onDash={setDash} />
+                    <StrokeSettings dark={dark} tool={stylingTool ? tool : "pen"} curWidth={width} curDash={dash} onWidth={setWidth} onDash={setDash} />
                   </div>
                 )}
               </div>
+              )}
 
               {/* Остальное — за «⋯»: пункты редкие, подписи важнее скорости */}
               <div className="relative" data-menu>
