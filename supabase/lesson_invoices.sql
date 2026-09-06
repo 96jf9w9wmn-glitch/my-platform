@@ -106,9 +106,135 @@ language sql immutable set search_path = public as $$
          + make_interval(mins => coalesce(p_minutes, 60))
 $$;
 
+-- Следующая граница периода абонемента. Повторяет арифметику addPeriod() из
+-- src/billing.js ВКЛЮЧАЯ переполнение месяца: у JS `setMonth` 31 января + месяц
+-- даёт 3 марта, а не 28 февраля. Расходиться тут нельзя — по этим границам
+-- кабинет показывает долг, а база выставляет квитанции.
+create or replace function public.package_next(p_date date, p_key text)
+returns date
+language sql immutable set search_path = public as $$
+  select case p_key
+    when 'week'   then p_date + 7
+    when 'weeks2' then p_date + 14
+    else ((date_trunc('month', p_date) + interval '1 month')::date
+            + (extract(day from p_date)::int - 1))
+  end
+$$;
+
+-- НАЧИСЛЕНИЯ УЧЕНИКА: одна строка на занятие, за которое он должен заплатить,
+-- и сумма именно этого занятия.
+--
+-- Это SQL-зеркало accrualEntries() из src/billing.js, и оно обязано давать те
+-- же числа: кабинет считает долг там, а квитанции выписываются здесь. Если
+-- суммы разойдутся, «оплачено» у квитанций разъедется с долгом — ровно то, от
+-- чего в шапке этого файла отказались, заводя квитанцию без своего флага.
+--
+-- Правила, все три взяты из billing.js:
+--   * занятие со статусом 'excused' не начисляется никогда;
+--   * поштучная оплата — начисляется прошедшее занятие по цене занятия;
+--   * абонемент — с началом периода начисляются ВСЕ его занятия сразу, а сумма
+--     периода (вписанная руками либо «занятий × цена») делится между ними;
+--     остаток от деления кладётся на первое занятие периода.
+create or replace function public.student_accrual(p_student public.students)
+returns table (lesson_date date, lesson_time text, duration int, amount numeric)
+language plpgsql stable set search_path = public as $$
+declare
+  v_price  numeric := coalesce(p_student.lesson_price, 0);
+  v_key    text    := p_student.package_period;
+  v_start  date    := p_student.package_start;
+  v_manual numeric := nullif(p_student.package_amount, 0);
+  v_from   date;
+  v_until  date;
+  v_total  numeric;
+  v_base   numeric;
+  v_n      int;
+  i        int;
+begin
+  -- Поштучная оплата (и любая недонастроенная карточка абонемента: период без
+  -- даты начала не от чего отсчитывать).
+  if coalesce(p_student.payment_mode, 'lesson') <> 'package'
+     or v_start is null
+     or v_key is null or v_key not in ('week', 'weeks2', 'month') then
+    if v_price <= 0 then return; end if;
+    return query
+      select (l->>'date')::date,
+             coalesce(l->>'time', ''),
+             coalesce((l->>'duration')::int, p_student.lesson_duration, 60),
+             v_price
+        from jsonb_array_elements(coalesce(p_student.lessons, '[]'::jsonb)) l
+       where nullif(l->>'date', '') is not null
+         and coalesce(l->>'status', '') <> 'excused'
+         and public.lesson_end_utc(l->>'date', l->>'time',
+               coalesce((l->>'duration')::int, p_student.lesson_duration, 60)) < now();
+    return;
+  end if;
+
+  -- До абонемента ученик платил как все — по факту проведения.
+  if v_price > 0 then
+    return query
+      select (l->>'date')::date,
+             coalesce(l->>'time', ''),
+             coalesce((l->>'duration')::int, p_student.lesson_duration, 60),
+             v_price
+        from jsonb_array_elements(coalesce(p_student.lessons, '[]'::jsonb)) l
+       where nullif(l->>'date', '') is not null
+         and coalesce(l->>'status', '') <> 'excused'
+         and (l->>'date')::date < v_start
+         and public.lesson_end_utc(l->>'date', l->>'time',
+               coalesce((l->>'duration')::int, p_student.lesson_duration, 60)) < now();
+  end if;
+
+  -- Периоды от даты начала до текущего включительно. Прошедшие периоды
+  -- начислены целиком, иначе долг за прошлый месяц исчезал бы с началом
+  -- следующего. 500 шагов — страховка от битой даты, а не бизнес-правило.
+  v_from := v_start;
+  for i in 1..500 loop
+    v_until := public.package_next(v_from, v_key) - 1;
+
+    -- Сумма периода делится между его занятиями; занятия по порядку, остаток от
+    -- деления — первому. Период БЕЗ занятий не стоит ничего даже при вписанной
+    -- сумме: деньги, не привязанные ни к одному занятию, не легли бы ни в одну
+    -- квитанцию (то же правило, что в billing.js).
+    return query
+      with lesson as (
+        select (l->>'date')::date                       as d,
+               coalesce(l->>'time', '')                 as t,
+               coalesce((l->>'duration')::int, p_student.lesson_duration, 60) as dur
+          from jsonb_array_elements(coalesce(p_student.lessons, '[]'::jsonb)) l
+         where nullif(l->>'date', '') is not null
+           and coalesce(l->>'status', '') <> 'excused'
+           and (l->>'date')::date between v_from and v_until
+      ),
+      numbered as (
+        select d, t, dur,
+               row_number() over (order by d, t) as n,
+               count(*)     over ()              as cnt
+          from lesson
+      ),
+      priced as (
+        select d, t, dur, n, cnt, coalesce(v_manual, cnt * v_price) as total
+          from numbered
+      )
+      select d, t, dur,
+             case when n = 1 then total - floor(total / cnt) * (cnt - 1)
+                             else floor(total / cnt) end
+        from priced
+       where total > 0;
+
+    exit when v_until >= current_date;
+    v_from := public.package_next(v_from, v_key);
+  end loop;
+end;
+$$;
+
 -- Выставляет счета за все занятия, которые уже закончились, но ещё не оплачены
 -- вниманием. Возвращает, сколько квитанций выписано за этот запуск.
 -- p_tutor = null — по всем репетиторам (так её зовёт cron).
+--
+-- Сумма берётся из student_accrual(), а НЕ из цены занятия: у абонемента она
+-- может быть вписана руками и поделена между занятиями периода. Считать здесь
+-- по цене — значит выписать на 8 000 ₽ то, за что начислено 7 000, и тогда
+-- самые старые квитанции показались бы погашенными без единой оплаты.
 create or replace function public.invoices_sync_for(p_tutor uuid default null)
 returns integer
 language plpgsql
@@ -121,27 +247,28 @@ begin
   with candidate as (
     select
       s.tutor_id,
-      s.id                                       as student_id,
-      (l->>'date')::date                         as lesson_date,
-      coalesce(l->>'time', '')                   as lesson_time,
-      coalesce((l->>'duration')::int, s.lesson_duration, 60) as duration,
-      s.lesson_price                             as amount,
-      (select a.id
-         from student_accounts a
-        where a.phone is not null and a.phone = s.phone
-        order by (a.tutor_id = s.tutor_id) desc
-        limit 1)                                 as account_id
+      s.id           as student_id,
+      a.lesson_date,
+      a.lesson_time,
+      a.duration,
+      a.amount,
+      (select acc.id
+         from student_accounts acc
+        where acc.phone is not null and acc.phone = s.phone
+        order by (acc.tutor_id = s.tutor_id) desc
+        limit 1)     as account_id
     from tutor_invoice_settings cfg
     join students s on s.tutor_id = cfg.tutor_id
-    cross join lateral jsonb_array_elements(coalesce(s.lessons, '[]'::jsonb)) l
+    cross join lateral public.student_accrual(s) a
     where cfg.enabled
       and (p_tutor is null or cfg.tutor_id = p_tutor)
-      and coalesce(s.lesson_price, 0) > 0
-      and nullif(l->>'date', '') is not null
-      and (l->>'date')::date >= coalesce(cfg.since, current_date)
+      and a.amount > 0
+      and a.lesson_date >= coalesce(cfg.since, current_date)
+      -- Счёт приходит ПОСЛЕ занятия, даже когда деньги начислены вперёд
+      -- абонементом: квитанция за занятие, которого ещё не было, читается как
+      -- ошибка. Долг за весь период при этом уже виден в разделе «Оплата».
       and public.lesson_end_utc(
-            l->>'date', l->>'time',
-            coalesce((l->>'duration')::int, s.lesson_duration, 60) + cfg.delay_min
+            a.lesson_date::text, a.lesson_time, a.duration + cfg.delay_min
           ) < now()
   ),
   ins as (
@@ -150,6 +277,41 @@ begin
       from candidate
     on conflict (student_id, lesson_date, lesson_time) do nothing
     returning id, account_id, amount, lesson_date
+  ),
+  -- Уже выставленная квитанция подстраивается под начисление: репетитор мог
+  -- поменять цену или сумму абонемента задним числом. Своей истины у квитанции
+  -- нет (см. шапку файла) — иначе её сумма разошлась бы с долгом.
+  fixed as (
+    update lesson_invoices i
+       set amount = c.amount
+      from candidate c
+     where i.student_id  = c.student_id
+       and i.lesson_date = c.lesson_date
+       and i.lesson_time = c.lesson_time
+       and i.canceled_at is null
+       and i.amount <> c.amount
+    returning 1
+  ),
+  -- Занятие сняли со счёта («не состоялось») или убрали из расписания — счёт за
+  -- него аннулируется. Отменяем ТОЛЬКО по факту отсутствия занятия в карточке:
+  -- по пустому начислению было бы опасно, стёртая цена гасила бы всю историю.
+  canceled as (
+    update lesson_invoices i
+       set canceled_at = now()
+     where i.canceled_at is null
+       and (p_tutor is null or i.tutor_id = p_tutor)
+       and exists (select 1 from students s where s.id = i.student_id)
+       and not exists (
+         select 1
+           from students s
+           cross join lateral jsonb_array_elements(coalesce(s.lessons, '[]'::jsonb)) l
+          where s.id = i.student_id
+            and nullif(l->>'date', '') is not null
+            and (l->>'date')::date = i.lesson_date
+            and coalesce(l->>'time', '') = i.lesson_time
+            and coalesce(l->>'status', '') <> 'excused'
+       )
+    returning 1
   ),
   notified as (
     insert into notifications (user_id, title, body)
@@ -168,7 +330,8 @@ end;
 $$;
 
 -- Напоминание о неоплаченном. Долг считается ровно так же, как в кабинете:
--- проведённые занятия × цена − все оплаты. Напоминаем не чаще, чем раз в
+-- сумма начислений минус все оплаты (student_accrual выше — то же правило, что
+-- у billing.js, вместе с абонементом и снятыми со счёта занятиями). Напоминаем не чаще, чем раз в
 -- remind_days, и только по самой старой висящей квитанции — чтобы у ученика
 -- не появлялось по уведомлению на каждое занятие.
 create or replace function public.invoices_remind()
@@ -190,14 +353,8 @@ begin
         where a.phone is not null and a.phone = s.phone
         order by (a.tutor_id = s.tutor_id) desc
         limit 1)                          as account_id,
-      -- Долг: всё проведённое минус всё оплаченное.
-      coalesce((
-        select count(*) * coalesce(s.lesson_price, 0)
-          from jsonb_array_elements(coalesce(s.lessons, '[]'::jsonb)) l
-         where nullif(l->>'date', '') is not null
-           and public.lesson_end_utc(l->>'date', l->>'time',
-                 coalesce((l->>'duration')::int, s.lesson_duration, 60)) < now()
-      ), 0)
+      -- Долг: всё начисленное минус всё оплаченное.
+      coalesce((select sum(a.amount) from public.student_accrual(s) a), 0)
       - coalesce((
         select sum(coalesce((p->>'amount')::numeric, 0))
           from jsonb_array_elements(coalesce(s.payments, '[]'::jsonb)) p
@@ -288,6 +445,10 @@ as $$
 $$;
 
 revoke execute on function public.invoices_sync_for(uuid) from anon, authenticated, app_user;
+-- Начисления — служебный расчёт для двух функций выше. Наружу не отдаём: строка
+-- ученика целиком в аргументе, а читать её вправе не каждый.
+revoke execute on function public.student_accrual(public.students) from anon, authenticated, app_user;
+grant  execute on function public.package_next(date, text) to anon, authenticated, app_user;
 grant  execute on function public.invoices_sync_self()  to authenticated;
 grant  execute on function public.invoices_sync_mine()  to app_user;
 grant  execute on function public.invoice_payee(uuid)   to anon, authenticated, app_user;
