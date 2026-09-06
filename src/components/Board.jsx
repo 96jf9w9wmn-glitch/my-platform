@@ -28,6 +28,7 @@ const HISTORY_MAX = 100      // шагов «отменить» держим с�
 // Копия штриха для истории: points — массив массивов, поверхностная копия его бы разделила
 const cloneStroke = (s) => s && { ...s, points: s.points.map((p) => p.slice()) }
 const SHEET_MAX_DIM = 4000   // лист с заданием: длинные условия не должны терять чёткость
+const SHEET_GAP = 140        // отступ от написанного до нового листа с заданием, мировые px
 // Затухание доски и стало общей «походкой» ухода для всего сайта: значение
 // живёт в CLOSE_MS (useClosing.js) и в --leave-ms (index.css), здесь только имя
 // для читаемости. Хук снимает доску, когда затухание кончилось.
@@ -302,7 +303,7 @@ function BoardStrip({ open, children }) {
   )
 }
 
-export default function Board({ roomId, userId, userName, theme = "light", onClose, account = null, token = null, canAddTasks = false, tutorSubject = null, tutorExamFocus = null, tutorSubjects = null, tutorOwner = false }) {
+export default function Board({ roomId, userId, userName, theme = "light", onClose, account = null, token = null, canAddTasks = false, tutorSubject = null, tutorExamFocus = null, tutorSubjects = null, tutorOwner = false, taskSheet = null }) {
   // Доска занимает весь экран, поэтому её уход тоже должен быть плавным:
   // класс .is-closing держится, пока идёт затухание, и лишь потом зовётся onClose.
   const { cls: closingCls, close: leave } = useClosing(onClose, BOARD_CLOSE_MS)
@@ -382,6 +383,12 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const [selHasImage, setSelHasImage] = useState(false)
   const [dragActive, setDragActive] = useState(false) // перетаскивание файла над доской
   const [taskPick, setTaskPick] = useState(false)     // открыт выбор задания из банка
+  // Задание, с которым доску открыли снаружи (кнопка «Решить на доске» в
+  // домашней работе). Снимок листа делается здесь же, поэтому пока он готовится,
+  // доска показывает тот же загрузчик, что и при загрузке сцены.
+  const [sheetBusy, setSheetBusy] = useState(false)
+  const [sheetErr, setSheetErr] = useState(false)
+  const sheetDone = useRef(null)                      // ключ задания, которое уже разобрали
   const [confirmClear, setConfirmClear] = useState(false) // спрашиваем перед очисткой доски
   // SmartDraw: набросок пером превращается в ровную фигуру (см. boardSmartDraw.js)
   const [smart, setSmart] = useState(() => localStorage.getItem(SMART_KEY) === "1")
@@ -1677,10 +1684,14 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // Добавить картинку из файла в точке (мировые координаты).
   // fitWidth — положить в заданную ШИРИНУ (лист с заданием: длинное условие иначе
   // ужалось бы по высоте и стало нечитаемым), иначе вписываем по большей стороне.
-  async function addImageAt(file, worldX, worldY, { fitWidth = null, maxSide = 360, sheet = false } = {}) {
-    if (!file || !file.type?.startsWith("image/")) return
+  // topLeft — координаты задают ЛЕВЫЙ ВЕРХНИЙ угол, а не центр: лист с заданием
+  // кладётся под уже написанным, а его высота известна только здесь, после снимка.
+  // taskKey — пометка «это задание из работы»: по ней доска узнаёт лежащий лист и
+  // не кладёт второй, когда ученик открывает то же задание снова.
+  async function addImageAt(file, worldX, worldY, { fitWidth = null, maxSide = 360, sheet = false, topLeft = false, taskKey = null } = {}) {
+    if (!file || !file.type?.startsWith("image/")) return null
     let info
-    try { info = await processImageFile(file, sheet ? SHEET_MAX_DIM : 1400) } catch { return }
+    try { info = await processImageFile(file, sheet ? SHEET_MAX_DIM : 1400) } catch { return null }
     const id = makeId(userId)
     let src = info.dataUrl
     try {
@@ -1690,8 +1701,10 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     } catch { /* остаётся data URL как запасной вариант */ }
     const k = fitWidth ? fitWidth / info.w : Math.min(1, maxSide / Math.max(info.w, info.h))
     const ww = info.w * k, hh = info.h * k
-    const s = { id, author: userId, tool: "image", src, points: [[worldX - ww / 2, worldY - hh / 2], [worldX + ww / 2, worldY + hh / 2]] }
+    const x0 = topLeft ? worldX : worldX - ww / 2, y0 = topLeft ? worldY : worldY - hh / 2
+    const s = { id, author: userId, tool: "image", src, points: [[x0, y0], [x0 + ww, y0 + hh]] }
     if (sheet) s.sheet = 1   // лист с заданием: рисуется в цветах доски, а не как фото
+    if (taskKey) s.task = taskKey
     // Своя картинка уже в памяти — кладём её в кэш под итоговым адресом, чтобы лист
     // появился мгновенно, не дожидаясь подписи и сети.
     getImage(src) // начать загрузку/кэшировать для мгновенной отрисовки
@@ -1700,6 +1713,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     pushHistory([{ id, before: null, after: cloneStroke(s) }])
     setTool("cursor"); selection.current = new Set([id]); setSelCount(1)
     scheduleDraw(); scheduleSave()
+    return s
   }
 
   function onDragOver(e) {
@@ -1764,6 +1778,47 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     const step = (taskShift.current++ % 6) * 26
     const [wx, wy] = toWorld(r.left + c.clientWidth / 2 + step, r.top + c.clientHeight / 2 + step)
     await addImageAt(file, wx, wy, { fitWidth: sheetWidth, sheet: true })
+  }
+
+  // Задание, которое ученик открыл кнопкой «Решить на доске» в домашней работе.
+  // Лист кладётся ПОД всем написанным, а не в центр обзора: доска бесконечная,
+  // место под решение всегда есть, а поверх чужой записи лист лёг бы стеной.
+  // Второй раз то же задание не переносим — лист помечен ключом работы и номера,
+  // и доска просто везёт к нему обзор: иначе к концу недели их лежала бы стопка.
+  async function placeTaskSheet(req) {
+    const found = [...strokes.current.values()].find((st) => st.task === req.key)
+    if (found) { focusSheet(strokeBBox(found)); return }
+    setSheetBusy(true); setSheetErr(false)
+    try {
+      // Снимок задания тянет за собой html2canvas — грузим только по нажатию,
+      // иначе кабинет ученика потяжелел бы на него у всех.
+      const { taskToImageFile, SHEET_WIDTH } = await import("../pages/taskSnapshot")
+      const file = await taskToImageFile(req.task, { label: req.label || "" })
+      const bb = sceneBBox([...strokes.current.values()])
+      const x = bb ? bb.minX : -SHEET_WIDTH / 2
+      const y = bb ? bb.maxY + SHEET_GAP : -SHEET_GAP
+      const st = await addImageAt(file, x, y, { fitWidth: SHEET_WIDTH, sheet: true, topLeft: true, taskKey: req.key })
+      if (st) focusSheet(strokeBBox(st))
+      else setSheetErr(true)
+    } catch {
+      // Молчать нельзя: ученик остался бы на пустой доске, не понимая, куда делось
+      // задание, — а условие у него на соседней вкладке кабинета.
+      setSheetErr(true)
+    }
+    setSheetBusy(false)
+  }
+
+  // Лист ставим в ВЕРХ экрана: под ним должно остаться место, где решают.
+  // С повтором: доска открывается поверх кабинета, и в первые кадры холст ещё
+  // нулевой ширины — навести обзор по одной попытке значило бы оставить ученика
+  // смотреть мимо только что перенесённого задания. Повтор идёт ТОЛЬКО пока
+  // холст не измерен (только в этом случае viewToBBox отвечает false), поэтому
+  // рисующему в это время человеку доска обзор не дёргает.
+  function focusSheet(bb, tries = 20) {
+    if (!bb) return
+    stopFollow()
+    if (viewToBBox({ ...bb, maxY: bb.maxY + (bb.maxY - bb.minY) * 0.6 })) return
+    if (tries > 0) setTimeout(() => focusSheet(bb, tries - 1), 100)
   }
 
   function duplicateSelection() {
@@ -2011,6 +2066,16 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // выставляли руками в пяти местах, и один пропущенный сброс глушил ВСЕ горячие
   // клавиши доски — включая ⌘Z — до перезагрузки страницы.
   useEffect(() => { modalOpen.current = taskPick || confirmClear }, [taskPick, confirmClear])
+
+  // Задание, с которым доску открыли снаружи. Ждём загрузки сцены: пока она не
+  // прочитана, уже лежащего листа не видно, и задание легло бы вторым экземпляром.
+  useEffect(() => {
+    if (!loaded || !taskSheet?.key || !taskSheet.task) return
+    if (sheetDone.current === taskSheet.key) return
+    sheetDone.current = taskSheet.key
+    placeTaskSheet(taskSheet)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, taskSheet])
   // Вставка картинки из буфера обмена (Ctrl/Cmd+V) — в центр видимой области
   useEffect(() => {
     function onPaste(e) {
@@ -2523,8 +2588,15 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
             </div>
           </>
         )}
-        {!loaded && (
+        {(!loaded || sheetBusy) && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><div className="loader-logo" /></div>
+        )}
+        {sheetErr && (
+          <button onClick={() => setSheetErr(false)}
+            className="press-tap absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl text-xs shadow-lg"
+            style={{ background: panelBg, border: `1px solid ${panelBorder}`, color: dark ? "#f5f5f7" : "#1c1c1e" }}>
+            Задание не перенеслось на доску — условие осталось в кабинете
+          </button>
         )}
 
         {/* Зум-контролы. На телефоне скрыты: зум там — щипок, а угол занят панелью */}
