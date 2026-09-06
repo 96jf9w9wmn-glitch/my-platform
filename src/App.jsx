@@ -798,6 +798,25 @@ function App() {
     return () => listener.subscription.unsubscribe()
   }, [])
 
+  // Якорь мог появиться уже ПОСЛЕ того, как кабинет загрузился: ученик впервые
+  // вошёл, пока вкладка репетитора была открыта. Занятия в стейте лежат тогда в
+  // якорном кадре, а не в кадре репетитора, и сохранение записало бы время без
+  // перевода — молча, на час мимо. Конвертировать их на лету нельзя (сдвинулись
+  // бы и старые), поэтому просто перечитываем ростер при возврате к вкладке.
+  // Запрос делается только пока есть карточки без якоря, то есть считанные разы
+  // на ученика, и прекращается сам.
+  useEffect(() => {
+    if (user?.role !== "tutor" || !studentsLoaded) return
+    if (!students.some((s) => !s.timezone && s.studentAccountId)) return
+    const recheck = () => { if (document.visibilityState === "visible") loadStudents() }
+    window.addEventListener("focus", recheck)
+    document.addEventListener("visibilitychange", recheck)
+    return () => {
+      window.removeEventListener("focus", recheck)
+      document.removeEventListener("visibilitychange", recheck)
+    }
+  }, [user?.role, studentsLoaded, students])
+
   // Пояс устройства сообщаем сами, без единого вопроса пользователю: телефон и
   // ноутбук и так знают, в какой стране находятся, а лишняя настройка «выберите
   // часовой пояс» ничего не добавляет и устаревает при первой же поездке.
