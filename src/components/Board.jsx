@@ -989,13 +989,15 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         const s0 = strokes.current.get(id)
         if (!s0 || s0.tool === "eraser") continue
         if (s0.tool === "image") { hasImg = true }
-        else if (!props) props = { tool: s0.tool, dash: s0.dash || "solid", width: s0.tool === "text" ? (s0.size || TEXT_DEFAULT) : s0.width }
+        else if (!props) props = { tool: s0.tool, dash: s0.dash || "solid", bold: !!s0.bold, italic: !!s0.italic,
+          width: s0.tool === "text" ? (s0.size || TEXT_DEFAULT) : s0.width }
         if (props && hasImg) break
       }
     }
     if (hasImg !== lastSelHasImage.current) { lastSelHasImage.current = hasImg; setSelHasImage(hasImg) }
     const pp = lastSelProps.current
-    if ((!pp) !== (!props) || (pp && props && (pp.tool !== props.tool || pp.width !== props.width || pp.dash !== props.dash))) {
+    if ((!pp) !== (!props) || (pp && props && (pp.tool !== props.tool || pp.width !== props.width || pp.dash !== props.dash ||
+      pp.bold !== props.bold || pp.italic !== props.italic))) {
       lastSelProps.current = props; setSelProps(props)
     }
     // Направляющие прилипания: пунктир того же цвета, что и в чертёжных
@@ -2410,11 +2412,8 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       // метрикам — вокруг прежнего центра, чтобы текст не уползал из-под руки.
       if (s.tool === "text") {
         if ((s.size || TEXT_DEFAULT) === w) continue
-        const a = s.points[0], b = s.points[s.points.length - 1]
-        const cx = (a[0] + b[0]) / 2, cy = (a[1] + b[1]) / 2
         s.size = w
-        const m = textMetrics(s.text, w, s)
-        s.points = [[cx - m.w / 2, cy - m.h / 2], [cx + m.w / 2, cy + m.h / 2]]
+        refitText(s)
         widthDrag.current.changed = true
         continue
       }
@@ -2430,6 +2429,31 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       widthDrag.current = null
       if (d.changed) commitSelection(d.before)   // отпустили, ничего не изменив, — шага истории нет
     }
+    scheduleDraw()
+  }
+  // Кегль и начертание меняют ширину строки, поэтому габарит надписи собирается
+  // заново по метрикам — вокруг прежнего центра, чтобы текст не уползал из-под руки.
+  function refitText(s) {
+    const a = s.points[0], b = s.points[s.points.length - 1]
+    const cx = (a[0] + b[0]) / 2, cy = (a[1] + b[1]) / 2
+    const m = textMetrics(s.text, s.size || TEXT_DEFAULT, s)
+    s.points = [[cx - m.w / 2, cy - m.h / 2], [cx + m.w / 2, cy + m.h / 2]]
+  }
+  // Полужирный и курсив у выделенной надписи. Обычное начертание — это отсутствие
+  // поля: «bold: false» у каждой подписи только раздувал бы сцену.
+  function setSelectionFace(key, on) {
+    if (!selection.current.size) return
+    const before = snapshotSelection()
+    let changed = false
+    for (const id of selection.current) {
+      const s = strokes.current.get(id)
+      if (!s || s.tool !== "text") continue
+      if (on) s[key] = 1
+      else delete s[key]
+      refitText(s)
+      changed = true
+    }
+    if (changed) commitSelection(before)
     scheduleDraw()
   }
   function setSelectionDash(d) {
@@ -3427,12 +3451,36 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
                 </button>
               ))}
               {selProps && divider}
-              {/* Настройки обводки для выделения */}
+              {/* Начертание — только у надписи. Ж и К стоят рядом с цветом и размером,
+                  чтобы выделенная надпись правилась ровно тем же набором кнопок, что
+                  и во время набора: разные панели для одного и того же сбивают с толку. */}
+              {selProps?.tool === "text" && (
+                <>
+                  <button onClick={() => setSelectionFace("bold", !selProps.bold)}
+                    aria-pressed={selProps.bold} aria-label="Полужирный" title="Полужирный"
+                    className={`press-tap w-8 h-8 rounded-lg flex items-center justify-center text-[15px] font-bold ${selProps.bold ? "bg-blue-500 text-white" : "board-hover"}`}
+                    style={selProps.bold ? undefined : idleStyle}>Ж</button>
+                  <button onClick={() => setSelectionFace("italic", !selProps.italic)}
+                    aria-pressed={selProps.italic} aria-label="Курсив" title="Курсив"
+                    className={`press-tap w-8 h-8 rounded-lg flex items-center justify-center text-[15px] italic ${selProps.italic ? "bg-blue-500 text-white" : "board-hover"}`}
+                    style={selProps.italic ? undefined : idleStyle}>К</button>
+                  {divider}
+                </>
+              )}
+              {/* Настройки обводки для выделения (у надписи — размер) */}
               {selProps && (
               <div className="relative" data-menu>
-                <button onClick={() => toggleMenu("selStroke")} title="Настройки обводки"
-                  className="press-tap w-8 h-8 rounded-lg flex items-center justify-center board-hover" style={idleStyle}>
-                  <Icon name="stroke" size={16} />
+                <button onClick={() => toggleMenu("selStroke")}
+                  title={selProps.tool === "text" ? "Размер надписи" : "Настройки обводки"}
+                  aria-label={selProps.tool === "text" ? "Размер надписи" : "Настройки обводки"}
+                  className={`press-tap h-8 rounded-lg flex items-center justify-center board-hover ${selProps.tool === "text" ? "px-2 gap-1" : "w-8"}`}
+                  style={idleStyle}>
+                  {selProps.tool === "text" ? (
+                    <>
+                      <span className="text-[15px] font-semibold leading-none" style={{ fontFamily: TEXT_FONT }}>А</span>
+                      <span className="text-[11px] tabular-nums leading-none">{Math.round(selProps.width || TEXT_DEFAULT)}</span>
+                    </>
+                  ) : <Icon name="stroke" size={16} />}
                 </button>
                 {menuShown("selStroke") && (
                   <div className={`absolute bottom-full mb-2 left-1/2 -translate-x-1/2 p-2 rounded-xl shadow-lg z-10 ${menuAnim("selStroke")}`}
