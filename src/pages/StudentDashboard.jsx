@@ -726,6 +726,76 @@ function StudentHomeworkCard({ hw, index, onSelect }) {
   )
 }
 
+// Полоса-сводка со счётчиками, она же фильтр списка: сколько работ в каждом
+// состоянии видно раньше, чем открыт список. Одна на «Задания» и «Варианты» —
+// одинаковые разделы кабинета должны и выглядеть одинаково.
+function StudentStatTabs({ items, value, onChange, className = "" }) {
+  // Подчёркивание активной вкладки — одна полоска, которая переезжает с кнопки
+  // на кнопку: ширины у вкладок разные и на узком экране полоса ещё скроллится.
+  const tabsRef = useRef(null)
+  const tabsScrollRef = useRef(null)
+  const [ind, setInd] = useState(null)
+  const indAnimated = useRef(false)
+
+  useLayoutEffect(() => {
+    const wrap = tabsRef.current
+    if (!wrap) return
+    const measure = () => {
+      const el = wrap.querySelector(`[data-filter="${value}"]`)
+      if (!el) return
+      setInd({ left: el.offsetLeft, width: el.offsetWidth })
+      const sc = tabsScrollRef.current
+      if (sc && indAnimated.current && sc.scrollWidth > sc.clientWidth) {
+        const left = el.offsetLeft - 16
+        const right = el.offsetLeft + el.offsetWidth - sc.clientWidth + 16
+        const to = sc.scrollLeft > left ? left : sc.scrollLeft < right ? right : null
+        if (to !== null) sc.scrollTo({ left: Math.max(0, to), behavior: "smooth" })
+      }
+      indAnimated.current = true
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(wrap)
+    return () => ro.disconnect()
+  }, [value])
+
+  return (
+    <div ref={tabsScrollRef} className={`glass no-scrollbar overflow-x-auto ${className}`}>
+      <div ref={tabsRef} className="relative flex min-w-full divide-x divide-gray-500/12 dark:divide-white/10">
+        {items.map((f) => {
+          const on = value === f.key
+          const count = f.count
+          return (
+            <button
+              key={f.key}
+              data-filter={f.key}
+              onClick={() => onChange(f.key)}
+              className={`press-fill flex-1 min-w-[7.5rem] sm:min-w-[9rem] flex items-center gap-3 px-3 sm:px-4 py-3.5 text-left transition-colors duration-200 ${
+                on ? "bg-blue-500/[0.07] dark:bg-blue-400/10" : "hover:bg-blue-500/[0.05] dark:hover:bg-white/[0.04]"
+              }`}
+            >
+              <div className={`w-9 h-9 rounded-xl hidden sm:flex items-center justify-center flex-shrink-0 transition-colors duration-200 ${count > 0 ? f.tint : "text-gray-400 ring-1 ring-gray-200/70 dark:ring-white/10"}`}>
+                <Icon name={f.icon} size={16} />
+              </div>
+              <div className="min-w-0">
+                <div className={`text-xl font-semibold leading-none transition-colors duration-200 ${count > 0 ? f.tint.split(" ")[0] : "text-gray-400"}`}>{count}</div>
+                <div className={`text-[11px] mt-1.5 truncate transition-colors duration-200 ${on ? "text-gray-600 font-medium" : "text-gray-400"}`}>{f.label}</div>
+              </div>
+            </button>
+          )
+        })}
+        {ind && (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute bottom-0 left-0 h-[3px] rounded-full bg-gradient-to-r from-blue-500 to-blue-600 transition-[transform,width] duration-300 ease-out motion-reduce:transition-none"
+            style={{ width: ind.width, transform: `translateX(${ind.left}px)` }}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function StudentHomeworkList({ homework, onSelect }) {
   const [filter, setFilter] = useState("all")
   const match = {
@@ -755,70 +825,9 @@ export function StudentHomeworkList({ homework, onSelect }) {
     return new Date(b.created_at) - new Date(a.created_at)
   })
 
-  // Подчёркивание активной вкладки — одна полоска, которая переезжает с кнопки
-  // на кнопку: ширины у вкладок разные и на узком экране полоса ещё скроллится.
-  const tabsRef = useRef(null)
-  const tabsScrollRef = useRef(null)
-  const [ind, setInd] = useState(null)
-  const indAnimated = useRef(false)
-
-  useLayoutEffect(() => {
-    const wrap = tabsRef.current
-    if (!wrap) return
-    const measure = () => {
-      const el = wrap.querySelector(`[data-filter="${filter}"]`)
-      if (!el) return
-      setInd({ left: el.offsetLeft, width: el.offsetWidth })
-      const sc = tabsScrollRef.current
-      if (sc && indAnimated.current && sc.scrollWidth > sc.clientWidth) {
-        const left = el.offsetLeft - 16
-        const right = el.offsetLeft + el.offsetWidth - sc.clientWidth + 16
-        const to = sc.scrollLeft > left ? left : sc.scrollLeft < right ? right : null
-        if (to !== null) sc.scrollTo({ left: Math.max(0, to), behavior: "smooth" })
-      }
-      indAnimated.current = true
-    }
-    measure()
-    const ro = new ResizeObserver(measure)
-    ro.observe(wrap)
-    return () => ro.disconnect()
-  }, [filter])
-
   return (
     <div>
-      <div ref={tabsScrollRef} className="glass no-scrollbar overflow-x-auto mb-4">
-        <div ref={tabsRef} className="relative flex min-w-full divide-x divide-gray-500/12 dark:divide-white/10">
-          {FILTERS.map((f) => {
-            const on = filter === f.key
-            const count = counts[f.key]
-            return (
-              <button
-                key={f.key}
-                data-filter={f.key}
-                onClick={() => setFilter(f.key)}
-                className={`press-fill flex-1 min-w-[7.5rem] sm:min-w-[9rem] flex items-center gap-3 px-3 sm:px-4 py-3.5 text-left transition-colors duration-200 ${
-                  on ? "bg-blue-500/[0.07] dark:bg-blue-400/10" : "hover:bg-blue-500/[0.05] dark:hover:bg-white/[0.04]"
-                }`}
-              >
-                <div className={`w-9 h-9 rounded-xl hidden sm:flex items-center justify-center flex-shrink-0 transition-colors duration-200 ${count > 0 ? f.tint : "text-gray-400 ring-1 ring-gray-200/70 dark:ring-white/10"}`}>
-                  <Icon name={f.icon} size={16} />
-                </div>
-                <div className="min-w-0">
-                  <div className={`text-xl font-semibold leading-none transition-colors duration-200 ${count > 0 ? f.tint.split(" ")[0] : "text-gray-400"}`}>{count}</div>
-                  <div className={`text-[11px] mt-1.5 truncate transition-colors duration-200 ${on ? "text-gray-600 font-medium" : "text-gray-400"}`}>{f.label}</div>
-                </div>
-              </button>
-            )
-          })}
-          {ind && (
-            <span
-              aria-hidden
-              className="pointer-events-none absolute bottom-0 left-0 h-[3px] rounded-full bg-gradient-to-r from-blue-500 to-blue-600 transition-[transform,width] duration-300 ease-out motion-reduce:transition-none"
-              style={{ width: ind.width, transform: `translateX(${ind.left}px)` }}
-            />
-          )}
-        </div>
-      </div>
+      <StudentStatTabs className="mb-4" items={FILTERS.map((f) => ({ ...f, count: counts[f.key] }))} value={filter} onChange={setFilter} />
       {list.length === 0 ? (
         <div key={filter} className="tab-swap relative overflow-hidden text-center py-12 border border-dashed border-white/50 glass-sm">
           <FormulaBackdrop variant="panel" />
@@ -836,6 +845,154 @@ export function StudentHomeworkList({ homework, onSelect }) {
       ) : (
         <div key={filter} className="tab-swap flex flex-col gap-2.5">
           {list.map((hw, i) => <StudentHomeworkCard key={hw.id} hw={hw} index={i} onSelect={onSelect} />)}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Вид карточки варианта у ученика — те же плитка-иконка и чип, что у домашней
+// работы: «Задания» и «Варианты» отличаются содержимым, а не оформлением.
+// Начатая работа стоит отдельным состоянием: время у неё уже идёт, и это
+// важнее всего остального, что о ней можно сказать.
+const VAR_STATUS = {
+  pending:   { label: "Не решён",    icon: "clipboard", tile: "from-blue-400/25 to-blue-500/10 text-blue-600 dark:text-blue-300",         chip: "bg-blue-500/10 text-blue-600 dark:text-blue-300 ring-1 ring-blue-500/20" },
+  running:   { label: "Время идёт",  icon: "clock",     tile: "from-amber-400/25 to-amber-500/10 text-amber-600 dark:text-amber-300",     chip: "bg-amber-500/10 text-amber-600 dark:text-amber-300 ring-1 ring-amber-500/20" },
+  submitted: { label: "На проверке", icon: "clock",     tile: "from-indigo-400/25 to-indigo-500/10 text-indigo-600 dark:text-indigo-300", chip: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 ring-1 ring-indigo-500/20" },
+  graded:    { label: "Проверено",   icon: "check",     tile: "from-green-400/25 to-green-500/10 text-green-600 dark:text-green-300",     chip: "bg-green-500/10 text-green-600 dark:text-green-300 ring-1 ring-green-500/20" },
+}
+
+const variantStateOf = (v) =>
+  v.submission?.status === "graded" ? "graded"
+  : v.submission?.status === "submitted" ? "submitted"
+  : v.submission?.opened_at ? "running"
+  : "pending"
+
+// Номера части 2 этого варианта и максимум первичного балла — по составу его
+// снимка (у выданных до перенумерации КИМ-2027 он свой). Общие с разбором ниже:
+// балл в списке и балл в разборе обязаны считаться одним правилом.
+function variantPart2Nums(v) {
+  const p2 = variantPart2MaxOf(v)
+  const fromSnapshot = [...new Set((v?.tasks_snapshot || []).map((t) => t.number).filter((n) => p2[n]))].sort((a, b) => a - b)
+  return fromSnapshot.length ? fromSnapshot : part2NumbersOf(v?.type)
+}
+
+function variantMaxOf(v, part2Nums = variantPart2Nums(v)) {
+  const snapshotNums = [...new Set((v?.tasks_snapshot || []).map((t) => t.number))]
+  return variantMaxPrimary(
+    v?.type,
+    snapshotNums.length ? snapshotNums : [...part1NumbersOf(v?.type), ...part2Nums],
+    variantPart2MaxOf(v),
+  )
+}
+
+// Время в строке карточки: сколько работа займёт, а у начатой — сколько его
+// осталось. Остаток верен на момент отрисовки: точные часы идут в самой работе,
+// а списку достаточно ответить, успеваешь ли сесть за вариант сейчас.
+function variantTimeNote(v, state, minutes) {
+  if (!minutes) return state === "running" ? "Работа начата" : ""
+  if (state !== "running") return `На решение: ${formatExamDuration(minutes)}`
+  const left = Math.ceil((new Date(v.submission.opened_at).getTime() + minutes * 60000 - Date.now()) / 60000)
+  return left > 0 ? `Осталось: ${formatExamDuration(left)}` : "Время вышло"
+}
+
+function StudentVariantCard({ variant: v, index, onSelect }) {
+  const state = variantStateOf(v)
+  const meta = VAR_STATUS[state]
+  const minutes = examMinutesOf(v.type)
+  const graded = state === "graded"
+  const max = graded ? variantMaxOf(v) : 0
+  const result = graded
+    ? examResult(v.type, v.submission.total_score || 0, {
+        geometry: scaleOf(v.type)?.geometryNumbers ? (v.submission.geom_score ?? null) : null,
+        variantMax: max,
+      })
+    : null
+  // Вторая строка договаривает то, чего нет в чипе: сколько времени займёт
+  // работа, сколько его осталось у начатой, чем обернулась проверка.
+  const note = graded
+    ? (result.kind !== "none" ? `${result.kind === "test" ? "Тестовый балл" : "Оценка"}: ${secondaryLabel(result, { short: true })}` : "")
+    : state === "submitted" ? "Ждёт проверки" : variantTimeNote(v, state, minutes)
+  return (
+    <button
+      onClick={() => onSelect(v)}
+      style={{ animationDelay: `${Math.min(index, 8) * 45}ms` }}
+      className="item-enter press-tap text-left w-full glass rounded-2xl p-3.5 flex items-center gap-3"
+    >
+      <div className={`shrink-0 w-11 h-11 rounded-2xl flex items-center justify-center bg-gradient-to-br ${meta.tile}`}>
+        <Icon name={meta.icon} size={18} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <div className="font-medium text-sm truncate flex-1">{v.title}</div>
+          {graded ? (
+            <span className={`shrink-0 text-[11px] px-2 py-0.5 rounded-full font-medium tabular-nums ${meta.chip}`}>
+              {v.submission.total_score}{max ? ` / ${max}` : ""}
+            </span>
+          ) : (
+            <span className={`shrink-0 text-[11px] px-2 py-0.5 rounded-full font-medium ${meta.chip}`}>{meta.label}</span>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 mt-1 text-[11px]">
+          <span className="text-gray-400 shrink-0">{v.type}</span>
+          {note && (
+            <span className={`inline-flex items-center gap-1 min-w-0 ${state === "running" ? "text-amber-600" : "text-gray-400"}`}>
+              <span className="text-gray-400">•</span>
+              {(state === "pending" || state === "running") && <Icon name="clock" size={10} className="shrink-0" />}
+              <span className="truncate">{note}</span>
+            </span>
+          )}
+        </div>
+      </div>
+      <Icon name="chevron-right" size={16} className="shrink-0 text-gray-400" />
+    </button>
+  )
+}
+
+export function StudentVariantList({ variants, onSelect }) {
+  const [filter, setFilter] = useState("all")
+  const match = {
+    all: () => true,
+    pending: (v) => v.submission?.status === "pending",
+    submitted: (v) => v.submission?.status === "submitted",
+    graded: (v) => v.submission?.status === "graded",
+  }
+  const FILTERS = [
+    { key: "all", label: "Все", icon: "clipboard", tint: "text-blue-600 bg-blue-500/10" },
+    { key: "pending", label: "Не решены", icon: "file-text", tint: "text-blue-600 bg-blue-500/10" },
+    { key: "submitted", label: "Проверка", icon: "clock", tint: "text-amber-600 bg-amber-500/12" },
+    { key: "graded", label: "Готово", icon: "check", tint: "text-green-600 bg-green-500/12" },
+  ]
+  const counts = Object.fromEntries(FILTERS.map((f) => [f.key, variants.filter(match[f.key]).length]))
+  // Порядок — как в заданиях, по срочности: начатая работа первой (у неё идёт
+  // время), затем нерешённые, работы на проверке и проверенные в конце.
+  const rank = { running: 0, pending: 1, submitted: 2, graded: 3 }
+  const list = variants.filter(match[filter]).slice().sort((a, b) => {
+    const r = rank[variantStateOf(a)] - rank[variantStateOf(b)]
+    if (r) return r
+    return String(b.submission?.created_at || "").localeCompare(String(a.submission?.created_at || ""))
+  })
+
+  return (
+    <div>
+      <StudentStatTabs className="mb-4" items={FILTERS.map((f) => ({ ...f, count: counts[f.key] }))} value={filter} onChange={setFilter} />
+      {list.length === 0 ? (
+        <div key={filter} className="tab-swap relative overflow-hidden text-center py-12 border border-dashed border-white/50 glass-sm">
+          <FormulaBackdrop variant="panel" />
+          <div className="relative z-10 flex flex-col items-center gap-3 px-4">
+            <span className="text-sm text-gray-400">
+              {filter === "all" ? "Вариантов пока нет" : "В этой категории пусто"}
+            </span>
+            {filter === "all" && (
+              <p className="text-xs text-gray-400 max-w-xs leading-relaxed">
+                Как только репетитор отправит пробный вариант, он появится здесь.
+              </p>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div key={filter} className="tab-swap flex flex-col gap-2.5">
+          {list.map((v, i) => <StudentVariantCard key={v.submission?.id || v.id} variant={v} index={i} onSelect={onSelect} />)}
         </div>
       )}
     </div>
@@ -2002,19 +2159,12 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   // информатике (13–16 сдают файлами эксперту), но в наши варианты эти номера
   // не идут — им нужен компьютер. Ученик получал бы требование прикрепить
   // решения четырёх заданий, которых в работе нет.
-  const part2FromSnapshot = [...new Set((selectedVariant?.tasks_snapshot || [])
-    .map((t) => t.number).filter((n) => variantP2Max[n]))].sort((a, b) => a - b)
-  const part2TaskNums = part2FromSnapshot.length
-    ? part2FromSnapshot
-    : part2NumbersOf(selectedVariant?.type)
+  const part2TaskNums = variantPart2Nums(selectedVariant)
   const part2TaskSet = new Set(part2TaskNums)
   // Максимум первичного балла этого варианта и перевод во вторичный (тестовый
   // балл или отметку) — общей шкалой из examScales.js. Состав — из снимка
   // самого варианта, чтобы старые работы считались по своей раскладке.
-  const snapshotNums = [...new Set((selectedVariant?.tasks_snapshot || []).map((t) => t.number))]
-  const variantMax = variantMaxPrimary(selectedVariant?.type,
-    snapshotNums.length ? snapshotNums : [...part1NumbersOf(selectedVariant?.type), ...part2TaskNums],
-    variantP2Max)
+  const variantMax = variantMaxOf(selectedVariant, part2TaskNums)
   const variantResult = examResult(selectedVariant?.type, selectedVariant?.submission?.total_score || 0, {
     geometry: scaleOf(selectedVariant?.type)?.geometryNumbers ? (selectedVariant?.submission?.geom_score ?? null) : null,
     variantMax,
@@ -3643,47 +3793,10 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                   onAnimationEnd={(e) => { if (e.animationName === "view-back") setReturning(false) }}
                 >
                   <h2 className="text-base font-medium mb-4">Мои варианты</h2>
-                  {variants.length === 0 ? (
-                    <div className="text-sm text-gray-400 text-center py-8 border border-dashed border-white/50 glass-sm">
-                      Репетитор ещё не отправил варианты
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-3">
-                      {variants.map((v) => (
-                        <button
-                          key={v.id}
-                          onClick={() => { submitLockRef.current = false; setSelectedVariant(v); setPart1Answers(Array(part1SlotsOf(v.type)).fill("")); setPart2Choices({}) }}
-                          className="text-left glass p-4 hover:bg-white/80 transition-colors w-full no-press press-tap"
-                        >
-                          <div className="flex justify-between items-center">
-                            <div className="font-medium text-sm">{v.title}</div>
-                            <span className={`text-xs px-2 py-1 rounded-full ${
-                              v.submission.status === "graded" ? "bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300" :
-                              v.submission.status === "submitted" ? "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300" :
-                              "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"
-                            }`}>
-                              {v.submission.status === "graded" ? "Проверено" :
-                               v.submission.status === "submitted" ? "На проверке" :
-                               "Не сдан"}
-                            </span>
-                          </div>
-                          {v.submission.status === "graded" && (
-                            <div className="text-xs text-gray-500 mt-1">
-                              Итого: {v.submission.total_score} баллов
-                            </div>
-                          )}
-                          {/* Нерешённый вариант сразу говорит, сколько времени
-                              на него уйдёт: садиться за него между делом нельзя. */}
-                          {v.submission.status === "pending" && examMinutesOf(v.type) && (
-                            <div className="text-xs text-gray-500 mt-1 flex items-center gap-1.5">
-                              <Icon name="clock" size={11} />
-                              {v.submission.opened_at ? "Время уже идёт" : `На решение: ${formatExamDuration(examMinutesOf(v.type))}`}
-                            </div>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  <StudentVariantList
+                    variants={variants}
+                    onSelect={(v) => { submitLockRef.current = false; setSelectedVariant(v); setPart1Answers(Array(part1SlotsOf(v.type)).fill("")); setPart2Choices({}) }}
+                  />
                 </div>
               )}
             </div>
