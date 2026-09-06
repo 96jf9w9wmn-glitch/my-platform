@@ -290,6 +290,31 @@ function PlanStar({ active, onClick }) {
   )
 }
 
+// Как часто кабинет перечитывает ростер сам. Обычно — раз в пять минут; пока у
+// карточки нет якоря пояса, чаще (иначе время занятия покажется мимо на час),
+// но всё равно не на каждое переключение окна. ROSTER_COALESCE_MS — пауза, за
+// которую пачка событий возврата схлопывается в одно чтение.
+const ROSTER_IDLE_MS = 5 * 60000
+const ROSTER_URGENT_MS = 60000
+const ROSTER_COALESCE_MS = 400
+
+// Одинаковый ли ростер. Список перечитывается сам — при возврате к вкладке, к
+// окну, после приёма заявки — и почти всегда приходит ровно тот же. Массив при
+// этом был бы НОВЫМ, а вместе с ним новыми все карточки: разделы кабинета
+// считают деньги, конфликты и расписание заново на каждом рендере (useMemo в
+// них почти нет), и «пустое» перечитывание стоило столько же, сколько первое.
+// Совпавший список отдаём ПРЕЖНИМ объектом — тогда memo разделов срабатывает и
+// перерисовки не происходит вовсе.
+function sameRoster(a, b) {
+  if (a === b) return true
+  if (!a || !b || a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] === b[i]) continue
+    if (JSON.stringify(a[i]) !== JSON.stringify(b[i])) return false
+  }
+  return true
+}
+
 // Разделы кабинета остаются в дереве после первого захода (visitedPages ниже) —
 // так у них сохраняется состояние: фильтры, набранный текст, место прокрутки.
 // Расплата за это — любой рендер App перерисовывал ВСЕ открытые разделы разом,
@@ -461,6 +486,13 @@ function App() {
   // Когда ростер читался последний раз — чтобы не дёргать базу на каждом
   // переключении вкладки.
   const lastRosterLoadRef = useRef(0)
+  // Читается ли ростер прямо сейчас. Без этого признака беготня по окнам
+  // запускала чтения пачками: каждое возвращало свой массив, каждое
+  // перерисовывало все открытые разделы, и кабинет вставал.
+  const rosterBusyRef = useRef(false)
+  // Якоря пояса, уже записанные в этом сеансе: писать их повторно при каждом
+  // перечитывании незачем (значение всё равно не меняется — якорь не двигают).
+  const anchorWrittenRef = useRef(new Set())
   useEffect(() => {
     // Смена аккаунта без перезагрузки — сбрасываем чужой список
     if (loadedRosterRef.current && loadedRosterRef.current !== rosterKey) {
@@ -475,7 +507,24 @@ function App() {
     }
   }, [rosterKey, studentsLoaded])
 
+  // Обёртка над чтением: держит признак «идёт чтение» и не пускает второе.
+  // Повтор после сбоя (attempt > 0) — продолжение того же чтения, поэтому
+  // признак с него не снимается до самого конца.
   async function loadStudents(attempt = 0) {
+    if (attempt === 0 && rosterBusyRef.current) return
+    rosterBusyRef.current = true
+    let retrying = false
+    try {
+      retrying = (await readRoster(attempt)) === "retry"
+    } catch (err) {
+      console.error("Список учеников не загрузился:", err)
+      setStudentsLoaded(true)
+    } finally {
+      if (!retrying) rosterBusyRef.current = false
+    }
+  }
+
+  async function readRoster(attempt = 0) {
     lastRosterLoadRef.current = Date.now()
     let query = supabase.from("students").select("*").order("created_at", { ascending: true })
     if (user.role === "tutor") {
@@ -495,7 +544,7 @@ function App() {
       // загруженным: экраны ждут этого признака, и без него кабинет остался бы
       // навсегда без цифр и без объяснений.
       console.error("Список учеников не загрузился:", error)
-      if (attempt < 1) { setTimeout(() => loadStudents(attempt + 1), 1500); return }
+      if (attempt < 1) { setTimeout(() => loadStudents(attempt + 1), 1500); return "retry" }
       setStudentsLoaded(true)
       return
     }
@@ -599,7 +648,8 @@ function App() {
       }
     })
 
-    setStudents(mapped)
+    // Ничего не изменилось — оставляем ПРЕЖНИЙ массив (см. sameRoster выше).
+    setStudents((prev) => (sameRoster(prev, mapped) ? prev : mapped))
     setStudentsLoaded(true)
 
     // Якорь, которого ещё нет, проставляем сами — по поясу устройства ученика.
@@ -617,6 +667,11 @@ function App() {
       ? mapped.filter((s) => !s.tzStored && s.accountTimezone).map((s) => [s.id, s.accountTimezone])
       : myTz ? mapped.filter((s) => !s.tzStored).map((s) => [s.id, myTz]) : []
     for (const [id, tz] of anchorWrites) {
+      // Один раз на карточку за сеанс: ростер перечитывается сам, а якорь
+      // не двигается — повторная запись только грузила бы базу на каждом
+      // возврате к вкладке.
+      if (anchorWrittenRef.current.has(id)) continue
+      anchorWrittenRef.current.add(id)
       supabase.from("students").update({ timezone: tz }).eq("id", id)
         .then(({ error }) => { if (error) console.error("Пояс ученика не записан:", error.message) })
     }
@@ -699,12 +754,16 @@ function App() {
   const handleSetStudents = useCallback(async function handleSetStudents(updater) {
     const newStudents = typeof updater === "function" ? updater(students) : updater
     setStudents(newStudents)
-    const added = newStudents.filter((s) => !students.find((old) => old.id === s.id))
-    const updated = newStudents.filter((s) => {
-      const old = students.find((o) => o.id === s.id)
-      return old && JSON.stringify(old) !== JSON.stringify(s)
+    // Что писать в базу: новые карточки и изменившиеся. Прежняя редакция искала
+    // каждую карточку перебором всего списка и сериализовала её дважды — на
+    // частых нажатиях (перенос занятия, отметка оплаты) это заметно било по
+    // главной нити. Тот же ответ даёт один проход по карте.
+    const byId = new Map(students.map((s) => [s.id, s]))
+    const dirty = newStudents.filter((s) => {
+      const old = byId.get(s.id)
+      return !old || JSON.stringify(old) !== JSON.stringify(s)
     })
-    for (const s of [...added, ...updated]) {
+    for (const s of dirty) {
       const savedId = await saveStudent(s)
       // Временный id меняем на выданный базой, иначе следующий diff примет ту же
       // карточку за новую и заведёт её второй раз.
@@ -823,21 +882,45 @@ function App() {
   // Карточки без якоря перечитываем сразу: там пояс появляется в первый же
   // заход ученика, и ждать нельзя. Остальное — не чаще раза в пять минут, чтобы
   // переключение вкладок не превращалось в поток запросов.
+  //
+  // Событие на одно переключение приходит НЕ одно: `focus` и `visibilitychange`
+  // срабатывают парой, а при беготне по окнам и вкладкам — десятками подряд.
+  // Поэтому чтение здесь только НАЗНАЧАЕТСЯ и схлопывается в одно (ROSTER_COALESCE_MS),
+  // а сам запрос не пускает второй такой же (rosterBusyRef). Первая редакция
+  // звала loadStudents прямо из обработчика и в срочном случае без всякого
+  // тормоза — быстрое переключение окон превращалось в пачку запросов, каждый
+  // из которых заново перерисовывал все открытые разделы, и кабинет замирал.
+  //
+  // Признак срочности держим в ref, а не в зависимостях: иначе каждый прочитанный
+  // ростер переподписывал обработчики.
+  const urgentRosterRef = useRef(false)
+  useEffect(() => {
+    urgentRosterRef.current = user?.role === "tutor"
+      && students.some((s) => !s.timezone && s.studentAccountId)
+  }, [user?.role, students])
+
   useEffect(() => {
     if (!user?.id || !studentsLoaded) return
-    const urgent = user.role === "tutor" && students.some((s) => !s.timezone && s.studentAccountId)
+    let timer = null
     const recheck = () => {
       if (document.visibilityState !== "visible") return
-      if (!urgent && Date.now() - lastRosterLoadRef.current < 5 * 60000) return
-      loadStudents()
+      // Тормоз стоит В ЛЮБОМ случае, включая срочный: без якоря пояса ростер
+      // перечитывается чаще, но всё равно не на каждое движение мышью.
+      const wait = urgentRosterRef.current ? ROSTER_URGENT_MS : ROSTER_IDLE_MS
+      if (Date.now() - lastRosterLoadRef.current < wait) return
+      clearTimeout(timer)
+      timer = setTimeout(() => {
+        if (document.visibilityState === "visible") loadStudents()
+      }, ROSTER_COALESCE_MS)
     }
     window.addEventListener("focus", recheck)
     document.addEventListener("visibilitychange", recheck)
     return () => {
+      clearTimeout(timer)
       window.removeEventListener("focus", recheck)
       document.removeEventListener("visibilitychange", recheck)
     }
-  }, [user?.id, user?.role, studentsLoaded, students])
+  }, [user?.id, studentsLoaded])
 
   // Пояс устройства сообщаем сами, без единого вопроса пользователю: телефон и
   // ноутбук и так знают, в какой стране находятся, а лишняя настройка «выберите

@@ -9,6 +9,7 @@ import FormulaBackdrop from "../components/FormulaBackdrop"
 import StudentProfile from "./StudentProfile"
 import { supabase } from "../supabase"
 import { isLessonConducted, getInitials, plural, formatPhone } from "../utils"
+import { studentBilling } from "../billing"
 import { usePlan } from "../subscription"
 import { fmtNum } from "../num"
 import { PlanHint } from "../components/PlanLock"
@@ -26,13 +27,16 @@ function formatDate(date) {
 // Столбец отвечает на один вопрос: сколько ученик должен за проведённые занятия.
 // Поэтому нулевая цена больше не выдаётся за оплату (раньше ученик без указанной
 // стоимости получал зелёное «Оплачено»), а вместо неё видно, чего не хватает.
+// Долг берём из общей арифметики (src/billing.js), а не считаем здесь заново:
+// у ученика на абонементе начисляются ВСЕ занятия начавшегося периода сразу и
+// на вписанную сумму, поэтому «проведённые × цена» давала другое число, чем
+// «Финансы», карточка ученика и квитанции.
 function getPaymentStatus(student) {
-  const conducted = (student.lessons || []).filter((l) => isLessonConducted(l))
-  const price = student.lessonPrice || 0
-  const paid = (student.payments || []).reduce((s, p) => s + (p.amount || 0), 0)
-  if (conducted.length === 0) return { kind: "empty", label: "Занятий не было", debt: 0 }
-  if (!price) return { kind: "noprice", label: "Цена не указана", debt: 0 }
-  const debt = conducted.length * price - paid
+  const { charged, paid, accrued, price } = studentBilling(student)
+  if (accrued.length === 0) return { kind: "empty", label: "Занятий не было", debt: 0 }
+  // Цена не указана и суммы за период тоже нет — начислять нечего.
+  if (!price && !charged) return { kind: "noprice", label: "Цена не указана", debt: 0 }
+  const debt = charged - paid
   if (debt > 0) return { kind: "debt", label: `${fmtNum(debt)} ₽`, debt }
   return { kind: "clear", label: "Долга нет", debt: 0 }
 }

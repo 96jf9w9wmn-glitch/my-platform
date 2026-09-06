@@ -2,8 +2,9 @@ import { useEffect, useState } from "react"
 import Icon from "../components/Icon"
 import { usePlan } from "../subscription"
 import useCountUp from "../components/useCountUp"
-import { isLessonPast, isLessonConducted, getInitials, timeUntilLesson } from "../utils"
+import { isLessonPast, getInitials, timeUntilLesson } from "../utils"
 import { pendingMoveRequests, formatLessonShort, MOVE_BY_STUDENT } from "../lessonMove"
+import { studentDebt } from "../billing"
 
 const MONTH_NAMES = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"]
 const DAY_SHORT = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]
@@ -100,13 +101,12 @@ function Dashboard({ students, loaded = true, setActivePage, onOpenBoard }) {
     })
   ).length
 
-  // Debtors
-  const debtors = students.filter((s) => {
-    const conducted = (s.lessons || []).filter((l) => isLessonConducted(l, now))
-    const owed = conducted.length * (s.lessonPrice || 0)
-    const paid = (s.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0)
-    return owed - paid > 0
-  })
+  // Должники — тем же счётом, что и на «Финансах» (src/billing.js). Своя
+  // формула «проведённые × цена − оплаты» тут расходилась с тем разделом, куда
+  // ведёт сама плитка: у ученика на абонементе период начисляется целиком и на
+  // вписанную сумму, поэтому главная показывала должника там, где его нет, —
+  // и наоборот.
+  const debtors = students.filter((s) => studentDebt(s, now) > 0)
 
   // Upcoming next 7 days
   const in7 = new Date(today)

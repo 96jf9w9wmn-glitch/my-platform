@@ -1132,7 +1132,12 @@ function Results({ students, loaded = true, user }) {
   // бы как поломка.
   const totalWorks = cards.reduce((n, c) => n + c.stats.rows.length + c.hw.count, 0)
   const withData = cards.filter((c) => c.stats.hasData)
-  const attentionCount = withData.filter((c) => c.stats.attention).length
+  // «Требуют внимания» — плитка-фильтр, поэтому её число считается по той же
+  // группе, что показывает список. Считая по всем ученикам, она обещала N
+  // тревожных, а нажатие при выбранной группе (ОГЭ/ЕГЭ/Успеваемость) давало
+  // «В этой группе учеников нет»: тревожные сидели в другой группе.
+  const inGroup = (c) => group === "all" || (c.student.goal || "Успеваемость") === group
+  const attentionCount = withData.filter((c) => inGroup(c) && c.stats.attention).length
   const withTarget = withData.filter((c) => c.stats.target > 0)
   const reachedCount = withTarget.filter((c) => c.stats.reachedTarget).length
 
@@ -1199,7 +1204,7 @@ function Results({ students, loaded = true, user }) {
   ].filter((g) => g.key === "all" || cards.some((c) => (c.student.goal || "Успеваемость") === g.key))
 
   const visible = cards
-    .filter((c) => group === "all" || (c.student.goal || "Успеваемость") === group)
+    .filter(inGroup)
     .filter((c) => !onlyAttention || c.stats.attention)
     // Сначала те, с кем есть проблема, затем сильные, затем без данных —
     // репетитор открывает страницу ради первой строки, а не ради алфавита.

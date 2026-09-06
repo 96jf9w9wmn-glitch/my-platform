@@ -1322,9 +1322,6 @@ function Variants({ user, students = [] }) {
 
   const variantSubmissions = selectedVariant ? submissions.filter((s) => s.variant_id === selectedVariant.id) : []
 
-  const totalPending = submissions.filter((s) => s.status === "submitted").length
-  const totalGraded = submissions.filter((s) => s.status === "graded").length
-
   // Фильтр по экзамену — как на «Результатах». Базовый и профильный ЕГЭ идут
   // одной группой: в списке они помечены одним и тем же типом «ЕГЭ».
   // Кнопки показываем только когда в списке есть оба экзамена: с одним
@@ -1360,7 +1357,15 @@ function Variants({ user, students = [] }) {
   const hasStudent = (v, id) => submissions.some((s) => s.variant_id === v.id && String(s.student_id) === id)
   const matchWho = (v) => who === "all" || hasStudent(v, who)
   const whoName = whoList.find((s) => s.id === who)?.name || ""
-  const visible = variants.filter((v) => (group === "all" || groupOf(v) === group) && matchStat(v) && matchWho(v))
+  // Плитки — тоже фильтр, поэтому их числа считаются в тех же границах, что и
+  // список: по выбранной группе и выбранному ученику. Считая по всем работам,
+  // плитка обещала бы работы, которых в этих границах нет, и нажатие приводило
+  // бы к пустому списку.
+  const scoped = variants.filter((v) => (group === "all" || groupOf(v) === group) && matchWho(v))
+  const scopedIds = new Set(scoped.map((v) => v.id))
+  const totalPending = submissions.filter((s) => scopedIds.has(s.variant_id) && s.status === "submitted").length
+  const totalGraded = submissions.filter((s) => scopedIds.has(s.variant_id) && s.status === "graded").length
+  const visible = scoped.filter(matchStat)
 
   function renderScore(sub) {
     // opened_at ставится при старте таймера — значит, ученик уже сидит за вариантом.
@@ -1496,7 +1501,7 @@ function Variants({ user, students = [] }) {
           должны и выглядеть одинаково. */}
       <StatTabs
         items={[
-          { id: "all", icon: "clipboard", label: "Всего вариантов", short: "Всего", tint: "text-blue-600 bg-blue-500/10", count: variants.length },
+          { id: "all", icon: "clipboard", label: "Всего вариантов", short: "Всего", tint: "text-blue-600 bg-blue-500/10", count: scoped.length },
           { id: "pending", icon: "clock", label: "Ждут проверки", short: "На проверке", tint: "text-amber-600 bg-amber-500/12", count: totalPending },
           { id: "graded", icon: "check", label: "Проверено работ", short: "Проверено", tint: "text-green-600 bg-green-500/12", count: totalGraded },
         ]}
