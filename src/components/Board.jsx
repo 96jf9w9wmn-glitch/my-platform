@@ -1373,6 +1373,11 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       const f = prev > 0 ? s / prev : 1
       prev = s
       if (!cv) return
+      // На сенсорном экране щипок уже считают сами касания (beginGesture), а
+      // Safari шлёт поверх них ещё и свой жест: без этой проверки доска
+      // увеличивалась бы вдвое быстрее пальцев. Здесь остаётся только запрет
+      // страничного зума — им и ограничиваемся.
+      if (gesture.current || pointers.current.size >= 2) return
       const r = cv.getBoundingClientRect()
       zoomAt(clamp(e.clientX - r.left, 0, r.width), clamp(e.clientY - r.top, 0, r.height), f)
       scheduleDraw()
