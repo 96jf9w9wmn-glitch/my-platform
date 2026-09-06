@@ -1219,7 +1219,7 @@ function StudentFilter({ options, value, onChange }) {
         aria-expanded={open}
         className={`press-fill flex items-center gap-2 p-1 pr-3 rounded-2xl border text-sm font-semibold transition-colors ${
           value === "all"
-            ? "text-gray-500 dark:text-gray-300 border-gray-200/70 dark:border-white/10 hover:text-blue-600 hover:border-blue-500/25"
+            ? "text-gray-500 border-gray-200/70 dark:border-white/10 hover:text-blue-600 hover:border-blue-500/25"
             : "text-blue-600 bg-blue-500/12 border-blue-500/25"
         }`}
       >
@@ -1244,7 +1244,7 @@ function StudentFilter({ options, value, onChange }) {
                 aria-selected={on}
                 onClick={() => { onChange(o.id); close() }}
                 className={`press-fill flex items-center gap-2.5 rounded-xl px-2 py-1.5 text-left text-[13px] transition-colors ${
-                  on ? "text-blue-600 bg-blue-500/10" : "text-gray-600 dark:text-gray-200 hover:bg-blue-500/[0.06]"
+                  on ? "text-blue-600 bg-blue-500/10" : "text-gray-600 hover:bg-blue-500/[0.06]"
                 }`}
               >
                 {bubble(o, "w-7 h-7")}

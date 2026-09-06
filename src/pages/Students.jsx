@@ -133,7 +133,7 @@ function EmptyStudents({ onInvite, inviting, code }) {
       </button>
       {code && (
         <div className="text-xs text-gray-400">
-          или продиктуйте код <span className="font-mono tracking-widest text-gray-600 dark:text-gray-300">{code}</span>
+          или продиктуйте код <span className="font-mono tracking-widest text-gray-600">{code}</span>
         </div>
       )}
     </div>

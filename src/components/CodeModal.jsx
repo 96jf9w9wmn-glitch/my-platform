@@ -50,7 +50,7 @@ export default function CodeModal({ channel = "email", to, title, onSubmit, onRe
         <div className="px-6 py-5 flex flex-col gap-4">
           <p className="text-sm text-gray-500 leading-relaxed">
             {isSms ? "Отправили код из шести цифр в SMS на " : "Мы отправили код из шести цифр на "}
-            <span className="text-gray-700 dark:text-gray-200 break-all">{to}</span>.
+            <span className="font-medium text-gray-700 break-all">{to}</span>.
             {isSms ? " Он действует десять минут." : " Он действует десять минут — без него аккаунт не создастся."}
           </p>
 
