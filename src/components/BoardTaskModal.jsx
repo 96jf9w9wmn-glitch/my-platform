@@ -13,12 +13,25 @@ import { taskToImageFile, attachmentsOf, SHEET_WIDTH } from "../pages/taskSnapsh
 // Выбор задания из банка прямо на доске: предмет → номер → (необязательно) типаж,
 // предпросмотр, «На доску». Задание кладётся картинкой-листом, поэтому дальше живёт
 // как обычный объект доски: двигается, масштабируется, уходит в realtime и в снимок
-// занятия. Ответ виден только здесь и в снимок не попадает — доску видит ученик.
+// занятия. На самом ЛИСТЕ ответа нет — он едет отдельным полем штриха и показывается
+// только после проверки в поле ответа под листом (TaskAnswerBox в Board.jsx).
 
 // Предмет привязан к доске: у каждого ученика свой (roomId), общая запись — запасная.
 // Репетитор ведёт один предмет, и выбирать его заново при каждой вставке задания
 // было лишним шагом.
 const PREF_KEY = "board-task-pick"
+
+// Ответ, который доска сможет проверить сама: короткая строка, как на бланке.
+// У развёрнутых заданий (доказательство, сочинение, «обоснуйте») ответа в этом виде нет
+// вовсе — такой лист уезжает на доску без поля для ответа, проверяет их человек.
+const CHECKABLE_MAX = 80
+function checkableAnswer(task) {
+  const a = task?.answer
+  if (a == null) return null
+  const s = String(a).trim()
+  if (!s || s.length > CHECKABLE_MAX || s.includes("\n")) return null
+  return s
+}
 const roomKey = (roomId) => (roomId ? `${PREF_KEY}:${roomId}` : PREF_KEY)
 
 function readPref(key) {
@@ -119,7 +132,7 @@ export default function BoardTaskModal({ dark = false, roomId = null, tutorSubje
     try {
       const file = await taskToImageFile(task, { label: subjectLabel(examType) })
       // ширину листа задаёт снимок: доска кладёт картинку в неё, а не вписывает как фото
-      await onInsert(file, SHEET_WIDTH)
+      await onInsert(file, SHEET_WIDTH, checkableAnswer(task))
       close()
     } catch {
       setErr("Не получилось перенести задание на доску")

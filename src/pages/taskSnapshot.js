@@ -93,10 +93,19 @@ export function attachmentsOf(task) {
 
 // В снимке есть хоть один не-белый пиксель? html2canvas, вызванный до готовности
 // документа, отдаёт пустой белый холст — на доске это молча превращается в чистый лист
-// вместо задания. Шаг по пикселям крупный: нам важен сам факт чернил, а не их граница.
+// вместо задания. Смотрим не сам лист, а его уменьшенную копию: getImageData тянет
+// мегапиксели из видеопамяти обратно в память, а нам нужен только факт чернил.
+// Уменьшение усредняет, но чёрный текст на белом остаётся заметно темнее порога.
 function hasInk(canvas) {
-  const d = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data
-  for (let i = 0; i < d.length; i += 4 * 7) {
+  const w = Math.max(1, Math.min(240, canvas.width))
+  const h = Math.max(1, Math.round((canvas.height * w) / canvas.width))
+  const c = document.createElement("canvas")
+  c.width = w; c.height = h
+  const ctx = c.getContext("2d")
+  ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, w, h)
+  ctx.drawImage(canvas, 0, 0, w, h)
+  const d = ctx.getImageData(0, 0, w, h).data
+  for (let i = 0; i < d.length; i += 4) {
     if (d[i] < 245 || d[i + 1] < 245 || d[i + 2] < 245) return true
   }
   return false
@@ -106,25 +115,26 @@ function hasInk(canvas) {
 // не сливался с фоном. Лист снимается СВЕТЛЫМ всегда: под тёмную доску его перекрашивает
 // сама доска при отрисовке (tintSheet в boardPaint.js), поэтому переключение темы
 // перекрашивает и уже лежащие задания.
+// Углы срезаются НА МЕСТЕ (destination-in по скруглённому контуру), а не копированием
+// листа во второй холст: у листа под три мегапикселя, и лишняя копия стоила заметного
+// времени ровно ради четырёх уголков.
 function roundSheet(canvas) {
   const r = RADIUS * SCALE
-  const out = document.createElement("canvas")
-  out.width = canvas.width
-  out.height = canvas.height
-  const ctx = out.getContext("2d")
+  const ctx = canvas.getContext("2d")
   const path = new Path2D()
   // roundRect появился в Safari только в 16.4 — на старых iPad лист остаётся прямоугольным,
   // но не пропадает
-  if (path.roundRect) path.roundRect(0.5, 0.5, out.width - 1, out.height - 1, r)
-  else path.rect(0.5, 0.5, out.width - 1, out.height - 1)
+  if (path.roundRect) path.roundRect(0.5, 0.5, canvas.width - 1, canvas.height - 1, r)
+  else path.rect(0.5, 0.5, canvas.width - 1, canvas.height - 1)
   ctx.save()
-  ctx.clip(path)
-  ctx.drawImage(canvas, 0, 0)
+  ctx.globalCompositeOperation = "destination-in"
+  ctx.fillStyle = "#000"
+  ctx.fill(path)
   ctx.restore()
   ctx.lineWidth = SCALE
   ctx.strokeStyle = "rgba(0,0,0,.10)"
   ctx.stroke(path)
-  return out
+  return canvas
 }
 
 /**

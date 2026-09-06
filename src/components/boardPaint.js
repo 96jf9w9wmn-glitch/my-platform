@@ -9,7 +9,7 @@ export const INK_DARK = "#f5f5f7", INK_LIGHT = "#1c1c1e"
 
 // Замкнутые фигуры — клик по площади (внутри габарита) считается попаданием;
 // открытые (перо/линия/стрелка) — только рядом с самой линией.
-export const ENCLOSED_SHAPES = new Set(["rect", "circle", "triangle", "diamond", "cube", "cylinder", "cone", "sphere", "pyramid", "image"])
+export const ENCLOSED_SHAPES = new Set(["rect", "circle", "triangle", "diamond", "cube", "cylinder", "cone", "sphere", "pyramid", "image", "text"])
 // Инструменты-фигуры (рисуются по двум точкам: старт → конец перетаскивания)
 export const SHAPE_TOOLS = new Set(["line", "rect", "circle", "triangle", "diamond", "arrow", "cube", "cylinder", "cone", "sphere", "pyramid"])
 // Фигуры/линии, к которым применим стиль линии (сплошная/пунктир/точки)
@@ -20,6 +20,44 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
 // Шаг квантования толщины пера при отрисовке (см. paintStroke): соседние участки
 // одинаковой толщины рисуются одним путём вместо отдельного stroke() на каждый.
 const WIDTH_STEP = 0.25
+
+// --- Текст на доске -------------------------------------------------------
+// Подпись к чертежу, формулировка, ответ — то, что рукой пишут долго и что
+// потом не разобрать. Текст хранится СТРОКОЙ (а не картинкой): он остаётся
+// чётким на любом увеличении, правится повторным вводом и весит десяток байт.
+// Габарит держится двумя точками, как у готовых фигур, — поэтому выделение,
+// перенос, поворот и попадание курсора работают тем же кодом, без исключений.
+export const TEXT_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
+export const TEXT_LINE = 1.3       // межстрочный интервал; ровно он же стоит в поле ввода
+export const TEXT_MIN = 10, TEXT_MAX = 160, TEXT_DEFAULT = 32
+
+let measureCanvas = null
+function measureCtx(size) {
+  if (!measureCanvas) measureCanvas = document.createElement("canvas")
+  const c = measureCanvas.getContext("2d")
+  c.font = `${size}px ${TEXT_FONT}`
+  return c
+}
+// Размеры текста в МИРОВЫХ единицах. baseline — куда ставить первую строку:
+// браузер центрирует строку в её интервале по метрикам шрифта, и холст должен
+// повторить это ровно, иначе набранное «прыгало» бы при выходе из поля ввода.
+export function textMetrics(text, size) {
+  const s = Math.max(1, size || TEXT_DEFAULT)
+  const c = measureCtx(s)
+  const lines = String(text ?? "").split("\n")
+  let w = 0
+  for (const ln of lines) w = Math.max(w, c.measureText(ln).width)
+  const m = c.measureText("Hg")
+  const asc = m.fontBoundingBoxAscent, desc = m.fontBoundingBoxDescent
+  const lh = s * TEXT_LINE
+  const baseline = asc > 0 && desc > 0 ? (lh - (asc + desc)) / 2 + asc : s * 0.95
+  return { w: Math.max(w, s * 0.5), h: lines.length * lh, lh, baseline, lines }
+}
+// Габарит текста как две точки (левый верх → правый низ)
+export function textBoxPoints(x, y, text, size) {
+  const m = textMetrics(text, size)
+  return [[x, y], [x + m.w, y + m.h]]
+}
 
 export function isDarkColor(hex) {
   const h = (hex || "").replace("#", "")
@@ -180,6 +218,24 @@ export function paintStroke(ctx, s, { darkBg = false, getImage = () => null } = 
       const ccx = ix + iw / 2, ccy = iy + ih / 2
       ctx.save(); ctx.translate(ccx, ccy); ctx.rotate(s.angle); ctx.translate(-ccx, -ccy); drawIt(); ctx.restore()
     } else drawIt()
+    return
+  }
+
+  if (s.tool === "text") {
+    const a = pts[0], b = pts[pts.length - 1] || pts[0]
+    const x = Math.min(a[0], b[0]), y = Math.min(a[1], b[1])
+    const size = s.size || TEXT_DEFAULT
+    const m = textMetrics(s.text, size)
+    const put = () => {
+      ctx.font = `${size}px ${TEXT_FONT}`
+      ctx.textAlign = "left"
+      ctx.textBaseline = "alphabetic"
+      m.lines.forEach((ln, i) => { if (ln) ctx.fillText(ln, x, y + i * m.lh + m.baseline) })
+    }
+    if (s.angle) {
+      const ccx = (a[0] + b[0]) / 2, ccy = (a[1] + b[1]) / 2
+      ctx.save(); ctx.translate(ccx, ccy); ctx.rotate(s.angle); ctx.translate(-ccx, -ccy); put(); ctx.restore()
+    } else put()
     return
   }
 

@@ -5,8 +5,10 @@ import Icon from "./Icon"
 import ConfirmModal from "./ConfirmModal"
 import { useClosing, CLOSE_MS, POPUP_OUT_MS } from "../useClosing"
 import { recognizeShape } from "./boardSmartDraw"
+import { answersEqual } from "../utils"
 import {
   GRID, ENCLOSED_SHAPES, SHAPE_TOOLS, DASHABLE_SHAPES,
+  TEXT_FONT, TEXT_LINE, TEXT_MIN, TEXT_MAX, TEXT_DEFAULT, textMetrics, textBoxPoints,
   isDarkColor, resolveColor, strokeBBox, sceneBBox, viewForBBox, paintStroke, scenePreview, tintSheet,
 } from "./boardPaint"
 // Выбор задания тянет за собой генераторы всех предметов и html2canvas — грузим
@@ -134,21 +136,83 @@ function readFileAsDataURL(file) {
 function loadImg(src) {
   return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = src })
 }
-// Ужимаем до разумного размера + получаем blob и data URL.
+// Ужимаем до разумного размера + получаем blob и размеры.
 // maxDim — потолок по большей стороне: фотографии с телефона хватает 1400, а лист с
 // заданием снят втрое крупнее своей ширины ради зума, и ужимать его — значит вернуть
 // то самое мыло, ради которого он снимался крупным.
+//
+// Картинка, которая в потолок уже влезает, уходит в хранилище КАК ЕСТЬ. Раньше её всё
+// равно перерисовывали в холст и снимали оттуда и blob, и data URL — то есть кодировали
+// PNG дважды поверх base64-чтения файла. У листа с заданием это три мегапикселя, и
+// секунды уходили на то, чтобы получить ровно тот же файл. Разобранный <img> отдаём
+// наружу: доска нарисует лист сразу, не выкачивая его обратно из хранилища.
 async function processImageFile(file, maxDim = 1400) {
-  const dataUrl = await readFileAsDataURL(file)
-  const im = await loadImg(dataUrl)
+  const url = URL.createObjectURL(file)
+  let im
+  try { im = await loadImg(url) } finally { URL.revokeObjectURL(url) }
   const scale = Math.min(1, maxDim / Math.max(im.naturalWidth, im.naturalHeight))
+  const isPng = file.type === "image/png"
+  const type = isPng ? "image/png" : "image/jpeg"
+  const ext = isPng ? "png" : "jpg"
+  if (scale === 1 && file.type) return { blob: file, type: file.type, ext, w: im.naturalWidth, h: im.naturalHeight, img: im }
   const cw = Math.max(1, Math.round(im.naturalWidth * scale)), ch = Math.max(1, Math.round(im.naturalHeight * scale))
   const cnv = document.createElement("canvas"); cnv.width = cw; cnv.height = ch
   cnv.getContext("2d").drawImage(im, 0, 0, cw, ch)
-  const isPng = file.type === "image/png"
-  const type = isPng ? "image/png" : "image/jpeg"
   const blob = await new Promise((r) => cnv.toBlob(r, type, 0.85))
-  return { blob, type, ext: isPng ? "png" : "jpg", w: cw, h: ch, dataUrl: cnv.toDataURL(type, 0.85) }
+  return { blob, type, ext, w: cw, h: ch, img: null }
+}
+
+// Поле ответа под листом с заданием. Ученик решает на доске и тут же проверяет себя:
+// вписал ответ → «Проверить» → верно/неверно и правильный ответ. Ответ сверяется тем же
+// answersEqual, что и домашние работы с вариантами, — «0,5» и «1/2» не должны расходиться
+// с кабинетом.
+//
+// Панель живёт в DOM, а не на холсте: в неё вводят текст. Размер у неё ЭКРАННЫЙ и от
+// масштаба доски не зависит — на отдалённом обзоре поле осталось бы нечитаемым.
+function TaskAnswerBox({ panel, dark, panelBg, panelBorder, onCheck, onReset }) {
+  const [val, setVal] = useState("")
+  const done = panel.ok != null
+  const ink = dark ? "#e5e5ea" : "#1f2937"
+  const meta = dark ? "#a1a1aa" : "#6b7280"
+  const tone = panel.ok ? "#34c759" : "#ff3b30"
+  return (
+    <div className="absolute rounded-2xl shadow-lg popup-bubble"
+      style={{ left: panel.x, top: panel.y + 12, width: panel.w, transform: "translateX(-50%)",
+        background: panelBg, border: `1px solid ${panelBorder}`, padding: "8px 10px" }}>
+      {done ? (
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
+            style={{ background: `${tone}22`, color: tone }}>
+            <Icon name={panel.ok ? "check" : "x"} size={14} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[13px] font-medium leading-tight" style={{ color: tone }}>
+              {panel.ok ? "Верно" : "Неверно"}
+            </div>
+            {/* Правильный ответ показываем только после проверки — иначе поле не имело бы смысла */}
+            <div className="text-[12px] leading-tight truncate" style={{ color: meta }}>
+              {panel.ok ? panel.v : `Ваш ответ: ${panel.v} · правильный: ${panel.a}`}
+            </div>
+          </div>
+          <button onClick={() => { setVal(""); onReset(panel.id) }}
+            className="press-tap flex-shrink-0 px-2 py-1 rounded-lg text-xs text-blue-500 hover:bg-blue-500/[0.08]">
+            Заново
+          </button>
+        </div>
+      ) : (
+        <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); onCheck(panel.id, val) }}>
+          <input value={val} onChange={(e) => setVal(e.target.value)} placeholder="Ответ"
+            className="flex-1 min-w-0 h-8 px-2.5 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/40"
+            style={{ background: "transparent", color: ink, border: `1px solid ${panelBorder}` }} />
+          <button type="submit" disabled={!val.trim()}
+            className="press-tap flex-shrink-0 h-8 px-3 rounded-lg text-xs font-medium text-white disabled:opacity-40"
+            style={{ background: "#007AFF" }}>
+            Проверить
+          </button>
+        </form>
+      )}
+    </div>
+  )
 }
 
 // Всплывающая подсказка над кнопкой (родитель должен иметь класс group + relative)
@@ -176,26 +240,35 @@ function StrokeSettings({ dark, tool, curWidth, curDash, onWidth, onDash }) {
   const swatch = dark ? "#e5e5ea" : "#1c1c1e"
   const dashArr = (d) => d === "dashed" ? "5,4" : d === "dotted" ? "0.1,5" : ""
   const showDash = DASHABLE_SHAPES.has(tool)
-  const w = clamp(Math.round(curWidth || WIDTH_DEFAULT), WIDTH_MIN, WIDTH_MAX)
-  const pct = ((w - WIDTH_MIN) / (WIDTH_MAX - WIDTH_MIN)) * 100
+  // У текста тот же ползунок задаёт КЕГЛЬ: заводить ему отдельный попап незачем,
+  // а шкала нужна своя — на толщине линии подпись к чертежу не набрать.
+  const isText = tool === "text"
+  const lo = isText ? TEXT_MIN : WIDTH_MIN, hi = isText ? TEXT_MAX : WIDTH_MAX
+  const w = clamp(Math.round(curWidth || (isText ? TEXT_DEFAULT : WIDTH_DEFAULT)), lo, hi)
+  const pct = ((w - lo) / (hi - lo)) * 100
   // commit=false — тянут ползунок (правку видно сразу, но в историю она ещё не
   // легла), commit=true — отпустили. Иначе каждое движение ползунка было бы
   // отдельным шагом «отменить» и отдельной посылкой собеседнику.
-  const pick = (e, commit) => onWidth(clamp(+e.target.value, WIDTH_MIN, WIDTH_MAX), commit)
+  const pick = (e, commit) => onWidth(clamp(+e.target.value, lo, hi), commit)
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center gap-2.5 px-1.5 h-9">
-        {/* Кружок показывает выбранную толщину в натуральную величину */}
-        <span className="rounded-full flex-shrink-0" aria-hidden="true"
-          style={{ width: Math.min(w, 22), height: Math.min(w, 22), background: swatch, transition: "width .12s, height .12s" }} />
-        <input type="range" min={WIDTH_MIN} max={WIDTH_MAX} step={1} value={w}
+        {/* Кружок показывает выбранную толщину в натуральную величину, у текста — буква выбранного кегля */}
+        {isText ? (
+          <span className="flex-shrink-0 w-6 text-center leading-none font-semibold" aria-hidden="true"
+            style={{ fontSize: Math.min(w, 22), color: swatch, fontFamily: TEXT_FONT }}>А</span>
+        ) : (
+          <span className="rounded-full flex-shrink-0" aria-hidden="true"
+            style={{ width: Math.min(w, 22), height: Math.min(w, 22), background: swatch, transition: "width .12s, height .12s" }} />
+        )}
+        <input type="range" min={lo} max={hi} step={1} value={w}
           className="board-range" style={{ "--p": `${pct}%`, width: 136 }}
-          aria-label="Толщина линии" title="Толщина линии"
+          aria-label={isText ? "Размер текста" : "Толщина линии"} title={isText ? "Размер текста" : "Толщина линии"}
           onChange={(e) => pick(e, false)}
           onPointerUp={(e) => pick(e, true)}
           onKeyUp={(e) => pick(e, true)}
           onBlur={(e) => pick(e, true)} />
-        <span className="w-5 text-right text-xs tabular-nums flex-shrink-0"
+        <span className="w-6 text-right text-xs tabular-nums flex-shrink-0"
           style={{ color: dark ? "#a1a1a6" : "#6b7280" }}>{w}</span>
       </div>
       {showDash && (
@@ -317,6 +390,12 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // до закрытия доски и намеренно не запоминается между занятиями.
   const [width, setWidth] = useState(WIDTH_DEFAULT)
   const [dash, setDash] = useState("solid")     // solid | dashed | dotted
+  // Кегль текста живёт отдельно от толщины линии: у пера ходовые значения 1–5,
+  // у надписи — десятки, и одна общая ручка каждый раз давала бы не то.
+  const [textSize, setTextSize] = useState(TEXT_DEFAULT)
+  // Идёт набор надписи: {id, x, y, size, color, angle, value, seq}. id = null —
+  // надпись новая; x,y — левый верх в МИРОВЫХ координатах.
+  const [editText, setEditText] = useState(null)
   // Открытый попап панели — ОДИН на всех: "stroke" | "selStroke" | "shapes" | "bg" | null.
   // Поэтому открытие любого попапа автоматически закрывает предыдущий, а клик мимо
   // (по холсту или где-то ещё) закрывает открытый — см. эффект ниже и onPointerDown.
@@ -383,6 +462,10 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // Число выделенных штрихов: пропало выделение — закрываем попап его настроек
   const applySelCount = (n) => { setSelCount(n); if (!n && menu === "selStroke") closeMenu("selStroke") }
   const [selBox, setSelBox] = useState(null)   // ориентированная рамка выделения (экранные координаты)
+  // Поля ответа под листами с заданием (экранные координаты). Считаются в кадре, как
+  // и рамка выделения: их положение зависит от обзора, а не от React-стейта.
+  const [qaBoxes, setQaBoxes] = useState([])
+  const lastQa = useRef("")
   const [selProps, setSelProps] = useState(null) // свойства первого стилизуемого штриха {width,dash}; null — выделены только картинки
   // В выделении есть картинка → формат при масштабировании держим и рёберные ручки не показываем
   const [selHasImage, setSelHasImage] = useState(false)
@@ -415,7 +498,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const [shotOut, setShotOut] = useState(false)   // предложение уходит: держим кадр анимации
   const clipSkip = useRef(null)                    // ключ снимка, от которого отказались
   // Цвет и обводка нужны только тем инструментам, которые оставляют линию
-  const stylingTool = tool === "pen" || SHAPE_TOOLS.has(tool)
+  const stylingTool = tool === "pen" || tool === "text" || SHAPE_TOOLS.has(tool)
   // «Ровные фигуры» распрямляют набросок пером — другим инструментам кнопка
   // ничего не меняет, поэтому показываем её только при пере.
   const smartTool = tool === "pen"
@@ -438,6 +521,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     return () => window.removeEventListener("pointerdown", onDown)
   }, [menu])
 
+  const rootRef = useRef(null)
   const wrapRef = useRef(null)
   const canvasRef = useRef(null)
   const strokes = useRef(new Map())
@@ -514,6 +598,13 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const modalOpen = useRef(false)     // поверх доски открыт диалог (глушим горячие клавиши)
   const taskShift = useRef(0)         // лесенка для подряд вставленных заданий
   const erasing = useRef(null)        // текущий проход объектного ластика: [{id, before, after}]
+  // Ввод текста. editPos — то же, что и editText, но доступное вне рендера:
+  // положение поля правит кадр отрисовки (обзор двигают колесом и пальцами, а
+  // view лежит в ref и React о нём не знает).
+  const editPos = useRef(null)
+  const editBoxRef = useRef(null)     // обёртка поля (её двигаем и поворачиваем)
+  const editRef = useRef(null)        // само поле ввода
+  const textSeq = useRef(0)           // номер сеанса набора: по нему поле пересоздаётся
 
   const dark = isDarkColor(bgColor)      // светлость доски определяется цветом фона
   const baseBg = bgColor
@@ -762,7 +853,13 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         mx.setTransform(v.scale * dpr, 0, 0, v.scale * dpr, v.x * dpr, v.y * dpr)
       }
       // Картинки — на нижний слой, всё остальное (перо, фигуры, ластик) — на верхний.
-      for (const st of strokes.current.values()) drawStroke(st.tool === "image" && mx ? mx : sx, st)
+      // Набираемую сейчас надпись пропускаем: её показывает поле ввода, и вторым
+      // экземпляром она двоилась бы под курсором.
+      const editId = editPos.current?.id
+      for (const st of strokes.current.values()) {
+        if (editId && st.id === editId) continue
+        drawStroke(st.tool === "image" && mx ? mx : sx, st)
+      }
       sceneValid.current = true
       if (bgc) {
         const bx = bgc.getContext("2d")
@@ -790,6 +887,22 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     ctx.globalCompositeOperation = "source-over"
     // Выделение и рамка (в экранных координатах — постоянная толщина)
     const toScreen = (wx, wy) => [wx * v.scale + v.x, wy * v.scale + v.y]
+    // Листы с заданием, у которых есть поле ответа → в стейт для HTML-оверлея.
+    // Мелкий и уехавший за край лист панели не получает: в поле шириной с ноготь всё
+    // равно не попасть, а панели на весь экран мешали бы рисовать.
+    const qa = []
+    for (const st of strokes.current.values()) {
+      if (!st.qa) continue
+      const b = strokeBBox(st)
+      const [x0, y0] = toScreen(b.minX, b.minY), [x1, y1] = toScreen(b.maxX, b.maxY)
+      const sw = x1 - x0
+      if (sw < 130 || x1 < 0 || y1 < 0 || x0 > cw || y0 > ch) continue
+      qa.push({ id: st.id, x: Math.round((x0 + x1) / 2), y: Math.round(y1),
+        w: Math.round(Math.min(Math.max(sw, 240), 420)),
+        a: st.qa.a, v: st.qa.v || "", ok: st.qa.ok ?? null })
+    }
+    const qaKey = JSON.stringify(qa)
+    if (qaKey !== lastQa.current) { lastQa.current = qaKey; setQaBoxes(qa) }
     const drawDashRect = (bb, color, dash) => {
       const [x0, y0] = toScreen(bb.minX, bb.minY), [x1, y1] = toScreen(bb.maxX, bb.maxY)
       ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.setLineDash(dash)
@@ -821,7 +934,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         const s0 = strokes.current.get(id)
         if (!s0 || s0.tool === "eraser") continue
         if (s0.tool === "image") { hasImg = true }
-        else if (!props) props = { tool: s0.tool, width: s0.width, dash: s0.dash || "solid" }
+        else if (!props) props = { tool: s0.tool, dash: s0.dash || "solid", width: s0.tool === "text" ? (s0.size || TEXT_DEFAULT) : s0.width }
         if (props && hasImg) break
       }
     }
@@ -899,6 +1012,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       }
       ctx.restore()
     }
+    layoutTextEditor()
     // Подсказку «пишут за краем экрана» снимаем, как только это место видно —
     // хоть по нажатию, хоть потому, что доску подвинули руками.
     if (offscreenRef.current && bboxOnScreen(offscreenBB.current)) hideOffscreen()
@@ -1239,6 +1353,71 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Щипок по тачпаду. Safari (и только он) шлёт на такой жест НЕ колесо с ctrl, а
+  // свои gesturestart/change/end, и, пока их никто не перехватывает, увеличивает
+  // САМУ СТРАНИЦУ. Доска при этом остаётся `fixed` во весь layout-вьюпорт, а
+  // видно только его кусок — то есть шапка уезжает выше экрана, панель ниже, и
+  // на экране остаётся один холст без единой кнопки. Ровно так доска и «теряла
+  // интерфейс»: увеличенная страница ещё и перерисовывается заметно медленнее.
+  // Поэтому жест ловим на ВСЁМ слое доски (не только на холсте: щипок над
+  // панелью зумил бы страницу так же) и переводим в зум самой доски.
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root) return
+    let prev = 1
+    const start = (e) => { e.preventDefault(); prev = e.scale || 1 }
+    const change = (e) => {
+      e.preventDefault()
+      const cv = canvasRef.current
+      const s = e.scale || 1
+      const f = prev > 0 ? s / prev : 1
+      prev = s
+      if (!cv) return
+      const r = cv.getBoundingClientRect()
+      zoomAt(clamp(e.clientX - r.left, 0, r.width), clamp(e.clientY - r.top, 0, r.height), f)
+      scheduleDraw()
+    }
+    const end = (e) => { e.preventDefault(); prev = 1 }
+    // Колёсный зум страницы (ctrl+колесо в Chrome и Firefox, ⌘+колесо в Safari)
+    // над шапкой и панелью — та же беда, что и щипок: холст свой wheel уже
+    // перехватывает, а здесь остаётся всё остальное.
+    const wheel = (e) => { if (e.ctrlKey || e.metaKey) e.preventDefault() }
+    const opts = { passive: false }
+    root.addEventListener("gesturestart", start, opts)
+    root.addEventListener("gesturechange", change, opts)
+    root.addEventListener("gestureend", end, opts)
+    root.addEventListener("wheel", wheel, opts)
+    return () => {
+      root.removeEventListener("gesturestart", start, opts)
+      root.removeEventListener("gesturechange", change, opts)
+      root.removeEventListener("gestureend", end, opts)
+      root.removeEventListener("wheel", wheel, opts)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Подстраховка: страницу всё равно могли увеличить — с клавиатуры (⌘+), жестом
+  // мимо доски или ещё до её открытия. Тогда `fixed inset-0` шире видимой области,
+  // и шапка с панелью оказываются за экраном. Пока страница увеличена, слой доски
+  // держим по ВИДИМОЙ области (visualViewport), а не по layout-вьюпорту, — чтобы
+  // интерфейс нельзя было потерять вовсе. Масштаб 1 — стиля нет, и всё как было.
+  const [vvBox, setVvBox] = useState(null)
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const sync = () => {
+      if (vv.scale > 1.01) {
+        setVvBox((b) => (b && b.left === vv.offsetLeft && b.top === vv.offsetTop
+          && b.width === vv.width && b.height === vv.height) ? b
+          : { left: vv.offsetLeft, top: vv.offsetTop, width: vv.width, height: vv.height })
+      } else setVvBox((b) => (b ? null : b))
+    }
+    sync()
+    vv.addEventListener("resize", sync)
+    vv.addEventListener("scroll", sync)
+    return () => { vv.removeEventListener("resize", sync); vv.removeEventListener("scroll", sync) }
+  }, [])
+
   // --- Сохранение ---------------------------------------------------------
   // Доска сохраняется сама и молча: отметки «сохр…/сохранено» в шапке нет — она
   // мигала при каждом штрихе и отвлекала от занятия. Сбой сохранения остаётся
@@ -1356,6 +1535,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   }
 
   function closeBoard() {
+    commitTextEdit()   // недописанная надпись не должна пропасть вместе с доской
     // Живую доску дописываем сразу: отложенное сохранение могло ещё не сработать.
     clearTimeout(saveTimer.current)
     if (loadedRef.current) persist()
@@ -1462,9 +1642,25 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     scheduleDraw()
   }
 
+  // Верхний объект под точкой (мировые координаты). Порядок карты — это порядок
+  // рисования, поэтому берём ПОСЛЕДНИЙ подходящий: он лежит поверх остальных.
+  // След ластика пропускаем: он невидим, и «выделить» его человек не собирался.
+  function topStrokeAt(x, y, tol) {
+    let hit = null
+    for (const [id, s] of strokes.current) {
+      if (s.tool === "eraser") continue
+      if (hitStroke(s, x, y, tol)) hit = id
+    }
+    return hit
+  }
+
   function onPointerDown(e) {
     // Открыт попап панели → первый тык по холсту просто закрывает его, не рисуя
     if (menu) { closeMenu(); return }
+    // Идёт набор надписи → тык по холсту его завершает. Инструмент «Текст» при
+    // этом тем же нажатием начинает следующую надпись: так пишут подписи к
+    // чертежу — одну за другой, не возвращаясь каждый раз в панель.
+    if (editPos.current) { commitTextEdit(); if (tool !== "text") return }
     // Новый первичный указатель = начало нового жеста → сбрасываем возможные
     // «зависшие» указатели (недоснятое касание и т.п.), иначе рисование
     // навсегда уходит в режим жеста. Это самовосстановление.
@@ -1489,11 +1685,26 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     if (wantPan) { stopFollow(); panning.current = { x: e.clientX, y: e.clientY }; setPanDrag(true); return }
     if (e.pointerType === "mouse" && e.button != null && e.button !== 0) return
 
+    // «Текст» ничего не рисует: нажатие ставит поле ввода (или открывает то,
+    // что уже написано в этом месте).
+    if (tool === "text") { beginTextAt(e.clientX, e.clientY); return }
+
     // «Курсор» — выделение рамкой / перемещение выделенного (не рисует)
     if (tool === "cursor") {
       const p = toWorld(e.clientX, e.clientY)
-      const bb = selectionBBox()
-      if (bb && pointInBBox(p[0], p[1], bb)) {
+      let bb = selectionBBox()
+      // Взяться можно за САМ объект, а не только за уже выделенное: нажали на
+      // фигуру — она тут же под рукой и едет за курсором, без предварительного
+      // клика «сначала выдели». Выделенной она при этом становится (иначе
+      // нечем было бы поменять ей цвет или размер сразу после переноса), но
+      // отдельного нажатия ради этого больше не нужно.
+      if (!bb || !pointInBBox(p[0], p[1], bb)) {
+        const hit = topStrokeAt(p[0], p[1], 6 / view.current.scale)
+        // Рамкой выделения (marquee) остаётся протяжка ПО ПУСТОМУ месту.
+        bb = null
+        if (hit) { selection.current = new Set([hit]); applySelCount(1); bb = selectionBBox() }
+      }
+      if (bb) {
         // Клик по выделению → двигаем. Габарит и габариты чужих объектов
         // запоминаем на весь жест: прилипание считается от НАЧАЛЬНОГО положения,
         // иначе поправка накапливалась бы сама на себя и объект «залипал» бы.
@@ -1617,10 +1828,13 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     }
     // Завершение перемещения выделенного — рассылаем сдвинутые штрихи и сохраняем
     if (movingSel.current) {
-      const before = movingSel.current.before
+      const { before, dx, dy } = movingSel.current
       movingSel.current = null
       guides.current = []; snapBoxes.current = []
-      commitSelection(before)
+      // Нажали и отпустили, не сдвинув, — это просто выбор объекта: рассылать и
+      // класть в историю нечего, иначе «отменить» тратилось бы на пустой шаг.
+      if (dx || dy) commitSelection(before)
+      scheduleDraw()
       return
     }
     // Завершение рамки — выбираем штрихи, попавшие в неё (крошечная рамка = клик = снять выделение)
@@ -1632,9 +1846,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         for (const [id, s] of strokes.current) if (rectsIntersect(rect, strokeBBox(s))) selection.current.add(id)
       } else {
         // Крошечная рамка = одиночный клик: выделяем верхний объект под курсором
-        const tol = 6 / view.current.scale
-        let hit = null
-        for (const [id, s] of strokes.current) if (hitStroke(s, m.x0, m.y0, tol)) hit = id
+        const hit = topStrokeAt(m.x0, m.y0, 6 / view.current.scale)
         if (hit) selection.current.add(hit)
       }
       applySelCount(selection.current.size)
@@ -1665,6 +1877,14 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     drawing.current = null
     pushHistory([{ id: s.id, before: null, after: cloneStroke(s) }])
     scheduleDraw(); scheduleSave()
+  }
+
+  // Двойное нажатие по надписи открывает её на правку — привычка из любого
+  // редактора; иначе поправить опечатку можно было бы только стерев всё заново.
+  function onDoubleClick(e) {
+    if (tool === "text" || editPos.current) return   // там хватает одиночного нажатия
+    const st = textAt(toWorld(e.clientX, e.clientY))
+    if (st) editTextStroke(st)
   }
 
   // Объектный ластик: всё, чего коснулись, удаляется целиком. Собственный след
@@ -1753,12 +1973,12 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     // фото и растянутое условие читаются как брак, а вернуть исходный формат
     // «на глаз» уже нельзя. Пропорция держится и на углах, и на рёбрах.
     let keepRatio = false
-    if (mode === "resize") for (const id of selection.current) { if (strokes.current.get(id)?.tool === "image") { keepRatio = true; break } }
+    if (mode === "resize") for (const id of selection.current) { const t0 = strokes.current.get(id)?.tool; if (t0 === "image" || t0 === "text") { keepRatio = true; break } }
     const startW = toWorld(e.clientX, e.clientY)
     const snapshot = new Map()
     for (const id of selection.current) {
       const s = strokes.current.get(id)
-      if (s) snapshot.set(id, { points: s.points.map((p) => [...p]), angle: s.angle || 0 })
+      if (s) snapshot.set(id, { points: s.points.map((p) => [...p]), angle: s.angle || 0, size: s.size || TEXT_DEFAULT })
     }
     // Одиночная фигура — масштаб вдоль её собственных (наклонённых) осей
     let L = null
@@ -1796,8 +2016,18 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
           const kmin = Math.max(2 / L.hw0, 2 / L.hh0)
           if (Math.abs(scaleU) < kmin) { scaleU = Math.sign(scaleU || 1) * kmin; scaleV = Math.sign(scaleV || 1) * kmin }
         }
-        const nhw = Math.max(2, L.hw0 * Math.abs(scaleU)), nhh = Math.max(2, L.hh0 * Math.abs(scaleV))
-        const cU = hx !== 0 ? hx * L.hw0 * scaleU : 0, cV = hy !== 0 ? hy * L.hh0 * scaleV : 0
+        // Надпись тянется не габаритом, а КЕГЛЕМ: растянутая буква читается как
+        // брак, поэтому размер шрифта умножается на тот же коэффициент, а рамка
+        // пересобирается по новым метрикам текста.
+        let nhw, nhh
+        if (s.tool === "text") {
+          s.size = clamp(snapshot.get(L.id).size * Math.abs(scaleU), TEXT_MIN, TEXT_MAX)
+          const m = textMetrics(s.text, s.size)
+          nhw = m.w / 2; nhh = m.h / 2
+        } else {
+          nhw = Math.max(2, L.hw0 * Math.abs(scaleU)); nhh = Math.max(2, L.hh0 * Math.abs(scaleV))
+        }
+        const cU = hx !== 0 ? hx * nhw * Math.sign(scaleU || 1) : 0, cV = hy !== 0 ? hy * nhh * Math.sign(scaleV || 1) : 0
         const ncx = L.pv[0] + cU * L.u[0] + cV * L.vv[0], ncy = L.pv[1] + cU * L.u[1] + cV * L.vv[1]
         // Толщина обводки НЕ меняется — только габарит + сохранённый угол
         s.points = [[ncx - nhw, ncy - nhh, ...L.a0.slice(2)], [ncx + nhw, ncy + nhh, ...L.b0.slice(2)]]
@@ -1813,6 +2043,12 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         for (const [id, snap] of snapshot) {
           const s = strokes.current.get(id); if (!s) continue
           s.points = snap.points.map((p) => [px + (p[0] - px) * sx, py + (p[1] - py) * sy, ...p.slice(2)])
+          if (s.tool === "text") {
+            // В группе надпись тоже меняет кегль, а не растягивается
+            s.size = clamp(snap.size * Math.min(Math.abs(sx), Math.abs(sy)), TEXT_MIN, TEXT_MAX)
+            const a = s.points[0], b = s.points[s.points.length - 1]
+            s.points = textBoxPoints(Math.min(a[0], b[0]), Math.min(a[1], b[1]), s.text, s.size)
+          }
         }
       } else {
         let ang = Math.atan2(w[1] - center[1], w[0] - center[0]) - startAngle
@@ -1855,25 +2091,35 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // кладётся под уже написанным, а его высота известна только здесь, после снимка.
   // taskKey — пометка «это задание из работы»: по ней доска узнаёт лежащий лист и
   // не кладёт второй, когда ученик открывает то же задание снова.
-  async function addImageAt(file, worldX, worldY, { fitWidth = null, maxSide = 360, sheet = false, topLeft = false, taskKey = null } = {}) {
+  // answer — правильный ответ задания: с ним под листом появляется поле для ответа
+  // с проверкой (см. TaskAnswerBox).
+  async function addImageAt(file, worldX, worldY, { fitWidth = null, maxSide = 360, sheet = false, topLeft = false, taskKey = null, answer = null } = {}) {
     if (!file || !file.type?.startsWith("image/")) return null
     let info
     try { info = await processImageFile(file, sheet ? SHEET_MAX_DIM : 1400) } catch { return null }
     const id = makeId(userId)
-    let src = info.dataUrl
+    let src = null
     try {
       const path = `board/${roomId}/${id}.${info.ext}`
       const { error } = await supabase.storage.from(IMG_BUCKET).upload(path, info.blob, { upsert: true, contentType: info.type })
       if (!error) src = supabase.storage.from(IMG_BUCKET).getPublicUrl(path).data.publicUrl
     } catch { /* остаётся data URL как запасной вариант */ }
+    // Загрузка не удалась — картинка едет внутри самой сцены. Это дорого (сцена
+    // раздувается), поэтому base64 считаем только здесь, а не на каждой вставке.
+    if (!src) src = await readFileAsDataURL(info.blob)
     const k = fitWidth ? fitWidth / info.w : Math.min(1, maxSide / Math.max(info.w, info.h))
     const ww = info.w * k, hh = info.h * k
     const x0 = topLeft ? worldX : worldX - ww / 2, y0 = topLeft ? worldY : worldY - hh / 2
     const s = { id, author: userId, tool: "image", src, points: [[x0, y0], [x0 + ww, y0 + hh]] }
     if (sheet) s.sheet = 1   // лист с заданием: рисуется в цветах доски, а не как фото
     if (taskKey) s.task = taskKey
-    // Своя картинка уже в памяти — кладём её в кэш под итоговым адресом, чтобы лист
-    // появился мгновенно, не дожидаясь подписи и сети.
+    // Правильный ответ едет вместе с листом: поле ответа под ним должно уметь и
+    // проверить, и показать ответ, а доска общая — значит, знать его должны оба.
+    if (answer) s.qa = { a: answer }
+    // Своя картинка уже разобрана в памяти — кладём её в кэш под итоговым адресом,
+    // чтобы лист появился мгновенно: иначе доска пошла бы подписывать адрес и качать
+    // из хранилища то, что сама только что туда отправила.
+    if (info.img && !imgCache.current.has(src)) imgCache.current.set(src, info.img)
     getImage(src) // начать загрузку/кэшировать для мгновенной отрисовки
     strokes.current.set(id, s)
     channelRef.current?.send({ type: "broadcast", event: "draw", payload: s })
@@ -1939,12 +2185,34 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   }
   // Лист с заданием из банка — в центр видимой области. Каждое следующее смещаем
   // лесенкой: иначе задания легли бы ровно друг на друга и выглядели бы как одно.
-  async function insertTaskSheet(file, sheetWidth) {
+  async function insertTaskSheet(file, sheetWidth, answer = null) {
     const c = canvasRef.current; if (!c) return
     const r = c.getBoundingClientRect()
     const step = (taskShift.current++ % 6) * 26
     const [wx, wy] = toWorld(r.left + c.clientWidth / 2 + step, r.top + c.clientHeight / 2 + step)
-    await addImageAt(file, wx, wy, { fitWidth: sheetWidth, sheet: true })
+    await addImageAt(file, wx, wy, { fitWidth: sheetWidth, sheet: true, answer })
+  }
+
+  // Проверка ответа на листе. Ответ и результат кладутся в САМ штрих: так их видит
+  // вторая сторона (доска общая) и они переживают перезагрузку. Правка идёт НА МЕСТЕ,
+  // поэтому штрих помечается в dirtyRef — иначе дельта его не заметит и не сохранит.
+  function checkTaskAnswer(id, given) {
+    const st = strokes.current.get(id)
+    if (!st?.qa) return
+    const v = String(given || "").trim()
+    if (!v) return
+    st.qa = { ...st.qa, v, ok: answersEqual(v, st.qa.a) }
+    dirtyRef.current.add(id)
+    channelRef.current?.send({ type: "broadcast", event: "draw", payload: st })
+    scheduleSave(); scheduleDraw()
+  }
+  function resetTaskAnswer(id) {
+    const st = strokes.current.get(id)
+    if (!st?.qa) return
+    st.qa = { a: st.qa.a }
+    dirtyRef.current.add(id)
+    channelRef.current?.send({ type: "broadcast", event: "draw", payload: st })
+    scheduleSave(); scheduleDraw()
   }
 
   // Задание, которое ученик открыл кнопкой «Решить на доске» в домашней работе.
@@ -2019,6 +2287,18 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     if (!widthDrag.current) widthDrag.current = { before: snapshotSelection(), changed: false }
     for (const id of selection.current) {
       const s = strokes.current.get(id); if (!s || s.tool === "eraser") continue
+      // У надписи тот же ползунок меняет кегль, а габарит собирается заново по
+      // метрикам — вокруг прежнего центра, чтобы текст не уползал из-под руки.
+      if (s.tool === "text") {
+        if ((s.size || TEXT_DEFAULT) === w) continue
+        const a = s.points[0], b = s.points[s.points.length - 1]
+        const cx = (a[0] + b[0]) / 2, cy = (a[1] + b[1]) / 2
+        s.size = w
+        const m = textMetrics(s.text, w)
+        s.points = [[cx - m.w / 2, cy - m.h / 2], [cx + m.w / 2, cy + m.h / 2]]
+        widthDrag.current.changed = true
+        continue
+      }
       const cur = s.width || 3
       if (cur === w) continue
       const k = w / cur
@@ -2038,6 +2318,105 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     const before = snapshotSelection()
     for (const id of selection.current) { const s = strokes.current.get(id); if (s && s.tool !== "eraser") s.dash = d }
     commitSelection(before); scheduleDraw()
+  }
+
+  // --- Текст --------------------------------------------------------------
+  // Надпись набирается настоящим полем ввода поверх холста (со своей раскладкой,
+  // автозаменой и подсказками клавиатуры на телефоне), а на доску ложится
+  // строкой — см. paintStroke. Рисовать буквы самим значило бы отнять у ученика
+  // и родной ввод, и возможность потом эту надпись поправить.
+  const TEXT_PAD = 4   // насколько поле ввода шире набранного: место под курсор
+
+  // Поле стоит в МИРОВЫХ координатах, а живёт в HTML — значит, его место и кегль
+  // надо править в каждом кадре: обзор двигают колесом, пальцами и слежением, и
+  // ни одно из этих движений через React не проходит.
+  function layoutTextEditor() {
+    const box = editBoxRef.current, ta = editRef.current, p = editPos.current
+    if (!box || !p) return
+    const v = view.current
+    const m = textMetrics(ta ? ta.value : p.value, p.size)
+    box.style.left = `${p.x * v.scale + v.x}px`
+    box.style.top = `${p.y * v.scale + v.y}px`
+    box.style.transform = p.angle ? `rotate(${p.angle}rad)` : ""
+    if (!ta) return
+    const col = resolveColor(p.color, isDarkColor(bgColorRef.current))
+    ta.style.font = `${p.size * v.scale}px ${TEXT_FONT}`   // сокращённая запись сбрасывает интерлиньяж…
+    ta.style.lineHeight = `${p.size * v.scale * TEXT_LINE}px`  // …поэтому он ставится следом
+    ta.style.width = `${m.w * v.scale + TEXT_PAD}px`
+    ta.style.height = `${m.h * v.scale}px`
+    ta.style.color = col
+    ta.style.caretColor = col
+  }
+
+  // Надпись под точкой (мировые координаты) — по ней открывается правка
+  function textAt(p) {
+    const tol = 6 / view.current.scale
+    let hit = null
+    for (const st of strokes.current.values()) if (st.tool === "text" && hitStroke(st, p[0], p[1], tol)) hit = st
+    return hit
+  }
+  function openTextEditor(ed) {
+    const next = { ...ed, seq: ++textSeq.current }
+    editPos.current = next
+    setEditText(next)
+    scheduleDraw()   // правимая надпись уходит с холста в поле ввода
+  }
+  // Правка уже написанного: цвет и кегль подставляются в панель, иначе первое же
+  // прикосновение к ползунку перекрасило бы надпись во что-то постороннее.
+  function editTextStroke(st) {
+    setTool("text")
+    setColor(st.color)
+    setTextSize(st.size || TEXT_DEFAULT)
+    openTextEditor({ id: st.id, x: st.points[0][0], y: st.points[0][1], size: st.size || TEXT_DEFAULT, color: st.color, angle: st.angle || 0, value: st.text || "" })
+  }
+  function beginTextAt(clientX, clientY) {
+    const p = toWorld(clientX, clientY)
+    const st = textAt(p)
+    if (st) { editTextStroke(st); return }
+    // Ставим строку СЕРЕДИНОЙ на точку нажатия: так надпись оказывается там, куда
+    // смотрели, а не свисает под курсор.
+    const m = textMetrics("", textSize)
+    openTextEditor({ id: null, x: p[0], y: p[1] - m.lh / 2, size: textSize, color, angle: 0, value: "" })
+  }
+  // Набор окончен. Пустая надпись объекта не заводит, а стёртая — исчезает с доски:
+  // прозрачный прямоугольник, который нельзя увидеть и можно случайно выделить,
+  // хуже, чем его отсутствие.
+  function commitTextEdit() {
+    const ed = editPos.current
+    if (!ed) return
+    const raw = editRef.current ? editRef.current.value : ed.value
+    editPos.current = null
+    setEditText(null)
+    const text = raw.replace(/[ \t]+$/gm, "").replace(/\n+$/, "")
+    const cur = ed.id ? strokes.current.get(ed.id) : null
+    if (!text.trim()) {
+      if (cur) {
+        strokes.current.delete(ed.id)
+        selection.current.delete(ed.id)
+        channelRef.current?.send({ type: "broadcast", event: "remove", payload: { id: ed.id } })
+        pushHistory([{ id: ed.id, before: cloneStroke(cur), after: null }])
+        scheduleSave()
+      }
+      scheduleDraw()
+      return
+    }
+    if (cur) {
+      const before = cloneStroke(cur)
+      cur.text = text; cur.size = ed.size; cur.color = ed.color
+      cur.points = textBoxPoints(ed.x, ed.y, text, ed.size)
+      // Правка идёт НА МЕСТЕ (ссылка та же) — без пометки дельта её не заметит
+      dirtyRef.current.add(cur.id)
+      channelRef.current?.send({ type: "broadcast", event: "draw", payload: cur })
+      pushHistory([{ id: cur.id, before, after: cloneStroke(cur) }])
+    } else {
+      const id = makeId(userId)
+      const st = { id, author: userId, tool: "text", color: ed.color, text, size: ed.size, points: textBoxPoints(ed.x, ed.y, text, ed.size) }
+      if (ed.angle) st.angle = ed.angle
+      strokes.current.set(id, st)
+      channelRef.current?.send({ type: "broadcast", event: "draw", payload: st })
+      pushHistory([{ id, before: null, after: cloneStroke(st) }])
+    }
+    scheduleDraw(); scheduleSave()
   }
 
   // --- Действия -----------------------------------------------------------
@@ -2227,7 +2606,30 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     } catch { /* приватный режим — обзор просто не запомнится */ }
   }
 
-  useEffect(() => { actions.current.undo = undo; actions.current.redo = redo; actions.current.del = deleteSelection; actions.current.paste = addImageAt })
+  useEffect(() => { actions.current.undo = undo; actions.current.redo = redo; actions.current.del = deleteSelection; actions.current.paste = addImageAt; actions.current.commitText = commitTextEdit })
+
+  // Взяли другой инструмент — набранное сохраняем, а не теряем
+  useEffect(() => { if (tool !== "text") actions.current.commitText?.() }, [tool])
+
+  // Цвет и кегль меняют надпись прямо во время набора: панель для того и открыта.
+  useEffect(() => {
+    if (!editPos.current) return
+    editPos.current = { ...editPos.current, color, size: textSize }
+    setEditText((ed) => (ed && (ed.color !== color || ed.size !== textSize) ? { ...ed, color, size: textSize } : ed))
+    scheduleLive()
+  }, [color, textSize, scheduleLive])
+
+  // Поле ввода: встаём на место и берём фокус, курсор — в конец набранного
+  useEffect(() => {
+    if (!editText) return
+    layoutTextEditor()
+    const ta = editRef.current
+    if (!ta) return
+    ta.focus({ preventScroll: true })
+    const n = ta.value.length
+    try { ta.setSelectionRange(n, n) } catch { /* поле ещё не готово — курсор встанет сам */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editText?.seq])
 
   // «Поверх доски открыт диалог» считается из самих состояний. Раньше флаг
   // выставляли руками в пяти местах, и один пропущенный сброс глушил ВСЕ горячие
@@ -2349,7 +2751,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   }, [tool, scheduleDraw])
   useEffect(() => {
     // По e.code (физическая клавиша) — иначе на русской раскладке e.key = «з/у/…» и не совпадает
-    const TOOL_CODES = { KeyP: "pen", KeyE: "eraser", KeyL: "line", KeyR: "rect", KeyH: "hand", KeyV: "cursor" }
+    const TOOL_CODES = { KeyP: "pen", KeyT: "text", KeyE: "eraser", KeyL: "line", KeyR: "rect", KeyH: "hand", KeyV: "cursor" }
     // Типы input, в которые не печатают: они не должны глушить горячие клавиши доски.
     const NON_TEXT_INPUTS = new Set(["color", "file", "range", "checkbox", "radio", "button", "submit", "reset", "image"])
     function onKeyDown(e) {
@@ -2414,6 +2816,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const TOOLS = [
     { id: "cursor", icon: "cursor", label: "Курсор", key: "Esc" },
     { id: "pen", icon: "pencil", label: "Перо", key: "P" },
+    { id: "text", icon: "type", label: "Текст", key: "T" },
     { id: "line", icon: "line", label: "Линия", key: "L" },
     { id: "shapes", shapes: true },
     { id: "eraser", icon: "eraser", label: "Ластик", key: "E", erasers: true },
@@ -2493,13 +2896,18 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // выбранный инструмент: иначе неясно, что маркер никуда не делся.
   const cursor = panDrag ? "grabbing"
     : (panKey || tool === "hand") ? "grab"
-    : tool === "cursor" ? "default" : "crosshair"
+    : tool === "cursor" ? "default"
+    : tool === "text" ? "text" : "crosshair"
   // …и в панели на это время дополнительно загорается «Двигать полотно».
   // Именно дополнительно: выбранный инструмент горит по-прежнему, потому что он
   // и остаётся выбранным — отпустил кнопку (пальцы, пробел) и рисуешь дальше.
   // Подсветка сдвига поэтому не сплошная, как у выбранного, а залитая тоном:
   // два одинаково закрашенных инструмента читались бы как «выбраны оба».
   const panLit = (id) => id === "hand" && (panDrag || panKey) && tool !== "hand"
+  // Один и тот же попап «обводки» показывает толщину линии или кегль текста —
+  // смотря чем сейчас пишут.
+  const styleWidth = tool === "text" ? textSize : width
+  const setStyleWidth = tool === "text" ? setTextSize : setWidth
 
   // Ручки выделения из ОРИЕНТИРОВАННОЙ рамки {cx,cy,ax,ay,angle} (экранные координаты)
   const H = selBox
@@ -2530,7 +2938,10 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const barX = H ? H.cx : 0
 
   return (
-    <div data-board-version="14" className={`fixed inset-0 z-[100000] flex flex-col screen-fade ${dark ? "board-dark" : ""} ${closingCls}`} style={{ background: baseBg }}>
+    <div ref={rootRef} data-board-version="14" className={`fixed inset-0 z-[100000] flex flex-col screen-fade ${dark ? "board-dark" : ""} ${closingCls}`}
+      style={vvBox
+        ? { background: baseBg, left: vvBox.left, top: vvBox.top, width: vvBox.width, height: vvBox.height, right: "auto", bottom: "auto" }
+        : { background: baseBg }}>
       {/* Шапка */}
       <div className="flex items-center justify-between px-3 h-12 border-b flex-shrink-0"
         style={{ borderColor: dark ? "rgba(255,255,255,.1)" : "rgba(0,0,0,.08)" }}>
@@ -2645,9 +3056,50 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
           onPointerLeave={onPointerUp}
+          onDoubleClick={onDoubleClick}
           onContextMenu={(e) => e.preventDefault()}
           style={{ width: "100%", height: "100%", display: "block", touchAction: "none", cursor }}
         />
+
+        {/* Поле ввода надписи — поверх холста, ровно на том месте и того кегля,
+            каким текст ляжет на доску. Фон прозрачный: подписывают поверх чертежа,
+            и белая (тем более серая) подложка накрыла бы его собой. */}
+        {editText && (
+          <div ref={editBoxRef} className="absolute"
+            style={{
+              left: editText.x * view.current.scale + view.current.x,
+              top: editText.y * view.current.scale + view.current.y,
+              transformOrigin: "50% 50%",
+            }}>
+            <textarea
+              key={editText.seq}
+              ref={editRef}
+              defaultValue={editText.value}
+              rows={1}
+              wrap="off"
+              spellCheck={false}
+              aria-label="Надпись на доске"
+              onInput={() => { layoutTextEditor(); scheduleLive() }}
+              onPointerDown={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                // Esc и ⌘↵ заканчивают набор. Остальное — обычный ввод: Enter даёт
+                // новую строку, ⌘Z правит текст, а не откатывает доску.
+                if (e.key === "Escape" || (e.key === "Enter" && (e.metaKey || e.ctrlKey))) {
+                  e.preventDefault(); e.stopPropagation(); commitTextEdit()
+                }
+              }}
+              style={{
+                display: "block", margin: 0, padding: 0, border: 0, background: "transparent",
+                outline: "1px dashed rgba(0,122,255,.55)", outlineOffset: 4,
+                resize: "none", overflow: "hidden", whiteSpace: "pre", minWidth: 2,
+                font: `${editText.size * view.current.scale}px ${TEXT_FONT}`,
+                lineHeight: `${editText.size * view.current.scale * TEXT_LINE}px`,
+                color: resolveColor(editText.color, dark),
+                caretColor: resolveColor(editText.color, dark),
+              }}
+            />
+          </div>
+        )}
 
         {/* Слежение включено — об этом надо помнить: доска будет ездить сама.
             Любой свой сдвиг или зум слежение снимает, кнопка — запасной путь. */}
@@ -2671,6 +3123,12 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
             </span>
           </div>
         )}
+
+        {/* Поля ответа под листами с заданием */}
+        {qaBoxes.map((b) => (
+          <TaskAnswerBox key={b.id} panel={b} dark={dark} panelBg={panelBg} panelBorder={panelBorder}
+            onCheck={checkTaskAnswer} onReset={resetTaskAnswer} />
+        ))}
 
         {/* Оверлей выделения: рамка + ручки + панель свойств */}
         {H && selCount > 0 && (
@@ -2898,7 +3356,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
                 {menuShown("stroke") && (
                   <div className={`absolute bottom-full mb-2 left-1/2 -translate-x-1/2 p-2 rounded-xl shadow-lg ${menuAnim("stroke")}`}
                     style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
-                    <StrokeSettings dark={dark} tool={tool} curWidth={width} curDash={dash} onWidth={setWidth} onDash={setDash} />
+                    <StrokeSettings dark={dark} tool={tool} curWidth={styleWidth} curDash={dash} onWidth={setStyleWidth} onDash={setDash} />
                   </div>
                 )}
               </div>
@@ -2960,9 +3418,11 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
                 <Icon name="redo" size={18} />
               </button>
             </div>
-            <div className="flex items-center gap-0.5 rounded-2xl px-1.5 py-1 shadow-xl relative pointer-events-auto max-w-full"
+            <div className="flex flex-wrap items-center justify-center gap-0.5 rounded-2xl px-1.5 py-1 shadow-xl relative pointer-events-auto max-w-full"
               style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
-              {TOOLS.map((t) => t.erasers ? (
+              {/* «Двигать полотно» на телефоне не показываем: полотно там двигают
+                  двумя пальцами, а лишняя кнопка не давала строке уместиться. */}
+              {TOOLS.filter((t) => t.id !== "hand").map((t) => t.erasers ? (
                 <div key="eraser" className="relative" data-menu>
                   <button onClick={() => { const was = tool === "eraser"; setTool("eraser"); was ? toggleMenu("eraser") : openMenu("eraser") }}
                     className={`${btnBase} ${tool === "eraser" ? btnOn : btnIdle}`}
@@ -3008,7 +3468,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
                       ))}
                       <ColorPick value={resolveColor(color, dark)} dark={dark} title="Свой цвет" onPreview={previewInk} />
                     </div>
-                    <StrokeSettings dark={dark} tool={stylingTool ? tool : "pen"} curWidth={width} curDash={dash} onWidth={setWidth} onDash={setDash} />
+                    <StrokeSettings dark={dark} tool={stylingTool ? tool : "pen"} curWidth={styleWidth} curDash={dash} onWidth={setStyleWidth} onDash={setDash} />
                   </div>
                 )}
               </div>
