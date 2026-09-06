@@ -80,6 +80,7 @@ const VIEW_RATE = 60    // не чаще 1 посылки своего обзо�
 const SNAP_PX = 6
 const GUIDE_COLOR = "#FF2D55"  // направляющая заметно отличается от синей рамки выделения
 const STROKE_RATE = 30  // не чаще 1 посылки дописанных точек в 30 мс (33/сек)
+const BOARD_SYNC_MS = 15000 // как часто сверяемся с базой, что ничего не потерялось
 // Точки штриха округляются до сотых мировой единицы: на экране это доли пикселя
 // даже при максимальном увеличении, зато и по сети, и в снапшоте сцены каждая
 // точка занимает втрое меньше места, чем сырой double.
@@ -476,6 +477,16 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const channelRef = useRef(null)
   const teardownTimer = useRef(null)
   const saveTimer = useRef(null)
+  // Что из сцены уже лежит в базе: id → { s — ссылка на штрих, json — его снимок
+  // (считаем лениво, только когда ссылка изменилась). На этом держится дельта:
+  // сохраняем не всю сцену, а разницу (см. supabase/board_delta.sql).
+  const savedRef = useRef(new Map())
+  const savedMeta = useRef({ bg: null, bgColor: null })
+  const dirtyRef = useRef(new Set())  // штрихи, изменённые НА МЕСТЕ: ссылка та же, содержимое другое
+  const savingRef = useRef(false)     // запрос сохранения в полёте — второй не запускаем
+  const saveAgain = useRef(false)     // пока он летел, появилось новое
+  const patchOff = useRef(false)      // в базе нет board_patch — пишем сцену целиком, как раньше
+  const persistRef = useRef(null)     // дозапись после ухода с доски — уже без React
   const joinedOnce = useRef(false)    // канал уже подключался: следующий SUBSCRIBED — после обрыва
   const lastResync = useRef(0)        // когда в последний раз перечитывали сцену (см. resync)
   const bgSendTimer = useRef(null)    // троттлинг рассылки цвета фона (см. changeBgColor)
@@ -963,6 +974,11 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         const early = [...strokes.current.entries()]
         strokes.current.clear()
         for (const s of scene.strokes || []) strokes.current.set(s.id, s)
+        // Пришедшее из базы уже сохранено — с этого начинается отсчёт дельты.
+        // early сюда НЕ кладём: они прилетели по realtime и в базе их может не быть,
+        // пусть первое же сохранение их допишет.
+        rememberSaved(scene.strokes || [])
+        savedMeta.current = { bg: scene.bg ?? null, bgColor: scene.bgColor ?? null }
         for (const [id, s] of early) { strokes.current.delete(id); strokes.current.set(id, s) }
         if (scene.bg) setBg(scene.bg)
         if (scene.bgColor) setBgColor(scene.bgColor)
@@ -1008,9 +1024,31 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     const local = [...strokes.current.entries()]
     strokes.current.clear()
     for (const s of scene.strokes) strokes.current.set(s.id, s)
+    rememberSaved(scene.strokes)   // теперь мы знаем, что в базе; своё недошедшее допишется дельтой
     for (const [id, s] of local) if (!strokes.current.has(id)) strokes.current.set(id, s)
     scheduleDraw()
   }, [roomId, scheduleDraw])
+
+  // Сверка «не потерялось ли». Штрих ходит по realtime ровно один раз и без
+  // подтверждения: одна не доехавшая посылка — и написанного у собеседника нет,
+  // причём молча и до самого перезахода на доску. Поэтому раз в BOARD_SYNC_MS
+  // спрашиваем у базы только счётчик и последний id (вся сцена — это мегабайты) и,
+  // если у нас чего-то нет, перечитываем её.
+  useEffect(() => {
+    const tick = async () => {
+      if (document.visibilityState !== "visible") return
+      if (!loadedRef.current || drawing.current) return
+      // Своё ещё не сохранено — сверять не с чем: база заведомо отстаёт от нас,
+      // и «догон» вернул бы только что стёртое.
+      if (savingRef.current || saveTimer.current) return
+      const { data } = await supabase.from("boards_state")
+        .select("n,last_id").eq("student_id", String(roomId)).maybeSingle()
+      if (!data) return
+      if ((data.n || 0) > strokes.current.size || (data.last_id && !strokes.current.has(data.last_id))) resync()
+    }
+    const id = setInterval(tick, BOARD_SYNC_MS)
+    return () => clearInterval(id)
+  }, [roomId, resync])
 
   // Обрыв сокета виден не сразу — heartbeat замечает его до полуминуты, и всё это
   // время канал считается живым, а сообщения уже не идут. Поэтому ждать события
@@ -1205,16 +1243,87 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // Доска сохраняется сама и молча: отметки «сохр…/сохранено» в шапке нет — она
   // мигала при каждом штрихе и отвлекала от занятия. Сбой сохранения остаётся
   // виден в консоли, чтобы молчание не прятало настоящую ошибку.
-  const persist = useCallback(() => {
-    const scene = { strokes: Array.from(strokes.current.values()), bg: bgRef.current, bgColor: bgColorRef.current }
-    supabase.from("boards")
+  //
+  // Сохраняем ДЕЛЬТУ, а не всю сцену. Раньше каждый клиент заливал сюда весь
+  // холст целиком, а к середине года он весит мегабайты: три мегабайта в каждую
+  // паузу письма забивали канал (посылки realtime идут по той же сети и начинали
+  // теряться), да ещё и затирали чужое — штрих собеседника, не доехавший по
+  // realtime, пропадал из базы, и «догон» его уже не возвращал.
+  const rememberSaved = (list) => {
+    savedRef.current = new Map(list.map((s) => [s.id, { s, json: null }]))
+  }
+  // Запасной путь: миграции board_delta.sql нет — пишем сцену целиком, как раньше.
+  const fullSave = useCallback(() => {
+    const list = Array.from(strokes.current.values())
+    const scene = { strokes: list, bg: bgRef.current, bgColor: bgColorRef.current }
+    return supabase.from("boards")
       .upsert({ student_id: String(roomId), scene, updated_by: userId, updated_at: new Date().toISOString() })
-      .then(({ error }) => { if (error) console.error("board save", error) })
+      .then(({ error }) => {
+        if (error) throw error
+        rememberSaved(list)
+        savedMeta.current = { bg: scene.bg, bgColor: scene.bgColor }
+      })
   }, [roomId, userId])
+
+  const persist = useCallback(() => {
+    if (savingRef.current) { saveAgain.current = true; return }
+    const bg = bgRef.current, bgColor = bgColorRef.current
+    const saved = savedRef.current, dirty = dirtyRef.current
+    // Что изменилось: новый объект штриха (перерисовали, заменили) ловится
+    // сравнением ссылок, правка на месте (цвет, ширина, перенос) — пометкой dirty.
+    const up = [], pend = new Map()
+    for (const [id, st] of strokes.current) {
+      const rec = saved.get(id)
+      if (rec && rec.s === st && !dirty.has(id)) continue
+      const json = JSON.stringify(st)
+      if (rec && rec.json === json) { rec.s = st; continue }  // изменили и вернули как было
+      up.push(st); pend.set(id, { s: st, json })
+    }
+    const del = []
+    for (const id of saved.keys()) if (!strokes.current.has(id)) del.push(id)
+    const metaNew = savedMeta.current.bg !== bg || savedMeta.current.bgColor !== bgColor
+    dirty.clear()
+    if (!up.length && !del.length && !metaNew) return
+    savingRef.current = true
+    const done = (ok) => {
+      savingRef.current = false
+      if (ok) {
+        for (const [id, rec] of pend) saved.set(id, rec)
+        for (const id of del) saved.delete(id)
+        savedMeta.current = { bg, bgColor }
+      } else {
+        // не доехало — вернём в следующую посылку (ссылка та же, поэтому через dirty)
+        for (const id of pend.keys()) dirty.add(id)
+      }
+      // Дозапись идёт СВОИМ таймером, а не scheduleSave: тот гасится при уходе с
+      // доски, и написанное в последнюю секунду терялось бы вместе с ним.
+      if (saveAgain.current) { saveAgain.current = false; setTimeout(persistRef.current, 300) }
+    }
+    if (patchOff.current) { fullSave().then(() => done(true), (e) => { console.error("board save", e); done(false) }); return }
+    // Доску очистили — не перечисляем тысячу id, а говорим «старого не оставляем».
+    const wipe = strokes.current.size === 0 && del.length > 0
+    supabase.rpc("board_patch", {
+      p_student_id: String(roomId),
+      p_up: up, p_del: wipe ? [] : del,
+      p_bg: bg, p_bg_color: bgColor, p_by: userId, p_wipe: wipe,
+    }).then(({ error }) => {
+      // Функции в базе нет (миграция не выполнена) — переходим на старый путь и
+      // больше её не дёргаем: доска обязана сохраняться и без миграции.
+      if (error && (error.code === "PGRST202" || error.code === "42883")) {
+        patchOff.current = true
+        fullSave().then(() => done(true), (e) => { console.error("board save", e); done(false) })
+        return
+      }
+      if (error) console.error("board save", error)
+      done(!error)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId, userId, fullSave])
+  persistRef.current = persist
   function scheduleSave() {
     if (!loadedRef.current) return // не сохраняем до успешной загрузки сцены — иначе затрём её пустой
     clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(persist, 1200)
+    saveTimer.current = setTimeout(() => { saveTimer.current = null; persist() }, 1200)
   }
 
   // Снимок занятия в историю (board_snapshots): живая доска у ученика одна, а
@@ -1621,7 +1730,9 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   function commitSelection(before = null) {
     for (const id of selection.current) {
       const s = strokes.current.get(id)
-      if (s) channelRef.current?.send({ type: "broadcast", event: "draw", payload: s })
+      // Правки выделения (цвет, ширина, перенос, поворот) меняют штрих НА МЕСТЕ,
+      // ссылка остаётся прежней — без пометки сохранение их не заметит.
+      if (s) { dirtyRef.current.add(id); channelRef.current?.send({ type: "broadcast", event: "draw", payload: s }) }
     }
     if (before) pushHistory(stepFromSnapshot(before))
     scheduleSave()
