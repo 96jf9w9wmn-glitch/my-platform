@@ -590,16 +590,23 @@ function App() {
     setStudents(mapped)
     setStudentsLoaded(true)
 
-    // Якорь, которого ещё нет, проставляем сами — по поясу, о котором сообщило
-    // устройство ученика. Делается один раз на карточку и только тогда, когда
-    // известен реальный пояс: без якоря перевода нет и кабинет ведёт себя как
-    // раньше, поэтому забытая колонка (миграция timezones.sql) ничего не ломает.
-    if (user.role === "tutor") {
-      for (const s of mapped) {
-        if (s.tzStored || !s.accountTimezone) continue
-        supabase.from("students").update({ timezone: s.accountTimezone }).eq("id", s.id)
-          .then(({ error }) => { if (error) console.error("Пояс ученика не записан:", error.message) })
-      }
+    // Якорь, которого ещё нет, проставляем сами — по поясу устройства ученика.
+    // Делается один раз на карточку и только когда пояс реально известен: без
+    // якоря перевода нет и кабинет ведёт себя как раньше, поэтому забытая
+    // колонка (миграция timezones.sql) ничего не ломает.
+    //
+    // Пишет обе стороны, и это не дубль: кабинет УЧЕНИКА ставит якорь сразу,
+    // как только он вошёл (его пояс — это и есть якорь), а кабинет репетитора
+    // подхватывает пояс, о котором ученик сообщил раньше. Будь запись только у
+    // репетитора, перевод появлялся бы через два захода — сначала ученика,
+    // потом его. Кто запишет первым, того значение и останется: якорь не
+    // перезаписывается никогда.
+    const anchorWrites = user.role === "tutor"
+      ? mapped.filter((s) => !s.tzStored && s.accountTimezone).map((s) => [s.id, s.accountTimezone])
+      : myTz ? mapped.filter((s) => !s.tzStored).map((s) => [s.id, myTz]) : []
+    for (const [id, tz] of anchorWrites) {
+      supabase.from("students").update({ timezone: tz }).eq("id", id)
+        .then(({ error }) => { if (error) console.error("Пояс ученика не записан:", error.message) })
     }
   }
 
