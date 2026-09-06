@@ -149,17 +149,28 @@ function loadImg(src) {
 async function processImageFile(file, maxDim = 1400) {
   const url = URL.createObjectURL(file)
   let im
-  try { im = await loadImg(url) } finally { URL.revokeObjectURL(url) }
+  try {
+    im = await loadImg(url)
+    // Ждём именно ДЕКОДИРОВАНИЯ, а не onload: тот значит лишь «файл получен», а
+    // растр WebKit разбирает лениво, к первой отрисовке. Отпустишь blob-адрес
+    // раньше — рисовать будет уже неоткуда, и лист выходит пустым.
+    await im.decode?.()
+  } catch (err) {
+    if (!im) { URL.revokeObjectURL(url); throw err }   // не загрузилась вовсе
+  }
   const scale = Math.min(1, maxDim / Math.max(im.naturalWidth, im.naturalHeight))
   const isPng = file.type === "image/png"
   const type = isPng ? "image/png" : "image/jpeg"
   const ext = isPng ? "png" : "jpg"
-  if (scale === 1 && file.type) return { blob: file, type: file.type, ext, w: im.naturalWidth, h: im.naturalHeight, img: im }
+  // Адрес отдаём вместе с картинкой и НЕ отпускаем: пока разобранный <img> живёт в
+  // кэше доски, браузер вправе выбросить растр и перечитать его по этому адресу.
+  if (scale === 1 && file.type) return { blob: file, type: file.type, ext, w: im.naturalWidth, h: im.naturalHeight, img: im, url }
   const cw = Math.max(1, Math.round(im.naturalWidth * scale)), ch = Math.max(1, Math.round(im.naturalHeight * scale))
   const cnv = document.createElement("canvas"); cnv.width = cw; cnv.height = ch
   cnv.getContext("2d").drawImage(im, 0, 0, cw, ch)
   const blob = await new Promise((r) => cnv.toBlob(r, type, 0.85))
-  return { blob, type, ext, w: cw, h: ch, img: null }
+  URL.revokeObjectURL(url)                              // исходник больше не нужен
+  return { blob, type, ext, w: cw, h: ch, img: null, url: null }
 }
 
 // Поле ответа под листом с заданием. Ученик решает на доске и тут же проверяет себя:
@@ -177,7 +188,7 @@ function TaskAnswerBox({ panel, dark, panelBg, panelBorder, onCheck, onReset }) 
   const tone = panel.ok ? "#34c759" : "#ff3b30"
   return (
     <div className="absolute rounded-2xl shadow-lg popup-bubble"
-      style={{ left: panel.x, top: panel.y + 12, width: panel.w, transform: "translateX(-50%)",
+      style={{ left: panel.x, top: panel.y + 12, width: panel.w,
         background: panelBg, border: `1px solid ${panelBorder}`, padding: "8px 10px" }}>
       {done ? (
         <div className="flex items-center gap-2 min-w-0">
@@ -466,11 +477,32 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // и рамка выделения: их положение зависит от обзора, а не от React-стейта.
   const [qaBoxes, setQaBoxes] = useState([])
   const lastQa = useRef("")
+  // Картинки, которые сейчас едут в хранилище (экранные координаты, тот же кадр)
+  const [busyImgs, setBusyImgs] = useState([])
+  const lastBusy = useRef("")
   const [selProps, setSelProps] = useState(null) // свойства первого стилизуемого штриха {width,dash}; null — выделены только картинки
   // В выделении есть картинка → формат при масштабировании держим и рёберные ручки не показываем
   const [selHasImage, setSelHasImage] = useState(false)
   const [dragActive, setDragActive] = useState(false) // перетаскивание файла над доской
   const [taskPick, setTaskPick] = useState(false)     // открыт выбор задания из банка
+  // Банк заданий — самый тяжёлый кусок приложения: генераторы всех предметов плюс
+  // снимок листа, вместе под мегабайт сжатого кода. Пока он качается и компилируется,
+  // нажатие на «Задание из банка» выглядит как «ничего не произошло», и ждать этого
+  // посреди занятия каждый раз нельзя. Поэтому тянем его сразу, как открыли доску:
+  // до первой задачи репетитор обычно успевает что-то написать, и к нажатию кусок
+  // уже готов. Только тому, у кого эта кнопка есть, — ученику качать нечего.
+  // Ошибку глотаем: это опережающая загрузка, а не работа. Не вышло — обычный
+  // ленивый импорт по нажатию сделает то же самое.
+  useEffect(() => {
+    if (!canAddTasks) return
+    const warm = () => { import("./BoardTaskModal").catch(() => {}) }
+    // Пауза — чтобы не отнимать сеть и поток у первого кадра самой доски и загрузки сцены.
+    const t = setTimeout(() => {
+      if (window.requestIdleCallback) window.requestIdleCallback(warm, { timeout: 4000 })
+      else warm()
+    }, 1500)
+    return () => clearTimeout(t)
+  }, [canAddTasks])
   // Задание, с которым доску открыли снаружи (кнопка «Решить на доске» в
   // домашней работе). Снимок листа делается здесь же, поэтому пока он готовится,
   // доска показывает тот же загрузчик, что и при загрузке сцены.
@@ -592,6 +624,11 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   const rafId = useRef(0)
   const actions = useRef({})
   const imgCache = useRef(new Map())  // src -> HTMLImageElement (ленивая загрузка картинок)
+  // Адреса blob-ов, под которыми в кэше лежат СВОИ картинки. Отпускать их, пока
+  // картинка в кэше, нельзя: браузер вправе выбросить растр и перечитать его по
+  // этому адресу — поэтому освобождаем всё разом при закрытии доски.
+  const ownBlobs = useRef([])
+  useEffect(() => () => { ownBlobs.current.forEach((u) => URL.revokeObjectURL(u)); ownBlobs.current = [] }, [])
   const tintCache = useRef(new Map()) // src -> холст листа, перекрашенный под тёмную доску
   const fileInputRef = useRef(null)   // скрытый input для загрузки картинки кнопкой
   const loadedRef = useRef(false)     // сцена успешно загружена (иначе не сохраняем — чтобы не затереть)
@@ -891,18 +928,33 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     // Мелкий и уехавший за край лист панели не получает: в поле шириной с ноготь всё
     // равно не попасть, а панели на весь экран мешали бы рисовать.
     const qa = []
+    // Картинки, которые прямо сейчас едут в хранилище, → в стейт для плашки
+    // «Отправляется»: она стоит на самой картинке, потому что объяснять надо
+    // именно про неё, а не вообще про доску.
+    const busy = []
     for (const st of strokes.current.values()) {
+      if (st.pending) {
+        const b = strokeBBox(st)
+        const [x0, y0] = toScreen(b.minX, b.minY), [x1, y1] = toScreen(b.maxX, b.maxY)
+        if (x1 > 0 && y1 > 0 && x0 < cw && y0 < ch) {
+          busy.push({ id: st.id, x: Math.round((x0 + x1) / 2), y: Math.round((y0 + y1) / 2) })
+        }
+      }
       if (!st.qa) continue
       const b = strokeBBox(st)
       const [x0, y0] = toScreen(b.minX, b.minY), [x1, y1] = toScreen(b.maxX, b.maxY)
       const sw = x1 - x0
       if (sw < 130 || x1 < 0 || y1 < 0 || x0 > cw || y0 > ch) continue
-      qa.push({ id: st.id, x: Math.round((x0 + x1) / 2), y: Math.round(y1),
+      // x — ЛЕВЫЙ край листа: поле ответа стоит под условием по одной с ним линии,
+      // как строка «Ответ:» на бланке. По центру оно уезжало от начала условия.
+      qa.push({ id: st.id, x: Math.round(x0), y: Math.round(y1),
         w: Math.round(Math.min(Math.max(sw, 240), 420)),
         a: st.qa.a, v: st.qa.v || "", ok: st.qa.ok ?? null })
     }
     const qaKey = JSON.stringify(qa)
     if (qaKey !== lastQa.current) { lastQa.current = qaKey; setQaBoxes(qa) }
+    const busyKey = JSON.stringify(busy)
+    if (busyKey !== lastBusy.current) { lastBusy.current = busyKey; setBusyImgs(busy) }
     const drawDashRect = (bb, color, dash) => {
       const [x0, y0] = toScreen(bb.minX, bb.minY), [x1, y1] = toScreen(bb.maxX, bb.maxY)
       ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.setLineDash(dash)
@@ -1437,8 +1489,12 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     savedRef.current = new Map(list.map((s) => [s.id, { s, json: null }]))
   }
   // Запасной путь: миграции board_delta.sql нет — пишем сцену целиком, как раньше.
+  // Картинка, которая ещё едет в хранилище (pending), лежит под временным
+  // blob-адресом: за пределами этой вкладки он не значит ничего, поэтому в базу
+  // такой штрих не пишем. Он сохранится сам, когда получит постоянный адрес
+  // (см. addImageAt) — то же самое и в persist, и в снимке занятия.
   const fullSave = useCallback(() => {
-    const list = Array.from(strokes.current.values())
+    const list = Array.from(strokes.current.values()).filter((s) => !s.pending)
     const scene = { strokes: list, bg: bgRef.current, bgColor: bgColorRef.current }
     return supabase.from("boards")
       .upsert({ student_id: String(roomId), scene, updated_by: userId, updated_at: new Date().toISOString() })
@@ -1457,6 +1513,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     // сравнением ссылок, правка на месте (цвет, ширина, перенос) — пометкой dirty.
     const up = [], pend = new Map()
     for (const [id, st] of strokes.current) {
+      if (st.pending) continue      // ещё не в хранилище — см. fullSave выше
       const rec = saved.get(id)
       if (rec && rec.s === st && !dirty.has(id)) continue
       const json = JSON.stringify(st)
@@ -1515,7 +1572,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // повторное закрытие доски за то же занятие обновляет её, а не плодит строки.
   async function archiveSnapshot() {
     if (!loadedRef.current) return            // сцену не загрузили — архивировать нечего
-    const list = Array.from(strokes.current.values())
+    const list = Array.from(strokes.current.values()).filter((s) => !s.pending)
     if (!list.length) return                  // пустая доска в историю занятий не попадает
     const scene = { strokes: list, bg: bgRef.current, bgColor: bgColorRef.current }
     // Превью рисуем по ПОДПИСАННОЙ копии сцены: картинки доски лежат в приватном
@@ -1957,7 +2014,9 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       const s = strokes.current.get(id)
       // Правки выделения (цвет, ширина, перенос, поворот) меняют штрих НА МЕСТЕ,
       // ссылка остаётся прежней — без пометки сохранение их не заметит.
-      if (s) { dirtyRef.current.add(id); channelRef.current?.send({ type: "broadcast", event: "draw", payload: s }) }
+      // Картинку, ещё едущую в хранилище, собеседнику не шлём: у него нет её
+      // временного адреса. Он получит её целиком, когда загрузка кончится.
+      if (s) { dirtyRef.current.add(id); if (!s.pending) channelRef.current?.send({ type: "broadcast", event: "draw", payload: s }) }
     }
     if (before) pushHistory(stepFromSnapshot(before))
     scheduleSave()
@@ -2098,11 +2157,47 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // не кладёт второй, когда ученик открывает то же задание снова.
   // answer — правильный ответ задания: с ним под листом появляется поле для ответа
   // с проверкой (см. TaskAnswerBox).
-  async function addImageAt(file, worldX, worldY, { fitWidth = null, maxSide = 360, sheet = false, topLeft = false, taskKey = null, answer = null } = {}) {
+  // onPlaced — картинка уже на доске (адреса в хранилище ещё нет). Ею гасится
+  // ожидание у листа с заданием: держать поверх доски лоадер, пока лист на ней
+  // уже лежит, значит показывать занятость на пустом месте.
+  //
+  // Картинка ложится на доску СРАЗУ, а в хранилище едет фоном. Снимок экрана
+  // весит мегабайты, и раньше всё это время на доске не было ничего: ни
+  // картинки, ни признака, что идёт загрузка, — вставка выглядела как «нажал и
+  // ничего не произошло». Пока адрес хранилища не получен, штрих помечен
+  // pending: он виден, его можно двигать и стирать, но собеседнику он не
+  // уходит и в базу не сохраняется — blob-адрес за пределами этой вкладки не
+  // значит ничего. Что загрузка идёт, видно по плашке над самой картинкой.
+  async function addImageAt(file, worldX, worldY, { fitWidth = null, maxSide = 360, sheet = false, topLeft = false, taskKey = null, answer = null, onPlaced = null } = {}) {
     if (!file || !file.type?.startsWith("image/")) return null
     let info
     try { info = await processImageFile(file, sheet ? SHEET_MAX_DIM : 1400) } catch { return null }
     const id = makeId(userId)
+    const localSrc = URL.createObjectURL(info.blob)
+    const k = fitWidth ? fitWidth / info.w : Math.min(1, maxSide / Math.max(info.w, info.h))
+    const ww = info.w * k, hh = info.h * k
+    const x0 = topLeft ? worldX : worldX - ww / 2, y0 = topLeft ? worldY : worldY - hh / 2
+    const s = { id, author: userId, tool: "image", src: localSrc, pending: 1, points: [[x0, y0], [x0 + ww, y0 + hh]] }
+    if (sheet) s.sheet = 1   // лист с заданием: рисуется в цветах доски, а не как фото
+    if (taskKey) s.task = taskKey
+    // Правильный ответ едет вместе с листом: поле ответа под ним должно уметь и
+    // проверить, и показать ответ, а доска общая — значит, знать его должны оба.
+    if (answer) s.qa = { a: answer }
+    // Своя картинка уже разобрана в памяти — кладём её в кэш, чтобы лист появился
+    // мгновенно: иначе доска пошла бы читать заново то, что уже держит в руках.
+    if (info.img) imgCache.current.set(localSrc, info.img)
+    if (info.url) ownBlobs.current.push(info.url)
+    getImage(localSrc) // начать загрузку/кэшировать для мгновенной отрисовки
+    strokes.current.set(id, s)
+    // Шаг истории кладём сразу — «отменить» должно убирать картинку, не дожидаясь
+    // хранилища; когда адрес придёт, он проставится и в этот шаг (иначе «вернуть»
+    // восстановило бы картинку с временным адресом).
+    const step = { id, before: null, after: cloneStroke(s) }
+    pushHistory([step])
+    setTool("cursor"); selection.current = new Set([id]); setSelCount(1)
+    scheduleDraw()
+    onPlaced?.(s)
+
     let src = null
     try {
       const path = `board/${roomId}/${id}.${info.ext}`
@@ -2112,26 +2207,30 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     // Загрузка не удалась — картинка едет внутри самой сцены. Это дорого (сцена
     // раздувается), поэтому base64 считаем только здесь, а не на каждой вставке.
     if (!src) src = await readFileAsDataURL(info.blob)
-    const k = fitWidth ? fitWidth / info.w : Math.min(1, maxSide / Math.max(info.w, info.h))
-    const ww = info.w * k, hh = info.h * k
-    const x0 = topLeft ? worldX : worldX - ww / 2, y0 = topLeft ? worldY : worldY - hh / 2
-    const s = { id, author: userId, tool: "image", src, points: [[x0, y0], [x0 + ww, y0 + hh]] }
-    if (sheet) s.sheet = 1   // лист с заданием: рисуется в цветах доски, а не как фото
-    if (taskKey) s.task = taskKey
-    // Правильный ответ едет вместе с листом: поле ответа под ним должно уметь и
-    // проверить, и показать ответ, а доска общая — значит, знать его должны оба.
-    if (answer) s.qa = { a: answer }
-    // Своя картинка уже разобрана в памяти — кладём её в кэш под итоговым адресом,
-    // чтобы лист появился мгновенно: иначе доска пошла бы подписывать адрес и качать
-    // из хранилища то, что сама только что туда отправила.
-    if (info.img && !imgCache.current.has(src)) imgCache.current.set(src, info.img)
-    getImage(src) // начать загрузку/кэшировать для мгновенной отрисовки
-    strokes.current.set(id, s)
-    channelRef.current?.send({ type: "broadcast", event: "draw", payload: s })
-    pushHistory([{ id, before: null, after: cloneStroke(s) }])
-    setTool("cursor"); selection.current = new Set([id]); setSelCount(1)
-    scheduleDraw(); scheduleSave()
-    return s
+    // Разобранную картинку переносим под постоянный адрес: качать из хранилища
+    // то, что сами только что туда отправили, незачем. Временный адрес после
+    // этого освобождаем — но только когда картинка по нему дочитана, иначе
+    // отзыв оборвал бы саму загрузку.
+    const img = imgCache.current.get(localSrc)
+    if (img && !imgCache.current.has(src)) imgCache.current.set(src, img)
+    imgCache.current.delete(localSrc)
+    // Отпускаем временный адрес, только когда растр ДОЧИТАН: complete значит лишь
+    // «файл получен», а разбирает его WebKit лениво, к первой отрисовке — отзыв до
+    // этого оставляет на доске пустое место вместо картинки.
+    const free = () => URL.revokeObjectURL(localSrc)
+    if (!img) free()
+    else Promise.resolve(img.decode?.()).then(free, free)
+    step.after.src = src; delete step.after.pending
+    const cur = strokes.current.get(id)
+    if (!cur) return null   // картинку успели стереть или отменить — рассылать нечего
+    cur.src = src; delete cur.pending
+    dirtyRef.current.add(id)   // правка НА МЕСТЕ: без пометки дельта её не заметит
+    channelRef.current?.send({ type: "broadcast", event: "draw", payload: cur })
+    scheduleDraw()
+    // Сохраняем сразу, а не общим отложенным таймером: доску могли закрыть, пока
+    // картинка ехала, — тот таймер при уходе гасится, и она пропала бы.
+    persistRef.current?.()
+    return cur
   }
 
   function onDragOver(e) {
@@ -2237,9 +2336,15 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       const bb = sceneBBox([...strokes.current.values()])
       const x = bb ? bb.minX : -SHEET_WIDTH / 2
       const y = bb ? bb.maxY + SHEET_GAP : -SHEET_GAP
-      const st = await addImageAt(file, x, y, { fitWidth: SHEET_WIDTH, sheet: true, topLeft: true, taskKey: req.key })
-      if (st) focusSheet(strokeBBox(st))
-      else setSheetErr(true)
+      // Лоадер гасим и ведём обзор к листу, как только он лёг на доску: ждать
+      // конца загрузки в хранилище незачем — лист уже виден, и на нём стоит
+      // своя плашка «Отправляется».
+      let placed = false
+      await addImageAt(file, x, y, {
+        fitWidth: SHEET_WIDTH, sheet: true, topLeft: true, taskKey: req.key,
+        onPlaced: (st) => { placed = true; setSheetBusy(false); focusSheet(strokeBBox(st)) },
+      })
+      if (!placed) setSheetErr(true)
     } catch {
       // Молчать нельзя: ученик остался бы на пустой доске, не понимая, куда делось
       // задание, — а условие у него на соседней вкладке кабинета.
@@ -2266,11 +2371,15 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     const next = new Set()
     for (const id of selection.current) {
       const s = strokes.current.get(id); if (!s) continue
+      // Картинку, ещё едущую в хранилище, дублировать нечем: у копии остался бы
+      // временный адрес, который никогда не заменится постоянным.
+      if (s.pending) continue
       const ns = { ...s, id: makeId(userId), author: userId, points: s.points.map((p) => [p[0] + 16, p[1] + 16, ...p.slice(2)]) }
       strokes.current.set(ns.id, ns)
       channelRef.current?.send({ type: "broadcast", event: "draw", payload: ns })
       next.add(ns.id)
     }
+    if (!next.size) return                    // дублировать было нечего
     selection.current = next; applySelCount(next.size)
     pushHistory([...next].map((nid) => ({ id: nid, before: null, after: cloneStroke(strokes.current.get(nid)) })))
     scheduleDraw(); scheduleSave()
@@ -3128,6 +3237,21 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
             </span>
           </div>
         )}
+
+        {/* Картинка уже на доске, но ещё едет в хранилище. Плашка нужна, потому
+            что до конца загрузки собеседник её не видит и она не сохранена. */}
+        {busyImgs.map((b) => (
+          // Сдвиг «на половину себя» — на ОБЁРТКЕ: у появления попапа свои кадры
+          // с transform, и на одном элементе они затирали бы центровку.
+          <div key={b.id} className="absolute pointer-events-none"
+            style={{ left: b.x, top: b.y, transform: "translate(-50%, -50%)" }}>
+            <div className="popup-bubble flex items-center gap-2 px-2.5 h-8 rounded-full text-xs font-medium shadow-lg"
+              style={{ background: panelBg, border: `1px solid ${panelBorder}`, color: dark ? "#e5e5ea" : "#374151" }}>
+              Отправляется
+              <span className="loader-dots text-blue-500"><i /><i /><i /></span>
+            </div>
+          </div>
+        ))}
 
         {/* Поля ответа под листами с заданием */}
         {qaBoxes.map((b) => (
