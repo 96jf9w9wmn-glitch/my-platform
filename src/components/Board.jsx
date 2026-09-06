@@ -14,11 +14,14 @@ import {
 // Выбор задания тянет за собой генераторы всех предметов и html2canvas — грузим
 // только когда репетитор открыл выбор, иначе доска стала бы тяжелее на мегабайты.
 const BoardTaskModal = lazy(() => import("./BoardTaskModal"))
+import { roomStudentId, isHomeworkRoom } from "../boardRoom"
 
 // Совместная доска платформы (свой движок на HTML5 Canvas, без внешних библиотек).
 // БЕСКОНЕЧНЫЙ холст на весь экран: штрихи хранятся в МИРОВЫХ координатах, у каждого
 // клиента свой обзор (view = смещение + масштаб) — можно зумить и двигать полотно
-// независимо, при этом рисунок общий. Одна комната = один ученик (roomId = student.id).
+// независимо, при этом рисунок общий. Комната — это либо занятие ученика (roomId =
+// student.id), либо отдельная домашняя работа (student.id:hw:<id>): доски разных
+// работ не пересекаются, см. src/boardRoom.js.
 // Синхронизация через Supabase Realtime broadcast; снапшот сцены — в таблицу boards.
 
 // Толщина маркера задаётся ползунком: три готовые ступени не покрывали ни
@@ -388,7 +391,7 @@ function BoardStrip({ open, children }) {
   )
 }
 
-export default function Board({ roomId, userId, userName, theme = "light", onClose, account = null, token = null, canAddTasks = false, tutorSubject = null, tutorExamFocus = null, tutorSubjects = null, tutorOwner = false, taskSheet = null }) {
+export default function Board({ roomId, label = "", userId, userName, theme = "light", onClose, account = null, token = null, canAddTasks = false, tutorSubject = null, tutorExamFocus = null, tutorSubjects = null, tutorOwner = false, taskSheet = null }) {
   // Доска занимает весь экран, поэтому её уход тоже должен быть плавным:
   // класс .is-closing держится, пока идёт затухание, и лишь потом зовётся onClose.
   const { cls: closingCls, close: leave } = useClosing(onClose, BOARD_CLOSE_MS)
@@ -510,6 +513,11 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // доска показывает тот же загрузчик, что и при загрузке сцены.
   const [sheetBusy, setSheetBusy] = useState(false)
   const [sheetErr, setSheetErr] = useState(false)
+  // База отказала в записи (42501): доска сохраняться не будет, и молчать об этом
+  // нельзя — написанное пропадёт при перезагрузке, а человек об этом не узнает.
+  // Единственная причина такого отказа — не выполненная миграция board_rooms.sql
+  // (составной адрес доски домашней работы не проходит политику).
+  const [saveDenied, setSaveDenied] = useState(false)
   const sheetDone = useRef(null)                      // ключ задания, которое уже разобрали
   const [confirmClear, setConfirmClear] = useState(false) // спрашиваем перед очисткой доски
   // SmartDraw: набросок пером превращается в ровную фигуру (см. boardSmartDraw.js)
@@ -1507,7 +1515,10 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
     return supabase.from("boards")
       .upsert({ student_id: String(roomId), scene, updated_by: userId, updated_at: new Date().toISOString() })
       .then(({ error }) => {
-        if (error) throw error
+        if (error) {
+          if (error.code === "42501") setSaveDenied(true)
+          throw error
+        }
         rememberSaved(list)
         savedMeta.current = { bg: scene.bg, bgColor: scene.bgColor }
       })
@@ -1564,6 +1575,7 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         return
       }
       if (error) console.error("board save", error)
+      if (error?.code === "42501") setSaveDenied(true)
       done(!error)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1580,6 +1592,9 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
   // повторное закрытие доски за то же занятие обновляет её, а не плодит строки.
   async function archiveSnapshot() {
     if (!loadedRef.current) return            // сцену не загрузили — архивировать нечего
+    // Доска домашней работы в летопись занятий не идёт: она не про урок, живёт
+    // столько же, сколько сама работа, и открывается из неё же.
+    if (isHomeworkRoom(roomId)) return
     const list = Array.from(strokes.current.values()).filter((s) => !s.pending)
     if (!list.length) return                  // пустая доска в историю занятий не попадает
     const scene = { strokes: list, bg: bgRef.current, bgColor: bgColorRef.current }
@@ -2210,7 +2225,9 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
 
     let src = null
     try {
-      const path = `board/${roomId}/${id}.${info.ext}`
+      // Папка — КАРТОЧКА ученика, а не адрес доски: политики storage разбирают
+      // путь по папкам и составного адреса доски домашней работы не знают.
+      const path = `board/${roomStudentId(roomId)}/${id}.${info.ext}`
       const { error } = await supabase.storage.from(IMG_BUCKET).upload(path, info.blob, { upsert: true, contentType: info.type })
       if (!error) src = supabase.storage.from(IMG_BUCKET).getPublicUrl(path).data.publicUrl
     } catch { /* остаётся data URL как запасной вариант */ }
@@ -3124,8 +3141,15 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
       <div className="flex items-center justify-between px-3 h-12 border-b flex-shrink-0"
         style={{ borderColor: dark ? "rgba(255,255,255,.1)" : "rgba(0,0,0,.08)" }}>
         <div className="flex items-center gap-3 min-w-0">
-          <div className="flex items-center gap-2 text-sm font-medium" style={{ color: dark ? "#e5e5ea" : "#374151" }}>
-            <Icon name="clipboard" size={16} /> Доска
+          <div className="flex items-center gap-2 text-sm font-medium min-w-0" style={{ color: dark ? "#e5e5ea" : "#374151" }}>
+            <Icon name="clipboard" size={16} className="shrink-0" />
+            <span className="shrink-0">Доска</span>
+            {/* Чья это доска: у домашней работы она своя, и без подписи их не
+                отличить одну от другой. */}
+            {label && (
+              <span className="hidden sm:block truncate max-w-[16rem] text-xs font-normal"
+                style={{ color: dark ? "#8e8e93" : "#9ca3af" }}>· {label}</span>
+            )}
           </div>
           {/* Фон доски — в верхней панели: это настройка листа, а не инструмент рисования */}
           <div className="relative" data-menu>
@@ -3505,9 +3529,15 @@ export default function Board({ roomId, userId, userName, theme = "light", onClo
         {(!loaded || sheetBusy) && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><div className="loader-logo" /></div>
         )}
+        {saveDenied && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl text-xs shadow-lg"
+            style={{ background: panelBg, border: "1px solid rgba(239,68,68,.45)", color: dark ? "#f5f5f7" : "#1c1c1e" }}>
+            Эта доска не сохраняется — написанное пропадёт при перезагрузке
+          </div>
+        )}
         {sheetErr && (
           <button onClick={() => setSheetErr(false)}
-            className="press-tap absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl text-xs shadow-lg"
+            className={`press-tap absolute ${saveDenied ? "top-16" : "top-4"} left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl text-xs shadow-lg`}
             style={{ background: panelBg, border: `1px solid ${panelBorder}`, color: dark ? "#f5f5f7" : "#1c1c1e" }}>
             Задание не перенеслось на доску — условие осталось в кабинете
           </button>

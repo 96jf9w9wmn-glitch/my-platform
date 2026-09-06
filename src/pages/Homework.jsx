@@ -13,6 +13,7 @@ import AutoHeight from "../components/AutoHeight"
 import FormulaBackdrop from "../components/FormulaBackdrop"
 import { parseLocalDate, renderHomeworkMath, plainTaskMath, superscriptPowers, parseHomeworkTasks, homeworkTaskItems, homeworkTestScore, plural, hasAttachment, getInitials, answersEqual } from "../utils"
 import { usePlan } from "../subscription"
+import { homeworkRoom } from "../boardRoom"
 import { PlanHint, PlanLock } from "../components/PlanLock"
 import ConfirmModal from "../components/ConfirmModal"
 import { isOwner } from "../owner"
@@ -1772,7 +1773,7 @@ function DetailBlock({ children, className = "" }) {
 
 // Разбор выбранного задания — целой строкой под рядом карточек, как разбор
 // варианта: слева условия, справа работа ученика и проверка.
-export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, onEdit, onDelete, onClose, cls }) {
+export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, onEdit, onDelete, onOpenBoard, onClose, cls }) {
   const [grading, setGrading] = useState(false)
   const [revising, setRevising] = useState(false)
   const [showTasks, setShowTasks] = useState(false)
@@ -2014,6 +2015,17 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
         <div className="flex items-center gap-2 min-w-0">
           <span className="font-medium text-base truncate">{hw.title}</span>
           <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${status.cls}`}>{status.label}</span>
+          {/* Доска ЭТОЙ работы: ученик решает на ней («Решить на доске»), и
+              репетитор подключается к той же — у каждой работы она своя, доска
+              занятия остаётся отдельной. */}
+          {onOpenBoard && (
+            <button
+              onClick={() => onOpenBoard(hw)}
+              className="press-fill text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ring-1 ring-blue-500/30 text-blue-600 dark:text-blue-300 inline-flex items-center gap-1"
+            >
+              <Icon name="clipboard" size={11} /> Доска
+            </button>
+          )}
           {/* Возврат стоит прямо у статуса «Выполнено» — это ответ на него, а
               не отдельный раздел проверки. Без этой кнопки у работы с
               автопроверкой возврата не было ВОВСЕ: кабинет ученика при сдаче
@@ -2338,7 +2350,8 @@ export function StudentHomeworkGroup({ studentName, items, selectedId, cols, det
   )
 }
 
-function Homework({ user, students }) {
+function Homework({ user, students, onOpenBoard }) {
+  const { allows, openPlans } = usePlan()
   const [homework, setHomework] = useState([])
   const [showModal, setShowModal] = useState(false)
   const [filter, setFilter] = useState("all")
@@ -2421,6 +2434,14 @@ function Homework({ user, students }) {
     else { cancelDetailClose(); setSelectedId(hw.id) }
   }
 
+  // Доска домашней работы: адрес составной (карточка ученика + работа), поэтому
+  // задания разных работ не ложатся друг на друга и на разбор занятия.
+  function openHwBoard(hw) {
+    if (!hw.student_id) return
+    if (!allows("board")) { openPlans(); return }
+    onOpenBoard(homeworkRoom(hw.student_id, hw.id), hw.title)
+  }
+
   async function handleDelete() {
     const hw = confirmDelete
     setConfirmDelete(null)
@@ -2443,6 +2464,7 @@ function Homework({ user, students }) {
           onUpdate={loadHomework}
           onEdit={setEditingHw}
           onDelete={setConfirmDelete}
+          onOpenBoard={onOpenBoard && selectedHw.student_id ? openHwBoard : null}
           onClose={closeDetail}
           cls={detailCls}
         />

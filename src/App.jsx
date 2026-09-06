@@ -1103,6 +1103,8 @@ function App() {
         <PageBoundary fallback={<div className="fixed inset-0 z-[100000] bg-white dark:bg-[#1c1c1e] flex items-center justify-center"><div className="loader-logo" /></div>}>
           <Board
             roomId={board.roomId}
+            /* Чья это доска: у домашней работы своя, и без подписи их не различить */
+            label={board.title}
             userId={`t:${user.id}`}
             userName={user.profile?.name || user.email}
             theme={document.documentElement.classList.contains("dark") ? "dark" : "light"}
@@ -1171,7 +1173,7 @@ function App() {
           <PageSlot active={activePage === "payment"} className={activePage !== "payment" ? "hidden" : "page-active"}>{visitedPages.has("payment") && <PageBoundary><PaymentPage students={students} setStudents={handleSetStudents} tutorId={user.id} setActivePage={navigateTo} /></PageBoundary>}</PageSlot>
           <PageSlot active={activePage === "variants"} className={activePage !== "variants" ? "hidden" : "page-active"}>{visitedPages.has("variants") && <PageBoundary><VariantsPage user={user} students={students} /></PageBoundary>}</PageSlot>
           <PageSlot active={activePage === "schedule"} className={activePage !== "schedule" ? "hidden" : "page-active"}>{visitedPages.has("schedule") && <PageBoundary><SchedulePage students={students} setStudents={handleSetStudents} onOpenBoard={openBoard} /></PageBoundary>}</PageSlot>
-          <PageSlot active={activePage === "homework"} className={activePage !== "homework" ? "hidden" : "page-active"}>{visitedPages.has("homework") && <PageBoundary><HomeworkPage user={user} students={students} /></PageBoundary>}</PageSlot>
+          <PageSlot active={activePage === "homework"} className={activePage !== "homework" ? "hidden" : "page-active"}>{visitedPages.has("homework") && <PageBoundary><HomeworkPage user={user} students={students} onOpenBoard={openBoard} /></PageBoundary>}</PageSlot>
           <PageSlot active={activePage === "results"} className={activePage !== "results" ? "hidden" : "page-active"}>{visitedPages.has("results") && <PageBoundary><ResultsPage students={students} loaded={studentsReady} user={user} /></PageBoundary>}</PageSlot>
           <PageSlot active={activePage === "taskgen"} className={activePage !== "taskgen" ? "hidden" : "page-active"}>{pageAllowed("taskgen") && visitedPages.has("taskgen") && <PageBoundary><TaskGenPage /></PageBoundary>}</PageSlot>
           <PageSlot active={activePage === "profile"} className={activePage !== "profile" ? "hidden" : "page-active"}>{visitedPages.has("profile") && (

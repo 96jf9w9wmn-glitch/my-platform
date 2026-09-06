@@ -20,9 +20,17 @@ import InvoiceCard from "../components/InvoiceCard"
 import { MarketingToggle } from "../components/ConsentChecks"
 
 const Board = lazy(() => import("../components/Board"))
+
+// Какая доска стоит в адресе: ?board=hw:<id> — доска домашней работы, ?board=1 —
+// доска занятия. Разбирается в двух местах (первый рендер и «назад»), поэтому общая.
+function boardHwFromUrl() {
+  const v = new URLSearchParams(window.location.search).get("board")
+  return v && v.startsWith("hw:") ? v.slice(3) : null
+}
 import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, parseHomeworkTasks, creditedNums, formatPhone, answersEqual, homeworkTestScore, plural, timeUntilLesson } from "../utils"
 import { studentBilling, periodLabel } from "../billing"
 import { longDate } from "../invoices"
+import { homeworkRoom } from "../boardRoom"
 import TaskAttachments from "../components/TaskAttachments"
 import DateTile from "../components/DateTile"
 import { TILE_TINTS, dueTintKey } from "../dueTint"
@@ -1175,7 +1183,7 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten, o
     const task = bank && (bank.condition_text || bank.image_url || bank.program)
       ? { ...bank, number: num }
       : { number: num, condition_text: t?.text || "" }
-    return { key: `hw:${hw.id}:${num}`, task, label: hw.title }
+    return { key: `hw:${hw.id}:${num}`, task, label: hw.title, hwId: hw.id }
   }
   // Строк при решении столько же, сколько заданий: у работы бывает больше
   // условий, чем ответов (репетитор вписал ответы не ко всем), и такое задание
@@ -1981,29 +1989,41 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   // перезагрузка страницы не должна её закрывать, а «назад» — закрывает именно её,
   // а не выкидывает из кабинета.
   const [boardOpen, setBoardOpen] = useState(() => new URLSearchParams(window.location.search).has("board"))
+  // Какая именно доска открыта: null — доска занятия, иначе id домашней работы.
+  // У каждой работы своя доска, иначе задания понедельника и среды ложились бы
+  // на разбор урока одной кучей (см. src/boardRoom.js). В адресе это ?board=hw:<id>,
+  // поэтому перезагрузка возвращает ту же доску, а не общую.
+  const [boardHw, setBoardHw] = useState(() => boardHwFromUrl())
   // Задание, с которым доску открыли из домашней работы («Решить на доске»).
   // В адрес не пишется: лист уже лежит на доске и после перезагрузки никуда не
   // денется, а переносить его второй раз незачем.
   const [boardTask, setBoardTask] = useState(null)
-  const openBoard = () => {
+  const openBoardRoom = (hwId) => {
+    const value = hwId ? `hw:${hwId}` : "1"
+    setBoardHw(hwId ? String(hwId) : null)
     setBoardOpen(true)
     const url = new URL(window.location.href)
-    url.searchParams.set("board", "1")
-    window.history.pushState({ board: "1" }, "", url)
+    url.searchParams.set("board", value)
+    window.history.pushState({ board: value }, "", url)
   }
-  // Доска с конкретным заданием: та же доска ученика, только задание кладётся на
+  const openBoard = () => openBoardRoom(null)
+  // Доска с конкретным заданием: доска ЭТОЙ домашней работы, задание кладётся на
   // неё листом. Открывается поверх работы, поэтому вписанные ответы не теряются.
-  const openBoardWithTask = (task) => { setBoardTask(task); openBoard() }
+  const openBoardWithTask = (req) => { setBoardTask(req); openBoardRoom(req.hwId) }
   const closeBoard = () => {
     setBoardOpen(false)
     setBoardTask(null)
+    setBoardHw(null)
     const url = new URL(window.location.href)
     if (!url.searchParams.has("board")) return
     url.searchParams.delete("board")
     window.history.replaceState({}, "", url)
   }
   useEffect(() => {
-    const onPop = () => setBoardOpen(new URLSearchParams(window.location.search).has("board"))
+    const onPop = () => {
+      setBoardOpen(new URLSearchParams(window.location.search).has("board"))
+      setBoardHw(boardHwFromUrl())
+    }
     window.addEventListener("popstate", onPop)
     return () => window.removeEventListener("popstate", onPop)
   }, [])
@@ -2796,7 +2816,8 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
         {boardOpen && student?.id && (
           <Suspense fallback={<div className="fixed inset-0 z-[100000] bg-white dark:bg-[#1c1c1e] flex items-center justify-center"><div className="loader-logo" /></div>}>
             <Board
-              roomId={student.id}
+              roomId={boardHw ? homeworkRoom(student.id, boardHw) : student.id}
+              label={boardHw ? (homework.find((h) => String(h.id) === boardHw)?.title || "Домашняя работа") : ""}
               userId={`s:${user.id}`}
               userName={user.profile?.name || "Ученик"}
               theme={dark ? "dark" : "light"}
