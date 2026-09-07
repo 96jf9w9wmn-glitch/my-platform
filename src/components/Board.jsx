@@ -35,6 +35,14 @@ const HISTORY_MAX = 100      // шагов «отменить» держим с�
 const cloneStroke = (s) => s && { ...s, points: s.points.map((p) => p.slice()) }
 const SHEET_MAX_DIM = 4000   // лист с заданием: длинные условия не должны терять чёткость
 const SHEET_GAP = 140        // отступ от написанного до нового листа с заданием, мировые px
+// Поле ответа под листом набрано в тех же единицах, в каких снят сам лист (SHEET_W и
+// кегль условия в pages/taskSnapshot.js), и потом целиком масштабируется вместе с ним —
+// поэтому у задания и поля один масштаб. Держать эту ширину в согласии с taskSnapshot.
+const QA_SHEET_W = 620       // ширина листа в его собственных единицах
+const QA_GAP = 14            // отступ поля от нижнего края листа, там же
+// Лист меньше этого на экране — поля не показываем: набрать в него всё равно нельзя,
+// а условие на такой доске читают глазами, а не решают.
+const QA_MIN_ON_SCREEN = 300
 // Затухание доски и стало общей «походкой» ухода для всего сайта: значение
 // живёт в CLOSE_MS (useClosing.js) и в --leave-ms (index.css), здесь только имя
 // для читаемости. Хук снимает доску, когда затухание кончилось.
@@ -189,8 +197,14 @@ async function processImageFile(file, maxDim = 1400) {
 // Ответ сверяется тем же answersEqual, что и домашние работы с вариантами, — «0,5»
 // и «1/2» не должны расходиться с кабинетом.
 //
-// Панель живёт в DOM, а не на холсте: в неё вводят текст. Размер у неё ЭКРАННЫЙ и от
-// масштаба доски не зависит — на отдалённом обзоре поле осталось бы нечитаемым.
+// Панель живёт в DOM, а не на холсте: в неё вводят текст. Но растёт и уменьшается она
+// ВМЕСТЕ С ЛИСТОМ: вёрстка набрана в тех же единицах, что и сам лист (ширина
+// QA_SHEET_W, кегль от кегля условия), а на экран её кладёт одно преобразование
+// scale(panel.k), где k — во сколько раз лист сейчас показан. Экранный размер,
+// стоявший тут раньше, читался как чужая наклейка: на увеличенном листе поле
+// оказывалось втрое мельче условия, на отдалённом — накрывало его целиком.
+// Масштаб на ОБЁРТКЕ, а не на самой панели: у появления попапа свои кадры с
+// transform, и на одном элементе они затёрли бы друг друга.
 function TaskAnswerBox({ panel, dark, panelBg, panelBorder, tutor = false, onCheck, onReset }) {
   const [val, setVal] = useState("")
   const [shown, setShown] = useState(false)   // репетитор раскрыл правильный ответ
@@ -198,79 +212,85 @@ function TaskAnswerBox({ panel, dark, panelBg, panelBorder, tutor = false, onChe
   const ink = dark ? "#e5e5ea" : "#1f2937"
   const meta = dark ? "#a1a1aa" : "#6b7280"
   const tone = panel.ok ? "#34c759" : "#ff3b30"
-  const box = {
-    left: panel.x, top: panel.y + 12, width: panel.w,
-    background: panelBg, border: `1px solid ${panelBorder}`, padding: "8px 10px",
+  // Отступ от листа — тоже в единицах листа, иначе на зуме он «отклеивался»
+  const frame = {
+    left: panel.x, top: panel.y + QA_GAP * panel.k, width: QA_SHEET_W,
+    transform: `scale(${panel.k})`, transformOrigin: "top left",
   }
+  const box = { background: panelBg, border: `1px solid ${panelBorder}`, padding: "12px 16px" }
 
   // Репетитор: что с заданием у ученика + ответ по кнопке. Поля ввода тут нет —
   // проверяет себя ученик, а репетитору нужен сам ответ.
   if (tutor) {
     return (
-      <div className="absolute rounded-2xl shadow-lg popup-bubble" style={box}>
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
-            style={{ background: done ? `${tone}22` : "rgba(0,122,255,.10)", color: done ? tone : "#007AFF" }}>
-            <Icon name={done ? (panel.ok ? "check" : "x") : "clock"} size={14} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="text-[13px] font-medium leading-tight" style={{ color: done ? tone : ink }}>
-              {done ? (panel.ok ? "Ученик ответил верно" : "Ученик ответил неверно") : "Ученик ещё не ответил"}
+      <div className="absolute" style={frame}>
+        <div className="rounded-2xl shadow-lg popup-bubble" style={box}>
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ background: done ? `${tone}22` : "rgba(0,122,255,.10)", color: done ? tone : "#007AFF" }}>
+              <Icon name={done ? (panel.ok ? "check" : "x") : "clock"} size={18} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-[17px] font-medium leading-tight" style={{ color: done ? tone : ink }}>
+                {done ? (panel.ok ? "Ученик ответил верно" : "Ученик ответил неверно") : "Ученик ещё не ответил"}
+              </div>
+              <div className="text-[15px] leading-tight truncate mt-0.5" style={{ color: meta }}>
+                {done ? `Его ответ: ${panel.v}` : "Ответ видите только вы"}
+              </div>
             </div>
-            <div className="text-[12px] leading-tight truncate" style={{ color: meta }}>
-              {done ? `Его ответ: ${panel.v}` : "Ответ видите только вы"}
-            </div>
+            <button onClick={() => setShown((v) => !v)}
+              className="press-tap flex-shrink-0 px-3 py-1.5 rounded-xl text-[15px] text-blue-500 hover:bg-blue-500/[0.08]">
+              {shown ? "Скрыть" : "Ответ"}
+            </button>
           </div>
-          <button onClick={() => setShown((v) => !v)}
-            className="press-tap flex-shrink-0 px-2 py-1 rounded-lg text-xs text-blue-500 hover:bg-blue-500/[0.08]">
-            {shown ? "Скрыть" : "Ответ"}
-          </button>
+          {/* Ответ убирается тем же плавным движением, что и появляется */}
+          <Reveal value={shown}>{() => (
+            <div className="mt-2 pt-2 text-[17px] font-mono break-words"
+              style={{ color: ink, borderTop: `1px solid ${panelBorder}` }}>
+              {panel.a ?? "—"}
+            </div>
+          )}</Reveal>
         </div>
-        {/* Ответ убирается тем же плавным движением, что и появляется */}
-        <Reveal value={shown}>{() => (
-          <div className="mt-1.5 pt-1.5 text-[13px] font-mono break-words"
-            style={{ color: ink, borderTop: `1px solid ${panelBorder}` }}>
-            {panel.a ?? "—"}
-          </div>
-        )}</Reveal>
       </div>
     )
   }
 
   return (
-    <div className="absolute rounded-2xl shadow-lg popup-bubble" style={box}>
-      {done ? (
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
-            style={{ background: `${tone}22`, color: tone }}>
-            <Icon name={panel.ok ? "check" : "x"} size={14} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="text-[13px] font-medium leading-tight" style={{ color: tone }}>
-              {panel.ok ? "Верно" : "Неверно"}
+    <div className="absolute" style={frame}>
+      <div className="rounded-2xl shadow-lg popup-bubble" style={box}>
+        {done ? (
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ background: `${tone}22`, color: tone }}>
+              <Icon name={panel.ok ? "check" : "x"} size={18} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-[17px] font-medium leading-tight" style={{ color: tone }}>
+                {panel.ok ? "Верно" : "Неверно"}
+              </div>
+              {/* Свой ответ показываем, правильный — нет: его знает только репетитор */}
+              <div className="text-[15px] leading-tight truncate mt-0.5" style={{ color: meta }}>
+                {panel.ok ? panel.v : `Твой ответ: ${panel.v} · попробуй ещё раз`}
+              </div>
             </div>
-            {/* Свой ответ показываем, правильный — нет: его знает только репетитор */}
-            <div className="text-[12px] leading-tight truncate" style={{ color: meta }}>
-              {panel.ok ? panel.v : `Твой ответ: ${panel.v} · попробуй ещё раз`}
-            </div>
+            <button onClick={() => { setVal(""); onReset(panel.id) }}
+              className="press-tap flex-shrink-0 px-3 py-1.5 rounded-xl text-[15px] text-blue-500 hover:bg-blue-500/[0.08]">
+              Заново
+            </button>
           </div>
-          <button onClick={() => { setVal(""); onReset(panel.id) }}
-            className="press-tap flex-shrink-0 px-2 py-1 rounded-lg text-xs text-blue-500 hover:bg-blue-500/[0.08]">
-            Заново
-          </button>
-        </div>
-      ) : (
-        <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); onCheck(panel.id, val) }}>
-          <input value={val} onChange={(e) => setVal(e.target.value)} placeholder="Ответ"
-            className="flex-1 min-w-0 h-8 px-2.5 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500/40"
-            style={{ background: "transparent", color: ink, border: `1px solid ${panelBorder}` }} />
-          <button type="submit" disabled={!val.trim()}
-            className="press-tap flex-shrink-0 h-8 px-3 rounded-lg text-xs font-medium text-white disabled:opacity-40"
-            style={{ background: "#007AFF" }}>
-            Проверить
-          </button>
-        </form>
-      )}
+        ) : (
+          <form className="flex items-center gap-3" onSubmit={(e) => { e.preventDefault(); onCheck(panel.id, val) }}>
+            <input value={val} onChange={(e) => setVal(e.target.value)} placeholder="Ответ"
+              className="flex-1 min-w-0 h-11 px-3.5 rounded-xl text-[17px] outline-none focus:ring-2 focus:ring-blue-500/40"
+              style={{ background: "transparent", color: ink, border: `1px solid ${panelBorder}` }} />
+            <button type="submit" disabled={!val.trim()}
+              className="press-tap flex-shrink-0 h-11 px-5 rounded-xl text-[15px] font-medium text-white disabled:opacity-40"
+              style={{ background: "#007AFF" }}>
+              Проверить
+            </button>
+          </form>
+        )}
+      </div>
     </div>
   )
 }
@@ -1008,13 +1028,16 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
       const b = strokeBBox(st)
       const [x0, y0] = toScreen(b.minX, b.minY), [x1, y1] = toScreen(b.maxX, b.maxY)
       const sw = x1 - x0
-      if (sw < 130 || x1 < 0 || y1 < 0 || x0 > cw || y0 > ch) continue
+      if (sw < QA_MIN_ON_SCREEN || x1 < 0 || y1 < 0 || x0 > cw || y0 > ch) continue
       // x — ЛЕВЫЙ край листа: поле ответа стоит под условием по одной с ним линии,
       // как строка «Ответ:» на бланке. По центру оно уезжало от начала условия.
+      // k — во сколько раз лист сейчас показан: поле шириной ровно с лист и с той же
+      // крупностью текста, что и условие (см. TaskAnswerBox). Округляем, иначе
+      // дрожание последних знаков перерисовывало бы панель на каждом кадре.
       // Правильный ответ уходит в панель ТОЛЬКО репетитору: у ученика панель его
       // не показывает, и класть его туда незачем.
       qa.push({ id: st.id, x: Math.round(x0), y: Math.round(y1),
-        w: Math.round(Math.min(Math.max(sw, 240), 420)),
+        k: Math.round((sw / QA_SHEET_W) * 1000) / 1000,
         a: isTutor ? st.qa.a : null, v: st.qa.v || "", ok: st.qa.ok ?? null })
     }
     const qaKey = JSON.stringify(qa)
