@@ -6,6 +6,7 @@ import ConfirmModal from "./ConfirmModal"
 import { useClosing, CLOSE_MS, POPUP_OUT_MS } from "../useClosing"
 import { recognizeShape } from "./boardSmartDraw"
 import { answersEqual } from "../utils"
+import Reveal from "./Reveal"
 import {
   GRID, ENCLOSED_SHAPES, SHAPE_TOOLS, DASHABLE_SHAPES,
   TEXT_FONT, TEXT_LINE, TEXT_MIN, TEXT_MAX, TEXT_DEFAULT, textMetrics, textBoxPoints, textFont,
@@ -176,23 +177,68 @@ async function processImageFile(file, maxDim = 1400) {
   return { blob, type, ext, w: cw, h: ch, img: null, url: null }
 }
 
-// Поле ответа под листом с заданием. Ученик решает на доске и тут же проверяет себя:
-// вписал ответ → «Проверить» → верно/неверно и правильный ответ. Ответ сверяется тем же
-// answersEqual, что и домашние работы с вариантами, — «0,5» и «1/2» не должны расходиться
-// с кабинетом.
+// Поле ответа под листом с заданием из банка. У сторон оно РАЗНОЕ, и это главное,
+// что про него нужно знать:
+//   ученик  — вписывает ответ и проверяет себя: «Верно»/«Неверно» и свой ответ,
+//             правильного он не видит НИКОГДА, иначе первая же неверная попытка
+//             выдавала бы ответ и решать дальше было бы нечего;
+//   репетитор — видит, ответил ли ученик и что именно, а правильный ответ
+//             открывает кнопкой «Ответ». За кнопкой, а не строкой на виду:
+//             занятие часто идёт с показом экрана, и ответ, лежащий открытым,
+//             ученик прочитал бы через демонстрацию.
+// Ответ сверяется тем же answersEqual, что и домашние работы с вариантами, — «0,5»
+// и «1/2» не должны расходиться с кабинетом.
 //
 // Панель живёт в DOM, а не на холсте: в неё вводят текст. Размер у неё ЭКРАННЫЙ и от
 // масштаба доски не зависит — на отдалённом обзоре поле осталось бы нечитаемым.
-function TaskAnswerBox({ panel, dark, panelBg, panelBorder, onCheck, onReset }) {
+function TaskAnswerBox({ panel, dark, panelBg, panelBorder, tutor = false, onCheck, onReset }) {
   const [val, setVal] = useState("")
+  const [shown, setShown] = useState(false)   // репетитор раскрыл правильный ответ
   const done = panel.ok != null
   const ink = dark ? "#e5e5ea" : "#1f2937"
   const meta = dark ? "#a1a1aa" : "#6b7280"
   const tone = panel.ok ? "#34c759" : "#ff3b30"
+  const box = {
+    left: panel.x, top: panel.y + 12, width: panel.w,
+    background: panelBg, border: `1px solid ${panelBorder}`, padding: "8px 10px",
+  }
+
+  // Репетитор: что с заданием у ученика + ответ по кнопке. Поля ввода тут нет —
+  // проверяет себя ученик, а репетитору нужен сам ответ.
+  if (tutor) {
+    return (
+      <div className="absolute rounded-2xl shadow-lg popup-bubble" style={box}>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
+            style={{ background: done ? `${tone}22` : "rgba(0,122,255,.10)", color: done ? tone : "#007AFF" }}>
+            <Icon name={done ? (panel.ok ? "check" : "x") : "clock"} size={14} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[13px] font-medium leading-tight" style={{ color: done ? tone : ink }}>
+              {done ? (panel.ok ? "Ученик ответил верно" : "Ученик ответил неверно") : "Ученик ещё не ответил"}
+            </div>
+            <div className="text-[12px] leading-tight truncate" style={{ color: meta }}>
+              {done ? `Его ответ: ${panel.v}` : "Ответ видите только вы"}
+            </div>
+          </div>
+          <button onClick={() => setShown((v) => !v)}
+            className="press-tap flex-shrink-0 px-2 py-1 rounded-lg text-xs text-blue-500 hover:bg-blue-500/[0.08]">
+            {shown ? "Скрыть" : "Ответ"}
+          </button>
+        </div>
+        {/* Ответ убирается тем же плавным движением, что и появляется */}
+        <Reveal value={shown}>{() => (
+          <div className="mt-1.5 pt-1.5 text-[13px] font-mono break-words"
+            style={{ color: ink, borderTop: `1px solid ${panelBorder}` }}>
+            {panel.a ?? "—"}
+          </div>
+        )}</Reveal>
+      </div>
+    )
+  }
+
   return (
-    <div className="absolute rounded-2xl shadow-lg popup-bubble"
-      style={{ left: panel.x, top: panel.y + 12, width: panel.w,
-        background: panelBg, border: `1px solid ${panelBorder}`, padding: "8px 10px" }}>
+    <div className="absolute rounded-2xl shadow-lg popup-bubble" style={box}>
       {done ? (
         <div className="flex items-center gap-2 min-w-0">
           <span className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
@@ -203,9 +249,9 @@ function TaskAnswerBox({ panel, dark, panelBg, panelBorder, onCheck, onReset }) 
             <div className="text-[13px] font-medium leading-tight" style={{ color: tone }}>
               {panel.ok ? "Верно" : "Неверно"}
             </div>
-            {/* Правильный ответ показываем только после проверки — иначе поле не имело бы смысла */}
+            {/* Свой ответ показываем, правильный — нет: его знает только репетитор */}
             <div className="text-[12px] leading-tight truncate" style={{ color: meta }}>
-              {panel.ok ? panel.v : `Ваш ответ: ${panel.v} · правильный: ${panel.a}`}
+              {panel.ok ? panel.v : `Твой ответ: ${panel.v} · попробуй ещё раз`}
             </div>
           </div>
           <button onClick={() => { setVal(""); onReset(panel.id) }}
@@ -395,6 +441,10 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
   // Доска занимает весь экран, поэтому её уход тоже должен быть плавным:
   // класс .is-closing держится, пока идёт затухание, и лишь потом зовётся onClose.
   const { cls: closingCls, close: leave } = useClosing(onClose, BOARD_CLOSE_MS)
+  // Кто смотрит на доску. Роль видна по самому userId: у репетитора он начинается
+  // с «t:», у ученика — с «s:» (так же их различает чат). Нужна она ровно для одного:
+  // правильный ответ к листу из банка показывается только репетитору.
+  const isTutor = String(userId || "").startsWith("t:")
   const [tool, setTool] = useState("pen")   // pen | line | rect | eraser | hand
   const [panKey, setPanKey] = useState(false)   // зажат пробел → полотно можно тащить
   const [panDrag, setPanDrag] = useState(false) // полотно тащат прямо сейчас
@@ -961,9 +1011,11 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
       if (sw < 130 || x1 < 0 || y1 < 0 || x0 > cw || y0 > ch) continue
       // x — ЛЕВЫЙ край листа: поле ответа стоит под условием по одной с ним линии,
       // как строка «Ответ:» на бланке. По центру оно уезжало от начала условия.
+      // Правильный ответ уходит в панель ТОЛЬКО репетитору: у ученика панель его
+      // не показывает, и класть его туда незачем.
       qa.push({ id: st.id, x: Math.round(x0), y: Math.round(y1),
         w: Math.round(Math.min(Math.max(sw, 240), 420)),
-        a: st.qa.a, v: st.qa.v || "", ok: st.qa.ok ?? null })
+        a: isTutor ? st.qa.a : null, v: st.qa.v || "", ok: st.qa.ok ?? null })
     }
     const qaKey = JSON.stringify(qa)
     if (qaKey !== lastQa.current) { lastQa.current = qaKey; setQaBoxes(qa) }
@@ -2205,8 +2257,10 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
     const s = { id, author: userId, tool: "image", src: localSrc, pending: 1, points: [[x0, y0], [x0 + ww, y0 + hh]] }
     if (sheet) s.sheet = 1   // лист с заданием: рисуется в цветах доски, а не как фото
     if (taskKey) s.task = taskKey
-    // Правильный ответ едет вместе с листом: поле ответа под ним должно уметь и
-    // проверить, и показать ответ, а доска общая — значит, знать его должны оба.
+    // Правильный ответ едет вместе с листом: сверку ученик делает у себя, без
+    // сервера, поэтому эталон должен быть на доске. ПОКАЗЫВАЕТСЯ он при этом
+    // только репетитору (см. TaskAnswerBox): ученик получает «верно/неверно», а
+    // не готовый ответ.
     if (answer) s.qa = { a: answer }
     // Своя картинка уже разобрана в памяти — кладём её в кэш, чтобы лист появился
     // мгновенно: иначе доска пошла бы читать заново то, что уже держит в руках.
@@ -3416,7 +3470,7 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
         {/* Поля ответа под листами с заданием */}
         {qaBoxes.map((b) => (
           <TaskAnswerBox key={b.id} panel={b} dark={dark} panelBg={panelBg} panelBorder={panelBorder}
-            onCheck={checkTaskAnswer} onReset={resetTaskAnswer} />
+            tutor={isTutor} onCheck={checkTaskAnswer} onReset={resetTaskAnswer} />
         ))}
 
         {/* Оверлей выделения: рамка + ручки + панель свойств */}
