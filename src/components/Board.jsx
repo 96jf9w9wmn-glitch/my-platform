@@ -1789,6 +1789,18 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
     const preview = await scenePreview(await signBoardScene(scene)) // null, если холст «испорчен» картинкой без CORS
     const d = new Date()
     const lessonDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+    // Сцену НЕ отправляем: штрихи уже лежат в board_strokes, и снимок собирает
+    // сама база (board_snapshot_server.sql). Раньше сюда уходило 1,7 МБ в каждое
+    // закрытие доски — по тому же соединению, что и весь кабинет, поэтому сайт
+    // замирал ровно в конце занятия. Клиент шлёт только превью.
+    const take = await supabase.rpc("board_snapshot_take", {
+      p_student_id: String(roomId), p_date: lessonDate, p_preview: preview,
+      p_account: account || null, p_token: token || null,
+    })
+    if (!take.error) return
+    // Миграции нет — пишем сцену целиком, как раньше: история занятий важнее
+    // экономии трафика.
+    if (take.error.code !== "PGRST202" && take.error.code !== "42883") return
     // Ученику прямой записи в таблицу нет — только RPC с session_token (RLS включён).
     if (account && token) {
       await supabase.rpc("board_snapshot_save", {
