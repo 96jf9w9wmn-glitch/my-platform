@@ -1224,6 +1224,22 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
     return tintCache.current.get(src) || img
   }
 
+  // Сцена целиком. Штрихи лежат построчно (board_strokes), и собирает их база:
+  // сохранение штриха тогда не переписывает всю доску — на боевой доске в 3,7 МБ
+  // это было 489 мс на КАЖДЫЙ штрих, отсюда «сайт лёг, доска легла».
+  // Пока миграции board_strokes.sql нет, читаем сцену из boards.scene, как раньше.
+  const sceneRpcOff = useRef(false)
+  const fetchScene = useCallback(async () => {
+    if (!sceneRpcOff.current) {
+      const { data, error } = await supabase.rpc("board_scene", { p_student_id: String(roomId) })
+      if (!error) return data || null
+      if (error.code !== "PGRST202" && error.code !== "42883") return null  // не «функции нет» — это отказ прав или сбой
+      sceneRpcOff.current = true
+    }
+    const { data } = await supabase.from("boards").select("scene").eq("student_id", String(roomId)).maybeSingle()
+    return data?.scene || null
+  }, [roomId])
+
   // Сменилась комната — сцену обнуляем СИНХРОННО, до всякой загрузки.
   //
   // Доска занятия и доска домашней работы обязаны быть непересекающимися (см.
@@ -1252,11 +1268,11 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
   // --- Загрузка снапшота --------------------------------------------------
   useEffect(() => {
     let alive = true
-    supabase.from("boards").select("scene").eq("student_id", String(roomId)).maybeSingle()
-      .then(async ({ data }) => {
+    fetchScene()
+      .then(async (raw) => {
         if (!alive) return
         // Бакет с картинками доски приватный — подписываем их ссылки.
-        const scene = (await signBoardScene(data?.scene)) || {}
+        const scene = (await signBoardScene(raw)) || {}
         // Штрихи, прилетевшие по realtime, пока сцена грузилась, уже новее её —
         // ставим их в конец, иначе «последними записями» окажется старое.
         const early = [...strokes.current.entries()]
@@ -1306,8 +1322,7 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
     if (loadedRef.current !== roomId) return             // начальная загрузка ещё идёт — она и принесёт свежее
     if (Date.now() - lastResync.current < 3000) return  // не дёргаем базу на каждый чих
     lastResync.current = Date.now()
-    const { data } = await supabase.from("boards").select("scene").eq("student_id", String(roomId)).maybeSingle()
-    const scene = await signBoardScene(data?.scene)
+    const scene = await signBoardScene(await fetchScene())
     if (!scene?.strokes?.length) return
     const local = [...strokes.current.entries()]
     strokes.current.clear()
@@ -1315,7 +1330,7 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
     rememberSaved(scene.strokes)   // теперь мы знаем, что в базе; своё недошедшее допишется дельтой
     for (const [id, s] of local) if (!strokes.current.has(id)) strokes.current.set(id, s)
     scheduleDraw()
-  }, [roomId, scheduleDraw])
+  }, [roomId, scheduleDraw, fetchScene])
 
   // Сверка «не потерялось ли». Штрих ходит по realtime ровно один раз и без
   // подтверждения: одна не доехавшая посылка — и написанного у собеседника нет,
