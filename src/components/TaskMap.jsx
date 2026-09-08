@@ -7,7 +7,8 @@ import { TASK_MAX } from "../examScales"
 import { loadTaskNotes, saveTaskNote, loadTaskOrder, saveTaskOrder, orderNumbers } from "../taskNotes"
 
 // Карта заданий: весь экзамен номерами, у каждого — процент верных ответов
-// ученика и, если репетитор её написал, методичка по значку книжки.
+// ученика; нажатие на номер открывает методичку репетитора, а значок книжки
+// говорит, что она уже написана.
 //
 // Считаем по ПЕРВЫМ ответам (attempt_no = 1), теми же правилами, что «Где
 // ученик ошибается» и отчёт родителю: в режиме «решай до верного» повторные
@@ -26,12 +27,19 @@ const toneOf = (row) => {
   return "work"
 }
 
-const CHIP = {
-  ok: "ring-green-500/30 text-green-700 dark:text-green-300",
-  work: "ring-amber-500/30 text-amber-700 dark:text-amber-300",
-  bad: "ring-red-500/30 text-red-700 dark:text-red-300",
-  unknown: "ring-gray-200 dark:ring-white/12 text-gray-500",
+// Плитка вместо пилюли: номера одной ширины выстраиваются в сетку, и карта
+// читается как карта, а не как строка тегов. Заливка — тон состояния (не
+// серая), у нерешённого номера заливки нет вовсе, поэтому решённое выступает
+// вперёд само.
+const TILE = {
+  ok: "ring-green-500/25 bg-green-500/[0.07] hover:bg-green-500/[0.12]",
+  work: "ring-amber-500/30 bg-amber-500/[0.08] hover:bg-amber-500/[0.14]",
+  bad: "ring-red-500/25 bg-red-500/[0.07] hover:bg-red-500/[0.12]",
+  unknown: "ring-gray-200/80 dark:ring-white/10 hover:bg-blue-500/[0.06]",
 }
+// Цвет числа и полосы. Тот же набор, что у «Слабых тем», — состояние на всех
+// экранах раздела обязано выглядеть одинаково.
+const LINE = { ok: "#34c759", work: "#ff9f0a", bad: "#ff3b30", unknown: "#9ca3af" }
 
 function TaskMap({ attempts, tutorId, examType: hinted }) {
   const rows = attempts
@@ -122,40 +130,74 @@ function TaskMap({ attempts, tutorId, examType: hinted }) {
           ? "Стрелками поставьте номера в том порядке, в каком разбираете их сами."
           : noAnswers
             ? "Ученик ещё ничего не решал — процентов пока нет. Методичку к заданию можно написать уже сейчас: она ваша, а не его."
-            : "Процент — по первым ответам; без процента — задание ещё не решали. Значок книжки открывает вашу методичку."}
+            : "Процент — по первым ответам; без процента — задание ещё не решали. Нажатие на номер открывает методичку, значок книжки — что она уже написана."}
       </p>
 
-      <div className="flex flex-wrap gap-1.5">
+      {/* Сетка одинаковых плиток: ширину задаёт auto-fill, поэтому и на телефоне,
+          и на широком экране ряд получается ровным, без «лесенки» из пилюль
+          разной длины. */}
+      <div className="grid gap-1.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(72px, 1fr))" }}>
         {numbers.map((n) => {
           const row = byNumber[n]
           const tone = toneOf(row)
           const note = notes[n]
+          const shown = row && row.attempts >= MIN_ATTEMPTS
+          const title = numberTitle(examType, n)
+
+          // В режиме порядка плитка перестаёт быть кнопкой: внутри неё две
+          // стрелки, и вложенная кнопка в кнопке недопустима.
+          if (arranging) {
+            return (
+              <div key={n} className={`rounded-2xl ring-1 px-2 py-1.5 ${TILE[tone]}`}>
+                <div className={`text-[13px] font-semibold tabular-nums leading-none${shown ? "" : " text-gray-500"}`}
+                  style={shown ? { color: LINE[tone] } : undefined}>
+                  <span className="text-[10px] font-medium opacity-50">№</span>{n}
+                </div>
+                <div className="mt-1.5 flex items-center justify-between">
+                  <button onClick={() => move(n, -1)} aria-label={`Задание ${n} левее`}
+                    className="press-tap text-gray-400 hover:text-blue-600">
+                    <Icon name="arrow" size={12} className="rotate-180" />
+                  </button>
+                  <button onClick={() => move(n, 1)} aria-label={`Задание ${n} правее`}
+                    className="press-tap text-gray-400 hover:text-blue-600">
+                    <Icon name="arrow" size={12} />
+                  </button>
+                </div>
+              </div>
+            )
+          }
+
           return (
-            <span key={n} className={`inline-flex items-center gap-1.5 rounded-xl ring-1 px-2.5 py-1.5 text-xs ${CHIP[tone]}`}>
-              {arranging && (
-                <button onClick={() => move(n, -1)} aria-label="Левее" className="press-tap text-gray-400 hover:text-blue-600">
-                  <Icon name="arrow" size={11} className="rotate-180" />
-                </button>
-              )}
-              <span className="font-medium" title={numberTitle(examType, n)}>№{n}</span>
+            <button key={n} onClick={() => setOpenNote({ number: n, note: note || null })}
+              title={title ? `${title} — методичка` : `Задание ${n} — методичка`}
+              aria-label={note ? `Методичка к заданию ${n}` : `Написать методичку к заданию ${n}`}
+              className={`press-fill relative rounded-2xl ring-1 px-2 py-1.5 text-left transition-colors ${TILE[tone]}`}>
+              <div className="flex items-start justify-between gap-1">
+                <span className={`text-[13px] font-semibold tabular-nums leading-none${shown ? "" : " text-gray-500"}`}
+                  style={shown ? { color: LINE[tone] } : undefined}>
+                  <span className="text-[10px] font-medium opacity-50">№</span>{n}
+                </span>
+                {/* Книжка — метка «методичка уже написана», а не кнопка: раньше
+                    она висела у каждого номера бледно-серой и рябила. */}
+                {note && <Icon name="book" size={11} className="shrink-0 mt-px text-blue-500 dark:text-blue-300" />}
+              </div>
               {/* Процент только там, где ответов достаточно: «0 из 1» в карте
-                  читается как провал по всему номеру. */}
-              {row && row.attempts >= MIN_ATTEMPTS && (
-                <span className="tabular-nums opacity-70">{row.accuracy}%</span>
-              )}
-              <button
-                onClick={() => setOpenNote({ number: n, note: note || null })}
-                title={note ? "Открыть методичку" : "Написать методичку к заданию"}
-                className={"press-tap " + (note ? "text-blue-600 dark:text-blue-300" : "text-gray-300 dark:text-white/25 hover:text-blue-500")}
-                aria-label={note ? `Методичка к заданию ${n}` : `Написать методичку к заданию ${n}`}>
-                <Icon name="book" size={12} />
-              </button>
-              {arranging && (
-                <button onClick={() => move(n, 1)} aria-label="Правее" className="press-tap text-gray-400 hover:text-blue-600">
-                  <Icon name="arrow" size={11} />
-                </button>
-              )}
-            </span>
+                  читается как провал по всему номеру. Полоса под ним — то же
+                  число фигурой: ряд плиток читается одним взглядом. */}
+              <div className="mt-1.5 h-[19px]">
+                {shown && (
+                  <>
+                    <div className="text-[11px] font-medium tabular-nums leading-none" style={{ color: LINE[tone] }}>
+                      {row.accuracy}%
+                    </div>
+                    <div className="mt-1 h-1 rounded-full bg-blue-500/12 overflow-hidden">
+                      <div className="h-full rounded-full transition-[width] duration-700 ease-out"
+                        style={{ width: `${Math.max(row.accuracy, 4)}%`, background: LINE[tone] }} />
+                    </div>
+                  </>
+                )}
+              </div>
+            </button>
           )
         })}
       </div>
