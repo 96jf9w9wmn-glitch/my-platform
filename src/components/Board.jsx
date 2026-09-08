@@ -35,11 +35,13 @@ const HISTORY_MAX = 100      // шагов «отменить» держим с�
 const cloneStroke = (s) => s && { ...s, points: s.points.map((p) => p.slice()) }
 const SHEET_MAX_DIM = 4000   // лист с заданием: длинные условия не должны терять чёткость
 const SHEET_GAP = 140        // отступ от написанного до нового листа с заданием, мировые px
+const SPOT_PAD = 40          // зазор вокруг листа при поиске свободного места, там же
 // Поле ответа под листом набрано в тех же единицах, в каких снят сам лист (SHEET_W и
 // кегль условия в pages/taskSnapshot.js), и потом целиком масштабируется вместе с ним —
 // поэтому у задания и поля один масштаб. Держать эту ширину в согласии с taskSnapshot.
 const QA_SHEET_W = 620       // ширина листа в его собственных единицах
 const QA_GAP = 14            // отступ поля от нижнего края листа, там же
+const QA_TUTOR_LIFT = 22     // на столько пилюля репетитора наезжает на низ листа
 // Лист меньше этого на экране — поля не показываем: набрать в него всё равно нельзя,
 // а условие на такой доске читают глазами, а не решают.
 const QA_MIN_ON_SCREEN = 300
@@ -226,32 +228,32 @@ function TaskAnswerBox({ panel, dark, panelBg, panelBorder, tutor = false, onChe
 
   // Репетитор: что с заданием у ученика + ответ по кнопке. Поля ввода тут нет —
   // проверяет себя ученик, а репетитору нужен сам ответ.
+  //
+  // Плашка во всю ширину листа была тяжелее самого задания и отжимала его вверх,
+  // хотя несёт одну кнопку. Поэтому у репетитора это пилюля по содержимому,
+  // лежащая на нижнем углу листа: угол там пустой, а место под листом свободно.
   if (tutor) {
     return (
-      <div className="absolute" style={frame}>
-        <div className="rounded-2xl shadow-lg popup-bubble" style={box}>
-          <div className="flex items-center gap-3 min-w-0">
-            <span className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ background: done ? `${tone}22` : "rgba(0,122,255,.10)", color: done ? tone : "#007AFF" }}>
-              <Icon name={done ? (panel.ok ? "check" : "x") : "clock"} size={18} />
+      <div className="absolute flex justify-end" style={{ ...frame, top: panel.y - QA_TUTOR_LIFT * panel.k }}>
+        <div className="rounded-full shadow-lg popup-bubble flex flex-col items-end"
+          style={{ background: panelBg, border: `1px solid ${panelBorder}`, borderRadius: shown ? 18 : 999, padding: shown ? "6px 8px 10px" : "6px 8px" }}>
+          <div className="flex items-center gap-2">
+            <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ background: done ? `${tone}22` : "rgba(0,122,255,.10)", color: done ? tone : "#007AFF" }}
+              title={done ? (panel.ok ? "Ученик ответил верно" : "Ученик ответил неверно") : "Ученик ещё не ответил"}>
+              <Icon name={done ? (panel.ok ? "check" : "x") : "clock"} size={16} />
             </span>
-            <div className="min-w-0 flex-1">
-              <div className="text-[17px] font-medium leading-tight" style={{ color: done ? tone : ink }}>
-                {done ? (panel.ok ? "Ученик ответил верно" : "Ученик ответил неверно") : "Ученик ещё не ответил"}
-              </div>
-              <div className="text-[15px] leading-tight truncate mt-0.5" style={{ color: meta }}>
-                {done ? `Его ответ: ${panel.v}` : "Ответ видите только вы"}
-              </div>
-            </div>
+            {done && (
+              <span className="text-[15px] font-mono max-w-[220px] truncate" style={{ color: done ? tone : ink }}>{panel.v}</span>
+            )}
             <button onClick={() => setShown((v) => !v)}
-              className="press-tap flex-shrink-0 px-3 py-1.5 rounded-xl text-[15px] text-blue-500 hover:bg-blue-500/[0.08]">
+              className="press-tap flex-shrink-0 px-2.5 py-1 rounded-full text-[15px] text-blue-500 hover:bg-blue-500/[0.08]">
               {shown ? "Скрыть" : "Ответ"}
             </button>
           </div>
           {/* Ответ убирается тем же плавным движением, что и появляется */}
           <Reveal value={shown}>{() => (
-            <div className="mt-2 pt-2 text-[17px] font-mono break-words"
-              style={{ color: ink, borderTop: `1px solid ${panelBorder}` }}>
+            <div className="mt-1.5 px-2 text-[17px] font-mono break-words text-right" style={{ color: ink }}>
               {panel.a ?? "—"}
             </div>
           )}</Reveal>
@@ -732,7 +734,6 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
   // на доску занятия (см. src/boardRoom.js — доски не должны пересекаться).
   const loadedRef = useRef(null)
   const modalOpen = useRef(false)     // поверх доски открыт диалог (глушим горячие клавиши)
-  const taskShift = useRef(0)         // лесенка для подряд вставленных заданий
   const erasing = useRef(null)        // текущий проход объектного ластика: [{id, before, after}]
   // Ввод текста. editPos — то же, что и editText, но доступное вне рендера:
   // положение поля правит кадр отрисовки (обзор двигают колесом и пальцами, а
@@ -2369,7 +2370,7 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
   // pending: он виден, его можно двигать и стирать, но собеседнику он не
   // уходит и в базу не сохраняется — blob-адрес за пределами этой вкладки не
   // значит ничего. Что загрузка идёт, видно по плашке над самой картинкой.
-  async function addImageAt(file, worldX, worldY, { fitWidth = null, maxSide = 360, sheet = false, topLeft = false, taskKey = null, answer = null, onPlaced = null } = {}) {
+  async function addImageAt(file, worldX, worldY, { fitWidth = null, maxSide = 360, sheet = false, topLeft = false, taskKey = null, answer = null, onPlaced = null, place = null } = {}) {
     if (!file || !file.type?.startsWith("image/")) return null
     let info
     try { info = await processImageFile(file, sheet ? SHEET_MAX_DIM : 1400) } catch { return null }
@@ -2377,7 +2378,11 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
     const localSrc = URL.createObjectURL(info.blob)
     const k = fitWidth ? fitWidth / info.w : Math.min(1, maxSide / Math.max(info.w, info.h))
     const ww = info.w * k, hh = info.h * k
-    const x0 = topLeft ? worldX : worldX - ww / 2, y0 = topLeft ? worldY : worldY - hh / 2
+    // place выбирает место, ЗНАЯ готовый размер: свободный угол доски нельзя
+    // найти, пока не известно, какой ширины и высоты будет лист.
+    let px = worldX, py = worldY, tl = topLeft
+    if (place) { const pt = place(ww, hh); px = pt[0]; py = pt[1]; tl = true }
+    const x0 = tl ? px : px - ww / 2, y0 = tl ? py : py - hh / 2
     const s = { id, author: userId, tool: "image", src: localSrc, pending: 1, points: [[x0, y0], [x0 + ww, y0 + hh]] }
     if (sheet) s.sheet = 1   // лист с заданием: рисуется в цветах доски, а не как фото
     if (taskKey) s.task = taskKey
@@ -2492,14 +2497,36 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
     dropShot()
     await insertBlob(shot.blob)
   }
-  // Лист с заданием из банка — в центр видимой области. Каждое следующее смещаем
-  // лесенкой: иначе задания легли бы ровно друг на друга и выглядели бы как одно.
+  // Свободное место под лист размером w×h. Центр экрана лист занимал и тогда,
+  // когда там уже написано, — задание ложилось поверх разбора и закрывало его.
+  // Поэтому сначала центр, потом сетка по видимой области, а если и там занято —
+  // под всем написанным (туда же ведём обзор, иначе лист лёг бы за краем экрана).
+  function freeSpot(w, h) {
+    const c = canvasRef.current
+    const boxes = []
+    for (const st of strokes.current.values()) { const b = strokeBBox(st); if (b) boxes.push(b) }
+    const free = (x, y) => !boxes.some((b) => rectsIntersect({ minX: x - SPOT_PAD, minY: y - SPOT_PAD, maxX: x + w + SPOT_PAD, maxY: y + h + SPOT_PAD }, b))
+    const r = c.getBoundingClientRect()
+    const [vx0, vy0] = toWorld(r.left, r.top)
+    const [vx1, vy1] = toWorld(r.left + c.clientWidth, r.top + c.clientHeight)
+    const cx = (vx0 + vx1) / 2 - w / 2, cy = (vy0 + vy1) / 2 - h / 2
+    if (free(cx, cy)) return { x: cx, y: cy }
+    const stepX = Math.max(w / 2, 80), stepY = Math.max(h / 3, 80)
+    for (let y = vy0 + SPOT_PAD; y + h <= vy1 - SPOT_PAD; y += stepY)
+      for (let x = vx0 + SPOT_PAD; x + w <= vx1 - SPOT_PAD; x += stepX)
+        if (free(x, y)) return { x, y }
+    const bb = sceneBBox([...strokes.current.values()])
+    return bb ? { x: bb.minX, y: bb.maxY + SHEET_GAP, off: true } : { x: cx, y: cy }
+  }
+  // Лист с заданием из банка — на свободное место, а не поверх написанного.
   async function insertTaskSheet(file, sheetWidth, answer = null) {
     const c = canvasRef.current; if (!c) return
-    const r = c.getBoundingClientRect()
-    const step = (taskShift.current++ % 6) * 26
-    const [wx, wy] = toWorld(r.left + c.clientWidth / 2 + step, r.top + c.clientHeight / 2 + step)
-    await addImageAt(file, wx, wy, { fitWidth: sheetWidth, sheet: true, answer })
+    let off = false
+    await addImageAt(file, 0, 0, {
+      fitWidth: sheetWidth, sheet: true, answer,
+      place: (w, h) => { const spot = freeSpot(w, h); off = !!spot.off; return [spot.x, spot.y] },
+      onPlaced: (st) => { if (off) focusSheet(strokeBBox(st)) },
+    })
   }
 
   // Проверка ответа на листе. Ответ и результат кладутся в САМ штрих: так их видит
