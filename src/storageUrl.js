@@ -23,7 +23,33 @@ const TTL_SEC = 60 * 60 * 4
 // Подписываем заново заранее, чтобы ссылка не протухла на открытой странице.
 const REFRESH_BEFORE_MS = 10 * 60 * 1000
 
-const cache = new Map()
+// Кэш подписей переживает перезагрузку страницы. Без этого при каждом открытии
+// доски выписывались НОВЫЕ адреса на те же картинки, а новый адрес для браузера
+// это другой файл: он качал их заново — на боевой это мегабайты листов заданий
+// в каждое открытие. Подпись живёт 4 часа, поэтому в пределах занятия картинки
+// берутся из кэша браузера. Хранилище — sessionStorage: подпись это ключ к
+// приватному файлу, и переживать вкладку ей незачем.
+const CACHE_KEY = "storage_signed_urls"
+const cache = new Map(loadCache())
+
+function loadCache() {
+  try {
+    const raw = sessionStorage.getItem(CACHE_KEY)
+    if (!raw) return []
+    const now = Date.now()
+    return Object.entries(JSON.parse(raw)).filter(([, v]) => v && v.expires > now)
+  } catch { return [] }
+}
+
+let saveTimer = null
+function saveCache() {
+  if (saveTimer) return
+  saveTimer = setTimeout(() => {
+    saveTimer = null
+    try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(Object.fromEntries(cache))) }
+    catch { /* приватный режим или переполнение — кэш просто не переживёт вкладку */ }
+  }, 500)
+}
 
 // Из значения в базе достаём бакет и путь. Понимает публичный адрес, голый
 // путь и адрес с чужого домена (у ранних записей это старый облачный проект).
@@ -108,6 +134,7 @@ export async function signStorageUrls(values, bucketSpec) {
           const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, TTL_SEC, { transform })
           if (error || !data?.signedUrl) { out.set(original, original); return }
           cache.set(bucket + "/" + path + mark, { url: data.signedUrl, expires: Date.now() + TTL_SEC * 1000 })
+          saveCache()
           out.set(original, data.signedUrl)
         }))
         return
@@ -127,6 +154,7 @@ export async function signStorageUrls(values, bucketSpec) {
           continue
         }
         cache.set(bucket + "/" + row.path + mark, { url: row.signedUrl, expires: Date.now() + TTL_SEC * 1000 })
+        saveCache()
         out.set(original, row.signedUrl)
       }
     })
