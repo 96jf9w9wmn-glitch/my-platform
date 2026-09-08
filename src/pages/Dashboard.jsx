@@ -239,7 +239,10 @@ function Dashboard({ students, loaded = true, setActivePage, onOpenBoard }) {
                   короткой надписью, а имени достаётся вся ширина колонки.
                   Дата по той же причине переехала вниз, к времени: в заголовке
                   «Следующее занятие · пн, 12 сент.» не помещалось. */}
-              <div className="relative flex items-start gap-3.5 mb-4">
+              {/* items-center, а не items-start: аватар — кружок вдвое ниже колонки
+                  из трёх строк, и при выравнивании по верху он висел у надписи
+                  «Следующее занятие», а не у имени. Центр по всей колонке. */}
+              <div className="relative flex items-center gap-3.5 mb-4">
                 {/* bg-[rgba(...)] вместо bg-white/20: классы bg-white/N глобально гасятся под .dark
                     (index.css), а тут фон карточки синий в обеих темах — чипы должны остаться белыми */}
                 <div className="w-12 h-12 rounded-full flex-shrink-0 overflow-hidden flex items-center justify-center text-base font-semibold bg-[rgba(255,255,255,0.2)] ring-2 ring-white/30 backdrop-blur-sm">
