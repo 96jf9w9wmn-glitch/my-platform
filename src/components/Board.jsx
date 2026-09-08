@@ -4023,21 +4023,13 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
         {/* Телефон: раскладка по образцу мобильных tldraw и Excalidraw.
             Главные инструменты — узкой строкой, всегда видны; цвет и обводка —
             за кнопкой-кружком текущего цвета; картинка, задание, ровные фигуры
-            и очистка — за «⋯». Отмена и возврат — приглушённым лотком над
-            строкой: на телефоне нет ⌘Z, ими пользуются постоянно. */}
+            и очистка — за «⋯». Отмена и возврат — приглушённым лотком СБОКУ от
+            строки: на телефоне нет ⌘Z, ими пользуются постоянно, а отдельная
+            полка над панелью съедала высоту — в горизонтальной ориентации её и
+            так почти нет. Ширины не хватило — лоток уезжает строкой выше
+            (flex-wrap-reverse), то есть ровно туда, где он стоял раньше. */}
         {!isBig && (
-          <>
-            <div className="flex gap-0.5 rounded-xl px-1 py-0.5 shadow-md pointer-events-auto"
-              style={{ background: panelBg, border: `1px solid ${panelBorder}`, opacity: 0.92 }}>
-              <button onClick={undo} aria-label="Отменить"
-                className="press-tap w-9 h-8 rounded-lg flex items-center justify-center" style={idleStyle}>
-                <Icon name="undo" size={18} />
-              </button>
-              <button onClick={redo} aria-label="Вернуть"
-                className="press-tap w-9 h-8 rounded-lg flex items-center justify-center" style={idleStyle}>
-                <Icon name="redo" size={18} />
-              </button>
-            </div>
+          <div className="flex flex-wrap-reverse items-end justify-center gap-1.5 max-w-full">
             <div className="flex flex-wrap items-center justify-center gap-0.5 rounded-2xl px-1.5 py-1 shadow-xl relative pointer-events-auto max-w-full"
               style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
               {/* «Двигать полотно» на телефоне не показываем: полотно там двигают
@@ -4137,7 +4129,19 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
                 )}
               </div>
             </div>
-          </>
+
+            <div className="flex gap-0.5 rounded-xl px-1 py-0.5 shadow-md pointer-events-auto"
+              style={{ background: panelBg, border: `1px solid ${panelBorder}`, opacity: 0.92 }}>
+              <button onClick={undo} aria-label="Отменить"
+                className="press-tap w-9 h-8 rounded-lg flex items-center justify-center" style={idleStyle}>
+                <Icon name="undo" size={18} />
+              </button>
+              <button onClick={redo} aria-label="Вернуть"
+                className="press-tap w-9 h-8 rounded-lg flex items-center justify-center" style={idleStyle}>
+                <Icon name="redo" size={18} />
+              </button>
+            </div>
+          </div>
         )}
         <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onPickImage} />
         </div>
