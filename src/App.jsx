@@ -807,14 +807,22 @@ function App() {
     }
   }, [students])
 
+  // Кого мы уже пустили в кабинет. supabase-js шлёт событие сессии не только на
+  // вход: оно приходит и на возврат в окно, и на обновление токена — на боевой
+  // это 97 чтений профиля за час. Каждое не только ходило в базу, но и клало в
+  // состояние НОВЫЙ объект пользователя, а это перерисовка всего приложения
+  // поверх занятия. Тот же вошедший — ничего не делаем.
+  const restoredIdRef = useRef(null)
   useEffect(() => {
     async function restoreSession(session) {
       const minDelay = new Promise(r => setTimeout(r, 600))
-      if (!session) { await minDelay; setLoadingAuth(false); return }
+      if (!session) { restoredIdRef.current = null; await minDelay; setLoadingAuth(false); return }
+      if (restoredIdRef.current === session.user.id) { setLoadingAuth(false); return }
       const [tutor] = await Promise.all([
         loadTutorProfile(session.user.id),
         minDelay,
       ])
+      restoredIdRef.current = session.user.id
       // Сессия уже подтверждена GoTrue, поэтому в кабинет пускаем даже если
       // профиль не прочитался: раньше любая ошибка этого запроса выглядела как
       // выход из аккаунта при перезагрузке страницы, хотя вход был живой. Так
@@ -898,6 +906,7 @@ function App() {
       if (session) {
         restoreSession(session)
       } else if (event === "SIGNED_OUT" || event === "INITIAL_SESSION") {
+        restoredIdRef.current = null   // вошли снова — профиль читаем заново
         setUser(null)
         setLoadingAuth(false)
       }

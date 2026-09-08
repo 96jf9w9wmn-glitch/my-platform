@@ -229,32 +229,36 @@ function Dashboard({ students, loaded = true, setActivePage, onOpenBoard }) {
           {/* Next lesson hero */}
           {nextLesson ? (
             <div className="next-lesson-card relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/25">
-              <div className="relative flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3.5 min-w-0">
-                  {/* bg-[rgba(...)] вместо bg-white/20: классы bg-white/N глобально гасятся под .dark
-                      (index.css), а тут фон карточки синий в обеих темах — чипы должны остаться белыми */}
-                  <div className="w-12 h-12 rounded-full flex-shrink-0 overflow-hidden flex items-center justify-center text-base font-semibold bg-[rgba(255,255,255,0.2)] ring-2 ring-white/30 backdrop-blur-sm">
-                    {nextLesson.avatar
-                      ? <img src={nextLesson.avatar} alt={nextLesson.studentName} className="w-full h-full object-cover" />
-                      : getInitials(nextLesson.studentName)}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-medium opacity-70 uppercase tracking-wide mb-0.5 truncate">
-                      {nextLesson.inProgress
-                        ? "Текущее занятие"
-                        : nextLesson.isToday ? "Следующее занятие" : `Следующее занятие · ${nextLessonDate}`}
-                    </div>
-                    <div className="text-2xl font-semibold leading-tight truncate">{nextLesson.studentName}</div>
-                    <div className="text-sm opacity-80 mt-0.5">{nextLesson.time} · {nextLesson.duration} мин</div>
-                  </div>
+              {/* Отсчёт стоит в строке ЗАГОЛОВКА, а не у правого края всей карточки:
+                  раньше он забирал ширину у имени, и на телефоне от карточки
+                  оставались «СЛЕДУЮЩЕЕ З…» и «Михаи…». Теперь чип делит строку с
+                  короткой надписью, а имени достаётся вся ширина колонки.
+                  Дата по той же причине переехала вниз, к времени: в заголовке
+                  «Следующее занятие · пн, 12 сент.» не помещалось. */}
+              <div className="relative flex items-start gap-3.5 mb-4">
+                {/* bg-[rgba(...)] вместо bg-white/20: классы bg-white/N глобально гасятся под .dark
+                    (index.css), а тут фон карточки синий в обеих темах — чипы должны остаться белыми */}
+                <div className="w-12 h-12 rounded-full flex-shrink-0 overflow-hidden flex items-center justify-center text-base font-semibold bg-[rgba(255,255,255,0.2)] ring-2 ring-white/30 backdrop-blur-sm">
+                  {nextLesson.avatar
+                    ? <img src={nextLesson.avatar} alt={nextLesson.studentName} className="w-full h-full object-cover" />
+                    : getInitials(nextLesson.studentName)}
                 </div>
-                <div className="text-right flex-shrink-0 ml-3">
-                  {/* Пока занятие идёт, отсчёта нет: считать до его начала уже нечего,
-                      а до следующего ученика — рано. В статусе просто «Идёт занятие». */}
-                  <div className="text-sm font-medium tabular-nums bg-[rgba(255,255,255,0.2)] rounded-xl px-3 py-1.5 backdrop-blur-sm">
-                    {nextLesson.inProgress
-                      ? <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />Идёт занятие</span>
-                      : tick >= 0 && timeUntilLesson(nextLesson.date, nextLesson.time)}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2 mb-0.5">
+                    <div className="text-xs font-medium opacity-70 uppercase tracking-wide truncate">
+                      {nextLesson.inProgress ? "Текущее занятие" : "Следующее занятие"}
+                    </div>
+                    {/* Пока занятие идёт, отсчёта нет: считать до его начала уже нечего,
+                        а до следующего ученика — рано. В статусе просто «Идёт занятие». */}
+                    <div className="shrink-0 text-sm font-medium tabular-nums bg-[rgba(255,255,255,0.2)] rounded-xl px-3 py-1.5 backdrop-blur-sm">
+                      {nextLesson.inProgress
+                        ? <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />Идёт занятие</span>
+                        : tick >= 0 && timeUntilLesson(nextLesson.date, nextLesson.time)}
+                    </div>
+                  </div>
+                  <div className="text-xl sm:text-2xl font-semibold leading-tight truncate">{nextLesson.studentName}</div>
+                  <div className="text-sm opacity-80 mt-0.5 truncate">
+                    {nextLessonDate ? `${nextLessonDate} · ` : ""}{nextLesson.time} · {nextLesson.duration} мин
                   </div>
                 </div>
               </div>
