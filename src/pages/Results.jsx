@@ -2,6 +2,8 @@ import { useEffect, useId, useMemo, useState } from "react"
 import { supabase } from "../supabase"
 import Icon from "../components/Icon"
 import WeakTypes from "../components/WeakTypes"
+import TaskMap from "../components/TaskMap"
+import { examForecast, fmtPace } from "../forecast"
 import Collapse from "../components/Collapse"
 import AnswerTable from "../components/AnswerTable"
 import SegmentSwitch from "../components/SegmentSwitch"
@@ -195,17 +197,25 @@ function Sparkline({ values, tone = "blue", width = 90, height = 32 }) {
 
 // Большой график динамики. Значения подписаны прямо над точками: работ у
 // ученика единицы, и подпись честнее всплывающей подсказки — видно сразу всё.
-function ScoreChart({ rows, max, target }) {
+// `forecast` — { total, date }: точка прогноза на день экзамена. Рисуется
+// пунктиром от последней работы, потому что это не результат, а продолжение
+// линии; сплошной она читалась бы как ещё одна сданная работа.
+// `pass` — порог сдачи в первичных баллах.
+function ScoreChart({ rows, max, target, pass = 0, forecast = null }) {
   const uid = useId()
   const W = 660, H = 230
   const padX = 22, padTop = 34, padBottom = 30
-  const step = rows.length > 1 ? (W - padX * 2) / (rows.length - 1) : 0
+  // Прогноз занимает ещё одно деление по оси: без него точка легла бы на
+  // последнюю работу, и «куда идём» из графика было бы не видно.
+  const slots = rows.length + (forecast ? 1 : 0)
+  const step = slots > 1 ? (W - padX * 2) / (slots - 1) : 0
   const y = (v) => padTop + (1 - Math.max(0, Math.min(v / max, 1))) * (H - padTop - padBottom)
   const pts = rows.map((r, i) => ({
-    x: padX + i * step + (rows.length === 1 ? (W - padX * 2) / 2 : 0),
+    x: padX + i * step + (slots === 1 ? (W - padX * 2) / 2 : 0),
     y: y(r.total),
     row: r,
   }))
+  const fPt = forecast ? { x: padX + rows.length * step, y: y(forecast.total) } : null
   const line = smoothPath(pts)
   const everyNth = rows.length > 6 ? Math.ceil(rows.length / 5) : 1
 
@@ -230,8 +240,36 @@ function ScoreChart({ rows, max, target }) {
           stroke="#34c759" strokeWidth="1.4" strokeDasharray="5 5" opacity="0.7" />
       )}
 
+      {/* Порог сдачи. Линия важнее цели по смыслу — цель это желание, порог это
+          граница «сдал или нет», — поэтому она подписана прямо на графике. */}
+      {pass > 0 && pass <= max && (
+        <g>
+          <line x1={padX} x2={W - padX} y1={y(pass)} y2={y(pass)}
+            stroke="currentColor" className="text-gray-400" strokeWidth="1.2" strokeDasharray="3 4" opacity="0.75" />
+          <text x={W - padX} y={y(pass) - 5} textAnchor="end" fontSize="11" fill="currentColor" className="text-gray-400">
+            порог {pass}
+          </text>
+        </g>
+      )}
+
       {rows.length > 1 && <path d={`${line} L${pts[pts.length - 1].x},${H - padBottom} L${pts[0].x},${H - padBottom} Z`} fill={`url(#ch${uid})`} />}
       {rows.length > 1 && <path d={line} fill="none" stroke="#007aff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />}
+
+      {/* Пунктир до прогноза и сама точка — до кружков работ, чтобы кружок
+          последней работы лёг поверх начала пунктира, а не наоборот. */}
+      {fPt && pts.length > 0 && (
+        <g>
+          <path d={`M${pts[pts.length - 1].x},${pts[pts.length - 1].y} L${fPt.x},${fPt.y}`}
+            fill="none" stroke="#ff9500" strokeWidth="2.2" strokeDasharray="6 5" strokeLinecap="round" />
+          <circle cx={fPt.x} cy={fPt.y} r="5.5" fill="#ff9500" />
+          <text x={fPt.x} y={fPt.y - 14} textAnchor="middle" fontSize="13" fontWeight="600" fill="#ff9500">
+            ≈{forecast.total}
+          </text>
+          <text x={fPt.x} y={H - 9} textAnchor="middle" fontSize="11" fill="#ff9500">
+            экзамен
+          </text>
+        </g>
+      )}
 
       {pts.map((p, i) => (
         <g key={i}>
@@ -640,7 +678,13 @@ function HomeworkPane({ hw, noVariants }) {
 // Раскрытая карточка: варианты и домашние работы — разными дорожками
 // ─────────────────────────────────────────────────────────────────────────────
 
-function StudentDetail({ student, stats, hw }) {
+// Каким экзаменом мерить карту заданий: тем, по которому ученик реально решает
+// работы. Цель в карточке («ЕГЭ») предмета не называет — профиль это или база,
+// а номера и подписи у них разные.
+const examTypeOf = (student, stats) =>
+  stats.rows?.[stats.rows.length - 1]?.type || student.examType || student.goal || ""
+
+function StudentDetail({ student, stats, hw, tutorId }) {
   const both = stats.hasData && hw.count > 0
   const [tab, setTab] = useState(stats.hasData ? "variants" : "homework")
   // Работы могли догрузиться уже после открытия карточки — вкладка, которой
@@ -650,6 +694,10 @@ function StudentDetail({ student, stats, hw }) {
 
   return (
     <div className="flex flex-col gap-3 px-3.5 pb-3.5 sm:px-4 sm:pb-4">
+      {/* Готовность — первое, за чем сюда приходят: баллы по работам ниже
+          отвечают «как было», а этот блок — «чем кончится». */}
+      {stats.isExam && <ExamProgress student={student} stats={stats} />}
+
       {both && (
         <SegmentSwitch
           size="sm" equal={false} value={shown} onChange={setTab} ariaLabel="Какие работы показать"
@@ -667,6 +715,12 @@ function StudentDetail({ student, stats, hw }) {
           : <HomeworkPane hw={hw} noVariants={!stats.hasData} />}
       </div>
 
+      {/* Весь экзамен номерами: где ученик стоит по каждому заданию и что вы
+          сами написали к этому заданию. Ниже — разбор по типажам внутри
+          номеров: карта отвечает «как с одиннадцатым», WeakTypes — «каким
+          именно одиннадцатым». */}
+      <TaskMap student={student} tutorId={tutorId} examType={examTypeOf(student, stats)} />
+
       {/* Общий балл говорит «72%», а репетитору нужно знать, КАКОЙ типаж
           проседает. Считается и по вариантам, и по работам из банка сразу,
           поэтому блок общий для обеих дорожек. */}
@@ -676,10 +730,106 @@ function StudentDetail({ student, stats, hw }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Готовность к экзамену
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Главное число раздела: где ученик сейчас и куда придёт к экзамену по своему
+// же темпу. Стоит первым, до вкладок с работами, — за ним и приходят.
+//
+// ЧИСЛА НЕ ПРИУКРАШИВАЮТСЯ. Прогноз — продолжение уже наблюдаемой линии, и
+// когда данных мало, вместо числа стоит объяснение, почему его нет: «примерно
+// 80» по двум работам родитель прочтёт как обещание.
+function ExamProgress({ student, stats }) {
+  const f = useMemo(() => examForecast(stats.rows, {
+    examType: stats.rows[stats.rows.length - 1]?.type || student.goal,
+    target: student.targetScore || 0,
+    examDate: student.examDate || null,
+  }), [stats.rows, student.targetScore, student.examDate, student.goal])
+
+  if (!stats.hasData) return null
+  const { now, forecast, target, pass, max, perWeek } = f
+  const examDay = student.examDate
+    ? new Date(student.examDate + "T00:00:00").toLocaleDateString("ru-RU", { day: "numeric", month: "long" })
+    : ""
+
+  // Итог одной строкой — то, что читают первым. Порядок ответов: не сдаёт →
+  // не дотягивает до цели → дотягивает.
+  let verdict = null
+  if (forecast != null) {
+    if (pass > 0 && forecast < pass) verdict = { tone: "red", text: `По нынешнему темпу до порога сдачи (${pass}) не хватает ${pass - forecast}` }
+    else if (target > 0 && forecast < target) verdict = { tone: "amber", text: `До цели по нынешнему темпу не хватает ${target - forecast} ${plural(target - forecast, "балла", "баллов", "баллов")}` }
+    else if (target > 0) verdict = { tone: "green", text: "По нынешнему темпу цель достижима" }
+  }
+
+  return (
+    <div className="glass-sm p-3.5">
+      <div className="flex items-baseline justify-between gap-3 mb-3">
+        <span className="text-sm font-medium">Готовность к экзамену</span>
+        {examDay && <span className="text-[11px] text-gray-400">экзамен {examDay}</span>}
+      </div>
+
+      <div className="grid md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] gap-4">
+        <div className="min-w-0 order-2 md:order-1">
+          {stats.rows.length >= 2 ? (
+            <div className="overflow-x-auto">
+              <div className="min-w-[420px]">
+                <ScoreChart rows={stats.rows} max={max} target={target}
+                  pass={pass} forecast={forecast != null ? { total: forecast } : null} />
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400">
+              График появится со второй работы: по одной точке линии нет.
+            </p>
+          )}
+        </div>
+
+        <div className="order-1 md:order-2 flex flex-col gap-2.5">
+          <ProgressFigure label="сейчас" value={now} of={max} tone="blue" />
+          {forecast != null && (
+            <ProgressFigure label={examDay ? `прогноз к ${examDay}` : "прогноз"} value={forecast} of={max} tone="amber" approx />
+          )}
+          {target > 0 && <ProgressFigure label="цель" value={target} of={max} tone="green" />}
+          {perWeek != null && (
+            <div className="text-xs text-gray-500">темп {fmtPace(perWeek)}</div>
+          )}
+          {verdict && (
+            <div className={`text-xs leading-relaxed ${
+              verdict.tone === "red" ? "text-red-600 dark:text-red-400"
+                : verdict.tone === "amber" ? "text-amber-700 dark:text-amber-300"
+                : "text-green-700 dark:text-green-400"}`}>
+              {verdict.text}
+            </div>
+          )}
+          {/* Откуда взялось число. Без этой строки прогноз выглядит взятым с
+              потолка — и ему либо верят слишком сильно, либо не верят вовсе. */}
+          {f.note && <p className="text-[11px] text-gray-400 leading-relaxed">{f.note}</p>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Одна строка правой панели: цветная точка, подпись и число из максимума.
+function ProgressFigure({ label, value, of, tone, approx = false }) {
+  const dot = tone === "amber" ? "#ff9500" : tone === "green" ? "#34c759" : "#007aff"
+  return (
+    <div className="flex items-baseline gap-2">
+      <span className="w-2 h-2 rounded-full shrink-0 self-center" style={{ background: dot }} />
+      <span className="text-xs text-gray-500 flex-1 min-w-0 truncate">{label}</span>
+      <span className="text-sm font-semibold tabular-nums shrink-0">
+        {approx && <span className="text-gray-400 font-normal">≈ </span>}{value}
+        <span className="text-gray-400 font-normal"> / {of}</span>
+      </span>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Строка ученика в дашборде
 // ─────────────────────────────────────────────────────────────────────────────
 
-function StudentCard({ student, stats, hw, open, onToggle }) {
+function StudentCard({ student, stats, hw, tutorId, open, onToggle }) {
   const perf = !stats.hasData && !stats.isExam
   const tone = perf ? "purple" : "blue"
   // Средний и лучший балл отсюда убраны намеренно: при одной работе строка
@@ -783,7 +933,7 @@ function StudentCard({ student, stats, hw, open, onToggle }) {
 
       <Collapse open={open}>
         {stats.hasData || hw.count
-          ? <StudentDetail student={student} stats={stats} hw={hw} />
+          ? <StudentDetail student={student} stats={stats} hw={hw} tutorId={tutorId} />
           : (
             <div className="px-3.5 pb-3.5 sm:px-4 sm:pb-4 flex flex-col gap-3">
               <div className="glass-sm p-4 text-sm text-gray-500">
@@ -1329,6 +1479,7 @@ function Results({ students, loaded = true, user }) {
                 student={student}
                 stats={stats}
                 hw={hw}
+                tutorId={user?.id}
                 open={openId === student.id}
                 onToggle={() => setOpenId(openId === student.id ? null : student.id)}
               />
