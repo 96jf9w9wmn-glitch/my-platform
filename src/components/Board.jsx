@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, lazy, Suspense } from "react"
 import { supabase } from "../supabase"
-import { signBoardScene, signStorageUrl, BOARD_IMG_SPEC } from "../storageUrl"
+import { signBoardScene, signStorageUrl, BOARD_IMG_SPEC, BOARD_PREVIEW_SPEC, BOARD_PREVIEW_W } from "../storageUrl"
 import Icon from "./Icon"
 import ConfirmModal from "./ConfirmModal"
 import { useClosing, CLOSE_MS, POPUP_OUT_MS } from "../useClosing"
@@ -728,13 +728,13 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
   const dirty = useRef(false)
   const rafId = useRef(0)
   const actions = useRef({})
-  const imgCache = useRef(new Map())  // src -> HTMLImageElement (ленивая загрузка картинок)
+  const imgCache = useRef(new Map())  // "src|вес" -> HTMLImageElement (ленивая загрузка, см. getImage)
   // Адреса blob-ов, под которыми в кэше лежат СВОИ картинки. Отпускать их, пока
   // картинка в кэше, нельзя: браузер вправе выбросить растр и перечитать его по
   // этому адресу — поэтому освобождаем всё разом при закрытии доски.
   const ownBlobs = useRef([])
   useEffect(() => () => { ownBlobs.current.forEach((u) => URL.revokeObjectURL(u)); ownBlobs.current = [] }, [])
-  const tintCache = useRef(new Map()) // src -> холст листа, перекрашенный под тёмную доску
+  const tintCache = useRef(new Map()) // "src|вес" -> холст листа, перекрашенный под тёмную доску
   const fileInputRef = useRef(null)   // скрытый input для загрузки картинки кнопкой
   // Адрес доски, ДЛЯ КОТОРОЙ загружена сцена (null — ещё не загружена). Именно
   // адрес, а не «да/нет»: комнату можно сменить на живом компоненте (кнопка
@@ -1229,36 +1229,62 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
   // подписывает signBoardScene, поэтому только что вставленное задание (и своё, и
   // прилетевшее от собеседника) не появлялось до перезахода на доску, а после
   // перезахода появлялось. Для data-URL и чужих адресов подпись возвращает их же.
-  function getImage(src, wantTint = false) {
+  //
+  // Картинка грузится в ДВУХ весах. Открытие доски — это вся видимая пачка
+  // листов разом: замер журнала на боевой доске дал 39 файлов и 7,36 МБ, причём
+  // доска в этот момент отдалена и лист занимает пару сотен точек. Поэтому
+  // сначала берём предпросмотр (17 КБ вместо 177 КБ), а полное разрешение
+  // догружаем тогда, когда лист на экране крупнее предпросмотра, — то есть
+  // когда на него действительно смотрят. Пока полный не пришёл, рисуем
+  // предпросмотр: размыто лучше, чем пусто.
+  function loadImage(key, src, spec) {
+    const img = new Image()
+    // crossOrigin обязателен, чтобы холст не «портился»: без него перекрасить лист
+    // под тёмную доску нельзя (getImageData кидает SecurityError). Хранилище отдаёт
+    // Access-Control-Allow-Origin, но если какой-то адрес его не отдаст — картинка
+    // перезагрузится без CORS и просто останется неперекрашиваемой.
+    if (!src.startsWith("data:")) img.crossOrigin = "anonymous"
+    img.onload = () => scheduleDraw()
+    img.onerror = () => {
+      if (!img.crossOrigin) return
+      const plain = new Image()
+      plain.onload = () => scheduleDraw()
+      plain.src = img.src
+      imgCache.current.set(key, plain)
+    }
+    imgCache.current.set(key, img)
+    signStorageUrl(src, spec).then(
+      (url) => { img.src = url || src },
+      () => { img.src = src },     // подписать не вышло — пробуем как есть
+    )
+    return img
+  }
+
+  function getImage(src, wantTint = false, worldW = 0) {
     if (!src) return null
-    let img = imgCache.current.get(src)
+    // Только что вставленная картинка лежит под своим адресом и уже в памяти —
+    // её и отдаём, ничего не перекачивая.
+    let key = src
+    let img = imgCache.current.get(key)
     if (!img) {
-      img = new Image()
-      // crossOrigin обязателен, чтобы холст не «портился»: без него перекрасить лист
-      // под тёмную доску нельзя (getImageData кидает SecurityError). Хранилище отдаёт
-      // Access-Control-Allow-Origin, но если какой-то адрес его не отдаст — картинка
-      // перезагрузится без CORS и просто останется неперекрашиваемой.
-      if (!src.startsWith("data:")) img.crossOrigin = "anonymous"
-      img.onload = () => scheduleDraw()
-      img.onerror = () => {
-        if (!img.crossOrigin) return
-        const plain = new Image()
-        plain.onload = () => scheduleDraw()
-        plain.src = img.src
-        imgCache.current.set(src, plain)
+      const dpr = window.devicePixelRatio || 1
+      // Сколько точек экрана занимает лист сейчас. Ширины нет (старый вызов) —
+      // ведём себя как раньше и берём полное разрешение.
+      const onScreen = worldW ? worldW * view.current.scale * dpr : Infinity
+      const wantFull = onScreen > BOARD_PREVIEW_W
+      key = src + (wantFull ? "|full" : "|prev")
+      img = imgCache.current.get(key) || loadImage(key, src, wantFull ? BOARD_IMG_SPEC : BOARD_PREVIEW_SPEC)
+      // Полный лист ещё в пути — рисуем предпросмотр, если он уже есть. Проверять
+      // это надо на КАЖДОМ кадре, а не только в момент запроса: иначе с начала
+      // загрузки и до её конца лист показывался бы пустой рамкой.
+      if (wantFull && !(img.complete && img.naturalWidth)) {
+        const prev = imgCache.current.get(src + "|prev")
+        if (prev && prev.complete && prev.naturalWidth) { img = prev; key = src + "|prev" }
       }
-      imgCache.current.set(src, img)
-      // Через отрисовщик хранилища: тот же файл в WebP, вчетверо легче при том же
-      // разрешении (см. BOARD_IMG_SPEC). Открытие доски — это вся видимая пачка
-      // листов разом, и на боевой она весила 7,36 МБ.
-      signStorageUrl(src, BOARD_IMG_SPEC).then(
-        (url) => { img.src = url || src },
-        () => { img.src = src },     // подписать не вышло — пробуем как есть
-      )
     }
     if (!wantTint || !img.complete || !img.naturalWidth) return img
-    if (!tintCache.current.has(src)) tintCache.current.set(src, tintSheet(img))
-    return tintCache.current.get(src) || img
+    if (!tintCache.current.has(key)) tintCache.current.set(key, tintSheet(img))
+    return tintCache.current.get(key) || img
   }
 
   // Сцена целиком. Штрихи лежат построчно (board_strokes), и собирает их база:

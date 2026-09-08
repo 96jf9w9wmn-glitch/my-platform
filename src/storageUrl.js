@@ -110,6 +110,18 @@ export const AVATAR_SPEC = { bucket: "homework", transform: { width: 256, height
 // пакетной подписи принимается и отрисовщиком, а формат он выбирает по Accept.
 export const BOARD_IMG_SPEC = { bucket: "variants", render: true }
 
+// Тот же лист, уменьшенный до ширины предпросмотра: 176 829 → 17 338 байт
+// (в 10 раз). Доска открывается отдалённой, и лист на ней занимает пару сотен
+// точек — качать ради этого полное разрешение незачем; полный лист догружается,
+// когда на него посмотрят вблизи (см. getImage в Board.jsx).
+// Здесь transform ОБЯЗАН быть в подписи: уменьшение в адресе хранилище
+// игнорирует (проверено на боевой — файл возвращался того же размера).
+export const BOARD_PREVIEW_W = 700
+export const BOARD_PREVIEW_SPEC = {
+  bucket: "variants",
+  transform: { width: BOARD_PREVIEW_W, resize: "contain", quality: 80 },
+}
+
 // Подписанный адрес объекта → адрес отрисовщика. Токен тот же: подпись покрывает
 // путь к файлу, а не способ отдачи.
 function renderUrl(signed) {

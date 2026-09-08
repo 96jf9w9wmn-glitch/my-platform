@@ -203,7 +203,9 @@ export function paintStroke(ctx, s, { darkBg = false, getImage = () => null } = 
     const a = pts[0], b = pts[pts.length - 1]
     const ix = Math.min(a[0], b[0]), iy = Math.min(a[1], b[1]), iw = Math.abs(b[0] - a[0]), ih = Math.abs(b[1] - a[1])
     // s.sheet — лист с заданием из банка: на тёмной доске рисуем его перекрашенным
-    const img = getImage(s.src, !!s.sheet && darkBg)
+    // Третьим — ширина картинки в мировых единицах: по ней место вызова решает,
+    // хватит ли лёгкого предпросмотра или нужен лист в полном разрешении.
+    const img = getImage(s.src, !!s.sheet && darkBg, iw)
     // готовность: у <img> её показывает complete, у перекрашенного холста — размер
     const ready = img && (img.naturalWidth ? img.complete : img.width > 0)
     const drawIt = () => {
