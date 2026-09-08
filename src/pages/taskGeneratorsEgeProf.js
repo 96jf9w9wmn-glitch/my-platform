@@ -2128,7 +2128,7 @@ const ptsWord = (n) => `${NUMW[n]} точек`
 // fn — кривая; marks — [{x,label}] штрихи-точки на оси; tangent — {k,x0,y0};
 // shade — {a,b} закрасить между кривой и осью; tickXvals — подписи делений оси x.
 function wave8Svg({ gx0, gx1, gy0, gy1, fn, xa, xb, label = null, marks = [], markBelow = true, markItalic = true,
-  dashX = [], shade = null, tangent = null, dots = [], openEnds = true, showUnit = true, tickXvals = null,
+  dashX = [], dashY = [], shade = null, tangent = null, dots = [], openEnds = true, showUnit = true, tickXvals = null, tickYvals = null,
   guides = [], showUnitX = null, showUnitY = null, cell = 22, unitYRight = null }) {
   const m = 16, axOv = 13 // axOv — вынос оси x за крайние точки (px): стрелка и открытые концы не впритык
   const padX = m + cell              // +1 клетка-поле слева/справа: сетка обрамляет вынос оси, а не пустое поле
@@ -2146,6 +2146,9 @@ function wave8Svg({ gx0, gx1, gy0, gy1, fn, xa, xb, label = null, marks = [], ma
     g += `<path d="${d}" fill="#c9ced6" stroke="none"/>`
   }
   for (const x of dashX) g += `<line x1="${X(x)}" y1="${Y(0)}" x2="${X(x)}" y2="${clean(Y(fn(x)))}" stroke="${G_DASH}" stroke-width="1.2" stroke-dasharray="4 3"/>`
+  // dashY — горизонтальная сноска от точки графика к оси y (значение луча на бланке
+  // ФИПИ подписано у оси, а не считается по клеткам)
+  for (const d of dashY) g += `<line x1="${clean(X(d.x))}" y1="${clean(Y(d.y))}" x2="${X(0)}" y2="${clean(Y(d.y))}" stroke="${G_DASH}" stroke-width="1.2" stroke-dasharray="4 3"/>`
   // guides — узлы сетки на касательной: пунктирные сноски к делениям обеих осей.
   for (const p of guides) {
     if (p.x !== 0) g += `<line x1="${clean(X(p.x))}" y1="${clean(Y(p.y))}" x2="${clean(X(p.x))}" y2="${Y(0)}" stroke="${G_DASH}" stroke-width="1.2" stroke-dasharray="4 3"/>`
@@ -2177,6 +2180,11 @@ function wave8Svg({ gx0, gx1, gy0, gy1, fn, xa, xb, label = null, marks = [], ma
   if (unitY && gy0 <= 1 && gy1 >= 1) g += `<text x="${X(0) + (unitYRight ? 6 : -6)}" y="${Y(1) + 4}" ${HALO} font-size="12" fill="${G_AX}" text-anchor="${unitYRight ? "start" : "end"}">1</text>`
   if (unitX && !tickXvals && gx0 <= 1 && gx1 >= 1) g += `<text x="${X(1)}" y="${Y(0) + 16}" ${HALO} font-size="12" fill="${G_AX}" text-anchor="middle">1</text>`
   if (tickXvals) for (const t of tickXvals) if (t.x >= gx0 && t.x <= gx1 && t.x !== 0) g += `<text x="${X(t.x)}" y="${Y(0) + 16}" ${HALO} font-size="12" fill="${G_AX}" text-anchor="middle">${t.text}</text>`
+  if (tickYvals) for (const t of tickYvals) if (t.y >= gy0 && t.y <= gy1 && t.y !== 0) {
+    const right = t.right !== false                 // подпись справа от оси: слева к делению подходит пунктир
+    g += `<line x1="${X(0) - 4}" y1="${clean(Y(t.y))}" x2="${X(0) + 4}" y2="${clean(Y(t.y))}" stroke="${G_AX}" stroke-width="1.4"/>`
+    g += `<text x="${X(0) + (right ? 6 : -6)}" y="${clean(Y(t.y)) + 4}" ${HALO} font-size="12" fill="${G_AX}" text-anchor="${right ? "start" : "end"}">${t.text}</text>`
+  }
   if (openEnds) for (const xe of [xa, xb]) { const ye = fn(xe); if (ye >= gy0 - 0.4 && ye <= gy1 + 0.4) g += `<circle cx="${X(xe)}" cy="${clean(Y(ye))}" r="3" fill="#fff" stroke="${G_CURVE}" stroke-width="1.6"/>` }
   for (const [x, y] of dots) g += `<circle cx="${X(x)}" cy="${clean(Y(y))}" r="3" fill="${G_AX}"/>`
   for (const mk of marks) {
@@ -2998,21 +3006,31 @@ function t8FzeroCountSeg() {
   }
 }
 
-// #42 — f(x) — два луча (ломаная); вычислить F(β)−F(α)=∫f (площадь со знаком).
+// #42 — f(x) — два луча с общей начальной точкой: горизонтальный слева и наклонный
+// вправо вниз, как на бланке ФИПИ. Вычислить F(b) − F(a) = ∫f (площадь трапеции).
+// Вид рисунка повторяет эталон: подписаны ОБА конца промежутка и абсцисса вершины,
+// значение горизонтального луча подписано у оси y, к нему и к концам идут пунктиры.
 function t8integralTwoRays() {
-  const xv = randInt(-5, -2)                 // абсцисса вершины
-  const yv = randInt(1, 4)                     // значение в вершине
-  const mL = pick([1, 2])                       // наклон левого луча
-  const fn = (x) => x <= xv ? yv + mL * (x - xv) : yv
-  const a = xv - pick([2, 4]), b = pick([-1, 0])  // pick([2,4]) ⇒ целый ответ
-  // ∫_a^b f = ∫_a^xv (yv+mL(x−xv)) + ∫_xv^b yv
-  const i1 = yv * (xv - a) + mL * (-(a - xv) * (a - xv)) / 2
-  const i2 = yv * (b - xv)
-  const val = clean(i1 + i2)
-  const gx0 = a - 1, gx1 = 2, gy0 = -4, gy1 = 5
+  const m = pick([1, 1, 2])                  // крутизна наклонного луча (вниз)
+  // площадь треугольника m·k²/2 обязана быть целой — на бланке ФИПИ ответ целый
+  const k = m === 1 ? pick([2, 4]) : randInt(2, 3)    // клеток от вершины до нуля
+  const h = m * k                            // значение горизонтального луча
+  const b = pick([-1, -1, -2])               // правый конец промежутка = нуль наклонного луча
+  const xv = b - k                           // общая начальная точка лучей
+  const a = xv - randInt(2, 5)               // левый конец промежутка — на горизонтальном луче
+  const fn = (x) => (x <= xv ? h : h - m * (x - xv))
+  // ∫ = прямоугольник на [a; xv] + треугольник на [xv; b]
+  const val = clean(h * (xv - a) + h * (b - xv) / 2)
+  const gx0 = a - 1, gx1 = 1, gy0 = -3, gy1 = h + 1
   return {
     condition_text: `На рисунке изображён график некоторой функции y = f(x) (два луча с общей начальной точкой). Пользуясь рисунком, вычислите F(${ru(b)}) − F(${ru(a)}), где F(x) — одна из первообразных функции f(x).`,
-    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn, xa: gx0, xb: gx1, tickXvals: [{ x: a, text: ru(a) }, { x: xv, text: ru(xv) }], openEnds: false, label: label8(fn, gx0, gx1, gy0, gy1, "y = f(x)") }),
+    image_url: wave8Svg({
+      gx0, gx1, gy0, gy1, fn, xa: gx0, xb: gx1, openEnds: false, showUnit: false, cell: 24,
+      dashX: [a, xv], dashY: [{ x: xv, y: h }],
+      tickXvals: [{ x: a, text: ru(a) }, { x: xv, text: ru(xv) }, { x: b, text: ru(b) }],
+      tickYvals: [{ y: h, text: ru(h) }],
+      label: { x: gx0 + 1.7, y: gy1 - 0.45, text: "y = f(x)", anchor: "middle" },
+    }),
     answer: ru(val),
   }
 }
