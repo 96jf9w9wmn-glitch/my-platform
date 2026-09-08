@@ -30,6 +30,10 @@ const SUP = { 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶" }
 const fT = (n, d) => `⟦f:${n}:${d}⟧`
 // Целое число в тексте: минус — типографский U+2212 (ASCII-дефис в условиях запрещён).
 const nS = (n) => String(n).replace("-", MINUS)
+// Коэффициент перед переменной: единица не пишется («x», «−x», «3x», а не «1x»).
+const coef = (k) => (Math.abs(k) === 1 ? (k < 0 ? MINUS : "") : nS(k))
+// То же для рационального коэффициента: «⅓a», «a», «−a».
+const rCoef = (q) => { const t = Rstr(q); return t === "1" ? "" : t === `${MINUS}1` ? MINUS : t }
 // Слагаемое «± kx» в цепочке (k может быть отрицательным или нулём).
 // Слагаемое «+ 3x», «− y», «+ 1». ВАЖНО: при пустой переменной (свободный член) единицу
 // печатать обязательно — иначе «x² + 1» превращалось в «x² +» и слагаемое пропадало.
@@ -7194,7 +7198,6 @@ export function t18SqrtVeeMore() {
 // виде задача стоит в эталоне), а не свёрнутую.
 const SUPD = { 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹" }
 const supNum = (n) => String(n).split("").map((d) => SUPD[d]).join("")
-const coef = (k) => (k === 1 ? "" : String(k))
 
 // #99. k³x⁶ + (pa − qx)³ + ckx² + cpa = cqx — «не имеет корней».
 // Слева стоит φ(kx²) + φ(pa − qx) при φ(t) = t³ + ct, поэтому уравнение равносильно
@@ -11140,8 +11143,9 @@ export function t18AnswerByX() {
   const par = pick(T137), { ang, C, D, L, H } = par
   const { set, solve, aRange } = build137(par)
   const kA = ang.ca, kB = ang.sa                                 // null → слагаемого нет, "" → 1
-  const num = `${kA === null ? `${C}sin x` : `(${C} + ${kA}a)sin x`} ${kB === null ? term(D, "cos x").trim() : `${MINUS} (${kB}a${term(-D, "")})cos x`}`
-  const den = `${C}sin x${term(D, "cos x")}`
+  const cS = C === 1 ? "" : C                                    // коэффициент 1 перед функцией не пишется
+  const num = `${kA === null ? `${cS}sin x` : `(${C} + ${kA}a)sin x`} ${kB === null ? term(D, "cos x").trim() : `${MINUS} (${kB}a${term(-D, "")})cos x`}`
+  const den = `${cS}sin x${term(D, "cos x")}`
   const ans = `${ang.pl === "0" ? "" : `${ang.pl} + `}πn, n ∈ ℤ`
   return item({
     text: `Найдите все значения x, при каждом из которых равенство\n\n${fT(num, den)} = 1\n\n`
@@ -11151,7 +11155,7 @@ export function t18AnswerByX() {
     solution: `Знаменатель в интересующих точках отличен от нуля, поэтому равенство равносильно совпадению числителя со знаменателем, то есть равенству нулю их разности.\n`
       + `Разность равна ${kA === null ? "" : `${kA}a·sin x`}${kB === null ? "" : ` ${MINUS} ${kB}a·cos x`}, то есть 2a·${ang.txt === "0" ? "sin x" : `sin(${shiftS("x", ang.txt)})`}.\n`
       + `Равенство должно выполняться при ЛЮБОМ a из отрезка [${nS(L)}; ${nS(H)}], а на нём есть значения, отличные от нуля. Значит обязано быть ${ang.txt === "0" ? "sin x" : `sin(${shiftS("x", ang.txt)})`} = 0.\n`
-      + `Отсюда ${shiftS("x", ang.txt)} = πn, то есть x = ${ang.pl === "0" ? "" : `${ang.txt} + `}πn; в этих точках знаменатель равен ±(${C}sin ${ang.txt}${term(D, `cos ${ang.txt}`)}) ≠ 0, так что все они подходят.\n`
+      + `Отсюда ${shiftS("x", ang.txt)} = πn, то есть x = ${ang.pl === "0" ? "" : `${ang.txt} + `}πn; в этих точках знаменатель равен ±(${cS}sin ${ang.txt}${term(D, `cos ${ang.txt}`)}) ≠ 0, так что все они подходят.\n`
       + `Ответ: ${ans}.`,
     predicate: { type: "exists" },
     solve: (t) => solve(t),

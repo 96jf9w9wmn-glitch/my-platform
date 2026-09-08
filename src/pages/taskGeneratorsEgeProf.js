@@ -77,6 +77,8 @@ function isTerm(n, d) { d = Math.abs(d / gcd(n, d)); while (d % 2 === 0) d /= 2;
 function decLen(n, d) { const g = gcd(n, d); d = Math.abs(d / g); let a = 0, b = 0; while (d % 2 === 0) { d /= 2; a++ } while (d % 5 === 0) { d /= 5; b++ } return d === 1 ? Math.max(a, b) : Infinity }
 // Знак «+n» / «−n» для константы в выражении (n со своим знаком).
 const signed = (n) => (n < 0 ? `−${Math.abs(n)}` : `+${n}`)
+// Коэффициент перед переменной: единица не пишется («+t²», а не «+1t²»).
+const signedVar = (n, v) => `${n < 0 ? "−" : "+"}${Math.abs(n) === 1 ? "" : Math.abs(n)}${v}`
 // ============================================================================
 // №2 — ВЕКТОРЫ (скалярное произведение, длина линейной комбинации)
 // ============================================================================
@@ -2868,7 +2870,7 @@ function t8kinVelocityAt() {
   const v = clean(2 * an / ad * t0 + b)
   const aStr = an === ad ? "t²" : `${fT(an, ad)}t²`
   return {
-    condition_text: `Материальная точка движется прямолинейно по закону x(t) = ${aStr} ${signed(b)}t ${signed(c)}, где x — расстояние от точки отсчёта в метрах, t — время в секундах, измеренное с момента начала движения. Найдите её скорость (в метрах в секунду) в момент времени t = ${ru(t0)} с.`,
+    condition_text: `Материальная точка движется прямолинейно по закону x(t) = ${aStr} ${signedVar(b, "t")} ${signed(c)}, где x — расстояние от точки отсчёта в метрах, t — время в секундах, измеренное с момента начала движения. Найдите её скорость (в метрах в секунду) в момент времени t = ${ru(t0)} с.`,
     answer: ru(v),
   }
 }
@@ -2882,8 +2884,8 @@ function t8kinTimeForVelocity() {
     V = clean(T * T / 2 + 2 * b * T + c)
   } while ((V <= 0 || !Number.isInteger(V) || (c - V) >= 0) && ++tries < 80)
   // v=½t²+2b·t+c=V ⇒ ½t²+2b·t+(c−V)=0; произведение корней 2(c−V)<0 ⇒ ровно один t>0=T
-  const bStr = `${signed(b)}t²`
-  const cStr = `${signed(c)}t`
+  const bStr = signedVar(b, "t²")
+  const cStr = signedVar(c, "t")
   return {
     condition_text: `Материальная точка движется прямолинейно по закону x(t) = ${fT(1, 6)}t³ ${bStr} ${cStr} ${signed(d)}, где x — расстояние от точки отсчёта в метрах, t — время в секундах, измеренное с момента начала движения. В какой момент времени (в секундах) её скорость была равна ${ru(V)} м/с?`,
     answer: ru(T),
@@ -2906,7 +2908,7 @@ function t8tangentParabC() {
   const c = b + delta * delta / (4 * a)
   const aStr = a === 1 ? "" : ru(a)
   return {
-    condition_text: `Прямая y = ${k === 1 ? "" : k === -1 ? "−" : ru(k)}x ${signed(b)} является касательной к графику функции y = ${aStr}x² ${signed(p)}x + c. Найдите c.`,
+    condition_text: `Прямая y = ${k === 1 ? "" : k === -1 ? "−" : ru(k)}x ${signed(b)} является касательной к графику функции y = ${aStr}x² ${signedVar(p, "x")} + c. Найдите c.`,
     answer: ru(c),
   }
 }

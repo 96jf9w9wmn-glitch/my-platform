@@ -4092,7 +4092,8 @@ function t22RatNegParab() {
 function t22RatAbs() {
   const a = pick([1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5])
   const ks = [-a * a, 0, a * a].sort((x, y) => x - y)
-  const body = `y = ${fT(`${g22Num(a)}|x| − 1`, `|x| − ${g22Num(a)}x²`)}`
+  const aS = a === 1 ? "" : g22Num(a)                    // коэффициент 1 перед переменной не пишется
+  const body = `y = ${fT(`${aS}|x| − 1`, `|x| − ${aS}x²`)}`
   return { condition_text: g22Cond(body, g22Ask.k0), answer: ks.map((k) => `k = ${g22Num(k)}`).join("; "), image_url: null, solution_image: g22PlotAbsRecip(a) }
 }
 // C5 — (a·x+b)/(a·x²+b·x) = 1/x с дыркой ; y=kx «ровно одна».

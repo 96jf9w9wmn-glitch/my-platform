@@ -513,7 +513,9 @@ function t4ShortestBase({ items, kindWord, tail }) {
 }
 
 export function t4FanoShortest() {
-  const letters = shuffle(Math.random() < 0.5 ? T4_LAT : T4_RU).slice(0, randInt(5, 8)).sort()
+  // Набор букв в банке — всегда НАЧАЛО списка (А, Б, В, Г, Д, …), без пропусков:
+  // «шесть букв: А, Б, В, Г, Д, Е». Случайное подмножество давало «А, Б, Г, Д, Ж».
+  const letters = (Math.random() < 0.5 ? T4_LAT : T4_RU).slice(0, randInt(5, 8))
   const built = t4ShortestBase({ items: letters, kindWord: "Буква" })
   if (!built) return null
   // В банке коды подаются двумя способами: таблицей и перечислением прямо в тексте.
@@ -647,29 +649,40 @@ function allWords(alpha, len) {
   return out
 }
 
+// Слово-донор задаёт алфавит списка и длину слов. В банке ФИПИ буквы ВСЕГДА взяты
+// из осмысленного слова и напечатаны В ПОРЯДКЕ ЭТОГО СЛОВА («буквы А, К, Ц, Е, Н, Т»
+// — АКЦЕНТ), а сам список отсортирован по русскому алфавиту. Пары «слово + длина»
+// повторяют реальные задания банка.
 const T8_SETS = [
-  ["УЧЕНИК", 3], ["ГЕПАРД", 3], ["АКЦЕНТ", 5], ["ЛАЙМ", 5], ["ПАРУС", 5], ["БАТЫР", 5],
-  ["ЦИТРУС", 5], ["ВОРОТА", 6], ["АЛГОРИТМ", 5], ["НОТКИ", 4], ["ИЗБА", 4], ["СТУЛ", 5],
-  ["КРОТ", 5], ["ВЕСНА", 4], ["МОСТ", 5], ["ЗЕБРА", 4],
+  ["АКЦЕНТ", 5], ["СТРОКА", 5], ["ТЕОРИЯ", 6], ["ГЕПАРД", 5], ["УЧЕНИК", 5],
+  ["АПРЕЛЬ", 6], ["МАНГУСТ", 6], ["МУЖЧИНА", 6], ["ПЯТНИЦА", 6], ["АЛГОРИТМ", 5],
+  ["ЦИТРУС", 5], ["БАТЫР", 5], ["ПАРУС", 5], ["ЦАПЛЯ", 5], ["ФОКУС", 5],
+  ["ЛЕМУР", 5], ["ПИТОН", 5], ["ЛАЙМ", 5], ["НОТКИ", 5], ["ВОРОТА", 6],
+  ["ЗЕБРА", 5], ["КРОТ", 5], ["ВЕСНА", 5], ["ИЗБА", 4],
 ]
-// Набор букв слова-донора (без повторов) + длина слов списка.
-function t8Setup() {
+// Буквы в порядке слова (letters) и они же множеством (alpha); style выбирает одну
+// из двух шапок банка.
+function t8Setup(minAlpha = 4) {
   for (let k = 0; k < 40; k++) {
     const [word, len] = pick(T8_SETS)
-    const alpha = [...new Set([...word])]
-    if (alpha.length < 4 || Math.pow(alpha.length, len) > 300000) continue
-    return { alpha, len }
+    const letters = [...new Set([...word])]
+    if (letters.length < minAlpha || Math.pow(letters.length, len) > 400000) continue
+    return { letters, alpha: letters, len, style: randInt(0, 1) }
   }
   return null
 }
 
-const T8_LEN_WORD = { 3: "3-буквенные", 4: "4-буквенные", 5: "пятибуквенные", 6: "шестибуквенные" }
+const T8_LEN_WORD = { 4: "четырёхбуквенные", 5: "пятибуквенные", 6: "шестибуквенные" }
+const T8_NOTE = "\n\nПримечание. Слово – последовательность идущих подряд букв, не обязательно осмысленная."
 
-function t8Head(alpha, len, words) {
-  const start = words.slice(0, 6).map((w, i) => `${i + 1}. ${w}`).join("\n")
-  return `Все ${T8_LEN_WORD[len]} слова, в составе которых могут быть только русские буквы ${alpha.join(", ")}, ` +
-    "записаны в алфавитном порядке и пронумерованы начиная с 1.\nНиже приведено начало списка.\n" +
-    start + "\n…\n\n"
+function t8Head(st, words) {
+  const list = words.slice(0, 6).map((w, i) => `${i + 1}. ${w}`).join("\n")
+  if (st.style === 1) {
+    return `Все ${T8_LEN_WORD[st.len]} слова, составленные из букв ${st.letters.join(", ")}, ` +
+      "записаны в алфавитном порядке и пронумерованы.\nВот начало списка:\n" + list + "\n……\n\n"
+  }
+  return `Все ${T8_LEN_WORD[st.len]} слова, в составе которых могут быть только русские буквы ${st.letters.join(", ")}, ` +
+    "записаны в алфавитном порядке и пронумерованы начиная с 1.\nНиже приведено начало списка.\n" + list + "\n…\n\n"
 }
 
 export function t8WordIndex() {
@@ -678,8 +691,7 @@ export function t8WordIndex() {
   const words = allWords(st.alpha, st.len)
   const target = pick(words.slice(Math.floor(words.length / 6)))
   return {
-    condition_text: t8Head([...st.alpha].sort(rusCmp), st.len, words) +
-      `Под каким номером стоит слово ${target}?`,
+    condition_text: t8Head(st, words) + `Под каким номером стоит слово ${target}?`,
     answer: String(words.indexOf(target) + 1),
   }
 }
@@ -691,32 +703,36 @@ export function t8FirstLetter() {
   const words = allWords(st.alpha, st.len)
   const letter = pick(sorted.slice(1))            // не первая буква алфавита — иначе ответ 1
   return {
-    condition_text: t8Head(sorted, st.len, words) +
+    condition_text: t8Head(st, words) +
       `Под каким номером в списке идёт первое слово, которое начинается с буквы ${letter}?`,
     answer: String(words.findIndex((w) => w[0] === letter) + 1),
   }
 }
 
-// Ограничения, из которых ФИПИ собирает вопрос «первое/последнее слово, которое …».
-function t8Constraint(sorted) {
-  const [a, b] = shuffle(sorted)
-  const kind = randInt(0, 3)
-  if (kind === 0) return { text: `не содержит ни одной буквы ${a}`, test: (w) => !w.includes(a) }
-  if (kind === 1) return { text: `содержит не более одной буквы ${a}`, test: (w) => [...w].filter((c) => c === a).length <= 1 }
-  if (kind === 2) return { text: `содержит ровно одну букву ${a}`, test: (w) => [...w].filter((c) => c === a).length === 1 }
-  return { text: `не содержит букв ${b}, стоящих рядом`, test: (w) => !w.includes(b + b) }
+// Ограничение «сколько раз встречается буква» — ровно в тех формулировках, что
+// стоят в банке. Числительное согласовано с падежом («ровно одну букву У»,
+// «не менее двух букв Ц»).
+function t8CountConstraint(letter) {
+  const kind = randInt(0, 4)
+  if (kind === 0) return { text: `не содержит ни одной буквы ${letter}`, has: `не содержит буквы ${letter}`, test: (w) => !w.includes(letter) }
+  if (kind === 1) return { text: `содержит ровно одну букву ${letter}`, has: `ровно одну букву ${letter}`, test: (w) => cnt(w, letter) === 1 }
+  if (kind === 2) return { text: `содержит ровно две буквы ${letter}`, has: `ровно две буквы ${letter}`, test: (w) => cnt(w, letter) === 2 }
+  if (kind === 3) return { text: `содержит не более одной буквы ${letter}`, has: `не более одной буквы ${letter}`, test: (w) => cnt(w, letter) <= 1 }
+  return { text: `содержит не менее двух букв ${letter}`, has: `не менее двух букв ${letter}`, test: (w) => cnt(w, letter) >= 2 }
 }
+const cnt = (w, c) => [...w].filter((x) => x === c).length
 
+// «Первое/последнее слово, которое <ограничение по количеству> и не содержит букв X,
+// стоящих рядом» — в банке эти два ограничения всегда РАЗНОГО вида и на РАЗНЫЕ буквы.
 export function t8Filter() {
-  for (let attempt = 0; attempt < 40; attempt++) {
+  for (let attempt = 0; attempt < 60; attempt++) {
     const st = t8Setup()
     if (!st) continue
-    const sorted = [...st.alpha].sort(rusCmp)
     const words = allWords(st.alpha, st.len)
-    const c1 = t8Constraint(sorted)
-    let c2 = t8Constraint(sorted)
-    for (let k = 0; k < 10 && c2.text === c1.text; k++) c2 = t8Constraint(sorted)
-    const ok = words.map((w, i) => ({ w, i })).filter(({ w }) => c1.test(w) && c2.test(w))
+    const [a, b] = shuffle([...st.alpha].sort(rusCmp))
+    const c1 = t8CountConstraint(a)
+    const near = { text: `не содержит букв ${b}, стоящих рядом`, test: (w) => !w.includes(b + b) }
+    const ok = words.map((w, i) => ({ w, i })).filter(({ w }) => c1.test(w) && near.test(w))
     if (ok.length < 3) continue
     const last = Math.random() < 0.5
     const hit = last ? ok[ok.length - 1] : ok[0]
@@ -725,92 +741,111 @@ export function t8Filter() {
     if (!last && hit.i < 12) continue
     if (last && hit.i > words.length - 12) continue
     return {
-      condition_text: t8Head(sorted, st.len, words) +
-        `Под каким номером в списке идёт ${last ? "последнее" : "первое"} слово, которое ${c1.text}${c1.text.includes(",") ? "," : ""} и ${c2.text}?`,
+      condition_text: t8Head(st, words) +
+        `Под каким номером в списке идёт ${last ? "последнее" : "первое"} слово, которое ${c1.text} и ${near.text}?`,
       answer: String(hit.i + 1),
     }
   }
   return null
 }
 
+// «…слово с чётным номером, которое не начинается с букв X, Y или Z и при этом
+// содержит в своей записи …». Запрещённых начальных букв не больше трёх И всегда
+// меньше, чем букв в алфавите: иначе «не начинается с трёх из четырёх букв» — это
+// переписанное «начинается с оставшейся», такого в банке нет.
 export function t8Parity() {
-  for (let attempt = 0; attempt < 40; attempt++) {
-    const st = t8Setup()
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const st = t8Setup(5)
     if (!st) continue
     const sorted = [...st.alpha].sort(rusCmp)
     const words = allWords(st.alpha, st.len)
     const even = Math.random() < 0.5
-    const banned = shuffle(sorted).slice(0, randInt(1, 3))
-    const c = t8Constraint(sorted)
+    const nBan = randInt(1, Math.min(3, sorted.length - 3))
+    const banned = shuffle(sorted).slice(0, nBan).sort(rusCmp)
+    const letter = pick(sorted.filter((c) => !banned.includes(c)))
+    const c = t8CountConstraint(letter)
+    if (c.has.startsWith("не содержит")) continue   // «не начинается с … и не содержит …» — другой типаж
     const ok = words.map((w, i) => ({ w, n: i + 1 }))
       .filter(({ w, n }) => (n % 2 === 0) === even && !banned.includes(w[0]) && c.test(w))
     if (ok.length < 3) continue
-    const askCount = Math.random() < 0.35
-    const last = Math.random() < 0.5
-    const head = t8Head(sorted, st.len, words)
-    const bannedStr = banned.length === 1 ? `буквы ${banned[0]}` : `букв ${banned.slice(0, -1).join(", ")} или ${banned[banned.length - 1]}`
-    if (askCount) {
+    const head = t8Head(st, words)
+    const bannedStr = banned.length === 1 ? `буквы ${banned[0]}`
+      : `букв ${banned.slice(0, -1).join(", ")} или ${banned[banned.length - 1]}`
+    if (Math.random() < 0.35) {
       return {
         condition_text: head +
-          `Определите в этом списке количество слов с ${even ? "чётными" : "нечётными"} номерами, которые не начинаются с ${bannedStr} и при этом ${c.text}.`,
+          `Определите в этом списке количество слов с ${even ? "чётными" : "нечётными"} номерами, ` +
+          `которые не начинаются с ${bannedStr} и при этом содержат в своей записи ${c.has}.`,
         answer: String(ok.length),
       }
     }
+    const last = Math.random() < 0.5
     const hit = last ? ok[ok.length - 1] : ok[0]
     return {
       condition_text: head +
-        `Определите, под каким номером в этом списке стоит ${last ? "последнее" : "первое"} слово с ${even ? "чётным" : "нечётным"} номером, ` +
-        `которое не начинается с ${bannedStr} и при этом ${c.text}.`,
+        `Определите, под каким номером в этом списке стоит ${last ? "последнее" : "первое"} слово ` +
+        `с ${even ? "чётным" : "нечётным"} номером, которое не начинается с ${bannedStr} ` +
+        `и при этом содержит в своей записи ${c.has}.` + T8_NOTE,
       answer: String(hit.n),
     }
   }
   return null
 }
 
-// Комбинаторика: буква X встречается ровно один раз, остальные — сколько угодно.
-const T8_NAMES = [
-  { who: "Вася", verb: "составляет", noun: "слова", tail: "Сколько существует таких слов, которые может написать Вася?" },
-  { who: "Игорь", verb: "составляет", noun: "кодовые слова", tail: "Сколько различных кодовых слов может использовать Игорь?" },
-]
+// Комбинаторика: одна буква встречается ровно один раз, остальные — сколько угодно.
+// Второй подтип банка: «ровно одна гласная буква, и она встречается ровно 1 раз».
+const T8_VOWELS = "АЕЁИОУЫЭЮЯ"
 export function t8CountOnce() {
-  const st = t8Setup()
-  if (!st) return null
-  const sorted = [...st.alpha].sort(rusCmp)
-  const special = pick(sorted)
-  const rest = sorted.length - 1
-  const n = st.len * Math.pow(rest, st.len - 1)
-  const who = pick(T8_NAMES)
-  const isCode = who.noun === "кодовые слова"
-  return {
-    condition_text:
-      (isCode
-        ? "Игорь составляет таблицу кодовых слов для передачи сообщений, каждому сообщению соответствует своё кодовое слово. " +
-          `В качестве кодовых слов Игорь использует ${st.len}-буквенные слова, в которых есть только буквы ${sorted.join(", ")}, ` +
-          `причём буква ${special} появляется ровно 1 раз. `
-        : `Вася составляет ${st.len}-буквенные слова, в которых есть только буквы ${sorted.join(", ")}, ` +
-          `причём буква ${special} используется в каждом слове ровно 1 раз. `) +
-      `Каждая из других допустимых букв может встречаться в ${isCode ? "кодовом слове" : "слове"} любое количество раз или не встречаться совсем. ` +
-      (isCode ? "" : "Словом считается любая допустимая последовательность букв, не обязательно осмысленная. ") +
-      who.tail,
-    answer: String(n),
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const st = t8Setup()
+    if (!st) continue
+    const letters = st.letters
+    const len = pick([3, 4, 5, 6])
+    const vowels = letters.filter((c) => T8_VOWELS.includes(c))
+    const isCode = Math.random() < 0.5
+    const byVowel = vowels.length >= 1 && vowels.length < letters.length && Math.random() < 0.4
+    const special = pick(letters)
+    // «Ровно одна гласная и она встречается 1 раз»: выбираем место гласной (len),
+    // саму гласную и заполняем остальные места согласными.
+    const n = byVowel
+      ? len * vowels.length * Math.pow(letters.length - vowels.length, len - 1)
+      : len * Math.pow(letters.length - 1, len - 1)
+    if (n > 1e9 || n < 10) continue
+    const noun = isCode ? "кодовом слове" : "слове"
+    const head = isCode
+      ? "Игорь составляет таблицу кодовых слов для передачи сообщений, каждому сообщению соответствует своё кодовое слово. " +
+        `В качестве кодовых слов Игорь использует ${len}-буквенные слова, в которых есть только буквы ${letters.join(", ")}, `
+      : `Вася составляет ${len}-буквенные слова, в которых есть только буквы ${letters.join(", ")}, `
+    const rule = byVowel
+      ? "причём в каждом слове есть ровно одна гласная буква и она встречается ровно 1 раз. " +
+        `Каждая из допустимых согласных букв может встречаться в ${noun} любое количество раз или не встречаться совсем. `
+      : `причём буква ${special} ${isCode ? "появляется" : "используется в каждом слове"} ровно 1 раз. ` +
+        `Каждая из других допустимых букв может встречаться в ${noun} любое количество раз или не встречаться совсем. `
+    return {
+      condition_text: head + rule +
+        (isCode ? "Сколько различных кодовых слов может использовать Игорь?"
+          : "Словом считается любая допустимая последовательность букв, не обязательно осмысленная. " +
+            "Сколько существует таких слов, которые может написать Вася?"),
+      answer: String(n),
+    }
   }
+  return null
 }
-
 
 
 // Количество k-ичных n-значных чисел с ограничениями на цифры — перебор по всем
 // числам системы счисления (k ≤ 9, n ≤ 6 → не больше 531 441 вариантов).
 export function t8CountDigits() {
   for (let attempt = 0; attempt < 40; attempt++) {
-    const base = pick([5, 6, 7, 8, 9])
-    const len = pick([4, 5, 5, 6])
+    const base = pick([6, 8, 8, 9, 9])          // в банке только шестеричная, восьмеричная и девятеричная
+    const len = pick([5, 5, 5, 6])
     if (Math.pow(base, len) > 600000) continue
     const d = randInt(0, base - 1)
     // 0–2 — сколько раз встречается цифра d; 3 — «ровно одна d, и рядом с ней
     // не стоит цифра из запрещённого класса» (в банке — чётные/нечётные или список).
     const kind = randInt(0, 3)
     const oddBan = Math.random() < 0.5
-    const tailBan = shuffle([...Array(base).keys()]).slice(0, 2)
+    const tailBan = shuffle([...Array(base).keys()].filter((x) => x > 0)).slice(0, 2).sort((a, b) => a - b)
     const limit = randInt(1, 2)
     const nearOdd = Math.random() < 0.6           // сосед не может быть нечётным (иначе — чётным)
     const nearList = shuffle([...Array(base).keys()].filter((x) => x !== d)).slice(0, 4).sort((a, b) => a - b)
@@ -885,34 +920,61 @@ export function t8CountDigits() {
 const bitsFor = (m) => Math.ceil(Math.log2(m))
 const bytesFor = (bits) => Math.ceil(bits / 8)
 
-const T11_LETTERS = [26, 30, 33, 24, 28]
-const T11_SPECIAL = [240, 400, 1000, 4070, 60]
+// Наборы символов взяты из банка ДОСЛОВНО. Придумывать их размер нельзя: «набор
+// прописных латинских букв» — это ровно 26 символов, и «30-символьный набор
+// прописных латинских букв» в задании невозможен.
+const T11_PASS_ALPHA = [
+  { n: 36, text: "десятичные цифры и символы из 26-символьного набора прописных латинских букв" },
+  { n: 26, text: "символы из 26-символьного набора прописных латинских букв" },
+  { n: 7, text: "символы из 7-символьного набора: С, Д, А, М, Е, Г, Э" },
+  { n: 8, text: "символы из 8-символьного набора: А, В, C, D, Е, F, G, H" },
+  { n: 10, text: "символы В, Ы, П, У, С, К, Н, И, Ц, А (таким образом, используется 10 различных символов)" },
+  { n: 17, text: "цифры и буквы У, Ч, И, Т, Е, Л, Ь (таким образом, используется 17 различных символов)" },
+]
+const T11_SPECIAL = [15, 68, 240, 400, 4070, 4080, 4090]
+// «состоящий из 121 символа», но «из 32 символов» — падеж зависит от последней цифры.
+const symbolsWord = (n) => (n % 10 === 1 && n % 100 !== 11 ? `${n} символа` : `${n} символов`)
+// Согласование числительного: «24 различные буквы», но «26 различных букв».
+const lettersPhrase = (n) => (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14)
+  ? `${n} различные буквы` : `${n} различных букв`)
 
 export function t11PassExtra() {
   const len = randInt(5, 12)
-  const alpha = 10 + pick(T11_LETTERS)
-  const perPass = bytesFor(len * bitsFor(alpha))
-  const extra = randInt(3, 25)
-  const users = pick([10, 20, 25, 30, 40, 50, 100])
-  const total = users * (perPass + extra)
+  const a = pick(T11_PASS_ALPHA)
+  const perPass = bytesFor(len * bitsFor(a.n))
+  const users = pick([10, 15, 20, 25, 30, 40, 50, 100])
   const lenWord = { 5: "пяти", 6: "шести", 7: "семи", 8: "восьми", 9: "девяти", 10: "десяти", 11: "одиннадцати", 12: "двенадцати" }[len]
+  const head = `При регистрации в компьютерной системе каждому пользователю выдаётся пароль, состоящий из ${lenWord} символов ` +
+    `и содержащий только ${a.text}. ` +
+    "В базе данных для хранения сведений о каждом пользователе отведено одинаковое и минимально возможное целое число байт. " +
+    "При этом используют посимвольное кодирование паролей, все символы кодируют одинаковым и минимально возможным количеством бит. "
+  // Прямой типаж банка: доп. сведения ИЗВЕСТНЫ, спрашивают общий объём.
+  if (Math.random() < 0.35) {
+    const extra = pick([14, 16, 20, 24, 32])
+    return {
+      condition_text: head +
+        `Кроме собственно пароля, для каждого пользователя в системе хранятся дополнительные сведения, для чего отведено ${extra} байт на одного пользователя.\n` +
+        `Определите объём памяти (в байтах), необходимый для хранения данных о ${users} пользователях. ` +
+        "В ответе запишите только целое число — количество байт.",
+      answer: String(users * (perPass + extra)),
+    }
+  }
+  const extra = randInt(3, 25)
   return {
-    condition_text:
-      `При регистрации в компьютерной системе каждому пользователю выдаётся пароль, состоящий из ${lenWord} символов ` +
-      `и содержащий только десятичные цифры и символы из ${alpha - 10}-символьного набора прописных латинских букв. ` +
-      "В базе данных для хранения сведений о каждом пользователе отведено одинаковое и минимально возможное целое число байт. " +
-      "При этом используют посимвольное кодирование паролей, все символы кодируют одинаковым и минимально возможным количеством бит. " +
+    condition_text: head +
       "Кроме собственно пароля, для каждого пользователя в системе хранятся дополнительные сведения, для чего выделено целое число байт; " +
       "это число одно и то же для всех пользователей.\n" +
-      `Для хранения сведений о ${users} пользователях потребовалось ${total} байт. Сколько байт выделено для хранения дополнительных сведений об одном пользователе? ` +
+      `Для хранения сведений о ${users} пользователях потребовалось ${users * (perPass + extra)} байт. ` +
+      "Сколько байт выделено для хранения дополнительных сведений об одном пользователе? " +
       "В ответе запишите только целое число — количество байт.",
     answer: String(extra),
   }
 }
 
 export function t11Volume() {
-  const len = pick([16, 24, 32, 48, 64])
-  const alpha = 10 + pick(T11_SPECIAL)
+  const len = pick([16, 24, 32, 48, 64, 121, 257])
+  const special = pick(T11_SPECIAL)
+  const alpha = 10 + special
   const per = bytesFor(len * bitsFor(alpha))
   const unit = pick(["Кбайт", "Мбайт"])
   const div = unit === "Кбайт" ? 1024 : 1024 * 1024
@@ -922,8 +984,8 @@ export function t11Volume() {
   if (bytes % div !== 0) return null
   return {
     condition_text:
-      `При регистрации в компьютерной системе каждому объекту присваивается идентификатор, состоящий из ${len} символов ` +
-      `и содержащий только десятичные цифры и символы из ${alpha - 10}-символьного специального алфавита. ` +
+      `При регистрации в компьютерной системе каждому объекту присваивается идентификатор, состоящий из ${symbolsWord(len)} ` +
+      `и содержащий только десятичные цифры и символы из ${special}-символьного специального алфавита. ` +
       "В базе данных для хранения каждого идентификатора отведено одинаковое и минимально возможное целое число байт. " +
       "При этом используют посимвольное кодирование идентификаторов, все символы кодируют одинаковым и минимально возможным количеством бит.\n" +
       `Определите объём памяти (в ${unit}), необходимый для хранения ${count} идентификаторов.\n` +
@@ -936,13 +998,13 @@ function gcd(a, b) { return b ? gcd(b, a % b) : a }
 
 export function t11Plate() {
   const len = randInt(4, 8)
-  const letters = pick(T11_LETTERS)
+  const letters = pick([24, 26, 30, 33])            // алфавит страны, а не латиница
   const per = bytesFor(len * bitsFor(letters + 10))
   const count = pick([20, 30, 40, 50, 60, 80, 100])
   return {
     condition_text:
       `В некоторой стране автомобильный номер длиной ${len} символов составляют из заглавных букв ` +
-      `(используется ${letters} различных букв) и любых десятичных цифр. Буквы с цифрами могут следовать в любом порядке.\n` +
+      `(используется ${lettersPhrase(letters)}) и любых десятичных цифр. Буквы с цифрами могут следовать в любом порядке.\n` +
       "Каждый такой номер в компьютерной программе записывается минимально возможным и одинаковым целым количеством байт " +
       "(при этом используют посимвольное кодирование и все символы кодируются одинаковым и минимально возможным количеством бит).\n" +
       `Определите объём памяти (в байтах), отводимый этой программой для записи ${count} номеров.`,
@@ -950,18 +1012,25 @@ export function t11Plate() {
   }
 }
 
+// Автомобильный номер российского образца: допустимы ровно 12 букв, совпадающих
+// по начертанию с латинскими. Брать «16 заглавных букв» неоткуда — их всего 12.
+const T11_PLATE_LETTERS = ["А", "В", "Е", "К", "М", "Н", "О", "Р", "С", "Т", "У", "Х"]
+const T11_DIGIT_SETS = [
+  { n: 10, note: "" },
+  { n: 9, note: " (кроме нуля)" },
+  { n: 8, note: " (кроме нуля и 8)" },
+  { n: 7, note: " (кроме нуля, 6 и 9)" },
+]
 export function t11Split() {
   const nd = randInt(3, 5), nl = randInt(2, 4)
-  const digits = pick([7, 8, 9, 10, 6])
-  const letters = pick([6, 12, 16, 20, 26])
-  const per = bytesFor(nd * bitsFor(digits) + nl * bitsFor(letters))
+  const dg = pick(T11_DIGIT_SETS)
+  const letterList = shuffle(T11_PLATE_LETTERS).slice(0, pick([6, 6, 8, 12]))
+  const per = bytesFor(nd * bitsFor(dg.n) + nl * bitsFor(letterList.length))
   const count = pick([100, 200, 300, 400, 500])
-  const digitsNote = digits === 7 ? " (кроме нуля, 6 и 9)" : digits === 10 ? "" : ` (кроме ${10 - digits === 1 ? "нуля" : "некоторых цифр"})`
-  const letterList = ["А", "Е", "К", "М", "О", "Т", "Н", "Р", "С", "У", "В", "Х", "Б", "Г", "Д", "Ж", "З", "И", "Л", "П", "Ф", "Ц", "Ч", "Ш", "Э", "Ю"].slice(0, letters)
   return {
     condition_text:
-      `Автомобильный номер состоит из ${nd + nl} символов: ${NUMW_GEN[nd]} цифр, за которыми следуют ${nl} ${nl === 2 ? "буквы" : "буквы"}. ` +
-      `Допустимыми символами считаются ${digits} цифр${digitsNote} и ${letters} заглавных букв: ${letterList.join(", ")}. ` +
+      `Автомобильный номер состоит из ${nd + nl} символов: ${NUMW_GEN[nd]} цифр, за которыми следуют ${nl} буквы. ` +
+      `Допустимыми символами считаются ${dg.n} цифр${dg.note} и ${letterList.length} заглавных букв: ${letterList.join(", ")}. ` +
       "Для хранения каждой из цифр используется одинаковое и наименьшее возможное количество бит. " +
       "Аналогично, для хранения каждой из букв используется одинаковое и наименьшее возможное количество бит. " +
       "При этом количество бит, используемых для хранения одной буквы и одной цифры, могут быть разными.\n" +
@@ -981,13 +1050,14 @@ export function t11Power() {
     const unit = pick(["Мбайт", "Кбайт"])
     const div = unit === "Мбайт" ? 1024 * 1024 : 1024
     const need = Math.floor(per * count / div)       // «потребовалось не менее need единиц»
-    if (need < 2) continue
+    // Порог должен читаться как в банке: десятки-сотни Мбайт либо единицы-сотни Кбайт.
+    if (need < 2 || need > 999) continue
     // Проверяем, что порог различает bits от bits−1 (иначе ответ неоднозначен).
     const perLess = bytesFor(len * (bits - 1))
     if (Math.floor(perLess * count / div) >= need) continue
     return {
       condition_text:
-        `На предприятии каждой изготовленной детали присваивают серийный номер, состоящий из ${len} символов. ` +
+        `На предприятии каждой изготовленной детали присваивают серийный номер, состоящий из ${symbolsWord(len)}. ` +
         "В базе данных каждый серийный номер занимает одинаковое и минимально возможное число байт. " +
         "При этом используется посимвольное кодирование серийных номеров, все символы кодируются одинаковым и минимально возможным числом бит. " +
         `Известно, что для хранения ${count.toLocaleString("ru-RU").replace(/\s/g, "\u00A0")} серийных номеров потребовалось не менее ${need} ${unit} памяти. ` +
@@ -1036,12 +1106,14 @@ export function t11MinLength() {
 // Секретное сообщение: алфавит M символов, все символы кодируются одинаковым
 // минимально возможным числом бит; найти объём сообщения длиной L символов.
 export function t11Message() {
+  // Скобка с числом взята из банка целиком: число и падеж там согласованы
+  // («52 различные буквы», но «43 различных символа»).
   const variants = [
-    { alpha: 43, text: "прописных букв кириллицы и цифр" },
+    { alpha: 43, text: "прописных букв кириллицы и цифр (всего используется 43 различных символа)" },
     { alpha: 32, text: "прописных букв русского языка (всего используются 32 различные буквы без пробелов)" },
-    { alpha: 52, text: "прописных и строчных латинских букв" },
-    { alpha: 67, text: "прописных и строчных букв кириллицы, а также пробела" },
-    { alpha: 26, text: "прописных латинских букв" },
+    { alpha: 52, text: "прописных и строчных латинских букв (всего используется 52 различные буквы)" },
+    { alpha: 67, text: "прописных и строчных букв кириллицы, а также пробела (всего используется 67 различных символов)" },
+    { alpha: 26, text: "прописных латинских букв (всего используется 26 различных букв)" },
   ]
   const v = pick(variants)
   const L = pick([80, 100, 120, 140, 160, 200, 256, 320])
@@ -1050,8 +1122,7 @@ export function t11Message() {
   const inKb = bytes % KB === 0
   return {
     condition_text:
-      `Для передачи секретного сообщения используется код, состоящий из ${v.text}` +
-      (v.alpha === 32 ? ". " : ` (всего используется ${v.alpha} различных символов). `) +
+      `Для передачи секретного сообщения используется код, состоящий из ${v.text}. ` +
       "При этом все символы кодируются одним и тем же (минимально возможным) количеством бит. " +
       `Определите информационный объём сообщения длиной в ${L} символов.\n` +
       `В ответе запишите целое число — количество ${inKb ? "Кбайт" : "байт"}.`,
@@ -2615,8 +2686,8 @@ export function t7Traffic() {
 // не стоят рядом. Перебор всех чисел системы счисления — не больше 10⁵ вариантов.
 export function t8DistinctAlternating() {
   for (let attempt = 0; attempt < 40; attempt++) {
-    const base = pick([8, 9, 10, 10])
-    const len = pick([4, 5])
+    const base = pick([8, 10, 10, 10])         // в банке восьмеричные и десятичные
+    const len = pick([4, 5, 5, 6])
     const extra = randInt(0, 2)                     // 0 — без ограничений, 1 — без цифры d, 2 — кратно 5
     const d = randInt(1, base - 1)
     let n = 0
@@ -2635,8 +2706,8 @@ export function t8DistinctAlternating() {
       n++
     }
     if (n < 20) continue
-    const baseWord = base === 10 ? "десятичных" : base === 8 ? "восьмеричных" : "девятеричных"
-    const lenWord = len === 4 ? "четырёхзначных" : "пятизначных"
+    const baseWord = base === 10 ? "десятичных" : "восьмеричных"
+    const lenWord = { 4: "четырёхзначных", 5: "пятизначных", 6: "шестизначных" }[len]
     const cond = extra === 1 ? `, не содержащих в своей записи цифру ${d},`
       : extra === 2 && base === 10 ? ", делящихся на 5," : ","
     return {
@@ -4605,60 +4676,104 @@ const T9_UNIQ = (r) => T9_COUNTS(r).filter(([, n]) => n === 1).map(([v]) => v)
 
 // Структурные условия. dup — какие повторы обязаны быть (для числовых условий,
 // которым нужны повторяющиеся числа).
+// Структура строки и числовое условие — ДОСЛОВНО формулировки открытого банка;
+// меняется только количество чисел в строке. Сшивать половинки разных условий
+// («утроенное произведение … не больше удвоенной СУММЫ») нельзя: в банке обе
+// части всегда одного вида.
+const T9_REST = (k) => `${T9_COLW[k] || k} чис${k >= 5 ? "ел" : "ла"}`
 const T9_STRUCT = [
-  { text: "в строке все числа различны", dup: false, ok: (r) => new Set(r).size === r.length },
-  { text: "среди чисел строки есть только одна пара равных чисел", dup: true,
+  { text: () => "в строке все числа различны", dup: false, ok: (r) => new Set(r).size === r.length },
+  { text: (n) => `среди ${T9_NUMW[n]} чисел есть только одна пара равных чисел`, dup: true,
     ok: (r) => { const d = T9_DUPS(r); return d.length === 1 && d[0][1] === 2 } },
-  { text: "в строке есть только одно число, которое повторяется дважды, остальные числа различны", dup: true,
+  { text: (n) => `в строке есть только одно число, которое повторяется дважды, остальные ${T9_REST(n - 2)} различны`, dup: true,
     ok: (r) => { const d = T9_DUPS(r); return d.length === 1 && d[0][1] === 2 } },
-  { text: "в строке есть два числа, каждое из которых повторяется дважды, остальные числа различны", dup: true,
-    ok: (r) => { const d = T9_DUPS(r); return d.length === 2 && d.every(([, n]) => n === 2) } },
-  { text: "в строке только одно число повторяется трижды, остальные числа различны", dup: true,
+  { text: (n) => `в строке есть два числа, каждое из которых повторяется дважды, остальные ${T9_REST(n - 4)} различны`, dup: true, min: 6,
+    ok: (r) => { const d = T9_DUPS(r); return d.length === 2 && d.every(([, n2]) => n2 === 2) } },
+  { text: (n) => `в строке есть одно число, которое повторяется трижды, остальные ${T9_REST(n - 3)} различны`, dup: true, min: 5,
     ok: (r) => { const d = T9_DUPS(r); return d.length === 1 && d[0][1] === 3 } },
 ]
 
 // Числовые условия. needDup — требуется наличие повторяющихся чисел.
 const T9_REL = [
-  { text: (n) => `наибольшее из ${T9_NUMW[n]} чисел меньше суммы остальных`,
+  { text: (n) => `наибольшее из ${T9_NUMW[n]} чисел меньше суммы ${T9_NUMW[n - 1]} других`,
     ok: (r) => { const s = T9_SORT(r); return s[s.length - 1] < T9_SUM(s.slice(0, -1)) } },
-  { text: () => "удвоенная сумма максимального и минимального чисел строки больше суммы оставшихся чисел",
+  { text: (n) => `удвоенная сумма максимального и минимального чисел строки больше суммы оставшихся ${T9_NUMW[n - 2]} её чисел`,
     ok: (r) => { const s = T9_SORT(r); return 2 * (s[0] + s[s.length - 1]) > T9_SUM(s.slice(1, -1)) } },
-  { text: () => "удвоенная сумма максимального и минимального чисел строки не больше суммы оставшихся чисел",
+  { text: (n) => `удвоенная сумма максимального и минимального чисел строки не больше суммы оставшихся ${T9_NUMW[n - 2]} её чисел`,
     ok: (r) => { const s = T9_SORT(r); return 2 * (s[0] + s[s.length - 1]) <= T9_SUM(s.slice(1, -1)) } },
-  { text: () => "квадрат суммы максимального и минимального чисел строки больше суммы квадратов оставшихся чисел",
-    ok: (r) => { const s = T9_SORT(r); return Math.pow(s[0] + s[s.length - 1], 2) > s.slice(1, -1).reduce((a, x) => a + x * x, 0) } },
-  { text: () => "сумма двух наибольших чисел строки не больше суммы оставшихся чисел",
+  { text: (n) => `удвоенная сумма минимального и максимального чисел строки больше утроенной суммы ${T9_NUMW[n - 2]} её оставшихся чисел`,
+    ok: (r) => { const s = T9_SORT(r); return 2 * (s[0] + s[s.length - 1]) > 3 * T9_SUM(s.slice(1, -1)) } },
+  { text: (n) => `утроенная сумма минимального и максимального чисел строки не меньше, чем удвоенная сумма ${T9_NUMW[n - 2]} её оставшихся чисел`,
+    ok: (r) => { const s = T9_SORT(r); return 3 * (s[0] + s[s.length - 1]) >= 2 * T9_SUM(s.slice(1, -1)) } },
+  { text: (n) => `утроенное произведение минимального и максимального чисел строки не больше, чем удвоенное произведение ${T9_NUMW[n - 2]} её оставшихся чисел`,
+    ok: (r) => { const s = T9_SORT(r); return 3 * s[0] * s[s.length - 1] <= 2 * s.slice(1, -1).reduce((a, x) => a * x, 1) } },
+  { text: (n) => `сумма двух наибольших чисел строки не больше суммы ${T9_NUMW[n - 2]} её оставшихся чисел`,
     ok: (r) => { const s = T9_SORT(r); return s[s.length - 1] + s[s.length - 2] <= T9_SUM(s.slice(0, -2)) } },
-  { text: () => "утроенное произведение минимального и максимального чисел строки не больше удвоенной суммы оставшихся чисел",
-    ok: (r) => { const s = T9_SORT(r); return 3 * s[0] * s[s.length - 1] <= 2 * T9_SUM(s.slice(1, -1)) } },
-  { text: () => "повторяющееся число строки больше, чем среднее арифметическое её неповторяющихся чисел", needDup: true,
+  { text: (n) => `квадрат суммы максимального и минимального чисел в строке больше суммы квадратов ${T9_NUMW[n - 2]} оставшихся`,
+    ok: (r) => { const s = T9_SORT(r); return Math.pow(s[0] + s[s.length - 1], 2) > s.slice(1, -1).reduce((a, x) => a + x * x, 0) } },
+  { text: () => "максимальное число строки не является повторяющимся числом", needDup: true,
+    ok: (r) => { const d = T9_DUPS(r); return d.length > 0 && !d.some(([v]) => v === Math.max(...r)) } },
+  { text: () => "повторяющееся число не является ни максимальным, ни минимальным числом строки", needDup: true, single: true,
+    ok: (r) => {
+      const d = T9_DUPS(r)
+      if (d.length !== 1) return false
+      return d[0][0] !== Math.max(...r) && d[0][0] !== Math.min(...r)
+    } },
+  { text: (n) => `повторяющееся число строки больше, чем среднее арифметическое ${T9_NUMW[n - 2]} её неповторяющихся чисел`, needDup: true, single: true,
     ok: (r) => {
       const d = T9_DUPS(r), u = T9_UNIQ(r)
       if (d.length !== 1 || !u.length) return false
       return d[0][0] > T9_SUM(u) / u.length
     } },
-  { text: () => "максимальное число строки не является повторяющимся", needDup: true,
+  { text: () => "среднее арифметическое неповторяющихся чисел строки не меньше повторяющегося числа", needDup: true, single: true,
     ok: (r) => {
-      const d = T9_DUPS(r)
-      if (!d.length) return false
-      return Math.max(...r) !== Math.max(...d.map(([v]) => v))
+      const d = T9_DUPS(r), u = T9_UNIQ(r)
+      if (d.length !== 1 || !u.length) return false
+      return T9_SUM(u) / u.length >= d[0][0]
     } },
-  { text: () => "среднее арифметическое всех повторяющихся чисел строки больше среднего арифметического её неповторяющихся чисел", needDup: true,
+  { text: () => "среднее арифметическое всех повторяющихся чисел строки меньше среднего арифметического всех её чисел", needDup: true,
+    ok: (r) => {
+      const d = T9_DUPS(r).map(([v]) => v)
+      if (!d.length) return false
+      return T9_SUM(d) / d.length < T9_SUM(r) / r.length
+    } },
+  { text: () => "среднее арифметическое неповторяющихся чисел строки больше среднего арифметического всех её повторяющихся чисел", needDup: true,
     ok: (r) => {
       const d = T9_DUPS(r).map(([v]) => v), u = T9_UNIQ(r)
       if (!d.length || !u.length) return false
-      return T9_SUM(d) / d.length > T9_SUM(u) / u.length
+      return T9_SUM(u) / u.length > T9_SUM(d) / d.length
+    } },
+  { text: () => "среднее арифметическое всех повторяющихся чисел строки меньше её максимального неповторяющегося числа", needDup: true,
+    ok: (r) => {
+      const d = T9_DUPS(r).map(([v]) => v), u = T9_UNIQ(r)
+      if (!d.length || !u.length) return false
+      return T9_SUM(d) / d.length < Math.max(...u)
+    } },
+  { text: () => "квадрат суммы всех повторяющихся чисел строки больше квадрата суммы всех её неповторяющихся чисел", needDup: true,
+    ok: (r) => {
+      const d = T9_DUPS(r).map(([v]) => v), u = T9_UNIQ(r)
+      if (!d.length || !u.length) return false
+      return Math.pow(T9_SUM(d), 2) > Math.pow(T9_SUM(u), 2)
+    } },
+  { text: () => "утроенный квадрат повторяющегося числа строки больше суммы квадратов её неповторяющихся чисел", needDup: true, single: true,
+    ok: (r) => {
+      const d = T9_DUPS(r), u = T9_UNIQ(r)
+      if (d.length !== 1 || !u.length) return false
+      return 3 * d[0][0] * d[0][0] > u.reduce((a, x) => a + x * x, 0)
     } },
 ]
 
-const T9_NUMW = { 3: "трёх", 4: "четырёх", 5: "пяти", 6: "шести", 7: "семи" }
-const T9_COLW = { 3: "три", 4: "четыре", 5: "пять", 6: "шесть", 7: "семь" }
+const T9_NUMW = { 2: "двух", 3: "трёх", 4: "четырёх", 5: "пяти", 6: "шести", 7: "семи" }
+const T9_COLW = { 2: "два", 3: "три", 4: "четыре", 5: "пять", 6: "шесть", 7: "семь" }
 
 export function t9Rows() {
   for (let attempt = 0; attempt < 60; attempt++) {
     const cols = pick([4, 4, 5, 5, 6, 7])
-    const struct = pick(T9_STRUCT)
-    const rel = pick(T9_REL.filter((x) => !x.needDup || struct.dup))
+    const struct = pick(T9_STRUCT.filter((x) => !x.min || cols >= x.min))
+    // «single» — условие говорит про ОДНО повторяющееся число: годится только
+    // со структурой, в которой повторяющееся число ровно одно.
+    const singleDup = struct.dup && !struct.text(cols).includes("два числа")
+    const rel = pick(T9_REL.filter((x) => (!x.needDup || struct.dup) && (!x.single || singleDup)))
     // Повторы в случайных числах из широкого диапазона почти не встречаются —
     // для структур с повторами диапазон сужаем, иначе подходящих строк не будет.
     const hi = struct.dup ? randInt(6, 12) : randInt(30, 100)
@@ -4685,7 +4800,7 @@ export function t9Rows() {
         `Откройте файл электронной таблицы, содержащей в каждой строке ${T9_COLW[cols]} ` +
         `${cols < 5 ? "натуральных числа" : "натуральных чисел"}.\n` +
         `${head}, для которых выполнены оба условия:\n` +
-        `— ${struct.text};\n— ${rel.text(cols)}.\n` +
+        `— ${struct.text(cols)};\n— ${rel.text(cols)}.\n` +
         (ask === 3 ? "В ответе запишите целую часть полученного числа." : "В ответе запишите только число."),
       spreadsheet: { name: "9.xlsx", sheetName: "Числа", rows },
       answer: String(answer),

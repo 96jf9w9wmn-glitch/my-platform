@@ -3137,7 +3137,9 @@ function t13FracQuadOverTgOnce() {
   const target = useCos ? -bNum / 2 : bNum / 2
   const key = numToTrigKey(target)
   if (!key) return null
-  const bStr = B.r === 1 ? String(Math.abs(B.n)) : `${Math.abs(B.n) === 1 ? "" : Math.abs(B.n)}√{${B.r}}`
+  const bStr = B.r === 1
+    ? (Math.abs(B.n) === 1 ? "" : String(Math.abs(B.n)))   // коэффициент 1 перед функцией не пишется
+    : `${Math.abs(B.n) === 1 ? "" : Math.abs(B.n)}√{${B.r}}`
   const numStr = useCos
     ? `cos 2x ${B.n < 0 ? MINUS : "+"} ${bStr}cos x + 1`
     : `cos 2x ${B.n < 0 ? MINUS : "+"} ${bStr}sin x ${MINUS} 1`
