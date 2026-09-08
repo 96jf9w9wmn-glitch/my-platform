@@ -1413,11 +1413,24 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
     const scene = await signBoardScene(await fetchScene())
     if (!scene?.strokes?.length) return
     const local = [...strokes.current.entries()]
+    // Что мы ЗНАЛИ как лежащее в базе — до того, как перечитали её.
+    const wasSaved = savedRef.current
     strokes.current.clear()
     for (const s of scene.strokes) strokes.current.set(s.id, s)
     rememberSaved(scene.strokes)   // теперь мы знаем, что в базе; своё недошедшее допишется дельтой
     if (Number.isFinite(scene.maxOrd)) maxOrd.current = scene.maxOrd
-    for (const [id, s] of local) if (!strokes.current.has(id)) strokes.current.set(id, s)
+    // Наше, чего в базе нет, возвращаем — но ТОЛЬКО то, что туда и не доезжало.
+    //
+    // Штрих, который мы знали сохранённым, а теперь его в базе нет, — это стёртый
+    // штрих: собеседник удалил его, пока мы не смотрели. Без этой развилки он
+    // возвращался на доску, причём уже как «несохранённый», и первая же дельта
+    // записывала его обратно в базу — стёртое воскресало у обеих сторон и
+    // насовсем. Отсюда «стираю, а оно потом снова появляется».
+    for (const [id, st] of local) {
+      if (strokes.current.has(id)) continue
+      if (wasSaved.has(id)) continue          // лежал в базе и пропал оттуда — значит стёрт
+      strokes.current.set(id, st)             // наше ненаписанное — дописать дельтой
+    }
     scheduleDraw()
   }, [roomId, scheduleDraw, fetchScene])
 
@@ -1436,7 +1449,13 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
       const { data } = await supabase.from("boards_state")
         .select("n,last_id").eq("student_id", String(roomId)).maybeSingle()
       if (!data) return
-      if ((data.n || 0) > strokes.current.size || (data.last_id && !strokes.current.has(data.last_id))) resync()
+      // Сверяем с тем, что мы считаем ЛЕЖАЩИМ В БАЗЕ, а не с числом штрихов на
+      // экране: своё несохранённое (и картинка, которая ещё едет в хранилище)
+      // законно делает доску больше базы. Расхождение в любую сторону — повод
+      // перечитать: сравнение «в базе больше» не замечало удалений вовсе, и
+      // стёртое собеседником оставалось на доске до перезахода.
+      const inDb = savedRef.current.size
+      if ((data.n ?? inDb) !== inDb || (data.last_id && !strokes.current.has(data.last_id))) resync()
     }
     const id = setInterval(tick, BOARD_SYNC_MS)
     return () => clearInterval(id)
