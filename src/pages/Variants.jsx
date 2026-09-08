@@ -902,7 +902,10 @@ function VariantReview({ submission, variant, onClose, onSave }) {
             слипались с «верный:», прочесть было нельзя. */}
         <div className="mt-2 flex flex-col gap-1 text-xs leading-relaxed">
           {chosen == null ? (
-            <div className="text-gray-400">ответ не выбран</div>
+            <div className="flex items-center gap-1.5 text-amber-600">
+              <Icon name="minus" size={12} className="flex-shrink-0" />
+              ответ не выбран
+            </div>
           ) : match ? (
             <div className="flex items-start gap-1.5 text-green-600">
               <Icon name="check" size={13} className="mt-0.5 flex-shrink-0" />

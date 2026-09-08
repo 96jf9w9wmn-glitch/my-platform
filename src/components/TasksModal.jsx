@@ -32,12 +32,19 @@ function TaskBlock({ item, onCredit }) {
   // приходит только у решённой работы (undefined — работа ещё не сдана),
   // а null внутри неё — задание, которое ученик пропустил.
   const reviewed = item.given !== undefined
+  // Пропущенное задание видно ещё до чтения разбора: янтарная рамка у карточки и
+  // такой же номер. Серым оно терялось между верными — а именно к нему и надо
+  // вернуться на занятии, ошибку ученик хотя бы попробовал разобрать.
+  const skipped = reviewed && item.given == null
   // Серые токены в тёмной теме перевёрнуты: `dark:`-вариант дал бы тёмный
   // текст на тёмном фоне (см. комментарий у шкалы в index.css).
   const body = "text-[15px] text-gray-700 leading-relaxed break-words"
   return (
-    <div className="rounded-2xl ring-1 ring-gray-200/70 dark:ring-white/10 px-4 py-3.5 flex gap-3.5">
-      <span className="shrink-0 w-6 h-6 rounded-full bg-blue-500/12 text-blue-600 dark:text-blue-400 text-xs font-semibold flex items-center justify-center">
+    <div className={`rounded-2xl ring-1 px-4 py-3.5 flex gap-3.5 ${skipped
+      ? "ring-amber-500/40 bg-amber-500/[0.06]" : "ring-gray-200/70 dark:ring-white/10"}`}>
+      <span className={`shrink-0 w-6 h-6 rounded-full text-xs font-semibold flex items-center justify-center ${skipped
+        ? "bg-amber-500/20 text-amber-700 dark:text-amber-300"
+        : "bg-blue-500/12 text-blue-600 dark:text-blue-400"}`}>
         {item.n}
       </span>
       <div className="min-w-0 flex-1 flex flex-col gap-2">
@@ -91,7 +98,9 @@ function TaskBlock({ item, onCredit }) {
           <div className="flex items-center gap-1.5 text-xs flex-wrap">
             <span className="text-gray-400">Ответ ученика:</span>
             {item.given == null ? (
-              <span className="px-2 py-0.5 rounded-full text-gray-500 ring-1 ring-gray-500/20">не отвечено</span>
+              <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 ring-1 ring-amber-500/30 inline-flex items-center gap-1">
+                <Icon name="minus" size={11} />не отвечено
+              </span>
             ) : (
               <span className={`px-2 py-0.5 rounded-full ring-1 inline-flex items-center gap-1 ${
                 item.ok === false ? "bg-red-500/15 text-red-700 dark:text-red-300 ring-red-500/30"

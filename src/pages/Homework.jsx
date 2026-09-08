@@ -1795,10 +1795,15 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
           // верное: эталон банка ошибся, а не ученик.
           ok: byHand ? true : correct == null || correct === "" ? null : answersEqual(gave ?? "", correct),
           credited: byHand,
+          // Пустой ответ — не ошибка, а пропуск: разбирать на занятии его надо
+          // иначе (ученик не понял условие или не успел), поэтому и в разборе он
+          // отделён от неверного ответа цветом.
+          skipped: !byHand && gave == null,
         }
       })
     : []
-  const wrongNums = answerRows.filter((r) => r.ok === false).map((r) => r.n)
+  const wrongNums = answerRows.filter((r) => r.ok === false && !r.skipped).map((r) => r.n)
+  const missedNums = answerRows.filter((r) => r.skipped).map((r) => r.n)
   // В доработку уходит всё, что не принято: ошибки, пустые ответы и задания без
   // эталона (их автопроверка рассудить не может). Когда принято хотя бы одно и
   // не всё — возврат частичный, и об этом надо предупредить прямо в вопросе.
@@ -1825,9 +1830,10 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
             {answerRows.map((r, i) => (
               <span
                 key={i}
-                title={r.credited ? `Задание ${r.n} — засчитано вручную` : r.ok === false ? `Задание ${r.n} — ошибка` : r.ok ? `Задание ${r.n} — верно` : `Задание ${r.n} — проверяет репетитор`}
+                title={r.credited ? `Задание ${r.n} — засчитано вручную` : r.skipped ? `Задание ${r.n} — не решено` : r.ok === false ? `Задание ${r.n} — ошибка` : r.ok ? `Задание ${r.n} — верно` : `Задание ${r.n} — проверяет репетитор`}
                 className={`w-7 h-7 rounded-lg text-xs font-medium flex items-center justify-center ring-1 ${
-                  r.ok === false ? "bg-red-500/12 text-red-600 ring-red-500/25"
+                  r.skipped ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 ring-amber-500/30"
+                    : r.ok === false ? "bg-red-500/12 text-red-600 ring-red-500/25"
                     : r.ok ? "bg-green-500/12 text-green-700 dark:text-green-300 ring-green-500/25"
                     : "text-gray-500 ring-gray-200 dark:ring-white/15"
                 }`}
@@ -1842,6 +1848,11 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
               : wrongNums.length === 1
               ? `Ошибка в задании №${wrongNums[0]}`
               : `Ошибки в заданиях ${wrongNums.map((n) => "№" + n).join(", ")}`}
+            {/* Пропущенные называем отдельно от ошибок: это разные разговоры с
+                учеником, а в общем списке «ошибок» пропуск терялся. */}
+            {missedNums.length > 0 && (
+              <> · не {missedNums.length === 1 ? "решено" : "решены"} {missedNums.map((n) => "№" + n).join(", ")}</>
+            )}
             {/* Зачтённые руками номера называем прямо: иначе балл не сходится с
                 числом верных ответов, и понять почему — неоткуда. */}
             {creditedNumsShown.length > 0 && (

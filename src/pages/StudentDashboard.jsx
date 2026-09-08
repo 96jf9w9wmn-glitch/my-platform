@@ -1442,9 +1442,14 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten, o
                 </thead>
                 <tbody>
                   {hw.correct_answers.map((correct, i) => {
-                    const studentAns = hw.student_answers[i] || "—"
+                    const raw = hw.student_answers[i]
+                    const studentAns = raw || "—"
                     const byHand = isCreditedTask(i)
                     const isCorrect = byHand || answersEqual(studentAns, correct)
+                    // Пропущенное задание — не ошибка, а незаполненная строка:
+                    // красный крест на пустом месте читался как «решил неверно»,
+                    // хотя вернуться к нему надо совсем по другой причине.
+                    const skipped = !byHand && (raw == null || String(raw).trim() === "")
                     return (
                       // Строка не заливается цветом: сплошная зелёно-красная простыня
                       // режет глаз и ничего не выделяет. Цвет — в значке и в самом
@@ -1453,13 +1458,14 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten, o
                         <td className="py-2 px-3 text-gray-400 align-top">{i + 1}</td>
                         <td className="py-2 px-3 align-top">
                           <span className="flex items-start gap-1.5">
-                            <Icon name={isCorrect ? "check" : "x"} size={12}
-                              className={`mt-1 flex-shrink-0 ${isCorrect ? "text-green-500" : "text-red-400"}`} />
+                            <Icon name={skipped ? "minus" : isCorrect ? "check" : "x"} size={12}
+                              className={`mt-1 flex-shrink-0 ${skipped ? "text-amber-500" : isCorrect ? "text-green-500" : "text-red-400"}`} />
                             {/* Ответ окрашен по результату: верный — зелёным,
                                 неверный — красным, а не зачёркнут (перечёркнутый
                                 текст плохо читается). */}
-                            <span className={`font-medium ${isCorrect ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                              {studentAns}
+                            <span className={`font-medium ${skipped ? "text-amber-600 dark:text-amber-400"
+                              : isCorrect ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                              {skipped ? "не отвечено" : studentAns}
                             </span>
                           </span>
                         </td>

@@ -46,9 +46,10 @@ export default function AnswerTable({ nums, correct: correctAnswers, student: st
               <tr key={r.n} className="border-t border-gray-100 dark:border-white/10">
                 <td className="py-1 pr-1 align-top text-gray-400 tabular-nums">{r.n}</td>
                 <td className={`py-1 pr-2 align-top break-words tabular-nums ${
-                  // Цветом помечаем только НАПИСАННОЕ учеником: у пропущенного
-                  // задания цветной прочерк читался бы как ответ, которого нет.
-                  !r.has ? "text-gray-400"
+                  // Пропущенное задание — янтарным: серый прочерк не отличался от
+                  // разлиновки, и «не решил» терялось среди верных строк. Цвет
+                  // стоит на самом прочерке, ответом он не выглядит.
+                  !r.has ? "text-amber-600 dark:text-amber-400 font-medium"
                     : r.isWrong ? "text-red-600 dark:text-red-400 font-medium"
                     : "text-green-700 dark:text-green-400 font-medium"
                 }`}>{r.given}</td>
