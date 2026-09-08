@@ -48,6 +48,10 @@ export function lessonSpan(lesson, fallbackDuration = DEFAULT_LESSON_MINUTES) {
 // дело, и запрещать его нельзя.
 export function lessonsClash(a, b) {
   if (!a?.date || !b?.date || a.date !== b.date) return false
+  // Занятия одной группы — это ОДНО занятие, показанное у разных участников:
+  // репетитор ведёт его один раз. Без этой строки группа из трёх человек
+  // объявляла бы сама себя тройным наложением, и поставить её было бы нельзя.
+  if (a.groupId && a.groupId === b.groupId) return false
   const sa = lessonSpan(a)
   const sb = lessonSpan(b)
   if (!sa || !sb) return false
@@ -78,6 +82,9 @@ export function tutorLessons(students, { exceptStudentId = null } = {}) {
         date: l.date,
         time: l.time,
         duration: Number(l.duration) > 0 ? Number(l.duration) : fallback,
+        // Метка группы едет дальше вместе с занятием: по ней lessonsClash
+        // отличает «одно занятие у троих» от трёх разных.
+        groupId: l.groupId || null,
         studentId: s.id,
         studentName: s.name,
       }))

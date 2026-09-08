@@ -13,6 +13,9 @@ import { studentBilling } from "../billing"
 import { usePlan } from "../subscription"
 import { fmtNum } from "../num"
 import { PlanHint } from "../components/PlanLock"
+import GroupModal from "../components/GroupModal"
+import getAvatarColor from "../avatarColor"
+import { saveGroup, deleteGroup, groupMembers } from "../groups"
 
 // Телефон — единственная связка карточки с аккаунтом ученика (по нему сшивает и
 // RLS, current_student_rows), но записан он местами по-разному. Сравниваем по цифрам.
@@ -157,7 +160,10 @@ function EmptyStudents({ onInvite, inviting, code }) {
 
 // `loaded` — список уже пришёл из базы. До этого students пуст, и без признака
 // раздел успевал показать «Пока нет учеников» тому, у кого их десяток.
-function Students({ students, loaded = true, setStudents, tutorId, tutorCode = "", onOpenBoard }) {
+function Students({ students, loaded = true, setStudents, groups = [], onGroupSaved, onGroupDeleted,
+                   tutorId, tutorCode = "", onOpenBoard }) {
+  // Открытая форма группы: null — закрыта, { group } — правка, { group: null } — новая.
+  const [groupForm, setGroupForm] = useState(null)
   // Приглашение одной ссылкой: одноразовый токен на 7 дней (student_invites.sql).
   const [invite, setInvite] = useState(null)      // { link, text }
   const [inviting, setInviting] = useState(false)
@@ -503,6 +509,80 @@ function Students({ students, loaded = true, setStudents, tutorId, tutorCode = "
           </div>
         </div>
       )}</Reveal>
+
+      {/* Группы. Раздел появляется, как только вести группу физически возможно
+          (учеников хотя бы двое), — иначе кнопка обещала бы то, что не
+          соберётся. Занятия группе ставятся в расписании: здесь только состав
+          и условия. */}
+      {(groups.length > 0 || students.length > 1) && (
+        <div className="mb-4">
+          <div className="flex items-baseline justify-between gap-3 mb-2">
+            <h2 className="text-sm font-medium">Группы</h2>
+            <button onClick={() => setGroupForm({ group: null })}
+              className="press-fill inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-xl
+                         bg-blue-500/[0.08] ring-1 ring-blue-500/20 text-blue-600 dark:text-blue-300">
+              <Icon name="plus" size={12} />Создать группу
+            </button>
+          </div>
+          {groups.length === 0 ? (
+            <p className="text-xs text-gray-400">
+              Объедините учеников, которые занимаются вместе: занятие ставится всей группе разом, а чат — один на всех.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {groups.map((g) => {
+                const members = groupMembers(g, students)
+                return (
+                  <button key={g.id} onClick={() => setGroupForm({ group: g })}
+                    className="press-fill glass-sm rounded-2xl px-3.5 py-2.5 flex items-center gap-3 text-left">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium truncate">{g.name}</div>
+                      <div className="text-[11px] text-gray-400 truncate">
+                        {members.length} {plural(members.length, "участник", "участника", "участников")}
+                        {g.lessonPrice > 0 ? ` · ${fmtNum(g.lessonPrice)} ₽ с участника` : " · каждый по своей цене"}
+                      </div>
+                    </div>
+                    {/* Состав виден лицами, а не списком имён: в узкой строке
+                        три имени всё равно не помещаются. */}
+                    <div className="flex -space-x-2 shrink-0">
+                      {members.slice(0, 4).map((m) => (
+                        <span key={m.id} title={m.name}
+                          className="w-7 h-7 rounded-full ring-2 ring-white dark:ring-[#1c1c1e] flex items-center justify-center text-[10px] font-semibold text-white"
+                          style={{ background: getAvatarColor(m.name) }}>
+                          {getInitials(m.name)}
+                        </span>
+                      ))}
+                      {members.length > 4 && (
+                        <span className="w-7 h-7 rounded-full ring-2 ring-white dark:ring-[#1c1c1e] bg-blue-500/15 text-blue-600 dark:text-blue-300 flex items-center justify-center text-[10px] font-semibold">
+                          +{members.length - 4}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {groupForm && (
+        <GroupModal
+          group={groupForm.group}
+          students={students}
+          onSave={async (g) => {
+            const res = await saveGroup(g, tutorId)
+            if (res.group) onGroupSaved?.(res.group)
+            return res
+          }}
+          onDelete={async (id) => {
+            const res = await deleteGroup(id)
+            if (!res.error) onGroupDeleted?.(id)
+            return res
+          }}
+          onClose={() => setGroupForm(null)}
+        />
+      )}
 
       {/* Pending requests */}
       {requests.length > 0 && (

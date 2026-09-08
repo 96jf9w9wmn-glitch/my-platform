@@ -34,6 +34,7 @@ import { useSubscription } from "./subscription"
 import { effectivePlan, isActive } from "./plans"
 import { isOwner } from "./owner"
 import { navFor } from "./nav"
+import { loadGroups } from "./groups"
 import Reveal from "./components/Reveal"
 import PageBoundary from "./components/PageBoundary"
 import TutorOnboardingModal from "./components/TutorOnboardingModal"
@@ -501,6 +502,12 @@ function App() {
   }, [activePage, user])
   const [students, setStudents] = useState([])
   const [studentsLoaded, setStudentsLoaded] = useState(false)
+  // Группы учеников: состав и условия, по которым он занимается вместе. Живут
+  // рядом с ростером, потому что нужны сразу трём разделам — «Ученикам»
+  // (создание), расписанию (групповое занятие) и чату (общая комната).
+  // Занятий в себе НЕ держат: они лежат у каждого участника, как и все
+  // остальные (см. шапку src/groups.js).
+  const [groups, setGroups] = useState([])
 
   // Чей это список: у репетитора — его ростер, у ученика — ЕГО СОБСТВЕННЫЕ
   // карточки у всех репетиторов сразу (репетиторов может быть несколько, на
@@ -530,6 +537,7 @@ function App() {
     if (loadedRosterRef.current && loadedRosterRef.current !== rosterKey) {
       loadedRosterRef.current = null
       setStudents([])
+      setGroups([])
       setStudentsLoaded(false)
       return
     }
@@ -538,6 +546,29 @@ function App() {
       loadStudents()
     }
   }, [rosterKey, studentsLoaded])
+
+  // Группы есть только у репетитора: ученику его группу подписывает само
+  // занятие (в нём лежит имя группы), отдельного списка ему не нужно.
+  useEffect(() => {
+    // Чужой список сбрасывается там же, где ростер (смена аккаунта и выход):
+    // гасить его прямо здесь — это setState на первом же рендере ученика.
+    if (user?.role !== "tutor") return
+    let alive = true
+    loadGroups(user.id).then((rows) => { if (alive) setGroups(rows) })
+    return () => { alive = false }
+  }, [user?.role, user?.id])
+
+  // Правка группы возвращает свежую строку — кладём её на место, чтобы состав
+  // и цена разъехались не позже, чем через запрос.
+  const upsertGroup = useCallback((group) => {
+    setGroups((prev) => {
+      const i = prev.findIndex((g) => g.id === group.id)
+      if (i < 0) return [...prev, group]
+      return prev.map((g) => (g.id === group.id ? group : g))
+    })
+  }, [])
+
+  const dropGroup = useCallback((id) => setGroups((prev) => prev.filter((g) => g.id !== id)), [])
 
   // Обёртка над чтением: держит признак «идёт чтение» и не пускает второе.
   // Повтор после сбоя (attempt > 0) — продолжение того же чтения, поэтому
@@ -820,7 +851,12 @@ function App() {
   userRef.current = user
   useEffect(() => {
     async function restoreSession(session) {
-      const minDelay = new Promise(r => setTimeout(r, 600))
+      // Нижняя граница показа заставки — чтобы она не моргала одним кадром.
+      // Было 600 мс, и это платилось при КАЖДОМ запуске, а приложение на
+      // телефоне перезапускается по нескольку раз в минуту (iOS выгружает
+      // вкладку): полсекунды белого экрана на ровном месте. 250 мс от мигания
+      // спасают так же.
+      const minDelay = new Promise(r => setTimeout(r, 250))
       if (!session) { restoredIdRef.current = null; await minDelay; setLoadingAuth(false); return }
       // Тот же вошедший. Загрузку снимаем ТОЛЬКО если в кабинет уже пустили:
       // при обновлении страницы события про одну и ту же сессию приходят
@@ -1027,6 +1063,7 @@ function App() {
     // без перезагрузки страницы остаётся список прошлого репетитора
     // (studentsLoaded === true блокирует повторную загрузку).
     setStudents([])
+    setGroups([])
     setStudentsLoaded(false)
   }, [])
 
@@ -1255,10 +1292,10 @@ function App() {
               до логотипа-загрузки, а сбой этой загрузки (после раскатки старых
               файлов на сервере уже нет) ронял приложение в белый экран. */}
           <PageSlot active={activePage === "dashboard"} className={activePage !== "dashboard" ? "hidden" : "page-active"}>{visitedPages.has("dashboard") && <PageBoundary><DashboardPage students={students} loaded={studentsReady} setActivePage={navigateTo} onOpenBoard={openBoard} /></PageBoundary>}</PageSlot>
-          <PageSlot active={activePage === "students"} className={activePage !== "students" ? "hidden" : "page-active"}>{visitedPages.has("students") && <PageBoundary><StudentsPage students={students} loaded={studentsReady} setStudents={handleSetStudents} tutorId={user.id} tutorCode={user.profile?.code || ""} onOpenBoard={openBoard} /></PageBoundary>}</PageSlot>
+          <PageSlot active={activePage === "students"} className={activePage !== "students" ? "hidden" : "page-active"}>{visitedPages.has("students") && <PageBoundary><StudentsPage students={students} loaded={studentsReady} setStudents={handleSetStudents} groups={groups} onGroupSaved={upsertGroup} onGroupDeleted={dropGroup} tutorId={user.id} tutorCode={user.profile?.code || ""} onOpenBoard={openBoard} /></PageBoundary>}</PageSlot>
           <PageSlot active={activePage === "payment"} className={activePage !== "payment" ? "hidden" : "page-active"}>{visitedPages.has("payment") && <PageBoundary><PaymentPage students={students} setStudents={handleSetStudents} tutorId={user.id} setActivePage={navigateTo} /></PageBoundary>}</PageSlot>
           <PageSlot active={activePage === "variants"} className={activePage !== "variants" ? "hidden" : "page-active"}>{visitedPages.has("variants") && <PageBoundary><VariantsPage user={user} students={students} /></PageBoundary>}</PageSlot>
-          <PageSlot active={activePage === "schedule"} className={activePage !== "schedule" ? "hidden" : "page-active"}>{visitedPages.has("schedule") && <PageBoundary><SchedulePage students={students} setStudents={handleSetStudents} onOpenBoard={openBoard} /></PageBoundary>}</PageSlot>
+          <PageSlot active={activePage === "schedule"} className={activePage !== "schedule" ? "hidden" : "page-active"}>{visitedPages.has("schedule") && <PageBoundary><SchedulePage students={students} setStudents={handleSetStudents} groups={groups} onOpenBoard={openBoard} /></PageBoundary>}</PageSlot>
           <PageSlot active={activePage === "homework"} className={activePage !== "homework" ? "hidden" : "page-active"}>{visitedPages.has("homework") && <PageBoundary><HomeworkPage user={user} students={students} onOpenBoard={openBoard} /></PageBoundary>}</PageSlot>
           <PageSlot active={activePage === "results"} className={activePage !== "results" ? "hidden" : "page-active"}>{visitedPages.has("results") && <PageBoundary><ResultsPage students={students} loaded={studentsReady} user={user} /></PageBoundary>}</PageSlot>
           <PageSlot active={activePage === "taskgen"} className={activePage !== "taskgen" ? "hidden" : "page-active"}>{pageAllowed("taskgen") && visitedPages.has("taskgen") && <PageBoundary><TaskGenPage /></PageBoundary>}</PageSlot>

@@ -11,7 +11,7 @@
 //  • прочий same-origin GET — network-first с фолбэком на кэш (офлайн).
 //
 // При изменении САМОЙ логики воркера — поднимай версию CACHE.
-const CACHE = "precettore-v2"
+const CACHE = "precettore-v3"
 
 // Мгновенно активируем новую версию воркера, не дожидаясь закрытия вкладок.
 self.addEventListener("install", () => {
@@ -33,6 +33,22 @@ self.addEventListener("activate", (event) => {
 function isImmutableAsset(url) {
   return url.pathname.startsWith("/assets/")
 }
+
+// Картинки и значки в корне. Имени с хэшем у них нет, но меняются они раз в
+// год, а качались при КАЖДОМ запуске приложения: на боевом телефоне это
+// логотип на экране загрузки, то есть прямо на пути к первому кадру. Отдаём из
+// кэша сразу и обновляем в фоне — новая картинка доедет к следующему запуску.
+const STATIC_RE = /\.(webp|png|jpg|jpeg|svg|ico|woff2?)$/i
+function isStaticMedia(url) {
+  return STATIC_RE.test(url.pathname)
+}
+
+// Сколько ждём сеть для страницы, прежде чем показать её из кэша. Приложение
+// перезапускается часто (iOS выгружает вкладку), и ждать медленную сеть ради
+// двух килобайт разметки — это те самые секунды белого экрана. Свежесть при
+// этом не теряется: ответ, пришедший позже, ложится в кэш, а про новую сборку
+// вкладке скажет плашка «Вышло обновление» (UpdateToast).
+const NAV_TIMEOUT_MS = 1200
 
 self.addEventListener("fetch", (event) => {
   const { request } = event
@@ -60,7 +76,47 @@ self.addEventListener("fetch", (event) => {
     return
   }
 
-  // Навигация и остальное — network-first с фолбэком на кэш (свежесть важнее).
+  // Картинки в корне — из кэша сразу, обновление в фоне.
+  if (isStaticMedia(url)) {
+    event.respondWith(
+      (async () => {
+        const cached = await caches.match(request)
+        const network = fetch(request).then((fresh) => {
+          if (fresh && fresh.status === 200 && fresh.type === "basic") {
+            caches.open(CACHE).then((c) => c.put(request, fresh.clone()))
+          }
+          return fresh
+        })
+        if (cached) { event.waitUntil(network.catch(() => {})); return cached }
+        return network
+      })()
+    )
+    return
+  }
+
+  // Навигация — сеть, но с ограничением по времени: не ответила за NAV_TIMEOUT_MS,
+  // показываем страницу из кэша, а свежую дописываем в кэш, когда придёт.
+  if (request.mode === "navigate") {
+    event.respondWith(
+      (async () => {
+        const network = fetch(request).then((fresh) => {
+          if (fresh && fresh.status === 200 && fresh.type === "basic") {
+            caches.open(CACHE).then((c) => c.put(request, fresh.clone()))
+          }
+          return fresh
+        })
+        const cached = await caches.match(request) || await caches.match("/")
+        if (!cached) return network
+        const slow = new Promise((r) => setTimeout(() => r(null), NAV_TIMEOUT_MS))
+        const first = await Promise.race([network.catch(() => null), slow])
+        event.waitUntil(network.catch(() => {}))
+        return first || cached
+      })()
+    )
+    return
+  }
+
+  // Остальное — network-first с фолбэком на кэш (свежесть важнее).
   event.respondWith(
     (async () => {
       try {
