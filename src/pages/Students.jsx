@@ -15,7 +15,9 @@ import { fmtNum } from "../num"
 import { PlanHint } from "../components/PlanLock"
 import GroupModal from "../components/GroupModal"
 import getAvatarColor from "../avatarColor"
-import { saveGroup, deleteGroup, groupMembers } from "../groups"
+import { saveGroup, deleteGroup, groupMembers, applyGroupSchedule, groupFutureLessons } from "../groups"
+import { toStudentWall } from "../timezone"
+import { formatLessonWhen } from "../lessonMove"
 
 // Телефон — единственная связка карточки с аккаунтом ученика (по нему сшивает и
 // RLS, current_student_rows), но записан он местами по-разному. Сравниваем по цифрам.
@@ -354,6 +356,40 @@ function Students({ students, loaded = true, setStudents, groups = [], onGroupSa
     setAcceptingRequest(null)
   }
 
+  // Расписание группы и её состав живут в карточках участников: своего списка
+  // занятий у группы нет (см. шапку src/groups.js). Поэтому после сохранения
+  // группы занятия надо разложить по людям.
+  //
+  // Расписания не касались (`schedule` пустое), но состав поменяли — раскладываем
+  // ТЕ ЖЕ занятия, что уже стоят, а не собранные заново: у группы могут быть
+  // разовые занятия, в недельную сетку не укладывающиеся, и пересборка сдвинула
+  // бы их. Новый участник получает занятия группы, исключённый — теряет.
+  function applyGroupChanges(saved, schedule, before) {
+    const membersChanged = (before?.memberIds || []).join() !== (saved.memberIds || []).join()
+    if (!schedule && !membersChanged) return
+    const lessons = schedule?.lessons || groupFutureLessons(saved, students)
+    const next = applyGroupSchedule(students, saved, lessons)
+    if (next.every((s, i) => s === students[i])) return
+    setStudents(next)
+
+    // Уведомление — каждому своё: время у участников из разных поясов разное, и
+    // одним текстом на всех тут не обойтись.
+    const ids = new Set((saved.memberIds || []).map(String))
+    for (const s of next) {
+      if (!ids.has(String(s.id)) || !s.studentAccountId) continue
+      const mine = (s.lessons || []).filter((l) => l.groupId === saved.id).slice(0, 3)
+      if (!mine.length) continue
+      const when = mine
+        .map((l) => { const w = toStudentWall(s, l.date, l.time); return formatLessonWhen(w.date, w.time) })
+        .join(", ")
+      supabase.from("notifications").insert({
+        user_id: s.studentAccountId,
+        title: `Расписание группы «${saved.name}»`,
+        body: `Ближайшие занятия: ${when}. Всё уже в твоём расписании.`,
+      }).then(({ error }) => { if (error) console.error("Уведомление о расписании группы не ушло:", error.message) })
+    }
+  }
+
   async function handleDelete(studentId) {
     setConfirm(null)
     const { error } = await supabase.from("students").delete().eq("id", studentId)
@@ -545,13 +581,18 @@ function Students({ students, loaded = true, setStudents, groups = [], onGroupSa
                     {/* Состав виден лицами, а не списком имён: в узкой строке
                         три имени всё равно не помещаются. */}
                     <div className="flex -space-x-2 shrink-0">
-                      {members.slice(0, 4).map((m) => (
-                        <span key={m.id} title={m.name}
-                          className="w-7 h-7 rounded-full ring-2 ring-white dark:ring-[#1c1c1e] flex items-center justify-center text-[10px] font-semibold text-white"
-                          style={{ background: getAvatarColor(m.name) }}>
-                          {getInitials(m.name)}
-                        </span>
-                      ))}
+                      {members.slice(0, 4).map((m) => {
+                        // Цвет аватара — пара классов (фон + текст), а не строка
+                        // для style: иначе кружок остаётся без фона, а белые
+                        // инициалы на светлом не видно вовсе.
+                        const color = getAvatarColor(m.name)
+                        return (
+                          <span key={m.id} title={m.name}
+                            className={`w-7 h-7 rounded-full ring-2 ring-white dark:ring-[#1c1c1e] flex items-center justify-center text-[10px] font-semibold ${color.bg} ${color.text}`}>
+                            {getInitials(m.name)}
+                          </span>
+                        )
+                      })}
                       {members.length > 4 && (
                         <span className="w-7 h-7 rounded-full ring-2 ring-white dark:ring-[#1c1c1e] bg-blue-500/15 text-blue-600 dark:text-blue-300 flex items-center justify-center text-[10px] font-semibold">
                           +{members.length - 4}
@@ -572,7 +613,9 @@ function Students({ students, loaded = true, setStudents, groups = [], onGroupSa
           students={students}
           onSave={async (g) => {
             const res = await saveGroup(g, tutorId)
-            if (res.group) onGroupSaved?.(res.group)
+            if (res.error) return res
+            onGroupSaved?.(res.group)
+            applyGroupChanges(res.group, g.schedule, groupForm.group)
             return res
           }}
           onDelete={async (id) => {

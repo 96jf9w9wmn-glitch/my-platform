@@ -4,7 +4,8 @@
 //
 // Живут отдельным файлом, потому что расписание ставится из двух мест —
 // карточки ученика и группы, — и поля обязаны быть одними и теми же.
-export const DURATIONS = [30, 45, 60, 90, 120]
+
+import { DURATIONS } from "../recurring"
 
 export function TimeField({ value, onChange }) {
   return (

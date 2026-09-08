@@ -8,6 +8,7 @@
 // по-разному.
 import { parseLocalDate } from "./utils"
 
+export const DURATIONS = [30, 45, 60, 90, 120]
 export const WEEK_DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 export const DAY_INDEX = { "Пн": 1, "Вт": 2, "Ср": 3, "Чт": 4, "Пт": 5, "Сб": 6, "Вс": 0 }
 

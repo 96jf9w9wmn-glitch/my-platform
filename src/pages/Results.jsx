@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react"
+import { useEffect, useId, useMemo, useRef, useState } from "react"
 import { supabase } from "../supabase"
 import Icon from "../components/Icon"
 import WeakTypes from "../components/WeakTypes"
@@ -277,7 +277,9 @@ function ScoreChart({ rows, max, target, pass = 0, forecast = null }) {
           <text x={p.x} y={p.y - 14} textAnchor="middle" fontSize="13" fontWeight="600" fill="currentColor" className="text-gray-800">
             {p.row.total}
           </text>
-          {(i % everyNth === 0 || i === pts.length - 1) && (
+          {/* Дата последней работы у правого края уступает место подписи
+              «экзамен»: обе стоят в 30 пикселях друг от друга и налезают. */}
+          {(i % everyNth === 0 || (i === pts.length - 1 && !fPt)) && (
             <text x={p.x} y={H - 9} textAnchor="middle" fontSize="11" fill="currentColor" className="text-gray-400">
               {new Date(p.row.date).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}
             </text>
@@ -739,12 +741,21 @@ function StudentDetail({ student, stats, hw, tutorId }) {
 // ЧИСЛА НЕ ПРИУКРАШИВАЮТСЯ. Прогноз — продолжение уже наблюдаемой линии, и
 // когда данных мало, вместо числа стоит объяснение, почему его нет: «примерно
 // 80» по двум работам родитель прочтёт как обещание.
-function ExamProgress({ student, stats }) {
+export function ExamProgress({ student, stats }) {
   const f = useMemo(() => examForecast(stats.rows, {
     examType: stats.rows[stats.rows.length - 1]?.type || student.goal,
     target: student.targetScore || 0,
     examDate: student.examDate || null,
   }), [stats.rows, student.targetScore, student.examDate, student.goal])
+
+  // Длинную историю показываем с КОНЦА: свежие работы и прогноз — то, ради чего
+  // сюда смотрят, а начало года листается назад по желанию. Без этого график с
+  // двадцатью работами открывался на прошлогодних баллах.
+  const scrollRef = useRef(null)
+  useEffect(() => {
+    const el = scrollRef.current
+    if (el) el.scrollLeft = el.scrollWidth
+  }, [stats.rows.length])
 
   if (!stats.hasData) return null
   const { now, forecast, target, pass, max, perWeek } = f
@@ -771,8 +782,11 @@ function ExamProgress({ student, stats }) {
       <div className="grid md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] gap-4">
         <div className="min-w-0 order-2 md:order-1">
           {stats.rows.length >= 2 ? (
-            <div className="overflow-x-auto">
-              <div className="min-w-[420px]">
+            <div ref={scrollRef} className="overflow-x-auto">
+              {/* Полотно растёт с числом работ: двадцать точек, втиснутые в
+                  ширину телефона, дают нечитаемую кашу из подписей. Пусть
+                  лучше прокручивается вбок. */}
+              <div style={{ minWidth: Math.max(420, stats.rows.length * 34) }}>
                 <ScoreChart rows={stats.rows} max={max} target={target}
                   pass={pass} forecast={forecast != null ? { total: forecast } : null} />
               </div>
