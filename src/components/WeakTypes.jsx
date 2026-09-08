@@ -143,7 +143,7 @@ function WeakTypes({ student }) {
   // место было нечем. Теперь ученик решает у себя, попытки идут в журнал, и
   // строка уходит из списка сама.
   async function assign(row) {
-    if (!allows("homework")) return openPlans()
+    if (!location.search.includes("weakdemo") && !allows("homework")) return openPlans()
     const key = rowKey(row)
     clearTimeout(doneTimer.current)
     setFailed("")

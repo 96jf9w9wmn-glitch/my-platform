@@ -805,7 +805,7 @@ function Landing({ onStart }) {
     return (
       <div className="min-h-screen p-6 flex justify-center">
         <div className="w-full max-w-xl">
-          <WeakTypesDemo />
+          <WeakTypesDemo student={{ id: 999999, name: "Демо", tutor_id: "00000000-0000-0000-0000-000000000000", studentAccountId: null }} />
         </div>
       </div>
     )

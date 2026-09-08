@@ -823,10 +823,14 @@ function App() {
       // проверка «после await» пропустила бы все четыре разом. Профиль не
       // прочитался — отметку снимаем, чтобы следующая попытка не была пустой.
       restoredIdRef.current = session.user.id
-      const [tutor] = await Promise.all([
-        loadTutorProfile(session.user.id),
-        minDelay,
-      ])
+      let tutor = null
+      try {
+        ;[tutor] = await Promise.all([loadTutorProfile(session.user.id), minDelay])
+      } catch (e) {
+        console.error("Профиль репетитора не загрузился:", e)
+      }
+      // Профиля нет — отметку снимаем: следующее событие должно попробовать
+      // снова, иначе кабинет остался бы без имени и тарифа до перезагрузки.
       if (!tutor) restoredIdRef.current = null
       // Сессия уже подтверждена GoTrue, поэтому в кабинет пускаем даже если
       // профиль не прочитался: раньше любая ошибка этого запроса выглядела как
