@@ -218,16 +218,27 @@ export function t2Misha() {
     // Полная матрица фрагмента: столбец j показывает значение переменной perm[j].
     let cellRows = chosen.map((r) => perm.map((v) => r[T2_VARS.indexOf(v)]))
     if (t2CountSolutions(cellRows, rows, allPerms) !== 1) continue   // даже полная не различает
-    // Жадно стираем ячейки, пока решение остаётся единственным (как в банке — видно 4–6 значений из 12).
+    // Стираем НЕ до предела, а до плотности реального банка. Жадное стирание «пока
+    // решение единственно» оставляло 5,4 значения из 12 (бывало и 4): формально ответ
+    // один, но добыть его можно только перебором всех 24 раскладок — рассуждать не о
+    // чем. В открытом банке ФИПИ (94 задания этого типажа) видно в среднем 7,3
+    // значения: 8 — в 65 заданиях, 7 — в 10, 6 — в одном, 5 — в 18. Тем же весом
+    // выбираем цель и здесь, а строк без единого значения там нет вовсе.
+    const want = pick([8, 8, 8, 8, 8, 8, 8, 7, 5, 5])
+    let left = 12
     const cells = shuffle([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
     for (const c of cells) {
+      if (left <= want) break
       const i = Math.floor(c / 4), j = c % 4
+      // В строке обязано остаться хотя бы одно значение: пустая строка фрагмента
+      // ничего не говорит и в банке не встречается.
+      if (cellRows[i].filter((v) => v !== null).length <= 1) continue
       const keep = cellRows[i][j]
       cellRows[i][j] = null
       if (t2CountSolutions(cellRows, rows, allPerms) !== 1) cellRows[i][j] = keep
+      else left--
     }
-    const shown = cellRows.filter((r) => r.some((c) => c !== null)).length
-    if (shown < 3) continue                                    // строка без единого значения — вырождение
+    if (left > want) continue                                  // до плотности банка не ужалось — берём другую формулу
     const table = tableBlock([
       ["", "", "", "", t2it("F")],
       ...cellRows.map((r) => [...r.map((c) => (c === null ? "" : String(c))), String(target)]),
