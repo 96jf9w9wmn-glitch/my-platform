@@ -1,12 +1,9 @@
 import { Fragment, useState } from "react"
-import { createPortal } from "react-dom"
-import { useClosing } from "../useClosing"
 import Icon from "../components/Icon"
 import SegmentSwitch from "../components/SegmentSwitch"
 import ConfirmModal from "../components/ConfirmModal"
 import RescheduleModal from "../components/RescheduleModal"
-import WheelPicker from "../components/WheelPicker"
-import DurationPicker from "../components/DurationPicker"
+import AddLessonModal from "../components/AddLessonModal"
 import LessonStatusModal, { LessonStatusBadge } from "../components/LessonStatusModal"
 import { lessonStatusNotice } from "../lessonStatus"
 import { isLessonPast, setLessonStatus, LESSON_EXCUSED } from "../utils"
@@ -77,13 +74,10 @@ function formatDate(date) {
 function Schedule({ students, setStudents, onOpenBoard }) {
   const [baseDate, setBaseDate] = useState(new Date())
   const [showForm, setShowForm] = useState(false)
-  // Дата пришла из календаря и переспрашивать её незачем. Снимается «Изменить».
-  const [dateFixed, setDateFixed] = useState(false)
-  const [newLesson, setNewLesson] = useState({ studentId: "", date: "", time: "", duration: "" })
+  // Дата пришла из календаря и переспрашивать её незачем — форма показывает её
+  // строкой и открывает поле только по «Изменить».
+  const [formDate, setFormDate] = useState("")
   const [view, setView] = useState("month")
-  const [formError, setFormError] = useState("")
-  // Плавное закрытие: без этого модалка исчезала рывком.
-  const { cls: closingCls, close: closeForm } = useClosing(() => { setShowForm(false); setFormError("") })
   const [selectedDay, setSelectedDay] = useState(formatDate(new Date()))
   // Занятие удаляется одним нажатием на крестик, а отменить это нечем —
   // поэтому сначала спрашиваем.
@@ -199,18 +193,6 @@ function Schedule({ students, setStudents, onOpenBoard }) {
     }
   }
 
-  // Занятие, на которое налезает то, что сейчас набирается в форме «Новое
-  // занятие». Показываем ещё до нажатия «Добавить», чтобы время правилось
-  // сразу, а не после ошибки.
-  function newLessonClash() {
-    if (!newLesson.studentId || !newLesson.date || !newLesson.time) return null
-    const student = students.find((s) => String(s.id) === String(newLesson.studentId))
-    const duration = Number(newLesson.duration) || student?.lessonDuration || 60
-    const candidate = { date: newLesson.date, time: newLesson.time, duration }
-    const hit = findClash(candidate, tutorLessons(students))
-    return hit ? { lesson: candidate, other: hit } : null
-  }
-
   // Занятие, на которое налезет просьба ученика, если её принять.
   function requestClash(entry) {
     const candidate = {
@@ -229,11 +211,8 @@ function Schedule({ students, setStudents, onOpenBoard }) {
     setMoving(lesson)
   }
 
-  // Дата, пришедшая из календаря, уже выбрана — второй раз её не спрашиваем
-  // (`dateFixed`): день виден строкой, а поле открывается только по «Изменить».
   function openExtraForm(dateStr) {
-    setNewLesson({ studentId: "", date: dateStr || "", time: "", duration: "" })
-    setDateFixed(!!dateStr)
+    setFormDate(dateStr || "")
     setShowForm(true)
   }
 
@@ -305,37 +284,17 @@ function Schedule({ students, setStudents, onOpenBoard }) {
     return Array.from({ length: to - from + 1 }, (_, i) => from + i)
   }
 
-  function handleAddLesson() {
-    if (!newLesson.studentId || !newLesson.date || !newLesson.time) {
-      setFormError("Выберите ученика, дату и время.")
-      return
-    }
-    // Занятие задним числом не ставится: расписание — это план, а прошедшее
-    // занятие сразу попало бы в долг и в отчёт родителю как проведённое.
-    if (newLesson.date < todayDateStr()) {
-      setFormError("Занятие нельзя поставить на прошедший день.")
-      return
-    }
-    // Два занятия в одно время — не опечатка, которую можно молча сохранить:
-    // репетитор физически не проведёт оба.
-    const clash = newLessonClash()
-    if (clash) {
-      setFormError(`Это время занято. ${clashLine(clash)}`)
-      return
-    }
-    setFormError("")
+  // Проверки (прошедший день, наложение на чужое занятие) живут в самой форме —
+  // она общая с карточкой ученика; сюда приходит уже согласованное занятие.
+  function addLesson(studentId, lesson) {
+    const student = students.find((s) => String(s.id) === String(studentId))
     setStudents((prev) =>
-      prev.map((s) => {
-        if (String(s.id) !== String(newLesson.studentId)) return s
-        const duration = Number(newLesson.duration) || s.lessonDuration || 60
-        return {
-          ...s,
-          lessons: [...(s.lessons || []), { date: newLesson.date, time: newLesson.time, duration, extra: true }],
-        }
-      })
+      prev.map((s) => (String(s.id) !== String(studentId) ? s : { ...s, lessons: [...(s.lessons || []), lesson] }))
     )
-    closeForm()
-    setNewLesson({ studentId: "", date: "", time: "", duration: "" })
+    // Разовое занятие ученик сам не назначал и в расписание не заглядывает
+    // каждый день — о нём его извещаем так же, как о переносе.
+    notifyStudentOf(student, "Назначено занятие",
+      `${whenForStudent(student, lesson.date, lesson.time)}. Занятие уже в твоём расписании.`)
   }
 
   function removeLesson(studentId, dateStr, time) {
@@ -357,10 +316,6 @@ function Schedule({ students, setStudents, onOpenBoard }) {
     removeLesson(confirmDel.studentId, confirmDel.date, confirmDel.time)
     setConfirmDel(null)
   }
-
-  // Пересечение считаем на каждый рендер формы: время и длительность меняются
-  // кнопками, и предупреждение должно поспевать за ними.
-  const formClash = showForm ? newLessonClash() : null
 
   const weekLabel = `${weekDates[0].toLocaleDateString("ru-RU", { day: "numeric", month: "short" })} — ${weekDates[6].toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" })}`
   const monthLabel = `${MONTH_NAMES[month]} ${year}`
@@ -827,76 +782,13 @@ function Schedule({ students, setStudents, onOpenBoard }) {
         onCancel={() => setConfirmDel(null)}
       />
 
-      {showForm && createPortal(
-        <div className={`fixed inset-0 glass-overlay flex items-center justify-center z-50 p-4 ${closingCls}`}>
-          <div className={`glass-modal w-full max-w-sm flex flex-col ${closingCls}`} style={{ maxHeight: "90dvh" }}>
-            <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100/60 flex-shrink-0">
-              <h2 className="text-lg font-medium">Новое занятие</h2>
-              <button onClick={closeForm} aria-label="Закрыть" className="text-gray-500 hover:text-gray-700"><Icon name="x" size={18} /></button>
-            </div>
-            <div className="overflow-y-auto flex-1 min-h-0 px-6 py-5 flex flex-col gap-4">
-              <div>
-                <label className="text-sm text-gray-500 mb-1 block">Ученик</label>
-                <select value={newLesson.studentId} onChange={(e) => setNewLesson((p) => ({ ...p, studentId: e.target.value }))}
-                  className="input-glass">
-                  <option value="">Выберите ученика</option>
-                  {students.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-sm text-gray-500 mb-1 block">Дата</label>
-                {dateFixed ? (
-                  <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl ring-1 ring-inset ring-gray-200 dark:ring-white/[0.12]">
-                    <Icon name="calendar" size={15} className="text-blue-500 flex-shrink-0" />
-                    <span className="text-sm flex-1 min-w-0 truncate">
-                      {new Date(newLesson.date + "T00:00:00").toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" })}
-                    </span>
-                    <button onClick={() => setDateFixed(false)}
-                      className="press-fill text-xs text-blue-600 rounded-lg px-2 py-1 flex-shrink-0">
-                      Изменить
-                    </button>
-                  </div>
-                ) : (
-                  <input type="date" value={newLesson.date} min={todayDateStr()}
-                    onChange={(e) => setNewLesson((p) => ({ ...p, date: e.target.value }))}
-                    className="input-glass" />
-                )}
-              </div>
-              <div>
-                <label className="text-sm text-gray-500 mb-2 block">Время</label>
-                {/* Колесо вместо сетки из двенадцати часов: та занимала треть
-                    окна и всё равно не давала поставить занятие на 8:30. */}
-                <WheelPicker value={newLesson.time || "09:00"}
-                  onChange={(time) => setNewLesson((p) => ({ ...p, time }))} />
-              </div>
-              <div>
-                <label className="text-sm text-gray-500 mb-2 block">Длительность</label>
-                {/* Ползунком, а не пятью кнопками: занятие на 75 или 100 минут
-                    прежним набором было не поставить вовсе. */}
-                {/* Пока длительность не тронули, показываем ту, с которой этот
-                    ученик занимается обычно, — её же подставит сохранение. */}
-                <DurationPicker
-                  value={newLesson.duration}
-                  fallback={students.find((s) => String(s.id) === String(newLesson.studentId))?.lessonDuration || 60}
-                  onChange={(d) => setNewLesson((p) => ({ ...p, duration: String(d) }))} />
-              </div>
-              {formClash && (
-                <div className="flex items-start gap-2 text-xs text-amber-600 bg-amber-500/10 rounded-xl px-3 py-2">
-                  <span className="flex-shrink-0 mt-0.5"><Icon name="warning" size={13} /></span>
-                  <span className="leading-relaxed">Это время занято. {clashLine(formClash)}</span>
-                </div>
-              )}
-            </div>
-            <div className="px-6 pt-1 flex-shrink-0">
-              {formError && <div className="text-sm text-red-500 text-center">{formError}</div>}
-            </div>
-            <div className="flex gap-3 px-6 py-4 border-t border-gray-100/60 flex-shrink-0">
-              <button onClick={closeForm} className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-blue-500/[0.06]">Отмена</button>
-              <button onClick={handleAddLesson} className="flex-1 btn-primary py-2.5">Добавить</button>
-            </div>
-          </div>
-        </div>,
-        document.body
+      {showForm && (
+        <AddLessonModal
+          students={students}
+          date={formDate}
+          onAdd={addLesson}
+          onClose={() => setShowForm(false)}
+        />
       )}
     </div>
   )

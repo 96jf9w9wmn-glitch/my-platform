@@ -9,6 +9,7 @@ import Reveal from "../components/Reveal"
 import { parseLocalDate, isLessonPast, isLessonConducted, setLessonStatus, getInitials, formatPhone, contactHref, contactLabel, plural, LESSON_EXCUSED } from "../utils"
 import RescheduleModal from "../components/RescheduleModal"
 import StudentFormModal from "../components/StudentFormModal"
+import AddLessonModal from "../components/AddLessonModal"
 import LessonStatusModal, { LessonStatusBadge } from "../components/LessonStatusModal"
 import PaymentModeModal from "../components/PaymentModeModal"
 import { studentBilling, periodLabel, dayMonth } from "../billing"
@@ -57,6 +58,9 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
   // Занятие из архива, которому выбирают пометку «не состоялось».
   const [statusFor, setStatusFor] = useState(null)
   const [packageOpen, setPackageOpen] = useState(false)
+  // Разовое занятие ставится и отсюда: за ним шли в «Расписание», хотя ученик
+  // уже открыт. Форма та же самая, что и там.
+  const [addOpen, setAddOpen] = useState(false)
 
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 768)
@@ -163,6 +167,14 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
   function savePaymentMode(next) {
     onUpdate(student.id, next)
     setPackageOpen(false)
+  }
+
+  // Разовое занятие. Проверки (прошедший день, наложение на другого ученика)
+  // делает сама форма — она общая с расписанием.
+  function addLesson(_studentId, lesson) {
+    onUpdate(student.id, { lessons: [...(student.lessons || []), lesson] })
+    notifyStudent("Назначено занятие",
+      `${whenForStudent(lesson.date, lesson.time)}. Занятие уже в твоём расписании.`)
   }
 
   function saveNote(origIdx) {
@@ -379,7 +391,18 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
           два столбца, и третья карточка занимает оставшийся ряд целиком. */}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 items-stretch">
         <div className="glass p-4 flex flex-col">
-          <h2 className="text-sm font-medium mb-3">Ближайшие занятия</h2>
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <h2 className="text-sm font-medium">Ближайшие занятия</h2>
+            {/* Разовое занятие — прямо здесь: постоянные дни задаются в
+                «Редактировать», а за одной субботой сверх расписания раньше
+                приходилось уходить в «Расписание» и заново искать ученика. */}
+            <button
+              onClick={() => setAddOpen(true)}
+              className="press-tap text-xs text-blue-500 hover:text-blue-700 transition-colors"
+            >
+              + Занятие
+            </button>
+          </div>
           {upcoming.length === 0 ? (
             <div className="flex-1 flex items-center justify-center text-sm text-gray-400 py-4">Нет предстоящих занятий</div>
           ) : (
@@ -689,6 +712,15 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
           </div>
         </Collapse>
       </div>
+
+      {addOpen && (
+        <AddLessonModal
+          students={students}
+          studentId={student.id}
+          onAdd={addLesson}
+          onClose={() => setAddOpen(false)}
+        />
+      )}
 
       {showEdit && (
         <StudentFormModal
