@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, lazy, Suspense } from "react"
 import { supabase } from "../supabase"
-import { signBoardScene, signStorageUrl } from "../storageUrl"
+import { signBoardScene, signStorageUrl, BOARD_IMG_SPEC } from "../storageUrl"
 import Icon from "./Icon"
 import ConfirmModal from "./ConfirmModal"
 import { useClosing, CLOSE_MS, POPUP_OUT_MS } from "../useClosing"
@@ -1248,7 +1248,10 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
         imgCache.current.set(src, plain)
       }
       imgCache.current.set(src, img)
-      signStorageUrl(src, IMG_BUCKET).then(
+      // Через отрисовщик хранилища: тот же файл в WebP, вчетверо легче при том же
+      // разрешении (см. BOARD_IMG_SPEC). Открытие доски — это вся видимая пачка
+      // листов разом, и на боевой она весила 7,36 МБ.
+      signStorageUrl(src, BOARD_IMG_SPEC).then(
         (url) => { img.src = url || src },
         () => { img.src = src },     // подписать не вышло — пробуем как есть
       )

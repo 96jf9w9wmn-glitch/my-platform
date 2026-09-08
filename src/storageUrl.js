@@ -94,6 +94,28 @@ function cached(key) {
 // это чинит и уже загруженные аватары, а не только будущие.
 export const AVATAR_SPEC = { bucket: "homework", transform: { width: 256, height: 256, resize: "cover" } }
 
+// Картинки доски — листы заданий и вставленные снимки — лежат PNG по 150–200 КБ
+// штука, и при открытии доски их скачивается сразу вся видимая пачка: замер на
+// боевой доске — 39 файлов, 7,36 МБ, и последняя картинка доезжала через 13 с.
+// Отсюда «доска грузится десять секунд».
+//
+// Просим у хранилища ту же картинку в WebP: на боевом листе 176 829 → 49 542
+// байта (в 3,6 раза), при том же разрешении 1860×1107 и PSNR 41,4 дБ — то есть
+// глазом неотличимо. Уменьшать РАЗМЕР нельзя: на листе мелкий шрифт, а доску
+// приближают; здесь меняется только упаковка.
+//
+// Это чинит и уже нарисованные доски, а не только будущие: перекодирует
+// хранилище на лету. Сам transform в подпись НЕ кладём — иначе каждый файл
+// пришлось бы подписывать отдельным запросом (см. ветку transform ниже); токен
+// пакетной подписи принимается и отрисовщиком, а формат он выбирает по Accept.
+export const BOARD_IMG_SPEC = { bucket: "variants", render: true }
+
+// Подписанный адрес объекта → адрес отрисовщика. Токен тот же: подпись покрывает
+// путь к файлу, а не способ отдачи.
+function renderUrl(signed) {
+  return typeof signed === "string" ? signed.replace(SIGN_MARK, RENDER_MARK) : signed
+}
+
 export async function signStorageUrls(values, bucketSpec) {
   const out = new Map()
   const byBucket = new Map()
@@ -104,7 +126,11 @@ export async function signStorageUrls(values, bucketSpec) {
   // кружком в 40 пикселей, и качается заново при каждой загрузке кабинета.
   const defaultBucket = typeof bucketSpec === "string" ? bucketSpec : bucketSpec?.bucket
   const transform = typeof bucketSpec === "string" ? null : bucketSpec?.transform || null
-  const mark = transform ? "@" + JSON.stringify(transform) : ""
+  // { render: true } — отдать картинку через отрисовщик хранилища (WebP), не
+  // трогая размер. В отличие от transform подпись остаётся ПАКЕТНОЙ: параметр
+  // едет в адресе, а не внутрь токена.
+  const render = typeof bucketSpec === "string" ? false : !!bucketSpec?.render
+  const mark = transform ? "@" + JSON.stringify(transform) : (render ? "@render" : "")
 
   for (const value of values) {
     if (!value || out.has(value)) continue
@@ -151,9 +177,10 @@ export async function signStorageUrls(values, bucketSpec) {
           out.set(original, original)
           continue
         }
-        cache.set(bucket + "/" + row.path + mark, { url: row.signedUrl, expires: Date.now() + TTL_SEC * 1000 })
+        const url = render ? renderUrl(row.signedUrl) : row.signedUrl
+        cache.set(bucket + "/" + row.path + mark, { url, expires: Date.now() + TTL_SEC * 1000 })
         saveCache()
-        out.set(original, row.signedUrl)
+        out.set(original, url)
       }
     })
   )
@@ -192,7 +219,7 @@ export async function signBoardScene(scene) {
   const values = strokes.filter((s) => s && s.tool === "image" && typeof s.src === "string").map((s) => s.src)
   if (!values.length) return scene
 
-  const map = await signStorageUrls(values, "variants")
+  const map = await signStorageUrls(values, BOARD_IMG_SPEC)
   const next = strokes.map((s) =>
     s && s.tool === "image" && typeof s.src === "string" ? { ...s, src: map.get(s.src) || s.src } : s
   )
