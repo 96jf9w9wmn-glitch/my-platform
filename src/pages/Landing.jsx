@@ -6,6 +6,7 @@ import FormulaBackdrop from "../components/FormulaBackdrop"
 import { TUTOR_STEPS } from "../onboardingSteps"
 import { Highlight } from "../components/Mark"
 import SiteFooter from "../components/SiteFooter"
+import SchedulePageDemo from "./Schedule"
 import BetaBadge, { BetaNotice } from "../components/BetaBadge"
 import { ConsentRow, ConsentLink } from "../components/ConsentChecks"
 import { logConsent } from "../consents"
@@ -821,7 +822,24 @@ function RoleQuiz({ cfg, role }) {
   )
 }
 
+function GroupDemo() {
+  const today = new Date()
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+  const past = new Date(today); past.setDate(past.getDate() - 1)
+  const groupId = "11111111-1111-1111-1111-111111111111"
+  const g = (date) => ({ date, time: "18:00", duration: 90, groupId, groupName: "Девятый класс, вторник", price: 900, extra: true })
+  const students = [
+    { id: 1, name: "Анна Петрова", lessonPrice: 2000, lessonDuration: 60, lessons: [g(iso(today)), g(iso(past)), { date: iso(today), time: "12:00", duration: 60 }] },
+    { id: 2, name: "Борис Ким", lessonPrice: 1800, lessonDuration: 60, lessons: [g(iso(today)), { ...g(iso(past)), status: "excused" }] },
+    { id: 3, name: "Вера Соловьёва", lessonPrice: 2200, lessonDuration: 60, lessons: [g(iso(today)), g(iso(past))] },
+  ]
+  const groups = [{ id: groupId, name: "Девятый класс, вторник", memberIds: ["1", "2", "3"], lessonPrice: 900, lessonDuration: 90 }]
+  return <SchedulePageDemo students={students} groups={groups} setStudents={() => {}} />
+}
+
 function Landing({ onStart }) {
+  if (window.location.search.includes("groupdemo")) return <GroupDemo />
+
   // Роль берём сперва из ссылки (?for=parent — чтобы можно было дать родителю
   // прямую ссылку), затем из памяти прошлого захода.
   const [role, setRole] = useState(() => {

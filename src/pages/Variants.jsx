@@ -28,6 +28,7 @@ import getAvatarColor from "../avatarColor"
 import DateTile from "../components/DateTile"
 import { TILE_TINTS, dueTintKey } from "../dueTint"
 import Reveal from "../components/Reveal"
+import Collapse from "../components/Collapse"
 import { lazyChunk } from "../lazyChunk"
 // Тетрадь тянет генераторы заданий — грузим только когда её открыли.
 
@@ -881,7 +882,11 @@ function VariantReview({ submission, variant, onClose, onSave }) {
     const criteria = criteriaOf(type, n, { legacyProf })
     const open = openCriteria === n
     return (
-      <div key={n} className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 px-3 py-2.5">
+      <Fragment key={n}>
+      {/* Отступ снизу держит обёртка, а не gap сетки: у панели критериев,
+          свёрнутой в ноль, gap оставлял бы за собой пустой зазор. */}
+      <div className="pb-2">
+      <div className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 px-3 py-2.5">
         <div className="flex items-center gap-2">
           <span className="text-sm text-gray-600 flex-1 min-w-0">Задание {n}</span>
           {criteria ? (
@@ -941,19 +946,29 @@ function VariantReview({ submission, variant, onClose, onSave }) {
             </div>
           )}
         </div>
-        <Reveal value={open && criteria ? n : null}>
-          {() => (
-            <div className="mt-2.5 pt-2.5 border-t border-gray-200/70 dark:border-white/10 flex flex-col gap-2">
-              {criteria.map((c) => (
-                <div key={c.score} className="flex items-start gap-2.5">
-                  <span className="mt-px w-5 h-5 flex-shrink-0 rounded-md bg-white ring-1 ring-gray-200 text-[11px] font-medium text-gray-600 flex items-center justify-center">{c.score}</span>
-                  <span className="text-[11px] leading-relaxed text-gray-500">{c.text}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </Reveal>
       </div>
+      </div>
+      {/* Критерии — целой строкой ПОД рядом карточек, а не внутри карточки:
+          раскрытые внутри, они растягивали свой ряд, и рядом с заданием
+          зияла пустота. Тот же приём, что у разбора работы (useGridCols). */}
+      {criteria && (
+        <div className="sm:col-span-2">
+          <Collapse open={open}>
+            <div className="pb-2">
+              <div className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 px-3 py-2.5 flex flex-col gap-2">
+                <div className="text-[11px] text-gray-400">Критерии · задание {n}</div>
+                {criteria.map((c) => (
+                  <div key={c.score} className="flex items-start gap-2.5">
+                    <span className="mt-px w-5 h-5 flex-shrink-0 rounded-md bg-white ring-1 ring-gray-200 text-[11px] font-medium text-gray-600 flex items-center justify-center">{c.score}</span>
+                    <span className="text-[11px] leading-relaxed text-gray-500">{c.text}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Collapse>
+        </div>
+      )}
+      </Fragment>
     )
   }
 
@@ -1095,15 +1110,15 @@ function VariantReview({ submission, variant, onClose, onSave }) {
                 <>
                   <div className="mb-3">
                     <div className="text-xs font-medium text-blue-600 mb-2 bg-blue-50 px-2 py-1 rounded">Алгебра {algebra[0]}–{algebra[algebra.length - 1]}</div>
-                    <div className="grid gap-2 sm:grid-cols-2 items-start">{algebra.map(renderPart2Row)}</div>
+                    <div className="grid gap-x-2 sm:grid-cols-2 grid-flow-row-dense items-start">{algebra.map(renderPart2Row)}</div>
                   </div>
                   <div>
                     <div className="text-xs font-medium text-purple-600 mb-2 bg-purple-50 px-2 py-1 rounded">Геометрия {geometry[0]}–{geometry[geometry.length - 1]}</div>
-                    <div className="grid gap-2 sm:grid-cols-2 items-start">{geometry.map(renderPart2Row)}</div>
+                    <div className="grid gap-x-2 sm:grid-cols-2 grid-flow-row-dense items-start">{geometry.map(renderPart2Row)}</div>
                   </div>
                 </>
               ) : (
-                <div className="grid gap-2 sm:grid-cols-2 items-start">{part2Tasks.map(renderPart2Row)}</div>
+                <div className="grid gap-x-2 sm:grid-cols-2 grid-flow-row-dense items-start">{part2Tasks.map(renderPart2Row)}</div>
               )}
             </div>
           )}

@@ -141,14 +141,28 @@ drop policy if exists chat_group_member_select on public.chat_messages;
 create policy chat_group_member_select on public.chat_messages for select to app_user
   using (public.in_student_group(public.chat_group_id(recipient_id)));
 
--- Отправка ученика в комнату уже разрешена политикой chat_send_own (она
--- проверяет только отправителя), но полагаться на это нельзя: сузят её — и
--- групповой чат молча онемеет с одной стороны. Пишем явно.
+-- ОТПРАВКА. Старая политика chat_send_own проверяла ТОЛЬКО отправителя и ничего
+-- не говорила об адресате — то есть ученик мог писать кому угодно. В личной
+-- переписке это почти безобидно (сообщение увидит один человек), но с
+-- появлением комнат стало дырой: написать в чужую группу мог кто угодно, и все
+-- её участники это прочитали бы. Проверено живой вставкой на боевой — проходила.
+--
+-- Поэтому политика ПЕРЕПИСЫВАЕТСЯ, а не дополняется: отдельная разрешающая
+-- политика здесь бесполезна, они складываются по «или» и запретить ничего не
+-- могут. Для личной переписки правило не изменилось.
 drop policy if exists chat_group_member_send on public.chat_messages;
-create policy chat_group_member_send on public.chat_messages for insert to app_user
+drop policy if exists chat_send_own on public.chat_messages;
+create policy chat_send_own on public.chat_messages for insert to app_user
   with check (
-    sender_id = 's:' || public.current_account_id()::text
-    and public.in_student_group(public.chat_group_id(recipient_id))
+    (
+      sender_id = 's:' || public.current_account_id()::text
+      or sender_id = 'p:' || public.current_parent_student_id()::text
+    )
+    -- Адрес не комната — правило прежнее; комната — только своя.
+    and (
+      public.chat_group_id(recipient_id) is null
+      or public.in_student_group(public.chat_group_id(recipient_id))
+    )
   );
 
 notify pgrst, 'reload schema';
