@@ -2419,7 +2419,7 @@ function t8fZeroPointSeg() {
   while (exs.some((e) => e !== target && e >= a && e <= b)) { if (exs.some((e) => e !== target && e <= target && e >= a)) a++; else b-- }
   return {
     condition_text: `На рисунке изображён график дифференцируемой функции y = f(x), определённой на интервале (${ru(gx0)}; ${ru(gx1)}). Найдите точку из отрезка [${ru(a)}; ${ru(b)}], в которой производная функции f(x) равна 0.`,
-    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn: w.fn, xa: gx0, xb: gx1, dashX: [target], tickXvals: [{ x: gx0, text: ru(gx0) }, { x: gx1, text: ru(gx1) }], label: label8(w.fn, gx0, gx1, gy0, gy1, "y = f(x)") }),
+    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn: w.fn, xa: gx0, xb: gx1, tickXvals: [{ x: gx0, text: ru(gx0) }, { x: gx1, text: ru(gx1) }], label: label8(w.fn, gx0, gx1, gy0, gy1, "y = f(x)") }),
     answer: ru(target),
   }
 }
@@ -2713,7 +2713,7 @@ function t8dExtremumPoint() {
   } while ((!b || inseg.length !== 1) && ++tries < 80)
   return {
     condition_text: `На рисунке изображён график y = f′(x) — производной функции f(x), определённой на интервале (${ru(gx0)}; ${ru(gx1)}). Найдите точку экстремума функции f(x) на отрезке [${ru(a)}; ${ru(bb)}].`,
-    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn: b.fn, xa: gx0, xb: gx1, dashX: [inseg[0]], tickXvals: [{ x: gx0, text: ru(gx0) }, { x: gx1, text: ru(gx1) }], label: label8(b.fn, gx0, gx1, gy0, gy1, "y = f′(x)") }),
+    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn: b.fn, xa: gx0, xb: gx1, tickXvals: [{ x: gx0, text: ru(gx0) }, { x: gx1, text: ru(gx1) }], label: label8(b.fn, gx0, gx1, gy0, gy1, "y = f′(x)") }),
     answer: ru(inseg[0]),
   }
 }
@@ -2729,7 +2729,7 @@ function t8dOptPoint(kind) {
   } while ((!b || want.length !== 1) && ++tries < 100)
   return {
     condition_text: `На рисунке изображён график функции y = f′(x) — производной функции f(x), определённой на интервале (${ru(gx0)}; ${ru(gx1)}). Найдите точку ${kind === "max" ? "максимума" : "минимума"} функции f(x).`,
-    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn: b.fn, xa: gx0, xb: gx1, dashX: [want[0]], tickXvals: [{ x: gx0, text: ru(gx0) }, { x: gx1, text: ru(gx1) }], label: label8(b.fn, gx0, gx1, gy0, gy1, "y = f′(x)") }),
+    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn: b.fn, xa: gx0, xb: gx1, tickXvals: [{ x: gx0, text: ru(gx0) }, { x: gx1, text: ru(gx1) }], label: label8(b.fn, gx0, gx1, gy0, gy1, "y = f′(x)") }),
     answer: ru(want[0]),
   }
 }
@@ -2784,7 +2784,7 @@ function t8dDerivEqPoint(k) {
     : `На рисунке изображён график y = f′(x) — производной функции f(x), определённой на интервале (${ru(gx0)}; ${ru(gx1)}). Найдите абсциссу точки, в которой касательная к графику функции y = f(x) параллельна прямой y = ${ru(k)}x или совпадает с ней.`
   return {
     condition_text: cond,
-    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn, xa: gx0, xb: gx1, dashX: [x0], tickXvals: [{ x: gx0, text: ru(gx0) }, { x: gx1, text: ru(gx1) }], label: label8(fn, gx0, gx1, gy0, gy1, "y = f′(x)") }),
+    image_url: wave8Svg({ gx0, gx1, gy0, gy1, fn, xa: gx0, xb: gx1, tickXvals: [{ x: gx0, text: ru(gx0) }, { x: gx1, text: ru(gx1) }], label: label8(fn, gx0, gx1, gy0, gy1, "y = f′(x)") }),
     answer: ru(x0),
   }
 }
