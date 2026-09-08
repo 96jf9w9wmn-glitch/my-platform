@@ -84,15 +84,6 @@ function WeakTypes({ student }) {
   useEffect(() => () => clearTimeout(doneTimer.current), [])
 
   useEffect(() => {
-    if (typeof location !== "undefined" && location.search.includes("weakdemo")) {
-      setRows([
-        { exam_type: "ОГЭ", number: 8, gen_key: "pow-frac", attempts: 9, correct: 3, accuracy: 33, sources: new Set(["homework"]), last: "2026-09-05T10:00:00Z" },
-        { exam_type: "ОГЭ", number: 15, gen_key: "trap-midline", attempts: 6, correct: 3, accuracy: 50, sources: new Set(["variant"]), last: "2026-09-02T10:00:00Z" },
-        { exam_type: "ОГЭ", number: 21, gen_key: null, attempts: 5, correct: 3, accuracy: 60, sources: new Set(["homework"]), last: "2026-08-30T10:00:00Z" },
-      ])
-      setThin({ count: 2, sources: new Set(["homework"]), last: null })
-      return
-    }
     if (!studentId) return
     let alive = true
     supabase
@@ -143,7 +134,7 @@ function WeakTypes({ student }) {
   // место было нечем. Теперь ученик решает у себя, попытки идут в журнал, и
   // строка уходит из списка сама.
   async function assign(row) {
-    if (!location.search.includes("weakdemo") && !allows("homework")) return openPlans()
+    if (!allows("homework")) return openPlans()
     const key = rowKey(row)
     clearTimeout(doneTimer.current)
     setFailed("")

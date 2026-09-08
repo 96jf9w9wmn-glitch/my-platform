@@ -43,7 +43,6 @@ export async function assignDrill({ student, examType, number, genKey, title, si
     bank_tasks: tasks.map(packTask),
   }
 
-  window.__drillPayload = payload
   const insert = (body) => supabase.from("homework").insert({ ...body, status: "assigned" })
   let { error } = await insert(payload)
   // Миграции homework_bank_tasks.sql может не быть на этой базе. Работу всё

@@ -6,7 +6,6 @@ import FormulaBackdrop from "../components/FormulaBackdrop"
 import { TUTOR_STEPS } from "../onboardingSteps"
 import { Highlight } from "../components/Mark"
 import SiteFooter from "../components/SiteFooter"
-import WeakTypesDemo from "../components/WeakTypes"
 import BetaBadge, { BetaNotice } from "../components/BetaBadge"
 import { ConsentRow, ConsentLink } from "../components/ConsentChecks"
 import { logConsent } from "../consents"
@@ -801,15 +800,6 @@ function RoleQuiz({ cfg, role }) {
 }
 
 function Landing({ onStart }) {
-  if (window.location.search.includes("weakdemo")) {
-    return (
-      <div className="min-h-screen p-6 flex justify-center">
-        <div className="w-full max-w-xl">
-          <WeakTypesDemo student={{ id: 999999, name: "Демо", tutor_id: "00000000-0000-0000-0000-000000000000", studentAccountId: null }} />
-        </div>
-      </div>
-    )
-  }
   // Роль берём сперва из ссылки (?for=parent — чтобы можно было дать родителю
   // прямую ссылку), затем из памяти прошлого захода.
   const [role, setRole] = useState(() => {
