@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react"
-import { supabase } from "../supabase"
 import Icon from "./Icon"
 import TaskNoteModal from "./TaskNoteModal"
 import { aggregateAttempts } from "../reportData"
@@ -34,27 +33,12 @@ const CHIP = {
   unknown: "ring-gray-200 dark:ring-white/12 text-gray-500",
 }
 
-function TaskMap({ student, tutorId, examType: hinted }) {
-  const [rows, setRows] = useState(null)
+function TaskMap({ attempts, tutorId, examType: hinted }) {
+  const rows = attempts
   const [notes, setNotes] = useState({})
   const [order, setOrder] = useState([])
   const [arranging, setArranging] = useState(false)
   const [openNote, setOpenNote] = useState(null)
-
-  useEffect(() => {
-    if (!student?.id) return
-    let alive = true
-    supabase
-      .from("task_attempts")
-      .select("exam_type, number, gen_key, is_correct, attempt_no")
-      .eq("student_id", String(student.id))
-      .limit(4000)
-      // Таблицы может не быть (миграция task_attempts.sql) — тогда карта
-      // показывает номера без процентов, а не исчезает: методички к ним
-      // репетитор пишет независимо от того, решал ли ученик.
-      .then(({ data }) => { if (alive) setRows(data || []) })
-    return () => { alive = false }
-  }, [student?.id])
 
   // Предмет карты берём из САМИХ ответов, а не из цели в карточке. Цель — это
   // «ЕГЭ», а решает ученик «ЕГЭ Профиль»: фильтр по цели не находил ни одной
