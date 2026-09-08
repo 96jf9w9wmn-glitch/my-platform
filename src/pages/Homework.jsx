@@ -1963,37 +1963,49 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
 
   return (
     <div className={`glass overflow-hidden slide-up ${cls}`}>
-      <div className="flex items-center justify-between gap-3 px-5 py-3.5">
-        <div className="flex items-center gap-2 min-w-0">
+      {/* Шапка переносится по строкам, а не жмётся в одну: на телефоне «Доска»
+          и «На доработку» рядом с названием и значками не помещались и налезали
+          на значок типа работы. Теперь кнопки уходят под название целой
+          строкой, а значки остаются у правого края первой. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-5 py-3.5">
+        {/* flex-1 только на телефоне: там название обязано сжиматься, иначе оно
+            занимает всю строку и сталкивает значки вниз третьей строкой. */}
+        <div className="flex items-center gap-2 min-w-0 flex-1 sm:flex-none">
           <span className="font-medium text-base truncate">{hw.title}</span>
           <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${status.cls}`}>{status.label}</span>
-          {/* Доска ЭТОЙ работы: ученик решает на ней («Решить на доске»), и
-              репетитор подключается к той же — у каждой работы она своя, доска
-              занятия остаётся отдельной. */}
-          {onOpenBoard && (
-            <button
-              onClick={() => onOpenBoard(hw)}
-              className="press-fill text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ring-1 ring-blue-500/30 text-blue-600 dark:text-blue-300 inline-flex items-center gap-1"
-            >
-              <Icon name="clipboard" size={11} /> Доска
-            </button>
-          )}
-          {/* Возврат стоит прямо у статуса «Выполнено» — это ответ на него, а
-              не отдельный раздел проверки. Без этой кнопки у работы с
-              автопроверкой возврата не было ВОВСЕ: кабинет ученика при сдаче
-              теста сам ставит «Выполнено» и оценку по проценту
-              (submitHomeworkTest), состояния «на проверке» такая работа не
-              проходит, а у завершённой не было ни одной кнопки. */}
-          {hw.status === "done" && (
-            <button
-              onClick={() => setRevising(true)}
-              className="press-fill text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ring-1 ring-amber-500/40 text-amber-600 dark:text-amber-300"
-            >
-              На доработку
-            </button>
-          )}
         </div>
-        <div className="flex items-center gap-0.5 flex-shrink-0">
+
+        {(onOpenBoard || hw.status === "done") && (
+          <div className="order-3 sm:order-2 w-full sm:w-auto flex items-center gap-2">
+            {/* Доска ЭТОЙ работы: ученик решает на ней («Решить на доске»), и
+                репетитор подключается к той же — у каждой работы она своя, доска
+                занятия остаётся отдельной. */}
+            {onOpenBoard && (
+              <button
+                onClick={() => onOpenBoard(hw)}
+                className="press-fill text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ring-1 ring-blue-500/30 text-blue-600 dark:text-blue-300 inline-flex items-center gap-1"
+              >
+                <Icon name="clipboard" size={11} /> Доска
+              </button>
+            )}
+            {/* Возврат стоит прямо у статуса «Выполнено» — это ответ на него, а
+                не отдельный раздел проверки. Без этой кнопки у работы с
+                автопроверкой возврата не было ВОВСЕ: кабинет ученика при сдаче
+                теста сам ставит «Выполнено» и оценку по проценту
+                (submitHomeworkTest), состояния «на проверке» такая работа не
+                проходит, а у завершённой не было ни одной кнопки. */}
+            {hw.status === "done" && (
+              <button
+                onClick={() => setRevising(true)}
+                className="press-fill text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ring-1 ring-amber-500/40 text-amber-600 dark:text-amber-300"
+              >
+                На доработку
+              </button>
+            )}
+          </div>
+        )}
+
+        <div className="order-2 sm:order-3 ml-auto flex items-center gap-0.5 flex-shrink-0">
           <span className="text-[11px] text-gray-400 flex items-center gap-1.5 mr-1.5">
             <Icon name={typeInfo.iconName} size={12} />
             <span className="hidden sm:inline">{typeInfo.label}</span>
