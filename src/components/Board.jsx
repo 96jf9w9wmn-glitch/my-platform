@@ -1338,6 +1338,25 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
     return () => clearInterval(id)
   }, [roomId, resync])
 
+  // Вкладку могут убить, не дав нам размонтироваться: телефон ушёл в фон, PWA
+  // выгрузили, страницу закрыли. Отложенное сохранение (1,2 с) в этот момент
+  // ещё не сработало, и написанное последним пропадало — «решил на доске, зашёл
+  // заново, а там ничего». Поэтому на уход в фон и на закрытие дописываем сразу.
+  useEffect(() => {
+    const flush = () => {
+      if (!saveTimer.current) return
+      clearTimeout(saveTimer.current); saveTimer.current = null
+      persistRef.current?.()
+    }
+    const onHide = () => { if (document.visibilityState === "hidden") flush() }
+    document.addEventListener("visibilitychange", onHide)
+    window.addEventListener("pagehide", flush)
+    return () => {
+      document.removeEventListener("visibilitychange", onHide)
+      window.removeEventListener("pagehide", flush)
+    }
+  }, [])
+
   // Обрыв сокета виден не сразу — heartbeat замечает его до полуминуты, и всё это
   // время канал считается живым, а сообщения уже не идут. Поэтому ждать события
   // канала нельзя: перечитываем сцену и по возвращении вкладки, и по подъёму сети.
@@ -1484,7 +1503,12 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
 
   useEffect(() => () => {
     saveView()   // вернёмся на ту же доску — сядем на то же место
-    clearTimeout(saveTimer.current); clearTimeout(sendTimer.current); clearTimeout(viewSendTimer.current)
+    // Написанное в последнюю секунду ДОПИСЫВАЕМ, а не выбрасываем. Отложенное
+    // сохранение ждёт 1,2 с, и раньше уход отсюда его просто отменял: доску
+    // закрывают не только кнопкой (смена комнаты, «назад», выход из кабинета),
+    // и последний штрих в этих случаях пропадал молча.
+    if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; persistRef.current?.() }
+    clearTimeout(sendTimer.current); clearTimeout(viewSendTimer.current)
     clearTimeout(offscreenTimer.current); clearTimeout(offscreenOutTimer.current)
     // ВАЖНО: НЕ отменяем teardownTimer — иначе канал board:${roomId} не удаляется
     // при выходе, остаётся подписанным, и при повторном входе новый канал не может

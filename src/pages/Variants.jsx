@@ -1165,6 +1165,41 @@ function variantOverdue(v, pending) {
 const dayMonth = (date) =>
   parseLocalDate(date).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })
 
+// Правка варианта — отдельным окном, как «Редактировать задание» у домашней
+// работы. В самом разборе чипов срока быть не должно: разбор показывает, как
+// вариант написали ученики, и панель правки читалась там как ещё одно свойство
+// работы. Срок пока единственное, что меняют у выданного варианта: задания и
+// ответы уже разосланы, и менять их под сданными работами нельзя.
+function EditVariantModal({ variant, onChangeDeadline, onClose }) {
+  const { cls: closingCls, close } = useClosing(onClose)
+  return createPortal(
+    <div className={`fixed inset-0 glass-overlay z-50 overflow-y-auto ${closingCls}`}>
+      <div className="min-h-full flex items-center justify-center p-4">
+        <div className={`glass-modal p-6 w-full max-w-md ${closingCls}`}>
+          <div className="flex justify-between items-start gap-3 mb-5">
+            <div className="min-w-0">
+              <h2 className="text-lg font-medium">Редактировать вариант</h2>
+              <div className="text-xs text-gray-400 truncate mt-0.5">{variant.title}</div>
+            </div>
+            <button onClick={close} aria-label="Закрыть" className="text-gray-500 hover:text-gray-700 flex-shrink-0"><Icon name="x" size={18} /></button>
+          </div>
+
+          {/* Срок стоит на самом варианте, а не на выдаче ученику: вариант
+              выдаётся всем сразу одной строкой. */}
+          <DeadlinePicker
+            value={variant.deadline || ""}
+            onChange={onChangeDeadline}
+            label={variant.deadline ? `Ученик видит: до ${dayMonth(variant.deadline)}` : "Без срока"}
+          />
+
+          <button onClick={close} className="btn-primary w-full mt-6 py-2.5 text-sm">Готово</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
 // Карточка варианта — того же склада, что карточка задания (Homework.jsx):
 // плитка слева кодирует, на каком этапе работа, состояние написано один раз
 // чипом, а действия (файл, удаление) живут в развороте, а не на каждой
@@ -1268,9 +1303,9 @@ function Variants({ user, students = [] }) {
     setLoading(false)
   }
 
-  // Срок сдачи правится прямо в разборе. Пишем сразу в базу, стейт обновляем
-  // на месте: список перечитывается запросом, и ждать его ради одной даты
-  // незачем.
+  // Срок сдачи правится в окне «Редактировать вариант». Пишем сразу в базу,
+  // стейт обновляем на месте: список перечитывается запросом, и ждать его ради
+  // одной даты незачем.
   async function saveDeadline(value) {
     if (!selectedVariant) return
     const next = value || null
