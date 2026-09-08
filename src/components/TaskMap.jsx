@@ -165,15 +165,19 @@ function TaskMap({ attempts, tutorId, examType: hinted }) {
           examType={examType}
           number={openNote.number}
           note={openNote.note}
-          onSave={async ({ number, title, body }) => {
-            const res = await saveTaskNote({ tutorId, examType, number, title, body })
-            if (res.error) return res
-            setNotes((prev) => {
-              const next = { ...prev }
-              if (res.note) next[number] = res.note
-              else delete next[number]
-              return next
-            })
+          tutorId={tutorId}
+          onSave={async ({ number, title, body, files }) => {
+            const res = await saveTaskNote({ tutorId, examType, number, title, body, files })
+            // Ответ бывает и с записью, и с ошибкой разом: без миграции текст
+            // сохраняется, а файлы — нет. Тогда карту всё равно обновляем.
+            if (res.note !== undefined) {
+              setNotes((prev) => {
+                const next = { ...prev }
+                if (res.note) next[number] = res.note
+                else delete next[number]
+                return next
+              })
+            }
             return res
           }}
           onClose={() => setOpenNote(null)}
