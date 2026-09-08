@@ -273,7 +273,12 @@ function Dashboard({ students, loaded = true, setActivePage, onOpenBoard }) {
                       ученика — главное слово карточки, «Александра Владимиро…»
                       не читается. Две строки — потолок. */}
                   <div className="text-xl sm:text-2xl font-semibold leading-tight line-clamp-2 break-words">{nextLesson.studentName}</div>
-                  <div className="text-sm opacity-80 mt-0.5 truncate">
+                  {/* Отступ больше, чем 0.5, ради РОВНОГО междустрочья: строку
+                      заголовка растягивает чип отсчёта (он вдвое выше надписи),
+                      и лишняя высота падает под надпись — просвет над именем
+                      выходил 20,6 px против 13,6 px под ним. mt-1/mt-2 добирают
+                      нижний просвет до верхнего (замер: 14,6 и 19,6 px). */}
+                  <div className="text-sm opacity-80 mt-1 sm:mt-2 truncate">
                     {nextLessonDate ? `${nextLessonDate} · ` : ""}{nextLesson.time} · {nextLesson.duration} мин
                   </div>
                 </div>
