@@ -13,33 +13,40 @@ import Icon from "./components/Icon"
 import MorphIcon from "./components/MorphIcon"
 import BetaBadge from "./components/BetaBadge"
 import { BETA_SUFFIX } from "./beta"
-import Students from "./pages/Students"
-import Payment from "./pages/Payment"
-import Auth from "./pages/Auth"
-import ResetPassword from "./pages/ResetPassword"
-import Landing from "./pages/Landing"
-import Results from "./pages/Results"
-import Dashboard from "./pages/Dashboard"
-import Homework from "./pages/Homework"
-import Schedule from "./pages/Schedule"
-import ParentDashboard from "./pages/ParentDashboard"
-import Chat from "./pages/Chat"
-import Legal from "./pages/Legal"
 import { LEGAL_PATHS } from "./legalPaths"
-import Profile from "./pages/Profile"
 import { loadTutorProfile } from "./tutorProfile"
-import Subscription from "./pages/Subscription"
 import { SubscriptionProvider } from "./subscriptionProvider"
 import { useSubscription } from "./subscription"
 import { effectivePlan, isActive } from "./plans"
 import { isOwner } from "./owner"
 import { navFor } from "./nav"
-import { loadGroups } from "./groups"
+import { loadGroups, groupChatId } from "./groups"
 import Reveal from "./components/Reveal"
 import PageBoundary from "./components/PageBoundary"
 import TutorOnboardingModal from "./components/TutorOnboardingModal"
 import ConfirmModal from "./components/ConfirmModal"
 // Excalidraw тяжёлый (mermaid/katex) — грузим доску только при открытии
+// Разделы грузятся отдельными файлами по первому заходу, а не одним куском при
+// запуске. Причина замерена: на телефоне приложение стартует по нескольку раз в
+// минуту (iOS выгружает фоновую вкладку), и каждый раз браузер разбирал ДВА
+// мегабайта кода — включая лендинг, экран входа и кабинет родителя, которых
+// вошедший репетитор не увидит никогда. Каждый раздел уже стоит под своей
+// PageBoundary (в ней Suspense и разбор ошибки «вкладка старше сайта»), поэтому
+// ожидание файла гасит только этот раздел, а не весь кабинет.
+const Landing = lazy(() => import("./pages/Landing"))
+const Auth = lazy(() => import("./pages/Auth"))
+const ResetPassword = lazy(() => import("./pages/ResetPassword"))
+const Legal = lazy(() => import("./pages/Legal"))
+const ParentDashboard = lazy(() => import("./pages/ParentDashboard"))
+const Students = lazy(() => import("./pages/Students"))
+const Payment = lazy(() => import("./pages/Payment"))
+const Results = lazy(() => import("./pages/Results"))
+const Dashboard = lazy(() => import("./pages/Dashboard"))
+const Homework = lazy(() => import("./pages/Homework"))
+const Schedule = lazy(() => import("./pages/Schedule"))
+const Chat = lazy(() => import("./pages/Chat"))
+const Profile = lazy(() => import("./pages/Profile"))
+const Subscription = lazy(() => import("./pages/Subscription"))
 const Board = lazy(() => import("./components/Board"))
 // Тяжёлые экраны — грузим лениво, чтобы их код (генераторы заданий на 34k строк,
 // jspdf/html2canvas/recharts) не сидел в стартовом бандле. Рендерятся только при заходе.
@@ -1088,10 +1095,21 @@ function App() {
   // Список собеседников репетитора и колбэки разделов держим неизменными между
   // рендерами: иначе memo выше бесполезен — новый объект в пропсе перерисовывает
   // раздел, даже если в нём ничего не изменилось.
-  const tutorChatContacts = useMemo(() => students
-    .filter(s => s.studentAccountId)
-    .map(s => ({ id: `s:${s.studentAccountId}`, name: s.name, avatar: s.avatar || null, role: "Ученик" })),
-  [students])
+  const tutorChatContacts = useMemo(() => [
+    // Группы первыми: сообщение всей группе — это то, ради чего в неё и
+    // писали, а искать её среди учеников по имени неудобно.
+    ...groups.map(g => ({
+      id: groupChatId(g), name: g.name, avatar: null, role: "Группа",
+      // Кому уходит колокольчик, когда репетитор пишет в комнату: само
+      // сообщение одно на всех, а уведомление адресное.
+      memberAccountIds: g.memberIds
+        .map(id => students.find(s => String(s.id) === id)?.studentAccountId)
+        .filter(Boolean),
+    })),
+    ...students
+      .filter(s => s.studentAccountId)
+      .map(s => ({ id: `s:${s.studentAccountId}`, name: s.name, avatar: s.avatar || null, role: "Ученик" })),
+  ], [students, groups])
 
   const handleChatUnread = useCallback((delta, isInit) => {
     if (isInit) setChatUnread(delta)
@@ -1110,7 +1128,7 @@ function App() {
   // забыли добавить в маршрут и он не отдавал кабинет вместо текста.
   const legalPath = typeof window !== "undefined" ? window.location.pathname : "/"
   if (LEGAL_PATHS.includes(legalPath)) {
-    return <Legal path={legalPath} />
+    return <PageBoundary fallback={<div className="min-h-screen flex items-center justify-center"><div className="loader-logo" /></div>}><Legal path={legalPath} /></PageBoundary>
   }
 
   // Сброс пароля важнее всех остальных экранов: пока новый пароль не задан, в
@@ -1119,9 +1137,11 @@ function App() {
   // и обычный путь через getSession() откроет кабинет.
   if (recovery) {
     return (
-      <ResetPassword
-        onDone={() => window.location.replace(window.location.pathname)}
-      />
+      <PageBoundary fallback={<div className="min-h-screen flex items-center justify-center"><div className="loader-logo" /></div>}>
+        <ResetPassword
+          onDone={() => window.location.replace(window.location.pathname)}
+        />
+      </PageBoundary>
     )
   }
 
@@ -1140,21 +1160,23 @@ function App() {
 
   if (!user) {
     if (!authIntent) {
-      return <Landing onStart={(role, mode) => setAuthIntent({ role, mode })} />
+      return <PageBoundary fallback={<div className="min-h-screen flex items-center justify-center"><div className="loader-logo" /></div>}><Landing onStart={(role, mode) => setAuthIntent({ role, mode })} /></PageBoundary>
     }
     return (
-      <Auth
-        onLogin={setUser}
-        initialRole={authIntent.role}
-        initialMode={authIntent.mode}
-        onBack={() => setAuthIntent(null)}
-      />
+      <PageBoundary fallback={<div className="min-h-screen flex items-center justify-center"><div className="loader-logo" /></div>}>
+        <Auth
+          onLogin={setUser}
+          initialRole={authIntent.role}
+          initialMode={authIntent.mode}
+          onBack={() => setAuthIntent(null)}
+        />
+      </PageBoundary>
     )
   }
 
   if (user.role === "parent") {
     return <>
-      <ParentDashboard user={user} onLogout={handleLogout} />
+      <PageBoundary fallback={<div className="min-h-screen flex items-center justify-center"><div className="loader-logo" /></div>}><ParentDashboard user={user} onLogout={handleLogout} /></PageBoundary>
       {logoutConfirm}
     </>
   }

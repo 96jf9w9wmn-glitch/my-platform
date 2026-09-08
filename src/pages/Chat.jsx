@@ -1,5 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef, Fragment } from "react"
 import { supabase } from "../supabase"
+import { isGroupChatId } from "../groups"
 import { signStorageUrl } from "../storageUrl"
 import { notifyTutor } from "../telegramNotify"
 import Reveal from "../components/Reveal"
@@ -148,7 +149,11 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
   }
 
   const activeContact = contacts.find(c => c.id === activeId)
-  const convId = activeContact ? [myId, activeId].sort().join("|") : null
+  // Комната группы — общая для всех участников, поэтому её разговор адресуется
+  // самой группой, а не парой «я + собеседник»: пары у каждого свои, и три
+  // участника сидели бы в трёх разных переписках.
+  const isGroupRoom = isGroupChatId(activeId)
+  const convId = activeContact ? (isGroupRoom ? activeId : [myId, activeId].sort().join("|")) : null
 
   // Сбрасываем переписку при смене диалога (корректировка состояния при рендере)
   const [prevConvId, setPrevConvId] = useState(convId)
@@ -258,6 +263,11 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
         initialLoadDone.current = true
       })
 
+    // «Прочитано» у сообщения одно, а читателей в комнате много: честно
+    // посчитать непрочитанное в группе этим флагом нельзя, поэтому групповые
+    // сообщения им и не помечаются — и счётчика у группы нет (он считается
+    // ровно по этому же полю).
+    if (isGroupRoom) return
     // Mark as read — use .select("id") so Supabase returns updated rows
     supabase
       .from("chat_messages")
@@ -273,7 +283,7 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
         if (error) { console.error("Failed to mark chat messages read:", error); return }
         if (data?.length && onUnreadChange) onUnreadChange(-data.length)
       })
-  }, [convId])
+  }, [convId, isGroupRoom])
 
   // Realtime for active conversation
   useEffect(() => {
@@ -388,8 +398,19 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
     // Send notification to recipient (tutors and students have notification inboxes)
     const recipientRole = activeId.split(":")[0]
     const recipientUuid = activeId.split(":")[1]
-    if (recipientRole === "t" || recipientRole === "s") {
-      const preview = text.length > 60 ? text.slice(0, 60) + "…" : text
+    const preview = text.length > 60 ? text.slice(0, 60) + "…" : text
+    if (isGroupRoom) {
+      // Само сообщение в комнате одно, а уведомление — каждому: колокольчик
+      // адресный, комнате его не отправить. Себе не шлём.
+      const targets = (activeContact?.memberAccountIds || []).filter((id) => `s:${id}` !== myId)
+      if (targets.length) {
+        supabase.from("notifications").insert(targets.map((id) => ({
+          user_id: id,
+          title: `${activeContact?.name || "Группа"}: ${myName}`,
+          body: preview,
+        })))
+      }
+    } else if (recipientRole === "t" || recipientRole === "s") {
       supabase.from("notifications").insert({
         user_id: recipientUuid,
         title: `Сообщение от ${myName}`,
@@ -757,6 +778,14 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
                           : "chat-bubble-in shadow-sm chat-tail-in"
                       } ${endsGroup ? "is-tailed" : ""} ${isNew ? "chat-tail-new" : ""}`}>
                         <div className="leading-relaxed">
+                          {/* В общей комнате собеседник не один, и без подписи
+                              непонятно, кто что написал. У личной переписки
+                              подпись не нужна — там и так двое. */}
+                          {isGroupRoom && !isMe && startsGroup && (
+                            <div className="text-[12px] font-semibold text-blue-600 dark:text-blue-300 mb-0.5">
+                              {msg.sender_name || "Участник"}
+                            </div>
+                          )}
                           {msg.text}
                           {/* Время и галочки — в конце последней строки, как в
                               Telegram: float переносит их сами на новую строку,
@@ -765,7 +794,7 @@ export default function Chat({ myId, myName, initialContacts = [], canAddByCode 
                             isMe ? "text-white/65" : "text-gray-400 dark:text-gray-400"
                           }`}>
                             {new Date(msg.created_at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
-                            {isMe && (
+                            {isMe && !isGroupRoom && (
                               msg.read ? (
                                 <svg width="15" height="8" viewBox="0 0 18 10" fill="none" className="opacity-75 flex-shrink-0">
                                   <path d="M1 5L5 9L13 1" stroke="white" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>

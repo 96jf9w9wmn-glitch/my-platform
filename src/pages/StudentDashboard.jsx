@@ -2030,8 +2030,29 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   const tutorName = tutors[currentTutorId]?.name || ""
   const tutorSubject = tutors[currentTutorId]?.subject || ""
   const tutorNameOf = (id) => tutors[id]?.name || "Репетитор"
-  // В чат подставляем всех своих репетиторов, а не только основного.
-  const tutorContacts = tutorIds.map((id) => ({ id: `t:${id}`, name: tutorNameOf(id), role: "Репетитор" }))
+  // Группы, в которых состоит ученик. Список отдаёт сама база: политика
+  // student_groups_member пускает только к своим, поэтому фильтровать здесь
+  // нечего и незачем.
+  const [myGroups, setMyGroups] = useState([])
+  useEffect(() => {
+    let alive = true
+    supabase.from("student_groups").select("id, name")
+      // Таблицы может не быть (миграция выполняется руками) — тогда групп
+      // просто нет, а чат работает как раньше.
+      .then(({ data }) => { if (alive && data) setMyGroups(data) })
+    return () => { alive = false }
+  }, [])
+
+  // В чат подставляем всех своих репетиторов, а не только основного. Комнаты
+  // групп идут следом: сообщения в них видят все участники.
+  //
+  // memberAccountIds ученику не отдаём — чужих аккаунтов он читать не может, и
+  // колокольчик по его сообщению одногруппникам не уйдёт: само сообщение в
+  // комнату они всё равно получат.
+  const tutorContacts = [
+    ...tutorIds.map((id) => ({ id: `t:${id}`, name: tutorNameOf(id), role: "Репетитор" })),
+    ...myGroups.map((g) => ({ id: `g:${g.id}`, name: g.name, role: "Группа" })),
+  ]
   // Варианты приходят на аккаунт целиком, а выдаёт их конкретный репетитор —
   // показываем только его: чужие в разделе выглядели бы как забытая работа.
   const variants = useMemo(

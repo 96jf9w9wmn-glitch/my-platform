@@ -6,6 +6,7 @@ import WheelPicker from "./WheelPicker"
 import DurationPicker from "./DurationPicker"
 import { tutorLessons, findClash, clashLine } from "../lessonConflict"
 import { todayDateStr } from "../lessonMove"
+import { GROUP_PREFIX, isGroupChatId as isGroupTarget, groupIdOfChat as groupIdOfTarget, groupMembers } from "../groups"
 
 // Разовое занятие ставится одинаково из расписания и из карточки ученика,
 // поэтому форма одна на оба места. Разница ровно в двух вещах: в карточке
@@ -13,7 +14,10 @@ import { todayDateStr } from "../lessonMove"
 // день — второй раз его не спрашиваем.
 // Родитель монтирует модалку условно, поэтому каждое открытие начинается с
 // чистого листа: прошлое время и ученик во второй раз не всплывают.
-function AddLessonModal({ students = [], studentId = "", date = "", onAdd, onClose }) {
+// Цель занятия — либо ученик (его id), либо группа (`g:<id>`, тот же вид
+// адреса, что у чата). Группа не заводит второй формы: занятие у неё то же
+// самое, просто ложится сразу всем участникам.
+function AddLessonModal({ students = [], groups = [], studentId = "", date = "", onAdd, onClose }) {
   const fixedStudent = !!studentId
   const [form, setForm] = useState({
     studentId: studentId ? String(studentId) : "",
@@ -25,22 +29,34 @@ function AddLessonModal({ students = [], studentId = "", date = "", onAdd, onClo
   const [error, setError] = useState("")
   const { cls: closingCls, close } = useClosing(() => onClose?.())
 
-  const student = students.find((s) => String(s.id) === String(form.studentId))
+  const group = isGroupTarget(form.studentId)
+    ? groups.find((g) => g.id === groupIdOfTarget(form.studentId))
+    : null
+  const student = group ? null : students.find((s) => String(s.id) === String(form.studentId))
+  const members = group ? groupMembers(group, students) : []
+  // Длительность по умолчанию: у группы своя, у ученика своя, иначе час.
+  const baseDuration = group?.lessonDuration || student?.lessonDuration || 60
 
   // Занятие, на которое налезает то, что сейчас набирается. Считаем на каждый
   // рендер: время и длительность меняются кнопками, и предупреждение должно
   // поспевать за ними, а не появляться после ошибки.
   function clash() {
     if (!form.studentId || !form.date || !form.time) return null
-    const duration = Number(form.duration) || student?.lessonDuration || 60
+    const duration = Number(form.duration) || baseDuration
     const candidate = { date: form.date, time: form.time, duration }
-    const hit = findClash(candidate, tutorLessons(students))
+    // Занятия самой группы своим же не мешают: репетитор ведёт их разом.
+    const hit = findClash(candidate, tutorLessons(students).filter((l) => !group || l.groupId !== group.id))
     return hit ? { lesson: candidate, other: hit } : null
   }
 
   function submit() {
     if (!form.studentId || !form.date || !form.time) {
-      setError(fixedStudent ? "Выберите дату и время." : "Выберите ученика, дату и время.")
+      setError(fixedStudent ? "Выберите дату и время." : "Выберите, кому назначить занятие, дату и время.")
+      return
+    }
+    // Группу могли распустить в другой вкладке, пока форма была открыта.
+    if (isGroupTarget(form.studentId) && !group) {
+      setError("Эта группа больше не существует.")
       return
     }
     // Занятие задним числом не ставится: расписание — это план, а прошедшее
@@ -57,7 +73,7 @@ function AddLessonModal({ students = [], studentId = "", date = "", onAdd, onClo
       return
     }
     setError("")
-    const duration = Number(form.duration) || student?.lessonDuration || 60
+    const duration = Number(form.duration) || baseDuration
     onAdd(form.studentId, { date: form.date, time: form.time, duration, extra: true })
     close()
   }
@@ -75,12 +91,31 @@ function AddLessonModal({ students = [], studentId = "", date = "", onAdd, onClo
           {/* В карточке ученика выбирать некого — он и есть ученик. */}
           {!fixedStudent && (
             <div>
-              <label className="text-sm text-gray-500 mb-1 block">Ученик</label>
+              <label className="text-sm text-gray-500 mb-1 block">Кому</label>
               <select value={form.studentId} onChange={(e) => setForm((p) => ({ ...p, studentId: e.target.value }))}
                 className="input-glass">
-                <option value="">Выберите ученика</option>
-                {students.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                <option value="">Выберите ученика или группу</option>
+                {/* Группы первыми и отдельным разделом: иначе они теряются
+                    среди учеников, а именно ради них список и стал общим. */}
+                {groups.length > 0 && (
+                  <optgroup label="Группы">
+                    {groups.map((g) => (
+                      <option key={g.id} value={GROUP_PREFIX + g.id}>{g.name}</option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label="Ученики">
+                  {students.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </optgroup>
               </select>
+              {/* Состав виден до постановки: занятие ляжет каждому из них, и
+                  узнавать об этом постфактум не годится. */}
+              {group && (
+                <p className="text-xs text-gray-400 mt-1.5">
+                  {members.length ? `Занятие встанет в расписание всем: ${members.map((m) => m.name).join(", ")}.`
+                                  : "В группе никого не осталось — некому ставить занятие."}
+                </p>
+              )}
             </div>
           )}
           <div>
@@ -117,7 +152,7 @@ function AddLessonModal({ students = [], studentId = "", date = "", onAdd, onClo
                 ученик занимается обычно, — её же подставит сохранение. */}
             <DurationPicker
               value={form.duration}
-              fallback={student?.lessonDuration || 60}
+              fallback={baseDuration}
               onChange={(d) => setForm((p) => ({ ...p, duration: String(d) }))} />
           </div>
           {formClash && (

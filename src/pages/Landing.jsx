@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { Fragment, useState, useEffect } from "react"
 import Icon from "../components/Icon"
 import MorphIcon from "../components/MorphIcon"
 import Collapse from "../components/Collapse"
@@ -479,27 +479,49 @@ function RoleSwitch({ role, onChange }) {
 // вопрос, который правда задают, а по нажатию раскрывается, как платформа его
 // закрывает. Список свой для каждой роли.
 function PainCard({ item, index, cfg, open, onToggle }) {
+  // Отступ снизу даёт обёртка, а не margin у самой кнопки: у растянутой на
+  // высоту ячейки (h-full) кнопки нижнее поле выпадает за строку сетки, и
+  // карточки слипаются.
   return (
+    <div className="flex pb-3">
     <button
       onClick={onToggle}
       aria-expanded={open}
-      className="press-fill glass rounded-2xl p-4 text-left w-full flex flex-col gap-2"
+      className={`press-fill glass rounded-2xl p-4 text-left flex-1 flex items-center gap-2.5 ${open ? `ring-1 ${cfg.ring}` : ""}`}
     >
-      <span className="flex items-center gap-2.5">
-        <span className={`shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-[12px] font-bold ring-1 ${cfg.ring} ${cfg.soft} ${cfg.text}`}>
-          {index + 1}
-        </span>
-        <span className="flex-1 font-semibold text-gray-900 leading-snug">«{item.q}»</span>
-        <span className={`shrink-0 transition-transform duration-300 ${cfg.text} ${open ? "rotate-90" : ""}`}>
-          <Icon name="arrow" size={16} />
-        </span>
+      <span className={`shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-[12px] font-bold ring-1 ${cfg.ring} ${cfg.soft} ${cfg.text}`}>
+        {index + 1}
       </span>
-      <Collapse open={open}>
-        <span className="flex gap-2.5 pt-1 pl-9.5">
-          <span className="text-sm text-gray-500 dark:text-gray-400 leading-snug">{item.a}</span>
-        </span>
-      </Collapse>
+      <span className="flex-1 font-semibold text-gray-900 leading-snug">«{item.q}»</span>
+      <span className={`shrink-0 transition-transform duration-300 ${cfg.text} ${open ? "rotate-90" : ""}`}>
+        <Icon name="arrow" size={16} />
+      </span>
     </button>
+    </div>
+  )
+}
+
+// Ответ раскрывается ПОД строкой карточек и во всю её ширину, а не внутри самой
+// карточки: раскрытая карточка растягивала свою строку, и рядом с ней зияла
+// пустота (правило «никаких пустот»). Вертикальные отступы держат сами элементы
+// (mb-3 у карточки, pb-3 у ответа), а НЕ gap сетки: иначе схлопнувшийся ответ
+// оставлял бы за собой пустой зазор между строками. Поэтому же панель НЕ
+// размонтируется — свёрнутая она нулевой высоты и невидима, зато и появление, и
+// исчезновение анимирует сам <Collapse>, без таймеров и отложенного размонтажа.
+function PainAnswer({ item, index, cfg, open }) {
+  return (
+    <div className="sm:col-span-2">
+      <Collapse open={open}>
+        <div className="pb-3">
+          <div className={`glass rounded-2xl p-4 flex items-start gap-2.5 ring-1 ${cfg.ring}`}>
+            <span className={`shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-[12px] font-bold ring-1 ${cfg.ring} ${cfg.soft} ${cfg.text}`}>
+              {index + 1}
+            </span>
+            <span className="flex-1 pt-1 text-sm text-gray-500 dark:text-gray-400 leading-snug">{item.a}</span>
+          </div>
+        </div>
+      </Collapse>
+    </div>
   )
 }
 
@@ -984,18 +1006,21 @@ function Landing({ onStart }) {
             <h2 className="font-display text-2xl sm:text-3xl font-semibold tracking-tight text-gray-900">Что обычно мешает</h2>
             <p className="mt-2 text-gray-500 dark:text-gray-400">Нажмите на знакомое — покажем, как это решается.</p>
           </div>
-          {/* items-start: свёрнутая карточка не должна растягиваться под высоту
-              раскрытой соседки — иначе под ней зияет пустота */}
-          <div key={`pains-${role}`} className="grid sm:grid-cols-2 gap-3 items-start">
+          {/* Ответ — отдельная ячейка во всю ширину сразу за своей карточкой.
+              grid-flow-row-dense возвращает соседку в освободившееся место
+              строки: без него рядом с открытой карточкой оставалась дыра. */}
+          <div key={`pains-${role}`} className="grid sm:grid-cols-2 grid-flow-row-dense gap-x-3">
             {cfg.pains.map((p, i) => (
-              <PainCard
-                key={p.q}
-                item={p}
-                index={i}
-                cfg={cfg}
-                open={openPain === i}
-                onToggle={() => setOpenPain(openPain === i ? null : i)}
-              />
+              <Fragment key={p.q}>
+                <PainCard
+                  item={p}
+                  index={i}
+                  cfg={cfg}
+                  open={openPain === i}
+                  onToggle={() => setOpenPain(openPain === i ? null : i)}
+                />
+                <PainAnswer item={p} index={i} cfg={cfg} open={openPain === i} />
+              </Fragment>
             ))}
           </div>
         </section>

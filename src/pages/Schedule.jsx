@@ -4,9 +4,10 @@ import SegmentSwitch from "../components/SegmentSwitch"
 import ConfirmModal from "../components/ConfirmModal"
 import RescheduleModal from "../components/RescheduleModal"
 import AddLessonModal from "../components/AddLessonModal"
+import { isGroupChatId as isGroupTarget, groupIdOfChat as groupIdOfTarget, groupMembers, groupLesson, collapseGroupLessons, memberLesson } from "../groups"
 import LessonStatusModal, { LessonStatusBadge } from "../components/LessonStatusModal"
 import { lessonStatusNotice } from "../lessonStatus"
-import { isLessonPast, setLessonStatus, LESSON_EXCUSED } from "../utils"
+import { isLessonPast, setLessonStatus, LESSON_EXCUSED, LESSON_MISSED } from "../utils"
 import { supabase } from "../supabase"
 import { MOVE_ANCHOR_TUTOR } from "../notifTarget"
 import { tutorLessons, findClash, clashLine, formatSpan, lessonsClash } from "../lessonConflict"
@@ -71,7 +72,7 @@ function formatDate(date) {
   return `${y}-${m}-${d}`
 }
 
-function Schedule({ students, setStudents, onOpenBoard }) {
+function Schedule({ students, setStudents, groups = [], onOpenBoard }) {
   const [baseDate, setBaseDate] = useState(new Date())
   const [showForm, setShowForm] = useState(false)
   // Дата пришла из календаря и переспрашивать её незачем — форма показывает её
@@ -182,11 +183,14 @@ function Schedule({ students, setStudents, onOpenBoard }) {
   // Занят ли слот у самого репетитора: он не может вести двоих сразу. Сравниваем
   // ОТРЕЗКИ времени, а не начало: занятие в 14:30 на час перекрывает 15:00.
   // Перенос это не запрещает — только предупреждает.
-  function slotBusy(studentId, from) {
+  // groupId нужен для переноса группы: её занятие лежит у каждого участника
+  // своей строкой, и без метки перенос на соседний час объявлял бы группу
+  // наложением на саму себя (skipStudentId снимает только одного участника).
+  function slotBusy(studentId, from, groupId = null) {
     return (date, time) => {
       const others = tutorLessons(students)
       const duration = from?.duration || 60
-      const hit = findClash({ date, time, duration }, others, { skip: from, skipStudentId: studentId })
+      const hit = findClash({ date, time, duration, groupId }, others, { skip: from, skipStudentId: studentId })
       if (!hit) return null
       const who = hit.studentName ? `${hit.studentName}, ` : ""
       return `На это время уже поставлено занятие: ${who}${formatSpan(hit)}.`
@@ -209,6 +213,21 @@ function Schedule({ students, setStudents, onOpenBoard }) {
 
   function openMove(lesson) {
     setMoving(lesson)
+  }
+
+  // Перенос ГРУППОВОГО занятия — единственное место, где занятие двигается без
+  // согласия второй стороны, и это сделано намеренно. Время у группы общее:
+  // договориться поодиночке нельзя, а «переехало у двоих из троих» — это уже не
+  // группа, а расколотое расписание и разъехавшиеся деньги. Поэтому репетитор
+  // объявляет новое время сразу всем, а каждый участник получает уведомление.
+  function moveGroup(entry, to) {
+    const ids = new Set((entry.members || []).map((m) => String(m.id)))
+    const from = { date: entry.date, time: entry.time }
+    setStudents((prev) => prev.map((s) => (
+      ids.has(String(s.id)) ? { ...s, ...applyMoveToStudent(s, from, to) } : s
+    )))
+    students.filter((s) => ids.has(String(s.id))).forEach((s) => notifyStudentOf(s, "Занятие перенесено",
+      `Группа «${entry.groupName || entry.studentName}»: ${whenForStudent(s, from.date, from.time)} → ${whenForStudent(s, to.date, to.time)}.`))
   }
 
   function openExtraForm(dateStr) {
@@ -239,21 +258,24 @@ function Schedule({ students, setStudents, onOpenBoard }) {
   }
 
   function getLessonsForDate(dateStr) {
-    return students.flatMap((s) => {
+    const flat = students.flatMap((s) => {
       const lessons = (s.lessons || []).filter((l) => l.date === dateStr)
       if (lessons.length > 0) return lessons.map((l) => ({ ...l, studentName: s.name, studentId: s.id }))
       const legacy = ((s.lessonDates || []).includes(dateStr) && s.lessonTime)
         ? [{ date: dateStr, time: s.lessonTime, duration: s.lessonDuration || 60 }]
         : []
       return legacy.map((l) => ({ ...l, studentName: s.name, studentId: s.id }))
-    }).sort((a, b) => a.time.localeCompare(b.time))
+    })
+    // Групповое занятие лежит у каждого участника своей строкой, а в дне это
+    // один час репетитора — показываем одной карточкой.
+    return collapseGroupLessons(flat).sort((a, b) => a.time.localeCompare(b.time))
   }
 
   // Занятия, попадающие в строку часа. Сравниваем час, а не строку времени:
   // при точном сравнении занятие в 17:30 не попадало ни в одну строку и в
   // неделе пропадало.
   function getLessonsForSlot(dateStr, hourNum) {
-    return students.flatMap((s) => {
+    const flat = students.flatMap((s) => {
       const own = (s.lessons || []).filter((l) => l.date === dateStr)
       if (own.length > 0) {
         return own.filter((l) => hourOf(l.time) === hourNum).map((lesson) => ({ student: s, lesson }))
@@ -263,6 +285,10 @@ function Schedule({ students, setStudents, onOpenBoard }) {
       }
       return []
     })
+    // В сетке недели группа тоже занимает одну клетку, а не три подряд.
+    return collapseGroupLessons(flat.map(({ student, lesson }) => ({
+      ...lesson, student, studentId: student.id, studentName: student.name,
+    }))).map((l) => ({ student: l.student, lesson: l, members: l.members }))
   }
 
   // Строки сетки: рабочий день плюс всё, что реально стоит на этой неделе, —
@@ -286,10 +312,30 @@ function Schedule({ students, setStudents, onOpenBoard }) {
 
   // Проверки (прошедший день, наложение на чужое занятие) живут в самой форме —
   // она общая с карточкой ученика; сюда приходит уже согласованное занятие.
-  function addLesson(studentId, lesson) {
-    const student = students.find((s) => String(s.id) === String(studentId))
+  function addLesson(target, lesson) {
+    // Группе занятие ставится СРАЗУ ВСЕМ участникам, каждому в его карточку. У
+    // группы своего списка занятий нет и быть не должно: на students.lessons
+    // держатся долг, квитанции, абонемент и оба чужих кабинета, и параллельный
+    // список разошёлся бы с ними при первой правке расписания.
+    if (isGroupTarget(target)) {
+      const group = groups.find((g) => g.id === groupIdOfTarget(target))
+      const members = group ? groupMembers(group, students) : []
+      if (!members.length) return
+      const ids = new Set(members.map((m) => String(m.id)))
+      setStudents((prev) => prev.map((s) => (
+        ids.has(String(s.id))
+          ? { ...s, lessons: [...(s.lessons || []), groupLesson(group, s, lesson)] }
+          : s
+      )))
+      // Уведомление — каждому своё: время у участников из разных поясов
+      // разное, и одним текстом на всех тут не обойтись.
+      members.forEach((m) => notifyStudentOf(m, "Назначено занятие",
+        `${whenForStudent(m, lesson.date, lesson.time)}, группа «${group.name}». Занятие уже в твоём расписании.`))
+      return
+    }
+    const student = students.find((s) => String(s.id) === String(target))
     setStudents((prev) =>
-      prev.map((s) => (String(s.id) !== String(studentId) ? s : { ...s, lessons: [...(s.lessons || []), lesson] }))
+      prev.map((s) => (String(s.id) !== String(target) ? s : { ...s, lessons: [...(s.lessons || []), lesson] }))
     )
     // Разовое занятие ученик сам не назначал и в расписание не заглядывает
     // каждый день — о нём его извещаем так же, как о переносе.
@@ -297,10 +343,14 @@ function Schedule({ students, setStudents, onOpenBoard }) {
       `${whenForStudent(student, lesson.date, lesson.time)}. Занятие уже в твоём расписании.`)
   }
 
-  function removeLesson(studentId, dateStr, time) {
+  // ids — кого касается: один ученик либо все участники группового занятия.
+  // Группу нельзя снимать по одному: у остальных занятие осталось бы висеть, а
+  // репетитор считал бы, что убрал его целиком.
+  function removeLesson(ids, dateStr, time) {
+    const targets = new Set((Array.isArray(ids) ? ids : [ids]).map(String))
     setStudents((prev) =>
       prev.map((s) =>
-        s.id === studentId
+        targets.has(String(s.id))
           ? {
               ...s,
               lessons: (s.lessons || []).filter((l) => !(l.date === dateStr && l.time === time)),
@@ -313,7 +363,7 @@ function Schedule({ students, setStudents, onOpenBoard }) {
 
   function confirmRemove() {
     if (!confirmDel) return
-    removeLesson(confirmDel.studentId, confirmDel.date, confirmDel.time)
+    removeLesson(confirmDel.studentIds || confirmDel.studentId, confirmDel.date, confirmDel.time)
     setConfirmDel(null)
   }
 
@@ -540,6 +590,10 @@ function Schedule({ students, setStudents, onOpenBoard }) {
                 <div className="flex flex-col gap-2 stagger">
                   {selectedDayLessons.map((l, i) => {
                     const stu = students.find((s) => s.id === l.studentId)
+                    // Групповое занятие: одна карточка на весь час, участники —
+                    // строкой под ней. Ссылки на доску и звонок у него нет: они
+                    // заведены на конкретного ученика.
+                    const isGroup = !!l.members
                     const isExtra = !!l.extra
                     // Решать судьбу занятия можно только после того, как оно
                     // прошло: до этого «не состоялось» — гадание.
@@ -551,7 +605,12 @@ function Schedule({ students, setStudents, onOpenBoard }) {
                           <div>
                             <div className={`text-sm font-medium flex items-center gap-1.5 flex-wrap ${isExtra ? "text-green-700" : "text-blue-700"}`}>
                               {l.studentName}
-                              {isExtra && <span className="text-xs bg-green-100 text-green-600 px-1.5 py-0.5 rounded-full font-normal">доп</span>}
+                              {isGroup && (
+                                <span className="text-xs bg-blue-500/15 text-blue-600 dark:text-blue-300 px-1.5 py-0.5 rounded-full font-normal">
+                                  группа · {l.members.length}
+                                </span>
+                              )}
+                              {isExtra && !isGroup && <span className="text-xs bg-green-100 text-green-600 px-1.5 py-0.5 rounded-full font-normal">доп</span>}
                               {l.moveRequest && (
                                 <span className="text-xs bg-amber-500/15 text-amber-600 px-1.5 py-0.5 rounded-full font-normal">
                                   {l.moveRequest.by === MOVE_BY_TUTOR ? "ждёт ответа ученика" : "просит перенос"}
@@ -576,7 +635,7 @@ function Schedule({ students, setStudents, onOpenBoard }) {
                           </div>
                           <div className="flex items-center gap-2">
                             {/* Доска у ученика одна: своя ссылка либо наша. */}
-                            {stu?.boardUrl ? (
+                            {isGroup ? null : stu?.boardUrl ? (
                               <a href={stu.boardUrl} target="_blank" rel="noreferrer"
                                 className="press-tap flex items-center text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-400/30 px-2 py-1 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-400/10 transition-colors bg-white dark:bg-white/5"
                                 title="Доска">
@@ -589,7 +648,7 @@ function Schedule({ students, setStudents, onOpenBoard }) {
                                 <Icon name="clipboard" size={14} />
                               </button>
                             ) : null}
-                            {stu?.callUrl && (
+                            {!isGroup && stu?.callUrl && (
                               <a href={stu.callUrl} target="_blank" rel="noreferrer"
                                 className="flex items-center text-green-600 dark:text-green-400 border border-green-200 dark:border-green-400/30 px-2 py-1 rounded-lg hover:bg-green-50 dark:hover:bg-green-400/10 transition-colors bg-white dark:bg-white/5"
                                 title="Звонок">
@@ -599,6 +658,9 @@ function Schedule({ students, setStudents, onOpenBoard }) {
                             <button
                               onClick={() => openMove({
                                 studentId: l.studentId, studentName: l.studentName,
+                                // Группу репетитор переносит сразу всем: см. moveGroup.
+                                members: l.members || null, groupId: l.groupId || null,
+                                groupName: isGroup ? l.studentName : "",
                                 date: selectedDay, time: l.time, duration: l.duration,
                                 suggested: l.moveRequest ? { date: l.moveRequest.date, time: l.moveRequest.time } : null,
                               })}
@@ -608,7 +670,7 @@ function Schedule({ students, setStudents, onOpenBoard }) {
                             >
                               <Icon name="repeat" size={15} />
                             </button>
-                            {isPast && (
+                            {isPast && !isGroup && (
                               <button
                                 onClick={() => setStatusFor({
                                   studentId: l.studentId, studentName: l.studentName,
@@ -622,7 +684,11 @@ function Schedule({ students, setStudents, onOpenBoard }) {
                               </button>
                             )}
                             <button
-                              onClick={() => setConfirmDel({ studentId: l.studentId, date: selectedDay, time: l.time, name: l.studentName })}
+                              onClick={() => setConfirmDel({
+                                studentId: l.studentId,
+                                studentIds: isGroup ? l.members.map((m) => m.id) : null,
+                                date: selectedDay, time: l.time, name: l.studentName,
+                              })}
                               aria-label="Удалить занятие"
                               className={`${isExtra ? "text-green-300" : "text-blue-300"} hover:text-red-500 transition-transform active:scale-90`}
                             >
@@ -630,6 +696,40 @@ function Schedule({ students, setStudents, onOpenBoard }) {
                             </button>
                           </div>
                         </div>
+                        {/* Кто был. Пометка «не пришёл» ставится КОНКРЕТНОМУ
+                            ученику: занятие состоялось, просто один не дошёл, —
+                            поэтому у каждого участника своя кнопка, а не одна
+                            на всю группу. До окончания занятия судить не о чем,
+                            и участники показаны просто именами. */}
+                        {isGroup && (
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            {l.members.map((m) => (
+                              isPast ? (
+                                <button key={m.id}
+                                  onClick={() => setStatusFor({
+                                    studentId: m.id, studentName: m.name,
+                                    lesson: memberLesson(l, m),
+                                  })}
+                                  title={m.status ? "Пометка стоит — изменить" : "Отметить, что не пришёл"}
+                                  className={"press-fill text-[11px] px-2 py-1 rounded-lg ring-1 "
+                                    + (m.status
+                                      ? "ring-amber-500/30 text-amber-700 dark:text-amber-300"
+                                      : "ring-blue-500/20 text-blue-600 dark:text-blue-300")}>
+                                  {m.name}
+                                  {/* Пометки две и они разные: «не пришёл»
+                                      считается за занятие, «не в счёт» — нет.
+                                      Слепить их в одно слово значит соврать про
+                                      деньги. */}
+                                  {m.status === LESSON_MISSED ? " · не пришёл" : m.status ? " · не в счёт" : ""}
+                                </button>
+                              ) : (
+                                <span key={m.id} className="text-[11px] px-2 py-1 rounded-lg ring-1 ring-blue-500/20 text-blue-600 dark:text-blue-300">
+                                  {m.name}
+                                </span>
+                              )
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )
                   })}
@@ -664,6 +764,10 @@ function Schedule({ students, setStudents, onOpenBoard }) {
                     <div key={dateStr + hourNum} className={`border-b border-l border-gray-100 min-h-[52px] relative ${isToday ? "bg-blue-50/50" : ""}`}>
                       {lessons.map(({ student: s, lesson }, idx) => {
                         const duration = lesson.duration || s.lessonDuration || 60
+                        // Группа занимает клетку один раз: `s` здесь — первый
+                        // из участников, и подписывать клетку его именем нельзя.
+                        const members = lesson.members || null
+                        const label = members ? (lesson.groupName || "Группа") : s.name.split(" ")[0]
                         const isExtra = !!lesson.extra
                         const off = lesson.status === LESSON_EXCUSED
                         const past = isLessonPast({ date: dateStr, time: lesson.time, duration })
@@ -675,15 +779,17 @@ function Schedule({ students, setStudents, onOpenBoard }) {
                         // на занятый слот они иначе легли бы друг на друга, и
                         // репетитор видел бы только одно из двух.
                         return (
-                          <div key={`${s.id}-${lesson.time}`} style={{
+                          <div key={`${lesson.groupId || s.id}-${lesson.time}`} style={{
                             height: heightPx + "px", position: "absolute", top: topPx + "px", zIndex: 1,
                             left: `${(idx * 100) / lessons.length}%`, width: `${100 / lessons.length}%`,
                           }}
                             className={`week-lesson ${isExtra ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"} ${off ? "opacity-60" : ""} text-xs rounded-md px-2 py-1 flex justify-between items-start group overflow-hidden`}>
                             <div className="min-w-0 flex-1">
-                              <div className={`font-medium truncate ${off ? "line-through" : ""}`} title={off ? "Занятие не идёт в счёт" : lesson.status ? "Ученик не пришёл, занятие идёт в счёт" : undefined}>{s.name.split(" ")[0]}{isExtra && <span className="ml-1 opacity-60">доп</span>}{lesson.moveRequest && <span className="ml-1 text-amber-600">•</span>}{lesson.status && !off && <span className="ml-1 text-amber-600">✕</span>}</div>
+                              <div className={`font-medium truncate ${off ? "line-through" : ""}`} title={off ? "Занятие не идёт в счёт" : lesson.status ? "Ученик не пришёл, занятие идёт в счёт" : undefined}>{label}{members && <span className="ml-1 opacity-60">·{members.length}</span>}{isExtra && !members && <span className="ml-1 opacity-60">доп</span>}{lesson.moveRequest && <span className="ml-1 text-amber-600">•</span>}{lesson.status && !off && <span className="ml-1 text-amber-600">✕</span>}</div>
                               <div className={`${isExtra ? "text-green-500" : "text-blue-500"} opacity-70`}>{minuteOf(lesson.time) ? `${lesson.time} · ` : ""}{duration} мин</div>
-                              {(s.boardUrl || s.callUrl || onOpenBoard) && (
+                              {/* Доска и звонок заведены на конкретного
+                                  ученика — у группы их нет. */}
+                              {!members && (s.boardUrl || s.callUrl || onOpenBoard) && (
                                 <div className="flex gap-0.5 mt-0.5">
                                   {s.boardUrl ? (
                                     <a href={s.boardUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} title="Доска" className="opacity-60 hover:opacity-100 text-blue-600"><Icon name="link" size={10} /></a>
@@ -697,9 +803,9 @@ function Schedule({ students, setStudents, onOpenBoard }) {
                               )}
                             </div>
                             <div className="flex flex-col items-center gap-0.5 flex-shrink-0 ml-1">
-                            <button onClick={() => openMove({ studentId: s.id, studentName: s.name, date: dateStr, time: lesson.time, duration, suggested: lesson.moveRequest ? { date: lesson.moveRequest.date, time: lesson.moveRequest.time } : null })} aria-label="Перенести занятие" title="Перенести" className={`${isExtra ? "text-green-400" : "text-blue-400"} hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-transform active:scale-90`}><Icon name="repeat" size={12} /></button>
-                            {past && <button onClick={() => setStatusFor({ studentId: s.id, studentName: s.name, lesson: { date: dateStr, time: lesson.time, duration, status: lesson.status } })} aria-label="Занятие не состоялось" title="Не состоялось" className={`${lesson.status ? "text-amber-500" : isExtra ? "text-green-400" : "text-blue-400"} hover:text-amber-600 opacity-0 group-hover:opacity-100 transition-transform active:scale-90`}><Icon name="user-x" size={12} /></button>}
-                            <button onClick={() => setConfirmDel({ studentId: s.id, date: dateStr, time: lesson.time, name: s.name })} aria-label="Удалить занятие" className={`${isExtra ? "text-green-400" : "text-blue-400"} hover:text-red-500 opacity-0 group-hover:opacity-100 transition-transform active:scale-90`}><Icon name="x" size={12} /></button>
+                            <button onClick={() => openMove({ studentId: s.id, studentName: members ? label : s.name, members, groupId: lesson.groupId || null, groupName: members ? label : "", date: dateStr, time: lesson.time, duration, suggested: lesson.moveRequest ? { date: lesson.moveRequest.date, time: lesson.moveRequest.time } : null })} aria-label="Перенести занятие" title="Перенести" className={`${isExtra ? "text-green-400" : "text-blue-400"} hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-transform active:scale-90`}><Icon name="repeat" size={12} /></button>
+                            {past && !members && <button onClick={() => setStatusFor({ studentId: s.id, studentName: s.name, lesson: { date: dateStr, time: lesson.time, duration, status: lesson.status } })} aria-label="Занятие не состоялось" title="Не состоялось" className={`${lesson.status ? "text-amber-500" : isExtra ? "text-green-400" : "text-blue-400"} hover:text-amber-600 opacity-0 group-hover:opacity-100 transition-transform active:scale-90`}><Icon name="user-x" size={12} /></button>}
+                            <button onClick={() => setConfirmDel({ studentId: s.id, studentIds: members ? members.map((m) => m.id) : null, date: dateStr, time: lesson.time, name: members ? label : s.name })} aria-label="Удалить занятие" className={`${isExtra ? "text-green-400" : "text-blue-400"} hover:text-red-500 opacity-0 group-hover:opacity-100 transition-transform active:scale-90`}><Icon name="x" size={12} /></button>
                             </div>
                           </div>
                         )
@@ -717,17 +823,20 @@ function Schedule({ students, setStudents, onOpenBoard }) {
         <RescheduleModal
           lesson={{ date: moving.date, time: moving.time, duration: moving.duration }}
           who={moving.studentName}
-          title="Предложить перенос"
-          hint={moving.suggested
-            ? "Время, которое просит ученик, уже подставлено. Поправьте, если не подходит, — ученику уйдёт встречное предложение, и занятие переедет, когда он согласится."
-            : "Занятие переедет, когда ученик подтвердит перенос. До этого оно остаётся на прежнем месте."}
+          title={moving.members ? "Перенести занятие группы" : "Предложить перенос"}
+          hint={moving.members
+            ? "Занятие переедет сразу у всех участников, и каждому уйдёт уведомление: время у группы общее, договариваться о нём поодиночке не с кем."
+            : moving.suggested
+              ? "Время, которое просит ученик, уже подставлено. Поправьте, если не подходит, — ученику уйдёт встречное предложение, и занятие переедет, когда он согласится."
+              : "Занятие переедет, когда ученик подтвердит перенос. До этого оно остаётся на прежнем месте."}
           initial={moving.suggested}
-          commentLabel="Комментарий ученику (по желанию)"
+          commentLabel={moving.members ? "" : "Комментарий ученику (по желанию)"}
           commentPlaceholder="Например: в это время у меня появилось окно"
-          conflictCheck={slotBusy(moving.studentId, { date: moving.date, time: moving.time })}
-          submitLabel="Предложить"
+          conflictCheck={slotBusy(moving.studentId, { date: moving.date, time: moving.time }, moving.groupId || null)}
+          submitLabel={moving.members ? "Перенести" : "Предложить"}
           onSubmit={({ date, time, comment }) => {
-            proposeMove(moving.studentId, { date: moving.date, time: moving.time, duration: moving.duration }, { date, time }, comment)
+            if (moving.members) moveGroup(moving, { date, time })
+            else proposeMove(moving.studentId, { date: moving.date, time: moving.time, duration: moving.duration }, { date, time }, comment)
             setMoving(null)
           }}
           onClose={() => setMoving(null)}
@@ -785,6 +894,7 @@ function Schedule({ students, setStudents, onOpenBoard }) {
       {showForm && (
         <AddLessonModal
           students={students}
+          groups={groups}
           date={formDate}
           onAdd={addLesson}
           onClose={() => setShowForm(false)}

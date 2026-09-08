@@ -109,3 +109,33 @@ export function groupLesson(group, student, { date, time, duration }) {
 // Занятия одной группы — это ОДНО занятие, показанное у разных людей.
 export const sameGroupLesson = (a, b) =>
   !!a?.groupId && a.groupId === b?.groupId && a.date === b.date && a.time === b.time
+
+// Групповое занятие лежит у каждого участника отдельной строкой, а показывать
+// его надо ОДНОЙ карточкой: в расписании репетитора это один час его жизни, а
+// не три занятия подряд. Схлопываем по паре «группа + время».
+//
+// У схлопнутой записи появляется `members` — по участнику на каждую исходную
+// строку. Он нужен не для красоты: пометка «не пришёл» ставится КОНКРЕТНОМУ
+// ученику (не пришёл один, а занятие состоялось), поэтому за схлопнутой
+// карточкой обязан оставаться доступ к каждому.
+export function collapseGroupLessons(list) {
+  const out = []
+  const byKey = new Map()
+  for (const l of list || []) {
+    if (!l.groupId) { out.push(l); continue }
+    const key = `${l.groupId}|${l.date}|${l.time}`
+    const seen = byKey.get(key)
+    const member = { id: l.studentId, name: l.studentName, status: l.status || null }
+    if (seen) { seen.members.push(member); continue }
+    const entry = { ...l, studentName: l.groupName || "Группа", members: [member] }
+    byKey.set(key, entry)
+    out.push(entry)
+  }
+  return out
+}
+
+// Занятие группы у ОДНОГО участника: по нему ставится пометка и считается
+// «прошло ли». Схлопнутая карточка держит общие поля, а статус у каждого свой.
+export const memberLesson = (entry, member) => ({
+  date: entry.date, time: entry.time, duration: entry.duration, status: member?.status || null,
+})
