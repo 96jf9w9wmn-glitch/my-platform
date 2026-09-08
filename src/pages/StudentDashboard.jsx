@@ -1025,6 +1025,16 @@ export function StudentVariantList({ variants, onSelect }) {
   )
 }
 
+// Колонки списка работ: всё, кроме bank_tasks. Та колонка везёт условия целиком
+// и весит больше всей остальной таблицы вместе взятой.
+const HW_LIST_COLS = [
+  "id", "tutor_id", "student_id", "title", "description", "file_url", "deadline",
+  "status", "submission_url", "submitted_at", "comment", "created_at", "hw_type",
+  "question_count", "correct_answers", "student_answers", "test_score",
+  "requires_written", "grade", "require_solution", "test_options", "time_limit_min",
+  "opened_at", "auto_submitted", "retry_policy", "retry_limit", "solution_files", "credited",
+].join(", ")
+
 function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten, onSolveOnBoard }) {
   const [uploading, setUploading] = useState(false)
   const [submittingWritten, setSubmittingWritten] = useState(false)
@@ -2423,13 +2433,39 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
 
   async function loadHomework() {
     if (!student) { setHomework([]); return }
-    const { data } = await supabase
+    // Список — БЕЗ bank_tasks. В этой колонке лежат условия целиком (чертежи
+    // data-URI, данные файлов), и на боевой это 568 КБ в каждую загрузку
+    // кабинета при 6,5 КБ всего остального. Условия нужны только у открытой
+    // работы — их догружает openHomework.
+    const res = await supabase
       .from("homework")
-      .select("*")
+      .select(HW_LIST_COLS)
       .eq("student_id", student.id)
       .order("created_at", { ascending: false })
+    // Колонок поздних миграций на базе может не быть — тогда берём всё подряд.
+    const { data } = res.error
+      ? await supabase.from("homework").select("*").eq("student_id", student.id).order("created_at", { ascending: false })
+      : res
     // Бакет приватный — ссылки на файл задания и своё решение подписываем.
     setHomework(await signRows(data || [], { file_url: "homework", submission_url: "homework", solution_files: "homework", bank_tasks: "homework" }))
+  }
+
+  // Условия одной работы: чертежи, программы, архивы. Грузим по открытию и
+  // запоминаем в самой строке — повторное открытие обходится без запроса.
+  async function fetchBankTasks(id) {
+    const { data, error } = await supabase.from("homework").select("id, bank_tasks").eq("id", id).maybeSingle()
+    if (error || !data) return null
+    const [signed] = await signRows([data], { bank_tasks: "homework" })
+    const tasks = signed.bank_tasks ?? null
+    setHomework((prev) => prev.map((h) => (h.id === id ? { ...h, bank_tasks: tasks } : h)))
+    return tasks
+  }
+
+  async function openHomework(hw) {
+    setSelectedHomework(hw)
+    if (!hw || hw.bank_tasks !== undefined) return
+    const tasks = await fetchBankTasks(hw.id)
+    setSelectedHomework((cur) => (cur && cur.id === hw.id ? { ...cur, bank_tasks: tasks } : cur))
   }
 
   async function handleStudentAvatarChange(e) {
@@ -2476,8 +2512,12 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   // лежат в хранилище: их грузит HwSolutionUpload по ходу решения, чтобы
   // автосдача по таймеру не унесла работу без решения.
   async function submitHomeworkTest(hwId, answers, solutionFiles, auto = false) {
-    const hw = homework.find((h) => h.id === hwId)
+    let hw = homework.find((h) => h.id === hwId)
     if (!hw) return
+    // Журнал попыток пишется по заданиям банка, а их в списке может не быть
+    // (условия догружаются по открытию). Дочитываем, иначе аналитика слабых
+    // типажей молча недосчиталась бы работы.
+    if (hw.bank_tasks === undefined) hw = { ...hw, bank_tasks: await fetchBankTasks(hwId) }
     const correct = hw.correct_answers || []
     // Балл считает общая homeworkTestScore — та же, что у репетитора: она
     // прибавляет и зачтённые вручную номера. Своим циклом по answersEqual
@@ -3308,7 +3348,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                   onAnimationEnd={(e) => { if (e.animationName === "view-back") setReturning(false) }}
                 >
                   <h2 className="text-base font-medium mb-4">Мои задания</h2>
-                  <StudentHomeworkList homework={homework} onSelect={setSelectedHomework} />
+                  <StudentHomeworkList homework={homework} onSelect={openHomework} />
                 </div>
               )}
             </div>

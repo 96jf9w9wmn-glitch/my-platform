@@ -190,13 +190,21 @@ function ParentDashboard({ user, onLogout }) {
   }, [dark])
 
   useEffect(() => {
+    // Без bank_tasks: там лежат условия целиком (чертежи, файлы), на боевой это
+    // 568 КБ в каждую загрузку, а кабинет родителя показывает только название,
+    // тип, срок и оценку — ни одного условия он не рисует.
+    const cols = "id, student_id, title, hw_type, status, deadline, grade, test_score, question_count, created_at, submitted_at, comment, file_url, submission_url"
     supabase
       .from("homework")
-      .select("*")
+      .select(cols)
       .eq("student_id", student.id)
       .order("created_at", { ascending: false })
-      .then(async ({ data }) => {
-        setHomework(await signRows(data || [], { file_url: "homework", submission_url: "homework", solution_files: "homework", bank_tasks: "homework" }))
+      .then(async (res) => {
+        // Колонок поздних миграций может не быть — тогда берём всё подряд.
+        const { data } = res.error
+          ? await supabase.from("homework").select("*").eq("student_id", student.id).order("created_at", { ascending: false })
+          : res
+        setHomework(await signRows(data || [], { file_url: "homework", submission_url: "homework" }))
         setLoading(false)
       })
   }, [student.id])
