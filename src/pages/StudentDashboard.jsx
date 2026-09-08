@@ -2041,6 +2041,9 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     const onPop = () => {
       setBoardOpen(new URLSearchParams(window.location.search).has("board"))
       setBoardHw(boardHwFromUrl())
+      // Задание относится к ТОЙ доске, с которой её открыли: после «назад»
+      // комната другая, и лист лёг бы не на свою доску.
+      setBoardTask(null)
     }
     window.addEventListener("popstate", onPop)
     return () => window.removeEventListener("popstate", onPop)
@@ -2836,6 +2839,10 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
         {boardOpen && student?.id && (
           <Suspense fallback={<div className="fixed inset-0 z-[100000] bg-white dark:bg-[#1c1c1e] flex items-center justify-center"><div className="loader-logo" /></div>}>
             <Board
+              /* key — по адресу доски: смена комнаты обязана пересоздавать доску
+                 с нуля. Без него компонент переживал её живым, и штрихи занятия
+                 и домашней работы перетекали друг в друга (см. src/boardRoom.js). */
+              key={boardHw ? homeworkRoom(student.id, boardHw) : student.id}
               roomId={boardHw ? homeworkRoom(student.id, boardHw) : student.id}
               label={boardHw ? (homework.find((h) => String(h.id) === boardHw)?.title || "Домашняя работа") : ""}
               userId={`s:${user.id}`}

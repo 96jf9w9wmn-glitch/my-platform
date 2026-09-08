@@ -15,7 +15,7 @@ import {
 // Выбор задания тянет за собой генераторы всех предметов и html2canvas — грузим
 // только когда репетитор открыл выбор, иначе доска стала бы тяжелее на мегабайты.
 const BoardTaskModal = lazy(() => import("./BoardTaskModal"))
-import { roomStudentId, isHomeworkRoom } from "../boardRoom"
+import { roomStudentId, isHomeworkRoom, HW_ROOM } from "../boardRoom"
 
 // Совместная доска платформы (свой движок на HTML5 Canvas, без внешних библиотек).
 // БЕСКОНЕЧНЫЙ холст на весь экран: штрихи хранятся в МИРОВЫХ координатах, у каждого
@@ -714,7 +714,13 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
   useEffect(() => () => { ownBlobs.current.forEach((u) => URL.revokeObjectURL(u)); ownBlobs.current = [] }, [])
   const tintCache = useRef(new Map()) // src -> холст листа, перекрашенный под тёмную доску
   const fileInputRef = useRef(null)   // скрытый input для загрузки картинки кнопкой
-  const loadedRef = useRef(false)     // сцена успешно загружена (иначе не сохраняем — чтобы не затереть)
+  // Адрес доски, ДЛЯ КОТОРОЙ загружена сцена (null — ещё не загружена). Именно
+  // адрес, а не «да/нет»: комнату можно сменить на живом компоненте (кнопка
+  // «назад», переход между доской занятия и доской домашней работы), и голый
+  // флаг оставался бы поднятым от ПРЕДЫДУЩЕЙ доски — тогда её штрихи успевали
+  // сохраниться в новую комнату. Так уже случилось: листы домашней работы легли
+  // на доску занятия (см. src/boardRoom.js — доски не должны пересекаться).
+  const loadedRef = useRef(null)
   const modalOpen = useRef(false)     // поверх доски открыт диалог (глушим горячие клавиши)
   const taskShift = useRef(0)         // лесенка для подряд вставленных заданий
   const erasing = useRef(null)        // текущий проход объектного ластика: [{id, before, after}]
@@ -1218,6 +1224,31 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
     return tintCache.current.get(src) || img
   }
 
+  // Сменилась комната — сцену обнуляем СИНХРОННО, до всякой загрузки.
+  //
+  // Доска занятия и доска домашней работы обязаны быть непересекающимися (см.
+  // src/boardRoom.js), а компонент при смене адреса переживает её живым (кнопка
+  // «назад» в браузере, переход между работой и занятием). Всё, что лежит в
+  // рефах, — штрихи, дельта сохранения, история отмен, ключ уже положенного
+  // листа — от ПРЕДЫДУЩЕЙ доски, и без этого сброса они утекали в новую: так
+  // листы домашней работы и оказались на доске занятия.
+  const roomRef = useRef(roomId)
+  useLayoutEffect(() => {
+    if (roomRef.current === roomId) return
+    roomRef.current = roomId
+    clearTimeout(saveTimer.current); saveTimer.current = null
+    saveAgain.current = false
+    loadedRef.current = null    // до загрузки новой сцены не сохраняем ничего
+    strokes.current.clear(); live.current.clear(); selection.current.clear()
+    savedRef.current = new Map(); dirtyRef.current.clear()
+    history.current = []; redoStack.current = []
+    cursors.current.clear()
+    sheetDone.current = null    // лист задания кладётся заново — но уже в свою комнату
+    patchOff.current = false
+    setLoaded(false)
+    scheduleDraw()
+  }, [roomId, scheduleDraw])
+
   // --- Загрузка снапшота --------------------------------------------------
   useEffect(() => {
     let alive = true
@@ -1239,7 +1270,7 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
         for (const [id, s] of early) { strokes.current.delete(id); strokes.current.set(id, s) }
         if (scene.bg) setBg(scene.bg)
         if (scene.bgColor) setBgColor(scene.bgColor)
-        loadedRef.current = true   // сохранять можно только после успешной загрузки
+        loadedRef.current = roomId   // сохранять можно только после успешной загрузки ЭТОЙ доски
         setLoaded(true)
         // Куда смотреть. Доска бесконечная и за год уезжает вниз на десятки
         // экранов: открывать её в (0,0) значит показывать сентябрь вместо того,
@@ -1272,7 +1303,7 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
   // последнего штриха, и он бы пропал с экрана. Обратная сторона: стёртое, пока
   // нас не было, вернётся — это заметно меньшая беда, чем ненаписанная работа.
   const resync = useCallback(async () => {
-    if (!loadedRef.current) return                      // начальная загрузка ещё идёт — она и принесёт свежее
+    if (loadedRef.current !== roomId) return             // начальная загрузка ещё идёт — она и принесёт свежее
     if (Date.now() - lastResync.current < 3000) return  // не дёргаем базу на каждый чих
     lastResync.current = Date.now()
     const { data } = await supabase.from("boards").select("scene").eq("student_id", String(roomId)).maybeSingle()
@@ -1294,7 +1325,7 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
   useEffect(() => {
     const tick = async () => {
       if (document.visibilityState !== "visible") return
-      if (!loadedRef.current || drawing.current) return
+      if (loadedRef.current !== roomId || drawing.current) return
       // Своё ещё не сохранено — сверять не с чем: база заведомо отстаёт от нас,
       // и «догон» вернул бы только что стёртое.
       if (savingRef.current || saveTimer.current) return
@@ -1657,7 +1688,7 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
   }, [roomId, userId, fullSave])
   persistRef.current = persist
   function scheduleSave() {
-    if (!loadedRef.current) return // не сохраняем до успешной загрузки сцены — иначе затрём её пустой
+    if (loadedRef.current !== roomId) return // не сохраняем до загрузки сцены ЭТОЙ доски — иначе затрём её пустой или чужой
     clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => { saveTimer.current = null; persist() }, 1200)
   }
@@ -1666,7 +1697,7 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
   // разобранное на прошлом уроке должно оставаться доступным. Одна запись на день —
   // повторное закрытие доски за то же занятие обновляет её, а не плодит строки.
   async function archiveSnapshot() {
-    if (!loadedRef.current) return            // сцену не загрузили — архивировать нечего
+    if (loadedRef.current !== roomId) return   // сцену не загрузили — архивировать нечего
     // Доска домашней работы в летопись занятий не идёт: она не про урок, живёт
     // столько же, сколько сама работа, и открывается из неё же.
     if (isHomeworkRoom(roomId)) return
@@ -1698,7 +1729,7 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
     commitTextEdit()   // недописанная надпись не должна пропасть вместе с доской
     // Живую доску дописываем сразу: отложенное сохранение могло ещё не сработать.
     clearTimeout(saveTimer.current)
-    if (loadedRef.current) persist()
+    if (loadedRef.current === roomId) persist()
     leave()
     // Снимок кладём в фоне и не ждём его: закрытие доски должно быть мгновенным,
     // а превью ещё догружает картинки. Промис держит ref'ы и доживает после
@@ -2873,7 +2904,7 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
     } catch { return null }
   }
   function saveView() {
-    if (!loadedRef.current) return
+    if (loadedRef.current !== roomId) return
     const list = [...strokes.current.values()]
     const v = view.current
     try {
@@ -2916,11 +2947,16 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
   // прочитана, уже лежащего листа не видно, и задание легло бы вторым экземпляром.
   useEffect(() => {
     if (!loaded || !taskSheet?.key || !taskSheet.task) return
+    // Лист ложится ТОЛЬКО на доску своей домашней работы. Открытая доска и
+    // задание приходят разными путями (комната — из адреса страницы, задание —
+    // из карточки работы), и при смене комнаты на живом компоненте они успевали
+    // разъехаться: лист уезжал на доску занятия поверх записей с уроков.
+    if (!isHomeworkRoom(roomId) || !String(roomId).endsWith(`${HW_ROOM}${taskSheet.hwId}`)) return
     if (sheetDone.current === taskSheet.key) return
     sheetDone.current = taskSheet.key
     placeTaskSheet(taskSheet)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded, taskSheet])
+  }, [loaded, taskSheet, roomId])
   // Вставка картинки из буфера обмена (Ctrl/Cmd+V) — в центр видимой области
   useEffect(() => {
     function onPaste(e) {

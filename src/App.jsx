@@ -1104,6 +1104,9 @@ function App() {
       {board && (
         <PageBoundary fallback={<div className="fixed inset-0 z-[100000] bg-white dark:bg-[#1c1c1e] flex items-center justify-center"><div className="loader-logo" /></div>}>
           <Board
+            /* key — по адресу доски: смена комнаты (занятие ↔ домашняя работа)
+               обязана пересоздавать доску с нуля, иначе штрихи перетекают. */
+            key={board.roomId}
             roomId={board.roomId}
             /* Чья это доска: у домашней работы своя, и без подписи их не различить */
             label={board.title}
