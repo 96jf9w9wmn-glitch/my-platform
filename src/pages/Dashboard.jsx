@@ -130,6 +130,10 @@ function Dashboard({ students, loaded = true, setActivePage, onOpenBoard }) {
   const countWeek = useCountUp(weekCount)
   const countDebtors = useCountUp(debtors.length)
 
+  // Отсчёт до начала: считается один раз на кадр — карточка показывает его и
+  // целиком, и без слова «через» (на телефоне), см. разметку ниже.
+  const countdown = nextLesson && tick >= 0 ? timeUntilLesson(nextLesson.date, nextLesson.time) : ""
+
   const nextLessonDate = nextLesson && !nextLesson.isToday
     ? new Date(nextLesson.date + "T00:00:00").toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" })
     : null
@@ -245,18 +249,27 @@ function Dashboard({ students, loaded = true, setActivePage, onOpenBoard }) {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2 mb-0.5">
-                    <div className="text-xs font-medium opacity-70 uppercase tracking-wide truncate">
+                    <div className="text-[11px] sm:text-xs font-medium opacity-70 uppercase tracking-wide truncate">
                       {nextLesson.inProgress ? "Текущее занятие" : "Следующее занятие"}
                     </div>
                     {/* Пока занятие идёт, отсчёта нет: считать до его начала уже нечего,
-                        а до следующего ученика — рано. В статусе просто «Идёт занятие». */}
-                    <div className="shrink-0 text-sm font-medium tabular-nums bg-[rgba(255,255,255,0.2)] rounded-xl px-3 py-1.5 backdrop-blur-sm">
+                        а до следующего ученика — рано. В статусе просто «Идёт занятие».
+                        Слово «через» на телефоне спрятано: рядом стоит «Следующее
+                        занятие», смысл и без него ясен, а вместе они не помещались. */}
+                    <div className="shrink-0 text-xs sm:text-sm font-medium tabular-nums bg-[rgba(255,255,255,0.2)] rounded-xl px-2.5 sm:px-3 py-1 sm:py-1.5 backdrop-blur-sm">
                       {nextLesson.inProgress
                         ? <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />Идёт занятие</span>
-                        : tick >= 0 && timeUntilLesson(nextLesson.date, nextLesson.time)}
+                        : tick >= 0 && countdown && (
+                          countdown.startsWith("через ")
+                            ? <><span className="hidden sm:inline">через </span>{countdown.slice(6)}</>
+                            : countdown
+                        )}
                     </div>
                   </div>
-                  <div className="text-xl sm:text-2xl font-semibold leading-tight truncate">{nextLesson.studentName}</div>
+                  {/* Длинное ФИО переносится, а не обрезается многоточием: имя
+                      ученика — главное слово карточки, «Александра Владимиро…»
+                      не читается. Две строки — потолок. */}
+                  <div className="text-xl sm:text-2xl font-semibold leading-tight line-clamp-2 break-words">{nextLesson.studentName}</div>
                   <div className="text-sm opacity-80 mt-0.5 truncate">
                     {nextLessonDate ? `${nextLessonDate} · ` : ""}{nextLesson.time} · {nextLesson.duration} мин
                   </div>
