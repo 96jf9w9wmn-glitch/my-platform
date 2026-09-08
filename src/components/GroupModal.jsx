@@ -261,7 +261,7 @@ function GroupModal({ group = null, students = [], onSave, onDelete, onClose }) 
           <div>
             <label className="text-sm text-gray-500 mb-1 block">Цена за занятие с участника</label>
             <input value={price} onChange={(e) => setPrice(e.target.value.replace(/[^\d]/g, ""))}
-              inputMode="numeric" className="input-glass" placeholder="Как в карточке ученика" />
+              inputMode="numeric" className="input-glass" />
             {/* Поле пустое — платят как обычно. Об этом надо сказать прямо:
                 иначе непонятно, бесплатно ли занятие в группе. */}
             <p className="text-xs text-gray-400 mt-1.5">
