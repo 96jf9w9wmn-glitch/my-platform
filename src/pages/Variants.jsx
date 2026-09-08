@@ -1266,6 +1266,7 @@ function Variants({ user, students = [] }) {
   // Печатная тетрадь по номерам экзамена. Раньше открывалась только из
   // «Банка заданий», а он виден одному владельцу платформы.
   const [confirmDelete, setConfirmDelete] = useState(null)
+  const [editOpen, setEditOpen] = useState(false)
   const { cls: previewCls, close: closePreview } = useClosing(() => setPreviewFile(null))
 
   // Сборка вариантов — возможность платных тарифов. Уже выданные варианты
@@ -1275,7 +1276,9 @@ function Variants({ user, students = [] }) {
   const [selectedVariant, setSelectedVariant] = useState(null)
   // Разбор сворачивается плавно: панель уезжает вниз и только потом снимается
   // (см. src/useClosing.js). Раньше она пропадала в тот же кадр, что и нажатие.
-  const { cls: detailCls, close: closeDetail, cancel: cancelDetailClose } = useClosing(() => setSelectedVariant(null))
+  // Разбор закрывается — вместе с ним и окно правки: иначе оно осталось бы
+  // висеть без варианта, к которому относится.
+  const { cls: detailCls, close: closeDetail, cancel: cancelDetailClose } = useClosing(() => { setSelectedVariant(null); setEditOpen(false) })
   const [selectedSubmission, setSelectedSubmission] = useState(null)
   const [loading, setLoading] = useState(true)
   const [previewFile, setPreviewFile] = useState(null)
@@ -1400,6 +1403,9 @@ function Variants({ user, students = [] }) {
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="font-medium text-base truncate">{selectedVariant.title}</span>
                   <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ring-1 ${isEgeType(selectedVariant.type) ? "text-purple-600 bg-purple-500/10 ring-purple-500/20" : "text-blue-600 bg-blue-500/10 ring-blue-500/20"}`}>{selectedVariant.type}</span>
+                  {selectedVariant.deadline && (
+                    <span className="text-[11px] text-gray-400 flex-shrink-0 hidden sm:inline">до {dayMonth(selectedVariant.deadline)}</span>
+                  )}
                 </div>
                 {/* Действия варианта живут здесь, а не на каждой карточке: в
                     списке они шумели, а удалять вариант вслепую, не открыв его,
@@ -1415,6 +1421,10 @@ function Variants({ user, students = [] }) {
                       <Icon name="paperclip" size={15} />
                     </button>
                   )}
+                  <button onClick={() => setEditOpen(true)} aria-label="Редактировать вариант" title="Редактировать вариант"
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-500/10 transition-colors">
+                    <Icon name="edit" size={15} />
+                  </button>
                   <button onClick={() => setConfirmDelete(selectedVariant)} aria-label="Удалить вариант" title="Удалить вариант"
                     className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-500/10 transition-colors">
                     <Icon name="trash" size={15} />
@@ -1427,28 +1437,16 @@ function Variants({ user, students = [] }) {
               </div>
 
               {/* Две колонки: раньше каждая секция шла полосой во всю ширину,
-                  и справа от короткого содержимого оставалось пустое поле. */}
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 px-5 py-4 border-t border-gray-100/60 dark:border-white/10 items-start">
-              <div className="flex flex-col gap-2">
-                {/* Срок правится здесь: пробник переносят вместе с занятием, и
-                    выдавать вариант заново ради даты не годится. */}
-                <div className="section-label mb-0.5">Срок сдачи</div>
-                <div className="rounded-2xl ring-1 ring-gray-200/70 dark:ring-white/10 bg-white/45 dark:bg-white/[0.03] p-3">
-                  <DeadlinePicker
-                    key={selectedVariant.id}
-                    value={selectedVariant.deadline || ""}
-                    onChange={saveDeadline}
-                    label={selectedVariant.deadline ? `Ученик видит: до ${dayMonth(selectedVariant.deadline)}` : "Без срока"}
-                  />
+                  и справа от короткого содержимого оставалось пустое поле. У
+                  варианта без заданий из банка колонка одна — вторая половина
+                  ряда иначе стояла бы пустой. */}
+              <div className={`grid grid-cols-1 ${selectedVariant.tasks_snapshot?.length > 0 ? "xl:grid-cols-2" : ""} gap-4 px-5 py-4 border-t border-gray-100/60 dark:border-white/10 items-start`}>
+              {selectedVariant.tasks_snapshot?.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <div className="section-label mb-0.5">Материалы</div>
+                  <BankTasksBlock key={selectedVariant.id} tasks={selectedVariant.tasks_snapshot} title={selectedVariant.title} />
                 </div>
-
-                {selectedVariant.tasks_snapshot?.length > 0 && (
-                  <>
-                    <div className="section-label mb-0.5 mt-2">Материалы</div>
-                    <BankTasksBlock key={selectedVariant.id} tasks={selectedVariant.tasks_snapshot} title={selectedVariant.title} />
-                  </>
-                )}
-              </div>
+              )}
 
               <div className="flex flex-col gap-2">
                 <div className="section-label mb-0.5">Ученики</div>
@@ -1509,6 +1507,14 @@ function Variants({ user, students = [] }) {
         <PlanHint feature="variants">
           Сборка вариантов ОГЭ/ЕГЭ из банка заданий и выдача их ученикам с PDF.
         </PlanHint>
+      )}
+
+      {editOpen && selectedVariant && (
+        <EditVariantModal
+          variant={selectedVariant}
+          onChangeDeadline={saveDeadline}
+          onClose={() => setEditOpen(false)}
+        />
       )}
 
       <ConfirmModal
