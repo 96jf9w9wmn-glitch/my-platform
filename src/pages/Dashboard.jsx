@@ -233,53 +233,58 @@ function Dashboard({ students, loaded = true, setActivePage, onOpenBoard }) {
           {/* Next lesson hero */}
           {nextLesson ? (
             <div className="next-lesson-card relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/25">
-              {/* Отсчёт стоит в строке ЗАГОЛОВКА, а не у правого края всей карточки:
-                  раньше он забирал ширину у имени, и на телефоне от карточки
-                  оставались «СЛЕДУЮЩЕЕ З…» и «Михаи…». Теперь чип делит строку с
-                  короткой надписью, а имени достаётся вся ширина колонки.
-                  Дата по той же причине переехала вниз, к времени: в заголовке
-                  «Следующее занятие · пн, 12 сент.» не помещалось. */}
-              {/* items-center, а не items-start: аватар — кружок вдвое ниже колонки
-                  из трёх строк, и при выравнивании по верху он висел у надписи
-                  «Следующее занятие», а не у имени. Центр по всей колонке. */}
-              <div className="relative flex items-center gap-3.5 mb-4">
-                {/* bg-[rgba(...)] вместо bg-white/20: классы bg-white/N глобально гасятся под .dark
-                    (index.css), а тут фон карточки синий в обеих темах — чипы должны остаться белыми */}
-                <div className="w-12 h-12 rounded-full flex-shrink-0 overflow-hidden flex items-center justify-center text-base font-semibold bg-[rgba(255,255,255,0.2)] ring-2 ring-white/30 backdrop-blur-sm">
-                  {nextLesson.avatar
-                    ? <img src={nextLesson.avatar} alt={nextLesson.studentName} className="w-full h-full object-cover" />
-                    : getInitials(nextLesson.studentName)}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2 mb-0.5">
-                    <div className="text-[11px] sm:text-xs font-medium opacity-70 uppercase tracking-wide truncate">
-                      {nextLesson.inProgress ? "Текущее занятие" : "Следующее занятие"}
-                    </div>
-                    {/* Пока занятие идёт, отсчёта нет: считать до его начала уже нечего,
-                        а до следующего ученика — рано. В статусе просто «Идёт занятие».
-                        Слово «через» на телефоне спрятано: рядом стоит «Следующее
-                        занятие», смысл и без него ясен, а вместе они не помещались. */}
-                    <div className="shrink-0 text-xs sm:text-sm font-medium tabular-nums bg-[rgba(255,255,255,0.2)] rounded-xl px-2.5 sm:px-3 py-1 sm:py-1.5 backdrop-blur-sm">
-                      {nextLesson.inProgress
-                        ? <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />Идёт занятие</span>
-                        : tick >= 0 && countdown && (
-                          countdown.startsWith("через ")
-                            ? <><span className="hidden sm:inline">через </span>{countdown.slice(6)}</>
-                            : countdown
-                        )}
-                    </div>
+              {/* Карточка собрана из двух ярусов. Верхний — служебная строка:
+                  надпись слева, отсчёт справа во всю ширину. Нижний — САМО
+                  ЗАНЯТИЕ: аватар и группа «имя + время». Отсчёт стоит в верхней
+                  строке, а не у правого края карточки, потому что иначе он
+                  забирал ширину у имени и на телефоне оставались «СЛЕДУЮЩЕЕ З…»
+                  и «Михаи…». Дата по той же причине переехала вниз, к времени:
+                  в заголовке «Следующее занятие · пн, 12 сент.» не помещалось. */}
+              <div className="relative mb-4">
+                <div className="flex items-center justify-between gap-2 mb-0.5">
+                  <div className="text-[11px] sm:text-xs font-medium opacity-70 uppercase tracking-wide truncate">
+                    {nextLesson.inProgress ? "Текущее занятие" : "Следующее занятие"}
                   </div>
-                  {/* Длинное ФИО переносится, а не обрезается многоточием: имя
-                      ученика — главное слово карточки, «Александра Владимиро…»
-                      не читается. Две строки — потолок. */}
-                  <div className="text-xl sm:text-2xl font-semibold leading-tight line-clamp-2 break-words">{nextLesson.studentName}</div>
-                  {/* Отступ больше, чем 0.5, ради РОВНОГО междустрочья: строку
-                      заголовка растягивает чип отсчёта (он вдвое выше надписи),
-                      и лишняя высота падает под надпись — просвет над именем
-                      выходил 20,6 px против 13,6 px под ним. mt-1/mt-2 добирают
-                      нижний просвет до верхнего (замер: 14,6 и 19,6 px). */}
-                  <div className="text-sm opacity-80 mt-1 sm:mt-2 truncate">
-                    {nextLessonDate ? `${nextLessonDate} · ` : ""}{nextLesson.time} · {nextLesson.duration} мин
+                  {/* Пока занятие идёт, отсчёта нет: считать до его начала уже нечего,
+                      а до следующего ученика — рано. В статусе просто «Идёт занятие».
+                      Слово «через» на телефоне спрятано: рядом стоит «Следующее
+                      занятие», смысл и без него ясен, а вместе они не помещались.
+                      bg-[rgba(...)] вместо bg-white/20: классы bg-white/N глобально
+                      гасятся под .dark (index.css), а тут фон карточки синий в обеих
+                      темах — чипы должны остаться белыми */}
+                  <div className="shrink-0 text-xs sm:text-sm font-medium tabular-nums bg-[rgba(255,255,255,0.2)] rounded-xl px-2.5 sm:px-3 py-1 sm:py-1.5 backdrop-blur-sm">
+                    {nextLesson.inProgress
+                      ? <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />Идёт занятие</span>
+                      : tick >= 0 && countdown && (
+                        countdown.startsWith("через ")
+                          ? <><span className="hidden sm:inline">через </span>{countdown.slice(6)}</>
+                          : countdown
+                      )}
+                  </div>
+                </div>
+                {/* Аватар выравнивается по центру ГРУППЫ «имя + время», а не по
+                    всей колонке: со служебной строкой в счёте он висел выше имени,
+                    к которому относится. Потому строка заголовка и вынесена из
+                    этого ряда наверх. */}
+                <div className="flex items-center gap-3.5">
+                  <div className="w-12 h-12 rounded-full flex-shrink-0 overflow-hidden flex items-center justify-center text-base font-semibold bg-[rgba(255,255,255,0.2)] ring-2 ring-white/30 backdrop-blur-sm">
+                    {nextLesson.avatar
+                      ? <img src={nextLesson.avatar} alt={nextLesson.studentName} className="w-full h-full object-cover" />
+                      : getInitials(nextLesson.studentName)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    {/* Длинное ФИО переносится, а не обрезается многоточием: имя
+                        ученика — главное слово карточки, «Александра Владимиро…»
+                        не читается. Две строки — потолок. */}
+                    <div className="text-xl sm:text-2xl font-semibold leading-tight line-clamp-2 break-words">{nextLesson.studentName}</div>
+                    {/* Отступ больше, чем 0.5, ради РОВНОГО междустрочья: строку
+                        заголовка растягивает чип отсчёта (он вдвое выше надписи),
+                        и лишняя высота падает под надпись — просвет над именем
+                        выходил 20,6 px против 13,6 px под ним. mt-1/mt-2 добирают
+                        нижний просвет до верхнего (замер: 14,6 и 19,6 px). */}
+                    <div className="text-sm opacity-80 mt-1 sm:mt-2 truncate">
+                      {nextLessonDate ? `${nextLessonDate} · ` : ""}{nextLesson.time} · {nextLesson.duration} мин
+                    </div>
                   </div>
                 </div>
               </div>
