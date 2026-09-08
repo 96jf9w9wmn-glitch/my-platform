@@ -125,9 +125,9 @@ jobs:
             'sudo /usr/bin/docker restart precettore-web'
 
       - name: Проверить, что живой
-        # Пока апекс ещё смотрит на Vercel, проверяемся по временному имени:
-        # заведите переменную репозитория HEALTH_URL со значением
-        # https://new.precettore.ru/api/healthz, а после переключения DNS удалите.
+        # Апекс с 13.08.2026 смотрит на свой сервер, поэтому проверяемся прямо по
+        # нему. Переменная репозитория HEALTH_URL оставлена как запасной путь на
+        # случай проверки по временному имени.
         env:
           HEALTH_URL: ${{ vars.HEALTH_URL || 'https://precettore.ru/api/healthz' }}
         run: |

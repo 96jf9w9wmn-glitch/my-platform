@@ -21,7 +21,8 @@
 //   POST /api/telegram?action=notify   — событие от клиента («ученик сдал ДЗ»)
 //   GET  /api/telegram                 — health-check: настроен ли бот
 //
-// Переменные окружения Vercel: TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET и
+// Переменные окружения (/opt/precettore-web/api.env на сервере):
+// TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET и
 // TELEGRAM_DB_SECRET — секрет, которым бот опознаётся перед базой. Ключ
 // service_role боту НЕ нужен: он ходит через узкий набор функций
 // (supabase/telegram_bot_rpc.sql). Создание бота — docs/telegram.md.
@@ -40,7 +41,7 @@ import { can } from "../src/plans.js"
 const API = "https://api.telegram.org"
 const APP_URL = process.env.APP_URL || "https://precettore.ru"
 
-// Расписание, дедлайны и «уже проведён» у репетитора московские, а сервер Vercel
+// Расписание, дедлайны и «уже проведён» у репетитора московские, а сервер
 // живёт по UTC. Без пересчёта после 21:00 МСК бот показывал бы вчерашний день.
 const TZ = "Europe/Moscow"
 
@@ -812,8 +813,10 @@ export default async function handler(req, res) {
     // на сервере появляются токен и секрет, первый же health-check прописывает
     // вебхук сам.
     //
-    // Строго на БОЕВОМ домене: превью-деплой Vercel получает тот же токен, и без
-    // этой проверки случайно открытый предпросмотр перевёл бы живого бота на себя.
+    // Строго на БОЕВОМ домене: тот же токен виден любому другому запуску того же
+    // кода (локальный, тестовый домен), и без этой проверки он перевёл бы живого
+    // бота на себя. Так было заведено против превью-деплоев Vercel; сборок там
+    // больше нет, но защита нужна ровно та же.
     const host = String(req.headers["x-forwarded-host"] || req.headers.host || "")
     const isProdHost = host === new URL(APP_URL).host
     if (!hook?.result?.url && process.env.TELEGRAM_WEBHOOK_SECRET && isProdHost) {

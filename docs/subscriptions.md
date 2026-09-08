@@ -99,7 +99,9 @@
 
 Выполнить `supabase/subscriptions.sql` в Supabase → SQL Editor. Идемпотентно.
 
-### 3. Переменные окружения Vercel
+### 3. Переменные окружения сервера
+
+Файл `/opt/precettore-web/api.env`; после правки — `sh run.sh recreate web`.
 
 | Переменная | Значение |
 |---|---|

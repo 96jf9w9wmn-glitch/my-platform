@@ -2,7 +2,8 @@ import { createClient } from "@supabase/supabase-js"
 
 // Адрес базы и публичный ключ берутся из окружения, чтобы переключение
 // на российский сервер (242-ФЗ) было сменой переменных, а не правкой кода.
-// Локально — .env.local, в проде — переменные окружения Vercel.
+// Локально — .env.local, в проде — секреты сборки (GitHub Actions) и
+// /opt/precettore-web/api.env на сервере.
 // См. .env.example и supabase/selfhost/README.md
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY

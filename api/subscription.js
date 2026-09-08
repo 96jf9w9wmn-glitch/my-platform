@@ -4,7 +4,8 @@
 // репетитору, здесь платит РЕПЕТИТОР и деньги идут ПЛАТФОРМЕ. Поэтому и магазин
 // другой: YOOKASSA_PLATFORM_SHOP_ID / YOOKASSA_PLATFORM_SECRET_KEY.
 //
-// Переменные окружения (Vercel → Project → Settings → Environment Variables):
+// Переменные окружения (/opt/precettore-web/api.env на сервере; после правки
+// файла контейнер надо ПЕРЕСОЗДАТЬ — `sh run.sh recreate web`):
 //   YOOKASSA_PLATFORM_SHOP_ID     — магазин платформы (если не задан, берётся
 //   YOOKASSA_PLATFORM_SECRET_KEY    магазин репетитора — допустимо, только пока
 //                                   платформа однопользовательская)

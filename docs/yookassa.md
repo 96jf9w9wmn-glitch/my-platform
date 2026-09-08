@@ -32,9 +32,11 @@
 Выполнить `supabase/yookassa.sql` в Supabase → SQL Editor. Идемпотентно,
 повторный запуск безопасен.
 
-### 3. Переменные окружения Vercel
+### 3. Переменные окружения сервера
 
-Project → Settings → Environment Variables:
+Файл `/opt/precettore-web/api.env` на боевом сервере. После правки контейнер
+надо ПЕРЕСОЗДАТЬ (`sh run.sh recreate web`): `docker restart` из
+`scripts/deploy.sh` env_file заново не читает.
 
 | Переменная | Значение |
 |---|---|
@@ -46,7 +48,7 @@ Project → Settings → Environment Variables:
 | `YOOKASSA_RECEIPT` | `1` — только после включения чеков (см. п. 5) |
 
 `SUPABASE_SERVICE_ROLE_KEY` обходит RLS — он нужен вебхуку, чтобы записать
-платёж. Держать его только в переменных Vercel, никогда не в `VITE_…` и не в
+платёж. Держать его только в `api.env` на сервере, никогда не в `VITE_…` и не в
 клиентском коде.
 
 ### 4. Адрес для уведомлений
