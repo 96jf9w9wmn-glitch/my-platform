@@ -35,6 +35,7 @@ const cloneStroke = (s) => s && { ...s, points: s.points.map((p) => p.slice()) }
 const SHEET_MAX_DIM = 4000   // лист с заданием: длинные условия не должны терять чёткость
 const SHEET_GAP = 140        // отступ от написанного до нового листа с заданием, мировые px
 const SPOT_PAD = 40          // зазор вокруг листа при поиске свободного места, там же
+const CULL_PAD = 80          // запас за краем экрана, в пределах которого штрих ещё рисуем
 // Поле ответа под листом набрано в тех же единицах, в каких снят сам лист (SHEET_W и
 // кегль условия в pages/taskSnapshot.js), и потом целиком масштабируется вместе с ним —
 // поэтому у задания и поля один масштаб. Держать эту ширину в согласии с taskSnapshot.
@@ -79,6 +80,18 @@ let uidCounter = 0
 const makeId = (author) => `${author}-${Date.now().toString(36)}-${(uidCounter++).toString(36)}`
 
 const rectsIntersect = (a, b) => !(a.maxX < b.minX || a.minX > b.maxX || a.maxY < b.minY || a.minY > b.maxY)
+// Габарит штриха считается по всем его точкам, а их у рукописной строки сотни.
+// Кэш по САМОМУ массиву точек: везде, где штрих двигают, поворачивают или правят,
+// points пересоздаётся (.map / textBoxPoints), поэтому устаревшего габарита не
+// остаётся, а WeakMap отпускает запись вместе со стёртым штрихом.
+const bbCache = new WeakMap()
+function strokeBox(s) {
+  const key = s?.points
+  if (!key || typeof key !== "object") return strokeBBox(s)
+  let bb = bbCache.get(key)
+  if (!bb) { bb = strokeBBox(s); bbCache.set(key, bb) }
+  return bb
+}
 const pointInBBox = (x, y, b) => x >= b.minX && x <= b.maxX && y >= b.minY && y <= b.maxY
 
 // Курсор собеседника держится CURSOR_HOLD мс после последнего движения, потом гаснет
@@ -863,7 +876,7 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
     for (const id of selection.current) {
       const s = strokes.current.get(id)
       if (!s) continue
-      const b = strokeBBox(s)
+      const b = strokeBox(s)
       bb = bb ? { minX: Math.min(bb.minX, b.minX), minY: Math.min(bb.minY, b.minY), maxX: Math.max(bb.maxX, b.maxX), maxY: Math.max(bb.maxY, b.maxY) } : b
     }
     return bb
@@ -989,9 +1002,21 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
       // Набираемую сейчас надпись пропускаем: её показывает поле ввода, и вторым
       // экземпляром она двоилась бы под курсором.
       const editId = editPos.current?.id
+      // Рисуем только то, что видно. Доска бесконечная и за учебный год уезжает на
+      // десятки экранов, а слой сцены пересобирается на КАЖДОМ кадре сдвига и зума:
+      // без этого отсечения кабинет перерисовывал всю историю занятий, чтобы
+      // показать один экран. Замер на 3000 рукописных штрихов (450 тыс. точек):
+      // 39 мс на кадр против 3 мс — то есть 8 кадров в секунду вместо плавного хода.
+      // Запас по краям — на толщину линии и на скругления.
+      const vis = {
+        minX: (-v.x) / v.scale - CULL_PAD, minY: (-v.y) / v.scale - CULL_PAD,
+        maxX: (cw - v.x) / v.scale + CULL_PAD, maxY: (ch - v.y) / v.scale + CULL_PAD,
+      }
       for (const st of strokes.current.values()) {
         if (editId && st.id === editId) continue
         if (live.current.has(st.id)) continue   // собеседник правит эту надпись прямо сейчас
+        const bb = strokeBox(st)
+        if (bb && !rectsIntersect(vis, bb)) continue
         drawStroke(st.tool === "image" && mx ? mx : sx, st)
       }
       sceneValid.current = true
@@ -1031,14 +1056,14 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
     const busy = []
     for (const st of strokes.current.values()) {
       if (st.pending) {
-        const b = strokeBBox(st)
+        const b = strokeBox(st)
         const [x0, y0] = toScreen(b.minX, b.minY), [x1, y1] = toScreen(b.maxX, b.maxY)
         if (x1 > 0 && y1 > 0 && x0 < cw && y0 < ch) {
           busy.push({ id: st.id, x: Math.round((x0 + x1) / 2), y: Math.round((y0 + y1) / 2) })
         }
       }
       if (!st.qa) continue
-      const b = strokeBBox(st)
+      const b = strokeBox(st)
       const [x0, y0] = toScreen(b.minX, b.minY), [x1, y1] = toScreen(b.maxX, b.maxY)
       const sw = x1 - x0
       if (sw < QA_MIN_ON_SCREEN || x1 < 0 || y1 < 0 || x0 > cw || y0 > ch) continue
@@ -1966,7 +1991,7 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
         }
         for (const [sid, so] of strokes.current) {
           if (selection.current.has(sid) || so.tool === "eraser") continue
-          const sb = strokeBBox(so)
+          const sb = strokeBox(so)
           if (rectsIntersect(seen, sb)) snapBoxes.current.push(sb)
         }
         guides.current = []
@@ -2089,7 +2114,7 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
       const rect = { minX: Math.min(m.x0, m.x1), minY: Math.min(m.y0, m.y1), maxX: Math.max(m.x0, m.x1), maxY: Math.max(m.y0, m.y1) }
       selection.current.clear()
       if (Math.abs(m.x1 - m.x0) > 4 || Math.abs(m.y1 - m.y0) > 4) {
-        for (const [id, s] of strokes.current) if (rectsIntersect(rect, strokeBBox(s))) selection.current.add(id)
+        for (const [id, s] of strokes.current) if (rectsIntersect(rect, strokeBox(s))) selection.current.add(id)
       } else {
         // Крошечная рамка = одиночный клик: выделяем верхний объект под курсором
         const hit = topStrokeAt(m.x0, m.y0, 6 / view.current.scale)
@@ -2499,7 +2524,7 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
   function freeSpot(w, h) {
     const c = canvasRef.current
     const boxes = []
-    for (const st of strokes.current.values()) { const b = strokeBBox(st); if (b) boxes.push(b) }
+    for (const st of strokes.current.values()) { const b = strokeBox(st); if (b) boxes.push(b) }
     const free = (x, y) => !boxes.some((b) => rectsIntersect({ minX: x - SPOT_PAD, minY: y - SPOT_PAD, maxX: x + w + SPOT_PAD, maxY: y + h + SPOT_PAD }, b))
     const r = c.getBoundingClientRect()
     const [vx0, vy0] = toWorld(r.left, r.top)
