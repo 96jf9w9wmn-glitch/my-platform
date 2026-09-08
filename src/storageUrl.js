@@ -65,9 +65,22 @@ function cached(key) {
 
 // Подписывает пачку значений разом: один запрос на бакет вместо запроса на
 // файл — в списке домашних заданий таких ссылок бывают десятки.
-export async function signStorageUrls(values, defaultBucket) {
+// Аватар лежит снимком с телефона (на боевой — до мегабайта), а показывается
+// кружком в несколько десятков пикселей. Просим у хранилища уменьшенную копию:
+// это чинит и уже загруженные аватары, а не только будущие.
+export const AVATAR_SPEC = { bucket: "homework", transform: { width: 256, height: 256, resize: "cover" } }
+
+export async function signStorageUrls(values, bucketSpec) {
   const out = new Map()
   const byBucket = new Map()
+  // Бакет можно задать вместе с преобразованием картинки: { bucket, transform }.
+  // Преобразование выписывается в саму подпись, поэтому пачкой такие ссылки не
+  // выписать — только по одной (createSignedUrls такого поля не принимает).
+  // Ради аватара это того стоит: снимок с телефона весит мегабайт, а нужен он
+  // кружком в 40 пикселей, и качается заново при каждой загрузке кабинета.
+  const defaultBucket = typeof bucketSpec === "string" ? bucketSpec : bucketSpec?.bucket
+  const transform = typeof bucketSpec === "string" ? null : bucketSpec?.transform || null
+  const mark = transform ? "@" + JSON.stringify(transform) : ""
 
   for (const value of values) {
     if (!value || out.has(value)) continue
@@ -76,7 +89,7 @@ export async function signStorageUrls(values, defaultBucket) {
       out.set(value, value)
       continue
     }
-    const key = ref.bucket + "/" + ref.path
+    const key = ref.bucket + "/" + ref.path + mark
     const hit = cached(key)
     if (hit) {
       out.set(value, hit)
@@ -89,6 +102,16 @@ export async function signStorageUrls(values, defaultBucket) {
   await Promise.all(
     Array.from(byBucket.entries()).map(async ([bucket, paths]) => {
       const list = Array.from(paths.keys())
+      if (transform) {
+        await Promise.all(list.map(async (path) => {
+          const original = paths.get(path)
+          const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, TTL_SEC, { transform })
+          if (error || !data?.signedUrl) { out.set(original, original); return }
+          cache.set(bucket + "/" + path + mark, { url: data.signedUrl, expires: Date.now() + TTL_SEC * 1000 })
+          out.set(original, data.signedUrl)
+        }))
+        return
+      }
       const { data, error } = await supabase.storage.from(bucket).createSignedUrls(list, TTL_SEC)
       if (error || !data) {
         // Не смогли подписать — оставляем исходное значение, чтобы место
@@ -103,7 +126,7 @@ export async function signStorageUrls(values, defaultBucket) {
           out.set(original, original)
           continue
         }
-        cache.set(bucket + "/" + row.path, { url: row.signedUrl, expires: Date.now() + TTL_SEC * 1000 })
+        cache.set(bucket + "/" + row.path + mark, { url: row.signedUrl, expires: Date.now() + TTL_SEC * 1000 })
         out.set(original, row.signedUrl)
       }
     })

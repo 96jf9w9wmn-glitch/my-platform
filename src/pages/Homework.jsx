@@ -2314,6 +2314,17 @@ export function StudentHomeworkGroup({ studentName, items, selectedId, cols, det
   )
 }
 
+// Колонки списка домашних работ: всё, кроме bank_tasks. Та колонка везёт
+// условия целиком (чертежи и файлы внутри строки) и весит больше всей
+// остальной таблицы вместе взятой — списку она не нужна.
+const HW_LIST_COLS = [
+  "id", "tutor_id", "student_id", "title", "description", "file_url", "deadline",
+  "status", "submission_url", "submitted_at", "comment", "created_at", "hw_type",
+  "question_count", "correct_answers", "student_answers", "test_score",
+  "requires_written", "grade", "require_solution", "test_options", "time_limit_min",
+  "opened_at", "auto_submitted", "retry_policy", "retry_limit", "solution_files", "credited",
+].join(", ")
+
 function Homework({ user, students, onOpenBoard }) {
   const { allows, openPlans } = usePlan()
   const [homework, setHomework] = useState([])
@@ -2333,15 +2344,36 @@ function Homework({ user, students, onOpenBoard }) {
   }, [])
 
   async function loadHomework() {
-    const { data } = await supabase
+    // Список тянем БЕЗ bank_tasks. В этой колонке лежат условия целиком —
+    // чертежи data-URI и данные файлов, — и на боевой она весит 96% всей
+    // таблицы: раздел скачивал 650 КБ вместо 25 КБ, и цифра росла с каждой
+    // выданной работой. Списку она не нужна ни в одной строке: карточка живёт
+    // описанием, а балл считается по ответам. Условия догружаются для ОДНОЙ
+    // открытой работы (см. ensureBankTasks).
+    const res = await supabase
       .from("homework")
-      .select("*")
+      .select(HW_LIST_COLS)
       .eq("tutor_id", user.id)
       .order("created_at", { ascending: false })
+    // Колонок из поздних миграций на базе может не быть — тогда берём всё
+    // подряд, как раньше: список работ важнее экономии трафика.
+    const { data } = res.error
+      ? await supabase.from("homework").select("*").eq("tutor_id", user.id).order("created_at", { ascending: false })
+      : res
     // Бакет `homework` приватный — файл задания и присланное решение
     // открываются по временной подписанной ссылке.
     setHomework(await signRows(data || [], { file_url: "homework", submission_url: "homework", solution_files: "homework", bank_tasks: "homework" }))
   }
+
+  // Условия открытой работы. Грузим по одной и запоминаем в самой строке:
+  // повторное открытие той же работы обходится без запроса.
+  async function ensureBankTasks(id) {
+    const { data, error } = await supabase.from("homework").select("id, bank_tasks").eq("id", id).maybeSingle()
+    if (error || !data) return
+    const [signed] = await signRows([data], { bank_tasks: "homework" })
+    setHomework((prev) => prev.map((h) => (h.id === id ? { ...h, bank_tasks: signed.bank_tasks ?? null } : h)))
+  }
+
 
   const overdueCount = homework.filter(isOverdue).length
 
@@ -2395,7 +2427,11 @@ function Homework({ user, students, onOpenBoard }) {
   // перебивает уход, иначе отложенное закрытие погасило бы только что открытую.
   function openHw(hw) {
     if (selectedId === hw.id) closeDetail()
-    else { cancelDetailClose(); setSelectedId(hw.id) }
+    else {
+      cancelDetailClose()
+      setSelectedId(hw.id)
+      if (hw.bank_tasks === undefined) ensureBankTasks(hw.id)   // условия — только для открытой работы
+    }
   }
 
   // Доска домашней работы: адрес составной (карточка ученика + работа), поэтому

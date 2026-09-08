@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { supabase } from "../supabase"
-import { signRows } from "../storageUrl"
+import { signRows, AVATAR_SPEC } from "../storageUrl"
 import Chat from "./Chat"
 import { getInitials, plural, isLessonConducted } from "../utils"
 import { fmtMoney } from "../invoices"
@@ -139,7 +139,7 @@ function ParentDashboard({ user, onLogout }) {
     supabase.from("students").select("*").eq("id", user.student.id).maybeSingle()
       .then(async ({ data }) => {
         if (!data) return
-        const [withAvatar] = await signRows([data], { avatar: "homework" })
+        const [withAvatar] = await signRows([data], { avatar: AVATAR_SPEC })
         const refreshed = { ...withAvatar, lessonPrice: data.lesson_price, lessonDuration: data.lesson_duration }
         setStudent(refreshed)
         const stored = localStorage.getItem("parent_session")

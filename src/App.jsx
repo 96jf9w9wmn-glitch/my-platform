@@ -4,7 +4,7 @@ import { dropdownPos } from "./dropdownPos"
 import { POPUP_OUT_MS } from "./useClosing"
 import { createPortal } from "react-dom"
 import { supabase, isPasswordRecovery, setAppToken } from "./supabase"
-import { signRows, permanentStorageUrl } from "./storageUrl"
+import { signRows, permanentStorageUrl, AVATAR_SPEC } from "./storageUrl"
 import { deviceTimezone, convertLessons, shiftScheduleString, zoneDiffMinutes } from "./timezone"
 import Sidebar, { TutorProfileButton } from "./components/Sidebar"
 import NavIcon from "./components/NavIcon"
@@ -645,7 +645,7 @@ function App() {
     }
 
     // Бакет с аватарами приватный, поэтому адрес подписываем на время.
-    mapped = await signRows(mapped, { avatar: "homework" })
+    mapped = await signRows(mapped, { avatar: AVATAR_SPEC })
 
     // Часовые пояса. Время занятия лежит в базе в поясе УЧЕНИКА (якорь
     // `students.timezone`) и в кабинете ученика показывается как есть. Кабинет

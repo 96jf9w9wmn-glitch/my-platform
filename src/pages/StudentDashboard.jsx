@@ -1935,6 +1935,32 @@ function AddTutorModal({ onClose, children }) {
   )
 }
 
+// Аватар до отправки. Больше 512 точек в кружке всё равно не видно, а снимок
+// с телефона весит мегабайт. Не удалось разобрать картинку — отправляем как
+// есть: аватар важнее экономии.
+async function shrinkAvatar(file, maxDim = 512) {
+  const ext = (file.name.split(".").pop() || "jpg").toLowerCase()
+  const asIs = { blob: file, type: file.type || "image/jpeg", ext }
+  try {
+    const url = URL.createObjectURL(file)
+    const im = await new Promise((res, rej) => {
+      const i = new Image()
+      i.onload = () => res(i)
+      i.onerror = rej
+      i.src = url
+    })
+    const scale = Math.min(1, maxDim / Math.max(im.naturalWidth, im.naturalHeight))
+    if (scale === 1) { URL.revokeObjectURL(url); return asIs }
+    const w = Math.round(im.naturalWidth * scale), h = Math.round(im.naturalHeight * scale)
+    const cnv = document.createElement("canvas")
+    cnv.width = w; cnv.height = h
+    cnv.getContext("2d").drawImage(im, 0, 0, w, h)
+    const blob = await new Promise((r) => cnv.toBlob(r, "image/jpeg", 0.85))
+    URL.revokeObjectURL(url)
+    return blob ? { blob, type: "image/jpeg", ext: "jpg" } : asIs
+  } catch { return asIs }
+}
+
 function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadStudents }) {
   // Возврат из ЮKassa приходит на /?pay=<id заказа> — открываем сразу «Оплату»,
   // иначе ученик увидит расписание и решит, что платёж потерялся.
@@ -2415,12 +2441,14 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     reader.onload = (ev) => setAvatarOverride(ev.target.result)
     reader.readAsDataURL(file)
 
-    // Загрузить в Storage
-    const ext = file.name.split(".").pop()
-    const fileName = `student-avatars/${user.id}/avatar.${ext}`
+    // Загрузить в Storage. Снимок с телефона весит мегабайт, а нужен кружком в
+    // несколько десятков пикселей: уменьшаем до отправки — иначе ученик с
+    // тонким каналом ждёт минуту, а кабинет потом качает этот мегабайт обратно.
+    const small = await shrinkAvatar(file)
+    const fileName = `student-avatars/${user.id}/avatar.${small.ext}`
     const { error } = await supabase.storage
       .from("homework")
-      .upload(fileName, file, { upsert: true })
+      .upload(fileName, small.blob, { upsert: true, contentType: small.type })
     if (error) return
 
     const { data } = supabase.storage.from("homework").getPublicUrl(fileName)
