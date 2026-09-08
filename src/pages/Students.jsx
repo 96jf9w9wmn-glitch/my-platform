@@ -109,9 +109,13 @@ function TutorCodeChip({ code }) {
     <button
       onClick={copy}
       title="Код для привязки ученика — нажмите, чтобы скопировать"
-      className="press-fill flex items-center gap-2 rounded-xl px-3 py-2 text-sm ring-1 ring-inset ring-gray-200 dark:ring-white/[0.12] transition-all"
+      /* Серое кольцо на стекле не читалось вовсе — чип выглядел просто текстом,
+         и то, что код КОПИРУЕТСЯ нажатием, было не видно. Тон и обводка теперь
+         акцентные, как у кнопки «Копировать» в «Профиле»: один и тот же код
+         оформлен в кабинете одинаково. */
+      className="press-fill flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-[#007AFF] bg-[#007AFF]/10 ring-1 ring-inset ring-[#007AFF]/25 transition-all"
     >
-      <span className="text-xs text-gray-500 hidden sm:inline">Ваш код</span>
+      <span className="text-xs opacity-70 hidden sm:inline">Ваш код</span>
       <span className="font-mono font-medium tracking-widest">{code}</span>
       <MorphIcon from="clipboard" size={13} active={copied} />
     </button>
