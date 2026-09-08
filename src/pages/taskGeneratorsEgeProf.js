@@ -2513,10 +2513,14 @@ function t8fDerivExtreme(greatest) {
   // оси, кривая всё время идёт по подписям отметок и рисунок не собрать
   const c = clean(Math.min(gy1 - 1.5, 0.35 + Math.random() * 0.5))
   let w = null, lab = null, marksX = null, best = null, unitRight = false
-  for (let tries = 0; tries < 400 && best === null; tries++) {
-    // на бланке ФИПИ ВСЕ подписи отметок стоят под осью; наверх пускаем точку,
-    // только если четырёх «нижних» не нашлось за первые 300 попыток
+  for (let tries = 0; tries < 700 && best === null; tries++) {
+    // Требования к ОТМЕТКАМ (баланс направлений и отрыв ответа) не ослабляются
+    // никогда — на них держится корректность задания. Ослабляем только требования
+    // к виду рисунка, и лишь когда строгий подбор не сошёлся за первые 300 попыток:
+    // на бланке ФИПИ ВСЕ подписи отметок стоят под осью, но кривая с подписью
+    // наверху лучше, чем брошенный подбор.
     const strictBelow = tries < 300
+    const minSpan = tries < 450 ? 3 : 2, minClr = tries < 450 ? 0.6 : 0.35
     w = buildWiggleWave(gx0, gx1, gy0, gy1, c)
     // подпись «1» у оси y не должна оказаться под кривой: если слева занято —
     // ставим её справа от оси (отбраковывать кривую нельзя, это перекашивает ответы)
@@ -2532,18 +2536,34 @@ function t8fDerivExtreme(greatest) {
       if (side.ok && (side.below || !strictBelow)) cands.push({ x, d: slope(w.fn, x), below: side.below })
     }
     if (cands.length < 4) continue
-    const top = cands.slice().sort((p, q) => sgn * (q.d - p.d))[0]
-    // остальные три — с запасом в 1,5 клетки наклона: ответ виден, а не угадывается
-    const rest = cands.filter((c2) => c2.x !== top.x && sgn * (top.d - c2.d) >= 1.5)
-    if (Math.abs(top.d) < 2 || rest.length < 3) continue
-    const three = []
-    while (three.length < 3) three.push(rest.splice(randInt(0, rest.length - 1), 1)[0].x)
-    const xs = [top.x, ...three].sort((a, b) => a - b)
-    if (xs[3] - xs[0] < 3) continue          // точки по всему окну, а не кучкой
+    // ДВЕ точки на возрастании и ДВЕ на убывании — иначе задание бракованное: при
+    // одной точке на нужном промежутке ответ читается по знаку («единственная, где
+    // график идёт вниз»), и крутизну, ради сравнения которой задание и дано,
+    // смотреть не приходится. Наклон меньше 0,4 клетки — точка у самой вершины,
+    // направление по рисунку не читается: такие в отметки не берём.
+    const up = cands.filter((c2) => c2.d >= 0.4), dn = cands.filter((c2) => c2.d <= -0.4)
+    const same = sgn > 0 ? up : dn, other = sgn > 0 ? dn : up
+    if (same.length < 2 || other.length < 2) continue
+    const top = same.slice().sort((p, q) => sgn * (q.d - p.d))[0]
+    // сосед по тому же направлению — с запасом в 1,5 клетки наклона И в 12° угла:
+    // ученик сравнивает УГОЛ, а у крутых участков наклоны 2,8 и 4,3 (это 70° и 77°)
+    // отличаются на бумаге едва-едва. У встречной пары отрыв есть сам собой — знак
+    // другой, между направлениями всегда больше 40°.
+    const near = same.filter((c2) => c2.x !== top.x && sgn * (top.d - c2.d) >= 1.5
+      && sgn * (Math.atan(top.d) - Math.atan(c2.d)) >= 0.21)
+    if (Math.abs(top.d) < 2 || !near.length) continue
+    // из подходящих четвёрок берём разбросанные по окну, а не стоящие кучкой
+    const sets = []
+    for (const n of near) for (let i = 0; i < other.length - 1; i++) for (let j = i + 1; j < other.length; j++) {
+      const q = [top.x, n.x, other[i].x, other[j].x].sort((a, b) => a - b)
+      if (q[3] - q[0] >= minSpan) sets.push(q)
+    }
+    if (!sets.length) continue
+    const xs = pick(sets)
     // «y = f(x)» ставим туда, где кривой нет: перебираем оба ряда и всю полосу
     // справа от оси y (левее подпись при таком окне не помещается)
     lab = null
-    let bestClr = 0.6
+    let bestClr = minClr
     for (const ly of [gy1 - 0.6, gy0 + 0.7]) {
       for (let lx = 1.55; lx <= gx1 - 1.45 + 1e-9; lx += 0.1) {
         const cand = { x: clean(lx), y: ly, text: "y = f(x)", anchor: "middle" }
@@ -2554,14 +2574,42 @@ function t8fDerivExtreme(greatest) {
     if (!lab) continue
     marksX = xs; best = top.x
   }
-  const fn = w.fn
-  if (best === null) {                       // страховка от вечного цикла: берём максимальный отрыв
+  // Страховка от вечного цикла. Отметки и здесь подбираются по тем же жёстким
+  // правилам (две вверх, две вниз, отрыв ответа) — иначе редкий брак утёк бы к
+  // ученику именно тем, чем этот подбор и занят; свободнее только вид рисунка.
+  for (let tries = 0; tries < 300 && best === null; tries++) {
+    const w2 = buildWiggleWave(gx0, gx1, gy0, gy1, c)
     const cands = []
-    for (let x = gx0; x <= gx1 - 1; x++) if (x !== 0) cands.push({ x, d: slope(fn, x) })
+    for (let x = gx0; x <= gx1 - 1; x++) if (x !== 0) cands.push({ x, d: slope(w2.fn, x) })
+    const up = cands.filter((c2) => c2.d >= 0.4), dn = cands.filter((c2) => c2.d <= -0.4)
+    const same = sgn > 0 ? up : dn, other = sgn > 0 ? dn : up
+    if (same.length < 2 || other.length < 2) continue
+    const top = same.slice().sort((p, q) => sgn * (q.d - p.d))[0]
+    const near = same.filter((c2) => c2.x !== top.x && sgn * (top.d - c2.d) >= 1.5
+      && sgn * (Math.atan(top.d) - Math.atan(c2.d)) >= 0.21)
+    if (Math.abs(top.d) < 2 || !near.length) continue
+    w = w2
+    unitRight = false
+    lab = null
+    let bestClr = -Infinity                  // место для подписи берём лучшее из имеющихся
+    for (const ly of [gy1 - 0.6, gy0 + 0.7]) {
+      for (let lx = 1.55; lx <= gx1 - 1.45 + 1e-9; lx += 0.1) {
+        const cand = { x: clean(lx), y: ly, text: "y = f(x)", anchor: "middle" }
+        const clr = labelClear8(w2.fn, cand, gx0, gx1)
+        if (clr > bestClr) { bestClr = clr; lab = cand }
+      }
+    }
+    marksX = [top.x, pick(near).x, other[0].x, other[other.length - 1].x].sort((a, b) => a - b)
+    best = top.x
+  }
+  if (best === null) {                       // до сюда не доходило ни разу, но пусто вернуть нельзя
+    const cands = []
+    for (let x = gx0; x <= gx1 - 1; x++) if (x !== 0) cands.push({ x, d: slope(w.fn, x) })
     cands.sort((p, q) => sgn * (q.d - p.d))
     best = cands[0].x
-    marksX = [cands[0].x, ...cands.slice(-3).map((c) => c.x)].sort((a, b) => a - b)
+    marksX = [best, ...cands.slice(-3).map((c2) => c2.x)].sort((a, b) => a - b)
   }
+  const fn = w.fn
   const marks = marksX.map((x) => ({ x, label: ru(x), below: markSide8(fn, x).below }))
   return {
     condition_text: `На рисунке изображён график функции y = f(x). На оси абсцисс отмечены точки ${marksX.map(ru).join(", ")}. В какой из этих точек значение производной функции ${greatest ? "наибольшее" : "наименьшее"}? В ответе укажите эту точку.`,
