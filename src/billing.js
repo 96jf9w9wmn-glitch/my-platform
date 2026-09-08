@@ -97,6 +97,18 @@ const countable = (l) => l?.date && l.status !== LESSON_EXCUSED
 
 const byDateTime = (a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || ""))
 
+// Во сколько обходится ОДНО занятие. Своя цена занятия важнее цены карточки:
+// она появляется у групповых занятий (в группе занимаются дешевле), а карточка
+// хранит одну цену на все занятия ученика. Ноль и мусор в занятии — это «цены
+// нет», а не «бесплатно».
+//
+// ЗЕРКАЛО В БАЗЕ: то же правило внутри student_accrual (supabase/lesson_price.sql).
+// Разойдутся — квитанции выпишутся не на ту сумму, что висит в долге.
+const lessonPrice = (lesson, fallback) => {
+  const own = Number(lesson?.price)
+  return Number.isFinite(own) && own > 0 ? own : Number(fallback) || 0
+}
+
 // Сколько занятий в неделю у ученика — по расписанию, а не по календарю.
 // Считаем повторяющиеся пары «день недели + время»: это и есть расписание
 // («Чт 16:00, Сб 12:00» — два занятия в неделю). Разовая встреча, которой в
@@ -186,7 +198,11 @@ export function periodAmount(student, period, price = Number(student?.lessonPric
   const lessons = period?.lessons || []
   if (!lessons.length) return { lessons, amount: 0 }
   const manual = packageAmount(student)
-  return { lessons, amount: manual != null ? manual : lessons.length * price }
+  // Расчётная сумма — СУММА ЦЕН занятий периода, а не «занятий × цена»: в
+  // периоде могут стоять и обычные занятия, и групповые по своей цене. При
+  // одинаковой цене это ровно прежнее число.
+  const own = lessons.reduce((sum, l) => sum + lessonPrice(l, price), 0)
+  return { lessons, amount: manual != null ? manual : own }
 }
 
 // Раскладывает сумму периода по его занятиям без потери копеек: остаток от
@@ -205,16 +221,19 @@ export function accrualEntries(student, now = new Date()) {
   const price = Number(student?.lessonPrice ?? student?.lesson_price ?? 0)
   const byDate = byDateTime
   const all = (student?.lessons || []).filter(countable)
+  // Занятие без своей цены и без цены в карточке не начисляется вовсе: иначе в
+  // долге и в квитанциях появились бы строки на ноль рублей.
+  const charged = (l) => lessonPrice(l, price) > 0
 
   if (!onPackage(student)) {
-    return all.filter((l) => isLessonConducted(l, now)).sort(byDate)
-      .map((l) => ({ ...l, charge: price }))
+    return all.filter((l) => charged(l) && isLessonConducted(l, now)).sort(byDate)
+      .map((l) => ({ ...l, charge: lessonPrice(l, price) }))
   }
 
   const start = startOf(student)
   // До абонемента ученик платил как все — по факту проведения.
-  const out = all.filter((l) => l.date < start && isLessonConducted(l, now)).sort(byDate)
-    .map((l) => ({ ...l, charge: price }))
+  const out = all.filter((l) => charged(l) && l.date < start && isLessonConducted(l, now)).sort(byDate)
+    .map((l) => ({ ...l, charge: lessonPrice(l, price) }))
 
   // С началом периода начисляются ВСЕ его занятия сразу, ещё до того, как они
   // прошли: в этом и смысл оплаты вперёд.
@@ -223,7 +242,11 @@ export function accrualEntries(student, now = new Date()) {
     // за то, что ещё не началось, не начисляют.
     if (!p.started) break
     const { lessons, amount } = periodAmount(student, p, price)
-    if (!lessons.length) continue
+    // Период, который ничего не стоит (у карточки нет цены и ни у одного его
+    // занятия нет своей), не начисляется вовсе — иначе в долге и в квитанциях
+    // появились бы строки на ноль рублей. Тем же условием `total > 0`
+    // заканчивается student_accrual в базе.
+    if (!lessons.length || amount <= 0) continue
     const parts = spread(amount, lessons.length)
     lessons.forEach((l, i) => out.push({ ...l, charge: parts[i] }))
   }
