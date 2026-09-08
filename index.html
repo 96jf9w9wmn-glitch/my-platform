@@ -5,7 +5,13 @@
     <link rel="icon" type="image/webp" href="/logo.webp" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/icon-180.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
+    <!-- interactive-widget НЕ ставим: Safari и Firefox его не знают и пишут в консоль
+         «not recognized and ignored», а Chromium по нему ужимает САМ layout-вьюпорт —
+         тогда innerHeight падает вместе с visualViewport.height, и признак открытой
+         клавиатуры в main.jsx (их разница) молча перестаёт срабатывать вместе с
+         .kb-open (нижняя навигация остаётся поверх ужатой страницы). Высоту всё
+         равно ведёт JS по visualViewport. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
