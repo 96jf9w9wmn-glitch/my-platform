@@ -705,6 +705,8 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
   const persistRef = useRef(null)     // дозапись после ухода с доски — уже без React
   const joinedOnce = useRef(false)    // канал уже подключался: следующий SUBSCRIBED — после обрыва
   const lastResync = useRef(0)        // когда в последний раз перечитывали сцену (см. resync)
+  const maxOrd = useRef(null)         // наибольший известный порядок штриха — с него идёт догон
+  const afterOff = useRef(false)      // в базе нет board_strokes_after — догоняем сценой целиком
   const bgSendTimer = useRef(null)    // троттлинг рассылки цвета фона (см. changeBgColor)
   const sendTimer = useRef(null)
   // Незаконченные штрихи собеседников: держим их ОТДЕЛЬНО от strokes.current.
@@ -1314,6 +1316,7 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
         // early сюда НЕ кладём: они прилетели по realtime и в базе их может не быть,
         // пусть первое же сохранение их допишет.
         rememberSaved(scene.strokes || [])
+        maxOrd.current = Number.isFinite(scene.maxOrd) ? scene.maxOrd : null
         savedMeta.current = { bg: scene.bg ?? null, bgColor: scene.bgColor ?? null }
         for (const [id, s] of early) { strokes.current.delete(id); strokes.current.set(id, s) }
         if (scene.bg) setBg(scene.bg)
@@ -1354,12 +1357,37 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
     if (loadedRef.current !== roomId) return             // начальная загрузка ещё идёт — она и принесёт свежее
     if (Date.now() - lastResync.current < 3000) return  // не дёргаем базу на каждый чих
     lastResync.current = Date.now()
+    // Сначала догон: только то, чего у нас нет. Перечитывание всей сцены — это
+    // мегабайты (на боевой доске 3,87 МБ, со сжатием 805 КБ), а обрывы штатные:
+    // realtime закрывает соединение вкладке, не приславшей heartbeat за минуту,
+    // а вкладка в фоне тормозит свои таймеры. Обычно догон — это килобайты.
+    if (!afterOff.current && Number.isFinite(maxOrd.current)) {
+      const { data, error } = await supabase.rpc("board_strokes_after", {
+        p_student_id: String(roomId), p_ord: maxOrd.current,
+      })
+      if (error && (error.code === "PGRST202" || error.code === "42883")) {
+        afterOff.current = true           // миграции нет — дальше по-старому, и больше не пробуем
+      } else if (!error) {
+        const part = await signBoardScene(data) || {}
+        const add = part.strokes || []
+        if (Number.isFinite(part.maxOrd)) maxOrd.current = part.maxOrd
+        for (const st of add) {
+          strokes.current.set(st.id, st)
+          // Пришло из базы — значит уже сохранено: иначе дельта отправит его обратно.
+          savedRef.current.set(st.id, { s: st, json: null })
+        }
+        if (add.length) { scheduleDraw(); return }
+        // Ничего нового не пришло, а счёт не сошёлся — значит разошлось не в
+        // хвосте (правка на месте, удаление). Тогда перечитываем целиком.
+      }
+    }
     const scene = await signBoardScene(await fetchScene())
     if (!scene?.strokes?.length) return
     const local = [...strokes.current.entries()]
     strokes.current.clear()
     for (const s of scene.strokes) strokes.current.set(s.id, s)
     rememberSaved(scene.strokes)   // теперь мы знаем, что в базе; своё недошедшее допишется дельтой
+    if (Number.isFinite(scene.maxOrd)) maxOrd.current = scene.maxOrd
     for (const [id, s] of local) if (!strokes.current.has(id)) strokes.current.set(id, s)
     scheduleDraw()
   }, [roomId, scheduleDraw, fetchScene])
