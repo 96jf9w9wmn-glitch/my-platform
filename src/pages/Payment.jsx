@@ -41,8 +41,14 @@ function getMonthRange() {
 
 // Деньги, полученные помесячно (по дате платежа) за последние `count` месяцев —
 // это «касса», из которой строятся столбцы графика.
+//
+// Кроме полной суммы месяца считаем `toDate` — сколько пришло с 1-го числа по
+// сегодняшнее. Он нужен только для сравнения роста: текущий месяц ещё идёт, и
+// его восемь дней сопоставимы не со всем прошлым месяцем, а с его первыми
+// восемью днями.
 function getMonthlyIncome(payments, count = 6) {
   const now = new Date()
+  const today = now.getDate()
   const buckets = []
   for (let i = count - 1; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
@@ -50,6 +56,7 @@ function getMonthlyIncome(payments, count = 6) {
       year: d.getFullYear(),
       month: d.getMonth(),
       total: 0,
+      toDate: 0,
       label: d.toLocaleDateString("ru-RU", { month: "short" }).replace(".", ""),
     })
   }
@@ -57,7 +64,9 @@ function getMonthlyIncome(payments, count = 6) {
     const d = parsePaymentDate(p.date)
     if (!d) continue
     const b = buckets.find((x) => x.year === d.getFullYear() && x.month === d.getMonth())
-    if (b) b.total += p.amount || 0
+    if (!b) continue
+    b.total += p.amount || 0
+    if (d.getDate() <= today) b.toDate += p.amount || 0
   }
   return buckets
 }
@@ -121,8 +130,19 @@ function IncomeChart({ buckets, forecast, mounted }) {
   const isCurrentMonth = sel === lastIdx
   const received = cur.total
   const swapClass = dir > 0 ? "money-swap-next" : "money-swap-prev"
-  const prevTotal = sel > 0 ? buckets[sel - 1].total : 0
-  const deltaPct = prevTotal > 0 ? Math.round((received - prevTotal) / prevTotal * 100) : null
+  // Рост считаем на сопоставимых отрезках: текущий месяц ещё не кончился,
+  // поэтому его сравниваем с тем же куском прошлого месяца (1-е число —
+  // сегодняшнее), а не с целым. Иначе первого числа каждого месяца чип
+  // показывал бы обвал на ровном месте.
+  const prev = sel > 0 ? buckets[sel - 1] : null
+  const base = prev ? (isCurrentMonth ? prev.toDate : prev.total) : 0
+  const value = isCurrentMonth ? cur.toDate : cur.total
+  // Малая база меряет не рост, а собственную малость: у репетитора, который
+  // начал работу месяц назад, любой доход даёт четырёхзначный процент. Такой
+  // чип не показываем вовсе — он ничего не сообщает.
+  const deltaPct = base > 0 && base >= value * 0.1
+    ? Math.round((value - base) / base * 100)
+    : null
 
   const dt = new Date(cur.year, cur.month, 1)
   const rawFull = dt.toLocaleDateString("ru-RU", { month: "long", year: "numeric" })
@@ -394,7 +414,7 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
                 const paying = confirmId === s.id
                 return (
                   <div key={s.id} className="border-t border-black/[0.06] dark:border-white/[0.08] first:border-t-0">
-                    <div className="flex items-center gap-3 px-4 py-3 flex-wrap sm:flex-nowrap">
+                    <div className="flex items-center gap-3 px-4 py-3">
                       <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 bg-amber-500/15 text-amber-700 dark:text-amber-300">
                         {getInitials(s.name)}
                       </div>
@@ -403,10 +423,14 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
                         <div className="text-sm font-medium truncate">{s.name}</div>
                         <button
                           onClick={() => setExpandedId(open ? null : s.id)}
-                          className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition"
+                          className="flex flex-wrap items-center gap-x-1 gap-y-0.5 max-w-full text-left text-xs text-gray-500 hover:text-gray-700 transition"
                         >
                           <span className="whitespace-nowrap">
                             {unpaid.length} {plural(unpaid.length, "занятие", "занятия", "занятий")} не оплачено
+                            {/* Стрелка живёт ВНУТРИ последней фразы: отдельным
+                                элементом строки она при переносе оставалась
+                                одна на третьей строке. */}
+                            {!pack && <Icon name={open ? "chevron-up" : "chevron-down"} size={13} className="inline-block align-middle ml-1" />}
                           </span>
                           {/* У абонемента в сумму входят и ещё не прошедшие
                               занятия периода — без подписи цифра выглядит
@@ -418,13 +442,16 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
                               {pack.started
                                 ? `· абонемент по ${dayMonth(pack.until)}`
                                 : `· абонемент с ${dayMonth(pack.from)}`}
+                              <Icon name={open ? "chevron-up" : "chevron-down"} size={13} className="inline-block align-middle ml-1 text-gray-500" />
                             </span>
                           )}
-                          <Icon name={open ? "chevron-up" : "chevron-down"} size={13} className="shrink-0" />
                         </button>
                       </div>
 
-                      <div className="flex items-center gap-3 shrink-0 w-full sm:w-auto justify-end">
+                      {/* На телефоне сумма встаёт НАД кнопкой, а не уезжает на
+                          свою строку во всю ширину карточки: оторванная от имени
+                          пара «сумма + Оплата» читалась как чужая. */}
+                      <div className="flex flex-col items-end gap-1.5 shrink-0 sm:flex-row sm:items-center sm:gap-3">
                         <div className="text-sm font-semibold tabular-nums text-amber-600 dark:text-amber-300">
                           {fmt(debt)} ₽
                         </div>
@@ -495,9 +522,12 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
       {/* ── ПЛАТЕЖИ: что уже пришло ── */}
       {tab === "payments" && (
         <div className="glass p-5 flex flex-col">
-          <div className="flex justify-between items-center mb-4">
-            <div className="flex items-baseline gap-2.5 min-w-0">
-              <h2 className="text-base font-medium">История оплат</h2>
+          {/* Подпись с суммой не сжимается (nowrap), поэтому в одну строку с
+              переключателем она не встаёт: на узком экране заголовок и период
+              расходятся по строкам, а не наезжают друг на друга. */}
+          <div className="flex flex-wrap justify-between items-center gap-x-3 gap-y-2 mb-4">
+            <div className="flex flex-wrap items-baseline gap-x-2.5 min-w-0">
+              <h2 className="text-base font-medium whitespace-nowrap">История оплат</h2>
               <span className="text-xs text-gray-400 tabular-nums whitespace-nowrap">{fmt(allTotal)} ₽ за всё время</span>
             </div>
             {/* период — сегмент-контролом: «палец» едет к выбранному, вместо того
