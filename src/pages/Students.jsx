@@ -113,9 +113,15 @@ function TutorCodeChip({ code }) {
          и то, что код КОПИРУЕТСЯ нажатием, было не видно. Тон и обводка теперь
          акцентные, как у кнопки «Копировать» в «Профиле»: один и тот же код
          оформлен в кабинете одинаково. */
-      className="press-fill flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-[#007AFF] bg-[#007AFF]/10 ring-1 ring-inset ring-[#007AFF]/25 transition-all"
+      /* Краска тёмно-синяя, а не фирменная #007AFF: на собственной подложке
+         чипа (тот же синий, 10%) она давала контраст 3.4, а подпись «Ваш код»
+         с прозрачностью 70% — 2.4, то есть не читалась вовсе. blue-700 даёт
+         5.7; в тёмной теме роли меняются местами (blue-300 на тёмном). */
+      className="press-fill flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-blue-700 dark:text-blue-300 bg-[#007AFF]/10 ring-1 ring-inset ring-[#007AFF]/25 transition-all"
     >
-      <span className="text-xs opacity-70 hidden sm:inline">Ваш код</span>
+      {/* Подпись отличается от кода размером, а не бледностью — гасить её
+          прозрачностью на цветной подложке нельзя. */}
+      <span className="text-xs hidden sm:inline">Ваш код</span>
       <span className="font-mono font-medium tracking-widest">{code}</span>
       <MorphIcon from="clipboard" size={13} active={copied} />
     </button>
