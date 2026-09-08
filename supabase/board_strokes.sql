@@ -180,3 +180,8 @@ grant select on public.boards_state to app_user, authenticated;
 comment on table public.board_strokes is 'Штрихи доски построчно: сохранение штриха не переписывает всю сцену (см. supabase/board_strokes.sql)';
 comment on function public.board_patch is 'Дельта-сохранение доски построчно; boards.scene остаётся зеркалом сцены';
 comment on function public.board_scene is 'Сцена доски целиком, собранная из board_strokes по порядку рисования';
+
+-- Гранты новым таблицам Supabase раздаёт сам, в том числе анониму: защита тогда
+-- держится только на RLS. Снимаем явно — как это сделано у остальных таблиц с
+-- персональными данными.
+revoke all on public.board_strokes from anon;
