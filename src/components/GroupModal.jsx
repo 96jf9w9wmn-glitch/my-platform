@@ -7,7 +7,7 @@ import WeeksPicker from "./WeeksPicker"
 import { TimeField, DurationField } from "./TimeFields"
 import { getInitials, plural, parseLocalDate } from "../utils"
 import getAvatarColor from "../avatarColor"
-import { fmtNum } from "../num"
+import { fmtNum, groupInput } from "../num"
 import { WEEK_DAYS, formatDate, generateRecurring } from "../recurring"
 import { groupSchedule } from "../groups"
 import { tutorLessons, findClashes, clashLine } from "../lessonConflict"
@@ -270,7 +270,7 @@ function GroupModal({ group = null, students = [], onSave, onDelete, onClose }) 
           <div>
             <label className="text-sm text-gray-500 mb-1 block">Цена за занятие с участника</label>
             <div className="relative">
-              <input value={price ? fmtNum(price) : ""}
+              <input value={groupInput(price)}
                 onChange={(e) => setPrice(e.target.value.replace(/[^\d]/g, ""))}
                 inputMode="numeric" placeholder={priceHint} className="input-glass pr-8" />
               <span className="absolute right-3 top-2.5 text-sm text-gray-400">₽</span>
