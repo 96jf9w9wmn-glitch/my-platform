@@ -6,7 +6,6 @@ import FormulaBackdrop from "../components/FormulaBackdrop"
 import { TUTOR_STEPS } from "../onboardingSteps"
 import { Highlight } from "../components/Mark"
 import SiteFooter from "../components/SiteFooter"
-import { ExamProgress } from "./Results"
 import BetaBadge, { BetaNotice } from "../components/BetaBadge"
 import { ConsentRow, ConsentLink } from "../components/ConsentChecks"
 import { logConsent } from "../consents"
@@ -822,27 +821,7 @@ function RoleQuiz({ cfg, role }) {
   )
 }
 
-function ProgressDemo20() {
-  // Двадцать работ с разбросом: рост есть, но неровный — так это и бывает.
-  const totals = [5, 8, 7, 11, 10, 14, 12, 16, 15, 13, 18, 17, 21, 19, 22, 20, 24, 23, 26, 25]
-  const rows = totals.map((total, i) => {
-    const d = new Date(2026, 0, 10 + i * 11)
-    return { date: d.toISOString().slice(0, 10), total, max: 33, type: "ЕГЭ Профиль", title: `Вариант ${i + 1}` }
-  })
-  const student = { name: "Аня", goal: "ЕГЭ", targetScore: 28,
-    examDate: new Date(Date.now() + 70 * 86400000).toISOString().slice(0, 10) }
-  return (
-    <div className="min-h-screen p-6 flex justify-center">
-      <div className="w-full max-w-4xl">
-        <ExamProgress student={student} stats={{ hasData: true, isExam: true, rows }} />
-      </div>
-    </div>
-  )
-}
-
 function Landing({ onStart }) {
-  if (window.location.search.includes("chart20")) return <ProgressDemo20 />
-
   // Роль берём сперва из ссылки (?for=parent — чтобы можно было дать родителю
   // прямую ссылку), затем из памяти прошлого захода.
   const [role, setRole] = useState(() => {

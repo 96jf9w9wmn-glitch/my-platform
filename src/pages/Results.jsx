@@ -741,7 +741,7 @@ function StudentDetail({ student, stats, hw, tutorId }) {
 // ЧИСЛА НЕ ПРИУКРАШИВАЮТСЯ. Прогноз — продолжение уже наблюдаемой линии, и
 // когда данных мало, вместо числа стоит объяснение, почему его нет: «примерно
 // 80» по двум работам родитель прочтёт как обещание.
-export function ExamProgress({ student, stats }) {
+function ExamProgress({ student, stats }) {
   const f = useMemo(() => examForecast(stats.rows, {
     examType: stats.rows[stats.rows.length - 1]?.type || student.goal,
     target: student.targetScore || 0,
