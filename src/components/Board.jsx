@@ -63,6 +63,7 @@ const SMART_KEY = "board-smart-draw"
 const VIEW_KEY = "board-view"       // localStorage: последний обзор по каждой доске
 const FRESH_STROKES = 24            // «последние записи» — примерно последняя строка-две
 const OFFSCREEN_HINT_MS = 8000      // столько висит подсказка «пишут за краем экрана»
+const TEXT_DRAFT_RATE = 120         // как часто набираемая надпись уходит собеседнику, мс
 
 const CURSOR_COLORS = ["#007AFF", "#34C759", "#FF9500", "#AF52DE", "#FF3B30"]
 function colorFor(id) {
@@ -88,6 +89,10 @@ const CURSOR_HOLD = 3000, CURSOR_FADE = 400
 // линию, а обзор — только когда за нами кто-то следит).
 const POINTER_RATE = 40 // не чаще 1 посылки в 40 мс (25/сек)
 const CURSORS_KEY = "board-cursors"   // личная настройка «показывать курсоры собеседников»
+// Цвет — единственная настройка пера, которая переживает вход-выход: репетитор
+// весь год пишет одним и тем же, и заново искать его в палитре каждое занятие
+// незачем. Толщина, наоборот, намеренно сбрасывается (см. WIDTH_DEFAULT).
+const COLOR_KEY = "board-color"
 const VIEW_RATE = 60    // не чаще 1 посылки своего обзора в 60 мс: за ним следят глазами
 // Прилипание при перетаскивании: допуск в ЭКРАННЫХ пикселях (в мировые переводим
 // делением на масштаб — иначе на приближённой доске объект липнул бы за версту).
@@ -468,7 +473,9 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
   const [tool, setTool] = useState("pen")   // pen | line | rect | eraser | hand
   const [panKey, setPanKey] = useState(false)   // зажат пробел → полотно можно тащить
   const [panDrag, setPanDrag] = useState(false) // полотно тащат прямо сейчас
-  const [color, setColor] = useState("ink")
+  const [color, setColor] = useState(() => {
+    try { return localStorage.getItem(COLOR_KEY) || "ink" } catch { return "ink" }
+  })
   // Толщина при каждом входе на доску — самая тонкая: ею пишут формулы и мелкий
   // разбор, а средняя годится разве что для выделения. Выбранная толщина живёт
   // до закрытия доски и намеренно не запоминается между занятиями.
@@ -703,6 +710,9 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
   const imgCanvasRef = useRef(null)   // холст картинок и листов с заданиями — между фоном и чернилами
   const sceneCanvas = useRef(null)    // закадровый слой: завершённые штрихи (без картинок)
   const sceneValid = useRef(false)    // слой актуален (иначе перерисовать)
+  const textDraftAt = useRef(0)       // когда набираемая надпись уходила собеседнику
+  const textDraftTimer = useRef(null)
+  const textDraftSent = useRef(false) // черновик надписи сейчас висит у собеседника
   const dirty = useRef(false)
   const rafId = useRef(0)
   const actions = useRef({})
@@ -985,6 +995,7 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
       const editId = editPos.current?.id
       for (const st of strokes.current.values()) {
         if (editId && st.id === editId) continue
+        if (live.current.has(st.id)) continue   // собеседник правит эту надпись прямо сейчас
         drawStroke(st.tool === "image" && mx ? mx : sx, st)
       }
       sceneValid.current = true
@@ -1418,7 +1429,14 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
       // целиком событием draw, и оно всё вылечит.
       .on("broadcast", { event: "drawp" }, ({ payload }) => {
         const { from, ...st } = payload
-        if (!from) { live.current.set(payload.id, st); scheduleLive(); return }
+        if (!from) {
+          // Черновик правки идёт под id уже готового штриха: пока он в «работе»,
+          // сцену надо пересобрать без оригинала, иначе старая надпись просвечивает.
+          const over = strokes.current.has(payload.id)
+          live.current.set(payload.id, st)
+          if (over) scheduleDraw(); else scheduleLive()
+          return
+        }
         const cur = live.current.get(payload.id)
         if (!cur || from > cur.points.length) return  // пробел — ждём финальный draw
         const tail = payload.points.slice(cur.points.length - from)
@@ -2177,6 +2195,19 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
     scheduleDraw(); scheduleSave()
   }
 
+  // ⌘A — выделить всё написанное. Рамкой этого не сделать: доска бесконечная,
+  // и написанное на предыдущем экране остаётся за краем видимой области.
+  function selectAll() {
+    actions.current.commitText?.()   // набираемое становится штрихом, иначе выделение его не увидит
+    if (!strokes.current.size) return
+    // Порядок важен: сначала берём курсор (сброс выделения при смене инструмента
+    // на «курсор» не срабатывает), потом выделяем.
+    setTool("cursor")
+    selection.current = new Set(strokes.current.keys())
+    applySelCount(selection.current.size)
+    scheduleDraw()
+  }
+
   // Рассылка изменённых штрихов после трансформации/правки + сохранение.
   // before — снимок из snapshotSelection(): без него правка не попадёт в историю.
   function commitSelection(before = null) {
@@ -2683,7 +2714,9 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
   // холсту. Поэтому же поле ввода ВСЕГДА живёт в разметке — создать его и
   // сфокусировать одним жестом React не успевает.
   function openTextEditor(ed) {
-    const next = { ...ed, seq: ++textSeq.current }
+    // draftId — id будущего штриха. Он нужен ДО окончания набора: черновик
+    // уходит собеседнику под ним же, и финальный штрих просто заменяет черновик.
+    const next = { ...ed, seq: ++textSeq.current, draftId: ed.id || makeId(userId) }
     editPos.current = next
     const ta = editRef.current
     if (ta) {
@@ -2716,12 +2749,56 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
     openTextEditor({ id: null, x: p[0], y: p[1] - m.lh / 2, size: textSize, color, angle: 0, value: "",
       bold: textBold, italic: textItalic })
   }
+  // Набираемую надпись собеседник видит сразу, буква за буквой: на занятии
+  // написанное читают по ходу, а не после того, как автор закончил и вышел из
+  // поля. Черновик идёт «штрихом в работе» (drawp, from 0 — полная замена), в
+  // сцену собеседника он не попадает и его сохранение не трогает.
+  function textDraftStroke() {
+    const ed = editPos.current
+    if (!ed) return null
+    const raw = editRef.current ? editRef.current.value : ed.value
+    const text = raw.replace(/[ \t]+$/gm, "").replace(/\n+$/, "")
+    if (!text.trim()) return null
+    const st = { id: ed.draftId, author: userId, tool: "text", color: ed.color, text, size: ed.size,
+      points: textBoxPoints(ed.x, ed.y, text, ed.size, ed) }
+    if (ed.angle) st.angle = ed.angle
+    if (ed.bold) st.bold = 1
+    if (ed.italic) st.italic = 1
+    return st
+  }
+  function sendTextDraft() {
+    if (textDraftTimer.current) { clearTimeout(textDraftTimer.current); textDraftTimer.current = null }
+    const ch = channelRef.current
+    const ed = editPos.current
+    if (!ch || !ed) return
+    textDraftAt.current = performance.now()
+    const st = textDraftStroke()
+    if (!st) {
+      // Поле опустело — черновик надо убрать, иначе стёртое висело бы у
+      // собеседника до конца набора.
+      if (textDraftSent.current) { textDraftSent.current = false; ch.send({ type: "broadcast", event: "remove", payload: { id: ed.draftId } }) }
+      return
+    }
+    textDraftSent.current = true
+    ch.send({ type: "broadcast", event: "drawp", payload: { ...st, from: 0 } })
+  }
+  // Не чаще TEXT_DRAFT_RATE, но последнее нажатие уходит обязательно.
+  function scheduleTextDraft() {
+    if (!editPos.current) return
+    const wait = TEXT_DRAFT_RATE - (performance.now() - textDraftAt.current)
+    if (wait <= 0) { sendTextDraft(); return }
+    if (!textDraftTimer.current) textDraftTimer.current = setTimeout(sendTextDraft, wait)
+  }
+
   // Набор окончен. Пустая надпись объекта не заводит, а стёртая — исчезает с доски:
   // прозрачный прямоугольник, который нельзя увидеть и можно случайно выделить,
   // хуже, чем его отсутствие.
   function commitTextEdit() {
     const ed = editPos.current
     if (!ed) return
+    if (textDraftTimer.current) { clearTimeout(textDraftTimer.current); textDraftTimer.current = null }
+    const draftSent = textDraftSent.current
+    textDraftSent.current = false
     const raw = editRef.current ? editRef.current.value : ed.value
     // Поле остаётся в разметке, поэтому фокус надо снять руками: иначе он висит
     // в невидимом поле и глушит горячие клавиши доски (P, E, ⌘Z считают, что печатают).
@@ -2731,6 +2808,9 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
     const text = raw.replace(/[ \t]+$/gm, "").replace(/\n+$/, "")
     const cur = ed.id ? strokes.current.get(ed.id) : null
     if (!text.trim()) {
+      // Черновик у собеседника надо снять и тогда, когда своего штриха не было:
+      // иначе набранное и стёртое осталось бы висеть на его доске.
+      if (draftSent && !cur) channelRef.current?.send({ type: "broadcast", event: "remove", payload: { id: ed.draftId } })
       if (cur) {
         strokes.current.delete(ed.id)
         selection.current.delete(ed.id)
@@ -2754,7 +2834,7 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
       channelRef.current?.send({ type: "broadcast", event: "draw", payload: cur })
       pushHistory([{ id: cur.id, before, after: cloneStroke(cur) }])
     } else {
-      const id = makeId(userId)
+      const id = ed.draftId || makeId(userId)
       const st = { id, author: userId, tool: "text", color: ed.color, text, size: ed.size, points: textBoxPoints(ed.x, ed.y, text, ed.size, ed) }
       if (ed.angle) st.angle = ed.angle
       if (ed.bold) st.bold = 1
@@ -2953,7 +3033,12 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
     } catch { /* приватный режим — обзор просто не запомнится */ }
   }
 
-  useEffect(() => { actions.current.undo = undo; actions.current.redo = redo; actions.current.del = deleteSelection; actions.current.paste = addImageAt; actions.current.commitText = commitTextEdit })
+  useEffect(() => { actions.current.undo = undo; actions.current.redo = redo; actions.current.del = deleteSelection; actions.current.selectAll = selectAll; actions.current.paste = addImageAt; actions.current.commitText = commitTextEdit })
+
+  // Выбранный цвет держится между занятиями (см. COLOR_KEY)
+  useEffect(() => {
+    try { localStorage.setItem(COLOR_KEY, color) } catch { /* приватный режим — цвет просто не запомнится */ }
+  }, [color])
 
   // Взяли другой инструмент — набранное сохраняем, а не теряем
   useEffect(() => { if (tool !== "text") actions.current.commitText?.() }, [tool])
@@ -2967,6 +3052,7 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
     setEditText((ed) => (ed && (ed.color !== color || ed.size !== textSize || ed.bold !== textBold || ed.italic !== textItalic)
       ? { ...ed, color, size: textSize, bold: textBold, italic: textItalic } : ed))
     scheduleLive()
+    scheduleTextDraft()   // собеседник видит и смену цвета/кегля, а не только буквы
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [color, textSize, textBold, textItalic, scheduleLive])
 
@@ -3102,7 +3188,11 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
   }, [tool, scheduleDraw])
   useEffect(() => {
     // По e.code (физическая клавиша) — иначе на русской раскладке e.key = «з/у/…» и не совпадает
-    const TOOL_CODES = { KeyP: "pen", KeyT: "text", KeyE: "eraser", KeyL: "line", KeyR: "rect", KeyH: "hand", KeyV: "cursor" }
+    const TOOL_CODES = { KeyP: "pen", KeyT: "text", KeyE: "eraser", KeyL: "line", KeyA: "arrow", KeyR: "rect", KeyH: "hand", KeyV: "cursor" }
+    // Запасной путь по символу: на части клавиатур e.code приходит пустым.
+    // Русские буквы — те же физические клавиши.
+    const TOOL_KEYS = { p: "pen", з: "pen", t: "text", е: "text", e: "eraser", у: "eraser",
+      l: "line", д: "line", a: "arrow", ф: "arrow", r: "rect", к: "rect", h: "hand", р: "hand", v: "cursor", м: "cursor" }
     // Типы input, в которые не печатают: они не должны глушить горячие клавиши доски.
     const NON_TEXT_INPUTS = new Set(["color", "file", "range", "checkbox", "radio", "button", "submit", "reset", "image"])
     function onKeyDown(e) {
@@ -3137,6 +3227,14 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
         const k = (e.key || "").toLowerCase()
         const isZ = e.code === "KeyZ" || k === "z" || k === "я"
         const isY = e.code === "KeyY" || k === "y" || k === "н"
+        const isA = e.code === "KeyA" || k === "a" || k === "ф"
+        if (isA && !inField) {
+          // Иначе браузер выделит текст всей страницы — панель, подписи участников.
+          e.preventDefault()
+          e.stopPropagation()
+          actions.current.selectAll()
+          return
+        }
         if ((isZ || isY) && !inField) {
           e.preventDefault()
           e.stopPropagation()
@@ -3148,8 +3246,12 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
       // Горячие клавиши инструментов (без модификаторов, не в поле ввода)
       if (inField) return
       if (e.code === "Escape") { setTool("cursor"); closeMenuRef.current(); return }
-      if (e.code === "Delete" || e.code === "Backspace") { e.preventDefault(); actions.current.del(); return }
-      const t = TOOL_CODES[e.code]
+      // По e.code И по e.key: на части клавиатур и в некоторых средах code
+      // приходит пустым, и удаление тогда молча не работало.
+      if (e.code === "Delete" || e.code === "Backspace" || e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault(); actions.current.del(); return
+      }
+      const t = TOOL_CODES[e.code] || (e.code ? null : TOOL_KEYS[(e.key || "").toLowerCase()])
       if (t) { setTool(t); if (SHAPE_TOOLS.has(t)) setShapeTool(t) }
     }
     function onKeyUp(e) { if (e.code === "Space") { spaceHeld.current = false; setPanKey(false) } }
@@ -3178,7 +3280,7 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
     { id: "circle", icon: "circle", label: "Круг" },
     { id: "triangle", icon: "triangle", label: "Треугольник" },
     { id: "diamond", icon: "diamond", label: "Ромб" },
-    { id: "arrow", icon: "arrow", label: "Стрелка" },
+    { id: "arrow", icon: "arrow", label: "Стрелка", key: "A" },
   ]
   const SHAPES_3D = [
     { id: "cube", icon: "cube", label: "Куб" },
@@ -3231,7 +3333,7 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
             {/* Подписи не нужны: фигуру видно по значку, а название
                 остаётся во всплывающей подсказке. */}
             {list.map((sh) => (
-              <button key={sh.id} onClick={() => pickShape(sh.id)} title={sh.label} aria-label={sh.label}
+              <button key={sh.id} onClick={() => pickShape(sh.id)} title={sh.key ? `${sh.label} (${sh.key})` : sh.label} aria-label={sh.label}
                 className={`press-tap w-10 h-10 rounded-lg flex items-center justify-center ${tool === sh.id ? "bg-blue-500 text-white" : "board-hover"}`}
                 style={tool === sh.id ? undefined : idleStyle}>
                 <Icon name={sh.icon} size={20} />
@@ -3506,7 +3608,7 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
             tabIndex={editText ? 0 : -1}
             aria-hidden={!editText}
             aria-label="Надпись на доске"
-            onInput={() => { layoutTextEditor(); scheduleLive() }}
+            onInput={() => { layoutTextEditor(); scheduleLive(); scheduleTextDraft() }}
             onPointerDown={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
               // Esc и ⌘↵ заканчивают набор. Остальное — обычный ввод: Enter даёт
