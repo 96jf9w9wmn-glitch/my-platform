@@ -111,6 +111,15 @@ function GroupModal({ group = null, students = [], onSave, onDelete, onClose }) 
     close()
   }
 
+  // Подсказка в поле цены — то, сколько участники платят сейчас: пустое поле
+  // означает ровно её, поэтому в подсказке стоит число, а не пояснение.
+  const memberPrices = memberList.map((s) => Number(s?.lessonPrice) || 0).filter((v) => v > 0)
+  const priceHint = memberPrices.length
+    ? (Math.min(...memberPrices) === Math.max(...memberPrices)
+        ? fmtNum(memberPrices[0])
+        : `${fmtNum(Math.min(...memberPrices))} — ${fmtNum(Math.max(...memberPrices))}`)
+    : fmtNum(2000)
+
   // Расчётная стоимость часа группы: за то же время репетитор получает сумму со
   // всех участников. Ради этого группы и заводят, поэтому число видно сразу.
   const perLesson = memberList.reduce(
@@ -260,15 +269,12 @@ function GroupModal({ group = null, students = [], onSave, onDelete, onClose }) 
 
           <div>
             <label className="text-sm text-gray-500 mb-1 block">Цена за занятие с участника</label>
-            <input value={price} onChange={(e) => setPrice(e.target.value.replace(/[^\d]/g, ""))}
-              inputMode="numeric" className="input-glass" />
-            {/* Поле пустое — платят как обычно. Об этом надо сказать прямо:
-                иначе непонятно, бесплатно ли занятие в группе. */}
-            <p className="text-xs text-gray-400 mt-1.5">
-              {Number(price) > 0
-                ? "Эта цена важнее цены в карточке — по ней считаются долг и квитанции."
-                : "Пусто — каждый платит столько же, сколько за занятие один на один."}
-            </p>
+            <div className="relative">
+              <input value={price ? fmtNum(price) : ""}
+                onChange={(e) => setPrice(e.target.value.replace(/[^\d]/g, ""))}
+                inputMode="numeric" placeholder={priceHint} className="input-glass pr-8" />
+              <span className="absolute right-3 top-2.5 text-sm text-gray-400">₽</span>
+            </div>
           </div>
 
           {members.size > 1 && perLesson > 0 && (
