@@ -409,8 +409,12 @@ function Students({ students, loaded = true, setStudents, tutorId, tutorCode = "
       className={"p-4 md:p-6" + (returning ? " view-back" : "")}
       onAnimationEnd={(e) => { if (e.animationName === "view-back") setReturning(false) }}
     >
-      <div className="flex justify-between items-center mb-4">
-        <div>
+      {/* На телефоне заголовок, код и кнопка в одну строку не помещались: код
+          прижимался вплотную к слову «Ученики», а кнопка ломалась на две строки.
+          Теперь строка переносится целиком (код и кнопка уезжают под заголовок),
+          а сама кнопка не рвётся — на узком экране у неё короткая подпись. */}
+      <div className="flex flex-wrap justify-between items-center gap-x-3 gap-y-2 mb-4">
+        <div className="min-w-0">
           <h1 className="text-xl font-medium page-title">Ученики</h1>
           <p className="text-xs page-subtitle mt-0.5">{students.length} {plural(students.length, "ученик", "ученика", "учеников")}</p>
         </div>
@@ -425,10 +429,10 @@ function Students({ students, loaded = true, setStudents, tutorId, tutorCode = "
           <button
             onClick={() => (canAddStudent ? createInvite() : openPlans())}
             disabled={inviting}
-            className="btn-primary px-3 py-2 text-sm disabled:opacity-50"
+            className="btn-primary px-3 py-2 text-sm whitespace-nowrap disabled:opacity-50"
             title={canAddStudent ? undefined : `На тарифе «${plan.name}» доступно ${studentsLimit} учеников`}
           >
-            {inviting ? "Готовим…" : "Пригласить ученика"}
+            {inviting ? "Готовим…" : <>Пригласить<span className="hidden sm:inline"> ученика</span></>}
           </button>
         </div>
       </div>
