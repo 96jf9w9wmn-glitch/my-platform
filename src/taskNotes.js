@@ -113,12 +113,18 @@ export async function deleteTaskNoteFiles(urls) {
 export async function loadTaskOrder(tutorId) {
   if (!tutorId) return {}
   const { data, error } = await supabase.from("tutors").select("task_order").eq("id", tutorId).maybeSingle()
-  if (error || !data) return {}
+  if (error) return { error: error.message }
+  if (!data) return {}
   return data.task_order || {}
 }
 
+// Порядок всех предметов лежит одним объектом, поэтому запись обязана начинаться
+// с чтения: не прочитав, мы затрём порядок остальных предметов. Отказ чтения
+// (так уже было — у колонки пропал грант, см. supabase/task_notes.sql) поэтому
+// прерывает сохранение, а не молча пишет объект из одного предмета.
 export async function saveTaskOrder(tutorId, examType, numbers) {
   const current = await loadTaskOrder(tutorId)
+  if (current.error) return { error: current.error }
   const next = { ...current, [examType]: numbers }
   const { error } = await supabase.from("tutors").update({ task_order: next }).eq("id", tutorId)
   return error ? { error: error.message } : {}

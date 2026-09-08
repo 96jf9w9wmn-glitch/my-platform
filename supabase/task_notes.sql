@@ -44,4 +44,10 @@ create policy task_notes_own on public.task_notes for all to authenticated
 alter table public.tutors
   add column if not exists task_order jsonb not null default '{}'::jsonb;
 
+-- Грант на колонку обязателен: select на `tutors` снят целиком в
+-- rls_step3_policies.sql и выдан поимённо, поэтому новая колонка без гранта
+-- роняет 42501 не только на самой себе, но и на `select("*")` профиля —
+-- кабинет остаётся вовсе без имени, тарифа и кода для учеников.
+grant select (task_order), update (task_order) on public.tutors to authenticated;
+
 notify pgrst, 'reload schema';
