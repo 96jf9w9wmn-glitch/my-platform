@@ -818,11 +818,16 @@ function App() {
       const minDelay = new Promise(r => setTimeout(r, 600))
       if (!session) { restoredIdRef.current = null; await minDelay; setLoadingAuth(false); return }
       if (restoredIdRef.current === session.user.id) { setLoadingAuth(false); return }
+      // Отметку ставим ДО запроса, а не после: события приходят пачкой (в замере
+      // боевого дня — четыре штуки в одну секунду при возврате на вкладку), и
+      // проверка «после await» пропустила бы все четыре разом. Профиль не
+      // прочитался — отметку снимаем, чтобы следующая попытка не была пустой.
+      restoredIdRef.current = session.user.id
       const [tutor] = await Promise.all([
         loadTutorProfile(session.user.id),
         minDelay,
       ])
-      restoredIdRef.current = session.user.id
+      if (!tutor) restoredIdRef.current = null
       // Сессия уже подтверждена GoTrue, поэтому в кабинет пускаем даже если
       // профиль не прочитался: раньше любая ошибка этого запроса выглядела как
       // выход из аккаунта при перезагрузке страницы, хотя вход был живой. Так

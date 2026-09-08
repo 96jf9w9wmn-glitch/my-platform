@@ -11,7 +11,7 @@ import Collapse from "../components/Collapse"
 import Reveal from "../components/Reveal"
 import AutoHeight from "../components/AutoHeight"
 import FormulaBackdrop from "../components/FormulaBackdrop"
-import { parseLocalDate, renderHomeworkMath, plainTaskMath, superscriptPowers, parseHomeworkTasks, homeworkTaskItems, homeworkTestScore, plural, hasAttachment, getInitials, answersEqual } from "../utils"
+import { parseLocalDate, renderHomeworkMath, plainTaskMath, superscriptPowers, parseHomeworkTasks, homeworkTaskItems, homeworkTestScore, plural, hasAttachment, getInitials, answersEqual, oneLine, isSimpleAnswer } from "../utils"
 import { usePlan } from "../subscription"
 import { homeworkRoom } from "../boardRoom"
 import { PlanHint, PlanLock } from "../components/PlanLock"
@@ -234,18 +234,6 @@ function BankNumberRow({ info, pick, open, onCount, onTheme, onOpen }) {
     </div>
   )
 }
-
-// Условие в одну строку: описание ДЗ разбирается по строкам («1. …», «2. …»),
-// и перенос внутри задания превратил бы его в два.
-const oneLine = (s) => String(s || "").replace(/\s*\n+\s*/g, " ").trim()
-
-// Ответ годится для автопроверки, если ученик способен набрать его с
-// клавиатуры. Пробел этому не мешает: «0; 4» и «нет корней» answersEqual()
-// сверяет как обычные ответы (пробелы при сравнении убираются). Не годятся
-// сырой LaTeX от модели (\frac{1}{3} ученик не наберёт) и развёрнутый ответ —
-// у заданий части 2 в «ответе» лежит целое доказательство, его не сверить.
-const ANSWER_MAX = 40
-const isSimpleAnswer = (a) => a.length > 0 && a.length <= ANSWER_MAX && !/[\n\\{}]/.test(a)
 
 // Модель пишет математику в LaTeX — и норовит писать его же в ответе, хотя
 // ответ ученик НАБИРАЕТ с клавиатуры. Переводим то, что переводится

@@ -670,7 +670,7 @@ function StudentDetail({ student, stats, hw }) {
       {/* Общий балл говорит «72%», а репетитору нужно знать, КАКОЙ типаж
           проседает. Считается и по вариантам, и по работам из банка сразу,
           поэтому блок общий для обеих дорожек. */}
-      <WeakTypes studentId={student.id} studentName={student.name} />
+      <WeakTypes student={student} />
     </div>
   )
 }
@@ -791,7 +791,7 @@ function StudentCard({ student, stats, hw, open, onToggle }) {
                   ? "Баллы появятся, как только ученик решит вариант и вы его проверите — раздел «Варианты», а решённые домашние работы попадут сюда отдельной дорожкой."
                   : "Ученик готовится не к экзамену, поэтому баллов за варианты нет. Здесь появятся его домашние работы и типы заданий, в которых он ошибается."}
               </div>
-              <WeakTypes studentId={student.id} studentName={student.name} />
+              <WeakTypes student={student} />
             </div>
           )}
       </Collapse>

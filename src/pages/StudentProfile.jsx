@@ -589,7 +589,7 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
           ряда: пустой ячейкой в сетке они оставляли бы дыру, а сами по себе
           просто не появляются, пока нечего показывать. */}
       <div className="flex flex-col gap-4 mt-4">
-        <WeakTypes studentId={student.id} studentName={student.name} />
+        <WeakTypes student={student} />
 
         {/* Доски прошлых занятий — блока нет, пока ни одной не сохранено */}
         {allows("boardHistory")

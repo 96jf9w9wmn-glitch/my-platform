@@ -5,7 +5,7 @@
 // Homework.jsx подгружает его динамически и только когда репетитор открыл эту
 // вкладку — иначе бы вес генераторов попал в основной бандл кабинета.
 import { EXAM_GROUPS, numbersWithGen, subjectLabel, genTask, genThemeTask } from "./examSubjects"
-import { taskThemes } from "./taskGenerators"
+import { taskThemes, generateTask } from "./taskGenerators"
 import { numberTitle } from "./numberTitles"
 import { hasModules, moduleScenarios, buildModuleTasks } from "./taskModules"
 
@@ -99,6 +99,31 @@ export function pickTask(examType, number, themes, seen) {
     return t
   }
   return null
+}
+
+// Клоны ОДНОГО типажа: «ещё восемь таких же, числа новые». Так собирается
+// тренировочная работа по слабому месту ученика («Где ученик ошибается»).
+//
+// genKey бывает пустым: у части номеров генератор не заведён в темы и ключ не
+// проставляется. Тогда задания берутся по самому номеру — типаж выйдет
+// случайным, но это лучше неработающей строки.
+//
+// Повторов не будет: у части типажей пространство параметров узкое (ЕГЭ
+// Профиль №5 «lamps» даёт всего пять разных условий), и две одинаковые задачи
+// в работе читаются как ошибка платформы. Разных меньше заказанного — отдаём
+// сколько есть, а не добираем дублями.
+export function drillTasks({ examType, number, genKey, size }) {
+  const tasks = []
+  const seen = new Set()
+  for (let i = 0; i < size * 4 && tasks.length < size; i++) {
+    const t = generateTask(examType, number, genKey)
+    if (!t || !taskText(t)) continue
+    const key = taskKey(t)
+    if (seen.has(key)) continue
+    seen.add(key)
+    tasks.push({ ...t, number })
+  }
+  return tasks
 }
 
 // Задания по выбору репетитора: picks — [{ number, themes, count }], сколько
