@@ -92,21 +92,16 @@ function TaskMap({ student, tutorId, examType: hinted }) {
     return out
   }, [rows, examType])
 
-  // Номера карты: всё, по чему есть ответы, плюс всё, к чему написана
-  // методичка. Пустых номеров не показываем — карта из тридцати серых чипов
-  // ничего не сообщает.
+  // Карта — это ВЕСЬ экзамен, а не только то, что ученик успел порешать. Номер,
+  // по которому ответов ещё нет, — такой же факт, как и провальный: до него
+  // просто не дошли, и на карте это должно быть видно. Плюс номера, по которым
+  // есть ответы или написана методичка, — на случай, если состав экзамена в
+  // шкале не полон (старые выданные варианты, чужая нумерация).
   const numbers = useMemo(() => {
-    const all = new Set([...Object.keys(byNumber), ...Object.keys(notes)].map(Number).filter(Boolean))
-    return orderNumbers([...all], order)
-  }, [byNumber, notes, order])
-
-  // Все номера экзамена — только для пустой карты. В обычной их показывать
-  // нельзя: три десятка серых чипов, по которым ничего не известно, ничего и
-  // не сообщают.
-  const composition = useMemo(() => {
-    const nums = Object.keys(TASK_MAX[examType] || {}).map(Number).filter(Boolean)
-    return nums.sort((a, b) => a - b)
-  }, [examType])
+    const composition = Object.keys(TASK_MAX[examType] || {}).map(Number).filter(Boolean)
+    const known = [...Object.keys(byNumber), ...Object.keys(notes)].map(Number).filter(Boolean)
+    return orderNumbers([...new Set([...composition, ...known])], order)
+  }, [byNumber, notes, order, examType])
 
   function move(number, dir) {
     const next = [...numbers]
@@ -121,43 +116,30 @@ function TaskMap({ student, tutorId, examType: hinted }) {
   }
 
   if (rows === null) return null
-  // Ученик ещё ничего не решал и методичек нет. Раньше блок в этом случае
-  // просто исчезал — вместе с единственной точкой входа в методички: написать
-  // их было негде, пока ученик не ответит хотя бы на три задания. Показываем
-  // выбор номера: методичка пишется под себя, а не под чужие ответы.
-  const empty = !numbers.length
-  // Предмет не определился (ученик не решал и вариантов не выдавали) — писать
-  // методички не к чему: номера у каждого экзамена свои.
-  if (empty && !composition.length) return null
+  // Предмет не определился (ученик не решал и вариантов не выдавали) — карту
+  // строить не из чего: номера у каждого экзамена свои.
+  if (!numbers.length) return null
+  // Ответов нет ни по одному номеру: карта работает как список заданий, к
+  // которым пишутся методички. Говорим об этом прямо, иначе пустые чипы
+  // читаются как «ученик всё провалил».
+  const noAnswers = !Object.keys(byNumber).length
 
   return (
     <div className="glass-sm p-3.5">
       <div className="flex items-baseline justify-between gap-3 mb-0.5">
         <span className="text-sm font-medium">Карта заданий</span>
-        {!empty && <button onClick={() => setArranging((v) => !v)}
+        <button onClick={() => setArranging((v) => !v)}
           className="press-fill text-[11px] px-2 py-1 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-500">
           {arranging ? "Готово" : "Свой порядок"}
-        </button>}
+        </button>
       </div>
       <p className="text-xs text-gray-400 mb-3">
-        {empty
-          ? "Ученик ещё ничего не решал — процентов пока нет. Методичку к заданию можно написать уже сейчас: она ваша, а не его."
-          : arranging
-            ? "Стрелками поставьте номера в том порядке, в каком разбираете их сами."
-            : "Процент — по первым ответам. Значок книжки открывает вашу методичку к заданию."}
+        {arranging
+          ? "Стрелками поставьте номера в том порядке, в каком разбираете их сами."
+          : noAnswers
+            ? "Ученик ещё ничего не решал — процентов пока нет. Методичку к заданию можно написать уже сейчас: она ваша, а не его."
+            : "Процент — по первым ответам; без процента — задание ещё не решали. Значок книжки открывает вашу методичку."}
       </p>
-
-      {empty && (
-        <div className="flex flex-wrap gap-1.5">
-          {composition.map((n) => (
-            <button key={n} onClick={() => setOpenNote({ number: n, note: null })}
-              title={`Написать методичку к заданию ${n}`}
-              className="press-fill inline-flex items-center gap-1.5 rounded-xl ring-1 ring-gray-200 dark:ring-white/12 px-2.5 py-1.5 text-xs text-gray-500">
-              №{n}<Icon name="book" size={11} className="text-gray-300 dark:text-white/25" />
-            </button>
-          ))}
-        </div>
-      )}
 
       <div className="flex flex-wrap gap-1.5">
         {numbers.map((n) => {

@@ -6,23 +6,21 @@ import Reveal from "./Reveal"
 import Collapse from "./Collapse"
 import SegmentSwitch from "./SegmentSwitch"
 import WeeksPicker from "./WeeksPicker"
+import { TimeField, DurationField } from "./TimeFields"
 import PhoneInput, { isValidPhoneNumber } from "react-phone-number-input"
 import "react-phone-number-input/style.css"
 import { plural, parseLocalDate, formatPhone, isLessonPast } from "../utils"
+import { WEEK_DAYS, formatDate, byDateTime, uniqueLessons, generateRecurring, daysFromLessons, weeksAhead, scheduleString } from "../recurring"
 import { tutorLessons, findClashes, clashMessage, clashLine } from "../lessonConflict"
 import { supabase } from "../supabase"
 import { fmtNum } from "../num"
-
-const DURATIONS = [30, 45, 60, 90, 120]
 
 function generateParentCode() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
   return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("")
 }
 const MONTH_NAMES = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"]
-const DAY_NAMES_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
-const WEEK_DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
-const DAY_INDEX = { "Пн": 1, "Вт": 2, "Ср": 3, "Чт": 4, "Пт": 5, "Сб": 6, "Вс": 0 }
+const DAY_NAMES_SHORT = WEEK_DAYS
 // Подсказка — по имени пользователя, а не по полному адресу: его и вписывают
 // на самом деле, а ссылку достраивает contactHref() в utils.js.
 const MESSENGERS = [
@@ -43,75 +41,12 @@ function getDaysInMonth(year, month) {
   return days
 }
 
-function formatDate(date) {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, "0")
-  const d = String(date.getDate()).padStart(2, "0")
-  return `${y}-${m}-${d}`
-}
-
-function byDateTime(a, b) {
-  return a.date.localeCompare(b.date) || (a.time || "").localeCompare(b.time || "")
-}
-
-function uniqueLessons(list) {
-  return list.filter((l, i, arr) => arr.findIndex((x) => x.date === l.date && x.time === l.time) === i)
-}
-
-// Расписание для правки собираем из САМИХ будущих занятий, а не из строки
-// `schedule`: строка — витрина, а занятия — факт, и после переносов эти двое
-// расходятся. Открыв окно, репетитор должен увидеть то, что стоит в календаре.
-function daysFromLessons(lessons) {
-  const byDay = new Map()
-  for (const l of lessons) {
-    const name = WEEK_DAYS[(parseLocalDate(l.date).getDay() + 6) % 7]
-    if (!byDay.has(name)) byDay.set(name, { name, time: l.time || "09:00", duration: l.duration || 60 })
-  }
-  return WEEK_DAYS.filter((d) => byDay.has(d)).map((d) => byDay.get(d))
-}
-
-// На сколько недель вперёд расписание расставлено сейчас: чтобы окно, открытое
-// и сохранённое без правок, вернуло то же расписание, а не обрезало его.
-function weeksAhead(lessons) {
-  if (!lessons.length) return 4
-  const last = parseLocalDate(lessons[lessons.length - 1].date)
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const weeks = Math.ceil((last - today) / (7 * 24 * 3600 * 1000))
-  return Math.min(52, Math.max(1, weeks))
-}
-
 function parseScheduleToDays(schedule) {
   if (!schedule) return []
   return schedule.split(", ").map((p) => {
     const match = p.match(/^([А-Яа-я]{2})\s+(\d{2}:\d{2})/)
     return match ? { name: match[1], time: match[2] } : null
   }).filter(Boolean)
-}
-
-// Время и длительность — нативные поля вместо самодельной крутилки ▲▼: та
-// занимала три строки на КАЖДОЕ занятие (часы, минуты, пять кнопок длительности),
-// и расписание из пяти дат превращалось в экран прокрутки. Минуты крутились
-// шагом в пять, поэтому «17:20» набиралось четырьмя нажатиями.
-function TimeField({ value, onChange }) {
-  return (
-    <input
-      type="time"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="input-glass !w-auto flex-shrink-0 px-2.5 py-1.5 text-sm tabular-nums" />
-  )
-}
-
-function DurationField({ value, onChange }) {
-  return (
-    <select
-      value={value}
-      onChange={(e) => onChange(Number(e.target.value))}
-      className="input-glass !w-auto flex-shrink-0 px-2.5 py-1.5 text-sm">
-      {DURATIONS.map((d) => <option key={d} value={d}>{d} мин</option>)}
-    </select>
-  )
 }
 
 function MiniCalendar({ lessons, onToggleDate }) {
@@ -288,25 +223,16 @@ function StudentFormModal({ student, students = [], onClose, onSubmit, initialNa
   }
 
   function generateRecurringLessons() {
-    if (!recurringStartDate || recurringDays.length === 0) return []
-    const result = []
-    const start = parseLocalDate(recurringStartDate)
-    for (let week = 0; week < recurringWeeks; week++) {
-      for (const day of recurringDays) {
-        const base = new Date(start)
-        base.setDate(start.getDate() + week * 7)
-        const diff = (DAY_INDEX[day.name] - base.getDay() + 7) % 7
-        const lessonDate = new Date(base)
-        lessonDate.setDate(base.getDate() + diff)
-        result.push({ date: formatDate(lessonDate), time: day.time, duration: day.duration || recurringDuration })
-      }
-    }
+    const result = generateRecurring({
+      startDate: recurringStartDate, days: recurringDays,
+      weeks: recurringWeeks, duration: recurringDuration,
+    })
     // Пока срок не трогали, расписание не удлиняется само: зайти поправить имя
     // и молча получить лишние занятия за горизонтом — не то, о чём просили.
     const horizon = editing && !weeksTouched && futureLessons.length
       ? futureLessons[futureLessons.length - 1].date
       : null
-    return uniqueLessons(result).filter((l) => !horizon || l.date <= horizon).sort(byDateTime)
+    return result.filter((l) => !horizon || l.date <= horizon)
   }
 
   const previewLessons = mode === "recurring" ? generateRecurringLessons() : lessons
@@ -368,7 +294,7 @@ function StudentFormModal({ student, students = [], onClose, onSubmit, initialNa
     // в каком форма показывает занятия, и о часовых поясах не знает: перевод в
     // пояс хранения делает saveStudent, разом для занятий и для этой строки.
     const schedule = mode === "recurring"
-      ? recurringDays.map((d) => `${d.name} ${d.time} (${d.duration || recurringDuration} мин)`).join(", ")
+      ? scheduleString(recurringDays, recurringDuration)
       : previewLessons.map((l) => parseLocalDate(l.date).toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) + " " + l.time + " (" + l.duration + " мин)").join(", ")
 
     const common = {

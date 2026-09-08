@@ -13,6 +13,7 @@
 // остаётся, и занятие продолжает показываться групповым по снимку названия в
 // самом занятии (`groupName`).
 import { supabase } from "./supabase"
+import { byDateTime, uniqueLessons, todayStr, daysFromLessons, weeksAhead } from "./recurring"
 
 export const GROUP_PREFIX = "g:"
 
@@ -93,7 +94,7 @@ export function groupLessonPrice(group, student) {
 // Занятие, которое кладётся в карточку участника. Название группы едет
 // СНИМКОМ: группу могут переименовать или распустить, а занятие в прошлом
 // обязано остаться подписанным так, как оно шло на самом деле.
-export function groupLesson(group, student, { date, time, duration }) {
+export function groupLesson(group, student, { date, time, duration, extra = true }) {
   const price = groupLessonPrice(group, student)
   return {
     date,
@@ -102,8 +103,70 @@ export function groupLesson(group, student, { date, time, duration }) {
     groupId: group.id,
     groupName: group.name,
     ...(price > 0 ? { price } : {}),
-    extra: true,
+    // Разовое занятие, поставленное группе из «Расписания», помечается
+    // дополнительным — как и у одного ученика. Занятия постоянного расписания
+    // группы такой пометки не несут: они и есть обычный ход занятий.
+    ...(extra ? { extra: true } : {}),
   }
+}
+
+// Будущие занятия группы — из карточек участников, а не из отдельного списка:
+// своего списка занятий у группы нет (см. шапку файла). Берём их у ПЕРВОГО
+// участника, у кого они есть: занятие группы у всех одно и то же, а участник
+// мог быть добавлен позже остальных и части занятий не иметь.
+export function groupFutureLessons(group, students) {
+  if (!group?.id) return []
+  const today = todayStr()
+  const byKey = new Map()
+  for (const s of students || []) {
+    for (const l of s.lessons || []) {
+      if (l.groupId !== group.id || l.date < today) continue
+      const key = `${l.date}|${l.time}`
+      if (!byKey.has(key)) byKey.set(key, { date: l.date, time: l.time, duration: l.duration || 60 })
+    }
+  }
+  return [...byKey.values()].sort(byDateTime)
+}
+
+// Расписание группы в том виде, в каком его показывает форма: дни недели с
+// временем и на сколько недель вперёд занятия уже расставлены.
+export function groupSchedule(group, students) {
+  const lessons = groupFutureLessons(group, students)
+  return { days: daysFromLessons(lessons), weeks: weeksAhead(lessons), lessons }
+}
+
+// Расписание группы → занятия в карточке КАЖДОГО участника. Прошлое не
+// трогаем никогда: занятие, которое уже прошло, оплачено и посчитано в долг,
+// а расписание меняют на будущее.
+//
+// Бывший участник тоже проходит через эту функцию: его будущие занятия этой
+// группы снимаются. Иначе исключённый из состава продолжал бы платить за
+// занятия, на которые его больше не зовут.
+export function applyGroupSchedule(students, group, lessons) {
+  const ids = new Set((group?.memberIds || []).map(String))
+  const today = todayStr()
+  return (students || []).map((s) => {
+    const own = s.lessons || []
+    const isMember = ids.has(String(s.id))
+    if (!isMember && !own.some((l) => l.groupId === group.id)) return s
+    const kept = own.filter((l) => l.groupId !== group.id || l.date < today)
+    const fresh = isMember
+      ? lessons.map((l) => {
+        // Совпавшее по дате и времени занятие сохраняет свои заметки, статус и
+        // предложение о переносе: правка расписания не должна стирать историю.
+        const was = own.find((o) => o.groupId === group.id && o.date === l.date && o.time === l.time)
+        return { ...(was || {}), ...groupLesson(group, s, { ...l, extra: false }) }
+      })
+      : []
+    const merged = uniqueLessons([...kept, ...fresh]).sort(byDateTime)
+    const dropped = own.filter((l) => !merged.some((m) => m.date === l.date && m.time === l.time))
+    const goneDates = new Set(dropped.map((l) => l.date))
+    return {
+      ...s,
+      lessons: merged,
+      lessonDates: (s.lessonDates || []).filter((d) => !goneDates.has(d) || merged.some((l) => l.date === d)),
+    }
+  })
 }
 
 // Занятия одной группы — это ОДНО занятие, показанное у разных людей.
