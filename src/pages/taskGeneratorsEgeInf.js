@@ -186,6 +186,17 @@ function t2Solvable(cellRows, rows, perm) {
   return rec(0)
 }
 
+// Две строки фрагмента, совпадающие ВИДИМО (одни и те же цифры на одних и тех же
+// местах, остальное стёрто), делают задание бессмысленным: условие обещает «фрагмент
+// из ТРЁХ РАЗЛИЧНЫХ её строк», а ученик видит две одинаковые. Ответ при этом может
+// оставаться единственным — стирание же не меняет того, какие строки таблицы взяты, —
+// поэтому проверка уникальности такой фрагмент пропускала. В открытом банке ФИПИ
+// (94 задания этого типажа) одинаковых строк нет ни разу.
+function t2RowsDistinct(cellRows) {
+  const keys = cellRows.map((r) => r.map((c) => (c === null ? "-" : c)).join(""))
+  return new Set(keys).size === keys.length
+}
+
 // Сколько раскладок столбцов допускает фрагмент (нужна ровно одна).
 function t2CountSolutions(cellRows, rows, allPerms) {
   let n = 0
@@ -214,7 +225,11 @@ export function t2Misha() {
   const allPerms = perms(T2_VARS)
   for (let attempt = 0; attempt < 200; attempt++) {
     const { node, text } = t2Formula()
-    const target = Math.random() < 0.66 ? 0 : 1
+    // Значение F во фрагменте не произвольно. В банке (94 задания, исключений нет)
+    // у формулы с верхней ДИЗЪЮНКЦИЕЙ показывают F = 0, с верхней КОНЪЮНКЦИЕЙ — F = 1:
+    // именно это значение даёт мало строк, и задача решается разбором, а не перебором.
+    // При обратном выборе строк таблицы получается 13 из 16 — задание нерешаемо.
+    const target = node.t === "∧" ? 1 : node.t === "∨" ? 0 : randInt(0, 1)
     const rows = t2Rows(node, target)
     if (rows.length < 3 || rows.length > 6) continue          // много строк → фрагмент пришлось бы почти не стирать
     const perm = shuffle(T2_VARS)                              // истинная раскладка столбцов
@@ -239,7 +254,7 @@ export function t2Misha() {
       if (cellRows[i].filter((v) => v !== null).length <= 1) continue
       const keep = cellRows[i][j]
       cellRows[i][j] = null
-      if (t2CountSolutions(cellRows, rows, allPerms) !== 1) cellRows[i][j] = keep
+      if (!t2RowsDistinct(cellRows) || t2CountSolutions(cellRows, rows, allPerms) !== 1) cellRows[i][j] = keep
       else left--
     }
     if (left > want) continue                                  // до плотности банка не ужалось — берём другую формулу
