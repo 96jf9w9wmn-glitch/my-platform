@@ -229,7 +229,7 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
   const [confirmId, setConfirmId] = useState(null)
   const [customAmount, setCustomAmount] = useState("")
   const [mounted, setMounted] = useState(false)
-  const [undoStudent, setUndoStudent] = useState(null)
+  const [undoTarget, setUndoTarget] = useState(null)
   const [expenses, setExpenses] = useState([])
   const [newExpName, setNewExpName] = useState("")
   const [newExpAmount, setNewExpAmount] = useState("")
@@ -296,16 +296,20 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
     setCustomAmount("")
   }
 
-  function handleUndo(student) {
+  // Удаляется ИМЕННО та запись, у которой нажали крестик, — по её месту в
+  // массиве ученика. Раньше здесь стоял pop(), то есть снималась последняя
+  // запись независимо от того, на какую нажали, и поэтому крестик показывался
+  // только у самой свежей оплаты: ошибку недельной давности исправить было
+  // нечем. Индекс, а не id: у записей, заведённых до появления поля id, его нет.
+  function handleUndo(studentId, idx) {
     setStudents((prev) =>
       prev.map((s) => {
-        if (s.id !== student.id) return s
-        const payments = [...(s.payments || [])]
-        payments.pop()
+        if (s.id !== studentId) return s
+        const payments = (s.payments || []).filter((_, i) => i !== idx)
         return {
           ...s,
           paid: payments.length > 0,
-          balance: payments.reduce((sum, p) => sum + p.amount, 0),
+          balance: payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0),
           payments,
         }
       })
@@ -318,10 +322,10 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
   const getUnpaidLessons = (student) => unpaidLessons(student)
 
   const allPayments = students
-    // isLast — самая свежая оплата ученика: только её можно откатить,
-    // потому что handleUndo снимает последнюю запись из его массива.
-    .flatMap((s) => (s.payments || []).map((p, i, arr) => ({
-      ...p, studentName: s.name, studentId: s.id, isLast: i === arr.length - 1,
+    // idx — место записи в массиве ученика: по нему её и удаляют, поэтому
+    // сортировка списка ниже на удаление не влияет.
+    .flatMap((s) => (s.payments || []).map((p, i) => ({
+      ...p, studentName: s.name, studentId: s.id, idx: i,
     })))
     .sort((a, b) => parsePaymentDate(b.date) - parsePaymentDate(a.date))
 
@@ -558,19 +562,13 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <div className="text-sm font-medium text-green-600 tabular-nums min-w-[6.5rem] text-right">+{fmt(p.amount)} ₽</div>
-                    {/* Ошибочную оплату откатывают здесь: у ученика снимается
-                        только последняя запись, поэтому кнопка есть у неё одной.
-                        У остальных строк её место всё равно резервируется, иначе
-                        суммы съезжают то влево, то вправо. */}
-                    {p.isLast ? (
-                      <button
-                        onClick={() => setUndoStudent(students.find((s) => s.id === p.studentId))}
-                        className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-red-500 hover:bg-red-500/10 transition active:scale-90 md:opacity-0 md:group-hover:opacity-100"
-                        title="Отменить эту оплату"
-                      ><Icon name="x" size={14} /></button>
-                    ) : (
-                      <div className="w-7 h-7 shrink-0" aria-hidden="true" />
-                    )}
+                    {/* Ошибочную оплату откатывают здесь — любую, а не только
+                        последнюю: ошибку замечают не в тот же день. */}
+                    <button
+                      onClick={() => setUndoTarget(p)}
+                      className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-red-500 hover:bg-red-500/10 transition active:scale-90 md:opacity-0 md:group-hover:opacity-100"
+                      title="Отменить эту оплату"
+                    ><Icon name="x" size={14} /></button>
                   </div>
                 </div>
               ))}
@@ -712,15 +710,15 @@ function Payment({ students, setStudents, tutorId, setActivePage }) {
       )}
 
       <ConfirmModal
-        open={!!undoStudent}
+        open={!!undoTarget}
         danger
         icon="repeat"
         title="Отменить оплату?"
-        message={undoStudent ? `Последняя оплата ученика ${undoStudent.name} будет удалена из истории. Это действие можно повторить вручную.` : ""}
+        message={undoTarget ? `Оплата ${fmt(undoTarget.amount)} ₽ от ${undoTarget.date} (${undoTarget.studentName}) будет удалена из истории. Это действие можно повторить вручную.` : ""}
         confirmLabel="Отменить оплату"
         cancelLabel="Оставить"
-        onConfirm={() => { handleUndo(undoStudent); setUndoStudent(null) }}
-        onCancel={() => setUndoStudent(null)}
+        onConfirm={() => { handleUndo(undoTarget.studentId, undoTarget.idx); setUndoTarget(null) }}
+        onCancel={() => setUndoTarget(null)}
       />
     </div>
   )
