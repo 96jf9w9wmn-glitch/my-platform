@@ -4,6 +4,7 @@ import Icon from "./Icon"
 import TaskNoteModal from "./TaskNoteModal"
 import { aggregateAttempts } from "../reportData"
 import { numberTitle } from "../pages/numberTitles"
+import { TASK_MAX } from "../examScales"
 import { loadTaskNotes, saveTaskNote, loadTaskOrder, saveTaskOrder, orderNumbers } from "../taskNotes"
 
 // Карта заданий: весь экзамен номерами, у каждого — процент верных ответов
@@ -33,7 +34,7 @@ const CHIP = {
   unknown: "ring-gray-200 dark:ring-white/12 text-gray-500",
 }
 
-function TaskMap({ student, tutorId, examType }) {
+function TaskMap({ student, tutorId, examType: hinted }) {
   const [rows, setRows] = useState(null)
   const [notes, setNotes] = useState({})
   const [order, setOrder] = useState([])
@@ -41,20 +42,31 @@ function TaskMap({ student, tutorId, examType }) {
   const [openNote, setOpenNote] = useState(null)
 
   useEffect(() => {
-    if (!student?.id || !examType) return
+    if (!student?.id) return
     let alive = true
     supabase
       .from("task_attempts")
       .select("exam_type, number, gen_key, is_correct, attempt_no")
       .eq("student_id", String(student.id))
-      .eq("exam_type", examType)
       .limit(4000)
       // Таблицы может не быть (миграция task_attempts.sql) — тогда карта
       // показывает номера без процентов, а не исчезает: методички к ним
       // репетитор пишет независимо от того, решал ли ученик.
       .then(({ data }) => { if (alive) setRows(data || []) })
     return () => { alive = false }
-  }, [student?.id, examType])
+  }, [student?.id])
+
+  // Предмет карты берём из САМИХ ответов, а не из цели в карточке. Цель — это
+  // «ЕГЭ», а решает ученик «ЕГЭ Профиль»: фильтр по цели не находил ни одной
+  // попытки, и карта у такого ученика просто не появлялась. Подсказка (тип
+  // последнего варианта) важнее, но только если по ней есть ответы.
+  const examType = useMemo(() => {
+    const count = {}
+    for (const r of rows || []) count[r.exam_type] = (count[r.exam_type] || 0) + 1
+    if (hinted && count[hinted]) return hinted
+    const top = Object.entries(count).sort((a, b) => b[1] - a[1])[0]
+    return top ? top[0] : hinted || ""
+  }, [rows, hinted])
 
   useEffect(() => {
     if (!tutorId || !examType) return
@@ -68,7 +80,7 @@ function TaskMap({ student, tutorId, examType }) {
   // одиннадцатым», а разбор по типажам внутри номера — это соседний блок.
   const byNumber = useMemo(() => {
     const out = {}
-    for (const r of aggregateAttempts(rows || [])) {
+    for (const r of aggregateAttempts((rows || []).filter((a) => a.exam_type === examType))) {
       const cur = out[r.number] || { number: r.number, attempts: 0, correct: 0 }
       cur.attempts += r.attempts
       cur.correct += r.correct
@@ -78,7 +90,7 @@ function TaskMap({ student, tutorId, examType }) {
       out[k].accuracy = out[k].attempts ? Math.round((out[k].correct / out[k].attempts) * 100) : 0
     }
     return out
-  }, [rows])
+  }, [rows, examType])
 
   // Номера карты: всё, по чему есть ответы, плюс всё, к чему написана
   // методичка. Пустых номеров не показываем — карта из тридцати серых чипов
@@ -87,6 +99,14 @@ function TaskMap({ student, tutorId, examType }) {
     const all = new Set([...Object.keys(byNumber), ...Object.keys(notes)].map(Number).filter(Boolean))
     return orderNumbers([...all], order)
   }, [byNumber, notes, order])
+
+  // Все номера экзамена — только для пустой карты. В обычной их показывать
+  // нельзя: три десятка серых чипов, по которым ничего не известно, ничего и
+  // не сообщают.
+  const composition = useMemo(() => {
+    const nums = Object.keys(TASK_MAX[examType] || {}).map(Number).filter(Boolean)
+    return nums.sort((a, b) => a - b)
+  }, [examType])
 
   function move(number, dir) {
     const next = [...numbers]
@@ -101,22 +121,43 @@ function TaskMap({ student, tutorId, examType }) {
   }
 
   if (rows === null) return null
-  if (!numbers.length) return null
+  // Ученик ещё ничего не решал и методичек нет. Раньше блок в этом случае
+  // просто исчезал — вместе с единственной точкой входа в методички: написать
+  // их было негде, пока ученик не ответит хотя бы на три задания. Показываем
+  // выбор номера: методичка пишется под себя, а не под чужие ответы.
+  const empty = !numbers.length
+  // Предмет не определился (ученик не решал и вариантов не выдавали) — писать
+  // методички не к чему: номера у каждого экзамена свои.
+  if (empty && !composition.length) return null
 
   return (
     <div className="glass-sm p-3.5">
       <div className="flex items-baseline justify-between gap-3 mb-0.5">
         <span className="text-sm font-medium">Карта заданий</span>
-        <button onClick={() => setArranging((v) => !v)}
+        {!empty && <button onClick={() => setArranging((v) => !v)}
           className="press-fill text-[11px] px-2 py-1 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-500">
           {arranging ? "Готово" : "Свой порядок"}
-        </button>
+        </button>}
       </div>
       <p className="text-xs text-gray-400 mb-3">
-        {arranging
-          ? "Стрелками поставьте номера в том порядке, в каком разбираете их сами."
-          : "Процент — по первым ответам. Значок книжки открывает вашу методичку к заданию."}
+        {empty
+          ? "Ученик ещё ничего не решал — процентов пока нет. Методичку к заданию можно написать уже сейчас: она ваша, а не его."
+          : arranging
+            ? "Стрелками поставьте номера в том порядке, в каком разбираете их сами."
+            : "Процент — по первым ответам. Значок книжки открывает вашу методичку к заданию."}
       </p>
+
+      {empty && (
+        <div className="flex flex-wrap gap-1.5">
+          {composition.map((n) => (
+            <button key={n} onClick={() => setOpenNote({ number: n, note: null })}
+              title={`Написать методичку к заданию ${n}`}
+              className="press-fill inline-flex items-center gap-1.5 rounded-xl ring-1 ring-gray-200 dark:ring-white/12 px-2.5 py-1.5 text-xs text-gray-500">
+              №{n}<Icon name="book" size={11} className="text-gray-300 dark:text-white/25" />
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-1.5">
         {numbers.map((n) => {
