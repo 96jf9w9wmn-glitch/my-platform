@@ -15,6 +15,12 @@ import { supabase } from "./supabase"
 
 const PUBLIC_MARK = "/storage/v1/object/public/"
 const SIGN_MARK = "/storage/v1/object/sign/"
+// Подпись с преобразованием картинки (аватар) живёт по ДРУГОМУ адресу — через
+// отрисовщик. Разбирать его обязательно: иначе такая ссылка не опознаётся как
+// наша, не перевыписывается по истечении срока и — хуже того — уезжает в базу
+// вместо постоянного адреса (permanentStorageUrl тоже ходит сюда). Так у
+// карточки ученика в students.avatar осела подпись, протухшая через 4 часа.
+const RENDER_MARK = "/storage/v1/render/image/sign/"
 
 // Бакет с картинками заданий — не ПДн, нужен всем и в PDF, остаётся публичным.
 const PUBLIC_BUCKETS = new Set(["task-assets"])
@@ -58,18 +64,10 @@ export function parseStorageRef(value, defaultBucket) {
   if (value.startsWith("data:") || value.startsWith("blob:")) return null
   // Уже подписанный адрес разбираем так же: подпись живёт ограниченное время,
   // а ссылка могла осесть в localStorage — тогда её надо выписать заново.
-  const signed = value.indexOf(SIGN_MARK)
-  if (signed !== -1) {
-    const rest = value.slice(signed + SIGN_MARK.length)
-    const slash = rest.indexOf("/")
-    if (slash === -1) return null
-    const path = rest.slice(slash + 1).split("?")[0]
-    return { bucket: rest.slice(0, slash), path: decodeURIComponent(path) }
-  }
-
-  const mark = value.indexOf(PUBLIC_MARK)
-  if (mark !== -1) {
-    const rest = value.slice(mark + PUBLIC_MARK.length)
+  for (const mark of [SIGN_MARK, RENDER_MARK, PUBLIC_MARK]) {
+    const at = value.indexOf(mark)
+    if (at === -1) continue
+    const rest = value.slice(at + mark.length)
     const slash = rest.indexOf("/")
     if (slash === -1) return null
     const path = rest.slice(slash + 1).split("?")[0]
