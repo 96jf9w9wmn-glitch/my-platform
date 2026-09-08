@@ -270,11 +270,20 @@ function matchTablePdf(body, plain) {
 function dataTablePdf(body, plain) {
   const rows = body.split("‖").map((r) => r.split("⁞"))
   const [head, ...rest] = rows
-  const cell = `border:1px solid #333; padding:4px 8px; text-align:center; font-size:${plain ? 14 : 13}px; white-space:nowrap;`
+  // Таблица-сетка (фрагмент таблицы истинности в №2 КЕГЭ, звёздочки в схеме дорог):
+  // все ячейки короткие, поэтому колонки уравниваем. Ширина по содержимому сжимала
+  // пустой столбец — а в №2 пустая клетка это стёртое значение, и узкий столбец
+  // читался как «здесь ничего и не должно быть».
+  const bare = (c) => String(c).replace(/<[^>]*>/g, "").replace(/⟦[a-zA-Z]+:?/g, "").replace(/⟧/g, "").trim()
+  const grid = rows.flat().map(bare).every((c) => c.length <= 3)
+  const cw = plain ? 34 : 30
+  const cell = `border:1px solid #333; padding:4px ${grid ? 0 : 8}px; text-align:center; font-size:${plain ? 14 : 13}px; white-space:nowrap;`
+    + (grid ? ` width:${cw}px;` : "")
   const hd = cell + (plain ? " font-weight:600;" : " background:#f2f2f7; font-weight:600;")
   const th = head.map((c) => `<td style="${hd}">${c}</td>`).join("")
   const trs = rest.map((r) => `<tr>${r.map((c) => `<td style="${cell}">${c}</td>`).join("")}</tr>`).join("")
-  return `<table style="border-collapse:collapse; margin:8px 0;"><tr>${th}</tr>${trs}</table>`
+  const tbl = `border-collapse:collapse; margin:8px 0;` + (grid ? ` table-layout:fixed; width:${head.length * cw}px;` : "")
+  return `<table style="${tbl}"><tr>${th}</tr>${trs}</table>`
 }
 
 // Нумерованный список для PDF (инлайновые стили): синий номер + текст в одну строку.
