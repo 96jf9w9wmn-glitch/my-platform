@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Fragment } from "react"
+import { useState, useEffect, useMemo, useRef, Fragment } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import { signRows } from "../storageUrl"
@@ -79,6 +79,87 @@ function BankTasksBlock({ tasks, title }) {
 // номер на экзамене, поэтому нумеруем им, а не порядком в списке.
 const variantTaskItems = (tasks) =>
   tasks.map((t, i) => ({ n: t.number ?? i + 1, text: t.condition_text || "", bankTask: t, answer: t.answer ?? null, options: null }))
+
+// Аккаунты учеников репетитора. Общий загрузчик окна создания и окна правки:
+// список в обоих один и тот же, и вторая копия запроса разошлась бы с первой
+// при первой же правке.
+function useStudentAccounts(tutorId) {
+  const [accounts, setAccounts] = useState([])
+  useEffect(() => {
+    if (!tutorId) return
+    supabase.from("student_accounts").select("id, name, phone").eq("tutor_id", tutorId)
+      .then(({ data }) => setAccounts(data || []))
+  }, [tutorId])
+  return accounts
+}
+
+// Кому задать вариант. Раньше здесь стоял выпадающий список «Все ученики (ЕГЭ)»
+// или один ученик — а вариант чаще задают именно группе: тем, кто пишет этот
+// экзамен, кроме заболевшего. Галочками состав выдачи виден целиком, и «Все»
+// осталось одним нажатием, а не отдельным режимом.
+//
+// Заблокированная строка — ученик, который вариант уже открыл или сдал: отозвать
+// у него работу нельзя, вместе с ней стёрлись бы ответы и баллы.
+function StudentPicker({ accounts, value, onChange, lockedIds = [], noteOf, label = "Кому задать", empty }) {
+  const locked = new Set((lockedIds || []).map(String))
+  const free = accounts.map((a) => String(a.id)).filter((id) => !locked.has(id))
+  const allOn = free.length > 0 && free.every((id) => value.includes(id))
+  const toggle = (id) => {
+    if (locked.has(id)) return
+    onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id])
+  }
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-2 mb-2">
+        <div className="text-sm text-gray-500">{label}{value.length > 0 ? ` · ${value.length}` : ""}</div>
+        {free.length > 1 && (
+          <button type="button"
+            onClick={() => onChange(allOn ? value.filter((id) => locked.has(id)) : [...new Set([...value, ...free])])}
+            className="no-press text-[11px] text-blue-600 hover:opacity-70 active:scale-95 transition-all">
+            {allOn ? "Снять всех" : "Выбрать всех"}
+          </button>
+        )}
+      </div>
+      {accounts.length === 0 ? (
+        <div className="rounded-xl ring-1 ring-dashed ring-gray-200/80 dark:ring-white/10 text-xs text-gray-400 text-center py-4">
+          {empty || "Учеников пока нет"}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-1.5 max-h-52 overflow-y-auto p-px -m-px">
+          {accounts.map((a) => {
+            const id = String(a.id)
+            const on = value.includes(id)
+            const isLocked = locked.has(id)
+            const note = noteOf ? noteOf(a) : ""
+            const color = getAvatarColor(a.name || "")
+            return (
+              <button key={id} type="button" onClick={() => toggle(id)} disabled={isLocked}
+                aria-pressed={on}
+                className={`w-full rounded-xl px-2.5 py-2 flex items-center gap-2.5 text-left ring-1 transition-colors ${
+                  isLocked
+                    ? "ring-gray-200/70 dark:ring-white/10 cursor-default"
+                    : `press-fill ${on
+                      ? "ring-blue-500/30 bg-blue-500/[0.06]"
+                      : "ring-gray-200/70 dark:ring-white/10 hover:bg-blue-500/[0.06]"}`}`}>
+                <span className={`w-5 h-5 rounded-md flex items-center justify-center ring-1 flex-shrink-0 transition-colors ${
+                  on ? "bg-blue-600 text-white ring-blue-600" : "text-transparent ring-gray-300 dark:ring-white/20"}`}>
+                  <Icon name="check" size={12} />
+                </span>
+                <span className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0 ${color.bg} ${color.text}`}>
+                  {getInitials(a.name || "")}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm truncate">{a.name || a.phone}</span>
+                  {note && <span className="block text-[11px] text-gray-400 truncate">{note}</span>}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // Способы сборки варианта — теми же карточками, что у «Нового задания».
 const VARIANT_METHODS = [
@@ -268,8 +349,8 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
   const [variantFile, setVariantFile] = useState(null)
   const [uploading, setUploading] = useState(false)
   const [previewUrl, setPreviewUrl] = useState(null)
-  const [accounts, setAccounts] = useState([])
-  const [recipientId, setRecipientId] = useState("all")
+  const accounts = useStudentAccounts(tutorId)
+  const [recipientIds, setRecipientIds] = useState([])
   // Ошибки формы показываем рядом с кнопкой, а не системным alert.
   const [formError, setFormError] = useState("")
   const { cls: closingCls, close } = useClosing(onClose)
@@ -281,17 +362,26 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
   const [assembling, setAssembling] = useState(false)
   const fileRef = useRef()
 
-  // Аккаунты учеников; цель (ОГЭ/ЕГЭ) берём из students по уже вычисленному
-  // studentAccountId (App.jsx), чтобы не заводить второе, отдельное сопоставление.
-  useEffect(() => {
-    supabase.from("student_accounts").select("id, name, phone").eq("tutor_id", tutorId)
-      .then(({ data: accs }) => setAccounts(accs || []))
-  }, [tutorId])
+  // Цель (ОГЭ/ЕГЭ) берём из students по уже вычисленному studentAccountId
+  // (App.jsx), чтобы не заводить второе, отдельное сопоставление.
+  const goalByAccountId = useMemo(() => {
+    const map = {}
+    for (const s of students) {
+      if (s.studentAccountId && s.goal) map[s.studentAccountId] = s.goal
+    }
+    return map
+  }, [students])
 
-  const goalByAccountId = {}
-  for (const s of students) {
-    if (s.studentAccountId && s.goal) goalByAccountId[s.studentAccountId] = s.goal
-  }
+  // По умолчанию отмечены те, кто пишет этот экзамен, — ровно то, что делал
+  // пункт «Все ученики (ЕГЭ)». Разница в том, что теперь состав видно: раньше,
+  // если под цель не подходил никто, вариант молча уходил в никуда и значился
+  // в разборе «ещё никому не выдан».
+  const examLevel = examLevelOf(examType)
+  useEffect(() => {
+    setRecipientIds(accounts
+      .filter((a) => { const g = goalByAccountId[a.id]; return !g || g === examLevel })
+      .map((a) => String(a.id)))
+  }, [accounts, examLevel, goalByAccountId])
 
   // Номера части 1 идут подряд только в математике: в информатике из варианта
   // выпадают задания, которые без компьютера не решить (см. VARIANT_PART1).
@@ -420,13 +510,8 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
 
     if (error) { setFormError("Не получилось сохранить: " + error.message); setLoading(false); return }
 
-    // Кому отправить: конкретному ученику или всем с подходящей целью экзамена
-    const recipients = recipientId === "all"
-      ? accounts.filter((a) => {
-          const goal = goalByAccountId[a.id]
-          return !goal || goal === examLevelOf(examType)
-        })
-      : accounts.filter((a) => String(a.id) === recipientId)
+    // Кому отправить — ровно те, кто отмечен галочкой.
+    const recipients = accounts.filter((a) => recipientIds.includes(String(a.id)))
 
     if (recipients.length > 0) {
       await supabase.from("variant_submissions").insert(recipients.map((s) => ({ variant_id: data.id, student_id: s.id, status: "pending" })))
@@ -458,14 +543,18 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-4 items-stretch">
             <div className="flex flex-col gap-4">
 
-              <div>
-                <label className="text-sm text-gray-500 mb-1 block">Ученик</label>
-                <select value={recipientId} onChange={(e) => setRecipientId(e.target.value)}
-                  aria-label="Ученик" className="input-glass">
-                  <option value="all">Все ученики ({examLevelOf(examType)})</option>
-                  {accounts.map((a) => <option key={a.id} value={String(a.id)}>{a.name}</option>)}
-                </select>
-              </div>
+              <StudentPicker
+                accounts={accounts}
+                value={recipientIds}
+                onChange={setRecipientIds}
+                label="Кому задать вариант"
+                empty="Учеников пока нет — вариант сохранится, задать его можно будет из окна правки"
+                // Ученик, который готовится к другому экзамену, из списка не
+                // прячется: пробник другого уровня дают намеренно, и молча
+                // исчезнувшая строка выглядела бы как пропавший ученик.
+                noteOf={(a) => (goalByAccountId[a.id] && goalByAccountId[a.id] !== examLevel
+                  ? `готовится к ${goalByAccountId[a.id]}` : "")}
+              />
 
               {/* Предмет — только те, что отмечены в «Профиле». Один предмет —
                   переключателя нет: выбирать не из чего. */}
@@ -676,7 +765,10 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
           <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 mt-5">
             <button onClick={close} className="press-fill border border-gray-200 rounded-xl px-5 py-2.5 text-sm text-gray-600">Отмена</button>
             <button onClick={handleSubmit} disabled={loading || uploading} className="btn-primary px-6 py-2.5 disabled:opacity-50">
-              {uploading ? "Загружаем файл..." : loading ? "Отправляем..." : recipientId === "all" ? "Отправить ученикам" : "Отправить ученику"}
+              {uploading ? "Загружаем файл..." : loading ? "Отправляем..."
+                : recipientIds.length === 0 ? "Сохранить вариант"
+                : recipientIds.length === 1 ? "Отправить ученику"
+                : `Отправить ученикам (${recipientIds.length})`}
             </button>
           </div>
         </div>
@@ -1166,16 +1258,147 @@ const dayMonth = (date) =>
   parseLocalDate(date).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })
 
 // Правка варианта — отдельным окном, как «Редактировать задание» у домашней
-// работы. В самом разборе чипов срока быть не должно: разбор показывает, как
-// вариант написали ученики, и панель правки читалась там как ещё одно свойство
-// работы. Срок пока единственное, что меняют у выданного варианта: задания и
-// ответы уже разосланы, и менять их под сданными работами нельзя.
-function EditVariantModal({ variant, onChangeDeadline, onClose }) {
+// работы. В самом разборе этих настроек быть не должно: разбор показывает, как
+// вариант написали ученики, а панель правки читалась там как ещё одно свойство
+// работы.
+//
+// Что здесь можно: срок сдачи, состав получателей и пересборка отдельного
+// задания. Всё, кроме пересборки, применяется по «Сохранить» — одно окно, одна
+// кнопка; отмена не оставляет следов.
+function EditVariantModal({ variant, accounts, submissions, onClose, onSaved }) {
   const { cls: closingCls, close } = useClosing(onClose)
+  const [deadline, setDeadline] = useState(variant.deadline || "")
+  const [tasks, setTasks] = useState(variant.tasks_snapshot || null)
+  const [answers, setAnswers] = useState(variant.answers || {})
+  const [tasksTouched, setTasksTouched] = useState(false)
+  const [rerolling, setRerolling] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState("")
+
+  // Работа, к которой ученик уже притронулся (открыл таймер, сдал, проверена).
+  // Её нельзя ни отозвать, ни пересобрать под ней задания: отзыв стёр бы ответы
+  // и баллы, а замена задания оставила бы ученику ответы к варианту, которого он
+  // больше не видит.
+  const busy = submissions.filter((s) => s.status !== "pending" || s.opened_at)
+  const lockedIds = busy.map((s) => String(s.student_id))
+  const [recipientIds, setRecipientIds] = useState(() => submissions.map((s) => String(s.student_id)))
+
+  const busyNote = (id) => {
+    const s = busy.find((x) => String(x.student_id) === String(id))
+    if (!s) return ""
+    return s.status === "graded" ? "работа проверена — выдачу не отозвать"
+      : s.status === "submitted" ? "работа сдана — выдачу не отозвать"
+        : "уже решает — выдачу не отозвать"
+  }
+
+  async function handleReroll(number) {
+    if (busy.length > 0 || !tasks) return
+    setError("")
+    setRerolling(number)
+    try {
+      const { rerollModule, rerollTask, rerollLinked } = await loadBank()
+      // Задания 1–5 ОГЭ — связанный модуль, а №19–21 КЕГЭ — одна игра на три
+      // задания: заменять их можно только целиком, иначе соседи остаются со
+      // ссылкой на условие, которого в варианте больше нет.
+      const linked = linkedGroupOf(variant.type, number)
+      let fresh
+      if (isModuleNumber(variant.type, number)) fresh = rerollModule(variant.type)
+      else if (linked) fresh = rerollLinked(variant.type, linked)
+      else {
+        // У снимка нет id задания, по которому rerollTask исключает текущее,
+        // поэтому задание из таблицы банка может выпасть тем же самым.
+        // Сверяем условие и просим ещё раз — но не бесконечно: в номере может
+        // быть всего одно задание, и тогда повтор честнее пустоты.
+        const was = tasks.find((t) => t.number === number)?.condition_text
+        let next = null
+        for (let i = 0; i < 4; i++) {
+          next = await rerollTask(variant.type, number)
+          if (!next || !was || next.condition_text !== was) break
+        }
+        fresh = [next]
+      }
+      const list = (fresh || []).filter(Boolean)
+      if (!list.length) { setError("Не нашлось другого задания этого номера."); return }
+
+      const byNum = new Map(list.map((t) => [t.number, t]))
+      setTasks((prev) => prev.map((t) => (byNum.has(t.number) ? packVariantTask(byNum.get(t.number)) : t)))
+      // Ответы варианта лежат отдельно от заданий, и без этого шага вариант
+      // проверялся бы по эталону прежнего задания.
+      setAnswers((prev) => {
+        const next = {
+          ...prev,
+          part1: [...(prev.part1 || [])],
+          part2: { ...(prev.part2 || {}) },
+          part2_choices: { ...(prev.part2_choices || {}) },
+          part2_choices_part: { ...(prev.part2_choices_part || {}) },
+        }
+        for (const t of list) {
+          if (isPart2Number(variant.type, t.number)) {
+            next.part2[t.number] = t.answer
+            if (t.choices) next.part2_choices[t.number] = t.choices
+            if (t.choices_part) next.part2_choices_part[t.number] = t.choices_part
+          } else {
+            next.part1[t.number - 1] = t.answer
+          }
+        }
+        return next
+      })
+      setTasksTouched(true)
+    } catch {
+      setError("Банк заданий не отвечает — попробуйте ещё раз.")
+    } finally {
+      setRerolling(null)
+    }
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    setError("")
+
+    const patch = { deadline: deadline || null }
+    if (tasksTouched && tasks) { patch.tasks_snapshot = tasks; patch.answers = answers }
+    let { error: err } = await supabase.from("variants").update(patch).eq("id", variant.id)
+    // База без миграции срока (supabase/variant_deadline.sql) — сохраняем
+    // остальное: забытая миграция не должна мешать правке состава.
+    if (err?.code === "PGRST204" || /deadline/i.test(err?.message || "")) {
+      const { deadline: _skip, ...rest } = patch
+      void _skip
+      ;({ error: err } = Object.keys(rest).length
+        ? await supabase.from("variants").update(rest).eq("id", variant.id)
+        : { error: null })
+    }
+    if (err) { setError("Не получилось сохранить: " + err.message); setSaving(false); return }
+
+    // Состав получателей: снятым выдачу удаляем, добавленным заводим работу и
+    // уведомление — тем же, каким вариант приходит при выдаче.
+    const wanted = new Set(recipientIds)
+    const added = [...wanted].filter((id) => !submissions.some((s) => String(s.student_id) === id))
+    const removed = submissions.filter((s) => !wanted.has(String(s.student_id)) && !lockedIds.includes(String(s.student_id)))
+    if (removed.length > 0) {
+      const { error: delErr } = await supabase.from("variant_submissions").delete().in("id", removed.map((s) => s.id))
+      if (delErr) { setError("Не получилось убрать ученика: " + delErr.message); setSaving(false); return }
+    }
+    if (added.length > 0) {
+      const { error: insErr } = await supabase.from("variant_submissions")
+        .insert(added.map((id) => ({ variant_id: variant.id, student_id: id, status: "pending" })))
+      if (insErr) { setError("Не получилось выдать вариант: " + insErr.message); setSaving(false); return }
+      await supabase.from("notifications").insert(added.map((id) => ({
+        user_id: id,
+        title: "Новый вариант " + variant.type,
+        body: "Репетитор отправил новый вариант: " + variant.title
+          + (deadline ? ". Сдать до " + dayMonth(deadline) : ""),
+      })))
+    }
+
+    setSaving(false)
+    onSaved()
+    close()
+  }
+
   return createPortal(
     <div className={`fixed inset-0 glass-overlay z-50 overflow-y-auto ${closingCls}`}>
       <div className="min-h-full flex items-center justify-center p-4">
-        <div className={`glass-modal p-6 w-full max-w-md ${closingCls}`}>
+        <div className={`glass-modal p-6 w-full max-w-lg ${closingCls}`}>
           <div className="flex justify-between items-start gap-3 mb-5">
             <div className="min-w-0">
               <h2 className="text-lg font-medium">Редактировать вариант</h2>
@@ -1184,15 +1407,78 @@ function EditVariantModal({ variant, onChangeDeadline, onClose }) {
             <button onClick={close} aria-label="Закрыть" className="text-gray-500 hover:text-gray-700 flex-shrink-0"><Icon name="x" size={18} /></button>
           </div>
 
-          {/* Срок стоит на самом варианте, а не на выдаче ученику: вариант
-              выдаётся всем сразу одной строкой. */}
-          <DeadlinePicker
-            value={variant.deadline || ""}
-            onChange={onChangeDeadline}
-            label={variant.deadline ? `Ученик видит: до ${dayMonth(variant.deadline)}` : "Без срока"}
-          />
+          <div className="flex flex-col gap-5">
+            {/* Срок стоит на самом варианте, а не на выдаче ученику: вариант
+                выдаётся всем сразу одной строкой. */}
+            <DeadlinePicker
+              value={deadline}
+              onChange={setDeadline}
+              label={deadline ? `Ученик видит: до ${dayMonth(deadline)}` : "Без срока"}
+            />
 
-          <button onClick={close} className="btn-primary w-full mt-6 py-2.5 text-sm">Готово</button>
+            <StudentPicker
+              accounts={accounts}
+              value={recipientIds}
+              onChange={setRecipientIds}
+              lockedIds={lockedIds}
+              noteOf={(a) => busyNote(a.id)}
+              label="Кому задан вариант"
+              empty="Учеников пока нет"
+            />
+
+            {tasks?.length > 0 && (
+              <div>
+                <div className="flex items-baseline justify-between gap-2 mb-2">
+                  <div className="text-sm text-gray-500">Задания · {tasks.length}</div>
+                  {busy.length === 0 && <div className="text-[11px] text-gray-400">Заменить — значок повтора</div>}
+                </div>
+                {busy.length > 0 ? (
+                  <div className="rounded-xl ring-1 ring-amber-500/25 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-300">
+                    Задания уже нельзя пересобрать: вариант открыли {busy.length} {plural(busy.length, "ученик", "ученика", "учеников")}.
+                    Замена оставила бы их с ответами к заданиям, которых они больше не увидят.
+                  </div>
+                ) : (
+                  // Пиксель запаса со всех сторон: кольцо рисуется box-shadow'ом
+                  // снаружи карточки, и прокрутка срезала бы его у крайних.
+                  <div className="flex flex-col gap-1.5 max-h-60 overflow-y-auto p-px -m-px">
+                    {tasks.map((t, i) => (
+                      <div key={t.number ?? i} className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 px-2.5 py-2 flex items-start gap-2.5">
+                        <span className="shrink-0 w-5 h-5 rounded-full bg-blue-500/12 text-blue-600 dark:text-blue-400 text-[10px] font-semibold flex items-center justify-center">
+                          {t.number ?? i + 1}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          {t.condition_text && <div className="text-xs text-gray-600 leading-relaxed line-clamp-2">{plainTaskMath(t.condition_text)}</div>}
+                          {t.image_url && (
+                            <img src={t.image_url} alt={`Задание ${t.number ?? i + 1}`} className="mt-1 h-14 rounded-lg ring-1 ring-gray-200/70 bg-white" />
+                          )}
+                        </div>
+                        <button type="button" onClick={() => handleReroll(t.number)} disabled={rerolling != null}
+                          title={isModuleNumber(variant.type, t.number) ? "Другой блок 1–5"
+                            : linkedGroupOf(variant.type, t.number) ? `Другая игра для ${numbersLabel(linkedGroupOf(variant.type, t.number), { hash: false })}`
+                              : "Другое задание этого номера"}
+                          aria-label="Пересобрать задание"
+                          className={`flex-shrink-0 text-gray-400 hover:text-blue-600 active:scale-90 transition-transform disabled:opacity-40 ${rerolling === t.number ? "animate-spin text-blue-600" : ""}`}>
+                          <Icon name="repeat" size={13} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {tasksTouched && (
+                  <div className="text-[11px] text-blue-600 mt-2">Ответы к заменённым заданиям подставлены заново — сохраните вариант.</div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {error && <div className="text-sm text-red-500 mt-4 text-center">{error}</div>}
+
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 mt-6">
+            <button onClick={close} className="press-fill border border-gray-200 rounded-xl px-5 py-2.5 text-sm text-gray-600">Отмена</button>
+            <button onClick={handleSave} disabled={saving || rerolling != null} className="btn-primary px-6 py-2.5 disabled:opacity-50">
+              {saving ? "Сохраняем..." : "Сохранить"}
+            </button>
+          </div>
         </div>
       </div>
     </div>,
@@ -1261,6 +1547,8 @@ function VariantCard({ variant: v, total, graded, submitted, selected, onOpen })
 
 function Variants({ user, students = [] }) {
   const [variants, setVariants] = useState([])
+  // Аккаунты учеников — для окна правки: там перевыбирают, кому задан вариант.
+  const accounts = useStudentAccounts(user.id)
   const [submissions, setSubmissions] = useState([])
   const [showAdd, setShowAdd] = useState(false)
   // Печатная тетрадь по номерам экзамена. Раньше открывалась только из
@@ -1295,27 +1583,20 @@ function Variants({ user, students = [] }) {
   // когда браузер освободится, чтобы «Собрать вариант» открывалось без ожидания.
   useEffect(() => { if (canVariants) prefetchBank() }, [canVariants])
 
-  async function loadData() {
-    setLoading(true)
+  async function loadData({ silent } = {}) {
+    if (!silent) setLoading(true)
     const { data: v } = await supabase.from("variants").select("*").eq("tutor_id", user.id).order("created_at", { ascending: false })
     const { data: s } = await supabase.from("variant_submissions").select("*, student_accounts(name, email)").in("variant_id", (v || []).map((x) => x.id))
     // Бакет `variants` приватный: PDF варианта и фото решений части 2 —
     // рабочие файлы учеников, отдаём по временной подписанной ссылке.
-    setVariants(await signRows(v || [], { file_url: "variants" }))
+    const signed = await signRows(v || [], { file_url: "variants" })
+    setVariants(signed)
+    // Открытый разбор пересобираем из свежих данных: он держит СВОЮ копию
+    // варианта, и после правки в окне редактирования показывал бы прежний срок
+    // и прежние задания.
+    setSelectedVariant((prev) => (prev ? signed.find((x) => x.id === prev.id) || prev : prev))
     setSubmissions(await signRows(s || [], { part2_files: "variants" }))
     setLoading(false)
-  }
-
-  // Срок сдачи правится в окне «Редактировать вариант». Пишем сразу в базу,
-  // стейт обновляем на месте: список перечитывается запросом, и ждать его ради
-  // одной даты незачем.
-  async function saveDeadline(value) {
-    if (!selectedVariant) return
-    const next = value || null
-    const id = selectedVariant.id
-    setVariants((prev) => prev.map((x) => (x.id === id ? { ...x, deadline: next } : x)))
-    setSelectedVariant((prev) => (prev && prev.id === id ? { ...prev, deadline: next } : prev))
-    await supabase.from("variants").update({ deadline: next }).eq("id", id)
   }
 
   async function deleteVariant(v) {
@@ -1512,7 +1793,9 @@ function Variants({ user, students = [] }) {
       {editOpen && selectedVariant && (
         <EditVariantModal
           variant={selectedVariant}
-          onChangeDeadline={saveDeadline}
+          accounts={accounts}
+          submissions={variantSubmissions}
+          onSaved={() => loadData({ silent: true })}
           onClose={() => setEditOpen(false)}
         />
       )}
