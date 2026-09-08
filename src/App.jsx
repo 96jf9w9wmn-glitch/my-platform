@@ -297,6 +297,9 @@ function PlanStar({ active, onClick }) {
 // которую пачка событий возврата схлопывается в одно чтение.
 const ROSTER_IDLE_MS = 5 * 60000
 const ROSTER_URGENT_MS = 60000
+// Сколько раз подряд перечитывать список в срочном ритме, прежде чем признать,
+// что пояса просто нет (ученик ещё не заходил), и вернуться к обычному.
+const ROSTER_URGENT_TRIES = 5
 const ROSTER_COALESCE_MS = 400
 
 // Одинаковый ли ростер. Список перечитывается сам — при возврате к вкладке, к
@@ -924,10 +927,18 @@ function App() {
   //
   // Признак срочности держим в ref, а не в зависимостях: иначе каждый прочитанный
   // ростер переподписывал обработчики.
+  //
+  // Срочность ОДНОРАЗОВАЯ: у ученика, который ни разу не заходил в кабинет,
+  // якоря пояса нет и не появится, пока он не войдёт, — а признак «пояса нет»
+  // держится вечно. В замере боевого занятия из-за этого список перечитывался
+  // раз в минуту без перерыва (28 раз за 25 минут), и каждое чтение заново
+  // перерисовывало все открытые разделы. Несколько частых попыток после захода
+  // на страницу смысл имеют, дальше — обычный неторопливый ритм.
   const urgentRosterRef = useRef(false)
+  const urgentTriesRef = useRef(0)
   useEffect(() => {
-    urgentRosterRef.current = user?.role === "tutor"
-      && students.some((s) => !s.timezone && s.studentAccountId)
+    const missing = user?.role === "tutor" && students.some((s) => !s.timezone && s.studentAccountId)
+    urgentRosterRef.current = missing && urgentTriesRef.current < ROSTER_URGENT_TRIES
   }, [user?.role, students])
 
   useEffect(() => {
@@ -939,6 +950,7 @@ function App() {
       // перечитывается чаще, но всё равно не на каждое движение мышью.
       const wait = urgentRosterRef.current ? ROSTER_URGENT_MS : ROSTER_IDLE_MS
       if (Date.now() - lastRosterLoadRef.current < wait) return
+      if (urgentRosterRef.current) urgentTriesRef.current += 1
       clearTimeout(timer)
       timer = setTimeout(() => {
         if (document.visibilityState === "visible") loadStudents()
