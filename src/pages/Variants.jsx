@@ -1265,8 +1265,14 @@ const dayMonth = (date) =>
 // Что здесь можно: срок сдачи, состав получателей и пересборка отдельного
 // задания. Всё, кроме пересборки, применяется по «Сохранить» — одно окно, одна
 // кнопка; отмена не оставляет следов.
-function EditVariantModal({ variant, accounts, submissions, onClose, onSaved }) {
-  const { cls: closingCls, close } = useClosing(onClose)
+function EditVariantModal({ variant, accounts, submissions, signal, onClose, onSaved }) {
+  const { cls: closingCls, close, cancel } = useClosing(onClose)
+  // Уход окна длится 240 мс, и всё это время оно ещё в дереве, а отложенный
+  // onClose ждёт своей очереди. Нажатие «Изменить» в эту щель ничего не
+  // меняло — окно уже «открыто», — а потом срабатывал таймер и закрывал его:
+  // кнопка выглядела сломанной, но только если нажать сразу после закрытия.
+  // Поэтому каждое нажатие шлёт сигнал, а сигнал отменяет уход.
+  useEffect(() => { cancel() }, [signal, cancel])
   const [deadline, setDeadline] = useState(variant.deadline || "")
   const [tasks, setTasks] = useState(variant.tasks_snapshot || null)
   const [answers, setAnswers] = useState(variant.answers || {})
@@ -1555,6 +1561,13 @@ function Variants({ user, students = [] }) {
   // «Банка заданий», а он виден одному владельцу платформы.
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [editOpen, setEditOpen] = useState(false)
+  // Счётчик нажатий «Изменить»: по нему окно отменяет свой уход, если его
+  // открыли заново, пока оно ещё гаснет (см. EditVariantModal).
+  const [editSignal, setEditSignal] = useState(0)
+  // Заодно отменяем уход самого разбора: карточку часто нажимают ещё раз, а
+  // потом тянутся к карандашу — панель в эти 240 мс видна, и без отмены её
+  // отложенное закрытие снимало бы и панель, и только что открытое окно.
+  const openEdit = () => { cancelDetailClose(); setEditOpen(true); setEditSignal((n) => n + 1) }
   const { cls: previewCls, close: closePreview } = useClosing(() => setPreviewFile(null))
 
   // Сборка вариантов — возможность платных тарифов. Уже выданные варианты
@@ -1702,7 +1715,7 @@ function Variants({ user, students = [] }) {
                       <Icon name="paperclip" size={15} />
                     </button>
                   )}
-                  <button onClick={() => setEditOpen(true)} aria-label="Редактировать вариант" title="Редактировать вариант"
+                  <button onClick={openEdit} aria-label="Редактировать вариант" title="Редактировать вариант"
                     className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-500/10 transition-colors">
                     <Icon name="edit" size={15} />
                   </button>
@@ -1793,6 +1806,7 @@ function Variants({ user, students = [] }) {
       {editOpen && selectedVariant && (
         <EditVariantModal
           variant={selectedVariant}
+          signal={editSignal}
           accounts={accounts}
           submissions={variantSubmissions}
           onSaved={() => loadData({ silent: true })}
