@@ -173,9 +173,17 @@ export async function taskToImageFile(task, { label = "" } = {}) {
   if (!hasInk(shot)) throw new Error("снимок задания вышел пустым")
 
   const canvas = roundSheet(shot)
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"))
+  // WebP, а не PNG: лист снят втрое крупнее (около 1860×2200), и кодирование PNG
+  // такого холста занимало больше секунды — дольше самого снимка. Замер на боевом
+  // задании: PNG 1066 мс и 433 КБ, WebP 150 мс и 199 КБ. Браузер, который webp с
+  // холста не умеет, по спецификации вернёт PNG — тогда всё работает как раньше,
+  // поэтому тип и расширение берём у самого блоба, а не задаём наперёд.
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/webp", 0.95))
+    || await new Promise((resolve) => canvas.toBlob(resolve, "image/png"))
   if (!blob) throw new Error("не удалось снять задание")
-  return new File([blob], `task-${task.number || "x"}.png`, { type: "image/png" })
+  const type = blob.type || "image/png"
+  const ext = type === "image/webp" ? "webp" : "png"
+  return new File([blob], `task-${task.number || "x"}.${ext}`, { type })
 }
 
 export const SHEET_WIDTH = SHEET_W

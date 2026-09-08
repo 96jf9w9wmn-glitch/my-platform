@@ -6,7 +6,6 @@ import ConfirmModal from "./ConfirmModal"
 import { useClosing, CLOSE_MS, POPUP_OUT_MS } from "../useClosing"
 import { recognizeShape } from "./boardSmartDraw"
 import { answersEqual } from "../utils"
-import Reveal from "./Reveal"
 import {
   GRID, ENCLOSED_SHAPES, SHAPE_TOOLS, DASHABLE_SHAPES,
   TEXT_FONT, TEXT_LINE, TEXT_MIN, TEXT_MAX, TEXT_DEFAULT, textMetrics, textBoxPoints, textFont,
@@ -41,7 +40,7 @@ const SPOT_PAD = 40          // зазор вокруг листа при пои
 // поэтому у задания и поля один масштаб. Держать эту ширину в согласии с taskSnapshot.
 const QA_SHEET_W = 620       // ширина листа в его собственных единицах
 const QA_GAP = 14            // отступ поля от нижнего края листа, там же
-const QA_TUTOR_LIFT = 22     // на столько пилюля репетитора наезжает на низ листа
+const QA_TUTOR_INSET = 30    // на столько строка репетитора отступает от низа листа внутрь
 // Лист меньше этого на экране — поля не показываем: набрать в него всё равно нельзя,
 // а условие на такой доске читают глазами, а не решают.
 const QA_MIN_ON_SCREEN = 300
@@ -178,9 +177,11 @@ async function processImageFile(file, maxDim = 1400) {
     if (!im) { URL.revokeObjectURL(url); throw err }   // не загрузилась вовсе
   }
   const scale = Math.min(1, maxDim / Math.max(im.naturalWidth, im.naturalHeight))
-  const isPng = file.type === "image/png"
-  const type = isPng ? "image/png" : "image/jpeg"
-  const ext = isPng ? "png" : "jpg"
+  // Без потерь — только PNG и WebP: лист с заданием снимается в WebP, и пережать
+  // его в jpeg значило бы размыть формулы.
+  const lossless = file.type === "image/png" || file.type === "image/webp"
+  const type = lossless ? file.type : "image/jpeg"
+  const ext = type === "image/png" ? "png" : type === "image/webp" ? "webp" : "jpg"
   // Адрес отдаём вместе с картинкой и НЕ отпускаем: пока разобранный <img> живёт в
   // кэше доски, браузер вправе выбросить растр и перечитать его по этому адресу.
   if (scale === 1 && file.type) return { blob: file, type: file.type, ext, w: im.naturalWidth, h: im.naturalHeight, img: im, url }
@@ -229,34 +230,28 @@ function TaskAnswerBox({ panel, dark, panelBg, panelBorder, tutor = false, onChe
   // Репетитор: что с заданием у ученика + ответ по кнопке. Поля ввода тут нет —
   // проверяет себя ученик, а репетитору нужен сам ответ.
   //
-  // Плашка во всю ширину листа была тяжелее самого задания и отжимала его вверх,
-  // хотя несёт одну кнопку. Поэтому у репетитора это пилюля по содержимому,
-  // лежащая на нижнем углу листа: угол там пустой, а место под листом свободно.
+  // Своей плашки у этой строки НЕТ: она стоит внутри листа, у нижнего края, и
+  // читается как его же подпись. Отдельная карточка под заданием несла одну
+  // кнопку, а весила больше самого условия.
   if (tutor) {
     return (
-      <div className="absolute flex justify-end" style={{ ...frame, top: panel.y - QA_TUTOR_LIFT * panel.k }}>
-        <div className="rounded-full shadow-lg popup-bubble flex flex-col items-end"
-          style={{ background: panelBg, border: `1px solid ${panelBorder}`, borderRadius: shown ? 18 : 999, padding: shown ? "6px 8px 10px" : "6px 8px" }}>
-          <div className="flex items-center gap-2">
-            <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ background: done ? `${tone}22` : "rgba(0,122,255,.10)", color: done ? tone : "#007AFF" }}
-              title={done ? (panel.ok ? "Ученик ответил верно" : "Ученик ответил неверно") : "Ученик ещё не ответил"}>
-              <Icon name={done ? (panel.ok ? "check" : "x") : "clock"} size={16} />
-            </span>
-            {done && (
-              <span className="text-[15px] font-mono max-w-[220px] truncate" style={{ color: done ? tone : ink }}>{panel.v}</span>
-            )}
-            <button onClick={() => setShown((v) => !v)}
-              className="press-tap flex-shrink-0 px-2.5 py-1 rounded-full text-[15px] text-blue-500 hover:bg-blue-500/[0.08]">
-              {shown ? "Скрыть" : "Ответ"}
-            </button>
-          </div>
-          {/* Ответ убирается тем же плавным движением, что и появляется */}
-          <Reveal value={shown}>{() => (
-            <div className="mt-1.5 px-2 text-[17px] font-mono break-words text-right" style={{ color: ink }}>
-              {panel.a ?? "—"}
-            </div>
-          )}</Reveal>
+      <div className="absolute flex justify-end" style={{ ...frame, top: panel.y - QA_TUTOR_INSET * panel.k }}>
+        <div className="flex items-center gap-2 pr-4">
+          <span className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
+            style={{ background: done ? `${tone}22` : "rgba(0,122,255,.10)", color: done ? tone : "#007AFF" }}
+            title={done ? (panel.ok ? "Ученик ответил верно" : "Ученик ответил неверно") : "Ученик ещё не ответил"}>
+            <Icon name={done ? (panel.ok ? "check" : "x") : "clock"} size={15} />
+          </span>
+          {done && <span className="text-[15px] font-mono max-w-[200px] truncate" style={{ color: tone }}>{panel.v}</span>}
+          {/* Ответ не мигает, а выезжает и так же уезжает */}
+          <span className="text-[15px] font-mono truncate transition-all duration-200"
+            style={{ color: ink, opacity: shown ? 1 : 0, maxWidth: shown ? 200 : 0, pointerEvents: "none" }}>
+            {panel.a ?? "—"}
+          </span>
+          <button onClick={() => setShown((v) => !v)}
+            className="press-tap flex-shrink-0 px-2 py-0.5 rounded-full text-[15px] text-blue-500 hover:bg-blue-500/[0.08]">
+            {shown ? "Скрыть" : "Ответ"}
+          </button>
         </div>
       </div>
     )
