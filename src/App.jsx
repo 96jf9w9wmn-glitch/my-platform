@@ -813,11 +813,22 @@ function App() {
   // состояние НОВЫЙ объект пользователя, а это перерисовка всего приложения
   // поверх занятия. Тот же вошедший — ничего не делаем.
   const restoredIdRef = useRef(null)
+  // Пускали ли уже кого-то в кабинет. Нужна именно ссылка: обработчик событий
+  // сессии живёт в эффекте с пустым списком зависимостей и видел бы `user`
+  // только таким, каким он был при монтировании.
+  const userRef = useRef(null)
+  userRef.current = user
   useEffect(() => {
     async function restoreSession(session) {
       const minDelay = new Promise(r => setTimeout(r, 600))
       if (!session) { restoredIdRef.current = null; await minDelay; setLoadingAuth(false); return }
-      if (restoredIdRef.current === session.user.id) { setLoadingAuth(false); return }
+      // Тот же вошедший. Загрузку снимаем ТОЛЬКО если в кабинет уже пустили:
+      // при обновлении страницы события про одну и ту же сессию приходят
+      // пачкой (SIGNED_IN от восстановления, следом INITIAL_SESSION и ответ
+      // getSession), первое читает профиль, а остальные попадали сюда и
+      // снимали загрузку, пока user ещё null — на эти полсекунды вместо
+      // экрана загрузки показывался лендинг, будто вход слетел.
+      if (restoredIdRef.current === session.user.id) { if (userRef.current) setLoadingAuth(false); return }
       // Отметку ставим ДО запроса, а не после: события приходят пачкой (в замере
       // боевого дня — четыре штуки в одну секунду при возврате на вкладку), и
       // проверка «после await» пропустила бы все четыре разом. Профиль не
