@@ -37,6 +37,7 @@ import { navFor } from "./nav"
 import Reveal from "./components/Reveal"
 import PageBoundary from "./components/PageBoundary"
 import TutorOnboardingModal from "./components/TutorOnboardingModal"
+import ConfirmModal from "./components/ConfirmModal"
 // Excalidraw тяжёлый (mermaid/katex) — грузим доску только при открытии
 const Board = lazy(() => import("./components/Board"))
 // Тяжёлые экраны — грузим лениво, чтобы их код (генераторы заданий на 34k строк,
@@ -970,7 +971,12 @@ function App() {
     })
   }, [user?.id, user?.role, user?.profile?.timezone])
 
-  const handleLogout = useCallback(async function handleLogout() {
+  // Выход спрашивают всегда: значок стоит в верхней панели рядом с аватаром и
+  // уведомлениями, и промах по нему выбрасывал из кабинета без единого вопроса.
+  const [askLogout, setAskLogout] = useState(false)
+
+  const doLogout = useCallback(async function doLogout() {
+    setAskLogout(false)
     localStorage.removeItem("student_session")
     localStorage.removeItem("parent_session")
     setAppToken(null)
@@ -982,6 +988,24 @@ function App() {
     setStudents([])
     setStudentsLoaded(false)
   }, [])
+
+  const handleLogout = useCallback(() => setAskLogout(true), [])
+
+  // Одно подтверждение на все три кабинета: у репетитора, ученика и родителя
+  // выход зовёт этот же handleLogout, поэтому спрашивает одна и та же модалка.
+  const logoutConfirm = (
+    <ConfirmModal
+      open={askLogout}
+      title="Выйти из аккаунта?"
+      message="Чтобы вернуться в кабинет, понадобится войти заново."
+      confirmLabel="Выйти"
+      cancelLabel="Остаться"
+      danger
+      icon="logout"
+      onConfirm={doLogout}
+      onCancel={() => setAskLogout(false)}
+    />
+  )
 
   // Список собеседников репетитора и колбэки разделов держим неизменными между
   // рендерами: иначе memo выше бесполезен — новый объект в пропсе перерисовывает
@@ -1051,11 +1075,15 @@ function App() {
   }
 
   if (user.role === "parent") {
-    return <ParentDashboard user={user} onLogout={handleLogout} />
+    return <>
+      <ParentDashboard user={user} onLogout={handleLogout} />
+      {logoutConfirm}
+    </>
   }
 
   if (user.role === "student") {
     return (
+      <>
       <PageBoundary fallback={<div className="fixed inset-0 flex items-center justify-center bg-white dark:bg-[#1c1c1e]"><div className="loader-logo" /></div>}>
       <StudentDashboard
         user={user}
@@ -1077,6 +1105,8 @@ function App() {
         }}
       />
       </PageBoundary>
+      {logoutConfirm}
+      </>
     )
   }
 
@@ -1273,6 +1303,7 @@ function App() {
           />
         )}
       </div>
+      {logoutConfirm}
     </div>
     </SubscriptionProvider>
   )
