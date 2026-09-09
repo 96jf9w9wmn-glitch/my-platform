@@ -11,7 +11,7 @@
 //  • прочий same-origin GET — network-first с фолбэком на кэш (офлайн).
 //
 // При изменении САМОЙ логики воркера — поднимай версию CACHE.
-const CACHE = "precettore-v3"
+const CACHE = "precettore-v4"
 
 // Мгновенно активируем новую версию воркера, не дожидаясь закрытия вкладок.
 self.addEventListener("install", () => {
@@ -137,6 +137,56 @@ self.addEventListener("fetch", (event) => {
         }
         throw err
       }
+    })()
+  )
+})
+
+// ── Push-уведомления ────────────────────────────────────────────────────────
+//
+// На iPhone это работает ТОЛЬКО в приложении, добавленном на экран «Домой»
+// (iOS 16.4+); в обычной вкладке Safari нет ни разрешения, ни доставки.
+// Посылку расшифровывает само устройство ключами подписки, поэтому текст
+// уведомления не видят ни Apple, ни Google — они везут запечатанный конверт.
+
+self.addEventListener("push", (event) => {
+  // Показать уведомление ОБЯЗАТЕЛЬНО: тихих push на iOS нет, и посылка без
+  // видимого уведомления стоит подписки — система отзовёт её.
+  let data = { t: "Precettore", b: "" }
+  try {
+    if (event.data) data = event.data.json()
+  } catch {
+    if (event.data) data = { t: "Precettore", b: event.data.text() }
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(data.t || "Precettore", {
+      body: data.b || "",
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      // tag со сдвигом по заголовку: одинаковые события схлопываются в одно
+      // уведомление вместо стопки, разные лежат отдельно.
+      tag: data.t || "precettore",
+      data: { url: data.u || "/" },
+    })
+  )
+})
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close()
+  const target = event.notification.data?.url || "/"
+  event.waitUntil(
+    (async () => {
+      // Если приложение уже открыто — переводим фокус на него, а не открываем
+      // второе окно поверх.
+      const all = await self.clients.matchAll({ type: "window", includeUncontrolled: true })
+      for (const client of all) {
+        if (new URL(client.url).origin === self.location.origin) {
+          await client.focus()
+          if ("navigate" in client && target !== "/") await client.navigate(target)
+          return
+        }
+      }
+      await self.clients.openWindow(target)
     })()
   )
 })

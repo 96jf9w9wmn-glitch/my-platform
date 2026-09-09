@@ -26,10 +26,12 @@ import phoneVerify from "../api/phone-verify.js"
 import lessonReport from "../api/lesson-report.js"
 import subscription from "../api/subscription.js"
 import subscriptionWebhook from "../api/subscription-webhook.js"
+import push from "../api/push.js"
 import telegram from "../api/telegram.js"
 import yookassa from "../api/yookassa.js"
 import yookassaWebhook from "../api/yookassa-webhook.js"
 import { startEmailQueue } from "./emailQueue.js"
+import { startPushQueue } from "./pushQueue.js"
 
 // Таблица адресов задана явно, а не сборкой пути из URL: путь из запроса,
 // подставленный в import, — это обход каталогов и запуск чужого файла.
@@ -40,6 +42,7 @@ const ROUTES = {
   "/api/auth-signup": authSignup,
   "/api/generate-hw": generateHw,
   "/api/phone-verify": phoneVerify,
+  "/api/push": push,
   "/api/lesson-report": lessonReport,
   "/api/subscription": subscription,
   "/api/subscription-webhook": subscriptionWebhook,
@@ -199,6 +202,7 @@ server.listen(PORT, "0.0.0.0", () => {
   // Дублирование уведомлений репетитора на почту: очередь наполняет база,
   // разбираем её здесь — из базы наружу в SMTP не сходить.
   startEmailQueue()
+  startPushQueue()
 })
 
 // Без этого `docker compose restart` ждёт 10 с и убивает процесс по SIGKILL,
