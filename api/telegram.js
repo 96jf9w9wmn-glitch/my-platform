@@ -146,13 +146,26 @@ const shiftDay = (iso, days) => {
 }
 
 const WEEKDAYS = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"]
+const WEEKDAYS_FULL = ["воскресенье", "понедельник", "вторник", "среда",
+  "четверг", "пятница", "суббота"]
 const MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня",
   "июля", "августа", "сентября", "октября", "ноября", "декабря"]
+// Именительный падеж — отдельным списком. Получать его из родительного заменой
+// окончания нельзя: «марта» и «августа» так не чинятся.
+const MONTHS_NOM = ["январь", "февраль", "март", "апрель", "май", "июнь",
+  "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"]
 
 export function humanDate(iso) {
   const [y, m, d] = iso.split("-").map(Number)
   const wd = WEEKDAYS[new Date(y, m - 1, d).getDay()]
   return `${d} ${MONTHS[m - 1]}, ${wd}`
+}
+
+// «9 сентября, среда» — для подзаголовка раздела, где сокращение «ср» выглядит
+// телеграммой, а не интерфейсом.
+export function humanDateFull(iso) {
+  const [y, m, d] = iso.split("-").map(Number)
+  return `${d} ${MONTHS[m - 1]}, ${WEEKDAYS_FULL[new Date(y, m - 1, d).getDay()]}`
 }
 
 // Дата без дня недели: для дедлайнов и даты экзамена. Год добавляем, только если
@@ -292,6 +305,35 @@ async function clearChatCommands(chatId) {
   await tg("deleteMyCommands", { scope: { type: "chat", chat_id: chatId } })
 }
 
+// ── Оформление ──────────────────────────────────────────────────────────────
+//
+// У Telegram из средств вёрстки есть только жирный, курсив, моноширинный,
+// ссылка и цитата — поэтому все экраны собираются из ЧЕТЫРЁХ приёмов, и ни один
+// раздел не выдумывает своих. Иначе бот выглядит как набор разных программ.
+//
+//   head   — эмодзи, название, под ним приглушённая строка с цифрами;
+//   quote  — цитата: единственный способ показать структуру, кроме отступов.
+//            Telegram рисует её вертикальной чертой, и список перестаёт быть
+//            стеной текста. Длинные — раскрывающиеся, чтобы неделя не занимала
+//            весь экран;
+//   pair   — «подпись · значение», выровненные одинаково во всех разделах;
+//   footer — ссылка СЛОВОМ. Голый https://… в тексте и есть та самая скудость:
+//            он длиннее подписи и ничего не сообщает.
+
+const head = (icon, title, sub) =>
+  sub ? `${icon} <b>${title}</b>\n<i>${sub}</i>` : `${icon} <b>${title}</b>`
+
+const quote = (rows, expandable = false) =>
+  `<blockquote${expandable ? " expandable" : ""}>${rows.join("\n")}</blockquote>`
+
+// Цитату раскрываем, только когда она реально длинная: у короткой кнопка
+// «развернуть» — лишний шум.
+const QUOTE_FOLD = 14
+
+const pair = (label, value) => `${label} · ${value}`
+
+const footer = (what) => `<i>${what} — <a href="${APP_URL}">в кабинете</a></i>`
+
 // ── Клавиатуры ──────────────────────────────────────────────────────────────
 
 const MENU = {
@@ -366,12 +408,15 @@ export async function viewToday(db, link) {
     const next = nextLesson(students, today)
     return {
       text: [
-        `<b>${humanDate(today)}</b>`,
+        head("📅", "Сегодня", humanDateFull(today)),
         "",
         "Занятий нет.",
         next
-          ? `Ближайшее — ${humanDate(next.date)} в ${esc(next.time || "—")}: ${esc(studentName(next.student.name, link.full_names))}`
-          : "Дальше в расписании тоже пусто.",
+          ? quote([
+              pair("Ближайшее", `${humanDate(next.date)} в ${esc(next.time || "—")}`),
+              pair("Ученик", esc(studentName(next.student.name, link.full_names))),
+            ])
+          : "<i>Дальше в расписании тоже пусто.</i>",
       ].join("\n"),
       keyboard: backTo(),
     }
@@ -390,11 +435,13 @@ export async function viewToday(db, link) {
 
   return {
     text: [
-      `<b>${humanDate(today)}</b>`,
-      `${lessonsWord(items.length)} · ${money(sum)}`,
+      head("📅", "Сегодня", `${humanDateFull(today)} · ${lessonsWord(items.length)} · ${money(sum)}`),
       "",
-      joinLimited(lines, 20, ["занятие", "занятия", "занятий"]),
-    ].join("\n"),
+      quote(lines.slice(0, 20), lines.length > QUOTE_FOLD),
+      lines.length > 20
+        ? `<i>…и ещё ${lines.length - 20} ${plural(lines.length - 20, "занятие", "занятия", "занятий")}</i>`
+        : null,
+    ].filter((x) => x !== null).join("\n"),
     keyboard: backTo(),
   }
 }
@@ -406,7 +453,10 @@ export async function viewWeek(db, link) {
   const items = lessonsBetween(students, from, to)
 
   if (!items.length) {
-    return { text: "<b>Неделя впереди</b>\n\nЗанятий не запланировано.", keyboard: backTo() }
+    return {
+      text: `${head("🗓", "Ближайшие семь дней")}\n\nЗанятий не запланировано.`,
+      keyboard: backTo(),
+    }
   }
 
   const byDay = new Map()
@@ -415,19 +465,23 @@ export async function viewWeek(db, link) {
     byDay.get(l.date).push(l)
   }
 
-  const blocks = [...byDay.entries()].map(([date, day]) => {
-    const rows = day.map((l) =>
-      `  ${esc(l.time || "—")} · ${esc(studentName(l.student.name, link.full_names))}`)
-    return [`<b>${humanDate(date)}</b>`, ...rows].join("\n")
-  })
+  // Один блок на всю неделю, а не по блоку на день: семь цитат подряд рябят,
+  // а внутри одной дни уже разделены жирной строкой и пустой строкой.
+  const rows = []
+  for (const [date, day] of byDay.entries()) {
+    if (rows.length) rows.push("")
+    rows.push(`<b>${humanDate(date)}</b>`)
+    for (const l of day) {
+      rows.push(pair(esc(l.time || "—"), esc(studentName(l.student.name, link.full_names))))
+    }
+  }
 
   const sum = items.reduce((s, l) => s + (l.student.lesson_price || 0), 0)
   return {
     text: [
-      `<b>Ближайшие 7 дней</b>`,
-      `${lessonsWord(items.length)} · ${money(sum)}`,
+      head("🗓", "Ближайшие семь дней", `${lessonsWord(items.length)} · ${money(sum)}`),
       "",
-      joinLimited(blocks, 7, ["день", "дня", "дней"]),
+      quote(rows, rows.length > QUOTE_FOLD),
     ].join("\n"),
     keyboard: backTo(),
   }
@@ -446,19 +500,27 @@ export async function viewHomework(db, link) {
   const overdue = homework.filter((h) => HW_ACTIVE.has(h.status) && h.deadline && h.deadline < today)
   const active = homework.filter((h) => HW_ACTIVE.has(h.status) && (!h.deadline || h.deadline >= today))
 
-  const parts = [`<b>Домашние задания</b>`,
-    `На проверке ${toCheck.length} · просрочено ${overdue.length} · в работе ${active.length}`]
+  const parts = [head("📝", "Домашние работы",
+    `на проверке ${toCheck.length} · просрочено ${overdue.length} · в работе ${active.length}`)]
 
   if (toCheck.length) {
     parts.push("", "<b>Ждут проверки</b>")
-    parts.push(joinLimited(toCheck.map((h) =>
-      `📩 ${who(h.student_id)} · ${esc(h.title)}` +
-      (h.submission_url ? ` · <a href="${esc(h.submission_url)}">работа</a>` : "")), 10, ["работа", "работы", "работ"]))
+    parts.push(quote(toCheck.slice(0, 10).map((h) =>
+      `📩 <b>${who(h.student_id)}</b> · ${esc(h.title)}` +
+      (h.submission_url ? ` · <a href="${esc(h.submission_url)}">работа</a>` : "")),
+      toCheck.length > QUOTE_FOLD))
+    if (toCheck.length > 10) {
+      parts.push(`<i>…и ещё ${toCheck.length - 10} ${plural(toCheck.length - 10, "работа", "работы", "работ")}</i>`)
+    }
   }
   if (overdue.length) {
     parts.push("", "<b>Просрочено</b>")
-    parts.push(joinLimited(overdue.map((h) =>
-      `⚠️ ${who(h.student_id)} · ${esc(h.title)} · до ${esc(shortDate(h.deadline))}`), 10, ["задание", "задания", "заданий"]))
+    parts.push(quote(overdue.slice(0, 10).map((h) =>
+      `⚠️ <b>${who(h.student_id)}</b> · ${esc(h.title)} · <i>до ${esc(shortDate(h.deadline))}</i>`),
+      overdue.length > QUOTE_FOLD))
+    if (overdue.length > 10) {
+      parts.push(`<i>…и ещё ${overdue.length - 10} ${plural(overdue.length - 10, "задание", "задания", "заданий")}</i>`)
+    }
   }
   if (!toCheck.length && !overdue.length) {
     parts.push("", active.length ? "Всё сдано в срок — проверять пока нечего." : "Активных заданий нет.")
@@ -477,7 +539,10 @@ export async function viewHomework(db, link) {
 export async function viewStudents(db, link) {
   const students = await loadStudents(db, link.tutor_id)
   if (!students.length) {
-    return { text: "<b>Ученики</b>\n\nПока никого нет — добавьте ученика в кабинете.", keyboard: backTo() }
+    return {
+      text: `${head("👥", "Ученики")}\n\nПока никого нет.\n${footer("Ученик заводится заявкой")}`,
+      keyboard: backTo(),
+    }
   }
   const homework = await loadHomework(db, link.tutor_id)
   const hwActive = new Map()
@@ -492,12 +557,14 @@ export async function viewStudents(db, link) {
     const conducted = (s.lessons || []).filter((l) => isLessonConducted(l, now)).length
     const debt = debtOf(s)
     const hw = hwActive.get(String(s.id)) || 0
+    // Сокращения «зан.» и «ДЗ» убраны намеренно: в интерфейсе они читаются как
+    // экономия на читателе, а места экономят три символа.
     const tail = [
-      `${conducted} зан.`,
-      hw ? `${hw} ДЗ` : null,
+      `${conducted} ${plural(conducted, "занятие", "занятия", "занятий")}`,
+      hw ? `${hw} ${plural(hw, "работа", "работы", "работ")}` : null,
       debt > 0 ? `долг ${money(debt)}` : null,
     ].filter(Boolean).join(" · ")
-    return `• <b>${esc(studentName(s.name, link.full_names))}</b> — ${tail}`
+    return pair(`<b>${esc(studentName(s.name, link.full_names))}</b>`, tail)
   })
 
   // Кнопки-карточки: первые восемь учеников, дальше подробности в кабинете.
@@ -509,7 +576,14 @@ export async function viewStudents(db, link) {
   })
 
   return {
-    text: [`<b>Ученики</b> · ${students.length}`, "", joinLimited(lines, 25, ["ученик", "ученика", "учеников"])].join("\n"),
+    text: [
+      head("👥", "Ученики", `${students.length} ${plural(students.length, "человек", "человека", "человек")}`),
+      "",
+      quote(lines.slice(0, 25), lines.length > QUOTE_FOLD),
+      lines.length > 25
+        ? `<i>…и ещё ${lines.length - 25} ${plural(lines.length - 25, "ученик", "ученика", "учеников")}</i>`
+        : null,
+    ].filter((x) => x !== null).join("\n"),
     keyboard: backTo("menu", rows),
   }
 }
@@ -536,22 +610,38 @@ export async function viewStudent(db, link, studentId) {
   const debt = debtOf(s)
   const pack = packageOf(s)
 
-  const lines = [
-    `<b>${esc(studentName(s.name, link.full_names))}</b>`,
-    s.goal ? `Цель: ${esc(s.goal)}` : null,
-    s.exam_date ? `Экзамен: ${esc(shortDate(s.exam_date))}` : null,
-    s.target_score ? `Цель по баллам: ${esc(s.target_score)}` : null,
-    "",
-    `Проведено занятий: ${conducted.length}`,
+  // Три блока вместо плоского перечня «подпись: значение»: учёба, деньги,
+  // работы. Так карточка читается взглядом, а не построчно.
+  const subtitle = [
+    s.goal ? esc(s.goal) : null,
+    s.exam_date ? `экзамен ${esc(shortDate(s.exam_date))}` : null,
+    s.target_score ? `цель ${esc(s.target_score)}` : null,
+  ].filter(Boolean).join(" · ")
+
+  const study = [
+    pair("Проведено", `${conducted.length} ${plural(conducted.length, "занятие", "занятия", "занятий")}`),
     upcoming.length
-      ? `Ближайшее: ${humanDate(upcoming[0].date)} в ${esc(upcoming[0].time || "—")}`
-      : "Ближайшее занятие не назначено",
-    s.lesson_price ? `Цена занятия: ${money(s.lesson_price)}` : null,
-    debt > 0 ? `Долг: <b>${money(debt)}</b>` : debt < 0 ? `Предоплата: ${money(-debt)}` : "Оплачено полностью",
-    pack ? `Абонемент: ${pack.lessons} ${plural(pack.lessons, "занятие", "занятия", "занятий")} по ${esc(shortDate(pack.until))}${pack.amount ? ` — ${money(pack.amount)}` : ""}` : null,
+      ? pair("Ближайшее", `${humanDate(upcoming[0].date)} в ${esc(upcoming[0].time || "—")}`)
+      : pair("Ближайшее", "не назначено"),
+  ]
+
+  const finance = [
+    s.lesson_price ? pair("Цена занятия", money(s.lesson_price)) : null,
+    debt > 0 ? pair("Долг", `<b>${money(debt)}</b>`)
+      : debt < 0 ? pair("Предоплата", money(-debt))
+      : pair("Оплата", "закрыта полностью"),
+    pack
+      ? pair("Абонемент", `${pack.lessons} ${plural(pack.lessons, "занятие", "занятия", "занятий")} по ${esc(shortDate(pack.until))}${pack.amount ? ` — ${money(pack.amount)}` : ""}`)
+      : null,
+  ].filter(Boolean)
+
+  const lines = [
+    head("👤", esc(studentName(s.name, link.full_names)), subtitle || null),
     "",
-    `ДЗ: ${activeHw} в работе, ${toCheck} на проверке`,
-  ].filter((x) => x !== null)
+    quote(study),
+    quote(finance),
+    quote([pair("Домашние работы", `${activeHw} в работе · ${toCheck} на проверке`)]),
+  ]
 
   return { text: lines.join("\n"), keyboard: backTo("st") }
 }
@@ -585,18 +675,25 @@ export async function viewMoney(db, link) {
     .reduce((sum, l) => sum + (l.student.lesson_price || 0), 0)
 
   const parts = [
-    "<b>Деньги</b>",
-    `Получено в этом месяце: <b>${money(monthIncome)}</b>`,
-    `Ещё запланировано до конца месяца: ${money(ahead)}`,
+    head("💰", "Деньги", `${MONTHS_NOM[now.getMonth()]} · ${now.getFullYear()}`),
+    "",
+    quote([
+      pair("Получено", `<b>${money(monthIncome)}</b>`),
+      pair("Ожидается до конца месяца", money(ahead)),
+    ]),
   ]
   if (debtors.length) {
     parts.push("", `<b>Долги</b> · ${money(debtTotal)}`)
-    parts.push(joinLimited(debtors.map((d) =>
-      `• ${esc(studentName(d.name, link.full_names))} — ${money(d.debt)}`), 12, ["ученик", "ученика", "учеников"]))
+    parts.push(quote(debtors.slice(0, 12).map((d) =>
+      pair(esc(studentName(d.name, link.full_names)), money(d.debt))),
+      debtors.length > QUOTE_FOLD))
+    if (debtors.length > 12) {
+      parts.push(`<i>…и ещё ${debtors.length - 12} ${plural(debtors.length - 12, "ученик", "ученика", "учеников")}</i>`)
+    }
   } else {
     parts.push("", "Долгов нет.")
   }
-  parts.push("", `<i>Расходы и налог — в кабинете: ${APP_URL}</i>`)
+  parts.push("", footer("Расходы и налог"))
 
   return { text: parts.join("\n"), keyboard: backTo() }
 }
@@ -604,15 +701,18 @@ export async function viewMoney(db, link) {
 export function viewSettings(link) {
   return {
     text: [
-      "<b>Настройки</b>",
+      head("⚙️", "Настройки"),
       "",
-      `Полные имена учеников: <b>${link.full_names ? "показывать" : "сокращать"}</b>`,
-      link.full_names
-        ? "<i>Фамилии уходят в Telegram полностью.</i>"
-        : "<i>Бот пишет «Имя Ф.» — в Telegram уходит меньше персональных данных.</i>",
-      "",
-      `Уведомления: <b>${link.notify ? "включены" : "выключены"}</b>`,
-      "<i>Сданные ДЗ, работы по вариантам и сообщения учеников.</i>",
+      quote([
+        pair("Имена учеников", `<b>${link.full_names ? "полностью" : "сокращённо"}</b>`),
+        link.full_names
+          ? "<i>Фамилии уходят в Telegram целиком.</i>"
+          : "<i>Бот пишет «Имя Ф.» — в Telegram уходит меньше личных данных.</i>",
+      ]),
+      quote([
+        pair("Уведомления", `<b>${link.notify ? "включены" : "выключены"}</b>`),
+        "<i>Сданные работы, варианты и сообщения учеников.</i>",
+      ]),
     ].join("\n"),
     keyboard: {
       inline_keyboard: [
@@ -717,8 +817,8 @@ export async function viewStudentLessons(db, link) {
 
   if (!ahead.length) {
     return {
-      text: ["<b>Занятия</b>", "", "Ближайших занятий нет.",
-        `<i>Расписание целиком — в кабинете: ${APP_URL}</i>`].join("\n"),
+      text: [head("📅", "Занятия"), "", "Ближайших занятий нет.", "",
+        footer("Расписание целиком")].join("\n"),
       keyboard: studentBack(),
     }
   }
@@ -730,18 +830,28 @@ export async function viewStudentLessons(db, link) {
     const when = l.date === today ? "сегодня"
       : l.date === shiftDay(today, 1) ? "завтра"
       : humanDate(l.date)
-    const time = l.time ? ` в ${esc(l.time)}` : ""
+    const time = l.time ? esc(l.time) : "—"
     const who = home.manyTutors && l.tutor ? ` · ${esc(l.tutor)}` : ""
     // Предложенный перенос виден сразу: иначе ученик придёт к старому времени.
     const move = l.moveRequest?.date
-      ? `\n   <i>предложен перенос на ${humanDate(l.moveRequest.date)}${l.moveRequest.time ? ` в ${esc(l.moveRequest.time)}` : ""}</i>`
+      ? `\n<i>↪ перенос на ${humanDate(l.moveRequest.date)}${l.moveRequest.time ? ` в ${esc(l.moveRequest.time)}` : ""}</i>`
       : ""
-    return `• <b>${when}</b>${time}${who}${move}`
+    return `${pair(`<b>${when}</b>`, time)}${who}${move}`
   })
 
+  const shown = lines.slice(0, 8)
   return {
-    text: ["<b>Ближайшие занятия</b>", "", joinLimited(lines, 8, ["занятие", "занятия", "занятий"]), "",
-      `<i>Перенести занятие можно в кабинете: ${APP_URL}</i>`].join("\n"),
+    text: [
+      head("📅", "Ближайшие занятия",
+        `${ahead.length} ${plural(ahead.length, "занятие", "занятия", "занятий")} впереди`),
+      "",
+      quote(shown),
+      lines.length > 8
+        ? `<i>…и ещё ${lines.length - 8} ${plural(lines.length - 8, "занятие", "занятия", "занятий")}</i>`
+        : null,
+      "",
+      footer("Перенести занятие"),
+    ].filter((x) => x !== null).join("\n"),
     keyboard: studentBack(),
   }
 }
@@ -757,29 +867,38 @@ export async function viewStudentTasks(db, link) {
   const waiting = (home.homework || []).filter((h) => h.status === "submitted").length
   const variants = (home.variants || []).filter((v) => v.status === "pending")
 
-  const parts = ["<b>Задания</b>"]
+  const counts = [
+    hw.length ? `${hw.length} ${plural(hw.length, "работа", "работы", "работ")}` : null,
+    variants.length ? `${variants.length} ${plural(variants.length, "вариант", "варианта", "вариантов")}` : null,
+  ].filter(Boolean).join(" · ")
+
+  const parts = [head("📝", "Задания", counts || null)]
+
+  const due = (deadline) => {
+    if (!deadline) return ""
+    return deadline < today
+      ? " · <b>просрочено</b>"
+      : ` · <i>до ${shortDate(deadline)}</i>`
+  }
 
   if (hw.length) {
     parts.push("", "<b>Домашние работы</b>")
-    parts.push(joinLimited(hw.map((h) => {
-      const late = h.deadline && h.deadline < today
-      const due = h.deadline
-        ? ` — ${late ? "<b>просрочено</b>" : `до ${shortDate(h.deadline)}`}`
-        : ""
-      const back = h.status === "revision" ? " · <i>на доработку</i>" : ""
-      return `• ${esc(h.title || "Без названия")}${due}${back}`
-    }), 10, ["работа", "работы", "работ"]))
+    parts.push(quote(hw.slice(0, 10).map((h) =>
+      `${esc(h.title || "Без названия")}${due(h.deadline)}` +
+      (h.status === "revision" ? " · <i>на доработку</i>" : "")),
+      hw.length > QUOTE_FOLD))
+    if (hw.length > 10) {
+      parts.push(`<i>…и ещё ${hw.length - 10} ${plural(hw.length - 10, "работа", "работы", "работ")}</i>`)
+    }
   }
 
   if (variants.length) {
     parts.push("", "<b>Варианты</b>")
-    parts.push(joinLimited(variants.map((v) => {
-      const late = v.deadline && v.deadline < today
-      const due = v.deadline
-        ? ` — ${late ? "<b>просрочено</b>" : `до ${shortDate(v.deadline)}`}`
-        : ""
-      return `• ${esc(v.title || "Вариант")}${due}`
-    }), 6, ["вариант", "варианта", "вариантов"]))
+    parts.push(quote(variants.slice(0, 6).map((v) =>
+      `${esc(v.title || "Вариант")}${due(v.deadline)}`)))
+    if (variants.length > 6) {
+      parts.push(`<i>…и ещё ${variants.length - 6} ${plural(variants.length - 6, "вариант", "варианта", "вариантов")}</i>`)
+    }
   }
 
   if (!hw.length && !variants.length) {
@@ -790,17 +909,19 @@ export async function viewStudentTasks(db, link) {
     parts.push("", `<i>Ещё ${waiting} ${plural(waiting, "работа ждёт", "работы ждут", "работ ждут")} проверки.</i>`)
   }
 
-  parts.push("", `<i>Решать — в кабинете: ${APP_URL}</i>`)
+  parts.push("", footer("Решать"))
   return { text: parts.join("\n"), keyboard: studentBack() }
 }
 
 export function viewStudentSettings(link) {
   return {
     text: [
-      "<b>Настройки</b>",
+      head("⚙️", "Настройки"),
       "",
-      `Уведомления: <b>${link.notify ? "включены" : "выключены"}</b>`,
-      "<i>Новая работа, проверка, сообщение репетитора и напоминание о занятии.</i>",
+      quote([
+        pair("Уведомления", `<b>${link.notify ? "включены" : "выключены"}</b>`),
+        "<i>Новая работа, проверка, сообщение репетитора и напоминание о занятии.</i>",
+      ]),
     ].join("\n"),
     keyboard: {
       inline_keyboard: [
@@ -826,14 +947,36 @@ const STUDENT_HELP = [
   `Решать работы и писать репетитору — в кабинете: ${APP_URL}`,
 ].join("\n")
 
-const STUDENT_MENU_TEXT = "<b>Твой кабинет</b>\n\nВыбери раздел."
+// Как и у репетитора: меню отвечает на вопрос, ради которого его открывают, —
+// когда занятие и сколько несделанного. «Выбери раздел» видно по кнопкам.
+async function viewStudentMenu(db, link) {
+  const home = await studentHome(db, link)
+  if (!home) return { text: head("📚", "Твой кабинет"), keyboard: STUDENT_MENU }
+
+  const now = wallNow(home.tz)
+  const today = wallToday(home.tz)
+  const next = home.lessons.find((l) => l.date >= today && lessonAhead(l, now))
+  const tasks = (home.homework || []).filter((h) => STUDENT_HW_ACTIVE.has(h.status)).length
+
+  const when = !next ? "занятий впереди нет"
+    : next.date === today ? `занятие сегодня в ${esc(next.time || "—")}`
+    : next.date === shiftDay(today, 1) ? `занятие завтра в ${esc(next.time || "—")}`
+    : `занятие ${humanDate(next.date)} в ${esc(next.time || "—")}`
+
+  const sub = tasks
+    ? `${when} · ${tasks} ${plural(tasks, "работа", "работы", "работ")} не сдано`
+    : when
+
+  return { text: head("📚", "Твой кабинет", sub), keyboard: STUDENT_MENU }
+}
 
 export async function studentRoute(db, link, action) {
+  if (action === "s:menu") return viewStudentMenu(db, link)
   if (action === "s:lessons") return viewStudentLessons(db, link)
   if (action === "s:tasks") return viewStudentTasks(db, link)
   if (action === "s:set") return viewStudentSettings(link)
   if (action === "s:help") return { text: STUDENT_HELP, keyboard: studentBack() }
-  return { text: STUDENT_MENU_TEXT, keyboard: STUDENT_MENU }
+  return viewStudentMenu(db, link)
 }
 
 const STUDENT_COMMANDS = {
@@ -845,7 +988,24 @@ const STUDENT_COMMANDS = {
 
 // ── Диспетчер ───────────────────────────────────────────────────────────────
 
-const MENU_TEXT = "<b>Кабинет репетитора</b>\n\nВыберите раздел.";
+// Меню без данных — пустой экран с подписью «выберите раздел», которую и так
+// видно по кнопкам. Поэтому оно само отвечает на вопрос, ради которого его чаще
+// всего и открывают: что сегодня.
+async function viewMenu(db, link) {
+  const students = await loadStudents(db, link.tutor_id)
+  const today = mskToday()
+  const now = mskNow()
+  const items = lessonsBetween(students, today, today)
+  const ahead = items.filter((l) => !isLessonPast(l, now))
+
+  const sub = !items.length
+    ? "сегодня занятий нет"
+    : ahead.length
+      ? `сегодня ${lessonsWord(items.length)} · ближайшее в ${esc(ahead[0].time || "—")}`
+      : `сегодня ${lessonsWord(items.length)} · все прошли`
+
+  return { text: head("📚", "Кабинет репетитора", sub), keyboard: MENU }
+}
 
 // Действия над ДЗ. tutor_id в условии обязателен: id задания приходит из
 // callback_data, то есть снаружи, и без этой проверки чужую работу можно было бы
@@ -855,6 +1015,7 @@ async function setHomeworkStatus(db, tutorId, hwId, status) {
 }
 
 export async function route(db, link, action) {
+  if (action === "menu") return viewMenu(db, link)
   if (action === "today") return viewToday(db, link)
   if (action === "week") return viewWeek(db, link)
   if (action === "hw") return viewHomework(db, link)
@@ -863,7 +1024,7 @@ export async function route(db, link, action) {
   if (action === "set") return viewSettings(link)
   if (action === "help") return { text: HELP, keyboard: backTo() }
   if (action.startsWith("stu:")) return viewStudent(db, link, action.slice(4))
-  return { text: MENU_TEXT, keyboard: MENU }
+  return viewMenu(db, link)
 }
 
 const COMMANDS = {
