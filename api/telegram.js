@@ -1250,6 +1250,11 @@ export default async function handler(req, res) {
     // перезапуск, а не на каждое открытие кабинета.
     const needWebhook = !hook?.result?.url || !webhookEnsured
     if (needWebhook && process.env.TELEGRAM_WEBHOOK_SECRET && isProdHost) {
+      // Сначала СНЯТЬ, потом поставить. На setWebhook с тем же адресом Telegram
+      // отвечает «Webhook is already set» и новый secret_token не применяет —
+      // проверено 09.09.2026 живьём: после смены секрета он продолжал слать
+      // старый, обработчик отвечал 401, и это выглядело как «бот молчит».
+      if (hook?.result?.url) await tg("deleteWebhook", { drop_pending_updates: false })
       const set = await tg("setWebhook", {
         url: `https://${host}/api/telegram`,
         secret_token: process.env.TELEGRAM_WEBHOOK_SECRET,
