@@ -36,6 +36,7 @@ import { admin, tutorFromRequest } from "./plan-gate.js"
 import { clientIp } from "./generate-hw.js"
 import { isLessonPast, isLessonConducted, LESSON_EXCUSED, parsePaymentDate, plural } from "../src/utils.js"
 import { studentDebt, studentBilling } from "../src/billing.js"
+import { convertLessons } from "../src/timezone.js"
 import { can } from "../src/plans.js"
 
 const API = "https://api.telegram.org"
@@ -525,6 +526,208 @@ const HELP = [
   `Полный кабинет — ${APP_URL}`,
 ].join("\n")
 
+// ── Ученик ──────────────────────────────────────────────────────────────────
+//
+// У ученика свой чат, своя привязка (student_telegram) и свои разделы: занятия
+// и задания. Денег, чужих имён и списка учеников здесь нет — это его
+// собственный кабинет, а не второй экземпляр репетиторского.
+//
+// Тарифом ученик не ограничен, в отличие от репетитора: платит за платформу не
+// он, и это такой же канал доставки его собственных уведомлений, как push в
+// кабинете.
+
+const STUDENT_MENU = {
+  inline_keyboard: [
+    [{ text: "📅 Занятия", callback_data: "s:lessons" }, { text: "📝 Задания", callback_data: "s:tasks" }],
+    [{ text: "⚙️ Настройки", callback_data: "s:set" }],
+  ],
+}
+
+const studentBack = (extra = []) => ({
+  inline_keyboard: [...extra, [{ text: "‹ Меню", callback_data: "s:menu" }]],
+})
+
+// «Сегодня» и «сейчас» по часам САМОГО УЧЕНИКА, а не по Москве: репетитор может
+// вести занятие из другого пояса, и московский день здесь ни при чём.
+function wallToday(tz) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date())
+}
+
+function wallNow(tz) {
+  const p = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(new Date()).reduce((a, x) => (a[x.type] = x.value, a), {})
+  return new Date(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute)
+}
+
+// Всё, что бот показывает ученику, одним походом в базу — и сразу в его поясе.
+//
+// ГЛАВНОЕ: занятия лежат настенным временем в поясе-ЯКОРЕ карточки
+// (students.timezone), а ученик обязан видеть их по своим часам. Перевод делает
+// тот же код, что и кабинет (src/timezone.js); пояса нет ни у карточки, ни у
+// аккаунта — функция тождественная, и бот ведёт себя как до поясов.
+export async function studentHome(db, link) {
+  const home = await db.call("bot_student_home", { p_account: link.account_id })
+  if (!home) return null
+
+  const tz = home.tz || TZ
+  const cards = home.cards || []
+  const lessons = []
+  for (const card of cards) {
+    for (const l of convertLessons(card.lessons || [], card.tz || tz, tz)) {
+      if (l?.date) lessons.push({ ...l, tutor: card.tutor, card_id: card.id })
+    }
+  }
+  lessons.sort((a, b) =>
+    a.date.localeCompare(b.date) || String(a.time || "").localeCompare(String(b.time || "")))
+
+  // Имя репетитора подписываем, только когда их несколько: одному ученику одного
+  // репетитора эта строка ничего не сообщает и лишь занимает место.
+  const tutors = new Set(cards.map((c) => c.tutor).filter(Boolean))
+
+  return { ...home, tz, cards, lessons, manyTutors: tutors.size > 1 }
+}
+
+// Занятие уже прошло, либо снято со счёта — в «ближайших» ему не место.
+const lessonAhead = (l, now) =>
+  !isLessonPast(l, now) && l.status !== LESSON_EXCUSED && l.status !== "missed"
+
+export async function viewStudentLessons(db, link) {
+  const home = await studentHome(db, link)
+  if (!home) return { text: "Данные не читаются. Попробуй позже.", keyboard: studentBack() }
+
+  const now = wallNow(home.tz)
+  const today = wallToday(home.tz)
+  const ahead = home.lessons.filter((l) => l.date >= today && lessonAhead(l, now))
+
+  if (!ahead.length) {
+    return {
+      text: ["<b>Занятия</b>", "", "Ближайших занятий нет.",
+        `<i>Расписание целиком — в кабинете: ${APP_URL}</i>`].join("\n"),
+      keyboard: studentBack(),
+    }
+  }
+
+  const lines = ahead.slice(0, 12).map((l) => {
+    const when = l.date === today ? "сегодня"
+      : l.date === shiftDay(today, 1) ? "завтра"
+      : humanDate(l.date)
+    const time = l.time ? ` в ${esc(l.time)}` : ""
+    const who = home.manyTutors && l.tutor ? ` · ${esc(l.tutor)}` : ""
+    // Предложенный перенос виден сразу: иначе ученик придёт к старому времени.
+    const move = l.moveRequest?.date
+      ? `\n   <i>предложен перенос на ${humanDate(l.moveRequest.date)}${l.moveRequest.time ? ` в ${esc(l.moveRequest.time)}` : ""}</i>`
+      : ""
+    return `• <b>${when}</b>${time}${who}${move}`
+  })
+
+  return {
+    text: ["<b>Ближайшие занятия</b>", "", lines.join("\n"), "",
+      `<i>Перенести занятие можно в кабинете: ${APP_URL}</i>`].join("\n"),
+    keyboard: studentBack(),
+  }
+}
+
+const STUDENT_HW_ACTIVE = new Set(["assigned", "revision"])
+
+export async function viewStudentTasks(db, link) {
+  const home = await studentHome(db, link)
+  if (!home) return { text: "Данные не читаются. Попробуй позже.", keyboard: studentBack() }
+
+  const today = wallToday(home.tz)
+  const hw = (home.homework || []).filter((h) => STUDENT_HW_ACTIVE.has(h.status))
+  const waiting = (home.homework || []).filter((h) => h.status === "submitted").length
+  const variants = (home.variants || []).filter((v) => v.status === "pending")
+
+  const parts = ["<b>Задания</b>"]
+
+  if (hw.length) {
+    parts.push("", "<b>Домашние работы</b>")
+    parts.push(joinLimited(hw.map((h) => {
+      const late = h.deadline && h.deadline < today
+      const due = h.deadline
+        ? ` — ${late ? "<b>просрочено</b>" : `до ${shortDate(h.deadline)}`}`
+        : ""
+      const back = h.status === "revision" ? " · <i>на доработку</i>" : ""
+      return `• ${esc(h.title || "Без названия")}${due}${back}`
+    }), 10, "работ"))
+  }
+
+  if (variants.length) {
+    parts.push("", "<b>Варианты</b>")
+    parts.push(joinLimited(variants.map((v) => {
+      const late = v.deadline && v.deadline < today
+      const due = v.deadline
+        ? ` — ${late ? "<b>просрочено</b>" : `до ${shortDate(v.deadline)}`}`
+        : ""
+      return `• ${esc(v.title || "Вариант")}${due}`
+    }), 6, "вариантов"))
+  }
+
+  if (!hw.length && !variants.length) {
+    parts.push("", waiting
+      ? `Новых заданий нет: ${waiting} ${plural(waiting, "работа ждёт", "работы ждут", "работ ждут")} проверки.`
+      : "Новых заданий нет.")
+  } else if (waiting) {
+    parts.push("", `<i>Ещё ${waiting} ${plural(waiting, "работа ждёт", "работы ждут", "работ ждут")} проверки.</i>`)
+  }
+
+  parts.push("", `<i>Решать — в кабинете: ${APP_URL}</i>`)
+  return { text: parts.join("\n"), keyboard: studentBack() }
+}
+
+export function viewStudentSettings(link) {
+  return {
+    text: [
+      "<b>Настройки</b>",
+      "",
+      `Уведомления: <b>${link.notify ? "включены" : "выключены"}</b>`,
+      "<i>Новая работа, проверка, сообщение репетитора и напоминание о занятии.</i>",
+    ].join("\n"),
+    keyboard: {
+      inline_keyboard: [
+        [{ text: link.notify ? "🔕 Выключить уведомления" : "🔔 Включить уведомления", callback_data: "s:notify" }],
+        [{ text: "🚫 Отвязать этот чат", callback_data: "s:unlink" }],
+        [{ text: "‹ Меню", callback_data: "s:menu" }],
+      ],
+    },
+  }
+}
+
+const STUDENT_HELP = [
+  "<b>Что умеет бот</b>",
+  "",
+  "📅 <b>Занятия</b> — ближайшие занятия по твоим часам.",
+  "📝 <b>Задания</b> — домашние работы и варианты со сроками.",
+  "",
+  "Сам он напишет, когда репетитор выдаст работу или проверит её, пришлёт",
+  "сообщение в чат и напомнит о занятии — накануне вечером и за час.",
+  "",
+  "Команды: /menu, /lessons, /tasks, /help",
+  "",
+  `Решать работы и писать репетитору — в кабинете: ${APP_URL}`,
+].join("\n")
+
+const STUDENT_MENU_TEXT = "<b>Твой кабинет</b>\n\nВыбери раздел."
+
+export async function studentRoute(db, link, action) {
+  if (action === "s:lessons") return viewStudentLessons(db, link)
+  if (action === "s:tasks") return viewStudentTasks(db, link)
+  if (action === "s:set") return viewStudentSettings(link)
+  if (action === "s:help") return { text: STUDENT_HELP, keyboard: studentBack() }
+  return { text: STUDENT_MENU_TEXT, keyboard: STUDENT_MENU }
+}
+
+const STUDENT_COMMANDS = {
+  "/menu": "s:menu", "/start": "s:menu",
+  "/lessons": "s:lessons", "/today": "s:lessons", "/week": "s:lessons",
+  "/tasks": "s:tasks", "/hw": "s:tasks",
+  "/help": "s:help", "/settings": "s:set",
+}
+
 // ── Диспетчер ───────────────────────────────────────────────────────────────
 
 const MENU_TEXT = "<b>Кабинет репетитора</b>\n\nВыберите раздел.";
@@ -571,9 +774,13 @@ export async function handleUpdate(db, update) {
   }
 
   const link = await db.call("bot_link", { p_chat: chat })
+  // Бот ОДИН на обе роли, и роль чата решает то, какая привязка нашлась.
+  // Вторую таблицу спрашиваем, только если первая пуста: у привязанного
+  // репетитора лишнего запроса на каждое нажатие кнопки быть не должно.
+  const slink = link ? null : await db.call("bot_student_link", { p_chat: chat })
 
   // ── Ещё не привязан: единственное, что можно — прислать код ──
-  if (!link) {
+  if (!link && !slink) {
     const text = String(msg?.text || "").trim()
     const code = text.startsWith("/start") ? text.slice(6).trim() : text
     if (cb) await tg("answerCallbackQuery", { callback_query_id: cb.id })
@@ -583,15 +790,14 @@ export async function handleUpdate(db, update) {
         chat_id: chat,
         parse_mode: "HTML",
         text: [
-          "<b>Precettore</b> — бот репетитора.",
+          "<b>Precettore</b> — бот платформы.",
           "<i>Сервис работает в режиме бета-тестирования.</i>",
           "",
-          "Чтобы связать бота с вашим кабинетом:",
-          `1. откройте ${APP_URL} → «Подписка»;`,
-          "2. в блоке «Телеграм-бот» нажмите «Подключить»;",
-          "3. пришлите сюда код привязки.",
+          "Чтобы связать бота с кабинетом, возьмите код привязки и пришлите его сюда:",
+          `• репетитор — ${APP_URL} → «Профиль» → «Телеграм-бот»;`,
+          `• ученик — ${APP_URL} → «Настройки» → «Телеграм».`,
           "",
-          "<i>Бот входит в тариф «Про».</i>",
+          "<i>Боту репетитора нужен тариф «Про»; ученику — нет.</i>",
         ].join("\n"),
       })
       return
@@ -605,6 +811,26 @@ export async function handleUpdate(db, update) {
     })
 
     if (!tutorId) {
+      // Код репетитора не подошёл — пробуем как ученический. Порядок неважен:
+      // погашение каждой породы кодов смотрит на свою колонку, поэтому чужой
+      // код первой попыткой не сгорает (supabase/telegram_student.sql).
+      const accountId = await db.call("bot_student_claim", {
+        p_code: code,
+        p_chat: chat,
+        p_username: msg?.from?.username || null,
+        p_first_name: msg?.from?.first_name || null,
+      })
+
+      if (accountId) {
+        await tg("sendMessage", {
+          chat_id: chat,
+          parse_mode: "HTML",
+          text: `✅ Чат привязан к твоему кабинету.\n\n${STUDENT_HELP}`,
+          reply_markup: STUDENT_MENU,
+        })
+        return
+      }
+
       await tg("sendMessage", {
         chat_id: chat,
         text: "Код не подошёл: он одноразовый и живёт 15 минут. Возьмите новый в кабинете.",
@@ -630,7 +856,62 @@ export async function handleUpdate(db, update) {
     return
   }
 
-  // ── Привязан: тариф проверяем на каждом действии ──
+  // ── Привязан как ученик ──
+  // Тариф здесь не проверяется намеренно: за платформу платит репетитор, и
+  // понижение его тарифа не должно молча отключать ученику напоминания о
+  // собственных занятиях.
+  if (slink) {
+    db.call("bot_student_link", { p_chat: chat, p_touch: true }).catch(() => {})
+
+    if (cb) {
+      const data = String(cb.data || "")
+      const answer = (text) => tg("answerCallbackQuery", { callback_query_id: cb.id, ...(text ? { text } : {}) })
+
+      if (data === "s:notify") {
+        const fresh = (await db.call("bot_student_link", { p_chat: chat, p_notify: !slink.notify })) || slink
+        const view = viewStudentSettings(fresh)
+        await answer("Готово")
+        await tg("editMessageText", {
+          chat_id: chat, message_id: cb.message.message_id,
+          parse_mode: "HTML", text: view.text, reply_markup: view.keyboard,
+        })
+        return
+      }
+
+      if (data === "s:unlink") {
+        await db.call("bot_student_link", { p_chat: chat, p_unlink: true })
+        await answer("Чат отвязан")
+        await tg("sendMessage", {
+          chat_id: chat,
+          text: "Чат отвязан. Чтобы вернуть бота, возьми новый код в кабинете.",
+        })
+        return
+      }
+
+      const view = await studentRoute(db, slink, data)
+      await answer()
+      await tg("editMessageText", {
+        chat_id: chat, message_id: cb.message.message_id,
+        parse_mode: "HTML", text: view.text, reply_markup: view.keyboard,
+        link_preview_options: { is_disabled: true },
+      })
+      return
+    }
+
+    const stext = String(msg?.text || "").trim()
+    const scmd = stext.split(/[\s@]/)[0].toLowerCase()
+    const view = await studentRoute(db, slink, STUDENT_COMMANDS[scmd] || "s:menu")
+    await tg("sendMessage", {
+      chat_id: chat,
+      parse_mode: "HTML",
+      text: view.text,
+      reply_markup: view.keyboard,
+      link_preview_options: { is_disabled: true },
+    })
+    return
+  }
+
+  // ── Привязан как репетитор: тариф проверяем на каждом действии ──
   if (!(await planAllows(db, link.tutor_id))) {
     if (cb) await tg("answerCallbackQuery", { callback_query_id: cb.id, text: "Нужен тариф «Про»" })
     await tg("sendMessage", {

@@ -17,8 +17,8 @@ import StudentOnboardingModal from "../components/StudentOnboardingModal"
 import BoardHistory from "../components/BoardHistory"
 import OnlinePayCard from "../components/OnlinePayCard"
 import InvoiceCard from "../components/InvoiceCard"
-import { MarketingToggle } from "../components/ConsentChecks"
 import PushSettings from "../components/PushSettings"
+import StudentTelegram from "../components/StudentTelegram"
 
 const Board = lazy(() => import("../components/Board"))
 
@@ -160,6 +160,7 @@ function ChoiceChips({ choices, value, onSelect }) {
 }
 
 const MONTH_NAMES = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"]
+const MONTH_PREP = ["январе", "феврале", "марте", "апреле", "мае", "июне", "июле", "августе", "сентябре", "октябре", "ноябре", "декабре"]
 
 function getDaysInMonth(year, month) {
   const days = []
@@ -363,7 +364,7 @@ function StudentScheduleCalendar({ student, onOpenBoard, onRequestMove, onCancel
 
       {!selectedDay && (
         <div key={`${year}-${month}`} className="glass p-4 slide-up">
-          <div className="text-sm font-medium mb-3 text-gray-700">Занятия в {MONTH_NAMES[month].toLowerCase()}</div>
+          <div className="text-sm font-medium mb-3 text-gray-700">Занятия в {MONTH_PREP[month]}</div>
           {monthDays.flatMap((day) => getLessonsForDate(formatLocalDate(day))).length === 0 ? (
             <div className="text-sm text-gray-400 text-center py-4">Занятий нет</div>
           ) : (
@@ -3490,25 +3491,8 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
 
           {activeTab === "settings" && (
             <div className="flex flex-col gap-4">
-              {/* Уведомления первыми: у ученика это единственный способ узнать о
-                  новой работе, не открывая кабинет, — почты у него нет вовсе. */}
-              <PushSettings userId={user.id} informal />
-
-              <div className="glass p-5">
-                <h2 className="text-base font-medium mb-1">Подключить репетитора</h2>
-                <p className="text-xs text-gray-500 mb-4">Если начал заниматься ещё с одним репетитором — попроси у него код и введи сюда. Прежний репетитор останется: между ними можно переключаться наверху кабинета.</p>
-                <TutorLinkForm
-                  code={tutorCode}
-                  onCode={(v) => { setTutorCode(v); setTutorLinkError("") }}
-                  onSubmit={linkTutor}
-                  busy={tutorLinking}
-                  error={tutorLinkError}
-                  success={tutorLinkSuccess}
-                  label="Подключить"
-                  busyLabel="Подключаем..."
-                />
-              </div>
-
+              {/* Своя карточка первой: кто вошёл и к какому репетитору привязан —
+                  то, ради чего в раздел заходят чаще всего. */}
               <div className="glass p-5">
                 <h2 className="text-base font-medium mb-1">Мои данные</h2>
                 <p className="text-xs text-gray-500 mb-1">Их видит твой репетитор. Изменить может он — попроси в чате.</p>
@@ -3528,7 +3512,28 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                 </div>
               </div>
 
-              <MarketingToggle table="student_accounts" id={user.id} role="student" />
+              {/* Дальше уведомления: у ученика это единственный способ узнать о
+                  новой работе, не открывая кабинет, — почты у него нет вовсе. */}
+              <PushSettings userId={user.id} informal />
+
+              {/* Сразу за push: это второй канал того же — уведомления, которые
+                  доходят при закрытом приложении. Почты у ученика нет вовсе. */}
+              <StudentTelegram />
+
+              <div className="glass p-5">
+                <h2 className="text-base font-medium mb-1">Подключить репетитора</h2>
+                <p className="text-xs text-gray-500 mb-4">Если начал заниматься ещё с одним репетитором — попроси у него код и введи сюда. Прежний репетитор останется: между ними можно переключаться наверху кабинета.</p>
+                <TutorLinkForm
+                  code={tutorCode}
+                  onCode={(v) => { setTutorCode(v); setTutorLinkError("") }}
+                  onSubmit={linkTutor}
+                  busy={tutorLinking}
+                  error={tutorLinkError}
+                  success={tutorLinkSuccess}
+                  label="Подключить"
+                  busyLabel="Подключаем..."
+                />
+              </div>
             </div>
           )}
 
