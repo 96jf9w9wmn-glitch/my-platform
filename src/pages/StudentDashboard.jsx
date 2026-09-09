@@ -49,7 +49,7 @@ import { convertWall, convertLessons } from "../timezone"
 // двенадцати» там означало бы не то.
 import { part1SlotsOf, part1NumbersOf, part2NumbersOf, examLevelOf, numbersLabel } from "./taskBankMeta"
 import { choiceBaseOf } from "./answerChoices"
-import { variantPart2MaxOf, variantMaxPrimary, examResult, secondaryLabel, scaleOf, taskMaxOf } from "../examScales"
+import { variantPart2MaxOf, variantMaxPrimary, examResult, secondaryLabel, scaleOf, taskMaxOf, parseTarget, examMaxPrimary } from "../examScales"
 // Сколько времени даётся на экзамен — вариант решается ровно столько же.
 import { examMinutesOf, formatExamDuration, formatCountdown } from "./examTiming"
 import { fmtNum } from "../num"
@@ -430,18 +430,39 @@ function StreakBadge({ homework }) {
   )
 }
 
-function ProgressChart({ variants, targetScore, maxScore }) {
+// Динамика баллов ученика. Показываем ТО ЖЕ ЧИСЛО, что стоит на его проверенной
+// работе: у ЕГЭ с тестовой шкалой это тестовый балл (0–100), у ОГЭ — первичный,
+// потому что вторичного там не бывает вовсе, а отметка (пять значений) осью
+// быть не может. До этой правки ось у ЕГЭ шла до ста, а точки на неё ложились
+// первичные — линия жалась к нулю, и цель «85» висела недостижимой чертой.
+function ProgressChart({ variants, targetScore }) {
   const gradedSorted = variants
     .filter((v) => v.submission?.status === "graded" && v.submission?.total_score != null)
     .sort((a, b) => new Date(a.submission.created_at || 0) - new Date(b.submission.created_at || 0))
 
   if (gradedSorted.length < 2) return null
 
-  const chartData = gradedSorted.map((v, i) => ({
-    name: "В" + (i + 1),
-    title: v.title,
-    score: v.submission.total_score,
-  }))
+  // Шкалу берём по типу последней работы: цель в карточке названа экзаменом
+  // («ЕГЭ»), а решает ученик профиль или базу — у них разные шкалы.
+  const examType = gradedSorted[gradedSorted.length - 1].type
+  const isTest = scaleOf(examType)?.kind === "test"
+  const maxScore = isTest ? 100 : (examMaxPrimary(examType) || 32)
+  const target = parseTarget(examType, targetScore)
+  // Цель показываем в единицах шкалы: тестовую — как ввели, отметку — её
+  // порогом в первичных (иначе «5» легла бы линией у самого низа).
+  const targetLine = target.unit === "test" ? target.value : target.primary
+
+  const chartData = gradedSorted.map((v, i) => {
+    const res = examResult(v.type, v.submission.total_score || 0, {
+      geometry: scaleOf(v.type)?.geometryNumbers ? (v.submission.geom_score ?? null) : null,
+      variantMax: variantMaxOf(v),
+    })
+    return {
+      name: "В" + (i + 1),
+      title: v.title,
+      score: isTest ? (res.testScore ?? 0) : (res.scaledPrimary ?? v.submission.total_score),
+    }
+  })
 
   return (
     <div className="glass p-5">
@@ -456,10 +477,10 @@ function ProgressChart({ variants, targetScore, maxScore }) {
             labelFormatter={(label, payload) => payload?.[0]?.payload?.title || label}
             contentStyle={{ borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13 }}
           />
-          {targetScore && (
+          {targetLine > 0 && (
             <Line
               type="monotone"
-              dataKey={() => targetScore}
+              dataKey={() => targetLine}
               stroke="#22c55e"
               strokeDasharray="5 5"
               dot={false}
@@ -477,10 +498,11 @@ function ProgressChart({ variants, targetScore, maxScore }) {
           />
         </LineChart>
       </ResponsiveContainer>
-      {targetScore && (
+      {targetLine > 0 && (
         <div className="flex items-center gap-2 mt-2 text-xs text-gray-400">
           <div className="w-3 h-0.5 bg-blue-600" /> Твой результат
-          <div className="w-3 h-0.5 bg-green-500 ml-3" style={{ borderTop: "1px dashed #22c55e" }} /> Цель
+          <div className="w-3 h-0.5 bg-green-500 ml-3" style={{ borderTop: "1px dashed #22c55e" }} />
+          {target.unit === "grade" ? `Цель — отметка ${target.value}` : "Цель"}
         </div>
       )}
     </div>
@@ -3312,9 +3334,15 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                                   if (daysLeft <= 0) return null
                                   return <div className="text-xs text-gray-400 mt-0.5">{daysLeft} {daysLeft === 1 ? "день" : daysLeft >= 2 && daysLeft <= 4 ? "дня" : "дней"} до экзамена</div>
                                 })()}
+                                {/* Цель записана в тех единицах, в каких её
+                                    спрашивала анкета: у ЕГЭ тестовый балл,
+                                    у ОГЭ отметка. Подписываем именно так —
+                                    «5 / 32 баллов» читалось как провал. */}
                                 {student.targetScore && (
                                   <div className="text-xs text-gray-400 mt-0.5">
-                                    Цель: {student.targetScore} {student.goal === "ЕГЭ" ? "/ 100" : "/ 32"} баллов
+                                    {student.goal === "ЕГЭ"
+                                      ? `Цель: ${student.targetScore} / 100 баллов`
+                                      : `Цель: отметка ${student.targetScore}`}
                                   </div>
                                 )}
                               </div>
@@ -3329,11 +3357,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                   {/* Широкие блоки — на всю ширину, заполняют пространство горизонтально */}
                   <StreakBadge homework={homework} />
 
-                  <ProgressChart
-                    variants={variants}
-                    targetScore={student.targetScore}
-                    maxScore={student.goal === "ЕГЭ" ? 100 : 32}
-                  />
+                  <ProgressChart variants={variants} targetScore={student.targetScore} />
 
                   <StudentScheduleCalendar
                     student={student}

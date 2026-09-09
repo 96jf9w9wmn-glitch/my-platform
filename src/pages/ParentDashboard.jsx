@@ -490,10 +490,15 @@ function ParentDashboard({ user, onLogout }) {
                       <span className="font-medium text-right">{examDateLabel}</span>
                     </div>
                   )}
+                  {/* У ЕГЭ цель записана тестовым баллом (0–100), у ОГЭ —
+                      отметкой: анкета спрашивает их по-разному, и «5» без
+                      подписи родитель прочтёт как пять баллов. */}
                   {targetScore && (
                     <div className="flex justify-between items-center text-sm gap-3">
-                      <span className="text-gray-500">Целевой балл</span>
-                      <span className="font-semibold text-blue-600 dark:text-blue-300">{targetScore}</span>
+                      <span className="text-gray-500">{student.goal === "ЕГЭ" ? "Целевой балл" : "Цель"}</span>
+                      <span className="font-semibold text-blue-600 dark:text-blue-300">
+                        {student.goal === "ЕГЭ" ? `${targetScore} / 100` : `отметка ${targetScore}`}
+                      </span>
                     </div>
                   )}
                   {daysToExam > 0 && (

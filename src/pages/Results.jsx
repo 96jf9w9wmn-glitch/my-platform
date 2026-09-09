@@ -15,7 +15,7 @@ import { PlanLock } from "../components/PlanLock"
 import { usePlan } from "../subscription"
 import { part1NumbersOf, part2NumbersOf } from "./taskBankMeta"
 import { numberTitle } from "./numberTitles"
-import { scaleOf, part2MaxOf, variantMaxPrimary, examResult, secondaryLabel, testScoreOf, taskMaxOf } from "../examScales"
+import { scaleOf, part2MaxOf, variantMaxPrimary, examResult, secondaryLabel, testScoreOf, taskMaxOf, parseTarget, gradeOf } from "../examScales"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Шкалы экзаменов
@@ -452,15 +452,12 @@ function VariantRow({ variant: v }) {
 // Раскрытая карточка ученика
 // ─────────────────────────────────────────────────────────────────────────────
 
-// `taskMap` — готовая карта заданий: она стоит СПРАВА ОТ ГРАФИКА, потому что
-// это два ответа на один вопрос «как идут дела» — динамика по работам и разбор
-// по номерам. Элемент приходит готовым, а не собирается здесь: попытки
-// читаются один раз на карточку (см. useAttempts), и второй запрос ради
-// перестановки блока был бы платой ни за что. Карта может отрисовать null
-// (ответов нет, предмет не определился) — поэтому ряд собран флексом, и
-// оставшийся блок занимает всю ширину сам, без пустоты справа.
+// `taskMap` — готовая карта заданий: она стоит внутри дорожки вариантов, между
+// плитками с баллами и таблицей работ. Элемент приходит готовым, а не собирается
+// здесь: попытки читаются один раз на карточку (см. useAttempts), и второй
+// запрос ради перестановки блока был бы платой ни за что.
 function VariantsPane({ stats, taskMap = null }) {
-  const { rows, last, avg, best, bestRow, target } = stats
+  const { rows, last, avg, best, bestRow } = stats
   const isTest = last.res.kind === "test"
   const max = last.max
   const L = layoutOf(last.type)
@@ -517,35 +514,11 @@ function VariantsPane({ stats, taskMap = null }) {
         </div>
       </div>
 
-      {(rows.length >= 2 || taskMap) && (
-        <div className="flex flex-col lg:flex-row gap-3 items-stretch">
-          {rows.length >= 2 && (
-            <div className="glass-sm p-3.5 lg:flex-1 min-w-0 flex flex-col">
-              <div className="flex items-center justify-between gap-3 mb-1">
-                <span className="text-sm font-medium">Динамика первичных баллов</span>
-                <span className="flex items-center gap-3 text-[11px] text-gray-400">
-                  {target > 0 && (
-                    <span className="flex items-center gap-1.5 text-green-600 dark:text-green-400">
-                      <svg width="16" height="2" aria-hidden="true"><line x1="0" y1="1" x2="16" y2="1" stroke="#34c759" strokeWidth="2" strokeDasharray="4 3" /></svg>
-                      цель {target}
-                    </span>
-                  )}
-                  <span>максимум {max}</span>
-                </span>
-              </div>
-              {/* График держит свои пропорции, поэтому в паре с картой он
-                  бывает ниже неё. Центрируем его по высоте: пустая полоса под
-                  графиком читалась бы как незаполненный блок. */}
-              <div className="overflow-x-auto flex-1 flex items-center">
-                <div className="min-w-[480px] w-full">
-                  <ScoreChart rows={rows} max={max} target={target || 0} />
-                </div>
-              </div>
-            </div>
-          )}
-          {taskMap}
-        </div>
-      )}
+      {/* Графика динамики здесь больше НЕТ. Он рисовал те же точки, что и
+          «Готовность к экзамену», только без прогноза и без порога — два
+          одинаковых графика на одном экране заставляли сличать их между собой.
+          Остался один, с прогнозом; карта заданий занимает всю ширину. */}
+      {taskMap}
 
       <div className="glass-sm overflow-hidden">
         <div className="grid grid-cols-[1.6fr_repeat(4,minmax(0,1fr))] gap-2 px-4 py-2 glass-table-header text-[11px] text-gray-500 font-medium">
@@ -747,8 +720,7 @@ function StudentDetail({ student, stats, hw, tutorId }) {
   // написали к этому заданию. Разбор по типажам внутри номеров — соседний блок:
   // карта отвечает «как с одиннадцатым», WeakTypes — «каким именно одиннадцатым».
   const taskMap = (
-    <TaskMap attempts={attempts} tutorId={tutorId} examType={examTypeOf(student, stats)}
-      className="lg:flex-[1.15] min-w-0" />
+    <TaskMap attempts={attempts} tutorId={tutorId} examType={examTypeOf(student, stats)} />
   )
 
   return (
@@ -798,11 +770,28 @@ function StudentDetail({ student, stats, hw, tutorId }) {
 // 80» по двум работам родитель прочтёт как обещание.
 function ExamProgress({ student, stats, attempts }) {
   const examType = examTypeOf(student, stats)
-  const f = useMemo(() => examForecast(stats.rows, {
+
+  // Работы приводим к шкале НАСТОЯЩЕГО экзамена: наш вариант почти всегда
+  // короче полного КИМ, и 17 из 17 в укороченном КЕГЭ — это не 17 первичных на
+  // экзамене. Пересчёт по доле выполнения уже сделан в examResult, здесь мы им
+  // просто пользуемся, иначе прогноз и точки графика жили бы в разных шкалах.
+  const rows = useMemo(
+    () => stats.rows.map((r) => ({ ...r, total: r.res?.scaledPrimary ?? r.total })),
+    [stats.rows],
+  )
+
+  // Цель ученика записана в тех единицах, в каких её спрашивают: у ЕГЭ это
+  // тестовый балл, у ОГЭ — отметка. Прогноз считается в первичных, поэтому
+  // цель переводится в них (см. parseTarget) — иначе «85» у профиля молча
+  // отбрасывалось как «больше максимума», а «5» у ОГЭ рисовалось линией на
+  // пяти баллах из тридцати одного.
+  const goal = useMemo(() => parseTarget(examType, student.targetScore), [examType, student.targetScore])
+
+  const f = useMemo(() => examForecast(rows, {
     examType,
-    target: student.targetScore || 0,
+    target: goal.primary,
     examDate: student.examDate || null,
-  }), [stats.rows, student.targetScore, student.examDate, examType])
+  }), [rows, goal.primary, student.examDate, examType])
 
   // Где теряется больше всего баллов: цена номера на экзамене, умноженная на
   // долю неверных ответов. Это и есть ответ на вопрос «а что делать» — без него
@@ -834,6 +823,21 @@ function ExamProgress({ student, stats, attempts }) {
 
   if (!stats.hasData) return null
   const { now, forecast, target, pass, max, perWeek } = f
+
+  // ЕДИНИЦЫ ПОКАЗА. На ЕГЭ говорят «85 баллов» — это ВТОРИЧНЫЙ (тестовый)
+  // балл, а первичный нужен только для арифметики: он линеен, поэтому темп и
+  // прогноз считаются по нему, и лишь готовый ответ переводится таблицей.
+  // У ОГЭ и базового ЕГЭ вторичного балла не бывает вовсе: там отметка, и
+  // шкалой она быть не может (пять значений вместо тридцати одного) — поэтому
+  // числа остаются первичными, а отметка стоит рядом отдельной строкой.
+  const isTest = scaleOf(examType)?.kind === "test"
+  const show = (primary) => (primary == null ? null : isTest ? testScoreOf(examType, primary) : primary)
+  const showMax = isTest ? 100 : max
+  const unitName = isTest ? "тестовых" : "первичных"
+  // Цель показываем РОВНО ТОЙ, какой её ввели. Обратный перевод через первичный
+  // балл её сдвигает: цель «85» — это 20 первичных, а 20 первичных дают уже 86,
+  // и на экране появлялась цифра, которой никто не задавал.
+  const targetShown = target > 0 ? (goal.unit === "test" ? goal.value : show(target)) : 0
   const examDay = student.examDate
     ? new Date(student.examDate + "T00:00:00").toLocaleDateString("ru-RU", { day: "numeric", month: "long" })
     : ""
@@ -845,11 +849,22 @@ function ExamProgress({ student, stats, attempts }) {
 
   // Итог одной фразой. Порядок ответов: не сдаёт → не дотягивает до цели →
   // дотягивает. Показываем ОДИН, самый весомый.
+  // Разница считается в тех же единицах, что и показанные числа: «до цели не
+  // хватает трёх» рядом с тестовыми баллами обязано означать три тестовых.
   let verdict = null
   if (forecast != null) {
-    if (pass > 0 && forecast < pass) verdict = { tone: "red", text: `До порога сдачи не хватает ${pass - forecast}` }
-    else if (target > 0 && forecast < target) verdict = { tone: "amber", text: `До цели не хватает ${target - forecast} ${plural(target - forecast, "балла", "баллов", "баллов")}` }
-    else if (target > 0) verdict = { tone: "green", text: forecast > target ? `Цель берётся с запасом в ${forecast - target} ${plural(forecast - target, "балл", "балла", "баллов")}` : "Цель берётся ровно" }
+    const fs = show(forecast)
+    const goalName = goal.unit === "grade" ? `до отметки ${goal.value}` : "до цели"
+    if (pass > 0 && forecast < pass) {
+      const d = Math.max(0, show(pass) - fs)
+      verdict = { tone: "red", text: `До порога сдачи не хватает ${d} ${plural(d, "балла", "баллов", "баллов")}` }
+    } else if (target > 0 && forecast < target) {
+      const d = Math.max(0, targetShown - fs)
+      verdict = { tone: "amber", text: `Не хватает ${d} ${plural(d, "балла", "баллов", "баллов")} ${goalName}` }
+    } else if (target > 0) {
+      const d = Math.max(0, fs - targetShown)
+      verdict = { tone: "green", text: d > 0 ? `Цель берётся с запасом в ${d} ${plural(d, "балл", "балла", "баллов")}` : "Цель берётся ровно" }
+    }
   }
   const TONE_TEXT = {
     red: "text-red-600 dark:text-red-400",
@@ -873,23 +888,37 @@ function ExamProgress({ student, stats, attempts }) {
             <div className="flex items-baseline gap-1.5">
               <span className={`text-[42px] leading-none font-semibold tabular-nums ${headlineIsForecast ? "text-amber-600 dark:text-amber-400" : ""}`}>
                 {headlineIsForecast && <span className="text-2xl font-normal align-top opacity-60">≈</span>}
-                {headline}
+                {show(headline)}
               </span>
-              <span className="text-base text-gray-400 font-medium">из {max}</span>
+              <span className="text-base text-gray-400 font-medium">из {showMax}</span>
             </div>
             <div className="text-xs text-gray-500 mt-1.5">
               {headlineIsForecast
-                ? `прогноз к ${examDay || "экзамену"} · сейчас ${now}`
+                ? `прогноз к ${examDay || "экзамену"} · сейчас ${show(now)}`
                 : "последняя работа"}
+            </div>
+            {/* Первичный балл — то, из чего вторичный получен. Он нужен: работы
+                проверяются в первичных, и без этой строки репетитор не свяжет
+                «95» на экране с «25 из 33» в проверенной работе. У экзамена с
+                отметкой второй строкой стоит сама отметка. */}
+            <div className="text-[11px] text-gray-400 mt-1">
+              {isTest
+                ? `${headlineIsForecast ? "≈" : ""}${headline} из ${max} первичных`
+                : `отметка ${headlineIsForecast ? "≈" : ""}${gradeOf(examType, headline) ?? "—"}`}
             </div>
           </div>
 
-          <ReadinessScale now={now} forecast={forecast} target={target} pass={pass} max={max} />
+          <ReadinessScale now={show(now)} forecast={show(forecast)} target={targetShown}
+            pass={show(pass)} max={showMax}
+            targetLabel={goal.unit === "grade" ? `цель — отметка ${goal.value}` : null} />
 
           {verdict && <div className={`text-sm font-medium leading-snug ${TONE_TEXT[verdict.tone]}`}>{verdict.text}</div>}
 
           <div className="flex flex-col gap-1 text-xs text-gray-500">
-            {perWeek != null && <div>Темп {fmtPace(perWeek)}</div>}
+            {/* Темп ВСЕГДА в первичных: тестовый балл растянут таблицей
+                перевода, и «+0,7 тестового в неделю» означало бы разное в
+                разных местах шкалы. Поэтому единица названа явно. */}
+            {perWeek != null && <div>Темп {fmtPace(perWeek)} {unitName === "тестовых" ? "(первичных)" : ""}</div>}
             {/* Единственная строка блока, которая говорит, ЧТО ДЕЛАТЬ. Считается
                 по цене задания на экзамене, а не по проценту: 40% на задании в
                 четыре балла стоят дороже, чем 10% на задании в один. */}
@@ -910,9 +939,10 @@ function ExamProgress({ student, stats, attempts }) {
             <div ref={scrollRef} className="overflow-x-auto">
               {/* Полотно растёт с числом работ: двадцать точек, втиснутые в
                   ширину телефона, дают нечитаемую кашу из подписей. */}
-              <div style={{ minWidth: Math.max(360, stats.rows.length * 30) }}>
-                <ScoreChart rows={stats.rows} max={max} target={target}
-                  pass={pass} forecast={forecast != null ? { total: forecast } : null} />
+              <div style={{ minWidth: Math.max(360, rows.length * 30) }}>
+                <ScoreChart rows={rows.map((r) => ({ ...r, total: show(r.total) }))} max={showMax}
+                  target={targetShown} pass={show(pass)}
+                  forecast={forecast != null ? { total: show(forecast) } : null} />
               </div>
             </div>
           ) : (
@@ -932,7 +962,7 @@ function ExamProgress({ student, stats, attempts }) {
 // то, что уже есть, и то, что только ожидается, — и второе не выдаётся за
 // первое. Порог и цель стоят засечками прямо на полосе, потому что смысл у них
 // позиционный: важно не «цель 28», а «цель вот здесь, а мы вот тут».
-function ReadinessScale({ now, forecast, target, pass, max }) {
+function ReadinessScale({ now, forecast, target, pass, max, targetLabel = null }) {
   const at = (v) => `${Math.max(0, Math.min(100, (v / max) * 100))}%`
   const ahead = forecast != null && forecast > now
   return (
@@ -956,7 +986,7 @@ function ReadinessScale({ now, forecast, target, pass, max }) {
         )}
         {target > 0 && target <= max && (
           <span className="absolute -translate-x-1/2 whitespace-nowrap text-green-600 dark:text-green-400" style={{ left: at(target) }}>
-            цель {target}
+            {targetLabel || `цель ${target}`}
           </span>
         )}
       </div>

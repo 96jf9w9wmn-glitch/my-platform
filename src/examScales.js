@@ -225,3 +225,58 @@ export function secondaryLabel(res, { short = false } = {}) {
   if (res.kind === "test") return short ? `${mark}${res.testScore}` : `тестовый ${mark}${res.testScore}`
   return short ? `${mark}${res.grade}` : `оценка ${mark}${res.grade}`
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Цель ученика: в каких единицах она записана и как перевести её в первичные
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// students.target_score хранит ТРИ разные величины, потому что так их и
+// спрашивают: у ЕГЭ с тестовой шкалой это тестовый балл (анкета ученика прямо
+// пишет «Тестовый балл (0–100)»), у ОГЭ — отметка 3–5, а репетитор в карточке
+// может вписать первичный. Пока это число считали первичным, цель «85» у
+// профиля молча пропадала (85 > 33 — прогноз её отбрасывал), а цель «5» у ОГЭ
+// рисовалась линией на пяти баллах из тридцати одного.
+
+// Наименьший первичный балл, дающий тестовый не ниже заданного. Перебором:
+// перевод задан таблицей, обратной формулы у неё нет. Тот же приём, что в
+// passThreshold.
+export function primaryForTest(examType, test) {
+  const sc = scaleOf(examType)
+  if (sc?.kind !== "test" || !(test > 0)) return 0
+  for (let p = 0; p <= sc.maxPrimary; p++) if (testScoreOf(examType, p) >= test) return p
+  return sc.maxPrimary
+}
+
+// Наименьший первичный балл, дающий отметку не ниже заданной.
+export function primaryForGrade(examType, grade) {
+  const sc = scaleOf(examType)
+  if (sc?.kind !== "grade" || !(grade >= 3)) return 0
+  return sc.gradeCuts?.[Math.min(Math.round(grade), 5) - 3] || 0
+}
+
+// Цель ученика, разобранная по единицам. Возвращает и первичный балл (для
+// графика и сравнения с прогнозом), и то, чем цель является для человека:
+// `test` — тестовый балл, `grade` — отметка, `primary` — первичный балл.
+//
+// Как различаем у экзамена с ОТМЕТКОЙ: 2–5 — это отметка, больше — первичный
+// балл. Пересечения нет: первичной целью в три балла из тридцати одного никто
+// не задаётся. У экзамена с ТЕСТОВЫМ баллом число всегда тестовое — так его и
+// вводят, а первичную цель по профилю («28 из 33») отличить от тестовой («28
+// из 100») по самому числу невозможно, и гадание здесь дороже ошибки.
+export function parseTarget(examType, value) {
+  const sc = scaleOf(examType)
+  const v = Math.round(Number(value) || 0)
+  if (!sc || v <= 0) return { unit: null, value: 0, primary: 0 }
+  if (sc.kind === "test") return { unit: "test", value: Math.min(v, 100), primary: primaryForTest(examType, v) }
+  if (v <= 5) return { unit: "grade", value: v, primary: primaryForGrade(examType, v) }
+  return { unit: "primary", value: Math.min(v, sc.maxPrimary), primary: Math.min(v, sc.maxPrimary) }
+}
+
+// Вторичный балл экзамена: тестовый — числом, отметка — числом, максимум для
+// шкалы. Одна точка входа, чтобы экраны не разбирали kind у себя.
+export function secondaryOf(examType, primary, { geometry = null } = {}) {
+  const sc = scaleOf(examType)
+  if (!sc) return null
+  if (sc.kind === "test") return { unit: "test", value: testScoreOf(examType, primary), max: 100, label: "тестовый балл" }
+  return { unit: "grade", value: gradeOf(examType, primary, { geometry }), max: 5, label: "отметка" }
+}
