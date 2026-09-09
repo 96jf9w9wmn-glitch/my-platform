@@ -32,6 +32,8 @@ import yookassa from "../api/yookassa.js"
 import yookassaWebhook from "../api/yookassa-webhook.js"
 import { startEmailQueue } from "./emailQueue.js"
 import { startTelegramQueue } from "./telegramQueue.js"
+import { startTelegramPolling } from "./telegramPoll.js"
+import { webhookMode } from "../api/telegram.js"
 import { startPushQueue } from "./pushQueue.js"
 
 // Таблица адресов задана явно, а не сборкой пути из URL: путь из запроса,
@@ -204,6 +206,9 @@ server.listen(PORT, "0.0.0.0", () => {
   // разбираем её здесь — из базы наружу в SMTP не сходить.
   startEmailQueue()
   startTelegramQueue()
+  // Приём обновлений: опросом, потому что Telegram до российского сервера не
+  // достукивается (см. api/telegram.js → webhookMode).
+  if (!webhookMode()) startTelegramPolling()
   startPushQueue()
 })
 

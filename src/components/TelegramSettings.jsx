@@ -223,7 +223,10 @@ export default function TelegramSettings() {
           {health.error || "Бот не подключён на сервере"}. Инструкция — <span className="font-mono">docs/telegram.md</span>.
         </div>
       )}
-      {health?.ok && !health.webhookSecret && (
+      {/* Бот получает обновления опросом (сервер в России, Telegram до него не
+          достукивается) — вебхука в этом режиме нет и быть не должно, поэтому
+          ни его отсутствие, ни отсутствие его секрета не поломка. */}
+      {health?.ok && health.mode !== "polling" && !health.webhookSecret && (
         <div className="text-xs text-amber-600 dark:text-amber-300 bg-amber-500/10 ring-1 ring-inset ring-amber-500/20 rounded-xl px-3 py-2.5 mt-4">
           Не задан <span className="font-mono">TELEGRAM_WEBHOOK_SECRET</span> — бот не будет отвечать на сообщения.
         </div>
@@ -231,7 +234,7 @@ export default function TelegramSettings() {
 
       {/* Вебхук — единственная поломка, которую по самому боту не отличить от
           «просто не привязан»: он молчит и там, и там. Поэтому показываем прямо. */}
-      {health?.ok && health.webhookSecret && !health.webhook && (
+      {health?.ok && health.mode !== "polling" && health.webhookSecret && !health.webhook && (
         <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 text-xs text-amber-600 dark:text-amber-300 bg-amber-500/10 ring-1 ring-inset ring-amber-500/20 rounded-xl px-3 py-2.5 mt-4">
           <span className="flex-1">Telegram ещё не знает адрес бота — он не ответит ни на одно сообщение.</span>
           <button
@@ -244,7 +247,7 @@ export default function TelegramSettings() {
           </button>
         </div>
       )}
-      {health?.ok && health.webhookError && (
+      {health?.ok && health.mode !== "polling" && health.webhookError && (
         <div className="text-xs text-amber-600 dark:text-amber-300 bg-amber-500/10 ring-1 ring-inset ring-amber-500/20 rounded-xl px-3 py-2.5 mt-4">
           Последняя доставка не удалась: {health.webhookError}
         </div>

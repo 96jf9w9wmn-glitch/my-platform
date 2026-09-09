@@ -48,9 +48,21 @@ const TZ = "Europe/Moscow"
 
 const token = () => process.env.TELEGRAM_BOT_TOKEN || ""
 
-// Вебхук перерегистрирован в ЭТОМ запуске процесса. Ровно один раз, см.
-// ensureWebhook() ниже.
+// Вебхук перерегистрирован в ЭТОМ запуске процесса. Ровно один раз.
 let webhookEnsured = false
+
+// Как бот получает обновления.
+//
+// По умолчанию — ОПРОСОМ (server/telegramPoll.js): сервер стоит в России, и
+// Telegram до него не достукивается. Замерено на боевом: доставки вебхука то
+// проходили, то отваливались с «Connection timed out», а зависшие обновления не
+// приходили вовсе — при том что сами мы к Telegram ходим нормально. Поэтому
+// направление перевёрнуто: не «Telegram стучится к нам», а «мы спрашиваем».
+//
+// TELEGRAM_WEBHOOK_MODE=1 возвращает вебхук — на случай переезда на хостинг,
+// откуда Telegram достучаться может. Одновременно эти два режима работать не
+// могут: при установленном вебхуке getUpdates отвечает 409.
+export const webhookMode = () => process.env.TELEGRAM_WEBHOOK_MODE === "1"
 
 // ── Доступ к базе ───────────────────────────────────────────────────────────
 //
@@ -1205,6 +1217,20 @@ export default async function handler(req, res) {
     // и четыре лишних запроса в Telegram задержали бы ответ на ровном месте.
     if (isProdHost) ensureBotProfile().catch(() => {})
 
+    // В режиме опроса вебхук не ставим и НЕ показываем его отсутствие как
+    // поломку: он тут не нужен, а поставленный — сломал бы опрос (409).
+    if (!webhookMode()) {
+      res.status(200).json({
+        ok: true,
+        bot: me.result?.username || null,
+        mode: "polling",
+        webhookSecret: Boolean(process.env.TELEGRAM_WEBHOOK_SECRET),
+        webhook: "",
+        webhookError: "",
+      })
+      return
+    }
+
     // Перерегистрируем вебхук ОДИН РАЗ за запуск процесса, а не только когда
     // его нет вовсе.
     //
@@ -1238,6 +1264,7 @@ export default async function handler(req, res) {
     res.status(200).json({
       ok: true,
       bot: me.result?.username || null,
+      mode: "webhook",
       webhookSecret: Boolean(process.env.TELEGRAM_WEBHOOK_SECRET),
       webhook: hook?.result?.url || "",
       webhookError: hook?.result?.last_error_message || "",
@@ -1275,6 +1302,11 @@ export default async function handler(req, res) {
   // токеном бота в командной строке — лишний повод носить секрет по буферам
   // обмена. Токен берётся из переменных окружения и наружу не выходит.
   // Право на действие — вход репетитора с подходящим тарифом.
+  if (req.query?.action === "setup" && !webhookMode()) {
+    res.status(409).json({ error: "Бот работает опросом — вебхук ему не нужен и сломал бы приём обновлений" })
+    return
+  }
+
   if (req.query?.action === "setup") {
     if (!token()) {
       res.status(503).json({ error: "TELEGRAM_BOT_TOKEN не задан на сервере" })
