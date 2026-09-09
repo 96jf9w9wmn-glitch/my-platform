@@ -452,7 +452,14 @@ function VariantRow({ variant: v }) {
 // Раскрытая карточка ученика
 // ─────────────────────────────────────────────────────────────────────────────
 
-function VariantsPane({ stats }) {
+// `taskMap` — готовая карта заданий: она стоит СПРАВА ОТ ГРАФИКА, потому что
+// это два ответа на один вопрос «как идут дела» — динамика по работам и разбор
+// по номерам. Элемент приходит готовым, а не собирается здесь: попытки
+// читаются один раз на карточку (см. useAttempts), и второй запрос ради
+// перестановки блока был бы платой ни за что. Карта может отрисовать null
+// (ответов нет, предмет не определился) — поэтому ряд собран флексом, и
+// оставшийся блок занимает всю ширину сам, без пустоты справа.
+function VariantsPane({ stats, taskMap = null }) {
   const { rows, last, avg, best, bestRow, target } = stats
   const isTest = last.res.kind === "test"
   const max = last.max
@@ -510,25 +517,33 @@ function VariantsPane({ stats }) {
         </div>
       </div>
 
-      {rows.length >= 2 && (
-        <div className="glass-sm p-3.5">
-          <div className="flex items-center justify-between gap-3 mb-1">
-            <span className="text-sm font-medium">Динамика первичных баллов</span>
-            <span className="flex items-center gap-3 text-[11px] text-gray-400">
-              {target > 0 && (
-                <span className="flex items-center gap-1.5 text-green-600 dark:text-green-400">
-                  <svg width="16" height="2" aria-hidden="true"><line x1="0" y1="1" x2="16" y2="1" stroke="#34c759" strokeWidth="2" strokeDasharray="4 3" /></svg>
-                  цель {target}
+      {(rows.length >= 2 || taskMap) && (
+        <div className="flex flex-col lg:flex-row gap-3 items-stretch">
+          {rows.length >= 2 && (
+            <div className="glass-sm p-3.5 lg:flex-1 min-w-0 flex flex-col">
+              <div className="flex items-center justify-between gap-3 mb-1">
+                <span className="text-sm font-medium">Динамика первичных баллов</span>
+                <span className="flex items-center gap-3 text-[11px] text-gray-400">
+                  {target > 0 && (
+                    <span className="flex items-center gap-1.5 text-green-600 dark:text-green-400">
+                      <svg width="16" height="2" aria-hidden="true"><line x1="0" y1="1" x2="16" y2="1" stroke="#34c759" strokeWidth="2" strokeDasharray="4 3" /></svg>
+                      цель {target}
+                    </span>
+                  )}
+                  <span>максимум {max}</span>
                 </span>
-              )}
-              <span>максимум {max}</span>
-            </span>
-          </div>
-          <div className="overflow-x-auto">
-            <div className="min-w-[480px]">
-              <ScoreChart rows={rows} max={max} target={target || 0} />
+              </div>
+              {/* График держит свои пропорции, поэтому в паре с картой он
+                  бывает ниже неё. Центрируем его по высоте: пустая полоса под
+                  графиком читалась бы как незаполненный блок. */}
+              <div className="overflow-x-auto flex-1 flex items-center">
+                <div className="min-w-[480px] w-full">
+                  <ScoreChart rows={rows} max={max} target={target || 0} />
+                </div>
+              </div>
             </div>
-          </div>
+          )}
+          {taskMap}
         </div>
       )}
 
@@ -728,6 +743,14 @@ function StudentDetail({ student, stats, hw, tutorId }) {
   const shown = tab === "variants" && !stats.hasData ? "homework"
     : tab === "homework" && !hw.count ? "variants" : tab
 
+  // Весь экзамен номерами: где ученик стоит по каждому заданию и что вы сами
+  // написали к этому заданию. Разбор по типажам внутри номеров — соседний блок:
+  // карта отвечает «как с одиннадцатым», WeakTypes — «каким именно одиннадцатым».
+  const taskMap = (
+    <TaskMap attempts={attempts} tutorId={tutorId} examType={examTypeOf(student, stats)}
+      className="lg:flex-1 min-w-0" />
+  )
+
   return (
     <div className="flex flex-col gap-3 px-3.5 pb-3.5 sm:px-4 sm:pb-4">
       {/* Готовность — первое, за чем сюда приходят: баллы по работам ниже
@@ -747,15 +770,13 @@ function StudentDetail({ student, stats, hw, tutorId }) {
 
       <div key={shown} className="slide-up">
         {shown === "variants"
-          ? <VariantsPane stats={stats} />
+          ? <VariantsPane stats={stats} taskMap={taskMap} />
           : <HomeworkPane hw={hw} noVariants={!stats.hasData} />}
       </div>
 
-      {/* Весь экзамен номерами: где ученик стоит по каждому заданию и что вы
-          сами написали к этому заданию. Ниже — разбор по типажам внутри
-          номеров: карта отвечает «как с одиннадцатым», WeakTypes — «каким
-          именно одиннадцатым». */}
-      <TaskMap attempts={attempts} tutorId={tutorId} examType={examTypeOf(student, stats)} />
+      {/* На дорожке домашних работ вариантов и графика нет, а карта нужна
+          по-прежнему: там она стоит отдельным блоком, как стояла раньше. */}
+      {shown !== "variants" && taskMap}
 
       {/* Общий балл говорит «72%», а репетитору нужно знать, КАКОЙ типаж
           проседает. Считается и по вариантам, и по работам из банка сразу,

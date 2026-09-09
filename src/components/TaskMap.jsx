@@ -41,7 +41,7 @@ const TILE = {
 // экранах раздела обязано выглядеть одинаково.
 const LINE = { ok: "#34c759", work: "#ff9f0a", bad: "#ff3b30", unknown: "#9ca3af" }
 
-function TaskMap({ attempts, tutorId, examType: hinted }) {
+function TaskMap({ attempts, tutorId, examType: hinted, className = "" }) {
   const rows = attempts
   const [notes, setNotes] = useState({})
   const [order, setOrder] = useState([])
@@ -117,7 +117,7 @@ function TaskMap({ attempts, tutorId, examType: hinted }) {
   const noAnswers = !Object.keys(byNumber).length
 
   return (
-    <div className="glass-sm p-3.5">
+    <div className={`glass-sm p-3.5 ${className}`}>
       <div className="flex items-baseline justify-between gap-3 mb-0.5">
         <span className="text-sm font-medium">Карта заданий</span>
         <button onClick={() => setArranging((v) => !v)}
