@@ -177,9 +177,8 @@ export default function Profile({ user, students = [], onLogout, onProfileChange
       )}
 
       {/* Куда уведомления приходят, кроме колокольчика: почта и телеграм. */}
-      <div className="mb-4">
+      <div className="flex flex-col gap-4 mb-4">
         <EmailNotifySettings tutorId={user.id} email={user.email} onChange={onProfileChange} />
-
         <PushSettings userId={user.id} />
       </div>
 
