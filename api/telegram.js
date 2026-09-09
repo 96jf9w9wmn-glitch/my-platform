@@ -718,7 +718,10 @@ export async function viewStudentLessons(db, link) {
     }
   }
 
-  const lines = ahead.slice(0, 12).map((l) => {
+  // Режем сами и честно пишем, сколько осталось: у ученика с занятиями два раза
+  // в неделю «ближайшие» — это полгода вперёд, и молча показать первые восемь
+  // значило бы соврать, что дальше ничего нет.
+  const lines = ahead.map((l) => {
     const when = l.date === today ? "сегодня"
       : l.date === shiftDay(today, 1) ? "завтра"
       : humanDate(l.date)
@@ -732,7 +735,7 @@ export async function viewStudentLessons(db, link) {
   })
 
   return {
-    text: ["<b>Ближайшие занятия</b>", "", lines.join("\n"), "",
+    text: ["<b>Ближайшие занятия</b>", "", joinLimited(lines, 8, "занятий"), "",
       `<i>Перенести занятие можно в кабинете: ${APP_URL}</i>`].join("\n"),
     keyboard: studentBack(),
   }
