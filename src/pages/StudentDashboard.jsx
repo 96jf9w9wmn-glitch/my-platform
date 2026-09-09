@@ -3002,7 +3002,14 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
               roomId={boardHw ? homeworkRoom(student.id, boardHw) : student.id}
               label={boardHw ? (homework.find((h) => String(h.id) === boardHw)?.title || "Домашняя работа") : ""}
               userId={`s:${user.id}`}
-              userName={user.profile?.name || "Ученик"}
+              userName={user.profile?.name || student.name || "Ученик"}
+              /* Фото уходит репетитору в presence доски: у него в списке
+                 участников будет лицо, а не кружок с буквой. Ссылка уже
+                 подписана (бакет приватный) и живёт дольше занятия. */
+              avatar={avatarOverride || student.avatar || null}
+              /* Вторая сторона доски — репетитор. Фото у него в платформе нет
+                 нигде, поэтому только имя и буква — как в остальном кабинете. */
+              peer={{ name: tutorName || "Репетитор", avatar: null }}
               theme={dark ? "dark" : "light"}
               onClose={closeBoard}
               /* Снимок занятия ученик пишет только через RPC с токеном сессии:

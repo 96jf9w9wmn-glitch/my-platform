@@ -3,6 +3,7 @@ import { isMoveNotification, revealBlock, MOVE_ANCHOR_TUTOR } from "./notifTarge
 import { dropdownPos } from "./dropdownPos"
 import { POPUP_OUT_MS } from "./useClosing"
 import { createPortal } from "react-dom"
+import { roomStudentId } from "./boardRoom"
 import { supabase, isPasswordRecovery, setAppToken } from "./supabase"
 import { signRows, permanentStorageUrl, AVATAR_SPEC } from "./storageUrl"
 import { deviceTimezone, convertLessons, shiftScheduleString, zoneDiffMinutes } from "./timezone"
@@ -509,6 +510,17 @@ function App() {
   }, [activePage, user])
   const [students, setStudents] = useState([])
   const [studentsLoaded, setStudentsLoaded] = useState(false)
+
+  // Ученик, чья это доска: имя и фото для шапки доски. Адрес доски работы —
+  // составной («12:hw:34»), поэтому карточку ищем по его первой части.
+  const boardPeer = useMemo(() => {
+    if (!board) return null
+    const s = students.find((x) => String(x.id) === roomStudentId(board.roomId))
+    if (s) return { name: s.name, avatar: s.avatar || null }
+    // Список ещё не подъехал (доска открыта прямо по адресу) — имя есть в самой
+    // ссылке на доску, фото подтянется, когда ученик зайдёт (presence).
+    return board.title ? { name: board.title, avatar: null } : null
+  }, [board, students])
   // Группы учеников: состав и условия, по которым он занимается вместе. Живут
   // рядом с ростером, потому что нужны сразу трём разделам — «Ученикам»
   // (создание), расписанию (групповое занятие) и чату (общая комната).
@@ -1242,6 +1254,10 @@ function App() {
             label={board.title}
             userId={`t:${user.id}`}
             userName={user.profile?.name || user.email}
+            /* Вторая сторона доски — ученик, чья это карточка. Доска показывает
+               его и до того, как он зайдёт: «ещё не на доске» — такой же ответ,
+               как «на доске», а пустая шапка не давала ни одного из них. */
+            peer={boardPeer}
             theme={document.documentElement.classList.contains("dark") ? "dark" : "light"}
             onClose={closeBoard}
             /* Задание из банка кладёт на доску репетитор; у ученика такой кнопки нет */

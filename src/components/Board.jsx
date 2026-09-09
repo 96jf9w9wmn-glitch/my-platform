@@ -74,6 +74,11 @@ function colorFor(id) {
   return CURSOR_COLORS[h % CURSOR_COLORS.length]
 }
 
+// Имя участника в шапке — только первое слово: в плашку помещается и «Аня», и
+// «Анна Сергеевна», но фамилия там ничего не добавляет, а место занимает.
+// Полное имя остаётся во всплывающей подсказке.
+const firstWord = (name) => String(name || "").trim().split(/\s+/)[0] || ""
+
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
 
 let uidCounter = 0
@@ -472,7 +477,7 @@ function BoardStrip({ open, children }) {
   )
 }
 
-export default function Board({ roomId, label = "", userId, userName, theme = "light", onClose, account = null, token = null, canAddTasks = false, tutorSubject = null, tutorExamFocus = null, tutorSubjects = null, tutorOwner = false, taskSheet = null }) {
+export default function Board({ roomId, label = "", userId, userName, avatar = null, peer = null, theme = "light", onClose, account = null, token = null, canAddTasks = false, tutorSubject = null, tutorExamFocus = null, tutorSubjects = null, tutorOwner = false, taskSheet = null }) {
   // Доска занимает весь экран, поэтому её уход тоже должен быть плавным:
   // класс .is-closing держится, пока идёт затухание, и лишь потом зовётся onClose.
   const { cls: closingCls, close: leave } = useClosing(onClose, BOARD_CLOSE_MS)
@@ -716,6 +721,12 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
   // одним куском, когда автор оторвал перо.
   const live = useRef(new Map())      // id -> штрих, который прямо сейчас рисует собеседник
   const legacyPeer = useRef(false)    // на доске есть клиент старой сборки (см. presence sync)
+  const lastTrack = useRef(0)         // когда в последний раз заявляли о себе в presence
+  // Карточка участника, какой её видят остальные. Через ref, а не прямо в
+  // channel.track: подписанная ссылка на фото и имя приходят позже подключения,
+  // а пересоздавать из-за них канал нельзя — это разрыв доски.
+  const trackRef = useRef(null)
+  trackRef.current = () => ({ userId, name: userName, avatar: avatar || null, proto: 2, following: followRef.current || null })
   const sentId = useRef(null)         // id штриха, чьи точки уже разосланы
   const sentN = useRef(0)             // сколько точек этого штриха разослано
   const bgCanvasRef = useRef(null)    // холст узора фона (клетка/точки) — ПОД основным
@@ -1577,6 +1588,14 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
         // конце штриха. Замечаем такого по отсутствию метки proto и шлём ему
         // штрихи по-старому: медленно, но одинаково для всех участников.
         legacyPeer.current = people.some((p) => p.userId !== userId && !(p.proto >= 2))
+        // Своей записи в presence нет — значит она потерялась (подъём канала
+        // после обрыва, перезапуск realtime), и собеседник нас не видит, хотя мы
+        // на доске. Возвращаем её сами; чаще раза в пять секунд не пробуем,
+        // иначе отказ сервера крутил бы sync по кругу.
+        if (!people.some((p) => p.userId === userId) && performance.now() - lastTrack.current > 5000) {
+          lastTrack.current = performance.now()
+          channel.track(trackRef.current())
+        }
         // Наблюдателя видно по его же presence: пока за нами никто не следит,
         // обзор не рассылается вовсе.
         const watched = people.some((p) => p.userId !== userId && p.following === userId)
@@ -1600,7 +1619,8 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
       })
       .subscribe((status) => {
         if (status !== "SUBSCRIBED") return
-        channel.track({ userId, name: userName, proto: 2, following: followRef.current || null })
+        lastTrack.current = performance.now()
+        channel.track(trackRef.current())
         // Первое подключение сцену принесёт начальная загрузка; повторное — это
         // подъём после обрыва, и вот тут надо догнать написанное без нас.
         if (joinedOnce.current) resync()
@@ -1617,8 +1637,11 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
     followRef.current = followId
     if (!followId) followTarget.current = null
     const ch = channelRef.current
-    if (ch?.state === "joined") ch.track({ userId, name: userName, proto: 2, following: followId || null })
-  }, [followId, userId, userName])
+    if (ch?.state === "joined") { lastTrack.current = performance.now(); ch.track(trackRef.current()) }
+    // avatar в зависимостях не случайно: подписанная ссылка на фото приходит
+    // асинхронно, уже после подключения к доске, и без повторного track
+    // собеседник до конца занятия видел бы кружок с буквой.
+  }, [followId, userId, userName, avatar])
 
   useEffect(() => { showCursorsRef.current = showCursors; scheduleLive() }, [showCursors, scheduleLive])
 
@@ -3400,6 +3423,13 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
   }, [])
 
   const others = online.filter((p) => p.userId !== userId)
+  // Кого показываем в шапке. Пока вторая сторона на доске — это она сама
+  // (presence). Пока не зашла — её же карточка, но погашенная: «ученик ещё не
+  // на доске» и «ученик на доске» это разные ответы, а пустая шапка не давала
+  // ни одного из них. Кто вторая сторона, доска знает от кабинета: доска
+  // занятия и доска работы всегда на двоих.
+  const roster = others.length ? others
+    : (peer?.name ? [{ userId: "", name: peer.name, avatar: peer.avatar || null, away: true }] : [])
   const followName = others.find((p) => p.userId === followId)?.name || "участник"
   const TOOLS = [
     { id: "cursor", icon: "cursor", label: "Курсор", key: "Esc" },
@@ -3522,7 +3552,7 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
   const barX = H ? H.cx : 0
 
   return (
-    <div ref={rootRef} data-board-version="14" className={`fixed inset-0 z-[100000] flex flex-col screen-fade ${dark ? "board-dark" : ""} ${closingCls}`}
+    <div ref={rootRef} data-board-version="15" className={`fixed inset-0 z-[100000] flex flex-col screen-fade ${dark ? "board-dark" : ""} ${closingCls}`}
       style={vvBox
         ? { background: baseBg, left: vvBox.left, top: vvBox.top, width: vvBox.width, height: vvBox.height, right: "auto", bottom: "auto" }
         : { background: baseBg }}>
@@ -3597,27 +3627,48 @@ export default function Board({ roomId, label = "", userId, userName, theme = "l
             className="press-tap p-1.5 rounded-lg board-hover" style={idleStyle}>
             <Icon name={dark ? "sun" : "moon"} size={16} />
           </button>
-          {/* Аватар участника — кнопка слежения: обзор повторяет его обзор,
-              пока мы сами не подвинем доску. Точка на аватаре значит обратное —
-              этот участник сейчас смотрит нашими глазами. */}
-          <div className="flex items-center -space-x-1.5">
-            {others.map((p) => {
-              const on = followId === p.userId
-              return (
+          {/* Кто ещё на доске. Раньше это был кружок с буквой и слово «в сети»
+              сбоку от него: имени не видно, фото не видно, и о том, что вторая
+              сторона уже здесь, приходилось догадываться. Теперь участник —
+              полноценная плашка: фото (или буква, если фото нет), имя и зелёная
+              точка «на доске». Она же кнопка слежения за его экраном. */}
+          <div className="flex items-center gap-1.5">
+            {roster.map((p) => {
+              const on = !p.away && followId === p.userId
+              const watching = p.following === userId
+              const inner = (
+                <>
+                  <span className="relative w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold text-white shrink-0"
+                    style={{ background: colorFor(p.userId || p.name || "?") }}>
+                    {p.avatar
+                      ? <img src={p.avatar} alt="" className="w-full h-full rounded-full object-cover" />
+                      : (p.name || "?").trim().slice(0, 1).toUpperCase()}
+                    {/* Точка — это и есть статус. Зелёная: участник на доске
+                        прямо сейчас. Синяя: он смотрит нашими глазами (знать это
+                        важнее, чем «в сети»). Пустая: ещё не зашёл. */}
+                    <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full"
+                      style={p.away
+                        ? { background: baseBg, border: `1.5px solid ${dark ? "#8e8e93" : "#c7c7cc"}`, boxShadow: `0 0 0 2px ${baseBg}` }
+                        : { background: watching ? "#007AFF" : "#34C759", boxShadow: `0 0 0 2px ${baseBg}` }} />
+                  </span>
+                  {/* Имя видно и на телефоне: место в шапке для него есть, а без
+                      имени плашка снова превращается в кружок с буквой. */}
+                  <span className="max-w-[5.5rem] sm:max-w-[9rem] truncate">{firstWord(p.name) || "Участник"}</span>
+                </>
+              )
+              // Пока участника нет, плашка ничего не делает: следить не за кем.
+              return p.away ? (
+                <span key="away" title={`${p.name} ещё не на доске`}
+                  className="flex items-center gap-1.5 h-8 pl-1 pr-2.5 rounded-full text-xs font-medium opacity-55"
+                  style={idleStyle}>{inner}</span>
+              ) : (
                 <button key={p.userId} onClick={() => setFollowId(on ? null : p.userId)}
-                  title={`${on ? "Не следить за экраном" : "Следить за экраном"}: ${p.name || "участник"}${p.following === userId ? " · следит за вами" : ""}`}
-                  className="press-tap relative w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold text-white"
-                  style={{ background: colorFor(p.userId),
-                    boxShadow: on ? `0 0 0 2px ${baseBg}, 0 0 0 4px #007AFF` : `0 0 0 2px ${baseBg}` }}>
-                  {(p.name || "?").slice(0, 1).toUpperCase()}
-                  {p.following === userId && (
-                    <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full"
-                      style={{ background: "#007AFF", boxShadow: `0 0 0 1.5px ${baseBg}` }} />
-                  )}
-                </button>
+                  title={`${p.name || "Участник"} на доске · ${on ? "не следить за экраном" : "следить за экраном"}${watching ? " · следит за вами" : ""}`}
+                  className={`press-tap flex items-center gap-1.5 h-8 pl-1 pr-2.5 rounded-full text-xs font-medium transition-colors ${
+                    on ? "bg-blue-500/15 text-blue-500" : "board-hover"
+                  }`} style={on ? undefined : idleStyle}>{inner}</button>
               )
             })}
-            {others.length > 0 && <span className="pl-3 text-xs" style={idleStyle}>в сети</span>}
           </div>
           <button onClick={closeBoard}
             className="press-tap p-1.5 rounded-lg board-hover" style={idleStyle}>
