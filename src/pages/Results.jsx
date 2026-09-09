@@ -748,7 +748,7 @@ function StudentDetail({ student, stats, hw, tutorId }) {
   // карта отвечает «как с одиннадцатым», WeakTypes — «каким именно одиннадцатым».
   const taskMap = (
     <TaskMap attempts={attempts} tutorId={tutorId} examType={examTypeOf(student, stats)}
-      className="lg:flex-1 min-w-0" />
+      className="lg:flex-[1.15] min-w-0" />
   )
 
   return (
