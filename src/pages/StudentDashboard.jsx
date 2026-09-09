@@ -62,18 +62,26 @@ const isEgeType = (t) => examLevelOf(t) === "ЕГЭ"
 // его удобнее сразу, а не вспоминать про это в конце.
 function Part2Upload({ taskNum, submissionId, existingUrl, chosen, onUpload, showLabel = true }) {
   const [uploading, setUploading] = useState(false)
+  // Сбой загрузки виден ученику, а не только в консоли: молчащая кнопка
+  // читается как «сайт сломался».
+  const [error, setError] = useState("")
   const fileRef = useRef(null)
 
   async function handleUpload(e) {
     const file = e.target.files[0]
+    // Сбрасываем значение поля: без этого повторный выбор ТОГО ЖЕ файла
+    // (переснял и сохранил под тем же именем) не вызывает change.
+    e.target.value = ""
     if (!file) return
     setUploading(true)
+    setError("")
 
     const ext = file.name.split(".").pop()
     const fileName = submissionId + "/task" + taskNum + "." + ext
-    const { error } = await supabase.storage.from("variants").upload(fileName, file, { upsert: true })
+    try {
+      const { error: upErr } = await supabase.storage.from("variants").upload(fileName, file, { upsert: true })
+      if (upErr) throw upErr
 
-    if (!error) {
       const { data: urlData } = supabase.storage.from("variants").getPublicUrl(fileName)
       const { data: sub } = await supabase
         .from("variant_submissions")
@@ -87,11 +95,14 @@ function Part2Upload({ taskNum, submissionId, existingUrl, chosen, onUpload, sho
       // загруженный файл можно лишь по подписанной ссылке.
       const signed = await signStorageUrl(urlData.publicUrl, "variants")
       onUpload(taskNum, signed || urlData.publicUrl)
+    } catch (err) {
+      setError("Фото не загрузилось" + (err?.message ? ": " + err.message : "") + ". Попробуй ещё раз.")
     }
     setUploading(false)
   }
 
   return (
+    <div className="flex flex-col gap-1.5">
     <div className="flex items-center gap-3">
       {showLabel && (
         <div className="w-24 flex-shrink-0">
@@ -118,6 +129,8 @@ function Part2Upload({ taskNum, submissionId, existingUrl, chosen, onUpload, sho
           {uploading ? "Загружаем..." : <span className="flex items-center justify-center gap-1.5"><Icon name="paperclip" size={14} />Загрузить файл</span>}
         </button>
       )}
+    </div>
+    {error && <div className="text-xs text-red-500">{error}</div>}
     </div>
   )
 }
@@ -611,6 +624,10 @@ function useHasCamera() {
 
 function HwSolutionUpload({ hwId, index, existingUrl, onUploaded }) {
   const [uploading, setUploading] = useState(false)
+  // Сбой загрузки нельзя проглатывать: ученик нажал, ничего не появилось — и
+  // выглядит это как «сайт не работает», хотя причина бывает понятной
+  // (пропала сеть, файл не тот). Пишем её прямо под кнопкой.
+  const [error, setError] = useState("")
   const hasCamera = useHasCamera()
   const cameraRef = useRef(null)
   const fileRef = useRef(null)
@@ -622,16 +639,20 @@ function HwSolutionUpload({ hwId, index, existingUrl, onUploaded }) {
     e.target.value = ""
     if (!file) return
     setUploading(true)
+    setError("")
     const ext = (file.name.split(".").pop() || "jpg").toLowerCase()
     // upsert: замена фото пишется поверх, чтобы в бакете не копились черновики.
     const path = hwId + "/solution-" + (index + 1) + "." + ext
-    const { error } = await supabase.storage.from("homework").upload(path, file, { upsert: true })
-    if (!error) {
+    try {
+      const { error: upErr } = await supabase.storage.from("homework").upload(path, file, { upsert: true })
+      if (upErr) throw upErr
       const { data } = supabase.storage.from("homework").getPublicUrl(path)
       // Бакет приватный: в базу уходит постоянный адрес, а показать только что
       // загруженный файл можно лишь по подписанной ссылке.
       const signed = await signStorageUrl(data.publicUrl, "homework")
       await onUploaded(index, data.publicUrl, signed || data.publicUrl)
+    } catch (err) {
+      setError("Фото не загрузилось" + (err?.message ? ": " + err.message : "") + ". Попробуй ещё раз.")
     }
     setUploading(false)
   }
@@ -671,6 +692,7 @@ function HwSolutionUpload({ hwId, index, existingUrl, onUploaded }) {
           </button>
         </div>
       )}
+      {error && <div className="text-xs text-red-500">{error}</div>}
     </div>
   )
 }
@@ -1098,6 +1120,12 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten, o
   // Интерактивный тест: к каждому вопросу приложены варианты ответа для выбора.
   const isMcq = Array.isArray(hw.test_options) && hw.test_options.length > 0
   const requireSolution = !!hw.require_solution && hasTest
+  // Прикрепить фото решения можно у ЛЮБОЙ работы с ответами, а не только там,
+  // где репетитор поставил галочку «требовать решение». Галочка решает, СДАСТСЯ
+  // ли работа без фото, а не есть ли вообще куда его приложить: без этого
+  // ученик, решивший задачу на листе, не находил на экране ни одной кнопки —
+  // а таких работ на боевой оказалось большинство.
+  const canAttachSolution = hasTest
   const solutionCount = Object.keys(solutionFiles).length
   // На компьютере кнопки «Камера» нет — подсказки не должны звать к тому,
   // чего ученик на экране не видит.
@@ -1155,9 +1183,13 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten, o
 
   async function handleFileChange(e) {
     const file = e.target.files[0]
+    // Повторный выбор того же файла обязан снова вызывать change.
+    e.target.value = ""
     if (!file) return
     setUploading(true)
-    await onUpload(hw.id, file)
+    setSubmitError("")
+    const err = await onUpload(hw.id, file)
+    if (err) setSubmitError(err)
     setUploading(false)
   }
 
@@ -1354,7 +1386,9 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten, o
               </>
             )}
             {isMcq ? "Ответ выбирается прямо под заданием" : "Ответ вписывается прямо под заданием"}
-            {requireSolution ? ", там же прикрепляется фото решения." : "."}
+            {requireSolution ? ", там же прикрепляется фото решения."
+              : canAttachSolution ? ", там же прикрепляется фото решения, если решал на листе."
+              : "."}
           </p>
 
           {/* Задание, поле ответа и фото решения стоят вместе: раньше условия
@@ -1410,7 +1444,7 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten, o
 
                 {onSolveOnBoard && <SolveOnBoard onClick={() => onSolveOnBoard(boardTaskOf(i))} />}
 
-                {requireSolution && (
+                {canAttachSolution && (
                   <HwSolutionUpload
                     hwId={hw.id}
                     index={i}
@@ -1567,6 +1601,7 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten, o
             <>
               <h3 className="text-base font-medium mb-3">Загрузи выполненную работу</h3>
               <input ref={fileRef} type="file" className="hidden" onChange={handleFileChange} />
+              {submitError && <div className="text-sm text-red-500 mb-2 text-center">{submitError}</div>}
               <button
                 onClick={() => fileRef.current.click()}
                 disabled={uploading}
@@ -2707,11 +2742,13 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     setSelectedHomework(null)
   }
 
+  // Возвращает текст ошибки, если файл не уехал: молча проглоченный сбой
+  // выглядит для ученика как «нажал — и ничего не произошло».
   async function uploadHomeworkSubmission(hwId, file) {
     const ext = file.name.split(".").pop()
     const fileName = hwId + "/" + Date.now() + "." + ext
     const { error: uploadError } = await supabase.storage.from("homework").upload(fileName, file)
-    if (uploadError) return
+    if (uploadError) return "Файл не загрузился" + (uploadError.message ? ": " + uploadError.message : "") + ". Попробуй ещё раз."
     const { data } = supabase.storage.from("homework").getPublicUrl(fileName)
 
     const hw = homework.find((h) => h.id === hwId)
