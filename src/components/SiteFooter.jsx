@@ -27,7 +27,7 @@ const SOCIALS = [
     key: "instagram",
     label: "Instagram",
     hint: "разборы и жизнь платформы",
-    href: "",
+    href: "https://instagram.com/precettore_ru",
     soft: "bg-pink-50 dark:bg-pink-900/30",
     text: "text-pink-500 dark:text-pink-400",
     ring: "hover:ring-pink-200 dark:hover:ring-pink-700",
