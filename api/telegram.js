@@ -332,6 +332,11 @@ const QUOTE_FOLD = 14
 
 const pair = (label, value) => `${label} · ${value}`
 
+// Две цитаты подряд Telegram СКЛЕИВАЕТ в одну: между ними нужна пустая строка,
+// иначе три раздела карточки ученика читаются как один сплошной список.
+// Проверено на боевых данных.
+const stack = (...parts) => parts.filter(Boolean).join("\n\n")
+
 const footer = (what) => `<i>${what} — <a href="${APP_URL}">в кабинете</a></i>`
 
 // ── Клавиатуры ──────────────────────────────────────────────────────────────
@@ -635,15 +640,14 @@ export async function viewStudent(db, link, studentId) {
       : null,
   ].filter(Boolean)
 
-  const lines = [
+  const text = stack(
     head("👤", esc(studentName(s.name, link.full_names)), subtitle || null),
-    "",
     quote(study),
     quote(finance),
     quote([pair("Домашние работы", `${activeHw} в работе · ${toCheck} на проверке`)]),
-  ]
+  )
 
-  return { text: lines.join("\n"), keyboard: backTo("st") }
+  return { text, keyboard: backTo("st") }
 }
 
 export async function viewMoney(db, link) {
@@ -700,9 +704,8 @@ export async function viewMoney(db, link) {
 
 export function viewSettings(link) {
   return {
-    text: [
+    text: stack(
       head("⚙️", "Настройки"),
-      "",
       quote([
         pair("Имена учеников", `<b>${link.full_names ? "полностью" : "сокращённо"}</b>`),
         link.full_names
@@ -713,7 +716,7 @@ export function viewSettings(link) {
         pair("Уведомления", `<b>${link.notify ? "включены" : "выключены"}</b>`),
         "<i>Сданные работы, варианты и сообщения учеников.</i>",
       ]),
-    ].join("\n"),
+    ),
     keyboard: {
       inline_keyboard: [
         [{ text: link.full_names ? "Сокращать имена" : "Показывать полные имена", callback_data: "setname" }],
