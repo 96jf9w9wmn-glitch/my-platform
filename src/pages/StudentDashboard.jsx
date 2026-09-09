@@ -18,6 +18,7 @@ import BoardHistory from "../components/BoardHistory"
 import OnlinePayCard from "../components/OnlinePayCard"
 import InvoiceCard from "../components/InvoiceCard"
 import { MarketingToggle } from "../components/ConsentChecks"
+import PushSettings from "../components/PushSettings"
 
 const Board = lazy(() => import("../components/Board"))
 
@@ -3489,6 +3490,10 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
 
           {activeTab === "settings" && (
             <div className="flex flex-col gap-4">
+              {/* Уведомления первыми: у ученика это единственный способ узнать о
+                  новой работе, не открывая кабинет, — почты у него нет вовсе. */}
+              <PushSettings userId={user.id} informal />
+
               <div className="glass p-5">
                 <h2 className="text-base font-medium mb-1">Подключить репетитора</h2>
                 <p className="text-xs text-gray-500 mb-4">Если начал заниматься ещё с одним репетитором — попроси у него код и введи сюда. Прежний репетитор останется: между ними можно переключаться наверху кабинета.</p>
