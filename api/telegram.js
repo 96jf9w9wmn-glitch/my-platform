@@ -1,4 +1,4 @@
-// Телеграм-бот репетитора: второй вход в тот же кабинет.
+// Телеграм-бот платформы: второй вход в тот же кабинет — и репетитору, и ученику.
 //
 // Бот НЕ хранит своих данных: он читает те же students / homework / lessons, что
 // и сайт, и умеет ровно то, что нужно между занятиями с телефона в руке —
@@ -178,6 +178,97 @@ export function joinLimited(lines, max, tailWord = "строк") {
   if (lines.length <= max) return lines.join("\n")
   const rest = lines.length - max
   return [...lines.slice(0, max), `<i>…и ещё ${rest} ${tailWord}</i>`].join("\n")
+}
+
+// ── Профиль бота в Telegram ─────────────────────────────────────────────────
+//
+// Имя, описание и список команд — часть интерфейса, которую человек видит ДО
+// первого сообщения: пустой чат показывает описание, а поле ввода — команды.
+// Пока там стояло «бот репетитора», ученик, открыв бота по ссылке из кабинета,
+// читал, что попал не туда.
+//
+// Само @username сменить нельзя — ни ботом, ни в BotFather (только просьбой в
+// @BotSupport или новым ботом). Поэтому всё, что зависит от нас, обязано быть
+// нейтральным по роли.
+//
+// Ставится САМО на боевом домене вместе с вебхуком: это не настройка и не
+// выбор, а единственное правильное значение. Пишем только при расхождении —
+// Telegram ограничивает частоту смены имени, и слать одно и то же на каждый
+// health-check нельзя.
+
+const BOT_NAME = "Precettore"
+
+const BOT_DESCRIPTION = [
+  "Precettore — платформа для репетиторов и их учеников.",
+  "",
+  "Репетитору: расписание, домашние работы, долги.",
+  "Ученику: ближайшие занятия, задания со сроками и напоминания.",
+  "",
+  "Чтобы начать, возьмите код привязки в кабинете на precettore.ru.",
+].join("\n")
+
+const BOT_SHORT = "Кабинет Precettore в телефоне: занятия, домашние работы и напоминания."
+
+// Команды по умолчанию видит тот, кто ещё не привязан: обещать ему разделы
+// кабинета незачем, он до них всё равно не дойдёт без кода.
+const CMDS_DEFAULT = [
+  { command: "start", description: "Привязать кабинет" },
+  { command: "help", description: "Что умеет бот" },
+]
+
+const CMDS_TUTOR = [
+  { command: "menu", description: "Меню" },
+  { command: "today", description: "Занятия сегодня" },
+  { command: "week", description: "Расписание на неделю" },
+  { command: "hw", description: "Домашние работы" },
+  { command: "students", description: "Ученики" },
+  { command: "money", description: "Деньги и долги" },
+  { command: "settings", description: "Настройки" },
+]
+
+const CMDS_STUDENT = [
+  { command: "menu", description: "Меню" },
+  { command: "lessons", description: "Ближайшие занятия" },
+  { command: "tasks", description: "Задания и сроки" },
+  { command: "settings", description: "Настройки" },
+]
+
+const same = (a, b) => JSON.stringify(a || null) === JSON.stringify(b || null)
+
+export async function ensureBotProfile() {
+  const name = await tg("getMyName", {})
+  if (name?.ok && name.result?.name !== BOT_NAME) {
+    await tg("setMyName", { name: BOT_NAME })
+  }
+
+  const desc = await tg("getMyDescription", {})
+  if (desc?.ok && desc.result?.description !== BOT_DESCRIPTION) {
+    await tg("setMyDescription", { description: BOT_DESCRIPTION })
+  }
+
+  const short = await tg("getMyShortDescription", {})
+  if (short?.ok && short.result?.short_description !== BOT_SHORT) {
+    await tg("setMyShortDescription", { short_description: BOT_SHORT })
+  }
+
+  const cmds = await tg("getMyCommands", {})
+  if (cmds?.ok && !same(cmds.result, CMDS_DEFAULT)) {
+    await tg("setMyCommands", { commands: CMDS_DEFAULT })
+  }
+}
+
+// Команды у КОНКРЕТНОГО чата: у репетитора и ученика они разные, и общий список
+// на двоих был бы наполовину ложным — «Деньги и долги» в кабинете ученика
+// открывать нечему. Ставится один раз, при привязке.
+async function setChatCommands(chatId, commands) {
+  await tg("setMyCommands", { commands, scope: { type: "chat", chat_id: chatId } })
+}
+
+// Отвязка снимает и команды: иначе в отвязанном чате остаётся список разделов,
+// которых там больше нет, а чат, привязанный потом другой ролью, до следующей
+// привязки показывал бы чужие. Привязка ставит их заново.
+async function clearChatCommands(chatId) {
+  await tg("deleteMyCommands", { scope: { type: "chat", chat_id: chatId } })
 }
 
 // ── Клавиатуры ──────────────────────────────────────────────────────────────
@@ -822,6 +913,7 @@ export async function handleUpdate(db, update) {
       })
 
       if (accountId) {
+        await setChatCommands(chat, CMDS_STUDENT)
         await tg("sendMessage", {
           chat_id: chat,
           parse_mode: "HTML",
@@ -847,6 +939,7 @@ export async function handleUpdate(db, update) {
       return
     }
 
+    await setChatCommands(chat, CMDS_TUTOR)
     await tg("sendMessage", {
       chat_id: chat,
       parse_mode: "HTML",
@@ -880,6 +973,7 @@ export async function handleUpdate(db, update) {
 
       if (data === "s:unlink") {
         await db.call("bot_student_link", { p_chat: chat, p_unlink: true })
+        await clearChatCommands(chat)
         await answer("Чат отвязан")
         await tg("sendMessage", {
           chat_id: chat,
@@ -945,6 +1039,7 @@ export async function handleUpdate(db, update) {
 
     if (data === "unlink") {
       await db.call("bot_link", { p_chat: chat, p_unlink: true })
+      await clearChatCommands(chat)
       await answer("Чат отвязан")
       await tg("sendMessage", {
         chat_id: chat,
@@ -1100,6 +1195,12 @@ export default async function handler(req, res) {
     // больше нет, но защита нужна ровно та же.
     const host = String(req.headers["x-forwarded-host"] || req.headers.host || "")
     const isProdHost = host === new URL(APP_URL).host
+
+    // Имя, описание и команды — тем же правилом и на том же боевом домене.
+    // Не ждём завершения: health-check дёргает кабинет при открытии страницы,
+    // и четыре лишних запроса в Telegram задержали бы ответ на ровном месте.
+    if (isProdHost) ensureBotProfile().catch(() => {})
+
     if (!hook?.result?.url && process.env.TELEGRAM_WEBHOOK_SECRET && isProdHost) {
       const set = await tg("setWebhook", {
         url: `https://${host}/api/telegram`,
