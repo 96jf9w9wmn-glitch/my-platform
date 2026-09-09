@@ -48,6 +48,10 @@ const TZ = "Europe/Moscow"
 
 const token = () => process.env.TELEGRAM_BOT_TOKEN || ""
 
+// Вебхук перерегистрирован в ЭТОМ запуске процесса. Ровно один раз, см.
+// ensureWebhook() ниже.
+let webhookEnsured = false
+
 // ── Доступ к базе ───────────────────────────────────────────────────────────
 //
 // Бот ходит в базу НЕ под service_role (тот ключ может в базе всё), а через
@@ -1201,13 +1205,34 @@ export default async function handler(req, res) {
     // и четыре лишних запроса в Telegram задержали бы ответ на ровном месте.
     if (isProdHost) ensureBotProfile().catch(() => {})
 
-    if (!hook?.result?.url && process.env.TELEGRAM_WEBHOOK_SECRET && isProdHost) {
+    // Перерегистрируем вебхук ОДИН РАЗ за запуск процесса, а не только когда
+    // его нет вовсе.
+    //
+    // Почему так, а не «нет адреса — поставить». Секрет вебхука хранится ТОЛЬКО
+    // у Telegram, и getWebhookInfo его не возвращает: сверить нечем. При этом
+    // адрес у нас не менялся с переезда с Vercel, а секрет сменился — его
+    // выпускает заново set-telegram-token.sh, потому что прежний лежал в env
+    // Vercel и не читается. Прежнее условие видело непустой адрес и НЕ трогало
+    // вебхук, поэтому Telegram продолжал бы слать обновления со старым
+    // секретом, обработчик отвечал бы 401, и бот молчал бы ровно так же, как до
+    // установки токена. Кнопка «Настроить вебхук» в кабинете тоже не спасала:
+    // она показывается как раз при ОТСУТСТВИИ вебхука.
+    //
+    // Раз в запуск — потому что правка api.env требует пересоздания контейнера
+    // (docker restart env_file не перечитывает), то есть новый секрет и новый
+    // процесс появляются ВМЕСТЕ. Лишний запрос к Telegram при этом один на
+    // перезапуск, а не на каждое открытие кабинета.
+    const needWebhook = !hook?.result?.url || !webhookEnsured
+    if (needWebhook && process.env.TELEGRAM_WEBHOOK_SECRET && isProdHost) {
       const set = await tg("setWebhook", {
         url: `https://${host}/api/telegram`,
         secret_token: process.env.TELEGRAM_WEBHOOK_SECRET,
         allowed_updates: ["message", "callback_query"],
       })
-      if (set?.ok) hook = await tg("getWebhookInfo", {})
+      if (set?.ok) {
+        webhookEnsured = true
+        hook = await tg("getWebhookInfo", {})
+      }
     }
 
     res.status(200).json({
