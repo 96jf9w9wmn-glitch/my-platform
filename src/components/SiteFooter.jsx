@@ -3,8 +3,8 @@ import BetaBadge from "./BetaBadge"
 import { BETA_NOTE } from "../beta"
 
 // Подвал публичных страниц (лендинг, вход, юр-документы): контакт для сообщений
-// об ошибках, соцсети и юр-ссылки. Ссылки на соцсети пока МАКЕТЫ — реальные
-// адреса подставляются в SOCIALS ниже, менять больше нигде не нужно.
+// об ошибках, соцсети и юр-ссылки. Канал добавляется одной записью в SOCIALS
+// ниже, менять больше нигде не нужно.
 
 const SUPPORT_EMAIL = "precettore@inbox.ru"
 const SUPPORT_SUBJECT = "Ошибка на precettore.ru"
@@ -32,15 +32,6 @@ const SOCIALS = [
     text: "text-pink-500 dark:text-pink-400",
     ring: "hover:ring-pink-200 dark:hover:ring-pink-700",
   },
-  {
-    key: "vk",
-    label: "VK",
-    hint: "новости и анонсы",
-    href: "",
-    soft: "bg-blue-50 dark:bg-blue-900/30",
-    text: "text-blue-600 dark:text-blue-400",
-    ring: "hover:ring-blue-200 dark:hover:ring-blue-700",
-  },
 ]
 
 const LEGAL = [
@@ -63,21 +54,12 @@ function SocialGlyph({ name, size = 17 }) {
       </svg>
     )
   }
-  if (name === "instagram") {
-    return (
-      <svg {...common} fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="3" width="18" height="18" rx="5.4" />
-        <circle cx="12" cy="12" r="4.1" />
-        <circle cx="17.2" cy="6.8" r="1.05" fill="currentColor" stroke="none" />
-      </svg>
-    )
-  }
-  // VK — словесный знак, как в актуальном логотипе
+  // Instagram
   return (
-    <svg {...common} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="4.5 7.5 8.2 16.5 11.9 7.5" />
-      <line x1="15" y1="7.5" x2="15" y2="16.5" />
-      <polyline points="20 7.5 15 12 20 16.5" />
+    <svg {...common} fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="5.4" />
+      <circle cx="12" cy="12" r="4.1" />
+      <circle cx="17.2" cy="6.8" r="1.05" fill="currentColor" stroke="none" />
     </svg>
   )
 }
