@@ -190,10 +190,15 @@ export function studentName(name, full) {
 
 // Сообщения Telegram обрезаются на 4096 символах, и обрезаются молча. Длинные
 // списки режем сами и ЧЕСТНО пишем, сколько осталось за кадром.
-export function joinLimited(lines, max, tailWord = "строк") {
+//
+// Слово склоняем: «…и ещё 104 занятий» — это не по-русски, а числа тут любые.
+// Хвост задаётся тройкой «одно / два / пять»; строка тоже принимается, но
+// склонять её нечем, поэтому новые списки лучше писать тройкой.
+export function joinLimited(lines, max, tail = ["строка", "строки", "строк"]) {
   if (lines.length <= max) return lines.join("\n")
   const rest = lines.length - max
-  return [...lines.slice(0, max), `<i>…и ещё ${rest} ${tailWord}</i>`].join("\n")
+  const word = Array.isArray(tail) ? plural(rest, tail[0], tail[1], tail[2]) : tail
+  return [...lines.slice(0, max), `<i>…и ещё ${rest} ${word}</i>`].join("\n")
 }
 
 // ── Профиль бота в Telegram ─────────────────────────────────────────────────
@@ -388,7 +393,7 @@ export async function viewToday(db, link) {
       `<b>${humanDate(today)}</b>`,
       `${lessonsWord(items.length)} · ${money(sum)}`,
       "",
-      joinLimited(lines, 20, "занятий"),
+      joinLimited(lines, 20, ["занятие", "занятия", "занятий"]),
     ].join("\n"),
     keyboard: backTo(),
   }
@@ -422,7 +427,7 @@ export async function viewWeek(db, link) {
       `<b>Ближайшие 7 дней</b>`,
       `${lessonsWord(items.length)} · ${money(sum)}`,
       "",
-      joinLimited(blocks, 7, "дней"),
+      joinLimited(blocks, 7, ["день", "дня", "дней"]),
     ].join("\n"),
     keyboard: backTo(),
   }
@@ -448,12 +453,12 @@ export async function viewHomework(db, link) {
     parts.push("", "<b>Ждут проверки</b>")
     parts.push(joinLimited(toCheck.map((h) =>
       `📩 ${who(h.student_id)} · ${esc(h.title)}` +
-      (h.submission_url ? ` · <a href="${esc(h.submission_url)}">работа</a>` : "")), 10, "работ"))
+      (h.submission_url ? ` · <a href="${esc(h.submission_url)}">работа</a>` : "")), 10, ["работа", "работы", "работ"]))
   }
   if (overdue.length) {
     parts.push("", "<b>Просрочено</b>")
     parts.push(joinLimited(overdue.map((h) =>
-      `⚠️ ${who(h.student_id)} · ${esc(h.title)} · до ${esc(shortDate(h.deadline))}`), 10, "заданий"))
+      `⚠️ ${who(h.student_id)} · ${esc(h.title)} · до ${esc(shortDate(h.deadline))}`), 10, ["задание", "задания", "заданий"]))
   }
   if (!toCheck.length && !overdue.length) {
     parts.push("", active.length ? "Всё сдано в срок — проверять пока нечего." : "Активных заданий нет.")
@@ -504,7 +509,7 @@ export async function viewStudents(db, link) {
   })
 
   return {
-    text: [`<b>Ученики</b> · ${students.length}`, "", joinLimited(lines, 25, "учеников")].join("\n"),
+    text: [`<b>Ученики</b> · ${students.length}`, "", joinLimited(lines, 25, ["ученик", "ученика", "учеников"])].join("\n"),
     keyboard: backTo("menu", rows),
   }
 }
@@ -587,7 +592,7 @@ export async function viewMoney(db, link) {
   if (debtors.length) {
     parts.push("", `<b>Долги</b> · ${money(debtTotal)}`)
     parts.push(joinLimited(debtors.map((d) =>
-      `• ${esc(studentName(d.name, link.full_names))} — ${money(d.debt)}`), 12, "учеников"))
+      `• ${esc(studentName(d.name, link.full_names))} — ${money(d.debt)}`), 12, ["ученик", "ученика", "учеников"]))
   } else {
     parts.push("", "Долгов нет.")
   }
@@ -735,7 +740,7 @@ export async function viewStudentLessons(db, link) {
   })
 
   return {
-    text: ["<b>Ближайшие занятия</b>", "", joinLimited(lines, 8, "занятий"), "",
+    text: ["<b>Ближайшие занятия</b>", "", joinLimited(lines, 8, ["занятие", "занятия", "занятий"]), "",
       `<i>Перенести занятие можно в кабинете: ${APP_URL}</i>`].join("\n"),
     keyboard: studentBack(),
   }
@@ -763,7 +768,7 @@ export async function viewStudentTasks(db, link) {
         : ""
       const back = h.status === "revision" ? " · <i>на доработку</i>" : ""
       return `• ${esc(h.title || "Без названия")}${due}${back}`
-    }), 10, "работ"))
+    }), 10, ["работа", "работы", "работ"]))
   }
 
   if (variants.length) {
@@ -774,7 +779,7 @@ export async function viewStudentTasks(db, link) {
         ? ` — ${late ? "<b>просрочено</b>" : `до ${shortDate(v.deadline)}`}`
         : ""
       return `• ${esc(v.title || "Вариант")}${due}`
-    }), 6, "вариантов"))
+    }), 6, ["вариант", "варианта", "вариантов"]))
   }
 
   if (!hw.length && !variants.length) {
