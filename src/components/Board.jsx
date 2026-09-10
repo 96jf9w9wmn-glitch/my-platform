@@ -253,10 +253,12 @@ function TaskFileChip({ file, onFile, ink, border }) {
 //
 // Панель живёт в DOM, а не на холсте: в неё вводят текст. Но растёт и уменьшается она
 // ВМЕСТЕ С ЛИСТОМ: вёрстка набрана в тех же единицах, что и сам лист (ширина
-// QA_SHEET_W, кегль от кегля условия), а на экран её кладёт одно преобразование
-// scale(panel.k), где k — во сколько раз лист сейчас показан. Экранный размер,
+// QA_SHEET_W, кегль от кегля условия), а на доску её кладёт одно преобразование
+// scale(panel.k), где k — во сколько раз лист крупнее своих единиц. Экранный размер,
 // стоявший тут раньше, читался как чужая наклейка: на увеличенном листе поле
 // оказывалось втрое мельче условия, на отдалённом — накрывало его целиком.
+// Координаты тоже МИРОВЫЕ: панель стоит в слое, который двигает и масштабирует
+// тот же обзор, что и холст, поэтому она приклеена к листу, а не догоняет его.
 // Масштаб на ОБЁРТКЕ, а не на самой панели: у появления попапа свои кадры с
 // transform, и на одном элементе они затёрли бы друг друга.
 function TaskAnswerBox({ panel, dark, panelBg, panelBorder, tutor = false, draft = null, onCheck, onReset, onType, onFile }) {
@@ -271,6 +273,9 @@ function TaskAnswerBox({ panel, dark, panelBg, panelBorder, tutor = false, draft
     left: panel.x, top: panel.y - QA_OVERLAP * panel.k, width: QA_SHEET_W,
     transform: `scale(${panel.k})`, transformOrigin: "top left",
   }
+  // Слой сквозной для указателя (иначе он накрыл бы всю доску) — саму панель
+  // возвращаем под руку.
+  const shell = "absolute pointer-events-auto"
   // Обводка у подвала та же, что у самого листа (её рисует roundSheet), поэтому
   // контур карточки идёт вокруг условия и поля ответа одной линией.
   const line = dark ? "rgba(255,255,255,.12)" : "rgba(0,0,0,.10)"
@@ -290,7 +295,7 @@ function TaskAnswerBox({ panel, dark, panelBg, panelBorder, tutor = false, draft
   // отличается только начинка.
   if (tutor) {
     return (
-      <div className="absolute" style={frame}>
+      <div className={shell} style={frame}>
         <div className="flex items-center justify-end gap-2 px-4 py-2.5" style={{ ...foot, borderTop: `1px solid ${line}` }}>
           {files.map((f) => <TaskFileChip key={f.p} file={f} onFile={onFile} ink={ink} border={panelBorder} />)}
           {panel.ask && <span className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
@@ -327,7 +332,7 @@ function TaskAnswerBox({ panel, dark, panelBg, panelBorder, tutor = false, draft
   }
 
   return (
-    <div className="absolute" style={frame}>
+    <div className={shell} style={frame}>
       <div className="px-4 py-3" style={{ ...foot, borderTop: `1px solid ${line}` }}>
         {/* Файл стоит ПЕРВЫМ: без него такое задание не решается, а поле ответа
             под ним — следующий шаг. */}
@@ -628,9 +633,12 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // Число выделенных штрихов: пропало выделение — закрываем попап его настроек
   const applySelCount = (n) => { setSelCount(n); if (!n && menu === "selStroke") closeMenu("selStroke") }
   const [selBox, setSelBox] = useState(null)   // ориентированная рамка выделения (экранные координаты)
-  // Поля ответа под листами с заданием (экранные координаты). Считаются в кадре, как
-  // и рамка выделения: их положение зависит от обзора, а не от React-стейта.
+  // Поля ответа под листами с заданием — в МИРОВЫХ координатах листа. На экран их
+  // кладёт один общий перенос мирового слоя (qaLayer), тот же, каким рисуется холст,
+  // поэтому при сдвиге и зуме подвал не «плывёт» относительно своего листа. Стейт
+  // здесь меняется только когда лист двинули или ответили, а не на каждом кадре.
   const [qaBoxes, setQaBoxes] = useState([])
+  const qaLayer = useRef(null)
   // Что ученик прямо сейчас набирает в поле ответа: id листа → { v, typing }.
   // Живёт только в памяти вкладки — это показ, а не данные.
   const [drafts, setDrafts] = useState({})
@@ -1147,17 +1155,23 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       if (sw < QA_MIN_ON_SCREEN || x1 < 0 || y1 < 0 || x0 > cw || y0 > ch) continue
       // x — ЛЕВЫЙ край листа: поле ответа стоит под условием по одной с ним линии,
       // как строка «Ответ:» на бланке. По центру оно уезжало от начала условия.
-      // k — во сколько раз лист сейчас показан: поле шириной ровно с лист и с той же
-      // крупностью текста, что и условие (см. TaskAnswerBox). Округляем, иначе
-      // дрожание последних знаков перерисовывало бы панель на каждом кадре.
+      // Координаты МИРОВЫЕ, а k — во сколько раз лист крупнее своих собственных
+      // единиц: масштаб обзора добавит мировой слой. Экранные координаты, стоявшие
+      // тут раньше, приходилось округлять до целого пикселя (иначе панель
+      // перерисовывалась на каждом кадре) — и подвал ехал по доске рывками, а его
+      // ширина не сходилась с листом на доли пикселя.
       // Правильный ответ уходит в панель ТОЛЬКО репетитору: у ученика панель его
       // не показывает, и класть его туда незачем.
-      qa.push({ id: st.id, x: Math.round(x0), y: Math.round(y1),
-        k: Math.round((sw / QA_SHEET_W) * 1000) / 1000, ask: !!st.qa, files: st.files || null,
+      qa.push({ id: st.id, x: b.minX, y: b.maxY,
+        k: (b.maxX - b.minX) / QA_SHEET_W, ask: !!st.qa, files: st.files || null,
         a: isTutor ? st.qa?.a ?? null : null, v: st.qa?.v || "", ok: st.qa?.ok ?? null })
     }
     const qaKey = JSON.stringify(qa)
     if (qaKey !== lastQa.current) { lastQa.current = qaKey; setQaBoxes(qa) }
+    // Мировой слой едет вместе с холстом — тем же переносом и тем же масштабом.
+    // Пишем прямо в стиль, минуя React: перерисовка на каждом кадре сдвига стоила
+    // бы дороже самого рисования, а подвал обязан стоять на листе кадр в кадр.
+    if (qaLayer.current) qaLayer.current.style.transform = `translate(${v.x}px, ${v.y}px) scale(${v.scale})`
     const busyKey = JSON.stringify(busy)
     if (busyKey !== lastBusy.current) { lastBusy.current = busyKey; setBusyImgs(busy) }
     const drawDashRect = (bb, color, dash) => {
@@ -2113,10 +2127,17 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   function onPointerDown(e) {
     // Открыт попап панели → первый тык по холсту просто закрывает его, не рисуя
     if (menu) { closeMenu(); return }
-    // Идёт набор надписи → тык по холсту его завершает. Инструмент «Текст» при
-    // этом тем же нажатием начинает следующую надпись: так пишут подписи к
-    // чертежу — одну за другой, не возвращаясь каждый раз в панель.
-    if (editPos.current) { commitTextEdit(); if (tool !== "text") return }
+    // Идёт набор надписи → тык по холсту его завершает.
+    if (editPos.current) {
+      const wasText = tool === "text"
+      commitTextEdit()
+      if (!wasText) return
+      // Тык по ДРУГОЙ надписи открывает её на правку — не возвращаясь в панель.
+      // Тык по пустому месту означает «дописал», и инструмент сам возвращается к
+      // курсору: раньше он оставался «Текстом», каждое следующее нажатие заводило
+      // новую надпись, и выйти из набора по холсту было нечем — только через панель.
+      if (!textAt(toWorld(e.clientX, e.clientY))) { setTool("cursor"); return }
+    }
     // Новый первичный указатель = начало нового жеста → сбрасываем возможные
     // «зависшие» указатели (недоснятое касание и т.п.), иначе рисование
     // навсегда уходит в режим жеста. Это самовосстановление.
@@ -3983,12 +4004,17 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
           </div>
         ))}
 
-        {/* Поля ответа под листами с заданием */}
-        {qaBoxes.map((b) => (
-          <TaskAnswerBox key={b.id} panel={b} dark={dark} panelBg={panelBg} panelBorder={panelBorder}
-            tutor={isTutor} draft={drafts[b.id]} onCheck={checkTaskAnswer} onReset={resetTaskAnswer}
-            onType={typeTaskAnswer} onFile={downloadBoardFile} />
-        ))}
+        {/* Поля ответа под листами с заданием. Слой МИРОВОЙ: перенос и масштаб ему
+            выставляет кадр отрисовки (qaLayer), поэтому подвал стоит на своём листе
+            неподвижно — как часть задания, а не как всплывающая над доской плашка. */}
+        <div ref={qaLayer} className="absolute inset-0 pointer-events-none"
+          style={{ transformOrigin: "0 0", willChange: "transform" }}>
+          {qaBoxes.map((b) => (
+            <TaskAnswerBox key={b.id} panel={b} dark={dark} panelBg={panelBg} panelBorder={panelBorder}
+              tutor={isTutor} draft={drafts[b.id]} onCheck={checkTaskAnswer} onReset={resetTaskAnswer}
+              onType={typeTaskAnswer} onFile={downloadBoardFile} />
+          ))}
+        </div>
 
         {/* Оверлей выделения: рамка + ручки + панель свойств */}
         {H && selCount > 0 && (
