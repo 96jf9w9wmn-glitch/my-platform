@@ -125,6 +125,19 @@ const SNAP_PX = 6
 const GUIDE_COLOR = "#FF2D55"  // направляющая заметно отличается от синей рамки выделения
 const STROKE_RATE = 30  // не чаще 1 посылки дописанных точек в 30 мс (33/сек)
 const BOARD_SYNC_MS = 15000 // как часто сверяемся с базой, что ничего не потерялось
+// Пока канала нет, сверка — единственный путь, которым доходит чужое: догоняем
+// чаще (board_strokes_after — это килобайты и 3 мс базы).
+const BOARD_SYNC_FAST_MS = 3000
+// Сервер realtime пускает от одного клиента не больше ПЯТИ presence-сообщений
+// за 30 секунд (CLIENT_PRESENCE_MAX_CALLS=5), а на шестом ЗАКРЫВАЕТ КАНАЛ —
+// и закрытый канал realtime-js не поднимает никогда. Так 10.09.2026 в 12:11
+// репетитор четыре минуты слал штрихи HTTP-фолбэком, а штрихи ученика получал
+// только сверкой раз в 15 с: «ученик пишет, а у меня появляется через 5–10 с».
+// Заявляем о себе не чаще раза в TRACK_MIN_MS: подключение + три обновления
+// за полминуты — с запасом под лимит.
+const TRACK_MIN_MS = 8000
+const LINK_DOWN_MS = 3000   // через сколько без канала показать «связь восстанавливается»
+const REJOIN_MS = [1500, 4000, 8000, 15000]   // пересоздание канала после закрытия
 // Точки штриха округляются до сотых мировой единицы: на экране это доли пикселя
 // даже при максимальном увеличении, зато и по сети, и в снапшоте сцены каждая
 // точка занимает втрое меньше места, чем сырой double.
@@ -798,11 +811,42 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   const live = useRef(new Map())      // id -> штрих, который прямо сейчас рисует собеседник
   const legacyPeer = useRef(false)    // на доске есть клиент старой сборки (см. presence sync)
   const lastTrack = useRef(0)         // когда в последний раз заявляли о себе в presence
+  const trackTimer = useRef(null)     // отложенная заявка о себе (см. trackSelf)
+  const joinedRef = useRef(false)     // канал сейчас подключён (SUBSCRIBED)
+  const rejoinTimer = useRef(null)    // пересоздание канала, закрытого сервером
+  const rejoinTries = useRef(0)
+  const linkDownTimer = useRef(null)
+  const lastTick = useRef(0)          // когда в последний раз сверялись с базой
+  const [chanGen, setChanGen] = useState(0)     // растёт — канал создаётся заново
+  const [linkDown, setLinkDown] = useState(false) // канала нет дольше LINK_DOWN_MS
   // Карточка участника, какой её видят остальные. Через ref, а не прямо в
   // channel.track: подписанная ссылка на фото и имя приходят позже подключения,
   // а пересоздавать из-за них канал нельзя — это разрыв доски.
   const trackRef = useRef(null)
   trackRef.current = () => ({ userId, name: userName, avatar: avatar || null, proto: 2, following: followRef.current || null })
+  // Единственное место, откуда уходит presence. Поводов заявить о себе у доски
+  // несколько (подключение, догрузка имени и аватара, слежение, самопроверка
+  // после sync), и каждый из них раньше слал track сам — вместе они пробивали
+  // серверный лимит (см. TRACK_MIN_MS). Теперь заявки сливаются в одну и уходят
+  // не чаще раза в TRACK_MIN_MS, значение берётся свежее в момент отправки.
+  // force — сразу после подключения: у нового канала свой счётчик на сервере.
+  function trackSelf(force = false) {
+    const ch = channelRef.current
+    if (!ch) return
+    const wait = force ? 0 : TRACK_MIN_MS - (performance.now() - lastTrack.current)
+    if (wait <= 0) {
+      clearTimeout(trackTimer.current); trackTimer.current = null
+      // Не подключены — SUBSCRIBED заявит о нас сам (force приходит из него: в
+      // этот момент состояние может ещё не смениться, а библиотека отправит
+      // заявку вместе с подключением).
+      if (!force && ch.state !== "joined") return
+      lastTrack.current = performance.now()
+      ch.track(trackRef.current())
+      return
+    }
+    if (trackTimer.current) return
+    trackTimer.current = setTimeout(() => { trackTimer.current = null; trackSelf() }, wait)
+  }
   const sentId = useRef(null)         // id штриха, чьи точки уже разосланы
   const sentN = useRef(0)             // сколько точек этого штриха разослано
   const bgCanvasRef = useRef(null)    // холст узора фона (клетка/точки) — ПОД основным
@@ -1609,6 +1653,10 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     const tick = async () => {
       if (document.visibilityState !== "visible") return
       if (loadedRef.current !== roomId || drawing.current) return
+      // Канал подключён — раз в BOARD_SYNC_MS, как и было; канала нет — чужое
+      // доходит только этим путём, и ждать по 15 с нельзя.
+      if (joinedRef.current && Date.now() - lastTick.current < BOARD_SYNC_MS) return
+      lastTick.current = Date.now()
       // Своё ещё не сохранено — сверять не с чем: база заведомо отстаёт от нас,
       // и «догон» вернул бы только что стёртое.
       if (savingRef.current || saveTimer.current) return
@@ -1623,7 +1671,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       const inDb = savedRef.current.size
       if ((data.n ?? inDb) !== inDb || (data.last_id && !strokes.current.has(data.last_id))) resync()
     }
-    const id = setInterval(tick, BOARD_SYNC_MS)
+    const id = setInterval(tick, BOARD_SYNC_FAST_MS)
     return () => clearInterval(id)
   }, [roomId, resync])
 
@@ -1664,12 +1712,15 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     const scheduleTeardown = () => {
       clearTimeout(teardownTimer.current)
       teardownTimer.current = setTimeout(() => {
-        if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null }
+        const old = channelRef.current
+        if (old) { channelRef.current = null; joinedRef.current = false; supabase.removeChannel(old) }
       }, 150)
     }
     clearTimeout(teardownTimer.current)
     if (channelRef.current && channelRef.current._boardRoom !== roomId) {
-      supabase.removeChannel(channelRef.current); channelRef.current = null
+      const old = channelRef.current
+      channelRef.current = null; joinedRef.current = false
+      supabase.removeChannel(old)
     }
     if (channelRef.current) return scheduleTeardown
 
@@ -1770,10 +1821,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         // после обрыва, перезапуск realtime), и собеседник нас не видит, хотя мы
         // на доске. Возвращаем её сами; чаще раза в пять секунд не пробуем,
         // иначе отказ сервера крутил бы sync по кругу.
-        if (!people.some((p) => p.userId === userId) && performance.now() - lastTrack.current > 5000) {
-          lastTrack.current = performance.now()
-          channel.track(trackRef.current())
-        }
+        if (!people.some((p) => p.userId === userId)) trackSelf()
         // Наблюдателя видно по его же presence: пока за нами никто не следит,
         // обзор не рассылается вовсе.
         const watched = people.some((p) => p.userId !== userId && p.following === userId)
@@ -1796,18 +1844,47 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         scheduleLive()
       })
       .subscribe((status) => {
-        if (status !== "SUBSCRIBED") return
-        lastTrack.current = performance.now()
-        channel.track(trackRef.current())
-        // Первое подключение сцену принесёт начальная загрузка; повторное — это
-        // подъём после обрыва, и вот тут надо догнать написанное без нас.
-        if (joinedOnce.current) resync()
-        joinedOnce.current = true
+        if (status === "SUBSCRIBED") {
+          joinedRef.current = true
+          rejoinTries.current = 0
+          clearTimeout(rejoinTimer.current); rejoinTimer.current = null
+          clearTimeout(linkDownTimer.current); linkDownTimer.current = null
+          setLinkDown(false)
+          trackSelf(true)
+          // Первое подключение сцену принесёт начальная загрузка; повторное — это
+          // подъём после обрыва, и вот тут надо догнать написанное без нас.
+          if (joinedOnce.current) resync()
+          joinedOnce.current = true
+          return
+        }
+        // CLOSED / CHANNEL_ERROR / TIMED_OUT. Свой уход с доски (teardown) сюда
+        // тоже приходит как CLOSED — но ref к тому моменту уже снят.
+        joinedRef.current = false
+        if (channelRef.current !== channel) return
+        if (!linkDownTimer.current) linkDownTimer.current = setTimeout(() => { linkDownTimer.current = null; setLinkDown(true) }, LINK_DOWN_MS)
+        // Закрытый сервером канал realtime-js НЕ поднимает (он снят с сокета
+        // насовсем), errored — ретраит сам, но ждать этого некому: в обоих
+        // случаях пересоздаём канал, errored — дав библиотеке несколько секунд.
+        if (rejoinTimer.current) return
+        const base = status === "CLOSED" ? 0 : 1
+        const delay = REJOIN_MS[Math.min(REJOIN_MS.length - 1, base + rejoinTries.current)]
+        rejoinTimer.current = setTimeout(async () => {
+          rejoinTimer.current = null
+          if (channelRef.current !== channel || joinedRef.current) return
+          channelRef.current = null
+          // Снимаем старый канал ДО нового: с тем же топиком supabase.channel()
+          // вернул бы старый, а подписаться на закрытый нельзя.
+          try { await Promise.race([supabase.removeChannel(channel), new Promise((r) => setTimeout(r, 2000))]) }
+          catch { /* уже снят */ }
+          if (channelRef.current || roomRef.current !== roomId) return   // доску сменили или ушли
+          rejoinTries.current += 1
+          setChanGen((g) => g + 1)
+        }, delay)
       })
 
     return scheduleTeardown
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomId, userId, userName, resync])
+  }, [roomId, userId, userName, resync, chanGen])
 
   // О том, за кем мы следим, знает канал: presence — единственное место, где
   // ведущий может узнать, что его обзор кому-то нужен.
@@ -1815,7 +1892,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     followRef.current = followId
     if (!followId) followTarget.current = null
     const ch = channelRef.current
-    if (ch?.state === "joined") { lastTrack.current = performance.now(); ch.track(trackRef.current()) }
+    if (ch?.state === "joined") trackSelf()
     // avatar в зависимостях не случайно: подписанная ссылка на фото приходит
     // асинхронно, уже после подключения к доске, и без повторного track
     // собеседник до конца занятия видел бы кружок с буквой.
@@ -1843,6 +1920,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; persistRef.current?.() }
     clearTimeout(sendTimer.current); clearTimeout(viewSendTimer.current)
     clearTimeout(offscreenTimer.current); clearTimeout(offscreenOutTimer.current)
+    clearTimeout(rejoinTimer.current); clearTimeout(trackTimer.current); clearTimeout(linkDownTimer.current)
     // ВАЖНО: НЕ отменяем teardownTimer — иначе канал board:${roomId} не удаляется
     // при выходе, остаётся подписанным, и при повторном входе новый канал не может
     // занять тот же топик (белый экран, «не грузит», лечится только F5). Таймер
@@ -4254,6 +4332,15 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
           <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl text-xs shadow-lg"
             style={{ background: panelBg, border: "1px solid rgba(239,68,68,.45)", color: dark ? "#f5f5f7" : "#1c1c1e" }}>
             Эта доска не сохраняется — написанное пропадёт при перезагрузке
+          </div>
+        )}
+        {/* Канала нет дольше LINK_DOWN_MS: чужое доходит сверкой раз в несколько
+            секунд, и человеку лучше знать, что задержка — это связь, а не собеседник */}
+        {linkDown && !saveDenied && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl text-xs shadow-lg flex items-center gap-2"
+            style={{ background: panelBg, border: `1px solid ${panelBorder}`, color: dark ? "#f5f5f7" : "#1c1c1e" }}>
+            <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+            Связь с доской восстанавливается…
           </div>
         )}
         {sheetErr && (
