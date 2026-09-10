@@ -4,6 +4,8 @@
 // Сцена — то же, что лежит в boards.scene / board_snapshots.scene:
 //   { strokes: [ {id, author, tool, color, width, points:[[x,y,w],…], angle?, src?} ], bg, bgColor }
 
+import { tintPixels } from "./sheetTint"
+
 export const GRID = 40 // шаг сетки/точек в мировых единицах
 export const INK_DARK = "#f5f5f7", INK_LIGHT = "#1c1c1e"
 
@@ -365,35 +367,10 @@ export function paintStroke(ctx, s, { darkBg = false, getImage = () => null } = 
 
 // Лист с заданием под тёмную доску. Лист всегда ХРАНИТСЯ светлым (белая бумага), а
 // тёмный вид считается здесь — поэтому переключение темы доски перекрашивает и уже
-// лежащие задания, а не только новые.
-//
-// Переворачивается только СВЕТЛОТА пикселя, оттенок и КРАСОЧНОСТЬ остаются: обычная
-// инверсия сделала бы оранжевые стены Робота голубыми, а синюю точку жёлтой.
-// Возвращает null, если холст «испорчен» картинкой без CORS — тогда рисуем как есть.
-//
-// Сохранять надо именно красочность (max−min), а НЕ насыщенность HSL: насыщенность
-// это доля от того, сколько цвета вообще влезает при данной светлоте, и у белой бумаги
-// её знаменатель почти нулевой. Пиксель (250,254,255) на белом листе неотличим от
-// белого, но насыщенность у него 1,0 — перенесённая на тёмный фон, она даёт (0,77,93),
-// ядовито-бирюзовый. Пока листы отдавались PNG, таких пикселей не было вовсе; с
-// переходом на WebP (сжатие с потерями подмешивает цвет к чёрным линиям на белом) вся
-// клетка чертежа покрылась бирюзово-оливковой рябью. Замер на листе №9 профиля:
-// пикселей с заметным цветом (Δ≥25) было 10 204 при максимуме Δ 94 — против 0 и Δ 8
-// у самой картинки ДО тонирования. С красочностью ряби ровно столько же, сколько в
-// исходнике (0 и Δ 8), а чистые цвета не выцветают: #ff9500 и #007AFF совпадают до
-// байта.
-const SHEET_BG_L = 44 / 255    // цвет тёмного листа = панель доски (#2c2c2e)
-const SHEET_INK_L = 0.96       // куда уезжает бывший чёрный текст
-
-function hueToRgb(p, q, t) {
-  if (t < 0) t += 1
-  if (t > 1) t -= 1
-  if (t < 1 / 6) return p + (q - p) * 6 * t
-  if (t < 1 / 2) return q
-  if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6
-  return p
-}
-
+// лежащие задания, а не только новые. Сама арифметика — tintPixels (sheetTint.js):
+// живая доска гоняет её в фоновом потоке, здесь синхронная версия для превью и
+// снимка занятия. Возвращает null, если холст «испорчен» картинкой без CORS —
+// тогда рисуем как есть.
 export function tintSheet(source) {
   const w = source.naturalWidth || source.width, h = source.naturalHeight || source.height
   if (!w || !h) return null
@@ -407,32 +384,7 @@ export function tintSheet(source) {
   } catch {
     return null      // картинка без CORS — холст читать нельзя
   }
-  const d = img.data
-  const span = SHEET_INK_L - SHEET_BG_L
-  for (let i = 0; i < d.length; i += 4) {
-    const r = d[i] / 255, g = d[i + 1] / 255, b = d[i + 2] / 255
-    const max = Math.max(r, g, b), min = Math.min(r, g, b)
-    const nl = SHEET_BG_L + (1 - (max + min) / 2) * span
-    if (max === min) {                       // серый — светлота и есть весь цвет
-      const v = Math.round(nl * 255)
-      d[i] = v; d[i + 1] = v; d[i + 2] = v
-      continue
-    }
-    const dmax = max - min
-    // насыщенность, при которой красочность на НОВОЙ светлоте останется прежней
-    const room = 1 - Math.abs(2 * nl - 1)
-    const sat = room > 1e-6 ? Math.min(1, dmax / room) : 1
-    let hue
-    if (max === r) hue = (g - b) / dmax + (g < b ? 6 : 0)
-    else if (max === g) hue = (b - r) / dmax + 2
-    else hue = (r - g) / dmax + 4
-    hue /= 6
-    const q = nl < 0.5 ? nl * (1 + sat) : nl + sat - nl * sat
-    const pp = 2 * nl - q
-    d[i] = Math.round(hueToRgb(pp, q, hue + 1 / 3) * 255)
-    d[i + 1] = Math.round(hueToRgb(pp, q, hue) * 255)
-    d[i + 2] = Math.round(hueToRgb(pp, q, hue - 1 / 3) * 255)
-  }
+  tintPixels(img.data)
   ctx.putImageData(img, 0, 0)
   return out
 }

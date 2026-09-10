@@ -135,8 +135,15 @@ export default function BoardTaskModal({ dark = false, roomId = null, tutorSubje
       // Файл с данными едет на доску вместе с листом: собирается он здесь, в
       // браузере, и другого места, откуда ученик мог бы его взять, нет.
       const files = attachments.map((f) => ({ name: f.name, blob: f.blob() }))
-      // ширину листа задаёт снимок: доска кладёт картинку в неё, а не вписывает как фото
-      await onInsert(file, SHEET_WIDTH, checkableAnswer(task), files)
+      // ширину листа задаёт снимок: доска кладёт картинку в неё, а не вписывает как фото.
+      // Окно закрывается, как только лист ЛЁГ на доску: выгрузка в хранилище идёт
+      // фоном ещё полсекунды, и ждать её, глядя на «Переносим…» поверх уже лежащего
+      // листа, незачем. Не лёг (картинка не разобралась) — показываем ошибку.
+      const placed = await new Promise((resolve) => {
+        onInsert(file, SHEET_WIDTH, checkableAnswer(task), files, () => resolve(true))
+          .then((res) => resolve(!!res), () => resolve(false))
+      })
+      if (!placed) throw new Error("лист не лёг на доску")
       close()
     } catch {
       setErr("Не получилось перенести задание на доску")

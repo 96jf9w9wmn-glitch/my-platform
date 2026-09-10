@@ -1,4 +1,5 @@
 import { renderTaskMathPdf, renderBlock, taskImage } from "./variantPdf"
+import { encodeCanvasAsync } from "../components/boardWorker"
 
 // Снимок задания в PNG — чтобы задание можно было положить на доску. Доска знает
 // только штрихи и растр (`tool: "image"`), поэтому условие со всеми дробями, корнями
@@ -166,7 +167,13 @@ export async function taskToImageFile(task, { label = "" } = {}) {
   // задании: PNG 1066 мс и 433 КБ, WebP 150 мс и 199 КБ. Браузер, который webp с
   // холста не умеет, по спецификации вернёт PNG — тогда всё работает как раньше,
   // поэтому тип и расширение берём у самого блоба, а не задаём наперёд.
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/webp", 0.95))
+  //
+  // Кодируется В ФОНОВОМ ПОТОКЕ: Safari webp с холста не умеет вовсе (по журналу
+  // хранилища — все листы репетитора PNG по 450 КБ), и секунда кодирования
+  // замораживала доску вместе с модалкой. Замер: самая длинная заморозка при
+  // вставке 1123 мс → см. boardWorker.js. Нет потока — кодируем как раньше.
+  const blob = await encodeCanvasAsync(canvas, "image/webp", 0.95)
+    || await new Promise((resolve) => canvas.toBlob(resolve, "image/webp", 0.95))
     || await new Promise((resolve) => canvas.toBlob(resolve, "image/png"))
   if (!blob) throw new Error("не удалось снять задание")
   const type = blob.type || "image/png"

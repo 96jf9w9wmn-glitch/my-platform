@@ -16,6 +16,7 @@ import {
 const BoardTaskModal = lazy(() => import("./BoardTaskModal"))
 import { roomStudentId, isHomeworkRoom, HW_ROOM } from "../boardRoom"
 import { downloadBlob, taskFiles } from "../pages/taskFiles"
+import { tintSheetAsync } from "./boardWorker"
 
 // Совместная доска платформы (свой движок на HTML5 Canvas, без внешних библиотек).
 // БЕСКОНЕЧНЫЙ холст на весь экран: штрихи хранятся в МИРОВЫХ координатах, у каждого
@@ -821,6 +822,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   const ownBlobs = useRef([])
   useEffect(() => () => { ownBlobs.current.forEach((u) => URL.revokeObjectURL(u)); ownBlobs.current = [] }, [])
   const tintCache = useRef(new Map()) // "src|вес" -> холст листа, перекрашенный под тёмную доску
+  const tintPending = useRef(new Set()) // листы, которые прямо сейчас перекрашивает фоновый поток
   const fileInputRef = useRef(null)   // скрытый input для загрузки картинки кнопкой
   // Адрес доски, ДЛЯ КОТОРОЙ загружена сцена (null — ещё не загружена). Именно
   // адрес, а не «да/нет»: комнату можно сменить на живом компоненте (кнопка
@@ -1379,7 +1381,10 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     // Access-Control-Allow-Origin, но если какой-то адрес его не отдаст — картинка
     // перезагрузится без CORS и просто останется неперекрашиваемой.
     if (!src.startsWith("data:")) img.crossOrigin = "anonymous"
-    img.onload = () => scheduleDraw()
+    // Растр разбираем заранее и вне главного потока: без decode() браузер
+    // декодирует его при первом drawImage — синхронно, прямо в кадре, и тридцать
+    // листов после перезагрузки дают тридцать таких пауз подряд.
+    img.onload = () => Promise.resolve(img.decode?.()).then(scheduleDraw, scheduleDraw)
     img.onerror = () => {
       if (!img.crossOrigin) return
       const plain = new Image()
@@ -1418,8 +1423,34 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       }
     }
     if (!wantTint || !img.complete || !img.naturalWidth) return img
-    if (!tintCache.current.has(key)) tintCache.current.set(key, tintSheet(img))
-    return tintCache.current.get(key) || img
+    if (tintCache.current.has(key)) return tintCache.current.get(key) || img
+    // Предпросмотр (700 точек) и только что вставленный свой лист перекрашиваются
+    // тут же — это единицы миллисекунд и один лист за раз. Полный лист из
+    // хранилища — четыре миллиона пикселей: 60 мс главного потока на Mac (втрое
+    // больше на слабом ноутбуке), а после перезагрузки тёмной доски их приходит
+    // десятки разом — «доска зависает и потом отвисает». Его перекрашивает
+    // фоновый поток, а до готовности рисуем перекрашенный предпросмотр (или
+    // рамку загрузки, если предпросмотра нет).
+    if (!key.endsWith("|full")) {
+      tintCache.current.set(key, tintSheet(img))
+      return tintCache.current.get(key) || img
+    }
+    if (!tintPending.current.has(key)) {
+      tintPending.current.add(key)
+      tintSheetAsync(img).then((bm) => {
+        tintPending.current.delete(key)
+        // Фон не справился (старый браузер, картинка без CORS) — один раз синхронно.
+        tintCache.current.set(key, bm || tintSheet(img))
+        scheduleDraw()
+      })
+    }
+    const pk = src + "|prev"
+    const prev = imgCache.current.get(pk)
+    if (prev && prev.complete && prev.naturalWidth) {
+      if (!tintCache.current.has(pk)) tintCache.current.set(pk, tintSheet(prev))
+      return tintCache.current.get(pk) || prev
+    }
+    return null
   }
 
   // Сцена целиком. Штрихи лежат построчно (board_strokes), и собирает их база:
@@ -2856,13 +2887,16 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     return bb ? { x: bb.minX, y: bb.maxY + SHEET_GAP, off: true } : { x: cx, y: cy }
   }
   // Лист с заданием из банка — на свободное место, а не поверх написанного.
-  async function insertTaskSheet(file, sheetWidth, answer = null, files = null) {
-    const c = canvasRef.current; if (!c) return
+  // onPlaced — лист уже на доске; модалка выбора закрывается по нему, а не по
+  // концу выгрузки в хранилище: та идёт фоном, и держать окно ещё полсекунды
+  // с надписью «Переносим…» поверх уже лежащего листа незачем.
+  async function insertTaskSheet(file, sheetWidth, answer = null, files = null, onPlaced = null) {
+    const c = canvasRef.current; if (!c) return null
     let off = false
-    await addImageAt(file, 0, 0, {
+    return addImageAt(file, 0, 0, {
       fitWidth: sheetWidth, sheet: true, answer, files,
       place: (w, h) => { const spot = freeSpot(w, h); off = !!spot.off; return [spot.x, spot.y] },
-      onPlaced: (st) => { if (off) focusSheet(strokeBBox(st)) },
+      onPlaced: (st) => { if (off) focusSheet(strokeBBox(st)); onPlaced?.(st) },
     })
   }
 
