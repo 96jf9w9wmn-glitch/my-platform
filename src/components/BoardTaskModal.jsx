@@ -8,7 +8,8 @@ import SegmentSwitch from "./SegmentSwitch"
 import { renderTaskMath } from "../utils"
 import { taskThemes } from "../pages/taskGenerators"
 import { levelOf, numbersWithGen, subjectLabel, genTask, genThemeTask, examTypeForSubject, subjectGroups, firstTypeWithGen } from "../pages/examSubjects"
-import { taskToImageFile, attachmentsOf, SHEET_WIDTH } from "../pages/taskSnapshot"
+import { taskToImageFile, SHEET_WIDTH } from "../pages/taskSnapshot"
+import { taskFiles } from "../pages/taskFiles"
 
 // Выбор задания из банка прямо на доске: предмет → номер → (необязательно) типаж,
 // предпросмотр, «На доску». Задание кладётся картинкой-листом, поэтому дальше живёт
@@ -140,7 +141,7 @@ export default function BoardTaskModal({ dark = false, roomId = null, tutorSubje
     }
   }
 
-  const attachments = task ? attachmentsOf(task) : []
+  const attachments = task ? taskFiles(task) : []
   // Цвета карточки предпросмотра задаются явно, а не токенами gray-*: в тёмной теме
   // приложения токены инвертируются, и «светлый текст» стал бы тёмным. А карточка
   // повторяет доску, а не тему кабинета.
@@ -303,10 +304,28 @@ export default function BoardTaskModal({ dark = false, roomId = null, tutorSubje
                 )}</Reveal>
               </div>
 
+              {/* Файл с данными на доску не переносится — доска знает только штрихи и
+                  растр. Раньше здесь стояло одно предупреждение, и взять сам файл
+                  репетитору было негде: он собирается в браузере генератором и нигде
+                  не лежит. Поэтому предупреждение отдаёт файл сразу. */}
               {attachments.length > 0 && (
-                <div className="flex items-start gap-2 mb-4 px-3 py-2 rounded-xl bg-amber-50 border border-amber-100 text-xs text-amber-700">
-                  <Icon name="warning" size={14} className="mt-0.5 flex-shrink-0" />
-                  <span>К заданию прилагается {attachments.join(", ")} — файл на доску не переносится, отправьте его ученику отдельно.</span>
+                <div className="mb-4 px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-100">
+                  <div className="flex items-start gap-2 text-xs text-amber-700">
+                    <Icon name="warning" size={14} className="mt-0.5 flex-shrink-0" />
+                    <span>
+                      {attachments.length > 1 ? "Файлы к заданию на доску не переносятся" : "Файл к заданию на доску не переносится"} — скачайте и отправьте ученику.
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {attachments.map((f) => (
+                      <button key={f.name} onClick={f.download}
+                        className="no-press inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-amber-200 text-xs font-medium text-amber-700 hover:bg-amber-500/10 transition active:scale-95">
+                        <Icon name="download" size={13} />
+                        {f.name}
+                        <span className="text-[11px] opacity-70">({f.hint})</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </>

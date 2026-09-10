@@ -79,18 +79,6 @@ async function trimImage(pic) {
   return { dataUrl: out.toDataURL("image/png"), width: Math.round(cw * k), height: Math.round(ch * k) }
 }
 
-// Прилагаемые к заданию файлы (архив КЕГЭ, таблица, текстовый файл) на доску не
-// переносятся: это скачиваемые вложения, а не часть условия. Показываем это в
-// интерфейсе, а не молчим — иначе задание на доске окажется нерешаемым.
-export function attachmentsOf(task) {
-  const out = []
-  if (task?.archive) out.push(task.archive.name || "архив")
-  if (task?.spreadsheet) out.push(task.spreadsheet.name || "таблица")
-  const tf = task?.textFile
-  if (tf) (Array.isArray(tf) ? tf : [tf]).forEach((f) => out.push(f.name || "файл"))
-  return out
-}
-
 // В снимке есть хоть один не-белый пиксель? html2canvas, вызванный до готовности
 // документа, отдаёт пустой белый холст — на доске это молча превращается в чистый лист
 // вместо задания. Смотрим не сам лист, а его уменьшенную копию: getImageData тянет

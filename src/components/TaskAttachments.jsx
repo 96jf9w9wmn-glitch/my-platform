@@ -14,8 +14,7 @@ import { useState } from "react"
 import Icon from "./Icon"
 import MorphIcon from "./MorphIcon"
 import Reveal from "./Reveal"
-import { downloadZip } from "../pages/zipWriter"
-import { downloadXlsx } from "../pages/xlsxWriter"
+import { taskFiles } from "../pages/taskFiles"
 
 // Копирование текста: сперва Clipboard API (secure context + жест), иначе — execCommand.
 function copyText(text) {
@@ -85,57 +84,23 @@ export function Expandable({ label, children }) {
   )
 }
 
-// Кнопка скачивания прилагаемого архива (.zip собирается на клиенте из дерева файлов).
-export function ArchiveButton({ archive }) {
-  const totalFiles = Object.keys(archive.files).length
-  return (
-    <button
-      onClick={() => downloadZip(archive.name, archive.files)}
-      className="no-press self-start flex items-center gap-2 mt-1 px-3 py-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 text-sm font-medium hover:bg-blue-100 transition active:scale-95">
-      <Icon name="download" size={15} />
-      {archive.name}
-      <span className="text-[11px] text-blue-400">({totalFiles} файлов)</span>
-    </button>
-  )
+// Тон кнопки по породе файла — тот же, что был у каждой из них по отдельности.
+const FILE_TONE = {
+  archive: ["border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100", "text-blue-400"],
+  spreadsheet: ["border-green-200 bg-green-50 text-green-700 hover:bg-green-100", "text-green-500"],
+  text: ["border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100", "text-amber-500"],
 }
 
-// Кнопка скачивания прилагаемой электронной таблицы (.xlsx собирается на клиенте).
-export function SpreadsheetButton({ spreadsheet }) {
-  // Книга может быть многолистовой (КЕГЭ №3): тогда в rows лежит массив листов.
-  const sheets = Array.isArray(spreadsheet.sheets) ? spreadsheet.sheets : null
-  const rows = sheets ? sheets.reduce((a, sh) => a + sh.rows.length - 1, 0) : spreadsheet.rows.length - 1
+// Кнопка скачивания одного приложенного файла.
+export function FileButton({ file }) {
+  const [tone, hint] = FILE_TONE[file.kind] || FILE_TONE.text
   return (
     <button
-      onClick={() => downloadXlsx(spreadsheet.name, sheets || spreadsheet.sheetName, spreadsheet.rows)}
-      className="no-press self-start flex items-center gap-2 mt-1 px-3 py-2 rounded-xl border border-green-200 bg-green-50 text-green-700 text-sm font-medium hover:bg-green-100 transition active:scale-95">
+      onClick={file.download}
+      className={`no-press self-start flex items-center gap-2 mt-1 px-3 py-2 rounded-xl border text-sm font-medium transition active:scale-95 ${tone}`}>
       <Icon name="download" size={15} />
-      {spreadsheet.name}
-      <span className="text-[11px] text-green-500">({rows} строк)</span>
-    </button>
-  )
-}
-
-// Кнопка скачивания прилагаемого текстового файла с данными. Файл генерируется
-// вместе с задачей, поэтому ответ всегда соответствует его содержимому.
-export function TextFileButton({ textFile }) {
-  const lines = textFile.content.split("\n").length
-  const download = () => {
-    const url = URL.createObjectURL(new Blob([textFile.content], { type: "text/plain;charset=utf-8" }))
-    const a = document.createElement("a")
-    a.href = url
-    a.download = textFile.name
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
-  }
-  return (
-    <button
-      onClick={download}
-      className="no-press self-start flex items-center gap-2 mt-1 px-3 py-2 rounded-xl border border-amber-200 bg-amber-50 text-amber-700 text-sm font-medium hover:bg-amber-100 transition active:scale-95">
-      <Icon name="download" size={15} />
-      {textFile.name}
-      <span className="text-[11px] text-amber-500">({lines > 1 ? `${lines} строк` : `${textFile.content.length} символов`})</span>
+      {file.name}
+      <span className={`text-[11px] ${hint}`}>({file.hint})</span>
     </button>
   )
 }
@@ -157,7 +122,11 @@ const imageWidth = (url, compact) =>
 // смыслу стоит ПОД чертежом («Какое из утверждений верно?»).
 export default function TaskAttachments({ task, tail = null, imageAlt = "Иллюстрация к заданию", compact = false }) {
   if (!task) return null
-  const files = task.textFile ? (Array.isArray(task.textFile) ? task.textFile : [task.textFile]) : []
+  // Архив стоит ДО чертежа, таблица и файлы с данными — после вопроса под ним,
+  // как в печатном варианте ФИПИ.
+  const files = taskFiles(task)
+  const archives = files.filter((f) => f.kind === "archive")
+  const rest = files.filter((f) => f.kind !== "archive")
   return (
     <>
       {task.source_text && (
@@ -165,7 +134,7 @@ export default function TaskAttachments({ task, tail = null, imageAlt = "Илл�
           <div className="whitespace-pre-line">{task.source_text}</div>
         </Expandable>
       )}
-      {task.archive && <ArchiveButton archive={task.archive} />}
+      {archives.map((f) => <FileButton key={f.name} file={f} />)}
       {task.program ? (
         <ProgramGrid blocks={task.program} />
       ) : task.image_url && (
@@ -176,9 +145,7 @@ export default function TaskAttachments({ task, tail = null, imageAlt = "Илл�
         />
       )}
       {tail}
-      {task.spreadsheet && <SpreadsheetButton spreadsheet={task.spreadsheet} />}
-      {/* КЕГЭ №27 приходит с ДВУМЯ входными файлами (A и B) — тогда textFile массив. */}
-      {files.map((f) => <TextFileButton key={f.name} textFile={f} />)}
+      {rest.map((f) => <FileButton key={f.name} file={f} />)}
     </>
   )
 }
