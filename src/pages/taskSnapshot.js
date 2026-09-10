@@ -1,4 +1,5 @@
 import { renderTaskMathPdf, renderBlock, taskImage } from "./variantPdf"
+import { renderTaskMath } from "../utils"
 import { encodeCanvasAsync } from "../components/boardWorker"
 
 // Снимок задания в PNG — чтобы задание можно было положить на доску. Доска знает
@@ -132,34 +133,153 @@ function roundSheet(canvas) {
   return out
 }
 
+// ── Нативный рендер листа ──────────────────────────────────────────────────
+// html2canvas стоит 0,4–1,0 с НА КАЖДЫЙ лист и всё это время держит главный
+// поток (клон документа, от размера блока не зависит) — это и было «залагивало»
+// при переносе задания. Тот же блок, отданный браузеру через SVG
+// <foreignObject>, рисуется за единицы миллисекунд (замер 10.09.2026: 1–3 мс
+// против 400–1000). Приём тот же, что в разборе Word-файлов (homeworkSplit.js).
+//
+// Формулы здесь — ЭКРАННЫЕ (renderTaskMath + правила .tmath-* из index.css),
+// а не растровые из renderTaskMathPdf: те подогнаны под причуды html2canvas
+// (он ставит inline-картинку выше, чем браузер), и нативному рендеру их поправки
+// только мешают. Лист получается ровно таким, каким задание видно в модалке
+// «Что уедет на доску». Правила берутся из живой таблицы стилей, поэтому
+// правка .tmath-* в index.css доезжает и сюда; .dark и @media не берём — лист
+// всегда светлый и одной ширины.
+//
+// Не вышло (старый браузер, испорченная разметка, пустой снимок) — молча
+// возвращаемся к html2canvas, как было.
+// Одинарные кавычки не случайно: стек попадает в атрибут style="…" внутри XML,
+// и двойные кавычки внутри него рушат разметку — картинка молча не грузится.
+const SHEET_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+let sheetCss = null
+function sheetStyles() {
+  if (sheetCss != null) return sheetCss
+  const out = []
+  for (const sheet of document.styleSheets) {
+    let rules
+    try { rules = sheet.cssRules } catch { continue }     // чужой домен — не читается
+    for (const r of rules) {
+      const sel = r.selectorText
+      if (!sel || !sel.includes(".tmath") || sel.includes(".dark")) continue
+      out.push(r.cssText)
+    }
+  }
+  sheetCss = out.join("\n")
+  return sheetCss
+}
+
+// Разметка → XHTML: внутри <foreignObject> она разбирается как XML, и первый же
+// <br> без закрытия рушит картинку целиком (браузер молча отдаёт ошибку загрузки).
+function toXhtml(html) {
+  const host = document.createElement("div")
+  host.innerHTML = html
+  return new XMLSerializer().serializeToString(host)
+}
+
+const NATIVE_LOAD_MS = 4000
+
+async function renderSheetNative(html, { width, scale, figure = null }) {
+  const css = sheetStyles()
+  const inner = `<style>${css.replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]))}</style>`
+    + `<div xmlns="http://www.w3.org/1999/xhtml" style="width:${width}px; background:#fff; color:#1c1c1e; font-family:${SHEET_FONT};">${toXhtml(html)}</div>`
+  // Высоту меряем настоящей раскладкой той же разметки: у картинки в SVG размер
+  // должен быть известен заранее.
+  const probe = document.createElement("div")
+  probe.style.cssText = `position:fixed; left:-9999px; top:0; width:${width}px; background:#fff; color:#1c1c1e; font-family:${SHEET_FONT};`
+  probe.innerHTML = `<style>${css}</style>${html}`
+  document.body.appendChild(probe)
+  let height, fig = null
+  try {
+    await document.fonts?.ready
+    const box = probe.getBoundingClientRect()
+    height = Math.ceil(box.height)
+    // Где в раскладке стоит слот под чертёж — туда он и ляжет на холст.
+    const slot = figure ? probe.querySelector("[data-fig]") : null
+    if (slot) {
+      const r = slot.getBoundingClientRect()
+      fig = { x: r.left - box.left, y: r.top - box.top, w: r.width, h: r.height }
+    }
+  } finally {
+    document.body.removeChild(probe)
+  }
+  if (!height) return null
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">`
+    + `<foreignObject width="100%" height="100%">${inner}</foreignObject></svg>`
+  const img = new Image()
+  const ok = await new Promise((resolve) => {
+    const t = setTimeout(() => resolve(false), NATIVE_LOAD_MS)
+    img.onload = () => { clearTimeout(t); resolve(true) }
+    img.onerror = () => { clearTimeout(t); resolve(false) }
+    // data:, а не blob: — с blob холст считается испорченным, и снять с него
+    // готовую картинку уже нельзя (проверено в homeworkSplit).
+    img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg)
+  })
+  if (!ok) return null
+  const canvas = document.createElement("canvas")
+  canvas.width = Math.round(width * scale); canvas.height = Math.round(height * scale)
+  const ctx = canvas.getContext("2d")
+  ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, canvas.width, canvas.height)
+  ctx.scale(scale, scale)
+  ctx.drawImage(img, 0, 0)
+  if (fig && figure?.dataUrl) {
+    const pic = new Image()
+    const got = await new Promise((resolve) => {
+      pic.onload = () => resolve(true); pic.onerror = () => resolve(false)
+      pic.src = figure.dataUrl
+    })
+    if (!got) return null            // без чертежа лист нерешаем — пусть рисует html2canvas
+    ctx.drawImage(pic, fig.x, fig.y, fig.w, fig.h)
+  }
+  return canvas
+}
+
 /**
  * Снимает задание банка в картинку для доски.
  * task — задание в формате генераторов ({ number, condition_text, condition_tail,
  * image_url, program }); label — подпись предмета в углу листа.
  * Возвращает File — его принимает вставка картинки на доску, как и файл с диска.
  */
-export async function taskToImageFile(task, { label = "" } = {}) {
+export async function taskToImageFile(task, { label = "", engine = "auto" } = {}) {
   const img = await trimImage(await taskImage(task.image_url, { scale: SCALE }))
   const caption = [task.number ? `№${task.number}` : "", label].filter(Boolean).join(" · ")
   const text = (v) => `<div style="font-size:${FS}px; line-height:1.55; white-space:pre-wrap;">${v}</div>`
 
-  const html = `<div style="padding:22px 24px 26px;">
+  // math — рендер формул: экранный для нативного пути, растровый для html2canvas.
+  // slot — вместо <img> оставить под чертёж пустое место того же размера:
+  // WebKit (Safari) картинку внутри <foreignObject> не рисует вовсе, поэтому
+  // нативный путь кладёт чертёж на холст сам, поверх снимка (см. renderSheetNative).
+  const figTag = (slot) => slot
+    ? `<div data-fig="1" style="width:${img.width}px; height:${img.height || img.width}px; margin-top:12px;"></div>`
+    : `<img src="${img.dataUrl}" width="${img.width}"${img.height ? ` height="${img.height}"` : ""} style="width:${img.width}px;${img.height ? ` height:${img.height}px;` : ""} display:block; margin-top:12px;" />`
+  const build = async (math, slot = false) => `<div style="padding:22px 24px 26px;">
     ${caption ? `<div style="font-size:12px; letter-spacing:.4px; text-transform:uppercase; color:#8e8e93; margin-bottom:10px;">${escapeHtml(caption)}</div>` : ""}
-    ${task.condition_text ? text(await renderTaskMathPdf(task.condition_text)) : ""}
-    ${img ? `<img src="${img.dataUrl}" width="${img.width}"${img.height ? ` height="${img.height}"` : ""} style="width:${img.width}px;${img.height ? ` height:${img.height}px;` : ""} display:block; margin-top:12px;" />` : ""}
-    ${task.condition_tail ? `<div style="margin-top:10px;">${text(await renderTaskMathPdf(task.condition_tail))}</div>` : ""}
+    ${task.condition_text ? text(await math(task.condition_text)) : ""}
+    ${img ? figTag(slot) : ""}
+    ${task.condition_tail ? `<div style="margin-top:10px;">${text(await math(task.condition_tail))}</div>` : ""}
     ${(task.program || []).map((b) => `<div style="margin-top:12px;">
       <div style="font-size:12px; color:#8e8e93; margin-bottom:4px;">${escapeHtml(b.name)}</div>
       <pre style="margin:0; padding:10px 12px; border-radius:10px; background:#f5f5f7; font-family:'SF Mono',Menlo,Consolas,monospace; font-size:13px; line-height:1.45; white-space:pre-wrap;">${escapeHtml(b.code)}</pre>
     </div>`).join("")}
   </div>`
 
-  // Шрифты обязаны быть готовы: html2canvas снимает клон документа, и на неготовом
-  // шрифте лист выходит пустым.
-  await document.fonts?.ready
-  let shot = await renderBlock(html, { width: SHEET_W, scale: SCALE })
-  if (!hasInk(shot)) shot = await renderBlock(html, { width: SHEET_W, scale: SCALE })   // одна честная попытка ещё
-  if (!hasInk(shot)) throw new Error("снимок задания вышел пустым")
+  // Сначала нативный рендер (см. renderSheetNative), html2canvas — запасной путь.
+  let shot = null
+  if (engine !== "legacy") {
+    try { shot = await renderSheetNative(await build(async (t) => renderTaskMath(t), true), { width: SHEET_W, scale: SCALE, figure: img }) }
+    catch { shot = null }
+    if (shot && !hasInk(shot)) shot = null
+  }
+  if (!shot && engine !== "native") {
+    const html = await build(renderTaskMathPdf)
+    // Шрифты обязаны быть готовы: html2canvas снимает клон документа, и на неготовом
+    // шрифте лист выходит пустым.
+    await document.fonts?.ready
+    shot = await renderBlock(html, { width: SHEET_W, scale: SCALE })
+    if (!hasInk(shot)) shot = await renderBlock(html, { width: SHEET_W, scale: SCALE })   // одна честная попытка ещё
+  }
+  if (!shot || !hasInk(shot)) throw new Error("снимок задания вышел пустым")
 
   const canvas = roundSheet(shot)
   // WebP, а не PNG: лист снят втрое крупнее (около 1860×2200), и кодирование PNG
