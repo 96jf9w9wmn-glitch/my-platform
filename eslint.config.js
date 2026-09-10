@@ -19,7 +19,9 @@ export default defineConfig([
       reactRefresh.configs.vite,
     ],
     languageOptions: {
-      globals: globals.browser,
+      // __BUILD__ — коммит сборки, подставляется Vite (define в vite.config.js):
+      // по нему плашка обновления находит своё место в истории правок.
+      globals: { ...globals.browser, __BUILD__: 'readonly' },
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
   },
