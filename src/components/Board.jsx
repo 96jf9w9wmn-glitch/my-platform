@@ -627,6 +627,9 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // Слежение за участником: наш обзор повторяет его обзор, пока мы сами не
   // подвинем доску. Держим id, а не флаг: на доске может быть больше двоих.
   const [followId, setFollowId] = useState(null)
+  // Короткая отметка на кнопке «Притянуть»: собеседник доедет за полсекунды, а
+  // нажатие должно отозваться сразу — иначе кажется, что кнопка не сработала.
+  const [pulled, setPulled] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [zoomPct, setZoomPct] = useState(100)
   const [selCount, setSelCount] = useState(0)
@@ -746,6 +749,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   const followRef = useRef(null)      // за кем следим (для обработчиков канала)
   const followTarget = useRef(null)   // его обзор: мировой прямоугольник {x,y,w,h}
   const followedBy = useRef(false)    // за НАМИ кто-то следит → шлём свой обзор
+  const pullMark = useRef(null)       // таймер отметки «позвал» на кнопке
   const lastViewSend = useRef(0)
   const viewSendTimer = useRef(null)
   const sentView = useRef(null)
@@ -892,17 +896,22 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     setZoomPct((prev) => (prev === pct ? prev : pct))
     if (!done) scheduleLive()
   }
-  // Свой обзор — тем, кто за нами следит (и только им: без наблюдателей это был
-  // бы лишний поток событий в общем канале).
-  function sendView() {
+  // Видимый кусок доски в мировых координатах — то, что мы показываем другим.
+  function viewBox() {
     const canvas = canvasRef.current
-    const ch = channelRef.current
-    if (!canvas || !ch) return
+    if (!canvas) return null
     const v = view.current
-    const box = {
+    return {
       x: -v.x / v.scale, y: -v.y / v.scale,
       w: canvas.clientWidth / v.scale, h: canvas.clientHeight / v.scale,
     }
+  }
+  // Свой обзор — тем, кто за нами следит (и только им: без наблюдателей это был
+  // бы лишний поток событий в общем канале).
+  function sendView() {
+    const ch = channelRef.current
+    const box = viewBox()
+    if (!box || !ch) return
     const p = sentView.current
     if (p && Math.abs(p.x - box.x) < 0.5 && Math.abs(p.y - box.y) < 0.5 && Math.abs(p.w - box.w) < 0.5) return
     sentView.current = box
@@ -920,6 +929,30 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       return
     }
     sendView()
+  }
+
+  // «Притянуть к себе»: попросить собеседника смотреть нашими глазами. Обратная
+  // сторона слежения — там мы САМИ выбираем, за кем ехать, а тут показываем то,
+  // на что смотрим: «посмотрите сюда» на занятии звучит чаще, чем «а куда вы
+  // смотрите», и до этой кнопки объяснять место на доске приходилось словами.
+  //
+  // Просьба несёт наш обзор с собой не для красоты: обычные события обзора
+  // уходят только тем, кто УЖЕ числится наблюдателем, а эта запись доедет
+  // следующим presence — до неё доска у собеседника стояла бы на месте.
+  function pullToMe() {
+    const ch = channelRef.current
+    const box = viewBox()
+    const to = online.filter((p) => p.userId && p.userId !== userId).map((p) => p.userId)
+    if (!ch || !box || !to.length) return
+    ch.send({ type: "broadcast", event: "pull", payload: { id: userId, to, ...box } })
+    // Рассылку обзора включаем не дожидаясь presence: собеседник уже едет за
+    // нами, и первое наше движение он обязан повторить.
+    followedBy.current = true
+    sentView.current = null
+    maybeSendView()
+    setPulled(true)
+    clearTimeout(pullMark.current)
+    pullMark.current = setTimeout(() => setPulled(false), 1600)
   }
 
   // --- Рендер -------------------------------------------------------------
@@ -1025,7 +1058,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   }
   // Ориентированная рамка выделения (в мировых координатах): {cx,cy,hw,hh,angle}
   function orientedWorldBox() {
-    if (!selection.current.size) return null
+    if (!selection.current.size || marquee.current) return null
     const s = singleEnclosed()
     if (s) {
       const a = s.points[0], b = s.points[s.points.length - 1]
@@ -1240,6 +1273,18 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     }
     if (marquee.current) {
       const m = marquee.current
+      // Пока рамка растёт, каждый попавший в неё объект обводится своей тонкой
+      // рамкой: так видно состав выделения ещё до отпускания курсора.
+      ctx.save(); ctx.strokeStyle = "#007AFF"; ctx.lineWidth = 1; ctx.setLineDash([])
+      const pad = 3
+      for (const id of selection.current) {
+        const so = strokes.current.get(id)
+        if (!so) continue
+        const bb = strokeBox(so)
+        const [x0, y0] = toScreen(bb.minX, bb.minY), [x1, y1] = toScreen(bb.maxX, bb.maxY)
+        ctx.strokeRect(x0 - pad, y0 - pad, x1 - x0 + 2 * pad, y1 - y0 + 2 * pad)
+      }
+      ctx.restore()
       drawDashRect({ minX: Math.min(m.x0, m.x1), minY: Math.min(m.y0, m.y1), maxX: Math.max(m.x0, m.x1), maxY: Math.max(m.y0, m.y1) }, "#007AFF", [5, 4])
     }
     // Курсоры собеседников: стрелка своего цвета и подпись именем. Через
@@ -1665,6 +1710,18 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         followTarget.current = payload
         scheduleLive()
       })
+      // Нас притянули: собеседник показывает своё место на доске. Обзор берём
+      // прямо из просьбы, а followRef ставим тут же, руками: следующий кадр
+      // может успеть отрисоваться раньше, чем эффект по followId, и доска
+      // тронулась бы только со второго события обзора.
+      .on("broadcast", { event: "pull" }, ({ payload }) => {
+        if (!payload?.id || payload.id === userId) return
+        if (Array.isArray(payload.to) && !payload.to.includes(userId)) return
+        followTarget.current = payload
+        followRef.current = payload.id
+        setFollowId(payload.id)
+        scheduleLive()
+      })
       .on("presence", { event: "sync" }, () => {
         // Вкладка, закрытая без выхода (телефон уснул, PWA убили, сеть оборвалась),
         // остаётся в presence до таймаута сокета, а её ключ — тот же аккаунт: ученик,
@@ -1732,6 +1789,8 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     // асинхронно, уже после подключения к доске, и без повторного track
     // собеседник до конца занятия видел бы кружок с буквой.
   }, [followId, userId, userName, avatar])
+
+  useEffect(() => () => clearTimeout(pullMark.current), [])
 
   useEffect(() => { showCursorsRef.current = showCursors; scheduleLive() }, [showCursors, scheduleLive])
 
@@ -2264,7 +2323,21 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     // Растягивание рамки выделения
     if (marquee.current) {
       const p = toWorld(e.clientX, e.clientY)
-      marquee.current.x1 = p[0]; marquee.current.y1 = p[1]
+      const m = marquee.current
+      m.x1 = p[0]; m.y1 = p[1]
+      // Объекты выделяются ПО ХОДУ протяжки, а не по отпусканию: видно, что
+      // именно попало в рамку, и её можно поправить, не начиная заново.
+      // Габариты кэшированы (strokeBox), так что пересчёт на каждое движение
+      // дешёв. Ручки и панель свойств до отпускания не показываются — они
+      // относятся к уже готовому выделению, а не к растущей рамке.
+      const rect = { minX: Math.min(m.x0, m.x1), minY: Math.min(m.y0, m.y1), maxX: Math.max(m.x0, m.x1), maxY: Math.max(m.y0, m.y1) }
+      const next = new Set()
+      if (Math.abs(m.x1 - m.x0) > 4 || Math.abs(m.y1 - m.y0) > 4) {
+        for (const [id, s] of strokes.current) if (s.tool !== "eraser" && rectsIntersect(rect, strokeBox(s))) next.add(id)
+      }
+      let changed = next.size !== selection.current.size
+      if (!changed) for (const id of next) if (!selection.current.has(id)) { changed = true; break }
+      if (changed) { selection.current = next; applySelCount(next.size) }
       scheduleLive()
       return
     }
@@ -2322,7 +2395,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       const rect = { minX: Math.min(m.x0, m.x1), minY: Math.min(m.y0, m.y1), maxX: Math.max(m.x0, m.x1), maxY: Math.max(m.y0, m.y1) }
       selection.current.clear()
       if (Math.abs(m.x1 - m.x0) > 4 || Math.abs(m.y1 - m.y0) > 4) {
-        for (const [id, s] of strokes.current) if (rectsIntersect(rect, strokeBox(s))) selection.current.add(id)
+        for (const [id, s] of strokes.current) if (s.tool !== "eraser" && rectsIntersect(rect, strokeBox(s))) selection.current.add(id)
       } else {
         // Крошечная рамка = одиночный клик: выделяем верхний объект под курсором
         const hit = topStrokeAt(m.x0, m.y0, 6 / view.current.scale)
@@ -3582,6 +3655,9 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   const roster = others.length ? others
     : (peer?.name ? [{ userId: "", name: peer.name, avatar: peer.avatar || null, away: true }] : [])
   const followName = others.find((p) => p.userId === followId)?.name || "участник"
+  // Притягивать некого, пока вторая сторона не зашла: погашенная плашка в
+  // шапке — это ещё не участник.
+  const peerHere = others.find((p) => !p.away) || null
   const TOOLS = [
     { id: "cursor", icon: "cursor", label: "Курсор", key: "Esc" },
     { id: "pen", icon: "pencil", label: "Перо", key: "P" },
@@ -3821,6 +3897,20 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
               )
             })}
           </div>
+          {/* «Притянуть к себе» — чтобы собеседник увидел то же место доски.
+              Отдельной кнопкой, а не пунктом меню на плашке участника: на
+              занятии этим зовут постоянно, и прятать это за нажатием значит
+              вернуться к «посмотрите чуть выше, левее, нет, ещё левее». */}
+          {peerHere && (
+            <button onClick={pullToMe}
+              title={`Притянуть: ${firstWord(peerHere.name) || "участник"} увидит то же, что и вы`}
+              className={`press-tap flex items-center gap-1.5 h-8 px-2.5 rounded-full text-xs font-medium transition-colors ${
+                pulled ? "bg-blue-500/15 text-blue-500" : "board-hover"
+              }`} style={pulled ? undefined : idleStyle}>
+              <Icon name={pulled ? "check" : "pull-in"} size={15} />
+              <span className="hidden sm:inline">{pulled ? "Готово" : "Притянуть"}</span>
+            </button>
+          )}
           <button onClick={closeBoard}
             className="press-tap p-1.5 rounded-lg board-hover" style={idleStyle}>
             <Icon name="x" size={18} />
