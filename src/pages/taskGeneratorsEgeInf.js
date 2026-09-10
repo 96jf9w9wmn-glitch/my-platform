@@ -8,6 +8,7 @@
 // → импликация, ≡ тождество (именно в таком текстовом виде они напечатаны в банке).
 
 import { tableBlock } from "../utils.js"
+import { T2_POOL, T4_POOL, T6_INTROS, T6_POOL } from "./egeInfFipi.js"
 
 const randInt = (min, max) => min + Math.floor(Math.random() * (max - min + 1))
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)]
@@ -31,178 +32,20 @@ const itVars = (text, letters) => String(text).replace(
   new RegExp(`(⟦[^⟧]*⟧)|(?<![A-Za-zА-Яа-яЁё])([${letters}])(?![0-9A-Za-zА-Яа-яЁё])`, "gu"),
   (m, tok, v) => tok || `⟦i:${v}⟧`)
 
-// ── Логический движок (общий для №2 и №15) ───────────────────────────────────
-// Дерево: {t:"v",v} | {t:"¬",a} | {t:"∧"|"∨"|"→"|"≡",a,b}. Значения переменных —
-// объект { w:0, x:1, … }. Печать расставляет скобки по приоритету КИМ:
-// ¬ выше /\ выше \/ выше → выше ≡.
-const V = (v) => ({ t: "v", v })
-const NOT = (a) => ({ t: "¬", a })
-const AND = (a, b) => ({ t: "∧", a, b })
-const OR = (a, b) => ({ t: "∨", a, b })
-const IMP = (a, b) => ({ t: "→", a, b })
-const EQV = (a, b) => ({ t: "≡", a, b })
-
-const evalNode = (n, env) => {
-  switch (n.t) {
-    case "v": return env[n.v] ? 1 : 0
-    case "¬": return evalNode(n.a, env) ? 0 : 1
-    case "∧": return evalNode(n.a, env) && evalNode(n.b, env) ? 1 : 0
-    case "∨": return evalNode(n.a, env) || evalNode(n.b, env) ? 1 : 0
-    case "→": return !evalNode(n.a, env) || evalNode(n.b, env) ? 1 : 0
-    case "≡": return evalNode(n.a, env) === evalNode(n.b, env) ? 1 : 0
-    default: return 0
-  }
-}
-
-const PREC = { "≡": 1, "→": 2, "∨": 3, "∧": 4, "¬": 5, v: 6 }
-const OPSTR = { "∧": " /\\ ", "∨": " \\/ ", "→": " → ", "≡": " ≡ " }
-function fmt(n, parentPrec = 0) {
-  if (n.t === "v") return n.v
-  if (n.t === "¬") {
-    const inner = fmt(n.a, PREC["¬"])
-    return `¬${n.a.t === "v" ? inner : `(${fmt(n.a, 0)})`}`
-  }
-  const p = PREC[n.t]
-  // Импликация ПРАВОассоциативна (a → b → c ≡ a → (b → c)), поэтому левый операнд
-  // той же силы обязан быть в скобках: ((w → y) → x) нельзя печатать как w → y → x.
-  const left = fmt(n.a, n.t === "→" ? p + 1 : p)
-  const s = `${left}${OPSTR[n.t]}${fmt(n.b, p)}`
-  // Конъюнкцию внутри дизъюнкции ФИПИ печатает В СКОБКАХ, хотя приоритет их и не
-  // требует: «(¬x /\ ¬y) \/ (y ≡ z) \/ w». Без скобок формула читается иначе,
-  // чем в КИМ, поэтому скобки ставятся принудительно.
-  if (n.t === "∧" && parentPrec === PREC["∨"]) return `(${s})`
-  return p < parentPrec ? `(${s})` : s
-}
-const formula = (n) => fmt(n, 0)
-
-// Все 2^k наборов значений для списка переменных.
-function allEnvs(vars) {
-  const out = []
-  for (let m = 0; m < (1 << vars.length); m++) {
-    const env = {}
-    vars.forEach((v, i) => { env[v] = (m >> (vars.length - 1 - i)) & 1 })
-    out.push(env)
-  }
-  return out
-}
-
-// Перестановки массива (для 4 переменных — 24 штуки).
-function perms(arr) {
-  if (arr.length <= 1) return [arr]
-  const out = []
-  arr.forEach((x, i) => {
-    const rest = arr.slice(0, i).concat(arr.slice(i + 1))
-    perms(rest).forEach((p) => out.push([x, ...p]))
-  })
-  return out
-}
-
 // ── №02 «Построение таблиц истинности логических выражений» ──────────────────
-// Эталон (108 задач банка) даёт три типажа:
-//   misha   94 — фрагмент из ТРЁХ строк с пропусками, столбцы не подписаны;
-//   allrows 10 — фрагмент содержит ВСЕ наборы, при которых F ложна (истинна);
-//   choose   4 — три переменные, дан фрагмент, выбрать выражение из четырёх.
-// В первых двух ответ — порядок букв w, x, y, z по столбцам; единственность
-// решения проверяется перебором всех 24 перестановок (иначе задача некорректна).
-
-// Структурные семейства формул ФИПИ. Каждое — функция от четырёх букв (роли a, b, c, d)
-// и от «шумовых» отрицаний ng(i, node): бит i включает ¬ над узлом. Роли повторяют
-// реальные формулы банка, включая случаи, где одна переменная входит дважды.
-const T2_FORMS = [
-  // (x /\ ¬y) \/ (y ≡ z) \/ w   — конъюнкция, эквиваленция, свободная переменная
-  ([a, b, c, d], g) => OR(OR(AND(g(0, V(a)), g(1, V(b))), EQV(V(b), V(c))), g(2, V(d))),
-  // (x \/ ¬y) /\ ¬(y ≡ z) /\ ¬w
-  ([a, b, c, d], g) => AND(AND(OR(g(0, V(a)), g(1, V(b))), NOT(EQV(V(b), V(c)))), g(2, V(d))),
-  // (x /\ ¬y) \/ (x ≡ z) \/ w   — повторяется первая переменная
-  ([a, b, c, d], g) => OR(OR(AND(g(0, V(a)), g(1, V(b))), EQV(V(a), V(c))), g(2, V(d))),
-  // ((w → y) → x) \/ ¬z
-  ([a, b, c, d], g) => OR(IMP(IMP(V(a), V(b)), V(c)), g(0, V(d))),
-  // ((w → y) → (x ≡ y)) \/ ¬z
-  ([a, b, c, d], g) => OR(IMP(IMP(V(a), V(b)), EQV(V(c), V(b))), g(0, V(d))),
-  // ((w ≡ ¬x) → ¬(z → w)) \/ ¬y
-  ([a, b, c, d], g) => OR(IMP(EQV(V(a), g(0, V(b))), NOT(IMP(V(c), V(a)))), g(1, V(d))),
-  // ¬(w → x) \/ (y → z) \/ ¬y
-  ([a, b, c, d], g) => OR(OR(NOT(IMP(V(a), V(b))), IMP(V(c), V(d))), g(0, V(c))),
-  // ¬(w → x) \/ (y ≡ z) \/ y
-  ([a, b, c, d], g) => OR(OR(NOT(IMP(V(a), V(b))), EQV(V(c), V(d))), g(0, V(c))),
-  // ¬(w → (x ≡ y)) /\ (z → y)
-  ([a, b, c, d], g) => AND(NOT(IMP(V(a), EQV(V(b), V(c)))), IMP(V(d), g(0, V(c)))),
-  // (z → (x ≡ y)) \/ ¬(w → x)
-  ([a, b, c, d]) => OR(IMP(V(d), EQV(V(b), V(c))), NOT(IMP(V(a), V(b)))),
-  // (x → y) \/ ¬(w → z)
-  ([a, b, c, d], g) => OR(IMP(g(0, V(a)), V(b)), NOT(IMP(V(c), V(d)))),
-  // ¬x \/ y \/ (¬z /\ w)
-  ([a, b, c, d]) => OR(OR(NOT(V(a)), V(b)), AND(NOT(V(c)), V(d))),
-  // (x → y) \/ ¬(¬z \/ w)
-  ([a, b, c, d]) => OR(IMP(V(a), V(b)), NOT(OR(NOT(V(c)), V(d)))),
-  // ¬((x → w) → (w ≡ z)) /\ y
-  ([a, b, c, d], g) => AND(NOT(IMP(IMP(V(a), V(b)), EQV(V(b), V(c)))), g(0, V(d))),
-  // ((x ≡ ¬y) → ¬(w → x)) \/ ¬z
-  ([a, b, c, d], g) => OR(IMP(EQV(V(a), NOT(V(b))), NOT(IMP(V(c), V(a)))), g(0, V(d))),
-]
-
-const T2_VARS = ["w", "x", "y", "z"]
-
-// Случайная формула от w, x, y, z: шаблон + случайное назначение букв на роли +
-// случайные отрицания. Возвращает { node, text }.
-function t2Formula() {
-  const form = pick(T2_FORMS)
-  const roles = shuffle(T2_VARS)
-  const bits = randInt(0, 7)
-  const g = (i, node) => ((bits >> i) & 1 ? NOT(node) : node)
-  const node = form(roles, g)
-  return { node, text: formula(node) }
-}
-
-// Наборы значений (как массивы по порядку w, x, y, z) с заданным значением F.
-function t2Rows(node, target) {
-  return allEnvs(T2_VARS)
-    .filter((e) => evalNode(node, e) === target)
-    .map((e) => T2_VARS.map((v) => e[v]))
-}
-
-// Совместим ли набор row (значения по переменным в порядке T2_VARS) с показанной
-// строкой cells при раскладке столбцов perm (perm[j] — переменная j-го столбца)?
-function t2Fits(cells, row, perm) {
-  return cells.every((c, j) => c === null || row[T2_VARS.indexOf(perm[j])] === c)
-}
-
-// Есть ли для раскладки perm выбор трёх ПОПАРНО РАЗНЫХ наборов из rows,
-// согласованный с показанными ячейками? (Каждая строка фрагмента — своя строка таблицы.)
-function t2Solvable(cellRows, rows, perm) {
-  const cand = cellRows.map((cells) => rows.filter((r) => t2Fits(cells, r, perm)))
-  const used = []
-  const rec = (i) => {
-    if (i === cand.length) return true
-    for (const r of cand[i]) {
-      const key = r.join("")
-      if (used.includes(key)) continue
-      used.push(key)
-      if (rec(i + 1)) { used.pop(); return true }
-      used.pop()
-    }
-    return false
-  }
-  return rec(0)
-}
-
-// Две строки фрагмента, совпадающие ВИДИМО (одни и те же цифры на одних и тех же
-// местах, остальное стёрто), делают задание бессмысленным: условие обещает «фрагмент
-// из ТРЁХ РАЗЛИЧНЫХ её строк», а ученик видит две одинаковые. Ответ при этом может
-// оставаться единственным — стирание же не меняет того, какие строки таблицы взяты, —
-// поэтому проверка уникальности такой фрагмент пропускала. В открытом банке ФИПИ
-// (94 задания этого типажа) одинаковых строк нет ни разу.
-function t2RowsDistinct(cellRows) {
-  const keys = cellRows.map((r) => r.map((c) => (c === null ? "-" : c)).join(""))
-  return new Set(keys).size === keys.length
-}
-
-// Сколько раскладок столбцов допускает фрагмент (нужна ровно одна).
-function t2CountSolutions(cellRows, rows, allPerms) {
-  let n = 0
-  for (const p of allPerms) if (t2Solvable(cellRows, rows, p)) { n++; if (n > 1) return n }
-  return n
-}
+// Задания НЕ ГЕНЕРИРУЮТСЯ: они берутся из открытого банка ФИПИ (пул T2_POOL в
+// egeInfFipi.js) — прямое решение владельца 10.09.2026. Здесь остались только
+// оформление условия по образцу КИМ и выбор задания из пула; генератор формул
+// со стиранием клеток — в истории git.
+//
+// Пул (94 задания, дубли банка склеены) даёт два типажа:
+//   misha   85 — фрагмент из ТРЁХ строк с пропусками, столбцы не подписаны;
+//   allrows  9 — фрагмент содержит ВСЕ наборы, при которых F ложна (истинна).
+// Легаси бумажного ЕГЭ (выбрать выражение из четырёх, 4 задания) в пул не взято:
+// в КЕГЭ выбора ответа нет вовсе.
+//
+// Ответ у каждого задания вычислен при сборке пула перебором всех 24 раскладок
+// столбцов и взят только там, где раскладка ОДНА — то есть доказан условием.
 
 // В КИМ имена переменных и функции набраны КУРСИВОМ (w, x, y, z, F), а операции и
 // знаки препинания — прямым шрифтом; ⟦i:…⟧ разворачивает renderTaskMath (utils.js).
@@ -220,66 +63,40 @@ const T2_EXAMPLE =
   `В этом случае первому столбцу соответствует переменная ${t2it("y")}, а второму столбцу — ` +
   `переменная ${t2it("x")}. В ответе следует написать: ${t2it("yx")}.`
 
-// Типаж «Миша»: фрагмент из трёх строк, часть значений стёрта.
-export function t2Misha() {
-  const allPerms = perms(T2_VARS)
-  for (let attempt = 0; attempt < 200; attempt++) {
-    const { node, text } = t2Formula()
-    // Значение F во фрагменте не произвольно. В банке (94 задания, исключений нет)
-    // у формулы с верхней ДИЗЪЮНКЦИЕЙ показывают F = 0, с верхней КОНЪЮНКЦИЕЙ — F = 1:
-    // именно это значение даёт мало строк, и задача решается разбором, а не перебором.
-    // При обратном выборе строк таблицы получается 13 из 16 — задание нерешаемо.
-    const target = node.t === "∧" ? 1 : node.t === "∨" ? 0 : randInt(0, 1)
-    const rows = t2Rows(node, target)
-    if (rows.length < 3 || rows.length > 6) continue          // много строк → фрагмент пришлось бы почти не стирать
-    const perm = shuffle(T2_VARS)                              // истинная раскладка столбцов
-    const chosen = shuffle(rows).slice(0, 3)
-    // Полная матрица фрагмента: столбец j показывает значение переменной perm[j].
-    let cellRows = chosen.map((r) => perm.map((v) => r[T2_VARS.indexOf(v)]))
-    if (t2CountSolutions(cellRows, rows, allPerms) !== 1) continue   // даже полная не различает
-    // Стираем НЕ до предела, а до плотности реального банка. Жадное стирание «пока
-    // решение единственно» оставляло 5,4 значения из 12 (бывало и 4): формально ответ
-    // один, но добыть его можно только перебором всех 24 раскладок — рассуждать не о
-    // чем. В открытом банке ФИПИ (94 задания этого типажа) видно в среднем 7,3
-    // значения: 8 — в 65 заданиях, 7 — в 10, 6 — в одном, 5 — в 18. Тем же весом
-    // выбираем цель и здесь, а строк без единого значения там нет вовсе.
-    const want = pick([8, 8, 8, 8, 8, 8, 8, 7, 5, 5])
-    let left = 12
-    const cells = shuffle([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
-    for (const c of cells) {
-      if (left <= want) break
-      const i = Math.floor(c / 4), j = c % 4
-      // В строке обязано остаться хотя бы одно значение: пустая строка фрагмента
-      // ничего не говорит и в банке не встречается.
-      if (cellRows[i].filter((v) => v !== null).length <= 1) continue
-      const keep = cellRows[i][j]
-      cellRows[i][j] = null
-      if (!t2RowsDistinct(cellRows) || t2CountSolutions(cellRows, rows, allPerms) !== 1) cellRows[i][j] = keep
-      else left--
-    }
-    if (left > want) continue                                  // до плотности банка не ужалось — берём другую формулу
-    const table = tableBlock([
-      ["", "", "", "", t2it("F")],
-      ...cellRows.map((r) => [...r.map((c) => (c === null ? "" : String(c))), String(target)]),
-    ])
-    return {
-      condition_text:
-        // Абзацы (пустая строка) и выделения — как в КИМ: условие, таблица, вопрос,
-        // правило записи ответа и пример стоят отдельными абзацами, а не сплошняком.
-        // Пустых строк вокруг таблиц нет намеренно: таблица — блок со своими полями.
-        `Миша заполнял таблицу истинности логической функции ${t2it("F")}\n${t2it(text)},\n` +
-        "но успел заполнить лишь фрагмент из ⟦bf:трёх различных⟧ её строк, даже не указав, какому столбцу " +
-        `таблицы соответствует каждая из переменных ${t2it("w, x, y, z")}.` +
-        table +
-        `Определите, какому столбцу таблицы соответствует каждая из переменных ${t2it("w, x, y, z")}.\n\n` +
-        T2_TAIL + "\n\n" + T2_EXAMPLE,
-      answer: perm.join(""),
-    }
-  }
-  return null
+// Случайное задание нужного типажа из пула ФИПИ. Пул конечен, поэтому «ещё
+// одно такое же» когда-нибудь начнёт повторяться — сборщик работы и вариант это
+// уже учитывают (отбор по taskKey, честный отчёт «дали меньше заказанного»).
+const fromBank = (pool, key) => {
+  const list = pool.filter((x) => x.k === key)
+  return list.length ? list[Math.floor(Math.random() * list.length)] : null
 }
 
+// Условие №2 собирается вокруг данных задания: формула и фрагмент таблицы — из
+// банка ФИПИ, а хвост с правилом записи ответа и примером одинаков во всех КИМ.
+function t2FromBank(key) {
+  const x = fromBank(T2_POOL, key)
+  if (!x) return null
+  const table = tableBlock([
+    ["", "", "", "", t2it("F")],
+    ...x.r.map((row) => [...[...row].map((c) => (c === "." ? "" : c)), String(x.t)]),
+  ])
+  const head = key === "misha"
+    ? `Миша заполнял таблицу истинности логической функции ${t2it("F")}\n${t2it(x.f)},\n` +
+      "но успел заполнить лишь фрагмент из ⟦bf:трёх различных⟧ её строк, даже не указав, какому столбцу " +
+      `таблицы соответствует каждая из переменных ${t2it("w, x, y, z")}.`
+    : `Логическая функция ${t2it("F")} задаётся выражением\n${t2it(x.f)}.\n` +
+      `На рисунке приведён фрагмент таблицы истинности функции ${t2it("F")}, содержащий ⟦bf:все⟧ наборы ` +
+      `аргументов, при которых функция ${t2it("F")} ${x.t ? "истинна" : "ложна"}.`
+  return {
+    condition_text: head + table +
+      `Определите, какому столбцу таблицы соответствует каждая из переменных ${t2it("w, x, y, z")}.\n\n` +
+      T2_TAIL + "\n\n" + T2_EXAMPLE,
+    answer: x.a,
+  }
+}
 
+export const t2Misha = () => t2FromBank("misha")
+export const t2AllRows = () => t2FromBank("allrows")
 
 
 const bin = (n) => n.toString(2)
@@ -466,198 +283,30 @@ const digitsWord = (n) => {
 }
 const NUMW_GEN = { 1: "одной", 2: "двух", 3: "трёх", 4: "четырёх", 5: "пяти", 6: "шести", 7: "семи", 8: "восьми", 9: "девяти", 10: "десяти" }
 
-const T4_FANO_NOTE =
-  "\n⟦i:Примечание.⟧ Условие Фано означает, что никакое кодовое слово не является началом другого кодового слова. " +
-  "Это обеспечивает возможность однозначной расшифровки закодированных сообщений."
-
-const prefixFree = (a, b) => !a.startsWith(b) && !b.startsWith(a)
-const fitsAll = (code, codes) => codes.every((c) => prefixFree(code, c))
-
-// Случайный префиксный код на n букв: рекурсивно делим двоичное дерево.
-function randomPrefixCode(n, prefix = "", depth = 0) {
-  if (n === 1) return [prefix]
-  if (depth > 5) return null
-  const k = randInt(1, n - 1)
-  const left = randomPrefixCode(k, prefix + "0", depth + 1)
-  const right = randomPrefixCode(n - k, prefix + "1", depth + 1)
-  if (!left || !right) return null
-  return [...left, ...right]
+// ── №04 «Кодирование и декодирование информации» (условие Фано) ─────────────
+// Задания НЕ ГЕНЕРИРУЮТСЯ: берутся из открытого банка ФИПИ (пул T4_POOL) —
+// решение владельца 10.09.2026. Генератор случайных префиксных кодов снят,
+// он в истории git.
+//
+// Пул — 73 задания четырёх типажей: кратчайшее кодовое слово для буквы (36,
+// сюда же вошли задания про цвета растрового рисунка), наименьшая суммарная
+// длина слов для оставшихся букв (24), сумма длин ВСЕХ слов (1), длина
+// закодированного слова вроде БАРАБАН (12). Три легаси-задания бумажного ЕГЭ
+// (выбор ответа из четырёх) в пул не взяты.
+//
+// Ответы вычислены при сборке пула и сверены двумя независимыми алгоритмами
+// («система близнецов» против рекурсии по дереву кода) — см.
+// fipi_bank_ege_inf/bank246/check04.mjs, расхождений 0 на всех 73 заданиях.
+const t4FromBank = (key) => {
+  const x = fromBank(T4_POOL, key)
+  return x ? { condition_text: x.c, answer: x.a } : null
 }
 
-// Кратчайший свободный код; при равной длине — с наименьшим (или наибольшим,
-// такая формулировка в банке тоже есть) числовым значением.
-function shortestFreeCode(codes, maxLen = 8, largest = false) {
-  for (let len = 1; len <= maxLen; len++) {
-    const fit = []
-    for (let v = 0; v < (1 << len); v++) {
-      const w = v.toString(2).padStart(len, "0")
-      if (fitsAll(w, codes)) fit.push(w)
-    }
-    if (fit.length) return largest ? fit[fit.length - 1] : fit[0]
-  }
-  return null
-}
+export const t4FanoShortest = () => t4FromBank("shortest")
+export const t4FanoSumLen = () => t4FromBank("sumlen")
+export const t4FanoSumAll = () => t4FromBank("sumall")
+export const t4FanoWord = () => t4FromBank("word")
 
-// Минимальная суммарная стоимость Σ freq[i]·len(code[i]) для m новых букв поверх
-// занятых кодов. Перебор с отсечением по узлам дерева до глубины maxLen.
-function minCodeCost(codes, freqs, maxLen = 7) {
-  const nodes = []
-  for (let len = 1; len <= maxLen; len++)
-    for (let v = 0; v < (1 << len); v++) {
-      const w = v.toString(2).padStart(len, "0")
-      if (fitsAll(w, codes)) nodes.push(w)
-    }
-  nodes.sort((a, b) => a.length - b.length)
-  const f = [...freqs].sort((a, b) => b - a)          // тяжёлые буквы — первыми
-  let best = Infinity
-  const rec = (i, used, cost) => {
-    if (cost >= best) return
-    if (i === f.length) { best = cost; return }
-    for (const w of nodes) {
-      if (!used.every((u) => prefixFree(u, w))) continue
-      used.push(w)
-      rec(i + 1, used, cost + f[i] * w.length)
-      used.pop()
-    }
-  }
-  rec(0, [], 0)
-  return best
-}
-
-const T4_RU = ["А", "Б", "В", "Г", "Д", "Е", "Ж", "З", "И", "К"]
-const T4_LAT = ["A", "B", "C", "D", "E", "F", "S", "X", "Y", "Z"]
-const T4_COLORS = ["белый", "жёлтый", "зелёный", "красный", "синий", "чёрный", "оранжевый", "фиолетовый"]
-
-// Типаж «кратчайшее кодовое слово для буквы X». Таблица — двумя колонками, как в банке.
-function t4ShortestBase({ items, kindWord, tail }) {
-  for (let attempt = 0; attempt < 60; attempt++) {
-    const n = items.length
-    const codes = randomPrefixCode(n)
-    if (!codes) continue
-    const hideIdx = randInt(0, n - 1)
-    const known = codes.filter((_, i) => i !== hideIdx)
-    const largest = Math.random() < 0.35
-    const answer = shortestFreeCode(known, 8, largest)
-    if (!answer || answer.length > 5) continue
-    const rows = items.map((letter, i) => [letter, i === hideIdx ? "" : codes[i]])
-    // Двухколоночная вёрстка таблицы (как в оригинале), если букв больше пяти.
-    const half = Math.ceil(rows.length / 2)
-    const table = rows.length > 5
-      ? tableBlock([[kindWord, "Кодовое слово", "", kindWord, "Кодовое слово"],
-        ...Array.from({ length: half }, (_, i) => {
-          const a = rows[i], b = rows[i + half]
-          return [a[0], a[1], "", b ? b[0] : "", b ? b[1] : ""]
-        })])
-      : tableBlock([[kindWord, "Кодовое слово"], ...rows])
-    return { table, hidden: items[hideIdx], answer, tail, largest,
-      knownList: items.map((l, i) => [l, codes[i]]).filter((_, i) => i !== hideIdx) }
-  }
-  return null
-}
-
-export function t4FanoShortest() {
-  // Набор букв в банке — всегда НАЧАЛО списка (А, Б, В, Г, Д, …), без пропусков:
-  // «шесть букв: А, Б, В, Г, Д, Е». Случайное подмножество давало «А, Б, Г, Д, Ж».
-  const letters = (Math.random() < 0.5 ? T4_LAT : T4_RU).slice(0, randInt(5, 8))
-  const built = t4ShortestBase({ items: letters, kindWord: "Буква" })
-  if (!built) return null
-  // В банке коды подаются двумя способами: таблицей и перечислением прямо в тексте.
-  // Перечисление возможно, когда неизвестен код последней буквы — иначе порядок путается.
-  const inline = built.knownList.length <= 4 && Math.random() < 0.45
-  const head = inline
-    ? `Для кодирования некоторой последовательности, состоящей из букв ${letters.join(", ")}, решили использовать ` +
-      "неравномерный двоичный код, удовлетворяющий условию Фано. " +
-      `Для букв ${built.knownList.map(([l]) => l).join(", ")} использовали кодовые слова ` +
-      `${built.knownList.map(([, c]) => c).join(", ")} соответственно.\n`
-    : `По каналу связи передаются шифрованные сообщения, содержащие только ${NUMW[letters.length]} букв: ` +
-      `${letters.join(", ")}; для передачи используется неравномерный двоичный код. Для кодирования букв используются кодовые слова.\n` +
-      built.table + "\n"
-  return {
-    condition_text: head +
-      `Укажите кратчайшее ${inline ? "возможное " : ""}кодовое слово для буквы ${built.hidden}, при котором код ` +
-      `${inline ? "будет удовлетворять" : "удовлетворяет"} условию Фано. ` +
-      `Если таких кодов несколько, укажите код с ${built.largest ? "наибольшим" : "наименьшим"} числовым значением.\n` + T4_FANO_NOTE,
-    answer: built.answer,
-  }
-}
-
-export function t4FanoColors() {
-  const colors = shuffle(T4_COLORS).slice(0, randInt(5, 6))
-  const built = t4ShortestBase({ items: colors, kindWord: "Цвет" })
-  if (!built) return null
-  return {
-    condition_text:
-      `Для кодирования растрового рисунка, напечатанного с использованием ${NUMW_GEN[colors.length]} красок, применили неравномерный двоичный код. ` +
-      "Для кодирования цветов используются кодовые слова.\n" +
-      built.table + "\n" +
-      `Укажите кратчайшее кодовое слово для ${built.hidden === "белый" ? "белого" : built.hidden.replace(/(ый|ий)$/, "ого")} цвета, при котором код будет удовлетворять условию Фано. ` +
-      "Если таких кодов несколько, укажите код с наименьшим числовым значением.\n" + T4_FANO_NOTE,
-    answer: built.answer,
-  }
-}
-
-// Типаж «наименьшая суммарная длина кодовых слов для оставшихся букв».
-export function t4FanoSumLen() {
-  for (let attempt = 0; attempt < 60; attempt++) {
-    const n = randInt(5, 8)
-    const letters = T4_RU.slice(0, n)
-    const codes = randomPrefixCode(n)
-    if (!codes) continue
-    const hideCnt = randInt(2, 3)
-    const hide = shuffle(letters.map((_, i) => i)).slice(0, hideCnt).sort((a, b) => a - b)
-    const known = letters.map((l, i) => [l, codes[i]]).filter((_, i) => !hide.includes(i))
-    if (known.length < 3) continue
-    const answer = minCodeCost(known.map(([, c]) => c), hide.map(() => 1))
-    if (!isFinite(answer)) continue
-    const hidden = hide.map((i) => letters[i])
-    return {
-      condition_text: (known.length <= 3 && Math.random() < 0.5
-        ? `По каналу связи передаются шифрованные сообщения, содержащие только ${NUMW[n]} букв: ${letters.join(", ")}. ` +
-          "Для передачи используется неравномерный двоичный код. " +
-          `Для букв ${known.map(([l]) => l).join(", ")} используются кодовые слова ${known.map(([, c]) => c).join(", ")} соответственно.\n` +
-          `Укажите минимальную сумму длин кодовых слов для букв ${hidden.join(" и ")}, при которых код будет удовлетворять условию Фано.\n`
-        : `По каналу связи передаются сообщения, содержащие только ${NUMW[n]} букв: ${letters.join(", ")}. ` +
-          "Для передачи используется двоичный код, удовлетворяющий условию Фано. Кодовые слова для некоторых букв известны:\n" +
-          tableBlock([["Буква", "Кодовое слово"], ...known.map(([l, c]) => [l, c])]) + "\n" +
-          `Какое наименьшее количество двоичных знаков потребуется для кодирования ${NUMW_GEN[hidden.length]} оставшихся букв?\n` +
-          `В ответе запишите суммарную длину кодовых слов для букв: ${hidden.join(", ")}.\n`) + T4_FANO_NOTE,
-      answer: String(answer),
-    }
-  }
-  return null
-}
-
-// Типаж «сколько двоичных знаков займёт слово»: частоты букв берутся из самого слова.
-const T4_WORDS = ["БАРАБАН", "КАРАКАТИЦА", "БАНАН", "КАРАВАН", "САРАФАН", "ТАРАКАН", "МАКАКА", "БАРАБАНЩИК"]
-export function t4FanoWord() {
-  for (let attempt = 0; attempt < 80; attempt++) {
-    const word = pick(T4_WORDS)
-    const letters = [...new Set([...word])]
-    if (letters.length < 4 || letters.length > 6) continue
-    const codes = randomPrefixCode(letters.length)
-    if (!codes) continue
-    const knownCnt = randInt(1, 2)
-    const knownIdx = shuffle(letters.map((_, i) => i)).slice(0, knownCnt)
-    const known = knownIdx.map((i) => [letters[i], codes[i]])
-    if (known.some(([, c]) => c.length > 3)) continue
-    const rest = letters.filter((_, i) => !knownIdx.includes(i))
-    const freq = (ch) => [...word].filter((c) => c === ch).length
-    const knownCost = known.reduce((a, [l, c]) => a + freq(l) * c.length, 0)
-    const restCost = minCodeCost(known.map(([, c]) => c), rest.map(freq))
-    if (!isFinite(restCost)) continue
-    return {
-      condition_text:
-        `По каналу связи передаются сообщения, содержащие только буквы из набора: ${letters.join(", ")}. ` +
-        "Для передачи используется двоичный код, удовлетворяющий условию Фано. " +
-        "Это условие обеспечивает возможность однозначной расшифровки закодированных сообщений. " +
-        `Кодовые слова для некоторых букв известны: ${known.map(([l, c]) => `${l} – ${c}`).join(", ")}. ` +
-        `Для ${NUMW_GEN[rest.length] || "остальных"} оставшихся букв ${rest.join(", ")} кодовые слова неизвестны. ` +
-        `Какое количество двоичных знаков потребуется для кодирования слова ${word}, если известно, что оно закодировано минимально возможным количеством двоичных знаков?`,
-      answer: String(knownCost + restCost),
-    }
-  }
-  return null
-}
 
 
 // ── №08 «Перебор слов и системы счисления» ──────────────────────────────────
@@ -3094,107 +2743,41 @@ export function t7Rgb() {
 
 
 
-// ── Исполнитель Черепаха ─────────────────────────────────────────────────────
-// Алгоритм рисует две прямоугольные рамки; вопрос — сколько точек с целочисленными
-// координатами лежит внутри пересечения фигур (включая границу). Прямоугольники
-// считаются по СЛЕДУ пера: эмулятор ниже выполняет ровно те команды, что напечатаны.
-// Имена команд исполнителя в КИМ набраны ПОЛУЖИРНЫМ, их параметры (n, m, k, S) — курсивом.
-const T6_TURTLE_INTRO =
-  "Исполнитель Черепаха действует на плоскости с декартовой системой координат. В начальный момент Черепаха находится " +
-  "в начале координат, её голова направлена вдоль положительного направления оси ординат, хвост опущен. " +
-  "При опущенном хвосте Черепаха оставляет на поле след в виде линии. " +
-  "В каждый конкретный момент известно положение исполнителя и направление его движения. " +
-  "У исполнителя существует 6 команд: " +
-  `${bf("Поднять хвост")}, означающая переход к перемещению без рисования; ${bf("Опустить хвост")}, ` +
-  `означающая переход в режим рисования; ${bf("Вперёд " + it("n"))} (где ${it("n")} — целое число), ` +
-  `вызывающая передвижение Черепахи на ${it("n")} единиц в том направлении, куда указывает её голова; ` +
-  `${bf("Назад " + it("n"))} (где ${it("n")} — целое число), вызывающая передвижение в противоположном ` +
-  `голове направлении; ${bf("Направо " + it("m"))} (где ${it("m")} — целое число), вызывающая изменение ` +
-  `направления движения на ${it("m")} градусов по часовой стрелке; ${bf("Налево " + it("m"))} ` +
-  `(где ${it("m")} — целое число), вызывающая изменение направления движения на ${it("m")} градусов ` +
-  "против часовой стрелки.\n\n" +
-  `Запись ${bf("Повтори " + it("k") + " [Команда1 Команда2 … Команда" + it("S") + "]")} означает, ` +
-  `что последовательность из ${it("S")} команд повторится ${it("k")} раз.\n\n`
+// ── №06 «Исполнитель Черепаха» ───────────────────────────────────────────────
+// Задания НЕ ГЕНЕРИРУЮТСЯ: берутся из открытого банка ФИПИ (пул T6_POOL) —
+// решение владельца 10.09.2026. Прежний генератор рисовал ровно две прямоугольные
+// рамки и спрашивал только про их пересечение; в банке типажей пять, включая
+// объединение фигур, площадь и одну фигуру под углом 45°. Код генератора — в
+// истории git.
+//
+// Ответ у каждого задания вычислен по следу пера и сверен вторым способом:
+// перебор узлов решётки против формулы для прямоугольников
+// (fipi_bank_ege_inf/bank246/check06.mjs, расхождений 0), а пять заданий с
+// непрямоугольными фигурами пересчитаны вручную.
+//
+// Имена команд исполнителя в КИМ набраны ПОЛУЖИРНЫМ, их параметры (n, m, k, S) —
+// курсивом; в выгрузке банка выделений нет, поэтому они расставляются здесь.
+const t6Style = (text) => itVars(String(text).replace(/Команда(S)\b/g, "Команда⟦i:S⟧"), "nmkS")
+  .replace(/(Поднять хвост|Опустить хвост)/g, "⟦bf:$1⟧")
+  .replace(/((?:Вперёд|Назад|Направо|Налево) ⟦i:[nm]⟧)/g, "⟦bf:$1⟧")
+  .replace(/(Повтори ⟦i:k⟧ \[[^\]]*\])/g, "⟦bf:$1⟧")
+  // «Запись Повтори k […] означает…» в КИМ стоит отдельным абзацем.
+  .replace(/\s*(Запись ⟦bf:Повтори)/, "\n\n$1")
 
-// Эмуляция: возвращает список отрезков (по одному на каждое перемещение с пером).
-function t6TurtleRun(cmds) {
-  let x = 0, y = 0, dir = 90, pen = true      // dir в градусах, 90 — вдоль оси ординат
-  const segs = []
-  const step = (len) => {
-    const rad = dir * Math.PI / 180
-    const nx = x + Math.round(Math.cos(rad) * len), ny = y + Math.round(Math.sin(rad) * len)
-    if (pen) segs.push([x, y, nx, ny])
-    x = nx; y = ny
+function t6FromBank(key) {
+  const x = fromBank(T6_POOL, key)
+  if (!x) return null
+  return {
+    condition_text: `${t6Style(T6_INTROS[x.i])}\n\n${x.l}⟦code:${x.p}⟧\n${x.q}`,
+    answer: x.a,
   }
-  const exec = (list) => {
-    for (const c of list) {
-      if (c.t === "fwd") step(c.n)
-      else if (c.t === "back") step(-c.n)
-      else if (c.t === "right") dir -= c.n
-      else if (c.t === "left") dir += c.n
-      else if (c.t === "up") pen = false
-      else if (c.t === "down") pen = true
-      else if (c.t === "rep") for (let i = 0; i < c.k; i++) exec(c.body)
-    }
-  }
-  exec(cmds)
-  return segs
 }
 
-const t6Bbox = (segs) => segs.reduce((b, [x1, y1, x2, y2]) => ({
-  x1: Math.min(b.x1, x1, x2), y1: Math.min(b.y1, y1, y2),
-  x2: Math.max(b.x2, x1, x2), y2: Math.max(b.y2, y1, y2),
-}), { x1: Infinity, y1: Infinity, x2: -Infinity, y2: -Infinity })
-
-export function t6Turtle() {
-  for (let attempt = 0; attempt < 80; attempt++) {
-    const w1 = randInt(10, 25), h1 = randInt(10, 25)
-    const w2 = randInt(30, 90), h2 = randInt(30, 90)
-    const dx = randInt(2, 12), dy = randInt(2, 12)
-    const reps = pick([5, 7, 9])
-    // Первая фигура — прямоугольник w1×h1, затем перо поднимается, Черепаха
-    // смещается и рисует второй прямоугольник w2×h2.
-    const cmds = [
-      { t: "rep", k: reps, body: [{ t: "fwd", n: h1 }, { t: "right", n: 90 }, { t: "fwd", n: w1 }, { t: "right", n: 90 }] },
-      { t: "up" },
-      { t: "fwd", n: dy }, { t: "right", n: 90 }, { t: "fwd", n: dx }, { t: "left", n: 90 },
-      { t: "down" },
-      { t: "rep", k: reps, body: [{ t: "fwd", n: h2 }, { t: "right", n: 90 }, { t: "fwd", n: w2 }, { t: "right", n: 90 }] },
-    ]
-    const all = t6TurtleRun(cmds)
-    // Один повтор рисует ДВЕ стороны («Вперёд h … Вперёд w …»), поэтому отрезков
-    // первой фигуры ровно 2·reps. При нечётном reps Черепаха остаётся развёрнутой
-    // в противоположную сторону — второй прямоугольник рисуется «вниз», как в банке.
-    const firstCount = reps * 2
-    const b1 = t6Bbox(all.slice(0, firstCount))
-    const b2 = t6Bbox(all.slice(firstCount))
-    const ix1 = Math.max(b1.x1, b2.x1), iy1 = Math.max(b1.y1, b2.y1)
-    const ix2 = Math.min(b1.x2, b2.x2), iy2 = Math.min(b1.y2, b2.y2)
-    if (ix2 <= ix1 || iy2 <= iy1) continue
-    const points = (ix2 - ix1 + 1) * (iy2 - iy1 + 1)
-    if (points < 20 || points > 3000) continue
-    // Второй вопрос из банка — периметр области пересечения (это прямоугольник).
-    const perimeter = 2 * ((ix2 - ix1) + (iy2 - iy1))
-    const askPerimeter = Math.random() < 0.35
-    const prog =
-      `Повтори ${reps} [Вперёд ${h1} Направо 90 Вперёд ${w1} Направо 90]\n` +
-      "Поднять хвост\n" +
-      `Вперёд ${dy} Направо 90 Вперёд ${dx} Налево 90\n` +
-      "Опустить хвост\n" +
-      `Повтори ${reps} [Вперёд ${h2} Направо 90 Вперёд ${w2} Направо 90]`
-    return {
-      condition_text: T6_TURTLE_INTRO +
-        "Черепахе был дан для исполнения следующий алгоритм:⟦code:" + prog + "⟧\n" +
-        (askPerimeter
-          ? "Определите периметр области пересечения фигур, ограниченных заданными алгоритмом линиями. " +
-            "Ответ запишите в виде целого числа."
-          : "Определите, сколько точек с целочисленными координатами будут находиться внутри области пересечения фигур, " +
-            "ограниченных заданными алгоритмом линиями, включая точки на границах этого пересечения."),
-      answer: String(askPerimeter ? perimeter : points),
-    }
-  }
-  return null
-}
+export const t6Turtle = () => t6FromBank("turtle")
+export const t6TurtleUnion = () => t6FromBank("union")
+export const t6TurtleOne = () => t6FromBank("one")
+export const t6TurtlePerimeter = () => t6FromBank("perimeter")
+export const t6TurtleArea = () => t6FromBank("area")
 
 
 // ── №01 «Анализ информационных моделей» (графы и таблицы дорог) ─────────────
@@ -5404,11 +4987,11 @@ export function t17PairRule() {
 
 
 export const GENERATORS_EGE_INF = {
-  2: [t2Misha],
-  4: [t4FanoShortest, t4FanoColors, t4FanoSumLen, t4FanoWord],
+  2: [t2Misha, t2AllRows],
+  4: [t4FanoShortest, t4FanoSumLen, t4FanoSumAll, t4FanoWord],
   5: [t5Bin, t5Parity, t5Ternary],
   1: [t1GraphTable, t1StarsAmbiguous],
-  6: [t6Turtle],
+  6: [t6Turtle, t6TurtleUnion, t6TurtleOne, t6TurtlePerimeter, t6TurtleArea],
   7: [t7Transfer, t7Colors, t7ColorsCompressed, t7Volume, t7Packet, t7Sound, t7Modem, t7Traffic, t7Reserve, t7Adsl, t7Rgb],
   8: [t8WordIndex, t8FirstLetter, t8Filter, t8Parity, t8CountOnce, t8CountDigits, t8DistinctAlternating],
   11: [t11PassExtra, t11Volume, t11Plate, t11Split, t11Power, t11MinLength, t11Message],
@@ -5449,13 +5032,14 @@ export const GENERATORS_EGE_INF = {
 export const GEN_META_EGE_INF = {
   2: [["Таблицы истинности", [
     ["misha", "Фрагмент из трёх строк с пропусками", t2Misha],
+    ["allrows", "Фрагмент со всеми наборами, где F ложна", t2AllRows],
   ]]],
   4: [["Кратчайший код символа", [
     ["shortest", "Кратчайшее кодовое слово для буквы", t4FanoShortest],
-    ["colors", "Кратчайший код для цвета рисунка", t4FanoColors],
   ]],
     ["Длина всей кодировки", [
       ["sumlen", "Наименьшая суммарная длина кодов", t4FanoSumLen],
+      ["sumall", "Сумма длин всех кодовых слов", t4FanoSumAll],
       ["word", "Минимальная длина кодировки слова", t4FanoWord],
     ]]],
   5: [["Двоичная запись", [
@@ -5471,6 +5055,10 @@ export const GEN_META_EGE_INF = {
   ]]],
   6: [["Исполнитель Черепаха", [
     ["turtle", "Точки в пересечении фигур", t6Turtle],
+    ["union", "Точки в объединении фигур", t6TurtleUnion],
+    ["one", "Точки внутри одной фигуры", t6TurtleOne],
+    ["perimeter", "Периметр пересечения фигур", t6TurtlePerimeter],
+    ["area", "Площадь объединения фигур", t6TurtleArea],
   ]]],
   7: [["Передача данных", [
     ["transfer", "Архив или без архива: что быстрее", t7Transfer],
