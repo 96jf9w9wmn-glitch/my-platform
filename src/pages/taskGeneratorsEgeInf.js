@@ -288,8 +288,8 @@ const NUMW_GEN = { 1: "одной", 2: "двух", 3: "трёх", 4: "четыр
 // решение владельца 10.09.2026. Генератор случайных префиксных кодов снят,
 // он в истории git.
 //
-// Пул — 73 задания четырёх типажей: кратчайшее кодовое слово для буквы (36,
-// сюда же вошли задания про цвета растрового рисунка), наименьшая суммарная
+// Пул — 73 задания пяти типажей: кратчайшее кодовое слово для буквы (32),
+// то же для цвета растрового рисунка (4), наименьшая суммарная
 // длина слов для оставшихся букв (24), сумма длин ВСЕХ слов (1), длина
 // закодированного слова вроде БАРАБАН (12). Три легаси-задания бумажного ЕГЭ
 // (выбор ответа из четырёх) в пул не взяты.
@@ -303,6 +303,9 @@ const t4FromBank = (key) => {
 }
 
 export const t4FanoShortest = () => t4FromBank("shortest")
+// Цвета растрового рисунка — свой типаж (таблица цветов вместо букв) и свой
+// ключ: на gen_key держатся «ещё такие же» и аналитика, терять его нельзя.
+export const t4FanoColors = () => t4FromBank("colors")
 export const t4FanoSumLen = () => t4FromBank("sumlen")
 export const t4FanoSumAll = () => t4FromBank("sumall")
 export const t4FanoWord = () => t4FromBank("word")
@@ -4988,7 +4991,7 @@ export function t17PairRule() {
 
 export const GENERATORS_EGE_INF = {
   2: [t2Misha, t2AllRows],
-  4: [t4FanoShortest, t4FanoSumLen, t4FanoSumAll, t4FanoWord],
+  4: [t4FanoShortest, t4FanoColors, t4FanoSumLen, t4FanoSumAll, t4FanoWord],
   5: [t5Bin, t5Parity, t5Ternary],
   1: [t1GraphTable, t1StarsAmbiguous],
   6: [t6Turtle, t6TurtleUnion, t6TurtleOne, t6TurtlePerimeter, t6TurtleArea],
@@ -5036,6 +5039,7 @@ export const GEN_META_EGE_INF = {
   ]]],
   4: [["Кратчайший код символа", [
     ["shortest", "Кратчайшее кодовое слово для буквы", t4FanoShortest],
+    ["colors", "Кратчайший код для цвета рисунка", t4FanoColors],
   ]],
     ["Длина всей кодировки", [
       ["sumlen", "Наименьшая суммарная длина кодов", t4FanoSumLen],
