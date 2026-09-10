@@ -61,15 +61,3 @@ export function makeZipBlob(files) {
   chunks.push(end)
   return new Blob(chunks, { type: "application/zip" })
 }
-
-// Собрать архив из дерева файлов и отдать пользователю на скачивание.
-export function downloadZip(name, files) {
-  const url = URL.createObjectURL(makeZipBlob(files))
-  const a = document.createElement("a")
-  a.href = url
-  a.download = name.endsWith(".zip") ? name : `${name}.zip`
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
-}

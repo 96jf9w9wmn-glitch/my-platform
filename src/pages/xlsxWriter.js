@@ -72,17 +72,3 @@ export function makeXlsxBookBlob(sheets) {
 export function makeXlsxBlob(sheetName, rows) {
   return makeXlsxBookBlob([{ name: sheetName, rows }])
 }
-
-// sheetName может быть массивом листов [{ name, rows }] — тогда rows игнорируется.
-export function downloadXlsx(fileName, sheetName, rows) {
-  const url = URL.createObjectURL(Array.isArray(sheetName)
-    ? makeXlsxBookBlob(sheetName)
-    : makeXlsxBlob(sheetName, rows))
-  const a = document.createElement("a")
-  a.href = url
-  a.download = fileName.endsWith(".xlsx") ? fileName : `${fileName}.xlsx`
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
-}

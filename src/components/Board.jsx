@@ -15,6 +15,7 @@ import {
 // только когда репетитор открыл выбор, иначе доска стала бы тяжелее на мегабайты.
 const BoardTaskModal = lazy(() => import("./BoardTaskModal"))
 import { roomStudentId, isHomeworkRoom, HW_ROOM } from "../boardRoom"
+import { downloadBlob, taskFiles } from "../pages/taskFiles"
 
 // Совместная доска платформы (свой движок на HTML5 Canvas, без внешних библиотек).
 // БЕСКОНЕЧНЫЙ холст на весь экран: штрихи хранятся в МИРОВЫХ координатах, у каждого
@@ -40,8 +41,12 @@ const CULL_PAD = 80          // запас за краем экрана, в пр
 // кегль условия в pages/taskSnapshot.js), и потом целиком масштабируется вместе с ним —
 // поэтому у задания и поля один масштаб. Держать эту ширину в согласии с taskSnapshot.
 const QA_SHEET_W = 620       // ширина листа в его собственных единицах
-const QA_GAP = 14            // отступ поля от нижнего края листа, там же
-const QA_TUTOR_INSET = 30    // на столько строка репетитора отступает от низа листа внутрь
+// Панель — ПОДВАЛ листа, а не карточка под ним: она наезжает на низ листа ровно на
+// его скругление (RADIUS в pages/taskSnapshot.js) и своим непрозрачным фоном
+// закрывает скруглённый край. Иначе между листом и полем ответа оставался зазор с
+// двумя парами углов, и поле читалось как чужая наклейка на задании.
+const QA_OVERLAP = 18        // = RADIUS листа, в единицах листа
+const QA_RADIUS = 18         // скругление низа подвала — того же радиуса, что у листа
 // Лист меньше этого на экране — поля не показываем: набрать в него всё равно нельзя,
 // а условие на такой доске читают глазами, а не решают.
 const QA_MIN_ON_SCREEN = 300
@@ -211,6 +216,29 @@ async function processImageFile(file, maxDim = 1400) {
   return { blob, type, ext, w: cw, h: ch, img: null, url: null }
 }
 
+// Прилагаемый к заданию файл (.xlsx/.zip/.txt) — кнопкой прямо на доске. Раньше
+// файл собирался у репетитора в браузере и на доску не попадал вовсе: лист с
+// условием ехал, а таблица с данными оставалась у того, кто вставлял задание, —
+// решить такое задание ученик не мог. Теперь файл лежит в хранилище рядом с
+// листом, и забрать его может любая сторона.
+function TaskFileChip({ file, onFile, ink, border }) {
+  const [state, setState] = useState("")     // "" | busy | err
+  const click = async () => {
+    if (state === "busy") return
+    setState("busy")
+    try { await onFile(file); setState("") } catch { setState("err") }
+  }
+  return (
+    <button onClick={click} title={state === "err" ? "Не удалось скачать — попробуйте ещё раз" : `Скачать ${file.n}`}
+      className="press-tap flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[15px] max-w-full"
+      style={{ border: `1px solid ${border}`, color: state === "err" ? "#ff3b30" : ink }}>
+      <Icon name={state === "err" ? "warning" : "download"} size={15} className="flex-shrink-0"
+        style={{ color: state === "err" ? "#ff3b30" : "#007AFF", opacity: state === "busy" ? 0.5 : 1 }} />
+      <span className="truncate">{file.n}</span>
+    </button>
+  )
+}
+
 // Поле ответа под листом с заданием из банка. У сторон оно РАЗНОЕ, и это главное,
 // что про него нужно знать:
 //   ученик  — вписывает ответ и проверяет себя: «Верно»/«Неверно» и свой ответ,
@@ -231,45 +259,68 @@ async function processImageFile(file, maxDim = 1400) {
 // оказывалось втрое мельче условия, на отдалённом — накрывало его целиком.
 // Масштаб на ОБЁРТКЕ, а не на самой панели: у появления попапа свои кадры с
 // transform, и на одном элементе они затёрли бы друг друга.
-function TaskAnswerBox({ panel, dark, panelBg, panelBorder, tutor = false, onCheck, onReset }) {
+function TaskAnswerBox({ panel, dark, panelBg, panelBorder, tutor = false, draft = null, onCheck, onReset, onType, onFile }) {
   const [val, setVal] = useState("")
   const [shown, setShown] = useState(false)   // репетитор раскрыл правильный ответ
   const done = panel.ok != null
   const ink = dark ? "#e5e5ea" : "#1f2937"
   const meta = dark ? "#a1a1aa" : "#6b7280"
   const tone = panel.ok ? "#34c759" : "#ff3b30"
-  // Отступ от листа — тоже в единицах листа, иначе на зуме он «отклеивался»
+  // Наезд на лист — тоже в единицах листа, иначе на зуме подвал «отклеивался»
   const frame = {
-    left: panel.x, top: panel.y + QA_GAP * panel.k, width: QA_SHEET_W,
+    left: panel.x, top: panel.y - QA_OVERLAP * panel.k, width: QA_SHEET_W,
     transform: `scale(${panel.k})`, transformOrigin: "top left",
   }
-  const box = { background: panelBg, border: `1px solid ${panelBorder}`, padding: "12px 16px" }
+  // Обводка у подвала та же, что у самого листа (её рисует roundSheet), поэтому
+  // контур карточки идёт вокруг условия и поля ответа одной линией.
+  const line = dark ? "rgba(255,255,255,.12)" : "rgba(0,0,0,.10)"
+  const foot = {
+    background: panelBg,
+    borderLeft: `1px solid ${line}`, borderRight: `1px solid ${line}`, borderBottom: `1px solid ${line}`,
+    borderRadius: `0 0 ${QA_RADIUS}px ${QA_RADIUS}px`,
+  }
+  const files = panel.files || []
+  // Черновик ученика: он есть только у репетитора и только пока ответ не сдан.
+  const typed = draft?.v?.trim() || ""
+  const typing = !!draft?.typing
 
   // Репетитор: что с заданием у ученика + ответ по кнопке. Поля ввода тут нет —
-  // проверяет себя ученик, а репетитору нужен сам ответ.
-  //
-  // Своей плашки у этой строки НЕТ: она стоит внутри листа, у нижнего края, и
-  // читается как его же подпись. Отдельная карточка под заданием несла одну
-  // кнопку, а весила больше самого условия.
+  // проверяет себя ученик, а репетитору нужен сам ответ. Живёт эта строка в том же
+  // подвале листа, что и поле ученика: у обеих сторон карточка выглядит одинаково,
+  // отличается только начинка.
   if (tutor) {
     return (
-      <div className="absolute flex justify-end" style={{ ...frame, top: panel.y - QA_TUTOR_INSET * panel.k }}>
-        <div className="flex items-center gap-2 pr-4">
-          <span className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
+      <div className="absolute" style={frame}>
+        <div className="flex items-center justify-end gap-2 px-4 py-2.5" style={{ ...foot, borderTop: `1px solid ${line}` }}>
+          {files.map((f) => <TaskFileChip key={f.p} file={f} onFile={onFile} ink={ink} border={panelBorder} />)}
+          {panel.ask && <span className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
             style={{ background: done ? `${tone}22` : "rgba(0,122,255,.10)", color: done ? tone : "#007AFF" }}
-            title={done ? (panel.ok ? "Ученик ответил верно" : "Ученик ответил неверно") : "Ученик ещё не ответил"}>
-            <Icon name={done ? (panel.ok ? "check" : "x") : "clock"} size={15} />
-          </span>
+            title={done ? (panel.ok ? "Ученик ответил верно" : "Ученик ответил неверно")
+              : typing ? "Ученик набирает ответ" : "Ученик ещё не ответил"}>
+            <Icon name={done ? (panel.ok ? "check" : "x") : typing ? "pencil" : "clock"} size={15} />
+          </span>}
           {done && <span className="text-[15px] font-mono max-w-[200px] truncate" style={{ color: tone }}>{panel.v}</span>}
+          {/* Что ученик набирает прямо сейчас: ответ ещё не сдан, а видеть его ход
+              рассуждения важнее, чем итог. Пока печатает — точки рядом. */}
+          {!done && typed !== "" && (
+            <span className="flex items-center gap-1.5 min-w-0">
+              <span className="text-[15px] font-mono max-w-[200px] truncate" style={{ color: meta }}>{typed}</span>
+              {typing && <span className="loader-dots text-blue-500 flex-shrink-0"><i /><i /><i /></span>}
+            </span>
+          )}
           {/* Ответ не мигает, а выезжает и так же уезжает */}
-          <span className="text-[15px] font-mono truncate transition-all duration-200"
-            style={{ color: ink, opacity: shown ? 1 : 0, maxWidth: shown ? 200 : 0, pointerEvents: "none" }}>
-            {panel.a ?? "—"}
-          </span>
-          <button onClick={() => setShown((v) => !v)}
-            className="press-tap flex-shrink-0 px-2 py-0.5 rounded-full text-[15px] text-blue-500 hover:bg-blue-500/[0.08]">
-            {shown ? "Скрыть" : "Ответ"}
-          </button>
+          {panel.ask && (
+            <>
+              <span className="text-[15px] font-mono truncate transition-all duration-200"
+                style={{ color: ink, opacity: shown ? 1 : 0, maxWidth: shown ? 200 : 0, pointerEvents: "none" }}>
+                {panel.a ?? "—"}
+              </span>
+              <button onClick={() => setShown((v) => !v)}
+                className="press-tap flex-shrink-0 px-2 py-0.5 rounded-full text-[15px] text-blue-500 hover:bg-blue-500/[0.08]">
+                {shown ? "Скрыть" : "Ответ"}
+              </button>
+            </>
+          )}
         </div>
       </div>
     )
@@ -277,8 +328,15 @@ function TaskAnswerBox({ panel, dark, panelBg, panelBorder, tutor = false, onChe
 
   return (
     <div className="absolute" style={frame}>
-      <div className="rounded-2xl shadow-lg popup-bubble" style={box}>
-        {done ? (
+      <div className="px-4 py-3" style={{ ...foot, borderTop: `1px solid ${line}` }}>
+        {/* Файл стоит ПЕРВЫМ: без него такое задание не решается, а поле ответа
+            под ним — следующий шаг. */}
+        {files.length > 0 && (
+          <div className={`flex flex-wrap gap-2 ${panel.ask ? "mb-3" : ""}`}>
+            {files.map((f) => <TaskFileChip key={f.p} file={f} onFile={onFile} ink={ink} border={panelBorder} />)}
+          </div>
+        )}
+        {!panel.ask ? null : done ? (
           <div className="flex items-center gap-3 min-w-0">
             <span className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
               style={{ background: `${tone}22`, color: tone }}>
@@ -300,7 +358,7 @@ function TaskAnswerBox({ panel, dark, panelBg, panelBorder, tutor = false, onChe
           </div>
         ) : (
           <form className="flex items-center gap-3" onSubmit={(e) => { e.preventDefault(); onCheck(panel.id, val) }}>
-            <input value={val} onChange={(e) => setVal(e.target.value)} placeholder="Ответ"
+            <input value={val} onChange={(e) => { setVal(e.target.value); onType?.(panel.id, e.target.value) }} placeholder="Ответ"
               className="flex-1 min-w-0 h-11 px-3.5 rounded-xl text-[17px] outline-none focus:ring-2 focus:ring-blue-500/40"
               style={{ background: "transparent", color: ink, border: `1px solid ${panelBorder}` }} />
             <button type="submit" disabled={!val.trim()}
@@ -573,6 +631,11 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // Поля ответа под листами с заданием (экранные координаты). Считаются в кадре, как
   // и рамка выделения: их положение зависит от обзора, а не от React-стейта.
   const [qaBoxes, setQaBoxes] = useState([])
+  // Что ученик прямо сейчас набирает в поле ответа: id листа → { v, typing }.
+  // Живёт только в памяти вкладки — это показ, а не данные.
+  const [drafts, setDrafts] = useState({})
+  const draftTimers = useRef(new Map())
+  const typeSent = useRef(new Map())    // когда по каждому листу ушла последняя посылка
   const lastQa = useRef("")
   // Картинки, которые сейчас едут в хранилище (экранные координаты, тот же кадр)
   const [busyImgs, setBusyImgs] = useState([])
@@ -1075,7 +1138,9 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
           busy.push({ id: st.id, x: Math.round((x0 + x1) / 2), y: Math.round((y0 + y1) / 2) })
         }
       }
-      if (!st.qa) continue
+      // Панель нужна листу с полем ответа И листу с прилагаемым файлом: у части
+      // заданий (КЕГЭ с таблицей) файл есть, а короткого ответа для сверки нет.
+      if (!st.qa && !st.files?.length) continue
       const b = strokeBox(st)
       const [x0, y0] = toScreen(b.minX, b.minY), [x1, y1] = toScreen(b.maxX, b.maxY)
       const sw = x1 - x0
@@ -1088,8 +1153,8 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       // Правильный ответ уходит в панель ТОЛЬКО репетитору: у ученика панель его
       // не показывает, и класть его туда незачем.
       qa.push({ id: st.id, x: Math.round(x0), y: Math.round(y1),
-        k: Math.round((sw / QA_SHEET_W) * 1000) / 1000,
-        a: isTutor ? st.qa.a : null, v: st.qa.v || "", ok: st.qa.ok ?? null })
+        k: Math.round((sw / QA_SHEET_W) * 1000) / 1000, ask: !!st.qa, files: st.files || null,
+        a: isTutor ? st.qa?.a ?? null : null, v: st.qa?.v || "", ok: st.qa?.ok ?? null })
     }
     const qaKey = JSON.stringify(qa)
     if (qaKey !== lastQa.current) { lastQa.current = qaKey; setQaBoxes(qa) }
@@ -1551,6 +1616,17 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         if (!tail.length) return                      // дубль
         cur.points.push(...tail)
         scheduleLive()
+      })
+      // Ученик печатает ответ — репетитор видит это, пока тот ещё набирает. В базу
+      // черновик не идёт и в штрих не пишется: это то же «живое», что и курсор.
+      .on("broadcast", { event: "qa-type" }, ({ payload }) => {
+        setDrafts((d) => ({ ...d, [payload.id]: { v: payload.v, typing: true } }))
+        clearTimeout(draftTimers.current.get(payload.id))
+        draftTimers.current.set(payload.id, setTimeout(() => {
+          draftTimers.current.delete(payload.id)
+          // Печатать перестал — набранное остаётся, гаснет только сама пометка.
+          setDrafts((d) => (d[payload.id] ? { ...d, [payload.id]: { ...d[payload.id], typing: false } } : d))
+        }, 2500))
       })
       .on("broadcast", { event: "remove" }, ({ payload }) => { live.current.delete(payload.id); strokes.current.delete(payload.id); selection.current.delete(payload.id); scheduleDraw() })
       .on("broadcast", { event: "clear" }, () => { live.current.clear(); strokes.current.clear(); selection.current.clear(); scheduleDraw() })
@@ -2501,7 +2577,9 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // pending: он виден, его можно двигать и стирать, но собеседнику он не
   // уходит и в базу не сохраняется — blob-адрес за пределами этой вкладки не
   // значит ничего. Что загрузка идёт, видно по плашке над самой картинкой.
-  async function addImageAt(file, worldX, worldY, { fitWidth = null, maxSide = 360, sheet = false, topLeft = false, taskKey = null, answer = null, onPlaced = null, place = null } = {}) {
+  // files — прилагаемые к заданию .xlsx/.zip/.txt: они едут в хранилище рядом с
+  // листом, а в штрих попадают только имя и путь (см. uploadTaskFiles).
+  async function addImageAt(file, worldX, worldY, { fitWidth = null, maxSide = 360, sheet = false, topLeft = false, taskKey = null, answer = null, files = null, onPlaced = null, place = null } = {}) {
     if (!file || !file.type?.startsWith("image/")) return null
     let info
     try { info = await processImageFile(file, sheet ? SHEET_MAX_DIM : 1400) } catch { return null }
@@ -2538,6 +2616,9 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     onPlaced?.(s)
 
     let src = null
+    // Файлы с данными грузятся ПАРАЛЛЕЛЬНО картинке: лист без них читается, а
+    // ждать их значило бы держать его помеченным «отправляется» дольше нужного.
+    const filesUp = files?.length ? uploadTaskFiles(id, files) : null
     try {
       // Папка — КАРТОЧКА ученика, а не адрес доски: политики storage разбирают
       // путь по папкам и составного адреса доски домашней работы не знают.
@@ -2561,10 +2642,13 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     const free = () => URL.revokeObjectURL(localSrc)
     if (!img) free()
     else Promise.resolve(img.decode?.()).then(free, free)
+    // Файл, который не доехал в хранилище, в штрих не пишем: кнопка вела бы в пустоту.
+    const stored = filesUp ? await filesUp : null
     step.after.src = src; delete step.after.pending
     const cur = strokes.current.get(id)
     if (!cur) return null   // картинку успели стереть или отменить — рассылать нечего
     cur.src = src; delete cur.pending
+    if (stored?.length) { cur.files = stored; step.after.files = stored }
     dirtyRef.current.add(id)   // правка НА МЕСТЕ: без пометки дельта её не заметит
     channelRef.current?.send({ type: "broadcast", event: "draw", payload: cur })
     scheduleDraw()
@@ -2572,6 +2656,34 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     // картинка ехала, — тот таймер при уходе гасится, и она пропала бы.
     persistRef.current?.()
     return cur
+  }
+
+  // Прилагаемый к заданию файл (.xlsx/.zip/.txt) кладём в ту же папку ученика, что
+  // и картинки доски: политики storage пускают туда обе стороны, поэтому файл
+  // скачивается прямо с доски и репетитором, и учеником. В сам штрих он не едет —
+  // штрих ходит по realtime и лежит строкой в базе, а таблица КЕГЭ это сотни строк.
+  async function uploadTaskFiles(id, files) {
+    const out = []
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i]
+      // Имя чистим: в ключе объекта хранилища пробелы и кириллица только мешают,
+      // а показывается всё равно исходное имя из штриха.
+      const safe = String(f.name || `file${i}`).replace(/[^\w.-]+/g, "_")
+      const path = `board/${roomStudentId(roomId)}/${id}-${i}-${safe}`
+      try {
+        const { error } = await supabase.storage.from(IMG_BUCKET).upload(path, f.blob, { upsert: true, contentType: f.blob.type || "application/octet-stream" })
+        if (!error) out.push({ n: f.name, p: path })
+      } catch { /* файла на доске просто не будет — задание читается и без него */ }
+    }
+    return out
+  }
+
+  // Скачивание прилагаемого файла с доски. Бакет приватный, поэтому берём файл
+  // через клиент (он ходит с токеном роли), а не по прямому адресу.
+  async function downloadBoardFile(f) {
+    const { data, error } = await supabase.storage.from(IMG_BUCKET).download(f.p)
+    if (error || !data) throw error || new Error("no file")
+    downloadBlob(f.n, data)
   }
 
   function onDragOver(e) {
@@ -2650,14 +2762,29 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     return bb ? { x: bb.minX, y: bb.maxY + SHEET_GAP, off: true } : { x: cx, y: cy }
   }
   // Лист с заданием из банка — на свободное место, а не поверх написанного.
-  async function insertTaskSheet(file, sheetWidth, answer = null) {
+  async function insertTaskSheet(file, sheetWidth, answer = null, files = null) {
     const c = canvasRef.current; if (!c) return
     let off = false
     await addImageAt(file, 0, 0, {
-      fitWidth: sheetWidth, sheet: true, answer,
+      fitWidth: sheetWidth, sheet: true, answer, files,
       place: (w, h) => { const spot = freeSpot(w, h); off = !!spot.off; return [spot.x, spot.y] },
       onPlaced: (st) => { if (off) focusSheet(strokeBBox(st)) },
     })
+  }
+
+  // Ученик набирает ответ — показываем это репетитору. Шлём не чаще раза в 250 мс,
+  // иначе быстрый ввод превратился бы в поток посылок; хвост дотягивает последнее
+  // значение, чтобы у репетитора не осталось оборванное на середине слово.
+  function typeTaskAnswer(id, v) {
+    const send = () => {
+      typeSent.current.set(id, { at: Date.now(), timer: null })
+      channelRef.current?.send({ type: "broadcast", event: "qa-type", payload: { id, v: String(v).slice(0, 120) } })
+    }
+    const rec = typeSent.current.get(id)
+    const wait = rec ? 250 - (Date.now() - rec.at) : 0
+    if (wait <= 0) { if (rec?.timer) clearTimeout(rec.timer); send(); return }
+    if (rec.timer) clearTimeout(rec.timer)
+    rec.timer = setTimeout(send, wait)
   }
 
   // Проверка ответа на листе. Ответ и результат кладутся в САМ штрих: так их видит
@@ -2696,6 +2823,9 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       // иначе кабинет ученика потяжелел бы на него у всех.
       const { taskToImageFile, SHEET_WIDTH } = await import("../pages/taskSnapshot")
       const file = await taskToImageFile(req.task, { label: req.label || "" })
+      // Прилагаемый файл собирается из тех же данных, что лежат в самой работе
+      // (homework.bank_tasks), и едет на доску вместе с листом.
+      const files = taskFiles(req.task).map((f) => ({ name: f.name, blob: f.blob() }))
       const bb = sceneBBox([...strokes.current.values()])
       const x = bb ? bb.minX : -SHEET_WIDTH / 2
       const y = bb ? bb.maxY + SHEET_GAP : -SHEET_GAP
@@ -2704,7 +2834,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       // своя плашка «Отправляется».
       let placed = false
       await addImageAt(file, x, y, {
-        fitWidth: SHEET_WIDTH, sheet: true, topLeft: true, taskKey: req.key,
+        fitWidth: SHEET_WIDTH, sheet: true, topLeft: true, taskKey: req.key, files,
         onPlaced: (st) => { placed = true; setSheetBusy(false); focusSheet(strokeBBox(st)) },
       })
       if (!placed) setSheetErr(true)
@@ -3856,7 +3986,8 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         {/* Поля ответа под листами с заданием */}
         {qaBoxes.map((b) => (
           <TaskAnswerBox key={b.id} panel={b} dark={dark} panelBg={panelBg} panelBorder={panelBorder}
-            tutor={isTutor} onCheck={checkTaskAnswer} onReset={resetTaskAnswer} />
+            tutor={isTutor} draft={drafts[b.id]} onCheck={checkTaskAnswer} onReset={resetTaskAnswer}
+            onType={typeTaskAnswer} onFile={downloadBoardFile} />
         ))}
 
         {/* Оверлей выделения: рамка + ручки + панель свойств */}

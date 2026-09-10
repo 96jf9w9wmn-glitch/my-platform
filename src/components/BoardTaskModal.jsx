@@ -132,8 +132,11 @@ export default function BoardTaskModal({ dark = false, roomId = null, tutorSubje
     setBusy(true); setErr("")
     try {
       const file = await taskToImageFile(task, { label: subjectLabel(examType) })
+      // Файл с данными едет на доску вместе с листом: собирается он здесь, в
+      // браузере, и другого места, откуда ученик мог бы его взять, нет.
+      const files = attachments.map((f) => ({ name: f.name, blob: f.blob() }))
       // ширину листа задаёт снимок: доска кладёт картинку в неё, а не вписывает как фото
-      await onInsert(file, SHEET_WIDTH, checkableAnswer(task))
+      await onInsert(file, SHEET_WIDTH, checkableAnswer(task), files)
       close()
     } catch {
       setErr("Не получилось перенести задание на доску")
@@ -304,22 +307,21 @@ export default function BoardTaskModal({ dark = false, roomId = null, tutorSubje
                 )}</Reveal>
               </div>
 
-              {/* Файл с данными на доску не переносится — доска знает только штрихи и
-                  растр. Раньше здесь стояло одно предупреждение, и взять сам файл
-                  репетитору было негде: он собирается в браузере генератором и нигде
-                  не лежит. Поэтому предупреждение отдаёт файл сразу. */}
+              {/* Файл с данными уезжает на доску вместе с листом и скачивается там
+                  обеими сторонами. Кнопка остаётся и здесь: репетитор часто открывает
+                  таблицу у себя раньше, чем ученик доберётся до доски. */}
               {attachments.length > 0 && (
-                <div className="mb-4 px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-100">
-                  <div className="flex items-start gap-2 text-xs text-amber-700">
-                    <Icon name="warning" size={14} className="mt-0.5 flex-shrink-0" />
+                <div className="mb-4 px-3 py-2.5 rounded-xl bg-blue-500/[0.06] border border-blue-200">
+                  <div className="flex items-start gap-2 text-xs text-gray-600">
+                    <Icon name="paperclip" size={14} className="mt-0.5 flex-shrink-0 text-blue-500" />
                     <span>
-                      {attachments.length > 1 ? "Файлы к заданию на доску не переносятся" : "Файл к заданию на доску не переносится"} — скачайте и отправьте ученику.
+                      {attachments.length > 1 ? "Файлы уедут на доску вместе с заданием" : "Файл уедет на доску вместе с заданием"} — ученик скачает его там же.
                     </span>
                   </div>
                   <div className="flex flex-wrap gap-2 mt-2">
                     {attachments.map((f) => (
                       <button key={f.name} onClick={f.download}
-                        className="no-press inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-amber-200 text-xs font-medium text-amber-700 hover:bg-amber-500/10 transition active:scale-95">
+                        className="no-press inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-blue-200 text-xs font-medium text-blue-600 hover:bg-blue-500/10 transition active:scale-95">
                         <Icon name="download" size={13} />
                         {f.name}
                         <span className="text-[11px] opacity-70">({f.hint})</span>
