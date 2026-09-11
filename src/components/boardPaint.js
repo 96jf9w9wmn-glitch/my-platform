@@ -483,7 +483,12 @@ export function preloadSceneImages(strokes, timeout = 2500) {
   const one = (src) => new Promise((res) => {
     const im = new Image()
     if (!src.startsWith("data:")) im.crossOrigin = "anonymous"
-    im.onload = () => { cache.set(src, im); res() }
+    // Ждём не загрузки, а РАЗБОРА: «загруженная» картинка с неразобранным растром
+    // рисуется в WebKit пустотой (см. pixelsReady), и на снимке доски это было бы
+    // навсегда — превью занятия сохраняется в базу таким, каким получилось.
+    // Сверху всё равно стоит общий срок ожидания, поэтому зависший в скрытой
+    // вкладке decode() снимок не задержит.
+    im.onload = () => { cache.set(src, im); Promise.resolve(im.decode?.()).then(res, res) }
     im.onerror = () => res()
     im.src = src
   })
