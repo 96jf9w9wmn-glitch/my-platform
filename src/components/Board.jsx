@@ -9,7 +9,7 @@ import { answersEqual } from "../utils"
 import {
   GRID, ENCLOSED_SHAPES, SHAPE_TOOLS, DASHABLE_SHAPES,
   TEXT_FONT, TEXT_LINE, TEXT_MIN, TEXT_MAX, TEXT_DEFAULT, textMetrics, textBoxPoints, textFont,
-  isDarkColor, resolveColor, strokeBBox, sceneBBox, viewForBBox, paintStroke, scenePreview, tintSheet,
+  isDarkColor, resolveColor, strokeBBox, sceneBBox, viewForBBox, paintStroke, scenePreview, tintSheet, pixelsReady,
   latestBBox as latestSceneBBox,
 } from "./boardPaint"
 // Выбор задания тянет за собой генераторы всех предметов и html2canvas — грузим
@@ -54,6 +54,13 @@ const CULL_PAD = 80          // запас за краем экрана, в пр
 // скрытой вкладке не завершается никогда (см. loadImage), а на видимой уходит
 // десятки миллисекунд — этого запаса хватает и на слабом ноутбуке.
 const DECODE_WAIT_MS = 300
+// Растр «получен», но ещё не разобран — сколько ждём и сколько раз пробуем снова
+// (см. pixelsReady в boardPaint.js). Двенадцать проб по 150 мс это почти две
+// секунды: столько не разбирается ни один лист, поэтому дальше картинку
+// перезагружаем целиком, а на второй раз принимаем как есть — вечно ждать нельзя,
+// вдруг картинка честно прозрачная.
+const PX_RETRY_MS = 150
+const PX_TRIES = 12
 // Поле ответа под листом набрано в тех же единицах, в каких снят сам лист (SHEET_W и
 // кегль условия в pages/taskSnapshot.js), и потом целиком масштабируется вместе с ним —
 // поэтому у задания и поля один масштаб. Держать эту ширину в согласии с taskSnapshot.
@@ -1031,6 +1038,8 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   useEffect(() => () => { ownBlobs.current.forEach((u) => URL.revokeObjectURL(u)); ownBlobs.current = [] }, [])
   const tintCache = useRef(new Map()) // "src|вес" -> холст листа, перекрашенный под тёмную доску
   const tintPending = useRef(new Set()) // листы, которые прямо сейчас перекрашивает фоновый поток
+  const pxWait = useRef(new Map())    // "src|вес" -> сколько раз ждали разбора растра (см. imgReady)
+  const pxTimer = useRef(null)        // повтор кадра, пока растр разбирается
   const drawFailed = useRef(new Set())  // штрихи, на которых сорвалась отрисовка: жалуемся один раз
   const fileInputRef = useRef(null)   // скрытый input для загрузки картинки кнопкой
   // Адрес доски, ДЛЯ КОТОРОЙ загружена сцена (null — ещё не загружена). Именно
@@ -1632,9 +1641,15 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     // рамкой и после возвращения — до первого случайного движения по доске.
     // Отсюда «картинок нет» и «то видно, то не видно».
     img.onload = () => {
-      let done = false
-      const paint = () => { if (done) return; done = true; scheduleDraw() }
-      Promise.resolve(img.decode?.()).then(paint, paint)
+      let painted = false
+      const paint = () => { if (painted) return; painted = true; scheduleDraw() }
+      // Разбор дошёл. Если кадр уже рисовали по таймауту, картинка в нём могла
+      // выйти пустой, а её перекраска — осесть в кэше: сбрасываем и то и другое.
+      const settled = () => {
+        if (painted) { tintCache.current.delete(key); tintPending.current.delete(key); pxWait.current.delete(key) }
+        paint(); scheduleDraw()
+      }
+      Promise.resolve(img.decode?.()).then(settled, settled)
       setTimeout(paint, DECODE_WAIT_MS)
     }
     img.onerror = () => {
@@ -1657,7 +1672,38 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   function forgetImage(src) {
     for (const k of [src, src + "|prev", src + "|full"]) {
       imgCache.current.delete(k); tintCache.current.delete(k); tintPending.current.delete(k)
+      pxWait.current.delete(k)
     }
+  }
+
+  // Годится ли картинка к отрисовке ПРЯМО СЕЙЧАС.
+  //
+  // Мало дождаться загрузки: `complete` означает, что файл получен, а пиксели могут
+  // быть ещё не разобраны — и WebKit рисует такую картинку молча ничем (проба —
+  // pixelsReady в boardPaint.js). Раньше это выходило так: лист на доске то есть,
+  // то нет, причём пропадал он ровно при зуме — приближение просит полное
+  // разрешение, а свежезагруженный растр к первому кадру разобрать не успевает.
+  // И пропадал НАСОВСЕМ: перекраска пустоты оседала в кэше листов.
+  //
+  // Пока растр не разобран, лист показывается рамкой загрузки, а кадр
+  // повторяется через PX_RETRY_MS. Если разбор не доехал и за дюжину проб,
+  // картинку перечитываем заново, а на второй заход принимаем как есть —
+  // бесконечно ждать нельзя: картинка может быть честно прозрачной.
+  function imgReady(img, key) {
+    if (!img || !img.complete || !img.naturalWidth) return false
+    if (img.pxOk) return true
+    if (pixelsReady(img)) { img.pxOk = true; pxWait.current.delete(key); return true }
+    const n = (pxWait.current.get(key) || 0) + 1
+    pxWait.current.set(key, n)
+    if (n > PX_TRIES * 2) { img.pxOk = true; return true }
+    if (n === PX_TRIES) {                  // разбора так и нет — просим растр заново
+      imgCache.current.delete(key); tintCache.current.delete(key); tintPending.current.delete(key)
+    }
+    // Кадр повторяем В ЛЮБОМ случае: перезагрузку картинки затевает сам же
+    // getImage на следующем кадре, и без этого повтора её никто не затеет.
+    clearTimeout(pxTimer.current)
+    pxTimer.current = setTimeout(() => scheduleDraw(), PX_RETRY_MS)
+    return false
   }
 
   function getImage(src, wantTint = false, worldW = 0) {
@@ -1677,7 +1723,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       // Полный лист ещё в пути — рисуем предпросмотр, если он уже есть. Проверять
       // это надо на КАЖДОМ кадре, а не только в момент запроса: иначе с начала
       // загрузки и до её конца лист показывался бы пустой рамкой.
-      if (wantFull && !(img.complete && img.naturalWidth)) {
+      if (wantFull && !imgReady(img, key)) {
         // Лёгкий предпросмотр заводим ЗДЕСЬ ЖЕ, если его ещё нет: доску могли
         // открыть сразу приближённой (обзор запоминается), и тогда лёгкой копии
         // в кэше не оказывалось вовсе — на месте листа стояла пустая рамка всё
@@ -1685,10 +1731,13 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         // приходит первым.
         const pk = src + "|prev"
         const prev = imgCache.current.get(pk) || loadImage(pk, src, BOARD_PREVIEW_SPEC)
-        if (prev.complete && prev.naturalWidth) { img = prev; key = pk }
+        if (imgReady(prev, pk)) { img = prev; key = pk }
       }
     }
-    if (!wantTint || !img.complete || !img.naturalWidth) return img
+    // Неразобранный растр не отдаём вовсе: нарисованный, он оставит пустое место
+    // (WebKit) и уведёт в кэш пустую перекраску. Рамка загрузки честнее.
+    if (!imgReady(img, key)) return null
+    if (!wantTint) return img
     if (tintCache.current.has(key)) return tintCache.current.get(key) || img
     // Предпросмотр (700 точек) и только что вставленный свой лист перекрашиваются
     // тут же — это единицы миллисекунд и один лист за раз. Полный лист из
@@ -1706,13 +1755,18 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       tintSheetAsync(img).then((bm) => {
         tintPending.current.delete(key)
         // Фон не справился (старый браузер, картинка без CORS) — один раз синхронно.
-        tintCache.current.set(key, bm || tintSheet(img))
+        // Пустой результат в кэш не пускаем ни с той, ни с другой стороны: осевшая
+        // пустота и делала лист невидимым насовсем. Если пусто и там и там —
+        // кладём null, и лист рисуется просто неперекрашенным: белый на тёмной
+        // доске некрасив, но это лист, а не дыра.
+        const out = bm && pixelsReady(bm) ? bm : tintSheet(img)
+        tintCache.current.set(key, out && pixelsReady(out) ? out : null)
         scheduleDraw()
       })
     }
     const pk = src + "|prev"
     const prev = imgCache.current.get(pk)
-    if (prev && prev.complete && prev.naturalWidth) {
+    if (prev && imgReady(prev, pk)) {
       if (!tintCache.current.has(pk)) tintCache.current.set(pk, tintSheet(prev))
       return tintCache.current.get(pk) || prev
     }
@@ -2186,6 +2240,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     clearTimeout(sendTimer.current); clearTimeout(viewSendTimer.current)
     clearTimeout(offscreenTimer.current); clearTimeout(offscreenOutTimer.current)
     clearTimeout(rejoinTimer.current); clearTimeout(trackTimer.current); clearTimeout(linkDownTimer.current)
+    clearTimeout(pxTimer.current)
     // ВАЖНО: НЕ отменяем teardownTimer — иначе канал board:${roomId} не удаляется
     // при выходе, остаётся подписанным, и при повторном входе новый канал не может
     // занять тот же топик (белый экран, «не грузит», лечится только F5). Таймер

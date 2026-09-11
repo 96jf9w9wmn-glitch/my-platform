@@ -372,6 +372,37 @@ export function paintStroke(ctx, s, { darkBg = false, getImage = () => null } = 
 // живая доска гоняет её в фоновом потоке, здесь синхронная версия для превью и
 // снимка занятия. Возвращает null, если холст «испорчен» картинкой без CORS —
 // тогда рисуем как есть.
+// Разобран ли растр НА САМОМ ДЕЛЕ.
+//
+// `complete` и `naturalWidth` у картинки означают только «файл получен и заголовок
+// прочитан»: пиксели к этому моменту могут быть ещё не разобраны, и WebKit рисует
+// такую картинку МОЛЧА НИЧЕМ — ни исключения, ни следа на холсте. Замер на стенде
+// с настоящим листом: в четырёх запусках из пяти лист доски в WebKit не появлялся
+// вовсе, в Chromium — ни разу. Хуже того, перекраска такой пустоты оседала в кэше
+// перекрашенных листов, и лист оставался невидимым до перезахода на доску.
+//
+// Дешёвая проба: ужимаем картинку в 8×8 и смотрим, есть ли там хоть что-нибудь.
+// Читается один раз на картинку (дальше место вызова помнит ответ), поэтому цена
+// пробы — доли миллисекунды на загрузку листа. Испорченный холст (картинка без
+// CORS) читать нельзя — такую считаем готовой: перекрасить её всё равно нечем.
+const READY_PROBE = 8
+let readyProbe = null
+export function pixelsReady(img) {
+  if (!img || !img.complete || !(img.naturalWidth || img.width)) return false
+  try {
+    if (!readyProbe) readyProbe = document.createElement("canvas")
+    readyProbe.width = READY_PROBE; readyProbe.height = READY_PROBE
+    const px = readyProbe.getContext("2d", { willReadFrequently: true })
+    px.clearRect(0, 0, READY_PROBE, READY_PROBE)
+    px.drawImage(img, 0, 0, READY_PROBE, READY_PROBE)
+    const d = px.getImageData(0, 0, READY_PROBE, READY_PROBE).data
+    for (let i = 3; i < d.length; i += 4) if (d[i] > 8) return true
+    return false
+  } catch {
+    return true
+  }
+}
+
 export function tintSheet(source) {
   const w = source.naturalWidth || source.width, h = source.naturalHeight || source.height
   if (!w || !h) return null
