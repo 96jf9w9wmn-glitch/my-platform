@@ -2048,8 +2048,13 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     const root = rootRef.current
     if (!root) return
     let prev = 1
-    const start = (e) => { e.preventDefault(); prev = e.scale || 1 }
+    // Страница уже увеличена (щипок до открытия доски, зум с клавиатуры) —
+    // защиту отпускаем: иначе уменьшить её обратно было бы нечем, холст держит
+    // touch-action: none, а всё остальное — эти же обработчики.
+    const pageZoomed = () => (window.visualViewport?.scale || 1) > 1.01
+    const start = (e) => { if (pageZoomed()) return; e.preventDefault(); prev = e.scale || 1 }
     const change = (e) => {
+      if (pageZoomed()) return
       e.preventDefault()
       const cv = canvasRef.current
       const s = e.scale || 1
@@ -2065,7 +2070,12 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       zoomAt(clamp(e.clientX - r.left, 0, r.width), clamp(e.clientY - r.top, 0, r.height), f)
       scheduleDraw()
     }
-    const end = (e) => { e.preventDefault(); prev = 1 }
+    const end = (e) => { if (!pageZoomed()) e.preventDefault(); prev = 1 }
+    // Сенсорный экран. Щипок мимо холста запрещает touch-action на слое доски
+    // (см. корневой div), а отмена touchmove с двумя касаниями — страховка для
+    // WebKit, где щипок считается по касаниям, а не только по gesture-событиям.
+    // Одно касание не трогаем: это прокрутка внутри панелей.
+    const touch = (e) => { if (e.touches.length > 1 && !pageZoomed()) e.preventDefault() }
     // Колёсный зум страницы (ctrl+колесо в Chrome и Firefox, ⌘+колесо в Safari)
     // над шапкой и панелью — та же беда, что и щипок: холст свой wheel уже
     // перехватывает, а здесь остаётся всё остальное.
@@ -2074,11 +2084,13 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     root.addEventListener("gesturestart", start, opts)
     root.addEventListener("gesturechange", change, opts)
     root.addEventListener("gestureend", end, opts)
+    root.addEventListener("touchmove", touch, opts)
     root.addEventListener("wheel", wheel, opts)
     return () => {
       root.removeEventListener("gesturestart", start, opts)
       root.removeEventListener("gesturechange", change, opts)
       root.removeEventListener("gestureend", end, opts)
+      root.removeEventListener("touchmove", touch, opts)
       root.removeEventListener("wheel", wheel, opts)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3982,10 +3994,20 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   const barX = H ? H.cx : 0
 
   return (
-    <div ref={rootRef} data-board-version="15" className={`fixed inset-0 z-[100000] flex flex-col screen-fade ${dark ? "board-dark" : ""} ${closingCls}`}
-      style={vvBox
-        ? { background: baseBg, left: vvBox.left, top: vvBox.top, width: vvBox.width, height: vvBox.height, right: "auto", bottom: "auto" }
-        : { background: baseBg }}>
+    <div ref={rootRef} data-board-version="16" className={`fixed inset-0 z-[100000] flex flex-col screen-fade ${dark ? "board-dark" : ""} ${closingCls}`}
+      style={{
+        background: baseBg,
+        // Щипок и двойной тап по ЛЮБОМУ месту слоя — шапке, панели, подсказке к
+        // заданию — не должны зумить страницу. `none` стоит на холсте, но Chromium
+        // берёт ПЕРЕСЕЧЕНИЕ touch-action всех пальцев: два пальца мимо холста
+        // (панель на телефоне узкая, промахнуться легко) — и увеличивался сам
+        // сайт, работать было невозможно (жалоба ученика, 11.09.2026; на iOS тот
+        // же щипок держали gesture-события выше). pan-x pan-y: прокрутка внутри
+        // панелей остаётся, зум страницы — нет. Страница уже увеличена —
+        // отпускаем, чтобы её можно было уменьшить обратно.
+        touchAction: vvBox ? "auto" : "pan-x pan-y",
+        ...(vvBox ? { left: vvBox.left, top: vvBox.top, width: vvBox.width, height: vvBox.height, right: "auto", bottom: "auto" } : null),
+      }}>
       {/* Шапка */}
       <div className="flex items-center justify-between px-3 h-12 border-b flex-shrink-0"
         style={{ borderColor: dark ? "rgba(255,255,255,.1)" : "rgba(0,0,0,.08)" }}>
