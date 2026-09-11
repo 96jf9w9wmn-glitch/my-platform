@@ -3323,8 +3323,13 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
               ) : (
                 <div className="flex flex-col gap-4">
 
-                  {/* HERO — аватар + имя + цель + телефон, на всю ширину */}
-                  <div className="glass p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-5">
+                  {/* Две колонки на широком экране: слева кто я, справа куда идти.
+                      На узком — друг под другом, как было. items-stretch, чтобы
+                      карточки были одной высоты и под короткой не зияла пустота. */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+
+                  {/* HERO — аватар + имя + цель + телефон */}
+                  <div className="glass h-full p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-5">
                     <div className="relative flex-shrink-0 self-center sm:self-auto cursor-pointer active:scale-95 transition-transform" onClick={() => studentAvatarRef.current.click()}>
                       {(avatarOverride || student.avatar) ? (
                         <img src={avatarOverride || student.avatar} alt="" className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover" />
@@ -3354,8 +3359,8 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       «Доска» и «Звонок» живут только здесь, чтобы вход в занятие
                       был в одном месте. */}
                   {nextLesson ? (
-                    <div className="next-lesson-card relative overflow-hidden rounded-2xl p-5 bg-gradient-to-br from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/25">
-                      <div className="relative flex items-start justify-between mb-4">
+                    <div className="next-lesson-card relative overflow-hidden rounded-2xl h-full p-5 flex flex-col bg-gradient-to-br from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/25">
+                      <div className="relative flex-1 flex items-start justify-between gap-3 mb-4">
                         <div className="flex items-center gap-3.5 min-w-0">
                           {/* bg-[rgba(...)] вместо bg-white/20: классы bg-white/N глобально
                               гасятся под .dark, а карточка синяя в обеих темах */}
@@ -3374,7 +3379,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                             </div>
                           </div>
                         </div>
-                        <div className="text-right flex-shrink-0 ml-3">
+                        <div className="text-right flex-shrink-0">
                           {/* Пока занятие идёт, отсчёта нет: считать до его начала уже нечего */}
                           <div className="text-sm font-medium tabular-nums bg-[rgba(255,255,255,0.2)] rounded-xl px-3 py-1.5 backdrop-blur-sm">
                             {nextInProgress
@@ -3397,7 +3402,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       </div>
                     </div>
                   ) : (
-                    <div className="glass p-5 flex flex-col sm:flex-row sm:items-center gap-3">
+                    <div className="glass h-full p-5 flex flex-col sm:flex-row sm:items-center gap-3">
                       <div className="flex items-center gap-3 flex-1 text-gray-400">
                         <Icon name="calendar" size={20} />
                         <span className="text-sm">Занятий не запланировано</span>
@@ -3414,6 +3419,8 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       </div>
                     </div>
                   )}
+
+                  </div>
 
                   {/* KPI-ряд — успеваемость плитками, всегда 4 плитки (нет данных → «—»), без пустот */}
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
