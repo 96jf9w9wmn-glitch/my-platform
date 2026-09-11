@@ -576,6 +576,15 @@ export async function splitSource(file, onProgress) {
   return { pages, starts, guessed: starts.some((s) => s.guess) }
 }
 
+// Страницы файла картинками, без поиска границ — для доски: решение, присланное
+// учеником файлом PDF, ложится на неё постранично тем же рендером, которым файл
+// задания режется на задания. Фото — одной страницей.
+export async function filePages(file) {
+  return /^image\//.test(file.type) ? readImage(file)
+    : isDocx(file) ? readDocx(file)
+    : readPdf(file)
+}
+
 // Картинка задания как файл. Через `fetch(dataUrl)` было бы короче, но Safari
 // таких запросов не делает вовсе — выдача работы падала на «Load failed», и
 // картинки заданий не доезжали до хранилища.

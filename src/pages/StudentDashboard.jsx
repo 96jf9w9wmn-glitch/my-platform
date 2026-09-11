@@ -28,7 +28,7 @@ function boardHwFromUrl() {
   const v = new URLSearchParams(window.location.search).get("board")
   return v && v.startsWith("hw:") ? v.slice(3) : null
 }
-import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, parseHomeworkTasks, creditedNums, formatPhone, answersEqual, homeworkTestScore, plural, timeUntilLesson } from "../utils"
+import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, parseHomeworkTasks, creditedNums, formatPhone, answersEqual, homeworkTestScore, plural, timeUntilLesson, homeworkBoardSheet } from "../utils"
 import { studentBilling, periodLabel } from "../billing"
 import { longDate } from "../invoices"
 import { homeworkRoom } from "../boardRoom"
@@ -1081,7 +1081,7 @@ const HW_LIST_COLS = [
   "opened_at", "auto_submitted", "retry_policy", "retry_limit", "solution_files", "credited",
 ].join(", ")
 
-function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten, onSolveOnBoard }) {
+function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten, onSolveOnBoard, onOpenBoard }) {
   const [uploading, setUploading] = useState(false)
   const [submittingWritten, setSubmittingWritten] = useState(false)
   // Доработка приходит с уже принятыми ответами: репетитор оставил в работе те,
@@ -1108,6 +1108,23 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten, o
     return out
   })
   const [answersOpen, setAnswersOpen] = useState(false)   // разбор ответов свёрнут по умолчанию
+  // Доска этой работы после сдачи: ученик решал на ней или репетитор проверил на
+  // ней — и пометки надо найти. Кнопка только у работы, у которой доска есть:
+  // на сданной работе «Решить на доске» уже нет, а пустую доску предлагать незачем.
+  const [hasBoard, setHasBoard] = useState(false)
+  useEffect(() => {
+    if (!onOpenBoard || !(hw.status === "submitted" || hw.status === "done")) return
+    let on = true
+    supabase.from("boards").select("student_id").eq("student_id", homeworkRoom(hw.student_id, hw.id)).maybeSingle()
+      .then(({ data }) => { if (on) setHasBoard(!!data) }, () => {})
+    return () => { on = false }
+  }, [hw.id, hw.status, hw.student_id, onOpenBoard])
+  const boardButton = hasBoard && (
+    <button onClick={() => onOpenBoard(hw.id)}
+      className="press-fill mt-3 inline-flex items-center gap-1.5 text-xs font-medium px-3.5 py-1.5 rounded-full ring-1 ring-blue-500/30 text-blue-600 dark:text-blue-300">
+      <Icon name="clipboard" size={12} />Доска работы
+    </button>
+  )
   const fileRef = useRef()
   // Автосдача по таймеру живёт в эффекте: читаем прикреплённое через ref,
   // чтобы каждое новое фото не перезапускало эффект таймера.
@@ -1256,18 +1273,12 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten, o
   // к заданию прилип бы чужой рисунок. Нет колонки или работа собрана иначе —
   // всё показывается текстом, ровно как раньше.
   const bankTasks = Array.isArray(hw.bank_tasks) && hw.bank_tasks.length === tasks.length ? hw.bank_tasks : null
-  // Задание для доски. У работы из банка (и у нарезанного файла) берём его целиком —
-  // с чертежом и программой, иначе на доску уехало бы условие без рисунка. Номер
-  // ставим ТОТ ЖЕ, что видит ученик в работе, а не номер задания в экзамене.
-  // Ключ постоянный (работа + номер): по нему доска узнаёт уже перенесённый лист.
+  // Задание для доски: лист и ключ строит общий helper (utils.js) — тот же, что
+  // у репетитора при проверке на доске, поэтому лист один на обе стороны.
   const boardTaskOf = (i) => {
     const t = tasks[i]
-    const bank = bankTasks?.[i]
-    const num = t?.n ?? i + 1
-    const task = bank && (bank.condition_text || bank.image_url || bank.program)
-      ? { ...bank, number: num }
-      : { number: num, condition_text: t?.text || "" }
-    return { key: `hw:${hw.id}:${num}`, task, label: hw.title, hwId: hw.id }
+    const sheet = homeworkBoardSheet(hw.id, { n: t?.n ?? i + 1, bankTask: bankTasks?.[i], text: t?.text })
+    return { ...sheet, label: hw.title, hwId: hw.id }
   }
   // Строк при решении столько же, сколько заданий: у работы бывает больше
   // условий, чем ответов (репетитор вписал ответы не ко всем), и такое задание
@@ -1365,6 +1376,7 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten, o
               <Icon name="message" size={12} className="mt-0.5 flex-shrink-0" />{hw.comment}
             </div>
           )}
+          {boardButton}
         </div>
       )}
 
@@ -1622,6 +1634,7 @@ function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten, o
               <span className="flex items-center gap-1"><Icon name="paperclip" size={12} />Твоя работа</span>
             </a>
           )}
+          {boardButton && <div>{boardButton}</div>}
         </div>
       )}
     </div>
@@ -3428,6 +3441,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                 <HomeworkDetail
                   hw={selectedHomework}
                   onSolveOnBoard={openBoardWithTask}
+                  onOpenBoard={openBoardRoom}
                   onBack={() => { setSelectedHomework(null); setReturning(true) }}
                   onUpload={uploadHomeworkSubmission}
                   onSubmitTest={submitHomeworkTest}

@@ -25,8 +25,11 @@ const answerShape = (text) =>
   isLongAnswer(text) ? "px-2.5 py-1.5 rounded-xl whitespace-pre-line leading-relaxed"
     : "px-2 py-0.5 rounded-full"
 
-function TaskBlock({ item, onCredit }) {
+function TaskBlock({ item, onCredit, onBoard }) {
   const { bankTask } = item
+  // Задание с эталоном проверяет сама работа; без эталона (развёрнутый ответ,
+  // письменная работа) ход решения смотрит репетитор — для него и есть доска.
+  const autoChecked = item.answer != null && item.answer !== ""
   // Работа уже решена — значит окно показывает не условия, а разбор: у каждого
   // задания видно, что написал ученик и сошлось ли это с эталоном. `given`
   // приходит только у решённой работы (undefined — работа ещё не сдана),
@@ -163,11 +166,25 @@ function TaskBlock({ item, onCredit }) {
 
         {/* Фото решения стоит у своего задания: ошибку ищут в ходе решения, а не
             в одном ответе. Общий список фото в разборе остаётся для старых работ. */}
-        {item.solutionUrl && (
-          <a href={item.solutionUrl} target="_blank" rel="noreferrer"
-            className="press-fill self-start text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-600 inline-flex items-center gap-1.5">
-            <Icon name="camera" size={12} />Фото решения
-          </a>
+        {(item.solutionUrl || (onBoard && !autoChecked)) && (
+          <div className="flex items-center gap-2 flex-wrap">
+            {item.solutionUrl && (
+              <a href={item.solutionUrl} target="_blank" rel="noreferrer"
+                className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-600 inline-flex items-center gap-1.5">
+                <Icon name="camera" size={12} />Фото решения
+              </a>
+            )}
+            {/* Проверка на доске — у задания без автопроверки: сверить его не с
+                чем, и репетитор разбирает ход решения сам. Условие и фото решения
+                ложатся на доску ЭТОЙ работы — ту же, где ученик решает кнопкой
+                «Решить на доске», — поэтому пометки репетитора он увидит там же. */}
+            {onBoard && !autoChecked && (
+              <button type="button" onClick={() => onBoard(item)}
+                className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-blue-500/25 text-blue-600 dark:text-blue-300 inline-flex items-center gap-1.5">
+                <Icon name="clipboard" size={12} />Проверить на доске
+              </button>
+            )}
+          </div>
         )}
 
         {/* Номер задания на экзамене. В варианте им же подписан кружок, и второй
@@ -182,8 +199,11 @@ function TaskBlock({ item, onCredit }) {
   )
 }
 
-export default function TasksModal({ title, note, intro, items, onClose, onCredit }) {
+export default function TasksModal({ title, note, intro, items, onClose, onCredit, onBoard }) {
   const { cls: closingCls, close } = useClosing(onClose)
+  // Уходя на доску, окно закрываем: доска открывается поверх кабинета, и
+  // оставленное под ней окно встретило бы репетитора при возвращении.
+  const toBoard = onBoard ? (item) => { onBoard(item); close() } : undefined
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") close() }
@@ -218,7 +238,7 @@ export default function TasksModal({ title, note, intro, items, onClose, onCredi
           )}
 
           <div className="flex flex-col gap-2.5">
-            {items.map((it, i) => <TaskBlock key={i} item={it} onCredit={onCredit} />)}
+            {items.map((it, i) => <TaskBlock key={i} item={it} onCredit={onCredit} onBoard={toBoard} />)}
             {items.length === 0 && !intro && (
               <div className="rounded-2xl ring-1 ring-dashed ring-gray-200/80 dark:ring-white/10 text-sm text-gray-400 text-center py-8">
                 Условий нет

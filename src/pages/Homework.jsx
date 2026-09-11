@@ -1920,10 +1920,13 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
   // листы при этом не дублируются — у каждого свой постоянный ключ).
   const checkRun = useRef(0)
   function checkOnBoard(items) {
-    // Условий в работе нет (задание выдано файлом) — на доску едет само решение.
-    const sheets = items.length ? items.map(boardSheetOf)
-      : hw.submission_url ? [{ solution: { key: homeworkSolutionKey(hw.id, "all"), url: hw.submission_url } }]
-      : []
+    const sheets = items.map(boardSheetOf)
+    // Решение одним файлом на всю работу — отдельный лист в конце. Фото ученик
+    // снимает к каждому заданию, но работа, сданная одним файлом (и все работы
+    // до того, как фото стали привязываться к заданиям), везёт его только здесь.
+    if (hw.submission_url && !sheets.some((sh) => sh.solution)) {
+      sheets.push({ solution: { key: homeworkSolutionKey(hw.id, "all"), url: hw.submission_url } })
+    }
     if (!sheets.length) return
     onOpenBoard(hw, { key: `check:${hw.id}:${++checkRun.current}`, hwId: hw.id, label: hw.title, sheets })
   }

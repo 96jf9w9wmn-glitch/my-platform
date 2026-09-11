@@ -1089,6 +1089,25 @@ export function homeworkTaskItems(hw) {
   }
 }
 
+// Лист задания для доски — тот же, что видит ученик в работе: с чертежом и
+// программой из банка, когда они есть, иначе условие текстом. Номер — тот, что
+// стоит в работе, а не номер задания на экзамене. Ключ листа — работа + номер:
+// по нему доска узнаёт уже лежащий лист и не кладёт второй. Один и тот же ключ
+// строят ОБА кабинета — «Решить на доске» у ученика и «Проверить на доске» у
+// репетитора, — поэтому он живёт здесь, а не в каждом из них.
+export function homeworkBoardSheet(hwId, item) {
+  const num = item.n
+  const bank = item.bankTask
+  const task = bank && (bank.condition_text || bank.image_url || bank.program)
+    ? { ...bank, number: num }
+    : { number: num, condition_text: item.text || "" }
+  return { key: `hw:${hwId}:${num}`, task }
+}
+
+// Ключ фото решения ученика к заданию — лист под условием, который кладёт
+// репетитор при проверке на доске.
+export const homeworkSolutionKey = (hwId, num) => `hw:${hwId}:${num}:solution`
+
 // new Date("YYYY-MM-DD") parses as UTC midnight, which shifts a day back in
 // timezones behind UTC — this constructs the date from local components instead.
 export function parseLocalDate(dateStr) {

@@ -731,6 +731,11 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // доска показывает тот же загрузчик, что и при загрузке сцены.
   const [sheetBusy, setSheetBusy] = useState(false)
   const [sheetErr, setSheetErr] = useState(false)
+  // Что именно не доехало, зависит от того, кто переносил: ученик несёт на доску
+  // одно задание, репетитор — условия работы вместе с решением ученика.
+  const sheetErrText = taskSheet?.sheets?.length
+    ? "Работа перенеслась на доску не полностью — она осталась в кабинете"
+    : "Задание не перенеслось на доску — условие осталось в кабинете"
   // База отказала в записи (42501): доска сохраняться не будет, и молчать об этом
   // нельзя — написанное пропадёт при перезагрузке, а человек об этом не узнает.
   // Единственная причина такого отказа — не выполненная миграция board_rooms.sql
@@ -3118,35 +3123,117 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     scheduleSave(); scheduleDraw()
   }
 
-  // Задание, которое ученик открыл кнопкой «Решить на доске» в домашней работе.
-  // Лист кладётся ПОД всем написанным, а не в центр обзора: доска бесконечная,
-  // место под решение всегда есть, а поверх чужой записи лист лёг бы стеной.
-  // Второй раз то же задание не переносим — лист помечен ключом работы и номера,
-  // и доска просто везёт к нему обзор: иначе к концу недели их лежала бы стопка.
+  // Решение, которое ученик прислал файлом, — листами для доски. Фото едет как
+  // есть, PDF и .docx раскладываются постранично тем же разбором, которым режется
+  // файл задания (homeworkSplit): иначе на доску нечего положить, а именно ход
+  // решения репетитор и смотрит.
+  async function solutionSheetFiles(url) {
+    // Подписываем заново: ссылка пришла из кабинета, а подпись живёт четыре часа —
+    // у вкладки, открытой с утра, она уже протухла.
+    const signed = await signStorageUrl(url, "homework").catch(() => url)
+    const res = await fetch(signed || url)
+    if (!res.ok) throw new Error("решение не скачалось")
+    const blob = await res.blob()
+    const name = decodeURIComponent(String(url).split("?")[0].split("/").pop() || "solution")
+    // Снимок с телефона — ФОТОГРАФИЯ, и перекрашивать его под тёмную доску
+    // нельзя: перекраска переворачивает светлоту, и снимок становится негативом
+    // (проверено — лицо на фото выходит чёрным с белыми волосами). Лист же,
+    // отрисованный из PDF или .docx, это белая страница с чёрным текстом —
+    // ровно то, для чего перекраска и сделана.
+    if ((blob.type || "").startsWith("image/")) {
+      return { sheet: false, files: [new File([blob], name, { type: blob.type })] }
+    }
+    const { filePages } = await import("../pages/homeworkSplit")
+    const pages = await filePages(new File([blob], name, { type: blob.type || "application/pdf" }))
+    const out = []
+    for (const [i, pg] of pages.entries()) {
+      // Тип берём у самого блоба: Safari webp с холста не умеет и молча отдаёт PNG.
+      const b = await new Promise((r) => pg.canvas.toBlob(r, "image/webp", 0.85))
+        || await new Promise((r) => pg.canvas.toBlob(r, "image/png"))
+      if (b) out.push(new File([b], `${name}-${i + 1}`, { type: b.type || "image/png" }))
+    }
+    if (!out.length) throw new Error("решение не разобралось")
+    return { sheet: true, files: out }
+  }
+
+  // Листы, с которыми доску открыли из домашней работы: у ученика это одно
+  // задание («Решить на доске»), у репетитора — условия без автопроверки вместе
+  // с фото решения ученика («Проверить на доске»).
+  //
+  // Листы кладутся ПОД всем написанным и столбиком сверху вниз, а не в центр
+  // обзора: доска бесконечная, место всегда есть, а поверх чужой записи лист лёг
+  // бы стеной. Фото решения идёт сразу под своим условием — работа читается как
+  // на бумаге.
+  //
+  // Второй раз тот же лист не переносим — он помечен своим ключом, и доска
+  // просто везёт к нему обзор: иначе к концу недели их лежала бы стопка. Ключи
+  // условий у обеих сторон ОДНИ И ТЕ ЖЕ (homeworkBoardSheet в utils.js), поэтому
+  // условие, которое ученик уже перенёс сам, репетитор не кладёт вторым
+  // экземпляром — он попадает на тот же лист, под которым ученик решал.
   async function placeTaskSheet(req) {
-    const found = [...strokes.current.values()].find((st) => st.task === req.key)
-    if (found) { focusSheet(strokeBBox(found)); return }
+    // Разворачиваем в плоский список: условие и фото решения к нему — два
+    // отдельных листа со своими ключами, и каждый переносится ровно один раз.
+    const parts = []
+    for (const sh of (req.sheets?.length ? req.sheets : [req])) {
+      if (sh.key && sh.task) parts.push({ key: sh.key, task: sh.task })
+      if (sh.solution?.url && sh.solution.key) parts.push({ key: sh.solution.key, url: sh.solution.url })
+    }
+    if (!parts.length) return
     setSheetBusy(true); setSheetErr(false)
     try {
-      // Снимок задания тянет за собой html2canvas — грузим только по нажатию,
+      // Снимок задания тянет за собой рендер листа — грузим только по нажатию,
       // иначе кабинет ученика потяжелел бы на него у всех.
       const { taskToImageFile, SHEET_WIDTH } = await import("../pages/taskSnapshot")
-      const file = await taskToImageFile(req.task, { label: req.label || "" })
-      // Прилагаемый файл собирается из тех же данных, что лежат в самой работе
-      // (homework.bank_tasks), и едет на доску вместе с листом.
-      const files = taskFiles(req.task).map((f) => ({ name: f.name, blob: f.blob() }))
       const bb = sceneBBox([...strokes.current.values()])
       const x = bb ? bb.minX : -SHEET_WIDTH / 2
-      const y = bb ? bb.maxY + SHEET_GAP : -SHEET_GAP
-      // Лоадер гасим и ведём обзор к листу, как только он лёг на доску: ждать
-      // конца загрузки в хранилище незачем — лист уже виден, и на нём стоит
-      // своя плашка «Отправляется».
-      let placed = false
-      await addImageAt(file, x, y, {
-        fitWidth: SHEET_WIDTH, sheet: true, topLeft: true, taskKey: req.key, files,
-        onPlaced: (st) => { placed = true; setSheetBusy(false); focusSheet(strokeBBox(st)) },
-      })
-      if (!placed) setSheetErr(true)
+      let y = bb ? bb.maxY + SHEET_GAP : -SHEET_GAP
+      let focused = false, failed = false
+
+      // Лоадер гасим и ведём обзор к ПЕРВОМУ листу, как только он лёг на доску:
+      // ждать конца выгрузки в хранилище незачем — лист уже виден, и на нём
+      // стоит свой индикатор. Высота листа известна только после укладки,
+      // поэтому следующий кладётся, когда предыдущий уже лежит.
+      const put = async (file, key, opts = {}) => {
+        const st = await new Promise((resolve) => {
+          let placed = false
+          addImageAt(file, x, y, {
+            fitWidth: SHEET_WIDTH, sheet: true, topLeft: true, taskKey: key, ...opts,
+            onPlaced: (s) => { placed = true; resolve(s) },
+          }).then(() => { if (!placed) resolve(null) }, () => { if (!placed) resolve(null) })
+        })
+        if (!st) { failed = true; return }
+        setSheetBusy(false)
+        const box = strokeBBox(st)
+        y = box.maxY + SHEET_GAP
+        if (!focused) { focused = true; focusSheet(box) }
+      }
+
+      for (const part of parts) {
+        // Лист уже на доске — он и задаёт место следующему: иначе новые легли бы
+        // поверх него (сцена его уже учитывала, а отсчёт шёл от прежнего низа).
+        const found = [...strokes.current.values()].find((st) => st.task === part.key)
+        if (found) {
+          const box = strokeBBox(found)
+          y = Math.max(y, box.maxY + SHEET_GAP)
+          if (!focused) { focused = true; focusSheet(box) }
+          continue
+        }
+        // Сбой на одном листе не отменяет остальные: у работы их десяток, и
+        // потерянное фото решения не повод оставить репетитора с пустой доской.
+        try {
+          if (part.task) {
+            const file = await taskToImageFile(part.task, { label: req.label || "" })
+            // Прилагаемый файл собирается из тех же данных, что лежат в самой
+            // работе (homework.bank_tasks), и едет на доску вместе с листом.
+            const files = taskFiles(part.task).map((f) => ({ name: f.name, blob: f.blob() }))
+            await put(file, part.key, { files })
+          } else {
+            const { files, sheet } = await solutionSheetFiles(part.url)
+            for (const [i, f] of files.entries()) await put(f, i ? `${part.key}:${i + 1}` : part.key, { sheet })
+          }
+        } catch { failed = true }
+      }
+      if (failed) setSheetErr(true)
     } catch {
       // Молчать нельзя: ученик остался бы на пустой доске, не понимая, куда делось
       // задание, — а условие у него на соседней вкладке кабинета.
@@ -3668,7 +3755,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // Задание, с которым доску открыли снаружи. Ждём загрузки сцены: пока она не
   // прочитана, уже лежащего листа не видно, и задание легло бы вторым экземпляром.
   useEffect(() => {
-    if (!loaded || !taskSheet?.key || !taskSheet.task) return
+    if (!loaded || !taskSheet?.key || !(taskSheet.task || taskSheet.sheets?.length)) return
     // Лист ложится ТОЛЬКО на доску своей домашней работы. Открытая доска и
     // задание приходят разными путями (комната — из адреса страницы, задание —
     // из карточки работы), и при смене комнаты на живом компоненте они успевали
@@ -4460,7 +4547,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
           <button onClick={() => setSheetErr(false)}
             className={`press-tap absolute ${saveDenied ? "top-16" : "top-4"} left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl text-xs shadow-lg`}
             style={{ background: panelBg, border: `1px solid ${panelBorder}`, color: dark ? "#f5f5f7" : "#1c1c1e" }}>
-            Задание не перенеслось на доску — условие осталось в кабинете
+            {sheetErrText}
           </button>
         )}
 

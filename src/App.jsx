@@ -426,9 +426,13 @@ function App() {
     })
   }, [user])
 
-  const openBoard = useCallback(function openBoard(studentId, title) {
+  // taskSheet — что положить на доску при открытии: репетитор проверяет домашнюю
+  // работу на доске, и условие с фото решения ученика едут на неё вместе с
+  // открытием (см. placeTaskSheet в Board.jsx). В адрес не пишется: после
+  // перезагрузки листы уже лежат на доске, переносить их второй раз незачем.
+  const openBoard = useCallback(function openBoard(studentId, title, taskSheet = null) {
     if (!studentId) return
-    setBoard({ roomId: studentId, title })
+    setBoard({ roomId: studentId, title, taskSheet })
     const url = new URL(window.location.href)
     url.searchParams.set("board", String(studentId))
     window.history.pushState({ board: String(studentId) }, "", url)
@@ -1270,6 +1274,8 @@ function App() {
             /* Предметы, отмеченные в «Профиле»: банк на доске открывается на них */
             tutorSubjects={user.profile?.bank_subjects}
             tutorOwner={isOwner(user.email)}
+            /* Листы, с которыми доску открыли из разбора домашней работы */
+            taskSheet={board.taskSheet || null}
           />
         </PageBoundary>
       )}
