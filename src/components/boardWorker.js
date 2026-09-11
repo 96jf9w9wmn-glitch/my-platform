@@ -54,14 +54,29 @@ export async function encodeCanvasAsync(canvas, type, quality, alt = null) {
   }
 }
 
-// Лист под тёмную доску в фоне: ImageBitmap той же величины. null — поток
+// Лист под тёмную доску в фоне. Возвращает ХОЛСТ той же величины. null — поток
 // недоступен, картинка без CORS или сбой: перекрашивайте сами (tintSheet).
+//
+// Почему холст, а не ImageBitmap, который отдаёт поток. WebKit (Safari) рисует
+// такую картинку ровно один раз — дальше `drawImage` с ней МОЛЧА не делает
+// ничего: ни исключения, ни следа на холсте. На доске это выглядело так, что
+// листы с заданиями пропадали при первом же зуме, а у ученика в Chrome те же
+// листы были на месте. Воспроизведено на боевой сцене в обоих движках: слой
+// картинок в WebKit пуст при совершенно одинаковых доводах drawImage.
+// Поэтому пиксели переносим в обычный холст СРАЗУ, пока картинка заведомо
+// годна, и дальше доска рисует холст — он ведёт себя одинаково везде.
 export async function tintSheetAsync(source) {
   if (!workerAvailable()) return null
   try {
     const bitmap = await createImageBitmap(source)
     const { bitmap: out } = await call({ op: "tint", bitmap }, [bitmap])
-    return out || null
+    if (!out) return null
+    const canvas = document.createElement("canvas")
+    canvas.width = out.width
+    canvas.height = out.height
+    canvas.getContext("2d").drawImage(out, 0, 0)
+    out.close?.()
+    return canvas.width ? canvas : null
   } catch {
     return null
   }
