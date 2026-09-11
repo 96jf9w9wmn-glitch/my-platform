@@ -10,6 +10,7 @@ import {
   GRID, ENCLOSED_SHAPES, SHAPE_TOOLS, DASHABLE_SHAPES,
   TEXT_FONT, TEXT_LINE, TEXT_MIN, TEXT_MAX, TEXT_DEFAULT, textMetrics, textBoxPoints, textFont,
   isDarkColor, resolveColor, strokeBBox, sceneBBox, viewForBBox, paintStroke, scenePreview, tintSheet,
+  latestBBox as latestSceneBBox,
 } from "./boardPaint"
 // Выбор задания тянет за собой генераторы всех предметов и html2canvas — грузим
 // только когда репетитор открыл выбор, иначе доска стала бы тяжелее на мегабайты.
@@ -84,7 +85,6 @@ const SMART_KEY = "board-smart-draw"
 // экрана, и человек видел пустоту вместо чужой работы. Поэтому вход открывается
 // у СВЕЖИХ записей, а своё место запоминается на устройстве.
 const VIEW_KEY = "board-view"       // localStorage: последний обзор по каждой доске
-const FRESH_STROKES = 24            // «последние записи» — примерно последняя строка-две
 const OFFSCREEN_HINT_MS = 8000      // столько висит подсказка «пишут за краем экрана»
 const TEXT_DRAFT_RATE = 120         // как часто набираемая надпись уходит собеседнику, мс
 
@@ -125,6 +125,15 @@ const pointInBBox = (x, y, b) => x >= b.minX && x <= b.maxX && y >= b.minY && y 
 const imageRect = (s) => {
   const a = s.points[0], b = s.points[s.points.length - 1]
   return { minX: Math.min(a[0], b[0]), minY: Math.min(a[1], b[1]), maxX: Math.max(a[0], b[0]), maxY: Math.max(a[1], b[1]) }
+}
+
+// Номер задания домашней работы у листа, лежащего на доске. Ключ листа строит
+// homeworkBoardSheet (utils.js): «hw:<id работы>:<номер>». Лист с фото решения
+// оканчивается на «:solution» и номера не несёт — на нём поля ответа нет.
+const HW_SHEET_KEY = /^hw:[^:]+:(\d+)$/
+function hwTaskNum(s) {
+  const m = typeof s?.task === "string" ? HW_SHEET_KEY.exec(s.task) : null
+  return m ? Number(m[1]) : null
 }
 
 // Курсор собеседника держится CURSOR_HOLD мс после последнего движения, потом гаснет
@@ -342,7 +351,42 @@ function TaskFileChip({ file, onFile, ink, border }) {
 // тот же обзор, что и холст, поэтому она приклеена к листу, а не догоняет его.
 // Масштаб на ОБЁРТКЕ, а не на самой панели: у появления попапа свои кадры с
 // transform, и на одном элементе они затёрли бы друг друга.
-function TaskAnswerBox({ panel, dark, panelBg, panelBorder, tutor = false, draft = null, onCheck, onReset, onType, onFile }) {
+// Поле ответа задания домашней работы. Ответ здесь — это ответ САМОЙ РАБОТЫ:
+// он тут же появляется в карточке задания в кабинете и уезжает вместе со сдачей.
+// Набранное держим местным состоянием и отдаём наверх с задержкой: иначе каждая
+// буква перерисовывала бы весь кабинет, в котором эти ответы лежат.
+function WorkAnswerField({ value, onValue, onType, id, ink, border }) {
+  const [val, setVal] = useState(value ?? "")
+  const focused = useRef(false)
+  const timer = useRef(null)
+  // Ответ, вписанный в кабинете (или пришедший от собеседника), подхватываем —
+  // но не под рукой: подменять текст под курсором нельзя.
+  useEffect(() => { if (!focused.current) setVal(value ?? "") }, [value])
+  useEffect(() => () => clearTimeout(timer.current), [])
+  const push = (v) => {
+    clearTimeout(timer.current)
+    timer.current = setTimeout(() => onValue(v), 400)
+  }
+  return (
+    <div className="flex items-center gap-2.5">
+      <input value={val}
+        onFocus={() => { focused.current = true }}
+        onBlur={() => { focused.current = false; clearTimeout(timer.current); onValue(val) }}
+        onChange={(e) => { setVal(e.target.value); push(e.target.value); onType?.(id, e.target.value) }}
+        placeholder="Ответ"
+        className="flex-1 min-w-0 h-11 px-3.5 rounded-xl text-[17px] outline-none focus:ring-2 focus:ring-blue-500/40"
+        style={{ background: "transparent", color: ink, border: `1px solid ${border}` }} />
+      {/* Признак, что ответ записан в работу. Подписи нет намеренно: поле под
+          заданием и так стоит там, где отвечают. */}
+      <span className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 transition-opacity duration-200"
+        style={{ background: "rgba(52,199,89,.14)", color: "#34c759", opacity: val.trim() ? 1 : 0 }}>
+        <Icon name="check" size={15} />
+      </span>
+    </div>
+  )
+}
+
+function TaskAnswerBox({ panel, dark, panelBg, panelBorder, tutor = false, draft = null, value = "", onValue = null, onCheck, onReset, onType, onFile }) {
   const [val, setVal] = useState("")
   const [shown, setShown] = useState(false)   // репетитор раскрыл правильный ответ
   const done = panel.ok != null
@@ -394,6 +438,18 @@ function TaskAnswerBox({ panel, dark, panelBg, panelBorder, tutor = false, draft
               {typing && <span className="loader-dots text-blue-500 flex-shrink-0"><i /><i /><i /></span>}
             </span>
           )}
+          {/* Задание домашней работы без эталона: проверяет его репетитор, поэтому
+              под листом стоит ответ ученика из самой работы (или то, что он
+              набирает прямо сейчас). Поля ввода тут нет — отвечает ученик. */}
+          {!panel.ask && panel.n != null && (
+            <>
+              <span className="text-[13px]" style={{ color: meta }}>Ответ ученика</span>
+              <span className="text-[15px] font-mono max-w-[220px] truncate" style={{ color: (typed || value) ? ink : meta }}>
+                {typed || value || "—"}
+              </span>
+              {typing && <span className="loader-dots text-blue-500 flex-shrink-0"><i /><i /><i /></span>}
+            </>
+          )}
           {/* Ответ не мигает, а выезжает и так же уезжает */}
           {panel.ask && (
             <>
@@ -418,11 +474,13 @@ function TaskAnswerBox({ panel, dark, panelBg, panelBorder, tutor = false, draft
         {/* Файл стоит ПЕРВЫМ: без него такое задание не решается, а поле ответа
             под ним — следующий шаг. */}
         {files.length > 0 && (
-          <div className={`flex flex-wrap gap-2 ${panel.ask ? "mb-3" : ""}`}>
+          <div className={`flex flex-wrap gap-2 ${panel.ask || (panel.n != null && onValue) ? "mb-3" : ""}`}>
             {files.map((f) => <TaskFileChip key={f.p} file={f} onFile={onFile} ink={ink} border={panelBorder} />)}
           </div>
         )}
-        {!panel.ask ? null : done ? (
+        {!panel.ask && panel.n != null && onValue ? (
+          <WorkAnswerField value={value} onValue={onValue} onType={onType} id={panel.id} ink={ink} border={panelBorder} />
+        ) : !panel.ask ? null : done ? (
           <div className="flex items-center gap-3 min-w-0">
             <span className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
               style={{ background: `${tone}22`, color: tone }}>
@@ -621,7 +679,7 @@ function BoardStrip({ open, children }) {
   )
 }
 
-export default function Board({ roomId, label = "", userId, userName, avatar = null, peer = null, theme = "light", onClose, account = null, token = null, canAddTasks = false, tutorSubject = null, tutorExamFocus = null, tutorSubjects = null, tutorOwner = false, taskSheet = null, snapshot = null, snapshotDate = null, onOpenLive = null }) {
+export default function Board({ roomId, label = "", userId, userName, avatar = null, peer = null, theme = "light", onClose, account = null, token = null, canAddTasks = false, tutorSubject = null, tutorExamFocus = null, tutorSubjects = null, tutorOwner = false, taskSheet = null, taskAnswers = null, onTaskAnswer = null, snapshot = null, snapshotDate = null, onOpenLive = null }) {
   // Прошлое занятие открывается ТОЙ ЖЕ доской, только на чтение: сцена приходит
   // снимком (snapshot), база не читается и не пишется, realtime не поднимается,
   // инструментов нет. Ради этого снимок и показывается доской, а не картинкой:
@@ -638,6 +696,13 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // с «t:», у ученика — с «s:» (так же их различает чат). Нужна она ровно для одного:
   // правильный ответ к листу из банка показывается только репетитору.
   const isTutor = String(userId || "").startsWith("t:")
+  // Ответы самой домашней работы: { «номер задания»: ответ }. Поле под листом на
+  // доске правит ИХ, а не отдельную запись в штрихе, — иначе у одного задания
+  // оказалось бы два ответа, и какой из них уедет репетитору, зависело бы от
+  // того, где ученик набрал последним. Сборка кадра читает их через ref: она
+  // живёт в замыкании первого рендера и прямых props не видит.
+  const taskAnsRef = useRef(null)
+  taskAnsRef.current = onTaskAnswer || taskAnswers ? { map: taskAnswers, editable: !!onTaskAnswer } : null
   const [toolPicked, setTool] = useState("pen")   // pen | line | rect | eraser | hand
   // В режиме чтения инструмент ровно один — рука: нажатие по холсту двигает
   // полотно, и ни один обработчик рисования до штрихов не доходит. Перебирать
@@ -1326,7 +1391,10 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       }
       // Панель нужна листу с полем ответа И листу с прилагаемым файлом: у части
       // заданий (КЕГЭ с таблицей) файл есть, а короткого ответа для сверки нет.
-      if (!st.qa && !st.files?.length) continue
+      // А ещё — ЛЮБОМУ заданию домашней работы: ответ вписывается прямо под ним
+      // и уходит в саму работу, чтобы не набирать его второй раз в кабинете.
+      const hwN = taskAnsRef.current ? hwTaskNum(st) : null
+      if (!st.qa && !st.files?.length && hwN == null) continue
       // Габарит САМОГО листа, а не strokeBox: тот к любому штриху добавляет запас в
       // полтолщины линии + 2 (нужен ластику и выделению), и подвал выходил за лист
       // на 3,5 мировых единицы с каждой стороны и на столько же съезжал вниз — на
@@ -1347,6 +1415,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       // не показывает, и класть его туда незачем.
       qa.push({ id: st.id, x: b.minX, y: b.maxY,
         k: (b.maxX - b.minX) / QA_SHEET_W, ask: !!st.qa, files: st.files || null,
+        n: hwN,   // номер задания в работе: по нему ответ ложится в саму работу
         a: isTutor ? st.qa?.a ?? null : null, v: st.qa?.v || "", ok: st.qa?.ok ?? null })
     }
     const qaKey = JSON.stringify(qa)
@@ -3237,6 +3306,10 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     const v = String(given || "").trim()
     if (!v) return
     st.qa = { ...st.qa, v, ok: answersEqual(v, st.qa.a) }
+    // Задание домашней работы: тот же ответ уходит и в саму работу — иначе его
+    // пришлось бы вписывать второй раз в кабинете, уже зная, что он верный.
+    const n = hwTaskNum(st)
+    if (n != null) onTaskAnswer?.(n, v)
     dirtyRef.current.add(id)
     channelRef.current?.send({ type: "broadcast", event: "draw", payload: st })
     scheduleSave(); scheduleDraw()
@@ -3245,6 +3318,8 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     const st = strokes.current.get(id)
     if (!st?.qa) return
     st.qa = { a: st.qa.a }
+    const n = hwTaskNum(st)
+    if (n != null) onTaskAnswer?.(n, "")     // «Заново» очищает ответ и в работе
     dirtyRef.current.add(id)
     channelRef.current?.send({ type: "broadcast", event: "draw", payload: st })
     scheduleSave(); scheduleDraw()
@@ -3776,17 +3851,11 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // целая строка доски в ширину телефона влезает только в 21%, а это уже не
   // чтение — лучше показать самый конец работы, но разборчиво.
   function latestBBox() {
-    const all = [...strokes.current.values()].filter((st) => st.tool !== "eraser")
-    if (!all.length) return null
     const canvas = canvasRef.current
-    const cw = canvas?.clientWidth || 1200, ch = canvas?.clientHeight || 800
-    let bb = null
-    for (const n of [FRESH_STROKES, 12, 6, 3, 1]) {
-      bb = sceneBBox(all.slice(-Math.min(n, all.length)))
-      const nv = viewForBBox(bb, cw, ch, { bottom: true, minScale: MIN_SCALE })
-      if (!nv || nv.scale >= 0.5 || n === 1) break
-    }
-    return bb
+    // Та же функция считает место для превью занятия (boardPaint): доска и
+    // карточка в истории обязаны останавливаться на одном и том же месте.
+    return latestSceneBBox([...strokes.current.values()],
+      canvas?.clientWidth || 1200, canvas?.clientHeight || 800, { minScale: MIN_SCALE })
   }
   // Показать последние записи (пустая доска — просто начало координат).
   function focusLatest() {
@@ -4587,7 +4656,11 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
             style={{ transformOrigin: "0 0", willChange: "transform" }}>
             {qaBoxes.map((b) => (
               <TaskAnswerBox key={b.id} panel={b} dark={dark} panelBg={panelBg} panelBorder={panelBorder}
-                tutor={isTutor} draft={drafts[b.id]} onCheck={checkTaskAnswer} onReset={resetTaskAnswer}
+                tutor={isTutor} draft={drafts[b.id]}
+                /* Ответ задания домашней работы живёт в самой работе, а не в штрихе */
+                value={(b.n != null && taskAnswers?.[b.n]) || ""}
+                onValue={onTaskAnswer && b.n != null ? (v) => onTaskAnswer(b.n, v) : null}
+                onCheck={checkTaskAnswer} onReset={resetTaskAnswer}
                 onType={typeTaskAnswer} onFile={downloadBoardFile} />
             ))}
           </div>

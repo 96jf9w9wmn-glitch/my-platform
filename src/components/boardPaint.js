@@ -1,6 +1,7 @@
 // Рисование сцены доски — чистые функции без React и без состояния компонента.
 // Вынесены из Board.jsx, чтобы ту же сцену можно было отрисовать вне доски:
-// превью снимка занятия и просмотр истории в режиме чтения (см. BoardSnapshotView).
+// превью снимка занятия в истории (см. scenePreview). Само прошлое занятие
+// показывает уже сама доска в режиме чтения (Board, проп snapshot).
 // Сцена — то же, что лежит в boards.scene / board_snapshots.scene:
 //   { strokes: [ {id, author, tool, color, width, points:[[x,y,w],…], angle?, src?} ], bg, bgColor }
 
@@ -414,6 +415,33 @@ export function sceneBBox(strokes) {
   return bb
 }
 
+// «Последние записи» — хвост сцены, на котором останавливаются и живая доска при
+// открытии, и превью занятия в истории. Габарит ВСЕЙ сцены для этого не годится:
+// холст за месяц уезжает на десятки экранов, и вписанная целиком доска
+// превращается в крапинки. Берём хвост и расширяем его, пока масштаб не станет
+// читаемым. Копии этой логики быть не должно: Board и превью обязаны
+// останавливаться на одном и том же месте.
+export const FRESH_STROKES = 24     // примерно последняя строка-две
+export function latestBBox(strokes, cw, ch, { minScale = 0.15 } = {}) {
+  const all = [...strokes].filter((s) => s && s.tool !== "eraser")
+  if (!all.length) return null
+  let bb = null
+  for (const n of [FRESH_STROKES, 12, 6, 3, 1]) {
+    bb = sceneBBox(all.slice(-Math.min(n, all.length)))
+    const nv = viewForBBox(bb, cw, ch, { bottom: true, minScale })
+    if (!nv || nv.scale >= 0.5 || n === 1) break
+  }
+  return bb
+}
+
+// Раздвинуть габарит вокруг его центра до заданного минимума (мировые единицы).
+export function growBBox(bb, minW, minH) {
+  if (!bb) return bb
+  const cx = (bb.minX + bb.maxX) / 2, cy = (bb.minY + bb.maxY) / 2
+  const w = Math.max(bb.maxX - bb.minX, minW) / 2, h = Math.max(bb.maxY - bb.minY, minH) / 2
+  return { minX: cx - w, minY: cy - h, maxX: cx + w, maxY: cy + h }
+}
+
 // Картинки сцены (лежат в публичном бакете). crossOrigin — иначе холст «портится»
 // и toDataURL кидает SecurityError; ждём с потолком по времени, чтобы снимок при
 // закрытии доски не подвешивал выход.
@@ -436,7 +464,7 @@ export function preloadSceneImages(strokes, timeout = 2500) {
 
 // Рисует сцену целиком в холст размера w×h: подгоняет масштаб под габарит, кладёт
 // фон и узор. Возвращает применённый масштаб (нужен, если сверху что-то дорисовывать).
-export function renderScene(canvas, scene, { width, height, padding = 24, images = new Map(), dpr = 1 } = {}) {
+export function renderScene(canvas, scene, { width, height, padding = 24, images = new Map(), dpr = 1, focus = null } = {}) {
   const strokes = scene?.strokes || []
   const bgColor = scene?.bgColor || "#ffffff"
   const darkBg = isDarkColor(bgColor)
@@ -448,9 +476,12 @@ export function renderScene(canvas, scene, { width, height, padding = 24, images
   ctx.fillStyle = bgColor
   ctx.fillRect(0, 0, w, h)
 
-  const bb = sceneBBox(strokes)
+  // focus — габарит, на котором надо остановиться (обычно последние записи).
+  // Сцена рисуется целиком, просто вид стоит на нём, а остальное уходит за края.
+  const bb = focus || sceneBBox(strokes)
   const scale = bb
-    ? clamp(Math.min((w - padding * 2) / Math.max(1, bb.maxX - bb.minX), (h - padding * 2) / Math.max(1, bb.maxY - bb.minY)), 0.02, 3)
+    ? clamp(Math.min((w - padding * 2) / Math.max(1, bb.maxX - bb.minX), (h - padding * 2) / Math.max(1, bb.maxY - bb.minY)),
+        focus ? 0.05 : 0.02, focus ? 1 : 3)
     : 1
   const ox = bb ? (w - (bb.maxX - bb.minX) * scale) / 2 - bb.minX * scale : 0
   const oy = bb ? (h - (bb.maxY - bb.minY) * scale) / 2 - bb.minY * scale : 0
@@ -511,7 +542,13 @@ export async function scenePreview(scene, { width = 480, height = 300, quality =
   if (!strokes.length) return null
   const images = await preloadSceneImages(strokes)
   const canvas = document.createElement("canvas")
-  renderScene(canvas, scene, { width, height, padding: 12, images, dpr: 1 })
+  // Не вся доска, а её конец: карточка со сценой целиком показывала узкую
+  // колонку листов в пол-пикселя — понять по ней, что за занятие, было нельзя.
+  // Габарит последних записей ещё и расширяем до размера листа: сами по себе
+  // две строки — это пара волнистых линий во весь кадр, по которым занятие
+  // тоже не узнать, а вокруг них обычно и стоит то, что разбирали.
+  renderScene(canvas, scene, { width, height, padding: 12, images, dpr: 1,
+    focus: growBBox(latestBBox(strokes, width, height), 1800, 1150) })
   try {
     return canvas.toDataURL("image/jpeg", quality)
   } catch {

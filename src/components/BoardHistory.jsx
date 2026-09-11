@@ -82,10 +82,32 @@ function BoardHistory({ studentId, studentName, account = null, token = null, on
       }
       // Ссылки на картинки доска подписывает сама при загрузке сцены (бакет
       // приватный) — здесь снимок нужен как есть.
-      if (scene) setOpen({ date, scene })
+      if (scene) { setOpen({ date, scene }); refreshPreview(date, scene) }
     } finally {
       setLoadingDate(null)
     }
+  }
+
+  // Превью, снятые до 12.09.2026, вписывали в карточку ВСЮ сцену: на доске за
+  // месяц занятий это узкая колонка листов в пол-пикселя, по которой занятие не
+  // узнать. Сам снимок чинится только новым закрытием доски, а прошлые дни уже
+  // никто не закроет — поэтому пересобираем превью при открытии занятия.
+  // Право записи есть у репетитора; ученик обновлять не может (и не должен),
+  // но увидит исправленную карточку, как только занятие откроет репетитор.
+  // Ошибку глотаем: это украшение списка, а не работа.
+  async function refreshPreview(date, scene) {
+    if (!canDelete) return
+    try {
+      const [{ scenePreview }, { signBoardScene }] = await Promise.all([
+        import("./boardPaint"), import("../storageUrl"),
+      ])
+      const preview = await scenePreview(await signBoardScene(scene))
+      if (!preview) return
+      const { error } = await supabase.from("board_snapshots")
+        .update({ preview }).eq("student_id", String(studentId)).eq("lesson_date", date)
+      if (error) return
+      setRows((rs) => rs.map((r) => (r.lesson_date === date ? { ...r, preview } : r)))
+    } catch { /* карточка останется с прежним превью */ }
   }
 
   // Снимок за сегодня — это ЖИВАЯ доска: запись за день мы убираем, но холст
