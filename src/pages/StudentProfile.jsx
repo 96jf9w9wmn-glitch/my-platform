@@ -136,6 +136,16 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
       + (comment ? ` «${comment}»` : ""))
   }
 
+  // Перенос без ожидания ответа: о новом времени договорились вне платформы,
+  // и предложение только повторяло бы уже сказанное. Занятие переезжает сразу,
+  // ученику уходит уведомление.
+  function moveNow(from, to, comment) {
+    onUpdate(student.id, applyMoveToStudent(student, from, to))
+    notifyStudent("Занятие перенесено",
+      `${whenForStudent(from.date, from.time)} → ${whenForStudent(to.date, to.time)}.`
+      + (comment ? ` «${comment}»` : ""))
+  }
+
   // Согласие с просьбой ученика: вторая сторона уже высказалась — двигаем.
   function acceptMove(lesson) {
     const to = { date: lesson.moveRequest.date, time: lesson.moveRequest.time }
@@ -773,8 +783,14 @@ function StudentProfile({ student, students = [], onBack, onUpdate, onOpenBoard 
             return `На это время ${who} уже стоит занятие: ${formatSpan(hit)}.`
           }}
           submitLabel="Предложить"
-          onSubmit={({ date, time, comment }) => {
-            proposeMove({ date: movingLesson.date, time: movingLesson.time, duration: movingLesson.duration }, { date, time }, comment)
+          allowDirect
+          directTitle="Перенести занятие"
+          directHint="Занятие переедет сразу, ученик увидит новое время и получит уведомление. Так переносят то, о чём уже договорились."
+          directSubmitLabel="Перенести"
+          onSubmit={({ date, time, comment, direct }) => {
+            const from = { date: movingLesson.date, time: movingLesson.time, duration: movingLesson.duration }
+            if (direct) moveNow(from, { date, time }, comment)
+            else proposeMove(from, { date, time }, comment)
             setMovingLesson(null)
           }}
           onClose={() => setMovingLesson(null)}

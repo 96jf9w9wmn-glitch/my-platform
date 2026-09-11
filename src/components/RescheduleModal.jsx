@@ -2,11 +2,19 @@ import { useState } from "react"
 import { createPortal } from "react-dom"
 import { useClosing } from "../useClosing"
 import Icon from "./Icon"
+import SegmentSwitch from "./SegmentSwitch"
 import WheelPicker from "./WheelPicker"
 import { formatLessonWhen, todayDateStr } from "../lessonMove"
 
 // Общая модалка переноса: одна и та же и у репетитора (двигает занятие), и у
 // ученика (просит о переносе) — меняются только подписи и проверка занятости.
+//
+// `allowDirect` даёт репетитору второй путь: перенести сразу, не дожидаясь
+// ответа ученика. Он нужен потому, что договариваются чаще не здесь, а в
+// переписке: согласие уже получено, и ждать второго — просить подтвердить то,
+// о чём условились полчаса назад. Выбор стоит наверху и виден до нажатия,
+// а по умолчанию остаётся согласование: одностороннее движение расписания —
+// исключение, а не общее правило.
 function RescheduleModal({
   lesson,
   title = "Перенести занятие",
@@ -16,6 +24,10 @@ function RescheduleModal({
   commentLabel = "",
   commentPlaceholder = "",
   submitLabel = "Перенести",
+  allowDirect = false,
+  directTitle = "",
+  directHint = "",
+  directSubmitLabel = "Перенести",
   conflictCheck,
   busy = false,
   error = "",
@@ -26,6 +38,7 @@ function RescheduleModal({
   const [time, setTime] = useState(initial?.time || lesson?.time || "")
   const [comment, setComment] = useState(initial?.comment || "")
   const [localError, setLocalError] = useState("")
+  const [direct, setDirect] = useState(false)
   const { cls: closingCls, close } = useClosing(onClose)
 
   const unchanged = date === lesson?.date && time === lesson?.time
@@ -35,7 +48,7 @@ function RescheduleModal({
     if (!date || !time) { setLocalError("Выберите дату и время."); return }
     if (unchanged) { setLocalError("Это те же дата и время, что и сейчас."); return }
     setLocalError("")
-    onSubmit({ date, time, comment: comment.trim() })
+    onSubmit({ date, time, comment: comment.trim(), direct: allowDirect && direct })
   }
 
   return createPortal(
@@ -46,7 +59,7 @@ function RescheduleModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100/60 flex-shrink-0">
-          <h2 className="text-lg font-medium">{title}</h2>
+          <h2 className="text-lg font-medium">{allowDirect && direct && directTitle ? directTitle : title}</h2>
           <button onClick={close} aria-label="Закрыть" className="text-gray-500 hover:text-gray-700 transition-transform active:scale-90">
             <Icon name="x" size={18} />
           </button>
@@ -66,7 +79,20 @@ function RescheduleModal({
             </div>
           </div>
 
-          {hint && <p className="text-xs text-gray-500 leading-relaxed">{hint}</p>}
+          {allowDirect && (
+            <SegmentSwitch
+              block
+              size="sm"
+              ariaLabel="Как перенести занятие"
+              value={direct ? "direct" : "ask"}
+              onChange={(k) => setDirect(k === "direct")}
+              items={[{ key: "ask", label: "Спросить ученика" }, { key: "direct", label: "Перенести сразу" }]}
+            />
+          )}
+
+          {(allowDirect && direct ? directHint || hint : hint) && (
+            <p className="text-xs text-gray-500 leading-relaxed">{allowDirect && direct ? directHint || hint : hint}</p>
+          )}
 
           <div>
             <label className="text-sm text-gray-500 mb-1 block">Новая дата</label>
@@ -122,7 +148,7 @@ function RescheduleModal({
             Отмена
           </button>
           <button onClick={handleSubmit} disabled={busy} className="flex-1 btn-primary py-2.5 disabled:opacity-60">
-            {busy ? "Сохраняем…" : submitLabel}
+            {busy ? "Сохраняем…" : allowDirect && direct ? directSubmitLabel : submitLabel}
           </button>
         </div>
       </div>

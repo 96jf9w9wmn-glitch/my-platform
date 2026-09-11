@@ -64,3 +64,5 @@ previewMain.jsx
 dev-board.html
 public/devsheets/
 src/devBoard.jsx
+dev-reschedule.html
+src/devReschedule.jsx

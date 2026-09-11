@@ -144,6 +144,21 @@ function Schedule({ students, setStudents, groups = [], onOpenBoard }) {
       + (comment ? ` «${comment}»` : ""))
   }
 
+  // Перенос без ожидания ответа: репетитор и ученик договорились вне платформы,
+  // и предложение здесь только повторяло бы уже сказанное. Занятие переезжает
+  // сразу, ученику уходит уведомление о новом времени — согласие у него уже
+  // спросили, ему нужно лишь увидеть результат в расписании.
+  function moveNow(studentId, from, to, comment) {
+    const student = students.find((s) => String(s.id) === String(studentId))
+    if (!student) return
+    setStudents((prev) => prev.map((s) => (
+      String(s.id) === String(studentId) ? { ...s, ...applyMoveToStudent(s, from, to) } : s
+    )))
+    notifyStudentOf(student, "Занятие перенесено",
+      `${whenForStudent(student, from.date, from.time)} → ${whenForStudent(student, to.date, to.time)}.`
+      + (comment ? ` «${comment}»` : ""))
+  }
+
   function clearRequest(entry) {
     setStudents((prev) => prev.map((s) => (
       String(s.id) === String(entry.studentId)
@@ -832,11 +847,17 @@ function Schedule({ students, setStudents, groups = [], onOpenBoard }) {
           initial={moving.suggested}
           commentLabel={moving.members ? "" : "Комментарий ученику (по желанию)"}
           commentPlaceholder="Например: в это время у меня появилось окно"
+          allowDirect={!moving.members}
+          directTitle="Перенести занятие"
+          directHint="Занятие переедет сразу, ученик увидит новое время и получит уведомление. Так переносят то, о чём уже договорились."
+          directSubmitLabel="Перенести"
           conflictCheck={slotBusy(moving.studentId, { date: moving.date, time: moving.time }, moving.groupId || null)}
           submitLabel={moving.members ? "Перенести" : "Предложить"}
-          onSubmit={({ date, time, comment }) => {
+          onSubmit={({ date, time, comment, direct }) => {
+            const from = { date: moving.date, time: moving.time, duration: moving.duration }
             if (moving.members) moveGroup(moving, { date, time })
-            else proposeMove(moving.studentId, { date: moving.date, time: moving.time, duration: moving.duration }, { date, time }, comment)
+            else if (direct) moveNow(moving.studentId, from, { date, time }, comment)
+            else proposeMove(moving.studentId, from, { date, time }, comment)
             setMoving(null)
           }}
           onClose={() => setMoving(null)}
