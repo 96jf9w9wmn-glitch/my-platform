@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react"
+import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import Icon from "./Icon"
 import ConfirmModal from "./ConfirmModal"
@@ -176,7 +177,14 @@ function BoardHistory({ studentId, studentName, account = null, token = null, on
           ))}
         </div>
       </div>
-      {open && (
+      {/* ДОСКА ИДЁТ ПОРТАЛОМ В body, и это не украшение. Сам блок истории —
+          стеклянная карточка (.glass), а у неё backdrop-filter: такой предок
+          становится точкой отсчёта для position: fixed, и доска, объявленная
+          «во весь экран», рисовалась ВНУТРИ карточки — узкой полосой поверх
+          расписания. Ровно это и выглядело как «прямоугольное окно» (жалоба
+          12.09.2026); прежний просмотрщик снимков страдал тем же. Остальные
+          полноэкранные слои сайта здесь же порталятся (см. ConfirmModal). */}
+      {open && createPortal((
         <Suspense fallback={
           <div className="fixed inset-0 z-[100000] bg-white dark:bg-[#1c1c1e] flex items-center justify-center">
             <div className="loader-logo" />
@@ -197,7 +205,7 @@ function BoardHistory({ studentId, studentName, account = null, token = null, on
             onClose={() => setOpen(null)}
           />
         </Suspense>
-      )}
+      ), document.body)}
       <ConfirmModal
         open={!!askDelete}
         title="Удалить доску?"
