@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, Fragment } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
-import { signRows } from "../storageUrl"
+import { signRows, permanentStorageUrl } from "../storageUrl"
 import SplitTasksModal from "../components/SplitTasksModal"
 import { canSplit, dataUrlToBlob } from "./homeworkSplit"
 import Icon from "../components/Icon"
@@ -837,7 +837,14 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
     setFormError("")
     setSaving(true)
 
-    let fileUrl = isEditing ? editingHw.file_url : null
+    // В базу должен уходить ПОСТОЯННЫЙ адрес файла, а не подписанный. Кабинет
+    // держит в стейте подписанные ссылки (список работ проходит через
+    // signRows), и при правке работы editingHw.file_url — уже подписанный
+    // адрес. Записав его обратно, мы навсегда клали в file_url подпись с
+    // токеном на 4 часа: он протухал, а хуже — «?token=…» на конце ломал
+    // сверку в политике доступа ученика (file_url like '%/'||name), и ученик
+    // вообще терял доступ к файлу задания. Нормализуем обратно к /object/public/.
+    let fileUrl = isEditing ? permanentStorageUrl(editingHw.file_url, "homework") : null
     if (file) {
       const fileName = buildUploadPath(tutorId, file.name)
       const { error: uploadError } = await supabase.storage.from("homework").upload(fileName, file)
