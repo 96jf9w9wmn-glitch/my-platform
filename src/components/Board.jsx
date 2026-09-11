@@ -67,6 +67,17 @@ const QA_RADIUS = 18         // скругление низа подвала —
 // Лист меньше этого на экране — поля не показываем: набрать в него всё равно нельзя,
 // а условие на такой доске читают глазами, а не решают.
 const QA_MIN_ON_SCREEN = 300
+// Индикатор отправки картинки ужимается под саму картинку. Своя величина плашки —
+// 47×28 экранных точек (px-3 + h-7 + три точки по 5 с зазорами 4), и лист,
+// положенный на отдалённой доске, бывает мельче неё: вместо «картинка едет»
+// получался кружок с точками, из-под которого картинки не видно вовсе. Поэтому
+// плашка не шире 80 % ширины элемента и не выше половины его высоты, но и не мельче
+// BUSY_MIN_K — на меньшем три точки сливаются в пятно.
+const BUSY_W = 47, BUSY_H = 28, BUSY_MIN_K = 0.34
+const busyScale = (w, h) => {
+  const k = Math.min(1, (w * 0.65) / BUSY_W, (h * 0.4) / BUSY_H)
+  return Math.max(BUSY_MIN_K, Math.round(k * 100) / 100)
+}
 // Затухание доски и стало общей «походкой» ухода для всего сайта: значение
 // живёт в CLOSE_MS (useClosing.js) и в --leave-ms (index.css), здесь только имя
 // для читаемости. Хук снимает доску, когда затухание кончилось.
@@ -1386,7 +1397,8 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         const b = strokeBox(st)
         const [x0, y0] = toScreen(b.minX, b.minY), [x1, y1] = toScreen(b.maxX, b.maxY)
         if (x1 > 0 && y1 > 0 && x0 < cw && y0 < ch) {
-          busy.push({ id: st.id, x: Math.round((x0 + x1) / 2), y: Math.round((y0 + y1) / 2) })
+          busy.push({ id: st.id, x: Math.round((x0 + x1) / 2), y: Math.round((y0 + y1) / 2),
+            k: busyScale(x1 - x0, y1 - y0) })
         }
       }
       // Панель нужна листу с полем ответа И листу с прилагаемым файлом: у части
@@ -4600,7 +4612,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
           // Сдвиг «на половину себя» — на ОБЁРТКЕ: у появления попапа свои кадры
           // с transform, и на одном элементе они затирали бы центровку.
           <div key={b.id} className="absolute pointer-events-none"
-            style={{ left: b.x, top: b.y, transform: "translate(-50%, -50%)" }}>
+            style={{ left: b.x, top: b.y, transform: `translate(-50%, -50%) scale(${b.k})` }}>
             <div className="popup-bubble flex items-center px-3 h-7 rounded-full shadow-lg"
               style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
               <span className="loader-dots text-blue-500"><i /><i /><i /></span>
