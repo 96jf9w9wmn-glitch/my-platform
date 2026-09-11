@@ -672,12 +672,17 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
   // --- Задания, нарезанные из своего файла ---
 
   // Нарезка даёт условия картинками, а ответов в файле нет — их вписывает
-  // репетитор. Всё остальное устроено как у банка: описание работы собирается
-  // из текстов, ответы едут списком (в них бывают пробелы, и поле-строка
+  // репетитор. Ответы едут списком (в них бывают пробелы, и поле-строка
   // разорвало бы такой ответ надвое).
+  //
+  // В описание идёт ТОЛЬКО нумерация, а не текст, вынутый из файла. Условие
+  // целиком лежит на картинке задания, а вынутый текст — это то, что удалось
+  // разобрать в PDF или docx: обрывки соседних заданий, колонтитул, номер
+  // страницы («1. #1_Задание 1ДЗ #3 #2»). Ученику он показывался строкой над
+  // картинкой и только мешал читать условие.
   function syncSplit(next) {
     setSplitTasks(next)
-    setDescription(next.map((t, i) => `${i + 1}. ${oneLine(t.text) || `Задание ${i + 1}`}`).join("\n"))
+    setDescription(next.map((_, i) => `${i + 1}. Задание ${i + 1}`).join("\n"))
     setTestOptions(null)
     setMcqCorrect([])
     setAnswersInput("")
@@ -686,7 +691,7 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
 
   function applySplit(tasks) {
     resetBulk()
-    syncSplit(tasks.map((t) => ({ image: t.image, text: t.text, answer: "" })))
+    syncSplit(tasks.map((t) => ({ image: t.image, answer: "" })))
   }
 
   const setSplitAnswer = (idx, value) =>
@@ -1342,9 +1347,6 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                                       />
                                     </div>
                                   </Collapse>
-                                  {!!t.text && (
-                                    <div className="text-[11px] text-gray-400 leading-snug line-clamp-2">{t.text}</div>
-                                  )}
                                 </div>
                                 <button type="button" onClick={() => removeSplitTask(i)} title="Убрать задание"
                                   className="no-press shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-blue-500/[0.08] transition active:scale-90">
