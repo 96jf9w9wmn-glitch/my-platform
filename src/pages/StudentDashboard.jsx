@@ -31,7 +31,7 @@ function boardHwFromUrl() {
   const v = new URLSearchParams(window.location.search).get("board")
   return v && v.startsWith("hw:") ? v.slice(3) : null
 }
-import { parseLocalDate, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, parseHomeworkTasks, creditedNums, formatPhone, answersEqual, homeworkTestScore, plural, timeUntilLesson, homeworkBoardSheet } from "../utils"
+import { parseLocalDate, isHomeworkOverdue, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, parseHomeworkTasks, creditedNums, formatPhone, answersEqual, homeworkTestScore, plural, timeUntilLesson, homeworkBoardSheet } from "../utils"
 import { studentBilling, periodLabel } from "../billing"
 import { longDate } from "../invoices"
 import { homeworkRoom } from "../boardRoom"
@@ -661,7 +661,10 @@ function HwSolutionUpload({ hwId, index, existingUrl, onUploaded }) {
   }
 
   return (
-    <div className="flex flex-col gap-1.5">
+    // Рядом с «Решить на доске» это вторая колонка одной строки. На телефоне
+    // кнопок тут две («Камера» и «Файл»), и втиснуть их в половину ширины
+    // нельзя — там блок занимает свою строку целиком.
+    <div className={`flex flex-col gap-1.5 ${hasCamera && !existingUrl ? "basis-full" : "flex-1 basis-40"}`}>
       {hasCamera && (
         <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
       )}
@@ -706,7 +709,7 @@ function HwSolutionUpload({ hwId, index, existingUrl, onUploaded }) {
 function SolveOnBoard({ onClick }) {
   return (
     <button onClick={onClick}
-      className="press-fill w-full flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-medium text-blue-600 dark:text-blue-300 ring-1 ring-blue-500/25">
+      className="press-fill flex-1 basis-40 flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-medium text-blue-600 dark:text-blue-300 ring-1 ring-blue-500/25">
       <Icon name="clipboard" size={14} />Решить на доске
     </button>
   )
@@ -1159,6 +1162,12 @@ function HomeworkDetail({ hw, answers = null, onAnswers = null, onBack, onUpload
   const hasTest = hw.hw_type === "test" || hw.hw_type === "combined"
   const hasWritten = hw.hw_type === "written" || hw.hw_type === "combined"
   const testDone = hw.test_score != null
+  // Срок прошёл — решение закрыто: ни полей ответа, ни фото, ни доски, ни
+  // кнопки «Отправить». Работа при этом остаётся на виду вместе с условиями,
+  // а открыть её заново может только репетитор — кнопкой «Продлить» в разборе.
+  // Правило общее с кабинетом репетитора (isHomeworkOverdue в utils.js), иначе
+  // «Просрочено» и закрытое решение разъехались бы.
+  const locked = isHomeworkOverdue(hw)
   // Интерактивный тест: к каждому вопросу приложены варианты ответа для выбора.
   const isMcq = Array.isArray(hw.test_options) && hw.test_options.length > 0
   const requireSolution = !!hw.require_solution && hasTest
@@ -1178,14 +1187,14 @@ function HomeworkDetail({ hw, answers = null, onAnswers = null, onBack, onUpload
   // Пока ученик решает тест, задания стоят рядом со своими полями ответа, и
   // общего списка условий сверху в этот момент нет: иначе каждое условие было
   // бы напечатано дважды.
-  const solvingTest = hasTest && !testDone && (hw.status === "assigned" || hw.status === "revision")
+  const solvingTest = hasTest && !locked && !testDone && (hw.status === "assigned" || hw.status === "revision")
 
   // ── Таймер выполнения с автосдачей ────────────────────────────────────────
   // Отсчёт идёт от ВРЕМЕНИ СЕРВЕРА: момент открытия ставит RPC homework_open и
   // только один раз (coalesce), поэтому перезагрузка страницы и вход с другого
   // устройства таймер не сбрасывают. Пока миграция supabase/homework_timer.sql
   // не выполнена, у работы нет time_limit_min — таймера просто нет, всё как раньше.
-  const timerActive = !!hw.time_limit_min && hasTest && !testDone &&
+  const timerActive = !!hw.time_limit_min && hasTest && !locked && !testDone &&
     (hw.status === "assigned" || hw.status === "revision")
   const [endsAt, setEndsAt] = useState(null)
   const [nowTs, setNowTs] = useState(() => Date.now())
@@ -1250,6 +1259,7 @@ function HomeworkDetail({ hw, answers = null, onAnswers = null, onBack, onUpload
   // нет — она осталась лишь там, где заданий в описании не разобрать и
   // прикреплять фото не к чему.
   async function handleSubmitWritten() {
+    if (locked) return
     if (!solutionCount) {
       setSubmitError(solutionHint)
       return
@@ -1261,6 +1271,7 @@ function HomeworkDetail({ hw, answers = null, onAnswers = null, onBack, onUpload
   }
 
   async function handleSubmitTest() {
+    if (locked) return
     // В доработке прежние ответы уже стоят в полях — «хотя бы один ответ»
     // выполнялось бы само собой, и работа уходила бы обратно нетронутой.
     if (!testAnswers.some((a, i) => !isAccepted(i) && a.trim())) {
@@ -1277,7 +1288,7 @@ function HomeworkDetail({ hw, answers = null, onAnswers = null, onBack, onUpload
     setSubmittingTest(false)
   }
 
-  const showWrittenUpload = hasWritten && (hw.status === "assigned" || hw.status === "revision") && (!hasTest || testDone)
+  const showWrittenUpload = hasWritten && !locked && (hw.status === "assigned" || hw.status === "revision") && (!hasTest || testDone)
 
   const meta = HW_STATUS[hw.status] || HW_STATUS.assigned
   const dl = deadlineInfo(hw)
@@ -1385,6 +1396,20 @@ function HomeworkDetail({ hw, answers = null, onAnswers = null, onBack, onUpload
         )}
       </div>
 
+      {locked && (
+        <div className="glass p-4 mb-4 flex items-start gap-3">
+          <div className="w-9 h-9 rounded-xl bg-amber-500/12 text-amber-600 dark:text-amber-300 flex items-center justify-center flex-shrink-0">
+            <Icon name="clock" size={16} />
+          </div>
+          <div className="min-w-0">
+            <div className="text-sm font-medium">Срок сдачи прошёл</div>
+            <div className="text-xs text-gray-500 mt-0.5">
+              Работа закрыта: ответы и решение уже не отправить. Попроси репетитора продлить срок — тогда она откроется снова.
+            </div>
+          </div>
+        </div>
+      )}
+
       {hw.status === "done" && (
         <div className={`${look.tint} p-5 text-center mb-4`}>
           <div className={`mb-2 flex justify-center ${look.accent}`}><Icon name="check" size={28} /></div>
@@ -1405,7 +1430,7 @@ function HomeworkDetail({ hw, answers = null, onAnswers = null, onBack, onUpload
         </div>
       )}
 
-      {hasTest && !testDone && (hw.status === "assigned" || hw.status === "revision") && (
+      {solvingTest && (
         <div className="glass p-5 mb-4">
           {hw.status === "revision" && hw.comment && (
             <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700 mb-4">
@@ -1479,15 +1504,20 @@ function HomeworkDetail({ hw, answers = null, onAnswers = null, onBack, onUpload
                   />
                 )}
 
-                {onSolveOnBoard && <SolveOnBoard onClick={() => onSolveOnBoard(boardTaskOf(i))} />}
-
-                {canAttachSolution && (
-                  <HwSolutionUpload
-                    hwId={hw.id}
-                    index={i}
-                    existingUrl={solutionFiles[i + 1]?.view}
-                    onUploaded={handleSolutionUploaded}
-                  />
+                {/* Доска и фото решения — два способа сделать одно и то же,
+                    поэтому стоят рядом колонками, а не двумя полосами. */}
+                {(onSolveOnBoard || canAttachSolution) && (
+                  <div className="flex flex-wrap gap-2">
+                    {onSolveOnBoard && <SolveOnBoard onClick={() => onSolveOnBoard(boardTaskOf(i))} />}
+                    {canAttachSolution && (
+                      <HwSolutionUpload
+                        hwId={hw.id}
+                        index={i}
+                        existingUrl={solutionFiles[i + 1]?.view}
+                        onUploaded={handleSolutionUploaded}
+                      />
+                    )}
+                  </div>
                 )}
               </div>
             ))}
@@ -1614,13 +1644,15 @@ function HomeworkDetail({ hw, answers = null, onAnswers = null, onBack, onUpload
                       <span className="shrink-0 w-6 h-6 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-300 text-xs font-semibold flex items-center justify-center mt-0.5">{t.n}</span>
                       <HwTaskBody text={t.text} bankTask={bankTasks?.[i]} className="pt-0.5" />
                     </div>
-                    {onSolveOnBoard && <SolveOnBoard onClick={() => onSolveOnBoard(boardTaskOf(i))} />}
-                    <HwSolutionUpload
-                      hwId={hw.id}
-                      index={i}
-                      existingUrl={solutionFiles[i + 1]?.view}
-                      onUploaded={handleSolutionUploaded}
-                    />
+                    <div className="flex flex-wrap gap-2">
+                      {onSolveOnBoard && <SolveOnBoard onClick={() => onSolveOnBoard(boardTaskOf(i))} />}
+                      <HwSolutionUpload
+                        hwId={hw.id}
+                        index={i}
+                        existingUrl={solutionFiles[i + 1]?.view}
+                        onUploaded={handleSolutionUploaded}
+                      />
+                    </div>
                   </div>
                 ))}
               </div>
@@ -3182,7 +3214,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
             </div>
           )}
 
-          <div className={`flex-1 min-h-0 overflow-x-hidden ${activeTab === "chat" ? "flex flex-col overflow-hidden" : "page-scroll overflow-y-auto pb-20 md:pb-0 kb-collapse"}`}>
+          <div className={`student-app flex-1 min-h-0 overflow-x-hidden ${activeTab === "chat" ? "flex flex-col overflow-hidden" : "page-scroll overflow-y-auto pb-20 md:pb-0 kb-collapse"}`}>
             {activeTab === "chat" ? (
               <div className="flex-1 min-h-0 flex flex-col overflow-hidden page-active">
                 <Chat
@@ -3558,7 +3590,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                   className={returning ? "view-back" : ""}
                   onAnimationEnd={(e) => { if (e.animationName === "view-back") setReturning(false) }}
                 >
-                  <h2 className="text-base font-medium mb-4">Мои задания</h2>
+                  <h2 className="text-xl font-medium page-title mb-4">Мои задания</h2>
                   <StudentHomeworkList homework={homework} onSelect={openHomework} />
                 </div>
               )}
@@ -4148,7 +4180,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                   className={returning ? "view-back" : ""}
                   onAnimationEnd={(e) => { if (e.animationName === "view-back") setReturning(false) }}
                 >
-                  <h2 className="text-base font-medium mb-4">Мои варианты</h2>
+                  <h2 className="text-xl font-medium page-title mb-4">Мои варианты</h2>
                   <StudentVariantList
                     variants={variants}
                     onSelect={(v) => { submitLockRef.current = false; setSelectedVariant(v); setPart1Answers(Array(part1SlotsOf(v.type)).fill("")); setPart2Choices({}) }}
