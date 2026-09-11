@@ -144,15 +144,17 @@ function BoardHistory({ studentId, studentName, account = null, token = null, on
               <button
                 onClick={() => (onOpenBoard && r.lesson_date === liveDate ? onOpenBoard() : openDate(r.lesson_date))}
                 title={onOpenBoard && r.lesson_date === liveDate ? "Открыть доску" : "Посмотреть снимок"}
-                className="press-fill glass-sm rounded-2xl overflow-hidden text-left w-full block">
-                <div className="aspect-[16/10] bg-white dark:bg-white/5 flex items-center justify-center overflow-hidden">
+                className="press-fill glass-sm rounded-2xl overflow-hidden text-left w-full block p-1.5">
+                {/* Снимок не прижимается к краям карточки: вокруг него поле,
+                    иначе чёрное полотно доски читается как обрез карточки. */}
+                <div className="aspect-[16/10] rounded-xl bg-white dark:bg-white/5 flex items-center justify-center overflow-hidden">
                   {r.preview
                     ? <img src={r.preview} alt="" className="w-full h-full object-cover" />
                     : <Icon name="clipboard" size={20} className="text-gray-400" />}
                 </div>
                 {/* Справа только ожидание: число штрихов сцены пользователю
                     ничего не говорит, а читалось как сумма или оценка. */}
-                <div className="px-2.5 py-2 flex items-center justify-between gap-2 min-h-[34px]">
+                <div className="px-1.5 pt-2 pb-1 flex items-center justify-between gap-2 min-h-[30px]">
                   <span className="text-xs font-medium truncate">{humanDate(r.lesson_date)}</span>
                   {loadingDate === r.lesson_date && (
                     <span className="loader-dots text-gray-400"><i /><i /><i /></span>
@@ -167,7 +169,7 @@ function BoardHistory({ studentId, studentName, account = null, token = null, on
                 <button onClick={() => setAskDelete(r.lesson_date)} title="Удалить доску"
                   aria-label={`Удалить доску за ${humanDate(r.lesson_date)}`}
                   style={{ position: "absolute" }}
-                  className="press-tap top-1.5 right-1.5 w-6 h-6 rounded-full flex items-center justify-center
+                  className="press-tap top-2.5 right-2.5 w-6 h-6 rounded-full flex items-center justify-center
                     bg-white/80 dark:bg-[#1c1c1e]/80 backdrop-blur ring-1 ring-gray-200/70 dark:ring-white/10
                     text-gray-400 hover:text-red-500">
                   <Icon name="x" size={13} />
