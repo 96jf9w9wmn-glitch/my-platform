@@ -104,6 +104,13 @@ function strokeBox(s) {
   return bb
 }
 const pointInBBox = (x, y, b) => x >= b.minX && x <= b.maxX && y >= b.minY && y <= b.maxY
+// Прямоугольник картинки — ровно между её двумя точками, без запаса strokeBox.
+// Нужен там, где к листу что-то приклеивается (подвал с полем ответа): запас
+// рамки там читается как лишние поля вокруг листа.
+const imageRect = (s) => {
+  const a = s.points[0], b = s.points[s.points.length - 1]
+  return { minX: Math.min(a[0], b[0]), minY: Math.min(a[1], b[1]), maxX: Math.max(a[0], b[0]), maxY: Math.max(a[1], b[1]) }
+}
 
 // Курсор собеседника держится CURSOR_HOLD мс после последнего движения, потом гаснет
 const CURSOR_HOLD = 3000, CURSOR_FADE = 400
@@ -1228,7 +1235,12 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       // Панель нужна листу с полем ответа И листу с прилагаемым файлом: у части
       // заданий (КЕГЭ с таблицей) файл есть, а короткого ответа для сверки нет.
       if (!st.qa && !st.files?.length) continue
-      const b = strokeBox(st)
+      // Габарит САМОГО листа, а не strokeBox: тот к любому штриху добавляет запас в
+      // полтолщины линии + 2 (нужен ластику и выделению), и подвал выходил за лист
+      // на 3,5 мировых единицы с каждой стороны и на столько же съезжал вниз — на
+      // увеличенной доске это 15–20 экранных пикселей, и вместо одного окна
+      // получались лист и плашка шире него.
+      const b = imageRect(st)
       const [x0, y0] = toScreen(b.minX, b.minY), [x1, y1] = toScreen(b.maxX, b.maxY)
       const sw = x1 - x0
       if (sw < QA_MIN_ON_SCREEN || x1 < 0 || y1 < 0 || x0 > cw || y0 > ch) continue
