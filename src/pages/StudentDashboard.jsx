@@ -730,6 +730,66 @@ function deadlineInfo(hw) {
   return null
 }
 
+// Краткое резюме работы: что это за задание, проверится ли оно само и нужно ли
+// фото решения. Из одной строки «С ответами · 86 зад.» ничего этого не
+// следовало: ученик открывал работу и узнавал правила уже по ходу, а
+// «прикрепи фото решения» вылезало отказом в момент отправки.
+function homeworkBrief(hw, { hasTest, hasWritten, isMcq, requireSolution }) {
+  const out = []
+  const n = hw.question_count || 0
+  if (hasTest) {
+    out.push({
+      icon: "clipboard",
+      text: n
+        ? `${n} ${plural(n, "задание", "задания", "заданий")} с коротким ответом: ${isMcq ? "ответ выбирается" : "ответ вписывается"} прямо под условием.`
+        : `${isMcq ? "Ответ выбирается" : "Ответ вписывается"} прямо под условием.`,
+    })
+    out.push({
+      icon: "sparkles",
+      text: hasWritten
+        ? "Ответы проверятся сами, а письменную часть посмотрит репетитор."
+        : "Проверка автоматическая: оценку увидишь сразу после отправки.",
+    })
+    out.push({
+      icon: "camera",
+      text: requireSolution
+        ? "Фото решения обязательно — без него работа не отправится."
+        : "Фото решения — по желанию: прикрепи, если решал на листе.",
+    })
+  } else {
+    out.push({ icon: "edit", text: "Письменная работа: решение проверит репетитор, автопроверки здесь нет." })
+    out.push({ icon: "camera", text: "Фото решения обязательно — без него работа не отправится." })
+  }
+  if (hw.time_limit_min) out.push({
+    icon: "clock",
+    text: `На работу даётся ${hw.time_limit_min} ${plural(hw.time_limit_min, "минута", "минуты", "минут")}: отсчёт идёт с того момента, как ты её открыл, по нулю работа уйдёт на проверку сама.`,
+  })
+  // Дальний срок в шапке не показывается вовсе: строка-срок оставлена для
+  // «Сегодня/Завтра/Просрочено», а дату в списке несёт плитка, которой в
+  // открытой работе нет. Поэтому дальний срок называем здесь.
+  if (hw.deadline && !deadlineInfo(hw)) out.push({
+    icon: "calendar",
+    text: `Сдать до ${parseLocalDate(hw.deadline).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}.`,
+  })
+  return out
+}
+
+// Само резюме показывается только у работы, которую ещё предстоит решить: на
+// сданной и проверенной эти правила уже ничего не меняют.
+function HomeworkBrief({ items }) {
+  if (!items.length) return null
+  return (
+    <div className="mt-4 rounded-2xl px-3.5 py-3 bg-blue-500/[0.05] ring-1 ring-blue-500/15 flex flex-col gap-2">
+      {items.map((it, i) => (
+        <div key={i} className="flex items-start gap-2.5 text-xs leading-snug text-gray-600">
+          <Icon name={it.icon} size={13} className="shrink-0 mt-0.5 text-blue-600 dark:text-blue-300" />
+          <span>{it.text}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function StudentHomeworkCard({ hw, index, onSelect }) {
   const meta = HW_STATUS[hw.status] || HW_STATUS.assigned
   const dl = deadlineInfo(hw)
@@ -1093,7 +1153,9 @@ const HW_LIST_COLS = [
   "opened_at", "auto_submitted", "retry_policy", "retry_limit", "solution_files", "credited",
 ].join(", ")
 
-function HomeworkDetail({ hw, answers = null, onAnswers = null, onBack, onUpload, onSubmitTest, onSubmitWritten, onSolveOnBoard, onOpenBoard }) {
+// Экспорт — для стенда карточки работы (dev-hw.html, в .gitignore): вёрстку
+// шапки и решения удобнее смотреть без входа в кабинет ученика.
+export function HomeworkDetail({ hw, answers = null, onAnswers = null, onBack, onUpload, onSubmitTest, onSubmitWritten, onSolveOnBoard, onOpenBoard }) {
   const [uploading, setUploading] = useState(false)
   const [submittingWritten, setSubmittingWritten] = useState(false)
   // Доработка приходит с уже принятыми ответами: репетитор оставил в работе те,
@@ -1295,6 +1357,12 @@ function HomeworkDetail({ hw, answers = null, onAnswers = null, onBack, onUpload
   const typeLabel = hw.hw_type === "test" ? `С ответами · ${hw.question_count || 0} зад.`
     : hw.hw_type === "combined" ? "Ответы + письменное" : "Письменное"
   const headerIcon = hw.status === "done" ? "check" : hw.hw_type === "test" ? "clipboard" : hw.hw_type === "combined" ? "file-text" : "edit"
+  // Резюме — только у работы, которую ещё предстоит решить: у сданной и
+  // проверенной правила решения уже ни на что не влияют, а срок прошёл —
+  // об этом ниже своя плашка.
+  const brief = (hw.status === "assigned" || hw.status === "revision") && !locked
+    ? homeworkBrief(hw, { hasTest, hasWritten, isMcq, requireSolution })
+    : []
   // Вся карточка результата красится в цвет оценки — один акцент, без «зелёное + красное».
   const look = (hw.grade && GRADE_LOOK[hw.grade]) || GRADE_NEUTRAL
   const { intro, tasks } = parseHomeworkTasks(hw.description)
@@ -1372,6 +1440,8 @@ function HomeworkDetail({ hw, answers = null, onAnswers = null, onBack, onUpload
           </div>
         </div>
 
+        <HomeworkBrief items={brief} />
+
         {intro && <div className="text-sm text-gray-600 mt-4" dangerouslySetInnerHTML={{ __html: renderHomeworkMath(intro) }} />}
 
         {tasks.length > 0 && !solvingTest && !solvingWritten && (
@@ -1437,21 +1507,18 @@ function HomeworkDetail({ hw, answers = null, onAnswers = null, onBack, onUpload
               <span className="flex items-start gap-1"><Icon name="message" size={12} className="mt-0.5 flex-shrink-0" />Комментарий репетитора: {hw.comment}</span>
             </div>
           )}
-          <h3 className="text-base font-medium mb-1">
+          <h3 className={`text-base font-medium ${redoOnly ? "mb-1" : "mb-4"}`}>
             {redoOnly ? "Доработка — реши эти задания заново" : isMcq ? "Реши работу — выбери ответы" : "Реши работу — впиши ответы"}
           </h3>
-          <p className="text-xs text-gray-500 mb-4">
-            {redoOnly && (
-              <>
-                Здесь только то, где ты ошибся или не ответил; остальные {keptCount}{" "}
-                {plural(keptCount, "задание", "задания", "заданий")} репетитор принял.{" "}
-              </>
-            )}
-            {isMcq ? "Ответ выбирается прямо под заданием" : "Ответ вписывается прямо под заданием"}
-            {requireSolution ? ", там же прикрепляется фото решения."
-              : canAttachSolution ? ", там же прикрепляется фото решения, если решал на листе."
-              : "."}
-          </p>
+          {/* Что вписывать и нужно ли фото — написано в резюме наверху карточки,
+              второй раз тут не повторяем. Остаётся только то, что относится
+              именно к доработке: почему заданий стало меньше. */}
+          {redoOnly && (
+            <p className="text-xs text-gray-500 mb-4">
+              Здесь только то, где ты ошибся или не ответил; остальные {keptCount}{" "}
+              {plural(keptCount, "задание", "задания", "заданий")} репетитор принял.
+            </p>
+          )}
 
           {/* Задание, поле ответа и фото решения стоят вместе: раньше условия
               были списком сверху, а поля ввода — сеткой в самом низу, и ученик
