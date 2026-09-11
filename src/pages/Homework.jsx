@@ -1902,6 +1902,15 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
   const redoNums = answerRows.filter((r) => r.ok !== true).map((r) => r.n)
   const partialRedo = redoNums.length > 0 && redoNums.length < answerRows.length
   const creditedNumsShown = answerRows.filter((r) => r.credited).map((r) => r.n)
+  // Подпись к цветам чипов. Пустая, когда вся работа решена верно, — тогда под
+  // номерами стоит просто «Ошибок нет».
+  const legendItems = [
+    wrongNums.length > 0 && { label: "ошибка", dot: "bg-red-500/40 ring-red-500/30" },
+    missedNums.length > 0 && { label: "не решено", dot: "bg-amber-500/40 ring-amber-500/30" },
+    creditedNumsShown.length > 0 && { label: "засчитано вручную", dot: "bg-blue-500/40 ring-blue-500/30" },
+    answerRows.some((r) => r.ok === true && !r.credited) && { label: "верно", dot: "bg-green-500/40 ring-green-500/30" },
+    answerRows.some((r) => r.ok == null) && { label: "проверяет репетитор", dot: "ring-gray-300 dark:ring-white/20" },
+  ].filter(Boolean)
 
   // Проверка на доске. У задания без автопроверки сверить ответ не с чем — ход
   // решения смотрит репетитор, и удобнее это делать на доске: условие и фото
@@ -1960,7 +1969,8 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
                 key={i}
                 title={r.credited ? `Задание ${r.n} — засчитано вручную` : r.skipped ? `Задание ${r.n} — не решено` : r.ok === false ? `Задание ${r.n} — ошибка` : r.ok ? `Задание ${r.n} — верно` : `Задание ${r.n} — проверяет репетитор`}
                 className={`w-7 h-7 rounded-lg text-xs font-medium flex items-center justify-center ring-1 ${
-                  r.skipped ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 ring-amber-500/30"
+                  r.credited ? "bg-blue-500/12 text-blue-700 dark:text-blue-300 ring-blue-500/25"
+                    : r.skipped ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 ring-amber-500/30"
                     : r.ok === false ? "bg-red-500/12 text-red-600 ring-red-500/25"
                     : r.ok ? "bg-green-500/12 text-green-700 dark:text-green-300 ring-green-500/25"
                     : "text-gray-500 ring-gray-200 dark:ring-white/15"
@@ -1970,23 +1980,22 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
               </span>
             ))}
           </div>
-          <div className="text-[11px] text-gray-400">
-            {wrongNums.length === 0
-              ? "Ошибок нет"
-              : wrongNums.length === 1
-              ? `Ошибка в задании №${wrongNums[0]}`
-              : `Ошибки в заданиях ${wrongNums.map((n) => "№" + n).join(", ")}`}
-            {/* Пропущенные называем отдельно от ошибок: это разные разговоры с
-                учеником, а в общем списке «ошибок» пропуск терялся. */}
-            {missedNums.length > 0 && (
-              <> · не {missedNums.length === 1 ? "решено" : "решены"} {missedNums.map((n) => "№" + n).join(", ")}</>
-            )}
-            {/* Зачтённые руками номера называем прямо: иначе балл не сходится с
-                числом верных ответов, и понять почему — неоткуда. */}
-            {creditedNumsShown.length > 0 && (
-              <> · {creditedNumsShown.map((n) => "№" + n).join(", ")} {creditedNumsShown.length === 1 ? "засчитано" : "засчитаны"} вручную</>
-            )}
-          </div>
+          {/* Что значит цвет — подписью, а не перечнем номеров: у работы на
+              сорок заданий список «№1, №2, …» занимал три строки и читался
+              хуже самих чипов. Пункт показывается, только если такие задания в
+              работе есть. */}
+          {legendItems.length === 0 ? (
+            <div className="text-[11px] text-gray-400">Ошибок нет</div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-400">
+              {legendItems.map((it) => (
+                <span key={it.label} className="inline-flex items-center gap-1.5">
+                  <span className={`w-2.5 h-2.5 rounded-full ring-1 ${it.dot}`} />
+                  {it.label}
+                </span>
+              ))}
+            </div>
+          )}
         </>
       )}
     </div>
