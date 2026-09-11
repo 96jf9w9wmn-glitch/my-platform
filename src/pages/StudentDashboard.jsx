@@ -758,14 +758,7 @@ function StudentHomeworkCard({ hw, index, onSelect }) {
       </div>
       )}
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <div className="font-medium text-sm truncate flex-1">{hw.title}</div>
-          {gradeLook ? (
-            <span className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${gradeLook.chip}`}>{hw.grade}</span>
-          ) : (
-            <span className={`shrink-0 text-[11px] px-2 py-0.5 rounded-full font-medium ${meta.chip}`}>{meta.label}</span>
-          )}
-        </div>
+        <div className="font-medium text-sm truncate">{hw.title}</div>
         <div className="flex items-center gap-1.5 mt-1 text-[11px]">
           <span className="text-gray-400 shrink-0">{typeLabel}</span>
           {dl && (
@@ -778,7 +771,18 @@ function StudentHomeworkCard({ hw, index, onSelect }) {
         </div>
         {preview && <div className="text-[11px] text-gray-400 mt-1 line-clamp-1">{preview}</div>}
       </div>
-      <Icon name="chevron-right" size={16} className="shrink-0 text-gray-400" />
+      {/* Оценка (или статус) стоит в одном ряду со стрелкой. Раньше чип висел в
+          строке названия, то есть на 15–20 px выше стрелки, и правый край
+          карточки читался как перекос: два элемента на одной вертикали, но на
+          разной высоте. */}
+      <div className="shrink-0 flex items-center gap-2">
+        {gradeLook ? (
+          <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${gradeLook.chip}`}>{hw.grade}</span>
+        ) : (
+          <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${meta.chip}`}>{meta.label}</span>
+        )}
+        <Icon name="chevron-right" size={16} className="text-gray-400" />
+      </div>
     </button>
   )
 }
@@ -994,16 +998,7 @@ function StudentVariantCard({ variant: v, index, onSelect }) {
         </div>
       )}
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <div className="font-medium text-sm truncate flex-1">{v.title}</div>
-          {graded ? (
-            <span className={`shrink-0 text-[11px] px-2 py-0.5 rounded-full font-medium tabular-nums ${meta.chip}`}>
-              {v.submission.total_score}{max ? ` / ${max}` : ""}
-            </span>
-          ) : (
-            <span className={`shrink-0 text-[11px] px-2 py-0.5 rounded-full font-medium ${meta.chip}`}>{meta.label}</span>
-          )}
-        </div>
+        <div className="font-medium text-sm truncate">{v.title}</div>
         <div className="flex items-center gap-1.5 mt-1 text-[11px]">
           <span className="text-gray-400 shrink-0">{v.type}</span>
           {note && (
@@ -1015,7 +1010,18 @@ function StudentVariantCard({ variant: v, index, onSelect }) {
           )}
         </div>
       </div>
-      <Icon name="chevron-right" size={16} className="shrink-0 text-gray-400" />
+      {/* Балл и статус — в одном ряду со стрелкой, как у домашней работы:
+          разделы «Задания» и «Варианты» обязаны выглядеть одинаково. */}
+      <div className="shrink-0 flex items-center gap-2">
+        {graded ? (
+          <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium tabular-nums ${meta.chip}`}>
+            {v.submission.total_score}{max ? ` / ${max}` : ""}
+          </span>
+        ) : (
+          <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${meta.chip}`}>{meta.label}</span>
+        )}
+        <Icon name="chevron-right" size={16} className="text-gray-400" />
+      </div>
     </button>
   )
 }
