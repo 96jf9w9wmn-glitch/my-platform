@@ -679,7 +679,7 @@ function BoardStrip({ open, children }) {
   )
 }
 
-export default function Board({ roomId, label = "", userId, userName, avatar = null, peer = null, theme = "light", onClose, account = null, token = null, canAddTasks = false, tutorSubject = null, tutorExamFocus = null, tutorSubjects = null, tutorOwner = false, taskSheet = null, taskAnswers = null, onTaskAnswer = null, snapshot = null, snapshotDate = null, onOpenLive = null }) {
+export default function Board({ roomId, label = "", userId, userName, avatar = null, peer = null, theme = "light", onClose, account = null, token = null, canAddTasks = false, tutorSubject = null, tutorExamFocus = null, tutorSubjects = null, tutorOwner = false, taskSheet = null, taskAnswers = null, onTaskAnswer = null, snapshot = null }) {
   // Прошлое занятие открывается ТОЙ ЖЕ доской, только на чтение: сцена приходит
   // снимком (snapshot), база не читается и не пишется, realtime не поднимается,
   // инструментов нет. Ради этого снимок и показывается доской, а не картинкой:
@@ -2429,27 +2429,6 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         strokes: list.length, updated_by: userId, updated_at: new Date().toISOString(),
       }, { onConflict: "student_id,lesson_date" })
     }
-  }
-
-  // Видимая часть доски картинкой. Холстов три (фон, листы, чернила) и лежат
-  // они друг на друге — складываем их в том же порядке, в каком они на экране.
-  function downloadPng() {
-    const ink = canvasRef.current
-    if (!ink) return
-    const out = document.createElement("canvas")
-    out.width = ink.width; out.height = ink.height
-    const ctx = out.getContext("2d")
-    ctx.fillStyle = bgColorRef.current
-    ctx.fillRect(0, 0, out.width, out.height)
-    for (const c of [bgCanvasRef.current, imgCanvasRef.current, ink]) {
-      if (c) ctx.drawImage(c, 0, 0, out.width, out.height)
-    }
-    try {
-      const a = document.createElement("a")
-      a.href = out.toDataURL("image/png")
-      a.download = `Доска ${snapshotDate || label || ""}.png`.replace(/\s+/g, " ").trim()
-      a.click()
-    } catch { /* холст «испорчен» картинкой без CORS — скачать нельзя */ }
   }
 
   function closeBoard() {
@@ -4444,23 +4423,6 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
               }`} style={pulled ? undefined : idleStyle}>
               <Icon name={pulled ? "check" : "pull-in"} size={15} />
               <span className="hidden sm:inline">{pulled ? "Готово" : "Притянуть"}</span>
-            </button>
-          )}
-          {readOnly && onOpenLive && (
-            // Разбор продолжают карандашом на живой доске, а не разглядыванием
-            // прошлого занятия — поэтому выход отсюда стоит рядом с закрытием.
-            <button onClick={() => { leave(); setTimeout(onOpenLive, BOARD_CLOSE_MS) }}
-              title="Открыть текущую доску"
-              className="press-tap flex items-center gap-1.5 h-8 px-2.5 rounded-full text-xs font-medium board-hover"
-              style={idleStyle}>
-              <Icon name="clipboard" size={15} />
-              <span className="hidden sm:inline">Открыть доску</span>
-            </button>
-          )}
-          {readOnly && (
-            <button onClick={downloadPng} title="Скачать PNG"
-              className="press-tap p-1.5 rounded-lg board-hover" style={idleStyle}>
-              <Icon name="download" size={16} />
             </button>
           )}
           <button onClick={closeBoard}

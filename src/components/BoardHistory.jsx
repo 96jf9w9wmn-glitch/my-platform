@@ -202,8 +202,6 @@ function BoardHistory({ studentId, studentName, account = null, token = null, on
             userId={account ? `s:${account}` : "t:view"}
             userName={studentName || ""}
             snapshot={open.scene}
-            snapshotDate={open.date}
-            onOpenLive={onOpenBoard}
             onClose={() => setOpen(null)}
           />
         </Suspense>
