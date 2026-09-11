@@ -41,7 +41,11 @@ const TILE = {
 // экранах раздела обязано выглядеть одинаково.
 const LINE = { ok: "#34c759", work: "#ff9f0a", bad: "#ff3b30", unknown: "#9ca3af" }
 
-function TaskMap({ attempts, tutorId, examType: hinted, className = "" }) {
+// readOnly — карта в кабинете самого ученика: те же номера и те же проценты,
+// но без методичек и без своего порядка. Методичка — личная шпаргалка
+// репетитора («она ваша, а не его»), и открывать её ученику нельзя; порядок
+// номеров тоже свойство репетитора, а не платформы.
+function TaskMap({ attempts, tutorId, examType: hinted, readOnly = false, className = "" }) {
   const rows = attempts
   const [notes, setNotes] = useState({})
   const [order, setOrder] = useState([])
@@ -61,12 +65,12 @@ function TaskMap({ attempts, tutorId, examType: hinted, className = "" }) {
   }, [rows, hinted])
 
   useEffect(() => {
-    if (!tutorId || !examType) return
+    if (readOnly || !tutorId || !examType) return
     let alive = true
     loadTaskNotes(tutorId, examType).then((n) => { if (alive) setNotes(n) })
     loadTaskOrder(tutorId).then((o) => { if (alive) setOrder(o[examType] || []) })
     return () => { alive = false }
-  }, [tutorId, examType])
+  }, [readOnly, tutorId, examType])
 
   // Свод по НОМЕРУ, а не по типажу: карта отвечает на вопрос «как у него с
   // одиннадцатым», а разбор по типажам внутри номера — это соседний блок.
@@ -120,13 +124,19 @@ function TaskMap({ attempts, tutorId, examType: hinted, className = "" }) {
     <div className={`glass-sm p-3.5 ${className}`}>
       <div className="flex items-baseline justify-between gap-3 mb-0.5">
         <span className="text-sm font-medium">Карта заданий</span>
-        <button onClick={() => setArranging((v) => !v)}
-          className="press-fill text-[11px] px-2 py-1 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-500">
-          {arranging ? "Готово" : "Свой порядок"}
-        </button>
+        {!readOnly && (
+          <button onClick={() => setArranging((v) => !v)}
+            className="press-fill text-[11px] px-2 py-1 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-500">
+            {arranging ? "Готово" : "Свой порядок"}
+          </button>
+        )}
       </div>
       <p className="text-xs text-gray-400 mb-3">
-        {arranging
+        {readOnly
+          ? (noAnswers
+              ? "Здесь появятся проценты по каждому заданию экзамена, как только ты решишь первую работу."
+              : "Процент — по первым ответам. Без процента — задание ещё не решал: зелёное закрыто, жёлтое и красное стоит повторить.")
+          : arranging
           ? "Стрелками поставьте номера в том порядке, в каком разбираете их сами."
           : noAnswers
             ? "Ученик ещё ничего не решал — процентов пока нет. Методичку к заданию можно написать уже сейчас: она ваша, а не его."
@@ -146,6 +156,31 @@ function TaskMap({ attempts, tutorId, examType: hinted, className = "" }) {
 
           // В режиме порядка плитка перестаёт быть кнопкой: внутри неё две
           // стрелки, и вложенная кнопка в кнопке недопустима.
+          if (readOnly) {
+            return (
+              <div key={n} title={title || `Задание ${n}`}
+                className={`rounded-2xl ring-1 px-2 py-1.5 ${TILE[tone]}`}>
+                <span className={`text-[13px] font-semibold tabular-nums leading-none${shown ? "" : " text-gray-500"}`}
+                  style={shown ? { color: LINE[tone] } : undefined}>
+                  <span className="text-[10px] font-medium opacity-50">№</span>{n}
+                </span>
+                <div className="mt-1.5 h-[19px]">
+                  {shown && (
+                    <>
+                      <div className="text-[11px] font-medium tabular-nums leading-none" style={{ color: LINE[tone] }}>
+                        {row.accuracy}%
+                      </div>
+                      <div className="mt-1 h-1 rounded-full bg-blue-500/12 overflow-hidden">
+                        <div className="h-full rounded-full transition-[width] duration-700 ease-out"
+                          style={{ width: `${Math.max(row.accuracy, 4)}%`, background: LINE[tone] }} />
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )
+          }
+
           if (arranging) {
             return (
               <div key={n} className={`rounded-2xl ring-1 px-2 py-1.5 ${TILE[tone]}`}>

@@ -19,6 +19,9 @@ import OnlinePayCard from "../components/OnlinePayCard"
 import InvoiceCard from "../components/InvoiceCard"
 import PushSettings from "../components/PushSettings"
 import StudentTelegram from "../components/StudentTelegram"
+import StudentResults from "../components/StudentResults"
+// Арифметика результатов — общая с «Результатами» репетитора (src/examStats.js).
+import { toRow, computeStats, computeHwStats, toHwRow, hwSolved, examTypeOf, shownScore, shownScoreMax } from "../examStats"
 
 const Board = lazy(() => import("../components/Board"))
 
@@ -2298,15 +2301,30 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     ? { ...liveStudent, avatar: liveStudent.avatar || cachedAvatar || null }
     : (cachedStudent ? { ...cachedStudent, avatar: cachedAvatar || cachedStudent.avatar } : cachedStudent)
 
-  const gradedHw = homework.filter((h) => h.grade != null)
-  const hwAvg = gradedHw.length > 0
-    ? Math.round((gradedHw.reduce((s, h) => s + h.grade, 0) / gradedHw.length) * 10) / 10
+  // Успеваемость считает общий examStats — тот же модуль, что и «Результаты»
+  // у репетитора. Своей арифметики здесь больше нет: главная и раздел
+  // «Результаты» обязаны показывать за одну работу одно и то же число, а до
+  // этого главная усредняла СЫРОЙ первичный балл и у ЕГЭ расходилась с тем,
+  // что стоит на самой проверенной работе (там тестовый).
+  const variantRows = useMemo(
+    () => variants
+      .filter((v) => v.submission?.status === "graded" && v.submission?.total_score != null)
+      .map((v) => toRow(v, v.submission, student?.goal)),
+    [variants, student?.goal],
+  )
+  // В свод идут только цель и желаемый балл — карточка ученика пересобирается
+  // на каждом рендере, и от неё зависеть нельзя.
+  const stats = useMemo(
+    () => computeStats({ goal: student?.goal, targetScore: student?.targetScore }, variantRows),
+    [student?.goal, student?.targetScore, variantRows],
+  )
+  const hwStats = useMemo(() => computeHwStats(homework.filter(hwSolved).map(toHwRow)), [homework])
+  const resultsExamType = examTypeOf(student || {}, stats)
+  const variantAvg = stats.hasData
+    ? Math.round(stats.rows.reduce((n, r) => n + shownScore(resultsExamType, r), 0) / stats.rows.length)
     : null
-
-  const gradedVariants = variants.filter((v) => v.submission?.status === "graded" && v.submission?.total_score != null)
-  const variantAvg = gradedVariants.length > 0
-    ? Math.round(gradedVariants.reduce((s, v) => s + v.submission.total_score, 0) / gradedVariants.length)
-    : null
+  const variantAvgMax = shownScoreMax(resultsExamType)
+  const hwAvg = hwStats.avgGrade
 
   // Сгенерированный вариант (собран из банка) несёт tasks_snapshot — его решаем прямо на
   // сайте; свой файл репетитора (tasks_snapshot нет) по-прежнему показываем как файл.
@@ -2971,6 +2989,9 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
       { id: "schedule", label: "Главная", icon: "dashboard" },
       { id: "homework", label: "Задания", icon: "homework" },
       { id: "variants", label: "Варианты", icon: "variants" },
+      // Свои баллы, готовность к экзамену и слабые задания. Раньше этого у
+      // ученика не было вовсе: успеваемость видел только репетитор.
+      { id: "results", label: "Результаты", icon: "results" },
       { id: "chat", label: "Чат", icon: "chat" },
       { id: "payment", label: "Оплата", icon: "payment" },
       { id: "settings", label: "Настройки", icon: "settings" },
@@ -3236,7 +3257,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       {hwAvg != null ? (
                         <>
                           <div className={`text-2xl font-semibold ${hwAvg >= 4.5 ? "text-green-600" : hwAvg >= 3.5 ? "text-blue-600" : hwAvg >= 2.5 ? "text-amber-600" : "text-red-600"}`}>{hwAvg}<span className="text-sm font-normal text-gray-400"> / 5</span></div>
-                          <div className="text-xs text-gray-400">{gradedHw.length} оценок</div>
+                          <div className="text-xs text-gray-400">{hwStats.gradedCount} {plural(hwStats.gradedCount, "оценка", "оценки", "оценок")}</div>
                         </>
                       ) : <div className="text-2xl font-semibold text-gray-400">—</div>}
                     </div>
@@ -3244,8 +3265,16 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                       <div className="text-xs text-gray-400">Средний балл вариантов</div>
                       {variantAvg != null ? (
                         <>
-                          <div className={`text-2xl font-semibold ${variantAvg >= 24 ? "text-green-600" : variantAvg >= 18 ? "text-blue-600" : "text-amber-600"}`}>{variantAvg}</div>
-                          <div className="text-xs text-gray-400">{gradedVariants.length} вар.</div>
+                          {/* Цвет — по доле от максимума, а не по абсолютному числу:
+                              у ЕГЭ балл тестовый (до 100), у ОГЭ первичный (до 32),
+                              и один порог на двоих врал бы одному из них. */}
+                          <div className={`text-2xl font-semibold ${(() => {
+                            const pct = variantAvgMax ? (variantAvg / variantAvgMax) * 100 : 0
+                            return pct >= 75 ? "text-green-600" : pct >= 50 ? "text-blue-600" : "text-amber-600"
+                          })()}`}>
+                            {variantAvg}{variantAvgMax && <span className="text-sm font-normal text-gray-400"> / {variantAvgMax}</span>}
+                          </div>
+                          <div className="text-xs text-gray-400">{stats.rows.length} {plural(stats.rows.length, "вариант", "варианта", "вариантов")}</div>
                         </>
                       ) : <div className="text-2xl font-semibold text-gray-400">—</div>}
                     </div>
@@ -3416,8 +3445,6 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                   {/* Широкие блоки — на всю ширину, заполняют пространство горизонтально */}
                   <StreakBadge homework={homework} />
 
-                  <ProgressChart variants={variants} targetScore={student.targetScore} />
-
                   <StudentScheduleCalendar
                     student={student}
                     onOpenBoard={openBoard}
@@ -3433,6 +3460,17 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                 </div>
               )}
             </>
+          )}
+
+          {activeTab === "results" && (
+            <StudentResults
+              student={student}
+              stats={stats}
+              hwStats={hwStats}
+              /* График динамики нужен только там, где нет блока готовности:
+                 у него свой график, и две кривые об одном — это дубль. */
+              chart={<ProgressChart variants={variants} targetScore={student?.targetScore} />}
+            />
           )}
 
           {activeTab === "homework" && (
@@ -4055,17 +4093,20 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
             )}
           </div>
 
-          {/* Все шесть вкладок помещаются в нижнюю панель, поэтому листа «Меню»,
+          {/* Все вкладки помещаются в нижнюю панель, поэтому листа «Меню»,
               как у репетитора, здесь нет. */}
           <div className="mobile-nav-glass md:hidden fixed bottom-0 left-0 right-0 z-50">
-            <div className="flex justify-around items-center px-1 pt-2 pb-2">
+            {/* Вкладок семь, и на узком телефоне колонка — это 53 точки:
+                подпись набирается мельче, иначе «Настройки» и «Варианты»
+                обрезаются многоточием. */}
+            <div className="flex justify-around items-center px-0.5 pt-2 pb-2">
               {navItems.map((item) => {
                 const badge = item.id === "chat" ? chatUnread : 0
                 return (
                   <button
                     key={item.id}
                     onClick={() => goTab(item.id)}
-                    className={`relative flex-1 min-w-0 flex flex-col items-center gap-0.5 px-0.5 py-1 rounded-xl transition-all ${
+                    className={`relative flex-1 min-w-0 flex flex-col items-center gap-0.5 px-0 py-1 rounded-xl transition-all ${
                       activeTab === item.id
                         ? "text-blue-600 bg-blue-500/10 font-semibold"
                         : "text-gray-400"
@@ -4077,7 +4118,10 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                         {badge > 9 ? "9+" : badge}
                       </span>
                     )}
-                    <span className="text-[10px] max-w-full truncate">{item.label}</span>
+                    {/* Вес подписи одинаковый у всех вкладок: у выбранной жирное начертание
+                        шире, и «Результаты» обрезалось многоточием именно там, где
+                        вкладка открыта. Выбранную и так видно по цвету и подложке. */}
+                    <span className="text-[9px] leading-tight font-medium max-w-full truncate">{item.label}</span>
                   </button>
                 )
               })}
