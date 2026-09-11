@@ -17,7 +17,7 @@
 -- меняется, поэтому передвинутый штрих остаётся на своём слое.
 --
 -- boards остаётся: в ней фон доски, права и ЗЕРКАЛО сцены целиком. Зеркало
--- обновляется не чаще раза в пять минут — оно нужно двум вещам:
+-- обновляет фоновый pg_cron раз в пять минут — оно нужно двум вещам:
 -- вкладке со старой сборкой, которая читает scene напрямую, и как запасная
 -- копия всей сцены одной строкой.
 
@@ -142,25 +142,53 @@ begin
     on conflict (room, id) do update set data = excluded.data;
   end if;
 
-  -- Зеркало сцены целиком — редко (см. шапку файла): оно стоит те самые сотни
-  -- миллисекунд, ради ухода от которых всё и затевалось.
-  if (p_wipe or jsonb_array_length(p_up) > 0 or jsonb_array_length(p_del) > 0)
-     and (select coalesce(mirror_at, 'epoch'::timestamptz) from boards where student_id = p_student_id)
-           < now() - interval '5 minutes' then
-    update boards b set
-      scene = jsonb_build_object(
-        'strokes', coalesce((select jsonb_agg(s.data order by s.ord)
-                               from board_strokes s where s.room = p_student_id), '[]'::jsonb),
-        'bg',      coalesce(b.bg, 'plain'),
-        'bgColor', b.bg_color),
-      mirror_at = now()
-     where b.student_id = p_student_id;
-  end if;
 end
 $$;
 
 grant execute on function public.board_patch(text, jsonb, jsonb, text, text, text, boolean)
   to app_user, authenticated;
+
+-- Тяжёлую сборку boards.scene намеренно выносим ИЗ board_patch. Иначе первый
+-- штрих после пяти минут простоя всё равно ждёт jsonb_agg всей доски и держит
+-- живую запись в очереди. Снимок нужен лишь старой вкладке и как резервная копия,
+-- поэтому фоновая свежесть до пяти минут для него достаточна.
+create or replace function public.board_mirror_scenes()
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  cutoff timestamptz := clock_timestamp();
+  mirrored integer;
+begin
+  update public.boards b set
+    scene = jsonb_build_object(
+      'strokes', coalesce((select jsonb_agg(s.data order by s.ord)
+                             from public.board_strokes s where s.room = b.student_id), '[]'::jsonb),
+      'bg',      coalesce(b.bg, 'plain'),
+      'bgColor', b.bg_color),
+    mirror_at = clock_timestamp()
+   where (b.mirror_at is null or b.mirror_at < b.updated_at)
+     -- Правка, начавшаяся уже после запуска задания, останется грязной и попадёт
+     -- в следующий проход: фоновая копия никогда не объявит её сохранённой раньше
+     -- времени.
+     and b.updated_at <= cutoff;
+  get diagnostics mirrored = row_count;
+  return mirrored;
+end
+$$;
+
+-- Повторный запуск миграции безопасен: старую задачу с тем же именем заменяем.
+do $$
+begin
+  create extension if not exists pg_cron;
+  perform cron.unschedule(jobid) from cron.job where jobname = 'board-scene-mirror';
+  perform cron.schedule('board-scene-mirror', '*/5 * * * *', 'select public.board_mirror_scenes()');
+exception when others then
+  raise notice 'pg_cron недоступен (%); зеркало boards.scene не будет обновляться автоматически', sqlerrm;
+end
+$$;
 
 -- Лёгкая сверка «не потерялось ли»: теперь это счёт по индексу, а не распаковка
 -- мегабайтного jsonb на каждый опрос.
@@ -178,8 +206,9 @@ with (security_invoker = on) as
 grant select on public.boards_state to app_user, authenticated;
 
 comment on table public.board_strokes is 'Штрихи доски построчно: сохранение штриха не переписывает всю сцену (см. supabase/board_strokes.sql)';
-comment on function public.board_patch is 'Дельта-сохранение доски построчно; boards.scene остаётся зеркалом сцены';
+comment on function public.board_patch is 'Дельта-сохранение доски построчно; boards.scene обновляет pg_cron';
 comment on function public.board_scene is 'Сцена доски целиком, собранная из board_strokes по порядку рисования';
+comment on function public.board_mirror_scenes is 'Фоновое зеркало board_strokes в boards.scene для старых вкладок и резервной копии';
 
 -- Гранты новым таблицам Supabase раздаёт сам, в том числе анониму: защита тогда
 -- держится только на RLS. Снимаем явно — как это сделано у остальных таблиц с

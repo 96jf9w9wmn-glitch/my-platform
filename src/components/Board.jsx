@@ -42,10 +42,17 @@ const SHEET_MAX_DIM = 4000   // лист с заданием: длинные у�
 // 130–250 КБ полного PNG; в base64 это 25–35 КБ на посылку.
 const PREVIEW_SEND_W = 620
 const PREVIEW_SEND_Q = 0.6
-const PREVIEW_SEND_MAX = 120_000   // байт; тяжелее — предпросмотр не шлём вовсе
+// data: добавляет к blob примерно треть объёма, плюс поля realtime-сообщения.
+// Оставляем запас под лимит канала 100 КБ/с: слишком тяжёлый предпросмотр лучше
+// пропустить и дождаться адреса из хранилища, чем оборвать канал для всей доски.
+const PREVIEW_SEND_MAX = 60_000    // байт blob → около 80 КБ data: URL
 const SHEET_GAP = 140        // отступ от написанного до нового листа с заданием, мировые px
 const SPOT_PAD = 40          // зазор вокруг листа при поиске свободного места, там же
 const CULL_PAD = 80          // запас за краем экрана, в пределах которого штрих ещё рисуем
+// Сколько ждём разбора растра, прежде чем рисовать лист как есть. decode() в
+// скрытой вкладке не завершается никогда (см. loadImage), а на видимой уходит
+// десятки миллисекунд — этого запаса хватает и на слабом ноутбуке.
+const DECODE_WAIT_MS = 300
 // Поле ответа под листом набрано в тех же единицах, в каких снят сам лист (SHEET_W и
 // кегль условия в pages/taskSnapshot.js), и потом целиком масштабируется вместе с ним —
 // поэтому у задания и поля один масштаб. Держать эту ширину в согласии с taskSnapshot.
@@ -139,10 +146,10 @@ const VIEW_RATE = 60    // не чаще 1 посылки своего обзо�
 const SNAP_PX = 6
 const GUIDE_COLOR = "#FF2D55"  // направляющая заметно отличается от синей рамки выделения
 const STROKE_RATE = 30  // не чаще 1 посылки дописанных точек в 30 мс (33/сек)
-const BOARD_SYNC_MS = 15000 // как часто сверяемся с базой, что ничего не потерялось
+const BOARD_SYNC_MS = 5000  // как часто сверяемся с базой, что ничего не потерялось
 // Пока канала нет, сверка — единственный путь, которым доходит чужое: догоняем
 // чаще (board_strokes_after — это килобайты и 3 мс базы).
-const BOARD_SYNC_FAST_MS = 3000
+const BOARD_SYNC_FAST_MS = 2000
 // Сервер realtime пускает от одного клиента не больше ПЯТИ presence-сообщений
 // за 30 секунд (CLIENT_PRESENCE_MAX_CALLS=5), а на шестом ЗАКРЫВАЕТ КАНАЛ —
 // и закрытый канал realtime-js не поднимает никогда. Так 10.09.2026 в 12:11
@@ -160,6 +167,28 @@ const q2 = (n) => Math.round(n * 100) / 100
 const q1 = (n) => Math.round(n * 10) / 10
 const packPoints = (pts) => pts.map((p) => (p[2] == null ? [q2(p[0]), q2(p[1])] : [q2(p[0]), q2(p[1]), q1(p[2])]))
 const DASH_STYLES = ["solid", "dashed", "dotted"]
+
+// Координаты пера приходят чаще, чем экран способен показать разницу между
+// соседними точками. Перед сохранением оставляем точки не ближе 1.5 экранных px:
+// линия остаётся такой же плавной, а её JSON, realtime и последующая сборка сцены
+// заметно легче. Последнюю точку сохраняем всегда — она задаёт точный конец штриха.
+function thinPenPoints(points, minDistance) {
+  if (points.length < 3) return points
+  const minDistance2 = minDistance * minDistance
+  const thinned = [points[0]]
+  for (let i = 1; i < points.length - 1; i++) {
+    const point = points[i]
+    const previous = thinned[thinned.length - 1]
+    const dx = point[0] - previous[0], dy = point[1] - previous[1]
+    if (dx * dx + dy * dy >= minDistance2) thinned.push(point)
+  }
+  const last = points[points.length - 1]
+  const previous = thinned[thinned.length - 1]
+  const dx = last[0] - previous[0], dy = last[1] - previous[1]
+  if (dx * dx + dy * dy < minDistance2 && thinned.length > 1) thinned[thinned.length - 1] = last
+  else thinned.push(last)
+  return thinned
+}
 
 // Расстояние от точки до отрезка
 function distToSeg(px, py, ax, ay, bx, by) {
@@ -592,7 +621,16 @@ function BoardStrip({ open, children }) {
   )
 }
 
-export default function Board({ roomId, label = "", userId, userName, avatar = null, peer = null, theme = "light", onClose, account = null, token = null, canAddTasks = false, tutorSubject = null, tutorExamFocus = null, tutorSubjects = null, tutorOwner = false, taskSheet = null }) {
+export default function Board({ roomId, label = "", userId, userName, avatar = null, peer = null, theme = "light", onClose, account = null, token = null, canAddTasks = false, tutorSubject = null, tutorExamFocus = null, tutorSubjects = null, tutorOwner = false, taskSheet = null, snapshot = null, snapshotDate = null, onOpenLive = null }) {
+  // Прошлое занятие открывается ТОЙ ЖЕ доской, только на чтение: сцена приходит
+  // снимком (snapshot), база не читается и не пишется, realtime не поднимается,
+  // инструментов нет. Ради этого снимок и показывается доской, а не картинкой:
+  // раньше история была одним канвасом со сценой, вписанной в окно целиком, и
+  // холст за месяц занятий ужимался в нечитаемые крапинки — увеличить его было
+  // нечем. Здесь работает всё, чем доску читают: перенос полотна, зум, щипок.
+  const readOnly = !!snapshot
+  const readOnlyRef = useRef(readOnly)
+  readOnlyRef.current = readOnly
   // Доска занимает весь экран, поэтому её уход тоже должен быть плавным:
   // класс .is-closing держится, пока идёт затухание, и лишь потом зовётся onClose.
   const { cls: closingCls, close: leave } = useClosing(onClose, BOARD_CLOSE_MS)
@@ -600,7 +638,11 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // с «t:», у ученика — с «s:» (так же их различает чат). Нужна она ровно для одного:
   // правильный ответ к листу из банка показывается только репетитору.
   const isTutor = String(userId || "").startsWith("t:")
-  const [tool, setTool] = useState("pen")   // pen | line | rect | eraser | hand
+  const [toolPicked, setTool] = useState("pen")   // pen | line | rect | eraser | hand
+  // В режиме чтения инструмент ровно один — рука: нажатие по холсту двигает
+  // полотно, и ни один обработчик рисования до штрихов не доходит. Перебирать
+  // сами обработчики не нужно, они все начинаются с проверки инструмента.
+  const tool = readOnly ? "hand" : toolPicked
   const [panKey, setPanKey] = useState(false)   // зажат пробел → полотно можно тащить
   const [panDrag, setPanDrag] = useState(false) // полотно тащат прямо сейчас
   const [color, setColor] = useState(() => {
@@ -836,6 +878,9 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   const savedRef = useRef(new Map())
   const savedMeta = useRef({ bg: null, bgColor: null })
   const dirtyRef = useRef(new Set())  // штрихи, изменённые НА МЕСТЕ: ссылка та же, содержимое другое
+  // Только СВОИ штрихи, ещё не подтверждённые базой. При восстановлении связи
+  // их нельзя потерять, а чужие нельзя «спасать» поверх полученного удаления.
+  const localPending = useRef(new Set())
   const savingRef = useRef(false)     // запрос сохранения в полёте — второй не запускаем
   const saveAgain = useRef(false)     // пока он летел, появилось новое
   const patchOff = useRef(false)      // в базе нет board_patch — пишем сцену целиком, как раньше
@@ -910,6 +955,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   useEffect(() => () => { ownBlobs.current.forEach((u) => URL.revokeObjectURL(u)); ownBlobs.current = [] }, [])
   const tintCache = useRef(new Map()) // "src|вес" -> холст листа, перекрашенный под тёмную доску
   const tintPending = useRef(new Set()) // листы, которые прямо сейчас перекрашивает фоновый поток
+  const drawFailed = useRef(new Set())  // штрихи, на которых сорвалась отрисовка: жалуемся один раз
   const fileInputRef = useRef(null)   // скрытый input для загрузки картинки кнопкой
   // Адрес доски, ДЛЯ КОТОРОЙ загружена сцена (null — ещё не загружена). Именно
   // адрес, а не «да/нет»: комнату можно сменить на живом компоненте (кнопка
@@ -1170,6 +1216,10 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     const dpr = window.devicePixelRatio || 1
     const cw = canvas.clientWidth, ch = canvas.clientHeight
     const bw = Math.round(cw * dpr), bh = Math.round(ch * dpr)
+    // Холста ещё нет на экране (первый кадр до раскладки, доска в свёрнутой
+    // панели): рисовать некуда, а drawImage с холста нулевого размера бросает
+    // InvalidStateError — и кадр обрывается целиком.
+    if (!bw || !bh) return
     if (canvas.width !== bw || canvas.height !== bh) { canvas.width = bw; canvas.height = bh; sceneValid.current = false }
     // Доска собрана из ТРЁХ наложенных холстов, и порядок здесь не косметика:
     // ластик стирает в destination-out, то есть выедает всё, что нарисовано на
@@ -1223,7 +1273,13 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         if (live.current.has(st.id)) continue   // собеседник правит эту надпись прямо сейчас
         const bb = strokeBox(st)
         if (bb && !rectsIntersect(vis, bb)) continue
-        drawStroke(st.tool === "image" && mx ? mx : sx, st)
+        // Один сорвавшийся штрих не имеет права унести с собой весь кадр.
+        // Так и было: drawImage бросал InvalidStateError (растр нулевого
+        // размера, испорченный холст), исключение вылетало из сборки слоя, и
+        // ВСЁ, что стояло в списке дальше, на доску не попадало — доска
+        // выглядела наполовину стёртой, причём одинаково на каждом кадре.
+        try { drawStroke(st.tool === "image" && mx ? mx : sx, st) }
+        catch (e) { if (!drawFailed.current.has(st.id)) { drawFailed.current.add(st.id); console.warn("board draw", st.tool, e?.message || e) } }
       }
       sceneValid.current = true
       if (bgc) {
@@ -1476,7 +1532,20 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     // Растр разбираем заранее и вне главного потока: без decode() браузер
     // декодирует его при первом drawImage — синхронно, прямо в кадре, и тридцать
     // листов после перезагрузки дают тридцать таких пауз подряд.
-    img.onload = () => Promise.resolve(img.decode?.()).then(scheduleDraw, scheduleDraw)
+    //
+    // Но ЖДАТЬ разбора нельзя. В скрытой вкладке (переключились в другое окно,
+    // а доска осталась сзади) Chromium откладывает разбор картинки до
+    // возвращения, и промис decode() не завершается ВООБЩЕ — проверено на стенде:
+    // «onload» приходит, «decoded» не приходит никогда. Перерисовка висела
+    // ровно на нём, поэтому лист, докачавшийся в этот момент, оставался пустой
+    // рамкой и после возвращения — до первого случайного движения по доске.
+    // Отсюда «картинок нет» и «то видно, то не видно».
+    img.onload = () => {
+      let done = false
+      const paint = () => { if (done) return; done = true; scheduleDraw() }
+      Promise.resolve(img.decode?.()).then(paint, paint)
+      setTimeout(paint, DECODE_WAIT_MS)
+    }
     img.onerror = () => {
       if (!img.crossOrigin) return
       const plain = new Image()
@@ -1518,8 +1587,14 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       // это надо на КАЖДОМ кадре, а не только в момент запроса: иначе с начала
       // загрузки и до её конца лист показывался бы пустой рамкой.
       if (wantFull && !(img.complete && img.naturalWidth)) {
-        const prev = imgCache.current.get(src + "|prev")
-        if (prev && prev.complete && prev.naturalWidth) { img = prev; key = src + "|prev" }
+        // Лёгкий предпросмотр заводим ЗДЕСЬ ЖЕ, если его ещё нет: доску могли
+        // открыть сразу приближённой (обзор запоминается), и тогда лёгкой копии
+        // в кэше не оказывалось вовсе — на месте листа стояла пустая рамка всё
+        // время, пока едет полное разрешение. Предпросмотр в десять раз легче и
+        // приходит первым.
+        const pk = src + "|prev"
+        const prev = imgCache.current.get(pk) || loadImage(pk, src, BOARD_PREVIEW_SPEC)
+        if (prev.complete && prev.naturalWidth) { img = prev; key = pk }
       }
     }
     if (!wantTint || !img.complete || !img.naturalWidth) return img
@@ -1559,6 +1634,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // Пока миграции board_strokes.sql нет, читаем сцену из boards.scene, как раньше.
   const sceneRpcOff = useRef(false)
   const fetchScene = useCallback(async () => {
+    if (snapshot) return snapshot        // просмотр снимка: сцена уже на руках, база не нужна
     if (!sceneRpcOff.current) {
       const { data, error } = await supabase.rpc("board_scene", { p_student_id: String(roomId) })
       if (!error) return data || null
@@ -1567,7 +1643,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     }
     const { data } = await supabase.from("boards").select("scene").eq("student_id", String(roomId)).maybeSingle()
     return data?.scene || null
-  }, [roomId])
+  }, [roomId, snapshot])
 
   // Сменилась комната — сцену обнуляем СИНХРОННО, до всякой загрузки.
   //
@@ -1585,7 +1661,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     saveAgain.current = false
     loadedRef.current = null    // до загрузки новой сцены не сохраняем ничего
     strokes.current.clear(); live.current.clear(); selection.current.clear()
-    savedRef.current = new Map(); dirtyRef.current.clear()
+    savedRef.current = new Map(); dirtyRef.current.clear(); localPending.current.clear()
     history.current = []; redoStack.current = []
     cursors.current.clear()
     sheetDone.current = null    // лист задания кладётся заново — но уже в свою комнату
@@ -1623,7 +1699,9 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         // что написали сегодня. Своё место возвращаем, только если доска с тех
         // пор не изменилась, — иначе едем к свежим записям.
         const list = [...strokes.current.values()]
-        const saved = readSavedView()
+        // Обзор запомнен для ЖИВОЙ доски и к снимку отношения не имеет: прошлое
+        // занятие всегда открывается на последних записях этого дня.
+        const saved = readOnly ? null : readSavedView()
         const lastId = list.length ? list[list.length - 1].id : null
         if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y) && saved.n === list.length && saved.last === lastId) {
           view.current = { x: saved.x, y: saved.y, scale: clamp(saved.scale || 1, MIN_SCALE, MAX_SCALE) }
@@ -1649,6 +1727,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // последнего штриха, и он бы пропал с экрана. Обратная сторона: стёртое, пока
   // нас не было, вернётся — это заметно меньшая беда, чем ненаписанная работа.
   const resync = useCallback(async () => {
+    if (readOnlyRef.current) return                      // снимок прошлого занятия не догоняют
     if (loadedRef.current !== roomId) return             // начальная загрузка ещё идёт — она и принесёт свежее
     if (Date.now() - lastResync.current < 3000) return  // не дёргаем базу на каждый чих
     lastResync.current = Date.now()
@@ -1677,25 +1756,21 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       }
     }
     const scene = await signBoardScene(await fetchScene())
-    if (!scene?.strokes?.length) return
+    if (!scene) return
+    const remoteStrokes = scene.strokes || []
     const local = [...strokes.current.entries()]
-    // Что мы ЗНАЛИ как лежащее в базе — до того, как перечитали её.
-    const wasSaved = savedRef.current
     strokes.current.clear()
-    for (const s of scene.strokes) strokes.current.set(s.id, s)
-    rememberSaved(scene.strokes)   // теперь мы знаем, что в базе; своё недошедшее допишется дельтой
+    for (const s of remoteStrokes) strokes.current.set(s.id, s)
+    rememberSaved(remoteStrokes)   // теперь мы знаем, что в базе; своё недошедшее допишется дельтой
     if (Number.isFinite(scene.maxOrd)) maxOrd.current = scene.maxOrd
-    // Наше, чего в базе нет, возвращаем — но ТОЛЬКО то, что туда и не доезжало.
-    //
-    // Штрих, который мы знали сохранённым, а теперь его в базе нет, — это стёртый
-    // штрих: собеседник удалил его, пока мы не смотрели. Без этой развилки он
-    // возвращался на доску, причём уже как «несохранённый», и первая же дельта
-    // записывала его обратно в базу — стёртое воскресало у обеих сторон и
-    // насовсем. Отсюда «стираю, а оно потом снова появляется».
+    // Возвращаем только СВОИ штрихи, которые ещё не подтвердило сохранение.
+    // Штрих собеседника мог появиться по realtime, а потом быть стёрт до нашей
+    // сверки. Раньше такой штрих ошибочно считался «нашим ненаписанным» и
+    // возвращался поверх удаления — отсюда «стираю, а оно появляется снова».
     for (const [id, st] of local) {
       if (strokes.current.has(id)) continue
-      if (wasSaved.has(id)) continue          // лежал в базе и пропал оттуда — значит стёрт
-      strokes.current.set(id, st)             // наше ненаписанное — дописать дельтой
+      if (!localPending.current.has(id)) continue
+      strokes.current.set(id, st)
     }
     scheduleDraw()
   }, [roomId, scheduleDraw, fetchScene])
@@ -1727,9 +1802,10 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       const inDb = savedRef.current.size
       if ((data.n ?? inDb) !== inDb || (data.last_id && !strokes.current.has(data.last_id))) resync()
     }
+    if (readOnly) return              // снимок не меняется — сверять не с чем
     const id = setInterval(tick, BOARD_SYNC_FAST_MS)
     return () => clearInterval(id)
-  }, [roomId, resync])
+  }, [roomId, resync, readOnly])
 
   // Вкладку могут убить, не дав нам размонтироваться: телефон ушёл в фон, PWA
   // выгрузили, страницу закрыли. Отложенное сохранение (1,2 с) в этот момент
@@ -1741,14 +1817,18 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       clearTimeout(saveTimer.current); saveTimer.current = null
       persistRef.current?.()
     }
-    const onHide = () => { if (document.visibilityState === "hidden") flush() }
+    // Вернулись во вкладку — перерисовываем. Пока доска была сзади, кадры не
+    // шли вовсе (requestAnimationFrame в скрытой вкладке не вызывается), а
+    // картинки при этом докачивались: без этой строки на экране осталась бы та
+    // же картина, с какой уходили, — с пустыми рамками вместо листов.
+    const onHide = () => { if (document.visibilityState === "hidden") flush(); else scheduleDraw() }
     document.addEventListener("visibilitychange", onHide)
     window.addEventListener("pagehide", flush)
     return () => {
       document.removeEventListener("visibilitychange", onHide)
       window.removeEventListener("pagehide", flush)
     }
-  }, [])
+  }, [scheduleDraw])
 
   // Обрыв сокета виден не сразу — heartbeat замечает его до полуминуты, и всё это
   // время канал считается живым, а сообщения уже не идут. Поэтому ждать события
@@ -1765,6 +1845,8 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
 
   // --- Realtime -----------------------------------------------------------
   useEffect(() => {
+    // Снимок никто не рисует вместе с нами: ни канала, ни presence, ни курсоров.
+    if (readOnly) return
     const scheduleTeardown = () => {
       clearTimeout(teardownTimer.current)
       teardownTimer.current = setTimeout(() => {
@@ -1794,6 +1876,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         // растр предпросмотра из кэша отпускаем, он больше никому не нужен.
         const old = strokes.current.get(payload.id)
         if (old?.src?.startsWith("data:") && old.src !== payload.src) forgetImage(old.src)
+        localPending.current.delete(payload.id)
         strokes.current.set(payload.id, payload)
         noticeOffscreen(payload)
         scheduleDraw()
@@ -1833,9 +1916,21 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         live.current.delete(payload.id)
         const old = strokes.current.get(payload.id)
         if (old?.src?.startsWith("data:")) forgetImage(old.src)
+        localPending.current.delete(payload.id)
+        // Из «что лежит в базе» штрих тоже вычёркиваем. Сверка раз в несколько
+        // секунд сравнивает ИМЕННО этот счёт с числом строк в базе, и пока он
+        // оставался прежним, каждый стёртый собеседником штрих выглядел
+        // расхождением — а лечилось расхождение перечитыванием ВСЕЙ сцены
+        // (на боевой доске 1,66 МБ, 330 КБ по проводу). Ученик ведёт ластиком —
+        // репетитор качает мегабайты и подвисает на каждом.
+        savedRef.current.delete(payload.id)
         strokes.current.delete(payload.id); selection.current.delete(payload.id); scheduleDraw()
       })
-      .on("broadcast", { event: "clear" }, () => { live.current.clear(); strokes.current.clear(); selection.current.clear(); scheduleDraw() })
+      .on("broadcast", { event: "clear" }, () => {
+        live.current.clear(); strokes.current.clear(); selection.current.clear()
+        localPending.current.clear(); savedRef.current.clear()   // см. remove: иначе сверка уйдёт за всей сценой
+        scheduleDraw()
+      })
       .on("broadcast", { event: "bg" }, ({ payload }) => {
         if (payload.bg != null) setBg(payload.bg)
         if (payload.bgColor != null) setBgColor(payload.bgColor)
@@ -1963,7 +2058,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
 
     return scheduleTeardown
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomId, userId, userName, resync, chanGen])
+  }, [roomId, userId, userName, resync, chanGen, readOnly])
 
   // О том, за кем мы следим, знает канал: presence — единственное место, где
   // ведущий может узнать, что его обзор кому-то нужен.
@@ -2142,6 +2237,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // такой штрих не пишем. Он сохранится сам, когда получит постоянный адрес
   // (см. addImageAt) — то же самое и в persist, и в снимке занятия.
   const fullSave = useCallback(() => {
+    if (readOnlyRef.current) return Promise.resolve()   // снимок только читают
     const list = Array.from(strokes.current.values()).filter((s) => !s.pending)
     const scene = { strokes: list, bg: bgRef.current, bgColor: bgColorRef.current }
     return supabase.from("boards")
@@ -2157,6 +2253,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   }, [roomId, userId])
 
   const persist = useCallback(() => {
+    if (readOnlyRef.current) return                     // снимок только читают
     if (savingRef.current) { saveAgain.current = true; return }
     const bg = bgRef.current, bgColor = bgColorRef.current
     const saved = savedRef.current, dirty = dirtyRef.current
@@ -2180,8 +2277,8 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     const done = (ok) => {
       savingRef.current = false
       if (ok) {
-        for (const [id, rec] of pend) saved.set(id, rec)
-        for (const id of del) saved.delete(id)
+        for (const [id, rec] of pend) { saved.set(id, rec); localPending.current.delete(id) }
+        for (const id of del) { saved.delete(id); localPending.current.delete(id) }
         savedMeta.current = { bg, bgColor }
       } else {
         // не доехало — вернём в следующую посылку (ссылка та же, поэтому через dirty)
@@ -2191,7 +2288,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       // доски, и написанное в последнюю секунду терялось бы вместе с ним.
       if (saveAgain.current) { saveAgain.current = false; setTimeout(persistRef.current, 300) }
     }
-    if (patchOff.current) { fullSave().then(() => done(true), (e) => { console.error("board save", e); done(false) }); return }
+    if (patchOff.current) { fullSave().then(() => { localPending.current.clear(); done(true) }, (e) => { console.error("board save", e); done(false) }); return }
     // Доску очистили — не перечисляем тысячу id, а говорим «старого не оставляем».
     const wipe = strokes.current.size === 0 && del.length > 0
     supabase.rpc("board_patch", {
@@ -2214,6 +2311,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   }, [roomId, userId, fullSave])
   persistRef.current = persist
   function scheduleSave() {
+    if (readOnlyRef.current) return
     if (loadedRef.current !== roomId) return // не сохраняем до загрузки сцены ЭТОЙ доски — иначе затрём её пустой или чужой
     clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => { saveTimer.current = null; persist() }, 1200)
@@ -2223,6 +2321,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // разобранное на прошлом уроке должно оставаться доступным. Одна запись на день —
   // повторное закрытие доски за то же занятие обновляет её, а не плодит строки.
   async function archiveSnapshot() {
+    if (readOnlyRef.current) return            // смотрели прошлое занятие — летопись не трогаем
     if (loadedRef.current !== roomId) return   // сцену не загрузили — архивировать нечего
     // Доска домашней работы в летопись занятий не идёт: она не про урок, живёт
     // столько же, сколько сама работа, и открывается из неё же.
@@ -2261,6 +2360,27 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         strokes: list.length, updated_by: userId, updated_at: new Date().toISOString(),
       }, { onConflict: "student_id,lesson_date" })
     }
+  }
+
+  // Видимая часть доски картинкой. Холстов три (фон, листы, чернила) и лежат
+  // они друг на друге — складываем их в том же порядке, в каком они на экране.
+  function downloadPng() {
+    const ink = canvasRef.current
+    if (!ink) return
+    const out = document.createElement("canvas")
+    out.width = ink.width; out.height = ink.height
+    const ctx = out.getContext("2d")
+    ctx.fillStyle = bgColorRef.current
+    ctx.fillRect(0, 0, out.width, out.height)
+    for (const c of [bgCanvasRef.current, imgCanvasRef.current, ink]) {
+      if (c) ctx.drawImage(c, 0, 0, out.width, out.height)
+    }
+    try {
+      const a = document.createElement("a")
+      a.href = out.toDataURL("image/png")
+      a.download = `Доска ${snapshotDate || label || ""}.png`.replace(/\s+/g, " ").trim()
+      a.click()
+    } catch { /* холст «испорчен» картинкой без CORS — скачать нельзя */ }
   }
 
   function closeBoard() {
@@ -2609,6 +2729,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     if (!drawing.current) return
     let s = drawing.current
     drawing.current = null
+    if (s.tool === "pen") s.points = thinPenPoints(s.points, 1.5 / view.current.scale)
     // SmartDraw: набросок пером, уверенно похожий на прямую, круг, квадрат,
     // прямоугольник или треугольник, заменяем ровной фигурой; остальное остаётся
     // рукописным.
@@ -2624,6 +2745,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       }
     }
     strokes.current.set(s.id, s)
+    localPending.current.add(s.id)
     drawing.current = s          // broadcastDrawing шлёт именно его
     broadcastDrawing(true)
     drawing.current = null
@@ -2653,6 +2775,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       if (st.tool === "eraser" || st.tool === "image" || !hitStroke(st, p[0], p[1], tol)) continue
       erasing.current.push({ id, before: cloneStroke(st), after: null })
       strokes.current.delete(id)
+      localPending.current.delete(id)
       channelRef.current?.send({ type: "broadcast", event: "remove", payload: { id } })
       hit = true
     }
@@ -2690,6 +2813,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       const s = strokes.current.get(id)
       if (s) step.push({ id, before: cloneStroke(s), after: null })
       strokes.current.delete(id)
+      localPending.current.delete(id)
       channelRef.current?.send({ type: "broadcast", event: "remove", payload: { id } })
     }
     pushHistory(step)
@@ -2908,6 +3032,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     if (info.url) ownBlobs.current.push(info.url)
     getImage(localSrc) // начать загрузку/кэшировать для мгновенной отрисовки
     strokes.current.set(id, s)
+    localPending.current.add(id)
     // Шаг истории кладём сразу — «отменить» должно убирать картинку, не дожидаясь
     // хранилища; когда адрес придёт, он проставится и в этот шаг (иначе «вернуть»
     // восстановило бы картинку с временным адресом).
@@ -2998,12 +3123,14 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   }
 
   function onDragOver(e) {
+    if (readOnly) return
     if (Array.from(e.dataTransfer.types || []).includes("Files")) { e.preventDefault(); if (!dragActive) setDragActive(true) }
   }
   function onDragLeaveWrap(e) {
     if (e.target === e.currentTarget) setDragActive(false)
   }
   function onDropWrap(e) {
+    if (readOnly) return
     e.preventDefault(); setDragActive(false)
     const file = Array.from(e.dataTransfer.files || []).find((f) => f.type.startsWith("image/"))
     if (file) { const [wx, wy] = toWorld(e.clientX, e.clientY); addImageAt(file, wx, wy) }
@@ -3265,6 +3392,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       if (s.pending) continue
       const ns = { ...s, id: makeId(userId), author: userId, points: s.points.map((p) => [p[0] + 16, p[1] + 16, ...p.slice(2)]) }
       strokes.current.set(ns.id, ns)
+      localPending.current.add(ns.id)
       channelRef.current?.send({ type: "broadcast", event: "draw", payload: ns })
       next.add(ns.id)
     }
@@ -3497,6 +3625,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       if (draftSent && !cur) channelRef.current?.send({ type: "broadcast", event: "remove", payload: { id: ed.draftId } })
       if (cur) {
         strokes.current.delete(ed.id)
+        localPending.current.delete(ed.id)
         selection.current.delete(ed.id)
         channelRef.current?.send({ type: "broadcast", event: "remove", payload: { id: ed.id } })
         pushHistory([{ id: ed.id, before: cloneStroke(cur), after: null }])
@@ -3524,6 +3653,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       if (ed.bold) st.bold = 1
       if (ed.italic) st.italic = 1
       strokes.current.set(id, st)
+      localPending.current.add(id)
       channelRef.current?.send({ type: "broadcast", event: "draw", payload: st })
       pushHistory([{ id, before: null, after: cloneStroke(st) }])
     }
@@ -3538,9 +3668,11 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       if (s) {
         const copy = cloneStroke(s)
         strokes.current.set(ch.id, copy)
+        localPending.current.add(ch.id)
         channelRef.current?.send({ type: "broadcast", event: "draw", payload: copy })
       } else {
         strokes.current.delete(ch.id)
+        localPending.current.delete(ch.id)
         channelRef.current?.send({ type: "broadcast", event: "remove", payload: { id: ch.id } })
       }
     }
@@ -3571,6 +3703,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     setConfirmClear(false)
     const step = [...strokes.current.values()].map((s) => ({ id: s.id, before: cloneStroke(s), after: null }))
     strokes.current.clear()
+    localPending.current.clear()
     pushHistory(step)                       // очистку доски тоже можно отменить
     channelRef.current?.send({ type: "broadcast", event: "clear", payload: {} })
     scheduleDraw(); scheduleSave()
@@ -3707,6 +3840,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     } catch { return null }
   }
   function saveView() {
+    if (readOnlyRef.current) return   // обзор снимка не должен подменять обзор живой доски
     if (loadedRef.current !== roomId) return
     const list = [...strokes.current.values()]
     const v = view.current
@@ -3717,7 +3851,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     } catch { /* приватный режим — обзор просто не запомнится */ }
   }
 
-  useEffect(() => { actions.current.undo = undo; actions.current.redo = redo; actions.current.del = deleteSelection; actions.current.selectAll = selectAll; actions.current.paste = addImageAt; actions.current.commitText = commitTextEdit })
+  useEffect(() => { actions.current.undo = undo; actions.current.redo = redo; actions.current.del = deleteSelection; actions.current.selectAll = selectAll; actions.current.paste = addImageAt; actions.current.commitText = commitTextEdit; actions.current.close = closeBoard })
 
   // Выбранный цвет держится между занятиями (см. COLOR_KEY)
   useEffect(() => {
@@ -3768,6 +3902,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   }, [loaded, taskSheet, roomId])
   // Вставка картинки из буфера обмена (Ctrl/Cmd+V) — в центр видимой области
   useEffect(() => {
+    if (readOnly) return
     function onPaste(e) {
       const tag = e.target?.tagName
       if (tag === "INPUT" || tag === "TEXTAREA" || e.target?.isContentEditable) return
@@ -3782,7 +3917,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     }
     window.addEventListener("paste", onPaste)
     return () => window.removeEventListener("paste", onPaste)
-  }, [])
+  }, [readOnly])
 
   // Один снимок из буфера: {blob, key}. Ключ — тип и размер: скриншот, снятый
   // заново, почти всегда весит иначе, а читать байты каждые пару секунд накладно.
@@ -3819,6 +3954,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // буфер, пока вкладка на экране. Интервал нужен вдобавок к focus: скриншот на macOS
   // снимается поверх окна, и события фокуса при возврате может не быть вовсе.
   useEffect(() => {
+    if (readOnly) return
     let alive = true
     async function detectMode() {
       if (!navigator.clipboard?.read) return setClipMode("off")
@@ -3835,7 +3971,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       .then((p) => { if (alive) { sub = p; p.addEventListener("change", onPerm) } })
       .catch(() => { /* разрешения нет в этом браузере */ })
     return () => { alive = false; sub?.removeEventListener("change", onPerm) }
-  }, [])
+  }, [readOnly])
 
   useEffect(() => {
     if (clipMode !== "auto") return
@@ -3881,6 +4017,12 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     const NON_TEXT_INPUTS = new Set(["color", "file", "range", "checkbox", "radio", "button", "submit", "reset", "image"])
     function onKeyDown(e) {
       if (modalOpen.current) return   // поверх доски открыт выбор задания — клавиши не наши
+      // Снимок прошлого занятия: рисовать, стирать и отменять нечего, а Esc
+      // закрывает просмотр — там это единственный ожидаемый ответ клавиатуры.
+      if (readOnlyRef.current) {
+        if (e.code === "Escape" || e.key === "Escape") { e.preventDefault(); actions.current.close() }
+        return
+      }
       // Поле ввода — только то, куда действительно печатают. Проверять по одному
       // лишь тегу INPUT нельзя: у палитры цвета и у выбора файла на доске тоже
       // input, и после того как ими один раз воспользовались, фокус остаётся на
@@ -4103,13 +4245,20 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
             <Icon name="clipboard" size={16} className="shrink-0" />
             <span className="shrink-0">Доска</span>
             {/* Чья это доска: у домашней работы она своя, и без подписи их не
-                отличить одну от другой. */}
+                отличить одну от другой. У снимка подпись — дата занятия, и она
+                здесь главное: прячем её на телефоне, и просмотр перестаёт
+                отличаться от живой доски. */}
             {label && (
-              <span className="hidden sm:block truncate max-w-[16rem] text-xs font-normal"
+              <span className={`${readOnly ? "block" : "hidden sm:block"} truncate max-w-[16rem] text-xs font-normal`}
                 style={{ color: dark ? "#8e8e93" : "#9ca3af" }}>· {label}</span>
+            )}
+            {readOnly && (
+              <span className="hidden sm:inline shrink-0 text-xs font-normal"
+                style={{ color: dark ? "#8e8e93" : "#9ca3af" }}>· только чтение</span>
             )}
           </div>
           {/* Фон доски — в верхней панели: это настройка листа, а не инструмент рисования */}
+          {!readOnly && (
           <div className="relative" data-menu>
             <button onClick={() => toggleMenu("bg")}
               className={`press-tap flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs font-medium transition-colors ${
@@ -4148,6 +4297,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
               </div>
             )}
           </div>
+          )}
         </div>
         <div className="flex items-center gap-3">
           {others.length > 0 && (
@@ -4162,10 +4312,14 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
               </span>
             </button>
           )}
-          <button onClick={toggleTheme} title={dark ? "Светлая доска" : "Тёмная доска"}
-            className="press-tap p-1.5 rounded-lg board-hover" style={idleStyle}>
-            <Icon name={dark ? "sun" : "moon"} size={16} />
-          </button>
+          {/* Светлость снимка менять нечем и незачем: прошлое занятие
+              показывается таким, каким его закрыли. */}
+          {!readOnly && (
+            <button onClick={toggleTheme} title={dark ? "Светлая доска" : "Тёмная доска"}
+              className="press-tap p-1.5 rounded-lg board-hover" style={idleStyle}>
+              <Icon name={dark ? "sun" : "moon"} size={16} />
+            </button>
+          )}
           {/* Кто ещё на доске. Раньше это был кружок с буквой и слово «в сети»
               сбоку от него: имени не видно, фото не видно, и о том, что вторая
               сторона уже здесь, приходилось догадываться. Теперь участник —
@@ -4221,6 +4375,23 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
               }`} style={pulled ? undefined : idleStyle}>
               <Icon name={pulled ? "check" : "pull-in"} size={15} />
               <span className="hidden sm:inline">{pulled ? "Готово" : "Притянуть"}</span>
+            </button>
+          )}
+          {readOnly && onOpenLive && (
+            // Разбор продолжают карандашом на живой доске, а не разглядыванием
+            // прошлого занятия — поэтому выход отсюда стоит рядом с закрытием.
+            <button onClick={() => { leave(); setTimeout(onOpenLive, BOARD_CLOSE_MS) }}
+              title="Открыть текущую доску"
+              className="press-tap flex items-center gap-1.5 h-8 px-2.5 rounded-full text-xs font-medium board-hover"
+              style={idleStyle}>
+              <Icon name="clipboard" size={15} />
+              <span className="hidden sm:inline">Открыть доску</span>
+            </button>
+          )}
+          {readOnly && (
+            <button onClick={downloadPng} title="Скачать PNG"
+              className="press-tap p-1.5 rounded-lg board-hover" style={idleStyle}>
+              <Icon name="download" size={16} />
             </button>
           )}
           <button onClick={closeBoard}
@@ -4409,14 +4580,18 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         {/* Поля ответа под листами с заданием. Слой МИРОВОЙ: перенос и масштаб ему
             выставляет кадр отрисовки (qaLayer), поэтому подвал стоит на своём листе
             неподвижно — как часть задания, а не как всплывающая над доской плашка. */}
-        <div ref={qaLayer} className="absolute inset-0 pointer-events-none"
-          style={{ transformOrigin: "0 0", willChange: "transform" }}>
-          {qaBoxes.map((b) => (
-            <TaskAnswerBox key={b.id} panel={b} dark={dark} panelBg={panelBg} panelBorder={panelBorder}
-              tutor={isTutor} draft={drafts[b.id]} onCheck={checkTaskAnswer} onReset={resetTaskAnswer}
-              onType={typeTaskAnswer} onFile={downloadBoardFile} />
-          ))}
-        </div>
+        {/* В режиме чтения полей ответа нет: отвечают на живой доске, а прошлое
+            занятие показывается ровно таким, каким его закрыли. */}
+        {!readOnly && (
+          <div ref={qaLayer} className="absolute inset-0 pointer-events-none"
+            style={{ transformOrigin: "0 0", willChange: "transform" }}>
+            {qaBoxes.map((b) => (
+              <TaskAnswerBox key={b.id} panel={b} dark={dark} panelBg={panelBg} panelBorder={panelBorder}
+                tutor={isTutor} draft={drafts[b.id]} onCheck={checkTaskAnswer} onReset={resetTaskAnswer}
+                onType={typeTaskAnswer} onFile={downloadBoardFile} />
+            ))}
+          </div>
+        )}
 
         {/* Оверлей выделения: рамка + ручки + панель свойств */}
         {H && selCount > 0 && (
@@ -4551,8 +4726,9 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
           </button>
         )}
 
-        {/* Зум-контролы. На телефоне скрыты: зум там — щипок, а угол занят панелью */}
-        <div className="absolute bottom-4 right-4 hidden big:flex flex-col rounded-xl shadow-lg overflow-hidden"
+        {/* Зум-контролы. На телефоне скрыты: зум там — щипок, а угол занят панелью.
+            В режиме чтения панели нет, и кнопки видны везде. */}
+        <div className={`absolute bottom-4 right-4 ${readOnly ? "flex" : "hidden big:flex"} flex-col rounded-xl shadow-lg overflow-hidden`}
           style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
           <button onClick={() => zoomBy(1.2)} title="Приблизить"
             className="press-tap w-9 h-9 flex items-center justify-center board-hover" style={idleStyle}>
@@ -4571,7 +4747,10 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
 
         {/* Панель инструментов — плавает поверх холста, чтобы вся область была доской.
             Подписей у кнопок нет намеренно: панель стала крупнее и читается значками,
-            а название показывает подсказка — по наведению и по нажатию на сенсорном экране. */}
+            а название показывает подсказка — по наведению и по нажатию на сенсорном экране.
+            Прошлое занятие правят не карандашом, а новым занятием, поэтому в режиме
+            чтения панели нет вовсе. */}
+        {!readOnly && (
         <div className="absolute bottom-2 big:bottom-4 left-0 right-0 flex flex-col items-center gap-2 px-2 big:px-3 pointer-events-none">
         {/* Заметили снимок в буфере — предлагаем положить его на доску одним нажатием */}
         {offscreen && (
@@ -4852,6 +5031,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         )}
         <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onPickImage} />
         </div>
+        )}
 
       </div>
 

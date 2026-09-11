@@ -61,3 +61,6 @@ __closetest*
 # preview.html + previewMain.jsx). Временная, в репозиторий не нужна.
 preview.html
 previewMain.jsx
+dev-board.html
+public/devsheets/
+src/devBoard.jsx

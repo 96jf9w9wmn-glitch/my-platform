@@ -15,15 +15,15 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 HOST="${DEPLOY_HOST:-precettore-db}"
 ROOT=/opt/precettore-web/current
+BUNDLE_DIR="$(mktemp -d /private/tmp/my-platform-deploy.XXXXXX)"
 
 echo "→ сборка"
 npm run build
 
 echo "→ бандл (dist + личная страница /me)"
-rm -rf .deploy
-mkdir -p .deploy/dist/me
-cp -r dist/. .deploy/dist/
-cp portfolio/index.html portfolio/arman.webp .deploy/dist/me/
+mkdir -p "$BUNDLE_DIR/dist/me"
+cp -r dist/. "$BUNDLE_DIR/dist/"
+cp portfolio/index.html portfolio/arman.webp "$BUNDLE_DIR/dist/me/"
 
 # --exclude /crm/ — панель владельца (репозиторий ~/precettore-crm) лежит в
 # dist/crm и раскатывается своим скриптом. Без исключения rsync --delete снёс
@@ -45,8 +45,8 @@ RS=(-az --delete --exclude '.DS_Store' -e ssh)
 # и удаляем не раньше чем через месяц — к тому времени вкладок с ними не
 # остаётся. Правка парная с .github/workflows/deploy.yml.
 echo "→ статика"
-rsync "${RS[@]}" --exclude '/crm/' --exclude '/assets/' .deploy/dist/ "$HOST:$ROOT/dist/"
-rsync -az --exclude '.DS_Store' -e ssh .deploy/dist/assets/ "$HOST:$ROOT/dist/assets/"
+rsync "${RS[@]}" --exclude '/crm/' --exclude '/assets/' "$BUNDLE_DIR/dist/" "$HOST:$ROOT/dist/"
+rsync -az --exclude '.DS_Store' -e ssh "$BUNDLE_DIR/dist/assets/" "$HOST:$ROOT/dist/assets/"
 ssh "$HOST" "find $ROOT/dist/assets -type f -mtime +30 -delete"
 
 echo "→ функции и общий код"
