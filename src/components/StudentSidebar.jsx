@@ -1,14 +1,10 @@
 import NavIcon from "./NavIcon"
-import BetaBadge from "./BetaBadge"
+import BrandMark from "./BrandMark"
 
 function StudentSidebar({ activeTab, setActiveTab, items, badges = {} }) {
   return (
     <div className="sidebar-glass w-52 h-dvh sticky top-0 p-4 flex flex-col">
-      <div className="flex items-center gap-2.5 mb-5 px-1">
-        <img src="/logo.webp" alt="Логотип" className="w-8 h-8 rounded-xl object-cover flex-shrink-0" />
-        <span className="text-sm font-semibold text-gray-600 tracking-wide">Мой кабинет</span>
-        <BetaBadge size="xs" />
-      </div>
+      <BrandMark title="Мой кабинет" className="mb-5 px-1" />
       <div className="flex flex-col gap-1">
         {items.map((item) => (
           <button

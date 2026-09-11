@@ -1,5 +1,5 @@
 import NavIcon from "./NavIcon"
-import BetaBadge from "./BetaBadge"
+import BrandMark from "./BrandMark"
 import { useSubscription } from "../subscription"
 import { effectivePlan } from "../plans"
 import { isOwner } from "../owner"
@@ -45,11 +45,7 @@ export function TutorProfileButton({ name, email, active, onClick }) {
 function Sidebar({ activePage, setActivePage, badges = {}, name, email }) {
   return (
     <div className="sidebar-glass w-52 h-dvh sticky top-0 p-4 flex flex-col">
-      <div className="flex items-center gap-2.5 mb-5 px-1">
-        <img src="/logo.webp" alt="Логотип" className="w-8 h-8 rounded-xl object-cover flex-shrink-0" />
-        <span className="text-sm font-semibold text-gray-600 tracking-wide">Precettore</span>
-        <BetaBadge size="xs" />
-      </div>
+      <BrandMark title="Precettore" className="mb-5 px-1" />
       <div className="flex flex-col gap-1">
         {navFor(isOwner(email)).map((item) => (
           <button

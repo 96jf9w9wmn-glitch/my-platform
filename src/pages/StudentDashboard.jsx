@@ -9,7 +9,7 @@ import AnswerTable from "../components/AnswerTable"
 import MorphIcon from "../components/MorphIcon"
 import NavIcon from "../components/NavIcon"
 import StudentSidebar from "../components/StudentSidebar"
-import BetaBadge from "../components/BetaBadge"
+import BrandMark from "../components/BrandMark"
 import { BETA_SUFFIX } from "../beta"
 import FormulaBackdrop from "../components/FormulaBackdrop"
 import Chat from "./Chat"
@@ -3225,11 +3225,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
 
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
           <div className="topbar-glass px-4 md:px-6 py-3 flex justify-between items-center flex-shrink-0">
-            <div className="flex items-center gap-2.5 md:hidden">
-              <img src="/logo.webp" alt="Логотип" className="w-8 h-8 rounded-xl object-cover" />
-              <span className="text-sm font-semibold text-gray-700">Мой кабинет</span>
-              <BetaBadge size="xs" />
-            </div>
+            <BrandMark title="Мой кабинет" titleClass="text-gray-700" className="md:hidden" />
             <div className="flex items-center gap-3 ml-auto">
               <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-500/15 flex items-center justify-center text-sm font-medium text-blue-600 dark:text-blue-300">
                 {initials}
