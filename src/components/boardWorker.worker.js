@@ -9,17 +9,26 @@
 import { tintPixels } from "./sheetTint"
 
 self.onmessage = async (e) => {
-  const { id, op, bitmap, type, quality } = e.data
+  const { id, op, bitmap, type, quality, alt } = e.data
   try {
     const c = new OffscreenCanvas(bitmap.width, bitmap.height)
     const ctx = c.getContext("2d")
     ctx.drawImage(bitmap, 0, 0)
     bitmap.close()
     if (op === "encode") {
-      let blob = null
-      try { blob = await c.convertToBlob({ type, quality }) } catch { /* формат не поддержан */ }
       // По спецификации незнакомый тип молча даёт PNG — тип берём у самого блоба.
-      if (!blob) blob = await c.convertToBlob({ type: "image/png" })
+      // alt — второй формат на случай, если первый браузер не умеет: Safari не
+      // кодирует WebP, и предпросмотру для собеседника нужен JPEG, а не PNG
+      // втрое тяжелее. Без alt подставленный PNG принимается, как и раньше.
+      let blob = null, got = null
+      for (const t of [type, alt].filter(Boolean)) {
+        let b = null
+        try { b = await c.convertToBlob({ type: t, quality }) } catch { /* формат не поддержан */ }
+        if (!b) continue
+        if (b.type === t) { blob = b; break }
+        got = got || b
+      }
+      if (!blob) blob = got || await c.convertToBlob({ type: "image/png" })
       self.postMessage({ id, blob })
       return
     }

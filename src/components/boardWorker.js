@@ -42,11 +42,12 @@ function call(msg, transfer) {
 }
 
 // Холст → файл в фоне. null — поток недоступен или упал: кодируйте сами.
-export async function encodeCanvasAsync(canvas, type, quality) {
+// alt — запасной формат, если браузер не умеет type (см. worker).
+export async function encodeCanvasAsync(canvas, type, quality, alt = null) {
   if (!workerAvailable()) return null
   try {
     const bitmap = await createImageBitmap(canvas)
-    const { blob } = await call({ op: "encode", bitmap, type, quality }, [bitmap])
+    const { blob } = await call({ op: "encode", bitmap, type, quality, alt }, [bitmap])
     return blob || null
   } catch {
     return null

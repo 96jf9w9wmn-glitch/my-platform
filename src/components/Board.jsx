@@ -16,7 +16,7 @@ import {
 const BoardTaskModal = lazy(() => import("./BoardTaskModal"))
 import { roomStudentId, isHomeworkRoom, HW_ROOM } from "../boardRoom"
 import { downloadBlob, taskFiles } from "../pages/taskFiles"
-import { tintSheetAsync } from "./boardWorker"
+import { tintSheetAsync, encodeCanvasAsync } from "./boardWorker"
 
 // Совместная доска платформы (свой движок на HTML5 Canvas, без внешних библиотек).
 // БЕСКОНЕЧНЫЙ холст на весь экран: штрихи хранятся в МИРОВЫХ координатах, у каждого
@@ -35,6 +35,14 @@ const HISTORY_MAX = 100      // шагов «отменить» держим с�
 // Копия штриха для истории: points — массив массивов, поверхностная копия его бы разделила
 const cloneStroke = (s) => s && { ...s, points: s.points.map((p) => p.slice()) }
 const SHEET_MAX_DIM = 4000   // лист с заданием: длинные условия не должны терять чёткость
+// Предпросмотр вставленной картинки, который уходит собеседнику по realtime, пока
+// полный файл едет в хранилище (см. addImageAt). Ширина — как у предпросмотра из
+// хранилища (BOARD_PREVIEW_W): лист на отдалённой доске занимает пару сотен точек.
+// Замер на листе 1860×1100: WebP q0.6 — 17 КБ, JPEG (Safari) — 23 КБ против
+// 130–250 КБ полного PNG; в base64 это 25–35 КБ на посылку.
+const PREVIEW_SEND_W = 620
+const PREVIEW_SEND_Q = 0.6
+const PREVIEW_SEND_MAX = 120_000   // байт; тяжелее — предпросмотр не шлём вовсе
 const SHEET_GAP = 140        // отступ от написанного до нового листа с заданием, мировые px
 const SPOT_PAD = 40          // зазор вокруг листа при поиске свободного места, там же
 const CULL_PAD = 80          // запас за краем экрана, в пределах которого штрих ещё рисуем
@@ -235,6 +243,29 @@ async function processImageFile(file, maxDim = 1400) {
   const blob = await new Promise((r) => cnv.toBlob(r, type, 0.85))
   URL.revokeObjectURL(url)                              // исходник больше не нужен
   return { blob, type, ext, w: cw, h: ch, img: null, url: null }
+}
+
+// Лёгкий предпросмотр картинки для собеседника — data: URL в PREVIEW_SEND_W точек.
+// Фон заливается белым: JPEG прозрачности не знает, и скруглённые углы листа иначе
+// вышли бы чёрными. Кодируется в фоновом потоке (WebP, в Safari — JPEG); нет
+// потока — на главном, это единицы миллисекунд для такой величины.
+// null — не вышло или слишком тяжело: тогда собеседник дождётся хранилища, как раньше.
+async function previewDataUrl(info, localSrc) {
+  let src = info.img
+  if (!src?.naturalWidth) src = await loadImg(localSrc)   // ужатое фото: разобранного растра нет
+  const k = Math.min(1, PREVIEW_SEND_W / src.naturalWidth)
+  const w = Math.max(1, Math.round(src.naturalWidth * k)), h = Math.max(1, Math.round(src.naturalHeight * k))
+  const c = document.createElement("canvas"); c.width = w; c.height = h
+  const ctx = c.getContext("2d")
+  ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, w, h)
+  ctx.drawImage(src, 0, 0, w, h)
+  let blob = await encodeCanvasAsync(c, "image/webp", PREVIEW_SEND_Q, "image/jpeg")
+  if (!blob) {
+    blob = await new Promise((r) => c.toBlob(r, "image/webp", PREVIEW_SEND_Q))
+    if (blob && blob.type !== "image/webp") blob = await new Promise((r) => c.toBlob(r, "image/jpeg", PREVIEW_SEND_Q))
+  }
+  if (!blob || blob.size > PREVIEW_SEND_MAX) return null
+  return readFileAsDataURL(blob)
 }
 
 // Прилагаемый к заданию файл (.xlsx/.zip/.txt) — кнопкой прямо на доске. Раньше
@@ -1456,6 +1487,14 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     return img
   }
 
+  // Выбросить растр по адресу из всех кэшей: предпросмотр (data:) после прихода
+  // постоянного адреса, стёртая картинка. Ключи — как их заводит getImage.
+  function forgetImage(src) {
+    for (const k of [src, src + "|prev", src + "|full"]) {
+      imgCache.current.delete(k); tintCache.current.delete(k); tintPending.current.delete(k)
+    }
+  }
+
   function getImage(src, wantTint = false, worldW = 0) {
     if (!src) return null
     // Только что вставленная картинка лежит под своим адресом и уже в памяти —
@@ -1746,6 +1785,10 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       // Готовый штрих: кладём в сцену и убираем из «в работе».
       .on("broadcast", { event: "draw" }, ({ payload }) => {
         live.current.delete(payload.id)
+        // Пришёл постоянный адрес вместо предпросмотра (data:, см. addImageAt) —
+        // растр предпросмотра из кэша отпускаем, он больше никому не нужен.
+        const old = strokes.current.get(payload.id)
+        if (old?.src?.startsWith("data:") && old.src !== payload.src) forgetImage(old.src)
         strokes.current.set(payload.id, payload)
         noticeOffscreen(payload)
         scheduleDraw()
@@ -1781,7 +1824,12 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
           setDrafts((d) => (d[payload.id] ? { ...d, [payload.id]: { ...d[payload.id], typing: false } } : d))
         }, 2500))
       })
-      .on("broadcast", { event: "remove" }, ({ payload }) => { live.current.delete(payload.id); strokes.current.delete(payload.id); selection.current.delete(payload.id); scheduleDraw() })
+      .on("broadcast", { event: "remove" }, ({ payload }) => {
+        live.current.delete(payload.id)
+        const old = strokes.current.get(payload.id)
+        if (old?.src?.startsWith("data:")) forgetImage(old.src)
+        strokes.current.delete(payload.id); selection.current.delete(payload.id); scheduleDraw()
+      })
       .on("broadcast", { event: "clear" }, () => { live.current.clear(); strokes.current.clear(); selection.current.clear(); scheduleDraw() })
       .on("broadcast", { event: "bg" }, ({ payload }) => {
         if (payload.bg != null) setBg(payload.bg)
@@ -1834,6 +1882,20 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         // на доске. Возвращаем её сами; чаще раза в пять секунд не пробуем,
         // иначе отказ сервера крутил бы sync по кругу.
         if (!people.some((p) => p.userId === userId)) trackSelf()
+        // Предпросмотр картинки (pending + data:, см. addImageAt) живёт, пока автор
+        // на доске: ушёл, не дождавшись хранилища (вкладку убили, сеть пропала), —
+        // постоянный адрес не придёт никогда, и без этого у нас навсегда осталась
+        // бы картинка с индикатором загрузки. Смотрим только при живой СВОЕЙ
+        // записи: пустой список после пересоздания канала — не уход автора.
+        if (people.some((p) => p.userId === userId)) {
+          let gone = false
+          for (const [id, st] of strokes.current) {
+            if (!st.pending || st.author === userId || !st.src?.startsWith("data:")) continue
+            if (people.some((p) => p.userId === st.author)) continue
+            forgetImage(st.src); strokes.current.delete(id); selection.current.delete(id); gone = true
+          }
+          if (gone) scheduleDraw()
+        }
         // Наблюдателя видно по его же presence: пока за нами никто не следит,
         // обзор не рассылается вовсе.
         const watched = people.some((p) => p.userId !== userId && p.following === userId)
@@ -2789,9 +2851,17 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // весит мегабайты, и раньше всё это время на доске не было ничего: ни
   // картинки, ни признака, что идёт загрузка, — вставка выглядела как «нажал и
   // ничего не произошло». Пока адрес хранилища не получен, штрих помечен
-  // pending: он виден, его можно двигать и стирать, но собеседнику он не
-  // уходит и в базу не сохраняется — blob-адрес за пределами этой вкладки не
-  // значит ничего. Что загрузка идёт, видно по плашке над самой картинкой.
+  // pending: он виден, его можно двигать и стирать, но в базу не сохраняется —
+  // blob-адрес за пределами этой вкладки не значит ничего. Что загрузка идёт,
+  // видно по индикатору над самой картинкой.
+  //
+  // Собеседнику при этом НЕ ждать хранилища: ему тут же уходит по realtime лёгкий
+  // предпросмотр (data: URL, 20–35 КБ, см. previewDataUrl), а полный адрес —
+  // вторым событием draw, когда файл доедет. Разобрано по журналу запросов
+  // 11.09.2026: сервер принимает лист за 20–50 мс, но исходящий канал репетитора
+  // на объёме то и дело проседает — 200 КБ шли 47 с, и всё это время ученик
+  // не видел ничего. Предпросмотр помечен pending, поэтому у собеседника он не
+  // сохраняется и не попадает в снимок занятия; растёт только доска на экране.
   // files — прилагаемые к заданию .xlsx/.zip/.txt: они едут в хранилище рядом с
   // листом, а в штрих попадают только имя и путь (см. uploadTaskFiles).
   async function addImageAt(file, worldX, worldY, { fitWidth = null, maxSide = 360, sheet = false, topLeft = false, taskKey = null, answer = null, files = null, onPlaced = null, place = null } = {}) {
@@ -2830,6 +2900,14 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     scheduleDraw()
     onPlaced?.(s)
 
+    let uploaded = false
+    previewDataUrl(info, localSrc).then((data) => {
+      if (!data || uploaded) return          // полный адрес уже разослан — предпросмотр опоздал
+      const cur = strokes.current.get(id)
+      if (!cur?.pending) return              // стёрли или отменили, пока кодировался
+      channelRef.current?.send({ type: "broadcast", event: "draw", payload: { ...cur, src: data } })
+    }, () => {})
+
     let src = null
     // Файлы с данными грузятся ПАРАЛЛЕЛЬНО картинке: лист без них читается, а
     // ждать их значило бы держать его помеченным «отправляется» дольше нужного.
@@ -2859,6 +2937,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     else Promise.resolve(img.decode?.()).then(free, free)
     // Файл, который не доехал в хранилище, в штрих не пишем: кнопка вела бы в пустоту.
     const stored = filesUp ? await filesUp : null
+    uploaded = true
     step.after.src = src; delete step.after.pending
     const cur = strokes.current.get(id)
     if (!cur) return null   // картинку успели стереть или отменить — рассылать нечего
@@ -4203,16 +4282,16 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
           </div>
         )}
 
-        {/* Картинка уже на доске, но ещё едет в хранилище. Плашка нужна, потому
-            что до конца загрузки собеседник её не видит и она не сохранена. */}
+        {/* Картинка уже на доске, но ещё едет в хранилище (у собеседника — ещё
+            предпросмотр). Индикатор без подписи — по требованию владельца: одна
+            анимация загрузки на самой картинке, слов не нужно. */}
         {busyImgs.map((b) => (
           // Сдвиг «на половину себя» — на ОБЁРТКЕ: у появления попапа свои кадры
           // с transform, и на одном элементе они затирали бы центровку.
           <div key={b.id} className="absolute pointer-events-none"
             style={{ left: b.x, top: b.y, transform: "translate(-50%, -50%)" }}>
-            <div className="popup-bubble flex items-center gap-2 px-2.5 h-8 rounded-full text-xs font-medium shadow-lg"
-              style={{ background: panelBg, border: `1px solid ${panelBorder}`, color: dark ? "#e5e5ea" : "#374151" }}>
-              Отправляется
+            <div className="popup-bubble flex items-center px-3 h-7 rounded-full shadow-lg"
+              style={{ background: panelBg, border: `1px solid ${panelBorder}` }}>
               <span className="loader-dots text-blue-500"><i /><i /><i /></span>
             </div>
           </div>
