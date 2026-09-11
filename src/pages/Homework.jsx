@@ -1930,7 +1930,12 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
       sheets.push({ solution: { key: homeworkSolutionKey(hw.id, "all"), url: hw.submission_url } })
     }
     if (!sheets.length) return
-    onOpenBoard(hw, { key: `check:${hw.id}:${++checkRun.current}`, hwId: hw.id, label: hw.title, sheets })
+    // Под каждым листом на доске стоит ответ ученика: у задания без эталона
+    // репетитор смотрит ход решения, и ответ должен быть тут же, а не в
+    // соседнем окне. Ученик в это же поле пишет со своей стороны.
+    const answers = {}
+    for (const it of taskItems) answers[Number(it.n)] = it.given || ""
+    onOpenBoard(hw, { key: `check:${hw.id}:${++checkRun.current}`, hwId: hw.id, label: hw.title, sheets, answers })
   }
   const canCheckAll = checkable && (manualItems.length > 0 || (taskCount === 0 && !!hw.submission_url))
 

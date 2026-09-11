@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useLayoutEffect, lazy, Suspense } from "react"
+import { useState, useEffect, useRef, useMemo, useCallback, useLayoutEffect, lazy, Suspense } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import { signRows, signStorageUrl, permanentStorageUrl } from "../storageUrl"
@@ -1084,17 +1084,33 @@ const HW_LIST_COLS = [
   "opened_at", "auto_submitted", "retry_policy", "retry_limit", "solution_files", "credited",
 ].join(", ")
 
-function HomeworkDetail({ hw, onBack, onUpload, onSubmitTest, onSubmitWritten, onSolveOnBoard, onOpenBoard }) {
+function HomeworkDetail({ hw, answers = null, onAnswers = null, onBack, onUpload, onSubmitTest, onSubmitWritten, onSolveOnBoard, onOpenBoard }) {
   const [uploading, setUploading] = useState(false)
   const [submittingWritten, setSubmittingWritten] = useState(false)
   // Доработка приходит с уже принятыми ответами: репетитор оставил в работе те,
   // что зачтены, и стёр только те задания, которые предстоит решить заново.
   // Поэтому поля заполняются прежними ответами — при сдаче уедет весь список,
   // и балл посчитается по всей работе, а не по одной доработке.
-  const [testAnswers, setTestAnswers] = useState(() => {
+  // Сами ответы лежат ВЫШЕ (см. hwAnswers в кабинете): их правит ещё и поле под
+  // заданием на доске, а доска открывается рядом с этой карточкой, не внутри неё.
+  const initialAnswers = useMemo(() => {
     const prev = hw.status === "revision" && Array.isArray(hw.student_answers) ? hw.student_answers : null
     return Array.from({ length: hw.question_count || 0 }, (_, i) => (prev?.[i] == null ? "" : String(prev[i])))
-  })
+  }, [hw.status, hw.student_answers, hw.question_count])
+  const testAnswers = answers ?? initialAnswers
+  const setTestAnswers = (next) => onAnswers?.(hw.id, next)
+  // Заготовку кладём наверх при первом заходе в работу — и заново, когда работа
+  // пришла из базы другой (сдали, вернули на доработку, репетитор что-то принял).
+  // Пока работа решается, строка признака не меняется, поэтому набранное — хоть
+  // в карточке, хоть на доске — не стирается перезагрузкой списка работ.
+  const stateKey = `${hw.id}|${hw.status}|${(Array.isArray(hw.student_answers) ? hw.student_answers : []).join("\u0001")}`
+  const inited = useRef(null)
+  useEffect(() => {
+    if (inited.current === stateKey) return
+    inited.current = stateKey
+    onAnswers?.(hw.id, initialAnswers)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stateKey])
   const [submittingTest, setSubmittingTest] = useState(false)
   // Ошибку показываем прямо над кнопкой: системный alert ученику не объясняет,
   // что именно не так, и выглядит как сбой сайта.
@@ -2154,6 +2170,45 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   // В адрес не пишется: лист уже лежит на доске и после перезагрузки никуда не
   // денется, а переносить его второй раз незачем.
   const [boardTask, setBoardTask] = useState(null)
+  // Ответы решаемой работы: { «id работы»: [ответы по порядку заданий] }.
+  // Держим их ЗДЕСЬ, а не в карточке работы, по двум причинам: их правит поле
+  // под заданием на доске (доска открывается поверх карточки, но живёт рядом с
+  // ней, а не внутри), и уход со страницы работы больше не стирает набранное.
+  const [hwAnswers, setHwAnswers] = useState({})
+  const setHwAnswerList = useCallback((hwId, list) => {
+    setHwAnswers((prev) => ({ ...prev, [hwId]: list }))
+  }, [])
+  // Ответ, вписанный на доске: там задание известно НОМЕРОМ (он стоит на листе),
+  // а в работе ответы лежат по порядку — переводим одно в другое по тому же
+  // разбору описания, каким карточка строит свои задания.
+  const boardHwRow = boardHw ? homework.find((h) => String(h.id) === String(boardHw)) : null
+  const boardHwTasks = useMemo(
+    () => (boardHwRow ? parseHomeworkTasks(boardHwRow.description).tasks : []),
+    [boardHwRow],
+  )
+  const boardHwList = boardHwRow ? hwAnswers[boardHwRow.id] || [] : null
+  // Номер задания → ответ: в таком виде их читает доска.
+  const boardAnswersByNum = useMemo(() => {
+    if (!boardHwRow) return null
+    const out = {}
+    const count = Math.max(boardHwTasks.length, boardHwList?.length || 0)
+    for (let i = 0; i < count; i++) out[Number(boardHwTasks[i]?.n ?? i + 1)] = boardHwList?.[i] ?? ""
+    return out
+  }, [boardHwRow, boardHwTasks, boardHwList])
+  const setBoardAnswer = useCallback((num, value) => {
+    if (!boardHwRow) return
+    const count = Math.max(boardHwTasks.length, boardHwRow.question_count || 0)
+    let idx = boardHwTasks.findIndex((t) => Number(t?.n) === Number(num))
+    if (idx < 0) idx = Number(num) - 1              // работа без разбора по номерам
+    if (idx < 0 || (count && idx >= count)) return
+    setHwAnswers((prev) => {
+      const cur = prev[boardHwRow.id] || []
+      if ((cur[idx] ?? "") === value) return prev
+      const next = Array.from({ length: Math.max(count, cur.length, idx + 1) }, (_, i) => cur[i] ?? "")
+      next[idx] = value
+      return { ...prev, [boardHwRow.id]: next }
+    })
+  }, [boardHwRow, boardHwTasks])
   const openBoardRoom = (hwId) => {
     const value = hwId ? `hw:${hwId}` : "1"
     setBoardHw(hwId ? String(hwId) : null)
@@ -3051,6 +3106,11 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
               account={user.id}
               token={user.token}
               taskSheet={boardTask}
+              /* Поле ответа под каждым заданием домашней работы: вписанное здесь
+                 тут же стоит в карточке задания в кабинете и уезжает со сдачей —
+                 набирать ответ второй раз не нужно. */
+              taskAnswers={boardAnswersByNum}
+              onTaskAnswer={boardHwRow ? setBoardAnswer : null}
             />
           </Suspense>
         )}
@@ -3478,6 +3538,8 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
               {selectedHomework ? (
                 <HomeworkDetail
                   hw={selectedHomework}
+                  answers={hwAnswers[selectedHomework.id]}
+                  onAnswers={setHwAnswerList}
                   onSolveOnBoard={openBoardWithTask}
                   onOpenBoard={openBoardRoom}
                   onBack={() => { setSelectedHomework(null); setReturning(true) }}

@@ -1276,6 +1276,9 @@ function App() {
             tutorOwner={isOwner(user.email)}
             /* Листы, с которыми доску открыли из разбора домашней работы */
             taskSheet={board.taskSheet || null}
+            /* Ответы ученика — строкой под его же листом на доске (только показ:
+               отвечает ученик, репетитор проверяет). */
+            taskAnswers={board.taskSheet?.answers || null}
           />
         </PageBoundary>
       )}
