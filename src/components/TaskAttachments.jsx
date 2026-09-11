@@ -151,7 +151,7 @@ function ImageZoom({ src, alt, onClose }) {
           alt={alt}
           onClick={(e) => { e.stopPropagation(); setBig((v) => !v) }}
           style={{ width: big ? "260%" : "100%" }}
-          className={`h-auto shrink-0 ${big ? "" : "max-w-[1100px]"} rounded-xl bg-white shadow-lg transition-[width] duration-200 ${big ? "cursor-zoom-out" : "cursor-zoom-in"}`}
+          className={`h-auto shrink-0 ${big ? "max-w-none" : "max-w-[1100px]"} rounded-xl bg-white shadow-lg transition-[width] duration-200 ${big ? "cursor-zoom-out" : "cursor-zoom-in"}`}
         />
       </div>
       <button onClick={close} title="Закрыть"
