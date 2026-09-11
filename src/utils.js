@@ -1122,6 +1122,18 @@ export function parseLocalDate(dateStr) {
   return new Date(y, m - 1, d)
 }
 
+// Просрочка домашней работы — ОДНО правило на оба кабинета, и это не метка, а
+// запрет: у репетитора она повод продлить срок, у ученика по ней закрывается
+// решение (поля ответов, фото, доска и сдача). Разойдись две копии правила — и
+// ученик увидел бы «Просрочено» там, где решать ещё можно, или наоборот.
+// Сравниваем по началу суток: срок хранится датой, без времени.
+export function isHomeworkOverdue(hw) {
+  if (!hw?.deadline) return false
+  if (hw.status === "done" || hw.status === "submitted") return false
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  return parseLocalDate(hw.deadline) < today
+}
+
 // Дата платежа хранится строкой в том виде, в каком её показывают: "дд.мм.гггг"
 // (toLocaleDateString("ru-RU") при записи в Payment.jsx). ISO-строки тоже
 // встречаются — у платежей из ЮKassa. Разбор нужен и странице «Финансы», и

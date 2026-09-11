@@ -167,8 +167,8 @@ export default function Subscription({ studentsCount = 0, tutorId }) {
 
   return (
     <div className="p-4 sm:p-6">
-      <h1 className="text-xl font-medium page-title mb-1">Подписка</h1>
-      <p className="text-sm page-subtitle mb-5 sm:mb-6">
+      <h1 className="text-2xl font-medium page-title mb-1">Подписка</h1>
+      <p className="text-[15px] page-subtitle mb-5 sm:mb-6">
         Тариф определяет, сколько у вас может быть учеников и какие возможности платформы включены.
       </p>
 

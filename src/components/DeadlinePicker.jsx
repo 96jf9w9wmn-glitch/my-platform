@@ -28,7 +28,10 @@ const chipCls = (on) =>
       : "text-gray-600 ring-1 ring-gray-200 dark:ring-white/15 hover:ring-gray-300"
   }`
 
-export default function DeadlinePicker({ value, onChange, label = "Срок сдачи" }) {
+// allowNone={false} убирает «Без срока»: там, где срок ПРОДЛЕВАЮТ, снятие срока
+// не продление, а другое решение — и стоять рядом с «Завтра» ему незачем.
+export default function DeadlinePicker({ value, onChange, label = "Срок сдачи", allowNone = true }) {
+  const chips = allowNone ? CHIPS : CHIPS.filter((c) => c.days != null)
   // Дата, не совпавшая ни с одним чипом (правка старой работы), сразу
   // открывает календарь: иначе выбранный срок нигде не виден.
   const [pickDate, setPickDate] = useState(
@@ -38,7 +41,7 @@ export default function DeadlinePicker({ value, onChange, label = "Срок сд
     <div>
       <div className="text-sm text-gray-500 mb-2">{label}</div>
       <div className="flex flex-wrap gap-1.5">
-        {CHIPS.map((c) => {
+        {chips.map((c) => {
           const chipValue = c.days == null ? "" : isoDay(c.days)
           return (
             <button key={c.label} type="button" onClick={() => { onChange(chipValue); setPickDate(false) }}

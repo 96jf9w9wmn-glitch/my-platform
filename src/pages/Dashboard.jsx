@@ -143,10 +143,10 @@ function Dashboard({ students, loaded = true, setActivePage, onOpenBoard }) {
 
       {/* Header */}
       <div>
-        <h1 className="text-xl font-medium page-title capitalize">
+        <h1 className="text-2xl font-medium page-title capitalize">
           {today.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" })}
         </h1>
-        <p className="text-sm page-subtitle mt-0.5">Добро пожаловать</p>
+        <p className="text-[15px] page-subtitle mt-0.5">Добро пожаловать</p>
       </div>
 
       {/* Пока учеников нет, весь экран — нули без объяснений. Показываем

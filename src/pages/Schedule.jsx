@@ -397,10 +397,10 @@ function Schedule({ students, setStudents, groups = [], onOpenBoard }) {
     <div className="p-4">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-4">
         <div>
-          <h1 className="text-xl font-medium page-title">Расписание</h1>
+          <h1 className="text-2xl font-medium page-title">Расписание</h1>
           {/* Постоянные дни задаются в карточке ученика, и человек, пришедший
               сюда ставить занятия, раньше об этом ниоткуда не узнавал. */}
-          <p className="text-sm page-subtitle mt-0.5">
+          <p className="text-[15px] page-subtitle mt-0.5">
             Разовые занятия добавляйте здесь. Постоянные дни и время — в карточке ученика,
             раздел «Ученики» → «Редактировать».
           </p>

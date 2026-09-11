@@ -467,8 +467,8 @@ function Students({ students, loaded = true, setStudents, groups = [], onGroupSa
           а сама кнопка не рвётся — на узком экране у неё короткая подпись. */}
       <div className="flex flex-wrap justify-between items-center gap-x-3 gap-y-2 mb-4">
         <div className="min-w-0">
-          <h1 className="text-xl font-medium page-title">Ученики</h1>
-          <p className="text-xs page-subtitle mt-0.5">{students.length} {plural(students.length, "ученик", "ученика", "учеников")}</p>
+          <h1 className="text-2xl font-medium page-title">Ученики</h1>
+          <p className="text-sm page-subtitle mt-0.5">{students.length} {plural(students.length, "ученик", "ученика", "учеников")}</p>
         </div>
         <div className="flex items-center gap-2">
           {/* Код виден прямо здесь, а не только в «Профиле»: привязка ученика

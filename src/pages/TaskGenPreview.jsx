@@ -328,7 +328,7 @@ function TaskGenPreview() {
   return (
     <div className="p-4 md:p-8 max-w-5xl mx-auto">
       <div className="mb-1 flex items-center gap-2 flex-wrap">
-        <h1 className="text-xl font-semibold page-title">Банк заданий</h1>
+        <h1 className="text-2xl font-semibold page-title">Банк заданий</h1>
         <span className="text-[10px] uppercase tracking-wide text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
           превью генератора
         </span>
@@ -498,8 +498,8 @@ export default function TaskGenPreviewGate(props) {
   if (allows("taskBank")) return <TaskGenPreview {...props} />
   return (
     <div className="p-4 sm:p-6">
-      <h1 className="text-xl font-medium page-title mb-1">Банк заданий</h1>
-      <p className="text-sm page-subtitle mb-5">
+      <h1 className="text-2xl font-medium page-title mb-1">Банк заданий</h1>
+      <p className="text-[15px] page-subtitle mb-5">
         Задания по образцу ФИПИ: 13 предметов ОГЭ и ЕГЭ, каждое генерируется заново.
       </p>
       <PlanLock
