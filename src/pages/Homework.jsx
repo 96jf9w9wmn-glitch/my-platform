@@ -11,7 +11,7 @@ import Collapse from "../components/Collapse"
 import Reveal from "../components/Reveal"
 import AutoHeight from "../components/AutoHeight"
 import FormulaBackdrop from "../components/FormulaBackdrop"
-import { parseLocalDate, renderHomeworkMath, plainTaskMath, superscriptPowers, parseHomeworkTasks, homeworkTaskItems, homeworkTestScore, plural, hasAttachment, getInitials, answersEqual, oneLine, isSimpleAnswer } from "../utils"
+import { parseLocalDate, renderHomeworkMath, plainTaskMath, superscriptPowers, parseHomeworkTasks, homeworkTaskItems, homeworkTestScore, plural, hasAttachment, getInitials, answersEqual, oneLine, isSimpleAnswer, homeworkBoardSheet, homeworkSolutionKey } from "../utils"
 import { usePlan } from "../subscription"
 import { homeworkRoom } from "../boardRoom"
 import { PlanHint, PlanLock } from "../components/PlanLock"
@@ -149,11 +149,15 @@ function StepBtn({ icon, onClick, disabled, title }) {
 // раздела, внутри — темы с числом типажей. Раньше номера были сеткой квадратов
 // с одним общим количеством на всю работу: по «17» не понять, что это за
 // задание, а «пять любых» — не то, что репетитор задаёт на самом деле.
-function BankNumberRow({ info, pick, open, onCount, onTheme, onOpen }) {
+function BankNumberRow({ info, pick, open, onCount, onTheme, onType, onOpen }) {
   const count = pick?.count || 0
   const picked = pick?.themes || []
+  const pickedKeys = pick?.keys || []
   const themes = info.themes || []
   const expandable = themes.length > 1
+  // Раскрытая тема — одна: типажей внутри бывает по десятку, и два раскрытых
+  // списка сразу превращают выбор в простыню.
+  const [openTheme, setOpenTheme] = useState(null)
   // Практический блок считается блоками: за каждым стоит пять связанных заданий,
   // и репетитор должен видеть это прямо в строке, а не после сборки.
   const isModule = !!info.module
@@ -179,11 +183,14 @@ function BankNumberRow({ info, pick, open, onCount, onTheme, onOpen }) {
               · {count * 5} {plural(count * 5, "задание", "задания", "заданий")}
             </span>
           )}
-          {picked.length > 0 && (
+          {(picked.length > 0 || pickedKeys.length > 0) && (
             <span className="text-[11px] text-blue-600 dark:text-blue-400 shrink-0">
-              · {picked.length} {isModule
-                ? plural(picked.length, "сценарий", "сценария", "сценариев")
-                : plural(picked.length, "тема", "темы", "тем")}
+              · {[
+                picked.length && `${picked.length} ${isModule
+                  ? plural(picked.length, "сценарий", "сценария", "сценариев")
+                  : plural(picked.length, "тема", "темы", "тем")}`,
+                pickedKeys.length && `${pickedKeys.length} ${plural(pickedKeys.length, "типаж", "типажа", "типажей")}`,
+              ].filter(Boolean).join(", ")}
             </span>
           )}
           {expandable && (
@@ -197,28 +204,77 @@ function BankNumberRow({ info, pick, open, onCount, onTheme, onOpen }) {
         <Collapse open={open}>
           <div className="pl-9 pr-2 pb-2 flex flex-col gap-0.5">
             {themes.map((g) => {
-              const on = picked.includes(g.theme)
+              const items = g.items || []
+              const all = picked.includes(g.theme)
+              // Отмеченные типажи именно этой темы: по ним чекбокс темы
+              // показывает «частично», а счётчик справа — «3 из 9».
+              const mine = items.filter((i) => pickedKeys.includes(i.key))
+              const part = !all && mine.length > 0
+              const openT = openTheme === g.theme
               return (
-                <button
-                  key={g.theme}
-                  type="button"
-                  onClick={() => onTheme(g.theme)}
-                  className="press-fill rounded-lg px-1.5 py-1 flex items-center gap-2 text-left"
-                >
-                  <span className={`w-4 h-4 shrink-0 rounded-[6px] grid place-items-center transition-colors ${
-                    on ? "bg-blue-600 text-white" : "ring-1 ring-gray-500/25"
-                  }`}>
-                    {on && <Icon name="check" size={9} />}
-                  </span>
-                  <span className={`text-xs truncate ${on ? "text-gray-800" : "text-gray-600"}`}>
-                    {g.theme}
-                  </span>
-                  {g.items.length > 0 && (
-                    <span className="text-[11px] text-gray-400 shrink-0 ml-auto">
-                      {g.items.length} {plural(g.items.length, "типаж", "типажа", "типажей")}
-                    </span>
+                <div key={g.theme}>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => onTheme(g)}
+                      className="press-fill min-w-0 flex-1 rounded-lg px-1.5 py-1 flex items-center gap-2 text-left"
+                    >
+                      <span className={`w-4 h-4 shrink-0 rounded-[6px] grid place-items-center transition-colors ${
+                        all || part ? "bg-blue-600 text-white" : "ring-1 ring-gray-500/25"
+                      }`}>
+                        {all ? <Icon name="check" size={9} /> : part ? <span className="w-2 h-0.5 rounded-full bg-white" /> : null}
+                      </span>
+                      <span className={`text-xs truncate ${all || part ? "text-gray-800" : "text-gray-600"}`}>
+                        {g.theme}
+                      </span>
+                    </button>
+                    {items.length > 1 ? (
+                      <button
+                        type="button"
+                        onClick={() => setOpenTheme(openT ? null : g.theme)}
+                        title={openT ? "Свернуть типажи" : "Показать типажи"}
+                        className="press-fill shrink-0 rounded-lg pl-1.5 pr-1 py-1 flex items-center gap-1 text-[11px] text-gray-400"
+                      >
+                        <span className="tabular-nums">
+                          {part
+                            ? `${mine.length} из ${items.length}`
+                            : `${items.length} ${plural(items.length, "типаж", "типажа", "типажей")}`}
+                        </span>
+                        <span className={`transition-transform ${openT ? "-rotate-90" : "rotate-90"}`}>
+                          <Icon name="arrow" size={10} />
+                        </span>
+                      </button>
+                    ) : items.length === 1 ? (
+                      <span className="shrink-0 text-[11px] text-gray-400 px-1.5">1 типаж</span>
+                    ) : null}
+                  </div>
+                  {items.length > 1 && (
+                    <Collapse open={openT}>
+                      <div className="pl-6 pb-1 flex flex-col gap-0.5">
+                        {items.map((it) => {
+                          const on = all || pickedKeys.includes(it.key)
+                          return (
+                            <button
+                              key={it.key}
+                              type="button"
+                              onClick={() => onType(g, it.key)}
+                              className="press-fill rounded-lg px-1.5 py-1 flex items-center gap-2 text-left"
+                            >
+                              <span className={`w-3.5 h-3.5 shrink-0 rounded-[5px] grid place-items-center transition-colors ${
+                                on ? "bg-blue-600 text-white" : "ring-1 ring-gray-500/25"
+                              }`}>
+                                {on && <Icon name="check" size={8} />}
+                              </span>
+                              <span className={`text-[11px] truncate ${on ? "text-gray-800" : "text-gray-500"}`}>
+                                {it.label}
+                              </span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </Collapse>
                   )}
-                </button>
+                </div>
               )
             })}
             <div className="text-[11px] text-gray-400 px-1.5 pt-0.5 leading-snug">
@@ -226,7 +282,9 @@ function BankNumberRow({ info, pick, open, onCount, onTheme, onOpen }) {
                 ? (picked.length
                   ? "Блок собирается только по отмеченным сценариям."
                   : "Сценарий не отмечен — блок берётся из любого. В блоке пять заданий с общим условием и чертежом.")
-                : (picked.length ? "Задания берутся только из отмеченных тем." : "Тема не отмечена — задания берутся из любой.")}
+                : (picked.length || pickedKeys.length)
+                  ? "Задания берутся только из отмеченного."
+                  : "Ничего не отмечено — задания берутся из любой темы. Тему можно раскрыть и выбрать отдельные типажи."}
             </div>
           </div>
         </Collapse>
@@ -748,7 +806,8 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
       const after = bankTasks.slice(idx).filter((x) => x.moduleId !== t.moduleId)
       return applyBank([...before, ...fresh, ...after])
     }
-    const fresh = bank.pickTask(bankType, t.number, bankPick[t.number]?.themes || null, new Set())
+    const sel = bankPick[t.number]
+    const fresh = bank.pickTask(bankType, t.number, sel?.themes || null, new Set(), sel?.keys || null)
     if (fresh) applyBank(bankTasks.map((x, i) => (i === idx ? fresh : x)))
   }
 
@@ -765,24 +824,54 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
     const count = Math.max(0, Math.min(limit, next))
     setBankError("")
     setBankPick((prev) => {
-      const cur = prev[n] || { count: 0, themes: [] }
-      if (!count && !cur.themes.length) return dropKey(prev, n)
+      const cur = prev[n] || { count: 0, themes: [], keys: [] }
+      if (!count && !cur.themes.length && !cur.keys?.length) return dropKey(prev, n)
       return { ...prev, [n]: { ...cur, count } }
     })
   }
 
-  // Тема номера: выбрана хотя бы одна — задания берутся только из них, ни одной
-  // — из любой. Первая отметка сама ставит номеру одно задание, иначе тема
-  // выбрана, а в работу ничего не пойдёт.
-  function toggleBankTheme(n, theme) {
+  // Отметка темы или типажа. Выбрано хоть что-то — задания берутся только
+  // оттуда, ничего — из любой темы. Первая отметка сама ставит номеру одно
+  // задание, иначе тема выбрана, а в работу ничего не пойдёт.
+  function applyBankSel(n, fn) {
     setBankError("")
     setBankPick((prev) => {
-      const cur = prev[n] || { count: 0, themes: [] }
-      const themes = cur.themes.includes(theme)
-        ? cur.themes.filter((x) => x !== theme)
-        : [...cur.themes, theme]
-      if (!themes.length && !cur.count) return dropKey(prev, n)
-      return { ...prev, [n]: { count: Math.max(cur.count, themes.length ? 1 : 0), themes } }
+      const cur = prev[n] || { count: 0, themes: [], keys: [] }
+      const next = fn({ count: cur.count, themes: cur.themes || [], keys: cur.keys || [] })
+      if (!next.themes.length && !next.keys.length && !cur.count) return dropKey(prev, n)
+      const some = next.themes.length || next.keys.length
+      return { ...prev, [n]: { ...next, count: Math.max(cur.count, some ? 1 : 0) } }
+    })
+  }
+
+  // Тема целиком. Она и означает «все свои типажи», поэтому отдельные отметки
+  // внутри неё снимаются — иначе один типаж числился бы выбранным дважды.
+  function toggleBankTheme(n, g) {
+    const ks = (g.items || []).map((i) => i.key)
+    applyBankSel(n, (cur) => {
+      const on = cur.themes.includes(g.theme)
+      return {
+        ...cur,
+        themes: on ? cur.themes.filter((x) => x !== g.theme) : [...cur.themes, g.theme],
+        keys: cur.keys.filter((k) => !ks.includes(k)),
+      }
+    })
+  }
+
+  // Отдельный типаж внутри темы. Тема была отмечена целиком — разворачиваем её
+  // в типажи и снимаем один; отметили все — сворачиваем обратно в тему, чтобы
+  // строка не показывала «9 типажей» там, где это просто вся тема.
+  function toggleBankType(n, g, key) {
+    const ks = (g.items || []).map((i) => i.key)
+    applyBankSel(n, (cur) => {
+      const wasAll = cur.themes.includes(g.theme)
+      const base = wasAll ? [...new Set([...cur.keys, ...ks])] : cur.keys
+      const keys = base.includes(key) ? base.filter((k) => k !== key) : [...base, key]
+      const themes = cur.themes.filter((x) => x !== g.theme)
+      const full = ks.length > 0 && ks.every((k) => keys.includes(k))
+      return full
+        ? { ...cur, themes: [...themes, g.theme], keys: keys.filter((k) => !ks.includes(k)) }
+        : { ...cur, themes, keys }
     })
   }
 
@@ -797,7 +886,12 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
   }
 
   const bankPicks = Object.entries(bankPick)
-    .map(([n, v]) => ({ number: Number(n), count: v.count, themes: v.themes.length ? v.themes : null }))
+    .map(([n, v]) => ({
+      number: Number(n),
+      count: v.count,
+      themes: v.themes.length ? v.themes : null,
+      keys: v.keys?.length ? v.keys : null,
+    }))
     .filter((p) => p.count > 0)
     .sort((a, b) => a.number - b.number)
   const bankTotal = bankPicks.reduce((s, p) => s + (bank ? bank.rowTaskCount(p.number, p.count) : p.count), 0)
@@ -1321,7 +1415,8 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                                   pick={bankPick[info.number]}
                                   open={bankOpen === info.number}
                                   onCount={(next) => setBankCount(info.number, next)}
-                                  onTheme={(theme) => toggleBankTheme(info.number, theme)}
+                                  onTheme={(g) => toggleBankTheme(info.number, g)}
+                                  onType={(g, key) => toggleBankType(info.number, g, key)}
                                   onOpen={() => toggleBankOpen(info.number)}
                                 />
                               ))}
@@ -1806,6 +1901,34 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
   const partialRedo = redoNums.length > 0 && redoNums.length < answerRows.length
   const creditedNumsShown = answerRows.filter((r) => r.credited).map((r) => r.n)
 
+  // Проверка на доске. У задания без автопроверки сверить ответ не с чем — ход
+  // решения смотрит репетитор, и удобнее это делать на доске: условие и фото
+  // решения ученика ложатся на доску ЭТОЙ работы (ту же, где он решает кнопкой
+  // «Решить на доске»), пометки видны обеим сторонам. Работа целиком — кнопка у
+  // присланного решения, все такие задания подряд; одно задание — из окна
+  // заданий. Ключи листов те же, что строит кабинет ученика, поэтому лист,
+  // который он уже перенёс сам, второй раз не кладётся.
+  const checkable = !!onOpenBoard && (hw.status === "submitted" || hw.status === "done")
+  const manualItems = taskItems.filter((it) => it.answer == null || it.answer === "")
+  const boardSheetOf = (item) => {
+    const sheet = homeworkBoardSheet(hw.id, item)
+    if (item.solutionUrl) sheet.solution = { key: homeworkSolutionKey(hw.id, item.n), url: item.solutionUrl }
+    return sheet
+  }
+  // Каждое нажатие — свой перенос: доска берёт задание по ключу и второй раз его
+  // не разбирает, а репетитор может открыть проверку снова, добрав листы (сами
+  // листы при этом не дублируются — у каждого свой постоянный ключ).
+  const checkRun = useRef(0)
+  function checkOnBoard(items) {
+    // Условий в работе нет (задание выдано файлом) — на доску едет само решение.
+    const sheets = items.length ? items.map(boardSheetOf)
+      : hw.submission_url ? [{ solution: { key: homeworkSolutionKey(hw.id, "all"), url: hw.submission_url } }]
+      : []
+    if (!sheets.length) return
+    onOpenBoard(hw, { key: `check:${hw.id}:${++checkRun.current}`, hwId: hw.id, label: hw.title, sheets })
+  }
+  const canCheckAll = checkable && (manualItems.length > 0 || (taskCount === 0 && !!hw.submission_url))
+
   // Результат теста стоит в карточке заданий, а не отдельной плашкой в колонке
   // «Проверка»: ошибки — это про сами задания, и вся карточка открывает разбор.
   // Плашкой справа он вклинивался в ход проверки, а под заданиями оставалось
@@ -2156,6 +2279,12 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
                 className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 flex-shrink-0">
                 Открыть
               </a>
+              {canCheckAll && (
+                <button onClick={() => checkOnBoard(manualItems)} title="Условия и решение ученика — на доску этой работы"
+                  className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-blue-500/25 text-blue-600 dark:text-blue-300 flex-shrink-0 inline-flex items-center gap-1.5">
+                  <Icon name="clipboard" size={12} />На доске
+                </button>
+              )}
             </DetailBlock>
           )}
 
@@ -2275,6 +2404,7 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
           intro={tasksIntro}
           items={taskItems}
           onCredit={canCredit ? toggleCredit : undefined}
+          onBoard={checkable ? (item) => checkOnBoard([item]) : undefined}
           onClose={() => setShowTasks(false)}
         />
       )}
@@ -2443,10 +2573,11 @@ function Homework({ user, students, onOpenBoard }) {
 
   // Доска домашней работы: адрес составной (карточка ученика + работа), поэтому
   // задания разных работ не ложатся друг на друга и на разбор занятия.
-  function openHwBoard(hw) {
+  // sheet — что положить на доску при открытии (проверка работы на доске).
+  function openHwBoard(hw, sheet = null) {
     if (!hw.student_id) return
     if (!allows("board")) { openPlans(); return }
-    onOpenBoard(homeworkRoom(hw.student_id, hw.id), hw.title)
+    onOpenBoard(homeworkRoom(hw.student_id, hw.id), hw.title, sheet)
   }
 
   async function handleDelete() {

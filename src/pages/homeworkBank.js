@@ -4,7 +4,7 @@
 // Отдельным модулем, потому что тянет за собой все генераторы (несколько мегабайт):
 // Homework.jsx подгружает его динамически и только когда репетитор открыл эту
 // вкладку — иначе бы вес генераторов попал в основной бандл кабинета.
-import { EXAM_GROUPS, numbersWithGen, subjectLabel, genTask, genThemeTask } from "./examSubjects"
+import { EXAM_GROUPS, numbersWithGen, subjectLabel, genTask } from "./examSubjects"
 import { taskThemes, generateTask } from "./taskGenerators"
 import { numberTitle } from "./numberTitles"
 import { hasModules, moduleScenarios, buildModuleTasks } from "./taskModules"
@@ -85,12 +85,26 @@ export const packTask = (t) =>
 const taskKey = (t) => JSON.stringify([taskText(t), t.image_url, t.program, t.archive,
   t.spreadsheet, t.textFile, t.source_text, t.answer])
 
+// Отмеченные типажи номера одним списком: тема — это «все её типажи», поэтому
+// отметка темы и отметка отдельного типажа внутри неё сводятся к одному пулу
+// ключей. Пусто — берём любой типаж номера.
+export function typePool(examType, number, themes, keys) {
+  const pool = new Set(keys || [])
+  if (themes?.length) {
+    for (const g of taskThemes(examType, number) || []) {
+      if (themes.includes(g.theme)) g.items.forEach((i) => pool.add(i.key))
+    }
+  }
+  return [...pool]
+}
+
 // Одно задание номера: со свежими числами и не повторяющее уже собранные.
 // null — за 30 попыток ничего нового не вышло (у номера мало типажей).
-export function pickTask(examType, number, themes, seen) {
+export function pickTask(examType, number, themes, seen, keys) {
+  const pool = typePool(examType, number, themes, keys)
   for (let attempt = 0; attempt < 30; attempt++) {
-    const t = themes && themes.length
-      ? genThemeTask(examType, number, themes[Math.floor(Math.random() * themes.length)])
+    const t = pool.length
+      ? genTask(examType, number, pool[Math.floor(Math.random() * pool.length)])
       : genTask(examType, number)
     if (!t || !taskText(t)) continue
     const key = taskKey(t)
@@ -126,8 +140,9 @@ export function drillTasks({ examType, number, genKey, size }) {
   return tasks
 }
 
-// Задания по выбору репетитора: picks — [{ number, themes, count }], сколько
-// заданий каждого номера. Порядок сохраняется: сначала все задания первого
+// Задания по выбору репетитора: picks — [{ number, themes, keys, count }], сколько
+// заданий каждого номера (themes — отмеченные темы целиком, keys — отдельные
+// типажи внутри тем). Порядок сохраняется: сначала все задания первого
 // номера, потом второго — так же, как они перечислены в списке.
 //
 // Номер, который дал меньше запрошенного (свежие условия кончились), попадает
@@ -153,7 +168,7 @@ export function assembleHomework({ examType, picks }) {
     }
     let got = 0
     while (got < p.count) {
-      const t = pickTask(examType, p.number, p.themes, seen)
+      const t = pickTask(examType, p.number, p.themes, seen, p.keys)
       if (!t) break
       tasks.push(t)
       got++
