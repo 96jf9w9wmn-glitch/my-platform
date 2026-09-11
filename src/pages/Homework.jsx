@@ -11,7 +11,7 @@ import Collapse from "../components/Collapse"
 import Reveal from "../components/Reveal"
 import AutoHeight from "../components/AutoHeight"
 import FormulaBackdrop from "../components/FormulaBackdrop"
-import { parseLocalDate, renderHomeworkMath, plainTaskMath, superscriptPowers, parseHomeworkTasks, homeworkTaskItems, homeworkTestScore, plural, hasAttachment, getInitials, answersEqual, oneLine, isSimpleAnswer, homeworkBoardSheet, homeworkSolutionKey } from "../utils"
+import { parseLocalDate, isHomeworkOverdue as isOverdue, renderHomeworkMath, plainTaskMath, superscriptPowers, parseHomeworkTasks, homeworkTaskItems, homeworkTestScore, plural, hasAttachment, getInitials, answersEqual, oneLine, isSimpleAnswer, homeworkBoardSheet, homeworkSolutionKey } from "../utils"
 import { usePlan } from "../subscription"
 import { homeworkRoom } from "../boardRoom"
 import { PlanHint, PlanLock } from "../components/PlanLock"
@@ -58,14 +58,8 @@ const GRADE_COLORS = {
   2: "bg-red-500/18 text-red-700 dark:text-red-300 ring-1 ring-red-500/35",
 }
 
-// Просрочка: дедлайн прошёл, а работа ещё не сдана и не проверена.
-// Сравниваем по началу суток — дедлайн в базе хранится датой, без времени.
-function isOverdue(hw) {
-  if (!hw.deadline) return false
-  if (hw.status === "done" || hw.status === "submitted") return false
-  const today = new Date(); today.setHours(0, 0, 0, 0)
-  return parseLocalDate(hw.deadline) < today
-}
+const dayMonth = (date) =>
+  parseLocalDate(date).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })
 
 // Название по умолчанию — сегодняшняя дата: чаще всего задание выдаётся на
 // текущем занятии, и репетитору остаётся только переименовать при желании.
@@ -1821,6 +1815,9 @@ function DetailBlock({ children, className = "" }) {
 export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, onEdit, onDelete, onOpenBoard, onClose, cls }) {
   const [grading, setGrading] = useState(false)
   const [revising, setRevising] = useState(false)
+  const [extending, setExtending] = useState(false)
+  const [extendingTo, setExtendingTo] = useState("")
+  const [extendError, setExtendError] = useState("")
   const [showTasks, setShowTasks] = useState(false)
   const [comment, setComment] = useState(hw.comment || "")
   const [selectedGrade, setSelectedGrade] = useState(hw.grade || null)
@@ -1930,6 +1927,12 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
   // не разбирает, а репетитор может открыть проверку снова, добрав листы (сами
   // листы при этом не дублируются — у каждого свой постоянный ключ).
   const checkRun = useRef(0)
+  // Ответы ученика по номерам заданий: их показывает подвал под листом на доске.
+  // Нужны они не только проверке листами — репетитор, зашедший на доску работы
+  // кнопкой «Доска», видит те же листы, которые ученик перенёс сам, и без карты
+  // ответов подвал под ними не появлялся вовсе.
+  const boardAnswers = {}
+  for (const it of taskItems) boardAnswers[Number(it.n)] = it.given || ""
   function checkOnBoard(items) {
     const sheets = items.map(boardSheetOf)
     // Решение одним файлом на всю работу — отдельный лист в конце. Фото ученик
@@ -1942,9 +1945,7 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
     // Под каждым листом на доске стоит ответ ученика: у задания без эталона
     // репетитор смотрит ход решения, и ответ должен быть тут же, а не в
     // соседнем окне. Ученик в это же поле пишет со своей стороны.
-    const answers = {}
-    for (const it of taskItems) answers[Number(it.n)] = it.given || ""
-    onOpenBoard(hw, { key: `check:${hw.id}:${++checkRun.current}`, hwId: hw.id, label: hw.title, sheets, answers })
+    onOpenBoard(hw, { key: `check:${hw.id}:${++checkRun.current}`, hwId: hw.id, label: hw.title, sheets, answers: boardAnswers })
   }
   const canCheckAll = checkable && (manualItems.length > 0 || (taskCount === 0 && !!hw.submission_url))
 
@@ -2105,6 +2106,36 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
     onUpdate()
   }
 
+  // Продление срока — единственная правка, доступная работе, которую ученик уже
+  // открыл: условий она не трогает, а даёт время их дорешать (правку условий
+  // такой работе закрывает `attempted`, и до этой кнопки просроченной работе
+  // нельзя было дать ни дня). Срок считается от СЕГОДНЯ, а не от прошедшего:
+  // «неделя» работе, просроченной на месяц, означает неделю с этой минуты.
+  async function extendDeadline(date) {
+    if (!date || extendingTo) return
+    setExtendingTo(date)
+    setExtendError("")
+    const { error } = await supabase.from("homework").update({ deadline: date }).eq("id", hw.id)
+    if (error) { setExtendError("Не получилось сохранить: " + error.message); setExtendingTo(""); return }
+
+    // Ученику об этом сообщаем: продление без уведомления он заметит, только
+    // если сам откроет работу, — а до тех пор для него она просрочена.
+    const accountId = studentAccountId || (studentPhone
+      ? (await supabase.from("student_accounts").select("id").eq("phone", studentPhone).maybeSingle()).data?.id
+      : null)
+    if (accountId) {
+      await supabase.from("notifications").insert({
+        user_id: accountId,
+        title: "Срок сдачи продлён",
+        body: `«${hw.title}» — сдать до ${dayMonth(date)}`,
+      })
+    }
+
+    setExtendingTo("")
+    setExtending(false)
+    onUpdate()
+  }
+
   async function finishPureTest() {
     await supabase.from("homework").update({ status: "done", grade: suggestedGrade }).eq("id", hw.id)
     onUpdate()
@@ -2131,7 +2162,7 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
                 занятия остаётся отдельной. */}
             {onOpenBoard && (
               <button
-                onClick={() => onOpenBoard(hw)}
+                onClick={() => onOpenBoard(hw, { hwId: hw.id, answers: boardAnswers })}
                 className="press-fill text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ring-1 ring-blue-500/30 text-blue-600 dark:text-blue-300 inline-flex items-center gap-1"
               >
                 <Icon name="clipboard" size={11} /> Доска
@@ -2268,20 +2299,50 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
             </DetailBlock>
           )}
 
-          <DetailBlock className="flex items-center gap-3">
-            <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${overdue ? "bg-red-500/12 text-red-500" : "bg-blue-500/12 text-blue-600"}`}>
-              <Icon name="calendar" size={16} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className={`text-sm font-medium truncate ${overdue ? "text-red-500" : ""}`}>
-                {hw.deadline ? (overdue ? "Просрочено" : "Срок сдачи") : "Без срока сдачи"}
+          {/* Промежутка между строкой срока и раскрытым выбором нет в самом
+              блоке (flex-gap стоял бы и при закрытом Collapse — тот держит
+              содержимое смонтированным), поэтому отступ живёт внутри. */}
+          <DetailBlock className="flex flex-col">
+            <div className="flex items-center gap-3">
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${overdue ? "bg-red-500/12 text-red-500" : "bg-blue-500/12 text-blue-600"}`}>
+                <Icon name="calendar" size={16} />
               </div>
-              {hw.deadline && (
-                <div className={`text-[11px] mt-0.5 truncate ${overdue ? "text-red-500" : "text-gray-400"}`}>
-                  {parseLocalDate(hw.deadline).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })}
+              <div className="min-w-0 flex-1">
+                <div className={`text-sm font-medium truncate ${overdue ? "text-red-500" : ""}`}>
+                  {hw.deadline ? (overdue ? "Просрочено" : "Срок сдачи") : "Без срока сдачи"}
                 </div>
+                {hw.deadline && (
+                  // У просроченной работы дата не главное: ученику она уже
+                  // закрыта (см. isHomeworkOverdue), и репетитор должен видеть
+                  // это здесь же — иначе «Продлить» выглядит правкой метки.
+                  // Строка не обрезается: обрезанной теряется именно этот хвост.
+                  <div className={`text-[11px] mt-0.5 leading-snug ${overdue ? "text-red-500" : "text-gray-400 truncate"}`}>
+                    {dayMonth(hw.deadline)}{overdue && " · решение закрыто"}
+                  </div>
+                )}
+              </div>
+              {overdue && (
+                <button onClick={() => { setExtending((v) => !v); setExtendError("") }}
+                  className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-blue-500/25 text-blue-600 dark:text-blue-300 flex-shrink-0">
+                  {extending ? "Отмена" : "Продлить"}
+                </button>
               )}
             </div>
+            <Collapse open={overdue && extending}>
+              <div className="mt-3">
+                <DeadlinePicker
+                  value=""
+                  allowNone={false}
+                  onChange={extendDeadline}
+                  label={extendingTo ? `Продлеваем до ${dayMonth(extendingTo)}…` : "Новый срок — работа снова откроется ученику"}
+                />
+                <Reveal value={extendError} className="mt-2">
+                  {(msg) => (
+                    <div className="rounded-xl bg-red-500/10 ring-1 ring-red-500/20 px-3 py-2 text-xs text-red-600 dark:text-red-300">{msg}</div>
+                  )}
+                </Reveal>
+              </div>
+            </Collapse>
           </DetailBlock>
 
 
@@ -2635,7 +2696,7 @@ function Homework({ user, students, onOpenBoard }) {
           у ученика они тоже отдельным пунктом, и в боковом меню репетитора
           слова «Варианты» раньше не было вовсе. */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
-        <h1 className="text-xl font-medium page-title">Домашние задания</h1>
+        <h1 className="text-2xl font-medium page-title">Домашние задания</h1>
         <button onClick={() => setShowModal(true)} className="btn-primary px-4 py-2 text-sm self-stretch sm:self-auto">
           + Задание
         </button>
@@ -2737,8 +2798,8 @@ function HomeworkGate(props) {
   if (allows("homework")) return <Homework {...props} />
   return (
     <div className="p-4 sm:p-6">
-      <h1 className="text-xl font-medium page-title mb-1">Задания</h1>
-      <p className="text-sm page-subtitle mb-5">Домашние задания ученикам и их проверка.</p>
+      <h1 className="text-2xl font-medium page-title mb-1">Задания</h1>
+      <p className="text-[15px] page-subtitle mb-5">Домашние задания ученикам и их проверка.</p>
       <PlanLock feature="homework" title="Домашние задания" text="Выдача заданий ученикам, таймер как на экзамене, проверка с комментариями и возврат на доработку." />
     </div>
   )
