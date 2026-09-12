@@ -972,6 +972,14 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   const lastResync = useRef(0)        // когда в последний раз перечитывали сцену (см. resync)
   const maxOrd = useRef(null)         // наибольший известный порядок штриха — с него идёт догон
   const afterOff = useRef(false)      // в базе нет board_strokes_after — догоняем сценой целиком
+  // Номер ЗАПИСИ, до которого мы видели всё (см. supabase/board_stroke_rev.sql).
+  // Отличается от maxOrd тем, что растёт и при правке на месте: перенос,
+  // поворот, цвет, ответ на листе. Такая правка ходит одной посылкой realtime, и
+  // потеряв её, догон по ord ничего не замечал — штрих оставался в старом месте
+  // до перезахода на доску. По этому номеру сверка её и видит.
+  const revRef = useRef(null)
+  const sinceOff = useRef(false)      // в базе нет board_strokes_since — догоняем по ord, как раньше
+  const stateRevOff = useRef(false)   // в boards_state нет rev — сверяем без него
   const bgSendTimer = useRef(null)    // троттлинг рассылки цвета фона (см. changeBgColor)
   const sendTimer = useRef(null)
   // Незаконченные штрихи собеседников: держим их ОТДЕЛЬНО от strokes.current.
@@ -1833,6 +1841,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         // пусть первое же сохранение их допишет.
         rememberSaved(scene.strokes || [])
         maxOrd.current = Number.isFinite(scene.maxOrd) ? scene.maxOrd : null
+        revRef.current = Number.isFinite(scene.maxRev) ? scene.maxRev : null
         savedMeta.current = { bg: scene.bg ?? null, bgColor: scene.bgColor ?? null }
         for (const [id, s] of early) { strokes.current.delete(id); strokes.current.set(id, s) }
         if (scene.bg) setBg(scene.bg)
@@ -1880,7 +1889,41 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     // мегабайты (на боевой доске 3,87 МБ, со сжатием 805 КБ), а обрывы штатные:
     // realtime закрывает соединение вкладке, не приславшей heartbeat за минуту,
     // а вкладка в фоне тормозит свои таймеры. Обычно догон — это килобайты.
-    if (!afterOff.current && Number.isFinite(maxOrd.current)) {
+    // Пришедшее из базы уже сохранено: иначе дельта отправит его обратно. Штрих,
+    // который мы правим прямо сейчас (dirty — перенос, цвет), не трогаем: своё
+    // несохранённое догон затирать не должен.
+    const take = (list) => {
+      for (const st of list || []) {
+        if (dirtyRef.current.has(st.id)) continue
+        strokes.current.set(st.id, st)
+        savedRef.current.set(st.id, { s: st, json: null })
+      }
+      // Считаем ПРИСЛАННОЕ, а не применённое: пропустили мы ровно то, что правим
+      // сами, и это не повод считать догон пустым и лезть за всей сценой.
+      return (list || []).length
+    }
+    // Догон по номеру ЗАПИСИ ловит и новые штрихи, и правку на месте: у
+    // передвинутого штриха ord не меняется, и по ord его было не поймать.
+    let since = null
+    if (!sinceOff.current && Number.isFinite(revRef.current)) {
+      const { data, error } = await supabase.rpc("board_strokes_since", {
+        p_student_id: String(roomId), p_rev: revRef.current,
+      })
+      if (error && (error.code === "PGRST202" || error.code === "42883")) {
+        sinceOff.current = true          // миграции нет — дальше по ord, как раньше
+      } else if (!error) {
+        since = await signBoardScene(data) || {}
+      }
+    }
+    if (since) {
+      const got = take(since.strokes)
+      if (Number.isFinite(since.maxOrd)) maxOrd.current = since.maxOrd
+      if (Number.isFinite(since.maxRev)) revRef.current = since.maxRev
+      // Удаление не меняет ни rev, ни ord — его видно только по числу строк, и
+      // лечится оно перечитыванием сцены целиком.
+      if (got) scheduleDraw()
+      if (got && (!Number.isFinite(since.n) || since.n === savedRef.current.size)) return
+    } else if (!afterOff.current && Number.isFinite(maxOrd.current)) {
       const { data, error } = await supabase.rpc("board_strokes_after", {
         p_student_id: String(roomId), p_ord: maxOrd.current,
       })
@@ -1888,14 +1931,8 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         afterOff.current = true           // миграции нет — дальше по-старому, и больше не пробуем
       } else if (!error) {
         const part = await signBoardScene(data) || {}
-        const add = part.strokes || []
         if (Number.isFinite(part.maxOrd)) maxOrd.current = part.maxOrd
-        for (const st of add) {
-          strokes.current.set(st.id, st)
-          // Пришло из базы — значит уже сохранено: иначе дельта отправит его обратно.
-          savedRef.current.set(st.id, { s: st, json: null })
-        }
-        if (add.length) { scheduleDraw(); return }
+        if (take(part.strokes)) { scheduleDraw(); return }
         // Ничего нового не пришло, а счёт не сошёлся — значит разошлось не в
         // хвосте (правка на месте, удаление). Тогда перечитываем целиком.
       }
@@ -1908,6 +1945,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     for (const s of remoteStrokes) strokes.current.set(s.id, s)
     rememberSaved(remoteStrokes)   // теперь мы знаем, что в базе; своё недошедшее допишется дельтой
     if (Number.isFinite(scene.maxOrd)) maxOrd.current = scene.maxOrd
+    if (Number.isFinite(scene.maxRev)) revRef.current = scene.maxRev
     // Возвращаем только СВОИ штрихи, которые ещё не подтвердило сохранение.
     // Штрих собеседника мог появиться по realtime, а потом быть стёрт до нашей
     // сверки. Раньше такой штрих ошибочно считался «нашим ненаписанным» и
@@ -1936,8 +1974,13 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       // Своё ещё не сохранено — сверять не с чем: база заведомо отстаёт от нас,
       // и «догон» вернул бы только что стёртое.
       if (savingRef.current || saveTimer.current) return
-      const { data } = await supabase.from("boards_state")
-        .select("n,last_id").eq("student_id", String(roomId)).maybeSingle()
+      // rev — наибольший номер записи в комнате. Колонки нет (миграции
+      // board_stroke_rev.sql нет) — PostgREST отвечает ошибкой, и дальше сверяем
+      // как раньше: доска обязана работать и без миграции.
+      const { data, error } = await supabase.from("boards_state")
+        .select(stateRevOff.current ? "n,last_id" : "n,last_id,rev")
+        .eq("student_id", String(roomId)).maybeSingle()
+      if (error) { stateRevOff.current = true; return }
       if (!data) return
       // Сверяем с тем, что мы считаем ЛЕЖАЩИМ В БАЗЕ, а не с числом штрихов на
       // экране: своё несохранённое (и картинка, которая ещё едет в хранилище)
@@ -1945,7 +1988,13 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       // перечитать: сравнение «в базе больше» не замечало удалений вовсе, и
       // стёртое собеседником оставалось на доске до перезахода.
       const inDb = savedRef.current.size
-      if ((data.n ?? inDb) !== inDb || (data.last_id && !strokes.current.has(data.last_id))) resync()
+      // Правка НА МЕСТЕ (перенос, поворот, цвет, ответ на листе) не меняет ни
+      // числа строк, ни последнего id — её видно только по номеру записи. Пока
+      // его не было, потерянная посылка с переносом не чинилась ничем, и у
+      // двоих один и тот же лист стоял в разных местах (12.09.2026).
+      const dbRev = Number(data.rev)
+      const behind = Number.isFinite(revRef.current) && Number.isFinite(dbRev) && dbRev > revRef.current
+      if (behind || (data.n ?? inDb) !== inDb || (data.last_id && !strokes.current.has(data.last_id))) resync()
     }
     if (readOnly) return              // снимок не меняется — сверять не с чем
     const id = setInterval(tick, BOARD_SYNC_FAST_MS)
@@ -2441,7 +2490,15 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       p_student_id: String(roomId),
       p_up: up, p_del: wipe ? [] : del,
       p_bg: bg, p_bg_color: bgColor, p_by: userId, p_wipe: wipe,
-    }).then(({ error }) => {
+    }).then(({ data, error }) => {
+      // Свою отметку «всё видел до сюда» двигаем ТОЛЬКО если база подтвердила,
+      // что до этой записи чужого не появилось (top — наибольший номер записи ДО
+      // неё). Иначе чужая правка с номером МЕНЬШЕ нашего сохранения была бы
+      // перешагнута и потеряна навсегда — ровно то, из-за чего лист и разъезжался.
+      if (!error && data && Number.isFinite(revRef.current)
+          && Number(data.top) <= revRef.current && Number.isFinite(Number(data.rev))) {
+        revRef.current = Number(data.rev)
+      }
       // Функции в базе нет (миграция не выполнена) — переходим на старый путь и
       // больше её не дёргаем: доска обязана сохраняться и без миграции.
       if (error && (error.code === "PGRST202" || error.code === "42883")) {

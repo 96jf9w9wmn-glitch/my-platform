@@ -66,3 +66,20 @@ public/devsheets/
 src/devBoard.jsx
 dev-reschedule.html
 src/devReschedule.jsx
+
+# Стенд разбора ДЗ
+dev-hw.html
+src/devHomework.jsx
+dev-hw-student.html
+src/devHomeworkStudent.jsx
+dev-busy.html
+src/devBusy.jsx
+src/devHw.jsx
+
+# Стенд условия-картинки
+dev-hw-image.html
+src/devHwImage.jsx
+
+# стенд догона правки на месте (не коммитить)
+src/devRev.jsx
+dev-rev.html
