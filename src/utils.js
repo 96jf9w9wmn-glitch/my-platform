@@ -1089,7 +1089,10 @@ export function homeworkTaskItems(hw) {
         ok: credited.has(Number(n)) ? true
           : given && ans != null && ans !== "" ? answersEqual(gave ?? "", ans) : null,
         credited: credited.has(Number(n)),
-        solutionUrl: shots?.[n] || shots?.[String(n)] || null,
+        // Фотографий решения к заданию бывает несколько: список — основное,
+        // одиночный адрес оставлен для мест, где показывается одна ссылка.
+        solutionUrls: fileUrls(shots?.[n] ?? shots?.[String(n)]),
+        solutionUrl: fileUrls(shots?.[n] ?? shots?.[String(n)])[0] || null,
       }
     }),
   }
@@ -1111,8 +1114,26 @@ export function homeworkBoardSheet(hwId, item) {
 }
 
 // Ключ фото решения ученика к заданию — лист под условием, который кладёт
-// репетитор при проверке на доске.
-export const homeworkSolutionKey = (hwId, num) => `hw:${hwId}:${num}:solution`
+// репетитор при проверке на доске. Фотографий к одному заданию бывает
+// несколько (решение не умещается на лист), и у каждой свой ключ: иначе на
+// доску лёг бы только первый снимок.
+export const homeworkSolutionKey = (hwId, num, i = 0) =>
+  `hw:${hwId}:${num}:solution` + (i ? `:p${i + 1}` : "")
+
+// Фото решения к ОДНОМУ заданию. В карте работы (homework.solution_files) и в
+// сдаче варианта (variant_submissions.part2_files) значение бывает двух видов:
+// одной строкой — так писали кабинеты, пока фото на задание было ровно одно, —
+// и массивом адресов. Читать эти карты надо только этим списком, иначе второй
+// лист решения молча не покажется.
+export function fileUrls(v) {
+  if (Array.isArray(v)) return v.filter((x) => typeof x === "string" && x)
+  return typeof v === "string" && v ? [v] : []
+}
+
+// Обратно в значение карты. Одна фотография остаётся СТРОКОЙ: так её прочтёт и
+// вкладка со старой сборкой, и всё, что берёт карту напрямую, — менять формат
+// там, где ничего не изменилось, незачем.
+export const fileUrlsValue = (list) => (list.length === 1 ? list[0] : list)
 
 // new Date("YYYY-MM-DD") parses as UTC midnight, which shifts a day back in
 // timezones behind UTC — this constructs the date from local components instead.

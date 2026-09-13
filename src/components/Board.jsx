@@ -3491,7 +3491,11 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     const parts = []
     for (const sh of (req.sheets?.length ? req.sheets : [req])) {
       if (sh.key && sh.task) parts.push({ key: sh.key, task: sh.task })
-      if (sh.solution?.url && sh.solution.key) parts.push({ key: sh.solution.key, url: sh.solution.url })
+      // Фотографий решения к одному заданию бывает несколько — каждая ложится
+      // своим листом под условием, в том порядке, в каком их снимал ученик.
+      for (const sol of (sh.solutions?.length ? sh.solutions : sh.solution ? [sh.solution] : [])) {
+        if (sol?.url && sol.key) parts.push({ key: sol.key, url: sol.url })
+      }
     }
     if (!parts.length) return
     setSheetBusy(true); setSheetErr(false)

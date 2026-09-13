@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, Fragment } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import { signRows } from "../storageUrl"
-import { plural, getInitials, plainTaskMath, answersEqual, parseLocalDate } from "../utils"
+import { plural, getInitials, plainTaskMath, answersEqual, parseLocalDate, fileUrls } from "../utils"
 import Icon from "../components/Icon"
 import { isModuleNumber, linkedGroupOf, part1NumbersOf, part1SlotsOf, part2NumbersOf, isPart2Number, examLevelOf, numbersLabel, packVariantTask, VARIANT_TYPES } from "./taskBankMeta"
 import { choiceBaseOf } from "./answerChoices"
@@ -872,8 +872,11 @@ function VariantReview({ submission, variant, onClose, onSave }) {
 
   // Файлы, которым не нашлось карточки задания (номер вне части 2 этого типа):
   // их всё равно нужно показать, иначе решение ученика молча пропадёт.
+  // Значение карты — список адресов: к заданию ученик прикладывает столько
+  // листов, сколько занял ход решения.
   const orphanFiles = Object.entries(submission.part2_files || {})
     .filter(([task]) => !part2Tasks.some((n) => String(n) === String(task)))
+    .flatMap(([task, v]) => fileUrls(v).map((url, i) => [task, url, i]))
 
   const algebra = part2Tasks.filter((n) => !geomNums || !geomNums.includes(n))
   const geometry = geomNums ? part2Tasks.filter((n) => geomNums.includes(n)) : []
@@ -883,7 +886,7 @@ function VariantReview({ submission, variant, onClose, onSave }) {
   const renderPart2Row = (n) => {
     const chosen = submission.part2_choices?.[n]
     const correct = variant.answers?.part2?.[n]
-    const file = submission.part2_files?.[n]
+    const shots = fileUrls(submission.part2_files?.[n])
     // Ученик выбирал ответ по пункту б) (ответ ЕГЭ двухчастный) — сверяем с той же
     // частью, иначе верный выбор всегда показывался бы как несовпавший.
     const match = chosen != null && correct != null && String(chosen).trim() === choiceBaseOf(correct).text.trim()
@@ -943,12 +946,16 @@ function VariantReview({ submission, variant, onClose, onSave }) {
           {/* Решение ученика — здесь же, в карточке своего задания: отдельным
               списком «Файлы ученика» сверху приходилось держать в голове, к
               какому номеру какой файл. */}
-          {file ? (
-            <a href={file} target="_blank" rel="noreferrer"
-              className="press-fill self-start inline-flex items-center gap-1.5 text-blue-600 rounded-lg -mx-1 px-1 py-0.5">
-              <Icon name="image" size={12} className="flex-shrink-0" />
-              фото решения
-            </a>
+          {shots.length ? (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              {shots.map((url, i) => (
+                <a key={i} href={url} target="_blank" rel="noreferrer"
+                  className="press-fill self-start inline-flex items-center gap-1.5 text-blue-600 rounded-lg -mx-1 px-1 py-0.5">
+                  <Icon name="image" size={12} className="flex-shrink-0" />
+                  {shots.length > 1 ? `фото ${i + 1}` : "фото решения"}
+                </a>
+              ))}
+            </div>
           ) : (
             <div className="flex items-center gap-1.5 text-amber-600">
               <Icon name="image" size={12} className="flex-shrink-0" />
@@ -1088,9 +1095,9 @@ function VariantReview({ submission, variant, onClose, onSave }) {
             <div className="mb-4">
               <label className="text-sm text-gray-500 mb-2 block">Файлы ученика</label>
               <div className="grid gap-2 sm:grid-cols-3">
-                {orphanFiles.map(([task, url]) => (
-                  <a key={task} href={url} target="_blank" rel="noreferrer" className="press-fill text-sm text-blue-600 rounded-lg px-3 py-2 ring-1 ring-gray-200/70 dark:ring-white/10">
-                    Задание {task}
+                {orphanFiles.map(([task, url, i]) => (
+                  <a key={task + ":" + i} href={url} target="_blank" rel="noreferrer" className="press-fill text-sm text-blue-600 rounded-lg px-3 py-2 ring-1 ring-gray-200/70 dark:ring-white/10">
+                    Задание {task}{orphanFiles.filter(([t]) => t === task).length > 1 ? ` · ${i + 1}` : ""}
                   </a>
                 ))}
               </div>

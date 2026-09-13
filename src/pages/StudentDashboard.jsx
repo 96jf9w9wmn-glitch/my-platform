@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback, useLayoutEffect, lazy, Suspense } from "react"
 import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
-import { signRows, signStorageUrl, permanentStorageUrl } from "../storageUrl"
+import { signRows, signStorageUrl, permanentStorageUrl, parseStorageRef } from "../storageUrl"
 import { dropdownPos } from "../dropdownPos"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import Icon from "../components/Icon"
@@ -31,7 +31,7 @@ function boardHwFromUrl() {
   const v = new URLSearchParams(window.location.search).get("board")
   return v && v.startsWith("hw:") ? v.slice(3) : null
 }
-import { parseLocalDate, isHomeworkOverdue, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, parseHomeworkTasks, creditedNums, formatPhone, answersEqual, homeworkTestScore, plural, timeUntilLesson, homeworkBoardSheet } from "../utils"
+import { parseLocalDate, isHomeworkOverdue, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, parseHomeworkTasks, creditedNums, formatPhone, answersEqual, homeworkTestScore, plural, timeUntilLesson, homeworkBoardSheet, fileUrls, fileUrlsValue } from "../utils"
 import { studentBilling, periodLabel } from "../billing"
 import { longDate } from "../invoices"
 import { homeworkRoom } from "../boardRoom"
@@ -63,75 +63,124 @@ const isEgeType = (t) => examLevelOf(t) === "ЕГЭ"
 // Загрузка решения задания части 2. Доступна и во время решения варианта, и
 // после отправки: решение пишется на листе по ходу работы, и фотографировать
 // его удобнее сразу, а не вспоминать про это в конце.
-function Part2Upload({ taskNum, submissionId, existingUrl, chosen, onUpload, showLabel = true }) {
-  const [uploading, setUploading] = useState(false)
+function Part2Upload({ taskNum, submissionId, files = [], chosen, onUpload, showLabel = true }) {
+  const [busy, setBusy] = useState(false)
   // Сбой загрузки виден ученику, а не только в консоли: молчащая кнопка
   // читается как «сайт сломался».
   const [error, setError] = useState("")
   const fileRef = useRef(null)
 
+  // Карта сдачи: «номер задания → адреса фотографий». Читаем её из базы перед
+  // каждой правкой — решение прикладывают и во время работы, и после сдачи,
+  // а открытая карточка живёт своим объектом.
+  async function currentUrls() {
+    const { data: sub } = await supabase
+      .from("variant_submissions")
+      .select("part2_files")
+      .eq("id", submissionId)
+      .single()
+    return { all: sub?.part2_files || {}, mine: fileUrls(sub?.part2_files?.[taskNum]) }
+  }
+
+  async function saveUrls(all, urls) {
+    const next = { ...all }
+    if (urls.length) next[taskNum] = fileUrlsValue(urls)
+    else delete next[taskNum]
+    await supabase.from("variant_submissions").update({ part2_files: next }).eq("id", submissionId)
+  }
+
   async function handleUpload(e) {
-    const file = e.target.files[0]
+    // Несколько листов за один заход: решение задания части 2 на одну
+    // страницу не влезает, и снимают его подряд.
+    const picked = [...e.target.files]
     // Сбрасываем значение поля: без этого повторный выбор ТОГО ЖЕ файла
     // (переснял и сохранил под тем же именем) не вызывает change.
     e.target.value = ""
-    if (!file) return
-    setUploading(true)
+    if (!picked.length) return
+    setBusy(true)
     setError("")
-
-    const ext = file.name.split(".").pop()
-    const fileName = submissionId + "/task" + taskNum + "." + ext
+    const shown = []
     try {
-      const { error: upErr } = await supabase.storage.from("variants").upload(fileName, file, { upsert: true })
-      if (upErr) throw upErr
-
-      const { data: urlData } = supabase.storage.from("variants").getPublicUrl(fileName)
-      const { data: sub } = await supabase
-        .from("variant_submissions")
-        .select("part2_files")
-        .eq("id", submissionId)
-        .single()
-
-      const updatedFiles = { ...(sub?.part2_files || {}), [taskNum]: urlData.publicUrl }
-      await supabase.from("variant_submissions").update({ part2_files: updatedFiles }).eq("id", submissionId)
-      // Бакет приватный: в базу уходит постоянный адрес, а показать только что
-      // загруженный файл можно лишь по подписанной ссылке.
-      const signed = await signStorageUrl(urlData.publicUrl, "variants")
-      onUpload(taskNum, signed || urlData.publicUrl)
+      const { all, mine } = await currentUrls()
+      const urls = [...mine]
+      for (const file of picked) {
+        const ext = (file.name.split(".").pop() || "jpg").toLowerCase()
+        // Имя уникальное: к заданию прикладывают несколько листов, и запись
+        // «поверх» по одному имени стирала бы предыдущий.
+        const uid = Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+        const fileName = `${submissionId}/task${taskNum}-${uid}.${ext}`
+        const { error: upErr } = await supabase.storage.from("variants").upload(fileName, file)
+        if (upErr) throw upErr
+        const { data: urlData } = supabase.storage.from("variants").getPublicUrl(fileName)
+        urls.push(urlData.publicUrl)
+        // Бакет приватный: в базу уходит постоянный адрес, а показать только что
+        // загруженный файл можно лишь по подписанной ссылке.
+        const signed = await signStorageUrl(urlData.publicUrl, "variants")
+        shown.push(signed || urlData.publicUrl)
+      }
+      await saveUrls(all, urls)
     } catch (err) {
       setError("Фото не загрузилось" + (err?.message ? ": " + err.message : "") + ". Попробуй ещё раз.")
     }
-    setUploading(false)
+    if (shown.length) onUpload(taskNum, [...files, ...shown])
+    setBusy(false)
+  }
+
+  async function removeAt(i) {
+    setBusy(true)
+    setError("")
+    try {
+      const { all, mine } = await currentUrls()
+      const gone = mine[i]
+      await saveUrls(all, mine.filter((_, k) => k !== i))
+      onUpload(taskNum, files.filter((_, k) => k !== i))
+      // Файл убираем следом и молча: сдача уже без него, а неудача уборки
+      // решению ученика ничем не грозит.
+      const ref = parseStorageRef(gone, "variants")
+      if (ref) supabase.storage.from(ref.bucket).remove([ref.path]).then(null, () => {})
+    } catch (err) {
+      setError("Фото не убралось" + (err?.message ? ": " + err.message : "") + ". Попробуй ещё раз.")
+    }
+    setBusy(false)
   }
 
   return (
     <div className="flex flex-col gap-1.5">
-    <div className="flex items-center gap-3">
+    <div className="flex items-start gap-3">
       {showLabel && (
-        <div className="w-24 flex-shrink-0">
+        <div className="w-24 flex-shrink-0 pt-1.5">
           <div className="text-sm text-gray-600">Задание {taskNum}</div>
           {chosen != null && <div className="text-xs text-gray-400 truncate">ответ: {chosen}</div>}
         </div>
       )}
-      <input ref={fileRef} type="file" accept="image/*,.pdf" className="hidden" onChange={handleUpload} />
-      {existingUrl ? (
-        <div className="flex items-center gap-2 flex-1">
-          <a href={existingUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:opacity-70 transition-opacity">
-            <span className="flex items-center gap-1"><Icon name="check" size={12} />Файл загружен</span>
-          </a>
-          <button onClick={() => fileRef.current.click()} className="text-xs btn-quiet hover:text-blue-600">
-            Заменить
-          </button>
-        </div>
-      ) : (
+      {/* multiple: решение на нескольких листах выбирается одним заходом. */}
+      <input ref={fileRef} type="file" accept="image/*,.pdf" multiple className="hidden" onChange={handleUpload} />
+      <div className="flex-1 flex flex-col gap-1.5">
+        {files.map((url, i) => (
+          <div key={url || i} className="flex items-center gap-3">
+            <a href={url} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:opacity-70 transition-opacity min-w-0">
+              <span className="flex items-center gap-1">
+                <Icon name="check" size={12} className="flex-shrink-0" />
+                <span className="truncate">{files.length > 1 ? `Файл ${i + 1}` : "Файл загружен"}</span>
+              </span>
+            </a>
+            <button onClick={() => removeAt(i)} disabled={busy} className="text-xs btn-quiet hover:text-red-500 ml-auto flex-shrink-0 disabled:opacity-50">
+              Убрать
+            </button>
+          </div>
+        ))}
         <button
           onClick={() => fileRef.current.click()}
-          disabled={uploading}
-          className="flex-1 border border-dashed border-gray-200 rounded-lg py-2 text-xs text-gray-500 hover:bg-blue-500/[0.06] disabled:opacity-50"
+          disabled={busy}
+          className="press-fill w-full border border-dashed border-gray-200 dark:border-white/15 rounded-lg py-2 text-xs text-gray-500 hover:bg-blue-500/[0.06] disabled:opacity-50"
         >
-          {uploading ? "Загружаем..." : <span className="flex items-center justify-center gap-1.5"><Icon name="paperclip" size={14} />Загрузить файл</span>}
+          {busy ? "Загружаем..." : (
+            <span className="flex items-center justify-center gap-1.5">
+              <Icon name="paperclip" size={14} />{files.length ? "Ещё файл" : "Загрузить файл"}
+            </span>
+          )}
         </button>
-      )}
+      </div>
     </div>
     {error && <div className="text-xs text-red-500">{error}</div>}
     </div>
@@ -599,11 +648,16 @@ function HwTaskBody({ text, bankTask, className = "" }) {
 // Файл уходит в хранилище сразу при выборе, а не при отправке работы: иначе
 // автосдача по таймеру унесла бы работу без фотографий.
 // Карта фотографий в том виде, в каком она хранится в работе:
-// { "1": "<постоянный адрес>" } — подписанные ссылки в базу не пишем, они живут
-// четыре часа и через сутки вели бы на «файл не найден».
+// { "1": ["<постоянный адрес>", …] } — подписанные ссылки в базу не пишем, они
+// живут четыре часа и через сутки вели бы на «файл не найден».
+// { "1": ["<адрес>", …] }. Одна фотография остаётся строкой (fileUrlsValue):
+// так работу прочтёт и вкладка со старой сборкой.
 function solutionMapOf(files) {
   const out = {}
-  for (const [k, v] of Object.entries(files || {})) if (v?.url) out[k] = v.url
+  for (const [k, list] of Object.entries(files || {})) {
+    const urls = (list || []).map((f) => f?.url).filter(Boolean)
+    if (urls.length) out[k] = fileUrlsValue(urls)
+  }
   return out
 }
 
@@ -625,8 +679,8 @@ function useHasCamera() {
   return touch
 }
 
-function HwSolutionUpload({ hwId, index, existingUrl, onUploaded }) {
-  const [uploading, setUploading] = useState(false)
+function HwSolutionUpload({ hwId, index, files = [], onChange }) {
+  const [busy, setBusy] = useState(false)
   // Сбой загрузки нельзя проглатывать: ученик нажал, ничего не появилось — и
   // выглядит это как «сайт не работает», хотя причина бывает понятной
   // (пропала сеть, файл не тот). Пишем её прямо под кнопкой.
@@ -636,68 +690,101 @@ function HwSolutionUpload({ hwId, index, existingUrl, onUploaded }) {
   const fileRef = useRef(null)
 
   async function handleFile(e) {
-    const file = e.target.files[0]
+    // Файлов бывает несколько за раз: решение на двух листах снимают подряд, и
+    // выбирать их по одному — лишняя работа.
+    const picked = [...e.target.files]
     // Сбрасываем значение поля: без этого повторный выбор ТОГО ЖЕ файла
     // (переснял и сохранил под тем же именем) не вызывает change.
     e.target.value = ""
-    if (!file) return
-    setUploading(true)
+    if (!picked.length) return
+    setBusy(true)
     setError("")
-    const ext = (file.name.split(".").pop() || "jpg").toLowerCase()
-    // upsert: замена фото пишется поверх, чтобы в бакете не копились черновики.
-    const path = hwId + "/solution-" + (index + 1) + "." + ext
+    const added = []
     try {
-      const { error: upErr } = await supabase.storage.from("homework").upload(path, file, { upsert: true })
-      if (upErr) throw upErr
-      const { data } = supabase.storage.from("homework").getPublicUrl(path)
-      // Бакет приватный: в базу уходит постоянный адрес, а показать только что
-      // загруженный файл можно лишь по подписанной ссылке.
-      const signed = await signStorageUrl(data.publicUrl, "homework")
-      await onUploaded(index, data.publicUrl, signed || data.publicUrl)
+      for (const file of picked) {
+        const ext = (file.name.split(".").pop() || "jpg").toLowerCase()
+        // Имя уникальное: к заданию прикладывают несколько листов, и запись
+        // «поверх» по одному имени (upsert, как было, пока фото было одно)
+        // стирала бы предыдущий.
+        const uid = Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+        const path = `${hwId}/solution-${index + 1}-${uid}.${ext}`
+        const { error: upErr } = await supabase.storage.from("homework").upload(path, file)
+        if (upErr) throw upErr
+        const { data } = supabase.storage.from("homework").getPublicUrl(path)
+        // Бакет приватный: в базу уходит постоянный адрес, а показать только что
+        // загруженный файл можно лишь по подписанной ссылке.
+        const signed = await signStorageUrl(data.publicUrl, "homework")
+        added.push({ url: data.publicUrl, view: signed || data.publicUrl })
+      }
     } catch (err) {
       setError("Фото не загрузилось" + (err?.message ? ": " + err.message : "") + ". Попробуй ещё раз.")
     }
-    setUploading(false)
+    // Уехавшее сохраняем, даже если споткнулись на втором файле: первый лист
+    // уже в хранилище, и терять его из-за соседнего незачем.
+    if (added.length) await onChange(index, [...files, ...added])
+    setBusy(false)
   }
+
+  async function removeAt(i) {
+    const gone = files[i]
+    setBusy(true)
+    setError("")
+    await onChange(index, files.filter((_, k) => k !== i))
+    setBusy(false)
+    // Сам файл убираем из хранилища следом и молча: карта работы уже без него,
+    // и неудача уборки решению ученика ничем не грозит.
+    const ref = parseStorageRef(gone?.url, "homework")
+    if (ref) supabase.storage.from(ref.bucket).remove([ref.path]).then(null, () => {})
+  }
+
+  const addLabel = files.length
+    ? (hasCamera ? "Ещё фото" : "Добавить фото")
+    : (hasCamera ? "Камера" : "Прикрепить фото решения")
 
   return (
     // Рядом с «Решить на доске» это вторая колонка одной строки. На телефоне
     // кнопок тут две («Камера» и «Файл»), и втиснуть их в половину ширины
     // нельзя — там блок занимает свою строку целиком.
-    <div className={`flex flex-col gap-1.5 ${hasCamera && !existingUrl ? "basis-full" : "flex-1 basis-40"}`}>
+    <div className={`flex flex-col gap-1.5 ${hasCamera && !files.length ? "basis-full" : "flex-1 basis-40"}`}>
       {hasCamera && (
         <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
       )}
-      <input ref={fileRef} type="file" accept="image/*,.pdf" className="hidden" onChange={handleFile} />
-      {existingUrl ? (
-        <div className="flex items-center gap-3 rounded-xl px-3 py-2 ring-1 ring-green-500/25">
-          <a href={existingUrl} target="_blank" rel="noreferrer"
-            className="press-fill text-xs text-green-700 dark:text-green-300 flex items-center gap-1.5 min-w-0">
-            <Icon name="check" size={12} className="flex-shrink-0" />
-            <span className="truncate">Фото решения прикреплено</span>
-          </a>
-          <button onClick={() => fileRef.current.click()} disabled={uploading}
-            className="press-fill text-xs text-gray-400 ml-auto flex-shrink-0 disabled:opacity-50">
-            {uploading ? "Загружаем..." : "Заменить"}
-          </button>
-        </div>
-      ) : (
-        <div className="flex gap-2">
-          {hasCamera && (
-            <button onClick={() => cameraRef.current.click()} disabled={uploading}
-              className="press-fill flex-1 flex items-center justify-center gap-1.5 border border-dashed border-blue-200 dark:border-blue-400/30 rounded-xl py-2 text-blue-600 dark:text-blue-300 text-xs font-medium disabled:opacity-50">
-              <Icon name="camera" size={14} />{uploading ? "Загружаем..." : "Камера"}
-            </button>
-          )}
-          <button onClick={() => fileRef.current.click()} disabled={uploading}
-            className="press-fill flex-1 flex items-center justify-center gap-1.5 border border-dashed border-gray-200 dark:border-white/15 rounded-xl py-2 text-gray-500 text-xs font-medium disabled:opacity-50">
-            <Icon name="paperclip" size={14} />
-            {/* На компьютере кнопка одна, и «Файл» рядом с пустым местом ничего
-                не объясняет — подписываем действием целиком. */}
-            {hasCamera ? "Файл" : uploading ? "Загружаем..." : "Прикрепить фото решения"}
-          </button>
+      {/* multiple: решение на нескольких листах выбирается одним заходом. */}
+      <input ref={fileRef} type="file" accept="image/*,.pdf" multiple className="hidden" onChange={handleFile} />
+      {files.length > 0 && (
+        // Каждая фотография — своя строка с номером: репетитор смотрит их по
+        // порядку, и ученику важно видеть, что второй лист тоже уехал.
+        <div className="flex flex-col gap-1.5">
+          {files.map((f, i) => (
+            <div key={f.url || i} className="flex items-center gap-3 rounded-xl px-3 py-2 ring-1 ring-green-500/25">
+              <a href={f.view || f.url} target="_blank" rel="noreferrer"
+                className="press-fill text-xs text-green-700 dark:text-green-300 flex items-center gap-1.5 min-w-0">
+                <Icon name="check" size={12} className="flex-shrink-0" />
+                <span className="truncate">{files.length > 1 ? `Фото ${i + 1}` : "Фото решения прикреплено"}</span>
+              </a>
+              <button onClick={() => removeAt(i)} disabled={busy}
+                className="press-fill text-xs text-gray-400 ml-auto flex-shrink-0 disabled:opacity-50 hover:text-red-500">
+                Убрать
+              </button>
+            </div>
+          ))}
         </div>
       )}
+      <div className="flex gap-2">
+        {hasCamera && (
+          <button onClick={() => cameraRef.current.click()} disabled={busy}
+            className="press-fill flex-1 flex items-center justify-center gap-1.5 border border-dashed border-blue-200 dark:border-blue-400/30 rounded-xl py-2 text-blue-600 dark:text-blue-300 text-xs font-medium disabled:opacity-50">
+            <Icon name="camera" size={14} />{busy ? "Загружаем..." : addLabel}
+          </button>
+        )}
+        <button onClick={() => fileRef.current.click()} disabled={busy}
+          className="press-fill flex-1 flex items-center justify-center gap-1.5 border border-dashed border-gray-200 dark:border-white/15 rounded-xl py-2 text-gray-500 text-xs font-medium disabled:opacity-50">
+          <Icon name="paperclip" size={14} />
+          {/* На компьютере кнопка одна, и «Файл» рядом с пустым местом ничего
+              не объясняет — подписываем действием целиком. */}
+          {hasCamera ? "Файл" : busy ? "Загружаем..." : addLabel}
+        </button>
+      </div>
       {error && <div className="text-xs text-red-500">{error}</div>}
     </div>
   )
@@ -1186,14 +1273,17 @@ export function HomeworkDetail({ hw, answers = null, onAnswers = null, onBack, o
   // Ошибку показываем прямо над кнопкой: системный alert ученику не объясняет,
   // что именно не так, и выглядит как сбой сайта.
   const [submitError, setSubmitError] = useState("")
-  // Фото решения по заданиям: { "1": { url, view } }. Ключ — номер задания в
-  // работе, url — постоянный адрес (он уходит в базу), view — подписанный, по
-  // нему ссылка открывается: бакет homework приватный.
+  // Фото решения по заданиям: { "1": [{ url, view }, …] }. Ключ — номер задания
+  // в работе, url — постоянный адрес (он уходит в базу), view — подписанный, по
+  // нему ссылка открывается: бакет homework приватный. Фотографий к заданию
+  // бывает несколько: решение по действиям на один лист не влезает, и раньше
+  // второй снимок было некуда деть — ученик выбирал, что показать репетитору.
   const [solutionFiles, setSolutionFiles] = useState(() => {
     const src = hw.solution_files && typeof hw.solution_files === "object" ? hw.solution_files : {}
     const out = {}
     for (const [k, v] of Object.entries(src)) {
-      if (typeof v === "string" && v) out[k] = { url: permanentStorageUrl(v, "homework"), view: v }
+      const list = fileUrls(v).map((u) => ({ url: permanentStorageUrl(u, "homework"), view: u }))
+      if (list.length) out[k] = list
     }
     return out
   })
@@ -1239,7 +1329,10 @@ export function HomeworkDetail({ hw, answers = null, onAnswers = null, onBack, o
   // ученик, решивший задачу на листе, не находил на экране ни одной кнопки —
   // а таких работ на боевой оказалось большинство.
   const canAttachSolution = hasTest
-  const solutionCount = Object.keys(solutionFiles).length
+  // Сколько заданий с фото: требование «прикрепи решение» считается по
+  // заданиям, а не по числу снимков — второй лист того же задания работу не
+  // «досдаёт».
+  const solutionCount = Object.values(solutionFiles).filter((l) => l?.length).length
   // На компьютере кнопки «Камера» нет — подсказки не должны звать к тому,
   // чего ученик на экране не видит.
   const hasCamera = useHasCamera()
@@ -1310,8 +1403,10 @@ export function HomeworkDetail({ hw, answers = null, onAnswers = null, onBack, o
   // Здесь карта уже загруженного идёт вместе с ответами: если запись карты в
   // работу не прошла (нет колонки solution_files), хотя бы первое фото уедет в
   // submission_url — так репетитор увидит решение и на базе без миграции.
-  async function handleSolutionUploaded(index, url, view) {
-    const next = { ...solutionFiles, [index + 1]: { url, view } }
+  async function handleSolutionChange(index, list) {
+    const next = { ...solutionFiles }
+    if (list.length) next[index + 1] = list
+    else delete next[index + 1]
     setSolutionFiles(next)
     await supabase.from("homework").update({ solution_files: solutionMapOf(next) }).eq("id", hw.id)
   }
@@ -1580,8 +1675,8 @@ export function HomeworkDetail({ hw, answers = null, onAnswers = null, onBack, o
                       <HwSolutionUpload
                         hwId={hw.id}
                         index={i}
-                        existingUrl={solutionFiles[i + 1]?.view}
-                        onUploaded={handleSolutionUploaded}
+                        files={solutionFiles[i + 1] || []}
+                        onChange={handleSolutionChange}
                       />
                     )}
                   </div>
@@ -1716,8 +1811,8 @@ export function HomeworkDetail({ hw, answers = null, onAnswers = null, onBack, o
                       <HwSolutionUpload
                         hwId={hw.id}
                         index={i}
-                        existingUrl={solutionFiles[i + 1]?.view}
-                        onUploaded={handleSolutionUploaded}
+                        files={solutionFiles[i + 1] || []}
+                        onChange={handleSolutionChange}
                       />
                     </div>
                   </div>
@@ -2779,7 +2874,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   }
 
   // auto = true — работу отправил таймер по истечении времени, а не ученик.
-  // solutionFiles — карта «номер задания → постоянный адрес фото». Файлы уже
+  // solutionFiles — карта «номер задания → адреса фотографий». Файлы уже
   // лежат в хранилище: их грузит HwSolutionUpload по ходу решения, чтобы
   // автосдача по таймеру не унесла работу без решения.
   async function submitHomeworkTest(hwId, answers, solutionFiles, auto = false) {
@@ -2813,7 +2908,9 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     // Первое фото дублируем в submission_url: на нём держатся карточка
     // «Решение ученика» у репетитора и кабинет родителя, и оно же остаётся
     // единственным следом решения на базе без миграции homework_solution_files.sql.
-    const solutionUrls = Object.values(solutionFiles || {}).filter(Boolean)
+    // Карта хранит к заданию список адресов — «первое фото» это первый снимок
+    // первого решённого задания.
+    const solutionUrls = Object.values(solutionFiles || {}).flatMap((v) => fileUrls(v))
     if (solutionUrls.length) {
       updates.solution_files = solutionFiles
       updates.submission_url = solutionUrls[0]
@@ -2904,7 +3001,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   async function submitHomeworkSolution(hwId, solutionFiles) {
     const hw = homework.find((h) => h.id === hwId)
     if (!hw) return
-    const urls = Object.values(solutionFiles || {}).filter(Boolean)
+    const urls = Object.values(solutionFiles || {}).flatMap((v) => fileUrls(v))
     if (!urls.length) return
 
     const updates = {
@@ -3022,11 +3119,16 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     // Файл части 2 загружен. Открытая карточка живёт своим объектом и из
     // loadVariants не обновляется, поэтому ссылку дописываем в неё сами —
     // иначе во время решения кнопка так и осталась бы «Загрузить файл».
-    function handlePart2Uploaded(taskNum, url) {
-      setSelectedVariant((v) => (v ? {
-        ...v,
-        submission: { ...v.submission, part2_files: { ...(v.submission?.part2_files || {}), [taskNum]: url } },
-      } : v))
+    function handlePart2Uploaded(taskNum, urls) {
+      setSelectedVariant((v) => {
+        if (!v) return v
+        const next = { ...(v.submission?.part2_files || {}) }
+        // Пустой список — фото убрали: ключ уходит целиком, иначе задание
+        // осталось бы «с решением», которого нет.
+        if (urls.length) next[taskNum] = urls
+        else delete next[taskNum]
+        return { ...v, submission: { ...v.submission, part2_files: next } }
+      })
       setVariantError("")
       loadVariants()
     }
@@ -3045,7 +3147,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
       // за которое ученик не брался, держать работу не должно. При автосдаче
       // (время вышло) не проверяем — на экзамене бланк забирают как есть.
       const uploadedFiles = selectedVariant.submission?.part2_files || {}
-      const missingSolutions = part2TaskNums.filter((n) => part2Choices[n] != null && !uploadedFiles[n])
+      const missingSolutions = part2TaskNums.filter((n) => part2Choices[n] != null && !fileUrls(uploadedFiles[n]).length)
       if (!auto && missingSolutions.length) {
         setVariantError(
           "Прикрепи решение к заданиям, где выбран ответ: " + numbersLabel(missingSolutions, { hash: false }) +
@@ -3995,7 +4097,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                                     taskNum={t.number}
                                     showLabel={false}
                                     submissionId={selectedVariant.submission.id}
-                                    existingUrl={selectedVariant.submission.part2_files?.[t.number]}
+                                    files={fileUrls(selectedVariant.submission.part2_files?.[t.number])}
                                     onUpload={handlePart2Uploaded}
                                   />
                                 </div>
@@ -4086,7 +4188,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                                     taskNum={n}
                                     showLabel={false}
                                     submissionId={selectedVariant.submission.id}
-                                    existingUrl={selectedVariant.submission.part2_files?.[n]}
+                                    files={fileUrls(selectedVariant.submission.part2_files?.[n])}
                                     onUpload={handlePart2Uploaded}
                                   />
                                 </div>
@@ -4138,7 +4240,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                                 key={taskNum}
                                 taskNum={taskNum}
                                 submissionId={selectedVariant.submission.id}
-                                existingUrl={selectedVariant.submission.part2_files?.[taskNum]}
+                                files={fileUrls(selectedVariant.submission.part2_files?.[taskNum])}
                                 chosen={selectedVariant.submission.part2_choices?.[taskNum]}
                                 onUpload={handlePart2Uploaded}
                               />

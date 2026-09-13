@@ -11,7 +11,7 @@ import Collapse from "../components/Collapse"
 import Reveal from "../components/Reveal"
 import AutoHeight from "../components/AutoHeight"
 import FormulaBackdrop from "../components/FormulaBackdrop"
-import { parseLocalDate, isHomeworkOverdue as isOverdue, renderHomeworkMath, plainTaskMath, superscriptPowers, parseHomeworkTasks, homeworkTaskItems, homeworkTestScore, plural, hasAttachment, getInitials, answersEqual, oneLine, isSimpleAnswer, homeworkBoardSheet, homeworkSolutionKey } from "../utils"
+import { parseLocalDate, isHomeworkOverdue as isOverdue, renderHomeworkMath, plainTaskMath, superscriptPowers, parseHomeworkTasks, homeworkTaskItems, homeworkTestScore, plural, hasAttachment, getInitials, answersEqual, oneLine, isSimpleAnswer, homeworkBoardSheet, homeworkSolutionKey, fileUrls } from "../utils"
 import { usePlan } from "../subscription"
 import { homeworkRoom } from "../boardRoom"
 import { PlanHint, PlanLock } from "../components/PlanLock"
@@ -1843,10 +1843,14 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
   // комбинированной работы ответы теста сохраняются ещё до сдачи файла, статус
   // при этом остаётся «Выдано». Возврат на доработку эти следы стирает
   // (см. setStatus ниже) — там правка снова открывается.
+  // «Номер задания → фотографии решения». К заданию их бывает несколько:
+  // решение по действиям на один лист не влезает.
   const solutionShots = hw.solution_files && typeof hw.solution_files === "object"
-    ? Object.entries(hw.solution_files).filter(([, url]) => typeof url === "string" && url)
+    ? Object.entries(hw.solution_files).map(([num, v]) => [num, fileUrls(v)])
+        .filter(([, urls]) => urls.length)
         .sort((a, b) => Number(a[0]) - Number(b[0]))
     : []
+  const solutionShotCount = solutionShots.reduce((n, [, urls]) => n + urls.length, 0)
   const attempted = hw.status === "submitted" || hw.status === "done"
     || (Array.isArray(hw.student_answers) && hw.student_answers.length > 0)
     || !!hw.submission_url || solutionShots.length > 0
@@ -1920,7 +1924,12 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
   const manualItems = taskItems.filter((it) => it.answer == null || it.answer === "")
   const boardSheetOf = (item) => {
     const sheet = homeworkBoardSheet(hw.id, item)
-    if (item.solutionUrl) sheet.solution = { key: homeworkSolutionKey(hw.id, item.n), url: item.solutionUrl }
+    // Каждая фотография решения — свой лист со своим ключом: иначе на доску
+    // попадал бы только первый снимок, а разбирают как раз ход решения целиком.
+    const shots = item.solutionUrls?.length ? item.solutionUrls : fileUrls(item.solutionUrl)
+    if (shots.length) {
+      sheet.solutions = shots.map((url, i) => ({ key: homeworkSolutionKey(hw.id, item.n, i), url }))
+    }
     return sheet
   }
   // Каждое нажатие — свой перенос: доска берёт задание по ключу и второй раз его
@@ -1938,8 +1947,8 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
     // Решение одним файлом на всю работу — отдельный лист в конце. Фото ученик
     // снимает к каждому заданию, но работа, сданная одним файлом (и все работы
     // до того, как фото стали привязываться к заданиям), везёт его только здесь.
-    if (hw.submission_url && !sheets.some((sh) => sh.solution)) {
-      sheets.push({ solution: { key: homeworkSolutionKey(hw.id, "all"), url: hw.submission_url } })
+    if (hw.submission_url && !sheets.some((sh) => sh.solutions?.length)) {
+      sheets.push({ solutions: [{ key: homeworkSolutionKey(hw.id, "all"), url: hw.submission_url }] })
     }
     if (!sheets.length) return
     // Под каждым листом на доске стоит ответ ученика: у задания без эталона
@@ -2039,13 +2048,14 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
       // (i + 1), так её пишет кабинет ученика.
       const shots = hw.solution_files && typeof hw.solution_files === "object" ? hw.solution_files : null
       const keptShots = partial && shots
-        ? Object.fromEntries(Object.entries(shots).filter(([num, url]) => url && isKept(Number(num) - 1)))
+        ? Object.fromEntries(Object.entries(shots).filter(([num, v]) => fileUrls(v).length && isKept(Number(num) - 1)))
         : null
       const left = keptShots && Object.keys(keptShots).length ? keptShots : null
       if (hw.solution_files !== undefined) updates.solution_files = left
-      // Ссылка «Решение ученика» — это первое из тех же фото.
+      // Ссылка «Решение ученика» — это первое из тех же фото. К заданию их
+      // бывает несколько, поэтому берём первое фото первого задания.
       updates.submission_url = left
-        ? Object.entries(left).sort((a, b) => Number(a[0]) - Number(b[0]))[0][1]
+        ? fileUrls(Object.entries(left).sort((a, b) => Number(a[0]) - Number(b[0]))[0][1])[0] || null
         : null
       // Отсчёт времени начинается заново: момент открытия ставится один раз
       // (RPC homework_open, coalesce), и с прежней отметкой доработка сдалась бы
@@ -2371,16 +2381,18 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
           {/* Решение ученик фотографирует к каждому заданию отдельно, поэтому и
               открывается оно по заданиям: одна ссылка «Решение ученика» выше —
               это первое из этих же фото, оставленное ради старых работ. */}
-          {solutionShots.length > 1 && (
+          {solutionShotCount > 1 && (
             <DetailBlock>
               <div className="text-sm font-medium mb-2">Решение по заданиям</div>
               <div className="flex flex-wrap gap-2">
-                {solutionShots.map(([num, url]) => (
-                  <a key={num} href={url} target="_blank" rel="noreferrer"
+                {solutionShots.flatMap(([num, urls]) => urls.map((url, i) => (
+                  // У задания с несколькими листами номер подписан порядком
+                  // снимка: «№7 · 2» — второй лист седьмого задания.
+                  <a key={num + ":" + i} href={url} target="_blank" rel="noreferrer"
                     className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 flex items-center gap-1.5">
-                    <Icon name="paperclip" size={12} />№{num}
+                    <Icon name="paperclip" size={12} />№{num}{urls.length > 1 ? ` · ${i + 1}` : ""}
                   </a>
-                ))}
+                )))}
               </div>
             </DetailBlock>
           )}

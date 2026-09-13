@@ -83,3 +83,15 @@ src/devHwImage.jsx
 # стенд догона правки на месте (не коммитить)
 src/devRev.jsx
 dev-rev.html
+
+# стенд стирания (не коммитить)
+dev-erase.html
+src/devErase.jsx
+
+# стенд «несколько фото к заданию» (не коммитить)
+dev-hw-multi.html
+src/devHwMulti.jsx
+dev-tasks.html
+src/devTasks.jsx
+dev-hw-tutor-multi.html
+src/devHwTutorMulti.jsx
