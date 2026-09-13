@@ -83,10 +83,13 @@ function getDaysUntilExam(student) {
   return diff >= 0 ? diff : null
 }
 
+// Зелёный в строке ученика занят состоянием денег («Долга нет»), поэтому цель
+// им быть не может: две зелёные метки рядом читались как одна мысль. Цвет тут
+// различает цели между собой, а не оценивает их.
 const GOAL_STYLE = {
   "ОГЭ":          { cls: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",       label: "ОГЭ",    full: "ОГЭ" },
   "ЕГЭ":          { cls: "bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300", label: "ЕГЭ",    full: "ЕГЭ" },
-  "Успеваемость": { cls: "bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300",    label: "Успев.", full: "Успеваемость" },
+  "Успеваемость": { cls: "bg-pink-100 text-pink-700 dark:bg-pink-500/15 dark:text-pink-300",       label: "Успев.", full: "Успеваемость" },
 }
 
 // Раскладка таблицы учеников. Цель и телефон — отдельными столбцами, иначе
