@@ -5,11 +5,11 @@
 // заданная функция там переносится посреди предложения, и условие читается как
 // каша. Окно даёт заданию всю ширину экрана и нормальный кегль — ровно тот вид,
 // в котором его увидит ученик.
-import { useEffect } from "react"
+import { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import Icon from "./Icon"
 import TaskAttachments from "./TaskAttachments"
-import { renderHomeworkMath, plural, answersEqual } from "../utils"
+import { renderHomeworkMath, plural, answersEqual, fileUrls } from "../utils"
 import { useClosing } from "../useClosing"
 
 // Одно задание в окне: номер кружком, условие во всю ширину, под ним — чертёж и
@@ -30,6 +30,9 @@ function TaskBlock({ item, onCredit, onBoard }) {
   // Задание с эталоном проверяет сама работа; без эталона (развёрнутый ответ,
   // письменная работа) ход решения смотрит репетитор — для него и есть доска.
   const autoChecked = item.answer != null && item.answer !== ""
+  // Фото решения к этому заданию: список, а не одна ссылка — ученик
+  // прикладывает столько листов, сколько занял ход решения.
+  const shots = item.solutionUrls?.length ? item.solutionUrls : fileUrls(item.solutionUrl)
   // Работа уже решена — значит окно показывает не условия, а разбор: у каждого
   // задания видно, что написал ученик и сошлось ли это с эталоном. `given`
   // приходит только у решённой работы (undefined — работа ещё не сдана),
@@ -166,14 +169,16 @@ function TaskBlock({ item, onCredit, onBoard }) {
 
         {/* Фото решения стоит у своего задания: ошибку ищут в ходе решения, а не
             в одном ответе. Общий список фото в разборе остаётся для старых работ. */}
-        {(item.solutionUrl || (onBoard && !autoChecked)) && (
+        {(shots.length > 0 || (onBoard && !autoChecked)) && (
           <div className="flex items-center gap-2 flex-wrap">
-            {item.solutionUrl && (
-              <a href={item.solutionUrl} target="_blank" rel="noreferrer"
+            {/* Фотографий к заданию бывает несколько — решение по действиям на
+                один лист не влезает; показываем каждую своей ссылкой. */}
+            {shots.map((url, i) => (
+              <a key={i} href={url} target="_blank" rel="noreferrer"
                 className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-600 inline-flex items-center gap-1.5">
-                <Icon name="camera" size={12} />Фото решения
+                <Icon name="camera" size={12} />{shots.length > 1 ? `Фото ${i + 1}` : "Фото решения"}
               </a>
-            )}
+            ))}
             {/* Проверка на доске — у задания без автопроверки: сверить его не с
                 чем, и репетитор разбирает ход решения сам. Условие и фото решения
                 ложатся на доску ЭТОЙ работы — ту же, где ученик решает кнопкой
@@ -204,6 +209,10 @@ export default function TasksModal({ title, note, intro, items, onClose, onCredi
   // Уходя на доску, окно закрываем: доска открывается поверх кабинета, и
   // оставленное под ней окно встретило бы репетитора при возвращении.
   const toBoard = onBoard ? (item) => { onBoard(item); close() } : undefined
+  // Шапка отделяется волосяной линией только когда под неё уехало условие —
+  // у самого верха линия висела бы просто так.
+  const [scrolled, setScrolled] = useState(false)
+  const bodyRef = useRef(null)
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") close() }
@@ -215,9 +224,14 @@ export default function TasksModal({ title, note, intro, items, onClose, onCredi
     // z выше модалки «Новое задание» (z-50): окно открывается и поверх неё.
     <div className={`fixed inset-0 glass-overlay z-[60] overflow-y-auto ${closingCls}`} onClick={close}>
       <div className="min-h-full flex items-start sm:items-center justify-center p-4">
-        <div className={`glass-modal p-5 sm:p-6 w-full max-w-3xl max-h-[92dvh] overflow-y-auto ${closingCls}`}
+        {/* Шапка стоит НАД областью прокрутки, а не приклеена внутри неё
+            (`sticky`): стекло модалки полупрозрачно, и приклеенная шапка
+            показывала бы уезжающие под неё условия насквозь. Здесь список
+            обрезается краем своей области, и под шапкой пусто. */}
+        <div className={`glass-modal w-full max-w-3xl max-h-[92dvh] flex flex-col overflow-hidden ${closingCls}`}
           onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-start justify-between gap-3 mb-4">
+          <div className={`shrink-0 flex items-start justify-between gap-3 px-5 sm:px-6 pt-5 sm:pt-6 pb-4 border-b transition-colors ${
+            scrolled ? "border-gray-200/70 dark:border-white/10" : "border-transparent"}`}>
             <div className="min-w-0">
               <h2 className="text-lg font-medium leading-tight truncate">{title || "Задания"}</h2>
               <div className="text-[11px] text-gray-400 mt-1">
@@ -232,18 +246,21 @@ export default function TasksModal({ title, note, intro, items, onClose, onCredi
             </button>
           </div>
 
-          {intro && (
-            <div className="text-sm text-gray-600 leading-relaxed mb-3"
-              dangerouslySetInnerHTML={{ __html: renderHomeworkMath(intro) }} />
-          )}
-
-          <div className="flex flex-col gap-2.5">
-            {items.map((it, i) => <TaskBlock key={i} item={it} onCredit={onCredit} onBoard={toBoard} />)}
-            {items.length === 0 && !intro && (
-              <div className="rounded-2xl ring-1 ring-dashed ring-gray-200/80 dark:ring-white/10 text-sm text-gray-400 text-center py-8">
-                Условий нет
-              </div>
+          <div ref={bodyRef} onScroll={() => setScrolled((bodyRef.current?.scrollTop || 0) > 2)}
+            className="no-scrollbar min-h-0 overflow-y-auto px-5 sm:px-6 pb-5 sm:pb-6">
+            {intro && (
+              <div className="text-sm text-gray-600 leading-relaxed mb-3"
+                dangerouslySetInnerHTML={{ __html: renderHomeworkMath(intro) }} />
             )}
+
+            <div className="flex flex-col gap-2.5">
+              {items.map((it, i) => <TaskBlock key={i} item={it} onCredit={onCredit} onBoard={toBoard} />)}
+              {items.length === 0 && !intro && (
+                <div className="rounded-2xl ring-1 ring-dashed ring-gray-200/80 dark:ring-white/10 text-sm text-gray-400 text-center py-8">
+                  Условий нет
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
