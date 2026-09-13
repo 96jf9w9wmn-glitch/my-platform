@@ -186,6 +186,30 @@ const BOARD_SYNC_FAST_MS = 2000
 // за полминуты — с запасом под лимит.
 const TRACK_MIN_MS = 8000
 const LINK_DOWN_MS = 3000   // через сколько без канала показать «связь восстанавливается»
+const SAVE_MAX_MS = 2000    // потолок откладывания сохранения (см. scheduleSave)
+// Сколько помним, что штрих СТЁРТ (см. tombRef). Срок нужен с запасом на самый
+// долгий путь удаления до базы: собеседник ведёт ластиком не отрываясь, потом
+// его сохранение (SAVE_MAX_MS) и сама запись. Полторы минуты — заведомо больше,
+// а держать могилы вечно незачем: доска живёт месяцами.
+const TOMB_MS = 90000
+const bury = (m, id) => { if (id != null) m.set(String(id), Date.now()) }
+const unbury = (m, id) => { m.delete(String(id)) }
+// Стёрт ли штрих. Заодно чистим протухшее — отдельный сборщик тут не нужен.
+const buried = (m, id) => {
+  const t = m.get(String(id))
+  if (t == null) return false
+  if (Date.now() - t > TOMB_MS) { m.delete(String(id)); return false }
+  return true
+}
+// Сколько свежих могил. Ровно на столько база может быть БОЛЬШЕ нас, пока
+// удаление собеседника до неё не доехало, — и такое расхождение не повод
+// перечитывать сцену целиком.
+const tombCount = (m) => {
+  const now = Date.now()
+  let n = 0
+  for (const [id, t] of m) { if (now - t > TOMB_MS) m.delete(id); else n++ }
+  return n
+}
 const REJOIN_MS = [1500, 4000, 8000, 15000]   // пересоздание канала после закрытия
 // Точки штриха округляются до сотых мировой единицы: на экране это доли пикселя
 // даже при максимальном увеличении, зато и по сети, и в снапшоте сцены каждая
@@ -964,6 +988,30 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // Только СВОИ штрихи, ещё не подтверждённые базой. При восстановлении связи
   // их нельзя потерять, а чужие нельзя «спасать» поверх полученного удаления.
   const localPending = useRef(new Set())
+  // МОГИЛЫ: id → когда стёрли. Удаление — единственная правка, которой не видно
+  // ни по ord, ни по rev: строки в базе просто нет. Поэтому стёртое узнаётся
+  // только по числу строк, а лечится перечитыванием сцены — и вот тут его и
+  // воскрешало. У АВТОРА удаление уходит в базу не сразу (сохранение отложено, а
+  // пока ластик ведут, таймер сбрасывается на каждом движении), у собеседника же
+  // посылка realtime пропадает с экрана мгновенно. В зазоре между этими двумя
+  // моментами сцена в базе ещё ПОЛНАЯ, и любая сверка возвращала стёртое обратно
+  // (замерено на стенде: пропало — через секунду вернулось — через шесть секунд
+  // снова пропало).
+  //
+  // Могила закрывает этот зазор: всё, что мы знаем стёртым, не принимается назад
+  // ни из догона, ни из сцены целиком. Снимается она только явным «нарисуй это»
+  // от собеседника (он нажал «отменить») — и по сроку, чтобы не копиться вечно.
+  const tombRef = useRef(new Map())
+  // Свои удаления, которые обязаны доехать в базу. Одного «есть в savedRef, нет
+  // в strokes» мало: штрих собеседника, пришедший по realtime, в savedRef не
+  // попадает вовсе, и стерев его, мы не удаляли из базы НИЧЕГО — он оставался
+  // там и возвращался при первом же перечитывании сцены.
+  const pendingDel = useRef(new Set())
+  const saveSince = useRef(0)         // когда появилось первое неотправленное изменение
+  const wipeRef = useRef(false)       // доску очистили целиком: в базу уйдёт одним p_wipe
+  const removeBuf = useRef([])        // id на рассылку (пачкой, см. flushRemoves)
+  const removeTimer = useRef(null)
+  const flushRemovesRef = useRef(null)
   const savingRef = useRef(false)     // запрос сохранения в полёте — второй не запускаем
   const saveAgain = useRef(false)     // пока он летел, появилось новое
   const patchOff = useRef(false)      // в базе нет board_patch — пишем сцену целиком, как раньше
@@ -1815,6 +1863,8 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     loadedRef.current = null    // до загрузки новой сцены не сохраняем ничего
     strokes.current.clear(); live.current.clear(); selection.current.clear()
     savedRef.current = new Map(); dirtyRef.current.clear(); localPending.current.clear()
+    tombRef.current.clear(); pendingDel.current.clear(); wipeRef.current = false
+    removeBuf.current = []; clearTimeout(removeTimer.current); removeTimer.current = null
     history.current = []; redoStack.current = []
     cursors.current.clear()
     sheetDone.current = null    // лист задания кладётся заново — но уже в свою комнату
@@ -1835,11 +1885,15 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         // ставим их в конец, иначе «последними записями» окажется старое.
         const early = [...strokes.current.entries()]
         strokes.current.clear()
-        for (const s of scene.strokes || []) strokes.current.set(s.id, s)
+        // Пока сцена летела, собеседник мог что-то стереть — его посылка уже
+        // пришла, а в ответе базы этот штрих ещё есть. Могилы старше ответа, и
+        // принимать погребённое назад нельзя.
+        const fresh = (scene.strokes || []).filter((s) => !buried(tombRef.current, s.id))
+        for (const s of fresh) strokes.current.set(s.id, s)
         // Пришедшее из базы уже сохранено — с этого начинается отсчёт дельты.
         // early сюда НЕ кладём: они прилетели по realtime и в базе их может не быть,
         // пусть первое же сохранение их допишет.
-        rememberSaved(scene.strokes || [])
+        rememberSaved(fresh)
         maxOrd.current = Number.isFinite(scene.maxOrd) ? scene.maxOrd : null
         revRef.current = Number.isFinite(scene.maxRev) ? scene.maxRev : null
         savedMeta.current = { bg: scene.bg ?? null, bgColor: scene.bgColor ?? null }
@@ -1895,6 +1949,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     const take = (list) => {
       for (const st of list || []) {
         if (dirtyRef.current.has(st.id)) continue
+        if (buried(tombRef.current, st.id)) continue   // стёрто: назад не принимаем
         strokes.current.set(st.id, st)
         savedRef.current.set(st.id, { s: st, json: null })
       }
@@ -1923,6 +1978,10 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       // лечится оно перечитыванием сцены целиком.
       if (got) scheduleDraw()
       if (got && (!Number.isFinite(since.n) || since.n === savedRef.current.size)) return
+      // Нового нет, а счёт не сошёлся ровно на стёртое при нас — ждём, пока
+      // автор допишет удаление в базу. Сцену целиком тянуть незачем.
+      if (Number.isFinite(since.n) && since.n - savedRef.current.size > 0
+          && since.n - savedRef.current.size <= tombCount(tombRef.current)) return
     } else if (!afterOff.current && Number.isFinite(maxOrd.current)) {
       const { data, error } = await supabase.rpc("board_strokes_after", {
         p_student_id: String(roomId), p_ord: maxOrd.current,
@@ -1939,7 +1998,11 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     }
     const scene = await signBoardScene(await fetchScene())
     if (!scene) return
-    const remoteStrokes = scene.strokes || []
+    // Стёртое не возвращаем. Сцена в базе отстаёт от посылки об удалении на всё
+    // время, пока автор водит ластиком и не сохранился, — и без этого условия
+    // перечитывание сцены возвращало собеседнику ровно то, что при нём же и
+    // стёрли (13.09.2026).
+    const remoteStrokes = (scene.strokes || []).filter((s) => !buried(tombRef.current, s.id))
     const local = [...strokes.current.entries()]
     strokes.current.clear()
     for (const s of remoteStrokes) strokes.current.set(s.id, s)
@@ -1988,13 +2051,24 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       // перечитать: сравнение «в базе больше» не замечало удалений вовсе, и
       // стёртое собеседником оставалось на доске до перезахода.
       const inDb = savedRef.current.size
+      // База может быть БОЛЬШЕ нас на то, что при нас стёрли, а её ещё не
+      // дописали: у автора сохранение отложено, и пока он ведёт ластиком, в базе
+      // лежит полная сцена. Ровно столько расхождения и прощаем — иначе каждый
+      // проход ластиком стоил бы собеседнику перечитывания всей доски (а до
+      // могил — ещё и возвращал стёртое на экран).
+      const tombs = tombCount(tombRef.current)
       // Правка НА МЕСТЕ (перенос, поворот, цвет, ответ на листе) не меняет ни
       // числа строк, ни последнего id — её видно только по номеру записи. Пока
       // его не было, потерянная посылка с переносом не чинилась ничем, и у
       // двоих один и тот же лист стоял в разных местах (12.09.2026).
       const dbRev = Number(data.rev)
       const behind = Number.isFinite(revRef.current) && Number.isFinite(dbRev) && dbRev > revRef.current
-      if (behind || (data.n ?? inDb) !== inDb || (data.last_id && !strokes.current.has(data.last_id))) resync()
+      const dbN = data.n ?? inDb
+      const extra = dbN - inDb                    // насколько база «больше» нас
+      const countOff = extra > 0 ? extra > tombs : dbN !== inDb
+      const lastOff = data.last_id && !strokes.current.has(data.last_id)
+                      && !buried(tombRef.current, data.last_id)
+      if (behind || countOff || lastOff) resync()
     }
     if (readOnly) return              // снимок не меняется — сверять не с чем
     const id = setInterval(tick, BOARD_SYNC_FAST_MS)
@@ -2007,6 +2081,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // заново, а там ничего». Поэтому на уход в фон и на закрытие дописываем сразу.
   useEffect(() => {
     const flush = () => {
+      flushRemovesRef.current?.()   // недосланная пачка удалений — уходит сразу
       if (!saveTimer.current) return
       clearTimeout(saveTimer.current); saveTimer.current = null
       persistRef.current?.()
@@ -2066,6 +2141,10 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       // Готовый штрих: кладём в сцену и убираем из «в работе».
       .on("broadcast", { event: "draw" }, ({ payload }) => {
         live.current.delete(payload.id)
+        // Собеседник рисует этот штрих заново (обычно — нажал «отменить» после
+        // стирания). Это единственное, что снимает могилу: сам он про удаление
+        // знает лучше нас.
+        unbury(tombRef.current, payload.id)
         // Пришёл постоянный адрес вместо предпросмотра (data:, см. addImageAt) —
         // растр предпросмотра из кэша отпускаем, он больше никому не нужен.
         const old = strokes.current.get(payload.id)
@@ -2080,6 +2159,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       // целиком событием draw, и оно всё вылечит.
       .on("broadcast", { event: "drawp" }, ({ payload }) => {
         const { from, ...st } = payload
+        unbury(tombRef.current, payload.id)   // ведут штрих с этим id — он снова живой
         if (!from) {
           // Черновик правки идёт под id уже готового штриха: пока он в «работе»,
           // сцену надо пересобрать без оригинала, иначе старая надпись просвечивает.
@@ -2107,20 +2187,32 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         }, 2500))
       })
       .on("broadcast", { event: "remove" }, ({ payload }) => {
-        live.current.delete(payload.id)
-        const old = strokes.current.get(payload.id)
-        if (old?.src?.startsWith("data:")) forgetImage(old.src)
-        localPending.current.delete(payload.id)
+        // Проход ластиком уносит десятки штрихов, и посылка на каждый пробивала
+        // лимит событий канала (сервер закрывает канал на превышении). Поэтому
+        // id едут пачкой; одиночный payload.id понимаем по-прежнему — его шлёт
+        // вкладка со старой сборкой.
         // Из «что лежит в базе» штрих тоже вычёркиваем. Сверка раз в несколько
         // секунд сравнивает ИМЕННО этот счёт с числом строк в базе, и пока он
         // оставался прежним, каждый стёртый собеседником штрих выглядел
         // расхождением — а лечилось расхождение перечитыванием ВСЕЙ сцены
         // (на боевой доске 1,66 МБ, 330 КБ по проводу). Ученик ведёт ластиком —
         // репетитор качает мегабайты и подвисает на каждом.
-        savedRef.current.delete(payload.id)
-        strokes.current.delete(payload.id); selection.current.delete(payload.id); scheduleDraw()
+        for (const rid of payload.ids?.length ? payload.ids : [payload.id]) {
+          live.current.delete(rid)
+          const old = strokes.current.get(rid)
+          if (old?.src?.startsWith("data:")) forgetImage(old.src)
+          localPending.current.delete(rid)
+          savedRef.current.delete(rid)
+          // Помним, что штрих стёрт: в базе он живёт до сохранения у автора, и
+          // любая сверка до тех пор возвращала бы его обратно.
+          bury(tombRef.current, rid)
+          strokes.current.delete(rid); selection.current.delete(rid)
+        }
+        scheduleDraw()
       })
       .on("broadcast", { event: "clear" }, () => {
+        for (const id of strokes.current.keys()) bury(tombRef.current, id)
+        for (const id of savedRef.current.keys()) bury(tombRef.current, id)
         live.current.clear(); strokes.current.clear(); selection.current.clear()
         localPending.current.clear(); savedRef.current.clear()   // см. remove: иначе сверка уйдёт за всей сценой
         scheduleDraw()
@@ -2285,6 +2377,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     // сохранение ждёт 1,2 с, и раньше уход отсюда его просто отменял: доску
     // закрывают не только кнопкой (смена комнаты, «назад», выход из кабинета),
     // и последний штрих в этих случаях пропадал молча.
+    flushRemovesRef.current?.()   // недосланная пачка удалений — тоже уходит
     if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; persistRef.current?.() }
     clearTimeout(sendTimer.current); clearTimeout(viewSendTimer.current)
     clearTimeout(offscreenTimer.current); clearTimeout(offscreenOutTimer.current)
@@ -2463,21 +2556,38 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       if (rec && rec.json === json) { rec.s = st; continue }  // изменили и вернули как было
       up.push(st); pend.set(id, { s: st, json })
     }
-    const del = []
-    for (const id of saved.keys()) if (!strokes.current.has(id)) del.push(id)
+    // Удалить надо и то, что мы знали лежащим в базе, и то, что стёрли своими
+    // руками. Второе — не то же самое: штрих собеседника, пришедший по realtime,
+    // в savedRef не попадает, и стерев его, мы не удаляли из базы НИЧЕГО. Он
+    // оставался там и возвращался при первом же перечитывании сцены.
+    const delSet = new Set(pendingDel.current)
+    for (const id of saved.keys()) if (!strokes.current.has(id)) delSet.add(id)
+    for (const id of delSet) if (strokes.current.has(id)) delSet.delete(id)   // вернули отменой
+    const del = [...delSet]
     const metaNew = savedMeta.current.bg !== bg || savedMeta.current.bgColor !== bgColor
     dirty.clear()
     if (!up.length && !del.length && !metaNew) return
+    // «Снести всё» — только по ЯВНОЙ очистке доски. Раньше сюда попадал и проход
+    // ластиком, дошедший до нуля штрихов, а p_wipe удаляет в базе ВСЮ комнату —
+    // вместе с тем, что собеседник написал секунду назад и до нас ещё не доехало.
+    // Считаем ДО done: он обращается к wipe и на запасном пути (patchOff) зовётся
+    // раньше этой строки.
+    const wipe = wipeRef.current && strokes.current.size === 0 && del.length > 0
     savingRef.current = true
     const done = (ok) => {
       savingRef.current = false
       if (ok) {
         for (const [id, rec] of pend) { saved.set(id, rec); localPending.current.delete(id) }
-        for (const id of del) { saved.delete(id); localPending.current.delete(id) }
+        for (const id of del) { saved.delete(id); localPending.current.delete(id); pendingDel.current.delete(id) }
+        // p_wipe снёс комнату целиком, а поимённого списка при нём нет — значит и
+        // «что лежит в базе», и очередь удалений обнуляются тоже. Иначе сверка
+        // насчитает расхождение в полсотни строк и полезет за сценой.
+        if (wipe) { wipeRef.current = false; saved.clear(); pendingDel.current.clear() }
         savedMeta.current = { bg, bgColor }
       } else {
         // не доехало — вернём в следующую посылку (ссылка та же, поэтому через dirty)
         for (const id of pend.keys()) dirty.add(id)
+        for (const id of del) pendingDel.current.add(id)   // удаление тоже повторяем
       }
       // Дозапись идёт СВОИМ таймером, а не scheduleSave: тот гасится при уходе с
       // доски, и написанное в последнюю секунду терялось бы вместе с ним.
@@ -2485,7 +2595,6 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     }
     if (patchOff.current) { fullSave().then(() => { localPending.current.clear(); done(true) }, (e) => { console.error("board save", e); done(false) }); return }
     // Доску очистили — не перечисляем тысячу id, а говорим «старого не оставляем».
-    const wipe = strokes.current.size === 0 && del.length > 0
     supabase.rpc("board_patch", {
       p_student_id: String(roomId),
       p_up: up, p_del: wipe ? [] : del,
@@ -2513,11 +2622,21 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, userId, fullSave])
   persistRef.current = persist
+  // Сохранение откладывается на 1,2 с, и каждая новая правка сдвигает срок. Для
+  // письма это верно (пишут вспышками), но ластик идёт СПЛОШНЫМ потоком: пока
+  // его ведут, таймер сбрасывается на каждом движении, и в базу не уезжает
+  // ничего — минуту и дольше. У собеседника штрихи при этом пропадают сразу
+  // (посылка realtime), и его сверка всё это время видит в базе доску, которой
+  // на самом деле уже нет. Поэтому у откладывания есть ПОТОЛОК: первое
+  // неотправленное изменение ждёт не дольше SAVE_MAX_MS.
   function scheduleSave() {
     if (readOnlyRef.current) return
     if (loadedRef.current !== roomId) return // не сохраняем до загрузки сцены ЭТОЙ доски — иначе затрём её пустой или чужой
+    const now = Date.now()
+    if (!saveTimer.current) saveSince.current = now
+    const left = Math.max(0, SAVE_MAX_MS - (now - saveSince.current))
     clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(() => { saveTimer.current = null; persist() }, 1200)
+    saveTimer.current = setTimeout(() => { saveTimer.current = null; persist() }, Math.min(1200, left))
   }
 
   // Снимок занятия в историю (board_snapshots): живая доска у ученика одна, а
@@ -2878,6 +2997,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     if (erasing.current) {
       pushHistory(erasing.current)
       erasing.current = null
+      flushRemoves()           // проход кончился — стёртое уходит собеседнику сразу
       return
     }
     // Завершение перемещения выделенного — рассылаем сдвинутые штрихи и сохраняем
@@ -2956,12 +3076,43 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     for (const [id, st] of [...strokes.current]) {
       if (st.tool === "eraser" || st.tool === "image" || !hitStroke(st, p[0], p[1], tol)) continue
       erasing.current.push({ id, before: cloneStroke(st), after: null })
-      strokes.current.delete(id)
-      localPending.current.delete(id)
-      channelRef.current?.send({ type: "broadcast", event: "remove", payload: { id } })
+      forgetStroke(id)
       hit = true
     }
     if (hit) { scheduleDraw(); scheduleSave() }
+  }
+
+  // Рассылка удалений ПАЧКОЙ. Проход объектным ластиком уносит десятки штрихов,
+  // и посылка на каждый — это десятки событий в секунду на канал, у которого
+  // сервер закрывает соединение при превышении (см. TRACK_MIN_MS о том, как это
+  // выглядит). Копим 60 мс и шлём одним сообщением; поле id оставляем ради
+  // вкладки со старой сборкой — она прочитает первый и догонит остальное сверкой.
+  function flushRemoves() {
+    clearTimeout(removeTimer.current); removeTimer.current = null
+    const ids = removeBuf.current
+    if (!ids.length) return
+    removeBuf.current = []
+    channelRef.current?.send({ type: "broadcast", event: "remove", payload: { id: ids[0], ids } })
+  }
+  flushRemovesRef.current = flushRemoves
+  function sendRemove(id) {
+    removeBuf.current.push(id)
+    if (removeBuf.current.length >= 40) { flushRemoves(); return }
+    if (!removeTimer.current) removeTimer.current = setTimeout(flushRemoves, 60)
+  }
+  // Своё удаление штриха — одним местом на все способы стереть (ластик, «Удалить»
+  // у выделения, отмена). Важны все четыре шага, и особенно два последних:
+  // pendingDel — потому что штрих собеседника в savedRef не попадает, и без
+  // очереди удаление такого штриха не уезжало в базу вовсе; могила — потому что
+  // до записи в базу любая сверка возвращала его обратно.
+  function forgetStroke(id) {
+    strokes.current.delete(id)
+    localPending.current.delete(id)
+    dirtyRef.current.delete(id)
+    selection.current.delete(id)
+    pendingDel.current.add(id)
+    bury(tombRef.current, id)
+    sendRemove(id)
   }
 
   function pushHistory(step) {
@@ -2994,9 +3145,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     for (const id of selection.current) {
       const s = strokes.current.get(id)
       if (s) step.push({ id, before: cloneStroke(s), after: null })
-      strokes.current.delete(id)
-      localPending.current.delete(id)
-      channelRef.current?.send({ type: "broadcast", event: "remove", payload: { id } })
+      forgetStroke(id)
     }
     pushHistory(step)
     selection.current.clear(); applySelCount(0)
@@ -3859,13 +4008,14 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       const s = ch[side]
       if (s) {
         const copy = cloneStroke(s)
+        // Вернули стёртое — могилу снимаем, иначе сверка выбросила бы его снова.
+        unbury(tombRef.current, ch.id)
+        pendingDel.current.delete(ch.id)
         strokes.current.set(ch.id, copy)
         localPending.current.add(ch.id)
         channelRef.current?.send({ type: "broadcast", event: "draw", payload: copy })
       } else {
-        strokes.current.delete(ch.id)
-        localPending.current.delete(ch.id)
-        channelRef.current?.send({ type: "broadcast", event: "remove", payload: { id: ch.id } })
+        forgetStroke(ch.id)
       }
     }
     // Выделение после отмены может указывать на исчезнувшие штрихи — снимаем его
@@ -3894,6 +4044,11 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   function clearAll() {
     setConfirmClear(false)
     const step = [...strokes.current.values()].map((s) => ({ id: s.id, before: cloneStroke(s), after: null }))
+    // Очистка — то же удаление: в базу уйдёт одним p_wipe, но помнить стёртое и
+    // держать очередь надо так же, иначе сверка вернёт доску обратно.
+    for (const id of strokes.current.keys()) { pendingDel.current.add(id); bury(tombRef.current, id) }
+    for (const id of savedRef.current.keys()) { pendingDel.current.add(id); bury(tombRef.current, id) }
+    wipeRef.current = true
     strokes.current.clear()
     localPending.current.clear()
     pushHistory(step)                       // очистку доски тоже можно отменить
