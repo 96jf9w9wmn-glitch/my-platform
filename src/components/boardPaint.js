@@ -388,7 +388,13 @@ export function paintStroke(ctx, s, { darkBg = false, getImage = () => null } = 
 const READY_PROBE = 8
 let readyProbe = null
 export function pixelsReady(img) {
-  if (!img || !img.complete || !(img.naturalWidth || img.width)) return false
+  if (!img) return false
+  // Проба зовётся и на ХОЛСТЕ (перекрашенный лист из фонового потока), а у холста
+  // свойства `complete` нет вовсе — undefined. Проверять его «на истинность» тут
+  // нельзя: холст всегда считался неготовым, перекраска не попадала в кэш, и
+  // приближённый лист рисовался НЕперекрашенным — белым на тёмной доске.
+  if (img.complete === false) return false
+  if (!(img.naturalWidth || img.width)) return false
   try {
     if (!readyProbe) readyProbe = document.createElement("canvas")
     readyProbe.width = READY_PROBE; readyProbe.height = READY_PROBE
