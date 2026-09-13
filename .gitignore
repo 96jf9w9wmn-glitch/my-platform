@@ -95,3 +95,7 @@ dev-tasks.html
 src/devTasks.jsx
 dev-hw-tutor-multi.html
 src/devHwTutorMulti.jsx
+
+# стенд карточки ученика (не коммитить)
+dev-student-form.html
+src/devStudentForm.jsx

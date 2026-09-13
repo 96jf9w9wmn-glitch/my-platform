@@ -1,5 +1,6 @@
 import { useState } from "react"
 import Collapse from "./Collapse"
+import { chipCls } from "./chipStyle"
 
 // Срок сдачи: чипы на частые случаи, календарь — на редкий. Общий для
 // домашней работы и варианта: срок в обоих разделах ставится одинаково, и
@@ -20,13 +21,6 @@ const CHIPS = [
   { label: "3 дня", days: 3 },
   { label: "Неделя", days: 7 },
 ]
-
-const chipCls = (on) =>
-  `px-3 py-1.5 rounded-full text-xs transition-all active:scale-[0.94] ${
-    on
-      ? "bg-blue-600 text-white shadow-sm"
-      : "text-gray-600 ring-1 ring-gray-200 dark:ring-white/15 hover:ring-gray-300"
-  }`
 
 // allowNone={false} убирает «Без срока»: там, где срок ПРОДЛЕВАЮТ, снятие срока
 // не продление, а другое решение — и стоять рядом с «Завтра» ему незачем.

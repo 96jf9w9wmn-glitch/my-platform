@@ -4,6 +4,7 @@ import { useClosing } from "../useClosing"
 import Icon from "./Icon"
 import Reveal from "./Reveal"
 import Collapse from "./Collapse"
+import { chipCls } from "./chipStyle"
 import SegmentSwitch from "./SegmentSwitch"
 import WeeksPicker from "./WeeksPicker"
 import { TimeField, DurationField } from "./TimeFields"
@@ -30,6 +31,19 @@ const MESSENGERS = [
   { id: "vk", label: "ВКонтакте", placeholder: "username или ссылка" },
   { id: "other", label: "Другое", placeholder: "https://..." },
 ]
+
+// Цель ученика. Тот же набор, что в анкете ученика (StudentOnboardingModal):
+// расхождение здесь означало бы, что репетитор не может поставить то, что
+// выбрал ученик. Пустая строка — «цель не указана»: у ученика, которого просто
+// подтягивают по предмету, цели нет, и выдумывать её за него нечего.
+const GOAL_OPTIONS = [
+  { id: "ОГЭ", label: "ОГЭ" },
+  { id: "ЕГЭ", label: "ЕГЭ" },
+  { id: "Успеваемость", label: "Успеваемость" },
+  { id: "", label: "Не указана" },
+]
+// Отметка, а не произвольное число: двойки в целях не бывает.
+const MARK_OPTIONS = ["3", "4", "5"]
 
 function getDaysInMonth(year, month) {
   const days = []
@@ -123,7 +137,10 @@ function StudentFormModal({ student, students = [], onClose, onSubmit, initialNa
 
   const [form, setForm] = useState({
     name: student?.name || initialName || "",
-    goal: "",
+    // Цель и целевой балл берутся из карточки, а не из анкеты: анкету ученик
+    // заполняет один раз, а карточку репетитор правит весь год.
+    goal: student?.goal || "",
+    targetScore: student?.targetScore ?? "",
     lessonPrice: student?.lessonPrice ?? "",
     boardUrl: student?.boardUrl || "",
     callUrl: student?.callUrl || "",
@@ -152,7 +169,10 @@ function StudentFormModal({ student, students = [], onClose, onSubmit, initialNa
   // Доска: наша встроенная или ссылка на чужую (Miro и подобные). Выбор не
   // хранится отдельным полем — он и есть «есть ссылка или нет».
   const [boardMode, setBoardMode] = useState(student?.boardUrl ? "external" : "own")
-  const [onboardingPulled, setOnboardingPulled] = useState(false)
+  // Что ученик указал в СВОЕЙ анкете. Хранится отдельно от формы: анкета —
+  // свидетельство ученика, её репетитор не переписывает, а расхождение с
+  // карточкой показывается подписью.
+  const [survey, setSurvey] = useState(null)
   const [formError, setFormError] = useState("")
   const { cls: closingCls, close } = useClosing(onClose)
 
@@ -174,14 +194,16 @@ function StudentFormModal({ student, students = [], onClose, onSubmit, initialNa
       .maybeSingle()
       .then(({ data }) => {
         if (cancelled) return
-        if (!data || !data.onboarded) { setOnboardingPulled(false); return }
+        if (!data || !data.onboarded) { setSurvey(null); return }
         const targetFromExam = data.exam_goal === "ЕГЭ" && data.target_score != null ? data.target_score : null
+        setSurvey(data.exam_goal || targetFromExam != null ? { goal: data.exam_goal || "", targetScore: targetFromExam ?? "" } : null)
+        // Подставляем только в ПУСТЫЕ поля: у карточки уже может стоять цель,
+        // которую репетитор поменял осознанно, и анкета её не отменяет.
         setForm((prev) => ({
           ...prev,
           goal: prev.goal || data.exam_goal || "",
           targetScore: prev.targetScore || (targetFromExam ?? ""),
         }))
-        setOnboardingPulled(!!(data.exam_goal || targetFromExam != null))
       })
     return () => { cancelled = true }
   }, [phone])
@@ -190,6 +212,26 @@ function StudentFormModal({ student, students = [], onClose, onSubmit, initialNa
     const { name, value } = e.target
     setForm((prev) => ({ ...prev, [name]: name === "lessonPrice" ? Number(value) : value }))
   }
+
+  // Со сменой экзамена цель обнуляется: балл и отметка живут в одном поле
+  // (students.target_score), и «85» в роли отметки — мусор, а «5» в роли
+  // тестового балла ЕГЭ рисуется линией у самого нуля.
+  function pickGoal(goal) {
+    setForm((prev) => (prev.goal === goal ? prev : { ...prev, goal, targetScore: "" }))
+  }
+  function pickTarget(raw) {
+    const digits = String(raw).replace(/\D/g, "")
+    setForm((prev) => ({ ...prev, targetScore: digits ? String(Math.min(100, Number(digits))) : "" }))
+  }
+
+  // Анкета — свидетельство ученика, и переписывать её репетитор не может.
+  // Поэтому её ответ либо просто подтверждается, либо честно показывается
+  // рядом с другим выбором репетитора.
+  const surveyHint = !survey?.goal
+    ? ""
+    : survey.goal === form.goal
+      ? "Так ученик указал в своей анкете."
+      : `В анкете ученик указал «${survey.goal}» — в своём кабинете он увидит цель, выбранную здесь.`
 
   function addContact() { setContacts((prev) => [...prev, { messenger: "telegram", url: "" }]) }
   function updateContact(i, field, value) { setContacts((prev) => prev.map((c, idx) => idx === i ? { ...c, [field]: value } : c)) }
@@ -301,6 +343,10 @@ function StudentFormModal({ student, students = [], onClose, onSubmit, initialNa
       name: form.name,
       phone,
       contacts,
+      // Цель едет и при ПРАВКЕ карточки, а не только при её создании: раньше
+      // она ставилась один раз при приёме заявки и дальше не менялась ничем.
+      goal: form.goal,
+      targetScore: form.targetScore === "" ? null : Number(form.targetScore),
       lessonPrice: form.lessonPrice === "" ? null : Number(form.lessonPrice),
       boardUrl: boardMode === "external" ? form.boardUrl.trim() : "",
       callUrl: form.callUrl.trim(),
@@ -319,13 +365,11 @@ function StudentFormModal({ student, students = [], onClose, onSubmit, initialNa
 
     onSubmit({
       ...common,
-      goal: form.goal,
       // Временный id — только чтобы карточка дожила до вставки: настоящий выдаёт
       // база (student_link_cleanup.sql). Раньше клиент клал сюда UUID, а колонка —
       // bigint, и вставка молча падала: карточки не создавались полтора месяца.
       id: `tmp:${crypto.randomUUID()}`,
       balance: 0, results: [], payments: [],
-      targetScore: form.targetScore || null,
       parent_code: generateParentCode(),
     })
     // close(), а не onClose(): иначе после сохранения окно исчезало рывком,
@@ -380,18 +424,51 @@ function StudentFormModal({ student, students = [], onClose, onSubmit, initialNa
                 )}
               </div>
 
-              {/* Цель и целевой балл ученик выбирает сам в своей анкете — репетитор их
-                  здесь не заполняет, только видит. Дублировать выбор значило спорить
-                  с анкетой: два источника расходились уже на второй правке. */}
-              {onboardingPulled && (
-                <div className="flex items-start gap-2 rounded-xl bg-blue-50 dark:bg-blue-500/10 px-3.5 py-3">
-                  <Icon name="check" size={14} className="text-blue-600 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-gray-600">
-                    Из анкеты ученика: <span className="font-medium">{form.goal}</span>
-                    {form.targetScore ? <>, цель — {form.targetScore} {plural(form.targetScore, "балл", "балла", "баллов")}</> : null}
-                  </p>
+              {/* Цель ученик выбирает в анкете, но последнее слово за репетитором:
+                  анкету заполняют один раз и наспех, а цель меняется по ходу года
+                  (перешли с ОГЭ на ЕГЭ, подняли планку). Двух источников тут нет —
+                  и кабинет ученика, и кабинет репетитора читают ОДНУ карточку
+                  (students.goal / target_score); анкета остаётся тем, что сказал сам
+                  ученик, и её ответ показан подписью, если репетитор поставил другое. */}
+              <div>
+                <label className="text-sm text-gray-500 mb-2 block">Цель</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {GOAL_OPTIONS.map((g) => (
+                    <button key={g.id || "none"} type="button" onClick={() => pickGoal(g.id)}
+                      className={chipCls(form.goal === g.id)}>
+                      {g.label}
+                    </button>
+                  ))}
                 </div>
-              )}
+                <Collapse open={!!form.goal}>
+                  <div className="mt-2.5">
+                    {/* У ЕГЭ цель — тестовый балл 0–100, у ОГЭ и успеваемости —
+                        отметка: так их и спрашивают в анкете, и так их читает
+                        parseTarget() в examScales.js. */}
+                    {form.goal === "ЕГЭ" ? (
+                      <div className="relative">
+                        <input name="targetScore" type="text" inputMode="numeric"
+                          value={form.targetScore === "" ? "" : String(form.targetScore)}
+                          onChange={(e) => pickTarget(e.target.value.replace(/\D/g, "").slice(0, 3))}
+                          placeholder="Целевой балл, например: 85"
+                          className="input-glass pr-16" />
+                        <span className="absolute right-3 top-2.5 text-sm text-gray-400">из 100</span>
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-sm text-gray-500 mr-1">Целевая отметка</span>
+                        {MARK_OPTIONS.map((m) => (
+                          <button key={m} type="button" onClick={() => pickTarget(m)}
+                            className={chipCls(String(form.targetScore) === m)}>{m}</button>
+                        ))}
+                        <button type="button" onClick={() => pickTarget("")}
+                          className={chipCls(form.targetScore === "" || form.targetScore == null)}>Не задана</button>
+                      </div>
+                    )}
+                  </div>
+                </Collapse>
+                {surveyHint && <p className="text-xs text-gray-400 mt-2">{surveyHint}</p>}
+              </div>
 
               <div>
                 <label className="text-sm text-gray-500 mb-1.5 block">Стоимость занятия</label>
