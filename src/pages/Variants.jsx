@@ -1355,9 +1355,18 @@ function EditVariantModal({ variant, accounts, submissions, signal, onClose, onS
 
     // Состав получателей: снятым выдачу удаляем, добавленным заводим работу и
     // уведомление — тем же, каким вариант приходит при выдаче.
+    //
+    // Кто уже получил вариант, спрашиваем У БАЗЫ, а не у пропа: список выдач в
+    // состоянии страницы отстаёт (после создания варианта он ещё не перечитан),
+    // и по нему уже выданный ученик считался «добавленным» — вариант выдавался
+    // ему ВТОРОЙ строкой, и в разборе он стоял в списке дважды.
+    const { data: fresh } = await supabase.from("variant_submissions")
+      .select("id, student_id, status, opened_at").eq("variant_id", variant.id)
+    const rows = fresh || submissions
+    const busyNow = rows.filter((s) => s.status !== "pending" || s.opened_at).map((s) => String(s.student_id))
     const wanted = new Set(recipientIds)
-    const added = [...wanted].filter((id) => !submissions.some((s) => String(s.student_id) === id))
-    const removed = submissions.filter((s) => !wanted.has(String(s.student_id)) && !lockedIds.includes(String(s.student_id)))
+    const added = [...wanted].filter((id) => !rows.some((s) => String(s.student_id) === id))
+    const removed = rows.filter((s) => !wanted.has(String(s.student_id)) && !busyNow.includes(String(s.student_id)))
     if (removed.length > 0) {
       const { error: delErr } = await supabase.from("variant_submissions").delete().in("id", removed.map((s) => s.id))
       if (delErr) { setError("Не получилось убрать ученика: " + delErr.message); setSaving(false); return }
@@ -1911,7 +1920,7 @@ function Variants({ user, students = [] }) {
         </div>
       )}
       {showAdd && canVariants && (
-        <AddVariantModal tutorId={user.id} students={students} examFocus={user.profile?.exam_focus} bankSubjects={user.profile?.bank_subjects} owner={isOwner(user.email)} onClose={() => setShowAdd(false)} onAdd={(v) => { setVariants((prev) => [v, ...prev]); setShowAdd(false) }} />
+        <AddVariantModal tutorId={user.id} students={students} examFocus={user.profile?.exam_focus} bankSubjects={user.profile?.bank_subjects} owner={isOwner(user.email)} onClose={() => setShowAdd(false)} onAdd={(v) => { setVariants((prev) => [v, ...prev]); setShowAdd(false); loadData({ silent: true }) }} />
       )}
 
       {selectedSubmission && (
