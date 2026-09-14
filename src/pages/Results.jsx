@@ -126,14 +126,25 @@ function Sparkline({ values, tone = "blue", width = 90, height = 32 }) {
   )
 }
 
-function TargetBar({ value, target, className = "" }) {
-  const pct = Math.min((value / target) * 100, 100)
-  const reached = value >= target
+// Цель и балл ОБЯЗАНЫ стоять в одних единицах. Цель записана так, как её
+// называют люди: у ЕГЭ с тестовой шкалой это тестовый балл, у ОГЭ — отметка
+// либо первичный балл. Поэтому в единицы цели переводится БАЛЛ РАБОТЫ, а не
+// наоборот: «14 / 100» — это первичный балл против тестовой сотни, число, из
+// которого не следует ничего, а подпись обещала добрать 86 несуществующих
+// баллов. Достижение цели считает `stats.reachedTarget` — в первичных, как и
+// вся остальная арифметика: перевод в тестовые ступенчатый, и у самой границы
+// «85 из 85» могло бы соседствовать с «не достигнута».
+function TargetBar({ goal, row, reached, className = "" }) {
+  const isTest = goal.unit === "test"
+  const value = isTest ? (row.testScore ?? 0) : (row.res?.scaledPrimary ?? row.total)
+  const target = isTest ? goal.value : goal.primary
+  const pct = target > 0 ? Math.min((value / target) * 100, 100) : 0
+  const left = Math.max(0, target - value)
   return (
     <div className={className}>
       <div className="flex items-baseline justify-between text-[11px] mb-1.5">
         <span className="text-gray-400">
-          {reached ? "Цель достигнута" : `До цели ещё ${target - value} ${plural(target - value, "балл", "балла", "баллов")}`}
+          {reached ? "Цель достигнута" : `До цели ещё ${left} ${plural(left, "балл", "балла", "баллов")}`}
         </span>
         <span className="text-gray-500 font-medium tabular-nums">{value} / {target}</span>
       </div>
@@ -660,7 +671,7 @@ function StudentCard({ student, stats, hw, tutorId, open, onToggle }) {
 
         <div className="sm:hidden mt-2 text-xs text-gray-400 truncate">{summary}</div>
 
-        {stats.hasData && stats.target > 0 && <TargetBar value={stats.last.total} target={stats.target} className="mt-3" />}
+        {stats.hasData && stats.target > 0 && <TargetBar goal={stats.goal} row={stats.last} reached={stats.reachedTarget} className="mt-3" />}
       </button>
 
       <Collapse open={open}>

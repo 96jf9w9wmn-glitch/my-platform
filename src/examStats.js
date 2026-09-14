@@ -4,7 +4,7 @@
 // обязаны считаться одним правилом, иначе кабинеты разойдутся на одном ученике.
 import { plural, answersEqual, creditedNums, homeworkTaskItems, homeworkPointsOf } from "./utils"
 import { part1NumbersOf, part2NumbersOf } from "./pages/taskBankMeta"
-import { scaleOf, part2MaxOf, variantMaxPrimary, examResult, testScoreOf, examMaxPrimary } from "./examScales"
+import { scaleOf, part2MaxOf, variantMaxPrimary, examResult, testScoreOf, examMaxPrimary, parseTarget } from "./examScales"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Шкалы экзаменов
@@ -141,8 +141,20 @@ export function computeStats(student, rows) {
   const prev = sorted.length > 1 ? sorted[sorted.length - 2] : null
   const delta = prev ? last.total - prev.total : null
   const pct = share(last)
-  const target = student.targetScore || 0
   const bestRow = sorted.reduce((a, b) => (b.total > a.total ? b : a), sorted[0])
+
+  // ЦЕЛЬ ЗАПИСАНА НЕ В ПЕРВИЧНЫХ БАЛЛАХ, и сравнивать её с баллом работы
+  // напрямую нельзя. students.target_score хранит то, чем цель является для
+  // человека: у ЕГЭ с тестовой шкалой это тестовый балл (0–100), у ОГЭ —
+  // отметка. Первичный балл работы против тестовой сотни давал «14 / 100» и
+  // «до цели ещё 86 баллов» — баллов, которых на этом экзамене не существует
+  // (максимум профиля 33 первичных). Перевод один на всё приложение —
+  // parseTarget, его же зовёт «Готовность к экзамену».
+  const examType = examTypeOf(student, { rows: sorted })
+  const goal = parseTarget(examType, student.targetScore)
+  // Балл последней работы в шкале НАСТОЯЩЕГО экзамена: наш вариант почти всегда
+  // короче полного КИМ, и сравнивать с целью надо приведённый балл (examResult).
+  const lastPrimary = last.res?.scaledPrimary ?? last.total
 
   // Что считать тревогой. Порядок важен: двойка перевешивает спад, спад —
   // просто низкий балл. Показываем ОДНУ причину, самую весомую.
@@ -158,13 +170,16 @@ export function computeStats(student, rows) {
     last,
     delta,
     pct,
-    target,
+    examType,
+    goal,
+    // Цель в первичных баллах: в них считает вся арифметика результатов.
+    target: goal.primary,
     attention,
     avg: Math.round(sorted.reduce((s, v) => s + v.total, 0) / sorted.length),
     best: bestRow.total,
     bestRow,
     trendTone: delta === null || delta === 0 ? "blue" : delta > 0 ? "green" : "red",
-    reachedTarget: target ? last.total >= target : null,
+    reachedTarget: goal.primary ? lastPrimary >= goal.primary : null,
   }
 }
 
