@@ -140,3 +140,7 @@ dev-hw-part2.html
 src/devHwPart2.jsx
 dev-rename.html
 src/devRename.jsx
+
+# Стенд «условия пропадают после действия в разборе»
+dev-hw-list.html
+src/devHwList.jsx

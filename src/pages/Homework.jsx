@@ -3192,7 +3192,9 @@ function Homework({ user, students, onOpenBoard }) {
     loadHomework()
   }, [])
 
-  async function loadHomework() {
+  // forgetId — работа, условия которой только что переписали (правка выдачи):
+  // её сохранённые условия надо ЗАБЫТЬ, иначе разбор показал бы прежние.
+  async function loadHomework(forgetId = null) {
     // Список тянем БЕЗ bank_tasks. В этой колонке лежат условия целиком —
     // чертежи data-URI и данные файлов, — и на боевой она весит 96% всей
     // таблицы: раздел скачивал 650 КБ вместо 25 КБ, и цифра росла с каждой
@@ -3211,7 +3213,23 @@ function Homework({ user, students, onOpenBoard }) {
       : res
     // Бакет `homework` приватный — файл задания и присланное решение
     // открываются по временной подписанной ссылке.
-    setHomework(await signRows(data || [], { file_url: "homework", submission_url: "homework", solution_files: "homework", bank_tasks: "homework" }))
+    const signed = await signRows(data || [], { file_url: "homework", submission_url: "homework", solution_files: "homework", bank_tasks: "homework" })
+    // Условия (bank_tasks) в списке НЕ приходят — колонку не просят, её
+    // догружает ensureBankTasks для одной открытой работы. Поэтому
+    // перечитывание списка обязано ПЕРЕНЕСТИ уже загруженные условия: без
+    // этого любое действие в разборе (балл, зачёт, статус, оценка) звало
+    // loadHomework и стирало их с экрана — задания оставались пустыми
+    // карточками «Задание 1» без картинки, а балл многобалльного номера падал
+    // до единицы, потому что максимум берётся из bank_tasks.
+    setHomework((prev) => {
+      const known = new Map()
+      for (const row of prev) {
+        if (row && row.bank_tasks !== undefined && row.id !== forgetId) known.set(row.id, row.bank_tasks)
+      }
+      return signed.map((row) => (row && row.bank_tasks === undefined && known.has(row.id)
+        ? { ...row, bank_tasks: known.get(row.id) }
+        : row))
+    })
   }
 
   // Условия открытой работы. Грузим по одной и запоминаем в самой строке:
@@ -3421,7 +3439,7 @@ function Homework({ user, students, onOpenBoard }) {
           owner={isOwner(user.email)}
           editingHw={editingHw}
           onClose={() => setEditingHw(null)}
-          onCreated={loadHomework}
+          onCreated={() => loadHomework(editingHw.id)}
         />
       )}
     </div>
