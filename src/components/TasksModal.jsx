@@ -30,7 +30,7 @@ const answerShape = (text) =>
   isLongAnswer(text) ? "px-2.5 py-1.5 rounded-xl whitespace-pre-line leading-relaxed"
     : "px-2 py-0.5 rounded-full"
 
-function TaskBlock({ item, onCredit, onBoard, marking }) {
+export function TaskBlock({ item, onCredit, onBoard, marking }) {
   const { bankTask } = item
   // Задание с эталоном проверяет сама работа; без эталона (развёрнутый ответ,
   // письменная работа) ход решения смотрит репетитор — для него и есть доска.
@@ -83,7 +83,12 @@ function TaskBlock({ item, onCredit, onBoard, marking }) {
         {item.options?.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {item.options.map((o, j) => {
-              const correct = item.answer != null && o === item.answer
+              // Список вариантов строится по пункту б) (ответ части 2 у ЕГЭ
+              // двухчастный), поэтому и верный ищем по нему: сверка с полным
+              // эталоном «а)… б)…» не совпала бы ни с одним вариантом, и
+              // правильный не подсветился бы никогда.
+              const key = item.choiceAnswer ?? item.answer
+              const correct = key != null && String(o).trim() === String(key).trim()
               // В разборе видно и то, что выбрал ученик: верный вариант зелёный,
               // выбранный им неверный — красный, остальные без заливки.
               const chosen = reviewed && item.given != null && answersEqual(item.given, o)
@@ -126,14 +131,21 @@ function TaskBlock({ item, onCredit, onBoard, marking }) {
                 <span dangerouslySetInnerHTML={{ __html: renderHomeworkMath(String(item.given)) }} />
               </span>
             )}
-            {/* Верный ответ дописываем только там, где ученик ошибся: у верного
-                он тот же самый, и вторая плашка была бы дублем. */}
-            {item.ok === false && item.answer != null && item.answer !== "" && (
-              <>
-                <span className="text-gray-400">верный:</span>
+            {/* Верный ответ дописываем там, где ученик ошибся: у верного он тот
+                же самый, и вторая плашка была бы дублем. Исключение — showCorrect
+                (часть 2 варианта): там балл ставит человек по ходу решения, и
+                полный эталон «а)… б)…» нужен ему всегда, даже когда выбранный
+                ответ сошёлся, — пункт а) вариантами не проверяется вовсе. */}
+            {(item.ok === false || (item.showCorrect && !item.credited)) && item.answer != null && item.answer !== "" && (
+              // Эталон части 2 почти всегда многострочный («а) доказательство,
+              // б) 26»): вклиненный в строку ответа, он оттесняет её в угол и
+              // читается как сбой вёрстки. Длинный уводим на свою строку —
+              // короткий остаётся рядом с ответом, как и был.
+              <span className={`flex gap-1.5 ${isLongAnswer(item.answer) ? "basis-full flex-col items-start" : "items-center"}`}>
+                <span className="text-gray-400">{item.ok === false ? "верный:" : "эталон:"}</span>
                 <span className={`bg-green-500/15 text-green-700 dark:text-green-300 ring-1 ring-green-500/30 ${answerShape(item.answer)}`}
                   dangerouslySetInnerHTML={{ __html: renderHomeworkMath(String(item.answer)) }} />
-              </>
+              </span>
             )}
             {/* У зачтённого задания ответ ученика уже зелёный, но эталон всё равно
                 показываем: именно он оказался неверным, и по нему видно, что
@@ -204,6 +216,15 @@ function TaskBlock({ item, onCredit, onBoard, marking }) {
           </div>
         )}
 
+        {/* Решение к этому заданию ждали, а его нет. Молчать об этом нельзя: за
+            задание части 2 балл ставят по ходу решения, и отсутствие листа —
+            это не «пока не смотрел», а «ставить не за что». */}
+        {!shots.length && item.needSolution && (
+          <div className="flex items-center gap-1.5 text-[11px] text-amber-600">
+            <Icon name="image" size={12} className="flex-shrink-0" />нет фото решения
+          </div>
+        )}
+
         {/* Номер задания на экзамене. У задания из банка он приезжает вместе с
             заданием и только показывается; у нарезанного из своего файла его
             ставит репетитор — на нём держится вся статистика по номерам, и без
@@ -225,7 +246,8 @@ function TaskBlock({ item, onCredit, onBoard, marking }) {
             Предмет берём у самого задания (у собранного из банка он приезжает с
             генератором), а у нарезанного из файла — тот, что выбрал репетитор
             в шапке разметки. */}
-        <TaskCriteria examType={bankTask?.exam_type || marking?.examType} number={bankTask?.number} />
+        <TaskCriteria examType={bankTask?.exam_type || marking?.examType}
+          number={bankTask?.number} legacy={item.legacyProf} />
       </div>
     </div>
   )
@@ -313,7 +335,10 @@ function MarkRow({ item, marking, autoChecked, editable }) {
   // Максимум НОМЕРА: за №14 профиля на экзамене дают два балла, за №15 — три, и
   // «верно/неверно» такому заданию мало — за половину решения там ставят
   // половину баллов. Поэтому у многобалльного номера отметка это шкала 0…max.
-  const max = (known && taskMaxOf(examType, num)) || 1
+  // Максимум номера. item.max задаёт его СНАРУЖИ — так разбор варианта,
+  // выданного до перенумерации КИМ-2027, ставит баллы по своей замороженной
+  // разбаловке, а не по сегодняшней (см. variantPart2MaxOf).
+  const max = item.max ?? ((known && taskMaxOf(examType, num)) || 1)
   const points = markPoints(item.mark, max)
   // Балл ставится там, где его есть кому поставить. Задание в ОДИН балл, которое
   // сверилось с эталоном само, репетитор не размечает: верность уже известна, а
@@ -322,10 +347,13 @@ function MarkRow({ item, marking, autoChecked, editable }) {
   // промежуточный балл (1 из 2 за пункт а у №14 профиля) поставить может только
   // человек, и именно так его ставят на экзамене.
   const markable = canMark && known && (max > 1 || !autoChecked)
+  // Номер задания в варианте и есть номер на экзамене — он уже стоит кружком
+  // слева, и подписывать его второй раз незачем (showNumber: false).
+  const showNumber = marking.showNumber !== false
   // Строка ни о чём: номер править нельзя и балл ставить не за что. Показываем
   // только расхождение нумерации — как было до разметки.
   if (!editable && !markable) {
-    return num != null && String(num) !== String(item.n) ? (
+    return showNumber && num != null && String(num) !== String(item.n) ? (
       <div className="text-[11px] text-gray-400">
         №{num}{item.bankTask?.module ? " · блок 1–5" : ""}
       </div>
@@ -353,11 +381,13 @@ function MarkRow({ item, marking, autoChecked, editable }) {
               : `В «${examType}» нет задания №${num}`}
           </span>
         </>
-      ) : (
+      ) : showNumber ? (
         <span className="text-gray-400">
           №{num} · {numberTitle(examType, num)}
           {item.bankTask?.theme ? ` · ${item.bankTask.theme}` : ""}
         </span>
+      ) : (
+        <span className="text-gray-400">Балл за задание</span>
       )}
       {markable && (
         // Повторное нажатие по отмеченному снимает отметку: репетитор мог

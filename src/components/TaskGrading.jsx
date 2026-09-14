@@ -79,9 +79,11 @@ export function ScoreButtons({ max, points, onPick, big = false, muted = null })
 // сколько ставить за неполное решение. Без них балл части 2 ставится на глаз.
 // Свёрнуты: развёрнутая лестница из пяти пунктов длиннее самого условия, а
 // смотрят в неё один раз на задание.
-export function TaskCriteria({ examType, number, big = false, muted = null }) {
+// legacy — вариант выдан до перенумерации КИМ-2027: у его №13 критерии
+// тригонометрии, а не экономической задачи (см. isLegacyProfVariant).
+export function TaskCriteria({ examType, number, big = false, muted = null, legacy = false }) {
   const [open, setOpen] = useState(false)
-  const criteria = criteriaOf(examType, number)
+  const criteria = criteriaOf(examType, number, { legacyProf: legacy })
   if (!criteria) return null
   const size = big ? "text-[13px]" : "text-[11px]"
   return (

@@ -7,7 +7,7 @@ import Icon from "../components/Icon"
 import { isModuleNumber, linkedGroupOf, part1NumbersOf, part1SlotsOf, part2NumbersOf, isPart2Number, examLevelOf, numbersLabel, packVariantTask, VARIANT_TYPES } from "./taskBankMeta"
 import { choiceBaseOf } from "./answerChoices"
 import { scaleOf, variantPart2MaxOf, isLegacyProfVariant, variantMaxPrimary, examResult, secondaryLabel, taskMaxOf } from "../examScales"
-import { criteriaOf, gradingNotesOf } from "../examCriteria"
+import { gradingNotesOf } from "../examCriteria"
 // Вариант ученик решает столько же, сколько длится настоящий экзамен.
 import { examMinutesOf, formatExamDuration } from "./examTiming"
 // Список предметов — из лёгкого модуля: генераторы приезжают отдельно, по кнопке.
@@ -18,7 +18,7 @@ import { PlanHint } from "../components/PlanLock"
 import ConfirmModal from "../components/ConfirmModal"
 import DeadlinePicker from "../components/DeadlinePicker"
 import RenameTitle from "../components/RenameTitle"
-import TasksModal from "../components/TasksModal"
+import TasksModal, { TaskBlock } from "../components/TasksModal"
 import { PhotoButton } from "../components/PhotoViewer"
 import SegmentSwitch from "../components/SegmentSwitch"
 import StatTabs from "../components/StatTabs"
@@ -30,7 +30,6 @@ import getAvatarColor from "../avatarColor"
 import DateTile from "../components/DateTile"
 import { TILE_TINTS, dueTintKey } from "../dueTint"
 import Reveal from "../components/Reveal"
-import Collapse from "../components/Collapse"
 import { lazyChunk } from "../lazyChunk"
 // Тетрадь тянет генераторы заданий — грузим только когда её открыли.
 
@@ -213,6 +212,11 @@ function submissionResult(variant, sub) {
     variantMax: variantMaxOf(variant),
   })
 }
+
+// Балл части 2 в состоянии проверки — число либо пусто. У записей, проверенных
+// прежним полем ввода, в базе лежит строка, и без приведения шкала баллов
+// показала бы выставленный балл невыставленным.
+const toScore = (v) => (v == null || v === "" || Number.isNaN(Number(v)) ? "" : Number(v))
 
 // Имя файла в Storage: непредсказуемая часть пути — метка времени (вне компонента,
 // чтобы react-hooks/purity не считал Date.now() вызовом в рендере)
@@ -807,19 +811,23 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
 // поля несуществующих заданий: у КЕГЭ и ОГЭ по информатике части 2 нет вовсе.
 // Теперь состав части 2 берётся из самого варианта, а перевод балла — из
 // examScales.js.
-function VariantReview({ submission, variant, onClose, onSave }) {
+export function VariantReview({ submission, variant, onClose, onSave }) {
   const { cls: closingCls, close } = useClosing(onClose)
   const type = variant?.type || "ОГЭ"
   const part2Max = variantPart2MaxOf(variant)
   const part2Tasks = variantPart2Tasks(variant)
+  const snapshot = useMemo(() => new Map(
+    (variant?.tasks_snapshot || []).map((t) => [Number(t.number), t])), [variant])
   // Вариант выдан до перенумерации КИМ-2027: критерии показываем по его
   // старой раскладке («№13» в такой работе — тригонометрия, «№16» — экономическая).
   const legacyProf = isLegacyProfVariant(variant)
-  const [scores, setScores] = useState(part2Tasks.reduce((acc, n) => ({ ...acc, [n]: submission.part2_score_detail?.[n] ?? "" }), {}))
+  // Баллы части 2 держим ЧИСЛАМИ: их ставят кнопками шкалы (ScoreButtons), а у
+  // записей, проверенных до 14.09.2026, в базе лежат строки от прежнего поля
+  // ввода — markPoints строку не понимает и показал бы выставленный балл
+  // невыставленным.
+  const [scores, setScores] = useState(() => Object.fromEntries(
+    part2Tasks.map((n) => [n, toScore(submission.part2_score_detail?.[n])])))
   const [loading, setLoading] = useState(false)
-  // Критерии ФИПИ по одному номеру за раз: развёрнутые сразу все занимают
-  // больше экрана, чем сама форма, а сверяются всё равно по очереди.
-  const [openCriteria, setOpenCriteria] = useState(null)
   const [showNotes, setShowNotes] = useState(false)
   const notes = gradingNotesOf(type)
 
@@ -862,6 +870,14 @@ function VariantReview({ submission, variant, onClose, onSave }) {
   const toggleCredit = (num, on) =>
     setCredited((prev) => (on ? [...new Set([...prev, num])].sort((a, b) => a - b) : prev.filter((x) => x !== num)))
 
+  // Условия заданий этого варианта — по номеру. Без них проверять часть 2
+  // нельзя вовсе: эксперт ставит балл за ХОД решения, сверяя его с условием и
+  // критериями, а до 14.09.2026 в форме проверки стояли только номер и поле
+  // балла — ни условия, ни вариантов ответа, ни того, верный ли выбрал ученик.
+  // У варианта из своего файла снимка нет (условие лежит в PDF) — тогда
+  // показываем задание без условия, всё остальное на месте.
+  const taskOf = (n) => snapshot.get(Number(n)) || { number: n, exam_type: type }
+
   const part2Total = Object.values(scores).reduce((s, v) => s + (Number(v) || 0), 0)
   const part2MaxTotal = part2Tasks.reduce((s, n) => s + part2Max[n], 0)
   const total = part1Score + part2Total
@@ -884,114 +900,56 @@ function VariantReview({ submission, variant, onClose, onSave }) {
   const algebra = part2Tasks.filter((n) => !geomNums || !geomNums.includes(n))
   const geometry = geomNums ? part2Tasks.filter((n) => geomNums.includes(n)) : []
 
-  // Строка задания части 2: выбранный учеником ответ против верного, наличие фото решения
-  // и поле балла. Балл ставит только репетитор — совпадение ответа лишь подсказка.
-  const renderPart2Row = (n) => {
+  // Задание части 2 для разбора — в том же виде, в каком репетитор разбирает
+  // домашнюю работу (TaskBlock): условие с чертежом, четыре варианта ответа с
+  // подсвеченным верным и выбранным, фото решения, критерии ФИПИ и шкала балла.
+  // Второй вёрстки разбора тут быть не должно: проверка работы и проверка
+  // варианта — одно и то же дело, и расходиться им незачем.
+  const part2ItemOf = (n) => {
+    const correct = variant.answers?.part2?.[n] ?? null
+    // Ученик выбирал ответ по пункту б) (ответ ЕГЭ двухчастный) — по нему и
+    // сверяем, иначе верный выбор всегда показывался бы как несовпавший.
+    const base = correct == null ? null : choiceBaseOf(correct).text
+    const options = variant.answers?.part2_choices?.[n] || null
     const chosen = submission.part2_choices?.[n]
-    const correct = variant.answers?.part2?.[n]
-    const shots = fileUrls(submission.part2_files?.[n])
-    // Ученик выбирал ответ по пункту б) (ответ ЕГЭ двухчастный) — сверяем с той же
-    // частью, иначе верный выбор всегда показывался бы как несовпавший.
-    const match = chosen != null && correct != null && String(chosen).trim() === choiceBaseOf(correct).text.trim()
-    // Критерии ФИПИ для этого номера: по ним эксперт на экзамене и решает,
-    // сколько ставить за неполное решение. Без них балл ставится на глаз.
-    const criteria = criteriaOf(type, n, { legacyProf })
-    const open = openCriteria === n
-    return (
-      <Fragment key={n}>
-      {/* Отступ снизу держит обёртка, а не gap сетки: у панели критериев,
-          свёрнутой в ноль, gap оставлял бы за собой пустой зазор. */}
-      <div className="pb-2">
-      <div className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 px-3 py-2.5">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-600 flex-1 min-w-0">Задание {n}</span>
-          {criteria ? (
-            <button type="button" onClick={() => setOpenCriteria(open ? null : n)}
-              aria-expanded={open}
-              className={`press-fill flex-shrink-0 text-[11px] rounded-lg px-2 py-1 ring-1 transition-colors ${open ? "bg-blue-500 text-white ring-blue-500" : "bg-blue-50 text-blue-600 ring-blue-100"}`}>
-              из {part2Max[n]}
-            </button>
-          ) : (
-            <span className="text-xs text-gray-400 flex-shrink-0">макс. {part2Max[n]}</span>
-          )}
-          <input type="number" min="0" max={part2Max[n]} value={scores[n]}
-            onChange={(e) => setScores((prev) => ({ ...prev, [n]: e.target.value }))}
-            className="w-14 border border-gray-200 rounded-lg px-2 py-1 text-sm text-center outline-none focus:border-blue-400 flex-shrink-0" />
-        </div>
-        {/* Ответ ученика и верный — двумя подписанными строками, а не одной
-            красной фразой: длинные ответы («{0} ∪ [3; +∞)») переносились и
-            слипались с «верный:», прочесть было нельзя. */}
-        <div className="mt-2 flex flex-col gap-1 text-xs leading-relaxed">
-          {chosen == null ? (
-            <div className="flex items-center gap-1.5 text-amber-600">
-              <Icon name="minus" size={12} className="flex-shrink-0" />
-              ответ не выбран
-            </div>
-          ) : match ? (
-            <div className="flex items-start gap-1.5 text-green-600">
-              <Icon name="check" size={13} className="mt-0.5 flex-shrink-0" />
-              <span className="min-w-0 break-words">{chosen}</span>
-            </div>
-          ) : (
-            <>
-              <div className="flex items-start gap-2">
-                <span className="w-14 flex-shrink-0 text-gray-400">ответ</span>
-                <span className="min-w-0 break-words text-red-500">{chosen}</span>
-              </div>
-              {correct != null && (
-                <div className="flex items-start gap-2">
-                  <span className="w-14 flex-shrink-0 text-gray-400">верный</span>
-                  <span className="min-w-0 break-words text-green-600">{correct}</span>
-                </div>
-              )}
-            </>
-          )}
-          {/* Решение ученика — здесь же, в карточке своего задания: отдельным
-              списком «Файлы ученика» сверху приходилось держать в голове, к
-              какому номеру какой файл. */}
-          {shots.length ? (
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              {/* Листов к заданию бывает несколько, а кнопка одна: они
-                  перелистываются внутри окна просмотра. Ссылками порознь это
-                  выглядело как разные решения одного номера. */}
-              <PhotoButton photos={shots} title={`Задание ${n} · решение ученика`}
-                className="press-fill self-start inline-flex items-center gap-1.5 text-blue-600 rounded-lg -mx-1 px-1 py-0.5">
-                <Icon name="image" size={12} className="flex-shrink-0" />
-                {shots.length > 1 ? `решение · ${shots.length} фото` : "фото решения"}
-              </PhotoButton>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5 text-amber-600">
-              <Icon name="image" size={12} className="flex-shrink-0" />
-              нет фото решения
-            </div>
-          )}
-        </div>
-      </div>
-      </div>
-      {/* Критерии — целой строкой ПОД рядом карточек, а не внутри карточки:
-          раскрытые внутри, они растягивали свой ряд, и рядом с заданием
-          зияла пустота. Тот же приём, что у разбора работы (useGridCols). */}
-      {criteria && (
-        <div className="sm:col-span-2">
-          <Collapse open={open}>
-            <div className="pb-2">
-              <div className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 px-3 py-2.5 flex flex-col gap-2">
-                <div className="text-[11px] text-gray-400">Критерии · задание {n}</div>
-                {criteria.map((c) => (
-                  <div key={c.score} className="flex items-start gap-2.5">
-                    <span className="mt-px w-5 h-5 flex-shrink-0 rounded-md bg-white ring-1 ring-gray-200 text-[11px] font-medium text-gray-600 flex items-center justify-center">{c.score}</span>
-                    <span className="text-[11px] leading-relaxed text-gray-500">{c.text}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </Collapse>
-        </div>
-      )}
-      </Fragment>
-    )
+    return {
+      n,
+      bankTask: taskOf(n),
+      text: "",
+      answer: correct,
+      choiceAnswer: base,
+      // Полный эталон нужен всегда, даже при верном выборе: вариантами
+      // проверяется только пункт б), а балл ставится за решение целиком.
+      showCorrect: true,
+      options: options?.length ? options : null,
+      // Вариантов не было вовсе (свой файл без разбора ответа) — выбирать
+      // ученику было нечего, и «не отвечено» читалось бы как пропуск работы.
+      given: options?.length ? (chosen ?? null) : undefined,
+      ok: chosen == null ? null : String(chosen).trim() === String(base ?? "").trim(),
+      solutionUrls: fileUrls(submission.part2_files?.[n]),
+      // Фото решения ждут там же, где его ждут от ученика: у задания с
+      // вариантами — если ответ выбран, у задания без вариантов — всегда.
+      needSolution: options?.length ? chosen != null : true,
+      mark: scores[n],
+      // Разбаловка ЭТОГО варианта: у выданных до перенумерации КИМ-2027 она
+      // своя, и критерии с максимумом балла должны идти по ней же.
+      max: part2Max[n],
+      legacyProf,
+    }
   }
+
+  // Балл ставится шкалой эксперта (0…максимум номера), а не полем ввода:
+  // цифра в поле ничего не говорит о том, сколько за это задание вообще дают.
+  const marking = {
+    canMark: true,
+    // Номер задания в варианте и есть номер на экзамене — он уже стоит кружком
+    // слева, второй раз подписывать его незачем.
+    showNumber: false,
+    examType: type,
+    onMark: (item, points) => setScores((prev) => ({ ...prev, [item.n]: points ?? "" })),
+  }
+
+  const renderPart2Row = (n) => <TaskBlock key={n} item={part2ItemOf(n)} marking={marking} />
 
   async function handleSave() {
     setLoading(true)
@@ -1033,7 +991,7 @@ function VariantReview({ submission, variant, onClose, onSave }) {
   return createPortal(
     <div className={`fixed inset-0 glass-overlay z-50 overflow-y-auto ${closingCls}`}>
       <div className="min-h-full flex items-center justify-center p-4">
-        <div className={`glass-modal p-6 w-full max-w-2xl ${closingCls}`}>
+        <div className={`glass-modal p-6 w-full max-w-3xl ${closingCls}`}>
           <div className="flex justify-between items-center mb-5">
             <h2 className="text-lg font-medium">Проверка · {type}</h2>
             <button onClick={close} aria-label="Закрыть" className="text-gray-500 hover:text-gray-700"><Icon name="x" size={18} /></button>
@@ -1053,39 +1011,19 @@ function VariantReview({ submission, variant, onClose, onSave }) {
                 <label className="text-sm text-gray-500">Ошибки части 1</label>
                 {canCredit && <span className="text-[11px] text-gray-400">эталон банка бывает неверным — такое задание можно засчитать</span>}
               </div>
-              <div className="flex flex-col gap-2">
-                {part1Wrong.map(({ num, given, correct }) => {
-                  const byHand = credited.includes(num)
-                  return (
-                    <div key={num} className="rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 px-3 py-2.5 flex items-start gap-3">
-                      <div className="min-w-0 flex-1 flex flex-col gap-1">
-                        <div className="text-sm text-gray-600">Задание {num}</div>
-                        <div className="flex items-start gap-2 text-xs">
-                          <span className="w-14 flex-shrink-0 text-gray-400">ответ</span>
-                          <span className={`min-w-0 break-words ${byHand ? "text-green-600" : "text-red-500"}`}>{given}</span>
-                        </div>
-                        <div className="flex items-start gap-2 text-xs">
-                          <span className="w-14 flex-shrink-0 text-gray-400">эталон</span>
-                          <span className="min-w-0 break-words text-gray-700">{correct}</span>
-                        </div>
-                        {byHand && (
-                          <span className="self-start inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-green-500/12 text-green-700 dark:text-green-300 ring-1 ring-green-500/25">
-                            <Icon name="check" size={10} />Засчитано · {taskMaxOf(type, num) || 1} {plural(taskMaxOf(type, num) || 1, "балл", "балла", "баллов")}
-                          </span>
-                        )}
-                      </div>
-                      {canCredit && (
-                        <button type="button" onClick={() => toggleCredit(num, !byHand)}
-                          title={byHand ? "Снять зачёт: задание снова считается ошибкой" : "Ответ ученика верен, а эталон банка ошибочен — засчитать задание"}
-                          className={`press-fill flex-shrink-0 text-[11px] rounded-lg px-2.5 py-1 ring-1 ${byHand
-                            ? "text-gray-500 ring-gray-500/20 hover:text-red-500"
-                            : "text-blue-600 ring-blue-500/25 hover:bg-blue-500/[0.06]"}`}>
-                          {byHand ? "Отменить зачёт" : "Засчитать"}
-                        </button>
-                      )}
-                    </div>
-                  )
-                })}
+              <div className="flex flex-col gap-2.5">
+                {part1Wrong.map(({ num, given, correct }) => (
+                  <TaskBlock key={num}
+                    item={{
+                      n: num, bankTask: taskOf(num), text: "", answer: correct, given,
+                      // Зачтённое вручную — ВЕРНОЕ: ошибся эталон банка, а не
+                      // ученик (так же считает разбор домашней работы). Иначе
+                      // ответ остался бы красным, а эталон встал бы дважды —
+                      // «верный» и «эталон» одним и тем же числом.
+                      ok: credited.includes(num), credited: credited.includes(num),
+                    }}
+                    onCredit={canCredit ? (item, on) => toggleCredit(item.n, on) : undefined} />
+                ))}
               </div>
             </div>
           )}
@@ -1132,15 +1070,15 @@ function VariantReview({ submission, variant, onClose, onSave }) {
                 <>
                   <div className="mb-3">
                     <div className="text-xs font-medium text-blue-600 mb-2 bg-blue-50 px-2 py-1 rounded">Алгебра {algebra[0]}–{algebra[algebra.length - 1]}</div>
-                    <div className="grid gap-x-2 sm:grid-cols-2 grid-flow-row-dense items-start">{algebra.map(renderPart2Row)}</div>
+                    <div className="flex flex-col gap-2.5">{algebra.map(renderPart2Row)}</div>
                   </div>
                   <div>
                     <div className="text-xs font-medium text-purple-600 mb-2 bg-purple-50 px-2 py-1 rounded">Геометрия {geometry[0]}–{geometry[geometry.length - 1]}</div>
-                    <div className="grid gap-x-2 sm:grid-cols-2 grid-flow-row-dense items-start">{geometry.map(renderPart2Row)}</div>
+                    <div className="flex flex-col gap-2.5">{geometry.map(renderPart2Row)}</div>
                   </div>
                 </>
               ) : (
-                <div className="grid gap-x-2 sm:grid-cols-2 grid-flow-row-dense items-start">{part2Tasks.map(renderPart2Row)}</div>
+                <div className="flex flex-col gap-2.5">{part2Tasks.map(renderPart2Row)}</div>
               )}
             </div>
           )}
