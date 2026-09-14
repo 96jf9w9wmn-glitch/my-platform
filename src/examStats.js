@@ -156,12 +156,24 @@ export function computeStats(student, rows) {
   // короче полного КИМ, и сравнивать с целью надо приведённый балл (examResult).
   const lastPrimary = last.res?.scaledPrimary ?? last.total
 
-  // Что считать тревогой. Порядок важен: двойка перевешивает спад, спад —
-  // просто низкий балл. Показываем ОДНУ причину, самую весомую.
+  // Что считать тревогой. Порядок важен: несданный экзамен перевешивает спад,
+  // спад — просто низкий балл. Показываем ОДНУ причину, самую весомую.
+  //
+  // МЕРИТЬ ТРЕВОГУ НАДО ТОЙ ЖЕ ШКАЛОЙ, ЧТО СТОИТ НА ЭКРАНЕ. Доля первичных
+  // баллов годится там, где первичный балл и есть результат (ОГЭ, база: отметка
+  // выставляется по сумме). У профиля и информатики результат экзамена —
+  // ТЕСТОВЫЙ балл, а перевод в него нелинейный: 14 из 32 первичных — это 74 из
+  // 100, то есть и выше порога, и выше половины. Пока порог считался по
+  // первичным, карточка противоречила сама себе: рядом стояли «меньше
+  // половины», «тест ≈74» и «74 из 100».
+  const byTest = last.res?.kind === "test" && last.testScore != null
+  const belowMin = byTest && last.res.minTest ? last.testScore < last.res.minTest : false
+  const belowHalf = byTest ? last.testScore < 50 : pct < 50
   let attention = null
   if (last.grade === 2) attention = "ниже тройки"
+  else if (belowMin) attention = "ниже порога"
   else if (delta !== null && delta < 0) attention = `спад на ${Math.abs(delta)}`
-  else if (pct < 50) attention = "меньше половины"
+  else if (belowHalf) attention = "меньше половины"
 
   return {
     hasData: true,
