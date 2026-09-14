@@ -102,6 +102,15 @@ const SMART_KEY = "board-smart-draw"
 // есть самое начало. Написанное за время отсутствия оказывалось далеко за краем
 // экрана, и человек видел пустоту вместо чужой работы. Поэтому вход открывается
 // у СВЕЖИХ записей, а своё место запоминается на устройстве.
+// Тащат объект (или рамку выделения) к краю экрана — полотно едет само.
+// Иначе перенос на экран вниз делается в три приёма: упёрся в край, бросил,
+// проскроллил, взял заново — и так до места.
+const EDGE_PAN = 64          // ширина полосы у края, в которой полотно едет (css px)
+const EDGE_PAN_MAX = 16      // сколько css-пикселей за кадр у самого края
+// Своя метка в системном буфере: по ней ⌘V отличает копию с доски от чужого
+// текста и от картинки. Копия так переносится и в соседнюю вкладку с доской.
+const CLIP_MARK = "precettore-board-strokes"
+
 const VIEW_KEY = "board-view"       // localStorage: последний обзор по каждой доске
 const OFFSCREEN_HINT_MS = 8000      // столько висит подсказка «пишут за краем экрана»
 const TEXT_DRAFT_RATE = 120         // как часто набираемая надпись уходит собеседнику, мс
@@ -1086,6 +1095,11 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   const dirty = useRef(false)
   const rafId = useRef(0)
   const actions = useRef({})
+  const clipStrokes = useRef(null)    // свой буфер обмена доски (копии штрихов без id)
+  const pasteSeen = useRef(0)         // когда в последний раз приходило системное событие вставки
+  const lastPaste = useRef(null)      // куда легла прошлая вставка: повтор в то же место сдвигается
+  const hoverPt = useRef(null)        // последнее положение указателя (вставляем под курсор)
+  const autoPan = useRef(null)        // {x, y, alt, raf} — полотно едет само у края экрана
   const imgCache = useRef(new Map())  // "src|вес" -> HTMLImageElement (ленивая загрузка, см. getImage)
   // Адреса blob-ов, под которыми в кэше лежат СВОИ картинки. Отпускать их, пока
   // картинка в кэше, нельзя: браузер вправе выбросить растр и перечитать его по
@@ -2908,8 +2922,96 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     scheduleDraw()
   }
 
+  // Перенос выделенного в точку экрана. Вынесено из onPointerMove, потому что
+  // то же самое делает автопрокрутка у края: полотно едет, палец стоит, и
+  // объект обязан ехать вместе с полотном — иначе он замирал бы на месте, пока
+  // доска под ним уползает.
+  function dragSelectionTo(clientX, clientY, noSnap) {
+    const m = movingSel.current
+    if (!m) return
+    const p = toWorld(clientX, clientY)
+    let dx = p[0] - m.x0, dy = p[1] - m.y0
+    // Alt (⌥) отключает прилипание: иногда нужно поставить объект именно
+    // чуть-чуть мимо ровной линии.
+    if (noSnap) guides.current = []
+    else {
+      const sn = computeSnap(m.bb0, dx, dy)
+      dx = sn.dx; dy = sn.dy; guides.current = sn.guides
+    }
+    // Двигаем на разницу с уже применённым сдвигом — сами штрихи хранят
+    // абсолютные координаты, и пересчитывать их от начала было бы дороже.
+    const ddx = dx - m.dx, ddy = dy - m.dy
+    if (ddx || ddy) for (const id of selection.current) {
+      const s = strokes.current.get(id)
+      if (s) s.points = s.points.map((pt) => [pt[0] + ddx, pt[1] + ddy, ...pt.slice(2)])
+    }
+    m.dx = dx; m.dy = dy
+    scheduleDraw()
+  }
+
+  function dragMarqueeTo(clientX, clientY) {
+    const m = marquee.current
+    if (!m) return
+    const p = toWorld(clientX, clientY)
+    m.x1 = p[0]; m.y1 = p[1]
+    // Объекты выделяются ПО ХОДУ протяжки, а не по отпусканию: видно, что
+    // именно попало в рамку, и её можно поправить, не начиная заново.
+    // Габариты кэшированы (strokeBox), так что пересчёт на каждое движение
+    // дешёв. Ручки и панель свойств до отпускания не показываются — они
+    // относятся к уже готовому выделению, а не к растущей рамке.
+    const rect = { minX: Math.min(m.x0, m.x1), minY: Math.min(m.y0, m.y1), maxX: Math.max(m.x0, m.x1), maxY: Math.max(m.y0, m.y1) }
+    const next = new Set()
+    if (Math.abs(m.x1 - m.x0) > 4 || Math.abs(m.y1 - m.y0) > 4) {
+      for (const [id, s] of strokes.current) if (s.tool !== "eraser" && rectsIntersect(rect, strokeBox(s))) next.add(id)
+    }
+    let changed = next.size !== selection.current.size
+    if (!changed) for (const id of next) if (!selection.current.has(id)) { changed = true; break }
+    if (changed) { selection.current = next; applySelCount(next.size) }
+    scheduleLive()
+  }
+
+  // Доля скорости по одной оси: у внутренней границы полосы почти ноль, у края
+  // и за ним — полная. Плавный разгон важен: иначе полотно срывается с места,
+  // едва объект подвели к краю, и точно положить его у границы нельзя.
+  function edgeVel(pos, min, max) {
+    if (pos < min + EDGE_PAN) return -clamp((min + EDGE_PAN - pos) / EDGE_PAN, 0, 1)
+    if (pos > max - EDGE_PAN) return clamp((pos - (max - EDGE_PAN)) / EDGE_PAN, 0, 1)
+    return 0
+  }
+  // Запоминаем, где стоит палец, и держим кадры, пока он у края. Пока движение
+  // идёт, кадры и так приходят с pointermove, но у края палец ОСТАНАВЛИВАЕТСЯ —
+  // событий больше нет, а ехать надо.
+  function edgePanFrom(clientX, clientY, alt) {
+    autoPan.current = { x: clientX, y: clientY, alt, raf: autoPan.current?.raf || 0 }
+    if (!autoPan.current.raf) autoPan.current.raf = requestAnimationFrame(edgePanTick)
+  }
+  function stopEdgePan() {
+    if (autoPan.current?.raf) cancelAnimationFrame(autoPan.current.raf)
+    autoPan.current = null
+  }
+  function edgePanTick() {
+    const st = autoPan.current
+    if (!st) return
+    st.raf = 0
+    const c = canvasRef.current
+    // Жест кончился (отпустили, ушли со страницы) — ехать больше не за чем.
+    if (!c || (!movingSel.current && !marquee.current)) { stopEdgePan(); return }
+    st.raf = requestAnimationFrame(edgePanTick)
+    const r = c.getBoundingClientRect()
+    const vx = edgeVel(st.x, r.left, r.right), vy = edgeVel(st.y, r.top, r.bottom)
+    if (!vx && !vy) return
+    // Полотно уезжает В СТОРОНУ края: смещение обзора и направление взгляда
+    // противоположны (см. панорамирование выше).
+    view.current.x -= vx * EDGE_PAN_MAX
+    view.current.y -= vy * EDGE_PAN_MAX
+    if (movingSel.current) dragSelectionTo(st.x, st.y, st.alt)
+    else dragMarqueeTo(st.x, st.y)
+    scheduleDraw()   // обзор изменился — слой сцены пересобрать целиком
+  }
+
   function onPointerMove(e) {
     if (pointers.current.has(e.pointerId)) pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    hoverPt.current = { x: e.clientX, y: e.clientY }   // сюда ляжет вставка из буфера
     if (gesture.current) { updateGesture(); return }
     if (panning.current) {
       view.current.x += e.clientX - panning.current.x
@@ -2920,46 +3022,14 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     if (erasing.current) { eraseObjectsAt(e.clientX, e.clientY); return }
     // Перетаскивание выделенного
     if (movingSel.current) {
-      const m = movingSel.current
-      const p = toWorld(e.clientX, e.clientY)
-      let dx = p[0] - m.x0, dy = p[1] - m.y0
-      // Alt (⌥) отключает прилипание: иногда нужно поставить объект именно
-      // чуть-чуть мимо ровной линии.
-      if (e.altKey) guides.current = []
-      else {
-        const sn = computeSnap(m.bb0, dx, dy)
-        dx = sn.dx; dy = sn.dy; guides.current = sn.guides
-      }
-      // Двигаем на разницу с уже применённым сдвигом — сами штрихи хранят
-      // абсолютные координаты, и пересчитывать их от начала было бы дороже.
-      const ddx = dx - m.dx, ddy = dy - m.dy
-      if (ddx || ddy) for (const id of selection.current) {
-        const s = strokes.current.get(id)
-        if (s) s.points = s.points.map((pt) => [pt[0] + ddx, pt[1] + ddy, ...pt.slice(2)])
-      }
-      m.dx = dx; m.dy = dy
-      scheduleDraw()
+      edgePanFrom(e.clientX, e.clientY, e.altKey)
+      dragSelectionTo(e.clientX, e.clientY, e.altKey)
       return
     }
     // Растягивание рамки выделения
     if (marquee.current) {
-      const p = toWorld(e.clientX, e.clientY)
-      const m = marquee.current
-      m.x1 = p[0]; m.y1 = p[1]
-      // Объекты выделяются ПО ХОДУ протяжки, а не по отпусканию: видно, что
-      // именно попало в рамку, и её можно поправить, не начиная заново.
-      // Габариты кэшированы (strokeBox), так что пересчёт на каждое движение
-      // дешёв. Ручки и панель свойств до отпускания не показываются — они
-      // относятся к уже готовому выделению, а не к растущей рамке.
-      const rect = { minX: Math.min(m.x0, m.x1), minY: Math.min(m.y0, m.y1), maxX: Math.max(m.x0, m.x1), maxY: Math.max(m.y0, m.y1) }
-      const next = new Set()
-      if (Math.abs(m.x1 - m.x0) > 4 || Math.abs(m.y1 - m.y0) > 4) {
-        for (const [id, s] of strokes.current) if (s.tool !== "eraser" && rectsIntersect(rect, strokeBox(s))) next.add(id)
-      }
-      let changed = next.size !== selection.current.size
-      if (!changed) for (const id of next) if (!selection.current.has(id)) { changed = true; break }
-      if (changed) { selection.current = next; applySelCount(next.size) }
-      scheduleLive()
+      edgePanFrom(e.clientX, e.clientY, e.altKey)
+      dragMarqueeTo(e.clientX, e.clientY)
       return
     }
     // курсор собеседникам (в мировых координатах), не чаще POINTER_RATE:
@@ -2988,6 +3058,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   function onPointerUp(e) {
     pointers.current.delete(e.pointerId)
     if (pointers.current.size < 2) gesture.current = null
+    stopEdgePan()   // палец отпущен — полотно у края больше не едет
     // Сдвиг кончился (кнопкой/пробелом или разъехавшимися пальцами) — гасим
     // подсветку «Двигать полотно» в панели.
     if (panning.current || !gesture.current) setPanDrag(false)
@@ -3723,6 +3794,99 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     if (tries > 0) setTimeout(() => focusSheet(bb, tries - 1), 100)
   }
 
+  // ⌘C — копия выделенного. Дублирование рядом («Дублировать») этого не
+  // заменяет: копию несут на ДРУГОЕ место доски, а то и на другую доску —
+  // разбор занятия и доску домашней работы, — и там дублирование бесполезно.
+  function copySelection() {
+    actions.current.commitText?.()   // набираемое становится штрихом, иначе копировать нечего
+    const items = []
+    for (const id of selection.current) {
+      const s = strokes.current.get(id)
+      if (!s || s.tool === "eraser") continue
+      // Картинка, ещё едущая в хранилище, известна только временным адресом
+      // этой вкладки: копия с ним осталась бы пустой и у собеседника, и после
+      // перезагрузки. Та же оговорка, что у дублирования.
+      if (s.pending) continue
+      const c = cloneStroke(s)
+      delete c.id; delete c.author   // вставка выдаст свои
+      items.push(c)
+    }
+    if (!items.length) return false
+    clipStrokes.current = items
+    lastPaste.current = null
+    // Системный буфер получает то же самое текстом — ради ДРУГОЙ вкладки:
+    // копия с доски занятия вставляется на доску домашней работы. Права на
+    // запись может и не быть (Safari, отказ) — внутри вкладки это ничего не
+    // меняет, там работает свой буфер.
+    try {
+      navigator.clipboard?.writeText(JSON.stringify({ mark: CLIP_MARK, strokes: items }))?.catch?.(() => {})
+    } catch { /* буфер недоступен — остаётся свой */ }
+    return true
+  }
+
+  // Разбор текста из системного буфера: наша копия или чужой текст.
+  function parseClip(text) {
+    if (!text || text.length < CLIP_MARK.length || !text.includes(CLIP_MARK)) return null
+    try {
+      const d = JSON.parse(text)
+      return d?.mark === CLIP_MARK && Array.isArray(d.strokes) && d.strokes.length ? d.strokes : null
+    } catch { return null }
+  }
+
+  // Куда ляжет вставка: под курсор, а если указателя над доской нет (палец,
+  // клавиатура) — в середину видимой области.
+  function pasteAnchor() {
+    const c = canvasRef.current
+    if (!c) return null
+    const r = c.getBoundingClientRect()
+    const h = hoverPt.current
+    const inside = h && h.x >= r.left && h.x <= r.right && h.y >= r.top && h.y <= r.bottom
+    return inside ? toWorld(h.x, h.y) : toWorld(r.left + c.clientWidth / 2, r.top + c.clientHeight / 2)
+  }
+
+  function pasteStrokes(items) {
+    if (!items?.length) return false
+    const at = pasteAnchor()
+    if (!at) return false
+    // Копия ложится ЦЕЛИКОМ под курсор, сохраняя взаимное расположение
+    // объектов: габарит всей пачки центрируется на точке вставки.
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    for (const s of items) {
+      const b = strokeBox(s)
+      if (!b) continue
+      minX = Math.min(minX, b.minX); minY = Math.min(minY, b.minY)
+      maxX = Math.max(maxX, b.maxX); maxY = Math.max(maxY, b.maxY)
+    }
+    if (!Number.isFinite(minX)) return false
+    // Вставили второй раз туда же (⌘V подряд) — сдвигаем, иначе копия ляжет
+    // ровно на копию и будет выглядеть как «ничего не произошло».
+    const prev = lastPaste.current
+    const same = prev && Math.abs(prev.x - at[0]) < 1 && Math.abs(prev.y - at[1]) < 1
+    const n = same ? prev.n + 1 : 0
+    lastPaste.current = { x: at[0], y: at[1], n }
+    const off = (16 / view.current.scale) * n
+    const dx = at[0] - (minX + maxX) / 2 + off, dy = at[1] - (minY + maxY) / 2 + off
+    const next = new Set()
+    for (const s of items) {
+      if (!Array.isArray(s?.points) || !s.points.length) continue
+      const ns = { ...cloneStroke(s), id: makeId(userId), author: userId }
+      delete ns.pending
+      ns.points = ns.points.map((pt) => [pt[0] + dx, pt[1] + dy, ...pt.slice(2)])
+      strokes.current.set(ns.id, ns)
+      localPending.current.add(ns.id)
+      channelRef.current?.send({ type: "broadcast", event: "draw", payload: ns })
+      next.add(ns.id)
+    }
+    if (!next.size) return false
+    // Порядок как у «выделить всё»: сначала курсор (смена инструмента сбрасывает
+    // выделение), потом само выделение — вставленное сразу под рукой.
+    setTool("cursor")
+    selection.current = next; applySelCount(next.size)
+    pushHistory([...next].map((nid) => ({ id: nid, before: null, after: cloneStroke(strokes.current.get(nid)) })))
+    scheduleDraw(); scheduleSave()
+    return true
+  }
+
   function duplicateSelection() {
     if (!selection.current.size) return
     const next = new Set()
@@ -4192,7 +4356,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     } catch { /* приватный режим — обзор просто не запомнится */ }
   }
 
-  useEffect(() => { actions.current.undo = undo; actions.current.redo = redo; actions.current.del = deleteSelection; actions.current.selectAll = selectAll; actions.current.paste = addImageAt; actions.current.commitText = commitTextEdit; actions.current.close = closeBoard })
+  useEffect(() => { actions.current.undo = undo; actions.current.redo = redo; actions.current.del = deleteSelection; actions.current.selectAll = selectAll; actions.current.paste = addImageAt; actions.current.commitText = commitTextEdit; actions.current.close = closeBoard; actions.current.copy = copySelection; actions.current.pasteStrokes = pasteStrokes; actions.current.parseClip = parseClip; actions.current.pasteOwn = () => { if (clipStrokes.current) pasteStrokes(clipStrokes.current) } })
 
   // Выбранный цвет держится между занятиями (см. COLOR_KEY)
   useEffect(() => {
@@ -4247,14 +4411,28 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     function onPaste(e) {
       const tag = e.target?.tagName
       if (tag === "INPUT" || tag === "TEXTAREA" || e.target?.isContentEditable) return
+      pasteSeen.current = performance.now()   // системная вставка дошла — запасной путь не нужен
+      // Своя копия с доски идёт первой: она лежит в системном буфере текстом, то
+      // есть попала туда позже любой картинки, которую там нашли.
+      const own = actions.current.parseClip?.(e.clipboardData?.getData("text/plain") || "")
+      if (own) { e.preventDefault(); actions.current.pasteStrokes?.(own); return }
       const item = Array.from(e.clipboardData?.items || []).find((i) => i.type.startsWith("image/"))
       const file = item?.getAsFile()
-      if (!file) return
-      e.preventDefault()
-      const c = canvasRef.current; if (!c) return
-      const r = c.getBoundingClientRect()
-      const [wx, wy] = toWorld(r.left + c.clientWidth / 2, r.top + c.clientHeight / 2)
-      actions.current.paste?.(file, wx, wy)
+      if (file) {
+        e.preventDefault()
+        const c = canvasRef.current; if (!c) return
+        const r = c.getBoundingClientRect()
+        const [wx, wy] = toWorld(r.left + c.clientWidth / 2, r.top + c.clientHeight / 2)
+        actions.current.paste?.(file, wx, wy)
+        return
+      }
+      // Ни нашей копии в буфере, ни картинки: в системный буфер писать не дали
+      // (Safari, отказ в праве) — кладём из своего. Текст с доски и так не
+      // вставляется, так что отнять этим нечего.
+      if (clipStrokes.current) {
+        e.preventDefault()
+        actions.current.pasteStrokes?.(clipStrokes.current)
+      }
     }
     window.addEventListener("paste", onPaste)
     return () => window.removeEventListener("paste", onPaste)
@@ -4342,6 +4520,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // Смена инструмента сбрасывает выделение
   useEffect(() => {
     if (tool === "cursor") return
+    stopEdgePan()
     selection.current.clear(); marquee.current = null; movingSel.current = null; guides.current = []
     // eslint-disable-next-line react-hooks/set-state-in-effect
     applySelCount(0)
@@ -4395,6 +4574,23 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         const isZ = e.code === "KeyZ" || k === "z" || k === "я"
         const isY = e.code === "KeyY" || k === "y" || k === "н"
         const isA = e.code === "KeyA" || k === "a" || k === "ф"
+        const isC = e.code === "KeyC" || k === "c" || k === "с"
+        // ⌘C копирует выделенное на доске. Ничего не выделено — не мешаем
+        // браузеру копировать обычным способом (подпись участника, текст плашки).
+        if (isC && !inField) {
+          if (actions.current.copy?.()) { e.preventDefault(); e.stopPropagation() }
+          return
+        }
+        const isV = e.code === "KeyV" || k === "v" || k === "м"
+        // Системную вставку делает событие paste — только оно видит буфер
+        // обмена. Но его может и не быть (нет права на чтение буфера, встроенный
+        // просмотр страницы), и тогда через такт кладём из своего буфера: копия
+        // внутри вкладки обязана вставляться при любых правах.
+        if (isV && !inField && !e.repeat) {
+          const t = performance.now()
+          setTimeout(() => { if (pasteSeen.current < t) actions.current.pasteOwn?.() }, 0)
+          return
+        }
         if (isA && !inField) {
           // Иначе браузер выделит текст всей страницы — панель, подписи участников.
           e.preventDefault()
@@ -5017,7 +5213,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
               </div>
               )}
               {selProps && divider}
-              <button onClick={duplicateSelection} title="Дублировать"
+              <button onClick={duplicateSelection} title="Дублировать (копировать — ⌘C, вставить — ⌘V)"
                 className="press-tap w-8 h-8 rounded-lg flex items-center justify-center board-hover" style={idleStyle}>
                 <Icon name="copy" size={15} />
               </button>
