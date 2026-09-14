@@ -749,7 +749,10 @@ const sheetImg = (img, style) =>
 // скачивания стоит прямо под условием.
 function attachedNames(t) {
   const files = t?.textFile ? (Array.isArray(t.textFile) ? t.textFile : [t.textFile]) : []
-  return [t?.archive?.name, t?.spreadsheet?.name, ...files.map((f) => f?.name)].filter(Boolean)
+  // Файл задания, взятого из банка ФИПИ, лежит в хранилище, но на листе он такой
+  // же «прилагаемый файл», как собранный в браузере.
+  const remote = t?.remoteFile ? (Array.isArray(t.remoteFile) ? t.remoteFile : [t.remoteFile]) : []
+  return [t?.archive?.name, t?.spreadsheet?.name, ...files.map((f) => f?.name), ...remote.map((f) => f?.name)].filter(Boolean)
 }
 
 // Номер задания в КИМ стоит в рамке на левом поле, а не «1.» текстом. Ширина

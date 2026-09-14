@@ -81,9 +81,12 @@ const ASSET_BASE = `${(import.meta.env && import.meta.env.VITE_SUPABASE_URL) || 
 const assetUrl = (path) => ASSET_BASE + path
 
 // Задание, которое едет из банка целиком: у него уже есть и условие, и ответ.
+// Пометка fipi отличает ВЗЯТОЕ из открытого банка от СОБРАННОГО генератором —
+// на ней держится подпись в просмотре банка. Без неё такое задание подписано
+// «генератор», что попросту неправда.
 const fromPool = (pool, key) => {
   const x = fromBank(pool, key)
-  return x ? { condition_text: x.c, answer: x.a } : null
+  return x ? { condition_text: x.c, answer: x.a, fipi: true } : null
 }
 
 // Условие №2 собирается вокруг данных задания: формула и фрагмент таблицы — из
@@ -107,6 +110,7 @@ function t2FromBank(key) {
       `Определите, какому столбцу таблицы соответствует каждая из переменных ${t2it("w, x, y, z")}.\n\n` +
       T2_TAIL + "\n\n" + T2_EXAMPLE,
     answer: x.a,
+    fipi: true,
   }
 }
 
@@ -314,7 +318,7 @@ const NUMW_GEN = { 1: "одной", 2: "двух", 3: "трёх", 4: "четыр
 // fipi_bank_ege_inf/bank246/check04.mjs, расхождений 0 на всех 73 заданиях.
 const t4FromBank = (key) => {
   const x = fromBank(T4_POOL, key)
-  return x ? { condition_text: x.c, answer: x.a } : null
+  return x ? { condition_text: x.c, answer: x.a, fipi: true } : null
 }
 
 export const t4FanoShortest = () => t4FromBank("shortest")
@@ -2551,6 +2555,7 @@ function t6FromBank(key) {
   return {
     condition_text: `${t6Style(T6_INTROS[x.i])}\n\n${x.l}⟦code:${x.p}⟧\n${x.q}`,
     answer: x.a,
+    fipi: true,
   }
 }
 
@@ -2913,6 +2918,7 @@ const t17FromBank = (key) => {
     condition_text: x.c,
     remoteFile: { name: "17.txt", url: assetUrl(x.f), hint: `${x.n} чисел` },
     answer: x.a,
+    fipi: true,
   }
 }
 
@@ -3071,6 +3077,7 @@ const t22FromBank = (key) => {
     spreadsheet: { name: "22.xlsx", sheetName: "Процессы",
       rows: [T22_HEAD, ...x.r.map((r) => r.map((v) => (/^-?\d+(\.\d+)?$/.test(String(v)) ? Number(v) : v)))] },
     answer: x.a,
+    fipi: true,
   }
 }
 
@@ -3283,6 +3290,7 @@ export function t3Database() {
     condition_tail: x.q,
     remoteFile: { name: x.f.endsWith(".ods") ? "3.ods" : "3.xlsx", url: assetUrl(x.f), hint: `${x.n} строк` },
     answer: x.a,
+    fipi: true,
   }
 }
 

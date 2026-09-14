@@ -72,7 +72,7 @@ export const taskText = (t) =>
 // task_attempts не записать, а без неё тема не попадёт ни в «Слабые типажи»,
 // ни в отчёт родителю.
 const KEEP = ["number", "exam_type", "condition_text", "condition_tail", "answer", "gen_key",
-  "image_url", "program", "archive", "spreadsheet", "textFile", "source_text", "source_title"]
+  "image_url", "program", "archive", "spreadsheet", "textFile", "remoteFile", "source_text", "source_title"]
 
 export const packTask = (t) =>
   Object.fromEntries(KEEP.filter((k) => t[k] !== undefined && t[k] !== null).map((k) => [k, t[k]]))
@@ -83,7 +83,7 @@ export const packTask = (t) =>
 // график…») при совершенно разных рисунках — по одному тексту второе задание
 // номера уже не нашлось бы.
 const taskKey = (t) => JSON.stringify([taskText(t), t.image_url, t.program, t.archive,
-  t.spreadsheet, t.textFile, t.source_text, t.answer])
+  t.spreadsheet, t.textFile, t.remoteFile, t.source_text, t.answer])
 
 // Отмеченные типажи номера одним списком: тема — это «все её типажи», поэтому
 // отметка темы и отметка отдельного типажа внутри неё сводятся к одному пулу

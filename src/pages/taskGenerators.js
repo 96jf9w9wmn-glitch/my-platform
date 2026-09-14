@@ -5073,7 +5073,10 @@ export function generateTask(examType, number, genKey) {
 function buildTask(examType, number, fn) {
   const out = fn()
   if (!out) return null                     // скин отказался от этого набора параметров
-  const { condition_text, condition_tail, answer, image_url, solution_image, solution, program, archive, spreadsheet, textFile, answerProgram, source_text, source_title, intro, introGroup, introRef } = out
+  // ВНИМАНИЕ: поле, которого нет в этом списке, до задания не доедет — buildTask
+  // собирает новый объект, а не дополняет пришедший. Так пропадал remoteFile у
+  // КЕГЭ №3 и №17: генератор его отдавал, а ученик получал задание без файла.
+  const { condition_text, condition_tail, answer, image_url, solution_image, solution, program, archive, spreadsheet, textFile, remoteFile, answerProgram, source_text, source_title, intro, introGroup, introRef, fipi } = out
   const id = `gen-${number}-${Math.random().toString(36).slice(2, 10)}`
   // №23/№24 (часть 2, геометрия): чертёж строит сам ученик, поэтому в условие он не идёт —
   // прячем его в solution_image (пригодится для будущего разбора решения). Полное решение
@@ -5114,6 +5117,7 @@ function buildTask(examType, number, fn) {
     archive: archive ?? null,                 // №11/№12: дерево файлов { name, files } для скачивания .zip
     spreadsheet: spreadsheet ?? null,         // №14: данные таблицы { name, sheetName, rows } для .xlsx
     textFile: textFile ?? null,               // КЕГЭ №17/24/26/27: прилагаемый .txt (или массив файлов)
+    remoteFile: remoteFile ?? null,           // файл задания, ВЗЯТОГО из банка ФИПИ: лежит в хранилище, приходит по ссылке
     answerProgram: answerProgram ?? null,     // №16: эталонное решение [{name,code}] — под «Ответ»
     image_url: image_url ?? null,
     // график РЕШЕНИЯ (строит ученик, поэтому в условие не идёт) — прячем до реализации
@@ -5129,5 +5133,9 @@ function buildTask(examType, number, fn) {
     introRef: introRef ?? null,               // начало ссылки: «Для игры, описанной в задании»
     answer: dash(answer),
     generated: true,
+    // Задание не собрано генератором, а ВЗЯТО из открытого банка ФИПИ целиком
+    // (КЕГЭ №2, 3, 4, 6, 10, 13, 17, 22). Подпись в просмотре банка читает это
+    // поле: без него такое задание подписано «генератор», что неправда.
+    fipi: fipi === true,
   }
 }

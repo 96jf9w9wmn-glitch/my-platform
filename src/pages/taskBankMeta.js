@@ -59,7 +59,7 @@ export const VARIANT_PART1 = {
 // 01.09.2026 их в снимке не было, и КАЖДАЯ попытка из варианта уходила
 // в task_attempts без ключа типажа.
 const SNAPSHOT_KEEP = ["number", "exam_type", "gen_key", "condition_text", "condition_tail",
-  "image_url", "program", "archive", "spreadsheet", "textFile", "source_text", "source_title"]
+  "image_url", "program", "archive", "spreadsheet", "textFile", "remoteFile", "source_text", "source_title"]
 
 export const packVariantTask = (t) =>
   Object.fromEntries(SNAPSHOT_KEEP.filter((k) => t?.[k] !== undefined && t?.[k] !== null).map((k) => [k, t[k]]))

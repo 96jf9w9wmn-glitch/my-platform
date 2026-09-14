@@ -1010,7 +1010,7 @@ export function renderHomeworkMath(text) {
 // без приложений полностью описано текстом в description и переживёт базу без
 // миграции. Рисует всё это components/TaskAttachments.jsx.
 export const hasAttachment = (t) =>
-  !!(t && (t.image_url || t.program || t.archive || t.spreadsheet || t.textFile || t.source_text))
+  !!(t && (t.image_url || t.program || t.archive || t.spreadsheet || t.textFile || t.remoteFile || t.source_text))
 
 // Разбивает описание ДЗ на вступление и отдельные пронумерованные задания
 // («1. …», «2. …»), чтобы показать каждое своей карточкой, а не сплошным абзацем.

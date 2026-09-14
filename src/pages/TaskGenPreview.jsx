@@ -93,7 +93,15 @@ function TaskCard({ task, showAnswer }) {
     <div className="bg-white dark:bg-[#1c1c1e] rounded-2xl border border-gray-100 dark:border-white/10 p-4 shadow-sm flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <span className="text-sm font-semibold text-gray-500">Задание {task.number}</span>
-        {task.generated && <span className="text-[10px] text-gray-400 uppercase tracking-wide">генератор</span>}
+        {/* Подпись говорит, откуда задание: собрано генератором или ВЗЯТО целиком из
+            открытого банка ФИПИ (КЕГЭ №2, 3, 4, 6, 10, 13, 17, 22). Раньше и на
+            взятых стояло «генератор» — неправда, по которой нельзя отличить одно
+            от другого. */}
+        {task.generated && (
+          <span className="text-[10px] text-gray-400 uppercase tracking-wide">
+            {task.fipi ? "из банка ФИПИ" : "генератор"}
+          </span>
+        )}
       </div>
       {task.error ? (
         <div className="text-sm text-red-500">Ошибка генерации: {task.error}</div>
