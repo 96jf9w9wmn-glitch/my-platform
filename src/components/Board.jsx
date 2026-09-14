@@ -1135,7 +1135,6 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   const rafId = useRef(0)
   const actions = useRef({})
   const clipStrokes = useRef(null)    // свой буфер обмена доски (копии штрихов без id)
-  const pasteSeen = useRef(0)         // когда в последний раз приходило системное событие вставки
   const lastPaste = useRef(null)      // куда легла прошлая вставка: повтор в то же место сдвигается
   const hoverPt = useRef(null)        // последнее положение указателя (вставляем под курсор)
   const autoPan = useRef(null)        // {x, y, alt, raf} — полотно едет само у края экрана
@@ -4436,7 +4435,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     } catch { /* приватный режим — обзор просто не запомнится */ }
   }
 
-  useEffect(() => { actions.current.undo = undo; actions.current.redo = redo; actions.current.del = deleteSelection; actions.current.selectAll = selectAll; actions.current.paste = addImageAt; actions.current.commitText = commitTextEdit; actions.current.close = closeBoard; actions.current.copy = copySelection; actions.current.pasteStrokes = pasteStrokes; actions.current.parseClip = parseClip; actions.current.pasteOwn = () => { if (clipStrokes.current) pasteStrokes(clipStrokes.current) } })
+  useEffect(() => { actions.current.undo = undo; actions.current.redo = redo; actions.current.del = deleteSelection; actions.current.selectAll = selectAll; actions.current.paste = addImageAt; actions.current.commitText = commitTextEdit; actions.current.close = closeBoard; actions.current.copy = copySelection; actions.current.pasteStrokes = pasteStrokes; actions.current.parseClip = parseClip })
 
   // Настройки руки держатся между занятиями (см. COLOR_KEY, WIDTH_KEY, ERASER_KEY).
   // Пишем при каждой смене, а не при выходе: доску закрывают и крестиком, и
@@ -4492,13 +4491,16 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     placeTaskSheet(taskSheet)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded, taskSheet, roomId])
-  // Вставка картинки из буфера обмена (Ctrl/Cmd+V) — в центр видимой области
+  // Вставка по ⌘V живёт ТОЛЬКО здесь, и второго пути быть не должно: буфер
+  // обмена виден лишь событию paste. Запасной путь «если события не будет,
+  // положим из своего буфера через такт» был и давал ДВЕ копии: браузер шлёт
+  // paste следующей задачей, то есть ПОЗЖЕ setTimeout(0), и срабатывали оба.
+  // Картинка из буфера — в центр видимой области, штрихи — под курсор.
   useEffect(() => {
     if (readOnly) return
     function onPaste(e) {
       const tag = e.target?.tagName
       if (tag === "INPUT" || tag === "TEXTAREA" || e.target?.isContentEditable) return
-      pasteSeen.current = performance.now()   // системная вставка дошла — запасной путь не нужен
       // Своя копия с доски идёт первой: она лежит в системном буфере текстом, то
       // есть попала туда позже любой картинки, которую там нашли.
       const own = actions.current.parseClip?.(e.clipboardData?.getData("text/plain") || "")
@@ -4666,16 +4668,6 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         // браузеру копировать обычным способом (подпись участника, текст плашки).
         if (isC && !inField) {
           if (actions.current.copy?.()) { e.preventDefault(); e.stopPropagation() }
-          return
-        }
-        const isV = e.code === "KeyV" || k === "v" || k === "м"
-        // Системную вставку делает событие paste — только оно видит буфер
-        // обмена. Но его может и не быть (нет права на чтение буфера, встроенный
-        // просмотр страницы), и тогда через такт кладём из своего буфера: копия
-        // внутри вкладки обязана вставляться при любых правах.
-        if (isV && !inField && !e.repeat) {
-          const t = performance.now()
-          setTimeout(() => { if (pasteSeen.current < t) actions.current.pasteOwn?.() }, 0)
           return
         }
         if (isA && !inField) {
