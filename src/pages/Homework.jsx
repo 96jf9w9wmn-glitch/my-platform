@@ -2231,6 +2231,22 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
   // называется тем, что за ней стоит.
   const reviewing = hw.status === "submitted" || hw.status === "done"
 
+  // Итог без итога. Пока работа у ученика, в колонке не оказывалось НИ ОДНОГО
+  // блока: под заголовком «Итог» оставалась полоса пустоты в половину ширины
+  // разбора, и читалась она как сбой вёрстки, а не как «оценки пока нет».
+  // Поэтому состояние называется словами, и словами же — почему оценки нет:
+  // ответ «работа ещё не вернулась» и есть то, за чем сюда смотрят.
+  const verdictEmpty = !graded && !verdictComment && !overdue && !solutionCard
+    && hw.status !== "submitted"
+  // Срок не повторяем: он стоит подписью у самого заголовка «Итог».
+  const verdictWait = hw.status === "revision"
+    ? { icon: "repeat", title: "Оценка ещё не выставлена", note: "Работа возвращена на доработку — ждём исправленный вариант" }
+    : hw.status === "done"
+    ? { icon: "check", title: "Оценка не выставлена", note: "Работа завершена без оценки" }
+    : attempted
+    ? { icon: "edit", title: "Оценка ещё не выставлена", note: "Ученик решает работу — она придёт на проверку после сдачи" }
+    : { icon: "clock", title: "Оценка ещё не выставлена", note: "Работа у ученика — сдачи пока не было" }
+
   // Результат теста стоит в карточке заданий, а не отдельной плашкой в колонке
   // «Проверка»: ошибки — это про сами задания, и вся карточка открывает разбор.
   // Плашкой справа он вклинивался в ход проверки, а под заданиями оставалось
@@ -2900,6 +2916,20 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
               {verdictComment && (
                 <div className="text-xs text-gray-500">{verdictComment}</div>
               )}
+            </DetailBlock>
+          )}
+
+          {/* Заливки у плитки нет намеренно: это не событие и не действие, а
+              отсутствие результата — кольцо читается спокойнее пятна. */}
+          {verdictEmpty && (
+            <DetailBlock className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl ring-1 ring-gray-200/70 dark:ring-white/10 text-gray-400 flex items-center justify-center flex-shrink-0">
+                <Icon name={verdictWait.icon} size={16} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium text-gray-500">{verdictWait.title}</div>
+                <div className="text-[11px] text-gray-400 mt-0.5 leading-snug">{verdictWait.note}</div>
+              </div>
             </DetailBlock>
           )}
 
