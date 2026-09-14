@@ -440,7 +440,7 @@ function HomeworkPane({ hw, noVariants }) {
     },
     scoredCount >= 2 && {
       key: "avg",
-      label: "Верных ответов",
+      label: "Средний процент",
       value: <>{avgPct}<span className="text-sm font-normal text-gray-400">%</span></>,
       foot: <div className="text-[11px] text-gray-400 mt-1.5">в среднем по {scoredCount} {plural(scoredCount, "работе", "работам", "работам")}</div>,
     },
@@ -490,7 +490,9 @@ function HomeworkPane({ hw, noVariants }) {
           {/* На телефоне «5 из 6» и «83%» — одно и то же дважды, и от них
               статусу не оставалось ширины: чип «Оценка 4» ломался на две
               строки. Поэтому там остаётся процент. */}
-          <span className="hidden sm:block">Верно</span>
+          {/* «Балл», а не «Верно»: задание части 2 весит два балла и три, и
+              «15 из 18» у девяти заданий — это баллы, а не верные ответы. */}
+          <span className="hidden sm:block">Балл</span>
           <span>Процент</span>
           <span>Статус</span>
         </div>
@@ -714,11 +716,17 @@ function Results({ students, loaded = true, user }) {
     // Домашние работы берём поимённо перечисленными колонками, а не «*»:
     // в строке лежат условия и приложения из банка (чертежи внутри data-URI),
     // и на весь список учеников это мегабайты, которые тут не нужны.
-    const HW_COLS = "id, student_id, title, hw_type, status, grade, test_score, question_count, correct_answers, student_answers, created_at"
+    // Описание нужно для счёта балла: на задания работу разбирает оно
+    // (12 КБ на все работы боевой — против 646 КБ условий из банка).
+    const HW_COLS = "id, student_id, title, hw_type, status, grade, test_score, question_count, description, correct_answers, student_answers, created_at"
+    // Отметки репетитора и выжимка номеров: по ним считается балл работы,
+    // проверенной рукой, — у неё нет ни эталона, ни test_score.
+    const HW_GRADING = "credited, task_marks, task_meta:homework_task_meta"
     const loadHw = async () => {
-      const res = await supabase.from("homework").select(`${HW_COLS}, credited`).eq("tutor_id", user.id)
-      // Колонки credited нет на базе без manual_credit.sql — работы всё равно
-      // нужны, зачёт вручную там просто не с чего показывать.
+      const res = await supabase.from("homework").select(`${HW_COLS}, ${HW_GRADING}`).eq("tutor_id", user.id)
+      // Ни одной из этих колонок может не быть (manual_credit.sql,
+      // homework_task_marks.sql, homework_task_meta.sql) — работы всё равно
+      // нужны, зачёт и отметки там просто не с чего показывать.
       return res.error ? supabase.from("homework").select(HW_COLS).eq("tutor_id", user.id) : res
     }
     Promise.all([

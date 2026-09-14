@@ -2,7 +2,7 @@
 // баллами и как из строк получается свод по ученику. Файл общий для «Результатов»
 // репетитора и раздела «Результаты» в кабинете ученика — одни и те же баллы
 // обязаны считаться одним правилом, иначе кабинеты разойдутся на одном ученике.
-import { plural, answersEqual, creditedNums } from "./utils"
+import { plural, answersEqual, creditedNums, homeworkTaskItems, homeworkPointsOf } from "./utils"
 import { part1NumbersOf, part2NumbersOf } from "./pages/taskBankMeta"
 import { scaleOf, part2MaxOf, variantMaxPrimary, examResult, testScoreOf, examMaxPrimary } from "./examScales"
 
@@ -181,11 +181,29 @@ export function toHwRow(hw) {
   const correct = Array.isArray(hw.correct_answers) ? hw.correct_answers : []
   const given = Array.isArray(hw.student_answers) ? hw.student_answers : []
   const byHand = creditedNums(hw.credited)
-  const max = hw.question_count || correct.length || 0
-  // Балл пересчитываем, а не берём test_score: он записан при сдаче и не знает
-  // про номера, зачтённые репетитором позже, — а разбор ниже про них знает.
-  // Сверка идёт answersEqual и по порядку заданий, ровно как при сдаче.
-  const score = correct.length
+  // Балл работы считает та же арифметика, что и разбор у репетитора
+  // (homeworkPointsOf): у задания с эталоном верность даёт сверка и ручной
+  // зачёт, у задания без эталона — отметка репетитора, и каждое весит столько
+  // баллов, сколько за него дают на экзамене. Второго счёта тут быть не должно:
+  // он стоял здесь раньше — «сколько ответов сошлось с эталоном» — и терял
+  // работу, проверенную рукой (свой файл, фотография решения). У неё нет ни
+  // эталона, ни test_score, поэтому в таблице стояли прочерки, хотя балл был
+  // выставлен по заданиям и из него же выведена оценка.
+  //
+  // Номер экзамена у каждого задания лежит в bank_tasks; список работ её не
+  // просит (там условия и чертежи, мегабайты), поэтому в запросе идёт выжимка
+  // task_meta — номер и предмет по порядку (supabase/homework_task_meta.sql).
+  const { items } = homeworkTaskItems({ ...hw, bank_tasks: hw.bank_tasks || hw.task_meta || null })
+  // Считать по заданиям можно, только когда описание работы разобралось на те
+  // же задания, что и эталон: разошлись — считаем по строкам эталона, иначе
+  // балл сложился бы не по тем заданиям.
+  const points = items.length && (!correct.length || items.length === correct.length)
+    ? homeworkPointsOf(items)
+    : null
+  const byPoints = points && points.counted > 0
+  const max = byPoints ? points.max : (hw.question_count || correct.length || 0)
+  const score = byPoints ? points.got
+    : correct.length
     ? correct.reduce((n, c, i) => n + (byHand.has(i + 1) || answersEqual(given[i] ?? "", c) ? 1 : 0), 0)
     : (hw.test_score ?? null)
   return {
