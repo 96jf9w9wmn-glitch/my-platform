@@ -7,7 +7,6 @@ import Collapse from "../components/Collapse"
 import AnswerTable from "../components/AnswerTable"
 import SegmentSwitch from "../components/SegmentSwitch"
 import useCountUp from "../components/useCountUp"
-import useTypeLabels from "../components/typeLabels"
 import { plural, getInitials, answersEqual } from "../utils"
 import { PlanLock } from "../components/PlanLock"
 import { usePlan } from "../subscription"
@@ -55,12 +54,6 @@ function Chip({ tone = "gray", className = "", children }) {
 // проходного. Те же числа стоят в разборе работы.
 function egeTone(testScore) {
   return testScore >= 73 ? "green" : testScore >= 50 ? "amber" : "red"
-}
-
-function shareTone(pct) {
-  if (pct >= 75) return "green"
-  if (pct >= 50) return "amber"
-  return "red"
 }
 
 // Пилюля стоит в колонке шириной 74 px под последним баллом, поэтому она
@@ -687,97 +680,6 @@ function StudentCard({ student, stats, hw, tutorId, open, onToggle }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Слабые темы по всем ученикам сразу
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Порог показа: по одной-двум попыткам тема не «провальная», это просто
-// неудачный день. Для сводки по группе порог выше, чем у отдельного ученика.
-const COHORT_MIN_ATTEMPTS = 5
-const COHORT_WEAK_ACCURACY = 70
-
-function CohortWeakTypes({ studentIds }) {
-  const [rows, setRows] = useState([])
-  const labels = useTypeLabels(rows)
-  const key = studentIds.join(",")
-
-  useEffect(() => {
-    const ids = key ? key.split(",") : []
-    if (!ids.length) return
-    let alive = true
-    supabase
-      .from("task_attempts")
-      .select("student_id, exam_type, number, gen_key, is_correct, attempt_no")
-      .in("student_id", ids)
-      .limit(4000)
-      // Таблицы может не быть (миграция task_attempts.sql не выполнена) — тогда блока просто нет.
-      .then(({ data }) => {
-        if (!alive || !data) return
-        // Считаем по самим попыткам, а не по вьюхе v_student_weak_types: она
-        // складывает все подходы, и «решай до верного» превращал исправленную
-        // ошибку в две неудачи. Первые ответы — та же арифметика, что в
-        // «Где ученик ошибается» и в отчёте родителю.
-        const agg = {}
-        for (const r of data) {
-          if ((r.attempt_no ?? 1) > 1) continue
-          const k = `${r.exam_type}|${r.number}|${r.gen_key || ""}`
-          const cur = agg[k] || { exam_type: r.exam_type, number: r.number, gen_key: r.gen_key, attempts: 0, correct: 0, students: new Set() }
-          cur.attempts += 1
-          if (r.is_correct) cur.correct += 1
-          cur.students.add(r.student_id)
-          agg[k] = cur
-        }
-        const list = Object.values(agg)
-          .filter((r) => r.attempts >= COHORT_MIN_ATTEMPTS)
-          .map((r) => ({ ...r, students: r.students.size, accuracy: Math.round((r.correct / r.attempts) * 100) }))
-          // Раздел называется «слабые»: тема, где почти не ошибаются, в нём
-          // только отнимает место у настоящей проблемы.
-          .filter((r) => r.accuracy < COHORT_WEAK_ACCURACY)
-          .sort((a, b) => a.accuracy - b.accuracy || b.attempts - a.attempts)
-          .slice(0, 6)
-        setRows(list)
-      })
-    return () => { alive = false }
-  }, [key])
-
-  if (!rows.length) return null
-
-  return (
-    <div className="glass p-4">
-      <div className="flex items-baseline justify-between gap-3 mb-0.5">
-        <h2 className="text-sm font-medium">Слабые темы по всем ученикам</h2>
-        <span className="text-[11px] text-gray-400">от {COHORT_MIN_ATTEMPTS} попыток</span>
-      </div>
-      <p className="text-xs text-gray-400 mb-3">Где ошибаются чаще всего — с этого стоит начинать занятие.</p>
-      <div className="flex flex-col gap-2">
-        {rows.map((r) => {
-          const tone = shareTone(r.accuracy)
-          return (
-            <div key={`${r.exam_type}-${r.number}-${r.gen_key}`} className="flex items-center gap-3">
-              <span className={`shrink-0 w-8 h-8 rounded-xl grid place-items-center text-xs font-semibold ring-1 ${TONE.blue}`}>
-                {r.number}
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-sm truncate">{labels[r.gen_key] || numberTitle(r.exam_type, r.number)}</span>
-                  <span className="text-xs font-medium tabular-nums shrink-0" style={{ color: LINE[tone] }}>{r.accuracy}%</span>
-                </div>
-                <div className="mt-1 h-1.5 rounded-full bg-blue-500/12 overflow-hidden">
-                  <div className="h-full rounded-full transition-[width] duration-700 ease-out"
-                    style={{ width: `${Math.max(r.accuracy, 3)}%`, background: LINE[tone] }} />
-                </div>
-                <div className="text-[11px] text-gray-400 mt-1">
-                  {r.correct} из {r.attempts} верно · {r.students} {plural(r.students, "ученик", "ученика", "учеников")}
-                </div>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Данные
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1074,8 +976,6 @@ function Results({ students, loaded = true, user }) {
               </div>
             )}
           </div>
-
-          <CohortWeakTypes studentIds={students.map((s) => String(s.id))} />
         </div>
       )}
     </div>
