@@ -190,7 +190,10 @@ export function drawShape(ctx, tool, a, b, corner) {
 
 // Один штрих в мировых координатах. darkBg — светлость ФОНА доски (не темы приложения),
 // getImage(src) отдаёт уже загруженную картинку или null (тогда рисуется заглушка).
-export function paintStroke(ctx, s, { darkBg = false, getImage = () => null } = {}) {
+// onWaiting(s) зовётся ровно тогда, когда вместо картинки легла заглушка: место
+// вызова ставит на неё живой индикатор, иначе лист всё время загрузки выглядит
+// пустой рамкой и доска кажется зависшей (на боевой лист ехал до 4,7 с).
+export function paintStroke(ctx, s, { darkBg = false, getImage = () => null, onWaiting = null } = {}) {
   const pts = s.points
   if (!pts || pts.length === 0) return
   ctx.globalCompositeOperation = s.tool === "eraser" ? "destination-out" : "source-over"
@@ -214,6 +217,7 @@ export function paintStroke(ctx, s, { darkBg = false, getImage = () => null } = 
     const drawIt = () => {
       if (ready) ctx.drawImage(img, ix, iy, iw, ih)
       else {
+        onWaiting?.(s)
         // Картинка ещё грузится (или адрес недоступен) — помечаем место акцентной
         // рамкой: серой плашки в интерфейсе быть не может, да и «выцветшее пятно»
         // на снимке читалось как настоящее содержимое доски

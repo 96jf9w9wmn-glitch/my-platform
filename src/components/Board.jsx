@@ -199,6 +199,12 @@ const BOARD_SYNC_FAST_MS = 2000
 // за полминуты — с запасом под лимит.
 const TRACK_MIN_MS = 8000
 const LINK_DOWN_MS = 3000   // через сколько без канала показать «связь восстанавливается»
+const PULL_SHOW_MS = 700    // через сколько перечитывания сцены показать «доска догружается»
+// Сколько крутится индикатор на листе, который ещё едет из хранилища. Самый
+// долгий замеренный лист на боевой доске ехал 4,7 с, так что полминуты — это с
+// запасом; дальше адрес, скорее всего, битый (файл удалён, подпись не выписалась),
+// и вечно крутящийся индикатор врал бы сильнее неподвижной рамки.
+const WAIT_SHOW_MAX_MS = 30000
 const SAVE_MAX_MS = 2000    // потолок откладывания сохранения (см. scheduleSave)
 // Сколько помним, что штрих СТЁРТ (см. tombRef). Срок нужен с запасом на самый
 // долгий путь удаления до базы: собеседник ведёт ластиком не отрываясь, потом
@@ -924,6 +930,13 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // доска показывает тот же загрузчик, что и при загрузке сцены.
   const [sheetBusy, setSheetBusy] = useState(false)
   const [sheetErr, setSheetErr] = useState(false)
+  // Сцену перечитывают целиком (на боевой доске это мегабайты, со сжатием сотни
+  // килобайт), и всё это время доска стоит неподвижно: чужое не появляется, своё
+  // не уезжает. Без признака это читается как «доска зависла». Плашка выходит
+  // только на ЗАМЕТНОЕ ожидание — быстрое перечитывание мелькать не должно.
+  const [pulling, setPulling] = useState(false)
+  const pullTimer = useRef(null)
+  useEffect(() => () => clearTimeout(pullTimer.current), [])
   // Что именно не доехало, зависит от того, кто переносил: ученик несёт на доску
   // одно задание, репетитор — условия работы вместе с решением ученика.
   const sheetErrText = taskSheet?.sheets?.length
@@ -1139,6 +1152,12 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   const hoverPt = useRef(null)        // последнее положение указателя (вставляем под курсор)
   const autoPan = useRef(null)        // {x, y, alt, raf} — полотно едет само у края экрана
   const imgCache = useRef(new Map())  // "src|вес" -> HTMLImageElement (ленивая загрузка, см. getImage)
+  // Листы, вместо которых в этом кадре легла рамка загрузки: на них ставится тот
+  // же индикатор, что и на уезжающей в хранилище картинке. Набор пересобирается
+  // вместе со слоем сцены, а слой пересобирается при каждой смене состояния
+  // картинки (загрузилась, разобралась) — значит рамка и индикатор гаснут вместе.
+  const waitingImgs = useRef(new Set())
+  const waitSince = useRef(new Map())  // id -> когда лист впервые показался рамкой
   // Адреса blob-ов, под которыми в кэше лежат СВОИ картинки. Отпускать их, пока
   // картинка в кэше, нельзя: браузер вправе выбросить растр и перечитать его по
   // этому адресу — поэтому освобождаем всё разом при закрытии доски.
@@ -1287,7 +1306,8 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // Штрих рисуется общей функцией из boardPaint — та же самая, что и в превью
   // снимка занятия: иначе история занятий выглядела бы иначе, чем живая доска.
   function drawStroke(ctx, s) {
-    paintStroke(ctx, s, { darkBg: isDarkColor(bgColorRef.current), getImage })
+    paintStroke(ctx, s, { darkBg: isDarkColor(bgColorRef.current), getImage,
+      onWaiting: (st) => waitingImgs.current.add(st.id) })
   }
 
   function drawBackground(ctx, cw, ch) {
@@ -1461,6 +1481,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         minX: (-v.x) / v.scale - CULL_PAD, minY: (-v.y) / v.scale - CULL_PAD,
         maxX: (cw - v.x) / v.scale + CULL_PAD, maxY: (ch - v.y) / v.scale + CULL_PAD,
       }
+      waitingImgs.current.clear()
       for (const st of strokes.current.values()) {
         if (editId && st.id === editId) continue
         if (live.current.has(st.id)) continue   // собеседник правит эту надпись прямо сейчас
@@ -1505,12 +1526,26 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     // Мелкий и уехавший за край лист панели не получает: в поле шириной с ноготь всё
     // равно не попасть, а панели на весь экран мешали бы рисовать.
     const qa = []
-    // Картинки, которые прямо сейчас едут в хранилище, → в стейт для плашки
-    // «Отправляется»: она стоит на самой картинке, потому что объяснять надо
-    // именно про неё, а не вообще про доску.
+    // Картинки, с которыми прямо сейчас что-то происходит, → в стейт для живого
+    // индикатора: лист либо едет в хранилище (pending), либо едет ОТТУДА и вместо
+    // него стоит рамка загрузки (waitingImgs). Индикатор стоит на самой картинке,
+    // потому что происходящее — про неё, а не вообще про доску.
     const busy = []
+    const tNow = Date.now()
     for (const st of strokes.current.values()) {
-      if (st.pending) {
+      let waitShow = false
+      if (waitingImgs.current.has(st.id)) {
+        const t0 = waitSince.current.get(st.id)
+        // Кадр сам собой не повторится: пока лист едет, на доске ничего не
+        // меняется. Без этого будильника индикатор гас бы не через полминуты, а
+        // при первом же движении по доске — то есть когда угодно.
+        if (t0 == null) {
+          waitSince.current.set(st.id, tNow); waitShow = true
+          setTimeout(() => scheduleLive(), WAIT_SHOW_MAX_MS + 50)
+        }
+        else waitShow = tNow - t0 < WAIT_SHOW_MAX_MS
+      } else waitSince.current.delete(st.id)
+      if (st.pending || waitShow) {
         const b = strokeBox(st)
         const [x0, y0] = toScreen(b.minX, b.minY), [x1, y1] = toScreen(b.maxX, b.maxY)
         if (x1 > 0 && y1 > 0 && x0 < cw && y0 < ch) {
@@ -2056,7 +2091,11 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         // хвосте (правка на месте, удаление). Тогда перечитываем целиком.
       }
     }
-    const scene = await signBoardScene(await fetchScene())
+    clearTimeout(pullTimer.current)
+    pullTimer.current = setTimeout(() => setPulling(true), PULL_SHOW_MS)
+    let scene
+    try { scene = await signBoardScene(await fetchScene()) }
+    finally { clearTimeout(pullTimer.current); setPulling(false) }
     if (!scene) return
     // Стёртое не возвращаем. Сцена в базе отстаёт от посылки об удалении на всё
     // время, пока автор водит ластиком и не сохранился, — и без этого условия
@@ -5161,9 +5200,12 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
           </div>
         )}
 
-        {/* Картинка уже на доске, но ещё едет в хранилище (у собеседника — ещё
-            предпросмотр). Индикатор без подписи — по требованию владельца: одна
-            анимация загрузки на самой картинке, слов не нужно. */}
+        {/* С картинкой что-то происходит: она либо ещё едет в хранилище (у
+            собеседника — пока предпросмотр), либо едет оттуда и на её месте стоит
+            рамка загрузки. Индикатор без подписи — по требованию владельца: одна
+            анимация загрузки на самой картинке, слов не нужно. Анимация живёт в
+            CSS (не в кадре холста), поэтому она идёт и тогда, когда главный поток
+            занят разбором листов, — то есть ровно когда доска и провисает. */}
         {busyImgs.map((b) => (
           // Сдвиг «на половину себя» — на ОБЁРТКЕ: у появления попапа свои кадры
           // с transform, и на одном элементе они затирали бы центровку.
@@ -5319,6 +5361,16 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
             style={{ background: panelBg, border: `1px solid ${panelBorder}`, color: dark ? "#f5f5f7" : "#1c1c1e" }}>
             <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
             Связь с доской восстанавливается…
+          </div>
+        )}
+        {/* Сцену тянут целиком дольше PULL_SHOW_MS: доска в это время стоит, и без
+            движения на экране это выглядит как «зависла». Плашка уступает место
+            разговору о связи — та же беда, но названная точнее. */}
+        {pulling && !linkDown && !saveDenied && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl text-xs shadow-lg flex items-center gap-2"
+            style={{ background: panelBg, border: `1px solid ${panelBorder}`, color: dark ? "#f5f5f7" : "#1c1c1e" }}>
+            <span className="loader-dots text-blue-500"><i /><i /><i /></span>
+            Доска догружается…
           </div>
         )}
         {sheetErr && (

@@ -122,3 +122,7 @@ dev-board-prefs.html
 src/devBoardPrefs.jsx
 dev-stat.html
 src/devStatTabs.jsx
+
+# Стенд «медленные листы на доске»
+dev-lag.html
+src/devLag.jsx
