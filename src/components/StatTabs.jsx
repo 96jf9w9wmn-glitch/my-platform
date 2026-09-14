@@ -16,6 +16,12 @@ export default function StatTabs({ items, value, onChange, className = "" }) {
   const tabsScrollRef = useRef(null)
   const [ind, setInd] = useState(null)
   const indAnimated = useRef(false)
+  // Раздел, с которого ушли, остаётся в DOM под `hidden` (PageSlot в App.jsx),
+  // и ResizeObserver докладывает про него нулевую ширину. Запомнив её, полоса
+  // по возвращении ЕДЕТ от нуля к вкладке — читается как индикатор загрузки,
+  // да ещё и медленный: анимируется width, то есть каждый кадр идёт через
+  // layout, а главный поток в этот момент занят отрисовкой списка.
+  const hiddenRef = useRef(false)
   const count = items.length
 
   useLayoutEffect(() => {
@@ -24,7 +30,15 @@ export default function StatTabs({ items, value, onChange, className = "" }) {
     const measure = () => {
       const el = wrap.querySelector(`[data-filter="${value}"]`)
       if (!el) return
-      setInd({ left: el.offsetLeft, width: el.offsetWidth })
+      // Нулевой замер — это спрятанный раздел, а не новое положение полосы:
+      // запоминать его нельзя (см. hiddenRef выше).
+      const width = el.offsetWidth
+      if (!width) { hiddenRef.current = true; return }
+      // Возврат в раздел полоса встречает уже на месте: переезжать ей незачем,
+      // вкладка та же. Анимация остаётся там, ради чего она и заведена, —
+      // на смене вкладки.
+      setInd({ left: el.offsetLeft, width, animate: indAnimated.current && !hiddenRef.current })
+      hiddenRef.current = false
       // На узком экране выбранная вкладка может быть наполовину за краем —
       // подтягиваем её в видимую часть, иначе полоска уезжает «в никуда».
       const sc = tabsScrollRef.current
@@ -78,7 +92,9 @@ export default function StatTabs({ items, value, onChange, className = "" }) {
         {ind && (
           <span
             aria-hidden
-            className="pointer-events-none absolute bottom-0 left-0 h-[3px] rounded-full bg-gradient-to-r from-blue-500 to-blue-600 transition-[transform,width] duration-300 ease-out motion-reduce:transition-none"
+            className={`pointer-events-none absolute bottom-0 left-0 h-[3px] rounded-full bg-gradient-to-r from-blue-500 to-blue-600 ${
+              ind.animate ? "transition-[transform,width] duration-300 ease-out motion-reduce:transition-none" : ""
+            }`}
             style={{ width: ind.width, transform: `translateX(${ind.left}px)` }}
           />
         )}
