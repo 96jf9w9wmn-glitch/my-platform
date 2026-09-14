@@ -3901,7 +3901,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
             const file = await taskToImageFile(part.task, { label: req.label || "" })
             // Прилагаемый файл собирается из тех же данных, что лежат в самой
             // работе (homework.bank_tasks), и едет на доску вместе с листом.
-            const files = taskFiles(part.task).map((f) => ({ name: f.name, blob: f.blob() }))
+            const files = await Promise.all(taskFiles(part.task).map(async (f) => ({ name: f.name, blob: await f.blob() })))
             await put(file, part.key, { files })
           } else {
             const { files, sheet } = await solutionSheetFiles(part.url)

@@ -152,3 +152,5 @@ src/devNotif.jsx
 # Стенд проверки варианта (условие и выбранный ответ в разборе)
 dev-variant-review.html
 src/devVariantReview.jsx
+dev-kege.html
+src/devKege.js

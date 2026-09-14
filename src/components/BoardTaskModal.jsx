@@ -134,7 +134,7 @@ export default function BoardTaskModal({ dark = false, roomId = null, tutorSubje
       const file = await taskToImageFile(task, { label: subjectLabel(examType) })
       // Файл с данными едет на доску вместе с листом: собирается он здесь, в
       // браузере, и другого места, откуда ученик мог бы его взять, нет.
-      const files = attachments.map((f) => ({ name: f.name, blob: f.blob() }))
+      const files = await Promise.all(attachments.map(async (f) => ({ name: f.name, blob: await f.blob() })))
       // ширину листа задаёт снимок: доска кладёт картинку в неё, а не вписывает как фото.
       // Окно закрывается, как только лист ЛЁГ на доску: выгрузка в хранилище идёт
       // фоном ещё полсекунды, и ждать её, глядя на «Переносим…» поверх уже лежащего

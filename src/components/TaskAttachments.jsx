@@ -94,15 +94,29 @@ const FILE_TONE = {
 }
 
 // Кнопка скачивания одного приложенного файла.
+//
+// Файл из хранилища (задания №3 и №17 КЕГЭ взяты из банка ФИПИ вместе с их
+// файлами) сначала едет по сети, поэтому у кнопки есть состояние: без него
+// нажатие на медленном канале выглядит как «ничего не произошло», а отвалившаяся
+// сеть — как сломанная кнопка.
 export function FileButton({ file }) {
   const [tone, hint] = FILE_TONE[file.kind] || FILE_TONE.text
+  const [state, setState] = useState("")
+  const click = async () => {
+    if (state === "busy") return
+    setState("busy")
+    try { await file.download(); setState("") }
+    catch { setState("err"); setTimeout(() => setState(""), 2500) }
+  }
   return (
     <button
-      onClick={file.download}
+      onClick={click}
       className={`no-press self-start flex items-center gap-2 mt-1 px-3 py-2 rounded-xl border text-sm font-medium transition active:scale-95 ${tone}`}>
       <Icon name="download" size={15} />
       {file.name}
-      <span className={`text-[11px] ${hint}`}>({file.hint})</span>
+      <span className={`text-[11px] ${hint}`}>
+        ({state === "busy" ? "скачивается…" : state === "err" ? "не удалось, попробуйте ещё раз" : file.hint})
+      </span>
     </button>
   )
 }
