@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { supabase } from "../supabase"
 import Icon from "./Icon"
 import useTypeLabels from "./typeLabels"
@@ -69,11 +69,52 @@ const DRILL_SIZE = 8
 
 const rowKey = (r) => `${r.number}-${r.gen_key || "no-key"}`
 
-function WeakTypes({ student }) {
+// Свод по попыткам: слабые типажи и те ошибки, по которым судить ещё рано.
+// Вынесен из эффекта отдельной функцией, потому что попытки приходят двумя
+// путями — готовым списком от карточки (useAttempts) и своим запросом.
+function summarize(data) {
+  const empty = { rows: [], thin: { count: 0, sources: new Set(), last: null } }
+  if (!data) return empty
+  // Источник и дата — по тому же ключу типажа, что и сам свод: строка
+  // должна уметь ответить, из какой работы взялись её цифры.
+  const meta = new Map()
+  for (const a of data) {
+    if ((a.attempt_no ?? 1) > 1) continue
+    const k = attemptKey(a)
+    const m = meta.get(k) || { sources: new Set(), last: null }
+    if (a.source) m.sources.add(a.source)
+    if (a.created_at && (!m.last || a.created_at > m.last)) m.last = a.created_at
+    meta.set(k, m)
+  }
+  const norm = aggregateAttempts(data).map((r) => ({ ...r, ...(meta.get(attemptKey(r)) || {}) }))
+  // Худшие первыми, при равной точности — те, где ответов больше: сорок
+  // процентов из двенадцати ответов — проблема надёжнее, чем из трёх.
+  const sorted = norm.filter(isWeak).sort((a, b) =>
+    a.accuracy - b.accuracy || b.attempts - a.attempts)
+  const few = norm.filter(isThin)
+  const sources = new Set()
+  let last = null
+  for (const r of few) {
+    for (const s of r.sources || []) sources.add(s)
+    if (r.last && (!last || r.last > last)) last = r.last
+  }
+  return { rows: sorted.slice(0, 10), thin: { count: few.length, sources, last } }
+}
+
+// `attempts` — попытки, уже прочитанные вызывающим (useAttempts). Блок стоит
+// рядом с картой заданий и готовностью, которым нужен ТОТ ЖЕ список, и свой
+// запрос здесь был вторым запросом за теми же строками. Без пропа (карточка
+// ученика) блок по-прежнему читает их сам.
+//
+// Признак «список даёт вызывающий» — САМО НАЛИЧИЕ пропа, а не его истинность:
+// пока запрос вызывающего в пути, useAttempts отдаёт null, и по пустому
+// значению блок успевал сходить за теми же строками сам — второй запрос
+// возвращался ровно тот, ради устранения которого проп и заведён.
+function WeakTypes({ student, attempts }) {
   const studentId = student?.id
-  const [rows, setRows] = useState([])
-  // Ошибки, по которым ещё рано судить: сколько их и откуда они пришли.
-  const [thin, setThin] = useState({ count: 0, sources: new Set(), last: null })
+  const given = attempts !== undefined
+  const [own, setOwn] = useState(null)
+  const { rows, thin } = useMemo(() => summarize(given ? attempts : own), [given, attempts, own])
   const [drilling, setDrilling] = useState(null)
   // Строка, по которой работа только что ушла, и текст отказа, если не ушла.
   const [assigned, setAssigned] = useState(null)
@@ -85,44 +126,17 @@ function WeakTypes({ student }) {
   useEffect(() => () => clearTimeout(doneTimer.current), [])
 
   useEffect(() => {
-    if (!studentId) return
+    if (given || !studentId) return
     let alive = true
     supabase
       .from("task_attempts")
       .select("exam_type, number, gen_key, is_correct, attempt_no, source, created_at")
       .eq("student_id", String(studentId))
-      .limit(2000)
+      .limit(4000)
       // Таблицы может не быть (миграция task_attempts.sql не выполнена) — тогда блока просто нет.
-      .then(({ data }) => {
-        if (!alive || !data) return
-        // Источник и дата — по тому же ключу типажа, что и сам свод: строка
-        // должна уметь ответить, из какой работы взялись её цифры.
-        const meta = new Map()
-        for (const a of data) {
-          if ((a.attempt_no ?? 1) > 1) continue
-          const k = attemptKey(a)
-          const m = meta.get(k) || { sources: new Set(), last: null }
-          if (a.source) m.sources.add(a.source)
-          if (a.created_at && (!m.last || a.created_at > m.last)) m.last = a.created_at
-          meta.set(k, m)
-        }
-        const norm = aggregateAttempts(data).map((r) => ({ ...r, ...(meta.get(attemptKey(r)) || {}) }))
-        // Худшие первыми, при равной точности — те, где ответов больше: сорок
-        // процентов из двенадцати ответов — проблема надёжнее, чем из трёх.
-        const sorted = norm.filter(isWeak).sort((a, b) =>
-          a.accuracy - b.accuracy || b.attempts - a.attempts)
-        const few = norm.filter(isThin)
-        const sources = new Set()
-        let last = null
-        for (const r of few) {
-          for (const s of r.sources || []) sources.add(s)
-          if (r.last && (!last || r.last > last)) last = r.last
-        }
-        setThin({ count: few.length, sources, last })
-        setRows(sorted.slice(0, 10))
-      })
+      .then(({ data }) => { if (alive) setOwn(data || []) })
     return () => { alive = false }
-  }, [studentId])
+  }, [studentId, given])
 
   // Подпись типажа — она же название работы у ученика. Когда ключа нет
   // (генератор не заведён в темы), называем сам раздел номера: «Задание без

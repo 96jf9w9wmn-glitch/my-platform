@@ -20,11 +20,34 @@ const FILE_BUCKET = "homework"
 const FIELDS = "id, number, title, body, files, updated_at"
 const FIELDS_NO_FILES = "id, number, title, body, updated_at"
 
+// Прочитанное держим на время жизни вкладки: и методички, и порядок номеров —
+// свойство РЕПЕТИТОРА, а не ученика, а карту заданий показывает каждая
+// раскрытая карточка в «Результатах». Без этого каждое раскрытие просило одни и
+// те же строки заново (замер по журналу Caddy: 7 запросов task_notes и 7 к
+// tutors в одну секунду на семь учеников). Запись кэш сбрасывает; сохранение
+// порядка читает МИМО кэша — иначе read-modify-write записал бы поверх чужой
+// правки устаревшим объектом.
+const notesCache = new Map()
+const orderCache = new Map()
+const dropNotesCache = (tutorId, examType) => notesCache.delete(`${tutorId}|${examType}`)
+
 // Методички по предмету, ключ — номер задания. Таблицы может не быть (миграция
 // supabase/task_notes.sql выполняется руками) — тогда методичек просто нет, а
 // карта заданий работает как обычный список.
-export async function loadTaskNotes(tutorId, examType) {
-  if (!tutorId || !examType) return {}
+export function loadTaskNotes(tutorId, examType) {
+  if (!tutorId || !examType) return Promise.resolve({})
+  const key = `${tutorId}|${examType}`
+  let p = notesCache.get(key)
+  if (!p) {
+    // Отказ чтения в кэше не оставляем: он был бы навсегда, а причина у него
+    // бывает временная (сеть, протухший токен).
+    p = fetchTaskNotes(tutorId, examType).catch((e) => { notesCache.delete(key); throw e })
+    notesCache.set(key, p)
+  }
+  return p
+}
+
+async function fetchTaskNotes(tutorId, examType) {
   const read = (fields) => supabase
     .from("task_notes")
     .select(fields)
@@ -34,6 +57,7 @@ export async function loadTaskNotes(tutorId, examType) {
   // Без миграции колонки files нет, и запрос падает целиком: методички
   // пропали бы из карты вовсе, а не просто остались без вложений.
   if (error) ({ data, error } = await read(FIELDS_NO_FILES))
+  // Таблицы нет — методичек нет, и это устойчивый ответ: его кэшировать можно.
   if (error) return {}
   const out = {}
   for (const r of data || []) out[r.number] = { ...r, files: normalizeFiles(r.files) }
@@ -51,6 +75,8 @@ export function normalizeFiles(files) {
 export async function saveTaskNote({ tutorId, examType, number, title, body, files }) {
   const text = (body || "").trim()
   const list = normalizeFiles(files)
+  // Кэш чтения устарел с этого мгновения — как бы запись ни закончилась.
+  dropNotesCache(tutorId, examType)
   // Методичка из одних файлов — обычное дело: памятка PDF и скрин разбора без
   // единой строки текста. Пустой её делает только отсутствие и того, и другого.
   if (!text && !list.length) {
@@ -110,10 +136,21 @@ export async function deleteTaskNoteFiles(urls) {
 }
 
 // Порядок номеров лежит у репетитора одним объектом «предмет → список номеров».
-export async function loadTaskOrder(tutorId) {
-  if (!tutorId) return {}
+export function loadTaskOrder(tutorId) {
+  if (!tutorId) return Promise.resolve({})
+  let p = orderCache.get(tutorId)
+  if (!p) {
+    p = fetchTaskOrder(tutorId).catch((e) => { orderCache.delete(tutorId); throw e })
+    orderCache.set(tutorId, p)
+  }
+  return p
+}
+
+async function fetchTaskOrder(tutorId) {
   const { data, error } = await supabase.from("tutors").select("task_order").eq("id", tutorId).maybeSingle()
-  if (error) return { error: error.message }
+  // Отказ запоминать нельзя: сохранение порядка на нём прерывается, и
+  // застрявший в кэше отказ запер бы карту до перезагрузки страницы.
+  if (error) { orderCache.delete(tutorId); return { error: error.message } }
   if (!data) return {}
   return data.task_order || {}
 }
@@ -123,11 +160,15 @@ export async function loadTaskOrder(tutorId) {
 // (так уже было — у колонки пропал грант, см. supabase/task_notes.sql) поэтому
 // прерывает сохранение, а не молча пишет объект из одного предмета.
 export async function saveTaskOrder(tutorId, examType, numbers) {
-  const current = await loadTaskOrder(tutorId)
+  // Читаем МИМО кэша: записать надо поверх того, что в базе сейчас, а не
+  // поверх снимка, сделанного при открытии первой карточки.
+  const current = await fetchTaskOrder(tutorId)
   if (current.error) return { error: current.error }
   const next = { ...current, [examType]: numbers }
   const { error } = await supabase.from("tutors").update({ task_order: next }).eq("id", tutorId)
-  return error ? { error: error.message } : {}
+  if (error) return { error: error.message }
+  orderCache.set(tutorId, Promise.resolve(next))
+  return {}
 }
 
 // Номера в порядке репетитора: сначала те, что он расставил сам, следом всё

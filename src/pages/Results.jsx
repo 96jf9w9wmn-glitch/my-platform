@@ -563,7 +563,7 @@ function StudentDetail({ student, stats, hw, tutorId }) {
       {/* Общий балл говорит «72%», а репетитору нужно знать, КАКОЙ типаж
           проседает. Считается и по вариантам, и по работам из банка сразу,
           поэтому блок общий для обеих дорожек. */}
-      <WeakTypes student={student} />
+      <WeakTypes student={student} attempts={attempts} />
     </div>
   )
 }
@@ -572,7 +572,19 @@ function StudentDetail({ student, stats, hw, tutorId }) {
 // Строка ученика в дашборде
 // ─────────────────────────────────────────────────────────────────────────────
 
-function StudentCard({ student, stats, hw, tutorId, open, onToggle }) {
+// `mounted` — раскрывали ли эту карточку хоть раз. <Collapse> рендерит детей
+// ВСЕГДА (grid-rows 0fr↔1fr анимируется без измерения высоты), поэтому до этой
+// правки каждая строка списка тянула свою долю работы, даже будучи свёрнутой:
+// запрос попыток, запрос методичек, запрос порядка номеров и — главное —
+// динамический импорт банка заданий ради подписей типажей (4,06 МБ, 896 КБ
+// сжатым). Замер по журналу Caddy: один заход на «Результаты» с семью
+// учениками — 14 запросов task_attempts, 7 task_notes и 7 к tutors в одну
+// секунду, и сразу вслед за ними банк.
+//
+// Отметку держит СПИСОК, а не карточка: раскрытая карточка тут всегда одна,
+// и списку она уже известна. Размонтировать обратно нельзя — закрытие обязано
+// быть плавным, а повторное раскрытие мгновенным.
+function StudentCard({ student, stats, hw, tutorId, open, mounted, onToggle }) {
   const perf = !stats.hasData && !stats.isExam
   const tone = perf ? "purple" : "blue"
   // Средний и лучший балл отсюда убраны намеренно: при одной работе строка
@@ -675,7 +687,7 @@ function StudentCard({ student, stats, hw, tutorId, open, onToggle }) {
       </button>
 
       <Collapse open={open}>
-        {stats.hasData || hw.count
+        {!mounted ? null : stats.hasData || hw.count
           ? <StudentDetail student={student} stats={stats} hw={hw} tutorId={tutorId} />
           : (
             <div className="px-3.5 pb-3.5 sm:px-4 sm:pb-4 flex flex-col gap-3">
@@ -713,6 +725,8 @@ function Results({ students, loaded = true, user }) {
   const [homework, setHomework] = useState([])
   const [loading, setLoading] = useState(true)
   const [openId, setOpenId] = useState(null)
+  // Карточки, которые уже раскрывали: их содержимое остаётся смонтированным.
+  const [mountedIds, setMountedIds] = useState(() => new Set())
   const [group, setGroup] = useState("all")
   const [onlyAttention, setOnlyAttention] = useState(false)
   // Границу «последних 30 дней» фиксируем один раз за жизнь страницы: считать
@@ -986,7 +1000,12 @@ function Results({ students, loaded = true, user }) {
                 hw={hw}
                 tutorId={user?.id}
                 open={openId === student.id}
-                onToggle={() => setOpenId(openId === student.id ? null : student.id)}
+                mounted={mountedIds.has(student.id)}
+                onToggle={() => {
+                  if (openId === student.id) return setOpenId(null)
+                  setMountedIds((prev) => (prev.has(student.id) ? prev : new Set(prev).add(student.id)))
+                  setOpenId(student.id)
+                }}
               />
             ))}
             {visible.length === 0 && (

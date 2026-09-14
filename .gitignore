@@ -154,3 +154,7 @@ dev-variant-review.html
 src/devVariantReview.jsx
 dev-kege.html
 src/devKege.js
+
+# Стенд «Результатов» (число запросов при открытии страницы)
+dev-results.html
+src/devResults.jsx
