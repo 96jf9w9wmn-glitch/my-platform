@@ -112,3 +112,13 @@ src/devHwSplit.jsx
 # стенд копирования и автопрокрутки (не коммитить)
 dev-copy.html
 src/devCopy.jsx
+
+# Стенд «разметка уже выданной работы»
+dev-hw-mark.html
+src/devHwMark.jsx
+
+# Стенд «настройки пера и ластика держатся между входами»
+dev-board-prefs.html
+src/devBoardPrefs.jsx
+dev-stat.html
+src/devStatTabs.jsx

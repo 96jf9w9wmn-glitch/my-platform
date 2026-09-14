@@ -11,6 +11,8 @@ import Icon from "./Icon"
 import TaskAttachments from "./TaskAttachments"
 import { renderHomeworkMath, plural, answersEqual, fileUrls } from "../utils"
 import { useClosing } from "../useClosing"
+import { numberTitle } from "../pages/numberTitles"
+import { TASK_MAX } from "../examScales"
 
 // Одно задание в окне: номер кружком, условие во всю ширину, под ним — чертёж и
 // файлы, ответ и варианты. Ответ стоит ПОД условием, а не чипом справа: справа
@@ -25,7 +27,7 @@ const answerShape = (text) =>
   isLongAnswer(text) ? "px-2.5 py-1.5 rounded-xl whitespace-pre-line leading-relaxed"
     : "px-2 py-0.5 rounded-full"
 
-function TaskBlock({ item, onCredit, onBoard }) {
+function TaskBlock({ item, onCredit, onBoard, marking }) {
   const { bankTask } = item
   // Задание с эталоном проверяет сама работа; без эталона (развёрнутый ответ,
   // письменная работа) ход решения смотрит репетитор — для него и есть доска.
@@ -192,19 +194,122 @@ function TaskBlock({ item, onCredit, onBoard }) {
           </div>
         )}
 
-        {/* Номер задания на экзамене. В варианте им же подписан кружок, и второй
-            раз он не нужен — там номер по порядку и есть номер задания. */}
-        {bankTask?.number != null && String(bankTask.number) !== String(item.n) && (
+        {/* Номер задания на экзамене. У задания из банка он приезжает вместе с
+            заданием и только показывается; у нарезанного из своего файла его
+            ставит репетитор — на нём держится вся статистика по номерам, и без
+            него работа в неё не попадает вовсе (см. MarkRow). */}
+        {marking && bankTask && !bankTask.gen_key ? (
+          <MarkRow item={item} marking={marking} autoChecked={autoChecked} />
+        ) : bankTask?.number != null && String(bankTask.number) !== String(item.n) ? (
           <div className="text-[11px] text-gray-400">
             №{bankTask.number}{bankTask.module ? " · блок 1–5" : ""}
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   )
 }
 
-export default function TasksModal({ title, note, intro, items, onClose, onCredit, onBoard }) {
+// Предмет работы и разметка скопом. Предмет один на работу: задания одного
+// файла — это задания одного экзамена, и спрашивать его у каждого было бы
+// издевательством. «Все №N» — про раздатку по одной теме: двадцать заданий
+// одного номера размечаются одним нажатием.
+function MarkHeader({ items, marking }) {
+  const own = items.filter((it) => it.bankTask && !it.bankTask.gen_key)
+  if (!own.length) return null
+  const numbered = own.filter((it) => TASK_MAX[marking.examType]?.[it.bankTask.number]).length
+  const first = own.find((it) => TASK_MAX[marking.examType]?.[it.bankTask.number])?.bankTask.number || null
+  return (
+    <div className="flex flex-col gap-1.5 mb-3">
+      <div className="flex items-center gap-2">
+        <select value={marking.examType} onChange={(e) => marking.onExamType(e.target.value)}
+          className="input-glass py-2 text-sm flex-1 min-w-0">
+          {marking.groups.map((g) => (
+            <optgroup key={g.key} label={g.key}>
+              {g.subjects.map((sub) => <option key={sub.type} value={sub.type}>{g.key} · {sub.label}</option>)}
+            </optgroup>
+          ))}
+        </select>
+        {first != null && numbered < own.length && (
+          <button type="button" onClick={() => marking.onAll(first)}
+            title="Вся работа по одной теме — один номер на все задания"
+            className="no-press shrink-0 text-xs text-blue-600 hover:text-blue-700 active:scale-95 transition-transform">
+            все №{first}
+          </button>
+        )}
+      </div>
+      <div className="text-[11px] text-gray-400 leading-snug">
+        {numbered
+          ? `Номер экзамена есть у ${numbered} ${plural(numbered, "задания", "заданий", "заданий")} из ${own.length}` +
+            (marking.canMark ? " — отмечайте верные и неверные, они пойдут в карту заданий." : ".")
+          : "Номер задания на экзамене связывает работу со статистикой ученика — картой заданий и слабыми темами."}
+      </div>
+    </div>
+  )
+}
+
+// Номер задания на экзамене и отметка репетитора — одной строкой под заданием.
+//
+// Обе половины про одно и то же: попадёт ли это задание в статистику ученика.
+// Попытка пишется, когда известны ПРЕДМЕТ, НОМЕР и то, верно ли решено. У
+// работы из банка всё это есть само; у работы из своего файла номер ставит
+// репетитор здесь, а верность — он же кнопками, потому что сверять ответ не с
+// чем: решение приходит фотографией.
+function MarkRow({ item, marking, autoChecked }) {
+  const { examType, onNumber, onMark, canMark } = marking
+  const num = item.bankTask?.number ?? null
+  const known = num != null && !!TASK_MAX[examType]?.[num]
+  // Отмечать есть что только там, где ответ не сверился с эталоном сам: где
+  // сверился — верность уже известна и рукой её не ставят (для ошибочного
+  // эталона есть «Засчитать задание»). Сдана ли работа, решает canMark: у
+  // письменной работы массива ответов нет вовсе, и по нему судить нельзя.
+  const markable = canMark && !autoChecked && known
+  const mark = item.mark
+  return (
+    <div className="flex items-center gap-2 flex-wrap text-[11px]">
+      {/* Ширину полю задаёт обёртка: у .input-glass стоит width:100% вне слоёв,
+          и утилита w-14 на самом поле не действует. */}
+      <div className="w-14 shrink-0">
+        <input
+          value={num ?? ""}
+          onChange={(e) => onNumber(item, e.target.value)}
+          placeholder="№"
+          inputMode="numeric"
+          title="Номер этого задания на экзамене"
+          className={`input-glass py-1 px-2 text-xs text-center ${num != null && !known ? "ring-1 ring-red-500/40" : ""}`}
+        />
+      </div>
+      <span className={num != null && !known ? "text-red-500" : "text-gray-400"}>
+        {num == null ? "Номер на экзамене — для статистики"
+          : known ? numberTitle(examType, num)
+          : `В «${examType}» нет задания №${num}`}
+      </span>
+      {markable && (
+        // Повторное нажатие по отмеченному снимает отметку: репетитор мог
+        // промахнуться, а попытка, которой он не утверждал, не должна остаться
+        // в статистике (RPC на p_correct = null удаляет строку).
+        <div className="ml-auto flex items-center gap-1.5">
+          <button type="button" onClick={() => onMark(item, mark === true ? null : true)}
+            title="Задание решено верно — пойдёт в статистику по номеру"
+            className={`press-fill rounded-lg px-2 py-1 ring-1 inline-flex items-center gap-1 ${mark === true
+              ? "bg-green-500/15 text-green-700 dark:text-green-300 ring-green-500/30"
+              : "text-gray-500 ring-gray-200 dark:ring-white/15 hover:text-green-600"}`}>
+            <Icon name="check" size={11} />верно
+          </button>
+          <button type="button" onClick={() => onMark(item, mark === false ? null : false)}
+            title="Задание решено неверно — пойдёт в статистику по номеру"
+            className={`press-fill rounded-lg px-2 py-1 ring-1 inline-flex items-center gap-1 ${mark === false
+              ? "bg-red-500/15 text-red-700 dark:text-red-300 ring-red-500/30"
+              : "text-gray-500 ring-gray-200 dark:ring-white/15 hover:text-red-500"}`}>
+            <Icon name="x" size={11} />неверно
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function TasksModal({ title, note, intro, items, onClose, onCredit, onBoard, marking }) {
   const { cls: closingCls, close } = useClosing(onClose)
   // Уходя на доску, окно закрываем: доска открывается поверх кабинета, и
   // оставленное под ней окно встретило бы репетитора при возвращении.
@@ -253,8 +358,10 @@ export default function TasksModal({ title, note, intro, items, onClose, onCredi
                 dangerouslySetInnerHTML={{ __html: renderHomeworkMath(intro) }} />
             )}
 
+            {marking && <MarkHeader items={items} marking={marking} />}
+
             <div className="flex flex-col gap-2.5">
-              {items.map((it, i) => <TaskBlock key={i} item={it} onCredit={onCredit} onBoard={toBoard} />)}
+              {items.map((it, i) => <TaskBlock key={i} item={it} onCredit={onCredit} onBoard={toBoard} marking={marking} />)}
               {items.length === 0 && !intro && (
                 <div className="rounded-2xl ring-1 ring-dashed ring-gray-200/80 dark:ring-white/10 text-sm text-gray-400 text-center py-8">
                   Условий нет

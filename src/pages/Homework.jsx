@@ -1922,7 +1922,7 @@ function DetailBlock({ children, className = "" }) {
 
 // Разбор выбранного задания — целой строкой под рядом карточек, как разбор
 // варианта: слева условия, справа работа ученика и проверка.
-export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, onEdit, onDelete, onOpenBoard, onClose, cls }) {
+export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, studentAccountId, onUpdate, onEdit, onDelete, onOpenBoard, onClose, cls }) {
   const [grading, setGrading] = useState(false)
   const [revising, setRevising] = useState(false)
   const [extending, setExtending] = useState(false)
@@ -1939,6 +1939,15 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
   const [credited, setCredited] = useState(hwCredited)
   const [creditedSrc, setCreditedSrc] = useState(hw.credited)
   if (creditedSrc !== hw.credited) { setCreditedSrc(hw.credited); setCredited(hwCredited) }
+  // Разметка работы номерами экзамена и отметки «верно/неверно» держатся в
+  // своём состоянии по той же причине, что и зачёт: список работ
+  // перезагружается запросом, а разбор обязан откликаться на нажатие сразу.
+  const [bankTasks, setBankTasks] = useState(hw.bank_tasks)
+  const [bankSrc, setBankSrc] = useState(hw.bank_tasks)
+  if (bankSrc !== hw.bank_tasks) { setBankSrc(hw.bank_tasks); setBankTasks(hw.bank_tasks) }
+  const [marks, setMarks] = useState(hw.task_marks || null)
+  const [marksSrc, setMarksSrc] = useState(hw.task_marks)
+  if (marksSrc !== hw.task_marks) { setMarksSrc(hw.task_marks); setMarks(hw.task_marks || null) }
   const status = STATUS_LABELS[hw.status] || STATUS_LABELS.assigned
   const typeInfo = TYPE_LABELS[hw.hw_type] || TYPE_LABELS.written
   const isPureTest = hw.hw_type === "test"
@@ -1975,7 +1984,9 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
 
   // Задания для окна и строка-подсказка: токены дробей и корней в одну строку
   // не рисуются, поэтому в подсказке они разворачиваются текстом.
-  const { intro: tasksIntro, items: taskItems } = homeworkTaskItems({ ...hw, credited })
+  const { intro: tasksIntro, items: taskItems } = homeworkTaskItems({
+    ...hw, credited, bank_tasks: bankTasks, task_marks: marks,
+  })
   const taskCount = taskItems.length
   // Зачёт доступен, только когда колонка есть в строке: на базе без миграции
   // manual_credit.sql запись упала бы, а кнопка обещала бы несуществующее.
@@ -2226,6 +2237,115 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
     onUpdate()
   }
 
+  // --- Разметка работы номерами экзамена ---
+  //
+  // Ради неё вся затея: попытка попадает в статистику ученика (карта заданий,
+  // «Где ученик ошибается», отчёт родителю), только когда у задания известны
+  // предмет и номер. У собранного из банка они приезжают с заданием, у
+  // нарезанного из своего файла их ставит репетитор — при выдаче или здесь, в
+  // разборе уже выданной работы.
+  //
+  // Предмет один на работу: берём тот, которым она уже размечена, иначе —
+  // предмет ученика (его же подставляет сборка из банка).
+  const ownTasks = Array.isArray(bankTasks) ? bankTasks.filter((t) => t && !t.gen_key) : []
+  const markedType = ownTasks.find((t) => t.exam_type)?.exam_type || null
+  const [pickedType, setPickedType] = useState(null)
+  const examType = pickedType || markedType
+    || typeForStudent(student, bankGroups) || firstType(bankGroups)
+  // Размечать можно работу, собранную из своего файла: у задания из банка номер
+  // приезжает вместе с генератором, и менять его рукой нельзя — разойдётся с
+  // тем, что на самом деле выдали.
+  const canNumber = ownTasks.length > 0 && ownTasks.length === taskItems.length
+  // Что показать о разметке прямо в разборе. Без этой строки разметка была бы
+  // спрятана внутри окна заданий, и репетитор о ней не узнал бы: «сколько
+  // заданий уже связано с экзаменом» — это состояние работы, а не содержимое
+  // отдельного окна.
+  const numberedTasks = ownTasks.filter((t) => t.number != null).length
+
+  // Отметка «верно/неверно» — только там, где есть куда её записать: колонка
+  // task_marks приходит миграцией homework_task_marks.sql, и без неё кнопки
+  // обещали бы несуществующее. Ученик должен быть привязан к карточке —
+  // попытка пишется на его аккаунт. И только у СДАННОЙ работы: пока ученик
+  // решает, отмечать нечего. Судить по массиву ответов тут нельзя — у
+  // письменной работы его нет вовсе, ответ приходит фотографией.
+  const canMark = canNumber && hw.task_marks !== undefined && !!hw.student_id
+    && (hw.status === "submitted" || hw.status === "done")
+  const markedCount = marks ? Object.values(marks).filter((v) => v === true || v === false).length : 0
+
+  // Номера пишем В САМУ РАБОТУ (homework.bank_tasks) — теми же полями, что у
+  // задания банка. Адреса картинок при этом нормализуем: в состоянии кабинета
+  // они ПОДПИСАННЫЕ (signRows), и, записав подпись обратно, мы сломали бы
+  // ученику доступ к условию — ровно так когда-то вышло с file_url.
+  async function saveNumbers(next) {
+    const prev = bankTasks
+    setBankTasks(next)
+    const payload = next.map((t) => (t?.image_url
+      ? { ...t, image_url: permanentStorageUrl(t.image_url, "homework") }
+      : t))
+    const { error } = await supabase.from("homework").update({ bank_tasks: payload }).eq("id", hw.id)
+    if (error) { setBankTasks(prev); return false }
+    return true
+  }
+
+  const withNumber = (idx, number) => bankTasks.map((t, i) => (i === idx
+    ? (number == null ? { ...t, number: undefined, exam_type: undefined } : { ...t, number, exam_type: examType })
+    : t))
+
+  function setTaskNumber(item, value) {
+    if (!canNumber) return
+    const idx = taskItems.indexOf(item)
+    if (idx < 0) return
+    const digits = String(value).replace(/\D+/g, "").slice(0, 2)
+    saveNumbers(withNumber(idx, digits ? Number(digits) : null))
+  }
+
+  // Вся работа одним номером: раздатка по одной теме — это двадцать заданий
+  // одного номера, и проставлять их по одному незачем.
+  function numberAllTasks(number) {
+    if (!canNumber) return
+    saveNumbers(bankTasks.map((t) => ({ ...t, number, exam_type: examType })))
+  }
+
+  // Смена предмета переписывает его у уже размеченных заданий: номера у
+  // предметов свои, и оставить половину работы на прежнем экзамене — значит
+  // развести её по двум разным картам заданий.
+  function changeExamType(next) {
+    setPickedType(next)
+    if (canNumber && markedType && markedType !== next) {
+      saveNumbers(bankTasks.map((t) => (t.number != null ? { ...t, exam_type: next } : t)))
+    }
+  }
+
+  // Отметка «верно/неверно» у задания, которое кабинет проверить не может.
+  // Хранится в работе (репетитор видит её в разборе) и тем же нажатием уходит
+  // в журнал попыток — иначе она осталась бы личной пометкой, а карта заданий
+  // у письменной работы так и стояла бы пустой.
+  async function setTaskMark(item, value) {
+    if (!canMark) return
+    const n = Number(item.n)
+    const prev = marks
+    const next = { ...(marks || {}) }
+    if (value == null) delete next[n]
+    else next[n] = value
+    delete next[String(n)]                 // ключ мог лежать строкой — не держим оба
+    if (value != null) next[n] = value
+    setMarks(next)
+    const { error } = await supabase.from("homework").update({ task_marks: next }).eq("id", hw.id)
+    if (error) { setMarks(prev); return }
+    const number = item.bankTask?.number
+    if (number == null) return
+    // Не критичный путь: на базе без функции отметка всё равно сохранена в
+    // работе, а в журнал она доедет, когда миграцию выполнят.
+    supabase.rpc("task_attempt_mark", {
+      p_source: "homework", p_source_id: hw.id, p_student_id: String(hw.student_id),
+      p_exam_type: item.bankTask?.exam_type || examType, p_number: Number(number), p_correct: value,
+      // Позиция задания в работе: в раздатке по одной теме девять заданий несут
+      // ОДИН номер, и без неё девять отметок легли бы в одну строку журнала,
+      // затирая друг друга.
+      p_task_no: n,
+    }).then(() => {}, () => {})
+  }
+
   // Продление срока — единственная правка, доступная работе, которую ученик уже
   // открыл: условий она не трогает, а даёт время их дорешать (правку условий
   // такой работе закрывает `attempted`, и до этой кнопки просроченной работе
@@ -2355,6 +2475,22 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
                 </div>
                 <span className="text-xs text-blue-600 flex-shrink-0">Посмотреть</span>
               </div>
+              {/* Связь заданий с экзаменом — прямо здесь: от неё зависит, попадёт
+                  ли работа в карту заданий ученика, а ставится она в том же
+                  окне, которое открывает эта карточка. */}
+              {canNumber && (
+                <div className="w-full flex items-center gap-1.5 text-[11px] text-gray-400">
+                  <Icon name="bar-chart" size={11} className="flex-shrink-0" />
+                  {numberedTasks === 0 ? (
+                    <span className="truncate">Номера экзамена не проставлены — работа не идёт в статистику</span>
+                  ) : (
+                    <span className="truncate">
+                      Номера экзамена: {numberedTasks} из {ownTasks.length}
+                      {canMark ? ` · отмечено ${markedCount} из ${numberedTasks}` : ""}
+                    </span>
+                  )}
+                </div>
+              )}
               {resultRow}
             </button>
           ) : !hw.file_url ? (
@@ -2651,6 +2787,11 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
           items={taskItems}
           onCredit={canCredit ? toggleCredit : undefined}
           onBoard={checkable ? (item) => checkOnBoard([item]) : undefined}
+          marking={canNumber ? {
+            examType, groups: bankGroups, canMark,
+            onExamType: changeExamType, onNumber: setTaskNumber,
+            onAll: numberAllTasks, onMark: setTaskMark,
+          } : undefined}
           onClose={() => setShowTasks(false)}
         />
       )}
@@ -2805,6 +2946,9 @@ function Homework({ user, students, onOpenBoard }) {
   // выпасть из фильтра — иначе она пропала бы в тот же кадр.
   const selectedHw = selectedId ? homework.find((h) => h.id === selectedId) : null
   const selectedStudent = selectedHw ? students.find((s) => s.id === selectedHw.student_id) : null
+  // Предметы этого репетитора — разбору они нужны для разметки работы номерами
+  // экзамена (те же, что у сборки задания из банка).
+  const detailBankGroups = subjectGroups({ picked: user.profile?.bank_subjects, owner: isOwner(user.email) })
 
   // Повторное нажатие по карточке сворачивает разбор; нажатие по соседней
   // перебивает уход, иначе отложенное закрытие погасило бы только что открытую.
@@ -2843,6 +2987,8 @@ function Homework({ user, students, onOpenBoard }) {
         <HomeworkDetail
           key={selectedHw.id}
           hw={selectedHw}
+          student={selectedStudent}
+          bankGroups={detailBankGroups}
           studentPhone={selectedStudent?.phone || null}
           studentAccountId={selectedStudent?.studentAccountId || null}
           onUpdate={loadHomework}

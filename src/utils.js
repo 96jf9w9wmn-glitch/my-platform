@@ -1065,6 +1065,10 @@ export function homeworkTaskItems(hw) {
   // а не индекс: так их пишет кабинет ученика (homework.solution_files).
   const shots = hw.solution_files && typeof hw.solution_files === "object" ? hw.solution_files : null
   const credited = creditedNums(hw.credited)
+  // Отметка репетитора «верно/неверно» у задания БЕЗ эталона: сверять там
+  // нечего, и верность знает только он (supabase/homework_task_marks.sql).
+  // Ключ — номер задания в работе, как у фотографий решения и у credited.
+  const marks = hw.task_marks && typeof hw.task_marks === "object" ? hw.task_marks : null
   return {
     intro,
     items: tasks.map((t, i) => {
@@ -1089,6 +1093,8 @@ export function homeworkTaskItems(hw) {
         ok: credited.has(Number(n)) ? true
           : given && ans != null && ans !== "" ? answersEqual(gave ?? "", ans) : null,
         credited: credited.has(Number(n)),
+        // null — репетитор задание ещё не смотрел; true/false — его отметка.
+        mark: marks ? marks[n] ?? marks[String(n)] ?? null : null,
         // Фотографий решения к заданию бывает несколько: список — основное,
         // одиночный адрес оставлен для мест, где показывается одна ссылка.
         solutionUrls: fileUrls(shots?.[n] ?? shots?.[String(n)]),
