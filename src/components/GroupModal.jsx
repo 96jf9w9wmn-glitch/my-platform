@@ -45,6 +45,17 @@ function GroupModal({ group = null, students = [], onSave, onDelete, onClose }) 
     fn()
   }
 
+  // Занятия, которые группе ещё предстоят: именно о них спрашивают при роспуске.
+  const upcoming = current.lessons
+
+  // Роспуск группы: снять её будущие занятия или оставить — решает репетитор,
+  // а делает это кабинет (занятия лежат в карточках участников, а не у группы).
+  async function dissolve(dropLessons) {
+    const res = await onDelete?.(group.id, { dropLessons })
+    if (res?.error) { setError(res.error); setAskDelete(false); return }
+    close()
+  }
+
   function toggle(id) {
     setMembers((prev) => {
       const next = new Set(prev)
@@ -305,24 +316,36 @@ function GroupModal({ group = null, students = [], onSave, onDelete, onClose }) 
           </button>
         </div>
 
-        {/* Роспуск группы занятий не отменяет: они уже стоят у людей в
-            расписании. Сказать это надо здесь, а не выяснять потом. */}
+        {/* Занятия группы лежат у людей в расписании, и сама по себе удалённая
+            группа их не трогает. Выбор тут обязателен: одни распускают группу,
+            продолжая заниматься с каждым по отдельности, другие — закончив
+            совсем. Прошлое не трогаем никогда: оно проведено и посчитано в долг. */}
         {askDelete && (
           <div className="absolute inset-0 glass-overlay flex items-center justify-center p-6 rounded-[inherit]">
             <div className="glass-modal w-full max-w-xs p-5 flex flex-col gap-3">
               <h3 className="text-base font-medium">Распустить группу?</h3>
               <p className="text-sm text-gray-500">
-                Уже назначенные занятия останутся в расписании у каждого участника — вместе с оплатой за них.
-                Пропадёт только сама группа и общий чат.
+                Прошедшие занятия и оплата за них останутся у каждого участника.
+                {upcoming.length > 0
+                  ? ` Впереди ещё ${upcoming.length} ${plural(upcoming.length, "занятие", "занятия", "занятий")} — решите, оставить или снять.`
+                  : " Пропадёт только сама группа и общий чат."}
               </p>
-              <div className="flex gap-2 mt-1">
-                <button onClick={() => setAskDelete(false)}
-                  className="press-fill flex-1 ring-1 ring-gray-200 dark:ring-white/15 rounded-xl py-2 text-sm text-gray-600">
-                  Оставить
+              <div className="flex flex-col gap-2 mt-1">
+                {upcoming.length > 0 && (
+                  <button onClick={() => dissolve(true)}
+                    className="press-fill rounded-xl py-2 text-sm text-white bg-red-600">
+                    Распустить и снять занятия
+                  </button>
+                )}
+                <button onClick={() => dissolve(false)}
+                  className={upcoming.length > 0
+                    ? "press-fill rounded-xl py-2 text-sm text-red-600 ring-1 ring-red-500/25"
+                    : "press-fill rounded-xl py-2 text-sm text-white bg-red-600"}>
+                  {upcoming.length > 0 ? "Распустить, занятия оставить" : "Распустить"}
                 </button>
-                <button onClick={async () => { await onDelete?.(group.id); close() }}
-                  className="press-fill flex-1 rounded-xl py-2 text-sm text-white bg-red-600">
-                  Распустить
+                <button onClick={() => setAskDelete(false)}
+                  className="press-fill rounded-xl py-2 text-sm text-gray-600 ring-1 ring-gray-200 dark:ring-white/15">
+                  Отмена
                 </button>
               </div>
             </div>

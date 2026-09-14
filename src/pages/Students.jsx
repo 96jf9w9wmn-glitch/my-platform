@@ -18,6 +18,7 @@ import getAvatarColor from "../avatarColor"
 import { saveGroup, deleteGroup, groupMembers, applyGroupSchedule, groupFutureLessons } from "../groups"
 import { toStudentWall } from "../timezone"
 import { formatLessonWhen } from "../lessonMove"
+import { todayStr } from "../recurring"
 
 // Телефон — единственная связка карточки с аккаунтом ученика (по нему сшивает и
 // RLS, current_student_rows), но записан он местами по-разному. Сравниваем по цифрам.
@@ -393,6 +394,30 @@ function Students({ students, loaded = true, setStudents, groups = [], onGroupSa
     }
   }
 
+  // Роспуск группы сам по себе занятий не трогает: они стоят в карточках
+  // участников, а у группы своего списка нет (см. шапку src/groups.js). Если
+  // репетитор сказал, что занятий больше не будет, снимаем БУДУЩИЕ — ровно
+  // так же, как у исключённого из состава. Прошлые не трогаем никогда: они
+  // проведены, посчитаны в долг и выставлены квитанциями.
+  function dropGroupLessons(group) {
+    if (!group?.id) return
+    const next = applyGroupSchedule(students, group, [])
+    if (next.every((s, i) => s === students[i])) return
+    const today = todayStr()
+    const lost = new Set(students
+      .filter((s) => (s.lessons || []).some((l) => l.groupId === group.id && l.date >= today))
+      .map((s) => String(s.id)))
+    setStudents(next)
+    for (const s of next) {
+      if (!s.studentAccountId || !lost.has(String(s.id))) continue
+      supabase.from("notifications").insert({
+        user_id: s.studentAccountId,
+        title: `Группа «${group.name}» распущена`,
+        body: "Занятия группы сняты с твоего расписания.",
+      }).then(({ error }) => { if (error) console.error("Уведомление о роспуске группы не ушло:", error.message) })
+    }
+  }
+
   async function handleDelete(studentId) {
     setConfirm(null)
     const { error } = await supabase.from("students").delete().eq("id", studentId)
@@ -621,9 +646,11 @@ function Students({ students, loaded = true, setStudents, groups = [], onGroupSa
             applyGroupChanges(res.group, g.schedule, groupForm.group)
             return res
           }}
-          onDelete={async (id) => {
+          onDelete={async (id, { dropLessons } = {}) => {
             const res = await deleteGroup(id)
-            if (!res.error) onGroupDeleted?.(id)
+            if (res.error) return res
+            if (dropLessons) dropGroupLessons(groupForm.group)
+            onGroupDeleted?.(id)
             return res
           }}
           onClose={() => setGroupForm(null)}

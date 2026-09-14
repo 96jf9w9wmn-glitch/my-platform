@@ -99,3 +99,4 @@ src/devHwTutorMulti.jsx
 # стенд карточки ученика (не коммитить)
 dev-student-form.html
 src/devStudentForm.jsx
+dev-group.html
