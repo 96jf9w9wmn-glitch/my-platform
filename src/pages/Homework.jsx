@@ -2047,8 +2047,7 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
   // Балл ставится и с ДОСКИ, а доска держит ту функцию, с какой её открыли:
   // замыкание в ней застыло на состоянии того рендера. Читать из него `marks`
   // нельзя — вторая отметка ушла бы в базу поверх снимка, сделанного до первой,
-  // и первая молча пропала бы. Поэтому актуальные отметки и задания живут в
-  // ссылках, а не в замыкании.
+  // и первая молча пропала бы. Поэтому актуальные отметки живут в ссылке.
   const marksRef = useRef(marks)
   const taskItemsRef = useRef([])
   useEffect(() => { marksRef.current = marks }, [marks])
@@ -2451,14 +2450,26 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
   // набранная перед закрытием разбора, пропала бы молча.
   const themeTimer = useRef(null)
   const themeNext = useRef(null)
+  const themePrev = useRef(null)
 
   function flushThemes() {
     clearTimeout(themeTimer.current)
     themeTimer.current = null
     const rows = themeNext.current
+    const prev = themePrev.current
     themeNext.current = null
+    themePrev.current = null
     if (!rows) return
-    pushTasks(rows)
+    // ЗАПРОС УХОДИТ ТОЛЬКО ПРИ `.then()`: построитель PostgREST ленивый и сам
+    // по себе в сеть не ходит. Без этого тема жила до перезагрузки страницы и
+    // пропадала молча — а на стенде выглядела записанной, потому что
+    // поддельная база печатала вызов, а не отправку.
+    pushTasks(rows).then(({ error }) => {
+      // Отказ базы (колонки нет, прав нет) не должен остаться незамеченным:
+      // возвращаем то, что в ней действительно лежит, иначе экран показывал бы
+      // тему, которой нет.
+      if (error && prev) setBankTasks(prev)
+    }, () => {})
     // Свои темы помнит устройство: в следующей работе они подскажутся списком.
     // Помним по записи, а не по нажатию клавиши, — иначе в подсказках осел бы
     // каждый недописанный обрывок.
@@ -2466,13 +2477,23 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
   }
 
   function saveThemes(next) {
+    // Снимок ДО правки — на случай отказа базы. Берём его один раз на цикл
+    // откладывания: на второй букве прежним состоянием была бы первая.
+    if (!themeNext.current) themePrev.current = bankTasks
     setBankTasks(next)
     themeNext.current = next
     clearTimeout(themeTimer.current)
     themeTimer.current = setTimeout(flushThemes, 700)
   }
 
-  useEffect(() => () => { if (themeTimer.current) flushThemes() }, [])
+  // Уходя — дописываем. И это не только про размонтирование: тему набирают и
+  // тут же перезагружают страницу, а отложенная на 700 мс запись в этот зазор
+  // просто не успевала бы уйти. Тот же приём, что у доски.
+  useEffect(() => {
+    const leave = () => { if (themeTimer.current) flushThemes() }
+    window.addEventListener("pagehide", leave)
+    return () => { window.removeEventListener("pagehide", leave); leave() }
+  }, [])
 
   const withNumber = (idx, number) => bankTasks.map((t, i) => (i === idx
     ? (number == null ? { ...t, number: undefined, exam_type: undefined } : { ...t, number, exam_type: examType })
