@@ -22,10 +22,10 @@ function PhotoViewer({ photos, title, start = 0, onClose }) {
   const list = photos.filter(Boolean)
   const [i, setI] = useState(Math.min(Math.max(start, 0), Math.max(list.length - 1, 0)))
   const { cls: closingCls, close } = useClosing(() => onClose?.())
-  // Пока снимок не пришёл, на его месте не пустота, а рамка с той же плашкой
-  // загрузки, что у листа, который едет на доску: на телефоне лист в пару
-  // мегабайт едет заметное время, и пустой экран читается как сбой. Ключ — сам
-  // адрес: перелистнули на несоседний лист, и индикатор должен вернуться.
+  // Пока снимок не пришёл, на его месте та же плашка загрузки, что у листа,
+  // который едет на доску: на телефоне лист в пару мегабайт едет заметное
+  // время, и пустой экран читается как сбой. Ключ — сам адрес: перелистнули на
+  // несоседний лист, и индикатор должен вернуться.
   const [loaded, setLoaded] = useState({})
   const touchX = useRef(null)
 
@@ -110,9 +110,11 @@ function PhotoViewer({ photos, title, start = 0, onClose }) {
               {!loaded[cur] && (
                 // Индикатор — тот же, что у листа, который едет на доску: плашка с
                 // тремя точками и без подписи (требование владельца — одна анимация
-                // загрузки, слов не нужно). Анимация в CSS, поэтому она идёт и
+                // загрузки, слов не нужно), и БЕЗ рамки на месте будущего снимка:
+                // размера снимка мы ещё не знаем, и рамка стояла пустым
+                // прямоугольником не по нему. Анимация в CSS, поэтому она идёт и
                 // тогда, когда главный поток занят разбором снимка.
-                <div className="absolute inset-0 rounded-2xl ring-1 ring-white/20 flex items-center justify-center px-10 py-14">
+                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
                   <span className="popup-bubble flex items-center px-3 h-7 rounded-full shadow-lg"
                     style={{ background: "#2c2c2e", border: "1px solid rgba(255,255,255,.08)" }}>
                     <span className="loader-dots text-blue-500"><i /><i /><i /></span>
