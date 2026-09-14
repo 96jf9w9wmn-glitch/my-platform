@@ -36,6 +36,7 @@ import { studentBilling, periodLabel } from "../billing"
 import { longDate } from "../invoices"
 import { homeworkRoom } from "../boardRoom"
 import TaskAttachments from "../components/TaskAttachments"
+import { homeworkAttempts } from "../homeworkAttempts"
 import DateTile from "../components/DateTile"
 import { TILE_TINTS, dueTintKey } from "../dueTint"
 import { notifyTutor } from "../telegramNotify"
@@ -2925,52 +2926,18 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
       await supabase.from("homework").update(plain).eq("id", hwId)
     }
 
-    // Попытки по заданиям из банка — тот же журнал, что после сдачи варианта
+    // Попытки по заданиям — тот же журнал, что после сдачи варианта
     // (task_attempts). Без него аналитика слабых типажей и отчёт родителю
     // видели бы только варианты, хотя решают дома в основном домашние работы:
     // у ученика, который вариантов не сдавал, тем с процентами не было вовсе.
-    //
-    // Пишем только когда задания приехали из банка И их столько же, сколько
-    // правильных ответов: соответствие ответа заданию тут держится на порядке,
-    // и при расхождении попытка приписалась бы чужому типажу.
+    // Что именно попадает в журнал — src/homeworkAttempts.js.
     try {
-      const bank = Array.isArray(hw.bank_tasks) ? hw.bank_tasks : []
-      if (bank.length && bank.length === correct.length) {
-        // Повторная сдача — вторая попытка. Доля верных в аналитике считается по
-        // первым: иначе режим «решай до верного ответа» показывал бы 50% там, где
-        // тема на самом деле освоена.
-        const attemptNo = Array.isArray(hw.student_answers) && hw.student_answers.length ? 2 : 1
-        // Доработка присылает и принятые ответы — они уже записаны первой
-        // попыткой, второй раз в журнал не идут: иначе один ответ считался бы
-        // дважды и растянул бы историю по типажу.
-        const kept = hw.status === "revision" && Array.isArray(hw.student_answers) ? hw.student_answers : null
-        const attempts = []
-        answers.forEach((ans, i) => {
-          const given = String(ans || "").trim()
-          const task = bank[i]
-          // Не отвечал — это пропуск, а не ошибка. Задание без предмета и номера
-          // (старая работа, собранная до этой правки) в журнал не идёт.
-          if (!given || !task?.exam_type || task.number == null) return
-          if (String(kept?.[i] ?? "").trim() !== "") return
-          attempts.push({
-            p_account: user.id,
-            p_token: user.token,
-            // Нужен id ученика У РЕПЕТИТОРА: по нему джойнит и RLS, и вся аналитика.
-            p_student_id: student?.id != null ? String(student.id) : null,
-            p_source: "homework",
-            p_source_id: hwId,
-            p_exam_type: task.exam_type,
-            p_number: task.number,
-            p_gen_key: task.gen_key || null,
-            p_is_correct: answersEqual(given, correct[i]),
-            p_answer: given,
-            p_attempt_no: attemptNo,
-          })
-        })
-        // Сдачу это блокировать не должно: аналитика — не критичный путь, а
-        // таблицы может не быть на базе без миграции task_attempts.sql.
-        Promise.all(attempts.map((a) => supabase.rpc("task_attempt_log", a))).catch(() => {})
-      }
+      const attempts = homeworkAttempts(hw, {
+        answers, correct, account: user.id, token: user.token, studentId: student?.id,
+      })
+      // Сдачу это блокировать не должно: аналитика — не критичный путь, а
+      // таблицы может не быть на базе без миграции task_attempts.sql.
+      Promise.all(attempts.map((a) => supabase.rpc("task_attempt_log", a))).catch(() => {})
     } catch { /* журнал попыток не должен мешать сдаче работы */ }
 
     if (!isPureTest) {

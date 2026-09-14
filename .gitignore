@@ -104,3 +104,11 @@ dev-group.html
 # Стенд разбора ДЗ у репетитора
 dev-hwrev.html
 src/devHwRev.jsx
+
+# Стенд «номера экзамена у заданий из файла»
+dev-hw-split.html
+src/devHwSplit.jsx
+
+# стенд копирования и автопрокрутки (не коммитить)
+dev-copy.html
+src/devCopy.jsx

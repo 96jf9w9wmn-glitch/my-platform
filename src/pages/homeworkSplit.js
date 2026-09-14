@@ -614,7 +614,10 @@ function cutRanges(pages, cuts) {
       const bottom = p === to.page ? to.y : pages[p].height
       if (bottom - top > 8) parts.push({ page: p, top, bottom })
     }
-    if (parts.length) out.push(parts)
+    // Номер, которым задание подписано В САМОМ ФАЙЛЕ, едет вместе с куском:
+    // в раздатке-варианте он и есть номер задания экзамена, и репетитору
+    // остаётся его принять, а не вписывать полтора десятка чисел руками.
+    if (parts.length) out.push({ parts, num: from.num ?? null })
   }
   return out
 }
@@ -670,7 +673,7 @@ function textOf(pages, parts) {
 
 // Границы → готовые задания: картинка (data-URI) и текст условия.
 export function buildTasks(pages, cuts, { quality = 0.82 } = {}) {
-  return cutRanges(pages, cuts).map((parts, idx) => {
+  return cutRanges(pages, cuts).map(({ parts, num }, idx) => {
     const width = Math.max(...parts.map((p) => pages[p.page].width))
     const height = parts.reduce((s, p) => s + (p.bottom - p.top), 0)
     const canvas = canvasOf(width, Math.max(1, Math.round(height)))
@@ -694,6 +697,10 @@ export function buildTasks(pages, cuts, { quality = 0.82 } = {}) {
     }
     return {
       n: idx + 1,
+      // num — номер из файла («7.» перед условием), а n — порядок в работе. Это
+      // разные вещи: в тематической подборке файл нумерует задания подряд, а
+      // номер экзамена у всех один. Поэтому num только предлагается.
+      num,
       image: out.toDataURL("image/jpeg", quality),
       text: textOf(pages, parts),
     }

@@ -28,6 +28,8 @@ import { TILE_TINTS, dueTintKey } from "../dueTint"
 // Список предметов — из лёгкого модуля: сами генераторы приезжают отдельно
 // (homeworkBank), и тащить их в бандл раздела ради подписей нельзя.
 import { subjectGroups, firstType, typeForStudent, BANK_SUBJECTS } from "./examSubjectList"
+import { numberTitle } from "./numberTitles"
+import { TASK_MAX } from "../examScales"
 import { lazyChunk } from "../lazyChunk"
 
 const STATUS_LABELS = {
@@ -357,7 +359,7 @@ function MathField({ value, onChange, multiline = false, rows = 2, className = "
 // Непустые варианты ответа одного задания.
 const cleanOpts = (t) => (t.options || []).map((o) => o.trim()).filter(Boolean)
 
-function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw, bankSubjects = null, owner = false }) {
+export function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw, bankSubjects = null, owner = false }) {
   const isEditing = !!editingHw
   const [studentId, setStudentId] = useState(editingHw?.student_id ? String(editingHw.student_id) : "")
   // Дату подставляем один раз при открытии — иначе перерисовка вернула бы
@@ -685,8 +687,40 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
 
   function applySplit(tasks) {
     resetBulk()
-    syncSplit(tasks.map((t) => ({ image: t.image, answer: "" })))
+    // Номер из файла запоминаем (fileNum), но в поле не ставим: в раздатке по
+    // одной теме файл нумерует задания подряд, а номер экзамена у всех один —
+    // молча проставленные 1…20 развели бы одно задание по двадцати строкам
+    // статистики. Предлагаем их кнопкой «номера из файла».
+    syncSplit(tasks.map((t) => ({ image: t.image, answer: "", number: null, fileNum: t.num ?? null })))
   }
+
+  // Номер задания НА ЭКЗАМЕНЕ. На нём держится вся статистика по заданиям
+  // (карта заданий, слабые темы, отчёт родителю): попытка пишется в
+  // task_attempts только когда у задания есть предмет и номер — см. запись
+  // после сдачи в StudentDashboard. Без номера работа проверится как прежде,
+  // просто не попадёт в свод по номерам.
+  const setSplitNumber = (idx, value) => {
+    const n = String(value).replace(/\D+/g, "").slice(0, 2)
+    syncSplit(splitTasks.map((t, i) => (i === idx ? { ...t, number: n ? Number(n) : null } : t)))
+  }
+
+  // Номер есть у экзамена — только такой уедет в работу: «№30» у ОГЭ не
+  // сложится ни с чьей картой заданий, и попытка по нему повисла бы в пустоте.
+  const examNumberOf = (t) => (t?.number && TASK_MAX[bankType]?.[t.number] ? t.number : null)
+
+  // Кнопку «из файла» показываем, только пока она что-то меняет: когда номера
+  // уже приняты, она стояла бы рядом без дела и путала бы («а сейчас какие?»).
+  const fileNumbers = splitTasks.filter((t) => t.fileNum != null && t.fileNum !== t.number).length
+  const numberedCount = splitTasks.filter((t) => examNumberOf(t)).length
+  const firstNumber = splitTasks.find((t) => examNumberOf(t))?.number || null
+
+  // Файл-вариант: номера в нём и есть номера экзамена.
+  const numbersFromFile = () =>
+    syncSplit(splitTasks.map((t) => (t.fileNum != null ? { ...t, number: t.fileNum } : t)))
+
+  // Подборка по одной теме: весь файл — это один номер экзамена.
+  const numberAll = () =>
+    firstNumber ? syncSplit(splitTasks.map((t) => ({ ...t, number: firstNumber }))) : undefined
 
   const setSplitAnswer = (idx, value) =>
     syncSplit(splitTasks.map((t, i) => (i === idx ? { ...t, answer: value } : t)))
@@ -987,7 +1021,15 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
         for (let i = 0; i < splitTasks.length; i += 4) {
           const part = splitTasks.slice(i, i + 4)
           const urls = await Promise.all(part.map((t, j) => uploadTaskImage(tutorId, t.image, i + j)))
-          urls.forEach((image_url) => out.push({ image_url }))
+          // Предмет и номер едут теми же полями, что у задания из банка
+          // (exam_type, number): на них смотрит запись попытки после сдачи, и
+          // второго способа связать задание с экзаменом заводить нельзя —
+          // статистика разошлась бы по двум разным ключам. Номера нет —
+          // задание уезжает как раньше, одной картинкой.
+          urls.forEach((image_url, j) => {
+            const num = examNumberOf(part[j])
+            out.push(num ? { image_url, exam_type: bankType, number: num } : { image_url })
+          })
           setSavingNote(`Загружаем ${Math.min(i + part.length, splitTasks.length)} из ${splitTasks.length}`)
         }
         payload.bank_tasks = out
@@ -1322,6 +1364,44 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                             </div>
                           </Collapse>
 
+                          {/* Номера экзамена. Без них работа из файла остаётся
+                              вне статистики: задание попадает в карту заданий и
+                              в слабые темы по номеру, а у нарезанного файла
+                              номера взяться неоткуда — в отличие от банка, где
+                              он приезжает вместе с заданием. Номер — догадка
+                              репетитора о том, что это за задание, поэтому
+                              проставляет его он, а не мы. */}
+                          <div className="flex flex-col gap-1.5 pb-2">
+                            <div className="flex items-center gap-2">
+                              <select value={bankType} onChange={(e) => chooseBankType(e.target.value)}
+                                className="input-glass py-2 text-sm flex-1 min-w-0">
+                                {bankGroups.map((g) => (
+                                  <optgroup key={g.key} label={g.key}>
+                                    {g.subjects.map((sub) => <option key={sub.type} value={sub.type}>{g.key} · {sub.label}</option>)}
+                                  </optgroup>
+                                ))}
+                              </select>
+                              {fileNumbers > 0 && (
+                                <button type="button" onClick={numbersFromFile} title="Номера, которыми задания подписаны в файле"
+                                  className="no-press shrink-0 text-xs text-blue-600 hover:text-blue-700 active:scale-95 transition-transform">
+                                  из файла
+                                </button>
+                              )}
+                              {firstNumber && numberedCount < splitTasks.length && (
+                                <button type="button" onClick={numberAll} title="Весь файл по одной теме — один номер на все задания"
+                                  className="no-press shrink-0 text-xs text-blue-600 hover:text-blue-700 active:scale-95 transition-transform">
+                                  все №{firstNumber}
+                                </button>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-gray-400 leading-snug">
+                              {numberedCount
+                                ? `Номер экзамена есть у ${numberedCount} ${plural(numberedCount, "задания", "заданий", "заданий")} из ${splitTasks.length}` +
+                                  (autoCheck ? " — их ответы войдут в карту заданий и слабые темы." : ". В статистику ответы пойдут, когда работу проверяет кабинет.")
+                                : "Номер задания на экзамене связывает работу со статистикой ученика — картой заданий и слабыми темами. Без номера работа проверится как обычно."}
+                            </div>
+                          </div>
+
                           <div className="flex flex-col gap-2">
                             {splitTasks.map((t, i) => (
                               <div key={i} className="flex items-start gap-3 rounded-2xl ring-1 ring-gray-200/70 dark:ring-white/10 p-2.5">
@@ -1341,6 +1421,36 @@ function CreateHomeworkModal({ students, tutorId, onClose, onCreated, editingHw,
                                       />
                                     </div>
                                   </Collapse>
+                                  {/* Номер стоит у самого задания, а не строкой
+                                      на всю работу: в одной подборке попадаются
+                                      задания разных номеров, и общий номер
+                                      приписал бы их все одному. */}
+                                  <div className="flex items-center gap-2">
+                                    {/* Ширину задаём обёрткой: у .input-glass
+                                        стоит width:100% вне слоёв, и утилита
+                                        w-14 на самом поле не действует. */}
+                                    <div className="w-14 shrink-0">
+                                      <input
+                                        value={t.number ?? ""}
+                                        onChange={(e) => setSplitNumber(i, e.target.value)}
+                                        placeholder="№"
+                                        inputMode="numeric"
+                                        title="Номер этого задания на экзамене"
+                                        className={`input-glass py-1.5 px-2 text-sm text-center ${
+                                          t.number && !examNumberOf(t) ? "ring-1 ring-red-500/40" : ""
+                                        }`}
+                                      />
+                                    </div>
+                                    <span className={`text-[11px] leading-snug min-w-0 flex-1 ${
+                                      t.number && !examNumberOf(t) ? "text-red-500" : "text-gray-400"
+                                    }`}>
+                                      {t.number
+                                        ? examNumberOf(t)
+                                          ? numberTitle(bankType, t.number)
+                                          : `В «${bankType}» нет задания №${t.number}`
+                                        : "Номер на экзамене"}
+                                    </span>
+                                  </div>
                                 </div>
                                 <button type="button" onClick={() => removeSplitTask(i)} title="Убрать задание"
                                   className="no-press shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-blue-500/[0.08] transition active:scale-90">

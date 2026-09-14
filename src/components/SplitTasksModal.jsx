@@ -44,7 +44,10 @@ export default function SplitTasksModal({ file, onDone, onClose }) {
         // перерисовывается на каждое движение линии, а холст с чертежом
         // пришлось бы рисовать заново.
         setPreviews(res.pages.map((p) => p.canvas.toDataURL("image/jpeg", 0.72)))
-        setCuts(res.starts.map((s) => ({ id: nextId.current++, page: s.page, y: s.y })))
+        // Номер из файла держим при границе: он переживает перетаскивание линии
+        // и уезжает в задание (buildTasks), где репетитор решает, тот ли это
+        // номер экзамена.
+        setCuts(res.starts.map((s) => ({ id: nextId.current++, page: s.page, y: s.y, num: s.n ?? null })))
         setGuessed(res.guessed)
         setStage("edit")
       })
