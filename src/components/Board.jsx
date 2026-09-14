@@ -172,10 +172,14 @@ const CURSOR_HOLD = 3000, CURSOR_FADE = 400
 // линию, а обзор — только когда за нами кто-то следит).
 const POINTER_RATE = 40 // не чаще 1 посылки в 40 мс (25/сек)
 const CURSORS_KEY = "board-cursors"   // личная настройка «показывать курсоры собеседников»
-// Цвет — единственная настройка пера, которая переживает вход-выход: репетитор
-// весь год пишет одним и тем же, и заново искать его в палитре каждое занятие
-// незачем. Толщина, наоборот, намеренно сбрасывается (см. WIDTH_DEFAULT).
+// Рука у каждого своя: цвет, толщина линии и режим ластика переживают вход-выход.
+// Репетитор весь год пишет одним и тем же, а ученик решает на доске каждую
+// домашнюю работу — выставлять настройки заново при каждом входе значит делать
+// это десятки раз за четверть. Настройки ЛИЧНЫЕ (localStorage устройства), на
+// сцену и на собеседника не влияют.
 const COLOR_KEY = "board-color"
+const WIDTH_KEY = "board-width"
+const ERASER_KEY = "board-eraser"
 const VIEW_RATE = 60    // не чаще 1 посылки своего обзора в 60 мс: за ним следят глазами
 // Прилипание при перетаскивании: допуск в ЭКРАННЫХ пикселях (в мировые переводим
 // делением на масштаб — иначе на приближённой доске объект липнул бы за версту).
@@ -787,10 +791,15 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   const [color, setColor] = useState(() => {
     try { return localStorage.getItem(COLOR_KEY) || "ink" } catch { return "ink" }
   })
-  // Толщина при каждом входе на доску — самая тонкая: ею пишут формулы и мелкий
-  // разбор, а средняя годится разве что для выделения. Выбранная толщина живёт
-  // до закрытия доски и намеренно не запоминается между занятиями.
-  const [width, setWidth] = useState(WIDTH_DEFAULT)
+  // Толщина держится между входами (см. WIDTH_KEY). Значение из хранилища
+  // подрезаем по шкале ползунка: в localStorage может лежать что угодно — и
+  // мусор из другой версии, и правка руками.
+  const [width, setWidth] = useState(() => {
+    try {
+      const v = Math.round(Number(localStorage.getItem(WIDTH_KEY)))
+      return Number.isFinite(v) && v >= WIDTH_MIN && v <= WIDTH_MAX ? v : WIDTH_DEFAULT
+    } catch { return WIDTH_DEFAULT }
+  })
   const [dash, setDash] = useState("solid")     // solid | dashed | dotted
   // Кегль текста живёт отдельно от толщины линии: у пера ходовые значения 1–5,
   // у надписи — десятки, и одна общая ручка каждый раз давала бы не то.
@@ -850,7 +859,10 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // линии и листы с заданиями, и от ластика ждут именно этого — одно касание,
   // объекта нет. Стирание следа (как мелом, по частям) осталось вторым режимом
   // в попапе — оно нужно редко, когда правят кусок своего же рисунка.
-  const [eraserMode, setEraserMode] = useState("object")   // object | stroke
+  // Выбранный режим держится между входами (см. ERASER_KEY).
+  const [eraserMode, setEraserMode] = useState(() => {
+    try { return localStorage.getItem(ERASER_KEY) === "stroke" ? "stroke" : "object" } catch { return "object" }
+  })
   const [online, setOnline] = useState([])
   // Курсоры собеседников можно убрать: чужая стрелка с подписью ходит поверх
   // чертежа и мешает читать доску. Настройка ЛИЧНАЯ и только на просмотр — свой
@@ -4426,10 +4438,17 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
 
   useEffect(() => { actions.current.undo = undo; actions.current.redo = redo; actions.current.del = deleteSelection; actions.current.selectAll = selectAll; actions.current.paste = addImageAt; actions.current.commitText = commitTextEdit; actions.current.close = closeBoard; actions.current.copy = copySelection; actions.current.pasteStrokes = pasteStrokes; actions.current.parseClip = parseClip; actions.current.pasteOwn = () => { if (clipStrokes.current) pasteStrokes(clipStrokes.current) } })
 
-  // Выбранный цвет держится между занятиями (см. COLOR_KEY)
+  // Настройки руки держатся между занятиями (см. COLOR_KEY, WIDTH_KEY, ERASER_KEY).
+  // Пишем при каждой смене, а не при выходе: доску закрывают и крестиком, и
+  // кнопкой «назад», и выгрузкой вкладки на телефоне — в последнем случае
+  // обработчик выхода не отработал бы вовсе.
   useEffect(() => {
-    try { localStorage.setItem(COLOR_KEY, color) } catch { /* приватный режим — цвет просто не запомнится */ }
-  }, [color])
+    try {
+      localStorage.setItem(COLOR_KEY, color)
+      localStorage.setItem(WIDTH_KEY, String(width))
+      localStorage.setItem(ERASER_KEY, eraserMode)
+    } catch { /* приватный режим — настройки просто не запомнятся */ }
+  }, [color, width, eraserMode])
 
   // Взяли другой инструмент — набранное сохраняем, а не теряем
   useEffect(() => { if (tool !== "text") actions.current.commitText?.() }, [tool])
