@@ -22,10 +22,10 @@ function PhotoViewer({ photos, title, start = 0, onClose }) {
   const list = photos.filter(Boolean)
   const [i, setI] = useState(Math.min(Math.max(start, 0), Math.max(list.length - 1, 0)))
   const { cls: closingCls, close } = useClosing(() => onClose?.())
-  // Пока снимок не пришёл, на его месте не пустота, а рамка с подписью: на
-  // телефоне лист в пару мегабайт едет заметное время, и пустой экран читается
-  // как сбой. Ключ — сам адрес: перелистнули на несоседний лист, и подпись
-  // должна вернуться.
+  // Пока снимок не пришёл, на его месте не пустота, а рамка с той же плашкой
+  // загрузки, что у листа, который едет на доску: на телефоне лист в пару
+  // мегабайт едет заметное время, и пустой экран читается как сбой. Ключ — сам
+  // адрес: перелистнули на несоседний лист, и индикатор должен вернуться.
   const [loaded, setLoaded] = useState({})
   const touchX = useRef(null)
 
@@ -108,8 +108,15 @@ function PhotoViewer({ photos, title, start = 0, onClose }) {
                 className={`max-w-full max-h-full object-contain rounded-2xl bg-white transition-opacity duration-200 ${loaded[cur] ? "opacity-100" : "opacity-0"}`}
                 style={{ maxHeight: "calc(100dvh - 120px)" }} />
               {!loaded[cur] && (
-                <div className="absolute inset-0 rounded-2xl ring-1 ring-white/20 flex items-center justify-center px-10 py-14 text-xs text-white/70">
-                  Загружаем снимок…
+                // Индикатор — тот же, что у листа, который едет на доску: плашка с
+                // тремя точками и без подписи (требование владельца — одна анимация
+                // загрузки, слов не нужно). Анимация в CSS, поэтому она идёт и
+                // тогда, когда главный поток занят разбором снимка.
+                <div className="absolute inset-0 rounded-2xl ring-1 ring-white/20 flex items-center justify-center px-10 py-14">
+                  <span className="popup-bubble flex items-center px-3 h-7 rounded-full shadow-lg"
+                    style={{ background: "#2c2c2e", border: "1px solid rgba(255,255,255,.08)" }}>
+                    <span className="loader-dots text-blue-500"><i /><i /><i /></span>
+                  </span>
                 </div>
               )}
             </div>
