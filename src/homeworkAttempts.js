@@ -77,3 +77,46 @@ export function homeworkAttempts(hw, { answers, correct, account, token, student
   })
   return out
 }
+
+// Разметка УЖЕ СДАННОЙ работы: номер, проставленный задним числом.
+//
+// Своя раздатка размечается когда угодно — в том числе после того, как ученик
+// её сдал: репетитор нарезал файл, ученик ответил, и только на разборе дошли
+// руки связать задания с номером экзамена. Сдача такую работу в журнал не
+// записывала (номера у заданий тогда не было), а разметка журнала не касалась
+// — и работа навсегда оставалась вне статистики: у карты заданий её как не
+// было. Так на боевой потерялась работа на 44 задания: ученик ответил на 33,
+// репетитор проверил и выставил балл, а в журнале по ней не было ни строки.
+//
+// Отсюда эта функция: по работе она говорит, как журнал ДОЛЖЕН выглядеть, а
+// дальше `homework_attempts_fill` приводит его к этому виду. Считает ровно те
+// же правила, что и сдача (см. выше): пропуск — неверно, задание без эталона
+// в журнал не идёт, решённым считается сошедшийся ответ ИЛИ зачёт репетитора
+// («Засчитать задание» — иначе разметка стёрла бы его правку сверкой).
+export function markupAttempts(hw) {
+  const bank = Array.isArray(hw?.bank_tasks) ? hw.bank_tasks : []
+  const correct = Array.isArray(hw?.correct_answers) ? hw.correct_answers : []
+  const given = Array.isArray(hw?.student_answers) ? hw.student_answers : []
+  // Работа, которую ещё не сдавали, журналу ничего не должна: ответов нет, и
+  // «не ответил» про неё значит «решает», а не «не решил».
+  if (!given.length || !bank.length || bank.length !== correct.length) return []
+  const byHand = new Set((Array.isArray(hw.credited) ? hw.credited : []).map(Number))
+
+  const out = []
+  bank.forEach((task, i) => {
+    const ans = String(given[i] ?? "").trim()
+    const corr = String(correct[i] ?? "").trim()
+    if (!task?.exam_type || task.number == null || corr === "") return
+    out.push({
+      // Позиция задания, а не его номер: в раздатке по одной теме все задания
+      // несут ОДИН номер, и по номеру сорок отметок легли бы в одну строку.
+      task_no: i + 1,
+      exam_type: task.exam_type,
+      number: Number(task.number),
+      gen_key: taskGenKey(task),
+      correct: (ans !== "" && answersEqual(ans, corr)) || byHand.has(i + 1),
+      answer: ans,
+    })
+  })
+  return out
+}

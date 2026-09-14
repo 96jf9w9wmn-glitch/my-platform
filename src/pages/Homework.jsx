@@ -22,6 +22,9 @@ import TasksModal from "../components/TasksModal"
 import ThemeInput from "../components/ThemeInput"
 import useThemeOptions from "../useThemeOptions"
 import { normalizeTheme, themeGenKey } from "../taskTheme"
+// Каким журнал попыток должен быть по этой работе — одна функция на сдачу и
+// на разметку задним числом, второй копии правил быть не должно.
+import { markupAttempts } from "../homeworkAttempts"
 import { PhotoButton } from "../components/PhotoViewer"
 import { useClosing } from "../useClosing"
 import useGridCols, { detailRowEndOf } from "../useGridCols"
@@ -2463,11 +2466,29 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
     }),
   }).eq("id", hw.id)
 
+  // Разметка УЖЕ СДАННОЙ работы обязана доехать до журнала попыток. Своя
+  // раздатка связывается с номерами когда угодно, в том числе после сдачи, а
+  // сдача записала тогда пустоту: номера у заданий не было. Без этой строчки
+  // размеченная работа так и остаётся вне карты заданий — молча, и увидеть это
+  // можно только запросом в базу (на боевой так потерялась работа на 44
+  // задания: 33 ответа, выставленный балл, ноль строк в журнале).
+  //
+  // Не критичный путь: на базе без миграции homework_attempts_fill.sql функции
+  // нет, и разметка работает как прежде — номера в работе, журнал пустой.
+  function syncAttempts(next) {
+    if (!hw.student_id) return
+    const rows = markupAttempts({ ...hw, bank_tasks: next, credited })
+    supabase.rpc("homework_attempts_fill", {
+      p_source_id: hw.id, p_student_id: String(hw.student_id), p_rows: rows,
+    }).then(() => onUpdate(), () => {})
+  }
+
   async function saveNumbers(next) {
     const prev = bankTasks
     setBankTasks(next)
     const { error } = await pushTasks(next)
     if (error) { setBankTasks(prev); return false }
+    syncAttempts(next)
     return true
   }
 
@@ -2496,6 +2517,9 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
       // возвращаем то, что в ней действительно лежит, иначе экран показывал бы
       // тему, которой нет.
       if (error && prev) setBankTasks(prev)
+      // Тема — такая же разметка, как номер, и в журнале она ключом типажа:
+      // не обновить его здесь значит развести одну раздатку по двум разбивкам.
+      else syncAttempts(rows)
     }, () => {})
     // Свои темы помнит устройство: в следующей работе они подскажутся списком.
     // Помним по записи, а не по нажатию клавиши, — иначе в подсказках осел бы
