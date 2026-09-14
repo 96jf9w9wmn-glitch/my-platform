@@ -2756,9 +2756,15 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   const nextLessonDate = nextLesson && !nextIsToday
     ? parseLocalDate(nextLesson.date).toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" })
     : null
-  // Чему учат: предмет карточки (его ученик указал при привязке), иначе —
-  // предмет самого репетитора из его профиля.
-  const lessonSubject = (student?.subject || tutorSubject || "").trim()
+  // Чему учат: предмет САМОГО РЕПЕТИТОРА, из его анкеты. Раньше первым стоял
+  // предмет карточки (`students.subject`), а туда при привязке уезжает ответ из
+  // опросника ученика — «какие предметы изучаешь», то есть все его школьные
+  // предметы разом. Выходило, что ученик отметил математику, физику и химию, а
+  // рядом с именем репетитора вставало, что он ведёт их все.
+  // Карточку это не трогает: в кабинете репетитора её предмет лишь подсказывает
+  // банк заданий и там же пересекается с его собственными предметами
+  // (`typeForStudent`), утверждением о репетиторе он не работает нигде.
+  const lessonSubject = (tutorSubject || "").trim()
 
   const past = (student?.lessons || [])
     .filter((l) => isLessonConducted(l))
