@@ -2219,7 +2219,7 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
 
       {/* Две колонки: условия отдельно от проверки — иначе каждая секция шла бы
           полосой во всю ширину, а справа от неё оставалось пустое поле. */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 px-5 py-4 border-t border-gray-100/60 dark:border-white/10 items-start">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-x-4 gap-y-5 px-5 py-4 border-t border-gray-100/60 dark:border-white/10 items-start">
         <div className="flex flex-col gap-2">
           <div className="section-label mb-0.5">Задания</div>
           {hw.description ? (
@@ -2252,18 +2252,25 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
               Условий нет
             </div>
           ) : null}
-          {/* Условия в файле — сам файл и есть задание, поэтому он стоит первым,
-              на месте карточки условий. Пустая заглушка «условия в файле» тут
-              была бы дырой во весь блок, а файл уезжал бы под результат. */}
-          {hw.file_url && (
+          {/* Файл — ИСХОДНИК работы, а не второе задание. Когда условия из него
+              уже нарезаны на задания (карточка выше), он уходит тихой ссылкой:
+              две равновесные карточки с «Посмотреть» и «Открыть» заставляли
+              выбирать между ними, хотя внутри одно и то же. Нарезки нет — файл
+              сам и есть задание, и тогда он остаётся карточкой. */}
+          {hw.file_url && (hw.description ? (
+            <a href={hw.file_url} target="_blank" rel="noreferrer"
+              className="btn-quiet press-tap self-start inline-flex items-center gap-1.5 text-[11px] px-1 py-1 rounded-lg">
+              <Icon name="paperclip" size={11} />Исходный файл — то же, что видит ученик
+            </a>
+          ) : (
             <DetailBlock className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-blue-500/12 text-blue-600 flex items-center justify-center flex-shrink-0">
                 <Icon name="paperclip" size={16} />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium truncate">{hw.description ? "Файл задания" : "Условия работы"}</div>
+                <div className="text-sm font-medium truncate">Условия работы</div>
                 <div className="text-[11px] text-gray-400 mt-0.5 truncate">
-                  {hw.description ? "То же, что видит ученик" : "В приложенном файле — то же, что видит ученик"}
+                  В приложенном файле — то же, что видит ученик
                 </div>
               </div>
               <a href={hw.file_url} target="_blank" rel="noreferrer"
@@ -2271,14 +2278,25 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
                 Открыть
               </a>
             </DetailBlock>
-          )}
+          ))}
           {/* Условий в работе нет (задания в файле) — результату всё равно нужно
               место, и это по-прежнему колонка заданий, а не колонка проверки. */}
           {!hw.description && resultRow && <DetailBlock>{resultRow}</DetailBlock>}
         </div>
 
         <div className="flex flex-col gap-2">
-          <div className="section-label mb-0.5">Проверка</div>
+          {/* Срок сдачи стоит подписью у заголовка, а не отдельной карточкой:
+              это контекст проверки («к какому дню ждали»), а не то, что
+              репетитор здесь делает. Карточкой он остаётся только когда
+              нарушен — тогда у него появляется действие. */}
+          <div className="section-label mb-0.5 flex items-baseline justify-between gap-2">
+            <span>Проверка</span>
+            {!overdue && (
+              <span className="normal-case tracking-normal font-normal text-[11px] text-gray-400 truncate">
+                {hw.deadline ? `сдать до ${dayMonth(hw.deadline)}` : "без срока сдачи"}
+              </span>
+            )}
+          </div>
 
           {/* Ученика тут не повторяем: разбор открывается под его же группой
               карточек, имя и аватар уже стоят строкой выше. Здесь только то,
@@ -2309,91 +2327,99 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
             </DetailBlock>
           )}
 
-          {/* Промежутка между строкой срока и раскрытым выбором нет в самом
+          {/* Просроченную работу видно блоком, а не подписью: у неё есть
+              действие — продлить срок, и ученику она уже закрыта.
+              Промежутка между строкой срока и раскрытым выбором нет в самом
               блоке (flex-gap стоял бы и при закрытом Collapse — тот держит
               содержимое смонтированным), поэтому отступ живёт внутри. */}
-          <DetailBlock className="flex flex-col">
-            <div className="flex items-center gap-3">
-              <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${overdue ? "bg-red-500/12 text-red-500" : "bg-blue-500/12 text-blue-600"}`}>
-                <Icon name="calendar" size={16} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className={`text-sm font-medium truncate ${overdue ? "text-red-500" : ""}`}>
-                  {hw.deadline ? (overdue ? "Просрочено" : "Срок сдачи") : "Без срока сдачи"}
+          {overdue && (
+            <DetailBlock className="flex flex-col">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-red-500/12 text-red-500 flex items-center justify-center flex-shrink-0">
+                  <Icon name="calendar" size={16} />
                 </div>
-                {hw.deadline && (
-                  // У просроченной работы дата не главное: ученику она уже
-                  // закрыта (см. isHomeworkOverdue), и репетитор должен видеть
-                  // это здесь же — иначе «Продлить» выглядит правкой метки.
-                  // Строка не обрезается: обрезанной теряется именно этот хвост.
-                  <div className={`text-[11px] mt-0.5 leading-snug ${overdue ? "text-red-500" : "text-gray-400 truncate"}`}>
-                    {dayMonth(hw.deadline)}{overdue && " · решение закрыто"}
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium truncate text-red-500">Просрочено</div>
+                  {/* У просроченной работы дата не главное: ученику она уже
+                      закрыта (см. isHomeworkOverdue), и репетитор должен видеть
+                      это здесь же — иначе «Продлить» выглядит правкой метки.
+                      Строка не обрезается: обрезанной теряется именно этот хвост. */}
+                  <div className="text-[11px] mt-0.5 leading-snug text-red-500">
+                    {hw.deadline ? `${dayMonth(hw.deadline)} · решение закрыто` : "решение закрыто"}
                   </div>
-                )}
-              </div>
-              {overdue && (
+                </div>
                 <button onClick={() => { setExtending((v) => !v); setExtendError("") }}
                   className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-blue-500/25 text-blue-600 dark:text-blue-300 flex-shrink-0">
                   {extending ? "Отмена" : "Продлить"}
                 </button>
-              )}
-            </div>
-            <Collapse open={overdue && extending}>
-              <div className="mt-3">
-                <DeadlinePicker
-                  value=""
-                  allowNone={false}
-                  onChange={extendDeadline}
-                  label={extendingTo ? `Продлеваем до ${dayMonth(extendingTo)}…` : "Новый срок — работа снова откроется ученику"}
-                />
-                <Reveal value={extendError} className="mt-2">
-                  {(msg) => (
-                    <div className="rounded-xl bg-red-500/10 ring-1 ring-red-500/20 px-3 py-2 text-xs text-red-600 dark:text-red-300">{msg}</div>
-                  )}
-                </Reveal>
               </div>
-            </Collapse>
-          </DetailBlock>
-
-
-          {hw.submission_url && (
-            <DetailBlock className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-green-500/12 text-green-600 flex items-center justify-center flex-shrink-0">
-                <Icon name="check" size={16} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium truncate">{isPureTest ? "Решение ученика" : "Письменная работа"}</div>
-                <div className="text-[11px] text-gray-400 mt-0.5 truncate">Прислано учеником</div>
-              </div>
-              <a href={hw.submission_url} target="_blank" rel="noreferrer"
-                className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 flex-shrink-0">
-                Открыть
-              </a>
-              {canCheckAll && (
-                <button onClick={() => checkOnBoard(manualItems)} title="Условия и решение ученика — на доску этой работы"
-                  className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-blue-500/25 text-blue-600 dark:text-blue-300 flex-shrink-0 inline-flex items-center gap-1.5">
-                  <Icon name="clipboard" size={12} />На доске
-                </button>
-              )}
+              <Collapse open={extending}>
+                <div className="mt-3">
+                  <DeadlinePicker
+                    value=""
+                    allowNone={false}
+                    onChange={extendDeadline}
+                    label={extendingTo ? `Продлеваем до ${dayMonth(extendingTo)}…` : "Новый срок — работа снова откроется ученику"}
+                  />
+                  <Reveal value={extendError} className="mt-2">
+                    {(msg) => (
+                      <div className="rounded-xl bg-red-500/10 ring-1 ring-red-500/20 px-3 py-2 text-xs text-red-600 dark:text-red-300">{msg}</div>
+                    )}
+                  </Reveal>
+                </div>
+              </Collapse>
             </DetailBlock>
           )}
 
-          {/* Решение ученик фотографирует к каждому заданию отдельно, поэтому и
-              открывается оно по заданиям: одна ссылка «Решение ученика» выше —
-              это первое из этих же фото, оставленное ради старых работ. */}
-          {solutionShotCount > 1 && (
-            <DetailBlock>
-              <div className="text-sm font-medium mb-2">Решение по заданиям</div>
-              <div className="flex flex-wrap gap-2">
-                {solutionShots.flatMap(([num, urls]) => urls.map((url, i) => (
-                  // У задания с несколькими листами номер подписан порядком
-                  // снимка: «№7 · 2» — второй лист седьмого задания.
-                  <a key={num + ":" + i} href={url} target="_blank" rel="noreferrer"
-                    className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 flex items-center gap-1.5">
-                    <Icon name="paperclip" size={12} />№{num}{urls.length > 1 ? ` · ${i + 1}` : ""}
+          {/* Присланное — ОДНОЙ карточкой. Раньше их было две: строка
+              «Письменная работа · Открыть» и список фотографий по заданиям, —
+              а «Открыть» вело на ПЕРВОЕ фото из этого же списка, то есть один
+              снимок открывался двумя разными кнопками, и было неясно, чем они
+              отличаются. Теперь снимки стоят номерами заданий, «Открыть»
+              остаётся только у работы, сданной одним файлом (и у всех работ до
+              того, как фото стали привязываться к заданиям), а разбор на доске
+              — одной кнопкой здесь же. */}
+          {(solutionShotCount > 0 || hw.submission_url) && (
+            <DetailBlock className="flex flex-col gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-green-500/12 text-green-600 flex items-center justify-center flex-shrink-0">
+                  <Icon name="check" size={16} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium truncate">Решение ученика</div>
+                  <div className="text-[11px] text-gray-400 mt-0.5 truncate">
+                    {solutionShotCount > 0
+                      ? `${solutionShotCount} ${plural(solutionShotCount, "фотография", "фотографии", "фотографий")} по заданиям`
+                      : "Прислано учеником"}
+                  </div>
+                </div>
+                {solutionShotCount === 0 && hw.submission_url && (
+                  <a href={hw.submission_url} target="_blank" rel="noreferrer"
+                    className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 flex-shrink-0">
+                    Открыть
                   </a>
-                )))}
+                )}
+                {canCheckAll && (
+                  <button onClick={() => checkOnBoard(manualItems)} title="Условия и решение ученика — на доску этой работы"
+                    className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-blue-500/25 text-blue-600 dark:text-blue-300 flex-shrink-0 inline-flex items-center gap-1.5">
+                    <Icon name="clipboard" size={12} />На доске
+                  </button>
+                )}
               </div>
+              {/* Решение ученик фотографирует к каждому заданию отдельно —
+                  поэтому и открывается оно по заданиям. */}
+              {solutionShotCount > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {solutionShots.flatMap(([num, urls]) => urls.map((url, i) => (
+                    // У задания с несколькими листами номер подписан порядком
+                    // снимка: «№7 · 2» — второй лист седьмого задания.
+                    <a key={num + ":" + i} href={url} target="_blank" rel="noreferrer"
+                      className="press-fill text-[11px] px-2 py-1 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 flex items-center gap-1">
+                      <Icon name="paperclip" size={11} />№{num}{urls.length > 1 ? ` · ${i + 1}` : ""}
+                    </a>
+                  )))}
+                </div>
+              )}
             </DetailBlock>
           )}
 
@@ -2415,10 +2441,21 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
 
           {hw.status === "submitted" && !isPureTest && (
             <DetailBlock>
+              {/* Ради этого действия разбор и открывают, поэтому оно выглядит
+                  как действие: текстовой ссылкой внизу колонки оно было самым
+                  незаметным на экране — слабее, чем «Открыть» у файла. */}
               {!grading ? (
-                <button onClick={() => setGrading(true)} className="text-xs text-blue-600 hover:opacity-70 transition-opacity">
-                  Проверить и оценить
-                </button>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-xs text-gray-500 min-w-0">
+                    {testPercent != null
+                      ? <>Часть с ответами: {testPercent}% — рекомендуется <span className="font-medium">{suggestedGrade}</span></>
+                      : "Работа ждёт вашей оценки"}
+                  </div>
+                  <button onClick={() => setGrading(true)}
+                    className="press-fill text-xs bg-blue-600 text-white px-3.5 py-1.5 rounded-lg flex-shrink-0">
+                    Проверить
+                  </button>
+                </div>
               ) : (
                 <div className="flex flex-col gap-3">
                   {testPercent != null && (
@@ -2454,19 +2491,26 @@ export function HomeworkDetail({ hw, studentPhone, studentAccountId, onUpdate, o
                     className="input-glass text-xs resize-none"
                   />
 
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setStatus("done", selectedGrade)}
-                      disabled={!selectedGrade}
-                      className="press-fill flex-1 bg-green-600 text-white rounded-lg py-1.5 text-xs disabled:opacity-40"
-                    >
-                      Выполнено
+                  {/* Те же кнопки и в том же весе, что у работы с автопроверкой
+                      выше: возврат — вторичное действие кольцом, завершение —
+                      единственная залитая кнопка. Две залитых во всю ширину
+                      читались как равный выбор, хотя обычно жмут одну. */}
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setGrading(false)} className="btn-quiet press-tap text-xs px-2 py-1.5 rounded-lg mr-auto">
+                      Отмена
                     </button>
                     <button
                       onClick={() => setStatus("revision", selectedGrade)}
-                      className="press-fill flex-1 bg-amber-500 text-white rounded-lg py-1.5 text-xs"
+                      className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-amber-500/35 text-amber-600 dark:text-amber-300"
                     >
                       На доработку
+                    </button>
+                    <button
+                      onClick={() => setStatus("done", selectedGrade)}
+                      disabled={!selectedGrade}
+                      className="press-fill text-xs bg-green-600 text-white px-3.5 py-1.5 rounded-lg disabled:opacity-40"
+                    >
+                      Выполнено
                     </button>
                   </div>
                 </div>
