@@ -219,6 +219,29 @@ const tombCount = (m) => {
   for (const [id, t] of m) { if (now - t > TOMB_MS) m.delete(id); else n++ }
   return n
 }
+// Сколько ждём, пока автор допишет в базу штрих, который мы уже получили по
+// realtime (см. heardRef). Его собственное сохранение отложено не дольше
+// SAVE_MAX_MS, так что восьми секунд хватает с запасом.
+const HEARD_MS = 8000
+// Как часто сверять состав доски ПОИМЁННО. Редко: это единственная сверка,
+// которая везёт список всех id комнаты (десятки килобайт), зато она одна ловит
+// расхождение, в котором число строк случайно сошлось.
+const FULL_SYNC_MS = 120000
+// Чужие штрихи, о которых мы знаем ТОЛЬКО из посылки realtime. Сверка считала
+// лежащим в базе лишь savedRef, а такой штрих в него не попадает — и если его
+// удаление до нас не доехало, расхождение не замечалось вовсе: у автора стёрто,
+// у нас лежит, и счётчики сходятся случайно (13.09.2026, найдено стресс-прогоном).
+// Считаем только СОЗРЕВШИЕ (автор уже должен был сохранить) и только те, что
+// ещё на доске и не подтверждены базой; попутно чистим карту.
+const heardExtra = (heard, saved, strokes) => {
+  const now = Date.now()
+  let n = 0
+  for (const [id, t] of heard) {
+    if (saved.has(id) || !strokes.has(id)) { heard.delete(id); continue }
+    if (now - t > HEARD_MS) n++
+  }
+  return n
+}
 const REJOIN_MS = [1500, 4000, 8000, 15000]   // пересоздание канала после закрытия
 // Точки штриха округляются до сотых мировой единицы: на экране это доли пикселя
 // даже при максимальном увеличении, зато и по сети, и в снапшоте сцены каждая
@@ -1016,6 +1039,8 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // попадает вовсе, и стерев его, мы не удаляли из базы НИЧЕГО — он оставался
   // там и возвращался при первом же перечитывании сцены.
   const pendingDel = useRef(new Set())
+  // Чужие штрихи, пришедшие по realtime и ещё не подтверждённые базой (см. heardExtra).
+  const heardRef = useRef(new Map())
   const saveSince = useRef(0)         // когда появилось первое неотправленное изменение
   const wipeRef = useRef(false)       // доску очистили целиком: в базу уйдёт одним p_wipe
   const removeBuf = useRef([])        // id на рассылку (пачкой, см. flushRemoves)
@@ -1037,6 +1062,8 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   const revRef = useRef(null)
   const sinceOff = useRef(false)      // в базе нет board_strokes_since — догоняем по ord, как раньше
   const stateRevOff = useRef(false)   // в boards_state нет rev — сверяем без него
+  const lastFull = useRef(0)          // когда поимённо сверяли состав (см. FULL_SYNC_MS)
+  const fullOff = useRef(false)       // построчной таблицы нет — поимённой сверки не будет
   const bgSendTimer = useRef(null)    // троттлинг рассылки цвета фона (см. changeBgColor)
   const sendTimer = useRef(null)
   // Незаконченные штрихи собеседников: держим их ОТДЕЛЬНО от strokes.current.
@@ -1877,7 +1904,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     loadedRef.current = null    // до загрузки новой сцены не сохраняем ничего
     strokes.current.clear(); live.current.clear(); selection.current.clear()
     savedRef.current = new Map(); dirtyRef.current.clear(); localPending.current.clear()
-    tombRef.current.clear(); pendingDel.current.clear(); wipeRef.current = false
+    tombRef.current.clear(); pendingDel.current.clear(); heardRef.current.clear(); wipeRef.current = false
     removeBuf.current = []; clearTimeout(removeTimer.current); removeTimer.current = null
     history.current = []; redoStack.current = []
     cursors.current.clear()
@@ -1948,10 +1975,10 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // Взять снимок как есть нельзя — его могли сохранить за секунду до нашего
   // последнего штриха, и он бы пропал с экрана. Обратная сторона: стёртое, пока
   // нас не было, вернётся — это заметно меньшая беда, чем ненаписанная работа.
-  const resync = useCallback(async () => {
+  const resync = useCallback(async (force) => {
     if (readOnlyRef.current) return                      // снимок прошлого занятия не догоняют
     if (loadedRef.current !== roomId) return             // начальная загрузка ещё идёт — она и принесёт свежее
-    if (Date.now() - lastResync.current < 3000) return  // не дёргаем базу на каждый чих
+    if (!force && Date.now() - lastResync.current < 3000) return  // не дёргаем базу на каждый чих
     lastResync.current = Date.now()
     // Сначала догон: только то, чего у нас нет. Перечитывание всей сцены — это
     // мегабайты (на боевой доске 3,87 МБ, со сжатием 805 КБ), а обрывы штатные:
@@ -1960,6 +1987,12 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     // Пришедшее из базы уже сохранено: иначе дельта отправит его обратно. Штрих,
     // который мы правим прямо сейчас (dirty — перенос, цвет), не трогаем: своё
     // несохранённое догон затирать не должен.
+    // Сколько строк мы ОЖИДАЕМ в базе: подтверждённое плюс чужие штрихи, которые
+    // автор уже должен был сохранить. Та же мерка, что у сверки, — иначе догон
+    // объявит «всё сошлось» там, где сверка видит расхождение, и лишний штрих
+    // останется на доске навсегда.
+    const known = () => savedRef.current.size
+      + heardExtra(heardRef.current, savedRef.current, strokes.current)
     const take = (list) => {
       for (const st of list || []) {
         if (dirtyRef.current.has(st.id)) continue
@@ -1974,7 +2007,9 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     // Догон по номеру ЗАПИСИ ловит и новые штрихи, и правку на месте: у
     // передвинутого штриха ord не меняется, и по ord его было не поймать.
     let since = null
-    if (!sinceOff.current && Number.isFinite(revRef.current)) {
+    // force — состав доски разошёлся с базой поимённо (см. fullCheck): дешёвый
+    // догон тут бесполезен, расхождение только в том, чего в базе УЖЕ НЕТ.
+    if (!force && !sinceOff.current && Number.isFinite(revRef.current)) {
       const { data, error } = await supabase.rpc("board_strokes_since", {
         p_student_id: String(roomId), p_rev: revRef.current,
       })
@@ -1991,12 +2026,12 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       // Удаление не меняет ни rev, ни ord — его видно только по числу строк, и
       // лечится оно перечитыванием сцены целиком.
       if (got) scheduleDraw()
-      if (got && (!Number.isFinite(since.n) || since.n === savedRef.current.size)) return
+      if (got && (!Number.isFinite(since.n) || since.n === known())) return
       // Нового нет, а счёт не сошёлся ровно на стёртое при нас — ждём, пока
       // автор допишет удаление в базу. Сцену целиком тянуть незачем.
-      if (Number.isFinite(since.n) && since.n - savedRef.current.size > 0
-          && since.n - savedRef.current.size <= tombCount(tombRef.current)) return
-    } else if (!afterOff.current && Number.isFinite(maxOrd.current)) {
+      if (Number.isFinite(since.n) && since.n - known() > 0
+          && since.n - known() <= tombCount(tombRef.current)) return
+    } else if (!force && !afterOff.current && Number.isFinite(maxOrd.current)) {
       const { data, error } = await supabase.rpc("board_strokes_after", {
         p_student_id: String(roomId), p_ord: maxOrd.current,
       })
@@ -2064,7 +2099,9 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       // законно делает доску больше базы. Расхождение в любую сторону — повод
       // перечитать: сравнение «в базе больше» не замечало удалений вовсе, и
       // стёртое собеседником оставалось на доске до перезахода.
-      const inDb = savedRef.current.size
+      // Что мы считаем лежащим в базе: подтверждённое плюс чужие штрихи, которые
+      // автор уже должен был сохранить (см. heardExtra).
+      const inDb = savedRef.current.size + heardExtra(heardRef.current, savedRef.current, strokes.current)
       // База может быть БОЛЬШЕ нас на то, что при нас стёрли, а её ещё не
       // дописали: у автора сохранение отложено, и пока он ведёт ластиком, в базе
       // лежит полная сцена. Ровно столько расхождения и прощаем — иначе каждый
@@ -2077,6 +2114,30 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       // двоих один и тот же лист стоял в разных местах (12.09.2026).
       const dbRev = Number(data.rev)
       const behind = Number.isFinite(revRef.current) && Number.isFinite(dbRev) && dbRev > revRef.current
+      // Счёт слеп к КОМПЕНСАЦИИ: собеседник стёр штрих, его посылка потерялась, а
+      // рядом появился новый — и число строк совпало, хотя состав разный. Такое
+      // расхождение счётчик не заметит никогда, поэтому изредка сверяем состав
+      // ПОИМЁННО: список id комнаты — это единственное лёгкое, что можно
+      // спросить у базы без миграции (десятки килобайт против мегабайтов сцены).
+      if (!fullOff.current && Date.now() - lastFull.current > FULL_SYNC_MS) {
+        lastFull.current = Date.now()
+        const { data: rows, error: e2 } = await supabase.from("board_strokes")
+          .select("id").eq("room", String(roomId))
+        if (e2) { fullOff.current = true }
+        else if (Array.isArray(rows)) {
+          const inBase = new Set(rows.map((r) => r.id))
+          let ghost = false          // лежит у нас, а в базе НЕТ
+          for (const [id, st] of strokes.current) {
+            if (inBase.has(id) || st.pending) continue
+            if (localPending.current.has(id) || pendingDel.current.has(id)) continue  // своё, ещё не доехало
+            const heardAt = heardRef.current.get(id)
+            if (heardAt != null && Date.now() - heardAt <= HEARD_MS) continue          // автор ещё сохраняет
+            ghost = true; break
+          }
+          if (ghost) { resync(true); return }   // лечит только перечитывание сцены
+          if (rows.length !== savedRef.current.size) resync()
+        }
+      }
       const dbN = data.n ?? inDb
       const extra = dbN - inDb                    // насколько база «больше» нас
       const countOff = extra > 0 ? extra > tombs : dbN !== inDb
@@ -2164,6 +2225,12 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         const old = strokes.current.get(payload.id)
         if (old?.src?.startsWith("data:") && old.src !== payload.src) forgetImage(old.src)
         localPending.current.delete(payload.id)
+        // Штрих собеседника: в базе его пока нет НАШИМИ сведениями, но автор его
+        // туда допишет. Пока не подтвердит — держим в heardRef, иначе сверка
+        // считает базу и доску сошедшимися, даже когда штриха в базе уже нет.
+        // Предпросмотр картинки (pending) автор не сохраняет вовсе — его не ждём.
+        if (payload.pending) heardRef.current.delete(payload.id)
+        else if (!savedRef.current.has(payload.id)) heardRef.current.set(payload.id, Date.now())
         strokes.current.set(payload.id, payload)
         noticeOffscreen(payload)
         scheduleDraw()
@@ -2220,6 +2287,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
           // Помним, что штрих стёрт: в базе он живёт до сохранения у автора, и
           // любая сверка до тех пор возвращала бы его обратно.
           bury(tombRef.current, rid)
+          heardRef.current.delete(rid)
           strokes.current.delete(rid); selection.current.delete(rid)
         }
         scheduleDraw()
@@ -2228,7 +2296,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         for (const id of strokes.current.keys()) bury(tombRef.current, id)
         for (const id of savedRef.current.keys()) bury(tombRef.current, id)
         live.current.clear(); strokes.current.clear(); selection.current.clear()
-        localPending.current.clear(); savedRef.current.clear()   // см. remove: иначе сверка уйдёт за всей сценой
+        localPending.current.clear(); savedRef.current.clear(); heardRef.current.clear()   // см. remove: иначе сверка уйдёт за всей сценой
         scheduleDraw()
       })
       .on("broadcast", { event: "bg" }, ({ payload }) => {
