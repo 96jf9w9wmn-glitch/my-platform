@@ -12,6 +12,7 @@
 
 import { supabase } from "./supabase"
 import { isLessonConducted } from "./utils"
+import { themeFromKey } from "./taskTheme"
 
 // Меньше трёх попыток — не тема, а пара неудачных дней: в отчёт не идёт.
 // То же число, что и в «Слабых типажах» (components/WeakTypes.jsx).
@@ -78,10 +79,22 @@ export function aggregateAttempts(attempts) {
 export async function typeLabels(rows) {
   const keyed = (rows || []).filter((r) => r.gen_key)
   if (!keyed.length) return {}
+  // Тема, которую репетитор поставил заданию из своего файла, подписывает себя
+  // сама: её текст и есть ключ. Банк ради неё не грузим, а в отчёте она встаёт
+  // строкой наравне с темами банка — совпавшие названия складываются
+  // (groupByTheme группирует по подписи), и одна и та же тема не двоится
+  // оттого, что часть заданий пришла из банка, а часть из файла.
+  const own = {}
+  for (const r of keyed) {
+    const theme = themeFromKey(r.gen_key)
+    if (theme) own[r.gen_key] = { label: theme, theme }
+  }
+  if (keyed.every((r) => themeFromKey(r.gen_key))) return own
   try {
     const { taskThemes } = await import("./pages/taskGenerators")
-    const map = {}
+    const map = { ...own }
     for (const r of keyed) {
+      if (themeFromKey(r.gen_key)) continue
       let themes
       try { themes = taskThemes(r.exam_type, r.number) } catch { continue }
       for (const t of themes || []) {
@@ -90,7 +103,7 @@ export async function typeLabels(rows) {
     }
     return map
   } catch {
-    return {}   // банк не загрузился — обойдёмся номерами заданий
+    return own   // банк не загрузился — обойдёмся номерами заданий и своими темами
   }
 }
 

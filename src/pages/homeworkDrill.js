@@ -17,8 +17,8 @@ import { drillTasks, packTask, taskText } from "./homeworkBank"
 // Выдать собранное ученику. Возвращает { count } либо { error } с текстом,
 // который можно показать репетитору: молчаливый отказ здесь недопустим —
 // репетитор решит, что работа ушла, а её нет.
-export async function assignDrill({ student, examType, number, genKey, title, size }) {
-  const tasks = drillTasks({ examType, number, genKey, size })
+export async function assignDrill({ student, examType, number, genKey, theme, title, size }) {
+  const tasks = drillTasks({ examType, number, genKey, theme, size })
   if (!tasks.length) return { error: "Задания этого вида не собрались" }
 
   const answers = tasks.map((t) => String(t.answer ?? "").trim())

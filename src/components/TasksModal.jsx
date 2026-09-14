@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import Icon from "./Icon"
 import TaskAttachments from "./TaskAttachments"
+import ThemeInput from "./ThemeInput"
 import { PhotoButton } from "./PhotoViewer"
 import { renderHomeworkMath, plural, answersEqual, fileUrls } from "../utils"
 import { useClosing } from "../useClosing"
@@ -230,39 +231,68 @@ function TaskBlock({ item, onCredit, onBoard, marking }) {
   )
 }
 
-// Предмет работы и разметка скопом. Предмет один на работу: задания одного
+// Предмет работы и разметка СКОПОМ. Предмет один на работу: задания одного
 // файла — это задания одного экзамена, и спрашивать его у каждого было бы
-// издевательством. «Все №N» — про раздатку по одной теме: двадцать заданий
-// одного номера размечаются одним нажатием.
+// издевательством. Номер и тема здесь же: раздатка почти всегда собрана по
+// одному номеру и одной теме, и до этой строки репетитор проставлял их по
+// заданию — пятьдесят раз одно и то же.
+//
+// Поля показывают и состояние: разметка у заданий разная — они пустые, а
+// написанное в них становится общим. Пустой номер снимает разметку со всех.
 function MarkHeader({ items, marking }) {
   const own = items.filter((it) => it.bankTask && !it.bankTask.gen_key)
   if (!own.length) return null
-  const numbered = own.filter((it) => TASK_MAX[marking.examType]?.[it.bankTask.number]).length
-  const first = own.find((it) => TASK_MAX[marking.examType]?.[it.bankTask.number])?.bankTask.number || null
+  const known = (it) => !!TASK_MAX[marking.examType]?.[it.bankTask.number]
+  const numbered = own.filter(known).length
+  const themed = own.filter((it) => known(it) && it.bankTask.theme).length
+  // Общее у всех заданий — или ничего, если они размечены вразнобой.
+  const commonOf = (of) => {
+    const first = of(own[0])
+    return own.every((it) => of(it) === first) ? first : null
+  }
+  const commonNumber = commonOf((it) => it.bankTask.number ?? null)
+  const commonTheme = commonOf((it) => it.bankTask.theme ?? "")
   return (
     <div className="flex flex-col gap-1.5 mb-3">
-      <div className="flex items-center gap-2">
-        <select value={marking.examType} onChange={(e) => marking.onExamType(e.target.value)}
-          className="input-glass py-2 text-sm flex-1 min-w-0">
-          {marking.groups.map((g) => (
-            <optgroup key={g.key} label={g.key}>
-              {g.subjects.map((sub) => <option key={sub.type} value={sub.type}>{g.key} · {sub.label}</option>)}
-            </optgroup>
-          ))}
-        </select>
-        {first != null && numbered < own.length && (
-          <button type="button" onClick={() => marking.onAll(first)}
-            title="Вся работа по одной теме — один номер на все задания"
-            className="no-press shrink-0 text-xs text-blue-600 hover:text-blue-700 active:scale-95 transition-transform">
-            все №{first}
-          </button>
-        )}
+      <select value={marking.examType} onChange={(e) => marking.onExamType(e.target.value)}
+        className="input-glass py-2 text-sm w-full">
+        {marking.groups.map((g) => (
+          <optgroup key={g.key} label={g.key}>
+            {g.subjects.map((sub) => <option key={sub.type} value={sub.type}>{g.key} · {sub.label}</option>)}
+          </optgroup>
+        ))}
+      </select>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-[11px] text-gray-400 shrink-0">Всем заданиям</span>
+        {/* Ширину полю задаёт обёртка: у .input-glass стоит width:100% вне
+            слоёв, и утилита w-14 на самом поле не действует. */}
+        <div className="w-14 shrink-0">
+          <input
+            value={commonNumber ?? ""}
+            onChange={(e) => marking.onAll(e.target.value)}
+            placeholder="№"
+            inputMode="numeric"
+            title="Номер на экзамене — сразу всем заданиям работы"
+            className="input-glass py-1 px-2 text-xs text-center"
+          />
+        </div>
+        <div className="flex-1 min-w-[9rem]">
+          <ThemeInput
+            value={commonTheme ?? ""}
+            options={marking.themes?.(marking.examType, commonNumber) || []}
+            onOpen={marking.onThemesNeeded}
+            onChange={marking.onThemeAll}
+            placeholder="Тема — всем заданиям"
+            className="py-1 px-2 text-xs"
+          />
+        </div>
       </div>
       <div className="text-[11px] text-gray-400 leading-snug">
         {numbered
           ? `Номер экзамена есть у ${numbered} ${plural(numbered, "задания", "заданий", "заданий")} из ${own.length}` +
-            (marking.canMark ? " — отмечайте верные и неверные, они пойдут в карту заданий." : ".")
-          : "Номер задания на экзамене связывает работу со статистикой ученика — картой заданий и слабыми темами."}
+            (themed ? `, тема — у ${themed}.` : ".") +
+            (marking.canMark ? " Ставьте баллы — они пойдут в карту заданий." : "")
+          : "Номер задания на экзамене связывает работу со статистикой ученика — картой заданий и слабыми темами. Тема уточняет её внутри номера: выберите из тем экзамена или напишите свою."}
       </div>
     </div>
   )
@@ -324,7 +354,10 @@ function MarkRow({ item, marking, autoChecked, editable }) {
           </span>
         </>
       ) : (
-        <span className="text-gray-400">№{num} · {numberTitle(examType, num)}</span>
+        <span className="text-gray-400">
+          №{num} · {numberTitle(examType, num)}
+          {item.bankTask?.theme ? ` · ${item.bankTask.theme}` : ""}
+        </span>
       )}
       {markable && (
         // Повторное нажатие по отмеченному снимает отметку: репетитор мог
@@ -332,6 +365,20 @@ function MarkRow({ item, marking, autoChecked, editable }) {
         // в статистике (RPC на p_correct = null удаляет строку).
         <div className="ml-auto flex items-center gap-1.5">
           <ScoreButtons max={max} points={points} onPick={(p) => onMark(item, p)} />
+        </div>
+      )}
+      {/* Тема — только у задания с известным номером: она уточняет статистику
+          ВНУТРИ номера, и без номера писать её некуда. Строка своя: рядом с
+          номером и баллом ей уже не хватает ширины на телефоне. */}
+      {editable && known && marking.onTheme && (
+        <div className="w-full">
+          <ThemeInput
+            value={item.bankTask?.theme ?? ""}
+            options={marking.themes?.(examType, num) || []}
+            onOpen={marking.onThemesNeeded}
+            onChange={(v) => marking.onTheme(item, v)}
+            className="py-1 px-2 text-xs"
+          />
         </div>
       )}
     </div>

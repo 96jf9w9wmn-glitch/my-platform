@@ -4,6 +4,7 @@ import Icon from "./Icon"
 import useTypeLabels from "./typeLabels"
 import { aggregateAttempts, attemptKey } from "../reportData"
 import { numberTitle } from "../pages/numberTitles"
+import { themeFromKey } from "../taskTheme"
 import { plural } from "../utils"
 import { usePlan } from "../subscription"
 
@@ -142,11 +143,18 @@ function WeakTypes({ student }) {
     setDrilling(key)
     try {
       const { assignDrill } = await import("../pages/homeworkDrill")
+      // У строки, пришедшей из работы, размеченной руками, в ключе лежит ТЕМА
+      // репетитора, а не типаж: генератора за таким заданием нет, и просить
+      // банк собрать «такие же» по этому ключу бесполезно — он вернул бы
+      // пустоту. Тема идёт отдельным полем: совпала с темой номера — работа
+      // соберётся именно по ней.
+      const theme = themeFromKey(row.gen_key)
       const res = await assignDrill({
         student,
         examType: row.exam_type,
         number: row.number,
-        genKey: row.gen_key,
+        genKey: theme ? null : row.gen_key,
+        theme,
         title: `Тренировка · ${rowLabel(row)}`,
         size: DRILL_SIZE,
       })

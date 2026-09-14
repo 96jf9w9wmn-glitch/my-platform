@@ -126,11 +126,18 @@ export function pickTask(examType, number, themes, seen, keys) {
 // Профиль №5 «lamps» даёт всего пять разных условий), и две одинаковые задачи
 // в работе читаются как ошибка платформы. Разных меньше заказанного — отдаём
 // сколько есть, а не добираем дублями.
-export function drillTasks({ examType, number, genKey, size }) {
+export function drillTasks({ examType, number, genKey, theme, size }) {
   const tasks = []
   const seen = new Set()
+  // Тренировка по ТЕМЕ, а не по типажу: так приходит слабое место работы,
+  // размеченной руками (у неё за заданием нет генератора, зато есть тема,
+  // поставленная репетитором). Совпала с темой номера — берём её типажи, чужая
+  // (своя тема репетитора) — любой типаж номера, как и было у заданий без
+  // ключа вовсе.
+  const pool = theme && !genKey ? typePool(examType, number, [theme], null) : []
   for (let i = 0; i < size * 4 && tasks.length < size; i++) {
-    const t = generateTask(examType, number, genKey)
+    const t = generateTask(examType, number,
+      genKey || (pool.length ? pool[Math.floor(Math.random() * pool.length)] : undefined))
     if (!t || !taskText(t)) continue
     const key = taskKey(t)
     if (seen.has(key)) continue

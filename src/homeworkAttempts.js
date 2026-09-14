@@ -13,6 +13,7 @@
 // оценивается как обычно.
 
 import { answersEqual } from "./utils"
+import { taskGenKey } from "./taskTheme"
 
 export function homeworkAttempts(hw, { answers, correct, account, token, studentId }) {
   const bank = Array.isArray(hw?.bank_tasks) ? hw.bank_tasks : []
@@ -47,9 +48,12 @@ export function homeworkAttempts(hw, { answers, correct, account, token, student
       p_exam_type: task.exam_type,
       p_number: task.number,
       // Ключа типажа у задания из файла нет и быть не может — генератора за ним
-      // не стоит. Колонка это допускает (null = «не из генератора»), а своды по
-      // номерам такие строки считают наравне с остальными.
-      p_gen_key: task.gen_key || null,
+      // не стоит. Зато бывает ТЕМА, которую поставил репетитор: она и едет
+      // ключом («theme:Квадратные уравнения», см. taskTheme.js), иначе внутри
+      // номера все задания были бы на одно лицо. Нет ни того, ни другого —
+      // null: колонка это допускает («не из генератора»), а своды по номерам
+      // такие строки считают наравне с остальными.
+      p_gen_key: taskGenKey(task),
       p_is_correct: answersEqual(given, correct[i]),
       p_answer: given,
       p_attempt_no: attemptNo,

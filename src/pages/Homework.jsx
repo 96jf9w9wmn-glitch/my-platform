@@ -19,6 +19,9 @@ import ConfirmModal from "../components/ConfirmModal"
 import { isOwner } from "../owner"
 import TaskAttachments from "../components/TaskAttachments"
 import TasksModal from "../components/TasksModal"
+import ThemeInput from "../components/ThemeInput"
+import useThemeOptions from "../useThemeOptions"
+import { normalizeTheme, themeGenKey } from "../taskTheme"
 import { PhotoButton } from "../components/PhotoViewer"
 import { useClosing } from "../useClosing"
 import useGridCols, { detailRowEndOf } from "../useGridCols"
@@ -423,6 +426,10 @@ export function CreateHomeworkModal({ students, tutorId, onClose, onCreated, edi
   // Способ сборки. При правке задание уже собрано — показываем «свой файл»,
   // то есть обычные поля с текстом и ответами.
   const [method, setMethod] = useState("file")
+
+  // Подсказки к полю темы: темы номера из банка и те, что репетитор заводил
+  // сам. Банк едет только по касанию поля — см. useThemeOptions.
+  const themeOptions = useThemeOptions()
 
   // --- Сборка из банка заданий (генераторы грузятся лениво: они тяжёлые) ---
   const [bank, setBank] = useState(null)
@@ -1063,11 +1070,20 @@ export function CreateHomeworkModal({ students, tutorId, onClose, onCreated, edi
           // задание уезжает как раньше, одной картинкой.
           urls.forEach((image_url, j) => {
             const num = examNumberOf(part[j])
-            out.push(num ? { image_url, exam_type: bankType, number: num } : { image_url })
+            // Тема едет вместе с номером и только с ним: без номера попытку
+            // писать всё равно некуда, а тема в одиночку осталась бы подписью,
+            // которую никто не увидит.
+            const theme = num ? normalizeTheme(part[j].theme) : null
+            out.push(num
+              ? { image_url, exam_type: bankType, number: num, ...(theme ? { theme } : {}) }
+              : { image_url })
           })
           setSavingNote(`Загружаем ${Math.min(i + part.length, splitTasks.length)} из ${splitTasks.length}`)
         }
         payload.bank_tasks = out
+        // Свои темы запоминаем на этом устройстве: в следующей работе они
+        // подскажутся списком, и набирать одно и то же заново не придётся.
+        for (const t of out) if (t.theme) themeOptions.remember(t.theme)
       } catch (e) {
         setFormError("Картинки заданий не загрузились: " + (e.message || e))
         setSavingNote("")
@@ -1458,8 +1474,8 @@ export function CreateHomeworkModal({ students, tutorId, onClose, onCreated, edi
                             <div className="text-[11px] text-gray-400 leading-snug">
                               {numberedCount
                                 ? `Номер экзамена есть у ${numberedCount} ${plural(numberedCount, "задания", "заданий", "заданий")} из ${splitTasks.length}` +
-                                  (themedCount ? `, тема — у ${themedCount}` : "") +
-                                  (autoCheck ? " — их ответы войдут в карту заданий и слабые темы." : ". В статистику ответы пойдут, когда работу проверяет кабинет.")
+                                  (themedCount ? `, тема — у ${themedCount}. ` : ". ") +
+                                  (autoCheck ? "Их ответы войдут в карту заданий и слабые темы." : "В статистику ответы пойдут, когда работу проверяет кабинет.")
                                 : "Номер задания на экзамене связывает работу со статистикой ученика — картой заданий и слабыми темами. Тема уточняет её внутри номера: её можно выбрать из тем экзамена или написать свою. Без номера работа проверится как обычно."}
                             </div>
                           </div>
@@ -1513,6 +1529,21 @@ export function CreateHomeworkModal({ students, tutorId, onClose, onCreated, edi
                                         : "Номер на экзамене"}
                                     </span>
                                   </div>
+                                  {/* Тема — только у задания с номером: она
+                                      уточняет статистику ВНУТРИ номера, и без
+                                      номера писать её некуда. Появляется сама,
+                                      как только номер проставлен. */}
+                                  <Collapse open={!!examNumberOf(t)}>
+                                    <div className="pt-1.5">
+                                      <ThemeInput
+                                        value={t.theme ?? ""}
+                                        options={themeOptions.options(bankType, examNumberOf(t))}
+                                        onOpen={themeOptions.load}
+                                        onChange={(v) => setSplitTheme(i, v)}
+                                        className="py-1.5 px-2 text-sm"
+                                      />
+                                    </div>
+                                  </Collapse>
                                 </div>
                                 <button type="button" onClick={() => removeSplitTask(i)} title="Убрать задание"
                                   className="no-press shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-blue-500/[0.08] transition active:scale-90">
@@ -1985,6 +2016,9 @@ function DetailBlock({ children, className = "" }) {
 // Разбор выбранного задания — целой строкой под рядом карточек, как разбор
 // варианта: слева условия, справа работа ученика и проверка.
 export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, studentAccountId, onUpdate, onEdit, onDelete, onOpenBoard, onClose, cls }) {
+  // Подсказки к полю темы (темы номера из банка и свои). Банк едет только по
+  // касанию поля: в разборе работы ему делать нечего.
+  const themeOptions = useThemeOptions()
   const [grading, setGrading] = useState(false)
   const [revising, setRevising] = useState(false)
   const [extending, setExtending] = useState(false)
@@ -2376,20 +2410,60 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
   // и прочая часть 2) — считаем и то и другое.
   const markedCount = marks ? Object.values(marks).filter((v) => markPoints(v, 99) != null).length : 0
 
-  // Номера пишем В САМУ РАБОТУ (homework.bank_tasks) — теми же полями, что у
-  // задания банка. Адреса картинок при этом нормализуем: в состоянии кабинета
-  // они ПОДПИСАННЫЕ (signRows), и, записав подпись обратно, мы сломали бы
-  // ученику доступ к условию — ровно так когда-то вышло с file_url.
+  // Номера и темы пишем В САМУ РАБОТУ (homework.bank_tasks) — теми же полями,
+  // что у задания банка. Адреса картинок при этом нормализуем: в состоянии
+  // кабинета они ПОДПИСАННЫЕ (signRows), и, записав подпись обратно, мы сломали
+  // бы ученику доступ к условию — ровно так когда-то вышло с file_url. Тема тут
+  // же приводится к порядку: в состоянии она лежит ровно так, как её набирают.
+  const pushTasks = (next) => supabase.from("homework").update({
+    bank_tasks: next.map((t) => {
+      const row = { ...t }
+      if (row.image_url) row.image_url = permanentStorageUrl(row.image_url, "homework")
+      if ("theme" in row) {
+        const theme = normalizeTheme(row.theme)
+        if (theme) row.theme = theme
+        else delete row.theme
+      }
+      return row
+    }),
+  }).eq("id", hw.id)
+
   async function saveNumbers(next) {
     const prev = bankTasks
     setBankTasks(next)
-    const payload = next.map((t) => (t?.image_url
-      ? { ...t, image_url: permanentStorageUrl(t.image_url, "homework") }
-      : t))
-    const { error } = await supabase.from("homework").update({ bank_tasks: payload }).eq("id", hw.id)
+    const { error } = await pushTasks(next)
     if (error) { setBankTasks(prev); return false }
     return true
   }
+
+  // Тему НАБИРАЮТ, и писать в базу на каждую букву незачем: состояние кабинета
+  // меняется сразу (поле обязано откликаться на нажатие), а запись
+  // откладывается. Уходя с работы, недописанное дописываем — иначе тема,
+  // набранная перед закрытием разбора, пропала бы молча.
+  const themeTimer = useRef(null)
+  const themeNext = useRef(null)
+
+  function flushThemes() {
+    clearTimeout(themeTimer.current)
+    themeTimer.current = null
+    const rows = themeNext.current
+    themeNext.current = null
+    if (!rows) return
+    pushTasks(rows)
+    // Свои темы помнит устройство: в следующей работе они подскажутся списком.
+    // Помним по записи, а не по нажатию клавиши, — иначе в подсказках осел бы
+    // каждый недописанный обрывок.
+    for (const t of rows) if (t.theme) themeOptions.remember(t.theme)
+  }
+
+  function saveThemes(next) {
+    setBankTasks(next)
+    themeNext.current = next
+    clearTimeout(themeTimer.current)
+    themeTimer.current = setTimeout(flushThemes, 700)
+  }
+
+  useEffect(() => () => { if (themeTimer.current) flushThemes() }, [])
 
   const withNumber = (idx, number) => bankTasks.map((t, i) => (i === idx
     ? (number == null ? { ...t, number: undefined, exam_type: undefined } : { ...t, number, exam_type: examType })
@@ -2404,10 +2478,31 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
   }
 
   // Вся работа одним номером: раздатка по одной теме — это двадцать заданий
-  // одного номера, и проставлять их по одному незачем.
-  function numberAllTasks(number) {
+  // одного номера, и проставлять их по одному незачем. Пустое поле снимает
+  // номера со всех — тем же движением, каким они и ставились.
+  function numberAllTasks(value) {
     if (!canNumber) return
-    saveNumbers(bankTasks.map((t) => ({ ...t, number, exam_type: examType })))
+    const digits = String(value ?? "").replace(/\D+/g, "").slice(0, 2)
+    const number = digits ? Number(digits) : null
+    saveNumbers(bankTasks.map((t) => (number == null
+      ? { ...t, number: undefined, exam_type: undefined }
+      : { ...t, number, exam_type: examType })))
+  }
+
+  // Тема задания — та же разметка, что и номер, только внутри него: номер
+  // говорит, какое место задание занимает на экзамене, тема — что именно в нём
+  // отрабатывается. Правится и у выданной работы: письменную раздатку
+  // размечают уже после того, как ученик её сдал.
+  function setTaskTheme(item, value) {
+    if (!canNumber) return
+    const idx = taskItems.indexOf(item)
+    if (idx < 0) return
+    saveThemes(bankTasks.map((t, i) => (i === idx ? { ...t, theme: value } : t)))
+  }
+
+  function themeAllTasks(value) {
+    if (!canNumber) return
+    saveThemes(bankTasks.map((t) => ({ ...t, theme: value })))
   }
 
   // Смена предмета переписывает его у уже размеченных заданий: номера у
@@ -2455,7 +2550,7 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
     // этот номер», а 1 из 2 — это не взятый номер. Сам балл живёт в работе.
     // Не критичный путь: на базе без функции отметка всё равно сохранена в
     // работе, а в журнал она доедет, когда миграцию выполнят.
-    supabase.rpc("task_attempt_mark", {
+    const args = {
       p_source: "homework", p_source_id: hw.id, p_student_id: String(hw.student_id),
       p_exam_type: item.bankTask?.exam_type || examType, p_number: Number(number),
       p_correct: value == null ? null : points >= max,
@@ -2463,7 +2558,18 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
       // ОДИН номер, и без неё девять отметок легли бы в одну строку журнала,
       // затирая друг друга.
       p_task_no: n,
-    }).then(() => {}, () => {})
+    }
+    // Тема задания едет тем же ключом, что и у сданной автопроверкой работы
+    // (theme:…), — иначе отмеченное рукой легло бы в журнал без темы, и одна и
+    // та же раздатка считалась бы по-разному в зависимости от способа проверки.
+    // Колонка gen_key у отметки появляется миграцией homework_task_theme.sql;
+    // на базе без неё функция семиаргументная, и мы зовём прежнюю — отметка
+    // доедет, просто без темы.
+    supabase.rpc("task_attempt_mark", { ...args, p_gen_key: themeGenKey(item.bankTask?.theme) })
+      .then((res) => {
+        if (res?.error?.code === "PGRST202") return supabase.rpc("task_attempt_mark", args)
+      }, () => {})
+      .then(() => {}, () => {})
   }
 
   // Балл за задание — и под листом на доске: работу разбирают на ней, и уходить
@@ -2967,6 +3073,8 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
             examType, groups: bankGroups, canMark, canNumber,
             onExamType: changeExamType, onNumber: setTaskNumber,
             onAll: numberAllTasks, onMark: setTaskMark,
+            onTheme: setTaskTheme, onThemeAll: themeAllTasks,
+            themes: themeOptions.options, onThemesNeeded: themeOptions.load,
           } : undefined}
           onClose={() => setShowTasks(false)}
         />
