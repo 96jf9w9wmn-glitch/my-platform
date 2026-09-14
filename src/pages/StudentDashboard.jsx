@@ -3291,7 +3291,12 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
         const num = i + 1
         if (num > maxCount || p2max[num]) return
         const given = (ans || "").trim()
-        if (!given) return // не отвечал — это не попытка, а пропуск
+        // Пропуск — это НЕ решено, а не отсутствие попытки: иначе процент в
+        // карте заданий считался бы от решённых, и ученик, не тронувший
+        // половину части 1, выглядел бы лучше того, кто попробовал и ошибся
+        // (то же правило и та же причина, что в src/homeworkAttempts.js).
+        // Задание без эталона в журнал по-прежнему не идёт — сверять нечего.
+        if (String(correctAnswers[i] ?? "").trim() === "") return
         const task = snap.find((t) => t.number === num)
         attempts.push({
           p_account: user.id,
@@ -3305,7 +3310,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
           p_exam_type: task?.exam_type || variant.type,
           p_number: num,
           p_gen_key: task?.gen_key || null,
-          p_is_correct: answersEqual(given, correctAnswers[i]),
+          p_is_correct: given !== "" && answersEqual(given, correctAnswers[i]),
           p_answer: given,
         })
       })
