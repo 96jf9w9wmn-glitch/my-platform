@@ -3,6 +3,7 @@ import { createPortal } from "react-dom"
 import { supabase } from "../supabase"
 import { signRows, signStorageUrl, permanentStorageUrl, parseStorageRef } from "../storageUrl"
 import { dropdownPos } from "../dropdownPos"
+import { useTapOnly } from "../useTapOnly"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import Icon from "../components/Icon"
 import AnswerTable from "../components/AnswerTable"
@@ -1965,6 +1966,38 @@ function studentNotifTarget(title) {
   return null
 }
 
+// Строка уведомления вынесена из списка ради одного: нажатие здесь не должно
+// путаться с листанием (см. useTapOnly) — иначе уведомления гаснут сами, пока
+// список просто прокручивают пальцем.
+function StudentNotifItem({ notification: n, onOpen, onDelete }) {
+  const tap = useTapOnly(onOpen)
+  return (
+    <div
+      {...tap}
+      className={`group px-4 py-3 border-b border-gray-50 cursor-pointer hover:bg-blue-500/[0.06] dark:hover:bg-white/5 transition-colors ${!n.read ? "bg-blue-50 dark:bg-blue-900/20" : ""}`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-gray-700">{n.title}</div>
+          <div className="text-xs text-gray-500 mt-0.5">{n.body}</div>
+          <div className="text-xs text-gray-400 mt-1">
+            {new Date(n.created_at).toLocaleDateString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+          </div>
+        </div>
+        <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
+          {studentNotifTarget(n.title) && <Icon name="chevron-right" size={14} className="text-gray-400 group-hover:text-gray-400 transition-colors" />}
+          <button
+            onClick={e => { e.stopPropagation(); onDelete() }}
+            className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500"
+          >
+            <Icon name="x" size={14} />
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function StudentNotificationBell({ userId, onNavigate }) {
   const [notifications, setNotifications] = useState([])
   const [open, setOpen] = useState(false)
@@ -2072,30 +2105,12 @@ function StudentNotificationBell({ userId, onNavigate }) {
             {notifications.length === 0 ? (
               <div className="text-sm text-gray-400 text-center py-8">Нет уведомлений</div>
             ) : notifications.map(n => (
-              <div
+              <StudentNotifItem
                 key={n.id}
-                onClick={() => handleNotifClick(n)}
-                className={`group px-4 py-3 border-b border-gray-50 cursor-pointer hover:bg-blue-500/[0.06] dark:hover:bg-white/5 transition-colors ${!n.read ? "bg-blue-50 dark:bg-blue-900/20" : ""}`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-gray-700">{n.title}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">{n.body}</div>
-                    <div className="text-xs text-gray-400 mt-1">
-                      {new Date(n.created_at).toLocaleDateString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
-                    {studentNotifTarget(n.title) && <Icon name="chevron-right" size={14} className="text-gray-400 group-hover:text-gray-400 transition-colors" />}
-                    <button
-                      onClick={e => { e.stopPropagation(); deleteNotification(n.id) }}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500"
-                    >
-                      <Icon name="x" size={14} />
-                    </button>
-                  </div>
-                </div>
-              </div>
+                notification={n}
+                onOpen={() => handleNotifClick(n)}
+                onDelete={() => deleteNotification(n.id)}
+              />
             ))}
           </div>
         </div>,

@@ -144,3 +144,11 @@ src/devRename.jsx
 # Стенд «условия пропадают после действия в разборе»
 dev-hw-list.html
 src/devHwList.jsx
+
+# стенд уведомлений (жалоба «просматриваются сами»)
+dev-notif.html
+src/devNotif.jsx
+
+# Стенд проверки варианта (условие и выбранный ответ в разборе)
+dev-variant-review.html
+src/devVariantReview.jsx

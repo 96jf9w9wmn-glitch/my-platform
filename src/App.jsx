@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, memo, lazy } from "react"
 import { isMoveNotification, revealBlock, MOVE_ANCHOR_TUTOR } from "./notifTarget"
 import { dropdownPos } from "./dropdownPos"
+import { useTapOnly } from "./useTapOnly"
 import { POPUP_OUT_MS } from "./useClosing"
 import { createPortal } from "react-dom"
 import { roomStudentId } from "./boardRoom"
@@ -102,6 +103,10 @@ function tutorNotifTarget(title) {
 function NotificationItem({ notification: n, onDelete, onRead, onNavigate }) {
   const [deleting, setDeleting] = useState(false)
   const target = tutorNotifTarget(n.title)
+  // Список листают пальцем, и лёгкое движение браузер всё равно доставляет как
+  // нажатие — без этой проверки уведомления гасли сами, пока их просто
+  // прокручивали.
+  const tap = useTapOnly(handleRead)
 
   async function handleDelete(e) {
     e.stopPropagation()
@@ -123,7 +128,7 @@ function NotificationItem({ notification: n, onDelete, onRead, onNavigate }) {
 
   return (
     <div
-      onClick={handleRead}
+      {...tap}
       className={`group px-4 py-3 border-b border-gray-50 cursor-pointer hover:bg-blue-500/[0.06] transition-colors ${!n.read ? "bg-blue-50" : ""}`}
     >
       <div className="flex items-start justify-between gap-2">
@@ -149,7 +154,7 @@ function NotificationItem({ notification: n, onDelete, onRead, onNavigate }) {
   )
 }
 
-function NotificationBell({ userId, onNavigate }) {
+export function NotificationBell({ userId, onNavigate }) {
   const [notifications, setNotifications] = useState([])
   const [open, setOpen] = useState(false)
   const [isClosing, setIsClosing] = useState(false)
