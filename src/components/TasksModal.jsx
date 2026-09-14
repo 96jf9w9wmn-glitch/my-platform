@@ -198,7 +198,7 @@ function TaskBlock({ item, onCredit, onBoard, marking }) {
             {onBoard && !autoChecked && (
               <button type="button" onClick={() => onBoard(item)}
                 className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-blue-500/25 text-blue-600 dark:text-blue-300 inline-flex items-center gap-1.5">
-                <Icon name="clipboard" size={12} />Проверить на доске
+                <Icon name="clipboard" size={12} />Задание на доску
               </button>
             )}
           </div>
@@ -385,11 +385,15 @@ function MarkRow({ item, marking, autoChecked, editable }) {
   )
 }
 
-export default function TasksModal({ title, note, intro, items, onClose, onCredit, onBoard, marking }) {
+export default function TasksModal({ title, note, intro, items, onClose, onCredit, onBoard, onBoardAll, marking }) {
   const { cls: closingCls, close } = useClosing(onClose)
   // Уходя на доску, окно закрываем: доска открывается поверх кабинета, и
   // оставленное под ней окно встретило бы репетитора при возвращении.
   const toBoard = onBoard ? (item) => { onBoard(item); close() } : undefined
+  // Вся работа на доску — отсюда же, из окна разбора: раньше эта кнопка стояла
+  // у списка фотографий в колонке проверки, и разбор выглядел разделённым
+  // надвое — задания в одном месте, решение и доска в другом.
+  const toBoardAll = onBoardAll ? () => { onBoardAll(); close() } : undefined
   // Шапка отделяется волосяной линией только когда под неё уехало условие —
   // у самого верха линия висела бы просто так.
   const [scrolled, setScrolled] = useState(false)
@@ -421,10 +425,21 @@ export default function TasksModal({ title, note, intro, items, onClose, onCredi
                   : "Условия работы"}{note ? ` · ${note}` : ""}
               </div>
             </div>
-            <button onClick={close} aria-label="Закрыть"
-              className="press-tap shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-blue-600">
-              <Icon name="x" size={18} />
-            </button>
+            <div className="shrink-0 flex items-center gap-2">
+              {toBoardAll && (
+                <button type="button" onClick={toBoardAll}
+                  title="Условия и решение ученика — на доску этой работы"
+                  className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-blue-500/25 text-blue-600 dark:text-blue-300 inline-flex items-center gap-1.5">
+                  <Icon name="clipboard" size={12} />
+                  <span className="hidden sm:inline">Вся работа на доску</span>
+                  <span className="sm:hidden">На доску</span>
+                </button>
+              )}
+              <button onClick={close} aria-label="Закрыть"
+                className="press-tap w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-blue-600">
+                <Icon name="x" size={18} />
+              </button>
+            </div>
           </div>
 
           <div ref={bodyRef} onScroll={() => setScrolled((bodyRef.current?.scrollTop || 0) > 2)}

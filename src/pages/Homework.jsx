@@ -2219,6 +2219,17 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
     onOpenBoard(hw, { key: `check:${hw.id}:${++checkRun.current}`, hwId: hw.id, label: hw.title, sheets, answers: boardAnswers, ...boardSheetProps })
   }
   const canCheckAll = checkable && (manualItems.length > 0 || (taskCount === 0 && !!hw.submission_url))
+  // Решение ученика видно ТАМ ЖЕ, где условия, — у своего задания в окне разбора.
+  // Отдельного списка снимков в колонке итога больше нет: это был второй вход в
+  // те же фотографии, из-за которого проверка выглядела разделённой надвое
+  // («и там и там можно проверить»), хотя баллы ставятся только в окне.
+  // Карточка остаётся там, где показать решение больше негде: работа сдана одним
+  // файлом либо условий в работе нет вовсе и окно не открывается.
+  const solutionInTasks = solutionShotCount > 0 && !!hw.description
+  const solutionCard = !solutionInTasks && (solutionShotCount > 0 || !!hw.submission_url)
+  // Сданную работу открывают не «посмотреть условия», а проверить — и кнопка
+  // называется тем, что за ней стоит.
+  const reviewing = hw.status === "submitted" || hw.status === "done"
 
   // Результат теста стоит в карточке заданий, а не отдельной плашкой в колонке
   // «Проверка»: ошибки — это про сами задания, и вся карточка открывает разбор.
@@ -2775,8 +2786,20 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
                   </div>
                   <div className="text-[11px] text-gray-400 mt-0.5 truncate">{tasksPreview}</div>
                 </div>
-                <span className="text-xs text-blue-600 flex-shrink-0">Посмотреть</span>
+                <span className="text-xs text-blue-600 flex-shrink-0">{reviewing ? "Проверить" : "Посмотреть"}</span>
               </div>
+              {/* Решение ученика — здесь же, а не отдельной карточкой в колонке
+                  итога: снимки привязаны к заданиям и открываются у своих
+                  заданий в том же окне. Строка говорит, что они внутри, —
+                  иначе за карточкой «задания» решение не искали бы. */}
+              {solutionInTasks && (
+                <div className="w-full flex items-center gap-1.5 text-[11px] text-gray-400">
+                  <Icon name="camera" size={11} className="flex-shrink-0" />
+                  <span className="truncate">
+                    Решение ученика: {solutionShotCount} {plural(solutionShotCount, "фотография", "фотографии", "фотографий")} у заданий
+                  </span>
+                </div>
+              )}
               {/* Связь заданий с экзаменом — прямо здесь: от неё зависит, попадёт
                   ли работа в карту заданий ученика, а ставится она в том же
                   окне, которое открывает эта карточка. */}
@@ -2837,8 +2860,13 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
               это контекст проверки («к какому дню ждали»), а не то, что
               репетитор здесь делает. Карточкой он остаётся только когда
               нарушен — тогда у него появляется действие. */}
+          {/* «Итог», а не «Проверка»: сама проверка идёт в окне заданий — там
+              условия, решение ученика и баллы. Здесь остаётся то, чем она
+              кончается: срок, оценка, комментарий и возврат на доработку.
+              Заголовок «Проверка» над колонкой без единого задания и был
+              главной причиной, по которой разбор выглядел разделённым надвое. */}
           <div className="section-label mb-0.5 flex items-baseline justify-between gap-2">
-            <span>Проверка</span>
+            <span>Итог</span>
             {!overdue && (
               <span className="normal-case tracking-normal font-normal text-[11px] text-gray-400 truncate">
                 {hw.deadline ? `сдать до ${dayMonth(hw.deadline)}` : "без срока сдачи"}
@@ -2926,8 +2954,15 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
               отличаются. Теперь снимки стоят номерами заданий, «Открыть»
               остаётся только у работы, сданной одним файлом (и у всех работ до
               того, как фото стали привязываться к заданиям), а разбор на доске
-              — одной кнопкой здесь же. */}
-          {(solutionShotCount > 0 || hw.submission_url) && (
+              — одной кнопкой здесь же.
+
+              А с 14.09.2026 карточки нет и вовсе у работы, где решение
+              привязано к заданиям: снимки стоят у своих заданий в окне разбора,
+              и список здесь был просто вторым входом в них — рядом с колонкой
+              «Проверка» он читался как второй способ проверить работу, хотя
+              баллы ставятся только в окне. Перенос всей работы на доску уехал
+              туда же, в шапку окна. */}
+          {solutionCard && (
             <DetailBlock className="flex flex-col gap-3">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl bg-green-500/12 text-green-600 flex items-center justify-center flex-shrink-0">
@@ -3009,9 +3044,12 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
                       ? <>Баллы: {points.got} из {points.max} · {points.percent}% — оценка <span className="font-medium">{suggestedGrade}</span></>
                       : "Работа ждёт вашей оценки"}
                   </div>
+                  {/* «Оценить», а не «Проверить»: проверяют задания — в окне
+                      разбора, и две кнопки «Проверить» на одном экране значили
+                      бы разное. Здесь ставят оценку за работу целиком. */}
                   <button onClick={() => setGrading(true)}
                     className="press-fill text-xs bg-blue-600 text-white px-3.5 py-1.5 rounded-lg flex-shrink-0">
-                    Проверить
+                    Оценить
                   </button>
                 </div>
               ) : (
@@ -3106,6 +3144,7 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
           items={taskItems}
           onCredit={canCredit ? toggleCredit : undefined}
           onBoard={checkable ? (item) => checkOnBoard([item]) : undefined}
+          onBoardAll={canCheckAll && !solutionCard ? () => checkOnBoard(manualItems.length ? manualItems : taskItems) : undefined}
           marking={canNumber || canMark ? {
             examType, groups: bankGroups, canMark, canNumber,
             onExamType: changeExamType, onNumber: setTaskNumber,
