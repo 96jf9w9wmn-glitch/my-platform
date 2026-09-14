@@ -693,7 +693,7 @@ export function CreateHomeworkModal({ students, tutorId, onClose, onCreated, edi
     // одной теме файл нумерует задания подряд, а номер экзамена у всех один —
     // молча проставленные 1…20 развели бы одно задание по двадцати строкам
     // статистики. Предлагаем их кнопкой «номера из файла».
-    syncSplit(tasks.map((t) => ({ image: t.image, answer: "", number: null, fileNum: t.num ?? null })))
+    syncSplit(tasks.map((t) => ({ image: t.image, answer: "", number: null, theme: "", fileNum: t.num ?? null })))
   }
 
   // Номер задания НА ЭКЗАМЕНЕ. На нём держится вся статистика по заданиям
@@ -714,15 +714,39 @@ export function CreateHomeworkModal({ students, tutorId, onClose, onCreated, edi
   // уже приняты, она стояла бы рядом без дела и путала бы («а сейчас какие?»).
   const fileNumbers = splitTasks.filter((t) => t.fileNum != null && t.fileNum !== t.number).length
   const numberedCount = splitTasks.filter((t) => examNumberOf(t)).length
-  const firstNumber = splitTasks.find((t) => examNumberOf(t))?.number || null
+  const themedCount = splitTasks.filter((t) => examNumberOf(t) && normalizeTheme(t.theme)).length
 
   // Файл-вариант: номера в нём и есть номера экзамена.
   const numbersFromFile = () =>
     syncSplit(splitTasks.map((t) => (t.fileNum != null ? { ...t, number: t.fileNum } : t)))
 
-  // Подборка по одной теме: весь файл — это один номер экзамена.
-  const numberAll = () =>
-    firstNumber ? syncSplit(splitTasks.map((t) => ({ ...t, number: firstNumber }))) : undefined
+  // Тема задания ВНУТРИ номера: «Квадратные уравнения» у №9, «Задачи на
+  // движение» у №21. Номер говорит, какое место на экзамене занимает задание,
+  // тема — что именно в нём отрабатывается, и статистика после этого умеет не
+  // только «№9 берёт через раз», но и «путается в дробных коэффициентах».
+  // Выбранная из тем номера складывается с тем, что ученик решал из банка;
+  // своя остаётся отдельной строкой. Хранится сырой строкой, приводится к
+  // порядку при записи (normalizeTheme) — иначе пробел, набранный между
+  // словами, стирался бы прямо под рукой.
+  const setSplitTheme = (idx, value) =>
+    syncSplit(splitTasks.map((t, i) => (i === idx ? { ...t, theme: value } : t)))
+
+  // Разметка ВСЕЙ работы разом. Раздатка почти всегда по одной теме: двадцать
+  // заданий одного номера, и проставлять их по одному — работа ни о чём. Поле
+  // при этом показывает и состояние: номера у заданий разные — оно пустое.
+  const commonSplit = (key) => {
+    if (!splitTasks.length) return null
+    const first = splitTasks[0][key] ?? null
+    return splitTasks.every((t) => (t[key] ?? null) === first) ? first : null
+  }
+
+  const setAllNumbers = (value) => {
+    const digits = String(value).replace(/\D+/g, "").slice(0, 2)
+    syncSplit(splitTasks.map((t) => ({ ...t, number: digits ? Number(digits) : null })))
+  }
+
+  const setAllThemes = (value) =>
+    syncSplit(splitTasks.map((t) => ({ ...t, theme: value })))
 
   const setSplitAnswer = (idx, value) =>
     syncSplit(splitTasks.map((t, i) => (i === idx ? { ...t, answer: value } : t)))
@@ -1398,18 +1422,45 @@ export function CreateHomeworkModal({ students, tutorId, onClose, onCreated, edi
                                   из файла
                                 </button>
                               )}
-                              {firstNumber && numberedCount < splitTasks.length && (
-                                <button type="button" onClick={numberAll} title="Весь файл по одной теме — один номер на все задания"
-                                  className="no-press shrink-0 text-xs text-blue-600 hover:text-blue-700 active:scale-95 transition-transform">
-                                  все №{firstNumber}
-                                </button>
-                              )}
                             </div>
+
+                            {/* Разметка ВСЕЙ работы одной строкой. Файл почти
+                                всегда собран по одному номеру и одной теме, и
+                                до этой строки репетитор проставлял их по
+                                заданию — пятьдесят раз одно и то же. Поля
+                                показывают и состояние: разметка у заданий
+                                разная — они пустые, а написанное в них
+                                становится общим. */}
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-[11px] text-gray-400 shrink-0">Всем заданиям</span>
+                              <div className="w-14 shrink-0">
+                                <input
+                                  value={commonSplit("number") ?? ""}
+                                  onChange={(e) => setAllNumbers(e.target.value)}
+                                  placeholder="№"
+                                  inputMode="numeric"
+                                  title="Номер на экзамене — сразу всем заданиям работы"
+                                  className="input-glass py-1.5 px-2 text-sm text-center"
+                                />
+                              </div>
+                              <div className="flex-1 min-w-[9rem]">
+                                <ThemeInput
+                                  value={commonSplit("theme") ?? ""}
+                                  options={themeOptions.options(bankType, commonSplit("number"))}
+                                  onOpen={themeOptions.load}
+                                  onChange={setAllThemes}
+                                  placeholder="Тема — всем заданиям"
+                                  className="py-1.5 px-2 text-sm"
+                                />
+                              </div>
+                            </div>
+
                             <div className="text-[11px] text-gray-400 leading-snug">
                               {numberedCount
                                 ? `Номер экзамена есть у ${numberedCount} ${plural(numberedCount, "задания", "заданий", "заданий")} из ${splitTasks.length}` +
+                                  (themedCount ? `, тема — у ${themedCount}` : "") +
                                   (autoCheck ? " — их ответы войдут в карту заданий и слабые темы." : ". В статистику ответы пойдут, когда работу проверяет кабинет.")
-                                : "Номер задания на экзамене связывает работу со статистикой ученика — картой заданий и слабыми темами. Без номера работа проверится как обычно."}
+                                : "Номер задания на экзамене связывает работу со статистикой ученика — картой заданий и слабыми темами. Тема уточняет её внутри номера: её можно выбрать из тем экзамена или написать свою. Без номера работа проверится как обычно."}
                             </div>
                           </div>
 

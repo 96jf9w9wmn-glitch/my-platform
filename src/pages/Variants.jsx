@@ -17,7 +17,9 @@ import { usePlan } from "../subscription"
 import { PlanHint } from "../components/PlanLock"
 import ConfirmModal from "../components/ConfirmModal"
 import DeadlinePicker from "../components/DeadlinePicker"
+import RenameTitle from "../components/RenameTitle"
 import TasksModal from "../components/TasksModal"
+import { PhotoButton } from "../components/PhotoViewer"
 import SegmentSwitch from "../components/SegmentSwitch"
 import StatTabs from "../components/StatTabs"
 import MethodCards from "../components/MethodCards"
@@ -876,7 +878,8 @@ function VariantReview({ submission, variant, onClose, onSave }) {
   // листов, сколько занял ход решения.
   const orphanFiles = Object.entries(submission.part2_files || {})
     .filter(([task]) => !part2Tasks.some((n) => String(n) === String(task)))
-    .flatMap(([task, v]) => fileUrls(v).map((url, i) => [task, url, i]))
+    .map(([task, v]) => [task, fileUrls(v)])
+    .filter(([, urls]) => urls.length)
 
   const algebra = part2Tasks.filter((n) => !geomNums || !geomNums.includes(n))
   const geometry = geomNums ? part2Tasks.filter((n) => geomNums.includes(n)) : []
@@ -948,13 +951,14 @@ function VariantReview({ submission, variant, onClose, onSave }) {
               какому номеру какой файл. */}
           {shots.length ? (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              {shots.map((url, i) => (
-                <a key={i} href={url} target="_blank" rel="noreferrer"
-                  className="press-fill self-start inline-flex items-center gap-1.5 text-blue-600 rounded-lg -mx-1 px-1 py-0.5">
-                  <Icon name="image" size={12} className="flex-shrink-0" />
-                  {shots.length > 1 ? `фото ${i + 1}` : "фото решения"}
-                </a>
-              ))}
+              {/* Листов к заданию бывает несколько, а кнопка одна: они
+                  перелистываются внутри окна просмотра. Ссылками порознь это
+                  выглядело как разные решения одного номера. */}
+              <PhotoButton photos={shots} title={`Задание ${n} · решение ученика`}
+                className="press-fill self-start inline-flex items-center gap-1.5 text-blue-600 rounded-lg -mx-1 px-1 py-0.5">
+                <Icon name="image" size={12} className="flex-shrink-0" />
+                {shots.length > 1 ? `решение · ${shots.length} фото` : "фото решения"}
+              </PhotoButton>
             </div>
           ) : (
             <div className="flex items-center gap-1.5 text-amber-600">
@@ -1095,10 +1099,11 @@ function VariantReview({ submission, variant, onClose, onSave }) {
             <div className="mb-4">
               <label className="text-sm text-gray-500 mb-2 block">Файлы ученика</label>
               <div className="grid gap-2 sm:grid-cols-3">
-                {orphanFiles.map(([task, url, i]) => (
-                  <a key={task + ":" + i} href={url} target="_blank" rel="noreferrer" className="press-fill text-sm text-blue-600 rounded-lg px-3 py-2 ring-1 ring-gray-200/70 dark:ring-white/10">
-                    Задание {task}{orphanFiles.filter(([t]) => t === task).length > 1 ? ` · ${i + 1}` : ""}
-                  </a>
+                {orphanFiles.map(([task, urls]) => (
+                  <PhotoButton key={task} photos={urls} title={`Задание ${task} · решение ученика`}
+                    className="press-fill text-sm text-blue-600 rounded-lg px-3 py-2 ring-1 ring-gray-200/70 dark:ring-white/10 text-left">
+                    Задание {task}{urls.length > 1 ? ` · ${urls.length} фото` : ""}
+                  </PhotoButton>
                 ))}
               </div>
             </div>
@@ -1647,6 +1652,19 @@ function Variants({ user, students = [] }) {
     setLoading(false)
   }
 
+  // Переименование не трогает ни заданий, ни ответов, поэтому доступно и
+  // варианту с проверенными работами. Список правим на месте: перечитывать
+  // ради одной строки нечего, а подписанные ссылки на файлы при этом остаются
+  // прежними.
+  async function renameVariant(title) {
+    const { error } = await supabase.from("variants").update({ title }).eq("id", selectedVariant.id)
+    if (error) return "Не получилось переименовать: " + error.message
+    const id = selectedVariant.id
+    setVariants((prev) => prev.map((v) => (v.id === id ? { ...v, title } : v)))
+    setSelectedVariant((prev) => (prev && prev.id === id ? { ...prev, title } : prev))
+    return null
+  }
+
   async function deleteVariant(v) {
     setConfirmDelete(null)
     await supabase.from("variant_submissions").delete().eq("variant_id", v.id)
@@ -1730,7 +1748,10 @@ function Variants({ user, students = [] }) {
     <div className={`glass overflow-hidden slide-up ${detailCls}`}>
               <div className="flex items-center justify-between gap-3 px-5 py-3.5">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="font-medium text-base truncate">{selectedVariant.title}</span>
+                  {/* Переименовать вариант можно на любом статусе, даже когда
+                      работы по нему уже проверены: имя — подпись в списке, а не
+                      состав заданий (его окно правки закрывает `busy`). */}
+                  <RenameTitle value={selectedVariant.title} onSave={renameVariant} />
                   <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ring-1 ${isEgeType(selectedVariant.type) ? "text-purple-600 bg-purple-500/10 ring-purple-500/20" : "text-blue-600 bg-blue-500/10 ring-blue-500/20"}`}>{selectedVariant.type}</span>
                   {selectedVariant.deadline && (
                     <span className="text-[11px] text-gray-400 flex-shrink-0 hidden sm:inline">до {dayMonth(selectedVariant.deadline)}</span>

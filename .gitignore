@@ -138,3 +138,5 @@ dev-board-score.html
 src/devBoardScore.jsx
 dev-hw-part2.html
 src/devHwPart2.jsx
+dev-rename.html
+src/devRename.jsx
