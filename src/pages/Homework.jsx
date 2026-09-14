@@ -2367,8 +2367,11 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
   // банка. Сверка там знает только «сошлось или нет» и даёт ноль или максимум, а
   // за №14 профиля на экзамене ставят 1 из 2 за один верный пункт — такой балл
   // может поставить только человек.
+  // Статус работы тут НЕ условие: на занятии ученик решает задание при
+  // репетиторе — на доске, на бумаге у себя, — и балл ставится тогда же, а не
+  // после формальной сдачи. Ждать «сдано» значило бы, что во время самого
+  // занятия оценить нечего.
   const canMark = hw.task_marks !== undefined && !!hw.student_id
-    && (hw.status === "submitted" || hw.status === "done")
   // Отметка бывает булевой (задание в один балл) и числом баллов (№14 профиля
   // и прочая часть 2) — считаем и то и другое.
   const markedCount = marks ? Object.values(marks).filter((v) => markPoints(v, 99) != null).length : 0
@@ -3020,6 +3023,10 @@ const HW_LIST_COLS = [
   "question_count", "correct_answers", "student_answers", "test_score",
   "requires_written", "grade", "require_solution", "test_options", "time_limit_min",
   "opened_at", "auto_submitted", "retry_policy", "retry_limit", "solution_files", "credited",
+  // Баллы, поставленные репетитором по заданиям (homework_task_marks.sql). Без
+  // этой колонки кабинет считает, что миграции нет, и кнопок балла не
+  // показывает вовсе — ни в разборе, ни под листом на доске.
+  "task_marks",
 ].join(", ")
 
 function Homework({ user, students, onOpenBoard }) {
