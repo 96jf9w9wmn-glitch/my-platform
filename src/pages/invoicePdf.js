@@ -55,22 +55,50 @@ export function invoiceSheetHtml({ invoices, studentName, tutorName, payee, note
     ? `${invoices.length} ${plural(invoices.length, "занятие", "занятия", "занятий")} · ${shortDate(last.lesson_date)}—${shortDate(first.lesson_date)}`
     : ""
 
+  // ТРИ ЧИСЛА, А НЕ ОДНО. Квитанция не хранит, оплачена ли она: остаток долга
+  // раскладывается по строкам (см. src/invoices.js), и у закрытого занятия он
+  // нулевой. Печатать по такой квитанции одно лишь «Итого к оплате: 0 ₽» рядом
+  // со строкой «Занятие 6 сентября — 1900 ₽» — неправда: занятие стоило 1900,
+  // просто деньги уже пришли. Поэтому лист говорит, сколько НАЧИСЛЕНО за
+  // перечисленные занятия, сколько из этого ОПЛАЧЕНО и сколько осталось.
+  const charged = invoices.reduce((sum, i) => sum + (Number(i.amount) || 0), 0)
+  const due = Math.max(0, Math.min(charged, Number(total) || 0))
+  const paid = Math.max(0, charged - due)
+  const settled = due <= 0
+  const title = settled ? "Квитанция об оплате" : "Квитанция на оплату"
+
   const payeeBlock = [payee?.payee_name || tutorName, payee?.payee_details]
     .filter(Boolean)
     .map((line) => `<div style="font-size:14px; line-height:1.5;">${esc(line)}</div>`)
     .join("")
 
+  // Промежуточные строки («Начислено», «Оплачено») появляются, только когда по
+  // этим занятиям что-то уже пришло: у обычной неоплаченной квитанции лист
+  // остаётся прежним — одна строка итога.
+  const totalRow = (label, value, strong) => `
+        <tr>
+          <td style="padding-top:${strong ? 11 : 7}px; font-size:${strong ? 16 : 14}px; ${strong ? "font-weight:600;" : "color:#6b7280;"}">${label}</td>
+          <td style="padding-top:${strong ? 11 : 7}px; font-size:${strong ? 20 : 14}px; text-align:right; white-space:nowrap; ${strong ? "font-weight:700;" : "color:#6b7280;"}">${value} ₽</td>
+        </tr>`
+  const totalRows = settled
+    ? totalRow("Итого оплачено", fmtMoney(charged), true)
+    : paid > 0
+      ? totalRow("Начислено за занятия", fmtMoney(charged))
+        + totalRow("Уже оплачено", `− ${fmtMoney(paid)}`)
+        + totalRow("Итого к оплате", fmtMoney(due), true)
+      : totalRow("Итого к оплате", fmtMoney(due), true)
+
   return `
     <div style="font-family:-apple-system,Helvetica,Arial,sans-serif; color:#1c1c1e; padding:6px 2px;">
       <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #1c1c1e; padding-bottom:14px;">
         <div>
-          <div style="font-size:27px; font-weight:700; letter-spacing:-0.4px;">Квитанция на оплату</div>
+          <div style="font-size:27px; font-weight:700; letter-spacing:-0.4px;">${title}</div>
           <div style="font-size:14px; color:#6b7280; margin-top:5px;">№ ${esc(number)} от ${longDate(issued)}</div>
           ${period ? `<div style="font-size:13px; color:#8e8e93; margin-top:3px;">${esc(period)}</div>` : ""}
         </div>
         <div style="text-align:right;">
-          <div style="font-size:12px; color:#8e8e93; text-transform:uppercase; letter-spacing:0.6px;">К оплате</div>
-          <div style="font-size:27px; font-weight:700; margin-top:3px;">${fmtMoney(total)} ₽</div>
+          <div style="font-size:12px; color:#8e8e93; text-transform:uppercase; letter-spacing:0.6px;">${settled ? "Оплачено" : "К оплате"}</div>
+          <div style="font-size:27px; font-weight:700; margin-top:3px;">${fmtMoney(settled ? charged : due)} ₽</div>
         </div>
       </div>
 
@@ -102,13 +130,10 @@ export function invoiceSheetHtml({ invoices, studentName, tutorName, payee, note
       </table>
 
       <table style="width:100%; border-collapse:collapse; border-top:2px solid #1c1c1e; margin-top:4px;">
-        <tr>
-          <td style="padding-top:11px; font-size:16px; font-weight:600;">Итого к оплате</td>
-          <td style="padding-top:11px; font-size:20px; font-weight:700; text-align:right;">${fmtMoney(total)} ₽</td>
-        </tr>
+        ${totalRows}
       </table>
 
-      ${note ? `<div style="margin-top:22px; font-size:14px; line-height:1.55; color:#3a3a3c; background:#f2f2f7; border-radius:12px; padding:12px 14px;">${esc(note)}</div>` : ""}
+      ${note && !settled ? `<div style="margin-top:22px; font-size:14px; line-height:1.55; color:#3a3a3c; background:#f2f2f7; border-radius:12px; padding:12px 14px;">${esc(note)}</div>` : ""}
 
       <div style="margin-top:26px; font-size:11.5px; line-height:1.6; color:#8e8e93;">
         Занятия оказывает и оплату получает репетитор. Квитанция сформирована
