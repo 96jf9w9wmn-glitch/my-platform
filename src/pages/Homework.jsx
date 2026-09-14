@@ -2044,6 +2044,14 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
   const [marks, setMarks] = useState(hw.task_marks || null)
   const [marksSrc, setMarksSrc] = useState(hw.task_marks)
   if (marksSrc !== hw.task_marks) { setMarksSrc(hw.task_marks); setMarks(hw.task_marks || null) }
+  // Балл ставится и с ДОСКИ, а доска держит ту функцию, с какой её открыли:
+  // замыкание в ней застыло на состоянии того рендера. Читать из него `marks`
+  // нельзя — вторая отметка ушла бы в базу поверх снимка, сделанного до первой,
+  // и первая молча пропала бы. Поэтому актуальные отметки и задания живут в
+  // ссылках, а не в замыкании.
+  const marksRef = useRef(marks)
+  const taskItemsRef = useRef([])
+  useEffect(() => { marksRef.current = marks }, [marks])
 
   // --- Разметка работы номерами экзамена ---
   //
@@ -2113,6 +2121,7 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
   const grade = pickedGrade ?? suggestedGrade
   // Зачёт доступен, только когда колонка есть в строке: на базе без миграции
   // manual_credit.sql запись упала бы, а кнопка обещала бы несуществующее.
+  useEffect(() => { taskItemsRef.current = taskItems })
   const canCredit = hw.credited !== undefined && Array.isArray(hw.correct_answers) && Array.isArray(hw.student_answers)
   // Разбор по номерам: репетитору важно не «сколько», а «где» — иначе к ошибке
   // не вернуться на занятии. Считаем по тем же правилам, что и оценку теста
@@ -2528,15 +2537,20 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
     const n = Number(item.n)
     const max = taskMaxOf(item.bankTask?.exam_type || examType, item.bankTask?.number) || 1
     const value = markValue(points, max)
-    const prev = marks
-    const next = { ...(marks || {}) }
+    const prev = marksRef.current
+    const next = { ...(prev || {}) }
     if (value == null) delete next[n]
     else next[n] = value
     delete next[String(n)]                 // ключ мог лежать строкой — не держим оба
     if (value != null) next[n] = value
     setMarks(next)
+    marksRef.current = next
     const { error } = await supabase.from("homework").update({ task_marks: next }).eq("id", hw.id)
-    if (error) { setMarks(prev); return }
+    if (error) { setMarks(prev); marksRef.current = prev; return }
+    // Строку в списке работ тоже надо освежить: балл, поставленный с доски,
+    // иначе остался бы только в состоянии этой карточки — и «пропал» бы, стоило
+    // списку перечитаться или карточке закрыться.
+    onUpdate()
     const number = item.bankTask?.number
     if (number == null) return
     // У задания С ЭТАЛОНОМ попытка в журнале уже есть — её записала сверка при
@@ -2589,8 +2603,10 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
       boardGrading[Number(it.n)] = { max, examType: type, number: Number(num), mark: it.mark, expert: it.expert }
     }
   }
+  // Доска зовёт эту функцию из своего снимка, поэтому задание ищем в АКТУАЛЬНОМ
+  // списке (ref), а не в том, каким он был при открытии доски.
   const markOnBoard = (n, pointsValue) => {
-    const item = taskItems.find((it) => Number(it.n) === Number(n))
+    const item = taskItemsRef.current.find((it) => Number(it.n) === Number(n))
     if (item) setTaskMark(item, pointsValue)
   }
   const boardSheetProps = Object.keys(boardGrading).length
