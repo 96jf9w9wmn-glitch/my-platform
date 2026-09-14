@@ -1,4 +1,4 @@
-import { taskMaxOf, markPoints, isExpertScored } from "./examScales"
+import { taskMaxOf, markPoints, isExpertScored } from "./examScales.js"
 
 // Ширина строки в долях em (надстрочные ⁰¹²…⁻ уже) — для длины черты радикала.
 const glyphW = (s) => { let w = 0; for (const ch of s) w += /[⁰¹²³⁴⁵⁶⁷⁸⁹⁻]/.test(ch) ? 0.42 : 0.58; return w }
