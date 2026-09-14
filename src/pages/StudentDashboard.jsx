@@ -54,7 +54,7 @@ import { convertWall, convertLessons } from "../timezone"
 // двенадцати» там означало бы не то.
 import { part1SlotsOf, part1NumbersOf, part2NumbersOf, examLevelOf, numbersLabel } from "./taskBankMeta"
 import { choiceBaseOf } from "./answerChoices"
-import { variantPart2MaxOf, variantMaxPrimary, examResult, secondaryLabel, scaleOf, taskMaxOf, parseTarget, examMaxPrimary } from "../examScales"
+import { variantPart2MaxOf, variantMaxPrimary, examResult, secondaryLabel, scaleOf, taskMaxOf, parseTarget, examMaxPrimary, isExpertScored } from "../examScales"
 // Сколько времени даётся на экзамен — вариант решается ровно столько же.
 import { examMinutesOf, formatExamDuration, formatCountdown } from "./examTiming"
 import { fmtNum } from "../num"
@@ -824,19 +824,28 @@ function deadlineInfo(hw) {
 // «прикрепи фото решения» вылезало отказом в момент отправки.
 function homeworkBrief(hw, { hasTest, hasWritten, isMcq, requireSolution }) {
   const out = []
-  const n = hw.question_count || 0
+  // Задания части 2 короткого ответа не имеют: их решают на листе или на доске,
+  // а балл ставит репетитор. Считаем их отдельно — иначе резюме обещало бы
+  // «7 заданий с коротким ответом» работе, где их два.
+  const bank = Array.isArray(hw.bank_tasks) ? hw.bank_tasks : []
+  const expert = bank.filter((t) => isExpertScored(t?.exam_type, t?.number)).length
+  const n = Math.max((hw.question_count || 0) - expert, 0)
   if (hasTest) {
-    out.push({
+    if (n) out.push({
       icon: "clipboard",
-      text: n
-        ? `${n} ${plural(n, "задание", "задания", "заданий")} с коротким ответом: ${isMcq ? "ответ выбирается" : "ответ вписывается"} прямо под условием.`
-        : `${isMcq ? "Ответ выбирается" : "Ответ вписывается"} прямо под условием.`,
+      text: `${n} ${plural(n, "задание", "задания", "заданий")} с коротким ответом: ${isMcq ? "ответ выбирается" : "ответ вписывается"} прямо под условием.`,
+    })
+    if (expert) out.push({
+      icon: "edit",
+      text: `${expert} ${plural(expert, "задание", "задания", "заданий")} с развёрнутым решением: ${plural(expert, "его", "их", "их")} записывают полностью — на доске или на листе, — а балл ставит репетитор.`,
     })
     out.push({
       icon: "sparkles",
-      text: hasWritten
-        ? "Ответы проверятся сами, а письменную часть посмотрит репетитор."
-        : "Проверка автоматическая: оценку увидишь сразу после отправки.",
+      text: !n
+        ? "Проверяет репетитор: балл за каждое задание он ставит по критериям экзамена."
+        : hasWritten || expert
+          ? "Короткие ответы проверятся сами, решение посмотрит репетитор."
+          : "Проверка автоматическая: оценку увидишь сразу после отправки.",
     })
     out.push({
       icon: "camera",
@@ -1339,7 +1348,22 @@ export function HomeworkDetail({ hw, answers = null, onAnswers = null, onBack, o
   const locked = isHomeworkOverdue(hw)
   // Интерактивный тест: к каждому вопросу приложены варианты ответа для выбора.
   const isMcq = Array.isArray(hw.test_options) && hw.test_options.length > 0
-  const requireSolution = !!hw.require_solution && hasTest
+  // Задания части 2: у них нет поля ответа — решение идёт фотографией или
+  // доской. Считаем их здесь, потому что от них зависит и требование решения, и
+  // проверка «впиши хотя бы один ответ» при отправке.
+  const expertOnly = (i) => isExpertScored(hw.bank_tasks?.[i]?.exam_type, hw.bank_tasks?.[i]?.number)
+  const answerFields = Array.isArray(hw.correct_answers)
+    ? hw.correct_answers.some((_, i) => !expertOnly(i)) : true
+  const hasExpert = Array.isArray(hw.bank_tasks)
+    && hw.bank_tasks.some((t) => isExpertScored(t?.exam_type, t?.number))
+  // Сколько заданий работы вообще сверяются с эталоном: по ним и считается
+  // автопроверка. У задания части 2 эталона нет — в знаменатель оно не идёт.
+  const gradedCount = Array.isArray(hw.correct_answers)
+    ? hw.correct_answers.filter((c) => String(c ?? "").trim() !== "").length
+    : hw.question_count || 0
+  // Решение обязательно везде, где есть задание части 2: вся его работа —
+  // в записи хода решения, и сдача без единой фотографии была бы пустой.
+  const requireSolution = (!!hw.require_solution || hasExpert) && hasTest
   // Прикрепить фото решения можно у ЛЮБОЙ работы с ответами, а не только там,
   // где репетитор поставил галочку «требовать решение». Галочка решает, СДАСТСЯ
   // ли работа без фото, а не есть ли вообще куда его приложить: без этого
@@ -1448,7 +1472,9 @@ export function HomeworkDetail({ hw, answers = null, onAnswers = null, onBack, o
     if (locked) return
     // В доработке прежние ответы уже стоят в полях — «хотя бы один ответ»
     // выполнялось бы само собой, и работа уходила бы обратно нетронутой.
-    if (!testAnswers.some((a, i) => !isAccepted(i) && a.trim())) {
+    // Ответ требуем только там, где его вообще куда вписывать: у работы целиком
+    // из части 2 полей нет, и сдаётся она решением.
+    if (answerFields && !testAnswers.some((a, i) => !isAccepted(i) && a.trim())) {
       setSubmitError(redoOnly ? "Впиши ответ хотя бы к одному заданию из доработки." : "Впиши хотя бы один ответ.")
       return
     }
@@ -1466,7 +1492,10 @@ export function HomeworkDetail({ hw, answers = null, onAnswers = null, onBack, o
 
   const meta = HW_STATUS[hw.status] || HW_STATUS.assigned
   const dl = deadlineInfo(hw)
-  const typeLabel = hw.hw_type === "test" ? `С ответами · ${hw.question_count || 0} зад.`
+  // Работа, в которой вписывать нечего (вся она — часть 2), называется по тому,
+  // что в ней делают: «С ответами» обещало бы поля, которых там нет.
+  const typeLabel = hw.hw_type === "test"
+    ? (answerFields ? `С ответами · ${hw.question_count || 0} зад.` : `Развёрнутое решение · ${hw.question_count || 0} зад.`)
     : hw.hw_type === "combined" ? "Ответы + письменное" : "Письменное"
   const headerIcon = hw.status === "done" ? "check" : hw.hw_type === "test" ? "clipboard" : hw.hw_type === "combined" ? "file-text" : "edit"
   // Резюме — только у работы, которую ещё предстоит решить: у сданной и
@@ -1620,7 +1649,9 @@ export function HomeworkDetail({ hw, answers = null, onAnswers = null, onBack, o
             </div>
           )}
           <h3 className={`text-base font-medium ${redoOnly ? "mb-1" : "mb-4"}`}>
-            {redoOnly ? "Доработка — реши эти задания заново" : isMcq ? "Реши работу — выбери ответы" : "Реши работу — впиши ответы"}
+            {redoOnly ? "Доработка — реши эти задания заново"
+              : !answerFields ? "Реши работу — запиши решение и приложи"
+              : isMcq ? "Реши работу — выбери ответы" : "Реши работу — впиши ответы"}
           </h3>
           {/* Что вписывать и нужно ли фото — написано в резюме наверху карточки,
               второй раз тут не повторяем. Остаётся только то, что относится
@@ -1649,7 +1680,17 @@ export function HomeworkDetail({ hw, answers = null, onAnswers = null, onBack, o
                     : <div className="text-sm text-gray-400 pt-0.5 min-w-0 flex-1">Вопрос {i + 1}</div>}
                 </div>
 
-                {i >= testAnswers.length ? null : isMcq ? (
+                {/* Задание части 2 краткого ответа не имеет: его решают в
+                    тетради или на доске, присылают фотографией, и балл по
+                    критериям ставит репетитор. Поле «Твой ответ» такому заданию
+                    не даём — вписывать в него нечего. */}
+                {isExpertScored(bankTasks?.[i]?.exam_type, bankTasks?.[i]?.number) ? (
+                  <div className="text-xs text-gray-500 flex items-start gap-1.5">
+                    <Icon name="edit" size={12} className="mt-0.5 flex-shrink-0" />
+                    Задание с развёрнутым решением: запиши его полностью — на доске
+                    или на листе — и приложи. Балл ставит репетитор.
+                  </div>
+                ) : i >= testAnswers.length ? null : isMcq ? (
                   <div className="flex flex-col items-start gap-2">
                     {(hw.test_options[i] || []).map((o, j) => {
                       const sel = a === o
@@ -1714,16 +1755,27 @@ export function HomeworkDetail({ hw, answers = null, onAnswers = null, onBack, o
             disabled={submittingTest || (requireSolution && !solutionCount)}
             className="w-full bg-blue-600 text-white rounded-lg py-2.5 text-sm hover:bg-blue-700 disabled:opacity-50"
           >
-            {submittingTest ? "Проверяем..." : requireSolution ? "Отправить ответы и решение" : "Отправить ответы"}
+            {submittingTest ? "Проверяем..."
+              : !answerFields ? "Отправить решение"
+              : requireSolution ? "Отправить ответы и решение" : "Отправить ответы"}
           </button>
         </div>
       )}
 
+      {/* Итог автопроверки. Знаменатель — задания С ЭТАЛОНОМ: у части 2 его нет,
+          балл за неё ставит репетитор, и считать её в «проверено» нельзя. Когда
+          сверять было нечего вовсе, показываем не счёт, а то, что работа ушла
+          на проверку. */}
       {hasTest && testDone && (
         <div className="glass-tint-blue p-4 mb-4">
-          <div className="text-sm font-medium text-blue-700 flex items-center gap-1"><Icon name="check" size={14} />Ответы проверены</div>
+          <div className="text-sm font-medium text-blue-700 flex items-center gap-1">
+            <Icon name="check" size={14} />{gradedCount ? "Ответы проверены" : "Работа отправлена"}
+          </div>
           <div className="text-sm text-blue-600 mt-1">
-            {hw.test_score} / {hw.question_count} ({Math.round((hw.test_score / hw.question_count) * 100)}%)
+            {gradedCount
+              ? `${hw.test_score} / ${gradedCount} (${Math.round((hw.test_score / gradedCount) * 100)}%)`
+              : "Решение смотрит репетитор — оценка появится после проверки."}
+            {gradedCount > 0 && hasExpert ? " · решение части 2 проверит репетитор" : ""}
           </div>
         </div>
       )}
@@ -2412,6 +2464,19 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     for (let i = 0; i < count; i++) out[Number(boardHwTasks[i]?.n ?? i + 1)] = boardHwList?.[i] ?? ""
     return out
   }, [boardHwRow, boardHwTasks, boardHwList])
+  // Задания части 2 на доске: у них нет поля ответа — ученик решает прямо на
+  // листе, а балл ставит репетитор. Карта нужна доске, чтобы не рисовать под
+  // таким листом поле, в которое нечего вписывать.
+  const boardGradingByNum = useMemo(() => {
+    if (!boardHwRow) return null
+    const bank = Array.isArray(boardHwRow.bank_tasks) ? boardHwRow.bank_tasks : []
+    const out = {}
+    bank.forEach((t, i) => {
+      if (!isExpertScored(t?.exam_type, t?.number)) return
+      out[Number(boardHwTasks[i]?.n ?? i + 1)] = { expert: true }
+    })
+    return Object.keys(out).length ? out : null
+  }, [boardHwRow, boardHwTasks])
   const setBoardAnswer = useCallback((num, value) => {
     if (!boardHwRow) return
     const count = Math.max(boardHwTasks.length, boardHwRow.question_count || 0)
@@ -2902,13 +2967,20 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     // типажей молча недосчиталась бы работы.
     if (hw.bank_tasks === undefined) hw = { ...hw, bank_tasks: await fetchBankTasks(hwId) }
     const correct = hw.correct_answers || []
+    // Задания, которые сверяются с эталоном: у части 2 его нет.
+    const gradedNow = correct.filter((c) => String(c ?? "").trim() !== "").length
     // Балл считает общая homeworkTestScore — та же, что у репетитора: она
     // прибавляет и зачтённые вручную номера. Своим циклом по answersEqual
     // пересдача доработки теряла бы зачтённое задание: ответ в нём прежний, а
     // эталон банка так и остался неверным.
     const score = homeworkTestScore({ ...hw, student_answers: answers, correct_answers: correct })
 
+    // Работу с заданием части 2 автопроверка завершить не может: балл за
+    // развёрнутое решение ставит репетитор по критериям, и оценка «сразу после
+    // отправки» выставилась бы по одной части 1 — то есть заведомо заниженная,
+    // да ещё и минуя проверку. Такая работа уходит на проверку, как письменная.
     const isPureTest = hw.hw_type === "test"
+      && !(Array.isArray(hw.bank_tasks) && hw.bank_tasks.some((t) => isExpertScored(t?.exam_type, t?.number)))
     const updates = {
       student_answers: answers,
       test_score: score,
@@ -2920,6 +2992,11 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
       const percent = Math.round((score / hw.question_count) * 100)
       updates.status = "done"
       updates.grade = percent >= 90 ? 5 : percent >= 75 ? 4 : percent >= 50 ? 3 : 2
+    } else if (hw.hw_type === "test") {
+      // Работа «с ответами», которую автопроверка завершить не может (в ней есть
+      // задание части 2), уходит на проверку к репетитору. Без этой строки она
+      // осталась бы «Выдано» — сданной, но ни для кого не видимой.
+      updates.status = "submitted"
     }
 
     // Первое фото дублируем в submission_url: на нём держатся карточка
@@ -2960,7 +3037,11 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
       await supabase.from("notifications").insert({
         user_id: hw.tutor_id,
         title: auto ? "Время вышло — работа сдана автоматически" : "Ученик сдал домашнюю работу",
-        body: user.profile?.name + (auto ? " не успел завершить «" : " ответил в «") + hw.title + "»: " + score + " / " + hw.question_count,
+        // Счёт — по заданиям С ЭТАЛОНОМ: часть 2 сверкой не проверяется, и
+        // «1 / 3» у работы, где сверять можно было одно задание, читалось бы
+        // как провал.
+        body: user.profile?.name + (auto ? " не успел завершить «" : " ответил в «") + hw.title + "»"
+          + (gradedNow ? `: ${score} / ${gradedNow}` : " — решение ждёт проверки"),
       })
     }
     // Чистый тест проверяется сам и сразу получает оценку — в бот уходит и он,
@@ -3301,6 +3382,9 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                  набирать ответ второй раз не нужно. */
               taskAnswers={boardAnswersByNum}
               onTaskAnswer={boardHwRow ? setBoardAnswer : null}
+              /* Задание части 2 поля ответа не получает: его решают прямо на
+                 листе, а балл по критериям ставит репетитор. */
+              taskGrading={boardGradingByNum}
             />
           </Suspense>
         )}

@@ -1279,6 +1279,19 @@ function App() {
             /* Ответы ученика — строкой под его же листом на доске (только показ:
                отвечает ученик, репетитор проверяет). */
             taskAnswers={board.taskSheet?.answers || null}
+            /* Балл за задание — под тем же листом. Пишет его разбор домашней
+               работы (там же из баллов выводится оценка), доска только
+               показывает и отдаёт нажатие; свою копию карты правим сразу,
+               иначе нажатие отозвалось бы лишь при возвращении в кабинет. */
+            taskGrading={board.taskSheet?.grading || null}
+            onTaskMark={board.taskSheet?.onMark ? (n, points) => {
+              board.taskSheet.onMark(n, points)
+              setBoard((b) => {
+                const cur = b?.taskSheet?.grading?.[n]
+                if (!cur) return b
+                return { ...b, taskSheet: { ...b.taskSheet, grading: { ...b.taskSheet.grading, [n]: { ...cur, mark: points } } } }
+              })
+            } : null}
           />
         </PageBoundary>
       )}

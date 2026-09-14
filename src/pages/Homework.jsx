@@ -11,7 +11,7 @@ import Collapse from "../components/Collapse"
 import Reveal from "../components/Reveal"
 import AutoHeight from "../components/AutoHeight"
 import FormulaBackdrop from "../components/FormulaBackdrop"
-import { parseLocalDate, isHomeworkOverdue as isOverdue, renderHomeworkMath, plainTaskMath, superscriptPowers, parseHomeworkTasks, homeworkTaskItems, homeworkTestScore, plural, hasAttachment, getInitials, answersEqual, oneLine, isSimpleAnswer, homeworkBoardSheet, homeworkSolutionKey, fileUrls } from "../utils"
+import { parseLocalDate, isHomeworkOverdue as isOverdue, renderHomeworkMath, plainTaskMath, superscriptPowers, parseHomeworkTasks, homeworkTaskItems, homeworkTestScore, plural, hasAttachment, getInitials, answersEqual, oneLine, isSimpleAnswer, homeworkBoardSheet, homeworkSolutionKey, fileUrls, homeworkPointsOf, taskItemMax } from "../utils"
 import { usePlan } from "../subscription"
 import { homeworkRoom } from "../boardRoom"
 import { PlanHint, PlanLock } from "../components/PlanLock"
@@ -19,17 +19,19 @@ import ConfirmModal from "../components/ConfirmModal"
 import { isOwner } from "../owner"
 import TaskAttachments from "../components/TaskAttachments"
 import TasksModal from "../components/TasksModal"
+import { PhotoButton } from "../components/PhotoViewer"
 import { useClosing } from "../useClosing"
 import useGridCols, { detailRowEndOf } from "../useGridCols"
 import getAvatarColor from "../avatarColor"
 import DateTile from "../components/DateTile"
 import DeadlinePicker from "../components/DeadlinePicker"
+import RenameTitle from "../components/RenameTitle"
 import { TILE_TINTS, dueTintKey } from "../dueTint"
 // Список предметов — из лёгкого модуля: сами генераторы приезжают отдельно
 // (homeworkBank), и тащить их в бандл раздела ради подписей нельзя.
 import { subjectGroups, firstType, typeForStudent, BANK_SUBJECTS } from "./examSubjectList"
 import { numberTitle } from "./numberTitles"
-import { TASK_MAX } from "../examScales"
+import { TASK_MAX, taskMaxOf, markPoints, markValue, isExpertScored } from "../examScales"
 import { lazyChunk } from "../lazyChunk"
 
 const STATUS_LABELS = {
@@ -769,8 +771,17 @@ export function CreateHomeworkModal({ students, tutorId, onClose, onCreated, edi
   function applyBank(tasks) {
     setBankTasks(tasks)
     setDescription(tasks.map((t, i) => `${i + 1}. ${oneLine(bank.taskText(t))}`).join("\n"))
-    const answers = tasks.map((t) => String(t.answer ?? "").trim())
-    const testable = answers.length > 0 && answers.every(isSimpleAnswer)
+    // Задание части 2 краткого ответа не получает: его решают в тетради или на
+    // доске и присылают фотографией, а балл ставит репетитор по критериям ФИПИ.
+    // Эталон в автопроверку не идёт — иначе кабинет требовал бы вписать в поле
+    // то, что на самом экзамене в бланк не пишут, и считал бы пустое поле ошибкой.
+    const answers = tasks.map((t) => (isExpertScored(t.exam_type, t.number) ? "" : String(t.answer ?? "").trim()))
+    const graded = answers.filter(Boolean)
+    // Решать по карточкам (условие → решение → фото) работа должна в любом
+    // случае — так же, как нарезанная из своего файла, у которой эталонов нет
+    // вовсе. Сверяются только задания с эталоном; работа целиком из части 2
+    // просто не получает ни одного поля ответа.
+    const testable = answers.length > 0 && graded.every(isSimpleAnswer)
     setTestOptions(null)
     setMcqCorrect([])
     if (testable) {
@@ -1930,7 +1941,7 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
   const [extendError, setExtendError] = useState("")
   const [showTasks, setShowTasks] = useState(false)
   const [comment, setComment] = useState(hw.comment || "")
-  const [selectedGrade, setSelectedGrade] = useState(hw.grade || null)
+  const [pickedGrade, setPickedGrade] = useState(hw.grade || null)
   // Зачтённые вручную номера держим и в своём состоянии: список работ
   // перезагружается запросом, а разбор с зачётом должен откликаться сразу.
   // Сброс — правкой состояния на рендере (не эффектом): пришла новая строка
@@ -1948,6 +1959,22 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
   const [marks, setMarks] = useState(hw.task_marks || null)
   const [marksSrc, setMarksSrc] = useState(hw.task_marks)
   if (marksSrc !== hw.task_marks) { setMarksSrc(hw.task_marks); setMarks(hw.task_marks || null) }
+
+  // --- Разметка работы номерами экзамена ---
+  //
+  // Ради неё вся затея: попытка попадает в статистику ученика (карта заданий,
+  // «Где ученик ошибается», отчёт родителю), только когда у задания известны
+  // предмет и номер. У собранного из банка они приезжают с заданием, у
+  // нарезанного из своего файла их ставит репетитор — при выдаче или здесь, в
+  // разборе уже выданной работы.
+  //
+  // Предмет один на работу: берём тот, которым она уже размечена, иначе —
+  // предмет ученика (его же подставляет сборка из банка).
+  const ownTasks = Array.isArray(bankTasks) ? bankTasks.filter((t) => t && !t.gen_key) : []
+  const markedType = ownTasks.find((t) => t.exam_type)?.exam_type || null
+  const [pickedType, setPickedType] = useState(null)
+  const examType = pickedType || markedType
+    || typeForStudent(student, bankGroups) || firstType(bankGroups)
   const status = STATUS_LABELS[hw.status] || STATUS_LABELS.assigned
   const typeInfo = TYPE_LABELS[hw.hw_type] || TYPE_LABELS.written
   const isPureTest = hw.hw_type === "test"
@@ -1980,7 +2007,6 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
   const testPercent = testScore != null && hw.question_count
     ? Math.round((testScore / hw.question_count) * 100)
     : null
-  const suggestedGrade = testPercent != null ? getGradeFromPercent(testPercent) : null
 
   // Задания для окна и строка-подсказка: токены дробей и корней в одну строку
   // не рисуются, поэтому в подсказке они разворачиваются текстом.
@@ -1988,6 +2014,18 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
     ...hw, credited, bank_tasks: bankTasks, task_marks: marks,
   })
   const taskCount = taskItems.length
+  // Балл ВСЕЙ работы: сверка по эталону и отметки репетитора считаются одной
+  // арифметикой (homeworkPointsOf), каждое задание весит столько баллов,
+  // сколько за него дают на экзамене. Отсюда и оценка: репетитор ставит баллы
+  // по заданиям, а отметка за работу выводится из них сама — на глаз проценты
+  // по многобалльным номерам не считаются.
+  const points = homeworkPointsOf(taskItems, examType)
+  const suggestedGrade = points.percent != null ? getGradeFromPercent(points.percent) : null
+  // Оценка, которая уйдёт в работу: выведенная из баллов, пока репетитор не
+  // выбрал другую. Своё состояние тут не эффект, а именно «что нажали»: балл
+  // задания меняется прямо в разборе, и оценка обязана идти за ним — а
+  // проставленная эффектом замерла бы на первом подсчёте.
+  const grade = pickedGrade ?? suggestedGrade
   // Зачёт доступен, только когда колонка есть в строке: на базе без миграции
   // manual_credit.sql запись упала бы, а кнопка обещала бы несуществующее.
   const canCredit = hw.credited !== undefined && Array.isArray(hw.correct_answers) && Array.isArray(hw.student_answers)
@@ -2002,17 +2040,27 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
         const gave = raw == null || String(raw).trim() === "" ? null : String(raw)
         const n = taskItems[i]?.n ?? i + 1
         const byHand = credited.includes(Number(n))
+        // Балл, поставленный репетитором: у задания без эталона он и есть
+        // результат. Полный балл — верно, ноль — ошибка, неполный оставляем
+        // нейтральным: это и не то и не другое, а «решено наполовину».
+        const item = taskItems[i]
+        const mx = item ? taskItemMax(item, examType) : 1
+        const pts = markPoints(item?.mark, mx)
         return {
           n,
           // Задание без эталона (развёрнутый ответ) не верное и не неверное:
           // его смотрит репетитор, чип у него нейтральный. Зачтённое вручную —
           // верное: эталон банка ошибся, а не ученик.
-          ok: byHand ? true : correct == null || correct === "" ? null : answersEqual(gave ?? "", correct),
+          ok: byHand ? true
+            : pts != null ? (pts >= mx ? true : pts === 0 ? false : null)
+            : correct == null || correct === "" ? null : answersEqual(gave ?? "", correct),
+          points: pts, max: mx,
           credited: byHand,
           // Пустой ответ — не ошибка, а пропуск: разбирать на занятии его надо
           // иначе (ученик не понял условие или не успел), поэтому и в разборе он
-          // отделён от неверного ответа цветом.
-          skipped: !byHand && gave == null,
+          // отделён от неверного ответа цветом. У задания части 2 ответа не
+          // ждут вовсе — его решают на листе, и пропуском это не считается.
+          skipped: !byHand && gave == null && !taskItems[i]?.expert,
         }
       })
     : []
@@ -2075,7 +2123,7 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
     // Под каждым листом на доске стоит ответ ученика: у задания без эталона
     // репетитор смотрит ход решения, и ответ должен быть тут же, а не в
     // соседнем окне. Ученик в это же поле пишет со своей стороны.
-    onOpenBoard(hw, { key: `check:${hw.id}:${++checkRun.current}`, hwId: hw.id, label: hw.title, sheets, answers: boardAnswers })
+    onOpenBoard(hw, { key: `check:${hw.id}:${++checkRun.current}`, hwId: hw.id, label: hw.title, sheets, answers: boardAnswers, ...boardSheetProps })
   }
   const canCheckAll = checkable && (manualItems.length > 0 || (taskCount === 0 && !!hw.submission_url))
 
@@ -2083,12 +2131,18 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
   // «Проверка»: ошибки — это про сами задания, и вся карточка открывает разбор.
   // Плашкой справа он вклинивался в ход проверки, а под заданиями оставалось
   // пустое поле в половину ширины. Номера — не кнопки: они внутри кнопки-карточки.
-  const resultRow = testScore == null ? null : (
+  // Результат — В БАЛЛАХ, тех же, из которых выводится оценка. Двух разных чисел
+  // про одно и то же («сошлось ответов 1 из 2» рядом с «2 из 3 баллов») быть не
+  // должно: они спорят друг с другом, и понять, какое настоящее, нельзя. Пока
+  // баллов нет вовсе (работа без разметки и без отметок) — прежний счёт ответов.
+  const resultRow = testScore == null && points.max === 0 ? null : (
     <div className="w-full border-t border-gray-100/80 dark:border-white/10 pt-3 flex flex-col gap-2">
       <div className="flex items-center justify-between gap-3">
         <span className="text-xs text-gray-500">Результат</span>
         <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
-          {testScore} / {hw.question_count}{testPercent != null ? ` · ${testPercent}%` : ""}
+          {points.max > 0
+            ? `${points.got} / ${points.max} · ${points.percent}%`
+            : `${testScore} / ${hw.question_count}${testPercent != null ? ` · ${testPercent}%` : ""}`}
         </span>
       </div>
       {answerRows.length > 0 && (
@@ -2098,7 +2152,11 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
             {answerRows.map((r, i) => (
               <span
                 key={i}
-                title={r.credited ? `Задание ${r.n} — засчитано вручную` : r.skipped ? `Задание ${r.n} — не решено` : r.ok === false ? `Задание ${r.n} — ошибка` : r.ok ? `Задание ${r.n} — верно` : `Задание ${r.n} — проверяет репетитор`}
+                title={r.points != null ? `Задание ${r.n} — ${r.points} из ${r.max} ${plural(r.max, "балла", "баллов", "баллов")}`
+                  : r.credited ? `Задание ${r.n} — засчитано вручную`
+                  : r.skipped ? `Задание ${r.n} — не решено`
+                  : r.ok === false ? `Задание ${r.n} — ошибка`
+                  : r.ok ? `Задание ${r.n} — верно` : `Задание ${r.n} — проверяет репетитор`}
                 className={`w-7 h-7 rounded-lg text-xs font-medium flex items-center justify-center ring-1 ${
                   r.credited ? "bg-blue-500/12 text-blue-700 dark:text-blue-300 ring-blue-500/25"
                     : r.skipped ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 ring-amber-500/30"
@@ -2237,21 +2295,6 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
     onUpdate()
   }
 
-  // --- Разметка работы номерами экзамена ---
-  //
-  // Ради неё вся затея: попытка попадает в статистику ученика (карта заданий,
-  // «Где ученик ошибается», отчёт родителю), только когда у задания известны
-  // предмет и номер. У собранного из банка они приезжают с заданием, у
-  // нарезанного из своего файла их ставит репетитор — при выдаче или здесь, в
-  // разборе уже выданной работы.
-  //
-  // Предмет один на работу: берём тот, которым она уже размечена, иначе —
-  // предмет ученика (его же подставляет сборка из банка).
-  const ownTasks = Array.isArray(bankTasks) ? bankTasks.filter((t) => t && !t.gen_key) : []
-  const markedType = ownTasks.find((t) => t.exam_type)?.exam_type || null
-  const [pickedType, setPickedType] = useState(null)
-  const examType = pickedType || markedType
-    || typeForStudent(student, bankGroups) || firstType(bankGroups)
   // Размечать можно работу, собранную из своего файла: у задания из банка номер
   // приезжает вместе с генератором, и менять его рукой нельзя — разойдётся с
   // тем, что на самом деле выдали.
@@ -2262,15 +2305,22 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
   // отдельного окна.
   const numberedTasks = ownTasks.filter((t) => t.number != null).length
 
-  // Отметка «верно/неверно» — только там, где есть куда её записать: колонка
-  // task_marks приходит миграцией homework_task_marks.sql, и без неё кнопки
-  // обещали бы несуществующее. Ученик должен быть привязан к карточке —
+  // Балл за задание рукой репетитора — только там, где есть куда его записать:
+  // колонка task_marks приходит миграцией homework_task_marks.sql, и без неё
+  // кнопки обещали бы несуществующее. Ученик должен быть привязан к карточке —
   // попытка пишется на его аккаунт. И только у СДАННОЙ работы: пока ученик
-  // решает, отмечать нечего. Судить по массиву ответов тут нельзя — у
+  // решает, оценивать нечего. Судить по массиву ответов тут нельзя — у
   // письменной работы его нет вовсе, ответ приходит фотографией.
-  const canMark = canNumber && hw.task_marks !== undefined && !!hw.student_id
+  //
+  // От разметки номерами (canNumber) это НЕ зависит: балл ставится и заданию из
+  // банка. Сверка там знает только «сошлось или нет» и даёт ноль или максимум, а
+  // за №14 профиля на экзамене ставят 1 из 2 за один верный пункт — такой балл
+  // может поставить только человек.
+  const canMark = hw.task_marks !== undefined && !!hw.student_id
     && (hw.status === "submitted" || hw.status === "done")
-  const markedCount = marks ? Object.values(marks).filter((v) => v === true || v === false).length : 0
+  // Отметка бывает булевой (задание в один балл) и числом баллов (№14 профиля
+  // и прочая часть 2) — считаем и то и другое.
+  const markedCount = marks ? Object.values(marks).filter((v) => markPoints(v, 99) != null).length : 0
 
   // Номера пишем В САМУ РАБОТУ (homework.bank_tasks) — теми же полями, что у
   // задания банка. Адреса картинок при этом нормализуем: в состоянии кабинета
@@ -2316,13 +2366,19 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
     }
   }
 
-  // Отметка «верно/неверно» у задания, которое кабинет проверить не может.
-  // Хранится в работе (репетитор видит её в разборе) и тем же нажатием уходит
-  // в журнал попыток — иначе она осталась бы личной пометкой, а карта заданий
-  // у письменной работы так и стояла бы пустой.
-  async function setTaskMark(item, value) {
+  // Балл задания, который кабинет проверить не может. Хранится в работе
+  // (репетитор видит его в разборе) и тем же нажатием уходит в журнал попыток —
+  // иначе он остался бы личной пометкой, а карта заданий у письменной работы
+  // так и стояла бы пустой.
+  //
+  // points — БАЛЛ от нуля до максимума номера (null — отметку сняли). У задания
+  // в один балл он ложится в работу булевым, как и раньше: вкладка со старой
+  // сборкой читает такую отметку как прежде (см. markValue).
+  async function setTaskMark(item, points) {
     if (!canMark) return
     const n = Number(item.n)
+    const max = taskMaxOf(item.bankTask?.exam_type || examType, item.bankTask?.number) || 1
+    const value = markValue(points, max)
     const prev = marks
     const next = { ...(marks || {}) }
     if (value == null) delete next[n]
@@ -2334,11 +2390,21 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
     if (error) { setMarks(prev); return }
     const number = item.bankTask?.number
     if (number == null) return
+    // У задания С ЭТАЛОНОМ попытка в журнале уже есть — её записала сверка при
+    // сдаче. Вторую на то же задание писать нельзя: один ответ считался бы
+    // дважды и развёл бы статистику надвое. Балл такого задания живёт в работе
+    // и меняет оценку, а журнал правит «Засчитать задание» (task_attempt_credit)
+    // — он именно чинит существующую строку.
+    if (item.answer != null && item.answer !== "") return
+    // В журнал попыток уходит «решил или нет», и решённым считается только ПОЛНЫЙ
+    // балл: карта заданий и «Где ученик ошибается» отвечают на вопрос «берёт ли он
+    // этот номер», а 1 из 2 — это не взятый номер. Сам балл живёт в работе.
     // Не критичный путь: на базе без функции отметка всё равно сохранена в
     // работе, а в журнал она доедет, когда миграцию выполнят.
     supabase.rpc("task_attempt_mark", {
       p_source: "homework", p_source_id: hw.id, p_student_id: String(hw.student_id),
-      p_exam_type: item.bankTask?.exam_type || examType, p_number: Number(number), p_correct: value,
+      p_exam_type: item.bankTask?.exam_type || examType, p_number: Number(number),
+      p_correct: value == null ? null : points >= max,
       // Позиция задания в работе: в раздатке по одной теме девять заданий несут
       // ОДИН номер, и без неё девять отметок легли бы в одну строку журнала,
       // затирая друг друга.
@@ -2346,10 +2412,46 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
     }).then(() => {}, () => {})
   }
 
-  // Продление срока — единственная правка, доступная работе, которую ученик уже
-  // открыл: условий она не трогает, а даёт время их дорешать (правку условий
-  // такой работе закрывает `attempted`, и до этой кнопки просроченной работе
-  // нельзя было дать ни дня). Срок считается от СЕГОДНЯ, а не от прошедшего:
+  // Балл за задание — и под листом на доске: работу разбирают на ней, и уходить
+  // за оценкой в соседнее окно значит терять место, на котором остановились.
+  // Карта «номер задания в работе → чем его оценивать», доска показывает её под
+  // своим листом; сам балл пишет тот же setTaskMark, что и окно заданий.
+  const boardGrading = {}
+  if (canMark) {
+    for (const it of taskItems) {
+      const num = it.bankTask?.number
+      const type = it.bankTask?.exam_type || examType
+      const max = taskMaxOf(type, num)
+      const auto = it.answer != null && it.answer !== ""
+      // Условие то же, что в окне заданий: задание в один балл, сверившееся
+      // само, репетитор не переоценивает.
+      if (!max || (max === 1 && auto)) continue
+      boardGrading[Number(it.n)] = { max, examType: type, number: Number(num), mark: it.mark, expert: it.expert }
+    }
+  }
+  const markOnBoard = (n, pointsValue) => {
+    const item = taskItems.find((it) => Number(it.n) === Number(n))
+    if (item) setTaskMark(item, pointsValue)
+  }
+  const boardSheetProps = Object.keys(boardGrading).length
+    ? { grading: boardGrading, onMark: markOnBoard }
+    : {}
+
+  // Переименование доступно на любом статусе: название — подпись работы в
+  // списке, а не её содержимое, и ответы ученика от него не зависят.
+  // Уведомления ученику не шлём: он видит ту же строку, а событием это не
+  // является.
+  async function renameHw(title) {
+    const { error } = await supabase.from("homework").update({ title }).eq("id", hw.id)
+    if (error) return "Не получилось переименовать: " + error.message
+    onUpdate()
+    return null
+  }
+
+  // Продление срока — вместе с переименованием одна из двух правок, доступных
+  // работе, которую ученик уже открыл: условий она не трогает, а даёт время их
+  // дорешать (правку условий такой работе закрывает `attempted`, и до этой
+  // кнопки просроченной работе нельзя было дать ни дня). Срок считается от СЕГОДНЯ, а не от прошедшего:
   // «неделя» работе, просроченной на месяц, означает неделю с этой минуты.
   async function extendDeadline(date) {
     if (!date || extendingTo) return
@@ -2391,7 +2493,10 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
         {/* flex-1 только на телефоне: там название обязано сжиматься, иначе оно
             занимает всю строку и сталкивает значки вниз третьей строкой. */}
         <div className="flex items-center gap-2 min-w-0 flex-1 sm:flex-none">
-          <span className="font-medium text-base truncate">{hw.title}</span>
+          {/* Переименование открыто всегда, в том числе у проверенной работы:
+              условий оно не трогает (их правку сданной работе закрывает
+              `attempted`), а опечатку в названии иначе было не исправить. */}
+          <RenameTitle value={hw.title} onSave={renameHw} />
           <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${status.cls}`}>{status.label}</span>
         </div>
 
@@ -2402,7 +2507,7 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
                 занятия остаётся отдельной. */}
             {onOpenBoard && (
               <button
-                onClick={() => onOpenBoard(hw, { hwId: hw.id, answers: boardAnswers })}
+                onClick={() => onOpenBoard(hw, { hwId: hw.id, answers: boardAnswers, ...boardSheetProps })}
                 className="press-fill text-[11px] px-2 py-0.5 rounded-full font-medium flex-shrink-0 ring-1 ring-blue-500/30 text-blue-600 dark:text-blue-300 inline-flex items-center gap-1"
               >
                 <Icon name="clipboard" size={11} /> Доска
@@ -2656,14 +2761,17 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
                   поэтому и открывается оно по заданиям. */}
               {solutionShotCount > 0 && (
                 <div className="flex flex-wrap gap-2">
-                  {solutionShots.flatMap(([num, urls]) => urls.map((url, i) => (
-                    // У задания с несколькими листами номер подписан порядком
-                    // снимка: «№7 · 2» — второй лист седьмого задания.
-                    <a key={num + ":" + i} href={url} target="_blank" rel="noreferrer"
+                  {solutionShots.map(([num, urls]) => (
+                    // Кнопка — на ЗАДАНИЕ, а не на снимок: листов к одному
+                    // номеру бывает несколько (решение по действиям на один
+                    // лист не влезает), и двумя кнопками «№7 · 1» и «№7 · 2»
+                    // это читалось как два разных задания. Листы
+                    // перелистываются внутри окна просмотра.
+                    <PhotoButton key={num} photos={urls} title={`Задание №${num} · решение ученика`}
                       className="press-fill text-[11px] px-2 py-1 rounded-lg ring-1 ring-gray-200 dark:ring-white/15 text-gray-700 flex items-center gap-1">
-                      <Icon name="paperclip" size={11} />№{num}{urls.length > 1 ? ` · ${i + 1}` : ""}
-                    </a>
-                  )))}
+                      <Icon name="paperclip" size={11} />№{num}{urls.length > 1 ? ` · ${urls.length} фото` : ""}
+                    </PhotoButton>
+                  ))}
                 </div>
               )}
             </DetailBlock>
@@ -2672,7 +2780,14 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
           {hw.status === "submitted" && isPureTest && (
             <DetailBlock className="flex items-center justify-between gap-3">
               <div className="text-xs text-gray-500">
-                {testPercent}% — рекомендуется оценка <span className="font-medium">{suggestedGrade}</span>
+                {points.max > 0 ? <>{points.got} из {points.max} · {points.percent}%</> : <>{testPercent}%</>}
+                {" — рекомендуется оценка "}<span className="font-medium">{suggestedGrade}</span>
+                {/* Задание без эталона в балл не идёт: сверять его не с чем.
+                    Молчать об этом нельзя — иначе «100%» у работы, половину
+                    которой ещё никто не смотрел, читается как итог. */}
+                {points.counted < points.total
+                  ? ` · оценено ${points.counted} ${plural(points.counted, "задание", "задания", "заданий")} из ${points.total}`
+                  : ""}
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 <button onClick={() => setStatus("revision")} className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-amber-500/35 text-amber-600 dark:text-amber-300">
@@ -2693,8 +2808,8 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
               {!grading ? (
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-xs text-gray-500 min-w-0">
-                    {testPercent != null
-                      ? <>Часть с ответами: {testPercent}% — рекомендуется <span className="font-medium">{suggestedGrade}</span></>
+                    {suggestedGrade != null
+                      ? <>Баллы: {points.got} из {points.max} · {points.percent}% — оценка <span className="font-medium">{suggestedGrade}</span></>
                       : "Работа ждёт вашей оценки"}
                   </div>
                   <button onClick={() => setGrading(true)}
@@ -2704,9 +2819,16 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
                 </div>
               ) : (
                 <div className="flex flex-col gap-3">
-                  {testPercent != null && (
+                  {/* Откуда взялась оценка: баллы по заданиям и процент от
+                      максимума оценённых. Сколько заданий ещё не оценено, сказано
+                      здесь же — иначе выведенная оценка выглядела бы итоговой,
+                      когда репетитор дошёл до половины работы. */}
+                  {suggestedGrade != null && (
                     <div className="text-xs text-blue-700 dark:text-blue-300">
-                      Часть с ответами: {testPercent}% (рекомендуется {suggestedGrade})
+                      Баллы: {points.got} из {points.max} · {points.percent}% — оценка {suggestedGrade}
+                      {points.counted < points.total
+                        ? ` · оценено ${points.counted} ${plural(points.counted, "задание", "задания", "заданий")} из ${points.total}`
+                        : ""}
                     </div>
                   )}
 
@@ -2716,9 +2838,9 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
                       {[2, 3, 4, 5].map((g) => (
                         <button
                           key={g}
-                          onClick={() => setSelectedGrade(g)}
+                          onClick={() => setPickedGrade(g)}
                           className={`press-fill flex-1 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                            selectedGrade === g
+                            grade === g
                               ? GRADE_COLORS[g]
                               : "ring-1 ring-gray-200 dark:ring-white/15 text-gray-500"
                           }`}
@@ -2746,14 +2868,14 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
                       Отмена
                     </button>
                     <button
-                      onClick={() => setStatus("revision", selectedGrade)}
+                      onClick={() => setStatus("revision", grade)}
                       className="press-fill text-xs px-3 py-1.5 rounded-lg ring-1 ring-amber-500/35 text-amber-600 dark:text-amber-300"
                     >
                       На доработку
                     </button>
                     <button
-                      onClick={() => setStatus("done", selectedGrade)}
-                      disabled={!selectedGrade}
+                      onClick={() => setStatus("done", grade)}
+                      disabled={!grade}
                       className="press-fill text-xs bg-green-600 text-white px-3.5 py-1.5 rounded-lg disabled:opacity-40"
                     >
                       Выполнено
@@ -2787,8 +2909,8 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
           items={taskItems}
           onCredit={canCredit ? toggleCredit : undefined}
           onBoard={checkable ? (item) => checkOnBoard([item]) : undefined}
-          marking={canNumber ? {
-            examType, groups: bankGroups, canMark,
+          marking={canNumber || canMark ? {
+            examType, groups: bankGroups, canMark, canNumber,
             onExamType: changeExamType, onNumber: setTaskNumber,
             onAll: numberAllTasks, onMark: setTaskMark,
           } : undefined}

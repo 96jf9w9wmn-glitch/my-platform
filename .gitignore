@@ -126,3 +126,15 @@ src/devStatTabs.jsx
 # Стенд «медленные листы на доске»
 dev-lag.html
 src/devLag.jsx
+
+# Стенд просмотра фото решения
+dev-photos.html
+src/devPhotos.jsx
+
+# Стенд «балл за задание»
+dev-hw-score.html
+src/devHwScore.jsx
+dev-board-score.html
+src/devBoardScore.jsx
+dev-hw-part2.html
+src/devHwPart2.jsx

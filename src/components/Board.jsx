@@ -6,6 +6,8 @@ import ConfirmModal from "./ConfirmModal"
 import { useClosing, CLOSE_MS, POPUP_OUT_MS } from "../useClosing"
 import { recognizeShape } from "./boardSmartDraw"
 import { answersEqual } from "../utils"
+import { markPoints } from "../examScales"
+import { ScoreButtons, TaskCriteria } from "./TaskGrading"
 import {
   GRID, ENCLOSED_SHAPES, SHAPE_TOOLS, DASHABLE_SHAPES,
   TEXT_FONT, TEXT_LINE, TEXT_MIN, TEXT_MAX, TEXT_DEFAULT, textMetrics, textBoxPoints, textFont,
@@ -470,7 +472,7 @@ function WorkAnswerField({ value, onValue, onType, id, ink, border }) {
   )
 }
 
-function TaskAnswerBox({ panel, dark, panelBg, panelBorder, tutor = false, draft = null, value = "", onValue = null, onCheck, onReset, onType, onFile }) {
+function TaskAnswerBox({ panel, dark, panelBg, panelBorder, tutor = false, draft = null, value = "", onValue = null, onCheck, onReset, onType, onFile, grading = null, onMark = null }) {
   const [val, setVal] = useState("")
   const [shown, setShown] = useState(false)   // репетитор раскрыл правильный ответ
   const done = panel.ok != null
@@ -505,7 +507,8 @@ function TaskAnswerBox({ panel, dark, panelBg, panelBorder, tutor = false, draft
   if (tutor) {
     return (
       <div className={shell} style={frame}>
-        <div className="flex items-center justify-end gap-2 px-4 py-2.5" style={{ ...foot, borderTop: `1px solid ${line}` }}>
+        <div className="flex flex-col" style={{ ...foot, borderTop: `1px solid ${line}` }}>
+        <div className="flex items-center justify-end gap-2 px-4 py-2.5">
           {files.map((f) => <TaskFileChip key={f.p} file={f} onFile={onFile} ink={ink} border={panelBorder} />)}
           {panel.ask && <span className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
             style={{ background: done ? `${tone}22` : "rgba(0,122,255,.10)", color: done ? tone : "#007AFF" }}
@@ -525,7 +528,7 @@ function TaskAnswerBox({ panel, dark, panelBg, panelBorder, tutor = false, draft
           {/* Задание домашней работы без эталона: проверяет его репетитор, поэтому
               под листом стоит ответ ученика из самой работы (или то, что он
               набирает прямо сейчас). Поля ввода тут нет — отвечает ученик. */}
-          {!panel.ask && panel.n != null && (
+          {!panel.ask && panel.n != null && !grading?.expert && (
             <>
               <span className="text-[13px]" style={{ color: meta }}>Ответ ученика</span>
               <span className="text-[15px] font-mono max-w-[220px] truncate" style={{ color: (typed || value) ? ink : meta }}>
@@ -548,6 +551,20 @@ function TaskAnswerBox({ panel, dark, panelBg, panelBorder, tutor = false, draft
             </>
           )}
         </div>
+        {/* Балл за задание — здесь же, под разбираемым решением. Ровно тот же
+            балл, что в окне заданий кабинета: разбирают работу на доске, а идти
+            за оценкой в соседнее окно значит терять место, на котором
+            остановились. Критерии ФИПИ — рядом, по ним балл и ставится. */}
+        {grading && onMark && (
+          <div className="flex items-start gap-2 px-4 pb-3 -mt-0.5" style={{ color: meta }}>
+            <TaskCriteria examType={grading.examType} number={grading.number} big muted={meta} />
+            <span className="ml-auto flex items-center gap-1.5 flex-shrink-0">
+              <ScoreButtons max={grading.max} points={markPoints(grading.mark, grading.max)} big muted={meta}
+                onPick={(p) => onMark(panel.n, p)} />
+            </span>
+          </div>
+        )}
+        </div>
       </div>
     )
   }
@@ -562,7 +579,9 @@ function TaskAnswerBox({ panel, dark, panelBg, panelBorder, tutor = false, draft
             {files.map((f) => <TaskFileChip key={f.p} file={f} onFile={onFile} ink={ink} border={panelBorder} />)}
           </div>
         )}
-        {!panel.ask && panel.n != null && onValue ? (
+        {/* Задание части 2: поля ответа у него нет — решение пишут прямо на
+            листе, а балл ставит репетитор (см. isExpertScored). */}
+        {grading?.expert ? null : !panel.ask && panel.n != null && onValue ? (
           <WorkAnswerField value={value} onValue={onValue} onType={onType} id={panel.id} ink={ink} border={panelBorder} />
         ) : !panel.ask ? null : done ? (
           <div className="flex items-center gap-3 min-w-0">
@@ -763,7 +782,7 @@ function BoardStrip({ open, children }) {
   )
 }
 
-export default function Board({ roomId, label = "", userId, userName, avatar = null, peer = null, theme = "light", onClose, account = null, token = null, canAddTasks = false, tutorSubject = null, tutorExamFocus = null, tutorSubjects = null, tutorOwner = false, taskSheet = null, taskAnswers = null, onTaskAnswer = null, snapshot = null }) {
+export default function Board({ roomId, label = "", userId, userName, avatar = null, peer = null, theme = "light", onClose, account = null, token = null, canAddTasks = false, tutorSubject = null, tutorExamFocus = null, tutorSubjects = null, tutorOwner = false, taskSheet = null, taskAnswers = null, onTaskAnswer = null, taskGrading = null, onTaskMark = null, snapshot = null }) {
   // Прошлое занятие открывается ТОЙ ЖЕ доской, только на чтение: сцена приходит
   // снимком (snapshot), база не читается и не пишется, realtime не поднимается,
   // инструментов нет. Ради этого снимок и показывается доской, а не картинкой:
@@ -5232,6 +5251,10 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
                 /* Ответ задания домашней работы живёт в самой работе, а не в штрихе */
                 value={(b.n != null && taskAnswers?.[b.n]) || ""}
                 onValue={onTaskAnswer && b.n != null ? (v) => onTaskAnswer(b.n, v) : null}
+                /* Балл за задание ставит репетитор, и он же живёт в самой работе:
+                   доска только показывает его и отдаёт нажатие наверх. */
+                grading={(b.n != null && taskGrading?.[b.n]) || null}
+                onMark={onTaskMark}
                 onCheck={checkTaskAnswer} onReset={resetTaskAnswer}
                 onType={typeTaskAnswer} onFile={downloadBoardFile} />
             ))}

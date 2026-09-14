@@ -1,3 +1,5 @@
+import { taskMaxOf, markPoints, isExpertScored } from "./examScales"
+
 // Ширина строки в долях em (надстрочные ⁰¹²…⁻ уже) — для длины черты радикала.
 const glyphW = (s) => { let w = 0; for (const ch of s) w += /[⁰¹²³⁴⁵⁶⁷⁸⁹⁻]/.test(ch) ? 0.42 : 0.58; return w }
 
@@ -1079,18 +1081,28 @@ export function homeworkTaskItems(hw) {
       // написал.
       const raw = given ? given[i] : undefined
       const gave = raw == null || String(raw).trim() === "" ? null : String(raw)
+      const bt = bank?.[i] || null
+      // Задание части 2: краткого ответа у него нет — решение пишут в тетради
+      // или на доске и присылают фотографией, а балл ставит репетитор по
+      // критериям. Поля ответа такому заданию не дают, и сверка его не судит.
+      const expert = isExpertScored(bt?.exam_type, bt?.number)
       return {
         n,
         text: t.text,
-        bankTask: bank?.[i] || null,
+        bankTask: bt,
         answer: ans,
+        expert,
         options: options?.[i] || null,
         given: given ? gave : undefined,
         // Верность считаем только когда есть с чем сверять: у задания без
         // эталона (развёрнутый ответ) её ставит репетитор, а не сверка строк.
         // Зачтённое вручную задание верно независимо от сверки — ошибка была
         // в эталоне, а не в ответе.
+        // Задание части 2, на которое ученик ничего не вписывал, не верное и не
+        // неверное: его смотрит репетитор. Работы, выданные до этого правила,
+        // не трогаем — там ученик краткий ответ вводил, и сверка по нему верна.
         ok: credited.has(Number(n)) ? true
+          : expert && (gave == null || gave === "") ? null
           : given && ans != null && ans !== "" ? answersEqual(gave ?? "", ans) : null,
         credited: credited.has(Number(n)),
         // null — репетитор задание ещё не смотрел; true/false — его отметка.
@@ -1103,6 +1115,45 @@ export function homeworkTaskItems(hw) {
     }),
   }
 }
+
+// Максимум задания работы: столько баллов за него дают на самом экзамене.
+// Номер экзамена и предмет едут в самом задании (bank_tasks): у собранного из
+// банка — от генератора, у нарезанного из своего файла — от репетитора. Ничего
+// этого нет (работа без разметки) — задание стоит один балл, как и было, пока
+// баллов не было вовсе.
+export const taskItemMax = (item, examType = null) =>
+  taskMaxOf(item?.bankTask?.exam_type || examType, item?.bankTask?.number) || 1
+
+// Балл всей работы: сколько набрано и сколько можно было набрать по заданиям,
+// результат которых ИЗВЕСТЕН.
+//
+// Одна арифметика на оба пути проверки, и разойтись им нельзя: у задания с
+// эталоном верность считает сверка (плюс ручной зачёт ошибочного эталона), у
+// задания без эталона её ставит репетитор отметкой — но и там и там балл
+// считается по максимуму НОМЕРА, а не по «одно задание — один балл». Иначе №14
+// профиля, где за половину решения дают 1 из 2, весил бы в работе столько же,
+// сколько задание части 1.
+//
+// В знаменатель идут только оценённые задания: пока репетитор не дошёл до
+// письменного задания, показывать его как ноль нельзя — работа выглядела бы
+// решённой хуже, чем она есть.
+export function homeworkPointsOf(items, examType = null) {
+  let got = 0, max = 0, counted = 0
+  for (const it of items) {
+    const m = taskItemMax(it, examType)
+    const pts = markPoints(it.mark, m)
+    if (pts != null) { got += pts; max += m; counted++; continue }
+    // Отметки нет — судим по сверке: верно (в том числе зачтённое вручную) даёт
+    // максимум, неверно и пропуск — ноль. Задание без эталона и без отметки не
+    // оценено вовсе и в знаменатель не идёт.
+    if (it.ok === true) { got += m; max += m; counted++; continue }
+    if (it.ok === false) { max += m; counted++ }
+  }
+  return { got, max, counted, total: items.length, percent: max > 0 ? Math.round((got / max) * 100) : null }
+}
+
+export const homeworkPoints = (hw, examType = null) =>
+  homeworkPointsOf(homeworkTaskItems(hw || {}).items, examType)
 
 // Лист задания для доски — тот же, что видит ученик в работе: с чертежом и
 // программой из банка, когда они есть, иначе условие текстом. Номер — тот, что
