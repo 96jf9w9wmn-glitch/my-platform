@@ -5,11 +5,13 @@
 // Homework.jsx подгружает его динамически и только когда репетитор открыл эту
 // вкладку — иначе бы вес генераторов попал в основной бандл кабинета.
 import { EXAM_GROUPS, numbersWithGen, subjectLabel, genTask } from "./examSubjects"
-import { taskThemes, generateTask } from "./taskGenerators"
+import { taskThemes, generateTask, loadBankSubject, bankLoaded } from "./taskGenerators"
 import { numberTitle } from "./numberTitles"
 import { hasModules, moduleScenarios, buildModuleTasks } from "./taskModules"
 
-export { EXAM_GROUPS, numbersWithGen, subjectLabel, taskThemes }
+// Генераторы предмета подключаются лениво: перед numberInfo / pickTask /
+// drillTasks / assembleHomework нужно `await loadBankSubject(examType)`.
+export { EXAM_GROUPS, numbersWithGen, subjectLabel, taskThemes, loadBankSubject, bankLoaded }
 
 // Номер целиком: подпись раздела и его темы с количеством типажей — из этого
 // собран список номеров в сборке ДЗ.

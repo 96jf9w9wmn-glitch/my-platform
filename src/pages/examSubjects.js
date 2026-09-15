@@ -1,4 +1,5 @@
-import { hasGenerators, generateTask, taskThemes } from "./taskGenerators"
+import { generateTask, taskThemes, loadBankSubject, bankLoaded } from "./taskGenerators"
+import { BANK_INDEX } from "./bankIndex.js"
 import { MAX_NUMBER, SUBJECT_TO_TYPE } from "./examSubjectList"
 
 // Всё, что требует самих генераторов. Список предметов и подписи живут в
@@ -10,11 +11,15 @@ export {
   subjectGroups, firstType, SUBJECT_TO_TYPE, typesFromProfile,
 } from "./examSubjectList"
 
-// Номера, для которых у предмета есть генераторы.
+// Подключение предмета — см. taskGenerators.js: генераторы грузятся лениво,
+// и перед genTask / taskThemes нужно `await loadBankSubject(examType)`.
+export { loadBankSubject, bankLoaded }
+
+// Номера, для которых у предмета есть генераторы. Из статического индекса,
+// поэтому известно БЕЗ подключения предмета — на этом держится выбор предмета
+// по умолчанию (examTypeForSubject, firstTypeWithGen) и списки номеров.
 export function numbersWithGen(examType) {
-  const out = []
-  for (let n = 1; n <= MAX_NUMBER; n++) if (hasGenerators(examType, n)) out.push(n)
-  return out
+  return (BANK_INDEX[examType] || []).filter((n) => n >= 1 && n <= MAX_NUMBER)
 }
 
 // Одно задание нужного типажа. null — генератора нет или он упал: вызывающий показывает

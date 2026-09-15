@@ -1,5 +1,5 @@
 import { supabase } from "../supabase"
-import { hasGenerators, generateTask } from "./taskGenerators"
+import { hasGenerators, generateTask, loadBankSubject } from "./taskGenerators"
 import { hasModules, buildModuleTasks, moduleExamTypes } from "./taskModules"
 import { normalizeTaskImage } from "../utils"
 import { PART2_NUMBERS, MODULE_EXAM_TYPES, part1NumbersOf, part2NumbersOf, VARIANT_TYPES } from "./taskBankMeta"
@@ -7,6 +7,9 @@ import { makeAnswerChoices, choiceBaseOf } from "./answerChoices"
 // Реэкспорт: «Варианты» берут построитель вариантов ответа из банка и не знают,
 // что он живёт отдельным лёгким модулем.
 export { makeAnswerChoices, choiceBaseOf } from "./answerChoices"
+// Предмет подключается лениво (см. taskGenerators.js); синхронные rerollModule /
+// rerollLinked рассчитывают, что вызывающий уже подключил его.
+export { loadBankSubject }
 
 // «Лечит» image_url строк банка, сохранённых до разворота мат-токенов (иначе в подписи чертежа
 // виден сырой «4⟦r:2⟧»). Идемпотентно для новых строк без токенов.
@@ -82,6 +85,7 @@ function linkSharedIntros(picked) {
 // части 2 добавляются 4 варианта ответа (withChoices). missing — номера, для которых нет
 // ни модуля, ни генератора, ни строк в банке.
 export async function assembleFromBank(examType) {
+  await loadBankSubject(examType)
   if (!VARIANT_TYPES.includes(examType)) throw new Error(`Неизвестный тип экзамена: ${examType}`)
   const part1Numbers = part1NumbersOf(examType)
   const count = part1Numbers.length
@@ -128,6 +132,7 @@ export function rerollLinked(examType, numbers) {
 }
 
 export async function rerollTask(examType, number, excludeId) {
+  await loadBankSubject(examType)
   if (hasGenerators(examType, number)) return withChoices(examType, generateTask(examType, number))
   const { data: options } = await supabase.from("tasks").select("*").eq("exam_type", examType).eq("number", number)
   const healed = healImages(options)

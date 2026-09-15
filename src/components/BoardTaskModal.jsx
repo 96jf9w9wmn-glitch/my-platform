@@ -7,7 +7,7 @@ import MorphIcon from "./MorphIcon"
 import SegmentSwitch from "./SegmentSwitch"
 import { renderTaskMath } from "../utils"
 import { taskThemes } from "../pages/taskGenerators"
-import { levelOf, numbersWithGen, subjectLabel, genTask, genThemeTask, examTypeForSubject, subjectGroups, firstTypeWithGen } from "../pages/examSubjects"
+import { levelOf, numbersWithGen, subjectLabel, genTask, genThemeTask, examTypeForSubject, subjectGroups, firstTypeWithGen, loadBankSubject, bankLoaded } from "../pages/examSubjects"
 import { taskToImageFile, SHEET_WIDTH } from "../pages/taskSnapshot"
 import { taskFiles } from "../pages/taskFiles"
 
@@ -77,7 +77,16 @@ export default function BoardTaskModal({ dark = false, roomId = null, tutorSubje
   const level = levelOf(examType)
   const group = groups.find((g) => g.key === level) || groups[0]
   const numbers = numbersWithGen(examType)
-  const themes = number != null ? taskThemes(examType, number) : null
+  // Генераторы предмета подключаются лениво — темы номера появляются, когда он
+  // готов (список номеров известен и без него, из индекса).
+  const [readyFor, setReadyFor] = useState(null)   // предмет, чьё подключение дождались
+  useEffect(() => {
+    let alive = true
+    loadBankSubject(examType).then(() => { if (alive) setReadyFor(examType) })
+    return () => { alive = false }
+  }, [examType])
+  const ready = readyFor === examType || bankLoaded(examType)
+  const themes = ready && number != null ? taskThemes(examType, number) : null
 
   useEffect(() => {
     const rec = JSON.stringify({ examType, number })
@@ -101,9 +110,10 @@ export default function BoardTaskModal({ dark = false, roomId = null, tutorSubje
 
   // Задание генерируется только по явному выбору (номер/типаж/«другое»), а не эффектом:
   // набор случайный, и эффект на каждый рендер выдавал бы новую задачу сам по себе.
-  function make(nextNumber = number, nextGen = genKey, nextTheme = theme) {
+  async function make(nextNumber = number, nextGen = genKey, nextTheme = theme) {
     if (nextNumber == null) return
     setErr("")
+    await loadBankSubject(examType)
     const t = nextGen ? genTask(examType, nextNumber, nextGen)
       : nextTheme ? genThemeTask(examType, nextNumber, nextTheme)
         : genTask(examType, nextNumber)

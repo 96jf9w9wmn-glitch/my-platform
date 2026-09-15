@@ -25,6 +25,7 @@ function readOwn() {
 
 export default function useThemeOptions() {
   const [gen, setGen] = useState(null)      // модуль генераторов (подписи тем)
+  const [, bump] = useState(0)              // предмет подключился — пересобрать подсказки
   const [own, setOwn] = useState(readOwn)
 
   const load = useCallback(() => {
@@ -41,7 +42,10 @@ export default function useThemeOptions() {
   const options = useCallback((examType, number) => {
     let bank = []
     if (gen && number != null) {
-      try { bank = (gen.taskThemes(examType, number) || []).map((t) => t.theme) } catch { bank = [] }
+      // Генераторы предмета грузятся лениво: пока их нет — подсказок нет, а как
+      // подключатся, список пересобирается сам.
+      if (!gen.bankLoaded(examType)) gen.loadBankSubject(examType).then(() => bump((x) => x + 1)).catch(() => {})
+      else { try { bank = (gen.taskThemes(examType, number) || []).map((t) => t.theme) } catch { bank = [] } }
     }
     const seen = new Set(bank.map((s) => s.toLowerCase()))
     return bank.concat(own.filter((s) => !seen.has(s.toLowerCase())))

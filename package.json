@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "stats": "node scripts/bank-stats.mjs",
     "predev": "node scripts/pyodide-assets.mjs",
-    "prebuild": "node scripts/pyodide-assets.mjs"
+    "prebuild": "node scripts/pyodide-assets.mjs && node scripts/bank-index.mjs"
   },
   "dependencies": {
     "@capacitor/core": "^8.4.2",

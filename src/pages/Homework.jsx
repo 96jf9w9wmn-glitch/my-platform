@@ -470,8 +470,14 @@ export function CreateHomeworkModal({ students, tutorId, onClose, onCreated, edi
   // Номера с подписью раздела и темами — список, из которого выбирают.
   const [bankList, setBankList] = useState([])
 
+  // Список строится после ПОДКЛЮЧЕНИЯ предмета (его генераторы грузятся лениво);
+  // счётчик отсекает ответ прежнего предмета, если репетитор успел сменить его.
+  const bankListSeq = useRef(0)
   function loadBankList(mod, type) {
-    setBankList(mod.bankNumbers(type))
+    const seq = ++bankListSeq.current
+    mod.loadBankSubject(type).then(() => {
+      if (seq === bankListSeq.current) setBankList(mod.bankNumbers(type))
+    })
   }
 
   // Модуль банка подгружаем по нажатию на карточку, а не эффектом: генераторы

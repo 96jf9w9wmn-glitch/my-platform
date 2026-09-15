@@ -12,12 +12,13 @@
 // WeakTypes подгружает его динамически, только когда репетитор нажал кнопку.
 import { supabase } from "../supabase"
 import { hasAttachment, isSimpleAnswer, oneLine } from "../utils"
-import { drillTasks, packTask, taskText } from "./homeworkBank"
+import { drillTasks, packTask, taskText, loadBankSubject } from "./homeworkBank"
 
 // Выдать собранное ученику. Возвращает { count } либо { error } с текстом,
 // который можно показать репетитору: молчаливый отказ здесь недопустим —
 // репетитор решит, что работа ушла, а её нет.
 export async function assignDrill({ student, examType, number, genKey, theme, title, size }) {
+  await loadBankSubject(examType)
   const tasks = drillTasks({ examType, number, genKey, theme, size })
   if (!tasks.length) return { error: "Задания этого вида не собрались" }
 

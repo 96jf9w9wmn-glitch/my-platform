@@ -16,7 +16,9 @@ const server = await createServer({
   appType: "custom",
   logLevel: "error",
 })
-const { taskThemes } = await server.ssrLoadModule("/src/pages/taskGenerators.js")
+const M = await server.ssrLoadModule("/src/pages/taskGenerators.js")
+await M.loadAllBankSubjects()   // предметы подключаются лениво
+const { taskThemes } = M
 
 // Предметы, у которых есть выгруженный банк ФИПИ и генераторы (тот же список,
 // что гоняет fipi-smoke).

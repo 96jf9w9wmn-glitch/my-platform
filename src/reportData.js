@@ -91,7 +91,10 @@ export async function typeLabels(rows) {
   }
   if (keyed.every((r) => themeFromKey(r.gen_key))) return own
   try {
-    const { taskThemes } = await import("./pages/taskGenerators")
+    const bank = await import("./pages/taskGenerators")
+    // Предметы подключаются лениво — только те, что встречаются в попытках.
+    await Promise.all([...new Set(keyed.map((r) => r.exam_type).filter(Boolean))].map(bank.loadBankSubject))
+    const { taskThemes } = bank
     const map = { ...own }
     for (const r of keyed) {
       if (themeFromKey(r.gen_key)) continue

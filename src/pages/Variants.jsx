@@ -42,7 +42,14 @@ import { lazyChunk } from "../lazyChunk"
 // стоял (prefetchBank, в Safari — просто через 1,5 с) и замораживал кабинет ровно
 // тогда, когда репетитор уже перешёл в другой раздел: «нажал Финансы — сайт
 // провис». Прогрев не возвращать; лечить надо цену самого подключения.
-const loadBank = () => lazyChunk(() => import("./taskBankApi"), "банк заданий")
+// Кусок банка — это реестр и общий код сборки; генераторы самого предмета
+// подключаются вторым шагом (loadBankSubject), и только он: остальные двенадцать
+// предметов кабинету ни к чему.
+const loadBank = async (examType = null) => {
+  const mod = await lazyChunk(() => import("./taskBankApi"), "банк заданий")
+  if (examType) await mod.loadBankSubject(examType)
+  return mod
+}
 
 // Состав варианта. Условия открываются окном, а не разворотом внутри колонки:
 // задание банка везёт систему, дробь и чертёж, а карточка стоит в колонке
@@ -427,7 +434,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
 
   async function handleAssemble() {
     setAssembling(true)
-    const { assembleFromBank } = await loadBank()
+    const { assembleFromBank } = await loadBank(examType)
     const { picked, missing } = await assembleFromBank(examType)
     setBankPicked(picked)
     setBankMissing(missing)
@@ -443,7 +450,7 @@ function AddVariantModal({ tutorId, students = [], examFocus, bankSubjects = nul
   }
 
   async function handleReroll(number) {
-    const { rerollModule, rerollTask, rerollLinked } = await loadBank()
+    const { rerollModule, rerollTask, rerollLinked } = await loadBank(examType)
     // Задания 1–5 — связанный модуль: замена любого пересобирает весь сценарий целиком.
     // Так же и со связкой КЕГЭ №19–21: там одна игра на три задания, и заменить
     // одно значит оставить соседей со ссылкой на игру, которой в варианте больше нет.
@@ -1279,7 +1286,7 @@ function EditVariantModal({ variant, accounts, submissions, signal, onClose, onS
     setError("")
     setRerolling(number)
     try {
-      const { rerollModule, rerollTask, rerollLinked } = await loadBank()
+      const { rerollModule, rerollTask, rerollLinked } = await loadBank(variant.type)
       // Задания 1–5 ОГЭ — связанный модуль, а №19–21 КЕГЭ — одна игра на три
       // задания: заменять их можно только целиком, иначе соседи остаются со
       // ссылкой на условие, которого в варианте больше нет.

@@ -1,6 +1,6 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { generateTask, taskThemes } from "./taskGenerators"
-import { EXAM_GROUPS, levelOf, numbersWithGen } from "./examSubjects"
+import { EXAM_GROUPS, levelOf, numbersWithGen, loadBankSubject, bankLoaded } from "./examSubjects"
 import { hasModules, generateModule, moduleScenarios } from "./taskModules"
 import { genReadingModule, genMatchingModule, TFN } from "./readingEng"
 import { renderTaskMath } from "../utils"
@@ -289,7 +289,7 @@ function TaskGenPreview() {
   const [examType, setExamType] = useState("ОГЭ")
   const [focus, setFocus] = useState(null)          // null → «Все», иначе конкретный номер
   const [showAnswer, setShowAnswer] = useState(true)
-  const [tasks, setTasks] = useState(() => buildTasks("ОГЭ", null))
+  const [tasks, setTasks] = useState([])
   const [reading, setReading] = useState(null)      // {matching, module} для блока чтения №12–19
   const [openTheme, setOpenTheme] = useState(null)  // раскрытое семейство типажей (аккордеон)
 
@@ -302,7 +302,19 @@ function TaskGenPreview() {
 
   // Генерация запускается явно при выборе (эффект тут не нужен — набор случайный, а не
   // производный от стейта, и setState-в-эффекте вызывает каскадные рендеры).
-  function selectExam(t) { setExamType(t); setFocus(null); setOpenTheme(null); setTasks(buildTasks(t, null)) }
+  // Генераторы предмета подключаются лениво — сначала предмет, потом задания.
+  async function selectExam(t) {
+    setExamType(t); setFocus(null); setOpenTheme(null); setTasks([])
+    await loadBankSubject(t)
+    setTasks(buildTasks(t, null))
+  }
+  // Первый набор — после подключения предмета по умолчанию.
+  useEffect(() => {
+    let alive = true
+    loadBankSubject(examType).then(() => { if (alive) setTasks(buildTasks(examType, null)) })
+    return () => { alive = false }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   // Переключение уровня (ЕГЭ / ОГЭ) → берём первый доступный предмет группы.
   function selectLevel(key) {
     if (key === level) return
@@ -310,22 +322,24 @@ function TaskGenPreview() {
     const first = group.subjects.find((s) => numbersWithGen(s.type).length > 0) || group.subjects[0]
     selectExam(first.type)
   }
-  function selectFocus(f) {
+  async function selectFocus(f) {
     if (focusNumber(f) !== focusNumber(focus)) setOpenTheme(null)   // сменили номер — свернуть темы
     setFocus(f)
-    if (f === "read12" || f === "read13") rerollReading()
-    else setTasks(buildTasks(examType, f))
+    if (f === "read12" || f === "read13") { rerollReading(); return }
+    await loadBankSubject(examType)
+    setTasks(buildTasks(examType, f))
   }
 
-  function addMore() {
+  async function addMore() {
     if (focus == null) return
+    await loadBankSubject(examType)
     if (isMod(focus)) { setTasks((prev) => [...prev, ...Array.from({ length: MOD_BATCH }, () => genModuleSafe(examType, focus.slice(4)))]); return }
     if (isGen(focus)) { const { number, key } = parseGen(focus); setTasks((prev) => [...prev, ...Array.from({ length: BATCH }, () => genSafe(examType, number, key))]); return }
     if (isFam(focus)) { const { number, theme } = parseFam(focus); setTasks((prev) => [...prev, ...Array.from({ length: BATCH }, () => genFamSafe(examType, number, theme))]); return }
     setTasks((prev) => [...prev, ...Array.from({ length: BATCH }, () => genSafe(examType, focus))])
   }
 
-  const themes = focusNumber(focus) != null ? taskThemes(examType, focusNumber(focus)) : null
+  const themes = focusNumber(focus) != null && bankLoaded(examType) ? taskThemes(examType, focusNumber(focus)) : null
   const themeCount = themes ? themes.reduce((a, g) => a + g.items.length, 0) : 0
 
   const chip = (active, disabled = false) =>

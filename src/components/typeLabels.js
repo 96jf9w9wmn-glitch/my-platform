@@ -22,7 +22,9 @@ export default function useTypeLabels(rows) {
       else needBank = true
     }
     const bank = needBank ? import("../pages/taskGenerators") : Promise.resolve(null)
-    bank.then((mod) => {
+    bank.then(async (mod) => {
+      // Предметы подключаются лениво — только те, что есть в строках.
+      if (mod) await Promise.all([...new Set(rows.map((r) => r.exam_type).filter(Boolean))].map(mod.loadBankSubject))
       if (!alive) return
       const map = { ...own }
       for (const r of mod ? rows : []) {
