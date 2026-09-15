@@ -20,7 +20,7 @@ import { loadTutorProfile } from "./tutorProfile"
 import { SubscriptionProvider } from "./subscriptionProvider"
 import { useSubscription } from "./subscription"
 import { effectivePlan, isActive } from "./plans"
-import { isOwner, canViewTaskBank } from "./owner"
+import { isOwner } from "./owner"
 import { navFor } from "./nav"
 import { loadGroups, groupChatId } from "./groups"
 import Reveal from "./components/Reveal"
@@ -477,11 +477,11 @@ function App() {
     subscription: "Подписка",
   }
 
-  // «Банк заданий» — внутренний раздел просмотра генераторов (src/owner.js).
+  // «Банк заданий» — внутренний раздел владельца платформы (src/owner.js).
   // Проверяем и здесь, и в меню: пункт скрыт, но переход мог остаться в стейте
   // (например, ?sub= или старая вкладка), а показывать чужому кабинету раздел,
   // которого у него нет, нельзя.
-  const ownerPages = { taskgen: canViewTaskBank(user?.email) }
+  const ownerPages = { taskgen: isOwner(user?.email) }
   const pageAllowed = (page) => ownerPages[page] !== false
 
   const navigateTo = useCallback((page) => {
@@ -1233,7 +1233,7 @@ function App() {
 
   // Нижняя панель телефона: пять главных разделов, шестая кнопка — «Меню»,
   // лист со ВСЕМИ разделами (единый список с боковым меню, src/nav.js).
-  const allNav = navFor(canViewTaskBank(user.email))
+  const allNav = navFor(isOwner(user.email))
   const mobileNav = allNav.filter((i) => i.mobile)
   // «Меню» подсвечено, когда открыт раздел не из панели (Расписание, Профиль…)
   const menuActive = !mobileNav.some((i) => i.id === activePage)
