@@ -219,7 +219,7 @@ const BOARD_SYNC_FAST_MS = 2000
 // набираемый ответ и дописываемые точки штриха. Без подключённого канала они не
 // нужны вовсе (см. обёртку channel.send): HTTP-фолбэк отправил бы по запросу на
 // каждое движение мыши, а доехали бы они уже никому не нужными.
-const EPHEMERAL = new Set(["pointer", "view", "qa-type", "drawp"])
+const EPHEMERAL = new Set(["pointer", "view", "qa-type", "drawp", "ask"])
 // Сервер realtime пускает от одного клиента не больше ПЯТИ presence-сообщений
 // за 30 секунд (CLIENT_PRESENCE_MAX_CALLS=5), а на шестом ЗАКРЫВАЕТ КАНАЛ —
 // и закрытый канал realtime-js не поднимает никогда. Так 10.09.2026 в 12:11
@@ -260,28 +260,30 @@ const tombCount = (m) => {
   return n
 }
 // Сколько ждём, пока автор допишет в базу штрих, который мы уже получили по
-// realtime (см. heardRef). Его собственное сохранение отложено не дольше
-// SAVE_MAX_MS, так что восьми секунд хватает с запасом.
+// realtime (см. heardRef), прежде чем СПРОСИТЬ его об этом штрихе. Его
+// собственное сохранение отложено не дольше SAVE_MAX_MS, так что при живой
+// связи восьми секунд хватает с запасом, и спрашивать не приходится.
 const HEARD_MS = 8000
+// Чужой штрих, который база через HEARD_MS так и не подтвердила, НЕ считается
+// лишним и НЕ выбрасывается: у автора сохранение могло сорваться, затянуться
+// (телефон, плохой канал) или ещё не начаться (сцена у него грузится). До
+// 15.09.2026 такой штрих через восемь секунд шёл в счёт «лежит в базе», счёт
+// не сходился, сцена перечитывалась целиком и штрих с неё СНИМАЛСЯ — до
+// следующего сохранения автора. Это и было «пишу — у ученика в моменте
+// пропадает». Теперь доска СПРАШИВАЕТ автора (событие ask): он отвечает draw
+// (штрих есть — заодно торопит своё сохранение) либо remove (стёр, а посылка
+// потерялась). Не ответил ASK_TRIES раз подряд — ушёл с доски или у него
+// старая сборка — штрих снимаем; сохранится позже — вернётся догоном.
+const ASK_WAIT_MS = 3000
+const ASK_TRIES = 4
+// Сорвавшееся сохранение повторяется само, с растущей паузой. Раньше повтора
+// не было: несохранённое ждало СЛЕДУЮЩЕГО штриха, а у собеседника написанное
+// тем временем «пропадало» (см. ASK_WAIT_MS).
+const SAVE_RETRY_MS = [1000, 2000, 4000, 8000]
 // Как часто сверять состав доски ПОИМЁННО. Редко: это единственная сверка,
 // которая везёт список всех id комнаты (десятки килобайт), зато она одна ловит
 // расхождение, в котором число строк случайно сошлось.
 const FULL_SYNC_MS = 120000
-// Чужие штрихи, о которых мы знаем ТОЛЬКО из посылки realtime. Сверка считала
-// лежащим в базе лишь savedRef, а такой штрих в него не попадает — и если его
-// удаление до нас не доехало, расхождение не замечалось вовсе: у автора стёрто,
-// у нас лежит, и счётчики сходятся случайно (13.09.2026, найдено стресс-прогоном).
-// Считаем только СОЗРЕВШИЕ (автор уже должен был сохранить) и только те, что
-// ещё на доске и не подтверждены базой; попутно чистим карту.
-const heardExtra = (heard, saved, strokes) => {
-  const now = Date.now()
-  let n = 0
-  for (const [id, t] of heard) {
-    if (saved.has(id) || !strokes.has(id)) { heard.delete(id); continue }
-    if (now - t > HEARD_MS) n++
-  }
-  return n
-}
 const REJOIN_MS = [1500, 4000, 8000, 15000]   // пересоздание канала после закрытия
 // Точки штриха округляются до сотых мировой единицы: на экране это доли пикселя
 // даже при максимальном увеличении, зато и по сети, и в снапшоте сцены каждая
@@ -1198,8 +1200,11 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // попадает вовсе, и стерев его, мы не удаляли из базы НИЧЕГО — он оставался
   // там и возвращался при первом же перечитывании сцены.
   const pendingDel = useRef(new Set())
-  // Чужие штрихи, пришедшие по realtime и ещё не подтверждённые базой (см. heardExtra).
+  // Чужие штрихи, пришедшие по realtime и ещё не подтверждённые базой (см. askMissing).
   const heardRef = useRef(new Map())
+  const askRef = useRef(new Map())    // id → { n, t }: сколько раз и когда спрашивали автора (см. askMissing)
+  const retryTimer = useRef(null)     // повтор сорвавшегося сохранения (см. SAVE_RETRY_MS)
+  const retryN = useRef(0)
   const saveSince = useRef(0)         // когда появилось первое неотправленное изменение
   const wipeRef = useRef(false)       // доску очистили целиком: в базу уйдёт одним p_wipe
   const removeBuf = useRef([])        // id на рассылку (пачкой, см. flushRemoves)
@@ -1316,7 +1321,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   useEffect(() => {
     if (!import.meta.env.DEV) return
     const c = canvasRef.current
-    if (c) c.__board = { strokes, live, savedRef, dirtyRef, localPending, tombRef, pendingDel, heardRef, revRef, maxOrd, view, joinedRef, savingRef, saveTimer, loadedRef }
+    if (c) c.__board = { strokes, live, savedRef, dirtyRef, localPending, tombRef, pendingDel, heardRef, askRef, revRef, maxOrd, view, joinedRef, savingRef, saveTimer, loadedRef }
   })
   const modalOpen = useRef(false)     // поверх доски открыт диалог (глушим горячие клавиши)
   const erasing = useRef(null)        // текущий проход объектного ластика: [{id, before, after}]
@@ -2142,7 +2147,8 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     loadedRef.current = null    // до загрузки новой сцены не сохраняем ничего
     strokes.current.clear(); live.current.clear(); selection.current.clear()
     savedRef.current = new Map(); dirtyRef.current.clear(); localPending.current.clear()
-    tombRef.current.clear(); pendingDel.current.clear(); heardRef.current.clear(); wipeRef.current = false
+    tombRef.current.clear(); pendingDel.current.clear(); heardRef.current.clear(); askRef.current.clear(); wipeRef.current = false
+    clearTimeout(retryTimer.current); retryTimer.current = null; retryN.current = 0
     removeBuf.current = []; clearTimeout(removeTimer.current); removeTimer.current = null
     history.current = []; redoStack.current = []
     cursors.current.clear()
@@ -2181,6 +2187,10 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         if (scene.bgColor) setBgColor(scene.bgColor)
         loadedRef.current = roomId   // сохранять можно только после успешной загрузки ЭТОЙ доски
         setLoaded(true)
+        // Индикатор загрузки писать не мешает, а scheduleSave до этой строки
+        // молчит. Написанное за это время не сохранялось ВОВСЕ до следующего
+        // штриха — у собеседника оно тем временем «пропадало» (см. ASK_WAIT_MS).
+        if (localPending.current.size) scheduleSave()
         // Куда смотреть. Доска бесконечная и за год уезжает вниз на десятки
         // экранов: открывать её в (0,0) значит показывать сентябрь вместо того,
         // что написали сегодня. Своё место возвращаем, только если доска с тех
@@ -2224,12 +2234,11 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     // Пришедшее из базы уже сохранено: иначе дельта отправит его обратно. Штрих,
     // который мы правим прямо сейчас (dirty — перенос, цвет), не трогаем: своё
     // несохранённое догон затирать не должен.
-    // Сколько строк мы ОЖИДАЕМ в базе: подтверждённое плюс чужие штрихи, которые
-    // автор уже должен был сохранить. Та же мерка, что у сверки, — иначе догон
-    // объявит «всё сошлось» там, где сверка видит расхождение, и лишний штрих
-    // останется на доске навсегда.
+    // Сколько строк мы ОЖИДАЕМ в базе: ровно подтверждённое ею. Та же мерка, что
+    // у сверки. Чужой штрих, известный только по realtime (heardRef), сюда не
+    // входит: его судьбу решает вопрос автору (askMissing), а не перечитывание
+    // сцены — оно такой штрих снимало бы с доски.
     const known = () => savedRef.current.size
-      + heardExtra(heardRef.current, savedRef.current, strokes.current)
     const take = (list) => {
       for (const st of list || []) {
         if (dirtyRef.current.has(st.id)) continue
@@ -2305,13 +2314,19 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     rememberSaved(remoteStrokes)   // теперь мы знаем, что в базе; своё недошедшее допишется дельтой
     if (Number.isFinite(scene.maxOrd)) maxOrd.current = scene.maxOrd
     if (Number.isFinite(scene.maxRev)) revRef.current = scene.maxRev
-    // Возвращаем только СВОИ штрихи, которые ещё не подтвердило сохранение.
-    // Штрих собеседника мог появиться по realtime, а потом быть стёрт до нашей
-    // сверки. Раньше такой штрих ошибочно считался «нашим ненаписанным» и
-    // возвращался поверх удаления — отсюда «стираю, а оно появляется снова».
+    // Возвращаем своё несохранённое (localPending) и чужое, которого база ещё не
+    // подтвердила (heardRef): автор его сохранит либо ответит на ask — а до
+    // 15.09.2026 такой штрих здесь снимался с доски, пока автор не сохранится.
+    // Стёртое собеседником сюда не попадает: посылка remove вычёркивает штрих
+    // из heardRef и кладёт в могилу — иначе «стираю, а оно появляется снова».
+    // Штрих, который правим сами (dirty), оставляем своим: копия из базы
+    // затёрла бы перенос, который ещё не сохранили.
     for (const [id, st] of local) {
-      if (strokes.current.has(id)) continue
-      if (!localPending.current.has(id)) continue
+      if (strokes.current.has(id)) {
+        if (dirtyRef.current.has(id)) strokes.current.set(id, st)
+        continue
+      }
+      if (!localPending.current.has(id) && !heardRef.current.has(id)) continue
       strokes.current.set(id, st)
     }
     scheduleDraw()
@@ -2322,17 +2337,53 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // причём молча и до самого перезахода на доску. Поэтому раз в BOARD_SYNC_MS
   // спрашиваем у базы только счётчик и последний id (вся сцена — это мегабайты) и,
   // если у нас чего-то нет, перечитываем её.
+  // Чужие штрихи, которых база всё не подтверждает: спросить автора, а без
+  // ответа — снять (см. ASK_WAIT_MS). Идёт с каждым тиком сверки, но базу не
+  // трогает. Пока канала нет, не спрашиваем — ответ не дошёл бы; штрих ждёт.
+  function askMissing() {
+    if (!joinedRef.current) return
+    const now = Date.now()
+    const ask = new Map()                 // автор → id, о которых спрашиваем
+    let dropped = false
+    for (const [id, t] of heardRef.current) {
+      const st = strokes.current.get(id)
+      if (!st || savedRef.current.has(id)) { heardRef.current.delete(id); askRef.current.delete(id); continue }
+      if (now - t < HEARD_MS) continue
+      const a = askRef.current.get(id)
+      if (a && now - a.t < ASK_WAIT_MS) continue
+      if (a && a.n >= ASK_TRIES) {
+        // Автор молчит: ушёл или у него старая сборка. В базе штриха нет —
+        // снимаем; сохранится позже — вернётся догоном. Могилу НЕ ставим.
+        strokes.current.delete(id); selection.current.delete(id)
+        heardRef.current.delete(id); askRef.current.delete(id)
+        if (st.src?.startsWith("data:")) forgetImage(st.src)
+        dropped = true
+        continue
+      }
+      askRef.current.set(id, { n: (a?.n || 0) + 1, t: now })
+      const to = st.author || ""
+      if (!ask.has(to)) ask.set(to, [])
+      ask.get(to).push(id)
+    }
+    for (const [to, ids] of ask) channelRef.current?.send({ type: "broadcast", event: "ask", payload: { to, ids } })
+    if (dropped) scheduleDraw()
+  }
+
   useEffect(() => {
     const tick = async () => {
       if (document.visibilityState !== "visible") return
       if (loadedRef.current !== roomId || drawing.current) return
+      askMissing()
       // Канал подключён — раз в BOARD_SYNC_MS, как и было; канала нет — чужое
       // доходит только этим путём, и ждать по 15 с нельзя.
       if (joinedRef.current && Date.now() - lastTick.current < BOARD_SYNC_MS) return
       lastTick.current = Date.now()
-      // Своё ещё не сохранено — сверять не с чем: база заведомо отстаёт от нас,
-      // и «догон» вернул бы только что стёртое.
-      if (savingRef.current || saveTimer.current) return
+      // Своё сохранение в полёте — база могла его уже принять, а мы ещё нет:
+      // сверять не с чем. Отложенное (таймер) сверке не мешает: в базе его ещё
+      // нет, счёт сходится, а стёртое своё держат могилы. Раньше затвор стоял и
+      // на таймере, то есть пока мы пишем без пауз, сверка молчала вовсе, и
+      // потерянная посылка собеседника ждала нашей паузы.
+      if (savingRef.current) return
       // rev — наибольший номер записи в комнате. Колонки нет (миграции
       // board_stroke_rev.sql нет) — PostgREST отвечает ошибкой, и дальше сверяем
       // как раньше: доска обязана работать и без миграции.
@@ -2346,9 +2397,8 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       // законно делает доску больше базы. Расхождение в любую сторону — повод
       // перечитать: сравнение «в базе больше» не замечало удалений вовсе, и
       // стёртое собеседником оставалось на доске до перезахода.
-      // Что мы считаем лежащим в базе: подтверждённое плюс чужие штрихи, которые
-      // автор уже должен был сохранить (см. heardExtra).
-      const inDb = savedRef.current.size + heardExtra(heardRef.current, savedRef.current, strokes.current)
+      // Что мы считаем лежащим в базе: ровно подтверждённое ею (см. known в resync).
+      const inDb = savedRef.current.size
       // База может быть БОЛЬШЕ нас на то, что при нас стёрли, а её ещё не
       // дописали: у автора сохранение отложено, и пока он ведёт ластиком, в базе
       // лежит полная сцена. Ровно столько расхождения и прощаем — иначе каждый
@@ -2377,8 +2427,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
           for (const [id, st] of strokes.current) {
             if (inBase.has(id) || st.pending) continue
             if (localPending.current.has(id) || pendingDel.current.has(id)) continue  // своё, ещё не доехало
-            const heardAt = heardRef.current.get(id)
-            if (heardAt != null && Date.now() - heardAt <= HEARD_MS) continue          // автор ещё сохраняет
+            if (heardRef.current.has(id)) continue   // чужое неподтверждённое — им занимается askMissing
             ghost = true; break
           }
           if (ghost) { resync(true); return }   // лечит только перечитывание сцены
@@ -2395,6 +2444,8 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     if (readOnly) return              // снимок не меняется — сверять не с чем
     const id = setInterval(tick, BOARD_SYNC_FAST_MS)
     return () => clearInterval(id)
+    // askMissing — функция компонента на рефах, как trackSelf у канала
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, resync, readOnly])
 
   // Вкладку могут убить, не дав нам размонтироваться: телефон ушёл в фон, PWA
@@ -2482,7 +2533,10 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
 
     channel
       // Готовый штрих: кладём в сцену и убираем из «в работе».
-      .on("broadcast", { event: "draw" }, ({ payload }) => {
+      .on("broadcast", { event: "draw" }, ({ payload: msg }) => {
+        // re — повтор по нашей просьбе (ask): штрих тот же, подсказка «написали
+        // за краем экрана» второй раз не нужна, а сама пометка в сцену не идёт.
+        const { re, ...payload } = msg
         live.current.delete(payload.id)
         // Собеседник рисует этот штрих заново (обычно — нажал «отменить» после
         // стирания). Это единственное, что снимает могилу: сам он про удаление
@@ -2500,8 +2554,22 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         if (payload.pending) heardRef.current.delete(payload.id)
         else if (!savedRef.current.has(payload.id)) heardRef.current.set(payload.id, Date.now())
         strokes.current.set(payload.id, payload)
-        noticeOffscreen(payload)
+        if (!re) noticeOffscreen(payload)
         scheduleDraw()
+      })
+      // Собеседник спрашивает о наших штрихах, которых база всё не подтверждает
+      // (см. askMissing): есть — шлём заново и торопим сохранение, нет — значит
+      // стёрли, а посылка об этом потерялась.
+      .on("broadcast", { event: "ask" }, ({ payload }) => {
+        if (payload?.to !== userId || !Array.isArray(payload.ids)) return
+        const gone = []
+        for (const id of payload.ids) {
+          const st = strokes.current.get(id)
+          if (st && !st.pending) channel.send({ type: "broadcast", event: "draw", payload: { ...st, re: true } })
+          else if (!st && !live.current.has(id)) gone.push(id)
+        }
+        if (gone.length) channel.send({ type: "broadcast", event: "remove", payload: { id: gone[0], ids: gone } })
+        if (payload.ids.some((id) => localPending.current.has(id))) scheduleSave()
       })
       // Штрих в работе: приходят только ДОПИСАННЫЕ точки (from — сколько их уже
       // было). Пропуск в нумерации не добираем: собеседник в конце пришлёт штрих
@@ -2555,7 +2623,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
           // Помним, что штрих стёрт: в базе он живёт до сохранения у автора, и
           // любая сверка до тех пор возвращала бы его обратно.
           bury(tombRef.current, rid)
-          heardRef.current.delete(rid)
+          heardRef.current.delete(rid); askRef.current.delete(rid)
           strokes.current.delete(rid); selection.current.delete(rid)
         }
         scheduleDraw()
@@ -2564,7 +2632,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         for (const id of strokes.current.keys()) bury(tombRef.current, id)
         for (const id of savedRef.current.keys()) bury(tombRef.current, id)
         live.current.clear(); strokes.current.clear(); selection.current.clear()
-        localPending.current.clear(); savedRef.current.clear(); heardRef.current.clear()   // см. remove: иначе сверка уйдёт за всей сценой
+        localPending.current.clear(); savedRef.current.clear(); heardRef.current.clear(); askRef.current.clear()   // см. remove: иначе сверка уйдёт за всей сценой
         scheduleDraw()
       })
       .on("broadcast", { event: "bg" }, ({ payload }) => {
@@ -2947,9 +3015,11 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     // раньше этой строки.
     const wipe = wipeRef.current && strokes.current.size === 0 && del.length > 0
     savingRef.current = true
-    const done = (ok) => {
+    const done = (ok, err) => {
       savingRef.current = false
       if (ok) {
+        retryN.current = 0
+        clearTimeout(retryTimer.current); retryTimer.current = null
         for (const [id, rec] of pend) { saved.set(id, rec); localPending.current.delete(id) }
         for (const id of del) { saved.delete(id); localPending.current.delete(id); pendingDel.current.delete(id) }
         // p_wipe снёс комнату целиком, а поимённого списка при нём нет — значит и
@@ -2961,12 +3031,22 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         // не доехало — вернём в следующую посылку (ссылка та же, поэтому через dirty)
         for (const id of pend.keys()) dirty.add(id)
         for (const id of del) pendingDel.current.add(id)   // удаление тоже повторяем
+        // И повторяем сами, с растущей паузой (см. SAVE_RETRY_MS). Отказ в
+        // правах (42501) не повторяем: он не пройдёт, а плашка уже показана.
+        if (!saveAgain.current && !retryTimer.current && err?.code !== "42501") {
+          const delay = SAVE_RETRY_MS[Math.min(SAVE_RETRY_MS.length - 1, retryN.current++)]
+          retryTimer.current = setTimeout(() => {
+            retryTimer.current = null
+            if (loadedRef.current !== roomId || saveTimer.current || savingRef.current) return
+            persistRef.current?.()
+          }, delay)
+        }
       }
       // Дозапись идёт СВОИМ таймером, а не scheduleSave: тот гасится при уходе с
       // доски, и написанное в последнюю секунду терялось бы вместе с ним.
       if (saveAgain.current) { saveAgain.current = false; setTimeout(persistRef.current, 300) }
     }
-    if (patchOff.current) { fullSave().then(() => { localPending.current.clear(); done(true) }, (e) => { console.error("board save", e); done(false) }); return }
+    if (patchOff.current) { fullSave().then(() => { localPending.current.clear(); done(true) }, (e) => { console.error("board save", e); done(false, e) }); return }
     // Доску очистили — не перечисляем тысячу id, а говорим «старого не оставляем».
     supabase.rpc("board_patch", {
       p_student_id: String(roomId),
@@ -2985,16 +3065,17 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       // больше её не дёргаем: доска обязана сохраняться и без миграции.
       if (error && (error.code === "PGRST202" || error.code === "42883")) {
         patchOff.current = true
-        fullSave().then(() => done(true), (e) => { console.error("board save", e); done(false) })
+        fullSave().then(() => done(true), (e) => { console.error("board save", e); done(false, e) })
         return
       }
       if (error) console.error("board save", error)
       if (error?.code === "42501") setSaveDenied(true)
-      done(!error)
+      done(!error, error)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, userId, fullSave])
   persistRef.current = persist
+  useEffect(() => () => { clearTimeout(retryTimer.current); retryTimer.current = null }, [])
   // Сохранение откладывается на 1,2 с, и каждая новая правка сдвигает срок. Для
   // письма это верно (пишут вспышками), но ластик идёт СПЛОШНЫМ потоком: пока
   // его ведут, таймер сбрасывается на каждом движении, и в базу не уезжает
