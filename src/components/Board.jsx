@@ -40,6 +40,11 @@ import { tintSheetAsync, encodeCanvasAsync } from "./boardWorker"
 const WIDTH_MIN = 1, WIDTH_MAX = 30, WIDTH_DEFAULT = 3
 const MIN_SCALE = 0.15, MAX_SCALE = 8
 
+// Подсказка к кнопке доски: сколько держится, пока кнопку не отпустили, и
+// сколько живёт хвостом после отпускания. Хвост нужен, чтобы подпись не мигала
+// на коротком касании, но уходила заметно быстрее, чем открывшаяся панель.
+const TIP_HOLD_MS = 1400
+const TIP_TAIL_MS = 550
 const HISTORY_MAX = 100      // шагов «отменить» держим столько же, сколько привычно в редакторах
 // Копия штриха для истории: points — массив массивов, поверхностная копия его бы разделила
 const cloneStroke = (s) => s && { ...s, points: s.points.map((p) => p.slice()) }
@@ -658,13 +663,17 @@ function TaskAnswerBox({ panel, dark, panelBg, panelBorder, tutor = false, draft
 }
 
 // Всплывающая подсказка над кнопкой (родитель должен иметь класс group + relative)
-// Подсказка к иконке. Показывается по наведению И на 1,6 с после нажатия:
+// Подсказка к иконке. Показывается по наведению И пока кнопку нажимают:
 // на планшете и телефоне наведения нет вовсе, и все 15 инструментов доски
 // оставались безымянными картинками.
-function Tip({ label, hotkey, dark, show = false }) {
+// `off` глушит подсказку ПО НАВЕДЕНИЮ, не трогая показ по нажатию: на сенсорном
+// экране :hover залипает на последней нажатой кнопке, и подпись висела над тем,
+// что этим же нажатием открылось, пока не ткнёшь в другое место.
+function Tip({ label, hotkey, dark, show = false, off = false }) {
+  const vis = show ? "opacity-100" : off ? "opacity-0" : "opacity-0 group-hover:opacity-100"
   return (
     <span
-      className={`pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 ${show ? "opacity-100" : "opacity-0"} group-hover:opacity-100 transition-opacity duration-150 whitespace-nowrap rounded-lg px-2 py-1 text-xs flex items-center gap-1.5 shadow-lg`}
+      className={`pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 ${vis} transition-opacity duration-150 whitespace-nowrap rounded-lg px-2 py-1 text-xs flex items-center gap-1.5 shadow-lg`}
       style={{ background: dark ? "#f5f5f7" : "#1f2937", color: dark ? "#1c1c1e" : "#fff", zIndex: 30 }}>
       {label}
       {hotkey && (
@@ -1056,12 +1065,47 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // Какая подсказка сейчас показана после нажатия (на сенсорном экране навести
   // мышь нельзя, а без названий панель — набор непонятных значков).
   const [tapped, setTapped] = useState("")
+  // Кнопка, у которой подсказка по наведению заглушена до ухода указателя.
+  const [tipOff, setTipOff] = useState("")
   const tipTimer = useRef(null)
+  const tipStop = useRef(null)
+  // Подпись называет кнопку, ПОКА ЕЁ НАЖИМАЮТ, и уходит сразу после: висеть над
+  // тем, что этим же нажатием открылось (панель питона, выбор задания, попап),
+  // она не должна. Раньше подпись держалась 1,6 с от нажатия независимо ни от
+  // чего, а на сенсорном экране вдобавок залипал :hover — и она оставалась на
+  // месте до касания в стороне.
   function flashTip(key) {
     clearTimeout(tipTimer.current)
+    tipStop.current?.()
     setTapped(key)
-    tipTimer.current = setTimeout(() => setTapped(""), 1600)
+    setTipOff("")
+    // Потолок — на случай, если палец на кнопке задержался.
+    tipTimer.current = setTimeout(() => setTapped(""), TIP_HOLD_MS)
+    let btn = null
+    const away = (e) => { if (!btn || !btn.contains(e.target)) stop() }
+    const up = (e) => {
+      btn = e.target?.closest?.("button") || null
+      clearTimeout(tipTimer.current)
+      tipTimer.current = setTimeout(() => setTapped(""), TIP_TAIL_MS)
+      window.removeEventListener("pointerup", up)
+      window.removeEventListener("pointercancel", up)
+      setTipOff(key)
+      window.addEventListener("pointermove", away)
+      window.addEventListener("pointerdown", away)
+    }
+    const stop = () => {
+      window.removeEventListener("pointerup", up)
+      window.removeEventListener("pointercancel", up)
+      window.removeEventListener("pointermove", away)
+      window.removeEventListener("pointerdown", away)
+      tipStop.current = null
+      setTipOff("")
+    }
+    tipStop.current = stop
+    window.addEventListener("pointerup", up)
+    window.addEventListener("pointercancel", up)
   }
+  useEffect(() => () => { clearTimeout(tipTimer.current); tipStop.current?.() }, [])
 
   // Клик мимо открытого попапа закрывает его. Всё, что должно считаться «своим»
   // (кнопка попапа + сам попап), обёрнуто в контейнер с data-menu.
@@ -5926,7 +5970,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
                 style={tool === "eraser" ? undefined : idleStyle}>
                 <Icon name="eraser" size={21} />
                 {!menuShown("eraser") && (
-                  <Tip label={eraserMode === "object" ? "Ластик · объект целиком" : "Ластик · след"} hotkey="E" dark={dark} show={tapped === "eraser"} />
+                  <Tip label={eraserMode === "object" ? "Ластик · объект целиком" : "Ластик · след"} hotkey="E" dark={dark} show={tapped === "eraser"} off={tipOff === "eraser"} />
                 )}
               </button>
               {eraserPopup}
@@ -5937,7 +5981,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
                 className={`${btnBase} ${shapeMenuIds.has(tool) ? btnOn : btnIdle}`}
                 style={shapeMenuIds.has(tool) ? undefined : idleStyle}>
                 <Icon name={shapeIconOf(shapeTool)} size={21} />
-                {!menuShown("shapes") && <Tip label="Фигуры" dark={dark} show={tapped === "shapes"} />}
+                {!menuShown("shapes") && <Tip label="Фигуры" dark={dark} show={tapped === "shapes"} off={tipOff === "shapes"} />}
               </button>
               {shapesPopup}
             </div>
@@ -5946,7 +5990,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
               className={`${btnBase} ${tool === t.id ? btnOn : panLit(t.id) ? btnHot : btnIdle}`}
               style={tool === t.id || panLit(t.id) ? undefined : idleStyle}>
               <Icon name={t.icon} size={21} />
-              <Tip label={t.label} hotkey={t.key} dark={dark} show={tapped === t.id} />
+              <Tip label={t.label} hotkey={t.key} dark={dark} show={tapped === t.id} off={tipOff === t.id} />
             </button>
           ))}
 
@@ -5957,7 +6001,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
             <button onPointerDown={() => flashTip("smart")} onClick={toggleSmart}
               className={`${btnBase} ${smart ? btnOn : btnIdle}`} style={smart ? undefined : idleStyle}>
               <Icon name="sparkles" size={21} />
-              <Tip label={smart ? "Ровные фигуры включены" : "Ровные фигуры выключены"} dark={dark} show={tapped === "smart"} />
+              <Tip label={smart ? "Ровные фигуры включены" : "Ровные фигуры выключены"} dark={dark} show={tapped === "smart"} off={tipOff === "smart"} />
             </button>
           </BoardStrip>
 
@@ -5982,7 +6026,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
                   className={`${btnBase} ${menuShown("stroke") ? "bg-blue-500/15 text-blue-500" : btnIdle}`}
                   style={menuShown("stroke") ? undefined : idleStyle}>
                   <Icon name="stroke" size={21} />
-                  {!menuShown("stroke") && <Tip label="Настройки обводки" dark={dark} show={tapped === "stroke"} />}
+                  {!menuShown("stroke") && <Tip label="Настройки обводки" dark={dark} show={tapped === "stroke"} off={tipOff === "stroke"} />}
                 </button>
                 {menuShown("stroke") && (
                   <div className={`absolute bottom-full mb-2 left-1/2 -translate-x-1/2 p-2 rounded-xl shadow-lg ${menuAnim("stroke")}`}
@@ -5999,7 +6043,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
           <button onPointerDown={() => flashTip("image")} onClick={() => fileInputRef.current?.click()}
             className={`${btnBase} ${btnIdle}`} style={idleStyle}>
             <Icon name="image" size={21} />
-            <Tip label="Добавить картинку" dark={dark} show={tapped === "image"} />
+            <Tip label="Добавить картинку" dark={dark} show={tapped === "image"} off={tipOff === "image"} />
           </button>
 
           {/* Задание из банка листом на доску */}
@@ -6007,7 +6051,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
             <button onPointerDown={() => flashTip("task")} onClick={() => setTaskPick(true)}
               className={`${btnBase} ${taskPick ? btnOn : btnIdle}`} style={taskPick ? undefined : idleStyle}>
               <Icon name="book" size={21} />
-              <Tip label="Задание из банка" dark={dark} show={tapped === "task"} />
+              <Tip label="Задание из банка" dark={dark} show={tapped === "task"} off={tipOff === "task"} />
             </button>
           )}
 
@@ -6017,7 +6061,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
           <button onPointerDown={() => flashTip("python")} onClick={togglePython}
             className={`${btnBase} ${pyOpen ? btnOn : btnIdle}`} style={pyOpen ? undefined : idleStyle}>
             <Icon name="code" size={21} />
-            <Tip label="Программа на питоне" dark={dark} show={tapped === "python"} />
+            <Tip label="Программа на питоне" dark={dark} show={tapped === "python"} off={tipOff === "python"} />
           </button>
 
           {divider}
@@ -6025,17 +6069,17 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
           <button onPointerDown={() => flashTip("undo")} onClick={undo}
             className={`${btnBase} ${btnIdle}`} style={idleStyle}>
             <Icon name="undo" size={21} />
-            <Tip label="Отменить" hotkey="⌘Z" dark={dark} show={tapped === "undo"} />
+            <Tip label="Отменить" hotkey="⌘Z" dark={dark} show={tapped === "undo"} off={tipOff === "undo"} />
           </button>
           <button onPointerDown={() => flashTip("redo")} onClick={redo}
             className={`${btnBase} ${btnIdle}`} style={idleStyle}>
             <Icon name="redo" size={21} />
-            <Tip label="Вернуть" hotkey="⌘⇧Z" dark={dark} show={tapped === "redo"} />
+            <Tip label="Вернуть" hotkey="⌘⇧Z" dark={dark} show={tapped === "redo"} off={tipOff === "redo"} />
           </button>
           <button onPointerDown={() => flashTip("clear")} onClick={askClear}
             className={`${btnBase} text-red-500 hover:bg-red-500/10`}>
             <Icon name="trash" size={21} />
-            <Tip label="Очистить всё" dark={dark} show={tapped === "clear"} />
+            <Tip label="Очистить всё" dark={dark} show={tapped === "clear"} off={tipOff === "clear"} />
           </button>
         </div>
         )}
