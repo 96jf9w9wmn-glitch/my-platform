@@ -7,6 +7,7 @@ import { useTapOnly } from "../useTapOnly"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import Icon from "../components/Icon"
 import AnswerTable from "../components/AnswerTable"
+import Reveal from "../components/Reveal"
 import MorphIcon from "../components/MorphIcon"
 import NavIcon from "../components/NavIcon"
 import StudentSidebar from "../components/StudentSidebar"
@@ -21,6 +22,7 @@ import InvoiceCard from "../components/InvoiceCard"
 import PushSettings from "../components/PushSettings"
 import StudentTelegram from "../components/StudentTelegram"
 import StudentResults from "../components/StudentResults"
+import StudentHome from "../components/StudentHome"
 // Арифметика результатов — общая с «Результатами» репетитора (src/examStats.js).
 import { toRow, computeStats, computeHwStats, toHwRow, hwSolved, examTypeOf, shownScore, shownScoreMax } from "../examStats"
 
@@ -32,7 +34,7 @@ function boardHwFromUrl() {
   const v = new URLSearchParams(window.location.search).get("board")
   return v && v.startsWith("hw:") ? v.slice(3) : null
 }
-import { parseLocalDate, isHomeworkOverdue, isLessonConducted, getInitials, renderTaskMath, renderHomeworkMath, parseHomeworkTasks, creditedNums, formatPhone, answersEqual, homeworkTestScore, plural, timeUntilLesson, homeworkBoardSheet, fileUrls, fileUrlsValue } from "../utils"
+import { parseLocalDate, isHomeworkOverdue, getInitials, renderTaskMath, renderHomeworkMath, parseHomeworkTasks, creditedNums, formatPhone, answersEqual, homeworkTestScore, plural, homeworkBoardSheet, fileUrls, fileUrlsValue } from "../utils"
 import { studentBilling, periodLabel } from "../billing"
 import { longDate } from "../invoices"
 import { homeworkRoom } from "../boardRoom"
@@ -471,32 +473,6 @@ function calcStreak(homework) {
     }
   }
   return { current, best }
-}
-
-function StreakBadge({ homework }) {
-  const { current, best } = calcStreak(homework)
-
-  if (best === 0) return null
-
-  return (
-    <div className="glass-tint-amber px-4 py-3 flex items-center justify-between">
-      <div className="flex items-center gap-2">
-        <span className="text-2xl">🔥</span>
-        <div>
-          <div className="text-lg font-medium text-amber-700">
-            {current} {current === 1 ? "задание" : current >= 2 && current <= 4 ? "задания" : "заданий"} подряд
-          </div>
-          <div className="text-xs text-amber-500">сдано вовремя без пропусков</div>
-        </div>
-      </div>
-      {best > current && (
-        <div className="text-right">
-          <div className="text-xs text-amber-500">Рекорд</div>
-          <div className="text-sm font-medium text-amber-700">{best}</div>
-        </div>
-      )}
-    </div>
-  )
 }
 
 // Динамика баллов ученика. Показываем ТО ЖЕ ЧИСЛО, что стоит на его проверенной
@@ -1797,8 +1773,10 @@ export function HomeworkDetail({ hw, answers = null, onAnswers = null, onBack, o
                 className={`transition-transform duration-200 ${answersOpen ? "rotate-180" : ""}`} />
             </span>
           </button>
-          {answersOpen && (
-            <div className="mt-3 rounded-xl border border-gray-100 overflow-hidden slide-up">
+          {/* Сворачивается тем же <Reveal>, что и остальные встроенные панели:
+              раскрытие шло анимацией, а закрытие срезало таблицу в один кадр. */}
+          <Reveal value={answersOpen}>{() => (
+            <div className="mt-3 rounded-xl border border-gray-100 overflow-hidden">
               <table className="w-full text-sm border-collapse">
                 <thead>
                   <tr className="text-xs text-gray-400 border-b border-gray-100 dark:border-white/10">
@@ -1847,7 +1825,7 @@ export function HomeworkDetail({ hw, answers = null, onAnswers = null, onBack, o
                 </tbody>
               </table>
             </div>
-          )}
+          )}</Reveal>
         </div>
       )}
 
@@ -2676,7 +2654,6 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     ? Math.round(stats.rows.reduce((n, r) => n + shownScore(resultsExamType, r), 0) / stats.rows.length)
     : null
   const variantAvgMax = shownScoreMax(resultsExamType)
-  const hwAvg = hwStats.avgGrade
 
   // Сгенерированный вариант (собран из банка) несёт tasks_snapshot — его решаем прямо на
   // сайте; свой файл репетитора (tasks_snapshot нет) по-прежнему показываем как файл.
@@ -2765,10 +2742,6 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   // банк заданий и там же пересекается с его собственными предметами
   // (`typeForStudent`), утверждением о репетиторе он не работает нигде.
   const lessonSubject = (tutorSubject || "").trim()
-
-  const past = (student?.lessons || [])
-    .filter((l) => isLessonConducted(l))
-    .sort((a, b) => b.date.localeCompare(a.date))
 
   // Перенос занятия согласуют обе стороны: любая предлагает, вторая
   // подтверждает. Предложение живёт в самом занятии (см. src/lessonMove.js).
@@ -3521,315 +3494,71 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
                   </div>
                 )
               ) : (
-                <div className="flex flex-col gap-4">
-
-                  {/* Две колонки на широком экране: слева кто я, справа куда идти.
-                      На узком — друг под другом, как было. items-stretch, чтобы
-                      карточки были одной высоты и под короткой не зияла пустота. */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
-
-                  {/* HERO — аватар + имя + цель + телефон */}
-                  <div className="glass h-full p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-5">
-                    <div className="relative flex-shrink-0 self-center sm:self-auto cursor-pointer active:scale-95 transition-transform" onClick={() => studentAvatarRef.current.click()}>
-                      {(avatarOverride || student.avatar) ? (
-                        <img src={avatarOverride || student.avatar} alt="" className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover" />
-                      ) : (
-                        <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-3xl font-semibold text-white">
-                          {initials}
-                        </div>
-                      )}
-                      <div className="absolute -bottom-1 -right-1 w-7 h-7 bg-blue-600 rounded-full flex items-center justify-center shadow-md pointer-events-none">
-                        <Icon name="camera" size={13} className="text-white" />
-                      </div>
-                    </div>
-                    <input ref={studentAvatarRef} type="file" accept="image/*" className="hidden" onChange={handleStudentAvatarChange} />
-
-                    <div className="flex-1 min-w-0 text-center sm:text-left">
-                      <div className="text-2xl font-semibold">{user.profile?.name}</div>
-                      <div className="text-sm text-gray-500">Ученик{student.goal ? ` · Готовлюсь к ${student.goal}` : ""}</div>
-                      {user.profile?.phone && (
-                        <div className="text-sm text-gray-400 mt-1">{formatPhone(user.profile.phone)}</div>
-                      )}
-                    </div>
-
-                  </div>
-
-                  {/* Ближайшее занятие — то же, что видит репетитор на своей главной:
-                      к кому подключаться, по какому предмету и через сколько.
-                      «Доска» и «Звонок» живут только здесь, чтобы вход в занятие
-                      был в одном месте. */}
-                  {nextLesson ? (
-                    <div className="next-lesson-card relative overflow-hidden rounded-2xl h-full p-5 flex flex-col bg-gradient-to-br from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/25">
-                      <div className="relative flex-1 flex items-start justify-between gap-3 mb-4">
-                        <div className="flex items-center gap-3.5 min-w-0">
-                          {/* bg-[rgba(...)] вместо bg-white/20: классы bg-white/N глобально
-                              гасятся под .dark, а карточка синяя в обеих темах */}
-                          <div className="w-12 h-12 rounded-full flex-shrink-0 flex items-center justify-center text-base font-semibold bg-[rgba(255,255,255,0.2)] ring-2 ring-white/30 backdrop-blur-sm">
-                            {getInitials(tutorName || "Репетитор")}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-xs font-medium opacity-70 uppercase tracking-wide mb-0.5 truncate">
-                              {nextInProgress
-                                ? "Текущее занятие"
-                                : nextIsToday ? "Следующее занятие" : `Следующее занятие · ${nextLessonDate}`}
-                            </div>
-                            <div className="text-2xl font-semibold leading-tight truncate">{tutorName || "Репетитор"}</div>
-                            <div className="text-sm opacity-80 mt-0.5 truncate">
-                              {lessonSubject ? `${lessonSubject} · ` : ""}{nextLesson.time} · {nextLesson.duration || 60} мин
-                            </div>
-                          </div>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          {/* Пока занятие идёт, отсчёта нет: считать до его начала уже нечего */}
-                          <div className="text-sm font-medium tabular-nums bg-[rgba(255,255,255,0.2)] rounded-xl px-3 py-1.5 backdrop-blur-sm">
-                            {nextInProgress
-                              ? <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />Идёт занятие</span>
-                              : minuteTick >= 0 && timeUntilLesson(nextLesson.date, nextLesson.time)}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="relative flex gap-2">
-                        <button onClick={openBoard}
-                          className="press-tap flex items-center gap-1.5 bg-[rgba(255,255,255,0.2)] hover:bg-[rgba(255,255,255,0.3)] transition-colors rounded-xl px-3.5 py-1.5 text-sm font-medium backdrop-blur-sm">
-                          <Icon name="clipboard" size={14} />Доска
-                        </button>
-                        {student.callUrl && (
-                          <a href={student.callUrl} target="_blank" rel="noreferrer"
-                            className="press-tap flex items-center gap-1.5 bg-[rgba(255,255,255,0.2)] hover:bg-[rgba(255,255,255,0.3)] transition-colors rounded-xl px-3.5 py-1.5 text-sm font-medium backdrop-blur-sm">
-                            <Icon name="video" size={14} />Звонок
-                          </a>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="glass h-full p-5 flex flex-col sm:flex-row sm:items-center gap-3">
-                      <div className="flex items-center gap-3 flex-1 text-gray-400">
-                        <Icon name="calendar" size={20} />
-                        <span className="text-sm">Занятий не запланировано</span>
-                      </div>
-                      <div className="flex gap-2 flex-shrink-0">
-                        <button onClick={openBoard} className="press-tap btn-glass px-4 py-2 text-sm">
-                          <span className="flex items-center gap-1.5"><Icon name="clipboard" size={14} />Доска</span>
-                        </button>
-                        {student.callUrl && (
-                          <a href={student.callUrl} target="_blank" rel="noreferrer" className="press-tap btn-glass px-4 py-2 text-sm">
-                            <span className="flex items-center gap-1.5"><Icon name="video" size={14} />Звонок</span>
-                          </a>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  </div>
-
-                  {/* KPI-ряд — успеваемость плитками, всегда 4 плитки (нет данных → «—»), без пустот */}
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="glass p-4 flex flex-col gap-1">
-                      <div className="text-xs text-gray-400">Средняя оценка ДЗ</div>
-                      {hwAvg != null ? (
-                        <>
-                          <div className={`text-2xl font-semibold ${hwAvg >= 4.5 ? "text-green-600" : hwAvg >= 3.5 ? "text-blue-600" : hwAvg >= 2.5 ? "text-amber-600" : "text-red-600"}`}>{hwAvg}<span className="text-sm font-normal text-gray-400"> / 5</span></div>
-                          <div className="text-xs text-gray-400">{hwStats.gradedCount} {plural(hwStats.gradedCount, "оценка", "оценки", "оценок")}</div>
-                        </>
-                      ) : <div className="text-2xl font-semibold text-gray-400">—</div>}
-                    </div>
-                    <div className="glass p-4 flex flex-col gap-1">
-                      <div className="text-xs text-gray-400">Средний балл вариантов</div>
-                      {variantAvg != null ? (
-                        <>
-                          {/* Цвет — по доле от максимума, а не по абсолютному числу:
-                              у ЕГЭ балл тестовый (до 100), у ОГЭ первичный (до 32),
-                              и один порог на двоих врал бы одному из них. */}
-                          <div className={`text-2xl font-semibold ${(() => {
-                            const pct = variantAvgMax ? (variantAvg / variantAvgMax) * 100 : 0
-                            return pct >= 75 ? "text-green-600" : pct >= 50 ? "text-blue-600" : "text-amber-600"
-                          })()}`}>
-                            {variantAvg}{variantAvgMax && <span className="text-sm font-normal text-gray-400"> / {variantAvgMax}</span>}
-                          </div>
-                          <div className="text-xs text-gray-400">{stats.rows.length} {plural(stats.rows.length, "вариант", "варианта", "вариантов")}</div>
-                        </>
-                      ) : <div className="text-2xl font-semibold text-gray-400">—</div>}
-                    </div>
-                    <div className="glass p-4 flex flex-col gap-1">
-                      <div className="text-xs text-gray-400">Проведено занятий</div>
-                      <div className="text-2xl font-semibold text-gray-700">{past.length}<span className="text-sm font-normal text-gray-400"> из {(student.lessons || []).length}</span></div>
-                    </div>
-                    <div className="glass p-4 flex flex-col gap-1 justify-between">
-                      <div className="text-xs text-gray-400">Оплата</div>
-                      {(() => {
-                        // Считает общий billing.js — то же число, что у репетитора.
-                        const { price, debt, accrued } = studentBilling(student)
-                        if (accrued.length === 0) return <div className="text-lg font-semibold text-gray-400">Нет занятий</div>
-                        if (!price) return <div className="text-sm font-medium text-gray-400">Стоимость не указана</div>
-                        if (debt > 0) return <div className="text-lg font-semibold text-amber-600">Долг {fmtNum(debt)} ₽</div>
-                        return <div className="text-lg font-semibold text-green-600">Долга нет</div>
-                      })()}
-                    </div>
-                  </div>
-
-                  {/* Информация и занятия+расписание — два плотных блока в ряд, равной высоты */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
-
-                    {/* Информация — репетитор + контакты + код родителя */}
-                    <div className="glass p-5">
-                      <div className="text-base font-medium mb-4">Информация</div>
-                      <div className="flex items-center gap-2 pb-3 mb-3 border-b border-white/30">
-                        <div className="w-9 h-9 rounded-full bg-purple-100 dark:bg-purple-500/15 flex items-center justify-center text-sm font-medium text-purple-600 dark:text-purple-300 flex-shrink-0">
-                          {tutorName ? getInitials(tutorName) : "Р"}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-xs text-gray-400">Репетитор{lessonSubject ? ` · ${lessonSubject}` : ""}</div>
-                          <div className="text-sm text-gray-700 leading-tight truncate">{tutorName || "Ваш репетитор"}</div>
-                        </div>
-                        {/* Второй репетитор привязывается отсюда: занимаются часто
-                            с несколькими, и искать это в «Настройках» никто не будет. */}
-                        <button
-                          onClick={() => { setTutorLinkError(""); setTutorLinkSuccess(""); setAddTutorOpen(true) }}
-                          className="press-tap ml-auto flex-shrink-0 flex items-center gap-1 rounded-full px-2.5 py-1 text-xs text-blue-600 dark:text-blue-300 ring-1 ring-blue-500/30 hover:bg-blue-500/[0.08] transition-colors"
-                        >
-                          <Icon name="plus" size={12} />Ещё репетитор
-                        </button>
-                      </div>
-                      {/* Своего телефона здесь нет намеренно: строка с трубкой стояла
-                          сразу под именем репетитора и читалась как ЕГО номер, хотя
-                          это номер самого ученика (он же есть в шапке выше). */}
-                      <div className="flex flex-col gap-2.5">
-                        {student.goal && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-gray-400 flex-shrink-0"><Icon name="target" size={14} /></span>
-                            <span className="text-sm text-gray-700">{student.goal}</span>
-                          </div>
-                        )}
-                        {student.lessonPrice > 0 && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-gray-400 flex-shrink-0"><Icon name="dollar" size={14} /></span>
-                            <span className="text-sm text-gray-700">{fmtNum(student.lessonPrice)} ₽/занятие</span>
-                          </div>
-                        )}
-                        {student.parent_code?.trim() && (
-                          <div className="mt-1 pt-3 border-t border-white/30">
-                            <div className="text-xs text-gray-400 font-medium mb-2">Код для родителей</div>
-                            <CopyCodeBlock code={student.parent_code.trim()} />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Занятия + расписание */}
-                    <div id={MOVE_ANCHOR_STUDENT} className="glass p-5">
-                      <div className="text-base font-medium mb-4">Занятия</div>
-                      <div className="text-xs text-gray-400 mb-2">Ближайшие</div>
-                      {upcoming.length === 0 ? (
-                        <div className="text-sm text-gray-400">Занятий не запланировано</div>
-                      ) : (
-                        <div className="flex flex-wrap gap-2">
-                          {upcoming.slice(0, 6).map((l, i) => {
-                            const date = new Date(l.date + "T00:00:00")
-                            const dateStr = date.toLocaleDateString("ru-RU", { day: "numeric", month: "short" })
-                            const asked = !!l.moveRequest
-                            return (
-                              <button
-                                key={i}
-                                onClick={() => { setMoveError(""); setMovingLesson(l) }}
-                                disabled={asked}
-                                title={asked
-                                  ? (l.moveRequest.by === MOVE_BY_TUTOR
-                                      ? "Репетитор предложил перенос — ответь ниже"
-                                      : "Просьба о переносе уже отправлена")
-                                  : "Попросить о переносе"}
-                                className={`press-tap inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
-                                  asked
-                                    ? "bg-amber-500/15 text-amber-600"
-                                    : "bg-blue-100 text-blue-700 hover:bg-blue-200"
-                                }`}
-                              >
-                                <Icon name={asked ? "repeat" : "calendar"} size={12} />{dateStr} в {l.time}
-                              </button>
-                            )
-                          })}
-                        </div>
-                      )}
-                      {/* Перенос — вещь, которую ищут в первую очередь, поэтому он
-                          подписан прямо здесь, а не спрятан в календаре ниже. */}
-                      {upcoming.length > 0 && !pendingMoves.length && (
-                        <div className="text-xs text-gray-400 mt-2">
-                          Нажми на занятие, чтобы попросить о переносе.
-                        </div>
-                      )}
-                      {pendingMoves.map((l, i) => (
-                        <LessonMoveNote
-                          key={i}
-                          lesson={l}
-                          className="mt-3"
-                          onAccept={acceptLessonMove}
-                          onDecline={declineLessonMove}
-                          onCounter={(x) => { setMoveError(""); setMovingLesson(x) }}
-                          onCancel={cancelLessonMove}
-                        />
-                      ))}
-                      {moveError && !movingLesson && (
-                        <div className="mt-2 text-xs text-red-500">{moveError}</div>
-                      )}
-                      {(student.schedule || student.examDate) && (
-                        <div className="mt-4 pt-4 border-t border-white/30 flex flex-col gap-3">
-                          {student.schedule && (
-                            <div className="flex items-start gap-3">
-                              <span className="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-full flex-shrink-0 font-medium">Регулярные</span>
-                              <div className="text-sm text-gray-600 pt-0.5">{student.schedule}</div>
-                            </div>
-                          )}
-                          {student.examDate && (
-                            <div className="flex items-start gap-3">
-                              <span className={`text-xs px-3 py-1.5 rounded-full flex-shrink-0 font-medium ${
-                                student.goal === "ЕГЭ" ? "bg-red-50 text-red-600" : "bg-amber-50 text-amber-600"
-                              }`}>{student.goal || "Экзамен"}</span>
-                              <div>
-                                <div className="text-sm text-gray-700">
-                                  {parseLocalDate(student.examDate).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}
-                                </div>
-                                {(() => {
-                                  const today = new Date(); today.setHours(0,0,0,0)
-                                  const examDate = parseLocalDate(student.examDate)
-                                  const daysLeft = Math.ceil((examDate - today) / (1000*60*60*24))
-                                  if (daysLeft <= 0) return null
-                                  return <div className="text-xs text-gray-400 mt-0.5">{daysLeft} {daysLeft === 1 ? "день" : daysLeft >= 2 && daysLeft <= 4 ? "дня" : "дней"} до экзамена</div>
-                                })()}
-                                {/* Цель записана в тех единицах, в каких её
-                                    спрашивала анкета: у ЕГЭ тестовый балл,
-                                    у ОГЭ отметка. Подписываем именно так —
-                                    «5 / 32 баллов» читалось как провал. */}
-                                {student.targetScore && (
-                                  <div className="text-xs text-gray-400 mt-0.5">
-                                    {student.goal === "ЕГЭ"
-                                      ? `Цель: ${student.targetScore} / 100 баллов`
-                                      : `Цель: отметка ${student.targetScore}`}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                  </div>
-
-                  {/* Широкие блоки — на всю ширину, заполняют пространство горизонтально */}
-                  <StreakBadge homework={homework} />
-
-                  <StudentScheduleCalendar
+                <>
+                  {/* Файл выбора аватара живёт здесь: сам кружок с кнопкой съёмки
+                      стоит в приветствии StudentHome и дёргает этот input. */}
+                  <input ref={studentAvatarRef} type="file" accept="image/*" className="hidden" onChange={handleStudentAvatarChange} />
+                  <StudentHome
                     student={student}
+                    user={user}
+                    avatar={avatarOverride || student.avatar || null}
+                    initials={initials}
+                    onAvatarClick={() => studentAvatarRef.current?.click()}
+                    tutorName={tutorName}
+                    lessonSubject={lessonSubject}
+                    onAddTutor={() => { setTutorLinkError(""); setTutorLinkSuccess(""); setAddTutorOpen(true) }}
+                    next={{ lesson: nextLesson, isToday: nextIsToday, inProgress: nextInProgress, dateLabel: nextLessonDate }}
+                    minuteTick={minuteTick}
                     onOpenBoard={openBoard}
+                    callUrl={student.callUrl}
+                    upcoming={upcoming}
+                    pendingMoves={pendingMoves}
+                    moveError={!movingLesson ? moveError : ""}
                     onRequestMove={(l) => { setMoveError(""); setMovingLesson(l) }}
-                    onCancelMove={cancelLessonMove}
-                    onAcceptMove={acceptLessonMove}
-                    onDeclineMove={declineLessonMove}
+                    moveAnchorId={MOVE_ANCHOR_STUDENT}
+                    moveNotes={pendingMoves.map((l, i) => (
+                      <LessonMoveNote
+                        key={i}
+                        lesson={l}
+                        className="mt-3"
+                        onAccept={acceptLessonMove}
+                        onDecline={declineLessonMove}
+                        onCounter={(x) => { setMoveError(""); setMovingLesson(x) }}
+                        onCancel={cancelLessonMove}
+                      />
+                    ))}
+                    homework={homework}
+                    variants={variants}
+                    stats={stats}
+                    hwStats={hwStats}
+                    variantAvg={variantAvg}
+                    variantAvgMax={variantAvgMax}
+                    streak={calcStreak(homework)}
+                    onOpenTab={goTab}
+                    onOpenHomework={(hw) => { goTab("homework"); openHomework(hw) }}
+                    onOpenVariant={(v) => {
+                      goTab("variants")
+                      submitLockRef.current = false
+                      setSelectedVariant(v)
+                      setPart1Answers(Array(part1SlotsOf(v.type)).fill(""))
+                      setPart2Choices({})
+                    }}
+                    parentCode={student.parent_code?.trim() ? <CopyCodeBlock code={student.parent_code.trim()} /> : null}
+                    calendar={
+                      <StudentScheduleCalendar
+                        student={student}
+                        onOpenBoard={openBoard}
+                        onRequestMove={(l) => { setMoveError(""); setMovingLesson(l) }}
+                        onCancelMove={cancelLessonMove}
+                        onAcceptMove={acceptLessonMove}
+                        onDeclineMove={declineLessonMove}
+                      />
+                    }
+                    boardHistory={
+                      <BoardHistory studentId={student.id} studentName={user.profile?.name} account={user.id} token={user.token} onOpenBoard={openBoard} />
+                    }
                   />
-
-                  {/* Доски прошлых занятий — можно вернуться к разобранному (только чтение) */}
-                  <BoardHistory studentId={student.id} studentName={user.profile?.name} account={user.id} token={user.token} onOpenBoard={openBoard} />
-
-                </div>
+                </>
               )}
             </>
           )}

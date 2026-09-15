@@ -5,6 +5,7 @@ import { plural } from "../utils"
 import { scaleOf, testScoreOf, taskMaxOf, parseTarget, gradeOf } from "../examScales"
 import { examTypeOf } from "../examStats"
 import { smoothPath } from "../smoothPath"
+import Icon from "./Icon"
 
 // Готовность к экзамену и график динамики. Блок общий: его показывает и карточка
 // ученика у репетитора, и раздел «Результаты» в кабинете самого ученика —
@@ -126,7 +127,10 @@ export function ScoreChart({ rows, max, target, pass = 0, forecast = null }) {
 // ЧИСЛА НЕ ПРИУКРАШИВАЮТСЯ. Прогноз — продолжение уже наблюдаемой линии, и
 // когда данных мало, вместо числа стоит объяснение, почему его нет: «примерно
 // 80» по двум работам родитель прочтёт как обещание.
-export default function ExamProgress({ student, stats, attempts }) {
+// `compact` — вид для главной ученика: то же число и та же шкала, но без
+// графика и разбора. Второй арифметики ради главной здесь не заводится: блок
+// один, и прогноз на главной обязан совпадать с прогнозом в «Результатах».
+export default function ExamProgress({ student, stats, attempts, compact = false, onMore = null }) {
   const examType = examTypeOf(student, stats)
 
   // Работы приводим к шкале НАСТОЯЩЕГО экзамена: наш вариант почти всегда
@@ -228,6 +232,46 @@ export default function ExamProgress({ student, stats, attempts }) {
     red: "text-red-600 dark:text-red-400",
     amber: "text-amber-700 dark:text-amber-300",
     green: "text-green-700 dark:text-green-400",
+  }
+
+  if (compact) {
+    return (
+      <div className="glass p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-3 mb-3.5">
+          <span className="text-sm font-medium">Готовность к экзамену</span>
+          {onMore ? (
+            <button onClick={onMore}
+              className="press-tap -mr-1 flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[11px] font-medium text-blue-600 dark:text-blue-300 hover:bg-blue-500/[0.08] transition-colors">
+              Подробнее<Icon name="chevron-right" size={13} />
+            </button>
+          ) : examDay && <span className="text-[11px] text-gray-400">экзамен {examDay}</span>}
+        </div>
+
+        <div className="grid sm:grid-cols-[auto_minmax(0,1fr)] gap-4 sm:gap-6 items-center">
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-1.5">
+              <span className={`text-4xl leading-none font-semibold tabular-nums ${headlineIsForecast ? "text-amber-600 dark:text-amber-400" : ""}`}>
+                {headlineIsForecast && <span className="text-xl font-normal align-top opacity-60">≈</span>}
+                {show(headline)}
+              </span>
+              <span className="text-sm text-gray-400 font-medium">из {showMax}</span>
+            </div>
+            <div className="text-[11px] text-gray-400 mt-1.5">
+              {headlineIsForecast
+                ? `прогноз${examDay ? ` к ${examDay}` : ""} · сейчас ${show(now)}`
+                : "последняя работа"}
+            </div>
+          </div>
+
+          <div className="min-w-0">
+            <ReadinessScale now={show(now)} forecast={show(forecast)} target={targetShown}
+              pass={show(pass)} max={showMax}
+              targetLabel={goal.unit === "grade" ? `цель — отметка ${goal.value}` : null} />
+            {verdict && <div className={`text-sm font-medium leading-snug mt-2 ${TONE_TEXT[verdict.tone]}`}>{verdict.text}</div>}
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
