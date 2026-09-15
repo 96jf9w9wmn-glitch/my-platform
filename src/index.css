@@ -904,6 +904,43 @@ html:has(.fixed.inset-0) {
   .tab-swap { animation: none; }
 }
 
+/* Панель питона на доске (src/components/PythonPanel.jsx). Она приклеена к краю
+   — и приходить обязана оттуда же: снизу на телефоне, справа на широком экране,
+   теми же кадрами уходит. Без этого панель возникала и пропадала рывком.
+   Длительность ухода — общая --leave-ms: у сайта одна походка закрытия. */
+@keyframes board-panel-in-bottom {
+  from { opacity: 0; transform: translateY(18px) scale(0.99); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes board-panel-out-bottom {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translateY(14px) scale(0.99); }
+}
+@keyframes board-panel-in-right {
+  from { opacity: 0; transform: translateX(22px) scale(0.99); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes board-panel-out-right {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translateX(16px) scale(0.99); }
+}
+.board-panel {
+  animation: board-panel-in-bottom 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+.board-panel.is-closing {
+  animation: board-panel-out-bottom var(--leave-ms) var(--leave-ease) both;
+  pointer-events: none;
+}
+/* Тот же порог, что у варианта big в разметке: с него панель стоит у правого
+   края, а не внизу. */
+@media (min-width: 640px) and (min-height: 520px) {
+  .board-panel { animation-name: board-panel-in-right; }
+  .board-panel.is-closing { animation-name: board-panel-out-right; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .board-panel, .board-panel.is-closing { animation-duration: 0.01s; }
+}
+
 /* Slide up — for bottom sheets on mobile */
 @keyframes slide-up {
   from { opacity: 0; transform: translateY(20px); }

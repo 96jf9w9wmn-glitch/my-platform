@@ -201,9 +201,13 @@ export default function PythonPanel({ dark, store = {}, onPlace, onClose }) {
   }
 
   return (
-    <div className={`absolute z-30 flex flex-col rounded-2xl shadow-2xl overflow-hidden
-        left-2 right-2 bottom-20 max-h-[62vh]
-        big:left-auto big:right-4 big:top-20 big:bottom-24 big:w-[440px] big:max-h-none ${closingCls}`}
+    // Отступы снизу держат панель НАД тем, что уже стоит в тех углах: над баром
+    // инструментов на телефоне и над столбиком зума справа на широком экране.
+    // Числа не на глаз: пересечение прямоугольников проверено замером на стенде
+    // (до правки панель наезжала на «+ / 100% / −»).
+    <div className={`board-panel absolute z-30 flex flex-col rounded-2xl shadow-2xl overflow-hidden
+        left-2 right-2 bottom-32 max-h-[56vh]
+        big:left-auto big:right-4 big:top-20 big:bottom-36 big:w-[440px] big:max-h-none ${closingCls}`}
       style={{ background: panelBg, border: `1px solid ${panelBorder}` }}
       // Нажатия внутри панели — её дело: без этого доска приняла бы их за
       // рисование и оставила бы штрих под панелью.
