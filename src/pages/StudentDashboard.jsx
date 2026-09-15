@@ -1941,12 +1941,12 @@ function studentNotifTarget(title) {
 // Строка уведомления вынесена из списка ради одного: нажатие здесь не должно
 // путаться с листанием (см. useTapOnly) — иначе уведомления гаснут сами, пока
 // список просто прокручивают пальцем.
-function StudentNotifItem({ notification: n, onOpen, onDelete }) {
+function StudentNotifItem({ notification: n, fresh, onOpen, onDelete }) {
   const tap = useTapOnly(onOpen)
   return (
     <div
       {...tap}
-      className={`group px-4 py-3 border-b border-gray-50 cursor-pointer hover:bg-blue-500/[0.06] dark:hover:bg-white/5 transition-colors ${!n.read ? "bg-blue-50 dark:bg-blue-900/20" : ""}`}
+      className={`group px-4 py-3 border-b border-gray-50 cursor-pointer hover:bg-blue-500/[0.06] dark:hover:bg-white/5 transition-colors ${!n.read || fresh ? "bg-blue-50 dark:bg-blue-900/20" : ""}`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
@@ -1978,23 +1978,40 @@ function StudentNotificationBell({ userId, onNavigate }) {
   const [ringKey, setRingKey] = useState(0)
   const btnRef = useRef(null)
   const closeTimer = useRef(null)
+  // Открыл список — значит увидел: счётчик гаснет сам. Подсветка новых держится,
+  // пока панель открыта, иначе не видно, что именно пришло (то же в кабинете
+  // репетитора).
+  const [fresh, setFresh] = useState(() => new Set())
 
   useEffect(() => { loadNotifications() }, [])
 
-  async function loadNotifications() {
+  async function loadNotifications(markSeen = false) {
     const { data } = await supabase
       .from("notifications")
       .select("*")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(20)
-    setNotifications(data || [])
+    const rows = data || []
+    setNotifications(rows)
+    if (!markSeen) return
+    const unreadIds = rows.filter(n => !n.read).map(n => n.id)
+    setFresh(new Set(unreadIds))
+    if (!unreadIds.length) return
+    const { error } = await supabase
+      .from("notifications")
+      .update({ read: true })
+      .eq("user_id", userId)
+      .eq("read", false)
+    // Не записалось — счётчик остаётся: соврать «прочитано» хуже, чем показать
+    // его ещё раз.
+    if (!error) setNotifications(prev => prev.map(n => ({ ...n, read: true })))
   }
 
   function closePanel() {
     clearTimeout(closeTimer.current)
     setIsClosing(true)
-    closeTimer.current = setTimeout(() => { setOpen(false); setIsClosing(false) }, POPUP_OUT_MS)
+    closeTimer.current = setTimeout(() => { setOpen(false); setIsClosing(false); setFresh(new Set()) }, POPUP_OUT_MS)
   }
 
   function handleOpen(e) {
@@ -2004,7 +2021,7 @@ function StudentNotificationBell({ userId, onNavigate }) {
     clearTimeout(closeTimer.current)
     setIsClosing(false)
     setPos(dropdownPos(btnRef.current))
-    loadNotifications()
+    loadNotifications(true)
     setOpen(true)
   }
 
@@ -2035,11 +2052,6 @@ function StudentNotificationBell({ userId, onNavigate }) {
     setNotifications(prev => prev.filter(n => n.id !== id))
   }
 
-  async function markAllRead() {
-    await supabase.from("notifications").update({ read: true }).eq("user_id", userId)
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })))
-  }
-
   const unread = notifications.filter(n => !n.read).length
 
   return (
@@ -2067,11 +2079,6 @@ function StudentNotificationBell({ userId, onNavigate }) {
         >
           <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-100 flex-shrink-0">
             <span className="text-sm font-semibold text-gray-700">Уведомления</span>
-            {unread > 0 && (
-              <button onClick={markAllRead} className="text-xs text-blue-500 hover:text-blue-700">
-                Прочитать все
-              </button>
-            )}
           </div>
           <div className="flex-1 min-h-0 max-h-80 overflow-y-auto">
             {notifications.length === 0 ? (
@@ -2080,6 +2087,7 @@ function StudentNotificationBell({ userId, onNavigate }) {
               <StudentNotifItem
                 key={n.id}
                 notification={n}
+                fresh={fresh.has(n.id)}
                 onOpen={() => handleNotifClick(n)}
                 onDelete={() => deleteNotification(n.id)}
               />

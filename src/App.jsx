@@ -100,7 +100,7 @@ function tutorNotifTarget(title) {
   return null
 }
 
-function NotificationItem({ notification: n, onDelete, onRead, onNavigate }) {
+function NotificationItem({ notification: n, fresh, onDelete, onRead, onNavigate }) {
   const [deleting, setDeleting] = useState(false)
   const target = tutorNotifTarget(n.title)
   // Список листают пальцем, и лёгкое движение браузер всё равно доставляет как
@@ -129,7 +129,7 @@ function NotificationItem({ notification: n, onDelete, onRead, onNavigate }) {
   return (
     <div
       {...tap}
-      className={`group px-4 py-3 border-b border-gray-50 cursor-pointer hover:bg-blue-500/[0.06] transition-colors ${!n.read ? "bg-blue-50" : ""}`}
+      className={`group px-4 py-3 border-b border-gray-50 cursor-pointer hover:bg-blue-500/[0.06] transition-colors ${!n.read || fresh ? "bg-blue-50" : ""}`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
@@ -162,24 +162,37 @@ export function NotificationBell({ userId, onNavigate }) {
   const [ringKey, setRingKey] = useState(0)
   const btnRef = useRef(null)
   const closeTimer = useRef(null)
+  // Открытая панель и есть прочтение: список перед глазами, держать после
+  // этого красный счётчик не за что. Но погасить разом и подсветку нельзя —
+  // тогда непонятно, что именно пришло нового, поэтому «новыми» строки
+  // остаются, пока панель открыта, а гаснут при её закрытии.
+  const [fresh, setFresh] = useState(() => new Set())
 
   useEffect(() => {
     loadNotifications()
   }, [])
 
-  async function loadNotifications() {
+  async function loadNotifications(markSeen = false) {
     const { data } = await supabase
       .from("notifications")
       .select("*")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(20)
-    setNotifications(data || [])
-  }
-
-  async function markAllRead() {
-    await supabase.from("notifications").update({ read: true }).eq("user_id", userId)
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
+    const rows = data || []
+    setNotifications(rows)
+    if (!markSeen) return
+    const unreadIds = rows.filter((n) => !n.read).map((n) => n.id)
+    setFresh(new Set(unreadIds))
+    if (!unreadIds.length) return
+    const { error } = await supabase
+      .from("notifications")
+      .update({ read: true })
+      .eq("user_id", userId)
+      .eq("read", false)
+    // Запись не прошла — оставляем счётчик как есть: соврать «прочитано»
+    // хуже, чем показать его ещё раз.
+    if (!error) setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
   }
 
   function closePanel() {
@@ -188,6 +201,7 @@ export function NotificationBell({ userId, onNavigate }) {
     closeTimer.current = setTimeout(() => {
       setOpen(false)
       setIsClosing(false)
+      setFresh(new Set())
     }, POPUP_OUT_MS)
   }
 
@@ -201,7 +215,7 @@ export function NotificationBell({ userId, onNavigate }) {
     clearTimeout(closeTimer.current)
     setIsClosing(false)
     setPos(dropdownPos(btnRef.current))
-    loadNotifications()
+    loadNotifications(true)
     setOpen(true)
   }
 
@@ -240,11 +254,6 @@ export function NotificationBell({ userId, onNavigate }) {
           <div className="flex justify-between items-center gap-2 px-4 py-3 border-b border-gray-100 flex-shrink-0">
             <span className="text-sm font-medium">Уведомления</span>
             <div className="flex items-center gap-3">
-              {unread > 0 && (
-                <button onClick={markAllRead} className="text-xs text-blue-600 hover:opacity-70 transition-opacity">
-                  Прочитать все
-                </button>
-              )}
               <button
                 onClick={async () => {
                   await supabase.from("notifications").delete().eq("user_id", userId)
@@ -264,6 +273,7 @@ export function NotificationBell({ userId, onNavigate }) {
               <NotificationItem
                 key={n.id}
                 notification={n}
+                fresh={fresh.has(n.id)}
                 onDelete={(id) => setNotifications((prev) => prev.filter((x) => x.id !== id))}
                 onRead={(id) => setNotifications((prev) => prev.map((x) => x.id === id ? { ...x, read: true } : x))}
                 onNavigate={(page) => { closePanel(); onNavigate?.(page) }}
