@@ -463,16 +463,35 @@ export function sceneBBox(strokes) {
 // читаемым. Копии этой логики быть не должно: Board и превью обязаны
 // останавливаться на одном и том же месте.
 export const FRESH_STROKES = 24     // примерно последняя строка-две
-export function latestBBox(strokes, cw, ch, { minScale = 0.15 } = {}) {
+export function latestStrokes(strokes, cw, ch, { minScale = 0.15 } = {}) {
   const all = [...strokes].filter((s) => s && s.tool !== "eraser")
-  if (!all.length) return null
-  let bb = null
+  if (!all.length) return []
+  let tail = all
   for (const n of [FRESH_STROKES, 12, 6, 3, 1]) {
-    bb = sceneBBox(all.slice(-Math.min(n, all.length)))
-    const nv = viewForBBox(bb, cw, ch, { bottom: true, minScale })
+    tail = all.slice(-Math.min(n, all.length))
+    const nv = viewForBBox(sceneBBox(tail), cw, ch, { bottom: true, minScale })
     if (!nv || nv.scale >= 0.5 || n === 1) break
   }
-  return bb
+  return tail
+}
+export function latestBBox(strokes, cw, ch, opts) {
+  return sceneBBox(latestStrokes(strokes, cw, ch, opts))
+}
+
+// Кадр карточки занятия в истории. Хвост из ПИСЬМА раздвигаем до размера листа:
+// пара строк сама по себе — две волнистые линии во весь кадр, по ним занятие не
+// узнать, а вокруг них стоит то, что разбирали. Хвост-КАРТИНКА (лист задания,
+// снимок решения, вставленный кусок) себя объясняет сам, и раздвигать кадр
+// вокруг неё НЕЛЬЗЯ: снимок 360×180, растянутый до листа, занимал пятую часть
+// карточки — те самые крапинки, ради которых кадр и стали ставить на хвост
+// (жалоба 15.09.2026, боевая карточка: содержимое 84×30 точек из 480×300).
+export function previewBBox(strokes, cw, ch, opts) {
+  const tail = latestStrokes(strokes, cw, ch, opts)
+  const bb = sceneBBox(tail)
+  if (!bb) return null
+  if (!tail.some((s) => s.tool === "image")) return growBBox(bb, 1800, 1150)
+  const w = bb.maxX - bb.minX, h = bb.maxY - bb.minY
+  return growBBox(bb, w * 1.12, h * 1.12)   // только поле вокруг картинки
 }
 
 // Раздвинуть габарит вокруг его центра до заданного минимума (мировые единицы).
@@ -590,11 +609,10 @@ export async function scenePreview(scene, { width = 480, height = 300, quality =
   const canvas = document.createElement("canvas")
   // Не вся доска, а её конец: карточка со сценой целиком показывала узкую
   // колонку листов в пол-пикселя — понять по ней, что за занятие, было нельзя.
-  // Габарит последних записей ещё и расширяем до размера листа: сами по себе
-  // две строки — это пара волнистых линий во весь кадр, по которым занятие
-  // тоже не узнать, а вокруг них обычно и стоит то, что разбирали.
+  // Насколько раздвигать хвост, решает previewBBox: письму нужен лист вокруг,
+  // картинке — только поле.
   renderScene(canvas, scene, { width, height, padding: 12, images, dpr: 1,
-    focus: growBBox(latestBBox(strokes, width, height), 1800, 1150) })
+    focus: previewBBox(strokes, width, height) })
   try {
     return canvas.toDataURL("image/jpeg", quality)
   } catch {

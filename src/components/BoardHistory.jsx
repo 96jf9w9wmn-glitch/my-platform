@@ -89,24 +89,33 @@ function BoardHistory({ studentId, studentName, account = null, token = null, on
     }
   }
 
-  // Превью, снятые до 12.09.2026, вписывали в карточку ВСЮ сцену: на доске за
-  // месяц занятий это узкая колонка листов в пол-пикселя, по которой занятие не
-  // узнать. Сам снимок чинится только новым закрытием доски, а прошлые дни уже
-  // никто не закроет — поэтому пересобираем превью при открытии занятия.
-  // Право записи есть у репетитора; ученик обновлять не может (и не должен),
-  // но увидит исправленную карточку, как только занятие откроет репетитор.
+  // Превью, снятые прежним кадром, показывали в карточке крапинки: сперва ВСЮ
+  // сцену (до 12.09.2026), потом — маленькую картинку внутри кадра размером с
+  // лист (до 15.09.2026, см. previewBBox в boardPaint). Сам снимок чинится
+  // только новым закрытием доски, а прошлые дни уже никто не закроет — поэтому
+  // пересобираем превью при открытии занятия.
+  // Карточка одна на двоих, поэтому пересобирает её ЛЮБОЙ, кто открыл доску:
+  // репетитор пишет в таблицу напрямую, ученик — через RPC с session_token
+  // (прав на таблицу у него нет). Раньше ученику это было запрещено, и кривая
+  // карточка висела у него до тех пор, пока то же занятие не откроет репетитор.
   // Ошибку глотаем: это украшение списка, а не работа.
   async function refreshPreview(date, scene) {
-    if (!canDelete) return
     try {
       const [{ scenePreview }, { signBoardScene }] = await Promise.all([
         import("./boardPaint"), import("../storageUrl"),
       ])
       const preview = await scenePreview(await signBoardScene(scene))
       if (!preview) return
-      const { error } = await supabase.from("board_snapshots")
-        .update({ preview }).eq("student_id", String(studentId)).eq("lesson_date", date)
-      if (error) return
+      // Сцену обратно НЕ отправляем — только картинку (см. board_snapshot_preview.sql).
+      const { error } = account && token
+        ? await supabase.rpc("board_snapshot_preview", {
+          p_account: account, p_token: token, p_student_id: String(studentId), p_date: date, p_preview: preview,
+        })
+        : await supabase.from("board_snapshots")
+          .update({ preview }).eq("student_id", String(studentId)).eq("lesson_date", date)
+      // Миграции нет (PGRST202) — карточку всё равно показываем исправленной,
+      // просто до перезагрузки страницы.
+      if (error && error.code !== "PGRST202" && error.code !== "42883") return
       setRows((rs) => rs.map((r) => (r.lesson_date === date ? { ...r, preview } : r)))
     } catch { /* карточка останется с прежним превью */ }
   }
@@ -134,8 +143,12 @@ function BoardHistory({ studentId, studentName, account = null, token = null, on
       <h2 className="text-sm font-medium mb-3">Доски занятий</h2>
       {/* Доски едут лентой вбок: занятий за год набирается много, и сеткой они
           вытеснили бы со страницы всё остальное. Карточка фиксированной ширины,
-          скролл липнет к началу карточки. */}
-      <div className="no-scrollbar overflow-x-auto snap-x snap-mandatory -mx-4 px-4">
+          скролл липнет к началу карточки.
+          scroll-px-4 обязателен: липучка (snap-start) равняет карточку по краю
+          самой ленты, а не по её полю, и первая карточка СЪЕДАЛА отступ —
+          лента молча прокручивалась на 16 точек, и доска стояла впритык к краю
+          панели, левее собственного заголовка (жалоба 15.09.2026). */}
+      <div className="no-scrollbar overflow-x-auto snap-x snap-mandatory -mx-4 px-4 scroll-px-4">
         <div className="flex gap-3 w-max">
           {rows.map((r) => (
             // Кнопка удаления не может лежать ВНУТРИ карточки-кнопки (вложенные

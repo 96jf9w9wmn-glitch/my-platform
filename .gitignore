@@ -158,3 +158,9 @@ src/devKege.js
 # Стенд «Результатов» (число запросов при открытии страницы)
 dev-results.html
 src/devResults.jsx
+dev-home.html
+src/devHome.jsx
+dev-boards.html
+src/devBoards.jsx
+src/devBoardsPreview.js
+src/devBoardsScene.js
