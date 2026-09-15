@@ -6,7 +6,7 @@
 //   { strokes: [ {id, author, tool, color, width, points:[[x,y,w],…], angle?, src?} ], bg, bgColor }
 
 import { tintPixels } from "./sheetTint"
-import { CODE_FONT, CODE_PAD_K, CODE_RADIUS_K, CODE_BG, CODE_BORDER, CODE_INK, codeTokens } from "./boardCode"
+import { CODE_FONT, codePad, CODE_RADIUS_K, CODE_BG, CODE_BORDER, CODE_INK, codeTokens } from "./boardCode"
 
 export const GRID = 40 // шаг сетки/точек в мировых единицах
 export const INK_DARK = "#f5f5f7", INK_LIGHT = "#1c1c1e"
@@ -66,7 +66,7 @@ export function textMetrics(text, size, style) {
   // по номеру колонки, иначе разряды разъехались бы между собой.
   if (style?.code) {
     const chw = c.measureText("M").width || s * 0.6
-    const pad = s * CODE_PAD_K
+    const pad = codePad(s)
     const lh = s * TEXT_LINE
     let cols = 0
     for (const ln of lines) cols = Math.max(cols, ln.length)

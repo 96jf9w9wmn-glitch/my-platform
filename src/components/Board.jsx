@@ -14,7 +14,8 @@ import {
   isDarkColor, resolveColor, strokeBBox, sceneBBox, viewForBBox, paintStroke, scenePreview, tintSheet, pixelsReady,
   latestBBox as latestSceneBBox,
 } from "./boardPaint"
-import { looksLikeCode, detectLang, normalizeCode, readFence, CODE_FONT, CODE_SCREEN_SIZE, CODE_MIN, CODE_MAX } from "./boardCode"
+import { looksLikeCode, isCodeText, detectLang, normalizeCode, readFence, codeTokens, codePad,
+  CODE_FONT, CODE_SCREEN_SIZE, CODE_MIN, CODE_MAX, CODE_BG, CODE_BORDER, CODE_INK, CODE_RADIUS_K } from "./boardCode"
 // Выбор задания тянет за собой генераторы всех предметов и html2canvas — грузим
 // только когда репетитор открыл выбор, иначе доска стала бы тяжелее на мегабайты.
 const BoardTaskModal = lazy(() => import("./BoardTaskModal"))
@@ -1238,6 +1239,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // view лежит в ref и React о нём не знает).
   const editPos = useRef(null)
   const editBoxRef = useRef(null)     // обёртка поля (её двигаем и поворачиваем)
+  const codeLayerRef = useRef(null)   // подсветка под полем ввода (только у кода)
   const editRef = useRef(null)        // само поле ввода
   const textSeq = useRef(0)           // номер сеанса набора: по нему поле пересоздаётся
   const editBarRef = useRef(null)     // панель над полем: цвет, размер, начертание
@@ -4265,22 +4267,24 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     if (!box || !p) return
     const v = view.current
     const m = textMetrics(ta ? ta.value : p.value, p.size, p)
-    // У карточки кода текст начинается не в углу штриха, а внутри полей —
-    // поле ввода обязано встать туда же, иначе код прыгает при входе в правку.
+    // Обёртка стоит в углу САМОГО штриха: поля карточки держит поле ввода своим
+    // padding, а под ним теми же полями нарисована карточка с подсветкой.
     const pad = p.code ? (m.pad || 0) : 0
-    box.style.left = `${(p.x + pad) * v.scale + v.x}px`
-    box.style.top = `${(p.y + pad) * v.scale + v.y}px`
+    box.style.left = `${p.x * v.scale + v.x}px`
+    box.style.top = `${p.y * v.scale + v.y}px`
     box.style.transform = p.angle ? `rotate(${p.angle}rad)` : ""
     if (!ta) return
-    // Правится код обычными чернилами: карточка на время набора уходит с холста
-    // вместе со штрихом, и цветная подсветка на голой доске была бы не видна.
-    const col = resolveColor(p.code ? "ink" : p.color, isDarkColor(bgColorRef.current))
+    // У кода буквы в поле ПРОЗРАЧНЫЕ: их показывает слой подсветки под ним,
+    // а от поля нужен только курсор. Ставить цвет надо и здесь: разметка задаёт
+    // его при перерисовке, а эта функция — на каждом движении и зуме.
+    const col = resolveColor(p.color, isDarkColor(bgColorRef.current))
     ta.style.font = textFont(p.size * v.scale, p)   // сокращённая запись сбрасывает интерлиньяж…
     ta.style.lineHeight = `${p.size * v.scale * TEXT_LINE}px`  // …поэтому он ставится следом
     ta.style.width = `${(m.w - pad * 2) * v.scale + TEXT_PAD}px`
     ta.style.height = `${(m.h - pad * 2) * v.scale}px`
-    ta.style.color = col
-    ta.style.caretColor = col
+    paintCodeLayer(m, v.scale)
+    ta.style.color = p.code ? "transparent" : col
+    ta.style.caretColor = p.code ? CODE_INK.plain : col
     // Панель ставим НАД полем, а у самого верха экрана — под ним, иначе она уедет
     // за край. Поворот надписи ей компенсируем: наклонённый ряд кнопок не читается.
     const bar = editBarRef.current
@@ -4292,6 +4296,49 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     bar.style.marginTop = above ? "0" : "8px"
     bar.style.transformOrigin = above ? "0 100%" : "0 0"
     bar.style.transform = p.angle ? `rotate(${-p.angle}rad)` : ""
+  }
+
+  // Подсветка ПРИ НАБОРЕ. Поле ввода умеет один цвет на весь текст, поэтому под
+  // ним лежит слой с теми же строками, разложенными по цветам, а сам текст в
+  // поле прозрачный — видно только курсор и выделение. Метрики совпадают до
+  // пикселя (тот же шрифт, кегль, интерлиньяж и поля), иначе набираемое поехало
+  // бы относительно нарисованного под ним.
+  //
+  // Карточку рисует ЭТОТ ЖЕ слой: правимый штрих с холста убран, и без неё код
+  // на время набора оставался бы голым текстом на доске — то есть формат
+  // пропадал бы ровно тогда, когда его правят.
+  function paintCodeLayer(m, scale) {
+    const el = codeLayerRef.current, p = editPos.current, ta = editRef.current
+    if (!el) return
+    if (!p?.code) { el.style.display = "none"; return }
+    const pad = (m.pad || 0) * scale
+    el.style.display = "block"
+    el.style.font = textFont(p.size * scale, p)
+    el.style.lineHeight = `${p.size * scale * TEXT_LINE}px`
+    el.style.padding = `${pad}px`
+    el.style.width = `${m.w * scale}px`
+    el.style.height = `${m.h * scale}px`
+    el.style.borderRadius = `${Math.min(m.h / 2, p.size * CODE_RADIUS_K * 1.6) * scale}px`
+    const text = ta ? ta.value : (p.value || "")
+    // Текст из буфера — чужой, поэтому разметку собираем узлами, а не строкой:
+    // innerHTML тут означал бы выполнение того, что человек скопировал.
+    el.textContent = ""
+    const src = text.split("\n")
+    const lines = codeTokens(text, p.lang)
+    for (let i = 0; i < lines.length; i++) {
+      const line = src[i] ?? ""
+      let pos = 0
+      for (const tk of lines[i]) {
+        if (tk.c > pos) el.append(document.createTextNode(line.slice(pos, tk.c)))
+        const sp = document.createElement("span")
+        sp.style.color = CODE_INK[tk.k] || CODE_INK.plain
+        sp.textContent = tk.t
+        el.append(sp)
+        pos = tk.c + tk.t.length
+      }
+      if (pos < line.length) el.append(document.createTextNode(line.slice(pos)))
+      el.append(document.createTextNode("\n"))
+    }
   }
 
   // Надпись под точкой (мировые координаты) — по ней открывается правка
@@ -4431,6 +4478,13 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       // базе целиком, и «bold:false» у каждой подписи там лишний.
       if (ed.bold) cur.bold = 1; else delete cur.bold
       if (ed.italic) cur.italic = 1; else delete cur.italic
+      // ПОМЕТКА КОДА ПЕРЕЖИВАЕТ ПРАВКУ ВСЕГДА. Правят код именно тем же полем,
+      // что и подпись, и стоит ей потеряться — карточка молча становится голым
+      // текстом: ни подсветки, ни моноширинного набора, ни отступов, то есть
+      // формат пропадает ровно в тот момент, когда человек его правил. Поэтому
+      // признак берётся из ed (он знает, что открывали код), а не надеется на
+      // то, что в штрихе он уцелел.
+      if (ed.code) { cur.code = 1; cur.lang = ed.lang }
       cur.points = textBoxPoints(ed.x, ed.y, text, ed.size, ed)
       // Правка идёт НА МЕСТЕ (ссылка та же) — без пометки дельта её не заметит
       dirtyRef.current.add(cur.id)
@@ -4442,6 +4496,10 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       if (ed.angle) st.angle = ed.angle
       if (ed.bold) st.bold = 1
       if (ed.italic) st.italic = 1
+      // Сюда попадают и правки, у которых штрих не нашёлся (собеседник стёр его,
+      // пока набирали; вкладка пересобралась). Штрих создаётся заново под ТЕМ ЖЕ
+      // id — и обязан остаться кодом, иначе правка превращает карточку в текст.
+      if (ed.code) { st.code = 1; st.lang = ed.lang }
       strokes.current.set(id, st)
       localPending.current.add(id)
       channelRef.current?.send({ type: "broadcast", event: "draw", payload: st })
@@ -4711,6 +4769,12 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       // есть попала туда позже любой картинки, которую там нашли.
       const own = actions.current.parseClip?.(e.clipboardData?.getData("text/plain") || "")
       if (own) { e.preventDefault(); actions.current.pasteStrokes?.(own); return }
+      // КОД СИЛЬНЕЕ КАРТИНКИ. Рядом со скопированным кодом в буфере часто лежит и
+      // картинка — так кладут Word, почта, просмотрщик PDF и редакторы с цветной
+      // выдачей; картинка попала бы на доску первой, и правимый код превратился
+      // бы в снимок, который не поправить и не увеличить.
+      const txt = e.clipboardData?.getData("text/plain") || ""
+      if (txt.trim() && isCodeText(txt)) { e.preventDefault(); actions.current.pasteText?.(txt); return }
       const item = Array.from(e.clipboardData?.items || []).find((i) => i.type.startsWith("image/"))
       const file = item?.getAsFile()
       if (file) {
@@ -4721,11 +4785,9 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         actions.current.paste?.(file, wx, wy)
         return
       }
-      // Обычный текст из буфера: кусок программы ложится карточкой с подсветкой,
-      // всё остальное — надписью. До 15.09.2026 ⌘V текстом не делал НИЧЕГО: код с
-      // занятия набирали на доске руками через инструмент «Текст», то есть
-      // перепечатывали уже написанную программу.
-      const txt = e.clipboardData?.getData("text/plain") || ""
+      // Обычный текст из буфера ложится надписью. До 15.09.2026 ⌘V текстом не
+      // делал НИЧЕГО: код с занятия набирали на доске руками через инструмент
+      // «Текст», то есть перепечатывали уже написанную программу.
       if (txt.trim()) { e.preventDefault(); actions.current.pasteText?.(txt); return }
       // Ни нашей копии в буфере, ни картинки, ни текста: в системный буфер писать
       // не дали (Safari, отказ в праве) — кладём из своего.
@@ -5332,6 +5394,12 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
               </div>
             </div>
           )}
+          {/* Подсветка и карточка под полем ввода — см. paintCodeLayer. aria-hidden:
+              для чтения с экрана это дубль того, что уже лежит в самом поле. */}
+          <pre ref={codeLayerRef} aria-hidden="true"
+            style={{ position: "absolute", left: 0, top: 0, margin: 0, display: "none",
+              whiteSpace: "pre", overflow: "hidden", pointerEvents: "none", boxSizing: "border-box",
+              background: CODE_BG, border: `1px solid ${CODE_BORDER}`, color: CODE_INK.plain }} />
           <textarea
             ref={editRef}
             rows={1}
@@ -5350,15 +5418,20 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
               }
             }}
             style={{
-              display: "block", margin: 0, padding: 0, border: 0, background: "transparent",
+              display: "block", margin: 0, border: 0, background: "transparent",
+              // Код набирается ПОВЕРХ своей карточки: поля держит само поле, а
+              // буквы прозрачные — их показывает слой подсветки под ним. Виден
+              // остаётся курсор (и выделение — его рисует браузер).
+              position: "relative", boxSizing: "content-box",
+              padding: editText?.code ? codePad(editText.size || TEXT_DEFAULT) * view.current.scale : 0,
               outline: editText ? "1px dashed rgba(0,122,255,.55)" : "none", outlineOffset: 4,
               resize: "none", overflow: "hidden", whiteSpace: "pre", minWidth: 2,
               // Тот же набор, что кладёт layoutTextEditor: React переприсваивает style
               // при каждой перерисовке и затёр бы моноширинный шрифт, выставленный им.
               font: `${(editText?.size || TEXT_DEFAULT) * view.current.scale}px ${editText?.code ? CODE_FONT : TEXT_FONT}`,
               lineHeight: `${(editText?.size || TEXT_DEFAULT) * view.current.scale * TEXT_LINE}px`,
-              color: resolveColor(editText?.color || "ink", dark),
-              caretColor: resolveColor(editText?.color || "ink", dark),
+              color: editText?.code ? "transparent" : resolveColor(editText?.color || "ink", dark),
+              caretColor: editText?.code ? CODE_INK.plain : resolveColor(editText?.color || "ink", dark),
             }}
           />
         </div>
