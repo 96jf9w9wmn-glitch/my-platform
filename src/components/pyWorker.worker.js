@@ -20,6 +20,44 @@
 // потребовал бы 'unsafe-eval' в CSP.
 import { loadPyodide } from "pyodide"
 
+// Тяжёлое — wasm (3,7 МБ по проводу) и стандартную библиотеку (2,5 МБ) —
+// загрузчик качает обычным fetch из ЭТОГО потока, а запросы фонового потока в
+// Safari идут МИМО service worker'а: его cache-first их не видит. Журнал боевой
+// за 15.09.2026: Safari качал движок целиком при каждом открытии панели после
+// перезагрузки страницы (по 6,3 МБ, wasm ехал 5 с), и все эти секунды остальное
+// — разделы кабинета, сцена доски, листы — стояло в очереди за ним. Поэтому кэш
+// у движка свой: Cache Storage доступен и потоку, а версия стоит в самом адресе,
+// так что файл по нему не меняется никогда и проверять свежесть незачем.
+const PY_CACHE = "precettore-py"
+const rawFetch = self.fetch.bind(self)
+let pruned = false
+self.fetch = async (input, init) => {
+  const url = typeof input === "string" ? input : input?.url || String(input)
+  if (!url.includes("/py/") || typeof caches === "undefined") return rawFetch(input, init)
+  let cache
+  try { cache = await caches.open(PY_CACHE) } catch { return rawFetch(input, init) }
+  // Прежняя версия движка лежала бы в кэше мёртвым грузом (13 МБ): при первом
+  // обращении вычищаем всё не из текущей папки /py/<версия>/.
+  if (!pruned) {
+    pruned = true
+    const dir = url.slice(0, url.indexOf("/py/") + 4) + url.slice(url.indexOf("/py/") + 4).split("/")[0] + "/"
+    for (const req of await cache.keys().catch(() => [])) {
+      if (!req.url.startsWith(dir)) cache.delete(req).catch(() => {})
+    }
+  }
+  // Страница вместо файла — это не файл. На отсутствующий адрес и наш Caddy, и
+  // vite отвечают index.html с кодом 200 (SPA-фолбэк), и такой ответ, попав в
+  // кэш, остался бы там навсегда — версия в адресе не меняется. Проверено на
+  // стенде: в кэш легло 5 КБ html вместо wasm, и движок больше не поднимался.
+  const isPage = (r) => /text\/html/i.test(r.headers.get("content-type") || "")
+  const hit = await cache.match(url).catch(() => null)
+  if (hit && !isPage(hit)) return hit
+  if (hit) cache.delete(url).catch(() => {})
+  const res = await rawFetch(input, init)
+  if (res.ok && !isPage(res)) cache.put(url, res.clone()).catch(() => {})
+  return res
+}
+
 let pyodide = null
 let loading = null
 
@@ -61,8 +99,25 @@ function flush() {
 // Поэтому порог не по времени, а по частоте: больше FLOOD_N отправок за
 // FLOOD_MS — включается накопление, и тогда пачки уходят по часам (таймер и
 // здесь ненадёжен, он лишь добирает хвост после конца выполнения).
+// Умирая, движок печатает в stderr свой дамп стека («Stack (most recent call
+// first):» и сотни строк «File …, line N in …»). Ученику он не говорит ничего,
+// а вывод его собственной программы в нём тонет: глушим с первой такой строки
+// и до конца запуска, а причину скажем отдельным сообщением.
+let dumping = false
+const DUMP_HEAD = "Stack (most recent call first):"
+
 function write(text, err = false) {
   if (truncated || !text) return
+  // Проверяем ОБА потока, а не только stderr: умирающий движок пишет свой дамп
+  // мимо питоновского sys.stderr, и глушение «только для ошибок» его не ловило
+  // (проверено — простыня доходила до ученика).
+  if (!dumping && text.includes(DUMP_HEAD)) {
+    dumping = true
+    text = text.slice(0, text.indexOf(DUMP_HEAD))
+  } else if (dumping) {
+    return
+  }
+  if (!text) return
   if (sent + text.length > MAX_OUT) {
     text = text.slice(0, Math.max(0, MAX_OUT - sent))
     truncated = true
@@ -91,6 +146,16 @@ async function boot(base) {
   loading = (async () => {
     postMessage({ type: "stage", stage: "load" })
     const t0 = Date.now()
+    // ПРО СТЕК И РЕКУРСИЮ, чтобы не искать заново. У фонового потока стек
+    // меньше, чем у главного: одна и та же программа с рекурсией через C-код
+    // (`sum(f(...) for ...)`, обычное дело в задачах КЕГЭ) в главном потоке
+    // считается, а здесь роняет движок НАСМЕРТЬ. Замерено в самой панели:
+    // глубина 150 проходит, 250 — фатал. Параметр `stackSize` у loadPyodide
+    // при этом НИ НА ЧТО не влияет — порог с 1 МБ и с 32 МБ одинаковый
+    // (проверено), поэтому его здесь и нет. Обычная рекурсия без C-кадров
+    // держит десятки тысяч уровней и к этому отношения не имеет.
+    // Защита не в настройке, а в восстановлении: фатал ловится ниже, поток
+    // сносится (pyRunner), а ученику пишется человеческая причина.
     const py = await loadPyodide({ indexURL: base })
     // Байтами, а не «пачками строк» (batched): batched отдаёт кусок БЕЗ
     // завершающего перевода строки, и весь вывод слипался бы в одну строку, а
@@ -135,10 +200,19 @@ def __board_run(src):
     return 0
 `
 
+// Человеческий текст вместо «Maximum call stack size exceeded»: эту фразу
+// ученик увидеть может, а понять по ней нечего.
+function recursionHint(text) {
+  if (/call stack size exceeded/i.test(text)) {
+    return "программа ушла слишком глубоко в рекурсию — движок перезапущен, можно запускать снова"
+  }
+  return "движок остановился и перезапущен, попробуйте ещё раз (" + text.split("\n")[0].slice(0, 80) + ")"
+}
+
 onmessage = async (e) => {
   const msg = e.data || {}
   if (msg.type !== "run") return
-  buf = []; sent = 0; truncated = false; lastFlush = 0; windowAt = 0; hits = 0
+  buf = []; sent = 0; truncated = false; dumping = false; lastFlush = 0; windowAt = 0; hits = 0
   stdinLines = String(msg.stdin || "").replace(/\r\n?/g, "\n").split("\n")
   if (stdinLines.length && stdinLines[stdinLines.length - 1] === "") stdinLines.pop()
   stdinAt = 0
@@ -151,8 +225,14 @@ onmessage = async (e) => {
     postMessage({ type: "done", failed: rc === 1, ms: Date.now() - t0 })
   } catch (err) {
     flush()
-    // Сюда попадает сбой самого движка (не собрался, не докачался), а не
-    // ошибка в программе ученика — её уже напечатала обёртка.
-    postMessage({ type: "done", failed: true, fatal: String(err?.message || err) })
+    // Сюда попадает сбой САМОГО ДВИЖКА (не собрался, не докачался, переполнил
+    // стек), а не ошибка в программе ученика — её уже напечатала обёртка.
+    // Фатальная ошибка делает интерпретатор непригодным: дальше он отвечает
+    // отказом на что угодно, поэтому поток после неё положено снести (это
+    // делает pyRunner по признаку dead).
+    const text = String(err?.message || err)
+    const dead = /fatal error|call stack size exceeded|memory access out of bounds|unreachable/i.test(text)
+    if (dead) pyodide = null
+    postMessage({ type: "done", failed: true, dead, fatal: dead ? recursionHint(text) : text })
   }
 }

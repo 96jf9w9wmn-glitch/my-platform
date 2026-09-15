@@ -27,6 +27,10 @@ function get() {
     else if (m.type === "stage") run.onStage?.(m.stage, m.ms)
     else if (m.type === "done") {
       current = null
+      // Движок умер (переполнил стек, кончилась память) — сносим поток целиком.
+      // Продолжать в нём нельзя: он отвечает отказом на что угодно, и ученик
+      // видел бы ту же ошибку на любой следующей программе, даже верной.
+      if (m.dead && worker) { worker.terminate(); worker = null }
       run.resolve({ failed: !!m.failed, fatal: m.fatal || null, ms: m.ms || 0, truncated: !!run.truncated })
     }
   }

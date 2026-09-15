@@ -95,9 +95,11 @@ export default function PythonPanel({ dark, store = {}, closeRef, onPlace, onClo
     }
   }
 
+  // Слой подсветки едет за полем. Только по вертикали: длинные строки
+  // ПЕРЕНОСЯТСЯ, поэтому вбок ничего не уезжает (см. whitespace-pre-wrap ниже).
   function syncScroll() {
     const ta = taRef.current, el = layerRef.current
-    if (ta && el) { el.scrollTop = ta.scrollTop; el.scrollLeft = ta.scrollLeft }
+    if (ta && el) el.scrollTop = ta.scrollTop
   }
 
   // Tab и перевод строки в поле ввода. Без них питон в браузере не пишется:
@@ -176,7 +178,11 @@ export default function PythonPanel({ dark, store = {}, closeRef, onPlace, onClo
     })
     if (runSeq.current !== seq) return
     setState(res.stopped ? "stopped" : "done")
-    setNote(res.fatal ? `Не удалось запустить: ${res.fatal}`
+    // Причину сбоя самого движка пишем В ВЫВОД, а не только строчкой сбоку:
+    // туда смотрят, когда программа не сработала, а мелкая подпись у кнопки
+    // остаётся незамеченной.
+    if (res.fatal) setChunks((prev) => [...prev, { err: true, text: `\n⚠ ${res.fatal}\n` }])
+    setNote(res.fatal ? "Движок перезапущен"
       : res.truncated ? "Вывод обрезан: показано первые 200 КБ"
       : res.stopped ? "Остановлено"
       : res.failed ? "" : `Готово за ${(res.ms / 1000).toFixed(res.ms < 1000 ? 2 : 1)} с`)
@@ -244,13 +250,19 @@ export default function PythonPanel({ dark, store = {}, closeRef, onPlace, onClo
           {/* Слой подсветки и поле ввода лежат друг на друге: цвета рисует
               слой, курсор и выделение остаются у поля. */}
           <pre ref={layerRef} aria-hidden="true"
-            className="absolute inset-0 m-0 overflow-hidden whitespace-pre"
+            className="absolute inset-0 m-0 overflow-hidden whitespace-pre-wrap break-words"
             style={{ ...codeBox, color: CODE_INK.plain, width: "100%", height: "100%", borderRadius: 12 }} />
           <textarea ref={taRef} value={code} onChange={(e) => setCode(e.target.value)}
             onScroll={syncScroll} onKeyDown={onKey}
-            spellCheck="false" autoCapitalize="off" autoCorrect="off" autoComplete="off" wrap="off"
+            spellCheck="false" autoCapitalize="off" autoCorrect="off" autoComplete="off"
             placeholder="# программа на питоне"
-            className="code-input absolute inset-0 w-full h-full resize-none outline-none overflow-auto whitespace-pre"
+            // Длинные строки ПЕРЕНОСЯТСЯ, а не уезжают вбок. Панель узкая —
+            // около полусотни знаков, а строки кода бывают вдвое длиннее: при
+            // боковой прокрутке у строк без отступа пропадало начало, и код
+            // читался кусками (жалоба «текст не видно слева»). Перенос держат
+            // одинаково поле и слой подсветки — у них общий шрифт, кегль, поля
+            // и ширина, поэтому цвета остаются ровно под буквами.
+            className="code-input absolute inset-0 w-full h-full resize-none outline-none overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words"
             style={{ ...codeBox, background: "transparent", border: "1px solid transparent",
               color: "transparent", caretColor: CODE_INK.plain, borderRadius: 12 }} />
         </div>
