@@ -90,6 +90,12 @@ const LANGS = {
     kw: set(PAS_KW), builtin: set(PAS_BUILTIN), konst: set(["true", "false", "nil"]) },
   kumir: { line: ["|"], block: [], str: ['"', "'"], esc: false, sig: false,
     kw: set(KUM_KW), builtin: set(KUM_BUILTIN), konst: set(["да", "нет"]) },
+  // Вывод программы — не язык: карточка нужна ради моноширинного набора и
+  // столбцов, а подсвечивать в нём нечего. Раскрасить вывод по правилам питона
+  // значило бы соврать: слово «for» в напечатанной строке не ключевое, а «12»
+  // там не число программы, а ответ.
+  text: { line: [], block: [], str: [], esc: false, sig: false,
+    kw: set([]), builtin: set([]), konst: set([]) },
 }
 
 const WORD_START = /[A-Za-zА-Яа-яЁё_@]/
@@ -192,7 +198,13 @@ export function codeTokens(text, lang) {
   const key = `${lang} ${text}`
   const hit = cache.get(key)
   if (hit) return hit
-  const res = tokenize(String(text ?? ""), LANGS[lang] || LANGS.python)
+  const src = String(text ?? "")
+  // Вывод программы (lang «text») не разбираем вовсе: строка отдаётся одним
+  // куском обычного цвета. Отрисовка на холсте печатает ТОЛЬКО куски, поэтому
+  // пустой разбор означал бы пустую карточку, а не текст без подсветки.
+  const res = lang === "text"
+    ? src.split("\n").map((line) => (line ? [{ t: line, k: "plain", c: 0 }] : []))
+    : tokenize(src, LANGS[lang] || LANGS.python)
   if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value)
   cache.set(key, res)
   return res

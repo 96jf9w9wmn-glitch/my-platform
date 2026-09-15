@@ -19,6 +19,10 @@ import { looksLikeCode, isCodeText, detectLang, normalizeCode, readFence, codeTo
 // Выбор задания тянет за собой генераторы всех предметов и html2canvas — грузим
 // только когда репетитор открыл выбор, иначе доска стала бы тяжелее на мегабайты.
 const BoardTaskModal = lazy(() => import("./BoardTaskModal"))
+// Панель питона отдельным куском, как и банк заданий: доску открывают на каждом
+// занятии, а программы запускают не на каждом — и за панелью стоит движок
+// (настоящий CPython в wasm), которому в стартовом наборе делать нечего.
+const PythonPanel = lazy(() => import("./PythonPanel"))
 import { roomStudentId, isHomeworkRoom, HW_ROOM } from "../boardRoom"
 import { downloadBlob, taskFiles } from "../pages/taskFiles"
 import { tintSheetAsync, encodeCanvasAsync } from "./boardWorker"
@@ -206,6 +210,11 @@ const BOARD_SYNC_MS = 5000  // как часто сверяемся с базо�
 // Пока канала нет, сверка — единственный путь, которым доходит чужое: догоняем
 // чаще (board_strokes_after — это килобайты и 3 мс базы).
 const BOARD_SYNC_FAST_MS = 2000
+// «Живое» — посылки, которые имеют смысл только сию секунду: курсор, обзор,
+// набираемый ответ и дописываемые точки штриха. Без подключённого канала они не
+// нужны вовсе (см. обёртку channel.send): HTTP-фолбэк отправил бы по запросу на
+// каждое движение мыши, а доехали бы они уже никому не нужными.
+const EPHEMERAL = new Set(["pointer", "view", "qa-type", "drawp"])
 // Сервер realtime пускает от одного клиента не больше ПЯТИ presence-сообщений
 // за 30 секунд (CLIENT_PRESENCE_MAX_CALLS=5), а на шестом ЗАКРЫВАЕТ КАНАЛ —
 // и закрытый канал realtime-js не поднимает никогда. Так 10.09.2026 в 12:11
@@ -963,6 +972,10 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   const [selHasImage, setSelHasImage] = useState(false)
   const [dragActive, setDragActive] = useState(false) // перетаскивание файла над доской
   const [taskPick, setTaskPick] = useState(false)     // открыт выбор задания из банка
+  const [pyOpen, setPyOpen] = useState(false)        // открыта панель запуска питона
+  // Написанное в панели переживает её закрытие, но НЕ живёт в состоянии доски:
+  // код правят посимвольно, и каждая буква перерисовывала бы весь кабинет доски.
+  const pyStore = useRef({ code: "", stdin: "" })
   // Банк заданий — самый тяжёлый кусок приложения: генераторы всех предметов плюс
   // снимок листа, вместе под мегабайт сжатого кода. Пока он качается и компилируется,
   // нажатие на «Задание из банка» выглядит как «ничего не произошло», и ждать этого
@@ -2359,6 +2372,27 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       config: { broadcast: { self: false }, presence: { key: userId } },
     })
     channel._boardRoom = roomId
+    // СВОЯ ПОСЫЛКА ВОЗВРАЩАЕТСЯ НАМ ЖЕ, и `self: false` от этого не спасает.
+    // Пока канал не подключён (первые мгновения после входа на доску, подъём
+    // после сна вкладки, пересоздание канала), realtime-js молча отправляет
+    // broadcast НЕ сокетом, а запросом POST /realtime/v1/api/broadcast — у
+    // запроса нет сокета, по которому сервер отсекает эхо, и посылку получают
+    // ВСЕ подписчики топика, мы в том числе. Проверено живым опытом на боевой:
+    // та же посылка по сокету не возвращается, а через REST приходит обратно.
+    // Отсюда жалоба «захожу на доску после перерыва и вижу там чужой курсор с
+    // именем — вот этот другой человек»: другой человек это мы сами, курсор
+    // рисовало наше же эхо. Поэтому всё исходящее помечаем отправителем, а
+    // помеченное собой на входе отбрасываем — одним местом на все события,
+    // чтобы новое событие не завело эту беду заново.
+    const rawSend = channel.send.bind(channel)
+    channel.send = (args, opts) => {
+      if (args?.type !== "broadcast") return rawSend(args, opts)
+      if (!joinedRef.current && EPHEMERAL.has(args.event)) return Promise.resolve("ok")
+      return rawSend({ ...args, payload: { ...args.payload, by: userId } }, opts)
+    }
+    const rawOn = channel.on.bind(channel)
+    channel.on = (type, filter, cb) => rawOn(type, filter,
+      type === "broadcast" ? (msg) => { if (msg?.payload?.by !== userId) cb(msg) } : cb)
     channelRef.current = channel
 
     channel
@@ -2453,6 +2487,10 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         if (payload.bgColor != null) setBgColor(payload.bgColor)
       })
       .on("broadcast", { event: "pointer" }, ({ payload }) => {
+        // Свой курсор доска не рисует никогда: он и так под рукой. Пометка by
+        // выше отсекает эхо нового клиента, а это — тот же аккаунт со второго
+        // устройства или из вкладки со старой сборкой (у неё пометки нет).
+        if (payload.id === userId) return
         cursors.current.set(payload.id, { x: payload.x, y: payload.y, name: payload.name, t: performance.now() })
         // Само затухание считает redraw по времени; таймер нужен только чтобы
         // разбудить отрисовку, когда событий больше не приходит.
@@ -2625,35 +2663,54 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     cursorTimers.current.clear()
   }, [])
 
-  // Зум колесом / тачпадом (native listener — нужен passive:false для preventDefault)
+  // Зум колесом / тачпадом (native listener — нужен passive:false для preventDefault).
+  // Сам обработчик вынесен из эффекта: тот же жест обязан работать и НАД подвалом
+  // листа (поле ответа, кнопки) — подвал накрывает холст, и до холста колесо не
+  // доходит, см. эффект ниже.
+  // Колесо шлёт дельту в строках или страницах, тачпад — в пикселях: без
+  // приведения к пикселям один и тот же жест давал бы разный шаг в разных
+  // браузерах.
+  const wheelPx = (d, mode) => (mode === 1 ? d * 16 : mode === 2 ? d * 100 : d)
+  function navWheel(e) {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    e.preventDefault()
+    const rect = canvas.getBoundingClientRect()
+    if (e.ctrlKey || e.metaKey) {
+      // Один щелчок мыши — это сразу 100+ пикселей дельты, тачпад же
+      // отдаёт по 1–10. Без ограничения щелчок менял масштаб в 2,7 раза,
+      // и доска прыгала. Предел в 20 пикселей держит шаг мыши около 22%,
+      // а плавное сведение пальцев на тачпаде не задевает вовсе.
+      const d = clamp(wheelPx(e.deltaY, e.deltaMode), -20, 20)
+      zoomAt(e.clientX - rect.left, e.clientY - rect.top, Math.exp(-d * 0.01))
+    } else {
+      stopFollow()
+      view.current.x -= wheelPx(e.deltaX, e.deltaMode)
+      view.current.y -= wheelPx(e.deltaY, e.deltaMode)
+    }
+    scheduleDraw()
+  }
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    // Колесо шлёт дельту в строках или страницах, тачпад — в пикселях: без
-    // приведения к пикселям один и тот же жест давал бы разный шаг в разных
-    // браузерах.
-    const px = (d, mode) => (mode === 1 ? d * 16 : mode === 2 ? d * 100 : d)
-    const onWheel = (e) => {
-      e.preventDefault()
-      const rect = canvas.getBoundingClientRect()
-      if (e.ctrlKey || e.metaKey) {
-        // Один щелчок мыши — это сразу 100+ пикселей дельты, тачпад же
-        // отдаёт по 1–10. Без ограничения щелчок менял масштаб в 2,7 раза,
-        // и доска прыгала. Предел в 20 пикселей держит шаг мыши около 22%,
-        // а плавное сведение пальцев на тачпаде не задевает вовсе.
-        const d = clamp(px(e.deltaY, e.deltaMode), -20, 20)
-        zoomAt(e.clientX - rect.left, e.clientY - rect.top, Math.exp(-d * 0.01))
-      } else {
-        stopFollow()
-        view.current.x -= px(e.deltaX, e.deltaMode)
-        view.current.y -= px(e.deltaY, e.deltaMode)
-      }
-      scheduleDraw()
-    }
+    const onWheel = (e) => navWheel(e)
     canvas.addEventListener("wheel", onWheel, { passive: false })
     return () => canvas.removeEventListener("wheel", onWheel)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // ПОДВАЛ ЛИСТА — ЧАСТЬ ДОСКИ, А НЕ ПЛАШКА НАД НЕЙ. Он ловит указатель (в нём
+  // поле ответа, кнопки и файлы), поэтому колесо над ним не доезжало до холста
+  // вовсе: встал курсором на поле ответа — доска перестала двигаться и
+  // масштабироваться. Навигацию отдаём доске, ввод остаётся подвалу.
+  useEffect(() => {
+    const el = qaLayer.current
+    if (!el) return
+    const onWheel = (e) => navWheel(e)
+    el.addEventListener("wheel", onWheel, { passive: false })
+    return () => el.removeEventListener("wheel", onWheel)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readOnly])
 
   // Щипок по тачпаду. Safari (и только он) шлёт на такой жест НЕ колесо с ctrl, а
   // свои gesturestart/change/end, и, пока их никто не перехватывает, увеличивает
@@ -3033,6 +3090,37 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       if (hitStroke(s, x, y, tol)) hit = id
     }
     return hit
+  }
+
+  // Сдвиг полотна ПОВЕРХ подвала листа — та же беда, что и с колесом: подвал
+  // ловит указатель, и до холста жест не доходил. Сюда попадает только
+  // навигация (рука, пробел, правая/средняя кнопка, второй палец) — рисование
+  // по подвалу по-прежнему невозможно, а нажатие в поле ответа остаётся
+  // нажатием в поле ответа (preventDefault тут нет, фокус не теряется).
+  function qaPointerDown(e) {
+    // Второй палец пришёлся на подвал — это щипок по доске, отдаём его холсту
+    if (e.pointerType === "touch" && pointers.current.size >= 1) { onPointerDown(e); return }
+    const secondaryBtn = e.button === 1 || e.button === 2 || (e.buttons & 2) === 2
+    if (!(tool === "hand" || spaceHeld.current || secondaryBtn)) return
+    stopFollow()
+    panning.current = { x: e.clientX, y: e.clientY }
+    setPanDrag(true)
+    // Захват на ХОЛСТ: дальше сдвиг ведут его же onPointerMove/onPointerUp, то
+    // есть тем же кодом, что и обычное панорамирование. Захват мог не выйти
+    // (Safari с отменённым касанием) — на этот случай ниже свои move/up.
+    try { canvasRef.current?.setPointerCapture?.(e.pointerId) } catch { /* сдвинем без захвата */ }
+  }
+  function qaPointerMove(e) {
+    if (!panning.current) return
+    view.current.x += e.clientX - panning.current.x
+    view.current.y += e.clientY - panning.current.y
+    panning.current = { x: e.clientX, y: e.clientY }
+    scheduleDraw()
+  }
+  function qaPointerUp() {
+    if (!panning.current) return
+    panning.current = null
+    setPanDrag(false)
   }
 
   function onPointerDown(e) {
@@ -4120,6 +4208,57 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     selection.current = new Set([id]); applySelCount(1)
     scheduleDraw(); scheduleSave()
     return true
+  }
+
+  // Питон на доске. Панель открывают кнопкой в панели инструментов; если в этот
+  // момент выделена карточка кода — запускать почти наверняка хотят именно её,
+  // поэтому она и уезжает в панель.
+  function openPython() {
+    if (selection.current.size === 1) {
+      const one = strokes.current.get([...selection.current][0])
+      if (one?.tool === "text" && one.code && one.lang !== "text") pyStore.current.code = one.text
+    }
+    setPyOpen(true)
+  }
+
+  // Программа из панели ложится на доску ДВУМЯ карточками: сама программа и её
+  // вывод под ней. Вывод — такая же карточка кода, только с «языком» text:
+  // моноширинный набор и столбцы нужны (вывод часто таблица), а подсвечивать в
+  // нём нечего — «12» там не число программы, а ответ.
+  //
+  // Второй сущности для вывода нет намеренно: это обычные текстовые штрихи, а
+  // значит выделение, перенос, размер, отмена, сохранение дельтой, снимок
+  // занятия и доставка собеседнику работают уже написанным кодом доски.
+  function placeProgram({ code, out }) {
+    const text = normalizeCode(code || "")
+    const at = pasteAnchor()
+    if (!text || !at) return
+    const size = clamp(CODE_SCREEN_SIZE / view.current.scale, CODE_MIN, CODE_MAX)
+    const parts = [{ text, lang: "python" }]
+    const tail = String(out || "").replace(/\s+$/, "")
+    if (tail) parts.push({ text: tail, lang: "text" })
+    const style = { code: 1 }
+    const ms = parts.map((it) => textMetrics(it.text, size, style))
+    const gap = size * 0.9
+    const total = ms.reduce((n, m) => n + m.h, 0) + gap * (parts.length - 1)
+    const x = at[0] - Math.max(...ms.map((m) => m.w)) / 2
+    let y = at[1] - total / 2
+    const undoable = [], ids = []
+    for (let i = 0; i < parts.length; i++) {
+      const id = makeId(userId)
+      const st = { id, author: userId, tool: "text", color: "ink", text: parts[i].text, size,
+        code: 1, lang: parts[i].lang, points: textBoxPoints(x, y, parts[i].text, size, style) }
+      strokes.current.set(id, st)
+      localPending.current.add(id)
+      channelRef.current?.send({ type: "broadcast", event: "draw", payload: st })
+      undoable.push({ id, before: null, after: cloneStroke(st) })
+      ids.push(id)
+      y += ms[i].h + gap
+    }
+    pushHistory(undoable)
+    setTool("cursor")
+    selection.current = new Set(ids); applySelCount(ids.length)
+    scheduleDraw(); scheduleSave()
   }
 
   function pasteStrokes(items) {
@@ -5411,6 +5550,11 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
             ref={editRef}
             rows={1}
             wrap="off"
+            // Класс нужен ТОЛЬКО коду: в тёмной теме кабинета правило
+            // «.dark textarea» красит поле белым через !important, и белые
+            // буквы ложились поверх цветной подсветки карточки. Обычной
+            // надписи класс не ставим — её буквы как раз видимые.
+            className={editText?.code ? "code-input" : undefined}
             spellCheck={false}
             tabIndex={editText ? 0 : -1}
             aria-hidden={!editText}
@@ -5491,7 +5635,13 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
             занятие показывается ровно таким, каким его закрыли. */}
         {!readOnly && (
           <div ref={qaLayer} className="absolute inset-0 pointer-events-none"
-            style={{ transformOrigin: "0 0", willChange: "transform" }}>
+            onPointerDown={qaPointerDown} onPointerMove={qaPointerMove}
+            onPointerUp={qaPointerUp} onPointerCancel={qaPointerUp}
+            onContextMenu={(e) => e.preventDefault()}
+            style={{ transformOrigin: "0 0", willChange: "transform",
+              // Рука выбрана — курсор над подвалом тоже рука: иначе подвал
+              // выглядит местом, где доску не двигают.
+              cursor: (panDrag || panKey || tool === "hand") ? cursor : undefined }}>
             {qaBoxes.map((b) => (
               <TaskAnswerBox key={b.id} panel={b} dark={dark} panelBg={panelBg} panelBorder={panelBorder}
                 tutor={isTutor} draft={drafts[b.id]}
@@ -5672,6 +5822,16 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
           </button>
         </div>
 
+        {/* Панель питона живёт ВНУТРИ слоя доски, а не порталом в body: на этом
+            слое стоит защита от щипка (touch-action), и порталы её не наследуют
+            — увеличение двумя пальцами в панели тянуло бы весь сайт. */}
+        {pyOpen && (
+          <Suspense fallback={null}>
+            <PythonPanel dark={dark} store={pyStore.current}
+              onPlace={placeProgram} onClose={() => setPyOpen(false)} />
+          </Suspense>
+        )}
+
         {/* Панель инструментов — плавает поверх холста, чтобы вся область была доской.
             Подписей у кнопок нет намеренно: панель стала крупнее и читается значками,
             а название показывает подсказка — по наведению и по нажатию на сенсорном экране.
@@ -5813,6 +5973,15 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
             </button>
           )}
 
+          {/* Программа на питоне: пишут, запускают, кладут на доску вместе с
+              выводом. Кнопка тут, а не у карточки кода, потому что чаще всего
+              программу на занятии сперва ПИШУТ, а карточки ещё нет. */}
+          <button onPointerDown={() => flashTip("python")} onClick={openPython}
+            className={`${btnBase} ${pyOpen ? btnOn : btnIdle}`} style={pyOpen ? undefined : idleStyle}>
+            <Icon name="code" size={21} />
+            <Tip label="Программа на питоне" dark={dark} show={tapped === "python"} />
+          </button>
+
           {divider}
 
           <button onPointerDown={() => flashTip("undo")} onClick={undo}
@@ -5934,6 +6103,10 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
                         <Icon name="book" size={18} />Задание из банка
                       </button>
                     )}
+                    <button onClick={() => { closeMenu("mMore"); openPython() }}
+                      className="press-tap flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm board-hover" style={idleStyle}>
+                      <Icon name="code" size={18} />Программа на питоне
+                    </button>
                     <button onClick={() => { closeMenu("mMore"); askClear() }}
                       className="press-tap flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-red-500 hover:bg-red-500/10">
                       <Icon name="trash" size={18} />Очистить всё

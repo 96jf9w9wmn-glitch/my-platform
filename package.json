@@ -8,7 +8,9 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "stats": "node scripts/bank-stats.mjs"
+    "stats": "node scripts/bank-stats.mjs",
+    "predev": "node scripts/pyodide-assets.mjs",
+    "prebuild": "node scripts/pyodide-assets.mjs"
   },
   "dependencies": {
     "@capacitor/core": "^8.4.2",
@@ -35,6 +37,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
+    "pyodide": "^314.0.7",
     "tailwindcss": "^4.3.1",
     "vite": "^8.0.12"
   }

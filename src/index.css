@@ -1423,6 +1423,20 @@ button.w-full:not([disabled]):not(.no-press):active,
   border-color: rgba(255, 255, 255, 0.12) !important;
   color: #ffffff !important;
 }
+
+/* Поле набора КОДА (карточка кода на доске и панель питона) — исключение из
+   правила выше. Буквы в нём прозрачные: их показывает слой подсветки, лежащий
+   ровно под полем, а поле держит курсор и выделение. Тёмное правило красит
+   любое textarea белым через !important, и без этого исключения поверх цветного
+   кода ложился сплошной белый текст на светлой подложке (проверено на стенде).
+   Селектор нарочно не короче соседнего: у одиночного .code-input специфичность
+   ниже, и !important соседа побеждал бы. */
+.dark textarea.code-input:not(.input-glass),
+textarea.code-input {
+  background: transparent !important;
+  color: transparent !important;
+  border-color: transparent !important;
+}
 .dark select {
   background-color: rgba(38, 38, 40, 0.98) !important;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' stroke='%23aeaeb2' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;

@@ -64,6 +64,12 @@ export default defineConfig({
   define: {
     __BUILD__: JSON.stringify(log[0]?.h || ''),
   },
+  // Движок питона для доски (см. src/components/pyRunner.js) в разработке
+  // НЕ пре-бандлим: vite переписал бы его адреса, а он грузит своё тяжёлое
+  // хозяйство сам, по indexURL из public/py/<версия>/.
+  optimizeDeps: {
+    exclude: ['pyodide'],
+  },
   server: {
     host: true,
   },

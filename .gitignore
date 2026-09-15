@@ -174,3 +174,11 @@ src/devQaFrame.jsx
 
 dev-code.html
 src/devCode.jsx
+
+# Движок питона для доски: 13 МБ, кладётся скриптом pyodide-assets.mjs перед сборкой
+public/py/
+
+# Стенд запуска питона
+dev-py.html
+dev-pyboard.html
+src/devPyBoard.jsx

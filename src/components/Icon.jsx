@@ -94,6 +94,10 @@ const ICON_PATHS = {
   cone:            <><ellipse cx="12" cy="18" rx="8" ry="3"/><path d="M12 3 4 18"/><path d="M12 3l8 15"/></>,
   sphere:          <><circle cx="12" cy="12" r="8"/><ellipse cx="12" cy="12" rx="8" ry="3"/></>,
   pyramid:         <><path d="M12 4 21 18H3z"/><path d="M3 18l9 3 9-3"/></>,
+  // Запуск и остановка программы на доске. Залиты собственным цветом значка:
+  // контурный треугольник на маленьком размере читается хуже сплошного.
+  play:            <><path d="M8 5.5l10 6.5-10 6.5z" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></>,
+  stop:            <><rect x="6.5" y="6.5" width="11" height="11" rx="2" fill="currentColor" stroke="currentColor" strokeWidth="1.5"/></>,
 }
 
 function Icon({ name, size = 18, className = "" }) {

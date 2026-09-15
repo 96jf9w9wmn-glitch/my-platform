@@ -29,7 +29,11 @@
         # (единственное упоминание supabase.co во всём коде было в vercel.json).
         # Без wss://db.precettore.ru молча отваливается realtime, без https://
         # не работает вообще ничего — правило из CLAUDE.md.
-        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://db.precettore.ru wss://db.precettore.ru; media-src 'self' blob:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+        # 'wasm-unsafe-eval' — запуск программ учеников на доске (Pyodide,
+        # настоящий CPython в wasm, файлы в /py/<версия>/). Без него браузер
+        # отказывается компилировать wasm при заданном script-src. Разрешение
+        # узкое: оно позволяет ТОЛЬКО wasm и не открывает eval для JS.
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://db.precettore.ru wss://db.precettore.ru; media-src 'self' blob:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
 
         # Отличие 2: добавлен HSTS, которого на Vercel не было. Без
         # includeSubDomains и без preload сознательно — и то и другое отменяется
@@ -46,7 +50,7 @@
     # применяются на обратном ходе цепочки и затирают то, что выставил
     # вложенный handle. Проверено живьём — /assets/* уезжал с no-cache.
     # /crm/assets/* — ассеты панели владельца, у них тоже хэш в имени.
-    @nohash not path /assets/* /crm/assets/*
+    @nohash not path /assets/* /crm/assets/* /py/*
     header @nohash Cache-Control "no-cache"
 
     handle /api/* {
@@ -73,6 +77,14 @@
     # честно отдавать 404, а не index.html с кодом 200 — иначе поломка выглядит
     # как «приложение странно себя ведёт» вместо внятной ошибки в консоли.
     handle /assets/* {
+        header Cache-Control "public, max-age=31536000, immutable"
+        file_server
+    }
+
+    # Движок питона для доски. Имя папки содержит версию, поэтому адрес файла
+    # меняется вместе с содержимым — кэшируем навсегда, как ассеты с хэшем.
+    # Файлы кладёт в dist сборка (scripts/pyodide-assets.mjs), 13 МБ.
+    handle /py/* {
         header Cache-Control "public, max-age=31536000, immutable"
         file_server
     }
