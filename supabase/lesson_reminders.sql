@@ -122,11 +122,19 @@ begin
     s.tutor_id,
     s.student_account_id,
     s.name                                        as student_name,
-    s.subject,
+    -- С КЕМ занятие. Раньше тут стоял `students.subject`, и ученику уходило
+    -- «Информатика, Русский язык, Математика в 15:00» — это не занятие, а
+    -- список ВСЕХ его школьных предметов: в карточку он попадает из опросника
+    -- «какие предметы изучаешь» при привязке репетитора. Та же ошибка была на
+    -- главной ученика и там уже исправлена (см. lessonSubject в
+    -- StudentDashboard.jsx). У самого занятия предмета нет вовсе, поэтому
+    -- назвать его может только имя репетитора.
+    nullif(btrim(coalesce(t.name, '')), '')       as tutor_name,
     ((l->>'date') || ' ' || (l->>'time'))::timestamp
       at time zone coalesce(nullif(s.timezone, ''), 'Europe/Moscow')
                                                   as start_utc
   from students s
+  left join tutors t on t.id = s.tutor_id
   cross join lateral jsonb_array_elements(coalesce(s.lessons, '[]'::jsonb)) l
   where l->>'date' ~ '^\d{4}-\d{2}-\d{2}$'
     and l->>'time' ~ '^\d{1,2}:\d{2}$'
@@ -172,8 +180,7 @@ begin
            o.start_utc,
            coalesce(nullif(sa.timezone, ''), 'Europe/Moscow')    as tz,
            count(*)                                             as n,
-           string_agg(coalesce(nullif(o.subject, ''), 'Занятие'), ', '
-                      order by o.subject)                       as subjects
+           string_agg(distinct o.tutor_name, ', ')                as names
       from _occ o
       join student_accounts sa on sa.id = o.student_account_id
      where o.student_account_id is not null
@@ -187,7 +194,11 @@ begin
     if not found then continue; end if;
 
     v_title := 'Занятие через час';
-    v_body  := ru_dot(rec.subjects || ' в ' || ru_hhmm(rec.start_utc, rec.tz));
+    -- Имя репетитора не заполнено (у части боевых строк так) — говорим только
+    -- время: «Репетитор, в 16:00» звучало бы как подпись, а не как занятие.
+    v_body  := ru_dot(case when rec.names is null
+                           then 'Начало в ' || ru_hhmm(rec.start_utc, rec.tz)
+                           else rec.names || ', в ' || ru_hhmm(rec.start_utc, rec.tz) end);
     insert into notifications (user_id, title, body) values (rec.account_id, v_title, v_body);
     v_sent := v_sent + 1;
   end loop;
@@ -230,7 +241,10 @@ begin
            (now() at time zone coalesce(nullif(sa.timezone, ''), 'Europe/Moscow'))::date + 1 as day,
            count(*) as n,
            min(o.start_utc) as first_start,
-           string_agg(ru_hhmm(o.start_utc, coalesce(nullif(sa.timezone, ''), 'Europe/Moscow')),
+           -- С кем — по той же причине, что и «за час»: у ученика может быть
+           -- два репетитора, и «12:00, 16:00» не говорит, какое из них чьё.
+           string_agg(ru_hhmm(o.start_utc, coalesce(nullif(sa.timezone, ''), 'Europe/Moscow'))
+                      || coalesce(' — ' || o.tutor_name, ''),
                       ', ' order by o.start_utc) as times
       from _occ o
       join student_accounts sa on sa.id = o.student_account_id
@@ -250,7 +264,7 @@ begin
       v_body  := ru_dot(ru_day_month(rec.first_start, rec.tz) || ' в ' || rec.times);
     else
       v_title := 'Завтра ' || rec.n || ' ' || ru_plural(rec.n::int, 'занятие', 'занятия', 'занятий');
-      v_body  := ru_dot(ru_day_month(rec.first_start, rec.tz) || ' — в ' || rec.times);
+      v_body  := ru_dot(ru_day_month(rec.first_start, rec.tz) || ': ' || rec.times);
     end if;
     insert into notifications (user_id, title, body) values (rec.account_id, v_title, v_body);
     v_sent := v_sent + 1;
