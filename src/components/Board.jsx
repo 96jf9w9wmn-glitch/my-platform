@@ -49,6 +49,18 @@ const PREVIEW_SEND_Q = 0.6
 // Оставляем запас под лимит канала 100 КБ/с: слишком тяжёлый предпросмотр лучше
 // пропустить и дождаться адреса из хранилища, чем оборвать канал для всей доски.
 const PREVIEW_SEND_MAX = 60_000    // байт blob → около 80 КБ data: URL
+// Вставленная картинка кладётся в СВОЮ величину — столько точек, сколько её
+// видно на экране. До 15.09.2026 любая вставка ужималась до 360 точек по
+// большей стороне, и снимок экрана выходил меньше листа с заданием (тот 620) —
+// разбирать на нём было нечего. Размер считается по ОРИГИНАЛУ и делится на
+// плотность экрана: снимок с ретины приходит файлом вдвое крупнее того, что
+// сняли, и без деления лёг бы вдвое больше увиденного. Растр при этом остаётся
+// плотнее самой картинки (как у листа задания: 1860 точек растра на 620 доски),
+// поэтому при увеличении она не мылится.
+const PASTE_MAX_SIDE = 1600  // больше этого доска уже не вмещает целиком
+// Нижняя граница — ровно прежние 360: мелкий вырезанный кусок в своей величине
+// оказался бы МЕНЬШЕ, чем клался раньше, а жалоба была именно на мелкоту.
+const PASTE_MIN_SIDE = 360
 const SHEET_GAP = 140        // отступ от написанного до нового листа с заданием, мировые px
 const SPOT_PAD = 40          // зазор вокруг листа при поиске свободного места, там же
 const CULL_PAD = 80          // запас за краем экрана, в пределах которого штрих ещё рисуем
@@ -360,13 +372,14 @@ async function processImageFile(file, maxDim = 1400) {
   const ext = type === "image/png" ? "png" : type === "image/webp" ? "webp" : "jpg"
   // Адрес отдаём вместе с картинкой и НЕ отпускаем: пока разобранный <img> живёт в
   // кэше доски, браузер вправе выбросить растр и перечитать его по этому адресу.
-  if (scale === 1 && file.type) return { blob: file, type: file.type, ext, w: im.naturalWidth, h: im.naturalHeight, img: im, url }
+  const fullW = im.naturalWidth, fullH = im.naturalHeight
+  if (scale === 1 && file.type) return { blob: file, type: file.type, ext, w: fullW, h: fullH, fullW, fullH, img: im, url }
   const cw = Math.max(1, Math.round(im.naturalWidth * scale)), ch = Math.max(1, Math.round(im.naturalHeight * scale))
   const cnv = document.createElement("canvas"); cnv.width = cw; cnv.height = ch
   cnv.getContext("2d").drawImage(im, 0, 0, cw, ch)
   const blob = await new Promise((r) => cnv.toBlob(r, type, 0.85))
   URL.revokeObjectURL(url)                              // исходник больше не нужен
-  return { blob, type, ext, w: cw, h: ch, img: null, url: null }
+  return { blob, type, ext, w: cw, h: ch, fullW, fullH, img: null, url: null }
 }
 
 // Лёгкий предпросмотр картинки для собеседника — data: URL в PREVIEW_SEND_W точек.
@@ -3607,13 +3620,23 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // сохраняется и не попадает в снимок занятия; растёт только доска на экране.
   // files — прилагаемые к заданию .xlsx/.zip/.txt: они едут в хранилище рядом с
   // листом, а в штрих попадают только имя и путь (см. uploadTaskFiles).
-  async function addImageAt(file, worldX, worldY, { fitWidth = null, maxSide = 360, sheet = false, topLeft = false, taskKey = null, answer = null, files = null, onPlaced = null, place = null } = {}) {
+  // Во сколько раз растр кладётся на доску, когда ширина не задана листом.
+  // См. PASTE_MAX_SIDE: величина картинки — её собственная, в точках экрана.
+  function pasteScale(info) {
+    const dpr = Math.max(1, Math.round(window.devicePixelRatio || 1))
+    const fw = info.fullW || info.w, fh = info.fullH || info.h
+    let side = Math.max(fw, fh) / dpr
+    side = Math.min(PASTE_MAX_SIDE, Math.max(PASTE_MIN_SIDE, side))
+    return side / Math.max(info.w, info.h)
+  }
+
+  async function addImageAt(file, worldX, worldY, { fitWidth = null, sheet = false, topLeft = false, taskKey = null, answer = null, files = null, onPlaced = null, place = null } = {}) {
     if (!file || !file.type?.startsWith("image/")) return null
     let info
     try { info = await processImageFile(file, sheet ? SHEET_MAX_DIM : 1400) } catch { return null }
     const id = makeId(userId)
     const localSrc = URL.createObjectURL(info.blob)
-    const k = fitWidth ? fitWidth / info.w : Math.min(1, maxSide / Math.max(info.w, info.h))
+    const k = fitWidth ? fitWidth / info.w : pasteScale(info)
     const ww = info.w * k, hh = info.h * k
     // place выбирает место, ЗНАЯ готовый размер: свободный угол доски нельзя
     // найти, пока не известно, какой ширины и высоты будет лист.
