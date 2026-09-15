@@ -34,6 +34,9 @@ import {
   attempt, need, eq, SX, piStr,
 } from "./exactMath.js"
 
+// Таблицы параметров считаются при ПЕРВОМ обращении (см. rectSet ниже).
+const lazy = (build) => { let v; return () => (v ??= build()) }
+
 // Реэкспорт для смоук-скриптов и разведочных прогонов: им удобнее брать весь
 // аппарат из модуля задания, а не помнить, где он лежит.
 export { exactOf, exactSumOf, angleExact, ratioExact }
@@ -1787,7 +1790,7 @@ export function t14PyrRightBaseVolume() {
 // E12. Прямая призма, основание — параллелограмм: DB ⊥ BC.
 // Набор параметров (AD, DB², AA₁), при которых все длины условия читаемы, считается
 // один раз при импорте: случайный перебор по трём числам находил их слишком редко.
-const E12_SET = (() => {
+const E12_SET = lazy(() => {
   const out = []
   const ok = (x) => { const e = exactOf(x); return e && e.b === 1 && e.r <= 30 && e.a <= 60 }
   for (let ad = 3; ad <= 14; ad++) {
@@ -1800,11 +1803,11 @@ const E12_SET = (() => {
     }
   }
   return out
-})()
+})
 
 export function t14PrismParallelogramSurface() {
   return attempt(() => {
-    const { ad, db2, h } = pick(E12_SET)
+    const { ad, db2, h } = pick(E12_SET())
     const ab2 = ad * ad + db2
     const ab1 = Math.sqrt(ab2 + h * h), db1 = Math.sqrt(db2 + h * h), b1c = Math.sqrt(ad * ad + h * h)
     const faces = () => {
@@ -1841,11 +1844,26 @@ function pyrRect(ab, bc, sa) {
   return { A, B, C, D, Sp }
 }
 // Набор (AB, BC, SA), при котором SB, SD и ответ читаемы, — считается один раз.
+// Таблица считается ОДИН РАЗ и ТОЛЬКО когда её спросили. Три таких таблицы
+// строились при подключении модуля: 15×15×148 троек, на каждой по три
+// exactOf(), — 2,8 с главного потока по профилю (15.09.2026), то есть окно
+// «Задание на доску» и сборка варианта замирали на любом номере профиля ради
+// трёх типажей №14. Теперь цена платится при первом обращении к ним, и она
+// меньше: exactOf для √n запоминается по n (см. okSqrt).
+const okSqrtMemo = new Map()
+const okSqrt = (n) => {
+  let v = okSqrtMemo.get(n)
+  if (v === undefined) {
+    const e = exactOf(Math.sqrt(n))
+    v = !!(e && e.b === 1 && e.r <= 30 && e.a <= 40)
+    okSqrtMemo.set(n, v)
+  }
+  return v
+}
 function rectSet(pred) {
   const out = []
-  const ok = (x) => { const e = exactOf(x); return e && e.b === 1 && e.r <= 30 && e.a <= 40 }
   for (let ab = 2; ab <= 16; ab++) for (let bc = 2; bc <= 16; bc++) for (let sa2 = 3; sa2 <= 150; sa2++) {
-    if (!ok(Math.sqrt(sa2)) || !ok(Math.sqrt(sa2 + ab * ab)) || !ok(Math.sqrt(sa2 + bc * bc))) continue
+    if (!okSqrt(sa2) || !okSqrt(sa2 + ab * ab) || !okSqrt(sa2 + bc * bc)) continue
     const r = pred(ab, bc, Math.sqrt(sa2))
     if (r) out.push({ ab, bc, sa2, extra: r })
   }
@@ -1853,14 +1871,14 @@ function rectSet(pred) {
 }
 
 // E13. Угол между прямыми SC и BD.
-const E13_SET = rectSet((ab, bc, sa) => {
+const E13_SET = lazy(() => rectSet((ab, bc, sa) => {
   const A = v3(0, 0, 0), B = v3(ab, 0, 0), C = v3(ab, bc, 0), D = v3(0, bc, 0), Sp = v3(0, 0, sa)
   const a = angleExact(angLines(subv(C, Sp), subv(D, B)))
   return a && a.str.length <= 16 ? a.str : null
-})
+}))
 export function t14PyrRectAngleSCBD() {
   return attempt(() => {
-    const { ab, bc, sa2 } = pick(E13_SET)
+    const { ab, bc, sa2 } = pick(E13_SET())
     const sa = Math.sqrt(sa2)
     const model = () => {
       const { B, C, D, Sp } = pyrRect(ab, bc, sa)
@@ -1880,13 +1898,13 @@ export function t14PyrRectAngleSCBD() {
 }
 
 // F1. Угол между прямой SC и плоскостью ASB.
-const F1_SET = rectSet((ab, bc, sa) => {
+const F1_SET = lazy(() => rectSet((ab, bc, sa) => {
   const a = angleExact(Math.asin(bc / Math.sqrt(ab * ab + bc * bc + sa * sa)) * 180 / Math.PI)
   return a && a.str.length <= 16 ? a.str : null
-})
+}))
 export function t14PyrRectAngleSCplane() {
   return attempt(() => {
-    const { ab, bc, sa2 } = pick(F1_SET)
+    const { ab, bc, sa2 } = pick(F1_SET())
     const sa = Math.sqrt(sa2)
     const model = () => {
       const { A, B, C, Sp } = pyrRect(ab, bc, sa)
@@ -1906,13 +1924,13 @@ export function t14PyrRectAngleSCplane() {
 }
 
 // F4. Расстояние от вершины A до плоскости SBC.
-const F4_SET = rectSet((ab, bc, sa) => {
+const F4_SET = lazy(() => rectSet((ab, bc, sa) => {
   const e = exactOf(ab * sa / Math.sqrt(ab * ab + sa * sa))
   return e && e.b <= 30 && Math.abs(e.a) <= 200 && e.r <= 30 ? "d" : null
-})
+}))
 export function t14PyrRectDistToSBC() {
   return attempt(() => {
-    const { ab, bc, sa2 } = pick(F4_SET)
+    const { ab, bc, sa2 } = pick(F4_SET())
     const sa = Math.sqrt(sa2)
     const model = () => {
       const { A, B, C, Sp } = pyrRect(ab, bc, sa)
@@ -2123,7 +2141,7 @@ function prismGamma(a, h, bk, c1l) {
   return { P, pl, A, B, C, D, A1, B1, C1, D1 }
 }
 // Наборы (a, h², BK, C₁L) с целыми числами условия.
-const GAMMA_SET = (() => {
+const GAMMA_SET = lazy(() => {
   const out = []
   for (let a = 3; a <= 14; a++) for (let bk = 1; bk < a; bk++) for (let l = 1; l < a; l++) {
     const h2 = a * (a - bk - l)
@@ -2133,12 +2151,12 @@ const GAMMA_SET = (() => {
     out.push({ a, h2, bk, l })
   }
   return out
-})()
+})
 
 // F6. Расстояние от вершины B до плоскости γ.
 export function t14PrismGammaDistB() {
   return attempt(() => {
-    const { a, h2, bk, l } = pick(GAMMA_SET)
+    const { a, h2, bk, l } = pick(GAMMA_SET())
     const h = Math.sqrt(h2)
     const model = () => { const { pl, B } = prismGamma(a, h, bk, l); return distPointPlane(pl, B) }
     const num = model()
@@ -2157,7 +2175,7 @@ export function t14PrismGammaDistB() {
 // F8. Объём пирамиды с вершиной A₁ и основанием — сечением призмы плоскостью γ.
 export function t14PrismGammaVolumeA1() {
   return attempt(() => {
-    const { a, h2, bk, l } = pick(GAMMA_SET)
+    const { a, h2, bk, l } = pick(GAMMA_SET())
     const h = Math.sqrt(h2)
     const ck = a - bk
     if (ck < 1) return null
@@ -2288,7 +2306,7 @@ export function t14Pyr3ParallelPlaneDist() {
 
 // G11. Правильная четырёхугольная пирамида: MNK ∥ SBC; расстояние от M до SBC.
 // Наборы (AB, высота, боковое ребро, доля) для G11 — считаются один раз при импорте.
-const PYR4_SET = (() => {
+const PYR4_SET = lazy(() => {
   const out = []
   for (let a = 2; a <= 40; a += 2) for (let hh = 2; hh <= 30; hh++) {
     const as2 = hh * hh + a * a / 2
@@ -2300,11 +2318,11 @@ const PYR4_SET = (() => {
     }
   }
   return out
-})()
+})
 
 export function t14Pyr4ParallelPlaneDist() {
   return attempt(() => {
-    const { a, hh, asL, tp, tq } = pick(PYR4_SET)
+    const { a, hh, asL, tp, tq } = pick(PYR4_SET())
     const t = tp / tq
     const model = () => {
       const A = v3(0, 0, 0), B = v3(a, 0, 0), C = v3(a, a, 0), D = v3(0, a, 0)

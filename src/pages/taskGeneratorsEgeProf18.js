@@ -605,7 +605,13 @@ const TWO_SOL = "имеет ровно два различных решения.
 // Числитель даёт x = ±a/k (различны при a ≠ 0), знаменатель — полюс x = (q+ra)/p.
 // ОТ ОТВЕТА: ответ = ℝ без трёх точек — 0 и двух значений a, при которых полюс совпадает
 // с корнем: a(p−kr) = kq и −a(p+kr) = kq. Коэффициенты берём так, чтобы обе точки были целыми.
-const T1 = []
+// Таблицы параметров считаются при ПЕРВОМ обращении, а не при подключении
+// модуля: их сборка — это подсчёт корней методом Штурма на сотнях наборов, и
+// по профилю (15.09.2026) она держала главный поток ~1,2 с у любого, кто
+// открыл банк профиля, — ради типажей, которые ещё не выбирали.
+const lazy = (build) => { let v; return () => (v ??= build()) }
+const lazy1_ = lazy(() => {
+  const T1 = []
 for (const k of [2, 3, 4, 5]) for (const p of [1, 2, 3, 4, 5]) for (const r of [1, 2, 3, 4]) for (const q of [3, 4, 6, 8, 9, 12, 15, 18, 20, 24]) {
   if (p === k * r) continue
   const A1 = R(k * q, p - k * r), A2 = R(-k * q, p + k * r)
@@ -614,8 +620,11 @@ for (const k of [2, 3, 4, 5]) for (const p of [1, 2, 3, 4, 5]) for (const r of [
   if ((A1.n < 0n ? -A1.n : A1.n) > 15n || (A2.n < 0n ? -A2.n : A2.n) > 15n) continue
   T1.push({ k, p, q, r, A1, A2 })
 }
+  return { T1 }
+})
+const T1 = () => lazy1_().T1
 export function t18RatQuadLin() {
-  const { k, p, q, r } = pick(T1)
+  const { k, p, q, r } = pick(T1())
   const A1 = R(k * q, p - k * r), A2 = R(-k * q, p + k * r)
   const set = realsExcept([R0, A1, A2])
   const num = `${k * k}x${SUP[2]} ${MINUS} a${SUP[2]}`
@@ -657,7 +666,8 @@ export function t18RatQuadLin() {
 // #2. (k²x² − a²)/(x² + 2mx + m² − a²) = 0.
 // Знаменатель = (x+m)² − a², полюсы x = −m ± a. Ответ = ℝ без 0 и четырёх точек
 // ±mk/(k−1), ±mk/(k+1) — берём (k, m) так, чтобы все четыре были целыми.
-const T2 = []
+const lazy2_ = lazy(() => {
+  const T2 = []
 for (const k of [2, 3, 4, 5]) for (const m of [2, 3, 4, 5, 6, 8, 9, 10, 12, 15]) {
   const B1 = R(m * k, k - 1), B2 = R(m * k, k + 1)
   if (B1.d !== 1n || B2.d !== 1n) continue
@@ -665,8 +675,11 @@ for (const k of [2, 3, 4, 5]) for (const m of [2, 3, 4, 5, 6, 8, 9, 10, 12, 15])
   if (B1.n > 20n) continue
   T2.push({ k, m })
 }
+  return { T2 }
+})
+const T2 = () => lazy2_().T2
 export function t18RatQuadSqDiff() {
-  const { k, m } = pick(T2)
+  const { k, m } = pick(T2())
   const B1 = R(m * k, k - 1), B2 = R(m * k, k + 1)
   const set = realsExcept([R0, B1, Rneg(B1), B2, Rneg(B2)])
   const num = `${k * k}x${SUP[2]} ${MINUS} a${SUP[2]}`
@@ -703,7 +716,8 @@ export function t18RatQuadSqDiff() {
 // #3. (x² − 2mx + a)/(kx² − (k+1)ax + a²) = 0.
 // Знаменатель = (kx − a)(x − a). Числитель имеет два различных корня ровно при a < m².
 // Полюсы съедают корень при a ∈ {0, 2m−1, 2mk−k²} (подстановка x = a и x = a/k).
-const T3 = []
+const lazy3_ = lazy(() => {
+  const T3 = []
 for (const m of [2, 3, 4, 5, 6]) for (const k of [2, 3, 4, 5, 6, 7]) {
   const e1 = 2 * m - 1, e2 = 2 * m * k - k * k
   if (e1 >= m * m || e2 >= m * m) continue
@@ -711,8 +725,11 @@ for (const m of [2, 3, 4, 5, 6]) for (const k of [2, 3, 4, 5, 6, 7]) {
   if (Math.abs(e2) > 24) continue
   T3.push({ m, k })
 }
+  return { T3 }
+})
+const T3 = () => lazy3_().T3
 export function t18RatNumConst() {
-  const { m, k } = pick(T3)
+  const { m, k } = pick(T3())
   const e1 = R(2 * m - 1), e2 = R(2 * m * k - k * k)
   const set = gapExcept("-inf", R(m * m), [R0, e1, e2])
   const num = `x${SUP[2]} ${MINUS} ${2 * m}x + a`
@@ -749,7 +766,8 @@ export function t18RatNumConst() {
 // #4. (ca − x² + bx)/(x − a²) = 0, где b = −(uv+uw+vw), c = uvw для целых u+v+w = 0.
 // Числитель: x² − bx − ca = 0, два различных корня ⟺ b² + 4ca > 0.
 // Полюс x = a² съедает корень при a⁴ − ba² − ca = 0 ⟺ a(a−u)(a−v)(a−w) = 0.
-const T4 = []
+const lazy4_ = lazy(() => {
+  const T4 = []
 for (let u = -6; u <= -1; u++) for (let v = u; v <= -1; v++) for (const k of [1, 2, 3]) {
   const w = -(u + v)                                  // u + v + w = 0 — тогда в кубике нет a²
   const b = k * (w * w - u * v), c = k * k * u * v * w
@@ -760,8 +778,11 @@ for (let u = -6; u <= -1; u++) for (let v = u; v <= -1; v++) for (const k of [1,
   if (!roots.every((t) => Rcmp(R(t), lo) > 0)) continue      // все выкалывания внутри области
   T4.push({ b, c, k, u, v, w })
 }
+  return { T4 }
+})
+const T4 = () => lazy4_().T4
 export function t18RatCubicExcl() {
-  const { b, c, k, u, v, w } = pick(T4)
+  const { b, c, k, u, v, w } = pick(T4())
   const lo = R(-b * b, 4 * c)
   const pts = [R0, R(u), R(v), R(w)]
   const set = gapExcept(lo, "+inf", pts)
@@ -808,7 +829,8 @@ export function t18RatCubicExcl() {
 // иррациональных положительных корней (иначе появилось бы невыписанное выкалывание) —
 // последнее проверяется Штурмом, а не «на глаз».
 const isSq = (n) => { const r = Math.round(Math.sqrt(n)); return r * r === n ? r : null }
-const T8 = []
+const lazy5_ = lazy(() => {
+  const T8 = []
 for (let s1 = 1; s1 <= 9; s1++) for (let s2 = 1; s2 <= 9; s2++) for (const al of [1, 2, 3, 4, 5, 6, 8, 9]) {
   if (s1 === s2) continue
   const U = -(s1 * s1 - s1 * s2 + s2 * s2)
@@ -836,8 +858,11 @@ for (let s1 = 1; s1 <= 9; s1++) for (let s2 = 1; s2 <= 9; s2++) for (const al of
   if (!excl.length || excl.some((e) => e > 200)) continue
   T8.push({ t, m, al, excl, lo, hi })
 }
+  return { T8 }
+})
+const T8 = () => lazy5_().T8
 export function t18RatDenSqrtA() {
-  const { t, m, al, excl, lo, hi } = pick(T8)
+  const { t, m, al, excl, lo, hi } = pick(T8())
   const pts = [R0, ...excl.map((e) => R(e))]
   const set = gapExcept(lo, hi, pts)
   const num = `${al === 1 ? "" : al}x${SUP[2]} ${MINUS} ${2 * m}x + a${SUP[2]} ${MINUS} ${2 * t}a`
@@ -1140,15 +1165,19 @@ export function t18RatAbsNumSq() {
 // ОДЗ — открытый промежуток (p; q). Числитель = (x − a²)(x + a).
 // ОТ ОТВЕТА: оба корня обязаны лежать в ОДЗ и не совпадать, отсюда
 // a² ∈ (p; q) ⟺ |a| < √q (p < 0) и −a ∈ (p; q) ⟺ −q < a < −p; совпадают при a = 0 и a = −1.
-const T11 = []
+const lazy6_ = lazy(() => {
+  const T11 = []
 for (const q of [4, 9, 16]) for (const p of [-1, -2, -3, -4, -5]) {
   const sq = Math.sqrt(q)
   const lo = -sq, hi = Math.min(sq, -p)
   if (!(lo < -1 && hi > 0)) continue                  // чтобы выкалывались обе точки 0 и −1
   T11.push({ p, q })
 }
+  return { T11 }
+})
+const T11 = () => lazy6_().T11
 export function t18RatSqrtDenOdz() {
-  const { p, q } = pick(T11)
+  const { p, q } = pick(T11())
   const sq = Math.round(Math.sqrt(q))
   const lo = R(-sq), hi = R(Math.min(sq, -p))
   const set = gapExcept(lo, hi, [R0, R(-1)])
@@ -2185,7 +2214,8 @@ function build30({ k, c, m, L, R: Rr, v }) {
 }
 // (c/k − m)² + 1 должно быть точным квадратом рационального: берём c/k = m − u из пар (u, v)
 const UV30 = [[R(3, 4), R(5, 4)], [R(4, 3), R(5, 3)], [R(5, 12), R(13, 12)], [R(12, 5), R(13, 5)], [R(8, 15), R(17, 15)]]
-const T30 = []
+const lazy7_ = lazy(() => {
+  const T30 = []
 for (const [u, v] of UV30) for (const m of [1, 2, 3]) for (const [L, Rr] of [[0, 1], [0, 2], [0, 3], [0, 4]]) {
   const ck = Rsub(R(m), u)                                  // c/k
   if (ck.n <= 0n || ck.d > 12n) continue
@@ -2194,8 +2224,11 @@ for (const [u, v] of UV30) for (const m of [1, 2, 3]) for (const [L, Rr] of [[0,
   if (!setBounds(res.set).length || !niceSet(res.set, 12n, 40n, 1, 5)) continue
   T30.push(par)
 }
+  return { T30 }
+})
+const T30 = () => lazy7_().T30
 export function t18SqrtTimesLog() {
-  const par = pick(T30), { k, c, m, L, R: Rr } = par
+  const par = pick(T30()), { k, c, m, L, R: Rr } = par
   const { set, solve } = build30(par)
   return item({
     text: `${HEAD_A}\n\n⟦r:${k === 1 ? "" : k}x ${MINUS} ${c}⟧·ln(x${SUP[2]} ${MINUS} ${2 * m === 1 ? "" : 2 * m}x + ${m * m + 1} ${MINUS} a${SUP[2]}) = 0\n\n${ONE_ROOT_SEG_T(L, Rr)}`,
@@ -2517,15 +2550,19 @@ function item33(par, kind) {
     },
   })
 }
-const T33 = []
+const lazy8_ = lazy(() => {
+  const T33 = []
 for (let p = 1; p <= 6; p++) for (let q = 1; q <= 6; q++) {
   if (p === q) continue                                  // иначе точка (p−q) сливается с началом
   const A = (p + q) * (p + q), B = (p - q) * (p - q)
   if (A === B || A > 60 || B === 0) continue
   T33.push({ p, q })
 }
-export function t18SysLogCircle() { return item33({ ...pick(T33), strict: true }, "log") }
-export function t18SysSqrtCircle() { return item33({ ...pick(T33), strict: false }, "sqrt") }
+  return { T33 }
+})
+const T33 = () => lazy8_().T33
+export function t18SysLogCircle() { return item33({ ...pick(T33()), strict: true }, "log") }
+export function t18SysSqrtCircle() { return item33({ ...pick(T33()), strict: false }, "sqrt") }
 
 // #34 / #37. {log_b(c² − y²) = log_b(c² − a²x²) | корень; x² + y² = 2px + 2qy}.
 // Первая строка ⟺ y = ±ax при |y| < c (логарифм) или |y| ≤ c (корень).
@@ -2557,15 +2594,19 @@ function build34({ p, q, c, strict }) {
   }
   return { set: assembleSet((a) => solve(a) === 2, crit), solve }
 }
-const T34 = []
+const lazy9_ = lazy(() => {
+  const T34 = []
 for (let p = 1; p <= 5; p++) for (let q = 1; q <= 5; q++) for (const c of [2, 3, 4, 5, 6]) for (const strict of [true, false]) {
   const res = build34({ p, q, c, strict })
   if (!res || !niceSet(res.set, 12n, 40n, 1, 5)) continue
   if (!gridOk(res.set, res.solve, 2)) continue
   T34.push({ p, q, c, strict })
 }
+  return { T34 }
+})
+const T34 = () => lazy9_().T34
 function item34(strict) {
-  const cand = T34.filter((t) => t.strict === strict)
+  const cand = T34().filter((t) => t.strict === strict)
   const par = pick(cand), { p, q, c } = par
   const { set, solve } = build34(par)
   const b = strict ? pick([2, 3, 5]) : null
@@ -3524,7 +3565,8 @@ function build55({ k, v }) {
   const crit = [R(1 - v), R(k - v * v, v), R(1 - k)]
   return { set: assembleSet((a) => solve(a) === 2, crit), solve }
 }
-const T55 = []
+const lazy10_ = lazy(() => {
+  const T55 = []
 for (const k of [3, 4, 5, 6, 8, 9]) for (const v of [-1, -2, -3, -4]) {
   const par = { k, v }
   const res = build55(par)
@@ -3532,8 +3574,11 @@ for (const k of [3, 4, 5, 6, 8, 9]) for (const v of [-1, -2, -3, -4]) {
   if (!gridOk(res.set, res.solve, 2) || !gridOk60(res.set, (a) => res.solve(a) === 2)) continue
   T55.push(par)
 }
+  return { T55 }
+})
+const T55 = () => lazy10_().T55
 export function t18SysHyperLine() {
-  const par = pick(T55), { k, v } = par
+  const par = pick(T55()), { k, v } = par
   const { set, solve } = build55(par)
   const num = `xy${SUP[2]} ${MINUS} xy ${MINUS} ${k}y + ${k}`
   return item({
@@ -3785,44 +3830,44 @@ const mkPencil = (rows, n) => rows
       && gridOk(res.set, res.solve, n) && gridOk60(res.set, (a) => res.solve(a) === n)
   })
 // #60: ОДЗ x > v (корень в знаменателе), ровно два решения
-const T60 = mkPencil([[3, 3, -3, null, null, null, null, null], [2, 4, -2, null, null, null, null, null],
+const T60 = lazy(() => mkPencil([[3, 3, -3, null, null, null, null, null], [2, 4, -2, null, null, null, null, null],
   [3, 6, -3, null, null, null, null, null], [1, 4, -4, null, null, null, null, null],
-  [2, 6, -3, null, null, null, null, null], [4, 4, -2, null, null, null, null, null]], 2)
+  [2, 6, -3, null, null, null, null, null], [4, 4, -2, null, null, null, null, null]], 2))
 export function t18SysPencilHyper() {
-  const par = pick(T60), { h, k, xLo } = par
+  const par = pick(T60()), { h, k, xLo } = par
   return itemPencil(par, {
     num: `${fT(`xy${SUP[2]}${term(-h, "xy")}${term(-k, "y")}${term(h * k, "")}`, `√{x${term(-xLo, "")}}`)} = 0`,
     extra: "", odz: `x > ${nS(xLo)}`,
   })
 }
 // #61: множитель √(xHi − x) добавляет вертикаль x = xHi; ровно три решения
-const T61 = mkPencil([[1, 3, null, 6, null, null, 6, null], [1, 4, null, 8, null, null, 8, null],
+const T61 = lazy(() => mkPencil([[1, 3, null, 6, null, null, 6, null], [1, 4, null, 8, null, null, 8, null],
   [1, 6, null, 6, null, null, 6, null], [2, 3, null, 6, null, null, 6, null],
-  [1, 3, null, 4, null, null, 4, null], [1, 8, null, 8, null, null, 8, null]], 3)
+  [1, 3, null, 4, null, null, 4, null], [1, 8, null, 8, null, null, 8, null]], 3))
 export function t18SysPencilVert() {
-  const par = pick(T61), { h, k, xHi } = par
+  const par = pick(T61()), { h, k, xHi } = par
   return itemPencil(par, {
     num: `(xy${SUP[2]}${term(-h, "xy")}${term(-k, "y")}${term(h * k, "")})√{${xHi} ${MINUS} x} = 0`,
     extra: `, а множитель √(${xHi} ${MINUS} x) добавляет вертикаль x = ${xHi}`, odz: `x ≤ ${xHi}`,
   })
 }
 // #62: ОДЗ y < yHi (корень в знаменателе), ровно три решения
-const T62 = mkPencil([[1, 5, null, null, null, 5, null, null], [1, 6, null, null, null, 6, null, null],
+const T62 = lazy(() => mkPencil([[1, 5, null, null, null, 5, null, null], [1, 6, null, null, null, 6, null, null],
   [1, 4, null, null, null, 4, null, null], [2, 6, null, null, null, 6, null, null],
-  [1, 8, null, null, null, 8, null, null], [1, 5, null, null, null, 6, null, null]], 3)
+  [1, 8, null, null, null, 8, null, null], [1, 5, null, null, null, 6, null, null]], 3))
 export function t18SysPencilYBound() {
-  const par = pick(T62), { h, k, yHi } = par
+  const par = pick(T62()), { h, k, yHi } = par
   return itemPencil(par, {
     num: `${fT(`xy${SUP[2]}${term(-h, "xy")}${term(-k, "y")}${term(h * k, "")}`, `√{${yHi} ${MINUS} y}`)} = 0`,
     extra: "", odz: `y < ${yHi}`,
   })
 }
 // #63: множитель √(y − yLo) добавляет горизонталь y = yLo; ровно три решения
-const T63 = mkPencil([[1, 6, null, null, -2, null, null, -2], [1, 4, null, null, -2, null, null, -2],
+const T63 = lazy(() => mkPencil([[1, 6, null, null, -2, null, null, -2], [1, 4, null, null, -2, null, null, -2],
   [1, 8, null, null, -2, null, null, -2], [2, 6, null, null, -3, null, null, -3],
-  [1, 6, null, null, -3, null, null, -3], [1, 12, null, null, -3, null, null, -3]], 3)
+  [1, 6, null, null, -3, null, null, -3], [1, 12, null, null, -3, null, null, -3]], 3))
 export function t18SysPencilHoriz() {
-  const par = pick(T63), { h, k, yLo } = par
+  const par = pick(T63()), { h, k, yLo } = par
   return itemPencil(par, {
     num: `(xy${SUP[2]}${term(-h, "xy")}${term(-k, "y")}${term(h * k, "")})√{y${term(-yLo, "")}} = 0`,
     extra: `, а множитель √${shifted("y", term(-yLo, ""))} добавляет горизонталь y = ${nS(yLo)}`, odz: `y ≥ ${nS(yLo)}`,
@@ -3856,7 +3901,8 @@ function build65({ A, p, q, d }) {
   const crit = tCrit.map((t) => Rdiv(Rsub(R1, t), R(2)))     // a = (1 − t)/2
   return { set: assembleSet((a) => solve(a) === 2, crit), solve }
 }
-const T65 = []
+const lazy11_ = lazy(() => {
+  const T65 = []
 for (const A of [9, 16, 25]) for (const d of [1, 4, 9, 16]) for (const p of [2, 3, 4]) for (const q of [6, 8, 9, 12, 16]) {
   if (d >= A || isSq(A - d) === null) continue
   const par = { A, p, q, d }
@@ -3865,8 +3911,11 @@ for (const A of [9, 16, 25]) for (const d of [1, 4, 9, 16]) for (const p of [2, 
   if (!gridOk(res.set, res.solve, 2) || !gridOk60(res.set, (a) => res.solve(a) === 2)) continue
   T65.push(par)
 }
+  return { T65 }
+})
+const T65 = () => lazy11_().T65
 export function t18SysSemiParab() {
-  const par = pick(T65), { A, p, q, d } = par
+  const par = pick(T65()), { A, p, q, d } = par
   const { set, solve } = build65(par)
   const num = `(√{${A} ${MINUS} x${SUP[2]}} ${MINUS} y)(x${SUP[2]} + ${p === 1 ? "" : p}y ${MINUS} ${q})`
   return item({
@@ -3924,10 +3973,14 @@ function build162({ p, q, m, r1 }) {
   const P = [R(-K), R(S), R1]
   return { set: SET([], uniqSorted([R(r1), R(r2)])), solve: (a) => (Rzero(pEval(P, a)) ? 1 : 0), S, K, r2 }
 }
-const T162 = []
+const lazy12_ = lazy(() => {
+  const T162 = []
 for (const p of [1, 2, 3]) for (const q of [1, 2, 3]) for (const m of [1, 2, 3]) for (const r1 of [1, 2, 3]) T162.push({ p, q, m, r1 })
+  return { T162 }
+})
+const T162 = () => lazy12_().T162
 export function t18SysPointLine() {
-  const par = pick(T162), { p, q, m, r1 } = par
+  const par = pick(T162()), { p, q, m, r1 } = par
   const { set, solve, S, K, r2 } = build162(par)
   return item({
     text: `${HEAD_SYS}\n⟦cases:x${SUP[2]} + y${SUP[2]} + ${p * p + q * q} = 2(${p === 1 ? "" : p}x + ${q === 1 ? "" : q}y)`
@@ -4054,10 +4107,14 @@ function build170({ p, k }) {
   const B = R(k * k + 4 * p * p, 4 * k)
   return { set: assembleSet((a) => solve(a) === 4, [B, Rneg(B), R(p), R(-p)]), solve, B }
 }
-const T170 = []
+const lazy13_ = lazy(() => {
+  const T170 = []
 for (const p of [1, 2, 3, 4]) for (const k of [1, 2, 3]) if (k !== 2 * p) T170.push({ p, k })
+  return { T170 }
+})
+const T170 = () => lazy13_().T170
 export function t18SysParabolaCross() {
-  const par = pick(T170), { p, k } = par
+  const par = pick(T170()), { p, k } = par
   const { set, solve, B } = build170(par)
   const kx = k === 1 ? "x" : `${k}x`
   return item({
@@ -4133,10 +4190,14 @@ function build174({ p, q, t, sg }) {
   const solve = (a) => circleHits(Rmul(R(t * t * rho), Rmul(a, a)), R(rho), R(rho))
   return { set: assembleSet((a) => solve(a) === 2, [R0, R(2, t), R(-2, t)]), solve, rho, A: sg * t * q, B: sg * t * p }
 }
-const T174 = []
+const lazy14_ = lazy(() => {
+  const T174 = []
 for (const [p, q] of [[1, 1], [2, 1], [1, 2], [3, 1], [1, 3], [3, 2], [2, 3]]) for (const t of [1, 2, 3]) for (const sg of [1, -1]) T174.push({ p, q, t, sg })
+  return { T174 }
+})
+const T174 = () => lazy14_().T174
 export function t18SysTwoCircles() {
-  const par = pick(T174), { p, q, t } = par
+  const par = pick(T174()), { p, q, t } = par
   const { set, solve, rho, A, B } = build174(par)
   const c1 = `${p}${term(A, "a")}`, c2 = `${q}${term(-B, "a")}`
   return item({
@@ -4179,12 +4240,16 @@ function build175({ k, r, c }) {                         // m — только �
 }
 // Все наборы с c ≠ r дают ровно две точки касания с круглыми координатами
 // ((r + c)/(k − 1) и (c − r)/(k − 1) либо (r − c)/(k + 1)) — отбирать нечего.
-const T175 = []
+const lazy15_ = lazy(() => {
+  const T175 = []
 for (const k of [2, 3]) for (const m of [1, 2, 3]) for (const r of [1, 2, 3, 4]) for (const c of [1, 2, 3, 4, 5]) {
   if (c !== r) T175.push({ k, m, r, c })
 }
+  return { T175 }
+})
+const T175 = () => lazy15_().T175
 export function t18SysCirclesTangent() {
-  const par = pick(T175), { k, m, r, c } = par
+  const par = pick(T175()), { k, m, r, c } = par
   const { set, solve } = build175(par)
   const ka = k === 1 ? "a" : `${k}a`
   return item({
@@ -4226,12 +4291,16 @@ function build176({ a1, b1, a2, b2, u, v }) {
 }
 // Пары (α₁ − α₂; β₁ − β₂) — пифагоровы (расстояние между центрами k|a| рационально),
 // поэтому все наборы проходят: границы ответа — (u + v)/(2 ∓ k) и ±(u − v)/k.
-const T176 = []
+const lazy16_ = lazy(() => {
+  const T176 = []
 for (const c of [[1, -1, -3, -4], [2, 1, -2, -2], [1, 1, -3, -2], [1, -1, 4, 3], [1, 2, -2, -2], [3, 1, -1, -2], [1, 1, -2, 1], [2, -1, -1, 3]]) {
   for (const [u, v] of [[3, 1], [4, 2], [2, 5], [5, 1], [1, 4], [6, 2], [2, 7]]) {
     T176.push({ a1: c[0], b1: c[1], a2: c[2], b2: c[3], u, v })
   }
 }
+  return { T176 }
+})
+const T176 = () => lazy16_().T176
 // «x² + y² − 2(αx + βy)a»: при α < 0 выносим знак наружу, чтобы запись выглядела как в ФИПИ
 function centerTxt176(al, be) {
   const flip = al < 0
@@ -4241,7 +4310,7 @@ function centerTxt176(al, be) {
   return `x${SUP[2]} + y${SUP[2]} ${flip ? "+" : MINUS} ${2 * t === 1 ? "" : 2 * t}(${A === 1 ? "" : A}x${term(B, "y")})a`
 }
 export function t18SysCirclesNoSol() {
-  const par = pick(T176), { a1, b1, a2, b2, u, v } = par
+  const par = pick(T176()), { a1, b1, a2, b2, u, v } = par
   const { set, solve, kk } = build176(par)
   const rhs = (w, al, be) => `${w * w}${term(-2 * w, "a")}${term(1 - al * al - be * be, `a${SUP[2]}`)}`
   const ca = (c) => `${c < 0 ? MINUS : ""}${Math.abs(c) === 1 ? "" : Math.abs(c)}a`   // «−a», «3a»
@@ -4447,7 +4516,8 @@ function build173({ A, B, al, be, ga, de, e, f, m, t }) {
   }
   return { set: assembleSet((a) => solve(a) >= 2, [R(t), R(t + m)]), solve }
 }
-const T173 = []
+const lazy17_ = lazy(() => {
+  const T173 = []
 for (const [A, B] of [[3, -4], [3, 4], [4, 3], [4, -3]]) for (const al of [1, 2, 3]) for (const ga of [1, 2, 3]) {
   for (const e of [1, 2]) {
     if (Math.abs(A * al + B * ga + e) !== 5) continue        // K² = A² + B² = 25
@@ -4459,8 +4529,11 @@ for (const [A, B] of [[3, -4], [3, 4], [4, 3], [4, -3]]) for (const al of [1, 2,
     }
   }
 }
+  return { T173 }
+})
+const T173 = () => lazy17_().T173
 export function t18SysCircleLineMore() {
-  const par = pick(T173), { A, B, al, be, ga, de, e, f, m, t } = par
+  const par = pick(T173()), { A, B, al, be, ga, de, e, f, m, t } = par
   const { set, solve } = build173(par)
   const cir = `(x + ${al === 1 ? "" : al}a${term(be, "")})${SUP[2]} + (y + ${ga === 1 ? "" : ga}a${term(de, "")})${SUP[2]} = ${m === 1 ? "" : m}a${term(-m * t, "")}`
   const line = `${A === 1 ? "" : A}x${term(B, "y")} = ${e === 1 ? "" : e}a${term(f, "")}`
@@ -4505,10 +4578,14 @@ function build181({ w, k }) {
   }
   return { set: assembleSet((a) => solve(a) === 6, [R0, R(w * w), R(4, k * k)]), solve, c }
 }
-const T181 = []
+const lazy18_ = lazy(() => {
+  const T181 = []
 for (const w of [1, 2, 3]) for (const k of [1, 2, 3]) if (w * w !== 4 / (k * k)) T181.push({ w, k })
+  return { T181 }
+})
+const T181 = () => lazy18_().T181
 export function t18SysTwoLinesAbsHyper() {
-  const par = pick(T181), { w, k } = par
+  const par = pick(T181()), { w, k } = par
   const { set, solve, c } = build181(par)
   return item({
     text: `${HEAD_SYS}\n⟦cases:(ay + ax + ${c})(y + x ${MINUS} ${k === 1 ? "" : k}a) = 0¦|xy| = a⟧\n\nимеет ровно шесть различных решений.`,
@@ -4551,10 +4628,14 @@ function build182({ u, m, c }) {
   const crit = [R(u * m - c, m), R(u * m + c, m), R(u * (1 + m) - c, 1 + m), R(u * (1 + m) + c, 1 + m), R(u - c), R(u + c)]
   return { set: assembleSet((a) => solve(a) === 3, crit), solve }
 }
-const T182 = []
+const lazy19_ = lazy(() => {
+  const T182 = []
 for (const u of [1, 2, 3]) for (const m of [2, 3, 4]) for (const c of [4, 5, 6, 7, 8, 9, 10]) T182.push({ u, m, c })
+  return { T182 }
+})
+const T182 = () => lazy19_().T182
 export function t18SysRhombCross() {
-  const par = pick(T182), { u, m, c } = par
+  const par = pick(T182()), { u, m, c } = par
   const { set, solve } = build182(par)
   const uu = u === 1 ? "" : u
   return item({
@@ -4640,12 +4721,16 @@ function build185({ p, q, c }) {
   const crit = [R(-2 * p), R(c - 8 * q), R(c + 2 * q)]
   return { set: assembleSet((a) => solve(a) === 2, crit), solve }
 }
-const T185 = []
+const lazy20_ = lazy(() => {
+  const T185 = []
 for (const p of [2, 3, 4]) for (const q of [4, 5, 6, 8]) for (const c of [10, 15, 20, 25, 40]) {
   if (c < 8 * q - 2 * p) T185.push({ p, q, c })
 }
+  return { T185 }
+})
+const T185 = () => lazy20_().T185
 export function t18SysTwoCirclesLog() {
-  const par = pick(T185), { p, q, c } = par
+  const par = pick(T185()), { p, q, c } = par
   const { set, solve } = build185(par)
   const U = `x${SUP[2]} + y${SUP[2]} + ${2 * p}x`
   return item({
@@ -4738,13 +4823,17 @@ function build187({ k, c }) {                             // p — сдвиг F�
   }
   return { set: assembleSet((a) => solve(a) === 1, crit), solve }
 }
-const T187 = []
+const lazy21_ = lazy(() => {
+  const T187 = []
 for (const p of [1, 2, 3, 4]) for (const k of [2, 3, 4, 5, 6, 8]) for (const c of [3, 4, 5, 6, 9, 10, 12, 16, 21, 24, 40]) {
   const s = Math.round(Math.sqrt(k * k + 4 * c))
   if (s * s === k * k + 4 * c && (s - k) / 2 >= 1) T187.push({ p, k, c })
 }
+  return { T187 }
+})
+const T187 = () => lazy21_().T187
 export function t18SysSegmentLine() {
-  const par = pick(T187), { p, k, c } = par
+  const par = pick(T187()), { p, k, c } = par
   const { set, solve } = build187(par)
   const b = setBounds(set)
   return item({
@@ -4940,7 +5029,8 @@ function build66({ q, p, h, rho }) {
   const crit = [R0, R(B - rho), R(B + rho), R(A - rho), R(A + rho)]
   return { set: assembleSet((a) => solve(a) === 1, crit), solve, A, B }
 }
-const T66 = []
+const lazy22_ = lazy(() => {
+  const T66 = []
 for (const [q, p, h] of [[7, 2, 12], [4, 4, 6], [3, 3, 8], [14, 6, 15], [22, 14, 15], [28, 8, 15], [26, 14, 9], [18, 3, 20], [20, 15, 12]]) {
   for (const rho of [1, 2, 3, 4, 5, 6, 7, 8]) {
     const res = build66({ q, p, h, rho })
@@ -4949,8 +5039,11 @@ for (const [q, p, h] of [[7, 2, 12], [4, 4, 6], [3, 3, 8], [14, 6, 15], [22, 14,
     T66.push({ q, p, h, rho })
   }
 }
+  return { T66 }
+})
+const T66 = () => lazy22_().T66
 export function t18SysAbsTwoCircles() {
-  const par = pick(T66), { q, p, h, rho } = par
+  const par = pick(T66()), { q, p, h, rho } = par
   const { set, solve, A, B } = build66(par)
   return item({
     text: `Найдите все положительные значения a, при каждом из которых система\n`
@@ -4999,7 +5092,8 @@ function build76({ u, v, w, m }) {
 // Три решения возможны только когда вершина «галочки» может сесть на НИЖНЮЮ часть окружности
 // так, чтобы оба луча уходили внутрь: для этого нужно m < v − w < m⟦r:2⟧, то есть
 // 2m² = (v − w)² + g² с g < m < v − w. Такие тройки редки: (m; v−w; g) = (5;7;1), (10;14;2), (15;21;3), …
-const T76 = []
+const lazy23_ = lazy(() => {
+  const T76 = []
 for (const [m, d] of [[5, 7], [10, 14]]) for (const u of [2, 3, 4, 5, 6]) for (const w of [0, 1, 2]) {
   const par = { u, v: w + d, w, m }
   const res = build76(par)
@@ -5007,8 +5101,11 @@ for (const [m, d] of [[5, 7], [10, 14]]) for (const u of [2, 3, 4, 5, 6]) for (c
   if (setBounds(res.set).some((x) => x.d > 1n)) continue
   T76.push(par)
 }
+  return { T76 }
+})
+const T76 = () => lazy23_().T76
 export function t18SysCircleVee() {
-  const par = pick(T76), { u, v, w, m } = par
+  const par = pick(T76()), { u, v, w, m } = par
   const { set, solve } = build76(par)
   return item({
     text: `${HEAD_SYS}\n⟦cases:(x ${MINUS} ${u})${SUP[2]} + (y ${MINUS} ${v})${SUP[2]} = ${2 * m * m}¦y = |x ${MINUS} a|${w === 0 ? "" : ` + ${w}`}⟧\n\nимеет ровно три различных решения.`,
@@ -5054,7 +5151,8 @@ function build81({ d, e, f }) {                          // c — сдвиг «�
   const crit = [R(f), Radd(R(f), R1), Radd(R(f), R(R2, e))]
   return { set: assembleSet((a) => solve(a) === 2, crit), solve, R2 }
 }
-const T81 = []
+const lazy24_ = lazy(() => {
+  const T81 = []
 for (const d of [2, 3, 4, 5]) for (const e of [1, 2, 3, 4, 6]) for (const c of [1, 2, 3]) for (const f of [1, 2, 3, 4]) {
   if (d * d - e <= 0) continue
   const res = build81({ c, d, e, f })
@@ -5063,8 +5161,11 @@ for (const d of [2, 3, 4, 5]) for (const e of [1, 2, 3, 4, 6]) for (const c of [
   if (!b.length || b.some((x) => x.d > 8n)) continue
   T81.push({ c, d, e, f })
 }
+  return { T81 }
+})
+const T81 = () => lazy24_().T81
 export function t18SysVeeCircleSlope() {
-  const par = pick(T81), { c, d, e, f } = par
+  const par = pick(T81()), { c, d, e, f } = par
   const { set, solve, R2 } = build81(par)
   const num = `(|y| ${MINUS} x ${MINUS} ${c})(x${SUP[2]} ${MINUS} ${2 * d}x + y${SUP[2]} + ${e})`
   return item({
@@ -5125,10 +5226,14 @@ const absSum = (p, k) => {
   const co = k === 1 ? "" : `${k}`
   return `${co}|x ${MINUS} a + ${p}| + ${co}|x + a ${MINUS} ${p}|`
 }
-const T82 = []
+const lazy25_ = lazy(() => {
+  const T82 = []
 for (const p of [1, 2, 3, 4, 5]) for (const k of [1, 2, 3]) T82.push({ p, k })
+  return { T82 }
+})
+const T82 = () => lazy25_().T82
 export function t18AbsSumSquare() {
-  const par = pick(T82), { p, k } = par
+  const par = pick(T82()), { p, k } = par
   const { set, solve } = buildMaxAbs({ ...par, shape: "sq" })
   return item({
     text: `${HEAD_A}\n\nx${SUP[2]} + (${p} ${MINUS} a)${SUP[2]} = ${absSum(p, k)}\n\nимеет единственный корень.`,
@@ -5149,7 +5254,7 @@ export function t18AbsSumSquare() {
   })
 }
 export function t18AbsSumQuartic() {
-  const par = pick(T82), { p, k } = par
+  const par = pick(T82()), { p, k } = par
   const { set, solve } = buildMaxAbs({ ...par, shape: "quart" })
   return item({
     text: `${HEAD_A}\n\nx${SUP[4]} + (a ${MINUS} ${p})${SUP[2]} = ${absSum(p, k)}\n\nлибо имеет единственное решение, либо не имеет решений.`,
@@ -5171,7 +5276,7 @@ export function t18AbsSumQuartic() {
   })
 }
 export function t18AbsSumRoot() {
-  const par = pick(T82), { p, k } = par
+  const par = pick(T82()), { p, k } = par
   const { set, solve } = buildMaxAbs({ ...par, shape: "root" })
   return item({
     text: `${HEAD_A}\n\n⟦r:x${SUP[4]} + (a ${MINUS} ${p})${SUP[4]}⟧ = ${absSum(p, k)}\n\nимеет единственное решение.`,
@@ -5220,7 +5325,8 @@ function build68({ p, q, R2, r }) {
   const crit = [R(L), R(Math.round(4 * (c0 - k * rho)), 4), R(Math.round(4 * (c0 + k * rho)), 4)]
   return { set: assembleSet((a) => solve(a) >= 2, crit), solve, L, c0, rho }
 }
-const T68 = []
+const lazy26_ = lazy(() => {
+  const T68 = []
 for (const [p, q] of [[6, 8], [8, 6], [6, -8], [-6, 8], [3, 4], [4, 3], [4, -3], [-3, 4]]) {
   for (const R2 of [9, 16, 25, 36]) for (const dd of [3, 7, 12, 24, 48]) {
     const par = { p, q, R2, r: R2 - dd }
@@ -5231,8 +5337,11 @@ for (const [p, q] of [[6, 8], [8, 6], [6, -8], [-6, 8], [3, 4], [4, 3], [4, -3],
     T68.push(par)
   }
 }
+  return { T68 }
+})
+const T68 = () => lazy26_().T68
 export function t18SysAbsCircleLine() {
-  const par = pick(T68), { p, q, R2, r } = par
+  const par = pick(T68()), { p, q, R2, r } = par
   const { set, solve, L, rho } = build68(par)
   const lin = `${p === 1 ? "" : nS(p)}x${term(q, "y")}`
   return item({
@@ -5294,15 +5403,19 @@ function build78({ c, k }) {
   const crit = [R(2 * c), R(-2 * c), R(k), R(k * k + c * c, k)]
   return { set: assembleSet((a) => solve(a) >= 3, crit), solve }
 }
-const T78 = []
+const lazy27_ = lazy(() => {
+  const T78 = []
 for (const c of [1, 2, 3, 4]) for (const k of [1, 2, 3, 4, 6]) {
   const res = build78({ c, k })
   const b = setBounds(res.set)
   if (!b.length || b.some((x) => x.d > 12n)) continue
   T78.push({ c, k })
 }
+  return { T78 }
+})
+const T78 = () => lazy27_().T78
 export function t18SymAbsQuadPair() {
-  const par = pick(T78), { c, k } = par
+  const par = pick(T78()), { c, k } = par
   const { set, solve } = build78(par)
   const side = (v) => `|${v}${SUP[2]} ${MINUS} ${c * c}| + ${2 * k === 1 ? "" : 2 * k}${v} ${MINUS} ${v}${SUP[2]}`
   return item({
@@ -5380,10 +5493,14 @@ function build102({ k, m }) {
   const solve = (a) => countRoots([Rsub(R(m), Rmul(R(2), Rmul(a, a))), R(k), R1], "-inf", "+inf", false, false)
   return { set: assembleSet((a) => solve(a) === 1, [R0, R(w), R(-w)]), solve, w }
 }
-const T102 = []
+const lazy28_ = lazy(() => {
+  const T102 = []
 for (const j of [0, 1, 2, 3]) for (const w of [1, 2, 3]) T102.push({ k: 2 * j, m: j * j + 2 * w * w })
+  return { T102 }
+})
+const T102 = () => lazy28_().T102
 export function t18SubstSquareOne() {
-  const par = pick(T102), { k, m } = par
+  const par = pick(T102()), { k, m } = par
   const { set, solve, w } = build102(par)
   const S = `x${SUP[2]}${term(k, "x")} + ${m}`
   return item({
@@ -5414,13 +5531,17 @@ function build103({ k, m }) {                             // p — сдвиг п
   const solve = (a) => (Rsign(D(a)) >= 0 && Rcmp(Rmul(R(4), D(a)), R(M2)) >= 0 ? 1 : 0)
   return { set: assembleSet((a) => solve(a) === 1, [R(k)]), solve, M2 }
 }
-const T103 = []
+const lazy29_ = lazy(() => {
+  const T103 = []
 for (const p of [2, 3, 4, 5]) for (const k of [1, 2, 3, 4]) for (const m of [-3, -2, 0, 3]) {
   if (k * k - m <= 0 || p * p + m <= 0) continue
   T103.push({ p, k, m })
 }
+  return { T103 }
+})
+const T103 = () => lazy29_().T103
 export function t18RootGapMax() {
-  const par = pick(T103), { p, k, m } = par
+  const par = pick(T103()), { p, k, m } = par
   const { set, solve, M2 } = build103(par)
   const mx = Math.round(Math.sqrt(M2)) ** 2 === M2 ? `${Math.round(Math.sqrt(M2))}` : `2⟦r:${k * k - m}⟧`
   return item({
@@ -5453,15 +5574,19 @@ function build104({ w, kk, L, Rr }) {
   const crit = [R(w * kk * L * L - 1, w * L), R(w * kk * Rr * Rr - 1, w * Rr)]
   return { set: assembleSet((a) => solve(a) === 2, crit), solve }
 }
-const T104 = []
+const lazy30_ = lazy(() => {
+  const T104 = []
 for (const w of [1, 2, 3]) for (const kk of [1, 2]) for (const [L, Rr] of [[-1, 1], [-1, 2], [-2, 1], [-2, 2]]) {
   const res = build104({ w, kk, L, Rr })
   const b = setBounds(res.set)
   if (!b.length || b.some((x) => x.d > 12n)) continue
   T104.push({ w, kk, L, Rr })
 }
+  return { T104 }
+})
+const T104 = () => lazy30_().T104
 export function t18SubstReciprocalSeg() {
-  const par = pick(T104), { w, kk, L, Rr } = par
+  const par = pick(T104()), { w, kk, L, Rr } = par
   const { set, solve } = build104(par)
   const T = `ax ${MINUS} ${kk === 1 ? "" : kk}x${SUP[2]}`
   return item({
@@ -5505,7 +5630,8 @@ function build106({ p, q, d }) {
   if (2 * p - q !== 0) crit.push(R(-p * p, 2 * p - q))
   return { set: assembleSet((a) => solve(a) === 1, crit), solve }
 }
-const T106 = []
+const lazy31_ = lazy(() => {
+  const T106 = []
 for (const [p, q, d] of [[3, 2, 1], [4, 5, 1], [6, 4, 1], [8, 10, 1], [12, 19, 1], [3, 6, 2], [3, -2, 2], [4, 8, 2], [4, 2, 2], [6, 12, 2], [6, 4, 3]]) {
   const res = build106({ p, q, d })
   if (!res || !res.set.intervals.length) continue
@@ -5513,8 +5639,11 @@ for (const [p, q, d] of [[3, 2, 1], [4, 5, 1], [6, 4, 1], [8, 10, 1], [12, 19, 1
   if (!b.length || b.some((x) => x.d > 12n || (x.n < 0n ? -x.n : x.n) > 99n)) continue
   T106.push({ p, q, d })
 }
+  return { T106 }
+})
+const T106 = () => lazy31_().T106
 export function t18RootGapGreater() {
-  const par = pick(T106), { p, q, d } = par
+  const par = pick(T106()), { p, q, d } = par
   const { set, solve } = build106(par)
   // Коэффициент при a может обнулиться — «0a + 16» не пишем.
   const discStr = 2 * p - q === 0 ? `${p * p}` : `${nS(2 * p - q)}a${term(p * p, "")}`
@@ -5558,14 +5687,18 @@ function build107({ c, c0 }) {
   crit.push(...roots)
   return { set: assembleSet((a) => solve(a) === 2, crit), solve }
 }
-const T107 = []
+const lazy32_ = lazy(() => {
+  const T107 = []
 for (const c of [1, 8, 27]) for (const c0 of [2, -2]) {
   const res = build107({ c, c0 })
   if (!res || !res.set.intervals.length) continue
   T107.push({ c, c0 })
 }
+  return { T107 }
+})
+const T107 = () => lazy32_().T107
 export function t18SubstFactorTwo() {
-  const par = pick(T107), { c, c0 } = par
+  const par = pick(T107()), { c, c0 } = par
   const { set, solve } = build107(par)
   const T = `ax${SUP[2]} ${MINUS} 2x`
   return item({
@@ -5687,7 +5820,8 @@ function build114({ b, k, d }) {
   crit.push(...roots)
   return { set: assembleSet((a) => solve(a) >= 3, crit), solve, c }
 }
-const T114 = []
+const lazy33_ = lazy(() => {
+  const T114 = []
 for (const [k, d] of [[2, 3], [2, 8], [2, 15], [4, 5], [4, 12], [4, 21], [6, 7], [6, 16], [6, 27], [8, 9], [8, 20]]) {
   for (const b of [1, 2, 3]) {
     const res = build114({ b, k, d })
@@ -5697,8 +5831,11 @@ for (const [k, d] of [[2, 3], [2, 8], [2, 15], [4, 5], [4, 12], [4, 21], [6, 7],
     T114.push({ b, k, d })
   }
 }
+  return { T114 }
+})
+const T114 = () => lazy33_().T114
 export function t18AbsEqAbsMoreTwo() {
-  const par = pick(T114), { b, k, d } = par
+  const par = pick(T114()), { b, k, d } = par
   const { set, solve, c } = build114(par)
   return item({
     text: `${HEAD_A}\n\n|x${SUP[2]} ${MINUS} 2ax + ${c}| = |${k}a ${MINUS} x${SUP[2]} ${MINUS} ${2 * b === 1 ? "" : 2 * b}x ${MINUS} ${d}|\n\nимеет более двух различных корней.`,
@@ -5733,10 +5870,14 @@ function build134({ p, c, d }) {
   const solve = (a) => countRoots([R(-d), Radd(R(c), a), R1], R(-1), R1, true, true)
   return { set: assembleSet((a) => solve(a) >= 1, [R(1 - c - d), R(d - c - 1)]), solve, q: (p + 1) / 2, r: d - (p + 1) / 2 }
 }
-const T134 = []
+const lazy34_ = lazy(() => {
+  const T134 = []
 for (const p of [3, 5, 7]) for (const c of [1, 2, 3, 4, 5]) for (const d of [2, 3, 4, 6]) T134.push({ p, c, d })
+  return { T134 }
+})
+const T134 = () => lazy34_().T134
 export function t18TrigCosSubstExists() {
-  const par = pick(T134), { p, c, d } = par
+  const par = pick(T134()), { p, c, d } = par
   const { set, solve, q, r } = build134(par)
   return item({
     text: `${HEAD_A}\n\n(${p}cos x ${MINUS} ${c} ${MINUS} a)·cos x ${MINUS} ${q === 1 ? "" : q}cos 2x${term(r, "")} = 0\n\nимеет хотя бы один корень.`,
@@ -5774,12 +5915,16 @@ function build135({ k, m, c, half }) {
   }
   return { set: assembleSet((a) => solve(a) === 1, [R(-m), R(endR), R(c)]), solve, endR }
 }
-const T135 = []
+const lazy35_ = lazy(() => {
+  const T135 = []
 for (const [k, m, c] of [[3, 4, 5], [4, 3, 5], [5, 12, 13], [12, 5, 13], [8, 15, 17], [15, 8, 17], [7, 24, 25], [24, 7, 25], [20, 21, 29], [21, 20, 29]]) {
   for (const half of [false, true]) T135.push({ k, m, c, half })
 }
+  return { T135 }
+})
+const T135 = () => lazy35_().T135
 export function t18TrigLinCombOne() {
-  const par = pick(T135), { k, m, c, half } = par
+  const par = pick(T135()), { k, m, c, half } = par
   const { set, solve, endR } = build135(par)
   const seg = half ? `[0; ⟦f:π:2⟧]` : `[0; π]`
   return item({
@@ -5908,14 +6053,18 @@ function build158({ p, q, r, L, n, b }) {
   const crit = [R(-(p + q), r), R(-(2 * p + 2 * q), r)]
   return { set: assembleSet((a) => solve(a) === 1, crit), solve, c, k, d: c * L - 1, t: b - k * L }
 }
-const T158 = []
+const lazy36_ = lazy(() => {
+  const T158 = []
 for (const n of [3, 5]) for (const b of [2, 3, 5]) for (const L of [1, 2, 3]) for (const p of [2, 3, 4]) for (const q of [3, 4, 5]) for (const r of [1, 2, 5]) {
   const res = build158({ p, q, r, L, n, b })
   if (setBounds(res.set).some((x) => x.d > 12n)) continue
   T158.push({ p, q, r, L, n, b })
 }
+  return { T158 }
+})
+const T158 = () => lazy36_().T158
 export function t18MonoRootInSeg() {
-  const par = pick(T158), { p, q, r, L, n, b } = par
+  const par = pick(T158()), { p, q, r, L, n, b } = par
   const { set, solve, c, k, d, t } = build158(par)
   const lhs = `${p === 1 ? "" : p}⟦rn:${n}:${c}x ${MINUS} ${d}⟧ + ${q === 1 ? "" : q}log${SUB[b]}(${k}x${term(t, "")}) + ${r === 1 ? "" : r}a`
   return item({
@@ -5969,10 +6118,14 @@ function buildTrigSqrt({ kind, k }) {
   const crit = [R0, ...th, ...th.map(Rneg)]
   return { set: assembleSet((u) => solve(u) === 2, crit), solve, th }
 }
-const T159 = []
+const lazy37_ = lazy(() => {
+  const T159 = []
 for (const kind of ["sin", "cos"]) for (const k of [1, 4, 9]) T159.push({ kind, k })
+  return { T159 }
+})
+const T159 = () => lazy37_().T159
 function item159(kind) {
-  const par = pick(T159.filter((t) => t.kind === kind)), { k } = par
+  const par = pick(T159().filter((t) => t.kind === kind)), { k } = par
   const { set, solve, th } = buildTrigSqrt(par)
   const rad = `⟦r:ax ${MINUS} ${k === 1 ? "" : k}x${SUP[2]}⟧`
   const first = kind === "sin" ? `sin ${rad}` : `cos ${rad}`
@@ -6074,10 +6227,14 @@ function build120({ k, c, d }) {
   }
   return { set: assembleSet((a) => solve(a) === 1, [R(M, 2 * w), R(-M, 2 * w)]), solve, w, M }
 }
-const T120 = []
+const lazy38_ = lazy(() => {
+  const T120 = []
 for (const k of [1, 4, 9]) for (const c of [1, 2, 3, 4, 6]) for (const d of [1, 2, 3, 4, 6]) T120.push({ k, c, d })
+  return { T120 }
+})
+const T120 = () => lazy38_().T120
 export function t18AbsSumRecipExists() {
-  const par = pick(T120), { k, c, d } = par
+  const par = pick(T120()), { k, c, d } = par
   const { set, solve, w, M } = build120(par)
   const U = `${k === 1 ? "" : k}x + ${fT(`a${SUP[2]}`, "x")}`
   return item({
@@ -6122,10 +6279,14 @@ function build123({ p, q, k, m }) {
   }
   return { set: assembleSet((a) => solve(a) === 2, crit), solve }
 }
-const T123 = []
+const lazy39_ = lazy(() => {
+  const T123 = []
 for (const p of [1, 2, 3]) for (const q of [1, 2, 3]) for (const k of [2, 3]) for (const m of [1, 2, 3]) T123.push({ p, q, k, m })
+  return { T123 }
+})
+const T123 = () => lazy39_().T123
 export function t18AbsSumSubstTwo() {
-  const par = pick(T123), { p, q, k, m } = par
+  const par = pick(T123()), { p, q, k, m } = par
   const { set, solve } = build123(par)
   const U = `|x + ${p}| + |x ${MINUS} a|`
   return item({
@@ -6167,10 +6328,14 @@ function build125({ c, k, m }) {
   const crit = [R0, R(c), R(c - m, k + 1), R(c - m, 1 - k)]
   return { set: assembleSet((a) => solve(a) === 1, crit), solve }
 }
-const T125 = []
+const lazy40_ = lazy(() => {
+  const T125 = []
 for (const c of [4, 5, 6, 8]) for (const k of [2, 3, 4]) for (const m of [1, 2, 3]) T125.push({ c, k, m })
+  return { T125 }
+})
+const T125 = () => lazy40_().T125
 export function t18ExpFactorOne() {
-  const par = pick(T125), { c, k, m } = par
+  const par = pick(T125()), { c, k, m } = par
   const { set, solve } = build125(par)
   const two = `2${supT("x")}`
   return item({
@@ -6261,10 +6426,14 @@ function build127({ p, q, L, Rr }) {
   const crit = [R(-(p + q), 2), R(-q - L), R(Rr - p)]
   return { set: assembleSet((a) => solve(a) === 1, crit), solve }
 }
-const T127 = []
+const lazy41_ = lazy(() => {
+  const T127 = []
 for (const p of [1, 2, 3]) for (const q of [2, 3, 4]) for (const [L, Rr] of [[2, 3], [1, 4], [3, 5], [2, 6]]) T127.push({ p, q, L, Rr })
+  return { T127 }
+})
+const T127 = () => lazy41_().T127
 export function t18AbsSumWholeSeg() {
-  const par = pick(T127), { p, q, L, Rr } = par
+  const par = pick(T127()), { p, q, L, Rr } = par
   const { set, solve } = build127(par)
   return item({
     text: `Найдите все значения a, при каждом из которых любое число из отрезка [${L}; ${Rr}] является решением уравнения\n\n`
@@ -6312,12 +6481,16 @@ function build128({ h, k, p, q }) {
   }
   return { set: assembleSet((a) => solve(a) === 2, crit), solve }
 }
-const T128 = []
+const lazy42_ = lazy(() => {
+  const T128 = []
 for (const [k, p, q] of [[9, 7, 8], [7, 5, 4], [11, 9, 6], [5, 3, 4], [8, 4, 2], [6, 4, 2]]) {
   for (const h of [5, 7, 9, 11]) T128.push({ h, k, p, q })
 }
+  return { T128 }
+})
+const T128 = () => lazy42_().T128
 export function t18AbsDiffSubstTwo() {
-  const par = pick(T128), { h, k, p, q } = par
+  const par = pick(T128()), { h, k, p, q } = par
   const { set, solve } = build128(par)
   const V = `|x ${MINUS} ${h}| ${MINUS} |x ${MINUS} a|`
   const q2 = (k * k - p * p) / 4, q1 = (2 * p * q) / 4, q0 = -(q * q) / 4
@@ -6644,10 +6817,14 @@ function build138({ k, s }) {
   // правой части в точках x = 0 и x = −k (обе дают одно и то же условие sa ≤ 0)
   return { set: assembleSet((a) => solve(a) === 3, [R0, R(s * k * k)]), solve }
 }
-const T138 = []
+const lazy43_ = lazy(() => {
+  const T138 = []
 for (const k of [1, 2, 3, 4]) for (const s of [1, -1]) T138.push({ k, s })
+  return { T138 }
+})
+const T138 = () => lazy43_().T138
 export function t18SqrtQuarticThree() {
-  const par = pick(T138), { k, s } = par
+  const par = pick(T138()), { k, s } = par
   const { set, solve } = build138(par)
   const aRange = spanRange(set)
   const kx = k === 1 ? "x" : `${k}x`
@@ -6764,10 +6941,14 @@ function build140({ p, c, m }) {
   const crit = [R(-m * m - c, p + 1), R(m * m - c, p + 1)]
   return { set: assembleSet((a) => solve(a) === 1, crit), solve }
 }
-const T140 = []
+const lazy44_ = lazy(() => {
+  const T140 = []
 for (const p of [2, 3, 4, 5]) for (const c of [-2, -1, 0, 1, 2]) for (const m of [1, 2, 3]) T140.push({ p, c, m })
+  return { T140 }
+})
+const T140 = () => lazy44_().T140
 export function t18SqrtSumExists() {
-  const par = pick(T140), { p, c, m } = par
+  const par = pick(T140()), { p, c, m } = par
   const { set, solve } = build140(par)
   const aRange = spanRange(set)
   const rad1 = `x + ${p}a${term(c, "")}`
@@ -6826,7 +7007,8 @@ function build141({ k, m }) {
   const set = assembleSet((a) => solve(a) === 1, [R0, ...c1.roots, ...c2.roots])
   return { set, solve }
 }
-const T141 = []
+const lazy45_ = lazy(() => {
+  const T141 = []
 // Оба условия раскладываются на рациональные множители ровно тогда, когда k² + 4m и k² − 4m —
 // точные квадраты (это редкость: на k ≤ 26 таких пар всего десяток).
 for (let k = 1; k <= 26; k++) for (let m = -170; m <= 170; m++) {
@@ -6834,8 +7016,11 @@ for (let k = 1; k <= 26; k++) for (let m = -170; m <= 170; m++) {
   const r = build141({ k, m })
   if (r && tidySet(r.set)) T141.push({ k, m })
 }
+  return { T141 }
+})
+const T141 = () => lazy45_().T141
 export function t18ExpSqrtOne() {
-  const par = pick(T141), { k, m } = par
+  const par = pick(T141()), { k, m } = par
   const b = pick([2, 3, 5])
   const { set, solve } = build141(par)
   const aRange = spanRange(set)
@@ -6890,10 +7075,14 @@ function build142({ c, m }) {
   }
   return { set: assembleSet((a) => solve(a) === 2, [R(c), R(4 * c + m * m, 4)]), solve }
 }
-const T142 = []
+const lazy46_ = lazy(() => {
+  const T142 = []
 for (const c of [1, 2, 3, 4]) for (const m of [1, 2, 3]) T142.push({ c, m })
+  return { T142 }
+})
+const T142 = () => lazy46_().T142
 export function t18ExpSqrtRecipTwo() {
-  const par = pick(T142), { c, m } = par
+  const par = pick(T142()), { c, m } = par
   const b = pick([2, 3, 5])
   const { set, solve } = build142(par)
   const aRange = spanRange(set)
@@ -6949,14 +7138,18 @@ function build143({ p, c, q }) {
   const set = assembleSet((a) => solve(a) >= 1, [R0, R(q), ...e.roots])
   return { set, solve, G, h }
 }
-const T143 = []
+const lazy47_ = lazy(() => {
+  const T143 = []
 for (const p of [2, 4]) for (let c = 4; c <= 40; c++) for (let q = -16; q <= 16; q++) {
   if (q === 0) continue
   const r = build143({ p, c, q })
   if (r && tidySet(r.set, 3) && r.set.intervals.length >= 2) T143.push({ p, c, q })
 }
+  return { T143 }
+})
+const T143 = () => lazy47_().T143
 export function t18SqrtRangeQuartic() {
-  const par = pick(T143), { p, c, q } = par
+  const par = pick(T143()), { p, c, q } = par
   const { set, solve, G, h } = build143(par)
   const aRange = spanRange(set)
   const w = `${p}x ${MINUS} x${SUP[2]}`
@@ -7018,10 +7211,14 @@ function build144({ p, c }) {
   }
   return { set: assembleSet((a) => solve(a) === 2, [R0, lo, hi]), solve }
 }
-const T144 = []
+const lazy48_ = lazy(() => {
+  const T144 = []
 for (const p of [1, 2, 3, 4, 5, 6, 8]) for (const c of [1, 2, 3]) T144.push({ p, c })
+  return { T144 }
+})
+const T144 = () => lazy48_().T144
 export function t18SqrtTwoTermsTwo() {
-  const par = pick(T144), { p, c } = par
+  const par = pick(T144()), { p, c } = par
   const { set, solve } = build144(par)
   const aRange = spanRange(set)
   return item({
@@ -7076,15 +7273,19 @@ function build147({ k, m }) {
   const hi = Math.max(24, Math.ceil(Rnum(b[b.length - 1])) + 6)
   return { set, pieces, solve, aRange: [0, hi] }
 }
-const T147 = []
+const lazy49_ = lazy(() => {
+  const T147 = []
 for (let k = 1; k <= 9; k++) for (const m of [1, 2, 3, 4]) {
   const r = build147({ k, m })
   // изолированную точку в ответе не берём: она возникает при вырождении (корень u = 0
   // появляется ровно тогда же, когда вторая ветвь даёт двойной корень) и выглядит как брак
   if (r && tidySet(r.set, 2) && r.set.intervals.length >= 1) T147.push({ k, m })
 }
+  return { T147 }
+})
+const T147 = () => lazy49_().T147
 export function t18AbsSqrtLineTwo() {
-  const par = pick(T147), { k, m } = par
+  const par = pick(T147()), { k, m } = par
   const { set, pieces, aRange } = build147(par)
   return item({
     text: `${HEAD_POS}\n\n|1 ${MINUS} ${k === 1 ? "" : k}√{x}| = ${m === 1 ? "x + a" : `${m}(x + a)`}\n\nимеет ровно два корня.`,
@@ -7143,13 +7344,17 @@ function build148({ p, k }) {
   const crit = [R0, R1, R(-1), R(k, p), R(-k, p), R(p * p + 4 * k * k, 4 * p * k), R(-(p * p + 4 * k * k), 4 * p * k)]
   return { set: assembleSet((a) => solve(a) >= 3, crit), pieces, solve }
 }
-const T148 = []
+const lazy50_ = lazy(() => {
+  const T148 = []
 for (const p of [1, 2, 3, 4]) for (const k of [1, 2, 3, 4, 5]) {
   const r = build148({ p, k })
   if (r && tidySet(r.set, 2)) T148.push({ p, k })
 }
+  return { T148 }
+})
+const T148 = () => lazy50_().T148
 export function t18SqrtVeeMore() {
-  const par = pick(T148), { p, k } = par
+  const par = pick(T148()), { p, k } = par
   const { set, pieces } = build148(par)
   const aRange = spanRange(set)
   return item({
@@ -7208,13 +7413,17 @@ function build99({ k, p, q }) {   // c влияет только на печат
   const solve = (a) => countRoots([Rmul(R(p), a), R(-q), R(k)], "-inf", "+inf", false, false)
   return { set: assembleSet((a) => solve(a) === 0, [R(q * q, 4 * k * p)]), solve }
 }
-const T99 = []
+const lazy51_ = lazy(() => {
+  const T99 = []
 for (const k of [1, 2, 3]) for (const c of [1, 2, 3]) for (const p of [2, 3, 4, 5, 6]) for (const q of [1, 2, 3, 4]) {
   const r = build99({ k, c, p, q })                  // круглость границы q²/(4kp) проверит tidySet
   if (r && tidySet(r.set, 2)) T99.push({ k, c, p, q })
 }
+  return { T99 }
+})
+const T99 = () => lazy51_().T99
 export function t18MonoCubeNoRoots() {
-  const par = pick(T99), { k, c, p, q } = par
+  const par = pick(T99()), { k, c, p, q } = par
   const { set, solve } = build99(par)
   const aRange = spanRange(set)
   const inner = `${coef(p)}a ${MINUS} ${coef(q)}x`
@@ -7261,10 +7470,14 @@ function build100({ k }) {          // n влияет только на печа
   }
   return { set: assembleSet((a) => solve(a) >= 4, [R0, R(k * k, 4)]), solve }
 }
-const T100 = []
+const lazy52_ = lazy(() => {
+  const T100 = []
 for (const n of [3, 5]) for (const k of [1, 2, 3, 4, 5, 6]) T100.push({ n, k })
+  return { T100 }
+})
+const T100 = () => lazy52_().T100
 export function t18MonoAbsMore() {
-  const par = pick(T100), { n, k } = par
+  const par = pick(T100()), { n, k } = par
   const { set, solve } = build100(par)
   const aRange = spanRange(set)
   const inner = `a ${MINUS} ${coef(k)}|x|`
@@ -7314,10 +7527,14 @@ function build101({ k }) {          // n влияет только на печа
   const crit = [R(1 - k), R(1 + k), R(-k * k, 4)]
   return { set: assembleSet((a) => solve(a) >= 1, crit), solve }
 }
-const T101 = []
+const lazy53_ = lazy(() => {
+  const T101 = []
 for (const n of [3, 5, 9]) for (const k of [1, 2, 3, 4, 5, 6]) T101.push({ n, k })
+  return { T101 }
+})
+const T101 = () => lazy53_().T101
 export function t18MonoCosExists() {
-  const par = pick(T101), { n, k } = par
+  const par = pick(T101()), { n, k } = par
   const { set, solve } = build101(par)
   const aRange = spanRange(set)
   const inner = `${coef(k)}cos x ${MINUS} a`
@@ -7373,12 +7590,16 @@ function build145({ p, k, q, c, d }) {
   }
   return { set: assembleSet((a) => solve(a) === 2, [p, Radd(p, R1)]), solve }
 }
-const T145 = []
+const lazy54_ = lazy(() => {
+  const T145 = []
 for (const pn of [2, 3, 4, 5, 7, 9]) for (const k of [1, 2, 3, 4]) for (const q of [1, 2, 3]) {
   for (const [c, d] of [[8, 9], [1, 2], [2, 5], [3, 4], [5, 9], [4, 13]]) T145.push({ p: R(pn, 2), k, q, c, d })
 }
+  return { T145 }
+})
+const T145 = () => lazy54_().T145
 export function t18LogSameBaseTwo() {
-  const par = pick(T145), { p, k, q, c, d } = par
+  const par = pick(T145()), { p, k, q, c, d } = par
   const { set, solve } = build145(par)
   const base = `⟦b:a ${MINUS} ${decStr(p)}⟧`
   const left = `${k === 1 ? "" : k}x${SUP[2]} + ${c}`
@@ -7557,13 +7778,17 @@ function build121({ k, m, b }) {
   const solve = (a) => solveCount(pieces, a)
   return { set: assembleSet((a) => solve(a) === 2, absAbsCrit({ k, m, lo })), pieces, solve, b }
 }
-const T121 = []
+const lazy55_ = lazy(() => {
+  const T121 = []
 for (const k of [1, 2, 3]) for (const m of [1, 2, 3]) for (const b of [2, 5, 10]) {
   const r = build121({ k, m, b })
   if (r && tidySet(r.set, 3)) T121.push({ k, m, b })
 }
+  return { T121 }
+})
+const T121 = () => lazy55_().T121
 export function t18ExpAbsAbsTwo() {
-  const par = pick(T121), { k, m, b } = par
+  const par = pick(T121()), { k, m, b } = par
   const { set, pieces } = build121(par)
   const aRange = spanRange(set)
   const [d1, d2] = DEC[b]
@@ -7618,13 +7843,17 @@ function build154({ m, lo }) {
   const solve = (a) => solveCount(pieces, a)
   return { set: assembleSet((a) => solve(a) >= 1, absAbsCrit({ k: 2, m, lo: R(lo) })), pieces, solve }
 }
-const T154 = []
+const lazy56_ = lazy(() => {
+  const T154 = []
 for (const m of [1, 2, 3]) for (const lo of [-2, -1, 0, 1]) {
   const r = build154({ m, lo })
   if (r && tidySet(r.set, 3)) T154.push({ m, lo })
 }
+  return { T154 }
+})
+const T154 = () => lazy56_().T154
 export function t18LogAbsAbsExists() {
-  const par = pick(T154), { m, lo } = par
+  const par = pick(T154()), { m, lo } = par
   const { set, pieces } = build154(par)
   const aRange = spanRange(set)
   const C = 2 ** -lo
@@ -7688,10 +7917,14 @@ function build124({ c, k, r }) {
   }
   return { set: assembleSet((a) => solve(a) >= 1, [R(r), R(-r)]), solve, d }
 }
-const T124 = []
+const lazy57_ = lazy(() => {
+  const T124 = []
 for (const c of [2, 3, 4]) for (const k of [2, 3, 4, 5]) for (const r of [1, 2, 3]) T124.push({ c, k, r })
+  return { T124 }
+})
+const T124 = () => lazy57_().T124
 export function t18MonoCubeSquareExists() {
-  const par = pick(T124), { c, k, r } = par
+  const par = pick(T124()), { c, k, r } = par
   const { set, solve, d } = build124(par)
   const aRange = spanRange(set)
   const U = `${c} + |x + a|`
@@ -7756,13 +7989,17 @@ function build86({ rho, p, q, h }) {
   }
   return { set: assembleSet((a) => solve(a) === 4, [bound, Rneg(bound), R(rho), R(-rho)]), solve, bound }
 }
-const T86 = []
+const lazy58_ = lazy(() => {
+  const T86 = []
 for (const rho of [1, 2, 3, 4, 6]) for (const [p, q, h] of [[3, 4, 5], [4, 3, 5], [5, 12, 13], [12, 5, 13], [8, 15, 17], [15, 8, 17]]) {
   const r = build86({ rho, p, q, h })
   if (r && tidySet(r.set, 3)) T86.push({ rho, p, q, h })
 }
+  return { T86 }
+})
+const T86 = () => lazy58_().T86
 export function t18SysCircleTwoLines() {
-  const par = pick(T86), { rho, p, q, h } = par
+  const par = pick(T86()), { rho, p, q, h } = par
   const { set, solve, bound } = build86(par)
   const aRange = spanRange(set)
   return item({
@@ -7806,13 +8043,17 @@ function build87({ c, rho }) {
   }
   return { set: assembleSet((a) => solve(a) === 1, [R(c + rho), R(c - rho)]), solve }
 }
-const T87 = []
+const lazy59_ = lazy(() => {
+  const T87 = []
 for (const c of [1, 2, 3, 4, 5]) for (const rho of [1, 2, 3, 4]) {
   const r = build87({ c, rho })
   if (r && tidySet(r.set, 2)) T87.push({ c, rho })
 }
+  return { T87 }
+})
+const T87 = () => lazy59_().T87
 export function t18SysQuarticCircleOne() {
-  const par = pick(T87), { c, rho } = par
+  const par = pick(T87()), { c, rho } = par
   const { set, solve } = build87(par)
   const aRange = spanRange(set)
   return item({
@@ -7853,14 +8094,18 @@ function build89({ k, m }) {
   const crit = [R(-k), R(1 - 4 * k * m, 4 * (1 + k + m)), R(-3 - 4 * k * m, 4 * (1 + k + m))]
   return { set: assembleSet((a) => solve(a) === 1, crit), solve }
 }
-const T89 = []
+const lazy60_ = lazy(() => {
+  const T89 = []
 for (const k of [1, 2, 3, 4]) for (const m of [-3, -2, -1, 1, 2, 3]) {
   if (1 + k + m === 0) continue
   const r = build89({ k, m })
   if (r && tidySet(r.set, 3)) T89.push({ k, m })
 }
+  return { T89 }
+})
+const T89 = () => lazy60_().T89
 export function t18SysSymmetricOne() {
-  const par = pick(T89), { k, m } = par
+  const par = pick(T89()), { k, m } = par
   const { set, solve } = build89(par)
   const aRange = spanRange(set)
   const row = (u, v) => `${u} = (a + ${k})${v}${SUP[2]} + 2a${v} + a${term(m, "")}`
@@ -8082,13 +8327,17 @@ function build92({ k, C }) {
   crit.push(...sq.roots)
   return { set: assembleSet((a) => solve(a) === 1, crit), solve }
 }
-const T92 = []
+const lazy61_ = lazy(() => {
+  const T92 = []
 for (const k of [1, 2, 3, 4]) for (const Cn of [-2, -1, 1, 2, 3, 4]) {
   const r = build92({ k, C: R(Cn) })
   if (r && tidySet(r.set, 3)) T92.push({ k, C: R(Cn) })
 }
+  return { T92 }
+})
+const T92 = () => lazy61_().T92
 export function t18MaxAbsMinusSquare() {
-  const par = pick(T92), { k, C } = par
+  const par = pick(T92()), { k, C } = par
   const { set, solve } = build92(par)
   const aRange = spanRange(set)
   return item({
@@ -8132,15 +8381,19 @@ function build93({ k, p, q, r, C, how }) {
   }
   return { set: assembleSet((a) => solve(a) === 1, crit), solve }
 }
-const T93 = []
+const lazy62_ = lazy(() => {
+  const T93 = []
 for (const k of [1, 2]) for (const p of [1, 2]) for (const q of [1, 2, 3]) for (const r of [1, 2]) {
   for (const Cn of [2, 4, 6, 8]) for (const how of ["ge", "lt"]) {
     const r2 = build93({ k, p, q, r, C: R(Cn), how })
     if (r2 && tidySet(r2.set, 3)) T93.push({ k, p, q, r, C: R(Cn), how })
   }
 }
+  return { T93 }
+})
+const T93 = () => lazy62_().T93
 export function t18MinQuadOutside() {
-  const par = pick(T93), { k, p, q, r, C, how } = par
+  const par = pick(T93()), { k, p, q, r, C, how } = par
   const { set, solve } = build93(par)
   const aRange = spanRange(set)
   const f = `${k * k === 1 ? "" : k * k}x${SUP[2]} ${MINUS} ${2 * k === 1 ? "" : 2 * k}ax + a${SUP[2]}${term(p, "a")}${term(q, "")}`
@@ -8201,7 +8454,8 @@ function build9597({ al, be, ga, de, r1, r2, C, how }) {
   crit.push(...e.roots)
   return { set: assembleSet((a) => solve(a) === 1, crit), solve }
 }
-const T9597 = []
+const lazy63_ = lazy(() => {
+  const T9597 = []
 for (const [r1, r2] of [[-1, 2], [1, 5], [-2, 1], [0, 3], [-3, -1], [2, 4]]) {
   for (const al of [1, 2, 4]) for (const be of [0]) for (const ga of [-2, 0, 2]) for (const de of [-1, 0, 1]) {
     for (const Cn of [-24, -8, -4, -2, 0, 2]) for (const how of ["gt", "lt"]) {
@@ -8210,8 +8464,11 @@ for (const [r1, r2] of [[-1, 2], [1, 5], [-2, 1], [0, 3], [-3, -1], [2, 4]]) {
     }
   }
 }
+  return { T9597 }
+})
+const T9597 = () => lazy63_().T9597
 export function t18MinLinPlusAbsQuad() {
-  const par = pick(T9597), { al, be, ga, de, r1, r2, C, how } = par
+  const par = pick(T9597()), { al, be, ga, de, r1, r2, C, how } = par
   const { set, solve } = build9597(par)
   const aRange = spanRange(set)
   const p = r1 + r2, q = r1 * r2
@@ -8294,12 +8551,16 @@ function build90({ u, w }) {
     total, maxima, k, c,
   }
 }
-const T90 = []
+const lazy64_ = lazy(() => {
+  const T90 = []
 for (const u of [0, 1, 2, 3]) for (const w of [1, 2, 3, 4, 5]) {
   if (w <= u) continue
   const r = build90({ u, w })
   if (r && tidySet(r.setTotal, 3) && tidySet(r.setMax, 3)) T90.push({ u, w })
 }
+  return { T90 }
+})
+const T90 = () => lazy64_().T90
 function item90(par, kind) {
   const { u, w } = par
   const { setTotal, setMax, total, maxima, k, c } = build90(par)
@@ -8330,8 +8591,8 @@ function item90(par, kind) {
     },
   })
 }
-export function t18ExtremaCountAbs() { return item90(pick(T90), "total") }
-export function t18MaxPointAbs() { return item90(pick(T90), "max") }
+export function t18ExtremaCountAbs() { return item90(pick(T90()), "total") }
+export function t18MaxPointAbs() { return item90(pick(T90()), "max") }
 
 // =============================================================================
 // РАЗДЕЛ N. Неравенства «при всех x» (эталон #116, #117, #118)
@@ -8358,15 +8619,19 @@ function build116({ M, p, q, r, c }) {
   const crit = [R(-M * q + isSq(D1)), R(-M * q - isSq(D1)), R(M * q + isSq(D2)), R(M * q - isSq(D2))]
   return { set: assembleSet((a) => solve(a) === 1, crit), solve }
 }
-const T116 = []
+const lazy65_ = lazy(() => {
+  const T116 = []
 for (const M of [2, 3, 4, 5]) for (const p of [1, 2]) for (const q of [0, 1, 2]) for (const r of [1, 2, 3]) {
   for (const c of [1, 2, 3, 4]) {
     const res = build116({ M, p, q, r, c })
     if (res && tidySet(res.set, 2)) T116.push({ M, p, q, r, c })
   }
 }
+  return { T116 }
+})
+const T116 = () => lazy65_().T116
 export function t18AllXFraction() {
-  const par = pick(T116), { M, p, q, r, c } = par
+  const par = pick(T116()), { M, p, q, r, c } = par
   const { set, solve } = build116(par)
   const aRange = spanRange(set)
   const num = `x${SUP[2]} + ax${term(c, "")}`
@@ -8500,15 +8765,19 @@ function build94({ k, r1, r2, C, how }) {
   }
   return { set: assembleSet((a) => solve(a) === 1, crit), solve }
 }
-const T94 = []
+const lazy66_ = lazy(() => {
+  const T94 = []
 for (const k of [1, 2, 3, 4]) for (const [r1, r2] of [[-1, 2], [1, 5], [-2, 1], [0, 3], [-3, 1], [2, 4]]) {
   for (const Cn of [-4, -2, 0, 1, 2, 3, 4, 6]) for (const how of ["lt", "gt"]) {
     const r = build94({ k, r1, r2, C: R(Cn), how })
     if (r && tidySet(r.set, 3)) T94.push({ k, r1, r2, C: R(Cn), how })
   }
 }
+  return { T94 }
+})
+const T94 = () => lazy66_().T94
 export function t18MinTwoAbs() {
-  const par = pick(T94), { k, r1, r2, C, how } = par
+  const par = pick(T94()), { k, r1, r2, C, how } = par
   const { set, solve } = build94(par)
   const aRange = spanRange(set)
   const p = r1 + r2, q = r1 * r2
@@ -8579,13 +8848,17 @@ function build96({ k, w, C, how }) {
   }
   return { set: assembleSet((a) => solve(a) === 1, crit), solve }
 }
-const T96 = []
+const lazy67_ = lazy(() => {
+  const T96 = []
 for (const k of [2, 3, 4]) for (const w of [1, 2, 3]) for (const Cn of [-10, -8, -6, -5, -4, -3, -2, -1, 0, 2]) for (const how of ["gt", "lt"]) {
   const r = build96({ k, w, C: R(Cn), how })
   if (r && tidySet(r.set, 3)) T96.push({ k, w, C: R(Cn), how })
 }
+  return { T96 }
+})
+const T96 = () => lazy67_().T96
 export function t18MinAbsPlusShifted() {
-  const par = pick(T96), { k, w, C, how } = par
+  const par = pick(T96()), { k, w, C, how } = par
   const { set, solve } = build96(par)
   const aRange = spanRange(set)
   const quad = `x${SUP[2]} ${MINUS} 2(a${term(w, "")})x + a${SUP[2]}${term(2 * w, "a")}`
@@ -8651,7 +8924,8 @@ function build149({ p, q, u, rho, c }) {
   crit.push(R(-u))
   return { set: assembleSet((a) => solve(a) === 1, crit), solve }
 }
-const T149 = []
+const lazy68_ = lazy(() => {
+  const T149 = []
 for (const p of [3, 4, 5, 6]) for (const q of [1, 2, 3]) for (const u of [-2, -1, 1, 2, 3]) {
   for (const rho of [5, 10, 13]) for (const c of [1, 3, 5]) {
     if (q >= p) continue
@@ -8659,8 +8933,11 @@ for (const p of [3, 4, 5, 6]) for (const q of [1, 2, 3]) for (const u of [-2, -1
     if (r && tidySet(r.set, 2)) T149.push({ p, q, u, rho, c })
   }
 }
+  return { T149 }
+})
+const T149 = () => lazy68_().T149
 export function t18SumAbsUnderDisk() {
-  const par = pick(T149), { p, q, u, rho, c } = par
+  const par = pick(T149()), { p, q, u, rho, c } = par
   const { set, solve } = build149(par)
   const aRange = spanRange(set)
   return item({
@@ -8984,7 +9261,8 @@ function build157({ b, d, t, c, K, P }) {
   }
   return { set: SET([], roots), solve, roots }
 }
-const T157 = []
+const lazy69_ = lazy(() => {
+  const T157 = []
 for (const [c, t, d] of [[2, 1, 1], [3, 2, 1], [4, 3, 1], [5, 4, 1], [5, 1, 2], [10, 9, 1], [10, 6, 2], [10, 1, 3]]) {
   for (const b of [d, d + 1, d + 2, d + 3]) for (const K of [2, 3, 5, 10, 20, 30]) {
     for (const P of [2, 3, 5, 10, 17]) for (const Q of [0, 1, 2, 3, 5, 7]) {
@@ -8992,8 +9270,11 @@ for (const [c, t, d] of [[2, 1, 1], [3, 2, 1], [4, 3, 1], [5, 4, 1], [5, 1, 2], 
     }
   }
 }
+  return { T157 }
+})
+const T157 = () => lazy69_().T157
 export function t18IneqOnePointBoth() {
-  const par = pick(T157), { b, d, t, c, K, P, Q } = par
+  const par = pick(T157()), { b, d, t, c, K, P, Q } = par
   const { set, solve, roots } = build157(par)
   const inner = `a${SUP[2]}${term(-2 * b, "a")}${term(b * b + t, "")}`
   const num = `a + x${SUP[2]} + 2log⦉${c}⦊(${inner})`
@@ -9048,13 +9329,17 @@ function build113({ p, c, d }) {
   const crit = [R(-c), R(d), ...disc.roots, ...atMc.roots]
   return { set: assembleSet((a) => solve(a) === 1, crit), solve }
 }
-const T113 = []
+const lazy70_ = lazy(() => {
+  const T113 = []
 for (const p of [1, 2, 3, 4, 5]) for (const c of [1, 2, 3, 4]) for (const d of [-3, -2, -1, 1, 2, 3]) {
   const r = build113({ p, c, d })
   if (r && tidySet(r.set, 4)) T113.push({ p, c, d })
 }
+  return { T113 }
+})
+const T113 = () => lazy70_().T113
 export function t18TwoFractionsOne() {
-  const par = pick(T113), { p, c, d } = par
+  const par = pick(T113()), { p, c, d } = par
   const { set, solve } = build113(par)
   const aRange = spanRange(set)
   return item({
@@ -9115,13 +9400,17 @@ function build73({ h, k, m }) {
   const crit = [R(-m * h), R(-s * s - 4 * m * h, 4), R(s * s - 4 * m * h, 4)]
   return { set: assembleSet((a) => solve(a) === 4, crit), solve, s }
 }
-const T73 = []
+const lazy71_ = lazy(() => {
+  const T73 = []
 for (const h of [-2, -1, 0, 1, 2, 3]) for (const k of [1, 2, 3, 4]) for (const m of [1, 2, 3]) {
   const r = build73({ h, k, m })
   if (r && tidySet(r.set, 3)) T73.push({ h, k, m })
 }
+  return { T73 }
+})
+const T73 = () => lazy71_().T73
 export function t18SysCubicAbsLine() {
-  const par = pick(T73), { h, k, m } = par
+  const par = pick(T73()), { h, k, m } = par
   const { set, solve, s } = build73(par)
   const aRange = spanRange(set)
   const inner = `y${term(k, "x")}${term(-k * h, "")}`
@@ -9177,14 +9466,18 @@ function build74({ c1, r1, c2, r2 }) {
   }
   return { set: assembleSet((a) => solve(a) === 3, crit), solve, al, be, ga, de }
 }
-const T74 = []
+const lazy72_ = lazy(() => {
+  const T74 = []
 for (const c1 of [0, 1, 2]) for (const r1 of [1, 2, 3]) for (const c2 of [-2, -1, 0, 1]) for (const r2 of [1, 2, 3]) {
   if (c1 === c2 && r1 === r2) continue
   const r = build74({ c1, r1, c2, r2 })
   if (r && tidySet(r.set, 4)) T74.push({ c1, r1, c2, r2 })
 }
+  return { T74 }
+})
+const T74 = () => lazy72_().T74
 export function t18SysTwoHalfCircles() {
-  const par = pick(T74), { c1, r1, c2, r2 } = par
+  const par = pick(T74()), { c1, r1, c2, r2 } = par
   const { set, solve, al, be, ga, de } = build74(par)
   const aRange = spanRange(set)
   return item({
@@ -9246,13 +9539,17 @@ function build69({ p, q, w }) {
   }
   return { set: assembleSet((a) => solve(a) >= 3, crit), solve, x0, rho2, xm, xp }
 }
-const T69 = []
+const lazy73_ = lazy(() => {
+  const T69 = []
 for (const p of [-3, -2, -1, 0, 1, 2, 3]) for (const q of [1, 2, 3, 4, 5, 6, 8, 10, 12]) for (const w of [-2, -1, 0, 1, 2]) {
   const r = build69({ p, q, w })
   if (r && tidySet(r.set, 4)) T69.push({ p, q, w })
 }
+  return { T69 }
+})
+const T69 = () => lazy73_().T69
 export function t18SysTwoLinesArc() {
-  const par = pick(T69), { p, q, w } = par
+  const par = pick(T69()), { p, q, w } = par
   const { set, solve, x0, rho2, xm, xp } = build69(par)
   const aRange = spanRange(set)
   const al = p + 2 * w, c = q + w * w
@@ -9321,13 +9618,17 @@ function build70({ rho2, d }) {
   }
   return { set: assembleSet((a) => solve(a) >= 3, crit), solve, x0, y0, R1, R2 }
 }
-const T70 = []
+const lazy74_ = lazy(() => {
+  const T70 = []
 for (const rho2 of [1, 2, 4, 5, 9, 16, 25, 36, 49]) for (const d of [-6, -5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 6]) {
   const r = build70({ rho2, d })
   if (r && tidySet(r.set, 3)) T70.push({ rho2, d })
 }
+  return { T70 }
+})
+const T70 = () => lazy74_().T70
 export function t18SysPetalPencil() {
-  const par = pick(T70), { rho2, d } = par
+  const par = pick(T70()), { rho2, d } = par
   const { set, solve, x0, y0, R1, R2 } = build70(par)
   const aRange = spanRange(set)
   const line = y0 === 0 ? `y = a${shifted("x", term(-x0, ""))}` : `y${term(-y0, "")} = a${shifted("x", term(-x0, ""))}`
@@ -9549,7 +9850,8 @@ function build71({ P, Q, O1, O2, n1, n2 }) {
   return { set: assembleSet((a) => solve(a) >= 3, crit), solve, p, q, r, al, be, ga, c1: A, c2: B }
 }
 // Наборы: точки стыка P, Q; центры на серединном перпендикуляре; нормаль прямой.
-const T71 = []
+const lazy75_ = lazy(() => {
+  const T71 = []
 for (const [n1, n2] of [[1, 2], [2, 1], [3, 4], [4, 3], [1, 1], [1, -1]]) {
   for (const P of [[0, 0], [1, 1], [2, 0], [0, 2], [3, 1], [-1, 2], [3, -4]]) {
     for (const Q of [[0, 0], [4, 2], [2, 4], [5, 0], [0, 5], [3, -1], [-2, 2]]) {
@@ -9569,8 +9871,11 @@ for (const [n1, n2] of [[1, 2], [2, 1], [3, 4], [4, 3], [1, 1], [1, -1]]) {
     }
   }
 }
+  return { T71 }
+})
+const T71 = () => lazy75_().T71
 export function t18SysRadicalParallel() {
-  const par = pick(T71), { n1, n2, P, Q } = par
+  const par = pick(T71()), { n1, n2, P, Q } = par
   const { set, solve, p, q, r, al, be, ga, c1, c2 } = build71(par)
   const aRange = spanRange(set)
   const lead = (t) => t.replace(/^ \+ /, "").replace(/^ − /, MINUS)
@@ -9620,15 +9925,19 @@ function build75({ m, b, rho, d }) {
   const crit = [R(m), R(b, d), R(rho, d), R(-rho, d), R(rho, s), R(-rho, s)]
   return { set: assembleSet((a) => solve(a) === 3, crit), solve, s }
 }
-const T75 = []
+const lazy76_ = lazy(() => {
+  const T75 = []
 for (const [rho, , d] of [[3, 4, 5], [4, 3, 5], [5, 12, 13], [12, 5, 13], [6, 8, 10], [8, 6, 10]]) {   // s = √(d²−ρ²) считается внутри build75
   for (const m of [1, 2, 3]) for (const b of [-3, -2, -1, 1, 2, 3]) {
     const r = build75({ m, b, rho, d })
     if (r && tidySet(r.set, 4)) T75.push({ m, b, rho, d })
   }
 }
+  return { T75 }
+})
+const T75 = () => lazy76_().T75
 export function t18SysAxisLineCircle() {
-  const par = pick(T75), { m, b, rho, d } = par
+  const par = pick(T75()), { m, b, rho, d } = par
   const { set, solve, s } = build75(par)
   const aRange = spanRange(set)
   const A = `x${SUP[2]} + y${SUP[2]} + y${term(-m, "x")}${term(-b - rho * rho, "")}`
@@ -9699,7 +10008,8 @@ function build72({ p, q, w, k, n1, n2 }) {
   for (const x of [r1, r2]) for (const s of [1, -1]) crit.push(R(n1 * x + n2 * (k + s * (x + w))))
   return { set: assembleSet((a) => [1, 2].includes(solve(a)), crit), solve, r1, r2, cx, rho2, c, d }
 }
-const T72 = []
+const lazy77_ = lazy(() => {
+  const T72 = []
 for (const [n1, n2] of [[2, -3], [3, -2], [2, 3], [3, 2], [1, -2], [2, 1], [1, 2], [3, -4], [4, 3]]) {
   for (const p of [-3, -2, -1, 0, 1, 2, 3]) for (const q of [-12, -10, -8, -6, -4, -2, 2, 4]) {
     for (const w of [-2, -1, 0, 1, 2]) for (const k of [-1, 0, 1, 2]) {
@@ -9708,8 +10018,11 @@ for (const [n1, n2] of [[2, -3], [3, -2], [2, 3], [3, 2], [1, -2], [2, 1], [1, 2
     }
   }
 }
+  return { T72 }
+})
+const T72 = () => lazy77_().T72
 export function t18SysArcFourRays() {
-  const par = pick(T72), { p, q, w, k, n1, n2 } = par
+  const par = pick(T72()), { p, q, w, k, n1, n2 } = par
   const { set, solve, r1, r2, cx, rho2, c, d } = build72(par)
   const aRange = spanRange(set)
   const lead = (t) => t.replace(/^ \+ /, "").replace(/^ − /, MINUS)
@@ -9883,15 +10196,19 @@ function build105({ k, c, d }) {
   const nat = Math.max(1, Math.ceil(2 * k + s))
   return { set, solve, nat, lo: 2 * k - s, hi: 2 * k + s }
 }
-const T105 = []
+const lazy78_ = lazy(() => {
+  const T105 = []
 for (const k of [2, 3, 4, 5, 6]) for (const c of [10, 13, 17, 20, 26, 29, 37, 41]) {
   for (const d of [7, 8, 9, 10, 11, 12, 13]) {
     const r = build105({ k, c, d })
     if (r && tidySet(r.set, 2)) T105.push({ k, c, d })
   }
 }
+  return { T105 }
+})
+const T105 = () => lazy78_().T105
 export function t18SmallestNaturalGap() {
-  const par = pick(T105), { k, c, d } = par
+  const par = pick(T105()), { k, c, d } = par
   const { set, solve, nat, hi } = build105(par)
   const aRange = spanRange(set)
   return item({
@@ -9938,15 +10255,19 @@ function build112({ m, al, ga, h }) {          // p влияет только н
   const set = assembleSet((a) => solve(a) === 1, e.roots)
   return { set, solve }
 }
-const T112 = []
+const lazy79_ = lazy(() => {
+  const T112 = []
 for (const p of [10, 5, 4, 6]) for (const m of [1, 2, 3, 5]) for (const al of [-10, -8, -6, -4, -2, 0, 2]) {
   for (const ga of [3, 5, 8, 10, 12, 15]) for (const h of [1, 2, 3]) {
     const r = build112({ p, m, al, ga, h })
     if (r && tidySet(r.set, 3)) T112.push({ p, m, al, ga, h })
   }
 }
+  return { T112 }
+})
+const T112 = () => lazy79_().T112
 export function t18RangeContainsSeg() {
-  const par = pick(T112), { p, m, al, ga, h } = par
+  const par = pick(T112()), { p, m, al, ga, h } = par
   const { set, solve } = build112(par)
   const aRange = spanRange(set)
   // Коэффициент при a может обнулиться — тогда слагаемое «0a» просто не пишется.
@@ -10019,7 +10340,8 @@ function build161({ k, m, L, H }) {
   const set = assembleSet((a) => cond(a) === 1, crit)
   return { set, solve: cond }
 }
-const T161 = []
+const lazy80_ = lazy(() => {
+  const T161 = []
 for (const k of [1, 2, 3, 4, 5]) for (const m of [1, 2, 3, 4, 5, 6]) {
   for (const L of [0, 1, 2, 3, 4]) for (const H of [1, 2, 3, 4, 5, 6]) {
     if (L >= H) continue
@@ -10027,8 +10349,11 @@ for (const k of [1, 2, 3, 4, 5]) for (const m of [1, 2, 3, 4, 5, 6]) {
     if (r && tidySet(r.set, 3)) T161.push({ k, m, L, H })
   }
 }
+  return { T161 }
+})
+const T161 = () => lazy80_().T161
 export function t18TrigRangeContains() {
-  const par = pick(T161), { k, m, L, H } = par
+  const par = pick(T161()), { k, m, L, H } = par
   const { set, solve } = build161(par)
   const aRange = spanRange(set)
   const num = `√{a + 1} ${MINUS} ${k === 1 ? "" : k}cos 3x + 1`
@@ -10082,13 +10407,17 @@ function build98({ k, p, q }) {
   const hi = Math.max(24, Math.ceil(Rnum(b[b.length - 1])) + 6)
   return { set, solve, aRange: [0, hi], A1, A2, A3 }
 }
-const T98 = []
+const lazy81_ = lazy(() => {
+  const T98 = []
 for (const k of [1, 2, 3, 4]) for (const p of [4, 6, 8, 10, 12]) for (const q of [1, 2, 3, 4, 5, 6]) {
   const r = build98({ k, p, q })
   if (r && tidySet(r.set, 3)) T98.push({ k, p, q })
 }
+  return { T98 }
+})
+const T98 = () => lazy81_().T98
 export function t18QuarticOneMinimum() {
-  const par = pick(T98), { k, p, q } = par
+  const par = pick(T98()), { k, p, q } = par
   const { set, solve, aRange, A2, A3 } = build98(par)
   const c = pick([-7, -5, -3, -1, 1, 3, 5])
   return item({
@@ -10189,13 +10518,17 @@ function build122({ k1, k2, k3, u }) {
 // уравнением: при 13 значениях a (не совпадающих с критическими) число смен знака разности
 // частей на [−60; 60] совпало с точным решателем у ВСЕХ 192 наборов. Результат зафиксирован
 // литералом, чтобы импорт модуля оставался быстрым.
-const T122 = []
+const lazy82_ = lazy(() => {
+  const T122 = []
 for (const k1 of [2, 3, 4, 5]) for (const k2 of [2, 3, 4]) for (const k3 of [6, 8, 9, 12]) {
   for (const u of [1, 2, 3, 4]) T122.push({ k1, k2, k3, u })
 }
+  return { T122 }
+})
+const T122 = () => lazy82_().T122
 
 export function t18NestedAbsTwoRoots() {
-  const par = pick(T122), { k1, k2, k3, u } = par
+  const par = pick(T122()), { k1, k2, k3, u } = par
   const { set, solve } = build122(par)
   const aRange = spanRange(set)
   return item({
@@ -10239,15 +10572,19 @@ function build130({ A, C, m, p, q, h }) {
   }
   return { set: assembleSet((a) => solve(a) === 1, [R0, hi, k0]), solve, hi, k0 }
 }
-const T130 = []
+const lazy83_ = lazy(() => {
+  const T130 = []
 for (const [p, q, h] of [[3, 4, 5], [4, 3, 5], [5, 12, 13], [12, 5, 13], [8, 15, 17], [15, 8, 17]]) {
   for (const A of [3, 4, 6, 8]) for (const C of [1, 2, 3]) for (const m of [1, 2]) {
     const r = build130({ A, C, m, p, q, h })
     if (r && tidySet(r.set, 3)) T130.push({ A, C, m, p, q, h })
   }
 }
+  return { T130 }
+})
+const T130 = () => lazy83_().T130
 export function t18TrigParamRange() {
-  const par = pick(T130), { A, C, m, p, q, h } = par
+  const par = pick(T130()), { A, C, m, p, q, h } = par
   const { set, solve, hi, k0 } = build130(par)
   const aRange = spanRange(set)
   const num = `${A === 1 ? "" : A}a ${MINUS} (${m * q} ${MINUS} ${C === 1 ? "" : C}a)cos t`
@@ -10301,13 +10638,17 @@ const SEG131 = [
   { txt: `[0; ${fT("π", "4")}]`, tan: [0, 1] },
   { txt: `[0; ${fT("π", "2")}]`, tan: [0, null] },
 ]
-const T131 = []
+const lazy84_ = lazy(() => {
+  const T131 = []
 for (const r of [1, 2, 3, 4, 5]) for (const seg of SEG131) {
   const x = build131({ r, seg })
   if (x && tidySet(x.set, 3)) T131.push({ r, seg })
 }
+  return { T131 }
+})
+const T131 = () => lazy84_().T131
 export function t18TrigTangentSeg() {
-  const par = pick(T131), { r, seg } = par
+  const par = pick(T131()), { r, seg } = par
   const { set, solve, q } = build131(par)
   const aRange = spanRange(set)
   return item({
@@ -10359,15 +10700,19 @@ function build115({ c, k, S }) {                // u влияет только �
   crit.push(...e1.roots, ...e2.roots)
   return { set: assembleSet((a) => solve(a) === 1, crit), solve }
 }
-const T115 = []
+const lazy85_ = lazy(() => {
+  const T115 = []
 for (const u of [-2, -1, 1, 2, 3]) for (const c of [1, 2, 3, 4]) for (const k of [2, 3, 4]) {
   for (const S of [R(1, 2), R1, R(3, 2), R(2)]) {
     const r = build115({ u, c, k, S })
     if (r && tidySet(r.set, 3)) T115.push({ u, c, k, S })
   }
 }
+  return { T115 }
+})
+const T115 = () => lazy85_().T115
 export function t18TriangleArea() {
-  const par = pick(T115), { u, c, k, S } = par
+  const par = pick(T115()), { u, c, k, S } = par
   const { set, solve } = build115(par)
   const aRange = spanRange(set)
   return item({
@@ -10468,13 +10813,17 @@ const SEG132 = [
   { txt: `[0; ${fT("5π", "6")}]` },
   { txt: `[π; ${fT("11π", "6")}]` },
 ]
-const T132 = []
+const lazy86_ = lazy(() => {
+  const T132 = []
 for (const p of [0, 1, 2, 3, 4]) for (const q of [0, 1, 2, 3, 4]) for (const r of [1, 2, 3, 4, 5]) {
   const x = build132({ p, q, r })
   if (x && tidySet(x.set, 3)) T132.push({ p, q, r })
 }
+  return { T132 }
+})
+const T132 = () => lazy86_().T132
 export function t18TrigIneqContainsSeg() {
-  const par = pick(T132), { p, q, r } = par
+  const par = pick(T132()), { p, q, r } = par
   const seg = pick(SEG132)
   const { set, solve } = build132(par)
   const aRange = spanRange(set)
@@ -10543,15 +10892,19 @@ function build53({ p, q, c, r }) {
   }
   return { set: assembleSet((a) => single(a) === 1, crit), solve: single }
 }
-const T53 = []
+const lazy87_ = lazy(() => {
+  const T53 = []
 for (const p of [5, 7, 9, 11, 13]) for (const q of [1, 2, 3, 4]) for (const c of [1, 3, 5, 7, 9]) {
   for (const r of [3, 5, 7, 9]) {
     const x = build53({ p, q, c, r })
     if (x && tidySet(x.set, 3)) T53.push({ p, q, c, r })
   }
 }
+  return { T53 }
+})
+const T53 = () => lazy87_().T53
 export function t18WedgeParabolaOne() {
-  const par = pick(T53), { p, q, c, r } = par
+  const par = pick(T53()), { p, q, c, r } = par
   const { set, solve } = build53(par)
   const aRange = spanRange(set)
   return item({
@@ -10620,15 +10973,19 @@ function build45({ k, c, p, q, L }) {
   }
   return { set: assembleSet((a) => inside(a) === 1, crit), solve: inside }
 }
-const T45 = []
+const lazy88_ = lazy(() => {
+  const T45 = []
 for (const k of [2, 3, 4]) for (const c of [1, 2, 3, 4]) for (const p of [0, 2, 4]) {
   for (const q of [0, 1, 2, 3]) for (const L of [2, 3, 4, 5]) {
     const x = build45({ k, c, p, q, L })
     if (x && tidySet(x.set, 3)) T45.push({ k, c, p, q, L })
   }
 }
+  return { T45 }
+})
+const T45 = () => lazy88_().T45
 export function t18ProductIneqSeg() {
-  const par = pick(T45), { k, c, p, q, L } = par
+  const par = pick(T45()), { k, c, p, q, L } = par
   const { set, solve } = build45(par)
   const aRange = spanRange(set)
   return item({
@@ -10672,15 +11029,19 @@ function build166({ p, q, k, m, r }) {
   }
   return { set: assembleSet((a) => solve(a) === 1, [minVal]), solve, minVal, c1, c2 }
 }
-const T166 = []
+const lazy89_ = lazy(() => {
+  const T166 = []
 for (const p of [1, 2, 3, 4]) for (const q of [1, 2, 3]) for (const k of [1, 2, 3]) {
   for (const m of [1, 2, 3]) for (const r of [1, 2, 3]) {
     const x = build166({ p, q, k, m, r })
     if (x && tidySet(x.set, 2)) T166.push({ p, q, k, m, r })
   }
 }
+  return { T166 }
+})
+const T166 = () => lazy89_().T166
 export function t18ThreeVarUnique() {
-  const par = pick(T166), { p, q, k, m, r } = par
+  const par = pick(T166()), { p, q, k, m, r } = par
   const { set, solve, minVal, c1, c2 } = build166(par)
   const aRange = spanRange(set)
   return item({
@@ -10724,13 +11085,17 @@ function build84({ p, c, k }) {
   const solve = (a) => (roots.some((x) => Rcmp(x, a) === 0) ? 1 : 0)
   return { set: assembleSet((a) => solve(a) === 1, roots), solve, k }
 }
-const T84 = []
+const lazy90_ = lazy(() => {
+  const T84 = []
 for (const p of [0, 1, 2, 3, 4, 5, 6]) for (const c of [-3, -2, -1, 0, 1, 2, 3, 5, 8]) for (const k of [1, 2, 3]) {
   const x = build84({ p, c, k })
   if (x && tidySet(x.set, 3)) T84.push({ p, c, k })
 }
+  return { T84 }
+})
+const T84 = () => lazy90_().T84
 export function t18EvenSqrtCosUnique() {
-  const par = pick(T84), { p, c, k } = par
+  const par = pick(T84()), { p, c, k } = par
   const { set, solve } = build84(par)
   const aRange = spanRange(set)
   return item({
@@ -10782,15 +11147,19 @@ function build67({ c, p, k, d, L }) {
   }
   return { set: assembleSet((a) => solve(a) === 1, crit), solve }
 }
-const T67 = []
+const lazy91_ = lazy(() => {
+  const T67 = []
 for (const c of [2, 3, 4, 5, 6]) for (const p of [2, 4, 6, 8]) for (const k of [4, 8, 12, 16]) {
   for (const d of [8, 12, 16, 24, 32, 48]) for (const L of [-1, -2, -3]) {
     const x = build67({ c, p, k, d, L })
     if (x && tidySet(x.set, 3)) T67.push({ c, p, k, d, L })
   }
 }
+  return { T67 }
+})
+const T67 = () => lazy91_().T67
 export function t18AbsParamStrip() {
-  const par = pick(T67), { c, p, k, d, L } = par
+  const par = pick(T67()), { c, p, k, d, L } = par
   const { set, solve } = build67(par)
   const aRange = spanRange(set)
   return item({
@@ -10846,15 +11215,19 @@ function build180({ m, n, p, c }) {
   }
   return { set: assembleSet((a) => solve(a) === 4, crit), solve }
 }
-const T180 = []
+const lazy92_ = lazy(() => {
+  const T180 = []
 for (const [m, n] of [[9, 16], [16, 9], [25, 144], [144, 25], [4, 12], [12, 4], [9, 12], [12, 9]]) {
   for (const p of [1, 2, 3, 4]) for (const c of [1, 2, 3, 4, 6, 8]) {
     const x = build180({ m, n, p, c })
     if (x && tidySet(x.set, 3)) T180.push({ m, n, p, c })
   }
 }
+  return { T180 }
+})
+const T180 = () => lazy92_().T180
 export function t18QuarticEllipseFour() {
-  const par = pick(T180), { m, n, p, c } = par
+  const par = pick(T180()), { m, n, p, c } = par
   const { set, solve } = build180(par)
   const aRange = spanRange(set)
   return item({
@@ -10924,7 +11297,8 @@ function build183({ p, q, r, s, mu, nu, d }) {
   }
   return { set: assembleSet((a) => solve(a) >= 4, crit), solve, H, K, x0, Y0, L, fixedCount }
 }
-const T183 = []
+const lazy93_ = lazy(() => {
+  const T183 = []
 for (const p of [1, 2, 3]) for (const q of [1, 2, 3, 4, 6]) for (const r of [2, 3, 4, 5, 6, 8]) {
   for (const s of [2, 3, 4, 5]) for (const [mu, nu] of [[2, 3], [1, 1], [1, 2], [2, 1], [3, 2]]) {
     for (const d of [2, 3, 4, 6]) {
@@ -10933,8 +11307,11 @@ for (const p of [1, 2, 3]) for (const q of [1, 2, 3, 4, 6]) for (const r of [2, 
     }
   }
 }
+  return { T183 }
+})
+const T183 = () => lazy93_().T183
 export function t18HyperRayPencil() {
-  const par = pick(T183), { p, q, r, s, mu, nu, d } = par
+  const par = pick(T183()), { p, q, r, s, mu, nu, d } = par
   const { set, solve, H, K, x0, Y0, fixedCount } = build183(par)
   const aRange = spanRange(set)
   return item({
@@ -11003,15 +11380,19 @@ function build164({ p, q, v, w, u }) {
   }
   return { set: assembleSet((a) => solve(a) === 4, crit), solve, B, C }
 }
-const T164 = []
+const lazy94_ = lazy(() => {
+  const T164 = []
 for (const p of [1, 2, 3, 4, 5, 6]) for (const q of [-4, -3, -2, -1, 1, 2, 3, 4]) {
   for (const v of [-2, -1, 0, 1, 2]) for (const w of [1, 2, 3, 4, 5, 6, 8]) for (const u of [-1, 1, 2]) {
     const x = build164({ p, q, v, w, u })
     if (x && tidySet(x.set, 3)) T164.push({ p, q, v, w, u })
   }
 }
+  return { T164 }
+})
+const T164 = () => lazy94_().T164
 export function t18PencilVertParabola() {
-  const par = pick(T164), { p, q, v, w, u } = par
+  const par = pick(T164()), { p, q, v, w, u } = par
   const { set, solve, B, C } = build164(par)
   const aRange = spanRange(set)
   const first = `ax${SUP[2]} + ay${SUP[2]}${B === 0 ? term(p, "x") : ` + (${B === 1 ? "" : B === -1 ? MINUS : nS(B)}a${term(p, "")})x`}`
@@ -11076,15 +11457,19 @@ function build80({ e, g, mn, md }) {
   ]
   return { set: assembleSet((a) => [2, 3].includes(solve(a)), crit), solve, p, w, rho2, g }
 }
-const T80 = []
+const lazy95_ = lazy(() => {
+  const T80 = []
 for (const e of [2, 3, 4, 5, 6, 8, 10, 12]) for (const g of [3, 4, 5, 6, 8, 9, 12, 15, 16]) {
   for (const [mn, md] of [[3, 4], [4, 3], [1, 1], [5, 12], [12, 5], [8, 15]]) {
     const x = build80({ e, g, mn, md })
     if (x && tidySet(x.set, 3)) T80.push({ e, g, mn, md })
   }
 }
+  return { T80 }
+})
+const T80 = () => lazy95_().T80
 export function t18LensLine() {
-  const par = pick(T80), { g, mn, md } = par
+  const par = pick(T80()), { g, mn, md } = par
   const { set, solve, p, w, rho2 } = build80(par)
   const aRange = spanRange(set)
   const mStr = md === 1 ? `${mn}x` : `${fT(String(mn), String(md))}x`
@@ -11135,14 +11520,18 @@ function build137({ ang, C, D }) {
   for (let n = -13; n <= 13; n++) pts.push(Radd(ang.t, R(n)))
   return { set: SET([], pts), solve, aRange: [-12, 12] }
 }
-const T137 = []
+const lazy96_ = lazy(() => {
+  const T137 = []
 for (const ang of ANG137) for (const C of [1, 2, 3, 4, 6]) for (const D of [-3, -2, -1, 1, 2, 3]) {
   for (const [L, H] of [[-1, 4], [0, 5], [-2, 2], [1, 6]]) {
     if (build137({ ang, C, D })) T137.push({ ang, C, D, L, H })
   }
 }
+  return { T137 }
+})
+const T137 = () => lazy96_().T137
 export function t18AnswerByX() {
-  const par = pick(T137), { ang, C, D, L, H } = par
+  const par = pick(T137()), { ang, C, D, L, H } = par
   const { set, solve, aRange } = build137(par)
   const kA = ang.ca, kB = ang.sa                                 // null → слагаемого нет, "" → 1
   const cS = C === 1 ? "" : C                                    // коэффициент 1 перед функцией не пишется
@@ -11202,12 +11591,16 @@ function build133({ P, Q }) {
   for (let n = -13; n <= 13; n++) pts.push(Radd(target, R(n)))
   return { set: SET([], pts), solve, aRange: [-12, 12], ang }
 }
-const T133 = []
+const lazy97_ = lazy(() => {
+  const T133 = []
 for (const P of [2, 4, 6, 8, 10, 12]) for (const Q of [1, 3, 4, 9, 12, 16, 25, 27, 36, 48]) {
   if (build133({ P, Q })) T133.push({ P, Q })
 }
+  return { T133 }
+})
+const T133 = () => lazy97_().T133
 export function t18BiquadTrigTwo() {
-  const par = pick(T133), { P, Q } = par
+  const par = pick(T133()), { P, Q } = par
   const { set, solve, aRange, ang } = build133(par)
   const ans = `${ang.pl} + πn, n ∈ ℤ`
   return item({
@@ -11262,13 +11655,17 @@ function build64({ c, rho }) {
   const crit = [R(c), R(c + rho), R(c - rho)]
   return { set: assembleSet((a) => solve(a) === 1, crit), solve }
 }
-const T64 = []
+const lazy98_ = lazy(() => {
+  const T64 = []
 for (const c of [-3, -2, -1, 1, 2, 3, 4]) for (const rho of [2, 3, 4, 5, 6]) {
   const x = build64({ c, rho })
   if (x && tidySet(x.set, 3)) T64.push({ c, rho })
 }
+  return { T64 }
+})
+const T64 = () => lazy98_().T64
 export function t18TwoSemicirclesDiag() {
-  const par = pick(T64), { c, rho } = par
+  const par = pick(T64()), { c, rho } = par
   const { set, solve } = build64(par)
   const aRange = spanRange(set)
   const first = `√{${nS(rho * rho - c * c)}${term(2 * c, "x")} ${MINUS} x${SUP[2]}}${term(c, "")}`
@@ -11324,7 +11721,8 @@ function build152({ c3, c1, p, q, k, u, m, r, n, M, R: Rr }) {   // L влияе
   if (!setBounds(set).length) return null
   return { set, solve, S, A1, A2, rt }
 }
-const T152 = []
+const lazy99_ = lazy(() => {
+  const T152 = []
 for (const [n, m, r, Rr] of [[5, 2, 3, 1], [3, 1, 9, 1], [5, 1, 33, 1], [3, 2, 10, 1], [5, 3, 4, 1]]) {
   for (const c3 of [1, 2]) for (const c1 of [8, 9, 10, 12]) for (const p of [2, 3]) {
     for (const q of [1, 2]) for (const k of [2, 3]) for (const u of [1, 2, 3]) for (const M of [12, 16, 20]) {
@@ -11333,8 +11731,11 @@ for (const [n, m, r, Rr] of [[5, 2, 3, 1], [3, 1, 9, 1], [5, 1, 33, 1], [3, 2, 1
     }
   }
 }
+  return { T152 }
+})
+const T152 = () => lazy99_().T152
 export function t18IncreasingAllX() {
-  const par = pick(T152), { c3, c1, p, q, k, u, m, r, n, M, L, R: Rr } = par
+  const par = pick(T152()), { c3, c1, p, q, k, u, m, r, n, M, L, R: Rr } = par
   const { set, solve, S, rt } = build152(par)
   const aRange = spanRange(set)
   const radStr = `${n === 3 ? "∛" : `⟦rn:${n}:${m === 1 ? "" : m}x ${MINUS} ${r}⟧`}${n === 3 ? `(${m === 1 ? "" : m}x ${MINUS} ${r})` : ""}`
