@@ -18,8 +18,8 @@ export const TUTOR_NAV = [
   { id: "chat",      label: "Чат",          mobile: true },
   { id: "payment",   label: "Финансы",      mobile: true },
   { id: "results",   label: "Результаты" },
-  // Виден только владельцу платформы: это просмотр генераторов, а не
-  // возможность тарифа (см. src/owner.js).
+  // Виден только тем, кому открыт просмотр генераторов, а не всем по тарифу
+  // (список аккаунтов — canViewTaskBank в src/owner.js).
   { id: "taskgen",   label: "Банк заданий", ownerOnly: true },
 ]
 

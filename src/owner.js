@@ -16,6 +16,21 @@
 // сервер.
 const OWNER_EMAILS = ["arm_227@mail.ru"]
 
+// Раздел «Банк заданий» открыт ещё и отдельным аккаунтам — тем, кого владелец
+// позвал смотреть генераторы. Список НАМЕРЕННО отдельный от OWNER_EMAILS:
+// isOwner открывает вдобавок закрытые предметы (химия, биология, литература…)
+// в сборке ДЗ, вариантов и на доске, а их банки не доказаны и в продуктовую
+// область не входят (математика и информатика) — см. examSubjectList.js.
+// Здесь только видимость раздела.
+const BANK_VIEWER_EMAILS = ["leopromov222@gmail.com"]
+
+const norm = (email) => String(email || "").trim().toLowerCase()
+
 export function isOwner(email) {
-  return OWNER_EMAILS.includes(String(email || "").trim().toLowerCase())
+  return OWNER_EMAILS.includes(norm(email))
+}
+
+// Видит ли аккаунт раздел «Банк заданий» (пункт меню и саму страницу).
+export function canViewTaskBank(email) {
+  return isOwner(email) || BANK_VIEWER_EMAILS.includes(norm(email))
 }

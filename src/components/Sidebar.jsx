@@ -2,7 +2,7 @@ import NavIcon from "./NavIcon"
 import BrandMark from "./BrandMark"
 import { useSubscription } from "../subscription"
 import { effectivePlan } from "../plans"
-import { isOwner } from "../owner"
+import { canViewTaskBank } from "../owner"
 import { navFor } from "../nav"
 
 // Список разделов — общий с нижней панелью и листом «Меню» на телефоне
@@ -47,7 +47,7 @@ function Sidebar({ activePage, setActivePage, badges = {}, name, email }) {
     <div className="sidebar-glass w-52 h-dvh sticky top-0 p-4 flex flex-col">
       <BrandMark title="Precettore" className="mb-5 px-1" />
       <div className="flex flex-col gap-1">
-        {navFor(isOwner(email)).map((item) => (
+        {navFor(canViewTaskBank(email)).map((item) => (
           <button
             key={item.id}
             onClick={() => setActivePage(item.id)}
