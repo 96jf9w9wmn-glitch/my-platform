@@ -2242,7 +2242,13 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       // Удаление не меняет ни rev, ни ord — его видно только по числу строк, и
       // лечится оно перечитыванием сцены целиком.
       if (got) scheduleDraw()
-      if (got && (!Number.isFinite(since.n) || since.n === known())) return
+      // Счёт сошёлся — за сценой не идём, привёз догон что-то или нет. Здесь
+      // стояло `got && …`, и ПУСТОЙ догон (нового нет, доска в порядке)
+      // проваливался ниже, в перечитывание всей сцены: на каждом возврате во
+      // вкладку, на каждом подъёме канала и на каждой сверке после своего же
+      // сохранения. Журнал боевой за 15.09.2026: 31 board_scene за 32 минуты на
+      // доске из 13 штрихов; на доске занятия это мегабайты — «доска провисает».
+      if (Number.isFinite(since.n) ? since.n === known() : got) return
       // Нового нет, а счёт не сошёлся ровно на стёртое при нас — ждём, пока
       // автор допишет удаление в базу. Сцену целиком тянуть незачем.
       if (Number.isFinite(since.n) && since.n - known() > 0
@@ -4475,17 +4481,32 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // надо править в каждом кадре: обзор двигают колесом, пальцами и слежением, и
   // ни одно из этих движений через React не проходит.
   //
-  // ГЛАВНОЕ: писатель у этой геометрии ОДИН — вот эта функция. Раньше место
-  // обёртки, кегль, интерлиньяж и поля карточки стояли ЕЩЁ И в разметке (их
-  // считал React из того же view.current), и при зуме они расходились: React
-  // перерисовывается по своему расписанию, а эта функция — в кадре. Замер на
-  // стенде (ctrl+колесо, кадр за кадром): поле ввода уже 17,54 px, а слой
-  // подсветки — ещё 19 px, и так на КАЖДОМ кадре зума. То есть курсор,
-  // пунктирная рамка и место карточки уезжали на новый масштаб, а сама
-  // карточка с цветным кодом — на кадр позже. Это и есть дрожание. Возвращать
-  // в разметку left/top/font/lineHeight/padding НЕЛЬЗЯ: свойство, которого в
-  // style-объекте нет, React не трогает вовсе, и расходиться становится нечему.
-  function layoutTextEditor() {
+  // ГЛАВНОЕ, две вещи, обе — про дрожание при зуме, и обе проверены замером.
+  //
+  // 1. ПИСАТЕЛЬ У ЭТОЙ ГЕОМЕТРИИ ОДИН — вот эта функция. Место обёртки, кегль,
+  //    интерлиньяж и поля карточки стояли ЕЩЁ И в разметке (их считал React из
+  //    того же view.current), и при зуме они расходились: React перерисовывается
+  //    по своему расписанию, а эта функция — в кадре. Замер: поле ввода уже
+  //    17,54 px, а слой подсветки ещё 19 px, и так на КАЖДОМ кадре. Возвращать в
+  //    разметку left/top/font/lineHeight/padding НЕЛЬЗЯ: свойства, которого в
+  //    style-объекте нет, React не трогает вовсе, и расходиться нечему.
+  //
+  // 2. РАСКЛАДКА НЕ ПЕРЕСЧИТЫВАЕТСЯ НА КАЖДОМ КАДРЕ ЗУМА. Это и была та дрожь,
+  //    которую видно глазами. Холст рисует буквы дробными координатами и потому
+  //    при зуме скользит ровно; HTML-текст браузер раскладывает заново на каждое
+  //    изменение `font-size` и каждую букву прижимает к своей пиксельной сетке —
+  //    на щипке трекпада масштаб меняется десятки раз в секунду, и весь текст
+  //    карточки мелко ходит туда-сюда. Поэтому разложено ОДИН раз (при открытии
+  //    правки и когда зум устоялся), а на время самого жеста готовая раскладка
+  //    только МАСШТАБИРУЕТСЯ трансформой: браузер тянет уже нарисованный слой,
+  //    заново ничего не расставляя. Как только зум замер (ZOOM_SETTLE_MS),
+  //    раскладка пересобирается точно под новый масштаб — и текст снова чёткий.
+  //    `layoutScaleRef` — масштаб, ПРИ КОТОРОМ посчитана нынешняя раскладка;
+  //    отношение к нему и есть та самая трансформа.
+  const ZOOM_SETTLE_MS = 180
+  const layoutScaleRef = useRef(0)
+  const settleTimer = useRef(0)
+  function layoutTextEditor(relayout = false) {
     const box = editBoxRef.current, ta = editRef.current, p = editPos.current
     if (!box || !p) return
     const v = view.current
@@ -4493,36 +4514,65 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     // Обёртка стоит в углу САМОГО штриха: поля карточки держит поле ввода своим
     // padding, а под ним теми же полями нарисована карточка с подсветкой.
     const pad = p.code ? (m.pad || 0) : 0
-    box.style.left = `${p.x * v.scale + v.x}px`
-    box.style.top = `${p.y * v.scale + v.y}px`
-    box.style.transform = p.angle ? `rotate(${p.angle}rad)` : ""
+    if (relayout || !layoutScaleRef.current) layoutScaleRef.current = v.scale
+    const ls = layoutScaleRef.current
+    const k = v.scale / ls
+    const zooming = Math.abs(k - 1) > 1e-6
+    // Пока жест идёт, слой держим отдельной картинкой (will-change): браузер
+    // тянет её целиком, а не перекладывает текст. Устоялось — снимаем, иначе
+    // текст так и остался бы растянутым растром и выглядел мыльным.
+    box.style.willChange = zooming ? "transform" : ""
+    box.style.left = "0px"
+    box.style.top = "0px"
+    box.style.transformOrigin = "0 0"
+    // Поворот — вокруг СЕРЕДИНЫ надписи, как и рисует холст, поэтому он взят в
+    // пару сдвигов: с transformOrigin в углу иначе не выразить.
+    const cx = (m.w * ls) / 2, cy = (m.h * ls) / 2
+    const rot = p.angle
+      ? ` translate(${cx}px, ${cy}px) rotate(${p.angle}rad) translate(${-cx}px, ${-cy}px)`
+      : ""
+    box.style.transform =
+      `translate(${p.x * v.scale + v.x}px, ${p.y * v.scale + v.y}px)` +
+      (zooming ? ` scale(${k})` : "") + rot
+    // Зум пошёл — ставим пересборку раскладки на момент, когда он замрёт.
+    if (zooming) {
+      clearTimeout(settleTimer.current)
+      settleTimer.current = setTimeout(() => { layoutTextEditor(true); scheduleDraw() }, ZOOM_SETTLE_MS)
+    }
     if (!ta) return
+    // Дальше всё считается в МАСШТАБЕ РАСКЛАДКИ (ls), а не в нынешнем: разницу
+    // между ними уже отработала трансформа выше.
     // У кода буквы в поле ПРОЗРАЧНЫЕ: их показывает слой подсветки под ним,
     // а от поля нужен только курсор. Ставить цвет надо и здесь: разметка задаёт
     // его при перерисовке, а эта функция — на каждом движении и зуме.
     const col = resolveColor(p.color, isDarkColor(bgColorRef.current))
-    ta.style.font = textFont(p.size * v.scale, p)   // сокращённая запись сбрасывает интерлиньяж…
-    ta.style.lineHeight = `${p.size * v.scale * TEXT_LINE}px`  // …поэтому он ставится следом
+    ta.style.font = textFont(p.size * ls, p)   // сокращённая запись сбрасывает интерлиньяж…
+    ta.style.lineHeight = `${p.size * ls * TEXT_LINE}px`  // …поэтому он ставится следом
     // Поля карточки держит само поле ввода (box-sizing: content-box), и они
     // обязаны меняться ВМЕСТЕ с шириной и высотой: разъедутся — курсор встанет
     // не на свою строку, а пунктир обгонит карточку.
-    ta.style.padding = `${pad * v.scale}px`
-    ta.style.width = `${(m.w - pad * 2) * v.scale + TEXT_PAD}px`
-    ta.style.height = `${(m.h - pad * 2) * v.scale}px`
-    paintCodeLayer(m, v.scale)
+    ta.style.padding = `${pad * ls}px`
+    ta.style.width = `${(m.w - pad * 2) * ls + TEXT_PAD}px`
+    ta.style.height = `${(m.h - pad * 2) * ls}px`
+    paintCodeLayer(m, ls)
     ta.style.color = p.code ? "transparent" : col
     ta.style.caretColor = p.code ? CODE_INK.plain : col
     // Панель ставим НАД полем, а у самого верха экрана — под ним, иначе она уедет
     // за край. Поворот надписи ей компенсируем: наклонённый ряд кнопок не читается.
+    // Масштаб жеста компенсируем тоже: кнопки обязаны остаться своего размера.
     const bar = editBarRef.current
     if (!bar) return
+    // Сама панель размечена обычными экранными пикселями (её h-8 и кегль кнопок
+    // масштаб раскладки не трогает), поэтому компенсировать надо ровно k —
+    // масштаб жеста, наложенный на обёртку. Устоялось (k = 1) — всё как было.
     const above = p.y * v.scale + v.y > 64
+    const gap = 8 / k
     bar.style.bottom = above ? "100%" : "auto"
     bar.style.top = above ? "auto" : "100%"
-    bar.style.marginBottom = above ? "8px" : "0"
-    bar.style.marginTop = above ? "0" : "8px"
+    bar.style.marginBottom = above ? `${gap}px` : "0"
+    bar.style.marginTop = above ? "0" : `${gap}px`
     bar.style.transformOrigin = above ? "0 100%" : "0 0"
-    bar.style.transform = p.angle ? `rotate(${-p.angle}rad)` : ""
+    bar.style.transform = (zooming ? `scale(${1 / k})` : "") + (p.angle ? ` rotate(${-p.angle}rad)` : "")
   }
 
   // Подсветка ПРИ НАБОРЕ. Поле ввода умеет один цвет на весь текст, поэтому под
@@ -4589,7 +4639,9 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     const ta = editRef.current
     if (ta) {
       ta.value = ed.value || ""
-      layoutTextEditor()                  // сначала на место, иначе экран дёрнется к нулю
+      // true — раскладка считается под НЫНЕШНИЙ масштаб: правку могли открыть на
+      // любом зуме, а от прошлой надписи остался бы чужой масштаб раскладки.
+      layoutTextEditor(true)              // сначала на место, иначе экран дёрнется к нулю
       ta.focus({ preventScroll: true })
       const n = ta.value.length
       try { ta.setSelectionRange(n, n) } catch { /* поле ещё не готово — курсор встанет сам */ }
@@ -4673,6 +4725,11 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     const ed = editPos.current
     if (!ed) return
     if (textDraftTimer.current) { clearTimeout(textDraftTimer.current); textDraftTimer.current = null }
+    // Набор кончился: ждать, пока замрёт зум, больше не для кого, а отдельный
+    // слой под обёрткой держать незачем — иначе он висел бы до конца занятия.
+    clearTimeout(settleTimer.current)
+    layoutScaleRef.current = 0
+    if (editBoxRef.current) editBoxRef.current.style.willChange = ""
     const draftSent = textDraftSent.current
     textDraftSent.current = false
     const raw = editRef.current ? editRef.current.value : ed.value

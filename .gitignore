@@ -184,3 +184,6 @@ dev-pyboard.html
 src/devPyBoard.jsx
 dev-zoom.html
 src/devZoom.jsx
+
+dev-resync.html
+src/devResync.jsx
