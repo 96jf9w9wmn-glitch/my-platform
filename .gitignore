@@ -168,3 +168,6 @@ dev-image.html
 src/devImage.jsx
 dev-theme.html
 src/devTheme.jsx
+
+dev-qaframe.html
+src/devQaFrame.jsx

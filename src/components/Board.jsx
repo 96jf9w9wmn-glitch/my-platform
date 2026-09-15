@@ -472,8 +472,21 @@ function WorkAnswerField({ value, onValue, onType, id, ink, border }) {
   )
 }
 
-function TaskAnswerBox({ panel, dark, panelBg, panelBorder, tutor = false, draft = null, value = "", onValue = null, onCheck, onReset, onType, onFile, grading = null, onMark = null }) {
+function TaskAnswerBox({ panel, dark, panelBg, panelBorder, tutor = false, draft = null, value = "", onValue = null, onCheck, onReset, onType, onFile, grading = null, onMark = null, onSize = null }) {
   const [val, setVal] = useState("")
+  // Рамка выделения обводит карточку ЦЕЛИКОМ, а подвал штрихом не является и в
+  // габарите листа не учтён — поэтому свою высоту он сообщает сам. Высота тут в
+  // единицах листа (до scale(k)): в мировые её переведёт кадр отрисовки.
+  const boxRef = useRef(null)
+  useLayoutEffect(() => {
+    const el = boxRef.current
+    if (!el || !onSize) return
+    const send = () => onSize(panel.id, el.offsetHeight)
+    send()
+    const ro = typeof ResizeObserver === "function" ? new ResizeObserver(send) : null
+    ro?.observe(el)
+    return () => { ro?.disconnect(); onSize(panel.id, null) }
+  }, [panel.id, onSize])
   const [shown, setShown] = useState(false)   // репетитор раскрыл правильный ответ
   const done = panel.ok != null
   const ink = dark ? "#e5e5ea" : "#1f2937"
@@ -506,7 +519,7 @@ function TaskAnswerBox({ panel, dark, panelBg, panelBorder, tutor = false, draft
   // отличается только начинка.
   if (tutor) {
     return (
-      <div className={shell} style={frame}>
+      <div ref={boxRef} className={shell} style={frame}>
         <div className="flex flex-col" style={{ ...foot, borderTop: `1px solid ${line}` }}>
         <div className="flex items-center justify-end gap-2 px-4 py-2.5">
           {files.map((f) => <TaskFileChip key={f.p} file={f} onFile={onFile} ink={ink} border={panelBorder} />)}
@@ -570,7 +583,7 @@ function TaskAnswerBox({ panel, dark, panelBg, panelBorder, tutor = false, draft
   }
 
   return (
-    <div className={shell} style={frame}>
+    <div ref={boxRef} className={shell} style={frame}>
       <div className="px-4 py-3" style={{ ...foot, borderTop: `1px solid ${line}` }}>
         {/* Файл стоит ПЕРВЫМ: без него такое задание не решается, а поле ответа
             под ним — следующий шаг. */}
@@ -915,6 +928,12 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // здесь меняется только когда лист двинули или ответили, а не на каждом кадре.
   const [qaBoxes, setQaBoxes] = useState([])
   const qaLayer = useRef(null)
+  // Высота подвала (в единицах листа) и мировая координата его низа: рамка
+  // выделения обводит карточку целиком, а подвал в габарит штриха не входит.
+  // Высоту присылает сама панель, низ пересчитывает кадр — она зависит ещё и от
+  // того, насколько лист растянут на доске.
+  const qaSizes = useRef(new Map())
+  const qaFootRef = useRef(new Map())
   // Что ученик прямо сейчас набирает в поле ответа: id листа → { v, typing }.
   // Живёт только в памяти вкладки — это показ, а не данные.
   const [drafts, setDrafts] = useState({})
@@ -1426,18 +1445,38 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     const s = strokes.current.get([...selection.current][0])
     return s && ENCLOSED_SHAPES.has(s.tool) && s.points.length >= 2 ? s : null
   }
-  // Ориентированная рамка выделения (в мировых координатах): {cx,cy,hw,hh,angle}
+  // Насколько рамка выделения обязана уйти НИЖЕ габарита штрихов: у листа с
+  // заданием под ним стоит подвал с ответом, и для глаза это одна карточка —
+  // рамка, обрывающаяся по нижнему краю картинки, читается как «выделилось не всё».
+  // Тянется при этом по-прежнему сам лист: ручки масштабирования стоят на его
+  // границе, а startTransform считает от selectionBBox.
+  function selectionFootExtra(bottomY) {
+    let low = null
+    for (const id of selection.current) {
+      const f = qaFootRef.current.get(id)
+      if (f != null) low = low == null ? f : Math.max(low, f)
+    }
+    return low == null ? 0 : Math.max(0, low - bottomY)
+  }
+  // Ориентированная рамка выделения (в мировых координатах): {cx,cy,hw,hh,angle,foot}
   function orientedWorldBox() {
     if (!selection.current.size || marquee.current) return null
     const s = singleEnclosed()
     if (s) {
       const a = s.points[0], b = s.points[s.points.length - 1]
       const pad = (s.width || 3) / 2 + 3
-      return { cx: (a[0] + b[0]) / 2, cy: (a[1] + b[1]) / 2, hw: Math.abs(b[0] - a[0]) / 2 + pad, hh: Math.abs(b[1] - a[1]) / 2 + pad, angle: s.angle || 0 }
+      const angle = s.angle || 0
+      const cy = (a[1] + b[1]) / 2, hh = Math.abs(b[1] - a[1]) / 2 + pad
+      // Повёрнутый лист подвала под собой не поворачивает (панель стоит по
+      // горизонтали под габаритом), поэтому наклонную рамку не тянем: она ушла бы
+      // мимо самого подвала.
+      return { cx: (a[0] + b[0]) / 2, cy, hw: Math.abs(b[0] - a[0]) / 2 + pad, hh, angle,
+        foot: angle ? 0 : selectionFootExtra(cy + hh) }
     }
     const bb = selectionBBox()
     if (!bb) return null
-    return { cx: (bb.minX + bb.maxX) / 2, cy: (bb.minY + bb.maxY) / 2, hw: (bb.maxX - bb.minX) / 2, hh: (bb.maxY - bb.minY) / 2, angle: 0 }
+    return { cx: (bb.minX + bb.maxX) / 2, cy: (bb.minY + bb.maxY) / 2, hw: (bb.maxX - bb.minX) / 2, hh: (bb.maxY - bb.minY) / 2,
+      angle: 0, foot: selectionFootExtra(bb.maxY) }
   }
 
   function redraw() {
@@ -1548,6 +1587,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     // Мелкий и уехавший за край лист панели не получает: в поле шириной с ноготь всё
     // равно не попасть, а панели на весь экран мешали бы рисовать.
     const qa = []
+    const foots = new Map()
     // Картинки, с которыми прямо сейчас что-то происходит, → в стейт для живого
     // индикатора: лист либо едет в хранилище (pending), либо едет ОТТУДА и вместо
     // него стоит рамка загрузки (waitingImgs). Индикатор стоит на самой картинке,
@@ -1603,7 +1643,15 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         k: (b.maxX - b.minX) / QA_SHEET_W, ask: !!st.qa, files: st.files || null,
         n: hwN,   // номер задания в работе: по нему ответ ложится в саму работу
         a: isTutor ? st.qa?.a ?? null : null, v: st.qa?.v || "", ok: st.qa?.ok ?? null })
+      // Низ карточки в мировых: подвал наезжает на лист сверху на QA_OVERLAP и
+      // масштабируется вместе с ним, поэтому и то и другое — в единицах листа.
+      const hFoot = qaSizes.current.get(st.id)
+      if (hFoot) {
+        const kk = (b.maxX - b.minX) / QA_SHEET_W
+        foots.set(st.id, b.maxY + (hFoot - QA_OVERLAP) * kk)
+      }
     }
+    qaFootRef.current = foots
     const qaKey = JSON.stringify(qa)
     if (qaKey !== lastQa.current) { lastQa.current = qaKey; setQaBoxes(qa) }
     // Мировой слой едет вместе с холстом — тем же переносом и тем же масштабом.
@@ -1627,11 +1675,13 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         cx, cy, angle: ob.angle,
         ax: { x: cos * ob.hw * v.scale, y: sin * ob.hw * v.scale },   // полу-ось «ширина»
         ay: { x: -sin * ob.hh * v.scale, y: cos * ob.hh * v.scale },  // полу-ось «высота»
+        foot: (ob.foot || 0) * v.scale,   // хвост рамки под лист: подвал с ответом
       }
     }
     const prev = lastSelBox.current
     const near = (a, b) => a && b && Math.abs(a.cx - b.cx) < 0.5 && Math.abs(a.cy - b.cy) < 0.5 &&
-      Math.abs(a.ax.x - b.ax.x) < 0.5 && Math.abs(a.ax.y - b.ax.y) < 0.5 && Math.abs(a.ay.x - b.ay.x) < 0.5 && Math.abs(a.ay.y - b.ay.y) < 0.5
+      Math.abs(a.ax.x - b.ax.x) < 0.5 && Math.abs(a.ax.y - b.ax.y) < 0.5 && Math.abs(a.ay.x - b.ay.x) < 0.5 && Math.abs(a.ay.y - b.ay.y) < 0.5 &&
+      Math.abs(a.foot - b.foot) < 0.5
     if ((!prev) !== (!frame) || (frame && prev && !near(frame, prev))) { lastSelBox.current = frame; setSelBox(frame) }
     // Свойства первого выделенного ШТРИХА → для цвета и попапа «Настройки обводки».
     // У картинок и листов с заданием (tool "image") ни цвет, ни толщина ничего не меняют,
@@ -1756,6 +1806,16 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Подвал сообщил свою высоту: запоминаем и пересобираем кадр — от неё зависит,
+  // докуда доходит рамка выделения. Одинаковую высоту молча пропускаем, иначе
+  // наблюдатель размера гонял бы перерисовку на каждом кадре.
+  const noteQaSize = useCallback((id, h) => {
+    const m = qaSizes.current
+    if (h == null) { if (m.delete(id)) scheduleLive(); return }
+    if (m.get(id) === h) return
+    m.set(id, h); scheduleLive()
+  }, [scheduleLive])
 
   const scheduleDraw = useCallback(() => {
     sceneValid.current = false
@@ -4888,15 +4948,23 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   const frameH = H ? 2 * Math.hypot(H.ay.x, H.ay.y) : 0
   const axLen = H ? Math.hypot(H.ax.x, H.ax.y) : 1
   const ayLen = H ? Math.hypot(H.ay.x, H.ay.y) : 1
-  // Ручка поворота — у нижне-ЛЕВОГО угла рамки, смещена наружу (по -ax и +ay)
+  // Хвост рамки под лист — высота подвала с ответом (см. orientedWorldBox). Растёт
+  // ТОЛЬКО рамка: ручки и ребёрные полосы остаются на границе самого листа, потому
+  // что тянут они лист, а подвал идёт за ним следом.
+  const footPx = H ? (H.foot || 0) : 0
+  const frameCx = H ? H.cx + (H.ay.x / ayLen) * (footPx / 2) : 0
+  const frameCy = H ? H.cy + (H.ay.y / ayLen) * (footPx / 2) : 0
+  // Ручка поворота — у нижне-ЛЕВОГО угла рамки, смещена наружу (по -ax и +ay).
+  // Хвост под подвал она обходит снизу: на уровне разделителя она легла бы прямо
+  // на грань рамки и читалась бы как часть карточки.
   const rotatePt = H ? {
-    x: framePt(-1, 1).x + (-H.ax.x / axLen + H.ay.x / ayLen) * 18,
-    y: framePt(-1, 1).y + (-H.ax.y / axLen + H.ay.y / ayLen) * 18,
+    x: framePt(-1, 1).x + (-H.ax.x / axLen + H.ay.x / ayLen) * 18 + (H.ay.x / ayLen) * footPx,
+    y: framePt(-1, 1).y + (-H.ax.y / axLen + H.ay.y / ayLen) * 18 + (H.ay.y / ayLen) * footPx,
   } : null
   // Панель свойств — над верхним краем рамки; при нехватке места сверху уводим вниз
   const topPt = H ? framePt(0, -1) : null
   const barAbove = H && topPt.y - 54 >= 8
-  const barY = H ? (barAbove ? topPt.y - 54 : framePt(0, 1).y + 30) : 0
+  const barY = H ? (barAbove ? topPt.y - 54 : framePt(0, 1).y + footPx + 30) : 0
   const barX = H ? H.cx : 0
 
   return (
@@ -5259,7 +5327,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
                 grading={(b.n != null && taskGrading?.[b.n]) || null}
                 onMark={onTaskMark}
                 onCheck={checkTaskAnswer} onReset={resetTaskAnswer}
-                onType={typeTaskAnswer} onFile={downloadBoardFile} />
+                onType={typeTaskAnswer} onFile={downloadBoardFile} onSize={noteQaSize} />
             ))}
           </div>
         )}
@@ -5269,7 +5337,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
           <>
             {/* Рамка (поворачивается вместе с фигурой) */}
             <div className="absolute pointer-events-none"
-              style={{ left: H.cx, top: H.cy, width: frameW, height: frameH,
+              style={{ left: frameCx, top: frameCy, width: frameW, height: frameH + footPx,
                 transform: `translate(-50%, -50%) rotate(${H.angle}rad)`, border: "1.5px solid #007AFF", borderRadius: 2 }} />
 
             {/* Рёбра: у фигур — ручка (масштаб по одной оси), у картинки —
