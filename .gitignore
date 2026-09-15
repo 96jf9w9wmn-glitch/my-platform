@@ -193,3 +193,10 @@ src/devBankModal.jsx
 # стенд нижней навигации (резерв под бар на телефоне)
 dev-nav.html
 src/devNav.jsx
+# Стенд черновика ответов ДЗ: карточка + доска + localStorage
+dev-hw-draft.html
+src/devHwDraft.jsx
+
+# стенд «две доски» (15.09.2026), не коммитить
+dev-two.html
+src/devTwo.jsx

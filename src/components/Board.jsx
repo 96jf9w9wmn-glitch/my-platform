@@ -474,19 +474,43 @@ function WorkAnswerField({ value, onValue, onType, id, ink, border }) {
   const [val, setVal] = useState(value ?? "")
   const focused = useRef(false)
   const timer = useRef(null)
+  // Набранное, но ещё не отданное наверх (таймер не сработал). Уход с доски —
+  // крестик, «назад» в браузере, переход в другое приложение на телефоне —
+  // обязан его ОТДАТЬ, а не выбросить вместе с таймером: иначе последнее
+  // набранное пропадает, и ученик, вернувшись, находит поле пустым.
+  const pending = useRef(null)
+  const onValueRef = useRef(onValue)
+  useEffect(() => { onValueRef.current = onValue })
   // Ответ, вписанный в кабинете (или пришедший от собеседника), подхватываем —
   // но не под рукой: подменять текст под курсором нельзя.
   useEffect(() => { if (!focused.current) setVal(value ?? "") }, [value])
-  useEffect(() => () => clearTimeout(timer.current), [])
+  useEffect(() => {
+    const flush = () => {
+      clearTimeout(timer.current)
+      if (pending.current == null) return
+      const v = pending.current
+      pending.current = null
+      onValueRef.current?.(v)
+    }
+    const onHide = () => { if (document.visibilityState === "hidden") flush() }
+    document.addEventListener("visibilitychange", onHide)
+    window.addEventListener("pagehide", flush)
+    return () => {
+      document.removeEventListener("visibilitychange", onHide)
+      window.removeEventListener("pagehide", flush)
+      flush()
+    }
+  }, [])
   const push = (v) => {
+    pending.current = v
     clearTimeout(timer.current)
-    timer.current = setTimeout(() => onValue(v), 400)
+    timer.current = setTimeout(() => { pending.current = null; onValue(v) }, 400)
   }
   return (
     <div className="flex items-center gap-2.5">
       <input value={val}
         onFocus={() => { focused.current = true }}
-        onBlur={() => { focused.current = false; clearTimeout(timer.current); onValue(val) }}
+        onBlur={() => { focused.current = false; clearTimeout(timer.current); pending.current = null; onValue(val) }}
         onChange={(e) => { setVal(e.target.value); push(e.target.value); onType?.(id, e.target.value) }}
         placeholder="Ответ"
         className="flex-1 min-w-0 h-11 px-3.5 rounded-xl text-[17px] outline-none focus:ring-2 focus:ring-blue-500/40"
@@ -1286,6 +1310,14 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // сохраниться в новую комнату. Так уже случилось: листы домашней работы легли
   // на доску занятия (см. src/boardRoom.js — доски не должны пересекаться).
   const loadedRef = useRef(null)
+  // Стенды (dev-two.html, dev-erase.html) заглядывают внутрь доски через этот
+  // узел: искать рефы по форме значений ненадёжно (две карты «id → число»
+  // неотличимы). Только в разработке — в сборке ветка вырезается.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    const c = canvasRef.current
+    if (c) c.__board = { strokes, live, savedRef, dirtyRef, localPending, tombRef, pendingDel, heardRef, revRef, maxOrd, view, joinedRef, savingRef, saveTimer, loadedRef }
+  })
   const modalOpen = useRef(false)     // поверх доски открыт диалог (глушим горячие клавиши)
   const erasing = useRef(null)        // текущий проход объектного ластика: [{id, before, after}]
   // Ввод текста. editPos — то же, что и editText, но доступное вне рендера:

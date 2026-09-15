@@ -38,6 +38,7 @@ function boardHwFromUrl() {
 import { parseLocalDate, isHomeworkOverdue, getInitials, renderTaskMath, renderHomeworkMath, parseHomeworkTasks, creditedNums, formatPhone, answersEqual, homeworkTestScore, plural, homeworkBoardSheet, fileUrls, fileUrlsValue } from "../utils"
 import { studentBilling, periodLabel } from "../billing"
 import { longDate } from "../invoices"
+import { hwDraftKey, hwInitialAnswers, hwDraftList, useHwDrafts } from "../hwDrafts"
 import { homeworkRoom } from "../boardRoom"
 import TaskAttachments from "../components/TaskAttachments"
 import { homeworkAttempts } from "../homeworkAttempts"
@@ -1237,33 +1238,33 @@ const HW_LIST_COLS = [
   "opened_at", "auto_submitted", "retry_policy", "retry_limit", "solution_files", "credited",
 ].join(", ")
 
+// Работа, которую уже не решают: сдана, проверена, оценена.
+const HW_CLOSED = new Set(["submitted", "done", "graded"])
+
 // Экспорт — для стенда карточки работы (dev-hw.html, в .gitignore): вёрстку
 // шапки и решения удобнее смотреть без входа в кабинет ученика.
-export function HomeworkDetail({ hw, answers = null, onAnswers = null, onBack, onUpload, onSubmitTest, onSubmitWritten, onSolveOnBoard, onOpenBoard }) {
+export function HomeworkDetail({ hw, answers = null, answersKey = null, onAnswers = null, onBack, onUpload, onSubmitTest, onSubmitWritten, onSolveOnBoard, onOpenBoard }) {
   const [uploading, setUploading] = useState(false)
   const [submittingWritten, setSubmittingWritten] = useState(false)
-  // Доработка приходит с уже принятыми ответами: репетитор оставил в работе те,
-  // что зачтены, и стёр только те задания, которые предстоит решить заново.
-  // Поэтому поля заполняются прежними ответами — при сдаче уедет весь список,
-  // и балл посчитается по всей работе, а не по одной доработке.
-  // Сами ответы лежат ВЫШЕ (см. hwAnswers в кабинете): их правит ещё и поле под
-  // заданием на доске, а доска открывается рядом с этой карточкой, не внутри неё.
-  const initialAnswers = useMemo(() => {
-    const prev = hw.status === "revision" && Array.isArray(hw.student_answers) ? hw.student_answers : null
-    return Array.from({ length: hw.question_count || 0 }, (_, i) => (prev?.[i] == null ? "" : String(prev[i])))
-  }, [hw.status, hw.student_answers, hw.question_count])
-  const testAnswers = answers ?? initialAnswers
-  const setTestAnswers = (next) => onAnswers?.(hw.id, next)
+  // Ответы работы лежат ВЫШЕ (черновик в кабинете, см. src/hwDrafts.js): их
+  // правит ещё и поле под заданием на доске, а доска открывается рядом с этой
+  // карточкой, не внутри неё. Сюда приходят список (answers) и состояние работы,
+  // при котором он начат (answersKey): черновик годится, только если начат при
+  // ЭТОМ состоянии — сданную или возвращённую на доработку работу решают с
+  // заготовки заново (у доработки заготовка — прежние принятые ответы).
+  const stateKey = hwDraftKey(hw)
+  const initialAnswers = useMemo(() => hwInitialAnswers(hw), [hw])
+  const testAnswers = answers != null && (answersKey == null || answersKey === stateKey) ? answers : initialAnswers
+  const setTestAnswers = (next) => onAnswers?.(hw.id, next, stateKey)
   // Заготовку кладём наверх при первом заходе в работу — и заново, когда работа
   // пришла из базы другой (сдали, вернули на доработку, репетитор что-то принял).
-  // Пока работа решается, строка признака не меняется, поэтому набранное — хоть
-  // в карточке, хоть на доске — не стирается перезагрузкой списка работ.
-  const stateKey = `${hw.id}|${hw.status}|${(Array.isArray(hw.student_answers) ? hw.student_answers : []).join("\u0001")}`
-  const inited = useRef(null)
+  // Черновик ЭТОГО ЖЕ состояния не трогаем: он мог быть начат в прошлый заход в
+  // карточку (ушёл на другую вкладку и вернулся), на доске или до перезапуска
+  // страницы, и пустая заготовка поверх него — это и есть «пропавший ответ».
+  // Сданной работе заготовка не нужна вовсе: полей ответа у неё уже нет.
   useEffect(() => {
-    if (inited.current === stateKey) return
-    inited.current = stateKey
-    onAnswers?.(hw.id, initialAnswers)
+    if (answersKey === stateKey || HW_CLOSED.has(hw.status)) return
+    onAnswers?.(hw.id, initialAnswers, stateKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stateKey])
   const [submittingTest, setSubmittingTest] = useState(false)
@@ -2434,14 +2435,14 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
   // В адрес не пишется: лист уже лежит на доске и после перезагрузки никуда не
   // денется, а переносить его второй раз незачем.
   const [boardTask, setBoardTask] = useState(null)
-  // Ответы решаемой работы: { «id работы»: [ответы по порядку заданий] }.
-  // Держим их ЗДЕСЬ, а не в карточке работы, по двум причинам: их правит поле
-  // под заданием на доске (доска открывается поверх карточки, но живёт рядом с
-  // ней, а не внутри), и уход со страницы работы больше не стирает набранное.
-  const [hwAnswers, setHwAnswers] = useState({})
-  const setHwAnswerList = useCallback((hwId, list) => {
-    setHwAnswers((prev) => ({ ...prev, [hwId]: list }))
-  }, [])
+  // Черновики ответов решаемых работ: { «id работы»: { key, list, at } } — см.
+  // src/hwDrafts.js. Держим их ЗДЕСЬ, а не в карточке работы, по двум причинам:
+  // их правит поле под заданием на доске (доска открывается поверх карточки, но
+  // живёт рядом с ней, а не внутри), и уход со страницы работы не стирает
+  // набранное. Лежат в localStorage: на телефоне кабинет перезапускается по
+  // нескольку раз в минуту, и ответ, вписанный на доске, до этого пропадал при
+  // первом же переключении приложений.
+  const { drafts: hwAnswers, setList: setHwAnswerList, setAt: setHwAnswerAt, forget: forgetHwDraft } = useHwDrafts(user.id)
   // Ответ, вписанный на доске: там задание известно НОМЕРОМ (он стоит на листе),
   // а в работе ответы лежат по порядку — переводим одно в другое по тому же
   // разбору описания, каким карточка строит свои задания.
@@ -2450,7 +2451,8 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     () => (boardHwRow ? parseHomeworkTasks(boardHwRow.description).tasks : []),
     [boardHwRow],
   )
-  const boardHwList = boardHwRow ? hwAnswers[boardHwRow.id] || [] : null
+  const boardDraft = boardHwRow ? hwAnswers[boardHwRow.id] : null
+  const boardHwList = useMemo(() => (boardHwRow ? hwDraftList(boardDraft, boardHwRow) : null), [boardHwRow, boardDraft])
   // Номер задания → ответ: в таком виде их читает доска.
   const boardAnswersByNum = useMemo(() => {
     if (!boardHwRow) return null
@@ -2478,14 +2480,8 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
     let idx = boardHwTasks.findIndex((t) => Number(t?.n) === Number(num))
     if (idx < 0) idx = Number(num) - 1              // работа без разбора по номерам
     if (idx < 0 || (count && idx >= count)) return
-    setHwAnswers((prev) => {
-      const cur = prev[boardHwRow.id] || []
-      if ((cur[idx] ?? "") === value) return prev
-      const next = Array.from({ length: Math.max(count, cur.length, idx + 1) }, (_, i) => cur[i] ?? "")
-      next[idx] = value
-      return { ...prev, [boardHwRow.id]: next }
-    })
-  }, [boardHwRow, boardHwTasks])
+    setHwAnswerAt(boardHwRow, idx, value, count)
+  }, [boardHwRow, boardHwTasks, setHwAnswerAt])
   const openBoardRoom = (hwId) => {
     const value = hwId ? `hw:${hwId}` : "1"
     setBoardHw(hwId ? String(hwId) : null)
@@ -3050,6 +3046,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
       const [signed] = await signRows([updated.data], { file_url: "homework", submission_url: "homework", solution_files: "homework", bank_tasks: "homework" })
       setSelectedHomework(signed)
     }
+    forgetHwDraft(hwId)   // работа сдана — черновик ответов больше не нужен
   }
 
   // Сдача письменной работы, решённой по заданиям: файлы уже в хранилище (их
@@ -3088,6 +3085,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
 
     loadHomework()
     setSelectedHomework(null)
+    forgetHwDraft(hwId)
   }
 
   // Возвращает текст ошибки, если файл не уехал: молча проглоченный сбой
@@ -3116,6 +3114,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
 
     loadHomework()
     setSelectedHomework(null)
+    forgetHwDraft(hwId)
   }
 
   async function linkTutor() {
@@ -3581,7 +3580,8 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
               {selectedHomework ? (
                 <HomeworkDetail
                   hw={selectedHomework}
-                  answers={hwAnswers[selectedHomework.id]}
+                  answers={hwAnswers[selectedHomework.id]?.list}
+                  answersKey={hwAnswers[selectedHomework.id]?.key}
                   onAnswers={setHwAnswerList}
                   onSolveOnBoard={openBoardWithTask}
                   onOpenBoard={openBoardRoom}
