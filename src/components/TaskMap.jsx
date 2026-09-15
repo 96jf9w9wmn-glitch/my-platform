@@ -76,7 +76,12 @@ function TaskMap({ attempts, tutorId, examType: hinted, readOnly = false, classN
   // одиннадцатым», а разбор по типажам внутри номера — это соседний блок.
   const byNumber = useMemo(() => {
     const out = {}
-    for (const r of aggregateAttempts((rows || []).filter((a) => a.exam_type === examType))) {
+    // Попытка БЕЗ номера в карту не идёт: у ученика, который к экзамену не
+    // готовится, задания размечены только темой, и класть их сюда некуда —
+    // карта отвечает про номера экзамена. Считается такая попытка в «Где
+    // ученик ошибается», по своей теме.
+    const rowsHere = (rows || []).filter((a) => a.exam_type === examType && a.number != null)
+    for (const r of aggregateAttempts(rowsHere)) {
       const cur = out[r.number] || { number: r.number, attempts: 0, correct: 0 }
       cur.attempts += r.attempts
       cur.correct += r.correct

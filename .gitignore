@@ -164,3 +164,7 @@ dev-boards.html
 src/devBoards.jsx
 src/devBoardsPreview.js
 src/devBoardsScene.js
+dev-image.html
+src/devImage.jsx
+dev-theme.html
+src/devTheme.jsx

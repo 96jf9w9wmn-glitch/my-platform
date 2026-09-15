@@ -6,6 +6,7 @@ import { useAttempts } from "../useAttempts"
 import { examTypeOf, shownScore, shownScoreMax } from "../examStats"
 import { aggregateAttempts } from "../reportData"
 import { numberTitle } from "../pages/numberTitles"
+import { themeFromKey } from "../taskTheme"
 import { plural } from "../utils"
 
 // Результаты в кабинете САМОГО ученика. Раздел отвечает на три вопроса, и
@@ -79,13 +80,21 @@ function StudentResults({ student, stats, hwStats, chart = null }) {
   // банке заданий (это мегабайты кода), а ученику важнее «с девятым беда», чем
   // формальное имя разновидности. Карта заданий выше показывает все номера,
   // здесь — только те, за которые стоит взяться в первую очередь.
+  //
+  // У ученика, который к экзамену не готовится, номера нет вовсе — его задания
+  // размечены ТЕМОЙ, и строки группируются по ней. Банк ради этого по-прежнему
+  // не грузится: подпись такая строка несёт в себе самой (ключ «theme:…»).
   const weak = useMemo(() => {
     const by = {}
     for (const r of byType) {
-      const cur = by[r.number] || { number: r.number, attempts: 0, correct: 0 }
+      const theme = r.number == null ? themeFromKey(r.gen_key) : null
+      // Ни номера, ни темы — сказать про такую строку нечего.
+      if (r.number == null && !theme) continue
+      const key = theme ? `t:${theme}` : `n:${r.number}`
+      const cur = by[key] || { key, number: theme ? null : r.number, theme, attempts: 0, correct: 0 }
       cur.attempts += r.attempts
       cur.correct += r.correct
-      by[r.number] = cur
+      by[key] = cur
     }
     return Object.values(by)
       .map((r) => ({ ...r, accuracy: Math.round((r.correct / r.attempts) * 100) }))
@@ -176,24 +185,35 @@ function StudentResults({ student, stats, hwStats, chart = null }) {
               только там, где блока готовности нет (цель не экзамен). */}
           {!hasProgress && chart}
 
-          <TaskMap attempts={attempts} examType={examType} readOnly />
+          {/* Карта — про НОМЕРА экзамена: ученику, который к нему не готовится,
+              она показала бы пустую сетку. Цель «не указана» экзамену не
+              противоречит, поэтому карта убирается, только когда цель НЕ
+              экзамен И ни одной попытки с номером у ученика нет. */}
+          {(stats?.isExam || !attempts || attempts.some((a) => a.number != null)) && (
+            <TaskMap attempts={attempts} examType={examType} readOnly />
+          )}
 
           {weak.length > 0 && (
             <div className="glass p-4">
               <h3 className="text-sm font-medium">Над чем поработать</h3>
               <p className="text-xs text-gray-400 mt-0.5 mb-3">
-                По первым ответам в вариантах и заданиях из банка, с {MIN_ATTEMPTS}-го ответа по заданию.
+                По первым ответам в вариантах и размеченных работах, с {MIN_ATTEMPTS}-го ответа по заданию.
               </p>
               <div className="flex flex-col gap-2">
                 {weak.map((r) => (
-                  <div key={r.number} className="glass-sm rounded-2xl px-3 py-2.5 flex items-center gap-3">
-                    <span className="shrink-0 w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-300 text-xs font-semibold flex items-center justify-center">
-                      {r.number}
-                    </span>
+                  <div key={r.key} className="glass-sm rounded-2xl px-3 py-2.5 flex items-center gap-3">
+                    {r.number != null && (
+                      <span className="shrink-0 w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-300 text-xs font-semibold flex items-center justify-center">
+                        {r.number}
+                      </span>
+                    )}
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm truncate">{numberTitle(examType, r.number) || `Задание №${r.number}`}</div>
+                      <div className="text-sm truncate">
+                        {r.theme || numberTitle(examType, r.number) || `Задание №${r.number}`}
+                      </div>
                       <div className="text-[11px] text-gray-400 truncate">
-                        задание №{r.number} · {r.correct} из {r.attempts} верно
+                        {r.number != null ? `задание №${r.number} · ` : ""}
+                        {r.correct} из {r.attempts} верно
                       </div>
                     </div>
                     <span className={`shrink-0 text-[11px] px-2 py-0.5 rounded-full font-medium tabular-nums ${

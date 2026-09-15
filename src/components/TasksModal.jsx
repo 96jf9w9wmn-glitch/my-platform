@@ -266,7 +266,8 @@ function MarkHeader({ items, marking }) {
   if (!own.length) return null
   const known = (it) => !!TASK_MAX[marking.examType]?.[it.bankTask.number]
   const numbered = own.filter(known).length
-  const themed = own.filter((it) => known(it) && it.bankTask.theme).length
+  // Тема считается сама по себе: номер ей не нужен (см. src/homeworkAttempts.js).
+  const themed = own.filter((it) => it.bankTask.theme).length
   // Общее у всех заданий — или ничего, если они размечены вразнобой.
   const commonOf = (of) => {
     const first = of(own[0])
@@ -310,11 +311,13 @@ function MarkHeader({ items, marking }) {
         </div>
       </div>
       <div className="text-[11px] text-gray-400 leading-snug">
-        {numbered
-          ? `Номер экзамена есть у ${numbered} ${plural(numbered, "задания", "заданий", "заданий")} из ${own.length}` +
-            (themed ? `, тема — у ${themed}.` : ".") +
-            (marking.canMark ? " Ставьте баллы — они пойдут в карту заданий." : "")
-          : "Номер задания на экзамене связывает работу со статистикой ученика — картой заданий и слабыми темами. Тема уточняет её внутри номера: выберите из тем экзамена или напишите свою."}
+        {numbered || themed
+          ? [
+              numbered ? `номер у ${numbered} из ${own.length}` : "",
+              themed ? `тема у ${themed} из ${own.length}` : "",
+            ].filter(Boolean).join(", ").replace(/^./, (c) => c.toUpperCase()) + "." +
+            (marking.canMark ? " Ставьте баллы — они пойдут в результаты ученика." : "")
+          : "Разметка связывает работу с результатами ученика. Тема говорит, что отрабатывается («Квадратные уравнения»); номер нужен тому, кто готовится к экзамену, — по нему собирается карта заданий. Хватает и одного из двух."}
       </div>
     </div>
   )
@@ -332,6 +335,10 @@ function MarkRow({ item, marking, autoChecked, editable }) {
   const num = item.bankTask?.number ?? null
   const examType = item.bankTask?.exam_type || marking.examType
   const known = num != null && !!TASK_MAX[examType]?.[num]
+  // Связано ли задание со статистикой. У ученика, который готовится к экзамену,
+  // это номер; у остальных номера нет вовсе, и связь держит ТЕМА — иначе баллы
+  // такой работе поставить было бы негде, и в журнал она не попала бы ничем.
+  const tracked = num != null ? known : !!item.bankTask?.theme
   // Максимум НОМЕРА: за №14 профиля на экзамене дают два балла, за №15 — три, и
   // «верно/неверно» такому заданию мало — за половину решения там ставят
   // половину баллов. Поэтому у многобалльного номера отметка это шкала 0…max.
@@ -346,7 +353,7 @@ function MarkRow({ item, marking, autoChecked, editable }) {
   // сверка знает только «сошлось или нет» и даёт либо ноль, либо максимум —
   // промежуточный балл (1 из 2 за пункт а у №14 профиля) поставить может только
   // человек, и именно так его ставят на экзамене.
-  const markable = canMark && known && (max > 1 || !autoChecked)
+  const markable = canMark && tracked && (max > 1 || !autoChecked)
   // Номер задания в варианте и есть номер на экзамене — он уже стоит кружком
   // слева, и подписывать его второй раз незачем (showNumber: false).
   const showNumber = marking.showNumber !== false
@@ -376,15 +383,16 @@ function MarkRow({ item, marking, autoChecked, editable }) {
             />
           </div>
           <span className={num != null && !known ? "text-red-500" : "text-gray-400"}>
-            {num == null ? "Номер на экзамене — для статистики"
+            {num == null ? "Номер на экзамене — если ученик к нему готовится"
               : known ? numberTitle(examType, num)
               : `В «${examType}» нет задания №${num}`}
           </span>
         </>
       ) : showNumber ? (
         <span className="text-gray-400">
-          №{num} · {numberTitle(examType, num)}
-          {item.bankTask?.theme ? ` · ${item.bankTask.theme}` : ""}
+          {num != null && `№${num} · ${numberTitle(examType, num)}`}
+          {num != null && item.bankTask?.theme ? " · " : ""}
+          {item.bankTask?.theme || ""}
         </span>
       ) : (
         <span className="text-gray-400">Балл за задание</span>
@@ -397,10 +405,11 @@ function MarkRow({ item, marking, autoChecked, editable }) {
           <ScoreButtons max={max} points={points} onPick={(p) => onMark(item, p)} />
         </div>
       )}
-      {/* Тема — только у задания с известным номером: она уточняет статистику
-          ВНУТРИ номера, и без номера писать её некуда. Строка своя: рядом с
-          номером и баллом ей уже не хватает ширины на телефоне. */}
-      {editable && known && marking.onTheme && (
+      {/* Тема — вторая разбивка, равноправная номеру, а не его уточнение: у
+          ученика без экзамена номера нет вовсе, и по теме считается всё.
+          Строка своя: рядом с номером и баллом ей уже не хватает ширины на
+          телефоне. */}
+      {editable && marking.onTheme && (
         <div className="w-full">
           <ThemeInput
             value={item.bankTask?.theme ?? ""}

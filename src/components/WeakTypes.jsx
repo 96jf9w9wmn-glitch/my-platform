@@ -55,7 +55,7 @@ function sourceLabel(set) {
 // Откуда цифры — первый вопрос репетитора к разделу: он выдал работу файлом,
 // а строки появились. Ответ нужен, но одной строкой: работа, прикреплённая
 // файлом, сюда не попадает — что в файле, платформа не знает.
-const SOURCE_NOTE = "По первым ответам в вариантах и работах из банка"
+const SOURCE_NOTE = "По первым ответам в вариантах и размеченных работах"
 
 const fmtDay = (iso) =>
   iso ? new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "long" }) : ""
@@ -143,6 +143,11 @@ function WeakTypes({ student, attempts }) {
   // типажа» — это про наши данные, а не про то, что решать.
   const rowLabel = (row) => labels[row.gen_key] || numberTitle(row.exam_type, row.number)
 
+  // Тренировка «ещё восемь таких же» собирается генератором по НОМЕРУ: у строки
+  // без номера (ученик не готовится к экзамену — задания размечены только
+  // темой) банку нечего спросить, и кнопка обещала бы несбыточное.
+  const canDrill = (row) => row.number != null
+
   // Работа из клонов того же типажа — прямо в кабинет ученика. До этого кнопка
   // скачивала PDF репетитору, и петля не замыкалась: решённое на бумаге в
   // платформу не возвращалось, процент у строки не двигался и закрыть слабое
@@ -208,9 +213,14 @@ function WeakTypes({ student, attempts }) {
           const from = [sourceLabel(r.sources), fmtDay(r.last)].filter(Boolean).join(", ")
           return (
             <div key={key} className="glass-sm rounded-2xl px-3 py-2.5 flex items-center gap-3">
-              <span className="shrink-0 w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-300 text-xs font-semibold flex items-center justify-center">
-                {r.number}
-              </span>
+              {/* Номера может не быть вовсе: у ученика, который к экзамену не
+                  готовится, задания размечены темой, и кружок с цифрой ему
+                  взять неоткуда — строка тогда начинается прямо с названия. */}
+              {r.number != null && (
+                <span className="shrink-0 w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-300 text-xs font-semibold flex items-center justify-center">
+                  {r.number}
+                </span>
+              )}
               <div className="min-w-0 flex-1">
                 {/* «Задание без типажа» — это про наши данные, а не про ученика.
                     Когда ключа нет, называем сам раздел номера. */}
@@ -218,7 +228,8 @@ function WeakTypes({ student, attempts }) {
                 {/* Голубой кружок с цифрой репетитор читал как «9 чего?» —
                     поэтому номер задания назван и словами. */}
                 <div className="text-[11px] text-gray-400 truncate">
-                  задание №{r.number} · {r.correct} из {r.attempts} верно{from ? " · " + from : ""}
+                  {r.number != null ? `задание №${r.number} · ` : ""}
+                  {r.correct} из {r.attempts} верно{from ? " · " + from : ""}
                 </div>
               </div>
               <span className={`shrink-0 text-[11px] px-2 py-0.5 rounded-full font-medium tabular-nums ${tone(r)}`}>
@@ -227,7 +238,7 @@ function WeakTypes({ student, attempts }) {
               {/* Главное действие строки, поэтому чип тонирован акцентом, а не
                   висит бледной рамкой: увидев слабое место, репетитор тут же
                   задаёт по нему работу — и ответы вернутся в эти же проценты. */}
-              <button
+              {canDrill(r) && <button
                 onClick={() => assign(r)}
                 disabled={drilling === key}
                 title={`Домашняя работа из ${DRILL_SIZE} таких же задач со свежими числами — сразу в кабинет ученика`}
@@ -235,7 +246,7 @@ function WeakTypes({ student, attempts }) {
               >
                 <Icon name={assigned === key ? "check" : "plus"} size={12} />
                 {drilling === key ? "Выдаём…" : assigned === key ? "Задано" : `Задать ${DRILL_SIZE} таких`}
-              </button>
+              </button>}
             </div>
           )
         })}

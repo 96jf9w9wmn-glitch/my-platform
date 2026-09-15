@@ -724,7 +724,7 @@ export function CreateHomeworkModal({ students, tutorId, onClose, onCreated, edi
   // уже приняты, она стояла бы рядом без дела и путала бы («а сейчас какие?»).
   const fileNumbers = splitTasks.filter((t) => t.fileNum != null && t.fileNum !== t.number).length
   const numberedCount = splitTasks.filter((t) => examNumberOf(t)).length
-  const themedCount = splitTasks.filter((t) => examNumberOf(t) && normalizeTheme(t.theme)).length
+  const themedCount = splitTasks.filter((t) => normalizeTheme(t.theme)).length
 
   // Файл-вариант: номера в нём и есть номера экзамена.
   const numbersFromFile = () =>
@@ -1073,12 +1073,19 @@ export function CreateHomeworkModal({ students, tutorId, onClose, onCreated, edi
           // задание уезжает как раньше, одной картинкой.
           urls.forEach((image_url, j) => {
             const num = examNumberOf(part[j])
-            // Тема едет вместе с номером и только с ним: без номера попытку
-            // писать всё равно некуда, а тема в одиночку осталась бы подписью,
-            // которую никто не увидит.
-            const theme = num ? normalizeTheme(part[j].theme) : null
-            out.push(num
-              ? { image_url, exam_type: bankType, number: num, ...(theme ? { theme } : {}) }
+            // Тема — ВТОРАЯ разбивка, равноправная номеру, а не его уточнение:
+            // к экзамену готовятся не все, и у ученика без экзамена номера нет
+            // вовсе. Есть хоть что-то из двух — задание связано со статистикой
+            // и едет с предметом; нет ни того, ни другого — уезжает одной
+            // картинкой, как раньше.
+            const theme = normalizeTheme(part[j].theme)
+            out.push(num || theme
+              ? {
+                  image_url,
+                  exam_type: bankType,
+                  ...(num ? { number: num } : {}),
+                  ...(theme ? { theme } : {}),
+                }
               : { image_url })
           })
           setSavingNote(`Загружаем ${Math.min(i + part.length, splitTasks.length)} из ${splitTasks.length}`)
@@ -1475,11 +1482,13 @@ export function CreateHomeworkModal({ students, tutorId, onClose, onCreated, edi
                             </div>
 
                             <div className="text-[11px] text-gray-400 leading-snug">
-                              {numberedCount
-                                ? `Номер экзамена есть у ${numberedCount} ${plural(numberedCount, "задания", "заданий", "заданий")} из ${splitTasks.length}` +
-                                  (themedCount ? `, тема — у ${themedCount}. ` : ". ") +
-                                  (autoCheck ? "Их ответы войдут в карту заданий и слабые темы." : "В статистику ответы пойдут, когда работу проверяет кабинет.")
-                                : "Номер задания на экзамене связывает работу со статистикой ученика — картой заданий и слабыми темами. Тема уточняет её внутри номера: её можно выбрать из тем экзамена или написать свою. Без номера работа проверится как обычно."}
+                              {numberedCount || themedCount
+                                ? [
+                                    numberedCount ? `номер у ${numberedCount} из ${splitTasks.length}` : "",
+                                    themedCount ? `тема у ${themedCount} из ${splitTasks.length}` : "",
+                                  ].filter(Boolean).join(", ").replace(/^./, (c) => c.toUpperCase()) + ". " +
+                                  (autoCheck ? "Ответы по ним войдут в результаты ученика." : "В результаты ответы пойдут, когда работу проверяет кабинет.")
+                                : "Разметка связывает работу с результатами ученика. Тема говорит, что отрабатывается («Квадратные уравнения»); номер нужен тому, кто готовится к экзамену, — по нему собирается карта заданий. Хватает и одного из двух, а без разметки работа проверится как обычно."}
                             </div>
                           </div>
 
@@ -1532,21 +1541,21 @@ export function CreateHomeworkModal({ students, tutorId, onClose, onCreated, edi
                                         : "Номер на экзамене"}
                                     </span>
                                   </div>
-                                  {/* Тема — только у задания с номером: она
-                                      уточняет статистику ВНУТРИ номера, и без
-                                      номера писать её некуда. Появляется сама,
-                                      как только номер проставлен. */}
-                                  <Collapse open={!!examNumberOf(t)}>
-                                    <div className="pt-1.5">
-                                      <ThemeInput
-                                        value={t.theme ?? ""}
-                                        options={themeOptions.options(bankType, examNumberOf(t))}
-                                        onOpen={themeOptions.load}
-                                        onChange={(v) => setSplitTheme(i, v)}
-                                        className="py-1.5 px-2 text-sm"
-                                      />
-                                    </div>
-                                  </Collapse>
+                                  {/* Тема стоит рядом с номером и не ждёт его:
+                                      номер говорит, какое место задание
+                                      занимает на экзамене, тема — что в нём
+                                      отрабатывается. У ученика, который к
+                                      экзамену не готовится, номера нет вовсе, и
+                                      тема остаётся единственной разбивкой. */}
+                                  <div className="pt-1.5">
+                                    <ThemeInput
+                                      value={t.theme ?? ""}
+                                      options={themeOptions.options(bankType, examNumberOf(t))}
+                                      onOpen={themeOptions.load}
+                                      onChange={(v) => setSplitTheme(i, v)}
+                                      className="py-1.5 px-2 text-sm"
+                                    />
+                                  </div>
                                 </div>
                                 <button type="button" onClick={() => removeSplitTask(i)} title="Убрать задание"
                                   className="no-press shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-blue-500/[0.08] transition active:scale-90">
@@ -2426,7 +2435,10 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
   // спрятана внутри окна заданий, и репетитор о ней не узнал бы: «сколько
   // заданий уже связано с экзаменом» — это состояние работы, а не содержимое
   // отдельного окна.
-  const numberedTasks = ownTasks.filter((t) => t.number != null).length
+  // РАЗМЕЧЕНО — это номер ИЛИ тема, а не один только номер: у ученика, который
+  // к экзамену не готовится, номера нет вовсе, и работа, размеченная темой,
+  // в результаты попадает наравне с остальными (см. src/homeworkAttempts.js).
+  const numberedTasks = ownTasks.filter((t) => t.number != null || normalizeTheme(t.theme)).length
 
   // Балл за задание рукой репетитора — только там, где есть куда его записать:
   // колонка task_marks приходит миграцией homework_task_marks.sql, и без неё
@@ -2546,9 +2558,28 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
     return () => { window.removeEventListener("pagehide", leave); leave() }
   }, [])
 
-  const withNumber = (idx, number) => bankTasks.map((t, i) => (i === idx
-    ? (number == null ? { ...t, number: undefined, exam_type: undefined } : { ...t, number, exam_type: examType })
-    : t))
+  // Разметка задания: номер экзамена И тема. Оба необязательны по отдельности,
+  // но предмет нужен обоим — на него смотрит запись попытки, — и снимается он
+  // только когда снято и то и другое. Поэтому одна функция на оба поля: пиши их
+  // порознь, и тема, поставленная без номера, осталась бы без предмета, то есть
+  // вне журнала (см. src/homeworkAttempts.js).
+  //
+  // Тема лежит в состоянии ТАК, КАК ЕЁ НАБИРАЮТ, и приводится к порядку только
+  // при записи (см. pushTasks). Нормализовать её здесь нельзя: normalizeTheme
+  // срезает хвостовой пробел, и на каждом нажатии он пропадал бы — пробел в
+  // теме стало бы не набрать вовсе.
+  const marked = (t, patch) => {
+    const number = "number" in patch ? patch.number : (t.number ?? null)
+    const theme = "theme" in patch ? patch.theme : t.theme
+    return {
+      ...t,
+      number: number == null ? undefined : number,
+      theme: theme || undefined,
+      exam_type: number == null && !normalizeTheme(theme) ? undefined : examType,
+    }
+  }
+
+  const withNumber = (idx, number) => bankTasks.map((t, i) => (i === idx ? marked(t, { number }) : t))
 
   function setTaskNumber(item, value) {
     if (!canNumber) return
@@ -2565,25 +2596,27 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
     if (!canNumber) return
     const digits = String(value ?? "").replace(/\D+/g, "").slice(0, 2)
     const number = digits ? Number(digits) : null
-    saveNumbers(bankTasks.map((t) => (number == null
-      ? { ...t, number: undefined, exam_type: undefined }
-      : { ...t, number, exam_type: examType })))
+    saveNumbers(bankTasks.map((t) => marked(t, { number })))
   }
 
-  // Тема задания — та же разметка, что и номер, только внутри него: номер
-  // говорит, какое место задание занимает на экзамене, тема — что именно в нём
-  // отрабатывается. Правится и у выданной работы: письменную раздатку
-  // размечают уже после того, как ученик её сдал.
+  // Тема задания — та же разметка, что и номер: номер говорит, какое место
+  // задание занимает на экзамене, тема — что именно в нём отрабатывается.
+  // Правится и у выданной работы: письменную раздатку размечают уже после того,
+  // как ученик её сдал.
+  //
+  // БЕЗ НОМЕРА ТЕМА ТОЖЕ РАБОТАЕТ. К экзамену готовятся не все, и у ученика,
+  // который подтягивает успеваемость, номера нет вовсе — тема остаётся
+  // единственной разбивкой, и статистика собирается по ней.
   function setTaskTheme(item, value) {
     if (!canNumber) return
     const idx = taskItems.indexOf(item)
     if (idx < 0) return
-    saveThemes(bankTasks.map((t, i) => (i === idx ? { ...t, theme: value } : t)))
+    saveThemes(bankTasks.map((t, i) => (i === idx ? marked(t, { theme: value }) : t)))
   }
 
   function themeAllTasks(value) {
     if (!canNumber) return
-    saveThemes(bankTasks.map((t) => ({ ...t, theme: value })))
+    saveThemes(bankTasks.map((t) => marked(t, { theme: value })))
   }
 
   // Смена предмета переписывает его у уже размеченных заданий: номера у
@@ -2592,7 +2625,7 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
   function changeExamType(next) {
     setPickedType(next)
     if (canNumber && markedType && markedType !== next) {
-      saveNumbers(bankTasks.map((t) => (t.number != null ? { ...t, exam_type: next } : t)))
+      saveNumbers(bankTasks.map((t) => (t.exam_type ? { ...t, exam_type: next } : t)))
     }
   }
 
@@ -2624,7 +2657,11 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
     // списку перечитаться или карточке закрыться.
     onUpdate()
     const number = item.bankTask?.number
-    if (number == null) return
+    const theme = themeGenKey(item.bankTask?.theme)
+    // В журнал идёт то, что размечено хоть чем-то. Номера может не быть вовсе —
+    // ученик не готовится к экзамену, и разбивку держит тема; нет ни того, ни
+    // другого — строку журнала нечем отличить от соседней, и её не пишем.
+    if (number == null && !theme) return
     // У задания С ЭТАЛОНОМ попытка в журнале уже есть — её записала сверка при
     // сдаче. Вторую на то же задание писать нельзя: один ответ считался бы
     // дважды и развёл бы статистику надвое. Балл такого задания живёт в работе
@@ -2638,7 +2675,8 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
     // работе, а в журнал она доедет, когда миграцию выполнят.
     const args = {
       p_source: "homework", p_source_id: hw.id, p_student_id: String(hw.student_id),
-      p_exam_type: item.bankTask?.exam_type || examType, p_number: Number(number),
+      p_exam_type: item.bankTask?.exam_type || examType,
+      p_number: number == null ? null : Number(number),
       p_correct: value == null ? null : points >= max,
       // Позиция задания в работе: в раздатке по одной теме девять заданий несут
       // ОДИН номер, и без неё девять отметок легли бы в одну строку журнала,
@@ -2651,7 +2689,7 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
     // Колонка gen_key у отметки появляется миграцией homework_task_theme.sql;
     // на базе без неё функция семиаргументная, и мы зовём прежнюю — отметка
     // доедет, просто без темы.
-    supabase.rpc("task_attempt_mark", { ...args, p_gen_key: themeGenKey(item.bankTask?.theme) })
+    supabase.rpc("task_attempt_mark", { ...args, p_gen_key: theme })
       .then((res) => {
         if (res?.error?.code === "PGRST202") return supabase.rpc("task_attempt_mark", args)
       }, () => {})
@@ -2847,11 +2885,11 @@ export function HomeworkDetail({ hw, student, bankGroups = [], studentPhone, stu
                 <div className="w-full flex items-center gap-1.5 text-[11px] text-gray-400">
                   <Icon name="bar-chart" size={11} className="flex-shrink-0" />
                   {numberedTasks === 0 ? (
-                    <span className="truncate">Номера экзамена не проставлены — работа не идёт в статистику</span>
+                    <span className="truncate">Работа не попадёт в результаты ученика — задания не размечены</span>
                   ) : (
                     <span className="truncate">
-                      Номера экзамена: {numberedTasks} из {ownTasks.length}
-                      {canMark ? ` · отмечено ${markedCount} из ${numberedTasks}` : ""}
+                      Размечено {numberedTasks} из {ownTasks.length}
+                      {canMark ? ` · оценено ${markedCount} из ${numberedTasks}` : ""}
                     </span>
                   )}
                 </div>
