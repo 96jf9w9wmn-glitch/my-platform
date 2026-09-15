@@ -182,3 +182,5 @@ public/py/
 dev-py.html
 dev-pyboard.html
 src/devPyBoard.jsx
+dev-zoom.html
+src/devZoom.jsx

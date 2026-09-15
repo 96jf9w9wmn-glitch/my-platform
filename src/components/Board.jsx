@@ -1369,7 +1369,6 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     v.y = done ? ty : v.y + (ty - v.y) * k
     v.scale = done ? scale : v.scale + (scale - v.scale) * k
     sceneValid.current = false          // обзор изменился → слой сцены пересобрать
-    const pct = Math.round(v.scale * 100)
     if (!done) scheduleLive()
   }
   // Видимый кусок доски в мировых координатах — то, что мы показываем другим.
