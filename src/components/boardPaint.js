@@ -6,6 +6,7 @@
 //   { strokes: [ {id, author, tool, color, width, points:[[x,y,w],…], angle?, src?} ], bg, bgColor }
 
 import { tintPixels } from "./sheetTint"
+import { CODE_FONT, CODE_PAD_K, CODE_RADIUS_K, CODE_BG, CODE_BORDER, CODE_INK, codeTokens } from "./boardCode"
 
 export const GRID = 40 // шаг сетки/точек в мировых единицах
 export const INK_DARK = "#f5f5f7", INK_LIGHT = "#1c1c1e"
@@ -37,7 +38,11 @@ export const TEXT_MIN = 10, TEXT_MAX = 160, TEXT_DEFAULT = 32
 // Начертание надписи одной строкой для ctx.font и для поля ввода. Жирность и
 // наклон меняют ШИРИНУ строки, поэтому и метрики, и отрисовка обязаны считаться
 // одним и тем же начертанием — иначе рамка разойдётся с самим текстом.
-export function textFont(size, { bold = false, italic = false } = {}) {
+// code — вставленный кусок программы: он набирается моноширинным (столбцы обязаны
+// стоять друг под другом) и без начертаний, поэтому жирность и наклон у него не
+// спрашиваются вовсе.
+export function textFont(size, { bold = false, italic = false, code = false } = {}) {
+  if (code) return `400 ${size}px ${CODE_FONT}`
   return `${italic ? "italic " : ""}${bold ? "700 " : "400 "}${size}px ${TEXT_FONT}`
 }
 
@@ -55,6 +60,22 @@ export function textMetrics(text, size, style) {
   const s = Math.max(1, size || TEXT_DEFAULT)
   const c = measureCtx(s, style)
   const lines = String(text ?? "").split("\n")
+  // Код меряется ПО КОЛОНКАМ: шрифт моноширинный, ширина знака одна, и строка
+  // длиной N знаков всегда занимает N×ширина. Это не только быстрее измерения
+  // каждой строки — на этом же держится отрисовка, которая ставит каждый кусок
+  // по номеру колонки, иначе разряды разъехались бы между собой.
+  if (style?.code) {
+    const chw = c.measureText("M").width || s * 0.6
+    const pad = s * CODE_PAD_K
+    const lh = s * TEXT_LINE
+    let cols = 0
+    for (const ln of lines) cols = Math.max(cols, ln.length)
+    const m0 = c.measureText("Hg")
+    const asc0 = m0.fontBoundingBoxAscent, desc0 = m0.fontBoundingBoxDescent
+    const base0 = asc0 > 0 && desc0 > 0 ? (lh - (asc0 + desc0)) / 2 + asc0 : s * 0.95
+    return { w: Math.max(cols, 1) * chw + pad * 2, h: lines.length * lh + pad * 2,
+      lh, baseline: base0, lines, pad, chw }
+  }
   let w = 0
   for (const ln of lines) w = Math.max(w, c.measureText(ln).width)
   const m = c.measureText("Hg")
@@ -193,6 +214,35 @@ export function drawShape(ctx, tool, a, b, corner) {
 // onWaiting(s) зовётся ровно тогда, когда вместо картинки легла заглушка: место
 // вызова ставит на неё живой индикатор, иначе лист всё время загрузки выглядит
 // пустой рамкой и доска кажется зависшей (на боевой лист ехал до 4,7 с).
+// Карточка кода: тёмная подложка и разряды цветом, как в редакторе. Рисуется
+// на месте обычной надписи (тот же штрих, та же геометрия), поэтому выделение,
+// перенос и поворот к ней ничего не добавляют.
+function paintCode(ctx, s, x, y, m, size) {
+  const r = Math.min(m.h / 2, size * CODE_RADIUS_K * 1.6)
+  ctx.save()
+  ctx.beginPath()
+  if (ctx.roundRect) ctx.roundRect(x, y, m.w, m.h, r)
+  else ctx.rect(x, y, m.w, m.h)
+  ctx.fillStyle = CODE_BG
+  ctx.fill()
+  ctx.lineWidth = Math.max(0.5, size * 0.055)
+  ctx.strokeStyle = CODE_BORDER
+  ctx.stroke()
+  ctx.font = textFont(size, s)
+  ctx.textAlign = "left"
+  ctx.textBaseline = "alphabetic"
+  const lines = codeTokens(s.text, s.lang)
+  const x0 = x + m.pad, y0 = y + m.pad + m.baseline
+  for (let i = 0; i < lines.length; i++) {
+    const ty = y0 + i * m.lh
+    for (const tk of lines[i]) {
+      ctx.fillStyle = CODE_INK[tk.k] || CODE_INK.plain
+      ctx.fillText(tk.t, x0 + tk.c * m.chw, ty)
+    }
+  }
+  ctx.restore()
+}
+
 export function paintStroke(ctx, s, { darkBg = false, getImage = () => null, onWaiting = null } = {}) {
   const pts = s.points
   if (!pts || pts.length === 0) return
@@ -242,7 +292,7 @@ export function paintStroke(ctx, s, { darkBg = false, getImage = () => null, onW
     const x = Math.min(a[0], b[0]), y = Math.min(a[1], b[1])
     const size = s.size || TEXT_DEFAULT
     const m = textMetrics(s.text, size, s)
-    const put = () => {
+    const put = s.code ? () => paintCode(ctx, s, x, y, m, size) : () => {
       ctx.font = textFont(size, s)
       ctx.textAlign = "left"
       ctx.textBaseline = "alphabetic"

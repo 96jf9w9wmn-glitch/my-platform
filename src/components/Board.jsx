@@ -14,6 +14,7 @@ import {
   isDarkColor, resolveColor, strokeBBox, sceneBBox, viewForBBox, paintStroke, scenePreview, tintSheet, pixelsReady,
   latestBBox as latestSceneBBox,
 } from "./boardPaint"
+import { looksLikeCode, detectLang, normalizeCode, readFence, CODE_FONT, CODE_SCREEN_SIZE, CODE_MIN, CODE_MAX } from "./boardCode"
 // Выбор задания тянет за собой генераторы всех предметов и html2canvas — грузим
 // только когда репетитор открыл выбор, иначе доска стала бы тяжелее на мегабайты.
 const BoardTaskModal = lazy(() => import("./BoardTaskModal"))
@@ -1707,6 +1708,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         if (!s0 || s0.tool === "eraser") continue
         if (s0.tool === "image") { hasImg = true }
         else if (!props) props = { tool: s0.tool, dash: s0.dash || "solid", bold: !!s0.bold, italic: !!s0.italic,
+          code: !!s0.code,
           width: s0.tool === "text" ? (s0.size || TEXT_DEFAULT) : s0.width }
         if (props && hasImg) break
       }
@@ -1714,7 +1716,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     if (hasImg !== lastSelHasImage.current) { lastSelHasImage.current = hasImg; setSelHasImage(hasImg) }
     const pp = lastSelProps.current
     if ((!pp) !== (!props) || (pp && props && (pp.tool !== props.tool || pp.width !== props.width || pp.dash !== props.dash ||
-      pp.bold !== props.bold || pp.italic !== props.italic))) {
+      pp.bold !== props.bold || pp.italic !== props.italic || pp.code !== props.code))) {
       lastSelProps.current = props; setSelProps(props)
     }
     // Направляющие прилипания: пунктир того же цвета, что и в чертёжных
@@ -4067,6 +4069,53 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     return inside ? toWorld(h.x, h.y) : toWorld(r.left + c.clientWidth / 2, r.top + c.clientHeight / 2)
   }
 
+  // Текст из буфера. Кусок программы ложится КАРТОЧКОЙ с подсветкой (тот же
+  // текстовый штрих с пометкой code — см. boardCode.js), остальное — обычной
+  // надписью. Гадание тут одностороннее и намеренно осторожное: принять код за
+  // подпись значит потерять только цвета, а подпись за код — накрыть фамилию
+  // чёрной карточкой.
+  function pasteText(raw) {
+    const at = pasteAnchor()
+    if (!at) return false
+    const fence = readFence(raw)
+    const code = fence ? normalizeCode(fence.code) : normalizeCode(raw)
+    if (!code) return false
+    const isCode = !!fence || looksLikeCode(code)
+    const text = isCode ? code : String(raw).replace(/\r\n?/g, "\n").replace(/[ \t]+$/gm, "").replace(/^\n+|\n+$/g, "")
+    if (!text) return false
+    // Кегль — в ЭКРАННЫХ точках: доску держат на любом увеличении, и вставка на
+    // отдалённой доске иначе оказалась бы нечитаемой крошкой.
+    const size = isCode
+      ? clamp(CODE_SCREEN_SIZE / view.current.scale, CODE_MIN, CODE_MAX)
+      : clamp(textSize, TEXT_MIN, TEXT_MAX)
+    const style = isCode ? { code: 1 } : { bold: textBold, italic: textItalic }
+    const m = textMetrics(text, size, style)
+    // Вставили второй раз туда же (⌘V подряд) — сдвигаем, иначе вторая карточка
+    // легла бы ровно на первую и выглядело бы это как «ничего не произошло».
+    // Счётчик общий с вставкой штрихов: подряд идущие вставки ступенькой.
+    const prev = lastPaste.current
+    const same = prev && Math.abs(prev.x - at[0]) < 1 && Math.abs(prev.y - at[1]) < 1
+    const n = same ? prev.n + 1 : 0
+    lastPaste.current = { x: at[0], y: at[1], n }
+    const off = (16 / view.current.scale) * n
+    const x = at[0] - m.w / 2 + off, y = at[1] - m.h / 2 + off
+    const id = makeId(userId)
+    const st = { id, author: userId, tool: "text", color: isCode ? "ink" : color, text, size,
+      points: textBoxPoints(x, y, text, size, style) }
+    if (isCode) { st.code = 1; st.lang = fence?.lang || detectLang(code) }
+    else { if (textBold) st.bold = 1; if (textItalic) st.italic = 1 }
+    strokes.current.set(id, st)
+    localPending.current.add(id)
+    channelRef.current?.send({ type: "broadcast", event: "draw", payload: st })
+    pushHistory([{ id, before: null, after: cloneStroke(st) }])
+    // Порядок как у вставки штрихов: сначала курсор (смена инструмента сбрасывает
+    // выделение), потом выделение — вставленное сразу под рукой.
+    setTool("cursor")
+    selection.current = new Set([id]); applySelCount(1)
+    scheduleDraw(); scheduleSave()
+    return true
+  }
+
   function pasteStrokes(items) {
     if (!items?.length) return false
     const at = pasteAnchor()
@@ -4216,15 +4265,20 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     if (!box || !p) return
     const v = view.current
     const m = textMetrics(ta ? ta.value : p.value, p.size, p)
-    box.style.left = `${p.x * v.scale + v.x}px`
-    box.style.top = `${p.y * v.scale + v.y}px`
+    // У карточки кода текст начинается не в углу штриха, а внутри полей —
+    // поле ввода обязано встать туда же, иначе код прыгает при входе в правку.
+    const pad = p.code ? (m.pad || 0) : 0
+    box.style.left = `${(p.x + pad) * v.scale + v.x}px`
+    box.style.top = `${(p.y + pad) * v.scale + v.y}px`
     box.style.transform = p.angle ? `rotate(${p.angle}rad)` : ""
     if (!ta) return
-    const col = resolveColor(p.color, isDarkColor(bgColorRef.current))
+    // Правится код обычными чернилами: карточка на время набора уходит с холста
+    // вместе со штрихом, и цветная подсветка на голой доске была бы не видна.
+    const col = resolveColor(p.code ? "ink" : p.color, isDarkColor(bgColorRef.current))
     ta.style.font = textFont(p.size * v.scale, p)   // сокращённая запись сбрасывает интерлиньяж…
     ta.style.lineHeight = `${p.size * v.scale * TEXT_LINE}px`  // …поэтому он ставится следом
-    ta.style.width = `${m.w * v.scale + TEXT_PAD}px`
-    ta.style.height = `${m.h * v.scale}px`
+    ta.style.width = `${(m.w - pad * 2) * v.scale + TEXT_PAD}px`
+    ta.style.height = `${(m.h - pad * 2) * v.scale}px`
     ta.style.color = col
     ta.style.caretColor = col
     // Панель ставим НАД полем, а у самого верха экрана — под ним, иначе она уедет
@@ -4276,8 +4330,13 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     setColor(st.color)
     setTextSize(st.size || TEXT_DEFAULT)
     setTextBold(!!st.bold); setTextItalic(!!st.italic)
+    // code/lang едут в правку вместе со штрихом: по ним поле ввода берёт
+    // моноширинный набор и поля карточки, а сохранение — подсветку того же языка.
+    // Габарит штриха считается ИМИ ЖЕ, поэтому потерять их тут значит получить
+    // карточку, которая при первой правке съезжает и меняет ширину.
     openTextEditor({ id: st.id, x: st.points[0][0], y: st.points[0][1], size: st.size || TEXT_DEFAULT,
-      color: st.color, angle: st.angle || 0, value: st.text || "", bold: !!st.bold, italic: !!st.italic })
+      color: st.color, angle: st.angle || 0, value: st.text || "", bold: !!st.bold, italic: !!st.italic,
+      code: st.code ? 1 : 0, lang: st.lang })
   }
   function beginTextAt(clientX, clientY) {
     const p = toWorld(clientX, clientY)
@@ -4304,6 +4363,9 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     if (ed.angle) st.angle = ed.angle
     if (ed.bold) st.bold = 1
     if (ed.italic) st.italic = 1
+    // Черновик правки кода собеседник видит той же карточкой: иначе набор шёл бы
+    // у него обычной надписью и на глазах «превращался» в код по выходе из поля.
+    if (ed.code) { st.code = 1; st.lang = ed.lang }
     return st
   }
   function sendTextDraft() {
@@ -4579,7 +4641,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     } catch { /* приватный режим — обзор просто не запомнится */ }
   }
 
-  useEffect(() => { actions.current.undo = undo; actions.current.redo = redo; actions.current.del = deleteSelection; actions.current.selectAll = selectAll; actions.current.paste = addImageAt; actions.current.commitText = commitTextEdit; actions.current.close = closeBoard; actions.current.copy = copySelection; actions.current.pasteStrokes = pasteStrokes; actions.current.parseClip = parseClip })
+  useEffect(() => { actions.current.undo = undo; actions.current.redo = redo; actions.current.del = deleteSelection; actions.current.selectAll = selectAll; actions.current.paste = addImageAt; actions.current.commitText = commitTextEdit; actions.current.close = closeBoard; actions.current.copy = copySelection; actions.current.pasteStrokes = pasteStrokes; actions.current.parseClip = parseClip; actions.current.pasteText = pasteText })
 
   // Настройки руки держатся между занятиями (см. COLOR_KEY, WIDTH_KEY, ERASER_KEY).
   // Пишем при каждой смене, а не при выходе: доску закрывают и крестиком, и
@@ -4659,9 +4721,14 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         actions.current.paste?.(file, wx, wy)
         return
       }
-      // Ни нашей копии в буфере, ни картинки: в системный буфер писать не дали
-      // (Safari, отказ в праве) — кладём из своего. Текст с доски и так не
-      // вставляется, так что отнять этим нечего.
+      // Обычный текст из буфера: кусок программы ложится карточкой с подсветкой,
+      // всё остальное — надписью. До 15.09.2026 ⌘V текстом не делал НИЧЕГО: код с
+      // занятия набирали на доске руками через инструмент «Текст», то есть
+      // перепечатывали уже написанную программу.
+      const txt = e.clipboardData?.getData("text/plain") || ""
+      if (txt.trim()) { e.preventDefault(); actions.current.pasteText?.(txt); return }
+      // Ни нашей копии в буфере, ни картинки, ни текста: в системный буфер писать
+      // не дали (Safari, отказ в праве) — кладём из своего.
       if (clipStrokes.current) {
         e.preventDefault()
         actions.current.pasteStrokes?.(clipStrokes.current)
@@ -5204,6 +5271,9 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
             <div ref={editBarRef}
               className="absolute left-0 flex items-center gap-1 px-1.5 py-1 rounded-2xl shadow-lg popup-bubble"
               style={{ background: panelBg, border: `1px solid ${panelBorder}`, whiteSpace: "nowrap" }}>
+              {/* Цвет и начертание — только у надписи: у кода свои цвета разрядов,
+                  а жирный моноширинный ломал бы столбцы. Остаётся размер. */}
+              {!editText.code && (<>
               {/* Цвет — кружком текущего: шесть кружков рядом с полем ввода заняли бы
                   пол-экрана телефона и накрыли бы саму надпись. */}
               <div className="relative" data-menu>
@@ -5240,6 +5310,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
                 style={textItalic ? undefined : idleStyle}>К</button>
 
               {divider}
+              </>)}
 
               {/* Размер: буква и текущее число — понятнее значка, и видно, что стоит сейчас */}
               <div className="relative" data-menu>
@@ -5282,7 +5353,9 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
               display: "block", margin: 0, padding: 0, border: 0, background: "transparent",
               outline: editText ? "1px dashed rgba(0,122,255,.55)" : "none", outlineOffset: 4,
               resize: "none", overflow: "hidden", whiteSpace: "pre", minWidth: 2,
-              font: `${(editText?.size || TEXT_DEFAULT) * view.current.scale}px ${TEXT_FONT}`,
+              // Тот же набор, что кладёт layoutTextEditor: React переприсваивает style
+              // при каждой перерисовке и затёр бы моноширинный шрифт, выставленный им.
+              font: `${(editText?.size || TEXT_DEFAULT) * view.current.scale}px ${editText?.code ? CODE_FONT : TEXT_FONT}`,
               lineHeight: `${(editText?.size || TEXT_DEFAULT) * view.current.scale * TEXT_LINE}px`,
               color: resolveColor(editText?.color || "ink", dark),
               caretColor: resolveColor(editText?.color || "ink", dark),
@@ -5402,18 +5475,20 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
             {/* Панель свойств — по центру над рамкой */}
             <div className="absolute flex items-center gap-1 px-2 py-1.5 rounded-2xl shadow-lg popup-bubble pointer-events-auto"
               style={{ left: barX, top: barY, transform: "translateX(-50%)", background: panelBg, border: `1px solid ${panelBorder}`, maxWidth: "92vw", flexWrap: "wrap" }}>
-              {selProps && BASE_INKS.map((c) => (
+              {/* Цвет и начертание — не у кода: у карточки свои цвета разрядов, и
+                  кнопка, которая ничего не делает, хуже отсутствующей. */}
+              {selProps && !selProps.code && BASE_INKS.map((c) => (
                 <button key={c} onClick={() => setSelectionColor(c)} title={c === "ink" ? "Чернила" : "Цвет"}
                   className="press-tap w-6 h-6 rounded-full flex items-center justify-center">
                   <span className="rounded-full" style={{ width: 17, height: 17, background: resolveColor(c, dark),
                     boxShadow: `0 0 0 1px ${dark ? "rgba(255,255,255,.15)" : "rgba(0,0,0,.12)"}` }} />
                 </button>
               ))}
-              {selProps && divider}
+              {selProps && !selProps.code && divider}
               {/* Начертание — только у надписи. Ж и К стоят рядом с цветом и размером,
                   чтобы выделенная надпись правилась ровно тем же набором кнопок, что
                   и во время набора: разные панели для одного и того же сбивают с толку. */}
-              {selProps?.tool === "text" && (
+              {selProps?.tool === "text" && !selProps.code && (
                 <>
                   <button onClick={() => setSelectionFace("bold", !selProps.bold)}
                     aria-pressed={selProps.bold} aria-label="Полужирный" title="Полужирный"
