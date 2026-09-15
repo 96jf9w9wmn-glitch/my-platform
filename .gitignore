@@ -189,3 +189,7 @@ dev-resync.html
 src/devResync.jsx
 dev-bankmodal.html
 src/devBankModal.jsx
+
+# стенд нижней навигации (резерв под бар на телефоне)
+dev-nav.html
+src/devNav.jsx

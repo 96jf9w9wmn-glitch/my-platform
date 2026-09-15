@@ -3456,7 +3456,7 @@ function StudentDashboard({ user, students, studentsLoaded, onLogout, onReloadSt
             </div>
           )}
 
-          <div className={`student-app flex-1 min-h-0 overflow-x-hidden ${activeTab === "chat" ? "flex flex-col overflow-hidden" : "page-scroll overflow-y-auto pb-20 md:pb-0 kb-collapse"}`}>
+          <div className={`student-app flex-1 min-h-0 overflow-x-hidden ${activeTab === "chat" ? "flex flex-col overflow-hidden" : "page-scroll overflow-y-auto under-mobile-nav kb-collapse"}`}>
             {activeTab === "chat" ? (
               <div className="flex-1 min-h-0 flex flex-col overflow-hidden page-active">
                 <Chat

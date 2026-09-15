@@ -1636,6 +1636,21 @@ textarea.code-input {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+/* Место под нижнюю навигацию: бар fixed и лежит поверх страницы, поэтому
+   прокручиваемый контейнер резервирует его высоту снизу. Высота бара —
+   4 rem (поля, иконка 22, подпись, рамка) ПЛЮС зона индикатора «домой»,
+   в которую бар заходит своим фоном. Прежний резерв pb-20 (5 rem) про
+   safe-area не знал: на iPhone бар выше него на 18 точек, и последняя
+   карточка уходила под бар вплотную. Ещё полрема сверху — воздух между
+   последней карточкой и баром (у страниц есть своё поле p-4, вместе
+   выходит 1,5 rem). На широком экране бара нет — и резерва нет. */
+.under-mobile-nav { padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px)); }
+/* Чат: поле ввода садится на бар вплотную, воздух ему не нужен. */
+.under-mobile-nav-flush { padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px)); }
+@media (min-width: 768px) {
+  .under-mobile-nav, .under-mobile-nav-flush { padding-bottom: 0; }
+}
+
 /* Phone input */
 .phone-input-wrapper .PhoneInput {
   display: flex;
@@ -1844,8 +1859,9 @@ summary::-webkit-details-marker { display: none; }
 
 /* Клавиатура открыта (класс ставит syncAppHeight в main.jsx). Нижняя навигация
    всё равно оказывается за клавиатурой (fixed-низ layout-вьюпорта), а отступ
-   pb-20, зарезервированный под неё (.kb-collapse на тех же контейнерах),
-   превращался бы в белую полосу над клавиатурой — прячем и то, и другое:
+   .under-mobile-nav, зарезервированный под неё (.kb-collapse на тех же
+   контейнерах), превращался бы в белую полосу над клавиатурой — прячем и то,
+   и другое:
    поле ввода чата садится прямо на клавиатуру, как в мессенджерах. */
 html.kb-open .mobile-nav-glass { display: none; }
 html.kb-open .kb-collapse { padding-bottom: 0; }

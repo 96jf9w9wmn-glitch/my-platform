@@ -1361,7 +1361,7 @@ function App() {
           </div>
         )}</Reveal>
 
-        <div className={`flex-1 min-h-0 overflow-x-hidden ${activePage === "chat" ? "flex flex-col overflow-hidden" : "page-scroll overflow-y-auto pb-20 md:pb-0 kb-collapse"}`}>
+        <div className={`flex-1 min-h-0 overflow-x-hidden ${activePage === "chat" ? "flex flex-col overflow-hidden" : "page-scroll overflow-y-auto under-mobile-nav kb-collapse"}`}>
           {/* Каждый раздел под своей границей. Общая на всех была опасна вдвойне:
               пока грузился файл тяжёлого раздела, Suspense гасил ВЕСЬ кабинет
               до логотипа-загрузки, а сбой этой загрузки (после раскатки старых
