@@ -231,10 +231,13 @@ function StudentHome({
         </button>
 
         <div className="min-w-0 flex-1">
-          <h1 className="font-display text-2xl sm:text-[28px] leading-tight truncate">
+          {/* Системное начертание, а не витринное: засечки живут на лендинге и
+              в приветствии после регистрации, а рабочий кабинет весь набран
+              SF Pro — серифный заголовок читался в нём как чужая вставка. */}
+          <h1 className="page-title text-[22px] sm:text-[26px] font-semibold tracking-tight leading-tight truncate">
             {firstName ? `Привет, ${firstName}` : "Привет"}
           </h1>
-          <p className="text-sm text-gray-500 mt-0.5 line-clamp-2">{summary}</p>
+          <p className="page-subtitle text-sm mt-0.5 line-clamp-2">{summary}</p>
         </div>
 
         {/* Отсчёт до экзамена — единственная цифра, которую ученик хочет видеть
