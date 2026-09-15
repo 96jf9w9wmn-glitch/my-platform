@@ -4087,8 +4087,12 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     if (!text) return false
     // Кегль — в ЭКРАННЫХ точках: доску держат на любом увеличении, и вставка на
     // отдалённой доске иначе оказалась бы нечитаемой крошкой.
+    // ЦЕЛОЕ: кегль кода считается от зума (столько-то точек НА ЭКРАНЕ), и на
+    // приближённой доске деление даёт 14,947433039163121 — такое число потом
+    // стоит в панели размера и в сохранённой сцене. Округление ничего не меняет
+    // на вид и избавляет от хвоста.
     const size = isCode
-      ? clamp(CODE_SCREEN_SIZE / view.current.scale, CODE_MIN, CODE_MAX)
+      ? Math.round(clamp(CODE_SCREEN_SIZE / view.current.scale, CODE_MIN, CODE_MAX))
       : clamp(textSize, TEXT_MIN, TEXT_MAX)
     const style = isCode ? { code: 1 } : { bold: textBold, italic: textItalic }
     const m = textMetrics(text, size, style)
@@ -5381,7 +5385,10 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
                   className={`press-tap h-8 px-2 rounded-lg flex items-center gap-1 ${menuShown("txtSize") ? "bg-blue-500/15 text-blue-500" : "board-hover"}`}
                   style={menuShown("txtSize") ? undefined : idleStyle}>
                   <span className="text-[15px] font-semibold leading-none" style={{ fontFamily: TEXT_FONT }}>А</span>
-                  <span className="text-[11px] tabular-nums leading-none">{textSize}</span>
+                  {/* ОКРУГЛЯЕМ: кегль бывает дробным — надпись растянули за ручку
+                      (size × коэффициент) либо это вставленный код, у которого он
+                      считается от зума. Тот же Math.round стоит у панели выделения. */}
+                  <span className="text-[11px] tabular-nums leading-none">{Math.round(textSize)}</span>
                 </button>
                 {menuShown("txtSize") && (
                   <div className={`absolute bottom-full mb-2 left-1/2 -translate-x-1/2 p-2 rounded-xl shadow-lg z-10 ${menuAnim("txtSize")}`}
