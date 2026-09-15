@@ -714,6 +714,9 @@ function Swatch({ hex, active, dark, title, onClick, size = 24 }) {
 
 // Свой цвет из системной палитры. Выбранный цвет только КРАСИТ и в ряд кружков не
 // добавляется: ряд и так забит базовыми цветами, лишний кружок туда не помещался.
+// Размеры кружков отличаются на ЧЁТНОЕ число (24 → 14 → 10): при нечётной разнице
+// вложенный кружок встаёт на половину точки, браузер её округляет — и плюс с белым
+// пятачком уезжали вправо-вниз от центра радуги (замерено, 0,5 точки).
 function ColorPick({ value, dark, title, onPreview, size = 24 }) {
   const hex = /^#[0-9a-f]{6}$/i.test(value) ? value : "#007AFF"
   return (
@@ -726,8 +729,8 @@ function ColorPick({ value, dark, title, onPreview, size = 24 }) {
         boxShadow: `0 0 0 1.5px ${dark ? "rgba(255,255,255,.4)" : "rgba(0,0,0,.22)"}`,
       }}>
         <span className="rounded-full flex items-center justify-center"
-          style={{ width: size - 11, height: size - 11, background: dark ? "#2c2c2e" : "#fff", color: dark ? "#f5f5f7" : "#1c1c1e" }}>
-          <Icon name="plus" size={size - 15} />
+          style={{ width: size - 10, height: size - 10, background: dark ? "#2c2c2e" : "#fff", color: dark ? "#f5f5f7" : "#1c1c1e" }}>
+          <Icon name="plus" size={size - 14} />
         </span>
       </span>
       <input type="color" value={hex} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
