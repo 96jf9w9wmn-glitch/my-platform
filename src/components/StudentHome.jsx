@@ -6,6 +6,7 @@ import { TILE_TINTS, dueTintKey } from "../dueTint"
 import { parseLocalDate, getInitials, plural, timeUntilLesson, isLessonConducted } from "../utils"
 import { studentBilling } from "../billing"
 import { fmtNum } from "../num"
+import { GRADE_LOOK, GRADE_NEUTRAL } from "../gradeLook"
 
 // Главная кабинета ученика.
 //
@@ -133,6 +134,17 @@ function StudentHome({
     const at = (x) => (x.deadline ? parseLocalDate(x.deadline).getTime() : Infinity)
     return items.sort((a, b) => at(a) - at(b))
   }, [homework, variants])
+
+  // Последние проверенные работы. Стоят под очередью дел и только тогда, когда
+  // очередь короткая: иначе низ карточки пустует, а оценка — первое, что ученик
+  // идёт смотреть после сдачи, и ради неё приходилось открывать вкладку.
+  const recent = useMemo(
+    () => (homework || [])
+      .filter((h) => h.status === "done" && h.grade)
+      .sort((a, b) => new Date(b.submitted_at || b.created_at || 0) - new Date(a.submitted_at || a.created_at || 0))
+      .slice(0, 3),
+    [homework],
+  )
 
   const overdue = todos.filter((t) => t.deadline && dueNote(t.deadline).text === "Просрочено").length
   const firstName = (user?.profile?.name || student?.name || "").trim().split(/\s+/)[0]
@@ -408,9 +420,11 @@ function StudentHome({
               </p>
             </div>
           ) : (
-            // justify-between: список тянется на всю высоту карточки, и под
-            // последним делом не остаётся воздуха рядом с колонкой занятий.
-            <div className="flex-1 flex flex-col justify-between gap-0.5 -mx-1">
+            // Строки идут ПОДРЯД, с постоянным шагом. Растягивать список на всю
+            // высоту карточки (justify-between) нельзя: при двух-трёх работах
+            // между ними разъезжались дыры в полсотни точек, и список переставал
+            // читаться как список. Незанятый низ карточки — меньшее зло.
+            <div className="flex flex-col gap-0.5 -mx-1">
               {todos.slice(0, 4).map((t, i) => (
                 <TodoRow key={t.key} item={t} index={i}
                   onOpen={(x) => (x.kind === "hw" ? onOpenHomework(x.row) : onOpenVariant(x.row))} />
@@ -421,6 +435,27 @@ function StudentHome({
                   и ещё {todos.length - 4} {plural(todos.length - 4, "работа", "работы", "работ")}
                 </button>
               )}
+            </div>
+          )}
+
+          {recent.length > 0 && todos.length < 4 && (
+            <div className="mt-4 pt-3.5 border-t border-gray-500/12 dark:border-white/10">
+              <div className="text-[11px] text-gray-400 font-medium mb-1.5">Проверено</div>
+              <div className="flex flex-col gap-0.5 -mx-1">
+                {recent.slice(0, todos.length ? 2 : 3).map((h) => {
+                  const look = GRADE_LOOK[h.grade] || GRADE_NEUTRAL
+                  return (
+                    <button key={h.id} onClick={() => onOpenHomework(h)}
+                      className="press-fill w-full text-left rounded-xl px-2.5 py-1.5 -mx-1 flex items-center gap-2.5 transition-colors hover:bg-blue-500/[0.06]">
+                      <span className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold ${look.chip}`}>
+                        {h.grade}
+                      </span>
+                      <span className="min-w-0 flex-1 text-[13px] truncate">{h.title || "Задание"}</span>
+                      <Icon name="chevron-right" size={14} className="text-gray-400 shrink-0" />
+                    </button>
+                  )
+                })}
+              </div>
             </div>
           )}
         </div>
