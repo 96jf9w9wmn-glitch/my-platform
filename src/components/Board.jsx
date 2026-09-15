@@ -14,8 +14,8 @@ import {
   isDarkColor, resolveColor, strokeBBox, sceneBBox, viewForBBox, paintStroke, scenePreview, tintSheet, pixelsReady,
   latestBBox as latestSceneBBox,
 } from "./boardPaint"
-import { looksLikeCode, isCodeText, detectLang, normalizeCode, readFence, codeTokens, codePad,
-  CODE_FONT, CODE_SCREEN_SIZE, CODE_MIN, CODE_MAX, CODE_BG, CODE_BORDER, CODE_INK, CODE_RADIUS_K } from "./boardCode"
+import { looksLikeCode, isCodeText, detectLang, normalizeCode, readFence, codeTokens,
+  CODE_SCREEN_SIZE, CODE_MIN, CODE_MAX, CODE_BG, CODE_BORDER, CODE_INK, CODE_RADIUS_K } from "./boardCode"
 // Выбор задания тянет за собой генераторы всех предметов и html2canvas — грузим
 // только когда репетитор открыл выбор, иначе доска стала бы тяжелее на мегабайты.
 const BoardTaskModal = lazy(() => import("./BoardTaskModal"))
@@ -941,7 +941,12 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // нажатие должно отозваться сразу — иначе кажется, что кнопка не сработала.
   const [pulled, setPulled] = useState(false)
   const [loaded, setLoaded] = useState(false)
-  const [zoomPct, setZoomPct] = useState(100)
+  // Масштаб подписан на кнопке «Сбросить масштаб». Держать его СОСТОЯНИЕМ
+  // нельзя: зум идёт десятками событий в секунду, и каждое перерисовывало бы
+  // весь кабинет доски целиком — ради трёх цифр. Подпись пишется прямо в узел
+  // из кадра (showZoomPct), поэтому перерисовок при зуме нет вовсе.
+  const zoomLabelRef = useRef(null)
+  const zoomPctRef = useRef(100)
   const [selCount, setSelCount] = useState(0)
   // Число выделенных штрихов: пропало выделение — закрываем попап его настроек
   const applySelCount = (n) => { setSelCount(n); if (!n && menu === "selStroke") closeMenu("selStroke") }
@@ -976,6 +981,9 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // Написанное в панели переживает её закрытие, но НЕ живёт в состоянии доски:
   // код правят посимвольно, и каждая буква перерисовывала бы весь кабинет доски.
   const pyStore = useRef({ code: "", stdin: "" })
+  // Закрытие панели по кнопке доски: сама панель кладёт сюда свой close, чтобы
+  // уход шёл анимацией, а не снятием компонента.
+  const pyCloseRef = useRef(null)
   // Банк заданий — самый тяжёлый кусок приложения: генераторы всех предметов плюс
   // снимок листа, вместе под мегабайт сжатого кода. Пока он качается и компилируется,
   // нажатие на «Задание из банка» выглядит как «ничего не произошло», и ждать этого
@@ -1278,7 +1286,15 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     v.x = sx - (sx - v.x) * k
     v.y = sy - (sy - v.y) * k
     v.scale = ns
-    setZoomPct(Math.round(ns * 100))
+  }
+  // Подпись масштаба. Зовётся из кадра, а не из zoomAt: обзор двигают ещё и
+  // слежение за собеседником, «вписать всё» и восстановление после перезахода —
+  // а кадр рисуется после любого из них.
+  function showZoomPct() {
+    const pct = Math.round(view.current.scale * 100)
+    if (pct === zoomPctRef.current) return
+    zoomPctRef.current = pct
+    if (zoomLabelRef.current) zoomLabelRef.current.textContent = `${pct}%`
   }
 
   // --- Слежение за участником ---------------------------------------------
@@ -1310,7 +1326,6 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     v.scale = done ? scale : v.scale + (scale - v.scale) * k
     sceneValid.current = false          // обзор изменился → слой сцены пересобрать
     const pct = Math.round(v.scale * 100)
-    setZoomPct((prev) => (prev === pct ? prev : pct))
     if (!done) scheduleLive()
   }
   // Видимый кусок доски в мировых координатах — то, что мы показываем другим.
@@ -1816,6 +1831,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
       ctx.restore()
     }
     layoutTextEditor()
+    showZoomPct()
     // Подсказку «пишут за краем экрана» снимаем, как только это место видно —
     // хоть по нажатию, хоть потому, что доску подвинули руками.
     if (offscreenRef.current && bboxOnScreen(offscreenBB.current)) hideOffscreen()
@@ -2112,7 +2128,6 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
         const lastId = list.length ? list[list.length - 1].id : null
         if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y) && saved.n === list.length && saved.last === lastId) {
           view.current = { x: saved.x, y: saved.y, scale: clamp(saved.scale || 1, MIN_SCALE, MAX_SCALE) }
-          setZoomPct(Math.round(view.current.scale * 100))
           scheduleDraw()
         } else {
           focusLatest()
@@ -4213,6 +4228,17 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // Питон на доске. Панель открывают кнопкой в панели инструментов; если в этот
   // момент выделена карточка кода — запускать почти наверняка хотят именно её,
   // поэтому она и уезжает в панель.
+  // Кнопка «<>» работает переключателем: открыта панель — закрываем её (и
+  // именно её способом, с анимацией), закрыта — открываем.
+  function togglePython() {
+    if (pyOpen) {
+      if (pyCloseRef.current) pyCloseRef.current()
+      else setPyOpen(false)   // панель ещё не догрузилась — закрывать нечему
+      return
+    }
+    openPython()
+  }
+
   function openPython() {
     if (selection.current.size === 1) {
       const one = strokes.current.get([...selection.current][0])
@@ -4405,6 +4431,17 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   // Поле стоит в МИРОВЫХ координатах, а живёт в HTML — значит, его место и кегль
   // надо править в каждом кадре: обзор двигают колесом, пальцами и слежением, и
   // ни одно из этих движений через React не проходит.
+  //
+  // ГЛАВНОЕ: писатель у этой геометрии ОДИН — вот эта функция. Раньше место
+  // обёртки, кегль, интерлиньяж и поля карточки стояли ЕЩЁ И в разметке (их
+  // считал React из того же view.current), и при зуме они расходились: React
+  // перерисовывается по своему расписанию, а эта функция — в кадре. Замер на
+  // стенде (ctrl+колесо, кадр за кадром): поле ввода уже 17,54 px, а слой
+  // подсветки — ещё 19 px, и так на КАЖДОМ кадре зума. То есть курсор,
+  // пунктирная рамка и место карточки уезжали на новый масштаб, а сама
+  // карточка с цветным кодом — на кадр позже. Это и есть дрожание. Возвращать
+  // в разметку left/top/font/lineHeight/padding НЕЛЬЗЯ: свойство, которого в
+  // style-объекте нет, React не трогает вовсе, и расходиться становится нечему.
   function layoutTextEditor() {
     const box = editBoxRef.current, ta = editRef.current, p = editPos.current
     if (!box || !p) return
@@ -4423,6 +4460,10 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     const col = resolveColor(p.color, isDarkColor(bgColorRef.current))
     ta.style.font = textFont(p.size * v.scale, p)   // сокращённая запись сбрасывает интерлиньяж…
     ta.style.lineHeight = `${p.size * v.scale * TEXT_LINE}px`  // …поэтому он ставится следом
+    // Поля карточки держит само поле ввода (box-sizing: content-box), и они
+    // обязаны меняться ВМЕСТЕ с шириной и высотой: разъедутся — курсор встанет
+    // не на свою строку, а пунктир обгонит карточку.
+    ta.style.padding = `${pad * v.scale}px`
     ta.style.width = `${(m.w - pad * 2) * v.scale + TEXT_PAD}px`
     ta.style.height = `${(m.h - pad * 2) * v.scale}px`
     paintCodeLayer(m, v.scale)
@@ -4750,7 +4791,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     stopFollow()
     const canvas = canvasRef.current
     if (canvas) zoomAt(canvas.clientWidth / 2, canvas.clientHeight / 2, 1 / view.current.scale)
-    else { view.current = { x: 0, y: 0, scale: 1 }; setZoomPct(100) }
+    else { view.current = { x: 0, y: 0, scale: 1 } }
     scheduleDraw()
   }
 
@@ -4762,7 +4803,6 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
     const nv = viewForBBox(bb, canvas.clientWidth, canvas.clientHeight, { bottom, minScale: MIN_SCALE })
     if (!nv) return false
     view.current = nv
-    setZoomPct(Math.round(nv.scale * 100))
     sceneValid.current = false
     scheduleDraw()
     return true
@@ -4783,7 +4823,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
   function focusLatest() {
     stopFollow()
     const bb = latestBBox()
-    if (!bb) { view.current = { x: 0, y: 0, scale: 1 }; setZoomPct(100); scheduleDraw(); return false }
+    if (!bb) { view.current = { x: 0, y: 0, scale: 1 }; scheduleDraw(); return false }
     return viewToBBox(bb, { bottom: true })
   }
 
@@ -5460,10 +5500,10 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
             — так элемент перестаёт быть фокусируемым, поэтому вне набора он просто
             прозрачный и не ловит нажатия. Значение полю ставит openTextEditor, а не
             React: перерисовка из-за смены цвета или кегля не должна стирать набранное. */}
+        {/* Место обёртки (left/top) ставит ТОЛЬКО layoutTextEditor — см. её
+            комментарий: второй писатель из разметки давал дрожание при зуме. */}
         <div ref={editBoxRef} className="absolute"
           style={{
-            left: editText ? editText.x * view.current.scale + view.current.x : 0,
-            top: editText ? editText.y * view.current.scale + view.current.y : 0,
             transformOrigin: "50% 50%",
             opacity: editText ? 1 : 0,
             pointerEvents: editText ? "auto" : "none",
@@ -5574,13 +5614,11 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
               // буквы прозрачные — их показывает слой подсветки под ним. Виден
               // остаётся курсор (и выделение — его рисует браузер).
               position: "relative", boxSizing: "content-box",
-              padding: editText?.code ? codePad(editText.size || TEXT_DEFAULT) * view.current.scale : 0,
               outline: editText ? "1px dashed rgba(0,122,255,.55)" : "none", outlineOffset: 4,
               resize: "none", overflow: "hidden", whiteSpace: "pre", minWidth: 2,
-              // Тот же набор, что кладёт layoutTextEditor: React переприсваивает style
-              // при каждой перерисовке и затёр бы моноширинный шрифт, выставленный им.
-              font: `${(editText?.size || TEXT_DEFAULT) * view.current.scale}px ${editText?.code ? CODE_FONT : TEXT_FONT}`,
-              lineHeight: `${(editText?.size || TEXT_DEFAULT) * view.current.scale * TEXT_LINE}px`,
+              // padding, font и lineHeight СЮДА НЕ ВОЗВРАЩАТЬ: они зависят от
+              // масштаба, а его знает только кадр. Их ставит layoutTextEditor —
+              // см. её комментарий про дрожание при зуме.
               color: editText?.code ? "transparent" : resolveColor(editText?.color || "ink", dark),
               caretColor: editText?.code ? CODE_INK.plain : resolveColor(editText?.color || "ink", dark),
             }}
@@ -5814,7 +5852,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
           <button onClick={resetView} title="Сбросить масштаб"
             className="press-tap h-7 flex items-center justify-center text-[10px] board-hover border-y"
             style={{ ...idleStyle, borderColor: panelBorder }}>
-            {zoomPct}%
+            <span ref={zoomLabelRef}>100%</span>
           </button>
           <button onClick={() => zoomBy(1 / 1.2)} title="Отдалить"
             className="press-tap w-9 h-9 flex items-center justify-center board-hover" style={idleStyle}>
@@ -5827,7 +5865,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
             — увеличение двумя пальцами в панели тянуло бы весь сайт. */}
         {pyOpen && (
           <Suspense fallback={null}>
-            <PythonPanel dark={dark} store={pyStore.current}
+            <PythonPanel dark={dark} store={pyStore.current} closeRef={pyCloseRef}
               onPlace={placeProgram} onClose={() => setPyOpen(false)} />
           </Suspense>
         )}
@@ -5976,7 +6014,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
           {/* Программа на питоне: пишут, запускают, кладут на доску вместе с
               выводом. Кнопка тут, а не у карточки кода, потому что чаще всего
               программу на занятии сперва ПИШУТ, а карточки ещё нет. */}
-          <button onPointerDown={() => flashTip("python")} onClick={openPython}
+          <button onPointerDown={() => flashTip("python")} onClick={togglePython}
             className={`${btnBase} ${pyOpen ? btnOn : btnIdle}`} style={pyOpen ? undefined : idleStyle}>
             <Icon name="code" size={21} />
             <Tip label="Программа на питоне" dark={dark} show={tapped === "python"} />
@@ -6103,7 +6141,7 @@ export default function Board({ roomId, label = "", userId, userName, avatar = n
                         <Icon name="book" size={18} />Задание из банка
                       </button>
                     )}
-                    <button onClick={() => { closeMenu("mMore"); openPython() }}
+                    <button onClick={() => { closeMenu("mMore"); togglePython() }}
                       className="press-tap flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm board-hover" style={idleStyle}>
                       <Icon name="code" size={18} />Программа на питоне
                     </button>

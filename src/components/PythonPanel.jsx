@@ -27,7 +27,7 @@ const INDENT = "    "
 // ввод, чтобы написанное пережило закрытие. Держать это состоянием доски
 // нельзя: код правят посимвольно, и каждая буква перерисовывала бы весь её
 // кабинет.
-export default function PythonPanel({ dark, store = {}, onPlace, onClose }) {
+export default function PythonPanel({ dark, store = {}, closeRef, onPlace, onClose }) {
   const [code, setCode] = useState(store.code || "")
   const [stdin, setStdin] = useState(store.stdin || "")
   const [showStdin, setShowStdin] = useState(false)
@@ -44,6 +44,15 @@ export default function PythonPanel({ dark, store = {}, onPlace, onClose }) {
   // Открыли панель — значит собираются запускать: качаем движок заранее, иначе
   // ожидание в несколько секунд начнётся уже ПОСЛЕ нажатия «Запустить».
   useEffect(() => { warmPython() }, [])
+
+  // Закрыть панель может и кнопка доски (повторное нажатие на «<>»). Отдаём ей
+  // НАШ close, а не право снять компонент: иначе панель исчезала бы рывком,
+  // мимо анимации ухода.
+  useEffect(() => {
+    if (!closeRef) return undefined
+    closeRef.current = close
+    return () => { if (closeRef.current === close) closeRef.current = null }
+  }, [closeRef, close])
 
   // Секундомер идущей программы: без него долгий счёт неотличим от зависания.
   useEffect(() => {
